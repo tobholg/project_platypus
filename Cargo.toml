@@ -1,0 +1,10 @@
+[package]
+name = "project_platypus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy          = "0.10"
+bevy_rapier2d = "0.21"
+noise         = "0.8"
+rand          = "0.8"
