@@ -14,10 +14,10 @@ pub const DIG_RADIUS: f32 = 16.0;
 /// -------- player phys --------
 pub const PLAYER_WIDTH: f32  =  8.0;
 pub const PLAYER_HEIGHT: f32 = 18.0;
-pub const GRAVITY: f32       = -400.0;
-pub const JUMP_SPEED: f32    =  230.0;
-pub const JET_ACCEL: f32     =  800.0;
-pub const WALK_SPEED: f32    =  160.0;
+pub const GRAVITY: f32       = -500.0;
+pub const JUMP_SPEED: f32    =  250.0;
+pub const JET_ACCEL: f32     =  1000.0;
+pub const WALK_SPEED: f32    =  200.0;
 pub const COLLISION_STEPS: i32 = 4;
 
 /// -------- jet‑pack exhaust --------
