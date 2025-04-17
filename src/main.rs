@@ -5,21 +5,21 @@ mod terrain;
 mod player;
 mod enemy;
 mod camera;
-mod visibility;                 //  ← NEW
+mod visibility;
 
-use bevy::prelude::*;
 use bevy::input::ButtonInput;
+use bevy::prelude::*;
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
 
-use terrain::{
-    generate_world_and_player, spawn_initial_tiles, digging_system,
-    redraw_changed_tiles_system,
-};
-use player::{
-    player_input_system, physics_and_collision_system, animate_player_system,
-    exhaust_update_system,
-};
 use camera::camera_follow_system;
+use player::{
+    animate_player_system, exhaust_update_system, physics_and_collision_system,
+    player_input_system,
+};
+use terrain::{
+    digging_system, generate_world_and_player, redraw_changed_tiles_system,
+    stream_tiles_system, update_active_rect_system,
+};
 use visibility::{
     detect_player_tile_change_system, recompute_fov_system, startup_fov_system,
 };
@@ -50,44 +50,49 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.18, 0.65, 1.0)))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: "Terraria‑like (chunky cave colours)".into(),
+                title: "Terraria‑like (streaming tiles)".into(),
                 mode: WindowMode::BorderlessFullscreen(MonitorSelection::Primary),
                 ..default()
             }),
             ..default()
         }))
+
         /* ---------- startup ---------- */
-        .add_systems(Startup, generate_world_and_player)                 // inserts Terrain
+        .add_systems(Startup, generate_world_and_player) // inserts Terrain
         .add_systems(Startup, enemy::spawn_enemies.after(generate_world_and_player))
         .add_systems(Startup, setup_camera)
-        .add_systems(Startup, startup_fov_system.after(setup_camera))    // ← initial FOV
+        .add_systems(Startup, update_active_rect_system.after(setup_camera))
+        .add_systems(Startup, startup_fov_system.after(setup_camera))
 
-        /* ---------- one‑shot after terrain exists ---------- */
-        .add_systems(Update, spawn_initial_tiles.before(player_input_system))
-
-        /* ---------- main game loop (physics, input, etc.) ---------- */
+        /* ---------- main update loop ---------- */
         .add_systems(
             Update,
             (
                 player_input_system,
                 physics_and_collision_system,
+                enemy::update_active_tag_system,    // NEW – tag/untag
                 enemy::enemy_ai_system,
                 enemy::enemy_physics_system,
+                terrain::stream_tiles_system,       // NEW – spawn/kill tile sprites
                 digging_system,
                 redraw_changed_tiles_system,
                 exhaust_update_system,
                 animate_player_system,
                 enemy::animate_enemy_system,
                 toggle_fullscreen,
-                detect_player_tile_change_system,         // ← NEW
+                detect_player_tile_change_system,
             ),
         )
 
-        /* ---------- camera & visibility  ---------- */
-        .add_systems(PostUpdate, (                        // run after movement
-            camera_follow_system,
-            recompute_fov_system,                         // ← NEW (run_if internal)
-        ))
+        /* ---------- camera + active‑rect + FOV ---------- */
+        .add_systems(
+            PostUpdate,
+            (
+                camera_follow_system,
+                update_active_rect_system,  // NEW – compute rect each frame
+                recompute_fov_system,
+            ),
+        )
 
         .run();
 }

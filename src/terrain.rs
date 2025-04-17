@@ -1,5 +1,4 @@
-//! world‑generation, digging & tile‑sprite helpers
-//! (surface caves disabled: no air tiles until MIN_CAVE_DEPTH below ground)
+//! world‑generation, digging, sprite streaming & helpers
 
 use bevy::prelude::*;
 use noise::{NoiseFn, Perlin};
@@ -33,8 +32,8 @@ pub enum TileKind {
 #[derive(Clone, Copy)]
 pub struct Tile {
     pub kind:     TileKind,
-    pub visible:  bool,   // in current FOV?
-    pub explored: bool,   // has ever been seen?
+    pub visible:  bool,
+    pub explored: bool,
 }
 
 /* ===========================================================
@@ -52,46 +51,53 @@ pub struct Terrain {
 }
 
 /* ===========================================================
-   constants
+   “active window” rectangle around the camera
    =========================================================== */
-/// Number of tiles below ground level that must remain solid before caves can appear.
+#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ActiveRect {
+    pub min_x: i32,
+    pub max_x: i32,
+    pub min_y: i32,
+    pub max_y: i32,
+}
+
+/* ===========================================================
+   constants (world‑gen only)
+   =========================================================== */
 const MIN_CAVE_DEPTH: usize = 8;
-
-/// brightness factors for the lighting system
 const EXPLORED_BRIGHTNESS: f32 = 0.25;
-
-/// background tint for underground air
 const BACKGROUND_BROWN: Vec3 = Vec3::new(0.20, 0.10, 0.05);
 
 /* ===========================================================
-   startup: generate world + player
+   startup: generate world + player  ➜  medium‑cave edition
    =========================================================== */
-pub fn generate_world_and_player(
+   pub fn generate_world_and_player(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
     /* ----- player sprite‑sheet ----- */
     let sheet = asset_server.load("textures/player_sheet.png");
-    let layout = TextureAtlasLayout::from_grid(UVec2::new(100, 100), 6, 1, None, None);
+    let layout =
+        TextureAtlasLayout::from_grid(UVec2::new(100, 100), 6, 1, None, None);
     let layout_handle = atlas_layouts.add(layout);
 
     /* ----- world dimensions ----- */
     let w = CHUNK_WIDTH * NUM_CHUNKS_X;
     let h = CHUNK_HEIGHT * NUM_CHUNKS_Y;
 
-    /* ----- smooth height‑map with rare cliffs  ----- */
+    /* ----- height‑map (perlin + cliffs) ----- */
     let mut height_map = vec![0usize; w];
-    let noise_hills = Perlin::new(rand::thread_rng().gen());
+    let noise_hills  = Perlin::new(rand::thread_rng().gen());
     let noise_cliffs = Perlin::new(rand::thread_rng().gen());
 
     let base = h as f32 * 0.35;
-    let amp_low = 5.0;
+    let amp_low  =  5.0;
     let amp_high = 12.0;
 
-    let cliff_freq = 0.12;
+    let cliff_freq      = 0.12;
     let cliff_threshold = 0.85;
-    let cliff_strength = 18.0;
+    let cliff_strength  = 18.0;
 
     for x in 0..w {
         let n = noise_hills.get([x as f64 * 0.01, 0.0]);
@@ -109,13 +115,23 @@ pub fn generate_world_and_player(
         height_map[x] = elev.clamp(4.0, (h - 10) as f32) as usize;
     }
 
-    /* ----- tile grid + caverns (caves start after MIN_CAVE_DEPTH) ----- */
-    let mut tiles = vec![vec![Tile {
-        kind: TileKind::Air,
-        visible: false,
-        explored: false,
-    }; w]; h];
+    /* ----- fill tiles (ground, caves, sky) ----- */
+    let mut tiles = vec![
+        vec![
+            Tile {
+                kind: TileKind::Air,
+                visible: false,
+                explored: false,
+            };
+            w
+        ];
+        h
+    ];
     let sprite_entities = vec![vec![None; w]; h];
+
+    /*  MEDIUM‑CAVE parameters  */
+    let cave_freq:   f64 = 0.04;  // halfway between 0.08 and 0.02
+    let cave_thresh: f64 = 0.30;  // halfway between 0.40 and 0.20
     let noise_cave = Perlin::new(rand::thread_rng().gen());
 
     for x in 0..w {
@@ -125,22 +141,17 @@ pub fn generate_world_and_player(
         for y in 0..surface {
             tiles[y][x].kind = TileKind::Sky;
         }
-        // ground
+        // ground + caverns
         for y in surface..h {
             let depth = y - surface;
-
-            // below this depth we may carve caves; above it remains solid
             if depth < MIN_CAVE_DEPTH {
-                tiles[y][x].kind = if depth > h / 4 {
-                    TileKind::Stone
-                } else {
-                    TileKind::Dirt
-                };
+                tiles[y][x].kind =
+                    if depth > h / 4 { TileKind::Stone } else { TileKind::Dirt };
                 continue;
             }
 
-            let n = noise_cave.get([x as f64 * 0.08, y as f64 * 0.08]);
-            tiles[y][x].kind = if n > 0.40 {
+            let n = noise_cave.get([x as f64 * cave_freq, y as f64 * cave_freq]);
+            tiles[y][x].kind = if n > cave_thresh {
                 TileKind::Air
             } else if depth > h / 4 {
                 TileKind::Stone
@@ -150,21 +161,21 @@ pub fn generate_world_and_player(
         }
     }
 
-    /* ----- player spawn position ----- */
-    let spawn_x = w / 2;
+    /* ----- spawn player at map centre ----- */
+    let spawn_x  = w / 2;
     let surf_row = height_map[spawn_x];
     let spawn = Vec2::new(
         spawn_x as f32 * TILE_SIZE,
-        tile_to_world_y(h, surf_row) + TILE_SIZE * 0.5 + PLAYER_HEIGHT * 0.5 + 4.0,
+        tile_to_world_y(h, surf_row)
+            + TILE_SIZE * 0.5
+            + PLAYER_HEIGHT * 0.5
+            + 4.0,
     );
 
     commands.spawn((
         Sprite::from_atlas_image(
             sheet.clone(),
-            TextureAtlas {
-                layout: layout_handle.clone(),
-                index: 0,
-            },
+            TextureAtlas { layout: layout_handle.clone(), index: 0 },
         ),
         Transform {
             translation: spawn.extend(10.0),
@@ -177,7 +188,7 @@ pub fn generate_world_and_player(
         AnimationTimer(Timer::from_seconds(0.12, TimerMode::Repeating)),
     ));
 
-    /* ----- resource ----- */
+    /* ----- insert terrain resource ----- */
     commands.insert_resource(Terrain {
         tiles,
         sprite_entities,
@@ -190,28 +201,85 @@ pub fn generate_world_and_player(
 }
 
 /* ===========================================================
-   initial mass sprite‑spawn (runs exactly once)
+   streaming tile sprites – runs every frame
    =========================================================== */
-pub fn spawn_initial_tiles(
+pub fn stream_tiles_system(
     mut commands: Commands,
     mut terrain: ResMut<Terrain>,
-    mut done: Local<bool>,
+    rect: Res<ActiveRect>,
 ) {
-    if *done {
-        return;
-    }
-    for y in 0..terrain.height {
-        for x in 0..terrain.width {
-            if matches!(
-                terrain.tiles[y][x].kind,
-                TileKind::Dirt | TileKind::Stone | TileKind::Air
-            ) {
-                terrain.sprite_entities[y][x] =
-                    Some(spawn_tile(&mut commands, &terrain, x, y));
+    let w = terrain.width as i32;
+    let h = terrain.height as i32;
+
+    /* -------- despawn tiles that left the rect -------- */
+    for y in 0..h {
+        for x in 0..w {
+            let (ux, uy) = (x as usize, y as usize);
+            if let Some(e) = terrain.sprite_entities[uy][ux] {
+                if x < rect.min_x || x > rect.max_x || y < rect.min_y || y > rect.max_y {
+                    commands.entity(e).despawn();
+                    terrain.sprite_entities[uy][ux] = None;
+                }
             }
         }
     }
-    *done = true;
+
+    /* -------- spawn tiles that entered the rect -------- */
+    for y in rect.min_y..=rect.max_y {
+        for x in rect.min_x..=rect.max_x {
+            let (ux, uy) = (x as usize, y as usize);
+            if terrain.sprite_entities[uy][ux].is_none()
+                && matches!(terrain.tiles[uy][ux].kind,
+                            TileKind::Dirt | TileKind::Stone | TileKind::Air)
+            {
+                terrain.sprite_entities[uy][ux] =
+                    Some(spawn_tile(&mut commands, &terrain, ux, uy));
+            }
+        }
+    }
+}
+
+/* ===========================================================
+   update the ActiveRect after the camera has moved
+   =========================================================== */
+pub fn update_active_rect_system(
+    cam_q: Query<&Transform, With<Camera>>,
+    window_q: Query<&Window>,
+    terrain: Res<Terrain>,
+    mut rect_res: Option<ResMut<ActiveRect>>,
+    mut commands: Commands,
+) {
+    let cam_tf = match cam_q.get_single() {
+        Ok(t) => t,
+        Err(_) => return,
+    };
+    let window = window_q.single();
+
+    let half_w = window.width()  * 0.5;
+    let half_h = window.height() * 0.5;
+
+    // half‑viewport in *tiles*
+    let pad_x = ((window.width()  * 0.5) / TILE_SIZE).ceil() as i32 + ACTIVE_MARGIN;
+    let pad_y = ((window.height() * 0.5) / TILE_SIZE).ceil() as i32 + ACTIVE_MARGIN;
+
+    let px = (cam_tf.translation.x / TILE_SIZE).round() as i32;
+    let py = world_to_tile_y(terrain.height, cam_tf.translation.y);
+
+    let new = ActiveRect {
+        min_x: (px - pad_x).clamp(0, terrain.width  as i32 - 1),
+        max_x: (px + pad_x).clamp(0, terrain.width  as i32 - 1),
+        min_y: (py - pad_y).clamp(0, terrain.height as i32 - 1),
+        max_y: (py + pad_y).clamp(0, terrain.height as i32 - 1),
+    };
+
+    match rect_res {
+        Some(mut r) if *r != new => *r = new,
+        None                     => { commands.insert_resource(new); }
+        _ => {}
+    }
+
+    // suppress warning about unused vars (half_w/h) – they’re kept for clarity
+    let _ = (half_w, half_h);
 }
 
 /* ===========================================================
@@ -229,6 +297,7 @@ fn brightness(tile: &Tile) -> f32 {
 
 pub fn spawn_tile(commands: &mut Commands, terrain: &Terrain, x: usize, y: usize) -> Entity {
     use crate::constants::{COLOR_NOISE_SCALE, COLOR_VARIATION_LEVELS, COLOR_VARIATION_STRENGTH};
+
     let raw = terrain
         .color_noise
         .get([x as f64 * COLOR_NOISE_SCALE, y as f64 * COLOR_NOISE_SCALE])
@@ -238,13 +307,13 @@ pub fn spawn_tile(commands: &mut Commands, terrain: &Terrain, x: usize, y: usize
         .floor()
         .clamp(0.0, (COLOR_VARIATION_LEVELS - 1) as f32);
 
-    let norm = step / (COLOR_VARIATION_LEVELS as f32 - 1.0) * 2.0 - 1.0;
+    let norm   = step / (COLOR_VARIATION_LEVELS as f32 - 1.0) * 2.0 - 1.0;
     let factor = 1.0 + norm * COLOR_VARIATION_STRENGTH;
 
     let base_rgb = match terrain.tiles[y][x].kind {
         TileKind::Dirt  => Vec3::new(0.55, 0.27, 0.07) * factor,
         TileKind::Stone => Vec3::new(0.50, 0.50, 0.50) * factor,
-        TileKind::Air   => BACKGROUND_BROWN,                     // ← new background
+        TileKind::Air   => BACKGROUND_BROWN,
         _ => unreachable!(),
     } * brightness(&terrain.tiles[y][x]);
 
@@ -272,24 +341,27 @@ pub fn spawn_tile(commands: &mut Commands, terrain: &Terrain, x: usize, y: usize
         .id()
 }
 
-/* redraw tiles whose kind or visibility changed */
+/* ===========================================================
+   redraw tiles whose kind/visibility changed
+   =========================================================== */
 pub fn redraw_changed_tiles_system(mut commands: Commands, mut terrain: ResMut<Terrain>) {
     while let Some((x, y)) = terrain.changed_tiles.pop_front() {
         if let Some(e) = terrain.sprite_entities[y][x] {
             commands.entity(e).despawn();
             terrain.sprite_entities[y][x] = None;
         }
-        if matches!(
-            terrain.tiles[y][x].kind,
-            TileKind::Dirt | TileKind::Stone | TileKind::Air
-        ) {
+        if matches!(terrain.tiles[y][x].kind,
+                    TileKind::Dirt | TileKind::Stone | TileKind::Air)
+        {
             terrain.sprite_entities[y][x] =
                 Some(spawn_tile(&mut commands, &terrain, x, y));
         }
     }
 }
 
-/* digging with the mouse */
+/* ===========================================================
+   digging with the mouse
+   =========================================================== */
 pub fn digging_system(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
@@ -303,7 +375,6 @@ pub fn digging_system(
     let Some(cursor) = window.cursor_position() else { return };
     let (cam, cam_tf) = cam_q.single();
 
-    // screen → world via new helper
     let Ok(world) = cam.viewport_to_world_2d(cam_tf, cursor) else { return };
 
     let min_x = ((world.x - DIG_RADIUS) / TILE_SIZE).floor() as i32;
@@ -316,11 +387,7 @@ pub fn digging_system(
 
     for ty in min_y..=max_y {
         for tx in min_x..=max_x {
-            if tx < 0
-                || ty < 0
-                || tx >= terrain.width as i32
-                || ty >= terrain.height as i32
-            {
+            if tx < 0 || ty < 0 || tx >= terrain.width as i32 || ty >= terrain.height as i32 {
                 continue;
             }
             let dx = tx as f32 * TILE_SIZE - world.x;
@@ -336,7 +403,9 @@ pub fn digging_system(
     }
 }
 
-/* shortcut for physics */
+/* ===========================================================
+   physics helper
+   =========================================================== */
 pub fn solid(terrain: &Terrain, tx: i32, ty: i32) -> bool {
     if tx < 0 || ty < 0 || tx >= terrain.width as i32 || ty >= terrain.height as i32 {
         return true;
