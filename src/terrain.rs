@@ -1,4 +1,6 @@
 //! world‑generation, digging & tile‑sprite helpers
+//! (surface caves disabled: no air tiles until MIN_CAVE_DEPTH below ground)
+
 use bevy::prelude::*;
 use noise::{NoiseFn, Perlin};
 use rand::Rng;
@@ -48,6 +50,12 @@ pub struct Terrain {
 }
 
 /* ===========================================================
+   constants
+   =========================================================== */
+/// Number of tiles below ground level that must remain solid before caves can appear.
+const MIN_CAVE_DEPTH: usize = 8;
+
+/* ===========================================================
    startup: generate world + player
    =========================================================== */
 pub fn generate_world_and_player(
@@ -93,11 +101,10 @@ pub fn generate_world_and_player(
         height_map[x] = elev.clamp(4.0, (h - 10) as f32) as usize;
     }
 
-    /* ----- tile grid + caverns ----- */
+    /* ----- tile grid + caverns (caves start after MIN_CAVE_DEPTH) ----- */
     let mut tiles = vec![vec![Tile { kind: TileKind::Air }; w]; h];
     let sprite_entities = vec![vec![None; w]; h];
     let noise_cave = Perlin::new(rand::thread_rng().gen());
-    let mut rng = rand::thread_rng();
 
     for x in 0..w {
         let surface = height_map[x];
@@ -109,6 +116,17 @@ pub fn generate_world_and_player(
         // ground
         for y in surface..h {
             let depth = y - surface;
+
+            // below this depth we may carve caves; above it remains solid
+            if depth < MIN_CAVE_DEPTH {
+                tiles[y][x].kind = if depth > h / 4 {
+                    TileKind::Stone
+                } else {
+                    TileKind::Dirt
+                };
+                continue;
+            }
+
             let n = noise_cave.get([x as f64 * 0.08, y as f64 * 0.08]);
             tiles[y][x].kind = if n > 0.40 {
                 TileKind::Air
@@ -117,21 +135,6 @@ pub fn generate_world_and_player(
             } else {
                 TileKind::Dirt
             };
-        }
-    }
-
-    /* connect a few surface cave mouths */
-    for _ in 0..((w as f32 / 120.0) as usize) {
-        let ex = rng.gen_range(4..w - 4);
-        let surf = height_map[ex];
-        for dy in 0..12 {
-            let ty = surf + dy;
-            if ty >= h {
-                break;
-            }
-            for dx in -3..=3 {
-                tiles[ty][(ex as isize + dx) as usize].kind = TileKind::Air;
-            }
         }
     }
 
