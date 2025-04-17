@@ -22,7 +22,7 @@ pub fn spawn_enemies(
     let layout_handle = atlas_layouts.add(layout);
 
     let mut rng = rand::thread_rng();
-    for _ in 0..32 {
+    for _ in 0..16 {
         let x_tile = rng.gen_range(0..terrain.width);
         let y_tile = terrain.height_map[x_tile]; // surface row
 

@@ -32,7 +32,9 @@ pub enum TileKind {
 
 #[derive(Clone, Copy)]
 pub struct Tile {
-    pub kind: TileKind,
+    pub kind:     TileKind,
+    pub visible:  bool,   // in current FOV?
+    pub explored: bool,   // has ever been seen?
 }
 
 /* ===========================================================
@@ -54,6 +56,12 @@ pub struct Terrain {
    =========================================================== */
 /// Number of tiles below ground level that must remain solid before caves can appear.
 const MIN_CAVE_DEPTH: usize = 8;
+
+/// brightness factors for the lighting system
+const EXPLORED_BRIGHTNESS: f32 = 0.25;
+
+/// background tint for underground air
+const BACKGROUND_BROWN: Vec3 = Vec3::new(0.20, 0.10, 0.05);
 
 /* ===========================================================
    startup: generate world + player
@@ -102,7 +110,11 @@ pub fn generate_world_and_player(
     }
 
     /* ----- tile grid + caverns (caves start after MIN_CAVE_DEPTH) ----- */
-    let mut tiles = vec![vec![Tile { kind: TileKind::Air }; w]; h];
+    let mut tiles = vec![vec![Tile {
+        kind: TileKind::Air,
+        visible: false,
+        explored: false,
+    }; w]; h];
     let sprite_entities = vec![vec![None; w]; h];
     let noise_cave = Perlin::new(rand::thread_rng().gen());
 
@@ -143,7 +155,7 @@ pub fn generate_world_and_player(
     let surf_row = height_map[spawn_x];
     let spawn = Vec2::new(
         spawn_x as f32 * TILE_SIZE,
-        tile_to_world_y(h, surf_row) + TILE_SIZE * 0.5 + PLAYER_HEIGHT * 0.5,
+        tile_to_world_y(h, surf_row) + TILE_SIZE * 0.5 + PLAYER_HEIGHT * 0.5 + 4.0,
     );
 
     commands.spawn((
@@ -190,7 +202,10 @@ pub fn spawn_initial_tiles(
     }
     for y in 0..terrain.height {
         for x in 0..terrain.width {
-            if matches!(terrain.tiles[y][x].kind, TileKind::Dirt | TileKind::Stone) {
+            if matches!(
+                terrain.tiles[y][x].kind,
+                TileKind::Dirt | TileKind::Stone | TileKind::Air
+            ) {
                 terrain.sprite_entities[y][x] =
                     Some(spawn_tile(&mut commands, &terrain, x, y));
             }
@@ -202,6 +217,16 @@ pub fn spawn_initial_tiles(
 /* ===========================================================
    helpers
    =========================================================== */
+fn brightness(tile: &Tile) -> f32 {
+    if tile.visible {
+        1.0
+    } else if tile.explored {
+        EXPLORED_BRIGHTNESS
+    } else {
+        0.0
+    }
+}
+
 pub fn spawn_tile(commands: &mut Commands, terrain: &Terrain, x: usize, y: usize) -> Entity {
     use crate::constants::{COLOR_NOISE_SCALE, COLOR_VARIATION_LEVELS, COLOR_VARIATION_STRENGTH};
     let raw = terrain
@@ -216,20 +241,21 @@ pub fn spawn_tile(commands: &mut Commands, terrain: &Terrain, x: usize, y: usize
     let norm = step / (COLOR_VARIATION_LEVELS as f32 - 1.0) * 2.0 - 1.0;
     let factor = 1.0 + norm * COLOR_VARIATION_STRENGTH;
 
-    let base = match terrain.tiles[y][x].kind {
-        TileKind::Dirt => Vec3::new(0.55, 0.27, 0.07),
-        TileKind::Stone => Vec3::new(0.50, 0.50, 0.50),
+    let base_rgb = match terrain.tiles[y][x].kind {
+        TileKind::Dirt  => Vec3::new(0.55, 0.27, 0.07) * factor,
+        TileKind::Stone => Vec3::new(0.50, 0.50, 0.50) * factor,
+        TileKind::Air   => BACKGROUND_BROWN,                     // ← new background
         _ => unreachable!(),
-    } * factor;
+    } * brightness(&terrain.tiles[y][x]);
 
     commands
         .spawn((
             SpriteBundle {
                 sprite: Sprite {
                     color: Color::srgb(
-                        base.x.clamp(0.0, 1.0),
-                        base.y.clamp(0.0, 1.0),
-                        base.z.clamp(0.0, 1.0),
+                        base_rgb.x.clamp(0.0, 1.0),
+                        base_rgb.y.clamp(0.0, 1.0),
+                        base_rgb.z.clamp(0.0, 1.0),
                     ),
                     custom_size: Some(Vec2::splat(TILE_SIZE)),
                     ..default()
@@ -237,7 +263,7 @@ pub fn spawn_tile(commands: &mut Commands, terrain: &Terrain, x: usize, y: usize
                 transform: Transform::from_xyz(
                     x as f32 * TILE_SIZE,
                     tile_to_world_y(terrain.height, y),
-                    0.0,
+                    if terrain.tiles[y][x].kind == TileKind::Air { -1.0 } else { 0.0 },
                 ),
                 ..default()
             },
@@ -246,14 +272,17 @@ pub fn spawn_tile(commands: &mut Commands, terrain: &Terrain, x: usize, y: usize
         .id()
 }
 
-/* redraw tiles whose kind changed */
+/* redraw tiles whose kind or visibility changed */
 pub fn redraw_changed_tiles_system(mut commands: Commands, mut terrain: ResMut<Terrain>) {
     while let Some((x, y)) = terrain.changed_tiles.pop_front() {
         if let Some(e) = terrain.sprite_entities[y][x] {
             commands.entity(e).despawn();
             terrain.sprite_entities[y][x] = None;
         }
-        if matches!(terrain.tiles[y][x].kind, TileKind::Dirt | TileKind::Stone) {
+        if matches!(
+            terrain.tiles[y][x].kind,
+            TileKind::Dirt | TileKind::Stone | TileKind::Air
+        ) {
             terrain.sprite_entities[y][x] =
                 Some(spawn_tile(&mut commands, &terrain, x, y));
         }

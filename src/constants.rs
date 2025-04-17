@@ -3,10 +3,13 @@ use std::ops::Range;
 
 /// -------- tiles & world size --------
 pub const TILE_SIZE: f32 = 8.0;
-pub const CHUNK_WIDTH: usize  = 160;
+pub const CHUNK_WIDTH: usize  = 120;
 pub const CHUNK_HEIGHT: usize =  90;
 pub const NUM_CHUNKS_X: usize =   3;
 pub const NUM_CHUNKS_Y: usize =   2;
+
+// player.rs   (near the other constants)
+pub const MAX_STEP_HEIGHT: f32 = TILE_SIZE; // how high we are allowed to auto‑climb
 
 /// digging
 pub const DIG_RADIUS: f32 = 16.0;
@@ -17,7 +20,7 @@ pub const ENEMY_SPEED: f32      = WALK_SPEED * 0.8;      // 80 % of player
 pub const ENEMY_KEEP_AWAY: f32  = 4.0 * TILE_SIZE; 
 
 /// -------- player phys --------
-pub const PLAYER_WIDTH: f32  =  8.0;
+pub const PLAYER_WIDTH: f32  =  TILE_SIZE;
 pub const PLAYER_HEIGHT: f32 = 18.0;
 pub const GRAVITY: f32       = -500.0;
 pub const JUMP_SPEED: f32    =  250.0;

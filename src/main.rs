@@ -5,6 +5,7 @@ mod terrain;
 mod player;
 mod enemy;
 mod camera;
+mod visibility;                 //  ← NEW
 
 use bevy::prelude::*;
 use bevy::input::ButtonInput;
@@ -19,6 +20,9 @@ use player::{
     exhaust_update_system,
 };
 use camera::camera_follow_system;
+use visibility::{
+    detect_player_tile_change_system, recompute_fov_system, startup_fov_system,
+};
 
 /* --------------- camera --------------- */
 fn setup_camera(mut commands: Commands) {
@@ -43,7 +47,7 @@ fn toggle_fullscreen(
 
 fn main() {
     App::new()
-        .insert_resource(ClearColor(Color::srgb(0.25, 0.55, 1.0)))
+        .insert_resource(ClearColor(Color::srgb(0.18, 0.65, 1.0)))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Terraria‑like (chunky cave colours)".into(),
@@ -56,24 +60,34 @@ fn main() {
         .add_systems(Startup, generate_world_and_player)                 // inserts Terrain
         .add_systems(Startup, enemy::spawn_enemies.after(generate_world_and_player))
         .add_systems(Startup, setup_camera)
+        .add_systems(Startup, startup_fov_system.after(setup_camera))    // ← initial FOV
+
         /* ---------- one‑shot after terrain exists ---------- */
         .add_systems(Update, spawn_initial_tiles.before(player_input_system))
-        /* ---------- main game loop ---------- */
+
+        /* ---------- main game loop (physics, input, etc.) ---------- */
         .add_systems(
             Update,
             (
                 player_input_system,
                 physics_and_collision_system,
-                enemy::enemy_ai_system,       // NEW
-                enemy::enemy_physics_system,  // NEW
+                enemy::enemy_ai_system,
+                enemy::enemy_physics_system,
                 digging_system,
                 redraw_changed_tiles_system,
                 exhaust_update_system,
                 animate_player_system,
-                enemy::animate_enemy_system,  // NEW
-                camera_follow_system,
+                enemy::animate_enemy_system,
                 toggle_fullscreen,
+                detect_player_tile_change_system,         // ← NEW
             ),
         )
+
+        /* ---------- camera & visibility  ---------- */
+        .add_systems(PostUpdate, (                        // run after movement
+            camera_follow_system,
+            recompute_fov_system,                         // ← NEW (run_if internal)
+        ))
+
         .run();
 }

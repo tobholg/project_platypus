@@ -1,11 +1,12 @@
 //! all player‑related systems (input, physics, animation, exhaust)
-use bevy::prelude::*;
+
 use bevy::input::ButtonInput;
+use bevy::prelude::*;
 use rand::Rng;
 
-use crate::constants::*;
 use crate::components::*;
-use crate::terrain::{solid, Terrain, world_to_tile_y};
+use crate::constants::*;
+use crate::terrain::{solid, world_to_tile_y, Terrain};
 
 /* ===========================================================
    input (WASD / Space)
@@ -22,7 +23,7 @@ pub fn player_input_system(
             }
             (false, true) => {
                 vel.0.x = WALK_SPEED;
-                tf.scale.x = tf.scale.x.abs();  // face right
+                tf.scale.x = tf.scale.x.abs(); // face right
             }
             _ => vel.0.x = 0.0,
         }
@@ -45,18 +46,19 @@ pub fn physics_and_collision_system(
     let dt = time.delta_secs();
     let Ok((mut tf, mut vel, mut ply)) = q.get_single_mut() else { return };
 
+    /* ---- apply gravity & jet‑pack ---- */
     vel.0.y += GRAVITY * dt;
     if keys.pressed(KeyCode::Space) && !ply.grounded {
         vel.0.y += JET_ACCEL * dt;
     }
 
+    /* ---- stepped collision resolution ---- */
     let step_dt = dt / COLLISION_STEPS as f32;
     let half = Vec2::new(PLAYER_WIDTH, PLAYER_HEIGHT) / 2.0;
     ply.grounded = false;
 
-    /* ---- stepped collision ---- */
     for _ in 0..COLLISION_STEPS {
-        /* horizontal */
+        /* ---------- horizontal pass ---------- */
         if vel.0.x != 0.0 {
             let new_x = tf.translation.x + vel.0.x * step_dt;
             let dir = vel.0.x.signum();
@@ -66,13 +68,40 @@ pub fn physics_and_collision_system(
             let y_top = world_to_tile_y(terrain.height, tf.translation.y + half.y - 0.1);
             let y_bot = world_to_tile_y(terrain.height, tf.translation.y - half.y + 0.1);
             let (y_min, y_max) = if y_top <= y_bot { (y_top, y_bot) } else { (y_bot, y_top) };
+
             if (y_min..=y_max).any(|ty| solid(&terrain, tx, ty)) {
-                vel.0.x = 0.0;
+                /* --------------------------------------------------
+                   attempt a one‑tile auto‑step before giving up
+                   -------------------------------------------------- */
+                if ply.grounded && vel.0.y <= 0.0 {
+                    // pretend we climbed MAX_STEP_HEIGHT
+                    let lifted_y = tf.translation.y + MAX_STEP_HEIGHT;
+
+                    let top = lifted_y + half.y - 0.1;
+                    let bot = lifted_y - half.y + 0.1;
+                    let ty_top = world_to_tile_y(terrain.height, top);
+                    let ty_bot = world_to_tile_y(terrain.height, bot);
+                    let (smin, smax) =
+                        if ty_top <= ty_bot { (ty_top, ty_bot) } else { (ty_bot, ty_top) };
+
+                    // space above the obstacle clear?
+                    if !(smin..=smax).any(|ty| solid(&terrain, tx, ty)) {
+                        // ✓ climb: adjust position, keep horizontal motion
+                        tf.translation.y += MAX_STEP_HEIGHT;
+                        tf.translation.x = new_x;
+                        ply.grounded = true; // remain grounded
+                    } else {
+                        vel.0.x = 0.0; // blocked
+                    }
+                } else {
+                    vel.0.x = 0.0; // airborne or already climbing
+                }
             } else {
                 tf.translation.x = new_x;
             }
         }
-        /* vertical */
+
+        /* ---------- vertical pass ---------- */
         if vel.0.y != 0.0 {
             let new_y = tf.translation.y + vel.0.y * step_dt;
             let dir = vel.0.y.signum();
@@ -93,7 +122,7 @@ pub fn physics_and_collision_system(
         }
     }
 
-    /* ---- jet‑pack exhaust ---- */
+    /* ---- jet‑pack exhaust particles ---- */
     if keys.pressed(KeyCode::Space) && !ply.grounded {
         let mut rng = rand::thread_rng();
         for _ in 0..EXHAUST_RATE {
