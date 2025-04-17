@@ -7,6 +7,11 @@ pub struct Player {
 }
 
 #[derive(Component)]
+pub struct Enemy {
+    pub grounded: bool,
+}
+
+#[derive(Component)]
 pub struct Velocity(pub Vec2);
 
 #[derive(Component)]

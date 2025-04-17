@@ -3,6 +3,7 @@ mod constants;
 mod components;
 mod terrain;
 mod player;
+mod enemy;
 mod camera;
 
 use bevy::prelude::*;
@@ -52,7 +53,9 @@ fn main() {
             ..default()
         }))
         /* ---------- startup ---------- */
-        .add_systems(Startup, (generate_world_and_player, setup_camera))
+        .add_systems(Startup, generate_world_and_player)                 // inserts Terrain
+        .add_systems(Startup, enemy::spawn_enemies.after(generate_world_and_player))
+        .add_systems(Startup, setup_camera)
         /* ---------- one‑shot after terrain exists ---------- */
         .add_systems(Update, spawn_initial_tiles.before(player_input_system))
         /* ---------- main game loop ---------- */
@@ -61,10 +64,13 @@ fn main() {
             (
                 player_input_system,
                 physics_and_collision_system,
+                enemy::enemy_ai_system,       // NEW
+                enemy::enemy_physics_system,  // NEW
                 digging_system,
                 redraw_changed_tiles_system,
                 exhaust_update_system,
                 animate_player_system,
+                enemy::animate_enemy_system,  // NEW
                 camera_follow_system,
                 toggle_fullscreen,
             ),

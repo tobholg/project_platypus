@@ -11,6 +11,11 @@ pub const NUM_CHUNKS_Y: usize =   2;
 /// digging
 pub const DIG_RADIUS: f32 = 16.0;
 
+/// aggro radius
+pub const AGGRO_RADIUS: f32 = 32.0 * TILE_SIZE;
+pub const ENEMY_SPEED: f32      = WALK_SPEED * 0.8;      // 80 % of player
+pub const ENEMY_KEEP_AWAY: f32  = 4.0 * TILE_SIZE; 
+
 /// -------- player phys --------
 pub const PLAYER_WIDTH: f32  =  8.0;
 pub const PLAYER_HEIGHT: f32 = 18.0;
