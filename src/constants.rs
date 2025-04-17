@@ -21,8 +21,8 @@ pub const WALK_SPEED: f32    =  160.0;
 pub const COLLISION_STEPS: i32 = 4;
 
 /// -------- jet‑pack exhaust --------
-pub const EXHAUST_LIFETIME: f32 = 0.6;
-pub const EXHAUST_RATE: usize   = 6;
+pub const EXHAUST_LIFETIME: f32 = 0.8;
+pub const EXHAUST_RATE: usize   = 8;
 pub const EXHAUST_SIZE: f32     = 3.0;
 pub const EXHAUST_COLOR: Color  = Color::rgba(1.0, 0.6, 0.2, 1.0);
 pub const EXHAUST_SPEED_Y: Range<f32> = -300.0..-120.0;
