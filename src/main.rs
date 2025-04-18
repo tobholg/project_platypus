@@ -63,7 +63,7 @@ fn main() {
             primary_window: Some(Window {
                 //title: "Terraria‑like (streaming tiles)".into(),
                 //mode: WindowMode::BorderlessFullscreen(MonitorSelection::Primary),
-                resolution: (1280., 720.).into(),      // NEW – set window size
+                resolution: (800., 450.).into(),      // NEW – set window size
                 mode: WindowMode::Windowed,
                 ..default()
             }),
