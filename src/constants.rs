@@ -68,18 +68,20 @@ pub const DIG_RADIUS: f32 = 16.0;
 pub const AGGRO_RADIUS:    f32 = 32.0 * TILE_SIZE;
 pub const ENEMY_SPEED:     f32 = WALK_SPEED * 0.8;
 pub const ENEMY_KEEP_AWAY: f32 = 4.0 * TILE_SIZE;
+pub const RECOIL_TIME: f32 = 2.0;   // stun duration after a bullet hit
 
 /* ------------ blood explosion (orc death) --------------- */
 pub const BLOOD_LIFETIME: f32 = 1.8;
-pub const BLOOD_RATE:     usize = 32;
-pub const BLOOD_SPEED_X:  std::ops::Range<f32> = -140.0..140.0;
+pub const BLOOD_RATE:     usize = 48;
+pub const BLOOD_SPEED_X:  std::ops::Range<f32> = -140.0..240.0;
 pub const BLOOD_SPEED_Y:  std::ops::Range<f32> =  60.0..220.0;
 pub const BLOOD_COLOR: Color = Color::srgb(0.8, 0.0, 0.0);
 
 /* ------------ hit feedback ----------------------------- */
-pub const HIT_KNOCKBACK:  f32 = 220.0;      // px / s impulse on X axis
-pub const HIT_BLOOD_RATE: usize = 12;        // small puff
-pub const HIT_BLOOD_LIFE: f32 = 0.7;
+pub const HIT_KNOCKBACK:  f32 = 240.0;      // px / s impulse on X axis
+pub const HIT_KNOCKBACK_UP: f32 = 100.0;     // px / s upward impulse
+pub const HIT_BLOOD_RATE: usize = 16;        // small puff
+pub const HIT_BLOOD_LIFE: f32 = 1.2;
 
 /* ===========================================================
    colour variation (terrain tint)

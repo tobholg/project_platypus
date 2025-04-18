@@ -50,7 +50,7 @@ pub fn spawn_enemies(
                 scale: Vec3::splat(1.8),
                 ..default()
             },
-            Enemy { grounded: false, hp: 100 },
+            Enemy { grounded: false, hp: 100, recoil: 0.0 },
             Velocity(Vec2::ZERO),
             AnimationIndices { first: 0, last: 5 },
             AnimationTimer(Timer::from_seconds(
@@ -109,6 +109,16 @@ pub fn enemy_ai_system(
 
     for (mut vel, mut tf, enemy) in &mut enemies {
         let pos = tf.translation.truncate();
+        // pause AI steering during knock‑back
+        if enemy.recoil > 0.0 {
+            continue;
+        }
+        // // If the enemy is still recoiling from a recent hit (knock‑back
+        // // velocity larger than normal run speed) skip AI steering for
+        // // this frame so the knock‑back isn’t immediately overwritten.
+        // if vel.0.x.abs() > ENEMY_SPEED {
+        //     continue;
+        // }
         let to_player = player_pos - pos;
         let dist = to_player.length();
 
@@ -212,6 +222,10 @@ pub fn enemy_physics_system(
                 } else {
                     tf.translation.y = new_y;
                 }
+            }
+            // count down the recoil timer every frame
+            if enemy.recoil > 0.0 {
+                enemy.recoil = (enemy.recoil - dt).max(0.0);
             }
         }
     }

@@ -24,6 +24,8 @@ use player::{
     animate_player_system, bullet_update_system, debris_update_system,
     exhaust_update_system, gun_shoot_system, inventory_input_system,
     physics_and_collision_system, pickaxe_mining_system, player_input_system,
+    cursor_highlight_system,
+    place_stone_system,
 };
 use terrain::{
     generate_world_and_player, redraw_changed_tiles_system, stream_tiles_system,
@@ -47,7 +49,7 @@ fn toggle_fullscreen(
     keys: Res<ButtonInput<KeyCode>>,
     mut window_q: Query<&mut Window, With<PrimaryWindow>>,
 ) {
-    if keys.just_pressed(KeyCode::F11) {
+    if keys.just_pressed(KeyCode::Escape) {
         let mut window = window_q.single_mut();
         window.mode = match window.mode {
             WindowMode::Windowed => {
@@ -99,10 +101,12 @@ fn main() {
             Update,
             (
                 /* player -------------------------------------------------- */
-                inventory_input_system,        // 1/2 hot‑keys
+                inventory_input_system,
+                cursor_highlight_system,        // 1/2 hot‑keys
                 player_input_system,           // WASD + jump
                 physics_and_collision_system,  // movement & collide
-                pickaxe_mining_system,         // hold LMB with pickaxe
+                pickaxe_mining_system,
+                place_stone_system,         // hold LMB with pickaxe
                 gun_shoot_system,              // click to shoot
                 bullet_update_system,          // bullet physics
                 debris_update_system,          // mining debris fade

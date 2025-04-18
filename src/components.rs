@@ -21,6 +21,7 @@ pub struct Player {
 pub struct Enemy {
     pub grounded: bool,
     pub hp: i32,
+    pub recoil: f32,
 }
 
 /* tag added/removed every frame by update_active_tag_system */
@@ -48,6 +49,9 @@ pub struct TileSprite {
     pub y: usize,
 }
 
+#[derive(Component)]
+pub struct Highlight;
+
 /* ===========================================================
    particles
    =========================================================== */
@@ -63,6 +67,7 @@ pub struct Exhaust {
    pub enum HeldItem {
        Pickaxe,
        Gun,
+       StoneBlock,
    }
    
    #[derive(Component)]

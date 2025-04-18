@@ -9,10 +9,13 @@ use bevy::prelude::*;
 use rand::Rng;
 
 use crate::components::{
-    AnimationIndices, AnimationTimer, Bullet, Debris, Enemy, Exhaust, HeldItem, Inventory, Player, Velocity
+    AnimationIndices, AnimationTimer, Bullet, Debris, Enemy, Exhaust, HeldItem, Inventory, Player, Velocity, Highlight
 };
 use crate::constants::*;
 use crate::terrain::{solid, tile_to_world_y, world_to_tile_y, Terrain, TileKind};
+
+/// seconds between bullets when the gun is held down (≈12.5 rps)
+const GUN_FIRE_INTERVAL: f32 = 0.12;
 
 /* -----------------------------------------------------------
    utility: approximate colour for debris particles
@@ -39,6 +42,9 @@ pub fn inventory_input_system(
         }
         if keys.just_pressed(KeyCode::Digit2) {
             inv.selected = HeldItem::Gun;
+        }
+        if keys.just_pressed(KeyCode::Digit3) {
+            inv.selected = HeldItem::StoneBlock;
         }
     }
 }
@@ -220,7 +226,7 @@ pub fn pickaxe_mining_system(
 
             let (ux, uy) = (tx as usize, ty as usize);
             let tile = &mut terrain.tiles[uy][ux];
-            if !matches!(tile.kind, TileKind::Dirt | TileKind::Stone) {
+            if !matches!(tile.kind, TileKind::Dirt | TileKind::Stone | TileKind::Obsidian | TileKind::Grass) {
                 continue;
             }
 
@@ -232,6 +238,139 @@ pub fn pickaxe_mining_system(
             }
         }
     }
+}
+
+/* ===========================================================
+   cursor‑based red/green highlight
+   =========================================================== */
+   pub fn cursor_highlight_system(
+    mut commands: Commands,
+    windows: Query<&Window>,
+    cam_q: Query<(&Camera, &GlobalTransform)>,
+    inv_q: Query<&Inventory, With<Player>>,
+    terrain: Res<Terrain>,
+    old: Query<Entity, With<Highlight>>,   // clear previous frame
+) {
+    // despawn previous highlights
+    for e in &old {
+        commands.entity(e).despawn();
+    }
+
+    let Ok(inv) = inv_q.get_single()            else { return };
+    let window  =        windows.single();
+    let Some(cursor) = window.cursor_position() else { return };
+    let (cam, cam_tf)    = cam_q.single();
+    let Ok(world) = cam.viewport_to_world_2d(cam_tf, cursor) else { return };
+
+    match inv.selected {
+        /* ---------- pickaxe: opaque‑red squares in mining radius ---------- */
+        HeldItem::Pickaxe => {
+            let min_x = ((world.x - MINING_RADIUS) / TILE_SIZE).floor() as i32;
+            let max_x = ((world.x + MINING_RADIUS) / TILE_SIZE).ceil()  as i32;
+            let min_y_world = world.y - MINING_RADIUS;
+            let max_y_world = world.y + MINING_RADIUS;
+            let min_y = world_to_tile_y(terrain.height, max_y_world);
+            let max_y = world_to_tile_y(terrain.height, min_y_world);
+
+            for ty in min_y..=max_y {
+                for tx in min_x..=max_x {
+                    if tx < 0 || ty < 0 ||
+                       tx >= terrain.width as i32 || ty >= terrain.height as i32 {
+                        continue;
+                    }
+                    let dx = tx as f32 * TILE_SIZE - world.x;
+                    let dy = tile_to_world_y(terrain.height, ty as usize) - world.y;
+                    if dx*dx + dy*dy >= MINING_RADIUS*MINING_RADIUS { continue; }
+
+                    let (ux, uy) = (tx as usize, ty as usize);
+                    if matches!(terrain.tiles[uy][ux].kind,
+                        TileKind::Grass | TileKind::Dirt | TileKind::Stone | TileKind::Obsidian)
+                    {
+                        commands.spawn((
+                            Sprite {
+                                color: Color::rgba(1.0, 0.0, 0.0, 0.4),
+                                custom_size: Some(Vec2::splat(TILE_SIZE)),
+                                ..default()
+                            },
+                            Transform::from_xyz(
+                                ux as f32 * TILE_SIZE,
+                                tile_to_world_y(terrain.height, uy),
+                                20.0,
+                            ),
+                            Highlight,
+                        ));
+                    }
+                }
+            }
+        }
+
+        /* ---------- building: single green square if placeable ----------- */
+        HeldItem::StoneBlock => {
+            let tx = (world.x / TILE_SIZE).floor() as i32;
+            let ty = world_to_tile_y(terrain.height, world.y);
+            if tx < 0 || ty < 0 ||
+               tx >= terrain.width as i32 || ty >= terrain.height as i32 {
+                return;
+            }
+            let (ux, uy) = (tx as usize, ty as usize);
+            if !matches!(terrain.tiles[uy][ux].kind, TileKind::Air | TileKind::Sky) {
+                return; // occupied
+            }
+            if ![(-1,0),(1,0),(0,-1),(0,1)].iter()
+                .any(|(dx,dy)| solid(&terrain, tx+dx, ty+dy))
+            {
+                return; // no solid neighbour
+            }
+            commands.spawn((
+                Sprite {
+                    color: Color::rgba(0.0, 1.0, 0.0, 0.4),
+                    custom_size: Some(Vec2::splat(TILE_SIZE)),
+                    ..default()
+                },
+                Transform::from_xyz(
+                    ux as f32 * TILE_SIZE,
+                    tile_to_world_y(terrain.height, uy),
+                    20.0,
+                ),
+                Highlight,
+            ));
+        }
+        _ => {}
+    }
+}
+
+/* ===========================================================
+   place Stone block (HeldItem::StoneBlock)
+   =========================================================== */
+   pub fn place_stone_system(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    cam_q: Query<(&Camera, &GlobalTransform)>,
+    inv_q: Query<&Inventory, With<Player>>,
+    mut terrain: ResMut<Terrain>,
+) {
+    let Ok(inv) = inv_q.get_single()                         else { return };
+    if inv.selected != HeldItem::StoneBlock
+        || !mouse.just_pressed(MouseButton::Left) { return; }
+
+    let window  =        windows.single();
+    let Some(cursor) = window.cursor_position()              else { return };
+    let (cam, cam_tf)    = cam_q.single();
+    let Ok(world) = cam.viewport_to_world_2d(cam_tf, cursor)  else { return };
+
+    let tx = (world.x / TILE_SIZE).floor() as i32;
+    let ty = world_to_tile_y(terrain.height, world.y);
+    if tx < 0 || ty < 0 ||
+       tx >= terrain.width as i32 || ty >= terrain.height as i32 { return; }
+
+    let (ux, uy) = (tx as usize, ty as usize);
+    if !matches!(terrain.tiles[uy][ux].kind, TileKind::Air | TileKind::Sky) { return; }
+    if ![(-1,0),(1,0),(0,-1),(0,1)].iter()
+        .any(|(dx,dy)| solid(&terrain, tx+dx, ty+dy)) { return; }
+
+    terrain.tiles[uy][ux].kind = TileKind::Stone;
+    terrain.tiles[uy][ux].mine_time = 0.50;
+    terrain.changed_tiles.push_back((ux, uy));
 }
 
 /* helper: debris particles */
@@ -265,33 +404,34 @@ fn spawn_debris(commands: &mut Commands, terrain: &Terrain, x: usize, y: usize) 
 }
 
 /* ===========================================================
-   gun shooting (single bullet per click)
+   gun shooting – continuous fire while LMB held
    =========================================================== */
 pub fn gun_shoot_system(
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut last_down: Local<bool>,
+    mouse: Res<ButtonInput<MouseButton>>,      // read LMB state
+    time:  Res<Time>,                          // delta‑time
+    mut cooldown: Local<f32>,                  // time until next shot
     windows: Query<&Window>,
-    cam_q: Query<(&Camera, &GlobalTransform)>,
-    inv_q: Query<&Inventory, With<Player>>,
+    cam_q:  Query<(&Camera, &GlobalTransform)>,
+    inv_q:  Query<&Inventory, With<Player>>,
     player_q: Query<&Transform, With<Player>>,
     mut commands: Commands,
 ) {
+    let dt = time.delta_secs();
+    *cooldown -= dt;
+
     let Ok(inv) = inv_q.get_single() else { return };
-    if inv.selected != HeldItem::Gun {
-        *last_down = mouse.pressed(MouseButton::Left);
-        return;
+    if inv.selected != HeldItem::Gun || !mouse.pressed(MouseButton::Left) {
+        return; // not in gun mode or button not held
     }
-
-    let down = mouse.pressed(MouseButton::Left);
-    if !down || *last_down {
-        *last_down = down;
-        return;
+    if *cooldown > 0.0 {
+        return; // still cooling down
     }
-    *last_down = down;
+    *cooldown = GUN_FIRE_INTERVAL; // reset timer
 
-    let window = windows.single();
-    let Some(cursor) = window.cursor_position() else { return };
-    let (cam, cam_tf) = cam_q.single();
+    /* ---------- spawn a bullet ---------- */
+    let window  =        windows.single();
+    let Some(cursor) = window.cursor_position()              else { return };
+    let (cam, cam_tf)    = cam_q.single();
     let Ok(target) = cam.viewport_to_world_2d(cam_tf, cursor) else { return };
 
     let origin = player_q.single().translation.truncate();
@@ -304,7 +444,7 @@ pub fn gun_shoot_system(
         SpriteBundle {
             sprite: Sprite {
                 color: Color::srgb(1.0, 0.0, 0.0),
-                custom_size: Some(Vec2::splat(6.0)),
+                custom_size: Some(Vec2::splat(8.0)),
                 ..default()
             },
             transform: Transform::from_translation(origin.extend(8.0)),
@@ -316,9 +456,9 @@ pub fn gun_shoot_system(
 }
 
 /* ===========================================================
-   bullet flight, damage, knock‑back & blood FX
-   =========================================================== */
-   pub fn bullet_update_system(
+bullet flight, damage, knock‑back & blood FX
+=========================================================== */
+pub fn bullet_update_system(
     time: Res<Time>,
     mut commands: Commands,
 
@@ -346,7 +486,7 @@ pub fn gun_shoot_system(
     /* ───────── 1. move bullets & process hits ───────── */
     for (b_ent, mut b_tf, mut b_vel, mut bullet) in &mut bullets {
         /* movement */
-        b_vel.0.y += GRAVITY * dt * 0.2;
+        b_vel.0.y += GRAVITY * dt * 0.5;
         b_tf.translation += (b_vel.0 * dt).extend(0.0);
         bullet.life -= dt;
 
@@ -370,6 +510,7 @@ pub fn gun_shoot_system(
             if delta.x <= half_orc.x && delta.y <= half_orc.y {
                 /* hit */
                 enemy.hp -= bullet.damage as i32;
+                enemy.recoil = RECOIL_TIME;          // start the stun timer
                 spawn_hit_blood(&mut commands, e_gxf.translation());
                 knocks.push((e_ent, b_vel.0.x.signum()));
                 commands.entity(b_ent).despawn();
@@ -386,7 +527,10 @@ pub fn gun_shoot_system(
     /* ───────── 2. knock‑back (separate Velocity borrow) ───────── */
     for (e_ent, dir_sign) in knocks {
         if let Ok(mut vel) = orcs.p1().get_mut(e_ent) {
-            vel.0.x += dir_sign * HIT_KNOCKBACK;
+            vel.0.x = dir_sign * HIT_KNOCKBACK;        // horizontal shove
+            if vel.0.y < HIT_KNOCKBACK_UP {            // only boost upward, never drag down
+                vel.0.y = HIT_KNOCKBACK_UP;            // vertical pop
+            }
         }
     }
 }
