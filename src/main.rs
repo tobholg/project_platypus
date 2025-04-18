@@ -1,15 +1,21 @@
-//! tiny bootstrap – all real code lives in the modules
-mod constants;
-mod components;
-mod terrain;
-mod player;
-mod enemy;
+//! minimal bootstrap (unchanged logic, imports updated)
+
 mod camera;
+mod components;
+mod constants;
+mod enemy;
+mod player;
+mod terrain;
 mod visibility;
 
 use bevy::input::ButtonInput;
 use bevy::prelude::*;
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
+
+use bevy::diagnostic::{
+    FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin,
+    EntityCountDiagnosticsPlugin,
+};
 
 use camera::camera_follow_system;
 use player::{
@@ -24,12 +30,12 @@ use visibility::{
     detect_player_tile_change_system, recompute_fov_system, startup_fov_system,
 };
 
-/* --------------- camera --------------- */
+/* camera ------------------------------------------------------------------- */
 fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d);
 }
 
-/* --------------- F11 full‑screen toggle --------------- */
+/* F11 toggle --------------------------------------------------------------- */
 fn toggle_fullscreen(
     keys: Res<ButtonInput<KeyCode>>,
     mut window_q: Query<&mut Window, With<PrimaryWindow>>,
@@ -47,33 +53,40 @@ fn toggle_fullscreen(
 
 fn main() {
     App::new()
+        .add_plugins((
+            LogDiagnosticsPlugin::default(),          // prints per‑system times
+            FrameTimeDiagnosticsPlugin::default(),
+            EntityCountDiagnosticsPlugin::default(),
+        ))
         .insert_resource(ClearColor(Color::srgb(0.18, 0.65, 1.0)))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: "Terraria‑like (streaming tiles)".into(),
-                mode: WindowMode::BorderlessFullscreen(MonitorSelection::Primary),
+                //title: "Terraria‑like (streaming tiles)".into(),
+                //mode: WindowMode::BorderlessFullscreen(MonitorSelection::Primary),
+                resolution: (1280., 720.).into(),      // NEW – set window size
+                mode: WindowMode::Windowed,
                 ..default()
             }),
             ..default()
         }))
 
-        /* ---------- startup ---------- */
-        .add_systems(Startup, generate_world_and_player) // inserts Terrain
+        /* startup ---------------------------------------------------------- */
+        .add_systems(Startup, generate_world_and_player)
         .add_systems(Startup, enemy::spawn_enemies.after(generate_world_and_player))
         .add_systems(Startup, setup_camera)
-        .add_systems(Startup, update_active_rect_system.after(setup_camera))
+        .add_systems(Startup, update_active_rect_system.after(setup_camera)) // ensure ActiveRect exists
         .add_systems(Startup, startup_fov_system.after(setup_camera))
 
-        /* ---------- main update loop ---------- */
+        /* update ----------------------------------------------------------- */
         .add_systems(
             Update,
             (
                 player_input_system,
                 physics_and_collision_system,
-                enemy::update_active_tag_system,    // NEW – tag/untag
+                enemy::update_active_tag_system,
                 enemy::enemy_ai_system,
                 enemy::enemy_physics_system,
-                terrain::stream_tiles_system,       // NEW – spawn/kill tile sprites
+                stream_tiles_system,              // strip‑based streaming
                 digging_system,
                 redraw_changed_tiles_system,
                 exhaust_update_system,
@@ -84,15 +97,14 @@ fn main() {
             ),
         )
 
-        /* ---------- camera + active‑rect + FOV ---------- */
+        /* post‑update ------------------------------------------------------ */
         .add_systems(
             PostUpdate,
             (
                 camera_follow_system,
-                update_active_rect_system,  // NEW – compute rect each frame
+                update_active_rect_system, // slide rect
                 recompute_fov_system,
             ),
         )
-
         .run();
 }
