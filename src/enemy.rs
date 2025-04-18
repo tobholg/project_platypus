@@ -26,7 +26,7 @@ pub fn spawn_enemies(
     let layout_handle = atlas_layouts.add(layout);
 
     let mut rng = rand::thread_rng();
-    for _ in 0..16 {
+    for _ in 0..64 {
         let x_tile = rng.gen_range(0..terrain.width);
         let y_tile = terrain.height_map[x_tile];
 
@@ -50,7 +50,7 @@ pub fn spawn_enemies(
                 scale: Vec3::splat(1.8),
                 ..default()
             },
-            Enemy { grounded: false },
+            Enemy { grounded: false, hp: 100 },
             Velocity(Vec2::ZERO),
             AnimationIndices { first: 0, last: 5 },
             AnimationTimer(Timer::from_seconds(

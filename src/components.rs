@@ -20,6 +20,7 @@ pub struct Player {
 #[derive(Component)]
 pub struct Enemy {
     pub grounded: bool,
+    pub hp: i32,
 }
 
 /* tag added/removed every frame by update_active_tag_system */
@@ -54,3 +55,30 @@ pub struct TileSprite {
 pub struct Exhaust {
     pub life: f32,
 }
+
+/* ========================================================
+   inventory & weapons
+   ======================================================== */
+   #[derive(Clone, Copy, PartialEq, Eq)]
+   pub enum HeldItem {
+       Pickaxe,
+       Gun,
+   }
+   
+   #[derive(Component)]
+   pub struct Inventory {
+       pub selected: HeldItem,
+   }
+   
+   #[derive(Component)]
+   pub struct Bullet {
+       pub damage: f32,
+       pub life:   f32,
+   }
+   
+   /* re‑use existing Exhaust component for debris?  
+      → we add a separate one so we can tune lifetime/colors */
+   #[derive(Component)]
+   pub struct Debris {
+       pub life: f32,
+   }

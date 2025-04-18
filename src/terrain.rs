@@ -48,6 +48,7 @@ pub struct Tile {
     pub kind:     TileKind,
     pub visible:  bool,
     pub explored: bool,
+    pub mine_time:  f32,
 }
 
 /* ===========================================================
@@ -88,7 +89,11 @@ const EXPLORED_BRIGHTNESS: f32 = 0.25;
 /* ===========================================================
    generate world + player (unchanged except for pool init)
    =========================================================== */
-pub fn generate_world_and_player(
+/* ===========================================================
+   generate world + player
+   (adds per‑tile `mine_time` so Stone is 2× slower than Dirt)
+   =========================================================== */
+   pub fn generate_world_and_player(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
@@ -138,6 +143,7 @@ pub fn generate_world_and_player(
                 kind:     TileKind::Air,
                 visible:  false,
                 explored: false,
+                mine_time: 0.0,                 // will be overwritten below
             };
             w
         ];
@@ -152,28 +158,36 @@ pub fn generate_world_and_player(
     for x in 0..w {
         let surface = height_map[x];
 
-        /* sky */
+        /* ------------------- sky tiles ---------------------------------- */
         for y in 0..surface {
-            tiles[y][x].kind = TileKind::Sky;
+            tiles[y][x].kind      = TileKind::Sky;
+            tiles[y][x].mine_time = 0.0;
         }
 
-        /* ground / caves */
+        /* -------------- ground & cave generation ----------------------- */
         for y in surface..h {
             let depth = y - surface;
-            if depth < MIN_CAVE_DEPTH {
-                tiles[y][x].kind =
-                    if depth > h / 4 { TileKind::Stone } else { TileKind::Dirt };
-                continue;
-            }
-            let n =
-                noise_cave.get([x as f64 * cave_freq, y as f64 * cave_freq]);
-            tiles[y][x].kind = if n > cave_thresh {
-                TileKind::Air
-            } else if depth > h / 4 {
-                TileKind::Stone
+            let mut kind = if depth < MIN_CAVE_DEPTH {
+                if depth > h / 4 { TileKind::Stone } else { TileKind::Dirt }
             } else {
-                TileKind::Dirt
+                let n = noise_cave.get([x as f64 * cave_freq, y as f64 * cave_freq]);
+                if n > cave_thresh {
+                    TileKind::Air
+                } else if depth > h / 4 {
+                    TileKind::Stone
+                } else {
+                    TileKind::Dirt
+                }
             };
+
+            /* assign kind + mine_time in one go ------------------------ */
+            let (kind, mine_time) = match kind {
+                TileKind::Dirt  => (TileKind::Dirt, 0.25),  // baseline
+                TileKind::Stone => (TileKind::Stone, 0.50), // 2× harder
+                TileKind::Air   | TileKind::Sky => (kind, 0.0),
+            };
+            tiles[y][x].kind = kind;
+            tiles[y][x].mine_time = mine_time;
         }
     }
 
@@ -203,6 +217,7 @@ pub fn generate_world_and_player(
         },
         Player { grounded: false },
         Velocity(Vec2::ZERO),
+        Inventory { selected: HeldItem::Pickaxe },
         AnimationIndices { first: 0, last: 5 },
         AnimationTimer(Timer::from_seconds(0.12, TimerMode::Repeating)),
     ));
@@ -212,7 +227,7 @@ pub fn generate_world_and_player(
         tiles,
         sprite_entities,
         changed_tiles: VecDeque::new(),
-        free_sprites: Vec::new(),          // ← initialise empty pool
+        free_sprites: Vec::new(),          // sprite pool
         width: w,
         height: h,
         height_map,

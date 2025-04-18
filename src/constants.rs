@@ -13,7 +13,7 @@ pub const CHUNK_WIDTH:  usize = 160;   // ↑ from 120
 pub const CHUNK_HEIGHT: usize = 120;   // ↑ from  90
 
 /// number of chunks (world dimensions)
-pub const NUM_CHUNKS_X: usize = 32;    // width  = 10 240 tiles
+pub const NUM_CHUNKS_X: usize = 8;    // width  = 10 240 tiles
 pub const NUM_CHUNKS_Y: usize = 8;    // height =  1 920 tiles
 
 /* ===========================================================
@@ -44,6 +44,19 @@ pub const EXHAUST_COLOR: Color = Color::srgba(1.0, 0.6, 0.2, 1.0);
 pub const EXHAUST_SPEED_Y: Range<f32> = -300.0..-120.0;
 pub const EXHAUST_SPEED_X: Range<f32> =  -50.0..  50.0;
 
+/* ------------ NEW: inventory & combat ------------------ */
+pub const PICKAXE_SPEED: f32   =  4.0;     // tiles / sec
+pub const BULLET_SPEED:  f32   = 600.0;     // px / sec (initial horizontal)
+pub const BULLET_LIFETIME: f32 =  4.0;     // sec
+pub const BULLET_DAMAGE:  f32   = 25.0;    // arbitrary
+pub const MINING_RADIUS:  f32   = DIG_RADIUS; // re‑use circle from digging
+
+/* ------------ particle spray (mining debris) ----------- */
+pub const DEBRIS_LIFETIME: f32 = 0.45;
+pub const DEBRIS_RATE:     usize = 12;
+pub const DEBRIS_SPEED_X:  std::ops::Range<f32> = -12.0..12.0;
+pub const DEBRIS_SPEED_Y:  std::ops::Range<f32> =  28.0..60.0;
+
 /* ===========================================================
    digging
    =========================================================== */
@@ -55,6 +68,18 @@ pub const DIG_RADIUS: f32 = 16.0;
 pub const AGGRO_RADIUS:    f32 = 32.0 * TILE_SIZE;
 pub const ENEMY_SPEED:     f32 = WALK_SPEED * 0.8;
 pub const ENEMY_KEEP_AWAY: f32 = 4.0 * TILE_SIZE;
+
+/* ------------ blood explosion (orc death) --------------- */
+pub const BLOOD_LIFETIME: f32 = 1.8;
+pub const BLOOD_RATE:     usize = 32;
+pub const BLOOD_SPEED_X:  std::ops::Range<f32> = -140.0..140.0;
+pub const BLOOD_SPEED_Y:  std::ops::Range<f32> =  60.0..220.0;
+pub const BLOOD_COLOR: Color = Color::srgb(0.8, 0.0, 0.0);
+
+/* ------------ hit feedback ----------------------------- */
+pub const HIT_KNOCKBACK:  f32 = 220.0;      // px / s impulse on X axis
+pub const HIT_BLOOD_RATE: usize = 12;        // small puff
+pub const HIT_BLOOD_LIFE: f32 = 0.7;
 
 /* ===========================================================
    colour variation (terrain tint)
