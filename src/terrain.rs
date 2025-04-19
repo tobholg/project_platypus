@@ -90,14 +90,14 @@ const EXPLORED_BRIGHTNESS: f32 = 0.25;
 
 /* tweakables ------------------------------------------------------------- */
 const OBSIDIAN_START_FRAC: f32 = 0.80;   // bottom 20 % of map is obsidian
-const ISLAND_DENSITY: usize    = 128;    // width / this  = island count
-const ISLAND_RADIUS_MIN: usize = 12;
-const ISLAND_RADIUS_MAX: usize = 24;
+const ISLAND_DENSITY: usize    = 256;    // width / this  = island count
+const ISLAND_RADIUS_MIN: usize = 24;
+const ISLAND_RADIUS_MAX: usize = 48;
 
 /* cave parameters */
-const CAVE_FREQ_X: f64 = 0.03;   // horizontal stretching
-const CAVE_FREQ_Y: f64 = 0.08;
-const CAVE_THRESH:  f64 = 0.28;
+const CAVE_FREQ_X: f64 = 0.015;   // horizontal stretching
+const CAVE_FREQ_Y: f64 = 0.04;
+const CAVE_THRESH:  f64 = 0.15;
 
 /* rift (vertical chasm) parameters */
 const RIFT_FREQ:   f64 = 0.018;
@@ -265,7 +265,7 @@ pub fn generate_world_and_player(
                 ..=((cx as i32 + horiz).min(w as i32 - 1) as usize)
             {
                 let nx = (ix as f32 - cx as f32) / radius;
-                let ny = (iy as f32 - cy as f32) / radius * 1.4;
+                let ny = (iy as f32 - cy as f32) / radius * 2.0;
                 let d  = nx * nx + ny * ny;
                 if d < 1.0 && noise_island.get([ix as f64 * 0.3, iy as f64 * 0.3]) > -0.2 {
                     let outer = d > 0.7;

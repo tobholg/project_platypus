@@ -30,7 +30,7 @@ pub struct VisibleTiles {
    =========================================================== */
 pub const FOV_RADIUS: i32 = 48;            // ← was 32
 pub const LIGHT_BLEED_RADIUS: i32 = 1;
-pub const ALWAYS_VISIBLE_DEPTH: usize = 2;
+pub const ALWAYS_VISIBLE_DEPTH: usize = 4;
 
 /* ===========================================================
    startup
