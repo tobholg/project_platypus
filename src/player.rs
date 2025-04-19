@@ -9,7 +9,9 @@ use bevy::prelude::*;
 use rand::Rng;
 
 use crate::components::{
-    AnimationIndices, AnimationTimer, Bullet, Debris, Enemy, Exhaust, HeldItem, Inventory, Player, Velocity, Highlight
+    AnimationIndices, AnimationTimer, Bullet, Debris, Enemy, 
+    Exhaust, HeldItem, Inventory, Player, Velocity, Highlight,
+    Health, Dashing,
 };
 use crate::constants::*;
 use crate::terrain::{solid, tile_to_world_y, world_to_tile_y, Terrain, TileKind};
@@ -52,22 +54,27 @@ pub fn inventory_input_system(
 /* ===========================================================
    horizontal movement & jump
    =========================================================== */
-pub fn player_input_system(
+   pub fn player_input_system(
     keys: Res<ButtonInput<KeyCode>>,
-    mut q: Query<(&mut Velocity, &mut Transform, &Player)>,
+    mut q: Query<(&mut Velocity, &mut Transform, &Player, Option<&Dashing>)>,
 ) {
-    if let Ok((mut vel, mut tf, ply)) = q.get_single_mut() {
-        match (keys.pressed(KeyCode::KeyA), keys.pressed(KeyCode::KeyD)) {
-            (true, false) => {
-                vel.0.x = -WALK_SPEED;
-                tf.scale.x = -tf.scale.x.abs();
+    if let Ok((mut vel, mut tf, ply, dash)) = q.get_single_mut() {
+        /* ignore A/D while dashing */
+        if dash.is_none() {
+            match (keys.pressed(KeyCode::KeyA), keys.pressed(KeyCode::KeyD)) {
+                (true,  false) => {
+                    vel.0.x = -WALK_SPEED;
+                    tf.scale.x = -tf.scale.x.abs();
+                }
+                (false, true) => {
+                    vel.0.x = WALK_SPEED;
+                    tf.scale.x =  tf.scale.x.abs();
+                }
+                _ => vel.0.x = 0.0,
             }
-            (false, true) => {
-                vel.0.x = WALK_SPEED;
-                tf.scale.x = tf.scale.x.abs();
-            }
-            _ => vel.0.x = 0.0,
         }
+
+        /* jump still works while dashing */
         if keys.just_pressed(KeyCode::Space) && ply.grounded {
             vel.0.y = JUMP_SPEED;
         }
@@ -81,11 +88,11 @@ pub fn physics_and_collision_system(
     mut commands: Commands,
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
-    mut q: Query<(&mut Transform, &mut Velocity, &mut Player)>,
+    mut q: Query<(&mut Transform, &mut Velocity, &mut Player, &mut Health)>,
     terrain: Res<Terrain>,
 ) {
     let dt = time.delta_secs();
-    let Ok((mut tf, mut vel, mut ply)) = q.get_single_mut() else { return };
+    let Ok((mut tf, mut vel, mut ply, mut health)) = q.get_single_mut() else { return };
 
     vel.0.y += GRAVITY * dt;
     if keys.pressed(KeyCode::Space) && !ply.grounded {
@@ -95,6 +102,7 @@ pub fn physics_and_collision_system(
     let step_dt = dt / COLLISION_STEPS as f32;
     let half = Vec2::new(PLAYER_WIDTH, PLAYER_HEIGHT) / 2.0;
     ply.grounded = false;
+    let mut landing_speed: Option<f32> = None;
 
     for _ in 0..COLLISION_STEPS {
         /* horizontal sweep */
@@ -145,11 +153,24 @@ pub fn physics_and_collision_system(
             if (x_left..=x_right).any(|tx| solid(&terrain, tx, ty)) {
                 if vel.0.y < 0.0 {
                     ply.grounded = true;
+                    landing_speed = Some(-vel.0.y);
                 }
                 vel.0.y = 0.0;
             } else {
                 tf.translation.y = new_y;
             }
+        }
+    }
+
+    /* after the collision loop, before the jet‑pack code */
+    if let Some(v) = landing_speed {
+        if v > SAFE_FALL_SPEED {
+            let dmg = (v - SAFE_FALL_SPEED) * FALL_DMG_FACTOR;
+            health.current = (health.current - dmg).max(0.0);
+            health.last_damage = 0.0;
+
+            // optional VFX / death check:
+            // if health.current == 0.0 { commands.entity(entity).despawn(); }
         }
     }
 
@@ -177,6 +198,82 @@ pub fn physics_and_collision_system(
                 )),
                 Exhaust { life: EXHAUST_LIFETIME },
             ));
+        }
+    }
+}
+
+/* ===========================================================
+   dash start (Shift)                                          */
+   pub fn dash_start_system(
+    mut commands: Commands,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut q: Query<(Entity, &mut Velocity, &Transform), (With<Player>, Without<Dashing>)>,
+) {
+    if !(keys.just_pressed(KeyCode::ShiftLeft) || keys.just_pressed(KeyCode::ShiftRight)) {
+        return;
+    }
+
+    if let Ok((entity, mut vel, tf)) = q.get_single_mut() {
+        let dir = if tf.scale.x >= 0.0 { 1.0 } else { -1.0 };
+        vel.0.x = DASH_SPEED * dir;
+        vel.0.y += DASH_UPWARD_BOOST;          // little upward kick
+        /* white puff particles opposite to dash direction */
+        {
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            for _ in 0..DASH_PUFF_RATE {
+                commands.spawn((
+                    SpriteBundle {
+                        sprite: Sprite {
+                            color: Color::rgba(0.9, 0.9, 0.9, 1.0),
+                            custom_size: Some(Vec2::splat(DASH_PUFF_SIZE)),
+                            ..default()
+                        },
+                        transform: Transform::from_xyz(
+                            tf.translation.x - dir * PLAYER_WIDTH * 0.6
+                                + rng.gen_range(-2.0..2.0),
+                            tf.translation.y - PLAYER_HEIGHT * 0.2
+                                + rng.gen_range(-2.0..2.0),
+                            5.0,
+                        ),
+                        ..default()
+                    },
+                    Velocity(Vec2::new(
+                        -dir * rng.gen_range(80.0..140.0),
+                        rng.gen_range(-20.0..40.0),
+                    )),
+                    Exhaust { life: DASH_PUFF_LIFETIME },
+                ));
+            }
+        }
+        commands.entity(entity).insert(Dashing {
+            remaining: DASH_DURATION,
+            dir,
+        });
+    }
+}
+
+/* ===========================================================
+   dash update & decay                                         */
+pub fn dash_update_system(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut q: Query<(Entity, &mut Velocity, &mut Dashing)>,
+) {
+    let dt = time.delta_secs();
+    for (entity, mut vel, mut dash) in &mut q {
+        if dash.remaining > 0.0 {
+            // launch phase: maintain full dash speed
+            dash.remaining -= dt;
+            vel.0.x = DASH_SPEED * dash.dir;
+        } else {
+            // decay phase: ease back toward normal movement
+            vel.0.x -= dash.dir * DASH_DECEL * dt;
+
+            // stop when we've slowed to (or below) walk speed or reversed
+            if vel.0.x.signum() != dash.dir || vel.0.x.abs() <= WALK_SPEED {
+                commands.entity(entity).remove::<Dashing>();
+            }
         }
     }
 }
@@ -639,6 +736,26 @@ pub fn animate_player_system(
                     atlas.index + 1
                 };
             }
+        }
+    }
+}
+
+/* ===========================================================
+   passive health regeneration
+   =========================================================== */
+pub fn health_regen_system(
+    time: Res<Time>,
+    mut q: Query<&mut Health, With<Player>>,
+) {
+    let dt = time.delta_secs();
+    if let Ok(mut health) = q.get_single_mut() {
+        if health.current < health.max {
+            health.last_damage += dt;
+            if health.last_damage >= 5.0 {
+                health.current = (health.current + dt).min(health.max);
+            }
+        } else {
+            health.last_damage = 0.0; // reset when full
         }
     }
 }

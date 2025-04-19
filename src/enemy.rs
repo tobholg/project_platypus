@@ -10,6 +10,10 @@ use crate::{
         solid, tile_to_world_y, world_to_tile_y, ActiveRect, Terrain,
     },
 };
+/// horizontal distance within which an orc can hit the player
+const STRIKE_RANGE: f32 = TILE_SIZE * 6.0;
+/// distance at which an orc will **start** swinging (may still miss)
+const ATTACK_RANGE: f32 = TILE_SIZE * 16.0;
 
 /* ===========================================================
    start‑up: drop orcs on the surface
@@ -21,6 +25,7 @@ pub fn spawn_enemies(
     terrain: Res<Terrain>,
 ) {
     let sheet = asset_server.load("textures/orc_sheet.png");
+    let attack_sheet = asset_server.load("textures/Orc-Attack01.png");
     let layout =
         TextureAtlasLayout::from_grid(UVec2::new(100, 100), 6, 1, None, None);
     let layout_handle = atlas_layouts.add(layout);
@@ -50,7 +55,15 @@ pub fn spawn_enemies(
                 scale: Vec3::splat(1.8),
                 ..default()
             },
-            Enemy { grounded: false, hp: 100, recoil: 0.0 },
+        Enemy {
+            grounded: false,
+            hp: 100,
+            recoil: 0.0,
+            attack_cooldown: 0.0,
+            idle_sheet: sheet.clone(),
+            attack_sheet: attack_sheet.clone(),
+            hit_pending: false,
+        },
             Velocity(Vec2::ZERO),
             AnimationIndices { first: 0, last: 5 },
             AnimationTimer(Timer::from_seconds(
@@ -234,6 +247,66 @@ pub fn enemy_physics_system(
 /* ===========================================================
    reuse player animation code
    =========================================================== */
+pub fn enemy_attack_system(
+    time: Res<Time>,
+    mut enemies: Query<
+        (&mut Enemy, &Transform, &mut Sprite),
+        (With<Enemy>, With<Active>),
+    >,
+    mut player_q: Query<(&Transform, &mut Health), With<Player>>,
+) {
+    let dt = time.delta_secs();
+    let Ok((player_tf, mut health)) = player_q.get_single_mut() else { return };
+    let player_pos = player_tf.translation.truncate();
+    let half_player = Vec2::new(PLAYER_WIDTH, PLAYER_HEIGHT) / 2.0;
+
+    for (mut enemy, tf, mut sprite) in &mut enemies {
+        /* ---------- timers ---------- */
+        if enemy.attack_cooldown > 0.0 {
+            enemy.attack_cooldown -= dt;
+        }
+
+        /* ---------- ranges ---------- */
+        let delta = (player_pos - tf.translation.truncate()).abs();
+        let in_anim_range =
+            delta.x <= ATTACK_RANGE && delta.y <= half_player.y;
+        let in_hit_range =
+            delta.x <= STRIKE_RANGE && delta.y <= half_player.y;
+
+        /* ---------- start a swing ---------- */
+        if in_anim_range && enemy.attack_cooldown <= 0.0 {
+            // switch sprite‑sheet
+            sprite.image = enemy.attack_sheet.clone();
+
+            // randomise next swing a little
+            use rand::Rng;
+            enemy.attack_cooldown =
+                3.0 + rand::thread_rng().gen_range(-0.4..0.4);
+
+            // remember to apply damage once frame 4 is reached
+            enemy.hit_pending = true;
+        }
+
+        /* ---------- land the blow on frame 4 ---------- */
+        if enemy.hit_pending {
+            if let Some(atlas) = sprite.texture_atlas.as_ref() {
+                if atlas.index == 3 { // sheet index 3 == “number 4”
+                if in_hit_range {
+                    health.current = (health.current - 20.0).max(0.0);
+                    health.last_damage = 0.0;
+                }
+                    enemy.hit_pending = false; // strike resolved
+                }
+            }
+        }
+
+        /* ---------- revert to idle after ~0.5 s ---------- */
+        if enemy.attack_cooldown < 2.5 {
+            sprite.image = enemy.idle_sheet.clone();
+        }
+    }
+}
+
 pub fn animate_enemy_system(
     time: Res<Time>,
     mut q: Query<
