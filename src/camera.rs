@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::components::Player;
 use crate::constants::*;
-use crate::terrain::Terrain;
+use crate::world_gen::Terrain;
 
 /// pixel snapping helper – keeps the camera on whole pixels so sprites never
 /// land on half‑pixels and shimmer

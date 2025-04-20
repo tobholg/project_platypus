@@ -8,30 +8,37 @@ mod components;
 mod constants;
 mod enemy;
 mod player;
-mod terrain;
+mod world_gen;          // ← generation
+mod tile_stream;        // ← streaming / runtime
 mod visibility;
 
 use bevy::diagnostic::{
     EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin,
 };
+use bevy::ecs::schedule::common_conditions::resource_changed;
 use bevy::input::ButtonInput;
 use bevy::prelude::*;
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
-use bevy::ecs::schedule::common_conditions::resource_changed;
 
+/* generation + streaming APIs ------------------------------------------- */
+use world_gen::{generate_world_and_player, ActiveRect};
+use tile_stream::{
+    redraw_changed_tiles_system, stream_tiles_system, sync_tile_sprite_entities_system,
+    update_active_rect_system,
+};
+
+/* game‑logic helpers ---------------------------------------------------- */
 use camera::camera_follow_system;
 use player::{
     animate_player_system, bullet_update_system, cursor_highlight_system,
-    debris_update_system, exhaust_update_system, gun_shoot_system,
-    inventory_input_system, physics_and_collision_system, pickaxe_mining_system,
-    place_stone_system, player_input_system, health_regen_system,
-    dash_start_system, dash_update_system,
+    dash_start_system, dash_update_system, debris_update_system,
+    exhaust_update_system, gun_shoot_system, inventory_input_system,
+    physics_and_collision_system, pickaxe_mining_system, place_stone_system,
+    player_input_system, health_regen_system,
 };
-use terrain::{
-    generate_world_and_player, redraw_changed_tiles_system, stream_tiles_system,
-    update_active_rect_system,
+use components::{
+    Health, HealthBarFill, HeldItem, Inventory, InventorySlot, Player, ToolbarText,
 };
-use components::{Health, HealthBarFill, HeldItem, Inventory, Player, ToolbarText, InventorySlot};
 use visibility::{
     detect_player_tile_change_system, recompute_fov_system, startup_fov_system,
 };
@@ -65,7 +72,7 @@ fn toggle_fullscreen(
 /* HUD (toolbar & health bar)                                               */
 /* ------------------------------------------------------------------------ */
 fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
-    // ── inventory slots ────────────────────────────────────────────
+    // ── inventory slots ────────────────────────────────────────────────
     for i in 0..3 {
         commands.spawn((
             Node {
@@ -81,7 +88,7 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
         ));
     }
 
-    // ── health‑bar background ───────────────────────────────────────────
+    // ── health‑bar background ──────────────────────────────────────────
     let bg = commands
         .spawn((
             Node {
@@ -96,7 +103,7 @@ fn setup_hud(mut commands: Commands, asset_server: Res<AssetServer>) {
         ))
         .id();
 
-    // ── health‑bar fill (child) ─────────────────────────────────────────
+    // ── health‑bar fill (child) ────────────────────────────────────────
     commands.entity(bg).with_children(|parent| {
         parent.spawn((
             Node {
@@ -115,12 +122,14 @@ fn add_player_health_system(
     q: Query<Entity, Added<Player>>,
 ) {
     if let Ok(player) = q.get_single() {
-        commands.entity(player).insert(Health { current: 100.0, max: 100.0, last_damage: 0.0 });
+        commands
+            .entity(player)
+            .insert(Health { current: 100.0, max: 100.0, last_damage: 0.0 });
     }
 }
 
 fn update_inventory_hud_system(
-    inv_q:  Query<&Inventory>,
+    inv_q: Query<&Inventory>,
     mut q:  Query<(&InventorySlot, &mut BackgroundColor)>,
 ) {
     if let Ok(inv) = inv_q.get_single() {
@@ -143,7 +152,9 @@ fn update_health_bar_system(
     health_q: Query<&Health>,
     mut fill_q: Query<&mut Node, With<HealthBarFill>>,
 ) {
-    if let (Ok(health), Ok(mut node)) = (health_q.get_single(), fill_q.get_single_mut()) {
+    if let (Ok(health), Ok(mut node)) =
+        (health_q.get_single(), fill_q.get_single_mut())
+    {
         let pct = (health.current / health.max).clamp(0.0, 1.0) * 100.0;
         node.width = Val::Percent(pct);
     }
@@ -209,7 +220,7 @@ fn main() {
             (
                 /* world & enemies ---------------------------------------- */
                 stream_tiles_system
-                    .run_if(resource_changed::<terrain::ActiveRect>),
+                    .run_if(resource_changed::<ActiveRect>),
                 redraw_changed_tiles_system,
                 enemy::update_active_tag_system,
                 enemy::enemy_ai_system,
@@ -231,7 +242,7 @@ fn main() {
                 camera_follow_system,
                 update_active_rect_system,
                 recompute_fov_system,
-                terrain::sync_tile_sprite_entities_system.after(terrain::redraw_changed_tiles_system),
+                sync_tile_sprite_entities_system.after(redraw_changed_tiles_system),
             ),
         )
         .run();

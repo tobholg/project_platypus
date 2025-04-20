@@ -14,7 +14,8 @@ use crate::components::{
     Health, Dashing,
 };
 use crate::constants::*;
-use crate::terrain::{solid, tile_to_world_y, world_to_tile_y, Terrain, TileKind};
+use crate::world_gen::{tile_to_world_y, world_to_tile_y, Terrain, TileKind};
+use crate::tile_stream::solid;
 
 /// seconds between bullets when the gun is held down (≈12.5 rps)
 const GUN_FIRE_INTERVAL: f32 = 0.12;

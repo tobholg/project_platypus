@@ -6,9 +6,8 @@ use rand::Rng;
 use crate::{
     components::*,
     constants::*,
-    terrain::{
-        solid, tile_to_world_y, world_to_tile_y, ActiveRect, Terrain,
-    },
+    world_gen::{tile_to_world_y, world_to_tile_y, ActiveRect, Terrain},
+    tile_stream::solid,
 };
 /// horizontal distance within which an orc can hit the player
 const STRIKE_RANGE: f32 = TILE_SIZE * 6.0;

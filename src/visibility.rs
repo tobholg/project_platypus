@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use crate::components::Player;
 use crate::constants::TILE_SIZE;
-use crate::terrain::{world_to_tile_y, ActiveRect, Terrain, TileKind};
+use crate::world_gen::{world_to_tile_y, ActiveRect, Terrain, TileKind};
 
 /* ===========================================================
    Player‑tile resource

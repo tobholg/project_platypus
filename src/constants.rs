@@ -2,22 +2,22 @@ use bevy::prelude::*;
 use std::ops::Range;
 
 /* ===========================================================
-   WORLD SIZE — crank it up!
+   WORLD SIZE — crank it up!
    =========================================================== */
 /// size of one square tile, in world units
 pub const TILE_SIZE: f32 = 8.0;
 pub const RENDER_CHUNK: usize = 32;
 
 /// single‑chunk dimensions (tiles)
-pub const CHUNK_WIDTH:  usize = 64;   // ↑ from 120
-pub const CHUNK_HEIGHT: usize = 64;   // ↑ from  90
+pub const CHUNK_WIDTH:  usize = 64;   // ↑ from 120
+pub const CHUNK_HEIGHT: usize = 64;   // ↑ from  90
 
 /// number of chunks (world dimensions)
 pub const NUM_CHUNKS_X: usize = 64;    // width  = 10 240 tiles
 pub const NUM_CHUNKS_Y: usize = 32;    // height =  1 920 tiles
 
 /* ===========================================================
-   ACTIVE WINDOW (dynamic)
+   ACTIVE WINDOW (dynamic)
    =========================================================== */
 /// overscan tiles beyond the viewport that stay alive
 pub const ACTIVE_MARGIN: i32 = 16;
@@ -62,8 +62,8 @@ pub const EXHAUST_SPEED_Y: Range<f32> = -300.0..-120.0;
 pub const EXHAUST_SPEED_X: Range<f32> =  -50.0..  50.0;
 
 /* ------------ NEW: inventory & combat ------------------ */
-pub const PICKAXE_SPEED: f32   =  4.0;     // tiles / sec
-pub const BULLET_SPEED:  f32   = 1600.0;     // px / sec (initial horizontal)
+pub const PICKAXE_SPEED: f32   =  4.0;     // tiles / sec
+pub const BULLET_SPEED:  f32   = 1600.0;     // px / sec (initial horizontal)
 pub const BULLET_LIFETIME: f32 =  3.0;     // sec
 pub const BULLET_DAMAGE:  f32   = 35.0;    // arbitrary
 pub const MINING_RADIUS:  f32   = DIG_RADIUS; // re‑use circle from digging
@@ -95,8 +95,8 @@ pub const BLOOD_SPEED_Y:  std::ops::Range<f32> =  40.0..180.0;
 pub const BLOOD_COLOR: Color = Color::srgb(0.8, 0.0, 0.0);
 
 /* ------------ hit feedback ----------------------------- */
-pub const HIT_KNOCKBACK:  f32 = 240.0;      // px / s impulse on X axis
-pub const HIT_KNOCKBACK_UP: f32 = 100.0;     // px / s upward impulse
+pub const HIT_KNOCKBACK:  f32 = 240.0;      // px / s impulse on X axis
+pub const HIT_KNOCKBACK_UP: f32 = 100.0;     // px / s upward impulse
 pub const HIT_BLOOD_RATE: usize = 16;        // small puff
 pub const HIT_BLOOD_LIFE: f32 = 0.3;
 
