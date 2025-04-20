@@ -161,7 +161,7 @@ fn main() {
             EntityCountDiagnosticsPlugin::default(),
         ))
         /* engine core ----------------------------------------------------- */
-        .insert_resource(ClearColor(Color::srgb(0.18, 0.65, 1.0)))
+        .insert_resource(ClearColor(Color::srgb(0.15, 0.55, 0.90)))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 resolution: (1280., 720.).into(),

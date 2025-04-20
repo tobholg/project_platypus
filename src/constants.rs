@@ -36,7 +36,7 @@ pub const MAX_STEP_HEIGHT: f32 = TILE_SIZE * 2.0;
 
 pub const DASH_SPEED:        f32 = WALK_SPEED * 3.0; // 5 × walk speed
 pub const DASH_DURATION:     f32 = 0.1;              // seconds
-pub const DASH_UPWARD_BOOST: f32 = 180.0;             // quick vertical pop
+pub const DASH_UPWARD_BOOST: f32 = 240.0;             // quick vertical pop
 /// deceleration rate once the launch phase ends (px / s²)
 pub const DASH_DECEL:         f32 = 1600.0;
 /// number of puff particles spawned on dash start
@@ -88,17 +88,17 @@ pub const ENEMY_KEEP_AWAY: f32 = 4.0 * TILE_SIZE;
 pub const RECOIL_TIME: f32 = 2.0;   // stun duration after a bullet hit
 
 /* ------------ blood explosion (orc death) --------------- */
-pub const BLOOD_LIFETIME: f32 = 1.0;
-pub const BLOOD_RATE:     usize = 48;
-pub const BLOOD_SPEED_X:  std::ops::Range<f32> = -140.0..240.0;
-pub const BLOOD_SPEED_Y:  std::ops::Range<f32> =  60.0..180.0;
+pub const BLOOD_LIFETIME: f32 = 0.4;
+pub const BLOOD_RATE:     usize = 64;
+pub const BLOOD_SPEED_X:  std::ops::Range<f32> = -80.0..240.0;
+pub const BLOOD_SPEED_Y:  std::ops::Range<f32> =  40.0..180.0;
 pub const BLOOD_COLOR: Color = Color::srgb(0.8, 0.0, 0.0);
 
 /* ------------ hit feedback ----------------------------- */
 pub const HIT_KNOCKBACK:  f32 = 240.0;      // px / s impulse on X axis
 pub const HIT_KNOCKBACK_UP: f32 = 100.0;     // px / s upward impulse
 pub const HIT_BLOOD_RATE: usize = 16;        // small puff
-pub const HIT_BLOOD_LIFE: f32 = 1.2;
+pub const HIT_BLOOD_LIFE: f32 = 0.3;
 
 /* ===========================================================
    colour variation (terrain tint)
