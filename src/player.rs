@@ -323,7 +323,7 @@ pub fn pickaxe_mining_system(
 
             let (ux, uy) = (tx as usize, ty as usize);
             let tile = &mut terrain.tiles[uy][ux];
-            if !matches!(tile.kind, TileKind::Dirt | TileKind::Stone | TileKind::Obsidian | TileKind::Grass) {
+            if !matches!(tile.kind, TileKind::Dirt | TileKind::Stone | TileKind::Obsidian | TileKind::Grass | TileKind::Snow) {
                 continue;
             }
 
@@ -381,7 +381,7 @@ pub fn pickaxe_mining_system(
 
                     let (ux, uy) = (tx as usize, ty as usize);
                     if matches!(terrain.tiles[uy][ux].kind,
-                        TileKind::Grass | TileKind::Dirt | TileKind::Stone | TileKind::Obsidian)
+                        TileKind::Grass | TileKind::Dirt | TileKind::Stone | TileKind::Obsidian | TileKind::Snow)
                     {
                         commands.spawn((
                             Sprite {
@@ -540,8 +540,8 @@ pub fn gun_shoot_system(
     commands.spawn((
         SpriteBundle {
             sprite: Sprite {
-                color: Color::srgb(1.0, 0.0, 0.0),
-                custom_size: Some(Vec2::splat(8.0)),
+                color: Color::srgb(1.0, 0.75, 0.0),
+                custom_size: Some(Vec2::splat(6.0)),
                 ..default()
             },
             transform: Transform::from_translation(origin.extend(8.0)),

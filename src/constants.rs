@@ -5,7 +5,7 @@ use std::ops::Range;
    WORLD SIZE — crank it up!
    =========================================================== */
 /// size of one square tile, in world units
-pub const TILE_SIZE: f32 = 16.0;
+pub const TILE_SIZE: f32 = 8.0;
 pub const RENDER_CHUNK: usize = 32;
 
 /// single‑chunk dimensions (tiles)
@@ -25,8 +25,8 @@ pub const ACTIVE_MARGIN: i32 = 16;
 /* ===========================================================
    player physics and movement
    =========================================================== */
-pub const PLAYER_WIDTH:  f32 = TILE_SIZE;
-pub const PLAYER_HEIGHT: f32 = TILE_SIZE;
+pub const PLAYER_WIDTH:  f32 = 16.0;
+pub const PLAYER_HEIGHT: f32 = 16.0;
 pub const GRAVITY:       f32 = -650.0;
 pub const JUMP_SPEED:    f32 =  250.0;
 pub const JET_ACCEL:     f32 = 1000.0;

@@ -44,6 +44,7 @@ pub enum TileKind {
     Dirt,
     Stone,
     Obsidian,
+    Snow,
 }
 
 #[derive(Clone, Copy)]
@@ -105,8 +106,8 @@ const RIFT_FREQ:   f64 = 0.018;
 const RIFT_THRESH: f64 = 0.75;
 
 /* layer‑leak probabilities */
-const DIRT_TO_STONE:   f32 = 0.05;
-const STONE_TO_OBSID:  f32 = 0.02;
+const DIRT_TO_STONE:   f32 = 0.1;
+const STONE_TO_OBSID:  f32 = 0.05;
 
 /* surface grass ratio */
 const GRASS_RATIO: f32 = 0.85;
@@ -185,8 +186,7 @@ pub fn generate_world_and_player(
     let sprite_entities = vec![vec![None; w]; h];
 
     /* noises -------------------------------------------------------------- */
-    let noise_cave  = Perlin::new(rand::thread_rng().gen());
-    let noise_rift  = Perlin::new(rand::thread_rng().gen());
+    let noise_rift = Perlin::new(rand::thread_rng().gen());
 
     let mut rng = rand::thread_rng();
 
@@ -209,23 +209,15 @@ pub fn generate_world_and_player(
             let mut kind = if depth < MIN_CAVE_DEPTH {
                 if depth > h / 4 { TileKind::Stone } else { TileKind::Dirt }
             } else {
-                /* rift removes blocks except very top layer */
+                // Keep the rift feature, but drop the old noise‑carve logic.
                 if rift_val > RIFT_THRESH && depth > 3 {
                     TileKind::Air
+                } else if y >= (h as f32 * OBSIDIAN_START_FRAC) as usize {
+                    TileKind::Obsidian
+                } else if depth > h / 4 {
+                    TileKind::Stone
                 } else {
-                    let n = noise_cave.get([
-                        x as f64 * CAVE_FREQ_X,
-                        y as f64 * CAVE_FREQ_Y,
-                    ]);
-                    if n > CAVE_THRESH {
-                        TileKind::Air
-                    } else if y >= (h as f32 * OBSIDIAN_START_FRAC) as usize {
-                        TileKind::Obsidian
-                    } else if depth > h / 4 {
-                        TileKind::Stone
-                    } else {
-                        TileKind::Dirt
-                    }
+                    TileKind::Dirt
                 }
             };
 
@@ -249,7 +241,8 @@ pub fn generate_world_and_player(
 
             /* assign mine time ----------------------------------------- */
             let (kind, mine_time) = match kind {
-                TileKind::Grass     => (TileKind::Grass,    0.20),
+                TileKind::Grass     => (TileKind::Grass,    0.10),
+                TileKind::Snow     => (TileKind::Grass,    0.10),
                 TileKind::Dirt      => (TileKind::Dirt,     0.25),
                 TileKind::Stone     => (TileKind::Stone,    0.50),
                 TileKind::Obsidian  => (TileKind::Obsidian, 1.00),
@@ -259,6 +252,8 @@ pub fn generate_world_and_player(
             tiles[y][x].mine_time = mine_time;
         }
     }
+
+    generate_mountains(&mut tiles, &height_map, w, h, w / 2);
 
     /* ──────────────────── Sky islands (overhauled) ────────────────── */
     const ISLAND_MIN_RADIUS   : usize = 80;     // ⇠ was 48
@@ -404,6 +399,9 @@ pub fn generate_world_and_player(
         }
     }
 
+    /* ──────────────────── Underground caverns (walker) ─────────────────── */
+    carve_underground_caverns(&mut tiles, w, h, &height_map);
+
     /* --- spawn player ---------------------------------------------------- */
     let spawn_x  = w / 2;
     let surf_row = height_map[spawn_x];
@@ -443,6 +441,172 @@ pub fn generate_world_and_player(
     commands.insert_resource(LastRect::default());
 }
 
+
+/* ──────────────────── Mountains (new) ────────────────── */
+fn generate_mountains(
+    tiles: &mut [Vec<Tile>],
+    height_map: &[usize],
+    w: usize,
+    h: usize,
+    player_x: usize,
+) {
+    use rand::Rng;
+
+    const MOUNTAINS_PER_SIDE: usize = 4;
+    const MIN_DIST_FROM_PLAYER: i32 = 200;
+    const MIN_GAP_BETWEEN:     i32 = 120;
+    const WIDTH_MIN: usize = 160;   // foothills stretch farther
+    const WIDTH_MAX: usize = 320;   // much wider ridges allowed
+    const HEIGHT_MIN: usize = 80;   // taller minimum
+    const HEIGHT_MAX: usize = 200;  // higher possible summits
+
+    #[derive(Clone, Copy)] struct Band { l: i32, r: i32 }
+    let mut placed: Vec<Band> = Vec::new();
+    let mut rng = rand::thread_rng();
+
+    use noise::NoiseFn;
+    let ridge_noise = Perlin::new(rng.gen());
+
+    for side in [true, false] { // true = left, false = right
+        let mut made = 0;
+        while made < MOUNTAINS_PER_SIDE {
+            let width  = rng.gen_range(WIDTH_MIN..=WIDTH_MAX) as i32;
+            let half   = width / 2;
+            let height = rng.gen_range(HEIGHT_MIN..=HEIGHT_MAX) as i32;
+
+            let cx = if side {
+                rng.gen_range(half .. player_x as i32 - MIN_DIST_FROM_PLAYER - half)
+            } else {
+                rng.gen_range(player_x as i32 + MIN_DIST_FROM_PLAYER + half .. w as i32 - half - 1)
+            };
+
+            // keep clear of previous mountains
+            let span = Band{ l: cx - half - MIN_GAP_BETWEEN, r: cx + half + MIN_GAP_BETWEEN };
+            if placed.iter().any(|b| b.r >= span.l && b.l <= span.r) { continue; }
+            placed.push(Band{ l: cx - half, r: cx + half });
+            made += 1;
+
+            // sculpt the mountain with gentler slopes + noisy sub‑peaks
+            for dx in -half..=half {
+                let x = cx + dx;
+                if !(0..w as i32).contains(&x) { continue; }
+                let ux = x as usize;
+
+                // triangular foundation, softened
+                let nx           = dx as f32 / half as f32;              // −1 … +1
+                let base_profile = (1.0 - nx.abs()).powf(1.5);           // gentler slope
+
+                // subtle bumps using Perlin noise
+                let bump = ridge_noise.get([x as f64 * 0.06, cx as f64 * 0.002]) as f32;
+                let height_factor = 1.0 + bump * 0.35;                   // ±35 % variation
+                let column_peak   = (height as f32 * base_profile * height_factor).round() as i32;
+
+                let surface = height_map[ux] as i32;
+                let top     = (surface - column_peak).max(0);
+
+                // fill column from summit down
+                for y in (top..surface).rev() {
+                    let above_ground = surface - y;    // 1 … column_peak
+                    let kind = if above_ground == 1 {
+                        if matches!(tiles[surface as usize][ux].kind, TileKind::Grass) {
+                            TileKind::Grass
+                        } else {
+                            TileKind::Dirt
+                        }
+                    } else {
+                        let dist_from_top = y - top;
+                        if dist_from_top <= 2 {
+                            TileKind::Snow
+                        } else if dist_from_top <= 6 {
+                            if rng.gen::<f32>() < 0.4 { TileKind::Snow } else { TileKind::Stone }
+                        } else {
+                            TileKind::Stone
+                        }
+                    };
+
+                    if matches!(tiles[y as usize][ux].kind, TileKind::Sky) {
+                        tiles[y as usize][ux].kind = kind;
+                        tiles[y as usize][ux].mine_time = match kind {
+                            TileKind::Grass => 0.20,
+                            TileKind::Dirt  => 0.25,
+                            TileKind::Stone => 0.50,
+                            TileKind::Snow  => 0.15,
+                            _               => 0.0,
+                        };
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+/* ===========================================================
+   walker‑style underground caverns (larger & more elaborate)
+   =========================================================== */
+   fn carve_underground_caverns(
+    tiles: &mut [Vec<Tile>],
+    width: usize,
+    height: usize,
+    height_map: &[usize],
+) {
+    use rand::Rng;
+    use bevy::math::{Vec2, Mat2};
+
+    // Tunables
+    const UNDER_STEPS_MIN:    u16 = 400;
+    const UNDER_STEPS_MAX:    u16 = 700;
+    const UNDER_TURN_CHANCE:  f32 = 0.25;
+    const UNDER_TUNNEL_R_MIN: i32 = 2;
+    const UNDER_TUNNEL_R_MAX: i32 = 4;
+    const UNDER_ROOM_R_MIN:   i32 = 6;
+    const UNDER_ROOM_R_MAX:   i32 = 10;
+
+    let mut rng = rand::thread_rng();
+    let walker_count = (width / 32).max(10);
+
+    // Seed walkers a bit below the surface but above obsidian
+    let mut walkers: Vec<(Vec2, Vec2)> = Vec::new();
+    for _ in 0..walker_count {
+        let x = rng.gen_range(4..width - 4) as i32;
+        let surface = height_map[x as usize] as i32;
+        let y_min = surface + MIN_CAVE_DEPTH as i32;
+        let y_max = (height as f32 * OBSIDIAN_START_FRAC) as i32 - 4;
+        if y_min >= y_max { continue; }
+        let y = rng.gen_range(y_min..y_max);
+        let pos = Vec2::new(x as f32, y as f32);
+        let dir = Vec2::new(
+            rng.gen_range(-1.0..1.0),
+            rng.gen_range(-0.3..0.3),
+        ).normalize();
+        walkers.push((pos, dir));
+    }
+
+    // Walk and carve
+    for (mut pos, mut dir) in walkers {
+        let steps = rng.gen_range(UNDER_STEPS_MIN..=UNDER_STEPS_MAX);
+        for _ in 0..steps {
+            let radius = if rng.gen::<f32>() < 0.15 {
+                rng.gen_range(UNDER_ROOM_R_MIN..=UNDER_ROOM_R_MAX)
+            } else {
+                rng.gen_range(UNDER_TUNNEL_R_MIN..=UNDER_TUNNEL_R_MAX)
+            };
+            carve_disc(tiles, width, height, pos.x as i32, pos.y as i32, radius);
+
+            if rng.gen::<f32>() < UNDER_TURN_CHANCE {
+                let ang = rng.gen_range(-1.0..1.0);
+                dir = (Mat2::from_angle(ang) * dir).normalize();
+            }
+            pos += dir;
+
+            // Stop if we wander outside the map
+            if pos.x < 2.0 || pos.x > (width - 2) as f32
+                || pos.y < 2.0 || pos.y > (height - 2) as f32 {
+                break;
+            }
+        }
+    }
+}
 
 #[inline(always)]
 fn carve_disc(
@@ -491,10 +655,11 @@ fn color_and_z(terrain: &Terrain, x: usize, y: usize) -> (Color, f32) {
 
     let base_rgb = match tile.kind {
         TileKind::Grass     => Vec3::new(0.13, 0.70, 0.08) * factor,
+        TileKind::Snow      => Vec3::new(0.95, 0.95, 0.95) * factor,
         TileKind::Dirt      => Vec3::new(0.55, 0.27, 0.07) * factor,
         TileKind::Stone     => Vec3::new(0.50, 0.50, 0.50) * factor,
         TileKind::Obsidian  => Vec3::new(0.20, 0.05, 0.35) * factor,
-        TileKind::Air       => BACKGROUND_BROWN,
+        TileKind::Air       => BACKGROUND_BROWN * factor,
         _ => unreachable!(),
     } * brightness(&tile);
 
@@ -519,7 +684,7 @@ fn ensure_sprite(commands: &mut Commands, terrain: &mut Terrain, x: i32, y: i32)
     if !matches!(
         terrain.tiles[uy][ux].kind,
         TileKind::Grass | TileKind::Dirt | TileKind::Stone |
-        TileKind::Obsidian | TileKind::Air
+        TileKind::Obsidian | TileKind::Snow | TileKind::Air
     ) {
         return; // Sky never gets a sprite
     }
@@ -786,7 +951,7 @@ pub fn digging_system(
                 let (ux, uy) = (tx as usize, ty as usize);
                 if matches!(
                     terrain.tiles[uy][ux].kind,
-                    TileKind::Grass | TileKind::Dirt | TileKind::Stone | TileKind::Obsidian
+                    TileKind::Grass | TileKind::Dirt | TileKind::Stone | TileKind::Obsidian | TileKind::Snow
                 ) {
                     terrain.tiles[uy][ux].kind = TileKind::Air;
                     terrain.changed_tiles.push_back((ux, uy));
@@ -806,6 +971,6 @@ pub fn solid(terrain: &Terrain, tx: i32, ty: i32) -> bool {
     }
     matches!(
         terrain.tiles[ty as usize][tx as usize].kind,
-        TileKind::Grass | TileKind::Dirt | TileKind::Stone | TileKind::Obsidian
+        TileKind::Grass | TileKind::Dirt | TileKind::Stone | TileKind::Obsidian | TileKind::Snow
     )
 }

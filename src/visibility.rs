@@ -213,7 +213,7 @@ fn cast_light(
 
                 let opaque = matches!(
                     terrain.tiles[ty as usize][tx as usize].kind,
-                    TileKind::Dirt | TileKind::Stone | TileKind::Obsidian | TileKind::Grass
+                    TileKind::Dirt | TileKind::Stone | TileKind::Obsidian | TileKind::Grass | TileKind::Snow
                 );
 
                 if blocked {
