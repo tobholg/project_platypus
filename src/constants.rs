@@ -13,8 +13,8 @@ pub const CHUNK_WIDTH:  usize = 64;   // ↑ from 120
 pub const CHUNK_HEIGHT: usize = 64;   // ↑ from  90
 
 /// number of chunks (world dimensions)
-pub const NUM_CHUNKS_X: usize = 64;    // width  = 10 240 tiles
-pub const NUM_CHUNKS_Y: usize = 32;    // height =  1 920 tiles
+pub const NUM_CHUNKS_X: usize = 32;    // width  = 10 240 tiles
+pub const NUM_CHUNKS_Y: usize = 16;    // height =  1 920 tiles
 
 /* ===========================================================
    ACTIVE WINDOW (dynamic)
