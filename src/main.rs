@@ -231,6 +231,7 @@ fn main() {
                 camera_follow_system,
                 update_active_rect_system,
                 recompute_fov_system,
+                terrain::sync_tile_sprite_entities_system.after(terrain::redraw_changed_tiles_system),
             ),
         )
         .run();

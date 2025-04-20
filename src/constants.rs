@@ -9,12 +9,12 @@ pub const TILE_SIZE: f32 = 8.0;
 pub const RENDER_CHUNK: usize = 32;
 
 /// single‑chunk dimensions (tiles)
-pub const CHUNK_WIDTH:  usize = 160;   // ↑ from 120
-pub const CHUNK_HEIGHT: usize = 120;   // ↑ from  90
+pub const CHUNK_WIDTH:  usize = 64;   // ↑ from 120
+pub const CHUNK_HEIGHT: usize = 64;   // ↑ from  90
 
 /// number of chunks (world dimensions)
-pub const NUM_CHUNKS_X: usize = 32;    // width  = 10 240 tiles
-pub const NUM_CHUNKS_Y: usize = 16;    // height =  1 920 tiles
+pub const NUM_CHUNKS_X: usize = 64;    // width  = 10 240 tiles
+pub const NUM_CHUNKS_Y: usize = 32;    // height =  1 920 tiles
 
 /* ===========================================================
    ACTIVE WINDOW (dynamic)
@@ -26,7 +26,7 @@ pub const ACTIVE_MARGIN: i32 = 16;
    player physics and movement
    =========================================================== */
 pub const PLAYER_WIDTH:  f32 = 16.0;
-pub const PLAYER_HEIGHT: f32 = 16.0;
+pub const PLAYER_HEIGHT: f32 = 24.0;
 pub const GRAVITY:       f32 = -650.0;
 pub const JUMP_SPEED:    f32 =  250.0;
 pub const JET_ACCEL:     f32 = 1200.0;
@@ -63,16 +63,16 @@ pub const EXHAUST_SPEED_X: Range<f32> =  -50.0..  50.0;
 
 /* ------------ NEW: inventory & combat ------------------ */
 pub const PICKAXE_SPEED: f32   =  4.0;     // tiles / sec
-pub const BULLET_SPEED:  f32   = 1200.0;     // px / sec (initial horizontal)
-pub const BULLET_LIFETIME: f32 =  4.0;     // sec
-pub const BULLET_DAMAGE:  f32   = 25.0;    // arbitrary
+pub const BULLET_SPEED:  f32   = 1600.0;     // px / sec (initial horizontal)
+pub const BULLET_LIFETIME: f32 =  3.0;     // sec
+pub const BULLET_DAMAGE:  f32   = 35.0;    // arbitrary
 pub const MINING_RADIUS:  f32   = DIG_RADIUS; // re‑use circle from digging
 
 /* ------------ particle spray (mining debris) ----------- */
-pub const DEBRIS_LIFETIME: f32 = 0.45;
+pub const DEBRIS_LIFETIME: f32 = 0.2;
 pub const DEBRIS_RATE:     usize = 12;
-pub const DEBRIS_SPEED_X:  std::ops::Range<f32> = -12.0..12.0;
-pub const DEBRIS_SPEED_Y:  std::ops::Range<f32> =  28.0..60.0;
+pub const DEBRIS_SPEED_X:  std::ops::Range<f32> = -24.0..24.0;
+pub const DEBRIS_SPEED_Y:  std::ops::Range<f32> =  -24.0..24.0;
 
 /* ===========================================================
    digging
