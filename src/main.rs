@@ -219,12 +219,12 @@ fn main() {
             Update,
             (
                 /* world & enemies ---------------------------------------- */
-                stream_tiles_system
-                    .run_if(resource_changed::<ActiveRect>),
+                stream_tiles_system,
                 redraw_changed_tiles_system,
                 enemy::update_active_tag_system,
                 enemy::enemy_ai_system,
                 enemy::enemy_attack_system,
+                enemy::enemy_visibility_system.after(recompute_fov_system),
                 enemy::enemy_physics_system,
                 enemy::animate_enemy_system,
                 /* HUD & misc --------------------------------------------- */

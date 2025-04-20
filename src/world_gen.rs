@@ -280,7 +280,7 @@ pub fn generate_world_and_player(
 
         /* realistic island count for this map width ----------------------- */
         let min_footprint  = (ISLAND_MIN_RADIUS as i32 * 2 + ISLAND_GAP) as usize;
-        let target_islands = (w / min_footprint).clamp(1, 32);
+        let target_islands = (w / min_footprint).clamp(1, 16);
 
         const MAX_SEARCH: usize = 3_000;          // tries per island before giving up
 

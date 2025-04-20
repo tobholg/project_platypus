@@ -94,77 +94,128 @@ fn ensure_sprite(commands: &mut Commands, terrain: &mut Terrain, x: i32, y: i32)
 }
 
 /* ===========================================================
+   chunk helpers (groups of CHUNK_WIDTH × CHUNK_HEIGHT tiles)
+   =========================================================== */
+   #[inline]
+   fn ensure_chunk(
+       commands: &mut Commands,
+       terrain:  &mut Terrain,
+       cx: i32,
+       cy: i32,
+   ) {
+       let min_x = cx * CHUNK_WIDTH  as i32;
+       let max_x = ((cx + 1) * CHUNK_WIDTH  as i32 - 1).min(terrain.width  as i32 - 1);
+       let min_y = cy * CHUNK_HEIGHT as i32;
+       let max_y = ((cy + 1) * CHUNK_HEIGHT as i32 - 1).min(terrain.height as i32 - 1);
+   
+       for y in min_y..=max_y {
+           for x in min_x..=max_x {
+               ensure_sprite(commands, terrain, x, y);
+           }
+       }
+   }
+   
+   #[inline]
+   fn hide_chunk(
+       commands: &mut Commands,
+       terrain:  &mut Terrain,
+       cx: i32,
+       cy: i32,
+   ) {
+       let min_x = cx * CHUNK_WIDTH  as i32;
+       let max_x = ((cx + 1) * CHUNK_WIDTH  as i32 - 1).min(terrain.width  as i32 - 1);
+       let min_y = cy * CHUNK_HEIGHT as i32;
+       let max_y = ((cy + 1) * CHUNK_HEIGHT as i32 - 1).min(terrain.height as i32 - 1);
+   
+       for y in min_y..=max_y {
+           for x in min_x..=max_x {
+               let (ux, uy) = (x as usize, y as usize);
+               let idx      = terrain.idx(ux, uy);
+               if let Some(e) = terrain.sprite_entities[idx] {
+                   commands.entity(e).insert(Visibility::Hidden);
+                   terrain.free_sprites.push(e);
+                   terrain.sprite_entities[idx] = None;
+               }
+           }
+       }
+   }
+
+/* ===========================================================
    stream_tiles_system – stripe differencing + pooling
    =========================================================== */
 pub fn stream_tiles_system(
     mut commands: Commands,
     mut terrain: ResMut<Terrain>,
     rect: Res<ActiveRect>,
-    mut last_rect: ResMut<LastRect>,
 ) {
-    let new = *rect;
-    if last_rect.0 == Some(new) {
+    /* -----------------------------------------------------------
+   chunk‑level differencing
+    ----------------------------------------------------------- */
+    let new_min_cx = rect.min_x / CHUNK_WIDTH  as i32;
+    let new_max_cx = rect.max_x / CHUNK_WIDTH  as i32;
+    let new_min_cy = rect.min_y / CHUNK_HEIGHT as i32;
+    let new_max_cy = rect.max_y / CHUNK_HEIGHT as i32;
+
+    #[derive(Copy, Clone, PartialEq)]
+    struct ChunkRect { min_cx: i32, max_cx: i32, min_cy: i32, max_cy: i32 }
+    static mut PREV: Option<ChunkRect> = None;
+
+    let new_rect = ChunkRect { min_cx: new_min_cx, max_cx: new_max_cx,
+                            min_cy: new_min_cy, max_cy: new_max_cy };
+
+    let prev = unsafe { PREV };
+
+    if prev.is_none() {
+        // first frame: fill everything
+        for cy in new_min_cy..=new_max_cy {
+            for cx in new_min_cx..=new_max_cx {
+                ensure_chunk(&mut commands, &mut terrain, cx, cy);
+            }
+        }
+        unsafe { PREV = Some(new_rect) };
         return;
     }
 
-    /* initial fill ------------------------------------------------------- */
-    let Some(prev) = last_rect.0 else {
-        for y in new.min_y..=new.max_y {
-            for x in new.min_x..=new.max_x {
-                ensure_sprite(&mut commands, &mut terrain, x, y);
-            }
-        }
-        last_rect.0 = Some(new);
-        return;
-    };
+    let prev = prev.unwrap();
+    if prev == new_rect {
+        return;     // camera still inside same chunk window
+    }
 
-    /* stripes entering view ---------------------------------------------- */
-    for x in new.min_x..=new.max_x {
-        if x < prev.min_x || x > prev.max_x {
-            for y in new.min_y..=new.max_y {
-                ensure_sprite(&mut commands, &mut terrain, x, y);
+    /* ---------- entering chunks ---------- */
+    for cx in new_min_cx..=new_max_cx {
+        if cx < prev.min_cx || cx > prev.max_cx {
+            for cy in new_min_cy..=new_max_cy {
+                ensure_chunk(&mut commands, &mut terrain, cx, cy);
             }
         }
     }
-    for y in new.min_y..=new.max_y {
-        if y < prev.min_y || y > prev.max_y {
-            for x in new.min_x..=new.max_x {
-                ensure_sprite(&mut commands, &mut terrain, x, y);
+    for cy in new_min_cy..=new_max_cy {
+        if cy < prev.min_cy || cy > prev.max_cy {
+            for cx in new_min_cx..=new_max_cx {
+                ensure_chunk(&mut commands, &mut terrain, cx, cy);
             }
         }
     }
 
-    /* stripes leaving view (re‑pool) ------------------------------------- */
-    for x in prev.min_x..=prev.max_x {
-        if x < new.min_x || x > new.max_x {
-            for y in prev.min_y..=prev.max_y {
-                let (ux, uy) = (x as usize, y as usize);
-                let idx      = terrain.idx(ux, uy);
-                if let Some(e) = terrain.sprite_entities[idx] {
-                    commands.entity(e).insert(Visibility::Hidden);
-                    terrain.free_sprites.push(e);
-                    terrain.sprite_entities[idx] = None;
+    /* ---------- leaving chunks ----------- */
+    for cx in prev.min_cx..=prev.max_cx {
+        if cx < new_min_cx || cx > new_max_cx {
+            for cy in prev.min_cy..=prev.max_cy {
+                hide_chunk(&mut commands, &mut terrain, cx, cy);
+            }
+        }
+    }
+    for cy in prev.min_cy..=prev.max_cy {
+        if cy < new_min_cy || cy > new_max_cy {
+            for cx in prev.min_cx..=prev.max_cx {
+                if cx >= new_min_cx && cx <= new_max_cx {
+                    hide_chunk(&mut commands, &mut terrain, cx, cy);
                 }
             }
         }
     }
-    for y in prev.min_y..=prev.max_y {
-        if y < new.min_y || y > new.max_y {
-            for x in prev.min_x..=prev.max_x {
-                if x >= new.min_x && x <= new.max_x {
-                    let (ux, uy) = (x as usize, y as usize);
-                    let idx      = terrain.idx(ux, uy);
-                    if let Some(e) = terrain.sprite_entities[idx] {
-                        commands.entity(e).insert(Visibility::Hidden);
-                        terrain.free_sprites.push(e);
-                        terrain.sprite_entities[idx] = None;
-                    }
-                }
-            }
-        }
-    }
 
-    last_rect.0 = Some(new);
+    unsafe { PREV = Some(new_rect) };
 }
 
 /* ===========================================================

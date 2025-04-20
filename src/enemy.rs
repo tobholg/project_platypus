@@ -8,6 +8,7 @@ use crate::{
     constants::*,
     world_gen::{tile_to_world_y, world_to_tile_y, ActiveRect, Terrain},
     tile_stream::solid,
+    visibility::VisibleTiles,
 };
 /// horizontal distance within which an orc can hit the player
 const STRIKE_RANGE: f32 = TILE_SIZE * 6.0;
@@ -305,6 +306,35 @@ pub fn enemy_attack_system(
         }
     }
 }
+
+/* ===========================================================
+   hide / reveal enemies based on player field‑of‑view
+   =========================================================== */
+   pub fn enemy_visibility_system(
+    mut q: Query<(&Transform, &mut Visibility), With<Enemy>>,
+    vis:    Res<VisibleTiles>,
+    terrain: Res<Terrain>,
+) {
+    let (w, h) = (terrain.width as i32, terrain.height as i32);
+
+    for (tf, mut visib) in &mut q {
+        let tx = (tf.translation.x / TILE_SIZE).floor() as i32;
+        let ty = world_to_tile_y(terrain.height, tf.translation.y);
+
+        if tx < 0 || tx >= w || ty < 0 || ty >= h {
+            *visib = Visibility::Hidden;
+            continue;
+        }
+
+        let visible = vis.set.contains(&(tx as usize, ty as usize));
+        *visib = if visible {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+    }
+}
+
 
 pub fn animate_enemy_system(
     time: Res<Time>,
