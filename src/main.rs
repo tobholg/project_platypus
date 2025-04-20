@@ -17,6 +17,7 @@ use bevy::diagnostic::{
 use bevy::input::ButtonInput;
 use bevy::prelude::*;
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
+use bevy::ecs::schedule::common_conditions::resource_changed;
 
 use camera::camera_follow_system;
 use player::{
@@ -207,7 +208,8 @@ fn main() {
             Update,
             (
                 /* world & enemies ---------------------------------------- */
-                stream_tiles_system,
+                stream_tiles_system
+                    .run_if(resource_changed::<terrain::ActiveRect>),
                 redraw_changed_tiles_system,
                 enemy::update_active_tag_system,
                 enemy::enemy_ai_system,

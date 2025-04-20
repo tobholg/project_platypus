@@ -53,6 +53,7 @@ pub struct Tile {
     pub visible:  bool,
     pub explored: bool,
     pub mine_time:  f32,
+    pub base_rgb:  Vec3,
 }
 
 /* ===========================================================
@@ -178,6 +179,7 @@ pub fn generate_world_and_player(
                 visible:  false,
                 explored: false,
                 mine_time: 0.0,
+                base_rgb:  BACKGROUND_BROWN,
             };
             w
         ];
@@ -187,6 +189,7 @@ pub fn generate_world_and_player(
 
     /* noises -------------------------------------------------------------- */
     let noise_rift = Perlin::new(rand::thread_rng().gen());
+    let color_noise = Perlin::new(rand::thread_rng().gen());
 
     let mut rng = rand::thread_rng();
 
@@ -250,6 +253,32 @@ pub fn generate_world_and_player(
             };
             tiles[y][x].kind = kind;
             tiles[y][x].mine_time = mine_time;
+
+            // ---------- per‑tile tint (discrete steps) ----------
+            use crate::constants::{
+                COLOR_NOISE_SCALE, COLOR_VARIATION_LEVELS, COLOR_VARIATION_STRENGTH,
+            };
+
+            let raw = color_noise.get([
+                x as f64 * COLOR_NOISE_SCALE,
+                y as f64 * COLOR_NOISE_SCALE,
+            ]) as f32;
+
+            let step = (((raw + 1.0) * 0.5) * COLOR_VARIATION_LEVELS as f32)
+                .floor()
+                .clamp(0.0, (COLOR_VARIATION_LEVELS - 1) as f32);
+            let norm   = step / (COLOR_VARIATION_LEVELS as f32 - 1.0) * 2.0 - 1.0;
+            let factor = 1.0 + norm * COLOR_VARIATION_STRENGTH;
+
+            tiles[y][x].base_rgb = match kind {
+                TileKind::Grass    => Vec3::new(0.13, 0.70, 0.08) * factor,
+                TileKind::Snow     => Vec3::new(0.95, 0.95, 0.95) * factor,
+                TileKind::Dirt     => Vec3::new(0.55, 0.27, 0.07) * factor,
+                TileKind::Stone    => Vec3::new(0.50, 0.50, 0.50) * factor,
+                TileKind::Obsidian => Vec3::new(0.20, 0.05, 0.35) * factor,
+                TileKind::Air      => BACKGROUND_BROWN            * factor,
+                TileKind::Sky      => Vec3::ZERO, // unused
+            };
         }
     }
 
@@ -436,7 +465,7 @@ pub fn generate_world_and_player(
         width: w,
         height: h,
         height_map,
-        color_noise: Perlin::new(rand::thread_rng().gen()),
+        color_noise,
     });
     commands.insert_resource(LastRect::default());
 }
@@ -639,29 +668,8 @@ fn carve_disc(
    =========================================================== */
 #[inline]
 fn color_and_z(terrain: &Terrain, x: usize, y: usize) -> (Color, f32) {
-    use crate::constants::{COLOR_NOISE_SCALE, COLOR_VARIATION_LEVELS, COLOR_VARIATION_STRENGTH};
-
-    let tile = terrain.tiles[y][x];
-    let raw = terrain.color_noise.get([
-        x as f64 * COLOR_NOISE_SCALE,
-        y as f64 * COLOR_NOISE_SCALE,
-    ]) as f32;
-
-    let step = (((raw + 1.0) * 0.5) * COLOR_VARIATION_LEVELS as f32)
-        .floor()
-        .clamp(0.0, (COLOR_VARIATION_LEVELS - 1) as f32);
-    let norm = step / (COLOR_VARIATION_LEVELS as f32 - 1.0) * 2.0 - 1.0;
-    let factor = 1.0 + norm * COLOR_VARIATION_STRENGTH;
-
-    let base_rgb = match tile.kind {
-        TileKind::Grass     => Vec3::new(0.13, 0.70, 0.08) * factor,
-        TileKind::Snow      => Vec3::new(0.95, 0.95, 0.95) * factor,
-        TileKind::Dirt      => Vec3::new(0.55, 0.27, 0.07) * factor,
-        TileKind::Stone     => Vec3::new(0.50, 0.50, 0.50) * factor,
-        TileKind::Obsidian  => Vec3::new(0.20, 0.05, 0.35) * factor,
-        TileKind::Air       => BACKGROUND_BROWN * factor,
-        _ => unreachable!(),
-    } * brightness(&tile);
+    let tile     = terrain.tiles[y][x];
+    let base_rgb = tile.base_rgb * brightness(&tile);
 
     let color = Color::srgb(
         base_rgb.x.clamp(0.0, 1.0),
@@ -820,16 +828,21 @@ pub fn update_active_rect_system(
 }
 
 /* ===========================================================
-   redraw_changed_tiles_system (unchanged, but grass aware)
-   =========================================================== */
+redraw_changed_tiles_system – with cached, stepped tint
+=========================================================== */
 pub fn redraw_changed_tiles_system(
     mut commands: Commands,
     mut terrain: ResMut<Terrain>,
 ) {
-    while let Some((x, y)) = terrain.changed_tiles.pop_front() {
-        let tile = terrain.tiles[y][x];
+    use crate::constants::{
+        COLOR_NOISE_SCALE, COLOR_VARIATION_LEVELS, COLOR_VARIATION_STRENGTH, TILE_SIZE,
+    };
 
-        if tile.kind == TileKind::Sky {
+    while let Some((x, y)) = terrain.changed_tiles.pop_front() {
+        let kind = terrain.tiles[y][x].kind;
+
+        /* 1 ── SKY tiles: hide & recycle sprite, skip rest */
+        if kind == TileKind::Sky {
             if let Some(e) = terrain.sprite_entities[y][x] {
                 commands.entity(e).insert(Visibility::Hidden);
                 terrain.free_sprites.push(e);
@@ -838,8 +851,33 @@ pub fn redraw_changed_tiles_system(
             continue;
         }
 
+        /* 2 ── recompute cached base_rgb using the shared colour noise */
+        let raw = terrain.color_noise.get([
+            x as f64 * COLOR_NOISE_SCALE,
+            y as f64 * COLOR_NOISE_SCALE,
+        ]) as f32;
+
+        // quantise into discrete shade “steps”
+        let step = (((raw + 1.0) * 0.5) * COLOR_VARIATION_LEVELS as f32)
+            .floor()
+            .clamp(0.0, (COLOR_VARIATION_LEVELS - 1) as f32);
+        let norm   = step / (COLOR_VARIATION_LEVELS as f32 - 1.0) * 2.0 - 1.0;
+        let factor = 1.0 + norm * COLOR_VARIATION_STRENGTH;
+
+        terrain.tiles[y][x].base_rgb = match kind {
+            TileKind::Grass    => Vec3::new(0.13, 0.70, 0.08) * factor,
+            TileKind::Snow     => Vec3::new(0.95, 0.95, 0.95) * factor,
+            TileKind::Dirt     => Vec3::new(0.55, 0.27, 0.07) * factor,
+            TileKind::Stone    => Vec3::new(0.50, 0.50, 0.50) * factor,
+            TileKind::Obsidian => Vec3::new(0.20, 0.05, 0.35) * factor,
+            TileKind::Air      => Vec3::new(0.20, 0.10, 0.05) * factor, // BACKGROUND_BROWN
+            _ => terrain.tiles[y][x].base_rgb,
+        };
+
+        /* 3 ── colour & depth for rendering */
         let (color, z) = color_and_z(&terrain, x, y);
 
+        /* 4 ── update an existing sprite or fetch/spawn one */
         match terrain.sprite_entities[y][x] {
             Some(e) => {
                 commands.entity(e).insert((

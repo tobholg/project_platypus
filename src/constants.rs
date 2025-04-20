@@ -29,8 +29,8 @@ pub const PLAYER_WIDTH:  f32 = 16.0;
 pub const PLAYER_HEIGHT: f32 = 16.0;
 pub const GRAVITY:       f32 = -650.0;
 pub const JUMP_SPEED:    f32 =  250.0;
-pub const JET_ACCEL:     f32 = 1000.0;
-pub const WALK_SPEED:    f32 =  200.0;
+pub const JET_ACCEL:     f32 = 1200.0;
+pub const WALK_SPEED:    f32 =  250.0;
 pub const COLLISION_STEPS: i32 = 4;
 pub const MAX_STEP_HEIGHT: f32 = TILE_SIZE * 2.0;
 
