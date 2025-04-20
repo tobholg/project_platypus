@@ -5,7 +5,7 @@ use std::ops::Range;
    WORLD SIZE — crank it up!
    =========================================================== */
 /// size of one square tile, in world units
-pub const TILE_SIZE: f32 = 8.0;
+pub const TILE_SIZE: f32 = 16.0;
 pub const RENDER_CHUNK: usize = 32;
 
 /// single‑chunk dimensions (tiles)
@@ -26,13 +26,13 @@ pub const ACTIVE_MARGIN: i32 = 16;
    player physics and movement
    =========================================================== */
 pub const PLAYER_WIDTH:  f32 = TILE_SIZE;
-pub const PLAYER_HEIGHT: f32 = 32.0;
+pub const PLAYER_HEIGHT: f32 = TILE_SIZE;
 pub const GRAVITY:       f32 = -650.0;
 pub const JUMP_SPEED:    f32 =  250.0;
 pub const JET_ACCEL:     f32 = 1000.0;
 pub const WALK_SPEED:    f32 =  200.0;
 pub const COLLISION_STEPS: i32 = 4;
-pub const MAX_STEP_HEIGHT: f32 = TILE_SIZE;
+pub const MAX_STEP_HEIGHT: f32 = TILE_SIZE * 2.0;
 
 pub const DASH_SPEED:        f32 = WALK_SPEED * 3.0; // 5 × walk speed
 pub const DASH_DURATION:     f32 = 0.1;              // seconds
@@ -63,7 +63,7 @@ pub const EXHAUST_SPEED_X: Range<f32> =  -50.0..  50.0;
 
 /* ------------ NEW: inventory & combat ------------------ */
 pub const PICKAXE_SPEED: f32   =  4.0;     // tiles / sec
-pub const BULLET_SPEED:  f32   = 800.0;     // px / sec (initial horizontal)
+pub const BULLET_SPEED:  f32   = 1200.0;     // px / sec (initial horizontal)
 pub const BULLET_LIFETIME: f32 =  4.0;     // sec
 pub const BULLET_DAMAGE:  f32   = 25.0;    // arbitrary
 pub const MINING_RADIUS:  f32   = DIG_RADIUS; // re‑use circle from digging

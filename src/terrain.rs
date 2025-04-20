@@ -16,6 +16,7 @@ use bevy::prelude::*;
 use noise::{NoiseFn, Perlin};
 use rand::Rng;
 use std::collections::VecDeque;
+use bevy::math::Mat2;          // 2×2 rotation matrix (Bevy re‑export)
 
 use crate::components::*;
 use crate::constants::*;
@@ -91,11 +92,11 @@ const EXPLORED_BRIGHTNESS: f32 = 0.25;
 /* tweakables ------------------------------------------------------------- */
 const OBSIDIAN_START_FRAC: f32 = 0.80;   // bottom 20 % of map is obsidian
 const ISLAND_DENSITY: usize    = 256;    // width / this  = island count
-const ISLAND_RADIUS_MIN: usize = 24;
-const ISLAND_RADIUS_MAX: usize = 48;
+const ISLAND_RADIUS_MIN: usize = 48;
+const ISLAND_RADIUS_MAX: usize = 128;
 
 /* cave parameters */
-const CAVE_FREQ_X: f64 = 0.015;   // horizontal stretching
+const CAVE_FREQ_X: f64 = 0.025;   // horizontal stretching
 const CAVE_FREQ_Y: f64 = 0.04;
 const CAVE_THRESH:  f64 = 0.15;
 
@@ -104,11 +105,24 @@ const RIFT_FREQ:   f64 = 0.018;
 const RIFT_THRESH: f64 = 0.75;
 
 /* layer‑leak probabilities */
-const DIRT_TO_STONE:   f32 = 0.02;
-const STONE_TO_OBSID:  f32 = 0.01;
+const DIRT_TO_STONE:   f32 = 0.05;
+const STONE_TO_OBSID:  f32 = 0.02;
 
 /* surface grass ratio */
 const GRASS_RATIO: f32 = 0.85;
+
+/* === sky‑island cave walker params ==================================== */
+const SKY_WALKERS_MIN:  u8  = 1;
+const SKY_WALKERS_MAX:  u8  = 2;
+const SKY_STEPS_MIN:    u16 = 150; // longer corridors
+const SKY_STEPS_MAX:    u16 = 260;
+const SKY_TURN_CHANCE:  f32 = 0.15; // fewer sharp bends
+const SKY_TUNNEL_R_MIN: i32 = 1;    // tighter tunnels (radius 1–2)
+const SKY_TUNNEL_R_MAX: i32 = 2;
+const SKY_ROOM_R_MIN:   i32 = 4;    // rooms roughly half previous size
+const SKY_ROOM_R_MAX:   i32 = 6;
+const SKY_ROOM_RATE:    f32 = 0.07; // less frequent room carving
+const SHELL_BUFFER:     i32 = 3;
 
 /* ===========================================================
    generate world + player
@@ -246,31 +260,145 @@ pub fn generate_world_and_player(
         }
     }
 
-    /* ──────────────────── Sky islands ─────────────────────────────── */
+    /* ──────────────────── Sky islands (overhauled) ────────────────── */
+    const ISLAND_MIN_RADIUS   : usize = 80;     // ⇠ was 48
+    const ISLAND_RADIUS_MAX   : usize = 128;
+    const ISLAND_Y_SCALE      : f32   = 0.75;   // shallower underside
+    const ISLAND_SURF_WAVES   : f64   = 0.06;   // grass‑line bumpiness
+    const ISLAND_GAP          : i32   = 10;     // min empty tiles between islands
+
+    /* micro‑cave params (x‑biased “ground” algorithm, tiny scale) */
+    const MICRO_CAVE_FREQ_X : f64 = CAVE_FREQ_X * 4.0;
+    const MICRO_CAVE_FREQ_Y : f64 = CAVE_FREQ_Y * 0.8;
+    const MICRO_CAVE_THRESH : f64 = CAVE_THRESH;       // reuse same cutoff
+
+    /* keep placed rectangles so we don’t overlap */
+    #[derive(Clone, Copy)]
+    struct Rect { min_x: i32, max_x: i32, min_y: i32, max_y: i32 }
+    let mut placed : Vec<Rect> = Vec::new();
+
     let island_count = w / ISLAND_DENSITY;
-    let noise_island = Perlin::new(rng.gen());
+    let mut rng      = rand::thread_rng();
+    let surf_noise   = Perlin::new(rng.gen());
+    let edge_noise   = Perlin::new(rng.gen());
+    let cave_noise   = Perlin::new(rng.gen());
 
     for _ in 0..island_count {
-        let cx = rng.gen_range(4..w - 4);
-        let cy = rng.gen_range(3..height_map[cx] / 2); // well above surface
-        let radius = rng.gen_range(ISLAND_RADIUS_MIN..=ISLAND_RADIUS_MAX) as f32;
+        /* pick centre + radii until it doesn’t clash with a previous island */
+        let (cx, cy, rx, ry_bottom, ry_top, rect) = 'search: loop {
+            let rx = rng.gen_range(ISLAND_MIN_RADIUS..=ISLAND_RADIUS_MAX) as f32;
+            let ry_bottom = rx * ISLAND_Y_SCALE;
+            let ry_top    = (rx * 0.30).max(8.0);
 
-        let vert  = (radius * 1.5).ceil() as i32;
-        let horiz = (radius * 2.0).ceil() as i32;
+            let cx = rng.gen_range(rx as i32 + 4 .. w as i32 - rx as i32 - 4);
+            let cy = rng.gen_range(3 .. height_map[cx as usize] as i32 / 2);
 
-        for iy in (cy as i32 - vert).max(0) as usize
-            ..=((cy as i32 + vert).min(h as i32 - 1) as usize)
+            let rect = Rect {
+                min_x: (cx as f32 - rx - ISLAND_GAP as f32) as i32,
+                max_x: (cx as f32 + rx + ISLAND_GAP as f32) as i32,
+                min_y: cy - 2,
+                max_y: cy + ry_bottom as i32 + 2,
+            };
+            if placed.iter().all(|r|
+                rect.max_x < r.min_x || rect.min_x > r.max_x ||
+                rect.max_y < r.min_y || rect.min_y > r.max_y
+            ) {
+                break 'search (cx, cy, rx, ry_bottom, ry_top, rect);
+            }
+        };
+        placed.push(rect);
+
+        /* 1 ─── solid ellipsoid with wavy grass line ---------------------- */
+        for dx in -(rx as i32)..=(rx as i32) {
+            let nx = dx as f32 / rx;
+            if nx.abs() > 1.0 { continue; }
+
+            let x  = cx + dx;
+            if x < 0 || x >= w as i32 { continue; }
+            let ux = x as usize;
+
+            /* ±2‑tile surface undulation */
+            let y_top = cy + (surf_noise.get([x as f64 * ISLAND_SURF_WAVES, 0.0]) * 2.0) as i32;
+
+            /* grass + 2 dirt tiles */
+            for (dy, kind) in [(0, TileKind::Grass), (1, TileKind::Dirt), (2, TileKind::Dirt)] {
+                let y = y_top + dy;
+                if y >= 0 && y < h as i32 {
+                    let uy = y as usize;
+                    tiles[uy][ux].kind      = kind;
+                    tiles[uy][ux].mine_time = if kind == TileKind::Grass { 0.20 } else { 0.25 };
+                }
+            }
+
+            /* stone/dirt underside */
+            let taper   = (1.0 - nx * nx).sqrt();
+            let depth   = (ry_bottom * taper) as i32;
+            for d in 3..=depth {
+                let y = y_top + d;
+                if y >= h as i32 { break; }
+                let uy = y as usize;
+
+                /* jitter edge a little without punching holes */
+                let e = edge_noise.get([x as f64 * 0.22, y as f64 * 0.22]) as f32;
+                if d == depth && e < -0.15 { continue; }
+
+                let kind = if d < 7 { TileKind::Dirt } else { TileKind::Stone };
+                let t    = if kind == TileKind::Dirt { 0.25 } else { 0.50 };
+                tiles[uy][ux].kind      = kind;
+                tiles[uy][ux].mine_time = t;
+            }
+        }
+
+        /* 2 ─── branching cavern system ------------------------------------- */
         {
-            for ix in (cx as i32 - horiz).max(0) as usize
-                ..=((cx as i32 + horiz).min(w as i32 - 1) as usize)
-            {
-                let nx = (ix as f32 - cx as f32) / radius;
-                let ny = (iy as f32 - cy as f32) / radius * 2.0;
-                let d  = nx * nx + ny * ny;
-                if d < 1.0 && noise_island.get([ix as f64 * 0.3, iy as f64 * 0.3]) > -0.2 {
-                    let outer = d > 0.7;
-                    tiles[iy][ix].kind      = if outer { TileKind::Dirt } else { TileKind::Stone };
-                    tiles[iy][ix].mine_time = if outer { 0.25 } else { 0.50 };
+            /* seed 1‑2 walkers in the island’s core ------------------------- */
+            let mut walkers: Vec<(Vec2, Vec2)> = {
+                let mut v = Vec::new();
+                let seeds = rng.gen_range(SKY_WALKERS_MIN..=SKY_WALKERS_MAX);
+                for _ in 0..seeds {
+                    let dx  = rng.gen_range(-(rx * 0.30) as i32 ..= (rx * 0.30) as i32);
+                    let dy  = rng.gen_range(ry_top as i32 + 4 .. (ry_bottom as i32 - 6));
+                    let pos = Vec2::new((cx + dx) as f32, (cy + dy) as f32);
+                    let dir = Vec2::new(
+                        rng.gen_range(-1.0..1.0),   // full horizontal freedom
+                        rng.gen_range(-0.15..0.15), // stronger x‑axis bias
+                    ).normalize();
+                    v.push((pos, dir));
+                }
+                v
+            };
+
+            /* walk each worm ------------------------------------------------ */
+            for (mut pos, mut dir) in walkers.drain(..) {
+                let steps = rng.gen_range(SKY_STEPS_MIN..=SKY_STEPS_MAX);
+                for _ in 0..steps {
+                    /* carve narrow tunnel or larger room */
+                    let r = if rng.gen::<f32>() < SKY_ROOM_RATE {
+                        rng.gen_range(SKY_ROOM_R_MIN..=SKY_ROOM_R_MAX)
+                    } else {
+                        rng.gen_range(SKY_TUNNEL_R_MIN..=SKY_TUNNEL_R_MAX)
+                    };
+                    carve_disc(&mut tiles, w, h, pos.x as i32, pos.y as i32, r);
+
+                    /* maybe turn a bit */
+                    if rng.gen::<f32>() < SKY_TURN_CHANCE {
+                        let ang = rng.gen_range(-0.9..0.9);           // ±≈50°
+                        dir = (Mat2::from_angle(ang) * dir).normalize();
+                    }
+
+                    /* step forward */
+                    pos += dir;
+
+                    /* bounce if we hit the shell ----------------------------- */
+                    let rel     = Vec2::new(pos.x - cx as f32, pos.y - cy as f32);
+                    let ellipse = Vec2::new(rel.x / rx, rel.y / ry_bottom);
+                    if ellipse.length_squared() > 0.80
+                        || (pos.y - cy as f32) < (SHELL_BUFFER as f32)
+                        || (cy as f32 + ry_bottom) - pos.y < SHELL_BUFFER as f32
+                    {
+                        dir = -dir;
+                        pos += dir * 2.0;
+                    }
                 }
             }
         }
@@ -314,6 +442,33 @@ pub fn generate_world_and_player(
     });
     commands.insert_resource(LastRect::default());
 }
+
+
+#[inline(always)]
+fn carve_disc(
+    tiles: &mut [Vec<Tile>],
+    w: usize,
+    h: usize,
+    cx: i32,
+    cy: i32,
+    r:  i32,
+) {
+    for dx in -r..=r {
+        let nx    = dx as f32 / r as f32;
+        let slice = ((1.0 - nx * nx).sqrt() * r as f32).round() as i32;
+
+        for dy in -slice..=slice {
+            let x = cx + dx;
+            let y = cy + dy;
+            if x < 0 || x >= w as i32 || y < 0 || y >= h as i32 { continue; }
+            if matches!(tiles[y as usize][x as usize].kind, TileKind::Sky) { continue; }
+
+            tiles[y as usize][x as usize].kind      = TileKind::Air;
+            tiles[y as usize][x as usize].mine_time = 0.0;
+        }
+    }
+}
+
 
 /* ===========================================================
    helpers for streaming sprites
