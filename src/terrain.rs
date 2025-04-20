@@ -62,13 +62,20 @@ pub struct Tile {
 #[derive(Resource)]
 pub struct Terrain {
     pub tiles:           Vec<Vec<Tile>>,
-    pub sprite_entities: Vec<Vec<Option<Entity>>>,
+    pub sprite_entities: Vec<Option<Entity>>,
     pub changed_tiles:   VecDeque<(usize, usize)>,
     pub free_sprites:    Vec<Entity>,          // sprite pool
     pub width:           usize,
     pub height:          usize,
     pub height_map:      Vec<usize>,
     pub color_noise:     Perlin,
+}
+
+impl Terrain {
+    #[inline(always)]
+    pub fn idx(&self, x: usize, y: usize) -> usize {
+        y * self.width + x
+    }
 }
 
 /* sliding active rectangle ------------------------------------------------ */
@@ -164,7 +171,7 @@ pub fn generate_world_and_player(
         ];
         h
     ];
-    let sprite_entities = vec![vec![None; w]; h];
+    let sprite_entities = vec![None; w * h];
 
     /* noises -------------------------------------------------------------- */
     let noise_rift = Perlin::new(rand::thread_rng().gen());
@@ -725,7 +732,8 @@ fn ensure_sprite(commands: &mut Commands, terrain: &mut Terrain, x: i32, y: i32)
         return;
     }
     let (ux, uy) = (x as usize, y as usize);
-    if terrain.sprite_entities[uy][ux].is_some() {
+    let idx      = terrain.idx(ux, uy);
+    if terrain.sprite_entities[idx].is_some() {
         return;
     }
     if !matches!(
@@ -733,10 +741,11 @@ fn ensure_sprite(commands: &mut Commands, terrain: &mut Terrain, x: i32, y: i32)
         TileKind::Grass | TileKind::Dirt | TileKind::Stone |
         TileKind::Obsidian | TileKind::Snow | TileKind::Air
     ) {
-        return; // Sky never gets a sprite
+        return;                         // Sky never gets a sprite
     }
 
     let (color, z) = color_and_z(terrain, ux, uy);
+
     let entity = if let Some(e) = terrain.free_sprites.pop() {
         commands.entity(e).insert((
             Visibility::Visible,
@@ -756,14 +765,15 @@ fn ensure_sprite(commands: &mut Commands, terrain: &mut Terrain, x: i32, y: i32)
     } else {
         spawn_tile(commands, terrain, ux, uy)
     };
-    terrain.sprite_entities[uy][ux] = Some(entity);
+    terrain.sprite_entities[idx] = Some(entity);
 }
+
 
 /* ===========================================================
    stream_tiles_system – stripe differencing + pooling
    (unchanged from previous version)
    =========================================================== */
-pub fn stream_tiles_system(
+   pub fn stream_tiles_system(
     mut commands: Commands,
     mut terrain: ResMut<Terrain>,
     rect: Res<ActiveRect>,
@@ -774,6 +784,7 @@ pub fn stream_tiles_system(
         return;
     }
 
+    /* first populate ----------------------------------------------------- */
     let Some(prev) = last_rect.0 else {
         for y in new.min_y..=new.max_y {
             for x in new.min_x..=new.max_x {
@@ -784,7 +795,7 @@ pub fn stream_tiles_system(
         return;
     };
 
-    /* spawn stripes entering view */
+    /* stripes entering view ---------------------------------------------- */
     for x in new.min_x..=new.max_x {
         if x < prev.min_x || x > prev.max_x {
             for y in new.min_y..=new.max_y {
@@ -800,15 +811,16 @@ pub fn stream_tiles_system(
         }
     }
 
-    /* pool stripes leaving view */
+    /* stripes leaving view (pool) ---------------------------------------- */
     for x in prev.min_x..=prev.max_x {
         if x < new.min_x || x > new.max_x {
             for y in prev.min_y..=prev.max_y {
                 let (ux, uy) = (x as usize, y as usize);
-                if let Some(e) = terrain.sprite_entities[uy][ux] {
+                let idx = terrain.idx(ux, uy);
+                if let Some(e) = terrain.sprite_entities[idx] {
                     commands.entity(e).insert(Visibility::Hidden);
                     terrain.free_sprites.push(e);
-                    terrain.sprite_entities[uy][ux] = None;
+                    terrain.sprite_entities[idx] = None;
                 }
             }
         }
@@ -818,15 +830,17 @@ pub fn stream_tiles_system(
             for x in prev.min_x..=prev.max_x {
                 if x >= new.min_x && x <= new.max_x {
                     let (ux, uy) = (x as usize, y as usize);
-                    if let Some(e) = terrain.sprite_entities[uy][ux] {
+                    let idx = terrain.idx(ux, uy);
+                    if let Some(e) = terrain.sprite_entities[idx] {
                         commands.entity(e).insert(Visibility::Hidden);
                         terrain.free_sprites.push(e);
-                        terrain.sprite_entities[uy][ux] = None;
+                        terrain.sprite_entities[idx] = None;
                     }
                 }
             }
         }
     }
+
     last_rect.0 = Some(new);
 }
 
@@ -880,24 +894,24 @@ pub fn redraw_changed_tiles_system(
         TILE_SIZE,
     };
 
-    // ── buffers to batch‑write commands ────────────────────────────────
     let mut spawns:  Vec<(Sprite, Transform, TileSprite)> = Vec::new();
     let mut inserts: Vec<(Entity, (Visibility, Sprite, Transform, TileSprite))> = Vec::new();
 
     while let Some((x, y)) = terrain.changed_tiles.pop_front() {
-        let kind = terrain.tiles[y][x].kind;
+        let idx_sprite = terrain.idx(x, y);
+        let kind       = terrain.tiles[y][x].kind;
 
-        /* 1 ── SKY tiles: hide & recycle sprite, skip further work */
+        /* SKY tiles: hide & recycle sprite */
         if kind == TileKind::Sky {
-            if let Some(e) = terrain.sprite_entities[y][x] {
+            if let Some(e) = terrain.sprite_entities[idx_sprite] {
                 commands.entity(e).insert(Visibility::Hidden);
                 terrain.free_sprites.push(e);
-                terrain.sprite_entities[y][x] = None;
+                terrain.sprite_entities[idx_sprite] = None;
             }
             continue;
         }
 
-        /* 2 ── recompute cached tint */
+        /* re‑tint --------------------------------------------------------- */
         let raw = terrain.color_noise.get([
             x as f64 * COLOR_NOISE_SCALE,
             y as f64 * COLOR_NOISE_SCALE,
@@ -919,12 +933,11 @@ pub fn redraw_changed_tiles_system(
             _ => terrain.tiles[y][x].base_rgb,
         };
 
-        /* 3 ── colour & depth */
+        /* colour & depth -------------------------------------------------- */
         let (color, z) = color_and_z(&terrain, x, y);
         let tile_sprite = TileSprite { x, y };
 
-        match terrain.sprite_entities[y][x] {
-            // ­— existing sprite → just update
+        match terrain.sprite_entities[idx_sprite] {
             Some(entity) => {
                 let transform = Transform {
                     translation: Vec3::new(
@@ -941,7 +954,6 @@ pub fn redraw_changed_tiles_system(
                 };
                 inserts.push((entity, (Visibility::Visible, sprite, transform, tile_sprite)));
             }
-            // ­— no sprite yet → reuse pooled one or mark for spawn
             None => {
                 let transform = Transform {
                     translation: Vec3::new(
@@ -959,7 +971,7 @@ pub fn redraw_changed_tiles_system(
 
                 if let Some(entity) = terrain.free_sprites.pop() {
                     inserts.push((entity, (Visibility::Visible, sprite, transform, tile_sprite)));
-                    terrain.sprite_entities[y][x] = Some(entity);
+                    terrain.sprite_entities[idx_sprite] = Some(entity);
                 } else {
                     spawns.push((sprite, transform, tile_sprite));
                 }
@@ -967,13 +979,10 @@ pub fn redraw_changed_tiles_system(
         }
     }
 
-    /* 4 ── flush the two batched command buffers */
+    /* flush the command buffers */
     if !spawns.is_empty() {
         commands.spawn_batch(spawns);
-        // Entity IDs will be written into the grid by
-        // `sync_tile_sprite_entities_system` in the same frame.
     }
-
     if !inserts.is_empty() {
         commands.insert_or_spawn_batch(inserts);
     }
@@ -1073,14 +1082,14 @@ pub fn solid(terrain: &Terrain, tx: i32, ty: i32) -> bool {
    sync_tile_sprite_entities_system
    – writes freshly spawned TileSprite entity IDs into the grid
    =========================================================== */
-pub fn sync_tile_sprite_entities_system(
+   pub fn sync_tile_sprite_entities_system(
     mut terrain: ResMut<Terrain>,
     q: Query<(Entity, &TileSprite), Added<TileSprite>>,
 ) {
     for (entity, tile) in &q {
-        // Make sure indices are within bounds
         if tile.y < terrain.height && tile.x < terrain.width {
-            terrain.sprite_entities[tile.y][tile.x] = Some(entity);
+            let idx = terrain.idx(tile.x, tile.y);
+            terrain.sprite_entities[idx] = Some(entity);
         }
     }
 }
