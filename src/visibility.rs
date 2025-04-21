@@ -4,8 +4,11 @@ use bevy::prelude::*;
 use std::collections::HashSet;
 
 use crate::components::Player;
-use crate::constants::TILE_SIZE;
-use crate::world_gen::{world_to_tile_y, ActiveRect, Terrain, TileKind};
+use crate::constants::{TILE_SIZE,
+    CHUNK_WIDTH,  CHUNK_HEIGHT,
+    LOADED_CHUNK_COLS, LOADED_CHUNK_ROWS};
+use crate::world_gen::{world_to_tile_y, Terrain, TileKind};
+use crate::tile_stream::LoadedWindow;
 
 /* ===========================================================
    Player‑tile resource
@@ -28,7 +31,7 @@ pub struct VisibleTiles {
 /* ===========================================================
    Tunables
    =========================================================== */
-pub const FOV_RADIUS: i32 = 64;            // ← was 32
+pub const FOV_RADIUS: i32 = 48;            // ← was 32
 pub const LIGHT_BLEED_RADIUS: i32 = 2;
 pub const ALWAYS_VISIBLE_DEPTH: usize = 4;
 
@@ -70,34 +73,38 @@ pub fn detect_player_tile_change_system(
 }
 
 /* ===========================================================
-   recompute FOV – runs only when `PlayerTile` changed
+   recompute FOV — runs only when `PlayerTile` changed
+   (optimised: all work is limited to the streamed chunk window)
    =========================================================== */
-pub fn recompute_fov_system(
-    mut terrain: ResMut<Terrain>,
-    player_tile: Res<PlayerTile>,
-    rect: Res<ActiveRect>,
-    mut vis: ResMut<VisibleTiles>,
+   pub fn recompute_fov_system(
+    mut terrain:   ResMut<Terrain>,
+    player_tile:   Res<PlayerTile>,
+    loaded:        Res<LoadedWindow>,
+    mut vis:       ResMut<VisibleTiles>,
 ) {
+    // Early‑out if the player is still on the same tile
     if !player_tile.is_changed() {
         return;
     }
 
-    let (w, h) = (terrain.width as i32, terrain.height as i32);
-    let (px, py) = (player_tile.x, player_tile.y);
+    let (world_w, world_h) = (terrain.width as i32, terrain.height as i32);
+    let (px, py)           = (player_tile.x, player_tile.y);
+
+    /* ---------- bounds of the current streamed chunk window ---------- */
+    let min_x = (loaded.origin_cx * CHUNK_WIDTH  as i32).clamp(0, world_w - 1);
+    let max_x = ((loaded.origin_cx + LOADED_CHUNK_COLS - 1) * CHUNK_WIDTH  as i32
+                + CHUNK_WIDTH  as i32 - 1).clamp(0, world_w - 1);
+    let min_y = (loaded.origin_cy * CHUNK_HEIGHT as i32).clamp(0, world_h - 1);
+    let max_y = ((loaded.origin_cy + LOADED_CHUNK_ROWS - 1) * CHUNK_HEIGHT as i32
+                + CHUNK_HEIGHT as i32 - 1).clamp(0, world_h - 1);
 
     /* ---------- fresh visible set ---------- */
     let mut new_visible = std::mem::take(&mut vis.scratch);
 
-    /* 8‑way shadow‑casting ---------------------------------------------- */
+    /* 8‑way recursive shadow‑casting ----------------------------------- */
     const OCT: [(i32, i32, i32, i32); 8] = [
-        (1, 0, 0, 1),
-        (0, 1, 1, 0),
-        (0, -1, 1, 0),
-        (-1, 0, 0, 1),
-        (-1, 0, 0, -1),
-        (0, -1, -1, 0),
-        (0, 1, -1, 0),
-        (1, 0, 0, -1),
+        ( 1,  0,  0,  1), ( 0,  1,  1,  0), ( 0, -1,  1,  0), (-1,  0,  0,  1),
+        (-1,  0,  0, -1), ( 0, -1, -1,  0), ( 0,  1, -1,  0), ( 1,  0,  0, -1),
     ];
     for &(xx, xy, yx, yy) in &OCT {
         cast_light(
@@ -115,11 +122,20 @@ pub fn recompute_fov_system(
             &mut new_visible,
         );
     }
-    if (0..w).contains(&px) && (0..h).contains(&py) {
+
+    /* Always include the player’s own tile */
+    if px >= min_x && px <= max_x && py >= min_y && py <= max_y {
         new_visible.insert((px as usize, py as usize));
     }
 
-    /* halo bleed --------------------------------------------------------- */
+    /* ---------- trim to the streamed window ---------- */
+    new_visible.retain(|&(ux, uy)| {
+        let x = ux as i32;
+        let y = uy as i32;
+        x >= min_x && x <= max_x && y >= min_y && y <= max_y
+    });
+
+    /* ---------- halo bleed (still clamped to window) ---------- */
     if LIGHT_BLEED_RADIUS > 0 {
         let mut extra = Vec::<(usize, usize)>::new();
         for &(x, y) in &new_visible {
@@ -127,7 +143,7 @@ pub fn recompute_fov_system(
                 for bx in -LIGHT_BLEED_RADIUS..=LIGHT_BLEED_RADIUS {
                     let nx = x as i32 + bx;
                     let ny = y as i32 + by;
-                    if (0..w).contains(&nx) && (0..h).contains(&ny) {
+                    if nx >= min_x && nx <= max_x && ny >= min_y && ny <= max_y {
                         extra.push((nx as usize, ny as usize));
                     }
                 }
@@ -136,27 +152,28 @@ pub fn recompute_fov_system(
         new_visible.extend(extra);
     }
 
-    /* surface band – across whole active rect --------------------------- */
-    for x in rect.min_x.max(0) as usize..=rect.max_x.min(w - 1) as usize {
-        let ground = terrain.height_map[x];
-        let max_y = (ground + ALWAYS_VISIBLE_DEPTH).min(h as usize - 1);
-        for y in 0..=max_y {
+    /* ---------- surface band: first few tiles under ground ---------- */
+    for x in (min_x as usize)..=(max_x as usize) {
+        let ground   = terrain.height_map[x];
+        let max_surf = (ground + ALWAYS_VISIBLE_DEPTH).min(world_h as usize - 1);
+        for y in 0..=max_surf {
             new_visible.insert((x, y));
         }
     }
 
-    /* ---------------- diff old ↔ new ----------------------------------- */
+    /* ---------- diff old ↔ new sets ---------- */
     for &(ux, uy) in vis.set.difference(&new_visible) {
         terrain.tiles[uy][ux].visible = false;
         terrain.changed_tiles.push_back((ux, uy));
     }
     for &(ux, uy) in new_visible.difference(&vis.set) {
         let tile = &mut terrain.tiles[uy][ux];
-        tile.visible = true;
+        tile.visible  = true;
         tile.explored = true;
         terrain.changed_tiles.push_back((ux, uy));
     }
 
+    /* ---------- store + recycle ---------- */
     vis.set = new_visible;
     vis.scratch.clear();
 }

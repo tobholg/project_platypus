@@ -13,7 +13,7 @@ use crate::{
 /// horizontal distance within which an orc can hit the player
 const STRIKE_RANGE: f32 = TILE_SIZE * 6.0;
 /// distance at which an orc will **start** swinging (may still miss)
-const ATTACK_RANGE: f32 = TILE_SIZE * 16.0;
+const ATTACK_RANGE: f32 = TILE_SIZE * 32.0;
 
 /* ===========================================================
    start‑up: drop orcs on the surface
@@ -292,7 +292,7 @@ pub fn enemy_attack_system(
             if let Some(atlas) = sprite.texture_atlas.as_ref() {
                 if atlas.index == 3 { // sheet index 3 == “number 4”
                 if in_hit_range {
-                    health.current = (health.current - 20.0).max(0.0);
+                    health.current = (health.current - 10.0).max(0.0);
                     health.last_damage = 0.0;
                 }
                     enemy.hit_pending = false; // strike resolved

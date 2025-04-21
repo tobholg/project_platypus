@@ -10,6 +10,15 @@ use noise::NoiseFn;
 
 use crate::components::*;
 use crate::constants::*;
+
+/* ===========================================================
+   loaded window (4×3 chunk grid)
+   =========================================================== */
+#[derive(Resource, Copy, Clone, Debug, PartialEq, Eq)]
+pub struct LoadedWindow {
+    pub origin_cx: i32, // left‑most loaded chunk column
+    pub origin_cy: i32, // top‑most  loaded chunk row
+}
 use crate::world_gen::{
     tile_to_world_y, world_to_tile_y, ActiveRect, LastRect, Terrain, Tile, TileKind,
     EXPLORED_BRIGHTNESS,
@@ -146,15 +155,15 @@ fn ensure_sprite(commands: &mut Commands, terrain: &mut Terrain, x: i32, y: i32)
 pub fn stream_tiles_system(
     mut commands: Commands,
     mut terrain: ResMut<Terrain>,
-    rect: Res<ActiveRect>,
+    loaded: Res<LoadedWindow>,
 ) {
     /* -----------------------------------------------------------
    chunk‑level differencing
     ----------------------------------------------------------- */
-    let new_min_cx = rect.min_x / CHUNK_WIDTH  as i32;
-    let new_max_cx = rect.max_x / CHUNK_WIDTH  as i32;
-    let new_min_cy = rect.min_y / CHUNK_HEIGHT as i32;
-    let new_max_cy = rect.max_y / CHUNK_HEIGHT as i32;
+    let new_min_cx = loaded.origin_cx;
+    let new_max_cx = loaded.origin_cx + LOADED_CHUNK_COLS - 1;
+    let new_min_cy = loaded.origin_cy;
+    let new_max_cy = loaded.origin_cy + LOADED_CHUNK_ROWS - 1;
 
     #[derive(Copy, Clone, PartialEq)]
     struct ChunkRect { min_cx: i32, max_cx: i32, min_cy: i32, max_cy: i32 }
@@ -216,6 +225,66 @@ pub fn stream_tiles_system(
     }
 
     unsafe { PREV = Some(new_rect) };
+}
+
+/* ===========================================================
+   shift_loaded_window_system
+   – keeps a 4×3 chunk window centred on the player and
+     moves it whenever they step into an edge chunk
+   =========================================================== */
+pub fn shift_loaded_window_system(
+    cam_q: Query<&Transform, With<Camera>>,
+    terrain: Res<Terrain>,
+    mut window_res: Option<ResMut<LoadedWindow>>,
+    mut commands: Commands,
+) {
+    let cam_tf = match cam_q.get_single() {
+        Ok(t) => t,
+        Err(_) => return,
+    };
+
+    // Player position in chunk space
+    let px = (cam_tf.translation.x / TILE_SIZE).round() as i32;
+    let py = world_to_tile_y(terrain.height, cam_tf.translation.y);
+    let player_cx = px / CHUNK_WIDTH as i32;
+    let player_cy = py / CHUNK_HEIGHT as i32;
+
+    match window_res {
+        Some(mut win) => {
+            let mut moved = false;
+
+            // Re‑position the loaded‑chunk window in a single step so the player
+            // is guaranteed to be inside it even if they crossed multiple chunks
+            // in one frame (e.g. during fast falls or dashes).
+ 
+            let max_cx = (terrain.width as i32 / CHUNK_WIDTH as i32) - LOADED_CHUNK_COLS;
+            let max_cy = (terrain.height as i32 / CHUNK_HEIGHT as i32) - LOADED_CHUNK_ROWS;
+ 
+            let new_origin_cx = player_cx
+                .saturating_sub(LOADED_CHUNK_COLS / 2)
+                .clamp(0, max_cx);
+            let new_origin_cy = player_cy
+                .saturating_sub(LOADED_CHUNK_ROWS / 2)
+                .clamp(0, max_cy);
+ 
+            if new_origin_cx != win.origin_cx || new_origin_cy != win.origin_cy {
+                win.origin_cx = new_origin_cx;
+                win.origin_cy = new_origin_cy;
+                moved = true;
+            }
+
+            if moved {
+                // mark as changed so dependent systems run
+                *win = *win;
+            }
+        }
+        None => {
+            // first run – centre the window on the player's chunk
+            let origin_cx = player_cx - LOADED_CHUNK_COLS / 2;
+            let origin_cy = player_cy - LOADED_CHUNK_ROWS / 2;
+            commands.insert_resource(LoadedWindow { origin_cx, origin_cy });
+        }
+    }
 }
 
 /* ===========================================================

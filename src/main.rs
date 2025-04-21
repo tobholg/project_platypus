@@ -23,8 +23,8 @@ use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
 /* generation + streaming APIs ------------------------------------------- */
 use world_gen::{generate_world_and_player, ActiveRect};
 use tile_stream::{
-    redraw_changed_tiles_system, stream_tiles_system, sync_tile_sprite_entities_system,
-    update_active_rect_system,
+    shift_loaded_window_system, redraw_changed_tiles_system, stream_tiles_system,
+    sync_tile_sprite_entities_system, update_active_rect_system,
 };
 
 /* game‑logic helpers ---------------------------------------------------- */
@@ -175,7 +175,7 @@ fn main() {
         .insert_resource(ClearColor(Color::srgb(0.15, 0.55, 0.90)))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                resolution: (1280., 720.).into(),
+                resolution: (1920., 1080.).into(),
                 mode: WindowMode::Windowed,
                 ..default()
             }),
@@ -219,7 +219,8 @@ fn main() {
             Update,
             (
                 /* world & enemies ---------------------------------------- */
-                stream_tiles_system,
+                shift_loaded_window_system,
+                stream_tiles_system.after(shift_loaded_window_system),
                 redraw_changed_tiles_system,
                 enemy::update_active_tag_system,
                 enemy::enemy_ai_system,

@@ -578,7 +578,7 @@ pub fn bullet_update_system(
     terrain: Res<Terrain>,
 ) {
     let dt       = time.delta_secs();
-    let half_orc = Vec2::new(PLAYER_WIDTH, PLAYER_HEIGHT) / 2.0;
+    let half_orc = Vec2::new(PLAYER_WIDTH, PLAYER_HEIGHT);
     let mut knocks: Vec<(Entity, f32)> = Vec::new(); // (orc‑ID, ±1)
 
     /* ───────── 1. move bullets & process hits ───────── */

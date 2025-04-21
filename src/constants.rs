@@ -5,16 +5,20 @@ use std::ops::Range;
    WORLD SIZE — crank it up!
    =========================================================== */
 /// size of one square tile, in world units
-pub const TILE_SIZE: f32 = 12.0;
-pub const RENDER_CHUNK: usize = 32;
+pub const TILE_SIZE: f32 = 8.0;
 
 /// single‑chunk dimensions (tiles)
-pub const CHUNK_WIDTH:  usize = 64;
-pub const CHUNK_HEIGHT: usize = 64;
+pub const CHUNK_WIDTH:  usize = 32;
+pub const CHUNK_HEIGHT: usize = 32;
 
 /// number of chunks (world dimensions)
-pub const NUM_CHUNKS_X: usize = 64;    // width  = 10 240 tiles
-pub const NUM_CHUNKS_Y: usize = 32;    // height =  1 920 tiles
+pub const NUM_CHUNKS_X: usize = 256;    // width  = 10 240 tiles
+pub const NUM_CHUNKS_Y: usize = 64;    // height =  1 920 tiles
+/* ===========================================================
+   streamed window size (in chunks)
+   =========================================================== */
+pub const LOADED_CHUNK_COLS: i32 = 9;
+pub const LOADED_CHUNK_ROWS: i32 = 7;
 
 /* ===========================================================
    ACTIVE WINDOW (dynamic)
@@ -26,7 +30,7 @@ pub const ACTIVE_MARGIN: i32 = 16;
    player physics and movement
    =========================================================== */
 pub const PLAYER_WIDTH:  f32 = 16.0;
-pub const PLAYER_HEIGHT: f32 = 24.0;
+pub const PLAYER_HEIGHT: f32 = 16.0;
 pub const GRAVITY:       f32 = -650.0;
 pub const JUMP_SPEED:    f32 =  250.0;
 pub const JET_ACCEL:     f32 = 1200.0;
