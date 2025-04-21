@@ -226,9 +226,9 @@ pub fn generate_world_and_player(
             let (kind, mine_time) = match kind {
                 TileKind::Grass     => (TileKind::Grass,    0.10),
                 TileKind::Snow      => (TileKind::Grass,    0.10),
-                TileKind::Dirt      => (TileKind::Dirt,     0.25),
-                TileKind::Stone     => (TileKind::Stone,    0.50),
-                TileKind::Obsidian  => (TileKind::Obsidian, 1.00),
+                TileKind::Dirt      => (TileKind::Dirt,     1.0),
+                TileKind::Stone     => (TileKind::Stone,    2.50),
+                TileKind::Obsidian  => (TileKind::Obsidian, 10.00),
                 TileKind::Air | TileKind::Sky => (kind, 0.0),
             };
             tiles[y][x].kind      = kind;

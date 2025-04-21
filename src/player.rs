@@ -117,26 +117,38 @@ pub fn physics_and_collision_system(
             let y_bot = world_to_tile_y(terrain.height, tf.translation.y - half.y + 0.1);
             let (y_min, y_max) = if y_top <= y_bot { (y_top, y_bot) } else { (y_bot, y_top) };
 
+            // ─── try stepping up when the tile in front is solid ────────────────
             if (y_min..=y_max).any(|ty| solid(&terrain, tx, ty)) {
-                /* one‑tile auto‑step */
-                if ply.grounded && vel.0.y <= 0.0 {
-                    let lifted = tf.translation.y + MAX_STEP_HEIGHT;
-                    let ty_top = world_to_tile_y(terrain.height, lifted + half.y - 0.1);
-                    let ty_bot = world_to_tile_y(terrain.height, lifted - half.y + 0.1);
-                    let (smin, smax) =
-                        if ty_top <= ty_bot { (ty_top, ty_bot) } else { (ty_bot, ty_top) };
+                // Progressive search: walk up slopes up to MAX_STEP_HEIGHT pixels high
+                let mut stepped = false;
 
-                    if !(smin..=smax).any(|ty| solid(&terrain, tx, ty)) {
-                        tf.translation.y += MAX_STEP_HEIGHT;
-                        tf.translation.x = new_x;
-                        ply.grounded = true;
-                    } else {
-                        vel.0.x = 0.0;
+                // Don’t interfere while the player is moving upward (jumping)
+                if vel.0.y <= 0.0 {
+                    for h in 1..=MAX_STEP_HEIGHT as i32 {
+                        let lifted = tf.translation.y + h as f32;
+
+                        let ty_top = world_to_tile_y(terrain.height, lifted + half.y - 0.1);
+                        let ty_bot = world_to_tile_y(terrain.height, lifted - half.y + 0.1);
+                        let (smin, smax) = if ty_top <= ty_bot { (ty_top, ty_bot) }
+                                        else                  { (ty_bot, ty_top) };
+
+                        // Is there clear space at this height?
+                        if !(smin..=smax).any(|ty| solid(&terrain, tx, ty)) {
+                            tf.translation.y += h as f32;   // climb
+                            tf.translation.x  = new_x;      // move forward
+                            ply.grounded      = true;
+                            stepped           = true;
+                            break;
+                        }
                     }
-                } else {
+                }
+
+                // Still blocked? Then stop horizontal movement for this step
+                if !stepped {
                     vel.0.x = 0.0;
                 }
             } else {
+                // Nothing in the way – move normally
                 tf.translation.x = new_x;
             }
         }
@@ -289,8 +301,11 @@ pub fn pickaxe_mining_system(
     mut terrain: ResMut<Terrain>,
     mut commands: Commands,
     inv_q: Query<&Inventory, With<Player>>,
+    player_q: Query<&Transform, With<Player>>,
 ) {
     let Ok(inv) = inv_q.get_single() else { return };
+    let Ok(player_tf) = player_q.get_single() else { return };
+    let player_pos = player_tf.translation.truncate();
     if inv.selected != HeldItem::Pickaxe || !mouse.pressed(MouseButton::Left) {
         return;
     }
@@ -299,6 +314,9 @@ pub fn pickaxe_mining_system(
     let Some(cursor) = window.cursor_position() else { return };
     let (cam, cam_tf) = cam_q.single();
     let Ok(world) = cam.viewport_to_world_2d(cam_tf, cursor) else { return };
+    if (world - player_pos).length_squared() > DIG_RADIUS * DIG_RADIUS {
+        return; // cursor out of reach
+    }
 
     let min_x = ((world.x - MINING_RADIUS) / TILE_SIZE).floor() as i32;
     let max_x = ((world.x + MINING_RADIUS) / TILE_SIZE).ceil()  as i32;
@@ -346,6 +364,7 @@ pub fn pickaxe_mining_system(
     windows: Query<&Window>,
     cam_q: Query<(&Camera, &GlobalTransform)>,
     inv_q: Query<&Inventory, With<Player>>,
+    player_q: Query<&Transform, With<Player>>,
     terrain: Res<Terrain>,
     old: Query<Entity, With<Highlight>>,   // clear previous frame
 ) {
@@ -359,10 +378,16 @@ pub fn pickaxe_mining_system(
     let Some(cursor) = window.cursor_position() else { return };
     let (cam, cam_tf)    = cam_q.single();
     let Ok(world) = cam.viewport_to_world_2d(cam_tf, cursor) else { return };
+    let Ok(player_tf) = player_q.get_single() else { return };
+    let player_pos = player_tf.translation.truncate();
+    let too_far = (world - player_pos).length_squared() > DIG_RADIUS * DIG_RADIUS;
 
     match inv.selected {
         /* ---------- pickaxe: opaque‑red squares in mining radius ---------- */
         HeldItem::Pickaxe => {
+            if too_far {
+                return; // skip red highlight when the cursor is beyond dig range
+            }
             let min_x = ((world.x - MINING_RADIUS) / TILE_SIZE).floor() as i32;
             let max_x = ((world.x + MINING_RADIUS) / TILE_SIZE).ceil()  as i32;
             let min_y_world = world.y - MINING_RADIUS;

@@ -5,7 +5,7 @@ use std::ops::Range;
    WORLD SIZE — crank it up!
    =========================================================== */
 /// size of one square tile, in world units
-pub const TILE_SIZE: f32 = 8.0;
+pub const TILE_SIZE: f32 = 12.0;
 
 /// single‑chunk dimensions (tiles)
 pub const CHUNK_WIDTH:  usize = 32;
@@ -18,7 +18,7 @@ pub const NUM_CHUNKS_Y: usize = 64;    // height =  1 920 tiles
    streamed window size (in chunks)
    =========================================================== */
 pub const LOADED_CHUNK_COLS: i32 = 9;
-pub const LOADED_CHUNK_ROWS: i32 = 7;
+pub const LOADED_CHUNK_ROWS: i32 = 6;
 
 /* ===========================================================
    ACTIVE WINDOW (dynamic)
@@ -36,7 +36,7 @@ pub const JUMP_SPEED:    f32 =  250.0;
 pub const JET_ACCEL:     f32 = 1200.0;
 pub const WALK_SPEED:    f32 =  250.0;
 pub const COLLISION_STEPS: i32 = 4;
-pub const MAX_STEP_HEIGHT: f32 = TILE_SIZE * 2.0;
+pub const MAX_STEP_HEIGHT: f32 = TILE_SIZE;
 
 pub const DASH_SPEED:        f32 = WALK_SPEED * 3.0; // 5 × walk speed
 pub const DASH_DURATION:     f32 = 0.1;              // seconds
@@ -70,7 +70,7 @@ pub const PICKAXE_SPEED: f32   =  4.0;     // tiles / sec
 pub const BULLET_SPEED:  f32   = 1200.0;     // px / sec (initial horizontal)
 pub const BULLET_LIFETIME: f32 =  3.0;     // sec
 pub const BULLET_DAMAGE:  f32   = 35.0;    // arbitrary
-pub const MINING_RADIUS:  f32   = DIG_RADIUS; // re‑use circle from digging
+pub const MINING_RADIUS: f32 = 2.0 * TILE_SIZE;    // radius of blocks actually mined
 
 /* ------------ particle spray (mining debris) ----------- */
 pub const DEBRIS_LIFETIME: f32 = 0.2;
@@ -81,7 +81,7 @@ pub const DEBRIS_SPEED_Y:  std::ops::Range<f32> =  -24.0..24.0;
 /* ===========================================================
    digging
    =========================================================== */
-pub const DIG_RADIUS: f32 = 16.0;
+pub const DIG_RADIUS: f32 = 8.0 * TILE_SIZE;    // maximum reach: 8 tiles
 
 /* ===========================================================
    enemy behaviour
