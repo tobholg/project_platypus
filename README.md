@@ -13,6 +13,7 @@ cargo run -p platypus --release                    # the game
 PLATYPUS_WORLD=flat cargo run -p platypus --release  # an empty sandbox box
 PLATYPUS_WORLD=small cargo run -p platypus --release # the small world preset (8192 × 4096; default large, 32768 × 16384)
 PLATYPUS_SEED=42 cargo run -p platypus --release     # another world
+PLATYPUS_SPAWN_X=2600 cargo run -p platypus --release  # start elsewhere (e.g. the tundra; worldview lists the biomes)
 ```
 
 Look at a whole generated world, or a region of it at 1:1, without starting the game:
@@ -34,7 +35,10 @@ The toolchain is pinned in `rust-toolchain.toml`; rustup fetches it on first bui
 for a double jump, against a wall to wall-jump) · Shift dash
 
 **Hands** (the default; items in `assets/data/items.ron`): 1–0 pick a hotbar slot ·
-LMB use it · hold Ctrl for the right tool for what's at the cursor (auto tool) ·
+LMB use it (hold it with the cursor below you to dig straight down, beside you for a
+tunnel: the smart cursor digs a hole you fit; Alt toggles it) · hold Ctrl for the
+right tool for what's at the cursor (auto tool) · the key left of 1 (or F1) switches
+to the dev tools and back ·
 I opens the pack (click to pick up and put down a stack, Shift-click to move it
 between the hotbar and the pack). Mining and building work in 4 × 4-cell blocks;
 the outlined block is the one you'll hit (the first minable block on the line from
@@ -45,7 +49,7 @@ axe, torches, bombs and glow sticks. Chests sit in cave pockets underground
 (right-click to open, R takes everything, loot by depth in `assets/data/loot.ron`);
 mine one to take it with you.
 
-**Dev tools** (F1 switches to them and back; tuning in `assets/data/tools.ron`, hot-reloaded):
+**Dev tools** (the key left of 1, or F1, switches to them and back; tuning in `assets/data/tools.ron`, hot-reloaded):
 
 | Key | Tool | LMB |
 |---|---|---|

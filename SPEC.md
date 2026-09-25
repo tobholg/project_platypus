@@ -124,8 +124,20 @@ checksums.
   lookup. Snow, ice and bare rock follow from it; nothing is painted by biome.
 - Biomes (stage 2) are laid out like Terraria's: oceans at both ends, a forest
   at the spawn, a tundra towards one edge and a jungle towards the other, a
-  desert between, temperate forest, plains and swamp filling the rest, never
-  the same twice in a row. Each sets warmth, land height, hills, tree density
+  mountain range between the tundra and the spawn, a deep forest somewhere
+  away from the spawn (each of those two takes a neighbouring region too, so
+  they run 6–12 k cells), a desert, temperate forest, plains and swamp
+  filling the rest, never the same twice in a row.
+  - The mountain range: a long ridge (700–1 000 high) with a peak every
+    900–1 400 cells (1 400–2 200 high) on it, cold (−6 °C); above the peaks
+    band the ground rises ever more slowly rather than being cut flat.
+    Lone massifs (three) stay out of the range and the deep forest.
+  - The deep forest: denser, bigger trees toward its heart (to 1.45×), old
+    elders at the heart with dark leaves that let little light through.
+  - Tree species: broadleaf (temperate), conifer (below the 4 °C tree line,
+    down to −18 °C: the taiga, the mountainsides; tiers of needles on a thin
+    trunk line, snow along each tier's top where it freezes, from the white
+    end of the needles' colour ramp), elder (the deep forest). Each sets warmth, land height, hills, tree density
   (`lushness` shifts the forest planner toward woods or meadow) and lake
   chance.
 - Relief: rolling hills and cliff steps per biome; oceans shelve down from the
@@ -135,7 +147,9 @@ checksums.
   meet, none near the spawn. Steep faces wander sideways (overhangs, ledges);
   crests and gentle slopes stay put. Soil thins with slope (bare rock on
   cliffs); snow lies where the ground is below 0 °C and not steep (deeper the
-  colder), so ledges hold it; trees stop at 4 °C (a tree line).
+  colder, measured across the slope so steep faces get a crust; very cold it
+  clings to steeper faces: below −8 °C slopes to 3, below −15 °C to 5), so
+  ledges hold it and cold peaks are white.
 - Water: local basins (rims looked for 1 200 cells either side) are filled to
   their lowest rim, levelled flat per lake and capped by the biome's depth, so
   every lake is held and asleep on load; three big bowls always hold one,
@@ -190,15 +204,19 @@ DESIGN.md §4–5, stage 4 of the world arc.
   lost to rounding). `Inventory` is a component any creature can carry; the
   player's is 40 slots, the first 10 the hotbar (1–0). Mined blocks drop as
   items that drift to a player with room (48 cells) and are picked up (6).
-- Smart cursor: a swing hits the first minable block on the line from the
-  hand toward the cursor within reach (the face you see); a placement goes
+- Smart cursor (on by default, Alt toggles): aimed mostly down, up or
+  sideways, a pickaxe clears a tunnel the body fits, nearest first: hold the
+  button with the cursor below and the whole row under your feet goes before
+  the next, so you drop and keep digging; sideways, a face as tall as you.
+  Aimed diagonally (and for the axe) it hits the first minable block on the
+  line from the hand toward the cursor (the face you see). Plain cursor: the
+  block under it. A placement goes
   under the cursor if free and supported (a solid neighbour or a wall behind),
   else against whatever the line meets, never into open air. Pure functions
   with unit tests. Ctrl picks the best tool for the target (auto tool). The
   target is outlined.
-- Pace: a copper pickaxe (power 35, 4 hits/s) takes dirt in one hit, stone in
-  two: about 4 s of digging per player height in stone (a 2-wide shaft), close
-  to Terraria's. The player's box is 6 × 15 cells, so it drops into a 2-block
+- Pace: a copper pickaxe (power 35, 6 hits/s) takes dirt in one hit, stone in
+  two; an iron one (power 60, 7/s) stone in one. The player's box is 6 × 15 cells, so it drops into a 2-block
   shaft and walks a 4-block tunnel.
 - Chests: 8 × 8 cells of the `chest` material, whose pattern is the picture,
   anchored at the chest's corner. Worldgen puts one on the first cave floor
@@ -209,7 +227,9 @@ DESIGN.md §4–5, stage 4 of the world arc.
   opened. Right-click opens one within reach (Shift-click moves stacks, R
   takes all); mining one, or it losing half its cells to a blast or fire,
   breaks it and spills its contents and the chest.
-- Play mode is the default; F1 switches to the dev tools and back.
+- Play mode is the default; the key left of 1 (backquote; F1 needs fn on a
+  Mac) switches to the dev tools and back. `PLATYPUS_SPAWN_X` starts
+  elsewhere, to try a biome.
 
 ### 3.5 Streaming and persistence
 Chunks load around every player (co-op: the union). Missing chunks come from
