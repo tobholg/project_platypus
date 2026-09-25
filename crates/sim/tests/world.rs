@@ -776,3 +776,72 @@ fn store_roundtrips_the_background() {
     assert_eq!(store::checksum(&back), store::checksum(chunk));
     assert_eq!(back.background(), chunk.background());
 }
+
+/// A meadow like the generated ones: dirt, a grass surface, tall grass
+/// blades of varied height with bare gaps. Returns (world, grass cells).
+fn meadow(seed: u64) -> (World, usize) {
+    let mut w = boxed_world(3, 1, seed);
+    fill(&mut w, "dirt", 1, 191, 1, 8);
+    fill(&mut w, "grass", 1, 191, 8, 9);
+    let tall = w.materials().expect_id("tall_grass");
+    let mut rng = Rng::seeded(&[seed, 0x3EAD]);
+    for x in 1..191 {
+        let h = [0, 2, 3, 4, 5, 6, 7, 8][(rng.next_u32() % 8) as usize];
+        for y in 9..9 + h {
+            let c = w.materials().spawn(tall, &mut rng);
+            w.set(CellPos::new(x, y), c);
+        }
+    }
+    let n = count(&w, tall) + count(&w, w.materials().expect_id("grass"));
+    (w, n)
+}
+
+/// How much of a meadow one spark burns, across seeds (sorted fractions).
+fn meadow_burn_fractions(seeds: std::ops::Range<u64>) -> Vec<f32> {
+    let mut out: Vec<f32> = seeds
+        .map(|seed| {
+            let (mut w, n) = meadow(seed);
+            let (tall, grass) = (w.materials().expect_id("tall_grass"), w.materials().expect_id("grass"));
+            w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(96, 10), radius: 1 });
+            for _ in 0..6_000 {
+                w.step();
+            }
+            let left = count(&w, tall) + count(&w, grass);
+            1.0 - left as f32 / n as f32
+        })
+        .collect();
+    out.sort_by(|a, b| a.total_cmp(b));
+    out
+}
+
+/// Fire spread is tuned near the tipping point: one spark in a meadow sometimes
+/// fizzles, usually burns a patch, rarely takes everything (SPEC §3.8).
+#[test]
+fn a_spark_in_a_meadow_burns_a_patch_not_the_world() {
+    let f = meadow_burn_fractions(300..320);
+    let median = f[f.len() / 2];
+    assert!(f[0] < 0.25, "some sparks fizzle: {f:?}");
+    assert!((0.3..=0.75).contains(&median), "a typical spark burns a patch: median {median}");
+    assert!(f.iter().filter(|&&v| v > 0.95).count() <= 2, "a spark rarely takes everything: {f:?}");
+}
+
+/// A tree catches over seconds, not instantly, and burns for a while.
+#[test]
+fn a_tree_fire_climbs_then_burns_for_a_while() {
+    let mut w = boxed_world(2, 2, 60);
+    plant_tree(&mut w, 64);
+    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(64, 10), radius: 2 });
+    let bg_burning = |w: &World| w.chunks().flat_map(|c| c.background()).filter(|b| b.flags & platypus_sim::cell::flags::BURNING != 0).count();
+    for _ in 0..60 {
+        w.step();
+    }
+    assert!(bg_burning(&w) < 300, "one second in, the fire is still climbing ({} burning)", bg_burning(&w));
+    let mut secs = 1;
+    while (bg_burning(&w) > 0 || burning(&w) > 0) && secs < 60 {
+        for _ in 0..60 {
+            w.step();
+        }
+        secs += 1;
+    }
+    assert!((12..=40).contains(&secs), "the tree burned for {secs} s");
+}

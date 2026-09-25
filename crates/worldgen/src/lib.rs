@@ -167,38 +167,37 @@ impl TerrainGen {
     }
 
     /// The background layer: walls underground (what you see in caves), trees
-    /// above ground.
-    fn background_at(&self, x: i32, y: i32, trees: &[flora::Tree]) -> MaterialId {
+    /// above ground. Trees come with a shade (bark lit from one side, crowns
+    /// lighter on top).
+    fn background_at(&self, x: i32, y: i32, trees: &[&flora::Tree]) -> (MaterialId, Option<u8>) {
         let i = &self.ids;
-        let depth = self.surface_at(x) - y;
         for t in trees {
             match t.part_at(x, y, &self.leaf_edge) {
-                Some(TreePart::Wood) => return i.wood,
-                Some(TreePart::Leaves) => return i.leaves,
+                Some(TreePart::Wood(shade)) => return (i.wood, Some(shade)),
+                Some(TreePart::Leaves(shade)) => return (i.leaves, Some(shade)),
                 None => {}
             }
         }
-        if depth > 6 {
-            if depth < 16 { i.dirt } else { i.stone }
-        } else {
-            i.air
-        }
+        let depth = self.surface_at(x) - y;
+        let wall = if depth > 16 { i.stone } else if depth > 6 { i.dirt } else { i.air };
+        (wall, None)
     }
 
     /// Tall grass growing out of grassy ground.
     fn grass_at(&self, x: i32, y: i32) -> bool {
         let surface = self.surface_at(x);
         let above = y - surface; // 0 = first cell above the grass
-        if !(0..=8).contains(&above) {
+        if !(0..=12).contains(&above) {
             return false;
         }
         let ground = self.material_at(x, surface - 1);
         if ground != self.ids.grass {
             return false;
         }
-        let m = self.meadow.get([x as f64 / 60.0, 3.3]);
+        // Meadows with bare patches between them (natural firebreaks).
+        let m = self.meadow.get([x as f64 / 70.0, 3.3]);
         let blade = (hash(&[self.seed, 0x6A55, x as u64]) % 100) as f64 / 100.0;
-        let height = ((m + 0.35) * 9.0 * (0.4 + 0.6 * blade)) as i32;
+        let height = ((m + 0.2) * 13.0 * (0.45 + 0.55 * blade)) as i32;
         above < height
     }
 
@@ -299,7 +298,12 @@ impl ChunkGenerator for TerrainGen {
                     m = self.ids.tall_grass;
                 }
                 cells.push(make(m, &mut rng));
-                bg.push(make(self.background_at(x, y, trees), &mut rng));
+                let (b, shade) = self.background_at(x, y, &trees);
+                let mut back = make(b, &mut rng);
+                if let Some(shade) = shade {
+                    back.shade = shade;
+                }
+                bg.push(back);
             }
         }
         Chunk::with_background(pos, cells, bg)
@@ -350,8 +354,8 @@ mod tests {
         let g = TerrainGen::new(3, TerrainConfig::default(), &m);
         assert!(g.forest.len() > 50, "a world has forests ({} trees)", g.forest.len());
         // A tree's trunk continues into the ground behind the surface.
-        let t = &g.forest.near(8000, 12000)[0];
-        let root = g.background_at(t.x, t.base - 2, g.forest.near(t.x, t.x));
+        let t = g.forest.near(8000, 12000)[0];
+        let root = g.background_at(t.x, t.base - 2, &g.forest.near(t.x, t.x)).0;
         assert_eq!(root, m.expect_id("wood"));
         assert_ne!(g.material_at(t.x, t.base - 2), MaterialId::AIR, "the root is behind solid ground");
     }

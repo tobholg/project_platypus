@@ -106,10 +106,17 @@ fn spawn(h: &mut Hood, id: MaterialId) -> Cell {
 /// Returns true if the cell became something else.
 fn transition(h: &mut Hood, x: i32, y: i32, c: Cell, p: &MatPhys) -> bool {
     let t = h.ambient(y) + c.heat as i32;
-    let into = if t >= p.ignites_at as i32 && c.flags & flags::BURNING == 0 {
-        ignite(h, x, y, p);
-        return true;
-    } else if t >= p.above_at as i32 {
+    if t >= p.ignites_at as i32 && c.flags & flags::BURNING == 0 {
+        // Warm enough to catch: a chance per tick set by flammability, certain
+        // only well above the ignition point. (Certain ignition at the
+        // threshold made heat carry every fire across every meadow.)
+        if t >= p.ignites_at as i32 + SURE_IGNITION_MARGIN || h.rng.chance(p.flammability.max(1)) {
+            ignite(h, x, y, p);
+            return true;
+        }
+        h.wake(x, y);
+    }
+    let into = if t >= p.above_at as i32 {
         p.above_into
     } else if t <= p.below_at as i32 {
         p.below_into
@@ -134,6 +141,8 @@ fn note_if_solid_lost(h: &mut Hood, x: i32, y: i32, was: &MatPhys, now: Material
     }
 }
 
+/// Above its ignition point by this much (°C), a material always catches.
+const SURE_IGNITION_MARGIN: i32 = 250;
 /// Chance /256 per tick that a burning cell with air above throws an ember.
 const EMBER_CHANCE: u8 = 3;
 /// Heat a burning cell holds (it glows, and heats its neighbours).
@@ -162,6 +171,16 @@ pub(crate) fn ignite(h: &mut Hood, x: i32, y: i32, p: &MatPhys) {
     h.set(x, y, c);
 }
 
+/// Heat rises: fire catches upward much more readily than sideways or down.
+#[inline]
+fn spread_chance(flammability: u8, dy: i32) -> u8 {
+    match dy {
+        1.. => flammability.saturating_mul(2),
+        0 => flammability,
+        _ => flammability / 2,
+    }
+}
+
 /// Set a background cell burning (it stays in place and burns down).
 pub(crate) fn ignite_bg(h: &mut Hood, x: i32, y: i32, p: &MatPhys) {
     let Some(mut b) = h.get_bg(x, y) else { return };
@@ -174,6 +193,8 @@ pub(crate) fn ignite_bg(h: &mut Hood, x: i32, y: i32, p: &MatPhys) {
 }
 
 /// Fire in the playfield catching the background behind and beside it.
+/// Flames are brief and move, so each lights what's behind it at a third of
+/// the material's rate; otherwise rising flames race up a trunk ahead of the fire.
 fn ignite_background_near(h: &mut Hood, x: i32, y: i32) {
     for (dx, dy) in [(0, 0), (0, 1), (-1, 0), (1, 0)] {
         let Some(b) = h.get_bg(x + dx, y + dy) else { continue };
@@ -181,7 +202,7 @@ fn ignite_background_near(h: &mut Hood, x: i32, y: i32) {
             continue;
         }
         let bp = *h.mats.phys(b.material);
-        if bp.flammability > 0 && h.rng.chance(bp.flammability) {
+        if bp.flammability > 0 && h.rng.chance(bp.flammability / 3 + 1) {
             ignite_bg(h, x + dx, y + dy, &bp);
         }
     }
@@ -211,7 +232,7 @@ pub(crate) fn burn_background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
             continue;
         }
         let np = *h.mats.phys(n.material);
-        if np.flammability > 0 && h.rng.chance(np.flammability) {
+        if np.flammability > 0 && h.rng.chance(spread_chance(np.flammability, dy)) {
             ignite_bg(h, x + dx, y + dy, &np);
         }
     }
@@ -253,14 +274,14 @@ fn burn(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) -> bool {
             }
         }
     }
-    // Spread, diagonals included: flames lick around corners.
+    // Spread, diagonals included (flames lick around corners), mostly upward.
     for (dx, dy) in NEIGHBOURS8 {
         let Some(n) = h.get(x + dx, y + dy) else { continue };
         if n.is_air() || n.flags & flags::BURNING != 0 {
             continue;
         }
         let np = *h.mats.phys(n.material);
-        if np.flammability > 0 && h.rng.chance(np.flammability) {
+        if np.flammability > 0 && h.rng.chance(spread_chance(np.flammability, dy)) {
             ignite(h, x + dx, y + dy, &np);
         }
     }

@@ -187,18 +187,35 @@ struct Sway {
 }
 
 /// Base + plants shifted by wind and springs, into the image.
+///
+/// Grass (front): each blade bends with its height above the root, so the tip
+/// moves most. Leaves (back): whole rows shift together with a slow wave, so a
+/// crown sways as one mass instead of tearing into holes.
 fn compose(layer: &Layer, data: &mut [u8], origin: (i32, i32), sway: &Sway, springs: &FoliageSprings, back: bool) {
     data.copy_from_slice(&layer.base);
-    let gust = if back { 0.7 } else { 1.0 };
+    if back {
+        // Leaves first at rest, as a filler: a shifted row can then never
+        // open a gap beside a branch or at a chunk edge.
+        for p in &layer.plants {
+            let i = px(p.x as usize, p.y as usize);
+            data[i..i + 4].copy_from_slice(&p.rgba);
+        }
+    }
     for p in &layer.plants {
         let (wx, wy) = (origin.0 + p.x as i32, origin.1 + p.y as i32);
-        let wave = (sway.t * 2.1 + wx as f32 * 0.11 + wy as f32 * 0.04).sin();
-        let lean = sway.wind * 1.1 + wave * (0.3 + 0.6 * sway.wind.abs()) * gust;
-        let bend = (lean + springs.disp(wx, wy)) * (p.lift as f32 / 6.0).min(1.6);
-        let x = (p.x as i32 + bend.round() as i32).clamp(0, CHUNK - 1) as usize;
+        let offset = if back {
+            // By row only: a whole row moves together, so crowns never tear.
+            let wave = (sway.t * 1.3 + wy as f32 * 0.07).sin();
+            sway.wind * 0.9 + wave * (0.35 + 0.7 * sway.wind.abs())
+        } else {
+            let wave = (sway.t * 2.4 + wx as f32 * 0.11).sin();
+            let lean = sway.wind * 1.2 + wave * (0.35 + 0.7 * sway.wind.abs());
+            (lean + springs.disp(wx, wy)) * (p.lift as f32 / 5.0).min(1.6)
+        };
+        let x = (p.x as i32 + offset.round().clamp(-4.0, 4.0) as i32).clamp(0, CHUNK - 1) as usize;
         let i = px(x, p.y as usize);
-        // Leaves sway over the sky, not over the tree's own wood.
-        if !back || data[i + 3] == 0 {
+        // Leaves sway over sky and leaves, not over the tree's own wood.
+        if !back || data[i + 3] == 0 || layer.base[i + 3] == 0 {
             data[i..i + 4].copy_from_slice(&p.rgba);
         }
     }
@@ -290,33 +307,109 @@ fn sync_chunks(
     }
 }
 
-/// Creatures moving through foliage push it: sideways away from their body
-/// and along their direction of travel. Springs wobble back afterwards.
+/// Creatures in foliage part it: every tile near a body is pulled towards a
+/// pose bent away from the body (strongest right next to it) and along its
+/// direction of travel. When the body leaves, the springs wobble back.
 fn excite_foliage(time: Res<Time>, mut springs: ResMut<FoliageSprings>, bodies: Query<&Kinematics>) {
     let dt = time.delta_secs().min(0.05);
     for k in &bodies {
-        let b = &k.body;
+        springs.push(&k.body, dt);
+    }
+    springs.relax(dt);
+}
+
+impl FoliageSprings {
+    /// How far (cells beyond its half-width) a body parts the foliage.
+    const REACH: f32 = 9.0;
+
+    fn push(&mut self, b: &platypus_physics::Body, dt: f32) {
         let speed = b.vel.length();
-        if speed < 8.0 {
-            continue;
-        }
-        let (x0, x1) = ((b.pos.x - b.half.x - 3.0) as i32, (b.pos.x + b.half.x + 3.0) as i32);
-        let (y0, y1) = ((b.pos.y - b.half.y) as i32, (b.pos.y + b.half.y) as i32);
+        let reach = b.half.x + Self::REACH;
+        let (x0, x1) = ((b.pos.x - reach) as i32, (b.pos.x + reach) as i32);
+        let (y0, y1) = ((b.pos.y - b.half.y - 2.0) as i32, (b.pos.y + b.half.y) as i32);
+        // A body in the grass holds it parted; moving through, parts it further
+        // and drags it along the direction of travel.
+        let effort = (0.75 + speed / 400.0).min(1.2);
         for col in (x0 >> SPRING_COL_BITS)..=(x1 >> SPRING_COL_BITS) {
+            let cx = ((col << SPRING_COL_BITS) + 1) as f32;
+            let dx = cx - b.pos.x;
+            let edge = 1.0 - dx.abs() / reach;
+            if edge <= 0.0 {
+                continue;
+            }
+            let close = edge.powf(0.6);
+            let target = dx.signum() * 4.0 * close * effort + b.vel.x * 0.01;
             for row in (y0 >> SPRING_ROW_BITS)..=(y1 >> SPRING_ROW_BITS) {
-                let cx = ((col << SPRING_COL_BITS) + 1) as f32;
-                let away = (cx - b.pos.x).signum();
-                let s = springs.springs.entry((col, row)).or_default();
-                s.vel += (b.vel.x * 0.06 + away * speed.min(200.0) * 0.03) * dt * 8.0;
+                let s = self.springs.entry((col, row)).or_default();
+                // Strong enough to win against the grass's own springiness.
+                s.vel += (target - s.disp) * 450.0 * close * dt;
             }
         }
     }
-    // Underdamped: a few wobbles, then rest.
-    const STIFFNESS: f32 = 55.0;
-    const DAMPING: f32 = 4.5;
-    springs.springs.retain(|_, s| {
-        s.vel += (-STIFFNESS * s.disp - DAMPING * s.vel) * dt;
-        s.disp = (s.disp + s.vel * dt).clamp(-3.5, 3.5);
-        s.disp.abs() > 0.02 || s.vel.abs() > 0.05
-    });
+
+    /// Underdamped: a few wobbles, then rest (settled springs are dropped).
+    fn relax(&mut self, dt: f32) {
+        const STIFFNESS: f32 = 55.0;
+        const DAMPING: f32 = 5.0;
+        self.springs.retain(|_, s| {
+            s.vel += (-STIFFNESS * s.disp - DAMPING * s.vel) * dt;
+            s.disp = (s.disp + s.vel * dt).clamp(-4.0, 4.0);
+            s.disp.abs() > 0.02 || s.vel.abs() > 0.05
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use platypus_physics::Body;
+
+    const DT: f32 = 1.0 / 120.0;
+
+    #[test]
+    fn grass_parts_visibly_around_someone_in_it_and_settles_after() {
+        let mut springs = FoliageSprings::default();
+        let player = Body::new(Vec2::new(100.0, 20.0), Vec2::new(8.0, 16.0));
+        for _ in 0..30 {
+            springs.push(&player, DT);
+            springs.relax(DT);
+        }
+        // Grass a few cells to the right of the player (~blade height 5).
+        let right = springs.disp(106, 14);
+        let left = springs.disp(93, 14);
+        assert!(right > 1.5, "grass beside the player bends away visibly: {right}");
+        assert!(left < -1.5, "…on both sides: {left}");
+        for _ in 0..360 {
+            springs.relax(DT);
+        }
+        assert!(springs.springs.is_empty(), "and it all settles within 3 s once they leave");
+    }
+
+    #[test]
+    fn running_past_swings_the_grass_and_it_wobbles_back() {
+        let mut springs = FoliageSprings::default();
+        let mut runner = Body::new(Vec2::new(100.0, 20.0), Vec2::new(8.0, 16.0));
+        runner.vel = Vec2::new(95.0, 0.0);
+        // Follow one patch of grass the runner passes at x = 130.
+        // A swing = clearly bent (>0.1 cell) the opposite way from the last clear bend.
+        let (mut peak, mut last_side, mut swings) = (0.0f32, 0.0f32, 0);
+        for frame in 0..360 {
+            if frame < 90 {
+                runner.pos.x += runner.vel.x * DT;
+                springs.push(&runner, DT);
+            }
+            springs.relax(DT);
+            let d = springs.disp(130, 14);
+            peak = peak.max(d.abs());
+            let gone = runner.pos.x - runner.half.x - FoliageSprings::REACH > 131.0;
+            if d.abs() > 0.1 {
+                if gone && last_side != 0.0 && d.signum() != last_side {
+                    swings += 1;
+                }
+                last_side = d.signum();
+            }
+        }
+        assert!(peak > 2.0, "the grass swings well over a cell as the runner passes: {peak}");
+        assert!(swings >= 2, "and wobbles back and forth after ({swings} swings)");
+    }
 }

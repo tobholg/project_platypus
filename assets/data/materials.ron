@@ -4,7 +4,10 @@
 // density:      heavier powders/liquids sink through lighter liquids/gases
 // hardness:     0 = instant … 255 = indestructible (tools dig up to their power)
 // dispersion:   liquids: sideways cells per tick; gases: sideways jitter
-// flammability: chance /256 per tick to catch from something burning or `hot`
+// flammability: chance /256 per tick to catch from something burning or `hot`,
+//               or when above `ignites_at`. Together with burn_time this sets how
+//               far fire spreads: grass is tuned so one spark burns roughly half a
+//               meadow, sometimes fizzles, occasionally runs (tested over 20 seeds).
 // burn_time:    how long it burns in place, in steps of 4 ticks (default 45 = 3 s)
 // burns_into:   what's left after burning out (+ burns_into_chance /256; default nothing)
 // lifetime:     (min, max) decay steps for gases and fire; one step = `decay_every` ticks
@@ -30,16 +33,16 @@
         (name: "bedrock",  kind: Static, density: 9999, hardness: 255, colors: [(28, 26, 32), (44, 40, 50)]),
         (name: "stone",    kind: Static, density: 2600, hardness: 60,  crumbles_into: "gravel", above: (1400, "lava"), colors: [(92, 92, 100), (122, 120, 128), (104, 104, 112)]),
         (name: "dirt",     kind: Static, density: 1500, hardness: 20,  crumbles_into: "soil", colors: [(96, 62, 36), (118, 78, 44), (104, 68, 40)]),
-        (name: "grass",    kind: Static, density: 1400, hardness: 10,  flammability: 6, ignites_at: 250, burn_time: 10, burns_into: "soil", crumbles_into: "soil", colors: [(58, 140, 44), (82, 170, 56)]),
+        (name: "grass",    kind: Static, density: 1400, hardness: 10,  flammability: 2, ignites_at: 250, burn_time: 10, burns_into: "soil", crumbles_into: "soil", colors: [(58, 140, 44), (82, 170, 56)]),
         (name: "snow",     kind: Static, density: 400,  hardness: 5,   heat: -10, above: (1, "water"), conductivity: 15, colors: [(226, 232, 240), (246, 248, 252)]),
-        (name: "wood",     kind: Static, density: 700,  hardness: 25,  flammability: 20, ignites_at: 280, conductivity: 12, burn_time: 60, burns_into: "ash", burns_into_chance: 40, colors: [(104, 68, 34), (126, 84, 44)]),
+        (name: "wood",     kind: Static, density: 700,  hardness: 25,  flammability: 6, ignites_at: 280, conductivity: 12, burn_time: 225, burns_into: "ash", burns_into_chance: 40, colors: [(58, 36, 20), (88, 58, 30), (118, 80, 42), (138, 96, 54)]),
         (name: "obsidian", kind: Static, density: 2800, hardness: 120, crumbles_into: "gravel", above: (1600, "lava"), colors: [(34, 18, 52), (52, 30, 74)]),
         (name: "glass",    kind: Static, density: 2500, hardness: 30,  above: (1500, "lava"), colors: [(170, 200, 205), (196, 222, 226)]),
         (name: "ice",      kind: Static, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), colors: [(170, 210, 240), (200, 230, 250)]),
 
         // ---- plants: don't block creatures, burn readily, sway in the wind ----
-        (name: "leaves",     kind: Plant, density: 200, hardness: 2, flammability: 45, ignites_at: 260, burn_time: 10, colors: [(40, 104, 38), (58, 132, 46), (34, 88, 32), (70, 146, 52)]),
-        (name: "tall_grass", kind: Plant, density: 100, hardness: 1, flammability: 60, ignites_at: 240, burn_time: 5, colors: [(64, 146, 46), (92, 176, 62), (54, 124, 40)]),
+        (name: "leaves",     kind: Plant, density: 200, hardness: 2, flammability: 18, ignites_at: 260, burn_time: 40, colors: [(24, 64, 26), (36, 92, 34), (52, 122, 42), (76, 150, 54)]),
+        (name: "tall_grass", kind: Plant, density: 100, hardness: 1, flammability: 8, ignites_at: 240, burn_time: 5, colors: [(64, 146, 46), (92, 176, 62), (54, 124, 40)]),
 
         // ---- powders ------------------------------------------------------
         (name: "sand",     kind: Powder, density: 1600, hardness: 5,  above: (1100, "glass"), colors: [(206, 176, 110), (226, 198, 132), (196, 164, 100)]),

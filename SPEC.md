@@ -121,8 +121,19 @@ its material and position, glows, heats and ignites neighbours (diagonals
 included), puts flames and smoke into the air around it, and after
 `burn_time` becomes `burns_into` (e.g. some wood leaves ash) or nothing.
 Water puts it out. Gases flash into flame. Flammable things falling into flames
-catch fire. Invariant: a lit wooden slab burns up on every seed (tested
-across 20 seeds), and burned-out regions go back to sleep.
+catch fire. Heat rises: fire catches upward at twice the rate, downward at half.
+Being above `ignites_at` gives a per-tick chance (set by flammability) to
+catch, certain only 250 °C above it — otherwise heat would carry every fire
+across every meadow regardless of flammability.
+
+**How far fire spreads is a material property, not a special rule.** The chance
+a burning cell lights a neighbour before burning out comes from flammability ×
+burn_time; above a tipping point (~50 %) fire sweeps everything, below it
+fires die out. Grass is tuned near that point: one spark in a meadow burns
+roughly half of it, sometimes fizzles, rarely takes everything (tested over 20
+seeds). Burned cells never regrow, so every fire ends; firebreaks (bare patches,
+rock, water), wind and later rain shape where. A lit wooden slab still burns
+up on every seed; a tree takes a few seconds to catch and burns ~20 s.
 
 ### 3.9 Particles
 Things in flight between cells live in the sim as a plain list (not
