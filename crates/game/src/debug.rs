@@ -108,7 +108,7 @@ fn update_hud(
         "frame {:.2} ms avg, {:.2} worst ({:.0} fps)\n\
          sim tick {:.3} ms (avg {:.3}) | active chunks {} | visited {} cells\n\
          loaded {} chunks | stored {} ({} KB) | streamed {} ({:.2} ms)\n\
-         entities {} | tick {} | zoom {} px/cell\n\
+         entities {} | particles {} | tick {} | zoom {} px/cell\n\
          tool {} r{} | cursor {}\n\
          [F3] hud [F4] dirty rects | wheel zoom | O spawn orc",
         stats.avg_ms,
@@ -124,6 +124,7 @@ fn update_hud(
         metrics.loaded_this_frame,
         metrics.stream_time.as_secs_f64() * 1e3,
         entities.iter().count(),
+        sim.world.particles().len(),
         sim.world.tick(),
         zoom.0,
         belt.tool.label(),

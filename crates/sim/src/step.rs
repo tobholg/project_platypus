@@ -17,6 +17,7 @@ use crate::chunk::{AtomicRect, Chunk};
 use crate::climate::Climate;
 use crate::coords::{CHUNK, CHUNK_BITS, CellPos, ChunkPos, MAX_REACH, Rect};
 use crate::material::{ExplosionDef, MaterialTable};
+use crate::particles::Particle;
 use crate::rng::Rng;
 use crate::rules;
 
@@ -64,6 +65,8 @@ pub(crate) struct Hood<'a> {
     /// Where solid cells were destroyed (burned, melted, dissolved); the world
     /// checks those spots for pieces left hanging.
     pub broken: Vec<CellPos>,
+    /// Particles emitted this tick (embers).
+    pub particles: Vec<Particle>,
 }
 
 const LOCAL_MASK: i32 = CHUNK - 1;
@@ -124,6 +127,15 @@ impl<'a> Hood<'a> {
         self.climate.ambient(self.origin.y + ly)
     }
 
+    /// World-space centre of a local cell, for launching particles.
+    pub fn centre(&self, lx: i32, ly: i32) -> [f32; 2] {
+        [(self.origin.x + lx) as f32 + 0.5, (self.origin.y + ly) as f32 + 0.5]
+    }
+
+    pub fn emit(&mut self, p: Particle) {
+        self.particles.push(p);
+    }
+
     pub fn note_broken(&mut self, lx: i32, ly: i32) {
         self.broken.push(self.origin.offset(lx, ly));
     }
@@ -133,7 +145,7 @@ impl<'a> Hood<'a> {
     }
 
     /// Publish accumulated dirty rects and flags to the chunks.
-    fn finish(self) -> (Vec<(CellPos, ExplosionDef)>, Vec<CellPos>) {
+    fn finish(self) -> JobOutput {
         for s in 0..9 {
             let Some(c) = self.chunks[s] else { continue };
             // SAFETY: atomics; the chunk outlives the job.
@@ -145,7 +157,7 @@ impl<'a> Hood<'a> {
                 }
             }
         }
-        (self.explosions, self.broken)
+        JobOutput { explosions: self.explosions, broken: self.broken, particles: self.particles }
     }
 }
 
@@ -159,10 +171,17 @@ pub struct StepStats {
     pub explosions: Vec<(CellPos, ExplosionDef)>,
     /// Solid cells destroyed by the simulation this tick.
     pub broken: Vec<CellPos>,
+    /// Particles the simulation emitted this tick (the world takes them).
+    pub particles: Vec<Particle>,
 }
 
-/// What one job reports back: explosions requested, solids destroyed.
-type JobOutput = (Vec<(CellPos, ExplosionDef)>, Vec<CellPos>);
+/// What one job reports back to the world.
+#[derive(Default)]
+struct JobOutput {
+    explosions: Vec<(CellPos, ExplosionDef)>,
+    broken: Vec<CellPos>,
+    particles: Vec<Particle>,
+}
 
 pub(crate) fn step_chunks(
     chunks: &mut FxHashMap<ChunkPos, Box<Chunk>>,
@@ -204,14 +223,16 @@ pub(crate) fn step_chunks(
                 climate,
                 explosions: Vec::new(),
                 broken: Vec::new(),
+                particles: Vec::new(),
             };
             update_rect(&mut hood, rect);
             hood.finish()
         }).collect();
         // `collect` keeps job order, so the lists are deterministic.
-        for (explosions, broken) in results {
-            stats.explosions.extend(explosions);
-            stats.broken.extend(broken);
+        for out in results {
+            stats.explosions.extend(out.explosions);
+            stats.broken.extend(out.broken);
+            stats.particles.extend(out.particles);
         }
     }
     stats

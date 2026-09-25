@@ -124,6 +124,17 @@ Water puts it out. Gases flash into flame. Flammable things falling into flames
 catch fire. Invariant: a lit wooden slab burns up on every seed (tested
 across 20 seeds), and burned-out regions go back to sleep.
 
+### 3.9 Particles
+Things in flight between cells live in the sim as a plain list (not
+entities), step once per tick after the cells, and march one cell at a time so
+nothing tunnels. Each carries a real `Cell` and a landing rule: `Settle`
+(becomes its cell; solids land `LOOSE` — blast debris, blood, splashes),
+`Vanish` (dust, sparks), `Ember` (ignites what it lands on if flammable).
+They are deterministic (seeded), capped at 30 000, and die at the edge of the
+loaded world. Sources: explosions (hot debris thrown up and out of the crater,
+sparks), mining (dust), burning cells (embers — how fire jumps gaps), creature
+deaths (blood). Rendered as one dynamic mesh.
+
 ## 4. Rendering
 
 - One texture + one sprite per loaded chunk (~100 entities on screen, not

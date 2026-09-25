@@ -8,6 +8,7 @@ use crate::climate::Climate;
 use crate::coords::{CHUNK, CellPos, ChunkPos, Rect};
 use crate::edit::{EditReport, WorldEdit, disc};
 use crate::material::{ExplosionDef, Kind, MatPhys, MaterialId, MaterialTable};
+use crate::particles::{self, Landing, Particle, ParticleWorld};
 use crate::rng::Rng;
 use crate::step::{StepStats, step_chunks};
 use crate::store;
@@ -38,6 +39,7 @@ pub struct World {
     pending_explosions: Vec<(CellPos, ExplosionDef)>,
     /// Tiles where the simulation destroyed solids, awaiting a fragment check.
     pending_fragment_tiles: Vec<CellPos>,
+    particles: Vec<Particle>,
 }
 
 impl World {
@@ -51,6 +53,7 @@ impl World {
             climate: Climate::default(),
             pending_explosions: Vec::new(),
             pending_fragment_tiles: Vec::new(),
+            particles: Vec::new(),
         }
     }
 
@@ -60,6 +63,28 @@ impl World {
 
     pub fn set_climate(&mut self, climate: Climate) {
         self.climate = climate;
+    }
+
+    /// Everything in flight.
+    pub fn particles(&self) -> &[Particle] {
+        &self.particles
+    }
+
+    pub fn emit(&mut self, p: Particle) {
+        self.particles.push(p);
+    }
+
+    /// Burst of `material` flying out of `at` (blood from a wound, a splash).
+    /// Lands as real cells.
+    pub fn splash(&mut self, at: [f32; 2], material: MaterialId, count: usize, speed: f32) {
+        let mut rng = self.rng_for(0x5B1A, CellPos::from_world(at[0], at[1]));
+        for _ in 0..count {
+            let cell = self.materials.spawn(material, &mut rng);
+            let a = rng.next_u32() as f32 / u32::MAX as f32 * std::f32::consts::TAU;
+            let s = speed * (0.3 + 0.7 * rng.next_u32() as f32 / u32::MAX as f32);
+            let vel = [a.cos() * s, a.sin().abs() * s * 0.8 + 0.4];
+            self.particles.push(Particle::new(at, vel, cell, 180, Landing::Settle));
+        }
     }
 
     /// Absolute temperature (°C) of a cell.
@@ -248,6 +273,14 @@ impl World {
             if total >= ph.hardness.max(1) as u32 {
                 report.add_removed(c.material);
                 self.set(p, Cell::AIR);
+                if rng.chance(DUST_CHANCE) {
+                    let mut dust = c;
+                    dust.flags = 0;
+                    let vel = outward(center, p, &mut rng, 0.6);
+                    let mut d = Particle::new(center_of(p), vel, dust, 10 + rng.next_u8() as u16 / 16, Landing::Vanish);
+                    d.gravity = 0.5;
+                    self.particles.push(d);
+                }
             } else if dmg > 0 {
                 c.life = total as u8;
                 self.set(p, c);
@@ -258,6 +291,18 @@ impl World {
     fn explode(&mut self, center: CellPos, radius: i32, power: u8, report: &mut EditReport) {
         let mats = self.materials.clone();
         let mut rng = self.rng_for(0xB00B, center);
+        // Sparks: bright, fast, gone in a moment.
+        let fire = mats.fire();
+        if fire != MaterialId::AIR {
+            for _ in 0..(radius * 2).clamp(8, 60) {
+                let spark = mats.spawn(fire, &mut rng);
+                let speed = 3.0 + 4.0 * rng.next_u8() as f32 / 255.0;
+                let vel = outward(center, center, &mut rng, speed);
+                let mut sp = Particle::new(center_of(center), vel, spark, 8 + rng.next_u8() as u16 / 16, Landing::Vanish);
+                sp.gravity = 0.4;
+                self.particles.push(sp);
+            }
+        }
         let (fire, smoke) = (mats.id("fire"), mats.id("smoke"));
         let r = radius.max(1) as f32;
         let breakable = |h: u8| h < u8::MAX && h <= power;
@@ -273,6 +318,14 @@ impl World {
                         report.add_removed(c.material);
                         self.set(p, Cell::AIR);
                         now_air = true;
+                        // Some of it flies: hot debris that lands as rubble, liquid splashes.
+                        if matches!(ph.kind, Kind::Static | Kind::Powder | Kind::Liquid) && rng.chance(DEBRIS_CHANCE) {
+                            let mut debris = c;
+                            debris.flags = 0;
+                            debris.heat = debris.heat.saturating_add(BLAST_DEBRIS_HEAT);
+                            let vel = outward(center, p, &mut rng, power as f32 / 100.0 * (1.5 + 3.5 * (1.0 - d / (r + 1.0))));
+                            self.particles.push(Particle::new(center_of(p), vel, debris, 150, Landing::Settle));
+                        }
                     } else if breakable(ph.hardness) && ph.crumbles_into != MaterialId::AIR {
                         let rubble = mats.spawn(ph.crumbles_into, &mut rng);
                         self.set(p, rubble);
@@ -484,6 +537,11 @@ impl World {
         let stats = step_chunks(&mut self.chunks, &self.materials, self.seed, self.tick, self.climate);
         self.pending_explosions.extend(stats.explosions.iter().copied());
         self.check_broken(&stats.broken);
+        self.particles.extend(stats.particles.iter().copied());
+        let mut flying = std::mem::take(&mut self.particles);
+        particles::step(&mut flying, &mut ParticleCtx { world: self });
+        flying.append(&mut self.particles); // anything emitted while stepping
+        self.particles = flying;
         stats
     }
 
@@ -527,6 +585,61 @@ impl World {
         for (center, ex) in chosen {
             self.apply_edit(&WorldEdit::Explode { center, radius: ex.radius, power: ex.power });
         }
+    }
+}
+
+/// Chance /256 that a cell destroyed by a blast flies as debris.
+const DEBRIS_CHANCE: u8 = 80;
+/// Extra heat on blast debris, so it glows in flight.
+const BLAST_DEBRIS_HEAT: i16 = 450;
+/// Chance /256 that a mined cell puffs out as dust.
+const DUST_CHANCE: u8 = 90;
+
+fn center_of(p: CellPos) -> [f32; 2] {
+    [p.x as f32 + 0.5, p.y as f32 + 0.5]
+}
+
+/// Ejection velocity for something at `p` thrown by a blast (or pick) at
+/// `from`: sideways away from the centre, and always up and out of the hole
+/// (material below the centre would otherwise be fired into the ground).
+fn outward(from: CellPos, p: CellPos, rng: &mut Rng, speed: f32) -> [f32; 2] {
+    let (mut dx, mut dy) = ((p.x - from.x) as f32, (p.y - from.y) as f32);
+    let len = (dx * dx + dy * dy).sqrt();
+    if len < 0.5 {
+        let a = rng.next_u32() as f32 / u32::MAX as f32 * std::f32::consts::TAU;
+        (dx, dy) = (a.cos(), a.sin());
+    } else {
+        (dx, dy) = (dx / len, dy / len);
+    }
+    let jitter = (rng.next_u8() as f32 / 255.0 - 0.5) * 0.7;
+    let (dx, dy) = (dx + jitter, dy.abs() * 0.6 + 0.8);
+    let n = (dx * dx + dy * dy).sqrt().max(0.001);
+    [dx / n * speed, dy / n * speed]
+}
+
+/// The world as particles see it.
+struct ParticleCtx<'a> {
+    world: &'a mut World,
+}
+
+impl ParticleWorld for ParticleCtx<'_> {
+    fn get(&self, p: CellPos) -> Option<Cell> {
+        self.world.get(p)
+    }
+
+    fn set(&mut self, p: CellPos, cell: Cell) -> bool {
+        self.world.set(p, cell)
+    }
+
+    fn mats(&self) -> &MaterialTable {
+        &self.world.materials
+    }
+
+    fn ignite_at(&mut self, p: CellPos) {
+        let Some(c) = self.world.get(p) else { return };
+        let ph = *self.world.materials.phys(c.material);
+        let mut rng = self.world.rng_for(0xE3BE, p);
+        self.world.ignite_cell(p, &ph, &mut rng);
     }
 }
 

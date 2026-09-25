@@ -8,6 +8,7 @@
 //! - `run`        the player runs right through real input: holds D, jumps, dashes
 //! - `tools`      scripted cursor: pickaxe, bomb, pour water and oil, ignite, melt rock
 //! - `tree`       builds a wooden tree beside the player and sets it on fire
+//! - `blast`      a bomb-sized explosion beside the player at t = 2 s (screenshot at SECS - 1)
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -47,7 +48,7 @@ impl Plugin for ScenarioPlugin {
             // Inject input where real input arrives: after Bevy reads devices,
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, tree_script);
+            .add_systems(Update, (tree_script, blast_script));
     }
 }
 
@@ -247,4 +248,15 @@ fn tree_script(
         sim.queue(WorldEdit::Ignite { center: CellPos::from_world(base.x, base.y + 4.0), radius: 3 });
         state.1 = 2;
     }
+}
+
+fn blast_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut done: Local<bool>) {
+    if s.name != "blast" || *done || s.elapsed < 2.0 {
+        return;
+    }
+    let Ok(p) = player.single() else { return };
+    let x = p.body.pos.x + 70.0;
+    let Some(ground) = find_ground(&sim.world, x as i32, p.body.pos.y as i32 + 60, 300) else { return };
+    sim.queue(WorldEdit::Explode { center: CellPos::new(x as i32, ground - 4), radius: 20, power: 100 });
+    *done = true;
 }

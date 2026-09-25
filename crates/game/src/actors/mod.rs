@@ -16,7 +16,7 @@ pub mod spawn;
 
 use bevy::prelude::*;
 use platypus_physics::{Body, Grid, Intent, Locomotion, MovementStats, Occupancy, move_and_collide};
-use platypus_sim::{CellPos, Kind, World, WorldEdit};
+use platypus_sim::{CellPos, Kind, World};
 use serde::Deserialize;
 
 use crate::world::{SimWorld, TICK_HZ, TickSet};
@@ -131,8 +131,8 @@ fn fall_damage(mut landed: MessageReader<Landed>, mut q: Query<(&FallDamage, &mu
     }
 }
 
-/// Dead creatures leave blood in the world (real cells: it flows and pools).
-/// The player respawns instead.
+/// Dead creatures burst into blood particles that land as real cells (they
+/// run and pool). The player respawns instead.
 fn deaths(
     mut commands: Commands,
     mut sim: ResMut<SimWorld>,
@@ -143,9 +143,9 @@ fn deaths(
         if h.hp > 0.0 {
             continue;
         }
-        let at = CellPos::from_world(k.body.pos.x, k.body.pos.y);
         if let Some(blood) = sim.materials().id("blood") {
-            sim.queue(WorldEdit::Paint { center: at, radius: 4, material: blood, overwrite: false });
+            // A burst of real blood cells: they fly, land, run and pool.
+            sim.world.splash([k.body.pos.x, k.body.pos.y], blood, 70, 2.2);
         }
         if is_player {
             h.hp = h.max;

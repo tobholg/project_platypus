@@ -4,6 +4,7 @@
 
 use crate::cell::{Cell, flags};
 use crate::material::{Kind, MatPhys, MaterialId};
+use crate::particles::{Landing, Particle};
 use crate::step::Hood;
 
 /// Fall-speed cap; a falling cell moves `1 + vy / 4` cells per tick (max 8).
@@ -122,6 +123,8 @@ fn note_if_solid_lost(h: &mut Hood, x: i32, y: i32, was: &MatPhys, now: Material
     }
 }
 
+/// Chance /256 per tick that a burning cell with air above throws an ember.
+const EMBER_CHANCE: u8 = 3;
 /// Heat a burning cell holds (it glows, and heats its neighbours).
 const BURN_HEAT: i16 = 650;
 
@@ -184,6 +187,14 @@ fn burn(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) -> bool {
             let cell = spawn(h, m);
             h.set(x + dx, y + dy, cell);
         }
+    }
+    // Embers: burning specks thrown up that can start fires where they land.
+    if h.rng.chance(EMBER_CHANCE) && h.get(x, y + 1).is_some_and(|a| a.is_air()) {
+        let vx = (h.rng.next_u8() as f32 / 255.0 - 0.5) * 0.9;
+        let vy = 0.35 + h.rng.next_u8() as f32 / 255.0 * 0.5;
+        let life = 40 + h.rng.next_u8() as u16 / 2;
+        let ember = Particle { gravity: 0.06, ..Particle::new(h.centre(x, y + 1), [vx, vy], *c, life, Landing::Ember) };
+        h.emit(ember);
     }
     // Burn down.
     if h.tick.is_multiple_of(4) {

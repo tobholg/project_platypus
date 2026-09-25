@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use platypus_sim::rng::Rng;
-use platypus_sim::{CHUNK, Cell, CellPos, Chunk, ChunkPos, MaterialId, MaterialTable, World, WorldEdit, store};
+use platypus_sim::{CHUNK, Cell, CellPos, Chunk, ChunkPos, Landing, MaterialId, MaterialTable, Particle, World, WorldEdit, store};
 
 const MATERIALS: &str = include_str!("../../../assets/data/materials.ron");
 
@@ -246,6 +246,8 @@ fn stepping_is_deterministic_across_thread_counts() {
                 w.apply_edit(&WorldEdit::Paint { center: CellPos::new(x, y), radius: 5, material: m.expect_id(name), overwrite: false });
             }
             w.apply_edit(&WorldEdit::Heat { center: CellPos::new(100, 90), radius: 20, amount: 1600 });
+            w.apply_edit(&WorldEdit::Explode { center: CellPos::new(60, 40), radius: 12, power: 90 });
+            w.splash([150.0, 150.0], m.expect_id("water"), 120, 3.0);
             for _ in 0..600 {
                 w.step();
             }
@@ -548,4 +550,79 @@ fn a_burning_tree_leaves_nothing_floating() {
     }
     let floating = floating_solids(&w, 1, 127, 127);
     assert!(floating.is_empty(), "{} solid cells left floating, e.g. {:?}", floating.len(), &floating[..floating.len().min(5)]);
+}
+
+// ---- particles --------------------------------------------------------------
+
+fn run_until_landed(w: &mut World, max_ticks: usize) {
+    for _ in 0..max_ticks {
+        if w.particles().is_empty() {
+            return;
+        }
+        w.step();
+    }
+    panic!("{} particles still flying after {max_ticks} ticks", w.particles().len());
+}
+
+#[test]
+fn a_splash_lands_as_real_cells() {
+    let mut w = boxed_world(2, 2, 40);
+    let water = w.materials().expect_id("water");
+    w.splash([64.0, 60.0], water, 200, 2.5);
+    assert_eq!(w.particles().len(), 200);
+    run_until_landed(&mut w, 400);
+    assert_eq!(count(&w, water), 200, "every drop became a water cell");
+}
+
+#[test]
+fn blast_debris_lands_as_loose_rubble() {
+    let mut w = boxed_world(3, 2, 41);
+    fill(&mut w, "stone", 1, 191, 1, 40);
+    let stone = w.materials().expect_id("stone");
+    w.apply_edit(&WorldEdit::Explode { center: CellPos::new(96, 39), radius: 16, power: 100 });
+    assert!(w.particles().len() > 50, "the blast threw debris and sparks");
+    run_until_landed(&mut w, 600);
+    run_until_asleep(&mut w, 3_000);
+    let loose = w.chunks().flat_map(|c| c.cells()).filter(|c| c.material == stone && c.flags & platypus_sim::cell::flags::LOOSE != 0).count();
+    assert!(loose > 20, "debris piled up as loose rubble ({loose})");
+    assert!(floating_solids(&w, 1, 191, 127).is_empty(), "nothing floating");
+}
+
+#[test]
+fn particles_leaving_the_loaded_world_disappear() {
+    let mut w = boxed_world(1, 1, 42);
+    let sand = w.materials().expect_id("sand");
+    let cell = w.materials().spawn(sand, &mut Rng::seeded(&[1]));
+    // Straight up and out of the only loaded chunk.
+    w.emit(Particle::new([32.0, 60.0], [0.0, 7.0], cell, 500, Landing::Settle));
+    run_until_landed(&mut w, 100);
+    assert_eq!(count(&w, sand), 0);
+}
+
+#[test]
+fn embers_set_fire_where_they_land() {
+    let mut w = boxed_world(1, 1, 43);
+    fill(&mut w, "wood", 20, 40, 1, 5);
+    let wood = w.materials().expect_id("wood");
+    let ember = Cell::new(wood, 0);
+    w.emit(Particle::new([30.5, 30.0], [0.0, 0.0], ember, 200, Landing::Ember));
+    run_until_landed(&mut w, 200);
+    assert!(burning(&w) > 0, "the ember lit the wood");
+}
+
+#[test]
+fn mining_dust_is_only_visual() {
+    let mut w = boxed_world(1, 1, 44);
+    fill(&mut w, "dirt", 20, 44, 1, 20);
+    let dirt = w.materials().expect_id("dirt");
+    let before = count(&w, dirt) as u32;
+    let mut removed = 0;
+    for _ in 0..200 {
+        let r = w.apply_edit(&WorldEdit::Mine { center: CellPos::new(32, 12), radius: 5, power: 6, max_hardness: 200 });
+        removed += r.removed.iter().map(|&(_, n)| n).sum::<u32>();
+        w.step();
+    }
+    run_until_landed(&mut w, 200);
+    assert!(removed > 50);
+    assert_eq!(count(&w, dirt) as u32, before - removed, "dust never became dirt");
 }

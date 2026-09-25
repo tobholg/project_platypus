@@ -11,6 +11,8 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
 | 2 | Bodies + shared movement (HK controller), creatures as data, brains, player + orc | core done; particles and body↔cell interaction open |
 | — | Dev tools: pickaxe (hardness-based), bombs, spawner, igniter, eraser, heat/freeze, free camera | done |
 | W1 | Temperature: heat, conduction, climate, melt/boil/freeze/ignite, glow, methane chain explosions, loose fragments | done |
+| W1b | Fire burns in place; fragments fall after any destruction (fire, melt, acid) | done |
+| W2 | Particles: blast debris + sparks, mining dust, embers, blood splashes | done |
 | 3 | Worldgen v2: world plan (legacy mountains, sky islands, walker caves), biomes, save/load | not started |
 | 4 | Combat: weapon swings, pixel masks, swept hits, hit-stop, knockback, enemy attacks | not started |
 | 5 | Terraria layer: items, inventory, mining yields, building, crafting, lighting | not started |
@@ -31,7 +33,7 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
 ## World track (chosen 2026-09-25: world before combat, walk-through trees)
 
 1. ~~Temperature, phase changes, explosive gas~~ (done)
-2. Particles: debris, ejecta, embers, sparks, rain drops; become cells on landing
+2. ~~Particles~~ (done; rain drops come with weather)
 3. Background layer + plants (non-solid, flammable) + forests and tall grass in
    worldgen + wind (drift for gases/fire/embers; sway as a render effect)
 4. Rigid bodies spike (Rapier): detached pieces > 64 cells become pixel bodies;

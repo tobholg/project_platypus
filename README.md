@@ -51,7 +51,7 @@ cargo run -p platypus_bench --release   # sim budgets; exits non-zero on regress
 PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, prints frame stats
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`. Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`. Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
 capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length.
 
 ## Add things (no engine changes)

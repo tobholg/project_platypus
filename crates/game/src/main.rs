@@ -9,6 +9,7 @@ mod actors;
 mod camera;
 mod data;
 mod debug;
+mod particles;
 mod props;
 mod render;
 mod scenario;
@@ -58,6 +59,7 @@ fn main() {
             camera::CameraPlugin { start: Vec2::new(spawn.x as f32, spawn.y as f32 + 40.0) },
             tools::ToolsPlugin,
             props::PropsPlugin,
+            particles::ParticlesPlugin,
             actors::ActorsPlugin,
             debug::DebugPlugin,
             scenario::ScenarioPlugin,
