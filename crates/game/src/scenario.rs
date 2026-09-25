@@ -19,6 +19,9 @@
 //! - `flood`      a big block of water released in a dug-out hall beside the player
 //! - `cave`       a chamber dug under the player (lava and acid pools), flashlight and torch on,
 //!   a torch planted, two glow sticks thrown (`PLATYPUS_NOBEAM=1`: no flashlight)
+//! - `hands`      the hands through real input: digs down and sideways with the pickaxe,
+//!   builds a wall with what it dug, chops at a tree with auto tool (Ctrl),
+//!   plants a torch; logs the inventory
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -59,7 +62,8 @@ impl Plugin for ScenarioPlugin {
             // Inject input where real input arrives: after Bevy reads devices,
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script));
+            .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
+            .add_systems(PreUpdate, hands_script.after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -149,10 +153,12 @@ fn tools_script(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     mut started: Local<Option<f32>>,
+    mut dev: ResMut<crate::hands::DevTools>,
 ) {
     if s.name != "tools" {
         return;
     }
+    dev.0 = true;
     let Ok(p) = player.single() else { return };
     let t0 = *started.get_or_insert(s.elapsed);
     let t = s.elapsed - t0;
@@ -512,5 +518,77 @@ fn flood_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kine
             *step = 2;
         }
         _ => {}
+    }
+}
+
+/// The hands through real input (keys, mouse, a scripted cursor).
+#[allow(clippy::too_many_arguments)]
+fn hands_script(
+    s: Res<Scenario>,
+    player: Query<(&Kinematics, Option<&crate::hands::items::Inventory>), With<LocalPlayer>>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut logged: Local<u8>,
+    mut build_slot: Local<Option<usize>>,
+) {
+    use crate::hands::items::{BLOCK_CELLS, Use};
+    if s.name != "hands" {
+        return;
+    }
+    let Ok((k, inv)) = player.single() else { return };
+    let (Some(inv), Some(items)) = (inv, items) else { return };
+    let p = k.body.pos;
+    let t = s.elapsed;
+    const DIGITS: [KeyCode; 10] = [
+        KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit5,
+        KeyCode::Digit6, KeyCode::Digit7, KeyCode::Digit8, KeyCode::Digit9, KeyCode::Digit0,
+    ];
+    for key in DIGITS {
+        keys.release(key);
+    }
+    let pick = |keys: &mut ButtonInput<KeyCode>, slot: usize| keys.press(DIGITS[slot]);
+    // Swings alternate a little left and right of straight down: a shaft two
+    // blocks wide, so the player drops into it.
+    let side = if (t * 4.0) as i32 % 2 == 0 { -3.0 } else { 3.0 };
+    let (aim, hold, ctrl) = match t {
+        t if t < 0.8 => (None, false, false),
+        t if t < 6.0 => {
+            pick(&mut keys, 0);
+            (Some(p + Vec2::new(side, -20.0)), true, false)
+        }
+        // Into the shaft's wall.
+        t if t < 7.0 => (Some(p + Vec2::new(14.0, -2.0)), true, false),
+        // Build with a stack that has a whole block.
+        t if t < 8.5 => {
+            if build_slot.is_none() {
+                *build_slot = (0..10).find(|&i| inv.slots[i].is_some_and(|st| matches!(items.def(st.item).use_, Use::Block(_)) && st.count >= BLOCK_CELLS));
+            }
+            if let Some(i) = *build_slot {
+                pick(&mut keys, i);
+            }
+            (Some(p + Vec2::new(-10.0, 4.0)), true, false)
+        }
+        // Auto tool (Ctrl) at whatever's up and to the right.
+        t if t < 10.0 => (Some(p + Vec2::new(20.0, 24.0)), true, true),
+        // A torch on the floor.
+        t if t < 10.3 => {
+            if let Some(i) = items.id("torch").and_then(|torch| (0..10).find(|&i| inv.slots[i].is_some_and(|st| st.item == torch))) {
+                pick(&mut keys, i);
+            }
+            (Some(p + Vec2::new(-6.0, -8.0)), false, false)
+        }
+        t if t < 10.4 => (Some(p + Vec2::new(-6.0, -8.0)), true, false),
+        _ => (None, false, false),
+    };
+    cursor.0 = aim;
+    if hold { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    if ctrl { keys.press(KeyCode::ControlLeft) } else { keys.release(KeyCode::ControlLeft) }
+    if t > 11.0 && *logged == 0 {
+        *logged = 1;
+        let held: Vec<String> = inv.slots.iter().flatten().map(|st| format!("{} {}", items.def(st.item).name, st.count / items.unit(st.item))).collect();
+        let torches = items.id("torch").map_or(0, |torch| inv.count(torch));
+        info!("hands: inventory {} (built with slot {:?}; {torches} torches left)", held.join(", "), build_slot.map(|i| i + 1));
     }
 }

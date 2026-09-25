@@ -1,0 +1,22 @@
+// Made things: tools, lights, throwables. Every solid or powder material has
+// a block item too (id "block:<material>"), made from materials.ron.
+//
+// stack: most in one slot · color: icon colour until items have sprites
+// use:
+//   Mine(back, power, tier, speed, reach): a pickaxe (back: false) or an axe
+//     (back: true, the background: trees, walls); power damage a hit, speed
+//     hits a second, up to tier hardness, within reach blocks (4 cells each).
+//     Hardness: dirt 20, wood 25, sandstone 35, stone 60, brick 70,
+//     slate 80, basalt 95, obsidian 120.
+//   Throw(Bomb | Glowstick) · Torch: plant one on a block face
+(
+    items: [
+        (id: "copper_pickaxe", name: "Copper pickaxe", color: (205, 127, 50), use: Mine(back: false, power: 35, tier: 70, speed: 4.0, reach: 6.0)),
+        (id: "iron_pickaxe",   name: "Iron pickaxe",   color: (176, 178, 190), use: Mine(back: false, power: 50, tier: 100, speed: 5.0, reach: 6.5)),
+        (id: "copper_axe",     name: "Copper axe",     color: (190, 110, 45), use: Mine(back: true, power: 30, tier: 60, speed: 4.0, reach: 6.0)),
+        (id: "torch",          name: "Torch",          stack: 99, color: (255, 190, 90), use: Torch),
+        (id: "bomb",           name: "Bomb",           stack: 30, color: (40, 40, 46), use: Throw(Bomb)),
+        (id: "glowstick",      name: "Glow stick",     stack: 30, color: (90, 255, 150), use: Throw(Glowstick)),
+    ],
+    start: [("copper_pickaxe", 1), ("copper_axe", 1), ("torch", 12), ("bomb", 5), ("glowstick", 6)],
+)

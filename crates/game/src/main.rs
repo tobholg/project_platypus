@@ -10,6 +10,7 @@ mod camera;
 mod data;
 mod debug;
 mod fx;
+mod hands;
 mod hud;
 mod light;
 mod particles;
@@ -70,6 +71,7 @@ fn main() {
             render::ChunkRenderPlugin,
             camera::CameraPlugin { start: Vec2::new(spawn.x as f32, spawn.y as f32 + 40.0) },
             tools::ToolsPlugin,
+            hands::HandsPlugin,
             props::PropsPlugin,
             rigid::RigidPlugin,
             particles::ParticlesPlugin,

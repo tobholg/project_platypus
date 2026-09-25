@@ -1,7 +1,8 @@
 //! Dev tools: pickaxe, axe, bomb, material spawner, igniter, eraser, heat, glow sticks.
 //! Tunables in `assets/data/tools.ron` (hot-reloaded).
 //!
-//! 1–6 pick a tool · LMB use · RMB erase · Q/E change spawner material ·
+//! F1 turns them on (and the hands off, `hands/`).
+//! 1–8 pick a tool · LMB use · RMB erase · Q/E change spawner material ·
 //! `[` `]` or Ctrl+wheel radius · Shift+LMB: spawner replaces solids, heat gun freezes.
 //!
 //! Input is sampled every frame but tools act on the fixed tick, so a pickaxe
@@ -19,6 +20,7 @@ use crate::actors::Kinematics;
 use crate::actors::player::LocalPlayer;
 use crate::camera::{CursorWorld, MainCamera};
 use crate::data::{Watched, data_path, load_ron};
+use crate::hands::{DevTools, dev_tools};
 use crate::props::{spawn_bomb, spawn_glowstick};
 use crate::world::{SimWorld, TickSet};
 
@@ -189,8 +191,8 @@ impl Plugin for ToolsPlugin {
             .init_resource::<ToolInput>()
             .add_systems(Startup, (spawn_hotbar, default_material))
             .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor))
-            .add_systems(Update, (select, reload_config, preview, update_hotbar, weather_keys))
-            .add_systems(FixedUpdate, use_tools.in_set(TickSet::Intent));
+            .add_systems(Update, ((select, preview).run_if(dev_tools), reload_config, update_hotbar, weather_keys))
+            .add_systems(FixedUpdate, use_tools.run_if(dev_tools).in_set(TickSet::Intent));
     }
 }
 
@@ -352,7 +354,9 @@ fn spawn_hotbar(mut commands: Commands) {
     ));
 }
 
-fn update_hotbar(belt: Res<Toolbelt>, sim: Res<SimWorld>, mut text: Single<&mut Text, With<Hotbar>>) {
+fn update_hotbar(belt: Res<Toolbelt>, sim: Res<SimWorld>, dev: Res<DevTools>, mut bar: Single<(&mut Text, &mut Visibility), With<Hotbar>>) {
+    let (text, vis) = &mut *bar;
+    **vis = if dev.0 { Visibility::Visible } else { Visibility::Hidden };
     if !belt.is_changed() && !text.0.is_empty() {
         return;
     }
@@ -370,7 +374,7 @@ fn update_hotbar(belt: Res<Toolbelt>, sim: Res<SimWorld>, mut text: Single<&mut 
         .collect();
     let mined: Vec<String> = belt.mined.iter().map(|(k, v)| format!("{k} {v}")).collect();
     text.0 = format!(
-        "{}   radius {}\nLMB use | RMB erase | Q/E material | Shift: overwrite / freeze | [ ] radius | Tab free camera\nmined: {}",
+        "DEV TOOLS (F1: hands)   {}   radius {}\nLMB use | RMB erase | Q/E material | Shift: overwrite / freeze | [ ] radius | Tab free camera\nmined: {}",
         slots.join(" "),
         belt.radius(),
         if mined.is_empty() { "-".into() } else { mined.join(", ") }

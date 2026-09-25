@@ -2,7 +2,8 @@
 // Units: cells (1 cell = 1 art pixel) and seconds. Edit while the game runs.
 (
     name: "Player",
-    size: (8, 16),
+    // 1.5 blocks wide, just under 4 tall: fits a 2-wide shaft, a 4-tall tunnel.
+    size: (6, 15),
     health: 100,
     team: Player,
     fall_damage: (safe_speed: 400, per_speed: 0.5),

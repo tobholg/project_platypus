@@ -87,7 +87,7 @@ fn age_glowsticks(mut commands: Commands, mut q: Query<(Entity, &mut Glowstick, 
 }
 
 /// Ballistic flight with bounces.
-fn fly(sim: Res<SimWorld>, mut q: Query<(&mut Kinematics, &Thrown)>) {
+pub fn fly(sim: Res<SimWorld>, mut q: Query<(&mut Kinematics, &Thrown)>) {
     let grid = WorldGrid(&sim.world);
     for (mut k, thrown) in &mut q {
         let k = &mut *k;
