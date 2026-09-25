@@ -621,8 +621,35 @@ fn slide(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
     false
 }
 
+/// Chance /256 a tick that a dozing liquid cell moves closer to sleep (it
+/// looks again every tick meanwhile; `REST_MAX - REST_LIMIT` steps).
+const DOZE: u8 = 16;
+
+/// Furthest a pressured liquid cell pushes through its own kind.
+const PRESSURE_REACH: i32 = 48;
+
+/// Distance to the first open cell (air or plant) along the row through
+/// cells of `m` only, if there is one within `PRESSURE_REACH`.
+fn through_to_open(h: &Hood, x: i32, y: i32, dir: i32, m: MaterialId) -> Option<i32> {
+    for i in 1..=PRESSURE_REACH {
+        let t = h.get(x + dir * i, y)?;
+        if t.is_air() || h.mats.phys(t.material).kind == Kind::Plant {
+            return (i > 1).then_some(i);
+        }
+        if t.material != m {
+            return None;
+        }
+    }
+    None
+}
+
+/// Cells of `m` stacked directly above (up to `cap`): the pressure here.
+fn depth_above(h: &Hood, x: i32, y: i32, m: MaterialId, cap: i32) -> i32 {
+    (1..=cap).take_while(|&k| h.get(x, y + k).is_some_and(|t| t.material == m)).count() as i32
+}
+
 /// How far along the surface a liquid looks for lower ground.
-const SEEK: i32 = 64;
+const SEEK: i32 = 128;
 
 /// Could it slide down a diagonal? (A thick liquid that waits a tick still
 /// counts as moving, so it doesn't flow sideways instead.)
@@ -665,6 +692,18 @@ fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
                 break;
             }
         }
+        // Under pressure it pushes through its own kind to open space further
+        // along the row (a dam break): the deeper, the further. The gap it
+        // leaves is filled from above, so the whole top sinks, not one face.
+        if best == 0 && pressured
+            && let Some(d) = through_to_open(h, x, y, dir, c.material)
+            // Thick liquids hardly feel it: lava slumps, it doesn't burst.
+            && d <= (p.dispersion as i32 + depth_above(h, x, y, c.material, PRESSURE_REACH)) * (256 - p.viscosity as i32) / 256
+        {
+            c.vy = 0;
+            swap_to(h, x, y, x + dir * d, y, c);
+            return true;
+        }
         if best > 0 && (purposeful || rest < p.rest_limit) {
             if dir < 0 { c.flags |= flags::FLOW_LEFT } else { c.flags &= !flags::FLOW_LEFT }
             // Spreading one way is free; only reversing (sloshing) spends the budget.
@@ -673,6 +712,19 @@ fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
             c.vy = 0;
             swap_to(h, x, y, x + dir * best, y, c);
             return true;
+        }
+    }
+    // Out of sloshes at a step's edge: doze a while before sleeping, looking
+    // again now and then. Water further along may drain (far from here,
+    // without waking this cell) and open a drop within reach.
+    let open_side = |dx: i32| h.get(x + dx, y).is_some_and(|t| t.is_air());
+    if !pressured && p.viscosity < 128 && rest >= p.rest_limit && rest < flags::REST_MAX && (open_side(-1) || open_side(1)) {
+        if h.rng.chance(DOZE) {
+            c.flags = flags::with_rest(c.flags, rest + 1);
+            c.clock = h.clock;
+            h.set(x, y, c);
+        } else {
+            h.wake(x, y);
         }
     }
     false

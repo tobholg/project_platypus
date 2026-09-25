@@ -23,15 +23,17 @@ for a double jump, against a wall to wall-jump) · Shift dash
 
 | Key | Tool | LMB |
 |---|---|---|
-| 1 | Pickaxe | mine; each cell takes damage until it reaches its `hardness` (dirt fast, stone slow, obsidian slower, bedrock never). Cracks show as darkening |
+| 1 | Pickaxe | mine the playfield (rock, dirt, logs on the ground; not standing trees); each cell takes damage until it reaches its `hardness` (dirt fast, stone slow, obsidian slower, bedrock never). Cracks show as darkening |
 | 2 | Bomb | throw toward the cursor; bounces, explodes after the fuse: crater, hot debris, flung sand/water, fire, smoke, screen shake + flash, damage + knockback. Bombs don't set each other off (`chain_reaction` in `tools.ron`), so a string of them digs a shaft |
 | 3 | Spawner | pour the selected material; Q/E cycle through every material; Shift also replaces solids |
 | 4 | Igniter | set flammable things alight (wood, oil, coal, grass) |
 | 5 | Eraser | delete instantly |
 | 6 | Heat / Freeze | heat what's under the cursor; Shift freezes. Rock glows then melts to lava (1400 °C), sand turns to glass, water boils or freezes, wood and oil ignite, methane explodes |
+| 7 | Glow stick | throw one; it glows green or blue for 90 s |
+| 8 | Axe | cut the background: standing trees, burnt trunks, cave walls, wherever the playfield in front is empty. Chop a trunk to fell a tree |
 
-Tools reach the background (trees, cave walls) wherever the playfield in front is
-empty — mine a trunk to fell a tree. RMB erases with any tool · `[` `]` or Ctrl+wheel radius · wheel zoom · Tab free camera
+The pickaxe only digs the playfield, the axe only the background; the eraser and
+the heat tool reach both. RMB erases with any tool · `[` `]` or Ctrl+wheel radius · wheel zoom · Tab free camera
 (WASD flies, Shift faster) · O spawn an orc at the cursor · F3 performance HUD ·
 F4 chunk borders + dirty rects · L flashlight · T carry a torch · G plant a torch · 7 throw glow sticks · F8 +3 hours · F9 lighting off · the HUD at the top shows health and status timers; dying just refills health (`PLATYPUS_RESPAWN=1` to respawn at the start) · F5 thunderstorm here · F6 clear skies · F7 lightning at the cursor
 
@@ -40,7 +42,7 @@ ignite · a bomb in a wooden structure (paint wood with Q/E) · mine under a san
 pocket · melt a hole in rock with the heat gun · freeze a lake, watch it thaw ·
 find a greenish methane pocket underground and set it off (bomb or heat gun) ·
 set a forest alight: fire climbs the trunks, embers blow downwind into the next
-canopy, burning branches fall · chop through a trunk with the pickaxe (or a bomb):
+canopy, burning branches fall · chop through a trunk with the axe (or a bomb):
 the tree topples, sheds its crown and lands as a log you can mine · drop a tree on an orc ·
 light a tree at the base: it chars black and snaps · burnt wood leaves charcoal; put charred wood out with water for more ·
 lava, fire, steam and acid hurt; flames set creatures alight (they spread fire as they run; jump in water) · boil acid (heat gun) into a corrosive cloud that rains acid, then light the cloud ·
@@ -59,8 +61,8 @@ PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, 
 PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`. Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
-capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length.
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length, `PLATYPUS_NOLIGHT=1` to start with lighting off.
 
 ## Add things (no engine changes)
 

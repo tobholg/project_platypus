@@ -15,6 +15,7 @@
 //! - `rain`       lights the forest beside the player at 2 s, a storm over it at 3 s (F5), lightning at 6 s (F7)
 //! - `swim`       a pool beside the player; oil on the player, set alight, then it walks into the water
 //! - `night`      the surface at 23:00 (`dusk`: 18:15)
+//! - `flood`      a big block of water released in a dug-out hall beside the player
 //! - `cave`       a chamber dug under the player (lava and acid pools), flashlight and torch on,
 //!   a torch planted, two glow sticks thrown (`PLATYPUS_NOBEAM=1`: no flashlight)
 //!
@@ -57,7 +58,7 @@ impl Plugin for ScenarioPlugin {
             // Inject input where real input arrives: after Bevy reads devices,
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script));
+            .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script));
     }
 }
 
@@ -474,4 +475,39 @@ fn dark_script(
         crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(30.0, 4.0), Vec2::new(60.0, 40.0), [0.2 * s, 0.55 * s, 1.1 * s], 90.0);
     }
     *done = true;
+}
+
+fn flood_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut step: Local<u8>, mut at: Local<Option<CellPos>>) {
+    if s.name != "flood" {
+        return;
+    }
+    let Ok(p) = player.single() else { return };
+    let c = *at.get_or_insert_with(|| CellPos::new(p.body.pos.x as i32 + 20, p.body.pos.y as i32 - 170));
+    match *step {
+        // A hall 200 wide, 70 high, with stone floor; then a block of water
+        // 50 wide and 60 high at its left end.
+        0 if s.elapsed > 0.5 => {
+            let (Some(stone), Some(water)) = (sim.materials().id("stone"), sim.materials().id("water")) else { return };
+            for x in (-110..=110).step_by(6) {
+                for y in (-6..=76).step_by(6) {
+                    sim.queue(WorldEdit::Dig { center: c.offset(x, y), radius: 5, max_hardness: 250 });
+                }
+            }
+            for x in (-110..=110).step_by(4) {
+                sim.queue(WorldEdit::Paint { center: c.offset(x, -10), radius: 4, material: stone, overwrite: true });
+            }
+            *step = 1;
+            let _ = water;
+        }
+        1 if s.elapsed > 0.8 => {
+            let Some(water) = sim.materials().id("water") else { return };
+            for x in (-100..=-55).step_by(3) {
+                for y in (-3..=60).step_by(3) {
+                    sim.queue(WorldEdit::Paint { center: c.offset(x, y), radius: 2, material: water, overwrite: false });
+                }
+            }
+            *step = 2;
+        }
+        _ => {}
+    }
 }

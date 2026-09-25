@@ -1,4 +1,4 @@
-//! Dev tools: pickaxe, bomb, material spawner, igniter, eraser.
+//! Dev tools: pickaxe, axe, bomb, material spawner, igniter, eraser, heat, glow sticks.
 //! Tunables in `assets/data/tools.ron` (hot-reloaded).
 //!
 //! 1–6 pick a tool · LMB use · RMB erase · Q/E change spawner material ·
@@ -33,12 +33,21 @@ pub enum Tool {
     Eraser,
     Heat,
     Glowstick,
+    Axe,
 }
 
 impl Tool {
-    pub const ALL: [Tool; 7] = [Tool::Pickaxe, Tool::Bomb, Tool::Spawner, Tool::Igniter, Tool::Eraser, Tool::Heat, Tool::Glowstick];
-    const KEYS: [KeyCode; 7] =
-        [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit5, KeyCode::Digit6, KeyCode::Digit7];
+    pub const ALL: [Tool; 8] = [Tool::Pickaxe, Tool::Bomb, Tool::Spawner, Tool::Igniter, Tool::Eraser, Tool::Heat, Tool::Glowstick, Tool::Axe];
+    const KEYS: [KeyCode; 8] = [
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Digit4,
+        KeyCode::Digit5,
+        KeyCode::Digit6,
+        KeyCode::Digit7,
+        KeyCode::Digit8,
+    ];
 
     fn index(self) -> usize {
         Tool::ALL.iter().position(|t| *t == self).unwrap()
@@ -53,6 +62,7 @@ impl Tool {
             Tool::Eraser => "Erase",
             Tool::Heat => "Heat/Freeze",
             Tool::Glowstick => "Glow stick",
+            Tool::Axe => "Axe",
         }
     }
 
@@ -65,6 +75,7 @@ impl Tool {
             Tool::Eraser => Color::srgb(0.9, 0.9, 0.9),
             Tool::Heat => Color::srgb(1.0, 0.2, 0.6),
             Tool::Glowstick => Color::srgb(0.3, 1.0, 0.6),
+            Tool::Axe => Color::srgb(0.75, 0.5, 0.3),
         }
     }
 }
@@ -107,6 +118,7 @@ pub struct HeatCfg {
 #[derive(Resource, Clone, Debug, Deserialize)]
 pub struct ToolsConfig {
     pub pickaxe: PickaxeCfg,
+    pub axe: PickaxeCfg,
     pub bomb: BombCfg,
     pub spawner: RadiusCfg,
     pub igniter: RadiusCfg,
@@ -118,6 +130,7 @@ impl ToolsConfig {
     fn radius(&self, t: Tool) -> i32 {
         match t {
             Tool::Pickaxe => self.pickaxe.radius,
+            Tool::Axe => self.axe.radius,
             Tool::Bomb => self.bomb.radius,
             Tool::Spawner => self.spawner.radius,
             Tool::Igniter => self.igniter.radius,
@@ -133,7 +146,7 @@ impl ToolsConfig {
 pub struct Toolbelt {
     pub tool: Tool,
     /// Per-tool radius, starts from the config and changes with `[` `]`.
-    pub radius: [i32; 7],
+    pub radius: [i32; 8],
     /// Spawner material.
     pub material: MaterialId,
     /// Everything dug out so far, by material name (future inventory).
@@ -262,7 +275,10 @@ fn use_tools(
     } else {
         match belt.tool {
             Tool::Pickaxe if input.primary => {
-                Some(WorldEdit::Mine { center, radius, power: cfg.pickaxe.power, max_hardness: cfg.pickaxe.max_hardness })
+                Some(WorldEdit::Mine { center, radius, power: cfg.pickaxe.power, max_hardness: cfg.pickaxe.max_hardness, back: false })
+            }
+            Tool::Axe if input.primary => {
+                Some(WorldEdit::Mine { center, radius, power: cfg.axe.power, max_hardness: cfg.axe.max_hardness, back: true })
             }
             Tool::Spawner if input.primary => {
                 Some(WorldEdit::Paint { center, radius, material: belt.material, overwrite: input.overwrite })

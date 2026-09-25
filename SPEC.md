@@ -62,9 +62,16 @@ reactions. Adding a material is a data change. The sim reads a compact
 hot table (`MatPhys`) built from the definitions.
 
 Liquids fall, slide and flow sideways into air, up to `dispersion` cells a
-tick, and look up to 64 cells along the surface for lower ground (moving
+tick, and look up to 128 cells along the surface for lower ground (moving
 toward it costs nothing); aimless sloshing is budgeted (8 reversals) so
-lakes sleep. `viscosity` (0 water … 255) makes a liquid move on fewer ticks,
+lakes sleep. A liquid is pushed by the column above it: a cell with its own
+kind on top passes *through* its own kind (up to 48 cells) to the first open
+cell, reaching `dispersion + depth above` cells, scaled down by viscosity. So
+a block of water collapses like a dam break, bottom first (a 64-tall block
+is 30 tall after 1 s, 14 after 4 s), instead of eroding from its face while
+only the top trickles out. Surface cells beside an open step doze rather than
+sleep (they wake 1 tick in 16 to re-check), so a pressure-flattened pool
+never freezes into stairs. `viscosity` (0 water … 255) makes a liquid move on fewer ticks,
 pour slower and give up sooner: measured in a basin, water settles flat in
 ~3 s, oil ~4.5 s, blood and acid ~6 s, lava ~20 s in mounds.
 
@@ -89,6 +96,9 @@ where rock literally flows is not playable.
 ### 3.4 Edits
 Every gameplay change to cells (dig, place, explode, paint) is a `WorldEdit`
 applied at a tick boundary. This is the seam for co-op, replays and undo.
+`Mine` names its layer: the pickaxe digs the playfield only, the axe the
+background only (standing trees, cave walls), and only where the playfield
+in front is open, so you can't axe through a rock wall.
 
 ### 3.5 Streaming and persistence
 Chunks load around every player (co-op: the union). Missing chunks come from

@@ -315,8 +315,8 @@ impl World {
                 self.dig(center, radius, max_hardness, &mut report);
                 self.loosen_if_removed(center, radius, &report);
             }
-            WorldEdit::Mine { center, radius, power, max_hardness } => {
-                self.mine(center, radius, power, max_hardness, &mut report);
+            WorldEdit::Mine { center, radius, power, max_hardness, back } => {
+                self.mine(center, radius, power, max_hardness, back, &mut report);
                 self.loosen_if_removed(center, radius, &report);
             }
             WorldEdit::Lightning { x, from_y } => self.lightning(x, from_y),
@@ -375,13 +375,15 @@ impl World {
         }
     }
 
-    fn mine(&mut self, center: CellPos, radius: i32, power: u8, max_hardness: u8, report: &mut EditReport) {
+    fn mine(&mut self, center: CellPos, radius: i32, power: u8, max_hardness: u8, back: bool, report: &mut EditReport) {
         let mats = self.materials.clone();
         let mut rng = self.rng_for(0x3113, center);
         for p in disc(center, radius) {
             let Some(front) = self.get(p) else { continue };
-            // The playfield first; where it's empty, the background (trees, walls).
-            let back = front.is_air();
+            // An axe reaches the background only where nothing stands in front.
+            if back && !front.is_air() {
+                continue;
+            }
             let mut c = if back { self.get_bg(p).unwrap_or(Cell::AIR) } else { front };
             let ph = mats.phys(c.material);
             if c.is_air() || !matches!(ph.kind, Kind::Static | Kind::Powder | Kind::Plant) || ph.hardness > max_hardness || ph.hardness == u8::MAX {

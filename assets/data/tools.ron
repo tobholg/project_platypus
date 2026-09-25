@@ -6,6 +6,10 @@
     // dirt (20) goes fast, stone (60) slower, obsidian (120) slowly, bedrock never.
     pickaxe: (radius: 4, power: 3, max_hardness: 150),
 
+    // Hold to chop the background: standing trees, and walls behind open
+    // space (the pickaxe only mines the playfield).
+    axe: (radius: 4, power: 3, max_hardness: 150),
+
     // Click to throw toward the cursor; explodes after `fuse`.
     // `chain_reaction`: blasts set off other bombs nearby (off, so a string
     // of bombs digs a shaft one after another).

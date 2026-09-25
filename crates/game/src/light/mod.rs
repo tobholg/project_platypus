@@ -179,7 +179,8 @@ impl Plugin for LightPlugin {
         app.add_plugins((Material2dPlugin::<LightMultiply>::default(), Material2dPlugin::<LightAdd>::default()))
             .insert_resource(settings)
             .insert_resource(SettingsWatch(Watched::new(path)))
-            .insert_resource(LightToggles { enabled: true, flashlight: false, torch: false })
+            // PLATYPUS_NOLIGHT=1 starts with lighting off (F9 toggles).
+            .insert_resource(LightToggles { enabled: std::env::var("PLATYPUS_NOLIGHT").is_err(), flashlight: false, torch: false })
             .insert_resource(Daylight { skipped: skip, ..default() })
             .init_resource::<Flashes>()
             .init_resource::<LightMetrics>()

@@ -40,6 +40,8 @@ pub mod flags {
     pub const REST_SHIFT: u8 = 1;
     pub const REST_MASK: u8 = 0b1111 << REST_SHIFT;
     pub const REST_LIMIT: u8 = 8;
+    /// Beyond the limit, a liquid at a step's edge dozes up to here (4 bits).
+    pub const REST_MAX: u8 = 15;
 
     #[inline]
     pub const fn rest(f: u8) -> u8 {

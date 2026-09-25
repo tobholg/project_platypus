@@ -286,7 +286,7 @@ fn ticks_to_mine(name: &str, power: u8) -> Option<usize> {
     let at = CellPos::new(30, 30);
     w.set(at, Cell::new(id, 0));
     for t in 1..=400 {
-        w.apply_edit(&WorldEdit::Mine { center: at, radius: 0, power, max_hardness: 200 });
+        w.apply_edit(&WorldEdit::Mine { center: at, radius: 0, power, max_hardness: 200, back: false });
         if w.get(at).unwrap().is_air() {
             return Some(t);
         }
@@ -309,7 +309,7 @@ fn mining_damage_persists_between_swings() {
     let stone = w.materials().expect_id("stone");
     let at = CellPos::new(20, 20);
     w.set(at, Cell::new(stone, 0));
-    w.apply_edit(&WorldEdit::Mine { center: at, radius: 0, power: 10, max_hardness: 200 });
+    w.apply_edit(&WorldEdit::Mine { center: at, radius: 0, power: 10, max_hardness: 200, back: false });
     let c = w.get(at).unwrap();
     assert_eq!(c.material, stone);
     assert!(c.life >= 10, "damage recorded in the cell");
@@ -665,7 +665,7 @@ fn mining_dust_is_only_visual() {
     let before = count(&w, dirt) as u32;
     let mut removed = 0;
     for _ in 0..200 {
-        let r = w.apply_edit(&WorldEdit::Mine { center: CellPos::new(32, 12), radius: 5, power: 6, max_hardness: 200 });
+        let r = w.apply_edit(&WorldEdit::Mine { center: CellPos::new(32, 12), radius: 5, power: 6, max_hardness: 200, back: false });
         removed += r.removed.iter().map(|&(_, n)| n).sum::<u32>();
         w.step();
     }
@@ -1486,4 +1486,60 @@ fn water_on_lava_makes_a_hot_obsidian_crust_and_boils_off() {
     assert!(crust_hot, "fresh obsidian is hot");
     assert!(most_steam > poured / 3, "much of the water boiled off ({most_steam} steam from {poured})");
     assert!(count(&w, lava) > 0, "lava under the crust");
+}
+
+/// A dam break: a block of water 50 wide, 60 high at the left of an empty
+/// basin. Returns (tick, flood front x, height at x=10) samples.
+fn dam_break(liquid: &str) -> Vec<(usize, i32, i32)> {
+    let mut w = boxed_world(4, 2, 7);
+    let id = w.materials().expect_id(liquid);
+    fill(&mut w, liquid, 1, 51, 1, 61);
+    let mut out = Vec::new();
+    for t in 1..=240 {
+        w.step();
+        if [15, 30, 60, 120, 240].contains(&t) {
+            let front = (1..255).rev().find(|&x| (1..8).any(|y| w.get(CellPos::new(x, y)).unwrap().material == id)).unwrap_or(0);
+            let h = (1..127).filter(|&y| w.get(CellPos::new(10, y)).unwrap().material == id).count() as i32;
+            out.push((t, front, h));
+        }
+    }
+    out
+}
+
+/// Water released in a block collapses like a dam break (pressure pushes it
+/// out through itself), not a wall eroding from its face (SPEC §3.2).
+#[test]
+fn a_block_of_water_collapses_like_a_dam_break() {
+    let samples = dam_break("water");
+    let height_at = |t: usize| samples.iter().find(|s| s.0 == t).unwrap().2;
+    let front_at = |t: usize| samples.iter().find(|s| s.0 == t).unwrap().1;
+    assert!(front_at(15) > 150, "the flood races along the floor: {samples:?}");
+    assert!(height_at(30) <= 40, "half a second in, the block has slumped: {samples:?}");
+    assert!(height_at(120) <= 24, "two seconds in, it's mostly spread out: {samples:?}");
+}
+
+
+#[test]
+fn a_pickaxe_mines_the_playfield_an_axe_the_background() {
+    let mut w = boxed_world(2, 2, 102);
+    plant_tree(&mut w, 64);
+    let wood = w.materials().expect_id("wood");
+    let before = count_bg(&w, wood);
+    let at = CellPos::new(64, 20);
+    for _ in 0..200 {
+        w.apply_edit(&WorldEdit::Mine { center: at, radius: 4, power: 4, max_hardness: 150, back: false });
+    }
+    assert_eq!(count_bg(&w, wood), before, "the pickaxe leaves the tree alone");
+    for _ in 0..40 {
+        w.apply_edit(&WorldEdit::Mine { center: at, radius: 4, power: 4, max_hardness: 150, back: true });
+    }
+    assert!(count_bg(&w, wood) < before - 20, "the axe cuts into the trunk");
+    // Behind solid ground the axe can't reach.
+    fill(&mut w, "stone", 90, 110, 1, 30);
+    fill_bg(&mut w, "stone", 90, 110, 1, 30);
+    let walls = count_bg(&w, w.materials().expect_id("stone"));
+    for _ in 0..200 {
+        w.apply_edit(&WorldEdit::Mine { center: CellPos::new(100, 15), radius: 4, power: 4, max_hardness: 150, back: true });
+    }
+    assert_eq!(count_bg(&w, w.materials().expect_id("stone")), walls);
 }

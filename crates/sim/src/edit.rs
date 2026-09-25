@@ -10,11 +10,12 @@ pub enum WorldEdit {
     Paint { center: CellPos, radius: i32, material: MaterialId, overwrite: bool },
     /// Remove every cell in a disc whose hardness is at most `max_hardness`.
     Dig { center: CellPos, radius: i32, max_hardness: u8 },
-    /// One tick of a pickaxe: every solid or powder cell in the disc takes
-    /// `power` damage (less towards the rim) and breaks once its damage
-    /// reaches its hardness. Cells harder than `max_hardness` are untouched;
-    /// hardness 255 never breaks.
-    Mine { center: CellPos, radius: i32, power: u8, max_hardness: u8 },
+    /// One tick of a pickaxe (`back: false`, the playfield) or an axe
+    /// (`back: true`, the background where the playfield is open: trees,
+    /// walls): every cell in the disc takes `power` damage (less towards the
+    /// rim) and breaks once its damage reaches its hardness. Cells harder
+    /// than `max_hardness` are untouched; hardness 255 never breaks.
+    Mine { center: CellPos, radius: i32, power: u8, max_hardness: u8, back: bool },
     /// Destroy what `power` can break (falling off towards the edge), shatter
     /// a rim into rubble (`crumbles_into`), ignite flammables, fill the crater
     /// with fire and smoke.
