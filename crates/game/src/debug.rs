@@ -116,7 +116,7 @@ fn update_hud(
          entities {} | particles {} | bodies {} | tick {} | zoom {} px/cell\n\
          tool {} r{} | cursor {}\n\
          light {:.2} ms (+{:.2} ms bg), {} texels | {}\n\
-         dev panel: key left of 1 | wheel zoom",
+         dev panel: key left of 1 | + - zoom",
         stats.avg_ms,
         stats.worst_ms,
         1000.0 / stats.avg_ms.max(0.001),

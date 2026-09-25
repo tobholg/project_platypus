@@ -108,8 +108,8 @@ fn spawn_panel(mut commands: Commands) {
         ("Spawn an orc   O", DevAction::SpawnOrc(None)),
         ("Performance HUD   H", DevAction::PerfHud),
         ("Chunk overlay   J", DevAction::Chunks),
-        ("Radius -   Ctrl+wheel", DevAction::Radius(-1)),
-        ("Radius +   Ctrl+wheel", DevAction::Radius(1)),
+        ("Radius -   wheel", DevAction::Radius(-1)),
+        ("Radius +   wheel", DevAction::Radius(1)),
         ("Back to hands   key left of 1", DevAction::Hands),
     ];
     commands

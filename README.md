@@ -35,9 +35,10 @@ The toolchain is pinned in `rust-toolchain.toml`; rustup fetches it on first bui
 
 **Play:** A/D move · Space jump (hold for height, tap for a hop, again in the air
 for a double jump, against a wall to wall-jump) · S (or ↓) drops through a wooden
-platform · Shift dash
+platform · Shift dash · + and − zoom (the keys that type them, on any layout; the
+keypad's too)
 
-**Hands** (the default; items in `assets/data/items.ron`): 1–0 pick a hotbar slot ·
+**Hands** (the default; items in `assets/data/items.ron`): 1–0 or the mouse wheel pick a hotbar slot ·
 LMB use it (hold it with the cursor below you to dig straight down, beside you for a
 tunnel: the smart cursor digs a hole you fit; Alt toggles it) · hold Ctrl for the
 right tool for what's at the cursor (auto tool) · the key left of 1 (or F1) switches
@@ -67,7 +68,7 @@ right has a button for every dev action, with its key; tuning in `assets/data/to
 | 8 | Axe | cut the background: standing trees, burnt trunks, cave walls, wherever the playfield in front is empty. Chop a trunk to fell a tree |
 
 The pickaxe only digs the playfield, the axe only the background; the eraser and
-the heat tool reach both. RMB erases with any tool · Ctrl+wheel (or `[` `]`) radius · wheel zoom · Tab free camera
+the heat tool reach both. RMB erases with any tool · the wheel (or `[` `]`) radius · + and − zoom · Tab free camera
 (WASD flies, Shift faster) ·
 dev actions (letters in dev mode, F-keys always, or the panel): H performance HUD
 (F3) · J chunk borders + dirty rects (F4) · V thunderstorm here (F5) · B clear skies (F6) ·

@@ -1,8 +1,9 @@
 //! Camera: follows a `CameraTarget` if there is one, otherwise flies freely
 //! (WASD / arrows, Shift for speed). Tab detaches it from the player.
-//! Mouse wheel zooms in whole screen-pixels per cell.
+//! The keys that type `+` and `-` zoom in whole screen-pixels per cell,
+//! whatever the keyboard layout (`=` too, and the keypad's).
 
-use bevy::input::mouse::AccumulatedMouseScroll;
+use bevy::input::keyboard::Key;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
@@ -66,13 +67,16 @@ fn spawn_camera(mut commands: Commands, start: Res<StartAt>) {
     ));
 }
 
-fn zoom(scroll: Res<AccumulatedMouseScroll>, keys: Res<ButtonInput<KeyCode>>, mut zoom: ResMut<Zoom>) {
-    // Ctrl+wheel is reserved for tools (brush size).
-    if scroll.delta.y == 0.0 || keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]) {
+fn zoom(chars: Res<ButtonInput<Key>>, keys: Res<ButtonInput<KeyCode>>, mut zoom: ResMut<Zoom>) {
+    // What the key types, not where it is: + is Shift+= on a US keyboard and
+    // beside 0 on a Norwegian one.
+    let typed = |c: &str| chars.just_pressed(Key::Character(c.into()));
+    let step = (typed("+") || typed("=") || keys.just_pressed(KeyCode::NumpadAdd)) as i32 - (typed("-") || keys.just_pressed(KeyCode::NumpadSubtract)) as i32;
+    if step == 0 {
         return;
     }
     let i = ZOOM_LEVELS.iter().position(|&z| z == zoom.0).unwrap_or(2) as i32;
-    let j = (i + scroll.delta.y.signum() as i32).clamp(0, ZOOM_LEVELS.len() as i32 - 1);
+    let j = (i + step).clamp(0, ZOOM_LEVELS.len() as i32 - 1);
     zoom.0 = ZOOM_LEVELS[j as usize];
 }
 

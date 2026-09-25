@@ -27,6 +27,9 @@
 //! - `chestfall`  a chest beside the player at 1 s, the ground under it dug
 //!   out at 2 s: it falls; a blast beside it at 4 s throws it, one on it at 5 s
 //!   breaks it
+//! - `zoom`       types + twice and − once (as characters, as a Norwegian
+//!   keyboard would), then scrolls the wheel two notches down; logs the zoom
+//!   and the hotbar slot
 //! - `drop`       stands still until 3 s, then holds S: on a platform (e.g. a
 //!   crypt's entrance, `PLATYPUS_SPAWN_X` at a ruin) it drops through; logs
 //!   the feet before and after
@@ -71,7 +74,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -580,6 +583,42 @@ fn chestfall_script(
             *step = 5;
         }
         _ => {}
+    }
+}
+
+fn zoom_script(
+    s: Res<Scenario>,
+    mut chars: ResMut<ButtonInput<bevy::input::keyboard::Key>>,
+    mut scroll: ResMut<bevy::input::mouse::AccumulatedMouseScroll>,
+    zoom: Res<crate::camera::Zoom>,
+    hand: Res<crate::hands::Hand>,
+    mut step: Local<u8>,
+) {
+    use bevy::input::keyboard::Key;
+    if s.name != "zoom" {
+        return;
+    }
+    chars.release_all();
+    let t = s.elapsed;
+    let at = |k: u8| *step == k && t > 1.0 + k as f32 * 0.4;
+    if at(0) {
+        info!("zoom: starts at {} px/cell, slot {}", zoom.0, hand.slot);
+        chars.press(Key::Character("+".into()));
+        *step = 1;
+    } else if at(1) {
+        chars.press(Key::Character("+".into()));
+        *step = 2;
+    } else if at(2) {
+        info!("zoom: after + +: {} px/cell", zoom.0);
+        chars.press(Key::Character("-".into()));
+        *step = 3;
+    } else if at(3) {
+        info!("zoom: after -: {} px/cell", zoom.0);
+        scroll.delta.y = -2.0;
+        *step = 4;
+    } else if at(4) {
+        info!("zoom: after two wheel notches down: slot {}", hand.slot);
+        *step = 5;
     }
 }
 

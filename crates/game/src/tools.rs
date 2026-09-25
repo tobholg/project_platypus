@@ -3,7 +3,7 @@
 //!
 //! ` (or F1) turns them on (and the hands off, `hands/`).
 //! 1–8 pick a tool · LMB use · RMB erase · Q/E change spawner material ·
-//! `[` `]` or Ctrl+wheel radius · Shift+LMB: spawner replaces solids, heat gun freezes.
+//! the wheel (or `[` `]`) radius · Shift+LMB: spawner replaces solids, heat gun freezes.
 //!
 //! Input is sampled every frame but tools act on the fixed tick, so a pickaxe
 //! digs at the same speed at 60 or 240 fps. Every change is a `WorldEdit`.
@@ -235,9 +235,9 @@ fn select(
         belt.material = MaterialId(((cur + step).rem_euclid(n) + 1) as u16);
         belt.tool = Tool::Spawner;
     }
-    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
+    // (The wheel, with or without Ctrl: zoom is + and −.)
     let mut d = keys.just_pressed(KeyCode::BracketRight) as i32 - keys.just_pressed(KeyCode::BracketLeft) as i32;
-    if ctrl && scroll.delta.y != 0.0 {
+    if scroll.delta.y != 0.0 {
         d = scroll.delta.y.signum() as i32;
     }
     if d != 0 {
@@ -377,7 +377,7 @@ fn update_hotbar(belt: Res<Toolbelt>, sim: Res<SimWorld>, dev: Res<DevTools>, mu
         .collect();
     let mined: Vec<String> = belt.mined.iter().map(|(k, v)| format!("{k} {v}")).collect();
     text.0 = format!(
-        "DEV TOOLS (key left of 1, or F1: back to the hands)   {}   radius {}\nLMB use | RMB erase | Q/E material | Shift: overwrite / freeze | Ctrl+wheel radius | Tab free camera | panel on the right\nmined: {}",
+        "DEV TOOLS (key left of 1, or F1: back to the hands)   {}   radius {}\nLMB use | RMB erase | Q/E material | Shift: overwrite / freeze | wheel radius | + - zoom | Tab free camera | panel on the right\nmined: {}",
         slots.join(" "),
         belt.radius(),
         if mined.is_empty() { "-".into() } else { mined.join(", ") }

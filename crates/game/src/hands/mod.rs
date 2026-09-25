@@ -11,6 +11,7 @@ pub mod items;
 pub mod target;
 mod ui;
 
+use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
 use platypus_physics::{Body, Locomotion};
 use platypus_sim::{BLOCK, CellPos, Kind, World, WorldEdit, block_cells};
@@ -167,7 +168,9 @@ const SLOT_KEYS: [KeyCode; HOTBAR] = [
     KeyCode::Digit0,
 ];
 
-fn select(keys: Res<ButtonInput<KeyCode>>, dev: Res<DevTools>, mut hand: ResMut<Hand>) {
+/// Number keys pick a hotbar slot; the wheel steps through them (a notch a
+/// slot; a trackpad's scroll is counted in lines' worth of pixels).
+fn select(keys: Res<ButtonInput<KeyCode>>, scroll: Res<AccumulatedMouseScroll>, dev: Res<DevTools>, open: Res<InventoryOpen>, mut hand: ResMut<Hand>, mut wheel: Local<f32>) {
     if dev.0 {
         return;
     }
@@ -175,6 +178,20 @@ fn select(keys: Res<ButtonInput<KeyCode>>, dev: Res<DevTools>, mut hand: ResMut<
         if keys.just_pressed(*key) {
             hand.slot = i;
         }
+    }
+    const PIXELS_A_NOTCH: f32 = 40.0;
+    *wheel += match scroll.unit {
+        MouseScrollUnit::Line => scroll.delta.y,
+        MouseScrollUnit::Pixel => scroll.delta.y / PIXELS_A_NOTCH,
+    };
+    if open.0 {
+        *wheel = 0.0;
+    }
+    while wheel.abs() >= 1.0 {
+        // Up is the slot before, as in Terraria.
+        let step = if *wheel > 0.0 { HOTBAR - 1 } else { 1 };
+        hand.slot = (hand.slot + step) % HOTBAR;
+        *wheel -= wheel.signum();
     }
 }
 
