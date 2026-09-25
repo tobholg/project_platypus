@@ -134,6 +134,11 @@ impl LightGrid {
                                 let f = flicker(o.x + lx, o.y + ly);
                                 add3(&mut slot.2, [0.6 * f, 0.33 * f, 0.1 * f]);
                             }
+                            // Glowing things behind glow too (a giant
+                            // mushroom's cap), where nothing's in front.
+                            if c.is_air() && bp.glow != [0; 3] {
+                                add3(&mut slot.2, [bp.glow[0] as f32 / 255.0, bp.glow[1] as f32 / 255.0, bp.glow[2] as f32 / 255.0]);
+                            }
                         }
                         slot.0 += op;
                         slot.1 += sky_op;

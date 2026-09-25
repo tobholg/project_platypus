@@ -117,6 +117,13 @@ struct Ids {
     false_ashlar: MaterialId,
     moss: MaterialId,
     cobweb: MaterialId,
+    acid: MaterialId,
+    fungal_soil: MaterialId,
+    glowcap: MaterialId,
+    mushroom_stem: MaterialId,
+    mushroom_cap: MaterialId,
+    crystal: MaterialId,
+    toxic_crust: MaterialId,
     platform: MaterialId,
 }
 
@@ -200,6 +207,13 @@ impl TerrainGen {
             false_ashlar: mats.expect_id("false_ashlar"),
             moss: mats.expect_id("moss"),
             cobweb: mats.expect_id("cobweb"),
+            acid: mats.expect_id("acid"),
+            fungal_soil: mats.expect_id("fungal_soil"),
+            glowcap: mats.expect_id("glowcap"),
+            mushroom_stem: mats.expect_id("mushroom_stem"),
+            mushroom_cap: mats.expect_id("mushroom_cap"),
+            crystal: mats.expect_id("crystal"),
+            toxic_crust: mats.expect_id("toxic_crust"),
             platform: mats.expect_id("platform"),
         };
 
@@ -289,6 +303,14 @@ impl TerrainGen {
             return (i.stone, None);
         }
         let depth = self.surface_at(x) - y;
+        if depth > 16
+            && let Some(m) = self.plan.caves.mushroom_at(x, y)
+        {
+            return match m {
+                caves::Shroom::Stem => (i.mushroom_stem, None),
+                caves::Shroom::Cap(v) => (i.mushroom_cap, Some(255 - v / 2)),
+            };
+        }
         let wall = if depth > 16 { self.rock(x, y, self.plan.band_at(y)) } else if depth > 6 { i.dirt } else { i.air };
         (wall, None)
     }
@@ -489,6 +511,87 @@ impl TerrainGen {
         }
     }
 
+    /// The underground biomes dress the rock where it meets open space:
+    /// fungal soil and glowing sprouts in the fungal hollows, crystal studs
+    /// in the crystal caves, a glowing crust in the toxic grottos.
+    fn dress(&self, pos: ChunkPos, cells: &mut [Cell], rng: &mut Rng) {
+        let i = &self.ids;
+        let o = pos.origin();
+        let areas: Vec<&caves::Area> = self
+            .plan
+            .caves
+            .areas
+            .iter()
+            .filter(|a| {
+                let (cx, cy) = ((o.x + CHUNK / 2) as f32, (o.y + CHUNK / 2) as f32);
+                ((cx - a.x).abs() - CHUNK as f32) < a.rx && ((cy - a.y).abs() - CHUNK as f32) < a.ry
+            })
+            .collect();
+        if areas.is_empty() {
+            return;
+        }
+        let built = self.plan.structures.pieces_in(pos.x, pos.y).next().is_some();
+        // The chunk as generated, with a margin of two cells from the chunks
+        // around (asked once each).
+        const M: i32 = 2;
+        const W: i32 = CHUNK + 2 * M;
+        let mut before = vec![MaterialId::AIR; (W * W) as usize];
+        for y in -M..CHUNK + M {
+            for x in -M..CHUNK + M {
+                before[((y + M) * W + x + M) as usize] = if (0..CHUNK).contains(&x) && (0..CHUNK).contains(&y) {
+                    cells[(y * CHUNK + x) as usize].material
+                } else {
+                    self.material_at(o.x + x, o.y + y)
+                };
+            }
+        }
+        let at = |x: i32, y: i32| before[((y + M) * W + x + M) as usize];
+        let open = |m: MaterialId| m == i.air || m == i.water || m == i.acid || m == i.lava;
+        let rock = |m: MaterialId| m == i.stone || m == i.slate || m == i.dirt || m == i.basalt;
+        let near_open = |x: i32, y: i32, r: i32| (-r..=r).any(|dy| (-r..=r).any(|dx| open(at(x + dx, y + dy))));
+        let set = |cells: &mut [Cell], lx: i32, ly: i32, m: MaterialId, shade: u8| {
+            cells[(ly * CHUNK + lx) as usize] = Cell { heat: self.heat[m.0 as usize], ..Cell::new(m, shade) };
+        };
+        for ly in 0..CHUNK {
+            for lx in 0..CHUNK {
+                let (x, y) = (o.x + lx, o.y + ly);
+                let Some(zone) = areas.iter().find(|a| a.contains(x as f32, y as f32)).map(|a| a.zone) else { continue };
+                if built && self.plan.structures.glyph_at(x, y).is_some() {
+                    continue;
+                }
+                let m = at(lx, ly);
+                let h = hash(&[self.plan.seed, 0xD7E5, x as u64, y as u64]);
+                match zone {
+                    caves::Zone::Fungal => {
+                        if rock(m) && near_open(lx, ly, 2) {
+                            set(cells, lx, ly, i.fungal_soil, rng.next_u8());
+                        } else if m == i.air && ly > 0 && rock(at(lx, ly - 1)) && h.is_multiple_of(5) {
+                            // A sprout: a stem or two, a glowing tip.
+                            let tall = 1 + (h >> 8) as i32 % 3;
+                            for k in 0..=tall {
+                                if ly + k >= CHUNK || at(lx, ly + k) != i.air {
+                                    break;
+                                }
+                                set(cells, lx, ly + k, i.glowcap, if k == tall { 230 } else { 40 + (h >> 16) as u8 % 60 });
+                            }
+                        }
+                    }
+                    caves::Zone::Crystal => {
+                        // Studs of two by two.
+                        if rock(m) && near_open(lx, ly, 1) && hash(&[self.plan.seed, 0xC7A1, (x >> 1) as u64, (y >> 1) as u64]).is_multiple_of(5) {
+                            set(cells, lx, ly, i.crystal, rng.next_u8());
+                        }
+                    }
+                    caves::Zone::Toxic => {
+                        if rock(m) && near_open(lx, ly, 1) {
+                            set(cells, lx, ly, i.toxic_crust, rng.next_u8());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// A structure's chests and guards whose feet are in this chunk.
     fn structure_spawns(&self, pos: ChunkPos) -> Vec<(CellPos, Spawn)> {
         let o = pos.origin();
@@ -557,9 +660,9 @@ impl TerrainGen {
         let origin = pos.origin();
         // (Most chunks have no cave with room for one: these are tries.)
         let chance = match self.plan.band_at(origin.y + CHUNK / 2) {
-            Band::Underground => 72,
-            Band::Caverns => 108,
-            Band::Deep => 144,
+            Band::Underground => 36,
+            Band::Caverns => 54,
+            Band::Deep => 72,
             _ => return None,
         };
         if !rng.chance(chance) {
@@ -619,6 +722,8 @@ impl TerrainGen {
                 caves::Open::Pool(caves::Pool::Water) => if plan.climate.ambient(x, y) <= 0 { i.ice } else { i.water },
                 caves::Open::Pool(caves::Pool::Oil) => i.oil,
                 caves::Open::Pool(caves::Pool::Lava) => i.lava,
+                caves::Open::Pool(caves::Pool::Acid) => i.acid,
+                caves::Open::Crystal => i.crystal,
             });
         }
         if !matches!(band, Band::Caverns | Band::Deep) {
@@ -735,6 +840,7 @@ impl ChunkGenerator for TerrainGen {
                 bg.push(back);
             }
         }
+        self.dress(pos, &mut cells, &mut rng);
         let mut spawns = self.structure_spawns(pos);
         spawns.extend(self.cave_chest(pos, &cells, &mut rng).map(|p| (p, Spawn::Chest)));
         (Chunk::with_background(pos, cells, bg), spawns)
@@ -973,6 +1079,39 @@ mod tests {
         assert!(blocked.len() * 100 <= checked, "the player fits along the tunnels: blocked at {} of {checked}: {:?}", blocked.len(), &blocked[..blocked.len().min(8)]);
     }
 
+    /// Each underground biome is there and dressed: fungal soil and sprouts
+    /// and giant mushrooms, crystals, toxic crust and acid.
+    #[test]
+    fn underground_biomes_are_dressed() {
+        use std::collections::HashMap;
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let mut seen: HashMap<caves::Zone, Vec<MaterialId>> = HashMap::new();
+        for a in &g.plan.caves.areas {
+            let mut found = Vec::new();
+            for k in 0..60 {
+                let (x, y) = (a.x + a.rx * 0.8 * ((k * 37 % 60) as f32 / 30.0 - 1.0), a.y + a.ry * 0.8 * ((k * 17 % 60) as f32 / 30.0 - 1.0));
+                let pos = CellPos::new(x as i32, y as i32).chunk();
+                let (c, _) = g.generate_with_spawns(pos);
+                found.extend(c.cells().iter().map(|c| c.material));
+                found.extend(c.background().iter().map(|c| c.material));
+            }
+            found.sort();
+            found.dedup();
+            seen.entry(a.zone).or_default().extend(found);
+        }
+        let has = |z: caves::Zone, name: &str| seen.get(&z).is_some_and(|v| v.contains(&m.expect_id(name)));
+        for (zone, names) in [
+            (caves::Zone::Fungal, ["fungal_soil", "glowcap", "mushroom_cap"].as_slice()),
+            (caves::Zone::Crystal, ["crystal"].as_slice()),
+            (caves::Zone::Toxic, ["toxic_crust", "acid"].as_slice()),
+        ] {
+            for n in names {
+                assert!(has(zone, n), "{} have {n}", zone.name());
+            }
+        }
+    }
+
     /// Water runs over each column as (start, end, level), left to right.
     fn lakes(p: &WorldPlan) -> Vec<(i32, i32, i32)> {
         let mut out = Vec::new();
@@ -1148,9 +1287,9 @@ mod tests {
                 }
             }
         }
-        // Roughly one in a few dozen underground chunks: ~1 000 in the world.
+        // Roughly one in fifty underground chunks.
         println!("{chests} chests in {chunks} chunks");
-        assert!(chests * 100 > chunks && chests * 8 < chunks, "{chests} chests in {chunks} chunks");
+        assert!(chests * 150 > chunks && chests * 20 < chunks, "{chests} chests in {chunks} chunks");
     }
 
 

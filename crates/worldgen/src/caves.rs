@@ -13,6 +13,13 @@
 //! - Mouths: tunnels down from the surface into the nearest chamber.
 //!
 //! Noise only roughens the walls. A chunk asks only the shapes binned to it.
+//!
+//! Underground biomes (regions in the caverns and the deep; the rest keeps
+//! its plain rock): fungal hollows (giant glowing mushrooms in the chambers,
+//! sprouts on the floors, fungal soil walls), crystal caves (glowing crystal
+//! spikes growing into the chambers), toxic grottos (acid in every chamber,
+//! glowing crust on the walls). The walls and floors are dressed as a chunk
+//! is made (lib.rs); what's shaped by a chamber is planned here.
 
 use std::collections::HashMap;
 
@@ -31,6 +38,70 @@ pub enum Pool {
     Water,
     Oil,
     Lava,
+    Acid,
+}
+
+/// An underground biome.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Zone {
+    Fungal,
+    Crystal,
+    Toxic,
+}
+
+impl Zone {
+    pub const ALL: [Zone; 3] = [Zone::Fungal, Zone::Crystal, Zone::Toxic];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Zone::Fungal => "fungal hollows",
+            Zone::Crystal => "crystal caves",
+            Zone::Toxic => "toxic grottos",
+        }
+    }
+}
+
+/// Where an underground biome is: an ellipse.
+#[derive(Clone, Debug)]
+pub struct Area {
+    pub zone: Zone,
+    pub x: f32,
+    pub y: f32,
+    pub rx: f32,
+    pub ry: f32,
+}
+
+impl Area {
+    pub fn contains(&self, x: f32, y: f32) -> bool {
+        ((x - self.x) / self.rx).powi(2) + ((y - self.y) / self.ry).powi(2) < 1.0
+    }
+}
+
+/// A crystal growing into a chamber: a triangle from its base on the wall
+/// to its tip.
+#[derive(Clone, Debug)]
+pub struct Spike {
+    pub base: [(f32, f32); 2],
+    pub tip: (f32, f32),
+}
+
+/// A giant mushroom standing in a chamber (background): its stem from the
+/// floor up, its cap on top.
+#[derive(Clone, Copy, Debug)]
+pub struct Mushroom {
+    pub x: f32,
+    pub foot: f32,
+    pub top: f32,
+    pub stem: f32,
+    pub cap: f32,
+}
+
+/// What a giant mushroom has at a cell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shroom {
+    Stem,
+    /// How far down the cap (0 top … 1 rim), for shading.
+    Cap(u8),
 }
 
 #[derive(Clone, Debug)]
@@ -42,6 +113,10 @@ pub struct Chamber {
     pub ry: f32,
     /// Liquid up to this height, if any.
     pub pool: Option<(Pool, f32)>,
+    /// The underground biome it's in, if any.
+    pub zone: Option<Zone>,
+    pub spikes: Vec<Spike>,
+    pub mushrooms: Vec<Mushroom>,
 }
 
 #[derive(Clone, Debug)]
@@ -71,6 +146,7 @@ struct Layer {
 type Bins = HashMap<(i32, i32), (Vec<u32>, Vec<(u32, u32)>)>;
 
 pub struct Caves {
+    pub areas: Vec<Area>,
     pub chambers: Vec<Chamber>,
     pub tunnels: Vec<Tunnel>,
     bins: Bins,
@@ -82,6 +158,8 @@ pub struct Caves {
 pub enum Open {
     Air,
     Pool(Pool),
+    /// A crystal growing into a chamber.
+    Crystal,
 }
 
 fn unit(rng: &mut Rng) -> f32 {
@@ -135,9 +213,36 @@ impl Caves {
             }
         };
 
+        let (lo, hi) = g.span;
+        // Underground biomes: two of each (one in a small world), in the
+        // caverns (toxic grottos in the deep too), apart from each other.
+        let mut areas: Vec<Area> = Vec::new();
+        let (sw, sh) = (g.scale.0 as f32, g.scale.1 as f32);
+        let each = if sw < 0.5 { 1 } else { 2 };
+        for zone in Zone::ALL {
+            let mut placed = 0;
+            for _ in 0..400 {
+                if placed == each {
+                    break;
+                }
+                let (rx, ry) = (range(&mut rng, (900.0, 1_500.0)) * sw.max(0.3), range(&mut rng, (450.0, 750.0)) * sh.max(0.3));
+                let x = rx + 600.0 + unit(&mut rng) * (g.width as f32 - 2.0 * rx - 1_200.0);
+                let (ylo, yhi) = if zone == Zone::Toxic { (lo as f32 + ry, g.caverns_top as f32 - ry) } else { (g.deep_top as f32 + ry * 0.5, g.caverns_top as f32 - ry * 0.7) };
+                if yhi <= ylo {
+                    continue;
+                }
+                let y = ylo + unit(&mut rng) * (yhi - ylo);
+                if areas.iter().any(|a| ((a.x - x) / (a.rx + rx)).powi(2) + ((a.y - y) / (a.ry + ry)).powi(2) < 1.0) {
+                    continue;
+                }
+                areas.push(Area { zone, x, y, rx, ry });
+                placed += 1;
+            }
+        }
+        let zone_at = |x: f32, y: f32| areas.iter().find(|a| a.contains(x, y)).map(|a| a.zone);
+
         // Chambers: tries spread over the span, kept apart by their layer's
         // spacing, under enough ground (more under lakes and the sea).
-        let (lo, hi) = g.span;
         let area = g.width as f64 * (hi - lo) as f64;
         let tries = (area / (150.0 * 150.0)) as usize;
         let mut chambers: Vec<Chamber> = Vec::new();
@@ -162,8 +267,12 @@ impl Caves {
             if near {
                 continue;
             }
-            // Some hold a pool: water mostly, oil now and then, lava deep down.
-            let pool = if unit(&mut rng) < 0.3 {
+            // Some hold a pool: water mostly, oil now and then, lava deep down;
+            // in the toxic grottos, every one a pool of acid.
+            let zone = zone_at(x, y);
+            let pool = if zone == Some(Zone::Toxic) {
+                Some((Pool::Acid, y - ry + 2.0 * ry * range(&mut rng, (0.25, 0.45))))
+            } else if unit(&mut rng) < 0.3 {
                 let kind = if y < g.deep_top as f32 && unit(&mut rng) < 0.5 {
                     Pool::Lava
                 } else if unit(&mut rng) < 0.15 {
@@ -176,7 +285,7 @@ impl Caves {
                 None
             };
             grid.entry((kx, ky)).or_default().push(chambers.len());
-            chambers.push(Chamber { x, y, rx, ry, pool });
+            chambers.push(Chamber { x, y, rx, ry, pool, zone, spikes: Vec::new(), mushrooms: Vec::new() });
         }
 
         // Links: each chamber to its nearest few; a spanning tree of them
@@ -281,6 +390,58 @@ impl Caves {
             }
         }
 
+        // What grows in the biomes' chambers: crystals from the walls (not
+        // where a tunnel comes in), giant mushrooms on the floors.
+        let mut ways: Vec<Vec<f32>> = vec![Vec::new(); chambers.len()];
+        for t in &tunnels {
+            if let Some((a, b)) = t.joins {
+                let n = t.points.len();
+                let (p0, p1) = (t.points[0], t.points[1.min(n - 1)]);
+                let (q0, q1) = (t.points[n - 1], t.points[n.saturating_sub(2)]);
+                ways[a as usize].push((p1.1 - p0.1).atan2(p1.0 - p0.0));
+                ways[b as usize].push((q1.1 - q0.1).atan2(q1.0 - q0.0));
+            }
+        }
+        for (c, ways) in chambers.iter_mut().zip(&ways) {
+            match c.zone {
+                Some(Zone::Crystal) => {
+                    for _ in 0..(6.0 + c.rx / 12.0) as usize {
+                        let a = unit(&mut rng) * std::f32::consts::TAU;
+                        let clear = ways.iter().all(|w| {
+                            let d = (a - w).rem_euclid(std::f32::consts::TAU);
+                            d.min(std::f32::consts::TAU - d) > 0.45
+                        });
+                        if !clear {
+                            continue;
+                        }
+                        // From just outside the wall toward the middle, a third
+                        // to a half of the way, a little askew.
+                        let base = (c.x + c.rx * 1.05 * a.cos(), c.y + c.ry * 1.05 * a.sin());
+                        let reach = range(&mut rng, (0.3, 0.5));
+                        let skew = range(&mut rng, (-0.25, 0.25));
+                        let (dx, dy) = (c.x - base.0, c.y - base.1);
+                        let tip = (base.0 + (dx - dy * skew) * reach, base.1 + (dy + dx * skew) * reach);
+                        let half = range(&mut rng, (3.0, 8.0));
+                        let len = (dx * dx + dy * dy).sqrt().max(1.0);
+                        let (px, py) = (-dy / len * half, dx / len * half);
+                        c.spikes.push(Spike { base: [(base.0 + px, base.1 + py), (base.0 - px, base.1 - py)], tip });
+                    }
+                }
+                Some(Zone::Fungal) => {
+                    for _ in 0..(1.0 + c.rx / 45.0) as usize {
+                        let u = range(&mut rng, (-0.7, 0.7));
+                        let x = c.x + c.rx * u;
+                        let floor = c.y - c.ry * (1.0 - u * u).sqrt();
+                        let room = c.y + c.ry * (1.0 - u * u).sqrt() - floor;
+                        let h = (room * range(&mut rng, (0.45, 0.8))).clamp(24.0, 110.0);
+                        let cap = (h * range(&mut rng, (0.25, 0.4))).clamp(8.0, 30.0);
+                        c.mushrooms.push(Mushroom { x, foot: floor - 12.0, top: floor + h, stem: (cap / 5.0).clamp(2.0, 5.0), cap });
+                    }
+                }
+                _ => {}
+            }
+        }
+
         // Bins: every chunk a shape's box touches.
         let mut bins: Bins = HashMap::new();
         let chunks = |x0: f32, y0: f32, x1: f32, y1: f32| {
@@ -302,7 +463,34 @@ impl Caves {
                 }
             }
         }
-        Caves { chambers, tunnels, bins, rim: Perlin::new((seed as u32) ^ 0xC0FE) }
+        Caves { areas, chambers, tunnels, bins, rim: Perlin::new((seed as u32) ^ 0xC0FE) }
+    }
+
+    /// The underground biome at a cell, if any.
+    pub fn zone_at(&self, x: i32, y: i32) -> Option<Zone> {
+        self.areas.iter().find(|a| a.contains(x as f32, y as f32)).map(|a| a.zone)
+    }
+
+    /// A giant mushroom at a cell (background), if one stands there.
+    pub fn mushroom_at(&self, x: i32, y: i32) -> Option<Shroom> {
+        let (chambers, _) = self.bins.get(&(x.div_euclid(CHUNK), y.div_euclid(CHUNK)))?;
+        let (px, py) = (x as f32, y as f32);
+        for &i in chambers {
+            for m in &self.chambers[i as usize].mushrooms {
+                let dx = px - m.x;
+                // The cap: a dome, flat underneath.
+                if py >= m.top - m.cap * 0.45 && py <= m.top + m.cap * 0.55 {
+                    let (u, v) = (dx / m.cap, (py - (m.top - m.cap * 0.45)) / m.cap);
+                    if u * u + v * v < 1.0 && v >= 0.0 {
+                        return Some(Shroom::Cap((v * 255.0).min(255.0) as u8));
+                    }
+                }
+                if dx.abs() <= m.stem / 2.0 + (m.top - py).max(0.0) / 40.0 && py >= m.foot && py < m.top - m.cap * 0.45 {
+                    return Some(Shroom::Stem);
+                }
+            }
+        }
+        None
     }
 
     /// What the caves put at a cell, if they reach it.
@@ -320,6 +508,9 @@ impl Caves {
             // A ragged rim, finer on small chambers.
             let s = (c.rx.min(c.ry) * 0.5).max(10.0) as f64;
             let n = self.rim.get([x as f64 / s, y as f64 / s, i as f64 * 0.37]) as f32;
+            if c.spikes.iter().any(|s| in_triangle(p, s.base[0], s.base[1], s.tip)) {
+                return Some(Open::Crystal);
+            }
             if d < 1.0 + 0.45 * n {
                 return Some(match c.pool {
                     Some((kind, level)) if p.1 < level => Open::Pool(kind),
@@ -345,6 +536,14 @@ impl Caves {
         }
         None
     }
+}
+
+fn in_triangle(p: (f32, f32), a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> bool {
+    let side = |p: (f32, f32), a: (f32, f32), b: (f32, f32)| (b.0 - a.0) * (p.1 - a.1) - (b.1 - a.1) * (p.0 - a.0);
+    let (d1, d2, d3) = (side(p, a, b), side(p, b, c), side(p, c, a));
+    let neg = d1 < 0.0 || d2 < 0.0 || d3 < 0.0;
+    let pos = d1 > 0.0 || d2 > 0.0 || d3 > 0.0;
+    !(neg && pos)
 }
 
 /// Steep tunnels get ledges to climb back up: every `LEDGE_EVERY` cells a

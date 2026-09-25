@@ -182,6 +182,22 @@ checksums.
   - Tests: tunnels fit the player (a 6 × 15 box along 160 sampled tunnels,
     ≤ 1 % blocked), the network connects without crevices, crevices are few.
     Planned in ~50 ms with the rest of the plan.
+- Underground biomes (regions, two each in a large world, one in a small;
+  everything else keeps its plain rock, and the underground layer stays
+  plain and easy): elliptical areas ~1 000–1 500 × 450–750 half size in the
+  caverns (toxic grottos in the deep too).
+  - Fungal hollows: rock within two cells of open space becomes fungal soil,
+    glowing sprouts (`glowcap`, still plants) stand on the floors, and giant
+    mushrooms stand in the chambers in the background (stem, glowing cap:
+    background materials glow now too, where nothing's in front).
+  - Crystal caves: glowing crystal spikes grow from the chambers' walls into
+    them, a third to half way (not where a tunnel comes in); crystal studs
+    stud the walls.
+  - Toxic grottos: every chamber holds acid (a pool below where tunnels come
+    in); a glowing crust over the rock at the open space.
+  - The dressing is a pass over each generated chunk (with a two-cell margin
+    from the chunks around, asked once); spikes and mushrooms are planned
+    with the chambers. `platypus-worldview` lists the areas.
 - Underground (stage 3), by band:
   - underground: the planned caves, sand and gravel pockets, coal;
   - caverns: huge chambers (wider than tall) with stalactites and pillars
@@ -202,8 +218,8 @@ checksums.
     sea heats them to.
   - Cost: a caverns chunk takes ~2.6× a surface chunk to generate (8-chunk
     column 1.8 ms vs 0.7 ms, bench `stream_deep`).
-- Not yet: waterfalls, jungle and swamp materials (mud, vines), crystal and
-  mushroom caves.
+- Not yet: waterfalls, jungle and swamp materials (mud, vines), creatures of
+  the underground biomes, spore gas, more biomes.
 
 ### 3.4c Hands: mining, building, items, chests
 DESIGN.md §4–5, stage 4 of the world arc.

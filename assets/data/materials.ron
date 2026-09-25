@@ -106,6 +106,23 @@
         (name: "false_ashlar", kind: Plant, still: true, density: 200, hardness: 4, opacity: 220,
             colors: [(62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152)],
             pattern: ["11111111", "9aba9ab1", "8a9a8a91", "7898a781", "11111111", "b1a9aba9", "a18a9a8a", "917898a7"]),
+        // Underground biomes (worldgen/src/caves.rs). Fungal hollows: dark,
+        // soft soil; sprouts on the floors (stems below, glowing tips);
+        // giant mushrooms standing in the chambers (background).
+        (name: "fungal_soil", kind: Static, density: 1400, hardness: 25, crumbles_into: "soil",
+            colors: [(34, 26, 52), (48, 36, 70), (62, 48, 88), (44, 34, 60)]),
+        (name: "glowcap",     kind: Plant, still: true, density: 150, hardness: 1, flammability: 10, ignites_at: 260, burn_time: 20, opacity: 30, glow: (14, 34, 70),
+            colors: [(170, 168, 190), (196, 194, 210), (80, 150, 255), (150, 200, 255)]),
+        (name: "mushroom_stem", kind: Static, density: 600, hardness: 20, flammability: 5, ignites_at: 280, burn_time: 120, burns_into: "ash", burns_into_chance: 60,
+            colors: [(150, 144, 160), (182, 176, 192), (206, 200, 214)]),
+        (name: "mushroom_cap",  kind: Plant, still: true, density: 200, hardness: 2, flammability: 12, ignites_at: 260, burn_time: 40, opacity: 90, glow: (20, 44, 90),
+            colors: [(40, 60, 150), (60, 100, 210), (90, 150, 250), (150, 200, 255)]),
+        // Crystal caves: crystals grow into the chambers and stud the walls.
+        (name: "crystal",     kind: Static, density: 2650, hardness: 70, crumbles_into: "gravel", glow: (26, 44, 60), opacity: 40,
+            colors: [(140, 200, 240), (180, 230, 255), (225, 245, 255), (205, 185, 250)]),
+        // Toxic grottos: a glowing crust over the rock (acid in the pools).
+        (name: "toxic_crust", kind: Static, density: 2200, hardness: 30, crumbles_into: "gravel", glow: (6, 22, 3),
+            colors: [(60, 90, 30), (84, 130, 40), (110, 170, 50), (70, 110, 36)]),
         // Wax below, a flame on top (the worldgen shades each cell).
         (name: "candle", kind: Static, density: 900, hardness: 3, glow: (10, 6, 2), opacity: 10,
             colors: [(176, 166, 136), (222, 212, 180), (255, 176, 70), (255, 236, 150)]),

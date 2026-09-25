@@ -115,6 +115,8 @@ fn main() {
         })
         .collect();
     println!("{} structures:\n  {}", st.len(), st.join("\n  "));
+    let zones: Vec<String> = plan.caves.areas.iter().map(|a| format!("{} at {:.0},{:.0} ({:.0} × {:.0})", a.zone.name(), a.x, a.y, a.rx * 2.0, a.ry * 2.0)).collect();
+    println!("{} chambers, {} tunnels; underground biomes:\n  {}", plan.caves.chambers.len(), plan.caves.tunnels.len(), zones.join("\n  "));
 
     let t = Instant::now();
     let (x0, y0, w, h) = args.region.unwrap_or((0, 0, plan.width, plan.height));
