@@ -10,6 +10,7 @@ mod camera;
 mod data;
 mod debug;
 mod fx;
+mod hud;
 mod particles;
 mod props;
 mod render;
@@ -68,6 +69,7 @@ fn main() {
             actors::ActorsPlugin,
             debug::DebugPlugin,
             fx::FxPlugin,
+            hud::HudPlugin,
             scenario::ScenarioPlugin,
         ))
         .run();

@@ -13,6 +13,7 @@
 //! - `burn`       sets the base of that tree alight at t = 2 s instead
 //! - `acid`       pours acid into a glass basin beside the player, boils it at 2 s, lights the fumes at 3.6 s
 //! - `rain`       lights the forest beside the player at 2 s, a storm over it at 3 s (F5), lightning at 6 s (F7)
+//! - `swim`       a pool beside the player; oil on the player, set alight, then it walks into the water
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -53,7 +54,7 @@ impl Plugin for ScenarioPlugin {
             // Inject input where real input arrives: after Bevy reads devices,
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script));
+            .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script));
     }
 }
 
@@ -369,5 +370,57 @@ fn rain_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
             *step = 3;
         }
         _ => {}
+    }
+}
+
+fn swim_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    mut pool: Local<Option<(i32, i32)>>,
+    mut step: Local<u8>,
+) {
+    if s.name != "swim" {
+        return;
+    }
+    let Ok(p) = player.single() else { return };
+    let (px, py) = (p.body.pos.x as i32, p.body.pos.y as i32);
+    let &mut (x, ground) = pool.get_or_insert_with(|| (px + 40, find_ground(&sim.world, px + 40, py + 60, 300).unwrap_or(py)));
+    match *step {
+        0 if s.elapsed > 0.5 => {
+            let Some(glass) = sim.materials().id("glass") else { return };
+            // A glass-lined pit, 28 wide and 30 deep, full of water.
+            for dx in (-16..=16).step_by(2) {
+                sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, ground - 18), radius: 16, material: glass, overwrite: true });
+            }
+            for dx in (-14..=14).step_by(2) {
+                sim.queue(WorldEdit::Dig { center: CellPos::new(x + dx, ground - 14), radius: 14, max_hardness: 200 });
+            }
+            *step = 1;
+        }
+        1 if s.elapsed > 0.6 => {
+            if let Some(water) = sim.materials().id("water") {
+                for dx in (-12..=12).step_by(4) {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, ground - 12), radius: 12, material: water, overwrite: false });
+                }
+            }
+            *step = 2;
+        }
+        2 if s.elapsed > 2.0 => {
+            if let Some(oil) = sim.materials().id("oil") {
+                sim.queue(WorldEdit::Paint { center: CellPos::new(px, py + 14), radius: 4, material: oil, overwrite: false });
+            }
+            *step = 3;
+        }
+        3 if s.elapsed > 2.6 => {
+            sim.queue(WorldEdit::Ignite { center: CellPos::new(px, py), radius: 6 });
+            *step = 4;
+        }
+        4 if s.elapsed > 3.2 => keys.press(KeyCode::KeyD),
+        _ => {}
+    }
+    if *step == 4 && px > x {
+        keys.release(KeyCode::KeyD);
     }
 }

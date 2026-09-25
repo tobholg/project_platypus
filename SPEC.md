@@ -235,13 +235,25 @@ deaths (blood). Rendered as one dynamic mesh.
   material's `corrosive`, damage/s: acid 30, acid fumes 8), flames or
   burning cells (it catches fire), and being mostly under a liquid that puts
   fires out. The worst cell counts, not the sum, so size doesn't matter.
-- The game keeps three statuses: `Chilled` (slowed down to 40 % while
-  touching the cold and 1.5 s after, via `MovementStats::slowed`; hard frost
-  puts a fire out), `Burning` (7 damage/s for 4 s after the last
-  flame; trails flames above it and lights what it stands in, so a burning orc
-  running through a meadow lights the meadow) and `Wet` (3 s after water; can't
-  catch fire). Creatures resist per kind in their RON (`resist: (heat,
-  corrosion, fireproof)`).
+- The game keeps three statuses, each shown on the HUD as a round timer:
+  - `Burning`: 7 damage/s for 4 s (times the coating's `burn`), flames
+    painted above it and grass it stands in lit (a burning orc running through
+    a meadow lights the meadow). It burns out: its own flames never relight
+    it. Water, snow, a fireproof coating or hard frost put it out.
+  - `Coated`: what the last fluid it touched left on it, from
+    `assets/data/coatings.ron` via each material's `coats` (water/snow/ice:
+    wet, oil: oily, blood: bloody, acid: acid). One coating at a time: a new
+    fluid replaces the old (jump in water to wash off oil); the same one
+    refreshes it. A coating can be fireproof, resist heat, make fire burn
+    longer and harder, catch from heat alone, or do damage. Standing in the
+    rain wets.
+  - `Chilled`: slowed down to 40 % while touching the cold and 1.5 s after
+    (`MovementStats::slowed`); hard frost puts a fire out.
+  Creatures resist per kind in their RON (`resist: (heat, corrosion, fireproof)`).
+- Bodies in liquid: water is thick (strong drag, you sink at ≤45 cells/s) and
+  jump is a swim stroke. A body pushes liquid out of its box onto the surface
+  beside it (`WorldEdit::Displace`: the level rises around it), splashing it
+  out at speed.
 - Acid boils at 110 °C into acid fumes: corrosive (they eat what acid eats,
   weaker, used up doing it), condense into acid rain downwind, and flammable
   (a spark flashes the cloud into fire, with the odd small pop), which boils

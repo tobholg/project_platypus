@@ -4,7 +4,7 @@
 
 use crate::cell::flags;
 use crate::coords::CellPos;
-use crate::material::Kind;
+use crate::material::{Kind, MaterialId};
 use crate::world::World;
 
 /// Above this (°C), heat hurts.
@@ -27,8 +27,11 @@ pub struct Exposure {
     pub corrosion: f32,
     /// Touching flames or something burning: it catches fire.
     pub ignites: bool,
-    /// In water (or another liquid that puts fires out).
-    pub douses: bool,
+    /// What it's getting coated in: the liquid it's in most of, else
+    /// anything with a coating it touches (snow). See `MaterialDef::coats`.
+    pub coat: Option<MaterialId>,
+    /// Share of the body inside liquid.
+    pub submerged: f32,
     /// 0..1: how chilled (slowed) the coldest cell it touches makes it.
     pub cold: f32,
 }
@@ -41,7 +44,10 @@ impl World {
     pub fn exposure(&self, min: CellPos, max: CellPos) -> Exposure {
         let mats = self.materials();
         let mut e = Exposure::default();
-        let (mut liquid, mut wet) = (0, 0);
+        let mut liquid = 0;
+        // Most common coating liquid inside, and any coating touched.
+        let mut soaking: Vec<(MaterialId, u32)> = Vec::new();
+        let mut touched = None;
         for y in min.y - 1..=max.y + 1 {
             for x in min.x - 1..=max.x + 1 {
                 let inside = x >= min.x && x <= max.x && y >= min.y && y <= max.y;
@@ -62,20 +68,27 @@ impl World {
                     e.cold = e.cold.max(((CHILLING_COLD - t) as f32 / 60.0).clamp(0.0, 1.0));
                 }
                 e.corrosion = e.corrosion.max(ph.corrosive as f32);
+                let coats = mats.def(c.material).coats.is_some();
                 if inside && ph.kind == Kind::Liquid {
                     liquid += 1;
-                    if ph.flammability == 0 && !ph.hot {
-                        wet += 1;
+                    if coats {
+                        match inside_counts(&mut soaking, c.material) {
+                            Some(n) => *n += 1,
+                            None => soaking.push((c.material, 1)),
+                        }
                     }
+                } else if coats && touched.is_none() {
+                    touched = Some(c.material);
                 }
             }
         }
-        // Mostly under water: out it goes. (Ankle-deep isn't enough.)
         let area = ((max.x - min.x + 1) * (max.y - min.y + 1)).max(1);
-        e.douses = wet * 3 >= area && wet * 2 >= liquid;
-        if e.douses {
-            e.ignites = false;
-        }
+        e.submerged = liquid as f32 / area as f32;
+        e.coat = soaking.iter().max_by_key(|(_, n)| *n).map(|(m, _)| *m).or(touched);
         e
     }
+}
+
+fn inside_counts(v: &mut [(MaterialId, u32)], m: MaterialId) -> Option<&mut u32> {
+    v.iter_mut().find(|(k, _)| *k == m).map(|(_, n)| n)
 }

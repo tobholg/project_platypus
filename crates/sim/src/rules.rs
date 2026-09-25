@@ -246,15 +246,9 @@ pub(crate) fn burn_background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
     {
         let fp = *h.mats.phys(f.material);
         if fp.kind == Kind::Liquid && fp.flammability == 0 && !fp.hot {
-            // Water in front puts it out; charred by then, it's charcoal.
-            let bp = h.mats.phys(b.material);
-            if h.mats.is_charred(b) && bp.chars_into != MaterialId::AIR {
-                let coal = spawn(h, bp.chars_into);
-                h.set_bg(x, y, coal);
-            } else {
-                b.flags &= !flags::BURNING;
-                h.set_bg(x, y, b);
-            }
+            // Water in front puts it out (and it stays wood: see fizzling).
+            b.flags &= !flags::BURNING;
+            h.set_bg(x, y, b);
             return;
         }
         if fp.flammability > 0 && f.flags & flags::BURNING == 0 && h.rng.chance(fp.flammability) {
@@ -263,12 +257,12 @@ pub(crate) fn burn_background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
     }
     let bp = *h.mats.phys(b.material);
     // A lone flame on a log may just go out (charred wood left as charcoal).
-    if bp.fizzles > 0 && h.rng.chance4096(bp.fizzles as u32) && flaming_around(h, x, y, true) < COMPANY {
-        let out = if h.mats.is_charred(b) && bp.chars_into != MaterialId::AIR {
-            spawn(h, bp.chars_into)
-        } else {
-            Cell { flags: b.flags & !flags::BURNING, ..b }
-        };
+    // Only a flame fizzles; smouldering wood glows on until it's gone.
+    if bp.fizzles > 0 && !h.mats.is_charred(b) && h.rng.chance4096(bp.fizzles as u32) && flaming_around(h, x, y, true) < COMPANY {
+        // In the background it just stops burning: charcoal there couldn't
+        // be relit (no heat flows behind the playfield), so a scorched trunk
+        // would stand forever.
+        let out = Cell { flags: b.flags & !flags::BURNING, ..b };
         h.set_bg(x, y, out);
         // It carries weight again (it didn't while charred): check what's
         // around, which may have been left hanging meanwhile.

@@ -302,8 +302,10 @@ impl World {
         let mut report = EditReport::default();
         match *edit {
             WorldEdit::Paint { center, radius, material, overwrite } => self.paint(center, radius, material, overwrite, &mut report),
+            WorldEdit::Scorch { center, radius } => self.ignite(center, radius, false, &mut report),
+            WorldEdit::Displace { min, max, vel } => self.displace(min, max, vel),
             WorldEdit::Ignite { center, radius } => {
-                self.ignite(center, radius, &mut report);
+                self.ignite(center, radius, true, &mut report);
                 if report.placed > 0 {
                     self.loosen_fragments(center, radius);
                 }
@@ -548,7 +550,7 @@ impl World {
         }
     }
 
-    fn ignite(&mut self, center: CellPos, radius: i32, report: &mut EditReport) {
+    fn ignite(&mut self, center: CellPos, radius: i32, flames: bool, report: &mut EditReport) {
         let mats = self.materials.clone();
         let mut rng = self.rng_for(0xF14E, center);
         let Some(fire) = mats.id("fire") else { return };
@@ -556,6 +558,9 @@ impl World {
             let Some(c) = self.get(p) else { continue };
             let ph = mats.phys(c.material);
             if c.is_air() {
+                if !flames {
+                    continue;
+                }
                 if rng.chance(60) {
                     let flame = mats.spawn(fire, &mut rng);
                     self.set(p, flame);
@@ -575,6 +580,63 @@ impl World {
                 report.placed += 1;
             }
         }
+    }
+
+    /// See `WorldEdit::Displace`.
+    fn displace(&mut self, min: CellPos, max: CellPos, vel: [i16; 2]) {
+        let vel = [vel[0] as f32 / 16.0, vel[1] as f32 / 16.0];
+        let mats = self.materials.clone();
+        let mut rng = self.rng_for(0xD15B, min);
+        let speed = (vel[0] * vel[0] + vel[1] * vel[1]).sqrt();
+        let liquid = |c: Cell| !c.is_air() && mats.phys(c.material).kind == Kind::Liquid;
+        for x in min.x..=max.x {
+            for y in min.y..=max.y {
+                let p = CellPos::new(x, y);
+                let Some(c) = self.get(p).filter(|&c| liquid(c)) else { continue };
+                // Fast: splash up and out, away from the body's middle.
+                if speed > SPLASH_SPEED && rng.chance(SPLASH_CHANCE) {
+                    let side = if (x * 2) < (min.x + max.x) { -1.0 } else { 1.0 };
+                    let up = speed * (0.35 + rng.next_u8() as f32 / 600.0);
+                    let v = [side * speed * 0.3 + vel[0] * 0.3, up];
+                    self.set(p, Cell::AIR);
+                    self.particles.push(Particle::new([x as f32 + 0.5, max.y as f32 + 1.5], v, c, 120, Landing::Settle));
+                    continue;
+                }
+                // Otherwise onto the surface beside the body, nearest first:
+                // the level rises around it. (Straight up would stack it on
+                // top of the body, and it falls straight back in.)
+                if let Some(to) = self.surface_beside(min, max, y, &liquid) {
+                    self.set(p, Cell::AIR);
+                    self.set(to, c);
+                }
+            }
+        }
+    }
+
+    /// The lowest open cell on top of the liquid in the columns either side
+    /// of `min.x..=max.x` (nearest first among equals), searching up from
+    /// `y`: displaced liquid spreads out level instead of piling up.
+    fn surface_beside(&self, min: CellPos, max: CellPos, y: i32, liquid: &impl Fn(Cell) -> bool) -> Option<CellPos> {
+        let mut best: Option<CellPos> = None;
+        for d in 1..=DISPLACE_REACH {
+            for x in [min.x - d, max.x + d] {
+                let mut yy = y;
+                while yy <= y + DISPLACE_REACH && self.get(CellPos::new(x, yy)).is_some_and(liquid) {
+                    yy += 1;
+                }
+                let at = CellPos::new(x, yy);
+                // Open, and resting on liquid (or at the body's own level),
+                // not hanging in the air above a gap. A wall ends the search
+                // on that side soon enough: it's a pool, not a sea.
+                let ok = yy <= y + DISPLACE_REACH
+                    && self.get(at).is_some_and(|a| a.is_air())
+                    && (yy == y || self.get(at.offset(0, -1)).is_some_and(liquid));
+                if ok && best.is_none_or(|b| yy < b.y) {
+                    best = Some(at);
+                }
+            }
+        }
+        best
     }
 
     fn ignite_bg_cell(&mut self, p: CellPos, ph: &MatPhys) {
@@ -1180,6 +1242,13 @@ impl World {
 
 /// Raindrops fall at this share of gravity: with air drag, ~2 cells a tick.
 const RAIN_GRAVITY: f32 = 0.12;
+/// A body faster than this (cells/tick) splashes liquid out instead of
+/// pushing it up.
+const SPLASH_SPEED: f32 = 2.5;
+/// Chance /256 per displaced cell that it splashes, at speed.
+const SPLASH_CHANCE: u8 = 120;
+/// How far up a column displaced liquid looks for room.
+const DISPLACE_REACH: i32 = 40;
 /// Cloud moisture a faded cell of steam adds.
 const VAPOUR_MOISTURE: f32 = 0.05;
 /// Raindrops or flakes per unit of moisture rained out (a heavy column rains

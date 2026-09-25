@@ -34,14 +34,14 @@
         (name: "stone",    kind: Static, density: 2600, hardness: 60,  crumbles_into: "gravel", above: (1400, "lava"), colors: [(92, 92, 100), (122, 120, 128), (104, 104, 112)]),
         (name: "dirt",     kind: Static, density: 1500, hardness: 20,  crumbles_into: "soil", colors: [(96, 62, 36), (118, 78, 44), (104, 68, 40)]),
         (name: "grass",    kind: Static, density: 1400, hardness: 10,  flammability: 2, ignites_at: 250, burn_time: 10, burns_into: "soil", crumbles_into: "soil", chars_at: 1.0, colors: [(58, 140, 44), (82, 170, 56)]),
-        (name: "snow",     kind: Static, density: 400,  hardness: 5,   heat: -10, above: (1, "water"), conductivity: 15, colors: [(226, 232, 240), (246, 248, 252)]),
+        (name: "snow",     kind: Static, density: 400,  hardness: 5,   heat: -10, above: (1, "water"), conductivity: 15, coats: "wet", colors: [(226, 232, 240), (246, 248, 252)]),
         // Hard to get going: a small fire on a trunk often fizzles (fizzles:
         // a lone flame goes out), a crown or a blaze takes it (SPEC §3.8).
         (name: "wood",     kind: Static, density: 700,  hardness: 25,  flammability: 6, ignites_at: 280, conductivity: 12, burn_time: 225, spread: 2, fizzles: 40, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal", colors: [(58, 36, 20), (88, 58, 30), (118, 80, 42), (138, 96, 54)]),
         (name: "obsidian", kind: Static, density: 2800, hardness: 120, crumbles_into: "gravel", above: (1600, "lava"), colors: [(34, 18, 52), (52, 30, 74)]),
         (name: "glass",    kind: Static, density: 2500, hardness: 30,  above: (1500, "lava"), colors: [(170, 200, 205), (196, 222, 226)]),
-        (name: "ice",      kind: Static, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), colors: [(170, 210, 240), (200, 230, 250)]),
-        (name: "frozen_blood", kind: Static, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),
+        (name: "ice",      kind: Static, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), coats: "wet", colors: [(170, 210, 240), (200, 230, 250)]),
+        (name: "frozen_blood", kind: Static, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), coats: "bloody", colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),
 
         // ---- plants: don't block creatures, burn readily, sway in the wind ----
         (name: "leaves",     kind: Plant, density: 200, hardness: 2, flammability: 18, ignites_at: 260, burn_time: 40, chars_at: 1.0, colors: [(24, 64, 26), (36, 92, 34), (52, 122, 42), (76, 150, 54)]),
@@ -53,25 +53,25 @@
         (name: "soil",     kind: Powder, density: 1400, hardness: 8,  colors: [(92, 60, 34), (112, 74, 42)]),
         (name: "ash",      kind: Powder, density: 300,  hardness: 1,  colors: [(70, 68, 66), (98, 96, 94)]),
         // What burnt wood leaves (and charred wood that was put out). Flames
-        // don't catch on it (flammability 0): only heat above 700 °C lights it,
+        // don't spread onto it (spread 0) and heat lights it only above 700 °C,
         // hotter than burning wood, so it survives the fire that made it.
-        // Blasts, lava or the heat gun do. Burns long, down to ash. Future
-        // smelting fuel.
-        (name: "charcoal", kind: Powder, density: 450,  hardness: 12, flammability: 0, ignites_at: 700, conductivity: 20, burn_time: 250, burns_into: "ash", burns_into_chance: 200, chars_at: 1.0, colors: [(26, 24, 24), (38, 35, 34), (50, 46, 44), (20, 19, 19)]),
+        // Blasts, lava, the heat gun or the igniter do. Burns long, down to
+        // ash. Future smelting fuel.
+        (name: "charcoal", kind: Powder, density: 450,  hardness: 12, flammability: 1, spread: 0, ignites_at: 700, conductivity: 20, burn_time: 250, burns_into: "ash", burns_into_chance: 200, chars_at: 1.0, colors: [(26, 24, 24), (38, 35, 34), (50, 46, 44), (20, 19, 19)]),
         (name: "coal",     kind: Powder, density: 1300, hardness: 10, flammability: 30, ignites_at: 350, burn_time: 200, burns_into: "ash", burns_into_chance: 90, colors: [(24, 24, 26), (40, 40, 44)]),
 
         // ---- liquids ------------------------------------------------------
-        (name: "water",    kind: Liquid, density: 1000, dispersion: 6, above: (100, "steam"), below: (0, "ice"), colors: [(38, 92, 196), (48, 110, 214)]),
+        (name: "water",    kind: Liquid, density: 1000, dispersion: 6, above: (100, "steam"), below: (0, "ice"), coats: "wet", colors: [(38, 92, 196), (48, 110, 214)]),
         // Floats on water and burns on it (a burning liquid isn't put out by
         // what it floats on). A poor heat conductor, so a burning slick
         // doesn't boil away the lake under it.
-        (name: "oil",      kind: Liquid, density: 800,  dispersion: 4, flammability: 90, ignites_at: 220, burn_time: 25, conductivity: 6, colors: [(56, 38, 24), (72, 52, 30)]),
+        (name: "oil",      kind: Liquid, density: 800,  dispersion: 4, flammability: 90, ignites_at: 220, burn_time: 25, conductivity: 6, coats: "oily", colors: [(56, 38, 24), (72, 52, 30)]),
         // Boils and freezes like water (a little below 0: what's dissolved in it).
-        (name: "blood",    kind: Liquid, density: 1060, dispersion: 3, above: (100, "blood_steam"), below: (-2, "frozen_blood"), colors: [(136, 10, 16), (164, 18, 24)]),
+        (name: "blood",    kind: Liquid, density: 1060, dispersion: 3, above: (100, "blood_steam"), below: (-2, "frozen_blood"), coats: "bloody", colors: [(136, 10, 16), (164, 18, 24)]),
         (name: "lava",     kind: Liquid, density: 2500, dispersion: 1, hot: true, heat: 1200, heat_source: true, conductivity: 60, colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
         // Eats stone, dirt, wood and grass (reactions below) and burns what it
         // touches (corrosive, damage/s). Boils into acid fumes.
-        (name: "acid",     kind: Liquid, density: 1100, dispersion: 4, corrosive: 30, above: (110, "acid_fumes"), colors: [(120, 230, 40), (150, 250, 70)]),
+        (name: "acid",     kind: Liquid, density: 1100, dispersion: 4, corrosive: 30, above: (110, "acid_fumes"), coats: "acid", colors: [(120, 230, 40), (150, 250, 70)]),
 
         // ---- gases --------------------------------------------------------
         (name: "steam",    kind: Gas, density: 1, dispersion: 3, lifetime: (60, 200), decay_every: 3, decays_into: "water", decays_into_chance: 70, vapour: true, colors: [(200, 206, 216), (228, 232, 240)]),

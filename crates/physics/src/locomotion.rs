@@ -52,8 +52,14 @@ pub struct MovementStats {
     pub step_height: i32,
     /// Fraction of gravity felt when fully submerged.
     pub swim_gravity: f32,
-    /// Velocity kept per second in liquid (drag).
+    /// Velocity kept per second in liquid (drag). Water is thick: falling
+    /// in at full speed, you stop within a body length or two.
     pub swim_drag: f32,
+    /// Fastest sinking speed when fully submerged (cells/s).
+    pub swim_max_fall: f32,
+    /// Upward speed of one swim stroke (jump while submerged); every press
+    /// is a stroke.
+    pub swim_stroke: f32,
 }
 
 impl MovementStats {
@@ -95,7 +101,9 @@ impl Default for MovementStats {
             wall_jump_push: 120.0,
             step_height: 3,
             swim_gravity: 0.25,
-            swim_drag: 0.1,
+            swim_drag: 0.0005,
+            swim_max_fall: 45.0,
+            swim_stroke: 130.0,
         }
     }
 }
@@ -276,6 +284,14 @@ impl Locomotion {
             self.air_dash_used = false;
         }
 
+        // Swim: in water every press of jump is a stroke upward.
+        let swimming = self.contacts.submerged > 0.3;
+        if swimming && jump_pressed {
+            body.vel.y = body.vel.y.max(0.0) * 0.3 + s.swim_stroke;
+            self.buffer = 0.0;
+            ev.jumped = true;
+        }
+
         // Jump (buffered, with coyote time).
         if self.buffer > 0.0 {
             let v = s.jump_speed();
@@ -316,6 +332,9 @@ impl Locomotion {
         body.vel.y = body.vel.y.max(-max_fall);
         if wet > 0.0 {
             body.vel *= s.swim_drag.powf(dt * wet);
+            // Sink slowly, not at falling speed.
+            let max_sink = max_fall + (s.swim_max_fall - max_fall) * wet;
+            body.vel.y = body.vel.y.max(-max_sink);
         }
         ev
     }
@@ -491,5 +510,34 @@ mod tests {
 
     fn default_intent() -> Intent {
         Intent::default()
+    }
+
+    #[test]
+    fn falling_into_deep_water_slows_you_and_strokes_swim_you_up() {
+        // A pool 60 deep (rows 1..=60) under 40 of air.
+        let mut rows = vec!["#                                                                                                  #"; 40];
+        rows.extend(vec!["#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#"; 60]);
+        rows.push("####################################################################################################");
+        let g = Ascii::new(&rows);
+        let (s, mut l, mut b) = player();
+        b.pos = Vec2::new(50.0, 95.0);
+        b.vel = Vec2::new(0.0, -s.max_fall);
+        let surface = 61.0;
+        let mut depth_at_slow = None;
+        for _ in 0..120 {
+            tick(&g, &s, &mut l, &mut b, Intent::default());
+            if b.pos.y < surface && b.vel.y > -s.swim_max_fall - 1.0 && depth_at_slow.is_none() {
+                depth_at_slow = Some(surface - b.pos.y);
+            }
+        }
+        let depth = depth_at_slow.expect("slowed in the water");
+        assert!(depth < 40.0, "down to sinking speed within {depth} cells, well above the bottom");
+        assert!(b.vel.y >= -s.swim_max_fall - 0.5, "sinks slowly: {}", b.vel.y);
+        // Stroke up: tap jump.
+        let start = b.pos.y;
+        for k in 0..120 {
+            tick(&g, &s, &mut l, &mut b, Intent { jump: k % 12 < 2, ..Default::default() });
+        }
+        assert!(b.pos.y > start + 10.0, "swam up from {start} to {}", b.pos.y);
     }
 }

@@ -976,15 +976,22 @@ fn a_tree_fire_climbs_then_burns_for_a_while() {
         w.step();
     }
     assert!(bg_burning(&w) < 300, "one second in, the fire is still climbing ({} burning)", bg_burning(&w));
+    // The standing tree burns for a while; what falls burns on the ground
+    // (a log pile) a good while longer, and then it's all out.
     let mut secs = 1;
-    while (bg_burning(&w) > 0 || burning(&w) > 0) && secs < 90 {
+    let mut tree_secs = None;
+    while (bg_burning(&w) > 0 || burning(&w) > 0) && secs < 200 {
         for _ in 0..60 {
             w.step();
         }
         secs += 1;
+        if bg_burning(&w) == 0 {
+            tree_secs.get_or_insert(secs);
+        }
     }
-    // Wood smoulders and creeps, so a thick trunk takes its time.
-    assert!((12..=60).contains(&secs), "the tree burned for {secs} s");
+    let tree_secs = tree_secs.expect("the tree stopped burning");
+    assert!((8..=40).contains(&tree_secs), "the tree burned for {tree_secs} s");
+    assert!(secs < 200, "the fallen wood burned out ({secs} s)");
 }
 
 #[test]
@@ -1167,7 +1174,8 @@ fn exposure_reads_heat_corrosion_fire_and_water_from_the_cells() {
     assert!(w.exposure(lo, hi).ignites, "flames set you alight");
     let (lo, hi) = box_at(35);
     let water = w.exposure(lo, hi);
-    assert!(water.douses && water.heat == 0.0 && water.corrosion == 0.0, "{water:?}");
+    assert_eq!(water.coat, Some(w.materials().expect_id("water")), "{water:?}");
+    assert!(water.submerged > 0.8 && water.heat == 0.0 && water.corrosion == 0.0, "{water:?}");
     let (lo, hi) = box_at(45);
     assert_eq!(w.exposure(lo, hi), platypus_sim::Exposure::default(), "air is harmless");
 }
@@ -1272,4 +1280,67 @@ fn a_thunderstorm_throws_lightning() {
     // lightning still come down into it.
     assert!(most_drops > 1_000, "it poured ({most_drops} drops)");
     assert!(strikes >= 1, "a storm over the world for 100 s struck at least once");
+}
+
+#[test]
+fn a_body_in_water_pushes_it_up_and_a_fast_one_splashes() {
+    let mut w = boxed_world(1, 1, 93);
+    let water = w.materials().expect_id("water");
+    fill(&mut w, "water", 1, 63, 1, 20);
+    let before = count(&w, water);
+    // Standing in it: the water in its box moves up, none is lost.
+    w.apply_edit(&WorldEdit::Displace { min: CellPos::new(20, 5), max: CellPos::new(27, 14), vel: [0, 0] });
+    assert!((20..28).all(|x| (5..15).all(|y| w.get(CellPos::new(x, y)).unwrap().is_air())), "its box is clear");
+    assert_eq!(count(&w, water), before, "pushed up, not lost");
+    assert!(w.get(CellPos::new(30, 20)).unwrap().material == water, "the level rose beside it");
+    assert!(w.get(CellPos::new(23, 20)).unwrap().is_air(), "not stacked on top of it");
+    // Diving in fast: a splash flies.
+    w.apply_edit(&WorldEdit::Displace { min: CellPos::new(40, 12), max: CellPos::new(47, 21), vel: [0, -110] });
+    assert!(w.particles().len() > 10, "splash ({} drops)", w.particles().len());
+}
+
+#[test]
+fn scorch_lights_what_burns_without_putting_flames_in_the_air() {
+    let mut w = boxed_world(1, 1, 94);
+    fill(&mut w, "tall_grass", 10, 20, 1, 4);
+    w.apply_edit(&WorldEdit::Scorch { center: CellPos::new(15, 4), radius: 4 });
+    assert!(burning(&w) > 0, "the grass caught");
+    assert_eq!(count(&w, w.materials().expect_id("fire")), 0, "no flames in the air");
+}
+
+#[test]
+fn a_scorched_trunk_can_still_be_set_alight() {
+    let mut w = boxed_world(2, 2, 95);
+    plant_tree(&mut w, 64);
+    let wood = w.materials().expect_id("wood");
+    // Burn a bit of it, put it out with water (charred by then), clear the
+    // water away; then light it again.
+    let water = w.materials().expect_id("water");
+    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(64, 20), radius: 2 });
+    for _ in 0..240 {
+        w.step();
+    }
+    w.apply_edit(&WorldEdit::Paint { center: CellPos::new(64, 22), radius: 14, material: water, overwrite: false });
+    w.step();
+    w.apply_edit(&WorldEdit::Dig { center: CellPos::new(64, 22), radius: 12, max_hardness: 1 });
+    for _ in 0..600 {
+        w.step();
+    }
+    let charcoal = w.materials().expect_id("charcoal");
+    assert_eq!(count_bg(&w, charcoal), 0, "no charcoal in the background: it couldn't be relit");
+    let left = count_bg(&w, wood);
+    assert_eq!(w.get_bg(CellPos::new(64, 40)).unwrap().material, wood, "the tree still stands after the first fire");
+    // Hold the igniter on it for two seconds.
+    for _ in 0..120 {
+        w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(64, 25), radius: 4 });
+        w.step();
+    }
+    // It chars through and what's above comes down.
+    let mut fell = false;
+    for _ in 0..1_800 {
+        w.step();
+        fell |= !w.bodies().is_empty();
+    }
+    let top = w.get_bg(CellPos::new(64, 40)).unwrap();
+    assert!(fell || top.is_air(), "the trunk burned through and fell ({} of {left} wood left)", count_bg(&w, wood));
 }

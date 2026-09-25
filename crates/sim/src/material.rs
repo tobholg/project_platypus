@@ -91,6 +91,10 @@ pub struct MaterialDef {
     /// Damage per second it does to a body touching it (acid 30).
     #[serde(default)]
     pub corrosive: u8,
+    /// What it leaves on a creature that touches it: a coating named in
+    /// `coatings.ron` (water: "wet", oil: "oily"). The game's business.
+    #[serde(default)]
+    pub coats: Option<String>,
     /// Chance /4096 per tick that it catches from a burning neighbour (twice
     /// that from below, half from above). Default: flammability × 16, i.e.
     /// flammability /256. Together with how long a material burns this sets

@@ -1,0 +1,19 @@
+// What fluids leave on a creature (materials.ron: `coats: "wet"`).
+// A creature carries one coating at a time; touching another fluid replaces
+// it (jump in water to wash off oil). Touching the same one refreshes it.
+// Edit while the game runs.
+//
+// secs:        how long it lasts after the last contact
+// color:       its icon and tint
+// fireproof:   puts a fire out, and it can't catch while coated
+// heat_resist: share of heat damage it ignores (0..1)
+// burn:        set alight while coated, it burns this many times as long and
+//              as hard (1 = normal)
+// catches:     catches fire from heat alone (anything above 60 °C), not just flames
+// damage:      damage per second while coated
+{
+    "wet":    (label: "Wet",    secs: 6,  color: (80, 150, 235), fireproof: true, heat_resist: 0.5),
+    "oily":   (label: "Oily",   secs: 12, color: (120, 90, 40),  burn: 2.5, catches: true),
+    "bloody": (label: "Bloody", secs: 5,  color: (170, 20, 30),  fireproof: true, heat_resist: 0.2),
+    "acid":   (label: "Acid",   secs: 3,  color: (130, 235, 50), damage: 6),
+}

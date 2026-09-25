@@ -17,7 +17,7 @@ pub mod spawn;
 
 use bevy::prelude::*;
 use platypus_physics::{Body, Grid, Intent, Locomotion, MovementStats, Occupancy, move_and_collide};
-use platypus_sim::{CellPos, Kind, World};
+use platypus_sim::{CellPos, Kind, World, WorldEdit};
 use serde::Deserialize;
 
 use crate::world::{SimWorld, TICK_HZ, TickSet};
@@ -30,7 +30,10 @@ impl Plugin for ActorsPlugin {
             .add_plugins((creature::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, animation::AnimationPlugin))
             .add_plugins((player::PlayerPlugin, ai::AiPlugin))
             .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, deaths).chain().in_set(TickSet::Bodies))
-            .add_systems(Update, elements::tint)
+            .insert_resource(elements::Coatings::load())
+            .init_resource::<PlayerDeaths>()
+            .add_systems(FixedUpdate, displace_liquid.after(move_creatures).in_set(TickSet::Bodies))
+            .add_systems(Update, (elements::tint, elements::reload_coatings))
             .add_systems(FixedUpdate, elements::struck.after(TickSet::Cells))
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate));
     }
@@ -132,6 +135,26 @@ fn move_creatures(
     }
 }
 
+/// Bodies push liquid aside: whatever flowed into a creature's box moves up
+/// its column (the level rises around it), splashing if it arrived fast.
+fn displace_liquid(mut sim: ResMut<SimWorld>, q: Query<&Kinematics>) {
+    for k in &q {
+        let (lo, hi) = k.body.cells_at(k.body.pos);
+        let grid = WorldGrid(&sim.world);
+        let wet = (lo.y..=hi.y).any(|y| (lo.x..=hi.x).any(|x| grid.occupancy(x, y) == Occupancy::Liquid));
+        if !wet {
+            continue;
+        }
+        // Cells per tick, in sixteenths (edits hold integers).
+        let v = k.body.vel / TICK_HZ as f32 * 16.0;
+        sim.queue(WorldEdit::Displace {
+            min: CellPos::new(lo.x, lo.y),
+            max: CellPos::new(hi.x, hi.y),
+            vel: [v.x.round() as i16, v.y.round() as i16],
+        });
+    }
+}
+
 fn fall_damage(mut landed: MessageReader<Landed>, mut q: Query<(&FallDamage, &mut Health)>) {
     for l in landed.read() {
         if let Ok((f, mut h)) = q.get_mut(l.entity)
@@ -142,11 +165,17 @@ fn fall_damage(mut landed: MessageReader<Landed>, mut q: Query<(&FallDamage, &mu
     }
 }
 
+/// How many times the player has died (the HUD shows it).
+#[derive(Resource, Default)]
+pub struct PlayerDeaths(pub u32);
+
 /// Dead creatures burst into blood particles that land as real cells (they
-/// run and pool). The player respawns instead.
+/// run and pool). The player, while developing, just gets its health back
+/// where it stands; with `PLATYPUS_RESPAWN=1` it respawns at the start.
 fn deaths(
     mut commands: Commands,
     mut sim: ResMut<SimWorld>,
+    mut deaths: ResMut<PlayerDeaths>,
     mut q: Query<(Entity, &mut Health, &mut Kinematics, Has<player::LocalPlayer>)>,
 ) {
     let spawn = sim.generator.spawn_point();
@@ -159,11 +188,14 @@ fn deaths(
             sim.world.splash([k.body.pos.x, k.body.pos.y], blood, 70, 2.2);
         }
         if is_player {
-            commands.entity(entity).remove::<(elements::Burning, elements::Wet, elements::Chilled)>();
+            deaths.0 += 1;
+            commands.entity(entity).remove::<(elements::Burning, elements::Coated, elements::Chilled)>();
             h.hp = h.max;
-            k.body.pos = Vec2::new(spawn.x as f32, spawn.y as f32 + 60.0);
-            k.body.vel = Vec2::ZERO;
-            k.prev_pos = k.body.pos;
+            if std::env::var("PLATYPUS_RESPAWN").is_ok() {
+                k.body.pos = Vec2::new(spawn.x as f32, spawn.y as f32 + 60.0);
+                k.body.vel = Vec2::ZERO;
+                k.prev_pos = k.body.pos;
+            }
         } else {
             commands.entity(entity).despawn();
         }
