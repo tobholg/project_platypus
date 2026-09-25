@@ -105,6 +105,8 @@ struct Ids {
     ashlar: MaterialId,
     cracked_ashlar: MaterialId,
     false_ashlar: MaterialId,
+    moss: MaterialId,
+    cobweb: MaterialId,
 }
 
 impl Ids {
@@ -113,6 +115,7 @@ impl Ids {
         match kind {
             StructureKind::Crypt => (self.crypt_stone, self.cracked_stone, self.false_wall),
             StructureKind::Castle => (self.ashlar, self.cracked_ashlar, self.false_ashlar),
+            StructureKind::Sunken => (self.sand, self.sand, self.sand),
         }
     }
 }
@@ -191,6 +194,8 @@ impl TerrainGen {
             ashlar: mats.expect_id("ashlar"),
             cracked_ashlar: mats.expect_id("cracked_ashlar"),
             false_ashlar: mats.expect_id("false_ashlar"),
+            moss: mats.expect_id("moss"),
+            cobweb: mats.expect_id("cobweb"),
         };
 
         let (ores, gems) = minerals::rules(&plan, mats);
@@ -257,7 +262,8 @@ impl TerrainGen {
     /// lighter on top).
     fn background_at(&self, x: i32, y: i32, trees: &[&flora::Tree]) -> (MaterialId, Option<u8>) {
         let i = &self.ids;
-        if let Some((g, kind)) = self.plan.structures.glyph_at(x, y) {
+        // (Behind a chest, whatever would be there.)
+        if let Some((g, kind)) = self.plan.structures.glyph_at(x, y).filter(|(g, _)| *g != Glyph::Chest) {
             return (if g == Glyph::Sky { i.air } else { i.style(kind).0 }, None);
         }
         // Wood before leaves, whichever tree they belong to: a neighbour's
@@ -436,8 +442,40 @@ impl TerrainGen {
         let i = &self.ids;
         let (bx, by) = (x & 3, y & 3);
         let (wall, weak, illusory) = i.style(kind);
+        let s = &self.plan.structures;
+        let glyph = |dx: i32, dy: i32| s.glyph_at(x + dx * 4, y + dy * 4).map(|(g, _)| g);
+        // Age, from the place alone: a block's roll, and a cell's.
+        let block = hash(&[self.plan.seed, 0xA6E, (x >> 2) as u64, (y >> 2) as u64]);
+        let cell = hash(&[self.plan.seed, 0xA6F, x as u64, y as u64]);
+        let crypt = kind == StructureKind::Crypt;
         match g {
+            // A crypt's ceiling has fallen in here and there.
+            Glyph::Wall if crypt && block % 100 < 4 && glyph(0, -1) == Some(Glyph::Open) && glyph(0, 1) == Some(Glyph::Wall) => i.gravel,
             Glyph::Wall => wall,
+            Glyph::Open => {
+                // Moss on a crypt's floors, in patches.
+                if crypt && by == 0 && glyph(0, -1) == Some(Glyph::Wall) && block.is_multiple_of(3) && !cell.is_multiple_of(4) {
+                    return i.moss;
+                }
+                // Cobwebs in the top corners of rooms: a triangle up to
+                // seven cells from the corner, ragged.
+                let up = if glyph(0, 1) == Some(Glyph::Wall) { 3 - by } else if glyph(0, 2) == Some(Glyph::Wall) && glyph(0, 1) == Some(Glyph::Open) { 7 - by } else { return i.air };
+                let side = [(-1, bx), (1, 3 - bx)].into_iter().filter_map(|(d, near)| {
+                    if glyph(d, 0) == Some(Glyph::Wall) {
+                        Some(near)
+                    } else if glyph(d * 2, 0) == Some(Glyph::Wall) && glyph(d, 0) == Some(Glyph::Open) {
+                        Some(near + 4)
+                    } else {
+                        None
+                    }
+                });
+                // (Some corners: by the 8-cell tile.)
+                let webbed = hash(&[self.plan.seed, 0xA70, (x >> 3) as u64, (y >> 3) as u64]).is_multiple_of(3);
+                match side.min() {
+                    Some(d) if up + d < 7 && webbed && !cell.is_multiple_of(5) => i.cobweb,
+                    _ => i.air,
+                }
+            }
             Glyph::Weak => weak,
             Glyph::Illusory => illusory,
             Glyph::Planks => i.planks,
@@ -907,6 +945,23 @@ mod tests {
             let guards: usize = c.pieces.iter().map(|p| p.blocks_of(Glyph::Spawn).count() + 3 * p.blocks_of(Glyph::Boss).count()).sum();
             assert_eq!(spawns.len(), guards, "each guard reported once");
             assert_eq!(spawns.iter().collect::<HashSet<_>>().len(), guards, "no guard twice");
+        }
+    }
+
+    /// Deep lakes keep a chest on their bed, under water.
+    #[test]
+    fn deep_lakes_hide_a_chest() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let chest = m.expect_id("chest");
+        let sunken: Vec<_> = g.plan.structures.list.iter().filter(|s| s.kind == structures::StructureKind::Sunken).collect();
+        assert!(sunken.len() >= 3, "{} lake chests", sunken.len());
+        for s in sunken {
+            let (x, bed) = s.site;
+            assert!(g.plan.water_at(x).is_some_and(|w| w > bed + 20), "deep water over the chest at {x}");
+            let pos = CellPos::new(x, bed + 2);
+            let (lx, ly) = pos.local();
+            assert_eq!(g.generate(pos.chunk()).get(lx, ly).material, chest, "the chest is on the bed at {x}");
         }
     }
 

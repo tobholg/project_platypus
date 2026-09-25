@@ -183,6 +183,13 @@ pub fn parse(src: &str) -> Result<Vec<Room>, String> {
             }
         }
         let mut room = Room { name: name.clone(), kind, slots, glyphs, sockets: Vec::new() };
+        for by in 0..h {
+            for bx in 0..w {
+                if room.at(bx, by) == Glyph::Chest && ![(1, 0), (0, 1), (1, 1)].iter().all(|(dx, dy)| bx + dx < w && by + dy < h && room.at(bx + dx, by + dy) == Glyph::Open) {
+                    return Err(format!("room `{name}`: the chest at ({bx}, {by}) needs its other three blocks open"));
+                }
+            }
+        }
         for s in Room::all_sockets(slots) {
             let door = room.door(s);
             let open = door.iter().filter(|&&(x, y)| room.at(x, y).passable()).count();
@@ -316,6 +323,8 @@ fn hash_i(v: &[i32]) -> u64 {
 pub enum StructureKind {
     Crypt,
     Castle,
+    /// A chest at the bottom of a lake.
+    Sunken,
 }
 
 impl StructureKind {
@@ -323,6 +332,7 @@ impl StructureKind {
         match self {
             StructureKind::Crypt => "crypt",
             StructureKind::Castle => "castle",
+            StructureKind::Sunken => "sunken chest",
         }
     }
 }
@@ -670,6 +680,14 @@ pub fn castle(rooms: &[Room], rng: &mut Rng, site: (i32, i32), keep: (i32, i32),
     Structure { kind: StructureKind::Castle, site, rooms: nodes.len(), grid: (gw, gh), pieces }
 }
 
+/// A chest on a lake's bed at column x (`bed`: the first water cell above
+/// the ground).
+pub fn sunken(x: i32, bed: i32) -> Structure {
+    let (bx, by) = (x.div_euclid(BLOCK) - 1, bed.div_euclid(BLOCK));
+    let glyphs = vec![Glyph::Chest, Glyph::Keep, Glyph::Keep, Glyph::Keep];
+    Structure { kind: StructureKind::Sunken, site: (x, bed), rooms: 0, grid: (0, 0), pieces: vec![Piece::new(bx, by, 2, 2, glyphs)] }
+}
+
 /// The way down from a ruin to its crypt: a shaft `h` blocks tall whose
 /// bottom is block row `bottom`, lined with wall, with ledges to climb
 /// back up and a candle now and then.
@@ -719,7 +737,8 @@ mod tests {
     }
 
     /// Blocks you can reach from `start`, through what's passable (illusory
-    /// walls too), without leaving the structure.
+    /// walls too) or breaks in one hit (weak walls), without leaving the
+    /// structure.
     fn reachable(s: &Structure, start: (i32, i32)) -> HashSet<(i32, i32)> {
         let glyph = |bx: i32, by: i32| s.pieces.iter().find_map(|p| p.glyph(bx * BLOCK, by * BLOCK).filter(|&g| g != Glyph::Keep));
         assert!(glyph(start.0, start.1).is_some_and(Glyph::passable), "the way in is open");
@@ -728,7 +747,7 @@ mod tests {
         while let Some((x, y)) = stack.pop() {
             for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
                 let q = (x + dx, y + dy);
-                if !seen.contains(&q) && glyph(q.0, q.1).is_some_and(Glyph::passable) {
+                if !seen.contains(&q) && glyph(q.0, q.1).is_some_and(|g| g.passable() || g == Glyph::Weak) {
                     seen.insert(q);
                     stack.push(q);
                 }

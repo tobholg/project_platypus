@@ -745,9 +745,17 @@ fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
 /// A plant needs something under it: ground, or more plant. Otherwise it
 /// withers (and the one above it will notice next tick).
 fn plant(h: &mut Hood, x: i32, y: i32) {
-    let supported = h.get(x, y - 1).is_none_or(|b| {
-        !b.is_air() && matches!(h.mats.phys(b.material).kind, Kind::Static | Kind::Powder | Kind::Plant)
-    });
+    // Held from below by ground or a plant standing on it; a hanging plant
+    // also from above, by ground or the hanging plant it hangs from. (So a
+    // hanging plant never holds up what it hangs over, and a web adrift in
+    // the air comes apart.)
+    let hangs = |c: Cell| h.mats.phys(c.material).hangs;
+    let ground = |c: Cell| !c.is_air() && matches!(h.mats.phys(c.material).kind, Kind::Static | Kind::Powder);
+    let plant = |c: Cell| !c.is_air() && h.mats.phys(c.material).kind == Kind::Plant;
+    let this_hangs = h.get(x, y).is_some_and(hangs);
+    let below = h.get(x, y - 1).is_none_or(|b| ground(b) || (plant(b) && !hangs(b)));
+    let above = this_hangs && h.get(x, y + 1).is_none_or(|a| ground(a) || (plant(a) && hangs(a)));
+    let supported = below || above;
     if !supported {
         h.set(x, y, Cell::AIR);
     }

@@ -1771,3 +1771,19 @@ fn an_axe_block_takes_the_background_only_where_the_front_is_open() {
     let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(6, 2), power: 50, max_hardness: 100, back: true });
     assert!(r.removed.is_empty(), "behind the stone it can't reach");
 }
+
+#[test]
+fn cobwebs_hang_from_a_ceiling_and_nothing_else() {
+    let mut w = boxed_world(2, 2, 29);
+    fill(&mut w, "stone", 20, 40, 80, 84);
+    fill(&mut w, "cobweb", 20, 30, 74, 80); // under the ceiling
+    fill(&mut w, "cobweb", 60, 64, 70, 74); // in the air
+    fill(&mut w, "moss", 60, 64, 72, 73); // (a plant that doesn't hang: gone too)
+    let web = w.materials().expect_id("cobweb");
+    for _ in 0..30 {
+        w.step();
+    }
+    let at = |x0: i32, x1: i32, y0: i32, y1: i32| (x0..x1).flat_map(|x| (y0..y1).map(move |y| CellPos::new(x, y))).filter(|&p| w.get(p).is_some_and(|c| c.material == web)).count();
+    assert_eq!(at(20, 30, 74, 80), 60, "the web under the ceiling stays");
+    assert_eq!(at(60, 64, 70, 74), 0, "a web in the air falls apart");
+}

@@ -148,6 +148,10 @@ pub struct MaterialDef {
     /// walk through it, but it should look like masonry).
     #[serde(default)]
     pub still: bool,
+    /// A plant that hangs from what's above it as well as standing on what's
+    /// below (cobwebs, roots).
+    #[serde(default)]
+    pub hangs: bool,
 
     // ---- temperature (°C). See SPEC §3.6. --------------------------------
     /// Heat a fresh cell starts with, relative to ambient (lava 1200, ice -30).
@@ -234,6 +238,8 @@ pub struct MatPhys {
     pub corrosive: u8,
     pub spread: u16,
     pub fizzles: u16,
+    /// See `MaterialDef::hangs`.
+    pub hangs: bool,
     /// See `MaterialDef::latent`.
     pub latent: u16,
     pub viscosity: u8,
@@ -418,6 +424,7 @@ impl MaterialTable {
                 corrosive: d.corrosive,
                 spread: d.spread.unwrap_or(d.flammability as u16 * 16),
                 fizzles: d.fizzles,
+                hangs: d.hangs,
                 latent: d.latent,
                 viscosity: d.viscosity,
                 rest_limit: ((crate::cell::flags::REST_LIMIT as u32 * (256 - d.viscosity as u32)) / 256).max(1) as u8,

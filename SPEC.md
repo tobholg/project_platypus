@@ -310,8 +310,20 @@ rooms in `assets/data/rooms/*.rooms`).
   holes in the back wall: the sky shows through.
 - Tests also: every chest in 200 random castles is reachable from the gate,
   on falling and rising ground.
-- Not yet: the ageing pass (moss, cobwebs, collapse), keys and locked
-  doors, rooms behind waterfalls, treasure in lakes.
+- Age, from the place alone (a block's hash, a cell's): a crypt's floors
+  grow moss in patches, some of its ceiling blocks have fallen in (gravel:
+  it drops into a pile once the chunk is live), and the top corners of
+  rooms (crypts and castles) gather cobwebs, a ragged triangle up to seven
+  cells out. Moss and cobwebs are still plants; cobwebs `hang`: held from
+  above by ground or the web they hang from (and only by that, so a web
+  adrift in the air comes apart), and they burn in a flash.
+- Secrets: illusory walls hide side rooms (above); some rooms have a niche
+  sealed by a weak wall with a chest in it (`sealed_tomb`, `storeroom`);
+  every lake 40+ cells deep keeps a chest at its deepest, on the bed. Chests
+  above the underground (castles, lakes) roll the `high` loot table (ore,
+  gems, the better pickaxes).
+- Not yet: keys and locked doors (with the RPG arc), rooms behind
+  waterfalls (no waterfalls yet), bosses (a pack of orcs for now).
 
 ### 3.5 Streaming and persistence
 Chunks load around every player (co-op: the union). Missing chunks come from

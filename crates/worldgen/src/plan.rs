@@ -470,6 +470,7 @@ impl WorldPlan {
 
         let mut list = crypts(seed, &surface, &water, &biomes, &chasms, (width, ocean_w, mid), (sw, sh), band_floors);
         list.extend(castles(seed, &surface, &biomes, width, (sw, sh)));
+        list.extend(sunken(&surface, &water, &biomes, sh));
         let structures = Structures::new(list);
 
         let forest = {
@@ -719,6 +720,29 @@ fn castles(seed: u64, surface: &[i32], biomes: &[Biome], width: i32, (sw, sh): (
         // into the high side, foundations hold up the low side.
         let site = (x, (hi + lo) / 2);
         out.push(structures::castle(structures::castle_rooms(), &mut rng, site, keep, tower, &at));
+    }
+    out
+}
+
+/// Treasure at the bottom of every deep lake (40+ cells in a large world):
+/// a chest at its deepest.
+fn sunken(surface: &[i32], water: &[i32], biomes: &[Biome], sh: f64) -> Vec<Structure> {
+    let mut out = Vec::new();
+    let mut x = 0;
+    while x < surface.len() {
+        if water[x] <= surface[x] {
+            x += 1;
+            continue;
+        }
+        let start = x;
+        while x < surface.len() && water[x] > surface[x] && water[x] == water[start] {
+            x += 1;
+        }
+        let deepest = (start..x).min_by_key(|&i| surface[i]).expect("a lake has columns");
+        let lake = !matches!(biomes[start], Biome::Ocean) && !matches!(biomes[x - 1], Biome::Ocean);
+        if lake && (water[deepest] - surface[deepest]) as f64 >= 40.0 * sh.max(0.3) {
+            out.push(structures::sunken(deepest as i32, surface[deepest]));
+        }
     }
     out
 }

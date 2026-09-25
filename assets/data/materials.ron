@@ -22,6 +22,7 @@
 // ignites_at:   catches fire at this temperature
 // explodes:     (radius, power, chance/256) when it catches fire
 // still:        a plant that doesn't sway (illusory walls)
+// hangs:        a plant held up from above as well as from below (cobwebs)
 // colors:       gradient; each cell gets a fixed point on it
 //
 // `air` must stay first. Ids are assigned by order on first load and kept
@@ -123,6 +124,12 @@
         // light out.
         (name: "dark_leaves", kind: Plant, density: 200, hardness: 2, flammability: 16, ignites_at: 265, burn_time: 44, chars_at: 1.0, opacity: 140,
             colors: [(10, 30, 22), (16, 44, 30), (24, 60, 38), (34, 76, 46)]),
+        // Age: a crypt's damp floors grow moss; corners gather cobwebs, which
+        // hang from the ceiling and go up in a flash.
+        (name: "moss",       kind: Plant, still: true, density: 150, hardness: 1, flammability: 6, ignites_at: 280, burn_time: 20, chars_at: 1.0, opacity: 20,
+            colors: [(34, 62, 30), (52, 88, 40), (70, 110, 50), (92, 128, 62)]),
+        (name: "cobweb",     kind: Plant, still: true, hangs: true, density: 20, hardness: 1, flammability: 90, ignites_at: 200, burn_time: 6, opacity: 12,
+            colors: [(150, 150, 150), (190, 190, 194), (220, 220, 226)]),
         (name: "tall_grass", kind: Plant, density: 100, hardness: 1, flammability: 8, spread: 176, ignites_at: 240, burn_time: 5, chars_at: 1.0, colors: [(64, 146, 46), (92, 176, 62), (54, 124, 40)]),
 
         // ---- powders ------------------------------------------------------

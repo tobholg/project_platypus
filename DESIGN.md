@@ -291,7 +291,7 @@ The aim: the model can create, look at, and test a creature, item, room or struc
 
    Ores and chests need items, so this comes before them.
 5. Ores and gems in their bands. (Done: SPEC §3.4d.)
-6. Structures (crypts and castles done: SPEC §3.4e):
+6. Structures (done: SPEC §3.4e; keys and locked doors wait for the RPG arc):
    - the room text format and assembly;
    - ruins leading to crypts, then castles;
    - the ageing pass and secrets.
