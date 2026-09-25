@@ -35,7 +35,7 @@
         (name: "dirt",     kind: Static, density: 1500, hardness: 20,  crumbles_into: "soil", colors: [(96, 62, 36), (118, 78, 44), (104, 68, 40)]),
         (name: "grass",    kind: Static, density: 1400, hardness: 10,  flammability: 2, ignites_at: 250, burn_time: 10, burns_into: "soil", crumbles_into: "soil", colors: [(58, 140, 44), (82, 170, 56)]),
         (name: "snow",     kind: Static, density: 400,  hardness: 5,   heat: -10, above: (1, "water"), conductivity: 15, colors: [(226, 232, 240), (246, 248, 252)]),
-        (name: "wood",     kind: Static, density: 700,  hardness: 25,  flammability: 6, ignites_at: 280, conductivity: 12, burn_time: 225, burns_into: "ash", burns_into_chance: 40, colors: [(58, 36, 20), (88, 58, 30), (118, 80, 42), (138, 96, 54)]),
+        (name: "wood",     kind: Static, density: 700,  hardness: 25,  flammability: 6, ignites_at: 280, conductivity: 12, burn_time: 225, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal", colors: [(58, 36, 20), (88, 58, 30), (118, 80, 42), (138, 96, 54)]),
         (name: "obsidian", kind: Static, density: 2800, hardness: 120, crumbles_into: "gravel", above: (1600, "lava"), colors: [(34, 18, 52), (52, 30, 74)]),
         (name: "glass",    kind: Static, density: 2500, hardness: 30,  above: (1500, "lava"), colors: [(170, 200, 205), (196, 222, 226)]),
         (name: "ice",      kind: Static, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), colors: [(170, 210, 240), (200, 230, 250)]),
@@ -49,6 +49,12 @@
         (name: "gravel",   kind: Powder, density: 1900, hardness: 15, above: (1400, "lava"), colors: [(96, 94, 90), (130, 126, 120), (80, 78, 76)]),
         (name: "soil",     kind: Powder, density: 1400, hardness: 8,  colors: [(92, 60, 34), (112, 74, 42)]),
         (name: "ash",      kind: Powder, density: 300,  hardness: 1,  colors: [(70, 68, 66), (98, 96, 94)]),
+        // What burnt wood leaves (and charred wood that was put out). Flames
+        // don't catch on it (flammability 0): only heat above 700 °C lights it,
+        // hotter than burning wood, so it survives the fire that made it.
+        // Blasts, lava or the heat gun do. Burns long, down to ash. Future
+        // smelting fuel.
+        (name: "charcoal", kind: Powder, density: 450,  hardness: 12, flammability: 0, ignites_at: 700, conductivity: 20, burn_time: 250, burns_into: "ash", burns_into_chance: 200, chars_at: 1.0, colors: [(26, 24, 24), (38, 35, 34), (50, 46, 44), (20, 19, 19)]),
         (name: "coal",     kind: Powder, density: 1300, hardness: 10, flammability: 30, ignites_at: 350, burn_time: 200, burns_into: "ash", burns_into_chance: 90, colors: [(24, 24, 26), (40, 40, 44)]),
 
         // ---- liquids ------------------------------------------------------

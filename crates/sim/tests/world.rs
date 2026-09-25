@@ -971,3 +971,79 @@ fn a_blast_flings_loose_sand_beyond_the_crater() {
     assert!(count(&w, sand) > before * 7 / 10, "flung sand lands again, it isn't deleted");
 }
 
+
+// ---- charring ----------------------------------------------------------------
+
+/// A background tree in a box, lit at the base. Returns (tick the first
+/// piece broke off, wood in it).
+fn base_fire(materials: Arc<MaterialTable>) -> (Option<usize>, usize) {
+    let stone = Cell::new(materials.expect_id("stone"), 0);
+    let mut w = World::new(61, materials.clone());
+    for cy in 0..2 {
+        for cx in 0..3 {
+            w.insert_chunk(Chunk::filled(ChunkPos::new(cx, cy), Cell::AIR));
+        }
+    }
+    for x in 0..192 {
+        for y in 0..10 {
+            w.set(CellPos::new(x, y), stone);
+        }
+    }
+    fill_bg(&mut w, "wood", 90, 100, 1, 90);
+    fill_bg(&mut w, "leaves", 76, 114, 76, 100);
+    let wood = materials.expect_id("wood");
+    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(95, 11), radius: 3 });
+    for t in 0..6_000 {
+        w.step();
+        if let Some(b) = w.bodies().first() {
+            return (Some(t), b.world_cells().filter(|(_, c)| c.material == wood).count());
+        }
+    }
+    (None, 0)
+}
+
+#[test]
+fn a_tree_burning_at_the_base_snaps_before_it_burns_through() {
+    let charring = base_fire(mats());
+    // The same tree if charred wood held until it was gone.
+    let tough = MATERIALS.replace("chars_into: \"charcoal\",", "chars_into: \"charcoal\", chars_at: 1.0,");
+    assert_ne!(tough, MATERIALS);
+    let holding = base_fire(Arc::new(MaterialTable::from_ron(&tough).unwrap()));
+    let (Some(t_char), Some(t_hold)) = (charring.0, holding.0) else {
+        panic!("both trees fell: charring {charring:?}, holding {holding:?}");
+    };
+    assert!(t_char < t_hold * 2 / 3, "charred wood gives way sooner: {t_char} vs {t_hold} ticks");
+    // (The crown has burned off either way: flames race up the trunk.)
+    assert!(charring.1 > 400, "the trunk comes down in one big piece ({} wood of ~780)", charring.1);
+}
+
+#[test]
+fn burnt_wood_leaves_charcoal_and_doused_charred_wood_is_charcoal() {
+    let mut w = boxed_world(2, 1, 62);
+    let m = w.materials().clone();
+    let (charcoal, wood) = (m.expect_id("charcoal"), m.expect_id("wood"));
+    // Burn a block of wood out completely.
+    fill(&mut w, "wood", 20, 40, 1, 12);
+    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(30, 6), radius: 12 });
+    for _ in 0..4_000 {
+        w.step();
+    }
+    assert_eq!(count(&w, wood), 0, "it burned");
+    let left = count(&w, charcoal);
+    assert!(left > 0, "some charcoal is left");
+
+    // Charred wood that meets water stops burning as charcoal.
+    let mut w = boxed_world(2, 1, 63);
+    for x in 60..70 {
+        let mut c = Cell::new(wood, 0);
+        c.flags |= platypus_sim::cell::flags::BURNING;
+        c.life = 10; // well into its burn
+        assert!(m.is_charred(c));
+        w.set(CellPos::new(x, 1), c);
+    }
+    fill(&mut w, "water", 60, 70, 2, 6);
+    for _ in 0..4 {
+        w.step();
+    }
+    assert!(count(&w, charcoal) >= 8, "put out as charcoal ({})", count(&w, charcoal));
+}

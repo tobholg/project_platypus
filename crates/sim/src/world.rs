@@ -602,7 +602,7 @@ impl World {
         }
         let front_solid = |c: Cell| {
             let ph = mats.phys(c.material);
-            matches!(ph.kind, Kind::Static | Kind::Powder) && c.flags & flags::LOOSE == 0
+            matches!(ph.kind, Kind::Static | Kind::Powder) && c.flags & flags::LOOSE == 0 && mats.bears_load(c)
         };
         let plant = |c: Cell| mats.phys(c.material).kind == Kind::Plant;
         let probe = |w: &World, p: CellPos| match pass {
@@ -610,7 +610,7 @@ impl World {
                 None => Probe::Anchor, // world edge / unloaded
                 Some(c) => {
                     let ph = mats.phys(c.material);
-                    if ph.kind != Kind::Static || c.flags & flags::LOOSE != 0 {
+                    if ph.kind != Kind::Static || c.flags & flags::LOOSE != 0 || !mats.bears_load(c) {
                         Probe::Open
                     } else if ph.hardness == u8::MAX {
                         Probe::Anchor // bedrock
@@ -624,6 +624,8 @@ impl World {
                 (Some(b), _) if b.is_air() => Probe::Open,
                 (Some(b), _) if mats.phys(b.material).hardness == u8::MAX => Probe::Anchor,
                 (Some(_), Some(f)) if front_solid(f) => Probe::Anchor,
+                // Charred wood carries nothing (it hangs on until it burns away).
+                (Some(b), _) if pass == Pass::Wood && !mats.bears_load(b) => Probe::Open,
                 // Wood: leaves carry nothing. Leaves: any wood holds them.
                 (Some(b), _) if plant(b) != (pass == Pass::Leaves) => {
                     if pass == Pass::Wood { Probe::Open } else { Probe::Anchor }

@@ -218,8 +218,15 @@ pub(crate) fn burn_background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
     {
         let fp = *h.mats.phys(f.material);
         if fp.kind == Kind::Liquid && fp.flammability == 0 && !fp.hot {
-            b.flags &= !flags::BURNING; // water in front puts it out
-            h.set_bg(x, y, b);
+            // Water in front puts it out; charred by then, it's charcoal.
+            let bp = h.mats.phys(b.material);
+            if h.mats.is_charred(b) && bp.chars_into != MaterialId::AIR {
+                let coal = spawn(h, bp.chars_into);
+                h.set_bg(x, y, coal);
+            } else {
+                b.flags &= !flags::BURNING;
+                h.set_bg(x, y, b);
+            }
             return;
         }
         if fp.flammability > 0 && f.flags & flags::BURNING == 0 && h.rng.chance(fp.flammability) {
@@ -251,9 +258,25 @@ pub(crate) fn burn_background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
         if b.life == 0 {
             h.set_bg(x, y, Cell::AIR);
             h.note_broken_bg(x, y);
+            // Some of what's left (charcoal from wood) drops out in front, a
+            // third as often as in the playfield: a burnt forest leaves some,
+            // not a carpet.
+            let bp = *h.mats.phys(b.material);
+            if bp.burns_into != MaterialId::AIR
+                && h.rng.chance(bp.burns_into_chance / 3)
+                && h.get(x, y).is_some_and(|f| f.is_air())
+            {
+                let mut left = spawn(h, bp.burns_into);
+                left.heat = b.heat / 2;
+                h.set(x, y, left);
+            }
             return;
         }
         b.life -= 1;
+        // Charred through: it stops holding things up, so check what it held.
+        if b.life + 1 == h.mats.phys(b.material).charred_life {
+            h.note_broken_bg(x, y);
+        }
     }
     h.set_bg(x, y, b);
 }
@@ -267,6 +290,13 @@ fn burn(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) -> bool {
         {
             let np = h.mats.phys(n.material);
             if np.kind == Kind::Liquid && np.flammability == 0 && !np.hot {
+                // Put out after charring: what's left is charcoal.
+                if h.mats.is_charred(*c) && p.chars_into != MaterialId::AIR {
+                    let mut coal = spawn(h, p.chars_into);
+                    coal.heat = c.heat.min(120);
+                    h.set(x, y, coal);
+                    return true;
+                }
                 c.flags &= !flags::BURNING;
                 c.heat = c.heat.min(120);
                 h.set(x, y, *c);
@@ -315,6 +345,10 @@ fn burn(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) -> bool {
             return true;
         }
         c.life -= 1;
+        // Charred through: it stops holding things up, so check what it held.
+        if c.life + 1 == p.charred_life && p.kind == Kind::Static {
+            h.note_broken(x, y);
+        }
     }
     c.heat = c.heat.max(BURN_HEAT);
     h.set(x, y, *c);

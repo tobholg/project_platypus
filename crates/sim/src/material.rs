@@ -83,6 +83,15 @@ pub struct MaterialDef {
     /// How long it burns, in steps of 4 ticks (default 45 = 3 s).
     #[serde(default)]
     pub burn_time: Option<u8>,
+    /// Share of its burn after which a burning solid is charred and no longer
+    /// carries weight (default 0.5; 1 = holds until it's gone). A trunk burning
+    /// at the base snaps before it has burned through.
+    #[serde(default)]
+    pub chars_at: Option<f32>,
+    /// What a charred cell becomes when its fire is put out (wood: charcoal).
+    /// Default: it just stops burning.
+    #[serde(default)]
+    pub chars_into: Option<String>,
     /// What a solid breaks into when shattered but not destroyed (e.g. by a
     /// blast's rim): loose rubble that then falls. Default: nothing.
     #[serde(default)]
@@ -164,6 +173,11 @@ pub struct MatPhys {
     pub burns_into_chance: u8,
     /// Burn duration in steps of 4 ticks.
     pub burn_time: u8,
+    /// A burning cell with less `life` than this is charred: it no longer
+    /// carries weight (0 = never).
+    pub charred_life: u8,
+    /// `AIR` = stays itself when put out.
+    pub chars_into: MaterialId,
     /// `AIR` when the material doesn't crumble.
     pub crumbles_into: MaterialId,
     pub heat: i16,
@@ -282,6 +296,10 @@ impl MaterialTable {
                 Some(n) => lookup(n, &format!("{}.burns_into", d.name))?,
                 None => MaterialId::AIR,
             };
+            let chars_into = match &d.chars_into {
+                Some(n) => lookup(n, &format!("{}.chars_into", d.name))?,
+                None => MaterialId::AIR,
+            };
             let crumbles_into = match &d.crumbles_into {
                 Some(n) => lookup(n, &format!("{}.crumbles_into", d.name))?,
                 None => MaterialId::AIR,
@@ -320,6 +338,11 @@ impl MaterialTable {
                 burns_into,
                 burns_into_chance: d.burns_into_chance,
                 burn_time: d.burn_time.unwrap_or(45),
+                charred_life: {
+                    let burn = d.burn_time.unwrap_or(45) as f32;
+                    (burn * (1.0 - d.chars_at.unwrap_or(0.5).clamp(0.0, 1.0))).round() as u8
+                },
+                chars_into,
                 crumbles_into,
                 heat: d.heat,
                 heat_source: d.heat_source,
@@ -362,6 +385,18 @@ impl MaterialTable {
         }
 
         Ok(MaterialTable { fire: fire.unwrap_or(MaterialId::AIR), defs, phys, reactions, palette, by_name })
+    }
+
+    /// Burned far enough that it no longer carries weight (SPEC §3.7).
+    #[inline]
+    pub fn is_charred(&self, c: Cell) -> bool {
+        c.flags & crate::cell::flags::BURNING != 0 && c.life < self.phys(c.material).charred_life
+    }
+
+    /// Does this cell hold up what rests on it? Every ground check asks this.
+    #[inline]
+    pub fn bears_load(&self, c: Cell) -> bool {
+        !self.is_charred(c)
     }
 
     #[inline]

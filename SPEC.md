@@ -117,15 +117,26 @@ anything edge-connected to bedrock, to unloaded world, or to more than 3 000
 solid cells; a piece hanging by a diagonal corner is not attached. When a piece
 falls, everything touching it is re-checked, so hangers-on follow. Checks
 triggered by the simulation are grouped in 16×16 tiles, a few per tick, and
-share what they learned about ground within the tick. With rigid bodies, big
-falling pieces will become bodies instead of rubble.
+share what they learned about ground within the tick. (Background pieces with
+64+ wood cells fall as rigid bodies instead, §3.11.)
+
+**What carries weight is one rule, `MaterialTable::bears_load`, used by every
+ground check.** Today: a burning solid past its `chars_at` share of its burn
+(default half) is charred and carries nothing; it notifies the ground check
+when it crosses that line, so a trunk burning at the base snaps while most of
+it is still there (about twice as soon as waiting for it to burn through).
+Other weakening (mining cracks, metal softening near its melting point) belongs
+in the same rule.
 
 ### 3.8 Fire
 Solids, powders and liquids burn *in place* (`BURNING` flag): the cell keeps
 its material and position, glows, heats and ignites neighbours (diagonals
 included), puts flames and smoke into the air around it, and after
-`burn_time` becomes `burns_into` (e.g. some wood leaves ash) or nothing.
-Water puts it out. Gases flash into flame. Flammable things falling into flames
+`burn_time` becomes `burns_into` (a quarter of wood leaves charcoal) or nothing;
+burned-out background drops a third as much into the playfield. Water puts it
+out; a charred cell put out becomes `chars_into` (wood: charcoal). Charcoal has
+flammability 0 (flames don't catch on it) and lights only above 700 °C, hotter
+than burning wood, so it survives the fire that made it. Gases flash into flame. Flammable things falling into flames
 catch fire. Heat rises: fire catches upward at twice the rate, downward at half.
 Being above `ignites_at` gives a per-tick chance (set by flammability) to
 catch, certain only 250 °C above it — otherwise heat would carry every fire
@@ -135,7 +146,7 @@ across every meadow regardless of flammability.
 a burning cell lights a neighbour before burning out comes from flammability ×
 burn_time; above a tipping point (~50 %) fire sweeps everything, below it
 fires die out. Grass is tuned near that point: one spark in a meadow burns
-roughly half of it, sometimes fizzles, rarely takes everything (tested over 20
+roughly half of it, sometimes fizzles, rarely takes everything (tested over 40
 seeds). Burned cells never regrow, so every fire ends; firebreaks (bare patches,
 rock, water), wind and later rain shape where. A lit wooden slab still burns
 up on every seed; a tree takes a few seconds to catch and burns ~20 s.

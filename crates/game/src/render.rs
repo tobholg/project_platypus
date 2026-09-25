@@ -126,8 +126,20 @@ pub(crate) fn cell_rgba(mats: &MaterialTable, c: Cell, ambient: i32, dim: f32, l
         // Flicker: a per-cell mix toward flame colours that changes as it burns down.
         let n = ((lx as u32 * 73856093) ^ (ly as u32 * 19349663) ^ (c.life as u32 * 83492791)) % 100;
         let flame = if n < 45 { [255.0, 120.0, 20.0] } else if n < 80 { [255.0, 190.0, 60.0] } else { [200.0, 50.0, 10.0] };
-        for (ch, f) in rgba.iter_mut().zip(flame) {
-            *ch = (*ch as f32 * 0.35 + f * 0.65) as u8;
+        if mats.is_charred(c) {
+            // Charred: black with glowing embers, so you can see where a
+            // trunk is about to give way.
+            let ember = n < 30;
+            let char_rgb = [34.0, 24.0, 20.0];
+            for (ch, (f, k)) in rgba.iter_mut().zip(flame.into_iter().zip(char_rgb)) {
+                *ch = if ember { (k * 0.3 + f * 0.7) as u8 } else { (*ch as f32 * 0.15 + k * 0.85) as u8 };
+            }
+        } else {
+            // Blackening as it burns down.
+            let burnt = 1.0 - c.life as f32 / ph.burn_time.max(1) as f32;
+            for (ch, f) in rgba.iter_mut().zip(flame) {
+                *ch = (*ch as f32 * 0.35 * (1.0 - 0.6 * burnt) + f * 0.65) as u8;
+            }
         }
     }
     rgba

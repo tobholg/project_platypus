@@ -42,6 +42,7 @@ find a greenish methane pocket underground and set it off (bomb or heat gun) ·
 set a forest alight: fire climbs the trunks, embers blow downwind into the next
 canopy, burning branches fall · chop through a trunk with the pickaxe (or a bomb):
 the tree topples, sheds its crown and lands as a log you can mine · drop a tree on an orc ·
+light a tree at the base: it chars black and snaps · burnt wood leaves charcoal; put charred wood out with water for more ·
 run and dash through tall grass and watch it part and wobble back ·
 the HUD shows the material and temperature under the cursor ·
 edit `materials.ron` or `creatures/player.ron` while the game runs.
