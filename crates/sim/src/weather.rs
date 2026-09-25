@@ -206,37 +206,18 @@ impl Weather {
     }
 
     /// Advance one tick. Every `STEP_EVERY` ticks the field moves with the
-    /// wind, relaxes toward the weather for this time, takes in fed vapour and
-    /// rains out; returns what leaves it this tick.
+    /// wind. Each column relaxes toward the weather for this time, takes in
+    /// fed vapour and rains out every `STEP_EVERY` ticks too, a quarter of
+    /// them each tick (in lanes), so the cost is even rather than a spike
+    /// every fourth tick. Returns what leaves it this tick.
     pub fn step(&mut self, tick: u64, wind: f32) -> Vec<Precipitation> {
-        if !tick.is_multiple_of(STEP_EVERY) {
-            return Vec::new();
-        }
         let (cols, rows) = (self.cols, self.rows);
-        // Drift with the wind in whole texels (no blurring); the fraction is
-        // carried in `offset` and used by the renderer.
-        let before = (self.offset / TEXEL as f32).floor() as i64;
-        self.offset = (self.offset + wind * DRIFT * STEP_EVERY as f32).rem_euclid(self.width as f32);
-        let after = (self.offset / TEXEL as f32).floor() as i64;
-        let shift = after - before;
-        if shift != 0 {
-            let shift = shift.rem_euclid(cols as i64) as usize;
-            for r in 0..rows {
-                self.moisture[r * cols..(r + 1) * cols].rotate_right(shift);
-            }
-            self.shapes.rotate_right(shift);
-            self.bias.rotate_right(shift);
+        let lane = (tick % STEP_EVERY) as usize;
+        if lane == 0 {
+            self.drift(tick, wind);
         }
-        for b in &mut self.bias {
-            *b *= BIAS_FADE;
-        }
-        let phase = (tick / STEP_EVERY) % SHAPE_REFRESH;
-        for c in (phase as usize..cols).step_by(SHAPE_REFRESH as usize) {
-            self.shapes[c] = self.shape(c, tick);
-        }
-
         let mut out = Vec::new();
-        for c in 0..cols {
+        for c in (lane..cols).step_by(STEP_EVERY as usize) {
             // Vapour rising from below spreads through the lower half of the
             // band (all into one row, it piled up as a thin bright bar).
             let fed = std::mem::take(&mut self.fed[c]);
@@ -269,6 +250,33 @@ impl Weather {
             }
         }
         out
+    }
+
+    /// Every `STEP_EVERY` ticks: move the field with the wind, fade the
+    /// forcing, refresh some of the column shapes.
+    fn drift(&mut self, tick: u64, wind: f32) {
+        let (cols, rows) = (self.cols, self.rows);
+        // Drift with the wind in whole texels (no blurring); the fraction is
+        // carried in `offset` and used by the renderer.
+        let before = (self.offset / TEXEL as f32).floor() as i64;
+        self.offset = (self.offset + wind * DRIFT * STEP_EVERY as f32).rem_euclid(self.width as f32);
+        let after = (self.offset / TEXEL as f32).floor() as i64;
+        let shift = after - before;
+        if shift != 0 {
+            let shift = shift.rem_euclid(cols as i64) as usize;
+            for r in 0..rows {
+                self.moisture[r * cols..(r + 1) * cols].rotate_right(shift);
+            }
+            self.shapes.rotate_right(shift);
+            self.bias.rotate_right(shift);
+        }
+        for b in &mut self.bias {
+            *b *= BIAS_FADE;
+        }
+        let phase = (tick / STEP_EVERY) % SHAPE_REFRESH;
+        for c in (phase as usize..cols).step_by(SHAPE_REFRESH as usize) {
+            self.shapes[c] = self.shape(c, tick);
+        }
     }
 
     /// The cloud the weather wants over column `c` now. Humid fronts (pinned

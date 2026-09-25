@@ -111,6 +111,11 @@ fn step_cells(mut sim: ResMut<SimWorld>, mut metrics: ResMut<SimMetrics>, mut fx
         fx.write(Explosion { at: Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5), radius: radius as f32 });
     }
     metrics.tick_time = t.elapsed();
+    #[cfg(feature = "spikes")]
+    if metrics.tick_time.as_secs_f32() > 0.004 {
+        let phases: Vec<String> = platypus_sim::PHASES.iter().zip(metrics.last.phases).map(|(n, d)| format!("{n} {:.1}", d.as_secs_f32() * 1000.0)).collect();
+        info!("slow tick {:.1} ms: {} (active {}, particles {})", metrics.tick_time.as_secs_f32() * 1000.0, phases.join(", "), metrics.last.active_chunks, sim.world.particles().len());
+    }
     metrics.tick_time_avg = metrics.tick_time_avg.mul_f64(0.95) + metrics.tick_time.mul_f64(0.05);
 }
 

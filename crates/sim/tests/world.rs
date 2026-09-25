@@ -652,9 +652,12 @@ fn embers_set_fire_where_they_land() {
     fill(&mut w, "wood", 20, 40, 1, 5);
     let wood = w.materials().expect_id("wood");
     let ember = Cell::new(wood, 0);
-    w.emit(Particle::new([30.5, 30.0], [0.0, 0.0], ember, 200, Landing::Ember));
+    // Each has a chance (and some go out on the way): a shower lights it.
+    for i in 0..20 {
+        w.emit(Particle::new([21.5 + i as f32, 12.0], [0.0, 0.0], ember, 200, Landing::Ember));
+    }
     run_until_landed(&mut w, 200);
-    assert!(burning(&w) > 0, "the ember lit the wood");
+    assert!(burning(&w) > 0, "the embers lit the wood");
 }
 
 #[test]
@@ -853,9 +856,11 @@ fn a_small_branch_still_drops_as_rubble() {
 #[test]
 fn a_forest_fire_burns_through_the_background_and_leaves_nothing_hanging() {
     let mut w = boxed_world(3, 2, 52);
+    // Crowns touching: fire spreads through the canopy (embers alone
+    // seldom carry it across a gap).
     plant_tree(&mut w, 40);
-    plant_tree(&mut w, 100);
-    plant_tree(&mut w, 150);
+    plant_tree(&mut w, 72);
+    plant_tree(&mut w, 104);
     let leaves = w.materials().expect_id("leaves");
     // A crown fire (a spark on a trunk may just fizzle).
     w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(40, 52), radius: 3 });
@@ -1603,11 +1608,52 @@ fn in_a_storm_a_struck_tree_burns_alone_and_the_rain_puts_it_out() {
         w.step();
     }
     let after = standing(&w);
-    let burning = w.chunks().flat_map(|c| c.background()).filter(|b| b.flags & platypus_sim::cell::flags::BURNING != 0).count();
-    // Measured: [240, 232, 232, 240] -> [240, 5, 226, 240], nothing alight.
+    let alight = |w: &World| w.chunks().flat_map(|c| c.background()).filter(|b| b.flags & platypus_sim::cell::flags::BURNING != 0).count();
+    // The last few smoulder on a little longer.
+    let mut out_by = None;
+    for t in 1_800..3_600 {
+        if alight(&w) == 0 {
+            out_by = Some(t);
+            break;
+        }
+        w.step();
+    }
+    let burning = alight(&w);
+    // Measured: [240, 232, 232, 240] -> [240, 5, 226, 240], all out at ~31 s.
+    assert!(out_by.is_some(), "out within a minute");
     assert!(after[1] < before[1] / 4, "the struck tree burned through ({} of {} standing)", after[1], before[1]);
     for i in [0, 2, 3] {
         assert!(after[i] + 10 >= before[i], "tree {i} didn't catch ({} of {})", after[i], before[i]);
     }
     assert_eq!(burning, 0, "and the rain put it out");
+}
+
+/// A crown fire throws embers, but each touches one leaf and lights it only
+/// by chance, cooling as it flies, and some go out: the next tree over
+/// sometimes catches, one beyond it hardly ever.
+#[test]
+fn embers_seldom_carry_a_fire_across_a_gap() {
+    let mut near = 0;
+    let mut far = 0;
+    for seed in 0..8 {
+        let mut w = boxed_world(5, 2, 500 + seed);
+        fill(&mut w, "stone", 1, 319, 1, 4);
+        for x in [60, 120, 230] {
+            plant_tree(&mut w, x);
+        }
+        w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(60, 52), radius: 14 });
+        for _ in 0..3_600 {
+            w.step();
+        }
+        let leaves = w.materials().expect_id("leaves");
+        let crown = |w: &World, t: i32| (t - 16..=t + 16).flat_map(|x| (46..=58).map(move |y| CellPos::new(x, y))).filter(|&p| w.get_bg(p).is_some_and(|b| b.material == leaves)).count();
+        let (a, b, c) = (crown(&w, 60), crown(&w, 120), crown(&w, 230));
+        assert!(a < 50, "the lit crown burned ({a} left)");
+        near += (b < 350) as u32;
+        far += (c < 350) as u32;
+    }
+    // Measured: 2/8 and 0/8 (before, when an ember lit the first leaf it
+    // brushed: 4/8 and 2/8).
+    assert!(near <= 3, "a tree 28 cells off caught {near}/8 times");
+    assert!(far <= 1, "a tree 108 cells off caught {far}/8 times");
 }

@@ -34,6 +34,8 @@ struct Clouds {
 const REDRAW_EVERY: u64 = 30;
 /// Cells drawn beyond the view each side, so the slide has room.
 const MARGIN: i32 = 96;
+/// The texture's width is a multiple of this (cells).
+const SIZE_STEP: u32 = 128;
 /// The puff table tiles every this many cells.
 const PUFF_TILE: usize = 256;
 
@@ -118,8 +120,14 @@ fn draw_clouds(
         .drawn
         .is_some_and(|(a0, at)| tick < at + REDRAW_EVERY && view0 >= a0 && view1 <= a0 + clouds.size.x as i32);
     if !fresh {
-        let (a0, a1) = (view0 - MARGIN, view1 + MARGIN);
-        let size = UVec2::new((a1 - a0) as u32, (y1 - y0) as u32);
+        // The width only changes in steps (zoom, window): a new texture is a
+        // new GPU texture and bind group, a hitch if it happened on every
+        // redraw as the view's rounding shifted by a cell.
+        let want = (view1 - view0 + 2 * MARGIN) as u32;
+        let width = if (want..want + 2 * SIZE_STEP).contains(&clouds.size.x) { clouds.size.x } else { want.div_ceil(SIZE_STEP) * SIZE_STEP };
+        let a0 = (view0 + view1) / 2 - width as i32 / 2;
+        let a1 = a0 + width as i32;
+        let size = UVec2::new(width, (y1 - y0) as u32);
         if size != clouds.size {
             clouds.image = images.add(blank(size));
             clouds.size = size;

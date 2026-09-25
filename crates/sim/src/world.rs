@@ -24,6 +24,7 @@ const ANCHOR_BUDGET_BG: usize = 40_000;
 /// Fragment checks run per tick for cells the simulation destroyed (a forest
 /// fire can break thousands); the rest wait for the next tick.
 const MAX_FRAGMENT_CHECKS_PER_TICK: usize = 24;
+const MAX_BG_CHECKS_PER_TICK: usize = 8;
 /// Destroyed cells are grouped into tiles of this size, one check per tile.
 const FRAGMENT_TILE_BITS: i32 = 4;
 /// Most explosions applied per tick; nearby requests merge into one.
@@ -53,6 +54,9 @@ pub struct World {
     weather: Option<Weather>,
     /// Lightning since the last step reported it.
     strikes: Vec<Strike>,
+    /// Ground height under each weather column and the tick it was found:
+    /// rain or snow is decided by it, and the ground rarely moves.
+    grounds: FxHashMap<i32, (i32, u64)>,
 }
 
 /// Which grid a ground check looks at.
@@ -93,6 +97,7 @@ impl World {
             next_body: 0,
             weather: None,
             strikes: Vec::new(),
+            grounds: FxHashMap::default(),
         }
     }
 
@@ -976,25 +981,38 @@ impl World {
 
     /// Apply queued edits and pending explosions, then advance one tick.
     pub fn step(&mut self) -> StepStats {
+        let mut clock = std::time::Instant::now();
+        let mut lap = || {
+            let now = std::time::Instant::now();
+            let d = now - clock;
+            clock = now;
+            d
+        };
         for edit in std::mem::take(&mut self.edits) {
             self.apply_edit(&edit);
         }
         let detonated = self.detonate_pending();
+        let edits = lap();
         self.tick += 1;
         let wind = self.wind();
         let mut stats = step_chunks(&mut self.chunks, &self.materials, self.seed, self.tick, self.climate, wind);
+        let cells = lap();
         stats.detonated = detonated;
         self.pending_explosions.extend(stats.explosions.iter().copied());
         self.check_broken(&stats.broken, Layer::Front);
         self.check_broken(&stats.broken_bg, Layer::Back);
+        let broken = lap();
         self.particles.extend(stats.particles.iter().copied());
         let mut flying = std::mem::take(&mut self.particles);
         particles::step(&mut flying, &mut ParticleCtx { world: self });
         flying.append(&mut self.particles); // anything emitted while stepping
         self.particles = flying;
+        let particles = lap();
         self.step_bodies();
+        let bodies = lap();
         self.step_weather(wind, &stats.vapour);
         stats.lightning = std::mem::take(&mut self.strikes);
+        stats.phases = [edits, cells, broken, particles, bodies, lap()];
         stats
     }
 
@@ -1039,7 +1057,15 @@ impl World {
         for p in out {
             // Snow or rain: whatever it would be when it lands. (The cloud
             // itself is nearly always below freezing.)
-            let frozen = self.climate.ambient(self.ground_below(p.x, p.y)) <= 0;
+            let ground = match self.grounds.get(&p.x) {
+                Some(&(g, at)) if g < p.y && self.tick < at + GROUND_STALE => g,
+                _ => {
+                    let g = self.ground_below(p.x, p.y);
+                    self.grounds.insert(p.x, (g, self.tick));
+                    g
+                }
+            };
+            let frozen = self.climate.ambient(ground) <= 0;
             let Some(id) = (if frozen { snow } else { water }) else { continue };
             let n = stochastic_round(p.amount * DROPS_PER_MOISTURE * share, &mut rng);
             for _ in 0..n {
@@ -1278,7 +1304,13 @@ impl World {
         }
         pending.sort();
         pending.dedup();
-        let n = pending.len().min(MAX_FRAGMENT_CHECKS_PER_TICK);
+        // Background checks flood whole trees; a burning forest asks for many,
+        // so fewer a tick (the rest wait a tick or two) keeps ticks even.
+        let cap = match layer {
+            Layer::Front => MAX_FRAGMENT_CHECKS_PER_TICK,
+            Layer::Back => MAX_BG_CHECKS_PER_TICK,
+        };
+        let n = pending.len().min(cap);
         let now: Vec<CellPos> = pending.drain(..n).collect();
         let half = 1 << (FRAGMENT_TILE_BITS - 1);
         let mut anchored = FxHashSet::default();
@@ -1343,6 +1375,8 @@ const LIGHTNING_BLAST: u8 = 24;
 /// lightning-struck trunk) from the top.
 const BOILS_RAIN: i16 = 800;
 const RAIN_QUENCH: i16 = 60;
+/// How long (ticks) a weather column's ground height is trusted.
+const GROUND_STALE: u64 = 600;
 /// Longest run down through a tree to the ground.
 const LIGHTNING_CHANNEL: i32 = 400;
 /// New drops stop above this many particles in flight (the cap is 30 000).
@@ -1408,16 +1442,37 @@ impl ParticleWorld for ParticleCtx<'_> {
         self.world.wind()
     }
 
-    fn ember_over(&mut self, p: CellPos, life: u16) {
-        let Some(b) = self.world.get_bg(p) else { return };
+    fn ember_over(&mut self, p: CellPos, catch: u8) -> bool {
+        let Some(b) = self.world.get_bg(p) else { return false };
         if b.is_air() || b.flags & flags::BURNING != 0 {
-            return;
+            return false;
         }
         let bp = *self.world.materials.phys(b.material);
-        let mut rng = Rng::seeded(&[self.world.seed, self.world.tick, 0xE3B6, p.x as u64, p.y as u64, life as u64]);
-        if bp.flammability > 0 && rng.chance(bp.flammability / 4 + 1) {
+        let mut rng = Rng::seeded(&[self.world.seed, self.world.tick, 0xE3B6, p.x as u64, p.y as u64, catch as u64]);
+        // It touches (more often the more flammable), and is spent whether
+        // or not that lights it.
+        if bp.flammability == 0 || !rng.chance(bp.flammability / 4 + 1) {
+            return false;
+        }
+        if rng.chance(catch) {
             self.world.ignite_bg_cell(p, &bp);
         }
+        true
+    }
+
+    fn douse_strip(&mut self, p: CellPos) -> bool {
+        // Nothing burns where its chunk is asleep: fire keeps its own cells
+        // awake. Most of a storm's drops fall through quiet air, so one look
+        // at the chunk's awake rect settles the whole strip.
+        let (lx, ly) = (p.local().0 as i32, p.local().1 as i32);
+        if (1..CHUNK - 1).contains(&lx) {
+            let Some(chunk) = self.world.chunk(p.chunk()) else { return false };
+            let r = chunk.dirty_rect();
+            if r.is_empty() || lx + 1 < r.min_x || lx - 1 > r.max_x || ly < r.min_y || ly > r.max_y {
+                return false;
+            }
+        }
+        (-1..=1).any(|dx| self.douse(p.offset(dx, 0)))
     }
 
     fn douse(&mut self, p: CellPos) -> bool {

@@ -311,6 +311,10 @@ pub(crate) fn background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
         return;
     }
     let charred = h.mats.is_charred(b);
+    // Only what carries load (wood, not leaves) can bring anything down when
+    // it chars or burns away: leaves would ask for a support check twice
+    // each as a canopy burns.
+    let carries = bp.kind != Kind::Plant;
     heat = (heat + SELF_HEAT).min(BG_MAX_HEAT);
     // A flame that isn't kept hot may go out (smouldering wood glows on).
     if !charred && heat < SUSTAIN && bp.fizzles > 0 && h.rng.chance4096(bp.fizzles as u32) {
@@ -318,7 +322,9 @@ pub(crate) fn background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
         b.heat = heat as i16;
         h.set_bg(x, y, b);
         // It carries weight again: check what's around.
-        h.note_broken_bg(x, y);
+        if carries {
+            h.note_broken_bg(x, y);
+        }
         return;
     }
     // Radiate into the neighbours.
@@ -348,7 +354,9 @@ pub(crate) fn background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
     if h.tick.is_multiple_of(if heat >= FIERCE_HEAT { 2 } else { 4 }) {
         if b.life == 0 {
             h.set_bg(x, y, Cell::AIR);
-            h.note_broken_bg(x, y);
+            if carries {
+                h.note_broken_bg(x, y);
+            }
             // Some of what's left (charcoal from wood) drops out in front, a
             // third as often as in the playfield: a burnt forest leaves some,
             // not a carpet.
@@ -364,7 +372,7 @@ pub(crate) fn background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
         }
         b.life -= 1;
         // Charred through: it stops holding things up, so check what it held.
-        if b.life + 1 == bp.charred_life {
+        if carries && b.life + 1 == bp.charred_life {
             h.note_broken_bg(x, y);
         }
     }

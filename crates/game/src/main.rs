@@ -17,6 +17,8 @@ mod props;
 mod render;
 mod rigid;
 mod scenario;
+#[cfg(feature = "spikes")]
+mod spikes;
 mod sky;
 mod tools;
 mod world;
@@ -40,7 +42,9 @@ fn main() {
         _ => Arc::new(TerrainGen::new(seed, TerrainConfig::default(), &materials)),
     };
     let spawn = generator.spawn_point();
-    let benchmarking = std::env::var("PLATYPUS_SCENARIO").is_ok();
+    // Scenarios run uncapped, unless PLATYPUS_VSYNC=1 (to see the frame
+    // pacing a player gets).
+    let benchmarking = std::env::var("PLATYPUS_SCENARIO").is_ok() && std::env::var("PLATYPUS_VSYNC").is_err();
 
     App::new()
         .add_plugins(
@@ -56,7 +60,8 @@ fn main() {
                     }),
                     ..default()
                 })
-                .set(AssetPlugin { file_path: data::assets_dir().to_string_lossy().into_owned(), ..default() }),
+                .set(AssetPlugin { file_path: data::assets_dir().to_string_lossy().into_owned(), ..default() })
+                .set(log_plugin()),
         )
         .add_plugins((
             world::WorldPlugin { seed, materials, materials_path, generator },
@@ -74,5 +79,21 @@ fn main() {
             light::LightPlugin,
             scenario::ScenarioPlugin,
         ))
+        .add_plugins(spikes_plugin)
         .run();
+}
+
+#[cfg(feature = "spikes")]
+fn log_plugin() -> bevy::log::LogPlugin {
+    bevy::log::LogPlugin { custom_layer: spikes::layer, ..default() }
+}
+
+#[cfg(not(feature = "spikes"))]
+fn log_plugin() -> bevy::log::LogPlugin {
+    default()
+}
+
+fn spikes_plugin(_app: &mut App) {
+    #[cfg(feature = "spikes")]
+    _app.add_plugins(spikes::SpikesPlugin);
 }

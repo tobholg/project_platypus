@@ -209,7 +209,7 @@ Things in flight between cells live in the sim as a plain list (not
 entities), step once per tick after the cells, and march one cell at a time so
 nothing tunnels. Each carries a real `Cell` and a landing rule: `Settle`
 (becomes its cell; solids land `LOOSE` — blast debris, blood, splashes),
-`Vanish` (dust, sparks), `Ember` (ignites what it lands on if flammable).
+`Vanish` (dust, sparks), `Ember` (may ignite what it lands on or brushes).
 They are deterministic (seeded), capped at 30 000, and die at the edge of the
 loaded world. Sources: explosions (hot debris thrown up and out of the crater,
 sparks), mining (dust), burning cells (embers — how fire jumps gaps), creature
@@ -237,7 +237,13 @@ deaths (blood). Rendered as one dynamic mesh.
   is crushed by falling powder and flowing liquid, withers without support.
 - Wind: seeded, smooth, computed without trig (bit-identical across
   platforms). It biases gas drift and flames, and pushes light particles;
-  embers blowing through a canopy can light it.
+  embers blowing through a canopy can light it. An ember cools as it flies:
+  it lights what it touches with chance 1/4 while fresh, falling off over its
+  last 80 ticks, and goes out in flight 1 tick in 60. In a canopy it touches
+  one leaf (more often the more flammable) and is spent, lit or not.
+  Measured over 8 seeds: a burning crown sets the next tree 28 cells off
+  alight 2 times, one 108 cells off never (4 and 2 when the first leaf an
+  ember brushed caught).
 - Grass sway is rendering only: grass pixels are drawn shifted by wind, a
   travelling wave, and springs that creatures excite as they move through
   (2×8-cell tiles, underdamped). Cells never move, so sway costs the
@@ -343,11 +349,16 @@ deaths (blood). Rendered as one dynamic mesh.
 - `WorldEdit::Weather` forces a storm or a clear sky over an area (fading back
   over ~2.5 minutes) and `WorldEdit::Lightning` strikes a column: the F5, F6
   and F7 dev keys, and later spells or events.
+- The field steps each column every 4 ticks, a quarter of the columns each
+  tick, so its cost (~1.2 ms for the world's width) is spread evenly rather
+  than landing on every fourth tick. The ground under a raining column is
+  looked up once every 10 s.
 - The band sits 150 cells above sea level, over the tallest trees. It is often
   above the loaded area (zoomed in): rain, snow and lightning enter the world at
   the top of what's loaded below the cloud. Rain or snow is decided by the
   temperature of the ground it will land on. Drops fall at ~2 cells a tick and
-  douse a 3-cell strip as they fall, until one meets background fire hotter
+  douse a 3-cell strip as they fall (skipped where the chunk is asleep:
+  fire keeps its cells awake), until one meets background fire hotter
   than 800 °C: that boils it off (the cell loses 60 °C) and it's gone. So
   rain puts out a spreading fire's cooler edges at once and wears a blaze's
   heart (or a struck trunk) down from the top. Measured in a storm over four

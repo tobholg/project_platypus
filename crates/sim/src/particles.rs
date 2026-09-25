@@ -74,12 +74,18 @@ pub(crate) trait ParticleWorld {
     /// Set a flammable cell alight (same rules as everywhere else).
     fn ignite_at(&mut self, p: CellPos);
     fn wind(&self) -> f32;
-    /// An ember passing in front of a background cell may set it alight.
-    fn ember_over(&mut self, p: CellPos, life: u16);
+    /// An ember passing in front of a background cell may touch it, and then
+    /// may set it alight (`catch`: chance /256). True if it touched (and is
+    /// spent).
+    fn ember_over(&mut self, p: CellPos, catch: u8) -> bool;
     /// Water arriving at `p`: flames there go out, burning cells (in front
     /// or behind) stop burning, or, burning hotter than a drop can put out,
     /// lose some heat as it boils off. True if the water was used up.
     fn douse(&mut self, p: CellPos) -> bool;
+    /// `douse` a drop's 3-cell strip centred on `p`; true if it was used up.
+    fn douse_strip(&mut self, p: CellPos) -> bool {
+        (-1..=1).any(|dx| self.douse(p.offset(dx, 0)))
+    }
     /// Ambient °C at height `y`.
     fn ambient(&self, y: i32) -> i32;
     /// A cell of water, for a snowflake that melted.
@@ -116,8 +122,24 @@ pub(crate) fn step(particles: &mut Vec<Particle>, world: &mut impl ParticleWorld
     }
 }
 
+/// Chance /256 that an ember with `life` ticks left lights what it touches:
+/// it cools as it flies.
+fn ember_catch(life: u16) -> u8 {
+    (EMBER_CATCH as u32 * life.min(EMBER_HOT) as u32 / EMBER_HOT as u32) as u8
+}
+
+/// A fresh ember lights what it touches with this chance /256 ...
+const EMBER_CATCH: u8 = 64;
+/// ... falling off once it has fewer than this many ticks left.
+const EMBER_HOT: u16 = 80;
+/// An ember in flight goes out with chance 1 in this a tick.
+const EMBER_FADE: u64 = 60;
+
 /// Returns false when the particle is done.
 fn step_one(p: &mut Particle, world: &mut impl ParticleWorld) -> bool {
+    if p.landing == Landing::Ember && crate::rng::hash(&[p.pos[0].to_bits() as u64, p.pos[1].to_bits() as u64, p.life as u64]).is_multiple_of(EMBER_FADE) {
+        return false;
+    }
     p.vel[1] -= GRAVITY * p.gravity;
     p.vel[0] += world.wind() * wind_push(p.landing);
     p.vel[0] *= DRAG;
@@ -139,12 +161,16 @@ fn step_one(p: &mut Particle, world: &mut impl ParticleWorld) -> bool {
             Some(c) if open(world.mats(), c) => {
                 p.pos = next;
                 match p.landing {
-                    Landing::Ember => world.ember_over(at, p.life),
+                    Landing::Ember => {
+                        if world.ember_over(at, ember_catch(p.life)) {
+                            return false;
+                        }
+                    }
                     Landing::Rain => {
                         // A drop soaks a little either side of its path,
                         // until it boils off on something burning too hot
                         // to put out.
-                        if (-1..=1).any(|dx| world.douse(at.offset(dx, 0))) {
+                        if world.douse_strip(at) {
                             return false;
                         }
                     }
@@ -202,6 +228,7 @@ fn land(p: &Particle, hit: CellPos, world: &mut impl ParticleWorld) {
             if let Some(c) = world.get(hit)
                 && !c.is_air()
                 && world.mats().phys(c.material).flammability > 0
+                && (crate::rng::hash(&[p.pos[0].to_bits() as u64, p.pos[1].to_bits() as u64, 0xE3]) % 256) < ember_catch(p.life) as u64
             {
                 world.ignite_at(hit);
             }

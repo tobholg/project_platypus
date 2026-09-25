@@ -98,6 +98,22 @@ special cases.
 5. **Co-op transport**: pick the netcode crate, host/join, input + edit messages,
    per-chunk checksums every N ticks, resync on mismatch.
 
+## Frame pacing (measured 2026-09-25, `--features spikes`, 120 Hz vsync)
+
+- Storms and fires used to push sim ticks past 4 ms often (83 in 20 s of a
+  lightning-struck forest): the weather field stepping all at once every
+  fourth tick (1.2 ms), every raindrop checking 3 cells for fire through
+  quiet air, and every burning leaf asking for a tree-wide support check
+  twice. Fixed (lanes, a sleeping-chunk skip, wood-only checks, 8 background
+  checks a tick): 1 in 20 s; average tick 2.1 → 1.6–1.8 ms.
+- The cloud texture was reallocated on most redraws while moving (its width
+  followed the view's rounding): now sized in 128-cell steps.
+- What's left is about one missed vsync every 2–3 s, all of it waiting on the
+  swapchain with our work at 2–3 ms. An empty flat world with lighting off
+  does the same, and `desired_maximum_frame_latency` 1–3 doesn't change it:
+  macOS windowed presentation, not ours. Worth trying fullscreen, and moving
+  the sim tick off the main thread (like the light solve) for headroom.
+
 ## Known issues
 
 - Liquids level to within 1–2 cells across long flat stretches (terracing); fine visually.

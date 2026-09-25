@@ -61,8 +61,13 @@ PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, 
 PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood`, `strike` (lightning onto the nearest tree) (a block of water collapsing in a dug hall). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall), `strike` (lightning onto the nearest tree). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
 capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length, `PLATYPUS_NOLIGHT=1` to start with lighting off.
+Scenarios run without vsync; `PLATYPUS_VSYNC=1` runs them with it, to see the
+frame pacing a player gets. For stutter, build with `--features spikes`: every
+frame over `PLATYPUS_SPIKES` ms (default 12) is logged with its heaviest Bevy
+systems (render world included), and every sim tick over 4 ms with its phases
+(edits, cells, broken, particles, bodies, weather).
 
 ## Add things (no engine changes)
 

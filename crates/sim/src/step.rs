@@ -219,7 +219,13 @@ pub struct StepStats {
     /// Lightning that struck this tick (for the bolt, the flash, the thunder,
     /// and whoever stood there).
     pub lightning: Vec<Strike>,
+    /// Time spent this tick in: edits and detonations, cells, broken support
+    /// checks, particles, bodies, weather (see `PHASES`).
+    pub phases: [std::time::Duration; 6],
 }
+
+/// Names of `StepStats::phases`.
+pub const PHASES: [&str; 6] = ["edits", "cells", "broken", "particles", "bodies", "weather"];
 
 /// A lightning strike: down column `x` from `top` to the first cell it hit,
 /// then (through a tree) on down to where it `earth`ed.
