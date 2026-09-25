@@ -192,13 +192,18 @@ deaths (blood). Rendered as one dynamic mesh.
   that needs per-tree identity.
 
 ### 3.12 Elements on bodies
-- One rule, `World::exposure(min, max)`, says what the cells a body covers do
-  to it, from material data only: heat (any non-burning cell above 60 °C,
-  0.1 damage/s per °C over: lava ~114/s, steam scalds), corrosion (the
+- One rule, `World::exposure(min, max)`, says what the cells a body covers
+  (and the ring it touches: the floor under its feet, a wall beside it) do to
+  it, from material data only: heat (any non-burning cell above 60 °C,
+  0.1 damage/s per °C over: lava ~114/s, steam scalds, glowing rock burns
+  feet), cold (below −10 °C it chills, fully 60 °C further down; below
+  −60 °C it also hurts), corrosion (the
   material's `corrosive`, damage/s: acid 30, acid fumes 8), flames or
   burning cells (it catches fire), and being mostly under a liquid that puts
   fires out. The worst cell counts, not the sum, so size doesn't matter.
-- The game keeps two statuses: `Burning` (7 damage/s for 4 s after the last
+- The game keeps three statuses: `Chilled` (slowed down to 40 % while
+  touching the cold and 1.5 s after, via `MovementStats::slowed`; hard frost
+  puts a fire out), `Burning` (7 damage/s for 4 s after the last
   flame; trails flames above it and lights what it stands in, so a burning orc
   running through a meadow lights the meadow) and `Wet` (3 s after water; can't
   catch fire). Creatures resist per kind in their RON (`resist: (heat,
@@ -207,6 +212,8 @@ deaths (blood). Rendered as one dynamic mesh.
   weaker, used up doing it), condense into acid rain downwind, and flammable
   (a spark flashes the cloud into fire, with the odd small pop), which boils
   more acid. Blood boils into blood steam and freezes, like water.
+- A burning liquid isn't put out by what it floats on: an oil slick burns on
+  the water under it. Oil conducts heat poorly, so the lake survives.
 
 ### 3.11 Rigid bodies
 - A body is a local grid of cells with a pose: centre of mass, orientation as

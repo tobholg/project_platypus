@@ -104,18 +104,26 @@ const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// One movement code path for every creature.
 fn move_creatures(
     sim: Res<SimWorld>,
-    mut q: Query<(Entity, &mut Kinematics, &MoveStats, &Controls)>,
+    mut q: Query<(Entity, &mut Kinematics, &MoveStats, &Controls, Option<&elements::Chilled>)>,
     mut landed: MessageWriter<Landed>,
 ) {
     let grid = WorldGrid(&sim.world);
-    for (entity, mut k, stats, controls) in &mut q {
+    for (entity, mut k, stats, controls, chilled) in &mut q {
         // Frozen until the ground under it is loaded.
         if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
             continue;
         }
         let k = &mut *k;
         k.prev_pos = k.body.pos;
-        k.loco.steer(&stats.0, &controls.0, &mut k.body, DT);
+        let slowed;
+        let stats = match chilled {
+            Some(c) => {
+                slowed = stats.0.slowed(c.speed());
+                &slowed
+            }
+            None => &stats.0,
+        };
+        k.loco.steer(stats, &controls.0, &mut k.body, DT);
         let contacts = move_and_collide(&grid, &mut k.body, DT);
         if let Some(speed) = k.loco.after_move(contacts) {
             landed.write(Landed { entity, speed });
@@ -150,7 +158,7 @@ fn deaths(
             sim.world.splash([k.body.pos.x, k.body.pos.y], blood, 70, 2.2);
         }
         if is_player {
-            commands.entity(entity).remove::<(elements::Burning, elements::Wet)>();
+            commands.entity(entity).remove::<(elements::Burning, elements::Wet, elements::Chilled)>();
             h.hp = h.max;
             k.body.pos = Vec2::new(spawn.x as f32, spawn.y as f32 + 60.0);
             k.body.vel = Vec2::ZERO;

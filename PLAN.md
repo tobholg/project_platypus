@@ -49,6 +49,30 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
    grass varieties (short, tall, flowering, dry, snowy); port the legacy
    mountains / sky islands / walker caves into a `WorldPlan`.
 
+## Elemental ideas to explore later
+
+Same shape as everything so far: a general rule plus material data, no
+special cases.
+
+- **Lightning / electricity**: chains through water and metal, hurts anything
+  standing in them, lights what it strikes. Comes with weather (clouds build
+  charge).
+- **Steam blasts**: water meeting lava bursts outward (a small explosion on the
+  reaction) instead of quietly becoming steam; trapped steam builds pressure.
+- **Poison / swamp gas**: harms without corroding (a `toxic` material value),
+  heavier than air so it pools in hollows, explodes like methane when lit.
+- **Violent mixtures**: reactions with an explosion (acid + water heating,
+  lava + ice), data-driven like `explodes`.
+- **Freezing solid**: a chilled, wet creature caught in freezing water is
+  frozen in place; the ice around it is real ice you can break.
+- **Mud, tar, honey**: sticky liquids that slow what wades through them
+  (`MovementStats::slowed` is already the hook).
+- **Water cycle that conserves water**: steam now mostly fades instead of
+  condensing (an old fix for a steam/water loop that kept regions awake).
+  Clouds should hold that moisture and rain it back (weather arc).
+- **Status interplay**: oil-soaked burns hotter and longer, wet conducts
+  lightning, burning thaws chilled.
+
 ## Next, in order (older list)
 
 1. **Particles** (phase 2): SoA particle system; dug material, debris and blood fly

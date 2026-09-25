@@ -56,6 +56,22 @@ pub struct MovementStats {
     pub swim_drag: f32,
 }
 
+impl MovementStats {
+    /// Sluggish (cold, mud, a slow spell): speeds, acceleration and jump
+    /// scaled by `f` (0..1). Timing (coyote, buffers) is untouched.
+    pub fn slowed(&self, f: f32) -> MovementStats {
+        let f = f.clamp(0.05, 1.0);
+        MovementStats {
+            run_speed: self.run_speed * f,
+            ground_accel: self.ground_accel * f,
+            air_accel: self.air_accel * f,
+            jump_height: self.jump_height * (0.5 + 0.5 * f),
+            dash_speed: self.dash_speed * f,
+            ..self.clone()
+        }
+    }
+}
+
 impl Default for MovementStats {
     fn default() -> Self {
         MovementStats {

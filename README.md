@@ -44,6 +44,7 @@ canopy, burning branches fall · chop through a trunk with the pickaxe (or a bom
 the tree topples, sheds its crown and lands as a log you can mine · drop a tree on an orc ·
 light a tree at the base: it chars black and snaps · burnt wood leaves charcoal; put charred wood out with water for more ·
 lava, fire, steam and acid hurt; flames set creatures alight (they spread fire as they run; jump in water) · boil acid (heat gun) into a corrosive cloud that rains acid, then light the cloud ·
+pour oil on a lake and light it · freeze the ground under an orc (Shift + heat gun) to slow it, or to put yourself out ·
 run and dash through tall grass and watch it part and wobble back ·
 the HUD shows the material and temperature under the cursor ·
 edit `materials.ron` or `creatures/player.ron` while the game runs.

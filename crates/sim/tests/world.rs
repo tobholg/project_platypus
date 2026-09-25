@@ -1152,3 +1152,36 @@ fn exposure_reads_heat_corrosion_fire_and_water_from_the_cells() {
     let (lo, hi) = box_at(45);
     assert_eq!(w.exposure(lo, hi), platypus_sim::Exposure::default(), "air is harmless");
 }
+
+#[test]
+fn an_oil_slick_burns_on_the_water_it_floats_on() {
+    let mut w = boxed_world(2, 1, 80);
+    fill(&mut w, "water", 1, 127, 1, 12);
+    fill(&mut w, "oil", 20, 100, 12, 15);
+    run_until_asleep(&mut w, 2_000);
+    let oil = w.materials().expect_id("oil");
+    let before = count(&w, oil);
+    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(22, 13), radius: 2 });
+    for _ in 0..900 {
+        w.step();
+    }
+    assert!(count(&w, oil) < before / 10, "the slick burned away ({} of {before} left)", count(&w, oil));
+    // The fire boils the top of the water; the steam comes back down later.
+    let wet = count(&w, w.materials().expect_id("water")) + count(&w, w.materials().expect_id("steam"));
+    assert!(wet > 1100, "the water under it is still there, some as steam ({wet} of 1386)");
+}
+
+#[test]
+fn a_freezing_floor_chills_and_a_hot_one_burns_what_stands_on_it() {
+    let mut w = boxed_world(1, 1, 81);
+    fill(&mut w, "stone", 1, 63, 1, 5);
+    // A body standing on the floor: its box starts just above it.
+    let (lo, hi) = (CellPos::new(20, 5), CellPos::new(23, 12));
+    assert_eq!(w.exposure(lo, hi), platypus_sim::Exposure::default(), "ordinary ground does nothing");
+    w.apply_edit(&WorldEdit::Heat { center: CellPos::new(21, 3), radius: 4, amount: -150 });
+    let cold = w.exposure(lo, hi);
+    assert!(cold.cold > 0.9 && cold.heat > 5.0, "frozen stone chills and bites: {cold:?}");
+    w.apply_edit(&WorldEdit::Heat { center: CellPos::new(21, 3), radius: 4, amount: 800 });
+    let hot = w.exposure(lo, hi);
+    assert!(hot.heat > 30.0 && hot.cold == 0.0, "glowing stone burns feet: {hot:?}");
+}

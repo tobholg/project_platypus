@@ -12,11 +12,16 @@ pub const HARMFUL_HEAT: i32 = 60;
 /// Damage per second per °C above `HARMFUL_HEAT`: lava (1 200 °C) ≈ 114/s,
 /// scalding steam (~150 °C) ≈ 9/s.
 const HEAT_DAMAGE: f32 = 0.1;
+/// Below this (°C) it chills; fully chilled 60 °C further down.
+pub const CHILLING_COLD: i32 = -10;
+/// Below this (°C) cold also hurts, at `HEAT_DAMAGE` per °C.
+pub const HARMFUL_COLD: i32 = -60;
 
 /// What a body overlapping some cells is exposed to.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Exposure {
-    /// Damage per second from heat (the hottest cell it touches).
+    /// Damage per second from temperature: the hottest (or, below
+    /// `HARMFUL_COLD`, coldest) cell it touches.
     pub heat: f32,
     /// Damage per second from corrosives (the worst it touches).
     pub corrosion: f32,
@@ -24,17 +29,22 @@ pub struct Exposure {
     pub ignites: bool,
     /// In water (or another liquid that puts fires out).
     pub douses: bool,
+    /// 0..1: how chilled (slowed) the coldest cell it touches makes it.
+    pub cold: f32,
 }
 
 impl World {
     /// Exposure of a body covering the cells from `min` to `max` (inclusive).
-    /// Worst cell wins, so a bigger body isn't hurt more.
+    /// It touches the ring of cells around that too (the floor under its
+    /// feet, a wall beside it); being in water counts only inside. Worst
+    /// cell wins, so a bigger body isn't hurt more.
     pub fn exposure(&self, min: CellPos, max: CellPos) -> Exposure {
         let mats = self.materials();
         let mut e = Exposure::default();
         let (mut liquid, mut wet) = (0, 0);
-        for y in min.y..=max.y {
-            for x in min.x..=max.x {
+        for y in min.y - 1..=max.y + 1 {
+            for x in min.x - 1..=max.x + 1 {
+                let inside = x >= min.x && x <= max.x && y >= min.y && y <= max.y;
                 let p = CellPos::new(x, y);
                 let Some(c) = self.get(p) else { continue };
                 if c.is_air() {
@@ -48,9 +58,11 @@ impl World {
                 } else {
                     let t = self.climate().ambient(y) + c.heat as i32;
                     e.heat = e.heat.max((t - HARMFUL_HEAT).max(0) as f32 * HEAT_DAMAGE);
+                    e.heat = e.heat.max((HARMFUL_COLD - t).max(0) as f32 * HEAT_DAMAGE);
+                    e.cold = e.cold.max(((CHILLING_COLD - t) as f32 / 60.0).clamp(0.0, 1.0));
                 }
                 e.corrosion = e.corrosion.max(ph.corrosive as f32);
-                if ph.kind == Kind::Liquid {
+                if inside && ph.kind == Kind::Liquid {
                     liquid += 1;
                     if ph.flammability == 0 && !ph.hot {
                         wet += 1;

@@ -283,8 +283,13 @@ pub(crate) fn burn_background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
 
 /// One tick of a burning cell. Returns true if it burned out (replaced).
 fn burn(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) -> bool {
-    // Doused: a non-flammable, non-hot liquid touching it (water, not oil or lava).
+    // Doused: a non-flammable, non-hot liquid touching it (water, not oil or
+    // lava). Not from below if it's a liquid itself: burning oil floats on
+    // the water it burns on.
     for (dx, dy) in NEIGHBOURS {
+        if dy < 0 && p.kind == Kind::Liquid {
+            continue;
+        }
         if let Some(n) = h.get(x + dx, y + dy)
             && !n.is_air()
         {

@@ -60,7 +60,10 @@
 
         // ---- liquids ------------------------------------------------------
         (name: "water",    kind: Liquid, density: 1000, dispersion: 6, above: (100, "steam"), below: (0, "ice"), colors: [(38, 92, 196), (48, 110, 214)]),
-        (name: "oil",      kind: Liquid, density: 800,  dispersion: 4, flammability: 90, ignites_at: 220, burn_time: 25, colors: [(56, 38, 24), (72, 52, 30)]),
+        // Floats on water and burns on it (a burning liquid isn't put out by
+        // what it floats on). A poor heat conductor, so a burning slick
+        // doesn't boil away the lake under it.
+        (name: "oil",      kind: Liquid, density: 800,  dispersion: 4, flammability: 90, ignites_at: 220, burn_time: 25, conductivity: 6, colors: [(56, 38, 24), (72, 52, 30)]),
         // Boils and freezes like water (a little below 0: what's dissolved in it).
         (name: "blood",    kind: Liquid, density: 1060, dispersion: 3, above: (100, "blood_steam"), below: (-2, "frozen_blood"), colors: [(136, 10, 16), (164, 18, 24)]),
         (name: "lava",     kind: Liquid, density: 2500, dispersion: 1, hot: true, heat: 1200, heat_source: true, conductivity: 60, colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
