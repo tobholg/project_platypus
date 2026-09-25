@@ -160,10 +160,30 @@ checksums.
   column; each rasterised once at plan time into a stamp (grass, dirt, stone,
   a walker-carved cave), so chunks stay pure; trees on them from a second
   forest plan.
+- Caves are planned, not noise (`caves.rs`, v2): noise caves came in every
+  width, so many were just too narrow for the player. Now, like Terraria's
+  tile runners:
+  - chambers: ragged ellipses, kept apart; small in the underground and
+    inside mountains (half sizes 26–60 × 18–34: the first layer is easy),
+    bigger in the caverns (45–140 × 28–80) and the deep (55–170 × 35–100);
+    about 30 % hold a pool (water, some oil, lava in the deep), kept below
+    where any tunnel comes in so it doesn't spill;
+  - tunnels: each chamber to its nearest few, a spanning tree of those so
+    every chamber connects (tested: 95 %+ in one network) plus more for
+    loops; wandering lines 22–44 cells wide (the player is 15 tall); steep
+    ones get alternating rock ledges every 30 cells to climb back up;
+  - crevices: a fifth of the extra links (never the tree) are cracks 3–7
+    wide, too thin to pass: throw a glow stick in;
+  - mouths: ~40 tunnels down from dry land (away from the spawn) into the
+    nearest chamber;
+  - noise only roughens the walls; a chunk asks only the shapes binned to it.
+    In the caverns every cave below the water table is flooded, so where
+    tunnels meet the flooded chambers the water is already level.
+  - Tests: tunnels fit the player (a 6 × 15 box along 160 sampled tunnels,
+    ≤ 1 % blocked), the network connects without crevices, crevices are few.
+    Planned in ~50 ms with the rest of the plan.
 - Underground (stage 3), by band:
-  - underground: worm tunnels at two scales, small caves (fewer than
-    before: 0.26 threshold), sand and gravel pockets, coal, small pools of
-    water or oil;
+  - underground: the planned caves, sand and gravel pockets, coal;
   - caverns: huge chambers (wider than tall) with stalactites and pillars
     (vertically streaked noise), fading in over the band's top 300 cells;
     chambers below the regional water table (one per 2 048 columns) are

@@ -10,6 +10,7 @@ use platypus_sim::rng::{Rng, hash};
 use platypus_sim::{CHUNK, CHUNK_AREA, Cell, CellPos, Chunk, ChunkPos, Climate, MaterialId, MaterialTable};
 
 pub mod biome;
+pub mod caves;
 pub mod flora;
 pub mod islands;
 pub mod minerals;
@@ -78,9 +79,6 @@ pub enum Spawn {
 /// room for it).
 pub const CHEST_SIZE: (i32, i32) = (12, 10);
 
-/// Noise-cave threshold near the surface and underground: higher, fewer
-/// caves (0.18 was cheese).
-const SMALL_CAVES: f64 = 0.26;
 /// How far mountain ground wanders from the planned surface (overhangs,
 /// arches, ledges), at full ruggedness.
 const OVERHANG: f64 = 34.0;
@@ -139,8 +137,6 @@ impl Ids {
 pub struct TerrainGen {
     plan: Arc<WorldPlan>,
     ids: Ids,
-    caves: Fbm<Perlin>,
-    worms: Fbm<Perlin>,
     pockets: Perlin,
     strata: Perlin,
     /// Starting heat per material id (lava is born hot).
@@ -149,8 +145,6 @@ pub struct TerrainGen {
     leaf_edge: Perlin,
     meadow: Perlin,
     overhang: Fbm<Perlin>,
-    /// Big tunnels through the underground and caverns.
-    tunnels: Fbm<Perlin>,
     /// Cavern chambers; stalactites and pillars; the underworld's vault.
     caverns: Fbm<Perlin>,
     drips: Perlin,
@@ -223,12 +217,9 @@ impl TerrainGen {
             leaf_edge: Perlin::new(s(7)),
             meadow: Perlin::new(s(8)),
             overhang: Fbm::<Perlin>::new(s(9)).set_octaves(3).set_frequency(1.0 / 60.0),
-            tunnels: Fbm::<Perlin>::new(s(14)).set_octaves(2).set_frequency(1.0 / 1_100.0),
             caverns: Fbm::<Perlin>::new(s(15)).set_octaves(3).set_frequency(1.0 / 600.0),
             drips: Perlin::new(s(16)),
             vault: Fbm::<Perlin>::new(s(17)).set_octaves(3).set_frequency(1.0 / 400.0),
-            caves: Fbm::<Perlin>::new(s(3)).set_octaves(4).set_frequency(1.0 / 160.0),
-            worms: Fbm::<Perlin>::new(s(4)).set_octaves(3).set_frequency(1.0 / 260.0),
             pockets: Perlin::new(s(5)),
             strata: Perlin::new(s(6)),
             heat: mats.iter().map(|(id, _)| mats.phys(id).heat).collect(),
@@ -613,45 +604,39 @@ impl TerrainGen {
         i.stone
     }
 
-    /// Open space underground, and what fills it: worm tunnels everywhere,
-    /// big tunnels through the underground and caverns, small caves near the
-    /// top, huge chambers (with stalactites and pillars, flooded below the
-    /// water table) in the caverns and the deep; pools in the small ones.
+    /// Open space underground, and what fills it: the planned chambers and
+    /// tunnels (`caves.rs`), and in the caverns and the deep, huge chambers
+    /// (with stalactites and pillars, flooded below the water table).
     fn cavity(&self, x: i32, y: i32, depth: i32, band: Band) -> Option<MaterialId> {
         let i = &self.ids;
         let plan = &*self.plan;
+        if let Some(open) = plan.caves.at(x, y) {
+            return Some(match open {
+                // One water table for every cave in the caverns: where the
+                // tunnels meet the flooded chambers, the water's already level.
+                caves::Open::Air if band == Band::Caverns && y < plan.water_table(x) => i.water,
+                caves::Open::Air => i.air,
+                caves::Open::Pool(caves::Pool::Water) => if plan.climate.ambient(x, y) <= 0 { i.ice } else { i.water },
+                caves::Open::Pool(caves::Pool::Oil) => i.oil,
+                caves::Open::Pool(caves::Pool::Lava) => i.lava,
+            });
+        }
+        if !matches!(band, Band::Caverns | Band::Deep) {
+            return None;
+        }
         let (xf, yf) = (x as f64, y as f64);
+        // Kept away from lake and ocean beds.
         let under_water = plan.water_at(x).is_some();
-        // Fading in below the topsoil, kept away from lake and ocean beds.
-        let fade = ((depth as f64 - if under_water { 60.0 } else { 12.0 }) / 60.0).clamp(0.0, 1.0);
-        if fade == 0.0 {
+        if depth < if under_water { 120 } else { 60 } {
             return None;
         }
-        // Fewer caves up in the mountains than under the lowlands.
-        let above = ((y - plan.sea_level) as f64 / (600.0 * plan.height as f64 / 16_384.0)).clamp(0.0, 1.0);
-        let worm = self.worms.get([xf, yf]).abs() + above * 0.03 < 0.035 * fade && depth > 20;
-        let tunnel = matches!(band, Band::Underground | Band::Caverns) && self.tunnels.get([xf, yf * 1.2]).abs() < 0.016 * fade;
-        let small = matches!(band, Band::Peaks | Band::Surface | Band::Underground) && self.caves.get([xf, yf * 1.6]) * fade - above * 0.14 > SMALL_CAVES;
-        if matches!(band, Band::Caverns | Band::Deep) {
-            // Chambers, wider than tall; streaks of noise hang stalactites
-            // from their roofs and stand pillars in them.
-            // (Fading in over the band's top 300 cells.)
-            let entry = ((plan.band_span(Band::Caverns).1 - y) as f64 / 300.0).clamp(0.0, 1.0);
-            let drip = self.drips.get([xf / 7.0, yf / 60.0, 0.3]).abs();
-            let chamber = self.caverns.get([xf / 1.6, yf]) * (if band == Band::Caverns { entry } else { 1.0 }) - drip * 0.12 > 0.22;
-            if chamber {
-                return Some(if y < plan.water_table(x) && band == Band::Caverns { i.water } else { i.air });
-            }
-        }
-        if !(worm || tunnel || small) {
-            return None;
-        }
-        // Fill the bottoms of some small caves with a pool (never up high).
-        let pool = self.pockets.get([xf / 90.0, yf / 90.0, 1.3]);
-        if above == 0.0 && small && pool > 0.35 && self.caves.get([xf, (yf - 10.0) * 1.6]) * fade <= SMALL_CAVES {
-            return Some(if band == Band::Deep { i.lava } else if pool > 0.62 { i.oil } else { i.water });
-        }
-        Some(i.air)
+        // Chambers, wider than tall; streaks of noise hang stalactites from
+        // their roofs and stand pillars in them. (Fading in over the band's
+        // top 300 cells.)
+        let entry = ((plan.band_span(Band::Caverns).1 - y) as f64 / 300.0).clamp(0.0, 1.0);
+        let drip = self.drips.get([xf / 7.0, yf / 60.0, 0.3]).abs();
+        let chamber = self.caverns.get([xf / 1.6, yf]) * (if band == Band::Caverns { entry } else { 1.0 }) - drip * 0.12 > 0.22;
+        chamber.then(|| if y < plan.water_table(x) && band == Band::Caverns { i.water } else { i.air })
     }
 
     /// The underworld: a lava sea under a huge vault with a ragged roof, rock
@@ -955,6 +940,37 @@ mod tests {
             let feet = CellPos::new(piece.x + 4, piece.y);
             assert!(g.generate_with_spawns(feet.chunk()).1.contains(&(feet, Spawn::Chest)), "the chest is on the bed at {x}");
         }
+    }
+
+    /// Along the tunnels, as generated, there's room for the player (a
+    /// 6 × 15 box within a few cells of the path; ledges take half the width
+    /// at some heights).
+    #[test]
+    fn the_player_fits_through_the_tunnels() {
+        use platypus_sim::Kind;
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let solid = |x: i32, y: i32| {
+            let k = m.phys(g.material_at(x, y)).kind;
+            matches!(k, Kind::Static | Kind::Powder)
+        };
+        let (mut checked, mut blocked) = (0, Vec::new());
+        for t in g.plan.caves.tunnels.iter().filter(|t| !t.crevice()).step_by(11).take(160) {
+            for &(px, py) in &t.points[1..t.points.len() - 1] {
+                let (x, y) = (px as i32, py as i32);
+                // (Structures and chasms are their own business.)
+                if g.plan.structures.glyph_at(x, y).is_some() || g.plan.chasm_at(x, y) || y >= g.surface_at(x) - 20 {
+                    continue;
+                }
+                checked += 1;
+                let fits = (-8..=8).any(|dx| (-10..=2).any(|dy| (0..6).all(|bx| (0..15).all(|by| !solid(x + dx + bx - 3, y + dy + by - 7)))));
+                if !fits {
+                    blocked.push((x, y));
+                }
+            }
+        }
+        assert!(checked > 500, "{checked} points");
+        assert!(blocked.len() * 100 <= checked, "the player fits along the tunnels: blocked at {} of {checked}: {:?}", blocked.len(), &blocked[..blocked.len().min(8)]);
     }
 
     /// Water runs over each column as (start, end, level), left to right.

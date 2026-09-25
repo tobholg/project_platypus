@@ -12,6 +12,7 @@ use platypus_sim::{CHUNK, Climate};
 use crate::biome::Biome;
 use crate::flora::{Forest, Species};
 use crate::islands::{self, Island};
+use crate::caves::{self, Caves};
 use crate::structures::{self, Structure, Structures};
 
 /// World sizes. `Large` is the world we play in; `Small` is quick to look at
@@ -159,8 +160,10 @@ pub struct WorldPlan {
     pub forest: Forest,
     /// Trees on the sky islands.
     pub island_forest: Forest,
-    /// Crypts (castles next).
+    /// Crypts, castles, lake chests.
     pub structures: Structures,
+    /// Chambers and tunnels underground.
+    pub caves: Caves,
 }
 
 fn unit(rng: &mut Rng) -> f64 {
@@ -468,6 +471,19 @@ impl WorldPlan {
             })
             .collect();
 
+        let caves = Caves::plan(
+            seed,
+            &caves::Ground {
+                width,
+                span: (band_floors[5] + (100.0 * sh) as i32, *surface.iter().max().expect("a world has columns")),
+                surface: &surface,
+                water: &water,
+                caverns_top: band_floors[3],
+                deep_top: band_floors[4],
+                spawn_x: mid,
+                scale: (sw, sh),
+            },
+        );
         let mut list = crypts(seed, &surface, &water, &biomes, &chasms, (width, ocean_w, mid), (sw, sh), band_floors);
         list.extend(castles(seed, &surface, &biomes, width, (sw, sh)));
         list.extend(sunken(&surface, &water, &biomes, sh));
@@ -524,7 +540,7 @@ impl WorldPlan {
             )
         };
 
-        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, water, rugged, islands, chasms, water_tables, climate, forest, island_forest, structures }
+        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, water, rugged, islands, chasms, water_tables, climate, forest, island_forest, structures, caves }
     }
 
     /// First air cell above the ground at a world column.
@@ -608,6 +624,10 @@ impl WorldPlan {
             h = hash(&[h, c.x as u64, c.top as u64, c.bottom as u64, c.width.to_bits()]);
         }
         h = hash(&[h, fold(&mut self.water_tables.iter().map(|&v| v as u64))]);
+        h = hash(&[h, self.caves.chambers.len() as u64, self.caves.tunnels.len() as u64]);
+        for c in &self.caves.chambers {
+            h = hash(&[h, c.x.to_bits() as u64, c.y.to_bits() as u64, c.rx.to_bits() as u64]);
+        }
         hash(&[h, self.structures.checksum()])
     }
 }
