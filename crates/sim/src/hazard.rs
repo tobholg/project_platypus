@@ -1,0 +1,69 @@
+//! What the world does to a body in it (SPEC §3.12). One rule for every
+//! material, read from its data, so a new material hurts (or doesn't) with no
+//! creature code. The game applies it to creatures each tick.
+
+use crate::cell::flags;
+use crate::coords::CellPos;
+use crate::material::Kind;
+use crate::world::World;
+
+/// Above this (°C), heat hurts.
+pub const HARMFUL_HEAT: i32 = 60;
+/// Damage per second per °C above `HARMFUL_HEAT`: lava (1 200 °C) ≈ 114/s,
+/// scalding steam (~150 °C) ≈ 9/s.
+const HEAT_DAMAGE: f32 = 0.1;
+
+/// What a body overlapping some cells is exposed to.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Exposure {
+    /// Damage per second from heat (the hottest cell it touches).
+    pub heat: f32,
+    /// Damage per second from corrosives (the worst it touches).
+    pub corrosion: f32,
+    /// Touching flames or something burning: it catches fire.
+    pub ignites: bool,
+    /// In water (or another liquid that puts fires out).
+    pub douses: bool,
+}
+
+impl World {
+    /// Exposure of a body covering the cells from `min` to `max` (inclusive).
+    /// Worst cell wins, so a bigger body isn't hurt more.
+    pub fn exposure(&self, min: CellPos, max: CellPos) -> Exposure {
+        let mats = self.materials();
+        let mut e = Exposure::default();
+        let (mut liquid, mut wet) = (0, 0);
+        for y in min.y..=max.y {
+            for x in min.x..=max.x {
+                let p = CellPos::new(x, y);
+                let Some(c) = self.get(p) else { continue };
+                if c.is_air() {
+                    continue;
+                }
+                let ph = mats.phys(c.material);
+                let burning = ph.kind == Kind::Fire || c.flags & flags::BURNING != 0;
+                if burning {
+                    // Flames set it alight; that does the harm, not their heat.
+                    e.ignites = true;
+                } else {
+                    let t = self.climate().ambient(y) + c.heat as i32;
+                    e.heat = e.heat.max((t - HARMFUL_HEAT).max(0) as f32 * HEAT_DAMAGE);
+                }
+                e.corrosion = e.corrosion.max(ph.corrosive as f32);
+                if ph.kind == Kind::Liquid {
+                    liquid += 1;
+                    if ph.flammability == 0 && !ph.hot {
+                        wet += 1;
+                    }
+                }
+            }
+        }
+        // Mostly under water: out it goes. (Ankle-deep isn't enough.)
+        let area = ((max.x - min.x + 1) * (max.y - min.y + 1)).max(1);
+        e.douses = wet * 3 >= area && wet * 2 >= liquid;
+        if e.douses {
+            e.ignites = false;
+        }
+        e
+    }
+}

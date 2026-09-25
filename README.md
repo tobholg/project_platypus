@@ -43,6 +43,7 @@ set a forest alight: fire climbs the trunks, embers blow downwind into the next
 canopy, burning branches fall · chop through a trunk with the pickaxe (or a bomb):
 the tree topples, sheds its crown and lands as a log you can mine · drop a tree on an orc ·
 light a tree at the base: it chars black and snaps · burnt wood leaves charcoal; put charred wood out with water for more ·
+lava, fire, steam and acid hurt; flames set creatures alight (they spread fire as they run; jump in water) · boil acid (heat gun) into a corrosive cloud that rains acid, then light the cloud ·
 run and dash through tall grass and watch it part and wobble back ·
 the HUD shows the material and temperature under the cursor ·
 edit `materials.ron` or `creatures/player.ron` while the game runs.
@@ -56,7 +57,7 @@ PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, 
 PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`. Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`. Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
 capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length.
 
 ## Add things (no engine changes)

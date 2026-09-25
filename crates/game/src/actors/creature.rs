@@ -13,6 +13,7 @@ use serde::Deserialize;
 
 use super::animation::{Animator, CreatureSprite};
 use super::brain::BrainRegistry;
+use super::elements::Resist;
 use super::{Controls, Creature, FallDamage, Health, Kinematics, MoveStats, Team};
 use crate::data::{Watched, data_path, load_ron};
 
@@ -29,6 +30,9 @@ pub struct CreatureDef {
     pub movement: MovementStats,
     #[serde(default)]
     pub fall_damage: Option<FallDamage>,
+    /// Elemental resistances (heat, corrosion, fireproof). Default: none.
+    #[serde(default)]
+    pub resist: Resist,
     pub sprite: SpriteDef,
     /// Clip name → clip. Standard names: idle, run, jump, fall, dash, wall.
     pub animations: HashMap<String, AnimDef>,
@@ -142,14 +146,15 @@ impl Plugin for CreaturePlugin {
     }
 }
 
-fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut q: Query<(&Creature, &mut MoveStats, &mut Health, &mut Animator)>) {
+fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut q: Query<(&Creature, &mut MoveStats, &mut Health, &mut Animator, &mut Resist)>) {
     if !creatures.watch.changed() {
         return;
     }
     let defs = Creatures::load_all(creatures.watch.path());
-    for (c, mut stats, mut health, mut anim) in &mut q {
+    for (c, mut stats, mut health, mut anim, mut resist) in &mut q {
         if let Some(def) = defs.get(&c.kind) {
             stats.0 = def.movement.clone();
+            *resist = def.resist;
             health.hp = health.hp.min(def.health);
             health.max = def.health;
             anim.def = def.clone();
@@ -194,6 +199,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         if let Some(f) = def.fall_damage {
             e.insert(f);
         }
+        e.insert(def.resist);
         if let Some(sprite) = sprite {
             e.with_child((sprite, Transform::default(), CreatureSprite));
         }

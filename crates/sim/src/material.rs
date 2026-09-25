@@ -88,6 +88,9 @@ pub struct MaterialDef {
     /// at the base snaps before it has burned through.
     #[serde(default)]
     pub chars_at: Option<f32>,
+    /// Damage per second it does to a body touching it (acid 30).
+    #[serde(default)]
+    pub corrosive: u8,
     /// What a charred cell becomes when its fire is put out (wood: charcoal).
     /// Default: it just stops burning.
     #[serde(default)]
@@ -178,6 +181,8 @@ pub struct MatPhys {
     pub charred_life: u8,
     /// `AIR` = stays itself when put out.
     pub chars_into: MaterialId,
+    /// Damage per second to a body touching it.
+    pub corrosive: u8,
     /// `AIR` when the material doesn't crumble.
     pub crumbles_into: MaterialId,
     pub heat: i16,
@@ -343,6 +348,7 @@ impl MaterialTable {
                     (burn * (1.0 - d.chars_at.unwrap_or(0.5).clamp(0.0, 1.0))).round() as u8
                 },
                 chars_into,
+                corrosive: d.corrosive,
                 crumbles_into,
                 heat: d.heat,
                 heat_source: d.heat_source,

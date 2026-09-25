@@ -11,6 +11,7 @@ pub mod ai;
 pub mod animation;
 pub mod brain;
 pub mod creature;
+pub mod elements;
 pub mod player;
 pub mod spawn;
 
@@ -28,7 +29,8 @@ impl Plugin for ActorsPlugin {
         app.add_message::<Landed>()
             .add_plugins((creature::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, animation::AnimationPlugin))
             .add_plugins((player::PlayerPlugin, ai::AiPlugin))
-            .add_systems(FixedUpdate, (move_creatures, fall_damage, deaths).chain().in_set(TickSet::Bodies))
+            .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, deaths).chain().in_set(TickSet::Bodies))
+            .add_systems(Update, elements::tint)
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate));
     }
 }
@@ -148,6 +150,7 @@ fn deaths(
             sim.world.splash([k.body.pos.x, k.body.pos.y], blood, 70, 2.2);
         }
         if is_player {
+            commands.entity(entity).remove::<(elements::Burning, elements::Wet)>();
             h.hp = h.max;
             k.body.pos = Vec2::new(spawn.x as f32, spawn.y as f32 + 60.0);
             k.body.vel = Vec2::ZERO;

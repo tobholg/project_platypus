@@ -11,6 +11,7 @@
 //! - `blast`      three bombs dropped down one shaft beside the player, from t = 2 s
 //! - `fell`       cuts through the trunk of the nearest tree to the right at t = 2 s
 //! - `burn`       sets the base of that tree alight at t = 2 s instead
+//! - `acid`       pours acid into a glass basin beside the player, boils it at 2 s, lights the fumes at 3.6 s
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -51,7 +52,7 @@ impl Plugin for ScenarioPlugin {
             // Inject input where real input arrives: after Bevy reads devices,
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (tree_script, blast_script, fell_script));
+            .add_systems(Update, (tree_script, blast_script, fell_script, acid_script));
     }
 }
 
@@ -311,5 +312,34 @@ fn fell_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
         info!("{}: trunk {width} wide at {center:?}", s.name);
         *done = true;
         return;
+    }
+}
+
+fn acid_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut step: Local<u8>) {
+    if s.name != "acid" {
+        return;
+    }
+    let Ok(p) = player.single() else { return };
+    let x = p.body.pos.x as i32 + 60;
+    let Some(ground) = find_ground(&sim.world, x, p.body.pos.y as i32 + 60, 300) else { return };
+    let at = CellPos::new(x, ground + 4);
+    match *step {
+        0 if s.elapsed > 1.0 => {
+            // A glass basin (acid eats dirt and stone, not glass), then the acid.
+            let (Some(glass), Some(acid)) = (sim.materials().id("glass"), sim.materials().id("acid")) else { return };
+            sim.queue(WorldEdit::Paint { center: at.offset(0, -10), radius: 14, material: glass, overwrite: true });
+            sim.queue(WorldEdit::Dig { center: at.offset(0, -2), radius: 9, max_hardness: 40 });
+            sim.queue(WorldEdit::Paint { center: at.offset(0, 2), radius: 8, material: acid, overwrite: false });
+            *step = 1;
+        }
+        1 if s.elapsed > 2.0 => {
+            sim.queue(WorldEdit::Heat { center: at, radius: 12, amount: 250 });
+            *step = 2;
+        }
+        2 if s.elapsed > 3.6 => {
+            sim.queue(WorldEdit::Ignite { center: at.offset(0, 20), radius: 6 });
+            *step = 3;
+        }
+        _ => {}
     }
 }

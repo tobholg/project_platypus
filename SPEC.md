@@ -191,6 +191,23 @@ deaths (blood). Rendered as one dynamic mesh.
   simulation nothing and never keeps a region awake. Crowns don't sway yet:
   that needs per-tree identity.
 
+### 3.12 Elements on bodies
+- One rule, `World::exposure(min, max)`, says what the cells a body covers do
+  to it, from material data only: heat (any non-burning cell above 60 °C,
+  0.1 damage/s per °C over: lava ~114/s, steam scalds), corrosion (the
+  material's `corrosive`, damage/s: acid 30, acid fumes 8), flames or
+  burning cells (it catches fire), and being mostly under a liquid that puts
+  fires out. The worst cell counts, not the sum, so size doesn't matter.
+- The game keeps two statuses: `Burning` (7 damage/s for 4 s after the last
+  flame; trails flames above it and lights what it stands in, so a burning orc
+  running through a meadow lights the meadow) and `Wet` (3 s after water; can't
+  catch fire). Creatures resist per kind in their RON (`resist: (heat,
+  corrosion, fireproof)`).
+- Acid boils at 110 °C into acid fumes: corrosive (they eat what acid eats,
+  weaker, used up doing it), condense into acid rain downwind, and flammable
+  (a spark flashes the cloud into fire, with the odd small pop), which boils
+  more acid. Blood boils into blood steam and freezes, like water.
+
 ### 3.11 Rigid bodies
 - A body is a local grid of cells with a pose: centre of mass, orientation as
   a unit complex number (turned by a Taylor series, no libm, so stepping is

@@ -1068,3 +1068,87 @@ fn burnt_wood_leaves_charcoal_and_doused_charred_wood_is_charcoal() {
     }
     assert!(count(&w, charcoal) >= 8, "put out as charcoal ({})", count(&w, charcoal));
 }
+
+// ---- acid and exposure ---------------------------------------------------------
+
+/// Boil a pool of acid (under a stone roof at `roof`, if any); returns the
+/// world, the most fumes at once, and the most acid seen after it boiled away.
+fn boil_acid(roof: Option<i32>, seed: u64) -> (World, usize, usize) {
+    let mut w = boxed_world(2, 2, seed);
+    let m = w.materials().clone();
+    let (acid, fumes) = (m.expect_id("acid"), m.expect_id("acid_fumes"));
+    if let Some(y) = roof {
+        fill(&mut w, "stone", 1, 127, y, y + 10);
+    }
+    // A glass floor, which acid doesn't eat, so the rain collects.
+    fill(&mut w, "glass", 1, 127, 1, 3);
+    fill(&mut w, "acid", 50, 70, 3, 7);
+    w.apply_edit(&WorldEdit::Heat { center: CellPos::new(60, 5), radius: 12, amount: 300 });
+    let mut most_fumes = 0;
+    for _ in 0..300 {
+        w.step();
+        most_fumes = most_fumes.max(count(&w, fumes));
+    }
+    assert!(count(&w, acid) < 10, "the pool boiled away");
+    let mut rained = 0;
+    for _ in 0..3_000 {
+        w.step();
+        rained = rained.max(count(&w, acid));
+    }
+    (w, most_fumes, rained)
+}
+
+#[test]
+fn acid_fumes_trapped_under_rock_eat_into_it() {
+    let (w, most_fumes, _) = boil_acid(Some(40), 70);
+    assert!(most_fumes > 30, "it boiled into fumes ({most_fumes})");
+    let stone = w.materials().expect_id("stone");
+    let roof_left = (1..127).flat_map(|x| (40..50).map(move |y| CellPos::new(x, y))).filter(|&p| w.get(p).unwrap().material == stone).count();
+    assert!(roof_left < 126 * 10 - 20, "the fumes ate into the roof ({} of {} left)", roof_left, 126 * 10);
+}
+
+#[test]
+fn acid_fumes_in_the_open_rain_back_down_as_acid() {
+    let (_, most_fumes, rained) = boil_acid(None, 73);
+    assert!(most_fumes > 30, "it boiled into fumes ({most_fumes})");
+    assert!(rained > 5, "and came back down as acid ({rained})");
+}
+
+#[test]
+fn a_spark_flashes_acid_fumes_into_fire() {
+    let mut w = boxed_world(1, 1, 71);
+    let m = w.materials().clone();
+    let fumes = m.expect_id("acid_fumes");
+    fill(&mut w, "stone", 1, 63, 50, 60);
+    fill(&mut w, "acid_fumes", 10, 50, 40, 50);
+    let before = count(&w, fumes);
+    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(12, 44), radius: 2 });
+    for _ in 0..120 {
+        w.step();
+    }
+    assert!(count(&w, fumes) < before / 4, "the cloud burned ({} of {before} left)", count(&w, fumes));
+}
+
+#[test]
+fn exposure_reads_heat_corrosion_fire_and_water_from_the_cells() {
+    let mut w = boxed_world(1, 1, 72);
+    let box_at = |x: i32| (CellPos::new(x, 1), CellPos::new(x + 3, 6));
+    fill(&mut w, "lava", 5, 9, 1, 7);
+    fill(&mut w, "acid", 15, 19, 1, 7);
+    fill(&mut w, "fire", 25, 29, 1, 7);
+    fill(&mut w, "water", 35, 39, 1, 7);
+    let (lo, hi) = box_at(5);
+    let lava = w.exposure(lo, hi);
+    assert!(lava.heat > 80.0, "lava burns: {lava:?}");
+    let (lo, hi) = box_at(15);
+    let acid = w.exposure(lo, hi);
+    assert_eq!(acid.corrosion, 30.0, "{acid:?}");
+    assert!(acid.heat == 0.0 && !acid.ignites, "{acid:?}");
+    let (lo, hi) = box_at(25);
+    assert!(w.exposure(lo, hi).ignites, "flames set you alight");
+    let (lo, hi) = box_at(35);
+    let water = w.exposure(lo, hi);
+    assert!(water.douses && water.heat == 0.0 && water.corrosion == 0.0, "{water:?}");
+    let (lo, hi) = box_at(45);
+    assert_eq!(w.exposure(lo, hi), platypus_sim::Exposure::default(), "air is harmless");
+}
