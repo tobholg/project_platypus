@@ -174,8 +174,29 @@ fn px(lx: usize, ly: usize) -> usize {
     ((N - 1 - ly) * N + lx) * 4
 }
 
-/// Rebuild a layer's base image and plant list from its cells.
-fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: CellPos, climate: &Climate, back: bool) {
+/// Cells below the ground as generated before a hole in the background shows
+/// rock rather than sky (so a crater at the surface still opens to the sky).
+const BACKDROP_BELOW: i32 = 16;
+
+/// What shows through a hole in the background underground, until there is a
+/// real far background (DESIGN: parallax layers per band): dark rock, earthy
+/// near the top and colder with depth, in faint strata.
+fn backdrop(x: i32, y: i32, depth: i32) -> [u8; 4] {
+    let (earth, rock, deep) = ([46.0, 33.0, 24.0], [40.0, 40.0, 46.0], [27.0, 27.0, 35.0]);
+    let mix = |a: [f32; 3], b: [f32; 3], t: f32| [0, 1, 2].map(|i| a[i] + (b[i] - a[i]) * t.clamp(0.0, 1.0));
+    let base = if depth < 120 { mix(earth, rock, (depth - BACKDROP_BELOW) as f32 / 100.0) } else { mix(rock, deep, (depth - 120) as f32 / 1500.0) };
+    // Strata: bands a few cells thick that wander a little, plus grain.
+    let band = platypus_sim::rng::hash(&[((y + (x >> 5) % 3) >> 2) as u64]) % 9;
+    let grain = platypus_sim::rng::hash(&[x as u64, y as u64]) % 5;
+    let k = 0.9 + 0.025 * band as f32 + 0.02 * grain as f32;
+    let [r, g, b] = base.map(|c| (c * k).min(255.0) as u8);
+    [r, g, b, 255]
+}
+
+/// Rebuild a layer's base image and plant list from its cells. `ground`: the
+/// generated surface height of each of the chunk's columns (background layers
+/// of generated worlds), for the backdrop.
+fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: CellPos, climate: &Climate, back: bool, ground: Option<&[i32]>) {
     layer.base.fill(0);
     layer.plants.clear();
     for ly in 0..N {
@@ -184,6 +205,13 @@ fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: Cell
         for lx in 0..N {
             let c = cells[ly * N + lx];
             if c.is_air() {
+                if let Some(ground) = ground {
+                    let (x, y) = (origin.x + lx as i32, origin.y + ly as i32);
+                    let depth = ground[lx] - y;
+                    if depth >= BACKDROP_BELOW {
+                        layer.base[px(lx, ly)..px(lx, ly) + 4].copy_from_slice(&backdrop(x, y, depth));
+                    }
+                }
                 continue;
             }
             let dim = if back { bg_dim(mats, c) } else { 1.0 };
@@ -286,8 +314,9 @@ fn sync_chunks(
         let dirty = chunk.take_render_dirty() || fresh;
         let o = chunk.pos.origin();
         if dirty {
-            rebuild(&mut g.front, chunk.cells(), mats, o, &climate, false);
-            rebuild(&mut g.back, chunk.background(), mats, o, &climate, true);
+            rebuild(&mut g.front, chunk.cells(), mats, o, &climate, false, None);
+            let ground: Option<Vec<i32>> = (0..N as i32).map(|lx| sim.generator.surface_hint(o.x + lx)).collect();
+            rebuild(&mut g.back, chunk.background(), mats, o, &climate, true, ground.as_deref());
         }
         let visible = view.is_none_or(|(lo, hi)| {
             let (x, y) = (o.x as f32, o.y as f32);

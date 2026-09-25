@@ -351,8 +351,14 @@ deaths (blood). Rendered as one dynamic mesh.
   cave walls, tree trunks, branches, leaves. Creatures pass in front of it and
   liquids ignore it. It is stored and checksummed with the playfield.
 - Tools and edits reach the background where the playfield is empty (you chop
-  a tree by mining its trunk); explosions hit both; fire spreads between the
+  a tree by mining its trunk); explosions blow away the background's trees,
+  plants and wooden walls but not stone or earth walls (those come off with a
+  tool, so a blasted tunnel keeps its back wall); fire spreads between the
   layers (burning background puts flames into the air in front of it).
+- Where the background is empty more than 16 cells below the generated
+  surface, the renderer draws a dark rock backdrop (earthy near the top,
+  colder with depth, faint strata) instead of letting the sky show through.
+  A stopgap until the parallax far background.
 - A background piece is held up where it rests against solid playfield (a
   trunk rooted in the ground, a wall behind rock). Only wood (anything not a
   plant) carries weight: leaves hang on wood within `LEAF_REACH` (72 cells,

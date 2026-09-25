@@ -556,13 +556,17 @@ impl World {
                 }
                 continue;
             }
-            // Background: blown away inside the radius, set alight at the rim.
+            // Background: what grows or is built of wood (trees, leaves, plank
+            // walls) is blown away inside the radius; stone and earth walls
+            // stand (they come off with a tool), so a blasted tunnel keeps its
+            // back wall. The rim sets things alight.
             if let Some(b) = self.get_bg(p)
                 && !b.is_air()
             {
                 let bp = *mats.phys(b.material);
                 let force = power as f32 * (1.0 - 0.5 * (d / r).powi(2));
-                if d <= r && breakable(bp.hardness) && bp.hardness as f32 <= force {
+                let flimsy = bp.kind == Kind::Plant || bp.flammability > 0;
+                if d <= r && flimsy && breakable(bp.hardness) && bp.hardness as f32 <= force {
                     report.add_removed(b.material);
                     self.set_bg(p, Cell::AIR);
                 } else if bp.flammability > 0 && rng.chance(bp.flammability.saturating_mul(4)) {

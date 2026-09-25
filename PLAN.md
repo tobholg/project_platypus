@@ -73,6 +73,11 @@ and the RPG arc (rigs and gear skins, moves, corpses and loot, characters, spell
   that go out in water, throwable glowsticks, placeable torches.
 - Sound before sight (needs audio).
 - Stars and a moon; far parallax clouds.
+- A parallax far background per depth band and biome, lit by the light grid:
+  rock strata and huge cavern shapes underground, a basalt glow near the
+  underworld, distant mountain ranges and forest silhouettes on the surface
+  (from the real WorldPlan). Replaces the flat underground backdrop. After
+  structures, with the art tool.
 
 ## Elemental ideas to explore later
 

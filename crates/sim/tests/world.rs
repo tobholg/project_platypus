@@ -1051,6 +1051,25 @@ fn a_blast_flings_loose_sand_beyond_the_crater() {
 }
 
 
+#[test]
+fn a_blast_spares_stone_and_earth_walls_but_not_wood() {
+    // A dug-out tunnel: stone playfield with a stone and dirt back wall, and
+    // a plank wall in one stretch of it.
+    let mut w = boxed_world(3, 2, 28);
+    fill(&mut w, "stone", 1, 191, 1, 100);
+    fill_bg(&mut w, "stone", 1, 96, 1, 100);
+    fill_bg(&mut w, "dirt", 96, 191, 1, 100);
+    fill_bg(&mut w, "planks", 88, 104, 40, 60);
+    let m = w.materials().clone();
+    let (stone, dirt, planks) = (m.expect_id("stone"), m.expect_id("dirt"), m.expect_id("planks"));
+    let (s0, d0, p0) = (count_bg(&w, stone), count_bg(&w, dirt), count_bg(&w, planks));
+    w.apply_edit(&WorldEdit::Explode { center: CellPos::new(96, 50), radius: 16, power: 100 });
+    assert!(count(&w, stone) < 190 * 99 - 400, "the blast dug a crater");
+    assert_eq!((count_bg(&w, stone), count_bg(&w, dirt)), (s0, d0), "the back wall still stands");
+    assert!(count_bg(&w, planks) < p0 / 4, "a wooden wall is blown away ({} of {p0} left)", count_bg(&w, planks));
+}
+
+
 // ---- charring ----------------------------------------------------------------
 
 /// A background tree in a box, lit at the base. Returns (tick the first
