@@ -19,7 +19,19 @@ pub enum Landing {
     Vanish,
     /// A burning speck: sets what it lands on alight if that can burn.
     Ember,
+    /// A raindrop: puts out flames and burning cells it passes or hits;
+    /// one in `RAIN_KEEP` lands as a cell (the rest are just rain to look at).
+    Rain,
+    /// A snowflake: drifts, melts into a raindrop in air above 1 °C; one in
+    /// `SNOW_KEEP` settles as its cell.
+    Snow,
 }
+
+/// One raindrop in this many lands as water: enough for puddles and rising
+/// lakes in a downpour (~3 cells a minute), not a flood.
+pub const RAIN_KEEP: u64 = 150;
+/// One flake in this many settles.
+pub const SNOW_KEEP: u64 = 10;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Particle {
@@ -64,12 +76,20 @@ pub(crate) trait ParticleWorld {
     fn wind(&self) -> f32;
     /// An ember passing in front of a background cell may set it alight.
     fn ember_over(&mut self, p: CellPos, life: u16);
+    /// Water arriving at `p`: flames there go out, burning cells (in front
+    /// or behind) stop burning.
+    fn douse(&mut self, p: CellPos);
+    /// Ambient °C at height `y`.
+    fn ambient(&self, y: i32) -> i32;
+    /// A cell of water, for a snowflake that melted.
+    fn water(&self) -> Option<Cell>;
 }
 
 /// How strongly wind pushes each kind of particle (cells/tick² at full wind).
 fn wind_push(landing: Landing) -> f32 {
     match landing {
-        Landing::Ember | Landing::Vanish => 0.035,
+        Landing::Ember | Landing::Vanish | Landing::Snow => 0.035,
+        Landing::Rain => 0.012,
         Landing::Settle => 0.004,
     }
 }
@@ -117,8 +137,18 @@ fn step_one(p: &mut Particle, world: &mut impl ParticleWorld) -> bool {
             None => return false, // left the loaded world
             Some(c) if open(world.mats(), c) => {
                 p.pos = next;
-                if p.landing == Landing::Ember {
-                    world.ember_over(at, p.life);
+                match p.landing {
+                    Landing::Ember => world.ember_over(at, p.life),
+                    Landing::Rain => world.douse(at),
+                    Landing::Snow if world.ambient(at.y) > 1 => {
+                        // Melted on the way down.
+                        if let Some(water) = world.water() {
+                            p.landing = Landing::Rain;
+                            p.cell = water;
+                            p.gravity = 1.0;
+                        }
+                    }
+                    _ => {}
                 }
             }
             Some(_) => {
@@ -141,8 +171,25 @@ fn step_one(p: &mut Particle, world: &mut impl ParticleWorld) -> bool {
 /// the cell it is in, when its life ran out mid-air).
 fn land(p: &Particle, hit: CellPos, world: &mut impl ParticleWorld) {
     let here = p.cell_pos();
+    // Which drops and flakes land as cells: from where and when they fell, so
+    // it's the same on every machine.
+    let keep = |one_in: u64| {
+        crate::rng::hash(&[p.pos[0].to_bits() as u64, p.pos[1].to_bits() as u64, p.life as u64]).is_multiple_of(one_in)
+    };
     match p.landing {
         Landing::Vanish => {}
+        Landing::Rain => {
+            world.douse(hit);
+            if keep(RAIN_KEEP) {
+                settle(p, here, world);
+            }
+        }
+        Landing::Snow => {
+            world.douse(hit);
+            if keep(SNOW_KEEP) {
+                settle(p, here, world);
+            }
+        }
         Landing::Ember => {
             if let Some(c) = world.get(hit)
                 && !c.is_air()
@@ -151,21 +198,23 @@ fn land(p: &Particle, hit: CellPos, world: &mut impl ParticleWorld) {
                 world.ignite_at(hit);
             }
         }
-        Landing::Settle => {
-            // Into the free cell it stopped in, or the first free one just above.
-            for up in 0..4 {
-                let spot = here.offset(0, up);
-                if world.get(spot).is_some_and(|c| open(world.mats(), c)) {
-                    let mut cell = p.cell;
-                    if world.mats().phys(cell.material).kind == Kind::Static {
-                        cell.flags |= flags::LOOSE;
-                    }
-                    // Keep falling at the speed it arrived with (rules: 1 + vy/4 cells/tick).
-                    cell.vy = (-p.vel[1] * 4.0).clamp(0.0, 28.0) as i8;
-                    world.set(spot, cell);
-                    return;
-                }
+        Landing::Settle => settle(p, here, world),
+    }
+}
+
+/// Into the free cell it stopped in, or the first free one just above.
+fn settle(p: &Particle, here: CellPos, world: &mut impl ParticleWorld) {
+    for up in 0..4 {
+        let spot = here.offset(0, up);
+        if world.get(spot).is_some_and(|c| open(world.mats(), c)) {
+            let mut cell = p.cell;
+            if world.mats().phys(cell.material).kind == Kind::Static {
+                cell.flags |= flags::LOOSE;
             }
+            // Keep falling at the speed it arrived with (rules: 1 + vy/4 cells/tick).
+            cell.vy = (-p.vel[1] * 4.0).clamp(0.0, 28.0) as i8;
+            world.set(spot, cell);
+            return;
         }
     }
 }

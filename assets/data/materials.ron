@@ -72,7 +72,7 @@
         (name: "acid",     kind: Liquid, density: 1100, dispersion: 4, corrosive: 30, above: (110, "acid_fumes"), colors: [(120, 230, 40), (150, 250, 70)]),
 
         // ---- gases --------------------------------------------------------
-        (name: "steam",    kind: Gas, density: 1, dispersion: 3, lifetime: (60, 200), decay_every: 3, decays_into: "water", decays_into_chance: 70, colors: [(200, 206, 216), (228, 232, 240)]),
+        (name: "steam",    kind: Gas, density: 1, dispersion: 3, lifetime: (60, 200), decay_every: 3, decays_into: "water", decays_into_chance: 70, vapour: true, colors: [(200, 206, 216), (228, 232, 240)]),
         // Off boiling acid: corrodes what it drifts into, weaker than acid and
         // used up doing it, condenses into acid rain downwind, and is
         // flammable: a spark flashes the cloud into fire (and the odd pop),

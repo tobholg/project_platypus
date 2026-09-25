@@ -28,6 +28,12 @@ pub trait ChunkGenerator: Send + Sync {
         Climate::default()
     }
 
+    /// The band of sky clouds live in, as (bottom y, height) in cells; the
+    /// weather spans the whole world width. `None`: no weather.
+    fn cloud_band(&self) -> Option<(i32, i32)> {
+        None
+    }
+
     fn in_bounds(&self, pos: ChunkPos) -> bool {
         let (lo, hi) = self.bounds();
         pos.x >= lo.x && pos.y >= lo.y && pos.x <= hi.x && pos.y <= hi.y
@@ -274,6 +280,12 @@ impl ChunkGenerator for TerrainGen {
             cells_per_degree_up: 5,
             cells_per_degree_down: 40,
         }
+    }
+
+    fn cloud_band(&self) -> Option<(i32, i32)> {
+        // Low enough to be in view from the surface (the highest peaks poke
+        // into it: clouds drift behind them).
+        Some((self.climate().sea_level + 80, 176))
     }
 
     fn spawn_point(&self) -> CellPos {

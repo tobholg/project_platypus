@@ -236,6 +236,54 @@ deaths (blood). Rendered as one dynamic mesh.
 - Not yet: bodies aren't saved with the world, don't collide with each other
   or with creatures, and playfield pieces still fall as rubble.
 
+### 3.12 Elements on bodies
+- One rule, `World::exposure(min, max)`, says what the cells a body covers
+  (and the ring it touches: the floor under its feet, a wall beside it) do to
+  it, from material data only: heat (any non-burning cell above 60 °C,
+  0.1 damage/s per °C over: lava ~114/s, steam scalds, glowing rock burns
+  feet), cold (below −10 °C it chills, fully 60 °C further down; below
+  −60 °C it also hurts), corrosion (the
+  material's `corrosive`, damage/s: acid 30, acid fumes 8), flames or
+  burning cells (it catches fire), and being mostly under a liquid that puts
+  fires out. The worst cell counts, not the sum, so size doesn't matter.
+- The game keeps three statuses: `Chilled` (slowed down to 40 % while
+  touching the cold and 1.5 s after, via `MovementStats::slowed`; hard frost
+  puts a fire out), `Burning` (7 damage/s for 4 s after the last
+  flame; trails flames above it and lights what it stands in, so a burning orc
+  running through a meadow lights the meadow) and `Wet` (3 s after water; can't
+  catch fire). Creatures resist per kind in their RON (`resist: (heat,
+  corrosion, fireproof)`).
+- Acid boils at 110 °C into acid fumes: corrosive (they eat what acid eats,
+  weaker, used up doing it), condense into acid rain downwind, and flammable
+  (a spark flashes the cloud into fire, with the odd small pop), which boils
+  more acid. Blood boils into blood steam and freezes, like water.
+- A burning liquid isn't put out by what it floats on: an oil slick burns on
+  the water under it. Oil conducts heat poorly, so the lake survives.
+
+### 3.13 Weather
+- Clouds are a coarse moisture field (4×4-cell texels) over the whole world
+  width, in a band of sky above the surface (`ChunkGenerator::cloud_band`),
+  not cells: a sky of drifting gas cells would keep every chunk up there
+  awake. Stepped every 4 ticks from seed, tick and wind only (plus vapour fed
+  from below), with `+ − × ÷` only, so it's deterministic for co-op.
+- Each column relaxes toward a cloud shape (flat base, heaped top) set by
+  seeded humidity fronts pinned to the moving air; the pattern drifts with
+  the wind. Above 0.9 moisture a texel rains out.
+- Rain and snow are particles, started only over loaded ground: rain (snow
+  where the cloud is below 0 °C, melting into rain in air above 1 °C) puts
+  out flames and burning cells it passes or lands on, front and back; one
+  drop in 150 (one flake in 10) lands as a cell, so downpours make puddles,
+  not floods. New drops stop above 18 000 particles in flight, shared evenly,
+  so the particle cap never evicts drops mid-fall.
+- Steam that fades (rather than condensing on the spot) feeds the clouds
+  above it (`vapour: true` in the material): boiled water comes back as rain.
+- Creatures under an open raining sky are soaked (`Wet`, fire goes out).
+- Rendering: the band is painted into a texture that slides with the air and
+  is repainted every 15 ticks or when the view leaves it; a bright rim, light
+  body and shadowed belly per cloud; the sky greys as it clouds over.
+- Not yet: weather isn't saved (it restarts from the seed), lightning, wind
+  gusts from storms.
+
 ## 4. Rendering
 
 - One texture + one sprite per loaded chunk (~100 entities on screen, not

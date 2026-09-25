@@ -1185,3 +1185,38 @@ fn a_freezing_floor_chills_and_a_hot_one_burns_what_stands_on_it() {
     let hot = w.exposure(lo, hi);
     assert!(hot.heat > 30.0 && hot.cold == 0.0, "glowing stone burns feet: {hot:?}");
 }
+
+// ---- weather -----------------------------------------------------------------
+
+/// Three background trees under a band of sky, the first set alight; `rain`
+/// feeds the clouds over them. Returns (leaves, water) after 20 s.
+fn forest_fire_under_sky(rain: bool) -> (usize, usize) {
+    let mut w = boxed_world(3, 2, 90);
+    w.set_weather(platypus_sim::Weather::new(90, 192, 96, 28));
+    plant_tree(&mut w, 40);
+    plant_tree(&mut w, 100);
+    plant_tree(&mut w, 150);
+    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(40, 50), radius: 6 });
+    for _ in 0..1_200 {
+        if rain {
+            for x in (4..188).step_by(4) {
+                w.weather_mut().unwrap().feed(x, 0.4);
+            }
+        }
+        w.step();
+    }
+    (count_bg(&w, w.materials().expect_id("leaves")), count(&w, w.materials().expect_id("water")))
+}
+
+/// Rain douses what it falls through (flames, burning canopies) and what it
+/// lands on. A big burning block only loses its surface fire: rain doesn't
+/// soak in.
+#[test]
+fn rain_stops_a_forest_fire_and_puddles() {
+    let (dry, _) = forest_fire_under_sky(false);
+    let (wet, puddles) = forest_fire_under_sky(true);
+    // Three crowns of 32×12 leaves; dry, the first one burns down.
+    assert!(dry < 1_152 - 300, "without rain the fire takes a crown ({dry} left)");
+    assert!(wet > 1_152 * 9 / 10, "rain saved the canopy ({wet} of 1152 left)");
+    assert!(puddles > 0, "and left water on the ground ({puddles})");
+}

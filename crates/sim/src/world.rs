@@ -13,6 +13,7 @@ use crate::particles::{self, Landing, Particle, ParticleWorld};
 use crate::rng::{Rng, hash};
 use crate::step::{StepStats, step_chunks};
 use crate::store;
+use crate::weather::{self, Weather};
 
 /// A connected solid piece bigger than this counts as ground (anchored). Smaller
 /// pieces that touch neither bedrock nor unloaded world are floating and fall.
@@ -48,6 +49,8 @@ pub struct World {
     /// Pieces that broke off whole and fly as rigid bodies.
     bodies: Vec<Body>,
     next_body: u32,
+    /// Clouds, rain and snow (SPEC §3.13); `None` in tests and sandboxes.
+    weather: Option<Weather>,
 }
 
 /// Which grid a ground check looks at.
@@ -86,6 +89,7 @@ impl World {
             particles: Vec::new(),
             bodies: Vec::new(),
             next_body: 0,
+            weather: None,
         }
     }
 
@@ -105,6 +109,32 @@ impl World {
     /// Everything flying as a rigid body.
     pub fn bodies(&self) -> &[Body] {
         &self.bodies
+    }
+
+    pub fn set_weather(&mut self, weather: Weather) {
+        self.weather = Some(weather);
+    }
+
+    pub fn weather(&self) -> Option<&Weather> {
+        self.weather.as_ref()
+    }
+
+    pub fn weather_mut(&mut self) -> Option<&mut Weather> {
+        self.weather.as_mut()
+    }
+
+    /// Is rain falling on `p` from an open sky (nothing solid between it and
+    /// the clouds)?
+    pub fn rained_on(&self, p: CellPos) -> bool {
+        let Some(w) = &self.weather else { return false };
+        if w.rain_at(p.x) <= 0.0 {
+            return false;
+        }
+        let mats = &self.materials;
+        (p.y..w.y0).all(|y| {
+            self.get(CellPos::new(p.x, y))
+                .is_none_or(|c| c.is_air() || !matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder))
+        })
     }
 
     pub fn emit(&mut self, p: Particle) {
@@ -875,7 +905,48 @@ impl World {
         flying.append(&mut self.particles); // anything emitted while stepping
         self.particles = flying;
         self.step_bodies();
+        self.step_weather(wind, &stats.vapour);
         stats
+    }
+
+    /// Clouds drift and rain; vapour from below feeds them. Drops and flakes
+    /// start over loaded ground only (elsewhere nobody would see them).
+    fn step_weather(&mut self, wind: f32, vapour: &[i32]) {
+        let Some(weather) = &mut self.weather else { return };
+        for &x in vapour {
+            weather.feed(x, VAPOUR_MOISTURE);
+        }
+        let out = weather.step(self.tick, wind);
+        if out.is_empty() {
+            return;
+        }
+        let (water, snow) = (self.materials.id("water"), self.materials.id("snow"));
+        let mut rng = self.rng_for(0x5A1F, CellPos::new(0, 0));
+        let out: Vec<_> = out.into_iter().filter(|p| self.is_loaded(CellPos::new(p.x, p.y).chunk())).collect();
+        // Rain leaves room for everything else (and never makes the cap evict
+        // drops already falling, which cut rain off mid-air); when it has to
+        // hold back, it holds back evenly across the sky.
+        let wanted: f32 = out.iter().map(|p| p.amount * DROPS_PER_MOISTURE).sum();
+        let room = RAIN_BUDGET.saturating_sub(self.particles.len() as u32) as f32;
+        let share = if wanted > room { room / wanted } else { 1.0 };
+        for p in out {
+            let frozen = self.climate.ambient(p.y) <= 0;
+            let Some(id) = (if frozen { snow } else { water }) else { continue };
+            let n = stochastic_round(p.amount * DROPS_PER_MOISTURE * share, &mut rng);
+            for _ in 0..n {
+                // Anywhere in the lower cloud, so drops don't all start on one line.
+                let x = p.x as f32 + rng.next_u8() as f32 / 256.0 * weather::TEXEL as f32;
+                let y = p.y as f32 + rng.next_u8() as f32 / 256.0 * 16.0;
+                let cell = self.materials.spawn(id, &mut rng);
+                let particle = if frozen {
+                    let drift = (rng.next_u8() as f32 / 255.0 - 0.5) * 0.3;
+                    Particle { gravity: 0.03, ..Particle::new([x, y], [drift + wind * 0.2, -0.3], cell, 1_500, Landing::Snow) }
+                } else {
+                    Particle::new([x, y], [wind * 0.6, -4.0], cell, 600, Landing::Rain)
+                };
+                self.particles.push(particle);
+            }
+        }
     }
 
     fn step_bodies(&mut self) {
@@ -1022,6 +1093,14 @@ impl World {
     }
 }
 
+/// Cloud moisture a faded cell of steam adds.
+const VAPOUR_MOISTURE: f32 = 0.05;
+/// Raindrops or flakes per unit of moisture rained out (a heavy column rains
+/// out ~0.1 per weather step).
+const DROPS_PER_MOISTURE: f32 = 25.0;
+/// New drops stop above this many particles in flight (the cap is 30 000).
+const RAIN_BUDGET: u32 = 18_000;
+
 /// Chance /256 that a cell destroyed by a blast flies as debris.
 const DEBRIS_CHANCE: u8 = 120;
 /// How far past the crater loose material (sand, gravel, water) is flung.
@@ -1092,6 +1171,37 @@ impl ParticleWorld for ParticleCtx<'_> {
         if bp.flammability > 0 && rng.chance(bp.flammability / 4 + 1) {
             self.world.ignite_bg_cell(p, &bp);
         }
+    }
+
+    fn douse(&mut self, p: CellPos) {
+        let mats = self.world.materials.clone();
+        if let Some(c) = self.world.get(p)
+            && !c.is_air()
+        {
+            if mats.phys(c.material).kind == Kind::Fire {
+                self.world.set(p, Cell::AIR);
+            } else if c.flags & flags::BURNING != 0 {
+                let mut c = c;
+                c.flags &= !flags::BURNING;
+                c.heat = c.heat.min(120);
+                self.world.set(p, c);
+            }
+        }
+        if let Some(mut b) = self.world.get_bg(p)
+            && b.flags & flags::BURNING != 0
+        {
+            b.flags &= !flags::BURNING;
+            b.heat = b.heat.min(120);
+            self.world.set_bg(p, b);
+        }
+    }
+
+    fn ambient(&self, y: i32) -> i32 {
+        self.world.climate.ambient(y)
+    }
+
+    fn water(&self) -> Option<Cell> {
+        self.world.materials.id("water").map(|id| Cell::new(id, 0))
     }
 }
 

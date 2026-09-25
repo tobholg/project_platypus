@@ -45,6 +45,7 @@ the tree topples, sheds its crown and lands as a log you can mine · drop a tree
 light a tree at the base: it chars black and snaps · burnt wood leaves charcoal; put charred wood out with water for more ·
 lava, fire, steam and acid hurt; flames set creatures alight (they spread fire as they run; jump in water) · boil acid (heat gun) into a corrosive cloud that rains acid, then light the cloud ·
 pour oil on a lake and light it · freeze the ground under an orc (Shift + heat gun) to slow it, or to put yourself out ·
+watch the clouds: fronts drift with the wind and rain where they're heavy; rain puts out forest fires and fills puddles; boiled water rises and rains back down ·
 run and dash through tall grass and watch it part and wobble back ·
 the HUD shows the material and temperature under the cursor ·
 edit `materials.ron` or `creatures/player.ron` while the game runs.
@@ -58,7 +59,7 @@ PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, 
 PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`. Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`. Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
 capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length.
 
 ## Add things (no engine changes)

@@ -4,7 +4,7 @@
 //!
 //! - `Burning`: damage over time, trails flames and sets alight what it
 //!   touches (a burning orc running through a meadow lights the meadow).
-//! - `Wet`: fresh out of water, can't catch fire.
+//! - `Wet`: fresh out of water or out in the rain, can't catch fire.
 //! - `Chilled`: touched something freezing; slowed (up to 60 %) for a moment.
 //!   Strong cold puts a fire out.
 //!
@@ -85,7 +85,12 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, mut q: Query<Ex
         let (pos, half) = (k.body.pos, k.body.half);
         // The same cells collision uses.
         let (lo, hi) = k.body.cells_at(pos);
-        let e = sim.world.exposure(CellPos::new(lo.x, lo.y), CellPos::new(hi.x, hi.y));
+        let mut e = sim.world.exposure(CellPos::new(lo.x, lo.y), CellPos::new(hi.x, hi.y));
+        // Out in the rain: soaked, as good as in water for fire.
+        if sim.world.rained_on(CellPos::new((lo.x + hi.x) / 2, hi.y + 1)) {
+            e.douses = true;
+            e.ignites = false;
+        }
 
         let harm = e.heat * (1.0 - resist.heat).max(0.0) + e.corrosion * (1.0 - resist.corrosion).max(0.0);
         health.hp -= harm * DT;

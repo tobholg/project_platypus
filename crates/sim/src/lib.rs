@@ -15,6 +15,7 @@ pub mod rng;
 mod rules;
 mod step;
 pub mod store;
+pub mod weather;
 mod world;
 
 pub use bodies::Body;
@@ -27,4 +28,5 @@ pub use hazard::Exposure;
 pub use material::{Kind, MaterialId, MaterialTable};
 pub use particles::{Landing, Particle};
 pub use step::StepStats;
+pub use weather::Weather;
 pub use world::{LEAF_REACH, World};

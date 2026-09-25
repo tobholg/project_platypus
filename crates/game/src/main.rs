@@ -15,6 +15,7 @@ mod props;
 mod render;
 mod rigid;
 mod scenario;
+mod sky;
 mod tools;
 mod world;
 
@@ -63,6 +64,7 @@ fn main() {
             props::PropsPlugin,
             rigid::RigidPlugin,
             particles::ParticlesPlugin,
+            sky::SkyPlugin,
             actors::ActorsPlugin,
             debug::DebugPlugin,
             fx::FxPlugin,

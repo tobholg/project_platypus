@@ -16,12 +16,20 @@ pub struct ParticlesPlugin;
 /// Above the world texture, below creatures.
 const Z_PARTICLES: f32 = 5.0;
 
-#[derive(Component)]
-struct ParticleMesh(Handle<Mesh>);
+/// Particles per mesh. One huge mesh (30 000 particles, 120 000 vertices)
+/// silently stopped drawing, so they are split across several.
+const PER_MESH: usize = 4_096;
+
+/// Meshes in draw order; more are made as needed.
+#[derive(Resource, Default)]
+struct ParticleMeshes {
+    meshes: Vec<Handle<Mesh>>,
+    material: Option<Handle<ColorMaterial>>,
+}
 
 impl Plugin for ParticlesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_mesh).add_systems(PostUpdate, rebuild_mesh);
+        app.init_resource::<ParticleMeshes>().add_systems(PostUpdate, rebuild_meshes);
     }
 }
 
@@ -33,22 +41,42 @@ fn empty_mesh() -> Mesh {
     mesh
 }
 
-fn spawn_mesh(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<ColorMaterial>>) {
+fn spawn_mesh(commands: &mut Commands, meshes: &mut Assets<Mesh>, material: Handle<ColorMaterial>) -> Handle<Mesh> {
     let handle = meshes.add(empty_mesh());
     commands.spawn((
         Name::new("Particles"),
         Mesh2d(handle.clone()),
-        MeshMaterial2d(materials.add(ColorMaterial { alpha_mode: AlphaMode2d::Blend, ..default() })),
+        MeshMaterial2d(material),
         Transform::from_xyz(0.0, 0.0, Z_PARTICLES),
         // The mesh changes every frame; its bounds would go stale.
         NoFrustumCulling,
-        ParticleMesh(handle),
     ));
+    handle
 }
 
-fn rebuild_mesh(sim: Res<SimWorld>, q: Single<&ParticleMesh>, mut meshes: ResMut<Assets<Mesh>>) {
-    let Some(mut mesh) = meshes.get_mut(&q.0) else { return };
+fn rebuild_meshes(
+    mut commands: Commands,
+    sim: Res<SimWorld>,
+    mut set: ResMut<ParticleMeshes>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
     let particles = sim.world.particles();
+    let batches = particles.len().div_ceil(PER_MESH).max(1);
+    let set = &mut *set;
+    let material = set.material.get_or_insert_with(|| materials.add(ColorMaterial { alpha_mode: AlphaMode2d::Blend, ..default() })).clone();
+    while set.meshes.len() < batches {
+        set.meshes.push(spawn_mesh(&mut commands, &mut meshes, material.clone()));
+    }
+    for (b, handle) in set.meshes.iter().enumerate() {
+        let Some(mut mesh) = meshes.get_mut(handle) else { continue };
+        let lo = (b * PER_MESH).min(particles.len());
+        let hi = ((b + 1) * PER_MESH).min(particles.len());
+        fill_mesh(&mut mesh, &particles[lo..hi], &sim);
+    }
+}
+
+fn fill_mesh(mesh: &mut Mesh, particles: &[platypus_sim::Particle], sim: &SimWorld) {
     let mats = sim.materials();
     let fire = mats.fire();
     let mut pos = Vec::with_capacity(particles.len() * 4);
@@ -72,10 +100,22 @@ fn rebuild_mesh(sim: Res<SimWorld>, q: Single<&ParticleMesh>, mut meshes: ResMut
         if p.landing == Landing::Vanish && !hot {
             rgba[3] = (p.life.min(20) * 12) as u8;
         }
+        // Rain: pale streaks as long as the drop is fast. Snow: white flecks.
+        let mut tall = 1.0;
+        match p.landing {
+            Landing::Rain => {
+                // Fading in as it leaves the cloud (rain drops live 600 ticks).
+                let age = 600u16.saturating_sub(p.life);
+                rgba = [196, 214, 236, (120 * age.min(10) / 10) as u8];
+                tall = (1.0 + p.vel[1].abs() * 0.6).min(5.0).floor();
+            }
+            Landing::Snow => rgba = [244, 246, 250, 230],
+            _ => {}
+        }
         let c = Color::srgba_u8(rgba[0], rgba[1], rgba[2], rgba[3]).to_linear().to_f32_array();
         let (x, y) = (p.pos[0].floor(), p.pos[1].floor());
         let base = (i * 4) as u32;
-        pos.extend([[x, y, 0.0], [x + 1.0, y, 0.0], [x + 1.0, y + 1.0, 0.0], [x, y + 1.0, 0.0]]);
+        pos.extend([[x, y, 0.0], [x + 1.0, y, 0.0], [x + 1.0, y + tall, 0.0], [x, y + tall, 0.0]]);
         col.extend([c; 4]);
         idx.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
     }

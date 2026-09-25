@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
 use platypus_sim::store::ChunkStore;
-use platypus_sim::{CHUNK, ChunkPos, MaterialTable, StepStats, World, WorldEdit};
+use platypus_sim::{CHUNK, ChunkPos, MaterialTable, StepStats, Weather, World, WorldEdit};
 use platypus_worldgen::ChunkGenerator;
 use rayon::prelude::*;
 
@@ -85,6 +85,11 @@ impl Plugin for WorldPlugin {
         let (mats, generator) = (self.materials.clone(), self.generator.clone());
         let mut world = World::new(self.seed, mats);
         world.set_climate(generator.climate());
+        if let Some((y0, height)) = generator.cloud_band() {
+            let (lo, hi) = generator.bounds();
+            let width = (hi.x - lo.x + 1) * CHUNK;
+            world.set_weather(Weather::new(self.seed, width, y0, height));
+        }
         app.insert_resource(Time::<Fixed>::from_hz(TICK_HZ))
             .insert_resource(SimWorld { world, generator, store: ChunkStore::default() })
             .insert_resource(MaterialsSource(Watched::new(self.materials_path.clone())))

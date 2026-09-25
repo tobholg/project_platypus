@@ -71,6 +71,8 @@ pub(crate) struct Hood<'a> {
     pub particles: Vec<Particle>,
     /// Background cells destroyed this tick (burned out).
     pub broken_bg: Vec<CellPos>,
+    /// Columns (world x) where vapour faded into the air, feeding the clouds.
+    pub vapour: Vec<i32>,
     /// Wind this tick: -1 (hard left) … 1 (hard right).
     pub wind: f32,
 }
@@ -131,6 +133,11 @@ impl<'a> Hood<'a> {
         self.broken_bg.push(self.origin.offset(lx, ly));
     }
 
+    /// Vapour faded here: it rises to the clouds above.
+    pub fn note_vapour(&mut self, lx: i32) {
+        self.vapour.push(self.origin.x + lx);
+    }
+
     /// Schedule the 3×3 around a cell for next tick without changing it.
     #[inline(always)]
     pub fn wake(&mut self, lx: i32, ly: i32) {
@@ -185,7 +192,7 @@ impl<'a> Hood<'a> {
                 }
             }
         }
-        JobOutput { explosions: self.explosions, broken: self.broken, broken_bg: self.broken_bg, particles: self.particles }
+        JobOutput { explosions: self.explosions, broken: self.broken, broken_bg: self.broken_bg, particles: self.particles, vapour: self.vapour }
     }
 }
 
@@ -206,6 +213,9 @@ pub struct StepStats {
     /// Explosions the world detonated at the start of this tick (centre,
     /// radius): for effects like screen shake and flashes.
     pub detonated: Vec<(CellPos, i32)>,
+    /// Columns where vapour faded into the air this tick (the world feeds
+    /// them to the clouds).
+    pub vapour: Vec<i32>,
 }
 
 /// What one job reports back to the world.
@@ -215,6 +225,7 @@ struct JobOutput {
     broken: Vec<CellPos>,
     broken_bg: Vec<CellPos>,
     particles: Vec<Particle>,
+    vapour: Vec<i32>,
 }
 
 pub(crate) fn step_chunks(
@@ -260,6 +271,7 @@ pub(crate) fn step_chunks(
                 broken: Vec::new(),
                 particles: Vec::new(),
                 broken_bg: Vec::new(),
+                vapour: Vec::new(),
                 wind,
             };
             update_rect(&mut hood, rect);
@@ -271,6 +283,7 @@ pub(crate) fn step_chunks(
             stats.broken.extend(out.broken);
             stats.particles.extend(out.particles);
             stats.broken_bg.extend(out.broken_bg);
+            stats.vapour.extend(out.vapour);
         }
     }
     stats

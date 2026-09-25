@@ -91,6 +91,10 @@ pub struct MaterialDef {
     /// Damage per second it does to a body touching it (acid 30).
     #[serde(default)]
     pub corrosive: u8,
+    /// Water vapour: when it fades into the air it feeds the clouds above
+    /// (weather), so boiled water comes back as rain.
+    #[serde(default)]
+    pub vapour: bool,
     /// What a charred cell becomes when its fire is put out (wood: charcoal).
     /// Default: it just stops burning.
     #[serde(default)]
@@ -183,6 +187,7 @@ pub struct MatPhys {
     pub chars_into: MaterialId,
     /// Damage per second to a body touching it.
     pub corrosive: u8,
+    pub vapour: bool,
     /// `AIR` when the material doesn't crumble.
     pub crumbles_into: MaterialId,
     pub heat: i16,
@@ -349,6 +354,7 @@ impl MaterialTable {
                 },
                 chars_into,
                 corrosive: d.corrosive,
+                vapour: d.vapour,
                 crumbles_into,
                 heat: d.heat,
                 heat_source: d.heat_source,

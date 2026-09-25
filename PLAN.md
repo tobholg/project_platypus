@@ -15,6 +15,7 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
 | W2 | Particles: blast debris + sparks, mining dust, embers, blood splashes | done |
 | W3 | Background layer, plants, forests + tall grass, wind, foliage sway + creature rustle | done |
 | W4 | Rigid bodies: felled trees topple, shed their crown, land as logs, hurt what they hit | done |
+| W5 | Elements on creatures (heat, cold, corrosion, burning, wet), acid fumes, oil fires, weather: clouds, rain, snow | done |
 | 3 | Worldgen v2: world plan (legacy mountains, sky islands, walker caves), biomes, save/load | not started |
 | 4 | Combat: weapon swings, pixel masks, swept hits, hit-stop, knockback, enemy attacks | not started |
 | 5 | Terraria layer: items, inventory, mining yields, building, crafting, lighting | not started |
@@ -41,7 +42,8 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
    for it: playfield pieces as bodies (a cut-loose slab of rock), bodies
    colliding with creatures and each other, saving bodies in flight, per-tree
    crown sway
-5. Sky: parallax clouds, cloud cells, rain/snow by temperature, lightning
+5. ~~Sky: clouds, rain/snow by temperature~~ (done, SPEC §3.13). Still to do:
+   lightning (see elemental ideas), saving the weather, parallax far clouds
 6. Meteors: fireball, huge crater, ejecta, forest fires, hot meteorite ore
 7. **Worldgen v2 / biomes** (its own arc, before the save format freezes):
    biome plan from temperature × moisture; tree species as RON data (conifers

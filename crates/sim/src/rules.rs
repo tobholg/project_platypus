@@ -560,6 +560,10 @@ fn age(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) -> bool {
     }
     if c.life == 0 {
         let id = if h.rng.chance(p.decays_into_chance) { p.decays_into } else { MaterialId::AIR };
+        if id == MaterialId::AIR && p.vapour {
+            // Faded, not gone: it rises to the clouds.
+            h.note_vapour(x);
+        }
         let into = spawn(h, id);
         h.set(x, y, into);
         return false;
