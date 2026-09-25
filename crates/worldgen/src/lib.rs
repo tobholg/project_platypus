@@ -9,12 +9,9 @@ use noise::{Fbm, MultiFractal, NoiseFn, Perlin};
 use platypus_sim::rng::{Rng, hash};
 use platypus_sim::{CHUNK, CHUNK_AREA, Cell, CellPos, Chunk, ChunkPos, Climate, MaterialId, MaterialTable};
 
-/// What is behind an empty cell. Purely visual.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Backdrop {
-    Sky,
-    Cave,
-}
+pub mod flora;
+
+use flora::{Forest, TreePart};
 
 /// Anything that can fill a chunk. The game streams through this trait, so
 /// a test world, a flat sandbox or the real generator are interchangeable.
@@ -22,10 +19,6 @@ pub trait ChunkGenerator: Send + Sync {
     /// World size in chunks; chunks outside are never generated (the edge is a wall).
     fn bounds(&self) -> (ChunkPos, ChunkPos);
     fn generate(&self, pos: ChunkPos) -> Chunk;
-
-    fn backdrop(&self, _cell: CellPos) -> Backdrop {
-        Backdrop::Sky
-    }
 
     /// Where players start: standing on the ground in the middle of the world.
     fn spawn_point(&self) -> CellPos;
@@ -73,6 +66,9 @@ struct Ids {
     coal: MaterialId,
     obsidian: MaterialId,
     methane: MaterialId,
+    wood: MaterialId,
+    leaves: MaterialId,
+    tall_grass: MaterialId,
 }
 
 /// Phase-1 terrain: hills with cliffs, dirt over stone, noise caves, and
@@ -91,6 +87,10 @@ pub struct TerrainGen {
     strata: Perlin,
     /// Starting heat per material id (lava is born hot).
     heat: Vec<i16>,
+    forest: Forest,
+    /// Ragged edges of tree crowns; tall grass height.
+    leaf_edge: Perlin,
+    meadow: Perlin,
 }
 
 impl TerrainGen {
@@ -111,6 +111,9 @@ impl TerrainGen {
             coal: mats.expect_id("coal"),
             obsidian: mats.expect_id("obsidian"),
             methane: mats.expect_id("methane"),
+            wood: mats.expect_id("wood"),
+            leaves: mats.expect_id("leaves"),
+            tall_grass: mats.expect_id("tall_grass"),
         };
 
         let width = cfg.width_chunks * CHUNK;
@@ -118,7 +121,7 @@ impl TerrainGen {
         let hills = Fbm::<Perlin>::new(s(1)).set_octaves(5).set_frequency(1.0 / 900.0);
         let cliffs = Perlin::new(s(2));
         let base = height as f64 * cfg.surface;
-        let surface = (0..width)
+        let surface: Vec<i32> = (0..width)
             .map(|x| {
                 let xf = x as f64;
                 let mut h = base + hills.get([xf, 0.0]) * cfg.hills * 2.0;
@@ -131,10 +134,20 @@ impl TerrainGen {
             })
             .collect();
 
+        let snow_line = (height as f64 * cfg.surface + cfg.hills * 0.9) as i32;
+        let forest = {
+            let surface: &[i32] = &surface;
+            let at = |x: i32| surface[x.clamp(0, width - 1) as usize];
+            // Not on snow, not on a cliff edge.
+            Forest::plan(seed, width, at, |x| at(x) <= snow_line && (at(x - 3) - at(x + 3)).abs() < 7)
+        };
         TerrainGen {
             seed,
             ids,
             surface,
+            forest,
+            leaf_edge: Perlin::new(s(7)),
+            meadow: Perlin::new(s(8)),
             caves: Fbm::<Perlin>::new(s(3)).set_octaves(4).set_frequency(1.0 / 160.0),
             worms: Fbm::<Perlin>::new(s(4)).set_octaves(3).set_frequency(1.0 / 260.0),
             pockets: Perlin::new(s(5)),
@@ -151,6 +164,42 @@ impl TerrainGen {
 
     pub fn size_cells(&self) -> (i32, i32) {
         (self.cfg.width_chunks * CHUNK, self.cfg.height_chunks * CHUNK)
+    }
+
+    /// The background layer: walls underground (what you see in caves), trees
+    /// above ground.
+    fn background_at(&self, x: i32, y: i32, trees: &[flora::Tree]) -> MaterialId {
+        let i = &self.ids;
+        let depth = self.surface_at(x) - y;
+        for t in trees {
+            match t.part_at(x, y, &self.leaf_edge) {
+                Some(TreePart::Wood) => return i.wood,
+                Some(TreePart::Leaves) => return i.leaves,
+                None => {}
+            }
+        }
+        if depth > 6 {
+            if depth < 16 { i.dirt } else { i.stone }
+        } else {
+            i.air
+        }
+    }
+
+    /// Tall grass growing out of grassy ground.
+    fn grass_at(&self, x: i32, y: i32) -> bool {
+        let surface = self.surface_at(x);
+        let above = y - surface; // 0 = first cell above the grass
+        if !(0..=8).contains(&above) {
+            return false;
+        }
+        let ground = self.material_at(x, surface - 1);
+        if ground != self.ids.grass {
+            return false;
+        }
+        let m = self.meadow.get([x as f64 / 60.0, 3.3]);
+        let blade = (hash(&[self.seed, 0x6A55, x as u64]) % 100) as f64 / 100.0;
+        let height = ((m + 0.35) * 9.0 * (0.4 + 0.6 * blade)) as i32;
+        above < height
     }
 
     fn material_at(&self, x: i32, y: i32) -> MaterialId {
@@ -233,25 +282,27 @@ impl ChunkGenerator for TerrainGen {
         CellPos::new(x, self.surface_at(x) + 2)
     }
 
-    fn backdrop(&self, cell: CellPos) -> Backdrop {
-        if cell.y < self.surface_at(cell.x) - 6 { Backdrop::Cave } else { Backdrop::Sky }
-    }
-
     fn generate(&self, pos: ChunkPos) -> Chunk {
         let origin = pos.origin();
         let mut rng = Rng::seeded(&[self.seed, 0xC4C4, pos.x as u64, pos.y as u64]);
+        let trees = self.forest.near(origin.x, origin.x + CHUNK - 1);
         let mut cells = Vec::with_capacity(CHUNK_AREA);
+        let mut bg = Vec::with_capacity(CHUNK_AREA);
+        let make = |m: MaterialId, rng: &mut Rng| {
+            if m == self.ids.air { Cell::AIR } else { Cell { heat: self.heat[m.0 as usize], ..Cell::new(m, rng.next_u8()) } }
+        };
         for ly in 0..CHUNK {
             for lx in 0..CHUNK {
-                let m = self.material_at(origin.x + lx, origin.y + ly);
-                cells.push(if m == self.ids.air {
-                    Cell::AIR
-                } else {
-                    Cell { heat: self.heat[m.0 as usize], ..Cell::new(m, rng.next_u8()) }
-                });
+                let (x, y) = (origin.x + lx, origin.y + ly);
+                let mut m = self.material_at(x, y);
+                if m == self.ids.air && self.grass_at(x, y) {
+                    m = self.ids.tall_grass;
+                }
+                cells.push(make(m, &mut rng));
+                bg.push(make(self.background_at(x, y, trees), &mut rng));
             }
         }
-        Chunk::new(pos, cells)
+        Chunk::with_background(pos, cells, bg)
     }
 }
 
@@ -291,6 +342,18 @@ mod tests {
 
     fn mats() -> MaterialTable {
         MaterialTable::from_ron(include_str!("../../../assets/data/materials.ron")).unwrap()
+    }
+
+    #[test]
+    fn forests_grow_and_trees_are_rooted() {
+        let m = mats();
+        let g = TerrainGen::new(3, TerrainConfig::default(), &m);
+        assert!(g.forest.len() > 50, "a world has forests ({} trees)", g.forest.len());
+        // A tree's trunk continues into the ground behind the surface.
+        let t = &g.forest.near(8000, 12000)[0];
+        let root = g.background_at(t.x, t.base - 2, g.forest.near(t.x, t.x));
+        assert_eq!(root, m.expect_id("wood"));
+        assert_ne!(g.material_at(t.x, t.base - 2), MaterialId::AIR, "the root is behind solid ground");
     }
 
     #[test]

@@ -12,6 +12,12 @@ use crate::step::Hood;
 pub(crate) const MAX_FALL: i8 = 28;
 
 const NEIGHBOURS: [(i32, i32); 4] = [(0, 1), (0, -1), (-1, 0), (1, 0)];
+/// -1 or 1, leaning downwind (`wind` in -1..1).
+#[inline]
+fn downwind_sign(h: &mut Hood) -> i32 {
+    if (h.rng.next_u8() as f32) < 128.0 + h.wind * 110.0 { 1 } else { -1 }
+}
+
 const NEIGHBOURS8: [(i32, i32); 8] = [(0, 1), (0, -1), (-1, 0), (1, 0), (-1, 1), (1, 1), (-1, -1), (1, -1)];
 
 /// Heat moves this fraction (/1024) of a temperature difference per tick,
@@ -49,6 +55,7 @@ pub(crate) fn update_cell(h: &mut Hood, x: i32, y: i32, mut c: Cell) {
         }
         Kind::Gas => gas(h, x, y, c, &p),
         Kind::Fire => fire(h, x, y, c, &p),
+        Kind::Plant => plant(h, x, y),
         Kind::Empty | Kind::Static => {}
     }
 }
@@ -61,7 +68,8 @@ fn passable(h: &Hood, mover: &MatPhys, target: Option<Cell>) -> bool {
         Some(t) if t.is_air() => true,
         Some(t) => {
             let tp = h.mats.phys(t.material);
-            matches!(tp.kind, Kind::Liquid | Kind::Gas | Kind::Fire) && tp.density < mover.density
+            // Plants are crushed by whatever falls or flows into them.
+            tp.kind == Kind::Plant || matches!(tp.kind, Kind::Liquid | Kind::Gas | Kind::Fire) && tp.density < mover.density
         }
     }
 }
@@ -71,6 +79,9 @@ fn passable(h: &Hood, mover: &MatPhys, target: Option<Cell>) -> bool {
 #[inline(always)]
 fn swap_to(h: &mut Hood, x: i32, y: i32, tx: i32, ty: i32, mut c: Cell) {
     let mut displaced = h.get(tx, ty).expect("caller checked the target is loaded");
+    if !displaced.is_air() && h.mats.phys(displaced.material).kind == Kind::Plant {
+        displaced = Cell::AIR; // crushed
+    }
     if !displaced.is_air() && h.mats.phys(displaced.material).kind == Kind::Fire {
         let p = *h.mats.phys(c.material);
         if p.flammability > 0 {
@@ -151,6 +162,81 @@ pub(crate) fn ignite(h: &mut Hood, x: i32, y: i32, p: &MatPhys) {
     h.set(x, y, c);
 }
 
+/// Set a background cell burning (it stays in place and burns down).
+pub(crate) fn ignite_bg(h: &mut Hood, x: i32, y: i32, p: &MatPhys) {
+    let Some(mut b) = h.get_bg(x, y) else { return };
+    if b.is_air() || b.flags & flags::BURNING != 0 {
+        return;
+    }
+    b.flags |= flags::BURNING;
+    b.life = p.burn_time;
+    h.set_bg(x, y, b);
+}
+
+/// Fire in the playfield catching the background behind and beside it.
+fn ignite_background_near(h: &mut Hood, x: i32, y: i32) {
+    for (dx, dy) in [(0, 0), (0, 1), (-1, 0), (1, 0)] {
+        let Some(b) = h.get_bg(x + dx, y + dy) else { continue };
+        if b.is_air() || b.flags & flags::BURNING != 0 {
+            continue;
+        }
+        let bp = *h.mats.phys(b.material);
+        if bp.flammability > 0 && h.rng.chance(bp.flammability) {
+            ignite_bg(h, x + dx, y + dy, &bp);
+        }
+    }
+}
+
+/// One tick of a burning background cell: spreads through the background,
+/// lights the playfield in front of it, puts flames into the air in front,
+/// throws embers, and burns away (which may leave something hanging).
+pub(crate) fn burn_background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
+    let front = h.get(x, y);
+    if let Some(f) = front
+        && !f.is_air()
+    {
+        let fp = *h.mats.phys(f.material);
+        if fp.kind == Kind::Liquid && fp.flammability == 0 && !fp.hot {
+            b.flags &= !flags::BURNING; // water in front puts it out
+            h.set_bg(x, y, b);
+            return;
+        }
+        if fp.flammability > 0 && f.flags & flags::BURNING == 0 && h.rng.chance(fp.flammability) {
+            ignite(h, x, y, &fp);
+        }
+    }
+    for (dx, dy) in NEIGHBOURS8 {
+        let Some(n) = h.get_bg(x + dx, y + dy) else { continue };
+        if n.is_air() || n.flags & flags::BURNING != 0 {
+            continue;
+        }
+        let np = *h.mats.phys(n.material);
+        if np.flammability > 0 && h.rng.chance(np.flammability) {
+            ignite_bg(h, x + dx, y + dy, &np);
+        }
+    }
+    if front.is_some_and(|f| f.is_air()) && h.rng.chance(40) {
+        let flame = spawn(h, h.mats.fire());
+        h.set(x, y, flame);
+    }
+    if h.rng.chance(EMBER_CHANCE / 2 + 1) && h.get(x, y + 1).is_some_and(|a| a.is_air()) {
+        let vx = (h.rng.next_u8() as f32 / 255.0 - 0.5) * 0.9 + h.wind * 0.3;
+        let vy = 0.35 + h.rng.next_u8() as f32 / 255.0 * 0.5;
+        let life = 40 + h.rng.next_u8() as u16 / 2;
+        let ember = Particle { gravity: 0.06, ..Particle::new(h.centre(x, y + 1), [vx, vy], b, life, Landing::Ember) };
+        h.emit(ember);
+    }
+    if h.tick.is_multiple_of(4) {
+        if b.life == 0 {
+            h.set_bg(x, y, Cell::AIR);
+            h.note_broken_bg(x, y);
+            return;
+        }
+        b.life -= 1;
+    }
+    h.set_bg(x, y, b);
+}
+
 /// One tick of a burning cell. Returns true if it burned out (replaced).
 fn burn(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) -> bool {
     // Doused: a non-flammable, non-hot liquid touching it (water, not oil or lava).
@@ -178,6 +264,7 @@ fn burn(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) -> bool {
             ignite(h, x + dx, y + dy, &np);
         }
     }
+    ignite_background_near(h, x, y);
     // Flames and smoke into the air around it, mostly upward.
     let (dx, dy) = [(0, 1), (0, 1), (-1, 0), (1, 0)][(h.rng.next_u32() % 4) as usize];
     if h.get(x + dx, y + dy).is_some_and(|a| a.is_air()) {
@@ -359,9 +446,10 @@ fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
         let mut best = 0;
         let mut purposeful = false;
         for i in 1..=reach {
-            // Sideways only into air. Layering (oil over water) happens by
-            // sinking; sideways swaps at an interface would never end.
-            if !h.get(x + dir * i, y).is_some_and(|t| t.is_air()) {
+            // Sideways only into air (or plants, which get washed away).
+            // Layering (oil over water) happens by sinking; sideways swaps at
+            // an interface would never end.
+            if !h.get(x + dir * i, y).is_some_and(|t| t.is_air() || h.mats.phys(t.material).kind == Kind::Plant) {
                 break;
             }
             best = i;
@@ -382,6 +470,17 @@ fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
         }
     }
     false
+}
+
+/// A plant needs something under it: ground, or more plant. Otherwise it
+/// withers (and the one above it will notice next tick).
+fn plant(h: &mut Hood, x: i32, y: i32) {
+    let supported = h.get(x, y - 1).is_none_or(|b| {
+        !b.is_air() && matches!(h.mats.phys(b.material).kind, Kind::Static | Kind::Powder | Kind::Plant)
+    });
+    if !supported {
+        h.set(x, y, Cell::AIR);
+    }
 }
 
 /// Could not move: drop any fall speed. Writes only if something changed.
@@ -415,7 +514,7 @@ fn gas(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) {
         return;
     }
     let free = |h: &Hood, tx: i32, ty: i32| h.get(tx, ty).is_some_and(|t| t.is_air());
-    let d = h.rng.sign();
+    let d = downwind_sign(h);
     // Billow: often drift up diagonally rather than rising in single file.
     if h.rng.chance(100) && free(h, x + d, y + 1) {
         return swap_to(h, x, y, x + d, y + 1, c);
@@ -449,9 +548,11 @@ fn fire(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) {
     if !age(h, x, y, &mut c, p) {
         return;
     }
-    // Flicker upwards now and then.
+    // Flames lick whatever is behind them.
+    ignite_background_near(h, x, y);
+    // Flicker upwards now and then, leaning downwind.
     if h.rng.chance(64) {
-        let dx = h.rng.sign() * (h.rng.coin() as i32);
+        let dx = downwind_sign(h) * (h.rng.coin() as i32);
         if h.get(x + dx, y + 1).is_some_and(|t| t.is_air()) {
             return swap_to(h, x, y, x + dx, y + 1, c);
         }

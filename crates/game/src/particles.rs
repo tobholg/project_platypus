@@ -27,9 +27,9 @@ impl Plugin for ParticlesPlugin {
 
 fn empty_mesh() -> Mesh {
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, Vec::<[f32; 3]>::new());
-    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, Vec::<[f32; 4]>::new());
-    mesh.insert_indices(Indices::U32(Vec::new()));
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0f32; 3]; 4]);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, vec![[0.0f32; 4]; 4]);
+    mesh.insert_indices(Indices::U32(vec![0, 1, 2, 0, 2, 3]));
     mesh
 }
 
@@ -78,6 +78,13 @@ fn rebuild_mesh(sim: Res<SimWorld>, q: Single<&ParticleMesh>, mut meshes: ResMut
         pos.extend([[x, y, 0.0], [x + 1.0, y, 0.0], [x + 1.0, y + 1.0, 0.0], [x, y + 1.0, 0.0]]);
         col.extend([c; 4]);
         idx.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+    if pos.is_empty() {
+        // Bevy's mesh allocator mishandles meshes with no vertices; keep one
+        // invisible quad instead.
+        pos.extend([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]);
+        col.extend([[0.0; 4]; 4]);
+        idx.extend([0, 1, 2, 0, 2, 3]);
     }
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, pos);
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, col);

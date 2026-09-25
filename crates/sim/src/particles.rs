@@ -61,11 +61,22 @@ pub(crate) trait ParticleWorld {
     fn mats(&self) -> &MaterialTable;
     /// Set a flammable cell alight (same rules as everywhere else).
     fn ignite_at(&mut self, p: CellPos);
+    fn wind(&self) -> f32;
+    /// An ember passing in front of a background cell may set it alight.
+    fn ember_over(&mut self, p: CellPos, life: u16);
+}
+
+/// How strongly wind pushes each kind of particle (cells/tick² at full wind).
+fn wind_push(landing: Landing) -> f32 {
+    match landing {
+        Landing::Ember | Landing::Vanish => 0.035,
+        Landing::Settle => 0.004,
+    }
 }
 
 /// Can a particle fly through this cell?
 fn open(mats: &MaterialTable, c: Cell) -> bool {
-    c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas | Kind::Fire)
+    c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas | Kind::Fire | Kind::Plant)
 }
 
 /// Advance every particle one tick. Landed and vanished particles are removed.
@@ -87,6 +98,7 @@ pub(crate) fn step(particles: &mut Vec<Particle>, world: &mut impl ParticleWorld
 /// Returns false when the particle is done.
 fn step_one(p: &mut Particle, world: &mut impl ParticleWorld) -> bool {
     p.vel[1] -= GRAVITY * p.gravity;
+    p.vel[0] += world.wind() * wind_push(p.landing);
     p.vel[0] *= DRAG;
     p.vel[1] *= DRAG;
     let speed = p.vel[0].abs().max(p.vel[1].abs());
@@ -103,7 +115,12 @@ fn step_one(p: &mut Particle, world: &mut impl ParticleWorld) -> bool {
         let at = CellPos::from_world(next[0], next[1]);
         match world.get(at) {
             None => return false, // left the loaded world
-            Some(c) if open(world.mats(), c) => p.pos = next,
+            Some(c) if open(world.mats(), c) => {
+                p.pos = next;
+                if p.landing == Landing::Ember {
+                    world.ember_over(at, p.life);
+                }
+            }
             Some(_) => {
                 land(p, at, world);
                 return false;

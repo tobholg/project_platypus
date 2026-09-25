@@ -91,7 +91,7 @@ impl Grid for WorldGrid<'_> {
             Some(c) => match self.0.materials().phys(c.material).kind {
                 Kind::Static | Kind::Powder => Occupancy::Solid,
                 Kind::Liquid => Occupancy::Liquid,
-                Kind::Empty | Kind::Gas | Kind::Fire => Occupancy::Empty,
+                Kind::Empty | Kind::Gas | Kind::Fire | Kind::Plant => Occupancy::Empty,
             },
         }
     }

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use platypus_sim::rng::Rng;
-use platypus_sim::{CHUNK, Cell, CellPos, Chunk, ChunkPos, Landing, MaterialId, MaterialTable, Particle, World, WorldEdit, store};
+use platypus_sim::{CHUNK, CHUNK_AREA, Cell, CellPos, Chunk, ChunkPos, Landing, MaterialId, MaterialTable, Particle, World, WorldEdit, store};
 
 const MATERIALS: &str = include_str!("../../../assets/data/materials.ron");
 
@@ -248,6 +248,8 @@ fn stepping_is_deterministic_across_thread_counts() {
             w.apply_edit(&WorldEdit::Heat { center: CellPos::new(100, 90), radius: 20, amount: 1600 });
             w.apply_edit(&WorldEdit::Explode { center: CellPos::new(60, 40), radius: 12, power: 90 });
             w.splash([150.0, 150.0], m.expect_id("water"), 120, 3.0);
+            plant_tree(&mut w, 200);
+            w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(200, 10), radius: 2 });
             for _ in 0..600 {
                 w.step();
             }
@@ -625,4 +627,152 @@ fn mining_dust_is_only_visual() {
     run_until_landed(&mut w, 200);
     assert!(removed > 50);
     assert_eq!(count(&w, dirt) as u32, before - removed, "dust never became dirt");
+}
+
+// ---- background layer, plants, wind -----------------------------------------
+
+fn fill_bg(w: &mut World, name: &str, x0: i32, x1: i32, y0: i32, y1: i32) {
+    let id = w.materials().expect_id(name);
+    let mut rng = Rng::seeded(&[x0 as u64, y0 as u64, 7]);
+    for x in x0..x1 {
+        for y in y0..y1 {
+            let c = w.materials().spawn(id, &mut rng);
+            w.set_bg(CellPos::new(x, y), c);
+        }
+    }
+}
+
+fn count_bg(world: &World, id: MaterialId) -> usize {
+    world.chunks().flat_map(|c| c.background()).filter(|c| c.material == id).count()
+}
+
+/// Background cells not connected (by edges, through background) to one that
+/// rests against solid playfield.
+fn floating_background(w: &World) -> Vec<CellPos> {
+    let m = w.materials();
+    let solid_front = |p: CellPos| {
+        w.get(p).is_some_and(|c| matches!(m.phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder) && c.flags & platypus_sim::cell::flags::LOOSE == 0)
+    };
+    let all: Vec<CellPos> = w
+        .chunks()
+        .flat_map(|c| (0..CHUNK_AREA).filter(move |&i| !c.background()[i].is_air()).map(move |i| c.pos.origin().offset((i % 64) as i32, (i / 64) as i32)))
+        .collect();
+    let set: std::collections::HashSet<CellPos> = all.iter().copied().collect();
+    let mut held: std::collections::HashSet<CellPos> = std::collections::HashSet::new();
+    let mut stack: Vec<CellPos> = all.iter().copied().filter(|&p| solid_front(p)).collect();
+    while let Some(p) = stack.pop() {
+        if !held.insert(p) {
+            continue;
+        }
+        for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+            let q = p.offset(dx, dy);
+            if set.contains(&q) && !held.contains(&q) {
+                stack.push(q);
+            }
+        }
+    }
+    all.into_iter().filter(|p| !held.contains(p)).collect()
+}
+
+/// A background tree: trunk rooted behind the stone floor, a crown of leaves.
+fn plant_tree(w: &mut World, x: i32) {
+    fill_bg(w, "wood", x - 2, x + 2, 0, 60);
+    fill_bg(w, "wood", x - 14, x + 14, 44, 46);
+    fill_bg(w, "leaves", x - 16, x + 16, 46, 58);
+}
+
+#[test]
+fn a_background_tree_stands_on_its_own() {
+    let mut w = boxed_world(2, 2, 50);
+    plant_tree(&mut w, 64);
+    let wood = w.materials().expect_id("wood");
+    let before = count_bg(&w, wood);
+    run_until_asleep(&mut w, 500);
+    assert_eq!(count_bg(&w, wood), before, "nothing fell");
+}
+
+#[test]
+fn chopping_a_trunk_drops_the_crown_into_the_playfield() {
+    let mut w = boxed_world(2, 2, 51);
+    plant_tree(&mut w, 64);
+    let (wood, leaves) = (w.materials().expect_id("wood"), w.materials().expect_id("leaves"));
+    // The eraser acts on the background where the playfield is empty.
+    w.apply_edit(&WorldEdit::Dig { center: CellPos::new(64, 20), radius: 3, max_hardness: 200 });
+    run_until_landed(&mut w, 400);
+    run_until_asleep(&mut w, 3_000);
+    assert_eq!(count_bg(&w, leaves), 0, "the crown left the background");
+    assert!((24..60).all(|y| w.get_bg(CellPos::new(64, y)).unwrap().is_air()), "trunk above the cut is gone");
+    assert!(w.get_bg(CellPos::new(64, 5)).unwrap().material == wood, "the stump stays");
+    let fallen = count(&w, wood);
+    assert!(fallen > 50, "branch and trunk wood fell as rubble ({fallen})");
+}
+
+#[test]
+fn a_forest_fire_burns_through_the_background_and_leaves_nothing_hanging() {
+    let mut w = boxed_world(3, 2, 52);
+    plant_tree(&mut w, 40);
+    plant_tree(&mut w, 100);
+    plant_tree(&mut w, 150);
+    let leaves = w.materials().expect_id("leaves");
+    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(40, 10), radius: 2 });
+    for _ in 0..8_000 {
+        w.step();
+    }
+    assert!(count_bg(&w, leaves) < 150, "the canopy burned ({} leaves left)", count_bg(&w, leaves));
+    let hanging = floating_background(&w);
+    assert!(hanging.is_empty(), "{} background cells left hanging, e.g. {:?}", hanging.len(), &hanging[..hanging.len().min(5)]);
+    assert_eq!(burning(&w), 0, "the fire burned out");
+}
+
+#[test]
+fn tall_grass_is_crushed_by_sand_and_withers_without_ground() {
+    let mut w = boxed_world(1, 1, 53);
+    let m = w.materials().clone();
+    let (grass, sand) = (m.expect_id("tall_grass"), m.expect_id("sand"));
+    fill(&mut w, "dirt", 1, 63, 1, 10);
+    fill(&mut w, "tall_grass", 10, 50, 10, 16);
+    run_until_asleep(&mut w, 200);
+    let start = count(&w, grass);
+    assert_eq!(start, 40 * 6, "grass stands on dirt");
+    // Dig out the ground under the left part: those blades wither.
+    w.apply_edit(&WorldEdit::Dig { center: CellPos::new(15, 5), radius: 5, max_hardness: 100 });
+    // Pour sand on the right part: it crushes the grass it lands on.
+    w.apply_edit(&WorldEdit::Paint { center: CellPos::new(42, 30), radius: 5, material: sand, overwrite: false });
+    run_until_asleep(&mut w, 3_000);
+    // Columns fully undercut by the dig (its round edge leaves dirt at x=10 and 19).
+    let left = (12..18).flat_map(|x| (1..30).map(move |y| (x, y))).filter(|&(x, y)| w.get(CellPos::new(x, y)).unwrap().material == grass).count();
+    assert_eq!(left, 0, "unsupported grass withered");
+    assert!(count(&w, grass) < start - 60, "sand crushed grass");
+}
+
+#[test]
+fn wind_is_smooth_bounded_and_seeded() {
+    let m = mats();
+    let mut a = World::new(1, m.clone());
+    let b = World::new(1, m.clone());
+    let c = World::new(2, m);
+    assert_eq!(a.wind(), b.wind());
+    assert_ne!(a.wind(), c.wind());
+    let mut last = a.wind();
+    let (mut lo, mut hi) = (1.0f32, -1.0f32);
+    for _ in 0..20_000 {
+        a.step();
+        let w = a.wind();
+        assert!((-1.0..=1.0).contains(&w));
+        assert!((w - last).abs() < 0.02, "wind jumps");
+        lo = lo.min(w);
+        hi = hi.max(w);
+        last = w;
+    }
+    assert!(hi - lo > 0.3, "wind varies ({lo}..{hi})");
+}
+
+#[test]
+fn store_roundtrips_the_background() {
+    let mut w = boxed_world(1, 1, 54);
+    plant_tree(&mut w, 32);
+    let chunk = w.chunk(ChunkPos::new(0, 0)).unwrap();
+    let back = store::decode(chunk.pos, &store::encode(chunk)).unwrap();
+    assert_eq!(store::checksum(&back), store::checksum(chunk));
+    assert_eq!(back.background(), chunk.background());
 }

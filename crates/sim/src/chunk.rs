@@ -55,7 +55,12 @@ impl AtomicRect {
 
 pub struct Chunk {
     pub pos: ChunkPos,
+    /// The playfield: what creatures collide with and most rules act on.
     pub(crate) cells: Box<[Cell]>,
+    /// The background layer behind it (walls, tree trunks, leaves). Creatures
+    /// pass in front of it; it burns, can be mined and blown up, and falls
+    /// into the playfield when nothing holds it up (SPEC §3.10).
+    pub(crate) bg: Box<[Cell]>,
     /// Region to update next tick.
     pub(crate) next_dirty: AtomicRect,
     /// Cells changed since the renderer last looked.
@@ -66,10 +71,16 @@ pub struct Chunk {
 
 impl Chunk {
     pub fn new(pos: ChunkPos, cells: Vec<Cell>) -> Self {
+        Self::with_background(pos, cells, vec![Cell::AIR; CHUNK_AREA])
+    }
+
+    pub fn with_background(pos: ChunkPos, cells: Vec<Cell>, bg: Vec<Cell>) -> Self {
         assert_eq!(cells.len(), CHUNK_AREA, "a chunk has exactly CHUNK_AREA cells");
+        assert_eq!(bg.len(), CHUNK_AREA, "a chunk's background has exactly CHUNK_AREA cells");
         Chunk {
             pos,
             cells: cells.into_boxed_slice(),
+            bg: bg.into_boxed_slice(),
             // Fresh chunks settle once: generated sand over a cave should fall.
             next_dirty: AtomicRect::new(Rect::FULL),
             render_dirty: AtomicBool::new(true),
@@ -89,6 +100,24 @@ impl Chunk {
     #[inline]
     pub fn get(&self, lx: usize, ly: usize) -> Cell {
         self.cells[local_index(lx, ly)]
+    }
+
+    #[inline]
+    pub fn background(&self) -> &[Cell] {
+        &self.bg
+    }
+
+    #[inline]
+    pub fn get_bg(&self, lx: usize, ly: usize) -> Cell {
+        self.bg[local_index(lx, ly)]
+    }
+
+    pub fn set_bg(&mut self, lx: usize, ly: usize, cell: Cell) {
+        self.bg[local_index(lx, ly)] = cell;
+        let (x, y) = (lx as i32, ly as i32);
+        self.next_dirty.include(Rect { min_x: x - 1, min_y: y - 1, max_x: x + 1, max_y: y + 1 }.clamp_to_chunk());
+        *self.render_dirty.get_mut() = true;
+        *self.modified.get_mut() = true;
     }
 
     /// Direct write; wakes the cell and its neighbours inside this chunk.

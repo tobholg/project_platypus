@@ -27,6 +27,9 @@ pub enum Kind {
     Liquid,
     Gas,
     Fire,
+    /// Tall grass, leaves: stays put, doesn't block creatures, burns readily,
+    /// is crushed by falling powder and flowing liquid, withers without support.
+    Plant,
 }
 
 impl Kind {
@@ -298,6 +301,7 @@ impl MaterialTable {
                 Kind::Liquid => 50,
                 Kind::Gas => 8,
                 Kind::Fire => 60,
+                Kind::Plant => 10,
             });
             let climate_sensitive = (-150..=150).contains(&above_at) || (-150..=150).contains(&below_at);
             let (life_min, life_max) = d.lifetime.unwrap_or((0, 0));
@@ -347,7 +351,7 @@ impl MaterialTable {
             p.active = p.interacts
                 || p.climate_sensitive
                 || p.heat_source
-                || matches!(p.kind, Kind::Powder | Kind::Liquid | Kind::Gas | Kind::Fire);
+                || matches!(p.kind, Kind::Powder | Kind::Liquid | Kind::Gas | Kind::Fire | Kind::Plant);
         }
 
         let mut palette = Vec::with_capacity(defs.len() * PALETTE_SIZE);

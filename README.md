@@ -30,7 +30,8 @@ for a double jump, against a wall to wall-jump) · Shift dash
 | 5 | Eraser | delete instantly |
 | 6 | Heat / Freeze | heat what's under the cursor; Shift freezes. Rock glows then melts to lava (1400 °C), sand turns to glass, water boils or freezes, wood and oil ignite, methane explodes |
 
-RMB erases with any tool · `[` `]` or Ctrl+wheel radius · wheel zoom · Tab free camera
+Tools reach the background (trees, cave walls) wherever the playfield in front is
+empty — mine a trunk to fell a tree. RMB erases with any tool · `[` `]` or Ctrl+wheel radius · wheel zoom · Tab free camera
 (WASD flies, Shift faster) · O spawn an orc at the cursor · F3 performance HUD ·
 F4 chunk borders + dirty rects
 
@@ -38,8 +39,9 @@ Things to try: pour water then lava on it (obsidian + steam) · oil on water, th
 ignite · a bomb in a wooden structure (paint wood with Q/E) · mine under a sand
 pocket · melt a hole in rock with the heat gun · freeze a lake, watch it thaw ·
 find a greenish methane pocket underground and set it off (bomb or heat gun) ·
-build a wooden tree (Spawner, wood) and light its base: it burns in place, the
-crown collapses in flames, and burning debris can start a grass fire ·
+set a forest alight: fire climbs the trunks, embers blow downwind into the next
+canopy, burning branches fall · chop through a trunk with the pickaxe ·
+run and dash through tall grass and watch it part and wobble back ·
 the HUD shows the material and temperature under the cursor ·
 edit `materials.ron` or `creatures/player.ron` while the game runs.
 
@@ -49,6 +51,7 @@ edit `materials.ron` or `creatures/player.ron` while the game runs.
 cargo test --workspace --release        # sim, physics, worldgen behaviour (headless, seconds)
 cargo run -p platypus_bench --release   # sim budgets; exits non-zero on regression
 PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, prints frame stats
+PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
 Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`. Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to

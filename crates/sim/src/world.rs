@@ -9,7 +9,7 @@ use crate::coords::{CHUNK, CellPos, ChunkPos, Rect};
 use crate::edit::{EditReport, WorldEdit, disc};
 use crate::material::{ExplosionDef, Kind, MatPhys, MaterialId, MaterialTable};
 use crate::particles::{self, Landing, Particle, ParticleWorld};
-use crate::rng::Rng;
+use crate::rng::{Rng, hash};
 use crate::step::{StepStats, step_chunks};
 use crate::store;
 
@@ -39,7 +39,16 @@ pub struct World {
     pending_explosions: Vec<(CellPos, ExplosionDef)>,
     /// Tiles where the simulation destroyed solids, awaiting a fragment check.
     pending_fragment_tiles: Vec<CellPos>,
+    /// Same, for the background layer.
+    pending_bg_tiles: Vec<CellPos>,
     particles: Vec<Particle>,
+}
+
+/// Which grid a ground check looks at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Layer {
+    Front,
+    Back,
 }
 
 impl World {
@@ -53,6 +62,7 @@ impl World {
             climate: Climate::default(),
             pending_explosions: Vec::new(),
             pending_fragment_tiles: Vec::new(),
+            pending_bg_tiles: Vec::new(),
             particles: Vec::new(),
         }
     }
@@ -189,6 +199,37 @@ impl World {
         true
     }
 
+    pub fn get_bg(&self, p: CellPos) -> Option<Cell> {
+        let (lx, ly) = p.local();
+        self.chunks.get(&p.chunk()).map(|c| c.get_bg(lx, ly))
+    }
+
+    /// Write one background cell, waking its neighbourhood across chunk borders.
+    pub fn set_bg(&mut self, p: CellPos, cell: Cell) -> bool {
+        let Some(chunk) = self.chunks.get_mut(&p.chunk()) else { return false };
+        let (lx, ly) = p.local();
+        chunk.set_bg(lx, ly, cell);
+        let (lx, ly) = (lx as i32, ly as i32);
+        if lx == 0 || ly == 0 || lx == CHUNK - 1 || ly == CHUNK - 1 {
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    let q = p.offset(dx, dy);
+                    if let Some(n) = self.chunks.get(&q.chunk()) {
+                        let (qx, qy) = q.local();
+                        n.wake(Rect { min_x: qx as i32, min_y: qy as i32, max_x: qx as i32, max_y: qy as i32 });
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    /// Wind this tick: -1 (hard left) … 1 (hard right). Smooth, seeded,
+    /// computed with plain arithmetic so every peer gets the same value.
+    pub fn wind(&self) -> f32 {
+        wind_at(self.seed, self.tick)
+    }
+
     // ---- edits ------------------------------------------------------------
 
     /// Queue an edit for the start of the next tick.
@@ -245,15 +286,23 @@ impl World {
         }
     }
 
+    /// Removes the playfield cell, or where that is empty, the background.
     fn dig(&mut self, center: CellPos, radius: i32, max_hardness: u8, report: &mut EditReport) {
         let mats = self.materials.clone();
         for p in disc(center, radius) {
             let Some(old) = self.get(p) else { continue };
-            if old.is_air() || mats.phys(old.material).hardness > max_hardness {
-                continue;
+            if !old.is_air() {
+                if mats.phys(old.material).hardness <= max_hardness {
+                    report.add_removed(old.material);
+                    self.set(p, Cell::AIR);
+                }
+            } else if let Some(b) = self.get_bg(p)
+                && !b.is_air()
+                && mats.phys(b.material).hardness <= max_hardness
+            {
+                report.add_removed(b.material);
+                self.set_bg(p, Cell::AIR);
             }
-            report.add_removed(old.material);
-            self.set(p, Cell::AIR);
         }
     }
 
@@ -261,9 +310,12 @@ impl World {
         let mats = self.materials.clone();
         let mut rng = self.rng_for(0x3113, center);
         for p in disc(center, radius) {
-            let Some(mut c) = self.get(p) else { continue };
+            let Some(front) = self.get(p) else { continue };
+            // The playfield first; where it's empty, the background (trees, walls).
+            let back = front.is_air();
+            let mut c = if back { self.get_bg(p).unwrap_or(Cell::AIR) } else { front };
             let ph = mats.phys(c.material);
-            if c.is_air() || !matches!(ph.kind, Kind::Static | Kind::Powder) || ph.hardness > max_hardness || ph.hardness == u8::MAX {
+            if c.is_air() || !matches!(ph.kind, Kind::Static | Kind::Powder | Kind::Plant) || ph.hardness > max_hardness || ph.hardness == u8::MAX {
                 continue;
             }
             // Centre digs faster than the rim, so holes come out round.
@@ -272,7 +324,11 @@ impl World {
             let total = c.life as u32 + dmg;
             if total >= ph.hardness.max(1) as u32 {
                 report.add_removed(c.material);
-                self.set(p, Cell::AIR);
+                if back {
+                    self.set_bg(p, Cell::AIR);
+                } else {
+                    self.set(p, Cell::AIR);
+                }
                 if rng.chance(DUST_CHANCE) {
                     let mut dust = c;
                     dust.flags = 0;
@@ -283,7 +339,11 @@ impl World {
                 }
             } else if dmg > 0 {
                 c.life = total as u8;
-                self.set(p, c);
+                if back {
+                    self.set_bg(p, c);
+                } else {
+                    self.set(p, c);
+                }
             }
         }
     }
@@ -310,6 +370,19 @@ impl World {
             let Some(c) = self.get(p) else { continue };
             let ph = *mats.phys(c.material);
             let d = distance(center, p);
+            // Background: blown away inside the radius, set alight at the rim.
+            if let Some(b) = self.get_bg(p)
+                && !b.is_air()
+            {
+                let bp = *mats.phys(b.material);
+                let force = power as f32 * (1.0 - 0.5 * (d / r).powi(2));
+                if d <= r && breakable(bp.hardness) && bp.hardness as f32 <= force {
+                    report.add_removed(b.material);
+                    self.set_bg(p, Cell::AIR);
+                } else if bp.flammability > 0 && rng.chance(bp.flammability.saturating_mul(4)) {
+                    self.ignite_bg_cell(p, &bp);
+                }
+            }
             if d <= r {
                 let force = power as f32 * (1.0 - 0.5 * (d / r).powi(2));
                 let mut now_air = c.is_air();
@@ -415,12 +488,32 @@ impl World {
                 self.ignite_cell(p, &ph, &mut rng);
                 report.placed += 1;
             }
+            if let Some(b) = self.get_bg(p)
+                && !b.is_air()
+                && mats.phys(b.material).flammability > 0
+            {
+                let bp = *mats.phys(b.material);
+                self.ignite_bg_cell(p, &bp);
+                report.placed += 1;
+            }
+        }
+    }
+
+    fn ignite_bg_cell(&mut self, p: CellPos, ph: &MatPhys) {
+        if let Some(mut b) = self.get_bg(p)
+            && !b.is_air()
+            && b.flags & flags::BURNING == 0
+        {
+            b.flags |= flags::BURNING;
+            b.life = ph.burn_time;
+            self.set_bg(p, b);
         }
     }
 
     fn loosen_if_removed(&mut self, center: CellPos, reach: i32, report: &EditReport) {
         if !report.removed.is_empty() {
             self.loosen_fragments(center, reach);
+            self.loosen_around(center, reach, &mut FxHashSet::default(), Layer::Back);
         }
     }
 
@@ -432,30 +525,47 @@ impl World {
     /// unloaded world, or to more than `ANCHOR_BUDGET` cells of solid. A piece
     /// hanging by a diagonal corner is not attached.
     pub fn loosen_fragments(&mut self, center: CellPos, reach: i32) -> usize {
-        self.loosen_around(center, reach, &mut FxHashSet::default())
+        self.loosen_around(center, reach, &mut FxHashSet::default(), Layer::Front)
     }
 
     /// `anchored` is shared across calls in one tick, so ground explored by
     /// one check is known to the next.
-    fn loosen_around(&mut self, center: CellPos, reach: i32, anchored: &mut FxHashSet<CellPos>) -> usize {
+    ///
+    /// Background pieces count as held up where they rest against solid
+    /// playfield (a trunk's base in the ground, a cave wall behind rock); a
+    /// detached background piece drops into the playfield (`drop_background`).
+    fn loosen_around(&mut self, center: CellPos, reach: i32, anchored: &mut FxHashSet<CellPos>, layer: Layer) -> usize {
         let mats = self.materials.clone();
         enum Probe {
             Solid,
             Anchor,
             Open,
         }
-        let probe = |w: &World, p: CellPos| match w.get(p) {
-            None => Probe::Anchor, // world edge / unloaded
-            Some(c) => {
-                let ph = mats.phys(c.material);
-                if ph.kind != Kind::Static || c.flags & flags::LOOSE != 0 {
-                    Probe::Open
-                } else if ph.hardness == u8::MAX {
-                    Probe::Anchor // bedrock
-                } else {
-                    Probe::Solid
+        let front_solid = |c: Cell| {
+            let ph = mats.phys(c.material);
+            matches!(ph.kind, Kind::Static | Kind::Powder) && c.flags & flags::LOOSE == 0
+        };
+        let probe = |w: &World, p: CellPos| match layer {
+            Layer::Front => match w.get(p) {
+                None => Probe::Anchor, // world edge / unloaded
+                Some(c) => {
+                    let ph = mats.phys(c.material);
+                    if ph.kind != Kind::Static || c.flags & flags::LOOSE != 0 {
+                        Probe::Open
+                    } else if ph.hardness == u8::MAX {
+                        Probe::Anchor // bedrock
+                    } else {
+                        Probe::Solid
+                    }
                 }
-            }
+            },
+            Layer::Back => match (w.get_bg(p), w.get(p)) {
+                (None, _) | (_, None) => Probe::Anchor,
+                (Some(b), _) if b.is_air() => Probe::Open,
+                (Some(b), _) if mats.phys(b.material).hardness == u8::MAX => Probe::Anchor,
+                (Some(_), Some(f)) if front_solid(f) => Probe::Anchor,
+                _ => Probe::Solid,
+            },
         };
 
         let mut loosened = 0;
@@ -509,12 +619,17 @@ impl World {
                     anchored.extend(stack.iter().copied());
                     continue;
                 }
+                if layer == Layer::Back {
+                    self.drop_background(&piece);
+                }
                 for &p in &piece {
-                    if let Some(mut c) = self.get(p) {
+                    if layer == Layer::Front
+                        && let Some(mut c) = self.get(p)
+                    {
                         c.flags |= flags::LOOSE;
                         self.set(p, c);
-                        loosened += 1;
                     }
+                    loosened += 1;
                     // Whatever this piece held up, even by a corner, may be next.
                     for (ox, oy) in [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)] {
                         seeds.push(p.offset(ox, oy));
@@ -523,6 +638,39 @@ impl World {
             }
         }
         loosened
+    }
+
+    /// A background piece that lost its hold falls into the playfield: wood
+    /// and the like as loose rubble (still burning if it was), leaves as a
+    /// flurry that drifts down and is gone.
+    fn drop_background(&mut self, piece: &[CellPos]) {
+        let mats = self.materials.clone();
+        let mut rng = self.rng_for(0xFA11, piece[0]);
+        for &p in piece {
+            let Some(b) = self.get_bg(p) else { continue };
+            self.set_bg(p, Cell::AIR);
+            let open = self.get(p).is_some_and(|f| {
+                f.is_air() || matches!(mats.phys(f.material).kind, Kind::Gas | Kind::Fire | Kind::Plant)
+            });
+            if !open {
+                continue;
+            }
+            let ph = mats.phys(b.material);
+            if ph.kind == Kind::Plant {
+                if rng.chance(90) {
+                    let vx = (rng.next_u8() as f32 / 255.0 - 0.5) * 0.6;
+                    let mut leaf = Particle::new(center_of(p), [vx, 0.0], b, 60 + rng.next_u8() as u16 / 2, Landing::Vanish);
+                    leaf.gravity = 0.15;
+                    self.particles.push(leaf);
+                }
+            } else {
+                let mut c = b;
+                if ph.kind == Kind::Static {
+                    c.flags |= flags::LOOSE;
+                }
+                self.set(p, c);
+            }
+        }
     }
 
     // ---- time -------------------------------------------------------------
@@ -534,9 +682,11 @@ impl World {
         }
         self.detonate_pending();
         self.tick += 1;
-        let stats = step_chunks(&mut self.chunks, &self.materials, self.seed, self.tick, self.climate);
+        let wind = self.wind();
+        let stats = step_chunks(&mut self.chunks, &self.materials, self.seed, self.tick, self.climate, wind);
         self.pending_explosions.extend(stats.explosions.iter().copied());
-        self.check_broken(&stats.broken);
+        self.check_broken(&stats.broken, Layer::Front);
+        self.check_broken(&stats.broken_bg, Layer::Back);
         self.particles.extend(stats.particles.iter().copied());
         let mut flying = std::mem::take(&mut self.particles);
         particles::step(&mut flying, &mut ParticleCtx { world: self });
@@ -547,21 +697,25 @@ impl World {
 
     /// Fire, melting and acid destroy solids inside the step; afterwards,
     /// loosen whatever those losses left hanging (same rule as for edits).
-    fn check_broken(&mut self, broken: &[CellPos]) {
+    fn check_broken(&mut self, broken: &[CellPos], layer: Layer) {
         let tiles = broken.iter().map(|p| CellPos::new(p.x >> FRAGMENT_TILE_BITS, p.y >> FRAGMENT_TILE_BITS));
-        self.pending_fragment_tiles.extend(tiles);
-        if self.pending_fragment_tiles.is_empty() {
+        let pending = match layer {
+            Layer::Front => &mut self.pending_fragment_tiles,
+            Layer::Back => &mut self.pending_bg_tiles,
+        };
+        pending.extend(tiles);
+        if pending.is_empty() {
             return;
         }
-        self.pending_fragment_tiles.sort();
-        self.pending_fragment_tiles.dedup();
-        let n = self.pending_fragment_tiles.len().min(MAX_FRAGMENT_CHECKS_PER_TICK);
-        let now: Vec<CellPos> = self.pending_fragment_tiles.drain(..n).collect();
+        pending.sort();
+        pending.dedup();
+        let n = pending.len().min(MAX_FRAGMENT_CHECKS_PER_TICK);
+        let now: Vec<CellPos> = pending.drain(..n).collect();
         let half = 1 << (FRAGMENT_TILE_BITS - 1);
         let mut anchored = FxHashSet::default();
         for t in now {
             let center = CellPos::new((t.x << FRAGMENT_TILE_BITS) + half, (t.y << FRAGMENT_TILE_BITS) + half);
-            self.loosen_around(center, half + 2, &mut anchored);
+            self.loosen_around(center, half + 2, &mut anchored, layer);
         }
     }
 
@@ -641,6 +795,34 @@ impl ParticleWorld for ParticleCtx<'_> {
         let mut rng = self.world.rng_for(0xE3BE, p);
         self.world.ignite_cell(p, &ph, &mut rng);
     }
+
+    fn wind(&self) -> f32 {
+        self.world.wind()
+    }
+
+    fn ember_over(&mut self, p: CellPos, life: u16) {
+        let Some(b) = self.world.get_bg(p) else { return };
+        if b.is_air() || b.flags & flags::BURNING != 0 {
+            return;
+        }
+        let bp = *self.world.materials.phys(b.material);
+        let mut rng = Rng::seeded(&[self.world.seed, self.world.tick, 0xE3B6, p.x as u64, p.y as u64, life as u64]);
+        if bp.flammability > 0 && rng.chance(bp.flammability / 4 + 1) {
+            self.world.ignite_bg_cell(p, &bp);
+        }
+    }
+}
+
+/// Two octaves of smoothly interpolated seeded noise over time. Only +, −, ×,
+/// ÷ — no trig — so it is bit-identical on every platform.
+fn wind_at(seed: u64, tick: u64) -> f32 {
+    let octave = |period: u64, salt: u64| {
+        let (i, f) = (tick / period, (tick % period) as f32 / period as f32);
+        let v = |k: u64| (hash(&[seed, salt, k]) >> 40) as f32 / (1u64 << 24) as f32 * 2.0 - 1.0;
+        let t = f * f * (3.0 - 2.0 * f);
+        v(i) + (v(i + 1) - v(i)) * t
+    };
+    (0.75 * octave(1_800, 0x71ED) + 0.25 * octave(240, 0x6057)).clamp(-1.0, 1.0)
 }
 
 fn distance(a: CellPos, b: CellPos) -> f32 {

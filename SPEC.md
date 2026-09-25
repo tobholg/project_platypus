@@ -135,6 +135,27 @@ loaded world. Sources: explosions (hot debris thrown up and out of the crater,
 sparks), mining (dust), burning cells (embers — how fire jumps gaps), creature
 deaths (blood). Rendered as one dynamic mesh.
 
+### 3.10 Background layer, plants, wind
+- Every chunk has a second grid behind the playfield (`Chunk::background`):
+  cave walls, tree trunks, branches, leaves. Creatures pass in front of it and
+  liquids ignore it. It is stored and checksummed with the playfield.
+- Tools and edits reach the background where the playfield is empty (you chop
+  a tree by mining its trunk); explosions hit both; fire spreads between the
+  layers (burning background puts flames into the air in front of it).
+- A background piece is held up where it rests against solid playfield (a
+  trunk rooted in the ground, a wall behind rock). A detached piece drops into
+  the playfield: wood as loose rubble (still burning if it was), leaves as a
+  falling flurry. Rigid bodies will later make chopped trees topple instead.
+- `Kind::Plant` (tall grass, leaves): doesn't block creatures, burns readily,
+  is crushed by falling powder and flowing liquid, withers without support.
+- Wind: seeded, smooth, computed without trig (bit-identical across
+  platforms). It biases gas drift and flames, and pushes light particles;
+  embers blowing through a canopy can light it.
+- Plant sway is rendering only: plant pixels are drawn shifted by wind, a
+  travelling wave, and springs that creatures excite as they move through
+  (2×8-cell tiles, underdamped). Cells never move, so sway costs the
+  simulation nothing and never keeps a region awake.
+
 ## 4. Rendering
 
 - One texture + one sprite per loaded chunk (~100 entities on screen, not

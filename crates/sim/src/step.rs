@@ -25,6 +25,7 @@ use crate::rules;
 #[derive(Clone, Copy)]
 pub(crate) struct ChunkRaw {
     cells: *mut Cell,
+    bg: *mut Cell,
     next_dirty: *const AtomicRect,
     render_dirty: *const AtomicBool,
     modified: *const AtomicBool,
@@ -40,6 +41,7 @@ impl ChunkRaw {
     pub(crate) fn of(chunk: &mut Chunk) -> Self {
         ChunkRaw {
             cells: chunk.cells.as_mut_ptr(),
+            bg: chunk.bg.as_mut_ptr(),
             next_dirty: &chunk.next_dirty,
             render_dirty: &chunk.render_dirty,
             modified: &chunk.modified,
@@ -67,6 +69,10 @@ pub(crate) struct Hood<'a> {
     pub broken: Vec<CellPos>,
     /// Particles emitted this tick (embers).
     pub particles: Vec<Particle>,
+    /// Background cells destroyed this tick (burned out).
+    pub broken_bg: Vec<CellPos>,
+    /// Wind this tick: -1 (hard left) … 1 (hard right).
+    pub wind: f32,
 }
 
 const LOCAL_MASK: i32 = CHUNK - 1;
@@ -101,6 +107,28 @@ impl<'a> Hood<'a> {
         unsafe { *c.cells.add(i) = cell };
         self.touched |= 1 << s;
         self.wake(lx, ly);
+    }
+
+    /// Background cell; `None` = chunk not loaded.
+    #[inline(always)]
+    pub fn get_bg(&self, lx: i32, ly: i32) -> Option<Cell> {
+        let (s, i) = Self::slot(lx, ly);
+        // SAFETY: see module docs (the background follows the same reach rule).
+        self.chunks[s].map(|c| unsafe { *c.bg.add(i) })
+    }
+
+    #[inline(always)]
+    pub fn set_bg(&mut self, lx: i32, ly: i32, cell: Cell) {
+        let (s, i) = Self::slot(lx, ly);
+        let Some(c) = self.chunks[s] else { return };
+        // SAFETY: see module docs.
+        unsafe { *c.bg.add(i) = cell };
+        self.touched |= 1 << s;
+        self.wake(lx, ly);
+    }
+
+    pub fn note_broken_bg(&mut self, lx: i32, ly: i32) {
+        self.broken_bg.push(self.origin.offset(lx, ly));
     }
 
     /// Schedule the 3×3 around a cell for next tick without changing it.
@@ -157,7 +185,7 @@ impl<'a> Hood<'a> {
                 }
             }
         }
-        JobOutput { explosions: self.explosions, broken: self.broken, particles: self.particles }
+        JobOutput { explosions: self.explosions, broken: self.broken, broken_bg: self.broken_bg, particles: self.particles }
     }
 }
 
@@ -173,6 +201,8 @@ pub struct StepStats {
     pub broken: Vec<CellPos>,
     /// Particles the simulation emitted this tick (the world takes them).
     pub particles: Vec<Particle>,
+    /// Background cells the simulation destroyed this tick.
+    pub broken_bg: Vec<CellPos>,
 }
 
 /// What one job reports back to the world.
@@ -180,6 +210,7 @@ pub struct StepStats {
 struct JobOutput {
     explosions: Vec<(CellPos, ExplosionDef)>,
     broken: Vec<CellPos>,
+    broken_bg: Vec<CellPos>,
     particles: Vec<Particle>,
 }
 
@@ -189,6 +220,7 @@ pub(crate) fn step_chunks(
     seed: u64,
     tick: u64,
     climate: Climate,
+    wind: f32,
 ) -> StepStats {
     let clock = tick as u8;
     let mut raws: FxHashMap<ChunkPos, ChunkRaw> = FxHashMap::default();
@@ -224,6 +256,8 @@ pub(crate) fn step_chunks(
                 explosions: Vec::new(),
                 broken: Vec::new(),
                 particles: Vec::new(),
+                broken_bg: Vec::new(),
+                wind,
             };
             update_rect(&mut hood, rect);
             hood.finish()
@@ -233,6 +267,7 @@ pub(crate) fn step_chunks(
             stats.explosions.extend(out.explosions);
             stats.broken.extend(out.broken);
             stats.particles.extend(out.particles);
+            stats.broken_bg.extend(out.broken_bg);
         }
     }
     stats
@@ -245,6 +280,10 @@ fn update_rect(h: &mut Hood, r: Rect) {
         let left_to_right = (y as u64 + h.tick) & 1 == 0;
         for i in 0..=(r.max_x - r.min_x) {
             let x = if left_to_right { r.min_x + i } else { r.max_x - i };
+            let b = h.get_bg(x, y).expect("centre chunk is loaded");
+            if b.flags & flags::BURNING != 0 {
+                rules::burn_background(h, x, y, b);
+            }
             let c = h.get(x, y).expect("centre chunk is loaded");
             if !h.mats.phys(c.material).active && c.flags & (flags::LOOSE | flags::BURNING) == 0 && c.heat == 0 {
                 continue;
