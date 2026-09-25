@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use platypus_sim::{CHUNK, CellPos, ChunkPos, MaterialTable, World, WorldEdit};
-use platypus_worldgen::{ChunkGenerator, FlatGen, Preset, TerrainGen};
+use platypus_worldgen::{Band, ChunkGenerator, FlatGen, Preset, TerrainGen};
 use rayon::prelude::*;
 
 /// The region a 1080p screen at 3 px/cell needs (640×360 cells) plus a margin.
@@ -120,20 +120,31 @@ fn avalanche(m: &Arc<MaterialTable>) -> Outcome {
 /// Cost of bringing a new column of chunks into view (generation + insert).
 fn streaming(m: &Arc<MaterialTable>) -> Outcome {
     let g = TerrainGen::new(77, Preset::Large, m);
-    let mut w = World::new(77, m.clone());
     let cy = g.surface_at(64 * CHUNK) / CHUNK - VIEW_H / 2;
+    stream_columns(m, &g, cy, "streaming", "at the surface")
+}
+
+/// The same deep underground (caverns: the most noise per cell).
+fn streaming_deep(m: &Arc<MaterialTable>) -> Outcome {
+    let g = TerrainGen::new(77, Preset::Large, m);
+    let (lo, hi) = g.plan().band_span(Band::Caverns);
+    stream_columns(m, &g, (lo + hi) / 2 / CHUNK, "stream_deep", "in the caverns")
+}
+
+fn stream_columns(m: &Arc<MaterialTable>, g: &TerrainGen, cy: i32, name: &'static str, place: &str) -> Outcome {
+    let mut w = World::new(77, m.clone());
     let (mut total, mut worst) = (Duration::ZERO, Duration::ZERO);
     let columns = 40;
     for i in 0..columns {
         let t = Instant::now();
-        load_region(&mut w, &g, ChunkPos::new(40 + i, cy), 1, VIEW_H);
+        load_region(&mut w, g, ChunkPos::new(40 + i, cy), 1, VIEW_H);
         let d = t.elapsed();
         total += d;
         worst = worst.max(d);
     }
     Outcome {
-        name: "streaming",
-        what: format!("{VIEW_H}-chunk column generated + inserted, {columns} columns"),
+        name,
+        what: format!("{VIEW_H}-chunk column generated + inserted {place}, {columns} columns"),
         avg: total / columns as u32,
         worst,
         budget: Duration::from_millis(4),
@@ -144,8 +155,8 @@ fn main() {
     let only = std::env::args().nth(1);
     let m = materials();
     type Scenario = fn(&Arc<MaterialTable>) -> Outcome;
-    let scenarios: [(&str, Scenario); 4] =
-        [("settled", settled), ("deep", deep), ("avalanche", avalanche), ("streaming", streaming)];
+    let scenarios: [(&str, Scenario); 5] =
+        [("settled", settled), ("deep", deep), ("avalanche", avalanche), ("streaming", streaming), ("stream_deep", streaming_deep)];
     println!("platypus_bench — {} worker threads\n", rayon::current_num_threads());
     println!("{:<11} {:>10} {:>10} {:>10}", "scenario", "avg", "worst", "budget");
     let mut failed = false;

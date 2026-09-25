@@ -111,6 +111,10 @@ const ISLANDS: f64 = 12.0;
 /// How far either side a lake's rims are looked for (large world): wider
 /// valleys are dry land, not one giant lake.
 const LAKE_REACH: f64 = 1_200.0;
+const CHASMS: f64 = 5.0;
+const CHASM_WIDTH: (f64, f64) = (110.0, 240.0);
+/// Columns sharing one cavern water table.
+const WATER_TABLE_SPAN: i32 = 2_048;
 /// Height of a mountain's cliff bands (large world).
 const TERRACE: f64 = 70.0;
 
@@ -131,6 +135,11 @@ pub struct WorldPlan {
     /// 0 … 1: how mountainous a column is (overhangs, bare rock).
     rugged: Vec<f32>,
     pub islands: Vec<Island>,
+    /// Vertical shafts from the surface down into the deep.
+    pub chasms: Vec<Chasm>,
+    /// The water table in the caverns, per `WATER_TABLE_SPAN` columns:
+    /// cavern chambers below it are flooded.
+    water_tables: Vec<i32>,
     pub climate: Climate,
     pub forest: Forest,
     /// Trees on the sky islands.
@@ -369,6 +378,37 @@ impl WorldPlan {
             (90.0 * sw.max(0.5), 240.0 * sw.max(0.5)),
         );
 
+        // Chasms: a few shafts from the lowland surface down into the deep,
+        // away from the spawn, lakes and mountains, wandering as they fall.
+        let mut chasms: Vec<Chasm> = Vec::new();
+        for k in 0..(CHASMS * sw).round().max(2.0) as usize {
+            for _try in 0..200 {
+                let x = ocean_w + 400 + (unit(&mut rng) * (width - 2 * ocean_w - 800) as f64) as i32;
+                let w = range(&mut rng, CHASM_WIDTH) * sw.max(0.5);
+                let dry = (x - 200..x + 200).all(|x| water[x.clamp(0, width - 1) as usize] == 0 && rugged[x.clamp(0, width - 1) as usize] < 0.15);
+                let clear = (x - mid).abs() > (SPAWN_CLEAR * sw) as i32 && chasms.iter().all(|c| (c.x - x).abs() > (2_000.0 * sw) as i32);
+                if !dry || !clear {
+                    continue;
+                }
+                chasms.push(Chasm {
+                    x,
+                    top: surface[x as usize],
+                    bottom: band_floors[5] + (400.0 * sh) as i32,
+                    width: w,
+                    wander: 250.0 * sw.max(0.5),
+                    noise: Perlin::new(s(40 + k as u64)),
+                });
+                break;
+            }
+        }
+        chasms.sort_by_key(|c| c.x);
+        let water_tables: Vec<i32> = (0..=width / WATER_TABLE_SPAN)
+            .map(|i| {
+                let (lo, hi) = (band_floors[4], band_floors[3]);
+                lo + ((hi - lo) as f64 * (0.1 + 0.35 * (hash(&[seed, 0x7AB1E, i as u64]) % 1000) as f64 / 1000.0)) as i32
+            })
+            .collect();
+
         let forest = {
             let at = |x: i32| surface[x.clamp(0, width - 1) as usize];
             let lush = blur(&biomes.iter().map(|&b| b.lushness()).collect::<Vec<_>>(), blend);
@@ -376,6 +416,7 @@ impl WorldPlan {
                 let i = x as usize;
                 let b = biomes[i];
                 hash(&[seed, 0x72EE, x as u64]) % 256 < b.trees()
+                    && chasms.iter().all(|c| (x - c.x).abs() as f64 > c.width * 1.5 + 80.0)
                     && water[i] <= surface[i]
                     && climate.ambient(x, surface[i]) >= TREE_LINE
                     && (at(x - 3) - at(x + 3)).abs() < 7
@@ -397,7 +438,7 @@ impl WorldPlan {
             )
         };
 
-        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, water, rugged, islands, climate, forest, island_forest }
+        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, water, rugged, islands, chasms, water_tables, climate, forest, island_forest }
     }
 
     /// First air cell above the ground at a world column.
@@ -424,6 +465,16 @@ impl WorldPlan {
     pub fn island_at(&self, x: i32) -> Option<&Island> {
         let i = self.islands.partition_point(|i| i.x0 + i.w <= x);
         self.islands.get(i).filter(|i| x >= i.x0)
+    }
+
+    /// Is a cell inside a chasm?
+    pub fn chasm_at(&self, x: i32, y: i32) -> bool {
+        self.chasms.iter().any(|c| c.open(x, y))
+    }
+
+    /// Cavern chambers below this height are flooded.
+    pub fn water_table(&self, x: i32) -> i32 {
+        self.water_tables[(x.max(0) / WATER_TABLE_SPAN) as usize % self.water_tables.len()]
     }
 
     /// The band a height lies in.
@@ -467,7 +518,45 @@ impl WorldPlan {
         for i in &self.islands {
             h = hash(&[h, i.x0 as u64, i.y0 as u64, i.w as u64, i.h as u64]);
         }
+        for c in &self.chasms {
+            h = hash(&[h, c.x as u64, c.top as u64, c.bottom as u64, c.width.to_bits()]);
+        }
+        h = hash(&[h, fold(&mut self.water_tables.iter().map(|&v| v as u64))]);
         h
+    }
+}
+
+/// A vertical shaft: opens as a funnel at the surface, wanders sideways,
+/// narrows and widens (ledges), and ends in the deep.
+pub struct Chasm {
+    pub x: i32,
+    pub top: i32,
+    pub bottom: i32,
+    /// Typical width (cells).
+    pub width: f64,
+    /// How far it wanders from `x` (cells).
+    pub wander: f64,
+    noise: Perlin,
+}
+
+impl Chasm {
+    /// Centre and width at a height.
+    pub fn at(&self, y: i32) -> (f64, f64) {
+        let yf = y as f64;
+        let centre = self.x as f64 + self.noise.get([yf / 700.0, 0.5]) * self.wander;
+        let mut w = self.width * (0.55 + 0.9 * (self.noise.get([yf / 260.0, 7.3]) * 0.5 + 0.5));
+        // A funnel at the top, a tapering end at the bottom.
+        w *= 1.0 + 1.5 * smoothstep(self.top as f64 - 220.0, self.top as f64, yf);
+        w *= smoothstep(self.bottom as f64, self.bottom as f64 + 300.0, yf).max(0.15);
+        (centre, w)
+    }
+
+    pub fn open(&self, x: i32, y: i32) -> bool {
+        if y > self.top + 40 || y < self.bottom || (x - self.x).abs() as f64 > self.wander + self.width * 3.0 {
+            return false;
+        }
+        let (c, w) = self.at(y);
+        (x as f64 - c).abs() < w / 2.0
     }
 }
 

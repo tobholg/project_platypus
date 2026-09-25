@@ -146,8 +146,30 @@ checksums.
   column; each rasterised once at plan time into a stamp (grass, dirt, stone,
   a walker-carved cave), so chunks stay pure; trees on them from a second
   forest plan.
+- Underground (stage 3), by band:
+  - underground: worm tunnels at two scales, small caves (fewer than
+    before: 0.26 threshold), sand and gravel pockets, coal, small pools of
+    water or oil;
+  - caverns: huge chambers (wider than tall) with stalactites and pillars
+    (vertically streaked noise), fading in over the band's top 300 cells;
+    chambers below the regional water table (one per 2 048 columns) are
+    flooded: underground lakes;
+  - deep: slate (with obsidian seams), chambers, lava pools;
+  - underworld: basalt; a vault with a ragged, dripping roof, basalt islands
+    hanging in it, and a lava sea at one flat level (asleep on load, the
+    bench's 80 000 lava cells settle in 122 ticks); obsidian crusts where
+    rock meets the lava.
+  - Chasms: about five shafts from the lowland surface (away from the spawn,
+    lakes and mountains; no trees at their lips) down into the deep, 110–240
+    wide, wandering ±250, narrowing and widening (ledges), funnel-shaped at
+    the top: the long descent.
+  - Rock and walls follow the band (stone, slate, basalt), dithered at the
+    borders. Slate melts at 1 500 °C and basalt at 1 650 °C, above what a lava
+    sea heats them to.
+  - Cost: a caverns chunk takes ~2.6× a surface chunk to generate (8-chunk
+    column 1.8 ms vs 0.7 ms, bench `stream_deep`).
 - Not yet: waterfalls, jungle and swamp materials (mud, vines), tree species,
-  the new underground (stage 3).
+  crystal and mushroom caves (with ores and gems, stage 5).
 
 ### 3.5 Streaming and persistence
 Chunks load around every player (co-op: the union). Missing chunks come from

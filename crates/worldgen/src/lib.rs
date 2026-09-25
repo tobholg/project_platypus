@@ -54,8 +54,9 @@ pub trait ChunkGenerator: Send + Sync {
     }
 }
 
-/// Noise-cave threshold: higher, fewer caves.
-const CAVE_THRESHOLD: f64 = 0.18;
+/// Noise-cave threshold near the surface and underground: higher, fewer
+/// caves (0.18 was cheese).
+const SMALL_CAVES: f64 = 0.26;
 /// How far mountain ground wanders from the planned surface (overhangs,
 /// arches, ledges), at full ruggedness.
 const OVERHANG: f64 = 34.0;
@@ -80,6 +81,8 @@ struct Ids {
     tall_grass: MaterialId,
     ice: MaterialId,
     sandstone: MaterialId,
+    slate: MaterialId,
+    basalt: MaterialId,
 }
 
 /// Terrain rasterised from a `WorldPlan`: hills with cliffs, dirt over
@@ -98,6 +101,12 @@ pub struct TerrainGen {
     leaf_edge: Perlin,
     meadow: Perlin,
     overhang: Fbm<Perlin>,
+    /// Big tunnels through the underground and caverns.
+    tunnels: Fbm<Perlin>,
+    /// Cavern chambers; stalactites and pillars; the underworld's vault.
+    caverns: Fbm<Perlin>,
+    drips: Perlin,
+    vault: Fbm<Perlin>,
 }
 
 impl TerrainGen {
@@ -128,6 +137,8 @@ impl TerrainGen {
             tall_grass: mats.expect_id("tall_grass"),
             ice: mats.expect_id("ice"),
             sandstone: mats.expect_id("sandstone"),
+            slate: mats.expect_id("slate"),
+            basalt: mats.expect_id("basalt"),
         };
 
         TerrainGen {
@@ -136,6 +147,10 @@ impl TerrainGen {
             leaf_edge: Perlin::new(s(7)),
             meadow: Perlin::new(s(8)),
             overhang: Fbm::<Perlin>::new(s(9)).set_octaves(3).set_frequency(1.0 / 60.0),
+            tunnels: Fbm::<Perlin>::new(s(14)).set_octaves(2).set_frequency(1.0 / 1_100.0),
+            caverns: Fbm::<Perlin>::new(s(15)).set_octaves(3).set_frequency(1.0 / 600.0),
+            drips: Perlin::new(s(16)),
+            vault: Fbm::<Perlin>::new(s(17)).set_octaves(3).set_frequency(1.0 / 400.0),
             caves: Fbm::<Perlin>::new(s(3)).set_octaves(4).set_frequency(1.0 / 160.0),
             worms: Fbm::<Perlin>::new(s(4)).set_octaves(3).set_frequency(1.0 / 260.0),
             pockets: Perlin::new(s(5)),
@@ -198,7 +213,7 @@ impl TerrainGen {
             return (i.stone, None);
         }
         let depth = self.surface_at(x) - y;
-        let wall = if depth > 16 { i.stone } else if depth > 6 { i.dirt } else { i.air };
+        let wall = if depth > 16 { self.rock(x, y, self.plan.band_at(y)) } else if depth > 6 { i.dirt } else { i.air };
         (wall, None)
     }
 
@@ -256,24 +271,17 @@ impl TerrainGen {
             return i.air;
         }
 
-        // Caves: blobby caverns plus long worm tunnels, fading in below the
-        // topsoil, and kept away from lake and ocean beds.
-        let under_water = plan.water_at(x).is_some();
-        let fade = ((depth as f64 - if under_water { 60.0 } else { 12.0 }) / 60.0).clamp(0.0, 1.0);
-        // Fewer caves up in the mountains than under the lowlands.
-        let above = ((y - plan.sea_level) as f64 / (600.0 * plan.height as f64 / 16_384.0)).clamp(0.0, 1.0);
-        let cave = self.caves.get([xf, yf * 1.6]) * fade - above * 0.14;
-        let worm = self.worms.get([xf, yf]).abs() + above * 0.03;
-        let open = cave > CAVE_THRESHOLD || (worm < 0.035 * fade && depth > 20);
-        let deep = plan.band_at(y) == Band::Underworld;
-        if open {
-            // Fill the bottoms of some caverns with a liquid pool.
-            let pool = self.pockets.get([xf / 90.0, yf / 90.0, 1.3]);
-            if above == 0.0 && pool > 0.35 && self.caves.get([xf, (yf - 10.0) * 1.6]) * fade <= CAVE_THRESHOLD {
-                return if deep { i.lava } else if pool > 0.62 { i.oil } else { i.water };
-            }
+        let band = plan.band_at(y);
+        if band == Band::Underworld {
+            return self.underworld(x, y);
+        }
+        if plan.chasm_at(x, y) {
             return i.air;
         }
+        if let Some(open) = self.cavity(x, y, depth, band) {
+            return open;
+        }
+        let under_water = plan.water_at(x).is_some();
 
         let biome = plan.biome_at(x);
         let soil = 8 + (self.strata.get([xf / 40.0, 0.5]) * 5.0) as i32;
@@ -316,22 +324,101 @@ impl TerrainGen {
         if depth > 90 && self.pockets.get([xf / 34.0, yf / 22.0, 23.3]) > 0.66 {
             return i.methane;
         }
-        // Pockets inside rock.
+        let shallow = matches!(band, Band::Sky | Band::Peaks | Band::Surface | Band::Underground);
+        // Pockets inside rock: sand and gravel up high, rarer below.
         let p = self.pockets.get([xf / 45.0, yf / 45.0, 7.1]);
-        if p > 0.55 && depth > 12 {
+        if p > if shallow { 0.55 } else { 0.7 } && depth > 12 {
             return i.sand;
         }
-        if p < -0.6 && depth > 12 {
+        if p < if shallow { -0.6 } else { -0.7 } && depth > 12 {
             return i.gravel;
         }
         let ore = self.pockets.get([xf / 18.0, yf / 18.0, 11.9]);
-        if ore > 0.62 {
+        if ore > 0.62 && band != Band::Deep {
             return i.coal;
         }
-        if deep && self.strata.get([xf / 70.0, yf / 70.0]) > 0.45 {
-            return i.obsidian;
+        self.rock(x, y, band)
+    }
+
+    /// The bedrock of a band: stone, then slate in the deep (with obsidian
+    /// seams), basalt in the underworld; borders dither over ~100 cells.
+    fn rock(&self, x: i32, y: i32, band: Band) -> MaterialId {
+        let i = &self.ids;
+        let (xf, yf) = (x as f64, y as f64);
+        let (deep_lo, deep_hi) = self.plan.band_span(Band::Deep);
+        let jitter = (self.strata.get([xf / 30.0, yf / 30.0]) * 60.0) as i32;
+        if band == Band::Underworld || y + jitter < deep_lo {
+            return i.basalt;
+        }
+        if y + jitter <= deep_hi {
+            if self.strata.get([xf / 70.0, yf / 70.0]) > 0.5 {
+                return i.obsidian;
+            }
+            return i.slate;
         }
         i.stone
+    }
+
+    /// Open space underground, and what fills it: worm tunnels everywhere,
+    /// big tunnels through the underground and caverns, small caves near the
+    /// top, huge chambers (with stalactites and pillars, flooded below the
+    /// water table) in the caverns and the deep; pools in the small ones.
+    fn cavity(&self, x: i32, y: i32, depth: i32, band: Band) -> Option<MaterialId> {
+        let i = &self.ids;
+        let plan = &*self.plan;
+        let (xf, yf) = (x as f64, y as f64);
+        let under_water = plan.water_at(x).is_some();
+        // Fading in below the topsoil, kept away from lake and ocean beds.
+        let fade = ((depth as f64 - if under_water { 60.0 } else { 12.0 }) / 60.0).clamp(0.0, 1.0);
+        if fade == 0.0 {
+            return None;
+        }
+        // Fewer caves up in the mountains than under the lowlands.
+        let above = ((y - plan.sea_level) as f64 / (600.0 * plan.height as f64 / 16_384.0)).clamp(0.0, 1.0);
+        let worm = self.worms.get([xf, yf]).abs() + above * 0.03 < 0.035 * fade && depth > 20;
+        let tunnel = matches!(band, Band::Underground | Band::Caverns) && self.tunnels.get([xf, yf * 1.2]).abs() < 0.016 * fade;
+        let small = matches!(band, Band::Peaks | Band::Surface | Band::Underground) && self.caves.get([xf, yf * 1.6]) * fade - above * 0.14 > SMALL_CAVES;
+        if matches!(band, Band::Caverns | Band::Deep) {
+            // Chambers, wider than tall; streaks of noise hang stalactites
+            // from their roofs and stand pillars in them.
+            // (Fading in over the band's top 300 cells.)
+            let entry = ((plan.band_span(Band::Caverns).1 - y) as f64 / 300.0).clamp(0.0, 1.0);
+            let drip = self.drips.get([xf / 7.0, yf / 60.0, 0.3]).abs();
+            let chamber = self.caverns.get([xf / 1.6, yf]) * (if band == Band::Caverns { entry } else { 1.0 }) - drip * 0.12 > 0.22;
+            if chamber {
+                return Some(if y < plan.water_table(x) && band == Band::Caverns { i.water } else { i.air });
+            }
+        }
+        if !(worm || tunnel || small) {
+            return None;
+        }
+        // Fill the bottoms of some small caves with a pool (never up high).
+        let pool = self.pockets.get([xf / 90.0, yf / 90.0, 1.3]);
+        if above == 0.0 && small && pool > 0.35 && self.caves.get([xf, (yf - 10.0) * 1.6]) * fade <= SMALL_CAVES {
+            return Some(if band == Band::Deep { i.lava } else if pool > 0.62 { i.oil } else { i.water });
+        }
+        Some(i.air)
+    }
+
+    /// The underworld: a lava sea under a huge vault with a ragged roof, rock
+    /// islands hanging in it.
+    fn underworld(&self, x: i32, y: i32) -> MaterialId {
+        let i = &self.ids;
+        let (xf, yf) = (x as f64, y as f64);
+        let (lo, hi) = self.plan.band_span(Band::Underworld);
+        let h = (hi - lo) as f64;
+        // One level, so the sea is asleep on load.
+        let lava = (lo as f64 + h * 0.2).floor();
+        let roof = hi as f64 - h * 0.15 + self.vault.get([xf, 3.3]) * h * 0.12 - self.drips.get([xf / 9.0, yf / 50.0, 1.7]).abs() * h * 0.05;
+        if yf > roof {
+            return self.rock(x, y, Band::Underworld);
+        }
+        // Islands: blobs of basalt, crusted with obsidian near the lava.
+        let island = self.vault.get([xf / 1.3, yf * 1.1 + 900.0]);
+        if island > 0.3 {
+            return if yf < lava + 30.0 { i.obsidian } else { i.basalt };
+        }
+        if yf < lava { i.lava } else { i.air }
     }
 }
 
@@ -565,6 +652,64 @@ mod tests {
             assert_eq!(g.material_at(s.x, s.y), MaterialId::AIR);
             assert_ne!(g.material_at(s.x, s.y - 3), MaterialId::AIR, "standing on ground");
         }
+    }
+
+    #[test]
+    fn chasms_run_from_the_surface_into_the_deep() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let p = g.plan();
+        assert!(p.chasms.len() >= 3, "{} chasms", p.chasms.len());
+        let (deep_lo, deep_hi) = p.band_span(Band::Deep);
+        for c in &p.chasms {
+            assert!(c.bottom > deep_lo && c.bottom < deep_hi, "chasm at {} ends in the deep", c.x);
+            // Open down its whole length: its centre is air every 50 cells.
+            let blocked: Vec<i32> = (c.bottom + 400..c.top - 10).step_by(50).filter(|&y| g.material_at(c.at(y).0 as i32, y) != MaterialId::AIR).collect();
+            assert!(blocked.is_empty(), "chasm at {} blocked at {:?}", c.x, &blocked[..blocked.len().min(5)]);
+        }
+    }
+
+    #[test]
+    fn each_band_has_its_rock_and_the_underworld_a_lava_sea() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let p = g.plan();
+        let share = |band: Band, id: MaterialId| {
+            let (lo, hi) = p.band_span(band);
+            let cells: Vec<MaterialId> = (0..400).map(|k| g.material_at(2_000 + k * 71, lo + (k * 37) % (hi - lo))).collect();
+            cells.iter().filter(|&&c| c == id).count() as f32 / cells.len() as f32
+        };
+        assert!(share(Band::Underground, m.expect_id("stone")) > 0.4);
+        assert!(share(Band::Deep, m.expect_id("slate")) > 0.4);
+        let (lo, hi) = p.band_span(Band::Underworld);
+        // The sea is flat (asleep on load) and a vault opens over it.
+        let level = (lo as f64 + (hi - lo) as f64 * 0.2).floor() as i32;
+        let lava = m.expect_id("lava");
+        let seas = (0..200).map(|k| 1_000 + k * 150).filter(|&x| g.material_at(x, level - 1) == lava).count();
+        assert!(seas > 120, "lava sea under most of the world ({seas} of 200)");
+        assert!((0..200).map(|k| 1_000 + k * 150).all(|x| g.material_at(x, level) != lava), "flat at {level}");
+        let open = (0..200).map(|k| 1_000 + k * 150).filter(|&x| g.material_at(x, level + 80) == MaterialId::AIR).count();
+        assert!(open > 120, "a vault over it ({open} of 200)");
+    }
+
+    #[test]
+    fn some_cavern_chambers_are_flooded() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let p = g.plan();
+        let (lo, hi) = p.band_span(Band::Caverns);
+        let water = m.expect_id("water");
+        let (mut wet, mut open) = (0, 0);
+        for x in (1_700..31_000).step_by(97) {
+            for y in (lo..hi).step_by(53) {
+                match g.material_at(x, y) {
+                    id if id == water => wet += 1,
+                    MaterialId::AIR => open += 1,
+                    _ => {}
+                }
+            }
+        }
+        assert!(open > 1_500 && wet > 200, "caverns: {open} open, {wet} flooded samples");
     }
 
     #[test]

@@ -39,6 +39,10 @@
         // a lone flame goes out), a crown or a blaze takes it (SPEC §3.8).
         (name: "wood",     kind: Static, density: 700,  hardness: 25,  flammability: 6, ignites_at: 280, conductivity: 12, burn_time: 225, spread: 2, fizzles: 40, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal", colors: [(58, 36, 20), (88, 58, 30), (118, 80, 42), (138, 96, 54)]),
         (name: "obsidian", kind: Static, density: 2800, hardness: 120, crumbles_into: "gravel", above: (1600, "lava"), colors: [(34, 18, 52), (52, 30, 74)]),
+        // The deep's rock: darker and harder than stone.
+        (name: "slate",    kind: Static, density: 2800, hardness: 80, crumbles_into: "gravel", above: (1500, "lava"), colors: [(62, 64, 76), (74, 76, 90), (56, 58, 68), (68, 70, 82)]),
+        // The underworld's rock: cooled lava.
+        (name: "basalt",   kind: Static, density: 3000, hardness: 95, crumbles_into: "gravel", above: (1650, "lava"), colors: [(40, 36, 40), (52, 46, 50), (34, 30, 34), (60, 50, 50)]),
         (name: "glass",    kind: Static, density: 2500, hardness: 30,  above: (1500, "lava"), opacity: 25, colors: [(170, 200, 205), (196, 222, 226)]),
         (name: "ice",      kind: Static, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), coats: "wet", opacity: 60, latent: 480, colors: [(170, 210, 240), (200, 230, 250)]),
         (name: "frozen_blood", kind: Static, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), coats: "bloody", latent: 480, colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),
