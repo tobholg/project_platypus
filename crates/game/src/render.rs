@@ -104,7 +104,7 @@ fn is_plant(mats: &MaterialTable, c: Cell) -> bool {
     !c.is_air() && mats.phys(c.material).kind == Kind::Plant
 }
 
-fn cell_rgba(mats: &MaterialTable, c: Cell, ambient: i32, dim: f32, lx: usize, ly: usize) -> [u8; 4] {
+pub(crate) fn cell_rgba(mats: &MaterialTable, c: Cell, ambient: i32, dim: f32, lx: usize, ly: usize) -> [u8; 4] {
     let mut rgba = mats.color(c);
     let ph = mats.phys(c.material);
     // Mining damage on solids shows as darkening cracks.

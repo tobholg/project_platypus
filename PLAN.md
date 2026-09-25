@@ -14,6 +14,7 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
 | W1b | Fire burns in place; fragments fall after any destruction (fire, melt, acid) | done |
 | W2 | Particles: blast debris + sparks, mining dust, embers, blood splashes | done |
 | W3 | Background layer, plants, forests + tall grass, wind, foliage sway + creature rustle | done |
+| W4 | Rigid bodies: felled trees topple, shed their crown, land as logs, hurt what they hit | done |
 | 3 | Worldgen v2: world plan (legacy mountains, sky islands, walker caves), biomes, save/load | not started |
 | 4 | Combat: weapon swings, pixel masks, swept hits, hit-stop, knockback, enemy attacks | not started |
 | 5 | Terraria layer: items, inventory, mining yields, building, crafting, lighting | not started |
@@ -36,8 +37,10 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
 1. ~~Temperature, phase changes, explosive gas~~ (done)
 2. ~~Particles~~ (done; rain drops come with weather)
 3. ~~Background layer, plants, forests, tall grass, wind, sway~~ (done)
-4. Rigid bodies spike (Rapier): detached pieces > 64 cells become pixel bodies;
-   tree felling (trees live in the background layer, fall as real bodies)
+4. ~~Rigid bodies: tree felling~~ (done, own solver, SPEC §3.11). Next steps
+   for it: playfield pieces as bodies (a cut-loose slab of rock), bodies
+   colliding with creatures and each other, saving bodies in flight, per-tree
+   crown sway
 5. Sky: parallax clouds, cloud cells, rain/snow by temperature, lightning
 6. Meteors: fireball, huge crater, ejecta, forest fires, hot meteorite ore
 7. **Worldgen v2 / biomes** (its own arc, before the save format freezes):

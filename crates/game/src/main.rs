@@ -13,6 +13,7 @@ mod fx;
 mod particles;
 mod props;
 mod render;
+mod rigid;
 mod scenario;
 mod tools;
 mod world;
@@ -60,6 +61,7 @@ fn main() {
             camera::CameraPlugin { start: Vec2::new(spawn.x as f32, spawn.y as f32 + 40.0) },
             tools::ToolsPlugin,
             props::PropsPlugin,
+            rigid::RigidPlugin,
             particles::ParticlesPlugin,
             actors::ActorsPlugin,
             debug::DebugPlugin,

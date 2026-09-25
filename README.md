@@ -40,7 +40,8 @@ ignite · a bomb in a wooden structure (paint wood with Q/E) · mine under a san
 pocket · melt a hole in rock with the heat gun · freeze a lake, watch it thaw ·
 find a greenish methane pocket underground and set it off (bomb or heat gun) ·
 set a forest alight: fire climbs the trunks, embers blow downwind into the next
-canopy, burning branches fall · chop through a trunk with the pickaxe ·
+canopy, burning branches fall · chop through a trunk with the pickaxe (or a bomb):
+the tree topples, sheds its crown and lands as a log you can mine · drop a tree on an orc ·
 run and dash through tall grass and watch it part and wobble back ·
 the HUD shows the material and temperature under the cursor ·
 edit `materials.ron` or `creatures/player.ron` while the game runs.
@@ -54,7 +55,7 @@ PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, 
 PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`. Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`. Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
 capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length.
 
 ## Add things (no engine changes)

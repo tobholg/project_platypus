@@ -2,6 +2,7 @@
 //!
 //! No Bevy in here. See SPEC.md §3.
 
+pub mod bodies;
 pub mod cell;
 pub mod chunk;
 pub mod climate;
@@ -15,6 +16,7 @@ mod step;
 pub mod store;
 mod world;
 
+pub use bodies::Body;
 pub use cell::Cell;
 pub use chunk::Chunk;
 pub use climate::Climate;
@@ -23,4 +25,4 @@ pub use edit::{EditReport, WorldEdit};
 pub use material::{Kind, MaterialId, MaterialTable};
 pub use particles::{Landing, Particle};
 pub use step::StepStats;
-pub use world::World;
+pub use world::{LEAF_REACH, World};

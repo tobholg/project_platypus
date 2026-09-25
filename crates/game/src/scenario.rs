@@ -9,6 +9,7 @@
 //! - `tools`      scripted cursor: pickaxe, bomb, pour water and oil, ignite, melt rock
 //! - `tree`       builds a wooden tree beside the player and sets it on fire
 //! - `blast`      three bombs dropped down one shaft beside the player, from t = 2 s
+//! - `fell`       cuts through the trunk of the nearest tree to the right at t = 2 s
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -49,7 +50,7 @@ impl Plugin for ScenarioPlugin {
             // Inject input where real input arrives: after Bevy reads devices,
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (tree_script, blast_script));
+            .add_systems(Update, (tree_script, blast_script, fell_script));
     }
 }
 
@@ -273,4 +274,36 @@ fn blast_script(
     });
     spawn_bomb(&mut commands, Vec2::new(x, top as f32), Vec2::ZERO, tools.bomb.clone());
     *dropped += 1;
+}
+
+fn fell_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut done: Local<bool>) {
+    if s.name != "fell" || *done || s.elapsed < 2.0 {
+        return;
+    }
+    let Ok(p) = player.single() else { return };
+    let (px, py) = (p.body.pos.x as i32, p.body.pos.y as i32);
+    // The first background wood 20 cells above the ground (clear of tall
+    // grass, below the branches): a trunk.
+    for x in px + 30..px + 260 {
+        let Some(ground) = find_ground(&sim.world, x, py + 80, 300) else { continue };
+        let at = CellPos::new(x, ground + 20);
+        let wood = |x: i32| {
+            let q = CellPos::new(x, at.y);
+            sim.world.get_bg(q).is_some_and(|b| !b.is_air() && sim.world.materials().phys(b.material).kind == platypus_sim::Kind::Static)
+        };
+        if !wood(x) {
+            continue;
+        }
+        // Both edges: the search may start inside a trunk.
+        let left = x - (1..40).take_while(|&d| wood(x - d)).count() as i32;
+        let width = (left..left + 60).take_while(|&x| wood(x)).count() as i32;
+        let center = CellPos::new(left + width / 2, at.y);
+        // Twice: a dig clears the playfield first where anything stands in front.
+        for _ in 0..2 {
+            sim.queue(WorldEdit::Dig { center, radius: width / 2 + 3, max_hardness: 200 });
+        }
+        info!("fell: cut a trunk {width} wide at {center:?}");
+        *done = true;
+        return;
+    }
 }

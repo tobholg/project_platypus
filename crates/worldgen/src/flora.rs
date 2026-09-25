@@ -158,7 +158,9 @@ impl Tree {
         }
         for b in &self.branches {
             let (d, t) = segment_distance((xf, yf), b.from, b.to);
-            let half = (b.thick.0 + (b.thick.1 - b.thick.0) * t) * 0.5 + 0.15;
+            // At least ~0.75 so a diagonal branch stays edge-connected
+            // (corner-only pixels break off as floating specks).
+            let half = ((b.thick.0 + (b.thick.1 - b.thick.0) * t) * 0.5 + 0.15).max(0.75);
             if d <= half {
                 // Branches: lit from above.
                 let u = ((yf - (b.from.1 + (b.to.1 - b.from.1) * t)) / half).clamp(-1.0, 1.0);
@@ -174,8 +176,12 @@ impl Tree {
             if d2 > outer * outer {
                 continue;
             }
-            let ragged = b.r * (1.0 + 0.25 * edge.get([x as f64 * 0.21, y as f64 * 0.21]) as f32);
-            let d = d2.sqrt();
+            // Ragged by direction from the blob's centre, not per cell: every
+            // leaf then has a straight run of leaves back to the centre, so
+            // no islands float just outside the edge.
+            let d = d2.sqrt().max(1e-3);
+            let dir = [(dx / d) as f64 * 1.6 + b.x as f64 * 0.37, (dy / d) as f64 * 1.6 + b.y as f64 * 0.37];
+            let ragged = b.r * (1.0 + 0.25 * edge.get(dir) as f32);
             if d <= ragged {
                 let depth = 1.0 - d / ragged;
                 if best.is_none_or(|(v, _)| depth > v) {

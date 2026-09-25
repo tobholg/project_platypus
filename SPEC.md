@@ -159,18 +159,47 @@ deaths (blood). Rendered as one dynamic mesh.
   a tree by mining its trunk); explosions hit both; fire spreads between the
   layers (burning background puts flames into the air in front of it).
 - A background piece is held up where it rests against solid playfield (a
-  trunk rooted in the ground, a wall behind rock). A detached piece drops into
-  the playfield: wood as loose rubble (still burning if it was), leaves as a
-  falling flurry. Rigid bodies will later make chopped trees topple instead.
+  trunk rooted in the ground, a wall behind rock). Only wood (anything not a
+  plant) carries weight: leaves hang on wood within `LEAF_REACH` (72 cells,
+  through leaves), so a felled tree is never held up by its neighbour's
+  crown. Worldgen keeps every leaf inside that reach and every background
+  cell edge-connected (tested by felling generated trees).
+- A detached piece with at least 64 wood cells comes away whole as a rigid
+  body (§3.11), taking the leaves nearer its wood than any other wood (a
+  shared canopy splits down the middle); leaves left with no wood in reach
+  fall as a flurry. Smaller pieces drop into the playfield: wood as loose
+  rubble (still burning if it was), leaves as a flurry.
 - `Kind::Plant` (tall grass, leaves): doesn't block creatures, burns readily,
   is crushed by falling powder and flowing liquid, withers without support.
 - Wind: seeded, smooth, computed without trig (bit-identical across
   platforms). It biases gas drift and flames, and pushes light particles;
   embers blowing through a canopy can light it.
-- Plant sway is rendering only: plant pixels are drawn shifted by wind, a
+- Grass sway is rendering only: grass pixels are drawn shifted by wind, a
   travelling wave, and springs that creatures excite as they move through
   (2×8-cell tiles, underdamped). Cells never move, so sway costs the
-  simulation nothing and never keeps a region awake.
+  simulation nothing and never keeps a region awake. Crowns don't sway yet:
+  that needs per-tree identity.
+
+### 3.11 Rigid bodies
+- A body is a local grid of cells with a pose: centre of mass, orientation as
+  a unit complex number (turned by a Taylor series, no libm, so stepping is
+  bit-identical across machines), velocity and spin. It lives in the sim and
+  steps after particles, with substeps so no boundary cell moves more than
+  0.6 cells per substep.
+- Contacts are boundary wood cells inside solid playfield, or inside solid
+  background around its hinge (the stump it broke from, so a tree pivots
+  over its cut; it passes through other trees). Sequential impulses with
+  friction; penetration corrected in proportion to depth.
+- Leaves don't collide; when the crown touches the ground they shed as a
+  flurry.
+- At rest (or after 10 s) it becomes cells again: in the playfield (a log,
+  mineable, still burning if it was) if it came down on the ground, in the
+  background otherwise; the usual ground check then runs on it.
+- The game draws a body by mapping each world cell it covers back into it,
+  so it stays on the cell grid at any angle, and a fast-moving trunk damages
+  and knocks back creatures it hits (once per body per creature).
+- Not yet: bodies aren't saved with the world, don't collide with each other
+  or with creatures, and playfield pieces still fall as rubble.
 
 ## 4. Rendering
 

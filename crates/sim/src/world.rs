@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::bodies::{BODY_MIN_CELLS, Body, Surface};
 use crate::cell::{Cell, flags};
 use crate::chunk::Chunk;
 use crate::climate::Climate;
@@ -15,8 +16,10 @@ use crate::store;
 
 /// A connected solid piece bigger than this counts as ground (anchored). Smaller
 /// pieces that touch neither bedrock nor unloaded world are floating and fall.
-/// (With rigid bodies, PLAN W4, big floating pieces will fall as bodies.)
 const ANCHOR_BUDGET: usize = 3_000;
+/// The same for the background, where a whole tree with its crown must fit
+/// (a giant is ~20k cells): anything bigger isn't a tree and counts as held.
+const ANCHOR_BUDGET_BG: usize = 40_000;
 /// Fragment checks run per tick for cells the simulation destroyed (a forest
 /// fire can break thousands); the rest wait for the next tick.
 const MAX_FRAGMENT_CHECKS_PER_TICK: usize = 24;
@@ -42,6 +45,9 @@ pub struct World {
     /// Same, for the background layer.
     pending_bg_tiles: Vec<CellPos>,
     particles: Vec<Particle>,
+    /// Pieces that broke off whole and fly as rigid bodies.
+    bodies: Vec<Body>,
+    next_body: u32,
 }
 
 /// Which grid a ground check looks at.
@@ -50,6 +56,20 @@ enum Layer {
     Front,
     Back,
 }
+
+/// What one ground-check flood passes through. In the background only wood
+/// (anything not a plant) carries weight: leaves hang on whatever wood they
+/// touch, so a felled tree isn't held up by its neighbour's crown.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Pass {
+    Front,
+    Wood,
+    Leaves,
+}
+
+/// Leaves are held by wood at most this far away (cells, through leaves).
+/// Worldgen stays inside it (`generated_leaves_are_near_wood`).
+pub const LEAF_REACH: u32 = 72;
 
 impl World {
     pub fn new(seed: u64, materials: Arc<MaterialTable>) -> Self {
@@ -64,6 +84,8 @@ impl World {
             pending_fragment_tiles: Vec::new(),
             pending_bg_tiles: Vec::new(),
             particles: Vec::new(),
+            bodies: Vec::new(),
+            next_body: 0,
         }
     }
 
@@ -78,6 +100,11 @@ impl World {
     /// Everything in flight.
     pub fn particles(&self) -> &[Particle] {
         &self.particles
+    }
+
+    /// Everything flying as a rigid body.
+    pub fn bodies(&self) -> &[Body] {
+        &self.bodies
     }
 
     pub fn emit(&mut self, p: Particle) {
@@ -546,6 +573,27 @@ impl World {
     /// playfield (a trunk's base in the ground, a cave wall behind rock); a
     /// detached background piece drops into the playfield (`drop_background`).
     fn loosen_around(&mut self, center: CellPos, reach: i32, anchored: &mut FxHashSet<CellPos>, layer: Layer) -> usize {
+        match layer {
+            Layer::Front => self.loosen_pass(center, reach, anchored, Pass::Front, &[]).0,
+            Layer::Back => {
+                let (n, removed) = self.loosen_pass(center, reach, anchored, Pass::Wood, &[]);
+                // Leaves left without wood, near the cut or around what fell.
+                let (m, _) = self.loosen_pass(center, reach, &mut FxHashSet::default(), Pass::Leaves, &removed);
+                n + m
+            }
+        }
+    }
+
+    /// One flood pass. `extra` are more places to start from. Returns cells
+    /// loosened and every cell it took out of the background.
+    fn loosen_pass(
+        &mut self,
+        center: CellPos,
+        reach: i32,
+        anchored: &mut FxHashSet<CellPos>,
+        pass: Pass,
+        extra: &[CellPos],
+    ) -> (usize, Vec<CellPos>) {
         let mats = self.materials.clone();
         enum Probe {
             Solid,
@@ -556,8 +604,9 @@ impl World {
             let ph = mats.phys(c.material);
             matches!(ph.kind, Kind::Static | Kind::Powder) && c.flags & flags::LOOSE == 0
         };
-        let probe = |w: &World, p: CellPos| match layer {
-            Layer::Front => match w.get(p) {
+        let plant = |c: Cell| mats.phys(c.material).kind == Kind::Plant;
+        let probe = |w: &World, p: CellPos| match pass {
+            Pass::Front => match w.get(p) {
                 None => Probe::Anchor, // world edge / unloaded
                 Some(c) => {
                     let ph = mats.phys(c.material);
@@ -570,15 +619,21 @@ impl World {
                     }
                 }
             },
-            Layer::Back => match (w.get_bg(p), w.get(p)) {
+            Pass::Wood | Pass::Leaves => match (w.get_bg(p), w.get(p)) {
                 (None, _) | (_, None) => Probe::Anchor,
                 (Some(b), _) if b.is_air() => Probe::Open,
                 (Some(b), _) if mats.phys(b.material).hardness == u8::MAX => Probe::Anchor,
                 (Some(_), Some(f)) if front_solid(f) => Probe::Anchor,
+                // Wood: leaves carry nothing. Leaves: any wood holds them.
+                (Some(b), _) if plant(b) != (pass == Pass::Leaves) => {
+                    if pass == Pass::Wood { Probe::Open } else { Probe::Anchor }
+                }
                 _ => Probe::Solid,
             },
         };
 
+        let budget = if pass == Pass::Front { ANCHOR_BUDGET } else { ANCHOR_BUDGET_BG };
+        let mut removed: Vec<CellPos> = Vec::new();
         let mut loosened = 0;
         let mut piece: Vec<CellPos> = Vec::new();
         let mut seen: FxHashSet<CellPos> = FxHashSet::default();
@@ -587,6 +642,9 @@ impl World {
         let reach = reach + 2;
         let mut seeds: Vec<CellPos> =
             (-reach..=reach).rev().flat_map(|dy| (-reach..=reach).rev().map(move |dx| center.offset(dx, dy))).collect();
+        for &p in extra {
+            seeds.extend([(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)].map(|(dx, dy)| p.offset(dx, dy)));
+        }
         while let Some(start) = seeds.pop() {
             {
                 if anchored.contains(&start) || seen.contains(&start) || !matches!(probe(self, start), Probe::Solid) {
@@ -599,18 +657,23 @@ impl World {
                 let mut grounded = false;
                 while let Some(p) = stack.pop() {
                     piece.push(p);
-                    if piece.len() > ANCHOR_BUDGET {
+                    if piece.len() > budget {
                         grounded = true;
                         break;
                     }
-                    for (ox, oy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                    // Downward last, so it's explored first: an intact tree
+                    // reaches its roots without flooding the crown.
+                    for (ox, oy) in [(0, 1), (1, 0), (-1, 0), (0, -1)] {
                         let q = p.offset(ox, oy);
-                        if seen.contains(&q) {
-                            continue;
-                        }
+                        // Ground first: cells an earlier flood proved grounded
+                        // are also `seen`, and skipping them as explored made
+                        // a piece still standing on them look detached.
                         if anchored.contains(&q) {
                             grounded = true;
                             break;
+                        }
+                        if seen.contains(&q) {
+                            continue;
                         }
                         match probe(self, q) {
                             Probe::Anchor => grounded = true,
@@ -630,11 +693,11 @@ impl World {
                     anchored.extend(stack.iter().copied());
                     continue;
                 }
-                if layer == Layer::Back {
-                    self.drop_background(&piece);
+                if pass != Pass::Front {
+                    removed.extend(self.drop_background(&piece));
                 }
                 for &p in &piece {
-                    if layer == Layer::Front
+                    if pass == Pass::Front
                         && let Some(mut c) = self.get(p)
                     {
                         c.flags |= flags::LOOSE;
@@ -648,15 +711,119 @@ impl World {
                 }
             }
         }
-        loosened
+        (loosened, removed)
     }
 
-    /// A background piece that lost its hold falls into the playfield: wood
-    /// and the like as loose rubble (still burning if it was), leaves as a
-    /// flurry that drifts down and is gone.
-    fn drop_background(&mut self, piece: &[CellPos]) {
+    /// Share the leaves around a felled `piece` of wood between it and any
+    /// other wood nearby, each leaf to the nearest (through leaves). Returns
+    /// the piece with its leaves, and the leaves nothing holds any more (no
+    /// wood within `LEAF_REACH`).
+    fn split_crown(&self, piece: &[CellPos]) -> (Vec<CellPos>, Vec<CellPos>) {
+        let mats = &self.materials;
+        let leaf = |p: CellPos| self.get_bg(p).is_some_and(|b| !b.is_air() && mats.phys(b.material).kind == Kind::Plant);
+        let own: FxHashSet<CellPos> = piece.iter().copied().collect();
+        const N4: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+        // Distance from the felled wood, out to twice the reach: far enough to
+        // see every other wood that could hold a leaf within reach of it.
+        let mut from_piece: FxHashMap<CellPos, u32> = FxHashMap::default();
+        let mut frontier: Vec<CellPos> = piece.to_vec();
+        for d in 1..=2 * LEAF_REACH {
+            let mut next = Vec::new();
+            for p in frontier {
+                for (dx, dy) in N4 {
+                    let q = p.offset(dx, dy);
+                    if !own.contains(&q) && !from_piece.contains_key(&q) && leaf(q) {
+                        from_piece.insert(q, d);
+                        next.push(q);
+                    }
+                }
+            }
+            frontier = next;
+        }
+        // Distance from any other holder: other wood, or leaves resting on
+        // solid playfield.
+        let holds = |p: CellPos| -> bool {
+            N4.iter().any(|&(dx, dy)| {
+                let q = p.offset(dx, dy);
+                !own.contains(&q) && self.get_bg(q).is_none_or(|b| !b.is_air() && mats.phys(b.material).kind != Kind::Plant)
+            }) || self.get(p).is_some_and(|f| !f.is_air() && matches!(mats.phys(f.material).kind, Kind::Static | Kind::Powder))
+        };
+        let mut keys: Vec<CellPos> = from_piece.keys().copied().collect();
+        keys.sort_by_key(|p| (p.y, p.x));
+        let mut from_other: FxHashMap<CellPos, u32> = FxHashMap::default();
+        let mut frontier: Vec<CellPos> = keys.iter().copied().filter(|&p| holds(p)).collect();
+        for &p in &frontier {
+            from_other.insert(p, 1);
+        }
+        for d in 2..=LEAF_REACH {
+            let mut next = Vec::new();
+            for p in frontier {
+                for (dx, dy) in N4 {
+                    let q = p.offset(dx, dy);
+                    if from_piece.contains_key(&q) && !from_other.contains_key(&q) {
+                        from_other.insert(q, d);
+                        next.push(q);
+                    }
+                }
+            }
+            frontier = next;
+        }
+        let mut taken = piece.to_vec();
+        let mut orphans = Vec::new();
+        for p in keys {
+            let a = from_piece[&p];
+            let b = from_other.get(&p).copied().unwrap_or(u32::MAX);
+            if a <= LEAF_REACH && a < b {
+                taken.push(p);
+            } else if a <= LEAF_REACH && b > LEAF_REACH {
+                orphans.push(p);
+            }
+        }
+        (taken, orphans)
+    }
+
+    /// A background piece that lost its hold falls. A big one (a felled tree,
+    /// a branch) comes away whole as a rigid body. A small one drops into the
+    /// playfield: wood and the like as loose rubble (still burning if it
+    /// was), leaves as a flurry that drifts down and is gone.
+    /// Returns the cells it took out of the background.
+    fn drop_background(&mut self, piece: &[CellPos]) -> Vec<CellPos> {
         let mats = self.materials.clone();
         let mut rng = self.rng_for(0xFA11, piece[0]);
+        let is_plant = |b: Cell| mats.phys(b.material).kind == Kind::Plant;
+        let solid = piece.iter().filter(|&&p| self.get_bg(p).is_some_and(|b| !is_plant(b))).count();
+        if solid >= BODY_MIN_CELLS {
+            // Its own crown comes with it: the leaves nearer its wood than any
+            // other (a shared canopy splits down the middle).
+            let (taken, orphans) = self.split_crown(piece);
+            let mut cells: Vec<(CellPos, Cell)> = taken.iter().filter_map(|&p| self.get_bg(p).map(|b| (p, b))).collect();
+            // Hash order isn't stable across machines; the body must be.
+            cells.sort_by_key(|(p, _)| (p.y, p.x));
+            for &(p, _) in &cells {
+                self.set_bg(p, Cell::AIR);
+            }
+            let mut body = Body::new(self.next_body, &cells, &mats);
+            self.next_body = self.next_body.wrapping_add(1);
+            // A tree standing on its cut balances forever; nudge it over the
+            // side its weight is on (either way if it's centred).
+            let low = cells.iter().map(|(p, _)| p.y).min().unwrap_or(0);
+            let base: Vec<i32> = cells.iter().filter(|(p, _)| p.y <= low + 1).map(|(p, _)| p.x).collect();
+            let base_x = base.iter().sum::<i32>() as f32 / base.len().max(1) as f32 + 0.5;
+            let lean = body.pos[0] - base_x;
+            let side = if lean.abs() > 0.5 { lean.signum() } else if rng.coin() { 1.0 } else { -1.0 };
+            body.omega = -side * 0.004;
+            // It pivots on its stump but passes through other trees.
+            let half = (base.iter().max().unwrap_or(&0) - base.iter().min().unwrap_or(&0)) / 2 + 4;
+            body.hinge = Some((CellPos::new(base_x.floor() as i32, low), half));
+            self.bodies.push(body);
+            let mut removed: Vec<CellPos> = cells.into_iter().map(|(p, _)| p).collect();
+            // Leaves no wood holds any more: a flurry.
+            if !orphans.is_empty() {
+                self.drop_background(&orphans);
+                removed.extend(orphans);
+            }
+            return removed;
+        }
         for &p in piece {
             let Some(b) = self.get_bg(p) else { continue };
             self.set_bg(p, Cell::AIR);
@@ -682,6 +849,7 @@ impl World {
                 self.set(p, c);
             }
         }
+        piece.to_vec()
     }
 
     // ---- time -------------------------------------------------------------
@@ -704,7 +872,104 @@ impl World {
         particles::step(&mut flying, &mut ParticleCtx { world: self });
         flying.append(&mut self.particles); // anything emitted while stepping
         self.particles = flying;
+        self.step_bodies();
         stats
+    }
+
+    fn step_bodies(&mut self) {
+        if self.bodies.is_empty() {
+            return;
+        }
+        let mats = self.materials.clone();
+        let bodies = std::mem::take(&mut self.bodies);
+        let mut flying = Vec::with_capacity(bodies.len());
+        let mut settled = Vec::new();
+        for mut body in bodies {
+            let ev = {
+                let world = &*self;
+                let hinge = body.hinge;
+                let solid = |p: CellPos| world.body_surface(p, hinge);
+                body.step(&solid)
+            };
+            if ev.shed {
+                let mut rng = self.rng_for(0x1EAF, CellPos::new(body.id as i32, 0));
+                for (at, leaf, vel) in body.shed(&mats) {
+                    if rng.chance(110) {
+                        let jitter = |r: &mut Rng| (r.next_u8() as f32 / 255.0 - 0.5) * 0.8;
+                        let v = [vel[0] * 0.6 + jitter(&mut rng), vel[1].max(-1.0) * 0.3 + 0.3 + jitter(&mut rng).abs()];
+                        let mut p = Particle::new(at, v, leaf, 60 + rng.next_u8() as u16 / 2, Landing::Vanish);
+                        p.gravity = 0.15;
+                        self.particles.push(p);
+                    }
+                }
+            }
+            if body.is_empty() {
+                continue;
+            }
+            if ev.settled { settled.push(body) } else { flying.push(body) }
+        }
+        // Bodies made while settling (a piece that lost its hold again) come after.
+        flying.append(&mut self.bodies);
+        self.bodies = flying;
+        for body in settled {
+            self.settle_body(body);
+        }
+    }
+
+    /// What a flying body bumps into at `p`: solid playfield (not what's
+    /// already tumbling as rubble), the unloaded world, and solid background
+    /// only around its `hinge` (the stump it pivots on). Other trees it passes
+    /// through: caught in a neighbour's branches, a trunk hung in mid-air.
+    fn body_surface(&self, p: CellPos, hinge: Option<(CellPos, i32)>) -> Option<Surface> {
+        let mats = &self.materials;
+        let front = self.get(p)?;
+        if !front.is_air() && matches!(mats.phys(front.material).kind, Kind::Static | Kind::Powder) {
+            return Some(Surface::Front);
+        }
+        let back = self.get_bg(p)?;
+        let (h, r) = hinge?;
+        let near = (p.x - h.x).abs() <= r && (p.y - h.y).abs() <= r;
+        (near && !back.is_air() && mats.phys(back.material).kind == Kind::Static).then_some(Surface::Back)
+    }
+
+    /// A body at rest becomes cells again: a log in the playfield if it came
+    /// down on the ground, back into the background if something in the
+    /// background holds it (leaning on another tree). Leaves still on it
+    /// flutter off. Whatever it is then resting on is checked like any other
+    /// piece: a log balanced on nothing crumbles.
+    fn settle_body(&mut self, mut body: Body) {
+        let mats = self.materials.clone();
+        let mut rng = self.rng_for(0x5E77, CellPos::new(body.id as i32, 1));
+        for (at, leaf, _) in body.shed(&mats) {
+            if rng.chance(90) {
+                let mut p = Particle::new(at, [0.0, 0.0], leaf, 60 + rng.next_u8() as u16 / 2, Landing::Vanish);
+                p.gravity = 0.15;
+                self.particles.push(p);
+            }
+        }
+        let front = body.rests_on_front;
+        let cells: Vec<(CellPos, Cell)> = body.world_cells().collect();
+        for (p, c) in cells {
+            if front {
+                let Some(f) = self.get(p) else { continue };
+                let kind = if f.is_air() { Kind::Empty } else { mats.phys(f.material).kind };
+                match kind {
+                    Kind::Empty | Kind::Gas | Kind::Fire | Kind::Plant => {}
+                    // Water it lands in is pushed up out of the way, not lost.
+                    Kind::Liquid => self.particles.push(Particle::new(center_of(p), [0.0, 0.6], f, 120, Landing::Settle)),
+                    _ => continue,
+                }
+                let mut c = c;
+                c.flags &= !flags::LOOSE;
+                self.set(p, c);
+            } else if self.get_bg(p).is_some_and(|b| b.is_air()) {
+                self.set_bg(p, c);
+            }
+        }
+        let center = CellPos::new(body.pos[0].floor() as i32, body.pos[1].floor() as i32);
+        let reach = body.radius.ceil() as i32;
+        let layer = if front { Layer::Front } else { Layer::Back };
+        self.loosen_around(center, reach, &mut FxHashSet::default(), layer);
     }
 
     /// Fire, melting and acid destroy solids inside the step; afterwards,

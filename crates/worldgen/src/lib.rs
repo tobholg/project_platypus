@@ -383,4 +383,103 @@ mod tests {
         assert_ne!(g.material_at(x, s - 3), MaterialId::AIR);
         assert_eq!(g.material_at(x, 0), m.expect_id("bedrock"));
     }
+
+    /// Leaves are held by wood within `LEAF_REACH` (through leaves); worldgen
+    /// must not grow any further out, or they'd drop the first time anything
+    /// near them is checked.
+    #[test]
+    fn generated_leaves_are_near_wood() {
+        use std::collections::{HashMap, VecDeque};
+        let m = mats();
+        let g = TerrainGen::new(3, TerrainConfig::default(), &m);
+        let (wood, leaves) = (m.expect_id("wood"), m.expect_id("leaves"));
+        let mut worst = 0u32;
+        for t in g.forest.near(4000, 16000).into_iter().filter(|t| t.height > 110).take(12) {
+            let (x0, y0, x1, y1) = t.bbox;
+            let trees = g.forest.near(x0 - 2, x1 + 2);
+            let at = |x: i32, y: i32| g.background_at(x, y, &trees).0;
+            let mut dist: HashMap<(i32, i32), u32> = HashMap::new();
+            let mut q = VecDeque::new();
+            for y in y0 - 2..=y1 + 2 {
+                for x in x0 - 2..=x1 + 2 {
+                    if at(x, y) == wood {
+                        dist.insert((x, y), 0);
+                        q.push_back((x, y));
+                    }
+                }
+            }
+            while let Some((x, y)) = q.pop_front() {
+                let d = dist[&(x, y)];
+                for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                    let n = (x + dx, y + dy);
+                    if n.0 < x0 - 2 || n.0 > x1 + 2 || n.1 < y0 - 2 || n.1 > y1 + 2 || dist.contains_key(&n) || at(n.0, n.1) != leaves {
+                        continue;
+                    }
+                    dist.insert(n, d + 1);
+                    worst = worst.max(d + 1);
+                    q.push_back(n);
+                }
+            }
+        }
+        assert!(worst > 20 && worst < platypus_sim::LEAF_REACH, "farthest leaf from wood: {worst}");
+    }
+
+    /// Felling real generated trees: each comes down as one body, and no
+    /// leaf or twig is left hanging in the air afterwards.
+    #[test]
+    fn felled_generated_trees_leave_nothing_hanging() {
+        use platypus_sim::{Kind, World, WorldEdit};
+        use std::sync::Arc;
+        let m = Arc::new(mats());
+        let g = TerrainGen::new(3, TerrainConfig::default(), &m);
+        let near = g.forest.near(6000, 14000);
+        let mut picks: Vec<&&flora::Tree> = near.iter().filter(|t| t.height > 60).take(5).collect();
+        picks.extend(near.iter().filter(|t| t.height > 130).take(1));
+        assert_eq!(picks.len(), 6, "five trees and a giant");
+        let trees: Vec<(i32, i32, f32)> = picks.iter().map(|t| (t.x, t.base, t.girth)).collect();
+        for (x, base, girth) in trees {
+            let mut w = World::new(3, m.clone());
+            w.set_climate(g.climate());
+            let (cx, cy) = (x.div_euclid(CHUNK), base.div_euclid(CHUNK));
+            for dy in -2..=4 {
+                for dx in -4..=4 {
+                    w.insert_chunk(g.generate(ChunkPos::new(cx + dx, cy + dy)));
+                }
+            }
+            let (x0, y0) = ((cx - 4) * CHUNK, (cy - 2) * CHUNK);
+            let (x1, y1) = ((cx + 5) * CHUNK, (cy + 5) * CHUNK);
+            // Background cells not connected (by edges, through background)
+            // to anything resting on solid playfield.
+            let hanging = |w: &World| -> Vec<CellPos> {
+                let bg = |p: CellPos| w.get_bg(p).is_some_and(|b| !b.is_air());
+                let anchor = |p: CellPos| w.get(p).is_some_and(|f| !f.is_air() && matches!(m.phys(f.material).kind, Kind::Static | Kind::Powder));
+                let mut held = std::collections::HashSet::new();
+                let mut stack: Vec<CellPos> = (x0..x1).flat_map(|x| (y0..y1).map(move |y| CellPos::new(x, y))).filter(|&p| bg(p) && (anchor(p) || p.x == x0 || p.x == x1 - 1 || p.y == y1 - 1)).collect();
+                while let Some(p) = stack.pop() {
+                    if !held.insert(p) {
+                        continue;
+                    }
+                    for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                        let q = CellPos::new(p.x + dx, p.y + dy);
+                        if q.x >= x0 && q.x < x1 && q.y >= y0 && q.y < y1 && bg(q) && !held.contains(&q) {
+                            stack.push(q);
+                        }
+                    }
+                }
+                (x0..x1).flat_map(|x| (y0..y1).map(move |y| CellPos::new(x, y))).filter(|&p| bg(p) && !held.contains(&p)).collect()
+            };
+            let before = hanging(&w);
+            assert!(before.is_empty(), "worldgen: {} cells hanging, e.g. {:?}", before.len(), &before[..before.len().min(6)]);
+            for _ in 0..2 {
+                w.apply_edit(&WorldEdit::Dig { center: CellPos::new(x, base + 20), radius: girth as i32 + 4, max_hardness: 200 });
+            }
+            assert!(!w.bodies().is_empty(), "tree at {x} came down");
+            for _ in 0..1_200 {
+                w.step();
+            }
+            assert!(w.bodies().is_empty(), "it settled");
+            let hanging = hanging(&w);
+            assert!(hanging.is_empty(), "tree at {x}: {} cells hanging, e.g. {:?}", hanging.len(), &hanging[..hanging.len().min(6)]);
+        }
+    }
 }

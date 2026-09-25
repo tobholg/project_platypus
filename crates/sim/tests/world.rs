@@ -694,20 +694,118 @@ fn a_background_tree_stands_on_its_own() {
     assert_eq!(count_bg(&w, wood), before, "nothing fell");
 }
 
+/// Step until no body is flying; returns ticks taken.
+fn run_until_bodies_settle(w: &mut World, max_ticks: usize) -> usize {
+    for t in 0..max_ticks {
+        if w.bodies().is_empty() {
+            return t;
+        }
+        w.step();
+    }
+    panic!("{} bodies still flying after {max_ticks} ticks", w.bodies().len());
+}
+
+/// Playfield cells of `id`: (count, lowest y, highest y, leftmost x, rightmost x).
+fn extent(w: &World, id: MaterialId) -> (usize, i32, i32, i32, i32) {
+    let mut e = (0, i32::MAX, i32::MIN, i32::MAX, i32::MIN);
+    for c in w.chunks() {
+        for (i, cell) in c.cells().iter().enumerate() {
+            if cell.material == id {
+                let p = c.pos.origin().offset((i % 64) as i32, (i / 64) as i32);
+                e = (e.0 + 1, e.1.min(p.y), e.2.max(p.y), e.3.min(p.x), e.4.max(p.x));
+            }
+        }
+    }
+    e
+}
+
 #[test]
-fn chopping_a_trunk_drops_the_crown_into_the_playfield() {
-    let mut w = boxed_world(2, 2, 51);
-    plant_tree(&mut w, 64);
+fn a_felled_tree_topples_as_one_piece_and_lies_on_the_ground_as_a_log() {
+    let mut w = boxed_world(3, 2, 51);
+    fill(&mut w, "stone", 1, 191, 1, 10);
+    // Trunk rooted behind the stone floor, a crown. (With a crossbar branch
+    // it can land propped up on the branch, like a fallen T.)
+    let tree = |w: &mut World| {
+        fill_bg(w, "wood", 94, 99, 1, 70);
+        fill_bg(w, "leaves", 80, 113, 60, 76);
+    };
+    tree(&mut w);
     let (wood, leaves) = (w.materials().expect_id("wood"), w.materials().expect_id("leaves"));
-    // The eraser acts on the background where the playfield is empty.
-    w.apply_edit(&WorldEdit::Dig { center: CellPos::new(64, 20), radius: 3, max_hardness: 200 });
+    let bg_wood = count_bg(&w, wood);
+    // Cut through the trunk just above the ground.
+    w.apply_edit(&WorldEdit::Dig { center: CellPos::new(96, 14), radius: 4, max_hardness: 200 });
+    assert_eq!(w.bodies().len(), 1, "the tree came away whole");
+    assert_eq!(count_bg(&w, leaves), 0, "crown and all");
+    let ticks = run_until_bodies_settle(&mut w, 900);
+    assert!(ticks > 30, "it takes a while to fall ({ticks} ticks)");
+    run_until_landed(&mut w, 600);
+
+    let (logs, lo, hi, left, right) = extent(&w, wood);
+    assert!(logs > (bg_wood - 50) * 6 / 10, "most of the wood lies in the playfield ({logs} of ~{bg_wood})");
+    assert!(lo >= 10, "on the ground, not in it (lowest {lo})");
+    assert!(hi - lo < 12, "lying down: {}x{} ", right - left, hi - lo);
+    assert!(right - left > 35, "the trunk is still long ({})", right - left);
+    let hanging = floating_solids(&w, 1, 191, 127);
+    assert!(hanging.len() < 20, "{} wood cells hanging in the air", hanging.len());
+    assert!(w.get_bg(CellPos::new(96, 5)).unwrap().material == wood, "the stump stays");
+}
+
+#[test]
+fn a_felled_tree_is_not_held_up_by_its_neighbours_crown() {
+    let mut w = boxed_world(3, 2, 57);
+    fill(&mut w, "stone", 1, 191, 1, 10);
+    let (wood, leaves) = (w.materials().expect_id("wood"), w.materials().expect_id("leaves"));
+    // Two trees whose crowns overlap.
+    fill_bg(&mut w, "wood", 60, 65, 1, 70);
+    fill_bg(&mut w, "wood", 110, 115, 1, 70);
+    fill_bg(&mut w, "leaves", 40, 136, 60, 80);
+    fill_bg(&mut w, "wood", 60, 65, 60, 70);
+    fill_bg(&mut w, "wood", 110, 115, 60, 70);
+    let crown = count_bg(&w, leaves);
+    w.apply_edit(&WorldEdit::Dig { center: CellPos::new(62, 14), radius: 4, max_hardness: 200 });
+    assert_eq!(w.bodies().len(), 1, "the cut tree falls");
+    run_until_bodies_settle(&mut w, 900);
+    run_until_landed(&mut w, 600);
+    run_until_asleep(&mut w, 2_000);
+    assert!(w.get_bg(CellPos::new(112, 65)).unwrap().material == wood, "the other tree still stands");
+    let kept = count_bg(&w, leaves);
+    assert!(kept > crown / 5 && kept < crown * 4 / 5, "the crown was shared out ({kept} of {crown})");
+    let hanging = floating_background(&w);
+    assert!(hanging.is_empty(), "{} background cells hanging", hanging.len());
+}
+
+#[test]
+fn felling_is_deterministic() {
+    let run = || {
+        let mut w = boxed_world(3, 2, 55);
+        fill(&mut w, "stone", 1, 191, 1, 10);
+        fill_bg(&mut w, "wood", 90, 95, 1, 80);
+        fill_bg(&mut w, "wood", 95, 120, 60, 62);
+        w.apply_edit(&WorldEdit::Dig { center: CellPos::new(92, 14), radius: 4, max_hardness: 200 });
+        let mut trace = Vec::new();
+        for _ in 0..300 {
+            w.step();
+            trace.extend(w.bodies().iter().map(|b| (b.pos[0].to_bits(), b.pos[1].to_bits(), b.rot[0].to_bits())));
+        }
+        trace
+    };
+    let a = run();
+    assert!(!a.is_empty(), "something fell");
+    assert_eq!(a, run());
+}
+
+#[test]
+fn a_small_branch_still_drops_as_rubble() {
+    // Also guards the ground check: the trunk above the cut once came away
+    // as a body because cells proven grounded were skipped as "seen".
+    let mut w = boxed_world(2, 2, 56);
+    fill(&mut w, "stone", 1, 127, 1, 10);
+    fill_bg(&mut w, "wood", 60, 64, 1, 60);
+    fill_bg(&mut w, "wood", 64, 76, 40, 42); // 24 cells
+    w.apply_edit(&WorldEdit::Dig { center: CellPos::new(65, 41), radius: 1, max_hardness: 200 });
+    assert!(w.bodies().is_empty());
     run_until_landed(&mut w, 400);
-    run_until_asleep(&mut w, 3_000);
-    assert_eq!(count_bg(&w, leaves), 0, "the crown left the background");
-    assert!((24..60).all(|y| w.get_bg(CellPos::new(64, y)).unwrap().is_air()), "trunk above the cut is gone");
-    assert!(w.get_bg(CellPos::new(64, 5)).unwrap().material == wood, "the stump stays");
-    let fallen = count(&w, wood);
-    assert!(fallen > 50, "branch and trunk wood fell as rubble ({fallen})");
+    assert!(count(&w, w.materials().expect_id("wood")) > 10, "it fell as rubble");
 }
 
 #[test]
@@ -821,11 +919,12 @@ fn meadow_burn_fractions(seeds: std::ops::Range<u64>) -> Vec<f32> {
 /// fizzles, usually burns a patch, rarely takes everything (SPEC §3.8).
 #[test]
 fn a_spark_in_a_meadow_burns_a_patch_not_the_world() {
-    let f = meadow_burn_fractions(300..320);
+    // 40 sparks: with 20, whether one fizzles was down to luck.
+    let f = meadow_burn_fractions(300..340);
     let median = f[f.len() / 2];
     assert!(f[0] < 0.25, "some sparks fizzle: {f:?}");
     assert!((0.3..=0.75).contains(&median), "a typical spark burns a patch: median {median}");
-    assert!(f.iter().filter(|&&v| v > 0.95).count() <= 2, "a spark rarely takes everything: {f:?}");
+    assert!(f.iter().filter(|&&v| v > 0.95).count() <= 3, "a spark rarely takes everything: {f:?}");
 }
 
 /// A tree catches over seconds, not instantly, and burns for a while.
@@ -871,3 +970,4 @@ fn a_blast_flings_loose_sand_beyond_the_crater() {
     run_until_landed(&mut w, 1200);
     assert!(count(&w, sand) > before * 7 / 10, "flung sand lands again, it isn't deleted");
 }
+
