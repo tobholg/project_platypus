@@ -1,10 +1,15 @@
 //! Two textures per loaded chunk: the background layer (dimmed, behind) and
 //! the playfield (SPEC §4). A chunk re-colours only when its cells changed.
 //!
-//! Plants (tall grass, leaves) are drawn separately on top of a cached base
-//! image, shifted sideways by wind and by `FoliageSprings` that creatures
-//! excite as they move through. That sway is purely visual: the cells never
-//! move, so it costs the simulation nothing.
+//! Grass is drawn separately on top of a cached base image, shifted sideways
+//! by wind and by `FoliageSprings` that creatures excite as they move through.
+//! That sway is purely visual: the cells never move, so it costs the
+//! simulation nothing.
+//!
+//! Leaves (background) don't sway for now. A crown has to move as one piece
+//! or it tears, and one offset for every crown on screen looks mechanical;
+//! doing it well needs to know which tree a leaf belongs to, which trees get
+//! when they become bodies that can be felled.
 
 use bevy::asset::RenderAssetUsages;
 use bevy::platform::collections::HashMap;
@@ -170,7 +175,7 @@ fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin_y: i3
             }
             let dim = if back { bg_dim(mats, c) } else { 1.0 };
             let rgba = cell_rgba(mats, c, ambient, dim, lx, ly);
-            if is_plant(mats, c) && c.flags & flags::BURNING == 0 {
+            if !back && is_plant(mats, c) && c.flags & flags::BURNING == 0 {
                 // Height above its root: plant cells below it in this column.
                 let lift = (1..=15).take_while(|d| ly >= *d && is_plant(mats, cells[(ly - d) * N + lx])).count() as u8 + 1;
                 layer.plants.push(PlantPx { x: lx as u8, y: ly as u8, rgba, lift });
@@ -186,39 +191,18 @@ struct Sway {
     wind: f32,
 }
 
-/// Base + plants shifted by wind and springs, into the image.
-///
-/// Grass (front): each blade bends with its height above the root, so the tip
-/// moves most. Leaves (back): every crown shifts by the same whole cell, so it
-/// sways as one mass. (Any offset that varies by row or column rounds
-/// differently on either side of some line, and that seam travels through
-/// the crown as a band of torn pixels.)
-fn compose(layer: &Layer, data: &mut [u8], origin: (i32, i32), sway: &Sway, springs: &FoliageSprings, back: bool) {
+/// Base + grass shifted by wind and springs, into the image. Each blade bends
+/// with its height above the root, so the tip moves most.
+fn compose(layer: &Layer, data: &mut [u8], origin: (i32, i32), sway: &Sway, springs: &FoliageSprings) {
     data.copy_from_slice(&layer.base);
-    let crown = sway.wind * 0.8 + 0.5 * (sway.t * 1.1).sin() * (0.4 + sway.wind.abs());
-    if back {
-        // Leaves first at rest, as a filler: a shifted row can then never
-        // open a gap beside a branch or at a chunk edge.
-        for p in &layer.plants {
-            let i = px(p.x as usize, p.y as usize);
-            data[i..i + 4].copy_from_slice(&p.rgba);
-        }
-    }
     for p in &layer.plants {
         let (wx, wy) = (origin.0 + p.x as i32, origin.1 + p.y as i32);
-        let offset = if back {
-            crown
-        } else {
-            let wave = (sway.t * 2.4 + wx as f32 * 0.11).sin();
-            let lean = sway.wind * 1.2 + wave * (0.35 + 0.7 * sway.wind.abs());
-            (lean + springs.disp(wx, wy)) * (p.lift as f32 / 5.0).min(1.6)
-        };
+        let wave = (sway.t * 2.4 + wx as f32 * 0.11).sin();
+        let lean = sway.wind * 1.2 + wave * (0.35 + 0.7 * sway.wind.abs());
+        let offset = (lean + springs.disp(wx, wy)) * (p.lift as f32 / 5.0).min(1.6);
         let x = (p.x as i32 + offset.round().clamp(-4.0, 4.0) as i32).clamp(0, CHUNK - 1) as usize;
         let i = px(x, p.y as usize);
-        // Leaves sway over sky and leaves, not over the tree's own wood.
-        if !back || data[i + 3] == 0 || layer.base[i + 3] == 0 {
-            data[i..i + 4].copy_from_slice(&p.rgba);
-        }
+        data[i..i + 4].copy_from_slice(&p.rgba);
     }
 }
 
@@ -296,14 +280,14 @@ fn sync_chunks(
             let (x, y) = (o.x as f32, o.y as f32);
             x + CHUNK as f32 >= lo.x && x <= hi.x && y + CHUNK as f32 >= lo.y && y <= hi.y
         });
-        for (layer, back) in [(&g.front, false), (&g.back, true)] {
+        for layer in [&g.front, &g.back] {
             let animate = sway_now && visible && !layer.plants.is_empty();
             if !(dirty || animate) {
                 continue;
             }
             let Some(mut image) = images.get_mut(&layer.image) else { continue };
             let Some(data) = image.data.as_mut() else { continue };
-            compose(layer, data, (o.x, o.y), &sway, &springs, back);
+            compose(layer, data, (o.x, o.y), &sway, &springs);
         }
     }
 }
