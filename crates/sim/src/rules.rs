@@ -614,6 +614,10 @@ fn gas(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) {
     if c != before {
         c.clock = h.clock;
         h.set(x, y, c);
+    } else if p.life_max != 0 {
+        // Stuck but still ageing (it only ages every `decay_every` ticks):
+        // stay awake, or steam under a cave roof never condenses.
+        h.wake(x, y);
     }
 }
 

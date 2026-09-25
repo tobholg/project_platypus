@@ -459,6 +459,27 @@ fn water_boils_and_freezes() {
 }
 
 #[test]
+fn blood_boils_and_freezes_like_water() {
+    let mut w = boxed_world(1, 1, 25);
+    let m = w.materials().clone();
+    fill(&mut w, "blood", 10, 20, 1, 6);
+    fill(&mut w, "blood", 40, 50, 1, 6);
+    w.apply_edit(&WorldEdit::Heat { center: CellPos::new(15, 3), radius: 6, amount: 300 });
+    w.apply_edit(&WorldEdit::Heat { center: CellPos::new(45, 3), radius: 6, amount: -120 });
+    for _ in 0..5 {
+        w.step();
+    }
+    assert!(count(&w, m.expect_id("blood_steam")) > 10, "boiled");
+    assert!(count(&w, m.expect_id("frozen_blood")) > 10, "froze");
+    for _ in 0..4_000 {
+        w.step();
+    }
+    assert_eq!(count(&w, m.expect_id("frozen_blood")), 0, "thawed");
+    assert_eq!(count(&w, m.expect_id("blood_steam")), 0, "the haze settled");
+    assert!(count(&w, m.expect_id("blood")) > 40, "most came back down as blood");
+}
+
+#[test]
 fn wood_catches_fire_from_heat_alone() {
     let mut w = boxed_world(1, 1, 24);
     fill(&mut w, "wood", 10, 30, 1, 10);

@@ -39,6 +39,7 @@
         (name: "obsidian", kind: Static, density: 2800, hardness: 120, crumbles_into: "gravel", above: (1600, "lava"), colors: [(34, 18, 52), (52, 30, 74)]),
         (name: "glass",    kind: Static, density: 2500, hardness: 30,  above: (1500, "lava"), colors: [(170, 200, 205), (196, 222, 226)]),
         (name: "ice",      kind: Static, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), colors: [(170, 210, 240), (200, 230, 250)]),
+        (name: "frozen_blood", kind: Static, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),
 
         // ---- plants: don't block creatures, burn readily, sway in the wind ----
         (name: "leaves",     kind: Plant, density: 200, hardness: 2, flammability: 18, ignites_at: 260, burn_time: 40, colors: [(24, 64, 26), (36, 92, 34), (52, 122, 42), (76, 150, 54)]),
@@ -60,12 +61,15 @@
         // ---- liquids ------------------------------------------------------
         (name: "water",    kind: Liquid, density: 1000, dispersion: 6, above: (100, "steam"), below: (0, "ice"), colors: [(38, 92, 196), (48, 110, 214)]),
         (name: "oil",      kind: Liquid, density: 800,  dispersion: 4, flammability: 90, ignites_at: 220, burn_time: 25, colors: [(56, 38, 24), (72, 52, 30)]),
-        (name: "blood",    kind: Liquid, density: 1060, dispersion: 3, colors: [(136, 10, 16), (164, 18, 24)]),
+        // Boils and freezes like water (a little below 0: what's dissolved in it).
+        (name: "blood",    kind: Liquid, density: 1060, dispersion: 3, above: (100, "blood_steam"), below: (-2, "frozen_blood"), colors: [(136, 10, 16), (164, 18, 24)]),
         (name: "lava",     kind: Liquid, density: 2500, dispersion: 1, hot: true, heat: 1200, heat_source: true, conductivity: 60, colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
         (name: "acid",     kind: Liquid, density: 1100, dispersion: 4, colors: [(120, 230, 40), (150, 250, 70)]),
 
         // ---- gases --------------------------------------------------------
         (name: "steam",    kind: Gas, density: 1, dispersion: 3, lifetime: (60, 200), decay_every: 3, decays_into: "water", decays_into_chance: 70, colors: [(200, 206, 216), (228, 232, 240)]),
+        // A red haze off boiling blood; condenses back into blood like steam into water.
+        (name: "blood_steam", kind: Gas, density: 1, dispersion: 3, lifetime: (60, 200), decay_every: 3, decays_into: "blood", decays_into_chance: 70, colors: [(196, 120, 124), (220, 150, 152), (180, 96, 102)]),
         // Underground gas pockets. Faintly visible; very explosive.
         (name: "methane",  kind: Gas, density: 1, dispersion: 1, flammability: 255, ignites_at: 500, explodes: (radius: 10, power: 70, chance: 40), colors: [(120, 150, 110), (134, 164, 120)]),
         (name: "smoke",    kind: Gas, density: 2, dispersion: 2, lifetime: (40, 120), decay_every: 2, colors: [(56, 54, 54), (84, 80, 80)]),
