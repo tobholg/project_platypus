@@ -261,7 +261,7 @@ DESIGN.md §3.2 step 6, stage 5 of the world arc (`worldgen/src/minerals.rs`).
 - Cost: a deep column of chunks streams in ~2.2 ms (was 1.8 ms), under the
   4 ms budget.
 
-### 3.4e Structures: crypts
+### 3.4e Structures: crypts and castles
 DESIGN.md §3.3, stage 6 of the world arc (`worldgen/src/structures.rs`,
 rooms in `assets/data/rooms/*.rooms`).
 - A room is a text grid at block resolution (one character per 4 × 4
@@ -297,8 +297,21 @@ rooms in `assets/data/rooms/*.rooms`).
   through open blocks (illusory walls included); crypts sit on the ground
   with no tree in the ruin; chests are drawn whole across chunk borders;
   each guard is reported by exactly one chunk.
-- Not yet: castles, the ageing pass (moss, cobwebs, collapse), keys and
-  locked doors, rooms behind waterfalls, treasure in lakes.
+- A castle (`castle.rooms`, ashlar: hardness 100): on the mountains, where
+  it's high but not too steep (height less three times the ground's fall
+  under it, at most 300 cells), about 3 on a large world (2 by seed,
+  spaced). A keep 2–3 slots wide and 2–3 tall between two towers a slot or
+  two taller, every slot a room (no holes). The same layout walk, climbing:
+  the gate at the foot of the tower on the side where the ground outside is
+  nearest the floor, the goal at the top. Battlements over every column;
+  foundations of wall from the floor down into the ground; to the gate a
+  flying stair down the mountainside (three blocks thick, piers every eight)
+  or, where the ground rises, a tunnel, either up to 60 blocks. Windows are
+  holes in the back wall: the sky shows through.
+- Tests also: every chest in 200 random castles is reachable from the gate,
+  on falling and rising ground.
+- Not yet: the ageing pass (moss, cobwebs, collapse), keys and locked
+  doors, rooms behind waterfalls, treasure in lakes.
 
 ### 3.5 Streaming and persistence
 Chunks load around every player (co-op: the union). Missing chunks come from

@@ -125,6 +125,8 @@ const CHASMS: f64 = 5.0;
 /// Crypts under ruins in the lowlands (large world), at least this far apart.
 const CRYPTS: f64 = 10.0;
 const CRYPT_SPACING: f64 = 1_400.0;
+/// Castles on the summits (large world).
+const CASTLES: f64 = 3.0;
 const CHASM_WIDTH: (f64, f64) = (110.0, 240.0);
 /// Columns sharing one cavern water table.
 const WATER_TABLE_SPAN: i32 = 2_048;
@@ -466,7 +468,9 @@ impl WorldPlan {
             })
             .collect();
 
-        let structures = Structures::new(crypts(seed, &surface, &water, &biomes, &chasms, (width, ocean_w, mid), (sw, sh), band_floors));
+        let mut list = crypts(seed, &surface, &water, &biomes, &chasms, (width, ocean_w, mid), (sw, sh), band_floors);
+        list.extend(castles(seed, &surface, &biomes, width, (sw, sh)));
+        let structures = Structures::new(list);
 
         let forest = {
             let at = |x: i32| surface[x.clamp(0, width - 1) as usize];
@@ -673,6 +677,49 @@ fn crypts(seed: u64, surface: &[i32], water: &[i32], biomes: &[Biome], chasms: &
         out.push(structures::crypt(structures::crypt_rooms(), &mut rng, (x, y), grid, depth));
     }
     out.sort_by_key(|s| s.site.0);
+    out
+}
+
+/// Castles high in the mountains, where it's high but not too steep (the
+/// best height less three times the ground's fall under it, at most 300
+/// cells): a keep between two
+/// towers, a gate and a stair down the mountainside, foundations to the
+/// rock where the ground falls away.
+fn castles(seed: u64, surface: &[i32], biomes: &[Biome], width: i32, (sw, sh): (f64, f64)) -> Vec<Structure> {
+    let mut rng = Rng::seeded(&[seed, 0xCA57]);
+    let at = |x: i32| surface[x.clamp(0, width - 1) as usize];
+    let small = sh < 0.5;
+    let keep_w = if small { 2 } else { 3 };
+    let half = (keep_w + 2) * structures::SLOT_W * structures::BLOCK / 2;
+    let spacing = (2_000.0 * sw.max(0.25)) as i32;
+    // (x, the ground's highest and lowest under the castle there).
+    let mut sites: Vec<(i32, i32, i32)> = (0..width)
+        .step_by(16)
+        .filter(|&x| biomes[x as usize] == Biome::Mountains)
+        .map(|x| {
+            let ys = (x - half..=x + half).step_by(8).map(at);
+            let (hi, lo) = ys.fold((i32::MIN, i32::MAX), |(h, l), y| (h.max(y), l.min(y)));
+            (x, hi, lo)
+        })
+        .filter(|&(_, hi, lo)| hi - lo <= 300)
+        .collect();
+    sites.sort_by_key(|&(_, hi, lo)| -(hi - 3 * (hi - lo)));
+    let wanted = (CASTLES * sw).round().max(1.0) as usize;
+    let mut out: Vec<Structure> = Vec::new();
+    for (x, hi, lo) in sites {
+        if out.len() == wanted {
+            break;
+        }
+        if out.iter().any(|s| (s.site.0 - x).abs() < spacing) {
+            continue;
+        }
+        let keep = (keep_w, if small { 2 } else { 2 + (rng.next_u32() % 2) as i32 });
+        let tower = keep.1 + 1 + (rng.next_u32() % 2) as i32;
+        // The floor between the ground's highest and lowest: the rooms cut
+        // into the high side, foundations hold up the low side.
+        let site = (x, (hi + lo) / 2);
+        out.push(structures::castle(structures::castle_rooms(), &mut rng, site, keep, tower, &at));
+    }
     out
 }
 

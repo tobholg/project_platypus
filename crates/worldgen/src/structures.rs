@@ -244,6 +244,11 @@ pub fn crypt_rooms() -> &'static [Room] {
     ROOMS.get_or_init(|| parse(include_str!("../../../assets/data/rooms/crypt.rooms")).unwrap_or_else(|e| panic!("crypt.rooms: {e}")))
 }
 
+pub fn castle_rooms() -> &'static [Room] {
+    static ROOMS: OnceLock<Vec<Room>> = OnceLock::new();
+    ROOMS.get_or_init(|| parse(include_str!("../../../assets/data/rooms/castle.rooms")).unwrap_or_else(|e| panic!("castle.rooms: {e}")))
+}
+
 /// A grid of glyphs placed in the world.
 #[derive(Clone, Debug)]
 pub struct Piece {
@@ -310,12 +315,14 @@ fn hash_i(v: &[i32]) -> u64 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StructureKind {
     Crypt,
+    Castle,
 }
 
 impl StructureKind {
     pub fn name(self) -> &'static str {
         match self {
             StructureKind::Crypt => "crypt",
+            StructureKind::Castle => "castle",
         }
     }
 }
@@ -441,35 +448,28 @@ fn pick<'a>(rooms: &'a [Room], rng: &mut Rng, kind: RoomKind, w: i32, need: &[So
     (!fits.is_empty()).then(|| fits[rng.next_u32() as usize % fits.len()])
 }
 
-/// A crypt: a ruin on the surface at block (bx, by) (its floor's bottom-left
-/// block), a shaft down `depth` blocks, then a `grid` of room slots with the
-/// entrance under the shaft, a path of rooms down to the goal, side rooms
-/// and secrets.
-pub fn crypt(rooms: &[Room], rng: &mut Rng, site: (i32, i32), grid: (i32, i32), depth: i32) -> Structure {
-    let (gw, gh) = grid;
-    // The ruin's floor: the block at the surface under the site's middle.
-    let (rx, ry) = (site.0.div_euclid(BLOCK) - SLOT_W / 2, (site.1 - 1).div_euclid(BLOCK));
-    let entrance = (rng.next_u32() % gw as u32) as i32;
-    let gx = rx - entrance * SLOT_W;
-    let top = ry - depth;
-    let slot_at = |cx: i32, cy: i32| (gx + cx * SLOT_W, top - (cy + 1) * SLOT_H);
-
-    // The path: across, now and then down, until the bottom row.
-    let mut path = vec![(entrance, 0)];
+/// Lay rooms out on a grid of slots (row 0 at the top): a path from `start`
+/// that wanders across and every so often a step `forward` (down in a
+/// crypt, up in a castle) until it can't, then a goal room (two slots wide
+/// if there's room); side rooms off the path (a third of them secrets, at
+/// least one if there's room); with `fill`, rooms in every cell left.
+fn lay_out(rng: &mut Rng, allowed: &dyn Fn(i32, i32) -> bool, start: (i32, i32), forward: Side, fill: bool) -> Vec<Node> {
+    let mut path = vec![start];
     let mut dir = if rng.chance(128) { 1 } else { -1 };
-    let mut on_bottom = 0;
+    let mut at_end = 0;
     loop {
-        let (cx, cy) = *path.last().expect("starts with the entrance");
-        let free = |x: i32, path: &[(i32, i32)]| x >= 0 && x < gw && !path.contains(&(x, cy));
-        if cy == gh - 1 {
-            if on_bottom > 0 && (rng.chance(110) || !free(cx + dir, &path)) {
+        let (cx, cy) = *path.last().expect("starts somewhere");
+        let free = |x: i32, path: &[(i32, i32)]| allowed(x, cy) && !path.contains(&(x, cy));
+        let ahead = step(cx, cy, forward);
+        let can_advance = allowed(ahead.0, ahead.1);
+        if !can_advance {
+            if at_end > 0 && (rng.chance(110) || !free(cx + dir, &path)) {
                 break;
             }
-            on_bottom += 1;
+            at_end += 1;
         }
-        let down = cy + 1 < gh && (rng.chance(80) || (!free(cx + dir, &path) && !free(cx - dir, &path)));
-        if down {
-            path.push((cx, cy + 1));
+        if can_advance && (rng.chance(80) || (!free(cx + dir, &path) && !free(cx - dir, &path))) {
+            path.push(ahead);
             continue;
         }
         if !free(cx + dir, &path) {
@@ -477,8 +477,8 @@ pub fn crypt(rooms: &[Room], rng: &mut Rng, site: (i32, i32), grid: (i32, i32), 
         }
         if free(cx + dir, &path) {
             path.push((cx + dir, cy));
-        } else if cy + 1 < gh {
-            path.push((cx, cy + 1));
+        } else if can_advance {
+            path.push(ahead);
         } else {
             break;
         }
@@ -489,35 +489,27 @@ pub fn crypt(rooms: &[Room], rng: &mut Rng, site: (i32, i32), grid: (i32, i32), 
     for (i, &(cx, cy)) in path.iter().enumerate().take(path.len() - 1) {
         nodes.push(node(cx, cy, 1, if i == 0 { RoomKind::Entrance } else { RoomKind::Room }));
     }
-    // The goal: two slots wide if there's room beside the path's end.
     let (ex, ey) = *path.last().expect("a path");
     let taken = |x: i32, nodes: &[Node]| nodes.iter().any(|n| n.covers(x, ey));
-    let wide = [dir, -dir].into_iter().find(|&d| ex + d >= 0 && ex + d < gw && !taken(ex + d, &nodes));
-    match wide {
+    match [dir, -dir].into_iter().find(|&d| allowed(ex + d, ey) && !taken(ex + d, &nodes)) {
         Some(d) => nodes.push(node(ex.min(ex + d), ey, 2, RoomKind::Goal)),
         None => nodes.push(node(ex, ey, 1, RoomKind::Goal)),
-    }
-    if path.len() == 1 {
-        // (A one-room crypt: the goal is the entrance.)
-        nodes[0].kind = RoomKind::Goal;
     }
     for w in path.windows(2) {
         let side = match (w[1].0 - w[0].0, w[1].1 - w[0].1) {
             (1, 0) => Side::R,
             (-1, 0) => Side::L,
-            _ => Side::B,
+            _ => forward,
         };
         link(&mut nodes, w[0], side, false);
     }
 
-    // Side rooms off the path (not the goal), a third of them secrets; at
-    // least one secret if there's anywhere to put it.
     let path_rooms = path.len() - 1;
     let mut spots = Vec::new();
     for &(cx, cy) in &path[..path_rooms] {
-        for side in [Side::L, Side::R, Side::B] {
+        for side in [Side::L, Side::R, forward] {
             let (nx, ny) = step(cx, cy, side);
-            if nx >= 0 && nx < gw && ny < gh && !nodes.iter().any(|n| n.covers(nx, ny)) {
+            if allowed(nx, ny) && !nodes.iter().any(|n| n.covers(nx, ny)) {
                 spots.push(((cx, cy), side));
             }
         }
@@ -538,22 +530,144 @@ pub fn crypt(rooms: &[Room], rng: &mut Rng, site: (i32, i32), grid: (i32, i32), 
         secrets += secret as i32;
     }
 
-    // The ruin, the shaft, the rooms.
+    // Fill the rest (a castle has no holes), each joined to a neighbour
+    // (beyond a secret room, more of the hidden part).
+    let mut more = fill;
+    while more {
+        more = false;
+        for i in 0..nodes.len() {
+            for cx in nodes[i].cx..nodes[i].cx + nodes[i].w {
+                let cy = nodes[i].cy;
+                for side in [Side::L, Side::R, Side::T, Side::B] {
+                    let (nx, ny) = step(cx, cy, side);
+                    if allowed(nx, ny) && !nodes.iter().any(|n| n.covers(nx, ny)) {
+                        nodes.push(node(nx, ny, 1, RoomKind::Room));
+                        link(&mut nodes, (cx, cy), side, false);
+                        more = true;
+                    }
+                }
+            }
+        }
+    }
+    nodes
+}
+
+/// Rooms for laid-out nodes, as pieces; `extra` adds doors a node needs
+/// beyond its links (the entrance's way in).
+fn furnish(rooms: &[Room], rng: &mut Rng, nodes: &[Node], slot_at: &dyn Fn(i32, i32) -> (i32, i32), extra: &dyn Fn(&Node) -> Option<Socket>) -> Vec<Piece> {
+    nodes
+        .iter()
+        .map(|n| {
+            let mut need = n.used.clone();
+            need.extend(extra(n));
+            let room = pick(rooms, rng, n.kind, n.w, &need)
+                .or_else(|| pick(rooms, rng, RoomKind::Room, n.w, &need))
+                .unwrap_or_else(|| panic!("no {:?} room {} wide with doors {need:?}", n.kind, n.w));
+            let (bx, by) = slot_at(n.cx, n.cy);
+            Piece::room(room, bx, by, &need, &n.secret)
+        })
+        .collect()
+}
+
+/// A crypt: a ruin on the surface at `site` (its middle, on the ground), a
+/// shaft down `depth` blocks, then a `grid` of room slots with the entrance
+/// under the shaft, the path leading down to the goal.
+pub fn crypt(rooms: &[Room], rng: &mut Rng, site: (i32, i32), grid: (i32, i32), depth: i32) -> Structure {
+    let (gw, gh) = grid;
+    // The ruin's floor: the block at the surface under the site's middle.
+    let (rx, ry) = (site.0.div_euclid(BLOCK) - SLOT_W / 2, (site.1 - 1).div_euclid(BLOCK));
+    let entrance = (rng.next_u32() % gw as u32) as i32;
+    let gx = rx - entrance * SLOT_W;
+    let top = ry - depth;
+    let slot_at = |cx: i32, cy: i32| (gx + cx * SLOT_W, top - (cy + 1) * SLOT_H);
+    let nodes = lay_out(rng, &|x, y| x >= 0 && x < gw && y >= 0 && y < gh, (entrance, 0), Side::B, false);
+
     let ruin = pick(rooms, rng, RoomKind::Ruin, 1, &[]).expect("a ruin room");
     let mut pieces = vec![Piece::room(ruin, rx, ry, &[Socket { side: Side::B, slot: 0 }], &[])];
     pieces.push(shaft(rx, top, ry - top));
-    for n in &nodes {
-        let mut need = n.used.clone();
-        if n.kind == RoomKind::Entrance || (n.kind == RoomKind::Goal && path.len() == 1) {
-            need.push(Socket { side: Side::T, slot: 0 });
-        }
-        let room = pick(rooms, rng, n.kind, n.w, &need)
-            .or_else(|| pick(rooms, rng, RoomKind::Room, n.w, &need))
-            .unwrap_or_else(|| panic!("no {:?} room {} wide with doors {need:?}", n.kind, n.w));
-        let (bx, by) = slot_at(n.cx, n.cy);
-        pieces.push(Piece::room(room, bx, by, &need, &n.secret));
-    }
+    let shaft_door = |n: &Node| (n.cx == entrance && n.cy == 0).then_some(n.socket(entrance, Side::T));
+    pieces.extend(furnish(rooms, rng, &nodes, &slot_at, &shaft_door));
     Structure { kind: StructureKind::Crypt, site, rooms: nodes.len(), grid, pieces }
+}
+
+/// A castle on a summit: its floor at `site`, a keep `keep` slots wide and
+/// tall between two towers `tower` slots tall; the gate at the foot of one
+/// tower, the path climbing to the goal; battlements on top, foundations
+/// down to the rock (`ground`: the terrain's height at a column), and a
+/// stair from the gate down to the ground.
+pub fn castle(rooms: &[Room], rng: &mut Rng, site: (i32, i32), keep: (i32, i32), tower: i32, ground: &dyn Fn(i32) -> i32) -> Structure {
+    let (kw, kh) = keep;
+    let (gw, gh) = (kw + 2, tower);
+    let floor = site.1.div_euclid(BLOCK);
+    let gx = site.0.div_euclid(BLOCK) - gw * SLOT_W / 2;
+    let slot_at = |cx: i32, cy: i32| (gx + cx * SLOT_W, floor + (gh - 1 - cy) * SLOT_H);
+    let allowed = |x: i32, y: i32| (x == 0 || x == gw - 1) && y >= 0 && y < gh || x > 0 && x < gw - 1 && y >= gh - kh && y < gh;
+    // The gate on the side where the ground outside is nearest the floor.
+    let outside = |cx: i32| ground((if cx == 0 { gx - 1 } else { gx + gw * SLOT_W }) * BLOCK).div_euclid(BLOCK) - floor;
+    let gate = if outside(0).abs() <= outside(gw - 1).abs() { 0 } else { gw - 1 };
+    let nodes = lay_out(rng, &allowed, (gate, gh - 1), Side::T, true);
+    let gate_side = if gate == 0 { Side::L } else { Side::R };
+    let gate_door = |n: &Node| (n.cx == gate && n.cy == gh - 1).then_some(n.socket(gate, gate_side));
+    let mut pieces = furnish(rooms, rng, &nodes, &slot_at, &gate_door);
+
+    // Battlements over each column's top room: merlons two blocks wide.
+    for cx in 0..gw {
+        let top = (0..gh).find(|&cy| allowed(cx, cy)).expect("every column has a room");
+        let (bx, by) = slot_at(cx, top);
+        let glyphs = (0..2).flat_map(|_| (0..SLOT_W).map(|x| if x % 4 < 2 { Glyph::Wall } else { Glyph::Keep })).collect();
+        pieces.push(Piece::new(bx, by + SLOT_H, SLOT_W, 2, glyphs));
+    }
+
+    // Foundations: wall from the floor down into the ground, every column.
+    let w = gw * SLOT_W;
+    let lowest = (0..w).map(|bx| ground((gx + bx) * BLOCK + 2).div_euclid(BLOCK) - 2).min().expect("a castle has width").min(floor - 1);
+    let depth = floor - lowest;
+    let mut glyphs = vec![Glyph::Keep; (w * depth) as usize];
+    for bx in 0..w {
+        let bottom = ground((gx + bx) * BLOCK + 2).div_euclid(BLOCK) - 2 - lowest;
+        for by in bottom.max(0)..depth {
+            glyphs[(by * w + bx) as usize] = Glyph::Wall;
+        }
+    }
+    pieces.push(Piece::new(gx, lowest, w, depth, glyphs));
+
+    // The way to the gate: a flying stair down the mountainside (a block
+    // down every block across) where the ground falls away, a tunnel where
+    // it rises; either at most 60 blocks, until it meets the open ground.
+    let (out, from) = if gate == 0 { (-1, gx - 1) } else { (1, gx + w) };
+    let column = |d: i32| from + out * d;
+    let height = |d: i32| ground(column(d) * BLOCK + 2).div_euclid(BLOCK);
+    let mut cols: Vec<(i32, Vec<(i32, Glyph)>)> = Vec::new(); // (block x, (block row, glyph))
+    for d in 0..60 {
+        let under = height(d);
+        if under > floor + 1 {
+            // Through the mountain: floor, a door-high passage, roof.
+            let mut c = vec![(floor, Glyph::Wall), (floor + 6, Glyph::Wall)];
+            c.extend((1..=5).map(|r| (floor + r, Glyph::Open)));
+            cols.push((column(d), c));
+        } else if floor - d >= under {
+            // A flight three blocks thick, on piers down into the ground
+            // every eight blocks.
+            let bottom = if d % 8 == 7 { under - 2 } else { (floor - d - 2).max(under - 2) };
+            cols.push((column(d), (bottom..=floor - d).map(|r| (r, Glyph::Wall)).collect()));
+        } else {
+            break;
+        }
+    }
+    if !cols.is_empty() {
+        let x0 = cols.iter().map(|c| c.0).min().expect("columns");
+        let rows = cols.iter().flat_map(|c| c.1.iter().map(|r| r.0));
+        let (lo, hi) = rows.fold((i32::MAX, i32::MIN), |(l, h), r| (l.min(r), h.max(r)));
+        let (w, h) = (cols.len() as i32, hi - lo + 1);
+        let mut glyphs = vec![Glyph::Keep; (w * h) as usize];
+        for (bx, c) in &cols {
+            for &(by, g) in c {
+                glyphs[((by - lo) * w + bx - x0) as usize] = g;
+            }
+        }
+        pieces.push(Piece::new(x0, lo, w, h, glyphs));
+    }
+    Structure { kind: StructureKind::Castle, site, rooms: nodes.len(), grid: (gw, gh), pieces }
 }
 
 /// The way down from a ruin to its crypt: a shaft `h` blocks tall whose
@@ -597,16 +711,18 @@ mod tests {
         }
         assert!(rooms.iter().any(|r| r.kind == RoomKind::Goal && r.slots == (2, 1) && all(r)), "a wide goal");
         assert!(rooms.iter().any(|r| r.kind == RoomKind::Ruin));
+        let castle = castle_rooms();
+        for kind in [RoomKind::Entrance, RoomKind::Room, RoomKind::Goal, RoomKind::Secret] {
+            assert!(castle.iter().any(|r| r.kind == kind && r.slots == (1, 1) && all(r)), "a castle {kind:?} with every door");
+        }
         assert!(parse("room bad\n#..#").is_err(), "a room must be whole slots");
     }
 
-    /// Blocks you can reach from the ruin's inside, through what's passable
-    /// (illusory walls too), without leaving the structure.
-    fn reachable(s: &Structure) -> HashSet<(i32, i32)> {
+    /// Blocks you can reach from `start`, through what's passable (illusory
+    /// walls too), without leaving the structure.
+    fn reachable(s: &Structure, start: (i32, i32)) -> HashSet<(i32, i32)> {
         let glyph = |bx: i32, by: i32| s.pieces.iter().find_map(|p| p.glyph(bx * BLOCK, by * BLOCK).filter(|&g| g != Glyph::Keep));
-        let ruin = &s.pieces[0];
-        let start = (ruin.x / BLOCK + 7, ruin.y / BLOCK + 1);
-        assert!(glyph(start.0, start.1).is_some_and(Glyph::passable), "the ruin's middle is open");
+        assert!(glyph(start.0, start.1).is_some_and(Glyph::passable), "the way in is open");
         let mut seen = HashSet::from([start]);
         let mut stack = vec![start];
         while let Some((x, y)) = stack.pop() {
@@ -629,7 +745,8 @@ mod tests {
             let mut rng = Rng::seeded(&[seed, 5]);
             let grid = (3 + (seed % 4) as i32, 3 + (seed / 4 % 3) as i32);
             let s = crypt(rooms, &mut rng, (10_000, 8_000), grid, 40);
-            let reach = reachable(&s);
+            let ruin = &s.pieces[0];
+            let reach = reachable(&s, (ruin.x / BLOCK + 7, ruin.y / BLOCK + 1));
             let chests: Vec<(i32, i32)> = s.pieces.iter().flat_map(|p| p.blocks_of(Glyph::Chest)).map(|(x, y)| (x / BLOCK, y / BLOCK)).collect();
             assert!(chests.len() >= 2, "seed {seed}: a goal's worth of chests ({})", chests.len());
             for c in &chests {
@@ -638,5 +755,34 @@ mod tests {
             secrets += s.pieces.iter().any(|p| p.blocks_of(Glyph::Illusory).next().is_some()) as i32;
         }
         assert!(secrets > 250, "most crypts hide a secret ({secrets}/300)");
+    }
+
+    #[test]
+    fn every_chest_in_a_castle_can_be_reached_from_its_gate() {
+        let rooms = castle_rooms();
+        for seed in 0..200u64 {
+            let mut rng = Rng::seeded(&[seed, 6]);
+            // Ground falling away to one side or rising on it.
+            let tilt = if seed % 2 == 0 { 1 } else { -1 };
+            let ground = move |x: i32| 12_000 + tilt * (x - 10_000) / 2;
+            let keep = (2 + (seed % 2) as i32, 2 + (seed / 2 % 2) as i32);
+            let s = castle(rooms, &mut rng, (10_000, 12_000), keep, keep.1 + 1 + (seed / 4 % 2) as i32, &ground);
+            // In at the gate: the first open block beside the castle, at
+            // the floor's door height (stair or tunnel end included).
+            let (x0, _, x1, _) = s.pieces[..s.rooms].iter().map(Piece::bbox).fold((i32::MAX, 0, i32::MIN, 0), |a, b| (a.0.min(b.0), 0, a.2.max(b.2), 0));
+            let door_row = 12_000 / BLOCK + 1;
+            let glyph = |bx: i32, by: i32| s.pieces.iter().find_map(|p| p.glyph(bx * BLOCK, by * BLOCK).filter(|&g| g != Glyph::Keep));
+            let gate = [x0 / BLOCK, x1 / BLOCK].into_iter().find(|&bx| glyph(bx, door_row).is_some_and(Glyph::passable)).expect("a gate in one tower's foot");
+            let reach = reachable(&s, (gate, door_row));
+            let chests: Vec<(i32, i32)> = s.pieces.iter().flat_map(|p| p.blocks_of(Glyph::Chest)).map(|(x, y)| (x / BLOCK, y / BLOCK)).collect();
+            assert!(chests.len() >= 2, "seed {seed}: a goal's worth of chests");
+            for c in &chests {
+                assert!(reach.contains(c), "seed {seed}: the chest at block {c:?} can't be reached from the gate");
+            }
+            // Every slot of the keep and the towers is a room.
+            let gh = s.grid.1;
+            assert_eq!(s.rooms as i32, 2 * gh + keep.0 * keep.1 - s.pieces[..s.rooms].iter().filter(|p| p.w == 2 * SLOT_W).count() as i32, "seed {seed}: no holes");
+        }
+        let _ = SLOT_H;
     }
 }

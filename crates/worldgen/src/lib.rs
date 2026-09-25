@@ -21,7 +21,7 @@ use std::sync::Arc;
 use flora::{Foliage, TreePart};
 pub use biome::Biome;
 use islands::IslandCell;
-use structures::Glyph;
+use structures::{Glyph, StructureKind};
 pub use plan::{Band, Preset, WorldPlan};
 
 /// Anything that can fill a chunk. The game streams through this trait, so
@@ -102,6 +102,19 @@ struct Ids {
     candle: MaterialId,
     spikes: MaterialId,
     planks: MaterialId,
+    ashlar: MaterialId,
+    cracked_ashlar: MaterialId,
+    false_ashlar: MaterialId,
+}
+
+impl Ids {
+    /// A structure's (wall, weak wall, illusory wall).
+    fn style(&self, kind: StructureKind) -> (MaterialId, MaterialId, MaterialId) {
+        match kind {
+            StructureKind::Crypt => (self.crypt_stone, self.cracked_stone, self.false_wall),
+            StructureKind::Castle => (self.ashlar, self.cracked_ashlar, self.false_ashlar),
+        }
+    }
 }
 
 /// Terrain rasterised from a `WorldPlan`: hills with cliffs, dirt over
@@ -175,6 +188,9 @@ impl TerrainGen {
             candle: mats.expect_id("candle"),
             spikes: mats.expect_id("spikes"),
             planks: mats.expect_id("planks"),
+            ashlar: mats.expect_id("ashlar"),
+            cracked_ashlar: mats.expect_id("cracked_ashlar"),
+            false_ashlar: mats.expect_id("false_ashlar"),
         };
 
         let (ores, gems) = minerals::rules(&plan, mats);
@@ -241,8 +257,8 @@ impl TerrainGen {
     /// lighter on top).
     fn background_at(&self, x: i32, y: i32, trees: &[&flora::Tree]) -> (MaterialId, Option<u8>) {
         let i = &self.ids;
-        if let Some((g, _)) = self.plan.structures.glyph_at(x, y) {
-            return (if g == Glyph::Sky { i.air } else { i.crypt_stone }, None);
+        if let Some((g, kind)) = self.plan.structures.glyph_at(x, y) {
+            return (if g == Glyph::Sky { i.air } else { i.style(kind).0 }, None);
         }
         // Wood before leaves, whichever tree they belong to: a neighbour's
         // crown must not hide a trunk (its own leaves would lose their wood).
@@ -296,8 +312,8 @@ impl TerrainGen {
         if y < 6 + (hash(&[plan.seed, 77, x as u64]) % 4) as i32 {
             return i.bedrock;
         }
-        if let Some((g, _)) = plan.structures.glyph_at(x, y) {
-            return self.built(g, x, y);
+        if let Some((g, kind)) = plan.structures.glyph_at(x, y) {
+            return self.built(g, kind, x, y);
         }
         let surface = plan.surface_at(x);
         let (xf, yf) = (x as f64, y as f64);
@@ -416,13 +432,14 @@ impl TerrainGen {
     /// What a structure's glyph makes at a cell. Candles and spikes are
     /// shapes inside their block; chests are drawn afterwards
     /// (`place_structure_chests`), whole.
-    fn built(&self, g: Glyph, x: i32, y: i32) -> MaterialId {
+    fn built(&self, g: Glyph, kind: StructureKind, x: i32, y: i32) -> MaterialId {
         let i = &self.ids;
         let (bx, by) = (x & 3, y & 3);
+        let (wall, weak, illusory) = i.style(kind);
         match g {
-            Glyph::Wall => i.crypt_stone,
-            Glyph::Weak => i.cracked_stone,
-            Glyph::Illusory => i.false_wall,
+            Glyph::Wall => wall,
+            Glyph::Weak => weak,
+            Glyph::Illusory => illusory,
             Glyph::Planks => i.planks,
             Glyph::Rubble => i.gravel,
             Glyph::Water => i.water,
@@ -866,7 +883,7 @@ mod tests {
         use std::collections::HashSet;
         let m = mats();
         let g = TerrainGen::new(1, Preset::Small, &m);
-        let crypts = &g.plan.structures.list;
+        let crypts: Vec<_> = g.plan.structures.list.iter().filter(|s| s.kind == structures::StructureKind::Crypt).collect();
         assert!(crypts.len() >= 2, "a small world has crypts ({})", crypts.len());
         let chest = m.expect_id("chest");
         for c in crypts {
@@ -945,6 +962,7 @@ mod tests {
             .filter(|&x| p.climate.ambient(x, p.surface_at(x)) <= -5 && (p.surface_at(x + 4) - p.surface_at(x - 4)).abs() <= 4)
             .filter(|&x| p.water_at(x).is_none()) // (a frozen lake's bed is sand)
             .filter(|&x| !p.chasm_at(x, p.surface_at(x) - 1)) // (a chasm's mouth is air)
+            .filter(|&x| !p.structures.near_column(x, 250)) // (a castle's roof, its stair)
             .collect();
         assert!(cold.len() > 100, "some cold, gentle ground ({})", cold.len());
         let snow = m.expect_id("snow");
@@ -1111,7 +1129,8 @@ mod tests {
             .collect();
         assert!(peaks.len() >= 4, "{} peaks: {peaks:?}", peaks.len());
         let snow = m.expect_id("snow");
-        for &x in &peaks {
+        // (A castle on a summit isn't snow.)
+        for &x in peaks.iter().filter(|&&x| !p.structures.near_column(x, 250)) {
             let top = (p.surface_at(x) - 60..p.surface_at(x) + 60).rev().find(|&y| g.material_at(x, y) != MaterialId::AIR).unwrap();
             let white = (-40..=40).filter(|&d| g.material_at(x + d, (top - 400..top + 80).rev().find(|&y| g.material_at(x + d, y) != MaterialId::AIR).unwrap_or(top)) == snow).count();
             assert!(white > 40, "peak at {x} is snowy ({white} of 81 columns)");

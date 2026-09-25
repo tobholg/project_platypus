@@ -93,6 +93,16 @@
         (name: "false_wall", kind: Plant, still: true, density: 200, hardness: 4, opacity: 220,
             colors: [(40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116)],
             pattern: ["11111111", "7a9b9a81", "69a9a871", "5878a761", "11111111", "9a81ba9b", "8971a9a8", "7861a878"]),
+        // Castle stone: big pale ashlar blocks; harder than crypt stone.
+        (name: "ashlar", kind: Static, density: 2600, hardness: 100, crumbles_into: "gravel", above: (1450, "lava"),
+            colors: [(62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152)],
+            pattern: ["11111111", "9aba9ab1", "8a9a8a91", "7898a781", "11111111", "b1a9aba9", "a18a9a8a", "917898a7"]),
+        (name: "cracked_ashlar", kind: Static, density: 2400, hardness: 4, crumbles_into: "gravel",
+            colors: [(62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152)],
+            pattern: ["11111111", "9ab39ab1", "8a938a91", "78938781", "11111111", "b1a93ba9", "a18a3a8a", "91789387"]),
+        (name: "false_ashlar", kind: Plant, still: true, density: 200, hardness: 4, opacity: 220,
+            colors: [(62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152)],
+            pattern: ["11111111", "9aba9ab1", "8a9a8a91", "7898a781", "11111111", "b1a9aba9", "a18a9a8a", "917898a7"]),
         // Wax below, a flame on top (the worldgen shades each cell).
         (name: "candle", kind: Static, density: 900, hardness: 3, glow: (10, 6, 2), opacity: 10,
             colors: [(176, 166, 136), (222, 212, 180), (255, 176, 70), (255, 236, 150)]),
