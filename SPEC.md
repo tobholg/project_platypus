@@ -261,6 +261,45 @@ DESIGN.md §3.2 step 6, stage 5 of the world arc (`worldgen/src/minerals.rs`).
 - Cost: a deep column of chunks streams in ~2.2 ms (was 1.8 ms), under the
   4 ms budget.
 
+### 3.4e Structures: crypts
+DESIGN.md §3.3, stage 6 of the world arc (`worldgen/src/structures.rs`,
+rooms in `assets/data/rooms/*.rooms`).
+- A room is a text grid at block resolution (one character per 4 × 4
+  cells, on the mining grid), 16 × 10 blocks per slot; the legend is at the
+  top of `crypt.rooms` (wall, open, open to the sky, keep the terrain,
+  chest, candle, creature, boss, water, lava, spikes, illusory wall, weak
+  wall, planks, rubble). Kinds: room, entrance, goal, secret, ruin.
+- Doors are fixed places on a slot's edge (a side door is rows 1–5 from the
+  bottom, a hole in the top or bottom is columns 6–9), read from the grid,
+  so a room's doors are never declared twice. Every room has doors all
+  round; assembly walls up the ones it doesn't use and makes a secret room's
+  door an illusory wall. A room's edge must be wall outside its doors
+  (checked when parsed).
+- A crypt: a ruin on the surface (flat, dry lowland, away from the spawn,
+  the chasms and other crypts; no tree grows in it), a shaft down 30–70
+  blocks (walled, with ledges to climb back up and candles), then a grid of
+  3–6 × 3–5 slots: a path from the entrance under the shaft, across and
+  down to a goal room (two slots wide if there's room: chests and a boss),
+  side rooms off it, about a third of them secrets behind an illusory wall
+  (at least one when there's room). About 10 on a large world (3–8 by seed).
+- Laid out once, when the world is planned; a chunk rasterises the pieces
+  it touches (binned by chunk). Structures win over the terrain (and over
+  caves and ore) wherever they aren't "keep the terrain".
+- Crypt stone (hardness 90) needs an iron pickaxe, so the way through is
+  the rooms; cracked stone breaks in one hit; an illusory wall is a still
+  plant drawn like crypt stone: creatures walk through it. Spikes hurt on
+  touch (corrosive 40). Candles glow faintly: crypts are dark.
+- Guards: the generator reports a fresh chunk's creatures (`spawns`), the
+  game spawns each once (remembered by place, since an unmodified chunk is
+  generated again when it comes back into view). A boss is a pack of three
+  orcs until there are bosses.
+- Tests: every chest in 300 random crypts is reachable from the ruin
+  through open blocks (illusory walls included); crypts sit on the ground
+  with no tree in the ruin; chests are drawn whole across chunk borders;
+  each guard is reported by exactly one chunk.
+- Not yet: castles, the ageing pass (moss, cobwebs, collapse), keys and
+  locked doors, rooms behind waterfalls, treasure in lakes.
+
 ### 3.5 Streaming and persistence
 Chunks load around every player (co-op: the union). Missing chunks come from
 the chunk store (previously modified, lz4-compressed) or from worldgen.

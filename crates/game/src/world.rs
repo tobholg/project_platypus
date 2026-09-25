@@ -94,6 +94,7 @@ impl Plugin for WorldPlugin {
             .insert_resource(SimWorld { world, generator, store: ChunkStore::default() })
             .insert_resource(MaterialsSource(Watched::new(self.materials_path.clone())))
             .init_resource::<SimMetrics>()
+            .init_resource::<FreshChunks>()
             .configure_sets(FixedUpdate, (TickSet::Intent, TickSet::Bodies, TickSet::Cells).chain())
             .add_systems(FixedUpdate, step_cells.in_set(TickSet::Cells))
             .add_systems(PreUpdate, stream_chunks)
@@ -121,9 +122,15 @@ fn step_cells(mut sim: ResMut<SimWorld>, mut metrics: ResMut<SimMetrics>, mut fx
 
 /// Load what any loader needs, unload what nobody needs (writing modified
 /// chunks to the store). Co-op: the loaded set is the union over players.
+/// Chunks generated this frame (not loaded from the store): what they start
+/// with (a crypt's guards) is spawned from them.
+#[derive(Resource, Default)]
+pub struct FreshChunks(pub Vec<ChunkPos>);
+
 fn stream_chunks(
     mut sim: ResMut<SimWorld>,
     mut metrics: ResMut<SimMetrics>,
+    mut fresh: ResMut<FreshChunks>,
     loaders: Query<(&GlobalTransform, &ChunkLoader)>,
 ) {
     let t = Instant::now();
@@ -180,6 +187,7 @@ fn stream_chunks(
         .filter(|(_, p)| !from_store.iter().any(|c| c.pos == *p))
         .map(|(_, p)| generator.generate(*p))
         .collect();
+    fresh.0 = generated.iter().map(|c| c.pos).collect();
     for chunk in from_store.into_iter().chain(generated) {
         sim.world.insert_chunk(chunk);
     }

@@ -12,6 +12,7 @@ use platypus_sim::{CHUNK, Climate};
 use crate::biome::Biome;
 use crate::flora::{Forest, Species};
 use crate::islands::{self, Island};
+use crate::structures::{self, Structure, Structures};
 
 /// World sizes. `Large` is the world we play in; `Small` is quick to look at
 /// and to test with (the same world scaled down; small things like hills and
@@ -121,6 +122,9 @@ const ISLANDS: f64 = 12.0;
 /// valleys are dry land, not one giant lake.
 const LAKE_REACH: f64 = 1_200.0;
 const CHASMS: f64 = 5.0;
+/// Crypts under ruins in the lowlands (large world), at least this far apart.
+const CRYPTS: f64 = 10.0;
+const CRYPT_SPACING: f64 = 1_400.0;
 const CHASM_WIDTH: (f64, f64) = (110.0, 240.0);
 /// Columns sharing one cavern water table.
 const WATER_TABLE_SPAN: i32 = 2_048;
@@ -153,6 +157,8 @@ pub struct WorldPlan {
     pub forest: Forest,
     /// Trees on the sky islands.
     pub island_forest: Forest,
+    /// Crypts (castles next).
+    pub structures: Structures,
 }
 
 fn unit(rng: &mut Rng) -> f64 {
@@ -460,6 +466,8 @@ impl WorldPlan {
             })
             .collect();
 
+        let structures = Structures::new(crypts(seed, &surface, &water, &biomes, &chasms, (width, ocean_w, mid), (sw, sh), band_floors));
+
         let forest = {
             let at = |x: i32| surface[x.clamp(0, width - 1) as usize];
             let lush = blur(&biomes.iter().map(|&b| b.lushness()).collect::<Vec<_>>(), blend);
@@ -474,6 +482,7 @@ impl WorldPlan {
                     let b = biomes[i(x)];
                     hash(&[seed, 0x72EE, x as u64]) % 256 < b.trees()
                         && chasms.iter().all(|c| (x - c.x).abs() as f64 > c.width * 1.5 + 80.0)
+                        && !structures.near_column(x, 40)
                         && water[i(x)] <= surface[i(x)]
                         && climate.ambient(x, surface[i(x)]) >= CONIFER_LINE
                         && (at(x - 3) - at(x + 3)).abs() < 7
@@ -510,7 +519,7 @@ impl WorldPlan {
             )
         };
 
-        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, water, rugged, islands, chasms, water_tables, climate, forest, island_forest }
+        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, water, rugged, islands, chasms, water_tables, climate, forest, island_forest, structures }
     }
 
     /// First air cell above the ground at a world column.
@@ -594,7 +603,7 @@ impl WorldPlan {
             h = hash(&[h, c.x as u64, c.top as u64, c.bottom as u64, c.width.to_bits()]);
         }
         h = hash(&[h, fold(&mut self.water_tables.iter().map(|&v| v as u64))]);
-        h
+        hash(&[h, self.structures.checksum()])
     }
 }
 
@@ -630,6 +639,41 @@ impl Chasm {
         let (c, w) = self.at(y);
         (x as f64 - c).abs() < w / 2.0
     }
+}
+
+/// Crypt sites: flat, dry lowland (not the mountains, not the sea), away
+/// from the spawn, the chasms and each other; a ruin on the surface over a
+/// shaft down to a grid of rooms in the underground.
+#[allow(clippy::too_many_arguments)]
+fn crypts(seed: u64, surface: &[i32], water: &[i32], biomes: &[Biome], chasms: &[Chasm], (width, ocean_w, mid): (i32, i32, i32), (sw, sh): (f64, f64), band_floors: [i32; 7]) -> Vec<Structure> {
+    let mut rng = Rng::seeded(&[seed, 0xC7497]);
+    let at = |x: i32| surface[x.clamp(0, width - 1) as usize];
+    let wanted = (CRYPTS * sw).round().max(2.0) as usize;
+    let spacing = (CRYPT_SPACING * sw.max(0.25)) as i32;
+    let (surface_lo, surface_hi) = (band_floors[2], band_floors[1]);
+    let mut out: Vec<Structure> = Vec::new();
+    for _try in 0..wanted * 200 {
+        if out.len() == wanted {
+            break;
+        }
+        let x = ocean_w + 300 + (unit(&mut rng) * (width - 2 * ocean_w - 600) as f64) as i32;
+        let y = at(x);
+        // (The ruin is 64 cells wide; its ground must be level with it.)
+        let flat = (x - 32..=x + 32).step_by(4).all(|x| (at(x) - y).abs() <= 8);
+        let dry = (x - 150..=x + 150).step_by(10).all(|x| water[x.clamp(0, width - 1) as usize] == 0);
+        let lowland = !matches!(biomes[x as usize], Biome::Ocean | Biome::Mountains) && (surface_lo..surface_hi).contains(&y);
+        let clear = (x - mid).abs() > (700.0 * sw.max(0.4)) as i32
+            && chasms.iter().all(|c| (x - c.x).abs() as f64 > c.width + c.wander + 420.0)
+            && out.iter().all(|s| (s.site.0 - x).abs() > spacing);
+        if !(flat && dry && lowland && clear) {
+            continue;
+        }
+        let grid = if sh < 0.5 { (3 + (rng.next_u32() % 2) as i32, 3) } else { (4 + (rng.next_u32() % 3) as i32, 3 + (rng.next_u32() % 3) as i32) };
+        let depth = ((30 + (rng.next_u32() % 40) as i32) as f64 * sh.max(0.4)) as i32;
+        out.push(structures::crypt(structures::crypt_rooms(), &mut rng, (x, y), grid, depth));
+    }
+    out.sort_by_key(|s| s.site.0);
+    out
 }
 
 fn smoothstep(a: f64, b: f64, x: f64) -> f64 {

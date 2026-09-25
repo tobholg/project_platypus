@@ -58,8 +58,9 @@ and the RPG arc (rigs and gear skins, moves, corpses and loot, characters, spell
    lakes, sky islands (SPEC §3.4b). Stage 3 done: the underground by band,
    chasms, flooded caverns, the underworld's lava sea. Stage 4 done: hands
    (blocks, smart cursor, items, inventory, chests, loot; SPEC §3.4c). Stage 5
-   done: ores and gems by depth with the pickaxe ladder (SPEC §3.4d). Next:
-   stage 6, structures (rooms as text, crypts, castles, secrets).
+   done: ores and gems by depth with the pickaxe ladder (SPEC §3.4d). Stage 6
+   in progress: crypts done (rooms as text, assembly, ruins, shafts, guards;
+   SPEC §3.4e); next castles, then ageing and secrets.
    Originally:
    biome plan from temperature × moisture; tree species as RON data (conifers
    that hold snow, birch, jungle, dead trees); lakes and rivers in forests;

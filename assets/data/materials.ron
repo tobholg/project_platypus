@@ -21,6 +21,7 @@
 // above / below: (°C, "material") melt/boil/freeze into something else
 // ignites_at:   catches fire at this temperature
 // explodes:     (radius, power, chance/256) when it catches fire
+// still:        a plant that doesn't sway (illusory walls)
 // colors:       gradient; each cell gets a fixed point on it
 //
 // `air` must stay first. Ids are assigned by order on first load and kept
@@ -76,6 +77,28 @@
             colors: [(20, 112, 58), (46, 178, 96), (132, 236, 166), (30, 140, 72)]),
         (name: "ruby",        kind: Static, density: 4000, hardness: 100, crumbles_into: "gravel", glow: (44, 5, 10), opacity: 40,
             colors: [(132, 14, 32), (206, 42, 62), (255, 118, 128), (160, 22, 44)]),
+        // Built: what structures are made of (worldgen/src/structures.rs).
+        // Crypt stone: big dark blocks in offset courses, hard enough that a
+        // copper pickaxe won't dig a way round the rooms.
+        (name: "crypt_stone", kind: Static, density: 2600, hardness: 90, crumbles_into: "gravel", above: (1400, "lava"),
+            colors: [(40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116)],
+            pattern: ["11111111", "7a9b9a81", "69a9a871", "5878a761", "11111111", "9a81ba9b", "8971a9a8", "7861a878"]),
+        // A weak wall: crypt stone, cracked (a sharp eye sees the cracks); one
+        // hit breaks it.
+        (name: "cracked_stone", kind: Static, density: 2400, hardness: 4, crumbles_into: "gravel",
+            colors: [(40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116)],
+            pattern: ["11111111", "7a9b3a81", "69a3a871", "5873a761", "11111111", "9a81b39b", "8971a3a8", "7861a838"]),
+        // An illusory wall: looks like crypt stone, but it's a (still) plant,
+        // so creatures walk straight through it.
+        (name: "false_wall", kind: Plant, still: true, density: 200, hardness: 4, opacity: 220,
+            colors: [(40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116)],
+            pattern: ["11111111", "7a9b9a81", "69a9a871", "5878a761", "11111111", "9a81ba9b", "8971a9a8", "7861a878"]),
+        // Wax below, a flame on top (the worldgen shades each cell).
+        (name: "candle", kind: Static, density: 900, hardness: 3, glow: (10, 6, 2), opacity: 10,
+            colors: [(176, 166, 136), (222, 212, 180), (255, 176, 70), (255, 236, 150)]),
+        // Traps: touching them hurts.
+        (name: "spikes", kind: Static, density: 7800, hardness: 70, corrosive: 40,
+            colors: [(58, 58, 64), (104, 104, 114), (150, 150, 162), (190, 190, 200)]),
         (name: "glass",    kind: Static, density: 2500, hardness: 30,  above: (1500, "lava"), opacity: 25, colors: [(170, 200, 205), (196, 222, 226)]),
         (name: "ice",      kind: Static, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), coats: "wet", opacity: 60, latent: 480, colors: [(170, 210, 240), (200, 230, 250)]),
         (name: "frozen_blood", kind: Static, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), coats: "bloody", latent: 480, colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),

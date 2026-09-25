@@ -105,6 +105,16 @@ fn main() {
     println!("{} lakes: {}", lakes.len(), lakes.join("; "));
     let isl: Vec<String> = plan.islands.iter().map(|i| format!("({},{} {}×{})", i.x0, i.y0, i.w, i.h)).collect();
     println!("sky islands (x,y w×h): {}", isl.join(" "));
+    let st: Vec<String> = plan
+        .structures
+        .list
+        .iter()
+        .map(|s| {
+            let (x0, y0, x1, y1) = s.bbox();
+            format!("{} at x {} ({}×{} slots, {} rooms, cells {x0},{y0}–{x1},{y1})", s.kind.name(), s.site.0, s.grid.0, s.grid.1, s.rooms)
+        })
+        .collect();
+    println!("{} structures:\n  {}", st.len(), st.join("\n  "));
 
     let t = Instant::now();
     let (x0, y0, w, h) = args.region.unwrap_or((0, 0, plan.width, plan.height));

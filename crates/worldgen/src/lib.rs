@@ -14,12 +14,14 @@ pub mod flora;
 pub mod islands;
 pub mod minerals;
 pub mod plan;
+pub mod structures;
 
 use std::sync::Arc;
 
 use flora::{Foliage, TreePart};
 pub use biome::Biome;
 use islands::IslandCell;
+use structures::Glyph;
 pub use plan::{Band, Preset, WorldPlan};
 
 /// Anything that can fill a chunk. The game streams through this trait, so
@@ -47,6 +49,13 @@ pub trait ChunkGenerator: Send + Sync {
     /// telling whether unloaded air above a column is open sky.
     fn surface_hint(&self, _x: i32) -> Option<i32> {
         None
+    }
+
+    /// Creatures a freshly generated chunk starts with (feet, creature id):
+    /// the guards of a crypt. Each is reported by exactly one chunk; the
+    /// game spawns each once.
+    fn spawns(&self, _pos: ChunkPos) -> Vec<(CellPos, &'static str)> {
+        Vec::new()
     }
 
     fn in_bounds(&self, pos: ChunkPos) -> bool {
@@ -87,6 +96,12 @@ struct Ids {
     chest: Option<MaterialId>,
     slate: MaterialId,
     basalt: MaterialId,
+    crypt_stone: MaterialId,
+    cracked_stone: MaterialId,
+    false_wall: MaterialId,
+    candle: MaterialId,
+    spikes: MaterialId,
+    planks: MaterialId,
 }
 
 /// Terrain rasterised from a `WorldPlan`: hills with cliffs, dirt over
@@ -117,6 +132,9 @@ pub struct TerrainGen {
     ores: Vec<minerals::Ore>,
     gems: Vec<minerals::Gem>,
     minerals: Perlin,
+    /// Materials laid in a pattern (crypt stone, planks): their shades over
+    /// a chunk-sized tile, by material id.
+    patterns: Vec<Option<Vec<u8>>>,
 }
 
 impl TerrainGen {
@@ -151,6 +169,12 @@ impl TerrainGen {
             chest: mats.id("chest"),
             slate: mats.expect_id("slate"),
             basalt: mats.expect_id("basalt"),
+            crypt_stone: mats.expect_id("crypt_stone"),
+            cracked_stone: mats.expect_id("cracked_stone"),
+            false_wall: mats.expect_id("false_wall"),
+            candle: mats.expect_id("candle"),
+            spikes: mats.expect_id("spikes"),
+            planks: mats.expect_id("planks"),
         };
 
         let (ores, gems) = minerals::rules(&plan, mats);
@@ -160,6 +184,10 @@ impl TerrainGen {
             ores,
             gems,
             minerals: Perlin::new(s(18)),
+            patterns: mats
+                .iter()
+                .map(|(id, _)| mats.pattern_shade(id, 0, 0).map(|_| (0..CHUNK * CHUNK).map(|i| mats.pattern_shade(id, i % CHUNK, i / CHUNK).unwrap_or(136)).collect()))
+                .collect(),
             leaf_edge: Perlin::new(s(7)),
             meadow: Perlin::new(s(8)),
             overhang: Fbm::<Perlin>::new(s(9)).set_octaves(3).set_frequency(1.0 / 60.0),
@@ -213,6 +241,9 @@ impl TerrainGen {
     /// lighter on top).
     fn background_at(&self, x: i32, y: i32, trees: &[&flora::Tree]) -> (MaterialId, Option<u8>) {
         let i = &self.ids;
+        if let Some((g, _)) = self.plan.structures.glyph_at(x, y) {
+            return (if g == Glyph::Sky { i.air } else { i.crypt_stone }, None);
+        }
         // Wood before leaves, whichever tree they belong to: a neighbour's
         // crown must not hide a trunk (its own leaves would lose their wood).
         let mut leaves = None;
@@ -264,6 +295,9 @@ impl TerrainGen {
         let plan = &*self.plan;
         if y < 6 + (hash(&[plan.seed, 77, x as u64]) % 4) as i32 {
             return i.bedrock;
+        }
+        if let Some((g, _)) = plan.structures.glyph_at(x, y) {
+            return self.built(g, x, y);
         }
         let surface = plan.surface_at(x);
         let (xf, yf) = (x as f64, y as f64);
@@ -377,6 +411,52 @@ impl TerrainGen {
         (0..3_000).step_by(8).flat_map(|d| [x + d, x - d]).find_map(|x| {
             (y - 800..=y).rev().find(|&y| solid(x, y - 1) && (0..20).all(|dy| air(x, y + dy) && air(x + 7, y + dy)) && solid(x + 7, y - 1)).map(|y| CellPos::new(x + 4, y + 2))
         })
+    }
+
+    /// What a structure's glyph makes at a cell. Candles and spikes are
+    /// shapes inside their block; chests are drawn afterwards
+    /// (`place_structure_chests`), whole.
+    fn built(&self, g: Glyph, x: i32, y: i32) -> MaterialId {
+        let i = &self.ids;
+        let (bx, by) = (x & 3, y & 3);
+        match g {
+            Glyph::Wall => i.crypt_stone,
+            Glyph::Weak => i.cracked_stone,
+            Glyph::Illusory => i.false_wall,
+            Glyph::Planks => i.planks,
+            Glyph::Rubble => i.gravel,
+            Glyph::Water => i.water,
+            Glyph::Lava => i.lava,
+            Glyph::Candle if bx == 1 && by <= 2 => i.candle,
+            // Two spikes a block, pointing up.
+            Glyph::Spikes if by == 0 || (by == 1 && bx != 3) || (by == 2 && bx == 1) => i.spikes,
+            _ => i.air,
+        }
+    }
+
+    /// Chests in structures, whole even where they cross into this chunk
+    /// from the next.
+    fn place_structure_chests(&self, pos: ChunkPos, cells: &mut [Cell]) {
+        const SIDE: i32 = 8;
+        let Some(chest) = self.ids.chest else { return };
+        let o = pos.origin();
+        // (A chest reaches 8 cells right and up from its corner, so the
+        // chunks left and below may hold its corner.)
+        for (cy, cx) in [(pos.y, pos.x), (pos.y, pos.x - 1), (pos.y - 1, pos.x), (pos.y - 1, pos.x - 1)] {
+            for (_, piece) in self.plan.structures.pieces_in(cx, cy) {
+                for (x0, y0) in piece.blocks_of(Glyph::Chest) {
+                    for dy in 0..SIDE {
+                        for dx in 0..SIDE {
+                            let (lx, ly) = (x0 + dx - o.x, y0 + dy - o.y);
+                            if (0..CHUNK).contains(&lx) && (0..CHUNK).contains(&ly) {
+                                let shade = self.chest_shades[(dy * CHUNK + dx) as usize];
+                                cells[(ly * CHUNK + lx) as usize] = Cell { heat: self.heat[chest.0 as usize], ..Cell::new(chest, shade) };
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Ore or a gem at a cell of rock, if there is one (minerals.rs).
@@ -552,6 +632,24 @@ impl ChunkGenerator for TerrainGen {
         Some(self.surface_at(x))
     }
 
+    fn spawns(&self, pos: ChunkPos) -> Vec<(CellPos, &'static str)> {
+        let o = pos.origin();
+        let inside = |(x, y): &(i32, i32)| (o.x..o.x + CHUNK).contains(x) && (o.y..o.y + CHUNK).contains(y);
+        let mut out = Vec::new();
+        for (_, piece) in self.plan.structures.pieces_in(pos.x, pos.y) {
+            for (x, y) in piece.blocks_of(Glyph::Spawn).filter(inside) {
+                out.push((CellPos::new(x + 2, y), "orc"));
+            }
+            // A boss is a pack, until there are bosses.
+            for (x, y) in piece.blocks_of(Glyph::Boss).filter(inside) {
+                for dx in [-10, 2, 14] {
+                    out.push((CellPos::new(x + dx, y), "orc"));
+                }
+            }
+        }
+        out
+    }
+
     fn cloud_band(&self) -> Option<(i32, i32)> {
         // Above the tallest trees (lightning needs room to fall), low enough
         // to be in view from the surface; the highest peaks poke into it.
@@ -580,8 +678,17 @@ impl ChunkGenerator for TerrainGen {
         let trees = self.trees_near(origin.x, origin.x + CHUNK - 1);
         let mut cells = Vec::with_capacity(CHUNK_AREA);
         let mut bg = Vec::with_capacity(CHUNK_AREA);
-        let make = |m: MaterialId, rng: &mut Rng| {
-            if m == self.ids.air { Cell::AIR } else { Cell { heat: self.heat[m.0 as usize], ..Cell::new(m, rng.next_u8()) } }
+        let make = |m: MaterialId, rng: &mut Rng, lx: i32, ly: i32| {
+            if m == self.ids.air {
+                return Cell::AIR;
+            }
+            // Laid in a pattern, or a candle's wax and flame, or random.
+            let shade = match &self.patterns[m.0 as usize] {
+                Some(tile) => tile[(ly * CHUNK + lx) as usize],
+                None if m == self.ids.candle => if (origin.y + ly) & 3 == 2 { 230 } else { 40 + rng.next_u8() / 4 },
+                None => rng.next_u8(),
+            };
+            Cell { heat: self.heat[m.0 as usize], ..Cell::new(m, shade) }
         };
         for ly in 0..CHUNK {
             for lx in 0..CHUNK {
@@ -590,9 +697,9 @@ impl ChunkGenerator for TerrainGen {
                 if m == self.ids.air && self.grass_at(x, y) {
                     m = self.ids.tall_grass;
                 }
-                cells.push(make(m, &mut rng));
+                cells.push(make(m, &mut rng, lx, ly));
                 let (b, shade) = self.background_at(x, y, &trees);
-                let mut back = make(b, &mut rng);
+                let mut back = make(b, &mut rng, lx, ly);
                 if let Some(shade) = shade {
                     back.shade = shade;
                 }
@@ -600,6 +707,7 @@ impl ChunkGenerator for TerrainGen {
             }
         }
         self.place_chests(pos, &mut cells, &mut rng);
+        self.place_structure_chests(pos, &mut cells);
         Chunk::with_background(pos, cells, bg)
     }
 }
@@ -749,6 +857,40 @@ mod tests {
         let wall_share = wall_ore as f32 / wall_rock as f32;
         eprintln!("ore {:.1}% of rock, {:.1}% of cave walls; by band: {found:?}", share * 100.0, wall_share * 100.0);
         assert!(wall_share > share * 1.3, "ore shows on cave walls: {:.1}% there vs {:.1}% overall", wall_share * 100.0, share * 100.0);
+    }
+
+    /// Crypts stand on level ground with no tree in their ruin; chunks draw
+    /// their chests whole and report each guard exactly once.
+    #[test]
+    fn crypts_are_sited_and_rasterised_whole() {
+        use std::collections::HashSet;
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Small, &m);
+        let crypts = &g.plan.structures.list;
+        assert!(crypts.len() >= 2, "a small world has crypts ({})", crypts.len());
+        let chest = m.expect_id("chest");
+        for c in crypts {
+            let ruin = &c.pieces[0];
+            let (x0, _, x1, _) = ruin.bbox();
+            assert!((ruin.y + 4 - g.surface_at(c.site.0)).abs() <= 4, "the ruin's floor is the ground");
+            // (A neighbour's crown may reach over it.)
+            assert!(g.plan.forest.near(x0, x1).iter().all(|t| t.x < x0 - 8 || t.x > x1 + 8), "no tree grows in the ruin at {}", c.site.0);
+            let (bx0, by0, bx1, by1) = c.bbox();
+            let (lo, hi) = (CellPos::new(bx0, by0).chunk(), CellPos::new(bx1, by1).chunk());
+            let (mut chest_cells, mut spawns) = (0, Vec::new());
+            for cy in lo.y..=hi.y {
+                for cx in lo.x..=hi.x {
+                    let pos = ChunkPos::new(cx, cy);
+                    chest_cells += g.generate(pos).cells().iter().filter(|c| c.material == chest).count();
+                    spawns.extend(g.spawns(pos).into_iter().map(|(p, _)| p));
+                }
+            }
+            let chests: usize = c.pieces.iter().map(|p| p.blocks_of(Glyph::Chest).count()).sum();
+            assert!(chest_cells >= chests * 64, "{chests} chests drawn whole ({chest_cells} cells)");
+            let guards: usize = c.pieces.iter().map(|p| p.blocks_of(Glyph::Spawn).count() + 3 * p.blocks_of(Glyph::Boss).count()).sum();
+            assert_eq!(spawns.len(), guards, "each guard reported once");
+            assert_eq!(spawns.iter().collect::<HashSet<_>>().len(), guards, "no guard twice");
+        }
     }
 
     /// Water runs over each column as (start, end, level), left to right.

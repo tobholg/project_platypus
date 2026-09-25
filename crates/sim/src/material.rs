@@ -144,6 +144,10 @@ pub struct MaterialDef {
     /// a random shade per cell.
     #[serde(default)]
     pub pattern: Option<Vec<String>>,
+    /// A plant that doesn't sway in the wind (an illusory wall: creatures
+    /// walk through it, but it should look like masonry).
+    #[serde(default)]
+    pub still: bool,
 
     // ---- temperature (°C). See SPEC §3.6. --------------------------------
     /// Heat a fresh cell starts with, relative to ambient (lava 1200, ice -30).

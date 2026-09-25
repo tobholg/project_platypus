@@ -100,8 +100,9 @@ impl Plugin for ChunkRenderPlugin {
 
 // ---- colours -----------------------------------------------------------------
 
+/// Sways in the wind (drawn over the base image, see `compose`).
 fn is_plant(mats: &MaterialTable, c: Cell) -> bool {
-    !c.is_air() && mats.phys(c.material).kind == Kind::Plant
+    !c.is_air() && mats.phys(c.material).kind == Kind::Plant && !mats.def(c.material).still
 }
 
 pub(crate) fn cell_rgba(mats: &MaterialTable, c: Cell, ambient: i32, dim: f32, lx: usize, ly: usize) -> [u8; 4] {

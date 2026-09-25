@@ -1,6 +1,10 @@
 //! Where creatures appear. Spawns wait until the ground under them is loaded,
 //! then stand on the first surface found.
 //!
+//! A freshly generated chunk brings the creatures the world put there (a
+//! crypt's guards), once each: an unmodified chunk is generated again when
+//! it comes back into view, so the ones already spawned are remembered.
+//!
 //! Debug: `O` spawns an orc at the cursor.
 
 use bevy::prelude::*;
@@ -10,7 +14,7 @@ use super::creature::spawn_creature;
 use super::player::LocalPlayer;
 use crate::camera::CameraTarget;
 use super::Kinematics;
-use crate::world::{ChunkLoader, SimWorld};
+use crate::world::{ChunkLoader, FreshChunks, SimWorld};
 
 pub struct SpawnPlugin;
 
@@ -25,6 +29,10 @@ pub struct PendingSpawn {
 #[derive(Resource, Default)]
 pub struct SpawnQueue(pub Vec<PendingSpawn>);
 
+/// World spawns already made (by where they stand).
+#[derive(Resource, Default)]
+pub struct Spawned(pub std::collections::HashSet<CellPos>);
+
 /// How many enemies to scatter around the start (tunable later via RON).
 const START_ENEMIES: [(&str, i32); 8] =
     [("orc", -520), ("orc", -300), ("orc", -170), ("orc", 160), ("orc", 280), ("orc", 450), ("orc", 700), ("orc", -800)];
@@ -32,8 +40,9 @@ const START_ENEMIES: [(&str, i32); 8] =
 impl Plugin for SpawnPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SpawnQueue>()
+            .init_resource::<Spawned>()
             .add_systems(Startup, queue_start)
-            .add_systems(Update, (process_queue, debug_spawn));
+            .add_systems(Update, (process_queue, debug_spawn, world_spawns));
     }
 }
 
@@ -77,6 +86,16 @@ fn process_queue(mut commands: Commands, sim: Res<SimWorld>, mut queue: ResMut<S
         }
         false
     });
+}
+
+fn world_spawns(mut commands: Commands, sim: Res<SimWorld>, fresh: Res<FreshChunks>, mut spawned: ResMut<Spawned>) {
+    for &pos in &fresh.0 {
+        for (at, kind) in sim.generator.spawns(pos) {
+            if spawned.0.insert(at) {
+                spawn_creature(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), |_| {});
+            }
+        }
+    }
 }
 
 fn debug_spawn(mut commands: Commands, mut actions: MessageReader<crate::dev::DevAction>, player: Query<&Kinematics, With<LocalPlayer>>) {
