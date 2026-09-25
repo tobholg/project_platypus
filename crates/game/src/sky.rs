@@ -1,5 +1,5 @@
-//! The sky: clouds from the sim's weather field, drawn on the cell grid, and
-//! a sky colour that greys as it clouds over. Rain and snow are particles
+//! The sky: clouds from the sim's weather field, drawn on the cell grid.
+//! (The sky's colour and light are the lighting's: `light/mod.rs`.) Rain and snow are particles
 //! (`particles.rs`).
 
 use bevy::asset::RenderAssetUsages;
@@ -10,16 +10,12 @@ use platypus_sim::Weather;
 use platypus_sim::weather::CLOUD_AT;
 
 use crate::camera::{MainCamera, Zoom};
-use crate::fx::SkyFlash;
-use crate::render::SKY_COLOR;
 use crate::world::{ChunkLoader, SimWorld};
 
 pub struct SkyPlugin;
 
 /// Behind the background layer (trees, walls): clouds are far away.
 const Z_CLOUDS: f32 = -2.0;
-/// Overcast sky colour.
-const STORM_SKY: Color = Color::srgb(0.46, 0.52, 0.6);
 
 #[derive(Resource)]
 struct Clouds {
@@ -43,7 +39,7 @@ const PUFF_TILE: usize = 256;
 
 impl Plugin for SkyPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup).add_systems(PostUpdate, (draw_clouds, tint_sky));
+        app.add_systems(Startup, setup).add_systems(PostUpdate, draw_clouds);
     }
 }
 
@@ -204,15 +200,4 @@ fn paint(data: &mut [u8], size: UVec2, x0: i32, x1: i32, weather: &Weather, puff
             k = bottom;
         }
     }
-}
-
-/// The sky greys over as clouds build overhead.
-fn tint_sky(sim: Res<SimWorld>, flash: Res<SkyFlash>, cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>, mut clear: ResMut<ClearColor>) {
-    let Some(weather) = sim.world.weather() else { return };
-    let (tf, loader) = *cam;
-    let x = tf.translation.x as i32;
-    let w = loader.half_extent.x as i32;
-    let overcast = weather.overcast(x - w, x + w);
-    let k = ((overcast - 0.15) / 0.45).clamp(0.0, 1.0);
-    clear.0 = SKY_COLOR.mix(&STORM_SKY, k).mix(&Color::srgb(0.88, 0.9, 1.0), flash.0 * 0.7);
 }

@@ -117,7 +117,7 @@ fn fly(
     cam.translation += (dir * speed * time.delta_secs()).extend(0.0);
 }
 
-fn follow(
+pub fn follow(
     zoom: Res<Zoom>,
     free: Res<FreeCamera>,
     shake: Res<crate::fx::ShakeOffset>,

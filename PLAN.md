@@ -16,6 +16,7 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
 | W3 | Background layer, plants, forests + tall grass, wind, foliage sway + creature rustle | done |
 | W4 | Rigid bodies: felled trees topple, shed their crown, land as logs, hurt what they hit | done |
 | W5 | Elements on creatures (heat, cold, corrosion, burning, wet), acid fumes, oil fires, weather: clouds, rain, snow | done |
+| W6 | Lighting (glow/opacity data, light grid, lantern, flashlight, rim, haze) and day/night | done |
 | 3 | Worldgen v2: world plan (legacy mountains, sky islands, walker caves), biomes, save/load | not started |
 | 4 | Combat: weapon swings, pixel masks, swept hits, hit-stop, knockback, enemy attacks | not started |
 | 5 | Terraria layer: items, inventory, mining yields, building, crafting, lighting | not started |
@@ -51,6 +52,15 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
    that hold snow, birch, jungle, dead trees); lakes and rivers in forests;
    grass varieties (short, tall, flowering, dry, snowy); port the legacy
    mountains / sky islands / walker caves into a `WorldPlan`.
+
+## Lighting: next steps
+
+- Darkness as gameplay: creatures unseen outside light, glowing eyes,
+  light-seeking and light-fleeing enemies (with combat).
+- Light as a resource: torches that burn down, a flashlight battery, lanterns
+  that go out in water, throwable glowsticks, placeable torches.
+- Sound before sight (needs audio).
+- Stars and a moon; far parallax clouds.
 
 ## Elemental ideas to explore later
 

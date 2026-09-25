@@ -14,6 +14,8 @@
 //! - `acid`       pours acid into a glass basin beside the player, boils it at 2 s, lights the fumes at 3.6 s
 //! - `rain`       lights the forest beside the player at 2 s, a storm over it at 3 s (F5), lightning at 6 s (F7)
 //! - `swim`       a pool beside the player; oil on the player, set alight, then it walks into the water
+//! - `night`      the surface at 23:00 (`dusk`: 18:15)
+//! - `cave`       a chamber dug under the player (lava and acid pools), flashlight on
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -54,7 +56,7 @@ impl Plugin for ScenarioPlugin {
             // Inject input where real input arrives: after Bevy reads devices,
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script));
+            .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script));
     }
 }
 
@@ -423,4 +425,43 @@ fn swim_script(
     if *step == 4 && px > x {
         keys.release(KeyCode::KeyD);
     }
+}
+
+fn dark_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut day: ResMut<crate::light::Daylight>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    mut cursor: ResMut<CursorOverride>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut done: Local<bool>,
+) {
+    if !matches!(s.name.as_str(), "night" | "cave" | "dusk") || *done || s.elapsed < 1.0 {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    // 23:00, or 18:15 for dusk (the day starts at the configured hour; skip
+    // the difference).
+    let hour = if s.name == "dusk" { 18.25 } else { 23.0 };
+    day.skipped = (hour - day.time * 24.0).rem_euclid(24.0);
+    if s.name == "cave" {
+        // A chamber 90 below the surface, a lava pool on one side, acid on the
+        // other; the player on its floor with the flashlight on.
+        let x = k.body.pos.x as i32;
+        let c = CellPos::new(x, k.body.pos.y as i32 - 100);
+        let (Some(lava), Some(acid), Some(glass)) = (sim.materials().id("lava"), sim.materials().id("acid"), sim.materials().id("glass")) else { return };
+        for dx in (-50..=50).step_by(10) {
+            sim.queue(WorldEdit::Dig { center: c.offset(dx, (dx.abs() / 6) - 4), radius: 22, max_hardness: 250 });
+        }
+        sim.queue(WorldEdit::Paint { center: c.offset(62, -26), radius: 9, material: lava, overwrite: true });
+        sim.queue(WorldEdit::Paint { center: c.offset(-58, -30), radius: 10, material: glass, overwrite: true });
+        sim.queue(WorldEdit::Dig { center: c.offset(-58, -26), radius: 7, max_hardness: 250 });
+        sim.queue(WorldEdit::Paint { center: c.offset(-58, -25), radius: 6, material: acid, overwrite: false });
+        k.body.pos = Vec2::new(c.x as f32, c.y as f32 - 8.0);
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+        toggles.flashlight = true;
+        cursor.0 = Some(k.body.pos + Vec2::new(90.0, -10.0));
+    }
+    *done = true;
 }

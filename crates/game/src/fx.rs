@@ -91,7 +91,7 @@ fn on_explosion(
             Flash { age: 0.0, radius: e.radius },
             Mesh2d(assets.mesh.clone()),
             MeshMaterial2d(materials.add(ColorMaterial::from_color(Color::srgba(1.0, 0.92, 0.7, 0.9)))),
-            Transform::from_translation(e.at.extend(8.0)).with_scale(Vec3::splat(e.radius * 0.6)),
+            Transform::from_translation(e.at.extend(16.0)).with_scale(Vec3::splat(e.radius * 0.6)),
         ));
     }
 }
@@ -143,7 +143,7 @@ fn on_lightning(
         commands.spawn((
             Bolt { age: 0.0 },
             Sprite { image: images.add(image), custom_size: Some(size), ..default() },
-            Transform::from_xyz(x0 as f32 + size.x / 2.0, y0 as f32 + size.y / 2.0, 6.0),
+            Transform::from_xyz(x0 as f32 + size.x / 2.0, y0 as f32 + size.y / 2.0, 16.0),
         ));
     }
 }

@@ -33,7 +33,7 @@ for a double jump, against a wall to wall-jump) · Shift dash
 Tools reach the background (trees, cave walls) wherever the playfield in front is
 empty — mine a trunk to fell a tree. RMB erases with any tool · `[` `]` or Ctrl+wheel radius · wheel zoom · Tab free camera
 (WASD flies, Shift faster) · O spawn an orc at the cursor · F3 performance HUD ·
-F4 chunk borders + dirty rects · the HUD at the top shows health and status timers; dying just refills health (`PLATYPUS_RESPAWN=1` to respawn at the start) · F5 thunderstorm here · F6 clear skies · F7 lightning at the cursor
+F4 chunk borders + dirty rects · L flashlight · F8 +3 hours · F9 lighting off · the HUD at the top shows health and status timers; dying just refills health (`PLATYPUS_RESPAWN=1` to respawn at the start) · F5 thunderstorm here · F6 clear skies · F7 lightning at the cursor
 
 Things to try: pour water then lava on it (obsidian + steam) · oil on water, then
 ignite · a bomb in a wooden structure (paint wood with Q/E) · mine under a sand
@@ -59,7 +59,7 @@ PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, 
 PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`. Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`. Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
 capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length.
 
 ## Add things (no engine changes)

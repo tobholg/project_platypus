@@ -1,0 +1,26 @@
+// Lighting and the day (SPEC §4.1). Edit while the game runs.
+(
+    // Light everywhere at least this bright: 0 is Noita-dark (unlit caves are
+    // black), ~0.12 is Terraria-ish.
+    ambient: 0.0,
+    // Light kept per cell of clear air: higher reaches further.
+    air_falloff: 0.955,
+    // Spreading passes; 2 lets light turn corners.
+    iterations: 2,
+    // Light kept per cell going into rock from a lit face: how deep a lit
+    // wall shows (it never passes through walls).
+    rim: 0.82,
+    // Haze added around glowing things (fire, lava, acid) in the dark.
+    glow_haze: 0.3,
+
+    // A full day and night, in real minutes, and the hour the game starts at.
+    day_minutes: 20,
+    start_hour: 8,
+    // Moonlight: 1 = a dark blue night you can just see in, 0 = pitch black.
+    moonlight: 1.0,
+
+    // What the player carries: a lantern always, a flashlight toggled with L
+    // (a cone toward the cursor, `angle` degrees wide, `range` cells).
+    lantern: (color: (255, 196, 130), strength: 0.5),
+    flashlight: (color: (230, 238, 255), strength: 1.1, range: 130, angle: 40),
+)

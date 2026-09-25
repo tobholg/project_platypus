@@ -93,6 +93,8 @@ fn update_hud(
     belt: Res<Toolbelt>,
     cursor: Res<CursorWorld>,
     zoom: Res<Zoom>,
+    light: Res<crate::light::LightMetrics>,
+    day: Res<crate::light::Daylight>,
     entities: Query<Entity>,
     mut text: Single<&mut Text, With<HudText>>,
 ) {
@@ -110,6 +112,7 @@ fn update_hud(
          loaded {} chunks | stored {} ({} KB) | streamed {} ({:.2} ms)\n\
          entities {} | particles {} | bodies {} | tick {} | zoom {} px/cell\n\
          tool {} r{} | cursor {}\n\
+         light {:.2} ms (+{:.2} ms bg), {} texels | {} | [L] flashlight [F8] +3h [F9] lighting\n\
          [F3] hud [F4] dirty rects | [F5] storm [F6] clear [F7] lightning | wheel zoom | O spawn orc",
         stats.avg_ms,
         stats.worst_ms,
@@ -131,6 +134,10 @@ fn update_hud(
         belt.tool.label(),
         belt.radius(),
         under.unwrap_or_default(),
+        light.time.as_secs_f64() * 1e3,
+        light.solve.as_secs_f64() * 1e3,
+        light.texels,
+        day.clock(),
     );
 }
 

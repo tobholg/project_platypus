@@ -34,6 +34,12 @@ pub trait ChunkGenerator: Send + Sync {
         None
     }
 
+    /// The ground height at x as generated (before anything was dug), for
+    /// telling whether unloaded air above a column is open sky.
+    fn surface_hint(&self, _x: i32) -> Option<i32> {
+        None
+    }
+
     fn in_bounds(&self, pos: ChunkPos) -> bool {
         let (lo, hi) = self.bounds();
         pos.x >= lo.x && pos.y >= lo.y && pos.x <= hi.x && pos.y <= hi.y
@@ -280,6 +286,10 @@ impl ChunkGenerator for TerrainGen {
             cells_per_degree_up: 5,
             cells_per_degree_down: 40,
         }
+    }
+
+    fn surface_hint(&self, x: i32) -> Option<i32> {
+        Some(self.surface_at(x))
     }
 
     fn cloud_band(&self) -> Option<(i32, i32)> {

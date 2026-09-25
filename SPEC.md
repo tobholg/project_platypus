@@ -314,6 +314,33 @@ deaths (blood). Rendered as one dynamic mesh.
   computed per chunk on a coarse grid when *the world* changes, and applied
   on the GPU.
 
+
+### 4.1 Lighting and the day
+- Materials say how light treats them (`materials.ron`): `glow` (the light
+  they give off: lava, fire, acid) and `opacity` (how much they stop per cell;
+  by default solids and powders most, liquids some, gases and plants little).
+  Hot cells glow by temperature and burning cells flicker, whatever the data
+  says; flying embers, blasts and lightning light up too.
+- Every frame a light grid covers the view plus a margin (1 texel = 1, 2, 4 or
+  8 cells by zoom, anchored to the world). It is filled from the cells, lit by
+  sky light falling down every column open to the sky (dimmed by crowns and
+  walls behind, the playfield in front), the player's lantern and flashlight,
+  then spread: every texel takes the best of what leaves its neighbours,
+  straight and diagonal, so pools of light are round. Walls take light on
+  their face and pass almost nothing on; a separate rim pass shows lit rock a
+  few cells deep without letting light through walls. The flashlight is traced
+  as rays into a direct buffer (hard shadows) of which a third scatters off
+  what it lands on.
+- The solve runs on the async pool and is shown the next frame; the frame
+  pays only for reading the world (~1 ms at 3 px/cell).
+- It is drawn twice over the world and everything in it: multiplied (what
+  isn't lit is dark; 0 ambient = Noita-dark, tunable) and added (a haze
+  around what glows). Rendering only; the sim never reads it.
+- Day and night: time of day from the tick (20-minute day by default), sky
+  light white by day, golden at dawn and dusk, dim blue moonlight at night,
+  greyer under cloud, flashed by lightning. `lighting.ron` sets all of it and
+  hot-reloads. Keys: L flashlight, F8 +3 hours, F9 lighting off.
+
 ## 5. Bodies — "anything that can move" (`platypus_physics`)
 
 - One `Body` (position, velocity, half-extents, flags) and one

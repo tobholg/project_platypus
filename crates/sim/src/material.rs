@@ -91,6 +91,15 @@ pub struct MaterialDef {
     /// Damage per second it does to a body touching it (acid 30).
     #[serde(default)]
     pub corrosive: u8,
+    /// Light it gives off (SPEC §4.1), as a colour: its brightness is the
+    /// strength (lava (255, 110, 40), fire, glowing acid). Hot cells also glow
+    /// by temperature, whatever this says.
+    #[serde(default)]
+    pub glow: Option<(u8, u8, u8)>,
+    /// How much light it stops, 0..255 per cell. Default by kind: solids and
+    /// powders nearly all, liquids some, gases and plants a little.
+    #[serde(default)]
+    pub opacity: Option<u8>,
     /// What it leaves on a creature that touches it: a coating named in
     /// `coatings.ron` (water: "wet", oil: "oily"). The game's business.
     #[serde(default)]
@@ -203,6 +212,10 @@ pub struct MatPhys {
     pub corrosive: u8,
     pub spread: u16,
     pub fizzles: u16,
+    /// Light given off (linear-ish 0..255 per channel; 0 = none).
+    pub glow: [u8; 3],
+    /// Light stopped per cell, 0..255.
+    pub opacity: u8,
     pub vapour: bool,
     /// `AIR` when the material doesn't crumble.
     pub crumbles_into: MaterialId,
@@ -372,6 +385,15 @@ impl MaterialTable {
                 corrosive: d.corrosive,
                 spread: d.spread.unwrap_or(d.flammability as u16 * 16),
                 fizzles: d.fizzles,
+                glow: d.glow.map_or([0; 3], |(r, g, b)| [r, g, b]),
+                opacity: d.opacity.unwrap_or(match d.kind {
+                    Kind::Empty | Kind::Fire => 0,
+                    Kind::Gas => 18,
+                    Kind::Plant => 60,
+                    Kind::Liquid => 45,
+                    // A few cells of a lit rock face show, then it's dark.
+                    Kind::Powder | Kind::Static => 175,
+                }),
                 vapour: d.vapour,
                 crumbles_into,
                 heat: d.heat,

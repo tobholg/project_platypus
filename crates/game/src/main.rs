@@ -11,6 +11,7 @@ mod data;
 mod debug;
 mod fx;
 mod hud;
+mod light;
 mod particles;
 mod props;
 mod render;
@@ -70,6 +71,7 @@ fn main() {
             debug::DebugPlugin,
             fx::FxPlugin,
             hud::HudPlugin,
+            light::LightPlugin,
             scenario::ScenarioPlugin,
         ))
         .run();

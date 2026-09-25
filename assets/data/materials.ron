@@ -39,12 +39,12 @@
         // a lone flame goes out), a crown or a blaze takes it (SPEC §3.8).
         (name: "wood",     kind: Static, density: 700,  hardness: 25,  flammability: 6, ignites_at: 280, conductivity: 12, burn_time: 225, spread: 2, fizzles: 40, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal", colors: [(58, 36, 20), (88, 58, 30), (118, 80, 42), (138, 96, 54)]),
         (name: "obsidian", kind: Static, density: 2800, hardness: 120, crumbles_into: "gravel", above: (1600, "lava"), colors: [(34, 18, 52), (52, 30, 74)]),
-        (name: "glass",    kind: Static, density: 2500, hardness: 30,  above: (1500, "lava"), colors: [(170, 200, 205), (196, 222, 226)]),
-        (name: "ice",      kind: Static, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), coats: "wet", colors: [(170, 210, 240), (200, 230, 250)]),
+        (name: "glass",    kind: Static, density: 2500, hardness: 30,  above: (1500, "lava"), opacity: 25, colors: [(170, 200, 205), (196, 222, 226)]),
+        (name: "ice",      kind: Static, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), coats: "wet", opacity: 60, colors: [(170, 210, 240), (200, 230, 250)]),
         (name: "frozen_blood", kind: Static, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), coats: "bloody", colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),
 
         // ---- plants: don't block creatures, burn readily, sway in the wind ----
-        (name: "leaves",     kind: Plant, density: 200, hardness: 2, flammability: 18, ignites_at: 260, burn_time: 40, chars_at: 1.0, colors: [(24, 64, 26), (36, 92, 34), (52, 122, 42), (76, 150, 54)]),
+        (name: "leaves",     kind: Plant, density: 200, hardness: 2, flammability: 18, ignites_at: 260, burn_time: 40, chars_at: 1.0, opacity: 70, colors: [(24, 64, 26), (36, 92, 34), (52, 122, 42), (76, 150, 54)]),
         (name: "tall_grass", kind: Plant, density: 100, hardness: 1, flammability: 8, spread: 176, ignites_at: 240, burn_time: 5, chars_at: 1.0, colors: [(64, 146, 46), (92, 176, 62), (54, 124, 40)]),
 
         // ---- powders ------------------------------------------------------
@@ -61,33 +61,33 @@
         (name: "coal",     kind: Powder, density: 1300, hardness: 10, flammability: 30, ignites_at: 350, burn_time: 200, burns_into: "ash", burns_into_chance: 90, colors: [(24, 24, 26), (40, 40, 44)]),
 
         // ---- liquids ------------------------------------------------------
-        (name: "water",    kind: Liquid, density: 1000, dispersion: 6, above: (100, "steam"), below: (0, "ice"), coats: "wet", colors: [(38, 92, 196), (48, 110, 214)]),
+        (name: "water",    kind: Liquid, density: 1000, dispersion: 6, above: (100, "steam"), below: (0, "ice"), coats: "wet", opacity: 30, colors: [(38, 92, 196), (48, 110, 214)]),
         // Floats on water and burns on it (a burning liquid isn't put out by
         // what it floats on). A poor heat conductor, so a burning slick
         // doesn't boil away the lake under it.
         (name: "oil",      kind: Liquid, density: 800,  dispersion: 4, flammability: 90, ignites_at: 220, burn_time: 25, conductivity: 6, coats: "oily", colors: [(56, 38, 24), (72, 52, 30)]),
         // Boils and freezes like water (a little below 0: what's dissolved in it).
         (name: "blood",    kind: Liquid, density: 1060, dispersion: 3, above: (100, "blood_steam"), below: (-2, "frozen_blood"), coats: "bloody", colors: [(136, 10, 16), (164, 18, 24)]),
-        (name: "lava",     kind: Liquid, density: 2500, dispersion: 1, hot: true, heat: 1200, heat_source: true, conductivity: 60, colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
+        (name: "lava",     kind: Liquid, density: 2500, dispersion: 1, hot: true, heat: 1200, heat_source: true, conductivity: 60, glow: (255, 105, 30), colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
         // Eats stone, dirt, wood and grass (reactions below) and burns what it
         // touches (corrosive, damage/s). Boils into acid fumes.
-        (name: "acid",     kind: Liquid, density: 1100, dispersion: 4, corrosive: 30, above: (110, "acid_fumes"), coats: "acid", colors: [(120, 230, 40), (150, 250, 70)]),
+        (name: "acid",     kind: Liquid, density: 1100, dispersion: 4, corrosive: 30, above: (110, "acid_fumes"), coats: "acid", glow: (70, 200, 25), colors: [(120, 230, 40), (150, 250, 70)]),
 
         // ---- gases --------------------------------------------------------
-        (name: "steam",    kind: Gas, density: 1, dispersion: 3, lifetime: (60, 200), decay_every: 3, decays_into: "water", decays_into_chance: 70, vapour: true, colors: [(200, 206, 216), (228, 232, 240)]),
+        (name: "steam",    kind: Gas, density: 1, dispersion: 3, lifetime: (60, 200), decay_every: 3, decays_into: "water", decays_into_chance: 70, vapour: true, opacity: 30, colors: [(200, 206, 216), (228, 232, 240)]),
         // Off boiling acid: corrodes what it drifts into, weaker than acid and
         // used up doing it, condenses into acid rain downwind, and is
         // flammable: a spark flashes the cloud into fire (and the odd pop),
         // which boils more acid.
-        (name: "acid_fumes", kind: Gas, density: 2, dispersion: 2, lifetime: (80, 220), decay_every: 3, decays_into: "acid", decays_into_chance: 110, corrosive: 8, flammability: 60, ignites_at: 300, explodes: (radius: 3, power: 25, chance: 4), colors: [(168, 214, 70), (190, 230, 96), (150, 196, 60)]),
+        (name: "acid_fumes", kind: Gas, density: 2, dispersion: 2, lifetime: (80, 220), decay_every: 3, decays_into: "acid", decays_into_chance: 110, corrosive: 8, flammability: 60, ignites_at: 300, explodes: (radius: 3, power: 25, chance: 4), glow: (30, 90, 10), colors: [(168, 214, 70), (190, 230, 96), (150, 196, 60)]),
         // A red haze off boiling blood; condenses back into blood like steam into water.
         (name: "blood_steam", kind: Gas, density: 1, dispersion: 3, lifetime: (60, 200), decay_every: 3, decays_into: "blood", decays_into_chance: 70, colors: [(196, 120, 124), (220, 150, 152), (180, 96, 102)]),
         // Underground gas pockets. Faintly visible; very explosive.
         (name: "methane",  kind: Gas, density: 1, dispersion: 1, flammability: 255, ignites_at: 500, explodes: (radius: 10, power: 70, chance: 40), colors: [(120, 150, 110), (134, 164, 120)]),
-        (name: "smoke",    kind: Gas, density: 2, dispersion: 2, lifetime: (40, 120), decay_every: 2, colors: [(56, 54, 54), (84, 80, 80)]),
+        (name: "smoke",    kind: Gas, density: 2, dispersion: 2, lifetime: (40, 120), decay_every: 2, opacity: 55, colors: [(56, 54, 54), (84, 80, 80)]),
 
         // ---- fire ---------------------------------------------------------
-        (name: "fire",     kind: Fire, hot: true, heat: 800, heat_source: true, lifetime: (12, 40), decays_into: "smoke", colors: [(255, 220, 90), (255, 140, 30), (230, 70, 20)]),
+        (name: "fire",     kind: Fire, hot: true, heat: 800, heat_source: true, lifetime: (12, 40), decays_into: "smoke", glow: (255, 170, 70), colors: [(255, 220, 90), (255, 140, 30), (230, 70, 20)]),
     ],
 
     // Pairwise, while touching. Checked in both directions.
