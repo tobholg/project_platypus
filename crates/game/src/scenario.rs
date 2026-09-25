@@ -10,6 +10,7 @@
 //! - `tree`       builds a wooden tree beside the player and sets it on fire
 //! - `blast`      three bombs dropped down one shaft beside the player, from t = 2 s
 //! - `fell`       cuts through the trunk of the nearest tree to the right at t = 2 s
+//! - `burn`       sets the base of that tree alight at t = 2 s instead
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -102,14 +103,15 @@ fn run(
         let tick_ms = metrics.tick_time_avg.as_secs_f32() * 1e3;
         s.reports.push((stats.avg_ms, stats.worst_ms, tick_ms));
         println!(
-            "scenario={} t={:>4.1}s frame_avg={:.2}ms frame_worst={:.2}ms sim_tick={:.3}ms active_chunks={} loaded={}",
+            "scenario={} t={:>4.1}s frame_avg={:.2}ms frame_worst={:.2}ms sim_tick={:.3}ms active_chunks={} loaded={} bodies={}",
             s.name,
             s.elapsed,
             stats.avg_ms,
             stats.worst_ms,
             tick_ms,
             metrics.last.active_chunks,
-            sim.world.loaded_count()
+            sim.world.loaded_count(),
+            sim.world.bodies().len()
         );
     }
     if s.elapsed >= s.duration - 1.0
@@ -277,7 +279,7 @@ fn blast_script(
 }
 
 fn fell_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut done: Local<bool>) {
-    if s.name != "fell" || *done || s.elapsed < 2.0 {
+    if !matches!(s.name.as_str(), "fell" | "burn") || *done || s.elapsed < 2.0 {
         return;
     }
     let Ok(p) = player.single() else { return };
@@ -298,11 +300,15 @@ fn fell_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
         let left = x - (1..40).take_while(|&d| wood(x - d)).count() as i32;
         let width = (left..left + 60).take_while(|&x| wood(x)).count() as i32;
         let center = CellPos::new(left + width / 2, at.y);
-        // Twice: a dig clears the playfield first where anything stands in front.
-        for _ in 0..2 {
-            sim.queue(WorldEdit::Dig { center, radius: width / 2 + 3, max_hardness: 200 });
+        if s.name == "burn" {
+            sim.queue(WorldEdit::Ignite { center: CellPos::new(center.x, ground + 3), radius: width / 2 + 2 });
+        } else {
+            // Twice: a dig clears the playfield first where anything stands in front.
+            for _ in 0..2 {
+                sim.queue(WorldEdit::Dig { center, radius: width / 2 + 3, max_hardness: 200 });
+            }
         }
-        info!("fell: cut a trunk {width} wide at {center:?}");
+        info!("{}: trunk {width} wide at {center:?}", s.name);
         *done = true;
         return;
     }

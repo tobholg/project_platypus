@@ -482,4 +482,5 @@ mod tests {
             assert!(hanging.is_empty(), "tree at {x}: {} cells hanging, e.g. {:?}", hanging.len(), &hanging[..hanging.len().min(6)]);
         }
     }
+
 }
