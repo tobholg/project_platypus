@@ -544,9 +544,32 @@ impl World {
 
     fn heat(&mut self, center: CellPos, radius: i32, amount: i16) {
         let r = radius as f32 + 0.5;
+        let mats = self.materials.clone();
+        let mut rng = self.rng_for(0x4EA7, center);
         for p in disc(center, radius) {
             let falloff = 1.0 - 0.5 * distance(center, p) / r;
-            self.add_heat(p, (amount as f32 * falloff) as i16);
+            let a = (amount as f32 * falloff) as i16;
+            self.add_heat(p, a);
+            // Where the playfield is open, the background takes the heat: a
+            // heat gun on a tree sets it alight. (Background cells hold heat
+            // but don't conduct it; they catch by the playfield's rule.)
+            if self.get(p).is_some_and(|f| f.is_air())
+                && let Some(mut b) = self.get_bg(p)
+                && !b.is_air()
+                && b.flags & flags::BURNING == 0
+            {
+                b.heat = b.heat.saturating_add(a).clamp(-300, 4000);
+                let ph = *mats.phys(b.material);
+                let t = self.climate.ambient(p.y) + b.heat as i32;
+                let excess = t - ph.ignites_at as i32;
+                self.set_bg(p, b);
+                if ph.flammability > 0 && excess >= 0 {
+                    let chance = (ph.flammability as u32 * 16 * (excess as u32).min(60) / 60).max(1);
+                    if excess >= 250 || rng.chance4096(chance) {
+                        self.ignite_bg_cell(p, &ph);
+                    }
+                }
+            }
         }
     }
 

@@ -323,8 +323,7 @@ deaths (blood). Rendered as one dynamic mesh.
   says; flying embers, blasts and lightning light up too.
 - Every frame a light grid covers the view plus a margin (1 texel = 1, 2, 4 or
   8 cells by zoom, anchored to the world). It is filled from the cells, lit by
-  sky light falling down every column open to the sky (dimmed by crowns and
-  walls behind, the playfield in front), the player's lantern and flashlight,
+  the sky, the player's lantern and flashlight,
   then spread: every texel takes the best of what leaves its neighbours,
   straight and diagonal, so pools of light are round. Walls take light on
   their face and pass almost nothing on; a separate rim pass shows lit rock a
@@ -341,6 +340,16 @@ deaths (blood). Rendered as one dynamic mesh.
 - It is drawn twice over the world and everything in it: multiplied (what
   isn't lit is dark; 0 ambient = Noita-dark, tunable) and added (a haze
   around what glows). Rendering only; the sim never reads it.
+- The sky lights the world as directions, not straight down: the sun (or
+  moon) crosses from east to west (never lower than ~12°) carrying the full
+  sky light, and the rest of the sky comes in from 35° either side of
+  vertical at 55 %, so shade is soft and nothing casts a hard shadow straight
+  down. Each enters at the tops of columns open to the sky and down the side
+  it comes from, dimmed by what it passes: tree crowns barely (1 % of their
+  opacity), walls behind rock fully.
+- Heat on the background: where the playfield is open, the heat tool warms
+  background cells, which catch fire by the playfield's rule (a heat gun on
+  a tree lights it). Background cells hold heat but don't conduct it.
 - Day and night: time of day from the tick (20-minute day by default), sky
   light white by day, golden at dawn and dusk, dim blue moonlight at night,
   greyer under cloud, flashed by lightning. `lighting.ron` sets all of it and

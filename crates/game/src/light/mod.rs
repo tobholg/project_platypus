@@ -5,7 +5,8 @@
 //! dark) and added (a haze around what glows). Rendering only: the sim never
 //! reads it, so it costs co-op nothing.
 //!
-//! Keys: L flashlight, F8 +3 hours, F9 lighting on/off.
+//! Keys: L flashlight, F8 +3 hours, F9 lighting on/off. `PLATYPUS_HOUR=19`
+//! starts at that hour.
 
 pub mod grid;
 
@@ -152,11 +153,13 @@ impl Plugin for LightPlugin {
     fn build(&self, app: &mut App) {
         let path = data_path("lighting.ron");
         let settings: LightSettings = load_ron(&path).unwrap_or_else(|e| panic!("{e}"));
+        // PLATYPUS_HOUR=19 starts at that hour instead (screenshots, testing).
+        let skip = std::env::var("PLATYPUS_HOUR").ok().and_then(|h| h.parse::<f32>().ok()).map_or(0.0, |h| (h - settings.start_hour).rem_euclid(24.0));
         app.add_plugins((Material2dPlugin::<LightMultiply>::default(), Material2dPlugin::<LightAdd>::default()))
             .insert_resource(settings)
             .insert_resource(SettingsWatch(Watched::new(path)))
             .insert_resource(LightToggles { enabled: true, flashlight: false })
-            .init_resource::<Daylight>()
+            .insert_resource(Daylight { skipped: skip, ..default() })
             .init_resource::<Flashes>()
             .init_resource::<LightMetrics>()
             .init_resource::<Pending>()
@@ -233,6 +236,27 @@ pub fn sky_at(time: f32, moonlight: f32) -> (Rgb, Rgb) {
     let mut color = lerp3([0.3, 0.38, 0.7], [sky.red, sky.green, sky.blue], day);
     color = lerp3(color, [0.98, 0.58, 0.42], golden * 0.8);
     (light, color)
+}
+
+/// Where the sun (or, at night, the moon) is: a direction light travels in
+/// (unit, downward), rising in the east (right), setting in the west, never
+/// lower than ~12° so it still reaches in.
+pub fn sun_dir(time: f32) -> [f32; 2] {
+    // The sun's half of the day is 06:00–18:00, the moon's the other half.
+    let phase = ((time - 0.25).rem_euclid(0.5)) / 0.5; // 0 rising … 1 setting
+    let a = phase * std::f32::consts::PI;
+    let (x, y) = (a.cos(), a.sin().max(0.2));
+    let n = (x * x + y * y).sqrt();
+    [-x / n, -y / n]
+}
+
+/// The sky's light as directions: the sun (or moon) carrying all of it, and
+/// the rest of the sky from either side of straight up, softer, so shade is
+/// never black and nothing casts a hard shadow straight down.
+fn sky_lights(time: f32, light: Rgb) -> [([f32; 2], Rgb); 3] {
+    let (s, c) = (35f32.to_radians().sin(), 35f32.to_radians().cos());
+    let diffuse = light.map(|v| v * 0.55);
+    [(sun_dir(time), light), ([s, -c], diffuse), ([-s, -c], diffuse)]
 }
 
 fn update_daylight(
@@ -358,7 +382,8 @@ fn compute_light(
         }
         true
     };
-    g.seed_sky(day.sky, open);
+    let open_top: Vec<bool> = (0..w).map(open).collect();
+    let sky = sky_lights(day.time, day.sky);
 
     // What the player carries.
     if let Ok(k) = player.single() {
@@ -401,6 +426,9 @@ fn compute_light(
     let previous = pending.1.take();
     pending.0 = Some(AsyncComputeTaskPool::get().spawn(async move {
         let started = Instant::now();
+        for (dir, color) in sky {
+            g.seed_directional(dir, color, &open_top);
+        }
         g.solve(params);
         if let Some(prev) = &previous {
             g.ease_from(prev, rise, fall);
@@ -586,5 +614,15 @@ mod tests {
         let dusk = sky_at(0.75, 1.0).0;
         assert!(dusk[0] > dusk[2] * 1.5, "dusk is golden: {dusk:?}");
         assert!(sky_at(0.0, 0.0).0.iter().all(|&c| c == 0.0), "moonlight 0: pitch black");
+    }
+
+    #[test]
+    fn the_sun_rises_east_crosses_overhead_and_sets_west() {
+        use super::sun_dir;
+        let (morning, noon, evening) = (sun_dir(0.3), sun_dir(0.5), sun_dir(0.7));
+        assert!(morning[0] < -0.5, "morning light travels west (from the east): {morning:?}");
+        assert!(noon[0].abs() < 0.01 && noon[1] < -0.99, "noon: straight down {noon:?}");
+        assert!(evening[0] > 0.5, "evening light travels east: {evening:?}");
+        assert!(sun_dir(0.26)[1] < -0.15, "never flat: {:?}", sun_dir(0.26));
     }
 }

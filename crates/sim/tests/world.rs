@@ -1344,3 +1344,16 @@ fn a_scorched_trunk_can_still_be_set_alight() {
     let top = w.get_bg(CellPos::new(64, 40)).unwrap();
     assert!(fell || top.is_air(), "the trunk burned through and fell ({} of {left} wood left)", count_bg(&w, wood));
 }
+
+#[test]
+fn a_heat_gun_on_a_tree_sets_it_alight() {
+    let mut w = boxed_world(2, 2, 96);
+    plant_tree(&mut w, 64);
+    // The heat tool: 60 °C a tick at the centre, held for a second.
+    for _ in 0..60 {
+        w.apply_edit(&WorldEdit::Heat { center: CellPos::new(64, 30), radius: 5, amount: 60 });
+        w.step();
+    }
+    let burning_bg = w.chunks().flat_map(|c| c.background()).filter(|b| b.flags & platypus_sim::cell::flags::BURNING != 0).count();
+    assert!(burning_bg > 0, "the trunk caught");
+}

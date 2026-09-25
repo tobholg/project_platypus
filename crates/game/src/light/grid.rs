@@ -128,7 +128,7 @@ impl LightGrid {
                             // Trees barely shade (a forest by day is bright,
                             // as in Terraria); walls behind rock block the sky.
                             let tree = bp.kind == Kind::Plant || bp.flammability > 0;
-                            let k = if tree { 0.03 } else { 0.85 };
+                            let k = if tree { 0.012 } else { 0.85 };
                             sky_op = f32::max(sky_op, bp.opacity as f32 / 255.0 * k);
                             if b.flags & flags::BURNING != 0 {
                                 let f = flicker(o.x + lx, o.y + ly);
@@ -165,23 +165,55 @@ impl LightGrid {
         }
     }
 
-    /// Sky light down each column whose top is open (`open(texel column)`),
-    /// dimmed by what it passes through.
-    pub fn seed_sky(&mut self, sky: Rgb, open: impl Fn(usize) -> bool) {
-        let t = self.texel as f32;
-        for x in 0..self.w {
-            if !open(x) {
-                continue;
-            }
-            let mut v = sky;
-            for y in (0..self.h).rev() {
-                let i = y * self.w + x;
+    /// Light from far away (the sun, the moon, a patch of sky) travelling
+    /// along `dir` (unit, downward), entering the grid wherever it's open to
+    /// the sky: the top of every column in `open_top`, and the side it comes
+    /// from down to where that edge column meets the ground. Dimmed by what
+    /// it passes (crowns barely, the ground completely), so it casts shadows
+    /// that lean with the sun.
+    pub fn seed_directional(&mut self, dir: [f32; 2], color: Rgb, open_top: &[bool]) {
+        let (w, h, t) = (self.w, self.h, self.texel as f32);
+        if dir[1] >= 0.0 || color.iter().all(|&c| c <= 0.0) {
+            return;
+        }
+        // Step one texel along the main axis per step.
+        let steep = dir[1].abs() >= dir[0].abs();
+        let (sx, sy) = if steep { (dir[0] / dir[1].abs(), -1.0) } else { (dir[0].signum(), dir[1] / dir[0].abs()) };
+        let step_cells = (sx * sx + sy * sy).sqrt() * t;
+        // What passes one step through a texel, by opacity (256 levels).
+        let lut: Vec<f32> = (0..=255).map(|k| (1.0 - k as f32 / 255.0).powf(step_cells)).collect();
+        // Where each column's open sky ends, going down from the top.
+        let floor: Vec<Option<usize>> = (0..w)
+            .map(|x| {
+                if !open_top[x] {
+                    return None;
+                }
+                let solid = (0..h).rev().find(|&y| self.sky_opacity[y * w + x] > 0.5);
+                Some(solid.map_or(0, |y| y + 1))
+            })
+            .collect();
+        let mut starts: Vec<(f32, f32)> = (0..w).filter(|&x| open_top[x]).map(|x| (x as f32 + 0.5, h as f32 - 0.5)).collect();
+        let edge = if dir[0] > 0.0 { 0 } else { w - 1 };
+        if dir[0] != 0.0
+            && let Some(f) = floor[edge]
+        {
+            starts.extend((f..h).map(|y| (edge as f32 + 0.5, y as f32 + 0.5)));
+        }
+        for (mut x, mut y) in starts {
+            let mut v = color;
+            loop {
+                if x < 0.0 || y < 0.0 || x >= w as f32 || y >= h as f32 {
+                    break;
+                }
+                let i = y as usize * w + x as usize;
+                max_into(&mut self.seed[i], v);
+                let pass = lut[(self.sky_opacity[i].clamp(0.0, 1.0) * 255.0) as usize];
+                v = v.map(|c| c * pass);
                 if v[0] + v[1] + v[2] < 0.003 {
                     break;
                 }
-                max_into(&mut self.seed[i], v);
-                let pass = (1.0 - self.sky_opacity[i]).max(0.0).powf(t);
-                v = v.map(|c| c * pass);
+                x += sx;
+                y += sy;
             }
         }
     }
@@ -544,7 +576,7 @@ mod tests {
     #[test]
     fn sky_lights_open_columns_not_under_a_roof_and_spills_in_a_little() {
         let mut g = grid(&[(0, 20, 30, 24)]);
-        g.seed_sky([1.0; 3], |_| true);
+        g.seed_directional([0.0, -1.0], [1.0; 3], &[true; 60]);
         g.solve(P);
         assert!(at(&g, 45, 5) > 0.95, "open ground is in daylight");
         // Daylight spills in under the edge and fades going deeper.
@@ -552,6 +584,19 @@ mod tests {
         assert!(edge > mid && mid > deep, "{edge} > {mid} > {deep}");
         // A rock face keeps a thin lit rim; two cells into the rock it's dark.
         assert!(deep < 0.4 && at(&g, 10, 22) < 0.1, "deep in is dim ({deep}), inside the roof dark");
+    }
+
+    #[test]
+    fn a_low_sun_casts_a_long_slanted_shadow() {
+        // A post on open ground; the sun low in the east (light going left and down).
+        let mut g = grid(&[(0, 0, 60, 5), (40, 5, 42, 15)]);
+        let d = [-0.9f32, -0.44];
+        let n = (d[0] * d[0] + d[1] * d[1]).sqrt();
+        g.seed_directional([d[0] / n, d[1] / n], [1.0; 3], &[true; 60]);
+        let lit = |x: usize, y: usize| g.seed[y * 60 + x][0];
+        assert!(lit(30, 6) < 0.05, "shadow on the ground west of the post");
+        assert!(lit(41, 16) > 0.9 && lit(45, 6) > 0.9, "the top of the post and the ground east of it in sun");
+        assert!(lit(20, 6) > 0.9, "the shadow ends");
     }
 
     #[test]
