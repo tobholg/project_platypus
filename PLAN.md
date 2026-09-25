@@ -63,7 +63,5 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
 
 - Liquids level to within 1–2 cells across long flat stretches (terracing); fine visually.
 - Gas collects under the top of the loaded area (unloaded = wall).
-- Smoke from big fires drifts in horizontal dashed runs; gas movement could use
-  more vertical jitter.
 - `find_ground` retries forever for a spawn over a bottomless column.
 - Creatures outside loaded chunks freeze (by design) — they resume when loaded.

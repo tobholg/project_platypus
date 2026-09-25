@@ -536,14 +536,30 @@ fn gas(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) {
     }
     let free = |h: &Hood, tx: i32, ty: i32| h.get(tx, ty).is_some_and(|t| t.is_air());
     let d = downwind_sign(h);
+    // Rise unevenly. If every cell of a cloud moved every tick, whole rows
+    // would move in lockstep and a thick cloud would show as horizontal
+    // stripes. Some ticks a cell hovers or drifts sideways instead (mostly
+    // downwind), so a cloud churns and billows.
+    let roll = h.rng.next_u32() & 255;
+    if roll < 96 {
+        let dx = if roll < 72 { d } else { -d };
+        if roll < 88 && free(h, x + dx, y) {
+            return swap_to(h, x, y, x + dx, y, c);
+        }
+        // Hover, but stay awake.
+        c.clock = h.clock;
+        h.set(x, y, c);
+        return;
+    }
     // Billow: often drift up diagonally rather than rising in single file.
-    if h.rng.chance(100) && free(h, x + d, y + 1) {
-        return swap_to(h, x, y, x + d, y + 1, c);
+    let side = if h.rng.chance(170) { d } else { -d };
+    if h.rng.chance(100) && free(h, x + side, y + 1) {
+        return swap_to(h, x, y, x + side, y + 1, c);
     }
     if free(h, x, y + 1) {
         return swap_to(h, x, y, x, y + 1, c);
     }
-    for dx in [d, -d] {
+    for dx in [side, -side] {
         if free(h, x + dx, y + 1) {
             return swap_to(h, x, y, x + dx, y + 1, c);
         }
