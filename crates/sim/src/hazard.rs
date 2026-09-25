@@ -62,7 +62,7 @@ impl World {
                     // Flames set it alight; that does the harm, not their heat.
                     e.ignites = true;
                 } else {
-                    let t = self.climate().ambient(y) + c.heat as i32;
+                    let t = self.climate().ambient(x, y) + c.heat as i32;
                     e.heat = e.heat.max((t - HARMFUL_HEAT).max(0) as f32 * HEAT_DAMAGE);
                     e.heat = e.heat.max((HARMFUL_COLD - t).max(0) as f32 * HEAT_DAMAGE);
                     e.cold = e.cold.max(((CHILLING_COLD - t) as f32 / 60.0).clamp(0.0, 1.0));

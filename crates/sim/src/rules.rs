@@ -105,7 +105,7 @@ fn spawn(h: &mut Hood, id: MaterialId) -> Cell {
 /// Melt, boil, freeze or catch fire at the material's temperatures.
 /// Returns true if the cell became something else.
 fn transition(h: &mut Hood, x: i32, y: i32, c: Cell, p: &MatPhys) -> bool {
-    let t = h.ambient(y) + c.heat as i32;
+    let t = h.ambient(x, y) + c.heat as i32;
     if t >= p.ignites_at as i32 && c.flags & flags::BURNING == 0 {
         // Warm enough to catch: a chance per tick set by flammability, certain
         // only well above the ignition point. (Certain ignition at the
@@ -298,7 +298,7 @@ pub(crate) fn background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
     heat -= if heat > 0 { (heat / BG_COOL).max(1) } else if heat < 0 { (heat / BG_COOL).min(-1) } else { 0 };
     if !burning {
         b.heat = heat as i16;
-        let t = h.ambient(y) + heat;
+        let t = h.ambient(x, y) + heat;
         if bp.flammability > 0 && t >= bp.ignites_at as i32 {
             let excess = (t - bp.ignites_at as i32) as u32;
             let chance = (bp.flammability.max(1) as u32 * 16 * excess.min(HEAT_RAMP) / HEAT_RAMP).max(1);

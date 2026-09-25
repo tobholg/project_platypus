@@ -510,6 +510,29 @@ fn wood_catches_fire_from_heat_alone() {
     assert!(burning(&w) > 0, "hot wood started burning");
 }
 
+/// The climate varies across the world too (biomes): the same water freezes
+/// in a cold column and stays water in a mild one.
+#[test]
+fn water_freezes_in_a_cold_column_only() {
+    let mut w = boxed_world(2, 1, 26);
+    let mut climate = platypus_sim::Climate { surface_temp: 5, column_bits: 6, ..Default::default() };
+    climate.columns[1] = -15; // x 64..127: -10 °C
+    w.set_climate(climate);
+    fill(&mut w, "stone", 1, 127, 1, 4);
+    for x in [19, 44, 83, 108] {
+        fill(&mut w, "stone", x, x + 1, 4, 12); // pool walls
+    }
+    fill(&mut w, "water", 20, 44, 4, 8);
+    fill(&mut w, "water", 84, 108, 4, 8);
+    for _ in 0..12_000 {
+        w.step();
+    }
+    let ice = w.materials().expect_id("ice");
+    let frozen = |x0: i32| (x0..x0 + 24).flat_map(|x| (4..8).map(move |y| (x, y))).filter(|&(x, y)| w.get(CellPos::new(x, y)).unwrap().material == ice).count();
+    assert_eq!(frozen(20), 0, "the mild column stays water");
+    assert!(frozen(84) > 60, "the cold column froze ({} of 96)", frozen(84));
+}
+
 #[test]
 fn snow_depends_on_climate() {
     for (temp, survives) in [(-10, true), (15, false)] {
@@ -1445,7 +1468,7 @@ fn ice_melts_slowly_in_a_warm_room_and_water_freezes_slowly_in_the_cold() {
     // And water in a -5 °C world takes a while to freeze.
     let mut cold = World::new(98, m.clone());
     cold.insert_chunk(Chunk::filled(ChunkPos::new(0, 0), Cell::AIR));
-    cold.set_climate(platypus_sim::Climate { sea_level: 0, surface_temp: -5, cells_per_degree_up: i32::MAX, cells_per_degree_down: i32::MAX });
+    cold.set_climate(platypus_sim::Climate { surface_temp: -5, ..Default::default() });
     fill(&mut cold, "stone", 0, 64, 0, 1);
     fill(&mut cold, "water", 10, 30, 1, 6);
     for _ in 0..60 {

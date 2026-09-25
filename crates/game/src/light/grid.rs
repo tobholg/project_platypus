@@ -104,7 +104,7 @@ impl LightGrid {
                 let (cells, bg) = (chunk.cells(), chunk.background());
                 let o = cp.origin();
                 for ly in 0..CHUNK {
-                    let ambient = climate.ambient(o.y + ly);
+                    let ambient = climate.ambient(o.x, o.y + ly);
                     for lx in 0..CHUNK {
                         let i = (ly * CHUNK + lx) as usize;
                         let (c, b) = (cells[i], bg[i]);

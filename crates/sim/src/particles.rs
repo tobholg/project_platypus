@@ -86,8 +86,8 @@ pub(crate) trait ParticleWorld {
     fn douse_strip(&mut self, p: CellPos) -> bool {
         (-1..=1).any(|dx| self.douse(p.offset(dx, 0)))
     }
-    /// Ambient °C at height `y`.
-    fn ambient(&self, y: i32) -> i32;
+    /// Ambient °C at a world cell.
+    fn ambient(&self, x: i32, y: i32) -> i32;
     /// A cell of water, for a snowflake that melted.
     fn water(&self) -> Option<Cell>;
 }
@@ -174,7 +174,7 @@ fn step_one(p: &mut Particle, world: &mut impl ParticleWorld) -> bool {
                             return false;
                         }
                     }
-                    Landing::Snow if world.ambient(at.y) > 1 => {
+                    Landing::Snow if world.ambient(at.x, at.y) > 1 => {
                         // Melted on the way down.
                         if let Some(water) = world.water() {
                             p.landing = Landing::Rain;

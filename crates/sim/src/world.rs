@@ -164,7 +164,7 @@ impl World {
 
     /// Absolute temperature (°C) of a cell.
     pub fn temperature(&self, p: CellPos) -> Option<i32> {
-        self.get(p).map(|c| self.climate.ambient(p.y) + c.heat as i32)
+        self.get(p).map(|c| self.climate.ambient(p.x, p.y) + c.heat as i32)
     }
 
     pub fn seed(&self) -> u64 {
@@ -665,7 +665,7 @@ impl World {
             b.life = ph.burn_time;
             // Lit, it starts hot: whether it keeps going is up to the heat
             // around it (SPEC §3.8).
-            let lit = (ph.ignites_at as i32 - self.climate.ambient(p.y) + 40).clamp(0, 1200) as i16;
+            let lit = (ph.ignites_at as i32 - self.climate.ambient(p.x, p.y) + 40).clamp(0, 1200) as i16;
             b.heat = b.heat.max(lit);
             self.set_bg(p, b);
         }
@@ -1065,7 +1065,7 @@ impl World {
                     g
                 }
             };
-            let frozen = self.climate.ambient(ground) <= 0;
+            let frozen = self.climate.ambient(p.x, ground) <= 0;
             let Some(id) = (if frozen { snow } else { water }) else { continue };
             let n = stochastic_round(p.amount * DROPS_PER_MOISTURE * share, &mut rng);
             for _ in 0..n {
@@ -1505,8 +1505,8 @@ impl ParticleWorld for ParticleCtx<'_> {
         spent
     }
 
-    fn ambient(&self, y: i32) -> i32 {
-        self.world.climate.ambient(y)
+    fn ambient(&self, x: i32, y: i32) -> i32 {
+        self.world.climate.ambient(x, y)
     }
 
     fn water(&self) -> Option<Cell> {

@@ -156,10 +156,10 @@ impl<'a> Hood<'a> {
         }
     }
 
-    /// Ambient °C at a local row.
+    /// Ambient °C at a local cell.
     #[inline(always)]
-    pub fn ambient(&self, ly: i32) -> i32 {
-        self.climate.ambient(self.origin.y + ly)
+    pub fn ambient(&self, lx: i32, ly: i32) -> i32 {
+        self.climate.ambient(self.origin.x + lx, self.origin.y + ly)
     }
 
     /// World-space centre of a local cell, for launching particles.

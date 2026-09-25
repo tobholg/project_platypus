@@ -87,7 +87,7 @@ fn draw_bodies(
         let Some(mut image) = images.get_mut(&d.image) else { continue };
         let Some(data) = image.data.as_mut() else { continue };
         data.fill(0);
-        let ambient = climate.ambient(body.pos[1] as i32);
+        let ambient = climate.ambient(body.pos[0] as i32, body.pos[1] as i32);
         for (p, c) in body.world_cells() {
             let (tx, ty) = ((p.x - lo.x) as usize, (hi.y - p.y) as usize);
             let i = (ty * side as usize + tx) * 4;

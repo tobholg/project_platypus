@@ -140,6 +140,7 @@ impl WorldPlan {
             // 0 °C at the snow line.
             cells_per_degree_up: SNOW_ABOVE_SEA / SURFACE_TEMP,
             cells_per_degree_down: (sea_level / WARMER_AT_BOTTOM).max(1),
+            ..Climate::default()
         };
         WorldPlan { seed, preset, width, height, sea_level, band_floors, surface, snow_line, climate, forest }
     }

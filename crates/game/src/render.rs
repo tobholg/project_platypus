@@ -16,7 +16,7 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use platypus_sim::cell::flags;
-use platypus_sim::{CHUNK, Cell, ChunkPos, Climate, Kind, MaterialTable};
+use platypus_sim::{CHUNK, Cell, CellPos, ChunkPos, Climate, Kind, MaterialTable};
 
 use crate::actors::Kinematics;
 use crate::camera::MainCamera;
@@ -175,11 +175,12 @@ fn px(lx: usize, ly: usize) -> usize {
 }
 
 /// Rebuild a layer's base image and plant list from its cells.
-fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin_y: i32, climate: &Climate, back: bool) {
+fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: CellPos, climate: &Climate, back: bool) {
     layer.base.fill(0);
     layer.plants.clear();
     for ly in 0..N {
-        let ambient = climate.ambient(origin_y + ly as i32);
+        // (A chunk has one entry in the across-the-world table.)
+        let ambient = climate.ambient(origin.x, origin.y + ly as i32);
         for lx in 0..N {
             let c = cells[ly * N + lx];
             if c.is_air() {
@@ -285,8 +286,8 @@ fn sync_chunks(
         let dirty = chunk.take_render_dirty() || fresh;
         let o = chunk.pos.origin();
         if dirty {
-            rebuild(&mut g.front, chunk.cells(), mats, o.y, &climate, false);
-            rebuild(&mut g.back, chunk.background(), mats, o.y, &climate, true);
+            rebuild(&mut g.front, chunk.cells(), mats, o, &climate, false);
+            rebuild(&mut g.back, chunk.background(), mats, o, &climate, true);
         }
         let visible = view.is_none_or(|(lo, hi)| {
             let (x, y) = (o.x as f32, o.y as f32);
