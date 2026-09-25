@@ -23,6 +23,8 @@
 // explodes:     (radius, power, chance/256) when it catches fire
 // still:        a plant that doesn't sway (illusory walls)
 // hangs:        a plant held up from above as well as from below (cobwebs)
+// platform:     creatures stand on it but pass up through it (and drop through
+//               holding down)
 // colors:       gradient; each cell gets a fixed point on it
 //
 // `air` must stay first. Ids are assigned by order on first load and kept
@@ -55,6 +57,11 @@
             pattern: ["aabbbabb", "99aaa2aa", "8899929a", "22222222", "bbabbbaa", "a2aaaa99", "92999888", "22222222"]),
         // A chest's 8 × 8 cells (the game keeps what's in it): the pattern is its
         // picture, and chests sit on the 8-cell grid so it lines up.
+        // A one-way platform: creatures stand on it, jump up through it, and
+        // drop through it holding down. To everything else it's wood.
+        (name: "platform", kind: Static, platform: true, density: 650, hardness: 20, flammability: 7, ignites_at: 270, conductivity: 12, burn_time: 150, spread: 3, fizzles: 30, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal", opacity: 60,
+            colors: [(60, 38, 22), (102, 68, 38), (136, 94, 54), (158, 112, 66)],
+            pattern: ["aabbbabb", "88999899", "aabbbabb", "88999899", "aabbbabb", "88999899", "aabbbabb", "88999899"]),
         (name: "chest",    kind: Static, density: 700, hardness: 25, flammability: 5, ignites_at: 290, conductivity: 12, burn_time: 150, fizzles: 40, burns_into: "charcoal", burns_into_chance: 64,
             colors: [(26, 16, 8), (70, 44, 22), (112, 74, 40), (150, 104, 58), (214, 176, 72)],
             pattern: ["11111111", "18aaaa81", "189aa981", "14444441", "188ee881", "189ee981", "18888881", "11111111"]),

@@ -94,10 +94,13 @@ impl Grid for WorldGrid<'_> {
     fn occupancy(&self, x: i32, y: i32) -> Occupancy {
         match self.0.get(CellPos::new(x, y)) {
             None => Occupancy::Solid,
-            Some(c) => match self.0.materials().phys(c.material).kind {
-                Kind::Static | Kind::Powder => Occupancy::Solid,
+            Some(c) => match self.0.materials().phys(c.material) {
+                p if p.platform => Occupancy::Platform,
+                p => match p.kind {
+                    Kind::Static | Kind::Powder => Occupancy::Solid,
                 Kind::Liquid => Occupancy::Liquid,
-                Kind::Empty | Kind::Gas | Kind::Fire | Kind::Plant => Occupancy::Empty,
+                    Kind::Empty | Kind::Gas | Kind::Fire | Kind::Plant => Occupancy::Empty,
+                },
             },
         }
     }

@@ -107,6 +107,7 @@ struct Ids {
     false_ashlar: MaterialId,
     moss: MaterialId,
     cobweb: MaterialId,
+    platform: MaterialId,
 }
 
 impl Ids {
@@ -196,6 +197,7 @@ impl TerrainGen {
             false_ashlar: mats.expect_id("false_ashlar"),
             moss: mats.expect_id("moss"),
             cobweb: mats.expect_id("cobweb"),
+            platform: mats.expect_id("platform"),
         };
 
         let (ores, gems) = minerals::rules(&plan, mats);
@@ -479,6 +481,7 @@ impl TerrainGen {
             Glyph::Weak => weak,
             Glyph::Illusory => illusory,
             Glyph::Planks => i.planks,
+            Glyph::Platform if by >= 2 => i.platform,
             Glyph::Rubble => i.gravel,
             Glyph::Water => i.water,
             Glyph::Lava => i.lava,

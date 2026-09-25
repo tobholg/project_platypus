@@ -42,8 +42,8 @@ pub const EXPOSED_REACH: i32 = 5;
 /// in the stretches of wall where gems grow at all (a coarser noise above
 /// `GEM_ZONE`, every `GEM_ZONE_SCALE` cells or so), so they're a find rather
 /// than a lining.
-pub const GEM_THRESHOLD: f64 = 0.42;
-pub const GEM_ZONE: f64 = 0.35;
+pub const GEM_THRESHOLD: f64 = 0.4;
+pub const GEM_ZONE: f64 = 0.55;
 pub const GEM_ZONE_SCALE: f64 = 140.0;
 pub const GEM_REACH: i32 = 4;
 /// Cells per noise unit for gem clusters (a few cells across).

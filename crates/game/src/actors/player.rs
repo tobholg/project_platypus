@@ -46,6 +46,7 @@ fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, mut he
     held.intent.move_x = right - left;
     held.intent.jump = keys.pressed(KeyCode::Space);
     held.intent.dash = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+    held.intent.down = keys.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
     held.jump_tapped |= keys.just_pressed(KeyCode::Space);
     held.dash_tapped |= keys.any_just_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     if let Some(c) = cursor.0 {

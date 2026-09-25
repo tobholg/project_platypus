@@ -34,7 +34,8 @@ islands with their positions, to point `--region` at.
 The toolchain is pinned in `rust-toolchain.toml`; rustup fetches it on first build.
 
 **Play:** A/D move · Space jump (hold for height, tap for a hop, again in the air
-for a double jump, against a wall to wall-jump) · Shift dash
+for a double jump, against a wall to wall-jump) · S (or ↓) drops through a wooden
+platform · Shift dash
 
 **Hands** (the default; items in `assets/data/items.ron`): 1–0 pick a hotbar slot ·
 LMB use it (hold it with the cursor below you to dig straight down, beside you for a

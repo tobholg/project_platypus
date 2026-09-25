@@ -309,7 +309,17 @@ rooms in `assets/data/rooms/*.rooms`).
   or, where the ground rises, a tunnel, either up to 60 blocks. Windows are
   holes in the back wall: the sky shows through.
 - Tests also: every chest in 200 random castles is reachable from the gate,
-  on falling and rising ground.
+  on falling and rising ground. Reachability moves a player-sized body (2 × 4
+  blocks) and a chest counts when it's within mining reach, so a gap the
+  player barely can't pass fails the test; rooms also must keep the way
+  through a door clear (nothing solid within two blocks inside a door, and
+  nothing under a hole in the ceiling all the way down), checked when parsed.
+- Wooden platforms (`-` in rooms; the `platform` material, `platform: true`):
+  one-way for creatures (the physics' `Occupancy::Platform`): a body landing
+  from above stands on one, from below and the sides it passes through, and
+  holding down (S or ↓, `Intent::down`) drops through. To the cell sim it's
+  wood. Rooms' ledges and the shaft's are platforms; a placed platform block
+  fills its block's top half. A new player carries 40.
 - Age, from the place alone (a block's hash, a cell's): a crypt's floors
   grow moss in patches, some of its ceiling blocks have fallen in (gravel:
   it drops into a pile once the chunk is live), and the top corners of

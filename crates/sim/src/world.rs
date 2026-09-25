@@ -511,7 +511,8 @@ impl World {
         let mut rng = self.rng_for(0x9A1C, block);
         for p in block_cells(block) {
             let here = if back { self.get_bg(p) } else { self.get(p) };
-            if !here.is_some_and(|c| Self::room(&mats, c)) {
+            // A platform is the top half of its block.
+            if !here.is_some_and(|c| Self::room(&mats, c)) || (mats.phys(material).platform && p.y.rem_euclid(BLOCK) < 2) {
                 continue;
             }
             let mut c = mats.spawn(material, &mut rng);

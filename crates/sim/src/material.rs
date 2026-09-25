@@ -152,6 +152,10 @@ pub struct MaterialDef {
     /// below (cobwebs, roots).
     #[serde(default)]
     pub hangs: bool,
+    /// One-way for creatures: solid underfoot, open from below and the
+    /// sides, and open underfoot to one that wants to drop.
+    #[serde(default)]
+    pub platform: bool,
 
     // ---- temperature (°C). See SPEC §3.6. --------------------------------
     /// Heat a fresh cell starts with, relative to ambient (lava 1200, ice -30).
@@ -240,6 +244,8 @@ pub struct MatPhys {
     pub fizzles: u16,
     /// See `MaterialDef::hangs`.
     pub hangs: bool,
+    /// See `MaterialDef::platform`.
+    pub platform: bool,
     /// See `MaterialDef::latent`.
     pub latent: u16,
     pub viscosity: u8,
@@ -425,6 +431,7 @@ impl MaterialTable {
                 spread: d.spread.unwrap_or(d.flammability as u16 * 16),
                 fizzles: d.fizzles,
                 hangs: d.hangs,
+                platform: d.platform,
                 latent: d.latent,
                 viscosity: d.viscosity,
                 rest_limit: ((crate::cell::flags::REST_LIMIT as u32 * (256 - d.viscosity as u32)) / 256).max(1) as u8,

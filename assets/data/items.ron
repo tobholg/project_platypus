@@ -24,5 +24,5 @@
         (id: "glowstick",      name: "Glow stick",     stack: 30, color: (90, 255, 150), use: Throw(Glowstick)),
         (id: "chest",          name: "Chest",          stack: 20, color: (150, 104, 58), use: Chest),
     ],
-    start: [("copper_pickaxe", 1), ("copper_axe", 1), ("torch", 12), ("bomb", 5), ("glowstick", 6)],
+    start: [("copper_pickaxe", 1), ("copper_axe", 1), ("torch", 12), ("bomb", 5), ("glowstick", 6), ("block:platform", 40)],
 )

@@ -12,6 +12,9 @@ pub enum Occupancy {
     Empty,
     Liquid,
     Solid,
+    /// One-way: solid to a body landing on it from above (unless it's
+    /// dropping through), open from below and the sides.
+    Platform,
 }
 
 /// The world as bodies see it. Implemented by the game over the cell world
@@ -37,6 +40,8 @@ pub struct Body {
     pub half: Vec2,
     /// Highest ledge (in cells) walked up without jumping.
     pub step_height: i32,
+    /// Dropping through platforms (holding down).
+    pub drop: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -55,7 +60,7 @@ pub struct Contacts {
 
 impl Body {
     pub fn new(pos: Vec2, size: Vec2) -> Self {
-        Body { pos, vel: Vec2::ZERO, half: size / 2.0, step_height: 0 }
+        Body { pos, vel: Vec2::ZERO, half: size / 2.0, step_height: 0, drop: false }
     }
 
     /// Inclusive cell rectangle covered at `pos`.
@@ -80,17 +85,35 @@ fn blocked(grid: &impl Grid, body: &Body, pos: Vec2) -> bool {
     overlaps_solid(grid, min, max)
 }
 
+/// Moving down from `from` to `to`, does a platform catch the body? Only
+/// one whose top its feet were at or above (it came from above), and not
+/// when it's dropping through.
+fn caught(grid: &impl Grid, body: &Body, from: Vec2, to: Vec2) -> bool {
+    if body.drop {
+        return false;
+    }
+    let (min, max) = body.cells_at(to);
+    let row = min.y;
+    from.y - body.half.y >= row as f32 + 1.0 - EPS && (min.x..=max.x).any(|x| grid.occupancy(x, row) == Occupancy::Platform)
+}
+
+/// Standing on something (solid, or a platform it isn't dropping through)?
+fn grounded(grid: &impl Grid, body: &Body) -> bool {
+    let probe = body.pos - Vec2::new(0.0, 2.0 * EPS);
+    blocked(grid, body, probe) || caught(grid, body, body.pos, probe)
+}
+
 /// Move `body` by `vel * dt`, stopping at solids, stepping up small ledges.
 pub fn move_and_collide(grid: &impl Grid, body: &mut Body, dt: f32) -> Contacts {
     let mut c = Contacts::default();
     // Sand fell on us, or a wall was placed inside us: climb out first.
     depenetrate(grid, body);
 
-    let was_grounded = blocked(grid, body, body.pos - Vec2::new(0.0, 2.0 * EPS));
+    let was_grounded = grounded(grid, body);
     move_x(grid, body, body.vel.x * dt, was_grounded && body.vel.y <= 0.0, &mut c);
     move_y(grid, body, body.vel.y * dt, &mut c);
     if !c.ground && body.vel.y <= 0.0 {
-        c.ground = blocked(grid, body, body.pos - Vec2::new(0.0, 2.0 * EPS));
+        c.ground = grounded(grid, body);
     }
     c.submerged = submerged(grid, body);
     c
@@ -139,7 +162,7 @@ fn move_y(grid: &impl Grid, body: &mut Body, dy: f32, c: &mut Contacts) {
         let step = left.min(1.0);
         left -= step;
         let next = body.pos + Vec2::new(0.0, dir * step);
-        if !blocked(grid, body, next) {
+        if !blocked(grid, body, next) && !(dir < 0.0 && caught(grid, body, body.pos, next)) {
             body.pos = next;
             continue;
         }
@@ -212,6 +235,7 @@ pub(crate) mod tests {
             match self.0.get(y as usize).and_then(|r| r.get(x as usize)) {
                 Some(b'#') | None => Occupancy::Solid,
                 Some(b'~') => Occupancy::Liquid,
+                Some(b'-') => Occupancy::Platform,
                 _ => Occupancy::Empty,
             }
         }
@@ -221,6 +245,50 @@ pub(crate) mod tests {
         let mut rows = vec!["#                              #"; 20];
         rows.push("################################");
         Ascii::new(&rows)
+    }
+
+    /// A room with a platform across it: row 11, so its top is 12.
+    fn platform_room() -> Ascii {
+        let mut rows = vec!["#                              #"; 20];
+        rows[9] = "#          ----------          #";
+        rows.push("################################");
+        Ascii::new(&rows)
+    }
+
+    fn fall(g: &Ascii, b: &mut Body, ticks: usize) {
+        for _ in 0..ticks {
+            b.vel.y -= 600.0 / 60.0;
+            if move_and_collide(g, b, 1.0 / 60.0).ground {
+                b.vel.y = 0.0;
+            }
+        }
+    }
+
+    #[test]
+    fn a_platform_holds_from_above_and_lets_through_from_below() {
+        let g = platform_room();
+        // Dropped from above: lands on it.
+        let mut b = Body::new(Vec2::new(15.0, 18.0), Vec2::new(2.0, 4.0));
+        fall(&g, &mut b, 120);
+        assert_eq!(b.bottom(), 12.0, "standing on the platform");
+        // Holding down: through it, to the floor.
+        b.drop = true;
+        fall(&g, &mut b, 120);
+        assert_eq!(b.bottom(), 1.0, "dropped through");
+        // Jumping up from below: through it, and it holds on the way down.
+        b.drop = false;
+        b.vel.y = 170.0;
+        for _ in 0..8 {
+            move_and_collide(&g, &mut b, 1.0 / 60.0);
+        }
+        assert!(b.bottom() > 12.0, "rose through the platform ({})", b.bottom());
+        fall(&g, &mut b, 120);
+        assert_eq!(b.bottom(), 12.0, "and landed on it");
+        // Walking into it from the side at its height: no wall.
+        let mut w = Body::new(Vec2::new(5.0, 12.0), Vec2::new(2.0, 4.0));
+        w.vel.x = 60.0;
+        let c = move_and_collide(&g, &mut w, 0.2);
+        assert!(!c.wall_right && w.pos.x > 16.0, "walked through its end");
     }
 
     #[test]

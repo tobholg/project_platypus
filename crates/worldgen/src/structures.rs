@@ -45,6 +45,8 @@ pub enum Glyph {
     Illusory,
     Weak,
     Planks,
+    /// A one-way wooden platform (its block's top two cells).
+    Platform,
     Rubble,
 }
 
@@ -65,6 +67,7 @@ impl Glyph {
             '?' => Glyph::Illusory,
             '%' => Glyph::Weak,
             '=' => Glyph::Planks,
+            '-' => Glyph::Platform,
             '~' => Glyph::Rubble,
             _ => return None,
         })
@@ -197,6 +200,28 @@ pub fn parse(src: &str) -> Result<Vec<Room>, String> {
                 room.sockets.push(s);
             } else if open > 0 {
                 return Err(format!("room `{name}`: door {s:?} is half open"));
+            }
+        }
+        // Room to move at every door: nothing solid within two blocks inside
+        // it (a player squeezing past a tomb under a lintel is a room that's
+        // barely passable), and under a hole in the ceiling, nothing all the
+        // way down (you drop in through it).
+        for &s in &room.sockets {
+            let reach = if s.side == Side::T { h - 2 } else { 2 };
+            let inside: Vec<(i32, i32)> = room
+                .door(s)
+                .into_iter()
+                .flat_map(|(x, y)| {
+                    (1..=reach).map(move |d| match s.side {
+                        Side::L => (x + d, y),
+                        Side::R => (x - d, y),
+                        Side::B => (x, y + d),
+                        Side::T => (x, y - d),
+                    })
+                })
+                .collect();
+            if let Some(&(x, y)) = inside.iter().find(|&&(x, y)| !room.at(x, y).passable()) {
+                return Err(format!("room `{name}`: ({x}, {y}) is in the way of door {s:?} (keep the way through a door clear)"));
             }
         }
         if kind == RoomKind::Ruin {
@@ -704,8 +729,8 @@ fn shaft(rx: i32, bottom: i32, h: i32) -> Piece {
         // Ledges every 7 blocks, left and right in turn.
         if y % 7 == 4 {
             let at = if (y / 7) % 2 == 0 { 5 } else { 9 };
-            row[at] = Glyph::Planks;
-            row[at + 1] = Glyph::Planks;
+            row[at] = Glyph::Platform;
+            row[at + 1] = Glyph::Platform;
         }
         if y % 14 == 10 {
             row[if (y / 14) % 2 == 0 { 10 } else { 5 }] = Glyph::Candle;
@@ -736,24 +761,53 @@ mod tests {
         assert!(parse("room bad\n#..#").is_err(), "a room must be whole slots");
     }
 
-    /// Blocks you can reach from `start`, through what's passable (illusory
-    /// walls too) or breaks in one hit (weak walls), without leaving the
-    /// structure.
+    /// A body the player's size, in blocks (the player is 6 × 15 cells).
+    const BODY: (i32, i32) = (2, 4);
+
+    /// Where a player-sized body can get to from `start` (its bottom-left
+    /// block): every block it covers passable (illusory walls and platforms
+    /// too) or breakable in one hit (weak walls), inside the structure.
+    /// (Walking, jumping and falling aside: this checks that there's room.)
     fn reachable(s: &Structure, start: (i32, i32)) -> HashSet<(i32, i32)> {
         let glyph = |bx: i32, by: i32| s.pieces.iter().find_map(|p| p.glyph(bx * BLOCK, by * BLOCK).filter(|&g| g != Glyph::Keep));
-        assert!(glyph(start.0, start.1).is_some_and(Glyph::passable), "the way in is open");
+        let fits = |x: i32, y: i32| (0..BODY.0).all(|dx| (0..BODY.1).all(|dy| glyph(x + dx, y + dy).is_some_and(|g| g.passable() || g == Glyph::Weak)));
+        assert!(fits(start.0, start.1), "there's room at the way in");
         let mut seen = HashSet::from([start]);
         let mut stack = vec![start];
         while let Some((x, y)) = stack.pop() {
             for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
                 let q = (x + dx, y + dy);
-                if !seen.contains(&q) && glyph(q.0, q.1).is_some_and(|g| g.passable() || g == Glyph::Weak) {
+                if !seen.contains(&q) && fits(q.0, q.1) {
                     seen.insert(q);
                     stack.push(q);
                 }
             }
         }
         seen
+    }
+
+    /// The blocks around one, as the room files draw them (for failures).
+    fn dump(s: &Structure, (cx, cy): (i32, i32), reach: &HashSet<(i32, i32)>) -> String {
+        let glyph = |bx: i32, by: i32| s.pieces.iter().find_map(|p| p.glyph(bx * BLOCK, by * BLOCK).filter(|&g| g != Glyph::Keep));
+        let ch = |g: Option<Glyph>| match g {
+            None => ' ',
+            Some(Glyph::Wall) => '#',
+            Some(Glyph::Chest) => 'C',
+            Some(Glyph::Platform) => '-',
+            Some(Glyph::Planks) => '=',
+            Some(Glyph::Illusory) => '?',
+            Some(Glyph::Weak) => '%',
+            Some(g) if g.passable() => '.',
+            Some(_) => 'x',
+        };
+        let _ = (cx, cy);
+        let (x0, y0, x1, y1) = s.bbox();
+        (y0 / BLOCK..=y1 / BLOCK).rev().map(|y| (x0 / BLOCK - 4..x1 / BLOCK + 5).map(|x| if reach.contains(&(x, y)) { '*' } else { ch(glyph(x, y)) }).collect::<String>() + "\n").collect()
+    }
+
+    /// Can a body at one of `reach` get a chest (within mining reach)?
+    fn within_reach(reach: &HashSet<(i32, i32)>, chest: (i32, i32)) -> bool {
+        reach.iter().any(|&(x, y)| (x - chest.0).abs() <= 4 && (y - chest.1).abs() <= 4)
     }
 
     #[test]
@@ -769,7 +823,7 @@ mod tests {
             let chests: Vec<(i32, i32)> = s.pieces.iter().flat_map(|p| p.blocks_of(Glyph::Chest)).map(|(x, y)| (x / BLOCK, y / BLOCK)).collect();
             assert!(chests.len() >= 2, "seed {seed}: a goal's worth of chests ({})", chests.len());
             for c in &chests {
-                assert!(reach.contains(c), "seed {seed} {grid:?}: the chest at block {c:?} can't be reached");
+                assert!(within_reach(&reach, *c), "seed {seed} {grid:?}: the chest at block {c:?} can't be reached\n{}", dump(&s, *c, &reach));
             }
             secrets += s.pieces.iter().any(|p| p.blocks_of(Glyph::Illusory).next().is_some()) as i32;
         }
@@ -791,12 +845,12 @@ mod tests {
             let (x0, _, x1, _) = s.pieces[..s.rooms].iter().map(Piece::bbox).fold((i32::MAX, 0, i32::MIN, 0), |a, b| (a.0.min(b.0), 0, a.2.max(b.2), 0));
             let door_row = 12_000 / BLOCK + 1;
             let glyph = |bx: i32, by: i32| s.pieces.iter().find_map(|p| p.glyph(bx * BLOCK, by * BLOCK).filter(|&g| g != Glyph::Keep));
-            let gate = [x0 / BLOCK, x1 / BLOCK].into_iter().find(|&bx| glyph(bx, door_row).is_some_and(Glyph::passable)).expect("a gate in one tower's foot");
+            let gate = [x0 / BLOCK, x1 / BLOCK - 1].into_iter().find(|&bx| glyph(bx, door_row).is_some_and(Glyph::passable) && glyph(bx + 1, door_row).is_some_and(Glyph::passable)).expect("a gate in one tower's foot");
             let reach = reachable(&s, (gate, door_row));
             let chests: Vec<(i32, i32)> = s.pieces.iter().flat_map(|p| p.blocks_of(Glyph::Chest)).map(|(x, y)| (x / BLOCK, y / BLOCK)).collect();
             assert!(chests.len() >= 2, "seed {seed}: a goal's worth of chests");
             for c in &chests {
-                assert!(reach.contains(c), "seed {seed}: the chest at block {c:?} can't be reached from the gate");
+                assert!(within_reach(&reach, *c), "seed {seed}: the chest at block {c:?} can't be reached from the gate\n{}", dump(&s, *c, &reach));
             }
             // Every slot of the keep and the towers is a room.
             let gh = s.grid.1;

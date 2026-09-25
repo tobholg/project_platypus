@@ -24,6 +24,9 @@
 //! - `hands`      the hands through real input: digs down and sideways with the pickaxe,
 //!   builds a wall with what it dug, chops at a tree with auto tool (Ctrl),
 //!   plants a torch; logs the inventory
+//! - `drop`       stands still until 3 s, then holds S: on a platform (e.g. a
+//!   crypt's entrance, `PLATYPUS_SPAWN_X` at a ruin) it drops through; logs
+//!   the feet before and after
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -65,7 +68,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -524,6 +527,22 @@ fn flood_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kine
 }
 
 /// The hands through real input (keys, mouse, a scripted cursor).
+fn drop_script(s: Res<Scenario>, player: Query<&Kinematics, With<LocalPlayer>>, mut keys: ResMut<ButtonInput<KeyCode>>, mut logged: Local<u8>) {
+    if s.name != "drop" {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    if s.elapsed > 3.0 { keys.press(KeyCode::KeyS) } else { keys.release(KeyCode::KeyS) }
+    let feet = k.body.bottom();
+    if *logged == 0 && s.elapsed > 2.9 {
+        info!("drop: feet at {feet:.0} before holding S");
+        *logged = 1;
+    } else if *logged == 1 && s.elapsed > 5.5 {
+        info!("drop: feet at {feet:.0} after");
+        *logged = 2;
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn hands_script(
     s: Res<Scenario>,

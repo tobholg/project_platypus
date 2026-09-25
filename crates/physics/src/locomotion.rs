@@ -18,6 +18,8 @@ pub struct Intent {
     pub move_x: f32,
     pub jump: bool,
     pub dash: bool,
+    /// Holding down: drop through platforms.
+    pub down: bool,
     /// World-space direction the creature is aiming (attacks, guns).
     pub aim: Vec2,
 }
@@ -203,6 +205,7 @@ impl Locomotion {
     /// then `after_move` with the contacts it returned.
     pub fn steer(&mut self, s: &MovementStats, intent: &Intent, body: &mut Body, dt: f32) -> MoveEvents {
         let mut ev = MoveEvents::default();
+        body.drop = intent.down;
         let jump_pressed = intent.jump && !self.prev_jump;
         let dash_pressed = intent.dash && !self.prev_dash;
         self.prev_jump = intent.jump;
