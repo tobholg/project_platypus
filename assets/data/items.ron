@@ -12,9 +12,9 @@
 //   Chest: place one (2 × 2 blocks, on the ground); right-click a chest to open it
 (
     items: [
-        (id: "copper_pickaxe", name: "Copper pickaxe", color: (205, 127, 50), use: Mine(back: false, power: 35, tier: 70, speed: 4.0, reach: 6.0)),
-        (id: "iron_pickaxe",   name: "Iron pickaxe",   color: (176, 178, 190), use: Mine(back: false, power: 50, tier: 100, speed: 5.0, reach: 6.5)),
-        (id: "copper_axe",     name: "Copper axe",     color: (190, 110, 45), use: Mine(back: true, power: 30, tier: 60, speed: 4.0, reach: 6.0)),
+        (id: "copper_pickaxe", name: "Copper pickaxe", color: (205, 127, 50), use: Mine(back: false, power: 35, tier: 70, speed: 6.0, reach: 6.0)),
+        (id: "iron_pickaxe",   name: "Iron pickaxe",   color: (176, 178, 190), use: Mine(back: false, power: 60, tier: 100, speed: 7.0, reach: 6.5)),
+        (id: "copper_axe",     name: "Copper axe",     color: (190, 110, 45), use: Mine(back: true, power: 30, tier: 60, speed: 5.0, reach: 6.0)),
         (id: "torch",          name: "Torch",          stack: 99, color: (255, 190, 90), use: Torch),
         (id: "bomb",           name: "Bomb",           stack: 30, color: (40, 40, 46), use: Throw(Bomb)),
         (id: "glowstick",      name: "Glow stick",     stack: 30, color: (90, 255, 150), use: Throw(Glowstick)),

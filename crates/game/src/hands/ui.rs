@@ -340,11 +340,13 @@ fn show(
         let n = slot_of(which, i).map_or(0, |s| s.count / items.unit(s.item));
         text.0 = if n > 1 { n.to_string() } else { String::new() };
     }
-    label.0 = inv.slots[hand.slot].map_or(String::new(), |s| {
+    let name = inv.slots[hand.slot].map_or(String::new(), |s| {
         let unit = items.unit(s.item);
         let spare = s.count % unit;
         if unit > 1 && spare > 0 { format!("{} ({} + {spare}/{unit})", items.def(s.item).name, s.count / unit) } else { items.def(s.item).name.clone() }
     });
+    let smart = if hand.smart { "smart cursor" } else { "plain cursor" };
+    label.0 = format!("{name}   |   {smart} [Alt]  |  pack [I]  |  dev tools [`]");
     let (node, bg, vis) = &mut *grip;
     match (held.0, window.cursor_position()) {
         (Some(s), Some(at)) => {

@@ -10,7 +10,7 @@ use platypus_sim::rng::{Rng, hash};
 use platypus_sim::{CHUNK, Climate};
 
 use crate::biome::Biome;
-use crate::flora::Forest;
+use crate::flora::{Forest, Species};
 use crate::islands::{self, Island};
 
 /// World sizes. `Large` is the world we play in; `Small` is quick to look at
@@ -92,8 +92,10 @@ const CELLS_PER_DEGREE_UP: f64 = 60.0;
 const INVERSION: f64 = 18.0;
 /// °C warmer at the bottom of the world than at sea level.
 const WARMER_AT_BOTTOM: i32 = 85;
-/// Trees grow where the ground is at least this warm (°C): a tree line.
+/// Broadleaf trees grow where the ground is at least this warm (°C);
+/// conifers down to `CONIFER_LINE`, snowy where it freezes.
 const TREE_LINE: i32 = 4;
+const CONIFER_LINE: i32 = -18;
 
 // Large-world sizes (scaled by width or height for smaller worlds).
 const OCEAN_WIDTH: f64 = 1_600.0;
@@ -101,7 +103,14 @@ const OCEAN_DEPTH: f64 = 380.0;
 const REGION_WIDTH: (f64, f64) = (1_800.0, 4_500.0);
 /// Biome borders blend over this many cells each side.
 const BLEND: f64 = 300.0;
-const MOUNTAINS: f64 = 7.0;
+/// Lone massifs outside the mountain ranges (large world).
+const MOUNTAINS: f64 = 3.0;
+/// A mountain range: a peak every so often across the region, each a massif.
+const RANGE_STEP: (f64, f64) = (900.0, 1_400.0);
+const RANGE_HALF_WIDTH: (f64, f64) = (850.0, 1_400.0);
+const RANGE_PEAK: (f64, f64) = (1_400.0, 2_200.0);
+/// The ridge a range's peaks stand on (large world).
+const RANGE_BODY: (f64, f64) = (700.0, 1_000.0);
 const MOUNTAIN_HALF_WIDTH: (f64, f64) = (1_400.0, 3_000.0);
 const MOUNTAIN_PEAK: (f64, f64) = (900.0, 2_400.0);
 /// No mountain within this of the spawn (the start is a gentle forest).
@@ -214,8 +223,29 @@ impl WorldPlan {
                 kinds[r] = Some(b);
             }
         }
-        // The desert: anywhere free, not next to the tundra.
-        let free: Vec<usize> = (0..n).filter(|&r| kinds[r].is_none() && r.abs_diff(t) > 1).collect();
+        // A mountain range on the cold side, between the tundra and the
+        // spawn; a deep forest anywhere else away from the spawn. Each takes a
+        // free neighbour too, so they're wide.
+        let away = |r: usize| r.abs_diff(spawn) >= 2;
+        let free_in = |kinds: &[Option<Biome>], lo: usize, hi: usize| (lo..hi.min(n)).filter(|&r| kinds[r].is_none() && away(r)).collect::<Vec<_>>();
+        let grow = |kinds: &mut Vec<Option<Biome>>, rng: &mut Rng, choices: Vec<usize>, b: Biome| {
+            if choices.is_empty() {
+                return;
+            }
+            let r = choices[(rng.next_u32() as usize) % choices.len()];
+            kinds[r] = Some(b);
+            let next: Vec<usize> = [r.wrapping_sub(1), r + 1].into_iter().filter(|&q| q < n && kinds[q].is_none() && q != spawn).collect();
+            if !next.is_empty() {
+                kinds[next[(rng.next_u32() as usize) % next.len()]] = Some(b);
+            }
+        };
+        let range_choices = free_in(&kinds, cold.0, cold.1);
+        grow(&mut kinds, &mut rng, range_choices, Biome::Mountains);
+        let forest_choices = free_in(&kinds, 0, n);
+        grow(&mut kinds, &mut rng, forest_choices, Biome::DeepForest);
+        // The desert: anywhere free, not next to the tundra or the range.
+        let cold_ones: Vec<usize> = (0..n).filter(|&r| matches!(kinds[r], Some(Biome::Tundra | Biome::Mountains))).collect();
+        let free: Vec<usize> = (0..n).filter(|&r| kinds[r].is_none() && cold_ones.iter().all(|&c| r.abs_diff(c) > 1)).collect();
         if !free.is_empty() {
             kinds[free[(rng.next_u32() as usize) % free.len()]] = Some(Biome::Desert);
         }
@@ -236,6 +266,25 @@ impl WorldPlan {
         regions.push((width - ocean_w, width, Biome::Ocean));
         let biomes: Vec<Biome> = regions.iter().flat_map(|&(x0, x1, b)| std::iter::repeat_n(b, (x1 - x0) as usize)).collect();
 
+        // How far into a deep forest (0 at its edge, 1 at its heart).
+        let heart: Vec<f32> = {
+            let mut h = vec![0.0f32; biomes.len()];
+            for &(x0, x1, _) in regions.iter().filter(|r| r.2 == Biome::DeepForest) {
+                // Neighbouring deep-forest regions are one forest.
+                let (mut a, mut b) = (x0, x1);
+                while a > 0 && biomes[a as usize - 1] == Biome::DeepForest {
+                    a -= 1;
+                }
+                while (b as usize) < biomes.len() && biomes[b as usize] == Biome::DeepForest {
+                    b += 1;
+                }
+                let half = (b - a) as f32 / 2.0;
+                for x in x0..x1 {
+                    h[x as usize] = (1.0 - ((x - a) as f32 - half).abs() / half).clamp(0.0, 1.0);
+                }
+            }
+            h
+        };
         let blend = (BLEND * sw).max(40.0) as i32;
         let per_column = |f: fn(Biome) -> f64| blur(&biomes.iter().map(|&b| f(b)).collect::<Vec<_>>(), blend);
         let (warmth, lift, hill) = (per_column(Biome::warmth), per_column(Biome::lift), per_column(Biome::hills));
@@ -304,7 +353,33 @@ impl WorldPlan {
         let ridge = Fbm::<Perlin>::new(s(12)).set_octaves(4).set_frequency(1.0 / 420.0);
         let mut mountains = vec![0.0f64; width as usize];
         let mut placed: Vec<(i32, i32)> = Vec::new();
-        for _ in 0..(MOUNTAINS * sw).round().max(2.0) as usize {
+        let terrace = TERRACE * sh;
+        // The ranges first: peak after peak across each mountain region.
+        let mut k = 0u64;
+        for &(x0, x1, _) in regions.iter().filter(|r| r.2 == Biome::Mountains) {
+            // The range's body: a long ridge, so the saddles between peaks
+            // stay high and it reads as one chain.
+            let body = range(&mut rng, RANGE_BODY) * sh;
+            let ramp = (900.0 * sw).max(100.0) as i32;
+            let rough = Perlin::new(s(59 + k));
+            for x in x0..x1 {
+                let edge = smoothstep(0.0, 1.0, ((x - x0).min(x1 - x) as f64 / ramp as f64).min(1.0));
+                let m = body * edge * (0.85 + 0.15 * rough.get([x as f64 / 600.0, 0.4]));
+                mountains[x as usize] = mountains[x as usize].max(m);
+            }
+            let mut cx = x0 + (range(&mut rng, (300.0, 700.0)) * sw) as i32;
+            while cx < x1 - (300.0 * sw) as i32 {
+                let half = (range(&mut rng, RANGE_HALF_WIDTH) * sw) as i32;
+                let peak = range(&mut rng, RANGE_PEAK) * sh;
+                k += 1;
+                if (cx - mid).abs() > half + (SPAWN_CLEAR * sw) as i32 {
+                    massif(&mut mountains, &mut rng, &ridge, &Perlin::new(s(60 + k)), (cx, half, peak), terrace, width);
+                    placed.push((cx, half));
+                }
+                cx += (range(&mut rng, RANGE_STEP) * sw) as i32;
+            }
+        }
+        for _ in 0..(MOUNTAINS * sw).round().max(1.0) as usize {
             for _try in 0..200 {
                 let half = (range(&mut rng, MOUNTAIN_HALF_WIDTH) * sw) as i32;
                 let peak = range(&mut rng, MOUNTAIN_PEAK) * sh;
@@ -314,52 +389,28 @@ impl WorldPlan {
                     break;
                 }
                 let cx = lo + (unit(&mut rng) * (hi - lo) as f64) as i32;
+                // Not in the deep forest or on a range (they have their own).
+                let own = |x: i32| matches!(biomes[x.clamp(0, width - 1) as usize], Biome::DeepForest | Biome::Mountains);
                 let clear = (cx - mid).abs() > half + (SPAWN_CLEAR * sw) as i32
+                    && !own(cx - half) && !own(cx) && !own(cx + half)
                     // Ranges may run into each other (a joined range), but not stack.
                     && placed.iter().all(|&(px, ph)| (cx - px).abs() > (half + ph) * 3 / 5)
                     && bowls.iter().all(|&(bx, bh)| (cx - bx).abs() > half + bh);
                 if !clear {
                     continue;
                 }
-                // Lopsided: one flank longer than the other.
-                let skew = range(&mut rng, (0.65, 1.35));
-                let (hl, hr) = (half as f64 * skew.min(1.0), half as f64 / skew.max(1.0));
-                // Sub-peaks along the range, each a concave cone.
-                let mut bumps = vec![(cx as f64, 1.0, peak)];
-                for _ in 0..3 + rng.next_u32() % 4 {
-                    let off = (unit(&mut rng) * 2.0 - 1.0) * 0.75;
-                    bumps.push((cx as f64 + off * if off < 0.0 { hl } else { hr }, range(&mut rng, (0.18, 0.45)), peak * range(&mut rng, (0.3, 0.8))));
-                }
-                let warp = Perlin::new(s(13 + placed.len() as u64));
-                let terrace = TERRACE * sh;
-                for x in cx - hl as i32..=cx + hr as i32 {
-                    // A wandering ridge line, not a ruler-straight flank.
-                    let xf = x as f64 + warp.get([x as f64 / half as f64 * 2.0, 0.7]) * half as f64 * 0.12;
-                    let flank = |bx: f64| if xf < bx { hl } else { hr };
-                    let massif = {
-                        let u = ((xf - cx as f64) / flank(cx as f64)).abs().min(1.0);
-                        // A broad shoulder under a concave peak.
-                        peak * (0.45 * (1.0 - u).powf(2.4) + 0.55 * (1.0 - u * u).max(0.0).powf(2.0))
-                    };
-                    let mut m = bumps.iter().skip(1).map(|&(bx, bw, bp)| bp * (1.0 - ((xf - bx) / (bw * flank(bx))).abs()).max(0.0).powf(1.7)).fold(massif, f64::max);
-                    // Sharp crests: a ridged profile, stronger the higher it is.
-                    m += m * 0.07 * (1.0 - 2.0 * ridge.get([xf, 0.3]).abs());
-                    // Terraces: cliff bands with ledges between.
-                    if m > terrace {
-                        let f = m / terrace;
-                        let stepped = (f.floor() + smoothstep(0.65, 1.0, f.fract())) * terrace;
-                        m += (stepped - m) * 0.45;
-                    }
-                    let i = x.clamp(0, width - 1) as usize;
-                    mountains[i] = mountains[i].max(m);
-                }
-                let half = hl.max(hr) as i32;
+                k += 1;
+                massif(&mut mountains, &mut rng, &ridge, &Perlin::new(s(60 + k)), (cx, half, peak), terrace, width);
                 placed.push((cx, half));
                 break;
             }
         }
         let mut rugged: Vec<f32> = mountains.iter().map(|&m| (m / (350.0 * sh)).min(1.0) as f32).collect();
-        let surface: Vec<i32> = surface.iter().zip(&mountains).map(|(&h, &m)| (h + m).clamp(band_floors[3] as f64, band_floors[0] as f64) as i32).collect();
+        // (Past the top of the peaks band the ground rises ever more slowly,
+        // so no peak is sliced flat.)
+        let top = band_floors[0] as f64 - 150.0 * sh;
+        let soft = |h: f64| if h > top { top + (h - top) * 150.0 * sh / (h - top + 150.0 * sh) } else { h };
+        let surface: Vec<i32> = surface.iter().zip(&mountains).map(|(&h, &m)| soft(h + m).max(band_floors[3] as f64) as i32).collect();
 
         let water = water_levels(&surface, &biomes, &rugged, &bowls, sea_level, ocean_w, sh, sw, seed);
         for (r, &w) in rugged.iter_mut().zip(&water) {
@@ -412,16 +463,36 @@ impl WorldPlan {
         let forest = {
             let at = |x: i32| surface[x.clamp(0, width - 1) as usize];
             let lush = blur(&biomes.iter().map(|&b| b.lushness()).collect::<Vec<_>>(), blend);
-            Forest::plan(seed, width, at, |x| lush[x.clamp(0, width - 1) as usize], |x| {
-                let i = x as usize;
-                let b = biomes[i];
-                hash(&[seed, 0x72EE, x as u64]) % 256 < b.trees()
-                    && chasms.iter().all(|c| (x - c.x).abs() as f64 > c.width * 1.5 + 80.0)
-                    && water[i] <= surface[i]
-                    && climate.ambient(x, surface[i]) >= TREE_LINE
-                    && (at(x - 3) - at(x + 3)).abs() < 7
-                    && (at(x - 12) - at(x + 12)).abs() < 20
-            })
+            let i = |x: i32| x.clamp(0, width - 1) as usize;
+            Forest::plan(
+                seed,
+                width,
+                at,
+                // Denser toward a deep forest's heart.
+                |x| lush[i(x)] + heart[i(x)] as f64 * 0.6,
+                |x| {
+                    let b = biomes[i(x)];
+                    hash(&[seed, 0x72EE, x as u64]) % 256 < b.trees()
+                        && chasms.iter().all(|c| (x - c.x).abs() as f64 > c.width * 1.5 + 80.0)
+                        && water[i(x)] <= surface[i(x)]
+                        && climate.ambient(x, surface[i(x)]) >= CONIFER_LINE
+                        && (at(x - 3) - at(x + 3)).abs() < 7
+                        && (at(x - 12) - at(x + 12)).abs() < 20
+                },
+                |x| {
+                    let t = climate.ambient(x, surface[i(x)]);
+                    let deep = heart[i(x)];
+                    if t < TREE_LINE {
+                        // Pines where it's cold: the taiga, the mountainsides.
+                        (Species::Conifer, t <= 0, 1.0)
+                    } else if deep > 0.3 {
+                        // The heart of the deep forest: old giants.
+                        (Species::Elder, false, 1.0 + deep * 0.45)
+                    } else {
+                        (Species::Broadleaf, false, 1.0 + deep * 0.6)
+                    }
+                },
+            )
         };
         let island_forest = {
             let island = |x: i32| islands.iter().find(|i| x >= i.x0 && x < i.x0 + i.w);
@@ -435,6 +506,7 @@ impl WorldPlan {
                         (x - i.x0 - i.w / 2).abs() < i.w / 3 && i.top_at(x).is_some_and(|top| climate.ambient(x, top) >= TREE_LINE)
                     })
                 },
+                |_| (Species::Broadleaf, false, 1.0),
             )
         };
 
@@ -661,4 +733,39 @@ fn window_max(v: &[i32], r: usize, rightward: bool) -> Vec<i32> {
         out[i] = v[*dq.front().expect("just pushed")];
     }
     out
+}
+
+/// One massif into `mountains`: lopsided, a broad shoulder under a concave
+/// peak plus sub-peaks, a wandering ridge line, terraced cliff bands.
+fn massif(mountains: &mut [f64], rng: &mut Rng, ridge: &Fbm<Perlin>, warp: &Perlin, (cx, half, peak): (i32, i32, f64), terrace: f64, width: i32) {
+    // Lopsided: one flank longer than the other.
+    let skew = range(rng, (0.65, 1.35));
+    let (hl, hr) = (half as f64 * skew.min(1.0), half as f64 / skew.max(1.0));
+    // Sub-peaks along the range, each a concave cone.
+    let mut bumps = vec![(cx as f64, 1.0, peak)];
+    for _ in 0..3 + rng.next_u32() % 4 {
+        let off = (unit(rng) * 2.0 - 1.0) * 0.75;
+        bumps.push((cx as f64 + off * if off < 0.0 { hl } else { hr }, range(rng, (0.3, 0.6)), peak * range(rng, (0.3, 0.75))));
+    }
+    for x in cx - hl as i32..=cx + hr as i32 {
+        // A wandering ridge line, not a ruler-straight flank.
+        let xf = x as f64 + warp.get([x as f64 / half as f64 * 2.0, 0.7]) * half as f64 * 0.12;
+        let flank = |bx: f64| if xf < bx { hl } else { hr };
+        let massif = {
+            let u = ((xf - cx as f64) / flank(cx as f64)).abs().min(1.0);
+            // A broad shoulder under a concave peak.
+            peak * (0.45 * (1.0 - u).powf(2.4) + 0.55 * (1.0 - u * u).max(0.0).powf(2.0))
+        };
+        let mut m = bumps.iter().skip(1).map(|&(bx, bw, bp)| bp * (1.0 - ((xf - bx) / (bw * flank(bx))).abs()).max(0.0).powf(1.4)).fold(massif, f64::max);
+        // Sharp crests: a ridged profile, stronger the higher it is.
+        m += m * 0.07 * (1.0 - 2.0 * ridge.get([xf, 0.3]).abs());
+        // Terraces: cliff bands with ledges between.
+        if m > terrace {
+            let f = m / terrace;
+            let stepped = (f.floor() + smoothstep(0.65, 1.0, f.fract())) * terrace;
+            m += (stepped - m) * 0.45;
+        }
+        let i = x.clamp(0, width - 1) as usize;
+        mountains[i] = mountains[i].max(m);
+    }
 }

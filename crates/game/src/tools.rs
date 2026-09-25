@@ -1,7 +1,7 @@
 //! Dev tools: pickaxe, axe, bomb, material spawner, igniter, eraser, heat, glow sticks.
 //! Tunables in `assets/data/tools.ron` (hot-reloaded).
 //!
-//! F1 turns them on (and the hands off, `hands/`).
+//! ` (or F1) turns them on (and the hands off, `hands/`).
 //! 1–8 pick a tool · LMB use · RMB erase · Q/E change spawner material ·
 //! `[` `]` or Ctrl+wheel radius · Shift+LMB: spawner replaces solids, heat gun freezes.
 //!
@@ -374,7 +374,7 @@ fn update_hotbar(belt: Res<Toolbelt>, sim: Res<SimWorld>, dev: Res<DevTools>, mu
         .collect();
     let mined: Vec<String> = belt.mined.iter().map(|(k, v)| format!("{k} {v}")).collect();
     text.0 = format!(
-        "DEV TOOLS (F1: hands)   {}   radius {}\nLMB use | RMB erase | Q/E material | Shift: overwrite / freeze | [ ] radius | Tab free camera\nmined: {}",
+        "DEV TOOLS ([`] or F1: back to the hands)   {}   radius {}\nLMB use | RMB erase | Q/E material | Shift: overwrite / freeze | [ ] radius | Tab free camera\nmined: {}",
         slots.join(" "),
         belt.radius(),
         if mined.is_empty() { "-".into() } else { mined.join(", ") }

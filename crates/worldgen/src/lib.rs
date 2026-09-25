@@ -16,7 +16,7 @@ pub mod plan;
 
 use std::sync::Arc;
 
-use flora::TreePart;
+use flora::{Foliage, TreePart};
 pub use biome::Biome;
 use islands::IslandCell;
 pub use plan::{Band, Preset, WorldPlan};
@@ -78,6 +78,8 @@ struct Ids {
     methane: MaterialId,
     wood: MaterialId,
     leaves: MaterialId,
+    needles: MaterialId,
+    dark_leaves: MaterialId,
     tall_grass: MaterialId,
     ice: MaterialId,
     sandstone: MaterialId,
@@ -138,6 +140,8 @@ impl TerrainGen {
             methane: mats.expect_id("methane"),
             wood: mats.expect_id("wood"),
             leaves: mats.expect_id("leaves"),
+            needles: mats.expect_id("needles"),
+            dark_leaves: mats.expect_id("dark_leaves"),
             tall_grass: mats.expect_id("tall_grass"),
             ice: mats.expect_id("ice"),
             sandstone: mats.expect_id("sandstone"),
@@ -208,12 +212,17 @@ impl TerrainGen {
         for t in trees {
             match t.part_at(x, y, &self.leaf_edge) {
                 Some(TreePart::Wood(shade)) => return (i.wood, Some(shade)),
-                Some(TreePart::Leaves(shade)) if leaves.is_none() => leaves = Some(shade),
+                Some(TreePart::Leaves(kind, shade)) if leaves.is_none() => leaves = Some((kind, shade)),
                 _ => {}
             }
         }
-        if let Some(shade) = leaves {
-            return (i.leaves, Some(shade));
+        if let Some((kind, shade)) = leaves {
+            let m = match kind {
+                Foliage::Leaves => i.leaves,
+                Foliage::Needles => i.needles,
+                Foliage::Dark => i.dark_leaves,
+            };
+            return (m, Some(shade));
         }
         if let Some(isl) = self.plan.island_at(x)
             && isl.at(x, y) != IslandCell::None
@@ -310,9 +319,12 @@ impl TerrainGen {
             // Snow where the ground freezes (deeper the colder), bare rock
             // on rugged slopes, grass and dirt elsewhere.
             // (Not on steep faces: snow slides off, so ledges hold it.)
-            if cold && slope < 1.6 {
-                let t = plan.climate.ambient(x, surface);
-                if depth <= (2 - t).min(24) {
+            // (Very cold, it clings to steeper faces too: snow-filled peaks.)
+            let t = plan.climate.ambient(x, surface);
+            if cold && slope < if t <= -15 { 5.0 } else if t <= -8 { 3.0 } else { 1.6 } {
+                // As thick across a steep face as on the flat (depth here is
+                // measured straight down).
+                if depth as f64 <= ((2 - t).min(24) as f64) * (1.0 + slope) {
                     return i.snow;
                 }
             }
@@ -492,8 +504,9 @@ impl ChunkGenerator for TerrainGen {
     }
 
     fn spawn_point(&self) -> CellPos {
-        // The middle of the world, or the nearest dry ground to it.
-        let mid = self.plan.width / 2;
+        // The middle of the world (or PLATYPUS_SPAWN_X, to try a biome), on
+        // the nearest dry ground.
+        let mid = std::env::var("PLATYPUS_SPAWN_X").ok().and_then(|v| v.parse().ok()).unwrap_or(self.plan.width / 2);
         let x = (0..2_000).flat_map(|d| [mid + d, mid - d]).find(|&x| self.plan.water_at(x).is_none()).unwrap_or(mid);
         CellPos::new(x, self.surface_at(x) + 2)
     }
@@ -668,6 +681,7 @@ mod tests {
         let cold: Vec<i32> = (0..p.width)
             .filter(|&x| p.climate.ambient(x, p.surface_at(x)) <= -5 && (p.surface_at(x + 4) - p.surface_at(x - 4)).abs() <= 4)
             .filter(|&x| p.water_at(x).is_none()) // (a frozen lake's bed is sand)
+            .filter(|&x| !p.chasm_at(x, p.surface_at(x) - 1)) // (a chasm's mouth is air)
             .collect();
         assert!(cold.len() > 100, "some cold, gentle ground ({})", cold.len());
         let snow = m.expect_id("snow");
@@ -794,10 +808,59 @@ mod tests {
     }
 
     #[test]
+    fn the_tundra_is_a_snowy_pine_forest() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let p = g.plan();
+        let (x0, x1, _) = p.regions().into_iter().find(|r| r.2 == Biome::Tundra).expect("a tundra");
+        let trees = p.forest.near(x0 + 300, x1 - 300);
+        let pines = trees.iter().filter(|t| t.species == flora::Species::Conifer && t.snowy).count();
+        assert!(pines * 1000 >= (x1 - x0 - 600) as usize * 8, "a forest: {pines} snowy pines over {} cells", x1 - x0);
+        assert!(trees.iter().all(|t| t.species == flora::Species::Conifer), "no broadleaves in the cold");
+    }
+
+    #[test]
+    fn the_deep_forest_is_wide_and_grows_giants_at_its_heart() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let p = g.plan();
+        let deep: Vec<_> = p.regions().into_iter().filter(|r| r.2 == Biome::DeepForest).collect();
+        let (x0, x1) = (deep.first().expect("a deep forest").0, deep.last().unwrap().1);
+        assert!(x1 - x0 >= 5_000, "wide enough to get lost in ({} cells)", x1 - x0);
+        let (w, mid) = ((x1 - x0) / 5, (x0 + x1) / 2);
+        let heart = p.forest.near(mid - w / 2, mid + w / 2);
+        let edge = p.forest.near(x0, x0 + w);
+        let avg = |ts: &[&flora::Tree]| ts.iter().map(|t| t.height as f32).sum::<f32>() / ts.len().max(1) as f32;
+        assert!(heart.iter().filter(|t| t.species == flora::Species::Elder).count() * 2 > heart.len(), "elders at the heart");
+        assert!(avg(&heart) > avg(&edge) * 1.2, "bigger toward the heart: {:.0} vs {:.0}", avg(&heart), avg(&edge));
+    }
+
+    #[test]
+    fn the_mountain_range_has_several_snowy_peaks() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let p = g.plan();
+        let (x0, x1, _) = p.regions().into_iter().find(|r| r.2 == Biome::Mountains).expect("a range");
+        // Peaks: local maxima over ±300 cells, 1 200+ above sea level.
+        let peaks: Vec<i32> = (x0..x1)
+            .step_by(20)
+            .filter(|&x| p.surface_at(x) > p.sea_level + 1_200 && (x - 300..=x + 300).step_by(20).all(|q| p.surface_at(q) <= p.surface_at(x)))
+            .collect();
+        assert!(peaks.len() >= 4, "{} peaks: {peaks:?}", peaks.len());
+        let snow = m.expect_id("snow");
+        for &x in &peaks {
+            let top = (p.surface_at(x) - 60..p.surface_at(x) + 60).rev().find(|&y| g.material_at(x, y) != MaterialId::AIR).unwrap();
+            let white = (-40..=40).filter(|&d| g.material_at(x + d, (top - 400..top + 80).rev().find(|&y| g.material_at(x + d, y) != MaterialId::AIR).unwrap_or(top)) == snow).count();
+            assert!(white > 40, "peak at {x} is snowy ({white} of 81 columns)");
+        }
+    }
+
+    #[test]
     fn has_sky_ground_and_bedrock() {
         let m = mats();
         let g = TerrainGen::new(1, Preset::Large, &m);
-        let x = 5000;
+        // On gentle ground (the spawn's), not a mountain face.
+        let x = g.spawn_point().x;
         let s = g.surface_at(x);
         assert_eq!(g.material_at(x, s + 5), MaterialId::AIR);
         assert_ne!(g.material_at(x, s - 3), MaterialId::AIR);
@@ -882,12 +945,13 @@ mod tests {
             let (x0, y0) = ((cx - 4) * CHUNK, (cy - 2) * CHUNK);
             let (x1, y1) = ((cx + 5) * CHUNK, (cy + 5) * CHUNK);
             // Background cells not connected (by edges, through background)
-            // to anything resting on solid playfield.
+            // to anything resting on solid playfield (or running out of the
+            // loaded region: a neighbour's trunk may root below it).
             let hanging = |w: &World| -> Vec<CellPos> {
                 let bg = |p: CellPos| w.get_bg(p).is_some_and(|b| !b.is_air());
                 let anchor = |p: CellPos| w.get(p).is_some_and(|f| !f.is_air() && matches!(m.phys(f.material).kind, Kind::Static | Kind::Powder));
                 let mut held = std::collections::HashSet::new();
-                let mut stack: Vec<CellPos> = (x0..x1).flat_map(|x| (y0..y1).map(move |y| CellPos::new(x, y))).filter(|&p| bg(p) && (anchor(p) || p.x == x0 || p.x == x1 - 1 || p.y == y1 - 1)).collect();
+                let mut stack: Vec<CellPos> = (x0..x1).flat_map(|x| (y0..y1).map(move |y| CellPos::new(x, y))).filter(|&p| bg(p) && (anchor(p) || p.x == x0 || p.x == x1 - 1 || p.y == y0 || p.y == y1 - 1)).collect();
                 while let Some(p) = stack.pop() {
                     if !held.insert(p) {
                         continue;

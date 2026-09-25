@@ -534,6 +534,7 @@ fn hands_script(
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     mut logged: Local<u8>,
     mut build_slot: Local<Option<usize>>,
+    mut start_y: Local<Option<f32>>,
 ) {
     use crate::hands::items::{BLOCK_CELLS, Use};
     if s.name != "hands" {
@@ -551,14 +552,19 @@ fn hands_script(
         keys.release(key);
     }
     let pick = |keys: &mut ButtonInput<KeyCode>, slot: usize| keys.press(DIGITS[slot]);
-    // Swings alternate a little left and right of straight down: a shaft two
-    // blocks wide, so the player drops into it.
-    let side = if (t * 4.0) as i32 % 2 == 0 { -3.0 } else { 3.0 };
+    // Straight down, held: the smart cursor digs a shaft the player drops into.
+    if t < 0.8 {
+        *start_y = Some(p.y);
+    }
     let (aim, hold, ctrl) = match t {
         t if t < 0.8 => (None, false, false),
         t if t < 6.0 => {
             pick(&mut keys, 0);
-            (Some(p + Vec2::new(side, -20.0)), true, false)
+            if (5.9..6.0).contains(&t) && *logged == 0 {
+                *logged = 2;
+                info!("hands: dug down {:.0} cells in 5.2 s", start_y.unwrap_or(p.y) - p.y);
+            }
+            (Some(p + Vec2::new(0.0, -30.0)), true, false)
         }
         // Into the shaft's wall.
         t if t < 7.0 => (Some(p + Vec2::new(14.0, -2.0)), true, false),
@@ -587,8 +593,8 @@ fn hands_script(
     cursor.0 = aim;
     if hold { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     if ctrl { keys.press(KeyCode::ControlLeft) } else { keys.release(KeyCode::ControlLeft) }
-    if t > 11.0 && *logged == 0 {
-        *logged = 1;
+    if t > 11.0 && *logged < 3 {
+        *logged = 3;
         let held: Vec<String> = inv.slots.iter().flatten().map(|st| format!("{} {}", items.def(st.item).name, st.count / items.unit(st.item))).collect();
         let torches = items.id("torch").map_or(0, |torch| inv.count(torch));
         info!("hands: inventory {} (built with slot {:?}; {torches} torches left)", held.join(", "), build_slot.map(|i| i + 1));

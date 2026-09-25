@@ -43,6 +43,11 @@ pub struct Tree {
     pub lean: f32,
     pub branches: Vec<Branch>,
     pub blobs: Vec<Blob>,
+    /// Conifers: needle tiers, bottom first.
+    pub tiers: Vec<Tier>,
+    pub species: Species,
+    /// Snow lies on it (conifers where it freezes).
+    pub snowy: bool,
     /// Bounding box (min x, min y, max x, max y) for quick rejects.
     pub bbox: (i32, i32, i32, i32),
 }
@@ -51,7 +56,35 @@ pub struct Tree {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TreePart {
     Wood(u8),
-    Leaves(u8),
+    Leaves(Foliage, u8),
+}
+
+/// Kinds of tree.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Species {
+    /// Round crowns on branches (temperate woods).
+    Broadleaf,
+    /// A straight trunk under tiers of needles (cold and high places);
+    /// snow lies on the tiers where it freezes.
+    Conifer,
+    /// Old growth: broadleaf giants with dark, thick crowns (the deep forest).
+    Elder,
+}
+
+/// Which foliage material a tree grows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Foliage {
+    Leaves,
+    Needles,
+    Dark,
+}
+
+/// A conifer's skirt of needles: apex at `top`, widest (`half`) at `bottom`.
+#[derive(Clone, Copy, Debug)]
+pub struct Tier {
+    pub top: f32,
+    pub bottom: f32,
+    pub half: f32,
 }
 
 fn unit(rng: &mut Rng) -> f32 {
@@ -73,10 +106,50 @@ fn foliage(blobs: &mut Vec<Blob>, rng: &mut Rng, cx: f32, cy: f32, r: f32) {
 }
 
 impl Tree {
-    pub fn plan(x: i32, base: i32, rng: &mut Rng) -> Tree {
+    /// A tree of `species` standing at `x` on ground `base`, `grow` times the
+    /// usual size (the deep forest's heart grows giants).
+    pub fn plan(x: i32, base: i32, rng: &mut Rng, species: Species, snowy: bool, grow: f32) -> Tree {
+        match species {
+            Species::Conifer => Tree::conifer(x, base, rng, snowy, grow),
+            Species::Broadleaf | Species::Elder => Tree::broadleaf(x, base, rng, species, grow),
+        }
+    }
+
+    fn conifer(x: i32, base: i32, rng: &mut Rng, snowy: bool, grow: f32) -> Tree {
+        // Taller and slimmer than a broadleaf; some saplings, some giants.
+        let size = ((0.55 + 1.3 * unit(rng).powf(1.5)) * grow).min(2.3);
+        let height = (range(rng, 58.0, 84.0) * size) as i32;
+        let h = height as f32;
+        let girth = (range(rng, 2.2, 3.2) * size.powf(0.8)).max(1.6);
+        let lean = range(rng, -0.03, 0.03) * h;
+        // Tiers from a fifth of the way up to a spire over the top, each one
+        // overlapping the next, narrowing upward.
+        let (lo, hi) = (base as f32 + h * range(rng, 0.14, 0.24), base as f32 + h + 3.0);
+        let n = 4 + (size * 2.6) as usize;
+        let widest = h * range(rng, 0.23, 0.29);
+        let tiers: Vec<Tier> = (0..n)
+            .map(|k| {
+                // Overlapping a little, so each tier's top shows (and holds snow).
+                let (t0, t1) = (k as f32 / n as f32, ((k as f32 + 1.3) / n as f32).min(1.0));
+                let half = (widest * (1.0 - t0).powf(0.9) * range(rng, 0.85, 1.1)).max(2.5);
+                Tier { bottom: lo + (hi - lo) * t0, top: lo + (hi - lo) * t1, half }
+            })
+            .collect();
+        let reach = tiers.iter().map(|t| t.half).fold(0.0, f32::max) + 3.0;
+        let bbox = ((x as f32 - reach - lean.abs()) as i32 - 2, base - ROOTS, (x as f32 + reach + lean.abs()) as i32 + 2, hi as i32 + 2);
+        Tree { x, base, height, girth, lean, branches: Vec::new(), blobs: Vec::new(), tiers, species: Species::Conifer, snowy, bbox }
+    }
+
+    fn broadleaf(x: i32, base: i32, rng: &mut Rng, species: Species, grow: f32) -> Tree {
         // Mostly medium trees, some saplings, big ones, and one in eight a
-        // giant (up to ~160 cells tall).
-        let size = if rng.chance(32) { range(rng, 1.9, 2.5) } else { 0.55 + 1.35 * unit(rng).powf(1.7) };
+        // giant (up to ~160 cells tall); elders run bigger.
+        let size = if species == Species::Elder {
+            (range(rng, 1.4, 2.4) * grow).min(2.75)
+        } else if rng.chance(32) {
+            (range(rng, 1.9, 2.5) * grow).min(2.75)
+        } else {
+            ((0.55 + 1.35 * unit(rng).powf(1.7)) * grow).min(2.75)
+        };
         let height = (range(rng, 46.0, 66.0) * size) as i32;
         let h = height as f32;
         let girth = (range(rng, 3.0, 4.4) * size.powf(0.9)).max(2.0);
@@ -129,7 +202,32 @@ impl Tree {
             bbox.0 = bbox.0.min(b.to.0 as i32 - 2);
             bbox.2 = bbox.2.max(b.to.0 as i32 + 2);
         }
-        Tree { x, base, height, girth, lean, branches, blobs, bbox }
+        Tree { x, base, height, girth, lean, branches, blobs, tiers: Vec::new(), species, snowy: false, bbox }
+    }
+
+    /// Is a cell inside a conifer's needles? (The ragged edge is noise.)
+    fn in_tiers(&self, x: i32, y: i32, edge: &Perlin) -> Option<(f32, f32)> {
+        let (xf, yf) = (x as f32 + 0.5, y as f32 + 0.5);
+        let cx = self.x as f32 + 0.5 + self.lean * ((yf - self.base as f32) / self.height as f32).clamp(0.0, 1.0).powi(2);
+        // Ragged by row and side, not by cell: each row of needles is one
+        // span out from the trunk, so none float loose.
+        let side = if xf < cx { 7.3 } else { 1.1 };
+        let rag = edge.get([y as f64 * 0.47, side]) as f32 * 2.2;
+        for t in &self.tiers {
+            if yf < t.bottom || yf > t.top {
+                continue;
+            }
+            // 0 at the apex, 1 at the skirt's hem; the hem droops at the tips.
+            let u = (t.top - yf) / (t.top - t.bottom);
+            // (No raggedness at the apex, or a row could vanish and cut the
+            // tip off.)
+            let half = t.half * u.powf(0.85) + rag * u;
+            let dx = xf - cx;
+            if dx.abs() <= half {
+                return Some((u, dx / half.max(1.0)));
+            }
+        }
+        None
     }
 
     /// Horizontal extent.
@@ -149,7 +247,11 @@ impl Tree {
         if y <= self.base + self.height {
             let t = ((yf - self.base as f32) / self.height as f32).clamp(0.0, 1.0);
             let flare = if t < 0.1 { 1.0 + 0.9 * (1.0 - t / 0.1).powi(2) } else { 1.0 };
-            let half = (self.girth * (1.0 - 0.55 * t) * flare).max(0.9);
+            let mut half = (self.girth * (1.0 - 0.55 * t) * flare).max(0.9);
+            // A conifer's trunk is a thin line through its needles.
+            if self.species == Species::Conifer && self.tiers.first().is_some_and(|t| yf > t.bottom) {
+                half = half.min(1.0);
+            }
             let cx = self.x as f32 + 0.5 + self.lean * t * t;
             let u = (xf - cx) / half; // -1 … 1 across the trunk
             if u.abs() <= 1.0 {
@@ -166,6 +268,17 @@ impl Tree {
                 let u = ((yf - (b.from.1 + (b.to.1 - b.from.1) * t)) / half).clamp(-1.0, 1.0);
                 return Some(TreePart::Wood(bark(u, x, y)));
             }
+        }
+        if self.species == Species::Conifer {
+            let (u, across) = self.in_tiers(x, y, edge)?;
+            // Snow lies along the top of each tier where it freezes.
+            if self.snowy && (1..=3).any(|d| self.in_tiers(x, y + d, edge).is_none()) {
+                return Some(TreePart::Leaves(Foliage::Needles, 245));
+            }
+            // Darker under each tier's hem and on the shaded side (greens are
+            // the lower part of the ramp; its top is snow).
+            let light = (0.62 - 0.4 * u + 0.12 * across).clamp(0.0, 1.0);
+            return Some(TreePart::Leaves(Foliage::Needles, (light * 150.0) as u8));
         }
         // Leaves: take the blob this cell is deepest inside, for its lighting.
         let mut best: Option<(f32, f32)> = None; // (depth, light)
@@ -193,7 +306,8 @@ impl Tree {
         }
         best.map(|(_, light)| {
             let jitter = edge.get([x as f64 * 0.9, y as f64 * 0.9]) as f32 * 0.25;
-            TreePart::Leaves(((light + jitter).clamp(0.0, 1.0) * 255.0) as u8)
+            let foliage = if self.species == Species::Elder { Foliage::Dark } else { Foliage::Leaves };
+            TreePart::Leaves(foliage, ((light + jitter).clamp(0.0, 1.0) * 255.0) as u8)
         })
     }
 }
@@ -223,7 +337,16 @@ impl Forest {
     /// `surface(x)` gives the first air cell above ground; `lush(x)` (about
     /// −1 … 1) pushes toward dense woods (+) or meadow (−); `growable(x)` says
     /// whether a tree may stand there (not snow, not a cliff).
-    pub fn plan(seed: u64, width: i32, surface: impl Fn(i32) -> i32, lush: impl Fn(i32) -> f64, growable: impl Fn(i32) -> bool) -> Forest {
+    /// `kind(x)`: which species grows there, whether it's snowy, how big it
+    /// grows (1 usual).
+    pub fn plan(
+        seed: u64,
+        width: i32,
+        surface: impl Fn(i32) -> i32,
+        lush: impl Fn(i32) -> f64,
+        growable: impl Fn(i32) -> bool,
+        kind: impl Fn(i32) -> (Species, bool, f32),
+    ) -> Forest {
         let density = Perlin::new((seed ^ 0xF0_4E57) as u32);
         let mut rng = Rng::seeded(&[seed, 0x7EE5]);
         let mut trees: Vec<Tree> = Vec::new();
@@ -240,7 +363,8 @@ impl Forest {
             if x >= width - TREE_REACH || !growable(x) {
                 continue;
             }
-            trees.push(Tree::plan(x, surface(x), &mut rng));
+            let (species, snowy, grow) = kind(x);
+            trees.push(Tree::plan(x, surface(x), &mut rng, species, snowy, grow));
         }
         trees.sort_by_key(|t| t.span().0);
         Forest { trees }
@@ -273,7 +397,7 @@ mod tests {
         let mut rng = Rng::seeded(&[9, 9]);
         let mut tallest = 0;
         for _ in 0..4000 {
-            let t = Tree::plan(0, 0, &mut rng);
+            let t = Tree::plan(0, 0, &mut rng, Species::Broadleaf, false, 1.0);
             let (l, r) = t.span();
             assert!(-l <= TREE_REACH && r <= TREE_REACH, "tree {} tall spans {l}..{r}", t.height);
             tallest = tallest.max(t.height);

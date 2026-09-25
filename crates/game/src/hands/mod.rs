@@ -3,7 +3,8 @@
 //! switches to the dev tools (`tools.rs`) and back.
 //!
 //! 1–0 pick a hotbar slot · LMB use it · hold Ctrl: the right tool for the
-//! target (auto tool) · I: inventory · RMB: open a chest (R takes all).
+//! target (auto tool) · Alt: smart cursor on/off · I: inventory · RMB: open a
+//! chest (R takes all) · ` (or F1): dev tools.
 
 pub mod chests;
 pub mod items;
@@ -51,12 +52,21 @@ fn play(dev: Res<DevTools>) -> bool {
 }
 
 /// The local player's hands: the hotbar slot in use, when it can swing again.
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct Hand {
     pub slot: usize,
+    /// Smart cursor (Alt): dig a tunnel the body fits toward the cursor,
+    /// rather than the block under it.
+    pub smart: bool,
     cooldown: f32,
     /// Glow sticks thrown (they alternate colours).
     thrown: u32,
+}
+
+impl Default for Hand {
+    fn default() -> Self {
+        Hand { slot: 0, smart: true, cooldown: 0.0, thrown: 0 }
+    }
 }
 
 /// Mouse and keys, sampled per frame, consumed per tick.
@@ -112,8 +122,12 @@ fn give_start(mut commands: Commands, items: Option<Res<Items>>, new: Query<Enti
     }
 }
 
-fn toggle_dev(keys: Res<ButtonInput<KeyCode>>, mut dev: ResMut<DevTools>) {
-    if keys.just_pressed(KeyCode::F1) {
+fn toggle_dev(keys: Res<ButtonInput<KeyCode>>, mut dev: ResMut<DevTools>, mut hand: ResMut<Hand>) {
+    if keys.just_pressed(KeyCode::AltLeft) && !dev.0 {
+        hand.smart = !hand.smart;
+    }
+    // (F1 needs fn on a Mac keyboard; the key left of 1 doesn't.)
+    if keys.any_just_pressed([KeyCode::F1, KeyCode::Backquote, KeyCode::IntlBackslash]) {
         dev.0 = !dev.0;
         info!("{}", if dev.0 { "dev tools (F1: hands)" } else { "hands (F1: dev tools)" });
     }
@@ -195,8 +209,21 @@ fn supported(world: &World, block: CellPos) -> bool {
     wall || [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| solid(CellPos::new(block.x + dx, block.y + dy)))
 }
 
+/// The block a mining tool would hit: with the smart cursor a tunnel the body
+/// fits (a pickaxe) or the line toward the cursor (an axe, at trees);
+/// without it the block under the cursor.
+fn mine_at(world: &World, body: &Body, hand: Vec2, cursor: Vec2, smart: bool, (back, tier, reach): (bool, u8, f32)) -> Option<CellPos> {
+    let reach = reach * BLOCK as f32;
+    let can = |b: CellPos| minable(world, b, back, tier);
+    match (smart, back) {
+        (true, false) => target::tunnel_target(body.pos - body.half, body.pos + body.half, hand, cursor, reach, can),
+        (true, true) => target::mine_target(hand, cursor, reach, can),
+        (false, _) => target::cursor_target(hand, cursor, reach, can),
+    }
+}
+
 /// With auto tool, the slot of the best tool for what's at the cursor.
-fn auto_slot(world: &World, items: &Items, inv: &Inventory, hand: Vec2, cursor: Vec2) -> Option<usize> {
+fn auto_slot(world: &World, items: &Items, inv: &Inventory, body: &Body, hand: Vec2, cursor: Vec2) -> Option<usize> {
     let tools: Vec<(usize, bool, u8, u8, f32)> = inv.slots[..HOTBAR]
         .iter()
         .enumerate()
@@ -210,7 +237,7 @@ fn auto_slot(world: &World, items: &Items, inv: &Inventory, hand: Vec2, cursor: 
         tools
             .iter()
             .filter(|t| t.1 == want_back)
-            .filter(|t| target::mine_target(hand, cursor, t.4 * BLOCK as f32, |b| minable(world, b, want_back, t.2)).is_some())
+            .filter(|t| mine_at(world, body, hand, cursor, true, (want_back, t.2, t.4)).is_some())
             .max_by_key(|t| (t.2, t.3))
             .map(|t| t.0)
     };
@@ -239,11 +266,11 @@ fn use_hands(
     let (Some(items), Some(cursor)) = (items, input.cursor) else { return };
     let Ok((k, mut inv)) = player.single_mut() else { return };
     let from = hand_at(k);
-    let slot = if input.auto { auto_slot(&sim.world, &items, &inv, from, cursor).unwrap_or(hand.slot) } else { hand.slot };
+    let slot = if input.auto { auto_slot(&sim.world, &items, &inv, &k.body, from, cursor).unwrap_or(hand.slot) } else { hand.slot };
     let Some(stack) = inv.slots[slot] else { return };
     match items.def(stack.item).use_.clone() {
         Use::Mine { back, power, tier, speed, reach } if input.primary && hand.cooldown == 0.0 => {
-            let Some(block) = target::mine_target(from, cursor, reach * BLOCK as f32, |b| minable(&sim.world, b, back, tier)) else { return };
+            let Some(block) = mine_at(&sim.world, &k.body, from, cursor, hand.smart, (back, tier, reach)) else { return };
             let struck = if back { Vec::new() } else { chests.in_block(&sim.world, block) };
             let report = sim.world.apply_edit(&WorldEdit::MineBlock { block, power, max_hardness: tier, back });
             // A chest hit through breaks, spilling what's in it.
@@ -376,11 +403,11 @@ fn outline(
     let (Some(items), Some(cursor)) = (items, input.cursor) else { return };
     let Ok((k, inv)) = player.single() else { return };
     let from = hand_at(k);
-    let slot = if input.auto { auto_slot(&sim.world, &items, inv, from, cursor).unwrap_or(hand.slot) } else { hand.slot };
+    let slot = if input.auto { auto_slot(&sim.world, &items, inv, &k.body, from, cursor).unwrap_or(hand.slot) } else { hand.slot };
     let Some(stack) = inv.slots[slot] else { return };
     let world = &sim.world;
     let (block, color) = match items.def(stack.item).use_ {
-        Use::Mine { back, tier, reach, .. } => (target::mine_target(from, cursor, reach * BLOCK as f32, |b| minable(world, b, back, tier)), Color::srgba(1.0, 0.9, 0.3, 0.9)),
+        Use::Mine { back, tier, reach, .. } => (mine_at(world, &k.body, from, cursor, hand.smart, (back, tier, reach)), Color::srgba(1.0, 0.9, 0.3, 0.9)),
         Use::Chest => {
             if let Some(c) = chests::place_spot(world, cursor) {
                 let centre = Vec2::new(c.x as f32 + 4.0, c.y as f32 + 4.0);

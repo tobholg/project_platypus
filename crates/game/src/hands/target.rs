@@ -2,9 +2,11 @@
 //! chosen for you. Pure functions over "what's at this block", so they're
 //! tested without a world.
 //!
-//! Mining takes the first block with something to mine on the line from the
-//! hand toward the cursor, within reach: you dig the face you see, not a
-//! buried block under the cursor. Placing takes the block under the cursor if
+//! Mining with the smart cursor clears a tunnel the body fits (`tunnel_target`):
+//! aim below and hold, and you dig straight down; aim sideways, a tunnel you
+//! can walk. Aimed diagonally it takes the first block with something to mine
+//! on the line toward the cursor (you dig the face you see). Without the smart
+//! cursor, the block under the cursor. Placing takes the block under the cursor if
 //! it's free and touches something to hold it, or else the last free block
 //! before that line runs into something.
 
@@ -53,6 +55,54 @@ fn reach_line(hand: Vec2, cursor: Vec2, reach: f32) -> Vec<CellPos> {
 /// something `minable`.
 pub fn mine_target(hand: Vec2, cursor: Vec2, reach: f32, minable: impl Fn(CellPos) -> bool) -> Option<CellPos> {
     reach_line(hand, cursor, reach).into_iter().find(|&b| minable(b))
+}
+
+/// The smart cursor for digging (Terraria's): aimed mostly down, up or
+/// sideways, it clears a tunnel the size of the body, nearest first. Aim below
+/// and hold: the whole row under your feet goes before the next one, so you
+/// drop into it and keep going. Aim sideways: a face as tall as you, column by
+/// column. Aimed diagonally it takes the line toward the cursor.
+///
+/// `lo`, `hi`: the body's box (cells). Only blocks within `reach` of `hand`.
+pub fn tunnel_target(lo: Vec2, hi: Vec2, hand: Vec2, cursor: Vec2, reach: f32, minable: impl Fn(CellPos) -> bool) -> Option<CellPos> {
+    let b = BLOCK as f32;
+    let d = cursor - (lo + hi) / 2.0;
+    let vertical = d.y.abs() > d.x.abs() * 1.7;
+    let horizontal = d.x.abs() > d.y.abs() * 1.7;
+    if !vertical && !horizontal {
+        return mine_target(hand, cursor, reach, minable);
+    }
+    let block = |v: f32| (v / b).floor() as i32;
+    let in_reach = |c: CellPos| Vec2::new((c.x as f32 + 0.5) * b, (c.y as f32 + 0.5) * b).distance(hand) <= reach;
+    // The blocks the body spans across (for a shaft) or up (for a tunnel).
+    let (cols, rows) = ((block(lo.x)..=block(hi.x - 0.01)).collect::<Vec<_>>(), (block(lo.y)..=block(hi.y - 0.01)).collect::<Vec<_>>());
+    for step in 0..16 {
+        let mut layer: Vec<CellPos> = if vertical {
+            let row = if d.y < 0.0 { block(lo.y - 0.5) - step } else { block(hi.y + 0.5) + step };
+            cols.iter().map(|&x| CellPos::new(x, row)).collect()
+        } else {
+            let col = if d.x > 0.0 { block(hi.x + 0.5) + step } else { block(lo.x - 0.5) - step };
+            rows.iter().map(|&y| CellPos::new(col, y)).collect()
+        };
+        if !layer.iter().any(|&c| in_reach(c)) {
+            return None;
+        }
+        // Within a layer, the block nearest the cursor first.
+        let centre = |c: &CellPos| Vec2::new((c.x as f32 + 0.5) * b, (c.y as f32 + 0.5) * b);
+        layer.sort_by(|a, c| centre(a).distance(cursor).total_cmp(&centre(c).distance(cursor)));
+        if let Some(&hit) = layer.iter().find(|&&c| in_reach(c) && minable(c)) {
+            return Some(hit);
+        }
+    }
+    None
+}
+
+/// Without the smart cursor: the block under the cursor, if it's within reach
+/// and has something to mine.
+pub fn cursor_target(hand: Vec2, cursor: Vec2, reach: f32, minable: impl Fn(CellPos) -> bool) -> Option<CellPos> {
+    let under = CellPos::new((cursor.x / BLOCK as f32).floor() as i32, (cursor.y / BLOCK as f32).floor() as i32);
+    let centre = Vec2::new((under.x as f32 + 0.5) * BLOCK as f32, (under.y as f32 + 0.5) * BLOCK as f32);
+    (centre.distance(hand) <= reach && minable(under)).then_some(under)
 }
 
 /// The block a placement fills: under the cursor if it's `free` and
@@ -117,6 +167,40 @@ mod tests {
         assert_eq!(mine_target(hand, at(10.0, -6.0), 24.0, minable), Some(CellPos::new(2, 0)));
         // Out of reach: nothing.
         assert_eq!(mine_target(hand, at(10.0, 60.0), 24.0, minable), None);
+    }
+
+    /// Solid ground everywhere below block row 0.
+    fn ground(dug: &HashSet<(i32, i32)>) -> impl Fn(CellPos) -> bool + '_ {
+        move |b: CellPos| b.y < 0 && !dug.contains(&(b.x, b.y))
+    }
+
+    #[test]
+    fn holding_down_digs_a_shaft_the_body_fits_row_by_row() {
+        // A body 6 wide standing on the ground at y 0, from x 6 to 12:
+        // across blocks 1, 2 (cells 4–11).
+        let mut dug = HashSet::new();
+        let mut order = Vec::new();
+        for _ in 0..6 {
+            let (lo, hi) = (at(6.0, 0.0), at(12.0, 15.0));
+            let t = tunnel_target(lo, hi, at(9.0, 10.0), at(10.0, -30.0), 24.0, ground(&dug)).expect("something to dig");
+            dug.insert((t.x, t.y));
+            order.push((t.x, t.y));
+        }
+        // Row -1 whole (both blocks, nearest the cursor first), then row -2...
+        assert_eq!(order[..4], [(2, -1), (1, -1), (2, -2), (1, -2)], "{order:?}");
+    }
+
+    #[test]
+    fn aiming_sideways_digs_a_face_as_tall_as_the_body() {
+        let dug = HashSet::new();
+        // A wall of solid blocks from x 4 (cell 16) on.
+        let wall = |b: CellPos| b.x >= 4 && b.y >= 0;
+        let (lo, hi) = (at(6.0, 0.0), at(12.0, 15.0));
+        let t = tunnel_target(lo, hi, at(9.0, 10.0), at(40.0, 8.0), 24.0, wall).unwrap();
+        assert_eq!(t.x, 4, "the column just in front");
+        assert!((0..=3).contains(&t.y), "within the body's height");
+        // Diagonally it's the line toward the cursor, like before.
+        assert_eq!(tunnel_target(lo, hi, at(9.0, 10.0), at(20.0, -2.0), 24.0, ground(&dug)), mine_target(at(9.0, 10.0), at(20.0, -2.0), 24.0, ground(&dug)));
     }
 
     #[test]

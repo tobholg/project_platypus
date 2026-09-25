@@ -62,6 +62,14 @@
 
         // ---- plants: don't block creatures, burn readily, sway in the wind ----
         (name: "leaves",     kind: Plant, density: 200, hardness: 2, flammability: 18, ignites_at: 260, burn_time: 40, chars_at: 1.0, opacity: 70, colors: [(24, 64, 26), (36, 92, 34), (52, 122, 42), (76, 150, 54)]),
+        // Conifer needles; the white end of the ramp is snow lying on them (the
+        // worldgen shades a snowy tree's tops from it).
+        (name: "needles",    kind: Plant, density: 200, hardness: 2, flammability: 22, ignites_at: 250, burn_time: 36, chars_at: 1.0, opacity: 85,
+            colors: [(12, 30, 20), (20, 46, 28), (28, 60, 34), (36, 74, 40), (42, 84, 46), (206, 218, 230), (238, 242, 248)]),
+        // Old growth in the deep forest: darker, and thick enough to keep the
+        // light out.
+        (name: "dark_leaves", kind: Plant, density: 200, hardness: 2, flammability: 16, ignites_at: 265, burn_time: 44, chars_at: 1.0, opacity: 140,
+            colors: [(10, 30, 22), (16, 44, 30), (24, 60, 38), (34, 76, 46)]),
         (name: "tall_grass", kind: Plant, density: 100, hardness: 1, flammability: 8, spread: 176, ignites_at: 240, burn_time: 5, chars_at: 1.0, colors: [(64, 146, 46), (92, 176, 62), (54, 124, 40)]),
 
         // ---- powders ------------------------------------------------------

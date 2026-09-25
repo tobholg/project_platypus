@@ -215,6 +215,8 @@ fn biome_color(b: Biome) -> [u8; 3] {
         Biome::Tundra => [230, 240, 255],
         Biome::Jungle => [0, 90, 50],
         Biome::Swamp => [90, 110, 60],
+        Biome::DeepForest => [10, 60, 30],
+        Biome::Mountains => [150, 150, 165],
     }
 }
 

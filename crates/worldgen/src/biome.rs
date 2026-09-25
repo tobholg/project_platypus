@@ -13,10 +13,24 @@ pub enum Biome {
     Tundra,
     Jungle,
     Swamp,
+    /// A great old forest: denser, bigger and darker toward its heart.
+    DeepForest,
+    /// A mountain range: peak after snow-filled peak on a high plateau.
+    Mountains,
 }
 
 impl Biome {
-    pub const ALL: [Biome; 7] = [Biome::Ocean, Biome::Plains, Biome::Forest, Biome::Desert, Biome::Tundra, Biome::Jungle, Biome::Swamp];
+    pub const ALL: [Biome; 9] = [
+        Biome::Ocean,
+        Biome::Plains,
+        Biome::Forest,
+        Biome::Desert,
+        Biome::Tundra,
+        Biome::Jungle,
+        Biome::Swamp,
+        Biome::DeepForest,
+        Biome::Mountains,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -27,6 +41,8 @@ impl Biome {
             Biome::Tundra => "tundra",
             Biome::Jungle => "jungle",
             Biome::Swamp => "swamp",
+            Biome::DeepForest => "deep forest",
+            Biome::Mountains => "mountains",
         }
     }
 
@@ -55,6 +71,8 @@ impl Biome {
             Biome::Tundra => -22.0,
             Biome::Jungle => 12.0,
             Biome::Swamp => 6.0,
+            Biome::DeepForest => -2.0,
+            Biome::Mountains => -6.0,
         }
     }
 
@@ -68,6 +86,8 @@ impl Biome {
             Biome::Tundra => 55.0,
             Biome::Jungle => 45.0,
             Biome::Swamp => 6.0,
+            Biome::DeepForest => 70.0,
+            Biome::Mountains => 260.0,
         }
     }
 
@@ -81,6 +101,8 @@ impl Biome {
             Biome::Tundra => 80.0,
             Biome::Jungle => 110.0,
             Biome::Swamp => 10.0,
+            Biome::DeepForest => 100.0,
+            Biome::Mountains => 140.0,
         }
     }
 
@@ -89,9 +111,10 @@ impl Biome {
         match self {
             Biome::Ocean | Biome::Desert => 0,
             Biome::Plains => 45,
-            Biome::Forest | Biome::Jungle => 256,
-            Biome::Tundra => 70,
+            Biome::Forest | Biome::Jungle | Biome::DeepForest => 256,
+            Biome::Tundra => 256,
             Biome::Swamp => 150,
+            Biome::Mountains => 120,
         }
     }
 
@@ -100,8 +123,10 @@ impl Biome {
         match self {
             Biome::Forest => 0.45,
             Biome::Jungle => 0.8,
+            Biome::DeepForest => 0.9,
             Biome::Plains => -0.35,
             Biome::Swamp => 0.1,
+            Biome::Tundra => 0.7,
             _ => 0.0,
         }
     }
@@ -112,9 +137,13 @@ impl Biome {
             Biome::Ocean => 0,
             Biome::Desert => 20,
             Biome::Swamp => 230,
-            Biome::Tundra => 100,
+            // The odd frozen pond among the pines, the odd pool in the deep
+            // woods: they're forests first.
+            Biome::Tundra => 30,
+            Biome::DeepForest => 25,
             Biome::Forest | Biome::Jungle => 80,
             Biome::Plains => 64,
+            Biome::Mountains => 40,
         }
     }
 
@@ -124,6 +153,8 @@ impl Biome {
             Biome::Ocean => 0.0,
             Biome::Desert => 0.0,
             Biome::Swamp => 22.0,
+            // Ponds under the trees, not lakes that clear the forest.
+            Biome::DeepForest | Biome::Tundra => 35.0,
             _ => 150.0,
         }
     }
