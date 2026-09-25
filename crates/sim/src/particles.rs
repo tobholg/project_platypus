@@ -77,8 +77,9 @@ pub(crate) trait ParticleWorld {
     /// An ember passing in front of a background cell may set it alight.
     fn ember_over(&mut self, p: CellPos, life: u16);
     /// Water arriving at `p`: flames there go out, burning cells (in front
-    /// or behind) stop burning.
-    fn douse(&mut self, p: CellPos);
+    /// or behind) stop burning, or, burning hotter than a drop can put out,
+    /// lose some heat as it boils off. True if the water was used up.
+    fn douse(&mut self, p: CellPos) -> bool;
     /// Ambient °C at height `y`.
     fn ambient(&self, y: i32) -> i32;
     /// A cell of water, for a snowflake that melted.
@@ -140,9 +141,11 @@ fn step_one(p: &mut Particle, world: &mut impl ParticleWorld) -> bool {
                 match p.landing {
                     Landing::Ember => world.ember_over(at, p.life),
                     Landing::Rain => {
-                        // A drop soaks a little either side of its path.
-                        for dx in -1..=1 {
-                            world.douse(at.offset(dx, 0));
+                        // A drop soaks a little either side of its path,
+                        // until it boils off on something burning too hot
+                        // to put out.
+                        if (-1..=1).any(|dx| world.douse(at.offset(dx, 0))) {
+                            return false;
                         }
                     }
                     Landing::Snow if world.ambient(at.y) > 1 => {

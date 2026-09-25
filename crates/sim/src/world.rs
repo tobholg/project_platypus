@@ -1080,9 +1080,65 @@ impl World {
                 return;
             }
         };
-        self.apply_edit(&WorldEdit::Heat { center: hit, radius: 3, amount: LIGHTNING_HEAT });
-        self.apply_edit(&WorldEdit::Ignite { center: hit, radius: 2 });
-        self.strikes.push(Strike { x, top, hit });
+        let open = |c: Cell| c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas | Kind::Fire);
+        // A tree doesn't stop it at the first leaf: it runs down through the
+        // wood (the wettest path) to the ground.
+        let mut channel = vec![hit];
+        let mut earth = hit;
+        if self.get(hit).is_some_and(open) {
+            let (mut cx, mut cy) = (hit.x, hit.y);
+            while hit.y - cy < LIGHTNING_CHANNEL {
+                let Some(below) = self.get(CellPos::new(cx, cy - 1)) else { break };
+                if !open(below) {
+                    earth = CellPos::new(cx, cy - 1);
+                    break;
+                }
+                let wood = |dx: i32| self.get_bg(CellPos::new(cx + dx, cy - 1)).is_some_and(|b| mats.phys(b.material).kind == Kind::Static);
+                cx += [0, -1, 1, -2, 2].into_iter().find(|&dx| wood(dx)).unwrap_or(0);
+                cy -= 1;
+                channel.push(CellPos::new(cx, cy));
+            }
+        }
+        // Everything flammable along its path flashes alight at full heat,
+        // spitting flames and embers.
+        let mut rng = self.rng_for(0x1165, hit);
+        let fire = mats.fire();
+        for (i, &p) in channel.iter().enumerate() {
+            for q in disc(p, 1) {
+                if let Some(mut b) = self.get_bg(q)
+                    && self.get(q).is_some_and(open)
+                    && mats.phys(b.material).flammability > 0
+                {
+                    if b.flags & flags::BURNING == 0 {
+                        b.flags |= flags::BURNING;
+                        b.life = mats.phys(b.material).burn_time;
+                    }
+                    b.heat = LIGHTNING_HEAT;
+                    self.set_bg(q, b);
+                }
+            }
+            if fire != MaterialId::AIR && self.get(p).is_some_and(|c| c.is_air()) && rng.chance(90) {
+                let flame = mats.spawn(fire, &mut rng);
+                self.set(p, flame);
+            }
+            if let Some(b) = self.get_bg(p)
+                && !b.is_air()
+                && i % 3 == 0
+            {
+                let side = if rng.next_u8() < 128 { -1.0 } else { 1.0 };
+                let vel = [side * (0.3 + rng.next_u8() as f32 / 255.0 * 0.7), 0.4 + rng.next_u8() as f32 / 255.0 * 0.8];
+                let life = 50 + rng.next_u8() as u16 / 2;
+                self.particles.push(Particle { gravity: 0.06, ..Particle::new(center_of(p), vel, b, life, Landing::Ember) });
+            }
+        }
+        // Where it strikes it bursts (a shredded crown, a small crater),
+        // setting what's around alight; where it earths the ground glows
+        // and sand fuses to glass.
+        self.apply_edit(&WorldEdit::Explode { center: hit, radius: 4, power: LIGHTNING_BLAST });
+        self.apply_edit(&WorldEdit::Heat { center: hit, radius: 8, amount: LIGHTNING_HEAT / 2 });
+        self.apply_edit(&WorldEdit::Heat { center: earth, radius: 2, amount: EARTH_HEAT });
+        self.apply_edit(&WorldEdit::Ignite { center: earth, radius: 3 });
+        self.strikes.push(Strike { x, top, hit, earth });
     }
 
     /// Height of the first solid (or liquid) cell below `y` in column `x`,
@@ -1273,8 +1329,22 @@ const DROPS_PER_MOISTURE: f32 = 25.0;
 /// A thunderstorm column throws lightning once per this many weather steps
 /// (a storm over a screen: a strike every ~10 s).
 const LIGHTNING_ONE_IN: u32 = 12_000;
-/// Heat a strike leaves where it hits (°C).
-const LIGHTNING_HEAT: i16 = 900;
+/// Heat a strike leaves in the wood along its path (°C; the most a
+/// background cell holds), and half that through the crown around it.
+const LIGHTNING_HEAT: i16 = 1200;
+/// Heat where it earths: enough to fuse sand (1100) into glass.
+const EARTH_HEAT: i16 = 1500;
+/// Blast power where it strikes: shreds leaves, not wood.
+const LIGHTNING_BLAST: u8 = 24;
+/// A background fire hotter than this (°C) boils a raindrop off, losing
+/// `RAIN_QUENCH`, instead of going out; the drop is spent. Cooler flames
+/// are put out as the drop falls on through them. So rain puts out a
+/// spreading fire's edges at once and wears down its heart (or a
+/// lightning-struck trunk) from the top.
+const BOILS_RAIN: i16 = 800;
+const RAIN_QUENCH: i16 = 60;
+/// Longest run down through a tree to the ground.
+const LIGHTNING_CHANNEL: i32 = 400;
 /// New drops stop above this many particles in flight (the cap is 30 000).
 const RAIN_BUDGET: u32 = 18_000;
 
@@ -1350,8 +1420,9 @@ impl ParticleWorld for ParticleCtx<'_> {
         }
     }
 
-    fn douse(&mut self, p: CellPos) {
+    fn douse(&mut self, p: CellPos) -> bool {
         let mats = self.world.materials.clone();
+        let mut spent = false;
         if let Some(c) = self.world.get(p)
             && !c.is_air()
         {
@@ -1367,10 +1438,16 @@ impl ParticleWorld for ParticleCtx<'_> {
         if let Some(mut b) = self.world.get_bg(p)
             && b.flags & flags::BURNING != 0
         {
-            b.flags &= !flags::BURNING;
-            b.heat = b.heat.min(120);
+            if b.heat > BOILS_RAIN {
+                b.heat -= RAIN_QUENCH;
+                spent = true;
+            } else {
+                b.flags &= !flags::BURNING;
+                b.heat = b.heat.min(120);
+            }
             self.world.set_bg(p, b);
         }
+        spent
     }
 
     fn ambient(&self, y: i32) -> i32 {

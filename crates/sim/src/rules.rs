@@ -241,6 +241,8 @@ const BLAZE_HEAT: i32 = 420;
 /// Heat flames in the playfield give the background behind and beside them.
 const FLAME_HEAT: i16 = 5;
 const BG_MAX_HEAT: i32 = 1200;
+/// Above this a background fire burns through its fuel twice as fast.
+const FIERCE_HEAT: i32 = 1100;
 const RAD_BASE: i32 = 1;
 const RAD_DIV: i32 = 3;
 
@@ -341,7 +343,9 @@ pub(crate) fn background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
         let ember = Particle { gravity: 0.06, ..Particle::new(h.centre(x, y + 1), [vx, vy], b, life, Landing::Ember) };
         h.emit(ember);
     }
-    if h.tick.is_multiple_of(4) {
+    // The hotter it burns the faster it eats itself: at full heat (the heart
+    // of a blaze, a lightning-struck trunk) twice as fast.
+    if h.tick.is_multiple_of(if heat >= FIERCE_HEAT { 2 } else { 4 }) {
         if b.life == 0 {
             h.set_bg(x, y, Cell::AIR);
             h.note_broken_bg(x, y);

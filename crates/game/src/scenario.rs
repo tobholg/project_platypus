@@ -11,6 +11,7 @@
 //! - `blast`      three bombs dropped down one shaft beside the player, from t = 2 s
 //! - `fell`       cuts through the trunk of the nearest tree to the right at t = 2 s
 //! - `burn`       sets the base of that tree alight at t = 2 s instead
+//! - `strike`     lightning onto that tree at t = 2 s instead
 //! - `acid`       pours acid into a glass basin beside the player, boils it at 2 s, lights the fumes at 3.6 s
 //! - `rain`       lights the forest beside the player at 2 s, a storm over it at 3 s (F5), lightning at 6 s (F7)
 //! - `swim`       a pool beside the player; oil on the player, set alight, then it walks into the water
@@ -286,7 +287,7 @@ fn blast_script(
 }
 
 fn fell_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut done: Local<bool>) {
-    if !matches!(s.name.as_str(), "fell" | "burn") || *done || s.elapsed < 2.0 {
+    if !matches!(s.name.as_str(), "fell" | "burn" | "strike") || *done || s.elapsed < 2.0 {
         return;
     }
     let Ok(p) = player.single() else { return };
@@ -309,13 +310,15 @@ fn fell_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
         let center = CellPos::new(left + width / 2, at.y);
         if s.name == "burn" {
             sim.queue(WorldEdit::Ignite { center: CellPos::new(center.x, ground + 3), radius: width / 2 + 2 });
+        } else if s.name == "strike" {
+            sim.queue(WorldEdit::Lightning { x: center.x, from_y: py + 300 });
         } else {
             // Twice: a dig clears the playfield first where anything stands in front.
             for _ in 0..2 {
                 sim.queue(WorldEdit::Dig { center, radius: width / 2 + 3, max_hardness: 200 });
             }
         }
-        info!("{}: trunk {width} wide at {center:?}", s.name);
+        info!("{}: trunk {width} wide at {center:?}, player at {px}", s.name);
         *done = true;
         return;
     }

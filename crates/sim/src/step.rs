@@ -221,12 +221,14 @@ pub struct StepStats {
     pub lightning: Vec<Strike>,
 }
 
-/// A lightning strike: down column `x` from `top` to the cell it hit.
+/// A lightning strike: down column `x` from `top` to the first cell it hit,
+/// then (through a tree) on down to where it `earth`ed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Strike {
     pub x: i32,
     pub top: i32,
     pub hit: CellPos,
+    pub earth: CellPos,
 }
 
 /// What one job reports back to the world.

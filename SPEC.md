@@ -169,7 +169,8 @@ may go out (`fizzles`), so a lone spark dies, a fire big enough to heat
 itself and what's above it climbs, and a front spreads sideways. Flames in the
 playfield, the heat gun, lava and lightning add heat; water in front and rain
 put it out and cool it. Measured on generated trees: a one-cell spark always
-goes out within seconds; a small fire takes 40-90 % of a tree.
+goes out within seconds; a small fire takes 40-90 % of a tree. The hotter it
+burns the faster it eats its fuel: above 1100 °C twice as fast.
 
 **Reactions keep heat.** What a reaction makes keeps the heat of what went
 into it (unless it pins its own): lava quenched by water is glowing-hot
@@ -327,10 +328,18 @@ deaths (blood). Rendered as one dynamic mesh.
 - Storms: the wettest parts of big fronts rain hard; a column raining more
   than `STORM_RAIN` throws lightning now and then (one in 12 000 weather steps
   per column: a storm over a screen strikes every ~10 s). Lightning comes down
-  the column from the cloud base, strikes the first solid, liquid, plant or
-  tree, heats it (+900 °C) and sets it alight; creatures within 10 cells take
-  up to 55 damage and catch fire (unless wet). The game draws a forked bolt,
-  flashes the sky and shakes the camera.
+  the column from the cloud base and strikes the first solid, liquid, plant or
+  tree. It bursts there (a small blast that shreds leaves, not wood, and
+  craters soil) and heats the crown round it. Through a tree it runs on down
+  the trunk (following the wood) to the ground: everything flammable within a
+  cell of its path flashes alight at 1200 °C, the most a background cell
+  holds, spitting flames and embers, so the tree burns from crown to foot at
+  once. It blows the top of the trunk off. Where it earths the ground reaches
+  1500 °C (sand fuses to glass) and catches. Measured: a struck tree has 47
+  of 240 wood cells left after 20 s, one lit at its foot 146. Creatures
+  within 10 cells take up to 55 damage and catch fire (unless wet). The game
+  draws a forked bolt down to where it earthed, flashes the sky and shakes
+  the camera.
 - `WorldEdit::Weather` forces a storm or a clear sky over an area (fading back
   over ~2.5 minutes) and `WorldEdit::Lightning` strikes a column: the F5, F6
   and F7 dev keys, and later spells or events.
@@ -338,7 +347,12 @@ deaths (blood). Rendered as one dynamic mesh.
   above the loaded area (zoomed in): rain, snow and lightning enter the world at
   the top of what's loaded below the cloud. Rain or snow is decided by the
   temperature of the ground it will land on. Drops fall at ~2 cells a tick and
-  douse a 3-cell strip as they fall.
+  douse a 3-cell strip as they fall, until one meets background fire hotter
+  than 800 °C: that boils it off (the cell loses 60 °C) and it's gone. So
+  rain puts out a spreading fire's cooler edges at once and wears a blaze's
+  heart (or a struck trunk) down from the top. Measured in a storm over four
+  trees: the struck one burns through, its neighbours 60 cells off don't
+  catch, and nothing is alight after 30 s.
 - Not yet: weather isn't saved (it restarts from the seed), wind gusts from
   storms, lightning conducting through water and metal.
 

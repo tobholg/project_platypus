@@ -148,14 +148,14 @@ fn on_lightning(
     }
 }
 
-/// A jagged bolt from the cloud to what it hit, with a few forks, one cell
-/// wide with a glow either side. Returns the image and its bottom-left cell.
+/// A jagged bolt from the cloud to where it earthed (through a tree, down its
+/// trunk), with a few forks, one cell wide with a glow either side. Returns the image and its bottom-left cell.
 fn bolt_image(s: &platypus_sim::Strike) -> (Image, i32, i32) {
     use bevy::asset::RenderAssetUsages;
     use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
     use platypus_sim::rng::Rng;
-    let mut rng = Rng::seeded(&[s.x as u64, s.top as u64, s.hit.y as u64]);
-    let height = (s.top - s.hit.y).max(1);
+    let mut rng = Rng::seeded(&[s.x as u64, s.top as u64, s.earth.y as u64]);
+    let height = (s.top - s.earth.y).max(1);
     let mut points: Vec<(i32, i32)> = Vec::new();
     let walk = |rng: &mut Rng, from: (i32, i32), steps: i32, pull: Option<i32>, out: &mut Vec<(i32, i32)>| {
         let (mut x, mut y) = from;
@@ -170,12 +170,12 @@ fn bolt_image(s: &platypus_sim::Strike) -> (Image, i32, i32) {
             out.push((x, y));
         }
     };
-    walk(&mut rng, (s.x, s.top), height, Some(s.hit.x), &mut points);
-    // Pull the last stretch onto the hit cell.
+    walk(&mut rng, (s.x, s.top), height, Some(s.earth.x), &mut points);
+    // Pull the last stretch onto where it earthed.
     let main = points.clone();
     for (i, &(px, py)) in main.iter().enumerate().skip(main.len().saturating_sub(12)) {
         let k = (i + 12 - main.len()) as f32 / 12.0;
-        points[i] = ((px as f32 + (s.hit.x - px) as f32 * k).round() as i32, py);
+        points[i] = ((px as f32 + (s.earth.x - px) as f32 * k).round() as i32, py);
     }
     for _ in 0..3 {
         let at = main[(rng.next_u32() as usize) % main.len().max(1)];
@@ -184,7 +184,7 @@ fn bolt_image(s: &platypus_sim::Strike) -> (Image, i32, i32) {
     }
     let (x0, x1) = points.iter().fold((i32::MAX, i32::MIN), |(a, b), p| (a.min(p.0), b.max(p.0)));
     let (x0, x1) = (x0 - 2, x1 + 2);
-    let (y0, y1) = (s.hit.y, s.top + 1);
+    let (y0, y1) = (s.earth.y, s.top + 1);
     let (w, h) = ((x1 - x0 + 1) as u32, (y1 - y0 + 1) as u32);
     let mut image = Image::new_fill(
         Extent3d { width: w, height: h, depth_or_array_layers: 1 },

@@ -44,7 +44,7 @@ find a greenish methane pocket underground and set it off (bomb or heat gun) ·
 set a forest alight: fire climbs the trunks, embers blow downwind into the next
 canopy, burning branches fall · chop through a trunk with the axe (or a bomb):
 the tree topples, sheds its crown and lands as a log you can mine · drop a tree on an orc ·
-light a tree at the base: it chars black and snaps · burnt wood leaves charcoal; put charred wood out with water for more ·
+light a tree at the base: it chars black and snaps · call lightning onto a tree (F7): it runs down the trunk and the whole tree goes up at once · burnt wood leaves charcoal; put charred wood out with water for more ·
 lava, fire, steam and acid hurt; flames set creatures alight (they spread fire as they run; jump in water) · boil acid (heat gun) into a corrosive cloud that rains acid, then light the cloud ·
 pour oil on a lake and light it · freeze the ground under an orc (Shift + heat gun) to slow it, or to put yourself out ·
 watch the clouds: fronts drift with the wind and rain where they're heavy; rain puts out forest fires and fills puddles; boiled water rises and rains back down ·
@@ -61,7 +61,7 @@ PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, 
 PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood`, `strike` (lightning onto the nearest tree) (a block of water collapsing in a dug hall). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
 capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length, `PLATYPUS_NOLIGHT=1` to start with lighting off.
 
 ## Add things (no engine changes)
