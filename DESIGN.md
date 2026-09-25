@@ -1,0 +1,309 @@
+# Design: the world, hands, RPG, and making things (proposed 2026-09-25)
+
+A plan to agree on before building world gen and saving. Nothing here is in
+SPEC.md yet; each part moves there when its arc starts. Numbers are proposals.
+
+## 0. Decisions to make
+
+| # | Question | Recommendation |
+|---|---|---|
+| D1 | How big is the world? | 32 768 × 16 384 cells (512 × 256 chunks), with smaller presets for testing. |
+| D2 | What unit do mining and building work in? | Blocks of 4 × 4 cells on a fixed grid. The world stays cells. |
+| D3 | How are humanoids drawn? | Terraria-style: layered frame sheets on one shared frame layout per body size. Gear is a "skin" painted onto body regions. Only held items rotate. |
+| D4 | How do you loot the dead? | The corpse becomes a physical cell body that holds the loot. Interact to loot it. Destroy the corpse and the loot scatters. |
+| D5 | How big are characters? | Keep 1 art pixel = 1 cell. Decide 18 px vs ~24 px humanoids from rendered mock-ups when the RPG arc starts. The 4 × 4 block works for both. |
+| D6 | In what order? | World plan and viewer → terrain → hands (mining, items, chests) → ores → structures → saving → art tool and arena → RPG. |
+
+## 1. Principles (carried over)
+
+- **Cells are the truth.** Everything physical is cells: terrain, built blocks, corpses, chests' footprints. Special cases become material data plus general rules.
+- **Data over code.** Creatures, items, moves, loot tables, rooms and structures are RON or text files, hot-reloaded.
+- **Anyone can use anything.** A weapon, a spell or armour works the same for the player and for any creature with the body to use it. The player is a creature with a keyboard brain (already true).
+- **Deterministic and chunk-pure.** A chunk is a pure function of (seed, position, plan). Co-op and saving depend on it.
+- **Everything can be looked at.** Every generator and asset has a headless render the model can open as an image, and a sandbox to try it in.
+
+## 2. Scale
+
+At 1 cell = 1 art pixel, the player is 8 × 16 cells and runs 95 cells/s.
+
+| | Cells | In player heights | Terraria large (in player heights) |
+|---|---|---|---|
+| Width | 32 768 | 2 048 | ~2 800 |
+| Height | 16 384 | 1 024 | ~800 |
+
+Crossing the world on foot takes about 6 minutes. Vertical bands (sea level at about 25 % from the top):
+
+| Band | Height (cells, relative to sea level) | What's there |
+|---|---|---|
+| Sky | +2 500 … +4 000 | Sky islands, shrines on them, the cloud band, wyverns later |
+| Peaks | +800 … +2 500 | Mountains above the snow line (the climate makes snow, it isn't painted on), castles, cliffs |
+| Surface | −200 … +800 | Biomes, forests, lakes, ruins, crypt entrances |
+| Underground | −200 … −2 500 | Caves, mines, ores (copper, iron), crypts |
+| Caverns | −2 500 … −7 000 | Huge chambers, underground lakes, crystal and mushroom caves, silver and gold |
+| Deep | −7 000 … −11 000 | Chasms, the deepest ores, old ruins |
+| Underworld | −11 000 … bottom | A lava sea, obsidian, heat |
+
+Costs that grow with the world:
+- **Weather** spans the width: about 0.6 ms per tick at 32 768 wide after the lane fix. Away from players it can run at 8-cell texels.
+- **The plan** is per-column arrays plus fields at 1/16 resolution (2 048 × 1 024), a few MB.
+- **Saving** stores only modified chunks (lz4).
+- **Streaming** is unchanged: only what's around players is loaded.
+
+## 3. World generation
+
+### 3.1 Two levels
+
+1. **`WorldPlan`**: computed once from the seed, in seconds, on worker threads. It holds:
+   - the biome map, the surface height per column, mountain ranges, the snow line;
+   - lake basins with their water levels;
+   - cave-layer parameters, chasms, walker tunnels;
+   - structure sites with their generated layouts;
+   - ore-field parameters and chest sites.
+2. **Rasterising.** Each chunk reads the plan, plus any structure layouts whose bounding boxes touch it, and fills its cells. It stays chunk-pure: a chunk never reads another chunk.
+
+### 3.2 Plan stages
+
+1. **Macro.** Oceans at both edges. A biome sequence across x from temperature × moisture (forest, plains, desert, snow, jungle, swamp), with blended borders.
+2. **Relief.** Hills (current), mountain ranges with ridges and cliffs, valleys, overhangs, and sky islands (port legacy). Peaks rise above the snow line, so snow, ice lakes and colder weather follow from `Climate`.
+3. **Water.** Basins carved and filled to their spill level: large lakes, mountain tarns, underground lakes, waterfalls where a basin spills over a cliff. Water is generated already levelled, so it's asleep on load.
+4. **Underground.**
+   - Worm tunnels near the surface.
+   - Cavern-layer noise with large chambers, stalactites and pillars.
+   - Chasms: huge vertical shafts linking surface to deep. This is the Elden Ring-style descent.
+   - Walker tunnels (legacy), which guarantee the layers connect.
+   - A lava sea at the bottom.
+5. **Structures** (§3.3).
+6. **Resources.**
+   - Ores are materials with hardness tiers. They sit in depth bands as noise blobs and veins along the strata, more often exposed on cave walls.
+   - Gems glow, which the lighting already supports.
+   - Chest sites: in structures, and hidden in cave pockets.
+7. **Secrets.**
+   - Illusory walls: a material drawn like brick that dissolves when struck.
+   - Weak walls that break in one hit.
+   - Rooms behind waterfalls, and treasure at the bottom of lakes.
+   - Keys and locked doors (after items exist).
+
+### 3.3 Structures: castles, crypts, ruins
+
+- **Rooms are text files.** Each is a grid at block resolution (one character per 4 × 4 cells), with a legend mapping characters to materials and markers:
+  - `D` door socket, `C` chest, `S` spawn group, `T` torch, `L` ladder or platform;
+  - `?` illusory wall, `W` water, `B` boss spawn.
+  Sockets on the edges say which sides connect.
+- **Assembly.** A layout grammar per structure type: a room graph on a coarse grid, filled by picking room templates whose sockets match (Spelunky / Dead Cells style).
+  - Every layout has a critical path to a goal room, side branches, and secrets hanging off it.
+- **Crypt.** A surface ruin, then a stair shaft, then a room graph going down, then a boss or treasure room. A key on a side branch opens a locked shortcut.
+- **Castle.** Sited on a mountain top or cliff. The outer shape comes from rules (keep, towers, curtain walls, bridges over chasms), with foundations reaching down to the rock. The interior uses the same room assembly, and towers make it vertical.
+- **Ageing pass.** Cell-level noise adds cracks, moss, cobwebs, rubble and collapsed sections, so no two copies of a room look stamped.
+- **Materials look right on their own.** A material can carry a world-anchored pattern (brick, planks, cobble), so castle walls and player-built walls tile cleanly (§4.4).
+- **Layouts are computed at plan time** from (seed, site id). The plan stores them; chunks rasterise the parts they touch.
+
+### 3.4 Tools for generation
+
+- **`platypus-worldview`** renders the plan (or rasterised regions) to PNG:
+  - the whole world at 1:16;
+  - any region at 1:1;
+  - overlays for biomes, bands, structures, ores and chests.
+
+  The model reads these images to check its own changes. This is the main loop for tuning generation.
+- **A determinism test.** Generate chunks in different orders and on different threads, then compare checksums.
+- **World presets.** `small` (8 192 × 4 096) for tests and scenarios, `large` for play.
+
+### 3.5 Saving
+
+A save is a directory:
+- `world.ron`: format version, seed, preset, tick, weather state;
+- the chunk store: modified chunks, lz4, in region files of 32 × 32 chunks;
+- `entities.ron`: creatures, items on the ground, chest contents, bodies in flight;
+- per-player files: inventory, equipment, position.
+
+The plan isn't saved; it's regenerated from the seed. A version bump migrates or refuses to load.
+
+## 4. Hands: mining and building
+
+The current per-cell radius pickaxe removes an uneven blob and gives nothing back. Terraria feels good because every hit has a clear target, the result is predictable, the feedback is immediate, and the progress adds up.
+
+### 4.1 Blocks
+
+- The grid is fixed at 4 × 4 cells (D2): block `(x >> 2, y >> 2)`. The player is 2 blocks wide and 4 tall. Terraria's is 2 × 3.
+- **Mining a block.** Each hit adds damage to the block; cracks show. When it breaks, every cell in the block that the tool can mine is removed at once. Harder cells, such as ore in a weaker tool's hit, stay.
+- **Generated terrain stays cell-detailed.** A block at a cave edge may be half air. Mining it yields what was there.
+- **Yield.** The inventory counts materials in cells and shows whole blocks (16 cells = 1 block). Partial blocks add up, and nothing is lost to rounding.
+- **Placing a block.** It fills the empty cells of one grid block, using 16 cells of material.
+  - Placed powder falls and placed liquid flows (sand, and water later from a bucket).
+  - Placed stone is static. It needs support like any terrain (the existing fragment checks).
+- **Tools and tiers.**
+  - The pickaxe works on the playfield, the axe on trees and background, a hammer on background walls.
+  - A tool's tier sets the hardest material it can mine, which drives ore progression.
+  - Speed sets hits per second.
+- **Particles.** Each hit throws dust and a few cells of debris, as now.
+
+### 4.2 Smart cursor
+
+The target is chosen for you and outlined:
+- **Mining:** the first solid block on the line from the player's hand to the cursor, within reach (about 5 blocks). You dig the face you see, not a buried block under the cursor.
+- **Placing:** the block under the cursor if it's empty, touches a solid block or background wall, and doesn't overlap a creature. Otherwise the nearest valid block along the same line.
+- **Auto tool** (a held key): picks the right tool for the target, such as an axe for a trunk or a pickaxe for stone.
+- **Fine tools stay** for dev work and later for spells: wands that dig by cells, bombs, the heat gun.
+
+### 4.3 Items on the ground
+
+Mined material and drops are item entities. They fly out a little, settle, and drift to a nearby player (a magnet). They're also physical: they burn, sink and float by their material. A scroll burns; an iron sword doesn't.
+
+### 4.4 Patterns
+
+A material can have a `pattern`: a small tile of shade indices anchored to the world grid (for example 8 × 4 for bricks). Cells of that material draw their shade from the pattern instead of at random. Built walls, castles, planks and cobble then look like Terraria tiles without being tiles.
+
+## 5. Items and inventory
+
+- **Item definitions** (RON), made of optional parts:
+  - `stack`, `icon` (derived from the sprite by default);
+  - `material` (a block of something), `tool` (tier, speed, reach);
+  - `weapon` (moveset, damage, weight), `armour` (slot, skin, stats), `spell`;
+  - `container`, `light`, `burns`, `value`.
+- **Item instances** are a definition id plus state: stack count, durability, and later rolled properties.
+- **Inventory** is a component with slots, on any creature or container. **Equipment** is a component with slots: head, body, legs, feet, hands, back, main hand, off hand, rings. The player and NPCs use the same components.
+- **Containers:**
+  - A chest is an entity bound to the cells of its footprint (a `chest_wood` material). If those cells go (a blast, fire), the chest breaks and its contents scatter.
+  - General rule: objects are entities bound to cells, and they go when their cells go. Doors, torches and furniture work the same way later.
+- **Loot tables** (RON) by context, such as `crypt_deep` or `troll`: weighted entries, counts, rarity by depth.
+
+## 6. Creatures and bodies
+
+A creature is a body with movement and a brain (as now), plus optional parts:
+- `rig`: what it looks like and where things attach;
+- `inventory` and `equipment`;
+- `stats`;
+- `natural_weapons`: bites and claws as weapons with no picture;
+- `loot`: a table for what it carries beyond its equipment;
+- `faction`.
+
+### 6.1 Rigs, not a humanoid type
+
+- **Humanoid rig classes:** `small` (goblin, ~12 px), `human` (player, bandits, knights, ~18–24 px), `large` (troll, ogre, ~36–48 px).
+  - Each class has one frame template: idle, walk cycle, jump, fall, dash, wall slide, a fan of arm angles for holding and swinging, hurt, death.
+  - Each frame records anchors: hand front and back, head, back, and the weapon grip angle.
+- **Body art** for a race is drawn on its class's template, as layers: back arm, legs, torso, head, front arm. Races differ in body art and base stats, not in code.
+- **Gear on the body (D3):**
+  - The template marks regions in every frame: head, torso, arms, legs, feet.
+  - An armour piece is a **skin**: a pattern and palette painted into its regions, plus optional extra silhouette parts drawn once and placed at an anchor (pauldrons, a plume, a hood, a cape).
+  - So one helmet definition fits every frame, and every humanoid class. A troll can wear the knight's armour, and it looks like the knight's armour at troll size. Hand-drawn per-frame overrides are allowed where a skin isn't enough.
+- **Held items** rotate around the hand anchor. This is the only free rotation; body parts are never rotated, because rotated pixel art turns to mush.
+  - Weapons aren't scaled with the wielder. A troll's club is huge because it's a huge item. If you pick it up, you swing a colossal weapon, slowly (Elden Ring style).
+- **Other rigs:**
+  - Frame-sheet creatures, like the current orc: beasts, slimes, spiders, flyers.
+  - Segmented creatures such as worms and serpents: a chain of sprites following a path.
+  - These use natural weapons and abilities, not gear.
+- **Hands decide what can be wielded.** A rig with hands can use any weapon or spell (one- or two-handed). A wolf can't hold a sword, but anything with hands can pick one up and use it.
+
+### 6.2 Stats (kept small at first)
+
+Health, stamina (dash, attacks, blocking), poise (Elden Ring stagger), and movement stats (already data). Weight comes from equipment load and slows movement. Attributes and scaling (strength, dexterity, arcane) come later and only change numbers.
+
+## 7. Combat and abilities
+
+- **Moves are data.** A moveset belongs to a weapon class, and a weapon can override parts of it. A move is:
+  - keyframes over time: weapon angle, arm frame, body lean, a step forward;
+  - wind-up, active and recovery windows;
+  - stamina cost, poise damage, cancel rules, and the next move in a combo;
+  - swing trail colours.
+
+  Different swords swing differently because their data differs.
+- **Hits** are the weapon sprite's alpha mask, rotated and swept between frames in sub-steps: pixel-accurate, no tunnelling. Then hit-stop, knockback and a `Hit` message.
+- **Damage types map to the element system.**
+  - Fire damage is heat exposure and can set the target burning.
+  - Frost chills. Lightning passes through water and wet creatures (the planned electricity).
+  - Status and coating rules apply as they do now.
+- **Weapons act on the world** through the same edits as tools:
+  - A burning sword ignites grass.
+  - A greathammer slam loosens dirt and knocks down loose cells.
+  - A spear thrust into water splashes.
+- **Spells are abilities.** A cast pose, then an effect: a projectile, a field, a beam or a summon. The effect applies world edits and exposure. A fireball is a projectile that explodes into heat and fire, so the existing systems carry it.
+  - Noita-style wand modifiers can come later, as a list of effect modifiers.
+- **AI** picks moves from what the creature actually has equipped, using tags on moves: range, wind-up, area, gap-closer. An NPC with a spear pokes from range; the same NPC with a greatsword charges.
+
+## 8. Death and loot (D4)
+
+1. **Death.** The creature's current frame is turned into a rigid body of cells (a new `flesh` material plus blood coating). The body's cells keep their sprite pixels, so the corpse looks like the creature.
+   - The existing body solver makes it fall, tumble and sink.
+   - The cell world can burn it, blow it apart or dissolve it in acid, and the sprite loses those pixels.
+2. **Loot.** The corpse holds the creature's inventory, its equipment and a roll from its loot table. Interact to open a loot window: take items, or take all.
+   - If the corpse is destroyed, its loot scatters as item pickups (unless it burns up, such as scrolls in fire).
+   - Creatures without inventories, such as a wolf, drop their loot-table items as pickups straight away.
+3. **What's lootable.** Equipped gear is always lootable: if you saw it, you can take it. Loot tables add the rest.
+4. **Persistence.** Named characters stay dead (saved). Ordinary spawns respawn by region rules later.
+
+## 9. Characters and NPCs
+
+A character definition is a race (rig class, body art, base stats), plus a loadout (equipment and inventory, or loot-table rolls), a brain, a faction, and later dialogue.
+- A bandit is a race, a rolled loadout and a brain.
+- A named knight is the same with a fixed loadout.
+
+Spawn groups in structures reference character definitions.
+
+## 10. Making assets, by hand and by model
+
+The aim: the model can create, look at, and test a creature, item, room or structure without anyone drawing it by hand. A person can still draw in Aseprite and import it.
+
+- **Text sprites.** A palette (named ramps: `steel: 4 shades`) plus character grids per layer and frame. The model can write these directly up to about 48 × 48 px.
+- **Shape recipes** for anything bigger or regular: rects, ellipses, lines, polygons in palette colours. Compiled with:
+  - auto-outline;
+  - light-from-top-left shading;
+  - dithering;
+  - pattern fills.
+- **Gear skins** (§6.1) are recipes too: a pattern, a palette, region choices and extra parts. One description gives a helmet for every frame and every rig class.
+- **`platypus-art`**, a CLI:
+  - `render`: frames to PNG, plus a 4× upscaled preview;
+  - `sheet`: a contact sheet of every clip, with anchors and regions overlaid;
+  - `gif`: an animation preview;
+  - `check`: palette use, stray pixels, anchor sanity, template fit;
+  - `import`: Aseprite JSON and PNG.
+
+  The model writes a sprite, renders it, looks at it, fixes it, then tries it in the arena.
+- **Rooms and structures** are text grids (§3.3). `platypus-worldview` renders one room, a generated layout, or a structure in place.
+- **The arena** (`PLATYPUS_WORLD=arena`), a training ground:
+  - a flat floor, walls, some water, lava, a slope;
+  - a menu to spawn any creature, character or item;
+  - a target dummy that shows damage numbers;
+  - hitbox, hurtbox and anchor overlays, slow motion and frame stepping;
+  - hot reload of every definition.
+
+  Scenarios can script it: spawn a troll with a greatsword against a dummy, screenshot three frames, assert that hits landed. So new content is tested and seen the same way the sim is.
+
+## 11. Order of work
+
+**World arc (W7)**
+1. The plan skeleton, world presets, `platypus-worldview`, and the determinism test.
+2. Relief and water: biomes, mountains with snow caps, cliffs, sky islands (port legacy), lakes, waterfalls.
+3. Underground: cave layers, caverns, chasms, walker tunnels, underground lakes, the lava sea.
+4. Hands:
+   - block mining and building, smart cursor, auto tool;
+   - item definitions, pickups, inventory, hotbar;
+   - chests, loot tables, material patterns.
+
+   Ores and chests need items, so this comes before them.
+5. Ores and gems in their bands.
+6. Structures:
+   - the room text format and assembly;
+   - ruins leading to crypts, then castles;
+   - the ageing pass and secrets.
+7. Saving and loading.
+
+**Making arc (M1):** `platypus-art` and the arena. Part of it is pulled into W7.6 for rooms.
+
+**RPG arc (R):**
+1. Rigs and skins.
+2. Combat moves and hits.
+3. Death, corpses and loot.
+4. Characters and loadouts.
+5. Spells.
+6. Darkness as gameplay.
+
+**Then:** co-op, and the Hollow Knight layer (abilities, map, bosses).
+
+## 12. Open questions and risks
+
+- **Character pixel size (D5):** 18 px reads like Noita. Elden Ring-style gear may want about 24 px. Decide from mock-ups. The cost is zooming out a little and loading more.
+- **Gear skins might look generic.** Fallback: hand-drawn per-frame gear for hero items only.
+- **Corpses as cell bodies:** a rendering change. Bodies must carry per-cell colours (their sprite pixels), not just material shades.
+- **Weather cost** grows with width. Plan: coarse weather far from players.
+- **Freezing the save format:** structures and items must be in before saving is finalised. That's why saving is step 7.

@@ -2,6 +2,10 @@
 
 Each phase ends with something playable or measurable. See SPEC.md for the design.
 
+**Next:** DESIGN.md (proposed 2026-09-25): the world arc (plan, relief, underground, mining and
+building in 4 × 4 blocks, items and chests, ores, structures, saving), the asset tools and arena,
+and the RPG arc (rigs and gear skins, moves, corpses and loot, characters, spells).
+
 ## Status (2026-09-25)
 
 | Phase | What | State |
