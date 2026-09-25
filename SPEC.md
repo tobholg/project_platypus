@@ -182,8 +182,8 @@ checksums.
     sea heats them to.
   - Cost: a caverns chunk takes ~2.6× a surface chunk to generate (8-chunk
     column 1.8 ms vs 0.7 ms, bench `stream_deep`).
-- Not yet: waterfalls, jungle and swamp materials (mud, vines), tree species,
-  crystal and mushroom caves (with ores and gems, stage 5).
+- Not yet: waterfalls, jungle and swamp materials (mud, vines), crystal and
+  mushroom caves.
 
 ### 3.4c Hands: mining, building, items, chests
 DESIGN.md §4–5, stage 4 of the world arc.
@@ -229,7 +229,37 @@ DESIGN.md §4–5, stage 4 of the world arc.
   breaks it and spills its contents and the chest.
 - Play mode is the default; the key left of 1 (backquote; F1 needs fn on a
   Mac) switches to the dev tools and back. `PLATYPUS_SPAWN_X` starts
-  elsewhere, to try a biome.
+  elsewhere, to try a biome; `PLATYPUS_SPAWN_Y` on the nearest cave floor at
+  or below a height, to look at the deep bands.
+
+### 3.4d Ores and gems
+DESIGN.md §3.2 step 6, stage 5 of the world arc (`worldgen/src/minerals.rs`).
+- Ores are rock materials, harder the deeper they lie, and the pickaxe tiers
+  climb with them (items.ron):
+
+  | Ore | Hardness | Lies | First pickaxe |
+  |---|---|---|---|
+  | coal (powder, burns) | 10 | mountains to mid-caverns, flat seams | any |
+  | copper | 50 | mountains down through the underground, veins | copper (70) |
+  | iron | 65 | lower underground, upper caverns, veins | copper |
+  | silver | 75 | the caverns, blobs | iron (100) |
+  | gold | 85 | lower caverns, upper deep, small blobs | iron |
+  | mithril | 110 | the deep, long rare seams, faint teal glow | gold (115) |
+
+  Obsidian (120) takes the mithril pickaxe (150). The better pickaxes come
+  from chests for now (deeper tables), until crafting.
+- Each ore has a depth window with a fade at its ends (the threshold rises
+  over 15% of it, at most 400 cells), and noise stretched along the strata
+  (veins) or round (blobs). Where a cave is within 5 cells the threshold is
+  0.1 lower, so ore shows on cave walls: about 5% of the rock is ore, 9% of
+  the rock at cave walls.
+- Gems grow only in cave walls (within 4 cells of open space), in clusters,
+  and only along some stretches of wall (a coarse noise), so they are a
+  find, not a lining: amethyst in the underground (60), emerald in the
+  caverns (80), ruby in the deep (100). They glow faintly, which lights the
+  caves around them.
+- Cost: a deep column of chunks streams in ~2.2 ms (was 1.8 ms), under the
+  4 ms budget.
 
 ### 3.5 Streaming and persistence
 Chunks load around every player (co-op: the union). Missing chunks come from

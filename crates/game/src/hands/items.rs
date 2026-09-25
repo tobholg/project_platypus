@@ -224,6 +224,34 @@ mod tests {
         assert!(!it.start.is_empty(), "a new player carries something");
     }
 
+    /// Each pickaxe opens the next ores: copper mines copper and iron, iron
+    /// adds silver and gold, gold adds mithril; every ore and gem yields to
+    /// some pickaxe.
+    #[test]
+    fn pickaxe_tiers_climb_with_the_ores() {
+        let mats = MaterialTable::from_ron(include_str!("../../../../assets/data/materials.ron")).unwrap();
+        let it = items();
+        let tier = |id: &str| match it.def(it.id(id).unwrap()).use_ {
+            Use::Mine { back: false, tier, .. } => tier,
+            _ => panic!("{id} is not a pickaxe"),
+        };
+        let hard = |m: &str| mats.phys(mats.expect_id(m)).hardness;
+        let first = |m: &str| ["copper_pickaxe", "iron_pickaxe", "gold_pickaxe", "mithril_pickaxe"].into_iter().find(|p| tier(p) >= hard(m));
+        for (ore, pick) in [
+            ("copper_ore", "copper_pickaxe"),
+            ("iron_ore", "copper_pickaxe"),
+            ("amethyst", "copper_pickaxe"),
+            ("silver_ore", "iron_pickaxe"),
+            ("gold_ore", "iron_pickaxe"),
+            ("emerald", "iron_pickaxe"),
+            ("ruby", "iron_pickaxe"),
+            ("mithril_ore", "gold_pickaxe"),
+            ("obsidian", "mithril_pickaxe"),
+        ] {
+            assert_eq!(first(ore), Some(pick), "{ore} (hardness {})", hard(ore));
+        }
+    }
+
     #[test]
     fn adding_tops_up_then_fills_empty_slots() {
         let it = items();

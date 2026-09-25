@@ -6,14 +6,18 @@
 //   Mine(back, power, tier, speed, reach): a pickaxe (back: false) or an axe
 //     (back: true, the background: trees, walls); power damage a hit, speed
 //     hits a second, up to tier hardness, within reach blocks (4 cells each).
-//     Hardness: dirt 20, wood 25, sandstone 35, stone 60, brick 70,
-//     slate 80, basalt 95, obsidian 120.
+//     Hardness: dirt 20, wood 25, sandstone 35, copper ore 50, stone 60,
+//     amethyst 60, iron ore 65, brick 70, silver ore 75, slate 80, emerald 80,
+//     gold ore 85, basalt 95, ruby 100, mithril ore 110, obsidian 120.
+//     Pickaxe tiers climb with them: copper 70, iron 100, gold 115, mithril 150.
 //   Throw(Bomb | Glowstick) · Torch: plant one on a block face
 //   Chest: place one (2 × 2 blocks, on the ground); right-click a chest to open it
 (
     items: [
         (id: "copper_pickaxe", name: "Copper pickaxe", color: (205, 127, 50), use: Mine(back: false, power: 35, tier: 70, speed: 6.0, reach: 6.0)),
         (id: "iron_pickaxe",   name: "Iron pickaxe",   color: (176, 178, 190), use: Mine(back: false, power: 60, tier: 100, speed: 7.0, reach: 6.5)),
+        (id: "gold_pickaxe",   name: "Gold pickaxe",   color: (236, 196, 72), use: Mine(back: false, power: 75, tier: 115, speed: 7.5, reach: 7.0)),
+        (id: "mithril_pickaxe", name: "Mithril pickaxe", color: (110, 220, 228), use: Mine(back: false, power: 100, tier: 150, speed: 9.0, reach: 7.5)),
         (id: "copper_axe",     name: "Copper axe",     color: (190, 110, 45), use: Mine(back: true, power: 30, tier: 60, speed: 5.0, reach: 6.0)),
         (id: "torch",          name: "Torch",          stack: 99, color: (255, 190, 90), use: Torch),
         (id: "bomb",           name: "Bomb",           stack: 30, color: (40, 40, 46), use: Throw(Bomb)),

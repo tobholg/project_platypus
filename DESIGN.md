@@ -290,7 +290,7 @@ The aim: the model can create, look at, and test a creature, item, room or struc
    - chests, loot tables, material patterns.
 
    Ores and chests need items, so this comes before them.
-5. Ores and gems in their bands.
+5. Ores and gems in their bands. (Done: SPEC §3.4d.)
 6. Structures:
    - the room text format and assembly;
    - ruins leading to crypts, then castles;

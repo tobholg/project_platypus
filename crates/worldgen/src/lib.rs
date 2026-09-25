@@ -12,6 +12,7 @@ use platypus_sim::{CHUNK, CHUNK_AREA, Cell, CellPos, Chunk, ChunkPos, Climate, M
 pub mod biome;
 pub mod flora;
 pub mod islands;
+pub mod minerals;
 pub mod plan;
 
 use std::sync::Arc;
@@ -73,7 +74,6 @@ struct Ids {
     water: MaterialId,
     lava: MaterialId,
     oil: MaterialId,
-    coal: MaterialId,
     obsidian: MaterialId,
     methane: MaterialId,
     wood: MaterialId,
@@ -113,6 +113,10 @@ pub struct TerrainGen {
     vault: Fbm<Perlin>,
     /// The chest's pattern over a chunk-sized tile (patterns divide 64).
     chest_shades: Vec<u8>,
+    /// Ores and gems, and the noise they lie in.
+    ores: Vec<minerals::Ore>,
+    gems: Vec<minerals::Gem>,
+    minerals: Perlin,
 }
 
 impl TerrainGen {
@@ -135,7 +139,6 @@ impl TerrainGen {
             water: mats.expect_id("water"),
             lava: mats.expect_id("lava"),
             oil: mats.expect_id("oil"),
-            coal: mats.expect_id("coal"),
             obsidian: mats.expect_id("obsidian"),
             methane: mats.expect_id("methane"),
             wood: mats.expect_id("wood"),
@@ -150,9 +153,13 @@ impl TerrainGen {
             basalt: mats.expect_id("basalt"),
         };
 
+        let (ores, gems) = minerals::rules(&plan, mats);
         TerrainGen {
             plan,
             ids,
+            ores,
+            gems,
+            minerals: Perlin::new(s(18)),
             leaf_edge: Perlin::new(s(7)),
             meadow: Perlin::new(s(8)),
             overhang: Fbm::<Perlin>::new(s(9)).set_octaves(3).set_frequency(1.0 / 60.0),
@@ -353,11 +360,59 @@ impl TerrainGen {
         if p < if shallow { -0.6 } else { -0.7 } && depth > 12 {
             return i.gravel;
         }
-        let ore = self.pockets.get([xf / 18.0, yf / 18.0, 11.9]);
-        if ore > 0.62 && band != Band::Deep {
-            return i.coal;
+        if let Some(m) = self.mineral(x, y, band) {
+            return m;
         }
         self.rock(x, y, band)
+    }
+
+    /// A dry cave floor with room to stand (8 × 20 cells), searching out from
+    /// `x` and down from `y`.
+    fn cave_floor_near(&self, x: i32, y: i32) -> Option<CellPos> {
+        let air = |x: i32, y: i32| self.material_at(x, y) == self.ids.air;
+        let solid = |x: i32, y: i32| {
+            let m = self.material_at(x, y);
+            m != self.ids.air && m != self.ids.water && m != self.ids.lava && m != self.ids.oil
+        };
+        (0..3_000).step_by(8).flat_map(|d| [x + d, x - d]).find_map(|x| {
+            (y - 800..=y).rev().find(|&y| solid(x, y - 1) && (0..20).all(|dy| air(x, y + dy) && air(x + 7, y + dy)) && solid(x + 7, y - 1)).map(|y| CellPos::new(x + 4, y + 2))
+        })
+    }
+
+    /// Ore or a gem at a cell of rock, if there is one (minerals.rs).
+    fn mineral(&self, x: i32, y: i32, band: Band) -> Option<MaterialId> {
+        let (xf, yf) = (x as f64, y as f64);
+        for g in self.gems.iter().filter(|g| g.band == band) {
+            let n = self.minerals.get([xf / minerals::GEM_SCALE, yf / minerals::GEM_SCALE, g.salt]);
+            if n > minerals::GEM_THRESHOLD
+                && self.minerals.get([xf / minerals::GEM_ZONE_SCALE, yf / minerals::GEM_ZONE_SCALE, g.salt + 0.5]) > minerals::GEM_ZONE
+                && self.open_near(x, y, minerals::GEM_REACH)
+            {
+                return Some(g.material);
+            }
+        }
+        // (Whether a cave is near is asked at most once, and only when it
+        // could matter.)
+        let mut exposed = None;
+        for o in &self.ores {
+            let Some(threshold) = o.threshold_at(y) else { continue };
+            let n = self.minerals.get([xf / o.scale.0, yf / o.scale.1, o.salt]);
+            if n > threshold || (n > threshold - minerals::EXPOSED_BONUS && *exposed.get_or_insert_with(|| self.open_near(x, y, minerals::EXPOSED_REACH))) {
+                return Some(o.material);
+            }
+        }
+        None
+    }
+
+    /// Is there open space (a cave, a chasm, the surface) `r` cells away, in
+    /// any of the four directions? As generated, from the plan alone.
+    fn open_near(&self, x: i32, y: i32, r: i32) -> bool {
+        [(r, 0), (-r, 0), (0, r), (0, -r)].into_iter().any(|(dx, dy)| {
+            let (nx, ny) = (x + dx, y + dy);
+            let depth = self.plan.surface_at(nx) - ny;
+            let band = self.plan.band_at(ny);
+            depth <= 0 || (band != Band::Underworld && (self.plan.chasm_at(nx, ny) || self.cavity(nx, ny, depth, band).is_some()))
+        })
     }
 
     /// Chests in cave pockets (DESIGN §3.2): some chunks (more the deeper) get
@@ -506,7 +561,15 @@ impl ChunkGenerator for TerrainGen {
     fn spawn_point(&self) -> CellPos {
         // The middle of the world (or PLATYPUS_SPAWN_X, to try a biome), on
         // the nearest dry ground.
-        let mid = std::env::var("PLATYPUS_SPAWN_X").ok().and_then(|v| v.parse().ok()).unwrap_or(self.plan.width / 2);
+        let var = |name: &str| std::env::var(name).ok().and_then(|v| v.parse::<i32>().ok());
+        let mid = var("PLATYPUS_SPAWN_X").unwrap_or(self.plan.width / 2);
+        // PLATYPUS_SPAWN_Y: the nearest cave floor at or below that height
+        // instead (to look at the deep bands).
+        if let Some(y) = var("PLATYPUS_SPAWN_Y")
+            && let Some(p) = self.cave_floor_near(mid, y)
+        {
+            return p;
+        }
         let x = (0..2_000).flat_map(|d| [mid + d, mid - d]).find(|&x| self.plan.water_at(x).is_none()).unwrap_or(mid);
         CellPos::new(x, self.surface_at(x) + 2)
     }
@@ -628,6 +691,64 @@ mod tests {
             }
         });
         assert_eq!(forward, backward);
+    }
+
+    /// Ores lie in their bands, harder the deeper; gems only in cave walls;
+    /// ore shows on cave walls more than inside the rock.
+    #[test]
+    fn ores_and_gems_lie_where_they_belong() {
+        use std::collections::HashMap;
+        let m = mats();
+        let g = TerrainGen::new(5, Preset::Large, &m);
+        let names = ["coal", "copper_ore", "iron_ore", "silver_ore", "gold_ore", "mithril_ore", "amethyst", "emerald", "ruby"];
+        let ids: Vec<MaterialId> = names.iter().map(|n| m.expect_id(n)).collect();
+        let (mut found, mut rock, mut wall_rock, mut wall_ore, mut ore_total) = (HashMap::new(), HashMap::new(), 0u32, 0u32, 0u32);
+        for x in (0..g.plan.width).step_by(61) {
+            for y in (g.plan.band_span(Band::Deep).0..g.plan.band_span(Band::Underground).1).step_by(17) {
+                let here = g.material_at(x, y);
+                if here == MaterialId::AIR || m.phys(here).kind != platypus_sim::Kind::Static {
+                    continue;
+                }
+                let band = g.plan.band_at(y);
+                *rock.entry(band).or_insert(0u32) += 1;
+                if let Some(i) = ids.iter().position(|&id| id == here) {
+                    *found.entry((names[i], band)).or_insert(0u32) += 1;
+                    if i >= 6 {
+                        assert!(g.open_near(x, y, minerals::GEM_REACH), "{} inside the rock at {x},{y}", names[i]);
+                    }
+                }
+                if ids[..6].contains(&here) {
+                    ore_total += 1;
+                }
+                if [(2, 0), (-2, 0), (0, 2), (0, -2)].iter().any(|(dx, dy)| g.material_at(x + dx, y + dy) == MaterialId::AIR) {
+                    wall_rock += 1;
+                    wall_ore += u32::from(ids[..6].contains(&here));
+                }
+            }
+        }
+        let n = |name: &str, band: Band| found.get(&(name, band)).copied().unwrap_or(0);
+        for (name, band) in [("copper_ore", Band::Underground), ("iron_ore", Band::Underground), ("iron_ore", Band::Caverns), ("silver_ore", Band::Caverns), ("gold_ore", Band::Caverns), ("gold_ore", Band::Deep), ("mithril_ore", Band::Deep), ("amethyst", Band::Underground), ("emerald", Band::Caverns), ("ruby", Band::Deep)] {
+            assert!(n(name, band) > 0, "no {name} in the {}", band.name());
+        }
+        for (name, band) in [("copper_ore", Band::Caverns), ("copper_ore", Band::Deep), ("silver_ore", Band::Underground), ("mithril_ore", Band::Caverns), ("ruby", Band::Underground)] {
+            assert_eq!(n(name, band), 0, "{name} in the {}", band.name());
+        }
+        // Harder ore the deeper.
+        let hardness = |band: Band| {
+            let (sum, count) = names[..6].iter().fold((0u32, 0u32), |(s, c), name| {
+                let k = n(name, band);
+                (s + k * m.phys(m.expect_id(name)).hardness as u32, c + k)
+            });
+            sum as f32 / count.max(1) as f32
+        };
+        assert!(hardness(Band::Underground) < hardness(Band::Caverns) && hardness(Band::Caverns) < hardness(Band::Deep), "ore hardness by band: {} {} {}", hardness(Band::Underground), hardness(Band::Caverns), hardness(Band::Deep));
+        // Enough to find, not so much it's cheap.
+        let all_rock: u32 = rock.values().sum();
+        let share = ore_total as f32 / all_rock as f32;
+        assert!((0.01..0.08).contains(&share), "ore is {:.1}% of the rock", share * 100.0);
+        let wall_share = wall_ore as f32 / wall_rock as f32;
+        eprintln!("ore {:.1}% of rock, {:.1}% of cave walls; by band: {found:?}", share * 100.0, wall_share * 100.0);
+        assert!(wall_share > share * 1.3, "ore shows on cave walls: {:.1}% there vs {:.1}% overall", wall_share * 100.0, share * 100.0);
     }
 
     /// Water runs over each column as (start, end, level), left to right.
