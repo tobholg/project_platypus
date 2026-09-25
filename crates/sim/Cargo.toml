@@ -1,0 +1,14 @@
+[package]
+name = "platypus_sim"
+description = "The cell world: materials, chunks, deterministic parallel stepping. No Bevy."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+rayon.workspace = true
+bytemuck.workspace = true
+serde.workspace = true
+ron.workspace = true
+lz4_flex.workspace = true
+rustc-hash.workspace = true

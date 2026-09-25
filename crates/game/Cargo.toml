@@ -1,0 +1,15 @@
+[package]
+name = "platypus"
+description = "The game: Bevy plugins gluing the simulation crates to rendering, input and gameplay."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+platypus_sim.workspace = true
+platypus_worldgen.workspace = true
+platypus_physics.workspace = true
+bevy.workspace = true
+rayon.workspace = true
+serde.workspace = true
+ron.workspace = true

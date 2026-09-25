@@ -1,0 +1,66 @@
+//! Project Platypus. See SPEC.md.
+//!
+//! Environment:
+//! - `PLATYPUS_SEED`      world seed (default 1)
+//! - `PLATYPUS_WORLD`     `terrain` (default) or `flat` (sandbox box)
+//! - `PLATYPUS_SCENARIO`  scripted perf run, see `scenario.rs`
+
+mod actors;
+mod camera;
+mod data;
+mod debug;
+mod props;
+mod render;
+mod scenario;
+mod tools;
+mod world;
+
+use std::sync::Arc;
+
+use bevy::prelude::*;
+use bevy::window::PresentMode;
+use platypus_sim::MaterialTable;
+use platypus_worldgen::{ChunkGenerator, FlatGen, TerrainConfig, TerrainGen};
+
+fn main() {
+    let seed: u64 = std::env::var("PLATYPUS_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
+    let materials_path = data::data_path("materials.ron");
+    let src = std::fs::read_to_string(&materials_path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", materials_path.display()));
+    let materials = Arc::new(MaterialTable::from_ron(&src).unwrap_or_else(|e| panic!("{e}")));
+
+    let generator: Arc<dyn ChunkGenerator> = match std::env::var("PLATYPUS_WORLD").as_deref() {
+        Ok("flat") => Arc::new(FlatGen { width_chunks: 64, height_chunks: 24, floor: 200, stone: materials.expect_id("stone") }),
+        _ => Arc::new(TerrainGen::new(seed, TerrainConfig::default(), &materials)),
+    };
+    let spawn = generator.spawn_point();
+    let benchmarking = std::env::var("PLATYPUS_SCENARIO").is_ok();
+
+    App::new()
+        .add_plugins(
+            DefaultPlugins
+                .set(ImagePlugin::default_nearest())
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Project Platypus".into(),
+                        resolution: (1920, 1080).into(),
+                        // Uncapped while measuring, so numbers aren't hidden behind vsync.
+                        present_mode: if benchmarking { PresentMode::AutoNoVsync } else { PresentMode::AutoVsync },
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(AssetPlugin { file_path: data::assets_dir().to_string_lossy().into_owned(), ..default() }),
+        )
+        .add_plugins((
+            world::WorldPlugin { seed, materials, materials_path, generator },
+            render::ChunkRenderPlugin,
+            camera::CameraPlugin { start: Vec2::new(spawn.x as f32, spawn.y as f32 + 40.0) },
+            tools::ToolsPlugin,
+            props::PropsPlugin,
+            actors::ActorsPlugin,
+            debug::DebugPlugin,
+            scenario::ScenarioPlugin,
+        ))
+        .run();
+}

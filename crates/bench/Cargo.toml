@@ -1,0 +1,11 @@
+[package]
+name = "platypus_bench"
+description = "Headless scenarios with time budgets. `cargo run -p platypus_bench --release`; exits non-zero on regression."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+platypus_sim.workspace = true
+platypus_worldgen.workspace = true
+rayon.workspace = true

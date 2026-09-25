@@ -1,0 +1,23 @@
+// Orc: walks at you, jumps obstacles. Attacks come with the combat phase.
+(
+    name: "Orc",
+    size: (12, 14),
+    health: 60,
+    team: Enemy,
+    movement: (
+        run_speed: 55,
+        jump_height: 22,
+        air_jumps: 0,
+        step_height: 3,
+    ),
+    sprite: (frame: (100, 100), feet: (55, 57)),
+    animations: {
+        "idle":   (image: "textures/orc_sheet.png", columns: 6, frames: [0, 1, 2, 3, 4, 5], fps: 7),
+        "run":    (image: "textures/orc_sheet.png", columns: 6, frames: [0, 1, 2, 3, 4, 5], fps: 12),
+        "attack": (image: "textures/Orc-Attack01.png", columns: 6, frames: [0, 1, 2, 3, 4, 5], fps: 12, looping: false),
+    },
+    brain: (
+        kind: "melee_walker",
+        params: (aggro_range: 220, keep_distance: 10, wander_speed: 0.4, wander_every: 2.5, jump_to_reach: 18),
+    ),
+)

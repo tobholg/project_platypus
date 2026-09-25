@@ -1,0 +1,78 @@
+// Every material in the world. Hot-reloaded while the game runs.
+//
+// kind:         Empty | Static | Powder | Liquid | Gas | Fire
+// density:      heavier powders/liquids sink through lighter liquids/gases
+// hardness:     0 = instant … 255 = indestructible (tools dig up to their power)
+// dispersion:   liquids: sideways cells per tick; gases: sideways jitter
+// flammability: chance /256 per tick to catch from something burning or `hot`
+// burn_time:    how long it burns in place, in steps of 4 ticks (default 45 = 3 s)
+// burns_into:   what's left after burning out (+ burns_into_chance /256; default nothing)
+// lifetime:     (min, max) decay steps for gases and fire; one step = `decay_every` ticks
+// crumbles_into: what a solid shatters into when blasted but not destroyed
+//
+// Temperature (°C). Cells store heat relative to the local ambient (colder up
+// high, warmer deep down); these thresholds are absolute:
+// heat:         starting heat relative to ambient (lava 1200, ice -30)
+// heat_source:  keeps its heat instead of cooling (lava, burning fire)
+// conductivity: 0..255 how fast heat moves through it (default by kind)
+// above / below: (°C, "material") melt/boil/freeze into something else
+// ignites_at:   catches fire at this temperature
+// explodes:     (radius, power, chance/256) when it catches fire
+// colors:       gradient; each cell gets a fixed point on it
+//
+// `air` must stay first. Ids are assigned by order on first load and kept
+// stable on reload, so reordering here is safe while the game runs.
+(
+    materials: [
+        (name: "air", kind: Empty, colors: []),
+
+        // ---- solids -------------------------------------------------------
+        (name: "bedrock",  kind: Static, density: 9999, hardness: 255, colors: [(28, 26, 32), (44, 40, 50)]),
+        (name: "stone",    kind: Static, density: 2600, hardness: 60,  crumbles_into: "gravel", above: (1400, "lava"), colors: [(92, 92, 100), (122, 120, 128), (104, 104, 112)]),
+        (name: "dirt",     kind: Static, density: 1500, hardness: 20,  crumbles_into: "soil", colors: [(96, 62, 36), (118, 78, 44), (104, 68, 40)]),
+        (name: "grass",    kind: Static, density: 1400, hardness: 10,  flammability: 6, ignites_at: 250, burn_time: 10, burns_into: "soil", crumbles_into: "soil", colors: [(58, 140, 44), (82, 170, 56)]),
+        (name: "snow",     kind: Static, density: 400,  hardness: 5,   heat: -10, above: (1, "water"), conductivity: 15, colors: [(226, 232, 240), (246, 248, 252)]),
+        (name: "wood",     kind: Static, density: 700,  hardness: 25,  flammability: 20, ignites_at: 280, conductivity: 12, burn_time: 60, burns_into: "ash", burns_into_chance: 40, colors: [(104, 68, 34), (126, 84, 44)]),
+        (name: "obsidian", kind: Static, density: 2800, hardness: 120, crumbles_into: "gravel", above: (1600, "lava"), colors: [(34, 18, 52), (52, 30, 74)]),
+        (name: "glass",    kind: Static, density: 2500, hardness: 30,  above: (1500, "lava"), colors: [(170, 200, 205), (196, 222, 226)]),
+        (name: "ice",      kind: Static, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), colors: [(170, 210, 240), (200, 230, 250)]),
+
+        // ---- powders ------------------------------------------------------
+        (name: "sand",     kind: Powder, density: 1600, hardness: 5,  above: (1100, "glass"), colors: [(206, 176, 110), (226, 198, 132), (196, 164, 100)]),
+        (name: "gravel",   kind: Powder, density: 1900, hardness: 15, above: (1400, "lava"), colors: [(96, 94, 90), (130, 126, 120), (80, 78, 76)]),
+        (name: "soil",     kind: Powder, density: 1400, hardness: 8,  colors: [(92, 60, 34), (112, 74, 42)]),
+        (name: "ash",      kind: Powder, density: 300,  hardness: 1,  colors: [(70, 68, 66), (98, 96, 94)]),
+        (name: "coal",     kind: Powder, density: 1300, hardness: 10, flammability: 30, ignites_at: 350, burn_time: 200, burns_into: "ash", burns_into_chance: 90, colors: [(24, 24, 26), (40, 40, 44)]),
+
+        // ---- liquids ------------------------------------------------------
+        (name: "water",    kind: Liquid, density: 1000, dispersion: 6, above: (100, "steam"), below: (0, "ice"), colors: [(38, 92, 196), (48, 110, 214)]),
+        (name: "oil",      kind: Liquid, density: 800,  dispersion: 4, flammability: 90, ignites_at: 220, burn_time: 25, colors: [(56, 38, 24), (72, 52, 30)]),
+        (name: "blood",    kind: Liquid, density: 1060, dispersion: 3, colors: [(136, 10, 16), (164, 18, 24)]),
+        (name: "lava",     kind: Liquid, density: 2500, dispersion: 1, hot: true, heat: 1200, heat_source: true, conductivity: 60, colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
+        (name: "acid",     kind: Liquid, density: 1100, dispersion: 4, colors: [(120, 230, 40), (150, 250, 70)]),
+
+        // ---- gases --------------------------------------------------------
+        (name: "steam",    kind: Gas, density: 1, dispersion: 3, lifetime: (60, 200), decay_every: 3, decays_into: "water", decays_into_chance: 70, colors: [(200, 206, 216), (228, 232, 240)]),
+        // Underground gas pockets. Faintly visible; very explosive.
+        (name: "methane",  kind: Gas, density: 1, dispersion: 1, flammability: 255, ignites_at: 500, explodes: (radius: 10, power: 70, chance: 40), colors: [(120, 150, 110), (134, 164, 120)]),
+        (name: "smoke",    kind: Gas, density: 2, dispersion: 2, lifetime: (40, 120), decay_every: 2, colors: [(56, 54, 54), (84, 80, 80)]),
+
+        // ---- fire ---------------------------------------------------------
+        (name: "fire",     kind: Fire, hot: true, heat: 800, heat_source: true, lifetime: (12, 40), decays_into: "smoke", colors: [(255, 220, 90), (255, 140, 30), (230, 70, 20)]),
+    ],
+
+    // Pairwise, while touching. Checked in both directions.
+    reactions: [
+        (a: "lava",  b: "water",  a_into: "obsidian", b_into: "steam", chance: 255),
+        (a: "lava",  b: "ice",    a_into: "obsidian", b_into: "water", chance: 128),
+        (a: "lava",  b: "snow",   a_into: "lava",     b_into: "water", chance: 64),
+        (a: "fire",  b: "water",  a_into: "steam",    b_into: "water", chance: 220),
+        (a: "fire",  b: "ice",    a_into: "steam",    b_into: "water", chance: 40),
+        (a: "fire",  b: "snow",   a_into: "steam",    b_into: "water", chance: 60),
+        (a: "acid",  b: "stone",  a_into: "smoke",    b_into: "air",   chance: 24),
+        (a: "acid",  b: "dirt",   a_into: "smoke",    b_into: "air",   chance: 40),
+        (a: "acid",  b: "wood",   a_into: "smoke",    b_into: "air",   chance: 40),
+        (a: "acid",  b: "grass",  a_into: "smoke",    b_into: "air",   chance: 60),
+        (a: "water", b: "blood",  a_into: "water",    b_into: "water", chance: 2),
+    ],
+)

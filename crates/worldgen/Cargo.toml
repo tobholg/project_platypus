@@ -1,0 +1,10 @@
+[package]
+name = "platypus_worldgen"
+description = "Seeded world generation: fn(seed, ChunkPos) -> cells. No Bevy."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+platypus_sim.workspace = true
+noise.workspace = true

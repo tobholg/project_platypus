@@ -1,0 +1,10 @@
+[package]
+name = "platypus_physics"
+description = "Bodies against a solid grid, pixel masks, swept hit tests. No Bevy."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+glam.workspace = true
+serde.workspace = true

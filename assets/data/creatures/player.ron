@@ -1,0 +1,37 @@
+// The player. A creature like any other; its brain is the keyboard.
+// Units: cells (1 cell = 1 art pixel) and seconds. Edit while the game runs.
+(
+    name: "Player",
+    size: (8, 16),
+    health: 100,
+    team: Player,
+    fall_damage: (safe_speed: 400, per_speed: 0.5),
+    movement: (
+        run_speed: 95,
+        ground_accel: 1400,
+        ground_decel: 1800,
+        air_accel: 900,
+        gravity: 1100,
+        fall_gravity: 1.6,
+        max_fall: 420,
+        jump_height: 40,
+        jump_cut: 0.45,
+        coyote_time: 0.09,
+        jump_buffer: 0.12,
+        air_jumps: 1,
+        dash_speed: 260,
+        dash_time: 0.14,
+        dash_cooldown: 0.45,
+        wall_jump: true,
+        wall_slide_speed: 60,
+        wall_jump_push: 120,
+        step_height: 3,
+    ),
+    sprite: (frame: (100, 100), feet: (48.5, 57)),
+    animations: {
+        "idle": (image: "textures/player_sheet.png", columns: 6, frames: [0, 1, 2, 3, 4, 5], fps: 8),
+        "run":  (image: "textures/player_sheet.png", columns: 6, frames: [0, 1, 2, 3, 4, 5], fps: 14),
+    },
+    brain: (kind: "keyboard"),
+    z: 11,
+)
