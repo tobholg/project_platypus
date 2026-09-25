@@ -10,8 +10,12 @@ use platypus_sim::rng::{Rng, hash};
 use platypus_sim::{CHUNK, CHUNK_AREA, Cell, CellPos, Chunk, ChunkPos, Climate, MaterialId, MaterialTable};
 
 pub mod flora;
+pub mod plan;
 
-use flora::{Forest, TreePart};
+use std::sync::Arc;
+
+use flora::TreePart;
+pub use plan::{Band, Preset, WorldPlan};
 
 /// Anything that can fill a chunk. The game streams through this trait, so
 /// a test world, a flat sandbox or the real generator are interchangeable.
@@ -46,22 +50,8 @@ pub trait ChunkGenerator: Send + Sync {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct TerrainConfig {
-    pub width_chunks: i32,
-    pub height_chunks: i32,
-    /// Average surface height as a fraction of world height.
-    pub surface: f64,
-    pub hills: f64,
-    pub cave_threshold: f64,
-}
-
-impl Default for TerrainConfig {
-    fn default() -> Self {
-        // 16384 × 4096 cells: a Terraria "medium" world at 3 px per cell.
-        TerrainConfig { width_chunks: 256, height_chunks: 64, surface: 0.68, hills: 90.0, cave_threshold: 0.18 }
-    }
-}
+/// Noise-cave threshold: higher, fewer caves.
+const CAVE_THRESHOLD: f64 = 0.18;
 
 struct Ids {
     air: MaterialId,
@@ -83,30 +73,30 @@ struct Ids {
     tall_grass: MaterialId,
 }
 
-/// Phase-1 terrain: hills with cliffs, dirt over stone, noise caves, and
-/// pockets of sand, gravel, water, oil and deep lava to exercise the sim.
-/// Ports of the legacy generators (mountains, sky islands, walker caves) move
-/// into the `WorldPlan` in phase 3.
+/// Terrain rasterised from a `WorldPlan`: hills with cliffs, dirt over
+/// stone, noise caves, pockets of sand, gravel, water, oil, and lava in the
+/// underworld. The plan grows stage by stage (DESIGN §3.2).
 pub struct TerrainGen {
-    seed: u64,
-    cfg: TerrainConfig,
+    plan: Arc<WorldPlan>,
     ids: Ids,
-    /// Surface height per world column (the plan).
-    surface: Vec<i32>,
     caves: Fbm<Perlin>,
     worms: Fbm<Perlin>,
     pockets: Perlin,
     strata: Perlin,
     /// Starting heat per material id (lava is born hot).
     heat: Vec<i16>,
-    forest: Forest,
     /// Ragged edges of tree crowns; tall grass height.
     leaf_edge: Perlin,
     meadow: Perlin,
 }
 
 impl TerrainGen {
-    pub fn new(seed: u64, cfg: TerrainConfig, mats: &MaterialTable) -> Self {
+    pub fn new(seed: u64, preset: Preset, mats: &MaterialTable) -> Self {
+        Self::from_plan(Arc::new(WorldPlan::new(seed, preset)), mats)
+    }
+
+    pub fn from_plan(plan: Arc<WorldPlan>, mats: &MaterialTable) -> Self {
+        let seed = plan.seed;
         let s = |salt: u64| (hash(&[seed, salt]) & 0xFFFF_FFFF) as u32;
         let ids = Ids {
             air: MaterialId::AIR,
@@ -128,36 +118,9 @@ impl TerrainGen {
             tall_grass: mats.expect_id("tall_grass"),
         };
 
-        let width = cfg.width_chunks * CHUNK;
-        let height = cfg.height_chunks * CHUNK;
-        let hills = Fbm::<Perlin>::new(s(1)).set_octaves(5).set_frequency(1.0 / 900.0);
-        let cliffs = Perlin::new(s(2));
-        let base = height as f64 * cfg.surface;
-        let surface: Vec<i32> = (0..width)
-            .map(|x| {
-                let xf = x as f64;
-                let mut h = base + hills.get([xf, 0.0]) * cfg.hills * 2.0;
-                // Occasional sharp steps (legacy "cliffs").
-                let c = cliffs.get([xf / 140.0, 3.7]);
-                if c.abs() > 0.55 {
-                    h += c.signum() * (c.abs() - 0.55) * 120.0;
-                }
-                h.clamp(height as f64 * 0.3, height as f64 - 200.0) as i32
-            })
-            .collect();
-
-        let snow_line = (height as f64 * cfg.surface + cfg.hills * 0.9) as i32;
-        let forest = {
-            let surface: &[i32] = &surface;
-            let at = |x: i32| surface[x.clamp(0, width - 1) as usize];
-            // Not on snow, not on a cliff edge.
-            Forest::plan(seed, width, at, |x| at(x) <= snow_line && (at(x - 3) - at(x + 3)).abs() < 7)
-        };
         TerrainGen {
-            seed,
+            plan,
             ids,
-            surface,
-            forest,
             leaf_edge: Perlin::new(s(7)),
             meadow: Perlin::new(s(8)),
             caves: Fbm::<Perlin>::new(s(3)).set_octaves(4).set_frequency(1.0 / 160.0),
@@ -165,17 +128,30 @@ impl TerrainGen {
             pockets: Perlin::new(s(5)),
             strata: Perlin::new(s(6)),
             heat: mats.iter().map(|(id, _)| mats.phys(id).heat).collect(),
-            cfg,
         }
+    }
+
+    pub fn plan(&self) -> &WorldPlan {
+        &self.plan
     }
 
     /// Surface height (first air cell above ground) at a world column.
     pub fn surface_at(&self, x: i32) -> i32 {
-        self.surface[x.clamp(0, self.surface.len() as i32 - 1) as usize]
+        self.plan.surface_at(x)
     }
 
     pub fn size_cells(&self) -> (i32, i32) {
-        (self.cfg.width_chunks * CHUNK, self.cfg.height_chunks * CHUNK)
+        (self.plan.width, self.plan.height)
+    }
+
+    /// What generation puts at a cell, front and back, without shades: for
+    /// looking at the world from far away (`platypus-worldview`).
+    pub fn sample(&self, x: i32, y: i32) -> (MaterialId, MaterialId) {
+        let mut front = self.material_at(x, y);
+        if front == self.ids.air && self.grass_at(x, y) {
+            front = self.ids.tall_grass;
+        }
+        (front, self.background_at(x, y, &self.plan.forest.near(x, x)).0)
     }
 
     /// The background layer: walls underground (what you see in caves), trees
@@ -208,15 +184,14 @@ impl TerrainGen {
         }
         // Meadows with bare patches between them (natural firebreaks).
         let m = self.meadow.get([x as f64 / 70.0, 3.3]);
-        let blade = (hash(&[self.seed, 0x6A55, x as u64]) % 100) as f64 / 100.0;
+        let blade = (hash(&[self.plan.seed, 0x6A55, x as u64]) % 100) as f64 / 100.0;
         let height = ((m + 0.2) * 13.0 * (0.45 + 0.55 * blade)) as i32;
         above < height
     }
 
     fn material_at(&self, x: i32, y: i32) -> MaterialId {
         let i = &self.ids;
-        let height = self.cfg.height_chunks * CHUNK;
-        if y < 6 + (hash(&[self.seed, 77, x as u64]) % 4) as i32 {
+        if y < 6 + (hash(&[self.plan.seed, 77, x as u64]) % 4) as i32 {
             return i.bedrock;
         }
         let surface = self.surface_at(x);
@@ -230,18 +205,18 @@ impl TerrainGen {
         let fade = ((depth as f64 - 12.0) / 60.0).clamp(0.0, 1.0);
         let cave = self.caves.get([xf, yf * 1.6]) * fade;
         let worm = self.worms.get([xf, yf]).abs();
-        let open = cave > self.cfg.cave_threshold || (worm < 0.035 * fade && depth > 20);
-        let deep = y < height / 8;
+        let open = cave > CAVE_THRESHOLD || (worm < 0.035 * fade && depth > 20);
+        let deep = self.plan.band_at(y) == Band::Underworld;
         if open {
             // Fill the bottoms of some caverns with a liquid pool.
             let pool = self.pockets.get([xf / 90.0, yf / 90.0, 1.3]);
-            if pool > 0.35 && self.caves.get([xf, (yf - 10.0) * 1.6]) * fade <= self.cfg.cave_threshold {
+            if pool > 0.35 && self.caves.get([xf, (yf - 10.0) * 1.6]) * fade <= CAVE_THRESHOLD {
                 return if deep { i.lava } else if pool > 0.62 { i.oil } else { i.water };
             }
             return i.air;
         }
 
-        let snowy = surface > (height as f64 * self.cfg.surface + self.cfg.hills * 0.9) as i32;
+        let snowy = surface > self.plan.snow_line;
         if depth == 1 {
             return if snowy { i.snow } else { i.grass };
         }
@@ -274,18 +249,12 @@ impl TerrainGen {
 
 impl ChunkGenerator for TerrainGen {
     fn bounds(&self) -> (ChunkPos, ChunkPos) {
-        (ChunkPos::new(0, 0), ChunkPos::new(self.cfg.width_chunks - 1, self.cfg.height_chunks - 1))
+        let (w, h) = self.plan.preset.chunks();
+        (ChunkPos::new(0, 0), ChunkPos::new(w - 1, h - 1))
     }
 
     fn climate(&self) -> Climate {
-        let height = self.cfg.height_chunks * CHUNK;
-        // 15 °C at the average surface, ~-1 °C on the snowy peaks, warmer deep down.
-        Climate {
-            sea_level: (height as f64 * self.cfg.surface) as i32,
-            surface_temp: 15,
-            cells_per_degree_up: 5,
-            cells_per_degree_down: 40,
-        }
+        self.plan.climate
     }
 
     fn surface_hint(&self, x: i32) -> Option<i32> {
@@ -295,18 +264,18 @@ impl ChunkGenerator for TerrainGen {
     fn cloud_band(&self) -> Option<(i32, i32)> {
         // Above the tallest trees (lightning needs room to fall), low enough
         // to be in view from the surface; the highest peaks poke into it.
-        Some((self.climate().sea_level + 150, 176))
+        Some((self.plan.sea_level + 150, 176))
     }
 
     fn spawn_point(&self) -> CellPos {
-        let x = self.cfg.width_chunks * CHUNK / 2;
+        let x = self.plan.width / 2;
         CellPos::new(x, self.surface_at(x) + 2)
     }
 
     fn generate(&self, pos: ChunkPos) -> Chunk {
         let origin = pos.origin();
-        let mut rng = Rng::seeded(&[self.seed, 0xC4C4, pos.x as u64, pos.y as u64]);
-        let trees = self.forest.near(origin.x, origin.x + CHUNK - 1);
+        let mut rng = Rng::seeded(&[self.plan.seed, 0xC4C4, pos.x as u64, pos.y as u64]);
+        let trees = self.plan.forest.near(origin.x, origin.x + CHUNK - 1);
         let mut cells = Vec::with_capacity(CHUNK_AREA);
         let mut bg = Vec::with_capacity(CHUNK_AREA);
         let make = |m: MaterialId, rng: &mut Rng| {
@@ -373,11 +342,11 @@ mod tests {
     #[test]
     fn forests_grow_and_trees_are_rooted() {
         let m = mats();
-        let g = TerrainGen::new(3, TerrainConfig::default(), &m);
-        assert!(g.forest.len() > 50, "a world has forests ({} trees)", g.forest.len());
+        let g = TerrainGen::new(3, Preset::Large, &m);
+        assert!(g.plan.forest.len() > 50, "a world has forests ({} trees)", g.plan.forest.len());
         // A tree's trunk continues into the ground behind the surface.
-        let t = g.forest.near(8000, 12000)[0];
-        let root = g.background_at(t.x, t.base - 2, &g.forest.near(t.x, t.x)).0;
+        let t = g.plan.forest.near(8000, 12000)[0];
+        let root = g.background_at(t.x, t.base - 2, &g.plan.forest.near(t.x, t.x)).0;
         assert_eq!(root, m.expect_id("wood"));
         assert_ne!(g.material_at(t.x, t.base - 2), MaterialId::AIR, "the root is behind solid ground");
     }
@@ -385,9 +354,8 @@ mod tests {
     #[test]
     fn same_seed_same_chunk() {
         let m = mats();
-        let cfg = TerrainConfig { width_chunks: 16, height_chunks: 16, ..Default::default() };
-        let (a, b) = (TerrainGen::new(7, cfg.clone(), &m), TerrainGen::new(7, cfg.clone(), &m));
-        let c = TerrainGen::new(8, cfg, &m);
+        let (a, b) = (TerrainGen::new(7, Preset::Small, &m), TerrainGen::new(7, Preset::Small, &m));
+        let c = TerrainGen::new(8, Preset::Small, &m);
         for pos in [ChunkPos::new(3, 10), ChunkPos::new(8, 5)] {
             assert_eq!(store::checksum(&a.generate(pos)), store::checksum(&b.generate(pos)));
         }
@@ -395,10 +363,37 @@ mod tests {
         assert!(differs, "different seeds give different worlds");
     }
 
+    /// The same seed makes the same plan and the same chunks, in any order
+    /// and on any thread: co-op peers and saved games rely on it.
+    #[test]
+    fn generation_is_deterministic_across_order_and_threads() {
+        let m = mats();
+        assert_eq!(WorldPlan::new(11, Preset::Small).checksum(), WorldPlan::new(11, Preset::Small).checksum());
+        assert_ne!(WorldPlan::new(11, Preset::Small).checksum(), WorldPlan::new(12, Preset::Small).checksum());
+        let positions: Vec<ChunkPos> = (0..128).step_by(9).flat_map(|x| (0..64).step_by(5).map(move |y| ChunkPos::new(x, y))).collect();
+        let g = TerrainGen::new(11, Preset::Small, &m);
+        let forward: Vec<_> = positions.iter().map(|&p| store::checksum(&g.generate(p))).collect();
+        // Backwards, on four threads, from a second generator.
+        let g2 = TerrainGen::new(11, Preset::Small, &m);
+        let mut backward = vec![Default::default(); positions.len()];
+        std::thread::scope(|s| {
+            for (lane, out) in backward.chunks_mut(positions.len().div_ceil(4)).enumerate() {
+                let (g2, positions) = (&g2, &positions);
+                s.spawn(move || {
+                    let base = lane * positions.len().div_ceil(4);
+                    for i in (0..out.len()).rev() {
+                        out[i] = store::checksum(&g2.generate(positions[base + i]));
+                    }
+                });
+            }
+        });
+        assert_eq!(forward, backward);
+    }
+
     #[test]
     fn has_sky_ground_and_bedrock() {
         let m = mats();
-        let g = TerrainGen::new(1, TerrainConfig::default(), &m);
+        let g = TerrainGen::new(1, Preset::Large, &m);
         let x = 5000;
         let s = g.surface_at(x);
         assert_eq!(g.material_at(x, s + 5), MaterialId::AIR);
@@ -413,12 +408,12 @@ mod tests {
     fn generated_leaves_are_near_wood() {
         use std::collections::{HashMap, VecDeque};
         let m = mats();
-        let g = TerrainGen::new(3, TerrainConfig::default(), &m);
+        let g = TerrainGen::new(3, Preset::Large, &m);
         let (wood, leaves) = (m.expect_id("wood"), m.expect_id("leaves"));
         let mut worst = 0u32;
-        for t in g.forest.near(4000, 16000).into_iter().filter(|t| t.height > 110).take(12) {
+        for t in g.plan.forest.near(4000, 16000).into_iter().filter(|t| t.height > 110).take(12) {
             let (x0, y0, x1, y1) = t.bbox;
-            let trees = g.forest.near(x0 - 2, x1 + 2);
+            let trees = g.plan.forest.near(x0 - 2, x1 + 2);
             let at = |x: i32, y: i32| g.background_at(x, y, &trees).0;
             let mut dist: HashMap<(i32, i32), u32> = HashMap::new();
             let mut q = VecDeque::new();
@@ -453,10 +448,20 @@ mod tests {
         use platypus_sim::{Kind, World, WorldEdit};
         use std::sync::Arc;
         let m = Arc::new(mats());
-        let g = TerrainGen::new(3, TerrainConfig::default(), &m);
-        let near = g.forest.near(6000, 14000);
-        let mut picks: Vec<&&flora::Tree> = near.iter().filter(|t| t.height > 60).take(5).collect();
-        picks.extend(near.iter().filter(|t| t.height > 130).take(1));
+        let g = TerrainGen::new(3, Preset::Large, &m);
+        let near = g.plan.forest.near(0, g.plan.width);
+        // No wood touching another tree's wood: interlocked branches hold each
+        // other up, which is right, but not what this checks.
+        let wood = |t: &flora::Tree, x: i32, y: i32| matches!(t.part_at(x, y, &g.leaf_edge), Some(TreePart::Wood(_)));
+        let alone = |t: &&&flora::Tree| {
+            near.iter().filter(|n| n.x != t.x && n.bbox.2 >= t.bbox.0 && n.bbox.0 <= t.bbox.2).all(|n| {
+                let (x0, x1) = (t.bbox.0.max(n.bbox.0) - 1, t.bbox.2.min(n.bbox.2) + 1);
+                let (y0, y1) = (t.bbox.1.max(n.bbox.1) - 1, t.bbox.3.min(n.bbox.3) + 1);
+                !(x0..=x1).any(|x| (y0..=y1).any(|y| wood(t, x, y) && [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dy)| wood(n, x + dx, y + dy))))
+            })
+        };
+        let mut picks: Vec<&&flora::Tree> = near.iter().filter(|t| t.height > 60).filter(alone).take(5).collect();
+        picks.extend(near.iter().filter(|t| t.height > 130).filter(alone).take(1));
         assert_eq!(picks.len(), 6, "five trees and a giant");
         let trees: Vec<(i32, i32, f32)> = picks.iter().map(|t| (t.x, t.base, t.girth)).collect();
         for (x, base, girth) in trees {

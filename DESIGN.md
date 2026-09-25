@@ -1,11 +1,12 @@
-# Design: the world, hands, RPG, and making things (proposed 2026-09-25)
+# Design: the world, hands, RPG, and making things
 
-A plan to agree on before building world gen and saving. Nothing here is in
-SPEC.md yet; each part moves there when its arc starts. Numbers are proposals.
+Agreed 2026-09-25: D1–D4 and D6 as recommended, D5 left to mock-ups. Built on
+the `world-arc` branch (off `v2`), so we can go back and try another path. Each
+part moves into SPEC.md as its arc lands. Numbers are starting points.
 
 ## 0. Decisions to make
 
-| # | Question | Recommendation |
+| # | Question | Decision |
 |---|---|---|
 | D1 | How big is the world? | 32 768 × 16 384 cells (512 × 256 chunks), with smaller presets for testing. |
 | D2 | What unit do mining and building work in? | Blocks of 4 × 4 cells on a fixed grid. The world stays cells. |

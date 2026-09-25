@@ -28,7 +28,7 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
 use platypus_sim::MaterialTable;
-use platypus_worldgen::{ChunkGenerator, FlatGen, TerrainConfig, TerrainGen};
+use platypus_worldgen::{ChunkGenerator, FlatGen, Preset, TerrainGen};
 
 fn main() {
     let seed: u64 = std::env::var("PLATYPUS_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
@@ -39,7 +39,9 @@ fn main() {
 
     let generator: Arc<dyn ChunkGenerator> = match std::env::var("PLATYPUS_WORLD").as_deref() {
         Ok("flat") => Arc::new(FlatGen { width_chunks: 64, height_chunks: 24, floor: 200, stone: materials.expect_id("stone") }),
-        _ => Arc::new(TerrainGen::new(seed, TerrainConfig::default(), &materials)),
+        // PLATYPUS_WORLD=small: the small preset (quicker to look around).
+        Ok("small") => Arc::new(TerrainGen::new(seed, Preset::Small, &materials)),
+        _ => Arc::new(TerrainGen::new(seed, Preset::Large, &materials)),
     };
     let spawn = generator.spawn_point();
     // Scenarios run uncapped, unless PLATYPUS_VSYNC=1 (to see the frame

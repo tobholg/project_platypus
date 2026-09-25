@@ -1,0 +1,16 @@
+[package]
+name = "platypus_worldview"
+description = "The world as a picture: renders a generated world, or part of it, to PNG."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "platypus-worldview"
+path = "src/main.rs"
+
+[dependencies]
+platypus_sim.workspace = true
+platypus_worldgen.workspace = true
+rayon.workspace = true
+png = "0.18"

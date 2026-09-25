@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use platypus_sim::{CHUNK, CellPos, ChunkPos, MaterialTable, World, WorldEdit};
-use platypus_worldgen::{ChunkGenerator, FlatGen, TerrainConfig, TerrainGen};
+use platypus_worldgen::{ChunkGenerator, FlatGen, Preset, TerrainGen};
 use rayon::prelude::*;
 
 /// The region a 1080p screen at 3 px/cell needs (640×360 cells) plus a margin.
@@ -51,7 +51,7 @@ fn time_ticks(world: &mut World, ticks: usize) -> (Duration, Duration, usize) {
 
 /// Real terrain around the surface after its initial collapse has settled.
 fn settled(m: &Arc<MaterialTable>) -> Outcome {
-    let g = TerrainGen::new(1234, TerrainConfig::default(), m);
+    let g = TerrainGen::new(1234, Preset::Large, m);
     let mut w = World::new(1234, m.clone());
     w.set_climate(g.climate());
     let cx = 128;
@@ -73,7 +73,7 @@ fn settled(m: &Arc<MaterialTable>) -> Outcome {
 
 /// Deep underground: lava lakes, obsidian, gas pockets. Heat must settle too.
 fn deep(m: &Arc<MaterialTable>) -> Outcome {
-    let g = TerrainGen::new(1234, TerrainConfig::default(), m);
+    let g = TerrainGen::new(1234, Preset::Large, m);
     let mut w = World::new(1234, m.clone());
     w.set_climate(g.climate());
     load_region(&mut w, &g, ChunkPos::new(122, 2), VIEW_W, VIEW_H);
@@ -119,7 +119,7 @@ fn avalanche(m: &Arc<MaterialTable>) -> Outcome {
 
 /// Cost of bringing a new column of chunks into view (generation + insert).
 fn streaming(m: &Arc<MaterialTable>) -> Outcome {
-    let g = TerrainGen::new(77, TerrainConfig::default(), m);
+    let g = TerrainGen::new(77, Preset::Large, m);
     let mut w = World::new(77, m.clone());
     let cy = g.surface_at(64 * CHUNK) / CHUNK - VIEW_H / 2;
     let (mut total, mut worst) = (Duration::ZERO, Duration::ZERO);

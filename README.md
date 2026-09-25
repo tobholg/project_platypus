@@ -11,8 +11,20 @@ prototype, kept for reference.
 ```sh
 cargo run -p platypus --release                    # the game
 PLATYPUS_WORLD=flat cargo run -p platypus --release  # an empty sandbox box
+PLATYPUS_WORLD=small cargo run -p platypus --release # the small world preset (8192 × 4096; default large, 32768 × 16384)
 PLATYPUS_SEED=42 cargo run -p platypus --release     # another world
 ```
+
+Look at a whole generated world, or a region of it at 1:1, without starting the game:
+
+```sh
+cargo run -p platypus_worldview --release -- --out world.png                  # all of it, ~2048 px wide
+cargo run -p platypus_worldview --release -- --region 16000,12100,1200,500    # x,y,w,h in cells (y up)
+cargo run -p platypus_worldview --release -- --seed 7 --preset small --scale 4
+```
+
+A strip down the left edge marks the vertical bands (sky, peaks, surface,
+underground, caverns, deep, underworld); the dashed cyan line is sea level.
 
 The toolchain is pinned in `rust-toolchain.toml`; rustup fetches it on first build.
 
@@ -95,7 +107,8 @@ Everything under `assets/data/` hot-reloads while the game runs.
 
 ```
 crates/sim/       the cell world: materials, chunks, parallel deterministic stepping (no Bevy)
-crates/worldgen/  seeded generation, chunk = f(seed, position) (no Bevy)
+crates/worldgen/  seeded generation: a WorldPlan, then chunk = f(plan, position) (no Bevy)
+crates/worldview/ platypus-worldview: renders a generated world to PNG
 crates/physics/   bodies vs the grid + the shared movement controller (no Bevy)
 crates/game/      Bevy app: world, render, camera, actors, tools, debug, scenario
 crates/bench/     headless performance budgets

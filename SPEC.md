@@ -26,7 +26,8 @@ two; fix whichever is wrong, in the same change.
 ```
 crates/
   sim/       platypus_sim     cells, materials, chunks, stepping, edits. NO Bevy.
-  worldgen/  platypus_worldgen seeded generators: fn(seed, ChunkPos) -> cells. NO Bevy.
+  worldgen/  platypus_worldgen seeded generators: WorldPlan, then fn(plan, ChunkPos) -> cells. NO Bevy.
+  worldview/ platypus_worldview renders a generated world (or a region) to PNG.
   physics/   platypus_physics bodies vs a solid-grid trait, pixel masks, sweeps. NO Bevy.
   game/      platypus         the Bevy app: plugins for rendering, input, actors, combat, UI.
   bench/     platypus_bench   headless scenarios with time budgets (exit != 0 on regression).
@@ -99,6 +100,25 @@ applied at a tick boundary. This is the seam for co-op, replays and undo.
 `Mine` names its layer: the pickaxe digs the playfield only, the axe the
 background only (standing trees, cave walls), and only where the playfield
 in front is open, so you can't axe through a rock wall.
+
+### 3.4b World generation
+Plan in DESIGN.md §3, built stage by stage on `world-arc`. A `WorldPlan` is
+computed once from the seed (milliseconds): size, sea level, vertical bands,
+the surface per column, the snow line, the climate, the forests. Every chunk
+is then a pure function of the plan and its position, never of another chunk;
+a test generates chunks in two orders on four threads and compares
+checksums.
+
+- Presets: `large` (32 768 × 16 384 cells, the game's default) and `small`
+  (8 192 × 4 096, for looking and testing; `PLATYPUS_WORLD=small`).
+- Sea level sits a quarter of the way down. Bands relative to it in the large
+  world (others scale): sky above +2 500, peaks +800, surface −200, underground
+  −2 500, caverns −7 000, deep −11 000, underworld below.
+- Climate: 0 °C at the snow line, and warmer with depth so that the bottom of
+  the world is 85 °C over sea level (cavern lakes stay liquid, the underworld
+  is hot).
+- So far (stage 1) the terrain is still phase 1's: hills and cliffs at sea
+  level, noise caves all the way down, lava in the underworld.
 
 ### 3.5 Streaming and persistence
 Chunks load around every player (co-op: the union). Missing chunks come from

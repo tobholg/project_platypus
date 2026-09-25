@@ -9,7 +9,7 @@ fn main() {
     let deep = std::env::args().nth(1).as_deref() == Some("deep");
     let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/data/materials.ron")).unwrap();
     let m = Arc::new(MaterialTable::from_ron(&src).unwrap());
-    let g = TerrainGen::new(1234, TerrainConfig::default(), &m);
+    let g = TerrainGen::new(1234, Preset::Large, &m);
     let mut w = World::new(1234, m.clone());
     w.set_climate(g.climate());
     let cy = if deep { 2 } else { g.surface_at(128 * CHUNK) / CHUNK - 4 };

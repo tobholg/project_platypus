@@ -51,7 +51,10 @@ and the RPG arc (rigs and gear skins, moves, corpses and loot, characters, spell
    §3.13). Still to do: saving the weather, parallax far clouds, lightning
    through water and metal
 6. Meteors: fireball, huge crater, ejecta, forest fires, hot meteorite ore
-7. **Worldgen v2 / biomes** (its own arc, before the save format freezes):
+7. **Worldgen v2 / biomes**: now the world arc W7 on branch `world-arc`
+   (DESIGN.md §3, §11). Stage 1 done: `WorldPlan`, presets, bands,
+   `platypus-worldview`, determinism test. Next: stage 2, relief and water.
+   Originally:
    biome plan from temperature × moisture; tree species as RON data (conifers
    that hold snow, birch, jungle, dead trees); lakes and rivers in forests;
    grass varieties (short, tall, flowering, dry, snowy); port the legacy
@@ -119,6 +122,10 @@ special cases.
   the sim tick off the main thread (like the light solve) for headroom.
 
 ## Known issues
+
+- Generated trees whose branches interlock with a neighbour's hold each other
+  up: cut one and it stays standing. Physically right; the forest plan could
+  keep wood apart (found by the felling test in the larger world).
 
 - Liquids level to within 1–2 cells across long flat stretches (terracing); fine visually.
 - Gas collects under the top of the loaded area (unloaded = wall).
