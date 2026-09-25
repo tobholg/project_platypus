@@ -8,7 +8,8 @@ use platypus_sim::{CellPos, Kind, World};
 
 use super::creature::spawn_creature;
 use super::player::LocalPlayer;
-use crate::camera::{CameraTarget, CursorWorld};
+use crate::camera::CameraTarget;
+use super::Kinematics;
 use crate::world::{ChunkLoader, SimWorld};
 
 pub struct SpawnPlugin;
@@ -78,10 +79,13 @@ fn process_queue(mut commands: Commands, sim: Res<SimWorld>, mut queue: ResMut<S
     });
 }
 
-fn debug_spawn(mut commands: Commands, keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>) {
-    if keys.just_pressed(KeyCode::KeyO)
-        && let Some(at) = cursor.0
-    {
-        spawn_creature(&mut commands, "orc", at, |_| {});
+fn debug_spawn(mut commands: Commands, mut actions: MessageReader<crate::dev::DevAction>, player: Query<&Kinematics, With<LocalPlayer>>) {
+    for a in actions.read() {
+        if let crate::dev::DevAction::SpawnOrc(at) = *a
+            // From the panel: a little way off from the player.
+            && let Some(at) = at.or_else(|| player.single().ok().map(|k| k.body.pos + Vec2::new(40.0, 10.0)))
+        {
+            spawn_creature(&mut commands, "orc", at, |_| {});
+        }
     }
 }

@@ -93,7 +93,7 @@ impl Plugin for HandsPlugin {
             .init_resource::<Hand>()
             .init_resource::<HandInput>()
             .add_systems(Startup, build_items)
-            .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor))
+            .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor).after(bevy::ui::UiSystems::Focus))
             .add_systems(Update, (toggle_dev, select, give_start, outline.run_if(play)))
             .add_systems(FixedUpdate, use_hands.run_if(play).in_set(TickSet::Intent))
             .add_systems(FixedUpdate, collect.after(crate::props::fly).in_set(TickSet::Bodies))
@@ -122,20 +122,32 @@ fn give_start(mut commands: Commands, items: Option<Res<Items>>, new: Query<Enti
     }
 }
 
-fn toggle_dev(keys: Res<ButtonInput<KeyCode>>, mut dev: ResMut<DevTools>, mut hand: ResMut<Hand>) {
+fn toggle_dev(keys: Res<ButtonInput<KeyCode>>, mut actions: MessageReader<crate::dev::DevAction>, mut dev: ResMut<DevTools>, mut hand: ResMut<Hand>) {
+    if actions.read().any(|a| *a == crate::dev::DevAction::Hands) {
+        dev.0 = false;
+    }
     if keys.just_pressed(KeyCode::AltLeft) && !dev.0 {
         hand.smart = !hand.smart;
     }
-    // (F1 needs fn on a Mac keyboard; the key left of 1 doesn't.)
+    // (F1 needs fn on a Mac keyboard. The key left of 1 is Backquote on a US
+    // layout and IntlBackslash on an ISO Mac, like a Norwegian one's §,
+    // whose < key by Z then reads as Backquote.)
     if keys.any_just_pressed([KeyCode::F1, KeyCode::Backquote, KeyCode::IntlBackslash]) {
         dev.0 = !dev.0;
         info!("{}", if dev.0 { "dev tools (F1: hands)" } else { "hands (F1: dev tools)" });
     }
 }
 
-fn sample_input(mouse: Res<ButtonInput<MouseButton>>, keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, open: Res<InventoryOpen>, mut input: ResMut<HandInput>) {
-    // With the inventory open the mouse is for the inventory.
-    let free = !open.0;
+fn sample_input(
+    mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    cursor: Res<CursorWorld>,
+    open: Res<InventoryOpen>,
+    ui: Res<crate::dev::PointerOverUi>,
+    mut input: ResMut<HandInput>,
+) {
+    // With the inventory open (or the pointer on a panel) the mouse is for the UI.
+    let free = !open.0 && !ui.0;
     input.primary = free && mouse.pressed(MouseButton::Left);
     input.clicked |= free && mouse.just_pressed(MouseButton::Left);
     input.auto = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);

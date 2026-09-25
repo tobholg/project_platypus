@@ -64,15 +64,18 @@ fn spawn_hud(mut commands: Commands) {
     ));
 }
 
-fn toggle(keys: Res<ButtonInput<KeyCode>>, mut view: ResMut<DebugView>, mut hud: Query<&mut Visibility, With<HudText>>) {
-    if keys.just_pressed(KeyCode::F3) {
-        view.hud = !view.hud;
-        for mut v in &mut hud {
-            *v = if view.hud { Visibility::Visible } else { Visibility::Hidden };
+fn toggle(mut actions: MessageReader<crate::dev::DevAction>, mut view: ResMut<DebugView>, mut hud: Query<&mut Visibility, With<HudText>>) {
+    for a in actions.read() {
+        match a {
+            crate::dev::DevAction::PerfHud => {
+                view.hud = !view.hud;
+                for mut v in &mut hud {
+                    *v = if view.hud { Visibility::Visible } else { Visibility::Hidden };
+                }
+            }
+            crate::dev::DevAction::Chunks => view.rects = !view.rects,
+            _ => {}
         }
-    }
-    if keys.just_pressed(KeyCode::F4) {
-        view.rects = !view.rects;
     }
 }
 
@@ -112,8 +115,8 @@ fn update_hud(
          loaded {} chunks | stored {} ({} KB) | streamed {} ({:.2} ms)\n\
          entities {} | particles {} | bodies {} | tick {} | zoom {} px/cell\n\
          tool {} r{} | cursor {}\n\
-         light {:.2} ms (+{:.2} ms bg), {} texels | {} | [L] flashlight [F8] +3h [F9] lighting\n\
-         [F3] hud [F4] dirty rects | [F5] storm [F6] clear [F7] lightning | wheel zoom | O spawn orc",
+         light {:.2} ms (+{:.2} ms bg), {} texels | {}\n\
+         dev panel: key left of 1 | wheel zoom",
         stats.avg_ms,
         stats.worst_ms,
         1000.0 / stats.avg_ms.max(0.001),

@@ -209,28 +209,27 @@ fn reload_settings(mut watch: ResMut<SettingsWatch>, mut settings: ResMut<LightS
 
 fn keys(
     mut commands: Commands,
-    keys: Res<ButtonInput<KeyCode>>,
+    mut actions: MessageReader<crate::dev::DevAction>,
     settings: Res<LightSettings>,
-    cursor: Res<CursorWorld>,
     mut toggles: ResMut<LightToggles>,
     mut day: ResMut<Daylight>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
 ) {
-    if keys.just_pressed(KeyCode::KeyL) {
-        toggles.flashlight = !toggles.flashlight;
-    }
-    if keys.just_pressed(KeyCode::KeyT) {
-        toggles.torch = !toggles.torch;
-    }
-    if keys.just_pressed(KeyCode::KeyG)
-        && let Some(at) = cursor.0
-    {
-        plant_torch(&mut commands, at, &settings);
-    }
-    if keys.just_pressed(KeyCode::F9) {
-        toggles.enabled = !toggles.enabled;
-    }
-    if keys.just_pressed(KeyCode::F8) {
-        day.skipped += 3.0;
+    use crate::dev::DevAction;
+    for a in actions.read() {
+        match *a {
+            DevAction::Flashlight => toggles.flashlight = !toggles.flashlight,
+            DevAction::Torch => toggles.torch = !toggles.torch,
+            DevAction::Lighting => toggles.enabled = !toggles.enabled,
+            DevAction::Later => day.skipped += 3.0,
+            DevAction::PlantTorch(at) => {
+                // From the panel: at the player's feet.
+                if let Some(at) = at.or_else(|| player.single().ok().map(|k| k.body.pos - Vec2::new(0.0, k.body.half.y - 3.0))) {
+                    plant_torch(&mut commands, at, &settings);
+                }
+            }
+            _ => {}
+        }
     }
 }
 

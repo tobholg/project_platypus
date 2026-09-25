@@ -49,7 +49,8 @@ axe, torches, bombs and glow sticks. Chests sit in cave pockets underground
 (right-click to open, R takes everything, loot by depth in `assets/data/loot.ron`);
 mine one to take it with you.
 
-**Dev tools** (the key left of 1, or F1, switches to them and back; tuning in `assets/data/tools.ron`, hot-reloaded):
+**Dev tools** (the key left of 1, or F1, switches to them and back; a panel on the
+right has a button for every dev action, with its key; tuning in `assets/data/tools.ron`, hot-reloaded):
 
 | Key | Tool | LMB |
 |---|---|---|
@@ -63,9 +64,13 @@ mine one to take it with you.
 | 8 | Axe | cut the background: standing trees, burnt trunks, cave walls, wherever the playfield in front is empty. Chop a trunk to fell a tree |
 
 The pickaxe only digs the playfield, the axe only the background; the eraser and
-the heat tool reach both. RMB erases with any tool · `[` `]` or Ctrl+wheel radius · wheel zoom · Tab free camera
-(WASD flies, Shift faster) · O spawn an orc at the cursor · F3 performance HUD ·
-F4 chunk borders + dirty rects · L flashlight · T carry a torch · G plant a torch · 7 throw glow sticks · F8 +3 hours · F9 lighting off · the HUD at the top shows health and status timers; dying just refills health (`PLATYPUS_RESPAWN=1` to respawn at the start) · F5 thunderstorm here · F6 clear skies · F7 lightning at the cursor
+the heat tool reach both. RMB erases with any tool · Ctrl+wheel (or `[` `]`) radius · wheel zoom · Tab free camera
+(WASD flies, Shift faster) ·
+dev actions (letters in dev mode, F-keys always, or the panel): H performance HUD
+(F3) · J chunk borders + dirty rects (F4) · V thunderstorm here (F5) · B clear skies (F6) ·
+N lightning at the cursor (F7) · M +3 hours (F8) · K lighting off (F9) · L flashlight ·
+T carry a torch · G plant a torch · O spawn an orc · the HUD at the top shows health and
+status timers; dying just refills health (`PLATYPUS_RESPAWN=1` to respawn at the start)
 
 Things to try: pour water then lava on it (obsidian + steam) · oil on water, then
 ignite · a bomb in a wooden structure (paint wood with Q/E) · mine under a sand

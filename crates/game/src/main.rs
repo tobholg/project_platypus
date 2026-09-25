@@ -9,6 +9,7 @@ mod actors;
 mod camera;
 mod data;
 mod debug;
+mod dev;
 mod fx;
 mod hands;
 mod hud;
@@ -83,6 +84,7 @@ fn main() {
             light::LightPlugin,
             scenario::ScenarioPlugin,
         ))
+        .add_plugins(dev::DevPlugin)
         .add_plugins(spikes_plugin)
         .run();
 }

@@ -190,7 +190,7 @@ impl Plugin for ToolsPlugin {
             .insert_resource(Toolbelt { tool: Tool::Pickaxe, radius, material: MaterialId::AIR, mined: BTreeMap::new(), thrown: 0 })
             .init_resource::<ToolInput>()
             .add_systems(Startup, (spawn_hotbar, default_material))
-            .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor))
+            .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor).after(bevy::ui::UiSystems::Focus))
             .add_systems(Update, ((select, preview).run_if(dev_tools), reload_config, update_hotbar, weather_keys))
             .add_systems(FixedUpdate, use_tools.run_if(dev_tools).in_set(TickSet::Intent));
     }
@@ -204,11 +204,14 @@ fn sample_input(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     cursor: Res<CursorWorld>,
+    ui: Res<crate::dev::PointerOverUi>,
     mut input: ResMut<ToolInput>,
 ) {
-    input.primary = mouse.pressed(MouseButton::Left);
-    input.secondary = mouse.pressed(MouseButton::Right);
-    input.clicked |= mouse.just_pressed(MouseButton::Left);
+    // Clicks on the dev panel are for the panel.
+    let world = !ui.0;
+    input.primary = world && mouse.pressed(MouseButton::Left);
+    input.secondary = world && mouse.pressed(MouseButton::Right);
+    input.clicked |= world && mouse.just_pressed(MouseButton::Left);
     input.overwrite = keys.pressed(KeyCode::ShiftLeft);
     input.cursor = cursor.0;
 }
@@ -374,7 +377,7 @@ fn update_hotbar(belt: Res<Toolbelt>, sim: Res<SimWorld>, dev: Res<DevTools>, mu
         .collect();
     let mined: Vec<String> = belt.mined.iter().map(|(k, v)| format!("{k} {v}")).collect();
     text.0 = format!(
-        "DEV TOOLS ([`] or F1: back to the hands)   {}   radius {}\nLMB use | RMB erase | Q/E material | Shift: overwrite / freeze | [ ] radius | Tab free camera\nmined: {}",
+        "DEV TOOLS (key left of 1, or F1: back to the hands)   {}   radius {}\nLMB use | RMB erase | Q/E material | Shift: overwrite / freeze | Ctrl+wheel radius | Tab free camera | panel on the right\nmined: {}",
         slots.join(" "),
         belt.radius(),
         if mined.is_empty() { "-".into() } else { mined.join(", ") }
@@ -389,19 +392,27 @@ pub fn material_at(sim: &SimWorld, at: Vec2) -> Option<(MaterialId, String)> {
     Some((cell.material, format!("{} {t}C", sim.materials().def(cell.material).name)))
 }
 
-/// Weather on demand: F5 a thunderstorm here, F6 clear skies, F7 lightning
-/// down onto the cursor. Edits like any other, so co-op sees them too.
-fn weather_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, cam: Single<&Transform, With<MainCamera>>, mut sim: ResMut<SimWorld>) {
-    let x = cam.translation.x as i32;
-    if keys.just_pressed(KeyCode::F5) {
-        sim.queue(WorldEdit::Weather { x, radius: 400, storm: true });
-    }
-    if keys.just_pressed(KeyCode::F6) {
-        sim.queue(WorldEdit::Weather { x, radius: 600, storm: false });
-    }
-    if keys.just_pressed(KeyCode::F7)
-        && let Some(at) = cursor.0
-    {
-        sim.queue(WorldEdit::Lightning { x: at.x.floor() as i32, from_y: at.y as i32 + 200 });
+/// Weather on demand (dev keys or the panel): a thunderstorm here, clear
+/// skies, lightning down onto the cursor (from the panel: beside the view's
+/// centre). Edits like any other, so co-op sees them too.
+fn weather_keys(mut actions: MessageReader<crate::dev::DevAction>, cam: Single<&Transform, With<MainCamera>>, mut sim: ResMut<SimWorld>, mut belt: ResMut<Toolbelt>) {
+    use crate::dev::DevAction;
+    let c = cam.translation.truncate();
+    let x = c.x as i32;
+    for a in actions.read() {
+        match *a {
+            DevAction::Storm => sim.queue(WorldEdit::Weather { x, radius: 400, storm: true }),
+            DevAction::ClearSky => sim.queue(WorldEdit::Weather { x, radius: 600, storm: false }),
+            DevAction::Lightning(at) => {
+                let at = at.unwrap_or(c + Vec2::new(60.0, 0.0));
+                sim.queue(WorldEdit::Lightning { x: at.x.floor() as i32, from_y: at.y as i32 + 200 });
+            }
+            DevAction::Radius(d) => {
+                let i = belt.tool.index();
+                let r = belt.radius[i];
+                belt.radius[i] = (r + d * (1 + r / 8)).clamp(0, 48);
+            }
+            _ => {}
+        }
     }
 }

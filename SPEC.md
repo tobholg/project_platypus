@@ -478,8 +478,8 @@ deaths (blood). Rendered as one dynamic mesh.
   draws a forked bolt down to where it earthed, flashes the sky and shakes
   the camera.
 - `WorldEdit::Weather` forces a storm or a clear sky over an area (fading back
-  over ~2.5 minutes) and `WorldEdit::Lightning` strikes a column: the F5, F6
-  and F7 dev keys, and later spells or events.
+  over ~2.5 minutes) and `WorldEdit::Lightning` strikes a column: dev V, B
+  and N (or F5-F7, or the dev panel), and later spells or events.
 - The field steps each column every 4 ticks, a quarter of the columns each
   tick, so its cost (~1.2 ms for the world's width) is spread evenly rather
   than landing on every fourth tick. The ground under a raining column is
