@@ -494,13 +494,16 @@ fn a_methane_pocket_goes_up_in_a_chain_of_explosions() {
     fill(&mut w, "methane", 30, 160, 50, 70);
     let stone_before = count(&w, m.expect_id("stone"));
     w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(31, 60), radius: 2 });
+    let mut reported = 0;
     for _ in 0..600 {
-        w.step();
+        reported += w.step().detonated.len();
     }
     let methane_left = count(&w, m.expect_id("methane"));
     let blasted = stone_before - count(&w, m.expect_id("stone"));
     assert!(methane_left < 200, "the pocket burned through ({methane_left} left)");
     assert!(blasted > 1_000, "chain of explosions tore up the rock ({blasted} cells)");
+    // The game shakes the camera for each one.
+    assert!(reported >= 3, "detonations are reported ({reported})");
 }
 
 /// Every non-loose solid cell must be attached (edge-connected through solids)
@@ -844,4 +847,27 @@ fn a_tree_fire_climbs_then_burns_for_a_while() {
         secs += 1;
     }
     assert!((12..=40).contains(&secs), "the tree burned for {secs} s");
+}
+
+#[test]
+fn a_blast_flings_loose_sand_beyond_the_crater() {
+    let mut w = boxed_world(3, 2, 27);
+    fill(&mut w, "sand", 1, 191, 1, 60);
+    let m = w.materials().clone();
+    let sand = m.expect_id("sand");
+    let before = count(&w, sand);
+    w.apply_edit(&WorldEdit::Explode { center: CellPos::new(96, 59), radius: 16, power: 100 });
+    let in_flight = w.particles().len();
+    // Past the crater and its shattered rim, some sand is gone into the air.
+    let rim_sand = (0..128).flat_map(|x| (1..60).map(move |y| CellPos::new(x + 32, y)))
+        .filter(|p| { let d = (((p.x - 96).pow(2) + (p.y - 59).pow(2)) as f32).sqrt(); d > 20.0 && d < 23.0 })
+        .filter(|&p| w.get(p).is_some_and(|c| c.material == sand))
+        .count();
+    let rim_total = (0..128).flat_map(|x| (1..60).map(move |y| CellPos::new(x + 32, y)))
+        .filter(|p| { let d = (((p.x - 96).pow(2) + (p.y - 59).pow(2)) as f32).sqrt(); d > 20.0 && d < 23.0 })
+        .count();
+    assert!(in_flight > 300, "debris and flung sand fly ({in_flight})");
+    assert!(rim_sand < rim_total * 3 / 4, "the shockwave thinned the rim ({rim_sand}/{rim_total})");
+    run_until_landed(&mut w, 1200);
+    assert!(count(&w, sand) > before * 7 / 10, "flung sand lands again, it isn't deleted");
 }

@@ -7,7 +7,9 @@
     pickaxe: (radius: 4, power: 3, max_hardness: 150),
 
     // Click to throw toward the cursor; explodes after `fuse`.
-    bomb: (radius: 20, power: 100, fuse: 1.6, throw_speed: 240, bounce: 0.35, damage: 60, knockback: 280),
+    // `chain_reaction`: blasts set off other bombs nearby (off, so a string
+    // of bombs digs a shaft one after another).
+    bomb: (radius: 26, power: 130, fuse: 1.6, throw_speed: 240, bounce: 0.35, damage: 80, knockback: 380, chain_reaction: false),
 
     // Hold to pour the selected material (Q/E to change). Shift also replaces solids.
     spawner: (radius: 5),

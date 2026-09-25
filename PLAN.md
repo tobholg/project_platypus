@@ -40,6 +40,11 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
    tree felling (trees live in the background layer, fall as real bodies)
 5. Sky: parallax clouds, cloud cells, rain/snow by temperature, lightning
 6. Meteors: fireball, huge crater, ejecta, forest fires, hot meteorite ore
+7. **Worldgen v2 / biomes** (its own arc, before the save format freezes):
+   biome plan from temperature × moisture; tree species as RON data (conifers
+   that hold snow, birch, jungle, dead trees); lakes and rivers in forests;
+   grass varieties (short, tall, flowering, dry, snowy); port the legacy
+   mountains / sky islands / walker caves into a `WorldPlan`.
 
 ## Next, in order (older list)
 
@@ -58,5 +63,7 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
 
 - Liquids level to within 1–2 cells across long flat stretches (terracing); fine visually.
 - Gas collects under the top of the loaded area (unloaded = wall).
+- Smoke from big fires drifts in horizontal dashed runs; gas movement could use
+  more vertical jitter.
 - `find_ground` retries forever for a spawn over a bottomless column.
 - Creatures outside loaded chunks freeze (by design) — they resume when loaded.

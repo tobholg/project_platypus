@@ -259,7 +259,7 @@ impl World {
             }
             WorldEdit::Explode { center, radius, power } => {
                 self.explode(center, radius, power, &mut report);
-                self.loosen_if_removed(center, radius + 3, &report);
+                self.loosen_if_removed(center, radius + FLING_RIM, &report);
             }
         }
         report
@@ -366,10 +366,21 @@ impl World {
         let (fire, smoke) = (mats.id("fire"), mats.id("smoke"));
         let r = radius.max(1) as f32;
         let breakable = |h: u8| h < u8::MAX && h <= power;
-        for p in disc(center, radius + 3) {
+        for p in disc(center, radius + FLING_RIM) {
             let Some(c) = self.get(p) else { continue };
             let ph = *mats.phys(c.material);
             let d = distance(center, p);
+            if d > r + 3.0 {
+                // Beyond the shattered rim: the shockwave flings loose stuff.
+                let loose = matches!(ph.kind, Kind::Powder | Kind::Liquid) || c.flags & flags::LOOSE != 0;
+                if !c.is_air() && loose && rng.chance(110) {
+                    self.set(p, Cell::AIR);
+                    let speed = power as f32 / 100.0 * (1.2 + 2.0 * (1.0 - (d - r) / FLING_RIM as f32));
+                    let vel = outward(center, p, &mut rng, speed);
+                    self.particles.push(Particle::new(center_of(p), vel, c, 150, Landing::Settle));
+                }
+                continue;
+            }
             // Background: blown away inside the radius, set alight at the rim.
             if let Some(b) = self.get_bg(p)
                 && !b.is_air()
@@ -396,7 +407,7 @@ impl World {
                             let mut debris = c;
                             debris.flags = 0;
                             debris.heat = debris.heat.saturating_add(BLAST_DEBRIS_HEAT);
-                            let vel = outward(center, p, &mut rng, power as f32 / 100.0 * (1.5 + 3.5 * (1.0 - d / (r + 1.0))));
+                            let vel = outward(center, p, &mut rng, power as f32 / 100.0 * (2.0 + 4.5 * (1.0 - d / (r + 1.0))));
                             self.particles.push(Particle::new(center_of(p), vel, debris, 150, Landing::Settle));
                         }
                     } else if breakable(ph.hardness) && ph.crumbles_into != MaterialId::AIR {
@@ -680,10 +691,11 @@ impl World {
         for edit in std::mem::take(&mut self.edits) {
             self.apply_edit(&edit);
         }
-        self.detonate_pending();
+        let detonated = self.detonate_pending();
         self.tick += 1;
         let wind = self.wind();
-        let stats = step_chunks(&mut self.chunks, &self.materials, self.seed, self.tick, self.climate, wind);
+        let mut stats = step_chunks(&mut self.chunks, &self.materials, self.seed, self.tick, self.climate, wind);
+        stats.detonated = detonated;
         self.pending_explosions.extend(stats.explosions.iter().copied());
         self.check_broken(&stats.broken, Layer::Front);
         self.check_broken(&stats.broken_bg, Layer::Back);
@@ -721,9 +733,9 @@ impl World {
 
     /// Merge nearby requests (a burning gas pocket asks for hundreds) and apply
     /// at most a few per tick; the rest are covered by the blasts that happen.
-    fn detonate_pending(&mut self) {
+    fn detonate_pending(&mut self) -> Vec<(CellPos, i32)> {
         if self.pending_explosions.is_empty() {
-            return;
+            return Vec::new();
         }
         let mut requests = std::mem::take(&mut self.pending_explosions);
         requests.sort_by_key(|(p, _)| (p.y, p.x));
@@ -736,14 +748,17 @@ impl World {
                 chosen.push((p, ex));
             }
         }
-        for (center, ex) in chosen {
+        for &(center, ex) in &chosen {
             self.apply_edit(&WorldEdit::Explode { center, radius: ex.radius, power: ex.power });
         }
+        chosen.into_iter().map(|(c, ex)| (c, ex.radius)).collect()
     }
 }
 
 /// Chance /256 that a cell destroyed by a blast flies as debris.
-const DEBRIS_CHANCE: u8 = 80;
+const DEBRIS_CHANCE: u8 = 120;
+/// How far past the crater loose material (sand, gravel, water) is flung.
+const FLING_RIM: i32 = 7;
 /// Extra heat on blast debris, so it glows in flight.
 const BLAST_DEBRIS_HEAT: i16 = 450;
 /// Chance /256 that a mined cell puffs out as dust.

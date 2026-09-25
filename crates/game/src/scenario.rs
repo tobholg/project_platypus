@@ -8,7 +8,7 @@
 //! - `run`        the player runs right through real input: holds D, jumps, dashes
 //! - `tools`      scripted cursor: pickaxe, bomb, pour water and oil, ignite, melt rock
 //! - `tree`       builds a wooden tree beside the player and sets it on fire
-//! - `blast`      a bomb-sized explosion beside the player at t = 2 s (screenshot at SECS - 1)
+//! - `blast`      three bombs dropped down one shaft beside the player, from t = 2 s
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -22,7 +22,8 @@ use crate::actors::Kinematics;
 use crate::actors::player::LocalPlayer;
 use crate::actors::spawn::find_ground;
 use crate::camera::{CursorOverride, MainCamera};
-use crate::tools::Toolbelt;
+use crate::props::spawn_bomb;
+use crate::tools::{Toolbelt, ToolsConfig};
 use crate::debug::FrameStats;
 use crate::world::{SimMetrics, SimWorld};
 
@@ -250,13 +251,26 @@ fn tree_script(
     }
 }
 
-fn blast_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut done: Local<bool>) {
-    if s.name != "blast" || *done || s.elapsed < 2.0 {
+fn blast_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    tools: Res<ToolsConfig>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    mut shaft: Local<Option<(f32, i32)>>,
+    mut dropped: Local<u32>,
+) {
+    // Three bombs dropped down the same shaft, each after the last went off:
+    // with no chain reaction they dig instead of going off together.
+    let due = 2.0 + *dropped as f32 * (tools.bomb.fuse + 0.4);
+    if s.name != "blast" || *dropped >= 3 || s.elapsed < due {
         return;
     }
     let Ok(p) = player.single() else { return };
-    let x = p.body.pos.x + 70.0;
-    let Some(ground) = find_ground(&sim.world, x as i32, p.body.pos.y as i32 + 60, 300) else { return };
-    sim.queue(WorldEdit::Explode { center: CellPos::new(x as i32, ground - 4), radius: 20, power: 100 });
-    *done = true;
+    let (x, top) = *shaft.get_or_insert_with(|| {
+        let x = p.body.pos.x + 70.0;
+        (x, find_ground(&sim.world, x as i32, p.body.pos.y as i32 + 60, 300).unwrap_or(p.body.pos.y as i32) + 12)
+    });
+    spawn_bomb(&mut commands, Vec2::new(x, top as f32), Vec2::ZERO, tools.bomb.clone());
+    *dropped += 1;
 }

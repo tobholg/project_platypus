@@ -120,18 +120,24 @@ fn fly(
 fn follow(
     zoom: Res<Zoom>,
     free: Res<FreeCamera>,
+    shake: Res<crate::fx::ShakeOffset>,
+    mut shaken: Local<Vec2>,
     target: Query<&GlobalTransform, (With<CameraTarget>, Without<MainCamera>)>,
     mut cam: Single<&mut Transform, With<MainCamera>>,
 ) {
+    // Undo last frame's shake, so a free camera doesn't drift.
+    cam.translation -= shaken.extend(0.0);
     if let Some(t) = target.iter().next().filter(|_| !free.0) {
         let p = t.translation().truncate();
         cam.translation.x = p.x;
         cam.translation.y = p.y;
     }
-    // Snap to whole screen pixels so cells never shimmer.
+    // Snap to whole screen pixels so cells never shimmer; the shake too.
     let ppc = zoom.0 as f32;
     cam.translation.x = (cam.translation.x * ppc).round() / ppc;
     cam.translation.y = (cam.translation.y * ppc).round() / ppc;
+    *shaken = (shake.0 * ppc).round() / ppc;
+    cam.translation += shaken.extend(0.0);
 }
 
 pub fn track_cursor(

@@ -103,6 +103,11 @@ Modified chunks are written back to the store on unload.
   bound. Only hotter things melt rock.
 - Explosions requested by burning explosives are merged per tick (at most a few,
   nearby requests folded together) and applied at the next tick boundary.
+  `StepStats::detonated` reports the ones applied, so the game can shake the
+  camera and flash for sim-caused blasts the same as for its own bombs.
+- A blast shatters everything breakable in its radius (some flies as hot
+  debris), crumbles a rim around it, and flings loose material (powders,
+  liquids, rubble) a few cells further out as particles that land again.
 
 ### 3.7 Loose fragments
 After any destruction — edits (dig, mine, bomb, ignite) *and* the simulation

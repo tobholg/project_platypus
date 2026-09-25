@@ -12,6 +12,7 @@ use platypus_worldgen::ChunkGenerator;
 use rayon::prelude::*;
 
 use crate::data::Watched;
+use crate::fx::Explosion;
 
 /// Ticks per second of the simulation and all gameplay (SPEC §3.3).
 pub const TICK_HZ: f64 = 60.0;
@@ -95,9 +96,12 @@ impl Plugin for WorldPlugin {
     }
 }
 
-fn step_cells(mut sim: ResMut<SimWorld>, mut metrics: ResMut<SimMetrics>) {
+fn step_cells(mut sim: ResMut<SimWorld>, mut metrics: ResMut<SimMetrics>, mut fx: MessageWriter<Explosion>) {
     let t = Instant::now();
     metrics.last = sim.world.step();
+    for &(p, radius) in &metrics.last.detonated {
+        fx.write(Explosion { at: Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5), radius: radius as f32 });
+    }
     metrics.tick_time = t.elapsed();
     metrics.tick_time_avg = metrics.tick_time_avg.mul_f64(0.95) + metrics.tick_time.mul_f64(0.05);
 }

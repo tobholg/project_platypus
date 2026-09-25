@@ -12,7 +12,7 @@ use noise::{NoiseFn, Perlin};
 use platypus_sim::rng::Rng;
 
 /// Widest a tree reaches from its trunk, for chunk overlap tests.
-pub const TREE_REACH: i32 = 110;
+pub const TREE_REACH: i32 = 140;
 /// Deepest a trunk is rooted below the surface (anchors it in the ground).
 const ROOTS: i32 = 6;
 
@@ -74,8 +74,9 @@ fn foliage(blobs: &mut Vec<Blob>, rng: &mut Rng, cx: f32, cy: f32, r: f32) {
 
 impl Tree {
     pub fn plan(x: i32, base: i32, rng: &mut Rng) -> Tree {
-        // Mostly medium trees, some saplings, the odd giant.
-        let size = 0.55 + 1.35 * unit(rng).powf(1.7);
+        // Mostly medium trees, some saplings, big ones, and one in eight a
+        // giant (up to ~160 cells tall).
+        let size = if rng.chance(32) { range(rng, 1.9, 2.5) } else { 0.55 + 1.35 * unit(rng).powf(1.7) };
         let height = (range(rng, 46.0, 66.0) * size) as i32;
         let h = height as f32;
         let girth = (range(rng, 3.0, 4.4) * size.powf(0.9)).max(2.0);
@@ -252,5 +253,24 @@ impl Forest {
 
     pub fn is_empty(&self) -> bool {
         self.trees.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `Forest::near` relies on this bound; giants are the ones that test it.
+    #[test]
+    fn every_tree_fits_its_reach_and_some_are_giants() {
+        let mut rng = Rng::seeded(&[9, 9]);
+        let mut tallest = 0;
+        for _ in 0..4000 {
+            let t = Tree::plan(0, 0, &mut rng);
+            let (l, r) = t.span();
+            assert!(-l <= TREE_REACH && r <= TREE_REACH, "tree {} tall spans {l}..{r}", t.height);
+            tallest = tallest.max(t.height);
+        }
+        assert!(tallest >= 140, "giants grow ({tallest})");
     }
 }

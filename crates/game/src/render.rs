@@ -189,10 +189,13 @@ struct Sway {
 /// Base + plants shifted by wind and springs, into the image.
 ///
 /// Grass (front): each blade bends with its height above the root, so the tip
-/// moves most. Leaves (back): whole rows shift together with a slow wave, so a
-/// crown sways as one mass instead of tearing into holes.
+/// moves most. Leaves (back): every crown shifts by the same whole cell, so it
+/// sways as one mass. (Any offset that varies by row or column rounds
+/// differently on either side of some line, and that seam travels through
+/// the crown as a band of torn pixels.)
 fn compose(layer: &Layer, data: &mut [u8], origin: (i32, i32), sway: &Sway, springs: &FoliageSprings, back: bool) {
     data.copy_from_slice(&layer.base);
+    let crown = sway.wind * 0.8 + 0.5 * (sway.t * 1.1).sin() * (0.4 + sway.wind.abs());
     if back {
         // Leaves first at rest, as a filler: a shifted row can then never
         // open a gap beside a branch or at a chunk edge.
@@ -204,9 +207,7 @@ fn compose(layer: &Layer, data: &mut [u8], origin: (i32, i32), sway: &Sway, spri
     for p in &layer.plants {
         let (wx, wy) = (origin.0 + p.x as i32, origin.1 + p.y as i32);
         let offset = if back {
-            // By row only: a whole row moves together, so crowns never tear.
-            let wave = (sway.t * 1.3 + wy as f32 * 0.07).sin();
-            sway.wind * 0.9 + wave * (0.35 + 0.7 * sway.wind.abs())
+            crown
         } else {
             let wave = (sway.t * 2.4 + wx as f32 * 0.11).sin();
             let lean = sway.wind * 1.2 + wave * (0.35 + 0.7 * sway.wind.abs());

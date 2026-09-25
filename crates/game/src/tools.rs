@@ -82,6 +82,9 @@ pub struct BombCfg {
     pub bounce: f32,
     pub damage: f32,
     pub knockback: f32,
+    /// Does a blast set off other bombs in its reach?
+    #[serde(default)]
+    pub chain_reaction: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]

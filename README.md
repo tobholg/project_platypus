@@ -24,7 +24,7 @@ for a double jump, against a wall to wall-jump) · Shift dash
 | Key | Tool | LMB |
 |---|---|---|
 | 1 | Pickaxe | mine; each cell takes damage until it reaches its `hardness` (dirt fast, stone slow, obsidian slower, bedrock never). Cracks show as darkening |
-| 2 | Bomb | throw toward the cursor; bounces, explodes after the fuse: crater, rubble rim, fire, smoke, damage + knockback, chain reactions |
+| 2 | Bomb | throw toward the cursor; bounces, explodes after the fuse: crater, hot debris, flung sand/water, fire, smoke, screen shake + flash, damage + knockback. Bombs don't set each other off (`chain_reaction` in `tools.ron`), so a string of them digs a shaft |
 | 3 | Spawner | pour the selected material; Q/E cycle through every material; Shift also replaces solids |
 | 4 | Igniter | set flammable things alight (wood, oil, coal, grass) |
 | 5 | Eraser | delete instantly |
