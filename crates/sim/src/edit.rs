@@ -16,6 +16,15 @@ pub enum WorldEdit {
     /// rim) and breaks once its damage reaches its hardness. Cells harder
     /// than `max_hardness` are untouched; hardness 255 never breaks.
     Mine { center: CellPos, radius: i32, power: u8, max_hardness: u8, back: bool },
+    /// One hit on a block (`BLOCK` × `BLOCK` cells, block coordinates): the
+    /// block's minable cells (in the playfield, or with `back` the background
+    /// where the playfield in front is open) take `power` damage, and when it
+    /// reaches the hardest of them they all break at once. Cells harder than
+    /// `max_hardness` stay (ore beyond a tool's tier).
+    MineBlock { block: CellPos, power: u8, max_hardness: u8, back: bool },
+    /// Fill the empty cells of a block with a material (its pattern, if it has
+    /// one, gives the shades). `EditReport::placed` says how many.
+    PlaceBlock { block: CellPos, material: MaterialId, back: bool },
     /// Destroy what `power` can break (falling off towards the edge), shatter
     /// a rim into rubble (`crumbles_into`), ignite flammables, fill the crater
     /// with fire and smoke.
@@ -56,6 +65,21 @@ impl EditReport {
             Err(i) => self.removed.insert(i, (id, 1)),
         }
     }
+}
+
+/// Blocks: what hands mine and build in (DESIGN D2), `BLOCK` × `BLOCK`
+/// cells on a fixed grid. The world stays cells.
+pub const BLOCK: i32 = 4;
+
+/// The block a cell is in.
+pub fn block_of(p: CellPos) -> CellPos {
+    CellPos::new(p.x.div_euclid(BLOCK), p.y.div_euclid(BLOCK))
+}
+
+/// The cells of a block, in a fixed order.
+pub fn block_cells(block: CellPos) -> impl Iterator<Item = CellPos> {
+    let (x0, y0) = (block.x * BLOCK, block.y * BLOCK);
+    (0..BLOCK).flat_map(move |dy| (0..BLOCK).map(move |dx| CellPos::new(x0 + dx, y0 + dy)))
 }
 
 /// Cells of a filled disc, in a fixed order.

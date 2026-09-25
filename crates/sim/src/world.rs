@@ -7,7 +7,7 @@ use crate::cell::{Cell, flags};
 use crate::chunk::Chunk;
 use crate::climate::Climate;
 use crate::coords::{CHUNK, CellPos, ChunkPos, Rect};
-use crate::edit::{EditReport, WorldEdit, disc};
+use crate::edit::{BLOCK, EditReport, WorldEdit, block_cells, disc};
 use crate::material::{ExplosionDef, Kind, MatPhys, MaterialId, MaterialTable};
 use crate::particles::{self, Landing, Particle, ParticleWorld};
 use crate::rng::{Rng, hash};
@@ -324,6 +324,12 @@ impl World {
                 self.mine(center, radius, power, max_hardness, back, &mut report);
                 self.loosen_if_removed(center, radius, &report);
             }
+            WorldEdit::MineBlock { block, power, max_hardness, back } => {
+                self.mine_block(block, power, max_hardness, back, &mut report);
+                let c = block_cells(block).next().expect("a block has cells");
+                self.loosen_if_removed(c.offset(BLOCK / 2, BLOCK / 2), BLOCK, &report);
+            }
+            WorldEdit::PlaceBlock { block, material, back } => self.place_block(block, material, back, &mut report),
             WorldEdit::Lightning { x, from_y } => self.lightning(x, from_y),
             WorldEdit::Weather { x, radius, storm } => {
                 let tick = self.tick;
@@ -421,6 +427,68 @@ impl World {
                     self.set(p, c);
                 }
             }
+        }
+    }
+
+    fn mine_block(&mut self, block: CellPos, power: u8, max_hardness: u8, back: bool, report: &mut EditReport) {
+        let mats = self.materials.clone();
+        // The block's minable cells.
+        let cells: Vec<(CellPos, Cell)> = block_cells(block)
+            .filter_map(|p| {
+                let front = self.get(p)?;
+                // An axe reaches the background only where nothing stands in front.
+                if back && !front.is_air() {
+                    return None;
+                }
+                let c = if back { self.get_bg(p)? } else { front };
+                let ph = mats.phys(c.material);
+                let minable = !c.is_air() && matches!(ph.kind, Kind::Static | Kind::Powder | Kind::Plant) && ph.hardness <= max_hardness && ph.hardness < u8::MAX;
+                minable.then_some((p, c))
+            })
+            .collect();
+        if cells.is_empty() {
+            return;
+        }
+        let hardest = cells.iter().map(|(_, c)| mats.phys(c.material).hardness.max(1) as u32).max().unwrap_or(1);
+        // The hardest cell carries the block's damage so far (softer ones are
+        // capped just below breaking, so the block goes all at once).
+        let done = cells.iter().map(|(_, c)| c.life as u32).max().unwrap_or(0);
+        let total = done + power as u32;
+        let mut rng = self.rng_for(0xB10C, block);
+        let centre = block_cells(block).next().expect("a block has cells").offset(BLOCK / 2, BLOCK / 2);
+        for (p, mut c) in cells {
+            if total >= hardest {
+                report.add_removed(c.material);
+                if back { self.set_bg(p, Cell::AIR) } else { self.set(p, Cell::AIR) };
+                if rng.chance(DUST_CHANCE * 2) {
+                    let mut dust = c;
+                    dust.flags = 0;
+                    let vel = outward(centre, p, &mut rng, 0.6);
+                    let mut d = Particle::new(center_of(p), vel, dust, 10 + rng.next_u8() as u16 / 16, Landing::Vanish);
+                    d.gravity = 0.5;
+                    self.particles.push(d);
+                }
+            } else {
+                c.life = total.min(mats.phys(c.material).hardness.max(1) as u32 - 1) as u8;
+                if back { self.set_bg(p, c) } else { self.set(p, c) };
+            }
+        }
+    }
+
+    fn place_block(&mut self, block: CellPos, material: MaterialId, back: bool, report: &mut EditReport) {
+        let mats = self.materials.clone();
+        let mut rng = self.rng_for(0x9A1C, block);
+        for p in block_cells(block) {
+            let here = if back { self.get_bg(p) } else { self.get(p) };
+            if !here.is_some_and(|c| c.is_air()) {
+                continue;
+            }
+            let mut c = mats.spawn(material, &mut rng);
+            if let Some(shade) = mats.pattern_shade(material, p.x, p.y) {
+                c.shade = shade;
+            }
+            if back { self.set_bg(p, c) } else { self.set(p, c) };
+            report.placed += 1;
         }
     }
 

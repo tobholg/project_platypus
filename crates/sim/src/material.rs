@@ -137,6 +137,13 @@ pub struct MaterialDef {
     /// blast's rim): loose rubble that then falls. Default: nothing.
     #[serde(default)]
     pub crumbles_into: Option<String>,
+    /// A pattern of shades, anchored to the world grid, for materials that
+    /// are laid rather than grown (bricks, planks): rows from the top, one
+    /// hex digit (0 darkest … f lightest on `colors`) per cell. Cells placed
+    /// or generated get their shade from it, so they tile cleanly. Default:
+    /// a random shade per cell.
+    #[serde(default)]
+    pub pattern: Option<Vec<String>>,
 
     // ---- temperature (°C). See SPEC §3.6. --------------------------------
     /// Heat a fresh cell starts with, relative to ambient (lava 1200, ice -30).
@@ -326,6 +333,12 @@ impl MaterialTable {
         }
         let mut by_name = FxHashMap::default();
         for (i, d) in defs.iter().enumerate() {
+            if let Some(rows) = &d.pattern {
+                let w = rows.first().map_or(0, |r| r.len());
+                if w == 0 || rows.iter().any(|r| r.len() != w || !r.chars().all(|c| c.is_ascii_hexdigit())) {
+                    return Err(MaterialError::Invalid(format!("`{}`: a pattern is rows of equal length, hex digits only", d.name)));
+                }
+            }
             if d.colors.is_empty() && d.kind != Kind::Empty {
                 return Err(MaterialError::Invalid(format!("`{}` has no colors", d.name)));
             }
@@ -457,6 +470,17 @@ impl MaterialTable {
         }
 
         Ok(MaterialTable { fire: fire.unwrap_or(MaterialId::AIR), defs, phys, reactions, palette, by_name })
+    }
+
+    /// The shade a patterned material has at a world cell (`pattern`), or
+    /// `None` if it has no pattern.
+    pub fn pattern_shade(&self, id: MaterialId, x: i32, y: i32) -> Option<u8> {
+        let rows = self.defs[id.0 as usize].pattern.as_ref()?;
+        let (w, h) = (rows[0].len() as i32, rows.len() as i32);
+        // Rows are written top first; world y points up.
+        let row = rows[(h - 1 - y.rem_euclid(h)) as usize].as_bytes();
+        let digit = (row[x.rem_euclid(w) as usize] as char).to_digit(16).unwrap_or(8) as u8;
+        Some(digit * 16 + 8)
     }
 
     /// Burned far enough that it no longer carries weight (SPEC §3.7).

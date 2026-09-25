@@ -43,6 +43,14 @@
         (name: "slate",    kind: Static, density: 2800, hardness: 80, crumbles_into: "gravel", above: (1500, "lava"), colors: [(62, 64, 76), (74, 76, 90), (56, 58, 68), (68, 70, 82)]),
         // The underworld's rock: cooled lava.
         (name: "basalt",   kind: Static, density: 3000, hardness: 95, crumbles_into: "gravel", above: (1650, "lava"), colors: [(40, 36, 40), (52, 46, 50), (34, 30, 34), (60, 50, 50)]),
+        // Laid, not grown: a pattern of shades anchored to the world grid (rows
+        // from the top, hex 0 dark … f light), so bricks and planks tile.
+        (name: "brick",    kind: Static, density: 2400, hardness: 70, crumbles_into: "gravel", above: (1450, "lava"),
+            colors: [(52, 50, 54), (96, 94, 100), (132, 128, 134), (156, 152, 158)],
+            pattern: ["33333333", "3cbbbaa9", "3baaa998", "3a999887", "33333333", "aa93cbbb", "9983baaa", "8873a999"]),
+        (name: "planks",   kind: Static, density: 650, hardness: 22, flammability: 7, ignites_at: 270, conductivity: 12, burn_time: 180, spread: 3, fizzles: 30, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal",
+            colors: [(60, 38, 22), (102, 68, 38), (136, 94, 54), (158, 112, 66)],
+            pattern: ["aabbbabb", "99aaa2aa", "8899929a", "22222222", "bbabbbaa", "a2aaaa99", "92999888", "22222222"]),
         (name: "glass",    kind: Static, density: 2500, hardness: 30,  above: (1500, "lava"), opacity: 25, colors: [(170, 200, 205), (196, 222, 226)]),
         (name: "ice",      kind: Static, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), coats: "wet", opacity: 60, latent: 480, colors: [(170, 210, 240), (200, 230, 250)]),
         (name: "frozen_blood", kind: Static, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), coats: "bloody", latent: 480, colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),

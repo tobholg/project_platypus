@@ -1680,3 +1680,75 @@ fn embers_seldom_carry_a_fire_across_a_gap() {
     assert!(near <= 3, "a tree 28 cells off caught {near}/8 times");
     assert!(far <= 1, "a tree 108 cells off caught {far}/8 times");
 }
+
+// ---- blocks (hands) -----------------------------------------------------------
+
+#[test]
+fn a_block_breaks_all_at_once_after_enough_hits() {
+    use platypus_sim::{BLOCK, block_cells};
+    let mut w = boxed_world(1, 1, 60);
+    fill(&mut w, "stone", 1, 63, 1, 20);
+    let stone = w.materials().expect_id("stone");
+    let block = CellPos::new(5, 3); // cells 20..24 × 12..16
+    let before = count(&w, stone);
+    // Stone is 60 hard: a power-35 pick takes two hits, and the first
+    // removes nothing.
+    let hit = WorldEdit::MineBlock { block, power: 35, max_hardness: 100, back: false };
+    assert!(w.apply_edit(&hit).removed.is_empty(), "one hit only cracks it");
+    assert_eq!(count(&w, stone), before);
+    let r = w.apply_edit(&hit);
+    assert_eq!(r.removed, vec![(stone, (BLOCK * BLOCK) as u32)], "the second takes all 16 cells");
+    assert!(block_cells(block).all(|p| w.get(p).unwrap().is_air()));
+    // Just the block: its neighbours are whole.
+    assert_eq!(count(&w, stone), before - 16);
+    assert_ne!(w.get(CellPos::new(19, 13)).unwrap().material, MaterialId::AIR);
+}
+
+#[test]
+fn ore_beyond_a_tools_tier_stays_in_the_block() {
+    let mut w = boxed_world(1, 1, 61);
+    fill(&mut w, "stone", 1, 63, 1, 20);
+    let (stone, obsidian) = (w.materials().expect_id("stone"), w.materials().expect_id("obsidian"));
+    // Two cells of the block are too hard for this pick.
+    w.set(CellPos::new(21, 13), Cell::new(obsidian, 0));
+    w.set(CellPos::new(22, 13), Cell::new(obsidian, 0));
+    let hit = WorldEdit::MineBlock { block: CellPos::new(5, 3), power: 35, max_hardness: 100, back: false };
+    w.apply_edit(&hit);
+    let r = w.apply_edit(&hit);
+    assert_eq!(r.removed, vec![(stone, 14)]);
+    assert_eq!(w.get(CellPos::new(21, 13)).unwrap().material, obsidian, "the hard bit stays");
+}
+
+#[test]
+fn placing_a_block_fills_its_empty_cells_with_the_pattern() {
+    use platypus_sim::block_cells;
+    let mut w = boxed_world(1, 1, 62);
+    fill(&mut w, "stone", 1, 63, 1, 8);
+    let brick = w.materials().expect_id("brick");
+    let block = CellPos::new(5, 2); // cells 20..24 × 8..12, on the floor
+    w.set(CellPos::new(21, 9), Cell::new(w.materials().expect_id("dirt"), 0));
+    let r = w.apply_edit(&WorldEdit::PlaceBlock { block, material: brick, back: false });
+    assert_eq!(r.placed, 15, "all but the one taken");
+    for p in block_cells(block).filter(|&p| p != CellPos::new(21, 9)) {
+        let c = w.get(p).unwrap();
+        assert_eq!(c.material, brick);
+        assert_eq!(Some(c.shade), w.materials().pattern_shade(brick, p.x, p.y), "shaded by the pattern at {p:?}");
+    }
+    // The pattern is anchored to the world: the same cell of the next block
+    // over (8 cells on, one pattern width) has the same shade.
+    w.apply_edit(&WorldEdit::PlaceBlock { block: CellPos::new(7, 2), material: brick, back: false });
+    assert_eq!(w.get(CellPos::new(20, 10)).unwrap().shade, w.get(CellPos::new(28, 10)).unwrap().shade);
+}
+
+#[test]
+fn an_axe_block_takes_the_background_only_where_the_front_is_open() {
+    let mut w = boxed_world(1, 1, 63);
+    fill_bg(&mut w, "wood", 20, 28, 8, 12);
+    // Something standing in front of half of it.
+    fill(&mut w, "stone", 24, 28, 8, 12);
+    let wood = w.materials().expect_id("wood");
+    let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(5, 2), power: 50, max_hardness: 100, back: true });
+    assert_eq!(r.removed, vec![(wood, 16)]);
+    let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(6, 2), power: 50, max_hardness: 100, back: true });
+    assert!(r.removed.is_empty(), "behind the stone it can't reach");
+}

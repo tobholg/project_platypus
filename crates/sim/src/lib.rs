@@ -23,7 +23,7 @@ pub use cell::Cell;
 pub use chunk::Chunk;
 pub use climate::Climate;
 pub use coords::{CHUNK, CHUNK_AREA, CellPos, ChunkPos, Rect};
-pub use edit::{EditReport, WorldEdit};
+pub use edit::{BLOCK, EditReport, WorldEdit, block_cells, block_of};
 pub use hazard::Exposure;
 pub use material::{Kind, MaterialId, MaterialTable};
 pub use particles::{Landing, Particle};
