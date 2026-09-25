@@ -278,9 +278,13 @@ pub(crate) fn background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
     {
         let fp = *h.mats.phys(f.material);
         if fp.kind == Kind::Liquid && fp.flammability == 0 && !fp.hot {
-            b.flags &= !flags::BURNING;
-            b.heat = b.heat.min(20);
-            h.set_bg(x, y, b);
+            // Water in front puts it out and quenches it to ambient. (Only
+            // written when that changes something, or a wall behind a pond
+            // would be rewritten every tick and its region never sleep.)
+            let cooled = Cell { flags: b.flags & !flags::BURNING, heat: 0, ..b };
+            if cooled != b {
+                h.set_bg(x, y, cooled);
+            }
             return;
         }
         if burning && fp.flammability > 0 && f.flags & flags::BURNING == 0 && h.rng.chance(fp.flammability) {
@@ -538,7 +542,16 @@ fn interact(h: &mut Hood, x: i32, y: i32, c: Cell, p: &MatPhys) -> bool {
         let reactions = h.mats.reactions(c.material);
         if let Some(r) = reactions.iter().find(|r| r.partner == n.material).copied() {
             if h.rng.chance(r.chance) {
-                let (a, b) = (spawn(h, r.self_into), spawn(h, r.partner_into));
+                let (mut a, mut b) = (spawn(h, r.self_into), spawn(h, r.partner_into));
+                // What comes out keeps the heat of what went in (unless it
+                // holds its own): lava quenched by water is hot obsidian that
+                // boils off the water that lands on it next.
+                if !h.mats.phys(r.self_into).heat_source {
+                    a.heat = a.heat.max(c.heat);
+                }
+                if !h.mats.phys(r.partner_into).heat_source {
+                    b.heat = b.heat.max(n.heat);
+                }
                 h.set(x, y, a);
                 h.set(x + dx, y + dy, b);
                 let np = *h.mats.phys(n.material);
@@ -567,7 +580,9 @@ fn interact(h: &mut Hood, x: i32, y: i32, c: Cell, p: &MatPhys) -> bool {
 }
 
 fn fall(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
-    let speed = 1 + c.vy.max(0) as i32 / 4;
+    // Thick liquids pour slowly.
+    let max_fall = MAX_FALL as i32 * (256 - p.viscosity as i32) / 256;
+    let speed = 1 + (c.vy.max(0) as i32).min(max_fall) / 4;
     let mut ty = y;
     for _ in 0..speed {
         let t = h.get(x, ty - 1);
@@ -589,6 +604,11 @@ fn fall(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
 }
 
 fn slide(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
+    if p.viscosity > 0 && can_slide(h, x, y, p) && h.rng.chance(p.viscosity) {
+        // Thick: not this tick, but it isn't at rest either.
+        h.wake(x, y);
+        return true;
+    }
     let d = h.rng.sign();
     for dx in [d, -d] {
         if passable(h, p, h.get(x + dx, y - 1)) {
@@ -601,7 +621,22 @@ fn slide(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
     false
 }
 
+/// How far along the surface a liquid looks for lower ground.
+const SEEK: i32 = 64;
+
+/// Could it slide down a diagonal? (A thick liquid that waits a tick still
+/// counts as moving, so it doesn't flow sideways instead.)
+fn can_slide(h: &Hood, x: i32, y: i32, p: &MatPhys) -> bool {
+    passable(h, p, h.get(x - 1, y - 1)) || passable(h, p, h.get(x + 1, y - 1))
+}
+
 fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
+    let open_side = |dx: i32| h.get(x + dx, y).is_some_and(|t| t.is_air() || h.mats.phys(t.material).kind == Kind::Plant);
+    if p.viscosity > 0 && (open_side(-1) || open_side(1)) && flags::rest(c.flags) < p.rest_limit && h.rng.chance(p.viscosity) {
+        // Thick: not this tick, but it isn't at rest either.
+        h.wake(x, y);
+        return true;
+    }
     let first = if c.flags & flags::FLOW_LEFT != 0 { -1 } else { 1 };
     let reach = p.dispersion.max(1) as i32;
     // Under a column of liquid: pressure pushes it sideways, no budget needed.
@@ -610,21 +645,27 @@ fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
     for dir in [first, -first] {
         let mut best = 0;
         let mut purposeful = false;
-        for i in 1..=reach {
+        // Look along the surface for a drop: up to `reach` it goes there;
+        // further (up to `SEEK`) it heads that way. Either is purposeful and
+        // costs no budget: water that knows where lower ground is doesn't
+        // slosh, so it levels fast.
+        for i in 1..=SEEK.max(reach) {
             // Sideways only into air (or plants, which get washed away).
             // Layering (oil over water) happens by sinking; sideways swaps at
             // an interface would never end.
             if !h.get(x + dir * i, y).is_some_and(|t| t.is_air() || h.mats.phys(t.material).kind == Kind::Plant) {
                 break;
             }
-            best = i;
+            if i <= reach {
+                best = i;
+            }
             if passable(h, p, h.get(x + dir * i, y - 1)) {
-                // Found a drop: go there, fall next tick.
+                // Found a drop: go there (or toward it), fall when there.
                 purposeful = true;
                 break;
             }
         }
-        if best > 0 && (purposeful || rest < flags::REST_LIMIT) {
+        if best > 0 && (purposeful || rest < p.rest_limit) {
             if dir < 0 { c.flags |= flags::FLOW_LEFT } else { c.flags &= !flags::FLOW_LEFT }
             // Spreading one way is free; only reversing (sloshing) spends the budget.
             let spent = if purposeful || pressured { 0 } else if dir == first { rest } else { rest + 1 };

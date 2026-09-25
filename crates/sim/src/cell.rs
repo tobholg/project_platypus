@@ -39,7 +39,7 @@ pub mod flags {
     /// lakes sleep. Spreading in one direction is never limited.
     pub const REST_SHIFT: u8 = 1;
     pub const REST_MASK: u8 = 0b1111 << REST_SHIFT;
-    pub const REST_LIMIT: u8 = 12;
+    pub const REST_LIMIT: u8 = 8;
 
     #[inline]
     pub const fn rest(f: u8) -> u8 {

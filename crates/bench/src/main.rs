@@ -78,7 +78,7 @@ fn deep(m: &Arc<MaterialTable>) -> Outcome {
     w.set_climate(g.climate());
     load_region(&mut w, &g, ChunkPos::new(122, 2), VIEW_W, VIEW_H);
     let mut settle_ticks = 0;
-    while settle_ticks < 8_000 && w.step().active_chunks > 0 {
+    while settle_ticks < 12_000 && w.step().active_chunks > 0 {
         settle_ticks += 1;
     }
     let lava = m.expect_id("lava");

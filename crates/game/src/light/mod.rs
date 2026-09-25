@@ -72,7 +72,27 @@ pub struct LightSettings {
     pub moonlight: f32,
     pub lantern: LampCfg,
     pub flashlight: BeamCfg,
+    pub torch: LampCfg,
+    pub glowstick: StickCfg,
 }
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub struct StickCfg {
+    pub strength: f32,
+    pub secs: f32,
+}
+
+/// Anything that gives off light: a planted torch, a glow stick (later a
+/// lantern on a post, glowing eyes). `flicker` 0..1 makes it waver like fire.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct LightSource {
+    pub color: Rgb,
+    pub flicker: f32,
+}
+
+/// A torch planted in the world (G).
+#[derive(Component)]
+pub struct PlantedTorch;
 
 #[derive(Resource)]
 struct SettingsWatch(Watched);
@@ -100,6 +120,7 @@ impl Daylight {
 pub struct LightToggles {
     pub enabled: bool,
     pub flashlight: bool,
+    pub torch: bool,
 }
 
 /// A brief light: a blast, a lightning strike.
@@ -158,7 +179,7 @@ impl Plugin for LightPlugin {
         app.add_plugins((Material2dPlugin::<LightMultiply>::default(), Material2dPlugin::<LightAdd>::default()))
             .insert_resource(settings)
             .insert_resource(SettingsWatch(Watched::new(path)))
-            .insert_resource(LightToggles { enabled: true, flashlight: false })
+            .insert_resource(LightToggles { enabled: true, flashlight: false, torch: false })
             .insert_resource(Daylight { skipped: skip, ..default() })
             .init_resource::<Flashes>()
             .init_resource::<LightMetrics>()
@@ -185,9 +206,24 @@ fn reload_settings(mut watch: ResMut<SettingsWatch>, mut settings: ResMut<LightS
     }
 }
 
-fn keys(keys: Res<ButtonInput<KeyCode>>, mut toggles: ResMut<LightToggles>, mut day: ResMut<Daylight>) {
+fn keys(
+    mut commands: Commands,
+    keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<LightSettings>,
+    cursor: Res<CursorWorld>,
+    mut toggles: ResMut<LightToggles>,
+    mut day: ResMut<Daylight>,
+) {
     if keys.just_pressed(KeyCode::KeyL) {
         toggles.flashlight = !toggles.flashlight;
+    }
+    if keys.just_pressed(KeyCode::KeyT) {
+        toggles.torch = !toggles.torch;
+    }
+    if keys.just_pressed(KeyCode::KeyG)
+        && let Some(at) = cursor.0
+    {
+        plant_torch(&mut commands, at, &settings);
     }
     if keys.just_pressed(KeyCode::F9) {
         toggles.enabled = !toggles.enabled;
@@ -195,6 +231,26 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, mut toggles: ResMut<LightToggles>, mut 
     if keys.just_pressed(KeyCode::F8) {
         day.skipped += 3.0;
     }
+}
+
+fn rgb((r, g, b): (u8, u8, u8), s: f32) -> Rgb {
+    [r as f32 / 255.0 * s, g as f32 / 255.0 * s, b as f32 / 255.0 * s]
+}
+
+/// A torch stuck in the ground at `at`: a stick with a flame, flickering light.
+pub fn plant_torch(commands: &mut Commands, at: Vec2, settings: &LightSettings) {
+    commands
+        .spawn((
+            Name::new("Torch"),
+            PlantedTorch,
+            LightSource { color: rgb(settings.torch.color, settings.torch.strength), flicker: 0.25 },
+            Transform::from_translation(at.extend(9.0)),
+            Visibility::default(),
+        ))
+        .with_children(|t| {
+            t.spawn((Sprite::from_color(Color::srgb(0.38, 0.24, 0.12), Vec2::new(1.0, 6.0)), Transform::from_xyz(0.0, -2.0, 0.0)));
+            t.spawn((Sprite::from_color(Color::srgb(1.0, 0.75, 0.3), Vec2::new(2.0, 2.0)), Transform::from_xyz(0.0, 2.0, 0.1)));
+        });
 }
 
 /// Blasts and lightning light up their surroundings for a moment.
@@ -211,6 +267,12 @@ fn collect_flashes(time: Res<Time>, mut blasts: MessageReader<Explosion>, mut bo
         f.age += dt;
         f.age < f.life
     });
+}
+
+/// A smooth wobble 0..1 over time, different per `salt`: fire flicker.
+fn wobble(t: f32, salt: u64) -> f32 {
+    let s = salt as f32 * 1.7;
+    0.5 + 0.25 * (t * 9.0 + s).sin() + 0.25 * (t * 23.0 + s * 2.3).sin()
 }
 
 fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
@@ -319,6 +381,7 @@ fn compute_light(
     mut assets: OverlayAssets,
     cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>,
     player: Query<&Kinematics, With<LocalPlayer>>,
+    sources: Query<(&GlobalTransform, &LightSource)>,
     mut sprites: Query<(&mut Transform, &mut Visibility), Without<MainCamera>>,
 ) {
     let started = Instant::now();
@@ -390,6 +453,10 @@ fn compute_light(
         let at = k.body.pos + Vec2::new(0.0, k.body.half.y * 0.4);
         let c = |(r, g, b): (u8, u8, u8), s: f32| [r as f32 / 255.0 * s, g as f32 / 255.0 * s, b as f32 / 255.0 * s];
         g.seed_point([at.x, at.y], c(settings.lantern.color, settings.lantern.strength));
+        if toggles.torch {
+            let f = 0.85 + 0.15 * wobble(time.elapsed_secs(), 1);
+            g.seed_point([at.x, at.y + 3.0], c(settings.torch.color, settings.torch.strength * f));
+        }
         if toggles.flashlight
             && let Some(aim) = cursor.0
         {
@@ -407,6 +474,11 @@ fn compute_light(
         } else if p.cell.heat > 500 {
             g.seed_point(p.pos, [0.4, 0.15, 0.03]);
         }
+    }
+    for (i, (tf, src)) in sources.iter().enumerate() {
+        let p = tf.translation();
+        let f = 1.0 - src.flicker * 0.5 * (1.0 - wobble(time.elapsed_secs(), i as u64 + 7));
+        g.seed_point([p.x, p.y], src.color.map(|c| c * f));
     }
     for f in &flashes.0 {
         let k = 1.0 - f.age / f.life;

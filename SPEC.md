@@ -61,6 +61,13 @@ dispersion, flammability, lifetime, what it burns/melts into, and pairwise
 reactions. Adding a material is a data change. The sim reads a compact
 hot table (`MatPhys`) built from the definitions.
 
+Liquids fall, slide and flow sideways into air, up to `dispersion` cells a
+tick, and look up to 64 cells along the surface for lower ground (moving
+toward it costs nothing); aimless sloshing is budgeted (8 reversals) so
+lakes sleep. `viscosity` (0 water … 255) makes a liquid move on fewer ticks,
+pour slower and give up sooner: measured in a basin, water settles flat in
+~3 s, oil ~4.5 s, blood and acid ~6 s, lava ~20 s in mounds.
+
 "Every element falls" is realised as: every element is a simulated cell with
 a behaviour class. `Static` cells (rock, dirt, brick) hold position until
 something converts them (dug, burned, melted, blasted, unsupported). A world
@@ -153,6 +160,11 @@ itself and what's above it climbs, and a front spreads sideways. Flames in the
 playfield, the heat gun, lava and lightning add heat; water in front and rain
 put it out and cool it. Measured on generated trees: a one-cell spark always
 goes out within seconds; a small fire takes 40-90 % of a tree.
+
+**Reactions keep heat.** What a reaction makes keeps the heat of what went
+into it (unless it pins its own): lava quenched by water is glowing-hot
+obsidian that boils off the water landing on it next, so water on lava makes
+part crust, part steam.
 
 **Phase changes take time (latent heat).** Past a material's `above`/`below`
 threshold by d °C it changes with chance (d / `latent`)² a tick: ice in a
@@ -364,6 +376,10 @@ deaths (blood). Rendered as one dynamic mesh.
   down. Each enters at the tops of columns open to the sky and down the side
   it comes from, dimmed by what it passes: tree crowns barely (1 % of their
   opacity), walls behind rock fully.
+- Light sources: anything with a `LightSource` (colour, flicker) lights its
+  surroundings: planted torches (G), thrown glow sticks (tool 7, green and
+  blue in turn, 90 s, fading), later lanterns and glowing eyes. The player
+  carries a lantern always, a torch on T, a flashlight on L.
 - Heat on the background: where the playfield is open, the heat tool warms
   background cells, which catch fire by the playfield's rule (a heat gun on
   a tree lights it). Background cells hold heat but don't conduct it.

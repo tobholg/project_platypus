@@ -91,6 +91,11 @@ pub struct MaterialDef {
     /// Damage per second it does to a body touching it (acid 30).
     #[serde(default)]
     pub corrosive: u8,
+    /// Liquids: 0 (water) … 255 (barely moves). A viscous liquid moves on
+    /// fewer ticks, pours slower and gives up sloshing sooner, so it heaps
+    /// (lava mounds) where water goes flat.
+    #[serde(default)]
+    pub viscosity: u8,
     /// Latent heat, as a temperature scale (°C): past `above`/`below` by d
     /// degrees, it changes with chance (d / latent)² a tick, so ice in a warm
     /// room melts over seconds and a blowtorch melts it at once. 0: instant.
@@ -220,6 +225,9 @@ pub struct MatPhys {
     pub fizzles: u16,
     /// See `MaterialDef::latent`.
     pub latent: u16,
+    pub viscosity: u8,
+    /// Sloshes allowed before a still liquid rests (fewer when viscous).
+    pub rest_limit: u8,
     /// Light given off (linear-ish 0..255 per channel; 0 = none).
     pub glow: [u8; 3],
     /// Light stopped per cell, 0..255.
@@ -394,6 +402,8 @@ impl MaterialTable {
                 spread: d.spread.unwrap_or(d.flammability as u16 * 16),
                 fizzles: d.fizzles,
                 latent: d.latent,
+                viscosity: d.viscosity,
+                rest_limit: ((crate::cell::flags::REST_LIMIT as u32 * (256 - d.viscosity as u32)) / 256).max(1) as u8,
                 glow: d.glow.map_or([0; 3], |(r, g, b)| [r, g, b]),
                 opacity: d.opacity.unwrap_or(match d.kind {
                     Kind::Empty | Kind::Fire => 0,

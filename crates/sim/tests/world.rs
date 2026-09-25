@@ -89,7 +89,7 @@ fn water_flows_across_chunk_borders_and_levels() {
         .map(|x| (1..CHUNK).filter(|&y| w.get(CellPos::new(x, y)).unwrap().material == water).count() as i32)
         .collect();
     let (lo, hi) = (heights.iter().min().unwrap(), heights.iter().max().unwrap());
-    assert!(hi - lo <= 2, "water not level: {lo}..{hi}");
+    assert!(hi - lo <= 2, "water not level: {lo}..{hi}: {heights:?}");
 }
 
 #[test]
@@ -1325,9 +1325,10 @@ fn a_scorched_trunk_can_still_be_set_alight() {
     for _ in 0..90 {
         w.step();
     }
-    w.apply_edit(&WorldEdit::Paint { center: CellPos::new(64, 22), radius: 14, material: water, overwrite: false });
+    // Over the flames too (they fill the cells in front of the trunk).
+    w.apply_edit(&WorldEdit::Paint { center: CellPos::new(64, 30), radius: 28, material: water, overwrite: true });
     w.step();
-    w.apply_edit(&WorldEdit::Dig { center: CellPos::new(64, 22), radius: 12, max_hardness: 1 });
+    w.apply_edit(&WorldEdit::Dig { center: CellPos::new(64, 30), radius: 30, max_hardness: 1 });
     for _ in 0..600 {
         w.step();
     }
@@ -1415,4 +1416,74 @@ fn ice_melts_slowly_in_a_warm_room_and_water_freezes_slowly_in_the_cold() {
         cold.step();
     }
     assert!(count(&cold, ice) > 60, "it froze in the end ({} ice)", count(&cold, ice));
+}
+
+
+#[test]
+fn a_warm_wall_behind_a_pond_cools_and_sleeps() {
+    let mut w = boxed_world(1, 1, 99);
+    fill(&mut w, "stone", 1, 63, 1, 5);
+    fill_bg(&mut w, "stone", 1, 63, 5, 30);
+    fill(&mut w, "water", 1, 63, 5, 15);
+    // Warm the wall behind the pond (a fire there earlier).
+    w.apply_edit(&WorldEdit::Heat { center: CellPos::new(30, 10), radius: 3, amount: 0 });
+    for x in 20..40 {
+        let mut b = w.get_bg(CellPos::new(x, 10)).unwrap();
+        b.heat = 19;
+        w.set_bg(CellPos::new(x, 10), b);
+    }
+    run_until_asleep(&mut w, 3_000);
+    assert!((20..40).all(|x| w.get_bg(CellPos::new(x, 10)).unwrap().heat == 0), "cooled to ambient");
+}
+
+/// Viscous liquids settle slower and heap; water settles flat (SPEC §3.4).
+#[test]
+fn liquids_settle_by_viscosity() {
+    let (water, lava) = (settle_probe("water", 500), settle_probe("lava", 500));
+    assert!(water.0 < 400 && water.1 <= 3, "water settles fast and flat: {water:?}");
+    assert!(lava.0 > water.0 * 3 && lava.1 > water.1 + 4, "lava is slow and heaps: {lava:?}");
+}
+
+/// (ticks until asleep or the cap, highest minus lowest surface column)
+fn settle_probe(liquid: &str, seed: u64) -> (usize, i32) {
+    let mut w = boxed_world(2, 1, seed);
+    let m = w.materials().clone();
+    let id = m.expect_id(liquid);
+    fill(&mut w, liquid, 40, 70, 20, 50);
+    let mut t = 0;
+    while t < 6_000 {
+        w.step();
+        t += 1;
+        if w.chunks().all(|c| !c.is_awake()) {
+            break;
+        }
+    }
+    let heights: Vec<i32> = (1..127)
+        .map(|x| (1..64).rev().find(|&y| w.get(CellPos::new(x, y)).unwrap().material == id).unwrap_or(0))
+        .filter(|&h| h > 0)
+        .collect();
+    let spread = heights.iter().max().unwrap_or(&0) - heights.iter().min().unwrap_or(&0);
+    (t, spread)
+}
+
+
+
+#[test]
+fn water_on_lava_makes_a_hot_obsidian_crust_and_boils_off() {
+    let mut w = boxed_world(1, 1, 101);
+    let m = w.materials().clone();
+    let (lava, water, steam, obsidian) = (m.expect_id("lava"), m.expect_id("water"), m.expect_id("steam"), m.expect_id("obsidian"));
+    fill(&mut w, "lava", 1, 63, 1, 10);
+    fill(&mut w, "water", 20, 44, 20, 30);
+    let poured = count(&w, water);
+    let (mut most_steam, mut crust_hot) = (0, false);
+    for _ in 0..600 {
+        w.step();
+        most_steam = most_steam.max(count(&w, steam));
+        crust_hot |= w.chunks().flat_map(|c| c.cells()).any(|c| c.material == obsidian && c.heat > 400);
+    }
+    assert!(count(&w, obsidian) > 10, "a crust of obsidian");
+    assert!(crust_hot, "fresh obsidian is hot");
+    assert!(most_steam > poured / 3, "much of the water boiled off ({most_steam} steam from {poured})");
+    assert!(count(&w, lava) > 0, "lava under the crust");
 }

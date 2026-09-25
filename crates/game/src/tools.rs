@@ -19,7 +19,7 @@ use crate::actors::Kinematics;
 use crate::actors::player::LocalPlayer;
 use crate::camera::{CursorWorld, MainCamera};
 use crate::data::{Watched, data_path, load_ron};
-use crate::props::spawn_bomb;
+use crate::props::{spawn_bomb, spawn_glowstick};
 use crate::world::{SimWorld, TickSet};
 
 pub struct ToolsPlugin;
@@ -32,12 +32,13 @@ pub enum Tool {
     Igniter,
     Eraser,
     Heat,
+    Glowstick,
 }
 
 impl Tool {
-    pub const ALL: [Tool; 6] = [Tool::Pickaxe, Tool::Bomb, Tool::Spawner, Tool::Igniter, Tool::Eraser, Tool::Heat];
-    const KEYS: [KeyCode; 6] =
-        [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit5, KeyCode::Digit6];
+    pub const ALL: [Tool; 7] = [Tool::Pickaxe, Tool::Bomb, Tool::Spawner, Tool::Igniter, Tool::Eraser, Tool::Heat, Tool::Glowstick];
+    const KEYS: [KeyCode; 7] =
+        [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit5, KeyCode::Digit6, KeyCode::Digit7];
 
     fn index(self) -> usize {
         Tool::ALL.iter().position(|t| *t == self).unwrap()
@@ -51,6 +52,7 @@ impl Tool {
             Tool::Igniter => "Ignite",
             Tool::Eraser => "Erase",
             Tool::Heat => "Heat/Freeze",
+            Tool::Glowstick => "Glow stick",
         }
     }
 
@@ -62,6 +64,7 @@ impl Tool {
             Tool::Igniter => Color::srgb(1.0, 0.55, 0.1),
             Tool::Eraser => Color::srgb(0.9, 0.9, 0.9),
             Tool::Heat => Color::srgb(1.0, 0.2, 0.6),
+            Tool::Glowstick => Color::srgb(0.3, 1.0, 0.6),
         }
     }
 }
@@ -120,6 +123,7 @@ impl ToolsConfig {
             Tool::Igniter => self.igniter.radius,
             Tool::Eraser => self.eraser.radius,
             Tool::Heat => self.heat.radius,
+            Tool::Glowstick => 2,
         }
     }
 }
@@ -129,11 +133,13 @@ impl ToolsConfig {
 pub struct Toolbelt {
     pub tool: Tool,
     /// Per-tool radius, starts from the config and changes with `[` `]`.
-    pub radius: [i32; 6],
+    pub radius: [i32; 7],
     /// Spawner material.
     pub material: MaterialId,
     /// Everything dug out so far, by material name (future inventory).
     pub mined: BTreeMap<String, u32>,
+    /// Glow sticks thrown (they alternate colours).
+    pub thrown: u32,
 }
 
 impl Toolbelt {
@@ -166,7 +172,7 @@ impl Plugin for ToolsPlugin {
         let radius = Tool::ALL.map(|t| cfg.radius(t));
         app.insert_resource(cfg)
             .insert_resource(ConfigWatch(Watched::new(path)))
-            .insert_resource(Toolbelt { tool: Tool::Pickaxe, radius, material: MaterialId::AIR, mined: BTreeMap::new() })
+            .insert_resource(Toolbelt { tool: Tool::Pickaxe, radius, material: MaterialId::AIR, mined: BTreeMap::new(), thrown: 0 })
             .init_resource::<ToolInput>()
             .add_systems(Startup, (spawn_hotbar, default_material))
             .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor))
@@ -243,6 +249,7 @@ fn use_tools(
     cfg: Res<ToolsConfig>,
     mut belt: ResMut<Toolbelt>,
     mut sim: ResMut<SimWorld>,
+    lights: Res<crate::light::LightSettings>,
     player: Query<&Kinematics, With<LocalPlayer>>,
 ) {
     let clicked = std::mem::take(&mut input.clicked);
@@ -266,7 +273,7 @@ fn use_tools(
                 let amount = if input.overwrite { -cfg.heat.cool_rate } else { cfg.heat.rate };
                 Some(WorldEdit::Heat { center, radius, amount })
             }
-            Tool::Bomb if clicked => {
+            Tool::Bomb | Tool::Glowstick if clicked => {
                 // Thrown from the player toward the cursor; dropped at the cursor in free-camera mode.
                 let (from, vel) = match player.single() {
                     Ok(k) => {
@@ -277,7 +284,15 @@ fn use_tools(
                     }
                     Err(_) => (at, Vec2::ZERO),
                 };
-                spawn_bomb(&mut commands, from, vel, cfg.bomb.clone());
+                if belt.tool == Tool::Bomb {
+                    spawn_bomb(&mut commands, from, vel, cfg.bomb.clone());
+                } else {
+                    // Green and blue in turn.
+                    belt.thrown += 1;
+                    let s = lights.glowstick.strength;
+                    let color = if belt.thrown.is_multiple_of(2) { [0.25 * s, 1.0 * s, 0.45 * s] } else { [0.2 * s, 0.55 * s, 1.1 * s] };
+                    spawn_glowstick(&mut commands, from, vel, color, lights.glowstick.secs);
+                }
                 None
             }
             _ => None,

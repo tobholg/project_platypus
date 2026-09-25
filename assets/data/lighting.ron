@@ -22,5 +22,8 @@
     // What the player carries: a lantern always, a flashlight toggled with L
     // (a cone toward the cursor, `angle` degrees wide, `range` cells).
     lantern: (color: (255, 196, 130), strength: 0.5),
-    flashlight: (color: (230, 238, 255), strength: 1.1, range: 130, angle: 40),
+    flashlight: (color: (230, 238, 255), strength: 1.8, range: 240, angle: 46),
+    // T carries a torch, G plants one at the cursor; tool 7 throws glow sticks.
+    torch: (color: (255, 170, 80), strength: 1.1),
+    glowstick: (strength: 1.1, secs: 90),
 )

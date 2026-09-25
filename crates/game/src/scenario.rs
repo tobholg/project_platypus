@@ -15,7 +15,8 @@
 //! - `rain`       lights the forest beside the player at 2 s, a storm over it at 3 s (F5), lightning at 6 s (F7)
 //! - `swim`       a pool beside the player; oil on the player, set alight, then it walks into the water
 //! - `night`      the surface at 23:00 (`dusk`: 18:15)
-//! - `cave`       a chamber dug under the player (lava and acid pools), flashlight on
+//! - `cave`       a chamber dug under the player (lava and acid pools), flashlight and torch on,
+//!   a torch planted, two glow sticks thrown (`PLATYPUS_NOBEAM=1`: no flashlight)
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -427,7 +428,10 @@ fn swim_script(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn dark_script(
+    mut commands: Commands,
+    lights: Res<crate::light::LightSettings>,
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
     mut day: ResMut<crate::light::Daylight>,
@@ -460,8 +464,14 @@ fn dark_script(
         k.body.pos = Vec2::new(c.x as f32, c.y as f32 - 8.0);
         k.body.vel = Vec2::ZERO;
         k.prev_pos = k.body.pos;
-        toggles.flashlight = true;
+        toggles.flashlight = std::env::var("PLATYPUS_NOBEAM").is_err();
+        toggles.torch = true;
         cursor.0 = Some(k.body.pos + Vec2::new(90.0, -10.0));
+        // A torch planted to the left, glow sticks thrown both ways.
+        crate::light::plant_torch(&mut commands, k.body.pos + Vec2::new(-40.0, -4.0), &lights);
+        let s = lights.glowstick.strength;
+        crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(-20.0, 4.0), Vec2::new(-60.0, 40.0), [0.25 * s, s, 0.45 * s], 90.0);
+        crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(30.0, 4.0), Vec2::new(60.0, 40.0), [0.2 * s, 0.55 * s, 1.1 * s], 90.0);
     }
     *done = true;
 }
