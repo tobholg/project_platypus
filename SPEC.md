@@ -333,6 +333,11 @@ deaths (blood). Rendered as one dynamic mesh.
   what it lands on.
 - The solve runs on the async pool and is shown the next frame; the frame
   pays only for reading the world (~1 ms at 3 px/cell).
+- Light eases between frames (in over ~20 ms, out over ~50 ms), so moving
+  smoke, flames and embers make fire glow and flicker rather than strobe.
+- Gases barely dim light (smoke and steam cast no real shadows); trees shade
+  the ground only slightly (a forest by day is bright); walls behind rock
+  block the sky.
 - It is drawn twice over the world and everything in it: multiplied (what
   isn't lit is dark; 0 ambient = Noita-dark, tunable) and added (a haze
   around what glows). Rendering only; the sim never reads it.

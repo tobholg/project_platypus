@@ -123,6 +123,8 @@ struct Overlay {
 
 /// A light grid being solved in the background, and where it goes.
 struct Solved {
+    /// The grid, for easing the next frame from.
+    previous: grid::Previous,
     light: Vec<u8>,
     glow: Vec<u8>,
     size: UVec2,
@@ -134,7 +136,7 @@ struct Solved {
 /// The solve runs on the async pool while the frame renders; its result is
 /// shown the next frame (world-anchored, so the lag doesn't show).
 #[derive(Resource, Default)]
-struct Pending(Option<Task<Solved>>);
+struct Pending(Option<Task<Solved>>, Option<grid::Previous>);
 
 /// Time spent on lighting (the HUD shows it).
 #[derive(Resource, Default)]
@@ -315,8 +317,8 @@ fn compute_light(
         });
         match solved {
             // Not quite done: finish it (rare; the frame had ~a frame's time).
-            Err(task) => show(block_on(task), &mut overlay, &mut metrics, &mut assets, &mut sprites),
-            Ok(done) => show(done, &mut overlay, &mut metrics, &mut assets, &mut sprites),
+            Err(task) => pending.1 = Some(show(block_on(task), &mut overlay, &mut metrics, &mut assets, &mut sprites)),
+            Ok(done) => pending.1 = Some(show(done, &mut overlay, &mut metrics, &mut assets, &mut sprites)),
         }
     }
     let world = &sim.world;
@@ -393,9 +395,16 @@ fn compute_light(
     let center = Vec2::new(origin.x as f32 + gw / 2.0, origin.y as f32 + gh / 2.0);
     metrics.time = started.elapsed();
     metrics.texels = w * h;
+    // Light eases in over ~2 frames and out over ~5 at 120 fps.
+    let dt = time.delta_secs().clamp(0.001, 0.1);
+    let (rise, fall) = (1.0 - (-dt / 0.02).exp(), 1.0 - (-dt / 0.05).exp());
+    let previous = pending.1.take();
     pending.0 = Some(AsyncComputeTaskPool::get().spawn(async move {
         let started = Instant::now();
         g.solve(params);
+        if let Some(prev) = &previous {
+            g.ease_from(prev, rise, fall);
+        }
         // Upload format: sqrt for precision in the dark, row 0 at the top.
         let encode = |v: f32| (v.clamp(0.0, 1.0).sqrt() * 255.0 + 0.5) as u8;
         let mut light = vec![255u8; w * h * 4];
@@ -410,7 +419,8 @@ fn compute_light(
                 }
             }
         }
-        Solved { light, glow, size: UVec2::new(w as u32, h as u32), center, extent: Vec2::new(gw, gh), took: started.elapsed() }
+        let took = started.elapsed();
+        Solved { previous: g.into_previous(), light, glow, size: UVec2::new(w as u32, h as u32), center, extent: Vec2::new(gw, gh), took }
     }));
 }
 
@@ -421,14 +431,14 @@ struct OverlayAssets<'w> {
     glow_mats: ResMut<'w, Assets<LightAdd>>,
 }
 
-/// Put a solved grid on screen.
+/// Put a solved grid on screen; returns it, to ease the next one from.
 fn show(
     s: Solved,
     overlay: &mut Overlay,
     metrics: &mut LightMetrics,
     assets: &mut OverlayAssets,
     sprites: &mut Query<(&mut Transform, &mut Visibility), Without<MainCamera>>,
-) {
+) -> grid::Previous {
     metrics.solve = s.took;
     let OverlayAssets { images, light_mats, glow_mats } = assets;
     let (light_img, glow_img) = if overlay.size != s.size {
@@ -445,7 +455,7 @@ fn show(
     } else {
         let l = light_mats.get(&overlay.light_material).map(|m| m.texture.clone());
         let gi = glow_mats.get(&overlay.glow_material).map(|m| m.texture.clone());
-        let (Some(l), Some(gi)) = (l, gi) else { return };
+        let (Some(l), Some(gi)) = (l, gi) else { return s.previous };
         (l, gi)
     };
     for (handle, bytes) in [(light_img, s.light), (glow_img, s.glow)] {
@@ -459,6 +469,7 @@ fn show(
             *tf = Transform::from_translation(s.center.extend(z)).with_scale(s.extent.extend(1.0));
         }
     }
+    s.previous
 }
 
 fn light_image(size: UVec2) -> Image {

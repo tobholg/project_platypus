@@ -388,7 +388,8 @@ impl MaterialTable {
                 glow: d.glow.map_or([0; 3], |(r, g, b)| [r, g, b]),
                 opacity: d.opacity.unwrap_or(match d.kind {
                     Kind::Empty | Kind::Fire => 0,
-                    Kind::Gas => 18,
+                    // Smoke and steam haze, they don't cast shadows.
+                    Kind::Gas => 6,
                     Kind::Plant => 60,
                     Kind::Liquid => 45,
                     // A few cells of a lit rock face show, then it's dark.

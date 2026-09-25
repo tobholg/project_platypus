@@ -125,8 +125,10 @@ impl LightGrid {
                         }
                         if !b.is_air() {
                             let bp = mats.phys(b.material);
-                            // Crowns dapple the light; walls behind rock block it.
-                            let k = if bp.kind == Kind::Plant { 0.12 } else { 0.85 };
+                            // Trees barely shade (a forest by day is bright,
+                            // as in Terraria); walls behind rock block the sky.
+                            let tree = bp.kind == Kind::Plant || bp.flammability > 0;
+                            let k = if tree { 0.03 } else { 0.85 };
                             sky_op = f32::max(sky_op, bp.opacity as f32 / 255.0 * k);
                             if b.flags & flags::BURNING != 0 {
                                 let f = flicker(o.x + lx, o.y + ly);
@@ -306,6 +308,55 @@ impl LightGrid {
     }
 }
 
+/// What was shown last frame, for easing into this one.
+pub struct Previous {
+    pub origin: CellPos,
+    pub texel: i32,
+    pub w: usize,
+    pub h: usize,
+    pub light: Vec<Rgb>,
+    pub glow: Vec<Rgb>,
+}
+
+impl LightGrid {
+    /// Ease from last frame's light toward this one's: `rise` and `fall` are
+    /// the shares of the way covered this frame when brightening / darkening.
+    /// Moving smoke, flames and embers change the light every frame; eased,
+    /// fire glows and flickers instead of strobing. (Texels new to the view
+    /// take their value as is.)
+    pub fn ease_from(&mut self, prev: &Previous, rise: f32, fall: f32) {
+        if prev.texel != self.texel {
+            return;
+        }
+        let (dx, dy) = ((self.origin.x - prev.origin.x) / self.texel, (self.origin.y - prev.origin.y) / self.texel);
+        let ease = |now: &mut Rgb, was: Rgb| {
+            for ch in 0..3 {
+                let k = if now[ch] > was[ch] { rise } else { fall };
+                now[ch] = was[ch] + (now[ch] - was[ch]) * k;
+            }
+        };
+        for y in 0..self.h {
+            let py = y as i32 + dy;
+            if py < 0 || py >= prev.h as i32 {
+                continue;
+            }
+            for x in 0..self.w {
+                let px = x as i32 + dx;
+                if px < 0 || px >= prev.w as i32 {
+                    continue;
+                }
+                let (i, j) = (y * self.w + x, py as usize * prev.w + px as usize);
+                ease(&mut self.light[i], prev.light[j]);
+                ease(&mut self.glow[i], prev.glow[j]);
+            }
+        }
+    }
+
+    pub fn into_previous(self) -> Previous {
+        Previous { origin: self.origin, texel: self.texel, w: self.w, h: self.h, light: self.light, glow: self.glow }
+    }
+}
+
 /// Share of a beam's light that scatters off what it hits into the room.
 const BEAM_SCATTER: f32 = 0.35;
 
@@ -461,6 +512,21 @@ mod tests {
         assert!(face(37) > 0.2, "two cells into the rock it's still lit ({})", face(37));
         assert!(face(40) < face(37), "fading");
         assert!(at(&g, 44, 20) < 0.01, "the air behind the wall stays dark ({})", at(&g, 44, 20));
+    }
+
+    #[test]
+    fn light_eases_between_frames_and_follows_the_view() {
+        let mut a = grid(&[]);
+        a.seed_point([30.5, 20.5], [1.0; 3]);
+        a.solve(P);
+        let prev = a.into_previous();
+        // Next frame: the light is out, and the view moved 3 texels right.
+        let mut b = LightGrid::new(CellPos::new(3, 0), 60, 40, 1);
+        b.solve(P);
+        b.ease_from(&prev, 0.5, 0.25);
+        // World cell (30, 20) is now texel (27, 20): it dims, not snaps off.
+        let v = b.light[20 * 60 + 27][0];
+        assert!((v - 0.75).abs() < 1e-4, "eased toward dark: {v}");
     }
 
     #[test]
