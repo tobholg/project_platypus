@@ -186,15 +186,27 @@ checksums.
   everything else keeps its plain rock, and the underground layer stays
   plain and easy): elliptical areas ~1 000–1 500 × 450–750 half size in the
   caverns (toxic grottos in the deep too).
-  - Fungal hollows: rock within two cells of open space becomes fungal soil,
-    glowing sprouts (`glowcap`, still plants) stand on the floors, and giant
-    mushrooms stand in the chambers in the background (stem, glowing cap:
-    background materials glow now too, where nothing's in front).
-  - Crystal caves: glowing crystal spikes grow from the chambers' walls into
-    them, a third to half way (not where a tunnel comes in); crystal studs
-    stud the walls.
+  - Fungal hollows, teal and violet: rock within two cells of open space
+    becomes fungal soil; glowing sprouts on the floors, glowing vines (a
+    hanging plant) from the ceilings; giant mushrooms in the chambers'
+    background (background materials glow now too, where nothing's in
+    front): parasols (a wide flat spotted cap, glowing violet gills under
+    it, strands hanging from its rim, a leaning stem with a ring) and
+    clusters of lantern stalks (a glowing bulb on a thin stalk); bracket
+    fungi up the walls, left and right in turn a jump apart, are one-way
+    platforms: a way up.
+  - Crystal caves: glowing crystals hang straight down from the chambers'
+    ceilings (a quarter to half the way down), a few short ones stand on
+    the floors (not where a tunnel comes in); crystal studs the walls.
   - Toxic grottos: every chamber holds acid (a pool below where tunnels come
     in); a glowing crust over the rock at the open space.
+  - Glows that live (rendering only, `MaterialDef`): `pulse` makes a glow
+    breathe (each 16-cell patch on its own 3–6 s cycle, in the light grid),
+    `glint` makes cells sparkle (little crosses of light drawn over the dark,
+    by chance per cell: crystals, gems, mithril), `motes` sheds glowing
+    spores that drift up (the fungi). At most 160 at once, on screen only.
+  - The caverns' big chambers hang stalactites from their ceilings but keep
+    their floors clear (no streaks where the floor is within 24 cells).
   - The dressing is a pass over each generated chunk (with a two-cell margin
     from the chunks around, asked once); spikes and mushrooms are planned
     with the chambers. `platypus-worldview` lists the areas.

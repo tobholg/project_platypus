@@ -85,23 +85,49 @@ pub struct Spike {
     pub tip: (f32, f32),
 }
 
-/// A giant mushroom standing in a chamber (background): its stem from the
-/// floor up, its cap on top.
+/// A kind of giant mushroom.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Species {
+    /// A wide flat cap, spotted, glowing gills under it and strands hanging
+    /// from its rim, on a stem that leans and has a ring.
+    Parasol,
+    /// A thin stalk with a glowing bulb on top (they grow in clusters).
+    Lantern,
+}
+
+/// A giant mushroom standing in a chamber (background).
 #[derive(Clone, Copy, Debug)]
 pub struct Mushroom {
+    pub species: Species,
     pub x: f32,
     pub foot: f32,
     pub top: f32,
     pub stem: f32,
+    /// Cap half width (a parasol) or bulb radius (a lantern).
     pub cap: f32,
+    /// How far the stem leans by its top (cells).
+    pub lean: f32,
 }
 
 /// What a giant mushroom has at a cell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Shroom {
     Stem,
-    /// How far down the cap (0 top … 1 rim), for shading.
+    /// The cap: its shade (lighter spots, darker rim).
     Cap(u8),
+    Gills,
+    /// A strand hanging from a cap's rim, or a lantern's bulb.
+    Glow,
+}
+
+/// A bracket fungus on a chamber's wall: a shelf to stand on (a platform).
+#[derive(Clone, Copy, Debug)]
+pub struct Shelf {
+    /// Where it meets the wall, and which way it grows (+1 right, -1 left).
+    pub x: f32,
+    pub y: f32,
+    pub dir: f32,
+    pub len: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -117,6 +143,7 @@ pub struct Chamber {
     pub zone: Option<Zone>,
     pub spikes: Vec<Spike>,
     pub mushrooms: Vec<Mushroom>,
+    pub shelves: Vec<Shelf>,
 }
 
 #[derive(Clone, Debug)]
@@ -160,6 +187,8 @@ pub enum Open {
     Pool(Pool),
     /// A crystal growing into a chamber.
     Crystal,
+    /// A bracket fungus (a platform).
+    Shelf,
 }
 
 fn unit(rng: &mut Rng) -> f32 {
@@ -285,7 +314,7 @@ impl Caves {
                 None
             };
             grid.entry((kx, ky)).or_default().push(chambers.len());
-            chambers.push(Chamber { x, y, rx, ry, pool, zone, spikes: Vec::new(), mushrooms: Vec::new() });
+            chambers.push(Chamber { x, y, rx, ry, pool, zone, spikes: Vec::new(), mushrooms: Vec::new(), shelves: Vec::new() });
         }
 
         // Links: each chamber to its nearest few; a spanning tree of them
@@ -405,37 +434,64 @@ impl Caves {
         for (c, ways) in chambers.iter_mut().zip(&ways) {
             match c.zone {
                 Some(Zone::Crystal) => {
-                    for _ in 0..(6.0 + c.rx / 12.0) as usize {
-                        let a = unit(&mut rng) * std::f32::consts::TAU;
+                    // Straight down from the ceiling, mostly; a few short ones
+                    // up from the floor (they're in the way there).
+                    for _ in 0..(5.0 + c.rx / 10.0) as usize {
+                        let u = range(&mut rng, (-0.8, 0.8));
+                        let ceiling = unit(&mut rng) < 0.8;
+                        let h = (1.0 - u * u).sqrt();
+                        let a = if ceiling { (h).atan2(u) } else { (-h).atan2(u) };
                         let clear = ways.iter().all(|w| {
                             let d = (a - w).rem_euclid(std::f32::consts::TAU);
-                            d.min(std::f32::consts::TAU - d) > 0.45
+                            d.min(std::f32::consts::TAU - d) > 0.4
                         });
                         if !clear {
                             continue;
                         }
-                        // From just outside the wall toward the middle, a third
-                        // to a half of the way, a little askew.
-                        let base = (c.x + c.rx * 1.05 * a.cos(), c.y + c.ry * 1.05 * a.sin());
-                        let reach = range(&mut rng, (0.3, 0.5));
-                        let skew = range(&mut rng, (-0.25, 0.25));
-                        let (dx, dy) = (c.x - base.0, c.y - base.1);
-                        let tip = (base.0 + (dx - dy * skew) * reach, base.1 + (dy + dx * skew) * reach);
-                        let half = range(&mut rng, (3.0, 8.0));
-                        let len = (dx * dx + dy * dy).sqrt().max(1.0);
-                        let (px, py) = (-dy / len * half, dx / len * half);
-                        c.spikes.push(Spike { base: [(base.0 + px, base.1 + py), (base.0 - px, base.1 - py)], tip });
+                        let x = c.x + c.rx * u;
+                        let (wall, room) = (c.ry * h * 1.08, 2.0 * c.ry * h);
+                        let (base_y, len, half) = if ceiling {
+                            (c.y + wall, -room * range(&mut rng, (0.25, 0.5)), range(&mut rng, (2.5, 7.0)))
+                        } else {
+                            (c.y - wall, room * range(&mut rng, (0.08, 0.18)), range(&mut rng, (2.0, 4.0)))
+                        };
+                        let tip = (x + range(&mut rng, (-0.12, 0.12)) * len.abs(), base_y + len);
+                        c.spikes.push(Spike { base: [(x - half, base_y), (x + half, base_y)], tip });
                     }
                 }
                 Some(Zone::Fungal) => {
-                    for _ in 0..(1.0 + c.rx / 45.0) as usize {
+                    // Parasols spread along the floor, clusters of lanterns
+                    // between them.
+                    for _ in 0..(1.0 + c.rx / 50.0) as usize {
                         let u = range(&mut rng, (-0.7, 0.7));
                         let x = c.x + c.rx * u;
                         let floor = c.y - c.ry * (1.0 - u * u).sqrt();
                         let room = c.y + c.ry * (1.0 - u * u).sqrt() - floor;
-                        let h = (room * range(&mut rng, (0.45, 0.8))).clamp(24.0, 110.0);
-                        let cap = (h * range(&mut rng, (0.25, 0.4))).clamp(8.0, 30.0);
-                        c.mushrooms.push(Mushroom { x, foot: floor - 12.0, top: floor + h, stem: (cap / 5.0).clamp(2.0, 5.0), cap });
+                        if unit(&mut rng) < 0.55 {
+                            let h = (room * range(&mut rng, (0.45, 0.75))).clamp(24.0, 110.0);
+                            let cap = (h * range(&mut rng, (0.35, 0.55))).clamp(10.0, 42.0);
+                            let lean = range(&mut rng, (-0.25, 0.25)) * h;
+                            c.mushrooms.push(Mushroom { species: Species::Parasol, x, foot: floor - 12.0, top: floor + h, stem: (cap / 6.0).clamp(2.0, 5.0), cap, lean });
+                        } else {
+                            for _ in 0..3 + (rng.next_u32() % 3) as usize {
+                                let x = x + range(&mut rng, (-14.0, 14.0));
+                                let h = (room * range(&mut rng, (0.2, 0.55))).clamp(14.0, 70.0);
+                                let lean = range(&mut rng, (-0.15, 0.15)) * h;
+                                c.mushrooms.push(Mushroom { species: Species::Lantern, x, foot: floor - 12.0, top: floor + h, stem: 1.5, cap: range(&mut rng, (2.5, 5.0)), lean });
+                            }
+                        }
+                    }
+                    // Bracket shelves up the walls, left and right in turn,
+                    // a jump apart: a way up.
+                    let mut y = c.y - c.ry * 0.75;
+                    let mut side = if unit(&mut rng) < 0.5 { 1.0 } else { -1.0 };
+                    while y < c.y + c.ry * 0.7 {
+                        let h = (1.0 - ((y - c.y) / c.ry).powi(2)).max(0.0).sqrt();
+                        let wall = c.x - side * c.rx * h;
+                        let len = range(&mut rng, (10.0, 22.0)).min(c.rx * h);
+                        c.shelves.push(Shelf { x: wall, y, dir: side, len });
+                        y += range(&mut rng, (20.0, 30.0));
+                        side = -side;
                     }
                 }
                 _ => {}
@@ -475,18 +531,46 @@ impl Caves {
     pub fn mushroom_at(&self, x: i32, y: i32) -> Option<Shroom> {
         let (chambers, _) = self.bins.get(&(x.div_euclid(CHUNK), y.div_euclid(CHUNK)))?;
         let (px, py) = (x as f32, y as f32);
+        let spot = |x: f32, y: f32| platypus_sim::rng::hash(&[0x5907, (x as i32 >> 2) as u64, (y as i32 >> 2) as u64]);
         for &i in chambers {
             for m in &self.chambers[i as usize].mushrooms {
-                let dx = px - m.x;
-                // The cap: a dome, flat underneath.
-                if py >= m.top - m.cap * 0.45 && py <= m.top + m.cap * 0.55 {
-                    let (u, v) = (dx / m.cap, (py - (m.top - m.cap * 0.45)) / m.cap);
-                    if u * u + v * v < 1.0 && v >= 0.0 {
-                        return Some(Shroom::Cap((v * 255.0).min(255.0) as u8));
+                // The stem leans more the higher it goes.
+                let t = ((py - m.foot) / (m.top - m.foot)).clamp(0.0, 1.0);
+                let cx = m.x + m.lean * t * t;
+                let dx = px - cx;
+                match m.species {
+                    Species::Parasol => {
+                        let (u, v) = (dx / m.cap, (py - m.top) / (m.cap * 0.38));
+                        // A flat dome, spotted, darker at the rim.
+                        if (0.0..1.0).contains(&v) && u * u + v * v < 1.0 {
+                            let rim = u * u + v * v;
+                            let spotted = spot(px, py) % 7 == 0 && rim < 0.7;
+                            return Some(Shroom::Cap(if spotted { 250 } else { (200.0 - rim * 150.0) as u8 }));
+                        }
+                        // Gills under it, then strands hanging from its edge.
+                        if (-3.0..0.0).contains(&(py - m.top)) && dx.abs() < m.cap * 0.95 {
+                            return Some(if (px as i32).rem_euclid(3) == 0 { Shroom::Gills } else { Shroom::Cap(40) });
+                        }
+                        let strand = (dx.abs() - m.cap * 0.8).abs() < 0.6 || spot(px, 0.0) % 9 == 0 && dx.abs() < m.cap * 0.9;
+                        let hang = 4.0 + (spot(px, 1.0) % 14) as f32;
+                        if strand && py < m.top - 3.0 && py > m.top - 3.0 - hang && dx.abs() < m.cap {
+                            return Some(Shroom::Glow);
+                        }
+                        // A ring two thirds up the stem.
+                        let ring = (t - 0.62).abs() < 0.015 && dx.abs() <= m.stem;
+                        if (dx.abs() <= m.stem / 2.0 || ring) && py >= m.foot && py < m.top {
+                            return Some(Shroom::Stem);
+                        }
                     }
-                }
-                if dx.abs() <= m.stem / 2.0 + (m.top - py).max(0.0) / 40.0 && py >= m.foot && py < m.top - m.cap * 0.45 {
-                    return Some(Shroom::Stem);
+                    Species::Lantern => {
+                        let dy = py - (m.top + m.cap * 0.6);
+                        if dx * dx + dy * dy < m.cap * m.cap {
+                            return Some(Shroom::Glow);
+                        }
+                        if dx.abs() <= m.stem / 2.0 && py >= m.foot && py < m.top {
+                            return Some(Shroom::Stem);
+                        }
+                    }
                 }
             }
         }
@@ -510,6 +594,16 @@ impl Caves {
             let n = self.rim.get([x as f64 / s, y as f64 / s, i as f64 * 0.37]) as f32;
             if c.spikes.iter().any(|s| in_triangle(p, s.base[0], s.base[1], s.tip)) {
                 return Some(Open::Crystal);
+            }
+            // A shelf: from deep in the wall (the rim is ragged) out `len`,
+            // three cells thick at the wall, thinning to one, flat on top.
+            if c.shelves.iter().any(|s| {
+                let out = (p.0 - s.x) * s.dir;
+                let thick = 3.0 - 2.0 * (out / s.len).max(0.0);
+                out > -30.0 && out < s.len && p.1 <= s.y && p.1 > s.y - thick
+            }) && d < 1.0 + 0.45 * self.rim.get([x as f64 / (c.rx.min(c.ry) * 0.5).max(10.0) as f64, y as f64 / (c.rx.min(c.ry) * 0.5).max(10.0) as f64, i as f64 * 0.37]) as f32
+            {
+                return Some(Open::Shelf);
             }
             if d < 1.0 + 0.45 * n {
                 return Some(match c.pool {

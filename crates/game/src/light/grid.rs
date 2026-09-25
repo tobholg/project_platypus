@@ -83,7 +83,9 @@ impl LightGrid {
     /// Fill `opacity`, `sky_opacity` and `emit` from the loaded world.
     /// `flicker(texel x, texel y)` scales what burns (0..1). Unloaded parts
     /// stay clear and dark.
-    pub fn fill_from(&mut self, world: &World, flicker: &(impl Fn(i32, i32) -> f32 + Sync)) {
+    /// `flicker`: a fire's brightness at a cell now; `breath`: 0..1, where a
+    /// breathing glow (`MaterialDef::pulse`) is in its cycle at a cell now.
+    pub fn fill_from(&mut self, world: &World, flicker: &(impl Fn(i32, i32) -> f32 + Sync), breath: &(impl Fn(i32, i32) -> f32 + Sync)) {
         let t = self.texel;
         let per_chunk = (CHUNK / t) as usize;
         let x_end = self.origin.x + self.w as i32 * t;
@@ -115,6 +117,13 @@ impl LightGrid {
                             op = ph.opacity as f32 / 255.0;
                             sky_op = op;
                             let mut e = [ph.glow[0] as f32 / 255.0, ph.glow[1] as f32 / 255.0, ph.glow[2] as f32 / 255.0];
+                            if ph.glow != [0; 3] {
+                                let pulse = mats.def(c.material).pulse;
+                                if pulse > 0 {
+                                    let k = 1.0 - pulse as f32 / 255.0 * breath(o.x + lx, o.y + ly);
+                                    e = e.map(|v| v * k);
+                                }
+                            }
                             if ph.kind == Kind::Fire || c.flags & flags::BURNING != 0 {
                                 let f = flicker(o.x + lx, o.y + ly);
                                 let fire = if c.flags & flags::BURNING != 0 && mats.is_charred(c) { 0.35 } else { 0.8 };
@@ -137,7 +146,8 @@ impl LightGrid {
                             // Glowing things behind glow too (a giant
                             // mushroom's cap), where nothing's in front.
                             if c.is_air() && bp.glow != [0; 3] {
-                                add3(&mut slot.2, [bp.glow[0] as f32 / 255.0, bp.glow[1] as f32 / 255.0, bp.glow[2] as f32 / 255.0]);
+                                let k = 1.0 - mats.def(b.material).pulse as f32 / 255.0 * breath(o.x + lx, o.y + ly);
+                                add3(&mut slot.2, [bp.glow[0] as f32 / 255.0 * k, bp.glow[1] as f32 / 255.0 * k, bp.glow[2] as f32 / 255.0 * k]);
                             }
                         }
                         slot.0 += op;

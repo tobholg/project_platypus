@@ -156,6 +156,17 @@ pub struct MaterialDef {
     /// sides, and open underfoot to one that wants to drop.
     #[serde(default)]
     pub platform: bool,
+    /// How much its glow breathes (0 steady … 255 from full to nothing),
+    /// slowly, each patch out of step. Rendering only.
+    #[serde(default)]
+    pub pulse: u8,
+    /// How often it glints: sparkles on its cells, over the dark (per cell,
+    /// per 10 s, at 255 about one). Rendering only.
+    #[serde(default)]
+    pub glint: u8,
+    /// Glowing motes drift up off it (spores). Rendering only.
+    #[serde(default)]
+    pub motes: bool,
 
     // ---- temperature (°C). See SPEC §3.6. --------------------------------
     /// Heat a fresh cell starts with, relative to ambient (lava 1200, ice -30).

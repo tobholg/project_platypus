@@ -122,6 +122,10 @@ struct Ids {
     glowcap: MaterialId,
     mushroom_stem: MaterialId,
     mushroom_cap: MaterialId,
+    mushroom_gills: MaterialId,
+    mushroom_glow: MaterialId,
+    fungus_shelf: MaterialId,
+    glow_vine: MaterialId,
     crystal: MaterialId,
     toxic_crust: MaterialId,
     platform: MaterialId,
@@ -212,6 +216,10 @@ impl TerrainGen {
             glowcap: mats.expect_id("glowcap"),
             mushroom_stem: mats.expect_id("mushroom_stem"),
             mushroom_cap: mats.expect_id("mushroom_cap"),
+            mushroom_gills: mats.expect_id("mushroom_gills"),
+            mushroom_glow: mats.expect_id("mushroom_glow"),
+            fungus_shelf: mats.expect_id("fungus_shelf"),
+            glow_vine: mats.expect_id("glow_vine"),
             crystal: mats.expect_id("crystal"),
             toxic_crust: mats.expect_id("toxic_crust"),
             platform: mats.expect_id("platform"),
@@ -308,7 +316,9 @@ impl TerrainGen {
         {
             return match m {
                 caves::Shroom::Stem => (i.mushroom_stem, None),
-                caves::Shroom::Cap(v) => (i.mushroom_cap, Some(255 - v / 2)),
+                caves::Shroom::Cap(shade) => (i.mushroom_cap, Some(shade)),
+                caves::Shroom::Gills => (i.mushroom_gills, None),
+                caves::Shroom::Glow => (i.mushroom_glow, None),
             };
         }
         let wall = if depth > 16 { self.rock(x, y, self.plan.band_at(y)) } else if depth > 6 { i.dirt } else { i.air };
@@ -565,6 +575,15 @@ impl TerrainGen {
                     caves::Zone::Fungal => {
                         if rock(m) && near_open(lx, ly, 2) {
                             set(cells, lx, ly, i.fungal_soil, rng.next_u8());
+                        } else if m == i.air && rock(at(lx, ly + 1)) && h.is_multiple_of(7) {
+                            // A vine hanging from the ceiling, brighter toward its tip.
+                            let long = 4 + (h >> 8) as i32 % 16;
+                            for k in 0..long {
+                                if ly - k < 0 || at(lx, ly - k) != i.air {
+                                    break;
+                                }
+                                set(cells, lx, ly - k, i.glow_vine, (k * 255 / long).min(255) as u8);
+                            }
                         } else if m == i.air && ly > 0 && rock(at(lx, ly - 1)) && h.is_multiple_of(5) {
                             // A sprout: a stem or two, a glowing tip.
                             let tall = 1 + (h >> 8) as i32 % 3;
@@ -724,6 +743,7 @@ impl TerrainGen {
                 caves::Open::Pool(caves::Pool::Lava) => i.lava,
                 caves::Open::Pool(caves::Pool::Acid) => i.acid,
                 caves::Open::Crystal => i.crystal,
+                caves::Open::Shelf => i.fungus_shelf,
             });
         }
         if !matches!(band, Band::Caverns | Band::Deep) {
@@ -736,11 +756,18 @@ impl TerrainGen {
             return None;
         }
         // Chambers, wider than tall; streaks of noise hang stalactites from
-        // their roofs and stand pillars in them. (Fading in over the band's
-        // top 300 cells.)
+        // their roofs, but leave their floors alone (walking over spikes is
+        // no fun): only where the chamber goes on 24 cells below. (Fading in
+        // over the band's top 300 cells.)
         let entry = ((plan.band_span(Band::Caverns).1 - y) as f64 / 300.0).clamp(0.0, 1.0);
-        let drip = self.drips.get([xf / 7.0, yf / 60.0, 0.3]).abs();
-        let chamber = self.caverns.get([xf / 1.6, yf]) * (if band == Band::Caverns { entry } else { 1.0 }) - drip * 0.12 > 0.22;
+        let fade = if band == Band::Caverns { entry } else { 1.0 };
+        let base = |y: f64| self.caverns.get([xf / 1.6, y]) * fade;
+        let open = base(yf);
+        if open <= 0.22 {
+            return None;
+        }
+        let drip = if open > 0.22 + 0.12 { 0.0 } else { self.drips.get([xf / 7.0, yf / 60.0, 0.3]).abs() };
+        let chamber = open - drip * 0.12 > 0.22 || (drip > 0.0 && base(yf - 24.0) <= 0.22);
         chamber.then(|| if y < plan.water_table(x) && band == Band::Caverns { i.water } else { i.air })
     }
 
@@ -1102,7 +1129,7 @@ mod tests {
         }
         let has = |z: caves::Zone, name: &str| seen.get(&z).is_some_and(|v| v.contains(&m.expect_id(name)));
         for (zone, names) in [
-            (caves::Zone::Fungal, ["fungal_soil", "glowcap", "mushroom_cap"].as_slice()),
+            (caves::Zone::Fungal, ["fungal_soil", "glowcap", "mushroom_cap", "mushroom_gills", "mushroom_glow", "fungus_shelf", "glow_vine"].as_slice()),
             (caves::Zone::Crystal, ["crystal"].as_slice()),
             (caves::Zone::Toxic, ["toxic_crust", "acid"].as_slice()),
         ] {

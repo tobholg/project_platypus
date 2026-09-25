@@ -25,6 +25,9 @@
 // hangs:        a plant held up from above as well as from below (cobwebs)
 // platform:     creatures stand on it but pass up through it (and drop through
 //               holding down)
+// pulse:        how much its glow breathes (0 steady … 255 full to nothing)
+// glint:        how often it sparkles, over the dark (per cell per 10 s at 255, ~1)
+// motes:        glowing motes drift up off it (spores)
 // colors:       gradient; each cell gets a fixed point on it
 //
 // `air` must stay first. Ids are assigned by order on first load and kept
@@ -67,13 +70,13 @@
             colors: [(84, 86, 96), (196, 202, 214), (100, 102, 112), (236, 240, 248), (80, 82, 92)]),
         (name: "gold_ore",    kind: Static, density: 3600, hardness: 85, crumbles_into: "gravel", above: (1300, "lava"),
             colors: [(78, 74, 76), (214, 170, 52), (92, 86, 84), (252, 214, 96), (74, 70, 72)]),
-        (name: "mithril_ore", kind: Static, density: 3000, hardness: 110, crumbles_into: "gravel", above: (1700, "lava"), glow: (6, 24, 28),
+        (name: "mithril_ore", kind: Static, density: 3000, hardness: 110, crumbles_into: "gravel", above: (1700, "lava"), glow: (6, 24, 28), pulse: 80, glint: 50,
             colors: [(58, 60, 74), (80, 186, 200), (68, 70, 86), (150, 240, 244), (54, 56, 70)]),
-        (name: "amethyst",    kind: Static, density: 2650, hardness: 60, crumbles_into: "gravel", glow: (46, 18, 70), opacity: 40,
+        (name: "amethyst",    kind: Static, density: 2650, hardness: 60, crumbles_into: "gravel", glow: (46, 18, 70), opacity: 40, pulse: 60, glint: 160,
             colors: [(96, 44, 146), (150, 86, 212), (196, 146, 246), (120, 60, 180)]),
-        (name: "emerald",     kind: Static, density: 2750, hardness: 80, crumbles_into: "gravel", glow: (4, 22, 10), opacity: 40,
+        (name: "emerald",     kind: Static, density: 2750, hardness: 80, crumbles_into: "gravel", glow: (4, 22, 10), opacity: 40, pulse: 60, glint: 160,
             colors: [(20, 112, 58), (46, 178, 96), (132, 236, 166), (30, 140, 72)]),
-        (name: "ruby",        kind: Static, density: 4000, hardness: 100, crumbles_into: "gravel", glow: (44, 5, 10), opacity: 40,
+        (name: "ruby",        kind: Static, density: 4000, hardness: 100, crumbles_into: "gravel", glow: (44, 5, 10), opacity: 40, pulse: 60, glint: 160,
             colors: [(132, 14, 32), (206, 42, 62), (255, 118, 128), (160, 22, 44)]),
         // A one-way platform: creatures stand on it, jump up through it, and
         // drop through it holding down. To everything else it's wood.
@@ -111,14 +114,25 @@
         // giant mushrooms standing in the chambers (background).
         (name: "fungal_soil", kind: Static, density: 1400, hardness: 25, crumbles_into: "soil",
             colors: [(34, 26, 52), (48, 36, 70), (62, 48, 88), (44, 34, 60)]),
-        (name: "glowcap",     kind: Plant, still: true, density: 150, hardness: 1, flammability: 10, ignites_at: 260, burn_time: 20, opacity: 30, glow: (14, 34, 70),
-            colors: [(170, 168, 190), (196, 194, 210), (80, 150, 255), (150, 200, 255)]),
+        (name: "glowcap",     kind: Plant, still: true, density: 150, hardness: 1, flammability: 10, ignites_at: 260, burn_time: 20, opacity: 30, glow: (10, 40, 44), pulse: 90, motes: true,
+            colors: [(150, 140, 176), (176, 166, 200), (60, 210, 200), (170, 255, 240)]),
         (name: "mushroom_stem", kind: Static, density: 600, hardness: 20, flammability: 5, ignites_at: 280, burn_time: 120, burns_into: "ash", burns_into_chance: 60,
-            colors: [(150, 144, 160), (182, 176, 192), (206, 200, 214)]),
-        (name: "mushroom_cap",  kind: Plant, still: true, density: 200, hardness: 2, flammability: 12, ignites_at: 260, burn_time: 40, opacity: 90, glow: (20, 44, 90),
-            colors: [(40, 60, 150), (60, 100, 210), (90, 150, 250), (150, 200, 255)]),
+            colors: [(128, 112, 150), (160, 146, 182), (190, 178, 210)]),
+        (name: "mushroom_cap",  kind: Plant, still: true, density: 200, hardness: 2, flammability: 12, ignites_at: 260, burn_time: 40, opacity: 90, glow: (12, 44, 52), pulse: 110, motes: true,
+            colors: [(16, 50, 70), (24, 96, 118), (40, 150, 160), (90, 210, 200), (200, 255, 240)]),
+        (name: "mushroom_gills", kind: Plant, still: true, density: 150, hardness: 1, flammability: 12, ignites_at: 260, burn_time: 30, opacity: 60, glow: (40, 10, 60), pulse: 160,
+            colors: [(110, 30, 140), (170, 60, 210), (220, 120, 250)]),
+        // A cap's hanging strands and a lantern stalk's bulb: the brightest.
+        (name: "mushroom_glow", kind: Plant, still: true, density: 150, hardness: 1, flammability: 12, ignites_at: 260, burn_time: 20, opacity: 30, glow: (24, 80, 84), pulse: 170, motes: true,
+            colors: [(100, 220, 210), (160, 250, 240), (220, 255, 250)]),
+        // Bracket fungi on the walls: shelves to stand on.
+        (name: "fungus_shelf", kind: Static, platform: true, density: 500, hardness: 15, glow: (10, 14, 6), pulse: 60, flammability: 8, ignites_at: 270, burn_time: 90, burns_into: "ash", burns_into_chance: 60,
+            colors: [(96, 60, 34), (140, 92, 50), (184, 128, 70), (212, 160, 96)]),
+        // Glowing vines hanging from the ceilings; brighter toward the tip.
+        (name: "glow_vine",   kind: Plant, hangs: true, density: 150, hardness: 1, flammability: 14, ignites_at: 260, burn_time: 20, opacity: 25, glow: (6, 34, 36), pulse: 120,
+            colors: [(20, 60, 60), (30, 100, 96), (60, 170, 160), (150, 250, 230)]),
         // Crystal caves: crystals grow into the chambers and stud the walls.
-        (name: "crystal",     kind: Static, density: 2650, hardness: 70, crumbles_into: "gravel", glow: (26, 44, 60), opacity: 40,
+        (name: "crystal",     kind: Static, density: 2650, hardness: 70, crumbles_into: "gravel", glow: (26, 44, 60), opacity: 40, pulse: 90, glint: 220,
             colors: [(140, 200, 240), (180, 230, 255), (225, 245, 255), (205, 185, 250)]),
         // Toxic grottos: a glowing crust over the rock (acid in the pools).
         (name: "toxic_crust", kind: Static, density: 2200, hardness: 30, crumbles_into: "gravel", glow: (6, 22, 3),

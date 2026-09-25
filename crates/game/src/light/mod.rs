@@ -423,7 +423,14 @@ fn compute_light(
         let n = platypus_sim::rng::hash(&[frame, (x >> 1) as u64, (y >> 1) as u64]);
         0.72 + 0.28 * (n % 1000) as f32 / 1000.0
     };
-    g.fill_from(world, &flicker);
+    // Breathing glows: each 16-cell patch on its own slow cycle (3–6 s).
+    let now = time.elapsed_secs();
+    let breath = |x: i32, y: i32| {
+        let n = platypus_sim::rng::hash(&[0xB4EA7, (x >> 4) as u64, (y >> 4) as u64]);
+        let (phase, speed) = ((n % 1000) as f32 / 1000.0 * std::f32::consts::TAU, 1.0 + ((n >> 10) % 1000) as f32 / 1000.0 * 1.1);
+        0.5 + 0.5 * (now * speed + phase).sin()
+    };
+    g.fill_from(world, &flicker, &breath);
 
     // Sky: down every column that is open to the sky above the grid.
     let top = origin.y + h as i32 * t;
