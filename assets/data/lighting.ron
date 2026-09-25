@@ -9,7 +9,7 @@
     iterations: 2,
     // Light kept per cell going into rock from a lit face: how deep a lit
     // wall shows (it never passes through walls).
-    rim: 0.82,
+    rim: 0.9,
     // Haze added around glowing things (fire, lava, acid) in the dark.
     glow_haze: 0.3,
 

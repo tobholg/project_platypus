@@ -462,13 +462,15 @@ fn water_boils_and_freezes() {
     fill(&mut w, "water", 40, 50, 1, 6);
     w.apply_edit(&WorldEdit::Heat { center: CellPos::new(15, 3), radius: 6, amount: 300 });
     w.apply_edit(&WorldEdit::Heat { center: CellPos::new(45, 3), radius: 6, amount: -120 });
-    for _ in 0..5 {
+    // Well past the thresholds: a second or so.
+    for _ in 0..60 {
         w.step();
     }
     assert!(count(&w, m.expect_id("steam")) > 10, "boiled");
     assert!(count(&w, m.expect_id("ice")) > 10, "froze");
     // In a 15 °C world the ice melts again.
-    for _ in 0..4_000 {
+    // Ice in a 15 °C room melts over a minute or so.
+    for _ in 0..12_000 {
         w.step();
     }
     assert_eq!(count(&w, m.expect_id("ice")), 0, "ice melted back");
@@ -482,12 +484,14 @@ fn blood_boils_and_freezes_like_water() {
     fill(&mut w, "blood", 40, 50, 1, 6);
     w.apply_edit(&WorldEdit::Heat { center: CellPos::new(15, 3), radius: 6, amount: 300 });
     w.apply_edit(&WorldEdit::Heat { center: CellPos::new(45, 3), radius: 6, amount: -120 });
-    for _ in 0..5 {
+    // Well past the thresholds: a second or so.
+    for _ in 0..60 {
         w.step();
     }
     assert!(count(&w, m.expect_id("blood_steam")) > 10, "boiled");
     assert!(count(&w, m.expect_id("frozen_blood")) > 10, "froze");
-    for _ in 0..4_000 {
+    // Ice in a 15 °C room melts over a minute or so.
+    for _ in 0..12_000 {
         w.step();
     }
     assert_eq!(count(&w, m.expect_id("frozen_blood")), 0, "thawed");
@@ -515,7 +519,8 @@ fn snow_depends_on_climate() {
         for x in 10..20 {
             w.set(CellPos::new(x, 1), Cell::new(snow, 0)); // at ambient
         }
-        for _ in 0..200 {
+        // Snow at 15 °C melts over a few seconds (latent heat); give it a minute.
+        for _ in 0..3_600 {
             w.step();
         }
         assert_eq!(count(&w, snow) > 0, survives, "snow at {temp} °C");
@@ -1317,7 +1322,7 @@ fn a_scorched_trunk_can_still_be_set_alight() {
     // water away; then light it again.
     let water = w.materials().expect_id("water");
     w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(64, 20), radius: 2 });
-    for _ in 0..240 {
+    for _ in 0..90 {
         w.step();
     }
     w.apply_edit(&WorldEdit::Paint { center: CellPos::new(64, 22), radius: 14, material: water, overwrite: false });
@@ -1356,4 +1361,58 @@ fn a_heat_gun_on_a_tree_sets_it_alight() {
     }
     let burning_bg = w.chunks().flat_map(|c| c.background()).filter(|b| b.flags & platypus_sim::cell::flags::BURNING != 0).count();
     assert!(burning_bg > 0, "the trunk caught");
+}
+
+/// Background fire is heat-driven (SPEC §3.8): a lone flame can't keep itself
+/// hot and goes out; a fire big enough to heat itself and what's above it
+/// climbs and takes the tree.
+#[test]
+fn a_spark_on_a_trunk_dies_a_real_fire_takes_the_tree() {
+    let outcome = |seed: u64, radius: i32| {
+        let mut w = boxed_world(2, 2, seed);
+        fill(&mut w, "stone", 1, 127, 1, 4);
+        fill_bg(&mut w, "wood", 58, 70, 1, 70);
+        let wood = w.materials().expect_id("wood");
+        let before = count_bg(&w, wood);
+        w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(64, 20), radius });
+        for _ in 0..3_000 {
+            w.step();
+        }
+        count_bg(&w, wood) as f32 / before as f32
+    };
+    let sparks: Vec<f32> = (0..10).map(|s| outcome(200 + s, 0)).collect();
+    let fires: Vec<f32> = (0..6).map(|s| outcome(300 + s, 5)).collect();
+    assert!(sparks.iter().filter(|&&k| k > 0.95).count() >= 7, "sparks mostly die: {sparks:?} of the wood left");
+    assert!(fires.iter().filter(|&&k| k < 0.6).count() >= 4, "a real fire takes most of it: {fires:?}");
+}
+
+#[test]
+fn ice_melts_slowly_in_a_warm_room_and_water_freezes_slowly_in_the_cold() {
+    let mut w = boxed_world(1, 1, 97);
+    let m = w.materials().clone();
+    let (ice, water) = (m.expect_id("ice"), m.expect_id("water"));
+    fill(&mut w, "ice", 10, 30, 1, 6);
+    for _ in 0..120 {
+        w.step();
+    }
+    let left = count(&w, ice);
+    assert!(left > 80, "two seconds in, most of the ice is still there ({left} of 100)");
+    for _ in 0..6_000 {
+        w.step();
+    }
+    assert!(count(&w, ice) < 10, "after 100 s it's mostly water ({} ice)", count(&w, ice));
+    // And water in a -5 °C world takes a while to freeze.
+    let mut cold = World::new(98, m.clone());
+    cold.insert_chunk(Chunk::filled(ChunkPos::new(0, 0), Cell::AIR));
+    cold.set_climate(platypus_sim::Climate { sea_level: 0, surface_temp: -5, cells_per_degree_up: i32::MAX, cells_per_degree_down: i32::MAX });
+    fill(&mut cold, "stone", 0, 64, 0, 1);
+    fill(&mut cold, "water", 10, 30, 1, 6);
+    for _ in 0..60 {
+        cold.step();
+    }
+    assert!(count(&cold, water) > 80, "a second in, still water ({})", count(&cold, water));
+    for _ in 0..12_000 {
+        cold.step();
+    }
+    assert!(count(&cold, ice) > 60, "it froze in the end ({} ice)", count(&cold, ice));
 }

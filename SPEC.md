@@ -142,7 +142,24 @@ Being above `ignites_at` gives a per-tick chance (set by flammability) to
 catch, certain only 250 °C above it — otherwise heat would carry every fire
 across every meadow regardless of flammability.
 
-**Wood is hard to get going; grass and leaves aren't.** Per material:
+**The background (standing trees) burns by heat.** Background cells hold
+heat (relative to ambient) but don't conduct it; a hot one cools by 1/32 a
+tick. A burning cell heats itself (+3 a tick) and radiates into its eight
+neighbours (1 + flammability/3: wood 3, leaves 7; twice upward, half
+downward; half when charred). A cell catches when its temperature passes its
+ignition point, by the playfield's ramp. A flame below 250 °C over ambient
+may go out (`fizzles`), so a lone spark dies, a fire big enough to heat
+itself and what's above it climbs, and a front spreads sideways. Flames in the
+playfield, the heat gun, lava and lightning add heat; water in front and rain
+put it out and cool it. Measured on generated trees: a one-cell spark always
+goes out within seconds; a small fire takes 40-90 % of a tree.
+
+**Phase changes take time (latent heat).** Past a material's `above`/`below`
+threshold by d °C it changes with chance (d / `latent`)² a tick: ice in a
+15 °C room melts over ~20 s, snow ~7 s, water at -5 °C freezes over ~30 s,
+and a heat gun or lava does it at once.
+
+**In the playfield, wood is hard to get going; grass and leaves aren't.** Per material:
 `spread` (chance /4096 per tick to catch from a burning neighbour, ×2 from
 below, ÷2 from above; default flammability × 16), `fizzles` (chance /4096 per
 tick that a flame with fewer than two flaming neighbours goes out) and

@@ -120,13 +120,23 @@ fn transition(h: &mut Hood, x: i32, y: i32, c: Cell, p: &MatPhys) -> bool {
         }
         h.wake(x, y);
     }
-    let into = if t >= p.above_at as i32 {
-        p.above_into
+    let (into, past) = if t >= p.above_at as i32 {
+        (p.above_into, t - p.above_at as i32)
     } else if t <= p.below_at as i32 {
-        p.below_into
+        (p.below_into, p.below_at as i32 - t)
     } else {
         return false;
     };
+    // Latent heat: the further past, the sooner (and it waits awake).
+    if p.latent > 0 {
+        let d = (past as u64 + 1).min(1 << 16);
+        let l = p.latent as u64;
+        let chance = (d * d * 4096 / (l * l)).min(4096) as u32;
+        if !h.rng.chance4096(chance) {
+            h.wake(x, y);
+            return false;
+        }
+    }
     let mut n = spawn(h, into);
     // Keep the heat (molten stone is hot), unless the new material pins its own.
     if !h.mats.phys(into).heat_source {
@@ -209,92 +219,118 @@ fn flaming_around(h: &Hood, x: i32, y: i32, back: bool) -> u32 {
         .count() as u32
 }
 
-/// Set a background cell burning (it stays in place and burns down).
-pub(crate) fn ignite_bg(h: &mut Hood, x: i32, y: i32, p: &MatPhys) {
+/// Fire in the playfield heats the background behind and beside it.
+fn ignite_background_near(h: &mut Hood, x: i32, y: i32) {
+    for (dx, dy) in [(0, 0), (0, 1), (-1, 0), (1, 0)] {
+        heat_bg(h, x + dx, y + dy, FLAME_HEAT);
+    }
+}
+
+/// Background fire is heat-driven (SPEC §3.8). Background cells hold heat
+/// (relative to ambient) but don't conduct it; fire moves by radiating it.
+/// A hot cell cools back toward ambient, 1/`BG_COOL` of its heat a tick.
+const BG_COOL: i32 = 32;
+/// A burning cell keeps itself this hot a tick (combustion); alone, it
+/// settles at ~`SELF_HEAT` × `BG_COOL` (144 °C over ambient): below
+/// `SUSTAIN`, so a lone flame may go out.
+const SELF_HEAT: i32 = 3;
+/// Below this (°C over ambient) a flame may go out (`MatPhys::fizzles`).
+const SUSTAIN: i32 = 250;
+/// Above this, it's a blaze: embers.
+const BLAZE_HEAT: i32 = 420;
+/// Heat flames in the playfield give the background behind and beside them.
+const FLAME_HEAT: i16 = 5;
+const BG_MAX_HEAT: i32 = 1200;
+const RAD_BASE: i32 = 1;
+const RAD_DIV: i32 = 3;
+
+/// Heat a burning cell of `p` radiates to a neighbour `dy` above (per tick):
+/// hotter-burning materials more, twice upward, half downward.
+#[inline]
+fn radiated(p: &MatPhys, charred: bool, dy: i32) -> i32 {
+    let base = RAD_BASE + p.flammability as i32 / RAD_DIV; // wood 3, leaves 7
+    let base = if charred { base / 2 } else { base };
+    match dy {
+        1.. => base * 2,
+        0 => base,
+        _ => base / 2,
+    }
+}
+
+/// Add heat to a background cell (fire in front, a heat gun, an ember).
+pub(crate) fn heat_bg(h: &mut Hood, x: i32, y: i32, amount: i16) {
     let Some(mut b) = h.get_bg(x, y) else { return };
-    if b.is_air() || b.flags & flags::BURNING != 0 {
+    if b.is_air() {
         return;
     }
-    b.flags |= flags::BURNING;
-    b.life = p.burn_time;
+    b.heat = (b.heat as i32 + amount as i32).clamp(-300, BG_MAX_HEAT) as i16;
     h.set_bg(x, y, b);
 }
 
-/// Fire in the playfield catching the background behind and beside it.
-/// Flames are brief and move, so each lights what's behind it at a third of
-/// the material's rate; otherwise rising flames race up a trunk ahead of the fire.
-fn ignite_background_near(h: &mut Hood, x: i32, y: i32) {
-    for (dx, dy) in [(0, 0), (0, 1), (-1, 0), (1, 0)] {
-        let Some(b) = h.get_bg(x + dx, y + dy) else { continue };
-        if b.is_air() || b.flags & flags::BURNING != 0 {
-            continue;
-        }
-        let bp = *h.mats.phys(b.material);
-        if bp.flammability > 0 && h.rng.chance4096(bp.spread as u32 / 3 + 1) {
-            ignite_bg(h, x + dx, y + dy, &bp);
-        }
-    }
-}
-
-/// One tick of a burning background cell: spreads through the background,
-/// lights the playfield in front of it, puts flames into the air in front,
-/// throws embers, and burns away (which may leave something hanging).
-pub(crate) fn burn_background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
+/// One tick of a hot or burning background cell.
+pub(crate) fn background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
+    let bp = *h.mats.phys(b.material);
     let front = h.get(x, y);
+    let burning = b.flags & flags::BURNING != 0;
+    // Water in front puts it out and cools it.
     if let Some(f) = front
         && !f.is_air()
     {
         let fp = *h.mats.phys(f.material);
         if fp.kind == Kind::Liquid && fp.flammability == 0 && !fp.hot {
-            // Water in front puts it out (and it stays wood: see fizzling).
             b.flags &= !flags::BURNING;
+            b.heat = b.heat.min(20);
             h.set_bg(x, y, b);
             return;
         }
-        if fp.flammability > 0 && f.flags & flags::BURNING == 0 && h.rng.chance(fp.flammability) {
+        if burning && fp.flammability > 0 && f.flags & flags::BURNING == 0 && h.rng.chance(fp.flammability) {
             ignite(h, x, y, &fp);
         }
     }
-    let bp = *h.mats.phys(b.material);
-    // A lone flame on a log may just go out (charred wood left as charcoal).
-    // Only a flame fizzles; smouldering wood glows on until it's gone.
-    if bp.fizzles > 0 && !h.mats.is_charred(b) && h.rng.chance4096(bp.fizzles as u32) && flaming_around(h, x, y, true) < COMPANY {
-        // In the background it just stops burning: charcoal there couldn't
-        // be relit (no heat flows behind the playfield), so a scorched trunk
-        // would stand forever.
-        let out = Cell { flags: b.flags & !flags::BURNING, ..b };
-        h.set_bg(x, y, out);
-        // It carries weight again (it didn't while charred): check what's
-        // around, which may have been left hanging meanwhile.
+    // Cooling toward ambient.
+    let mut heat = b.heat as i32;
+    heat -= if heat > 0 { (heat / BG_COOL).max(1) } else if heat < 0 { (heat / BG_COOL).min(-1) } else { 0 };
+    if !burning {
+        b.heat = heat as i16;
+        let t = h.ambient(y) + heat;
+        if bp.flammability > 0 && t >= bp.ignites_at as i32 {
+            let excess = (t - bp.ignites_at as i32) as u32;
+            let chance = (bp.flammability.max(1) as u32 * 16 * excess.min(HEAT_RAMP) / HEAT_RAMP).max(1);
+            if t >= bp.ignites_at as i32 + SURE_IGNITION_MARGIN || h.rng.chance4096(chance) {
+                b.flags |= flags::BURNING;
+                b.life = bp.burn_time;
+            }
+        }
+        h.set_bg(x, y, b);
+        return;
+    }
+    let charred = h.mats.is_charred(b);
+    heat = (heat + SELF_HEAT).min(BG_MAX_HEAT);
+    // A flame that isn't kept hot may go out (smouldering wood glows on).
+    if !charred && heat < SUSTAIN && bp.fizzles > 0 && h.rng.chance4096(bp.fizzles as u32) {
+        b.flags &= !flags::BURNING;
+        b.heat = heat as i16;
+        h.set_bg(x, y, b);
+        // It carries weight again: check what's around.
         h.note_broken_bg(x, y);
         return;
     }
-    // Charred, it smoulders: no more flames, no more spreading.
-    let flaming = !h.mats.is_charred(b);
+    // Radiate into the neighbours.
     for (dx, dy) in NEIGHBOURS8 {
-        if !flaming {
-            break;
-        }
         let Some(n) = h.get_bg(x + dx, y + dy) else { continue };
-        if n.is_air() || n.flags & flags::BURNING != 0 {
+        if n.is_air() {
             continue;
         }
-        let np = *h.mats.phys(n.material);
-        if np.flammability > 0 && h.rng.chance4096(spread_chance(&np, dy)) {
-            ignite_bg(h, x + dx, y + dy, &np);
-        }
+        heat_bg(h, x + dx, y + dy, radiated(&bp, charred, dy) as i16);
     }
-    // Flames into the air in front, more the bigger the fire here.
-    if flaming && front.is_some_and(|f| f.is_air()) && h.rng.chance(8 + 8 * flaming_around(h, x, y, true).min(4) as u8) {
+    b.heat = heat as i16;
+    // Flames into the air in front, more the hotter it is here.
+    if !charred && front.is_some_and(|f| f.is_air()) && h.rng.chance((heat / 12).clamp(4, 60) as u8) {
         let flame = spawn(h, h.mats.fire());
         h.set(x, y, flame);
     }
-    // Only a blaze throws embers, not a lone flame.
-    if flaming
-        && h.rng.chance(EMBER_CHANCE / 2 + 1)
-        && h.get(x, y + 1).is_some_and(|a| a.is_air())
-        && flaming_around(h, x, y, true) >= BLAZE
-    {
+    // Only a blaze throws embers.
+    if !charred && heat > BLAZE_HEAT && h.rng.chance(EMBER_CHANCE / 2 + 1) && h.get(x, y + 1).is_some_and(|a| a.is_air()) {
         let vx = (h.rng.next_u8() as f32 / 255.0 - 0.5) * 0.9 + h.wind * 0.3;
         let vy = 0.35 + h.rng.next_u8() as f32 / 255.0 * 0.5;
         let life = 40 + h.rng.next_u8() as u16 / 2;
@@ -308,20 +344,19 @@ pub(crate) fn burn_background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
             // Some of what's left (charcoal from wood) drops out in front, a
             // third as often as in the playfield: a burnt forest leaves some,
             // not a carpet.
-            let bp = *h.mats.phys(b.material);
             if bp.burns_into != MaterialId::AIR
                 && h.rng.chance(bp.burns_into_chance / 3)
                 && h.get(x, y).is_some_and(|f| f.is_air())
             {
                 let mut left = spawn(h, bp.burns_into);
-                left.heat = b.heat / 2;
+                left.heat = (heat / 2) as i16;
                 h.set(x, y, left);
             }
             return;
         }
         b.life -= 1;
         // Charred through: it stops holding things up, so check what it held.
-        if b.life + 1 == h.mats.phys(b.material).charred_life {
+        if b.life + 1 == bp.charred_life {
             h.note_broken_bg(x, y);
         }
     }

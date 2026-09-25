@@ -91,6 +91,11 @@ pub struct MaterialDef {
     /// Damage per second it does to a body touching it (acid 30).
     #[serde(default)]
     pub corrosive: u8,
+    /// Latent heat, as a temperature scale (°C): past `above`/`below` by d
+    /// degrees, it changes with chance (d / latent)² a tick, so ice in a warm
+    /// room melts over seconds and a blowtorch melts it at once. 0: instant.
+    #[serde(default)]
+    pub latent: u16,
     /// Light it gives off (SPEC §4.1), as a colour: its brightness is the
     /// strength (lava (255, 110, 40), fire, glowing acid). Hot cells also glow
     /// by temperature, whatever this says.
@@ -104,7 +109,8 @@ pub struct MaterialDef {
     /// `coatings.ron` (water: "wet", oil: "oily"). The game's business.
     #[serde(default)]
     pub coats: Option<String>,
-    /// Chance /4096 per tick that it catches from a burning neighbour (twice
+    /// Playfield only (the background is heat-driven, SPEC §3.8): chance
+    /// /4096 per tick that it catches from a burning neighbour (twice
     /// that from below, half from above). Default: flammability × 16, i.e.
     /// flammability /256. Together with how long a material burns this sets
     /// whether fire runs through it or dies out (SPEC §3.8).
@@ -212,6 +218,8 @@ pub struct MatPhys {
     pub corrosive: u8,
     pub spread: u16,
     pub fizzles: u16,
+    /// See `MaterialDef::latent`.
+    pub latent: u16,
     /// Light given off (linear-ish 0..255 per channel; 0 = none).
     pub glow: [u8; 3],
     /// Light stopped per cell, 0..255.
@@ -385,6 +393,7 @@ impl MaterialTable {
                 corrosive: d.corrosive,
                 spread: d.spread.unwrap_or(d.flammability as u16 * 16),
                 fizzles: d.fizzles,
+                latent: d.latent,
                 glow: d.glow.map_or([0; 3], |(r, g, b)| [r, g, b]),
                 opacity: d.opacity.unwrap_or(match d.kind {
                     Kind::Empty | Kind::Fire => 0,

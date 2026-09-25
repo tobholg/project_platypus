@@ -308,8 +308,8 @@ fn update_rect(h: &mut Hood, r: Rect) {
         for i in 0..=(r.max_x - r.min_x) {
             let x = if left_to_right { r.min_x + i } else { r.max_x - i };
             let b = h.get_bg(x, y).expect("centre chunk is loaded");
-            if b.flags & flags::BURNING != 0 {
-                rules::burn_background(h, x, y, b);
+            if b.flags & flags::BURNING != 0 || b.heat != 0 {
+                rules::background(h, x, y, b);
             }
             let c = h.get(x, y).expect("centre chunk is loaded");
             if !h.mats.phys(c.material).active && c.flags & (flags::LOOSE | flags::BURNING) == 0 && c.heat == 0 {
