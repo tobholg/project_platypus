@@ -1,7 +1,7 @@
 //! Screen-space feedback that isn't simulated: camera shake, blast
-//! flashes, lightning bolts and the sky flash that goes with them. Anything that explodes sends an `Explosion` message; bombs send
-//! their own, and the sim's detonations (gas pockets, chains) are forwarded
-//! from `StepStats::detonated`.
+//! flashes, lightning bolts and the sky flash that goes with them. Every explosion the sim applies (bombs, gas pockets, chains,
+//! lightning, edits) is forwarded from `StepStats::detonated` as an
+//! `Explosion` message.
 
 use bevy::prelude::*;
 

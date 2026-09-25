@@ -42,6 +42,9 @@ pub struct World {
     climate: Climate,
     /// Explosions requested by burning explosives, applied next tick.
     pending_explosions: Vec<(CellPos, ExplosionDef)>,
+    /// Every explosion applied since the last step, whatever set it off
+    /// (bombs, edits, chains, lightning): reported in `StepStats::detonated`.
+    blasts: Vec<(CellPos, i32)>,
     /// Tiles where the simulation destroyed solids, awaiting a fragment check.
     pending_fragment_tiles: Vec<CellPos>,
     /// Same, for the background layer.
@@ -90,6 +93,7 @@ impl World {
             edits: Vec::new(),
             climate: Climate::default(),
             pending_explosions: Vec::new(),
+            blasts: Vec::new(),
             pending_fragment_tiles: Vec::new(),
             pending_bg_tiles: Vec::new(),
             particles: Vec::new(),
@@ -363,6 +367,7 @@ impl World {
                 }
             }
             WorldEdit::Explode { center, radius, power } => {
+                self.blasts.push((center, radius));
                 self.explode(center, radius, power, &mut report);
                 self.loosen_if_removed(center, radius + FLING_RIM, &report);
             }
@@ -1095,7 +1100,8 @@ impl World {
         for edit in std::mem::take(&mut self.edits) {
             self.apply_edit(&edit);
         }
-        let detonated = self.detonate_pending();
+        self.detonate_pending();
+        let detonated = std::mem::take(&mut self.blasts);
         let edits = lap();
         self.tick += 1;
         let wind = self.wind();
@@ -1426,9 +1432,9 @@ impl World {
 
     /// Merge nearby requests (a burning gas pocket asks for hundreds) and apply
     /// at most a few per tick; the rest are covered by the blasts that happen.
-    fn detonate_pending(&mut self) -> Vec<(CellPos, i32)> {
+    fn detonate_pending(&mut self) {
         if self.pending_explosions.is_empty() {
-            return Vec::new();
+            return;
         }
         let mut requests = std::mem::take(&mut self.pending_explosions);
         requests.sort_by_key(|(p, _)| (p.y, p.x));
@@ -1444,7 +1450,6 @@ impl World {
         for &(center, ex) in &chosen {
             self.apply_edit(&WorldEdit::Explode { center, radius: ex.radius, power: ex.power });
         }
-        chosen.into_iter().map(|(c, ex)| (c, ex.radius)).collect()
     }
 }
 

@@ -210,8 +210,9 @@ pub struct StepStats {
     pub particles: Vec<Particle>,
     /// Background cells the simulation destroyed this tick.
     pub broken_bg: Vec<CellPos>,
-    /// Explosions the world detonated at the start of this tick (centre,
-    /// radius): for effects like screen shake and flashes.
+    /// Every explosion applied since the last tick and at its start,
+    /// whatever set it off (centre, radius): for screen shake and flashes,
+    /// and for what bodies feel.
     pub detonated: Vec<(CellPos, i32)>,
     /// Columns where vapour faded into the air this tick (the world feeds
     /// them to the clouds).

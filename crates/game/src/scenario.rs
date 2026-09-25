@@ -25,7 +25,8 @@
 //!   builds a wall with what it dug, chops at a tree with auto tool (Ctrl),
 //!   plants a torch; logs the inventory
 //! - `chestfall`  a chest beside the player at 1 s, the ground under it dug
-//!   out at 2 s: it falls; logs its height before and after
+//!   out at 2 s: it falls; a blast beside it at 4 s throws it, one on it at 5 s
+//!   breaks it
 //! - `drop`       stands still until 3 s, then holds S: on a platform (e.g. a
 //!   crypt's entrance, `PLATYPUS_SPAWN_X` at a ruin) it drops through; logs
 //!   the feet before and after
@@ -561,8 +562,22 @@ fn chestfall_script(
             *step = 2;
         }
         2 if s.elapsed > 4.0 => {
-            info!("chestfall: chest now at {:?}", chest_y());
+            info!("chestfall: chest now at {:?}, centre {:?}", chest_y(), found.iter().next().map(|c| c.body.pos));
+            // A small blast beside it: thrown, not broken; then a big one on it.
+            let c = found.iter().next().map(|c| c.body.pos).expect("a chest");
+            sim.queue(WorldEdit::Explode { center: CellPos::new(c.x as i32 + 12, c.y as i32), radius: 5, power: 60 });
             *step = 3;
+        }
+        3 if s.elapsed > 5.0 => {
+            info!("chestfall: after a blast beside it: {:?}", found.iter().next().map(|c| c.body.pos));
+            if let Some(c) = found.iter().next().map(|c| c.body.pos) {
+                sim.queue(WorldEdit::Explode { center: CellPos::new(c.x as i32, c.y as i32), radius: 14, power: 100 });
+            }
+            *step = 4;
+        }
+        4 if s.elapsed > 6.0 => {
+            info!("chestfall: after a blast on it: {} chests", found.iter().count());
+            *step = 5;
         }
         _ => {}
     }

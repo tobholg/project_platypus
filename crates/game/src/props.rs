@@ -6,7 +6,6 @@ use platypus_physics::{Body, Locomotion, move_and_collide};
 use platypus_sim::{CellPos, WorldEdit};
 
 use crate::actors::{Health, Kinematics, WorldGrid};
-use crate::fx::Explosion;
 use crate::light::LightSource;
 use crate::tools::BombCfg;
 use crate::world::{SimWorld, TICK_HZ, TickSet};
@@ -114,7 +113,6 @@ fn explode_bombs(
     mut sim: ResMut<SimWorld>,
     mut bombs: Query<(Entity, &mut Bomb, &Kinematics)>,
     mut creatures: Query<(&mut Kinematics, &mut Health), Without<Bomb>>,
-    mut fx: MessageWriter<Explosion>,
 ) {
     let mut blasts = Vec::new();
     for (entity, mut bomb, k) in &mut bombs {
@@ -125,8 +123,8 @@ fn explode_bombs(
         }
     }
     for (at, cfg) in blasts {
+        // (The sim reports it with the rest: `StepStats::detonated`.)
         sim.world.apply_edit(&WorldEdit::Explode { center: CellPos::from_world(at.x, at.y), radius: cfg.radius, power: cfg.power });
-        fx.write(Explosion { at, radius: cfg.radius as f32 });
 
         // Creatures: damage and knockback, falling off with distance.
         let reach = cfg.radius as f32 * 1.6;
