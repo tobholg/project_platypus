@@ -12,7 +12,9 @@
 //! ```
 //!
 //! The overview samples one cell per pixel. A strip down the left edge and
-//! faint lines mark the vertical bands; the dashed cyan line is sea level.
+//! faint lines mark the vertical bands; the dashed cyan line is sea level; a
+//! strip along the top shows the biomes (ocean blue, plains lime, forest
+//! green, desert sand, tundra white, jungle dark green, swamp olive).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -20,7 +22,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use platypus_sim::{CHUNK, Cell, CellPos, Chunk, ChunkPos, Kind, MaterialId, MaterialTable};
-use platypus_worldgen::{Band, ChunkGenerator, Preset, TerrainGen};
+use platypus_worldgen::{Band, Biome, ChunkGenerator, Preset, TerrainGen};
 use rayon::prelude::*;
 
 struct Args {
@@ -79,6 +81,30 @@ fn main() {
         let (lo, hi) = plan.band_span(band);
         println!("  {:<12} y {lo:>6} … {hi:>6}  ({:+} … {:+} from sea level)", band.name(), lo - plan.sea_level, hi - plan.sea_level);
     }
+    let regions: Vec<String> = plan.regions().iter().map(|(a, b, bi)| format!("{} {a}–{b}", bi.name())).collect();
+    println!("biomes: {}", regions.join(", "));
+    println!("{} sky islands, {} trees (+{} on islands)", plan.islands.len(), plan.forest.len(), plan.island_forest.len());
+    // Lakes: runs of water over land (not the oceans at the ends).
+    let mut lakes = Vec::new();
+    let mut x = 0;
+    while x < plan.width {
+        let Some(level) = plan.water_at(x) else {
+            x += 1;
+            continue;
+        };
+        let start = x;
+        let mut deepest = 0;
+        while x < plan.width && plan.water_at(x) == Some(level) {
+            deepest = deepest.max(level - plan.surface_at(x));
+            x += 1;
+        }
+        if plan.biome_at(start) != Biome::Ocean && plan.biome_at(x - 1) != Biome::Ocean {
+            lakes.push(format!("x {start} ({} wide, {deepest} deep, {:+})", x - start, level - plan.sea_level));
+        }
+    }
+    println!("{} lakes: {}", lakes.len(), lakes.join("; "));
+    let isl: Vec<String> = plan.islands.iter().map(|i| format!("({},{} {}×{})", i.x0, i.y0, i.w, i.h)).collect();
+    println!("sky islands (x,y w×h): {}", isl.join(" "));
 
     let t = Instant::now();
     let (x0, y0, w, h) = args.region.unwrap_or((0, 0, plan.width, plan.height));
@@ -113,6 +139,15 @@ fn main() {
             let y = y0 + h - 1 - (row as i32 * scale + scale / 2);
             for col in 0..pw {
                 let x = x0 + col as i32 * scale + scale / 2;
+                // A pixel holding the ground line shows the ground's top
+                // (snow, grass, sand), which is thinner than a pixel.
+                let top = plan.water_at(x).unwrap_or(plan.surface_at(x));
+                let y = if (y - scale / 2..y + scale - scale / 2).contains(&(top - 1)) {
+                    // Rugged ground wanders around the planned line: find it.
+                    (top - 48..top + 48).rev().find(|&yy| generator.sample(x, yy).0 != MaterialId::AIR).unwrap_or(top - 1)
+                } else {
+                    y
+                };
                 let (front, back) = generator.sample(x, y);
                 let px = shade(&mats, Cell::new(front, 136), Cell::new(back, 136)).unwrap_or_else(|| sky(y));
                 line[col * 3..col * 3 + 3].copy_from_slice(&px);
@@ -125,6 +160,13 @@ fn main() {
         let y = y0 + h - 1 - row as i32 * scale;
         let c = band_color(plan.band_at(y));
         for col in 0..pw.min(6) {
+            rgb[(row * pw + col) * 3..(row * pw + col) * 3 + 3].copy_from_slice(&c);
+        }
+    }
+    // Biomes: a strip along the top.
+    for col in 0..pw {
+        let c = biome_color(plan.biome_at(x0 + col as i32 * scale));
+        for row in 0..ph.min(6) {
             rgb[(row * pw + col) * 3..(row * pw + col) * 3 + 3].copy_from_slice(&c);
         }
     }
@@ -162,6 +204,18 @@ fn shade(mats: &MaterialTable, front: Cell, back: Cell) -> Option<[u8; 3]> {
         return Some([(r as f32 * dim) as u8, (g as f32 * dim) as u8, (b as f32 * dim) as u8]);
     }
     None
+}
+
+fn biome_color(b: Biome) -> [u8; 3] {
+    match b {
+        Biome::Ocean => [30, 80, 200],
+        Biome::Plains => [190, 220, 90],
+        Biome::Forest => [30, 130, 40],
+        Biome::Desert => [235, 200, 110],
+        Biome::Tundra => [230, 240, 255],
+        Biome::Jungle => [0, 90, 50],
+        Biome::Swamp => [90, 110, 60],
+    }
 }
 
 fn band_color(b: Band) -> [u8; 3] {

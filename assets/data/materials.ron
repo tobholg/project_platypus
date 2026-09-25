@@ -49,6 +49,8 @@
 
         // ---- powders ------------------------------------------------------
         (name: "sand",     kind: Powder, density: 1600, hardness: 5,  above: (1100, "glass"), colors: [(206, 176, 110), (226, 198, 132), (196, 164, 100)]),
+        // Under desert sand: sand pressed into rock.
+        (name: "sandstone", kind: Static, density: 2200, hardness: 35, crumbles_into: "sand", colors: [(178, 142, 90), (192, 156, 100), (166, 132, 84), (184, 150, 96)]),
         (name: "gravel",   kind: Powder, density: 1900, hardness: 15, above: (1400, "lava"), colors: [(96, 94, 90), (130, 126, 120), (80, 78, 76)]),
         (name: "soil",     kind: Powder, density: 1400, hardness: 8,  colors: [(92, 60, 34), (112, 74, 42)]),
         (name: "ash",      kind: Powder, density: 300,  hardness: 1,  colors: [(70, 68, 66), (98, 96, 94)]),

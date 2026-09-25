@@ -220,15 +220,16 @@ pub struct Forest {
 }
 
 impl Forest {
-    /// `surface(x)` gives the first air cell above ground; `growable(x)` says
+    /// `surface(x)` gives the first air cell above ground; `lush(x)` (about
+    /// −1 … 1) pushes toward dense woods (+) or meadow (−); `growable(x)` says
     /// whether a tree may stand there (not snow, not a cliff).
-    pub fn plan(seed: u64, width: i32, surface: impl Fn(i32) -> i32, growable: impl Fn(i32) -> bool) -> Forest {
+    pub fn plan(seed: u64, width: i32, surface: impl Fn(i32) -> i32, lush: impl Fn(i32) -> f64, growable: impl Fn(i32) -> bool) -> Forest {
         let density = Perlin::new((seed ^ 0xF0_4E57) as u32);
         let mut rng = Rng::seeded(&[seed, 0x7EE5]);
         let mut trees: Vec<Tree> = Vec::new();
         let mut x = TREE_REACH;
         while x < width - TREE_REACH {
-            let d = density.get([x as f64 / 1100.0, 0.5]);
+            let d = density.get([x as f64 / 1100.0, 0.5]) + lush(x) * 0.6;
             // Dense woods, open woodland, or meadow.
             let gap = if d > 0.12 { 34 } else if d > -0.22 { 90 } else { 0 };
             if gap == 0 {

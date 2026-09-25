@@ -53,7 +53,9 @@ and the RPG arc (rigs and gear skins, moves, corpses and loot, characters, spell
 6. Meteors: fireball, huge crater, ejecta, forest fires, hot meteorite ore
 7. **Worldgen v2 / biomes**: now the world arc W7 on branch `world-arc`
    (DESIGN.md §3, §11). Stage 1 done: `WorldPlan`, presets, bands,
-   `platypus-worldview`, determinism test. Next: stage 2, relief and water.
+   `platypus-worldview`, determinism test. Stage 2 done: biomes, climate across
+   the world (and an inversion over the peaks), mountains with snow, oceans,
+   lakes, sky islands (SPEC §3.4b). Next: stage 3, the underground.
    Originally:
    biome plan from temperature × moisture; tree species as RON data (conifers
    that hold snow, birch, jungle, dead trees); lakes and rivers in forests;

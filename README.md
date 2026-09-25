@@ -24,7 +24,9 @@ cargo run -p platypus_worldview --release -- --seed 7 --preset small --scale 4
 ```
 
 A strip down the left edge marks the vertical bands (sky, peaks, surface,
-underground, caverns, deep, underworld); the dashed cyan line is sea level.
+underground, caverns, deep, underworld); the dashed cyan line is sea level; a
+strip along the top shows the biomes. It also prints the biomes, lakes and sky
+islands with their positions, to point `--region` at.
 
 The toolchain is pinned in `rust-toolchain.toml`; rustup fetches it on first build.
 

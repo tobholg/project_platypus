@@ -21,6 +21,11 @@ pub struct Climate {
     /// default.
     pub columns: [i8; CLIMATE_COLUMNS],
     pub column_bits: u32,
+    /// Above this height the air warms again (an inversion over the peaks,
+    /// so the sky islands are mild), 1 °C per `cells_per_degree_inversion`,
+    /// back up to `surface_temp`.
+    pub warm_above: i32,
+    pub cells_per_degree_inversion: i32,
 }
 
 impl Default for Climate {
@@ -33,6 +38,8 @@ impl Default for Climate {
             cells_per_degree_down: i32::MAX,
             columns: [0; CLIMATE_COLUMNS],
             column_bits: 16,
+            warm_above: i32::MAX,
+            cells_per_degree_inversion: i32::MAX,
         }
     }
 }
@@ -42,7 +49,11 @@ impl Climate {
     #[inline]
     pub fn ambient(&self, x: i32, y: i32) -> i32 {
         let column = self.columns[((x.max(0) >> self.column_bits) as usize).min(CLIMATE_COLUMNS - 1)] as i32;
-        let height = if y >= self.sea_level {
+        let height = if y >= self.warm_above {
+            // (Back up to sea level's warmth, no further.)
+            (self.surface_temp - (self.warm_above - self.sea_level) / self.cells_per_degree_up.max(1) + (y - self.warm_above) / self.cells_per_degree_inversion.max(1))
+                .min(self.surface_temp)
+        } else if y >= self.sea_level {
             self.surface_temp - (y - self.sea_level) / self.cells_per_degree_up.max(1)
         } else {
             self.surface_temp + (self.sea_level - y) / self.cells_per_degree_down.max(1)

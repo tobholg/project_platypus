@@ -9,12 +9,16 @@ use noise::{Fbm, MultiFractal, NoiseFn, Perlin};
 use platypus_sim::rng::{Rng, hash};
 use platypus_sim::{CHUNK, CHUNK_AREA, Cell, CellPos, Chunk, ChunkPos, Climate, MaterialId, MaterialTable};
 
+pub mod biome;
 pub mod flora;
+pub mod islands;
 pub mod plan;
 
 use std::sync::Arc;
 
 use flora::TreePart;
+pub use biome::Biome;
+use islands::IslandCell;
 pub use plan::{Band, Preset, WorldPlan};
 
 /// Anything that can fill a chunk. The game streams through this trait, so
@@ -52,6 +56,9 @@ pub trait ChunkGenerator: Send + Sync {
 
 /// Noise-cave threshold: higher, fewer caves.
 const CAVE_THRESHOLD: f64 = 0.18;
+/// How far mountain ground wanders from the planned surface (overhangs,
+/// arches, ledges), at full ruggedness.
+const OVERHANG: f64 = 34.0;
 
 struct Ids {
     air: MaterialId,
@@ -71,6 +78,8 @@ struct Ids {
     wood: MaterialId,
     leaves: MaterialId,
     tall_grass: MaterialId,
+    ice: MaterialId,
+    sandstone: MaterialId,
 }
 
 /// Terrain rasterised from a `WorldPlan`: hills with cliffs, dirt over
@@ -88,6 +97,7 @@ pub struct TerrainGen {
     /// Ragged edges of tree crowns; tall grass height.
     leaf_edge: Perlin,
     meadow: Perlin,
+    overhang: Fbm<Perlin>,
 }
 
 impl TerrainGen {
@@ -116,6 +126,8 @@ impl TerrainGen {
             wood: mats.expect_id("wood"),
             leaves: mats.expect_id("leaves"),
             tall_grass: mats.expect_id("tall_grass"),
+            ice: mats.expect_id("ice"),
+            sandstone: mats.expect_id("sandstone"),
         };
 
         TerrainGen {
@@ -123,6 +135,7 @@ impl TerrainGen {
             ids,
             leaf_edge: Perlin::new(s(7)),
             meadow: Perlin::new(s(8)),
+            overhang: Fbm::<Perlin>::new(s(9)).set_octaves(3).set_frequency(1.0 / 60.0),
             caves: Fbm::<Perlin>::new(s(3)).set_octaves(4).set_frequency(1.0 / 160.0),
             worms: Fbm::<Perlin>::new(s(4)).set_octaves(3).set_frequency(1.0 / 260.0),
             pockets: Perlin::new(s(5)),
@@ -151,7 +164,14 @@ impl TerrainGen {
         if front == self.ids.air && self.grass_at(x, y) {
             front = self.ids.tall_grass;
         }
-        (front, self.background_at(x, y, &self.plan.forest.near(x, x)).0)
+        (front, self.background_at(x, y, &self.trees_near(x, x)).0)
+    }
+
+    /// Trees (ground and sky islands) overlapping `x0..=x1`.
+    fn trees_near(&self, x0: i32, x1: i32) -> Vec<&flora::Tree> {
+        let mut t = self.plan.forest.near(x0, x1);
+        t.extend(self.plan.island_forest.near(x0, x1));
+        t
     }
 
     /// The background layer: walls underground (what you see in caves), trees
@@ -159,12 +179,23 @@ impl TerrainGen {
     /// lighter on top).
     fn background_at(&self, x: i32, y: i32, trees: &[&flora::Tree]) -> (MaterialId, Option<u8>) {
         let i = &self.ids;
+        // Wood before leaves, whichever tree they belong to: a neighbour's
+        // crown must not hide a trunk (its own leaves would lose their wood).
+        let mut leaves = None;
         for t in trees {
             match t.part_at(x, y, &self.leaf_edge) {
                 Some(TreePart::Wood(shade)) => return (i.wood, Some(shade)),
-                Some(TreePart::Leaves(shade)) => return (i.leaves, Some(shade)),
-                None => {}
+                Some(TreePart::Leaves(shade)) if leaves.is_none() => leaves = Some(shade),
+                _ => {}
             }
+        }
+        if let Some(shade) = leaves {
+            return (i.leaves, Some(shade));
+        }
+        if let Some(isl) = self.plan.island_at(x)
+            && isl.at(x, y) != IslandCell::None
+        {
+            return (i.stone, None);
         }
         let depth = self.surface_at(x) - y;
         let wall = if depth > 16 { i.stone } else if depth > 6 { i.dirt } else { i.air };
@@ -191,38 +222,95 @@ impl TerrainGen {
 
     fn material_at(&self, x: i32, y: i32) -> MaterialId {
         let i = &self.ids;
-        if y < 6 + (hash(&[self.plan.seed, 77, x as u64]) % 4) as i32 {
+        let plan = &*self.plan;
+        if y < 6 + (hash(&[plan.seed, 77, x as u64]) % 4) as i32 {
             return i.bedrock;
         }
-        let surface = self.surface_at(x);
-        let depth = surface - y;
+        let surface = plan.surface_at(x);
+        let (xf, yf) = (x as f64, y as f64);
+        // Steep mountain faces wander sideways: the ground here is the
+        // planned surface a little way off, so they get overhangs and ledges
+        // while crests and gentle slopes (where trees stand) stay put.
+        let rugged = plan.rugged_at(x) as f64;
+        let slope = (plan.surface_at(x + 4) - plan.surface_at(x - 4)).abs() as f64 / 8.0;
+        let wander = OVERHANG * rugged * ((slope - 0.8) / 0.8).clamp(0.0, 1.0);
+        let ground = if wander > 0.5 { plan.surface_at(x + (self.overhang.get([xf, yf * 1.3]) * wander) as i32) } else { surface };
+        let depth = ground - y;
+        // The ground's own temperature: snow and ice where it's freezing.
+        let cold = plan.climate.ambient(x, surface) <= 0;
         if depth <= 0 {
+            if let Some(w) = plan.water_at(x)
+                && y < w
+                && y >= surface
+            {
+                return if plan.climate.ambient(x, y) <= 0 { i.ice } else { i.water };
+            }
+            if let Some(isl) = plan.island_at(x) {
+                match isl.at(x, y) {
+                    IslandCell::Grass => return if plan.climate.ambient(x, y) <= 0 { i.snow } else { i.grass },
+                    IslandCell::Dirt => return i.dirt,
+                    IslandCell::Stone => return i.stone,
+                    IslandCell::Cave | IslandCell::None => {}
+                }
+            }
             return i.air;
         }
-        let (xf, yf) = (x as f64, y as f64);
 
-        // Caves: blobby caverns plus long worm tunnels, fading in below the topsoil.
-        let fade = ((depth as f64 - 12.0) / 60.0).clamp(0.0, 1.0);
-        let cave = self.caves.get([xf, yf * 1.6]) * fade;
-        let worm = self.worms.get([xf, yf]).abs();
+        // Caves: blobby caverns plus long worm tunnels, fading in below the
+        // topsoil, and kept away from lake and ocean beds.
+        let under_water = plan.water_at(x).is_some();
+        let fade = ((depth as f64 - if under_water { 60.0 } else { 12.0 }) / 60.0).clamp(0.0, 1.0);
+        // Fewer caves up in the mountains than under the lowlands.
+        let above = ((y - plan.sea_level) as f64 / (600.0 * plan.height as f64 / 16_384.0)).clamp(0.0, 1.0);
+        let cave = self.caves.get([xf, yf * 1.6]) * fade - above * 0.14;
+        let worm = self.worms.get([xf, yf]).abs() + above * 0.03;
         let open = cave > CAVE_THRESHOLD || (worm < 0.035 * fade && depth > 20);
-        let deep = self.plan.band_at(y) == Band::Underworld;
+        let deep = plan.band_at(y) == Band::Underworld;
         if open {
             // Fill the bottoms of some caverns with a liquid pool.
             let pool = self.pockets.get([xf / 90.0, yf / 90.0, 1.3]);
-            if pool > 0.35 && self.caves.get([xf, (yf - 10.0) * 1.6]) * fade <= CAVE_THRESHOLD {
+            if above == 0.0 && pool > 0.35 && self.caves.get([xf, (yf - 10.0) * 1.6]) * fade <= CAVE_THRESHOLD {
                 return if deep { i.lava } else if pool > 0.62 { i.oil } else { i.water };
             }
             return i.air;
         }
 
-        let snowy = surface > self.plan.snow_line;
-        if depth == 1 {
-            return if snowy { i.snow } else { i.grass };
-        }
-        let topsoil = 8 + (self.strata.get([xf / 40.0, 0.5]) * 5.0) as i32;
-        if depth <= topsoil {
-            return if snowy && depth <= 4 { i.snow } else { i.dirt };
+        let biome = plan.biome_at(x);
+        let soil = 8 + (self.strata.get([xf / 40.0, 0.5]) * 5.0) as i32;
+        if under_water {
+            // Lake and sea beds: sand over the usual ground.
+            if depth <= 5 + soil / 2 {
+                return i.sand;
+            }
+        } else if matches!(biome, Biome::Ocean | Biome::Desert) && slope < 1.2 {
+            let sand = if biome == Biome::Desert { 30 + (self.strata.get([xf / 90.0, 2.5]) * 14.0) as i32 } else { 12 };
+            if depth <= sand {
+                return i.sand;
+            }
+            if biome == Biome::Desert && depth <= sand + 60 {
+                return i.sandstone;
+            }
+        } else {
+            // Snow where the ground freezes (deeper the colder), bare rock
+            // on rugged slopes, grass and dirt elsewhere.
+            // (Not on steep faces: snow slides off, so ledges hold it.)
+            if cold && slope < 1.6 {
+                let t = plan.climate.ambient(x, surface);
+                if depth <= (2 - t).min(24) {
+                    return i.snow;
+                }
+            }
+            // Soil thins on steep ground; bare rock on cliffs.
+            let soil = (soil as f64 * (1.0 - (slope - 0.6) / 0.8).clamp(0.0, 1.0)) as i32;
+            if depth == 1 && soil > 0 && !cold {
+                return i.grass;
+            }
+            if depth <= soil {
+                return i.dirt;
+            }
+            if rugged > 0.3 && depth <= 3 && self.pockets.get([xf / 12.0, yf / 12.0, 5.5]) > 0.3 {
+                return i.gravel;
+            }
         }
         // Sealed gas bubbles deep in the rock: bomb or dig into one with fire nearby.
         if depth > 90 && self.pockets.get([xf / 34.0, yf / 22.0, 23.3]) > 0.66 {
@@ -230,10 +318,10 @@ impl TerrainGen {
         }
         // Pockets inside rock.
         let p = self.pockets.get([xf / 45.0, yf / 45.0, 7.1]);
-        if p > 0.55 {
+        if p > 0.55 && depth > 12 {
             return i.sand;
         }
-        if p < -0.6 {
+        if p < -0.6 && depth > 12 {
             return i.gravel;
         }
         let ore = self.pockets.get([xf / 18.0, yf / 18.0, 11.9]);
@@ -268,14 +356,16 @@ impl ChunkGenerator for TerrainGen {
     }
 
     fn spawn_point(&self) -> CellPos {
-        let x = self.plan.width / 2;
+        // The middle of the world, or the nearest dry ground to it.
+        let mid = self.plan.width / 2;
+        let x = (0..2_000).flat_map(|d| [mid + d, mid - d]).find(|&x| self.plan.water_at(x).is_none()).unwrap_or(mid);
         CellPos::new(x, self.surface_at(x) + 2)
     }
 
     fn generate(&self, pos: ChunkPos) -> Chunk {
         let origin = pos.origin();
         let mut rng = Rng::seeded(&[self.plan.seed, 0xC4C4, pos.x as u64, pos.y as u64]);
-        let trees = self.plan.forest.near(origin.x, origin.x + CHUNK - 1);
+        let trees = self.trees_near(origin.x, origin.x + CHUNK - 1);
         let mut cells = Vec::with_capacity(CHUNK_AREA);
         let mut bg = Vec::with_capacity(CHUNK_AREA);
         let make = |m: MaterialId, rng: &mut Rng| {
@@ -390,6 +480,93 @@ mod tests {
         assert_eq!(forward, backward);
     }
 
+    /// Water runs over each column as (start, end, level), left to right.
+    fn lakes(p: &WorldPlan) -> Vec<(i32, i32, i32)> {
+        let mut out = Vec::new();
+        let mut x = 0;
+        while x < p.width {
+            match p.water_at(x) {
+                Some(level) => {
+                    let start = x;
+                    while x < p.width && p.water_at(x) == Some(level) {
+                        x += 1;
+                    }
+                    out.push((start, x, level));
+                }
+                None => x += 1,
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn oceans_at_both_ends_and_held_lakes_inland() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let p = g.plan();
+        assert_eq!(p.water_at(10), Some(p.sea_level), "an ocean on the left");
+        assert_eq!(p.water_at(p.width - 10), Some(p.sea_level), "and on the right");
+        let inland: Vec<_> = lakes(p).into_iter().filter(|&(a, b, _)| p.biome_at(a) != Biome::Ocean && p.biome_at(b - 1) != Biome::Ocean).collect();
+        assert!(inland.len() >= 3, "lakes inland ({})", inland.len());
+        assert!(inland.iter().any(|&(a, b, _)| b - a > 600), "at least one big one: {inland:?}");
+        for (a, b, level) in inland {
+            // Held: the ground either side reaches the water line, so it's
+            // asleep on load, not pouring away.
+            assert!(p.surface_at(a - 1) >= level && p.surface_at(b) >= level, "lake {a}..{b} at {level} spills");
+            // Frozen exactly where it's freezing.
+            let x = (a + b) / 2;
+            let expect = if p.climate.ambient(x, level - 1) <= 0 { m.expect_id("ice") } else { m.expect_id("water") };
+            assert_eq!(g.material_at(x, level - 1), expect, "lake at {x}");
+        }
+    }
+
+    #[test]
+    fn high_peaks_are_snowy() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let p = g.plan();
+        let (peaks_floor, _) = p.band_span(Band::Peaks);
+        assert!((0..p.width).any(|x| p.surface_at(x) > peaks_floor + 600), "mountains rise well into the peaks band");
+        // Where it's well below freezing and not steep, the ground is snow.
+        let cold: Vec<i32> = (0..p.width)
+            .filter(|&x| p.climate.ambient(x, p.surface_at(x)) <= -5 && (p.surface_at(x + 4) - p.surface_at(x - 4)).abs() <= 4)
+            .filter(|&x| p.water_at(x).is_none()) // (a frozen lake's bed is sand)
+            .collect();
+        assert!(cold.len() > 100, "some cold, gentle ground ({})", cold.len());
+        let snow = m.expect_id("snow");
+        let snowy = cold.iter().filter(|&&x| g.material_at(x, p.surface_at(x) - 1) == snow).count();
+        assert!(snowy * 10 >= cold.len() * 9, "{snowy} of {} cold, gentle columns are snow", cold.len());
+    }
+
+    #[test]
+    fn sky_islands_float_green_with_trees() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let p = g.plan();
+        assert!(p.islands.len() >= 6, "{} islands", p.islands.len());
+        let (sky_floor, _) = p.band_span(Band::Sky);
+        let grass = m.expect_id("grass");
+        for i in &p.islands {
+            assert!(i.y0 > sky_floor, "island at {} floats in the sky band", i.x0);
+            let green = (i.x0..i.x0 + i.w).filter(|&x| i.top_at(x).is_some_and(|t| g.material_at(x, t - 1) == grass)).count();
+            assert!(green as i32 > i.w / 2, "island at {} is grassy ({green} of {})", i.x0, i.w);
+        }
+        assert!(p.island_forest.len() >= p.islands.len(), "trees on them ({})", p.island_forest.len());
+    }
+
+    #[test]
+    fn spawn_is_dry_forest_ground() {
+        let m = mats();
+        for preset in [Preset::Small, Preset::Large] {
+            let g = TerrainGen::new(1, preset, &m);
+            let s = g.spawn_point();
+            assert_eq!(g.plan().biome_at(s.x), Biome::Forest);
+            assert!(g.plan().water_at(s.x).is_none());
+            assert_eq!(g.material_at(s.x, s.y), MaterialId::AIR);
+            assert_ne!(g.material_at(s.x, s.y - 3), MaterialId::AIR, "standing on ground");
+        }
+    }
+
     #[test]
     fn has_sky_ground_and_bedrock() {
         let m = mats();
@@ -412,7 +589,10 @@ mod tests {
         let (wood, leaves) = (m.expect_id("wood"), m.expect_id("leaves"));
         let mut worst = 0u32;
         for t in g.plan.forest.near(4000, 16000).into_iter().filter(|t| t.height > 110).take(12) {
-            let (x0, y0, x1, y1) = t.bbox;
+            // The tree and every tree overlapping it: a neighbour's crown
+            // reaching in is held by its own wood, which may be outside t's box.
+            let trees = g.plan.forest.near(t.bbox.0 - 2, t.bbox.2 + 2);
+            let (x0, y0, x1, y1) = trees.iter().fold(t.bbox, |b, n| (b.0.min(n.bbox.0), b.1.min(n.bbox.1), b.2.max(n.bbox.2), b.3.max(n.bbox.3)));
             let trees = g.plan.forest.near(x0 - 2, x1 + 2);
             let at = |x: i32, y: i32| g.background_at(x, y, &trees).0;
             let mut dist: HashMap<(i32, i32), u32> = HashMap::new();

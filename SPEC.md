@@ -114,11 +114,40 @@ checksums.
 - Sea level sits a quarter of the way down. Bands relative to it in the large
   world (others scale): sky above +2 500, peaks +800, surface −200, underground
   −2 500, caverns −7 000, deep −11 000, underworld below.
-- Climate: 0 °C at the snow line, and warmer with depth so that the bottom of
-  the world is 85 °C over sea level (cavern lakes stay liquid, the underworld
-  is hot).
-- So far (stage 1) the terrain is still phase 1's: hills and cliffs at sea
-  level, noise caves all the way down, lava in the underworld.
+- Climate (`Climate`, in the sim): 15 °C at sea level; 1 °C colder per 60
+  cells up (so a temperate peak is below freezing from about +900) until the
+  sky band, where the air warms again (1 °C per 18 cells, back to 15 °C: the
+  sky islands are mild, the summits the coldest place); warmer with depth, 85 °C
+  over sea level at the bottom (cavern lakes stay liquid, the underworld is
+  hot). A 128-entry table adds each biome's warmth across the world, blended
+  at the borders; a chunk has one entry, so the hot path is a shift and a
+  lookup. Snow, ice and bare rock follow from it; nothing is painted by biome.
+- Biomes (stage 2) are laid out like Terraria's: oceans at both ends, a forest
+  at the spawn, a tundra towards one edge and a jungle towards the other, a
+  desert between, temperate forest, plains and swamp filling the rest, never
+  the same twice in a row. Each sets warmth, land height, hills, tree density
+  (`lushness` shifts the forest planner toward woods or meadow) and lake
+  chance.
+- Relief: rolling hills and cliff steps per biome; oceans shelve down from the
+  beach to −380; about seven mountain massifs (large world), lopsided, each a
+  broad shoulder under a concave peak plus sub-peaks, a wandering ridge line
+  and 70-cell terraces, 900–2 400 cells high, joined into ranges where they
+  meet, none near the spawn. Steep faces wander sideways (overhangs, ledges);
+  crests and gentle slopes stay put. Soil thins with slope (bare rock on
+  cliffs); snow lies where the ground is below 0 °C and not steep (deeper the
+  colder), so ledges hold it; trees stop at 4 °C (a tree line).
+- Water: local basins (rims looked for 1 200 cells either side) are filled to
+  their lowest rim, levelled flat per lake and capped by the biome's depth, so
+  every lake is held and asleep on load; three big bowls always hold one,
+  other hollows by chance (swamps mostly, deserts an odd oasis); none in the
+  notches between crags. Lakes where it freezes are ice. Caves keep 60 cells
+  clear of a lake bed. Fewer caves and no liquid pockets above sea level.
+- Sky islands (legacy port): a dozen, high in the sky band, never sharing a
+  column; each rasterised once at plan time into a stamp (grass, dirt, stone,
+  a walker-carved cave), so chunks stay pure; trees on them from a second
+  forest plan.
+- Not yet: waterfalls, jungle and swamp materials (mud, vines), tree species,
+  the new underground (stage 3).
 
 ### 3.5 Streaming and persistence
 Chunks load around every player (co-op: the union). Missing chunks come from

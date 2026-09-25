@@ -1,16 +1,21 @@
 //! The world plan (DESIGN §3.1): what is decided once from the seed, before
-//! any chunk: the world's size, sea level and vertical bands, the surface,
-//! the forests. Chunks rasterise from it and never read each other, so any
-//! chunk can be generated at any time, on any thread, by any co-op peer.
+//! any chunk: the world's size, sea level and vertical bands, biomes, the
+//! surface with its mountains, oceans and lakes, sky islands, forests, the
+//! climate. Chunks rasterise from it and never read each other, so any chunk
+//! can be generated at any time, on any thread, by any co-op peer.
 
 use noise::{Fbm, MultiFractal, NoiseFn, Perlin};
-use platypus_sim::rng::hash;
+use platypus_sim::climate::CLIMATE_COLUMNS;
+use platypus_sim::rng::{Rng, hash};
 use platypus_sim::{CHUNK, Climate};
 
+use crate::biome::Biome;
 use crate::flora::Forest;
+use crate::islands::{self, Island};
 
 /// World sizes. `Large` is the world we play in; `Small` is quick to look at
-/// and to test with (same bands, scaled to its height).
+/// and to test with (the same world scaled down; small things like hills and
+/// trees keep their size).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Preset {
     Small,
@@ -71,19 +76,43 @@ impl Band {
 }
 
 /// Where each band below the sky starts, in cells above (+) or below (−)
-/// sea level, in a world `LARGE_HEIGHT` tall; other heights scale them.
+/// sea level, in the large world; other heights scale them.
 const BAND_TOPS: [i32; 6] = [2_500, 800, -200, -2_500, -7_000, -11_000];
+const LARGE_WIDTH: f64 = 32_768.0;
 const LARGE_HEIGHT: f64 = 16_384.0;
 /// Sea level, as a share of the world's height (a quarter from the top).
 const SEA_LEVEL: f64 = 0.75;
-/// Amplitude of the rolling hills (cells).
-const HILLS: f64 = 90.0;
-/// Snow lies this far above sea level (and the climate agrees: 0 °C there).
-const SNOW_ABOVE_SEA: i32 = 81;
-/// °C at sea level.
+/// °C at sea level (before a biome's warmth).
 const SURFACE_TEMP: i32 = 15;
+/// Cells of climb per 1 °C colder (large world): 0 °C at +900 in a
+/// temperate biome, so snow caps the mountains.
+const CELLS_PER_DEGREE_UP: f64 = 60.0;
+/// Above the peaks the air warms again, 1 °C per this many cells (large
+/// world): the sky islands are mild while the summits are the coldest place.
+const INVERSION: f64 = 18.0;
 /// °C warmer at the bottom of the world than at sea level.
 const WARMER_AT_BOTTOM: i32 = 85;
+/// Trees grow where the ground is at least this warm (°C): a tree line.
+const TREE_LINE: i32 = 4;
+
+// Large-world sizes (scaled by width or height for smaller worlds).
+const OCEAN_WIDTH: f64 = 1_600.0;
+const OCEAN_DEPTH: f64 = 380.0;
+const REGION_WIDTH: (f64, f64) = (1_800.0, 4_500.0);
+/// Biome borders blend over this many cells each side.
+const BLEND: f64 = 300.0;
+const MOUNTAINS: f64 = 7.0;
+const MOUNTAIN_HALF_WIDTH: (f64, f64) = (1_400.0, 3_000.0);
+const MOUNTAIN_PEAK: (f64, f64) = (900.0, 2_400.0);
+/// No mountain within this of the spawn (the start is a gentle forest).
+const SPAWN_CLEAR: f64 = 1_600.0;
+const LAKE_BOWLS: f64 = 3.0;
+const ISLANDS: f64 = 12.0;
+/// How far either side a lake's rims are looked for (large world): wider
+/// valleys are dry land, not one giant lake.
+const LAKE_REACH: f64 = 1_200.0;
+/// Height of a mountain's cliff bands (large world).
+const TERRACE: f64 = 70.0;
 
 pub struct WorldPlan {
     pub seed: u64,
@@ -94,60 +123,307 @@ pub struct WorldPlan {
     pub sea_level: i32,
     /// The lowest y of each band, in `Band::ALL` order (the underworld's is 0).
     band_floors: [i32; 7],
+    biomes: Vec<Biome>,
     /// First air cell above the ground, per world column.
     surface: Vec<i32>,
-    pub snow_line: i32,
+    /// Water surface per column (first air above the water), or 0 for none.
+    water: Vec<i32>,
+    /// 0 … 1: how mountainous a column is (overhangs, bare rock).
+    rugged: Vec<f32>,
+    pub islands: Vec<Island>,
     pub climate: Climate,
     pub forest: Forest,
+    /// Trees on the sky islands.
+    pub island_forest: Forest,
+}
+
+fn unit(rng: &mut Rng) -> f64 {
+    rng.next_u32() as f64 / u32::MAX as f64
+}
+
+fn range(rng: &mut Rng, (lo, hi): (f64, f64)) -> f64 {
+    lo + unit(rng) * (hi - lo)
+}
+
+/// Box blur of a per-column value (prefix sums; `r` cells each side).
+fn blur(v: &[f64], r: i32) -> Vec<f64> {
+    let n = v.len() as i32;
+    let mut prefix = Vec::with_capacity(v.len() + 1);
+    prefix.push(0.0);
+    for &x in v {
+        prefix.push(prefix.last().unwrap() + x);
+    }
+    (0..n)
+        .map(|i| {
+            let (a, b) = ((i - r).max(0), (i + r + 1).min(n));
+            (prefix[b as usize] - prefix[a as usize]) / (b - a) as f64
+        })
+        .collect()
 }
 
 impl WorldPlan {
     pub fn new(seed: u64, preset: Preset) -> WorldPlan {
         let s = |salt: u64| (hash(&[seed, salt]) & 0xFFFF_FFFF) as u32;
+        let mut rng = Rng::seeded(&[seed, 0x9A4B]);
         let (wc, hc) = preset.chunks();
         let (width, height) = (wc * CHUNK, hc * CHUNK);
+        let (sw, sh) = (width as f64 / LARGE_WIDTH, height as f64 / LARGE_HEIGHT);
         let sea_level = (height as f64 * SEA_LEVEL) as i32;
-        let scale = height as f64 / LARGE_HEIGHT;
+        let sea = sea_level as f64;
         let mut band_floors = [0; 7];
         for (i, top) in BAND_TOPS.iter().enumerate() {
-            band_floors[i] = sea_level + (*top as f64 * scale) as i32;
+            band_floors[i] = sea_level + (*top as f64 * sh) as i32;
         }
+        let mid = width / 2;
 
-        // Rolling hills with occasional sharp steps (legacy "cliffs").
-        let hills = Fbm::<Perlin>::new(s(1)).set_octaves(5).set_frequency(1.0 / 900.0);
-        let cliffs = Perlin::new(s(2));
-        let surface: Vec<i32> = (0..width)
-            .map(|x| {
-                let xf = x as f64;
-                let mut h = sea_level as f64 + hills.get([xf, 0.0]) * HILLS * 2.0;
-                let c = cliffs.get([xf / 140.0, 3.7]);
-                if c.abs() > 0.55 {
-                    h += c.signum() * (c.abs() - 0.55) * 120.0;
+        // Biome regions, laid out like Terraria's: a forest at the spawn, a
+        // tundra towards one edge and a jungle towards the other, a desert
+        // somewhere between, temperate land (forest, plains, swamp) around
+        // them, oceans at both ends.
+        let ocean_w = (OCEAN_WIDTH * sw) as i32;
+        let mut cuts = vec![ocean_w];
+        while *cuts.last().unwrap() < width - ocean_w {
+            let mut x1 = (cuts.last().unwrap() + (range(&mut rng, REGION_WIDTH) * sw) as i32).min(width - ocean_w);
+            if width - ocean_w - x1 < (REGION_WIDTH.0 * sw * 0.5) as i32 {
+                x1 = width - ocean_w;
+            }
+            cuts.push(x1);
+        }
+        let n = cuts.len() - 1;
+        let spawn = (0..n).find(|&r| (cuts[r]..cuts[r + 1]).contains(&mid)).unwrap_or(n / 2);
+        let mut kinds: Vec<Option<Biome>> = vec![None; n];
+        kinds[spawn] = Some(Biome::Forest);
+        let cold_left = rng.coin();
+        let pick = |rng: &mut Rng, lo: usize, hi: usize| if hi > lo { lo + (rng.next_u32() as usize) % (hi - lo) } else { lo };
+        // The outer half of each side.
+        let (left, right) = ((0, spawn.saturating_sub(1).max(1)), ((spawn + 2).min(n - 1), n));
+        let (cold, warm) = if cold_left { (left, right) } else { (right, left) };
+        let t = pick(&mut rng, cold.0, (cold.0 + cold.1).div_ceil(2));
+        let j = pick(&mut rng, (warm.0 + warm.1) / 2, warm.1);
+        for (r, b) in [(t, Biome::Tundra), (j, Biome::Jungle)] {
+            if r < n && kinds[r].is_none() {
+                kinds[r] = Some(b);
+            }
+        }
+        // The desert: anywhere free, not next to the tundra.
+        let free: Vec<usize> = (0..n).filter(|&r| kinds[r].is_none() && r.abs_diff(t) > 1).collect();
+        if !free.is_empty() {
+            kinds[free[(rng.next_u32() as usize) % free.len()]] = Some(Biome::Desert);
+        }
+        let temperate = [Biome::Forest, Biome::Plains, Biome::Forest, Biome::Swamp, Biome::Plains];
+        for r in 0..n {
+            if kinds[r].is_none() {
+                let mut b = temperate[(rng.next_u32() as usize) % temperate.len()];
+                if r > 0 && kinds[r - 1] == Some(b) {
+                    b = if b == Biome::Forest { Biome::Plains } else { Biome::Forest };
                 }
-                h.clamp(sea_level as f64 - height as f64 * 0.2, sea_level as f64 + height as f64 * 0.2) as i32
-            })
-            .collect();
+                kinds[r] = Some(b);
+            }
+        }
+        let mut regions: Vec<(i32, i32, Biome)> = vec![(0, ocean_w, Biome::Ocean)];
+        for r in 0..n {
+            regions.push((cuts[r], cuts[r + 1], kinds[r].unwrap_or(Biome::Forest)));
+        }
+        regions.push((width - ocean_w, width, Biome::Ocean));
+        let biomes: Vec<Biome> = regions.iter().flat_map(|&(x0, x1, b)| std::iter::repeat_n(b, (x1 - x0) as usize)).collect();
 
-        let snow_line = sea_level + SNOW_ABOVE_SEA;
-        let forest = {
-            let at = |x: i32| surface[x.clamp(0, width - 1) as usize];
-            // Not on snow, not on a cliff edge.
-            Forest::plan(seed, width, at, |x| at(x) <= snow_line && (at(x - 3) - at(x + 3)).abs() < 7)
-        };
+        let blend = (BLEND * sw).max(40.0) as i32;
+        let per_column = |f: fn(Biome) -> f64| blur(&biomes.iter().map(|&b| f(b)).collect::<Vec<_>>(), blend);
+        let (warmth, lift, hill) = (per_column(Biome::warmth), per_column(Biome::lift), per_column(Biome::hills));
+
+        // The climate: base by height, a biome's warmth across the world.
+        let column_bits = (width / CLIMATE_COLUMNS as i32).trailing_zeros();
+        let mut columns = [0i8; CLIMATE_COLUMNS];
+        for (i, c) in columns.iter_mut().enumerate() {
+            let (a, b) = (i << column_bits, (i + 1) << column_bits);
+            *c = (warmth[a..b].iter().sum::<f64>() / (b - a) as f64).round() as i8;
+        }
         let climate = Climate {
             sea_level,
             surface_temp: SURFACE_TEMP,
-            // 0 °C at the snow line.
-            cells_per_degree_up: SNOW_ABOVE_SEA / SURFACE_TEMP,
+            cells_per_degree_up: (CELLS_PER_DEGREE_UP * sh).max(1.0) as i32,
             cells_per_degree_down: (sea_level / WARMER_AT_BOTTOM).max(1),
-            ..Climate::default()
+            columns,
+            column_bits,
+            warm_above: band_floors[0],
+            cells_per_degree_inversion: (INVERSION * sh).max(1.0) as i32,
         };
-        WorldPlan { seed, preset, width, height, sea_level, band_floors, surface, snow_line, climate, forest }
+
+        // The land: rolling hills and cliffs on each biome's lift; oceans
+        // shelve down from the beach.
+        let hills = Fbm::<Perlin>::new(s(1)).set_octaves(5).set_frequency(1.0 / 900.0);
+        let cliffs = Perlin::new(s(2));
+        let mut surface: Vec<f64> = (0..width)
+            .map(|x| {
+                let xf = x as f64;
+                let mut h = sea + lift[x as usize] + hills.get([xf, 0.0]) * hill[x as usize] * 2.0;
+                let c = cliffs.get([xf / 140.0, 3.7]);
+                if c.abs() > 0.55 {
+                    h += c.signum() * (c.abs() - 0.55) * 120.0 * (hill[x as usize] / 90.0).min(1.0);
+                }
+                let from_edge = x.min(width - 1 - x) as f64;
+                if from_edge < ocean_w as f64 {
+                    let t = 1.0 - from_edge / ocean_w as f64; // 0 at the shore, 1 at the edge
+                    h -= OCEAN_DEPTH * sh * smoothstep(0.0, 0.35, t) + lift[x as usize] * t;
+                }
+                h
+            })
+            .collect();
+
+        // Big lake bowls in the gentler land (rain would fill them anyway).
+        let land = |x: i32| matches!(biomes[x as usize], Biome::Plains | Biome::Forest | Biome::Swamp);
+        let mut bowls: Vec<(i32, i32)> = Vec::new();
+        for _ in 0..(LAKE_BOWLS * sw).round().max(1.0) as usize {
+            for _try in 0..100 {
+                let half = (range(&mut rng, (400.0, 800.0)) * sw.max(0.4)) as i32;
+                let cx = ocean_w + half + (unit(&mut rng) * (width - 2 * (ocean_w + half)) as f64) as i32;
+                let clear = (cx - mid).abs() > half + (600.0 * sw) as i32 && bowls.iter().all(|&(bx, bh)| (cx - bx).abs() > half + bh + 200);
+                if !clear || !land(cx - half) || !land(cx + half) {
+                    continue;
+                }
+                let depth = range(&mut rng, (90.0, 180.0)) * sh.max(0.4);
+                for x in cx - half..=cx + half {
+                    let k = 1.0 - ((x - cx) as f64 / half as f64).powi(2);
+                    surface[x as usize] -= depth * k.max(0.0).powf(1.5);
+                }
+                bowls.push((cx, half));
+                break;
+            }
+        }
+
+        // Mountain massifs: a few overlapping peaks each, jagged ridges.
+        let ridge = Fbm::<Perlin>::new(s(12)).set_octaves(4).set_frequency(1.0 / 420.0);
+        let mut mountains = vec![0.0f64; width as usize];
+        let mut placed: Vec<(i32, i32)> = Vec::new();
+        for _ in 0..(MOUNTAINS * sw).round().max(2.0) as usize {
+            for _try in 0..200 {
+                let half = (range(&mut rng, MOUNTAIN_HALF_WIDTH) * sw) as i32;
+                let peak = range(&mut rng, MOUNTAIN_PEAK) * sh;
+                let lo = ocean_w + half + (200.0 * sw) as i32;
+                let hi = width - ocean_w - half - (200.0 * sw) as i32;
+                if hi <= lo {
+                    break;
+                }
+                let cx = lo + (unit(&mut rng) * (hi - lo) as f64) as i32;
+                let clear = (cx - mid).abs() > half + (SPAWN_CLEAR * sw) as i32
+                    // Ranges may run into each other (a joined range), but not stack.
+                    && placed.iter().all(|&(px, ph)| (cx - px).abs() > (half + ph) * 3 / 5)
+                    && bowls.iter().all(|&(bx, bh)| (cx - bx).abs() > half + bh);
+                if !clear {
+                    continue;
+                }
+                // Lopsided: one flank longer than the other.
+                let skew = range(&mut rng, (0.65, 1.35));
+                let (hl, hr) = (half as f64 * skew.min(1.0), half as f64 / skew.max(1.0));
+                // Sub-peaks along the range, each a concave cone.
+                let mut bumps = vec![(cx as f64, 1.0, peak)];
+                for _ in 0..3 + rng.next_u32() % 4 {
+                    let off = (unit(&mut rng) * 2.0 - 1.0) * 0.75;
+                    bumps.push((cx as f64 + off * if off < 0.0 { hl } else { hr }, range(&mut rng, (0.18, 0.45)), peak * range(&mut rng, (0.3, 0.8))));
+                }
+                let warp = Perlin::new(s(13 + placed.len() as u64));
+                let terrace = TERRACE * sh;
+                for x in cx - hl as i32..=cx + hr as i32 {
+                    // A wandering ridge line, not a ruler-straight flank.
+                    let xf = x as f64 + warp.get([x as f64 / half as f64 * 2.0, 0.7]) * half as f64 * 0.12;
+                    let flank = |bx: f64| if xf < bx { hl } else { hr };
+                    let massif = {
+                        let u = ((xf - cx as f64) / flank(cx as f64)).abs().min(1.0);
+                        // A broad shoulder under a concave peak.
+                        peak * (0.45 * (1.0 - u).powf(2.4) + 0.55 * (1.0 - u * u).max(0.0).powf(2.0))
+                    };
+                    let mut m = bumps.iter().skip(1).map(|&(bx, bw, bp)| bp * (1.0 - ((xf - bx) / (bw * flank(bx))).abs()).max(0.0).powf(1.7)).fold(massif, f64::max);
+                    // Sharp crests: a ridged profile, stronger the higher it is.
+                    m += m * 0.07 * (1.0 - 2.0 * ridge.get([xf, 0.3]).abs());
+                    // Terraces: cliff bands with ledges between.
+                    if m > terrace {
+                        let f = m / terrace;
+                        let stepped = (f.floor() + smoothstep(0.65, 1.0, f.fract())) * terrace;
+                        m += (stepped - m) * 0.45;
+                    }
+                    let i = x.clamp(0, width - 1) as usize;
+                    mountains[i] = mountains[i].max(m);
+                }
+                let half = hl.max(hr) as i32;
+                placed.push((cx, half));
+                break;
+            }
+        }
+        let mut rugged: Vec<f32> = mountains.iter().map(|&m| (m / (350.0 * sh)).min(1.0) as f32).collect();
+        let surface: Vec<i32> = surface.iter().zip(&mountains).map(|(&h, &m)| (h + m).clamp(band_floors[3] as f64, band_floors[0] as f64) as i32).collect();
+
+        let water = water_levels(&surface, &biomes, &rugged, &bowls, sea_level, ocean_w, sh, sw, seed);
+        for (r, &w) in rugged.iter_mut().zip(&water) {
+            if w > 0 {
+                *r = 0.0; // no overhangs over a lake
+            }
+        }
+
+        // Sky islands, high in the sky band.
+        let (sky_lo, sky_hi) = (band_floors[0], height - 1);
+        let islands = islands::plan(
+            seed,
+            (ISLANDS * sw).round().max(2.0) as usize,
+            (ocean_w, width - ocean_w),
+            (sky_lo + (sky_hi - sky_lo) * 9 / 20, sky_hi - (sky_hi - sky_lo) / 8),
+            (90.0 * sw.max(0.5), 240.0 * sw.max(0.5)),
+        );
+
+        let forest = {
+            let at = |x: i32| surface[x.clamp(0, width - 1) as usize];
+            let lush = blur(&biomes.iter().map(|&b| b.lushness()).collect::<Vec<_>>(), blend);
+            Forest::plan(seed, width, at, |x| lush[x.clamp(0, width - 1) as usize], |x| {
+                let i = x as usize;
+                let b = biomes[i];
+                hash(&[seed, 0x72EE, x as u64]) % 256 < b.trees()
+                    && water[i] <= surface[i]
+                    && climate.ambient(x, surface[i]) >= TREE_LINE
+                    && (at(x - 3) - at(x + 3)).abs() < 7
+                    && (at(x - 12) - at(x + 12)).abs() < 20
+            })
+        };
+        let island_forest = {
+            let island = |x: i32| islands.iter().find(|i| x >= i.x0 && x < i.x0 + i.w);
+            Forest::plan(
+                seed ^ 0x15F0,
+                width,
+                |x| island(x).and_then(|i| i.top_at(x)).unwrap_or(0),
+                |_| 0.3,
+                |x| {
+                    island(x).is_some_and(|i| {
+                        (x - i.x0 - i.w / 2).abs() < i.w / 3 && i.top_at(x).is_some_and(|top| climate.ambient(x, top) >= TREE_LINE)
+                    })
+                },
+            )
+        };
+
+        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, water, rugged, islands, climate, forest, island_forest }
     }
 
     /// First air cell above the ground at a world column.
     pub fn surface_at(&self, x: i32) -> i32 {
         self.surface[x.clamp(0, self.width - 1) as usize]
+    }
+
+    pub fn biome_at(&self, x: i32) -> Biome {
+        self.biomes[x.clamp(0, self.width - 1) as usize]
+    }
+
+    /// The water surface over a column (first air above it), if any.
+    pub fn water_at(&self, x: i32) -> Option<i32> {
+        let w = self.water[x.clamp(0, self.width - 1) as usize];
+        (w > 0).then_some(w)
+    }
+
+    /// 0 … 1: how mountainous a column is.
+    pub fn rugged_at(&self, x: i32) -> f32 {
+        self.rugged[x.clamp(0, self.width - 1) as usize]
+    }
+
+    /// The sky island over a column, if any.
+    pub fn island_at(&self, x: i32) -> Option<&Island> {
+        let i = self.islands.partition_point(|i| i.x0 + i.w <= x);
+        self.islands.get(i).filter(|i| x >= i.x0)
     }
 
     /// The band a height lies in.
@@ -162,18 +438,138 @@ impl WorldPlan {
         (self.band_floors[i], top)
     }
 
+    /// Biome regions as (x0, x1, biome), left to right.
+    pub fn regions(&self) -> Vec<(i32, i32, Biome)> {
+        let mut out: Vec<(i32, i32, Biome)> = Vec::new();
+        for (x, &b) in self.biomes.iter().enumerate() {
+            match out.last_mut() {
+                Some(last) if last.2 == b => last.1 = x as i32 + 1,
+                _ => out.push((x as i32, x as i32 + 1, b)),
+            }
+        }
+        out
+    }
+
     /// A fingerprint of everything planned: equal plans, equal worlds.
     pub fn checksum(&self) -> u64 {
-        let mut h = hash(&[self.seed, self.width as u64, self.height as u64, self.sea_level as u64, self.snow_line as u64]);
+        let mut h = hash(&[self.seed, self.width as u64, self.height as u64, self.sea_level as u64]);
+        let fold = |v: &mut dyn Iterator<Item = u64>| v.fold(0u64, |a, x| a.wrapping_mul(31).wrapping_add(x));
         for f in self.band_floors {
             h = hash(&[h, f as u64]);
         }
-        for s in self.surface.chunks(64) {
-            h = hash(&[h, s.iter().fold(0u64, |a, &v| a.wrapping_mul(31).wrapping_add(v as u64))]);
-        }
-        for t in self.forest.near(0, self.width) {
+        h = hash(&[h, fold(&mut self.surface.iter().map(|&v| v as u64))]);
+        h = hash(&[h, fold(&mut self.water.iter().map(|&v| v as u64))]);
+        h = hash(&[h, fold(&mut self.biomes.iter().map(|&b| b as u64))]);
+        h = hash(&[h, fold(&mut self.climate.columns.iter().map(|&c| c as u64))]);
+        for t in self.forest.near(0, self.width).into_iter().chain(self.island_forest.near(0, self.width)) {
             h = hash(&[h, t.x as u64, t.base as u64, t.height as u64]);
+        }
+        for i in &self.islands {
+            h = hash(&[h, i.x0 as u64, i.y0 as u64, i.w as u64, i.h as u64]);
         }
         h
     }
+}
+
+fn smoothstep(a: f64, b: f64, x: f64) -> f64 {
+    let t = ((x - a) / (b - a)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Water over each column: oceans up to sea level from the edges inward;
+/// inland, local basins (rims within `LAKE_REACH` either side) filled to the
+/// lower rim, levelled flat per lake and capped at the biome's lake depth;
+/// no lakes in rugged notches; puddles dropped.
+#[allow(clippy::too_many_arguments)]
+fn water_levels(surface: &[i32], biomes: &[Biome], rugged: &[f32], bowls: &[(i32, i32)], sea_level: i32, ocean_w: i32, sh: f64, sw: f64, seed: u64) -> Vec<i32> {
+    let n = surface.len();
+    let mut water = vec![0; n];
+    // Oceans: from each edge until the beach.
+    for x in (0..ocean_w as usize).chain((n - ocean_w as usize..n).rev()) {
+        if surface[x] < sea_level {
+            water[x] = sea_level;
+        }
+    }
+    let (a, b) = (ocean_w as usize, n - ocean_w as usize);
+    let reach = (LAKE_REACH * sw).max(150.0) as usize;
+    let left = window_max(surface, reach, false);
+    let right = window_max(surface, reach, true);
+    let hold: Vec<i32> = (0..n).map(|x| left[x].min(right[x])).collect();
+    // Each run of columns under their rims is a lake: flat at the lowest rim
+    // over it (so it's held everywhere), capped at the biome's depth.
+    let mut x = a;
+    while x < b {
+        if hold[x] <= surface[x] {
+            x += 1;
+            continue;
+        }
+        let start = x;
+        while x < b && hold[x] > surface[x] {
+            x += 1;
+        }
+        let run = start..x;
+        if run.clone().any(|i| rugged[i] > 0.2) {
+            continue; // not in the notches between crags
+        }
+        // The big bowls always hold a lake; other hollows only sometimes
+        // (a swamp is mostly pools, a forest has the odd pond).
+        let bowl = bowls.iter().any(|&(bx, _)| run.contains(&(bx as usize)));
+        let chance = run.clone().map(|i| biomes[i].lake_chance()).fold(0, u64::max);
+        if !bowl && hash(&[seed, 0x1A4E, start as u64]) % 256 >= chance {
+            continue;
+        }
+        let level = run.clone().map(|i| hold[i]).min().unwrap_or(0);
+        let floor = run.clone().map(|i| surface[i]).min().unwrap_or(level);
+        let deepest = run.clone().map(|i| biomes[i].lake_depth()).fold(0.0, f64::max);
+        // Deserts are dry, but for the odd oasis.
+        let depth = if deepest == 0.0 && hash(&[seed, 0x0A515, start as u64]).is_multiple_of(8) { 30.0 } else { deepest * sh.max(0.3) };
+        let lvl = level.min(floor + depth as i32);
+        for i in run {
+            if surface[i] < lvl {
+                water[i] = lvl;
+            }
+        }
+    }
+    // Drop puddles: pools shallower than 6 or narrower than 16.
+    let mut x = a;
+    while x < b {
+        if water[x] <= surface[x] {
+            x += 1;
+            continue;
+        }
+        let start = x;
+        let lvl = water[x];
+        while x < b && water[x] == lvl && lvl > surface[x] {
+            x += 1;
+        }
+        let deepest = (start..x).map(|i| lvl - surface[i]).max().unwrap_or(0);
+        if deepest < 6 || x - start < 16 {
+            for w in &mut water[start..x] {
+                *w = 0;
+            }
+        }
+    }
+    water
+}
+
+
+
+/// Highest value within `r` columns to the left of each column (inclusive),
+/// or to the right if `rightward`.
+fn window_max(v: &[i32], r: usize, rightward: bool) -> Vec<i32> {
+    let n = v.len();
+    let mut out = vec![0; n];
+    let mut dq: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
+    let order: Box<dyn Iterator<Item = usize>> = if rightward { Box::new((0..n).rev()) } else { Box::new(0..n) };
+    for i in order {
+        while dq.back().is_some_and(|&j| v[j] <= v[i]) {
+            dq.pop_back();
+        }
+        dq.push_back(i);
+        while dq.front().is_some_and(|&j| j.abs_diff(i) > r) {
+            dq.pop_front();
+        }
+        out[i] = v[*dq.front().expect("just pushed")];
+    }
+    out
 }
