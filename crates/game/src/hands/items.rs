@@ -85,11 +85,9 @@ pub const BLOCK_CELLS: u32 = (BLOCK * BLOCK) as u32;
 impl Items {
     pub fn new(file: ItemsFile, mats: &MaterialTable) -> Result<Items, String> {
         let mut defs = file.items;
-        // Chests are furniture, not blocks of chest.
-        let chest = mats.id("chest");
         for (id, def) in mats.iter() {
             let ph = mats.phys(id);
-            if matches!(def.kind, Kind::Static | Kind::Powder) && ph.hardness < u8::MAX && Some(id) != chest {
+            if matches!(def.kind, Kind::Static | Kind::Powder) && ph.hardness < u8::MAX {
                 let (r, g, b) = def.colors[def.colors.len() / 2];
                 let mut name = def.name.replace('_', " ");
                 if let Some(first) = name.get_mut(0..1) {

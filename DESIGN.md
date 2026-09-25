@@ -17,7 +17,7 @@ part moves into SPEC.md as its arc lands. Numbers are starting points.
 
 ## 1. Principles (carried over)
 
-- **Cells are the truth.** Everything physical is cells: terrain, built blocks, corpses, chests' footprints. Special cases become material data plus general rules.
+- **Cells are the truth.** Everything physical is cells: terrain, built blocks, corpses. (Furniture is the exception: entities with bodies.) Special cases become material data plus general rules.
 - **Data over code.** Creatures, items, moves, loot tables, rooms and structures are RON or text files, hot-reloaded.
 - **Anyone can use anything.** A weapon, a spell or armour works the same for the player and for any creature with the body to use it. The player is a creature with a keyboard brain (already true).
 - **Deterministic and chunk-pure.** A chunk is a pure function of (seed, position, plan). Co-op and saving depend on it.
@@ -150,8 +150,9 @@ The target is chosen for you and outlined:
 
 - The player's box became 6 × 15 cells (was 8 × 16): exactly two blocks wide,
   it never fit a 2-wide shaft unless perfectly aligned with the grid.
-- Chests are anchored at their own corner, not the world grid: cave floors
-  are never on it, so grid-aligned chests almost never fit (0.5 % vs 1.7 %).
+- Chests became furniture entities (2026-09-25): as cells they hung in the
+  air when their floor was mined out, and a rigid body of chest cells would
+  land tilted and lose its identity (contents were keyed by the corner).
 - Building pushes aside tall grass, smoke and flames.
 
 ### 4.3 Items on the ground
@@ -172,8 +173,8 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
 - **Item instances** are a definition id plus state: stack count, durability, and later rolled properties.
 - **Inventory** is a component with slots, on any creature or container. **Equipment** is a component with slots: head, body, legs, feet, hands, back, main hand, off hand, rings. The player and NPCs use the same components.
 - **Containers:**
-  - A chest is an entity bound to the cells of its footprint (a `chest_wood` material). If those cells go (a blast, fire), the chest breaks and its contents scatter.
-  - General rule: objects are entities bound to cells, and they go when their cells go. Doors, torches and furniture work the same way later.
+  - A chest is furniture: an entity with a body (it falls, blasts throw it, fire burns it) and a key to its contents. It breaks and its contents scatter when it's had enough. (Changed from "bound to the cells of its footprint": see §4.2b.)
+  - General rule: furniture (chests, barrels, lanterns, crates) is entities with bodies, made by worldgen as spawns alongside the cells.
 - **Loot tables** (RON) by context, such as `crypt_deep` or `troll`: weighted entries, counts, rarity by depth.
 
 ## 6. Creatures and bodies

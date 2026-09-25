@@ -218,15 +218,26 @@ DESIGN.md §4–5, stage 4 of the world arc.
 - Pace: a copper pickaxe (power 35, 6 hits/s) takes dirt in one hit, stone in
   two; an iron one (power 60, 7/s) stone in one. The player's box is 6 × 15 cells, so it drops into a 2-block
   shaft and walks a 4-block tunnel.
-- Chests: 8 × 8 cells of the `chest` material, whose pattern is the picture,
-  anchored at the chest's corner. Worldgen puts one on the first cave floor
-  of some underground chunks (more the deeper; ~1.7 % of underground chunks,
-  ~1 500 in the large world), inside the chunk so it stays pure. The game
-  knows chests by corner and keeps their contents, rolled from `loot.ron`
-  (tables by depth) from the world seed and the corner the first time one is
-  opened. Right-click opens one within reach (Shift-click moves stacks, R
-  takes all); mining one, or it losing half its cells to a blast or fire,
-  breaks it and spills its contents and the chest.
+- Chests are furniture: entities, not cells (`hands/chests.rs`), 12 × 10
+  cells (`worldgen::CHEST_SIZE`), drawn from a text picture. A chest is a body
+  (the same falling and collision as a dropped item): it falls when its floor
+  goes, blasts throw it (and hurt it: 60 hit points, a bomb beside it breaks
+  it), fire, lava and acid wear it down; breaking spills what's in it.
+  Mining one takes its hit points off per hit (two hits of a copper
+  pickaxe) and the last spills its contents and the chest.
+- Worldgen doesn't draw chests: generating a chunk also reports what it
+  starts with besides cells (`ChunkGenerator::generate_with_spawns`:
+  `Spawn::Chest` or `Spawn::Creature` at their feet): a cave chest on the
+  first cave floor with room for one in some underground chunks (~one in 30),
+  a structure's chests and guards. The game makes each once (remembered by
+  place: an unmodified chunk is generated again when it comes back).
+- Contents live in the `Chests` resource under a key that stays when the
+  chest moves: a world chest's is from where it was made, and its loot is
+  rolled from `loot.ron` (tables by depth) from the seed and that place the
+  first time it's opened; a placed chest gets a fresh key and starts empty.
+  Right-click opens one within reach (Shift-click moves stacks, R takes all).
+- Scenarios: `chest` (place, open, fill, mine: the contents and the chest
+  come back), `chestfall` (the ground dug out under a chest: it falls).
 - Play mode is the default; the key left of 1 (backquote; F1 needs fn on a
   Mac) switches to the dev tools and back. `PLATYPUS_SPAWN_X` starts
   elsewhere, to try a biome; `PLATYPUS_SPAWN_Y` on the nearest cave floor at

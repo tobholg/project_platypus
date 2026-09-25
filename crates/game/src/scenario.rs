@@ -24,6 +24,8 @@
 //! - `hands`      the hands through real input: digs down and sideways with the pickaxe,
 //!   builds a wall with what it dug, chops at a tree with auto tool (Ctrl),
 //!   plants a torch; logs the inventory
+//! - `chestfall`  a chest beside the player at 1 s, the ground under it dug
+//!   out at 2 s: it falls; logs its height before and after
 //! - `drop`       stands still until 3 s, then holds S: on a platform (e.g. a
 //!   crypt's entrance, `PLATYPUS_SPAWN_X` at a ruin) it drops through; logs
 //!   the feet before and after
@@ -68,7 +70,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -527,6 +529,45 @@ fn flood_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kine
 }
 
 /// The hands through real input (keys, mouse, a scripted cursor).
+#[allow(clippy::too_many_arguments)]
+fn chestfall_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut commands: Commands,
+    mut chests: ResMut<crate::hands::chests::Chests>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    found: Query<&Kinematics, With<crate::hands::chests::Chest>>,
+    mut step: Local<u8>,
+    mut feet: Local<Option<Vec2>>,
+) {
+    if s.name != "chestfall" {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    let chest_y = || found.iter().map(|c| c.body.bottom()).next();
+    match *step {
+        0 if s.elapsed > 1.0 => {
+            // Somewhere to the side with room for it.
+            let spot = (20..120).step_by(6).flat_map(|dx| [dx, -dx]).find_map(|dx| (-30..30).step_by(6).find_map(|dy| crate::hands::chests::place_spot(&sim.world, k.body.pos + Vec2::new(dx as f32, dy as f32))));
+            let Some(at) = spot else { return };
+            chests.spawn_placed(&mut commands, at);
+            *feet = Some(at);
+            *step = 1;
+        }
+        1 if s.elapsed > 1.9 => {
+            info!("chestfall: chest standing at {:?}", chest_y());
+            let at = feet.expect("placed");
+            sim.queue(WorldEdit::Dig { center: CellPos::new(at.x as i32, at.y as i32 - 14), radius: 14, max_hardness: 255 });
+            *step = 2;
+        }
+        2 if s.elapsed > 4.0 => {
+            info!("chestfall: chest now at {:?}", chest_y());
+            *step = 3;
+        }
+        _ => {}
+    }
+}
+
 fn drop_script(s: Res<Scenario>, player: Query<&Kinematics, With<LocalPlayer>>, mut keys: ResMut<ButtonInput<KeyCode>>, mut logged: Local<u8>) {
     if s.name != "drop" {
         return;

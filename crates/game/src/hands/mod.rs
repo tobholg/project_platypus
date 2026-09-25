@@ -272,6 +272,7 @@ fn use_hands(
     mut chests: ResMut<chests::Chests>,
     mut player: Query<(&Kinematics, &mut Inventory), With<LocalPlayer>>,
     creatures: Query<&Kinematics, With<Creature>>,
+    mut found: Query<(Entity, &mut chests::Chest, &Kinematics), Without<LocalPlayer>>,
 ) {
     let clicked = std::mem::take(&mut input.clicked);
     hand.cooldown = (hand.cooldown - DT).max(0.0);
@@ -282,15 +283,23 @@ fn use_hands(
     let Some(stack) = inv.slots[slot] else { return };
     match items.def(stack.item).use_.clone() {
         Use::Mine { back, power, tier, speed, reach } if input.primary && hand.cooldown == 0.0 => {
-            let Some(block) = mine_at(&sim.world, &k.body, from, cursor, hand.smart, (back, tier, reach)) else { return };
-            let struck = if back { Vec::new() } else { chests.in_block(&sim.world, block) };
-            let report = sim.world.apply_edit(&WorldEdit::MineBlock { block, power, max_hardness: tier, back });
-            // A chest hit through breaks, spilling what's in it.
-            if report.removed.iter().any(|&(m, _)| Some(m) == sim.materials().id("chest")) {
-                for corner in struck {
-                    chests.smash(&mut commands, &mut sim.world, &items, corner);
+            // A chest at the cursor, within reach, takes the hit (the last
+            // one breaks it, spilling what's in it, and the chest).
+            if !back
+                && let Some((e, key, pos)) = chests::chest_at(cursor, found.iter())
+                && pos.distance(from) <= reach * BLOCK as f32
+            {
+                hand.cooldown = 1.0 / speed.max(0.1);
+                if let Ok((_, mut chest, _)) = found.get_mut(e)
+                    && chest.hit(power as f32)
+                {
+                    chests.smash(&mut commands, &sim.world, &items, key, pos, true);
+                    commands.entity(e).despawn();
                 }
+                return;
             }
+            let Some(block) = mine_at(&sim.world, &k.body, from, cursor, hand.smart, (back, tier, reach)) else { return };
+            let report = sim.world.apply_edit(&WorldEdit::MineBlock { block, power, max_hardness: tier, back });
             debug!("hit {block:?} removed {:?}", report.removed);
             hand.cooldown = 1.0 / speed.max(0.1);
             let centre = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32);
@@ -324,17 +333,11 @@ fn use_hands(
             inv.take(slot, 1);
         }
         Use::Chest if clicked => {
-            let Some(corner) = chests::place_spot(&sim.world, cursor) else { return };
-            let centre = Vec2::new(corner.x as f32 + 4.0, corner.y as f32 + 4.0);
-            let bodies: Vec<Body> = creatures.iter().map(|k| k.body).collect();
-            let in_the_way = bodies.iter().any(|b| (b.pos - centre).abs().cmple(b.half + Vec2::splat(4.0)).all());
-            let Some(chest) = sim.materials().id("chest") else { return };
-            if centre.distance(from) > 6.0 * BLOCK as f32 || in_the_way {
+            let Some(feet) = chests::place_spot(&sim.world, cursor) else { return };
+            if feet.distance(from) > 6.0 * BLOCK as f32 {
                 return;
             }
-            let side = chests::SIDE;
-            sim.world.apply_edit(&WorldEdit::Stamp { corner, w: side, h: side, material: chest });
-            chests.placed(corner);
+            chests.spawn_placed(&mut commands, feet);
             inv.take(slot, 1);
         }
         Use::Torch if clicked => {
@@ -421,9 +424,10 @@ fn outline(
     let (block, color) = match items.def(stack.item).use_ {
         Use::Mine { back, tier, reach, .. } => (mine_at(world, &k.body, from, cursor, hand.smart, (back, tier, reach)), Color::srgba(1.0, 0.9, 0.3, 0.9)),
         Use::Chest => {
-            if let Some(c) = chests::place_spot(world, cursor) {
-                let centre = Vec2::new(c.x as f32 + 4.0, c.y as f32 + 4.0);
-                gizmos.rect_2d(bevy::math::Isometry2d::from_translation(centre), Vec2::splat(chests::SIDE as f32), Color::srgba(0.4, 0.9, 1.0, 0.9));
+            if let Some(feet) = chests::place_spot(world, cursor) {
+                let (w, h) = platypus_worldgen::CHEST_SIZE;
+                let size = Vec2::new(w as f32, h as f32);
+                gizmos.rect_2d(bevy::math::Isometry2d::from_translation(feet + Vec2::new(0.0, size.y / 2.0)), size, Color::srgba(0.4, 0.9, 1.0, 0.9));
             }
             (None, Color::NONE)
         }

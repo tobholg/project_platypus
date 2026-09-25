@@ -129,7 +129,22 @@ fn main() {
         // Exactly what the game generates: whole chunks, with shades.
         let (c0, c1) = (CellPos::new(x0, y0).chunk(), CellPos::new(x0 + w - 1, y0 + h - 1).chunk());
         let positions: Vec<ChunkPos> = (c0.y..=c1.y).flat_map(|cy| (c0.x..=c1.x).map(move |cx| ChunkPos::new(cx, cy))).filter(|&p| generator.in_bounds(p)).collect();
-        let chunks: HashMap<ChunkPos, Chunk> = positions.par_iter().map(|&p| (p, generator.generate(p))).collect();
+        type Made = (ChunkPos, Chunk, Vec<(CellPos, platypus_worldgen::Spawn)>);
+        let made: Vec<Made> = positions.par_iter().map(|&p| {
+            let (c, s) = generator.generate_with_spawns(p);
+            (p, c, s)
+        }).collect();
+        // Chests and guards aren't cells: marked on top (chests gold, guards red).
+        let marks: Vec<(CellPos, [u8; 3])> = made
+            .iter()
+            .flat_map(|(_, _, s)| s.iter().map(|&(p, what)| (p, if what == platypus_worldgen::Spawn::Chest { [240, 190, 60] } else { [220, 40, 40] })))
+            .collect();
+        let chunks: HashMap<ChunkPos, Chunk> = made.into_iter().map(|(p, c, _)| (p, c)).collect();
+        let (cw, ch) = platypus_worldgen::CHEST_SIZE;
+        let mark = |x: i32, y: i32| marks.iter().find(|(p, c)| {
+            let (w, h) = if *c == [240, 190, 60] { (cw, ch) } else { (6, 15) };
+            x >= p.x - w / 2 && x < p.x + w / 2 && y >= p.y && y < p.y + h
+        }).map(|m| m.1);
         rgb.par_chunks_mut(pw * 3).enumerate().for_each(|(row, line)| {
             let y = y0 + h - 1 - (row as i32 * scale);
             for col in 0..pw {
@@ -137,9 +152,10 @@ fn main() {
                 let p = CellPos::new(x, y);
                 let (lx, ly) = p.local();
                 let c = chunks.get(&p.chunk()).map(|c| (c.get(lx, ly), c.background()[ly * CHUNK as usize + lx]));
-                let px = match c {
-                    Some((front, back)) => shade(&mats, front, back).unwrap_or_else(|| sky(y)),
-                    None => [0, 0, 0],
+                let px = match (mark(x, y), c) {
+                    (Some(m), _) => m,
+                    (None, Some((front, back))) => shade(&mats, front, back).unwrap_or_else(|| sky(y)),
+                    (None, None) => [0, 0, 0],
                 };
                 line[col * 3..col * 3 + 3].copy_from_slice(&px);
             }

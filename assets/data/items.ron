@@ -11,7 +11,7 @@
 //     gold ore 85, basalt 95, ruby 100, mithril ore 110, obsidian 120.
 //     Pickaxe tiers climb with them: copper 70, iron 100, gold 115, mithril 150.
 //   Throw(Bomb | Glowstick) · Torch: plant one on a block face
-//   Chest: place one (2 × 2 blocks, on the ground); right-click a chest to open it
+//   Chest: place one (furniture, 12 × 10 cells, on the ground); right-click a chest to open it
 (
     items: [
         (id: "copper_pickaxe", name: "Copper pickaxe", color: (205, 127, 50), use: Mine(back: false, power: 35, tier: 70, speed: 6.0, reach: 6.0)),

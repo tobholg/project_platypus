@@ -1,18 +1,23 @@
-//! Chests (DESIGN §5): 8 × 8 cells of the `chest` material, bound to what's
-//! in them. The world makes them (in cave pockets) and players place them;
-//! the game keeps their contents, rolled from `loot.ron` the first time one is
-//! opened (from the world seed and the chest's place, so the same chest always
-//! holds the same things). Break a chest (mine it, blow it up, burn it) and
-//! what was in it spills out, with the chest itself.
+//! Chests (DESIGN §5): furniture, not cells. A chest is a body that falls
+//! when what it stands on goes, gets thrown by blasts, and breaks when mined,
+//! blown up or burned, spilling what's in it. Its contents live here, under a
+//! key that stays put when the chest moves: a chest the world made is keyed
+//! by where it was made, and rolls its loot from `loot.ron` the first time
+//! it's opened (from the world seed and that place, so the same chest always
+//! holds the same things); a placed one gets a fresh key and starts empty.
 //!
 //! Right-click a chest within reach to open it; Shift-click moves a stack
 //! between the chest and the pack; R takes everything.
 
 use std::collections::HashMap;
 
+use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
-use platypus_sim::rng::Rng;
-use platypus_sim::{CellPos, MaterialId, World, WorldEdit};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use platypus_physics::{Body, Locomotion};
+use platypus_sim::rng::{Rng, hash};
+use platypus_sim::{CellPos, World};
+use platypus_worldgen::CHEST_SIZE;
 use serde::Deserialize;
 
 use super::items::{Inventory, Items, Stack};
@@ -21,14 +26,45 @@ use crate::actors::Kinematics;
 use crate::actors::player::LocalPlayer;
 use crate::camera::CursorWorld;
 use crate::data::{data_path, load_ron};
+use crate::fx::Explosion;
+use crate::props::Thrown;
 use crate::world::SimWorld;
 
-/// A chest's side, in cells.
-pub const SIDE: i32 = 8;
 /// Slots in a chest.
 pub const SLOTS: usize = 20;
-/// How far from the hand a chest can be opened (cells).
+/// How far from the player a chest can be opened (cells).
 const REACH: f32 = 28.0;
+/// Hit points: two hits of a copper pickaxe, a bomb beside it, a few
+/// seconds in a fire.
+const TOUGHNESS: f32 = 60.0;
+/// Chests draw behind creatures, in front of the world.
+const Z: f32 = 6.0;
+
+/// The picture, one character a cell (top row first).
+const ART: [&str; 10] = [
+    "..oooooooo..",
+    ".oLLLLLLLLo.",
+    "oLllllllllLo",
+    "oGGGGGGGGGGo",
+    "oLlllGYGlllo",
+    "olllLGYGlllo",
+    "oLllllllllLo",
+    "oddddddddddo",
+    "oGGGGGGGGGGo",
+    "oooooooooooo",
+];
+
+fn art_color(c: char) -> [u8; 4] {
+    match c {
+        'o' => [30, 18, 10, 255],
+        'L' => [168, 118, 66, 255],
+        'l' => [134, 90, 48, 255],
+        'd' => [104, 68, 36, 255],
+        'G' => [214, 176, 72, 255],
+        'Y' => [252, 230, 130, 255],
+        _ => [0, 0, 0, 0],
+    }
+}
 
 #[derive(Clone, Debug, Deserialize)]
 struct LootFile {
@@ -52,15 +88,32 @@ struct LootEntry {
     count: (u32, u32),
 }
 
-/// Known chests (by corner) and what's in them (`None`: not opened yet).
+/// A chest in the world: the key to what's in it, and how much more it
+/// takes to break it.
+#[derive(Component)]
+pub struct Chest {
+    pub key: u64,
+    hp: f32,
+}
+
+/// What's in a chest (`None`: never opened, not rolled yet), and where it
+/// was made (its loot's seed and depth).
+struct Stash {
+    origin: CellPos,
+    contents: Option<Inventory>,
+}
+
+/// Every chest's contents, by key.
 #[derive(Resource, Default)]
 pub struct Chests {
-    known: HashMap<CellPos, Option<Inventory>>,
+    known: HashMap<u64, Stash>,
     /// The chest whose panel is open.
-    pub open: Option<CellPos>,
+    pub open: Option<u64>,
     tables: Vec<LootTable>,
     /// Loot depths are written for the large world; others scale them.
     depth_scale: f32,
+    placed: u64,
+    art: Handle<Image>,
 }
 
 pub struct ChestsPlugin;
@@ -71,107 +124,89 @@ impl Plugin for ChestsPlugin {
         let mut tables = file.tables;
         tables.sort_by_key(|t| t.deeper_than);
         app.insert_resource(Chests { tables, depth_scale: 1.0, ..default() })
-            .add_systems(Startup, scale_depths)
+            .add_systems(Startup, setup)
             .add_systems(Update, (open_chest, take_all, close_far))
-            .add_systems(FixedUpdate, break_ruined.in_set(crate::world::TickSet::Bodies));
+            .add_systems(FixedUpdate, batter.in_set(crate::world::TickSet::Bodies).after(crate::props::fly));
     }
 }
 
-fn scale_depths(sim: Res<SimWorld>, mut chests: ResMut<Chests>) {
+fn setup(sim: Res<SimWorld>, mut chests: ResMut<Chests>, mut images: ResMut<Assets<Image>>) {
     let (lo, hi) = sim.generator.bounds();
     chests.depth_scale = ((hi.y - lo.y + 1) * platypus_sim::CHUNK) as f32 / 16_384.0;
+    let (w, h) = CHEST_SIZE;
+    let data: Vec<u8> = ART.iter().flat_map(|row| row.chars().flat_map(art_color)).collect();
+    assert_eq!(data.len(), (w * h * 4) as usize, "the chest's picture is {w} × {h}");
+    chests.art = images.add(Image::new(
+        Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    ));
 }
 
-fn chest_material(world: &World) -> Option<MaterialId> {
-    world.materials().id("chest")
-}
-
-fn is_chest(world: &World, p: CellPos) -> bool {
-    chest_material(world).is_some_and(|m| world.get(p).is_some_and(|c| c.material == m))
-}
-
-fn contains(corner: CellPos, p: CellPos) -> bool {
-    (corner.x..corner.x + SIDE).contains(&p.x) && (corner.y..corner.y + SIDE).contains(&p.y)
+fn size() -> Vec2 {
+    Vec2::new(CHEST_SIZE.0 as f32, CHEST_SIZE.1 as f32)
 }
 
 impl Chests {
-    /// The chest a cell belongs to, if any (registering one the world made).
-    pub fn find(&mut self, world: &World, p: CellPos) -> Option<CellPos> {
-        if let Some(&c) = self.known.keys().find(|&&c| contains(c, p)) {
-            return Some(c);
-        }
-        if !is_chest(world, p) {
-            return None;
-        }
-        // A chest the world made: its corner is where its cells stop, left
-        // and down.
-        let mut x = p.x;
-        while x > p.x - (SIDE - 1) && is_chest(world, CellPos::new(x - 1, p.y)) {
-            x -= 1;
-        }
-        let mut y = p.y;
-        while y > p.y - (SIDE - 1) && is_chest(world, CellPos::new(x, y - 1)) {
-            y -= 1;
-        }
-        let corner = CellPos::new(x, y);
-        self.known.insert(corner, None);
-        Some(corner)
+    /// A chest the world made at `feet` (once: `Spawned` remembers).
+    pub fn spawn_found(&mut self, commands: &mut Commands, feet: CellPos) {
+        let key = hash(&[0xC4E57, feet.x as u64, feet.y as u64]) & !(1 << 63);
+        self.known.entry(key).or_insert(Stash { origin: feet, contents: None });
+        self.spawn(commands, key, Vec2::new(feet.x as f32, feet.y as f32));
+    }
+
+    /// A chest the player just placed: empty, with a key of its own.
+    pub fn spawn_placed(&mut self, commands: &mut Commands, feet: Vec2) {
+        self.placed += 1;
+        let key = (1 << 63) | self.placed;
+        self.known.insert(key, Stash { origin: CellPos::from_world(feet.x, feet.y), contents: Some(Inventory::new(SLOTS)) });
+        self.spawn(commands, key, feet);
+    }
+
+    fn spawn(&self, commands: &mut Commands, key: u64, feet: Vec2) {
+        let centre = feet + Vec2::new(0.0, size().y / 2.0);
+        commands.spawn((
+            Name::new("Chest"),
+            Chest { key, hp: TOUGHNESS },
+            Thrown { bounce: 0.0 },
+            Kinematics { body: Body::new(centre, size()), loco: Locomotion::default(), prev_pos: centre },
+            Sprite::from_image(self.art.clone()),
+            Transform::from_translation(centre.extend(Z)),
+        ));
     }
 
     /// A chest's contents, rolling them the first time.
-    pub fn contents(&mut self, corner: CellPos, world: &World, items: &Items) -> &mut Inventory {
-        let depth = ((world.climate().sea_level - corner.y) as f32 / self.depth_scale) as i32;
-        let table = self.tables.iter().rev().find(|t| depth >= t.deeper_than).cloned();
-        let seed = world.seed();
-        self.known.entry(corner).or_default().get_or_insert_with(|| {
+    pub fn contents(&mut self, key: u64, world: &World, items: &Items) -> &mut Inventory {
+        let stash = self.known.entry(key).or_insert(Stash { origin: CellPos::new(0, 0), contents: None });
+        let depth = ((world.climate().sea_level - stash.origin.y) as f32 / self.depth_scale) as i32;
+        let table = self.tables.iter().rev().find(|t| depth >= t.deeper_than);
+        let origin = stash.origin;
+        stash.contents.get_or_insert_with(|| {
             let mut inv = Inventory::new(SLOTS);
             if let Some(t) = table {
-                roll(&mut inv, &t, items, &mut Rng::seeded(&[seed, 0xC4E57, corner.x as u64, corner.y as u64]));
+                roll(&mut inv, t, items, &mut Rng::seeded(&[world.seed(), 0xC4E57, origin.x as u64, origin.y as u64]));
             }
             inv
         })
     }
 
-    /// A chest the player just placed (empty).
-    pub fn placed(&mut self, corner: CellPos) {
-        self.known.insert(corner, Some(Inventory::new(SLOTS)));
-    }
-
-    /// Break a chest: take its cells out, spill what's in it and the chest.
-    pub fn smash(&mut self, commands: &mut Commands, world: &mut World, items: &Items, corner: CellPos) {
-        let inside = match self.known.get(&corner) {
-            Some(Some(inv)) => inv.slots.iter().flatten().copied().collect::<Vec<_>>(),
-            // Never opened: roll it now, so breaking one isn't a way to lose it.
-            _ => self.contents(corner, world, items).slots.iter().flatten().copied().collect(),
-        };
-        self.known.remove(&corner);
-        if self.open == Some(corner) {
+    /// Break a chest: what's in it spills out at `at` (a never-opened one is
+    /// rolled first, so breaking it isn't a way to lose it), and, mined, the
+    /// chest itself.
+    pub fn smash(&mut self, commands: &mut Commands, world: &World, items: &Items, key: u64, at: Vec2, whole: bool) {
+        let inside: Vec<Stack> = self.contents(key, world, items).slots.iter().flatten().copied().collect();
+        self.known.remove(&key);
+        if self.open == Some(key) {
             self.open = None;
         }
-        if let Some(m) = chest_material(world) {
-            world.apply_edit(&WorldEdit::Remove { min: corner, max: corner.offset(SIDE - 1, SIDE - 1), material: m });
-        }
-        let at = Vec2::new(corner.x as f32 + SIDE as f32 / 2.0, corner.y as f32 + SIDE as f32 / 2.0);
         for (k, stack) in inside.into_iter().enumerate() {
             spawn_drop(commands, items, at + Vec2::new(k as f32 * 0.7 - 3.0, 0.0), stack);
         }
-        if let Some(chest) = items.id("chest") {
+        if whole && let Some(chest) = items.id("chest") {
             spawn_drop(commands, items, at, Stack { item: chest, count: 1 });
         }
-    }
-
-    /// Chests with a cell in `block`'s 4 × 4 cells.
-    pub fn in_block(&mut self, world: &World, block: CellPos) -> Vec<CellPos> {
-        let mut out = Vec::new();
-        for p in platypus_sim::block_cells(block) {
-            if is_chest(world, p)
-                && let Some(c) = self.find(world, p)
-                && !out.contains(&c)
-            {
-                out.push(c);
-            }
-        }
-        out
     }
 }
 
@@ -202,6 +237,20 @@ fn roll(inv: &mut Inventory, t: &LootTable, items: &Items, rng: &mut Rng) {
     }
 }
 
+/// The chest under `at` (a little forgiving), if any: its entity, key and
+/// centre.
+pub fn chest_at<'a>(at: Vec2, mut chests: impl Iterator<Item = (Entity, &'a Chest, &'a Kinematics)>) -> Option<(Entity, u64, Vec2)> {
+    chests.find(|(_, _, k)| ((k.body.pos - at).abs() - k.body.half).max_element() <= 2.0).map(|(e, c, k)| (e, c.key, k.body.pos))
+}
+
+impl Chest {
+    /// A pickaxe's hit; the last one breaks it (spilling it, and the chest).
+    pub fn hit(&mut self, power: f32) -> bool {
+        self.hp -= power;
+        self.hp <= 0.0
+    }
+}
+
 /// Right-click a chest within reach: open it (with the pack).
 #[allow(clippy::too_many_arguments)]
 fn open_chest(
@@ -213,29 +262,28 @@ fn open_chest(
     mut chests: ResMut<Chests>,
     mut open: ResMut<super::InventoryOpen>,
     player: Query<&Kinematics, With<LocalPlayer>>,
+    found: Query<(Entity, &Chest, &Kinematics)>,
 ) {
     if dev.0 || !mouse.just_pressed(MouseButton::Right) {
         return;
     }
     let (Some(at), Some(items), Ok(k)) = (cursor.0, items, player.single()) else { return };
-    if at.distance(k.body.pos) > REACH {
+    let Some((_, key, pos)) = chest_at(at, found.iter()) else { return };
+    if pos.distance(k.body.pos) > REACH {
         return;
     }
-    // Forgiving: a click on the chest or just beside it.
-    let c = CellPos::from_world(at.x, at.y);
-    let Some(corner) = (-2..=2).flat_map(|dy| (-2..=2).map(move |dx| c.offset(dx, dy))).find_map(|p| chests.find(&sim.world, p)) else { return };
-    chests.contents(corner, &sim.world, &items);
-    chests.open = Some(corner);
+    chests.contents(key, &sim.world, &items);
+    chests.open = Some(key);
     open.0 = true;
 }
 
 /// R: everything in the open chest into the pack.
 fn take_all(keys: Res<ButtonInput<KeyCode>>, items: Option<Res<Items>>, sim: Res<SimWorld>, mut chests: ResMut<Chests>, mut inv: Query<&mut Inventory, With<LocalPlayer>>) {
-    let (Some(corner), Some(items), Ok(mut inv)) = (chests.open, items, inv.single_mut()) else { return };
+    let (Some(key), Some(items), Ok(mut inv)) = (chests.open, items, inv.single_mut()) else { return };
     if !keys.just_pressed(KeyCode::KeyR) {
         return;
     }
-    let chest = chests.contents(corner, &sim.world, &items);
+    let chest = chests.contents(key, &sim.world, &items);
     for slot in chest.slots.iter_mut() {
         if let Some(s) = *slot {
             let left = inv.add(&items, s);
@@ -244,53 +292,74 @@ fn take_all(keys: Res<ButtonInput<KeyCode>>, items: Option<Res<Items>>, sim: Res
     }
 }
 
-/// Walking away closes the chest.
-fn close_far(mut chests: ResMut<Chests>, player: Query<&Kinematics, With<LocalPlayer>>) {
-    let (Some(c), Ok(k)) = (chests.open, player.single()) else { return };
-    let centre = Vec2::new(c.x as f32 + SIDE as f32 / 2.0, c.y as f32 + SIDE as f32 / 2.0);
-    if centre.distance(k.body.pos) > REACH * 1.5 {
+/// Walking away (or the chest going) closes it.
+fn close_far(mut chests: ResMut<Chests>, player: Query<&Kinematics, With<LocalPlayer>>, found: Query<(&Chest, &Kinematics)>) {
+    let (Some(key), Ok(k)) = (chests.open, player.single()) else { return };
+    let near = found.iter().find(|(c, _)| c.key == key).is_some_and(|(_, ck)| ck.body.pos.distance(k.body.pos) <= REACH * 1.5);
+    if !near {
         chests.open = None;
     }
 }
 
-/// Chests blown up or burned away (most of their cells gone) break too.
-fn break_ruined(mut commands: Commands, mut tick: Local<u32>, items: Option<Res<Items>>, mut sim: ResMut<SimWorld>, mut chests: ResMut<Chests>) {
+/// Blasts throw chests and knock pieces off them; fire, lava and acid eat
+/// them. One that's had enough breaks, spilling what's in it.
+fn batter(
+    mut commands: Commands,
+    mut blasts: MessageReader<Explosion>,
+    mut tick: Local<u32>,
+    sim: Res<SimWorld>,
+    items: Option<Res<Items>>,
+    mut chests: ResMut<Chests>,
+    mut q: Query<(Entity, &mut Chest, &mut Kinematics)>,
+) {
+    let blasts: Vec<Explosion> = blasts.read().copied().collect();
     *tick += 1;
     let Some(items) = items else { return };
-    if !(*tick).is_multiple_of(30) {
-        return;
-    }
-    let world = &sim.world;
-    let ruined: Vec<CellPos> = chests
-        .known
-        .keys()
-        .copied()
-        .filter(|&c| world.get(c).is_some()) // loaded
-        .filter(|&c| (0..SIDE).flat_map(|dy| (0..SIDE).map(move |dx| c.offset(dx, dy))).filter(|&p| is_chest(world, p)).count() < (SIDE * SIDE / 2) as usize)
-        .collect();
-    for c in ruined {
-        chests.smash(&mut commands, &mut sim.world, &items, c);
+    // Fire and the like, checked a few times a second.
+    const EVERY: u32 = 10;
+    let dt = EVERY as f32 / crate::world::TICK_HZ as f32;
+    for (entity, mut chest, mut k) in &mut q {
+        for b in &blasts {
+            let reach = b.radius * 1.6 + 6.0;
+            let d = k.body.pos.distance(b.at);
+            if d < reach {
+                let f = 1.0 - d / reach;
+                chest.hp -= 120.0 * f;
+                let away = (k.body.pos - b.at).normalize_or(Vec2::Y);
+                k.body.vel += (away + Vec2::new(0.0, 0.6)) * 260.0 * f;
+            }
+        }
+        if (*tick).is_multiple_of(EVERY) {
+            let (lo, hi) = k.body.cells_at(k.body.pos);
+            let e = sim.world.exposure(CellPos::new(lo.x, lo.y), CellPos::new(hi.x, hi.y));
+            let burning = if e.ignites { 15.0 } else { 0.0 };
+            chest.hp -= (burning + e.heat + e.corrosion) * dt;
+        }
+        if chest.hp <= 0.0 {
+            chests.smash(&mut commands, &sim.world, &items, chest.key, k.body.pos, false);
+            commands.entity(entity).despawn();
+        }
     }
 }
 
 /// Where a chest would go for a cursor: on the highest ground under it
-/// (searched a little way down; natural ground isn't flat, so three of its
-/// eight columns resting on something will do), its box empty. Returns the
-/// corner.
-pub fn place_spot(world: &World, cursor: Vec2) -> Option<CellPos> {
+/// (searched a little way down; natural ground isn't flat, so three
+/// quarters of its columns resting on something will do), with room for it.
+/// Returns its feet.
+pub fn place_spot(world: &World, cursor: Vec2) -> Option<Vec2> {
+    let (w, h) = CHEST_SIZE;
     let mats = world.materials();
     let solid = |p: CellPos| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder));
-    let x0 = cursor.x.floor() as i32 - SIDE / 2;
+    let x0 = cursor.x.floor() as i32 - w / 2;
     let y = cursor.y.floor() as i32 + 4;
     // Each column's ground: the first solid cell going down.
-    let tops: Vec<Option<i32>> = (0..SIDE).map(|dx| (0..20).map(|d| y - d).find(|&yy| solid(CellPos::new(x0 + dx, yy)))).collect();
+    let tops: Vec<Option<i32>> = (0..w).map(|dx| (0..20).map(|d| y - d).find(|&yy| solid(CellPos::new(x0 + dx, yy)))).collect();
     let floor = tops.iter().flatten().max()? + 1;
     let resting = tops.iter().filter(|t| **t == Some(floor - 1)).count();
-    let corner = CellPos::new(x0, floor);
     // (Tall grass and smoke don't count: a chest goes over them.)
     let room = |c: platypus_sim::Cell| c.is_air() || matches!(mats.phys(c.material).kind, platypus_sim::Kind::Plant | platypus_sim::Kind::Gas | platypus_sim::Kind::Fire);
-    let empty = (0..SIDE).all(|dy| (0..SIDE).all(|dx| world.get(corner.offset(dx, dy)).is_some_and(room)));
-    (resting >= 3 && empty).then_some(corner)
+    let empty = (0..h).all(|dy| (0..w).all(|dx| world.get(CellPos::new(x0 + dx, floor + dy)).is_some_and(room)));
+    (resting * 4 >= w as usize * 3 && empty).then_some(Vec2::new((x0 + w / 2) as f32, floor as f32))
 }
 
 #[cfg(test)]
@@ -321,5 +390,12 @@ mod tests {
             assert_eq!(fill(7), fill(7), "same seed, same chest");
             assert!(fill(7).iter().flatten().count() >= t.rolls.0 as usize / 2, "`{}` puts something in", t.name);
         }
+    }
+
+    #[test]
+    fn the_picture_is_the_chests_size() {
+        let (w, h) = CHEST_SIZE;
+        assert_eq!(ART.len(), h as usize);
+        assert!(ART.iter().all(|r| r.chars().count() == w as usize));
     }
 }

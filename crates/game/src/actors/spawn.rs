@@ -15,6 +15,7 @@ use super::player::LocalPlayer;
 use crate::camera::CameraTarget;
 use super::Kinematics;
 use crate::world::{ChunkLoader, FreshChunks, SimWorld};
+use platypus_worldgen::Spawn;
 
 pub struct SpawnPlugin;
 
@@ -88,12 +89,14 @@ fn process_queue(mut commands: Commands, sim: Res<SimWorld>, mut queue: ResMut<S
     });
 }
 
-fn world_spawns(mut commands: Commands, sim: Res<SimWorld>, fresh: Res<FreshChunks>, mut spawned: ResMut<Spawned>) {
-    for &pos in &fresh.0 {
-        for (at, kind) in sim.generator.spawns(pos) {
-            if spawned.0.insert(at) {
-                spawn_creature(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), |_| {});
-            }
+fn world_spawns(mut commands: Commands, fresh: Res<FreshChunks>, mut spawned: ResMut<Spawned>, mut chests: ResMut<crate::hands::chests::Chests>) {
+    for &(at, what) in &fresh.0 {
+        if !spawned.0.insert(at) {
+            continue;
+        }
+        match what {
+            Spawn::Creature(kind) => spawn_creature(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), |_| {}),
+            Spawn::Chest => chests.spawn_found(&mut commands, at),
         }
     }
 }
