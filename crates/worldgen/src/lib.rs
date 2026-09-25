@@ -81,6 +81,8 @@ struct Ids {
     tall_grass: MaterialId,
     ice: MaterialId,
     sandstone: MaterialId,
+    /// Chests (if the content has them).
+    chest: Option<MaterialId>,
     slate: MaterialId,
     basalt: MaterialId,
 }
@@ -107,6 +109,8 @@ pub struct TerrainGen {
     caverns: Fbm<Perlin>,
     drips: Perlin,
     vault: Fbm<Perlin>,
+    /// The chest's pattern over a chunk-sized tile (patterns divide 64).
+    chest_shades: Vec<u8>,
 }
 
 impl TerrainGen {
@@ -137,6 +141,7 @@ impl TerrainGen {
             tall_grass: mats.expect_id("tall_grass"),
             ice: mats.expect_id("ice"),
             sandstone: mats.expect_id("sandstone"),
+            chest: mats.id("chest"),
             slate: mats.expect_id("slate"),
             basalt: mats.expect_id("basalt"),
         };
@@ -156,6 +161,9 @@ impl TerrainGen {
             pockets: Perlin::new(s(5)),
             strata: Perlin::new(s(6)),
             heat: mats.iter().map(|(id, _)| mats.phys(id).heat).collect(),
+            chest_shades: (0..CHUNK * CHUNK)
+                .map(|i| mats.id("chest").and_then(|c| mats.pattern_shade(c, i % CHUNK, i / CHUNK)).unwrap_or(136))
+                .collect(),
         }
     }
 
@@ -340,6 +348,47 @@ impl TerrainGen {
         self.rock(x, y, band)
     }
 
+    /// Chests in cave pockets (DESIGN §3.2): some chunks (more the deeper) get
+    /// one on the first cave floor found: an 8 × 8 box of air on solid ground,
+    /// inside the chunk (so it stays chunk-pure).
+    fn place_chests(&self, pos: ChunkPos, cells: &mut [Cell], rng: &mut Rng) {
+        const SIDE: i32 = 8;
+        let Some(chest) = self.ids.chest else { return };
+        let origin = pos.origin();
+        let chance = match self.plan.band_at(origin.y + CHUNK / 2) {
+            Band::Underground => 24,
+            Band::Caverns => 36,
+            Band::Deep => 48,
+            _ => return,
+        };
+        if !rng.chance(chance) {
+            return;
+        }
+        // Every spot (columns 4 apart, any height), from a random start: the
+        // first cave floor.
+        let spots: Vec<(i32, i32)> = (0..=(CHUNK - SIDE) / 4).flat_map(|i| (1..=CHUNK - SIDE).map(move |ly| (i * 4, ly))).collect();
+        let start = rng.next_u32() as usize % spots.len();
+        let at = |lx: i32, ly: i32| cells[(ly * CHUNK + lx) as usize];
+        let found = (0..spots.len()).map(|k| spots[(start + k) % spots.len()]).find(|&(lx, ly)| {
+            let open = (0..SIDE).all(|dy| (0..SIDE).all(|dx| at(lx + dx, ly + dy).is_air()));
+            // Standing on rock, not hanging over a drop.
+            let floor = (0..SIDE).all(|dx| {
+                let c = at(lx + dx, ly - 1);
+                !c.is_air() && c.material != self.ids.water && c.material != self.ids.lava
+            });
+            open && floor
+        });
+        if let Some((lx, ly)) = found {
+            for dy in 0..SIDE {
+                for dx in 0..SIDE {
+                    // The picture is anchored to the chest's own corner.
+                    let shade = self.chest_shades[(dy * CHUNK + dx) as usize];
+                    cells[((ly + dy) * CHUNK + lx + dx) as usize] = Cell { heat: self.heat[chest.0 as usize], ..Cell::new(chest, shade) };
+                }
+            }
+        }
+    }
+
     /// The bedrock of a band: stone, then slate in the deep (with obsidian
     /// seams), basalt in the underworld; borders dither over ~100 cells.
     fn rock(&self, x: i32, y: i32, band: Band) -> MaterialId {
@@ -474,6 +523,7 @@ impl ChunkGenerator for TerrainGen {
                 bg.push(back);
             }
         }
+        self.place_chests(pos, &mut cells, &mut rng);
         Chunk::with_background(pos, cells, bg)
     }
 }
@@ -710,6 +760,37 @@ mod tests {
             }
         }
         assert!(open > 1_500 && wet > 200, "caverns: {open} open, {wet} flooded samples");
+    }
+
+    #[test]
+    fn chests_sit_whole_on_cave_floors() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let chest = m.expect_id("chest");
+        let (lo, _) = g.plan().band_span(Band::Deep);
+        let (_, hi) = g.plan().band_span(Band::Underground);
+        let (mut chunks, mut chests) = (0, 0);
+        for cx in (30..480).step_by(7) {
+            for cy in (lo / CHUNK..hi / CHUNK).step_by(9) {
+                let c = g.generate(ChunkPos::new(cx, cy));
+                chunks += 1;
+                let at = |lx: i32, ly: i32| if (0..CHUNK).contains(&lx) && (0..CHUNK).contains(&ly) { c.get(lx as usize, ly as usize).material } else { MaterialId::AIR };
+                for ly in 0..CHUNK {
+                    for lx in 0..CHUNK {
+                        // A chest's corner: chest here, not left or below.
+                        if at(lx, ly) != chest || at(lx - 1, ly) == chest || at(lx, ly - 1) == chest {
+                            continue;
+                        }
+                        chests += 1;
+                        assert!((0..8).all(|dy| (0..8).all(|dx| at(lx + dx, ly + dy) == chest)), "a whole chest at {lx},{ly} in {cx},{cy}");
+                        assert!(ly > 0 && (0..8).all(|dx| at(lx + dx, ly - 1) != MaterialId::AIR), "on a floor");
+                    }
+                }
+            }
+        }
+        // Roughly one in a few dozen underground chunks: ~1 000 in the world.
+        println!("{chests} chests in {chunks} chunks");
+        assert!(chests * 100 > chunks && chests * 8 < chunks, "{chests} chests in {chunks} chunks");
     }
 
     #[test]

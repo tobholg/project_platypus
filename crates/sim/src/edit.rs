@@ -22,9 +22,17 @@ pub enum WorldEdit {
     /// reaches the hardest of them they all break at once. Cells harder than
     /// `max_hardness` stay (ore beyond a tool's tier).
     MineBlock { block: CellPos, power: u8, max_hardness: u8, back: bool },
-    /// Fill the empty cells of a block with a material (its pattern, if it has
+    /// Fill the empty cells of a block (air, or tall grass, smoke, flames:
+    /// what building pushes aside) with a material (its pattern, if it has
     /// one, gives the shades). `EditReport::placed` says how many.
     PlaceBlock { block: CellPos, material: MaterialId, back: bool },
+    /// Fill the empty cells (as `PlaceBlock`) of a `w` × `h` box with a material, shaded by its pattern
+    /// anchored at the box's corner (furniture: a chest's picture sits on it
+    /// wherever it stands). `EditReport::placed` says how many cells.
+    Stamp { corner: CellPos, w: i32, h: i32, material: MaterialId },
+    /// Take every cell of one material out of a rectangle (inclusive):
+    /// what's left of a broken chest, door or other furniture.
+    Remove { min: CellPos, max: CellPos, material: MaterialId },
     /// Destroy what `power` can break (falling off towards the edge), shatter
     /// a rim into rubble (`crumbles_into`), ignite flammables, fill the crater
     /// with fire and smoke.

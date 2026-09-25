@@ -41,7 +41,9 @@ the outlined block is the one you'll hit (the first minable block on the line fr
 your hand to the cursor, so you dig the face you see) or fill (under the cursor,
 or against whatever the line meets). What you mine drops out and drifts to you;
 blocks count in cells, shown as whole blocks. You start with a copper pickaxe and
-axe, torches, bombs and glow sticks.
+axe, torches, bombs and glow sticks. Chests sit in cave pockets underground
+(right-click to open, R takes everything, loot by depth in `assets/data/loot.ron`);
+mine one to take it with you.
 
 **Dev tools** (F1 switches to them and back; tuning in `assets/data/tools.ron`, hot-reloaded):
 
@@ -85,7 +87,7 @@ PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, 
 PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall), `strike` (lightning onto the nearest tree), `hands` (digs a shaft, builds, chops with auto tool, plants a torch). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall), `strike` (lightning onto the nearest tree), `hands` (digs a shaft, builds, chops with auto tool, plants a torch), `chest` (places, opens, fills and breaks a chest). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
 capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length, `PLATYPUS_NOLIGHT=1` to start with lighting off.
 Scenarios run without vsync; `PLATYPUS_VSYNC=1` runs them with it, to see the
 frame pacing a player gets. For stutter, build with `--features spikes`: every

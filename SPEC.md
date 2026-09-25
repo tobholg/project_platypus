@@ -171,6 +171,46 @@ checksums.
 - Not yet: waterfalls, jungle and swamp materials (mud, vines), tree species,
   crystal and mushroom caves (with ores and gems, stage 5).
 
+### 3.4c Hands: mining, building, items, chests
+DESIGN.md §4–5, stage 4 of the world arc.
+
+- Blocks: 4 × 4 cells on a fixed grid (`BLOCK`); the world stays cells.
+  `WorldEdit::MineBlock` damages a block's minable cells (the playfield, or
+  with `back` the background where the front is open); at the hardest one's
+  hardness they all break at once, and cells harder than the tool's tier stay.
+  Damage lives in the cells' `life`, so the renderer's crack darkening shows
+  it. `PlaceBlock` fills a block's room (air, tall grass, smoke, flames);
+  `Stamp` fills a box anchored at its corner (furniture); `Remove` takes one
+  material out of a rectangle.
+- Patterns: a material may carry a world-anchored pattern of shades (hex
+  rows); placed and generated cells take their shade from it, so `brick` and
+  `planks` tile.
+- Items (game, `hands/`): `items.ron` for made things plus a block item per
+  solid or powder material (counted in cells, shown in whole blocks: nothing
+  lost to rounding). `Inventory` is a component any creature can carry; the
+  player's is 40 slots, the first 10 the hotbar (1–0). Mined blocks drop as
+  items that drift to a player with room (48 cells) and are picked up (6).
+- Smart cursor: a swing hits the first minable block on the line from the
+  hand toward the cursor within reach (the face you see); a placement goes
+  under the cursor if free and supported (a solid neighbour or a wall behind),
+  else against whatever the line meets, never into open air. Pure functions
+  with unit tests. Ctrl picks the best tool for the target (auto tool). The
+  target is outlined.
+- Pace: a copper pickaxe (power 35, 4 hits/s) takes dirt in one hit, stone in
+  two: about 4 s of digging per player height in stone (a 2-wide shaft), close
+  to Terraria's. The player's box is 6 × 15 cells, so it drops into a 2-block
+  shaft and walks a 4-block tunnel.
+- Chests: 8 × 8 cells of the `chest` material, whose pattern is the picture,
+  anchored at the chest's corner. Worldgen puts one on the first cave floor
+  of some underground chunks (more the deeper; ~1.7 % of underground chunks,
+  ~1 500 in the large world), inside the chunk so it stays pure. The game
+  knows chests by corner and keeps their contents, rolled from `loot.ron`
+  (tables by depth) from the world seed and the corner the first time one is
+  opened. Right-click opens one within reach (Shift-click moves stacks, R
+  takes all); mining one, or it losing half its cells to a blast or fire,
+  breaks it and spills its contents and the chest.
+- Play mode is the default; F1 switches to the dev tools and back.
+
 ### 3.5 Streaming and persistence
 Chunks load around every player (co-op: the union). Missing chunks come from
 the chunk store (previously modified, lz4-compressed) or from worldgen.

@@ -330,6 +330,31 @@ impl World {
                 self.loosen_if_removed(c.offset(BLOCK / 2, BLOCK / 2), BLOCK, &report);
             }
             WorldEdit::PlaceBlock { block, material, back } => self.place_block(block, material, back, &mut report),
+            WorldEdit::Stamp { corner, w, h, material } => {
+                let mats = self.materials.clone();
+                for dy in 0..h {
+                    for dx in 0..w {
+                        let p = corner.offset(dx, dy);
+                        if self.get(p).is_some_and(|c| Self::room(&mats, c)) {
+                            let mut c = Cell::new(material, mats.pattern_shade(material, dx, dy).unwrap_or(136));
+                            c.heat = mats.phys(material).heat;
+                            self.set(p, c);
+                            report.placed += 1;
+                        }
+                    }
+                }
+            }
+            WorldEdit::Remove { min, max, material } => {
+                for y in min.y..=max.y {
+                    for x in min.x..=max.x {
+                        let p = CellPos::new(x, y);
+                        if self.get(p).is_some_and(|c| c.material == material) {
+                            self.set(p, Cell::AIR);
+                            report.add_removed(material);
+                        }
+                    }
+                }
+            }
             WorldEdit::Lightning { x, from_y } => self.lightning(x, from_y),
             WorldEdit::Weather { x, radius, storm } => {
                 let tick = self.tick;
@@ -475,12 +500,18 @@ impl World {
         }
     }
 
+    /// Room to build into: air, or what building just pushes aside (tall
+    /// grass, smoke, flames).
+    fn room(mats: &MaterialTable, c: Cell) -> bool {
+        c.is_air() || matches!(mats.phys(c.material).kind, Kind::Plant | Kind::Gas | Kind::Fire)
+    }
+
     fn place_block(&mut self, block: CellPos, material: MaterialId, back: bool, report: &mut EditReport) {
         let mats = self.materials.clone();
         let mut rng = self.rng_for(0x9A1C, block);
         for p in block_cells(block) {
             let here = if back { self.get_bg(p) } else { self.get(p) };
-            if !here.is_some_and(|c| c.is_air()) {
+            if !here.is_some_and(|c| Self::room(&mats, c)) {
                 continue;
             }
             let mut c = mats.spawn(material, &mut rng);

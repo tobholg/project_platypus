@@ -1,14 +1,16 @@
-//! The hotbar (always, in play mode) and the rest of the pack (I). Click a
-//! slot to pick its stack up and click another to put it down (swapping, or
-//! merging the same item); Shift-click moves a stack between the hotbar and
-//! the pack.
+//! The hotbar (always, in play mode), the rest of the pack (I) and an open
+//! chest. Click a slot to pick its stack up and click another to put it down
+//! (swapping, or merging the same item); Shift-click moves a stack between the
+//! hotbar and the pack, or with a chest open between the chest and the pack.
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
+use super::chests::{Chests, SLOTS};
 use super::items::{HOTBAR, Inventory, Items, Stack};
 use super::{DevTools, Hand, PACK};
 use crate::actors::player::LocalPlayer;
+use crate::world::SimWorld;
 
 pub struct UiPlugin;
 
@@ -20,14 +22,24 @@ pub struct InventoryOpen(pub bool);
 #[derive(Resource, Default)]
 struct Held(Option<Stack>);
 
-#[derive(Component)]
-struct SlotUi(usize);
+/// Whose slot: the player's pack or the open chest.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Holder {
+    Pack,
+    Chest,
+}
 
 #[derive(Component)]
-struct SlotIcon(usize);
+struct SlotUi(Holder, usize);
 
 #[derive(Component)]
-struct SlotCount(usize);
+struct SlotIcon(Holder, usize);
+
+#[derive(Component)]
+struct SlotCount(Holder, usize);
+
+#[derive(Component)]
+struct ChestRoot;
 
 #[derive(Component)]
 struct HotbarRoot;
@@ -55,11 +67,11 @@ impl Plugin for UiPlugin {
     }
 }
 
-fn slot(parent: &mut ChildSpawnerCommands, i: usize) {
+fn slot(parent: &mut ChildSpawnerCommands, which: Holder, i: usize) {
     parent
         .spawn((
             Button,
-            SlotUi(i),
+            SlotUi(which, i),
             Node {
                 width: px(SLOT),
                 height: px(SLOT),
@@ -72,9 +84,9 @@ fn slot(parent: &mut ChildSpawnerCommands, i: usize) {
             BackgroundColor(EMPTY),
         ))
         .with_children(|s| {
-            s.spawn((SlotIcon(i), Node { width: px(16), height: px(16), ..default() }, BackgroundColor(Color::NONE)));
+            s.spawn((SlotIcon(which, i), Node { width: px(16), height: px(16), ..default() }, BackgroundColor(Color::NONE)));
             s.spawn((
-                SlotCount(i),
+                SlotCount(which, i),
                 Text::new(""),
                 TextFont { font_size: FontSize::Px(11.0), ..default() },
                 TextColor(Color::WHITE),
@@ -109,7 +121,7 @@ fn spawn(mut commands: Commands) {
             ));
             root.spawn(Node { column_gap: px(3), ..default() }).with_children(|row| {
                 for i in 0..HOTBAR {
-                    slot(row, i);
+                    slot(row, Holder::Pack, i);
                 }
             });
         });
@@ -133,7 +145,37 @@ fn spawn(mut commands: Commands) {
             ))
             .with_children(|grid| {
                 for i in HOTBAR..PACK {
-                    slot(grid, i);
+                    slot(grid, Holder::Pack, i);
+                }
+            });
+        });
+    // An open chest, above the pack.
+    commands
+        .spawn((
+            ChestRoot,
+            Visibility::Hidden,
+            Node {
+                position_type: PositionType::Absolute,
+                bottom: px(SLOT * 4.0 + 72.0),
+                width: percent(100),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+        ))
+        .with_children(|root| {
+            root.spawn((
+                Text::new("Chest  (Shift-click: move · R: take all)"),
+                TextFont { font_size: FontSize::Px(12.0), ..default() },
+                TextColor(Color::WHITE),
+            ));
+            root.spawn((
+                Node { display: Display::Grid, grid_template_columns: RepeatedGridTrack::px(HOTBAR as u16, SLOT), column_gap: px(3), row_gap: px(3), padding: UiRect::all(px(6)), ..default() },
+                BackgroundColor(Color::srgba(0.12, 0.08, 0.04, 0.6)),
+            ))
+            .with_children(|grid| {
+                for i in 0..SLOTS {
+                    slot(grid, Holder::Chest, i);
                 }
             });
         });
@@ -147,18 +189,33 @@ fn spawn(mut commands: Commands) {
     ));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn toggle(
     keys: Res<ButtonInput<KeyCode>>,
     items: Option<Res<Items>>,
     mut open: ResMut<InventoryOpen>,
     mut held: ResMut<Held>,
+    mut chests: ResMut<Chests>,
     mut inv: Query<&mut Inventory, With<LocalPlayer>>,
-    mut pack: Query<&mut Visibility, With<PackRoot>>,
+    mut pack: Query<&mut Visibility, (With<PackRoot>, Without<ChestRoot>)>,
+    mut chest_panel: Query<&mut Visibility, With<ChestRoot>>,
 ) {
-    if !keys.just_pressed(KeyCode::KeyI) {
+    for mut v in &mut chest_panel {
+        *v = if chests.open.is_some() { Visibility::Visible } else { Visibility::Hidden };
+    }
+    // A chest opened (or walked away from) moves the pack with it.
+    let want = if keys.just_pressed(KeyCode::KeyI) || keys.just_pressed(KeyCode::Escape) {
+        if open.0 { false } else { keys.just_pressed(KeyCode::KeyI) }
+    } else {
+        open.0
+    };
+    if want == open.0 && pack.iter().next().is_some_and(|v| (*v == Visibility::Visible) == open.0) {
         return;
     }
-    open.0 = !open.0;
+    open.0 = want;
+    if !open.0 {
+        chests.open = None;
+    }
     // Closing with something in hand puts it back.
     if !open.0
         && let (Some(stack), Some(items), Ok(mut inv)) = (held.0.take(), items, inv.single_mut())
@@ -170,49 +227,75 @@ fn toggle(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn click(
     keys: Res<ButtonInput<KeyCode>>,
     items: Option<Res<Items>>,
     open: Res<InventoryOpen>,
+    sim: Res<SimWorld>,
+    mut chests: ResMut<Chests>,
     mut hand: ResMut<Hand>,
     mut held: ResMut<Held>,
     slots: Query<(&Interaction, &SlotUi), Changed<Interaction>>,
     mut inv: Query<&mut Inventory, With<LocalPlayer>>,
 ) {
     let (Some(items), Ok(mut inv)) = (items, inv.single_mut()) else { return };
-    for (interaction, SlotUi(i)) in &slots {
+    let chest = chests.open;
+    for (interaction, &SlotUi(which, i)) in &slots {
         if *interaction != Interaction::Pressed {
             continue;
         }
-        let i = *i;
         if !open.0 {
             // Closed: clicking the hotbar just picks the slot.
             hand.slot = i;
             continue;
         }
         let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-        if shift {
-            // Hotbar ↔ pack.
-            let Some(stack) = inv.slots[i].take() else { continue };
-            let range = if i < HOTBAR { HOTBAR..PACK } else { 0..HOTBAR };
-            let mut other = Inventory { slots: inv.slots[range.clone()].to_vec() };
-            let left = other.add(&items, stack);
-            inv.slots[range].copy_from_slice(&other.slots);
-            inv.slots[i] = (left > 0).then_some(Stack { item: stack.item, count: left });
-            continue;
+        match (which, chest) {
+            (Holder::Chest, None) => continue,
+            (Holder::Chest, Some(c)) => {
+                let stash = chests.contents(c, &sim.world, &items);
+                if shift {
+                    // Into the pack.
+                    if let Some(st) = stash.slots[i].take() {
+                        let left = inv.add(&items, st);
+                        stash.slots[i] = (left > 0).then_some(Stack { item: st.item, count: left });
+                    }
+                } else {
+                    swap(&items, &mut held.0, &mut stash.slots[i]);
+                }
+            }
+            (Holder::Pack, _) if shift => {
+                let Some(stack) = inv.slots[i].take() else { continue };
+                let left = if let Some(c) = chest {
+                    chests.contents(c, &sim.world, &items).add(&items, stack)
+                } else {
+                    // Hotbar ↔ pack.
+                    let range = if i < HOTBAR { HOTBAR..PACK } else { 0..HOTBAR };
+                    let mut other = Inventory { slots: inv.slots[range.clone()].to_vec() };
+                    let left = other.add(&items, stack);
+                    inv.slots[range].copy_from_slice(&other.slots);
+                    left
+                };
+                inv.slots[i] = (left > 0).then_some(Stack { item: stack.item, count: left });
+            }
+            (Holder::Pack, _) => swap(&items, &mut held.0, &mut inv.slots[i]),
         }
-        match (held.0, inv.slots[i]) {
-            (Some(h), Some(s)) if h.item == s.item => {
-                // Merge into the slot as far as it goes.
-                let room = items.stack_units(s.item) - s.count;
-                let n = room.min(h.count);
-                inv.slots[i] = Some(Stack { item: s.item, count: s.count + n });
-                held.0 = (h.count > n).then_some(Stack { item: h.item, count: h.count - n });
-            }
-            (h, s) => {
-                inv.slots[i] = h;
-                held.0 = s;
-            }
+    }
+}
+
+/// Put the held stack in a slot: merge the same item as far as it goes,
+/// otherwise swap.
+fn swap(items: &Items, held: &mut Option<Stack>, slot: &mut Option<Stack>) {
+    match (*held, *slot) {
+        (Some(h), Some(s)) if h.item == s.item => {
+            let n = (items.stack_units(s.item) - s.count).min(h.count);
+            *slot = Some(Stack { item: s.item, count: s.count + n });
+            *held = (h.count > n).then_some(Stack { item: h.item, count: h.count - n });
+        }
+        (h, s) => {
+            *slot = h;
+            *held = s;
         }
     }
 }
@@ -225,6 +308,8 @@ fn show(
     held: Res<Held>,
     window: Single<&Window, With<PrimaryWindow>>,
     inv: Query<&Inventory, With<LocalPlayer>>,
+    sim: Res<SimWorld>,
+    mut chests: ResMut<Chests>,
     mut roots: Query<&mut Visibility, (With<HotbarRoot>, Without<HeldIcon>)>,
     mut borders: Query<(&SlotUi, &mut BorderColor)>,
     mut icons: Query<(&SlotIcon, &mut BackgroundColor), Without<HeldIcon>>,
@@ -240,14 +325,19 @@ fn show(
         let (r, g, b) = items.def(s.item).color;
         Color::srgb_u8(r, g, b)
     };
-    for (SlotUi(i), mut border) in &mut borders {
-        *border = BorderColor::all(if *i == hand.slot { CHOSEN } else { EDGE });
+    let stash: Vec<Option<Stack>> = match chests.open {
+        Some(c) => chests.contents(c, &sim.world, &items).slots.clone(),
+        None => vec![None; SLOTS],
+    };
+    let slot_of = |which: Holder, i: usize| if which == Holder::Pack { inv.slots[i] } else { stash[i] };
+    for (&SlotUi(which, i), mut border) in &mut borders {
+        *border = BorderColor::all(if which == Holder::Pack && i == hand.slot { CHOSEN } else { EDGE });
     }
-    for (SlotIcon(i), mut bg) in &mut icons {
-        bg.0 = inv.slots[*i].as_ref().map_or(Color::NONE, color);
+    for (&SlotIcon(which, i), mut bg) in &mut icons {
+        bg.0 = slot_of(which, i).as_ref().map_or(Color::NONE, color);
     }
-    for (SlotCount(i), mut text) in &mut counts {
-        let n = inv.slots[*i].map_or(0, |s| s.count / items.unit(s.item));
+    for (&SlotCount(which, i), mut text) in &mut counts {
+        let n = slot_of(which, i).map_or(0, |s| s.count / items.unit(s.item));
         text.0 = if n > 1 { n.to_string() } else { String::new() };
     }
     label.0 = inv.slots[hand.slot].map_or(String::new(), |s| {

@@ -146,6 +146,14 @@ The target is chosen for you and outlined:
 - **Auto tool** (a held key): picks the right tool for the target, such as an axe for a trunk or a pickaxe for stone.
 - **Fine tools stay** for dev work and later for spells: wands that dig by cells, bombs, the heat gun.
 
+### 4.2b As built (stage 4)
+
+- The player's box became 6 × 15 cells (was 8 × 16): exactly two blocks wide,
+  it never fit a 2-wide shaft unless perfectly aligned with the grid.
+- Chests are anchored at their own corner, not the world grid: cave floors
+  are never on it, so grid-aligned chests almost never fit (0.5 % vs 1.7 %).
+- Building pushes aside tall grass, smoke and flames.
+
 ### 4.3 Items on the ground
 
 Mined material and drops are item entities. They fly out a little, settle, and drift to a nearby player (a magnet). They're also physical: they burn, sink and float by their material. A scroll burns; an iron sword doesn't.

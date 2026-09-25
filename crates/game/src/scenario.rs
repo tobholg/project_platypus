@@ -19,6 +19,8 @@
 //! - `flood`      a big block of water released in a dug-out hall beside the player
 //! - `cave`       a chamber dug under the player (lava and acid pools), flashlight and torch on,
 //!   a torch planted, two glow sticks thrown (`PLATYPUS_NOBEAM=1`: no flashlight)
+//! - `chest`      places a chest with real input, opens it (RMB), puts bombs in, closes it,
+//!   mines it: the bombs and the chest come back
 //! - `hands`      the hands through real input: digs down and sideways with the pickaxe,
 //!   builds a wall with what it dug, chops at a tree with auto tool (Ctrl),
 //!   plants a torch; logs the inventory
@@ -63,7 +65,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, hands_script.after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -590,5 +592,81 @@ fn hands_script(
         let held: Vec<String> = inv.slots.iter().flatten().map(|st| format!("{} {}", items.def(st.item).name, st.count / items.unit(st.item))).collect();
         let torches = items.id("torch").map_or(0, |torch| inv.count(torch));
         info!("hands: inventory {} (built with slot {:?}; {torches} torches left)", held.join(", "), build_slot.map(|i| i + 1));
+    }
+}
+
+/// A chest through real input: place, open, fill (directly), close, mine.
+#[allow(clippy::too_many_arguments)]
+fn chest_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut player: Query<(&Kinematics, Option<&mut crate::hands::items::Inventory>), With<LocalPlayer>>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut chests: ResMut<crate::hands::chests::Chests>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut step: Local<u8>,
+    mut spot: Local<Option<Vec2>>,
+) {
+    use crate::hands::items::Stack;
+    if s.name != "chest" {
+        return;
+    }
+    let Ok((k, Some(mut inv))) = player.single_mut() else { return };
+    let Some(items) = items else { return };
+    let (Some(chest), Some(bomb)) = (items.id("chest"), items.id("bomb")) else { return };
+    let p = k.body.pos;
+    for key in [KeyCode::Digit1, KeyCode::Digit9, KeyCode::Escape] {
+        keys.release(key);
+    }
+    mouse.release(MouseButton::Left);
+    mouse.release(MouseButton::Right);
+    let at = *spot.get_or_insert(p + Vec2::new(16.0, 0.0));
+    match *step {
+        0 if s.elapsed > 0.8 => {
+            // A chest in slot 9.
+            inv.slots[8] = Some(Stack { item: chest, count: 1 });
+            keys.press(KeyCode::Digit9);
+            *step = 1;
+        }
+        1 if s.elapsed > 1.2 => {
+            cursor.0 = Some(at);
+            mouse.press(MouseButton::Left);
+            *step = 2;
+        }
+        2 if s.elapsed > 1.6 => {
+            cursor.0 = Some(at + Vec2::new(0.0, -4.0));
+            mouse.press(MouseButton::Right);
+            *step = 3;
+        }
+        3 if s.elapsed > 2.0 => {
+            match chests.open {
+                Some(c) => {
+                    let taken = inv.slots.iter_mut().flatten().find(|st| st.item == bomb).map(|st| std::mem::replace(&mut st.count, 0)).unwrap_or(0);
+                    inv.slots.iter_mut().for_each(|sl| if sl.is_some_and(|st| st.count == 0) { *sl = None });
+                    chests.contents(c, &sim.world, &items).add(&items, Stack { item: bomb, count: taken });
+                    info!("chest: placed and opened at {c:?}, {taken} bombs put in");
+                }
+                None => info!("chest: not open"),
+            }
+            keys.press(KeyCode::Escape);
+            *step = 4;
+        }
+        4 if s.elapsed > 2.4 => {
+            keys.press(KeyCode::Digit1);
+            *step = 5;
+        }
+        5 if s.elapsed > 2.5 && s.elapsed < 5.0 => {
+            cursor.0 = Some(at + Vec2::new(0.0, -4.0));
+            mouse.press(MouseButton::Left);
+        }
+        5 if s.elapsed >= 6.0 => {
+            let bombs = inv.count(bomb);
+            let chests_back = inv.count(chest);
+            info!("chest: after mining it, {bombs} bombs and {chests_back} chest in the pack");
+            *step = 6;
+        }
+        _ => {}
     }
 }

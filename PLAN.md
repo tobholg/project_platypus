@@ -56,8 +56,9 @@ and the RPG arc (rigs and gear skins, moves, corpses and loot, characters, spell
    `platypus-worldview`, determinism test. Stage 2 done: biomes, climate across
    the world (and an inversion over the peaks), mountains with snow, oceans,
    lakes, sky islands (SPEC §3.4b). Stage 3 done: the underground by band,
-   chasms, flooded caverns, the underworld's lava sea. Next: stage 4, hands
-   (block mining and building, items, chests).
+   chasms, flooded caverns, the underworld's lava sea. Stage 4 done: hands
+   (blocks, smart cursor, items, inventory, chests, loot; SPEC §3.4c). Next:
+   stage 5, ores and gems.
    Originally:
    biome plan from temperature × moisture; tree species as RON data (conifers
    that hold snow, birch, jungle, dead trees); lakes and rivers in forests;

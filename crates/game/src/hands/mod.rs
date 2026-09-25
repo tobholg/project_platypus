@@ -3,8 +3,9 @@
 //! switches to the dev tools (`tools.rs`) and back.
 //!
 //! 1–0 pick a hotbar slot · LMB use it · hold Ctrl: the right tool for the
-//! target (auto tool) · I: inventory.
+//! target (auto tool) · I: inventory · RMB: open a chest (R takes all).
 
+pub mod chests;
 pub mod items;
 pub mod target;
 mod ui;
@@ -86,7 +87,7 @@ impl Plugin for HandsPlugin {
             .add_systems(Update, (toggle_dev, select, give_start, outline.run_if(play)))
             .add_systems(FixedUpdate, use_hands.run_if(play).in_set(TickSet::Intent))
             .add_systems(FixedUpdate, collect.after(crate::props::fly).in_set(TickSet::Bodies))
-            .add_plugins(ui::UiPlugin);
+            .add_plugins((ui::UiPlugin, chests::ChestsPlugin));
     }
 }
 
@@ -229,6 +230,7 @@ fn use_hands(
     lights: Res<LightSettings>,
     mut hand: ResMut<Hand>,
     mut sim: ResMut<SimWorld>,
+    mut chests: ResMut<chests::Chests>,
     mut player: Query<(&Kinematics, &mut Inventory), With<LocalPlayer>>,
     creatures: Query<&Kinematics, With<Creature>>,
 ) {
@@ -242,7 +244,14 @@ fn use_hands(
     match items.def(stack.item).use_.clone() {
         Use::Mine { back, power, tier, speed, reach } if input.primary && hand.cooldown == 0.0 => {
             let Some(block) = target::mine_target(from, cursor, reach * BLOCK as f32, |b| minable(&sim.world, b, back, tier)) else { return };
+            let struck = if back { Vec::new() } else { chests.in_block(&sim.world, block) };
             let report = sim.world.apply_edit(&WorldEdit::MineBlock { block, power, max_hardness: tier, back });
+            // A chest hit through breaks, spilling what's in it.
+            if report.removed.iter().any(|&(m, _)| Some(m) == sim.materials().id("chest")) {
+                for corner in struck {
+                    chests.smash(&mut commands, &mut sim.world, &items, corner);
+                }
+            }
             debug!("hit {block:?} removed {:?}", report.removed);
             hand.cooldown = 1.0 / speed.max(0.1);
             let centre = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32);
@@ -273,6 +282,20 @@ fn use_hands(
                     spawn_glowstick(&mut commands, from, vel, color, lights.glowstick.secs);
                 }
             }
+            inv.take(slot, 1);
+        }
+        Use::Chest if clicked => {
+            let Some(corner) = chests::place_spot(&sim.world, cursor) else { return };
+            let centre = Vec2::new(corner.x as f32 + 4.0, corner.y as f32 + 4.0);
+            let bodies: Vec<Body> = creatures.iter().map(|k| k.body).collect();
+            let in_the_way = bodies.iter().any(|b| (b.pos - centre).abs().cmple(b.half + Vec2::splat(4.0)).all());
+            let Some(chest) = sim.materials().id("chest") else { return };
+            if centre.distance(from) > 6.0 * BLOCK as f32 || in_the_way {
+                return;
+            }
+            let side = chests::SIDE;
+            sim.world.apply_edit(&WorldEdit::Stamp { corner, w: side, h: side, material: chest });
+            chests.placed(corner);
             inv.take(slot, 1);
         }
         Use::Torch if clicked => {
@@ -358,6 +381,13 @@ fn outline(
     let world = &sim.world;
     let (block, color) = match items.def(stack.item).use_ {
         Use::Mine { back, tier, reach, .. } => (target::mine_target(from, cursor, reach * BLOCK as f32, |b| minable(world, b, back, tier)), Color::srgba(1.0, 0.9, 0.3, 0.9)),
+        Use::Chest => {
+            if let Some(c) = chests::place_spot(world, cursor) {
+                let centre = Vec2::new(c.x as f32 + 4.0, c.y as f32 + 4.0);
+                gizmos.rect_2d(bevy::math::Isometry2d::from_translation(centre), Vec2::splat(chests::SIDE as f32), Color::srgba(0.4, 0.9, 1.0, 0.9));
+            }
+            (None, Color::NONE)
+        }
         Use::Block(_) | Use::Torch => {
             let bodies: Vec<Body> = creatures.iter().map(|k| k.body).collect();
             (target::place_target(from, cursor, 6.0 * BLOCK as f32, |b| free(world, b, &bodies), |b| supported(world, b)), Color::srgba(0.4, 0.9, 1.0, 0.9))
