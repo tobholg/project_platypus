@@ -110,7 +110,7 @@ fn update_hud(
          loaded {} chunks | stored {} ({} KB) | streamed {} ({:.2} ms)\n\
          entities {} | particles {} | bodies {} | tick {} | zoom {} px/cell\n\
          tool {} r{} | cursor {}\n\
-         [F3] hud [F4] dirty rects | wheel zoom | O spawn orc",
+         [F3] hud [F4] dirty rects | [F5] storm [F6] clear [F7] lightning | wheel zoom | O spawn orc",
         stats.avg_ms,
         stats.worst_ms,
         1000.0 / stats.avg_ms.max(0.001),

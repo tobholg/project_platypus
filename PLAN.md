@@ -42,8 +42,9 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
    for it: playfield pieces as bodies (a cut-loose slab of rock), bodies
    colliding with creatures and each other, saving bodies in flight, per-tree
    crown sway
-5. ~~Sky: clouds, rain/snow by temperature~~ (done, SPEC §3.13). Still to do:
-   lightning (see elemental ideas), saving the weather, parallax far clouds
+5. ~~Sky: clouds, rain/snow by temperature, storms, lightning~~ (done, SPEC
+   §3.13). Still to do: saving the weather, parallax far clouds, lightning
+   through water and metal
 6. Meteors: fireball, huge crater, ejecta, forest fires, hot meteorite ore
 7. **Worldgen v2 / biomes** (its own arc, before the save format freezes):
    biome plan from temperature × moisture; tree species as RON data (conifers
@@ -56,9 +57,8 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
 Same shape as everything so far: a general rule plus material data, no
 special cases.
 
-- **Lightning / electricity**: chains through water and metal, hurts anything
-  standing in them, lights what it strikes. Comes with weather (clouds build
-  charge).
+- **Electricity**: lightning (done) chaining through water and metal, hurting
+  anything standing in them; wet creatures take more.
 - **Steam blasts**: water meeting lava bursts outward (a small explosion on the
   reaction) instead of quietly becoming steam; trapped steam builds pressure.
 - **Poison / swamp gas**: harms without corroding (a `toxic` material value),

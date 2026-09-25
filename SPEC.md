@@ -142,6 +142,19 @@ Being above `ignites_at` gives a per-tick chance (set by flammability) to
 catch, certain only 250 °C above it — otherwise heat would carry every fire
 across every meadow regardless of flammability.
 
+**Wood is hard to get going; grass and leaves aren't.** Per material:
+`spread` (chance /4096 per tick to catch from a burning neighbour, ×2 from
+below, ÷2 from above; default flammability × 16), `fizzles` (chance /4096 per
+tick that a flame with fewer than two flaming neighbours goes out) and
+`chars_at` (after that share of its burn it smoulders: no flames, no
+spreading, no embers, and it stops carrying weight). Only a blaze (4+
+flaming neighbours) throws embers, and flames licking into the air grow with
+the fire. Heat alone lights a material with a chance that ramps up over the
+first 60 °C above its ignition point. So a spark on a trunk sometimes goes
+out, usually scorches it and burns the crown, leaving the trunk standing; a
+proper fire burns most of a wooden slab (tested over 20 seeds each). Rain
+puts fires out.
+
 **How far fire spreads is a material property, not a special rule.** The chance
 a burning cell lights a neighbour before burning out comes from flammability ×
 burn_time; above a tipping point (~50 %) fire sweeps everything, below it
@@ -244,7 +257,8 @@ deaths (blood). Rendered as one dynamic mesh.
   from below), with `+ − × ÷` only, so it's deterministic for co-op.
 - Each column relaxes toward a cloud shape (flat base, heaped top) set by
   seeded humidity fronts pinned to the moving air; the pattern drifts with
-  the wind. Above 0.9 moisture a texel rains out.
+  the wind (~3 cells/s at full wind). Fronts come and go over tens of minutes,
+  a storm lasts minutes. Above 0.9 moisture a texel rains out.
 - Rain and snow are particles, started only over loaded ground: rain (snow
   where the cloud is below 0 °C, melting into rain in air above 1 °C) puts
   out flames and burning cells it passes or lands on, front and back; one
@@ -254,11 +268,28 @@ deaths (blood). Rendered as one dynamic mesh.
 - Steam that fades (rather than condensing on the spot) feeds the clouds
   above it (`vapour: true` in the material): boiled water comes back as rain.
 - Creatures under an open raining sky are soaked (`Wet`, fire goes out).
-- Rendering: the band is painted into a texture that slides with the air and
-  is repainted every 15 ticks or when the view leaves it; a bright rim, light
+- Rendering: the band is painted in air coordinates (world x minus how far
+  the air has drifted) into a texture placed to the screen pixel, repainted
+  every 30 ticks or when the view leaves it, so drift is smooth (the field
+  itself moves in whole 4-cell texels); a bright rim, light
   body and shadowed belly per cloud; the sky greys as it clouds over.
-- Not yet: weather isn't saved (it restarts from the seed), lightning, wind
-  gusts from storms.
+- Storms: the wettest parts of big fronts rain hard; a column raining more
+  than `STORM_RAIN` throws lightning now and then (one in 12 000 weather steps
+  per column: a storm over a screen strikes every ~10 s). Lightning comes down
+  the column from the cloud base, strikes the first solid, liquid, plant or
+  tree, heats it (+900 °C) and sets it alight; creatures within 10 cells take
+  up to 55 damage and catch fire (unless wet). The game draws a forked bolt,
+  flashes the sky and shakes the camera.
+- `WorldEdit::Weather` forces a storm or a clear sky over an area (fading back
+  over ~2.5 minutes) and `WorldEdit::Lightning` strikes a column: the F5, F6
+  and F7 dev keys, and later spells or events.
+- The band sits 150 cells above sea level, over the tallest trees. It is often
+  above the loaded area (zoomed in): rain, snow and lightning enter the world at
+  the top of what's loaded below the cloud. Rain or snow is decided by the
+  temperature of the ground it will land on. Drops fall at ~2 cells a tick and
+  douse a 3-cell strip as they fall.
+- Not yet: weather isn't saved (it restarts from the seed), wind gusts from
+  storms, lightning conducting through water and metal.
 
 ## 4. Rendering
 

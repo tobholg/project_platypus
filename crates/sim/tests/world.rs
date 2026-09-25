@@ -122,26 +122,41 @@ fn lava_meets_water() {
     assert!(count(&w, m.expect_id("steam")) + count(&w, m.expect_id("water")) > 0);
 }
 
-/// Fire must reliably take: across 20 seeds, a lit slab of wood burns up.
-#[test]
-fn fire_spreads_through_wood_and_burns_out() {
-    for seed in 100..120 {
-        let mut w = boxed_world(1, 1, seed);
-        let m = w.materials().clone();
-        let wood = m.expect_id("wood");
-        for x in 10..50 {
-            for y in 1..6 {
-                w.set(CellPos::new(x, y), Cell::new(wood, 0));
+/// Wood left of a 40×5 slab lit at one end with a fire of `radius`, per seed.
+fn slab_fire(radius: i32) -> Vec<usize> {
+    let mut left: Vec<usize> = (100..120)
+        .map(|seed| {
+            let mut w = boxed_world(1, 1, seed);
+            let m = w.materials().clone();
+            let wood = m.expect_id("wood");
+            for x in 10..50 {
+                for y in 1..6 {
+                    w.set(CellPos::new(x, y), Cell::new(wood, 0));
+                }
             }
-        }
-        w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(10, 5), radius: 1 });
-        for _ in 0..6_000 {
-            w.step();
-        }
-        assert!(count(&w, wood) < 20, "seed {seed}: {} of 200 wood left", count(&w, wood));
-        assert_eq!(burning(&w), 0, "seed {seed}: burned out");
-        assert_eq!(count(&w, m.expect_id("fire")), 0, "seed {seed}: flames gone");
-    }
+            w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(12, 3), radius });
+            // Wood fire creeps; give it time to finish.
+            for _ in 0..12_000 {
+                w.step();
+            }
+            assert_eq!(burning(&w), 0, "seed {seed}: burned out");
+            assert_eq!(count(&w, m.expect_id("fire")), 0, "seed {seed}: flames gone");
+            count(&w, wood)
+        })
+        .collect();
+    left.sort();
+    left
+}
+
+/// Wood is hard to get going (SPEC §3.8): a spark sometimes fizzles, often
+/// only scorches; a proper fire usually burns most of it. Every fire ends.
+#[test]
+fn a_spark_on_wood_often_fizzles_a_proper_fire_takes() {
+    let spark = slab_fire(1);
+    let fire = slab_fire(3);
+    assert!(spark.iter().filter(|&&l| l > 150).count() >= 3, "sparks sometimes fizzle: {spark:?} of 200 left");
+    assert!(spark.iter().filter(|&&l| l < 60).count() >= 3, "and sometimes take: {spark:?}");
+    assert!(fire[fire.len() / 2] < 110, "a proper fire burns most of it: {fire:?}");
 }
 
 #[test]
@@ -154,11 +169,12 @@ fn painted_flames_light_wood() {
             w.set(CellPos::new(x, y), Cell::new(wood, 0));
         }
     }
-    w.apply_edit(&WorldEdit::Paint { center: CellPos::new(10, 7), radius: 1, material: m.expect_id("fire"), overwrite: true });
+    // A bonfire's worth of flames on top of it.
+    w.apply_edit(&WorldEdit::Paint { center: CellPos::new(14, 7), radius: 4, material: m.expect_id("fire"), overwrite: true });
     for _ in 0..6_000 {
         w.step();
     }
-    assert!(count(&w, wood) < 40, "most of the wood burned, {} left", count(&w, wood));
+    assert!(count(&w, wood) < 150, "the flames lit the wood, {} left", count(&w, wood));
     assert_eq!(count(&w, m.expect_id("fire")), 0, "fire burned out");
 }
 
@@ -836,7 +852,8 @@ fn a_forest_fire_burns_through_the_background_and_leaves_nothing_hanging() {
     plant_tree(&mut w, 100);
     plant_tree(&mut w, 150);
     let leaves = w.materials().expect_id("leaves");
-    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(40, 10), radius: 2 });
+    // A crown fire (a spark on a trunk may just fizzle).
+    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(40, 52), radius: 3 });
     for _ in 0..8_000 {
         w.step();
     }
@@ -960,13 +977,14 @@ fn a_tree_fire_climbs_then_burns_for_a_while() {
     }
     assert!(bg_burning(&w) < 300, "one second in, the fire is still climbing ({} burning)", bg_burning(&w));
     let mut secs = 1;
-    while (bg_burning(&w) > 0 || burning(&w) > 0) && secs < 60 {
+    while (bg_burning(&w) > 0 || burning(&w) > 0) && secs < 90 {
         for _ in 0..60 {
             w.step();
         }
         secs += 1;
     }
-    assert!((12..=40).contains(&secs), "the tree burned for {secs} s");
+    // Wood smoulders and creeps, so a thick trunk takes its time.
+    assert!((12..=60).contains(&secs), "the tree burned for {secs} s");
 }
 
 #[test]
@@ -1013,7 +1031,8 @@ fn base_fire(materials: Arc<MaterialTable>) -> (Option<usize>, usize) {
     fill_bg(&mut w, "wood", 90, 100, 1, 90);
     fill_bg(&mut w, "leaves", 76, 114, 76, 100);
     let wood = materials.expect_id("wood");
-    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(95, 11), radius: 3 });
+    // A fire right round the base (a spark on a trunk may just fizzle).
+    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(95, 12), radius: 6 });
     for t in 0..6_000 {
         w.step();
         if let Some(b) = w.bodies().first() {
@@ -1219,4 +1238,38 @@ fn rain_stops_a_forest_fire_and_puddles() {
     assert!(dry < 1_152 - 300, "without rain the fire takes a crown ({dry} left)");
     assert!(wet > 1_152 * 9 / 10, "rain saved the canopy ({wet} of 1152 left)");
     assert!(puddles > 0, "and left water on the ground ({puddles})");
+}
+
+
+#[test]
+fn lightning_strikes_the_first_thing_in_its_way_and_sets_it_alight() {
+    let mut w = boxed_world(3, 2, 91);
+    w.set_weather(platypus_sim::Weather::new(91, 192, 100, 24));
+    plant_tree(&mut w, 100);
+    // Straight down onto the tree (its trunk tops out at 59), not the ground under it.
+    w.apply_edit(&WorldEdit::Lightning { x: 100, from_y: 120 });
+    let s = w.step().lightning;
+    assert_eq!(s.len(), 1);
+    assert_eq!(s[0].hit, CellPos::new(100, 59), "hit the top of the tree");
+    assert!(s[0].top >= 100, "from the cloud base");
+    let burning_bg = w.chunks().flat_map(|c| c.background()).filter(|b| b.flags & platypus_sim::cell::flags::BURNING != 0).count();
+    assert!(burning_bg > 0, "the crown caught");
+}
+
+#[test]
+fn a_thunderstorm_throws_lightning() {
+    let mut w = boxed_world(3, 2, 92);
+    // The real band's height (thin clouds can't rain that hard).
+    w.set_weather(platypus_sim::Weather::new(92, 192, 100, 176));
+    w.apply_edit(&WorldEdit::Weather { x: 96, radius: 90, storm: true });
+    let mut strikes = 0;
+    let mut most_drops = 0;
+    for _ in 0..6_000 {
+        strikes += w.step().lightning.len();
+        most_drops = most_drops.max(w.particles().len());
+    }
+    // The clouds are mostly above the loaded world (like zoomed in): rain and
+    // lightning still come down into it.
+    assert!(most_drops > 1_000, "it poured ({most_drops} drops)");
+    assert!(strikes >= 1, "a storm over the world for 100 s struck at least once");
 }

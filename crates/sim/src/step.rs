@@ -216,6 +216,17 @@ pub struct StepStats {
     /// Columns where vapour faded into the air this tick (the world feeds
     /// them to the clouds).
     pub vapour: Vec<i32>,
+    /// Lightning that struck this tick (for the bolt, the flash, the thunder,
+    /// and whoever stood there).
+    pub lightning: Vec<Strike>,
+}
+
+/// A lightning strike: down column `x` from `top` to the cell it hit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Strike {
+    pub x: i32,
+    pub top: i32,
+    pub hit: CellPos,
 }
 
 /// What one job reports back to the world.

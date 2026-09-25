@@ -17,7 +17,7 @@ use serde::Deserialize;
 
 use crate::actors::Kinematics;
 use crate::actors::player::LocalPlayer;
-use crate::camera::CursorWorld;
+use crate::camera::{CursorWorld, MainCamera};
 use crate::data::{Watched, data_path, load_ron};
 use crate::props::spawn_bomb;
 use crate::world::{SimWorld, TickSet};
@@ -170,7 +170,7 @@ impl Plugin for ToolsPlugin {
             .init_resource::<ToolInput>()
             .add_systems(Startup, (spawn_hotbar, default_material))
             .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor))
-            .add_systems(Update, (select, reload_config, preview, update_hotbar))
+            .add_systems(Update, (select, reload_config, preview, update_hotbar, weather_keys))
             .add_systems(FixedUpdate, use_tools.in_set(TickSet::Intent));
     }
 }
@@ -352,4 +352,21 @@ pub fn material_at(sim: &SimWorld, at: Vec2) -> Option<(MaterialId, String)> {
     let cell = sim.world.get(p)?;
     let t = sim.world.temperature(p)?;
     Some((cell.material, format!("{} {t}C", sim.materials().def(cell.material).name)))
+}
+
+/// Weather on demand: F5 a thunderstorm here, F6 clear skies, F7 lightning
+/// down onto the cursor. Edits like any other, so co-op sees them too.
+fn weather_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, cam: Single<&Transform, With<MainCamera>>, mut sim: ResMut<SimWorld>) {
+    let x = cam.translation.x as i32;
+    if keys.just_pressed(KeyCode::F5) {
+        sim.queue(WorldEdit::Weather { x, radius: 400, storm: true });
+    }
+    if keys.just_pressed(KeyCode::F6) {
+        sim.queue(WorldEdit::Weather { x, radius: 600, storm: false });
+    }
+    if keys.just_pressed(KeyCode::F7)
+        && let Some(at) = cursor.0
+    {
+        sim.queue(WorldEdit::Lightning { x: at.x.floor() as i32, from_y: at.y as i32 + 200 });
+    }
 }

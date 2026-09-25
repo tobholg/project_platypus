@@ -24,6 +24,13 @@ pub enum WorldEdit {
     /// Add (or with a negative amount, remove) heat in °C to every non-air
     /// cell, less towards the rim. Melting, boiling and freezing follow.
     Heat { center: CellPos, radius: i32, amount: i16 },
+    /// Lightning down the column at `x` from the clouds (or from `from_y` if
+    /// there are none): it strikes the first thing in its way, sets it alight
+    /// and scorches it (SPEC §3.13).
+    Lightning { x: i32, from_y: i32 },
+    /// Force a storm (`storm`) or clear sky over x ± `radius`; it fades back to
+    /// the natural weather over minutes. Nothing without weather.
+    Weather { x: i32, radius: i32, storm: bool },
 }
 
 /// What an edit changed. `removed` is sorted by material id.

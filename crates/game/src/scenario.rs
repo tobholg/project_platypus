@@ -12,7 +12,7 @@
 //! - `fell`       cuts through the trunk of the nearest tree to the right at t = 2 s
 //! - `burn`       sets the base of that tree alight at t = 2 s instead
 //! - `acid`       pours acid into a glass basin beside the player, boils it at 2 s, lights the fumes at 3.6 s
-//! - `rain`       lights the forest beside the player at 2 s, seeds rain clouds over it from 4 s
+//! - `rain`       lights the forest beside the player at 2 s, a storm over it at 3 s (F5), lightning at 6 s (F7)
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -345,25 +345,29 @@ fn acid_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
     }
 }
 
-fn rain_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut lit: Local<bool>) {
-    if s.name != "rain" || s.elapsed < 2.0 {
+fn rain_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut step: Local<u8>) {
+    if s.name != "rain" {
         return;
     }
     let Ok(p) = player.single() else { return };
     let x = p.body.pos.x as i32;
-    if !*lit {
-        if let Some(ground) = find_ground(&sim.world, x + 80, p.body.pos.y as i32 + 60, 300) {
-            sim.queue(WorldEdit::Ignite { center: CellPos::new(x + 80, ground + 2), radius: 6 });
+    match *step {
+        0 if s.elapsed > 2.0 => {
+            if let Some(ground) = find_ground(&sim.world, x + 80, p.body.pos.y as i32 + 60, 300) {
+                sim.queue(WorldEdit::Ignite { center: CellPos::new(x + 80, ground + 2), radius: 6 });
+            }
+            *step = 1;
         }
-        *lit = true;
-    }
-    if s.elapsed > 4.0
-        && let Some(w) = sim.world.weather_mut()
-    {
-        for dx in (-150..250).step_by(4) {
-            // Tapered at the ends, so the cloud has no straight edge.
-            let edge = ((dx + 150).min(250 - dx) as f32 / 60.0).min(1.0);
-            w.feed(x + dx, 0.06 * edge * edge);
+        // What F5 does.
+        1 if s.elapsed > 3.0 => {
+            sim.queue(WorldEdit::Weather { x, radius: 400, storm: true });
+            *step = 2;
         }
+        // What F7 does, onto a spot left of the player.
+        2 if s.elapsed > 6.0 => {
+            sim.queue(WorldEdit::Lightning { x: x - 60, from_y: p.body.pos.y as i32 + 200 });
+            *step = 3;
+        }
+        _ => {}
     }
 }

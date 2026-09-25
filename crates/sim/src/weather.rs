@@ -18,11 +18,16 @@ pub const STEP_EVERY: u64 = 4;
 pub const CLOUD_AT: f32 = 0.35;
 /// Moisture above which it rains (or snows) out.
 pub const RAIN_AT: f32 = 0.9;
-/// Cloud drift at full wind, cells per tick.
-const DRIFT: f32 = 0.12;
+/// Cloud drift at full wind, cells per tick (~3 cells/s).
+const DRIFT: f32 = 0.05;
+/// A forced storm or clear sky fades back to the natural weather by this
+/// factor per step (half-life ~2.5 minutes).
+const BIAS_FADE: f32 = 0.9997;
 /// Share of the gap to the target closed per step: fronts build and clear
 /// over about a minute.
 const RELAX: f32 = 0.006;
+/// Rain out of a column per step above which it's a thunderstorm.
+pub const STORM_RAIN: f32 = 0.06;
 /// Moisture drained per step from a texel above `RAIN_AT`, per unit over.
 const RAIN_OUT: f32 = 0.03;
 
@@ -46,6 +51,9 @@ pub struct Weather {
     /// The cloud each column relaxes toward. Changes over minutes, so a
     /// sixteenth of the columns is recomputed per step; it moves with the air.
     shapes: Vec<Shape>,
+    /// Forced weather per column (dev tools, spells): +1 storm, -1 clear.
+    /// Moves with the air and fades back to 0.
+    bias: Vec<f32>,
 }
 
 /// Columns whose shape is recomputed per step: all of them every this many steps.
@@ -77,6 +85,7 @@ impl Weather {
             fed: vec![0.0; cols],
             rain: vec![0.0; cols],
             shapes: Vec::new(),
+            bias: vec![0.0; cols],
         };
         w.shapes = (0..cols).map(|c| w.shape(c, 0)).collect();
         // Start in the weather the seed has for tick 0, not a clear sky.
@@ -123,6 +132,12 @@ impl Weather {
         a + (b - a) * ty
     }
 
+    /// Bottom of the cloud over world x (cell y), if there is one.
+    pub fn cloud_base(&self, x: i32) -> Option<i32> {
+        let c = self.col(x);
+        (0..self.rows).find(|&r| self.moisture[r * self.cols + c] > CLOUD_AT).map(|r| self.y0 + r as i32 * TEXEL)
+    }
+
     /// How hard it is raining out of the column over world x (0 = dry).
     pub fn rain_at(&self, x: i32) -> f32 {
         self.rain[self.col(x)]
@@ -141,9 +156,47 @@ impl Weather {
         if n == 0 { 0.0 } else { sum / n as f32 }
     }
 
-    /// Air offset for rendering: the fine pattern of a cloud moves with it.
+    /// How far the air has moved (cells, wrapping at `width`). Clouds are
+    /// drawn in air coordinates (`world x - offset`) and placed with this, so
+    /// they slide smoothly although the field itself moves in whole texels.
     pub fn offset(&self) -> f32 {
         self.offset
+    }
+
+    /// World x the field's texels currently sit at for air coordinate `a`.
+    #[inline]
+    fn air_to_field(&self, a: f32) -> f32 {
+        a + (self.offset / TEXEL as f32).floor() * TEXEL as f32
+    }
+
+    /// Moisture at air coordinate `a` (see `offset`), height `y`.
+    pub fn moisture_air(&self, a: f32, y: f32) -> f32 {
+        self.moisture_at(self.air_to_field(a), y)
+    }
+
+    /// Rain out of the column at air coordinate `a`.
+    pub fn rain_air(&self, a: i32) -> f32 {
+        self.rain_at(self.air_to_field(a as f32) as i32)
+    }
+
+    /// Force a storm (`storm`) or clear sky over world x ± `radius`, starting
+    /// now and fading back over minutes.
+    pub fn force(&mut self, x: i32, radius: i32, storm: bool, tick: u64) {
+        let (cols, rows) = (self.cols, self.rows);
+        let r = (radius / TEXEL).max(1);
+        for d in -r..=r {
+            let c = (self.col(x) as i32 + d).rem_euclid(cols as i32) as usize;
+            // Full strength in the middle, tapering to the edges.
+            let k = 1.0 - (d.abs() as f32 / r as f32).powi(2);
+            let b = if storm { k } else { -k * 2.0 };
+            if storm { self.bias[c] = self.bias[c].max(b) } else { self.bias[c] = self.bias[c].min(b) }
+            self.shapes[c] = self.shape(c, tick);
+            // Now, not in a minute: it's a tool.
+            for row in 0..rows {
+                let m = &mut self.moisture[row * cols + c];
+                *m = if storm { m.max(self.shapes[c].target(row)) } else { m.min(self.shapes[c].target(row)) };
+            }
+        }
     }
 
     /// Vapour rising into the sky over world x (a cell of steam ≈ 0.02).
@@ -172,6 +225,10 @@ impl Weather {
                 self.moisture[r * cols..(r + 1) * cols].rotate_right(shift);
             }
             self.shapes.rotate_right(shift);
+            self.bias.rotate_right(shift);
+        }
+        for b in &mut self.bias {
+            *b *= BIAS_FADE;
         }
         let phase = (tick / STEP_EVERY) % SHAPE_REFRESH;
         for c in (phase as usize..cols).step_by(SHAPE_REFRESH as usize) {
@@ -218,20 +275,24 @@ impl Weather {
     /// to the moving air) over a mostly clear sky; within them cumulus: flat
     /// bases, heaped tops of varying height, the thickest ones raining.
     fn shape(&self, c: usize, tick: u64) -> Shape {
-        let x = c as f32 * TEXEL as f32 - self.offset;
+        // Air coordinate of this column (texels move in whole steps).
+        let x = c as f32 * TEXEL as f32 - (self.offset / TEXEL as f32).floor() * TEXEL as f32;
         let t = tick as f32;
-        let broad = noise2(self.seed, 0xC10D, x / 1_600.0, t / 24_000.0);
-        let medium = noise2(self.seed, 0xC10E, x / 260.0, t / 6_000.0);
-        // Mostly clear, with fronts: 0 below 0.45, 1 above 0.8.
-        let humid = smoothstep(0.45, 0.8, 0.72 * broad + 0.28 * medium);
-        let heap = noise2(self.seed, 0xC10F, x / 70.0, t / 3_000.0);
+        // Fronts come and go over tens of minutes; a storm lasts minutes.
+        let broad = noise2(self.seed, 0xC10D, x / 1_600.0, t / 90_000.0);
+        let medium = noise2(self.seed, 0xC10E, x / 260.0, t / 30_000.0);
+        let bias = self.bias[c];
+        let humid = (smoothstep(0.45, 0.8, 0.72 * broad + 0.28 * medium) + bias).clamp(0.0, 1.0);
+        let heap = noise2(self.seed, 0xC10F, x / 70.0, t / 15_000.0);
         let rows = self.rows as f32;
-        let base = rows * 0.12 + 3.0 * noise2(self.seed, 0xC110, x / 150.0, t / 5_000.0);
+        let base = rows * 0.12 + 3.0 * noise2(self.seed, 0xC110, x / 150.0, t / 20_000.0);
         // Separate heaps with clear sky between, more of them joined up the
         // more humid it is.
-        let heaped = smoothstep(0.55 - 0.35 * humid, 0.85 - 0.25 * humid, heap);
+        let heaped = smoothstep(0.55 - 0.35 * humid, 0.85 - 0.25 * humid, heap).max(bias);
         let thickness = rows * (humid * (0.25 + 0.65 * heaped) * heaped).min(0.7);
-        Shape { base, thickness, peak: 0.45 + 0.75 * humid }
+        // Storms: the wettest parts of big fronts rain hard (and throw lightning).
+        let storm = (smoothstep(0.62, 0.8, broad) * humid).max(bias);
+        Shape { base, thickness, peak: 0.45 + 0.75 * humid + 0.9 * storm }
     }
 }
 
@@ -300,10 +361,11 @@ mod tests {
         for t in 1..=400 {
             w.step(t, 1.0);
         }
-        // 400 ticks at full wind: 48 cells = 12 texels to the right.
+        // 400 ticks at full wind: 20 cells = 5 texels to the right.
+        assert!((w.offset() - 20.0).abs() < 0.01, "air moved {}", w.offset());
         let (cols, row) = (w.cols, w.rows / 2);
-        let moved = (0..cols).filter(|&c| (w.moisture[row * cols + (c + 12) % cols] - before[row * cols + c]).abs() < 0.2).count();
-        assert!(moved as f32 > cols as f32 * 0.9, "the pattern moved 12 texels right ({moved} of {cols} match)");
+        let moved = (0..cols).filter(|&c| (w.moisture[row * cols + (c + 5) % cols] - before[row * cols + c]).abs() < 0.2).count();
+        assert!(moved as f32 > cols as f32 * 0.9, "the pattern moved 5 texels right ({moved} of {cols} match)");
     }
 
     #[test]
@@ -320,6 +382,26 @@ mod tests {
         w.feed(x, 5.0);
         step(&mut w);
         assert!(w.moisture[c] > 0.1 && w.moisture[(w.rows / 3) * w.cols + c] > 0.1, "vapour spread into the lower band");
+    }
+
+    #[test]
+    fn a_forced_storm_rains_hard_and_a_forced_clear_sky_is_clear() {
+        let mut w = weather();
+        let x = 8_000;
+        w.force(x, 200, true, 0);
+        let mut storm = 0.0f32;
+        for t in 1..=400 {
+            let out = w.step(t, 0.0);
+            storm = storm.max(out.iter().filter(|p| (p.x - x).abs() < 40).map(|p| p.amount).fold(0.0, f32::max));
+        }
+        assert!(storm > STORM_RAIN, "a thunderstorm ({storm})");
+        w.force(x, 200, false, 400);
+        let c = w.col(x);
+        assert!((0..w.rows).all(|r| w.moisture[r * w.cols + c] < CLOUD_AT), "clear at once");
+        for t in 401..=2_000 {
+            w.step(t, 0.0);
+        }
+        assert!((0..w.rows).all(|r| w.moisture[r * w.cols + c] < CLOUD_AT), "and stays clear for a while");
     }
 
     #[test]

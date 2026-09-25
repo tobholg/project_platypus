@@ -9,7 +9,8 @@ use platypus_sim::rng::hash;
 use platypus_sim::Weather;
 use platypus_sim::weather::CLOUD_AT;
 
-use crate::camera::MainCamera;
+use crate::camera::{MainCamera, Zoom};
+use crate::fx::SkyFlash;
 use crate::render::SKY_COLOR;
 use crate::world::{ChunkLoader, SimWorld};
 
@@ -25,15 +26,16 @@ struct Clouds {
     entity: Entity,
     image: Handle<Image>,
     size: UVec2,
-    /// What the texture holds: its left edge (cells), the air offset and the
-    /// tick it was drawn at. Between redraws the sprite slides with the air.
-    drawn: Option<(i32, f32, u64)>,
+    /// What the texture holds: its left edge in air coordinates (world x -
+    /// the weather's air offset) and the tick it was drawn at. It is placed
+    /// with the current offset, so it slides smoothly with the air.
+    drawn: Option<(i32, u64)>,
     puffs: Vec<f32>,
 }
 
 /// Redraw at most this often (ticks): clouds change slowly, and drift is a
 /// slide of the whole texture.
-const REDRAW_EVERY: u64 = 15;
+const REDRAW_EVERY: u64 = 30;
 /// Cells drawn beyond the view each side, so the slide has room.
 const MARGIN: i32 = 96;
 /// The puff table tiles every this many cells.
@@ -93,6 +95,7 @@ fn puff(table: &[f32], x: i32, y: i32) -> f32 {
 
 fn draw_clouds(
     sim: Res<SimWorld>,
+    zoom: Res<Zoom>,
     mut clouds: ResMut<Clouds>,
     mut images: ResMut<Assets<Image>>,
     cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>,
@@ -105,29 +108,22 @@ fn draw_clouds(
     let Ok((mut sprite, mut stf)) = sprites.get_mut(clouds.entity) else { return };
     let (y0, y1) = (weather.y0, weather.y1());
     let half = loader.half_extent;
-    let (view0, view1) = ((tf.translation.x - half.x).floor() as i32, (tf.translation.x + half.x).ceil() as i32);
     if (tf.translation.y + half.y) < y0 as f32 || (tf.translation.y - half.y) > y1 as f32 {
         sprite.color = Color::NONE;
         return;
     }
     sprite.color = Color::WHITE;
-
-    // How far the air moved since the texture was drawn (wrapping).
-    let width = weather.width() as f32;
-    let slid = |from: f32| {
-        let d = (weather.offset() - from).rem_euclid(width);
-        (if d > width / 2.0 { d - width } else { d }).round() as i32
-    };
-    let fresh = match clouds.drawn {
-        Some((x0, off, at)) => {
-            let s = slid(off);
-            tick < at + REDRAW_EVERY && view0 >= x0 + s && view1 <= x0 + s + clouds.size.x as i32
-        }
-        None => false,
-    };
+    // The view in air coordinates. (The offset wraps with the world; the view
+    // near the seam is the only place that would jump, and it's the edge.)
+    let offset = weather.offset();
+    let view0 = (tf.translation.x - half.x - offset).floor() as i32;
+    let view1 = (tf.translation.x + half.x - offset).ceil() as i32;
+    let fresh = clouds
+        .drawn
+        .is_some_and(|(a0, at)| tick < at + REDRAW_EVERY && view0 >= a0 && view1 <= a0 + clouds.size.x as i32);
     if !fresh {
-        let (x0, x1) = (view0 - MARGIN, view1 + MARGIN);
-        let size = UVec2::new((x1 - x0) as u32, (y1 - y0) as u32);
+        let (a0, a1) = (view0 - MARGIN, view1 + MARGIN);
+        let size = UVec2::new((a1 - a0) as u32, (y1 - y0) as u32);
         if size != clouds.size {
             clouds.image = images.add(blank(size));
             clouds.size = size;
@@ -136,34 +132,36 @@ fn draw_clouds(
         if let Some(mut image) = images.get_mut(&clouds.image)
             && let Some(data) = image.data.as_mut()
         {
-            paint(data, size, x0, x1, weather, &clouds.puffs);
+            paint(data, size, a0, a1, weather, &clouds.puffs);
         }
-        clouds.drawn = Some((x0, weather.offset(), tick));
+        clouds.drawn = Some((a0, tick));
     }
-    let (x0, off, _) = clouds.drawn.expect("drawn above");
+    let (a0, _) = clouds.drawn.expect("drawn above");
     let size = clouds.size;
-    let left = (x0 + slid(off)) as f32;
+    // Placed to the screen pixel, so the drift is smooth.
+    let ppc = zoom.0 as f32;
+    let left = ((a0 as f32 + offset) * ppc).round() / ppc;
     stf.translation = Vec3::new(left + size.x as f32 / 2.0, y0 as f32 + size.y as f32 / 2.0, Z_CLOUDS);
     sprite.custom_size = Some(size.as_vec2());
 }
 
-/// Paint the whole band height over columns `x0..x1`.
+/// Paint the whole band height over air columns `x0..x1`.
 fn paint(data: &mut [u8], size: UVec2, x0: i32, x1: i32, weather: &Weather, puffs: &[f32]) {
     let (y0, y1) = (weather.y0, weather.y1());
-    let offset = weather.offset().round() as i32;
     // Billows: the fine pattern bends the field up and down, so tops heap and
     // bellies sag instead of following the coarse field's smooth edge.
     let inside = |x: i32, y: i32| {
-        let (cx, cy) = (x - offset, y);
-        let billow = 1.0 - (2.0 * puff(puffs, cx, cy) - 1.0).abs();
-        let sway = puff(puffs, cx * 7 / 10 + 311, cy * 7 / 10);
+        let billow = 1.0 - (2.0 * puff(puffs, x, y) - 1.0).abs();
+        let sway = puff(puffs, x * 7 / 10 + 311, y * 7 / 10);
         let (wx, wy) = ((sway - 0.5) * 22.0, (billow - 0.5) * 20.0);
-        weather.moisture_at(x as f32 + 0.5 + wx, y as f32 + 0.5 + wy) >= CLOUD_AT
+        weather.moisture_air(x as f32 + 0.5 + wx, y as f32 + 0.5 + wy) >= CLOUD_AT
     };
     let height = (y1 - y0) as usize;
     let mut column = vec![false; height];
     for x in x0..x1 {
-        let rain = weather.rain_at(x).min(0.15) / 0.15;
+        // Rain darkens a cloud, smoothed over its width (per column it striped).
+        let rain = (-3..=3).map(|k| weather.rain_air(x + k * 6)).sum::<f32>() / 7.0;
+        let rain = rain.min(0.12) / 0.12;
         for (k, v) in column.iter_mut().enumerate() {
             *v = inside(x, y0 + k as i32);
         }
@@ -209,12 +207,12 @@ fn paint(data: &mut [u8], size: UVec2, x0: i32, x1: i32, weather: &Weather, puff
 }
 
 /// The sky greys over as clouds build overhead.
-fn tint_sky(sim: Res<SimWorld>, cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>, mut clear: ResMut<ClearColor>) {
+fn tint_sky(sim: Res<SimWorld>, flash: Res<SkyFlash>, cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>, mut clear: ResMut<ClearColor>) {
     let Some(weather) = sim.world.weather() else { return };
     let (tf, loader) = *cam;
     let x = tf.translation.x as i32;
     let w = loader.half_extent.x as i32;
     let overcast = weather.overcast(x - w, x + w);
     let k = ((overcast - 0.15) / 0.45).clamp(0.0, 1.0);
-    clear.0 = SKY_COLOR.mix(&STORM_SKY, k);
+    clear.0 = SKY_COLOR.mix(&STORM_SKY, k).mix(&Color::srgb(0.88, 0.9, 1.0), flash.0 * 0.7);
 }

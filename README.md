@@ -33,7 +33,7 @@ for a double jump, against a wall to wall-jump) · Shift dash
 Tools reach the background (trees, cave walls) wherever the playfield in front is
 empty — mine a trunk to fell a tree. RMB erases with any tool · `[` `]` or Ctrl+wheel radius · wheel zoom · Tab free camera
 (WASD flies, Shift faster) · O spawn an orc at the cursor · F3 performance HUD ·
-F4 chunk borders + dirty rects
+F4 chunk borders + dirty rects · F5 thunderstorm here · F6 clear skies · F7 lightning at the cursor
 
 Things to try: pour water then lava on it (obsidian + steam) · oil on water, then
 ignite · a bomb in a wooden structure (paint wood with Q/E) · mine under a sand

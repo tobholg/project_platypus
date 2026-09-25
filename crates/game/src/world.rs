@@ -12,7 +12,7 @@ use platypus_worldgen::ChunkGenerator;
 use rayon::prelude::*;
 
 use crate::data::Watched;
-use crate::fx::Explosion;
+use crate::fx::{Explosion, Lightning};
 
 /// Ticks per second of the simulation and all gameplay (SPEC §3.3).
 pub const TICK_HZ: f64 = 60.0;
@@ -101,9 +101,12 @@ impl Plugin for WorldPlugin {
     }
 }
 
-fn step_cells(mut sim: ResMut<SimWorld>, mut metrics: ResMut<SimMetrics>, mut fx: MessageWriter<Explosion>) {
+fn step_cells(mut sim: ResMut<SimWorld>, mut metrics: ResMut<SimMetrics>, mut fx: MessageWriter<Explosion>, mut bolts: MessageWriter<Lightning>) {
     let t = Instant::now();
     metrics.last = sim.world.step();
+    for &s in &metrics.last.lightning {
+        bolts.write(Lightning(s));
+    }
     for &(p, radius) in &metrics.last.detonated {
         fx.write(Explosion { at: Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5), radius: radius as f32 });
     }

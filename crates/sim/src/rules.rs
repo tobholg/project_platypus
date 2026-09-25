@@ -110,7 +110,11 @@ fn transition(h: &mut Hood, x: i32, y: i32, c: Cell, p: &MatPhys) -> bool {
         // Warm enough to catch: a chance per tick set by flammability, certain
         // only well above the ignition point. (Certain ignition at the
         // threshold made heat carry every fire across every meadow.)
-        if t >= p.ignites_at as i32 + SURE_IGNITION_MARGIN || h.rng.chance(p.flammability.max(1)) {
+        // The chance grows with how far above it is: warm wood beside a
+        // fire rarely catches from heat alone; wood in a furnace does.
+        let excess = (t - p.ignites_at as i32) as u32;
+        let chance = (p.flammability.max(1) as u32 * 16 * excess.min(HEAT_RAMP) / HEAT_RAMP).max(1);
+        if t >= p.ignites_at as i32 + SURE_IGNITION_MARGIN || h.rng.chance4096(chance) {
             ignite(h, x, y, p);
             return true;
         }
@@ -141,8 +145,15 @@ fn note_if_solid_lost(h: &mut Hood, x: i32, y: i32, was: &MatPhys, now: Material
     }
 }
 
+/// Over this many °C above its ignition point the chance to catch from heat
+/// ramps up to the full rate (flammability /256 per tick).
+const HEAT_RAMP: u32 = 60;
 /// Above its ignition point by this much (°C), a material always catches.
 const SURE_IGNITION_MARGIN: i32 = 250;
+/// Flaming neighbours a flame needs to keep going for sure.
+const COMPANY: u32 = 2;
+/// Flaming neighbours a burning cell needs before it throws embers.
+const BLAZE: u32 = 4;
 /// Chance /256 per tick that a burning cell with air above throws an ember.
 const EMBER_CHANCE: u8 = 3;
 /// Heat a burning cell holds (it glows, and heats its neighbours).
@@ -171,14 +182,31 @@ pub(crate) fn ignite(h: &mut Hood, x: i32, y: i32, p: &MatPhys) {
     h.set(x, y, c);
 }
 
-/// Heat rises: fire catches upward much more readily than sideways or down.
+/// Chance /4096 per tick that a burning cell lights a neighbour of material
+/// `p` at vertical offset `dy`. Heat rises: fire catches upward much more
+/// readily than sideways or down.
 #[inline]
-fn spread_chance(flammability: u8, dy: i32) -> u8 {
+fn spread_chance(p: &MatPhys, dy: i32) -> u32 {
+    let s = p.spread as u32;
     match dy {
-        1.. => flammability.saturating_mul(2),
-        0 => flammability,
-        _ => flammability / 2,
+        1.. => s * 2,
+        0 => s,
+        _ => s / 2,
     }
+}
+
+/// Flaming neighbours of a burning cell (8 around, same layer; smouldering,
+/// charred ones don't count). How big the fire is right here: below
+/// `COMPANY` a flame is on its own and may fizzle (`MatPhys::fizzles`);
+/// from `BLAZE` it throws embers.
+fn flaming_around(h: &Hood, x: i32, y: i32, back: bool) -> u32 {
+    NEIGHBOURS8
+        .iter()
+        .filter(|&&(dx, dy)| {
+            let n = if back { h.get_bg(x + dx, y + dy) } else { h.get(x + dx, y + dy) };
+            n.is_some_and(|n| n.flags & flags::BURNING != 0 && !h.mats.is_charred(n))
+        })
+        .count() as u32
 }
 
 /// Set a background cell burning (it stays in place and burns down).
@@ -202,7 +230,7 @@ fn ignite_background_near(h: &mut Hood, x: i32, y: i32) {
             continue;
         }
         let bp = *h.mats.phys(b.material);
-        if bp.flammability > 0 && h.rng.chance(bp.flammability / 3 + 1) {
+        if bp.flammability > 0 && h.rng.chance4096(bp.spread as u32 / 3 + 1) {
             ignite_bg(h, x + dx, y + dy, &bp);
         }
     }
@@ -233,21 +261,46 @@ pub(crate) fn burn_background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
             ignite(h, x, y, &fp);
         }
     }
+    let bp = *h.mats.phys(b.material);
+    // A lone flame on a log may just go out (charred wood left as charcoal).
+    if bp.fizzles > 0 && h.rng.chance4096(bp.fizzles as u32) && flaming_around(h, x, y, true) < COMPANY {
+        let out = if h.mats.is_charred(b) && bp.chars_into != MaterialId::AIR {
+            spawn(h, bp.chars_into)
+        } else {
+            Cell { flags: b.flags & !flags::BURNING, ..b }
+        };
+        h.set_bg(x, y, out);
+        // It carries weight again (it didn't while charred): check what's
+        // around, which may have been left hanging meanwhile.
+        h.note_broken_bg(x, y);
+        return;
+    }
+    // Charred, it smoulders: no more flames, no more spreading.
+    let flaming = !h.mats.is_charred(b);
     for (dx, dy) in NEIGHBOURS8 {
+        if !flaming {
+            break;
+        }
         let Some(n) = h.get_bg(x + dx, y + dy) else { continue };
         if n.is_air() || n.flags & flags::BURNING != 0 {
             continue;
         }
         let np = *h.mats.phys(n.material);
-        if np.flammability > 0 && h.rng.chance(spread_chance(np.flammability, dy)) {
+        if np.flammability > 0 && h.rng.chance4096(spread_chance(&np, dy)) {
             ignite_bg(h, x + dx, y + dy, &np);
         }
     }
-    if front.is_some_and(|f| f.is_air()) && h.rng.chance(40) {
+    // Flames into the air in front, more the bigger the fire here.
+    if flaming && front.is_some_and(|f| f.is_air()) && h.rng.chance(8 + 8 * flaming_around(h, x, y, true).min(4) as u8) {
         let flame = spawn(h, h.mats.fire());
         h.set(x, y, flame);
     }
-    if h.rng.chance(EMBER_CHANCE / 2 + 1) && h.get(x, y + 1).is_some_and(|a| a.is_air()) {
+    // Only a blaze throws embers, not a lone flame.
+    if flaming
+        && h.rng.chance(EMBER_CHANCE / 2 + 1)
+        && h.get(x, y + 1).is_some_and(|a| a.is_air())
+        && flaming_around(h, x, y, true) >= BLAZE
+    {
         let vx = (h.rng.next_u8() as f32 / 255.0 - 0.5) * 0.9 + h.wind * 0.3;
         let vy = 0.35 + h.rng.next_u8() as f32 / 255.0 * 0.5;
         let life = 40 + h.rng.next_u8() as u16 / 2;
@@ -309,21 +362,43 @@ fn burn(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) -> bool {
             }
         }
     }
+    // A lone flame on a log may just go out (charred wood left as charcoal).
+    if p.fizzles > 0 && h.rng.chance4096(p.fizzles as u32) && flaming_around(h, x, y, false) < COMPANY {
+        if h.mats.is_charred(*c) && p.chars_into != MaterialId::AIR {
+            let mut coal = spawn(h, p.chars_into);
+            coal.heat = c.heat.min(150);
+            h.set(x, y, coal);
+            h.note_broken(x, y);
+            return true;
+        }
+        c.flags &= !flags::BURNING;
+        c.heat = c.heat.min(150);
+        h.set(x, y, *c);
+        h.note_broken(x, y);
+        return false;
+    }
+    // Charred, it smoulders: no more flames, no more spreading.
+    let flaming = !h.mats.is_charred(*c);
     // Spread, diagonals included (flames lick around corners), mostly upward.
     for (dx, dy) in NEIGHBOURS8 {
+        if !flaming {
+            break;
+        }
         let Some(n) = h.get(x + dx, y + dy) else { continue };
         if n.is_air() || n.flags & flags::BURNING != 0 {
             continue;
         }
         let np = *h.mats.phys(n.material);
-        if np.flammability > 0 && h.rng.chance(spread_chance(np.flammability, dy)) {
+        if np.flammability > 0 && h.rng.chance4096(spread_chance(&np, dy)) {
             ignite(h, x + dx, y + dy, &np);
         }
     }
-    ignite_background_near(h, x, y);
+    if flaming {
+        ignite_background_near(h, x, y);
+    }
     // Flames and smoke into the air around it, mostly upward.
     let (dx, dy) = [(0, 1), (0, 1), (-1, 0), (1, 0)][(h.rng.next_u32() % 4) as usize];
-    if h.get(x + dx, y + dy).is_some_and(|a| a.is_air()) {
+    if flaming && h.get(x + dx, y + dy).is_some_and(|a| a.is_air()) {
         let roll = h.rng.next_u8();
         let puff = if roll < 70 { Some(h.mats.fire()) } else if roll < 82 { h.mats.id("smoke") } else { None };
         if let Some(m) = puff.filter(|m| *m != MaterialId::AIR) {
@@ -332,7 +407,8 @@ fn burn(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) -> bool {
         }
     }
     // Embers: burning specks thrown up that can start fires where they land.
-    if h.rng.chance(EMBER_CHANCE) && h.get(x, y + 1).is_some_and(|a| a.is_air()) {
+    // Only a blaze throws embers, not a lone flame.
+    if flaming && h.rng.chance(EMBER_CHANCE) && h.get(x, y + 1).is_some_and(|a| a.is_air()) && flaming_around(h, x, y, false) >= BLAZE {
         let vx = (h.rng.next_u8() as f32 / 255.0 - 0.5) * 0.9;
         let vy = 0.35 + h.rng.next_u8() as f32 / 255.0 * 0.5;
         let life = 40 + h.rng.next_u8() as u16 / 2;

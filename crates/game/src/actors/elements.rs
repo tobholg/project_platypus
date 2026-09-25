@@ -175,6 +175,34 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, mut q: Query<Ex
     }
 }
 
+/// Reach of a lightning strike (cells) and the damage at its centre.
+const LIGHTNING_REACH: f32 = 10.0;
+const LIGHTNING_DAMAGE: f32 = 55.0;
+
+type Strikable<'a> = (Entity, &'a mut Health, &'a Kinematics, Option<&'a Resist>, Has<Wet>);
+
+/// Lightning hurts whoever stands near where it strikes, and sets them
+/// alight (unless wet or fireproof).
+pub fn struck(
+    mut commands: Commands,
+    mut strikes: MessageReader<crate::fx::Lightning>,
+    mut q: Query<Strikable>,
+) {
+    for crate::fx::Lightning(s) in strikes.read() {
+        let at = Vec2::new(s.hit.x as f32 + 0.5, s.hit.y as f32 + 0.5);
+        for (entity, mut health, k, resist, wet) in &mut q {
+            let d = k.body.pos.distance(at);
+            if d > LIGHTNING_REACH {
+                continue;
+            }
+            health.hp -= LIGHTNING_DAMAGE * (1.0 - d / LIGHTNING_REACH);
+            if !wet && !resist.is_some_and(|r| r.fireproof) {
+                commands.entity(entity).insert(Burning { left: BURN_SECS, spread: 0.0 });
+            }
+        }
+    }
+}
+
 type Statuses<'a> = (&'a Children, Has<Burning>, Has<Wet>, Option<&'a Chilled>);
 
 /// Burning creatures flicker orange; chilled ones go icy; wet ones look a

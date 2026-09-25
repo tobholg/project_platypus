@@ -91,6 +91,16 @@ pub struct MaterialDef {
     /// Damage per second it does to a body touching it (acid 30).
     #[serde(default)]
     pub corrosive: u8,
+    /// Chance /4096 per tick that it catches from a burning neighbour (twice
+    /// that from below, half from above). Default: flammability × 16, i.e.
+    /// flammability /256. Together with how long a material burns this sets
+    /// whether fire runs through it or dies out (SPEC §3.8).
+    #[serde(default)]
+    pub spread: Option<u16>,
+    /// Chance /4096 per tick that a burning cell with fewer than two burning
+    /// neighbours goes out: a spark on a log can fizzle, a blaze can't.
+    #[serde(default)]
+    pub fizzles: u16,
     /// Water vapour: when it fades into the air it feeds the clouds above
     /// (weather), so boiled water comes back as rain.
     #[serde(default)]
@@ -187,6 +197,8 @@ pub struct MatPhys {
     pub chars_into: MaterialId,
     /// Damage per second to a body touching it.
     pub corrosive: u8,
+    pub spread: u16,
+    pub fizzles: u16,
     pub vapour: bool,
     /// `AIR` when the material doesn't crumble.
     pub crumbles_into: MaterialId,
@@ -354,6 +366,8 @@ impl MaterialTable {
                 },
                 chars_into,
                 corrosive: d.corrosive,
+                spread: d.spread.unwrap_or(d.flammability as u16 * 16),
+                fizzles: d.fizzles,
                 vapour: d.vapour,
                 crumbles_into,
                 heat: d.heat,

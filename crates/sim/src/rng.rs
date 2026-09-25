@@ -56,6 +56,12 @@ impl Rng {
         p != 0 && self.next_u8() < p
     }
 
+    /// True with probability `p` / 4096: finer than `chance`, for rates per tick.
+    #[inline]
+    pub fn chance4096(&mut self, p: u32) -> bool {
+        p != 0 && (self.next_u32() & 4095) < p
+    }
+
     /// Uniform in `lo..=hi`.
     #[inline]
     pub fn range_u8(&mut self, lo: u8, hi: u8) -> u8 {

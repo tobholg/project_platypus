@@ -104,10 +104,10 @@ fn fill_mesh(mesh: &mut Mesh, particles: &[platypus_sim::Particle], sim: &SimWor
         let mut tall = 1.0;
         match p.landing {
             Landing::Rain => {
-                // Fading in as it leaves the cloud (rain drops live 600 ticks).
-                let age = 600u16.saturating_sub(p.life);
-                rgba = [196, 214, 236, (120 * age.min(10) / 10) as u8];
-                tall = (1.0 + p.vel[1].abs() * 0.6).min(5.0).floor();
+                // Fading in as it leaves the cloud (rain drops live 900 ticks).
+                let age = 900u16.saturating_sub(p.life);
+                rgba = [96, 142, 222, (190 * age.min(10) / 10) as u8];
+                tall = (1.0 + p.vel[1].abs()).min(4.0).floor();
             }
             Landing::Snow => rgba = [244, 246, 250, 230],
             _ => {}

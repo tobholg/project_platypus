@@ -11,7 +11,7 @@ use crate::edit::{EditReport, WorldEdit, disc};
 use crate::material::{ExplosionDef, Kind, MatPhys, MaterialId, MaterialTable};
 use crate::particles::{self, Landing, Particle, ParticleWorld};
 use crate::rng::{Rng, hash};
-use crate::step::{StepStats, step_chunks};
+use crate::step::{StepStats, Strike, step_chunks};
 use crate::store;
 use crate::weather::{self, Weather};
 
@@ -51,6 +51,8 @@ pub struct World {
     next_body: u32,
     /// Clouds, rain and snow (SPEC §3.13); `None` in tests and sandboxes.
     weather: Option<Weather>,
+    /// Lightning since the last step reported it.
+    strikes: Vec<Strike>,
 }
 
 /// Which grid a ground check looks at.
@@ -90,6 +92,7 @@ impl World {
             bodies: Vec::new(),
             next_body: 0,
             weather: None,
+            strikes: Vec::new(),
         }
     }
 
@@ -313,6 +316,13 @@ impl World {
             WorldEdit::Mine { center, radius, power, max_hardness } => {
                 self.mine(center, radius, power, max_hardness, &mut report);
                 self.loosen_if_removed(center, radius, &report);
+            }
+            WorldEdit::Lightning { x, from_y } => self.lightning(x, from_y),
+            WorldEdit::Weather { x, radius, storm } => {
+                let tick = self.tick;
+                if let Some(w) = &mut self.weather {
+                    w.force(x, radius, storm, tick);
+                }
             }
             WorldEdit::Explode { center, radius, power } => {
                 self.explode(center, radius, power, &mut report);
@@ -906,6 +916,7 @@ impl World {
         self.particles = flying;
         self.step_bodies();
         self.step_weather(wind, &stats.vapour);
+        stats.lightning = std::mem::take(&mut self.strikes);
         stats
     }
 
@@ -922,15 +933,35 @@ impl World {
         }
         let (water, snow) = (self.materials.id("water"), self.materials.id("snow"));
         let mut rng = self.rng_for(0x5A1F, CellPos::new(0, 0));
-        let out: Vec<_> = out.into_iter().filter(|p| self.is_loaded(CellPos::new(p.x, p.y).chunk())).collect();
+        // Clouds are often above the loaded area (zoomed in): drops start at
+        // the top of what's loaded below them.
+        let out: Vec<_> = out
+            .into_iter()
+            .filter_map(|mut p| {
+                p.y = self.top_loaded(p.x, p.y)?;
+                Some(p)
+            })
+            .collect();
         // Rain leaves room for everything else (and never makes the cap evict
         // drops already falling, which cut rain off mid-air); when it has to
         // hold back, it holds back evenly across the sky.
         let wanted: f32 = out.iter().map(|p| p.amount * DROPS_PER_MOISTURE).sum();
         let room = RAIN_BUDGET.saturating_sub(self.particles.len() as u32) as f32;
         let share = if wanted > room { room / wanted } else { 1.0 };
+        let mut bolts = Vec::new();
+        for p in &out {
+            // Thunderstorms throw lightning now and then.
+            if p.amount > weather::STORM_RAIN && rng.next_u32().is_multiple_of(LIGHTNING_ONE_IN) {
+                bolts.push((p.x + (rng.next_u8() % weather::TEXEL as u8) as i32, p.y));
+            }
+        }
+        for (x, y) in bolts {
+            self.lightning(x, y);
+        }
         for p in out {
-            let frozen = self.climate.ambient(p.y) <= 0;
+            // Snow or rain: whatever it would be when it lands. (The cloud
+            // itself is nearly always below freezing.)
+            let frozen = self.climate.ambient(self.ground_below(p.x, p.y)) <= 0;
             let Some(id) = (if frozen { snow } else { water }) else { continue };
             let n = stochastic_round(p.amount * DROPS_PER_MOISTURE * share, &mut rng);
             for _ in 0..n {
@@ -942,11 +973,65 @@ impl World {
                     let drift = (rng.next_u8() as f32 / 255.0 - 0.5) * 0.3;
                     Particle { gravity: 0.03, ..Particle::new([x, y], [drift + wind * 0.2, -0.3], cell, 1_500, Landing::Snow) }
                 } else {
-                    Particle::new([x, y], [wind * 0.6, -4.0], cell, 600, Landing::Rain)
+                    Particle { gravity: RAIN_GRAVITY, ..Particle::new([x, y], [wind * 0.6, -1.5], cell, 900, Landing::Rain) }
                 };
                 self.particles.push(particle);
             }
         }
+    }
+
+    /// Lightning down column `x`: strikes the first solid, liquid, plant or
+    /// background (a tree) below the cloud base (or `from_y`), sets it alight
+    /// and scorches it.
+    fn lightning(&mut self, x: i32, from_y: i32) {
+        // Out of the cloud's base (it may be above what's loaded; the bolt
+        // is drawn from there, the strike traced from what's loaded).
+        let top = self.weather.as_ref().and_then(|w| w.cloud_base(x)).map_or(from_y, |b| b.min(from_y));
+        let Some(start) = self.top_loaded(x, top) else { return };
+        let mats = self.materials.clone();
+        let mut y = start;
+        let hit = loop {
+            let p = CellPos::new(x, y);
+            let Some(f) = self.get(p) else { return };
+            let solid = !f.is_air() && !matches!(mats.phys(f.material).kind, Kind::Gas | Kind::Fire);
+            if solid || self.get_bg(p).is_some_and(|b| !b.is_air()) {
+                break p;
+            }
+            y -= 1;
+            if top - y > 2_000 {
+                return;
+            }
+        };
+        self.apply_edit(&WorldEdit::Heat { center: hit, radius: 3, amount: LIGHTNING_HEAT });
+        self.apply_edit(&WorldEdit::Ignite { center: hit, radius: 2 });
+        self.strikes.push(Strike { x, top, hit });
+    }
+
+    /// Height of the first solid (or liquid) cell below `y` in column `x`,
+    /// or `y - 300` if there's none that close.
+    fn ground_below(&self, x: i32, y: i32) -> i32 {
+        let mats = &self.materials;
+        (y - 300..y)
+            .rev()
+            .find(|&yy| {
+                self.get(CellPos::new(x, yy))
+                    .is_some_and(|c| !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder | Kind::Liquid))
+            })
+            .unwrap_or(y - 300)
+    }
+
+    /// The highest loaded cell at or below `y` in column `x` (searching a
+    /// few chunks down), where weather coming from above enters the world.
+    fn top_loaded(&self, x: i32, y: i32) -> Option<i32> {
+        let mut p = CellPos::new(x, y);
+        for _ in 0..16 {
+            if self.is_loaded(p.chunk()) {
+                return Some(p.y);
+            }
+            let origin = p.chunk().origin();
+            p = CellPos::new(x, origin.y - 1);
+        }
+        None
     }
 
     fn step_bodies(&mut self) {
@@ -1093,11 +1178,18 @@ impl World {
     }
 }
 
+/// Raindrops fall at this share of gravity: with air drag, ~2 cells a tick.
+const RAIN_GRAVITY: f32 = 0.12;
 /// Cloud moisture a faded cell of steam adds.
 const VAPOUR_MOISTURE: f32 = 0.05;
 /// Raindrops or flakes per unit of moisture rained out (a heavy column rains
 /// out ~0.1 per weather step).
 const DROPS_PER_MOISTURE: f32 = 25.0;
+/// A thunderstorm column throws lightning once per this many weather steps
+/// (a storm over a screen: a strike every ~10 s).
+const LIGHTNING_ONE_IN: u32 = 12_000;
+/// Heat a strike leaves where it hits (°C).
+const LIGHTNING_HEAT: i16 = 900;
 /// New drops stop above this many particles in flight (the cap is 30 000).
 const RAIN_BUDGET: u32 = 18_000;
 

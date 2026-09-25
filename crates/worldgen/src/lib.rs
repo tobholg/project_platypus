@@ -283,9 +283,9 @@ impl ChunkGenerator for TerrainGen {
     }
 
     fn cloud_band(&self) -> Option<(i32, i32)> {
-        // Low enough to be in view from the surface (the highest peaks poke
-        // into it: clouds drift behind them).
-        Some((self.climate().sea_level + 80, 176))
+        // Above the tallest trees (lightning needs room to fall), low enough
+        // to be in view from the surface; the highest peaks poke into it.
+        Some((self.climate().sea_level + 150, 176))
     }
 
     fn spawn_point(&self) -> CellPos {
@@ -494,5 +494,6 @@ mod tests {
             assert!(hanging.is_empty(), "tree at {x}: {} cells hanging, e.g. {:?}", hanging.len(), &hanging[..hanging.len().min(6)]);
         }
     }
+
 
 }

@@ -139,7 +139,12 @@ fn step_one(p: &mut Particle, world: &mut impl ParticleWorld) -> bool {
                 p.pos = next;
                 match p.landing {
                     Landing::Ember => world.ember_over(at, p.life),
-                    Landing::Rain => world.douse(at),
+                    Landing::Rain => {
+                        // A drop soaks a little either side of its path.
+                        for dx in -1..=1 {
+                            world.douse(at.offset(dx, 0));
+                        }
+                    }
                     Landing::Snow if world.ambient(at.y) > 1 => {
                         // Melted on the way down.
                         if let Some(water) = world.water() {

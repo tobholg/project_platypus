@@ -31,6 +31,7 @@ impl Plugin for ActorsPlugin {
             .add_plugins((player::PlayerPlugin, ai::AiPlugin))
             .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, deaths).chain().in_set(TickSet::Bodies))
             .add_systems(Update, elements::tint)
+            .add_systems(FixedUpdate, elements::struck.after(TickSet::Cells))
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate));
     }
 }
