@@ -54,6 +54,9 @@ pub enum Modifier {
     Gravity(f32),
     /// Leaves cells of a material behind it as it goes, burning or not.
     Trail { material: String, burning: bool },
+    /// Sheds a splash of `cells` of a material (burning or not) wherever it
+    /// bounces.
+    Shed { material: String, cells: u32, burning: bool },
     /// Faster (a multiplier).
     Speed(f32),
     /// What's left of the wand is cast where this lands.
@@ -136,6 +139,10 @@ impl Cast {
 
     pub fn trail(&self) -> Option<(&str, bool)> {
         self.modifiers.iter().find_map(|m| if let Modifier::Trail { material, burning } = m { Some((material.as_str(), *burning)) } else { None })
+    }
+
+    pub fn shed(&self) -> Option<(&str, u32, bool)> {
+        self.modifiers.iter().find_map(|m| if let Modifier::Shed { material, cells, burning } = m { Some((material.as_str(), *cells, *burning)) } else { None })
     }
 
     /// Mana for this cast and what it sets off.

@@ -164,7 +164,42 @@ fn on_zap(mut commands: Commands, mut zaps: MessageReader<Zapped>, mut images: R
             Sprite { image: images.add(image), custom_size: Some(size), ..default() },
             Transform::from_xyz(x0 as f32 + size.x / 2.0, y0 as f32 + size.y / 2.0, 16.0),
         ));
+        if let Some((image, x0, y0)) = charge_image(&z.charged) {
+            let size = Vec2::new(image.width() as f32, image.height() as f32);
+            commands.spawn((
+                Bolt { age: 0.0 },
+                Sprite { image: images.add(image), custom_size: Some(size), ..default() },
+                Transform::from_xyz(x0 as f32 + size.x / 2.0, y0 as f32 + size.y / 2.0, 15.9),
+            ));
+        }
     }
+}
+
+/// What a zap charged (the pool it struck), crackling: every cell of it
+/// pale blue at a random strength, some white. Flickers out with the bolt.
+fn charge_image(cells: &[platypus_sim::CellPos]) -> Option<(Image, i32, i32)> {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    use platypus_sim::rng::Rng;
+    let first = cells.first()?;
+    let (x0, x1) = cells.iter().fold((first.x, first.x), |(a, b), p| (a.min(p.x), b.max(p.x)));
+    let (y0, y1) = cells.iter().fold((first.y, first.y), |(a, b), p| (a.min(p.y), b.max(p.y)));
+    let (w, h) = ((x1 - x0 + 1) as u32, (y1 - y0 + 1) as u32);
+    let mut image = Image::new_fill(
+        Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        TextureDimension::D2,
+        &[0, 0, 0, 0],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    );
+    let data = image.data.as_mut().expect("fresh image");
+    let mut rng = Rng::seeded(&[first.x as u64, first.y as u64, cells.len() as u64]);
+    for p in cells {
+        let i = (((y1 - p.y) as u32 * w + (p.x - x0) as u32) * 4) as usize;
+        let c = if rng.chance(12) { [255, 255, 255, 230] } else { [150, 200, 255, 50 + rng.next_u8() / 2] };
+        data[i..i + 4].copy_from_slice(&c);
+    }
+    Some((image, x0, y0))
 }
 
 /// Wand lightning: the cells the sim's bolt went through (`Zap::path`, its

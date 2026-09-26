@@ -25,7 +25,7 @@
         (id: "bomb",           name: "Bomb",           stack: 30, color: (40, 40, 46), use: Throw(Bomb)),
         (id: "glowstick",      name: "Glow stick",     stack: 30, color: (90, 255, 150), use: Throw(Glowstick)),
         (id: "spark_wand",     name: "Spark wand",     color: (170, 200, 255), use: Cast(runes: ["bolt", "spark"], delay: 0.12, recharge: 0.12)),
-        (id: "fire_wand",      name: "Fireball wand",  color: (255, 120, 40), use: Cast(runes: ["trail_fire", "orb", "blast", "ignite"], delay: 0.6, recharge: 0.6)),
+        (id: "fire_wand",      name: "Fireball wand",  color: (255, 120, 40), use: Cast(runes: ["trail_fire", "fire_drops", "orb", "blast", "ignite"], delay: 0.6, recharge: 0.6)),
         (id: "acid_wand",      name: "Acid wand",      color: (120, 230, 60), use: Cast(runes: ["gravity", "arrow", "acid"], delay: 0.35, recharge: 0.35)),
         (id: "flame_wand",     name: "Flame wand",     color: (255, 170, 60), use: Cast(runes: ["flame_stream"], delay: 0.03, recharge: 0.03)),
         (id: "storm_wand",     name: "Storm wand",     color: (200, 220, 255), use: Cast(runes: ["lightning"], delay: 0.7, recharge: 0.7)),

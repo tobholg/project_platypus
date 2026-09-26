@@ -58,7 +58,9 @@ hot-reloaded): a carrier (bolt, orb, arrow, flame stream, lightning), what it
 carries (spark, blast, ignite, heat, frost, acid, water) and modifiers (heavy,
 fire trail, quick, trigger); change a wand's runes in `items.ron`. Spells work
 through the cell sim: a fireball's blast is a bomb's, smaller, and can hurt
-you; the storm wand's lightning is the sky's, from the wand. Chests sit in cave pockets underground
+you; the storm wand's lightning is the sky's, from the wand, and charges any
+water it strikes (everyone in the pool is shocked, you too). Acid eats most
+things softer than hard rock, not glass or gold. Chests sit in cave pockets underground
 (right-click to open, R takes everything, loot by depth in `assets/data/loot.ron`);
 mine one to take it with you.
 
@@ -109,7 +111,7 @@ PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, 
 PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall), `strike` (lightning onto the nearest tree), `hands` (digs a shaft, builds, chops with auto tool, plants a torch), `chest` (places, opens, fills and breaks a chest), `chestfall` (digs out a chest's floor: it falls), `drop` (holds S on a platform), `magic` (every starter wand at orcs; `PLATYPUS_WORLD=flat` for a clear view). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall), `strike` (lightning onto the nearest tree), `hands` (digs a shaft, builds, chops with auto tool, plants a torch), `chest` (places, opens, fills and breaks a chest), `chestfall` (digs out a chest's floor: it falls), `drop` (holds S on a platform), `magic` (every starter wand at orcs; `PLATYPUS_WORLD=flat` for a clear view), `shock` (lightning into a pool with orcs in it, flat world). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
 capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length, `PLATYPUS_NOLIGHT=1` to start with lighting off.
 Scenarios run without vsync; `PLATYPUS_VSYNC=1` runs them with it, to see the
 frame pacing a player gets. For stutter, build with `--features spikes`: every

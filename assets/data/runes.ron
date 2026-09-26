@@ -9,29 +9,31 @@
 //         | Stream(material, rate, speed, spread, burning) | Lightning(range, targets))
 // Payload(Damage(hp) | Blast(radius, power) | Heat(radius, amount °C)
 //         | Ignite(radius) | Matter(material, cells))
-// Modifier(Gravity(k) | Trail(material, burning) | Speed(k) | Trigger)
+// Modifier(Gravity(k) | Trail(material, burning) | Shed(material, cells, burning)
+//          | Speed(k) | Trigger)
 (
     runes: [
         // ---- carriers ----
         (id: "bolt", name: "Bolt", mana: 4, color: (190, 210, 255), kind: Carrier(Bolt(speed: 420, life: 0.9))),
         (id: "arrow", name: "Arrow", mana: 5, color: (220, 220, 200), kind: Carrier(Bolt(speed: 300, life: 2.5))),
-        (id: "orb", name: "Orb", mana: 10, color: (255, 150, 60), kind: Carrier(Orb(speed: 220, life: 3.0, bounces: 1))),
+        (id: "orb", name: "Orb", mana: 10, color: (255, 150, 60), kind: Carrier(Orb(speed: 230, life: 3.0, bounces: 2))),
         (id: "flame_stream", name: "Flame stream", mana: 1.2, color: (255, 140, 40),
-            kind: Carrier(Stream(material: "oil", rate: 10, speed: 190, spread: 0.12, burning: true))),
+            kind: Carrier(Stream(material: "oil", rate: 12, speed: 200, spread: 0.12, burning: true))),
         (id: "lightning", name: "Lightning", mana: 25, color: (200, 220, 255), kind: Carrier(Lightning(range: 180, targets: 3))),
 
         // ---- payloads ----
         (id: "spark", name: "Spark", mana: 1, color: (190, 210, 255), kind: Payload(Damage(14))),
-        (id: "blast", name: "Blast", mana: 12, color: (255, 150, 60), kind: Payload(Blast(radius: 9, power: 75))),
+        (id: "blast", name: "Blast", mana: 16, color: (255, 150, 60), kind: Payload(Blast(radius: 16, power: 110))),
         (id: "ignite", name: "Ignite", mana: 3, color: (255, 120, 40), kind: Payload(Ignite(radius: 6))),
         (id: "heat", name: "Heat", mana: 6, color: (255, 90, 30), kind: Payload(Heat(radius: 6, amount: 500))),
         (id: "frost", name: "Frost", mana: 6, color: (160, 220, 255), kind: Payload(Heat(radius: 7, amount: -120))),
-        (id: "acid", name: "Acid", mana: 8, color: (120, 240, 60), kind: Payload(Matter(material: "acid", cells: 70))),
+        (id: "acid", name: "Acid", mana: 10, color: (120, 240, 60), kind: Payload(Matter(material: "acid", cells: 260))),
         (id: "water", name: "Water", mana: 5, color: (80, 140, 255), kind: Payload(Matter(material: "water", cells: 120))),
 
         // ---- modifiers ----
         (id: "gravity", name: "Heavy", mana: 0, kind: Modifier(Gravity(0.5))),
         (id: "trail_fire", name: "Fire trail", mana: 3, color: (255, 140, 40), kind: Modifier(Trail(material: "fire", burning: false))),
+        (id: "fire_drops", name: "Fire drops", mana: 3, color: (255, 140, 40), kind: Modifier(Shed(material: "oil", cells: 18, burning: true))),
         (id: "quick", name: "Quick", mana: 2, kind: Modifier(Speed(1.6))),
         (id: "trigger", name: "Trigger", mana: 2, kind: Modifier(Trigger)),
     ],

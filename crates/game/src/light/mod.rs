@@ -273,6 +273,10 @@ fn collect_flashes(
         for at in [mid, Vec2::new(z.to.x as f32, z.to.y as f32)] {
             flashes.0.push(Flash { at, color: [0.8, 0.85, 1.1], age: 0.0, life: 0.25 });
         }
+        // A charged pool lights up along its length.
+        for p in z.charged.iter().step_by(120).take(24) {
+            flashes.0.push(Flash { at: Vec2::new(p.x as f32, p.y as f32), color: [0.35, 0.5, 0.9], age: 0.0, life: 0.3 });
+        }
     }
     let dt = time.delta_secs();
     flashes.0.retain_mut(|f| {

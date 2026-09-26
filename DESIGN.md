@@ -238,8 +238,33 @@ edits and exposure as tools, bombs and weather, so its interactions aren't
 scripted (a fireball into an oil pool, frost on water building an ice
 bridge, lightning into a flooded cave, acid eating a crypt door).
 
-**Spells are runes in a wand, Noita-style (decided).** A wand has slots,
-mana, recharge and a delay between casts; runes fill its slots in order:
+**Spells are their own things, made of runes; wands and staffs are what
+powerful spells need (decided 2026-09-26, replacing "runes in a wand").**
+Closer to Skyrim and BG3 than Noita: the combo lives in the spell, not the
+wand.
+
+- **A spell is a recipe of runes** (a carrier, what it carries, how it
+  behaves; the kinds below). You equip spells (hotbar slots), not wands.
+- **Runes are knowledge.** A spell found in the world (a scroll, a tome, a
+  shrine) can be *studied*: learning it breaks it into its runes, and every
+  rune you know you can use in spells of your own (a spell editor at an
+  arcane table). A found spell can be cast only once you know all of its
+  runes; studying it is how you learn the ones you don't.
+- **Runes have levels** (spark I, II, III; blast I, II…). You start knowing
+  the level-1 runes of the basic spells, so the early spells found near the
+  surface and in the upper underground can be equipped and tried at once;
+  deeper ones need study first.
+- **Wands and staffs gate and shape power.** Each spell has a tier; the
+  weakest cast bare-handed (a spark, a small lift), stronger ones need a
+  wand or staff equipped, of at least that tier. The focus adds its stats
+  (mana, cast speed, an element's strength, spread), so the same spell is
+  stronger from a better staff, but the wand holds no spells.
+- **Mana is the caster's**, as now.
+- **Anyone with hands casts the same way**: an orc shaman is an orc who
+  knows some runes, with a staff.
+
+(C1 built wands that hold their runes; C2 turns them into spells + foci.)
+The rune kinds:
 
 | Kind | Decides | Examples |
 |---|---|---|
@@ -342,7 +367,7 @@ The aim: the model can create, look at, and test a creature, item, room or struc
 
 **Combat and magic arc (C, now, on branch `magic-arc`; before structures v2 and saving, since it changes what gets saved):**
 1. ✅ Casting core (2026-09-26): runes and wands as data, projectiles that collide with cells and bodies, mana, wands as items, starter spells (spark bolt, fireball, acid arrow, flamethrower, wand lightning), cursor aim; the orcs to try them on.
-2. Spellcrafting: runes as items, a wand editor (slots, triggers, modifiers), electricity, orc shamans.
+2. Spells and spellcrafting (as agreed above): spells as their own equippable things, scrolls to study, known runes with levels, the spell editor, wands and staffs as tiered foci, orc shamans. Before it: a tuning pass (bigger fireball dropping fire, acid that lasts and eats by hardness, lightning through water, fire as real cells), spell effects (looks as data, animated fire, impact feel), inventory v2 (Esc screen, drag and drop, tooltips, alternative hotbars, first pixel icons), and a channelled levitation / black hole spell with a distortion field.
 3. Melee: hand anchors, weapon sprites as text, moves as data for three weapon classes, hits, stamina, poise, block and dodge.
 4. Arena and art tool v1 (M1, below).
 5. Creatures per biome (spiders and skeletons in crypts, fungal beasts, slimes in the grottos, crystal golems, trolls), their AI using what they carry.

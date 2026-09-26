@@ -40,6 +40,9 @@
 //!   at the ground ahead (3 s), acid lobbed up and over (4.5 s), the flame
 //!   wand at the orcs (5.5 s), lightning at them (7 s); logs mana, the orcs'
 //!   health, spells in flight, blasts and zaps each second
+//! - `shock`      a pool dug beside the player (flat world), two orcs in its
+//!   far end at 3.5 s, lightning at them at 3.9 s: logs the zap and their
+//!   health
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -81,7 +84,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -908,5 +911,80 @@ fn magic_script(
             state.2,
             state.3
         );
+    }
+}
+
+/// Lightning into a pool with orcs in it (see the module notes).
+#[allow(clippy::too_many_arguments)]
+fn shock_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut commands: Commands,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    orcs: Query<(&Kinematics, &crate::actors::Health), Others>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut step: Local<u8>,
+    mut pool: Local<Option<(i32, i32)>>,
+    mut zaps: MessageReader<crate::fx::Zapped>,
+) {
+    if s.name != "shock" {
+        return;
+    }
+    for crate::fx::Zapped(z) in zaps.read() {
+        let orcs_at: Vec<String> = orcs.iter().map(|(o, _)| format!("({:.0},{:.0})", o.body.pos.x, o.body.pos.y)).collect();
+        info!("shock: zap {:?} -> {:?}, {} cells charged; orcs {}", z.from, z.to, z.charged.len(), orcs_at.join(" "));
+    }
+    let Ok(k) = player.single() else { return };
+    let p = k.body.pos;
+    let near = |x: i32, y: i32| orcs.iter().filter(|(o, _)| (o.body.pos.x as i32 - x).abs() < 50 && (o.body.pos.y as i32 - y).abs() < 30).map(|(_, h)| format!("{:.0}", h.hp)).collect::<Vec<_>>();
+    match *step {
+        0 if s.elapsed > 1.0 => {
+            // A trough 80 wide, 14 deep, 40 to the right; then water in it.
+            let Some(ground) = find_ground(&sim.world, p.x as i32 + 80, p.y as i32 + 40, 100) else { return };
+            for x in (p.x as i32 + 40..p.x as i32 + 120).step_by(4) {
+                sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground - 8), radius: 8, max_hardness: 255 });
+            }
+            *pool = Some((p.x as i32 + 80, ground - 8));
+            *step = 1;
+        }
+        1 if s.elapsed > 1.3 => {
+            let (cx, cy) = pool.expect("dug");
+            let water = sim.materials().expect_id("water");
+            for x in (cx - 40..cx + 40).step_by(3) {
+                for dy in [-4, 2] {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, cy + dy), radius: 7, material: water, overwrite: false });
+                }
+            }
+            *step = 2;
+        }
+        // (In the far end, and struck before they wade out toward the player.)
+        2 if s.elapsed > 3.5 => {
+            let (cx, cy) = pool.expect("dug");
+            for dx in [22, 34] {
+                crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new((cx + dx) as f32, cy as f32 + 2.0), |_| {});
+            }
+            *step = 3;
+        }
+        3 if s.elapsed > 3.9 => {
+            let (cx, cy) = pool.expect("dug");
+            info!("shock: before, orcs at the pool [{}]", near(cx, cy).join(", "));
+            keys.press(KeyCode::Digit0);
+            cursor.0 = Some(Vec2::new(cx as f32, cy as f32));
+            mouse.press(MouseButton::Left);
+            *step = 4;
+        }
+        4 if s.elapsed > 4.1 => {
+            keys.release(KeyCode::Digit0);
+            mouse.release(MouseButton::Left);
+            *step = 5;
+        }
+        5 if s.elapsed > 4.6 => {
+            let (cx, cy) = pool.expect("dug");
+            info!("shock: after, orcs at the pool [{}]", near(cx, cy).join(", "));
+            *step = 6;
+        }
+        _ => {}
     }
 }

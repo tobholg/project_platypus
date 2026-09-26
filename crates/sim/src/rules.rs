@@ -573,6 +573,25 @@ fn interact(h: &mut Hood, x: i32, y: i32, c: Cell, p: &MatPhys) -> bool {
             }
             pending = true;
         }
+        if let Some(e) = p.eats {
+            let np = *h.mats.phys(n.material);
+            if matches!(np.kind, Kind::Static | Kind::Powder | Kind::Plant) && !np.inert && np.hardness <= e.hardness {
+                // Softer goes faster: dirt in moments, stone slowly.
+                let odds = (e.chance as u32 * (e.hardness as u32 + 1 - np.hardness as u32) / (e.hardness as u32 + 1)).max(1) as u8;
+                if h.rng.chance(odds) {
+                    let eaten = if h.rng.chance(40) { spawn(h, e.spent_into) } else { Cell::AIR };
+                    h.set(x + dx, y + dy, eaten);
+                    note_if_solid_lost(h, x + dx, y + dy, &np, eaten.material);
+                    // (A liquid counts its bites in `life`; a gas's `life`
+                    // is its lifetime, so it bites once.)
+                    let bites = if p.kind == Kind::Liquid { c.life.saturating_add(1) } else { e.bites };
+                    let me = if bites >= e.bites { spawn(h, e.spent_into) } else { Cell { life: bites, ..c } };
+                    h.set(x, y, me);
+                    return true;
+                }
+                pending = true;
+            }
+        }
         if p.hot && n.flags & flags::BURNING == 0 {
             let np = *h.mats.phys(n.material);
             if np.flammability > 0 {

@@ -197,6 +197,40 @@ pub struct MaterialDef {
     /// When it catches fire, sometimes explodes instead (chained, merged per tick).
     #[serde(default)]
     pub explodes: Option<ExplosionDef>,
+    /// Eats what it touches (acid); see `EatsDef`.
+    #[serde(default)]
+    pub eats: Option<EatsDef>,
+    /// Nothing eats it (glass, gold): acid pools in it.
+    #[serde(default)]
+    pub inert: bool,
+    /// Carries electricity (water, acid, blood, metal ores): lightning into
+    /// it charges everything of it that's connected.
+    #[serde(default)]
+    pub charges: bool,
+}
+
+/// A material that eats solids, powders and plants up to `hardness` (not
+/// `inert` ones), softer ones faster: `chance` /256 a tick against the
+/// softest, falling to almost nothing at `hardness`. Each cell of it takes
+/// `bites` (liquids; gases take one) before it's spent and becomes
+/// `spent_into` (default: air); now and then what it ate puffs into that
+/// too.
+#[derive(Clone, Debug, Deserialize)]
+pub struct EatsDef {
+    pub hardness: u8,
+    pub bites: u8,
+    pub chance: u8,
+    #[serde(default)]
+    pub spent_into: Option<String>,
+}
+
+/// `EatsDef`, resolved.
+#[derive(Clone, Copy, Debug)]
+pub struct Eats {
+    pub hardness: u8,
+    pub bites: u8,
+    pub chance: u8,
+    pub spent_into: MaterialId,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -295,6 +329,9 @@ pub struct MatPhys {
     pub climate_sensitive: bool,
     /// Needs the neighbour check (hot or part of a reaction).
     pub interacts: bool,
+    pub eats: Option<Eats>,
+    pub inert: bool,
+    pub charges: bool,
     /// Can ever change on its own; `false` lets the stepper skip the cell.
     pub active: bool,
 }
@@ -404,6 +441,18 @@ impl MaterialTable {
                 Some(n) => lookup(n, &format!("{}.chars_into", d.name))?,
                 None => MaterialId::AIR,
             };
+            let eats = match &d.eats {
+                Some(e) => Some(Eats {
+                    hardness: e.hardness,
+                    bites: e.bites.max(1),
+                    chance: e.chance,
+                    spent_into: match &e.spent_into {
+                        Some(n) => lookup(n, &format!("{}.eats.spent_into", d.name))?,
+                        None => MaterialId::AIR,
+                    },
+                }),
+                None => None,
+            };
             let crumbles_into = match &d.crumbles_into {
                 Some(n) => lookup(n, &format!("{}.crumbles_into", d.name))?,
                 None => MaterialId::AIR,
@@ -478,7 +527,10 @@ impl MaterialTable {
                 ignites_at: d.ignites_at.unwrap_or(i16::MAX),
                 explodes: d.explodes,
                 climate_sensitive,
-                interacts: d.hot,
+                interacts: d.hot || eats.is_some(),
+                eats,
+                inert: d.inert,
+                charges: d.charges,
                 active: false,
             });
         }

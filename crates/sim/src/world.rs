@@ -1266,7 +1266,8 @@ impl World {
                 b.heat = ZAP_HEAT;
                 self.set_bg(p, b);
             }
-            if fire != MaterialId::AIR && self.get(p).is_some_and(|c| c.is_air()) && rng.chance(35) {
+            // (Not in the first cells out of the wand: that's the caster's hand.)
+            if i >= ZAP_CLEAR && fire != MaterialId::AIR && self.get(p).is_some_and(|c| c.is_air()) && rng.chance(35) {
                 let flame = mats.spawn(fire, &mut rng);
                 self.set(p, flame);
             }
@@ -1276,11 +1277,40 @@ impl World {
                 self.particles.push(Particle { gravity: 0.1, ..Particle::new(center_of(p), vel, spark, 20 + rng.next_u8() as u16 / 8, Landing::Ember) });
             }
         }
+        // (Traced before its burst blows the water at its end away.)
+        let charged = self.charge(end);
         self.apply_edit(&WorldEdit::Explode { center: end, radius: 2, power: ZAP_BLAST });
         self.apply_edit(&WorldEdit::Heat { center: end, radius: 4, amount: ZAP_HEAT });
         self.apply_edit(&WorldEdit::Ignite { center: end, radius: 2 });
-        self.zaps.push(Zap { from, to: end, path });
+        self.zaps.push(Zap { from, to: end, path, charged });
         end
+    }
+
+    /// The cells a charge at `at` spreads through: everything that carries
+    /// electricity (`charges`) connected to it or to a cell within 2 of it, up to
+    /// `MAX_CHARGED` cells (a lake conducts as far as that reaches).
+    fn charge(&self, at: CellPos) -> Vec<CellPos> {
+        let mats = &self.materials;
+        let carries = |p: CellPos| self.get(p).is_some_and(|c| mats.phys(c.material).charges);
+        let mut seen = FxHashSet::default();
+        // (Seeded from what its burst reaches: striking a pool's rim
+        // charges the pool.)
+        let mut todo: Vec<CellPos> = (-2..=2).flat_map(|dy| (-2..=2).map(move |dx| at.offset(dx, dy))).filter(|&p| carries(p)).collect();
+        seen.extend(todo.iter().copied());
+        let mut out = Vec::new();
+        while let Some(p) = todo.pop() {
+            out.push(p);
+            if out.len() >= MAX_CHARGED {
+                break;
+            }
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let n = p.offset(dx, dy);
+                if carries(n) && seen.insert(n) {
+                    todo.push(n);
+                }
+            }
+        }
+        out
     }
 
     /// Lightning down column `x`: strikes the first solid, liquid, plant or
@@ -1565,6 +1595,10 @@ const EARTH_HEAT: i16 = 1500;
 /// Wand lightning: heat along it and where it lands (°C), and its burst.
 const ZAP_HEAT: i16 = 600;
 const ZAP_BLAST: u8 = 14;
+/// A zap doesn't flare air this close to the wand.
+const ZAP_CLEAR: usize = 8;
+/// Most cells one zap charges (a big lake conducts only this far).
+const MAX_CHARGED: usize = 6000;
 /// Blast power where it strikes: shreds leaves, not wood.
 const LIGHTNING_BLAST: u8 = 24;
 /// A background fire hotter than this (°C) boils a raindrop off, losing

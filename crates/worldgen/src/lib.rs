@@ -664,7 +664,11 @@ impl TerrainGen {
                         }
                     }
                     caves::Zone::Toxic => {
-                        if rock(m) && near_open(lx, ly, 1) {
+                        // (Anything touching the acid is crust, ore and gravel
+                        // too: acid eats what isn't, so a pool with one ore in
+                        // its lining would eat its way out into the rock.)
+                        let touches_acid = || (-1..=1).any(|dy| (-1..=1).any(|dx| at(lx + dx, ly + dy) == i.acid));
+                        if (rock(m) && near_open(lx, ly, 1)) || (!open(m) && m != i.toxic_crust && touches_acid()) {
                             set(cells, lx, ly, i.toxic_crust, rng.next_u8());
                         }
                     }

@@ -52,8 +52,10 @@ const LIGHTNING_NEAR_AIM: f32 = 30.0;
 const TRIGGERED_REACH: f32 = 80.0;
 /// A stream sets alight what stands in it (a chance a cast, in 255ths)
 /// and scalds it this much.
-const STREAM_CATCH: u8 = 40;
-const STREAM_DAMAGE: f32 = 1.5;
+const STREAM_CATCH: u8 = 70;
+const STREAM_DAMAGE: f32 = 2.0;
+/// ... and heats what it plays on this much a cast (°C, radius 3).
+const STREAM_HEAT: i16 = 12;
 /// A stream starts this far ahead of the hand (so it doesn't douse its
 /// caster).
 const STREAM_AHEAD: f32 = 6.0;
@@ -236,9 +238,20 @@ fn fire(mut commands: Commands, mut firing: ResMut<Firing>, mut sim: ResMut<SimW
             &Carrier::Orb { speed, life, bounces } => spawn_spell(&mut commands, &f, speed, life, bounces, ORB_FALL),
             Carrier::Stream { material, rate, speed, spread, burning } => {
                 stream(&mut sim.world, &f, material, *rate, *speed, *spread, *burning);
+                let reach = speed * 0.25;
+                // Where it plays on something, it heats it (wood catches,
+                // ice melts, rock glows if you keep at it).
+                if *burning {
+                    let world = &sim.world;
+                    let mats = world.materials();
+                    let open = |p: Vec2| world.get(CellPos::from_world(p.x, p.y)).is_some_and(|c| c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas | Kind::Fire | Kind::Plant));
+                    let tip = (STREAM_AHEAD as i32..reach as i32).map(|t| f.from + f.dir * t as f32).find(|&p| !open(p));
+                    if let Some(tip) = tip {
+                        sim.world.apply_edit(&WorldEdit::Heat { center: CellPos::from_world(tip.x, tip.y), radius: 3, amount: STREAM_HEAT });
+                    }
+                }
                 // What stands in it is scalded, and may catch.
                 let mut rng = Rng::seeded(&[sim.world.tick(), 0x57AE]);
-                let reach = speed * 0.25;
                 for (e, mut k, mut h, resist, coated) in &mut bodies {
                     let d = k.body.pos - f.from;
                     if e == f.caster || d.length() > reach || d.normalize_or_zero().dot(f.dir) < (spread * 1.5 + 0.1).cos() {
@@ -278,19 +291,20 @@ fn spawn_spell(commands: &mut Commands, f: &Fire, speed: f32, life: f32, bounces
     let vel = f.dir * speed * c.speed_scale();
     let (r, g, b) = c.color;
     let color = [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0];
-    let size = if matches!(c.carrier, Carrier::Orb { .. }) { Vec2::splat(3.0) } else { Vec2::new(4.0, 1.5) };
+    let (size, glow) = if matches!(c.carrier, Carrier::Orb { .. }) { (Vec2::splat(5.0), 2.4) } else { (Vec2::new(4.0, 1.5), 1.4) };
     commands.spawn((
         Name::new("Spell"),
         Spell { cast: c.clone(), caster: f.caster, pos: f.from, prev: f.from, vel, age: 0.0, life, bounces, fall: fall + c.gravity() },
-        LightSource { color: color.map(|x| x * 1.4), flicker: 0.15 },
+        LightSource { color: color.map(|x| x * glow), flicker: 0.15 },
         Sprite::from_color(Color::srgb(0.25 + color[0] * 0.75, 0.25 + color[1] * 0.75, 0.25 + color[2] * 0.75), size),
         Transform::from_translation(f.from.extend(12.5)).with_rotation(Quat::from_rotation_z(vel.to_angle())),
     ));
 }
 
 /// Spray a stream's cells, from a little ahead of the wand: flames that
-/// light what they land on, and one in six the burning material (a little
-/// lingers; more floods back under the caster's feet).
+/// become real fire where they stop (rising, flickering, lighting what they
+/// touch), and one in six the burning material (a little lingers; more
+/// floods back under the caster's feet).
 fn stream(world: &mut World, f: &Fire, material: &str, rate: u32, speed: f32, spread: f32, burning: bool) {
     let mats = world.materials().clone();
     let Some(m) = mats.id(material) else { return };
@@ -303,7 +317,7 @@ fn stream(world: &mut World, f: &Fire, material: &str, rate: u32, speed: f32, sp
         let v = Vec2::from_angle(a).rotate(f.dir) * speed * (0.75 + 0.5 * unit(&mut rng)) / TICK_HZ as f32;
         let p = if burning && i % 6 != 5 && fire != MaterialId::AIR {
             let flame = mats.spawn(fire, &mut rng);
-            Particle { gravity: -0.05, ..Particle::new([at.x, at.y], [v.x, v.y], flame, 12 + rng.next_u8() as u16 / 32, Landing::Ember) }
+            Particle { gravity: -0.05, ..Particle::new([at.x, at.y], [v.x, v.y], flame, 9 + rng.next_u8() as u16 / 24, Landing::Settle) }
         } else {
             let mut cell = mats.spawn(m, &mut rng);
             if burning {
@@ -388,6 +402,7 @@ fn fly(
 ) {
     let mut landed = Vec::new();
     let mut trail = Vec::new();
+    let mut shed = Vec::new();
     {
         let world = &sim.world;
         let mats = world.materials();
@@ -411,6 +426,9 @@ fn fly(
                     let n = if n == Vec2::ZERO { -step.normalize_or_zero() } else { n.normalize() };
                     if s.bounces > 0 {
                         s.bounces -= 1;
+                        if let Some((material, cells, burning)) = s.cast.shed() {
+                            shed.push((s.pos, material.to_string(), cells, burning));
+                        }
                         s.vel = (s.vel - 2.0 * s.vel.dot(n) * n) * 0.7;
                         break;
                     }
@@ -450,6 +468,19 @@ fn fly(
         }
         let vel = [(rng.next_u8() as f32 / 255.0 - 0.5) * 0.3, 0.1 + rng.next_u8() as f32 / 255.0 * 0.2];
         world.emit(Particle { gravity: -0.1, ..Particle::new([at.x, at.y], vel, cell, 10 + rng.next_u8() as u16 / 32, Landing::Ember) });
+    }
+    for (at, material, cells, burning) in shed {
+        let Some(m) = mats.id(&material) else { continue };
+        for _ in 0..cells {
+            let mut cell = mats.spawn(m, &mut rng);
+            if burning {
+                cell.flags |= flags::BURNING;
+                cell.life = mats.phys(m).burn_time;
+            }
+            let a = rng.next_u32() as f32 / u32::MAX as f32 * std::f32::consts::PI;
+            let s = 0.4 + rng.next_u8() as f32 / 255.0 * 0.8;
+            world.emit(Particle::new([at.x, at.y], [a.cos() * s, a.sin() * s], cell, 90, Landing::Settle));
+        }
     }
     for (e, cast, caster, at, hit, dir, n) in landed {
         commands.entity(e).despawn();

@@ -237,6 +237,9 @@ pub struct Zap {
     pub from: CellPos,
     pub to: CellPos,
     pub path: Vec<CellPos>,
+    /// What it charged: every cell of what carries electricity (water,
+    /// acid, ore) connected to where it ended.
+    pub charged: Vec<CellPos>,
 }
 
 /// A lightning strike: down column `x` from `top` to the first cell it hit,

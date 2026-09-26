@@ -203,7 +203,8 @@ checksums.
     ceilings (a quarter to half the way down), a few short ones stand on
     the floors (not where a tunnel comes in); crystal studs the walls.
   - Toxic grottos: every chamber holds acid (a pool below where tunnels come
-    in); a glowing crust over the rock at the open space.
+    in); a glowing crust over the rock at the open space, and over anything
+    touching the acid (ore, gravel): the crust is inert, so the pools stay.
   - Glows that live (rendering only, `MaterialDef`): `pulse` makes a glow
     breathe (each 16-cell patch on its own 3–6 s cycle, in the light grid);
     `shimmer` makes it glimmer (8-cell patches each slowly swelling from
@@ -625,6 +626,16 @@ deaths (blood). Rendered as one dynamic mesh.
   and nothing moves), splashing out at speed. (It used to push the water in
   its box onto the surface beside it every tick: a body in water pumped up a
   wall of it.)
+- Acid eats by hardness (`eats` in `materials.ron`, one rule, not a list of
+  pairs): solids, powders and plants up to hardness 90 (dirt, wood, sand,
+  stone, brick, most ores), softer ones faster, nothing `inert` (glass,
+  gold, toxic crust); each cell of it bites 6 times before it's spent into
+  smoke, so a little acid digs a pit bigger than itself.
+- What `charges` (water, acid, blood, metal ores) carries lightning: a zap
+  that ends in or within 2 cells of it charges all of it that's connected
+  (up to 6000 cells, `World::charge`, reported as `Zap::charged`); every
+  body touching a charged cell is shocked (25, stunned 0.6 s), its caster
+  too if it's standing in the pool. The pool crackles blue and lights up.
 - Acid boils at 110 °C into acid fumes: corrosive (they eat what acid eats,
   weaker, used up doing it), condense into acid rain downwind, and flammable
   (a spark flashes the cloud into fire, with the odd small pop), which boils
@@ -798,15 +809,18 @@ deaths (blood). Rendered as one dynamic mesh.
   `Health` (their caster after 0.3 s: a fireball can come back), or where
   they are when their `life` runs out. Gravity: an orb falls at 0.3 of a
   thrown thing's, plus any `Gravity` rune. Trails shed their material as
-  embers every other cell.
+  embers every other cell; a `Shed` rune splashes cells of its material
+  (burning oil, for a fireball) wherever it bounces.
 - **Landing** applies the payloads through the sim's own edits: a blast is
   `WorldEdit::Explode` (so a fireball digs, throws debris and bodies, and
   hurts like a small bomb), heat `WorldEdit::Heat`, ignite
   `WorldEdit::Ignite` plus setting alight creatures in the radius, matter a
   `splash` of real cells, damage the body hit (with knockback).
-- **Streams** spray, from 6 cells ahead of the hand, flames (landing as
-  embers) and one in six burning cells of their material; what stands in
-  the stream is scalded (1.5 a cast) and may catch.
+- **Streams** spray, from 6 cells ahead of the hand, flames that become real
+  fire cells where they stop (they rise, flicker and light what they touch)
+  and one in six burning cells of their material; what the stream plays on
+  is heated (+12 °C a cast, radius 3: wood catches, ice melts); what stands
+  in it is scalded (2 a cast) and may catch.
 - **Lightning** picks up to `targets` creatures within `range` toward the aim
   (within 0.6 rad of it, or 30 cells of the cursor), nearest the line first,
   or else aims at the cursor (up to `range`), and strikes each with
@@ -816,7 +830,9 @@ deaths (blood). Rendered as one dynamic mesh.
   flares; where it ends it bursts (radius 2), heats and ignites. The sim
   reports each zap with its path (`StepStats::zaps`); the game draws
   exactly that path and hurts what's within 3 cells of the end (30 at most)
-  and sets it alight (`elements::zapped`), as the sky's lightning does.
+  and sets it alight (`elements::zapped`), as the sky's lightning does. It
+  doesn't flare the air in its first 8 cells (the caster's hand). Into water
+  (or anything that `charges`) it charges the pool (§3.12).
 - **Every explosion hurts** (`actors::blasted`, from `StepStats::detonated`):
   bodies within 1.6 × its radius take up to 0.65 × its power and are thrown
   at up to 3 × its power, falling off with distance. Magic can hurt its

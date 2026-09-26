@@ -1819,3 +1819,41 @@ fn a_zap_reaches_its_target_and_a_wall_stops_it() {
     let end = w.zap(CellPos::new(10, 20), CellPos::new(150, 20));
     assert!((79..=84).contains(&end.x), "the wall stops it: ended at {end:?}");
 }
+
+/// Acid lasts: each cell eats several before it's spent, so a little acid
+/// digs a pit bigger than itself; glass (inert) holds it.
+#[test]
+fn acid_eats_more_than_itself_and_not_glass() {
+    let m = mats();
+    let (dirt, glass, acid) = (m.expect_id("dirt"), m.expect_id("glass"), m.expect_id("acid"));
+    let mut w = boxed_world(2, 1, 21);
+    fill(&mut w, "dirt", 10, 50, 1, 30);
+    fill(&mut w, "glass", 70, 110, 1, 30);
+    fill(&mut w, "acid", 25, 35, 30, 33);
+    fill(&mut w, "acid", 85, 95, 30, 33);
+    let (dirt0, glass0) = (count(&w, dirt), count(&w, glass));
+    for _ in 0..3000 {
+        w.step();
+    }
+    let eaten = dirt0 - count(&w, dirt);
+    assert!(eaten > 60, "30 cells of acid ate {eaten} dirt");
+    assert_eq!(count(&w, glass), glass0, "glass is inert");
+    assert!(count(&w, acid) >= 25, "the acid on glass is still there");
+}
+
+/// Lightning into water charges the whole pool it's connected to, and no
+/// more: not a separate puddle, not dry ground.
+#[test]
+fn a_zap_into_water_charges_the_whole_pool() {
+    let mut w = boxed_world(3, 1, 13);
+    fill(&mut w, "stone", 20, 140, 1, 12);
+    fill(&mut w, "water", 30, 90, 12, 20);
+    fill(&mut w, "stone", 90, 94, 12, 22);
+    fill(&mut w, "water", 94, 130, 12, 20);
+    let end = w.zap(CellPos::new(60, 50), CellPos::new(60, 15));
+    let stats = w.step();
+    let z = &stats.zaps[0];
+    assert_eq!(z.to, end);
+    assert!(z.charged.len() >= 60 * 8 - 20, "the whole first pool: {}", z.charged.len());
+    assert!(z.charged.iter().all(|p| p.x < 90), "not the pool across the wall");
+}

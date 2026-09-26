@@ -266,8 +266,13 @@ const LIGHTNING_DAMAGE: f32 = 55.0;
 const ZAP_REACH: f32 = 3.0;
 /// ... this much, at most.
 const ZAP_DAMAGE: f32 = 30.0;
+/// Touching what a zap charged (in the pool it struck): this much, and
+/// stunned this long.
+const SHOCK_DAMAGE: f32 = 25.0;
+const SHOCK_STUN: f32 = 0.6;
 
 type Strikable<'a> = (Entity, &'a mut Health, &'a Kinematics, Option<&'a Resist>, Option<&'a Coated>);
+type Shockable<'a> = (Entity, &'a mut Health, &'a mut Kinematics, Option<&'a Resist>, Option<&'a Coated>);
 
 /// Lightning hurts whoever stands near where it strikes, and sets them
 /// alight (unless coated in something that won't burn, or fireproof).
@@ -291,9 +296,24 @@ pub fn struck(
 }
 
 /// Wand lightning (`fx::Zapped`): the sky's, smaller. It hurts what it ends
-/// at and sets it alight.
-pub fn zapped(mut commands: Commands, mut zaps: MessageReader<crate::fx::Zapped>, coatings: Res<Coatings>, mut q: Query<Strikable>) {
+/// at and sets it alight; and whatever touches what it charged (the whole
+/// pool it struck) is shocked: hurt and stunned, whoever cast it too.
+pub fn zapped(mut commands: Commands, mut zaps: MessageReader<crate::fx::Zapped>, coatings: Res<Coatings>, mut q: Query<Shockable>) {
     for crate::fx::Zapped(z) in zaps.read() {
+        if !z.charged.is_empty() {
+            let charged: std::collections::HashSet<CellPos> = z.charged.iter().copied().collect();
+            for (_, mut health, mut k, ..) in &mut q {
+                let (lo, hi) = (k.body.pos - k.body.half, k.body.pos + k.body.half);
+                let touches = (lo.y.floor() as i32 - 1..=hi.y.ceil() as i32)
+                    .any(|y| (lo.x.floor() as i32 - 1..=hi.x.ceil() as i32).any(|x| charged.contains(&CellPos::new(x, y))));
+                if touches {
+                    health.hp -= SHOCK_DAMAGE;
+                    let k = &mut *k;
+                    let vel = k.body.vel * 0.3;
+                    k.loco.knock(&mut k.body, vel, SHOCK_STUN);
+                }
+            }
+        }
         let at = Vec2::new(z.to.x as f32 + 0.5, z.to.y as f32 + 0.5);
         for (entity, mut health, k, resist, coated) in &mut q {
             // (From the body's edge: the bolt ends at its centre or a wall.)
