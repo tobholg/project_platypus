@@ -1,9 +1,12 @@
-//! Magic (DESIGN §7b): wands cast runes. A wand (an item, `Use::Cast`) holds
-//! rune ids; `runes.rs` reads them as casts, and this carries them out:
+//! Magic (DESIGN §7b, §7c): spells are made of runes (`spells.ron`,
+//! `runes.ron`); wands and staffs are the foci that cast them (`spells.rs`).
+//! `runes.rs` reads a spell's runes as casts, and this carries them out:
 //!
-//! - holding a wand asks for a cast every tick (`CastRequest`); the wand
-//!   keeps its own time (a delay between casts, a recharge after its last)
-//!   and the caster pays in mana;
+//! - holding a focus asks for a cast of the ready spell every tick
+//!   (`CastRequest`); the spell keeps its own time for each caster (a delay
+//!   between casts, a recharge after its last; the caster's cast speed
+//!   shortens both), the caster pays in mana, and its spell and element
+//!   power make the cast stronger (`spells::empower`);
 //! - bolts and orbs fly as `Spell`s through open cells and liquids, stop at
 //!   solids and bodies (an orb bounces first), and land: their payloads go
 //!   off there, through the same sim edits as everything else (a fireball's
@@ -16,6 +19,7 @@
 //! A `Trigger` cast fires what's after it from where it lands.
 
 pub mod runes;
+pub mod spells;
 pub mod warp;
 pub mod well;
 
@@ -31,12 +35,14 @@ use crate::actors::elements::{Coated, Coatings, Resist, catch_fire};
 use crate::actors::player::LocalPlayer;
 use crate::actors::{Health, Kinematics};
 use crate::data::{Watched, data_path, load_ron};
-use crate::hands::items::{ItemId, Items, Use};
+
 use crate::light::LightSource;
 use crate::vfx::{Halo, Sparks};
 use well::Well;
 use crate::world::{SimWorld, TICK_HZ, TickSet};
 use runes::{Carrier, Cast, Payload, Runes, RunesFile};
+pub use spells::{Caster, Element, SpellDef, SpellsFile};
+
 
 pub struct MagicPlugin;
 
@@ -89,61 +95,68 @@ impl Default for Mana {
     }
 }
 
-/// Cast a wand, from `from` toward `toward` (held: every tick; the wand
-/// keeps its own time).
+/// Cast a spell (by its index in the spellbook), from `from` toward
+/// `toward` (held: every tick; the spell keeps its own time).
 #[derive(Message, Clone, Copy, Debug)]
 pub struct CastRequest {
     pub caster: Entity,
-    pub item: ItemId,
+    pub spell: usize,
     pub from: Vec2,
     pub toward: Vec2,
     /// The other button (force: pull). Other spells ignore it.
     pub alt: bool,
 }
 
-/// Every rune (hot-reloaded), and each wand's runes read as casts.
+/// Every rune and spell (hot-reloaded), and each spell's runes read as
+/// casts.
 #[derive(Resource)]
 pub struct Spellbook {
     pub runes: Runes,
-    wands: HashMap<ItemId, Arc<Vec<Arc<Cast>>>>,
+    pub spells: Vec<SpellDef>,
+    read: HashMap<usize, Arc<Vec<Arc<Cast>>>>,
     watch: Watched,
+    spells_watch: Watched,
+}
+
+fn load_spells(path: &std::path::Path, runes: &Runes) -> Result<Vec<SpellDef>, String> {
+    let file: SpellsFile = load_ron(path)?;
+    for s in &file.spells {
+        runes::casts(runes, &s.runes).map_err(|e| format!("spell `{}`: {e}", s.id))?;
+    }
+    Ok(file.spells)
 }
 
 impl Spellbook {
     fn load() -> Self {
         let path = data_path("runes.ron");
         let runes = load_ron::<RunesFile>(&path).and_then(Runes::new).unwrap_or_else(|e| panic!("{e}"));
-        Spellbook { runes, wands: HashMap::new(), watch: Watched::new(path) }
+        let spells_path = data_path("spells.ron");
+        let spells = load_spells(&spells_path, &runes).unwrap_or_else(|e| panic!("{e}"));
+        Spellbook { runes, spells, read: HashMap::new(), watch: Watched::new(path), spells_watch: Watched::new(spells_path) }
     }
 
-    /// A wand's runes by name, and the mana of its first cast (with what it
-    /// sets off), for its tooltip.
+    /// A spell's runes by name, and the mana of its first cast (with what it
+    /// sets off), for a tooltip.
     pub fn describe(&self, ids: &[String]) -> (Vec<String>, f32) {
         let names = ids.iter().map(|id| self.runes.get(id).map_or(format!("?{id}"), |r| r.name.clone())).collect();
         let mana = runes::casts(&self.runes, ids).ok().and_then(|c| c.first().map(|c| c.total_mana())).unwrap_or(0.0);
         (names, mana)
     }
 
-    /// A wand's casts, in order (read once, until the runes change).
-    fn casts(&mut self, items: &Items, item: ItemId) -> Arc<Vec<Arc<Cast>>> {
-        if let Some(c) = self.wands.get(&item) {
+    /// A spell's casts, in order (read once, until the runes change).
+    fn casts(&mut self, spell: usize) -> Arc<Vec<Arc<Cast>>> {
+        if let Some(c) = self.read.get(&spell) {
             return c.clone();
         }
-        let casts = match &items.def(item).use_ {
-            Use::Cast { runes, .. } => runes::casts(&self.runes, runes).unwrap_or_else(|e| {
-                warn!("{}: {e}", items.def(item).id);
-                Vec::new()
-            }),
-            _ => Vec::new(),
-        };
+        let casts = self.spells.get(spell).map_or(Vec::new(), |s| runes::casts(&self.runes, &s.runes).unwrap_or_default());
         let casts = Arc::new(casts);
-        self.wands.insert(item, casts.clone());
+        self.read.insert(spell, casts.clone());
         casts
     }
 }
 
-/// Where a caster's wand is in its runes, how long until it can cast, and
-/// the gravity well it's holding open.
+/// Where a caster is in a spell's casts, how long until it can cast it
+/// again, and the gravity well it's holding open.
 #[derive(Default)]
 struct WandState {
     next: usize,
@@ -151,8 +164,9 @@ struct WandState {
     well: Option<Entity>,
 }
 
+/// Each caster's timing of each spell.
 #[derive(Resource, Default)]
-struct Wands(HashMap<(Entity, ItemId), WandState>);
+struct Wands(HashMap<(Entity, usize), WandState>);
 
 /// A cast going off this tick.
 struct Fire {
@@ -196,28 +210,33 @@ impl Plugin for MagicPlugin {
             .init_resource::<Firing>()
             .add_message::<CastRequest>()
             .add_plugins(bevy::core_pipeline::fullscreen_material::FullscreenMaterialPlugin::<warp::Warp>::default())
-            .add_systems(Update, (reload_runes, give_mana, place_spells, well::give_warp, well::show))
+            .add_systems(Update, (reload_runes, give_mana, spells::choose, place_spells, well::give_warp, well::show))
             .add_systems(FixedUpdate, (recharge, request, fire, fly, well::channel).chain().in_set(TickSet::Bodies).before(crate::actors::hurt::notice));
     }
 }
 
 fn reload_runes(mut book: ResMut<Spellbook>) {
-    if !book.watch.changed() {
+    let (a, b) = (book.watch.changed(), book.spells_watch.changed());
+    if !a && !b {
         return;
     }
-    match load_ron::<RunesFile>(book.watch.path()).and_then(Runes::new) {
-        Ok(runes) => {
+    let loaded = load_ron::<RunesFile>(book.watch.path()).and_then(Runes::new).and_then(|r| load_spells(book.spells_watch.path(), &r).map(|s| (r, s)));
+    match loaded {
+        Ok((runes, spells)) => {
             book.runes = runes;
-            book.wands.clear();
-            info!("runes reloaded");
+            book.spells = spells;
+            book.read.clear();
+            info!("runes and spells reloaded");
         }
-        Err(e) => warn!("runes not reloaded: {e}"),
+        Err(e) => warn!("spells not reloaded: {e}"),
     }
 }
 
-fn give_mana(mut commands: Commands, new: Query<Entity, (With<LocalPlayer>, Without<Mana>)>) {
+/// A player gets mana, and knows every spell (for now: learning them is
+/// next, DESIGN §7b).
+fn give_mana(mut commands: Commands, book: Res<Spellbook>, new: Query<Entity, (With<LocalPlayer>, Without<Mana>)>) {
     for e in &new {
-        commands.entity(e).insert(Mana::default());
+        commands.entity(e).insert((Mana::default(), Caster { known: (0..book.spells.len()).collect(), ready: 0 }));
     }
 }
 
@@ -235,27 +254,32 @@ fn recharge(mut wands: ResMut<Wands>, mut mana: Query<(Entity, &mut Mana)>, fiel
     }
 }
 
-/// A wand ready to cast casts its next cast, if the caster has the mana.
+/// A spell ready to cast casts its next cast, if the caster has the mana,
+/// made as strong as the caster makes it.
 #[allow(clippy::too_many_arguments)]
 fn request(
     mut commands: Commands,
     mut wells: Query<&mut Well>,
     mut requests: MessageReader<CastRequest>,
-    items: Option<Res<Items>>,
     mut book: ResMut<Spellbook>,
     mut wands: ResMut<Wands>,
     mut firing: ResMut<Firing>,
     mut mana: Query<&mut Mana>,
+    stats: Query<&crate::gear::Stats>,
 ) {
-    let Some(items) = items else { return };
+    let none = crate::gear::Stats::default();
     for r in requests.read() {
-        let Use::Cast { delay, recharge, .. } = &items.def(r.item).use_ else { continue };
-        let casts = book.casts(&items, r.item);
-        let w = wands.0.entry((r.caster, r.item)).or_default();
+        let Some(def) = book.spells.get(r.spell) else { continue };
+        let st = stats.get(r.caster).unwrap_or(&none);
+        let quick = st.mult(crate::gear::Stat::CastSpeed);
+        let (delay, recharge) = (&(def.delay / quick), &(def.recharge / quick));
+        let (power, harm) = (spells::power(st, def.element), def.element.map_or(crate::actors::Harm::Physical, |e| e.harm()));
+        let casts = book.casts(r.spell);
+        let w = wands.0.entry((r.caster, r.spell)).or_default();
         if casts.is_empty() {
             continue;
         }
-        let cast = casts[w.next % casts.len()].clone();
+        let cast = spells::empower(&casts[w.next % casts.len()], power, harm);
         let channelled = matches!(cast.carrier, Carrier::Well { .. } | Carrier::Force { .. });
         // (Only force has a use for the other button.)
         if r.alt && !matches!(cast.carrier, Carrier::Force { .. }) {
@@ -346,7 +370,7 @@ fn fire(
                     if e == f.caster || d.length() > reach || d.normalize_or_zero().dot(f.dir) < (spread * 1.5 + 0.1).cos() {
                         continue;
                     }
-                    h.harm(STREAM_DAMAGE, crate::actors::Harm::Fire);
+                    h.harm(STREAM_DAMAGE, cast.harm);
                     k.body.vel += f.dir * 6.0;
                     if rng.chance(STREAM_CATCH) {
                         catch_fire(&mut commands, e, resist, coated, &coatings);
@@ -484,7 +508,7 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
                 if let Some(e) = hit
                     && let Ok((_, mut k, mut h, ..)) = bodies.get_mut(e)
                 {
-                    h.harm(d, crate::actors::Harm::Physical);
+                    h.harm(d, cast.harm);
                     let k = &mut *k;
                     k.loco.knock(&mut k.body, (dir + Vec2::new(0.0, 0.5)).normalize() * d * 5.0, 0.2);
                 }

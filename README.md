@@ -58,14 +58,20 @@ the outlined block is the one you'll hit (the first minable block on the line fr
 your hand to the cursor, so you dig the face you see) or fill (under the cursor,
 or against whatever the line meets). What you mine drops out and drifts to you;
 blocks count in cells, shown as whole blocks. You start with a copper pickaxe and
-axe, torches, bombs, platforms, five wands (6–0: spark, fireball, acid arrow,
-flame, storm) and glow sticks (in the pack).
+axe, torches, bombs, platforms, foci (6–0: storm, fire and acid wands, fire and
+storm staffs; more on hotbars 2 and 3) and glow sticks (in the pack).
 
-**Magic:** hold LMB with a wand to cast at the cursor; casting costs mana (the
-blue bar, refilling). A wand is a list of runes (`assets/data/runes.ron`,
+**Magic:** spells are their own things (`assets/data/spells.ron`); wands and
+staffs are foci you hold. With a focus in hand, hold LMB to cast the spell
+ready (shown over the hotbar) at the cursor; Q readies the next spell (Shift+Q
+back). A spell's tier needs a focus of that tier (wands 1, staffs 2: lightning
+and the flame jet need a staff); the focus's stats (and your gear's) make it
+stronger: a fire wand's +40% fire power, spell power, cast speed. Taking up an
+elemental focus readies the strongest spell of its element. Casting costs mana
+(the blue bar, refilling). A spell is a list of runes (`assets/data/runes.ron`,
 hot-reloaded): a carrier (bolt, orb, arrow, flame stream, lightning), what it
 carries (spark, blast, ignite, heat, frost, acid, water) and modifiers (heavy,
-fire trail, quick, trigger); change a wand's runes in `items.ron`. The gravity
+fire trail, quick, trigger). The gravity
 wand (hotbar 2) holds a well at the cursor while you hold the button: it lifts
 what's loose and tears out rock, spins it in a ball, carries creatures it can
 lift; swing it (whip it and some flies off), let go to drop it all. Swing the well and let go to throw what it holds (an orc thrown hard takes fall

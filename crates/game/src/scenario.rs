@@ -1143,9 +1143,9 @@ fn inventory_script(
         }
         6 if t > 3.3 => {
             if let (Some(items), Ok(inv)) = (items, player.single()) {
-                let wand = items.id("spark_wand");
+                let wand = items.id("storm_wand");
                 let found = inv.slots.iter().position(|s| s.is_some_and(|s| Some(s.item) == wand));
-                info!("inventory: the spark wand is in slot {found:?} (was 5; hotbar 3 starts at 20)");
+                info!("inventory: the storm wand is in slot {found:?} (was 5; hotbar 3 starts at 20)");
             }
             window.set_cursor_position(None);
             *step = 7;

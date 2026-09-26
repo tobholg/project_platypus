@@ -211,6 +211,8 @@ pub struct Cast {
     /// lands.
     pub trails: Vec<Emitter>,
     pub bursts: Vec<Emitter>,
+    /// What its hurt is (its spell's element: `spells::empower`).
+    pub harm: crate::actors::Harm,
 }
 
 impl Cast {
@@ -300,7 +302,7 @@ fn one<'a, 'b>(runes: &'b [&'a RuneDef]) -> Option<(Cast, &'b [&'a RuneDef])> {
     } else {
         (None, &runes[i..])
     };
-    Some((Cast { carrier, modifiers, payloads, then, mana, color, trails, bursts }, left))
+    Some((Cast { carrier, modifiers, payloads, then, mana, color, trails, bursts, harm: crate::actors::Harm::Physical }, left))
 }
 
 #[cfg(test)]

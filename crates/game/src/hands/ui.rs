@@ -77,6 +77,10 @@ struct PackRoot;
 #[derive(Component)]
 struct ItemLabel;
 
+/// The spell ready, over the hotbar while a focus is in hand.
+#[derive(Component)]
+struct SpellLabel;
+
 #[derive(Component)]
 struct HeldIcon;
 
@@ -114,7 +118,7 @@ impl Plugin for UiPlugin {
         app.init_resource::<InventoryOpen>()
             .init_resource::<Held>()
             .add_systems(Startup, spawn)
-            .add_systems(Update, (toggle, press, release, show, show_gear, title, tooltip).chain());
+            .add_systems(Update, (toggle, press, release, show, show_gear, title, spell_label, tooltip).chain());
     }
 }
 
@@ -177,6 +181,15 @@ fn spawn(mut commands: Commands) {
             },
         ))
         .with_children(|root| {
+            root.spawn((
+                SpellLabel,
+                Text::new(""),
+                TextFont { font_size: FontSize::Px(14.0), ..default() },
+                TextColor(Color::srgb(0.8, 0.85, 1.0)),
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.45)),
+                Node { padding: UiRect::axes(px(6), px(2)), ..default() },
+                Visibility::Hidden,
+            ));
             root.spawn((
                 ItemLabel,
                 Text::new(""),
@@ -688,6 +701,40 @@ fn show_gear(
     }
 }
 
+/// With a focus in hand: the spell ready, what it costs, whether the focus
+/// is up to it.
+fn spell_label(
+    items: Option<Res<Items>>,
+    book: Res<Spellbook>,
+    player: Query<(&Equipment, Option<&crate::magic::Caster>), With<LocalPlayer>>,
+    mut label: Single<(&mut Text, &mut TextColor, &mut Visibility), With<SpellLabel>>,
+) {
+    let (text, color, vis) = &mut *label;
+    let (Some(items), Ok((eq, caster))) = (items, player.single()) else { return };
+    let tier = eq.held.and_then(|s| match items.def(s.item).use_ {
+        Use::Focus { tier, .. } => Some(tier),
+        _ => None,
+    });
+    let spell = caster.and_then(|c| c.spell()).and_then(|i| book.spells.get(i));
+    let (Some(tier), Some(spell)) = (tier, spell) else {
+        **vis = Visibility::Hidden;
+        return;
+    };
+    **vis = Visibility::Inherited;
+    let (_, mana) = book.describe(&spell.runes);
+    let (t, c) = if spell.tier > tier {
+        (format!("{}: needs a staff (tier {})   |   Q: next spell", spell.name, spell.tier), Color::srgb(1.0, 0.5, 0.45))
+    } else {
+        let of = spell.element.map_or("arcane".to_string(), |e| format!("{e:?}").to_lowercase());
+        let about = spell.about.as_deref().map_or(String::new(), |a| format!("\n{a}"));
+        (format!("{} ({of}, {mana:.0} mana)   |   Q: next spell{about}", spell.name), Color::srgb(0.8, 0.85, 1.0))
+    };
+    if text.0 != t {
+        text.0 = t;
+    }
+    color.0 = c;
+}
+
 /// The open chest's (or body's) name over it.
 fn title(chests: Res<Chests>, mut t: Single<&mut Text, With<ChestTitle>>) {
     let want = format!("{}  |  Shift-click: to the pack  |  R: take all", if chests.open_name.is_empty() { "Chest" } else { &chests.open_name });
@@ -779,12 +826,13 @@ fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<&crate::com
             lines.push(format!("Axe: trees and walls, up to hardness {tier}"));
             lines.push(format!("{power} a hit, {speed} hits a second, reach {reach} blocks"));
         }
-        Use::Cast { runes, delay, .. } => {
-            lines.push("Wand: hold to cast at the cursor".into());
+        Use::Focus { tier, element } => {
+            let what = if *tier >= 2 { "Staff" } else { "Wand" };
+            let of = element.map_or(String::new(), |e| format!(", of {}", format!("{e:?}").to_lowercase()));
+            lines.push(format!("{what} (tier {tier}{of}): hold the left button to cast the spell ready (Q: the next)"));
             if let Some(book) = book {
-                let (names, mana) = book.describe(runes);
-                lines.push(format!("Runes: {}", names.join(" + ")));
-                lines.push(format!("{mana:.0} mana a cast, {:.1} casts a second", 1.0 / delay.max(0.01)));
+                let can: Vec<&str> = book.spells.iter().filter(|s| s.tier <= *tier).map(|s| s.name.as_str()).collect();
+                lines.push(format!("Casts: {}", can.join(", ")));
             }
         }
         Use::Bow(id) => {

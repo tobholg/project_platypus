@@ -11,9 +11,9 @@
 //     gold ore 85, basalt 95, ruby 100, mithril ore 110, obsidian 120.
 //     Pickaxe tiers climb with them: copper 70, iron 100, gold 115, mithril 150.
 //   Throw(Bomb | Glowstick) · Torch: plant one on a block face
-//   Cast(runes, delay, recharge): a wand; hold to cast its runes (runes.ron)
-//     at the cursor, one cast each `delay` s and `recharge` s after the last
-//     (a channelled one, a well or force, stays open while held)
+//   Focus(tier, element): a wand (tier 1) or staff (tier 2): hold to cast
+//     the spell ready (spells.ron; Q: the next) at the cursor, if its tier
+//     is no more than the focus's; the element it favours (optional)
 // about: a line for its tooltip
 //   Bow(bow): a bow (weapons.ron): hold the left button to draw, let go to
 //     loose an arrow (one of your `arrow` items) at the cursor.
@@ -32,21 +32,34 @@
         (id: "torch",          name: "Torch",          stack: 99, color: (255, 190, 90), use: Torch),
         (id: "bomb",           name: "Bomb",           stack: 30, color: (40, 40, 46), use: Throw(Bomb)),
         (id: "glowstick",      name: "Glow stick",     stack: 30, color: (90, 255, 150), use: Throw(Glowstick)),
-        (id: "spark_wand",     name: "Spark wand",     color: (170, 200, 255), use: Cast(runes: ["bolt", "spark", "knock", "shatter"], delay: 0.12, recharge: 0.12)),
-        (id: "fire_wand",      name: "Fireball wand",  color: (255, 120, 40), use: Cast(runes: ["trail_fire", "fire_drops", "orb", "blast", "ignite"], delay: 0.6, recharge: 0.6)),
-        (id: "acid_wand",      name: "Acid wand",      color: (120, 230, 60), use: Cast(runes: ["gravity", "arrow", "acid"], delay: 0.35, recharge: 0.35)),
-        (id: "flame_wand",     name: "Flame wand",     color: (255, 170, 60), use: Cast(runes: ["flame_stream"], delay: 0.03, recharge: 0.03)),
-        (id: "storm_wand",     name: "Storm wand",     color: (200, 220, 255), use: Cast(runes: ["lightning"], delay: 0.7, recharge: 0.7)),
-        (id: "frost_wand",     name: "Frost wand",     color: (170, 220, 255), use: Cast(runes: ["bolt", "frost"], delay: 0.3, recharge: 0.3),
-            about: "Chills what it hits; freezes water it lands on (an ice patch to stand on)."),
-        (id: "gravity_wand",   name: "Gravity wand",   color: (150, 110, 255), use: Cast(runes: ["gravity_well"], delay: 0.2, recharge: 0.4),
-            about: "Hold: a well at the cursor lifts what it can (an orc and some rock). Swing it; let go to drop it all."),
-        (id: "gravity_staff",  name: "Gravity staff",  color: (150, 110, 255), use: Cast(runes: ["gravity_well_ii"], delay: 0.2, recharge: 0.4),
-            about: "A bigger well: lifts a crowd, tears out harder rock."),
-        (id: "force_wand",     name: "Force wand",     color: (140, 200, 255), use: Cast(runes: ["force"], delay: 0.1, recharge: 0.2),
-            about: "Hold left: push everything away from the cursor. Hold right: pull it in."),
-        (id: "force_staff",    name: "Force staff",    color: (140, 200, 255), use: Cast(runes: ["force_ii"], delay: 0.1, recharge: 0.2),
-            about: "Stronger force: wider, harder, tears out rock."),
+        // Foci (magic::spells): a wand is tier 1, a staff tier 2; a spell
+        // needs a focus of its tier or more in the hand. Its element is the
+        // one it favours (its stats: that element's power); taking it up
+        // readies the strongest spell of that element it can cast.
+        (id: "oak_wand",       name: "Oak wand",       color: (150, 110, 70), use: Focus(tier: 1),
+            gear: (slot: Held, stats: { SpellPower: 5, CastSpeed: 5 })),
+        (id: "storm_wand",     name: "Storm wand",     color: (200, 220, 255), use: Focus(tier: 1, element: Storm),
+            gear: (slot: Held, stats: { StormPower: 40, CastSpeed: 5 })),
+        (id: "fire_wand",      name: "Fire wand",      color: (255, 120, 40), use: Focus(tier: 1, element: Fire),
+            gear: (slot: Held, stats: { FirePower: 40, CastSpeed: 5 })),
+        (id: "acid_wand",      name: "Acid wand",      color: (120, 230, 60), use: Focus(tier: 1, element: Acid),
+            gear: (slot: Held, stats: { AcidPower: 40, CastSpeed: 5 })),
+        (id: "frost_wand",     name: "Frost wand",     color: (170, 220, 255), use: Focus(tier: 1, element: Frost),
+            gear: (slot: Held, stats: { FrostPower: 40, CastSpeed: 5 })),
+        (id: "gravity_wand",   name: "Gravity wand",   color: (150, 110, 255), use: Focus(tier: 1, element: Gravity),
+            gear: (slot: Held, stats: { GravityPower: 40 })),
+        (id: "force_wand",     name: "Force wand",     color: (140, 200, 255), use: Focus(tier: 1, element: Force),
+            gear: (slot: Held, stats: { ForcePower: 40 })),
+        (id: "arcane_staff",   name: "Arcane staff",   color: (170, 120, 230), use: Focus(tier: 2),
+            gear: (slot: Held, stats: { SpellPower: 25, Mana: 40, ManaRegen: 15 })),
+        (id: "fire_staff",     name: "Fire staff",     color: (255, 150, 50), use: Focus(tier: 2, element: Fire),
+            gear: (slot: Held, stats: { FirePower: 50, SpellPower: 10, Mana: 20 })),
+        (id: "storm_staff",    name: "Storm staff",    color: (200, 220, 255), use: Focus(tier: 2, element: Storm),
+            gear: (slot: Held, stats: { StormPower: 50, SpellPower: 10, Mana: 20 })),
+        (id: "gravity_staff",  name: "Gravity staff",  color: (150, 110, 255), use: Focus(tier: 2, element: Gravity),
+            gear: (slot: Held, stats: { GravityPower: 50, SpellPower: 10, Mana: 20 })),
+        (id: "force_staff",    name: "Force staff",    color: (140, 200, 255), use: Focus(tier: 2, element: Force),
+            gear: (slot: Held, stats: { ForcePower: 50, SpellPower: 10, Mana: 20 })),
         (id: "shortsword",     name: "Shortsword",     color: (200, 206, 216), use: Melee("shortsword"), gear: (slot: Held),
             about: "Quick: slash, backslash, thrust. Strike down in the air to bounce off what you hit."),
         (id: "longsword",      name: "Longsword",      color: (180, 188, 204), use: Melee("longsword"), gear: (slot: Held),
@@ -59,9 +72,10 @@
     // (The first ten are the hotbar; the rest go in the pack.)
     start: [
         ("copper_pickaxe", 1), ("copper_axe", 1), ("torch", 12), ("bomb", 5), ("block:platform", 40),
-        ("spark_wand", 1), ("fire_wand", 1), ("acid_wand", 1), ("flame_wand", 1), ("storm_wand", 1),
+        ("storm_wand", 1), ("fire_wand", 1), ("acid_wand", 1), ("fire_staff", 1), ("storm_staff", 1),
         ("glowstick", 6), ("gravity_wand", 1), ("force_wand", 1), ("gravity_staff", 1), ("force_staff", 1), ("frost_wand", 1),
         ("shortsword", 1), ("longsword", 1), ("bow", 1), ("arrow", 60),
         ("leather_cap", 1), ("chainmail", 1), ("apprentice_robe", 1), ("feather_boots", 1), ("ring_of_vigour", 1), ("ember_amulet", 1),
+        ("oak_wand", 1), ("arcane_staff", 1),
     ],
 )

@@ -263,7 +263,9 @@ wand.
 - **Anyone with hands casts the same way**: an orc shaman is an orc who
   knows some runes, with a staff.
 
-(C1 built wands that hold their runes; C2 turns them into spells + foci.)
+(C1 built wands that hold their runes. The split into spells + foci is built
+(`gear-arc`, 2026-09-26): spells.ron, foci with a tier and an element, Q readies
+spells; a focus is needed to cast. Learning runes and the spell editor are next.)
 The rune kinds:
 
 | Kind | Decides | Examples |

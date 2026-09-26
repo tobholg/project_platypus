@@ -27,10 +27,15 @@ pub enum Use {
     /// Place a chest (the `chest` material's cells; the game keeps what's in
     /// it).
     Chest,
-    /// A wand: casts its runes (`runes.ron`, left to right) toward the
-    /// cursor while held, one cast each `delay` seconds and `recharge` after
-    /// the last, paid in the caster's mana.
-    Cast { runes: Vec<String>, delay: f32, recharge: f32 },
+    /// A focus (a wand, a staff): while it's in the hand, the left button
+    /// casts the spell ready (`magic::spells`) toward the cursor, if it's no
+    /// more than `tier`. Its element is the one it favours (its stats say
+    /// how much): taking it up readies a spell of that element.
+    Focus {
+        tier: u8,
+        #[serde(default)]
+        element: Option<crate::magic::Element>,
+    },
     /// A weapon held in the hand (`weapons.ron`): the left button swings it
     /// at the cursor, holding it keeps swinging through the combo.
     Melee(String),

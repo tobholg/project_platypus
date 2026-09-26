@@ -1,0 +1,34 @@
+// Spells (DESIGN §7b, §7c): each a recipe of runes (runes.ron), read left to
+// right: modifiers until a carrier, the payloads after it, and with a
+// `Trigger` the rest is cast where it lands; several casts go in turn.
+//
+// delay: seconds between its casts · recharge: after its last · tier: the
+// least focus it needs (1 a wand, 2 a staff) · element: Fire, Frost, Storm,
+// Acid, Force or Gravity (none: arcane): its element's power (and spell
+// power) make it stronger, and its hurt is of that element · about: a line
+// for tooltips. The order matters where a focus readies a spell: the
+// strongest of its element it can cast, the first of those.
+(
+    spells: [
+        (id: "spark_bolt", name: "Spark bolt", runes: ["bolt", "spark", "knock", "shatter"], delay: 0.12, recharge: 0.12, element: Storm,
+            about: "Quick sparks: knock back what they hit and break earth and stone."),
+        (id: "fireball", name: "Fireball", runes: ["trail_fire", "fire_drops", "orb", "blast", "ignite"], delay: 0.6, recharge: 0.6, element: Fire,
+            about: "A bouncing orb of fire that bursts where it stops."),
+        (id: "acid_arrow", name: "Acid arrow", runes: ["gravity", "arrow", "acid"], delay: 0.35, recharge: 0.35, element: Acid,
+            about: "Lobbed acid: it eats what it lands on."),
+        (id: "frost_bolt", name: "Frost bolt", runes: ["bolt", "frost"], delay: 0.3, recharge: 0.3, element: Frost,
+            about: "Chills what it hits; freezes water it lands on (an ice patch to stand on)."),
+        (id: "gravity_well", name: "Gravity well", runes: ["gravity_well"], delay: 0.2, recharge: 0.4, element: Gravity,
+            about: "Hold: a well at the cursor lifts what it can (an orc and some rock). Swing it; let go to drop it all."),
+        (id: "force", name: "Force", runes: ["force"], delay: 0.1, recharge: 0.2, element: Force,
+            about: "Hold left: push everything away from the cursor. Hold right: pull it in."),
+        (id: "flame_jet", name: "Flame jet", runes: ["flame_stream"], delay: 0.03, recharge: 0.03, tier: 2, element: Fire,
+            about: "A stream of burning oil."),
+        (id: "lightning", name: "Lightning", runes: ["lightning"], delay: 0.7, recharge: 0.7, tier: 2, element: Storm,
+            about: "The sky's lightning, from your hand, to what's near where you aim."),
+        (id: "great_well", name: "Great gravity well", runes: ["gravity_well_ii"], delay: 0.2, recharge: 0.4, tier: 2, element: Gravity,
+            about: "A bigger well: lifts a crowd, tears out harder rock."),
+        (id: "great_force", name: "Great force", runes: ["force_ii"], delay: 0.1, recharge: 0.2, tier: 2, element: Force,
+            about: "Stronger force: wider, harder, tears out rock."),
+    ],
+)
