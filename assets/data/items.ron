@@ -31,6 +31,8 @@
         (id: "acid_wand",      name: "Acid wand",      color: (120, 230, 60), use: Cast(runes: ["gravity", "arrow", "acid"], delay: 0.35, recharge: 0.35)),
         (id: "flame_wand",     name: "Flame wand",     color: (255, 170, 60), use: Cast(runes: ["flame_stream"], delay: 0.03, recharge: 0.03)),
         (id: "storm_wand",     name: "Storm wand",     color: (200, 220, 255), use: Cast(runes: ["lightning"], delay: 0.7, recharge: 0.7)),
+        (id: "frost_wand",     name: "Frost wand",     color: (170, 220, 255), use: Cast(runes: ["bolt", "frost"], delay: 0.3, recharge: 0.3),
+            about: "Chills what it hits; freezes water it lands on (an ice patch to stand on)."),
         (id: "gravity_wand",   name: "Gravity wand",   color: (150, 110, 255), use: Cast(runes: ["gravity_well"], delay: 0.2, recharge: 0.4),
             about: "Hold: a well at the cursor lifts what it can (an orc and some rock). Swing it; let go to drop it all."),
         (id: "gravity_staff",  name: "Gravity staff",  color: (150, 110, 255), use: Cast(runes: ["gravity_well_ii"], delay: 0.2, recharge: 0.4),
@@ -45,6 +47,6 @@
     start: [
         ("copper_pickaxe", 1), ("copper_axe", 1), ("torch", 12), ("bomb", 5), ("block:platform", 40),
         ("spark_wand", 1), ("fire_wand", 1), ("acid_wand", 1), ("flame_wand", 1), ("storm_wand", 1),
-        ("glowstick", 6), ("gravity_wand", 1), ("force_wand", 1), ("gravity_staff", 1), ("force_staff", 1),
+        ("glowstick", 6), ("gravity_wand", 1), ("force_wand", 1), ("gravity_staff", 1), ("force_staff", 1), ("frost_wand", 1),
     ],
 )

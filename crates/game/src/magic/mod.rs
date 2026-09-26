@@ -63,6 +63,17 @@ const STREAM_HEAT: i16 = 12;
 /// A stream starts this far ahead of the hand (so it doesn't douse its
 /// caster).
 const STREAM_AHEAD: f32 = 6.0;
+/// Meeting a liquid: an orb skips off it (at most this many times) when it
+/// comes in shallower than this (vertical to horizontal speed) and faster
+/// than this (cells/s)...
+const ORB_SKIPS: u8 = 3;
+const SKIP_SLOPE: f32 = 0.6;
+const SKIP_SPEED: f32 = 110.0;
+/// ... anything else goes in, keeping this share of its speed a cell and
+/// burning its life this much faster, gone below this speed.
+const WET_STEP: f32 = 0.9;
+const WET_AGE: f32 = 3.0;
+const FIZZLE: f32 = 50.0;
 
 /// What casting costs. Refills `regen` a second.
 #[derive(Component, Clone, Copy, Debug)]
@@ -170,6 +181,10 @@ pub struct Spell {
     bounces: u8,
     /// Share of `GRAVITY` it falls at.
     fall: f32,
+    /// In a liquid (dragged, burning out); times an orb can still skip off
+    /// one.
+    wet: bool,
+    skips: u8,
 }
 
 type Hittable<'a> = (Entity, &'a mut Kinematics, &'a mut Health, Option<&'a Resist>, Option<&'a Coated>);
@@ -355,7 +370,7 @@ fn fire(
                     for e in &cast.bursts {
                         sparks.emit(e, e.count as usize, at, -dir, Vec2::ZERO);
                     }
-                    land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, dir);
+                    land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, dir, false);
                     if let Some(then) = &cast.then {
                         firing.0.push(Fire { cast: then.clone(), caster: f.caster, from: at - dir * 2.0, dir, reach: TRIGGERED_REACH });
                     }
@@ -375,7 +390,19 @@ fn spawn_spell(commands: &mut Commands, f: &Fire, speed: f32, life: f32, bounces
     let core = Color::srgb(0.5 + color[0] * 0.5, 0.5 + color[1] * 0.5, 0.5 + color[2] * 0.5);
     let mut spell = commands.spawn((
         Name::new("Spell"),
-        Spell { cast: c.clone(), caster: f.caster, pos: f.from, prev: f.from, vel, age: 0.0, life, bounces, fall: fall + c.gravity() },
+        Spell {
+            cast: c.clone(),
+            caster: f.caster,
+            pos: f.from,
+            prev: f.from,
+            vel,
+            age: 0.0,
+            life,
+            bounces,
+            fall: fall + c.gravity(),
+            wet: false,
+            skips: if matches!(c.carrier, Carrier::Orb { .. }) { ORB_SKIPS } else { 0 },
+        },
         LightSource { color: color.map(|x| x * glow), flicker: 0.15 },
         Sprite::from_color(core, size),
         Transform::from_translation(f.from.extend(12.5)).with_rotation(Quat::from_rotation_z(vel.to_angle())),
@@ -441,8 +468,14 @@ fn lightning_targets(bodies: &Query<Hittable>, f: &Fire, range: f32, n: usize) -
 
 /// A cast's payloads, where it landed (`hit`: the body it hit).
 #[allow(clippy::too_many_arguments)]
-fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies: &mut Query<Hittable>, cast: &Cast, at: Vec2, hit: Option<Entity>, dir: Vec2) {
+///
+/// `doused`: it met water (or anything that puts fire out) burning: no fire,
+/// and its heat flashes the water around it to steam.
+#[allow(clippy::too_many_arguments)]
+fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies: &mut Query<Hittable>, cast: &Cast, at: Vec2, hit: Option<Entity>, dir: Vec2, doused: bool) {
     let center = CellPos::from_world(at.x, at.y);
+    let mats = world.materials().clone();
+    let mut rng = Rng::seeded(&[world.tick(), center.x as u64, center.y as u64, 0x57EA]);
     for p in &cast.payloads {
         match p {
             &Payload::Damage(d) => {
@@ -459,7 +492,32 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
             }
             &Payload::Heat { radius, amount } => {
                 world.apply_edit(&WorldEdit::Heat { center, radius, amount });
+                // Hot into water: it flashes to steam. Cold: the water it
+                // lands on or beside freezes (an ice patch to stand on).
+                let r = radius + if amount < 0 { 3 } else { 0 };
+                for dy in -r..=r {
+                    for dx in -r..=r {
+                        if dx * dx + dy * dy > r * r {
+                            continue;
+                        }
+                        let q = CellPos::new(center.x + dx, center.y + dy);
+                        let Some(c) = world.get(q) else { continue };
+                        let ph = mats.phys(c.material);
+                        if ph.kind != Kind::Liquid {
+                            continue;
+                        }
+                        if amount < 0 && ph.below_into != MaterialId::AIR {
+                            world.set(q, mats.spawn(ph.below_into, &mut rng));
+                        } else if amount > 0 && doused && ph.above_into != MaterialId::AIR && rng.coin() {
+                            let mut vapour = mats.spawn(ph.above_into, &mut rng);
+                            vapour.heat = vapour.heat.max(amount / 3);
+                            world.set(q, vapour);
+                        }
+                    }
+                }
             }
+            // (Doused, it lights nothing.)
+            Payload::Ignite { .. } if doused => {}
             &Payload::Ignite { radius } => {
                 world.apply_edit(&WorldEdit::Ignite { center, radius });
                 for (e, k, _, resist, coated) in bodies.iter() {
@@ -492,10 +550,14 @@ fn fly(
     let mut landed = Vec::new();
     let mut trail = Vec::new();
     let mut shed = Vec::new();
+    // Where spells met a liquid: splash so many cells of it up (and hiss
+    // steam, if it doused fire).
+    let mut surface: Vec<(Vec2, usize, bool)> = Vec::new();
     {
         let world = &sim.world;
         let mats = world.materials();
         let solid = |p: Vec2| world.get(CellPos::from_world(p.x, p.y)).is_none_or(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder));
+        let liquid = |p: Vec2| world.get(CellPos::from_world(p.x, p.y)).filter(|c| mats.phys(c.material).kind == Kind::Liquid);
         for (e, mut s) in &mut spells {
             let s = &mut *s;
             s.prev = s.pos;
@@ -505,6 +567,7 @@ fn fly(
             let steps = travel.length().ceil().max(1.0) as i32;
             let step = travel / steps as f32;
             let mut end: Option<(Option<Entity>, Vec2)> = None;
+            let mut doused = false;
             for i in 0..steps {
                 let next = s.pos + step;
                 if solid(next) {
@@ -524,6 +587,46 @@ fn fly(
                     end = Some((None, n));
                     break;
                 }
+                // Meeting a liquid's surface.
+                match (liquid(next), s.wet) {
+                    (Some(c), false) => {
+                        let oil = mats.phys(c.material).flammability > 0;
+                        let fiery = s.cast.fiery();
+                        let douses = fiery && !oil;
+                        // A fast orb coming in shallow skips off it, like a
+                        // stone (steaming, if it's burning).
+                        // (Fire meeting oil lights it instead.)
+                        if s.skips > 0 && !(fiery && oil) && s.vel.y < 0.0 && s.vel.y.abs() < s.vel.x.abs() * SKIP_SLOPE && s.vel.length() > SKIP_SPEED {
+                            s.skips -= 1;
+                            debug!("spell skipped off a liquid at {next:?}");
+                            s.vel = Vec2::new(s.vel.x * 0.85, s.vel.y.abs() * 0.5);
+                            surface.push((next, 10, douses));
+                            break;
+                        }
+                        // Fire into water is doused: it goes off at the
+                        // surface in a burst of steam. Fire onto oil lights
+                        // it; cold freezes it: both at the surface.
+                        if fiery || s.cast.frosty() {
+                            debug!("spell met a liquid at {next:?}: doused {douses}, oil {oil}");
+                            doused = douses;
+                            if douses {
+                                surface.push((next, 16, true));
+                            }
+                            end = Some((None, Vec2::Y));
+                            break;
+                        }
+                        // Anything else plunges in.
+                        s.wet = true;
+                        surface.push((next, 6, false));
+                    }
+                    (None, true) => s.wet = false,
+                    _ => {}
+                }
+                // Through a liquid each cell slows it (a bolt dies within
+                // ~20 cells).
+                if s.wet {
+                    s.vel *= WET_STEP;
+                }
                 s.pos = next;
                 for e in &s.cast.trails {
                     sparks.trail(e, 1.0, s.pos, -s.vel, s.vel * 0.15);
@@ -540,11 +643,18 @@ fn fly(
                     trail.push((s.pos, material.to_string(), burning));
                 }
             }
+            // In a liquid: burning out fast, fizzling when slow.
+            if s.wet {
+                s.age += DT * WET_AGE;
+                if end.is_none() && s.vel.length() < FIZZLE {
+                    end = Some((None, Vec2::ZERO));
+                }
+            }
             if end.is_none() && s.age >= s.life {
                 end = Some((None, Vec2::ZERO));
             }
             if let Some((hit, n)) = end {
-                landed.push((e, s.cast.clone(), s.caster, s.pos, hit, s.vel.normalize_or(Vec2::X), n));
+                landed.push((e, s.cast.clone(), s.caster, s.pos, hit, s.vel.normalize_or(Vec2::X), n, doused));
             }
         }
     }
@@ -574,20 +684,58 @@ fn fly(
             world.emit(Particle::new([at.x, at.y], [a.cos() * s, a.sin() * s], cell, 90, Landing::Settle));
         }
     }
-    for (e, cast, caster, at, hit, dir, n) in landed {
+    for (at, n, steam) in surface {
+        splash_surface(world, at, n, &mut rng);
+        if steam {
+            sparks.emit(&HISS, HISS.count as usize, at + Vec2::Y * 2.0, Vec2::Y, Vec2::ZERO);
+        }
+    }
+    for (e, cast, caster, at, hit, dir, n, doused) in landed {
         commands.entity(e).despawn();
+        debug!("spell landed at {at:?} (hit {hit:?}, doused {doused})");
         // Off the surface it hit, or back the way it came.
         let off = if n == Vec2::ZERO { -dir } else { n };
-        for b in &cast.bursts {
-            sparks.emit(b, b.count as usize, at, off, Vec2::ZERO);
+        // (Doused, its fire bursts are steam instead.)
+        if !doused {
+            for b in &cast.bursts {
+                sparks.emit(b, b.count as usize, at, off, Vec2::ZERO);
+            }
         }
-        land(&mut commands, world, &coatings, &mut bodies, &cast, at, hit, dir);
+        land(&mut commands, world, &coatings, &mut bodies, &cast, at, hit, dir, doused);
         if let Some(then) = &cast.then {
             let dir = if n == Vec2::ZERO { dir } else { dir - 2.0 * dir.dot(n) * n };
             firing.0.push(Fire { cast: then.clone(), caster, from: at, dir, reach: TRIGGERED_REACH });
         }
     }
 }
+
+/// Throw up to `n` cells of a liquid's surface where a spell met it (real
+/// cells: nothing made, nothing lost).
+fn splash_surface(world: &mut World, at: Vec2, n: usize, rng: &mut Rng) {
+    let mats = world.materials().clone();
+    let unit = |rng: &mut Rng| rng.next_u32() as f32 / u32::MAX as f32;
+    for _ in 0..n * 2 {
+        let q = CellPos::from_world(at.x + (unit(rng) - 0.5) * 6.0, at.y - unit(rng) * 3.0);
+        let Some(c) = world.get(q).filter(|c| mats.phys(c.material).kind == Kind::Liquid) else { continue };
+        let Some(c) = world.pluck(q).map(|_| c) else { continue };
+        let v = [(unit(rng) - 0.5) * 1.6, 1.0 + unit(rng) * 1.6];
+        world.emit(Particle::new([q.x as f32 + 0.5, q.y as f32 + 1.5], v, c, 150, Landing::Settle));
+    }
+}
+
+/// Steam hissing off doused fire (visual).
+static HISS: std::sync::LazyLock<runes::Emitter> = std::sync::LazyLock::new(|| runes::Emitter {
+    count: 34.0,
+    life: (0.5, 1.4),
+    colors: vec![(250, 250, 255), (210, 215, 225), (150, 155, 165)],
+    speed: 45.0,
+    spread: 1.2,
+    gravity: -40.0,
+    drag: 1.5,
+    size: 2.0,
+    jitter: 6.0,
+    glow: false,
+});
 
 /// Draw spells between the last two ticks, pointing where they go.
 fn place_spells(time: Res<Time<Fixed>>, mut q: Query<(&Spell, &mut Transform)>) {

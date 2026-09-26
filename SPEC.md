@@ -647,6 +647,9 @@ deaths (blood). Rendered as one dynamic mesh.
 - Blood washes out in water: where they touch it dissolves (adding no water,
   so a pool doesn't swell with every wound; it once turned into water, and
   a well grinding orcs over a pool made it overflow).
+- A blast throws liquid instead of destroying it: inside its radius every
+  liquid cell is flung up and out (a geyser; oil goes up burning), and
+  near its heart some flashes to its vapour (water to steam). Test.
 - Water dilutes acid where they touch (`chance_4096: 4`: reactions can be
   given per 4096 for slow ones): a lone cell under water lasts ~2 s, a
   puddle on a pool's floor ~half a minute, till it's all water.
@@ -855,6 +858,17 @@ deaths (blood). Rendered as one dynamic mesh.
   thrown thing's, plus any `Gravity` rune. Trails shed their material as
   embers every other cell; a `Shed` rune splashes cells of its material
   (burning oil, for a fireball) wherever it bounces.
+- **Meeting a liquid.** A fast orb coming in shallow (vertical under 0.6 ×
+  horizontal, over 110 cells/s) skips off it, up to 3 times, like a stone
+  (a burning one steaming). Otherwise: fire (ignite, heat, a burning or fire
+  trail) into water (anything that isn't flammable) is doused at the
+  surface: it goes off there, its blast a steam blast, lighting nothing,
+  its heat flashing the water around to steam, its fire sparks swapped for
+  a hiss of steam; fire onto oil lights it; frost freezes the water it
+  lands on or beside into ice (bridges); anything else plunges in, keeping
+  0.9 of its speed a cell and ageing 3× as fast, fizzling below 50 cells/s
+  (a bolt dies within ~20–30 cells). Where it meets the surface it throws
+  real cells of it up.
 - **Landing** applies the payloads through the sim's own edits: a blast is
   `WorldEdit::Explode` (so a fireball digs, throws debris and bodies, and
   hurts like a small bomb), heat `WorldEdit::Heat`, ignite

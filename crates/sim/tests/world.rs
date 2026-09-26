@@ -1906,3 +1906,22 @@ fn lightning_into_water_charges_the_pool() {
     let strike = stats.lightning.first().expect("it struck");
     assert!(strike.charged.len() >= 60 * 8 - 40, "the whole pool: {}", strike.charged.len());
 }
+
+/// A blast in a pool throws the water up (a geyser) and flashes some to
+/// steam; none of it just vanishes.
+#[test]
+fn a_blast_in_water_throws_it_up() {
+    let m = mats();
+    let (water, steam) = (m.expect_id("water"), m.expect_id("steam"));
+    let mut w = boxed_world(3, 2, 71);
+    fill(&mut w, "stone", 20, 170, 1, 10);
+    fill(&mut w, "water", 40, 150, 10, 40);
+    let before = count(&w, water);
+    w.apply_edit(&WorldEdit::Explode { center: CellPos::new(95, 36), radius: 12, power: 110 });
+    let flying = w.particles().iter().filter(|p| p.cell.material == water).count();
+    let after = count(&w, water) + flying + count(&w, steam);
+    assert_eq!(after, before, "water: in the pool, in the air or steam");
+    assert!(flying > 200, "a geyser ({flying} thrown)");
+    assert!(w.particles().iter().filter(|p| p.cell.material == water).all(|p| p.vel[1] > 0.0), "thrown up");
+    assert!(count(&w, steam) > 10, "some flashed to steam");
+}

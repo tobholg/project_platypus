@@ -208,6 +208,16 @@ impl Cast {
         self.modifiers.iter().find_map(|m| if let Modifier::Trail { material, burning } = m { Some((material.as_str(), *burning)) } else { None })
     }
 
+    /// Carries fire (sets alight, heats, trails flame): water douses it.
+    pub fn fiery(&self) -> bool {
+        self.payloads.iter().any(|p| matches!(p, Payload::Ignite { .. } | Payload::Heat { amount: 1.., .. })) || self.trail().is_some_and(|(m, burning)| burning || m == "fire")
+    }
+
+    /// Carries cold: it freezes water it lands on.
+    pub fn frosty(&self) -> bool {
+        self.payloads.iter().any(|p| matches!(p, Payload::Heat { amount: ..0, .. }))
+    }
+
     pub fn shed(&self) -> Option<(&str, u32, bool)> {
         self.modifiers.iter().find_map(|m| if let Modifier::Shed { material, cells, burning } = m { Some((material.as_str(), *cells, *burning)) } else { None })
     }

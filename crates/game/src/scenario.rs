@@ -56,6 +56,13 @@
 //! - `wellwater`  (flat world) a pool dug and filled beside the player; the
 //!   gravity wand lifts it and lets go, twice; logs all the water there is
 //!   (in cells, in flight, held) each half second: it should stay the same
+//! - `splash`     (flat world) a pool beside the player, a pit of oil past
+//!   it; a fireball lobbed into it (2 s: doused, a steam blast),
+//!   one fired flat across it (3.5 s: skips, then doused), a spark bolt and
+//!   an acid arrow into it (5, 6 s: plunge), a fireball lobbed onto the oil
+//!   (7 s: alight), frost onto the pool (8.5 s: ice); logs water, steam,
+//!   ice, oil and burning (`RUST_LOG=warn,platypus::magic=debug` traces the
+//!   spells)
 //! - `inventory`  opens the inventory screen (Esc) at 1 s, switches to the
 //!   second hotbar (X) at 1.5 s, hovers the spark wand at 2 s (its tooltip;
 //!   this moves the real mouse pointer), drags it to hotbar 3 at 2.6–3 s;
@@ -101,7 +108,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -1232,5 +1239,95 @@ fn wellwater_script(
             .collect();
         let stuff: usize = sim.world.chunks().map(|c| c.cells().iter().filter(|c| !c.is_air()).count()).sum::<usize>() + sim.world.particles().len() + wells.iter().map(|w| w.holding()).sum::<usize>();
         info!("wellwater: t {t:.1} {} water: cells {cells} flying {flying} held {held} = {} | {} | everything {stuff}", if lift { "lift" } else { "-" }, cells + flying + held, others.join(" "));
+    }
+}
+
+/// Spells into water (see the module notes).
+#[allow(clippy::too_many_arguments)]
+fn splash_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, f32, Option<Vec2>, i32)>,
+    mut commands: Commands,
+    orcs: Query<Entity, Others>,
+) {
+    if s.name != "splash" {
+        return;
+    }
+    // (No orcs wading in the way.)
+    for e in &orcs {
+        commands.entity(e).despawn();
+    }
+    let Ok(k) = player.single() else { return };
+    let t = s.elapsed;
+    for key in [KeyCode::KeyX, KeyCode::Digit6, KeyCode::Digit7, KeyCode::Digit8] {
+        keys.release(key);
+    }
+    let home = *state.2.get_or_insert(k.body.pos);
+    let (water, oil) = (sim.materials().expect_id("water"), sim.materials().expect_id("oil"));
+    if state.0 == 0 && t > 0.5 {
+        let Some(ground) = find_ground(&sim.world, home.x as i32 + 80, home.y as i32 + 40, 100) else { return };
+        for x in (home.x as i32 + 40..home.x as i32 + 130).step_by(4) {
+            sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground - 7), radius: 7, max_hardness: 255 });
+        }
+        // A pit of its own for the oil (on the pool it spreads over all of it).
+        for x in (home.x as i32 + 150..home.x as i32 + 175).step_by(4) {
+            sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground - 5), radius: 5, max_hardness: 255 });
+        }
+        state.3 = ground;
+        state.0 = 1;
+    }
+    if state.0 == 1 && t > 0.8 {
+        let ground = state.3;
+        for x in (home.x as i32 + 42..home.x as i32 + 128).step_by(3) {
+            for dy in [-7, -3] {
+                sim.queue(WorldEdit::Paint { center: CellPos::new(x, ground + dy), radius: 4, material: water, overwrite: false });
+            }
+        }
+        state.0 = 2;
+    }
+    if state.0 == 2 && t > 1.3 {
+        let ground = state.3;
+        for x in (home.x as i32 + 152..home.x as i32 + 173).step_by(3) {
+            sim.queue(WorldEdit::Paint { center: CellPos::new(x, ground - 3), radius: 3, material: oil, overwrite: false });
+        }
+        state.0 = 3;
+    }
+    let ground = state.3 as f32;
+    // (wand key, aim, from, to): the fireball is hotbar 1 slot 7; spark 6;
+    // acid 8; frost hotbar 2 slot 6.
+    let plan: [(KeyCode, bool, Vec2, f32, f32); 6] = [
+        (KeyCode::Digit7, false, home + Vec2::new(13.0, 54.0), 2.0, 2.1),
+        (KeyCode::Digit7, false, Vec2::new(home.x + 110.0, ground), 3.5, 3.6),
+        (KeyCode::Digit6, false, Vec2::new(home.x + 75.0, ground - 6.0), 5.0, 5.1),
+        (KeyCode::Digit8, false, Vec2::new(home.x + 75.0, ground + 8.0), 6.0, 6.1),
+        (KeyCode::Digit7, false, home + Vec2::new(23.0, 44.0), 7.0, 7.1),
+        (KeyCode::Digit6, true, Vec2::new(home.x + 75.0, ground - 6.0), 8.5, 8.6),
+    ];
+    let now = plan.iter().find(|p| t >= p.3 - 0.3 && t < p.4);
+    if let Some(&(key, bar2, aim, from, _)) = now {
+        if t < from {
+            // Pick the wand first (the second hotbar for frost, and back).
+            if bar2 != (state.1 > 0.5) {
+                keys.press(KeyCode::KeyX);
+                state.1 = if bar2 { 1.0 } else { 0.0 };
+            }
+            keys.press(key);
+        }
+        cursor.0 = Some(aim);
+        if t >= from { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    } else {
+        mouse.release(MouseButton::Left);
+        cursor.0 = Some(home + Vec2::new(20.0, 10.0));
+    }
+    if (t * 2.0).floor() != ((t - 0.017) * 2.0).floor() && state.0 >= 2 {
+        let count = |n: &str| sim.materials().id(n).map_or(0, |m| sim.world.chunks().map(|c| c.cells().iter().filter(|c| c.material == m).count()).sum::<usize>());
+        let burning: usize = sim.world.chunks().map(|c| c.cells().iter().filter(|c| c.flags & platypus_sim::cell::flags::BURNING != 0).count()).sum();
+        let flying = sim.world.particles().iter().filter(|p| p.cell.material == water).count();
+        info!("splash: t {t:.1} water {} (+{flying} flying) steam {} ice {} oil {} burning {burning}", count("water"), count("steam"), count("ice"), count("oil"));
     }
 }

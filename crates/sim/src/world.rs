@@ -620,6 +620,28 @@ impl World {
             if d <= r {
                 let force = power as f32 * (1.0 - 0.5 * (d / r).powi(2));
                 let mut now_air = c.is_air();
+                if ph.kind == Kind::Liquid {
+                    // Liquid isn't destroyed, it's thrown: up and out, a
+                    // geyser; near the heart some flashes to vapour (water
+                    // to steam); what burns goes up burning (oil).
+                    if d < r * 0.5 && ph.above_into != MaterialId::AIR && rng.chance(BLAST_BOIL) {
+                        let mut vapour = mats.spawn(ph.above_into, &mut rng);
+                        vapour.heat = vapour.heat.max(BLAST_VAPOUR_HEAT);
+                        self.set(p, vapour);
+                    } else {
+                        self.set(p, Cell::AIR);
+                        let mut drop = c;
+                        drop.flags = 0;
+                        if ph.flammability > 0 {
+                            drop.flags |= flags::BURNING;
+                            drop.life = ph.burn_time;
+                        }
+                        let mut vel = outward(center, p, &mut rng, power as f32 / 100.0 * (1.5 + 3.5 * (1.0 - d / (r + 1.0))));
+                        vel[1] = vel[1].abs() * 0.6 + power as f32 / 100.0 * (1.0 + rng.next_u8() as f32 / 255.0);
+                        self.particles.push(Particle::new(center_of(p), vel, drop, 200, Landing::Settle));
+                    }
+                    continue;
+                }
                 if !c.is_air() {
                     if breakable(ph.hardness) && ph.hardness as f32 <= force {
                         report.add_removed(c.material);
@@ -1669,6 +1691,9 @@ const RAIN_BUDGET: u32 = 18_000;
 
 /// Chance /256 that a cell destroyed by a blast flies as debris.
 const DEBRIS_CHANCE: u8 = 120;
+/// Liquid near a blast's heart that flashes to vapour (/256), and how hot.
+const BLAST_BOIL: u8 = 70;
+const BLAST_VAPOUR_HEAT: i16 = 140;
 /// How far past the crater loose material (sand, gravel, water) is flung.
 const FLING_RIM: i32 = 7;
 /// Extra heat on blast debris, so it glows in flight.
