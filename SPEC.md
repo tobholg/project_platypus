@@ -713,6 +713,21 @@ deaths (blood). Rendered as one dynamic mesh.
   40 ms/frame against 13 ms standing still. Lighting and visibility are
   computed per chunk on a coarse grid when *the world* changes, and applied
   on the GPU.
+- Fire is drawn by its life, not its shade: white-hot when new, then
+  yellow, orange, red, nearly out, jittered a step either way each tick (a
+  fire flickers from hot to dull), and it licks upward: a pixel or two of
+  flame drawn into the air above it (drawing only; the sim's fire rules are
+  unchanged).
+- **Sparks** (`vfx.rs`): visual-only effects, not in the sim, one dynamic
+  mesh like the particles (at most 8000, oldest first): position,
+  velocity, gravity, drag, jitter, colours over life, fading over the last
+  third, an optional faint halo 3× their size. What spells look like is
+  data (6.1, `look`). A soft round `Halo` image (tinted by the sprite) is
+  what spells glow in.
+- **Hurt** (`actors/hurt.rs`): anything with `Health` that loses 2 or more
+  in a tick flashes red for 0.12 s; what it loses floats up as a number
+  (hits in the first 0.35 s add to it; the player's red, others pale),
+  noticed just before deaths so a killing blow shows.
 
 
 ### 4.1 Lighting and the day
@@ -833,6 +848,12 @@ deaths (blood). Rendered as one dynamic mesh.
   and sets it alight (`elements::zapped`), as the sky's lightning does. It
   doesn't flare the air in its first 8 cells (the caster's hand). Into water
   (or anything that `charges`) it charges the pool (§3.12).
+- **Looks** (visual only): each rune may have a `look`: a `trail` (sparks a
+  cell flown; a stream's come out of the wand with it) and a `burst`
+  (sparks where it lands, off the surface it hit, or back along its way).
+  A cast shows the looks of all its runes, so a composed spell looks
+  composed (fire trail + acid: flames and green drips). A bolt or orb is a
+  pale core in a halo of its colour.
 - **Every explosion hurts** (`actors::blasted`, from `StepStats::detonated`):
   bodies within 1.6 × its radius take up to 0.65 × its power and are thrown
   at up to 3 × its power, falling off with distance. Magic can hurt its

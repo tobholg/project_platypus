@@ -63,6 +63,57 @@ pub enum Modifier {
     Trigger,
 }
 
+/// What a rune looks like (visual only: `vfx`): sparks it trails as it
+/// flies, and sparks it bursts into where it lands. A cast shows the looks
+/// of all its runes (a fire trail on a bolt carrying acid: flames and
+/// drips).
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct Look {
+    pub trail: Option<Emitter>,
+    pub burst: Option<Emitter>,
+}
+
+/// Sparks: `count` per cell flown (a trail) or all at once (a burst).
+#[derive(Clone, Debug, Deserialize)]
+pub struct Emitter {
+    pub count: f32,
+    /// Seconds, (shortest, longest).
+    pub life: (f32, f32),
+    /// Its colour over its life, first to last (it fades out at the end).
+    pub colors: Vec<(u8, u8, u8)>,
+    /// Cells/s, fastest (each gets 30–100 % of it).
+    #[serde(default)]
+    pub speed: f32,
+    /// Radians either side of its direction (a trail: backwards; a burst:
+    /// off the surface it hit). 3.14 = all round.
+    #[serde(default = "all_round")]
+    pub spread: f32,
+    /// Cells/s² down (negative rises).
+    #[serde(default)]
+    pub gravity: f32,
+    /// Share of its speed lost a second.
+    #[serde(default)]
+    pub drag: f32,
+    /// Cells across.
+    #[serde(default = "one_cell")]
+    pub size: f32,
+    /// Jumps sideways at random (cells/s): electric crackle.
+    #[serde(default)]
+    pub jitter: f32,
+    /// A faint halo around it.
+    #[serde(default)]
+    pub glow: bool,
+}
+
+fn all_round() -> f32 {
+    std::f32::consts::PI
+}
+
+fn one_cell() -> f32 {
+    1.0
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub enum RuneKind {
     Carrier(Carrier),
@@ -82,6 +133,8 @@ pub struct RuneDef {
     #[serde(default = "white")]
     pub color: (u8, u8, u8),
     pub kind: RuneKind,
+    #[serde(default)]
+    pub look: Look,
 }
 
 fn white() -> (u8, u8, u8) {
@@ -126,6 +179,10 @@ pub struct Cast {
     pub then: Option<Arc<Cast>>,
     pub mana: f32,
     pub color: (u8, u8, u8),
+    /// The looks of all its runes: trails while it flies, bursts where it
+    /// lands.
+    pub trails: Vec<Emitter>,
+    pub bursts: Vec<Emitter>,
 }
 
 impl Cast {
@@ -169,10 +226,16 @@ fn one<'a, 'b>(runes: &'b [&'a RuneDef]) -> Option<(Cast, &'b [&'a RuneDef])> {
     let mut modifiers = Vec::new();
     let mut mana = 0.0;
     let mut i = 0;
+    let (mut trails, mut bursts) = (Vec::new(), Vec::new());
+    let mut look = |r: &RuneDef| {
+        trails.extend(r.look.trail.clone());
+        bursts.extend(r.look.burst.clone());
+    };
     let (carrier, color) = loop {
         let r = runes.get(i)?;
         i += 1;
         mana += r.mana;
+        look(r);
         match &r.kind {
             RuneKind::Modifier(m) => modifiers.push(m.clone()),
             RuneKind::Carrier(c) => break (c.clone(), r.color),
@@ -186,6 +249,7 @@ fn one<'a, 'b>(runes: &'b [&'a RuneDef]) -> Option<(Cast, &'b [&'a RuneDef])> {
     while let Some(RuneKind::Payload(p)) = runes.get(i).map(|r| &r.kind) {
         mana += runes[i].mana;
         color = runes[i].color;
+        look(runes[i]);
         payloads.push(p.clone());
         i += 1;
     }
@@ -198,7 +262,7 @@ fn one<'a, 'b>(runes: &'b [&'a RuneDef]) -> Option<(Cast, &'b [&'a RuneDef])> {
     } else {
         (None, &runes[i..])
     };
-    Some((Cast { carrier, modifiers, payloads, then, mana, color }, left))
+    Some((Cast { carrier, modifiers, payloads, then, mana, color, trails, bursts }, left))
 }
 
 #[cfg(test)]

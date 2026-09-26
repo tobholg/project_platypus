@@ -24,6 +24,7 @@ mod scenario;
 mod spikes;
 mod sky;
 mod tools;
+mod vfx;
 mod world;
 
 use std::sync::Arc;
@@ -85,7 +86,7 @@ fn main() {
             light::LightPlugin,
             scenario::ScenarioPlugin,
         ))
-        .add_plugins((dev::DevPlugin, magic::MagicPlugin))
+        .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin))
         .add_plugins(spikes_plugin)
         .run();
 }

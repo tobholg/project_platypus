@@ -129,9 +129,32 @@ fn is_plant(mats: &MaterialTable, c: Cell) -> bool {
     !c.is_air() && mats.phys(c.material).kind == Kind::Plant && !mats.def(c.material).still
 }
 
+/// A flame's colour through its life: white-hot when it's new, then yellow,
+/// orange, red, and nearly out.
+const FLAME: [[f32; 3]; 5] = [[255.0, 250.0, 215.0], [255.0, 214.0, 90.0], [255.0, 146.0, 36.0], [225.0, 76.0, 20.0], [130.0, 34.0, 18.0]];
+
+/// Per-cell noise that changes as the cell does (0..100).
+fn flicker(lx: usize, ly: usize, life: u8) -> u32 {
+    ((lx as u32).wrapping_mul(73856093) ^ (ly as u32).wrapping_mul(19349663) ^ (life as u32).wrapping_mul(83492791)) % 100
+}
+
+/// A fire cell: along `FLAME` by how much of its life it has left, jittered
+/// a step either way each tick, so a fire flickers from hot to dull.
+fn flame_rgba(ph: &platypus_sim::material::MatPhys, c: Cell, lx: usize, ly: usize) -> [u8; 4] {
+    let left = c.life as f32 / ph.life_max.max(1) as f32;
+    let n = flicker(lx, ly, c.life) as f32 / 100.0;
+    let x = ((1.0 - left) * 3.2 + (n - 0.5) * 1.4).clamp(0.0, 3.999);
+    let (i, k) = (x as usize, x.fract());
+    let (a, b) = (FLAME[i], FLAME[i + 1]);
+    [(a[0] + (b[0] - a[0]) * k) as u8, (a[1] + (b[1] - a[1]) * k) as u8, (a[2] + (b[2] - a[2]) * k) as u8, 255]
+}
+
 pub(crate) fn cell_rgba(mats: &MaterialTable, c: Cell, ambient: i32, dim: f32, lx: usize, ly: usize) -> [u8; 4] {
-    let mut rgba = mats.color(c);
     let ph = mats.phys(c.material);
+    if ph.kind == Kind::Fire {
+        return flame_rgba(ph, c, lx, ly);
+    }
+    let mut rgba = mats.color(c);
     // Mining damage on solids shows as darkening cracks.
     if c.life > 0 && matches!(ph.kind, Kind::Static | Kind::Powder) && ph.hardness > 0 && c.flags & flags::BURNING == 0 {
         let k = 1.0 - 0.6 * (c.life as f32 / ph.hardness as f32).min(1.0);
@@ -246,6 +269,21 @@ fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: Cell
             if def.motes {
                 let c = mats.color(c);
                 layer.glints.push(Glint { x: lx as u8, y: ly as u8, rgb: [c[0], c[1], c[2]] });
+            }
+            // Flames lick upward: a tongue of a pixel or two above a flame
+            // (drawing only), flickering with it.
+            if !back && mats.phys(c.material).kind == Kind::Fire {
+                let n = flicker(lx, ly, c.life.wrapping_add(7));
+                let tall = if n < 40 { 0 } else if n < 80 { 1 } else { 2 };
+                for k in 1..=tall {
+                    if ly + k < N && cells[(ly + k) * N + lx].is_air() {
+                        let i = px(lx, ly + k);
+                        let fade = if k == 1 { [255, 170, 50, 200] } else { [230, 90, 25, 130] };
+                        if layer.base[i + 3] < fade[3] {
+                            layer.base[i..i + 4].copy_from_slice(&fade);
+                        }
+                    }
+                }
             }
             if !back && is_plant(mats, c) && c.flags & flags::BURNING == 0 {
                 // Height above its root: plant cells below it in this column.

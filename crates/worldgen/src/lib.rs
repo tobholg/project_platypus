@@ -465,7 +465,7 @@ impl TerrainGen {
         let air = |x: i32, y: i32| self.material_at(x, y) == self.ids.air;
         let solid = |x: i32, y: i32| {
             let m = self.material_at(x, y);
-            m != self.ids.air && m != self.ids.water && m != self.ids.lava && m != self.ids.oil
+            m != self.ids.air && m != self.ids.water && m != self.ids.lava && m != self.ids.oil && m != self.ids.acid
         };
         (0..3_000).step_by(8).flat_map(|d| [x + d, x - d]).find_map(|x| {
             (y - 800..=y).rev().find(|&y| solid(x, y - 1) && (0..20).all(|dy| air(x, y + dy) && air(x + 7, y + dy)) && solid(x + 7, y - 1)).map(|y| CellPos::new(x + 4, y + 2))

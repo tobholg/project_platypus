@@ -337,19 +337,25 @@ pub fn catch_fire(commands: &mut Commands, entity: Entity, resist: Option<&Resis
     }
 }
 
-type Statuses<'a> = (&'a Children, Has<Burning>, Option<&'a Coated>, Option<&'a Chilled>);
+type Statuses<'a> = (&'a Children, Has<Burning>, Option<&'a Coated>, Option<&'a Chilled>, Option<&'a mut super::hurt::Hurt>);
 
-/// Burning creatures flicker orange; chilled ones go icy; coated ones take
-/// a little of their coating's colour.
+/// Just hit: a red flash. Otherwise burning creatures flicker orange;
+/// chilled ones go icy; coated ones take a little of their coating's colour.
 pub fn tint(
     time: Res<Time>,
     coatings: Res<Coatings>,
-    creatures: Query<Statuses>,
+    mut creatures: Query<Statuses>,
     mut sprites: Query<&mut Sprite, With<CreatureSprite>>,
 ) {
     let t = time.elapsed_secs();
-    for (children, burning, coated, chilled) in &creatures {
-        let color = if burning {
+    for (children, burning, coated, chilled, hurt) in &mut creatures {
+        let flash = hurt.is_some_and(|mut h| {
+            h.flash = (h.flash - time.delta_secs()).max(0.0);
+            h.flash > 0.0
+        });
+        let color = if flash {
+            Color::srgb(1.0, 0.3, 0.28)
+        } else if burning {
             let f = 0.5 + 0.5 * (t * 23.0).sin();
             Color::srgb(1.0, 0.55 + 0.25 * f, 0.3 + 0.2 * f)
         } else if let Some(c) = chilled {

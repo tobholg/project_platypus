@@ -12,6 +12,7 @@ pub mod animation;
 pub mod brain;
 pub mod creature;
 pub mod elements;
+pub mod hurt;
 pub mod player;
 pub mod spawn;
 
@@ -29,11 +30,11 @@ impl Plugin for ActorsPlugin {
         app.add_message::<Landed>()
             .add_plugins((creature::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, animation::AnimationPlugin))
             .add_plugins((player::PlayerPlugin, ai::AiPlugin))
-            .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, deaths).chain().in_set(TickSet::Bodies))
+            .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, hurt::notice, deaths).chain().in_set(TickSet::Bodies))
             .insert_resource(elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
             .add_systems(FixedUpdate, displace_liquid.after(move_creatures).in_set(TickSet::Bodies))
-            .add_systems(Update, (elements::tint, elements::reload_coatings))
+            .add_systems(Update, (elements::tint, elements::reload_coatings, hurt::watch, hurt::float))
             .add_systems(FixedUpdate, (elements::struck, elements::zapped, blasted).after(TickSet::Cells))
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate));
     }

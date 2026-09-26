@@ -31,6 +31,7 @@ use crate::actors::{Health, Kinematics};
 use crate::data::{Watched, data_path, load_ron};
 use crate::hands::items::{ItemId, Items, Use};
 use crate::light::LightSource;
+use crate::vfx::{Halo, Sparks};
 use crate::world::{SimWorld, TICK_HZ, TickSet};
 use runes::{Carrier, Cast, Payload, Runes, RunesFile};
 
@@ -165,7 +166,7 @@ impl Plugin for MagicPlugin {
             .init_resource::<Firing>()
             .add_message::<CastRequest>()
             .add_systems(Update, (reload_runes, give_mana, place_spells))
-            .add_systems(FixedUpdate, (recharge, request, fire, fly).chain().in_set(TickSet::Bodies));
+            .add_systems(FixedUpdate, (recharge, request, fire, fly).chain().in_set(TickSet::Bodies).before(crate::actors::hurt::notice));
     }
 }
 
@@ -230,13 +231,27 @@ fn request(
     }
 }
 
-fn fire(mut commands: Commands, mut firing: ResMut<Firing>, mut sim: ResMut<SimWorld>, coatings: Res<Coatings>, mut bodies: Query<Hittable>) {
+#[allow(clippy::too_many_arguments)]
+fn fire(
+    mut commands: Commands,
+    mut firing: ResMut<Firing>,
+    mut sim: ResMut<SimWorld>,
+    coatings: Res<Coatings>,
+    halo: Option<Res<Halo>>,
+    mut sparks: ResMut<Sparks>,
+    mut bodies: Query<Hittable>,
+) {
+    let halo = halo.map(|h| h.0.clone());
     for f in std::mem::take(&mut firing.0) {
         let cast = f.cast.clone();
         match &cast.carrier {
-            &Carrier::Bolt { speed, life } => spawn_spell(&mut commands, &f, speed, life, 0, 0.0),
-            &Carrier::Orb { speed, life, bounces } => spawn_spell(&mut commands, &f, speed, life, bounces, ORB_FALL),
+            &Carrier::Bolt { speed, life } => spawn_spell(&mut commands, &f, speed, life, 0, 0.0, halo.clone()),
+            &Carrier::Orb { speed, life, bounces } => spawn_spell(&mut commands, &f, speed, life, bounces, ORB_FALL, halo.clone()),
             Carrier::Stream { material, rate, speed, spread, burning } => {
+                // (A stream's trail is what comes out of the wand with it.)
+                for e in &cast.trails {
+                    sparks.emit(e, e.count.round() as usize, f.from + f.dir * STREAM_AHEAD, f.dir, Vec2::ZERO);
+                }
                 stream(&mut sim.world, &f, material, *rate, *speed, *spread, *burning);
                 let reach = speed * 0.25;
                 // Where it plays on something, it heats it (wood catches,
@@ -276,6 +291,9 @@ fn fire(mut commands: Commands, mut firing: ResMut<Firing>, mut sim: ResMut<SimW
                     // (Walled off: it hit the wall, not them.)
                     let hit = target.filter(|_| at.distance(to) < 4.0);
                     let dir = (to - f.from).normalize_or(f.dir);
+                    for e in &cast.bursts {
+                        sparks.emit(e, e.count as usize, at, -dir, Vec2::ZERO);
+                    }
                     land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, dir);
                     if let Some(then) = &cast.then {
                         firing.0.push(Fire { cast: then.clone(), caster: f.caster, from: at - dir * 2.0, dir, reach: TRIGGERED_REACH });
@@ -286,19 +304,28 @@ fn fire(mut commands: Commands, mut firing: ResMut<Firing>, mut sim: ResMut<SimW
     }
 }
 
-fn spawn_spell(commands: &mut Commands, f: &Fire, speed: f32, life: f32, bounces: u8, fall: f32) {
+fn spawn_spell(commands: &mut Commands, f: &Fire, speed: f32, life: f32, bounces: u8, fall: f32, halo: Option<Handle<Image>>) {
     let c = &f.cast;
     let vel = f.dir * speed * c.speed_scale();
     let (r, g, b) = c.color;
     let color = [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0];
     let (size, glow) = if matches!(c.carrier, Carrier::Orb { .. }) { (Vec2::splat(5.0), 2.4) } else { (Vec2::new(4.0, 1.5), 1.4) };
-    commands.spawn((
+    // A hot, pale core in a soft halo of its colour.
+    let core = Color::srgb(0.5 + color[0] * 0.5, 0.5 + color[1] * 0.5, 0.5 + color[2] * 0.5);
+    let mut spell = commands.spawn((
         Name::new("Spell"),
         Spell { cast: c.clone(), caster: f.caster, pos: f.from, prev: f.from, vel, age: 0.0, life, bounces, fall: fall + c.gravity() },
         LightSource { color: color.map(|x| x * glow), flicker: 0.15 },
-        Sprite::from_color(Color::srgb(0.25 + color[0] * 0.75, 0.25 + color[1] * 0.75, 0.25 + color[2] * 0.75), size),
+        Sprite::from_color(core, size),
         Transform::from_translation(f.from.extend(12.5)).with_rotation(Quat::from_rotation_z(vel.to_angle())),
     ));
+    if let Some(halo) = halo {
+        let across = size.max_element() * 3.5;
+        spell.with_child((
+            Sprite { image: halo, color: Color::srgba(color[0], color[1], color[2], 0.6), custom_size: Some(Vec2::splat(across)), ..default() },
+            Transform::from_xyz(0.0, 0.0, -0.1),
+        ));
+    }
 }
 
 /// Spray a stream's cells, from a little ahead of the wand: flames that
@@ -399,6 +426,7 @@ fn fly(
     mut firing: ResMut<Firing>,
     mut spells: Query<(Entity, &mut Spell)>,
     mut bodies: Query<Hittable>,
+    mut sparks: ResMut<Sparks>,
 ) {
     let mut landed = Vec::new();
     let mut trail = Vec::new();
@@ -436,6 +464,9 @@ fn fly(
                     break;
                 }
                 s.pos = next;
+                for e in &s.cast.trails {
+                    sparks.trail(e, 1.0, s.pos, -s.vel, s.vel * 0.15);
+                }
                 let (caster, age) = (s.caster, s.age);
                 let inside = |k: &Kinematics| ((next - k.body.pos).abs() - k.body.half).max_element() < 1.0;
                 if let Some((hit, ..)) = bodies.iter().find(|(b, k, ..)| (*b != caster || age > SELF_SAFE) && inside(k)) {
@@ -484,6 +515,11 @@ fn fly(
     }
     for (e, cast, caster, at, hit, dir, n) in landed {
         commands.entity(e).despawn();
+        // Off the surface it hit, or back the way it came.
+        let off = if n == Vec2::ZERO { -dir } else { n };
+        for b in &cast.bursts {
+            sparks.emit(b, b.count as usize, at, off, Vec2::ZERO);
+        }
         land(&mut commands, world, &coatings, &mut bodies, &cast, at, hit, dir);
         if let Some(then) = &cast.then {
             let dir = if n == Vec2::ZERO { dir } else { dir - 2.0 * dir.dot(n) * n };
