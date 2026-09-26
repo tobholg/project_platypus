@@ -83,10 +83,16 @@ pub struct CreatureDef {
     /// Walks through webs freely (spiders); others are held back in them.
     #[serde(default)]
     pub web_walker: bool,
-    /// What falls out of it when it dies (items, how many): a cocoon's
-    /// victim's things.
+    /// What's on it when it dies, besides what it wears (items, how many):
+    /// a cocoon's victim's things.
     #[serde(default)]
     pub drops: Vec<(String, u32)>,
+    /// Its loot table (`loot.ron`): rolled into its body when it dies.
+    #[serde(default)]
+    pub loot: Option<String>,
+    /// Whether it leaves a body to loot (else what it had spills out).
+    #[serde(default = "yes")]
+    pub corpse: bool,
     /// Procedural legs and a body seen from above (spiders: `legs.rs`).
     #[serde(default)]
     pub legs: Option<super::legs::LegsDef>,

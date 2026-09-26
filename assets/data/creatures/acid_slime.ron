@@ -2,6 +2,8 @@
 // bleeds when cut and bursts with when it dies; it glows a little.
 (
     name: "Acid slime",
+    // What it may have on it when it dies (loot.ron), besides what it wears.
+    loot: "slime",
     size: (10, 7),
     health: 36,
     team: Enemy,

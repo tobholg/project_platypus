@@ -2,6 +2,8 @@
 // so it crumbles to dust. The humanoid rig (assets/art/skeleton.ron).
 (
     name: "Skeleton",
+    // What it may have on it when it dies (loot.ron), besides what it wears.
+    loot: "skeleton",
     size: (6, 15),
     health: 55,
     team: Enemy,

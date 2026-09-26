@@ -98,6 +98,10 @@ struct SlotName(usize);
 #[derive(Component)]
 struct StatsText;
 
+/// What the open chest (or body) is called.
+#[derive(Component)]
+struct ChestTitle;
+
 const SLOT: f32 = 44.0;
 const ICON_PX: f32 = 32.0;
 const EMPTY: Color = Color::srgba(0.08, 0.08, 0.1, 0.72);
@@ -110,7 +114,7 @@ impl Plugin for UiPlugin {
         app.init_resource::<InventoryOpen>()
             .init_resource::<Held>()
             .add_systems(Startup, spawn)
-            .add_systems(Update, (toggle, press, release, show, show_gear, tooltip).chain());
+            .add_systems(Update, (toggle, press, release, show, show_gear, title, tooltip).chain());
     }
 }
 
@@ -277,7 +281,7 @@ fn spawn(mut commands: Commands) {
                 BackgroundColor(Color::srgba(0.12, 0.08, 0.04, 0.7)),
             ))
             .with_children(|panel| {
-                panel.spawn(small("Chest  |  Shift-click: to the pack  |  R: take all"));
+                panel.spawn((ChestTitle, small("Chest  |  Shift-click: to the pack  |  R: take all")));
                 panel.spawn(grid()).with_children(|g| {
                     for i in 0..SLOTS {
                         slot(g, Holder::Chest, i);
@@ -681,6 +685,14 @@ fn show_gear(
     let t = lines.join("\n");
     if text.0 != t {
         text.0 = t;
+    }
+}
+
+/// The open chest's (or body's) name over it.
+fn title(chests: Res<Chests>, mut t: Single<&mut Text, With<ChestTitle>>) {
+    let want = format!("{}  |  Shift-click: to the pack  |  R: take all", if chests.open_name.is_empty() { "Chest" } else { &chests.open_name });
+    if t.0 != want {
+        t.0 = want;
     }
 }
 

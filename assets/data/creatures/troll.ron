@@ -3,6 +3,8 @@
 // matter don't stop it: it staggers only after a lot.
 (
     name: "Troll",
+    // What it may have on it when it dies (loot.ron), besides what it wears.
+    loot: "troll",
     size: (15, 34),
     health: 420,
     team: Enemy,

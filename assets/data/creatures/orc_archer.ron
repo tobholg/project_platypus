@@ -3,6 +3,8 @@
 // them. The orc's rig (assets/art/orc.ron), a bow from weapons.ron.
 (
     name: "Orc archer",
+    // What it may have on it when it dies (loot.ron), besides what it wears.
+    loot: "orc_archer",
     size: (7, 16),
     health: 50,
     team: Enemy,

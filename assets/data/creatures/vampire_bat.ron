@@ -1,6 +1,8 @@
 // A vampire bat: flits high in caves; dives at you, bites, flies back up.
 (
     name: "Vampire bat",
+    // What it may have on it when it dies (loot.ron), besides what it wears.
+    loot: "vampire_bat",
     size: (6, 4),
     health: 16,
     team: Enemy,

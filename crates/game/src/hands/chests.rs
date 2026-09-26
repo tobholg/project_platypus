@@ -7,7 +7,9 @@
 //! holds the same things); a placed one gets a fresh key and starts empty.
 //!
 //! Right-click a chest within reach to open it; Shift-click moves a stack
-//! between the chest and the pack; R takes everything.
+//! between the chest and the pack; R takes everything. Anything else that
+//! holds things (a body: `corpses.rs`) is a `Container` kept here too, and
+//! opens the same way.
 
 use std::collections::HashMap;
 
@@ -72,11 +74,12 @@ struct LootFile {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-struct LootTable {
-    #[allow(dead_code)]
+pub struct LootTable {
     name: String,
-    /// Cells below sea level (large world) from which this table applies.
-    deeper_than: i32,
+    /// A chest's: cells below sea level (large world) from which this table
+    /// applies. None: a creature's (by name, its `loot`).
+    #[serde(default)]
+    deeper_than: Option<i32>,
     rolls: (u32, u32),
     entries: Vec<LootEntry>,
 }
@@ -86,6 +89,14 @@ struct LootEntry {
     item: String,
     weight: u32,
     count: (u32, u32),
+}
+
+/// Something in the world that holds things (a chest, a body): the key to
+/// what's in it, and what it's called in its window.
+#[derive(Component)]
+pub struct Container {
+    pub key: u64,
+    pub name: String,
 }
 
 /// A chest in the world: the key to what's in it, and how much more it
@@ -107,8 +118,9 @@ struct Stash {
 #[derive(Resource, Default)]
 pub struct Chests {
     known: HashMap<u64, Stash>,
-    /// The chest whose panel is open.
+    /// The chest (or body) whose panel is open, and what it's called.
     pub open: Option<u64>,
+    pub open_name: String,
     tables: Vec<LootTable>,
     /// Loot depths are written for the large world; others scale them.
     depth_scale: f32,
@@ -126,7 +138,7 @@ impl Plugin for ChestsPlugin {
     fn build(&self, app: &mut App) {
         let file: LootFile = load_ron(&data_path("loot.ron")).unwrap_or_else(|e| panic!("{e}"));
         let mut tables = file.tables;
-        tables.sort_by_key(|t| t.deeper_than);
+        tables.sort_by_key(|t| t.deeper_than.unwrap_or(i32::MIN));
         app.insert_resource(Chests { tables, depth_scale: 1.0, ..default() })
             .add_systems(Startup, setup)
             .add_systems(Update, (open_chest, take_all, close_far))
@@ -175,6 +187,7 @@ impl Chests {
         commands.spawn((
             Name::new("Chest"),
             Chest { key, hp: TOUGHNESS },
+            Container { key, name: "Chest".into() },
             Thrown { bounce: 0.0 },
             Kinematics { body: Body::new(centre, size()), loco: Locomotion::default(), prev_pos: centre },
             Sprite::from_image(self.art.clone()),
@@ -186,7 +199,7 @@ impl Chests {
     pub fn contents(&mut self, key: u64, world: &World, items: &Items) -> &mut Inventory {
         let stash = self.known.entry(key).or_insert(Stash { origin: CellPos::new(0, 0), contents: None });
         let depth = ((world.climate().sea_level - stash.origin.y) as f32 / self.depth_scale) as i32;
-        let table = self.tables.iter().rev().find(|t| depth >= t.deeper_than);
+        let table = self.tables.iter().rev().find(|t| t.deeper_than.is_some_and(|d| depth >= d));
         let origin = stash.origin;
         let found = Found { rarities: &self.rarities, level: item_level(depth), luck: self.luck };
         stash.contents.get_or_insert_with(|| {
@@ -196,6 +209,40 @@ impl Chests {
             }
             inv
         })
+    }
+
+    /// Keep what's in something new (a body): its key.
+    pub fn stash(&mut self, at: Vec2, contents: Inventory) -> u64 {
+        self.placed += 1;
+        let key = (1 << 62) | self.placed;
+        self.known.insert(key, Stash { origin: CellPos::from_world(at.x, at.y), contents: Some(contents) });
+        key
+    }
+
+    /// Forget what was kept under a key (the thing holding it is gone).
+    pub fn forget(&mut self, key: u64) {
+        self.known.remove(&key);
+        if self.open == Some(key) {
+            self.open = None;
+        }
+    }
+
+    /// Is what's kept under a key empty (or unknown)?
+    pub fn is_empty(&self, key: u64) -> bool {
+        self.known.get(&key).is_none_or(|s| s.contents.as_ref().is_some_and(|i| i.slots.iter().all(|s| s.is_none())))
+    }
+
+    /// The item level of what's found at `at` (the depth, as a chest's).
+    pub fn level_at(&self, world: &World, at: Vec2) -> u8 {
+        item_level(((world.climate().sea_level as f32 - at.y) / self.depth_scale) as i32)
+    }
+
+    /// Roll a creature's loot table (by name) into `inv`.
+    pub fn roll_table(&self, name: &str, inv: &mut Inventory, items: &Items, level: u8, luck: f32, rng: &mut Rng) {
+        match self.tables.iter().find(|t| t.name == name) {
+            Some(t) => roll(inv, t, items, &Found { rarities: &self.rarities, level, luck }, rng),
+            None => warn!("loot.ron: no table `{name}`"),
+        }
     }
 
     /// Break a chest: what's in it spills out at `at` (a never-opened one is
@@ -248,6 +295,9 @@ fn roll(inv: &mut Inventory, t: &LootTable, items: &Items, found: &Found, rng: &
         }) else {
             continue;
         };
+        if e.item == "nothing" {
+            continue;
+        }
         let Some(item) = items.id(&e.item) else {
             warn!("loot.ron: no item `{}`", e.item);
             continue;
@@ -290,16 +340,19 @@ fn open_chest(
     mut chests: ResMut<Chests>,
     mut open: ResMut<super::InventoryOpen>,
     player: Query<(&Kinematics, Option<&crate::gear::Stats>), With<LocalPlayer>>,
-    found: Query<(Entity, &Chest, &Kinematics)>,
+    found: Query<(&Container, &Kinematics)>,
 ) {
     if dev.0 || !mouse.just_pressed(MouseButton::Right) {
         return;
     }
     let (Some(at), Some(items), Ok((k, stats))) = (cursor.0, items, player.single()) else { return };
-    let Some((_, key, pos)) = chest_at(at, found.iter()) else { return };
+    // (A little forgiving: bodies are thin.)
+    let Some((c, ck)) = found.iter().filter(|(_, ck)| ((ck.body.pos - at).abs() - ck.body.half).max_element() <= 3.0).min_by(|a, b| a.1.body.pos.distance(at).total_cmp(&b.1.body.pos.distance(at))) else { return };
+    let (key, pos) = (c.key, ck.body.pos);
     if pos.distance(k.body.pos) > REACH {
         return;
     }
+    chests.open_name = c.name.clone();
     chests.luck = stats.map_or(0.0, |s| s.get(crate::gear::Stat::Luck));
     chests.contents(key, &sim.world, &items);
     chests.open = Some(key);
@@ -322,7 +375,7 @@ fn take_all(keys: Res<ButtonInput<KeyCode>>, items: Option<Res<Items>>, sim: Res
 }
 
 /// Walking away (or the chest going) closes it.
-fn close_far(mut chests: ResMut<Chests>, player: Query<&Kinematics, With<LocalPlayer>>, found: Query<(&Chest, &Kinematics)>) {
+fn close_far(mut chests: ResMut<Chests>, player: Query<&Kinematics, With<LocalPlayer>>, found: Query<(&Container, &Kinematics)>) {
     let (Some(key), Ok(k)) = (chests.open, player.single()) else { return };
     let near = found.iter().find(|(c, _)| c.key == key).is_some_and(|(_, ck)| ck.body.pos.distance(k.body.pos) <= REACH * 1.5);
     if !near {
@@ -404,7 +457,7 @@ mod tests {
         let (items, tables) = setup();
         for t in &tables {
             for e in &t.entries {
-                assert!(items.id(&e.item).is_some(), "loot.ron `{}`: no item `{}`", t.name, e.item);
+                assert!(e.item == "nothing" || items.id(&e.item).is_some(), "loot.ron `{}`: no item `{}`", t.name, e.item);
             }
             let gear: crate::gear::GearFile = crate::data::parse_ron(include_str!("../../../../assets/data/gear.ron")).unwrap();
             let found = Found { rarities: &gear.rarities, level: 10, luck: 0.0 };

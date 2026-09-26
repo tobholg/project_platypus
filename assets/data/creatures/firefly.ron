@@ -2,6 +2,8 @@
 // pulsing with light; darts off if you come close.
 (
     name: "Firefly",
+    // Leaves no body: what it had spills out.
+    corpse: false,
     size: (2, 2),
     health: 1,
     team: Neutral,

@@ -3,6 +3,8 @@
 // what they carried falls out (`drops`).
 (
     name: "Cocoon",
+    // Leaves no body: what it had spills out.
+    corpse: false,
     size: (6, 16),
     health: 20,
     team: Neutral,

@@ -128,6 +128,10 @@
 //!   inventory opened, a leather jerkin in the pack hovered (its tooltip,
 //!   against the chainmail worn); an orc in leather and a skeleton in cloth
 //!   stand by (brains off), to see gear on other humanoids
+//! - `loot`       (`PLATYPUS_WORLD=arena`) an orc in a rare helm and a jerkin
+//!   put beside the player (brain off) and struck dead at 1 s; logs its
+//!   body and what's in it; the body right-clicked at 2 s (logs what
+//!   opened)
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end
@@ -176,6 +180,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, crossing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, held_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, gear_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, loot_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -2480,6 +2485,70 @@ fn gear_script(
             info!("gear: hovering the jerkin in slot {at:?} at {pos:?}");
             window.set_cursor_position(pos);
             state.0 = 5;
+        }
+        _ => {}
+    }
+}
+
+/// A body to loot.
+#[allow(clippy::too_many_arguments)]
+fn loot_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    items: Option<Res<crate::hands::items::Items>>,
+    rules: Res<crate::gear::GearRules>,
+    mut chests: ResMut<crate::hands::chests::Chests>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    mut foes: Query<&mut crate::actors::Health, (With<crate::actors::Creature>, Without<LocalPlayer>)>,
+    bodies: Query<(&crate::hands::corpses::Corpse, &Kinematics)>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<u8>,
+) {
+    use crate::hands::items::{Roll, Stack};
+    if s.name != "loot" {
+        return;
+    }
+    let (Some(items), Ok(k)) = (items, player.single()) else { return };
+    let t = s.elapsed;
+    mouse.release(MouseButton::Right);
+    match *state {
+        0 if t > 0.5 => {
+            let helm = items.id("iron_helm").map(|i| Stack { roll: Roll { rarity: 2, level: 12, seed: 4242 }, ..Stack::new(i, 1) });
+            let jerkin = items.id("leather_jerkin").map(|i| Stack::new(i, 1));
+            let floor = platypus_worldgen::arena::FLOOR as f32;
+            crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(k.body.pos.x + 24.0, floor), move |e| {
+                e.remove::<crate::actors::ai::MeleeWalker>();
+                let mut eq = crate::gear::Equipment::default();
+                eq.worn[0] = helm;
+                eq.worn[1] = jerkin;
+                e.insert(eq);
+            });
+            *state = 1;
+        }
+        1 if t > 1.0 => {
+            for mut h in &mut foes {
+                h.hp = 0.0;
+            }
+            *state = 2;
+        }
+        2 if t > 1.6 => {
+            for (c, bk) in &bodies {
+                let key = c.key;
+                let inside: Vec<String> = chests.contents(key, &sim.world, &items).slots.iter().flatten().map(|s| rules.name(&items, s)).collect();
+                info!("loot: a body at ({:.0}, {:.0}) holding: {}", bk.body.pos.x, bk.body.pos.y, inside.join(", "));
+                cursor.0 = Some(bk.body.pos);
+            }
+            *state = 3;
+        }
+        3 if t > 2.0 => {
+            mouse.press(MouseButton::Right);
+            *state = 4;
+        }
+        4 if t > 2.3 => {
+            info!("loot: opened {:?} ({})", chests.open, chests.open_name);
+            *state = 5;
         }
         _ => {}
     }

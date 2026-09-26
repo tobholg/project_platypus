@@ -4,9 +4,10 @@
 //!
 //! 1–0 pick a hotbar slot · X the next hotbar · LMB use it · hold Ctrl: the
 //! right tool for the target (auto tool) · Alt: smart cursor on/off · Esc or
-//! I: inventory · RMB: open a chest (R takes all) · ` (or F1): dev tools.
+//! I: inventory · RMB: open a chest or a body (R takes all) · ` (or F1): dev tools.
 
 pub mod chests;
+pub mod corpses;
 pub mod icons;
 pub mod items;
 pub mod target;
@@ -119,7 +120,7 @@ impl Plugin for HandsPlugin {
             .add_systems(Update, (toggle_dev, select, wield, give_start, outline.run_if(play), icons::make_icons, icons::reload_icons))
             .add_systems(FixedUpdate, use_hands.run_if(play).in_set(TickSet::Intent))
             .add_systems(FixedUpdate, collect.after(crate::props::fly).in_set(TickSet::Bodies))
-            .add_plugins((ui::UiPlugin, chests::ChestsPlugin));
+            .add_plugins((ui::UiPlugin, chests::ChestsPlugin, corpses::CorpsesPlugin));
     }
 }
 

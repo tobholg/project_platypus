@@ -4,6 +4,8 @@
 // above; its bite knocks you back. Lives in nests (lairs.ron) and deep caves.
 (
     name: "Cave spider",
+    // What it may have on it when it dies (loot.ron), besides what it wears.
+    loot: "spider",
     size: (16, 12),
     health: 70,
     team: Enemy,

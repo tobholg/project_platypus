@@ -36,6 +36,7 @@ impl Plugin for ActorsPlugin {
         app.register_brain::<dummy::Dummy>("dummy")
             .add_message::<Landed>()
             .add_message::<AirJumped>()
+            .add_message::<Died>()
             .add_plugins((creature::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, animation::AnimationPlugin))
             .add_plugins((player::PlayerPlugin, ai::AiPlugin, critters::CrittersPlugin, monsters::MonstersPlugin, legs::LegsPlugin))
             .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, crate::combat::guard, hurt::notice, dummy::tally, deaths).chain().in_set(TickSet::Bodies))
@@ -399,29 +400,48 @@ fn blasted(mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<(&mut K
     }
 }
 
-type Mortal<'a> = (Entity, &'a mut Health, &'a mut Kinematics, Has<player::LocalPlayer>, Option<&'a hurt::Bleeds>, Option<&'a animation::Animator>);
+/// A creature died (not the player): what its body leaves (`hands::corpses`)
+/// needs to know what it was, where, how it looked and what it had on.
+#[derive(Message, Clone)]
+pub struct Died {
+    pub def: std::sync::Arc<creature::CreatureDef>,
+    pub body: platypus_physics::Body,
+    pub facing: f32,
+    /// Its picture as it fell, and where it sat on the body.
+    pub sprite: Option<(Sprite, Vec3)>,
+    pub worn: Vec<crate::hands::items::Stack>,
+}
 
+type Mortal<'a> = (
+    Entity,
+    &'a mut Health,
+    &'a mut Kinematics,
+    Has<player::LocalPlayer>,
+    Option<&'a hurt::Bleeds>,
+    Option<&'a animation::Animator>,
+    Option<&'a Creature>,
+    Option<&'a crate::gear::Equipment>,
+    Option<&'a Children>,
+);
+
+#[allow(clippy::too_many_arguments)]
 fn deaths(
     mut commands: Commands,
     mut sim: ResMut<SimWorld>,
     mut deaths: ResMut<PlayerDeaths>,
-    items: Option<Res<crate::hands::items::Items>>,
+    mut died: MessageWriter<Died>,
+    sprites: Query<(&Sprite, &Transform), With<animation::CreatureSprite>>,
     mut q: Query<Mortal>,
 ) {
     let spawn = sim.generator.spawn_point();
-    for (entity, mut h, mut k, is_player, bleeds, anim) in &mut q {
+    for (entity, mut h, mut k, is_player, bleeds, anim, creature, eq, children) in &mut q {
         if h.hp > 0.0 {
             continue;
         }
-        // What it carried falls out (a cocoon's victim's things).
-        if let (Some(items), Some(anim)) = (items.as_deref(), anim)
-            && !is_player
-        {
-            for (id, n) in &anim.def.drops {
-                if let Some(item) = items.id(id) {
-                    crate::hands::spawn_drop(&mut commands, items, k.body.pos, crate::hands::items::Stack::new(item, n * items.unit(item)));
-                }
-            }
+        if let (Some(anim), true, false) = (anim, creature.is_some(), is_player) {
+            let sprite = children.and_then(|ch| ch.iter().find_map(|e| sprites.get(e).ok())).map(|(s, tf)| (s.clone(), tf.translation));
+            let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
+            died.write(Died { def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn });
         }
         if let Some(&hurt::Bleeds(blood)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.

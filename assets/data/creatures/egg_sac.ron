@@ -2,6 +2,8 @@
 // into spiderlings.
 (
     name: "Egg sac",
+    // Leaves no body: what it had spills out.
+    corpse: false,
     size: (7, 9),
     health: 20,
     team: Enemy,

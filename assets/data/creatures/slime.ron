@@ -2,6 +2,8 @@
 // when it lands (touch). Full of slime.
 (
     name: "Slime",
+    // What it may have on it when it dies (loot.ron), besides what it wears.
+    loot: "slime",
     size: (10, 7),
     health: 30,
     team: Enemy,

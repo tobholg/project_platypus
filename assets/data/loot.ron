@@ -3,7 +3,12 @@
 // so the same chest always holds the same things.
 //
 // rolls: (min, max) draws · each draw picks an entry by weight · count: (min,
-// max) whole items (blocks: whole blocks) · several draws of one item stack.
+// max) whole items (blocks: whole blocks) · several draws of one item stack ·
+// "nothing" is an entry that gives nothing (a draw that comes up empty).
+//
+// A chest's table has `deeper_than`; a creature's has none and is named by
+// its creature file (`loot`): rolled into its body when it dies, at the
+// depth it died, with the player's luck. What it wears is in the body too.
 // Item ids from items.ron (or gear.ron), or "block:<material>". Gear is
 // rolled as it's found: a rarity and bonuses, its item level from the depth
 // (a level every 150 cells down).
@@ -76,6 +81,63 @@
             (item: "storm_ring", weight: 2, count: (1, 1)),
             (item: "lucky_coin", weight: 2, count: (1, 1)),
             (item: "longsword", weight: 3, count: (1, 1)),
+        ]),
+
+        // ---- creatures' (their bodies) ----
+        (name: "orc", rolls: (1, 2), entries: [
+            (item: "nothing", weight: 30, count: (1, 1)),
+            (item: "torch", weight: 12, count: (1, 3)),
+            (item: "bomb", weight: 4, count: (1, 2)),
+            (item: "leather_cap", weight: 5, count: (1, 1)),
+            (item: "leather_jerkin", weight: 4, count: (1, 1)),
+            (item: "leather_gloves", weight: 4, count: (1, 1)),
+            (item: "leather_trousers", weight: 4, count: (1, 1)),
+            (item: "leather_boots", weight: 4, count: (1, 1)),
+            (item: "ring_of_vigour", weight: 1, count: (1, 1)),
+            (item: "lucky_coin", weight: 1, count: (1, 1)),
+        ]),
+        (name: "orc_archer", rolls: (1, 2), entries: [
+            (item: "arrow", weight: 30, count: (4, 12)),
+            (item: "nothing", weight: 20, count: (1, 1)),
+            (item: "leather_cap", weight: 4, count: (1, 1)),
+            (item: "leather_boots", weight: 4, count: (1, 1)),
+            (item: "leather_gloves", weight: 4, count: (1, 1)),
+            (item: "bow", weight: 3, count: (1, 1)),
+        ]),
+        (name: "troll", rolls: (2, 3), entries: [
+            (item: "nothing", weight: 10, count: (1, 1)),
+            (item: "bomb", weight: 8, count: (1, 3)),
+            (item: "iron_helm", weight: 5, count: (1, 1)),
+            (item: "chainmail", weight: 4, count: (1, 1)),
+            (item: "iron_gauntlets", weight: 4, count: (1, 1)),
+            (item: "iron_greaves", weight: 4, count: (1, 1)),
+            (item: "iron_boots", weight: 4, count: (1, 1)),
+            (item: "ring_of_vigour", weight: 3, count: (1, 1)),
+        ]),
+        (name: "skeleton", rolls: (1, 2), entries: [
+            (item: "nothing", weight: 25, count: (1, 1)),
+            (item: "cloth_hood", weight: 5, count: (1, 1)),
+            (item: "apprentice_robe", weight: 4, count: (1, 1)),
+            (item: "cloth_trousers", weight: 4, count: (1, 1)),
+            (item: "soft_boots", weight: 4, count: (1, 1)),
+            (item: "frost_charm", weight: 2, count: (1, 1)),
+            (item: "storm_ring", weight: 2, count: (1, 1)),
+            (item: "shortsword", weight: 2, count: (1, 1)),
+        ]),
+        (name: "spider", rolls: (0, 1), entries: [
+            (item: "nothing", weight: 16, count: (1, 1)),
+            (item: "silk_gloves", weight: 4, count: (1, 1)),
+            (item: "feather_boots", weight: 1, count: (1, 1)),
+        ]),
+        (name: "vampire_bat", rolls: (0, 1), entries: [
+            (item: "nothing", weight: 20, count: (1, 1)),
+            (item: "lucky_coin", weight: 1, count: (1, 1)),
+            (item: "ember_amulet", weight: 1, count: (1, 1)),
+        ]),
+        (name: "slime", rolls: (0, 1), entries: [
+            (item: "nothing", weight: 12, count: (1, 1)),
+            (item: "glowstick", weight: 6, count: (1, 3)),
+            (item: "bomb", weight: 2, count: (1, 1)),
         ]),
     ],
 )

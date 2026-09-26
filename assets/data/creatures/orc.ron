@@ -3,6 +3,8 @@
 // (assets/art/orc.ron), its weapon from weapons.ron.
 (
     name: "Orc",
+    // What it may have on it when it dies (loot.ron), besides what it wears.
+    loot: "orc",
     size: (7, 16),
     health: 70,
     team: Enemy,
