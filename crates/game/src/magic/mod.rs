@@ -467,7 +467,6 @@ fn lightning_targets(bodies: &Query<Hittable>, f: &Fire, range: f32, n: usize) -
 }
 
 /// A cast's payloads, where it landed (`hit`: the body it hit).
-#[allow(clippy::too_many_arguments)]
 ///
 /// `doused`: it met water (or anything that puts fire out) burning: no fire,
 /// and its heat flashes the water around it to steam.
