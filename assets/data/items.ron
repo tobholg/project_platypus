@@ -93,6 +93,12 @@
         (id: "acid_staff",     name: "Acid staff",     color: (120, 230, 60), use: Focus(tier: 2, element: Acid, spells: ["toxic_cloud", "acid_arrow"]),
             gear: (slot: Held, stats: { AcidPower: 50, SpellPower: 10, Mana: 20 }),
             aura: (light: (130, 240, 70), strength: 0.6, sparks: (count: 6, life: (0.4, 0.9), colors: [(200, 255, 120), (140, 110, 160), (90, 200, 40)], speed: 3, spread: 0.4, gravity: 120, glow: true))),
+        (id: "void_wand",      name: "Void wand",      color: (150, 110, 240), use: Focus(tier: 1, element: Void, spells: ["blink_bolt"]),
+            gear: (slot: Held, stats: { VoidPower: 40, CastSpeed: 5 }),
+            aura: (light: (160, 120, 255), strength: 0.5, sparks: (count: 8, life: (0.3, 0.8), colors: [(230, 210, 255), (140, 90, 240), (40, 20, 90)], speed: 6, drag: 2, glow: true))),
+        (id: "void_staff",     name: "Void staff",     color: (150, 110, 240), use: Focus(tier: 2, element: Void, spells: ["portal", "stasis"]),
+            gear: (slot: Held, stats: { VoidPower: 50, SpellPower: 10, Mana: 20 }),
+            aura: (light: (160, 120, 255), strength: 0.6, sparks: (count: 10, life: (0.3, 0.9), colors: [(230, 210, 255), (140, 90, 240), (40, 20, 90)], speed: 6, drag: 2, glow: true))),
         (id: "shortsword",     name: "Shortsword",     color: (200, 206, 216), use: Melee("shortsword"), gear: (slot: Held),
             about: "Quick: slash, backslash, thrust. Strike down in the air to bounce off what you hit."),
         (id: "longsword",      name: "Longsword",      color: (180, 188, 204), use: Melee("longsword"), gear: (slot: Held),
@@ -124,7 +130,7 @@
         ("shortsword", 1), ("longsword", 1), ("bow", 1), ("arrow", 60),
         ("leather_cap", 1), ("chainmail", 1), ("apprentice_robe", 1), ("feather_boots", 1), ("ring_of_vigour", 1), ("ember_amulet", 1),
         ("cloud_boots", 1), ("radiant_staff", 1), ("frost_staff", 1), ("blaze_staff", 1),
-        ("storm_wand", 1), ("acid_staff", 1),
+        ("storm_wand", 1), ("acid_staff", 1), ("void_wand", 1), ("void_staff", 1),
     ],
     // What a new player wears (while developing: rocket boots and a
     // grappling hook to try).

@@ -116,7 +116,8 @@ pub fn empower(cast: &Cast, power: f32, harm: Harm) -> Arc<Cast> {
                 Payload::Matter { cells, .. } => *cells = (*cells as f32 * power).round() as u32,
                 Payload::Vaporise { power: v, .. } => *v = (*v as f32 * power).round().clamp(1.0, 255.0) as u8,
                 Payload::Nova { power: n, .. } => *n *= power,
-                Payload::Ignite { .. } | Payload::Shatter { .. } | Payload::Arc => {}
+                Payload::Stasis { secs, .. } => *secs *= power,
+                Payload::Ignite { .. } | Payload::Shatter { .. } | Payload::Arc | Payload::Blink | Payload::Portal => {}
             }
         }
         match &mut c.carrier {

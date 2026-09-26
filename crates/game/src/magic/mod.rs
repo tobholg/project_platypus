@@ -24,6 +24,7 @@ pub mod beam;
 pub mod conjure;
 pub mod runes;
 pub mod spells;
+pub mod void;
 pub mod warp;
 pub mod well;
 
@@ -205,6 +206,8 @@ pub struct Spell {
     /// one.
     wet: bool,
     skips: u8,
+    /// Held in stasis this tick (`void::stasis`): it waits.
+    held: bool,
 }
 
 type Hittable<'a> = (Entity, &'a mut Kinematics, &'a mut Health, Option<&'a Resist>, Option<&'a Coated>);
@@ -221,7 +224,16 @@ impl Plugin for MagicPlugin {
             .init_resource::<beam::BeamLights>()
             .add_systems(Update, (reload_runes, give_mana, place_spells, well::give_warp, well::show))
             .add_systems(PostUpdate, beam::draw.before(bevy::transform::TransformSystems::Propagate))
-            .add_systems(FixedUpdate, (recharge, request, fire, fly, well::channel, conjure::hold).chain().in_set(TickSet::Bodies).before(crate::actors::hurt::notice));
+            .init_resource::<void::Acts>()
+            .init_resource::<void::Pairs>()
+            .init_resource::<void::Recent>()
+            .init_resource::<void::VoidCanvas>()
+            .add_systems(FixedUpdate, (recharge, request, fire, void::stasis, fly, void::act, well::channel, conjure::hold).chain().in_set(TickSet::Bodies).before(crate::actors::hurt::notice))
+            .add_systems(
+                FixedUpdate,
+                (void::pin, void::through, void::age).chain().in_set(TickSet::Bodies).after(void::act).after(crate::actors::move_creatures).after(crate::props::fly),
+            )
+            .add_systems(PostUpdate, void::draw.before(bevy::transform::TransformSystems::Propagate));
     }
 }
 
@@ -508,6 +520,7 @@ fn spawn_spell(commands: &mut Commands, f: &Fire, speed: f32, life: f32, bounces
             fall: fall + c.gravity(),
             wet: false,
             skips: if matches!(c.carrier, Carrier::Orb { .. }) { ORB_SKIPS } else { 0 },
+            held: false,
         },
         LightSource { color: color.map(|x| x * glow), flicker: 0.15 },
         Sprite::from_color(core, size),
@@ -615,6 +628,8 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
                 }
             }
             &Payload::Nova { radius, power } => booms.push(crate::fx::Explosion { at, radius, power }),
+            // (Void: `fly` hands these to `void::act`.)
+            Payload::Blink | Payload::Portal | Payload::Stasis { .. } => {}
             Payload::Arc => {
                 let back = at - dir * 6.0;
                 world.apply_edit(&WorldEdit::Zap { from: CellPos::from_world(back.x, back.y), to: center });
@@ -706,6 +721,7 @@ fn fly(
     mut bodies: Query<Hittable>,
     mut sparks: ResMut<Sparks>,
     mut blasts: MessageWriter<crate::fx::Explosion>,
+    mut acts: ResMut<void::Acts>,
 ) {
     let mut booms = Vec::new();
     let mut landed = Vec::new();
@@ -722,6 +738,9 @@ fn fly(
         for (e, mut s) in &mut spells {
             let s = &mut *s;
             s.prev = s.pos;
+            if s.held {
+                continue;
+            }
             s.age += DT;
             s.vel.y -= GRAVITY * s.fall * DT;
             let travel = s.vel * DT;
@@ -863,6 +882,15 @@ fn fly(
             }
         }
         land(&mut commands, world, &coatings, &mut bodies, &cast, at, hit, dir, doused, false, &mut booms);
+        // Void: carried out after (`void::act`).
+        for p in &cast.payloads {
+            match *p {
+                Payload::Blink => acts.0.push(void::Act::Blink { caster, at, dir }),
+                Payload::Portal => acts.0.push(void::Act::Portal { caster, at, normal: off }),
+                Payload::Stasis { radius, secs } => acts.0.push(void::Act::Stasis { at, radius, secs }),
+                _ => {}
+            }
+        }
         if let Some(then) = &cast.then {
             let dir = if n == Vec2::ZERO { dir } else { dir - 2.0 * dir.dot(n) * n };
             firing.0.push(Fire { cast: then.clone(), caster, from: at, dir, reach: TRIGGERED_REACH });

@@ -121,6 +121,15 @@ pub enum Payload {
     /// A spark of lightning where it lands: it arcs into what's there,
     /// through water and whatever's wet or metal in it.
     Arc,
+    /// The caster is where it lands (beside what it hit), moving as they
+    /// were (`void.rs`).
+    Blink,
+    /// A portal where it lands, facing out of what it hit: the caster's
+    /// first, then second, of a pair (`void.rs`).
+    Portal,
+    /// A stasis bubble of `radius` where it lands, for `secs`: what's in it
+    /// is held, and goes on as it was when it bursts (`void.rs`).
+    Stasis { radius: f32, secs: f32 },
 }
 
 fn stream_life() -> f32 {

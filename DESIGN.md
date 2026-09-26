@@ -309,9 +309,13 @@ shock bolt (`Arc`: a spark of lightning where it lands); the wall carrier
 and the cloud carrier (toxic cloud: miasma, a new *heavy* gas that sinks
 and pools, corrosive and flammable); the call carrier (call lightning:
 a storm forced over the spot, then the sky's lightning; meteor: a burning
-rock falling from high up, crater, fire, lava; both need open sky). Next:
-void (blink bolt, a momentum-keeping portal pair for bodies, projectiles
-and liquids, stasis).
+rock falling from high up, crater, fire, lava; both need open sky); void
+(`void.rs`): blink (you're where the bolt lands), portal pairs (bodies,
+spells in flight, and liquids and sand pressing into a mouth come out of
+the twin, speed turned to face out; a minute each), stasis (a bubble that
+holds bodies and spells, which go on as they were when it bursts). First
+batch done; the rest of the matrix fills in as data, and stasis could hold
+particles and falling cells too.
 
 **Weapons.** Melee as §7 (moves as data per weapon class, sprite-mask hits,
 stamina and poise), plus coatings on blades (a sword dipped in oil and lit

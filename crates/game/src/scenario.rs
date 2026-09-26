@@ -220,6 +220,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, beams_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, conjure_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, call_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -3528,5 +3529,169 @@ fn call_script(
         mouse.press(MouseButton::Right);
     } else if !right && mouse.pressed(MouseButton::Right) {
         mouse.release(MouseButton::Right);
+    }
+}
+
+type VoidCaster<'a> = (&'a mut Kinematics, &'a mut crate::hands::items::Inventory, &'a mut crate::actors::Health);
+
+/// Void: a blink along the floor; a portal pair (one in the floor, one on
+/// the left face of a stone column) and a chest, water and the player
+/// dropped into the floor one; stasis on a walking orc and a fireball
+/// thrown into it. Logs each.
+#[allow(clippy::too_many_arguments)]
+fn void_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut chests: ResMut<crate::hands::chests::Chests>,
+    mut hand: ResMut<crate::hands::Hand>,
+    mut player: Query<VoidCaster, With<LocalPlayer>>,
+    boxes: Query<&Kinematics, (With<crate::hands::chests::Chest>, Without<LocalPlayer>)>,
+    orcs: Query<ConjureFoe, IceFoe>,
+    spells: Query<&crate::magic::Spell>,
+    portals: Query<&crate::magic::void::Portal>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, f32, Vec2)>,
+) {
+    if s.name != "void" {
+        return;
+    }
+    let Ok((mut k, mut inv, mut hp)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let fl = floor as f32;
+    hp.hp = hp.max;
+    let (mut left, mut right) = (false, false);
+    let put = |k: &mut Kinematics, at: Vec2| {
+        k.body.pos = at;
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = at;
+    };
+    let water = |sim: &SimWorld, xs: std::ops::Range<i32>| sim.materials().id("water").map_or(0, |m| xs.flat_map(|x| (floor..floor + 120).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
+    match state.0 {
+        0 if t > 0.5 => {
+            // The void wand and staff out of the pack, onto hotbar 3.
+            if let Some(items) = &items {
+                for (id, to) in [("void_wand", 20), ("void_staff", 21)] {
+                    if let Some(i) = inv.slots.iter().position(|s| s.is_some_and(|s| items.def(s.item).id == id)) {
+                        inv.slots.swap(i, to);
+                    }
+                }
+            }
+            put(&mut k, Vec2::new(520.0, fl + 8.0));
+            state.0 = 1;
+        }
+        // Blink along the floor.
+        1 => {
+            hand.bar = 2;
+            hand.slot = 0;
+            cursor.0 = Some(Vec2::new(640.0, fl - 2.0));
+            left = (0.7..0.75).contains(&t);
+            if t > 1.4 {
+                info!("void: blinked from x 520 toward x 640: now at x {:.0}, y {:.0}", k.body.pos.x, k.body.pos.y - fl);
+                put(&mut k, Vec2::new(620.0, fl + 8.0));
+                state.0 = 2;
+            }
+        }
+        // A portal in the floor at 580, then one on the column's left face.
+        2 => {
+            hand.bar = 2;
+            hand.slot = 1;
+            // (The second from nearer the column: a void bolt reaches ~330 cells.)
+            if t > 2.0 {
+                put(&mut k, Vec2::new(975.0, fl + 8.0));
+            }
+            cursor.0 = Some(if t < 2.0 { Vec2::new(580.0, fl - 2.0) } else { Vec2::new(1100.0, fl + 90.0) });
+            left = (1.6..1.65).contains(&t) || (2.2..2.25).contains(&t);
+            if t > 2.8 {
+                let at: Vec<String> = portals.iter().map(|p| format!("({:.0}, {:.0}) facing ({:.0}, {:.0})", p.at.x, p.at.y - fl, p.normal.x, p.normal.y)).collect();
+                info!("void: portals open: {at:?}");
+                put(&mut k, Vec2::new(520.0, fl + 8.0));
+                chests.spawn_placed(&mut commands, Vec2::new(581.0, fl + 60.0));
+                state.0 = 3;
+                state.1 = t;
+            }
+        }
+        // A chest dropped into the floor portal.
+        3 => {
+            if let Some(c) = boxes.iter().next()
+                && state.2 == Vec2::ZERO
+                && c.body.pos.x > 1000.0
+            {
+                state.2 = c.body.pos;
+                info!("void: the chest dropped into the floor portal came out at ({:.0}, {:.0}) moving ({:.0}, {:.0})", c.body.pos.x, c.body.pos.y - fl, c.body.vel.x, c.body.vel.y);
+            }
+            if t - state.1 > 1.5 {
+                let c = boxes.iter().next().map(|c| c.body.pos);
+                info!("void: 1.5 s later the chest is at {:?}", c.map(|c| (c.x as i32, (c.y - fl) as i32)));
+                // Water poured over the floor portal.
+                if let Some(w) = sim.materials().id("water") {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(580, floor + 40), radius: 8, material: w, overwrite: false });
+                }
+                state.0 = 4;
+                state.1 = t;
+            }
+        }
+        4 => {
+            if t - state.1 > 2.0 {
+                let obsidian = sim.materials().id("obsidian").map_or(0, |m| (890..970).flat_map(|x| (floor - 30..floor + 10).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
+                info!("void: water poured over the floor portal: {} cells left by it, {} by the column (x 960..1100), {} obsidian on the lava pit", water(&sim, 540..620), water(&sim, 960..1100), obsidian);
+                // The player dropped in.
+                put(&mut k, Vec2::new(580.0, fl + 40.0));
+                state.0 = 5;
+                state.1 = t;
+                state.2 = Vec2::ZERO;
+            }
+        }
+        5 => {
+            if state.2 == Vec2::ZERO && k.body.pos.x > 1000.0 {
+                state.2 = k.body.pos;
+                info!("void: the player, dropped into the floor portal, came out at ({:.0}, {:.0}) moving ({:.0}, {:.0})", k.body.pos.x, k.body.pos.y - fl, k.body.vel.x, k.body.vel.y);
+            }
+            if t - state.1 > 1.5 {
+                info!("void: 1.5 s later the player is at ({:.0}, {:.0})", k.body.pos.x, k.body.pos.y - fl);
+                put(&mut k, Vec2::new(620.0, fl + 8.0));
+                crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(760.0, fl + 10.0), |_| {});
+                state.0 = 6;
+                state.1 = t;
+            }
+        }
+        // Stasis on the orc as it comes, then a fireball into the bubble.
+        6 => {
+            let orc = orcs.iter().next().map(|o| o.1.body.pos);
+            let dt = t - state.1;
+            if let Some(o) = orc {
+                cursor.0 = Some(o);
+            }
+            hand.bar = 2;
+            hand.slot = 1;
+            right = (0.8..0.85).contains(&dt);
+            if (1.3..1.35).contains(&dt) {
+                state.2 = orc.unwrap_or_default();
+            }
+            if dt > 1.4 {
+                hand.bar = 0;
+                hand.slot = 6;
+                left = (1.4..1.45).contains(&dt);
+            }
+            if dt > 3.0 && state.0 == 6 {
+                info!("void: stasis on the orc: it was at x {:.0} 1.3 s in, x {:?} now (3 s in); spells in flight {}", state.2.x, orc.map(|o| o.x as i32), spells.iter().count());
+                state.0 = 7;
+            }
+        }
+        7 if t - state.1 > 8.5 => {
+            info!("void: after the bubble burst: the orc at x {:?}, hp {:?}; spells in flight {}", orcs.iter().next().map(|o| o.1.body.pos.x as i32), orcs.iter().next().map(|o| o.2.hp as i32), spells.iter().count());
+            state.0 = 8;
+        }
+        _ => {}
+    }
+    for (b, on) in [(MouseButton::Left, left), (MouseButton::Right, right)] {
+        if on && !mouse.pressed(b) {
+            mouse.press(b);
+        } else if !on && mouse.pressed(b) {
+            mouse.release(b);
+        }
     }
 }
