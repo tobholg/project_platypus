@@ -23,6 +23,7 @@
         cling: true,
         dash_speed: 0,
     ),
+    web_walker: true,
     touch: (damage: 12, knock: 170, stun: 0.25, every: 0.7),
     poise: 14,
     heft: 1.5,

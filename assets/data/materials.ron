@@ -173,7 +173,7 @@
         // hang from the ceiling and go up in a flash.
         (name: "moss",       kind: Plant, still: true, density: 150, hardness: 1, flammability: 6, ignites_at: 280, burn_time: 20, chars_at: 1.0, opacity: 20,
             colors: [(34, 62, 30), (52, 88, 40), (70, 110, 50), (92, 128, 62)]),
-        (name: "cobweb",     kind: Plant, still: true, hangs: true, density: 20, hardness: 1, flammability: 90, ignites_at: 200, burn_time: 6, opacity: 12,
+        (name: "cobweb",     kind: Plant, still: true, hangs: true, sticky: true, density: 20, hardness: 1, flammability: 90, ignites_at: 200, burn_time: 6, opacity: 12,
             colors: [(150, 150, 150), (190, 190, 194), (220, 220, 226)]),
         (name: "tall_grass", kind: Plant, density: 100, hardness: 1, flammability: 8, spread: 176, ignites_at: 240, burn_time: 5, chars_at: 1.0, colors: [(64, 146, 46), (92, 176, 62), (54, 124, 40)]),
 

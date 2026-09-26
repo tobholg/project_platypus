@@ -133,6 +133,21 @@ pub struct Landed {
     pub slam: f32,
 }
 
+/// Walks through webs freely (a spider: its creature file's `web_walker`).
+#[derive(Component)]
+pub struct WebWalker;
+
+/// In something sticky, a body goes at this share of its speed.
+const STUCK_SPEED: f32 = 0.3;
+
+/// Whether any cell a body is in is sticky (cobweb).
+fn stuck_in(world: &World, body: &Body) -> bool {
+    let (lo, hi) = (body.pos - body.half, body.pos + body.half);
+    (lo.y.floor() as i32..hi.y.ceil() as i32).any(|y| {
+        (lo.x.floor() as i32..hi.x.ceil() as i32).any(|x| world.get(CellPos::new(x, y)).is_some_and(|c| !c.is_air() && world.materials().phys(c.material).sticky))
+    })
+}
+
 /// The cell world as bodies see it. Unloaded chunks are solid.
 pub struct WorldGrid<'a>(pub &'a World);
 
@@ -158,7 +173,7 @@ impl Grid for WorldGrid<'_> {
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 
 /// One movement code path for every creature.
-type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, Option<&'a elements::Chilled>, Option<&'a mut FallTrack>);
+type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, Option<&'a elements::Chilled>, Option<&'a mut FallTrack>, Has<WebWalker>);
 
 fn move_creatures(
     sim: Res<SimWorld>,
@@ -168,7 +183,7 @@ fn move_creatures(
     mut dashed: MessageWriter<crate::combat::Dashed>,
 ) {
     let grid = WorldGrid(&sim.world);
-    for (entity, mut k, stats, controls, chilled, track) in &mut q {
+    for (entity, mut k, stats, controls, chilled, track, web_walker) in &mut q {
         // Frozen until the ground under it is loaded.
         if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
             continue;
@@ -176,12 +191,14 @@ fn move_creatures(
         let k = &mut *k;
         k.prev_pos = k.body.pos;
         let slowed;
-        let stats = match chilled {
-            Some(c) => {
-                slowed = stats.0.slowed(c.speed());
-                &slowed
-            }
-            None => &stats.0,
+        // Chilled, or wading through something sticky (cobweb): slowed.
+        let webbed = !web_walker && stuck_in(&sim.world, &k.body);
+        let speed = chilled.map_or(1.0, |c| c.speed()).min(if webbed { STUCK_SPEED } else { 1.0 });
+        let stats = if speed < 1.0 {
+            slowed = stats.0.slowed(speed);
+            &slowed
+        } else {
+            &stats.0
         };
         let ev = k.loco.steer(stats, &controls.0, &mut k.body, DT);
         if ev.dashed {

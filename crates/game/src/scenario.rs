@@ -75,6 +75,8 @@
 //!   three pixels (9, 14–16) of the first thing in the first file in one stroke with
 //!   the real pointer (a pose paints its first layer's part), logs what
 //!   changed on disk; Ctrl+Z; logs whether the file is back as it was
+//! - `webs`       (`PLATYPUS_WORLD=arena`) a walk right through open air, then
+//!   through a thicket of cobweb; logs how far each got in 1.5 s
 //! - `nest`       (a generated world, `small` is quickest) the player put in
 //!   the spider nest nearest the start, a torch in hand; logs what's about
 //!   after 3 s
@@ -164,6 +166,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, editor_script.after(InputSystems).before(crate::editor::capture))
             .add_systems(Update, (warband_script, life_script, underground_script, nest_script))
+            .add_systems(PreUpdate, webs_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, crossing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, held_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -2336,5 +2339,45 @@ fn nest_script(
         }
         info!("nest: about the player: {n:?}");
         state.0 = 2;
+    }
+}
+
+/// How far a walk gets through open air, then through web.
+fn webs_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut keys: ResMut<ButtonInput<KeyCode>>, mut state: Local<(u8, f32)>) {
+    if s.name != "webs" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let walking = (1.0..2.5).contains(&t) || (3.5..5.0).contains(&t);
+    match (walking, keys.pressed(KeyCode::KeyD)) {
+        (true, false) => keys.press(KeyCode::KeyD),
+        (false, true) => keys.release(KeyCode::KeyD),
+        _ => {}
+    }
+    if state.0 == 0 && t > 1.0 {
+        state.1 = k.body.pos.x;
+        state.0 = 1;
+    }
+    if state.0 == 1 && t > 2.5 {
+        info!("webs: open air: {:.0} cells in 1.5 s", k.body.pos.x - state.1);
+        // Back, and a thicket of web ahead.
+        k.body.pos.x = 560.0;
+        k.prev_pos = k.body.pos;
+        if let Some(web) = sim.materials().id("cobweb") {
+            for dx in (0..60).step_by(8) {
+                sim.queue(WorldEdit::Paint { center: CellPos::new(575 + dx, floor + 8), radius: 8, material: web, overwrite: false });
+            }
+        }
+        state.0 = 2;
+    }
+    if state.0 == 2 && t > 3.5 {
+        state.1 = k.body.pos.x;
+        state.0 = 3;
+    }
+    if state.0 == 3 && t > 5.0 {
+        info!("webs: through web: {:.0} cells in 1.5 s", k.body.pos.x - state.1);
+        state.0 = 4;
     }
 }

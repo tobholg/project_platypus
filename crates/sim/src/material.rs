@@ -156,6 +156,10 @@ pub struct MaterialDef {
     /// sides, and open underfoot to one that wants to drop.
     #[serde(default)]
     pub platform: bool,
+    /// Creatures wading through it are held back (cobweb); some walk it
+    /// freely (a spider: its creature file's `web_walker`).
+    #[serde(default)]
+    pub sticky: bool,
     /// How much its glow breathes (0 steady … 255 from full to nothing),
     /// slowly, each patch out of step. Rendering only.
     #[serde(default)]
@@ -304,6 +308,8 @@ pub struct MatPhys {
     pub grows: bool,
     /// See `MaterialDef::platform`.
     pub platform: bool,
+    /// See `MaterialDef::sticky`.
+    pub sticky: bool,
     /// See `MaterialDef::latent`.
     pub latent: u16,
     pub viscosity: u8,
@@ -508,6 +514,7 @@ impl MaterialTable {
                 hangs: d.hangs,
                 grows: d.grows,
                 platform: d.platform,
+                sticky: d.sticky,
                 latent: d.latent,
                 viscosity: d.viscosity,
                 rest_limit: ((crate::cell::flags::REST_LIMIT as u32 * (256 - d.viscosity as u32)) / 256).max(1) as u8,

@@ -77,6 +77,9 @@ pub struct CreatureDef {
     /// damage, knockback (cells/s), stun, and a rest between touches.
     #[serde(default)]
     pub touch: Option<crate::combat::Touch>,
+    /// Walks through webs freely (spiders); others are held back in them.
+    #[serde(default)]
+    pub web_walker: bool,
     /// What falls out of it when it dies (items, how many): a cocoon's
     /// victim's things.
     #[serde(default)]
@@ -324,6 +327,9 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         e.insert(crate::combat::Sturdy::new(def.poise, def.heft, def.after_hit));
         if let Some(t) = def.touch {
             e.insert(t);
+        }
+        if def.web_walker {
+            e.insert(super::WebWalker);
         }
         if let Some(l) = def.light {
             let color = crate::light::rgb(l.color, l.strength);

@@ -18,6 +18,7 @@
         cling: true,
         dash_speed: 0,
     ),
+    web_walker: true,
     touch: (damage: 3, knock: 50, every: 0.5),
     brain: (
         kind: "crawler",

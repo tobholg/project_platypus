@@ -1142,6 +1142,10 @@ parts, so another is a new file, not new code:
   less) under the body; `eyes`: the body's pixels of that colour drawn
   again over the darkness (full bright in the dark). Looks only: the
   body's movement is its own (`cling`).
+- **Webs snare:** a material can be `sticky` (cobweb): a body in any of
+  its cells moves at 30 % (with chill, the slower of the two), unless its
+  creature is a `web_walker` (spiders). Blades cut webs (plants). In the
+  `webs` scenario a walk covers 138 cells in 1.5 s in the open, 51 in web.
 - A creature's `light` can `haze` (glow like glowing cells: a steady
   `Glow`): bats' faint red eyes. `drops`: items that fall out when it dies.
 - The cave spider (16 × 12, 70 hp: a body from above with eight glowing
