@@ -114,7 +114,7 @@ impl Plugin for HandsPlugin {
             .init_resource::<HandInput>()
             .add_systems(Startup, build_items)
             .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor).after(bevy::ui::UiSystems::Focus))
-            .add_systems(Update, (toggle_dev, select, give_start, outline.run_if(play), icons::make_icons, icons::reload_icons))
+            .add_systems(Update, (toggle_dev, select, wield, give_start, outline.run_if(play), icons::make_icons, icons::reload_icons))
             .add_systems(FixedUpdate, use_hands.run_if(play).in_set(TickSet::Intent))
             .add_systems(FixedUpdate, collect.after(crate::props::fly).in_set(TickSet::Bodies))
             .add_plugins((ui::UiPlugin, chests::ChestsPlugin));
@@ -302,6 +302,19 @@ fn auto_slot(world: &World, items: &Items, inv: &Inventory, bar: std::ops::Range
     if front_solid { best(false).or_else(|| best(true)) } else { best(true).or_else(|| best(false)) }
 }
 
+/// The player holds the weapon in its hand's slot (none in dev mode).
+fn wield(items: Option<Res<Items>>, hand: Res<Hand>, dev: Res<DevTools>, mut player: Query<(&Inventory, &mut crate::combat::Wielding), With<LocalPlayer>>) {
+    let (Some(items), Ok((inv, mut w))) = (items, player.single_mut()) else { return };
+    let held = inv.slots.get(hand.active()).copied().flatten().filter(|_| !dev.0);
+    let want = held.and_then(|s| match &items.def(s.item).use_ {
+        Use::Melee(id) => Some(id.clone()),
+        _ => None,
+    });
+    if w.0 != want {
+        w.0 = want;
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn use_hands(
     mut commands: Commands,
@@ -316,6 +329,7 @@ fn use_hands(
     creatures: Query<&Kinematics, With<Creature>>,
     mut found: Query<(Entity, &mut chests::Chest, &Kinematics), Without<LocalPlayer>>,
     mut casts: MessageWriter<crate::magic::CastRequest>,
+    mut swings: MessageWriter<crate::combat::MeleeRequest>,
 ) {
     let clicked = std::mem::take(&mut input.clicked);
     hand.cooldown = (hand.cooldown - DT).max(0.0);
@@ -379,8 +393,11 @@ fn use_hands(
         // the cursor while casting, and the spell leaves from its hand.
         Use::Cast { .. } if input.primary || input.secondary => {
             commands.entity(me).insert(crate::actors::animation::Aiming { at: cursor, left: AIM_HOLD });
-            let from = hand_pos.map_or(from, |h| h.0.unwrap_or(from));
+            let from = hand_pos.and_then(|h| h.at).unwrap_or(from);
             casts.write(crate::magic::CastRequest { caster: me, item: stack.item, from, toward: cursor, alt: !input.primary });
+        }
+        Use::Melee(_) if input.primary => {
+            swings.write(crate::combat::MeleeRequest { attacker: me, at: cursor });
         }
         Use::Chest if clicked => {
             let Some(feet) = chests::place_spot(&sim.world, cursor) else { return };

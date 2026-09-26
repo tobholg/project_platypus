@@ -569,6 +569,7 @@ fn show(
 fn tooltip(
     items: Option<Res<Items>>,
     book: Option<Res<Spellbook>>,
+    weapons: Option<Res<crate::combat::Weapons>>,
     hand: Res<Hand>,
     held: Res<Held>,
     sim: Res<SimWorld>,
@@ -590,7 +591,7 @@ fn tooltip(
         _ => inv.slots[index(&hand, which, i)],
     };
     let Some(stack) = stack else { return };
-    text.0 = describe(&items, book.as_deref(), &stack);
+    text.0 = describe(&items, book.as_deref(), weapons.as_deref(), &stack);
     node.left = px(at.x + 18.0);
     // (Above the cursor near the bottom, where the hotbars are.)
     node.top = px(if at.y > window.height() * 0.5 { at.y - 110.0 } else { at.y + 18.0 });
@@ -598,7 +599,7 @@ fn tooltip(
 }
 
 /// A stack, in words: its name and count, what it does, its note.
-fn describe(items: &Items, book: Option<&Spellbook>, s: &Stack) -> String {
+fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<&crate::combat::Weapons>, s: &Stack) -> String {
     let def: &ItemDef = items.def(s.item);
     let n = whole(items, s);
     let mut lines = vec![if n > 1 { format!("{} ({n})", def.name) } else { def.name.clone() }];
@@ -617,6 +618,13 @@ fn describe(items: &Items, book: Option<&Spellbook>, s: &Stack) -> String {
                 let (names, mana) = book.describe(runes);
                 lines.push(format!("Runes: {}", names.join(" + ")));
                 lines.push(format!("{mana:.0} mana a cast, {:.1} casts a second", 1.0 / delay.max(0.01)));
+            }
+        }
+        Use::Melee(id) => {
+            lines.push("Weapon: hold the left button to swing at the cursor".into());
+            if let Some(w) = weapons.and_then(|w| w.index(id).map(|i| w.def(i))) {
+                let names: Vec<&str> = w.moves.iter().map(|m| m.name.as_str()).collect();
+                lines.push(format!("{:.0} damage, knockback {:.0}; {}", w.damage, w.knock, names.join(", then ")));
             }
         }
         Use::Throw(t) => lines.push(format!("{t:?}: click to throw it toward the cursor")),

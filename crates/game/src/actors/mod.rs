@@ -36,7 +36,7 @@ impl Plugin for ActorsPlugin {
             .add_message::<AirJumped>()
             .add_plugins((creature::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, animation::AnimationPlugin))
             .add_plugins((player::PlayerPlugin, ai::AiPlugin, critters::CrittersPlugin))
-            .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, hurt::notice, dummy::tally, deaths).chain().in_set(TickSet::Bodies))
+            .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, crate::combat::guard, hurt::notice, dummy::tally, deaths).chain().in_set(TickSet::Bodies))
             .insert_resource(elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
             .add_systems(FixedUpdate, displace_liquid.after(move_creatures).in_set(TickSet::Bodies))
@@ -161,6 +161,7 @@ fn move_creatures(
     mut q: Query<Movers>,
     mut landed: MessageWriter<Landed>,
     mut air: MessageWriter<AirJumped>,
+    mut dashed: MessageWriter<crate::combat::Dashed>,
 ) {
     let grid = WorldGrid(&sim.world);
     for (entity, mut k, stats, controls, chilled, track) in &mut q {
@@ -179,6 +180,9 @@ fn move_creatures(
             None => &stats.0,
         };
         let ev = k.loco.steer(stats, &controls.0, &mut k.body, DT);
+        if ev.dashed {
+            dashed.write(crate::combat::Dashed(entity));
+        }
         if ev.air_jumped {
             air.write(AirJumped { at: k.body.pos - Vec2::new(0.0, k.body.half.y) });
         }

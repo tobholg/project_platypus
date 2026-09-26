@@ -1,0 +1,27 @@
+// A shortsword, pointing right, held at its grip (the game turns it to
+// every angle it swings through, and its pixels are what hits).
+(
+    size: (14, 5),
+    feet: (7, 5),
+    outline: (30, 28, 34),
+    palette: {
+        'L': (232, 236, 242),   // steel, the lit edge
+        'M': (182, 190, 200),   // steel
+        'D': (124, 132, 146),   // steel, the shaded edge
+        't': (200, 208, 218),   // the point
+        'y': (214, 172, 64),    // crossguard
+        'w': (112, 72, 42),     // leather wrap
+        'b': (190, 150, 60),    // pommel
+    },
+    frames: {
+        "sword": [
+            "...y..........",
+            "...yLLLLLLLL..",
+            "bwwyMMMMMMMMMt",
+            "...yDDDDDDDD..",
+            "...y..........",
+        ],
+    },
+    clips: { "held": (frames: ["sword"], fps: 1) },
+    anchors: { "grip": { "sword": (1, 2) } },
+)

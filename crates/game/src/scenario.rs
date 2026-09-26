@@ -75,6 +75,11 @@
 //!   three pixels (9, 14–16) of the first thing in the first file in one stroke with
 //!   the real pointer (a pose paints its first layer's part), logs what
 //!   changed on disk; Ctrl+Z; logs whether the file is back as it was
+//! - `melee`      (`PLATYPUS_WORLD=arena`) the shortsword (hotbar 2, slot 7)
+//!   held down at the first dummy for 1.5 s, then the longsword (slot 8):
+//!   logs hits, damage and stamina; a jump over the dummy striking down
+//!   (logs the pogo); a blast on the player mid-dodge and one without (logs
+//!   what each cost)
 //! - `wands`      (`PLATYPUS_WORLD=arena`) the spark wand into the floor (logs
 //!   the cells it broke) and at a sandbag put 40 cells off (logs how far
 //!   it went), the
@@ -130,7 +135,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, editor_script.after(InputSystems).before(crate::editor::capture))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -1658,4 +1663,125 @@ fn wands_script(
     };
     cursor.0 = aim.or(Some(p + Vec2::new(30.0, 0.0)));
     if aim.is_some() { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+}
+
+type Fighting<'a> = (&'a Kinematics, &'a crate::actors::Health, Option<&'a crate::combat::Stamina>, Option<&'a crate::combat::Wielding>);
+
+/// The swords through real keys and buttons, against the first dummy.
+#[allow(clippy::too_many_arguments)]
+fn melee_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    player: Query<Fighting, With<LocalPlayer>>,
+    dummies: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::dummy::Tally), Without<LocalPlayer>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, f32, f32, f32, f32)>,
+) {
+    if s.name != "melee" {
+        return;
+    }
+    if s.elapsed < 0.1 {
+        state.4 = 100.0;
+        return;
+    }
+    let Ok((k, h, stamina, wielding)) = player.single() else { return };
+    let p = k.body.pos;
+    let t = s.elapsed;
+    let Some((_, dk, tally)) = dummies.iter().find(|(c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - 700.0).abs() < 8.0) else { return };
+    let d = dk.body.pos;
+    // Each key held while wanted, so a press is one press.
+    let mut want = std::collections::HashSet::new();
+    let window = |a: f32, b: f32| t >= a && t < b;
+    if window(0.3, 0.4) {
+        want.insert(KeyCode::KeyX);
+    }
+    if window(0.5, 0.6) {
+        want.insert(KeyCode::Digit7);
+    }
+    if window(2.5, 2.6) {
+        want.insert(KeyCode::Digit8);
+    }
+    let stam = stamina.map_or(0.0, |s| s.cur);
+    let held = wielding.and_then(|w| w.0.clone()).unwrap_or_default();
+    let mut swing = None;
+    if window(0.6, 2.4) {
+        if d.x - p.x > 12.0 {
+            want.insert(KeyCode::KeyD);
+        }
+        if t > 0.9 {
+            swing = Some(d + Vec2::new(0.0, 2.0));
+        }
+        state.4 = state.4.min(stam);
+    }
+    if window(2.4, 2.5) && state.0 == 0 {
+        info!("melee: {held}: {} hits, {:.0} damage in {:.1}s; stamina went down to {:.0}", tally.hits, tally.total, tally.last - tally.start, state.4);
+        state.0 = 1;
+        state.1 = tally.total;
+        state.4 = 100.0;
+    }
+    if window(2.7, 4.2) {
+        swing = Some(d + Vec2::new(0.0, 2.0));
+        state.4 = state.4.min(stam);
+    }
+    if window(4.2, 4.6) {
+        if state.0 == 1 {
+            info!("melee: {held}: {:.0} more damage; stamina went down to {:.0}", tally.total - state.1, state.4);
+            state.0 = 2;
+        }
+        want.insert(KeyCode::KeyA);
+    }
+    if window(4.6, 5.8) {
+        if t < 4.9 {
+            want.insert(KeyCode::Space);
+        }
+        if p.x < d.x - 2.0 {
+            want.insert(KeyCode::KeyD);
+        }
+        // Over it: strike down; how fast it rises after is the pogo.
+        if !k.loco.grounded() && p.y > d.y + 12.0 {
+            swing = Some(d);
+            state.3 = f32::max(state.3, tally.hits as f32);
+        }
+        if t > 5.0 {
+            state.2 = state.2.max(k.body.vel.y);
+        }
+    }
+    if window(5.8, 5.9) && state.0 == 2 {
+        info!("melee: striking down from above: the fastest rise after 5 s {:.0} cells/s", state.2);
+        state.0 = 3;
+    }
+    // A blast in the middle of a dodge, then the same standing.
+    if window(6.2, 6.3) {
+        want.insert(KeyCode::ShiftLeft);
+    }
+    if t > 6.26 && state.0 == 3 {
+        state.2 = h.hp;
+        sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 3, p.y as i32), radius: 3, power: 60 });
+        state.0 = 4;
+    }
+    if t > 6.9 && state.0 == 4 {
+        info!("melee: a blast mid-dodge cost {:.0} hp", state.2 - h.hp);
+        state.2 = h.hp;
+        sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 3, p.y as i32), radius: 3, power: 60 });
+        state.0 = 5;
+    }
+    if t > 7.4 && state.0 == 5 {
+        info!("melee: the same blast standing cost {:.0} hp", state.2 - h.hp);
+        state.0 = 6;
+    }
+    for key in [KeyCode::KeyX, KeyCode::Digit7, KeyCode::Digit8, KeyCode::KeyD, KeyCode::KeyA, KeyCode::Space, KeyCode::ShiftLeft] {
+        match (want.contains(&key), keys.pressed(key)) {
+            (true, false) => keys.press(key),
+            (false, true) => keys.release(key),
+            _ => {}
+        }
+    }
+    cursor.0 = swing.or(Some(p + Vec2::new(30.0, 0.0)));
+    match (swing.is_some(), mouse.pressed(MouseButton::Left)) {
+        (true, false) => mouse.press(MouseButton::Left),
+        (false, true) => mouse.release(MouseButton::Left),
+        _ => {}
+    }
 }

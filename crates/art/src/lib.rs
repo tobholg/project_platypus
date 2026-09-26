@@ -38,6 +38,7 @@
 //! ```
 
 pub mod edit;
+pub mod rotate;
 
 use std::collections::{BTreeMap, HashMap};
 

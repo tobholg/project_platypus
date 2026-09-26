@@ -32,6 +32,8 @@
     ),
     // Drawn on the humanoid rig (assets/art/player.ron).
     art: "player",
+    // Swings and dodges spend it (combat.rs).
+    stamina: 100,
     brain: (kind: "keyboard"),
     z: 11,
 )

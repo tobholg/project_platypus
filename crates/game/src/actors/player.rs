@@ -60,7 +60,7 @@ fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, taken:
     }
 }
 
-fn keyboard_brain(mut held: ResMut<HeldKeys>, free: Res<FreeCamera>, mut q: Query<&mut Controls, With<KeyboardBrain>>) {
+fn keyboard_brain(mut held: ResMut<HeldKeys>, free: Res<FreeCamera>, mut q: Query<(&mut Controls, Option<&crate::combat::Stamina>), With<KeyboardBrain>>) {
     let mut intent = if free.0 { Intent { aim: held.intent.aim, ..default() } } else { held.intent };
     // A press released before this tick still counts as a press this tick.
     if !free.0 {
@@ -69,7 +69,11 @@ fn keyboard_brain(mut held: ResMut<HeldKeys>, free: Res<FreeCamera>, mut q: Quer
     }
     held.jump_tapped = false;
     held.dash_tapped = false;
-    for mut c in &mut q {
+    for (mut c, stamina) in &mut q {
         c.0 = intent;
+        // (A dash is a dodge: too tired, no dodge.)
+        if stamina.is_some_and(|s| s.cur < 1.0) {
+            c.0.dash = false;
+        }
     }
 }

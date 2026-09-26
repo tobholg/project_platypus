@@ -30,10 +30,14 @@ pub struct Aiming {
     pub left: f32,
 }
 
-/// Where the creature's hand is, in the world, while it aims (spells leave
-/// from it).
+/// Where the creature's (front) hand is: in the world (spells leave from
+/// it), and from its centre as drawn (a held weapon sits there). From the
+/// aiming arm while it aims, else from the pose's `hand` anchor.
 #[derive(Component, Default, Clone, Copy, Debug)]
-pub struct HandPos(pub Option<Vec2>);
+pub struct HandPos {
+    pub at: Option<Vec2>,
+    pub local: Option<Vec3>,
+}
 
 #[derive(Component)]
 pub struct Animator {
@@ -49,11 +53,13 @@ pub struct Animator {
     running: bool,
     /// A clip that doesn't loop has played to its end.
     done: bool,
+    /// The body frame drawn now (what a blade hits: `pixel_at`).
+    pub shown: usize,
 }
 
 impl Animator {
     pub fn new(def: Arc<CreatureDef>) -> Self {
-        Animator { def, clip: String::new(), frame: 0, timer: 0.0, force: None, air: 0.0, running: false, done: false }
+        Animator { def, clip: String::new(), frame: 0, timer: 0.0, force: None, air: 0.0, running: false, done: false, shown: 0 }
     }
 
     /// Pick the clip (and its image) again next frame (the art changed).
@@ -110,7 +116,7 @@ type BodySprites = (With<CreatureSprite>, Without<ArmSprite>);
 type Arms<'a> = (&'a mut Sprite, &'a mut Transform, &'a mut Visibility);
 
 #[allow(clippy::too_many_arguments)]
-fn animate(
+pub fn animate(
     time: Res<Time>,
     assets: Res<AssetServer>,
     mut art: ResMut<CreatureArt>,
@@ -170,9 +176,8 @@ fn animate(
 
         let facing = k.loco.facing;
         let (fw, fh) = (def.sprite.frame.0 as f32, def.sprite.frame.1 as f32);
-        let (ax, ay) = def.sprite.feet;
         // The frame's `feet` pixel under the centre of the collision box.
-        let body_at = Vec3::new((fw / 2.0 - ax) * facing, -k.body.half.y + ay - fh / 2.0, 0.0);
+        let body_at = body_at(&def, k).extend(0.0);
         let mut index = clip.frames.get(anim.frame).copied().unwrap_or(0);
         // Aiming: the pose without its front arm, and the arm drawn at the
         // angle nearest the aim, its pivot at the pose's shoulder.
@@ -180,14 +185,14 @@ fn animate(
             a.left -= dt;
         }
         let mut arm: Option<(usize, Vec3)> = None;
-        let mut hand_at = None;
+        let mut hand_at: Option<Vec3> = None;
+        // (A frame pixel's place relative to the creature's centre.)
+        let local = |px: f32, py: f32| body_at + Vec3::new((px + 0.5 - fw / 2.0) * facing, -(py + 0.5 - fh / 2.0), 0.0);
         if let (Some(a), Some(rig)) = (aiming.as_deref(), def.rig.as_ref())
             && a.left > 0.0
             && let Some(&bare) = rig.without.get(&(index, FRONT_ARM.to_string()))
             && let Some(&(sx, sy)) = rig.anchors.get(FRONT_ARM).and_then(|m| m.get(&index))
         {
-            // (A frame pixel's place relative to the creature's centre.)
-            let local = |px: f32, py: f32| body_at + Vec3::new((px + 0.5 - fw / 2.0) * facing, -(py + 0.5 - fh / 2.0), 0.0);
             let shoulder = k.body.pos + local(sx as f32, sy as f32).truncate();
             let d = a.at - shoulder;
             let angle = d.y.atan2(d.x.abs()).to_degrees();
@@ -197,12 +202,21 @@ fn animate(
                 arm = Some((f, body_at + offset));
                 index = bare;
                 if let Some(&(hx, hy)) = rig.anchors.get("hand").and_then(|m| m.get(&f)) {
-                    hand_at = Some(k.body.pos + (local(hx as f32, hy as f32) + offset).truncate());
+                    hand_at = Some(local(hx as f32, hy as f32) + offset);
                 }
             }
         }
+        // Not aiming: the pose's own hand.
+        if arm.is_none()
+            && let Some(rig) = def.rig.as_ref()
+            && let Some(&(hx, hy)) = rig.anchors.get("hand").and_then(|m| m.get(&index))
+        {
+            hand_at = Some(local(hx as f32, hy as f32));
+        }
+        anim.shown = index;
         if let Some(mut h) = hand {
-            h.0 = hand_at;
+            h.at = hand_at.map(|l| k.body.pos + l.truncate());
+            h.local = hand_at;
         }
 
         for child in children.iter() {
@@ -233,4 +247,19 @@ fn animate(
             tf.translation = body_at;
         }
     }
+}
+
+/// Where a creature's sprite is drawn, from its centre (the frame's feet
+/// pixel under the middle of its box).
+pub fn body_at(def: &CreatureDef, k: &Kinematics) -> Vec2 {
+    let (fw, fh) = (def.sprite.frame.0 as f32, def.sprite.frame.1 as f32);
+    let (ax, ay) = def.sprite.feet;
+    Vec2::new((fw / 2.0 - ax) * k.loco.facing, -k.body.half.y + ay - fh / 2.0)
+}
+
+/// The pixel of its frame a world point falls on (it may be off the frame).
+pub fn pixel_at(def: &CreatureDef, k: &Kinematics, world: Vec2) -> (i32, i32) {
+    let (fw, fh) = (def.sprite.frame.0 as f32, def.sprite.frame.1 as f32);
+    let d = world - k.body.pos - body_at(def, k);
+    (((d.x * k.loco.facing) + fw / 2.0 - 0.5).round() as i32, (fh / 2.0 - 0.5 - d.y).round() as i32)
 }

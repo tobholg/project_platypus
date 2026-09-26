@@ -57,6 +57,12 @@ pub struct CreatureDef {
     /// Draw order among creatures.
     #[serde(default = "default_z")]
     pub z: f32,
+    /// Stamina (swings and dodges spend it); none: it never tires.
+    #[serde(default)]
+    pub stamina: Option<f32>,
+    /// A weapon it holds from the start (`assets/data/weapons.ron`).
+    #[serde(default)]
+    pub weapon: Option<String>,
     /// What it bleeds (a material; "" for nothing): it sprays when it's
     /// hurt and bursts out when it dies (`hurt.rs`).
     #[serde(default = "red_blood")]
@@ -271,7 +277,10 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         if let Some(f) = def.fall_damage {
             e.insert((f, super::FallTrack::default()));
         }
-        e.insert(def.resist);
+        e.insert((def.resist, crate::combat::Wielding(def.weapon.clone())));
+        if let Some(s) = def.stamina {
+            e.insert(crate::combat::Stamina::new(s));
+        }
         if let Some(m) = blood {
             e.insert(super::hurt::Bleeds(m));
         }

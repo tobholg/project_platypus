@@ -217,6 +217,13 @@ impl Locomotion {
         self.rising_from_jump = false;
     }
 
+    /// Air jumps and the air dash back, as if it had landed (a pogo off
+    /// something struck below).
+    pub fn refresh_air(&mut self, s: &MovementStats) {
+        self.air_jumps_left = s.air_jumps;
+        self.air_dash_used = false;
+    }
+
     pub fn is_dashing(&self) -> bool {
         self.state == MoveState::Dash
     }

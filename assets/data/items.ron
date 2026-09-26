@@ -15,6 +15,8 @@
 //     at the cursor, one cast each `delay` s and `recharge` s after the last
 //     (a channelled one, a well or force, stays open while held)
 // about: a line for its tooltip
+//   Melee(weapon): a weapon (weapons.ron): the left button swings it at the
+//     cursor; hold it to swing through the combo. Its icon is its sprite.
 //   Chest: place one (furniture, 12 × 10 cells, on the ground); right-click a chest to open it
 (
     items: [
@@ -41,6 +43,10 @@
             about: "Hold left: push everything away from the cursor. Hold right: pull it in."),
         (id: "force_staff",    name: "Force staff",    color: (140, 200, 255), use: Cast(runes: ["force_ii"], delay: 0.1, recharge: 0.2),
             about: "Stronger force: wider, harder, tears out rock."),
+        (id: "shortsword",     name: "Shortsword",     color: (200, 206, 216), use: Melee("shortsword"),
+            about: "Quick: slash, backslash, thrust. Strike down in the air to bounce off what you hit."),
+        (id: "longsword",      name: "Longsword",      color: (180, 188, 204), use: Melee("longsword"),
+            about: "Slow and heavy: cleave, sweep, drive. Strike down in the air to bounce off what you hit."),
         (id: "chest",          name: "Chest",          stack: 20, color: (150, 104, 58), use: Chest),
     ],
     // (The first ten are the hotbar; the rest go in the pack.)
@@ -48,5 +54,6 @@
         ("copper_pickaxe", 1), ("copper_axe", 1), ("torch", 12), ("bomb", 5), ("block:platform", 40),
         ("spark_wand", 1), ("fire_wand", 1), ("acid_wand", 1), ("flame_wand", 1), ("storm_wand", 1),
         ("glowstick", 6), ("gravity_wand", 1), ("force_wand", 1), ("gravity_staff", 1), ("force_staff", 1), ("frost_wand", 1),
+        ("shortsword", 1), ("longsword", 1),
     ],
 )

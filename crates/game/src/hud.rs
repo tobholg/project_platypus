@@ -1,5 +1,5 @@
 //! The player's HUD: a health bar (with a death count while developing), a
-//! mana bar, and
+//! mana bar, a stamina bar, and
 //! a round timer for each status (burning, chilled, the current coating),
 //! filled by how much of it is left.
 
@@ -23,6 +23,9 @@ struct HealthFill;
 struct HealthText;
 #[derive(Component)]
 struct ManaFill;
+
+#[derive(Component)]
+struct StaminaFill;
 #[derive(Component)]
 struct StatusSlot(usize);
 #[derive(Component)]
@@ -33,7 +36,7 @@ struct Icons([Handle<Image>; SLOTS]);
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_hud).add_systems(Update, (update_health, update_mana, update_statuses));
+        app.add_systems(Startup, spawn_hud).add_systems(Update, (update_health, update_mana, update_stamina, update_statuses));
     }
 }
 
@@ -77,6 +80,12 @@ fn spawn_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
                 BackgroundColor(Color::srgba(0.04, 0.05, 0.1, 0.75)),
             ))
             .with_child((ManaFill, Node { width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(Color::srgb(0.25, 0.45, 1.0))));
+            // Stamina: as thin, under that.
+            root.spawn((
+                Node { width: Val::Percent(100.0), height: Val::Px(5.0), margin: UiRect::top(Val::Px(-4.0)), ..default() },
+                BackgroundColor(Color::srgba(0.04, 0.08, 0.04, 0.75)),
+            ))
+            .with_child((StaminaFill, Node { width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(Color::srgb(0.35, 0.8, 0.3))));
             // Statuses: round timers with their name under them.
             root.spawn(Node { column_gap: Val::Px(10.0), justify_content: JustifyContent::Center, ..default() }).with_children(|row| {
                 for (i, icon) in icons.iter().enumerate() {
@@ -122,6 +131,13 @@ fn update_mana(player: Query<&crate::magic::Mana, With<LocalPlayer>>, mut fill: 
     let Ok(m) = player.single() else { return };
     for mut n in &mut fill {
         n.width = Val::Percent((m.cur / m.max).clamp(0.0, 1.0) * 100.0);
+    }
+}
+
+fn update_stamina(player: Query<&crate::combat::Stamina, With<LocalPlayer>>, mut fill: Query<&mut Node, With<StaminaFill>>) {
+    let Ok(s) = player.single() else { return };
+    for mut n in &mut fill {
+        n.width = Val::Percent((s.cur / s.max).clamp(0.0, 1.0) * 100.0);
     }
 }
 

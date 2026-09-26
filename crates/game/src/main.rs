@@ -9,6 +9,7 @@
 mod actors;
 mod arena;
 mod camera;
+mod combat;
 mod data;
 mod debug;
 mod dev;
@@ -92,7 +93,7 @@ fn main() {
             light::LightPlugin,
             scenario::ScenarioPlugin,
         ))
-        .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin))
+        .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin))
         .add_plugins(spikes_plugin)
         .run();
 }

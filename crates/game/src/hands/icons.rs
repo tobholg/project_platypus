@@ -90,6 +90,33 @@ fn block_icon(mats: &MaterialTable, cell: Cell, outline: (u8, u8, u8)) -> Vec<u8
     data
 }
 
+/// A picture in an icon: its drawn part, centred (cut to fit if bigger).
+fn fit(p: &platypus_art::Pixels) -> Vec<u8> {
+    let opaque = |x: i32, y: i32| p.opaque(x, y);
+    let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+    for y in 0..p.h as i32 {
+        for x in 0..p.w as i32 {
+            if opaque(x, y) {
+                (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+            }
+        }
+    }
+    let mut data = vec![0u8; ICON * ICON * 4];
+    if x1 < x0 {
+        return data;
+    }
+    let (cx, cy) = ((x0 + x1 + 1) / 2, (y0 + y1 + 1) / 2);
+    let h = ICON as i32 / 2;
+    for y in 0..ICON as i32 {
+        for x in 0..ICON as i32 {
+            let c = p.get(cx - h + x, cy - h + y);
+            let i = (y as usize * ICON + x as usize) * 4;
+            data[i..i + 4].copy_from_slice(&c);
+        }
+    }
+    data
+}
+
 fn image(data: Vec<u8>) -> Image {
     Image::new(
         Extent3d { width: ICON as u32, height: ICON as u32, depth_or_array_layers: 1 },
@@ -107,6 +134,12 @@ fn build(file: &IconsFile, items: &Items, mats: &MaterialTable, images: &mut Ass
             let def = items.def(id);
             if let Use::Block(m) = def.use_ {
                 return Some(images.add(image(block_icon(mats, Cell::new(m, 128), file.outline))));
+            }
+            // A weapon is its own sprite, turned to point up and forward.
+            if let Use::Melee(w) = &def.use_
+                && let Some(p) = crate::combat::icon(w)
+            {
+                return Some(images.add(image(fit(&p))));
             }
             let icon = file.icons.get(&def.id)?;
             match draw(file, &def.id, icon) {

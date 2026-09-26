@@ -5,6 +5,9 @@
 //!       anchors blue); prints which row is which
 //!   platypus-art render   <file.ron> <frame> [-o out.png] [--scale N]
 //!       one frame
+//!   platypus-art turns    <file.ron> <frame> [-o out.png] [--step 15]
+//!       the frame turned about its `grip` anchor (or its middle) at every
+//!       step from -180 to 180 degrees, as a held weapon is drawn
 //!   platypus-art check    <file.ron>     errors (exit 1) and warnings
 //!   platypus-art describe <file.ron>     the sprite in words
 //!   platypus-art get      <file.ron> <path>          a value, as written
@@ -85,6 +88,33 @@ fn run(args: &[String]) -> Result<(), String> {
             let out = out_path(args, input, name);
             write_png(&scaled(&art.frames[i], scale), &out)?;
             println!("wrote {}", out.display());
+        }
+        "turns" => {
+            let (_, art) = load(input)?;
+            let name = args.get(2).ok_or("turns <file> <frame>")?;
+            let i = art.index(name).ok_or(format!("no frame `{name}`"))?;
+            let step: f32 = flag(args, "--step").and_then(|s| s.parse().ok()).unwrap_or(15.0);
+            let f = &art.frames[i];
+            let pivot = art.anchors.get("grip").and_then(|m| m.get(&i)).copied().unwrap_or((f.w as i32 / 2, f.h as i32 / 2));
+            let turned: Vec<Pixels> = (0..).map(|k| -180.0 + k as f32 * step).take_while(|a| *a < 180.0).map(|a| platypus_art::rotate::rotsprite(f, pivot, a)).collect();
+            let side = turned.iter().map(|t| t.w).max().unwrap_or(1) + 1;
+            let cols = 8u32;
+            let rows = (turned.len() as u32).div_ceil(cols);
+            let mut sheet = Pixels::new(side * cols, side * rows);
+            for (k, t) in turned.iter().enumerate() {
+                let (ox, oy) = ((k as u32 % cols) * side, (k as u32 / cols) * side);
+                for y in 0..side {
+                    for x in 0..side {
+                        let c = if t.opaque(x as i32, y as i32) { t.get(x as i32, y as i32) } else if (x + y) % 2 == 0 { [60, 60, 70, 255] } else { [72, 72, 84, 255] };
+                        sheet.set((ox + x) as i32, (oy + y) as i32, c);
+                    }
+                }
+                // The grip, red.
+                sheet.set((ox + t.w / 2) as i32, (oy + t.w / 2) as i32, [255, 40, 40, 255]);
+            }
+            let out = out_path(args, input, &format!("{name}.turns"));
+            write_png(&scaled(&sheet, scale.min(6)), &out)?;
+            println!("{} angles, -180 to {} by {step}, 8 a row; wrote {}", turned.len(), -180.0 + (turned.len() - 1) as f32 * step, out.display());
         }
         "check" => {
             let (file, art) = load(input)?;

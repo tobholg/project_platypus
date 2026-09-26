@@ -952,16 +952,50 @@ deaths (blood). Rendered as one dynamic mesh.
 
 ## 6. Combat
 
-- Weapons: pivot, swing curve (angle over time), windup/active/recovery
-  frames, damage, knockback, hit-stop, and a 1-bit pixel mask derived from
-  the sprite's alpha.
-- Hurtboxes: per-animation-frame pixel masks derived from sprite alpha.
-- Hit test: the blade is swept between last and current angle in sub-steps
-  (no tunnelling), rasterised, and tested mask-against-mask after an AABB
-  broadphase. The same sweep interacts with cells (cut grass, splash liquid,
-  clang off stone → recoil).
-- Every hit becomes one `Hit` message; one system applies damage, i-frames,
-  knockback, hit-stop and VFX.
+### 6.2 Melee (`game::combat`, `assets/data/weapons.ron`)
+
+- **A weapon** is a sprite (`assets/art/<art>.ron`: pointing right, a
+  `grip` anchor) turned at load to 64 angles with RotSprite
+  (`platypus_art::rotate`: Scale2x ×3, nearest turn at 8×, each pixel from
+  its centre; `platypus-art turns` shows them). Those pictures are drawn at
+  the hand (`HandPos.local`: the aiming arm's hand while swinging, the
+  pose's `hand` anchor otherwise) and are the blade's hit mask. Its item is
+  `Use::Melee(id)`; its icon is the sprite pointing up and forward.
+- **Moves as data:** per weapon `damage`, `knock`, `stun`, a `rest` angle
+  and a combo of moves, each `from`/`to` degrees from the aim (mirrored
+  facing left), `windup`/`active`/`recovery` seconds (ease in-out),
+  `thrust` (cells forward at mid-sweep), `stamina`, `lunge` (cells/s
+  forward on the ground), `damage`/`knock` multipliers. Anything asks with
+  a `MeleeRequest` (the player: the left button, held to keep swinging);
+  it wields its `Wielding` (the player: the item in hand; a creature: its
+  file's `weapon`). Asking again after the windup queues the next move; a
+  swing that ends unqueued leaves the combo there for `combo_gap` s. Every
+  move (queued ones too) costs its stamina; none left, no swing. The arm
+  follows the blade (`Aiming`).
+- **Hit test:** while it sweeps, the blade steps from last tick's angle to
+  this one a turn (5.6°) at a time; each step's blade pixels are tested
+  against every body near it after a box check: against the pixel of its
+  shown frame there (`Animator::shown`, `pixel_at`) for a rigged creature,
+  its box otherwise. Each body is hit once a swing; not your own team
+  (anyone can hit the neutral), not the untouchable. The sweep cuts plants
+  (hardness ≤ 2) and sparks off stone (hardness ≥ 20) above your feet, once
+  a swing. A trail of motes smears the outer blade.
+- **Every hit is one `Hit` message**; `apply_hits` does what hits do:
+  damage, knockback (away, and up a little) and stun, sparks, hit-stop
+  (virtual time at 3 % for ~55 ms, longer for heavier hits), a shake.
+  Striking downward in the air (aimed more than 30° below level), a hit
+  bounces the swinger up at `pogo` (300 cells/s) and gives back its air
+  jumps and air dash.
+- **Stamina** (a creature file's `stamina`; the player 100, a green bar
+  under mana) comes back at 45/s half a second after it was last spent.
+  **The dash is the dodge:** it costs 18 (none left: no dash) and makes
+  you `Invulnerable` for 0.25 s (what you lose meanwhile is given back,
+  just before damage is noticed).
+- The shortsword (12 damage: slash, backslash, thrust) and the longsword
+  (24: cleave, sweep, drive; slower, heavier on stamina). In the `melee`
+  scenario: the shortsword lands 5 hits (65) in 0.9 s; the longsword
+  empties the stamina bar in 1.5 s; striking down from above bounces
+  (300 cells/s); a blast mid-dodge costs 3 hp against ~15 standing.
 
 ### 6.1 Magic (`game::magic`, DESIGN §7b)
 

@@ -31,6 +31,9 @@ pub enum Use {
     /// cursor while held, one cast each `delay` seconds and `recharge` after
     /// the last, paid in the caster's mana.
     Cast { runes: Vec<String>, delay: f32, recharge: f32 },
+    /// A weapon held in the hand (`weapons.ron`): the left button swings it
+    /// at the cursor, holding it keeps swinging through the combo.
+    Melee(String),
     /// A block of a material (made from the materials table, not written).
     #[serde(skip)]
     Block(MaterialId),
