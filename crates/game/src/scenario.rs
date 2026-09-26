@@ -75,6 +75,8 @@
 //!   three pixels (9, 14–16) of the first thing in the first file in one stroke with
 //!   the real pointer (a pose paints its first layer's part), logs what
 //!   changed on disk; Ctrl+Z; logs whether the file is back as it was
+//! - `warband`    (`PLATYPUS_WORLD=arena`) O (the dev action) 120 cells off at
+//!   1 s; logs what stands there at 3 s (a troll, three orcs, two archers)
 //! - `archery`    (`PLATYPUS_WORLD=arena`) the bow (hotbar 2, slot 9): a full
 //!   draw at the first dummy, a short one into the floor, one down through a
 //!   lava puddle put behind (logs whether it burns); walks over the stuck arrows (logs arrows before and
@@ -141,6 +143,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, editor_script.after(InputSystems).before(crate::editor::capture))
+            .add_systems(Update, warband_script)
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -1942,5 +1945,31 @@ fn archery_script(
         (true, false) => mouse.press(MouseButton::Left),
         (false, true) => mouse.release(MouseButton::Left),
         _ => {}
+    }
+}
+
+/// O spawns a pack.
+fn warband_script(
+    s: Res<Scenario>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    foes: Query<&crate::actors::Creature, Without<LocalPlayer>>,
+    mut dev: MessageWriter<crate::dev::DevAction>,
+    mut state: Local<u8>,
+) {
+    if s.name != "warband" {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    if *state == 0 && s.elapsed > 1.0 {
+        dev.write(crate::dev::DevAction::Spawn(Some(k.body.pos + Vec2::new(120.0, 20.0))));
+        *state = 1;
+    }
+    if *state == 1 && s.elapsed > 3.0 {
+        let mut n = std::collections::BTreeMap::new();
+        for c in &foes {
+            *n.entry(c.kind.clone()).or_insert(0) += 1;
+        }
+        info!("warband: {n:?}");
+        *state = 2;
     }
 }

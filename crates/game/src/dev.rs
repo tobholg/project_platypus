@@ -6,7 +6,8 @@
 //! Dev mode: V storm · B clear sky · N lightning at the cursor · M +3 hours ·
 //! K lighting on/off · H performance HUD · J chunk overlay. Always: L
 //! what you carry for light (nothing, a small beam, a big one, a torch in
-//! the off hand) · G plant a torch · O spawn an orc (or what
+//! the off hand) · G plant a torch · O spawn a warband (a troll, orcs, archers:
+//! `packs.ron`; or what
 //! the arena panel picked) at the cursor.
 
 use bevy::prelude::*;
@@ -116,7 +117,7 @@ fn spawn_panel(mut commands: Commands) {
         ("Lighting on/off   K", DevAction::Lighting),
         ("Light: beam, big, torch   L", DevAction::Flashlight),
         ("Plant a torch   G", DevAction::PlantTorch(None)),
-        ("Spawn (an orc)   O", DevAction::Spawn(None)),
+        ("Spawn a warband   O", DevAction::Spawn(None)),
         ("Performance HUD   H", DevAction::PerfHud),
         ("Chunk overlay   J", DevAction::Chunks),
         ("Radius -   wheel", DevAction::Radius(-1)),

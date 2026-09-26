@@ -65,8 +65,15 @@ impl Plugin for ArenaPlugin {
     }
 }
 
-/// Every creature kind there's a file for (but the player).
+/// Every pack (`packs.ron`), then every creature kind there's a file for
+/// (but the player).
 fn kinds() -> Vec<String> {
+    let mut v: Vec<String> = crate::actors::spawn::packs().into_keys().collect();
+    v.extend(creature_kinds());
+    v
+}
+
+fn creature_kinds() -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(data_path("creatures"))
         .map(|d| {
             d.filter_map(|e| e.ok())
@@ -217,7 +224,7 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
             });
             heading(p, "Look");
             row(p, &|r| label(r, "Boxes and hands  Y", ArenaAction::Overlays));
-            heading(p, "Spawn at the cursor: O");
+            heading(p, "Spawn at the cursor: O (packs first)");
             row(p, &|r| {
                 for k in kinds() {
                     label(r, &k, ArenaAction::Pick(k.clone()));

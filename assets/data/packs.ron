@@ -1,0 +1,8 @@
+// Packs: what `O` (and the arena panel) can spawn at once, by name: each
+// member and how many. A pack's members stand in a line across the cursor,
+// on the ground under it. Edit freely; it's read at every spawn.
+{
+    "warband": [("troll", 1), ("orc", 3), ("orc_archer", 2)],
+    "trolls": [("troll", 2)],
+    "orcs": [("orc", 4), ("orc_archer", 2)],
+}

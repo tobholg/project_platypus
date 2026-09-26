@@ -28,15 +28,27 @@ pub struct PendingSpawn {
     pub local_player: bool,
 }
 
-/// What `O` spawns (the arena panel picks it).
+/// What `O` spawns: a creature, or a pack of them (`assets/data/packs.ron`)
+/// (the arena panel picks it).
 #[derive(Resource)]
 pub struct SpawnKind(pub String);
 
 impl Default for SpawnKind {
     fn default() -> Self {
-        SpawnKind("orc".into())
+        SpawnKind("warband".into())
     }
 }
+
+/// Every pack by name: its members and how many of each.
+pub fn packs() -> std::collections::BTreeMap<String, Vec<(String, u32)>> {
+    crate::data::load_ron(&crate::data::data_path("packs.ron")).unwrap_or_else(|e| {
+        warn!("{e}");
+        Default::default()
+    })
+}
+
+/// Cells between a pack's members as they stand in line.
+const PACK_GAP: f32 = 14.0;
 
 #[derive(Resource, Default)]
 pub struct SpawnQueue(pub Vec<PendingSpawn>);
@@ -116,13 +128,27 @@ fn world_spawns(mut commands: Commands, fresh: Res<FreshChunks>, mut spawned: Re
     }
 }
 
-fn debug_spawn(mut commands: Commands, mut actions: MessageReader<crate::dev::DevAction>, kind: Res<SpawnKind>, player: Query<&Kinematics, With<LocalPlayer>>) {
+fn debug_spawn(
+    mut commands: Commands,
+    mut actions: MessageReader<crate::dev::DevAction>,
+    kind: Res<SpawnKind>,
+    mut queue: ResMut<SpawnQueue>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+) {
     for a in actions.read() {
-        if let crate::dev::DevAction::Spawn(at) = *a
-            // From the panel: a little way off from the player.
-            && let Some(at) = at.or_else(|| player.single().ok().map(|k| k.body.pos + Vec2::new(40.0, 10.0)))
-        {
+        let crate::dev::DevAction::Spawn(at) = *a else { continue };
+        // From the panel: a way off from the player.
+        let Some(at) = at.or_else(|| player.single().ok().map(|k| k.body.pos + Vec2::new(60.0, 10.0))) else { continue };
+        let Some(pack) = packs().remove(&kind.0) else {
             spawn_creature(&mut commands, &kind.0, at, |_| {});
+            continue;
+        };
+        // In a line across the cursor, each on the ground under its place.
+        let members: Vec<&String> = pack.iter().flat_map(|(k, n)| std::iter::repeat_n(k, *n as usize)).collect();
+        let half = (members.len() as f32 - 1.0) / 2.0;
+        for (i, k) in members.into_iter().enumerate() {
+            let x = at.x + (i as f32 - half) * PACK_GAP;
+            queue.0.push(PendingSpawn { kind: k.clone(), x: x as i32, from_y: at.y as i32 + 40, local_player: false });
         }
     }
 }

@@ -933,8 +933,11 @@ deaths (blood). Rendered as one dynamic mesh.
   paused, the fixed clock handed exactly one tick, bodies drawn where they
   are, not interpolated; slow motion 1, ½, ¼, 1/10 (, cycles); overlays
   (Y): every body's box (player blue, enemies red, the rest green), its
-  facing, its feet, and its hand while aiming; the kind `O` spawns at the
-  cursor (every creature file but the player's); clear the floor (all but
+  facing, its feet, and its hand while aiming; what `O` spawns at the
+  cursor: a pack (`assets/data/packs.ron`: members and how many, in a line
+  across the cursor, each on the ground under its place; `warband` — a
+  troll, three orcs, two archers — by default, everywhere) or any creature
+  file but the player's; clear the floor (all but
   the player and planted dummies).
 
 ### 5.4 The art editor (`game/src/editor.rs`, `art/src/edit.rs`)
