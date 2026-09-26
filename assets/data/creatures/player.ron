@@ -30,11 +30,8 @@
         wall_jump_push: 120,
         step_height: 3,
     ),
-    sprite: (frame: (100, 100), feet: (48.5, 57)),
-    animations: {
-        "idle": (image: "textures/player_sheet.png", columns: 6, frames: [0, 1, 2, 3, 4, 5], fps: 8),
-        "run":  (image: "textures/player_sheet.png", columns: 6, frames: [0, 1, 2, 3, 4, 5], fps: 14),
-    },
+    // Drawn on the humanoid rig (assets/art/player.ron).
+    art: "player",
     brain: (kind: "keyboard"),
     z: 11,
 )

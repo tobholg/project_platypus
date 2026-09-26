@@ -835,6 +835,19 @@ deaths (blood). Rendered as one dynamic mesh.
   `flip`, drawn `over`), clips (frames, fps, looping) and anchors (named
   points per frame, for hands and weapons later). Written by hand, by the
   model, or (later) by the in-game editor.
+- **Rigs:** `parts` (grids of any size, each with a pivot, its joint, and
+  named points such as a hand's grip) and `poses` (a frame put together from
+  parts: each part's pivot at a spot, in order, optionally mirrored about
+  its pivot, shaded (0.7: the arm behind the body), or `outline`d where it
+  lies over what's already drawn, so an arm in front of the body stands out).
+  Poses are frames like any other (outlined as one shape) and a part's
+  points become the pose's anchors: a weapon will find the hand in every
+  frame by itself. The player (`assets/art/player.ron`, ~20 px tall on its
+  6 × 15 body, the head may overhang it) is drawn this way: a head (and a
+  blinking one), a torso, arms hanging, forward, back, lifted and reaching,
+  legs standing, four run strides, tucked and dangling; poses for standing,
+  breathing, blinking, four run steps (arms swinging against the legs, a
+  bob on the passing steps), rising, falling, dashing, wall-sliding, hurt.
 - `compile` draws every frame (derived ones in dependency order, cycles
   named), outlines, resolves clips and anchors, and packs an atlas (8
   frames a row). Mistakes are errors that say where.

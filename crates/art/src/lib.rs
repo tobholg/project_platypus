@@ -20,6 +20,22 @@
 //!     anchors: { "mouth": { "sit": (8, 3) } },
 //! )
 //! ```
+//!
+//! **Rigs.** A character is drawn as parts (a head, a torso, arms, legs in
+//! a few drawn variants), each with a pivot (its joint) and named points (a
+//! hand); a pose puts parts together, pivot at a spot, in order, some
+//! mirrored or shaded (an arm behind the body). Poses are frames like any
+//! other (outlined as one shape), and a part's points become the pose's
+//! anchors, so a weapon finds the hand in every frame by itself:
+//!
+//! ```ron
+//!     parts: {
+//!         "arm": (pivot: (1, 0), points: { "hand": (1, 5) }, rows: [...]),
+//!     },
+//!     poses: {
+//!         "stand": [(part: "arm", at: (8, 9), shade: 0.7), (part: "torso", at: (9, 12)), ...],
+//!     },
+//! ```
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -45,6 +61,41 @@ pub struct ArtFile {
     pub clips: BTreeMap<String, Clip>,
     #[serde(default)]
     pub anchors: BTreeMap<String, BTreeMap<String, (i32, i32)>>,
+    #[serde(default)]
+    pub parts: BTreeMap<String, Part>,
+    #[serde(default)]
+    pub poses: BTreeMap<String, Vec<Layer>>,
+}
+
+/// A body part: a grid of any size, its pivot (the joint it hangs from) and
+/// named points (a hand's grip), both from its top-left.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Part {
+    #[serde(default)]
+    pub pivot: (i32, i32),
+    #[serde(default)]
+    pub points: BTreeMap<String, (i32, i32)>,
+    pub rows: Vec<String>,
+}
+
+/// A part in a pose: its pivot at `at`; mirrored about its pivot; its
+/// colours scaled by `shade` (0.7: an arm behind the body); with `outline`,
+/// edged in the outline colour where it lies over what's drawn already (an
+/// arm in front of the body stands out from it).
+#[derive(Clone, Debug, Deserialize)]
+pub struct Layer {
+    pub part: String,
+    pub at: (i32, i32),
+    #[serde(default)]
+    pub flip: bool,
+    #[serde(default = "one")]
+    pub shade: f32,
+    #[serde(default)]
+    pub outline: bool,
+}
+
+fn one() -> f32 {
+    1.0
 }
 
 /// A colour: RGB, or RGBA for glass and glows.
@@ -224,6 +275,80 @@ pub fn compile(file: &ArtFile) -> Result<Art, String> {
         draw(&mut p, rows, &file.palette, false, &format!("frame `{name}`"))?;
         drawn.insert(name.clone(), p);
     }
+    // Parts, then poses put together from them (and their points).
+    let mut parts: BTreeMap<&str, Pixels> = BTreeMap::new();
+    for (name, part) in &file.parts {
+        let ph = part.rows.len() as u32;
+        let pw = part.rows.first().map_or(0, |r| r.chars().count()) as u32;
+        if pw == 0 {
+            return Err(format!("part `{name}`: empty"));
+        }
+        let mut p = Pixels::new(pw, ph);
+        draw(&mut p, &part.rows, &file.palette, false, &format!("part `{name}`"))?;
+        parts.insert(name, p);
+    }
+    let mut pose_points: BTreeMap<String, BTreeMap<String, (i32, i32)>> = BTreeMap::new();
+    for (name, layers) in &file.poses {
+        if drawn.contains_key(name) {
+            return Err(format!("pose `{name}`: a frame has that name"));
+        }
+        let mut p = Pixels::new(w, h);
+        for l in layers {
+            let def = file.parts.get(&l.part).ok_or(format!("pose `{name}`: no part `{}`", l.part))?;
+            let px = &parts[l.part.as_str()];
+            let (pvx, pvy) = def.pivot;
+            let place = |x: i32, y: i32| {
+                let dx = if l.flip { pvx - x } else { x - pvx };
+                (l.at.0 + dx, l.at.1 + (y - pvy))
+            };
+            if l.outline
+                && let Some(oc) = file.outline
+            {
+                for y in 0..px.h as i32 {
+                    for x in 0..px.w as i32 {
+                        if px.opaque(x, y) {
+                            continue;
+                        }
+                        let (tx, ty) = place(x, y);
+                        let near = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| px.opaque(x + dx, y + dy));
+                        if near && p.opaque(tx, ty) {
+                            p.set(tx, ty, [oc.0, oc.1, oc.2, 255]);
+                        }
+                    }
+                }
+                // (Round the part's own bounds too: its edge pixels' outer
+                // neighbours lie outside its grid.)
+                for y in -1..=px.h as i32 {
+                    for x in -1..=px.w as i32 {
+                        let inside = x >= 0 && y >= 0 && x < px.w as i32 && y < px.h as i32;
+                        if inside {
+                            continue;
+                        }
+                        let near = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| px.opaque(x + dx, y + dy));
+                        let (tx, ty) = place(x, y);
+                        if near && p.opaque(tx, ty) {
+                            p.set(tx, ty, [oc.0, oc.1, oc.2, 255]);
+                        }
+                    }
+                }
+            }
+            for y in 0..px.h as i32 {
+                for x in 0..px.w as i32 {
+                    let c = px.get(x, y);
+                    if c[3] == 0 {
+                        continue;
+                    }
+                    let s = |v: u8| (v as f32 * l.shade).round().clamp(0.0, 255.0) as u8;
+                    let (tx, ty) = place(x, y);
+                    p.set(tx, ty, [s(c[0]), s(c[1]), s(c[2]), c[3]]);
+                }
+            }
+            for (point, &(x, y)) in &def.points {
+                pose_points.entry(point.clone()).or_default().insert(name.clone(), place(x, y));
+            }
+        }
+        drawn.insert(name.clone(), p);
+    }
     // Derived frames, in whatever order their bases allow.
     let mut left: Vec<&String> = file.derived.keys().collect();
     while !left.is_empty() {
@@ -270,13 +395,18 @@ pub fn compile(file: &ArtFile) -> Result<Art, String> {
         }
         clips.insert(name.clone(), CompiledClip { frames, fps: c.fps, looping: c.looping });
     }
-    let mut anchors = BTreeMap::new();
+    let mut anchors: BTreeMap<String, HashMap<usize, (i32, i32)>> = BTreeMap::new();
+    for (point, by_pose) in &pose_points {
+        let m = anchors.entry(point.clone()).or_default();
+        for (pose, &at) in by_pose {
+            m.insert(index(pose).expect("drawn"), at);
+        }
+    }
     for (name, by_frame) in &file.anchors {
-        let mut m = HashMap::new();
+        let m = anchors.entry(name.clone()).or_default();
         for (f, &at) in by_frame {
             m.insert(index(f).ok_or(format!("anchor `{name}`: no frame `{f}`"))?, at);
         }
-        anchors.insert(name.clone(), m);
     }
     Ok(Art { size: file.size, feet: file.feet, names, frames, clips, anchors })
 }
@@ -302,7 +432,7 @@ pub fn check(file: &ArtFile, art: &Art) -> Vec<String> {
             warn.push(format!("frame `{name}` is empty"));
         }
     }
-    let used: std::collections::HashSet<char> = file.frames.values().chain(file.derived.values().map(|d| &d.over)).flatten().flat_map(|r| r.chars()).collect();
+    let used: std::collections::HashSet<char> = file.frames.values().chain(file.derived.values().map(|d| &d.over)).chain(file.parts.values().map(|p| &p.rows)).flatten().flat_map(|r| r.chars()).collect();
     for c in file.palette.keys() {
         if !used.contains(c) {
             warn.push(format!("palette '{c}' is never used"));
@@ -533,6 +663,29 @@ mod tests {
         assert!(bad(r#"(size: (2, 1), feet: (1, 1), palette: {}, frames: { "x": [".."] }, clips: { "c": (frames: ["y"], fps: 4) })"#).contains("no frame `y`"));
         assert!(bad(r#"(size: (2, 2), feet: (1, 1), palette: {}, frames: { "x": [".."] })"#).contains("1 rows"));
         assert!(bad(r#"(size: (2, 1), feet: (1, 1), palette: {}, derived: { "a": (from: "b"), "b": (from: "a") })"#).contains("doesn't exist"));
+    }
+
+    #[test]
+    fn poses_put_parts_together_and_carry_their_points() {
+        let file = parse(r#"(
+            size: (8, 6), feet: (4, 6),
+            palette: { 'a': (10, 20, 30), 'b': (100, 100, 100) },
+            parts: {
+                "body": (pivot: (0, 0), rows: ["aa", "aa"]),
+                "arm": (pivot: (0, 0), points: { "hand": (2, 1) }, rows: ["bbb", "..b"]),
+            },
+            poses: {
+                "p": [(part: "arm", at: (4, 1), shade: 0.5), (part: "body", at: (3, 2))],
+                "q": [(part: "arm", at: (4, 1), flip: true)],
+            },
+            clips: { "c": (frames: ["p", "q"], fps: 4) },
+        )"#).unwrap();
+        let art = compile(&file).unwrap();
+        let p = &art.frames[art.index("p").unwrap()];
+        assert_eq!(p.get(4, 1), [50, 50, 50, 255], "arm, shaded");
+        assert_eq!(p.get(3, 2), [10, 20, 30, 255], "body over it");
+        assert_eq!(art.anchors["hand"][&art.index("p").unwrap()], (6, 2));
+        assert_eq!(art.anchors["hand"][&art.index("q").unwrap()], (2, 2), "mirrored about the pivot");
     }
 
     /// Every sprite in the game's assets compiles, with no warnings.
