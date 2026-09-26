@@ -136,7 +136,12 @@ sand/water/lava, lightning; `--features spikes` + `PLATYPUS_PROFILE`.
 | Spider legs were a mesh of per-cell quads (190k vertices at ~40 spiders); particles likewise → pixel canvases over the view (`canvas.rs`) | mesh upload 2.4 → 0.4 ms; 13.1 → 6.8 ms at 380 creatures |
 
 At 380 creatures, 150 bodies, 11k particles, 100 active chunks: ~6.8 ms a
-frame, sim ~3 ms a tick. Next suspects: the sim at 100+ active chunks, the
+frame, sim ~3 ms a tick. In a generated world, moving (streaming) at 12×n:
+~5 ms a frame (230 chunks loaded), sim 2–4 ms a tick. Note: measured with
+the screen locked; a visible window is paced at 60 Hz by macOS (frame avg
+pins at 16.6 ms), so compare uncapped runs only. Spikes seen: new outfit
+combos compiled on a wave's spawn (2–4 ms), several bombs in one tick
+(4–5 ms), two sim ticks in one frame. Next suspects: the sim at 100+ active chunks, the
 render schedule (~3.5 ms), frame spikes to ~27 ms (not yet traced),
 damage-number text entities in a big fight.
 

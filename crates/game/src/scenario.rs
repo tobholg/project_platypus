@@ -2822,8 +2822,17 @@ fn chaos_script(
     }
     let Ok((me, mut k, mut h)) = player.single_mut() else { return };
     let t = s.elapsed;
-    let floor = platypus_worldgen::arena::FLOOR as f32;
-    let home = Vec2::new(620.0, floor + 8.0);
+    // The arena's middle; in a generated world, where the player started
+    // (with PLATYPUS_CHAOS_RUN=1 moving right at 60 cells/s: the fight
+    // streams the world in as it goes).
+    if state.2 == 0 {
+        state.2 = if sim.generator.wild() { (k.body.pos.x.to_bits() as u64) << 32 | k.body.pos.y.to_bits() as u64 } else { 1 };
+    }
+    let start = if state.2 == 1 { Vec2::new(620.0, platypus_worldgen::arena::FLOOR as f32 + 8.0) } else { Vec2::new(f32::from_bits((state.2 >> 32) as u32), f32::from_bits(state.2 as u32)) };
+    let run = if std::env::var("PLATYPUS_CHAOS_RUN").is_ok() { 60.0 * t } else { 0.0 };
+    let home = start + Vec2::new(run, 0.0);
+    let floor = find_ground(&sim.world, home.x as i32, home.y as i32 + 40, 200).unwrap_or(home.y as i32 - 8) as f32;
+    let home = Vec2::new(home.x, floor + 8.0);
     // Untouchable, and kept in the middle of it.
     h.hp = h.max;
     if k.body.pos.distance(home) > 30.0 {
