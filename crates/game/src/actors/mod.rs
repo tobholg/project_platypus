@@ -173,7 +173,7 @@ fn displace_liquid(mut sim: ResMut<SimWorld>, q: Query<&Kinematics>) {
     }
 }
 
-fn fall_damage(mut landed: MessageReader<Landed>, mut q: Query<(&FallDamage, &mut Health)>) {
+fn fall_damage(mut landed: MessageReader<Landed>, mut q: Query<(&FallDamage, &mut Health), Without<crate::magic::well::Carried>>) {
     for l in landed.read() {
         if let Ok((f, mut h)) = q.get_mut(l.entity)
             && l.speed > f.safe_speed

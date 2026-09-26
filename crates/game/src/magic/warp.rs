@@ -1,8 +1,11 @@
-//! The distortion around a gravity well: a screen-space pass (Bevy's
-//! fullscreen material, `assets/shaders/warp.wgsl`) that swirls and pinches
-//! what's drawn around it, darkens its heart and rings it with a faint
-//! bright edge, like light bending round something heavy. One well at a
-//! time (the strongest); strength 0 is off.
+//! The distortion of a channelled spell: a screen-space pass (Bevy's
+//! fullscreen material, `assets/shaders/warp.wgsl`). Round (`cone` 0), a
+//! gravity well: it swirls and pinches what's drawn around it, darkens its
+//! heart and rings it with a faint bright edge, like light bending round
+//! something heavy. A cone (force), from the caster toward the cursor:
+//! sharp wavefronts racing out along it (a push, stretching the picture
+//! outward) or in (a pull, squeezing it), brightest at the fronts, fading at
+//! the cone's edges. One at a time (the strongest); strength 0 is off.
 
 use bevy::core_pipeline::fullscreen_material::FullscreenMaterial;
 use bevy::core_pipeline::{Core2d, Core2dSystems};
@@ -26,9 +29,13 @@ pub struct Warp {
     pub aspect: f32,
     /// Seconds, for the shimmer.
     pub time: f32,
-    /// 1: a push (swell and ripple outward); 0: draw in.
+    /// 1: a push (outward); 0: drawing in.
     pub push: f32,
-    pub _pad: f32,
+    /// Half the cone's angle (radians); 0: all round.
+    pub cone: f32,
+    /// Which way the cone points, on screen (x right, y down), in units of
+    /// the screen's height.
+    pub dir: Vec2,
 }
 
 impl FullscreenMaterial for Warp {

@@ -52,10 +52,10 @@
             look: (trail: (count: 5, life: (0.3, 0.9), colors: [(230, 215, 255), (150, 105, 250), (50, 30, 100)], speed: 70, drag: 1, glow: true))),
         (id: "force", name: "Force I", mana: 4, color: (140, 200, 255),
             kind: Carrier(Force(radius: 40, power: 300, strength: 30, pull: 70, drain: 18)),
-            look: (trail: (count: 3, life: (0.15, 0.45), colors: [(235, 248, 255), (140, 195, 255), (40, 80, 160)], speed: 110, drag: 2, glow: true))),
+            look: (trail: (count: 6, life: (0.15, 0.4), colors: [(240, 250, 255), (140, 195, 255), (40, 80, 160)], speed: 200, drag: 1.5, glow: true))),
         (id: "force_ii", name: "Force II", mana: 8, color: (140, 200, 255),
             kind: Carrier(Force(radius: 60, power: 500, strength: 65, pull: 150, drain: 26)),
-            look: (trail: (count: 5, life: (0.15, 0.5), colors: [(240, 250, 255), (150, 205, 255), (40, 80, 160)], speed: 150, drag: 2, glow: true))),
+            look: (trail: (count: 9, life: (0.15, 0.45), colors: [(245, 252, 255), (150, 205, 255), (40, 80, 160)], speed: 280, drag: 1.5, glow: true))),
 
         // ---- payloads ----
         (id: "spark", name: "Spark", mana: 1, color: (190, 210, 255), kind: Payload(Damage(14)),

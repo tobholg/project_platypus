@@ -72,6 +72,12 @@ pub enum Mode {
     Pull,
 }
 
+/// A body a well is carrying: safe while it's held (not ground by the rock
+/// in the ball, no fall damage from bumping things), fair game again the
+/// moment it's let go (thrown, it lands hard).
+#[derive(Component)]
+pub struct Carried;
+
 /// One held cell.
 struct Floating {
     cell: Cell,
@@ -137,8 +143,8 @@ impl Well {
     fn bend(&self) -> f32 {
         match self.mode {
             Mode::Hold => 0.35 + 0.65 * (self.carried / self.lift.max(1.0) * 1.5).min(1.0),
-            Mode::Push => 0.55 + 0.15 * (self.tick as f32 * 0.35).sin(),
-            Mode::Pull => 0.3 + 0.08 * (self.tick as f32 * 0.35).sin(),
+            Mode::Push => 0.85,
+            Mode::Pull => 0.7,
         }
     }
 }
@@ -238,6 +244,7 @@ pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Que
                     let k = &mut *k;
                     let v = k.body.vel;
                     k.loco.knock(&mut k.body, v, 0.3);
+                    commands.entity(b).remove::<Carried>();
                 }
             }
             commands.entity(e).despawn();
@@ -334,11 +341,13 @@ pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Que
                     Some(i) if d > reach * SLIP => {
                         // Flung loose.
                         well.carried -= well.bodies.swap_remove(i).1;
+                        commands.entity(b).remove::<Carried>();
                     }
                     Some(_) => carry(&mut k, to, vel, grip, g),
                     None if d <= reach && well.carried + w <= well.lift => {
                         well.bodies.push((b, w));
                         well.carried += w;
+                        commands.entity(b).insert(Carried);
                         carry(&mut k, to, vel, grip, g);
                     }
                     None if d <= reach => {
@@ -348,7 +357,9 @@ pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Que
                     None => {}
                 }
             }
+            // (What it carries rides with the ball; what it doesn't is ground.)
             if d <= reach
+                && !well.bodies.iter().any(|&(e, _)| e == b)
                 && let Some(mut h) = health
             {
                 let (lo, hi) = (k.body.pos - k.body.half - Vec2::ONE, k.body.pos + k.body.half + Vec2::ONE);
@@ -500,7 +511,7 @@ pub fn show(
 ) {
     let mats = sim.materials();
     let (cam, cam_tf, mut warp) = camera.into_inner();
-    let mut best: Option<(f32, Vec2, f32, Mode)> = None;
+    let mut best: Option<(f32, Vec2, f32, Mode, Vec2)> = None;
     let t = time.elapsed_secs();
     for (well, mut tf) in &mut wells {
         tf.translation.x = well.pos.x;
@@ -518,23 +529,25 @@ pub fn show(
             sparks.draw_now(f.pos, 1.0, [rgb[0], rgb[1], rgb[2], 1.0]);
         }
         let bend = well.bend();
-        // (Force's reach is long; its warp stays round the caster.)
-        let reach = if well.mode == Mode::Hold { well.reach } else { well.reach * 0.55 };
         if best.is_none_or(|b| bend > b.0) {
-            best = Some((bend, well.pos, reach, well.mode));
+            best = Some((bend, well.pos, well.reach, well.mode, well.aim));
         }
     }
     let size = cam.logical_viewport_size().unwrap_or(Vec2::ONE);
     warp.strength = 0.0;
-    let Some((bend, at, reach, mode)) = best else { return };
-    let (Ok(c), Ok(edge)) = (cam.world_to_viewport(cam_tf, at.extend(0.0)), cam.world_to_viewport(cam_tf, (at + Vec2::new(reach * 1.3, 0.0)).extend(0.0))) else { return };
+    let Some((bend, at, reach, mode, aim)) = best else { return };
+    // A well bends a round patch a little past its reach; force, its cone.
+    let (reach, cone) = if mode == Mode::Hold { (reach * 1.3, 0.0) } else { (reach * 1.25, CONE * 1.1) };
+    let (Ok(c), Ok(edge)) = (cam.world_to_viewport(cam_tf, at.extend(0.0)), cam.world_to_viewport(cam_tf, (at + Vec2::new(reach, 0.0)).extend(0.0))) else { return };
     warp.center = c / size;
     warp.radius = (edge.x - c.x).abs() / size.y;
     warp.strength = bend;
     warp.aspect = size.x / size.y;
     warp.time = t;
-    // A well and a pull draw the picture in; a push swells it and ripples out.
     warp.push = if mode == Mode::Push { 1.0 } else { 0.0 };
+    warp.cone = cone;
+    // (World y is up, the screen's down.)
+    warp.dir = Vec2::new(aim.x, -aim.y);
 }
 
 /// The camera wears the (off) warp from the start.

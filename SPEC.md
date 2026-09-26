@@ -889,7 +889,8 @@ deaths (blood). Rendered as one dynamic mesh.
     the outer ones can't follow; past 1.4 × the reach they fly off as real
     cells with the speed they had. Bodies (not the caster) within what's
     left of the lift are carried in its heart (their own fall gravity
-    cancelled, stunned),
+    cancelled, stunned; safe while carried: not ground, no fall damage,
+    `Carried`, till they're let go),
     heavier ones only tugged; held rock grinds any body it's inside (by its
     speed through it). Released, it all drops keeping its momentum.
   - **Force** (`Carrier::Force`) comes from the caster, a telekinetic shout:
@@ -907,10 +908,13 @@ deaths (blood). Rendered as one dynamic mesh.
     staffs level II.
 - **The distortion** (`magic/warp.rs`, `shaders/warp.wgsl`): a screen-space
   pass (Bevy's fullscreen material, in `Core2d` post-processing) around the
-  strongest field: a well or a pull swirls and pinches inside 1.3 × its
-  reach (a well harder the more it holds) with a dark heart and a faint
-  bright ring; a push swells it with ripples running outward. Strength 0
-  leaves the picture alone.
+  strongest field. A well swirls and pinches inside 1.3 × its reach (harder
+  the more it holds) with a dark heart and a faint bright ring. Force is a
+  cone from the caster toward the cursor (1.25 × its reach): sharp
+  wavefronts racing out along it (a push, stretching the picture at each
+  front) or in (a pull, squeezing it), brightest at the fronts with the
+  colours split a little, a faint haze filling the cone. Strength 0 leaves
+  the picture alone.
 - **Looks** (visual only): each rune may have a `look`: a `trail` (sparks a
   cell flown; a stream's come out of the wand with it) and a `burst`
   (sparks where it lands, off the surface it hit, or back along its way).
