@@ -28,6 +28,11 @@ pub struct Intent {
     pub aim: Vec2,
 }
 
+/// Below this share of its body under water (its head out), a jump leaves
+/// the water as a jump does, at this share of a jump's speed.
+const BREACH: f32 = 0.85;
+const BREACH_SPEED: f32 = 1.0;
+
 /// Per-creature movement tuning, loaded from creature RON files.
 /// Units: cells and seconds.
 #[derive(Clone, Debug, Deserialize)]
@@ -343,7 +348,15 @@ impl Locomotion {
         // it's held. Between strokes the water's drag slows you: a glide.
         let swimming = self.contacts.submerged > 0.3;
         self.stroke_left -= dt;
-        if swimming && intent.jump && (jump_pressed || self.stroke_left <= 0.0) {
+        // At the surface (its head out), a jump is a real jump: out of the
+        // water, onto the bank.
+        if swimming && jump_pressed && self.contacts.submerged < BREACH {
+            body.vel.y = s.jump_speed() * BREACH_SPEED;
+            self.stroke_left = s.swim_stroke_every;
+            self.buffer = 0.0;
+            self.rising_from_jump = true;
+            ev.jumped = true;
+        } else if swimming && intent.jump && (jump_pressed || self.stroke_left <= 0.0) {
             let steer = Vec2::new(intent.move_x, intent.move_y);
             let dir = if steer.length_squared() > 0.01 { steer.normalize() } else { Vec2::Y };
             body.vel = body.vel * 0.35 + dir * s.swim_stroke;
@@ -608,6 +621,32 @@ mod tests {
         rows.extend(vec!["#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#"; 90]);
         rows.push("####################################################################################################");
         Ascii::new(&rows)
+    }
+
+    /// Floating with its head out, a jump leaves the water like a jump; deep
+    /// under, it's a stroke.
+    #[test]
+    fn a_jump_at_the_surface_clears_the_water() {
+        let mut rows = vec!["#                              #"; 70];
+        rows.extend(vec!["#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#"; 30]);
+        rows.push("################################");
+        let g = Ascii::new(&rows);
+        let surface = 31.0;
+        let rise = |bottom: f32| {
+            let (s, mut l, mut b) = player();
+            b.pos = Vec2::new(15.0, bottom + b.half.y);
+            tick(&g, &s, &mut l, &mut b, Intent::default());
+            let mut top = f32::MIN;
+            for k in 0..60 {
+                tick(&g, &s, &mut l, &mut b, Intent { jump: k < 20, ..Default::default() });
+                top = top.max(b.bottom());
+            }
+            top - surface
+        };
+        let out = rise(surface - 12.0);
+        assert!(out > 15.0, "head out, a jump clears the surface by {out} cells");
+        let under = rise(surface - 25.0);
+        assert!(under < out - 5.0, "deep under, a stroke gets less far: {under} vs {out}");
     }
 
     #[test]

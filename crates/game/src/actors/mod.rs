@@ -142,6 +142,8 @@ impl Grid for WorldGrid<'_> {
             Some(c) => match self.0.materials().phys(c.material) {
                 p if p.platform => Occupancy::Platform,
                 p => match p.kind {
+                    // (Sand still falling, a stream of it: you walk through.)
+                    Kind::Powder if c.vy > 0 => Occupancy::Empty,
                     Kind::Static | Kind::Powder => Occupancy::Solid,
                 Kind::Liquid => Occupancy::Liquid,
                     Kind::Empty | Kind::Gas | Kind::Fire | Kind::Plant => Occupancy::Empty,

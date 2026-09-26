@@ -75,6 +75,10 @@
 //!   three pixels (9, 14–16) of the first thing in the first file in one stroke with
 //!   the real pointer (a pose paints its first layer's part), logs what
 //!   changed on disk; Ctrl+Z; logs whether the file is back as it was
+//! - `crossing`   (`PLATYPUS_WORLD=arena`) a stream of sand poured 30 cells
+//!   ahead, walked through (logs how far the player got); then a pit dug
+//!   with water 12 cells below its rim, the player put in it, swimming up
+//!   and jumping for the bank (logs whether it got out)
 //! - `held`       (`PLATYPUS_WORLD=arena`) each tool in the hand in turn: the
 //!   pickaxe into the floor (logs cells dug and swings), the torch, the
 //!   spark wand at the first dummy, a bomb thrown, the axe swung
@@ -107,7 +111,9 @@
 //!   logs where it ended up
 //!
 //! Prints one line per second and a summary, then exits.
-//! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
+//! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end
+//! (`PLATYPUS_OFFSCREEN=1`: what the camera draws, without the window: works
+//! with the screen locked).
 
 use bevy::input::InputSystems;
 use bevy::prelude::*;
@@ -147,6 +153,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, editor_script.after(InputSystems).before(crate::editor::capture))
             .add_systems(Update, warband_script)
+            .add_systems(PreUpdate, crossing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, held_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
@@ -164,6 +171,7 @@ fn run(
     mut cam: Single<&mut Transform, With<MainCamera>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut exit: MessageWriter<AppExit>,
+    offscreen: Option<Res<crate::camera::Offscreen>>,
 ) {
     let dt = time.delta_secs().min(0.1);
     s.elapsed += dt;
@@ -215,7 +223,11 @@ fn run(
     if s.elapsed >= s.duration - 1.0
         && let Some(path) = s.screenshot.take()
     {
-        commands.spawn(Screenshot::primary_window()).observe(save_to_disk(path));
+        let shot = match &offscreen {
+            Some(o) => Screenshot::image(o.0.clone()),
+            None => Screenshot::primary_window(),
+        };
+        commands.spawn(shot).observe(save_to_disk(path));
     }
     if s.elapsed >= s.duration {
         let n = s.reports.len().max(1) as f32;
@@ -2045,5 +2057,83 @@ fn held_script(
         (true, false) => mouse.press(MouseButton::Left),
         (false, true) => mouse.release(MouseButton::Left),
         _ => {}
+    }
+}
+
+/// Through falling sand; out of a pit of water.
+fn crossing_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut state: Local<(u8, f32, f32)>,
+) {
+    if s.name != "crossing" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let mut want = std::collections::HashSet::new();
+    if state.0 == 0 && t > 0.3 {
+        state.1 = k.body.pos.x;
+        state.0 = 1;
+    }
+    let x0 = state.1 as i32;
+    // Sand pouring from high up, 30 cells ahead.
+    if (0.3..3.0).contains(&t)
+        && let Some(sand) = sim.materials().id("sand")
+    {
+        sim.queue(WorldEdit::Paint { center: CellPos::new(x0 + 30, floor + 70), radius: 1, material: sand, overwrite: false });
+    }
+    if (1.2..3.0).contains(&t) {
+        want.insert(KeyCode::KeyD);
+    }
+    if state.0 == 1 && t > 3.0 {
+        info!("crossing: walked {:.0} cells through a sand stream 30 ahead (past it: {})", k.body.pos.x - state.1, k.body.pos.x - state.1 > 36.0);
+        // A pit: 30 wide, 40 deep, water to 12 below the rim.
+        let px = x0 + 90;
+        sim.queue(WorldEdit::Dig { center: CellPos::new(px, floor - 20), radius: 20, max_hardness: 250 });
+        if let Some(water) = sim.materials().id("water") {
+            for y in (floor - 40..floor - 12).step_by(4) {
+                sim.queue(WorldEdit::Paint { center: CellPos::new(px, y), radius: 16, material: water, overwrite: false });
+            }
+        }
+        state.0 = 2;
+    }
+    if state.0 == 2 && t > 3.6 {
+        k.body.pos = Vec2::new((x0 + 90) as f32, (floor - 22) as f32);
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+        state.0 = 3;
+        state.2 = f32::MIN;
+    }
+    if state.0 == 3 {
+        // Swim up (hold jump), then at the surface jump for the left bank.
+        let wet = k.loco.contacts.submerged;
+        if t < 7.5 {
+            if wet > 0.0 || t < 4.0 {
+                want.insert(KeyCode::Space);
+            }
+            if t > 4.5 {
+                want.insert(KeyCode::KeyA);
+            }
+            // (Let go now and then, so a new press can come.)
+            if (t * 3.0).fract() < 0.15 {
+                want.remove(&KeyCode::Space);
+            }
+        }
+        state.2 = state.2.max(k.body.bottom());
+        if t > 7.5 {
+            info!("crossing: out of the pit: feet at {:+.0} from the rim (highest {:+.0}), {}", k.body.bottom() - floor as f32, state.2 - floor as f32, if k.body.bottom() >= floor as f32 - 0.5 && k.loco.contacts.submerged < 0.1 { "out" } else { "still in" });
+            state.0 = 4;
+        }
+    }
+    for key in [KeyCode::KeyD, KeyCode::KeyA, KeyCode::Space] {
+        match (want.contains(&key), keys.pressed(key)) {
+            (true, false) => keys.press(key),
+            (false, true) => keys.release(key),
+            _ => {}
+        }
     }
 }

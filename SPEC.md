@@ -633,7 +633,10 @@ deaths (blood). Rendered as one dynamic mesh.
   toward where you steer (W/S/A/D or the arrows; up if nowhere), one on the
   press and another every 0.35 s while it's held (glide between: the
   drag); held, you tread water (no sinking), so ~27 cells/s up or down and
-  level sideways. A body trades places with liquid the way sand does
+  level sideways. With your head out (under 85 % of you under water) a jump
+  is a real jump: out of the water and onto the bank. Powder still falling
+  (its fall speed `vy` > 0: a stream of sand) doesn't stop bodies; settled
+  powder is solid ground. A body trades places with liquid the way sand does
   (`WorldEdit::Displace`): what's in the cells it moves into goes to the
   open cells it just left (at a surface; under water it's liquid all round
   and nothing moves), splashing out at speed. (It used to push the water in

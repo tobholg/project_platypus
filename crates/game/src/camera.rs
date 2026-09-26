@@ -58,13 +58,24 @@ impl Plugin for CameraPlugin {
     }
 }
 
-fn spawn_camera(mut commands: Commands, start: Res<StartAt>) {
-    commands.spawn((
+/// `PLATYPUS_OFFSCREEN=1`: the camera draws into this image, not the window
+/// (screenshots from scenarios still work with the screen locked or asleep,
+/// when the window isn't drawn).
+#[derive(Resource)]
+pub struct Offscreen(pub Handle<Image>);
+
+fn spawn_camera(mut commands: Commands, start: Res<StartAt>, mut images: ResMut<Assets<Image>>) {
+    let mut cam = commands.spawn((
         Camera2d,
         MainCamera,
         Transform::from_translation(start.0.extend(100.0)),
         ChunkLoader { half_extent: Vec2::new(400.0, 240.0) },
     ));
+    if std::env::var("PLATYPUS_OFFSCREEN").is_ok_and(|v| !v.is_empty()) {
+        let image = images.add(Image::new_target_texture(1512, 917, bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb, None));
+        cam.insert(bevy::camera::RenderTarget::Image(image.clone().into()));
+        commands.insert_resource(Offscreen(image));
+    }
 }
 
 fn zoom(chars: Res<ButtonInput<Key>>, keys: Res<ButtonInput<KeyCode>>, mut zoom: ResMut<Zoom>) {
