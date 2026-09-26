@@ -103,7 +103,7 @@ struct HandInput {
 #[derive(Component)]
 pub struct Dropped {
     pub stack: Stack,
-    age: f32,
+    pub(crate) age: f32,
 }
 
 impl Plugin for HandsPlugin {
@@ -136,7 +136,7 @@ fn build_items(mut commands: Commands, mut pending: ResMut<PendingItems>, sim: R
 
 type NewPlayer = (With<LocalPlayer>, Without<Inventory>);
 
-fn give_start(mut commands: Commands, items: Option<Res<Items>>, mut new: Query<(Entity, &mut crate::gear::Equipment), NewPlayer>) {
+pub(crate) fn give_start(mut commands: Commands, items: Option<Res<Items>>, mut new: Query<(Entity, &mut crate::gear::Equipment), NewPlayer>) {
     let Some(items) = items else { return };
     for (e, mut eq) in &mut new {
         let mut inv = Inventory::new(PACK);
@@ -346,8 +346,9 @@ fn wield(
 }
 
 type User<'a> = (Entity, &'a Kinematics, &'a mut Inventory, Option<&'a crate::actors::animation::HandPos>);
+type StationHit<'a> = (Entity, &'a mut crate::craft::Station, &'a Kinematics);
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn use_hands(
     mut commands: Commands,
     mut input: ResMut<HandInput>,
@@ -361,10 +362,9 @@ fn use_hands(
     mut player: Query<User, With<LocalPlayer>>,
     creatures: Query<&Kinematics, With<Creature>>,
     mut found: Query<(Entity, &mut chests::Chest, &Kinematics), Without<LocalPlayer>>,
+    (crafting, mut stations): (Res<crate::craft::Crafting>, Query<StationHit, (Without<LocalPlayer>, Without<chests::Chest>)>),
     book: Res<crate::magic::Spellbook>,
-    mut casts: MessageWriter<crate::magic::CastRequest>,
-    mut swings: MessageWriter<crate::combat::MeleeRequest>,
-    mut draws: MessageWriter<crate::archery::DrawBow>,
+    (mut casts, mut swings, mut draws): (MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::combat::MeleeRequest>, MessageWriter<crate::archery::DrawBow>),
 ) {
     let clicked = std::mem::take(&mut input.clicked);
     hand.cooldown = (hand.cooldown - DT).max(0.0);
@@ -388,6 +388,22 @@ fn use_hands(
                     && chest.hit(power as f32)
                 {
                     chests.smash(&mut commands, &sim.world, &items, key, pos, true);
+                    commands.entity(e).despawn();
+                }
+                return;
+            }
+            // So does a crafting station: the last blow knocks it back into
+            // its item.
+            if !back
+                && let Some((e, kind, pos)) = crate::craft::station_at(cursor, stations.iter())
+                && pos.distance(from) <= reach * BLOCK as f32
+            {
+                hand.cooldown = 1.0 / speed.max(0.1);
+                if let Ok((_, mut station, _)) = stations.get_mut(e)
+                    && station.hit(power as f32)
+                    && let Some(item) = crafting.stations.get(kind).and_then(|d| items.id(&d.id))
+                {
+                    spawn_drop(&mut commands, &items, pos, Stack::new(item, 1));
                     commands.entity(e).despawn();
                 }
                 return;
@@ -452,6 +468,15 @@ fn use_hands(
                 return;
             }
             chests.spawn_placed(&mut commands, feet);
+            inv.take(slot, 1);
+        }
+        Use::Station(ref id) if clicked => {
+            let Some(kind) = crafting.station(id) else { return warn!("crafting.ron: no station `{id}`") };
+            let Some(feet) = chests::place_spot_sized(&sim.world, cursor, crafting.stations[kind].size()) else { return };
+            if feet.distance(from) > 6.0 * BLOCK as f32 {
+                return;
+            }
+            crafting.spawn(&mut commands, kind, feet);
             inv.take(slot, 1);
         }
         Use::Torch if clicked => {
@@ -523,11 +548,13 @@ fn collect(
 }
 
 /// The block the hands would act on, outlined: yellow to mine, cyan to place.
+#[allow(clippy::too_many_arguments)]
 fn outline(
     input: Res<HandInput>,
     items: Option<Res<Items>>,
     hand: Res<Hand>,
     sim: Res<SimWorld>,
+    crafting: Res<crate::craft::Crafting>,
     player: Query<(&Kinematics, &Inventory), With<LocalPlayer>>,
     creatures: Query<&Kinematics, With<Creature>>,
     mut gizmos: Gizmos,
@@ -538,8 +565,18 @@ fn outline(
     let slot = if input.auto { auto_slot(&sim.world, &items, inv, hand.bar_slots(), &k.body, from, cursor).unwrap_or(hand.active()) } else { hand.active() };
     let Some(stack) = inv.slots[slot] else { return };
     let world = &sim.world;
-    let (block, color) = match items.def(stack.item).use_ {
-        Use::Mine { back, tier, reach, .. } => (mine_at(world, &k.body, from, cursor, hand.smart, (back, tier, reach)), Color::srgba(1.0, 0.9, 0.3, 0.9)),
+    let (block, color) = match &items.def(stack.item).use_ {
+        Use::Station(id) => {
+            if let Some(kind) = crafting.station(id) {
+                let (w, h) = crafting.stations[kind].size();
+                if let Some(feet) = chests::place_spot_sized(world, cursor, (w, h)) {
+                    let size = Vec2::new(w as f32, h as f32);
+                    gizmos.rect_2d(bevy::math::Isometry2d::from_translation(feet + Vec2::new(0.0, size.y / 2.0)), size, Color::srgba(0.4, 0.9, 1.0, 0.9));
+                }
+            }
+            (None, Color::NONE)
+        }
+        &Use::Mine { back, tier, reach, .. } => (mine_at(world, &k.body, from, cursor, hand.smart, (back, tier, reach)), Color::srgba(1.0, 0.9, 0.3, 0.9)),
         Use::Chest => {
             if let Some(feet) = chests::place_spot(world, cursor) {
                 let (w, h) = platypus_worldgen::CHEST_SIZE;

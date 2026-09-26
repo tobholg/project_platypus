@@ -119,6 +119,21 @@ A save is a directory:
 
 The plan isn't saved; it's regenerated from the seed. A version bump migrates or refuses to load.
 
+**Built 2026-09-27 (`save.rs`, branch `progression-arc`)**, as a first
+version to build on: `saves/<world>-<seed>/` holds `world.ron` (version,
+kind, seed, tick: so the time of day, the materials by name in the order the
+chunks number them, the spawned places, the chest key counter), `chunks.bin`
+(every changed chunk, loaded or not, in the sim's own lz4 bytes; one file,
+not regions yet), `player.ron` (position, health, mana, pack, what's worn,
+the hotbar in hand, progress) and `things.ron` (chests and every chest's
+contents known, crafting stations, items lying about, creatures; a body's
+belongings are kept as items where it lay). Items and materials are kept by
+name, so a save survives reordered data files (a missing name is dropped
+with a warning). Saved every minute, on quitting and with Ctrl+S; loaded at
+start. Not yet: the weather, bodies as bodies, falling sand and bodies in
+flight, open portals and burning cells' timers (the cells themselves are
+saved), regions, choosing a world at start.
+
 ## 4. Hands: mining and building
 
 The current per-cell radius pickaxe removes an uneven blob and gives nothing back. Terraria feels good because every hit has a clear target, the result is predictable, the feedback is immediate, and the progress adds up.
@@ -384,6 +399,33 @@ a stat is naming it once (`gear/stats.rs`) and reading it where it acts.
 Build order (a commit each): stats + equipment → skins → rarity and bonuses
 → corpses and containers → spells and foci → enemies equipped and example
 content.
+
+## 7d. Crafting and progression (built 2026-09-27, branch `progression-arc`)
+
+Systems first, with example content to iterate on.
+
+- **Stations** (`crafting.ron`): furniture (workbench, furnace, anvil,
+  arcane altar), drawn as text art, each also an item that sets it down
+  (like a chest); a pickaxe knocks it back into its item. A furnace glows.
+- **Recipes** (`crafting.ron`): makes × count from needs (counted in the
+  items' own units: blocks as blocks), by hand or at a station within
+  reach. The inventory screen has a crafting panel: what you can make now
+  first, what you're short of dimmed, each with what goes in and where;
+  click to make one (a `CraftRequest`, so scripts and later co-op/AI can
+  craft too).
+- **Discovery**: a recipe shows once you've held anything that goes into
+  it or comes out of it (Terraria's), and a `locked` one only once a
+  milestone unlocks it.
+- **Progress** (`progress.rs`, on the player, saved): items ever held, the
+  deepest you've been, kills by kind, crafts, milestones reached, recipes
+  unlocked.
+- **Milestones** (`progression.ron`): a condition (holds, crafted, depth,
+  killed, another milestone; all/any of several) and rewards (items,
+  unlocked recipes), with a toast when reached.
+- **The ladder so far**: wood → planks → workbench → furnace (stone,
+  planks, torches) → bars from ore → anvil (iron) → tools, arms, armour,
+  hooks; gems unlock the arcane altar → foci; the deep unlocks mithril and
+  void recipes. Ores already gate by pickaxe tier and depth.
 
 ## 8. Death and loot (D4)
 

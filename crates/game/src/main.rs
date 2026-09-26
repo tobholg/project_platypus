@@ -5,6 +5,10 @@
 //! - `PLATYPUS_WORLD`     `terrain` (default), `small`, `flat` (an empty box) or
 //!   `arena` (the sandbox: dummies, time controls, overlays, the art editor)
 //! - `PLATYPUS_SCENARIO`  scripted perf run, see `scenario.rs`
+//! - `PLATYPUS_SAVE`      the save to use (default: world and seed, `large-1`;
+//!   `off`: none; scenarios and the arena and flat sandboxes save only when
+//!   it's given), `PLATYPUS_FRESH=1`
+//!   to start it over: see `save.rs`
 
 mod actors;
 mod archery;
@@ -12,6 +16,7 @@ mod arena;
 mod camera;
 mod canvas;
 mod combat;
+mod craft;
 mod data;
 mod debug;
 mod dev;
@@ -23,9 +28,11 @@ mod hud;
 mod light;
 mod magic;
 mod particles;
+mod progress;
 mod props;
 mod render;
 mod rigid;
+mod save;
 mod scenario;
 #[cfg(feature = "spikes")]
 mod spikes;
@@ -54,6 +61,15 @@ fn main() {
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", materials_path.display()));
     let materials = Arc::new(MaterialTable::from_ron(&src).unwrap_or_else(|e| panic!("{e}")));
 
+    let kind = std::env::var("PLATYPUS_WORLD").unwrap_or_else(|_| "large".into());
+    let save = match std::env::var("PLATYPUS_SAVE").ok().as_deref() {
+        Some("off" | "") => None,
+        Some(name) => Some(name.to_string()),
+        // (A scenario doesn't touch your save unless told to; the sandboxes
+        // start clean every time.)
+        None if std::env::var("PLATYPUS_SCENARIO").is_ok() || matches!(kind.as_str(), "arena" | "flat") => None,
+        None => Some(format!("{kind}-{seed}")),
+    };
     let generator: Arc<dyn ChunkGenerator> = match std::env::var("PLATYPUS_WORLD").as_deref() {
         // PLATYPUS_WORLD=arena: a sandbox for weapons, spells and creatures
         // (dummies, time controls, overlays, the art editor: `arena.rs`).
@@ -106,6 +122,7 @@ fn main() {
             scenario::ScenarioPlugin,
         ))
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
+        .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed }))
         .add_plugins(spikes_plugin)
         .run();
 }

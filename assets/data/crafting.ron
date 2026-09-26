@@ -1,0 +1,132 @@
+// Crafting (DESIGN §7d, craft.rs): stations and recipes. Hot-reloaded.
+//
+// reach: how near a station must be to make what's made at it (cells).
+// stations: furniture recipes are made at; each is also an item (the same
+//   id, `use: Station(id)` in items.ron) that places it. art: one character
+//   a cell, top row first ('.' clear); palette: what each stands for; light:
+//   a glow (r, g, b).
+// recipes: makes (an item id) × count, from needs [(item, count)], at a
+//   station (none: by hand). Counts are in the item's own units: blocks as
+//   blocks (a block is 4 × 4 cells). locked: shown only once a milestone
+//   (progression.ron) unlocks it. A recipe shows once you've held anything
+//   that goes into it or comes out of it.
+//
+// A starting ladder, to build on: wood → planks → workbench; stone, planks,
+// torches → furnace; ore → bars; iron bars → anvil; bars → tools, armour,
+// hooks; silver, gems → arcane altar → foci.
+(
+    reach: 60,
+    stations: [
+        (id: "workbench", name: "Workbench",
+            palette: { 'o': (40, 26, 16), 'L': (176, 124, 70), 'l': (140, 96, 52), 'd': (110, 74, 40) },
+            art: [
+                "oooooooooooooooo",
+                "oLLlLLLLlLLLLlLo",
+                "oddddddddddddddo",
+                ".ol.........lo..",
+                ".ol..oooooo.lo..",
+                ".ol..oLLLLo.lo..",
+                ".ol..oooooo.lo..",
+                ".oo.........oo..",
+            ]),
+        (id: "furnace", name: "Furnace", light: (1.3, 0.6, 0.2),
+            palette: { 'o': (30, 28, 30), 's': (110, 108, 114), 'S': (140, 138, 146), 'y': (255, 190, 60), 'Y': (255, 240, 170), 'r': (230, 90, 30) },
+            art: [
+                "..oooooooooo..",
+                ".osssSssssSso.",
+                "osSssssSsssSso",
+                "osssSsssSsssso",
+                "osSsoooooosSso",
+                "ossoyyYYyyosso",
+                "osSoyYrrYyoSso",
+                "ossoyrYYryosso",
+                "osSooooooooSso",
+                "ossSssSsssSsso",
+                "osssSssssSssso",
+                "oSssssSsssssSo",
+                "oooooooooooooo",
+            ]),
+        (id: "anvil", name: "Anvil",
+            palette: { 'o': (26, 26, 32), 'M': (180, 184, 196), 'm': (110, 112, 124) },
+            art: [
+                "..oooooooooo..",
+                "ooMMMMMMMMMMoo",
+                ".oMmmmmmmmmMo.",
+                "...oommmmoo...",
+                "....ommmmo....",
+                "...ommmmmmo...",
+                "..ommmmmmmmo..",
+                "..oooooooooo..",
+            ]),
+        (id: "arcane_altar", name: "Arcane altar", light: (0.6, 0.3, 1.0),
+            palette: { 'o': (20, 16, 30), 'G': (190, 120, 255), 'W': (250, 235, 255), 'p': (70, 66, 90), 'P': (130, 110, 170) },
+            art: [
+                "......oo......",
+                ".....oGGo.....",
+                "....oGWGGo....",
+                ".....oGGo.....",
+                "......oo......",
+                "..oooooooooo..",
+                "..oppppppppo..",
+                "...opPppPpo...",
+                "...oppppppo...",
+                "...opPppPpo...",
+                "..oppppppppo..",
+                ".oooooooooooo.",
+            ]),
+    ],
+    recipes: [
+        // ---- by hand ----
+        (makes: "block:planks", count: 2, needs: [("block:wood", 1)]),
+        (makes: "torch", count: 3, needs: [("block:planks", 1), ("block:coal", 1)]),
+        (makes: "workbench", needs: [("block:planks", 6)]),
+
+        // ---- at the workbench ----
+        (makes: "chest", needs: [("block:planks", 8)], at: "workbench"),
+        (makes: "block:platform", count: 4, needs: [("block:planks", 1)], at: "workbench"),
+        (makes: "furnace", needs: [("block:stone", 12), ("block:planks", 4), ("torch", 3)], at: "workbench"),
+        (makes: "anvil", needs: [("iron_bar", 5)], at: "workbench"),
+        (makes: "bow", needs: [("block:planks", 6)], at: "workbench"),
+        (makes: "arrow", count: 10, needs: [("block:planks", 1), ("block:stone", 1)], at: "workbench"),
+        (makes: "oak_wand", needs: [("block:planks", 3), ("block:amethyst", 1)], at: "workbench"),
+
+        // ---- at the furnace: smelting ----
+        (makes: "copper_bar", needs: [("block:copper_ore", 3)], at: "furnace"),
+        (makes: "iron_bar", needs: [("block:iron_ore", 3)], at: "furnace"),
+        (makes: "silver_bar", needs: [("block:silver_ore", 4)], at: "furnace"),
+        (makes: "gold_bar", needs: [("block:gold_ore", 4)], at: "furnace"),
+        (makes: "mithril_bar", needs: [("block:mithril_ore", 5)], at: "furnace"),
+        (makes: "block:glass", count: 2, needs: [("block:sand", 2)], at: "furnace"),
+        (makes: "glowstick", count: 3, needs: [("block:glass", 1), ("block:emerald", 1)], at: "furnace"),
+
+        // ---- at the anvil: tools, arms, armour, hooks ----
+        (makes: "copper_pickaxe", needs: [("copper_bar", 6), ("block:planks", 2)], at: "anvil"),
+        (makes: "iron_pickaxe", needs: [("iron_bar", 8), ("block:planks", 2)], at: "anvil"),
+        (makes: "gold_pickaxe", needs: [("gold_bar", 10), ("block:planks", 2)], at: "anvil"),
+        (makes: "mithril_pickaxe", needs: [("mithril_bar", 12)], at: "anvil", locked: true),
+        (makes: "copper_axe", needs: [("copper_bar", 5), ("block:planks", 2)], at: "anvil"),
+        (makes: "shortsword", needs: [("iron_bar", 6)], at: "anvil"),
+        (makes: "longsword", needs: [("iron_bar", 10), ("silver_bar", 2)], at: "anvil"),
+        (makes: "iron_helm", needs: [("iron_bar", 10)], at: "anvil"),
+        (makes: "chainmail", needs: [("iron_bar", 16)], at: "anvil"),
+        (makes: "iron_greaves", needs: [("iron_bar", 12)], at: "anvil"),
+        (makes: "iron_boots", needs: [("iron_bar", 8)], at: "anvil"),
+        (makes: "grappling_hook", needs: [("iron_bar", 3), ("block:planks", 2)], at: "anvil"),
+        (makes: "chain_hook", needs: [("iron_bar", 6), ("silver_bar", 4)], at: "anvil"),
+        (makes: "silk_line", needs: [("silver_bar", 6), ("gold_bar", 2)], at: "anvil", locked: true),
+        (makes: "bomb", count: 3, needs: [("iron_bar", 1), ("block:coal", 2)], at: "anvil"),
+        (makes: "arcane_altar", needs: [("block:stone", 10), ("silver_bar", 5), ("block:amethyst", 3)], at: "anvil", locked: true),
+
+        // ---- at the arcane altar: foci ----
+        (makes: "fire_wand", needs: [("block:planks", 3), ("block:ruby", 2)], at: "arcane_altar"),
+        (makes: "frost_wand", needs: [("block:planks", 3), ("block:ice", 4), ("block:amethyst", 1)], at: "arcane_altar"),
+        (makes: "acid_wand", needs: [("block:planks", 3), ("block:emerald", 2)], at: "arcane_altar"),
+        (makes: "storm_wand", needs: [("block:planks", 3), ("silver_bar", 2), ("block:amethyst", 1)], at: "arcane_altar"),
+        (makes: "radiant_wand", needs: [("gold_bar", 3), ("block:amethyst", 2)], at: "arcane_altar"),
+        (makes: "void_wand", needs: [("block:obsidian", 6), ("block:amethyst", 3)], at: "arcane_altar", locked: true),
+        (makes: "fire_staff", needs: [("fire_wand", 1), ("gold_bar", 6), ("block:ruby", 3)], at: "arcane_altar"),
+        (makes: "frost_staff", needs: [("frost_wand", 1), ("silver_bar", 6), ("block:amethyst", 3)], at: "arcane_altar"),
+        (makes: "radiant_staff", needs: [("radiant_wand", 1), ("gold_bar", 8), ("block:crystal", 4)], at: "arcane_altar"),
+        (makes: "void_staff", needs: [("void_wand", 1), ("mithril_bar", 6), ("block:obsidian", 8)], at: "arcane_altar", locked: true),
+    ],
+)

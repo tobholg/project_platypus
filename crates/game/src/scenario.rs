@@ -222,6 +222,8 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, call_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(Update, save_script)
+            .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -3740,5 +3742,222 @@ fn fall_script(
         keys.press(KeyCode::Space);
     } else if !jump && keys.pressed(KeyCode::Space) {
         keys.release(KeyCode::Space);
+    }
+}
+
+type Saver<'a> = (&'a mut Kinematics, Option<&'a mut crate::hands::items::Inventory>, Option<&'a crate::progress::Progress>);
+
+/// Saving, in two runs (`PLATYPUS_SAVE` the same for both): `save_a`
+/// (with `PLATYPUS_FRESH=1`) digs a hole, lays bricks, fills a chest, sets
+/// down a workbench, gives the player gold and moves it, and saves; `save_b`
+/// loads it. Both log the same things, to compare.
+#[allow(clippy::too_many_arguments)]
+fn save_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut chests: ResMut<crate::hands::chests::Chests>,
+    crafting: Res<crate::craft::Crafting>,
+    mut player: Query<Saver, With<LocalPlayer>>,
+    boxes: Query<&crate::hands::chests::Chest>,
+    stations: Query<&crate::craft::Station>,
+    creatures: Query<&crate::actors::Creature, Without<LocalPlayer>>,
+    day: Res<crate::light::Daylight>,
+    mut now: MessageWriter<crate::save::SaveNow>,
+    mut state: Local<u8>,
+) {
+    let a = s.name == "save_a";
+    if !(a || s.name == "save_b") {
+        return;
+    }
+    let Some(items) = items else { return };
+    let Ok((mut k, mut inv, progress)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let count = |sim: &SimWorld, m: Option<platypus_sim::MaterialId>, xs: std::ops::Range<i32>, ys: std::ops::Range<i32>| {
+        xs.flat_map(|x| ys.clone().map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| Some(c.material) == m || m.is_none() && c.is_air())).count()
+    };
+    if a && *state == 0 && t > 1.5 {
+        *state = 1;
+        let mats = sim.materials().clone();
+        sim.queue(WorldEdit::Paint { center: CellPos::new(700, floor - 10), radius: 8, material: platypus_sim::MaterialId::AIR, overwrite: true });
+        if let Some(brick) = mats.id("brick") {
+            sim.queue(WorldEdit::Paint { center: CellPos::new(560, floor + 30), radius: 4, material: brick, overwrite: true });
+        }
+        chests.spawn_placed(&mut commands, Vec2::new(600.0, floor as f32));
+        if let (Some(key), Some(iron)) = (chests.stashes().map(|(k, ..)| k).max(), items.id("iron_bar")) {
+            let world = &sim.world;
+            chests.contents(key, world, &items).add(&items, crate::hands::items::Stack::new(iron, 3));
+        }
+        if let Some(bench) = crafting.station("workbench") {
+            crafting.spawn(&mut commands, bench, Vec2::new(640.0, floor as f32));
+        }
+        if let (Some(inv), Some(gold)) = (inv.as_mut(), items.id("gold_bar")) {
+            inv.add(&items, crate::hands::items::Stack::new(gold, 7));
+        }
+        k.body.pos = Vec2::new(520.0, floor as f32 + 8.0);
+        k.prev_pos = k.body.pos;
+        return;
+    }
+    if a && *state == 1 && t > 3.0 {
+        *state = 2;
+        now.write(crate::save::SaveNow);
+    }
+    if *state < 3 && t > 3.5 {
+        *state = 3;
+        let brick = sim.materials().id("brick");
+        let gold = items.id("gold_bar");
+        let iron = items.id("iron_bar");
+        let chest_iron: u32 = chests.stashes().filter_map(|(_, _, c)| c).map(|c| iron.map_or(0, |i| c.count(i))).sum();
+        info!(
+            "{}: the hole {} air cells, bricks {}; the player at ({:.0}, {:.0}) with {} gold bars; {} chests ({} iron bars in them), {} stations, {} creatures; tick {}, {}; seen {} items",
+            s.name,
+            count(&sim, None, 692..709, floor - 18..floor - 1),
+            count(&sim, brick, 554..567, floor + 24..floor + 37),
+            k.body.pos.x,
+            k.body.pos.y - floor as f32,
+            inv.as_ref().map_or(0, |i| gold.map_or(0, |g| i.count(g))),
+            boxes.iter().count(),
+            chest_iron,
+            stations.iter().count(),
+            creatures.iter().count(),
+            sim.world.tick(),
+            day.clock(),
+            progress.map_or(0, |p| p.seen.len()),
+        );
+    }
+}
+
+type Crafter<'a> = (&'a mut Kinematics, &'a mut crate::hands::items::Inventory, &'a crate::progress::Progress);
+
+/// Crafting up the ladder: wood, stone, ore, coal and amethyst given; planks
+/// and a workbench made, and set down; a furnace made at it and set down;
+/// bars smelted; an anvil made and set down; a grappling hook made at it.
+/// The stations are set down with the hands, as a player does. Logs each
+/// step, the milestones reached and the recipes shown.
+#[allow(clippy::too_many_arguments)]
+fn craft_script(
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    crafting: Res<crate::craft::Crafting>,
+    mut hand: ResMut<crate::hands::Hand>,
+    mut open: ResMut<crate::hands::InventoryOpen>,
+    mut player: Query<Crafter, With<LocalPlayer>>,
+    stations: Query<&crate::craft::Station>,
+    mut asks: MessageWriter<crate::craft::CraftRequest>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "craft" {
+        return;
+    }
+    let Some(items) = items else { return };
+    let Ok((mut k, mut inv, progress)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR as f32;
+    let dt = t - state.1;
+    let mut click = false;
+    let mut ask = |makes: &str, n: usize| {
+        let Some(r) = crafting.recipe(makes) else { return warn!("no recipe for {makes}") };
+        for _ in 0..n {
+            asks.write(crate::craft::CraftRequest(r));
+        }
+    };
+    let have = |inv: &crate::hands::items::Inventory, id: &str| items.id(id).map_or(0, |i| inv.count(i) / items.unit(i));
+    // A made station into hotbar 3's first slot, in hand.
+    let mut hold = |inv: &mut crate::hands::items::Inventory, id: &str| {
+        if let Some(i) = inv.slots.iter().position(|s| s.is_some_and(|s| items.def(s.item).id == id)) {
+            inv.slots.swap(i, 20);
+        }
+        hand.bar = 2;
+        hand.slot = 0;
+    };
+    let next = |state: &mut (u8, f32)| *state = (state.0 + 1, t);
+    match state.0 {
+        0 if t > 0.8 => {
+            k.body.pos = Vec2::new(620.0, floor + 8.0);
+            k.prev_pos = k.body.pos;
+            for (id, n) in [("block:wood", 8), ("block:stone", 12), ("block:copper_ore", 6), ("block:iron_ore", 24), ("block:coal", 2), ("block:amethyst", 3)] {
+                if let Some(item) = items.id(id) {
+                    inv.add(&items, crate::hands::items::Stack::new(item, n * items.unit(item)));
+                }
+            }
+            next(&mut state);
+        }
+        // By hand: planks, a workbench.
+        1 if dt > 0.3 => {
+            ask("block:planks", 6);
+            ask("workbench", 1);
+            next(&mut state);
+        }
+        // (Set down within the hand's reach: 24 cells.)
+        2 if dt > 0.2 => {
+            if dt < 0.22 {
+                info!("craft: by hand: {} planks left, {} workbench", have(&inv, "block:planks"), have(&inv, "workbench"));
+            }
+            hold(&mut inv, "workbench");
+            cursor.0 = Some(Vec2::new(624.0, floor + 2.0));
+            click = dt < 0.4;
+            if dt > 0.55 {
+                next(&mut state);
+            }
+        }
+        // At the workbench: a furnace; set down.
+        3 => {
+            if dt < 0.05 {
+                ask("furnace", 1);
+            }
+            if dt > 0.2 {
+                hold(&mut inv, "furnace");
+                cursor.0 = Some(Vec2::new(606.0, floor + 2.0));
+                click = dt < 0.45;
+            }
+            if dt > 0.6 {
+                info!("craft: {} stations set down; a furnace made: {}", stations.iter().count(), stations.iter().count() >= 2);
+                next(&mut state);
+            }
+        }
+        // Smelting; an anvil at the workbench; set down; a hook at it.
+        4 => {
+            if dt < 0.05 {
+                ask("copper_bar", 2);
+                ask("iron_bar", 8);
+            }
+            if (0.2..0.25).contains(&dt) && have(&inv, "anvil") == 0 && stations.iter().count() < 3 {
+                info!("craft: smelted: {} copper bars, {} iron bars", have(&inv, "copper_bar"), have(&inv, "iron_bar"));
+                ask("anvil", 1);
+            }
+            if dt > 0.4 {
+                hold(&mut inv, "anvil");
+                cursor.0 = Some(Vec2::new(640.0, floor + 2.0));
+                click = dt < 0.65;
+            }
+            if dt > 0.8 {
+                ask("grappling_hook", 1);
+                next(&mut state);
+            }
+        }
+        5 if dt > 0.3 => {
+            let shown = crafting.listed(&items, &inv, progress, &(0..crafting.stations.len()).collect::<Vec<_>>());
+            let altar = crafting.recipe("arcane_altar").is_some_and(|r| shown.iter().any(|(i, _)| *i == r));
+            info!(
+                "craft: {} stations; a grappling hook: {}; {} iron bars left (3 from the Smith milestone); milestones {:?}; {} recipes shown, the arcane altar's among them: {altar}",
+                stations.iter().count(),
+                have(&inv, "grappling_hook"),
+                have(&inv, "iron_bar"),
+                progress.done,
+                shown.len()
+            );
+            open.0 = true;
+            next(&mut state);
+        }
+        _ => {}
+    }
+    if click && !mouse.pressed(MouseButton::Left) {
+        mouse.press(MouseButton::Left);
+    } else if !click && mouse.pressed(MouseButton::Left) {
+        mouse.release(MouseButton::Left);
     }
 }

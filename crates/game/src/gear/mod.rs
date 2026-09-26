@@ -266,7 +266,7 @@ type Wearer<'a> = (
 
 /// What a creature wears changed (or its kind did, or it just got mana):
 /// add its stats up again and put them where they go.
-fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures: Res<Creatures>, mut q: Query<Wearer>) {
+pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures: Res<Creatures>, mut q: Query<Wearer>) {
     let Some(items) = items else { return };
     let all = creatures.is_changed() || items.is_added();
     for (c, eq, mut stats, mut health, mut moves, stamina, mana, sturdy) in &mut q {

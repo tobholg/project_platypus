@@ -4,6 +4,7 @@
 use rustc_hash::FxHashMap;
 
 use crate::cell::Cell;
+use crate::material::MaterialId;
 use crate::chunk::Chunk;
 use crate::coords::{CHUNK_AREA, ChunkPos};
 
@@ -16,13 +17,24 @@ pub fn encode(chunk: &Chunk) -> Vec<u8> {
 }
 
 pub fn decode(pos: ChunkPos, bytes: &[u8]) -> Result<Chunk, String> {
+    decode_remapped(pos, bytes, None)
+}
+
+/// As `decode`, with each cell's material id turned into another (`map`,
+/// indexed by the old id; a save made with materials in another order).
+pub fn decode_remapped(pos: ChunkPos, bytes: &[u8], map: Option<&[MaterialId]>) -> Result<Chunk, String> {
     let raw = lz4_flex::decompress_size_prepended(bytes).map_err(|e| e.to_string())?;
     let layer = CHUNK_AREA * size_of::<Cell>();
     if raw.len() != 2 * layer {
         return Err(format!("chunk {pos:?}: {} bytes, expected {}", raw.len(), 2 * layer));
     }
-    let cells: Vec<Cell> = bytemuck::pod_collect_to_vec(&raw[..layer]);
-    let bg: Vec<Cell> = bytemuck::pod_collect_to_vec(&raw[layer..]);
+    let mut cells: Vec<Cell> = bytemuck::pod_collect_to_vec(&raw[..layer]);
+    let mut bg: Vec<Cell> = bytemuck::pod_collect_to_vec(&raw[layer..]);
+    if let Some(map) = map {
+        for c in cells.iter_mut().chain(bg.iter_mut()) {
+            c.material = map.get(c.material.0 as usize).copied().unwrap_or(MaterialId::AIR);
+        }
+    }
     let chunk = Chunk::with_background(pos, cells, bg);
     chunk.mark_modified();
     Ok(chunk)
@@ -70,5 +82,36 @@ impl ChunkStore {
 
     pub fn bytes(&self) -> usize {
         self.chunks.values().map(Vec::len).sum()
+    }
+
+    /// Every chunk kept, encoded (a save writes these as they are).
+    pub fn iter(&self) -> impl Iterator<Item = (ChunkPos, &[u8])> {
+        self.chunks.iter().map(|(p, b)| (*p, b.as_slice()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A chunk through the bytes and back is the same chunk; with a map,
+    /// its materials are renumbered (a save read with materials reordered).
+    #[test]
+    fn a_chunk_round_trips_and_remaps() {
+        let pos = ChunkPos::new(3, -2);
+        let mut cells = vec![Cell::AIR; CHUNK_AREA];
+        cells[5] = Cell::new(MaterialId(2), 7);
+        cells[6] = Cell::new(MaterialId(3), 9);
+        let chunk = Chunk::with_background(pos, cells, vec![Cell::new(MaterialId(2), 1); CHUNK_AREA]);
+        let bytes = encode(&chunk);
+        let back = decode(pos, &bytes).unwrap();
+        assert_eq!(checksum(&back), checksum(&chunk));
+        // Old 2 is now 4, old 3 is gone.
+        let map = [MaterialId(0), MaterialId(1), MaterialId(4)];
+        let moved = decode_remapped(pos, &bytes, Some(&map)).unwrap();
+        assert_eq!(moved.cells()[5].material, MaterialId(4));
+        assert_eq!(moved.cells()[5].shade, 7);
+        assert_eq!(moved.cells()[6].material, MaterialId::AIR);
+        assert!(moved.background().iter().all(|c| c.material == MaterialId(4)));
     }
 }

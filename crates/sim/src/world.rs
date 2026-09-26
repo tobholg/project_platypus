@@ -211,6 +211,11 @@ impl World {
     }
 
     /// Number of ticks stepped so far.
+    /// Where a loaded save left off (its day, its weather's clock).
+    pub fn set_tick(&mut self, tick: u64) {
+        self.tick = tick;
+    }
+
     pub fn tick(&self) -> u64 {
         self.tick
     }

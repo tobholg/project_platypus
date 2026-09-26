@@ -453,6 +453,8 @@ fn blasted(mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<(&mut K
 /// needs to know what it was, where, how it looked and what it had on.
 #[derive(Message, Clone)]
 pub struct Died {
+    /// What kind it was (its creature file's name), and that kind.
+    pub kind: String,
     pub def: std::sync::Arc<creature::CreatureDef>,
     pub body: platypus_physics::Body,
     pub facing: f32,
@@ -490,7 +492,8 @@ fn deaths(
         if let (Some(anim), true, false) = (anim, creature.is_some(), is_player) {
             let sprite = children.and_then(|ch| ch.iter().find_map(|e| sprites.get(e).ok())).map(|(s, tf)| (s.clone(), tf.translation));
             let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
-            died.write(Died { def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn });
+            let kind = creature.map_or_else(String::new, |c| c.kind.clone());
+            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn });
         }
         if let Some(&hurt::Bleeds(blood)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.

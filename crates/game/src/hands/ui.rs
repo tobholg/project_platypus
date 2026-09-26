@@ -849,6 +849,7 @@ fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<&crate::com
                 }
             }
         }
+        Use::Station(_) => lines.push("Crafting station: click to set it down; a pickaxe takes it back".into()),
         Use::Bow(id) => {
             lines.push("Bow: hold the left button to draw, let go to loose".into());
             if let Some(b) = weapons.and_then(|w| w.bow_index(id).map(|i| w.bow(i))) {

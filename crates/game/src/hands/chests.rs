@@ -182,6 +182,36 @@ impl Chests {
         self.spawn(commands, key, feet);
     }
 
+    /// Every stash known (for a save): its key, where it was made, and what's
+    /// in it (`None`: never opened, still to be rolled).
+    pub fn stashes(&self) -> impl Iterator<Item = (u64, CellPos, Option<&Inventory>)> {
+        self.known.iter().map(|(k, s)| (*k, s.origin, s.contents.as_ref()))
+    }
+
+    /// What's kept under a key, if it's been opened (a body's, a chest's).
+    pub fn inventory(&self, key: u64) -> Option<&Inventory> {
+        self.known.get(&key)?.contents.as_ref()
+    }
+
+    /// Put back what a save kept: the stashes and the count of chests made.
+    pub fn restore(&mut self, stashes: Vec<(u64, CellPos, Option<Inventory>)>, placed: u64) {
+        for (key, origin, contents) in stashes {
+            self.known.insert(key, Stash { origin, contents });
+        }
+        self.placed = self.placed.max(placed);
+    }
+
+    /// How many chests and bodies have had keys made (a save keeps it, so
+    /// new ones don't reuse old keys).
+    pub fn placed(&self) -> u64 {
+        self.placed
+    }
+
+    /// A chest back where a save left it.
+    pub fn respawn(&self, commands: &mut Commands, key: u64, feet: Vec2) {
+        self.spawn(commands, key, feet);
+    }
+
     fn spawn(&self, commands: &mut Commands, key: u64, feet: Vec2) {
         let centre = feet + Vec2::new(0.0, size().y / 2.0);
         commands.spawn((
@@ -429,7 +459,11 @@ fn batter(
 /// quarters of its columns resting on something will do), with room for it.
 /// Returns its feet.
 pub fn place_spot(world: &World, cursor: Vec2) -> Option<Vec2> {
-    let (w, h) = CHEST_SIZE;
+    place_spot_sized(world, cursor, CHEST_SIZE)
+}
+
+/// As `place_spot`, for furniture of any size (a crafting station).
+pub fn place_spot_sized(world: &World, cursor: Vec2, (w, h): (i32, i32)) -> Option<Vec2> {
     let mats = world.materials();
     let solid = |p: CellPos| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder));
     let x0 = cursor.x.floor() as i32 - w / 2;

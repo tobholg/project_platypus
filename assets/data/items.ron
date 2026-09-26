@@ -24,6 +24,7 @@
 //   Melee(weapon): a weapon (weapons.ron): the left button swings it at the
 //     cursor; hold it to swing through the combo. Its icon is its sprite.
 //   Chest: place one (furniture, 12 × 10 cells, on the ground); right-click a chest to open it
+//   Station(id): place a crafting station (crafting.ron); a pickaxe knocks it back
 // gear: (slot: Held, stats: {..}): counts toward its holder's stats while
 //   in the hand, and can be found rarer (gear.ron has the rest of the gear);
 //   on_hit: a coating (coatings.ron) left on what it hits ("venom")
@@ -121,6 +122,21 @@
             about: "Hold to draw, let go to loose an arrow: the longer drawn, the harder and further. Arrows stick where they land; walk near to pick them up. Loose one through fire and it burns."),
         (id: "arrow",          name: "Arrow",          stack: 99, color: (176, 136, 84)),
         (id: "chest",          name: "Chest",          stack: 20, color: (150, 104, 58), use: Chest),
+        // Crafting (crafting.ron): stations to set down, and bars smelted
+        // from ore.
+        (id: "workbench",      name: "Workbench",      stack: 10, color: (176, 124, 70), use: Station("workbench"),
+            about: "Set it down; more can be made near it."),
+        (id: "furnace",        name: "Furnace",        stack: 10, color: (120, 118, 124), use: Station("furnace"),
+            about: "Set it down; smelts ore into bars."),
+        (id: "anvil",          name: "Anvil",          stack: 10, color: (170, 174, 186), use: Station("anvil"),
+            about: "Set it down; bars become tools, arms, armour and hooks here."),
+        (id: "arcane_altar",   name: "Arcane altar",   stack: 10, color: (170, 120, 240), use: Station("arcane_altar"),
+            about: "Set it down; wands and staffs are made here."),
+        (id: "copper_bar",     name: "Copper bar",     stack: 99, color: (205, 127, 50)),
+        (id: "iron_bar",       name: "Iron bar",       stack: 99, color: (176, 178, 190)),
+        (id: "silver_bar",     name: "Silver bar",     stack: 99, color: (214, 218, 230)),
+        (id: "gold_bar",       name: "Gold bar",       stack: 99, color: (236, 196, 72)),
+        (id: "mithril_bar",    name: "Mithril bar",    stack: 99, color: (110, 220, 228)),
     ],
     // (The first ten are the hotbar; the rest go in the pack.)
     start: [

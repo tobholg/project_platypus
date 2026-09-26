@@ -27,6 +27,9 @@ pub enum Use {
     /// Place a chest (the `chest` material's cells; the game keeps what's in
     /// it).
     Chest,
+    /// Place a crafting station (`crafting.ron`, by id): furniture that
+    /// recipes are made at.
+    Station(String),
     /// A focus (a wand, a staff): it holds its spells (`spells.ron`), the
     /// left button casting the first toward the cursor, the right button
     /// the second (a staff's; a wand's one spell again, "alt": force
