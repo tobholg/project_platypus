@@ -368,14 +368,29 @@ The aim: the model can create, look at, and test a creature, item, room or struc
 **Combat and magic arc (C, now, on branch `magic-arc`; before structures v2 and saving, since it changes what gets saved):**
 1. ✅ Casting core (2026-09-26): runes and wands as data, projectiles that collide with cells and bodies, mana, wands as items, starter spells (spark bolt, fireball, acid arrow, flamethrower, wand lightning), cursor aim; the orcs to try them on.
 2. Spells and spellcrafting (as agreed above): spells as their own equippable things, scrolls to study, known runes with levels, the spell editor, wands and staffs as tiered foci, orc shamans. Before it: a tuning pass (bigger fireball dropping fire, acid that lasts and eats by hardness, lightning through water, fire as real cells), spell effects (looks as data, animated fire, impact feel), inventory v2 (Esc screen, drag and drop, tooltips, alternative hotbars, first pixel icons), and a channelled levitation / black hole spell with a distortion field (all four done 2026-09-26).
-3. Melee: hand anchors, weapon sprites as text, moves as data for three weapon classes, hits, stamina, poise, block and dodge.
-4. Arena and art tool v1 (M1, below).
+3. Melee and the art pipeline: now its own arc (A, below, on branch `combat-arc`), which also takes in the arena and art tool v1 (M1).
+4. (Merged into A.)
 5. Creatures per biome (spiders and skeletons in crypts, fungal beasts, slimes in the grottos, crystal golems, trolls), their AI using what they carry.
 6. Crafting: stations, recipes, smelting, flasks and potions.
 
 Then structures v2 (bigger crypts and castles, the ruin catalogue) and saving.
 
-**Making arc (M1):** `platypus-art` and the arena. Part of it is pulled into W7.6 for rooms.
+**Art and combat arc (A, agreed 2026-09-26, on branch `combat-arc`; `magic-arc` merged into `world-arc` first).** Decisions:
+- Humanoids are ~20 px tall (the player's body grows from 6×15 to ~7×17 cells); a troll ~40.
+- Combat is a hybrid: swings aimed toward the cursor, a Hollow Knight down-slash pogo in the air, and a light Souls layer (stamina, a dodge with invulnerability, poise and stagger).
+- The editor lives in the game, next to the arena; everything it edits is text (`assets/art/*.ron`) that the model writes and reads too, with the `platypus-art` CLI (render, sheet, check, describe, import) as the model's eyes.
+- Critters come first, as the pipeline's first test.
+
+Stages:
+1. The art format, its compiler and the CLI; the first critters (a rabbit, a bird, a frog) with a critter brain and ambient spawning.
+2. The humanoid rig (parts with drawn variants, anchors, clips as data) and the player redesigned on it: idle (breathing, blinking), walk, run, jump, fall, land, dash, wall slide, swim, hurt, death.
+3. The arena (`PLATYPUS_WORLD=arena`: dummies, spawning, overlays, slow motion, frame stepping) and the in-game editor (canvas, palette, layers, frames, anchors, onion skin, live preview).
+4. The combat core: held weapons turning at the hand (pre-rotated, RotSprite-style), moves as data, pixel-mask hits, hit-stop and feedback, stamina, dodge; a shortsword and a longsword.
+5. The bow and arrows (drawn by holding, physical arrows that stick and can be picked up, burning arrows).
+6. The orcs redesigned (swordsman, archer) and a troll with a club, their AI choosing moves from what they hold.
+7. More critters and ambient life (fireflies that light the night, fish, bats).
+
+**Making arc (M1):** `platypus-art` and the arena: now part of A.
 
 **RPG arc (R):**
 1. Rigs and skins.
