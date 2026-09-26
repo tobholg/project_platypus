@@ -18,10 +18,10 @@ pub struct Bleeds(pub MaterialId);
 /// Cells of blood a hit sprays for each point it takes (a bit much: it's
 /// more fun, and blood boils, freezes, conducts and washes off like the
 /// rest), at most this many a hit...
-const BLEED_PER_HP: f32 = 2.5;
-const BLEED_MOST: f32 = 160.0;
+const BLEED_PER_HP: f32 = 1.2;
+const BLEED_MOST: f32 = 70.0;
 /// ... and what a death bursts out.
-pub const DEATH_BLOOD: usize = 220;
+pub const DEATH_BLOOD: usize = 110;
 
 /// Seconds a creature flashes after a hit.
 const FLASH: f32 = 0.12;

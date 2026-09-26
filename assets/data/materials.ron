@@ -226,7 +226,8 @@
 
     // (latent: how long freezing, melting and boiling take; see material.rs.)
 
-    // Pairwise, while touching. Checked in both directions.
+    // Pairwise, while touching. Checked in both directions. chance: /256 a tick
+    // (chance_4096 instead, for slow ones).
     reactions: [
         (a: "lava",  b: "water",  a_into: "obsidian", b_into: "steam", chance: 255),
         (a: "lava",  b: "ice",    a_into: "obsidian", b_into: "water", chance: 128),
@@ -235,6 +236,9 @@
         (a: "fire",  b: "ice",    a_into: "steam",    b_into: "water", chance: 40),
         (a: "fire",  b: "snow",   a_into: "steam",    b_into: "water", chance: 60),
         (a: "water", b: "blood",  a_into: "water",    b_into: "water", chance: 2),
+        // Water dilutes acid: slowly (a lone cell under water lasts ~2 s, a puddle
+        // on a pool's floor half a minute), where they touch, till it's all water.
+        (a: "acid",  b: "water",  a_into: "water",    b_into: "water", chance_4096: 4),
         // Acid fumes: the same appetite as acid, weaker, used up as they bite.
         (a: "acid_fumes", b: "stone",      a_into: "air", b_into: "air", chance: 5),
         (a: "acid_fumes", b: "dirt",       a_into: "air", b_into: "air", chance: 8),

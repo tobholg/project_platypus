@@ -12,9 +12,10 @@
 //           `strength` hardness (`pull` tries a tick), holds what it can `lift` (a
 //           cell weighs its density against water's, a body its size: an orc 168)
 //           in a spinning ball with `grip` cells/s², costs `drain` mana a second
-//         | Force(radius, power, strength, pull, drain): held open at the cursor; the
-//           left button pushes everything away (up to `power` cells/s at its
-//           heart), the right pulls it in)
+//         | Force(radius, power, strength, pull, drain): from the caster's hand, a
+//           cone toward the cursor out to `radius`: the left button flings
+//           everything in it away (up to `power` cells/s nearest), the right
+//           drags it in)
 // A channelled spell's mana doesn't come back while it's held.
 // Payload(Damage(hp) | Blast(radius, power) | Heat(radius, amount °C)
 //         | Ignite(radius) | Matter(material, cells))
@@ -44,16 +45,16 @@
 
         // Levels: bigger, lifts more, tears out harder rock.
         (id: "gravity_well", name: "Gravity well I", mana: 6, color: (150, 110, 255),
-            kind: Carrier(Well(radius: 18, strength: 60, lift: 450, pull: 40, grip: 1800, drain: 22)),
+            kind: Carrier(Well(radius: 18, strength: 60, lift: 450, pull: 40, grip: 5000, drain: 22)),
             look: (trail: (count: 3, life: (0.3, 0.8), colors: [(220, 205, 255), (140, 100, 240), (50, 30, 100)], speed: 60, drag: 1, glow: true))),
         (id: "gravity_well_ii", name: "Gravity well II", mana: 10, color: (150, 110, 255),
-            kind: Carrier(Well(radius: 26, strength: 85, lift: 1600, pull: 70, grip: 2600, drain: 30)),
+            kind: Carrier(Well(radius: 26, strength: 85, lift: 1600, pull: 70, grip: 7000, drain: 30)),
             look: (trail: (count: 5, life: (0.3, 0.9), colors: [(230, 215, 255), (150, 105, 250), (50, 30, 100)], speed: 70, drag: 1, glow: true))),
         (id: "force", name: "Force I", mana: 4, color: (140, 200, 255),
-            kind: Carrier(Force(radius: 16, power: 260, strength: 30, pull: 60, drain: 18)),
+            kind: Carrier(Force(radius: 40, power: 300, strength: 30, pull: 70, drain: 18)),
             look: (trail: (count: 3, life: (0.15, 0.45), colors: [(235, 248, 255), (140, 195, 255), (40, 80, 160)], speed: 110, drag: 2, glow: true))),
         (id: "force_ii", name: "Force II", mana: 8, color: (140, 200, 255),
-            kind: Carrier(Force(radius: 24, power: 460, strength: 65, pull: 140, drain: 26)),
+            kind: Carrier(Force(radius: 60, power: 500, strength: 65, pull: 150, drain: 26)),
             look: (trail: (count: 5, life: (0.15, 0.5), colors: [(240, 250, 255), (150, 205, 255), (40, 80, 160)], speed: 150, drag: 2, glow: true))),
 
         // ---- payloads ----

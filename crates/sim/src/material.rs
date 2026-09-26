@@ -255,8 +255,12 @@ pub struct ReactionDef {
     pub b: String,
     pub a_into: String,
     pub b_into: String,
-    /// Chance per tick (/256) while touching.
+    /// Chance per tick (/256) while touching...
+    #[serde(default)]
     pub chance: u8,
+    /// ... or, for slow ones, per 4096 (instead).
+    #[serde(default)]
+    pub chance_4096: Option<u16>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -342,6 +346,8 @@ pub struct Reaction {
     pub self_into: MaterialId,
     pub partner_into: MaterialId,
     pub chance: u8,
+    /// Per 4096 instead of `chance`, when not 0 (slow reactions).
+    pub fine: u16,
 }
 
 /// Number of colours precomputed per material.
@@ -540,9 +546,10 @@ impl MaterialTable {
             let ctx = format!("reaction {}+{}", r.a, r.b);
             let (a, b) = (lookup(&r.a, &ctx)?, lookup(&r.b, &ctx)?);
             let (ai, bi) = (lookup(&r.a_into, &ctx)?, lookup(&r.b_into, &ctx)?);
-            reactions[a.0 as usize].push(Reaction { partner: b, self_into: ai, partner_into: bi, chance: r.chance });
+            let fine = r.chance_4096.unwrap_or(0);
+            reactions[a.0 as usize].push(Reaction { partner: b, self_into: ai, partner_into: bi, chance: r.chance, fine });
             if a != b {
-                reactions[b.0 as usize].push(Reaction { partner: a, self_into: bi, partner_into: ai, chance: r.chance });
+                reactions[b.0 as usize].push(Reaction { partner: a, self_into: bi, partner_into: ai, chance: r.chance, fine });
             }
         }
         for (p, rs) in phys.iter_mut().zip(&reactions) {

@@ -45,11 +45,11 @@
 //!   health
 //! - `well`       (flat world) two orcs to the right at 1 s; the gravity wand
 //!   (hotbar 2) held on the ground ahead from 1.5 s, lifting it; swept over
-//!   the orcs (2.6 s: it can carry one), carried up (3 s), whipped left and
-//!   back (4–4.6 s: some flies off), let go at 6 s; logs what it holds,
-//!   whom it carries, mana and the orcs
+//!   the orcs (2.6 s: it can carry two), carried up (3 s), swung hard up
+//!   and right and let go mid-swing (3.6–3.75 s): thrown; logs what it
+//!   holds, whom it carries, mana and the orcs (fall damage when they land)
 //! - `force`      (flat world) a sand pile and two orcs to the right at 1 s;
-//!   the force wand (hotbar 2) pushing at them from 1.5 s, then pulling
+//!   the force wand (hotbar 2) pushing toward them from 1.5 s, then pulling
 //!   (right button) from 3 s; logs the orcs' distance and mana
 //! - `inventory`  opens the inventory screen (Esc) at 1 s, switches to the
 //!   second hotbar (X) at 1.5 s, hovers the spark wand at 2 s (its tooltip;
@@ -1097,21 +1097,19 @@ fn well_script(
     }
     let lerp = |a: Vec2, b: Vec2, f: f32| a.lerp(b, f.clamp(0.0, 1.0));
     let nearest = orcs.iter().map(|(o, _)| o.body.pos).filter(|o| o.x > home.x + 20.0).min_by(|a, b| a.x.total_cmp(&b.x)).unwrap_or(home + Vec2::new(70.0, 8.0));
-    let (ground, up, left) = (home + Vec2::new(35.0, -6.0), home + Vec2::new(45.0, 50.0), home + Vec2::new(-60.0, 50.0));
+    let (ground, up, throw) = (home + Vec2::new(35.0, -6.0), home + Vec2::new(40.0, 30.0), home + Vec2::new(160.0, 130.0));
     let aim = match t {
         t if t < 1.5 => None,
         t if t < 2.6 => Some(ground),
         t if t < 3.0 => Some(nearest),
-        t if t < 4.0 => Some(lerp(nearest, up, (t - 3.0) / 0.6)),
-        t if t < 4.3 => Some(lerp(up, left, (t - 4.0) / 0.3)),
-        t if t < 4.6 => Some(lerp(left, up, (t - 4.3) / 0.3)),
-        t if t < 6.0 => Some(up),
+        t if t < 3.6 => Some(lerp(nearest, up, (t - 3.0) / 0.4)),
+        t if t < 3.75 => Some(lerp(up, throw, (t - 3.6) / 0.15)),
         _ => None,
     };
     cursor.0 = aim.or(Some(home + Vec2::new(30.0, 20.0)));
     if aim.is_some() { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     if t >= state.1 {
-        state.1 = (t * 2.0).floor() / 2.0 + 0.5;
+        state.1 = (t * 4.0).floor() / 4.0 + 0.25;
         let held: Vec<(usize, usize)> = wells.iter().map(|w| (w.holding(), w.carrying())).collect();
         let hp: Vec<String> = orcs.iter().filter(|(o, _)| o.body.pos.x > home.x + 20.0).map(|(o, h)| format!("{:.0}@{:.0},{:.0}", h.hp, o.body.pos.x - home.x, o.body.pos.y - home.y)).collect();
         info!("well: t {t:.1} (cells, bodies) {held:?} mana {:.0} orcs [{}] particles {}", mana.map_or(0.0, |m| m.cur), hp.join(" "), sim.world.particles().len());
@@ -1155,8 +1153,8 @@ fn force_script(
         keys.press(KeyCode::Digit3);
         state.0 = 1;
     }
-    let (push, pull) = (t > 1.5 && t < 2.6, t > 3.0 && t < 4.4);
-    cursor.0 = Some(if pull { home + Vec2::new(30.0, 6.0) } else { home + Vec2::new(40.0, 4.0) });
+    let (push, pull) = (t > 1.5 && t < 2.0, t > 3.0 && t < 4.4);
+    cursor.0 = Some(home + Vec2::new(60.0, 0.0));
     if push { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     if pull { mouse.press(MouseButton::Right) } else { mouse.release(MouseButton::Right) }
     if t >= state.1 {

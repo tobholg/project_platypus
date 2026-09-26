@@ -262,7 +262,7 @@ fn request(
                     ok
                 });
                 if paid {
-                    well.feed(r.toward, r.alt);
+                    well.feed(r.from, r.toward, r.alt);
                 }
                 continue;
             }
@@ -279,7 +279,7 @@ fn request(
             m.cur -= cost;
         }
         if channelled {
-            w.well = well::spawn_field(&mut commands, cast.clone(), r.caster, r.toward, r.alt);
+            w.well = well::spawn_field(&mut commands, cast.clone(), r.caster, r.from, r.toward, r.alt);
             w.wait = *recharge;
             continue;
         }

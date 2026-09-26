@@ -553,7 +553,8 @@ fn interact(h: &mut Hood, x: i32, y: i32, c: Cell, p: &MatPhys) -> bool {
         }
         let reactions = h.mats.reactions(c.material);
         if let Some(r) = reactions.iter().find(|r| r.partner == n.material).copied() {
-            if h.rng.chance(r.chance) {
+            let hit = if r.fine > 0 { h.rng.chance4096(r.fine as u32) } else { h.rng.chance(r.chance) };
+            if hit {
                 let (mut a, mut b) = (spawn(h, r.self_into), spawn(h, r.partner_into));
                 // What comes out keeps the heat of what went in (unless it
                 // holds its own): lava quenched by water is hot obsidian that

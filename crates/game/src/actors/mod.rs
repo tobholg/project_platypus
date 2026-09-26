@@ -35,7 +35,7 @@ impl Plugin for ActorsPlugin {
             .init_resource::<PlayerDeaths>()
             .add_systems(FixedUpdate, displace_liquid.after(move_creatures).in_set(TickSet::Bodies))
             .add_systems(Update, (elements::tint, elements::reload_coatings, hurt::watch, hurt::float))
-            .add_systems(FixedUpdate, (elements::struck, elements::zapped, blasted).after(TickSet::Cells))
+            .add_systems(FixedUpdate, (elements::struck, elements::zapped, blasted, pelted).after(TickSet::Cells))
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate));
     }
 }
@@ -81,6 +81,12 @@ pub struct FallDamage {
     pub per_speed: f32,
 }
 
+/// Hitting a wall or ceiling slower than this isn't worth reporting (walking
+/// into a wall).
+const SLAM_MIN: f32 = 150.0;
+
+/// A body hit the ground (or slammed into a wall or ceiling) at `speed`:
+/// fall damage reads it.
 #[derive(Message, Clone, Copy, Debug)]
 pub struct Landed {
     pub entity: Entity,
@@ -132,9 +138,17 @@ fn move_creatures(
             None => &stats.0,
         };
         k.loco.steer(stats, &controls.0, &mut k.body, DT);
+        let before = k.body.vel;
         let contacts = move_and_collide(&grid, &mut k.body, DT);
+        // Slammed into a wall or a ceiling (flung by a spell, a blast): an
+        // impact like a landing, by the speed it hit at.
+        let walled = if (contacts.wall_left && before.x < 0.0) || (contacts.wall_right && before.x > 0.0) { before.x.abs() } else { 0.0 };
+        let roofed = if contacts.ceiling && before.y > 0.0 { before.y } else { 0.0 };
+        let slam = walled.max(roofed);
         if let Some(speed) = k.loco.after_move(contacts) {
-            landed.write(Landed { entity, speed });
+            landed.write(Landed { entity, speed: speed.max(slam) });
+        } else if slam > SLAM_MIN {
+            landed.write(Landed { entity, speed: slam });
         }
     }
 }
@@ -176,6 +190,48 @@ pub struct PlayerDeaths(pub u32);
 /// Dead creatures burst into blood particles that land as real cells (they
 /// run and pool). The player, while developing, just gets its health back
 /// where it stands; with `PLATYPUS_RESPAWN=1` it respawns at the start.
+/// Particles of solid, powder or liquid (not rain, dust or embers) faster
+/// than this (cells/s) hurt what they fly through...
+const PELT_SAFE: f32 = 90.0;
+/// ... by their weight (density against water's; liquids half) × how many
+/// times faster × this, and are mostly stopped by it, shoving it.
+const PELT: f32 = 0.8;
+
+/// Heavy things flying fast hurt what they hit: a ball of rock dropped
+/// from a well, blast debris, a flung stream of sand.
+fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Kinematics, &mut Health)>) {
+    let boxes: Vec<(Vec2, Vec2)> = q.iter().map(|(k, _)| (k.body.pos - k.body.half, k.body.pos + k.body.half)).collect();
+    if boxes.is_empty() {
+        return;
+    }
+    let mats = sim.world.materials().clone();
+    let mut hurt = vec![0.0f32; boxes.len()];
+    let mut shove = vec![Vec2::ZERO; boxes.len()];
+    for p in sim.world.particles_mut() {
+        if p.landing != platypus_sim::Landing::Settle {
+            continue;
+        }
+        let v = Vec2::new(p.vel[0], p.vel[1]) * TICK_HZ as f32;
+        let speed = v.length();
+        if speed < PELT_SAFE {
+            continue;
+        }
+        let at = Vec2::new(p.pos[0], p.pos[1]);
+        let Some(i) = boxes.iter().position(|(lo, hi)| at.cmpge(*lo).all() && at.cmple(*hi).all()) else { continue };
+        let ph = mats.phys(p.cell.material);
+        let weight = (ph.density as f32 / 1000.0).clamp(0.2, 5.0) * if ph.kind == Kind::Liquid { 0.5 } else { 1.0 };
+        hurt[i] += weight * (speed - PELT_SAFE) / PELT_SAFE * PELT;
+        shove[i] += v * weight * 0.02;
+        p.vel = [p.vel[0] * 0.3, p.vel[1] * 0.3];
+    }
+    for (i, (mut k, mut h)) in q.iter_mut().enumerate() {
+        if hurt[i] > 0.0 {
+            h.hp -= hurt[i];
+            k.body.vel += shove[i];
+        }
+    }
+}
+
 /// Every explosion (a bomb, a fireball, a gas pocket, lightning's burst)
 /// hurts and throws the creatures near it, less the farther they are: out
 /// to 1.6 times its radius, up to 0.65 × its power in damage and 3 × in
