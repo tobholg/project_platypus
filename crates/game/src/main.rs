@@ -2,10 +2,12 @@
 //!
 //! Environment:
 //! - `PLATYPUS_SEED`      world seed (default 1)
-//! - `PLATYPUS_WORLD`     `terrain` (default) or `flat` (sandbox box)
+//! - `PLATYPUS_WORLD`     `terrain` (default), `small`, `flat` (an empty box) or
+//!   `arena` (the sandbox: dummies, time controls, overlays, the art editor)
 //! - `PLATYPUS_SCENARIO`  scripted perf run, see `scenario.rs`
 
 mod actors;
+mod arena;
 mod camera;
 mod data;
 mod debug;
@@ -32,7 +34,7 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use bevy::window::PresentMode;
 use platypus_sim::MaterialTable;
-use platypus_worldgen::{ChunkGenerator, FlatGen, Preset, TerrainGen};
+use platypus_worldgen::{ArenaGen, ChunkGenerator, FlatGen, Preset, TerrainGen};
 
 fn main() {
     let seed: u64 = std::env::var("PLATYPUS_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
@@ -42,6 +44,9 @@ fn main() {
     let materials = Arc::new(MaterialTable::from_ron(&src).unwrap_or_else(|e| panic!("{e}")));
 
     let generator: Arc<dyn ChunkGenerator> = match std::env::var("PLATYPUS_WORLD").as_deref() {
+        // PLATYPUS_WORLD=arena: a sandbox for weapons, spells and creatures
+        // (dummies, time controls, overlays, the art editor: `arena.rs`).
+        Ok("arena") => Arc::new(ArenaGen::new(&materials)),
         Ok("flat") => Arc::new(FlatGen { width_chunks: 64, height_chunks: 24, floor: 200, stone: materials.expect_id("stone") }),
         // PLATYPUS_WORLD=small: the small preset (quicker to look around).
         Ok("small") => Arc::new(TerrainGen::new(seed, Preset::Small, &materials)),
@@ -86,7 +91,7 @@ fn main() {
             light::LightPlugin,
             scenario::ScenarioPlugin,
         ))
-        .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin))
+        .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin))
         .add_plugins(spikes_plugin)
         .run();
 }

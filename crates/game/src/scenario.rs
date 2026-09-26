@@ -70,6 +70,11 @@
 //! - `critters`   (flat world) a rabbit, a bird and a frog placed 60–90 cells
 //!   to the right at 1 s; the player walks at them from 2 s: they should hop
 //!   and fly away; logs where the critters near the player are
+//! - `arena`      (`PLATYPUS_WORLD=arena`) overlays on; the spark wand at the
+//!   first dummy, a fireball at the second; an orc picked and spawned with O;
+//!   paused at 5 s and stepped three times (logs the sim ticks: 3), then a
+//!   quarter speed from 6 s (logs ticks a second: ~15); logs the dummies'
+//!   readouts
 //! - `inventory`  opens the inventory screen (Esc) at 1 s, switches to the
 //!   second hotbar (X) at 1.5 s, hovers the spark wand at 2 s (its tooltip;
 //!   this moves the real mouse pointer), drags it to hotbar 3 at 2.6–3 s;
@@ -115,7 +120,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -1410,5 +1415,91 @@ fn critters_script(
         state.1 = (t * 2.0).floor() / 2.0 + 0.5;
         let near: Vec<String> = critters.iter().filter(|(c, r)| c.kind != "orc" && r.body.pos.distance(k.body.pos) < 500.0).map(|(c, r)| format!("{} {:+.0},{:+.0}", c.kind, r.body.pos.x - k.body.pos.x, r.body.pos.y - k.body.pos.y)).collect();
         info!("critters: t {t:.1} [{}]", near.join("; "));
+    }
+}
+
+/// The arena's tools through their own messages, the wands through real
+/// keys and buttons.
+#[allow(clippy::too_many_arguments)]
+fn arena_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    dummies: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::dummy::Tally)>,
+    mut arena: MessageWriter<crate::arena::ArenaAction>,
+    mut dev: MessageWriter<crate::dev::DevAction>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, u64, f32)>,
+    mut logged: Local<f32>,
+) {
+    use crate::arena::ArenaAction as A;
+    if s.name != "arena" {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    let p = k.body.pos;
+    let t = s.elapsed;
+    let tick = sim.world.tick();
+    // Each step once, in order.
+    let beats: [(f32, u8); 9] = [(0.5, 1), (4.6, 2), (5.0, 3), (5.2, 4), (5.4, 5), (5.6, 6), (5.8, 7), (6.0, 8), (8.0, 9)];
+    for (at, n) in beats {
+        if t < at || state.0 >= n {
+            continue;
+        }
+        state.0 = n;
+        match n {
+            1 => {
+                arena.write(A::Overlays);
+            }
+            2 => {
+                arena.write(A::Pick("orc".into()));
+                dev.write(crate::dev::DevAction::Spawn(Some(p + Vec2::new(-80.0, 10.0))));
+            }
+            3 => {
+                arena.write(A::Pause);
+                state.1 = tick;
+            }
+            4..=6 => {
+                arena.write(A::Step);
+            }
+            7 => {
+                info!("arena: paused and stepped 3 times: {} ticks", tick - state.1);
+                arena.write(A::Pause);
+            }
+            8 => {
+                arena.write(A::Speed(0.25));
+                state.1 = tick;
+                state.2 = t;
+            }
+            _ => {
+                info!("arena: at 1/4 speed: {:.1} ticks a second", (tick - state.1) as f32 / (t - state.2));
+                arena.write(A::Speed(1.0));
+            }
+        }
+    }
+    const SLOTS: [KeyCode; 2] = [KeyCode::Digit6, KeyCode::Digit7];
+    for key in SLOTS {
+        keys.release(key);
+    }
+    let dummy = |x: f32| dummies.iter().map(|(_, dk, _)| dk.body.pos).find(|d| (d.x - x).abs() < 8.0);
+    let aim = match t {
+        t if (1.0..3.0).contains(&t) => {
+            keys.press(SLOTS[0]);
+            dummy(700.0)
+        }
+        t if (3.0..4.4).contains(&t) => {
+            keys.press(SLOTS[1]);
+            dummy(760.0)
+        }
+        _ => None,
+    };
+    cursor.0 = aim.or(Some(p + Vec2::new(30.0, 0.0)));
+    if aim.is_some() { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    if t >= *logged {
+        *logged = (t * 2.0).floor() / 2.0 + 0.5;
+        let read: Vec<String> = dummies.iter().map(|(c, dk, tl)| format!("{} @{:.0}: {:.0} dps, {:.0} in {} hits", c.kind, dk.body.pos.x, tl.dps(), tl.total, tl.hits)).collect();
+        info!("arena: t {t:.1} [{}]", read.join("; "));
     }
 }

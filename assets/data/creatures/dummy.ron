@@ -1,0 +1,17 @@
+// A training dummy (the arena's): planted where it stands, never dies, and
+// shows what it's taken above it (damage per second over the fight, which
+// ends when it's left alone for `reset_after` seconds). Spawn more from the
+// arena panel.
+(
+    name: "Training dummy",
+    size: (8, 20),
+    health: 500,
+    team: Neutral,
+    art: "dummy",
+    blood: "",
+    movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0),
+    brain: (
+        kind: "dummy",
+        params: (anchored: true, reset_after: 3.0),
+    ),
+)

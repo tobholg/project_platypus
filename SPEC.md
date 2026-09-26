@@ -898,6 +898,31 @@ deaths (blood). Rendered as one dynamic mesh.
 - Rabbits (hop, bolt), birds (hop and peck, fly off, glide back), frogs (by
   water, leap).
 
+### 5.3 The arena (`PLATYPUS_WORLD=arena`; `worldgen/src/arena.rs`, `game/src/arena.rs`)
+
+- A walled sandbox 1280 × 640 cells, open to the sky, one floor at y 160
+  with, left to right: stairs (5-cell steps), a ledge and a ramp; a water
+  pool (110 × 50); two one-way platforms; the open floor where the player
+  starts (x 640) with three training dummies and a sandbag; a lava pit; a
+  sand heap; two stone columns to wall-jump between; a block of planks.
+  It isn't `wild` (a generator flag): no enemies about the start and no
+  ambient critters, only what's put there.
+- **Dummies** (`dummy` brain: `anchored`, `reset_after`): never die (what
+  they lose is counted, then healed, after the damage numbers see it and
+  before deaths), flinch (`hit` clip), and show over them the fight's
+  damage per second (a single hit: over a second), total and length; a
+  fight ends after `reset_after` s untouched (the readout dims). A dummy is
+  planted where it first stood; a sandbag isn't, so it flies (and leaks
+  sand). Everything that lowers health counts.
+- **The panel** (open from the start in the arena; anywhere from the dev
+  panel's "Arena tools"): pause (P) and step one tick (.) — virtual time
+  paused, the fixed clock handed exactly one tick, bodies drawn where they
+  are, not interpolated; slow motion 1, ½, ¼, 1/10 (, cycles); overlays
+  (Y): every body's box (player blue, enemies red, the rest green), its
+  facing, its feet, and its hand while aiming; the kind `O` spawns at the
+  cursor (every creature file but the player's); clear the floor (all but
+  the player and planted dummies).
+
 ## 6. Combat
 
 - Weapons: pivot, swing curve (angle over time), windup/active/recovery

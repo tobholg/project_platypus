@@ -1,0 +1,15 @@
+// A sandbag (the arena's): a dummy that isn't planted, so hits and blasts
+// throw it about; it leaks sand where it's hit, and never dies.
+(
+    name: "Sandbag",
+    size: (10, 13),
+    health: 300,
+    team: Neutral,
+    art: "sandbag",
+    blood: "sand",
+    movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0),
+    brain: (
+        kind: "dummy",
+        params: (anchored: false, reset_after: 3.0),
+    ),
+)

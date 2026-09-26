@@ -12,6 +12,7 @@ pub mod animation;
 pub mod brain;
 pub mod creature;
 pub mod critters;
+pub mod dummy;
 pub mod elements;
 pub mod hurt;
 pub mod player;
@@ -22,21 +23,24 @@ use platypus_physics::{Body, Grid, Intent, Locomotion, MovementStats, Occupancy,
 use platypus_sim::{CellPos, Kind, World, WorldEdit};
 use serde::Deserialize;
 
+use brain::RegisterBrain;
+
 use crate::world::{SimWorld, TICK_HZ, TickSet};
 
 pub struct ActorsPlugin;
 
 impl Plugin for ActorsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<Landed>()
+        app.register_brain::<dummy::Dummy>("dummy")
+            .add_message::<Landed>()
             .add_message::<AirJumped>()
             .add_plugins((creature::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, animation::AnimationPlugin))
             .add_plugins((player::PlayerPlugin, ai::AiPlugin, critters::CrittersPlugin))
-            .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, hurt::notice, deaths).chain().in_set(TickSet::Bodies))
+            .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, hurt::notice, dummy::tally, deaths).chain().in_set(TickSet::Bodies))
             .insert_resource(elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
             .add_systems(FixedUpdate, displace_liquid.after(move_creatures).in_set(TickSet::Bodies))
-            .add_systems(Update, (elements::tint, elements::reload_coatings, hurt::watch, hurt::float))
+            .add_systems(Update, (elements::tint, elements::reload_coatings, hurt::watch, hurt::float, dummy::show))
             .add_systems(FixedUpdate, (elements::struck, elements::zapped, blasted, pelted).after(TickSet::Cells))
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate));
     }
@@ -340,8 +344,9 @@ fn deaths(
 }
 
 /// Render between the last two ticks so 120 Hz displays stay smooth.
-fn interpolate(time: Res<Time<Fixed>>, mut q: Query<(&Kinematics, &mut Transform)>) {
-    let a = time.overstep_fraction();
+/// (Paused, as the arena pauses to step a tick at a time: where it is now.)
+fn interpolate(time: Res<Time<Fixed>>, virt: Res<Time<Virtual>>, mut q: Query<(&Kinematics, &mut Transform)>) {
+    let a = if virt.is_paused() { 1.0 } else { time.overstep_fraction() };
     for (k, mut tf) in &mut q {
         let p = k.prev_pos.lerp(k.body.pos, a);
         tf.translation.x = p.x;

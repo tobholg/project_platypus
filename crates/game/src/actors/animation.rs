@@ -47,16 +47,30 @@ pub struct Animator {
     /// not a jump), and whether it's running (with some give either way).
     air: f32,
     running: bool,
+    /// A clip that doesn't loop has played to its end.
+    done: bool,
 }
 
 impl Animator {
     pub fn new(def: Arc<CreatureDef>) -> Self {
-        Animator { def, clip: String::new(), frame: 0, timer: 0.0, force: None, air: 0.0, running: false }
+        Animator { def, clip: String::new(), frame: 0, timer: 0.0, force: None, air: 0.0, running: false, done: false }
     }
 
     /// Pick the clip (and its image) again next frame (the art changed).
     pub fn refresh(&mut self) {
         self.clip.clear();
+    }
+
+    /// Play `clip` over whatever movement would pick, from its start (again,
+    /// if it's already playing), until `force` is cleared.
+    pub fn play(&mut self, clip: &str) {
+        self.force = Some(clip.into());
+        self.clip.clear();
+    }
+
+    /// The clip playing doesn't loop and has reached its end.
+    pub fn finished(&self) -> bool {
+        self.done
     }
 }
 
@@ -124,6 +138,7 @@ fn animate(
             anim.clip = name;
             anim.frame = 0;
             anim.timer = 0.0;
+            anim.done = false;
         } else {
             // A run goes at the pace it's running (half to one and a half
             // times its rate), and backwards when it moves away from where
@@ -147,6 +162,7 @@ fn animate(
                 } else if clip.looping {
                     0
                 } else {
+                    anim.done = true;
                     anim.frame
                 };
             }

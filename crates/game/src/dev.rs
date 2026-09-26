@@ -5,7 +5,8 @@
 //!
 //! Dev mode: V storm · B clear sky · N lightning at the cursor · M +3 hours ·
 //! K lighting on/off · H performance HUD · J chunk overlay. Always: L
-//! flashlight · T carry a torch · G plant a torch · O spawn an orc.
+//! flashlight · T carry a torch · G plant a torch · O spawn an orc (or what
+//! the arena panel picked) at the cursor.
 
 use bevy::prelude::*;
 
@@ -26,11 +27,14 @@ pub enum DevAction {
     Flashlight,
     Torch,
     PlantTorch(Option<Vec2>),
-    SpawnOrc(Option<Vec2>),
+    /// The kind picked to spawn (an orc unless the arena picked another).
+    Spawn(Option<Vec2>),
     PerfHud,
     Chunks,
     Radius(i32),
     Hands,
+    /// The arena panel (time, overlays, spawning), anywhere.
+    Arena,
 }
 
 /// The pointer is over a UI element: clicks are for it, not the world.
@@ -81,7 +85,7 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, dev: Res<DevTools>, cursor: Res<CursorW
         (KeyCode::KeyL, DevAction::Flashlight),
         (KeyCode::KeyT, DevAction::Torch),
         (KeyCode::KeyG, DevAction::PlantTorch(at)),
-        (KeyCode::KeyO, DevAction::SpawnOrc(at)),
+        (KeyCode::KeyO, DevAction::Spawn(at)),
     ] {
         if pressed(k) {
             out.write(action);
@@ -98,7 +102,7 @@ fn buttons(clicks: Query<(&Interaction, &PanelButton), Changed<Interaction>>, mu
 }
 
 fn spawn_panel(mut commands: Commands) {
-    let entries: [(&str, DevAction); 14] = [
+    let entries: [(&str, DevAction); 15] = [
         ("Storm here   V", DevAction::Storm),
         ("Clear sky   B", DevAction::ClearSky),
         ("Lightning   N", DevAction::Lightning(None)),
@@ -107,11 +111,12 @@ fn spawn_panel(mut commands: Commands) {
         ("Flashlight   L", DevAction::Flashlight),
         ("Carry a torch   T", DevAction::Torch),
         ("Plant a torch   G", DevAction::PlantTorch(None)),
-        ("Spawn an orc   O", DevAction::SpawnOrc(None)),
+        ("Spawn (an orc)   O", DevAction::Spawn(None)),
         ("Performance HUD   H", DevAction::PerfHud),
         ("Chunk overlay   J", DevAction::Chunks),
         ("Radius -   wheel", DevAction::Radius(-1)),
         ("Radius +   wheel", DevAction::Radius(1)),
+        ("Arena tools", DevAction::Arena),
         ("Back to hands   key left of 1", DevAction::Hands),
     ];
     commands

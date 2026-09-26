@@ -9,6 +9,7 @@ use noise::{Fbm, MultiFractal, NoiseFn, Perlin};
 use platypus_sim::rng::{Rng, hash};
 use platypus_sim::{CHUNK, CHUNK_AREA, Cell, CellPos, Chunk, ChunkPos, Climate, MaterialId, MaterialTable};
 
+pub mod arena;
 pub mod biome;
 pub mod caves;
 pub mod flora;
@@ -20,6 +21,7 @@ pub mod structures;
 use std::sync::Arc;
 
 use flora::{Foliage, TreePart};
+pub use arena::ArenaGen;
 pub use biome::Biome;
 use islands::IslandCell;
 use structures::{Glyph, StructureKind};
@@ -57,6 +59,12 @@ pub trait ChunkGenerator: Send + Sync {
     /// unmodified chunk is generated again when it comes back into view).
     fn generate_with_spawns(&self, pos: ChunkPos) -> (Chunk, Vec<(CellPos, Spawn)>) {
         (self.generate(pos), Vec::new())
+    }
+
+    /// Whether the world has life of its own: enemies about the start,
+    /// critters coming and going. (Not the arena: only what's put there.)
+    fn wild(&self) -> bool {
+        true
     }
 
     fn in_bounds(&self, pos: ChunkPos) -> bool {

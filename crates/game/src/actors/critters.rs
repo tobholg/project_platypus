@@ -221,6 +221,9 @@ fn ambient(
     mut seed: Local<u64>,
 ) {
     let Ok(pk) = player.single() else { return };
+    if !sim.generator.wild() {
+        return;
+    }
     let p = pk.body.pos;
     for (e, _, k) in &critters {
         if k.body.pos.distance(p) > GONE {

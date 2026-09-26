@@ -1,0 +1,72 @@
+// A training dummy: a stitched sack head on a straw body, a crossbar for
+// arms, a target on its chest, on a post. Leans back when hit. (The arena's.)
+(
+    size: (14, 22),
+    feet: (7, 22),
+    outline: (40, 30, 24),
+    palette: {
+        'b': (196, 168, 116),   // burlap
+        'B': (152, 124, 84),    // burlap, shade
+        'k': (70, 48, 38),      // stitches
+        'r': (170, 136, 86),    // rope
+        'y': (230, 200, 100),   // straw
+        'Y': (184, 152, 66),    // straw, shade
+        'w': (126, 88, 52),     // wood
+        'W': (90, 62, 38),      // wood, shade
+        'x': (184, 48, 42),     // target
+    },
+    frames: {
+        "stand": [
+            ".....bbbb.....",
+            "....bbbbbB....",
+            "....bkbkbB....",
+            "....bbbbbB....",
+            "....bkkkbB....",
+            ".....bbbB.....",
+            "......rr......",
+            "Y..bbbbbbB...Y",
+            "yywwwwwwwwwwyy",
+            "Y..bbxxxbB...Y",
+            "...bxbbbxB....",
+            "...bxbxbxB....",
+            "...bxbbbxB....",
+            "...bbxxxbB....",
+            "...rrrrrrr....",
+            "....yYyYy.....",
+            "......wW......",
+            "......wW......",
+            "......wW......",
+            "......wW......",
+            "....WwwwwW....",
+            "...WWWWWWWW...",
+        ],
+        "hit": [
+            ".......bbbb...",
+            "......bbbbbB..",
+            "......bkbkbB..",
+            "......bbbbbB..",
+            "......bkkkbB..",
+            ".......bbbB...",
+            "........rr....",
+            ".Y..bbbbbbB...",
+            ".yywwwwwwwwwwy",
+            ".Y..bbxxxbB...",
+            "....bxbbbxB...",
+            "....bxbxbxB...",
+            "....bxbbbxB...",
+            "....bbxxxbB...",
+            "....rrrrrrr...",
+            ".....yYyYy....",
+            "......wW......",
+            "......wW......",
+            "......wW......",
+            "......wW......",
+            "....WwwwwW....",
+            "...WWWWWWWW...",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["stand"], fps: 4),
+        "hit": (frames: ["hit", "stand"], fps: 12, looping: false),
+    },
+)

@@ -1,0 +1,52 @@
+// A sandbag: a tied burlap sack, heavy but loose; hit it and it goes
+// flying (and leaks sand). (The arena's.)
+(
+    size: (12, 15),
+    feet: (6, 15),
+    outline: (40, 30, 24),
+    palette: {
+        'b': (186, 160, 112),   // burlap
+        'B': (146, 120, 82),    // burlap, shade
+        'r': (120, 90, 56),     // rope
+    },
+    frames: {
+        "stand": [
+            "............",
+            ".....rr.....",
+            "....rrrr....",
+            "....bbbB....",
+            "...bbbbbB...",
+            "..bbbbbbbB..",
+            "..bbbbBbbB..",
+            "..bbbbbbbB..",
+            "..bbbbbbbB..",
+            "..bBbbbbbB..",
+            "..bbbbbbbB..",
+            "..bbbbbBbB..",
+            "..bbbbbbbB..",
+            "...bbbbbB...",
+            "....BBBB....",
+        ],
+        "hit": [
+            "............",
+            "............",
+            "............",
+            ".....rr.....",
+            "....rrrr....",
+            "...bbbbbB...",
+            ".bbbbbbbbbB.",
+            ".bbbbbBbbbB.",
+            ".bbbbbbbbbB.",
+            ".bbBbbbbbbB.",
+            ".bbbbbbbbbB.",
+            ".bbbbbbbBbB.",
+            ".bbbbbbbbbB.",
+            "..bbbbbbbB..",
+            "...BBBBBB...",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["stand"], fps: 4),
+        "hit": (frames: ["hit", "stand"], fps: 12, looping: false),
+    },
+)

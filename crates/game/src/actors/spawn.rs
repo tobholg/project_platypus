@@ -5,7 +5,8 @@
 //! crypt's guards), once each: an unmodified chunk is generated again when
 //! it comes back into view, so the ones already spawned are remembered.
 //!
-//! Debug: `O` spawns an orc at the cursor.
+//! Debug: `O` spawns the picked kind (`SpawnKind`: an orc, unless the arena
+//! panel picked another) at the cursor.
 
 use bevy::prelude::*;
 use platypus_sim::{CellPos, Kind, World};
@@ -27,6 +28,16 @@ pub struct PendingSpawn {
     pub local_player: bool,
 }
 
+/// What `O` spawns (the arena panel picks it).
+#[derive(Resource)]
+pub struct SpawnKind(pub String);
+
+impl Default for SpawnKind {
+    fn default() -> Self {
+        SpawnKind("orc".into())
+    }
+}
+
 #[derive(Resource, Default)]
 pub struct SpawnQueue(pub Vec<PendingSpawn>);
 
@@ -42,6 +53,7 @@ impl Plugin for SpawnPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SpawnQueue>()
             .init_resource::<Spawned>()
+            .init_resource::<SpawnKind>()
             .add_systems(Startup, queue_start)
             .add_systems(Update, (process_queue, debug_spawn, world_spawns));
     }
@@ -50,6 +62,9 @@ impl Plugin for SpawnPlugin {
 fn queue_start(sim: Res<SimWorld>, mut queue: ResMut<SpawnQueue>) {
     let s = sim.generator.spawn_point();
     queue.0.push(PendingSpawn { kind: "player".into(), x: s.x, from_y: s.y + 120, local_player: true });
+    if !sim.generator.wild() {
+        return;
+    }
     for (kind, dx) in START_ENEMIES {
         queue.0.push(PendingSpawn { kind: kind.into(), x: s.x + dx, from_y: s.y + 250, local_player: false });
     }
@@ -101,13 +116,13 @@ fn world_spawns(mut commands: Commands, fresh: Res<FreshChunks>, mut spawned: Re
     }
 }
 
-fn debug_spawn(mut commands: Commands, mut actions: MessageReader<crate::dev::DevAction>, player: Query<&Kinematics, With<LocalPlayer>>) {
+fn debug_spawn(mut commands: Commands, mut actions: MessageReader<crate::dev::DevAction>, kind: Res<SpawnKind>, player: Query<&Kinematics, With<LocalPlayer>>) {
     for a in actions.read() {
-        if let crate::dev::DevAction::SpawnOrc(at) = *a
+        if let crate::dev::DevAction::Spawn(at) = *a
             // From the panel: a little way off from the player.
             && let Some(at) = at.or_else(|| player.single().ok().map(|k| k.body.pos + Vec2::new(40.0, 10.0)))
         {
-            spawn_creature(&mut commands, "orc", at, |_| {});
+            spawn_creature(&mut commands, &kind.0, at, |_| {});
         }
     }
 }
