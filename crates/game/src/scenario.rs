@@ -70,6 +70,11 @@
 //! - `critters`   (flat world) a rabbit, a bird and a frog placed 60–90 cells
 //!   to the right at 1 s; the player walks at them from 2 s: they should hop
 //!   and fly away; logs where the critters near the player are
+//! - `editor`     (`PLATYPUS_WORLD=arena`, `PLATYPUS_EDIT_DIR` = a folder
+//!   with copies of sprites: it WRITES them) opens the art editor, paints
+//!   three pixels (9, 14–16) of the first thing in the first file in one stroke with
+//!   the real pointer (a pose paints its first layer's part), logs what
+//!   changed on disk; Ctrl+Z; logs whether the file is back as it was
 //! - `arena`      (`PLATYPUS_WORLD=arena`) overlays on; the spark wand at the
 //!   first dummy, a fireball at the second; an orc picked and spawned with O;
 //!   paused at 5 s and stepped three times (logs the sim ticks: 3), then a
@@ -119,6 +124,7 @@ impl Plugin for ScenarioPlugin {
             // Inject input where real input arrives: after Bevy reads devices,
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, editor_script.after(InputSystems).before(crate::editor::capture))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -1501,5 +1507,71 @@ fn arena_script(
         *logged = (t * 2.0).floor() / 2.0 + 0.5;
         let read: Vec<String> = dummies.iter().map(|(c, dk, tl)| format!("{} @{:.0}: {:.0} dps, {:.0} in {} hits", c.kind, dk.body.pos.x, tl.dps(), tl.total, tl.hits)).collect();
         info!("arena: t {t:.1} [{}]", read.join("; "));
+    }
+}
+
+/// The art editor through the real pointer and keys, on a scratch copy.
+#[allow(clippy::too_many_arguments)]
+fn editor_script(
+    s: Res<Scenario>,
+    mut window: Single<&mut Window, With<bevy::window::PrimaryWindow>>,
+    canvas: Query<(&bevy::ui::UiGlobalTransform, &bevy::ui::ComputedNode), With<crate::editor::Canvas>>,
+    editor: Res<crate::editor::Editor>,
+    mut arena: MessageWriter<crate::arena::ArenaAction>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, String)>,
+) {
+    if s.name != "editor" {
+        return;
+    }
+    let t = s.elapsed;
+    let shown = editor.canvas();
+    let read = || shown.as_ref().and_then(|(_, f)| std::fs::read_to_string(f).ok()).unwrap_or_default();
+    let scale = window.scale_factor();
+    // Pixel (x, y) of the canvas, in window pixels.
+    let at = |x: f32, y: f32| {
+        let ((w, h), _) = shown.clone()?;
+        canvas.single().ok().map(|(tf, node)| {
+            let size = node.size() / scale;
+            tf.translation / scale + Vec2::new((x + 0.5) / w as f32 - 0.5, (y + 0.5) / h as f32 - 0.5) * size
+        })
+    };
+    let beats = [0.5, 1.0, 1.2, 1.3, 1.4, 1.5, 1.8, 2.0, 2.2, 2.6];
+    let Some(n) = beats.iter().rposition(|&b| t >= b) else { return };
+    let n = n as u8 + 1;
+    if state.0 >= n {
+        return;
+    }
+    state.0 = n;
+    match n {
+        1 => {
+            arena.write(crate::arena::ArenaAction::Editor);
+        }
+        2 => {
+            state.1 = read();
+            window.set_cursor_position(at(9.0, 14.0));
+        }
+        3 => mouse.press(MouseButton::Left),
+        4 => window.set_cursor_position(at(9.0, 15.0)),
+        5 => window.set_cursor_position(at(9.0, 16.0)),
+        6 => mouse.release(MouseButton::Left),
+        7 => {
+            let now = read();
+            let changed = state.1.chars().zip(now.chars()).filter(|(a, b)| a != b).count();
+            info!("editor: after one stroke, {changed} characters of the file changed ({} lines before, {} after)", state.1.lines().count(), now.lines().count());
+        }
+        8 => {
+            keys.press(KeyCode::ControlLeft);
+            keys.press(KeyCode::KeyZ);
+        }
+        9 => {
+            keys.release(KeyCode::ControlLeft);
+            keys.release(KeyCode::KeyZ);
+        }
+        _ => {
+            info!("editor: after Ctrl+Z the file is as it was: {}", read() == state.1);
+            window.set_cursor_position(at(7.0, 9.0));
+        }
     }
 }

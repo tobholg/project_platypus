@@ -40,7 +40,12 @@ struct HeldKeys {
     dash_tapped: bool,
 }
 
-fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, mut held: ResMut<HeldKeys>) {
+fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, taken: Res<crate::dev::KeyboardTaken>, mut held: ResMut<HeldKeys>) {
+    if taken.0 {
+        // (The art editor has the keyboard: stand still, keep looking.)
+        held.intent = Intent { aim: held.intent.aim, ..default() };
+        return;
+    }
     let right = keys.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]) as i32 as f32;
     let left = keys.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]) as i32 as f32;
     held.intent.move_x = right - left;

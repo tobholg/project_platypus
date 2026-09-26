@@ -12,6 +12,7 @@ mod camera;
 mod data;
 mod debug;
 mod dev;
+mod editor;
 mod fx;
 mod hands;
 mod hud;
@@ -91,7 +92,7 @@ fn main() {
             light::LightPlugin,
             scenario::ScenarioPlugin,
         ))
-        .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin))
+        .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin))
         .add_plugins(spikes_plugin)
         .run();
 }

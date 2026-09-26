@@ -37,6 +37,8 @@
 //!     },
 //! ```
 
+pub mod edit;
+
 use std::collections::{BTreeMap, HashMap};
 
 use serde::Deserialize;

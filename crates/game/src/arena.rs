@@ -2,7 +2,7 @@
 //! time (pause, a tick at a time, slow motion), overlays (every body's box,
 //! its facing and hand), what `O` spawns at the cursor, and clearing the
 //! floor. A panel on the left, and keys: P pause · . one tick (paused) ·
-//! , slower (1, 1/2, 1/4, 1/10) · Y overlays.
+//! , slower (1, 1/2, 1/4, 1/10) · Y overlays · E the art editor (`editor.rs`).
 //!
 //! Pausing pauses virtual time, so the sim, bodies, particles and
 //! animations all stop; a step hands the fixed clock exactly one tick.
@@ -32,6 +32,8 @@ pub enum ArenaAction {
     Overlays,
     Pick(String),
     Clear,
+    /// The art editor, open or shut.
+    Editor,
 }
 
 #[derive(Resource, Default)]
@@ -77,8 +79,8 @@ fn kinds() -> Vec<String> {
     v
 }
 
-fn keys(keys: Res<ButtonInput<KeyCode>>, view: Res<ArenaView>, mut out: MessageWriter<ArenaAction>) {
-    if !view.open {
+fn keys(keys: Res<ButtonInput<KeyCode>>, view: Res<ArenaView>, taken: Res<crate::dev::KeyboardTaken>, mut out: MessageWriter<ArenaAction>) {
+    if !view.open || taken.0 {
         return;
     }
     for (k, a) in [
@@ -86,6 +88,7 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, view: Res<ArenaView>, mut out: MessageW
         (KeyCode::Period, ArenaAction::Step),
         (KeyCode::Comma, ArenaAction::Slower),
         (KeyCode::KeyY, ArenaAction::Overlays),
+        (KeyCode::KeyE, ArenaAction::Editor),
     ] {
         if keys.just_pressed(k) {
             out.write(a);
@@ -116,6 +119,7 @@ fn act(
     mut view: ResMut<ArenaView>,
     mut virt: ResMut<Time<Virtual>>,
     mut kind: ResMut<SpawnKind>,
+    mut editor: ResMut<crate::editor::Editor>,
     creatures: Query<(Entity, Option<&Dummy>), Others>,
     mut owed: ResMut<StepOwed>,
 ) {
@@ -145,6 +149,7 @@ fn act(
             }
             ArenaAction::Overlays => view.overlays = !view.overlays,
             ArenaAction::Pick(k) => kind.0 = k.clone(),
+            ArenaAction::Editor => editor.open = !editor.open,
             // Everything but the player and the planted dummies.
             ArenaAction::Clear => {
                 for (e, d) in &creatures {
@@ -219,6 +224,8 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
                 }
             });
             row(p, &|r| label(r, "Clear the floor", ArenaAction::Clear));
+            heading(p, "Make");
+            row(p, &|r| label(r, "Art editor  E", ArenaAction::Editor));
         });
 }
 

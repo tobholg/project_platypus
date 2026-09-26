@@ -37,6 +37,11 @@ pub enum DevAction {
     Arena,
 }
 
+/// A screen has the keyboard (the art editor): the player and the keys
+/// that act on the world leave it alone.
+#[derive(Resource, Default)]
+pub struct KeyboardTaken(pub bool);
+
 /// The pointer is over a UI element: clicks are for it, not the world.
 #[derive(Resource, Default)]
 pub struct PointerOverUi(pub bool);
@@ -51,6 +56,7 @@ impl Plugin for DevPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<DevAction>()
             .init_resource::<PointerOverUi>()
+            .init_resource::<KeyboardTaken>()
             .add_systems(Startup, spawn_panel)
             .add_systems(PreUpdate, pointer_over_ui.after(bevy::ui::UiSystems::Focus))
             .add_systems(Update, (keys, buttons, show_panel));

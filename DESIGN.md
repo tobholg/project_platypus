@@ -384,7 +384,7 @@ Then structures v2 (bigger crypts and castles, the ruin catalogue) and saving.
 Stages:
 1. The art format, its compiler and the CLI; the first critters (a rabbit, a bird, a frog) with a critter brain and ambient spawning.
 2. The humanoid rig (parts with drawn variants, anchors, clips as data) and the player redesigned on it: idle (breathing, blinking), walk, run, jump, fall, land, dash, wall slide, swim, hurt, death.
-3. The arena (`PLATYPUS_WORLD=arena`: dummies, spawning, overlays, slow motion, frame stepping) and the in-game editor (canvas, palette, layers, frames, anchors, onion skin, live preview).
+3. ✅ The arena (`PLATYPUS_WORLD=arena`: dummies, spawning, overlays, slow motion, frame stepping) and the in-game editor (canvas, palette, layers, frames, anchors, onion skin, live preview) (2026-09-26; SPEC 5.3, 5.4).
 4. The combat core: held weapons turning at the hand (pre-rotated, RotSprite-style), moves as data, pixel-mask hits, hit-stop and feedback, stamina, dodge; a shortsword and a longsword.
 5. The bow and arrows (drawn by holding, physical arrows that stick and can be picked up, burning arrows).
 6. The orcs redesigned (swordsman, archer) and a troll with a club, their AI choosing moves from what they hold.

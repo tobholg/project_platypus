@@ -923,6 +923,33 @@ deaths (blood). Rendered as one dynamic mesh.
   cursor (every creature file but the player's); clear the floor (all but
   the player and planted dummies).
 
+### 5.4 The art editor (`game/src/editor.rs`, `art/src/edit.rs`)
+
+- In the game, from the arena panel (E): the sprite files in `assets/art`
+  (or `PLATYPUS_EDIT_DIR`), everything in one (poses, frames, derived
+  frames, parts), a canvas, the palette, a pose's layers, a clip playing.
+- It edits the files as text: `edit` finds a value by path (`parts.arm.
+  rows`, `palette.'a'`, `poses.stand.0.at`) in a small RON span parse and
+  rewrites it, or puts in a missing entry (and the maps on the way to it)
+  laid out like its neighbours; every other byte stays. A stroke is saved
+  when it ends (one undo for the whole stroke), so creatures in the world
+  reload as you draw; a change that wouldn't compile isn't made; the file
+  changed by someone else is taken up (undoably).
+- Canvas: a frame or part shows its own grid; a pose shows itself, and
+  painting it paints the picked layer's part where it lies (mirrored if the
+  layer is). Onion skin: the frame before in its clip at 30 %. Marks: a
+  part's pivot (cyan) and points, a frame's anchors (yellow), the feet
+  (red), the picked layer's box.
+- Tools: pencil, eraser, fill, pick (and the right button), point (the
+  named point at the click: a part's pivot or points, a frame's anchors).
+  Colours: nudge R G B by 8 (Shift: 1), a new colour (a free letter).
+  Layers: arrows move the picked one's `at`. Ctrl/Cmd+Z, +Y; Esc or E
+  closes. While it's open it has the keyboard (`KeyboardTaken`) and the
+  wheel.
+- The same edits from the command line, for the model and scripts:
+  `platypus-art get|set|paint` (set and paint write only if the file still
+  compiles).
+
 ## 6. Combat
 
 - Weapons: pivot, swing curve (angle over time), windup/active/recovery
