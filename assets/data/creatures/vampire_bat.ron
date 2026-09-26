@@ -1,0 +1,22 @@
+// A vampire bat: flits high in caves; dives at you, bites, flies back up.
+(
+    name: "Vampire bat",
+    size: (6, 4),
+    health: 16,
+    team: Enemy,
+    blood: "blood",
+    art: "vampire_bat",
+    movement: (
+        run_speed: 20,
+        fly_speed: 115,
+        fly_accel: 900,
+        air_jumps: 0,
+        step_height: 0,
+        dash_speed: 0,
+    ),
+    touch: (damage: 6, knock: 80, stun: 0.1, every: 0.8),
+    brain: (
+        kind: "swooper",
+        params: (aggro_range: 160, hover: (18, 45), dive_time: 1.2, dive_every: 2.2),
+    ),
+)

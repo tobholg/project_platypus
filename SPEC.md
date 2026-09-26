@@ -1082,6 +1082,33 @@ deaths (blood). Rendered as one dynamic mesh.
   empties the stamina bar in 1.5 s; striking down from above bounces
   (300 cells/s); a blast mid-dodge costs 3 hp against ~15 standing.
 
+### 6.3 Underground enemies (`actors/monsters.rs`, `assets/data/creatures/`)
+
+Each is a creature file (art, stats, brain and its params) on shared
+parts, so another is a new file, not new code:
+- **`touch`** (`combat::Touch`: damage, knock, stun, `every`): hurts what
+  it touches of another side (not its own; critters touch nothing), then
+  rests. Every hit is a `Hit`; a target given its `after_hit` grace ignores
+  the rest of that tick's hits too (four spiderlings' bites don't land at
+  once).
+- **`cling`** (movement): a climber touching a wall or ceiling holds on
+  (pressing into it), goes along it where it steers, and lets go on a
+  jump; the sprite is turned to the surface (upside down on a ceiling).
+- Brains: `crawler` (at you over any surface, a pounce when near, a drop
+  from a ceiling above you), `hopper` (a hop at you every `hop_every`),
+  `swooper` (flits in a band above the ground; dives at you for
+  `dive_time`, back up for `dive_every`), `hatchery` (still until you come
+  within `range` or hit it, then bursts into `count` of `brood`), and
+  `melee_walker` for anything that wields a weapon.
+- The cave spider (climbs, pounces, 9 a bite; bleeds `ichor`), spiderlings
+  (small, fast, many), egg sacs (burst into four spiderlings), the slime
+  (hops; full of glowing `slime`), the acid slime (full of acid, which it
+  resists; glows), the skeleton (the humanoid rig in bone, a rusty sword;
+  crumbles to ash), the vampire bat (dives, bites). Packs `spiders` and
+  `underground` spawn them together. In the `underground` scenario each
+  hurts a player standing still (a spider ~36 hp in 3.5 s, spiderlings ~15
+  in 3 s), and a spider climbs a 140-cell column to the player on top.
+
 ### 6.1 Magic (`game::magic`, DESIGN §7b)
 
 - **Runes** (`assets/data/runes.ron`, hot-reloaded) are one of three kinds:

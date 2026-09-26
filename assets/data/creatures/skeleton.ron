@@ -1,0 +1,26 @@
+// A skeleton: the dead of crypts and deep caves, with a rusty sword; bones,
+// so it crumbles to dust. The humanoid rig (assets/art/skeleton.ron).
+(
+    name: "Skeleton",
+    size: (6, 15),
+    health: 55,
+    team: Enemy,
+    blood: "ash",
+    fall_damage: (safe_height: 70, per_cell: 0.8),
+    movement: (
+        run_speed: 58,
+        jump_height: 24,
+        air_jumps: 0,
+        step_height: 3,
+        dash_speed: 0,
+    ),
+    art: "skeleton",
+    weapon: "rusty_sword",
+    stamina: 60,
+    poise: 12,
+    brain: (
+        kind: "melee_walker",
+        params: (aggro_range: 200, keep_distance: 10, wander_speed: 0.3, wander_every: 3.0, jump_to_reach: 18,
+                 reach: 15, attack_every: 1.3, combo: 2),
+    ),
+)

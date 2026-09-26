@@ -47,7 +47,7 @@ impl Plugin for CombatPlugin {
             .add_systems(Startup, load)
             .add_systems(PreUpdate, hit_stop)
             .add_systems(FixedUpdate, (start_swings, dodge, stamina).chain().after(TickSet::Intent).before(TickSet::Bodies))
-            .add_systems(FixedUpdate, (swing, apply_hits).chain().after(TickSet::Bodies).before(TickSet::Cells))
+            .add_systems(FixedUpdate, (touch, swing, apply_hits).chain().after(TickSet::Bodies).before(TickSet::Cells))
             .add_systems(Update, (reload, draw).chain().after(crate::actors::animation::animate));
     }
 }
@@ -478,6 +478,57 @@ pub struct Recoil {
     pub pogo: Option<f32>,
 }
 
+/// Contact damage: what it touches of another side (anyone can touch the
+/// neutral) is hit, then it rests `every` s.
+#[derive(Component, Clone, Copy, Debug, Deserialize)]
+pub struct Touch {
+    pub damage: f32,
+    #[serde(default)]
+    pub knock: f32,
+    #[serde(default)]
+    pub stun: f32,
+    #[serde(default = "touch_every")]
+    pub every: f32,
+    #[serde(skip)]
+    rest: f32,
+}
+
+fn touch_every() -> f32 {
+    0.6
+}
+
+type Toucher<'a> = (Entity, &'a mut Touch, &'a Kinematics, Option<&'a Team>);
+type Touched<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Has<Invulnerable>);
+
+/// Things that hurt by touch hit what they touch.
+fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher>, bodies: Query<Touched, With<Health>>) {
+    for (me, mut t, k, team) in &mut touchers {
+        t.rest -= DT;
+        if t.rest > 0.0 {
+            continue;
+        }
+        for (e, tk, tteam, safe) in &bodies {
+            if e == me || safe {
+                continue;
+            }
+            // (Not its own side; and a critter can't hurt a critter.)
+            match (team, tteam) {
+                (Some(a), Some(b)) if a == b => continue,
+                (Some(Team::Neutral), _) => continue,
+                _ => {}
+            }
+            let d = tk.body.pos - k.body.pos;
+            if (d.abs() - (tk.body.half + k.body.half)).max_element() > 0.5 {
+                continue;
+            }
+            let push = (Vec2::new(d.x, 0.0).normalize_or(Vec2::X * k.loco.facing) + Vec2::new(0.0, 0.4)).normalize() * t.knock;
+            hits.write(Hit { target: e, damage: t.damage, knock: push, stun: t.stun, at: k.body.pos + d * 0.5, dir: d.normalize_or(Vec2::X), weight: t.damage / 12.0 });
+            t.rest = t.every;
+            break;
+        }
+    }
+}
+
 /// A body started a dash (a dodge).
 #[derive(Message, Clone, Copy, Debug)]
 pub struct Dashed(pub Entity);
@@ -834,9 +885,12 @@ fn apply_hits(
             k.loco.refresh_air(&stats.0);
         }
     }
+    // (Given its grace this tick: the rest of this tick's hits miss too, or
+    // a swarm's bites all land at once.)
+    let mut graced = std::collections::HashSet::new();
     for h in hits.read() {
         let Ok((mut k, mut health, sturdy, _, safe)) = q.get_mut(h.target) else { continue };
-        if safe {
+        if safe || graced.contains(&h.target) {
             continue;
         }
         health.hp -= h.damage;
@@ -855,6 +909,7 @@ fn apply_hits(
             }
             if s.after_hit > 0.0 {
                 commands.entity(h.target).insert(Invulnerable { left: s.after_hit, hp: health.hp });
+                graced.insert(h.target);
             }
         }
         let k = &mut *k;

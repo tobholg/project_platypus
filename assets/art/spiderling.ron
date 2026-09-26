@@ -1,0 +1,36 @@
+// A spiderling: small, fast, many. The spider's colours.
+(
+    size: (9, 5),
+    feet: (4.5, 5),
+    outline: (20, 14, 16),
+    palette: {
+        'b': (44, 34, 40),   // abdomen
+        'B': (76, 60, 68),   // abdomen, lit
+        'x': (196, 44, 40),   // its mark
+        'c': (58, 46, 52),   // head
+        'k': (250, 70, 40),   // eyes
+        'l': (34, 26, 30),   // legs
+    },
+    frames: {
+        "walk_a": [
+            ".bbb.....",
+            "bBxBbcc..",
+            "bBBBbcck.",
+            ".l.l.l.l.",
+            "l.l...l.l",
+        ],
+        "walk_b": [
+            ".bbb.....",
+            "bBxBbcc..",
+            "bBBBbcck.",
+            "l.l.l.l..",
+            ".l...l.l.",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["walk_a"], fps: 2),
+        "run": (frames: ["walk_a", "walk_b"], fps: 14),
+        "jump": (frames: ["walk_b"], fps: 5),
+        "fall": (frames: ["walk_b"], fps: 5),
+    },
+)

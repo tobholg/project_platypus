@@ -1,0 +1,42 @@
+// An acid slime: yellow-green, bright; it's full of acid (its blood).
+(
+    size: (12, 9),
+    feet: (6, 9),
+    outline: (40, 50, 10),
+    palette: {
+        'g': (150, 200, 40),   // its skin
+        'G': (200, 245, 90, 225),   // its jelly
+        'k': (40, 50, 10),   // eyes
+        'm': (90, 120, 20),   // mouth
+    },
+    frames: {
+        "squat": [
+            "............",
+            "............",
+            "....gggg....",
+            "..gGGGGGgg..",
+            ".gGGkGGkGGg.",
+            ".gGGGGGGGGg.",
+            "gGGGGmmGGGGg",
+            "gGGGGGGGGGGg",
+            ".gggggggggg.",
+        ],
+        "tall": [
+            "....ggg.....",
+            "...gGGGg....",
+            "..gGGGGGg...",
+            "..gGkGkGg...",
+            "..gGGGGGg...",
+            "..gGGmGGg...",
+            "..gGGGGGg...",
+            "..gGGGGGg...",
+            "...ggggg....",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["squat", "squat", "squat", "tall"], fps: 3),
+        "run": (frames: ["squat"], fps: 4),
+        "jump": (frames: ["tall"], fps: 5),
+        "fall": (frames: ["squat"], fps: 5),
+    },
+)

@@ -28,6 +28,9 @@ pub struct Intent {
     pub aim: Vec2,
 }
 
+/// How hard a climber presses into what it holds on to (cells/s).
+const CLING_PRESS: f32 = 30.0;
+
 /// Below this share of its body under water (its head out), a jump leaves
 /// the water as a jump does, at this share of a jump's speed.
 const BREACH: f32 = 0.85;
@@ -81,6 +84,9 @@ pub struct MovementStats {
     /// up or down (a glide).
     pub fly_speed: f32,
     pub fly_accel: f32,
+    /// A climber (a spider): touching a wall or a ceiling it holds on and
+    /// goes along it where it steers, at run speed; a jump lets go.
+    pub cling: bool,
     /// A swimmer (a fish): under water it goes where it steers (move_x,
     /// move_y) × this, at `swim_accel`, weightless; 0: it swims as bodies do.
     pub swim_speed: f32,
@@ -127,6 +133,7 @@ impl Default for MovementStats {
             step_height: 3,
             fly_speed: 0.0,
             fly_accel: 600.0,
+            cling: false,
             swim_speed: 0.0,
             swim_accel: 400.0,
             swim_gravity: 0.1,
@@ -174,6 +181,8 @@ pub struct Locomotion {
     stun: f32,
     prev_jump: bool,
     prev_dash: bool,
+    /// Holding on to a wall or ceiling: which way its feet point (a climber).
+    cling: Option<Vec2>,
     /// Seconds to the next swim stroke, while jump is held in water.
     stroke_left: f32,
     /// Last tick's contacts, so brains and animation can read them.
@@ -198,6 +207,7 @@ impl Default for Locomotion {
             prev_jump: false,
             prev_dash: false,
             stroke_left: 0.0,
+            cling: None,
             contacts: Contacts::default(),
         }
     }
@@ -233,6 +243,12 @@ impl Locomotion {
     pub fn refresh_air(&mut self, s: &MovementStats) {
         self.air_jumps_left = s.air_jumps;
         self.air_dash_used = false;
+    }
+
+    /// Which way its feet point while it holds on to a wall or ceiling
+    /// (`(0, 1)`: the ceiling; `(±1, 0)`: a wall), if it does.
+    pub fn clinging(&self) -> Option<Vec2> {
+        self.cling
     }
 
     pub fn is_dashing(&self) -> bool {
@@ -307,6 +323,31 @@ impl Locomotion {
             }
             body.vel.x = self.dash_dir * s.run_speed;
             self.state = if grounded { MoveState::Ground } else { MoveState::Air };
+        }
+
+        // A climber on a wall or ceiling: it holds on (pressing into it, so
+        // it stays touching) and goes along it; a jump lets go (a leap).
+        self.cling = None;
+        if s.cling && !jump_pressed && self.contacts.submerged < 0.5 {
+            let c = self.contacts;
+            let wall = if c.wall_left { -1.0 } else if c.wall_right { 1.0 } else { 0.0 };
+            let (mx, my) = (intent.move_x.clamp(-1.0, 1.0), intent.move_y.clamp(-1.0, 1.0));
+            let on_ceiling = c.ceiling && !(wall != 0.0 && my < 0.0);
+            // (On the ground, walking into a wall, it only climbs if it wants up.)
+            let on_wall = wall != 0.0 && (!grounded || my > 0.0);
+            if on_ceiling {
+                body.vel = Vec2::new(mx * s.run_speed, CLING_PRESS);
+                self.cling = Some(Vec2::Y);
+            } else if on_wall {
+                body.vel = Vec2::new(wall * CLING_PRESS, my * s.run_speed);
+                self.cling = Some(Vec2::new(wall, 0.0));
+            }
+            if self.cling.is_some() {
+                self.state = MoveState::Ground;
+                self.air_jumps_left = s.air_jumps;
+                self.rising_from_jump = false;
+                return ev;
+            }
         }
 
         // A swimmer under water: steered, weightless.
@@ -663,6 +704,37 @@ mod tests {
         assert!(out > 15.0, "head out, a jump clears the surface by {out} cells");
         let under = rise(surface - 25.0);
         assert!(under < out - 5.0, "deep under, a stroke gets less far: {under} vs {out}");
+    }
+
+    /// A climber walks up a wall, along the ceiling, and lets go when it
+    /// jumps.
+    #[test]
+    fn a_climber_goes_up_walls_and_along_ceilings() {
+        let mut rows = vec!["#                    #"; 30];
+        rows.insert(0, "######################");
+        rows.push("######################");
+        let g = Ascii::new(&rows);
+        let s = MovementStats { cling: true, run_speed: 40.0, ..Default::default() };
+        let (_, mut l, _) = player();
+        let mut b = Body::new(Vec2::new(10.0, 3.0), Vec2::new(4.0, 3.0));
+        // Right, into the wall, and up it.
+        for _ in 0..120 {
+            tick(&g, &s, &mut l, &mut b, Intent { move_x: 1.0, move_y: 1.0, ..Default::default() });
+        }
+        assert!(b.pos.y > 25.0, "climbed the wall to the top: {:?}", b.pos);
+        assert!(l.clinging().is_some(), "holding on");
+        // Left along the ceiling.
+        for _ in 0..60 {
+            tick(&g, &s, &mut l, &mut b, Intent { move_x: -1.0, move_y: 1.0, ..Default::default() });
+        }
+        assert!(b.pos.x < 15.0 && b.pos.y > 28.0, "along the ceiling: {:?}", b.pos);
+        assert_eq!(l.clinging(), Some(Vec2::Y));
+        // A jump lets go: it falls.
+        tick(&g, &s, &mut l, &mut b, Intent { jump: true, ..Default::default() });
+        for _ in 0..60 {
+            tick(&g, &s, &mut l, &mut b, Intent::default());
+        }
+        assert!(b.pos.y < 5.0, "let go and fell: {:?}", b.pos);
     }
 
     #[test]

@@ -15,6 +15,7 @@ pub mod critters;
 pub mod dummy;
 pub mod elements;
 pub mod hurt;
+pub mod monsters;
 pub mod player;
 pub mod spawn;
 
@@ -35,7 +36,7 @@ impl Plugin for ActorsPlugin {
             .add_message::<Landed>()
             .add_message::<AirJumped>()
             .add_plugins((creature::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, animation::AnimationPlugin))
-            .add_plugins((player::PlayerPlugin, ai::AiPlugin, critters::CrittersPlugin))
+            .add_plugins((player::PlayerPlugin, ai::AiPlugin, critters::CrittersPlugin, monsters::MonstersPlugin))
             .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, crate::combat::guard, hurt::notice, dummy::tally, deaths).chain().in_set(TickSet::Bodies))
             .insert_resource(elements::Coatings::load())
             .init_resource::<PlayerDeaths>()

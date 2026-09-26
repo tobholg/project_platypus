@@ -73,6 +73,10 @@ pub struct CreatureDef {
     /// Seconds nothing hurts it after a hit (the player's grace).
     #[serde(default)]
     pub after_hit: f32,
+    /// It hurts what it touches of another side (a spider's bite, a slime):
+    /// damage, knockback (cells/s), stun, and a rest between touches.
+    #[serde(default)]
+    pub touch: Option<crate::combat::Touch>,
     /// It gives off light (a firefly): its colour, how bright, and a pulse
     /// (seconds a swell; 0: steady).
     #[serde(default)]
@@ -308,6 +312,9 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             e.insert(crate::combat::Stamina::new(s));
         }
         e.insert(crate::combat::Sturdy::new(def.poise, def.heft, def.after_hit));
+        if let Some(t) = def.touch {
+            e.insert(t);
+        }
         if let Some(l) = def.light {
             let color = crate::light::rgb(l.color, l.strength);
             e.insert(crate::light::LightSource { color, flicker: 0.0 });

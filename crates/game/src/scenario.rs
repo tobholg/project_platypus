@@ -75,6 +75,11 @@
 //!   three pixels (9, 14–16) of the first thing in the first file in one stroke with
 //!   the real pointer (a pose paints its first layer's part), logs what
 //!   changed on disk; Ctrl+Z; logs whether the file is back as it was
+//! - `underground` (`PLATYPUS_WORLD=arena`) each underground enemy in turn
+//!   against the player (standing still): a spider, two slimes, two vampire
+//!   bats, a skeleton, an egg sac; logs the health each phase cost and what
+//!   they did; then the player on top of a column and a spider at its foot
+//!   (logs how high it climbed)
 //! - `life`       (`PLATYPUS_WORLD=arena`; try `PLATYPUS_HOUR=22`) fireflies
 //!   over the floor, fish in the pool, bats in the air above; logs
 //!   after 5 s whether each is still where it lives
@@ -155,7 +160,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, editor_script.after(InputSystems).before(crate::editor::capture))
-            .add_systems(Update, (warband_script, life_script))
+            .add_systems(Update, (warband_script, life_script, underground_script))
             .add_systems(PreUpdate, crossing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, held_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -2188,5 +2193,91 @@ fn life_script(
             info!("life: {kind}: {fine} of {} where they live (heights over the floor: {})", all.len(), heights.join(" "));
         }
         *state = 2;
+    }
+}
+
+/// A phase: its name, what's put (kind, dx from the player), how long.
+type Phase<'a> = (&'a str, &'a [(&'a str, f32)], f32);
+
+/// Creatures but the player and the arena's dummies.
+type Foes = (Without<LocalPlayer>, Without<crate::actors::dummy::Dummy>);
+
+/// The underground enemies, one kind at a time, against a player who stands.
+#[allow(clippy::too_many_arguments)]
+fn underground_script(
+    s: Res<Scenario>,
+    mut commands: Commands,
+    mut player: Query<(&mut Kinematics, &mut crate::actors::Health), With<LocalPlayer>>,
+    foes: Query<(Entity, &crate::actors::Creature, &Kinematics), Foes>,
+    deaths: Res<crate::actors::PlayerDeaths>,
+    mut state: Local<(usize, f32, f32, u32, f32)>,
+) {
+    if s.name != "underground" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR as f32;
+    // (name, what: (kind, dx from the player), how long)
+    let phases: [Phase; 6] = [
+        ("spider", &[("spider", 40.0)], 3.5),
+        ("slimes", &[("slime", 35.0), ("acid_slime", -35.0)], 3.5),
+        ("vampire bats", &[("vampire_bat", 30.0), ("vampire_bat", -30.0)], 4.0),
+        ("skeleton", &[("skeleton", 40.0)], 4.0),
+        ("egg sac", &[("egg_sac", 28.0)], 3.0),
+        ("climb", &[], 5.0),
+    ];
+    let start: Vec<f32> = phases.iter().scan(0.5, |acc, p| { let a = *acc; *acc += p.2; Some(a) }).collect();
+    let (i, _) = (state.0, 0);
+    if i >= phases.len() {
+        return;
+    }
+    if t < start[i] {
+        return;
+    }
+    // A phase begins: the floor cleared, the player healed, its foes put.
+    if state.4 < start[i] + 0.001 && state.4 <= start[i] {
+        for (e, ..) in &foes {
+            commands.entity(e).despawn();
+        }
+        h.hp = h.max;
+        state.1 = h.hp;
+        state.3 = deaths.0;
+        state.2 = 0.0;
+        let (name, what, _) = phases[i];
+        let at = if name == "climb" {
+            // On top of the tall column, a spider at its foot.
+            k.body.pos = Vec2::new(1108.0, floor + 140.0 + 8.0);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            crate::actors::creature::spawn_creature(&mut commands, "spider", Vec2::new(1085.0, floor), |_| {});
+            k.body.pos
+        } else {
+            k.body.pos
+        };
+        for &(kind, dx) in what {
+            crate::actors::creature::spawn_creature(&mut commands, kind, Vec2::new(at.x + dx, floor + if kind == "vampire_bat" { 40.0 } else { 0.0 }), |_| {});
+        }
+        state.4 = start[i] + 0.002;
+    }
+    // Keep a record: the highest a foe got (the climb).
+    for (_, c, fk) in &foes {
+        if c.kind == "spider" {
+            state.2 = state.2.max(fk.body.pos.y - floor);
+        }
+    }
+    let end = start[i] + phases[i].2;
+    if t >= end - 0.05 {
+        let lost = state.1 - h.hp + 100.0 * (deaths.0 - state.3) as f32;
+        let mut kinds = std::collections::BTreeMap::new();
+        for (_, c, _) in &foes {
+            *kinds.entry(c.kind.clone()).or_insert(0) += 1;
+        }
+        let extra = if phases[i].0 == "climb" { format!("; the spider got {:.0} cells up (the player is at {:.0})", state.2, k.body.pos.y - floor) } else { String::new() };
+        info!("underground: {}: the player lost {lost:.0} hp in {:.1} s; about: {kinds:?}{extra}", phases[i].0, phases[i].2);
+        state.0 += 1;
+        if state.0 < phases.len() {
+            state.4 = 0.0;
+        }
     }
 }

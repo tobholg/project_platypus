@@ -1,0 +1,42 @@
+// A cave slime: a quivering green blob with two eyes; it hops.
+(
+    size: (12, 9),
+    feet: (6, 9),
+    outline: (20, 50, 24),
+    palette: {
+        'g': (60, 150, 64),   // its skin
+        'G': (104, 204, 104, 225),   // its jelly
+        'k': (16, 36, 18),   // eyes
+        'm': (40, 90, 44),   // mouth
+    },
+    frames: {
+        "squat": [
+            "............",
+            "............",
+            "....gggg....",
+            "..gGGGGGgg..",
+            ".gGGkGGkGGg.",
+            ".gGGGGGGGGg.",
+            "gGGGGmmGGGGg",
+            "gGGGGGGGGGGg",
+            ".gggggggggg.",
+        ],
+        "tall": [
+            "....ggg.....",
+            "...gGGGg....",
+            "..gGGGGGg...",
+            "..gGkGkGg...",
+            "..gGGGGGg...",
+            "..gGGmGGg...",
+            "..gGGGGGg...",
+            "..gGGGGGg...",
+            "...ggggg....",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["squat", "squat", "squat", "tall"], fps: 3),
+        "run": (frames: ["squat"], fps: 4),
+        "jump": (frames: ["tall"], fps: 5),
+        "fall": (frames: ["squat"], fps: 5),
+    },
+)

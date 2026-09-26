@@ -5,4 +5,6 @@
     "warband": [("troll", 1), ("orc", 3), ("orc_archer", 2)],
     "trolls": [("troll", 2)],
     "orcs": [("orc", 4), ("orc_archer", 2)],
+    "spiders": [("spider", 2), ("spiderling", 4), ("egg_sac", 2)],
+    "underground": [("skeleton", 2), ("slime", 2), ("acid_slime", 1), ("vampire_bat", 2)],
 }

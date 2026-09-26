@@ -89,7 +89,7 @@ fn scare(mut blasts: MessageReader<crate::fx::Explosion>, time: Res<Time>, mut q
 }
 
 /// How far above the ground (or water) a point is, up to `most` cells.
-fn height(world: &platypus_sim::World, at: Vec2, most: i32) -> f32 {
+pub(crate) fn height(world: &platypus_sim::World, at: Vec2, most: i32) -> f32 {
     let (x, y) = (at.x.floor() as i32, at.y.floor() as i32);
     (0..most)
         .find(|d| world.get(CellPos::new(x, y - d)).is_none_or(|c| matches!(world.materials().phys(c.material).kind, Kind::Static | Kind::Powder | Kind::Liquid)))

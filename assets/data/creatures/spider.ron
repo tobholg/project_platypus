@@ -1,0 +1,28 @@
+// A cave spider: runs at you over floors, walls and ceilings, leaps at you
+// when near, drops on you from above; its bite knocks you back. Lives in
+// nests (lairs.ron) and deep caves.
+(
+    name: "Cave spider",
+    size: (10, 6),
+    health: 45,
+    team: Enemy,
+    blood: "ichor",
+    art: "spider",
+    movement: (
+        run_speed: 72,
+        ground_accel: 900,
+        ground_decel: 1200,
+        air_accel: 500,
+        jump_height: 22,
+        air_jumps: 0,
+        step_height: 2,
+        cling: true,
+        dash_speed: 0,
+    ),
+    touch: (damage: 9, knock: 150, stun: 0.2, every: 0.7),
+    poise: 6,
+    brain: (
+        kind: "crawler",
+        params: (aggro_range: 170, pounce_range: 34, pounce_every: 1.5, wander_speed: 0.4),
+    ),
+)

@@ -1,0 +1,42 @@
+// An egg sac wrapped in web, the brood dark inside it; it swells as
+// something stirs. Come near and it bursts.
+(
+    size: (9, 10),
+    feet: (4.5, 10),
+    outline: (40, 36, 34),
+    palette: {
+        'w': (214, 210, 196),   // web
+        'W': (186, 180, 164),   // web, deeper
+        'e': (90, 84, 60),   // an egg
+        'E': (140, 130, 80),   // an egg, stirring
+    },
+    frames: {
+        "still": [
+            "....w....",
+            "...www...",
+            "..wWWWw..",
+            ".wWeWeWw.",
+            ".wWWWWWw.",
+            ".wWeWWeW.",
+            ".wWWWeWw.",
+            "..wWWWw..",
+            "...www...",
+            "....w....",
+        ],
+        "stir": [
+            "....w....",
+            "...www...",
+            "..wWWWw..",
+            ".wWEWEWw.",
+            ".wWWWWWw.",
+            ".wWEWWEW.",
+            ".wWWWEWw.",
+            "..wWWWw..",
+            "...www...",
+            "....w....",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["still", "still", "still", "stir"], fps: 3),
+    },
+)

@@ -1,0 +1,23 @@
+// A cave slime: hops at you, one hop at a time; soft, but it sticks to you
+// when it lands (touch). Full of slime.
+(
+    name: "Slime",
+    size: (10, 7),
+    health: 30,
+    team: Enemy,
+    blood: "slime",
+    art: "slime",
+    movement: (
+        run_speed: 55,
+        air_accel: 400,
+        jump_height: 22,
+        air_jumps: 0,
+        step_height: 1,
+        dash_speed: 0,
+    ),
+    touch: (damage: 7, knock: 120, stun: 0.15),
+    brain: (
+        kind: "hopper",
+        params: (aggro_range: 140, hop_every: 1.3),
+    ),
+)

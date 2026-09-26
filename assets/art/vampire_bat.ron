@@ -1,0 +1,41 @@
+// A vampire bat: the bat's drawing in blood-red, a yellow eye. It dives at you.
+(
+    size: (15, 8),
+    feet: (7.5, 8),
+    outline: (18, 14, 16),
+    palette: {
+        'b': (74, 30, 38),   // body
+        'e': (96, 40, 48),   // ears
+        'k': (255, 226, 90),   // eye
+        'w': (140, 44, 56),   // wing, the skin
+        'W': (104, 32, 42),   // wing, the bones
+    },
+    frames: {
+        "up": [
+            "...............",
+            ".W....e.e....W.",
+            ".WW...bbb...WW.",
+            ".WWW.wbkbw.WWW.",
+            "..WWwwbbbwwWW..",
+            ".....bbbbb.....",
+            "......b.b......",
+            "...............",
+        ],
+        "down": [
+            "...............",
+            "......e.e......",
+            "......bbb......",
+            "....wwbkbww....",
+            "..WWWwbbbwWWW..",
+            ".WWW..bbb..WWW.",
+            ".W.....b.....W.",
+            "...............",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["up", "down"], fps: 12),
+        "run": (frames: ["up", "down"], fps: 12),
+        "jump": (frames: ["up", "down"], fps: 12),
+        "fall": (frames: ["up", "down"], fps: 12),
+    },
+)

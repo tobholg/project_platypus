@@ -1,0 +1,23 @@
+// A spiderling: small, fast, many (they hatch from egg sacs); a nip each.
+(
+    name: "Spiderling",
+    size: (5, 3),
+    health: 8,
+    team: Enemy,
+    blood: "ichor",
+    art: "spiderling",
+    movement: (
+        run_speed: 88,
+        ground_accel: 1200,
+        jump_height: 12,
+        air_jumps: 0,
+        step_height: 1,
+        cling: true,
+        dash_speed: 0,
+    ),
+    touch: (damage: 3, knock: 50, every: 0.5),
+    brain: (
+        kind: "crawler",
+        params: (aggro_range: 140, pounce_range: 20, pounce_every: 1.0, wander_speed: 0.6),
+    ),
+)

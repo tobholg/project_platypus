@@ -1,0 +1,15 @@
+// An egg sac, stuck in a spider nest: come near (or hit it) and it bursts
+// into spiderlings.
+(
+    name: "Egg sac",
+    size: (7, 9),
+    health: 20,
+    team: Enemy,
+    blood: "ichor",
+    art: "egg_sac",
+    movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0, dash_speed: 0),
+    brain: (
+        kind: "hatchery",
+        params: (brood: "spiderling", count: 4, range: 34),
+    ),
+)
