@@ -32,7 +32,8 @@ pub struct Exposure {
     pub coat: Option<MaterialId>,
     /// Share of the body inside liquid.
     pub submerged: f32,
-    /// 0..1: how chilled (slowed) the coldest cell it touches makes it.
+    /// 0..1: how chilled (slowed) the coldest cell it's in makes it (what
+    /// it stands on or leans against doesn't count).
     pub cold: f32,
 }
 
@@ -64,8 +65,12 @@ impl World {
                 } else {
                     let t = self.climate().ambient(x, y) + c.heat as i32;
                     e.heat = e.heat.max((t - HARMFUL_HEAT).max(0) as f32 * HEAT_DAMAGE);
-                    e.heat = e.heat.max((HARMFUL_COLD - t).max(0) as f32 * HEAT_DAMAGE);
-                    e.cold = e.cold.max(((CHILLING_COLD - t) as f32 / 60.0).clamp(0.0, 1.0));
+                    // Cold only from what it's in (freezing water, a frost
+                    // cloud): ice or snow underfoot doesn't chill.
+                    if inside {
+                        e.heat = e.heat.max((HARMFUL_COLD - t).max(0) as f32 * HEAT_DAMAGE);
+                        e.cold = e.cold.max(((CHILLING_COLD - t) as f32 / 60.0).clamp(0.0, 1.0));
+                    }
                 }
                 e.corrosion = e.corrosion.max(ph.corrosive as f32);
                 let coats = mats.def(c.material).coats.is_some();

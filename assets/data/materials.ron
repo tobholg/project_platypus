@@ -156,8 +156,8 @@
         (name: "spikes", kind: Static, density: 7800, hardness: 70, corrosive: 40,
             colors: [(58, 58, 64), (104, 104, 114), (150, 150, 162), (190, 190, 200)]),
         (name: "glass",    kind: Static, density: 2500, hardness: 30, inert: true,  above: (1500, "lava"), opacity: 25, colors: [(170, 200, 205), (196, 222, 226)]),
-        (name: "ice",      kind: Static, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), coats: "wet", opacity: 60, latent: 480, colors: [(170, 210, 240), (200, 230, 250)]),
-        (name: "frozen_blood", kind: Static, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), coats: "bloody", latent: 480, colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),
+        (name: "ice",      kind: Static, slippery: true, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), coats: "wet", opacity: 60, latent: 480, colors: [(170, 210, 240), (200, 230, 250)]),
+        (name: "frozen_blood", kind: Static, slippery: true, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), coats: "bloody", latent: 480, colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),
 
         // ---- plants: don't block creatures, burn readily, sway in the wind ----
         (name: "leaves",     kind: Plant, density: 200, hardness: 2, flammability: 18, ignites_at: 260, burn_time: 40, chars_at: 1.0, opacity: 70, colors: [(24, 64, 26), (36, 92, 34), (52, 122, 42), (76, 150, 54)]),

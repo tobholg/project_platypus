@@ -211,7 +211,18 @@ fn stuck_in(world: &World, body: &Body) -> bool {
 /// The cell world as bodies see it. Unloaded chunks are solid.
 pub struct WorldGrid<'a>(pub &'a World);
 
+/// Grip a body gets on something slippery (ice): it slides.
+const SLIPPERY_GRIP: f32 = 0.1;
+
 impl Grid for WorldGrid<'_> {
+    #[inline]
+    fn grip(&self, x: i32, y: i32) -> f32 {
+        match self.0.get(CellPos::new(x, y)) {
+            Some(c) if self.0.materials().phys(c.material).slippery => SLIPPERY_GRIP,
+            _ => 1.0,
+        }
+    }
+
     #[inline]
     fn occupancy(&self, x: i32, y: i32) -> Occupancy {
         match self.0.get(CellPos::new(x, y)) {

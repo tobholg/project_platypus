@@ -285,7 +285,7 @@ impl Locomotion {
             self.stun -= dt;
             body.vel.y = (body.vel.y - s.gravity * s.fall_gravity * gravity_scale * dt).max(-s.max_fall);
             if grounded {
-                body.vel.x = approach(body.vel.x, 0.0, s.ground_decel * dt);
+                body.vel.x = approach(body.vel.x, 0.0, s.ground_decel * self.contacts.grip * dt);
             }
             if self.stun <= 0.0 {
                 self.state = if grounded { MoveState::Ground } else { MoveState::Air };
@@ -376,8 +376,9 @@ impl Locomotion {
 
         // Run.
         let target = intent.move_x.clamp(-1.0, 1.0) * s.run_speed;
+        // (On ice there's little grip to start, stop or turn with.)
         let accel = if grounded {
-            if target != 0.0 { s.ground_accel } else { s.ground_decel }
+            (if target != 0.0 { s.ground_accel } else { s.ground_decel }) * self.contacts.grip
         } else if self.wall_lock > 0.0 {
             s.air_accel * 0.25
         } else {
@@ -517,6 +518,30 @@ mod tests {
         let mut b = Body::new(Vec2::new(20.0, 10.0), Vec2::new(8.0, 16.0));
         b.step_height = s.step_height;
         (s, Locomotion::default(), b)
+    }
+
+    /// Run, let go: on ice it slides on long after; on stone it stops.
+    #[test]
+    fn ice_is_slippery() {
+        let slide = |floor: &str| {
+            let mut rows = vec!["#                                                                                                  #"; 80];
+            let f = floor.repeat(100);
+            rows.push(&f);
+            let g = Ascii::new(&rows);
+            let (s, mut l, mut b) = player();
+            settle(&g, &s, &mut l, &mut b);
+            for _ in 0..40 {
+                tick(&g, &s, &mut l, &mut b, Intent { move_x: 1.0, ..default_intent() });
+            }
+            let at = b.pos.x;
+            for _ in 0..60 {
+                tick(&g, &s, &mut l, &mut b, Intent::default());
+            }
+            b.pos.x - at
+        };
+        let (stone, ice) = (slide("#"), slide("="));
+        assert!(stone < 6.0, "stone stops it: {stone}");
+        assert!(ice > stone * 3.0 + 10.0, "ice slides it on: {ice} (stone {stone})");
     }
 
     #[test]

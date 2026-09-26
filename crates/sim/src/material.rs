@@ -160,6 +160,10 @@ pub struct MaterialDef {
     /// freely (a spider: its creature file's `web_walker`).
     #[serde(default)]
     pub sticky: bool,
+    /// Bodies standing on it slip: they get little grip to start, stop or
+    /// turn (ice).
+    #[serde(default)]
+    pub slippery: bool,
     /// How much its glow breathes (0 steady … 255 from full to nothing),
     /// slowly, each patch out of step. Rendering only.
     #[serde(default)]
@@ -310,6 +314,8 @@ pub struct MatPhys {
     pub platform: bool,
     /// See `MaterialDef::sticky`.
     pub sticky: bool,
+    /// See `MaterialDef::slippery`.
+    pub slippery: bool,
     /// See `MaterialDef::latent`.
     pub latent: u16,
     pub viscosity: u8,
@@ -515,6 +521,7 @@ impl MaterialTable {
                 grows: d.grows,
                 platform: d.platform,
                 sticky: d.sticky,
+                slippery: d.slippery,
                 latent: d.latent,
                 viscosity: d.viscosity,
                 rest_limit: ((crate::cell::flags::REST_LIMIT as u32 * (256 - d.viscosity as u32)) / 256).max(1) as u8,

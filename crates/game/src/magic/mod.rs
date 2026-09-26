@@ -60,6 +60,8 @@ const LIGHTNING_CONE: f32 = 0.6;
 const LIGHTNING_NEAR_AIM: f32 = 30.0;
 /// How far ahead a cast set off where something landed looks for its aim.
 const TRIGGERED_REACH: f32 = 80.0;
+/// Seconds frost keeps what it hits chilled.
+const FROST_CHILL: f32 = 3.0;
 /// A stream sets alight what stands in it (a chance a cast, in 255ths)
 /// and scalds it this much.
 const STREAM_CATCH: u8 = 70;
@@ -527,6 +529,17 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
             }
             &Payload::Heat { radius, amount } => {
                 world.apply_edit(&WorldEdit::Heat { center, radius, amount });
+                // Frost chills what it hits, and what's caught in it (not
+                // the ice it leaves: that's only slippery).
+                if amount < 0 {
+                    let cold = (-amount as f32 / 150.0).clamp(0.3, 1.0);
+                    for (e, k, _, resist, _) in bodies.iter() {
+                        let near = (k.body.pos.distance(at) - k.body.half.max_element()).max(0.0) <= radius as f32;
+                        if Some(e) == hit || near {
+                            crate::actors::elements::chill(commands, e, resist, None, cold, FROST_CHILL);
+                        }
+                    }
+                }
                 // Hot into water: it flashes to steam. Cold: the water it
                 // lands on or beside freezes (an ice patch to stand on).
                 let r = radius + if amount < 0 { 3 } else { 0 };

@@ -1251,7 +1251,7 @@ fn an_oil_slick_burns_on_the_water_it_floats_on() {
 }
 
 #[test]
-fn a_freezing_floor_chills_and_a_hot_one_burns_what_stands_on_it() {
+fn a_freezing_floor_leaves_feet_alone_and_a_hot_one_burns_them() {
     let mut w = boxed_world(1, 1, 81);
     fill(&mut w, "stone", 1, 63, 1, 5);
     // A body standing on the floor: its box starts just above it.
@@ -1259,7 +1259,10 @@ fn a_freezing_floor_chills_and_a_hot_one_burns_what_stands_on_it() {
     assert_eq!(w.exposure(lo, hi), platypus_sim::Exposure::default(), "ordinary ground does nothing");
     w.apply_edit(&WorldEdit::Heat { center: CellPos::new(21, 3), radius: 4, amount: -150 });
     let cold = w.exposure(lo, hi);
-    assert!(cold.cold > 0.9 && cold.heat > 5.0, "frozen stone chills and bites: {cold:?}");
+    assert!(cold.cold == 0.0 && cold.heat == 0.0, "frozen stone underfoot neither chills nor bites (a frozen lake is walked on): {cold:?}");
+    // Buried in it, it does.
+    let inside = w.exposure(CellPos::new(20, 1), CellPos::new(23, 4));
+    assert!(inside.cold > 0.9 && inside.heat > 5.0, "frozen stone chills and bites what's in it: {inside:?}");
     w.apply_edit(&WorldEdit::Heat { center: CellPos::new(21, 3), radius: 4, amount: 800 });
     let hot = w.exposure(lo, hi);
     assert!(hot.heat > 30.0 && hot.cold == 0.0, "glowing stone burns feet: {hot:?}");

@@ -140,6 +140,11 @@
 //!   focus to look at its aura: `PLATYPUS_SLOT` = hotbar slot 1–10, plus 10
 //!   for the second hotbar (13: the gravity staff); held out from 1.5 s
 //!   (`PLATYPUS_CAST=1`: casting, at the empty air ahead)
+//! - `ice`        (`PLATYPUS_WORLD=arena`) the frost wand (hotbar 2, slot 6)
+//!   across the pool's surface through real input (logs the ice it makes);
+//!   a run onto the ice and let go (logs how far it slid, against the same
+//!   on stone, and that walking on it didn't chill); a frost bolt at an orc
+//!   put on the ice (logs that it's chilled)
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end
@@ -191,6 +196,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, loot_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fang_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -2647,5 +2653,112 @@ fn foci_script(
         } else {
             commands.entity(me).insert(crate::actors::animation::Aiming { at, left: 0.2 });
         }
+    }
+}
+
+type IceWalker<'a> = (&'a mut Kinematics, Option<&'a crate::actors::elements::Chilled>);
+type IceFoe = (With<crate::actors::Creature>, Without<LocalPlayer>, Without<crate::actors::dummy::Dummy>);
+
+/// Frost on the pool: ice to slide on, and a chilled orc.
+#[allow(clippy::too_many_arguments)]
+fn ice_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut hand: ResMut<crate::hands::Hand>,
+    mut player: Query<IceWalker, With<LocalPlayer>>,
+    foes: Query<(&Kinematics, Option<&crate::actors::elements::Chilled>), IceFoe>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut state: Local<(u8, f32, f32)>,
+) {
+    if s.name != "ice" {
+        return;
+    }
+    let Ok((mut k, chilled)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let ice = || {
+        let Some(m) = sim.materials().id("ice") else { return 0 };
+        (300..430).flat_map(|x| (floor - 12..floor + 2).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count()
+    };
+    let mut want = std::collections::HashSet::new();
+    let mut fire = None;
+    // Frost along the pool, from its left bank.
+    if t < 0.4 {
+        k.body.pos = Vec2::new(296.0, floor as f32 + 8.0);
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+        hand.bar = 1;
+        hand.slot = 5;
+    }
+    if (0.5..3.5).contains(&t) {
+        let x = 316.0 + ((t - 0.5) / 3.0) * 100.0;
+        fire = Some(Vec2::new(x, floor as f32 - 2.0));
+    }
+    match state.0 {
+        0 if t > 3.8 => {
+            info!("ice: frost made {} cells of ice on the pool", ice());
+            // Run from the stone onto the ice, then let go.
+            k.body.pos = Vec2::new(290.0, floor as f32 + 8.0);
+            k.prev_pos = k.body.pos;
+            state.0 = 1;
+        }
+        1 if t > 4.0 => {
+            state.0 = 2;
+        }
+        2 if t > 4.8 => {
+            state.1 = k.body.pos.x;
+            state.0 = 3;
+        }
+        3 if t > 6.0 => {
+            info!("ice: let go on the ice at x {:.0}, slid {:.0} cells; chilled: {}", state.1, k.body.pos.x - state.1, chilled.is_some());
+            // The same on stone, right of the pool.
+            k.body.pos = Vec2::new(440.0, floor as f32 + 8.0);
+            k.prev_pos = k.body.pos;
+            state.0 = 4;
+        }
+        4 if t > 6.1 => state.0 = 5,
+        5 if t > 6.9 => {
+            state.1 = k.body.pos.x;
+            state.0 = 6;
+        }
+        6 if t > 8.1 => {
+            info!("ice: on stone it slid {:.0} cells", k.body.pos.x - state.1);
+            k.body.pos = Vec2::new(300.0, floor as f32 + 8.0);
+            k.prev_pos = k.body.pos;
+            crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(350.0, floor as f32 + 1.0), |e| {
+                e.remove::<crate::actors::ai::MeleeWalker>();
+            });
+            state.0 = 7;
+        }
+        7 if t > 8.6 => {
+            state.0 = 8;
+        }
+        8 if t > 9.4 => {
+            info!("ice: the orc hit by frost: chilled {:?}", foes.iter().next().map(|(_, c)| c.map(|c| (c.cold, c.left))));
+            state.0 = 9;
+        }
+        _ => {}
+    }
+    if matches!(state.0, 2 | 5) {
+        want.insert(KeyCode::KeyD);
+    }
+    if state.0 == 8 {
+        fire = foes.iter().next().map(|(fk, _)| fk.body.pos);
+    }
+    for key in [KeyCode::KeyD] {
+        match (want.contains(&key), keys.pressed(key)) {
+            (true, false) => keys.press(key),
+            (false, true) => keys.release(key),
+            _ => {}
+        }
+    }
+    cursor.0 = fire.or(Some(k.body.pos + Vec2::new(40.0, 0.0)));
+    match (fire.is_some(), mouse.pressed(MouseButton::Left)) {
+        (true, false) => mouse.press(MouseButton::Left),
+        (false, true) => mouse.release(MouseButton::Left),
+        _ => {}
     }
 }

@@ -22,6 +22,13 @@ pub enum Occupancy {
 pub trait Grid {
     fn occupancy(&self, x: i32, y: i32) -> Occupancy;
 
+    /// How much grip a body standing on this cell gets (1: full; ice
+    /// little).
+    #[inline]
+    fn grip(&self, _x: i32, _y: i32) -> f32 {
+        1.0
+    }
+
     #[inline]
     fn solid(&self, x: i32, y: i32) -> bool {
         self.occupancy(x, y) == Occupancy::Solid
@@ -56,6 +63,9 @@ pub struct Contacts {
     pub stepped: i32,
     /// Fraction of the box inside liquid, 0..=1.
     pub submerged: f32,
+    /// Standing on something, how much grip it gives (the least under its
+    /// feet: one foot on ice slips); 1 off the ground.
+    pub grip: f32,
 }
 
 impl Body {
@@ -116,7 +126,16 @@ pub fn move_and_collide(grid: &impl Grid, body: &mut Body, dt: f32) -> Contacts 
         c.ground = grounded(grid, body);
     }
     c.submerged = submerged(grid, body);
+    c.grip = if c.ground { grip_under(grid, body) } else { 1.0 };
     c
+}
+
+/// The least grip of the cells under a body's feet (solid ones).
+fn grip_under(grid: &impl Grid, body: &Body) -> f32 {
+    let (min, max) = body.cells_at(body.pos - Vec2::new(0.0, 2.0 * EPS));
+    let (lo, _) = body.cells_at(body.pos);
+    let row = if min.y < lo.y { min.y } else { lo.y - 1 };
+    (min.x..=max.x).filter(|&x| grid.occupancy(x, row) != Occupancy::Empty).map(|x| grid.grip(x, row)).fold(1.0, f32::min)
 }
 
 fn move_x(grid: &impl Grid, body: &mut Body, dx: f32, may_step: bool, c: &mut Contacts) {
@@ -218,7 +237,8 @@ pub fn submerged(grid: &impl Grid, body: &Body) -> f32 {
 pub(crate) mod tests {
     use super::*;
 
-    /// ASCII grids for tests: `#` solid, `~` liquid, row 0 = bottom line.
+    /// ASCII grids for tests: `#` solid, `=` ice (solid, slippery), `~`
+    /// liquid, row 0 = bottom line.
     pub struct Ascii(pub Vec<Vec<u8>>);
 
     impl Ascii {
@@ -233,11 +253,15 @@ pub(crate) mod tests {
                 return Occupancy::Solid;
             }
             match self.0.get(y as usize).and_then(|r| r.get(x as usize)) {
-                Some(b'#') | None => Occupancy::Solid,
+                Some(b'#') | Some(b'=') | None => Occupancy::Solid,
                 Some(b'~') => Occupancy::Liquid,
                 Some(b'-') => Occupancy::Platform,
                 _ => Occupancy::Empty,
             }
+        }
+
+        fn grip(&self, x: i32, y: i32) -> f32 {
+            if self.0.get(y as usize).and_then(|r| r.get(x as usize)) == Some(&b'=') { 0.1 } else { 1.0 }
         }
     }
 

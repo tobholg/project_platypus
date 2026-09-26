@@ -336,6 +336,17 @@ pub fn zapped(mut commands: Commands, mut zaps: MessageReader<crate::fx::Zapped>
     }
 }
 
+/// Chill a creature (a frost spell hit it): slowed by `cold` (0..1, less
+/// what it resists) for `secs`, or longer or harder if it's colder already.
+pub fn chill(commands: &mut Commands, entity: Entity, resist: Option<&Resist>, now: Option<&Chilled>, cold: f32, secs: f32) {
+    let cold = cold * (1.0 - resist.map_or(0.0, |r| r.heat)).max(0.0);
+    if cold <= 0.0 {
+        return;
+    }
+    let (cold, left) = now.map_or((cold, secs), |c| (c.cold.max(cold), c.left.max(secs)));
+    commands.entity(entity).insert(Chilled { left, cold });
+}
+
 /// Set a creature alight, unless its coating (wet) or its kind won't burn.
 /// An oily one burns longer and harder.
 pub fn catch_fire(commands: &mut Commands, entity: Entity, resist: Option<&Resist>, coated: Option<&Coated>, coatings: &Coatings) {
@@ -540,11 +551,17 @@ mod tests {
     }
 
     #[test]
-    fn frost_chills_slows_and_snuffs_fire() {
+    fn frost_chills_what_is_in_it_not_what_stands_on_it() {
         let mut app = app_with("stone");
-        // Freeze the stone pocket hard, and stand a burning creature on it.
+        // Freeze the stone pocket hard, and stand a creature on it: ice
+        // underfoot doesn't chill.
         app.world_mut().resource_mut::<SimWorld>().world.apply_edit(&WorldEdit::Heat { center: CellPos::new(13, 15), radius: 8, amount: -200 });
         let e = creature(&mut app, Vec2::new(13.0, 24.0), Resist::default());
+        tick(&mut app, 1);
+        assert!(app.world().get::<Chilled>(e).is_none(), "standing on the frozen stone chills nothing");
+        // In it (buried in the frozen pocket), burning: chilled, and the
+        // fire goes out.
+        app.world_mut().get_mut::<Kinematics>(e).unwrap().body.pos = Vec2::new(13.0, 15.0);
         app.world_mut().entity_mut(e).insert(Burning::new(BURN_SECS, 1.0));
         tick(&mut app, 1);
         let chilled = *app.world().get::<Chilled>(e).expect("chilled");
