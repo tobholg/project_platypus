@@ -1,4 +1,4 @@
-// A vampire bat: the bat's drawing in blood-red, a yellow eye. It dives at you.
+// A vampire bat: the bat's drawing in blood-red, a red eye. It dives at you.
 (
     size: (15, 8),
     feet: (7.5, 8),
@@ -6,7 +6,7 @@
     palette: {
         'b': (74, 30, 38),   // body
         'e': (96, 40, 48),   // ears
-        'k': (255, 226, 90),   // eye
+        'k': (255, 64, 44),   // eye
         'w': (140, 44, 56),   // wing, the skin
         'W': (104, 32, 42),   // wing, the bones
     },

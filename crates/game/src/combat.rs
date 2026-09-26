@@ -263,6 +263,23 @@ pub(crate) struct Pointer {
     pub flame: Option<Vec2>,
 }
 
+/// Any sprite's first frame turned to every angle about its `grip` (a
+/// spider's body seen from above); with `only`, just its pixels of that
+/// colour (its eyes, to draw over the dark).
+pub(crate) fn turned_art(art: &str, only: Option<[u8; 3]>, images: &mut Assets<Image>, layouts: &mut Assets<TextureAtlasLayout>) -> Result<Turned, String> {
+    let mut compiled = compile_art(art, None)?;
+    if let Some(c) = only {
+        for f in &mut compiled.frames {
+            for px in f.rgba.chunks_mut(4) {
+                if px[..3] != c {
+                    px.copy_from_slice(&[0, 0, 0, 0]);
+                }
+            }
+        }
+    }
+    Ok(Turned::build(turn_compiled(&compiled, art, None)?, images, layouts))
+}
+
 /// A weapon's picture for its icon: a blade pointing up and to the right, a
 /// bow as it's drawn.
 pub fn icon(id: &str) -> Option<Pixels> {

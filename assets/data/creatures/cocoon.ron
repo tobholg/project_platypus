@@ -1,0 +1,14 @@
+// A cocoon hung from a spider nest's roof (it rises till it meets rock:
+// negative gravity): something is wrapped in it. Cut it open: blood, and
+// what they carried falls out (`drops`).
+(
+    name: "Cocoon",
+    size: (6, 16),
+    health: 20,
+    team: Neutral,
+    blood: "blood",
+    art: "cocoon",
+    movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0, dash_speed: 0, gravity: -300, max_fall: 60),
+    drops: [("torch", 3), ("bomb", 1), ("arrow", 8)],
+    brain: (kind: "idle"),
+)

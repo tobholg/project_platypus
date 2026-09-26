@@ -1,15 +1,19 @@
-// A cave spider: runs at you over floors, walls and ceilings, leaps at you
-// when near, drops on you from above; its bite knocks you back. Lives in
-// nests (lairs.ron) and deep caves.
+// A cave spider: big, eight red eyes glowing in the dark, eight long legs
+// that reach out and grip the rock (actors/legs.rs). It runs at you over
+// floors, walls and ceilings, leaps at you when near, drops on you from
+// above; its bite knocks you back. Lives in nests (lairs.ron) and deep caves.
 (
     name: "Cave spider",
-    size: (10, 6),
-    health: 45,
+    size: (16, 12),
+    health: 70,
     team: Enemy,
     blood: "ichor",
-    art: "spider",
+    art: "spider_body",
+    legs: (count: 8, reach: 48, upper: 0.48, step: 0.1, lift: 8, hips: 4, spread: 7,
+           color: (24, 18, 22), joint: (74, 36, 40), thick: 3, body: "spider_body", eyes: (255, 52, 38)),
+    light: (color: (255, 40, 30), strength: 0.14, haze: true),
     movement: (
-        run_speed: 72,
+        run_speed: 82,
         ground_accel: 900,
         ground_decel: 1200,
         air_accel: 500,
@@ -19,8 +23,9 @@
         cling: true,
         dash_speed: 0,
     ),
-    touch: (damage: 9, knock: 150, stun: 0.2, every: 0.7),
-    poise: 6,
+    touch: (damage: 12, knock: 170, stun: 0.25, every: 0.7),
+    poise: 14,
+    heft: 1.5,
     brain: (
         kind: "crawler",
         params: (aggro_range: 170, pounce_range: 34, pounce_every: 1.5, wander_speed: 0.4),

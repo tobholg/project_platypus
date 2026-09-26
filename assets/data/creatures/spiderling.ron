@@ -1,11 +1,14 @@
 // A spiderling: small, fast, many (they hatch from egg sacs); a nip each.
 (
     name: "Spiderling",
-    size: (5, 3),
+    size: (5, 4),
     health: 8,
     team: Enemy,
     blood: "ichor",
-    art: "spiderling",
+    art: "spiderling_body",
+    legs: (count: 8, reach: 9, upper: 0.5, step: 0.07, lift: 2, hips: 0, spread: 2,
+           color: (30, 22, 26), body: "spiderling_body", eyes: (255, 52, 38)),
+    light: (color: (255, 40, 30), strength: 0.08, haze: true),
     movement: (
         run_speed: 88,
         ground_accel: 1200,

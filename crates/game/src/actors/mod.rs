@@ -15,6 +15,7 @@ pub mod critters;
 pub mod dummy;
 pub mod elements;
 pub mod hurt;
+pub mod legs;
 pub mod monsters;
 pub mod player;
 pub mod spawn;
@@ -36,7 +37,7 @@ impl Plugin for ActorsPlugin {
             .add_message::<Landed>()
             .add_message::<AirJumped>()
             .add_plugins((creature::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, animation::AnimationPlugin))
-            .add_plugins((player::PlayerPlugin, ai::AiPlugin, critters::CrittersPlugin, monsters::MonstersPlugin))
+            .add_plugins((player::PlayerPlugin, ai::AiPlugin, critters::CrittersPlugin, monsters::MonstersPlugin, legs::LegsPlugin))
             .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, crate::combat::guard, hurt::notice, dummy::tally, deaths).chain().in_set(TickSet::Bodies))
             .insert_resource(elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
@@ -322,18 +323,29 @@ fn blasted(mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<(&mut K
     }
 }
 
-type Mortal<'a> = (Entity, &'a mut Health, &'a mut Kinematics, Has<player::LocalPlayer>, Option<&'a hurt::Bleeds>);
+type Mortal<'a> = (Entity, &'a mut Health, &'a mut Kinematics, Has<player::LocalPlayer>, Option<&'a hurt::Bleeds>, Option<&'a animation::Animator>);
 
 fn deaths(
     mut commands: Commands,
     mut sim: ResMut<SimWorld>,
     mut deaths: ResMut<PlayerDeaths>,
+    items: Option<Res<crate::hands::items::Items>>,
     mut q: Query<Mortal>,
 ) {
     let spawn = sim.generator.spawn_point();
-    for (entity, mut h, mut k, is_player, bleeds) in &mut q {
+    for (entity, mut h, mut k, is_player, bleeds, anim) in &mut q {
         if h.hp > 0.0 {
             continue;
+        }
+        // What it carried falls out (a cocoon's victim's things).
+        if let (Some(items), Some(anim)) = (items.as_deref(), anim)
+            && !is_player
+        {
+            for (id, n) in &anim.def.drops {
+                if let Some(item) = items.id(id) {
+                    crate::hands::spawn_drop(&mut commands, items, k.body.pos, crate::hands::items::Stack { item, count: n * items.unit(item) });
+                }
+            }
         }
         if let Some(&hurt::Bleeds(blood)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.

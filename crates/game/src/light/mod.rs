@@ -96,8 +96,9 @@ pub struct LightSource {
     pub flicker: f32,
 }
 
-/// A light that swells and fades (a firefly): `color` at its brightest,
-/// once every `period` s, out of step with the others (`phase`).
+/// A glowing light (glowing eyes; a haze over the dark, as glowing cells
+/// have): steady, or with a `period` swelling and fading (a firefly), out
+/// of step with the others (`phase`).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Glow {
     pub color: Rgb,
@@ -108,6 +109,10 @@ pub struct Glow {
 fn glow(time: Res<Time>, mut q: Query<(&Glow, &mut LightSource)>) {
     let t = time.elapsed_secs();
     for (g, mut src) in &mut q {
+        if g.period <= 0.0 {
+            src.color = g.color;
+            continue;
+        }
         let s = (0.5 + 0.5 * (t / g.period.max(0.1) * std::f32::consts::TAU + g.phase).sin()).powi(3);
         src.color = g.color.map(|c| c * (0.08 + 0.92 * s));
     }

@@ -77,6 +77,13 @@ pub struct CreatureDef {
     /// damage, knockback (cells/s), stun, and a rest between touches.
     #[serde(default)]
     pub touch: Option<crate::combat::Touch>,
+    /// What falls out of it when it dies (items, how many): a cocoon's
+    /// victim's things.
+    #[serde(default)]
+    pub drops: Vec<(String, u32)>,
+    /// Procedural legs and a body seen from above (spiders: `legs.rs`).
+    #[serde(default)]
+    pub legs: Option<super::legs::LegsDef>,
     /// It gives off light (a firefly): its colour, how bright, and a pulse
     /// (seconds a swell; 0: steady).
     #[serde(default)]
@@ -93,6 +100,9 @@ pub struct CreatureLight {
     pub strength: f32,
     #[serde(default)]
     pub pulse: f32,
+    /// It glows as glowing cells do (a haze over the dark): eyes in a cave.
+    #[serde(default)]
+    pub haze: bool,
 }
 
 fn one_f() -> f32 {
@@ -318,7 +328,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         if let Some(l) = def.light {
             let color = crate::light::rgb(l.color, l.strength);
             e.insert(crate::light::LightSource { color, flicker: 0.0 });
-            if l.pulse > 0.0 {
+            if l.pulse > 0.0 || l.haze {
                 // (Each its own moment in the cycle.)
                 let phase = (platypus_sim::rng::hash(&[feet.x.to_bits() as u64, feet.y.to_bits() as u64]) % 628) as f32 / 100.0;
                 e.insert(crate::light::Glow { color, period: l.pulse, phase });

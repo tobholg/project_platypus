@@ -1,0 +1,47 @@
+// A cave spider seen from above, pointing right: a bulbous abdomen with a
+// red mark, a head with eight red eyes, fangs. The game turns it to where
+// it goes and gives it legs (`legs` in its creature file; actors/legs.rs);
+// `grip` is where the legs meet.
+(
+    size: (30, 20),
+    feet: (11.0, 15),
+    outline: (14, 8, 12),
+    palette: {
+        'b': (36, 26, 32),   // abdomen
+        'B': (62, 46, 56),   // abdomen, lit
+        'h': (96, 78, 86),   // bristles
+        'x': (150, 26, 26),   // its mark
+        'c': (44, 32, 40),   // head
+        'C': (70, 54, 64),   // head, lit
+        'e': (255, 52, 38),   // eyes (they glow: the creature's light)
+        'f': (208, 196, 172),   // fangs
+    },
+    frames: {
+        "body": [
+            "..............................",
+            "........BBBB..................",
+            ".....BBBBBBbbbb...............",
+            "....BBBBhBbbhhbb..............",
+            "...BBBBBBbbbbbbbb.............",
+            "..hhBhBBbbbbbbbbbb.CCCCc......",
+            ".BBBBBBbbbbhbbbbbbCCCcccc.....",
+            ".BBBBxbbbbbbbbbbbCCCcccccce...",
+            ".BBBBbbbxbxbbbbbCCCccccccec.ff",
+            "BBBxbbbxbxbxbxbbCCccccccecce..",
+            "BBBxxbbxbxbxxxbbCcccccccecce..",
+            ".Bbbbbbbxbxbbbbbcccccccccec.ff",
+            ".bbbbxbbbbbbbbbbbccccccccce...",
+            ".bbbbbbbbbbbbbbbbbccccccc.....",
+            "..bbbbbbbbbbbbbbbb.ccccc......",
+            "...hbbbbbbhbbbhbb.............",
+            "....bbbbbbbbbbbb..............",
+            ".....bbbbbbbbbb...............",
+            "........bbbb..................",
+            "..............................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (16, 10) } },
+)

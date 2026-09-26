@@ -1127,8 +1127,28 @@ parts, so another is a new file, not new code:
   `dive_time`, back up for `dive_every`), `hatchery` (still until you come
   within `range` or hit it, then bursts into `count` of `brood`), and
   `melee_walker` for anything that wields a weapon.
-- The cave spider (climbs, pounces, 9 a bite; bleeds `ichor`), spiderlings
-  (small, fast, many), egg sacs (burst into four spiderlings), the slime
+- **Procedural legs** (`actors/legs.rs`, a creature file's `legs`): a body
+  seen from above (its sprite, pointing right, a `grip` where the legs
+  meet) turned with RotSprite to where it heads, and `count` legs fanned
+  front to back on both sides. Each foot holds a real solid cell: rays
+  from the hip swept ±90° round the leg's way, the hit nearest 70 % of its
+  `reach` preferred (legs stretch along walls, not bunched on them). A
+  foot stays put while the body moves and steps (an arc off what it holds,
+  `step` s, `lift` high) once stretched, crowded or twisted, never beside
+  a stepping neighbour, a third at most at once; with nothing in reach a
+  leg reaches out into open air and twitches. Two-bone IK: knees bend away
+  from what the feet hold (never into rock when the other bend is open).
+  Legs are drawn a cell at a time (Bresenham; thighs `thick`, shins one
+  less) under the body; `eyes`: the body's pixels of that colour drawn
+  again over the darkness (full bright in the dark). Looks only: the
+  body's movement is its own (`cling`).
+- A creature's `light` can `haze` (glow like glowing cells: a steady
+  `Glow`): bats' faint red eyes. `drops`: items that fall out when it dies.
+- The cave spider (16 × 12, 70 hp: a body from above with eight glowing
+  red eyes, legs 48 cells long, 3 thick; climbs, pounces, 12 a bite;
+  bleeds `ichor`), spiderlings (the same, small), egg sacs (burst into four
+  spiderlings), cocoons (hung from a nest's roof by their thread: negative
+  gravity takes them up; cut open: blood and a victim's things), the slime
   (hops; full of glowing `slime`), the acid slime (full of acid, which it
   resists; glows), the skeleton (the humanoid rig in bone, a rusty sword;
   crumbles to ash), the vampire bat (dives, bites). Packs `spiders` and

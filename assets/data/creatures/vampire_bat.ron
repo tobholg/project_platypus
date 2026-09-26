@@ -6,6 +6,7 @@
     team: Enemy,
     blood: "blood",
     art: "vampire_bat",
+    light: (color: (255, 30, 20), strength: 0.18, haze: true),
     movement: (
         run_speed: 20,
         fly_speed: 115,

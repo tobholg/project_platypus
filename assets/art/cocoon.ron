@@ -1,0 +1,36 @@
+// A cocoon of web hung from a nest's roof by a thread: something (someone)
+// is wrapped in it. Cut it open and what they carried falls out.
+(
+    size: (7, 18),
+    feet: (3.5, 18),
+    outline: (30, 26, 24),
+    palette: {
+        'w': (222, 218, 206),   // web
+        'W': (186, 180, 166),   // web, deeper
+        's': (146, 138, 124),   // web, in shadow
+        'h': (118, 92, 80),     // what's inside, showing through
+    },
+    frames: {
+        "hang": [
+            "...w...",
+            "...w...",
+            "...w...",
+            "...W...",
+            "...w...",
+            "...w...",
+            "...W...",
+            "..www..",
+            ".wWwWw.",
+            "wWwsWwW",
+            "wwhhhWw",
+            "WwhhhwW",
+            "wWshswW",
+            "wWwhwWw",
+            "WwwswwW",
+            ".wWwWw.",
+            "..wWw..",
+            "...w...",
+        ],
+    },
+    clips: { "idle": (frames: ["hang"], fps: 1) },
+)
