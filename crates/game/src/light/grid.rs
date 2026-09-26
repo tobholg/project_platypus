@@ -85,7 +85,15 @@ impl LightGrid {
     /// stay clear and dark.
     /// `flicker`: a fire's brightness at a cell now; `breath`: 0..1, where a
     /// breathing glow (`MaterialDef::pulse`) is in its cycle at a cell now.
-    pub fn fill_from(&mut self, world: &World, flicker: &(impl Fn(i32, i32) -> f32 + Sync), breath: &(impl Fn(i32, i32) -> f32 + Sync)) {
+    /// `glimmer`: 0..1, how bright a glimmering glow (`MaterialDef::shimmer`)
+    /// is at a cell now.
+    pub fn fill_from(
+        &mut self,
+        world: &World,
+        flicker: &(impl Fn(i32, i32) -> f32 + Sync),
+        breath: &(impl Fn(i32, i32) -> f32 + Sync),
+        glimmer: &(impl Fn(i32, i32) -> f32 + Sync),
+    ) {
         let t = self.texel;
         let per_chunk = (CHUNK / t) as usize;
         let x_end = self.origin.x + self.w as i32 * t;
@@ -118,11 +126,15 @@ impl LightGrid {
                             sky_op = op;
                             let mut e = [ph.glow[0] as f32 / 255.0, ph.glow[1] as f32 / 255.0, ph.glow[2] as f32 / 255.0];
                             if ph.glow != [0; 3] {
-                                let pulse = mats.def(c.material).pulse;
-                                if pulse > 0 {
-                                    let k = 1.0 - pulse as f32 / 255.0 * breath(o.x + lx, o.y + ly);
-                                    e = e.map(|v| v * k);
+                                let def = mats.def(c.material);
+                                let mut k = 1.0;
+                                if def.pulse > 0 {
+                                    k *= 1.0 - def.pulse as f32 / 255.0 * breath(o.x + lx, o.y + ly);
                                 }
+                                if def.shimmer > 0 {
+                                    k *= 1.0 - def.shimmer as f32 / 255.0 * (1.0 - glimmer(o.x + lx, o.y + ly));
+                                }
+                                e = e.map(|v| v * k);
                             }
                             if ph.kind == Kind::Fire || c.flags & flags::BURNING != 0 {
                                 let f = flicker(o.x + lx, o.y + ly);

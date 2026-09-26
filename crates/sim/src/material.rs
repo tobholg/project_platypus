@@ -160,10 +160,17 @@ pub struct MaterialDef {
     /// slowly, each patch out of step. Rendering only.
     #[serde(default)]
     pub pulse: u8,
-    /// How often it glints: sparkles on its cells, over the dark (per cell,
-    /// per 10 s, at 255 about one). Rendering only.
+    /// A growth (wood, a mushroom's stem): in the background it carries what
+    /// grows on it, and comes down when it's cut off from what holds it.
+    /// Background that doesn't grow (rock walls) stays where it is and holds
+    /// nothing up.
     #[serde(default)]
-    pub glint: u8,
+    pub grows: bool,
+    /// How deep its glow glimmers: small patches swell from nearly dark to
+    /// full and back, each on its own quick cycle (gems, crystals).
+    /// Rendering only.
+    #[serde(default)]
+    pub shimmer: u8,
     /// Glowing motes drift up off it (spores). Rendering only.
     #[serde(default)]
     pub motes: bool,
@@ -255,6 +262,8 @@ pub struct MatPhys {
     pub fizzles: u16,
     /// See `MaterialDef::hangs`.
     pub hangs: bool,
+    /// See `MaterialDef::grows`.
+    pub grows: bool,
     /// See `MaterialDef::platform`.
     pub platform: bool,
     /// See `MaterialDef::latent`.
@@ -442,6 +451,7 @@ impl MaterialTable {
                 spread: d.spread.unwrap_or(d.flammability as u16 * 16),
                 fizzles: d.fizzles,
                 hangs: d.hangs,
+                grows: d.grows,
                 platform: d.platform,
                 latent: d.latent,
                 viscosity: d.viscosity,

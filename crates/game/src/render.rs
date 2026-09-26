@@ -52,21 +52,19 @@ struct Layer {
     /// RGBA without plants (texture row order: row 0 = top).
     base: Vec<u8>,
     plants: Vec<PlantPx>,
-    /// Cells that sparkle or shed motes (`MaterialDef::glint`, `motes`).
+    /// Cells that shed motes (`MaterialDef::motes`).
     glints: Vec<Glint>,
 }
 
-/// A cell that sparkles (crystals, gems) or sheds glowing motes (spores).
+/// A cell that sheds glowing motes (spores).
 #[derive(Clone, Copy)]
 struct Glint {
     x: u8,
     y: u8,
-    rate: u8,
-    motes: bool,
     rgb: [u8; 3],
 }
 
-/// A sparkle or a mote: a little light over the dark, for a moment.
+/// A mote: a little light over the dark, drifting up for a moment.
 #[derive(Component)]
 struct Sparkle {
     age: f32,
@@ -75,7 +73,7 @@ struct Sparkle {
     rgb: [f32; 3],
 }
 
-/// Sparkles and motes draw over the light (they're lights themselves).
+/// Motes draw over the light (they're lights themselves).
 const Z_SPARKLES: f32 = 16.0;
 /// At most this many at once.
 const MAX_SPARKLES: usize = 160;
@@ -245,9 +243,9 @@ fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: Cell
             let dim = if back { bg_dim(mats, c) } else { 1.0 };
             let rgba = cell_rgba(mats, c, ambient, dim, lx, ly);
             let def = mats.def(c.material);
-            if (def.glint > 0 && !back) || def.motes {
+            if def.motes {
                 let c = mats.color(c);
-                layer.glints.push(Glint { x: lx as u8, y: ly as u8, rate: if back { 0 } else { def.glint }, motes: def.motes, rgb: [c[0], c[1], c[2]] });
+                layer.glints.push(Glint { x: lx as u8, y: ly as u8, rgb: [c[0], c[1], c[2]] });
             }
             if !back && is_plant(mats, c) && c.flags & flags::BURNING == 0 {
                 // Height above its root: plant cells below it in this column.
@@ -370,8 +368,8 @@ fn sync_chunks(
 /// Creatures in foliage part it: every tile near a body is pulled towards a
 /// pose bent away from the body (strongest right next to it) and along its
 /// direction of travel. When the body leaves, the springs wobble back.
-/// Crystals and gems glint; glowing fungi shed motes that drift up. Only
-/// on screen; each cell by chance, so a big crystal twinkles all over.
+/// Glowing fungi shed motes that drift up. Only on screen; each cell by
+/// chance. (Crystals and gems glimmer in the light instead: `light`.)
 fn sparkle(
     mut commands: Commands,
     time: Res<Time>,
@@ -411,17 +409,7 @@ fn sparkle(
                     return;
                 }
                 let at = Vec2::new(o.x as f32 + gl.x as f32 + 0.5, o.y as f32 + gl.y as f32 + 0.5);
-                let whiten = |c: u8| (c as f32 / 255.0 * 0.4 + 0.6).min(1.0);
-                if gl.rate > 0 && roll() < gl.rate as f32 / 255.0 * dt / 10.0 {
-                    // A glint: a little cross of light.
-                    let rgb = gl.rgb.map(whiten);
-                    let life = 0.25 + roll() * 0.3;
-                    for size in [Vec2::new(3.0, 1.0), Vec2::new(1.0, 3.0)] {
-                        commands.spawn((Sparkle { age: 0.0, life, vel: Vec2::ZERO, rgb }, Sprite::from_color(Color::NONE, size), Transform::from_translation(at.extend(Z_SPARKLES))));
-                    }
-                    count += 2;
-                }
-                if gl.motes && roll() < dt / 60.0 {
+                if roll() < dt / 60.0 {
                     let rgb = gl.rgb.map(|c| (c as f32 / 255.0 * 0.7 + 0.3).min(1.0));
                     let vel = Vec2::new((roll() - 0.5) * 4.0, 2.0 + roll() * 4.0);
                     commands.spawn((Sparkle { age: 0.0, life: 2.0 + roll() * 2.0, vel, rgb }, Sprite::from_color(Color::NONE, Vec2::ONE), Transform::from_translation(at.extend(Z_SPARKLES))));

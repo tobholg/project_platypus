@@ -30,6 +30,8 @@
 //! - `zoom`       types + twice and − once (as characters, as a Norwegian
 //!   keyboard would), then scrolls the wheel two notches down; logs the zoom
 //!   and the hotbar slot
+//! - `shroom`     cuts through the stem of the nearest giant mushroom at 2 s
+//!   (spawn in a fungal hollow): it falls as a body; logs the bodies
 //! - `drop`       stands still until 3 s, then holds S: on a platform (e.g. a
 //!   crypt's entrance, `PLATYPUS_SPAWN_X` at a ruin) it drops through; logs
 //!   the feet before and after
@@ -74,7 +76,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -619,6 +621,39 @@ fn zoom_script(
     } else if at(4) {
         info!("zoom: after two wheel notches down: slot {}", hand.slot);
         *step = 5;
+    }
+}
+
+fn shroom_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut step: Local<u8>) {
+    if s.name != "shroom" {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    match *step {
+        0 if s.elapsed > 2.0 => {
+            let Some(stem) = sim.materials().id("mushroom_stem") else { return };
+            // The nearest stem cell with open air in front, a little up it.
+            let p = CellPos::from_world(k.body.pos.x, k.body.pos.y);
+            let found = (0..200).flat_map(|r: i32| (-r..=r).flat_map(move |dx| [(dx, r), (dx, -r), (r, dx), (-r, dx)])).map(|(dx, dy)| p.offset(dx, dy)).find(|&q| {
+                sim.world.get_bg(q).is_some_and(|c| c.material == stem) && sim.world.get_bg(q.offset(0, -6)).is_some_and(|c| c.material == stem) && sim.world.get(q).is_some_and(|c| c.is_air())
+            });
+            let Some(at) = found else {
+                info!("shroom: no mushroom near");
+                *step = 9;
+                return;
+            };
+            info!("shroom: cutting the stem at {at:?} ({} bodies)", sim.world.bodies().len());
+            for dx in -3..=3 {
+                let block = CellPos::new((at.x + dx * 4).div_euclid(4), at.y.div_euclid(4));
+                sim.world.apply_edit(&WorldEdit::MineBlock { block, power: 255, max_hardness: 254, back: true });
+            }
+            *step = 1;
+        }
+        1 if s.elapsed > 3.5 => {
+            info!("shroom: after the cut, {} bodies", sim.world.bodies().len());
+            *step = 2;
+        }
+        _ => {}
     }
 }
 

@@ -858,6 +858,8 @@ impl World {
                 (Some(_), Some(f)) if front_solid(f) => Probe::Anchor,
                 // Charred wood carries nothing (it hangs on until it burns away).
                 (Some(b), _) if pass == Pass::Wood && !mats.bears_load(b) => Probe::Open,
+                // Walls (rock behind a cave) neither fall nor hold growths up.
+                (Some(b), _) if !plant(b) && !mats.phys(b.material).grows => Probe::Open,
                 // Wood: leaves carry nothing. Leaves: any wood holds them.
                 (Some(b), _) if plant(b) != (pass == Pass::Leaves) => {
                     if pass == Pass::Wood { Probe::Open } else { Probe::Anchor }

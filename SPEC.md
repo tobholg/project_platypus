@@ -194,19 +194,34 @@ checksums.
     it, strands hanging from its rim, a leaning stem with a ring) and
     clusters of lantern stalks (a glowing bulb on a thin stalk); bracket
     fungi up the walls, left and right in turn a jump apart, are one-way
-    platforms: a way up.
+    platforms: a way up. Mushrooms stand on the floor they grow from (their
+    feet found against the real, ragged floor; a lean that would take one
+    into the wall stands it straight; parasols keep their caps apart), come
+    down like trees when their stems are cut, take more heat than wood to
+    catch (360–420 °C) and shrivel to ash at 450–500 °C.
   - Crystal caves: glowing crystals hang straight down from the chambers'
     ceilings (a quarter to half the way down), a few short ones stand on
     the floors (not where a tunnel comes in); crystal studs the walls.
   - Toxic grottos: every chamber holds acid (a pool below where tunnels come
     in); a glowing crust over the rock at the open space.
   - Glows that live (rendering only, `MaterialDef`): `pulse` makes a glow
-    breathe (each 16-cell patch on its own 3–6 s cycle, in the light grid),
-    `glint` makes cells sparkle (little crosses of light drawn over the dark,
-    by chance per cell: crystals, gems, mithril), `motes` sheds glowing
-    spores that drift up (the fungi). At most 160 at once, on screen only.
-  - The caverns' big chambers hang stalactites from their ceilings but keep
-    their floors clear (no streaks where the floor is within 24 cells).
+    breathe (each 16-cell patch on its own 3–6 s cycle, in the light grid);
+    `shimmer` makes it glimmer (4-cell patches each swelling from nearly dark
+    to full and back every 1–3 s, mostly dim: crystals, gems, mithril);
+    `motes` sheds glowing spores that drift up (the fungi; at most 160 at
+    once, on screen only).
+  - Nothing floats. Chambers' ragged edges are measured around their
+    outline (open all the way from the middle to the edge), tunnels' walls
+    wobble along their length; what grows from a wall (crystals, shelves,
+    steep tunnels' ledges) and giant mushrooms (from their floor) carry a
+    root cell and are drawn only if it's rock once every cave is carved. The
+    caverns' big chambers hang stalactites from their real ceilings only
+    (each column its own length, the ceiling's distance estimated from the
+    noise, checked, and nothing carved in between), floors clear. And a
+    solid piece lying wholly inside a chunk, touching no edge and nothing
+    else, becomes what it floats in. Tested: in eight windows of 7 × 7
+    chunks, at most two small pieces float (big masses of rock between caves
+    may stand free).
   - The dressing is a pass over each generated chunk (with a two-cell margin
     from the chunks around, asked once); spikes and mushrooms are planned
     with the chambers. `platypus-worldview` lists the areas.
@@ -523,7 +538,10 @@ deaths (blood). Rendered as one dynamic mesh.
   colder with depth, faint strata) instead of letting the sky show through.
   A stopgap until the parallax far background.
 - A background piece is held up where it rests against solid playfield (a
-  trunk rooted in the ground, a wall behind rock). Only wood (anything not a
+  trunk rooted in the ground, a wall behind rock). Only growths
+  (`grows: true`: wood, mushroom stems) carry anything and come down;
+  background that doesn't grow (the rock behind a cave) neither falls nor
+  holds a growth up, so a mushroom in a cave is held by its foot alone. Only wood (anything not a
   plant) carries weight: leaves hang on wood within `LEAF_REACH` (72 cells,
   through leaves), so a felled tree is never held up by its neighbour's
   crown. Worldgen keeps every leaf inside that reach and every background

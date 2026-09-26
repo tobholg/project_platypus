@@ -167,6 +167,9 @@ pub struct TerrainGen {
     /// Materials laid in a pattern (crypt stone, planks): their shades over
     /// a chunk-sized tile, by material id.
     patterns: Vec<Option<Vec<u8>>>,
+    /// By material id: solid (static or powder), a plant.
+    solid: Vec<bool>,
+    plant: Vec<bool>,
 }
 
 impl TerrainGen {
@@ -232,6 +235,8 @@ impl TerrainGen {
             ores,
             gems,
             minerals: Perlin::new(s(18)),
+            solid: mats.iter().map(|(id, _)| matches!(mats.phys(id).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder)).collect(),
+            plant: mats.iter().map(|(id, _)| mats.phys(id).kind == platypus_sim::Kind::Plant).collect(),
             patterns: mats
                 .iter()
                 .map(|(id, _)| mats.pattern_shade(id, 0, 0).map(|_| (0..CHUNK * CHUNK).map(|i| mats.pattern_shade(id, i % CHUNK, i / CHUNK).unwrap_or(136)).collect()))
@@ -312,7 +317,8 @@ impl TerrainGen {
         }
         let depth = self.surface_at(x) - y;
         if depth > 16
-            && let Some(m) = self.plan.caves.mushroom_at(x, y)
+            && let Some((m, foot)) = self.plan.caves.mushroom_at(x, y)
+            && self.rooted(foot)
         {
             return match m {
                 caves::Shroom::Stem => (i.mushroom_stem, None),
@@ -518,6 +524,62 @@ impl TerrainGen {
             // Two spikes a block, pointing up.
             Glyph::Spikes if by == 0 || (by == 1 && bx != 3) || (by == 2 && bx == 1) => i.spikes,
             _ => i.air,
+        }
+    }
+
+    /// Rock floating in open space (a stalactite a tunnel cut off, a
+    /// crystal whose wall another cave took): any solid piece lying wholly
+    /// inside this chunk, touching none of its edges, becomes what it floats
+    /// in. (Pieces reaching over an edge are left: this chunk can't see them
+    /// whole.) Structures keep theirs.
+    fn sweep_specks(&self, pos: ChunkPos, cells: &mut [Cell]) {
+        let mats_solid = |c: Cell| !c.is_air() && self.solid[c.material.0 as usize];
+        let built = self.plan.structures.pieces_in(pos.x, pos.y).next().is_some();
+        let o = pos.origin();
+        let n = CHUNK as usize;
+        let mut seen = vec![false; n * n];
+        let mut piece = Vec::new();
+        let mut stack = Vec::new();
+        for start in 0..n * n {
+            if seen[start] || !mats_solid(cells[start]) {
+                continue;
+            }
+            piece.clear();
+            stack.push(start);
+            seen[start] = true;
+            let (mut edge, mut around) = (false, None);
+            while let Some(i) = stack.pop() {
+                piece.push(i);
+                let (x, y) = (i % n, i / n);
+                edge |= x == 0 || y == 0 || x == n - 1 || y == n - 1;
+                for (dx, dy) in [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)] {
+                    let (qx, qy) = (x as i32 + dx, y as i32 + dy);
+                    if qx < 0 || qy < 0 || qx >= CHUNK || qy >= CHUNK {
+                        continue;
+                    }
+                    let q = qy as usize * n + qx as usize;
+                    if mats_solid(cells[q]) {
+                        if !seen[q] {
+                            seen[q] = true;
+                            stack.push(q);
+                        }
+                    } else if around.is_none() || cells[q].is_air() {
+                        around = Some(cells[q]);
+                    }
+                }
+            }
+            if edge || piece.len() > 600 {
+                continue;
+            }
+            if built && piece.iter().any(|&i| self.plan.structures.glyph_at(o.x + (i % n) as i32, o.y + (i / n) as i32).is_some()) {
+                continue;
+            }
+            // What it floats in: a liquid if it's in one, else air (plants
+            // on it go too, below, where they lose their hold).
+            let fill = around.filter(|c| !self.solid[c.material.0 as usize] && !self.plant[c.material.0 as usize]).unwrap_or(Cell::AIR);
+            for &i in &piece {
+                cells[i] = fill;
+            }
         }
     }
 
@@ -733,19 +795,48 @@ impl TerrainGen {
         let i = &self.ids;
         let plan = &*self.plan;
         if let Some(open) = plan.caves.at(x, y) {
-            return Some(match open {
-                // One water table for every cave in the caverns: where the
-                // tunnels meet the flooded chambers, the water's already level.
-                caves::Open::Air if band == Band::Caverns && y < plan.water_table(x) => i.water,
-                caves::Open::Air => i.air,
-                caves::Open::Pool(caves::Pool::Water) => if plan.climate.ambient(x, y) <= 0 { i.ice } else { i.water },
-                caves::Open::Pool(caves::Pool::Oil) => i.oil,
-                caves::Open::Pool(caves::Pool::Lava) => i.lava,
-                caves::Open::Pool(caves::Pool::Acid) => i.acid,
-                caves::Open::Crystal => i.crystal,
-                caves::Open::Shelf => i.fungus_shelf,
-            });
+            // One water table for every cave in the caverns: where the
+            // tunnels meet the flooded chambers, the water's already level.
+            let air = if band == Band::Caverns && y < plan.water_table(x) { i.water } else { i.air };
+            match open {
+                caves::Open::Air => return Some(air),
+                caves::Open::Pool(caves::Pool::Water) => return Some(if plan.climate.ambient(x, y) <= 0 { i.ice } else { i.water }),
+                caves::Open::Pool(caves::Pool::Oil) => return Some(i.oil),
+                caves::Open::Pool(caves::Pool::Lava) => return Some(i.lava),
+                caves::Open::Pool(caves::Pool::Acid) => return Some(i.acid),
+                caves::Open::Grown { what, root, inside } => {
+                    if self.rooted(root) {
+                        return match what {
+                            caves::Growth::Crystal => Some(i.crystal),
+                            caves::Growth::Shelf => Some(i.fungus_shelf),
+                            caves::Growth::Ledge => None,
+                        };
+                    }
+                    // (Its wall is gone: no growth.)
+                    if inside {
+                        return Some(air);
+                    }
+                }
+            }
         }
+        self.cavern(x, y, depth, band)
+    }
+
+    /// Is this cell rock once every cave is carved? (Where something grown
+    /// from a wall is rooted.)
+    fn rooted(&self, (x, y): (i32, i32)) -> bool {
+        let plan = &*self.plan;
+        let depth = plan.surface_at(x) - y;
+        depth > 0
+            && !matches!(plan.caves.at(x, y), Some(caves::Open::Air | caves::Open::Pool(_)))
+            && self.cavern(x, y, depth, plan.band_at(y)).is_none()
+    }
+
+    /// The caverns' and the deep's huge chambers (noise), and what fills
+    /// them.
+    fn cavern(&self, x: i32, y: i32, depth: i32, band: Band) -> Option<MaterialId> {
+        let i = &self.ids;
+        let plan = &*self.plan;
         if !matches!(band, Band::Caverns | Band::Deep) {
             return None;
         }
@@ -755,19 +846,32 @@ impl TerrainGen {
         if depth < if under_water { 120 } else { 60 } {
             return None;
         }
-        // Chambers, wider than tall; streaks of noise hang stalactites from
-        // their roofs, but leave their floors alone (walking over spikes is
-        // no fun): only where the chamber goes on 24 cells below. (Fading in
-        // over the band's top 300 cells.)
+        // Chambers, wider than tall, with stalactites: each column of a
+        // chamber hangs one as long as a smooth noise across the columns
+        // says (so they taper to points), rock wherever the ceiling is
+        // within that of it. Hanging from the real ceiling, they never
+        // float, and floors stay clear. (Fading in over the band's top 300
+        // cells.)
         let entry = ((plan.band_span(Band::Caverns).1 - y) as f64 / 300.0).clamp(0.0, 1.0);
         let fade = if band == Band::Caverns { entry } else { 1.0 };
         let base = |y: f64| self.caverns.get([xf / 1.6, y]) * fade;
-        let open = base(yf);
-        if open <= 0.22 {
+        if base(yf) <= 0.22 {
             return None;
         }
-        let drip = if open > 0.22 + 0.12 { 0.0 } else { self.drips.get([xf / 7.0, yf / 60.0, 0.3]).abs() };
-        let chamber = open - drip * 0.12 > 0.22 || (drip > 0.0 && base(yf - 24.0) <= 0.22);
+        let long = ((self.drips.get([xf / 6.0, 0.3, 7.7]).abs() - 0.35) * 110.0).max(0.0);
+        // How far up the ceiling is, from how fast the chamber closes going
+        // up (smooth, so a stalactite has no gaps in it).
+        let chamber = long < 1.0 || {
+            let open = base(yf);
+            let closing = (open - base(yf + 4.0)) / 4.0;
+            let up = if closing > 1e-5 { (open - 0.22) / closing } else { f64::MAX };
+            // (And nothing else carved between here and that ceiling: a
+            // tunnel through it would leave the rest hanging.)
+            // (And the ceiling really is there: the estimate's short where
+            // the ceiling domes up, which would leave a stalactite hanging
+            // under the dome.)
+            up >= long || base(yf + up + 2.0) > 0.22 || (1..=(up as i32 + 3) / 3).any(|k| plan.caves.at(x, y + k * 3).is_some())
+        };
         chamber.then(|| if y < plan.water_table(x) && band == Band::Caverns { i.water } else { i.air })
     }
 
@@ -868,6 +972,7 @@ impl ChunkGenerator for TerrainGen {
             }
         }
         self.dress(pos, &mut cells, &mut rng);
+        self.sweep_specks(pos, &mut cells);
         let mut spawns = self.structure_spawns(pos);
         spawns.extend(self.cave_chest(pos, &cells, &mut rng).map(|p| (p, Spawn::Chest)));
         (Chunk::with_background(pos, cells, bg), spawns)
@@ -1136,6 +1241,131 @@ mod tests {
             for n in names {
                 assert!(has(zone, n), "{} have {n}", zone.name());
             }
+        }
+    }
+
+    /// No rock floats in the caves: in windows of generated chunks, solid
+    /// pieces that touch nothing (not the window's edge, not another piece)
+    /// are counted; there are next to none.
+    #[test]
+    fn no_rock_floats_in_the_caves() {
+        use platypus_sim::Kind;
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let solid = |c: Cell| matches!(m.phys(c.material).kind, Kind::Static | Kind::Powder);
+        let mut floating = Vec::new();
+        let areas: Vec<(i32, i32)> = g.plan.caves.areas.iter().map(|a| (a.x as i32, a.y as i32)).chain([(16_000, 11_000), (16_000, 7_600), (12_000, 3_500)]).collect();
+        for (x, y) in areas {
+            let c0 = CellPos::new(x, y).chunk();
+            const R: i32 = 3;
+            let w = (2 * R + 1) * CHUNK;
+            let mut grid = vec![false; (w * w) as usize];
+            for cy in -R..=R {
+                for cx in -R..=R {
+                    let ch = g.generate(ChunkPos::new(c0.x + cx, c0.y + cy));
+                    for ly in 0..CHUNK {
+                        for lx in 0..CHUNK {
+                            let (gx, gy) = ((cx + R) * CHUNK + lx, (cy + R) * CHUNK + ly);
+                            grid[(gy * w + gx) as usize] = solid(ch.get(lx as usize, ly as usize));
+                        }
+                    }
+                }
+            }
+            let mut seen = vec![false; grid.len()];
+            for start in 0..grid.len() {
+                if !grid[start] || seen[start] {
+                    continue;
+                }
+                let (mut stack, mut size, mut edge) = (vec![start], 0, false);
+                seen[start] = true;
+                while let Some(i) = stack.pop() {
+                    size += 1;
+                    let (px, py) = (i as i32 % w, i as i32 / w);
+                    edge |= px == 0 || py == 0 || px == w - 1 || py == w - 1;
+                    for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                        let (qx, qy) = (px + dx, py + dy);
+                        if qx >= 0 && qy >= 0 && qx < w && qy < w {
+                            let q = (qy * w + qx) as usize;
+                            if grid[q] && !seen[q] {
+                                seen[q] = true;
+                                stack.push(q);
+                            }
+                        }
+                    }
+                }
+                if !edge {
+                    let (px, py) = (start as i32 % w, start as i32 / w);
+                    floating.push(((c0.x - R) * CHUNK + px, (c0.y - R) * CHUNK + py, size));
+                    if (6..2000).contains(&size) && std::env::var("DUMP").is_ok() {
+                        let mut out = String::new();
+                        for qy in (py - 5..py + 75).rev() {
+                            for qx in px - 30..px + 30 {
+                                let q = (qy * w + qx) as usize;
+                                out.push(if qx < 0 || qy < 0 || qx >= w || qy >= w { ' ' } else if qx == px && qy == py { '@' } else if grid[q] { '#' } else { '.' });
+                            }
+                            out.push('\n');
+                        }
+                        eprintln!("piece at {:?}:\n{out}", ((c0.x - R) * CHUNK + px, (c0.y - R) * CHUNK + py));
+                    }
+                }
+            }
+        }
+        // Small pieces (specks, cut-off stalactites, crystals whose wall is
+        // gone): none. Big masses of rock between caves (thousands of cells)
+        // can stand free, like boulders in a cavern.
+        let small: Vec<_> = floating.iter().filter(|f| f.2 < 1_000).collect();
+        assert!(small.len() <= 2, "{} small pieces of rock floating: {:?}", small.len(), &small[..small.len().min(10)]);
+    }
+
+    /// A giant mushroom stands on the floor, and cut through its stem it
+    /// comes down like a tree (a body), leaving nothing hanging.
+    #[test]
+    fn a_cut_mushroom_falls_like_a_tree() {
+        use platypus_sim::{World, WorldEdit};
+        use std::sync::Arc;
+        let m = Arc::new(mats());
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let parasols: Vec<caves::Mushroom> = g
+            .plan
+            .caves
+            .chambers
+            .iter()
+            .flat_map(|c| c.mushrooms.iter().copied())
+            .filter(|s| s.species == caves::Species::Parasol && s.top - s.foot > 50.0 && s.lean.abs() < 6.0 && g.rooted((s.x as i32, s.foot as i32 + 9)))
+            // (Alone: no other mushroom within reach of its stem.)
+            .filter(|s| g.plan.caves.chambers.iter().flat_map(|c| &c.mushrooms).filter(|o| (o.x - s.x).abs() < 40.0 && (o.foot - s.foot).abs() < 80.0).count() == 1)
+            .take(3)
+            .collect();
+        assert!(!parasols.is_empty(), "a parasol to fell");
+        let stem = m.expect_id("mushroom_stem");
+        for s in parasols {
+            let (x, floor) = (s.x as i32, s.foot as i32 + 10);
+            // It stands on its floor: the cell under its foot of stem is rock.
+            assert!(g.material_at(x, floor - 1) != MaterialId::AIR, "the mushroom at {x} stands on the floor");
+            let mut w = World::new(1, m.clone());
+            w.set_climate(g.climate());
+            let (cx, cy) = (x.div_euclid(CHUNK), floor.div_euclid(CHUNK));
+            for dy in -2..=3 {
+                for dx in -3..=3 {
+                    w.insert_chunk(g.generate(ChunkPos::new(cx + dx, cy + dy)));
+                }
+            }
+            assert_eq!(w.get_bg(CellPos::new(x, floor + 12)).map(|c| c.material), Some(stem), "its stem at {x}");
+            w.apply_edit(&WorldEdit::Dig { center: CellPos::new(x, floor + 12), radius: s.stem as i32 + 4, max_hardness: 200 });
+            if w.bodies().is_empty() {
+                for y in (floor + 12..s.top as i32 + 4).step_by(3) {
+                    let row: String = (x - 8..=x + 8)
+                        .map(|xx| {
+                            let p = CellPos::new(xx, y);
+                            let f = w.get(p).map(|c| c.material).unwrap_or(MaterialId::AIR);
+                            let b = w.get_bg(p).map(|c| c.material).unwrap_or(MaterialId::AIR);
+                            if f != MaterialId::AIR { 'F' } else if b == stem { 'S' } else if b == MaterialId::AIR { '.' } else if m.phys(b).kind == platypus_sim::Kind::Plant { 'p' } else { 'w' }
+                        })
+                        .collect();
+                    eprintln!("{y}: {row}");
+                }
+            }
+            assert!(!w.bodies().is_empty(), "the mushroom at {x} came down");
         }
     }
 

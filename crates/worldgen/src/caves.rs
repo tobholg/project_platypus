@@ -149,6 +149,8 @@ pub struct Chamber {
 #[derive(Clone, Debug)]
 pub struct Tunnel {
     pub points: Vec<(f32, f32)>,
+    /// Length along it at each point.
+    pub along: Vec<f32>,
     pub width: f32,
     /// The chambers it joins (a mouth: `None`, it comes from the surface).
     pub joins: Option<(u32, u32)>,
@@ -180,15 +182,27 @@ pub struct Caves {
     rim: Perlin,
 }
 
+/// What grows out of a cave's wall.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Growth {
+    /// A crystal hanging into a chamber (or standing in it).
+    Crystal,
+    /// A bracket fungus (a platform).
+    Shelf,
+    /// A rock ledge in a steep tunnel.
+    Ledge,
+}
+
 /// What a cave puts at a cell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Open {
     Air,
     Pool(Pool),
-    /// A crystal growing into a chamber.
-    Crystal,
-    /// A bracket fungus (a platform).
-    Shelf,
+    /// Something grown from a wall: there only if `root` (a cell in that
+    /// wall) is still rock once every cave is carved (another cave, or a
+    /// cavern, may have taken the wall away: then it would float). `inside`:
+    /// the cell is in the cave's open space (else in its rock).
+    Grown { what: Growth, root: (i32, i32), inside: bool },
 }
 
 fn unit(rng: &mut Rng) -> f32 {
@@ -449,11 +463,13 @@ impl Caves {
                             continue;
                         }
                         let x = c.x + c.rx * u;
-                        let (wall, room) = (c.ry * h * 1.08, 2.0 * c.ry * h);
+                        // (From deep enough in the rock that the ragged edge
+                        // can't leave its root hanging.)
+                        let (wall, room) = (c.ry * h * 1.33, 2.0 * c.ry * h);
                         let (base_y, len, half) = if ceiling {
-                            (c.y + wall, -room * range(&mut rng, (0.25, 0.5)), range(&mut rng, (2.5, 7.0)))
+                            (c.y + wall, -(c.ry * h * 0.33 + room * range(&mut rng, (0.25, 0.5))), range(&mut rng, (2.5, 7.0)))
                         } else {
-                            (c.y - wall, room * range(&mut rng, (0.08, 0.18)), range(&mut rng, (2.0, 4.0)))
+                            (c.y - wall, c.ry * h * 0.33 + room * range(&mut rng, (0.06, 0.14)), range(&mut rng, (2.0, 4.0)))
                         };
                         let tip = (x + range(&mut rng, (-0.12, 0.12)) * len.abs(), base_y + len);
                         c.spikes.push(Spike { base: [(x - half, base_y), (x + half, base_y)], tip });
@@ -471,6 +487,11 @@ impl Caves {
                             let h = (room * range(&mut rng, (0.45, 0.75))).clamp(24.0, 110.0);
                             let cap = (h * range(&mut rng, (0.35, 0.55))).clamp(10.0, 42.0);
                             let lean = range(&mut rng, (-0.25, 0.25)) * h;
+                            // Room to itself: its cap clear of the others' (so
+                            // they don't grow together and hold each other up).
+                            if c.mushrooms.iter().any(|o| (o.x - x).abs() < cap + o.cap.max(8.0) + 6.0) {
+                                continue;
+                            }
                             c.mushrooms.push(Mushroom { species: Species::Parasol, x, foot: floor - 12.0, top: floor + h, stem: (cap / 6.0).clamp(2.0, 5.0), cap, lean });
                         } else {
                             for _ in 0..3 + (rng.next_u32() % 3) as usize {
@@ -519,7 +540,73 @@ impl Caves {
                 }
             }
         }
-        Caves { areas, chambers, tunnels, bins, rim: Perlin::new((seed as u32) ^ 0xC0FE) }
+        let mut caves = Caves { areas, chambers, tunnels, bins, rim: Perlin::new((seed as u32) ^ 0xC0FE) };
+        caves.settle();
+        caves
+    }
+
+    /// Put what grows in a chamber against its real (ragged) walls: shelves
+    /// out from the wall at their height, mushrooms on the floor under them
+    /// and under the ceiling (dropped if there's no room, or they'd stand in
+    /// a pool).
+    fn settle(&mut self) {
+        let open = |c: &Caves, x: f32, y: f32| c.at(x as i32, y as i32) == Some(Open::Air);
+        for ci in 0..self.chambers.len() {
+            if self.chambers[ci].shelves.is_empty() && self.chambers[ci].mushrooms.is_empty() {
+                continue;
+            }
+            let shelves = std::mem::take(&mut self.chambers[ci].shelves);
+            let mushrooms = std::mem::take(&mut self.chambers[ci].mushrooms);
+            let c = self.chambers[ci].clone();
+            let mut placed = Vec::new();
+            for mut sh in shelves {
+                // Out from the middle to the wall behind it.
+                let mut x = c.x;
+                if !open(self, x, sh.y) {
+                    continue;
+                }
+                while (x - c.x).abs() < c.rx * 1.4 && open(self, x - sh.dir, sh.y) {
+                    x -= sh.dir;
+                }
+                sh.x = x - sh.dir;
+                placed.push(sh);
+            }
+            let mut stand = Vec::new();
+            for mut m in mushrooms {
+                if !open(self, m.x, c.y) {
+                    continue;
+                }
+                let (mut floor, mut ceiling) = (c.y, c.y);
+                while floor > c.y - c.ry * 1.4 && open(self, m.x, floor - 1.0) {
+                    floor -= 1.0;
+                }
+                while ceiling < c.y + c.ry * 1.4 && open(self, m.x, ceiling + 1.0) {
+                    ceiling += 1.0;
+                }
+                if matches!(self.at(m.x as i32, floor as i32 - 1), Some(Open::Pool(_))) {
+                    continue;
+                }
+                let tall = m.top - m.foot - 12.0;
+                let clear = if m.species == Species::Parasol { m.cap * 0.45 + 4.0 } else { m.cap * 1.7 + 2.0 };
+                let h = tall.min(ceiling - floor - clear);
+                if h < 14.0 {
+                    continue;
+                }
+                m.foot = floor - 10.0;
+                m.top = floor + h;
+                // A lean that would take it into the wall: it stands straight.
+                let clear_way = [0.4, 0.7, 1.0].iter().all(|&t: &f32| {
+                    let (x, y) = (m.x + m.lean * t * t, floor + h * t);
+                    (-1..=1).all(|k| open(self, x + k as f32 * (m.stem + 2.0), y))
+                });
+                if !clear_way {
+                    m.lean = 0.0;
+                }
+                stand.push(m);
+            }
+            self.chambers[ci].shelves = placed;
+            self.chambers[ci].mushrooms = stand;
+        }
     }
 
     /// The underground biome at a cell, if any.
@@ -528,7 +615,7 @@ impl Caves {
     }
 
     /// A giant mushroom at a cell (background), if one stands there.
-    pub fn mushroom_at(&self, x: i32, y: i32) -> Option<Shroom> {
+    pub fn mushroom_at(&self, x: i32, y: i32) -> Option<(Shroom, (i32, i32))> {
         let (chambers, _) = self.bins.get(&(x.div_euclid(CHUNK), y.div_euclid(CHUNK)))?;
         let (px, py) = (x as f32, y as f32);
         let spot = |x: f32, y: f32| platypus_sim::rng::hash(&[0x5907, (x as i32 >> 2) as u64, (y as i32 >> 2) as u64]);
@@ -538,6 +625,8 @@ impl Caves {
                 let t = ((py - m.foot) / (m.top - m.foot)).clamp(0.0, 1.0);
                 let cx = m.x + m.lean * t * t;
                 let dx = px - cx;
+                // (The cell under its floor: it stands only where that's rock.)
+                let foot = (m.x as i32, m.foot as i32 + 9);
                 match m.species {
                     Species::Parasol => {
                         let (u, v) = (dx / m.cap, (py - m.top) / (m.cap * 0.38));
@@ -545,30 +634,30 @@ impl Caves {
                         if (0.0..1.0).contains(&v) && u * u + v * v < 1.0 {
                             let rim = u * u + v * v;
                             let spotted = spot(px, py) % 7 == 0 && rim < 0.7;
-                            return Some(Shroom::Cap(if spotted { 250 } else { (200.0 - rim * 150.0) as u8 }));
+                            return Some((Shroom::Cap(if spotted { 250 } else { (200.0 - rim * 150.0) as u8 }), foot));
                         }
                         // Gills under it, then strands hanging from its edge.
                         if (-3.0..0.0).contains(&(py - m.top)) && dx.abs() < m.cap * 0.95 {
-                            return Some(if (px as i32).rem_euclid(3) == 0 { Shroom::Gills } else { Shroom::Cap(40) });
+                            return Some((if (px as i32).rem_euclid(3) == 0 { Shroom::Gills } else { Shroom::Cap(40) }, foot));
                         }
                         let strand = (dx.abs() - m.cap * 0.8).abs() < 0.6 || spot(px, 0.0) % 9 == 0 && dx.abs() < m.cap * 0.9;
                         let hang = 4.0 + (spot(px, 1.0) % 14) as f32;
                         if strand && py < m.top - 3.0 && py > m.top - 3.0 - hang && dx.abs() < m.cap {
-                            return Some(Shroom::Glow);
+                            return Some((Shroom::Glow, foot));
                         }
                         // A ring two thirds up the stem.
                         let ring = (t - 0.62).abs() < 0.015 && dx.abs() <= m.stem;
                         if (dx.abs() <= m.stem / 2.0 || ring) && py >= m.foot && py < m.top {
-                            return Some(Shroom::Stem);
+                            return Some((Shroom::Stem, foot));
                         }
                     }
                     Species::Lantern => {
                         let dy = py - (m.top + m.cap * 0.6);
                         if dx * dx + dy * dy < m.cap * m.cap {
-                            return Some(Shroom::Glow);
+                            return Some((Shroom::Glow, foot));
                         }
                         if dx.abs() <= m.stem / 2.0 && py >= m.foot && py < m.top {
-                            return Some(Shroom::Stem);
+                            return Some((Shroom::Stem, foot));
                         }
                     }
                 }
@@ -585,32 +674,31 @@ impl Caves {
         for &i in chambers {
             let c = &self.chambers[i as usize];
             let (dx, dy) = ((p.0 - c.x) / c.rx, (p.1 - c.y) / c.ry);
-            let d = dx * dx + dy * dy;
-            if d > 1.7 {
+            let r = (dx * dx + dy * dy).sqrt();
+            if r > 1.35 {
                 continue;
             }
-            // A ragged rim, finer on small chambers.
-            let s = (c.rx.min(c.ry) * 0.5).max(10.0) as f64;
-            let n = self.rim.get([x as f64 / s, y as f64 / s, i as f64 * 0.37]) as f32;
-            if c.spikes.iter().any(|s| in_triangle(p, s.base[0], s.base[1], s.tip)) {
-                return Some(Open::Crystal);
+            let inside = r < self.rim_at(i as usize, dx, dy);
+            if let Some(s) = c.spikes.iter().find(|s| in_triangle(p, s.base[0], s.base[1], s.tip)) {
+                let root = ((s.base[0].0 + s.base[1].0) / 2.0, (s.base[0].1 + s.base[1].1) / 2.0);
+                return Some(Open::Grown { what: Growth::Crystal, root: (root.0 as i32, root.1 as i32), inside });
             }
-            // A shelf: from deep in the wall (the rim is ragged) out `len`,
-            // three cells thick at the wall, thinning to one, flat on top.
-            if c.shelves.iter().any(|s| {
+            if !inside {
+                continue;
+            }
+            // A shelf: from the wall out `len`, three cells thick at the wall,
+            // thinning to one, flat on top.
+            if let Some(s) = c.shelves.iter().find(|s| {
                 let out = (p.0 - s.x) * s.dir;
                 let thick = 3.0 - 2.0 * (out / s.len).max(0.0);
                 out > -30.0 && out < s.len && p.1 <= s.y && p.1 > s.y - thick
-            }) && d < 1.0 + 0.45 * self.rim.get([x as f64 / (c.rx.min(c.ry) * 0.5).max(10.0) as f64, y as f64 / (c.rx.min(c.ry) * 0.5).max(10.0) as f64, i as f64 * 0.37]) as f32
-            {
-                return Some(Open::Shelf);
+            }) {
+                return Some(Open::Grown { what: Growth::Shelf, root: ((s.x - s.dir * 2.0) as i32, s.y as i32 - 1), inside: true });
             }
-            if d < 1.0 + 0.45 * n {
-                return Some(match c.pool {
-                    Some((kind, level)) if p.1 < level => Open::Pool(kind),
-                    _ => Open::Air,
-                });
-            }
+            return Some(match c.pool {
+                Some((kind, level)) if p.1 < level => Open::Pool(kind),
+                _ => Open::Air,
+            });
         }
         for &(t, s) in segments {
             let tun = &self.tunnels[t as usize];
@@ -620,15 +708,40 @@ impl Caves {
             if d > half * 1.3 {
                 continue;
             }
-            let wob = if tun.crevice() { 0.0 } else { self.rim.get([x as f64 / 14.0, y as f64 / 14.0, 50.0 + t as f64 * 0.11]) as f32 * 0.25 };
+            // Each wall wobbles along the tunnel's length (so across it the
+            // open part is one stretch: no rock left floating in it).
+            let wob = if tun.crevice() {
+                0.0
+            } else {
+                let (sx, sy) = (b.0 - a.0, b.1 - a.1);
+                let len = (sx * sx + sy * sy).sqrt().max(1.0);
+                let u = (((p.0 - a.0) * sx + (p.1 - a.1) * sy) / len).clamp(0.0, len);
+                let side = if sx * (p.1 - a.1) - sy * (p.0 - a.0) >= 0.0 { 1.0 } else { -1.0 };
+                self.rim.get([(tun.along[s as usize] + u) as f64 / 14.0, side * 7.3, 50.0 + t as f64 * 0.11]) as f32 * 0.25
+            };
             if d < half * (1.0 + wob) {
-                if !tun.crevice() && ledge(p, a, b) {
-                    continue;
+                if !tun.crevice()
+                    && let Some(root) = ledge(p, a, b, half)
+                {
+                    return Some(Open::Grown { what: Growth::Ledge, root, inside: true });
                 }
                 return Some(Open::Air);
             }
         }
         None
+    }
+
+    /// A chamber's ragged edge in the direction (dx, dy) from its middle (in
+    /// its radii): 0.7 … 1.3. Measured around the outline, so a chamber is
+    /// open all the way from its middle to its edge: no rock inside it.
+    fn rim_at(&self, i: usize, dx: f32, dy: f32) -> f32 {
+        let c = &self.chambers[i];
+        let a = dy.atan2(dx) as f64;
+        // A few broad lumps around the edge, a little roughness on them
+        // (more, finer ones read as spikes radiating from the middle).
+        let k = ((c.rx + c.ry) as f64 / 2.0 / 60.0).max(0.8);
+        let n = self.rim.get([a.cos() * k, a.sin() * k, i as f64 * 0.37]) * 0.85 + self.rim.get([a.cos() * k * 2.5, a.sin() * k * 2.5, i as f64 * 0.37 + 9.1]) * 0.15;
+        1.0 + 0.32 * n as f32
     }
 }
 
@@ -647,21 +760,28 @@ fn in_triangle(p: (f32, f32), a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> bo
 const LEDGE_EVERY: i32 = 30;
 const LEDGE: i32 = 4;
 
-fn ledge(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> bool {
+/// If p is on a ledge, the cell in the wall it grows from.
+fn ledge(p: (f32, f32), a: (f32, f32), b: (f32, f32), half: f32) -> Option<(i32, i32)> {
     let (dx, dy) = (b.0 - a.0, b.1 - a.1);
     let len = (dx * dx + dy * dy).sqrt().max(1.0);
     if dy.abs() / len < 0.75 {
-        return false;
+        return None;
     }
     let y = p.1 as i32;
     if y.rem_euclid(LEDGE_EVERY) >= LEDGE {
-        return false;
+        return None;
     }
     // Which wall this row's ledge grows from, and is p on that side of the
     // tunnel's middle?
     let side = if y.div_euclid(LEDGE_EVERY) % 2 == 0 { 1.0 } else { -1.0 };
     let cross = (dx * (p.1 - a.1) - dy * (p.0 - a.0)) / len * dy.signum();
-    cross * side > 0.0
+    if cross * side <= 0.0 {
+        return None;
+    }
+    // (Straight across from p, past the wall.)
+    let out = (half * 1.35 - cross.abs()).max(0.0);
+    let (nx, ny) = (-dy / len * dy.signum() * side, dx / len * dy.signum() * side);
+    Some(((p.0 + nx * out) as i32, (p.1 + ny * out) as i32))
 }
 
 /// A line from a to b that wanders sideways (up to a fifth of its length,
@@ -671,7 +791,7 @@ fn wander(a: (f32, f32), b: (f32, f32), width: f32, len: f32, noise: &Perlin, sa
     let (dx, dy) = ((b.0 - a.0) / len.max(1.0), (b.1 - a.1) / len.max(1.0));
     let (px, py) = (-dy, dx);
     let amp = (len * 0.2).min(140.0);
-    let points = (0..=n)
+    let points: Vec<(f32, f32)> = (0..=n)
         .map(|k| {
             let t = k as f32 / n as f32;
             // Pinned at both ends.
@@ -679,7 +799,12 @@ fn wander(a: (f32, f32), b: (f32, f32), width: f32, len: f32, noise: &Perlin, sa
             (a.0 + (b.0 - a.0) * t + px * off, a.1 + (b.1 - a.1) * t + py * off)
         })
         .collect();
-    Tunnel { points, width, joins: None }
+    let mut along = vec![0.0];
+    for w in points.windows(2) {
+        let (a, b): ((f32, f32), (f32, f32)) = (w[0], w[1]);
+        along.push(along.last().expect("starts at 0") + ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt());
+    }
+    Tunnel { points, along, width, joins: None }
 }
 
 #[cfg(test)]
