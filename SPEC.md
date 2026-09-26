@@ -901,19 +901,36 @@ deaths (blood). Rendered as one dynamic mesh.
 ### 5.2 Critters (`actors/critters.rs`)
 
 - The `critter` brain (params: `flee_range`, `calm_after`, `hops`, `flies`,
-  `wander_every`, `rest`, `wander_speed`): rests and wanders when calm; flees
-  a player within `flee_range`, a blast within 4 × its radius, or being hurt,
-  for `calm_after` seconds, away from it. Hoppers move in hops (pausing
-  between them when ambling); flyers fly up and away when scared and glide
-  back down to land when calm. Walled, it turns round.
+  `wander_every`, `rest`, `wander_speed`, `hovers`, `swims`): rests and
+  wanders when calm; flees a player within `flee_range`, a blast within 4 ×
+  its radius, or being hurt, for `calm_after` seconds, away from it.
+  Hoppers move in hops (pausing between them when ambling); flyers fly up
+  and away when scared and glide back down to land when calm. Walled, it
+  turns round. `hovers: (low, high)`: a flier that never lands, wandering
+  in two dimensions and kept between those heights above the ground or
+  water (fireflies; bats, with a `wander_every` of 0.35 s: flitting).
+  `swims`: wanders in two dimensions in water, turning back at its edges
+  and staying under its surface; stranded, it flops. (Optional brain params
+  like `hovers` use `data::some`: brain params are read from a RON value,
+  where `Some` can't be left out.)
+- Movement for them: `fly_speed`/`fly_accel` (fliers), `swim_speed`/
+  `swim_accel` (swimmers: steered and weightless under water).
+- A creature file's `light: (color, strength, pulse)` makes it glow: a
+  `LightSource`, with `pulse` a `Glow` (swelling and fading, each out of
+  step), and glowing creatures seed the light grid's `emit` as glowing
+  cells do (light and a haze over the dark).
 - Ambient life (`assets/data/life.ron`, hot-reloaded): for each kind, where
-  it lives (`Surface`: open ground; `Shore`: within 30 cells of water), at
-  most how many within 450 cells of the player, and a chance a second: a
-  new one turns up 330–440 cells to either side (just off the screen), on
-  the first solid ground under open air near the surface; any further than
-  800 cells is gone.
-- Rabbits (hop, bolt), birds (hop and peck, fly off, glide back), frogs (by
-  water, leap).
+  it lives (`Surface`: open ground; `Shore`: within 30 cells of water;
+  `Water`: in cool liquid with room round it, anywhere near; `Cave`: the
+  open air of a cave, a roof above, 30+ under the surface), `when` (`Any`,
+  `Day`, `Night`: out of its hours it leaves once 260+ cells off), `above`
+  (spawned that high over its spot), at most how many within 450 cells of
+  the player, and a chance a second: a surface one turns up 330–440 cells
+  to either side (just off the screen) on the first solid ground under open
+  air near the surface; water and cave ones anywhere near (16 tries); any
+  further than 800 cells is gone.
+- Rabbits and birds (by day), frogs (by water), fireflies (at night over
+  the ground, pulsing), fish (in lakes), bats (in caves).
 
 ### 5.3 The arena (`PLATYPUS_WORLD=arena`; `worldgen/src/arena.rs`, `game/src/arena.rs`)
 

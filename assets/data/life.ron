@@ -1,9 +1,17 @@
-// Ambient life round the player (actors/critters.rs): each kind, where it
-// lives (Surface: open ground; Shore: within 30 cells of water), at most how
-// many near the player, and how readily it turns up (a chance a second).
-// Hot-reloaded.
+// Ambient life round the player (actors/critters.rs). Each kind:
+//   place: Surface (open ground), Shore (within 30 cells of water), Water
+//     (in cool liquid with room round it), Cave (in the open air of a cave,
+//     a roof above, under the surface)
+//   when: Any (default), Day or Night; out of its hours it leaves once out
+//     of sight
+//   above: (low, high): put that high above the spot (fliers in the air)
+//   most: at most this many near the player; rate: a chance a second to add one
+// Hot-reloaded. Add a kind here and it lives in the world.
 [
-    (kind: "rabbit", place: Surface, most: 4, rate: 0.5),
-    (kind: "bird", place: Surface, most: 6, rate: 0.6),
+    (kind: "rabbit", place: Surface, when: Day, most: 4, rate: 0.5),
+    (kind: "bird", place: Surface, when: Day, most: 6, rate: 0.6),
     (kind: "frog", place: Shore, most: 4, rate: 0.6),
+    (kind: "firefly", place: Surface, when: Night, above: (6, 24), most: 14, rate: 3.0),
+    (kind: "fish", place: Water, most: 8, rate: 1.2),
+    (kind: "bat", place: Cave, most: 6, rate: 0.8),
 ]

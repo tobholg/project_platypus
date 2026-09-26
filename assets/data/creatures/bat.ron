@@ -1,0 +1,21 @@
+// A bat: flits about the air of caves, turning every moment; scatters from
+// you and from blasts.
+(
+    name: "Bat",
+    size: (5, 4),
+    health: 6,
+    team: Neutral,
+    blood: "blood",
+    art: "bat",
+    movement: (
+        run_speed: 20,
+        fly_speed: 85,
+        fly_accel: 700,
+        air_jumps: 0,
+        step_height: 0,
+    ),
+    brain: (
+        kind: "critter",
+        params: (flee_range: 35, calm_after: 1.5, flies: true, hovers: (5, 40), wander_every: 0.35, rest: 0.0, wander_speed: 0.8),
+    ),
+)

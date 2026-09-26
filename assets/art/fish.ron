@@ -1,0 +1,48 @@
+// A fish: silver-blue, a tail that beats. Out of water it flops.
+(
+    size: (12, 7),
+    feet: (6, 7),
+    outline: (22, 30, 40),
+    palette: {
+        'f': (150, 176, 196),   // body
+        'F': (96, 120, 150),   // back
+        'l': (214, 226, 232),   // belly
+        'k': (20, 24, 30),   // eye
+        't': (110, 136, 166),   // tail and fins
+    },
+    frames: {
+        "swim_a": [
+            "............",
+            ".....FFF....",
+            ".t..FfffFF..",
+            ".ttFffffkff.",
+            ".t..llllll..",
+            ".....lll....",
+            "............",
+        ],
+        "swim_b": [
+            "............",
+            ".....FFF....",
+            "....FfffFF..",
+            ".ttFffffkff.",
+            ".tt.llllll..",
+            ".....lll....",
+            "............",
+        ],
+        "flop": [
+            "............",
+            "............",
+            "..t..FFFF...",
+            "..ttFffffkf.",
+            "..t.llllll..",
+            "............",
+            "............",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["swim_a", "swim_b"], fps: 4),
+        "run": (frames: ["swim_a", "swim_b"], fps: 8),
+        "jump": (frames: ["flop"], fps: 5),
+        "fall": (frames: ["flop"], fps: 5),
+    },
+)

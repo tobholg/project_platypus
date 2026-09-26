@@ -25,6 +25,13 @@ pub fn parse_ron<T: DeserializeOwned>(text: &str) -> Result<T, String> {
         .map_err(|e| e.to_string())
 }
 
+/// For an optional brain param (brain params are read from a RON value,
+/// where `Some` can't be left out as it can elsewhere): the bare value is
+/// `Some`, and missing is `None` (with `#[serde(default)]`).
+pub fn some<'de, D: serde::Deserializer<'de>, T: serde::Deserialize<'de>>(d: D) -> Result<Option<T>, D::Error> {
+    T::deserialize(d).map(Some)
+}
+
 pub fn load_ron<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     parse_ron(&text).map_err(|e| format!("{}: {e}", path.display()))

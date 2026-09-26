@@ -1,0 +1,22 @@
+// A firefly: drifts a few cells above the ground at night, its tail
+// pulsing with light; darts off if you come close.
+(
+    name: "Firefly",
+    size: (2, 2),
+    health: 1,
+    team: Neutral,
+    blood: "",
+    art: "firefly",
+    light: (color: (200, 255, 110), strength: 0.9, pulse: 2.2),
+    movement: (
+        run_speed: 10,
+        fly_speed: 16,
+        fly_accel: 50,
+        air_jumps: 0,
+        step_height: 0,
+    ),
+    brain: (
+        kind: "critter",
+        params: (flee_range: 14, calm_after: 1.0, flies: true, hovers: (4, 28), wander_every: 1.2, rest: 0.1, wander_speed: 0.7),
+    ),
+)

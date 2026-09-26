@@ -81,6 +81,10 @@ pub struct MovementStats {
     /// up or down (a glide).
     pub fly_speed: f32,
     pub fly_accel: f32,
+    /// A swimmer (a fish): under water it goes where it steers (move_x,
+    /// move_y) × this, at `swim_accel`, weightless; 0: it swims as bodies do.
+    pub swim_speed: f32,
+    pub swim_accel: f32,
 }
 
 impl MovementStats {
@@ -123,6 +127,8 @@ impl Default for MovementStats {
             step_height: 3,
             fly_speed: 0.0,
             fly_accel: 600.0,
+            swim_speed: 0.0,
+            swim_accel: 400.0,
             swim_gravity: 0.1,
             swim_drag: 0.0005,
             swim_max_fall: 25.0,
@@ -301,6 +307,16 @@ impl Locomotion {
             }
             body.vel.x = self.dash_dir * s.run_speed;
             self.state = if grounded { MoveState::Ground } else { MoveState::Air };
+        }
+
+        // A swimmer under water: steered, weightless.
+        if s.swim_speed > 0.0 && self.contacts.submerged > 0.5 {
+            let steer = Vec2::new(intent.move_x.clamp(-1.0, 1.0), intent.move_y.clamp(-1.0, 1.0));
+            let dv = steer * s.swim_speed - body.vel;
+            body.vel += dv.clamp_length_max(s.swim_accel * dt);
+            self.state = MoveState::Air;
+            self.rising_from_jump = false;
+            return ev;
         }
 
         // Fly: in the air (or taking off), steered by move_x/move_y.

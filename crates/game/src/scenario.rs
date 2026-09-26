@@ -75,6 +75,9 @@
 //!   three pixels (9, 14–16) of the first thing in the first file in one stroke with
 //!   the real pointer (a pose paints its first layer's part), logs what
 //!   changed on disk; Ctrl+Z; logs whether the file is back as it was
+//! - `life`       (`PLATYPUS_WORLD=arena`; try `PLATYPUS_HOUR=22`) fireflies
+//!   over the floor, fish in the pool, bats in the air above; logs
+//!   after 5 s whether each is still where it lives
 //! - `crossing`   (`PLATYPUS_WORLD=arena`) a stream of sand poured 30 cells
 //!   ahead, walked through (logs how far the player got); then a pit dug
 //!   with water 12 cells below its rim, the player put in it, swimming up
@@ -152,7 +155,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, editor_script.after(InputSystems).before(crate::editor::capture))
-            .add_systems(Update, warband_script)
+            .add_systems(Update, (warband_script, life_script))
             .add_systems(PreUpdate, crossing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, held_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -2135,5 +2138,55 @@ fn crossing_script(
             (false, true) => keys.release(key),
             _ => {}
         }
+    }
+}
+
+/// Fireflies, fish and bats put where they live, and checked on.
+fn life_script(
+    s: Res<Scenario>,
+    mut commands: Commands,
+    sim: Res<SimWorld>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    critters: Query<(&crate::actors::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut state: Local<u8>,
+) {
+    if s.name != "life" {
+        return;
+    }
+    let floor = platypus_worldgen::arena::FLOOR as f32;
+    if *state == 0 && s.elapsed > 0.5 {
+        // The player by the pool, to watch.
+        if let Ok(mut k) = player.single_mut() {
+            k.body.pos = Vec2::new(440.0, floor + 8.0);
+            k.prev_pos = k.body.pos;
+        }
+        for i in 0..6 {
+            let x = 460.0 + i as f32 * 12.0;
+            crate::actors::creature::spawn_creature(&mut commands, "firefly", Vec2::new(x, floor + 8.0 + (i % 3) as f32 * 6.0), |_| {});
+        }
+        for i in 0..4 {
+            crate::actors::creature::spawn_creature(&mut commands, "fish", Vec2::new(330.0 + i as f32 * 22.0, floor - 20.0 - (i % 2) as f32 * 12.0), |_| {});
+        }
+        for i in 0..4 {
+            crate::actors::creature::spawn_creature(&mut commands, "bat", Vec2::new(500.0 + i as f32 * 14.0, floor + 40.0 + i as f32 * 8.0), |_| {});
+        }
+        *state = 1;
+    }
+    if *state == 1 && s.elapsed > 5.5 {
+        let world = &sim.world;
+        let wet = |p: Vec2| world.get(CellPos::from_world(p.x, p.y)).is_some_and(|c| world.materials().phys(c.material).kind == platypus_sim::Kind::Liquid);
+        for kind in ["firefly", "fish", "bat"] {
+            let all: Vec<&Kinematics> = critters.iter().filter(|(c, _)| c.kind == kind).map(|(_, k)| k).collect();
+            let fine = all
+                .iter()
+                .filter(|k| match kind {
+                    "fish" => wet(k.body.pos),
+                    _ => !k.loco.grounded() && k.body.pos.y > floor + 2.0,
+                })
+                .count();
+            let heights: Vec<String> = all.iter().map(|k| format!("{:.0}", k.body.pos.y - floor)).collect();
+            info!("life: {kind}: {fine} of {} where they live (heights over the floor: {})", all.len(), heights.join(" "));
+        }
+        *state = 2;
     }
 }

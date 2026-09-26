@@ -252,6 +252,14 @@ impl LightGrid {
         }
     }
 
+    /// A glowing point at `at`: it lights its surroundings and hazes over
+    /// the dark, as a glowing cell does (a firefly).
+    pub fn seed_emit(&mut self, at: [f32; 2], color: Rgb) {
+        if let Some(i) = self.index_of(CellPos::from_world(at[0], at[1])) {
+            max_into(&mut self.emit[i], color);
+        }
+    }
+
     /// A cone of light from `from` toward `dir` (unit), `half_angle` radians
     /// either side, `range` cells: rays marched texel by texel, stopped by
     /// what they pass through, so it throws hard shadows.

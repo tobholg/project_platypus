@@ -1,0 +1,22 @@
+// A fish: swims about in lakes and pools and turns back at their edges;
+// darts away from you; stranded, it flops.
+(
+    name: "Fish",
+    size: (6, 3),
+    health: 6,
+    team: Neutral,
+    blood: "blood",
+    art: "fish",
+    movement: (
+        run_speed: 20,
+        jump_height: 5,
+        air_jumps: 0,
+        step_height: 0,
+        swim_speed: 45,
+        swim_accel: 200,
+    ),
+    brain: (
+        kind: "critter",
+        params: (flee_range: 30, calm_after: 2.0, swims: true, wander_every: 1.6, rest: 0.25, wander_speed: 0.5),
+    ),
+)

@@ -1,0 +1,41 @@
+// A bat: leathery wings beating, a red eye. It flits about caves.
+(
+    size: (15, 8),
+    feet: (7.5, 8),
+    outline: (18, 14, 16),
+    palette: {
+        'b': (62, 50, 58),   // body
+        'e': (80, 64, 74),   // ears
+        'k': (220, 60, 60),   // eye
+        'w': (98, 72, 86),   // wing, the skin
+        'W': (74, 56, 68),   // wing, the bones
+    },
+    frames: {
+        "up": [
+            "...............",
+            ".W....e.e....W.",
+            ".WW...bbb...WW.",
+            ".WWW.wbkbw.WWW.",
+            "..WWwwbbbwwWW..",
+            ".....bbbbb.....",
+            "......b.b......",
+            "...............",
+        ],
+        "down": [
+            "...............",
+            "......e.e......",
+            "......bbb......",
+            "....wwbkbww....",
+            "..WWWwbbbwWWW..",
+            ".WWW..bbb..WWW.",
+            ".W.....b.....W.",
+            "...............",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["up", "down"], fps: 12),
+        "run": (frames: ["up", "down"], fps: 12),
+        "jump": (frames: ["up", "down"], fps: 12),
+        "fall": (frames: ["up", "down"], fps: 12),
+    },
+)

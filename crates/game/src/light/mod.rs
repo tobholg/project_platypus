@@ -96,6 +96,23 @@ pub struct LightSource {
     pub flicker: f32,
 }
 
+/// A light that swells and fades (a firefly): `color` at its brightest,
+/// once every `period` s, out of step with the others (`phase`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Glow {
+    pub color: Rgb,
+    pub period: f32,
+    pub phase: f32,
+}
+
+fn glow(time: Res<Time>, mut q: Query<(&Glow, &mut LightSource)>) {
+    let t = time.elapsed_secs();
+    for (g, mut src) in &mut q {
+        let s = (0.5 + 0.5 * (t / g.period.max(0.1) * std::f32::consts::TAU + g.phase).sin()).powi(3);
+        src.color = g.color.map(|c| c * (0.08 + 0.92 * s));
+    }
+}
+
 /// A torch planted in the world (G).
 #[derive(Component)]
 pub struct PlantedTorch;
@@ -213,7 +230,7 @@ impl Plugin for LightPlugin {
             .init_resource::<LightMetrics>()
             .init_resource::<Pending>()
             .add_systems(Startup, (spawn_overlay, torch::load_art))
-            .add_systems(Update, (reload_settings, keys, collect_flashes, torch::hold.after(crate::actors::animation::animate), torch::burn))
+            .add_systems(Update, (reload_settings, keys, collect_flashes, glow, torch::hold.after(crate::actors::animation::animate), torch::burn))
             .add_systems(
                 PostUpdate,
                 (update_daylight, compute_light).chain().after(crate::camera::follow).before(TransformSystems::Propagate),
@@ -423,7 +440,7 @@ fn compute_light(
     mut assets: OverlayAssets,
     cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>,
     player: Query<&Kinematics, With<LocalPlayer>>,
-    sources: Query<(&GlobalTransform, &LightSource)>,
+    sources: Query<(&GlobalTransform, &LightSource, Has<Glow>)>,
     mut sprites: Query<(&mut Transform, &mut Visibility), Without<MainCamera>>,
 ) {
     let started = Instant::now();
@@ -530,8 +547,13 @@ fn compute_light(
             g.seed_point(p.pos, [0.4, 0.15, 0.03]);
         }
     }
-    for (i, (tf, src)) in sources.iter().enumerate() {
+    for (i, (tf, src, glowing)) in sources.iter().enumerate() {
         let p = tf.translation();
+        // Glowing creatures glow as glowing cells do: a haze over the dark.
+        if glowing {
+            g.seed_emit([p.x, p.y], src.color);
+            continue;
+        }
         // Fire: brighter and dimmer, and redder as it dims.
         let f = 1.0 - src.flicker * (1.0 - fire_flicker(time.elapsed_secs(), i as u64 + 7));
         g.seed_point([p.x, p.y], [src.color[0] * f, src.color[1] * f.powf(1.5), src.color[2] * f * f]);

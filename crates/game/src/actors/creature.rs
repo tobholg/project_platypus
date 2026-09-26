@@ -73,10 +73,22 @@ pub struct CreatureDef {
     /// Seconds nothing hurts it after a hit (the player's grace).
     #[serde(default)]
     pub after_hit: f32,
+    /// It gives off light (a firefly): its colour, how bright, and a pulse
+    /// (seconds a swell; 0: steady).
+    #[serde(default)]
+    pub light: Option<CreatureLight>,
     /// What it bleeds (a material; "" for nothing): it sprays when it's
     /// hurt and bursts out when it dies (`hurt.rs`).
     #[serde(default = "red_blood")]
     pub blood: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub struct CreatureLight {
+    pub color: (u8, u8, u8),
+    pub strength: f32,
+    #[serde(default)]
+    pub pulse: f32,
 }
 
 fn one_f() -> f32 {
@@ -296,6 +308,15 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             e.insert(crate::combat::Stamina::new(s));
         }
         e.insert(crate::combat::Sturdy::new(def.poise, def.heft, def.after_hit));
+        if let Some(l) = def.light {
+            let color = crate::light::rgb(l.color, l.strength);
+            e.insert(crate::light::LightSource { color, flicker: 0.0 });
+            if l.pulse > 0.0 {
+                // (Each its own moment in the cycle.)
+                let phase = (platypus_sim::rng::hash(&[feet.x.to_bits() as u64, feet.y.to_bits() as u64]) % 628) as f32 / 100.0;
+                e.insert(crate::light::Glow { color, period: l.pulse, phase });
+            }
+        }
         if let Some(m) = blood {
             e.insert(super::hurt::Bleeds(m));
         }
