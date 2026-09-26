@@ -53,6 +53,9 @@
 //!   (right button) from 3 s, then pushing straight down (5–6 s: the
 //!   recoil lifts the player); logs the orcs' distance, the player's height
 //!   and mana
+//! - `wellwater`  (flat world) a pool dug and filled beside the player; the
+//!   gravity wand lifts it and lets go, twice; logs all the water there is
+//!   (in cells, in flight, held) each half second: it should stay the same
 //! - `inventory`  opens the inventory screen (Esc) at 1 s, switches to the
 //!   second hotbar (X) at 1.5 s, hovers the spark wand at 2 s (its tooltip;
 //!   this moves the real mouse pointer), drags it to hotbar 3 at 2.6–3 s;
@@ -98,7 +101,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -1164,5 +1167,70 @@ fn force_script(
         state.1 = (t * 4.0).floor() / 4.0 + 0.25;
         let at: Vec<String> = orcs.iter().filter(|(o, _)| (o.body.pos.x - home.x).abs() < 250.0 && o.body.pos.x > home.x + 10.0).map(|(o, h)| format!("{:.0}@{:.0},{:.0}", h.hp, o.body.pos.x - home.x, o.body.pos.y - home.y)).collect();
         info!("force: t {t:.2} {} player {:+.0} hp {:.0} mana {:.0} orcs [{}] particles {}", if push { "push" } else if pull { "pull" } else { "-" }, k.body.pos.y - home.y, me.hp, mana.map_or(0.0, |m| m.cur), at.join(" "), sim.world.particles().len());
+    }
+}
+
+/// Lift a pool and drop it, counting the water (see the module notes).
+#[allow(clippy::too_many_arguments)]
+fn wellwater_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    wells: Query<&crate::magic::well::Well>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, f32, Option<Vec2>)>,
+) {
+    if s.name != "wellwater" {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    let t = s.elapsed;
+    keys.release(KeyCode::KeyX);
+    keys.release(KeyCode::Digit2);
+    keys.release(KeyCode::Digit4);
+    // PLATYPUS_STAFF=1: the gravity staff (hotbar 2, slot 4), four times.
+    let staff = std::env::var("PLATYPUS_STAFF").is_ok();
+    let home = *state.2.get_or_insert(k.body.pos);
+    let water = sim.materials().expect_id("water");
+    if state.0 == 0 && t > 0.5 {
+        let Some(ground) = find_ground(&sim.world, home.x as i32 + 60, home.y as i32 + 40, 100) else { return };
+        for x in (home.x as i32 + 40..home.x as i32 + 80).step_by(4) {
+            sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground - 6), radius: 6, max_hardness: 255 });
+        }
+        state.0 = 1;
+    }
+    if state.0 == 1 && t > 0.8 {
+        let Some(ground) = find_ground(&sim.world, home.x as i32 + 60, home.y as i32 + 40, 100) else { return };
+        for x in (home.x as i32 + 42..home.x as i32 + 78).step_by(3) {
+            sim.queue(WorldEdit::Paint { center: CellPos::new(x, ground - 3), radius: 4, material: water, overwrite: false });
+        }
+        keys.press(KeyCode::KeyX);
+        keys.press(if staff { KeyCode::Digit4 } else { KeyCode::Digit2 });
+        state.0 = 2;
+    }
+    let cycles = if staff { 4 } else { 2 };
+    let phase = t - 1.8;
+    let lift = phase > 0.0 && (phase as i32) < cycles * 2 && phase.rem_euclid(2.4) < 1.4 && phase < cycles as f32 * 2.4;
+    let high = lift && phase.rem_euclid(2.4) > 0.8;
+    let over = home + Vec2::new(60.0, if high { 40.0 } else { -2.0 });
+    cursor.0 = Some(over);
+    if lift { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    if t >= state.1 && state.0 == 2 {
+        state.1 = (t * 2.0).floor() / 2.0 + 0.5;
+        let cells: usize = sim.world.chunks().map(|c| c.cells().iter().filter(|c| c.material == water).count()).sum();
+        let flying = sim.world.particles().iter().filter(|p| p.cell.material == water).count();
+        let held: usize = wells.iter().map(|w| w.holding_of(water)).sum();
+        let others: Vec<String> = ["blood", "acid", "steam", "ice"]
+            .iter()
+            .filter_map(|n| {
+                let m = sim.materials().id(n)?;
+                let c: usize = sim.world.chunks().map(|c| c.cells().iter().filter(|c| c.material == m).count()).sum::<usize>() + sim.world.particles().iter().filter(|p| p.cell.material == m).count();
+                Some(format!("{n} {c}"))
+            })
+            .collect();
+        let stuff: usize = sim.world.chunks().map(|c| c.cells().iter().filter(|c| !c.is_air()).count()).sum::<usize>() + sim.world.particles().len() + wells.iter().map(|w| w.holding()).sum::<usize>();
+        info!("wellwater: t {t:.1} {} water: cells {cells} flying {flying} held {held} = {} | {} | everything {stuff}", if lift { "lift" } else { "-" }, cells + flying + held, others.join(" "));
     }
 }

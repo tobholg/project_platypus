@@ -235,7 +235,9 @@
         (a: "fire",  b: "water",  a_into: "steam",    b_into: "water", chance: 220),
         (a: "fire",  b: "ice",    a_into: "steam",    b_into: "water", chance: 40),
         (a: "fire",  b: "snow",   a_into: "steam",    b_into: "water", chance: 60),
-        (a: "water", b: "blood",  a_into: "water",    b_into: "water", chance: 2),
+        // Blood washes out in water: it dissolves (adding no water, so pools
+        // don't swell with every wound).
+        (a: "water", b: "blood",  a_into: "water",    b_into: "air",   chance: 2),
         // Water dilutes acid: slowly (a lone cell under water lasts ~2 s, a puddle
         // on a pool's floor half a minute), where they touch, till it's all water.
         (a: "acid",  b: "water",  a_into: "water",    b_into: "water", chance_4096: 4),

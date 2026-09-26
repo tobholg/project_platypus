@@ -141,6 +141,11 @@ impl Well {
         self.held.len()
     }
 
+    /// Cells of a material it's holding.
+    pub fn holding_of(&self, m: platypus_sim::MaterialId) -> usize {
+        self.held.iter().filter(|f| f.cell.material == m).count()
+    }
+
     /// Bodies it's carrying.
     pub fn carrying(&self) -> usize {
         self.bodies.len()

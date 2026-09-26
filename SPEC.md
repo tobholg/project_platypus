@@ -644,6 +644,9 @@ deaths (blood). Rendered as one dynamic mesh.
   displaced is thrown up from the surface above (a particle, so many of them
   spread instead of stacking); a splash started inside a liquid starts from
   its surface. Nothing is lost.
+- Blood washes out in water: where they touch it dissolves (adding no water,
+  so a pool doesn't swell with every wound; it once turned into water, and
+  a well grinding orcs over a pool made it overflow).
 - Water dilutes acid where they touch (`chance_4096: 4`: reactions can be
   given per 4096 for slow ones): a lone cell under water lasts ~2 s, a
   puddle on a pool's floor ~half a minute, till it's all water.
