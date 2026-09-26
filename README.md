@@ -33,7 +33,7 @@ islands with their positions, to point `--region` at.
 
 The toolchain is pinned in `rust-toolchain.toml`; rustup fetches it on first build.
 
-**Play:** A/D move · Space jump (hold for height, tap for a hop, again in the air
+**Play:** A/D move · in water, hold Space to swim toward W/A/S/D · Space jump (hold for height, tap for a hop, again in the air
 for a double jump, against a wall to wall-jump) · S (or ↓) drops through a wooden
 platform · Shift dash · + and − zoom (the keys that type them, on any layout; the
 keypad's too)

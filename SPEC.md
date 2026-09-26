@@ -206,8 +206,8 @@ checksums.
     in); a glowing crust over the rock at the open space.
   - Glows that live (rendering only, `MaterialDef`): `pulse` makes a glow
     breathe (each 16-cell patch on its own 3–6 s cycle, in the light grid);
-    `shimmer` makes it glimmer (4-cell patches each swelling from nearly dark
-    to full and back every 1–3 s, mostly dim: crystals, gems, mithril);
+    `shimmer` makes it glimmer (8-cell patches each slowly swelling from
+    dark to bright and back every 5–12 s: crystals, gems, mithril);
     `motes` sheds glowing spores that drift up (the fungi; at most 160 at
     once, on screen only).
   - Nothing floats. Chambers' ragged edges are measured around their
@@ -614,10 +614,17 @@ deaths (blood). Rendered as one dynamic mesh.
   - `Chilled`: slowed down to 40 % while touching the cold and 1.5 s after
     (`MovementStats::slowed`); hard frost puts a fire out.
   Creatures resist per kind in their RON (`resist: (heat, corrosion, fireproof)`).
-- Bodies in liquid: water is thick (strong drag, you sink at ≤45 cells/s) and
-  jump is a swim stroke. A body pushes liquid out of its box onto the surface
-  beside it (`WorldEdit::Displace`: the level rises around it), splashing it
-  out at speed.
+- Bodies in liquid: water is thick (strong drag) and you're nearly buoyant
+  (a tenth of gravity, sinking at ≤ 25 cells/s). Swimming: jump is a stroke
+  toward where you steer (W/S/A/D or the arrows; up if nowhere), one on the
+  press and another every 0.35 s while it's held (glide between: the
+  drag); held, you tread water (no sinking), so ~27 cells/s up or down and
+  level sideways. A body trades places with liquid the way sand does
+  (`WorldEdit::Displace`): what's in the cells it moves into goes to the
+  open cells it just left (at a surface; under water it's liquid all round
+  and nothing moves), splashing out at speed. (It used to push the water in
+  its box onto the surface beside it every tick: a body in water pumped up a
+  wall of it.)
 - Acid boils at 110 °C into acid fumes: corrosive (they eat what acid eats,
   weaker, used up doing it), condense into acid rain downwind, and flammable
   (a spark flashes the cloud into fire, with the odd small pop), which boils

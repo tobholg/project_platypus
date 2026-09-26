@@ -1370,17 +1370,25 @@ fn a_thunderstorm_throws_lightning() {
 }
 
 #[test]
-fn a_body_in_water_pushes_it_up_and_a_fast_one_splashes() {
+fn a_body_trades_places_with_water_and_a_fast_one_splashes() {
     let mut w = boxed_world(1, 1, 93);
     let water = w.materials().expect_id("water");
     fill(&mut w, "water", 1, 63, 1, 20);
     let before = count(&w, water);
-    // Standing in it: the water in its box moves up, none is lost.
+    let wet = |w: &World, x: i32, y: i32| w.get(CellPos::new(x, y)).unwrap().material == water;
+    // Still: nothing moves.
     w.apply_edit(&WorldEdit::Displace { min: CellPos::new(20, 5), max: CellPos::new(27, 14), vel: [0, 0] });
-    assert!((20..28).all(|x| (5..15).all(|y| w.get(CellPos::new(x, y)).unwrap().is_air())), "its box is clear");
-    assert_eq!(count(&w, water), before, "pushed up, not lost");
-    assert!(w.get(CellPos::new(30, 20)).unwrap().material == water, "the level rose beside it");
-    assert!(w.get(CellPos::new(23, 20)).unwrap().is_air(), "not stacked on top of it");
+    assert!((20..28).all(|x| wet(&w, x, 5)), "left alone");
+    // Sinking through the surface a cell a tick: the water it moves into goes
+    // where it just was (on top of it, like sand sinking), none is lost.
+    w.apply_edit(&WorldEdit::Displace { min: CellPos::new(20, 14), max: CellPos::new(27, 23), vel: [0, -16] });
+    assert!((20..28).all(|x| !wet(&w, x, 14)), "the row it moved into is clear");
+    assert!((20..28).all(|x| wet(&w, x, 24)), "the water is where it was");
+    assert_eq!(count(&w, water), before, "traded, not lost");
+    // Deep under water, it's liquid all round: nothing to trade, nothing moves.
+    let snapshot: Vec<bool> = (30..38).flat_map(|x| (2..12).map(move |y| (x, y))).map(|(x, y)| wet(&w, x, y)).collect();
+    w.apply_edit(&WorldEdit::Displace { min: CellPos::new(30, 2), max: CellPos::new(37, 11), vel: [16, 0] });
+    assert_eq!(snapshot, (30..38).flat_map(|x| (2..12).map(move |y| (x, y))).map(|(x, y)| wet(&w, x, y)).collect::<Vec<_>>(), "no wall of water pumped up");
     // Diving in fast: a splash flies.
     w.apply_edit(&WorldEdit::Displace { min: CellPos::new(40, 12), max: CellPos::new(47, 21), vel: [0, -110] });
     assert!(w.particles().len() > 10, "splash ({} drops)", w.particles().len());

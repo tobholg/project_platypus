@@ -20,6 +20,8 @@ pub struct Intent {
     pub dash: bool,
     /// Holding down: drop through platforms.
     pub down: bool,
+    /// -1..=1: up (+) or down (−), for swimming.
+    pub move_y: f32,
     /// World-space direction the creature is aiming (attacks, guns).
     pub aim: Vec2,
 }
@@ -59,9 +61,13 @@ pub struct MovementStats {
     pub swim_drag: f32,
     /// Fastest sinking speed when fully submerged (cells/s).
     pub swim_max_fall: f32,
-    /// Upward speed of one swim stroke (jump while submerged); every press
+    /// Speed of one swim stroke (jump while submerged), toward where it
+    /// steers (up if nowhere); held, another every `swim_stroke_every`
+    /// seconds. Every press
     /// is a stroke.
     pub swim_stroke: f32,
+    /// Seconds between strokes while jump is held in water.
+    pub swim_stroke_every: f32,
 }
 
 impl MovementStats {
@@ -102,10 +108,11 @@ impl Default for MovementStats {
             wall_slide_speed: 60.0,
             wall_jump_push: 120.0,
             step_height: 3,
-            swim_gravity: 0.25,
+            swim_gravity: 0.1,
             swim_drag: 0.0005,
-            swim_max_fall: 45.0,
-            swim_stroke: 130.0,
+            swim_max_fall: 25.0,
+            swim_stroke: 150.0,
+            swim_stroke_every: 0.35,
         }
     }
 }
@@ -146,6 +153,8 @@ pub struct Locomotion {
     stun: f32,
     prev_jump: bool,
     prev_dash: bool,
+    /// Seconds to the next swim stroke, while jump is held in water.
+    stroke_left: f32,
     /// Last tick's contacts, so brains and animation can read them.
     pub contacts: Contacts,
 }
@@ -167,6 +176,7 @@ impl Default for Locomotion {
             stun: 0.0,
             prev_jump: false,
             prev_dash: false,
+            stroke_left: 0.0,
             contacts: Contacts::default(),
         }
     }
@@ -222,7 +232,9 @@ impl Locomotion {
         }
 
         let wet = self.contacts.submerged;
-        let gravity_scale = 1.0 - wet * (1.0 - s.swim_gravity);
+        // Swimming (jump held in water) you tread water: no sinking.
+        let treading = intent.jump && wet > 0.3;
+        let gravity_scale = if treading { 1.0 - wet } else { 1.0 - wet * (1.0 - s.swim_gravity) };
 
         // Knocked back: physics only.
         if self.stun > 0.0 {
@@ -287,10 +299,16 @@ impl Locomotion {
             self.air_dash_used = false;
         }
 
-        // Swim: in water every press of jump is a stroke upward.
+        // Swim: in water jump is a stroke toward where it steers (up if
+        // nowhere): one on the press, then another every so often while
+        // it's held. Between strokes the water's drag slows you: a glide.
         let swimming = self.contacts.submerged > 0.3;
-        if swimming && jump_pressed {
-            body.vel.y = body.vel.y.max(0.0) * 0.3 + s.swim_stroke;
+        self.stroke_left -= dt;
+        if swimming && intent.jump && (jump_pressed || self.stroke_left <= 0.0) {
+            let steer = Vec2::new(intent.move_x, intent.move_y);
+            let dir = if steer.length_squared() > 0.01 { steer.normalize() } else { Vec2::Y };
+            body.vel = body.vel * 0.35 + dir * s.swim_stroke;
+            self.stroke_left = s.swim_stroke_every;
             self.buffer = 0.0;
             ev.jumped = true;
         }
@@ -335,9 +353,11 @@ impl Locomotion {
         body.vel.y = body.vel.y.max(-max_fall);
         if wet > 0.0 {
             body.vel *= s.swim_drag.powf(dt * wet);
-            // Sink slowly, not at falling speed.
-            let max_sink = max_fall + (s.swim_max_fall - max_fall) * wet;
-            body.vel.y = body.vel.y.max(-max_sink);
+            // Sink slowly, not at falling speed (unless swimming down).
+            if !treading {
+                let max_sink = max_fall + (s.swim_max_fall - max_fall) * wet;
+                body.vel.y = body.vel.y.max(-max_sink);
+            }
         }
         ev
     }
@@ -542,5 +562,38 @@ mod tests {
             tick(&g, &s, &mut l, &mut b, Intent { jump: k % 12 < 2, ..Default::default() });
         }
         assert!(b.pos.y > start + 10.0, "swam up from {start} to {}", b.pos.y);
+    }
+
+    fn deep_pool() -> Ascii {
+        let mut rows = vec!["#                                                                                                  #"; 10];
+        rows.extend(vec!["#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#"; 90]);
+        rows.push("####################################################################################################");
+        Ascii::new(&rows)
+    }
+
+    #[test]
+    fn holding_jump_in_water_strokes_toward_where_you_steer() {
+        let g = deep_pool();
+        let (s, _, _) = player();
+        let swim = |intent: Intent| {
+            let (_, mut l, mut b) = player();
+            b.pos = if intent.move_y < 0.0 { Vec2::new(50.0, 80.0) } else { Vec2::new(50.0, 45.0) };
+            // Settle in the water first.
+            for _ in 0..30 {
+                tick(&g, &s, &mut l, &mut b, Intent::default());
+            }
+            let start = b.pos;
+            // Held for 2 s, never let go.
+            for _ in 0..120 {
+                tick(&g, &s, &mut l, &mut b, intent);
+            }
+            b.pos - start
+        };
+        let up = swim(Intent { jump: true, ..Default::default() });
+        assert!(up.y > 25.0, "held jump, it keeps stroking up ({:?})", up);
+        let down = swim(Intent { jump: true, move_y: -1.0, ..Default::default() });
+        assert!(down.y < -35.0, "down + jump dives ({:?})", down);
+        let right = swim(Intent { jump: true, move_x: 1.0, ..Default::default() });
+        assert!(right.x > 25.0 && right.y.abs() < 6.0, "right + jump swims right, level ({:?})", right);
     }
 }

@@ -42,10 +42,10 @@ pub enum WorldEdit {
     /// Set flammable cells alight, without flames in the empty ones (a
     /// burning creature brushing past: its own flames would relight it).
     Scorch { center: CellPos, radius: i32 },
-    /// A body moving through liquid pushes it aside: liquid cells inside
-    /// `min..=max` move onto the surface beside it (the level rises around
-    /// it). At speed (`vel`, 1/16 cells per tick: integers, so edits
-    /// compare exactly and replay the same on every machine) some splash out.
+    /// A body moving through liquid (`min..=max`, moving by `vel`: 1/16
+    /// cells per tick, integers so edits compare exactly and replay the same
+    /// on every machine) trades places with it: the liquid it moves into goes
+    /// where it just was. Fast, some splashes out.
     Displace { min: CellPos, max: CellPos, vel: [i16; 2] },
     /// Add (or with a negative amount, remove) heat in °C to every non-air
     /// cell, less towards the rim. Melting, boiling and freezing follow.

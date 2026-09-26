@@ -73,13 +73,13 @@
             colors: [(84, 86, 96), (196, 202, 214), (100, 102, 112), (236, 240, 248), (80, 82, 92)]),
         (name: "gold_ore",    kind: Static, density: 3600, hardness: 85, crumbles_into: "gravel", above: (1300, "lava"),
             colors: [(78, 74, 76), (214, 170, 52), (92, 86, 84), (252, 214, 96), (74, 70, 72)]),
-        (name: "mithril_ore", kind: Static, density: 3000, hardness: 110, crumbles_into: "gravel", above: (1700, "lava"), glow: (6, 24, 28), shimmer: 170,
+        (name: "mithril_ore", kind: Static, density: 3000, hardness: 110, crumbles_into: "gravel", above: (1700, "lava"), glow: (6, 24, 28), shimmer: 220,
             colors: [(58, 60, 74), (80, 186, 200), (68, 70, 86), (150, 240, 244), (54, 56, 70)]),
-        (name: "amethyst",    kind: Static, density: 2650, hardness: 60, crumbles_into: "gravel", glow: (46, 18, 70), opacity: 40, shimmer: 230,
+        (name: "amethyst",    kind: Static, density: 2650, hardness: 60, crumbles_into: "gravel", glow: (46, 18, 70), opacity: 40, shimmer: 255,
             colors: [(96, 44, 146), (150, 86, 212), (196, 146, 246), (120, 60, 180)]),
-        (name: "emerald",     kind: Static, density: 2750, hardness: 80, crumbles_into: "gravel", glow: (4, 22, 10), opacity: 40, shimmer: 230,
+        (name: "emerald",     kind: Static, density: 2750, hardness: 80, crumbles_into: "gravel", glow: (4, 22, 10), opacity: 40, shimmer: 255,
             colors: [(20, 112, 58), (46, 178, 96), (132, 236, 166), (30, 140, 72)]),
-        (name: "ruby",        kind: Static, density: 4000, hardness: 100, crumbles_into: "gravel", glow: (44, 5, 10), opacity: 40, shimmer: 230,
+        (name: "ruby",        kind: Static, density: 4000, hardness: 100, crumbles_into: "gravel", glow: (44, 5, 10), opacity: 40, shimmer: 255,
             colors: [(132, 14, 32), (206, 42, 62), (255, 118, 128), (160, 22, 44)]),
         // A one-way platform: creatures stand on it, jump up through it, and
         // drop through it holding down. To everything else it's wood.
@@ -137,7 +137,7 @@
         (name: "glow_vine",   kind: Plant, hangs: true, density: 150, hardness: 1, flammability: 8, ignites_at: 360, burn_time: 20, opacity: 25, glow: (6, 34, 36), pulse: 120,
             colors: [(20, 60, 60), (30, 100, 96), (60, 170, 160), (150, 250, 230)]),
         // Crystal caves: crystals grow into the chambers and stud the walls.
-        (name: "crystal",     kind: Static, density: 2650, hardness: 70, crumbles_into: "gravel", glow: (26, 44, 60), opacity: 40, shimmer: 235,
+        (name: "crystal",     kind: Static, density: 2650, hardness: 70, crumbles_into: "gravel", glow: (18, 30, 42), opacity: 40, shimmer: 255,
             colors: [(140, 200, 240), (180, 230, 255), (225, 245, 255), (205, 185, 250)]),
         // Toxic grottos: a glowing crust over the rock (acid in the pools).
         (name: "toxic_crust", kind: Static, density: 2200, hardness: 30, crumbles_into: "gravel", glow: (6, 22, 3),

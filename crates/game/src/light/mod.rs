@@ -430,13 +430,13 @@ fn compute_light(
         let (phase, speed) = ((n % 1000) as f32 / 1000.0 * std::f32::consts::TAU, 1.0 + ((n >> 10) % 1000) as f32 / 1000.0 * 1.1);
         0.5 + 0.5 * (now * speed + phase).sin()
     };
-    // Glimmering glows: 4-cell patches each swelling from nearly dark to
-    // full and back, quickly (every 1–3 s), mostly dim with bright moments.
+    // Glimmering glows: 8-cell patches each slowly swelling from dark to
+    // bright and back (every 5–12 s), each out of step with the next.
     let glimmer = |x: i32, y: i32| {
-        let n = platypus_sim::rng::hash(&[0x61177, (x >> 2) as u64, (y >> 2) as u64]);
-        let (phase, speed) = ((n % 1000) as f32 / 1000.0 * std::f32::consts::TAU, 2.0 + ((n >> 10) % 1000) as f32 / 1000.0 * 4.0);
+        let n = platypus_sim::rng::hash(&[0x61177, (x >> 3) as u64, (y >> 3) as u64]);
+        let (phase, speed) = ((n % 1000) as f32 / 1000.0 * std::f32::consts::TAU, 0.5 + ((n >> 10) % 1000) as f32 / 1000.0 * 0.8);
         let s = 0.5 + 0.5 * (now * speed + phase).sin();
-        s * s * s
+        s * s
     };
     g.fill_from(world, &flicker, &breath, &glimmer);
 
