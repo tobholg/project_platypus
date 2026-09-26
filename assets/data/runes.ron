@@ -82,6 +82,12 @@
                    burst: (count: 30, life: (0.3, 0.7), colors: [(220, 240, 255), (80, 140, 255)], speed: 100, spread: 1.4, gravity: 160))),
 
         // ---- modifiers ----
+        // A spider's spit: the glob itself (it stings), and a few drops of
+        // acid where it lands (not a pool: it pits, it doesn't dig).
+        (id: "venom_glob", name: "Venom", mana: 2, color: (150, 220, 70), kind: Payload(Damage(9)),
+            look: (trail: (count: 0.8, life: (0.2, 0.45), colors: [(210, 255, 140), (120, 200, 50), (60, 110, 30)], speed: 5, gravity: 120, glow: true),
+                   burst: (count: 18, life: (0.25, 0.6), colors: [(220, 255, 150), (110, 200, 40), (50, 110, 20)], speed: 70, spread: 1.4, gravity: 160, drag: 1))),
+        (id: "acid_drops", name: "Acid drops", mana: 2, color: (120, 240, 60), kind: Payload(Matter(material: "acid", cells: 14))),
         (id: "gravity", name: "Heavy", mana: 0, kind: Modifier(Gravity(0.5))),
         (id: "trail_fire", name: "Fire trail", mana: 3, color: (255, 140, 40), kind: Modifier(Trail(material: "fire", burning: false)),
             look: (trail: (count: 1.6, life: (0.2, 0.55), colors: [(255, 250, 200), (255, 190, 60), (255, 100, 25), (120, 40, 25), (50, 40, 40)], speed: 14, gravity: -45, drag: 1.5, size: 1.2, glow: true))),

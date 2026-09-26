@@ -63,6 +63,10 @@ pub struct Coating {
     pub catches: bool,
     #[serde(default)]
     pub damage: f32,
+    /// It clings: only water (`wet`) washes it off; other fluids don't
+    /// replace it (venom, not washed away by the blood it draws).
+    #[serde(default)]
+    pub sticks: bool,
 }
 
 fn one() -> f32 {
@@ -167,6 +171,9 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
             .coat
             .and_then(|m| sim.materials().def(m).coats.clone())
             .or_else(|| sim.world.rained_on(CellPos::new((lo.x + hi.x) / 2, hi.y + 1)).then(|| "wet".to_string()));
+        // (A clinging coating stays, whatever else it touches but water.)
+        let clings = coated.as_ref().is_some_and(|c| coatings.by_name.get(&c.name).is_some_and(|k| k.sticks));
+        let touching = touching.filter(|n| !clings || n == "wet" || coated.as_ref().is_some_and(|c| &c.name == n));
         let coat_name = match (touching, coated) {
             (Some(name), Some(mut c)) => {
                 let secs = coatings.by_name.get(&name).map_or(0.0, |c| c.secs);

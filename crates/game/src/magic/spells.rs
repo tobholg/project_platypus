@@ -73,6 +73,9 @@ pub struct SpellDef {
     pub element: Option<Element>,
     #[serde(default)]
     pub about: Option<String>,
+    /// A creature's own (a spider's spit): never on a wand.
+    #[serde(default)]
+    pub beast: bool,
 }
 
 fn one() -> u8 {
@@ -126,7 +129,7 @@ pub fn empower(cast: &Cast, power: f32, harm: Harm) -> Arc<Cast> {
 /// and tier allow (a wand one, a staff two, different ones where it can).
 pub fn focus_spells(spells: &[SpellDef], tier: u8, element: Option<Element>, written: &[String], roll: &crate::hands::items::Roll) -> Vec<usize> {
     let fixed: Vec<usize> = written.iter().filter_map(|id| spells.iter().position(|s| &s.id == id)).collect();
-    let pool: Vec<usize> = (0..spells.len()).filter(|&i| spells[i].tier <= tier && (element.is_none() || spells[i].element == element)).collect();
+    let pool: Vec<usize> = (0..spells.len()).filter(|&i| !spells[i].beast && spells[i].tier <= tier && (element.is_none() || spells[i].element == element)).collect();
     if roll.seed == 0 || pool.is_empty() {
         return fixed;
     }

@@ -1,7 +1,9 @@
 // A cave spider: big, eight red eyes glowing in the dark, eight long legs
 // that reach out and grip the rock (actors/legs.rs). It runs at you over
-// floors, walls and ceilings, leaps at you when near, drops on you from
-// above; its bite knocks you back. Lives in nests (lairs.ron) and deep caves.
+// floors, walls and ceilings, drops on you from above. Up close it crouches
+// and lunges to bite (it throws you), or rises on its legs and curls its
+// stinger over its back to strike (venom); from further off it rears and
+// spits acid (actors/spider.rs). Lives in nests (lairs.ron) and deep caves.
 (
     name: "Cave spider",
     // What it may have on it when it dies (loot.ron), besides what it wears.
@@ -12,7 +14,8 @@
     blood: "ichor",
     art: "spider_body",
     legs: (count: 8, reach: 48, upper: 0.48, step: 0.1, lift: 8, hips: 4, spread: 7,
-           color: (24, 18, 22), joint: (74, 36, 40), thick: 3, body: "spider_body", eyes: (255, 52, 38)),
+           color: (24, 18, 22), joint: (74, 36, 40), thick: 3, body: "spider_body", eyes: (255, 52, 38),
+           stinger: "spider_stinger"),
     light: (color: (255, 40, 30), strength: 0.14, haze: true),
     movement: (
         run_speed: 82,
@@ -26,11 +29,14 @@
         dash_speed: 0,
     ),
     web_walker: true,
-    touch: (damage: 12, knock: 170, stun: 0.25, every: 0.7),
     poise: 14,
     heft: 1.5,
     brain: (
         kind: "crawler",
-        params: (aggro_range: 170, pounce_range: 34, pounce_every: 1.5, wander_speed: 0.4),
+        params: (aggro_range: 170, pounce_range: 34, pounce_every: 1.5, wander_speed: 0.4,
+            // (range, cells; windup, s; lunge, cells/s; damage; knock, cells/s; stun, s; every, s)
+            bite: (range: 24, windup: 0.3, lunge: 280, damage: 16, knock: 330, stun: 0.35, every: 1.5),
+            spit: (spell: "spider_spit", range: (16, 170), windup: 0.45, every: 3.5),
+            sting: (range: 28, rise: 0.5, hold: 0.35, damage: 30, knock: 220, stun: 0.4, venom: "venom", every: 5.0)),
     ),
 )

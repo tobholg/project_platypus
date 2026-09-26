@@ -1,0 +1,36 @@
+// A cave spider's stinger, seen from above, pointing right: the abdomen's
+// last segments curled up over its back, ridged and glossy, and the barb,
+// bright, a drop of venom at its point. Drawn over the body while it stings
+// (actors/legs.rs), turned to where it strikes; `grip` is where it joins
+// the abdomen.
+(
+    size: (26, 11),
+    feet: (13, 11),
+    outline: (14, 8, 12),
+    palette: {
+        'b': (58, 42, 52),    // segments
+        'B': (104, 80, 94),   // segments, ridged
+        'l': (150, 120, 136), // the gloss on them
+        's': (170, 40, 50),   // the barb
+        'S': (240, 90, 90),   // the barb, lit
+        'w': (255, 210, 210), // its point
+        'v': (200, 120, 255), // a drop of venom
+    },
+    frames: {
+        "sting": [
+            "..........................",
+            "...BBB.....BBB............",
+            "..BlllB...BlllB....ss.....",
+            ".BbbbbbB.BbbbbbB..sSSs....",
+            "BbbbbbbbBbbbbbbbBsSSSSs...",
+            "BbbbbbbbbbbbbbbbbsSSSSSSww",
+            "BbbbbbbbBbbbbbbbBsSSSSs..v",
+            ".BbbbbbB.BbbbbbB..sSSs....",
+            "..BbbbB...BbbbB....ss.....",
+            "...BBB.....BBB............",
+            "..........................",
+        ],
+    },
+    clips: { "idle": (frames: ["sting"], fps: 1) },
+    anchors: { "grip": { "sting": (1, 5) } },
+)

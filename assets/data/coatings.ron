@@ -11,9 +11,12 @@
 //              as hard (1 = normal)
 // catches:     catches fire from heat alone (anything above 60 °C), not just flames
 // damage:      damage per second while coated
+// sticks:      only water washes it off (other fluids don't replace it)
 {
     "wet":    (label: "Wet",    secs: 6,  color: (80, 150, 235), fireproof: true, heat_resist: 0.5),
     "oily":   (label: "Oily",   secs: 12, color: (120, 90, 40),  burn: 2.5, catches: true),
     "bloody": (label: "Bloody", secs: 5,  color: (170, 20, 30),  fireproof: true, heat_resist: 0.2),
     "acid":   (label: "Acid",   secs: 3,  color: (130, 235, 50), damage: 6),
+    // A spider's sting (and a fang's bite): it burns in; wash it off.
+    "venom":  (label: "Venom",  secs: 7,  color: (150, 60, 200), damage: 4, sticks: true),
 }

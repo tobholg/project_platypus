@@ -6,7 +6,7 @@
 // least focus it needs (1 a wand, 2 a staff) · element: Fire, Frost, Storm,
 // Acid, Force or Gravity (none: arcane): its element's power (and spell
 // power) make it stronger, and its hurt is of that element · about: a line
-// for tooltips. The order matters where a focus readies a spell: the
+// for tooltips · beast: a creature's own, never on a wand. The order matters where a focus readies a spell: the
 // strongest of its element it can cast, the first of those.
 (
     spells: [
@@ -30,5 +30,8 @@
             about: "A bigger well: lifts a crowd, tears out harder rock."),
         (id: "great_force", name: "Great force", runes: ["force_ii"], delay: 0.1, recharge: 0.2, tier: 2, element: Force,
             about: "Stronger force: wider, harder, tears out rock."),
+        // Creatures' own (`beast`: never on a wand).
+        (id: "spider_spit", name: "Spider spit", runes: ["gravity", "arrow", "venom_glob", "acid_drops"], delay: 0.1, recharge: 0.1, element: Acid, beast: true,
+            about: "A glob of acid, lobbed."),
     ],
 )

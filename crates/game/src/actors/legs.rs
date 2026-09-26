@@ -71,6 +71,20 @@ pub struct LegsDef {
     /// brightness however dark it is.
     #[serde(default)]
     pub eyes: Option<(u8, u8, u8)>,
+    /// A stinger (its sprite, from above, pointing right): shown curling
+    /// over the body while it stings (`Rear::curl`).
+    #[serde(default)]
+    pub stinger: Option<String>,
+}
+
+/// How a legged body is held (an attack: `spider.rs`): raised `lift` cells
+/// off what it holds, drawn `back` cells behind its heading (a crouch), its
+/// stinger curled `curl` of the way over its back and past its head.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Rear {
+    pub lift: f32,
+    pub back: f32,
+    pub curl: f32,
 }
 
 fn eight() -> usize {
@@ -114,6 +128,9 @@ pub struct Legs {
     heading: f32,
     body: Entity,
     eyes: Option<Entity>,
+    stinger: Option<Entity>,
+    /// Where the body is drawn from its middle (rearing, crouching).
+    offset: Vec2,
 }
 
 #[derive(Component)]
@@ -128,6 +145,9 @@ const Z_EYES: f32 = 16.2;
 
 #[derive(Component)]
 struct LegEyes;
+
+#[derive(Component)]
+struct LegStinger;
 
 impl Legs {
     /// Leg `i`'s preferred way, from the heading (radians): fanned front to
@@ -235,7 +255,21 @@ fn grow_legs(
         if let Some(eyes) = eyes {
             commands.entity(e).add_child(eyes);
         }
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, def };
+        let stinger = def.stinger.clone().and_then(|name| {
+            if !art.0.contains_key(&name) {
+                match crate::combat::turned_art(&name, None, &mut images, &mut layouts) {
+                    Ok(t) => {
+                        art.0.insert(name.clone(), t);
+                    }
+                    Err(err) => warn!("legs: stinger `{name}`: {err}"),
+                }
+            }
+            art.0.get(&name).map(|t| commands.spawn((LegStinger, t.sprite(0.0), Transform::from_xyz(0.0, 0.0, 0.05), Visibility::Hidden)).id())
+        });
+        if let Some(s) = stinger {
+            commands.entity(e).add_child(s);
+        }
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, def };
         let c = k.body.pos;
         for i in 0..legs.def.count {
             let hip = legs.hip(i, c);
@@ -251,13 +285,23 @@ fn grow_legs(
 fn walk(
     time: Res<Time>,
     sim: Res<SimWorld>,
-    mut q: Query<(&mut Legs, &Kinematics, &GlobalTransform, &Children)>,
-    mut sprites: Query<(&mut Sprite, &mut Visibility), (With<CreatureSprite>, Without<LegBody>)>,
-    mut bodies: Query<&mut Sprite, (Or<(With<LegBody>, With<LegEyes>)>, Without<CreatureSprite>)>,
+    mut q: Query<(&mut Legs, &Kinematics, &GlobalTransform, &Children, Option<&Rear>)>,
+    mut sprites: Query<(&mut Sprite, &mut Visibility), (With<CreatureSprite>, Without<LegBody>, Without<LegStinger>)>,
+    mut bodies: Query<(&mut Sprite, &mut Transform), (Or<(With<LegBody>, With<LegEyes>)>, Without<CreatureSprite>, Without<LegStinger>)>,
+    mut stingers: Query<(&mut Sprite, &mut Transform, &mut Visibility), (With<LegStinger>, Without<CreatureSprite>, Without<LegBody>, Without<LegEyes>)>,
 ) {
     let dt = time.delta_secs().min(0.05);
-    for (mut legs, k, tf, children) in &mut q {
-        let c = tf.translation().truncate();
+    for (mut legs, k, tf, children, rear) in &mut q {
+        let middle = tf.translation().truncate();
+        // Raised off what it holds, drawn back from its heading (an attack).
+        let rear = rear.copied().unwrap_or_default();
+        let up = {
+            let held: Vec<Vec2> = legs.feet.iter().filter(|f| f.grips).map(|f| f.at).collect();
+            if held.is_empty() { Vec2::Y } else { (middle - held.iter().sum::<Vec2>() / held.len() as f32).normalize_or(Vec2::Y) }
+        };
+        let fwd = Vec2::from_angle(legs.heading);
+        legs.offset = up * rear.lift - fwd * rear.back;
+        let c = middle + legs.offset;
         // Heading: where it goes (or, still, where it aims), turning steadily.
         let v = k.body.vel;
         let want = if v.length() > 6.0 { v.y.atan2(v.x) } else { legs.heading };
@@ -274,18 +318,34 @@ fn walk(
             }
         }
         let index = crate::combat::Turned::index(legs.heading.to_degrees());
-        if let Ok(mut s) = bodies.get_mut(legs.body) {
+        let offset = legs.offset;
+        if let Ok((mut s, mut t)) = bodies.get_mut(legs.body) {
             if let Some(atlas) = s.texture_atlas.as_mut() {
                 atlas.index = index;
             }
             if let Some(t) = tint {
                 s.color = t;
             }
+            t.translation = offset.extend(t.translation.z);
         }
-        if let Some(Ok(mut s)) = legs.eyes.map(|e| bodies.get_mut(e))
-            && let Some(atlas) = s.texture_atlas.as_mut()
-        {
-            atlas.index = index;
+        if let Some(Ok((mut s, mut t))) = legs.eyes.map(|e| bodies.get_mut(e)) {
+            if let Some(atlas) = s.texture_atlas.as_mut() {
+                atlas.index = index;
+            }
+            t.translation = offset.extend(t.translation.z);
+        }
+        // The stinger: from over the abdomen, up over the back, down past
+        // the head, turning from pointing back to pointing where it strikes.
+        if let Some(Ok((mut s, mut t, mut vis))) = legs.stinger.map(|e| stingers.get_mut(e)) {
+            let curl = rear.curl.clamp(0.0, 1.0);
+            *vis = if curl > 0.05 { Visibility::Inherited } else { Visibility::Hidden };
+            let along = -14.0 + 32.0 * curl;
+            let at = offset + fwd * along + up * (std::f32::consts::PI * curl).sin() * 16.0;
+            let angle = legs.heading + std::f32::consts::PI * (1.0 - curl);
+            if let Some(atlas) = s.texture_atlas.as_mut() {
+                atlas.index = crate::combat::Turned::index(angle.to_degrees());
+            }
+            t.translation = at.extend(t.translation.z);
         }
         // Steps.
         let (reach, n) = (legs.def.reach, legs.feet.len());
@@ -425,7 +485,8 @@ fn draw(
     let mut quads: Vec<(IVec2, [u8; 4])> = Vec::new();
     let mut line = Vec::new();
     for (legs, tf) in &q {
-        let c = tf.translation().truncate();
+        // (The body where it's drawn: rearing lifts the hips.)
+        let c = tf.translation().truncate() + legs.offset;
         let rgb = |(r, g, b): (u8, u8, u8)| [r, g, b, 255];
         let (leg, joint) = (rgb(legs.def.color), rgb(legs.def.joint.unwrap_or(legs.def.color)));
         let (a, b) = (legs.def.reach * legs.def.upper, legs.def.reach * (1.0 - legs.def.upper));

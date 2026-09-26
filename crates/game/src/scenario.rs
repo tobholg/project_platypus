@@ -158,6 +158,9 @@
 //!   jump from 1 s: logs how high it gets, the fuel, what the exhaust does
 //!   to the orc and the floor (fire, burning planks), and that landing
 //!   refills it
+//! - `spider`     (`PLATYPUS_WORLD=arena`) a cave spider put 120 cells from the
+//!   player (standing still, healed each second): logs each attack it
+//!   starts (spit, bite, sting), each hit the player takes, and venom
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end
@@ -212,6 +215,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(PreUpdate, rocket_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(Update, spider_script)
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -2990,5 +2994,57 @@ fn rocket_script(
         (true, false) => keys.press(KeyCode::Space),
         (false, true) => keys.release(KeyCode::Space),
         _ => {}
+    }
+}
+
+/// A spider's attacks against a player standing still.
+#[allow(clippy::too_many_arguments)]
+fn spider_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(Entity, &mut Kinematics, &mut crate::actors::Health, Option<&crate::actors::elements::Coated>), With<LocalPlayer>>,
+    spiders: Query<(&Kinematics, &crate::actors::spider::Assault), Without<LocalPlayer>>,
+    mut hits: MessageReader<crate::combat::Hit>,
+    mut state: Local<(u8, f32, Option<&'static str>)>,
+) {
+    if s.name != "spider" {
+        return;
+    }
+    let Ok((me, mut k, mut h, coat)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    // On open floor, the spider 120 cells off.
+    if state.0 == 0 && t > 0.5 {
+        let floor = platypus_worldgen::arena::FLOOR as f32;
+        k.body.pos = Vec2::new(560.0, floor + 8.0);
+        k.prev_pos = k.body.pos;
+        crate::actors::creature::spawn_creature(&mut commands, "spider", Vec2::new(680.0, floor), |_| {});
+        state.0 = 1;
+    }
+    for hit in hits.read() {
+        if hit.target == me {
+            info!("spider: t {t:.2} the player took {:.0} (knocked {:.0} cells/s)", hit.damage, hit.knock.length());
+        }
+    }
+    for (sk, a) in &spiders {
+        let now = a.doing().map(|d| d.0);
+        if now != state.2 {
+            if let Some(what) = now {
+                info!("spider: t {t:.2} {what} from {:.0} cells", sk.body.pos.distance(k.body.pos));
+            }
+            state.2 = now;
+        }
+    }
+    if t > state.1 + 1.0 {
+        state.1 = t;
+        for (sk, a) in &spiders {
+            info!("spider: t {t:.1} at {:.0} cells, vel ({:.0},{:.0}), grounded {} clinging {:?}, doing {:?}", sk.body.pos.distance(k.body.pos), sk.body.vel.x, sk.body.vel.y, sk.loco.grounded(), sk.loco.clinging(), a.doing());
+        }
+        if coat.is_some_and(|c| c.name == "venom") {
+            info!("spider: t {t:.1} the player is envenomed");
+        }
+        if h.hp < h.max {
+            info!("spider: t {t:.1} the player lost {:.0} hp this second", h.max - h.hp);
+        }
+        h.hp = h.max;
     }
 }

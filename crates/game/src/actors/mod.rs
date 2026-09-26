@@ -19,6 +19,7 @@ pub mod legs;
 pub mod monsters;
 pub mod player;
 pub mod spawn;
+pub mod spider;
 
 use bevy::prelude::*;
 use platypus_physics::{Body, Grid, Intent, Locomotion, MovementStats, Occupancy, move_and_collide};

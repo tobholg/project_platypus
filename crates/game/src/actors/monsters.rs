@@ -30,7 +30,7 @@ impl Plugin for MonstersPlugin {
             .register_brain::<Hopper>("hopper")
             .register_brain::<Swooper>("swooper")
             .register_brain::<Hatchery>("hatchery")
-            .add_systems(FixedUpdate, (crawler, hopper, swooper, hatchery).in_set(TickSet::Intent));
+            .add_systems(FixedUpdate, ((crawler, super::spider::attack).chain(), hopper, swooper, hatchery).in_set(TickSet::Intent));
     }
 }
 
@@ -78,11 +78,18 @@ pub struct Crawler {
     pub pounce_range: f32,
     pub pounce_every: f32,
     pub wander_speed: f32,
+    /// A big spider's attacks (`spider.rs`); none: it hurts by touch only.
+    #[serde(deserialize_with = "crate::data::some")]
+    pub bite: Option<super::spider::Bite>,
+    #[serde(deserialize_with = "crate::data::some")]
+    pub spit: Option<super::spider::Spit>,
+    #[serde(deserialize_with = "crate::data::some")]
+    pub sting: Option<super::spider::Sting>,
 }
 
 impl Default for Crawler {
     fn default() -> Self {
-        Crawler { aggro_range: 160.0, pounce_range: 30.0, pounce_every: 1.6, wander_speed: 0.4 }
+        Crawler { aggro_range: 160.0, pounce_range: 30.0, pounce_every: 1.6, wander_speed: 0.4, bite: None, spit: None, sting: None }
     }
 }
 
