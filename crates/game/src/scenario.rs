@@ -132,6 +132,9 @@
 //!   put beside the player (brain off) and struck dead at 1 s; logs its
 //!   body and what's in it; the body right-clicked at 2 s (logs what
 //!   opened)
+//! - `fang`       (`PLATYPUS_WORLD=arena`) the Broodmother's Fang in hand
+//!   (hotbar slot 1) against an orc put beside the player (brain off) from
+//!   1 s; logs its health and whether it's envenomed (coated in acid)
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end
@@ -181,6 +184,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, held_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, gear_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, loot_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, fang_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -2551,5 +2555,52 @@ fn loot_script(
             *state = 5;
         }
         _ => {}
+    }
+}
+
+type Foe = (With<crate::actors::Creature>, Without<LocalPlayer>, Without<crate::actors::dummy::Dummy>);
+
+/// The Broodmother's Fang at an orc.
+#[allow(clippy::too_many_arguments)]
+fn fang_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut player: Query<(&Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    foes: Query<(&Kinematics, &crate::actors::Health, Option<&crate::actors::elements::Coated>), Foe>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "fang" {
+        return;
+    }
+    let (Some(items), Ok((k, mut inv))) = (items, player.single_mut()) else { return };
+    let t = s.elapsed;
+    if state.0 == 0 && t > 0.3 {
+        inv.slots[0] = items.id("broodmother_fang").map(|f| crate::hands::items::Stack { roll: crate::hands::items::Roll { rarity: 4, level: 1, seed: 1 }, ..crate::hands::items::Stack::new(f, 1) });
+        let floor = platypus_worldgen::arena::FLOOR as f32;
+        crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(k.body.pos.x + 12.0, floor), |e| {
+            e.remove::<crate::actors::ai::MeleeWalker>();
+        });
+        state.0 = 1;
+    }
+    let orc = foes.iter().next();
+    if let Some((ok, ..)) = orc {
+        cursor.0 = Some(ok.body.pos);
+    }
+    let swing = (1.0..2.5).contains(&t);
+    match (swing, mouse.pressed(MouseButton::Left)) {
+        (true, false) => mouse.press(MouseButton::Left),
+        (false, true) => mouse.release(MouseButton::Left),
+        _ => {}
+    }
+    if t > state.1 + 0.5 && t > 1.0 && state.0 < 5 {
+        state.1 = t;
+        state.0 += 1;
+        match orc {
+            Some((_, h, coat)) => info!("fang: t {t:.1} the orc has {:.0} hp, coated {:?}", h.hp, coat.map(|c| c.name.as_str())),
+            None => info!("fang: t {t:.1} the orc is dead"),
+        }
     }
 }

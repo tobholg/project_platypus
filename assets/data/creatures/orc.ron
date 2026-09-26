@@ -5,6 +5,8 @@
     name: "Orc",
     // What it may have on it when it dies (loot.ron), besides what it wears.
     loot: "orc",
+    // What it may wear (and the chance of each), found as gear is where it stands.
+    wears: [("leather_cap", 0.5), ("leather_jerkin", 0.4), ("leather_trousers", 0.3), ("leather_boots", 0.4), ("iron_helm", 0.1)],
     size: (7, 16),
     health: 70,
     team: Enemy,

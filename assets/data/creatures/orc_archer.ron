@@ -5,6 +5,7 @@
     name: "Orc archer",
     // What it may have on it when it dies (loot.ron), besides what it wears.
     loot: "orc_archer",
+    wears: [("leather_cap", 0.6), ("leather_gloves", 0.5), ("leather_boots", 0.4), ("leather_jerkin", 0.2)],
     size: (7, 16),
     health: 50,
     team: Enemy,

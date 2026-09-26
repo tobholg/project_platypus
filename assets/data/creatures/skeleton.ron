@@ -4,6 +4,8 @@
     name: "Skeleton",
     // What it may have on it when it dies (loot.ron), besides what it wears.
     loot: "skeleton",
+    // The armour it died in, rusted on.
+    wears: [("iron_helm", 0.3), ("chainmail", 0.25), ("iron_greaves", 0.2), ("cloth_hood", 0.15)],
     size: (6, 15),
     health: 55,
     team: Enemy,

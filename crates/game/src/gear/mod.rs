@@ -91,6 +91,10 @@ pub struct GearDef {
     /// are all it has).
     #[serde(default)]
     pub unique: bool,
+    /// A weapon's: a coating (`coatings.ron`) it leaves on what it hits
+    /// (the Broodmother's Fang: venom, "acid").
+    #[serde(default)]
+    pub on_hit: Option<String>,
 }
 
 /// gear.ron: what armour's weight costs, the rarities and the bonuses
@@ -205,7 +209,7 @@ impl Plugin for GearPlugin {
         let file = load();
         app.insert_resource(GearRules { weights: file.weights, rarities: file.rarities, bonuses: file.bonuses })
             .init_resource::<look::Wardrobe>()
-            .add_systems(Update, (apply, look::dress).after(crate::actors::creature::hot_reload_creatures));
+            .add_systems(Update, (outfit, apply, look::dress).chain().after(crate::actors::creature::hot_reload_creatures));
     }
 }
 
@@ -270,5 +274,51 @@ fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures: Res<Creatu
             mp.regen = base.regen * total.mult(Stat::ManaRegen);
         }
         *stats = total;
+    }
+}
+
+type NewCreature = (Added<Creature>, Without<crate::actors::player::LocalPlayer>);
+
+/// A creature just come into the world is armed and dressed: the item of the
+/// weapon it holds (if there is one: it's held gear, and on its body when it
+/// dies), and whatever of its `wears` its chances give it, each rolled as
+/// found where it stands.
+fn outfit(
+    items: Option<Res<Items>>,
+    rules: Res<GearRules>,
+    creatures: Res<Creatures>,
+    chests: Res<crate::hands::chests::Chests>,
+    sim: Res<crate::world::SimWorld>,
+    mut q: Query<(Entity, &Creature, &mut Equipment, &crate::actors::Kinematics), NewCreature>,
+) {
+    use crate::hands::items::{ItemId, Use};
+    let Some(items) = items else { return };
+    for (e, c, mut eq, k) in &mut q {
+        let Some(def) = creatures.get(&c.kind) else { continue };
+        let level = chests.level_at(&sim.world, k.body.pos);
+        let mut rng = platypus_sim::rng::Rng::seeded(&[sim.world.seed(), sim.world.tick(), e.to_bits(), 0x0F17]);
+        let roll = |item: ItemId, rng: &mut platypus_sim::rng::Rng| Stack { roll: roll::roll(&rules.rarities, items.def(item), level, 0.0, rng), ..Stack::new(item, 1) };
+        if eq.held.is_none()
+            && let Some(w) = &def.weapon
+            && let Some(item) = (0..items.len()).map(|i| ItemId(i as u16)).find(|&i| {
+                let d = items.def(i);
+                matches!(&d.use_, Use::Melee(id) | Use::Bow(id) if id == w) && d.gear.as_ref().is_some_and(|g| !g.unique)
+            })
+        {
+            eq.held = Some(roll(item, &mut rng));
+        }
+        for (id, chance) in &def.wears {
+            let Some(item) = items.id(id) else {
+                warn!("{}: wears no such item `{id}`", c.kind);
+                continue;
+            };
+            if (rng.next_u32() as f32 / u32::MAX as f32) >= *chance {
+                continue;
+            }
+            let stack = roll(item, &mut rng);
+            if let Some(i) = (0..WORN.len()).find(|&i| eq.worn[i].is_none() && Equipment::fits(&items, i, &stack)) {
+                eq.worn[i] = Some(stack);
+            }
+        }
     }
 }

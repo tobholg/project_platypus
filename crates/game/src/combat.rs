@@ -753,7 +753,7 @@ pub fn guard(mut commands: Commands, mut q: Query<(Entity, &mut Invulnerable, &m
     }
 }
 
-type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>);
+type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>);
 type Target<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a Animator>, Has<Invulnerable>);
 
 /// Swings move on a tick; while they sweep, they hit.
@@ -767,11 +767,15 @@ fn swing(
     mut recoil: MessageWriter<Recoil>,
     mut swingers: Query<Swinger>,
     targets: Query<Target, With<Health>>,
+    items: Option<Res<crate::hands::items::Items>>,
+    coatings: Res<crate::actors::elements::Coatings>,
 ) {
     let Some(weapons) = weapons else { return };
     let none = crate::gear::Stats::default();
-    for (me, mut s, k, hand, team, mut stamina, stats) in &mut swingers {
+    for (me, mut s, k, hand, team, mut stamina, stats, eq) in &mut swingers {
         let stats = stats.unwrap_or(&none);
+        // What the weapon leaves on what it hits (venom).
+        let coat = eq.and_then(|eq| eq.held).and_then(|h| items.as_ref()?.def(h.item).gear.as_ref()?.on_hit.as_ref()).and_then(|n| coatings.by_name.get(n).map(|c| (n.clone(), c.secs)));
         let def = weapons.def(s.weapon).clone();
         let Some(mv) = def.moves.get(s.mv).cloned() else {
             commands.entity(me).remove::<Swing>();
@@ -875,6 +879,9 @@ fn swing(
                 let (damage, knock, crit) = stats.strike(def.damage * mv.damage, def.knock * mv.knock, roll);
                 let push = (Vec2::new(away.x, 0.0).normalize_or(Vec2::X * facing) + Vec2::new(0.0, 0.45)).normalize() * knock;
                 hits.write(Hit { target: e, damage, knock: push, stun: def.stun, at, dir: dir(a), weight: damage / 12.0, crit });
+                if let Some((name, secs)) = &coat {
+                    commands.entity(e).insert(crate::actors::elements::Coated { name: name.clone(), left: *secs, total: *secs });
+                }
                 if s.pogo {
                     recoil.write(Recoil { who: me, add: Vec2::ZERO, pogo: Some(weapons.file.pogo) });
                 }

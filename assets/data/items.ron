@@ -21,7 +21,8 @@
 //     cursor; hold it to swing through the combo. Its icon is its sprite.
 //   Chest: place one (furniture, 12 × 10 cells, on the ground); right-click a chest to open it
 // gear: (slot: Held, stats: {..}): counts toward its holder's stats while
-//   in the hand, and can be found rarer (gear.ron has the rest of the gear)
+//   in the hand, and can be found rarer (gear.ron has the rest of the gear);
+//   on_hit: a coating (coatings.ron) left on what it hits: "acid" is venom
 (
     items: [
         (id: "copper_pickaxe", name: "Copper pickaxe", color: (205, 127, 50), use: Mine(back: false, power: 35, tier: 70, speed: 6.0, reach: 6.0)),
@@ -64,6 +65,20 @@
             about: "Quick: slash, backslash, thrust. Strike down in the air to bounce off what you hit."),
         (id: "longsword",      name: "Longsword",      color: (180, 188, 204), use: Melee("longsword"), gear: (slot: Held),
             about: "Slow and heavy: cleave, sweep, drive. Strike down in the air to bounce off what you hit."),
+        // What enemies fight with (found on their bodies).
+        (id: "cleaver",        name: "Cleaver",        color: (170, 170, 176), use: Melee("cleaver"), gear: (slot: Held),
+            about: "An orc's: heavy hacks with a windup to read."),
+        (id: "rusty_sword",    name: "Rusty sword",    color: (140, 110, 90), use: Melee("rusty_sword"), gear: (slot: Held, stats: { Damage: -10 }),
+            about: "A skeleton's, pitted with rust."),
+        (id: "club",           name: "Club",           color: (120, 90, 60), use: Melee("club"), gear: (slot: Held),
+            about: "A troll's: slow, and it sends things flying."),
+        // Uniques: legendary, and the same every time.
+        (id: "trolls_club",    name: "The Troll's Club", color: (150, 110, 70), use: Melee("club"),
+            gear: (slot: Held, unique: true, stats: { Damage: 25, Knockback: 80, Poise: 15, AttackSpeed: 10 }),
+            about: "Knotted, bloodied, older than the troll that swung it. What it hits flies."),
+        (id: "broodmother_fang", name: "The Broodmother's Fang", color: (60, 50, 70), use: Melee("fang"),
+            gear: (slot: Held, unique: true, stats: { Crit: 15, CritDamage: 40, AttackSpeed: 25 }, on_hit: "acid"),
+            about: "Torn from the mother of a nest. Its venom still burns what it cuts."),
         (id: "bow",            name: "Bow",            color: (150, 104, 58), use: Bow("bow"), gear: (slot: Held),
             about: "Hold to draw, let go to loose an arrow: the longer drawn, the harder and further. Arrows stick where they land; walk near to pick them up. Loose one through fire and it burns."),
         (id: "arrow",          name: "Arrow",          stack: 99, color: (176, 136, 84)),

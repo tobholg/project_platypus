@@ -81,6 +81,8 @@
             (item: "storm_ring", weight: 2, count: (1, 1)),
             (item: "lucky_coin", weight: 2, count: (1, 1)),
             (item: "longsword", weight: 3, count: (1, 1)),
+            (item: "broodmother_fang", weight: 1, count: (1, 1)),
+            (item: "trolls_club", weight: 1, count: (1, 1)),
         ]),
 
         // ---- creatures' (their bodies) ----
@@ -113,6 +115,7 @@
             (item: "iron_greaves", weight: 4, count: (1, 1)),
             (item: "iron_boots", weight: 4, count: (1, 1)),
             (item: "ring_of_vigour", weight: 3, count: (1, 1)),
+            (item: "trolls_club", weight: 2, count: (1, 1)),
         ]),
         (name: "skeleton", rolls: (1, 2), entries: [
             (item: "nothing", weight: 25, count: (1, 1)),
@@ -128,6 +131,7 @@
             (item: "nothing", weight: 16, count: (1, 1)),
             (item: "silk_gloves", weight: 4, count: (1, 1)),
             (item: "feather_boots", weight: 1, count: (1, 1)),
+            (item: "broodmother_fang", weight: 1, count: (1, 1)),
         ]),
         (name: "vampire_bat", rolls: (0, 1), entries: [
             (item: "nothing", weight: 20, count: (1, 1)),

@@ -87,6 +87,10 @@ pub struct CreatureDef {
     /// a cocoon's victim's things.
     #[serde(default)]
     pub drops: Vec<(String, u32)>,
+    /// What it may wear (gear ids, and the chance of each): rolled when it
+    /// comes into the world, as gear found where it stands.
+    #[serde(default)]
+    pub wears: Vec<(String, f32)>,
     /// Its loot table (`loot.ron`): rolled into its body when it dies.
     #[serde(default)]
     pub loot: Option<String>,

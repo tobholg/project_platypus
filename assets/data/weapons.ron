@@ -60,6 +60,16 @@
                 (name: "backhack", from: -70, to: 95, windup: 0.18, active: 0.1, recovery: 0.3, stamina: 12, lunge: 30),
             ],
         ),
+        // A dagger: quick stabs, little reach.
+        (
+            id: "fang", art: "fang",
+            damage: 8, knock: 70, stun: 0.12, rest: -30,
+            moves: [
+                (name: "stab", from: 10, to: -10, thrust: 4, windup: 0.03, active: 0.06, recovery: 0.06, stamina: 5, lunge: 70),
+                (name: "slash", from: 80, to: -60, windup: 0.03, active: 0.07, recovery: 0.06, stamina: 5, lunge: 40),
+                (name: "stab", from: -5, to: 5, thrust: 5, windup: 0.04, active: 0.06, recovery: 0.1, stamina: 7, lunge: 110, damage: 1.5),
+            ],
+        ),
         (
             id: "club", art: "club",
             damage: 30, knock: 300, stun: 0.5, rest: -60,
