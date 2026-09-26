@@ -370,18 +370,15 @@ a stat is naming it once (`gear/stats.rs`) and reading it where it acts.
   they drop.
 - **Gear that moves you:** boots with a trick (rocket boots: hold jump in the
   air to thrust up, their exhaust real fire; cloud boots: air jumps), and a
-  **grappling hook** in its own slot, used with E whatever is in the hand. It
-  is Worms' ninja rope more than Terraria's hook: thrown at the cursor, it
-  takes hold of what it meets (a solid cell or a platform, a chest or a
-  body, a creature). From something that stays put you swing (A/D pumps the
-  swing and never brakes it; W climbs, S lets rope out, holding E reels in;
-  jump lets go with your speed kept); the rope wraps round corners and
-  unwraps swinging back; the cell it holds holds only while it's solid (dig
-  it, blast it, and the rope comes loose). Something smaller than you (a
-  chest, a body, a small creature) is leashed instead, and reeling pulls it
-  to you. The rope is a constraint on the body (`physics::tether`), drawn a
-  cell at a time; a hook's reach, reel, speed, bite and look are data
-  (`hook` in gear.ron).
+  **grappling hook** in its own slot, used with E whatever is in the hand:
+  Terraria's (changed 2026-09-26 from a Worms-style swinging rope). Thrown at
+  the cursor, it takes hold of what it meets (a solid cell or a platform, a
+  chest or a body, a creature) and pulls you straight in to hang there; jump
+  lets go with a full jump, E again hooks somewhere else. The cell it holds
+  holds only while it's solid (dig it, blast it, and it comes loose), and
+  anything coming between you frees it. Something smaller than you (a chest,
+  a body, a small creature) is pulled to you instead. A hook's reach, pull
+  speed, throw speed, bite and look are data (`hook` in gear.ron).
 - Not now: durability and repair, coins and merchants.
 
 Build order (a commit each): stats + equipment → skins → rarity and bonuses

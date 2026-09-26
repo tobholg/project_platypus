@@ -133,11 +133,28 @@ fn fly(
     cam.translation += (dir * speed * time.delta_secs()).extend(0.0);
 }
 
+/// The target moved further than this in a frame (cells): it went through
+/// a portal or blinked, and the camera glides after it...
+const TELEPORT: f32 = 40.0;
+/// ... over this long (seconds), easing in and out.
+const GLIDE: f32 = 0.3;
+
+/// Where the camera last saw its target, and a glide under way (where it
+/// started, how far in).
+#[derive(Default)]
+pub struct Glide {
+    last: Option<Vec2>,
+    from: Option<(Vec2, f32)>,
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn follow(
+    time: Res<Time>,
     zoom: Res<Zoom>,
     free: Res<FreeCamera>,
     shake: Res<crate::fx::ShakeOffset>,
     mut shaken: Local<Vec2>,
+    mut glide: Local<Glide>,
     target: Query<&GlobalTransform, (With<CameraTarget>, Without<MainCamera>)>,
     mut cam: Single<&mut Transform, With<MainCamera>>,
 ) {
@@ -145,8 +162,23 @@ pub fn follow(
     cam.translation -= shaken.extend(0.0);
     if let Some(t) = target.iter().next().filter(|_| !free.0) {
         let p = t.translation().truncate();
-        cam.translation.x = p.x;
-        cam.translation.y = p.y;
+        // A jump across the world (a blink, a portal): glide there rather
+        // than cut.
+        if glide.last.is_some_and(|l| l.distance(p) > TELEPORT) {
+            glide.from = Some((cam.translation.truncate(), 0.0));
+        }
+        glide.last = Some(p);
+        let at = match glide.from {
+            Some((from, done)) => {
+                let done = done + time.delta_secs();
+                let k = (done / GLIDE).clamp(0.0, 1.0);
+                glide.from = (k < 1.0).then_some((from, done));
+                from.lerp(p, k * k * (3.0 - 2.0 * k))
+            }
+            None => p,
+        };
+        cam.translation.x = at.x;
+        cam.translation.y = at.y;
     }
     // Snap to whole screen pixels so cells never shimmer; the shake too.
     let ppc = zoom.0 as f32;

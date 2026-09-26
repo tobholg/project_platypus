@@ -292,12 +292,11 @@ pub(crate) fn move_creatures(
         } else {
             &stats.0
         };
-        // Hanging from a grappling hook's rope: it swings (`gear::hook`).
-        let tether = rope.and_then(|r| r.tether());
-        k.loco.swinging = tether.is_some();
         let ev = k.loco.steer(stats, &controls.0, &mut k.body, DT);
-        if let Some((at, len)) = tether {
-            platypus_physics::tether(&mut k.body, at, len, DT);
+        // A grappling hook pulling it in, or holding it there (`gear::hook`).
+        let pull = rope.and_then(|r| r.pull());
+        if let Some(p) = pull {
+            k.body.vel = p.vel(k.body.pos, DT);
         }
         if ev.dashed {
             dashed.write(crate::combat::Dashed(entity));
@@ -310,8 +309,8 @@ pub(crate) fn move_creatures(
         }
         // A jump off air or a wall starts the fall over (a double jump just
         // before landing saves you, as in Terraria).
-        // (So does hanging from a rope.)
-        let rejumped = ev.air_jumped || ev.wall_jumped || tether.is_some();
+        // (So does hanging from a hook.)
+        let rejumped = ev.air_jumped || ev.wall_jumped || pull.is_some();
         let before = k.body.vel;
         let contacts = move_and_collide(&grid, &mut k.body, DT);
         // Slammed into a wall or a ceiling (flung by a spell, a blast): an

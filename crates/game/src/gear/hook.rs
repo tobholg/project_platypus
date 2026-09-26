@@ -1,22 +1,20 @@
-//! Grappling hooks (DESIGN §7c): a rope from the belt (the Hook slot),
-//! whatever is in the hand. Worms' ninja rope more than Terraria's hook:
+//! Grappling hooks (DESIGN §7c): Terraria's, from the belt (the Hook
+//! slot), whatever is in the hand.
 //!
 //! - E throws it at the cursor, out to the rope's length; it takes hold of
 //!   what it meets: rock (anything solid, or a platform), a chest or a body,
 //!   a creature.
 //! - Held by something that stays put (a cell, a creature bigger than you):
-//!   you hang from it and swing, pumping with A/D; W climbs, S lets out
-//!   rope, holding E reels you in; jump lets go, keeping your speed (and a
-//!   little lift). The rope wraps round corners on the way and unwraps
-//!   swinging back.
+//!   it pulls you straight to it, and you hang there. Jump lets go, with a
+//!   full jump (up a shaft: hook, pull, jump, hook again). E again throws
+//!   it somewhere else.
 //! - The cell it holds is only rock while it's there: dig it out, blast it,
-//!   melt it, and the rope comes loose.
-//! - Something smaller (a chest, a body, a bat, a slime): it's on your
-//!   leash; holding E reels it in.
+//!   melt it, and the hook comes loose; so does anything coming between you.
+//! - Something smaller (a chest, a body, a bat, a slime): it's pulled to you.
 //!
 //! The rope is drawn a cell at a time, on its own canvas (`canvas.rs`).
-//! `physics::tether` holds the body at its end; `actors::move_creatures`
-//! applies it, between steering and moving.
+//! `actors::move_creatures` does the pulling (`Rope::pull`), after
+//! steering; `physics::tether` drags what's leashed.
 
 use bevy::prelude::*;
 use platypus_physics::{Grid, Occupancy, tether};
@@ -36,9 +34,10 @@ use crate::world::{ChunkLoader, SimWorld, TICK_HZ};
 
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 
-/// A hook's rope: how far it reaches (cells), how fast it reels in and flies
-/// out (cells/s), what the hook does to a creature it bites into, and how it
-/// looks (its colour; `links`: a chain, drawn link by link).
+/// A hook's rope: how far it reaches (cells), how fast it pulls you (or
+/// what it holds) in and flies out (cells/s), what the hook does to a
+/// creature it bites into, and how it looks (its colour; `links`: a chain,
+/// drawn link by link).
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct HookDef {
@@ -56,22 +55,20 @@ impl Default for HookDef {
     }
 }
 
-/// W and S: rope taken in or let out (cells/s).
-const CLIMB: f32 = 90.0;
-/// The least rope between you and what it holds (cells), past half your
-/// height (reeled all the way in, you hang with your head just under it).
-const SHORTEST: f32 = 3.0;
+/// The least rope between you and what it holds (cells), past your box
+/// (pulled all the way in, you hang just off it).
+const SHORTEST: f32 = 2.0;
 /// Something with less than this share of your size is pulled to you;
 /// more, you to it.
 const SMALLER: f32 = 0.75;
-/// A leashed thing further than this past the rope's length (stuck behind
-/// something as you go): the rope lets go.
+/// A pulled thing further than this past where it should be (stuck behind
+/// something as you go): the hook lets go.
 const STRAIN: f32 = 24.0;
-/// A rope's line blocked this long (something between you and a creature
-/// it holds): it lets go.
-const BLOCKED: f32 = 0.4;
-/// Letting go in the air: at least this share of a jump's speed up.
-const LEAP: f32 = 0.55;
+/// The rope's line blocked this long (something between you and what it
+/// holds): it lets go.
+const BLOCKED: f32 = 0.25;
+/// Letting go with a jump: this share of a jump's speed up, at least.
+const LEAP: f32 = 1.0;
 /// How fast the hook comes back when it misses (× its speed).
 const RETURN: f32 = 1.6;
 
@@ -84,14 +81,6 @@ enum Anchor {
     Body { entity: Entity, off: Vec2 },
 }
 
-/// A corner the rope is wrapped round, and which side of it (the sign of
-/// the turn the rope makes there) you were on when it wrapped.
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct Pivot {
-    at: Vec2,
-    side: f32,
-}
-
 #[derive(Clone, Debug, Default, PartialEq)]
 enum Line {
     #[default]
@@ -100,42 +89,63 @@ enum Line {
     Out { tip: Vec2, vel: Vec2, paid: f32 },
     /// Coming back, having missed.
     Back { tip: Vec2 },
-    /// Holding: what, round which corners, how long the rope is (all of it,
-    /// anchor to you), and whether it's pulling that thing to you.
-    Held { anchor: Anchor, pivots: Vec<Pivot>, length: f32, leash: bool, blocked: f32 },
+    /// Holding: what, whether it's pulling that thing to you (else you to
+    /// it), and how long the line's been blocked.
+    Held { anchor: Anchor, leash: bool, blocked: f32 },
 }
 
 /// A creature's grappling hook: the rope's state, and what `move_creatures`
-/// needs from it (the point it swings from, and the rope left from there).
+/// needs from it (where it's pulling the body to).
 #[derive(Component, Default)]
 pub struct Rope {
     line: Line,
     held: bool,
-    /// Where the body was last tick (the rope was clear to there).
-    last: Option<Vec2>,
     /// Where the hook was a tick ago (drawing it between ticks).
     prev_tip: Vec2,
-    tether: Option<(Vec2, f32)>,
+    pull: Option<Pull>,
     /// The hook it threw (how its rope looks).
     look: HookDef,
 }
 
+/// Where a hook is pulling its holder: to `to` at `speed`, stopping `stop`
+/// short of it (and hanging there).
+#[derive(Clone, Copy, Debug)]
+pub struct Pull {
+    pub to: Vec2,
+    pub speed: f32,
+    pub stop: f32,
+}
+
+impl Pull {
+    /// The velocity that pulls a body at `pos` in (none, hanging).
+    pub fn vel(&self, pos: Vec2, dt: f32) -> Vec2 {
+        let d = self.to - pos;
+        let dist = d.length();
+        if dist <= self.stop + 0.01 {
+            return Vec2::ZERO;
+        }
+        d / dist * self.speed.min((dist - self.stop) / dt)
+    }
+}
+
 impl Rope {
-    /// Hanging from the rope: the point it swings round, and how much rope
-    /// there is from there.
-    pub fn tether(&self) -> Option<(Vec2, f32)> {
-        self.tether
+    /// Held by what stays put: where it pulls you.
+    pub fn pull(&self) -> Option<Pull> {
+        self.pull
     }
 
     /// What the rope's doing, for scenarios: "stowed", "out", "back",
-    /// "swing" or "leash", and how many corners it's wrapped round.
-    pub fn state(&self) -> (&'static str, usize) {
+    /// "pull" (you to it), "hang" (there) or "leash" (it to you).
+    pub fn state(&self, pos: Vec2) -> &'static str {
         match &self.line {
-            Line::Stowed => ("stowed", 0),
-            Line::Out { .. } => ("out", 0),
-            Line::Back { .. } => ("back", 0),
-            Line::Held { leash: true, .. } => ("leash", 0),
-            Line::Held { pivots, .. } => ("swing", pivots.len()),
+            Line::Stowed => "stowed",
+            Line::Out { .. } => "out",
+            Line::Back { .. } => "back",
+            Line::Held { leash: true, .. } => "leash",
+            Line::Held { .. } => match self.pull {
+                Some(p) if p.vel(pos, DT) == Vec2::ZERO => "hang",
+                _ => "pull",
+            },
         }
     }
 }
@@ -159,40 +169,10 @@ fn first_solid(grid: &WorldGrid, a: Vec2, b: Vec2, skip: f32) -> Option<CellPos>
     (1..n).map(|i| a + d * (i as f32 / n as f32)).filter(|p| p.distance(a) > skip && p.distance(b) > 1.0).map(|p| CellPos::from_world(p.x, p.y)).find(|c| grid.occupancy(c.x, c.y) == Occupancy::Solid)
 }
 
-fn cross(a: Vec2, b: Vec2) -> f32 {
-    a.x * b.y - a.y * b.x
-}
-
-/// The rope from `from` (the last point it's held at) was clear to `was`
-/// and isn't to `now`: the corner it caught on, a little outside the rock.
-fn corner(grid: &WorldGrid, from: Vec2, was: Vec2, now: Vec2) -> Option<Vec2> {
-    let (mut lo, mut hi) = (0.0f32, 1.0f32);
-    for _ in 0..10 {
-        let mid = (lo + hi) / 2.0;
-        if first_solid(grid, from, was.lerp(now, mid), 1.0).is_some() {
-            hi = mid;
-        } else {
-            lo = mid;
-        }
-    }
-    let hit = first_solid(grid, from, was.lerp(now, hi), 1.0)?;
-    let clear = was.lerp(now, lo);
-    let centre = Vec2::new(hit.x as f32 + 0.5, hit.y as f32 + 0.5);
-    // The point of the clear line nearest the rock, then out from the rock
-    // (so the rope bends round it, not through it).
-    let line = clear - from;
-    let t = ((centre - from).dot(line) / line.length_squared().max(1e-4)).clamp(0.0, 1.0);
-    let near = from + line * t;
-    let out = (near - centre).normalize_or(Vec2::Y);
-    let at = centre + out * 1.2;
-    let c = CellPos::from_world(at.x, at.y);
-    Some(if grid.occupancy(c.x, c.y) == Occupancy::Solid { near } else { at })
-}
-
 type Holder<'a> = (Entity, &'a Controls, &'a Equipment, Option<&'a mut Rope>);
 type Thing<'a> = (Entity, &'a mut Kinematics, Option<&'a MoveStats>, Has<Creature>, Has<Container>);
 
-/// Each tick, before bodies move: throw, fly, take hold, wrap, reel, let go.
+/// Each tick, before bodies move: throw, fly, take hold, pull, let go.
 #[allow(clippy::too_many_arguments)]
 pub fn rope(
     mut commands: Commands,
@@ -211,7 +191,7 @@ pub fn rope(
                 && r.line != Line::Stowed
             {
                 r.line = Line::Stowed;
-                r.tether = None;
+                r.pull = None;
             }
             continue;
         };
@@ -221,22 +201,20 @@ pub fn rope(
         };
         let rope = &mut *rope;
         rope.look = def.clone();
-        rope.tether = None;
+        rope.pull = None;
         let intent = controls.0;
         let pressed = intent.hook && !rope.held;
         rope.held = intent.hook;
         let Ok((_, me, my_stats, ..)) = things.get(e) else { continue };
-        let (pos, half, facing, grounded) = (me.body.pos, me.body.half, me.loco.facing, me.loco.grounded());
+        let (pos, half, facing) = (me.body.pos, me.body.half, me.loco.facing);
         let my_size = half.x * half.y;
         let stats = my_stats.map(|s| s.0.clone()).unwrap_or_default();
         let hand = pos + Vec2::new(facing * 2.0, half.y * 0.3);
-        let shortest = SHORTEST + half.y;
         if pressed {
             let aim = if intent.aim != Vec2::ZERO { intent.aim } else { hand + Vec2::new(facing, 1.0) };
             let dir = (aim - hand).normalize_or(Vec2::new(facing, 0.0));
             rope.line = Line::Out { tip: hand, vel: dir * def.speed, paid: 0.0 };
             rope.prev_tip = hand;
-            rope.last = None;
             sparks.emit(&THROW, THROW.count as usize, hand, dir, Vec2::ZERO);
         }
         match rope.line.clone() {
@@ -281,8 +259,7 @@ pub fn rope(
                             Anchor::Body { entity, off } => things.get(entity).map_or(at, |(_, k, ..)| k.body.pos + off),
                         };
                         let leash = body.is_some_and(|(l, _)| l);
-                        let length = pos.distance(point).max(shortest);
-                        rope.line = Line::Held { anchor, pivots: Vec::new(), length, leash, blocked: 0.0 };
+                        rope.line = Line::Held { anchor, leash, blocked: 0.0 };
                         rope.prev_tip = point;
                         sparks.emit(&CLINK, CLINK.count as usize, point, -vel.normalize_or(Vec2::Y), Vec2::ZERO);
                         if let (Anchor::Body { entity, .. }, Some((_, true))) = (anchor, body) {
@@ -304,7 +281,7 @@ pub fn rope(
                 let go = def.speed * RETURN * DT;
                 rope.line = if to.length() <= go { Line::Stowed } else { Line::Back { tip: tip + to.normalize() * go } };
             }
-            Line::Held { anchor, mut pivots, mut length, leash, mut blocked } => {
+            Line::Held { anchor, leash, mut blocked } => {
                 // What it holds, and whether it still does.
                 let point = match anchor {
                     Anchor::Cell { cell, at } => grips(&grid, cell).then_some(at),
@@ -321,92 +298,36 @@ pub fn rope(
                     continue;
                 };
                 rope.prev_tip = point;
-                // Jump: let go (in the air, with a little lift, your speed
-                // kept; on the ground the jump is a jump).
+                // Jump: let go, with a full jump.
                 if !leash
                     && let Ok((_, mut k, ..)) = things.get_mut(e)
                     && k.loco.jump_pressed(&intent)
                 {
-                    if !grounded {
-                        let k = &mut *k;
-                        k.loco.leap(&stats, &intent, &mut k.body, LEAP);
-                    }
+                    let k = &mut *k;
+                    k.loco.leap(&stats, &intent, &mut k.body, LEAP);
                     rope.line = Line::Back { tip: point };
                     continue;
                 }
-                // Round the corners (a cell anchor, swinging): unwrap what
-                // you've swung back past, wrap on what's come between.
-                if !leash && matches!(anchor, Anchor::Cell { .. }) {
-                    while let Some(p) = pivots.last().copied() {
-                        let before = if pivots.len() >= 2 { pivots[pivots.len() - 2].at } else { point };
-                        let side = cross(p.at - before, pos - p.at).signum();
-                        if side != p.side && first_solid(&grid, before, pos, 1.0).is_none() {
-                            pivots.pop();
-                        } else {
-                            break;
-                        }
-                    }
-                    let mut snapped = false;
-                    for _ in 0..4 {
-                        let from = pivots.last().map_or(point, |p| p.at);
-                        if first_solid(&grid, from, pos, 1.0).is_none() {
-                            break;
-                        }
-                        let wrapped = rope.last.and_then(|was| (first_solid(&grid, from, was, 1.0).is_none()).then(|| corner(&grid, from, was, pos)).flatten());
-                        match wrapped {
-                            Some(at) if at.distance(from) > 0.5 => {
-                                let before = pivots.last().map_or(point, |p| p.at);
-                                pivots.push(Pivot { at, side: cross(at - before, pos - at).signum() });
-                            }
-                            _ => {
-                                snapped = true;
-                                break;
-                            }
-                        }
-                    }
-                    if snapped {
-                        // (Somehow through the rock: the rope comes free.)
-                        rope.line = Line::Back { tip: pivots.last().map_or(point, |p| p.at) };
-                        continue;
-                    }
-                } else {
-                    // A body: the rope can't bend round things; blocked
-                    // long enough, it lets go.
-                    let far = if leash { point } else { pivots.last().map_or(point, |p| p.at) };
-                    blocked = if first_solid(&grid, far, pos, 1.0).is_some() { blocked + DT } else { 0.0 };
-                    if blocked > BLOCKED {
-                        rope.line = Line::Back { tip: point };
-                        continue;
-                    }
+                // Something between you and it: it lets go.
+                blocked = if first_solid(&grid, point, pos, 1.0).is_some() { blocked + DT } else { 0.0 };
+                if blocked > BLOCKED {
+                    rope.line = Line::Back { tip: point };
+                    continue;
                 }
-                // The rope already spent round the corners.
-                let mut chain = 0.0;
-                let mut from = point;
-                for p in &pivots {
-                    chain += from.distance(p.at);
-                    from = p.at;
-                }
-                let dist = from.distance(pos);
-                // Reel in (E held), climb (W), let out (S).
-                let taut = length.min(chain + dist);
-                if intent.hook && !pressed {
-                    length = taut - def.reel * DT;
-                } else if intent.move_y > 0.0 {
-                    length = taut - CLIMB * DT;
-                } else if intent.move_y < 0.0 && !leash {
-                    length += CLIMB * DT;
-                }
-                length = length.clamp(chain + shortest, def.length.max(chain + shortest));
+                let d = (pos - point).normalize_or(Vec2::NEG_Y);
                 if leash {
                     let Anchor::Body { entity, off } = anchor else { unreachable!("a leash holds a body") };
-                    // Pulled to you.
+                    // Pulled to you, as you'd be to it.
                     if let Ok((_, mut k, _, creature, _)) = things.get_mut(entity) {
                         let k = &mut *k;
-                        let d = (k.body.pos + off).distance(pos);
-                        if d > length + STRAIN {
+                        let there = k.body.pos + off;
+                        let stop = (half.x * d.x).abs() + (half.y * d.y).abs() + (k.body.half.x * d.x).abs() + (k.body.half.y * d.y).abs() + SHORTEST;
+                        let dist = there.distance(pos);
+                        if dist > def.length + STRAIN {
                             rope.line = Line::Back { tip: point };
                             continue;
                         }
+                        let length = (dist - def.reel * DT).max(stop);
                         let mut body = k.body;
                         body.pos += off;
                         if tether(&mut body, pos, length, DT) {
@@ -419,12 +340,13 @@ pub fn rope(
                         }
                     }
                 } else {
-                    rope.tether = Some((from, (length - chain).max(shortest)));
+                    // You to it: straight in, then hanging just off it.
+                    let stop = (half.x * d.x).abs() + (half.y * d.y).abs() + SHORTEST;
+                    rope.pull = Some(Pull { to: point, speed: def.reel, stop });
                 }
-                rope.line = Line::Held { anchor, pivots, length, leash, blocked };
+                rope.line = Line::Held { anchor, leash, blocked };
             }
         }
-        rope.last = Some(pos);
     }
 }
 
@@ -459,48 +381,30 @@ pub fn draw(
         let def = &rope.look;
         let me = tf.translation.truncate();
         let hand = me + Vec2::new(k.loco.facing * 2.0, k.body.half.y * 0.3);
-        let (tip, length, pivots): (Vec2, Option<f32>, &[Pivot]) = match &rope.line {
+        let tip = match &rope.line {
             Line::Stowed => continue,
-            Line::Out { tip, .. } | Line::Back { tip } => (rope.prev_tip.lerp(*tip, a), None, &[]),
-            Line::Held { anchor, pivots, length, .. } => {
-                let at = match anchor {
-                    Anchor::Cell { at, .. } => *at,
-                    Anchor::Body { entity, off } => bodies.get(*entity).map_or(rope.prev_tip, |t| t.translation.truncate() + *off),
-                };
-                (at, Some(*length), pivots.as_slice())
-            }
+            Line::Out { tip, .. } | Line::Back { tip } => rope.prev_tip.lerp(*tip, a),
+            Line::Held { anchor, .. } => match anchor {
+                Anchor::Cell { at, .. } => *at,
+                Anchor::Body { entity, off } => bodies.get(*entity).map_or(rope.prev_tip, |t| t.translation.truncate() + *off),
+            },
         };
-        // Hook, round the corners, to the hand.
-        let mut points = vec![tip];
-        points.extend(pivots.iter().map(|p| p.at));
-        points.push(hand);
-        let spent: f32 = points.windows(2).map(|w| w[0].distance(w[1])).sum();
-        let slack = length.map_or(0.0, |l| (l - spent).max(0.0));
+        let points = [tip, hand];
         let (r, g, b) = def.rope;
         let dark = [(r as f32 * 0.62) as u8, (g as f32 * 0.62) as u8, (b as f32 * 0.62) as u8, 255];
         let light = [r, g, b, 255];
-        let mut n = 0u32;
-        let segs = points.len() - 1;
-        for (i, w) in points.windows(2).enumerate() {
-            let (p, q) = (w[0], w[1]);
-            // The last stretch (to the hand) sags with the slack.
-            let sag = if i + 1 == segs { (slack * p.distance(q)).sqrt().min(40.0) * 0.5 } else { 0.0 };
-            let mid = (p + q) / 2.0 - Vec2::Y * sag;
-            let steps = (p.distance(q) * 2.0).ceil().max(1.0) as i32 + (sag * 2.0) as i32;
-            let mut last = IVec2::MAX;
-            for s in 0..=steps {
-                let t = s as f32 / steps as f32;
-                let at = p.lerp(mid, t).lerp(mid.lerp(q, t), t);
-                let c = at.floor().as_ivec2();
-                if c == last {
-                    continue;
-                }
-                last = c;
-                n += 1;
-                // Twisted rope: light and dark by turns; a chain: links.
-                let col = if def.links { if (n / 2).is_multiple_of(2) { light } else { dark } } else if n.is_multiple_of(3) { dark } else { light };
-                px.put(c.x, c.y, col);
+        let steps = (tip.distance(hand) * 2.0).ceil().max(1.0) as i32;
+        let (mut n, mut last) = (0u32, IVec2::MAX);
+        for s in 0..=steps {
+            let c = tip.lerp(hand, s as f32 / steps as f32).floor().as_ivec2();
+            if c == last {
+                continue;
             }
+            last = c;
+            n += 1;
+            // Twisted rope: light and dark by turns; a chain: links.
+            let col = if def.links { if (n / 2).is_multiple_of(2) { light } else { dark } } else if n.is_multiple_of(3) { dark } else { light };
+            px.put(c.x, c.y, col);
         }
         // The hook: a point and two barbs back along the rope.
         let back = (points[1] - tip).normalize_or(Vec2::NEG_Y);

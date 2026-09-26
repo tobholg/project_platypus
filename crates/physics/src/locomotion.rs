@@ -34,11 +34,6 @@ pub struct Intent {
 /// How hard a climber presses into what it holds on to (cells/s).
 const CLING_PRESS: f32 = 30.0;
 
-/// On a rope, steering pushes at this share of air acceleration, while
-/// it's going slower than this many times run speed that way.
-const SWING_PUMP: f32 = 0.4;
-const SWING_PUMP_MAX: f32 = 3.0;
-
 /// Fastest a rope lets a body go (cells/s).
 const TETHER_MAX: f32 = 900.0;
 
@@ -236,9 +231,6 @@ pub struct Locomotion {
     stroke_left: f32,
     /// Rocket boots' fuel left (seconds).
     pub rocket_left: f32,
-    /// Hanging from a rope (set before each `steer`): in the air it keeps
-    /// its swing (air control pumps it, never brakes it).
-    pub swinging: bool,
     /// Last tick's contacts, so brains and animation can read them.
     pub contacts: Contacts,
 }
@@ -262,7 +254,6 @@ impl Default for Locomotion {
             prev_dash: false,
             stroke_left: 0.0,
             rocket_left: 0.0,
-            swinging: false,
             cling: None,
             contacts: Contacts::default(),
         }
@@ -460,16 +451,7 @@ impl Locomotion {
         } else {
             s.air_accel
         };
-        if self.swinging && !grounded {
-            // On a rope: steering pumps the swing (up to a few times run
-            // speed); nothing brakes it.
-            let push = intent.move_x.clamp(-1.0, 1.0);
-            if push != 0.0 && body.vel.x * push < s.run_speed * SWING_PUMP_MAX {
-                body.vel.x += push * s.air_accel * SWING_PUMP * dt;
-            }
-        } else {
-            body.vel.x = approach(body.vel.x, target, accel * dt);
-        }
+        body.vel.x = approach(body.vel.x, target, accel * dt);
 
         // Wall slide.
         let wall_dir = if self.contacts.wall_left { -1.0 } else if self.contacts.wall_right { 1.0 } else { 0.0 };
@@ -681,23 +663,21 @@ mod tests {
 
     /// A body on a rope swings down and up the other side nearly as high
     /// as it started (the rope keeps its speed), and never past the rope's
-    /// length; swinging, air control doesn't brake it.
+    /// length.
     #[test]
     fn a_rope_swings_and_holds() {
         let mut rows = vec!["#                                                                                                                                                                                                      #"; 200];
         rows.push("########################################################################################################################################################################################################");
         let g = Ascii::new(&rows);
-        let (s, mut l, _) = player();
         let at = Vec2::new(100.0, 150.0);
         let mut b = Body::new(at + Vec2::new(-60.0, 0.0), Vec2::new(8.0, 16.0));
-        l.swinging = true;
         let (mut top_right, mut far) = (f32::MIN, 0.0f32);
         let mut crossed = false;
         for _ in 0..240 {
-            l.steer(&s, &Intent::default(), &mut b, DT);
+            // (Falling freely: no steering to brake it.)
+            b.vel.y -= 1100.0 * DT;
             tether(&mut b, at, 60.0, DT);
-            let c = move_and_collide(&g, &mut b, DT);
-            l.after_move(c);
+            move_and_collide(&g, &mut b, DT);
             far = far.max(b.pos.distance(at));
             if b.pos.x > at.x {
                 crossed = true;
