@@ -231,6 +231,48 @@ Health, stamina (dash, attacks, blocking), poise (Elden Ring stagger), and movem
   - Noita-style wand modifiers can come later, as a list of effect modifiers.
 - **AI** picks moves from what the creature actually has equipped, using tags on moves: range, wind-up, area, gap-closer. An NPC with a spear pokes from range; the same NPC with a greatsword charges.
 
+## 7b. Magic, weapons and crafting (agreed 2026-09-26, branch `magic-arc`)
+
+The cell simulation is the magic: every spell acts on it through the same
+edits and exposure as tools, bombs and weather, so its interactions aren't
+scripted (a fireball into an oil pool, frost on water building an ice
+bridge, lightning into a flooded cave, acid eating a crypt door).
+
+**Spells are runes in a wand, Noita-style (decided).** A wand has slots,
+mana, recharge and a delay between casts; runes fill its slots in order:
+
+| Kind | Decides | Examples |
+|---|---|---|
+| Carrier | how it travels | bolt (fast, straight), orb (slow, bouncing, falls), beam (instant line), stream (spray), cloud, wall, touch, rune/trap, self, lightning (the sim's lightning, from the wand toward one or more targets) |
+| Payload | what it does where it lands | matter (water, acid, oil, sand, lava, ice…), heat (+ fire / − frost), force (push, pull, blast), charge (electricity), light, grab (telekinesis: loose cells and bodies into a floating ball of cells, a rigid body, to throw or drop), transmute (stone→sand, water→ice), blink (teleport to it), carve |
+| Modifier | how it behaves | bigger, faster, gravity (arc), bounces, homing, split / multicast, spread, pierce, longer, delay, trail (leaves material along its path), trigger (when it lands, cast the next rune from there) |
+
+The classics are compositions: fireball = orb + spark trail → trigger heat
+burst + blast; acid arrow = bolt + gravity carrying acid; flamethrower =
+stream of burning oil mist; call lightning = a strike from the sky at a
+point; wand lightning = the same bolt physics, smaller, from the wand to
+its targets; heat object = heat beam; lift and drop matter = grab; teleport
+= bolt + blink. Runes are loot and are crafted from gems and ores (ruby
+fire, emerald acid and nature, amethyst arcane, mithril force). Anyone with
+hands casts (orc shamans use the same runes). Guard rails: trigger depth,
+particles per spell, mana.
+
+Electricity comes with it: conducting through water, metals and wet
+creatures.
+
+**Weapons.** Melee as §7 (moves as data per weapon class, sprite-mask hits,
+stamina and poise), plus coatings on blades (a sword dipped in oil and lit
+burns; dipped in acid, it corrodes). Ranged: bows and crossbows (arrows are
+bodies that stick in walls), guns whose ammo carries material (incendiary,
+acid, a gravel shotgun, a musket that burns real gunpowder), thrown spears;
+a grappling hook.
+
+**Crafting (decided): stations and recipes as data first**, Terraria-style
+(workbench, furnace smelting ore to bars with coal or charcoal, anvil,
+alchemy table, arcane altar for runes); flasks and buckets hold cells of a
+material (throw acid, pour water, drink a potion); alchemy inside the sim
+(mixing in a cauldron) later.
+
 ## 8. Death and loot (D4)
 
 1. **Death.** The creature's current frame is turned into a rigid body of cells (a new `flesh` material plus blood coating). The body's cells keep their sprite pixels, so the corpse looks like the creature.
@@ -297,6 +339,16 @@ The aim: the model can create, look at, and test a creature, item, room or struc
    - ruins leading to crypts, then castles;
    - the ageing pass and secrets.
 7. Saving and loading.
+
+**Combat and magic arc (C, now, on branch `magic-arc`; before structures v2 and saving, since it changes what gets saved):**
+1. Casting core: runes and wands as data, projectiles that collide with cells and bodies, mana, wands as items, starter spells (spark bolt, fireball, acid arrow, flamethrower, wand lightning), cursor aim; the orcs to try them on.
+2. Spellcrafting: runes as items, a wand editor (slots, triggers, modifiers), electricity, orc shamans.
+3. Melee: hand anchors, weapon sprites as text, moves as data for three weapon classes, hits, stamina, poise, block and dodge.
+4. Arena and art tool v1 (M1, below).
+5. Creatures per biome (spiders and skeletons in crypts, fungal beasts, slimes in the grottos, crystal golems, trolls), their AI using what they carry.
+6. Crafting: stations, recipes, smelting, flasks and potions.
+
+Then structures v2 (bigger crypts and castles, the ruin catalogue) and saving.
 
 **Making arc (M1):** `platypus-art` and the arena. Part of it is pulled into W7.6 for rooms.
 
