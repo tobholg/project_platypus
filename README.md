@@ -155,7 +155,10 @@ Everything under `assets/data/` hot-reloads while the game runs.
   creature file. Editing it reloads the game's live creatures. Or draw it in the game:
   `PLATYPUS_WORLD=arena`, E opens the art editor (it saves the same text files). From a
   script: `platypus-art get|set|paint <file> <path> ...`, e.g.
-  `platypus-art paint assets/art/dummy.ron frames.stand 6,0=x 7,0=x`. A pose layer tagged
+  `platypus-art paint assets/art/dummy.ron frames.stand 6,0=x 7,0=x`. Gear's `look` in
+  `assets/data/gear.ron` is drawn onto any humanoid (the player, orcs, skeletons): palette
+  letters recoloured in some parts, and rows drawn over named parts (`over`; the art file
+  can use it too). A pose layer tagged
   `front_arm` plus a `fans` entry gives the creature an arm that aims where it casts.
 - **Ambient life:** a kind in `assets/data/life.ron` (where it lives: surface, shore, water, caves; when: day or night; how many). A critter is a creature file with the `critter` brain: `hovers` for fliers that never land, `swims` for fish, `light` to glow.
 - **A new AI behaviour:** in `crates/game/src/actors/ai.rs` (or a new module), a component

@@ -126,7 +126,8 @@
 //!   nothing on (logs what it cost), then a full iron set and a ring put on
 //!   (logs its stats) and the same blast (logs what it cost now); the
 //!   inventory opened, a leather jerkin in the pack hovered (its tooltip,
-//!   against the chainmail worn)
+//!   against the chainmail worn); an orc in leather and a skeleton in cloth
+//!   stand by (brains off), to see gear on other humanoids
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end
@@ -2388,15 +2389,18 @@ fn webs_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut player: Query<&m
     }
 }
 
+type GearTester<'a> = (Entity, &'a mut Kinematics, &'a mut crate::actors::Health, &'a mut crate::gear::Equipment, &'a crate::gear::Stats, &'a mut crate::hands::items::Inventory);
+
 /// Armour against a blast, and the equipment screen.
 #[allow(clippy::too_many_arguments)]
 fn gear_script(
+    mut commands: Commands,
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
     items: Option<Res<crate::hands::items::Items>>,
     mut window: Single<&mut Window, With<bevy::window::PrimaryWindow>>,
     slots: Query<(&crate::hands::ui::SlotUi, &bevy::ui::UiGlobalTransform, &InheritedVisibility)>,
-    mut player: Query<(&Kinematics, &mut crate::actors::Health, &mut crate::gear::Equipment, &crate::gear::Stats, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    mut player: Query<GearTester, With<LocalPlayer>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut state: Local<(u8, f32)>,
 ) {
@@ -2404,7 +2408,7 @@ fn gear_script(
     if s.name != "gear" {
         return;
     }
-    let (Some(items), Ok((k, mut h, mut eq, stats, mut inv))) = (items, player.single_mut()) else { return };
+    let (Some(items), Ok((me, mut k, mut h, mut eq, stats, mut inv))) = (items, player.single_mut()) else { return };
     let t = s.elapsed;
     let p = k.body.pos;
     keys.release(KeyCode::Escape);
@@ -2436,6 +2440,26 @@ fn gear_script(
         3 if t > 2.4 => {
             info!("gear: the same blast in iron cost {:.0} hp", state.1 - h.hp);
             keys.press(KeyCode::Escape);
+            // (Washed, and out of the blood the blasts left: it tints.)
+            commands.entity(me).remove::<crate::actors::elements::Coated>();
+            k.body.pos.x -= 50.0;
+            k.prev_pos = k.body.pos;
+            let floor = platypus_worldgen::arena::FLOOR as f32;
+            let x = k.body.pos.x;
+            for (kind, dx, wear) in [
+                ("orc", 26.0, ["leather_cap", "leather_jerkin", "leather_gloves", "leather_trousers", "leather_boots"]),
+                ("skeleton", 44.0, ["cloth_hood", "apprentice_robe", "silk_gloves", "cloth_trousers", "soft_boots"]),
+            ] {
+                let pieces: Vec<Option<Stack>> = wear.iter().map(|id| items.id(id).map(|it| Stack::new(it, 1))).collect();
+                crate::actors::creature::spawn_creature(&mut commands, kind, Vec2::new(x + dx, floor), move |e| {
+                    e.remove::<(crate::actors::ai::MeleeWalker, crate::actors::ai::Archer)>();
+                    let mut eq = crate::gear::Equipment::default();
+                    for (i, piece) in pieces.into_iter().enumerate() {
+                        eq.worn[i] = piece;
+                    }
+                    e.insert(eq);
+                });
+            }
             state.0 = 4;
         }
         4 if t > 2.8 => {

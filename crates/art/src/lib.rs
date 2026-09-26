@@ -37,6 +37,7 @@
 //!     },
 //! ```
 
+pub mod dress;
 pub mod edit;
 pub mod rotate;
 
@@ -74,6 +75,11 @@ pub struct ArtFile {
     /// the pose drawn without its layer of that tag.
     #[serde(default)]
     pub fans: BTreeMap<String, Vec<FanArm>>,
+    /// Parts drawn over a part wherever it's drawn (in poses and fans),
+    /// placed as it is: its pivot on that part's pivot. What's worn goes
+    /// here (`dress`).
+    #[serde(default)]
+    pub over: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -340,68 +346,73 @@ pub fn compile(file: &ArtFile) -> Result<Art, String> {
         let mut p = Pixels::new(w, h);
         let mut points = BTreeMap::new();
         for l in layers {
-            let def = file.parts.get(&l.part).ok_or(format!("{what}: no part `{}`", l.part))?;
-            // Turned: the picture (and its points) about its pivot, which
-            // ends up in the middle of the turned picture.
-            let turned;
-            let (px, (pvx, pvy), part_points) = if l.turn != 0.0 {
-                turned = rotate::rotsprite(&parts[l.part.as_str()], def.pivot, l.turn);
-                let half = turned.w as i32 / 2;
-                let (s, c) = l.turn.to_radians().sin_cos();
-                let pts: Points = def
-                    .points
-                    .iter()
-                    .map(|(n, &(x, y))| {
-                        let (dx, dy) = ((x - def.pivot.0) as f32, (y - def.pivot.1) as f32);
-                        (n.clone(), (half + (dx * c + dy * s).round() as i32, half + (-dx * s + dy * c).round() as i32))
-                    })
-                    .collect();
-                (&turned, (half, half), pts)
-            } else {
-                (&parts[l.part.as_str()], def.pivot, def.points.clone())
-            };
-            let place = |x: i32, y: i32| {
-                let dx = if l.flip { pvx - x } else { x - pvx };
-                (l.at.0 + dx, l.at.1 + (y - pvy))
-            };
             if let Some(tag) = &l.tag {
                 points.insert(tag.clone(), l.at);
                 if skip == Some(tag.as_str()) {
                     continue;
                 }
             }
-            if l.outline
-                && let Some(oc) = file.outline
-            {
-                for y in -1..=px.h as i32 {
-                    for x in -1..=px.w as i32 {
-                        if px.opaque(x, y) {
+            // The part, then whatever is worn over it, each placed the same.
+            let over = file.over.get(&l.part).map(|v| v.as_slice()).unwrap_or(&[]);
+            for (k, name) in std::iter::once(&l.part).chain(over).enumerate() {
+                let def = file.parts.get(name).ok_or(format!("{what}: no part `{name}`"))?;
+                // Turned: the picture (and its points) about its pivot, which
+                // ends up in the middle of the turned picture.
+                let turned;
+                let (px, (pvx, pvy), part_points) = if l.turn != 0.0 {
+                    turned = rotate::rotsprite(&parts[name.as_str()], def.pivot, l.turn);
+                    let half = turned.w as i32 / 2;
+                    let (s, c) = l.turn.to_radians().sin_cos();
+                    let pts: Points = def
+                        .points
+                        .iter()
+                        .map(|(n, &(x, y))| {
+                            let (dx, dy) = ((x - def.pivot.0) as f32, (y - def.pivot.1) as f32);
+                            (n.clone(), (half + (dx * c + dy * s).round() as i32, half + (-dx * s + dy * c).round() as i32))
+                        })
+                        .collect();
+                    (&turned, (half, half), pts)
+                } else {
+                    (&parts[name.as_str()], def.pivot, def.points.clone())
+                };
+                let place = |x: i32, y: i32| {
+                    let dx = if l.flip { pvx - x } else { x - pvx };
+                    (l.at.0 + dx, l.at.1 + (y - pvy))
+                };
+                if l.outline
+                    && let Some(oc) = file.outline
+                {
+                    for y in -1..=px.h as i32 {
+                        for x in -1..=px.w as i32 {
+                            if px.opaque(x, y) {
+                                continue;
+                            }
+                            let near = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| px.opaque(x + dx, y + dy));
+                            let (tx, ty) = place(x, y);
+                            if near && p.opaque(tx, ty) {
+                                p.set(tx, ty, [oc.0, oc.1, oc.2, 255]);
+                            }
+                        }
+                    }
+                }
+                for y in 0..px.h as i32 {
+                    for x in 0..px.w as i32 {
+                        let c = px.get(x, y);
+                        if c[3] == 0 {
                             continue;
                         }
-                        let near = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| px.opaque(x + dx, y + dy));
+                        let s = |v: u8| (v as f32 * l.shade).round().clamp(0.0, 255.0) as u8;
                         let (tx, ty) = place(x, y);
-                        if near && p.opaque(tx, ty) {
-                            p.set(tx, ty, [oc.0, oc.1, oc.2, 255]);
-                        }
+                        p.set(tx, ty, [s(c[0]), s(c[1]), s(c[2]), c[3]]);
                     }
                 }
-            }
-            for y in 0..px.h as i32 {
-                for x in 0..px.w as i32 {
-                    let c = px.get(x, y);
-                    if c[3] == 0 {
-                        continue;
+                // (The part's points only: what's worn over it has none.)
+                for (point, &(x, y)) in part_points.iter().filter(|_| k == 0) {
+                    points.insert(point.clone(), place(x, y));
+                    // (A tagged layer's points under its tag too: `back_arm.hand`.)
+                    if let Some(tag) = &l.tag {
+                        points.insert(format!("{tag}.{point}"), place(x, y));
                     }
-                    let s = |v: u8| (v as f32 * l.shade).round().clamp(0.0, 255.0) as u8;
-                    let (tx, ty) = place(x, y);
-                    p.set(tx, ty, [s(c[0]), s(c[1]), s(c[2]), c[3]]);
-                }
-            }
-            for (point, &(x, y)) in &part_points {
-                points.insert(point.clone(), place(x, y));
-                // (A tagged layer's points under its tag too: `back_arm.hand`.)
-                if let Some(tag) = &l.tag {
-                    points.insert(format!("{tag}.{point}"), place(x, y));
                 }
             }
         }

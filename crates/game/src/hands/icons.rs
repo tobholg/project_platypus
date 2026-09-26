@@ -1,6 +1,8 @@
 //! Item icons: 16 × 16 pixel art from `assets/data/icons.ron` (text grids,
 //! a shape and a palette per item), and for blocks a little block of their
-//! material. Hot-reloaded. An item with neither shows its colour.
+//! material; a weapon is its sprite, a piece of gear what it looks like worn
+//! (`gear::look::icon`). Hot-reloaded. An item with none of these shows its
+//! colour.
 
 use std::collections::HashMap;
 
@@ -11,6 +13,7 @@ use platypus_sim::{Cell, MaterialTable};
 use serde::Deserialize;
 
 use super::items::{ItemId, Items, Use};
+use crate::actors::creature::Creatures;
 use crate::data::{Watched, data_path, load_ron};
 use crate::world::SimWorld;
 
@@ -90,7 +93,8 @@ fn block_icon(mats: &MaterialTable, cell: Cell, outline: (u8, u8, u8)) -> Vec<u8
     data
 }
 
-/// A picture in an icon: its drawn part, centred (cut to fit if bigger).
+/// A picture in an icon: its drawn part, centred (cut to fit if bigger;
+/// small ones, under half the icon, twice the size).
 fn fit(p: &platypus_art::Pixels) -> Vec<u8> {
     let opaque = |x: i32, y: i32| p.opaque(x, y);
     let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
@@ -105,11 +109,12 @@ fn fit(p: &platypus_art::Pixels) -> Vec<u8> {
     if x1 < x0 {
         return data;
     }
+    let k = if (x1 - x0).max(y1 - y0) < ICON as i32 / 2 { 2 } else { 1 };
     let (cx, cy) = ((x0 + x1 + 1) / 2, (y0 + y1 + 1) / 2);
     let h = ICON as i32 / 2;
     for y in 0..ICON as i32 {
         for x in 0..ICON as i32 {
-            let c = p.get(cx - h + x, cy - h + y);
+            let c = p.get(cx + (x - h).div_euclid(k), cy + (y - h).div_euclid(k));
             let i = (y as usize * ICON + x as usize) * 4;
             data[i..i + 4].copy_from_slice(&c);
         }
@@ -127,7 +132,7 @@ fn image(data: Vec<u8>) -> Image {
     )
 }
 
-fn build(file: &IconsFile, items: &Items, mats: &MaterialTable, images: &mut Assets<Image>) -> Vec<Option<Handle<Image>>> {
+fn build(file: &IconsFile, items: &Items, mats: &MaterialTable, mannequin: Option<&platypus_art::ArtFile>, images: &mut Assets<Image>) -> Vec<Option<Handle<Image>>> {
     (0..items.len())
         .map(|i| {
             let id = ItemId(i as u16);
@@ -138,6 +143,12 @@ fn build(file: &IconsFile, items: &Items, mats: &MaterialTable, images: &mut Ass
             // A weapon is its own sprite, turned to point up and forward.
             if let Use::Melee(w) | Use::Bow(w) = &def.use_
                 && let Some(p) = crate::combat::icon(w)
+            {
+                return Some(images.add(image(fit(&p))));
+            }
+            // Gear: what it looks like on.
+            if let (Some(look), Some(m)) = (def.gear.as_ref().and_then(|g| g.look.as_ref()), mannequin)
+                && let Some(p) = crate::gear::look::icon(m, look)
             {
                 return Some(images.add(image(fit(&p))));
             }
@@ -154,22 +165,27 @@ fn build(file: &IconsFile, items: &Items, mats: &MaterialTable, images: &mut Ass
 }
 
 /// Once the items exist: every icon.
-pub fn make_icons(mut commands: Commands, items: Option<Res<Items>>, icons: Option<Res<Icons>>, sim: Res<SimWorld>, mut images: ResMut<Assets<Image>>) {
+pub fn make_icons(mut commands: Commands, items: Option<Res<Items>>, icons: Option<Res<Icons>>, sim: Res<SimWorld>, creatures: Res<Creatures>, mut images: ResMut<Assets<Image>>) {
     let (Some(items), None) = (items, icons) else { return };
     let path = data_path("icons.ron");
     let file: IconsFile = load_ron(&path).unwrap_or_else(|e| panic!("{e}"));
-    let by_item = build(&file, &items, sim.materials(), &mut images);
+    let by_item = build(&file, &items, sim.materials(), mannequin(&creatures).as_deref(), &mut images);
     commands.insert_resource(Icons { by_item, watch: Watched::new(path) });
 }
 
-pub fn reload_icons(icons: Option<ResMut<Icons>>, items: Option<Res<Items>>, sim: Res<SimWorld>, mut images: ResMut<Assets<Image>>) {
+/// What gear is shown on: the player as drawn.
+fn mannequin(creatures: &Creatures) -> Option<std::sync::Arc<platypus_art::ArtFile>> {
+    creatures.get("player")?.art_file.clone()
+}
+
+pub fn reload_icons(icons: Option<ResMut<Icons>>, items: Option<Res<Items>>, sim: Res<SimWorld>, creatures: Res<Creatures>, mut images: ResMut<Assets<Image>>) {
     let (Some(mut icons), Some(items)) = (icons, items) else { return };
     if !icons.watch.changed() {
         return;
     }
     match load_ron::<IconsFile>(icons.watch.path()) {
         Ok(file) => {
-            icons.by_item = build(&file, &items, sim.materials(), &mut images);
+            icons.by_item = build(&file, &items, sim.materials(), mannequin(&creatures).as_deref(), &mut images);
             info!("icons reloaded");
         }
         Err(e) => warn!("icons not reloaded: {e}"),

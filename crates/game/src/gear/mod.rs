@@ -14,6 +14,7 @@
 //! stats into what they change: its health and ward, mana, stamina, poise
 //! and movement. Combat and magic read the rest where they happen.
 
+pub mod look;
 pub mod stats;
 
 use std::collections::BTreeMap;
@@ -82,6 +83,9 @@ pub struct GearDef {
     /// What it gives (before any rolled bonuses).
     #[serde(default)]
     pub stats: BTreeMap<Stat, f32>,
+    /// How it looks worn, on the humanoid rig (`look.rs`).
+    #[serde(default)]
+    pub look: Option<platypus_art::dress::Skin>,
 }
 
 /// gear.ron: what armour's weight costs, and the gear itself (items, as in
@@ -164,7 +168,9 @@ pub struct GearPlugin;
 impl Plugin for GearPlugin {
     fn build(&self, app: &mut App) {
         let file = load();
-        app.insert_resource(GearRules { weights: file.weights }).add_systems(Update, apply.after(crate::actors::creature::hot_reload_creatures));
+        app.insert_resource(GearRules { weights: file.weights })
+            .init_resource::<look::Wardrobe>()
+            .add_systems(Update, (apply, look::dress).after(crate::actors::creature::hot_reload_creatures));
     }
 }
 

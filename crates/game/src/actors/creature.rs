@@ -53,6 +53,9 @@ pub struct CreatureDef {
     /// The compiled art (anchors, arms at angles, frames without an arm).
     #[serde(skip)]
     pub rig: Option<Arc<platypus_art::Art>>,
+    /// The art as written (what's worn is drawn onto it: `gear::look`).
+    #[serde(skip)]
+    pub art_file: Option<Arc<platypus_art::ArtFile>>,
     pub brain: BrainDef,
     /// Draw order among creatures.
     #[serde(default = "default_z")]
@@ -199,7 +202,15 @@ fn with_art(mut def: CreatureDef) -> Result<CreatureDef, String> {
     let Some(name) = def.art.clone() else { return Ok(def) };
     let path = data_path("").parent().expect("assets/data").join("art").join(format!("{name}.ron"));
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let art = platypus_art::parse(&text).and_then(|f| platypus_art::compile(&f)).map_err(|e| format!("{}: {e}", path.display()))?;
+    let file = platypus_art::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let art = platypus_art::compile(&file).map_err(|e| format!("{}: {e}", path.display()))?;
+    def.art_file = Some(Arc::new(file));
+    set_art(&mut def, &name, art);
+    Ok(def)
+}
+
+/// Draw a creature from compiled art, its atlas image named `art:<name>`.
+pub fn set_art(def: &mut CreatureDef, name: &str, art: platypus_art::Art) {
     let (atlas, columns, rows) = art.atlas();
     def.sprite = SpriteDef { frame: art.size, feet: art.feet };
     def.animations = art
@@ -209,7 +220,6 @@ fn with_art(mut def: CreatureDef) -> Result<CreatureDef, String> {
         .collect();
     def.atlas = Some(Arc::new(atlas));
     def.rig = Some(Arc::new(art));
-    Ok(def)
 }
 
 /// Loaded images and atlas layouts, shared by all creatures.
