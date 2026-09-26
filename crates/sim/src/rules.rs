@@ -5,7 +5,7 @@
 use crate::cell::{Cell, flags};
 use crate::material::{Kind, MatPhys, MaterialId};
 use crate::particles::{Landing, Particle};
-use crate::step::Hood;
+use crate::step::{Hood, RowScan};
 
 /// Fall-speed cap; a falling cell moves `1 + vy / 4` cells per tick (max 8).
 /// Must stay well under `MAX_REACH`.
@@ -546,12 +546,13 @@ fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
 /// Reactions and contact ignition. Returns true if this cell was transformed.
 fn interact(h: &mut Hood, x: i32, y: i32, c: Cell, p: &MatPhys) -> bool {
     let mut pending = false;
+    let mats = h.mats;
+    let reactions = mats.reactions(c.material);
     for (dx, dy) in NEIGHBOURS {
         let Some(n) = h.get(x + dx, y + dy) else { continue };
         if n.is_air() {
             continue;
         }
-        let reactions = h.mats.reactions(c.material);
         if let Some(r) = reactions.iter().find(|r| r.partner == n.material).copied() {
             let hit = if r.fine > 0 { h.rng.chance4096(r.fine as u32) } else { h.rng.chance(r.chance) };
             if hit {
@@ -662,17 +663,45 @@ const PRESSURE_REACH: i32 = 48;
 
 /// Distance to the first open cell (air or plant) along the row through
 /// cells of `m` only, if there is one within `PRESSURE_REACH`.
-fn through_to_open(h: &Hood, x: i32, y: i32, dir: i32, m: MaterialId) -> Option<i32> {
-    for i in 1..=PRESSURE_REACH {
-        let t = h.get(x + dir * i, y)?;
-        if t.is_air() || h.mats.phys(t.material).kind == Kind::Plant {
-            return (i > 1).then_some(i);
+///
+/// Every cell of a pool's row finds the same end, so the scan is kept for the
+/// next cells of the row (`Hood::pressure`; a burst through the row forgets
+/// it): a pool kept awake costs a look along each row, not one per cell.
+fn through_to_open(h: &mut Hood, x: i32, y: i32, dir: i32, m: MaterialId) -> Option<i32> {
+    let slot = (dir > 0) as usize;
+    let open = |h: &Hood, t: Cell| t.is_air() || h.mats.phys(t.material).kind == Kind::Plant;
+    // The row's run of this liquid, if this cell is in it (or just behind
+    // its start: the run's start is still this liquid, it's the cell that
+    // looked), else a new one from here.
+    let mut r = match h.pressure[slot] {
+        Some(r)
+            if r.y == y
+                && r.m == m
+                && (r.end - x) * dir > 0
+                && ((x - r.from) * dir >= 0 || (x == r.from - dir && h.get(r.from, y).is_some_and(|t| t.material == m))) =>
+        {
+            RowScan { from: if (x - r.from) * dir < 0 { x } else { r.from }, ..r }
         }
-        if t.material != m {
+        _ => RowScan { y, m, from: x, end: x + dir, end_open: None },
+    };
+    // Along it until what ends it, or past reach from here.
+    while r.end_open.is_none() && (r.end - x) * dir <= PRESSURE_REACH {
+        let Some(t) = h.get(r.end, y) else {
+            h.pressure[slot] = None;
             return None;
+        };
+        if open(h, t) {
+            r.end_open = Some(true);
+        } else if t.material != m {
+            r.end_open = Some(false);
+        } else {
+            r.end += dir;
         }
     }
-    None
+    h.pressure[slot] = Some(r);
+    let d = (r.end - x) * dir;
+    // (Still open: something may have fallen into it since it was seen.)
+    (r.end_open == Some(true) && d > 1 && d <= PRESSURE_REACH && h.get(r.end, y).is_some_and(|t| open(h, t))).then_some(d)
 }
 
 /// Cells of `m` stacked directly above (up to `cap`): the pressure here.
@@ -734,6 +763,8 @@ fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
         {
             c.vy = 0;
             swap_to(h, x, y, x + dir * d, y, c);
+            // (The row isn't what it was.)
+            h.pressure = [None; 2];
             return true;
         }
         if best > 0 && (purposeful || rest < p.rest_limit) {

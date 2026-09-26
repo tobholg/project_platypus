@@ -1203,8 +1203,11 @@ impl World {
         let broken = lap();
         self.particles.extend(stats.particles.iter().copied());
         let mut flying = std::mem::take(&mut self.particles);
-        particles::step(&mut flying, &mut ParticleCtx { world: self });
-        flying.append(&mut self.particles); // anything emitted while stepping
+        // Flight reads the world (in parallel); what they did is applied
+        // after, in order.
+        let effects = particles::fly(&mut flying, &ParticleView { world: self, wind });
+        particles::apply(&effects, &mut ParticleCtx { world: self });
+        flying.append(&mut self.particles); // anything emitted while landing
         self.particles = flying;
         let particles = lap();
         self.step_bodies();
@@ -1753,6 +1756,82 @@ struct ParticleCtx<'a> {
     world: &'a mut World,
 }
 
+/// The world as particles in flight see it (read only, shared), and this
+/// tick's wind (worked out once, not for every particle).
+struct ParticleView<'a> {
+    world: &'a World,
+    wind: f32,
+}
+
+impl particles::ParticleView for ParticleView<'_> {
+    fn get(&self, p: CellPos) -> Option<Cell> {
+        self.world.get(p)
+    }
+
+    fn mats(&self) -> &MaterialTable {
+        &self.world.materials
+    }
+
+    fn wind(&self) -> f32 {
+        self.wind
+    }
+
+    fn ambient(&self, x: i32, y: i32) -> i32 {
+        self.world.climate.ambient(x, y)
+    }
+
+    fn water(&self) -> Option<Cell> {
+        self.world.materials.id("water").map(|id| Cell::new(id, 0))
+    }
+
+    fn rain_at(&self, p: CellPos) -> (bool, bool) {
+        // Nothing burns where its chunk is asleep: fire keeps its own cells
+        // awake. Most of a storm's drops fall through quiet air, so one look
+        // at the chunk's awake rect settles the whole strip.
+        let (lx, ly) = (p.local().0 as i32, p.local().1 as i32);
+        if (1..CHUNK - 1).contains(&lx) {
+            let Some(chunk) = self.world.chunk(p.chunk()) else { return (false, false) };
+            let r = chunk.dirty_rect();
+            if r.is_empty() || lx + 1 < r.min_x || lx - 1 > r.max_x || ly < r.min_y || ly > r.max_y {
+                return (false, false);
+            }
+        }
+        let mats = &self.world.materials;
+        let (mut any, mut spent) = (false, false);
+        for dx in -1..=1 {
+            let q = p.offset(dx, 0);
+            if let Some(c) = self.world.get(q)
+                && !c.is_air()
+                && (mats.phys(c.material).kind == Kind::Fire || c.flags & flags::BURNING != 0)
+            {
+                any = true;
+            }
+            if let Some(b) = self.world.get_bg(q)
+                && b.flags & flags::BURNING != 0
+            {
+                any = true;
+                spent |= b.heat > BOILS_RAIN;
+            }
+        }
+        (any, spent)
+    }
+
+    fn ember_at(&self, p: CellPos, catch: u8) -> (bool, bool) {
+        let Some(b) = self.world.get_bg(p) else { return (false, false) };
+        if b.is_air() || b.flags & flags::BURNING != 0 {
+            return (false, false);
+        }
+        let bp = self.world.materials.phys(b.material);
+        let mut rng = Rng::seeded(&[self.world.seed, self.world.tick, 0xE3B6, p.x as u64, p.y as u64, catch as u64]);
+        // It touches (more often the more flammable), and is spent whether
+        // or not that lights it.
+        if bp.flammability == 0 || !rng.chance(bp.flammability / 4 + 1) {
+            return (false, false);
+        }
+        (true, rng.chance(catch))
+    }
+}
+
 impl ParticleWorld for ParticleCtx<'_> {
     fn get(&self, p: CellPos) -> Option<Cell> {
         self.world.get(p)
@@ -1777,41 +1856,10 @@ impl ParticleWorld for ParticleCtx<'_> {
         self.world.ignite_cell(p, &ph, &mut rng);
     }
 
-    fn wind(&self) -> f32 {
-        self.world.wind()
-    }
-
-    fn ember_over(&mut self, p: CellPos, catch: u8) -> bool {
-        let Some(b) = self.world.get_bg(p) else { return false };
-        if b.is_air() || b.flags & flags::BURNING != 0 {
-            return false;
-        }
+    fn light_bg(&mut self, p: CellPos) {
+        let Some(b) = self.world.get_bg(p) else { return };
         let bp = *self.world.materials.phys(b.material);
-        let mut rng = Rng::seeded(&[self.world.seed, self.world.tick, 0xE3B6, p.x as u64, p.y as u64, catch as u64]);
-        // It touches (more often the more flammable), and is spent whether
-        // or not that lights it.
-        if bp.flammability == 0 || !rng.chance(bp.flammability / 4 + 1) {
-            return false;
-        }
-        if rng.chance(catch) {
-            self.world.ignite_bg_cell(p, &bp);
-        }
-        true
-    }
-
-    fn douse_strip(&mut self, p: CellPos) -> bool {
-        // Nothing burns where its chunk is asleep: fire keeps its own cells
-        // awake. Most of a storm's drops fall through quiet air, so one look
-        // at the chunk's awake rect settles the whole strip.
-        let (lx, ly) = (p.local().0 as i32, p.local().1 as i32);
-        if (1..CHUNK - 1).contains(&lx) {
-            let Some(chunk) = self.world.chunk(p.chunk()) else { return false };
-            let r = chunk.dirty_rect();
-            if r.is_empty() || lx + 1 < r.min_x || lx - 1 > r.max_x || ly < r.min_y || ly > r.max_y {
-                return false;
-            }
-        }
-        (-1..=1).any(|dx| self.douse(p.offset(dx, 0)))
+        self.world.ignite_bg_cell(p, &bp);
     }
 
     fn douse(&mut self, p: CellPos) -> bool {
@@ -1844,13 +1892,6 @@ impl ParticleWorld for ParticleCtx<'_> {
         spent
     }
 
-    fn ambient(&self, x: i32, y: i32) -> i32 {
-        self.world.climate.ambient(x, y)
-    }
-
-    fn water(&self) -> Option<Cell> {
-        self.world.materials.id("water").map(|id| Cell::new(id, 0))
-    }
 }
 
 /// Two octaves of smoothly interpolated seeded noise over time. Only +, −, ×,

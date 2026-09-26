@@ -42,6 +42,12 @@ use platypus_sim::MaterialTable;
 use platypus_worldgen::{ArenaGen, ChunkGenerator, FlatGen, Preset, TerrainGen};
 
 fn main() {
+    // The sim's workers (rayon) share the cores with Bevy's: about two
+    // thirds of them (8 of an M2 Max's 12: its efficiency cores slowed a
+    // pass more than they helped). PLATYPUS_SIM_THREADS overrides.
+    let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
+    let sim_threads = std::env::var("PLATYPUS_SIM_THREADS").ok().and_then(|v| v.parse().ok()).unwrap_or((cores * 2 / 3).max(2));
+    let _ = rayon::ThreadPoolBuilder::new().num_threads(sim_threads).build_global();
     let seed: u64 = std::env::var("PLATYPUS_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
     let materials_path = data::data_path("materials.ron");
     let src = std::fs::read_to_string(&materials_path)

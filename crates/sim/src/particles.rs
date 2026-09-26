@@ -4,10 +4,16 @@
 //! a behaviour for when its flight ends. They live in a plain list, step once
 //! per tick after the cells, and move one cell at a time so nothing passes
 //! through walls. Randomness comes from the world's seeded generators.
+//!
+//! A tick flies them all at once (in parallel: flight only reads the world,
+//! `ParticleView`), then applies what they did (land, douse a fire, light
+//! the background: `Effect`), one after another in list order, so the
+//! result is the same on any number of threads.
 
 use crate::cell::{Cell, flags};
 use crate::coords::CellPos;
 use crate::material::{Kind, MaterialTable};
+use rayon::prelude::*;
 
 /// What happens when a particle's flight ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,7 +72,7 @@ impl Particle {
     }
 }
 
-/// What the stepper needs from the world, so this module stays testable.
+/// What applying particles' effects needs from the world (one at a time).
 pub(crate) trait ParticleWorld {
     fn get(&self, p: CellPos) -> Option<Cell>;
     fn set(&mut self, p: CellPos, cell: Cell) -> bool;
@@ -75,11 +81,8 @@ pub(crate) trait ParticleWorld {
     fn mats(&self) -> &MaterialTable;
     /// Set a flammable cell alight (same rules as everywhere else).
     fn ignite_at(&mut self, p: CellPos);
-    fn wind(&self) -> f32;
-    /// An ember passing in front of a background cell may touch it, and then
-    /// may set it alight (`catch`: chance /256). True if it touched (and is
-    /// spent).
-    fn ember_over(&mut self, p: CellPos, catch: u8) -> bool;
+    /// Set the background cell here alight (an ember caught it).
+    fn light_bg(&mut self, p: CellPos);
     /// Water arriving at `p`: flames there go out, burning cells (in front
     /// or behind) stop burning, or, burning hotter than a drop can put out,
     /// lose some heat as it boils off. True if the water was used up.
@@ -88,10 +91,6 @@ pub(crate) trait ParticleWorld {
     fn douse_strip(&mut self, p: CellPos) -> bool {
         (-1..=1).any(|dx| self.douse(p.offset(dx, 0)))
     }
-    /// Ambient °C at a world cell.
-    fn ambient(&self, x: i32, y: i32) -> i32;
-    /// A cell of water, for a snowflake that melted.
-    fn water(&self) -> Option<Cell>;
 }
 
 /// How strongly wind pushes each kind of particle (cells/tick² at full wind).
@@ -108,39 +107,100 @@ fn open(mats: &MaterialTable, c: Cell) -> bool {
     c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas | Kind::Fire | Kind::Plant)
 }
 
-/// Advance every particle one tick. Landed and vanished particles are removed.
-pub(crate) fn step(particles: &mut Vec<Particle>, world: &mut impl ParticleWorld) {
+/// What flight needs to read of the world (shared by every thread).
+pub(crate) trait ParticleView: Sync {
+    fn get(&self, p: CellPos) -> Option<Cell>;
+    fn mats(&self) -> &MaterialTable;
+    fn wind(&self) -> f32;
+    fn ambient(&self, x: i32, y: i32) -> i32;
+    fn water(&self) -> Option<Cell>;
+    /// Rain passing here: is there fire to douse in the strip (the cell and
+    /// its neighbours across), and would the drop be spent on it (burning
+    /// background hotter than rain can put out)?
+    fn rain_at(&self, p: CellPos) -> (bool, bool);
+    /// An ember over the background here: does it touch it (and is spent),
+    /// and does that light it?
+    fn ember_at(&self, p: CellPos, catch: u8) -> (bool, bool);
+}
+
+/// What a particle does to the world this tick, applied after flight.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Effect {
+    /// Its flight ended (at `hit`: the cell it struck, or where it was).
+    Land(Particle, CellPos),
+    /// Rain over fire: douse the strip.
+    Douse(CellPos),
+    /// An ember caught the background here.
+    LightBg(CellPos),
+}
+
+/// A particle's tick: whether it's still flying, and what it did.
+struct Flight {
+    alive: bool,
+    effect: Option<Effect>,
+    douse: Option<CellPos>,
+}
+
+/// Below this many, flying them in parallel isn't worth it.
+const PARALLEL: usize = 1_024;
+
+/// Fly every particle a tick (in parallel), dropping those whose flight
+/// ended; what they did, in list order.
+pub(crate) fn fly(particles: &mut Vec<Particle>, view: &impl ParticleView) -> Vec<Effect> {
     if particles.len() > MAX_PARTICLES {
+        // Oldest first: they're nearest the end of their life anyway.
         let excess = particles.len() - MAX_PARTICLES;
         particles.drain(..excess);
     }
-    let mut i = 0;
-    while i < particles.len() {
-        if step_one(&mut particles[i], world) {
-            i += 1;
-        } else {
-            particles.swap_remove(i);
+    let flights: Vec<Flight> = if particles.len() >= PARALLEL {
+        particles.par_iter_mut().map(|p| fly_one(p, view)).collect()
+    } else {
+        particles.iter_mut().map(|p| fly_one(p, view)).collect()
+    };
+    let mut effects = Vec::new();
+    for f in &flights {
+        effects.extend(f.douse.map(Effect::Douse));
+        effects.extend(f.effect);
+    }
+    let mut k = 0;
+    particles.retain(|_| {
+        k += 1;
+        flights[k - 1].alive
+    });
+    effects
+}
+
+/// Apply what the particles did, in order.
+pub(crate) fn apply(effects: &[Effect], world: &mut impl ParticleWorld) {
+    for e in effects {
+        match *e {
+            Effect::Land(p, hit) => land(&p, hit, world),
+            Effect::Douse(at) => {
+                world.douse_strip(at);
+            }
+            Effect::LightBg(at) => world.light_bg(at),
         }
     }
 }
 
-/// Chance /256 that an ember with `life` ticks left lights what it touches:
-/// it cools as it flies.
+/// An ember's chance (out of 256) to set what it touches alight, falling as it cools.
 fn ember_catch(life: u16) -> u8 {
     (EMBER_CATCH as u32 * life.min(EMBER_HOT) as u32 / EMBER_HOT as u32) as u8
 }
 
-/// A fresh ember lights what it touches with this chance /256 ...
+/// Chance (out of 256) that a fresh ember touching something flammable lights it.
 const EMBER_CATCH: u8 = 64;
-/// ... falling off once it has fewer than this many ticks left.
+/// Ticks an ember stays at full heat before its chance to light starts falling.
 const EMBER_HOT: u16 = 80;
-/// An ember in flight goes out with chance 1 in this a tick.
+/// Embers wink out at random: one in this many each tick.
 const EMBER_FADE: u64 = 60;
 
-/// Returns false when the particle is done.
-fn step_one(p: &mut Particle, world: &mut impl ParticleWorld) -> bool {
+/// Advance one particle a tick, reading the world only.
+fn fly_one(p: &mut Particle, world: &impl ParticleView) -> Flight {
+    let dead = |effect: Option<Effect>, douse: Option<CellPos>| Flight { alive: false, effect, douse };
+    let mut douse = None;
     if p.landing == Landing::Ember && crate::rng::hash(&[p.pos[0].to_bits() as u64, p.pos[1].to_bits() as u64, p.life as u64]).is_multiple_of(EMBER_FADE) {
-        return false;
+        return dead(None, None);
     }
     p.vel[1] -= GRAVITY * p.gravity;
     p.vel[0] += world.wind() * wind_push(p.landing);
@@ -152,32 +212,38 @@ fn step_one(p: &mut Particle, world: &mut impl ParticleWorld) -> bool {
         p.vel[1] *= MAX_SPEED / speed;
     }
 
-    // March one cell at a time so nothing tunnels.
+    // Move a cell at a time so fast particles don't tunnel through walls.
     let steps = p.vel[0].abs().max(p.vel[1].abs()).ceil().max(1.0) as i32;
     let (dx, dy) = (p.vel[0] / steps as f32, p.vel[1] / steps as f32);
     for _ in 0..steps {
         let next = [p.pos[0] + dx, p.pos[1] + dy];
         let at = CellPos::from_world(next[0], next[1]);
         match world.get(at) {
-            None => return false, // left the loaded world
+            None => return dead(None, douse), // left the loaded world
             Some(c) if open(world.mats(), c) => {
                 p.pos = next;
                 match p.landing {
+                    // An ember passing over flammable background may light
+                    // it; either way it's spent on it.
                     Landing::Ember => {
-                        if world.ember_over(at, ember_catch(p.life)) {
-                            return false;
+                        let (spent, lights) = world.ember_at(at, ember_catch(p.life));
+                        if spent {
+                            return dead(lights.then_some(Effect::LightBg(at)), douse);
                         }
                     }
+                    // Rain puts out what it falls through (a drop is spent on
+                    // a fierce bg fire; a small one only dampens it).
                     Landing::Rain => {
-                        // A drop soaks a little either side of its path,
-                        // until it boils off on something burning too hot
-                        // to put out.
-                        if world.douse_strip(at) {
-                            return false;
+                        let (any, spent) = world.rain_at(at);
+                        if any && douse.is_none() {
+                            douse = Some(at);
+                        }
+                        if spent {
+                            return dead(None, douse);
                         }
                     }
+                    // Snow melts falling through air above freezing.
                     Landing::Snow if world.ambient(at.x, at.y) > 1 => {
-                        // Melted on the way down.
                         if let Some(water) = world.water() {
                             p.landing = Landing::Rain;
                             p.cell = water;
@@ -187,20 +253,16 @@ fn step_one(p: &mut Particle, world: &mut impl ParticleWorld) -> bool {
                     _ => {}
                 }
             }
-            Some(_) => {
-                land(p, at, world);
-                return false;
-            }
+            Some(_) => return dead(Some(Effect::Land(*p, at)), douse),
         }
     }
 
     p.life = p.life.saturating_sub(1);
     if p.life == 0 {
         let here = p.cell_pos();
-        land(p, here, world);
-        return false;
+        return dead(Some(Effect::Land(*p, here)), douse);
     }
-    true
+    Flight { alive: true, effect: None, douse }
 }
 
 /// The flight ended at the particle's position, against `hit` (which may be

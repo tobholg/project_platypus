@@ -10,6 +10,7 @@
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 
 use rayon::prelude::*;
+
 use rustc_hash::FxHashMap;
 
 use crate::cell::{Cell, flags};
@@ -79,6 +80,21 @@ pub(crate) struct Hood<'a> {
     pub vapour: Vec<i32>,
     /// Wind this tick: -1 (hard left) … 1 (hard right).
     pub wind: f32,
+    /// The last run of liquid scanned for pressure along a row, each way
+    /// (`rules::through_to_open`): the cells after it in the row share it.
+    pub pressure: [Option<RowScan>; 2],
+}
+
+/// A row scanned through one liquid: past `from` its cells are `m` up to
+/// `end`, which is what ends the run (`end_open`: open, air or a plant, or
+/// something else) or, not known yet, the first cell not looked at.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RowScan {
+    pub y: i32,
+    pub m: crate::material::MaterialId,
+    pub from: i32,
+    pub end: i32,
+    pub end_open: Option<bool>,
 }
 
 const LOCAL_MASK: i32 = CHUNK - 1;
@@ -297,34 +313,49 @@ pub(crate) fn step_chunks(
         raws.insert(*pos, ChunkRaw::of(chunk));
     }
 
-    for jobs in &passes {
-        let results: Vec<JobOutput> = jobs.par_iter().map(|&(pos, rect)| {
-            let mut hood = Hood {
-                chunks: std::array::from_fn(|s| {
-                    let (dx, dy) = (s as i32 % 3 - 1, s as i32 / 3 - 1);
-                    raws.get(&pos.offset(dx, dy)).copied()
-                }),
-                dirty: [Rect::EMPTY; 9],
-                touched: 0,
-                touched_bg: 0,
-                mats,
-                rng: Rng::seeded(&[seed, tick, pos.x as u64, pos.y as u64]),
-                clock,
-                tick,
-                origin: pos.origin(),
-                climate,
-                explosions: Vec::new(),
-                broken: Vec::new(),
-                particles: Vec::new(),
-                broken_bg: Vec::new(),
-                vapour: Vec::new(),
-                wind,
-            };
-            update_rect(&mut hood, rect);
-            hood.finish()
-        }).collect();
-        // `collect` keeps job order, so the lists are deterministic.
-        for out in results {
+    // One job: a chunk's dirty rect, with its 3×3 hood.
+    let run = |pos: ChunkPos, rect: Rect| -> JobOutput {
+        let mut hood = Hood {
+            chunks: std::array::from_fn(|s| {
+                let (dx, dy) = (s as i32 % 3 - 1, s as i32 / 3 - 1);
+                raws.get(&pos.offset(dx, dy)).copied()
+            }),
+            dirty: [Rect::EMPTY; 9],
+            touched: 0,
+            touched_bg: 0,
+            mats,
+            rng: Rng::seeded(&[seed, tick, pos.x as u64, pos.y as u64]),
+            clock,
+            tick,
+            origin: pos.origin(),
+            climate,
+            explosions: Vec::new(),
+            broken: Vec::new(),
+            particles: Vec::new(),
+            broken_bg: Vec::new(),
+            vapour: Vec::new(),
+            wind,
+            pressure: [None; 2],
+        };
+        update_rect(&mut hood, rect);
+        hood.finish()
+    };
+    // Each job's output, by its place in its pass (so the lists come out in
+    // the same order however the jobs were shared out).
+    let outputs: [Vec<std::sync::Mutex<Option<JobOutput>>>; 4] = std::array::from_fn(|k| (0..passes[k].len()).map(|_| std::sync::Mutex::new(None)).collect());
+    // Each pass's jobs in parallel, the biggest first (a pass ends when its
+    // slowest job does), one job a task so they share out evenly.
+    for k in 0..4 {
+        let mut order: Vec<usize> = (0..passes[k].len()).collect();
+        order.sort_by_key(|&j| std::cmp::Reverse(passes[k][j].1.area()));
+        order.par_iter().with_max_len(1).for_each(|&j| {
+            let (pos, rect) = passes[k][j];
+            *outputs[k][j].lock().unwrap() = Some(run(pos, rect));
+        });
+    }
+    // In job order, so the lists are deterministic.
+    for pass in outputs {
+        for out in pass.into_iter().filter_map(|o| o.into_inner().unwrap()) {
             stats.explosions.extend(out.explosions);
             stats.broken.extend(out.broken);
             stats.particles.extend(out.particles);

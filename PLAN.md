@@ -135,6 +135,22 @@ sand/water/lava, lightning; `--features spikes` + `PLATYPUS_PROFILE`.
 | Bodies at rest skip physics; at most 150 bodies (the oldest go) | 9.3 → 7.6 ms (24×n; 1600 → 150 bodies) |
 | Spider legs were a mesh of per-cell quads (190k vertices at ~40 spiders); particles likewise → pixel canvases over the view (`canvas.rs`) | mesh upload 2.4 → 0.4 ms; 13.1 → 6.8 ms at 380 creatures |
 
+The sim at many active chunks (headless `platypus_bench chaos`: the arena,
+blobs of sand/water/lava/blood, blasts, three deaths' blood bursts every six
+ticks; ~100 chunks awake, 28k particles), sampled with macOS `sample`:
+
+| Fix | Tick (cells / particles) |
+|---|---|
+| before | 2.81 ms (2.41 / 0.41; particles were 2.3 ms in-game, serial) |
+| Particles fly in parallel (read-only `ParticleView`), their effects (land, douse, light the background) applied after in order | particles 2.3 → 0.4 ms |
+| The dam-break pressure scan (`through_to_open`: every liquid cell under liquid looked up to 48 cells each way, every tick; a third of all sim time) keeps its run along the row for the row's next cells, extending it as needed | cells 2.41 → 1.42 ms |
+| Jobs biggest-first in a pass; the sim's pool at ⅔ of the cores (efficiency cores slowed passes) | 1.42 → 1.29 ms (8 threads) |
+
+Tried and dropped: keeping the workers spinning between the four passes
+(waking them costs ~150 µs a pass); it collapsed to 20 ms on 12 threads
+(a descheduled worker stalls every spinner). Left: per pass, the slowest
+chunk (a chunk full of stirred liquid, ~250 µs) plus the wake-up.
+
 At 380 creatures, 150 bodies, 11k particles, 100 active chunks: ~6.8 ms a
 frame, sim ~3 ms a tick. In a generated world, moving (streaming) at 12×n:
 ~5 ms a frame (230 chunks loaded), sim 2–4 ms a tick. Note: measured with
