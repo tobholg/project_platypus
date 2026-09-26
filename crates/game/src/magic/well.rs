@@ -53,6 +53,9 @@ const PULL_STOP: f32 = 10.0;
 /// solid the cone is, reached at most this share of the way a tick (so it
 /// builds like a thrust, not a snap).
 const RECOIL: f32 = 1.4;
+/// Force hurts a body this much per cell/s it changes its speed by (a full
+/// push at the hand: the wand ~12, the staff ~20).
+const FORCE_HIT: f32 = 0.04;
 const RECOIL_RISE: f32 = 0.5;
 /// How fast a held cell corrects toward its place in the ball (1/s).
 const STEER: f32 = 10.0;
@@ -490,7 +493,7 @@ fn force(world: &mut platypus_sim::World, well: &mut Well, bodies: &mut Bodies, 
     // Bodies in the cone (not its caster): launched away, a little up (a
     // push), or hauled in till they're near (a pull), at least as fast as it
     // flings at their distance; stunned till they land.
-    for (b, mut k, _, _) in bodies.iter_mut() {
+    for (b, mut k, health, _) in bodies.iter_mut() {
         if b == well.caster {
             // Recoil: pushing into the ground sends the caster up, into a
             // wall away from it; pulling at rock draws the caster to it.
@@ -512,8 +515,14 @@ fn force(world: &mut platypus_sim::World, well: &mut Well, bodies: &mut Bodies, 
         let lift = if sign > 0.0 { Vec2::new(0.0, 0.35) } else { Vec2::new(0.0, 0.15) };
         let want = (dir + lift).normalize() * well.power * (0.45 + 0.55 * near);
         let along = k.body.vel.dot(want.normalize());
-        let v = if along < want.length() { k.body.vel + want.normalize() * (want.length() - along) } else { k.body.vel };
+        let kick = (want.length() - along).max(0.0);
+        let v = k.body.vel + want.normalize() * kick;
         k.loco.knock(&mut k.body, v, 0.45);
+        // The blow itself hurts, by how hard it changed its course (so the
+        // first of a held push hurts, not every tick of it).
+        if let Some(mut h) = health {
+            h.hp -= kick * FORCE_HIT;
+        }
     }
     // Motes rushing out along the cone, or in toward the hand.
     for t in &well.cast.trails {

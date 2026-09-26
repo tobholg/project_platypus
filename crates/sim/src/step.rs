@@ -244,12 +244,15 @@ pub struct Zap {
 
 /// A lightning strike: down column `x` from `top` to the first cell it hit,
 /// then (through a tree) on down to where it `earth`ed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Strike {
     pub x: i32,
     pub top: i32,
     pub hit: CellPos,
     pub earth: CellPos,
+    /// What it charged: struck into (or next to) water or anything else that
+    /// carries electricity, all of it that's connected (`World::charge`).
+    pub charged: Vec<CellPos>,
 }
 
 /// What one job reports back to the world.

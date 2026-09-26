@@ -22,7 +22,7 @@ pub struct Explosion {
 pub struct Zapped(pub platypus_sim::Zap);
 
 /// Lightning struck (from the sim's `StepStats::lightning`).
-#[derive(Message, Clone, Copy, Debug)]
+#[derive(Message, Clone, Debug)]
 pub struct Lightning(pub platypus_sim::Strike);
 
 /// 0..1, how bright the sky flashes right now (lightning).
@@ -151,6 +151,15 @@ fn on_lightning(
             Sprite { image: images.add(image), custom_size: Some(size), ..default() },
             Transform::from_xyz(x0 as f32 + size.x / 2.0, y0 as f32 + size.y / 2.0, 16.0),
         ));
+        // Into water: the pool crackles.
+        if let Some((image, x0, y0)) = charge_image(&s.charged) {
+            let size = Vec2::new(image.width() as f32, image.height() as f32);
+            commands.spawn((
+                Bolt { age: 0.0 },
+                Sprite { image: images.add(image), custom_size: Some(size), ..default() },
+                Transform::from_xyz(x0 as f32 + size.x / 2.0, y0 as f32 + size.y / 2.0, 15.9),
+            ));
+        }
     }
 }
 

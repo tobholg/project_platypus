@@ -269,20 +269,42 @@ const ZAP_DAMAGE: f32 = 30.0;
 /// Touching what a zap charged (in the pool it struck): this much, and
 /// stunned this long.
 const SHOCK_DAMAGE: f32 = 25.0;
+/// The sky's lightning into water shocks harder.
+const SKY_SHOCK_DAMAGE: f32 = 40.0;
 const SHOCK_STUN: f32 = 0.6;
 
-type Strikable<'a> = (Entity, &'a mut Health, &'a Kinematics, Option<&'a Resist>, Option<&'a Coated>);
 type Shockable<'a> = (Entity, &'a mut Health, &'a mut Kinematics, Option<&'a Resist>, Option<&'a Coated>);
 
+/// Everything touching a charged cell (a pool lightning struck) is
+/// shocked: hurt and stunned a moment.
+fn shock(charged: &[CellPos], damage: f32, q: &mut Query<Shockable>) {
+    if charged.is_empty() {
+        return;
+    }
+    let charged: std::collections::HashSet<CellPos> = charged.iter().copied().collect();
+    for (_, mut health, mut k, ..) in q.iter_mut() {
+        let (lo, hi) = (k.body.pos - k.body.half, k.body.pos + k.body.half);
+        let touches = (lo.y.floor() as i32 - 1..=hi.y.ceil() as i32).any(|y| (lo.x.floor() as i32 - 1..=hi.x.ceil() as i32).any(|x| charged.contains(&CellPos::new(x, y))));
+        if touches {
+            health.hp -= damage;
+            let k = &mut *k;
+            let vel = k.body.vel * 0.3;
+            k.loco.knock(&mut k.body, vel, SHOCK_STUN);
+        }
+    }
+}
+
 /// Lightning hurts whoever stands near where it strikes, and sets them
-/// alight (unless coated in something that won't burn, or fireproof).
+/// alight (unless coated in something that won't burn, or fireproof);
+/// struck into water, it shocks everyone in it.
 pub fn struck(
     mut commands: Commands,
     mut strikes: MessageReader<crate::fx::Lightning>,
     coatings: Res<Coatings>,
-    mut q: Query<Strikable>,
+    mut q: Query<Shockable>,
 ) {
     for crate::fx::Lightning(s) in strikes.read() {
+        shock(&s.charged, SKY_SHOCK_DAMAGE, &mut q);
         let at = Vec2::new(s.hit.x as f32 + 0.5, s.hit.y as f32 + 0.5);
         for (entity, mut health, k, resist, coated) in &mut q {
             let d = k.body.pos.distance(at);
@@ -300,20 +322,7 @@ pub fn struck(
 /// pool it struck) is shocked: hurt and stunned, whoever cast it too.
 pub fn zapped(mut commands: Commands, mut zaps: MessageReader<crate::fx::Zapped>, coatings: Res<Coatings>, mut q: Query<Shockable>) {
     for crate::fx::Zapped(z) in zaps.read() {
-        if !z.charged.is_empty() {
-            let charged: std::collections::HashSet<CellPos> = z.charged.iter().copied().collect();
-            for (_, mut health, mut k, ..) in &mut q {
-                let (lo, hi) = (k.body.pos - k.body.half, k.body.pos + k.body.half);
-                let touches = (lo.y.floor() as i32 - 1..=hi.y.ceil() as i32)
-                    .any(|y| (lo.x.floor() as i32 - 1..=hi.x.ceil() as i32).any(|x| charged.contains(&CellPos::new(x, y))));
-                if touches {
-                    health.hp -= SHOCK_DAMAGE;
-                    let k = &mut *k;
-                    let vel = k.body.vel * 0.3;
-                    k.loco.knock(&mut k.body, vel, SHOCK_STUN);
-                }
-            }
-        }
+        shock(&z.charged, SHOCK_DAMAGE, &mut q);
         let at = Vec2::new(z.to.x as f32 + 0.5, z.to.y as f32 + 0.5);
         for (entity, mut health, k, resist, coated) in &mut q {
             // (From the body's edge: the bolt ends at its centre or a wall.)

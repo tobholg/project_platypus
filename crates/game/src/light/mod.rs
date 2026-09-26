@@ -267,6 +267,9 @@ fn collect_flashes(
     }
     for Lightning(s) in bolts.read() {
         flashes.0.push(Flash { at: Vec2::new(s.hit.x as f32, s.hit.y as f32 + 4.0), color: [1.4, 1.45, 1.7], age: 0.0, life: 0.4 });
+        for p in s.charged.iter().step_by(120).take(24) {
+            flashes.0.push(Flash { at: Vec2::new(p.x as f32, p.y as f32), color: [0.35, 0.5, 0.9], age: 0.0, life: 0.3 });
+        }
     }
     for crate::fx::Zapped(z) in zaps.read() {
         let mid = Vec2::new((z.from.x + z.to.x) as f32 / 2.0, (z.from.y + z.to.y) as f32 / 2.0);

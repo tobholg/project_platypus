@@ -1430,6 +1430,12 @@ impl World {
                 self.particles.push(Particle { gravity: 0.06, ..Particle::new(center_of(p), vel, b, life, Landing::Ember) });
             }
         }
+        // Into water (or anything that carries it) it charges all of it
+        // that's connected. (Traced before the burst blows the water away.)
+        let charged = match self.charge(hit) {
+            c if c.is_empty() => self.charge(earth),
+            c => c,
+        };
         // Where it strikes it bursts (a shredded crown, a small crater),
         // setting what's around alight; where it earths the ground glows
         // and sand fuses to glass.
@@ -1437,7 +1443,7 @@ impl World {
         self.apply_edit(&WorldEdit::Heat { center: hit, radius: 8, amount: LIGHTNING_HEAT / 2 });
         self.apply_edit(&WorldEdit::Heat { center: earth, radius: 2, amount: EARTH_HEAT });
         self.apply_edit(&WorldEdit::Ignite { center: earth, radius: 3 });
-        self.strikes.push(Strike { x, top, hit, earth });
+        self.strikes.push(Strike { x, top, hit, earth, charged });
     }
 
     /// Height of the first solid (or liquid) cell below `y` in column `x`,

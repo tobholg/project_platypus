@@ -1894,3 +1894,15 @@ fn water_dilutes_acid() {
     assert_eq!(count(&w, acid), 0, "diluted away");
     assert_eq!(count(&w, water), total, "into water");
 }
+
+/// The sky's lightning striking a pool charges all of it, like a wand's.
+#[test]
+fn lightning_into_water_charges_the_pool() {
+    let mut w = boxed_world(3, 2, 61);
+    fill(&mut w, "stone", 20, 140, 1, 12);
+    fill(&mut w, "water", 30, 90, 12, 20);
+    w.apply_edit(&WorldEdit::Lightning { x: 60, from_y: 120 });
+    let stats = w.step();
+    let strike = stats.lightning.first().expect("it struck");
+    assert!(strike.charged.len() >= 60 * 8 - 40, "the whole pool: {}", strike.charged.len());
+}

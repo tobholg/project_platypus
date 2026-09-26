@@ -660,6 +660,8 @@ deaths (blood). Rendered as one dynamic mesh.
   (up to 6000 cells, `World::charge`, reported as `Zap::charged`); every
   body touching a charged cell is shocked (25, stunned 0.6 s), its caster
   too if it's standing in the pool. The pool crackles blue and lights up.
+  The sky's lightning does the same where it strikes water (or earths
+  next to it), shocking harder (40): `Strike::charged`.
 - Acid boils at 110 °C into acid fumes: corrosive (they eat what acid eats,
   weaker, used up doing it), condense into acid rain downwind, and flammable
   (a spark flashes the cloud into fire, with the odd small pop), which boils
@@ -905,7 +907,10 @@ deaths (blood). Rendered as one dynamic mesh.
     to go (straight on, else mirrored upward, else flat to the side: a push
     into the ground splashes), so the ones in front make way and a pile
     blows apart; particles in flight are shoved; bodies (not the caster) are
-    launched at up to `power` cells/s (a push lifts a little) and stunned.
+    launched at up to `power` cells/s (a push lifts a little) and stunned,
+    and hurt by the blow: 0.04 per cell/s it changed their speed by (the
+    first of a held push hurts, not every tick of it: a body already flying
+    off isn't changed).
     What it can't move pushes back: the caster is driven the other way (a
     pull: toward it) at up to 1.4 × `power` × the share of the cone that's
     solid, reached half the way each tick: pushing straight down throws the

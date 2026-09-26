@@ -111,7 +111,7 @@ fn step_cells(
 ) {
     let t = Instant::now();
     metrics.last = sim.world.step();
-    for &s in &metrics.last.lightning {
+    for s in std::mem::take(&mut metrics.last.lightning) {
         bolts.write(Lightning(s));
     }
     for &(p, radius, power) in &metrics.last.detonated {
