@@ -218,7 +218,8 @@ impl Plugin for MagicPlugin {
 }
 
 fn reload_runes(mut book: ResMut<Spellbook>) {
-    let (a, b) = (book.watch.changed(), book.spells_watch.changed());
+    let polled = book.bypass_change_detection();
+    let (a, b) = (polled.watch.changed(), polled.spells_watch.changed());
     if !a && !b {
         return;
     }

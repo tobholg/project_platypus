@@ -6,7 +6,9 @@
 //! with the player's luck): right-click it to open it, as a chest.
 //!
 //! A body stays as long as something's in it. Emptied (or never holding
-//! anything) it lies a while, then fades. A creature with `corpse: false`
+//! anything) it lies a while, then fades. There are at most `MAX_BODIES`:
+//! past that, the oldest go, with what's in them (a battle leaves a field
+//! of bodies, not a thousand of them). A creature with `corpse: false`
 //! (an egg sac, a cocoon, a firefly) leaves none: what it had spills out.
 
 use bevy::prelude::*;
@@ -30,6 +32,8 @@ const FADE: f32 = 3.0;
 const Z: f32 = 5.5;
 /// A body's colours, darkened.
 const DIM: f32 = 0.72;
+/// Most bodies lying about at once.
+pub const MAX_BODIES: usize = 150;
 
 /// A body in the world (its contents are kept by `Chests`, under `key`).
 #[derive(Component)]
@@ -37,6 +41,8 @@ pub struct Corpse {
     pub key: u64,
     /// Seconds it's been empty.
     empty: f32,
+    /// When it fell (a count: the oldest go first).
+    born: u64,
 }
 
 /// The picture of a body (its child).
@@ -79,6 +85,7 @@ fn lay_out(
     sim: Res<SimWorld>,
     mut chests: ResMut<Chests>,
     player: Query<&crate::gear::Stats, With<LocalPlayer>>,
+    mut count: Local<u64>,
 ) {
     let Some(items) = items else { return };
     let luck = player.single().map_or(0.0, |s| s.get(crate::gear::Stat::Luck));
@@ -102,7 +109,7 @@ fn lay_out(
         body.vel = d.body.vel * 0.5;
         let mut e = commands.spawn((
             Name::new(format!("Body of {}", d.def.name)),
-            Corpse { key, empty: 0.0 },
+            Corpse { key, empty: 0.0, born: { *count += 1; *count } },
             Container { key, name: format!("{} (dead)", d.def.name) },
             Thrown { bounce: 0.05 },
             Kinematics { body, loco: Locomotion::default(), prev_pos: at },
@@ -131,8 +138,19 @@ fn batter(mut blasts: MessageReader<Explosion>, mut q: Query<&mut Kinematics, Wi
     }
 }
 
-/// Empty bodies fade and go.
+/// Empty bodies fade and go; past `MAX_BODIES`, the oldest go.
 fn rot(mut commands: Commands, mut chests: ResMut<Chests>, mut q: Query<(Entity, &mut Corpse, Option<&Children>)>, mut sprites: Query<&mut Sprite, With<CorpseSprite>>) {
+    let n = q.iter().count();
+    if n > MAX_BODIES {
+        let mut ages: Vec<(u64, Entity, u64)> = q.iter().map(|(e, c, _)| (c.born, e, c.key)).collect();
+        ages.sort_unstable();
+        for &(_, e, key) in &ages[..n - MAX_BODIES] {
+            chests.forget(key);
+            commands.entity(e).despawn();
+        }
+        // (The rest fade next tick.)
+        return;
+    }
     for (e, mut c, children) in &mut q {
         if !chests.is_empty(c.key) {
             c.empty = 0.0;

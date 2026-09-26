@@ -225,6 +225,7 @@ impl World {
         for c in self.chunks.values() {
             c.wake(Rect::FULL);
             c.render_dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+            c.bg_render_dirty.store(true, std::sync::atomic::Ordering::Relaxed);
         }
     }
 

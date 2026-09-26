@@ -107,6 +107,19 @@ fn caught(grid: &impl Grid, body: &Body, from: Vec2, to: Vec2) -> bool {
     from.y - body.half.y >= row as f32 + 1.0 - EPS && (min.x..=max.x).any(|x| grid.occupancy(x, row) == Occupancy::Platform)
 }
 
+/// Still, and on something solid or a platform, out of any liquid: a body
+/// at rest, with nothing to move it (a cheap check: the row under its feet
+/// and its middle).
+pub fn resting(grid: &impl Grid, body: &Body) -> bool {
+    if body.vel != Vec2::ZERO {
+        return false;
+    }
+    let (min, max) = body.cells_at(body.pos);
+    let under = (min.x..=max.x).any(|x| matches!(grid.occupancy(x, min.y - 1), Occupancy::Solid | Occupancy::Platform));
+    let dry = grid.occupancy(((min.x + max.x) / 2).max(min.x), min.y) != Occupancy::Liquid;
+    under && dry && (body.pos.y - body.half.y - min.y as f32).abs() < 0.01
+}
+
 /// Standing on something (solid, or a platform it isn't dropping through)?
 fn grounded(grid: &impl Grid, body: &Body) -> bool {
     let probe = body.pos - Vec2::new(0.0, 2.0 * EPS);

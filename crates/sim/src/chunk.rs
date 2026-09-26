@@ -63,8 +63,11 @@ pub struct Chunk {
     pub(crate) bg: Box<[Cell]>,
     /// Region to update next tick.
     pub(crate) next_dirty: AtomicRect,
-    /// Cells changed since the renderer last looked.
+    /// Cells changed since the renderer last looked (the playfield's; the
+    /// background's on their own, so a chunk of falling sand doesn't redraw
+    /// the wall behind it).
     pub(crate) render_dirty: AtomicBool,
+    pub(crate) bg_render_dirty: AtomicBool,
     /// Differs from what worldgen would produce; must be persisted.
     pub(crate) modified: AtomicBool,
 }
@@ -84,6 +87,7 @@ impl Chunk {
             // Fresh chunks settle once: generated sand over a cave should fall.
             next_dirty: AtomicRect::new(Rect::FULL),
             render_dirty: AtomicBool::new(true),
+            bg_render_dirty: AtomicBool::new(true),
             modified: AtomicBool::new(false),
         }
     }
@@ -116,7 +120,7 @@ impl Chunk {
         self.bg[local_index(lx, ly)] = cell;
         let (x, y) = (lx as i32, ly as i32);
         self.next_dirty.include(Rect { min_x: x - 1, min_y: y - 1, max_x: x + 1, max_y: y + 1 }.clamp_to_chunk());
-        *self.render_dirty.get_mut() = true;
+        *self.bg_render_dirty.get_mut() = true;
         *self.modified.get_mut() = true;
     }
 
@@ -147,6 +151,11 @@ impl Chunk {
     /// Returns true once after cells changed; the renderer calls this.
     pub fn take_render_dirty(&self) -> bool {
         self.render_dirty.swap(false, Relaxed)
+    }
+
+    /// The same, for the background.
+    pub fn take_bg_render_dirty(&self) -> bool {
+        self.bg_render_dirty.swap(false, Relaxed)
     }
 
     pub fn is_modified(&self) -> bool {

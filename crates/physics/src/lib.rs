@@ -4,5 +4,5 @@
 pub mod body;
 pub mod locomotion;
 
-pub use body::{Body, Contacts, Grid, Occupancy, move_and_collide};
+pub use body::{Body, Contacts, Grid, Occupancy, move_and_collide, resting};
 pub use locomotion::{Intent, Locomotion, MoveEvents, MoveState, MovementStats};

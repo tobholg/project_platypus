@@ -20,11 +20,7 @@
 
 use std::collections::HashMap;
 
-use bevy::asset::RenderAssetUsages;
-use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
-use bevy::camera::visibility::NoFrustumCulling;
-use bevy::sprite_render::AlphaMode2d;
 use platypus_sim::{CellPos, Kind};
 use serde::Deserialize;
 
@@ -36,7 +32,7 @@ pub struct LegsPlugin;
 
 impl Plugin for LegsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<LegMesh>()
+        app.init_resource::<LegCanvas>()
             .init_resource::<BodyArt>()
             .add_systems(Update, (grow_legs, walk, draw).chain().after(super::animation::animate).after(TransformSystems::Propagate));
     }
@@ -404,25 +400,33 @@ fn cells(a: Vec2, b: Vec2, out: &mut Vec<IVec2>) {
     }
 }
 
-#[derive(Resource, Default)]
-struct LegMesh {
-    mesh: Option<Handle<Mesh>>,
+/// The legs' canvas (`canvas.rs`): every leg a cell at a time, under the
+/// bodies.
+#[derive(Resource)]
+struct LegCanvas(crate::canvas::Canvas);
+
+impl Default for LegCanvas {
+    fn default() -> Self {
+        LegCanvas(crate::canvas::Canvas::new("Legs", 9.5))
+    }
 }
 
-/// Every leg, a cell at a time, into one mesh (under the bodies).
+/// Every leg, a cell at a time, onto one canvas (under the bodies).
+#[allow(clippy::too_many_arguments)]
 fn draw(
     mut commands: Commands,
     sim: Res<SimWorld>,
-    mut set: ResMut<LegMesh>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut canvas: ResMut<LegCanvas>,
+    mut images: ResMut<Assets<Image>>,
+    camera: Query<(&GlobalTransform, &crate::world::ChunkLoader), With<crate::camera::MainCamera>>,
+    mut sprites: crate::canvas::CanvasSprites,
     q: Query<(&Legs, &GlobalTransform)>,
 ) {
-    let mut quads: Vec<(IVec2, [f32; 4])> = Vec::new();
+    let mut quads: Vec<(IVec2, [u8; 4])> = Vec::new();
     let mut line = Vec::new();
     for (legs, tf) in &q {
         let c = tf.translation().truncate();
-        let rgb = |(r, g, b): (u8, u8, u8)| Color::srgb_u8(r, g, b).to_linear().to_f32_array();
+        let rgb = |(r, g, b): (u8, u8, u8)| [r, g, b, 255];
         let (leg, joint) = (rgb(legs.def.color), rgb(legs.def.joint.unwrap_or(legs.def.color)));
         let (a, b) = (legs.def.reach * legs.def.upper, legs.def.reach * (1.0 - legs.def.upper));
         let held: Vec<Vec2> = legs.feet.iter().filter(|f| f.grips).map(|f| f.at).collect();
@@ -433,7 +437,7 @@ fn draw(
             let out = Vec2::from_angle(legs.way(i));
             let (k, foot) = knee(hip, f.at, a, b, (up + out * 0.6).normalize_or(up), |p| solid(&sim, p));
             // Thick lines: the cells beside the line, across it.
-            let mut thick = |a: Vec2, b: Vec2, t: u8, quads: &mut Vec<(IVec2, [f32; 4])>| {
+            let mut thick = |a: Vec2, b: Vec2, t: u8, quads: &mut Vec<(IVec2, [u8; 4])>| {
                 line.clear();
                 cells(a, b, &mut line);
                 let d = b - a;
@@ -449,33 +453,9 @@ fn draw(
             quads.push((IVec2::new(k.x.floor() as i32, k.y.floor() as i32), joint));
         }
     }
-    let handle = match &set.mesh {
-        Some(h) => h.clone(),
-        None => {
-            let material = materials.add(ColorMaterial { alpha_mode: AlphaMode2d::Blend, ..default() });
-            let h = meshes.add(Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD));
-            commands.spawn((Name::new("Legs"), Mesh2d(h.clone()), MeshMaterial2d(material), Transform::from_xyz(0.0, 0.0, 9.5), NoFrustumCulling));
-            set.mesh = Some(h.clone());
-            h
-        }
-    };
-    let Some(mut mesh) = meshes.get_mut(&handle) else { return };
-    let mut pos = Vec::with_capacity(quads.len() * 4 + 4);
-    let mut col = Vec::with_capacity(quads.len() * 4 + 4);
-    let mut idx = Vec::with_capacity(quads.len() * 6 + 6);
-    for (i, (p, c)) in quads.iter().enumerate() {
-        let (x, y) = (p.x as f32, p.y as f32);
-        let base = (i * 4) as u32;
-        pos.extend([[x, y, 0.0], [x + 1.0, y, 0.0], [x + 1.0, y + 1.0, 0.0], [x, y + 1.0, 0.0]]);
-        col.extend([*c; 4]);
-        idx.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+    let Ok((cam, loader)) = camera.single() else { return };
+    let Some(mut px) = canvas.0.frame(&mut commands, &mut images, &mut sprites, cam.translation().truncate(), loader.half_extent, !quads.is_empty()) else { return };
+    for (p, c) in &quads {
+        px.put(p.x, p.y, *c);
     }
-    if pos.is_empty() {
-        pos.extend([[0.0, 0.0, 0.0]; 4]);
-        col.extend([[0.0; 4]; 4]);
-        idx.extend([0, 1, 2, 0, 2, 3]);
-    }
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, pos);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, col);
-    mesh.insert_indices(Indices::U32(idx));
 }

@@ -271,7 +271,7 @@ fn fly(
         // Burning: fire at its tip, and light.
         match (was_burning, a.burning > 0.0) {
             (false, true) => {
-                commands.entity(e).insert((Flame::at(Vec2::ZERO), LightSource { color: [1.0, 0.55, 0.2], flicker: 1.0 }));
+                commands.entity(e).try_insert((Flame::at(Vec2::ZERO), LightSource { color: [1.0, 0.55, 0.2], flicker: 1.0 }));
             }
             (true, false) => {
                 commands.entity(e).remove::<(Flame, LightSource)>();

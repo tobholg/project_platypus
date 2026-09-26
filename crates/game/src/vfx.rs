@@ -55,6 +55,11 @@ impl Default for Sparks {
 }
 
 impl Sparks {
+    /// Sparks alive now.
+    pub fn count(&self) -> usize {
+        self.live.len()
+    }
+
     /// A square drawn this frame only.
     pub fn draw_now(&mut self, at: Vec2, size: f32, rgba: [f32; 4]) {
         self.now.push(([at.x, at.y], size, rgba));

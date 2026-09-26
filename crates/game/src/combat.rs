@@ -437,7 +437,8 @@ fn load(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut layouts: 
 /// Editing weapons.ron or a weapon's sprite takes effect at once.
 fn reload(weapons: Option<ResMut<Weapons>>, mut images: ResMut<Assets<Image>>, mut layouts: ResMut<Assets<TextureAtlasLayout>>) {
     let Some(mut w) = weapons else { return };
-    let (a, b) = (w.watch.changed(), w.art_watch.changed());
+    let polled = w.bypass_change_detection();
+    let (a, b) = (polled.watch.changed(), polled.art_watch.changed());
     if !a && !b {
         return;
     }

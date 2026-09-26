@@ -89,6 +89,15 @@ fn age_glowsticks(mut commands: Commands, mut q: Query<(Entity, &mut Glowstick, 
 pub fn fly(sim: Res<SimWorld>, mut q: Query<(&mut Kinematics, &Thrown)>) {
     let grid = WorldGrid(&sim.world);
     for (mut k, thrown) in &mut q {
+        // At rest on the ground: nothing to do until something pushes it or
+        // what it lies on goes (a battlefield of bodies costs next to
+        // nothing).
+        if platypus_physics::resting(&grid, &k.body) {
+            if k.prev_pos != k.body.pos {
+                k.prev_pos = k.body.pos;
+            }
+            continue;
+        }
         let k = &mut *k;
         k.prev_pos = k.body.pos;
         k.body.vel.y -= GRAVITY * DT;
@@ -104,6 +113,10 @@ pub fn fly(sim: Res<SimWorld>, mut q: Query<(&mut Kinematics, &Thrown)>) {
         }
         if c.submerged > 0.5 {
             k.body.vel *= 0.9;
+        }
+        // Barely sliding on the ground: stopped.
+        if c.ground && k.body.vel.y == 0.0 && k.body.vel.x.abs() < 2.0 {
+            k.body.vel.x = 0.0;
         }
     }
 }

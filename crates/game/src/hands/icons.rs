@@ -180,7 +180,7 @@ fn mannequin(creatures: &Creatures) -> Option<std::sync::Arc<platypus_art::ArtFi
 
 pub fn reload_icons(icons: Option<ResMut<Icons>>, items: Option<Res<Items>>, sim: Res<SimWorld>, creatures: Res<Creatures>, mut images: ResMut<Assets<Image>>) {
     let (Some(mut icons), Some(items)) = (icons, items) else { return };
-    if !icons.watch.changed() {
+    if !icons.bypass_change_detection().watch.changed() {
         return;
     }
     match load_ron::<IconsFile>(icons.watch.path()) {

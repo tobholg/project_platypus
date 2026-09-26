@@ -308,7 +308,7 @@ impl Life {
 }
 
 fn reload_life(mut life: ResMut<Life>) {
-    if !life.watch.changed() {
+    if !life.bypass_change_detection().watch.changed() {
         return;
     }
     match load_ron(life.watch.path()) {

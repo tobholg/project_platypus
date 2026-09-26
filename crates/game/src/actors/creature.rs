@@ -284,7 +284,10 @@ impl Plugin for CreaturePlugin {
 }
 
 pub(crate) fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut art: ResMut<CreatureArt>, mut q: Query<(&Creature, &mut MoveStats, &mut Health, &mut Animator, &mut Resist)>) {
-    let (a, b) = (creatures.watch.changed(), creatures.art_watch.changed());
+    // (Polled without marking it changed: what reads `is_changed` redresses
+    // and restats every creature.)
+    let polled = creatures.bypass_change_detection();
+    let (a, b) = (polled.watch.changed(), polled.art_watch.changed());
     if !a && !b {
         return;
     }

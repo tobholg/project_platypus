@@ -380,10 +380,14 @@ fn sync_chunks(
             gfx.0.insert(chunk.pos, ChunkGfx { front, back });
         }
         let g = gfx.0.get_mut(&chunk.pos).expect("inserted above");
+        // (Each layer redrawn only when its own cells changed.)
         let dirty = chunk.take_render_dirty() || fresh;
+        let bg_dirty = chunk.take_bg_render_dirty() || fresh;
         let o = chunk.pos.origin();
         if dirty {
             rebuild(&mut g.front, chunk.cells(), mats, o, &climate, false, None);
+        }
+        if bg_dirty {
             let ground: Option<Vec<i32>> = (0..N as i32).map(|lx| sim.generator.surface_hint(o.x + lx)).collect();
             rebuild(&mut g.back, chunk.background(), mats, o, &climate, true, ground.as_deref());
         }
@@ -391,7 +395,7 @@ fn sync_chunks(
             let (x, y) = (o.x as f32, o.y as f32);
             x + CHUNK as f32 >= lo.x && x <= hi.x && y + CHUNK as f32 >= lo.y && y <= hi.y
         });
-        for layer in [&g.front, &g.back] {
+        for (layer, dirty) in [(&g.front, dirty), (&g.back, bg_dirty)] {
             let animate = sway_now && visible && !layer.plants.is_empty();
             if !(dirty || animate) {
                 continue;

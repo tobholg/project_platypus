@@ -122,6 +122,24 @@ special cases.
 5. **Co-op transport**: pick the netcode crate, host/join, input + edit messages,
    per-chunk checksums every N ticks, resync on mismatch.
 
+## Stress test (2026-09-26, `chaos` scenario, arena, uncapped, M2 Max)
+
+Waves of 8×n (then 24×n) mixed enemies every 3 s, spells, bombs, blobs of
+sand/water/lava, lightning; `--features spikes` + `PLATYPUS_PROFILE`.
+
+| Fix | Before → after (frame avg, 40 s run) |
+|---|---|
+| Crash: a command on an entity despawned the same tick (a burning arrow) → `try_insert`, and the app's error handler warns instead of panicking | crashed at 5 s → runs |
+| Creature hot-reload polled its watcher through `ResMut`, marking `Creatures` changed every frame: every dressed creature redrawn (atlas compiled + uploaded) and restatted every frame | 12.0 → 7.3 ms (8×n) |
+| Chunk background re-uploaded whenever the playfield changed → own dirty flag | image uploads 10k/s → 5k/s |
+| Bodies at rest skip physics; at most 150 bodies (the oldest go) | 9.3 → 7.6 ms (24×n; 1600 → 150 bodies) |
+| Spider legs were a mesh of per-cell quads (190k vertices at ~40 spiders); particles likewise → pixel canvases over the view (`canvas.rs`) | mesh upload 2.4 → 0.4 ms; 13.1 → 6.8 ms at 380 creatures |
+
+At 380 creatures, 150 bodies, 11k particles, 100 active chunks: ~6.8 ms a
+frame, sim ~3 ms a tick. Next suspects: the sim at 100+ active chunks, the
+render schedule (~3.5 ms), frame spikes to ~27 ms (not yet traced),
+damage-number text entities in a big fight.
+
 ## Frame pacing (measured 2026-09-25, `--features spikes`, 120 Hz vsync)
 
 - Storms and fires used to push sim ticks past 4 ms often (83 in 20 s of a

@@ -70,6 +70,9 @@ pub fn layer(_app: &mut App) -> Option<BoxedLayer> {
     Some(Box::new(Timing))
 }
 
+// Leaf spans only: schedules and apps contain the systems.
+const CONTAINERS: [&str; 16] = ["update", "main app", "Main", "RenderApp", "RenderRecovery", "Render", "RenderExtractApp", "PostUpdate", "PreUpdate", "Update", "RunFixedMainLoop", "FixedMain", "FixedUpdate", "ExtractSchedule", "multithreaded executor", "RenderGraph"];
+
 pub struct SpikesPlugin;
 
 impl Plugin for SpikesPlugin {
@@ -78,9 +81,37 @@ impl Plugin for SpikesPlugin {
     }
 }
 
-fn report(time: Res<Time<Real>>) {
+/// With `PLATYPUS_PROFILE=<seconds>`: every so often, where the time went
+/// since the last (leaf spans, the heaviest first, ms a frame).
+#[derive(Default)]
+struct Profile {
+    since: f32,
+    frames: u32,
+    times: HashMap<String, (Duration, u32)>,
+}
+
+fn report(time: Res<Time<Real>>, mut profile: Local<Profile>) {
     let limit = std::env::var("PLATYPUS_SPIKES").ok().and_then(|s| s.parse().ok()).unwrap_or(12.0);
     let Some(times) = TIMES.lock().unwrap().take() else { return };
+    if let Some(every) = std::env::var("PLATYPUS_PROFILE").ok().and_then(|s| s.parse::<f32>().ok()) {
+        profile.since += time.delta_secs();
+        profile.frames += 1;
+        for (n, (d, c)) in &times {
+            let e = profile.times.entry(n.clone()).or_default();
+            e.0 += *d;
+            e.1 += c;
+        }
+        if profile.since >= every {
+            let frames = profile.frames.max(1) as f32;
+            let mut top: Vec<_> = profile.times.drain().filter(|(n, _)| !CONTAINERS.contains(&n.as_str())).collect();
+            top.sort_by_key(|(_, (d, _))| std::cmp::Reverse(*d));
+            let list: Vec<String> = top.iter().take(14).map(|(n, (d, _))| format!("{:.2} {}", d.as_secs_f32() * 1000.0 / frames, n.trim_start_matches("platypus::"))).collect();
+            info!("profile over {} frames (ms a frame): {}", profile.frames, list.join(" | "));
+            profile.since = 0.0;
+            profile.frames = 0;
+        }
+        return;
+    }
     let dt = time.delta().as_secs_f32() * 1000.0;
     // Our own work (the sim, streaming, drawing prep), apart from waiting on
     // the GPU: over half a 120 Hz frame is a spike too.
@@ -88,8 +119,6 @@ fn report(time: Res<Time<Real>>) {
     if dt < limit && ours < limit / 2.0 {
         return;
     }
-    // Leaf spans only: schedules and apps contain the systems.
-    const CONTAINERS: [&str; 16] = ["update", "main app", "Main", "RenderApp", "RenderRecovery", "Render", "RenderExtractApp", "PostUpdate", "PreUpdate", "Update", "RunFixedMainLoop", "FixedMain", "FixedUpdate", "ExtractSchedule", "multithreaded executor", "RenderGraph"];
     let mut top: Vec<_> = times.into_iter().filter(|(n, _)| !CONTAINERS.contains(&n.as_str())).collect();
     top.sort_by_key(|(_, (d, _))| std::cmp::Reverse(*d));
     let list: Vec<String> = top.iter().take(10).map(|(n, (d, c))| format!("{:.1} {n}{}", d.as_secs_f32() * 1000.0, if *c > 1 { format!(" ×{c}") } else { String::new() })).collect();

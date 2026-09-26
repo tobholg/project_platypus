@@ -145,6 +145,14 @@
 //!   a run onto the ice and let go (logs how far it slid, against the same
 //!   on stone, and that walking on it didn't chill); a frost bolt at an orc
 //!   put on the ice (logs that it's chilled)
+//! - `chaos`      (`PLATYPUS_WORLD=arena`; a stress test) the player stands
+//!   in the middle, untouchable, casting a salvo of spells every tick
+//!   (fireball, lightning, acid, sparks, frost) at the crowd; every 3 s a
+//!   bigger wave of mixed enemies (`PLATYPUS_CHAOS` a wave, times the wave's
+//!   number; default 8), bombs, blobs of sand, water and lava dropped from
+//!   the sky, a lightning strike; logs each second what's about (creatures,
+//!   bodies, spells, drops, arrows, sparks, particles). With
+//!   `--features spikes` and `PLATYPUS_PROFILE=1`: where the time goes.
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end
@@ -197,6 +205,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, fang_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(Update, chaos_script)
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -2760,5 +2769,135 @@ fn ice_script(
         (true, false) => mouse.press(MouseButton::Left),
         (false, true) => mouse.release(MouseButton::Left),
         _ => {}
+    }
+}
+
+/// What's about, for the chaos report.
+#[derive(bevy::ecs::system::SystemParam)]
+struct Census<'w, 's> {
+    creatures: Query<'w, 's, (), (With<crate::actors::Creature>, Without<LocalPlayer>)>,
+    bodies: Query<'w, 's, (), With<crate::hands::corpses::Corpse>>,
+    spells: Query<'w, 's, (), With<crate::magic::Spell>>,
+    drops: Query<'w, 's, (), With<crate::hands::Dropped>>,
+    arrows: Query<'w, 's, (), With<crate::archery::Arrow>>,
+    sparks: Res<'w, crate::vfx::Sparks>,
+    meshes: MessageReader<'w, 's, AssetEvent<Mesh>>,
+    images: MessageReader<'w, 's, AssetEvent<Image>>,
+    mesh_count: Res<'w, Assets<Mesh>>,
+    image_count: Res<'w, Assets<Image>>,
+}
+
+/// Waves of everything, to see what gives first.
+#[allow(clippy::too_many_arguments)]
+fn chaos_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    tools: Res<crate::tools::ToolsConfig>,
+    book: Res<crate::magic::Spellbook>,
+    mut player: Query<(Entity, &mut Kinematics, &mut crate::actors::Health), With<LocalPlayer>>,
+    foes: Query<&Kinematics, Foe>,
+    mut census: Census,
+    mut casts: MessageWriter<crate::magic::CastRequest>,
+    mut state: Local<(u32, f32, u64)>,
+    mut changed: Local<(u32, u32, u32, u32)>,
+) {
+    if s.name != "chaos" {
+        return;
+    }
+    // Meshes and images changed (re-uploaded) and added, since the last report.
+    for e in census.meshes.read() {
+        match e {
+            AssetEvent::Modified { .. } => changed.0 += 1,
+            AssetEvent::Added { .. } => changed.1 += 1,
+            _ => {}
+        }
+    }
+    for e in census.images.read() {
+        match e {
+            AssetEvent::Modified { .. } => changed.2 += 1,
+            AssetEvent::Added { .. } => changed.3 += 1,
+            _ => {}
+        }
+    }
+    let Ok((me, mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR as f32;
+    let home = Vec2::new(620.0, floor + 8.0);
+    // Untouchable, and kept in the middle of it.
+    h.hp = h.max;
+    if k.body.pos.distance(home) > 30.0 {
+        k.body.pos = home;
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = home;
+    }
+    let base: u32 = std::env::var("PLATYPUS_CHAOS").ok().and_then(|v| v.parse().ok()).unwrap_or(8);
+    let mut rng = platypus_sim::rng::Rng::seeded(&[sim.world.tick(), 0xC4A05]);
+    let mut unit = || rng.next_u32() as f32 / u32::MAX as f32;
+    // A wave every 3 s, bigger each time.
+    if t > 1.0 + state.0 as f32 * 3.0 {
+        state.0 += 1;
+        let n = base * state.0;
+        const KINDS: [(&str, f32); 8] = [("orc", 0.3), ("orc_archer", 0.15), ("skeleton", 0.15), ("spider", 0.1), ("slime", 0.1), ("troll", 0.05), ("vampire_bat", 0.1), ("spiderling", 0.05)];
+        for _ in 0..n {
+            let mut pick = unit();
+            let kind = KINDS.iter().find(|(_, w)| {
+                pick -= w;
+                pick <= 0.0
+            }).map_or("orc", |k| k.0);
+            let side = if unit() < 0.5 { -1.0 } else { 1.0 };
+            let x = home.x + side * (60.0 + unit() * 260.0);
+            crate::actors::creature::spawn_creature(&mut commands, kind, Vec2::new(x, floor + 60.0 + unit() * 40.0), |_| {});
+        }
+        // Bombs, blobs from the sky, a strike.
+        for _ in 0..4 + state.0 {
+            let at = Vec2::new(home.x + (unit() - 0.5) * 500.0, floor + 120.0);
+            crate::props::spawn_bomb(&mut commands, at, Vec2::new((unit() - 0.5) * 100.0, 0.0), tools.bomb.clone());
+        }
+        let mats = sim.materials().clone();
+        for (name, r) in [("sand", 10), ("water", 12), ("lava", 6)] {
+            if let Some(m) = mats.id(name) {
+                let at = CellPos::new((home.x + (unit() - 0.5) * 400.0) as i32, (floor + 100.0 + unit() * 60.0) as i32);
+                sim.queue(WorldEdit::Paint { center: at, radius: r, material: m, overwrite: false });
+            }
+        }
+        sim.queue(WorldEdit::Lightning { x: (home.x + (unit() - 0.5) * 300.0) as i32, from_y: (floor + 200.0) as i32 });
+        info!("chaos: wave {} ({} spawned)", state.0, n);
+    }
+    // A salvo of spells at the crowd, every spell as fast as it goes.
+    let target = foes.iter().min_by(|a, b| a.body.pos.distance(home).total_cmp(&b.body.pos.distance(home))).map(|f| f.body.pos);
+    if let Some(at) = target {
+        for id in ["fireball", "lightning", "acid_arrow", "spark_bolt", "frost_bolt"] {
+            if let Some(spell) = book.spells.iter().position(|s| s.id == id) {
+                casts.write(crate::magic::CastRequest { caster: me, spell, from: k.body.pos + Vec2::new(0.0, 6.0), toward: at, alt: false });
+            }
+        }
+    }
+    if t >= state.1 + 1.0 {
+        state.1 = t;
+        info!(
+            "chaos: t {t:.0} wave {} | creatures {} bodies {} spells {} drops {} arrows {} sparks {} particles {}",
+            state.0,
+            census.creatures.iter().count(),
+            census.bodies.iter().count(),
+            census.spells.iter().count(),
+            census.drops.iter().count(),
+            census.arrows.iter().count(),
+            census.sparks.count(),
+            sim.world.particles().len(),
+        );
+        info!(
+            "chaos: t {t:.0} assets: meshes {} ({} changed, {} added), images {} ({} changed, {} added) in the last second",
+            census.mesh_count.len(),
+            changed.0,
+            changed.1,
+            census.image_count.len(),
+            changed.2,
+            changed.3
+        );
+        let mut sizes: Vec<usize> = census.mesh_count.iter().map(|(_, m)| m.count_vertices()).collect();
+        sizes.sort_unstable_by(|a, b| b.cmp(a));
+        info!("chaos: t {t:.0} biggest meshes (vertices): {:?}", &sizes[..sizes.len().min(8)]);
+        *changed = Default::default();
     }
 }

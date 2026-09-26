@@ -28,6 +28,7 @@ pub(crate) struct ChunkRaw {
     bg: *mut Cell,
     next_dirty: *const AtomicRect,
     render_dirty: *const AtomicBool,
+    bg_render_dirty: *const AtomicBool,
     modified: *const AtomicBool,
 }
 
@@ -44,6 +45,7 @@ impl ChunkRaw {
             bg: chunk.bg.as_mut_ptr(),
             next_dirty: &chunk.next_dirty,
             render_dirty: &chunk.render_dirty,
+            bg_render_dirty: &chunk.bg_render_dirty,
             modified: &chunk.modified,
         }
     }
@@ -55,6 +57,8 @@ pub(crate) struct Hood<'a> {
     chunks: [Option<ChunkRaw>; 9],
     dirty: [Rect; 9],
     touched: u16,
+    /// Chunks whose background it wrote.
+    touched_bg: u16,
     pub mats: &'a MaterialTable,
     pub rng: Rng,
     pub clock: u8,
@@ -125,7 +129,7 @@ impl<'a> Hood<'a> {
         let Some(c) = self.chunks[s] else { return };
         // SAFETY: see module docs.
         unsafe { *c.bg.add(i) = cell };
-        self.touched |= 1 << s;
+        self.touched_bg |= 1 << s;
         self.wake(lx, ly);
     }
 
@@ -188,6 +192,10 @@ impl<'a> Hood<'a> {
                 (*c.next_dirty).include(self.dirty[s]);
                 if self.touched & (1 << s) != 0 {
                     (*c.render_dirty).store(true, Relaxed);
+                    (*c.modified).store(true, Relaxed);
+                }
+                if self.touched_bg & (1 << s) != 0 {
+                    (*c.bg_render_dirty).store(true, Relaxed);
                     (*c.modified).store(true, Relaxed);
                 }
             }
@@ -298,6 +306,7 @@ pub(crate) fn step_chunks(
                 }),
                 dirty: [Rect::EMPTY; 9],
                 touched: 0,
+                touched_bg: 0,
                 mats,
                 rng: Rng::seeded(&[seed, tick, pos.x as u64, pos.y as u64]),
                 clock,

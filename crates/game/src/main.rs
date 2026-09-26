@@ -10,6 +10,7 @@ mod actors;
 mod archery;
 mod arena;
 mod camera;
+mod canvas;
 mod combat;
 mod data;
 mod debug;
@@ -62,6 +63,9 @@ fn main() {
     let benchmarking = std::env::var("PLATYPUS_SCENARIO").is_ok() && std::env::var("PLATYPUS_VSYNC").is_err();
 
     App::new()
+        // A command on something that's gone this tick (a creature killed by
+        // one thing while another acts on it) is logged, not fatal.
+        .set_error_handler(bevy::ecs::error::warn)
         .add_plugins(
             DefaultPlugins
                 .set(ImagePlugin::default_nearest())
