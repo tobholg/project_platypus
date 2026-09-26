@@ -91,6 +91,14 @@ pub struct MovementStats {
     /// move_y) × this, at `swim_accel`, weightless; 0: it swims as bodies do.
     pub swim_speed: f32,
     pub swim_accel: f32,
+    /// Rocket boots (0: none): holding jump in the air, once the jump's rise
+    /// has slowed (and any air jumps are spent), thrust up for up to this
+    /// many seconds, refilled on landing (Terraria's).
+    pub rocket_time: f32,
+    /// Upward acceleration while it fires (cells/s², against gravity), up to
+    /// `rocket_speed` rising.
+    pub rocket_thrust: f32,
+    pub rocket_speed: f32,
 }
 
 impl MovementStats {
@@ -141,6 +149,9 @@ impl Default for MovementStats {
             swim_max_fall: 25.0,
             swim_stroke: 150.0,
             swim_stroke_every: 0.35,
+            rocket_time: 0.0,
+            rocket_thrust: 2600.0,
+            rocket_speed: 230.0,
         }
     }
 }
@@ -185,6 +196,8 @@ pub struct Locomotion {
     cling: Option<Vec2>,
     /// Seconds to the next swim stroke, while jump is held in water.
     stroke_left: f32,
+    /// Rocket boots' fuel left (seconds).
+    pub rocket_left: f32,
     /// Last tick's contacts, so brains and animation can read them.
     pub contacts: Contacts,
 }
@@ -207,6 +220,7 @@ impl Default for Locomotion {
             prev_jump: false,
             prev_dash: false,
             stroke_left: 0.0,
+            rocket_left: 0.0,
             cling: None,
             contacts: Contacts::default(),
         }
@@ -220,6 +234,8 @@ pub struct MoveEvents {
     pub air_jumped: bool,
     pub wall_jumped: bool,
     pub dashed: bool,
+    /// Rocket boots fired this tick.
+    pub rocketed: bool,
     /// Landing speed, if landed this tick.
     pub landed: Option<f32>,
 }
@@ -273,6 +289,7 @@ impl Locomotion {
         if grounded {
             self.air_jumps_left = s.air_jumps;
             self.air_dash_used = false;
+            self.rocket_left = s.rocket_time;
         }
 
         let wet = self.contacts.submerged;
@@ -399,6 +416,7 @@ impl Locomotion {
         if self.state == MoveState::WallSlide {
             self.air_jumps_left = s.air_jumps;
             self.air_dash_used = false;
+            self.rocket_left = s.rocket_time;
         }
 
         // Swim: in water jump is a stroke toward where it steers (up if
@@ -454,6 +472,26 @@ impl Locomotion {
         }
         if body.vel.y <= 0.0 {
             self.rising_from_jump = false;
+        }
+
+        // Rocket boots: jump held in the air once the jump's rise has slowed
+        // (and any air jumps are spent: a press uses those first).
+        self.rocket_left = self.rocket_left.min(s.rocket_time);
+        if s.rocket_time > 0.0
+            && self.rocket_left > 0.0
+            && intent.jump
+            && !jump_pressed
+            && !grounded
+            && !swimming
+            && self.state == MoveState::Air
+            && self.air_jumps_left == 0
+            && body.vel.y < s.rocket_speed
+        {
+            self.rocket_left -= dt;
+            body.vel.y = (body.vel.y + s.rocket_thrust * dt).min(s.rocket_speed);
+            // (The rocket, not the jump, now: letting go doesn't cut it.)
+            self.rising_from_jump = false;
+            ev.rocketed = true;
         }
 
         // Gravity.
@@ -542,6 +580,35 @@ mod tests {
         let (stone, ice) = (slide("#"), slide("="));
         assert!(stone < 6.0, "stone stops it: {stone}");
         assert!(ice > stone * 3.0 + 10.0, "ice slides it on: {ice} (stone {stone})");
+    }
+
+    /// Rocket boots: holding jump climbs far past a jump's height, for as
+    /// long as the fuel lasts; landing fills it again.
+    #[test]
+    fn rocket_boots_climb_while_jump_is_held() {
+        let mut rows = vec!["#                                                                                                  #"; 400];
+        rows.push("####################################################################################################");
+        let g = Ascii::new(&rows);
+        let (mut s, mut l, mut b) = player();
+        s.air_jumps = 0;
+        let apex = |s: &MovementStats, l: &mut Locomotion, b: &mut Body, frames: usize| {
+            settle(&g, s, l, b);
+            let floor = b.bottom();
+            let mut top = floor;
+            for _ in 0..frames {
+                tick(&g, s, l, b, Intent { jump: true, ..default_intent() });
+                top = top.max(b.bottom());
+            }
+            top - floor
+        };
+        let plain = apex(&s, &mut l, &mut b, 90);
+        s.rocket_time = 1.0;
+        let (mut l2, mut b2) = (Locomotion::default(), Body::new(Vec2::new(20.0, 10.0), Vec2::new(8.0, 16.0)));
+        let rocket = apex(&s, &mut l2, &mut b2, 80);
+        assert!(rocket > plain * 2.0, "rocket {rocket} vs a jump {plain}");
+        assert!(l2.rocket_left <= 0.0, "the fuel ran out (80 ticks in, still up)");
+        settle(&g, &s, &mut l2, &mut b2);
+        assert!((l2.rocket_left - 1.0).abs() < 1e-3, "landing refills it");
     }
 
     #[test]

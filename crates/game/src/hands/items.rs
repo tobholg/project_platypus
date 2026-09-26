@@ -117,6 +117,9 @@ pub struct ItemsFile {
     /// What a new player carries: (item id, count).
     #[serde(default)]
     pub start: Vec<(String, u32)>,
+    /// What a new player wears (gear ids).
+    #[serde(default)]
+    pub wear: Vec<String>,
 }
 
 /// Every item there is.
@@ -126,6 +129,7 @@ pub struct Items {
     by_id: HashMap<String, ItemId>,
     blocks: HashMap<MaterialId, ItemId>,
     pub start: Vec<(ItemId, u32)>,
+    pub wear: Vec<ItemId>,
 }
 
 /// Blocks count in cells (so a half-mined block isn't lost): this many make a
@@ -166,7 +170,8 @@ impl Items {
             .iter()
             .map(|(id, n)| by_id.get(id).map(|&i| (i, *n)).ok_or(format!("start: no item `{id}`")))
             .collect::<Result<_, _>>()?;
-        Ok(Items { defs, by_id, blocks, start })
+        let wear = file.wear.iter().map(|id| by_id.get(id).copied().ok_or(format!("wear: no item `{id}`"))).collect::<Result<_, _>>()?;
+        Ok(Items { defs, by_id, blocks, start, wear })
     }
 
     /// How many items there are (ids are 0..len).

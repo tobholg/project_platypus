@@ -37,6 +37,7 @@ impl Plugin for ActorsPlugin {
             .add_message::<Landed>()
             .add_message::<AirJumped>()
             .add_message::<Died>()
+            .add_message::<Rocketed>()
             .add_plugins((creature::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, animation::AnimationPlugin))
             .add_plugins((player::PlayerPlugin, ai::AiPlugin, critters::CrittersPlugin, monsters::MonstersPlugin, legs::LegsPlugin))
             .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, crate::combat::guard, hurt::notice, dummy::tally, deaths).chain().in_set(TickSet::Bodies))
@@ -177,6 +178,15 @@ pub struct FallTrack {
 /// into a wall).
 const SLAM_MIN: f32 = 150.0;
 
+/// A creature's rocket boots fired this tick (`gear::boots`: the exhaust).
+#[derive(Message, Clone, Copy, Debug)]
+pub struct Rocketed {
+    pub entity: Entity,
+    /// Its feet, and how it's moving.
+    pub at: Vec2,
+    pub vel: Vec2,
+}
+
 /// A body jumped off thin air (a double jump) with its feet at `at`: a puff
 /// of cloud there (`vfx`), a soft flash of light (`light`).
 #[derive(Message, Clone, Copy, Debug)]
@@ -251,6 +261,7 @@ fn move_creatures(
     mut q: Query<Movers>,
     mut landed: MessageWriter<Landed>,
     mut air: MessageWriter<AirJumped>,
+    mut rockets: MessageWriter<Rocketed>,
     mut dashed: MessageWriter<crate::combat::Dashed>,
 ) {
     let grid = WorldGrid(&sim.world);
@@ -274,6 +285,9 @@ fn move_creatures(
         let ev = k.loco.steer(stats, &controls.0, &mut k.body, DT);
         if ev.dashed {
             dashed.write(crate::combat::Dashed(entity));
+        }
+        if ev.rocketed {
+            rockets.write(Rocketed { entity, at: k.body.pos - Vec2::new(0.0, k.body.half.y), vel: k.body.vel });
         }
         if ev.air_jumped {
             air.write(AirJumped { at: k.body.pos - Vec2::new(0.0, k.body.half.y) });

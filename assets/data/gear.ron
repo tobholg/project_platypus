@@ -166,6 +166,27 @@
             look: (recolor: [(colors: { 'B': (130, 138, 156), 'C': (94, 102, 120) })]))),
 
         // ---- boots with a trick ----
+        // rocket: Terraria's rocket boots. Hold jump in the air (once the
+        // jump's rise slows, any air jumps spent): thrust up for `time` s,
+        // refilled on landing; `thrust` cells/s² against gravity up to
+        // `speed` rising; `fire`: the exhaust is flame (it scorches what's
+        // under it, and sets grass and wood alight).
+        (id: "rocket_boots", name: "Rocket boots", color: (200, 70, 40),
+            gear: (slot: Feet, stats: { Armor: 2, FireResist: 25 }, rocket: (time: 3.0, thrust: 2800, speed: 240, fire: true),
+            look: (recolor: [(colors: { 'B': (196, 64, 40), 'C': (140, 44, 30) })],
+                palette: { 'y': (236, 196, 80) }, over: [(parts: ["legs", "run*", "tuck", "dangle"], clip: true, rows: [
+                ".......",
+                ".......",
+                ".......",
+                ".......",
+                ".......",
+                ".yy.yy.",
+            ])])),
+            about: "Hold jump in the air: fly. Mind what's under you."),
+        (id: "cloud_boots", name: "Cloud boots", color: (200, 230, 255),
+            gear: (slot: Feet, weight: Light, stats: { AirJumps: 2, FallResist: 20 },
+            look: (recolor: [(colors: { 'B': (214, 234, 255), 'C': (170, 196, 230) })])),
+            about: "Two jumps off thin air (a triple jump)."),
         (id: "feather_boots", name: "Feather boots", color: (236, 236, 246),
             gear: (slot: Feet, weight: Light, stats: { AirJumps: 1, JumpHeight: 10, FallResist: 30 },
             look: (recolor: [(colors: { 'B': (236, 236, 246), 'C': (190, 190, 206) })])),

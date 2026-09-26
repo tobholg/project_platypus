@@ -134,12 +134,21 @@ fn build_items(mut commands: Commands, mut pending: ResMut<PendingItems>, sim: R
     commands.insert_resource(items);
 }
 
-fn give_start(mut commands: Commands, items: Option<Res<Items>>, new: Query<Entity, (With<LocalPlayer>, Without<Inventory>)>) {
+type NewPlayer = (With<LocalPlayer>, Without<Inventory>);
+
+fn give_start(mut commands: Commands, items: Option<Res<Items>>, mut new: Query<(Entity, &mut crate::gear::Equipment), NewPlayer>) {
     let Some(items) = items else { return };
-    for e in &new {
+    for (e, mut eq) in &mut new {
         let mut inv = Inventory::new(PACK);
         for &(item, n) in &items.start {
             inv.add(&items, Stack::new(item, n * items.unit(item)));
+        }
+        // What it starts wearing.
+        for &item in &items.wear {
+            let s = Stack::new(item, 1);
+            if let Some(i) = eq.slot_for(&items, &s) {
+                eq.worn[i] = Some(s);
+            }
         }
         commands.entity(e).insert(inv);
     }

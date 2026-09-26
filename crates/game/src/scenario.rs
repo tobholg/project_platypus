@@ -63,7 +63,7 @@
 //!   (7 s: alight), frost onto the pool (8.5 s: ice); logs water, steam,
 //!   ice, oil and burning (`RUST_LOG=warn,platypus::magic=debug` traces the
 //!   spells)
-//! - `airjump`    lifts the player 160 cells at 1 s; it falls and air jumps
+//! - `airjump`    (in cloud boots) lifts the player 160 cells at 1 s; it falls and air jumps
 //!   (a cloud) just above the ground: no fall damage (`PLATYPUS_NOSAVE=1`:
 //!   no air jump, it hurts; `PLATYPUS_NIGHT=1`: at night); logs height and
 //!   health
@@ -153,6 +153,11 @@
 //!   the sky, a lightning strike; logs each second what's about (creatures,
 //!   bodies, spells, drops, arrows, sparks, particles). With
 //!   `--features spikes` and `PLATYPUS_PROFILE=1`: where the time goes.
+//! - `rocket`     (`PLATYPUS_WORLD=arena`, try `PLATYPUS_HOUR=22`) the player
+//!   in rocket boots over an orc on a wooden floor (brain off), holding
+//!   jump from 1 s: logs how high it gets, the fuel, what the exhaust does
+//!   to the orc and the floor (fire, burning planks), and that landing
+//!   refills it
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end
@@ -206,6 +211,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
+            .add_systems(PreUpdate, rocket_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -1442,6 +1448,8 @@ fn splash_script(
 /// air jumps chained up (see the module notes).
 fn airjump_script(
     s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut worn: Query<&mut crate::gear::Equipment, With<LocalPlayer>>,
     mut player: Query<(&mut Kinematics, &crate::actors::Health), With<LocalPlayer>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut state: Local<(Option<f32>, f32, u8, f32)>,
@@ -1459,6 +1467,14 @@ fn airjump_script(
     let ground = *state.0.get_or_insert(k.body.pos.y);
     // PLATYPUS_NOSAVE=1: no air jump before landing (it should hurt).
     let nosave = std::env::var("PLATYPUS_NOSAVE").is_ok_and(|v| !v.is_empty());
+    // In cloud boots (the air jumps are theirs).
+    if t < 0.5
+        && let (Some(items), Ok(mut eq)) = (items.as_ref(), worn.single_mut())
+        && let Some(b) = items.id("cloud_boots")
+        && eq.worn[4].is_none_or(|s| s.item != b)
+    {
+        eq.worn[4] = Some(crate::hands::items::Stack::new(b, 1));
+    }
     // Lifted 160 cells up at 1 s: a fall well past the safe height.
     if state.2 == 0 && t > 1.0 {
         k.body.pos.y += 160.0;
@@ -2908,5 +2924,71 @@ fn chaos_script(
         sizes.sort_unstable_by(|a, b| b.cmp(a));
         info!("chaos: t {t:.0} biggest meshes (vertices): {:?}", &sizes[..sizes.len().min(8)]);
         *changed = Default::default();
+    }
+}
+
+type RocketFoe = (With<crate::actors::Creature>, Without<LocalPlayer>, Without<crate::actors::dummy::Dummy>);
+
+/// Rocket boots over an orc on planks.
+#[allow(clippy::too_many_arguments)]
+fn rocket_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    foes: Query<(&crate::actors::Health, Has<crate::actors::elements::Burning>), RocketFoe>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut state: Local<(u8, f32, f32)>,
+) {
+    if s.name != "rocket" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let x = 620;
+    let burning = |sim: &SimWorld| {
+        let mats = sim.materials();
+        (x - 40..x + 40).flat_map(|xx| (floor - 2..floor + 60).map(move |y| (xx, y))).filter(|&(xx, y)| sim.world.get(CellPos::new(xx, y)).is_some_and(|c| !c.is_air() && (mats.phys(c.material).kind == platypus_sim::Kind::Fire || c.flags & platypus_sim::cell::flags::BURNING != 0))).count()
+    };
+    match state.0 {
+        0 if t > 0.3 => {
+            // A wooden floor, and an orc on it.
+            if let Some(planks) = sim.materials().id("planks") {
+                for dx in (-36..=36).step_by(6) {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, floor + 1), radius: 3, material: planks, overwrite: false });
+                }
+            }
+            crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(x as f32 + 4.0, floor as f32 + 5.0), |e| {
+                e.remove::<crate::actors::ai::MeleeWalker>();
+            });
+            k.body.pos = Vec2::new(x as f32, floor as f32 + 40.0);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            state.1 = k.body.pos.y;
+            state.0 = 1;
+        }
+        1 if t > 1.0 => state.0 = 2,
+        2 => {
+            state.2 = state.2.max(k.body.pos.y);
+            if t > 3.2 {
+                let fuel = sim.world.tick();
+                let _ = fuel;
+                let (hp, lit) = foes.iter().next().map_or((0.0, false), |(h, b)| (h.hp, b));
+                info!("rocket: held jump 2.2 s: rose {:.0} cells above where it started (a jump is 40); the orc under it: {hp:.0} hp, burning {lit}; fire on the planks: {} cells", state.2 - state.1, burning(&sim));
+                state.0 = 3;
+            }
+        }
+        3 if t > 6.0 => {
+            info!("rocket: after landing: fire on the planks {} cells", burning(&sim));
+            state.0 = 4;
+        }
+        _ => {}
+    }
+    let hold = state.0 == 2;
+    match (hold, keys.pressed(KeyCode::Space)) {
+        (true, false) => keys.press(KeyCode::Space),
+        (false, true) => keys.release(KeyCode::Space),
+        _ => {}
     }
 }

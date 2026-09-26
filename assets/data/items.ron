@@ -108,5 +108,8 @@
         ("glowstick", 6), ("gravity_wand", 1), ("force_wand", 1), ("gravity_staff", 1), ("force_staff", 1), ("frost_wand", 1),
         ("shortsword", 1), ("longsword", 1), ("bow", 1), ("arrow", 60),
         ("leather_cap", 1), ("chainmail", 1), ("apprentice_robe", 1), ("feather_boots", 1), ("ring_of_vigour", 1), ("ember_amulet", 1),
+        ("cloud_boots", 1),
     ],
+    // What a new player wears (while developing: rocket boots to try).
+    wear: ["rocket_boots"],
 )

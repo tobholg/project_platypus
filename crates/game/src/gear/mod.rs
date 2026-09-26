@@ -14,6 +14,7 @@
 //! stats into what they change: its health and ward, mana, stamina, poise
 //! and movement. Combat and magic read the rest where they happen.
 
+pub mod boots;
 pub mod look;
 pub mod roll;
 pub mod stats;
@@ -95,6 +96,32 @@ pub struct GearDef {
     /// (the Broodmother's Fang: venom, "acid").
     #[serde(default)]
     pub on_hit: Option<String>,
+    /// Boots that fly (Terraria's rocket boots): holding jump in the air
+    /// thrusts up (`boots.rs`).
+    #[serde(default)]
+    pub rocket: Option<RocketDef>,
+}
+
+/// Rocket boots: `time` s of thrust (refilled on landing), `thrust`
+/// cells/s² against gravity up to `speed` rising; `fire`: the exhaust is
+/// flame (it burns what's under it, and lights what it lands on).
+#[derive(Clone, Debug, Deserialize)]
+pub struct RocketDef {
+    pub time: f32,
+    #[serde(default = "rocket_thrust")]
+    pub thrust: f32,
+    #[serde(default = "rocket_speed")]
+    pub speed: f32,
+    #[serde(default)]
+    pub fire: bool,
+}
+
+fn rocket_thrust() -> f32 {
+    2600.0
+}
+
+fn rocket_speed() -> f32 {
+    230.0
 }
 
 /// gear.ron: what armour's weight costs, the rarities and the bonuses
@@ -209,7 +236,8 @@ impl Plugin for GearPlugin {
         let file = load();
         app.insert_resource(GearRules { weights: file.weights, rarities: file.rarities, bonuses: file.bonuses })
             .init_resource::<look::Wardrobe>()
-            .add_systems(Update, (outfit, apply, look::dress).chain().after(crate::actors::creature::hot_reload_creatures));
+            .add_systems(Update, (outfit, apply, look::dress).chain().after(crate::actors::creature::hot_reload_creatures))
+            .add_systems(FixedUpdate, boots::exhaust.in_set(crate::world::TickSet::Bodies));
     }
 }
 
@@ -257,6 +285,12 @@ fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures: Res<Creatu
         m.run_speed *= total.mult(Stat::MoveSpeed);
         m.jump_height *= total.mult(Stat::JumpHeight);
         m.air_jumps = (m.air_jumps as f32 + total.get(Stat::AirJumps)).round().clamp(0.0, 9.0) as u8;
+        // Rocket boots (the best worn).
+        if let Some(r) = eq.pieces(&items).filter_map(|s| items.def(s.item).gear.as_ref()?.rocket.as_ref()).max_by(|a, b| a.time.total_cmp(&b.time)) {
+            m.rocket_time = r.time;
+            m.rocket_thrust = r.thrust;
+            m.rocket_speed = r.speed;
+        }
         moves.0 = m;
         if let (Some(mut st), Some(base)) = (stamina, def.stamina) {
             st.max = (base + total.get(Stat::Stamina)).max(1.0);
