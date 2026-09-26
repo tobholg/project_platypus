@@ -50,7 +50,9 @@ Esc (or I) opens the inventory: drag stacks between slots (or click one up and
 click it down), right-click takes half, Shift-click moves across, hover for what
 it is and does, click outside to throw it out. Gear (armour, trinkets) goes in the
 Worn column beside it (drag it there, or Shift-click it on and off); the Stats panel
-shows what it adds up to, and a piece's tooltip compares it with what you wear. Mining and building work in 4 × 4-cell blocks;
+shows what it adds up to, and a piece's tooltip compares it with what you wear. Gear found in
+chests is rolled: common, uncommon (green), rare (blue), epic (purple), with bonuses named
+into it ("Keen longsword of Slaughter"), better the deeper it's found. Mining and building work in 4 × 4-cell blocks;
 the outlined block is the one you'll hit (the first minable block on the line from
 your hand to the cursor, so you dig the face you see) or fill (under the cursor,
 or against whatever the line meets). What you mine drops out and drifts to you;

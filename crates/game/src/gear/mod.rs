@@ -15,6 +15,7 @@
 //! and movement. Combat and magic read the rest where they happen.
 
 pub mod look;
+pub mod roll;
 pub mod stats;
 
 use std::collections::BTreeMap;
@@ -86,14 +87,21 @@ pub struct GearDef {
     /// How it looks worn, on the humanoid rig (`look.rs`).
     #[serde(default)]
     pub look: Option<platypus_art::dress::Skin>,
+    /// A named unique: always legendary, no random bonuses (its `stats`
+    /// are all it has).
+    #[serde(default)]
+    pub unique: bool,
 }
 
-/// gear.ron: what armour's weight costs, and the gear itself (items, as in
-/// items.ron).
+/// gear.ron: what armour's weight costs, the rarities and the bonuses
+/// gear can roll, and the gear itself (items, as in items.ron).
 #[derive(Clone, Debug, Deserialize)]
 pub struct GearFile {
     #[serde(default)]
     pub weights: BTreeMap<Weight, BTreeMap<Stat, f32>>,
+    pub rarities: Vec<roll::Rarity>,
+    #[serde(default)]
+    pub bonuses: Vec<roll::Bonus>,
     pub items: Vec<ItemDef>,
 }
 
@@ -105,6 +113,29 @@ pub fn load() -> GearFile {
 #[derive(Resource)]
 pub struct GearRules {
     pub weights: BTreeMap<Weight, BTreeMap<Stat, f32>>,
+    pub rarities: Vec<roll::Rarity>,
+    pub bonuses: Vec<roll::Bonus>,
+}
+
+impl GearRules {
+    /// A piece's rolled bonuses (stat, amount).
+    pub fn bonuses(&self, items: &Items, s: &Stack) -> Vec<(Stat, f32)> {
+        roll::bonuses(&self.rarities, &self.bonuses, items.def(s.item), &s.roll).into_iter().map(|(i, v)| (self.bonuses[i].stat, v)).collect()
+    }
+
+    /// What a stack is called: gear by its roll ("Sturdy iron helm of the
+    /// Bear"), anything else by its name.
+    pub fn name(&self, items: &Items, s: &Stack) -> String {
+        let def = items.def(s.item);
+        let rolled = roll::bonuses(&self.rarities, &self.bonuses, def, &s.roll);
+        roll::name(&self.bonuses, def, &rolled)
+    }
+
+    /// A piece's rarity (none: not gear).
+    pub fn rarity(&self, items: &Items, s: &Stack) -> Option<&roll::Rarity> {
+        items.def(s.item).gear.as_ref()?;
+        self.rarities.get(s.roll.rarity as usize)
+    }
 }
 
 /// What a creature wears, and what's in its hand.
@@ -143,10 +174,14 @@ impl Equipment {
     }
 }
 
-/// One piece's stats (its own and its weight's) into `into`.
+/// One piece's stats (its own, its rolled bonuses and its weight's) into
+/// `into`.
 pub fn add_piece(into: &mut Stats, items: &Items, rules: &GearRules, s: &Stack) {
     let Some(g) = &items.def(s.item).gear else { return };
     for (&stat, &v) in &g.stats {
+        into.add(stat, v);
+    }
+    for (stat, v) in rules.bonuses(items, s) {
         into.add(stat, v);
     }
     if let Some(w) = g.weight.and_then(|w| rules.weights.get(&w)) {
@@ -168,7 +203,7 @@ pub struct GearPlugin;
 impl Plugin for GearPlugin {
     fn build(&self, app: &mut App) {
         let file = load();
-        app.insert_resource(GearRules { weights: file.weights })
+        app.insert_resource(GearRules { weights: file.weights, rarities: file.rarities, bonuses: file.bonuses })
             .init_resource::<look::Wardrobe>()
             .add_systems(Update, (apply, look::dress).after(crate::actors::creature::hot_reload_creatures));
     }

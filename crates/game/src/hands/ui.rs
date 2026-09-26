@@ -86,6 +86,10 @@ struct HeldCount;
 #[derive(Component)]
 struct Tooltip;
 
+/// The tooltip's lines under its title.
+#[derive(Component)]
+struct TooltipBody;
+
 /// An empty equipment slot's name.
 #[derive(Component)]
 struct SlotName(usize);
@@ -292,17 +296,20 @@ fn spawn(mut commands: Commands) {
             Node { position_type: PositionType::Absolute, right: px(-6), bottom: px(-4), ..default() },
         ));
     // What's under the mouse.
-    commands.spawn((
-        Tooltip,
-        Visibility::Hidden,
-        Text::new(""),
-        TextFont { font_size: FontSize::Px(13.0), ..default() },
-        TextColor(Color::WHITE),
-        Node { position_type: PositionType::Absolute, padding: UiRect::axes(px(8), px(5)), max_width: px(360), ..default() },
-        BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.92)),
-        BorderColor::all(Color::srgba(0.6, 0.6, 0.7, 0.8)),
-        GlobalZIndex(20),
-    ));
+    // (Its title in the colour of its rarity, the rest under it.)
+    commands
+        .spawn((
+            Tooltip,
+            Visibility::Hidden,
+            Text::new(""),
+            TextFont { font_size: FontSize::Px(14.0), ..default() },
+            TextColor(Color::WHITE),
+            Node { position_type: PositionType::Absolute, padding: UiRect::axes(px(8), px(5)), border: UiRect::all(px(1)), max_width: px(360), ..default() },
+            BackgroundColor(Color::srgba(0.05, 0.05, 0.08, 0.92)),
+            BorderColor::all(Color::srgba(0.6, 0.6, 0.7, 0.8)),
+            GlobalZIndex(20),
+        ))
+        .with_child((TooltipBody, TextSpan::new(""), TextFont { font_size: FontSize::Px(13.0), ..default() }, TextColor(Color::srgb(0.9, 0.9, 0.94))));
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -565,6 +572,7 @@ fn whole(items: &Items, s: &Stack) -> u32 {
 #[allow(clippy::too_many_arguments)]
 fn show(
     items: Option<Res<Items>>,
+    rules: Res<GearRules>,
     icons: Option<Res<Icons>>,
     hand: Res<Hand>,
     held: Res<Held>,
@@ -603,7 +611,9 @@ fn show(
     };
     for (&SlotUi(which, i), mut border) in &mut borders {
         let chosen = matches!(which, Holder::Bar | Holder::Pack) && index(&hand, which, i) == hand.active();
-        *border = BorderColor::all(if chosen { CHOSEN } else { EDGE });
+        // (Gear finer than common is edged in its rarity's colour.)
+        let rare = slot_of(which, i).filter(|s| s.roll.rarity > 0).and_then(|s| rules.rarity(&items, &s)).map(|r| Color::srgb_u8(r.color.0, r.color.1, r.color.2));
+        *border = BorderColor::all(if chosen { CHOSEN } else { rare.unwrap_or(EDGE) });
     }
     for (tag, mut bg) in &mut tags {
         bg.0 = if tag.0 == hand.bar { Color::srgba(0.55, 0.45, 0.12, 0.9) } else { BAR_BG };
@@ -623,7 +633,7 @@ fn show(
     let name = inv.slots[hand.active()].map_or(String::new(), |s| {
         let unit = items.unit(s.item);
         let spare = s.count % unit;
-        if unit > 1 && spare > 0 { format!("{} ({} + {spare}/{unit})", items.def(s.item).name, s.count / unit) } else { items.def(s.item).name.clone() }
+        if unit > 1 && spare > 0 { format!("{} ({} + {spare}/{unit})", items.def(s.item).name, s.count / unit) } else { rules.name(&items, &s) }
     });
     let smart = if hand.smart { "smart cursor" } else { "plain cursor" };
     label.0 = format!("{name}   |   hotbar {} of {BARS} [X]   |   {smart} [Alt]   |   inventory [Esc]   |   dev tools: key left of 1", hand.bar + 1);
@@ -688,9 +698,10 @@ fn tooltip(
     mut chests: ResMut<Chests>,
     slots: Query<SlotQuery>,
     inv: Query<(&Inventory, &Equipment), With<LocalPlayer>>,
-    mut tip: Single<(&mut Text, &mut Node, &mut Visibility), With<Tooltip>>,
+    mut tip: Single<(&mut Text, &mut TextColor, &mut BorderColor, &mut Node, &mut Visibility), With<Tooltip>>,
+    mut body: Single<&mut TextSpan, With<TooltipBody>>,
 ) {
-    let (text, node, vis) = &mut *tip;
+    let (text, color, border, node, vis) = &mut *tip;
     **vis = Visibility::Hidden;
     let (Some(items), Ok((inv, eq)), Some(at)) = (items, inv.single(), window.cursor_position()) else { return };
     if held.stack.is_some() {
@@ -705,7 +716,13 @@ fn tooltip(
     let Some(stack) = stack else { return };
     // (Worn, it's not compared with itself.)
     let against = (which != Holder::Equip).then_some(eq);
-    text.0 = describe(&items, book.as_deref(), weapons.as_deref(), Some((&rules, against)), &stack);
+    let words = describe(&items, book.as_deref(), weapons.as_deref(), Some((&rules, against)), &stack);
+    let (title, rest) = words.split_once('\n').unwrap_or((&words, ""));
+    text.0 = title.to_string();
+    body.0 = format!("\n{rest}");
+    let rarity = rules.rarity(&items, &stack).map_or(Color::WHITE, |r| Color::srgb_u8(r.color.0, r.color.1, r.color.2));
+    color.0 = rarity;
+    **border = BorderColor::all(rarity.with_alpha(0.8));
     node.left = px(at.x + 18.0);
     // (Above the cursor near the bottom, where the hotbars are.)
     node.top = px(if at.y > window.height() * 0.5 { at.y - 110.0 } else { at.y + 18.0 });
@@ -716,10 +733,13 @@ fn tooltip(
 fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<&crate::combat::Weapons>, gear: Option<(&GearRules, Option<&Equipment>)>, s: &Stack) -> String {
     let def: &ItemDef = items.def(s.item);
     let n = whole(items, s);
-    let mut lines = vec![if n > 1 { format!("{} ({n})", def.name) } else { def.name.clone() }];
+    let name = gear.map_or(def.name.clone(), |(rules, _)| rules.name(items, s));
+    let mut lines = vec![if n > 1 { format!("{name} ({n})") } else { name }];
     if let (Some(g), Some((rules, worn))) = (&def.gear, gear) {
         let weight = g.weight.map_or(String::new(), |w| format!(", {w:?} armour"));
-        lines.push(format!("{}{weight}", g.slot.label()));
+        let rarity = rules.rarity(items, s).map_or("", |r| r.name.as_str());
+        let level = if s.roll.level > 0 { format!("  (item level {})", s.roll.level) } else { String::new() };
+        lines.push(format!("{rarity} {}{weight}{level}", g.slot.label().to_lowercase()));
         let mine = crate::gear::piece_stats(items, rules, s);
         lines.extend(mine.nonzero().map(|(st, v)| crate::gear::stats::line(st, v)));
         // Against what's worn in its place (the first of its kind).

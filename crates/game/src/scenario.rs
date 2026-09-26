@@ -2398,6 +2398,7 @@ fn gear_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
     items: Option<Res<crate::hands::items::Items>>,
+    rules: Res<crate::gear::GearRules>,
     mut window: Single<&mut Window, With<bevy::window::PrimaryWindow>>,
     slots: Query<(&crate::hands::ui::SlotUi, &bevy::ui::UiGlobalTransform, &InheritedVisibility)>,
     mut player: Query<GearTester, With<LocalPlayer>>,
@@ -2427,6 +2428,15 @@ fn gear_script(
             }
             if let Some(j) = items.id("leather_jerkin") {
                 inv.add(&items, Stack::new(j, 1));
+            }
+            // One of each rarity, rolled at item level 30.
+            for (rarity, id) in ["iron_helm", "leather_boots", "chainmail", "longsword", "ember_amulet"].iter().enumerate() {
+                let Some(item) = items.id(id) else { continue };
+                let roll = crate::hands::items::Roll { rarity: rarity as u8, level: 30, seed: 977 + rarity as u32 };
+                let stack = Stack { roll, ..Stack::new(item, 1) };
+                let bonuses: Vec<String> = rules.bonuses(&items, &stack).iter().map(|&(s, v)| crate::gear::stats::line(s, v)).collect();
+                info!("gear: rolled {} ({}): {}", rules.name(&items, &stack), rules.rarity(&items, &stack).map_or("-", |r| r.name.as_str()), bonuses.join(", "));
+                inv.add(&items, stack);
             }
             state.0 = 2;
         }

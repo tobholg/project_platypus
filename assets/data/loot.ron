@@ -4,7 +4,9 @@
 //
 // rolls: (min, max) draws · each draw picks an entry by weight · count: (min,
 // max) whole items (blocks: whole blocks) · several draws of one item stack.
-// Item ids from items.ron, or "block:<material>".
+// Item ids from items.ron (or gear.ron), or "block:<material>". Gear is
+// rolled as it's found: a rarity and bonuses, its item level from the depth
+// (a level every 150 cells down).
 (
     tables: [
         // Above the underground: castles, the bottoms of lakes.
@@ -19,6 +21,10 @@
             (item: "block:ruby", weight: 2, count: (1, 2)),
             (item: "iron_pickaxe", weight: 6, count: (1, 1)),
             (item: "gold_pickaxe", weight: 3, count: (1, 1)),
+            (item: "leather_cap", weight: 4, count: (1, 1)),
+            (item: "leather_boots", weight: 4, count: (1, 1)),
+            (item: "ring_of_vigour", weight: 2, count: (1, 1)),
+            (item: "lucky_coin", weight: 1, count: (1, 1)),
         ]),
         (name: "underground", deeper_than: 0, rolls: (2, 4), entries: [
             (item: "torch", weight: 30, count: (4, 10)),
@@ -28,6 +34,12 @@
             (item: "block:planks", weight: 10, count: (6, 16)),
             (item: "chest", weight: 4, count: (1, 1)),
             (item: "iron_pickaxe", weight: 3, count: (1, 1)),
+            (item: "leather_jerkin", weight: 4, count: (1, 1)),
+            (item: "leather_trousers", weight: 4, count: (1, 1)),
+            (item: "leather_gloves", weight: 3, count: (1, 1)),
+            (item: "cloth_hood", weight: 3, count: (1, 1)),
+            (item: "iron_helm", weight: 2, count: (1, 1)),
+            (item: "shortsword", weight: 2, count: (1, 1)),
         ]),
         (name: "caverns", deeper_than: 2500, rolls: (3, 5), entries: [
             (item: "torch", weight: 25, count: (6, 14)),
@@ -38,6 +50,15 @@
             (item: "gold_pickaxe", weight: 3, count: (1, 1)),
             (item: "block:amethyst", weight: 5, count: (1, 3)),
             (item: "chest", weight: 4, count: (1, 1)),
+            (item: "chainmail", weight: 3, count: (1, 1)),
+            (item: "iron_greaves", weight: 3, count: (1, 1)),
+            (item: "iron_gauntlets", weight: 3, count: (1, 1)),
+            (item: "apprentice_robe", weight: 3, count: (1, 1)),
+            (item: "silk_gloves", weight: 2, count: (1, 1)),
+            (item: "ember_amulet", weight: 2, count: (1, 1)),
+            (item: "frost_charm", weight: 2, count: (1, 1)),
+            (item: "longsword", weight: 2, count: (1, 1)),
+            (item: "bow", weight: 2, count: (1, 1)),
         ]),
         (name: "deep", deeper_than: 7000, rolls: (4, 6), entries: [
             (item: "bomb", weight: 25, count: (3, 7)),
@@ -48,6 +69,13 @@
             (item: "mithril_pickaxe", weight: 2, count: (1, 1)),
             (item: "block:emerald", weight: 5, count: (1, 3)),
             (item: "block:obsidian", weight: 8, count: (6, 14)),
+            (item: "iron_boots", weight: 4, count: (1, 1)),
+            (item: "chainmail", weight: 4, count: (1, 1)),
+            (item: "iron_helm", weight: 4, count: (1, 1)),
+            (item: "feather_boots", weight: 2, count: (1, 1)),
+            (item: "storm_ring", weight: 2, count: (1, 1)),
+            (item: "lucky_coin", weight: 2, count: (1, 1)),
+            (item: "longsword", weight: 3, count: (1, 1)),
         ]),
     ],
 )

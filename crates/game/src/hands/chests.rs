@@ -114,6 +114,10 @@ pub struct Chests {
     depth_scale: f32,
     placed: u64,
     art: Handle<Image>,
+    /// Gear found in chests is rolled (`gear::roll`), with the luck of
+    /// whoever opens it first.
+    rarities: Vec<crate::gear::roll::Rarity>,
+    luck: f32,
 }
 
 pub struct ChestsPlugin;
@@ -130,7 +134,8 @@ impl Plugin for ChestsPlugin {
     }
 }
 
-fn setup(sim: Res<SimWorld>, mut chests: ResMut<Chests>, mut images: ResMut<Assets<Image>>) {
+fn setup(sim: Res<SimWorld>, rules: Res<crate::gear::GearRules>, mut chests: ResMut<Chests>, mut images: ResMut<Assets<Image>>) {
+    chests.rarities = rules.rarities.clone();
     let (lo, hi) = sim.generator.bounds();
     chests.depth_scale = ((hi.y - lo.y + 1) * platypus_sim::CHUNK) as f32 / 16_384.0;
     let (w, h) = CHEST_SIZE;
@@ -183,10 +188,11 @@ impl Chests {
         let depth = ((world.climate().sea_level - stash.origin.y) as f32 / self.depth_scale) as i32;
         let table = self.tables.iter().rev().find(|t| depth >= t.deeper_than);
         let origin = stash.origin;
+        let found = Found { rarities: &self.rarities, level: item_level(depth), luck: self.luck };
         stash.contents.get_or_insert_with(|| {
             let mut inv = Inventory::new(SLOTS);
             if let Some(t) = table {
-                roll(&mut inv, t, items, &mut Rng::seeded(&[world.seed(), 0xC4E57, origin.x as u64, origin.y as u64]));
+                roll(&mut inv, t, items, &found, &mut Rng::seeded(&[world.seed(), 0xC4E57, origin.x as u64, origin.y as u64]));
             }
             inv
         })
@@ -210,7 +216,21 @@ impl Chests {
     }
 }
 
-fn roll(inv: &mut Inventory, t: &LootTable, items: &Items, rng: &mut Rng) {
+/// The item level of what's found this deep (cells below sea level, large
+/// world): 1 at the surface, a level every 150 cells, at most 60.
+pub fn item_level(depth: i32) -> u8 {
+    (1 + depth.max(0) / 150).min(60) as u8
+}
+
+/// How gear found is rolled: the rarities, the item level where it's
+/// found, the finder's luck.
+pub struct Found<'a> {
+    pub rarities: &'a [crate::gear::roll::Rarity],
+    pub level: u8,
+    pub luck: f32,
+}
+
+fn roll(inv: &mut Inventory, t: &LootTable, items: &Items, found: &Found, rng: &mut Rng) {
     let total: u32 = t.entries.iter().map(|e| e.weight).sum();
     if total == 0 {
         return;
@@ -233,6 +253,14 @@ fn roll(inv: &mut Inventory, t: &LootTable, items: &Items, rng: &mut Rng) {
             continue;
         };
         let n = e.count.0 + rng.next_u32() % (e.count.1 - e.count.0 + 1);
+        if items.def(item).gear.is_some() {
+            // (Each piece rolled on its own.)
+            for _ in 0..n {
+                let roll = crate::gear::roll::roll(found.rarities, items.def(item), found.level, found.luck, rng);
+                inv.add(items, Stack { roll, ..Stack::new(item, 1) });
+            }
+            continue;
+        }
         inv.add(items, Stack::new(item, n * items.unit(item)));
     }
 }
@@ -261,17 +289,18 @@ fn open_chest(
     sim: Res<SimWorld>,
     mut chests: ResMut<Chests>,
     mut open: ResMut<super::InventoryOpen>,
-    player: Query<&Kinematics, With<LocalPlayer>>,
+    player: Query<(&Kinematics, Option<&crate::gear::Stats>), With<LocalPlayer>>,
     found: Query<(Entity, &Chest, &Kinematics)>,
 ) {
     if dev.0 || !mouse.just_pressed(MouseButton::Right) {
         return;
     }
-    let (Some(at), Some(items), Ok(k)) = (cursor.0, items, player.single()) else { return };
+    let (Some(at), Some(items), Ok((k, stats))) = (cursor.0, items, player.single()) else { return };
     let Some((_, key, pos)) = chest_at(at, found.iter()) else { return };
     if pos.distance(k.body.pos) > REACH {
         return;
     }
+    chests.luck = stats.map_or(0.0, |s| s.get(crate::gear::Stat::Luck));
     chests.contents(key, &sim.world, &items);
     chests.open = Some(key);
     open.0 = true;
@@ -377,9 +406,11 @@ mod tests {
             for e in &t.entries {
                 assert!(items.id(&e.item).is_some(), "loot.ron `{}`: no item `{}`", t.name, e.item);
             }
+            let gear: crate::gear::GearFile = crate::data::parse_ron(include_str!("../../../../assets/data/gear.ron")).unwrap();
+            let found = Found { rarities: &gear.rarities, level: 10, luck: 0.0 };
             let fill = |seed: u64| {
                 let mut inv = Inventory::new(SLOTS);
-                roll(&mut inv, t, &items, &mut Rng::seeded(&[seed]));
+                roll(&mut inv, t, &items, &found, &mut Rng::seeded(&[seed]));
                 inv.slots
             };
             assert_eq!(fill(7), fill(7), "same seed, same chest");

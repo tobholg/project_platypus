@@ -32,6 +32,52 @@
         Medium: {},
         Heavy: { StaminaRegen: -4, ManaRegen: -8, MoveSpeed: -1 },
     },
+    // Rarities, commonest first: a found piece rolls one (weight against the
+    // others'; deeper finds and luck shift the odds toward the rare), and
+    // that many bonuses. The last is for uniques (`unique: true`): never
+    // rolled, always theirs.
+    rarities: [
+        (name: "Common", color: (205, 205, 210), bonuses: (0, 0), weight: 100),
+        (name: "Uncommon", color: (110, 220, 110), bonuses: (1, 1), weight: 45),
+        (name: "Rare", color: (100, 160, 255), bonuses: (2, 3), weight: 12),
+        (name: "Epic", color: (190, 110, 255), bonuses: (3, 4), weight: 3),
+        (name: "Legendary", color: (255, 165, 50), bonuses: (0, 0), weight: 0),
+    ],
+    // Bonuses gear can roll: `stat`, `base + per_level × item level` of it
+    // (±25%), on the kinds in `on` (head, body, hands, legs, feet, trinket,
+    // armour = any piece with a weight, melee, bow, focus; none: anything),
+    // `weight` how often against the rest (10). The first prefix and the
+    // first suffix rolled name the piece.
+    bonuses: [
+        (prefix: "Sturdy", stat: Armor, base: 2, per_level: 0.25, on: ["armour"]),
+        (prefix: "Reinforced", stat: Armor, base: 4, per_level: 0.4, on: ["body", "legs"], weight: 6),
+        (suffix: "of the Bear", stat: Health, base: 6, per_level: 0.8, on: ["head", "body", "legs", "trinket"]),
+        (suffix: "of Balance", stat: Poise, base: 3, per_level: 0.3, on: ["body", "legs", "feet"]),
+        (prefix: "Fireproof", stat: FireResist, base: 6, per_level: 0.4, on: ["armour", "trinket"]),
+        (suffix: "of Warmth", stat: FrostResist, base: 6, per_level: 0.4, on: ["armour", "trinket"]),
+        (suffix: "of Grounding", stat: StormResist, base: 6, per_level: 0.4, on: ["armour", "trinket"]),
+        (suffix: "of the Marsh", stat: AcidResist, base: 6, per_level: 0.4, on: ["armour", "trinket"]),
+        (suffix: "of Soft Landings", stat: FallResist, base: 8, per_level: 0.5, on: ["feet", "legs"], weight: 6),
+        (prefix: "Swift", stat: MoveSpeed, base: 3, per_level: 0.1, on: ["feet", "legs"]),
+        (suffix: "of Leaping", stat: JumpHeight, base: 4, per_level: 0.15, on: ["feet"]),
+        (suffix: "of Endurance", stat: Stamina, base: 8, per_level: 0.6, on: ["body", "hands", "trinket"]),
+        (suffix: "of Second Wind", stat: StaminaRegen, base: 5, per_level: 0.25, on: ["armour", "trinket"]),
+        (suffix: "of the Owl", stat: Mana, base: 8, per_level: 0.8, on: ["head", "body", "trinket", "focus"]),
+        (prefix: "Mystic", stat: ManaRegen, base: 5, per_level: 0.3, on: ["head", "body", "trinket", "focus"]),
+        (prefix: "Arcane", stat: SpellPower, base: 4, per_level: 0.25, on: ["head", "body", "hands", "trinket", "focus"]),
+        (prefix: "Deft", stat: CastSpeed, base: 3, per_level: 0.15, on: ["hands", "focus"]),
+        (prefix: "Blazing", stat: FirePower, base: 6, per_level: 0.4, on: ["hands", "trinket", "focus"]),
+        (prefix: "Rimed", stat: FrostPower, base: 6, per_level: 0.4, on: ["hands", "trinket", "focus"]),
+        (prefix: "Thundering", stat: StormPower, base: 6, per_level: 0.4, on: ["hands", "trinket", "focus"]),
+        (prefix: "Caustic", stat: AcidPower, base: 6, per_level: 0.4, on: ["hands", "trinket", "focus"]),
+        (suffix: "of Fortune", stat: Luck, base: 2, per_level: 0.15, on: ["trinket", "head"], weight: 5),
+        (prefix: "Sharp", stat: Damage, base: 4, per_level: 0.3, on: ["melee", "bow", "hands", "trinket"]),
+        (prefix: "Brutal", stat: Damage, base: 8, per_level: 0.5, on: ["melee"], weight: 6),
+        (prefix: "Quick", stat: AttackSpeed, base: 4, per_level: 0.2, on: ["melee", "bow", "hands"]),
+        (prefix: "Keen", stat: Crit, base: 3, per_level: 0.15, on: ["melee", "bow", "hands", "trinket"]),
+        (suffix: "of Slaughter", stat: CritDamage, base: 15, per_level: 1, on: ["melee", "bow"]),
+        (prefix: "Heavy", stat: Knockback, base: 10, per_level: 0.5, on: ["melee"]),
+    ],
     items: [
         // ---- cloth (Light): mages ----
         (id: "cloth_hood", name: "Cloth hood", color: (96, 82, 150),
