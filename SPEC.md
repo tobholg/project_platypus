@@ -932,9 +932,15 @@ deaths (blood). Rendered as one dynamic mesh.
   body deals its weight (density against water's; liquids half) × how many
   times faster × 0.8, and is mostly stopped (30 % of its speed left),
   shoving the body: a ball of rock dropped from a well, blast debris, a
-  flung stream of sand. Bodies slamming into walls or ceilings faster than
-  150 cells/s take fall damage by that speed (`Landed`); orcs now have fall
-  damage (safe 300 cells/s).
+  flung stream of sand.
+- **Fall damage** (`FallDamage`, per creature RON) is by distance, Terraria
+  style (speed saturates at max fall within ~50 cells, so it couldn't tell
+  a double jump from a cliff): falling further than `safe_height` cells
+  from the highest point since it last stood on something (or was in
+  water) hurts `per_cell` a cell over (player 100 and 0.6: a double jump
+  never hurts; orc 70 and 0.8); slamming into a wall or ceiling faster
+  than `slam_speed` (450 cells/s: flung, not walking or dashing) hurts
+  `per_speed` (0.25) per cell/s over.
 - **Every explosion hurts** (`actors::blasted`, from `StepStats::detonated`):
   bodies within 1.6 × its radius take up to 0.65 × its power and are thrown
   at up to 3 × its power, falling off with distance. Magic can hurt its

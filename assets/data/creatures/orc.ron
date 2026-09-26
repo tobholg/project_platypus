@@ -5,7 +5,7 @@
     health: 60,
     team: Enemy,
     // Dropped from a height or flung into rock, it hurts.
-    fall_damage: (safe_speed: 300, per_speed: 0.5),
+    fall_damage: (safe_height: 70, per_cell: 0.8),
     movement: (
         run_speed: 55,
         jump_height: 22,

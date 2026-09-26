@@ -6,7 +6,7 @@
     size: (6, 15),
     health: 100,
     team: Player,
-    fall_damage: (safe_speed: 400, per_speed: 0.5),
+    fall_damage: (safe_height: 100, per_cell: 0.6),
     movement: (
         run_speed: 95,
         ground_accel: 1400,

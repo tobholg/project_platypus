@@ -206,7 +206,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             Visibility::default(),
         ));
         if let Some(f) = def.fall_damage {
-            e.insert(f);
+            e.insert((f, super::FallTrack::default()));
         }
         e.insert(def.resist);
         if let Some(m) = blood {

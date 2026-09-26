@@ -74,23 +74,48 @@ pub struct MoveStats(pub MovementStats);
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Controls(pub Intent);
 
-/// Fall damage: landing faster than `safe_speed` hurts `per_speed` per cell/s over.
+/// Fall damage, by how far it fell (Terraria-style; speed saturates at
+/// max fall within ~50 cells, so it can't tell a double jump from a cliff):
+/// falling further than `safe_height` cells, from the highest point since
+/// it left the ground, hurts `per_cell` a cell over; slamming into a wall
+/// or ceiling faster than `slam_speed` (flung by a spell, a blast) hurts
+/// `per_speed` per cell/s over.
 #[derive(Component, Clone, Copy, Debug, Deserialize)]
 pub struct FallDamage {
-    pub safe_speed: f32,
+    pub safe_height: f32,
+    pub per_cell: f32,
+    #[serde(default = "slam_speed")]
+    pub slam_speed: f32,
+    #[serde(default = "slam_per")]
     pub per_speed: f32,
+}
+
+fn slam_speed() -> f32 {
+    450.0
+}
+
+fn slam_per() -> f32 {
+    0.25
+}
+
+/// The highest a body has been since it last stood on something (for fall
+/// damage).
+#[derive(Component, Default)]
+pub struct FallTrack {
+    top: Option<f32>,
 }
 
 /// Hitting a wall or ceiling slower than this isn't worth reporting (walking
 /// into a wall).
 const SLAM_MIN: f32 = 150.0;
 
-/// A body hit the ground (or slammed into a wall or ceiling) at `speed`:
-/// fall damage reads it.
+/// A body landed after falling `drop` cells, or slammed into a wall or
+/// ceiling at `slam` cells/s: fall damage reads it.
 #[derive(Message, Clone, Copy, Debug)]
 pub struct Landed {
     pub entity: Entity,
-    pub speed: f32,
+    pub drop: f32,
+    pub slam: f32,
 }
 
 /// The cell world as bodies see it. Unloaded chunks are solid.
@@ -116,13 +141,15 @@ impl Grid for WorldGrid<'_> {
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 
 /// One movement code path for every creature.
+type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, Option<&'a elements::Chilled>, Option<&'a mut FallTrack>);
+
 fn move_creatures(
     sim: Res<SimWorld>,
-    mut q: Query<(Entity, &mut Kinematics, &MoveStats, &Controls, Option<&elements::Chilled>)>,
+    mut q: Query<Movers>,
     mut landed: MessageWriter<Landed>,
 ) {
     let grid = WorldGrid(&sim.world);
-    for (entity, mut k, stats, controls, chilled) in &mut q {
+    for (entity, mut k, stats, controls, chilled, track) in &mut q {
         // Frozen until the ground under it is loaded.
         if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
             continue;
@@ -145,10 +172,17 @@ fn move_creatures(
         let walled = if (contacts.wall_left && before.x < 0.0) || (contacts.wall_right && before.x > 0.0) { before.x.abs() } else { 0.0 };
         let roofed = if contacts.ceiling && before.y > 0.0 { before.y } else { 0.0 };
         let slam = walled.max(roofed);
-        if let Some(speed) = k.loco.after_move(contacts) {
-            landed.write(Landed { entity, speed: speed.max(slam) });
+        let y = k.body.pos.y;
+        let drop = track.map_or(0.0, |mut t| {
+            let top = t.top.unwrap_or(y).max(y);
+            // (Standing on something, or in water: the fall starts over.)
+            t.top = if contacts.ground || contacts.submerged > 0.5 { None } else { Some(top) };
+            top - y
+        });
+        if k.loco.after_move(contacts).is_some() {
+            landed.write(Landed { entity, drop, slam });
         } else if slam > SLAM_MIN {
-            landed.write(Landed { entity, speed: slam });
+            landed.write(Landed { entity, drop: 0.0, slam });
         }
     }
 }
@@ -175,10 +209,10 @@ fn displace_liquid(mut sim: ResMut<SimWorld>, q: Query<&Kinematics>) {
 
 fn fall_damage(mut landed: MessageReader<Landed>, mut q: Query<(&FallDamage, &mut Health), Without<crate::magic::well::Carried>>) {
     for l in landed.read() {
-        if let Ok((f, mut h)) = q.get_mut(l.entity)
-            && l.speed > f.safe_speed
-        {
-            h.hp -= (l.speed - f.safe_speed) * f.per_speed;
+        if let Ok((f, mut h)) = q.get_mut(l.entity) {
+            let fell = (l.drop - f.safe_height).max(0.0) * f.per_cell;
+            let slammed = (l.slam - f.slam_speed).max(0.0) * f.per_speed;
+            h.hp -= fell.max(slammed);
         }
     }
 }

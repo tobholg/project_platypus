@@ -1124,7 +1124,7 @@ fn force_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
     mut commands: Commands,
-    player: Query<(&Kinematics, Option<&crate::magic::Mana>), With<LocalPlayer>>,
+    player: Query<(&Kinematics, Option<&crate::magic::Mana>, &crate::actors::Health), With<LocalPlayer>>,
     orcs: Query<(&Kinematics, &crate::actors::Health), Others>,
     mut cursor: ResMut<CursorOverride>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
@@ -1134,7 +1134,7 @@ fn force_script(
     if s.name != "force" {
         return;
     }
-    let Ok((k, mana)) = player.single() else { return };
+    let Ok((k, mana, me)) = player.single() else { return };
     let t = s.elapsed;
     keys.release(KeyCode::KeyX);
     keys.release(KeyCode::Digit3);
@@ -1163,6 +1163,6 @@ fn force_script(
     if t >= state.1 {
         state.1 = (t * 4.0).floor() / 4.0 + 0.25;
         let at: Vec<String> = orcs.iter().filter(|(o, _)| (o.body.pos.x - home.x).abs() < 250.0 && o.body.pos.x > home.x + 10.0).map(|(o, h)| format!("{:.0}@{:.0},{:.0}", h.hp, o.body.pos.x - home.x, o.body.pos.y - home.y)).collect();
-        info!("force: t {t:.2} {} player {:+.0} mana {:.0} orcs [{}] particles {}", if push { "push" } else if pull { "pull" } else { "-" }, k.body.pos.y - home.y, mana.map_or(0.0, |m| m.cur), at.join(" "), sim.world.particles().len());
+        info!("force: t {t:.2} {} player {:+.0} hp {:.0} mana {:.0} orcs [{}] particles {}", if push { "push" } else if pull { "pull" } else { "-" }, k.body.pos.y - home.y, me.hp, mana.map_or(0.0, |m| m.cur), at.join(" "), sim.world.particles().len());
     }
 }
