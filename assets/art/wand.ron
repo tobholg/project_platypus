@@ -1,0 +1,27 @@
+// A wand held in the hand, pointing right from the grip, a gem at its tip.
+// Every wand is drawn from this in its icon's colours.
+(
+    size: (13, 5),
+    feet: (6.5, 5),
+    outline: (24, 18, 16),
+    palette: {
+        'h': (150, 100, 56),   // handle
+        'H': (104, 66, 36),   // handle, shaded
+        'g': (200, 225, 255),   // gem, lit
+        'G': (110, 150, 255),   // gem
+        'w': (255, 255, 255),   // glint
+        's': (200, 225, 255),   // sparkle
+        'm': (160, 160, 170),   // the band
+    },
+    frames: {
+        "wand": [
+            "..........s.s",
+            "..........gGG",
+            "hHhhHhhhmgwGs",
+            "..........GGG",
+            "..........s.s",
+        ],
+    },
+    clips: { "held": (frames: ["wand"], fps: 1) },
+    anchors: { "grip": { "wand": (1, 2) } },
+)

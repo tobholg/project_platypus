@@ -1023,6 +1023,19 @@ deaths (blood). Rendered as one dynamic mesh.
   420 hp, a club: smash, sweep, 30 damage, 0.5 / 0.4 s windups to read and
   dodge; poise 80, heft 4). In the `fight` scenario the orc lands a hit,
   the shortsword kills it in ~2 s; the troll's smash takes 30 and throws you.
+- **Everything held shows** (`weapons.ron` `held`, by icon shape): an item
+  whose icon's shape is listed is drawn from the sprite of that name
+  (`assets/art/pickaxe.ron`, `axe`, `wand`, `staff`, `torch`, `bomb`,
+  `glowstick`: pointing right, a `grip`), in the item's icon colours with
+  `recolor` (one pickaxe drawing, four tiers). With a `swing` it's a blade
+  by its item id: a pickaxe or axe swings (queued, no stamina) whenever
+  it's used, can hit what's in the way, and mines as before. Otherwise it
+  rests at `rest` degrees and points where it's used (`Aiming`: a wand
+  casting, a bomb thrown, a torch planted); `burns`: a held torch has its
+  flame (turned with it) and light. The player wields whatever its hand's
+  slot holds if `weapons` knows it (a weapon by its weapon id, anything
+  else by its own). Swing targets must have `Health` (a pickaxe digging
+  down once pogoed off the drops of what it dug).
 - **Bows** (`archery.rs`; `weapons.ron` `bows`, `arrow`): what wields one
   draws it while it asks (`DrawBow` each tick: the player holding the left
   button with arrows in the pack; an archer's brain) and looses when it

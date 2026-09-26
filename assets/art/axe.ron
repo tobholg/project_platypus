@@ -1,0 +1,28 @@
+// An axe held in the hand, the handle pointing right from the grip, the
+// blade below its end (the edge leads the swing down). Drawn in its icon's
+// colours.
+(
+    size: (14, 7),
+    feet: (7.0, 7),
+    outline: (24, 18, 16),
+    palette: {
+        'M': (236, 160, 90),   // head, lit (copper; each tier its icon's)
+        'm': (205, 127, 50),   // head
+        'd': (150, 86, 34),   // head, shaded
+        'h': (150, 100, 56),   // handle
+        'H': (104, 66, 36),   // handle, shaded
+    },
+    frames: {
+        "axe": [
+            "...........Hm.",
+            "hhHhhHhhhhHhmm",
+            ".........Mmmmd",
+            "........MMmmdd",
+            "........Mmmmd.",
+            ".........Mmd..",
+            "..........d...",
+        ],
+    },
+    clips: { "held": (frames: ["axe"], fps: 1) },
+    anchors: { "grip": { "axe": (1, 1) } },
+)

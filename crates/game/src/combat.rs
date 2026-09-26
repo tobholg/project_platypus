@@ -19,6 +19,8 @@
 //! - Stamina pays for swings and the dodge (the dash), which makes you
 //!   untouchable for a moment.
 
+use std::collections::{BTreeMap, HashMap};
+
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
@@ -75,6 +77,30 @@ struct WeaponsFile {
     bows: Vec<BowDef>,
     #[serde(default)]
     arrow: Option<ArrowDef>,
+    #[serde(default)]
+    held: BTreeMap<String, HeldDef>,
+}
+
+/// How an item of an icon shape is held (`held` in weapons.ron): `rest`
+/// degrees idle, in its icon's colours with `recolor`, burning with `burns`,
+/// swung like a blade whenever it's used with `swing`.
+#[derive(Clone, Debug, Deserialize)]
+pub struct HeldDef {
+    pub rest: f32,
+    #[serde(default)]
+    pub recolor: bool,
+    #[serde(default)]
+    pub burns: bool,
+    #[serde(default)]
+    pub swing: Option<SwingDef>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SwingDef {
+    pub damage: f32,
+    pub knock: f32,
+    pub stun: f32,
+    pub moves: Vec<MoveDef>,
 }
 
 /// A bow: drawn fully in `draw` s; loosed, the arrow goes from the first
@@ -189,15 +215,52 @@ impl Turned {
 /// A frame of a sprite (by name; the first if `None`) turned to every
 /// angle about its `grip` anchor.
 fn turn_art(art: &str, frame: Option<&str>) -> Result<Vec<Pixels>, String> {
+    turn_compiled(&compile_art(art, None)?, art, frame)
+}
+
+/// A sprite compiled, its colours for these letters swapped for others (an
+/// item's icon colours: one pickaxe drawing, every tier).
+fn compile_art(art: &str, colors: Option<&HashMap<char, (u8, u8, u8)>>) -> Result<platypus_art::Art, String> {
     let path = assets_dir().join("art").join(format!("{art}.ron"));
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let compiled = platypus_art::compile(&platypus_art::parse(&text)?)?;
+    let mut file = platypus_art::parse(&text)?;
+    for (c, &(r, g, b)) in colors.into_iter().flatten() {
+        if let Some(slot) = file.palette.get_mut(c) {
+            *slot = platypus_art::Color::Rgb(r, g, b);
+        }
+    }
+    platypus_art::compile(&file)
+}
+
+fn turn_compiled(compiled: &platypus_art::Art, art: &str, frame: Option<&str>) -> Result<Vec<Pixels>, String> {
     let i = match frame {
         Some(name) => compiled.index(name).ok_or(format!("{art}: no frame `{name}`"))?,
         None => 0,
     };
     let grip = compiled.anchors.get("grip").and_then(|m| m.get(&i)).copied().ok_or(format!("{art}: no `grip` anchor"))?;
     Ok((0..TURNS).map(|k| platypus_art::rotate::rotsprite(&compiled.frames[i], grip, -180.0 + k as f32 * STEP)).collect())
+}
+
+/// What icons.ron says of an item: its shape and colours.
+#[derive(Clone, Debug, Deserialize)]
+struct IconLook {
+    shape: String,
+    palette: HashMap<char, (u8, u8, u8)>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct IconsLook {
+    icons: HashMap<String, IconLook>,
+}
+
+/// Held things that aren't blades or bows: pointed where they're used,
+/// resting otherwise; a torch burns in the hand.
+pub(crate) struct Pointer {
+    pub id: String,
+    pub rest: f32,
+    pub burns: bool,
+    /// The flame's place from the grip (cells, y up, pointing right).
+    pub flame: Option<Vec2>,
 }
 
 /// A weapon's picture for its icon: a blade pointing up and to the right, a
@@ -244,6 +307,8 @@ impl Turned {
 
 /// Every weapon's pictures: blades; bows at rest and drawn; the arrow.
 struct Built {
+    blades: Vec<WeaponDef>,
+    pointers: Vec<(Pointer, Turned)>,
     turned: Vec<Turned>,
     bows: Vec<[Turned; 2]>,
     arrow: Option<Turned>,
@@ -252,6 +317,9 @@ struct Built {
 #[derive(Resource)]
 pub struct Weapons {
     file: WeaponsFile,
+    /// Blades: weapons.ron's own, then every tool that swings (by item id).
+    blades: Vec<WeaponDef>,
+    pub(crate) pointers: Vec<(Pointer, Turned)>,
     turned: Vec<Turned>,
     pub(crate) bows: Vec<[Turned; 2]>,
     pub(crate) arrow: Option<Turned>,
@@ -261,11 +329,20 @@ pub struct Weapons {
 
 impl Weapons {
     pub fn index(&self, id: &str) -> Option<usize> {
-        self.file.weapons.iter().position(|w| w.id == id)
+        self.blades.iter().position(|w| w.id == id)
     }
 
     pub fn def(&self, i: usize) -> &WeaponDef {
-        &self.file.weapons[i]
+        &self.blades[i]
+    }
+
+    pub fn pointer_index(&self, id: &str) -> Option<usize> {
+        self.pointers.iter().position(|p| p.0.id == id)
+    }
+
+    /// Anything held by this id (a blade, a bow, a tool, a wand...).
+    pub fn knows(&self, id: &str) -> bool {
+        self.index(id).is_some() || self.bow_index(id).is_some() || self.pointer_index(id).is_some()
     }
 
     pub fn bow_index(&self, id: &str) -> Option<usize> {
@@ -282,8 +359,31 @@ impl Weapons {
 
     fn build(file: &WeaponsFile, images: &mut Assets<Image>, layouts: &mut Assets<TextureAtlasLayout>) -> Result<Built, String> {
         let mut turned = Vec::new();
+        let mut blades = file.weapons.clone();
         for w in &file.weapons {
             turned.push(Turned::build(turn_art(&w.art, None).map_err(|e| format!("weapon `{}`: {e}", w.id))?, images, layouts));
+        }
+        // Every item whose icon's shape is held: drawn from the sprite of
+        // that name (in its colours), a blade if it swings.
+        let icons: IconsLook = load_ron(&data_path("icons.ron"))?;
+        let mut pointers = Vec::new();
+        let mut items: Vec<(&String, &IconLook)> = icons.icons.iter().collect();
+        items.sort_by_key(|(id, _)| id.as_str());
+        for (id, look) in items {
+            let Some(h) = file.held.get(&look.shape) else { continue };
+            let art = compile_art(&look.shape, h.recolor.then_some(&look.palette)).map_err(|e| format!("held `{id}`: {e}"))?;
+            let frames = turn_compiled(&art, &look.shape, None)?;
+            match &h.swing {
+                Some(sw) => {
+                    blades.push(WeaponDef { id: id.clone(), art: look.shape.clone(), damage: sw.damage, knock: sw.knock, stun: sw.stun, rest: h.rest, moves: sw.moves.clone() });
+                    turned.push(Turned::build(frames, images, layouts));
+                }
+                None => {
+                    let at = |name: &str| art.anchors.get(name).and_then(|m| m.get(&0)).copied();
+                    let flame = at("flame").zip(at("grip")).map(|((fx, fy), (gx, gy))| Vec2::new((fx - gx) as f32, (gy - fy) as f32));
+                    pointers.push((Pointer { id: id.clone(), rest: h.rest, burns: h.burns, flame }, Turned::build(frames, images, layouts)));
+                }
+            }
         }
         let mut bows = Vec::new();
         for b in &file.bows {
@@ -294,7 +394,7 @@ impl Weapons {
             Some(a) => Some(Turned::build(turn_art(&a.art, None)?, images, layouts)),
             None => None,
         };
-        Ok(Built { turned, bows, arrow })
+        Ok(Built { blades, pointers, turned, bows, arrow })
     }
 }
 
@@ -302,7 +402,16 @@ fn load(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut layouts: 
     let path = data_path("weapons.ron");
     let file: WeaponsFile = load_ron(&path).unwrap_or_else(|e| panic!("{e}"));
     let b = Weapons::build(&file, &mut images, &mut layouts).unwrap_or_else(|e| panic!("{e}"));
-    commands.insert_resource(Weapons { file, turned: b.turned, bows: b.bows, arrow: b.arrow, watch: Watched::new(path), art_watch: Watched::new(assets_dir().join("art")) });
+    commands.insert_resource(Weapons {
+        file,
+        blades: b.blades,
+        pointers: b.pointers,
+        turned: b.turned,
+        bows: b.bows,
+        arrow: b.arrow,
+        watch: Watched::new(path),
+        art_watch: Watched::new(assets_dir().join("art")),
+    });
 }
 
 /// Editing weapons.ron or a weapon's sprite takes effect at once.
@@ -319,6 +428,8 @@ fn reload(weapons: Option<ResMut<Weapons>>, mut images: ResMut<Assets<Image>>, m
     match Weapons::build(&file, &mut images, &mut layouts) {
         Ok(b) => {
             w.file = file;
+            w.blades = b.blades;
+            w.pointers = b.pointers;
             w.turned = b.turned;
             w.bows = b.bows;
             w.arrow = b.arrow;
@@ -482,7 +593,7 @@ fn hit_stop(real: Res<Time<Real>>, mut stop: ResMut<HitStop>, mut virt: ResMut<T
 // ---- systems ----
 
 type Fighter<'a> = (&'a Kinematics, &'a Wielding, Option<&'a mut Swing>, Option<&'a mut Combo>, Option<&'a mut Stamina>);
-type Holder<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Swing>, Option<&'a crate::archery::Nocked>, Option<&'a Children>);
+type Holder<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Swing>, Option<&'a crate::archery::Nocked>, Option<&'a Aiming>, Option<&'a Children>);
 
 /// Swings begin (or queue the next) when asked for.
 fn start_swings(
@@ -585,7 +696,7 @@ fn swing(
     mut hits: MessageWriter<Hit>,
     mut recoil: MessageWriter<Recoil>,
     mut swingers: Query<Swinger>,
-    targets: Query<Target>,
+    targets: Query<Target, With<Health>>,
 ) {
     let Some(weapons) = weapons else { return };
     for (me, mut s, k, hand, team, mut stamina) in &mut swingers {
@@ -767,37 +878,52 @@ struct WeaponSprite;
 enum Held {
     Blade(usize),
     Bow(usize),
+    Pointer(usize),
 }
 
-/// The weapon in the hand: at rest, or where the swing has it.
+/// The weapon in the hand: at rest, or where the swing has it; a bow while
+/// drawn; anything else held pointed where it's used (a wand casting), and
+/// a torch alight.
+#[allow(clippy::too_many_arguments)]
 fn draw(
     mut commands: Commands,
     weapons: Option<Res<Weapons>>,
+    lights: Res<crate::light::LightSettings>,
     holders: Query<Holder>,
-    mut sprites: Query<(&mut Sprite, &mut Transform, &mut Visibility), With<WeaponSprite>>,
+    mut sprites: Query<(&mut Sprite, &mut Transform, &mut Visibility, Option<&mut crate::light::torch::Flame>), With<WeaponSprite>>,
 ) {
     let Some(weapons) = weapons else { return };
-    for (e, wielding, k, hand, swing, nocked, children) in &holders {
+    for (e, wielding, k, hand, swing, nocked, aiming, children) in &holders {
         let sprite = children.and_then(|c| c.iter().find(|c| sprites.contains(*c)));
         let id = wielding.0.as_deref();
-        // A blade, or a bow (drawn or not).
-        let w = id.and_then(|id| weapons.index(id).map(Held::Blade).or_else(|| weapons.bow_index(id).map(Held::Bow)));
+        let w = id.and_then(|id| {
+            weapons.index(id).map(Held::Blade).or_else(|| weapons.bow_index(id).map(Held::Bow)).or_else(|| weapons.pointer_index(id).map(Held::Pointer))
+        });
         let (Some(sprite), Some(w)) = (sprite, w) else {
             if let (None, Some(_)) = (sprite, w) {
                 commands.entity(e).with_child((WeaponSprite, Sprite::default(), Transform::default(), Visibility::Hidden));
             }
             if let Some(c) = sprite
-                && let Ok((_, _, mut v)) = sprites.get_mut(c)
+                && let Ok((_, _, mut v, flame)) = sprites.get_mut(c)
             {
                 *v = Visibility::Hidden;
+                if flame.is_some() {
+                    commands.entity(c).remove::<(crate::light::torch::Flame, crate::light::LightSource)>();
+                }
             }
             continue;
         };
-        let Ok((mut sp, mut tf, mut vis)) = sprites.get_mut(sprite) else { continue };
+        let Ok((mut sp, mut tf, mut vis, flame)) = sprites.get_mut(sprite) else { continue };
         let Some(local) = hand.and_then(|h| h.local) else {
             *vis = Visibility::Hidden;
             continue;
         };
+        // Where it points when it's being used.
+        let aimed = |at: Vec2| {
+            let d = at - hand.and_then(|h| h.at).unwrap_or(k.body.pos);
+            d.y.atan2(d.x.abs()).to_degrees()
+        };
+        let mut burning = None;
         let (turned, facing, angle, thrust) = match w {
             Held::Blade(w) => {
                 let (angle, thrust) = swing.map_or((weapons.def(w).rest, 0.0), |s| (s.angle, s.thrust));
@@ -805,15 +931,22 @@ fn draw(
             }
             Held::Bow(b) => match nocked {
                 Some(n) => {
-                    let d = n.at - hand.and_then(|h| h.at).unwrap_or(k.body.pos);
                     let pose = if n.drawn(&weapons) > 0.35 { 1 } else { 0 };
-                    (&weapons.bows[b][pose], k.loco.facing, d.y.atan2(d.x.abs()).to_degrees(), 0.0)
+                    (&weapons.bows[b][pose], k.loco.facing, aimed(n.at), 0.0)
                 }
                 None => {
                     *vis = Visibility::Hidden;
                     continue;
                 }
             },
+            Held::Pointer(i) => {
+                let (p, turned) = &weapons.pointers[i];
+                let angle = aiming.filter(|a| a.left > 0.0).map_or(p.rest, |a| aimed(a.at));
+                if p.burns {
+                    burning = Some(p.flame.unwrap_or(Vec2::ZERO));
+                }
+                (turned, k.loco.facing, angle, 0.0)
+            }
         };
         let dir = Vec2::new(angle.to_radians().cos() * facing, angle.to_radians().sin());
         if sp.image != turned.image {
@@ -825,5 +958,20 @@ fn draw(
         sp.flip_x = facing < 0.0;
         tf.translation = local + (dir * thrust).extend(0.03);
         *vis = Visibility::Inherited;
+        // A torch in the hand burns: its flame turned with it.
+        match (burning, flame) {
+            (Some(off), Some(mut f)) => {
+                let r = Vec2::from_angle(angle.to_radians()).rotate(off);
+                f.at = Vec2::new(r.x * facing, r.y) + Vec2::Y;
+            }
+            (Some(_), None) => {
+                let torch = crate::light::rgb(lights.torch.color, lights.torch.strength);
+                commands.entity(sprite).insert((crate::light::torch::Flame::at(Vec2::ZERO), crate::light::LightSource { color: torch, flicker: 1.0 }));
+            }
+            (None, Some(_)) => {
+                commands.entity(sprite).remove::<(crate::light::torch::Flame, crate::light::LightSource)>();
+            }
+            (None, None) => {}
+        }
     }
 }

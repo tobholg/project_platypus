@@ -1,0 +1,27 @@
+// A staff held in the hand, pointing right from the grip, an orb caged at
+// its head. Every staff is drawn from this in its icon's colours.
+(
+    size: (23, 5),
+    feet: (11.5, 5),
+    outline: (24, 18, 16),
+    palette: {
+        'h': (150, 100, 56),   // handle
+        'H': (104, 66, 36),   // handle, shaded
+        'g': (200, 225, 255),   // gem, lit
+        'G': (110, 150, 255),   // gem
+        'w': (255, 255, 255),   // glint
+        's': (200, 225, 255),   // sparkle
+        'm': (160, 160, 170),   // the band
+    },
+    frames: {
+        "staff": [
+            "..................s..m.",
+            "...................mgGm",
+            "hHhhHhhhHhhhHhhhhHhmgwG",
+            "...................mGGG",
+            "..................s..m.",
+        ],
+    },
+    clips: { "held": (frames: ["staff"], fps: 1) },
+    anchors: { "grip": { "staff": (4, 2) } },
+)

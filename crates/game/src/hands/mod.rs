@@ -303,13 +303,26 @@ fn auto_slot(world: &World, items: &Items, inv: &Inventory, bar: std::ops::Range
 }
 
 /// The player holds the weapon in its hand's slot (none in dev mode).
-fn wield(items: Option<Res<Items>>, hand: Res<Hand>, dev: Res<DevTools>, mut player: Query<(&Inventory, &mut crate::combat::Wielding), With<LocalPlayer>>) {
-    let (Some(items), Ok((inv, mut w))) = (items, player.single_mut()) else { return };
+fn wield(
+    items: Option<Res<Items>>,
+    weapons: Option<Res<crate::combat::Weapons>>,
+    hand: Res<Hand>,
+    dev: Res<DevTools>,
+    mut player: Query<(&Inventory, &mut crate::combat::Wielding), With<LocalPlayer>>,
+) {
+    let (Some(items), Some(weapons), Ok((inv, mut w))) = (items, weapons, player.single_mut()) else { return };
     let held = inv.slots.get(hand.active()).copied().flatten().filter(|_| !dev.0);
-    let want = held.and_then(|s| match &items.def(s.item).use_ {
-        Use::Melee(id) | Use::Bow(id) => Some(id.clone()),
-        _ => None,
-    });
+    // A weapon by its weapon id; anything else by its own, if it's held
+    // (tools, wands, torches: `held` in weapons.ron).
+    let want = held
+        .map(|s| {
+            let def = items.def(s.item);
+            match &def.use_ {
+                Use::Melee(id) | Use::Bow(id) => id.clone(),
+                _ => def.id.clone(),
+            }
+        })
+        .filter(|id| weapons.knows(id));
     if w.0 != want {
         w.0 = want;
     }
@@ -341,7 +354,9 @@ fn use_hands(
     let slot = if input.auto { auto_slot(&sim.world, &items, &inv, hand.bar_slots(), &k.body, from, cursor).unwrap_or(hand.active()) } else { hand.active() };
     let Some(stack) = inv.slots[slot] else { return };
     match items.def(stack.item).use_.clone() {
+        // (A pickaxe or axe swings while it's used: `combat`, by its id.)
         Use::Mine { back, power, tier, speed, reach } if input.primary && hand.cooldown == 0.0 => {
+            swings.write(crate::combat::MeleeRequest { attacker: me, at: cursor });
             // A chest at the cursor, within reach, takes the hit (the last
             // one breaks it, spilling what's in it, and the chest).
             if !back
@@ -377,6 +392,7 @@ fn use_hands(
             hand.cooldown = 1.0 / PLACE_RATE;
         }
         Use::Throw(what) if clicked => {
+            commands.entity(me).insert(crate::actors::animation::Aiming { at: cursor, left: AIM_HOLD });
             let dir = (cursor - from).normalize_or(Vec2::X);
             let speed = tools.bomb.throw_speed * ((cursor - from).length() / 120.0).clamp(0.35, 1.0);
             let vel = dir * speed + k.body.vel * 0.5;
@@ -418,7 +434,9 @@ fn use_hands(
             let world = &sim.world;
             let Some(block) = target::place_target(from, cursor, 6.0 * BLOCK as f32, |b| free(world, b, &bodies), |b| supported(world, b)) else { return };
             let Some(art) = torch_art.as_deref() else { return };
-            plant_torch(&mut commands, Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, block.y as f32 * BLOCK as f32), &lights, art);
+            let at = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, block.y as f32 * BLOCK as f32);
+            commands.entity(me).insert(crate::actors::animation::Aiming { at, left: AIM_HOLD });
+            plant_torch(&mut commands, at, &lights, art);
             inv.take(slot, 1);
         }
         _ => {}

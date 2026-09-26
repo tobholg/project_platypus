@@ -71,4 +71,25 @@
     // cells; through fire or lava they catch and burn for `burn` s,
     // setting alight what they strike (water puts them out).
     arrow: (art: "arrow", gravity: 360, stuck: 60, pickup: 12, burn: 6),
+    // Everything else you hold, by its icon's shape (icons.ron): drawn from
+    // the sprite of that name (assets/art/<shape>.ron: pointing right, a
+    // `grip`), in the item's icon colours with `recolor` (one pickaxe
+    // drawing, every tier), held at `rest` degrees and pointed where it's
+    // used (a wand casting, a bomb thrown, a torch planted). With `swing`,
+    // it's swung like a blade whenever it's used (a pickaxe mining, an axe
+    // chopping: it can hit what's in the way too); `burns`: alight in the
+    // hand (a flame and light, like a planted torch).
+    held: {
+        "pickaxe": (rest: -35, recolor: true, swing: (damage: 5, knock: 80, stun: 0.1, moves: [
+            (name: "pick", from: 105, to: -50, windup: 0.04, active: 0.07, recovery: 0.03, stamina: 0),
+        ])),
+        "axe": (rest: -35, recolor: true, swing: (damage: 8, knock: 110, stun: 0.12, moves: [
+            (name: "chop", from: 110, to: -45, windup: 0.05, active: 0.08, recovery: 0.05, stamina: 0),
+        ])),
+        "wand": (rest: -35, recolor: true),
+        "staff": (rest: 75, recolor: true),
+        "torch": (rest: 75, burns: true),
+        "bomb": (rest: 0, recolor: true),
+        "glowstick": (rest: 70, recolor: true),
+    },
 )

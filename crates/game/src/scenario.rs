@@ -75,6 +75,9 @@
 //!   three pixels (9, 14–16) of the first thing in the first file in one stroke with
 //!   the real pointer (a pose paints its first layer's part), logs what
 //!   changed on disk; Ctrl+Z; logs whether the file is back as it was
+//! - `held`       (`PLATYPUS_WORLD=arena`) each tool in the hand in turn: the
+//!   pickaxe into the floor (logs cells dug and swings), the torch, the
+//!   spark wand at the first dummy, a bomb thrown, the axe swung
 //! - `warband`    (`PLATYPUS_WORLD=arena`) O (the dev action) 120 cells off at
 //!   1 s; logs what stands there at 3 s (a troll, three orcs, two archers)
 //! - `archery`    (`PLATYPUS_WORLD=arena`) the bow (hotbar 2, slot 9): a full
@@ -144,6 +147,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, editor_script.after(InputSystems).before(crate::editor::capture))
             .add_systems(Update, warband_script)
+            .add_systems(PreUpdate, held_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -1971,5 +1975,75 @@ fn warband_script(
         }
         info!("warband: {n:?}");
         *state = 2;
+    }
+}
+
+/// Each tool in the hand, through real keys and buttons.
+#[allow(clippy::too_many_arguments)]
+fn held_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    player: Query<(&Kinematics, Option<&crate::combat::Swing>, &crate::combat::Wielding), With<LocalPlayer>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, usize, u32, bool)>,
+) {
+    if s.name != "held" {
+        return;
+    }
+    let Ok((k, swing, wielding)) = player.single() else { return };
+    let p = k.body.pos;
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let solid = || (640..680).flat_map(|x| (floor - 16..floor).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| !c.is_air())).count();
+    // Swings started (a swing seen after none).
+    let swinging = swing.is_some();
+    if swinging && !state.3 {
+        state.2 += 1;
+    }
+    state.3 = swinging;
+    let mut want = std::collections::HashSet::new();
+    let press = |a: f32, want: &mut std::collections::HashSet<KeyCode>, k: KeyCode| {
+        if (a..a + 0.1).contains(&t) {
+            want.insert(k);
+        }
+    };
+    press(0.3, &mut want, KeyCode::Digit1);
+    press(2.2, &mut want, KeyCode::Digit3);
+    press(3.0, &mut want, KeyCode::Digit6);
+    press(4.0, &mut want, KeyCode::Digit4);
+    press(4.8, &mut want, KeyCode::Digit2);
+    if (0.4..0.5).contains(&t) {
+        state.1 = solid();
+    }
+    let aim = match t {
+        t if (0.5..2.0).contains(&t) => Some(Vec2::new(p.x + 14.0, floor as f32 - 3.0)),
+        t if (3.2..3.8).contains(&t) => Some(Vec2::new(700.0, floor as f32 + 10.0)),
+        t if (4.3..4.35).contains(&t) => Some(p + Vec2::new(60.0, 40.0)),
+        t if (5.0..5.6).contains(&t) => Some(p + Vec2::new(20.0, 5.0)),
+        _ => None,
+    };
+    if (2.05..2.1).contains(&t) && state.0 == 0 {
+        info!("held: the pickaxe ({:?}) dug {} cells in 1.5 s over {} swings", wielding.0, state.1 as i64 - solid() as i64, state.2);
+        state.0 = 1;
+    }
+    for (at, name) in [(2.7, "torch"), (3.5, "wand"), (4.2, "bomb"), (5.3, "axe")] {
+        if (at..at + 0.02).contains(&t) {
+            info!("held: {name}: wielding {:?}, swinging {}", wielding.0, swinging);
+        }
+    }
+    for key in [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit6] {
+        match (want.contains(&key), keys.pressed(key)) {
+            (true, false) => keys.press(key),
+            (false, true) => keys.release(key),
+            _ => {}
+        }
+    }
+    cursor.0 = aim.or(Some(p + Vec2::new(30.0, 0.0)));
+    match (aim.is_some(), mouse.pressed(MouseButton::Left)) {
+        (true, false) => mouse.press(MouseButton::Left),
+        (false, true) => mouse.release(MouseButton::Left),
+        _ => {}
     }
 }
