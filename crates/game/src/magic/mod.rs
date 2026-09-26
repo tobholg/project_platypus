@@ -888,7 +888,7 @@ static CALL_CLOUD: std::sync::LazyLock<runes::Emitter> = std::sync::LazyLock::ne
     life: (0.6, 1.4),
     colors: vec![(120, 124, 140), (80, 84, 100), (50, 52, 64)],
     speed: 30.0,
-    spread: 3.14,
+    spread: std::f32::consts::PI,
     gravity: 0.0,
     drag: 1.5,
     size: 3.0,
