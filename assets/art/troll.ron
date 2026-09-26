@@ -1,0 +1,197 @@
+// A troll: twice a man's height, hunched, grey-green, a club in its fist.
+// Built on a rig of few parts: each limb is drawn once and swung by
+// turning it (`turn`, crates/art), its aiming arm too (`fans` with `from`).
+// Facing right; the game mirrors it.
+(
+    size: (40, 44),
+    feet: (20, 44),
+    outline: (26, 24, 20),
+    palette: {
+        'g': (128, 142, 108),   // hide
+        'G': (94, 106, 80),     // hide, shade
+        'l': (160, 164, 128),   // belly
+        'h': (58, 50, 40),      // hair
+        'k': (250, 208, 80),    // eye
+        'D': (46, 32, 28),      // mouth
+        'w': (234, 224, 190),   // tusks
+        'n': (206, 194, 160),   // nails
+        'c': (112, 82, 52),     // loincloth
+        'C': (84, 60, 38),      // loincloth, shade
+    },
+    parts: {
+        "head": (rows: [
+            "...hhhh.....",
+            "..gggggg....",
+            ".gggggggg...",
+            "GgggggGGgg..",
+            "GGgggggkgg..",
+            "GGggggggggg.",
+            "GGggggggGggg",
+            ".GGgggggDDg.",
+            ".GGggggwDwg.",
+            "..GGGggggg..",
+        ]),
+        "blink": (rows: [
+            "...hhhh.....",
+            "..gggggg....",
+            ".gggggggg...",
+            "GgggggGGgg..",
+            "GGgggggGgg..",
+            "GGggggggggg.",
+            "GGggggggGggg",
+            ".GGgggggDDg.",
+            ".GGggggwDwg.",
+            "..GGGggggg..",
+        ]),
+        "torso": (rows: [
+            "......GGggggg.....",
+            "....GGggggggggg...",
+            "..GGggggggggggggg.",
+            ".GGgggggggggggggg.",
+            "GGggggggggggggggg.",
+            "GGgggggggglllgggg.",
+            "GGggggggglllllggg.",
+            "GGgggggglllllllgg.",
+            "GGgggggglllllllgg.",
+            ".GGggggglllllllgg.",
+            ".GGggggglllllllg..",
+            "..GGgggglllllgg...",
+            "..ccccccccccccc...",
+            "..cCccccccccccc...",
+            "...cCcccccccccc...",
+            "....cCcc.cccCc....",
+        ]),
+        // Limbs hang from their joint (pivot); the fist grips the club.
+        "leg": (pivot: (3, 0), rows: [
+            ".Gggg..",
+            "GGgggg.",
+            "GGgggg.",
+            "GGgggg.",
+            "GGgggg.",
+            ".Gggg..",
+            ".Gggg..",
+            ".Gggg..",
+            ".GGgg..",
+            ".GGggg.",
+            ".GGgggg",
+            "GGgggnn",
+            "GGggggn",
+        ]),
+        "arm": (pivot: (3, 1), points: { "hand": (3, 16) }, rows: [
+            ".GGgg..",
+            "GGgggg.",
+            "GGgggg.",
+            "GGgggg.",
+            "GGggg..",
+            ".Gggg..",
+            ".Gggg..",
+            ".Gggg..",
+            ".GGggg.",
+            ".GGggg.",
+            ".GGggg.",
+            ".GGggg.",
+            "GGgggg.",
+            "GGggggg",
+            "GGggggg",
+            "GGggggg",
+            ".Ggggn.",
+            ".Gggnn.",
+        ]),
+    },
+    poses: {
+        "stand": [
+            (part: "arm", at: (15, 19), shade: 0.72, turn: 0, tag: "back_arm"),
+            (part: "leg", at: (15, 30), shade: 0.72, turn: 0),
+            (part: "leg", at: (20, 30), turn: 0),
+            (part: "torso", at: (10, 16)),
+            (part: "head", at: (22, 8)),
+            (part: "arm", at: (23, 19), outline: true, turn: 0, tag: "front_arm"),
+        ],
+        "breathe": [
+            (part: "arm", at: (15, 18), shade: 0.72, turn: 0, tag: "back_arm"),
+            (part: "leg", at: (15, 30), shade: 0.72, turn: 0),
+            (part: "leg", at: (20, 30), turn: 0),
+            (part: "torso", at: (10, 15)),
+            (part: "head", at: (22, 7)),
+            (part: "arm", at: (23, 18), outline: true, turn: 0, tag: "front_arm"),
+        ],
+        "blink": [
+            (part: "arm", at: (15, 19), shade: 0.72, turn: 0, tag: "back_arm"),
+            (part: "leg", at: (15, 30), shade: 0.72, turn: 0),
+            (part: "leg", at: (20, 30), turn: 0),
+            (part: "torso", at: (10, 16)),
+            (part: "blink", at: (22, 8)),
+            (part: "arm", at: (23, 19), outline: true, turn: 0, tag: "front_arm"),
+        ],
+        "run_a": [
+            (part: "arm", at: (15, 19), shade: 0.72, turn: -22, tag: "back_arm"),
+            (part: "leg", at: (15, 30), shade: 0.72, turn: 28),
+            (part: "leg", at: (20, 30), turn: -26),
+            (part: "torso", at: (10, 16)),
+            (part: "head", at: (22, 8)),
+            (part: "arm", at: (23, 19), outline: true, turn: 24, tag: "front_arm"),
+        ],
+        "run_b": [
+            (part: "arm", at: (15, 18), shade: 0.72, turn: -6, tag: "back_arm"),
+            (part: "leg", at: (15, 30), shade: 0.72, turn: 6),
+            (part: "leg", at: (20, 30), turn: -6),
+            (part: "torso", at: (10, 15)),
+            (part: "head", at: (22, 7)),
+            (part: "arm", at: (23, 18), outline: true, turn: 6, tag: "front_arm"),
+        ],
+        "run_c": [
+            (part: "arm", at: (15, 19), shade: 0.72, turn: 24, tag: "back_arm"),
+            (part: "leg", at: (15, 30), shade: 0.72, turn: -26),
+            (part: "leg", at: (20, 30), turn: 28),
+            (part: "torso", at: (10, 16)),
+            (part: "head", at: (22, 8)),
+            (part: "arm", at: (23, 19), outline: true, turn: -22, tag: "front_arm"),
+        ],
+        "run_d": [
+            (part: "arm", at: (15, 18), shade: 0.72, turn: 6, tag: "back_arm"),
+            (part: "leg", at: (15, 30), shade: 0.72, turn: -6),
+            (part: "leg", at: (20, 30), turn: 6),
+            (part: "torso", at: (10, 15)),
+            (part: "head", at: (22, 7)),
+            (part: "arm", at: (23, 18), outline: true, turn: -6, tag: "front_arm"),
+        ],
+        "rise": [
+            (part: "arm", at: (15, 19), shade: 0.72, turn: -30, tag: "back_arm"),
+            (part: "leg", at: (15, 27), shade: 0.72, turn: 40),
+            (part: "leg", at: (20, 27), turn: 25),
+            (part: "torso", at: (10, 16)),
+            (part: "head", at: (22, 8)),
+            (part: "arm", at: (23, 19), outline: true, turn: 70, tag: "front_arm"),
+        ],
+        "drop": [
+            (part: "arm", at: (15, 19), shade: 0.72, turn: 30, tag: "back_arm"),
+            (part: "leg", at: (15, 30), shade: 0.72, turn: -12),
+            (part: "leg", at: (20, 30), turn: 14),
+            (part: "torso", at: (10, 16)),
+            (part: "head", at: (22, 8)),
+            (part: "arm", at: (23, 19), outline: true, turn: 50, tag: "front_arm"),
+        ],
+    },
+    // The club arm at angles, turned from the hanging one.
+    fans: {
+        "front_arm": [
+            (angle: -90, part: "arm", from: -90),
+            (angle: -60, part: "arm", from: -90),
+            (angle: -30, part: "arm", from: -90),
+            (angle: 0, part: "arm", from: -90),
+            (angle: 30, part: "arm", from: -90),
+            (angle: 60, part: "arm", from: -90),
+            (angle: 90, part: "arm", from: -90),
+        ],
+    },
+    derived: {
+        "hurt": (from: "drop", shift: (-1, 0)),
+    },
+    clips: {
+        "idle": (frames: ["stand", "stand", "breathe", "breathe", "stand", "blink", "stand", "breathe", "breathe"], fps: 3),
+        "run": (frames: ["run_a", "run_b", "run_c", "run_d"], fps: 6),
+        "jump": (frames: ["rise"], fps: 5),
+        "fall": (frames: ["drop"], fps: 5),
+        "hurt": (frames: ["hurt"], fps: 5),
+    },
+)

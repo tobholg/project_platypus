@@ -1,25 +1,30 @@
-// Orc: walks at you, jumps obstacles. Attacks come with the combat phase.
+// An orc swordsman: comes at you with a cleaver, hacks twice and backs off a
+// step; a couple of solid hits stagger it. Drawn on the humanoid rig
+// (assets/art/orc.ron), its weapon from weapons.ron.
 (
     name: "Orc",
-    size: (12, 14),
-    health: 60,
+    size: (7, 16),
+    health: 70,
     team: Enemy,
     // Dropped from a height or flung into rock, it hurts.
     fall_damage: (safe_height: 70, per_cell: 0.8),
     movement: (
-        run_speed: 55,
-        jump_height: 22,
+        run_speed: 62,
+        jump_height: 24,
         air_jumps: 0,
         step_height: 3,
+        dash_speed: 0,
     ),
-    sprite: (frame: (100, 100), feet: (55, 57)),
-    animations: {
-        "idle":   (image: "textures/orc_sheet.png", columns: 6, frames: [0, 1, 2, 3, 4, 5], fps: 7),
-        "run":    (image: "textures/orc_sheet.png", columns: 6, frames: [0, 1, 2, 3, 4, 5], fps: 12),
-        "attack": (image: "textures/Orc-Attack01.png", columns: 6, frames: [0, 1, 2, 3, 4, 5], fps: 12, looping: false),
-    },
+    art: "orc",
+    weapon: "cleaver",
+    stamina: 60,
+    // Hits it shrugs off before one staggers it (damage), and how hard it
+    // is to throw (knockback is divided by it).
+    poise: 16,
+    heft: 1.2,
     brain: (
         kind: "melee_walker",
-        params: (aggro_range: 220, keep_distance: 10, wander_speed: 0.4, wander_every: 2.5, jump_to_reach: 18),
+        params: (aggro_range: 220, keep_distance: 11, wander_speed: 0.4, wander_every: 2.5, jump_to_reach: 18,
+                 reach: 16, attack_every: 1.1, combo: 2),
     ),
 )

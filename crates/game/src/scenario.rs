@@ -75,6 +75,9 @@
 //!   three pixels (9, 14–16) of the first thing in the first file in one stroke with
 //!   the real pointer (a pose paints its first layer's part), logs what
 //!   changed on disk; Ctrl+Z; logs whether the file is back as it was
+//! - `fight`      (`PLATYPUS_WORLD=arena`) the shortsword against an orc put
+//!   40 cells off, held at it from 1.5 s; a troll put 70 cells off at 5 s;
+//!   logs both sides' health, swings and staggers twice a second
 //! - `melee`      (`PLATYPUS_WORLD=arena`) the shortsword (hotbar 2, slot 7)
 //!   held down at the first dummy for 1.5 s, then the longsword (slot 8):
 //!   logs hits, damage and stamina; a jump over the dummy striking down
@@ -135,7 +138,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, editor_script.after(InputSystems).before(crate::editor::capture))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -1781,6 +1784,67 @@ fn melee_script(
         }
     }
     cursor.0 = swing.or(Some(p + Vec2::new(30.0, 0.0)));
+    match (swing.is_some(), mouse.pressed(MouseButton::Left)) {
+        (true, false) => mouse.press(MouseButton::Left),
+        (false, true) => mouse.release(MouseButton::Left),
+        _ => {}
+    }
+}
+
+/// The player against an orc, then a troll, through real keys and buttons.
+#[allow(clippy::too_many_arguments)]
+fn fight_script(
+    s: Res<Scenario>,
+    mut commands: Commands,
+    player: Query<(&Kinematics, &crate::actors::Health), With<LocalPlayer>>,
+    foes: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::Health, Has<crate::combat::Swing>), Without<LocalPlayer>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, f32, u32, u32)>,
+) {
+    if s.name != "fight" {
+        return;
+    }
+    let Ok((k, h)) = player.single() else { return };
+    let p = k.body.pos;
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR as f32;
+    let mut want = std::collections::HashSet::new();
+    if (0.3..0.4).contains(&t) {
+        want.insert(KeyCode::KeyX);
+    }
+    if (0.5..0.6).contains(&t) {
+        want.insert(KeyCode::Digit7);
+    }
+    if state.0 == 0 && t > 0.8 {
+        crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(p.x - 40.0, floor), |_| {});
+        state.0 = 1;
+    }
+    if state.0 == 1 && t > 5.0 {
+        crate::actors::creature::spawn_creature(&mut commands, "troll", Vec2::new(p.x - 70.0, floor), |_| {});
+        state.0 = 2;
+    }
+    let near = foes.iter().filter(|(c, ..)| c.kind == "orc" || c.kind == "troll").min_by(|a, b| a.1.body.pos.distance(p).total_cmp(&b.1.body.pos.distance(p)));
+    let swing = near.filter(|(_, fk, ..)| t > 1.5 && fk.body.pos.distance(p) < 30.0).map(|(_, fk, ..)| fk.body.pos);
+    for (_, _, _, swinging) in &foes {
+        if swinging {
+            state.3 += 1;
+        }
+    }
+    if t >= state.1 {
+        state.1 = (t * 2.0).floor() / 2.0 + 0.5;
+        let them: Vec<String> = foes.iter().filter(|(c, ..)| c.kind == "orc" || c.kind == "troll").map(|(c, fk, fh, sw)| format!("{} {:+.0} hp {:.0}{}", c.kind, fk.body.pos.x - p.x, fh.hp, if sw { " swinging" } else { "" })).collect();
+        info!("fight: t {t:.1} player hp {:.0} [{}] ({} ticks of enemy swings so far)", h.hp, them.join("; "), state.3);
+    }
+    for key in [KeyCode::KeyX, KeyCode::Digit7] {
+        match (want.contains(&key), keys.pressed(key)) {
+            (true, false) => keys.press(key),
+            (false, true) => keys.release(key),
+            _ => {}
+        }
+    }
+    cursor.0 = swing.or(Some(p + Vec2::new(-30.0, 0.0)));
     match (swing.is_some(), mouse.pressed(MouseButton::Left)) {
         (true, false) => mouse.press(MouseButton::Left),
         (false, true) => mouse.release(MouseButton::Left),

@@ -80,6 +80,10 @@ pub struct ArtFile {
 pub struct FanArm {
     pub angle: f32,
     pub part: String,
+    /// The part is drawn pointing at this angle: turn it to `angle` (one
+    /// straight arm makes the whole fan). None: drawn at `angle` already.
+    #[serde(default)]
+    pub from: Option<f32>,
 }
 
 /// A body part: a grid of any size, its pivot (the joint it hangs from) and
@@ -107,6 +111,11 @@ pub struct Layer {
     pub shade: f32,
     #[serde(default)]
     pub outline: bool,
+    /// Degrees to turn the part about its pivot (+ counter-clockwise, as
+    /// facing right: up for an arm held out), RotSprite-style; its points
+    /// turn with it. A limb swings without being drawn again.
+    #[serde(default)]
+    pub turn: f32,
     /// A name for the layer (`front_arm`, `back_arm`): its pivot is the
     /// pose's `<tag>` anchor and its points are also `<tag>.<point>`
     /// (`back_arm.hand`); where a fan stands in for it, the pose is also
@@ -332,7 +341,25 @@ pub fn compile(file: &ArtFile) -> Result<Art, String> {
         let mut points = BTreeMap::new();
         for l in layers {
             let def = file.parts.get(&l.part).ok_or(format!("{what}: no part `{}`", l.part))?;
-            let (pvx, pvy) = def.pivot;
+            // Turned: the picture (and its points) about its pivot, which
+            // ends up in the middle of the turned picture.
+            let turned;
+            let (px, (pvx, pvy), part_points) = if l.turn != 0.0 {
+                turned = rotate::rotsprite(&parts[l.part.as_str()], def.pivot, l.turn);
+                let half = turned.w as i32 / 2;
+                let (s, c) = l.turn.to_radians().sin_cos();
+                let pts: Points = def
+                    .points
+                    .iter()
+                    .map(|(n, &(x, y))| {
+                        let (dx, dy) = ((x - def.pivot.0) as f32, (y - def.pivot.1) as f32);
+                        (n.clone(), (half + (dx * c + dy * s).round() as i32, half + (-dx * s + dy * c).round() as i32))
+                    })
+                    .collect();
+                (&turned, (half, half), pts)
+            } else {
+                (&parts[l.part.as_str()], def.pivot, def.points.clone())
+            };
             let place = |x: i32, y: i32| {
                 let dx = if l.flip { pvx - x } else { x - pvx };
                 (l.at.0 + dx, l.at.1 + (y - pvy))
@@ -343,7 +370,6 @@ pub fn compile(file: &ArtFile) -> Result<Art, String> {
                     continue;
                 }
             }
-            let px = &parts[l.part.as_str()];
             if l.outline
                 && let Some(oc) = file.outline
             {
@@ -371,7 +397,7 @@ pub fn compile(file: &ArtFile) -> Result<Art, String> {
                     p.set(tx, ty, [s(c[0]), s(c[1]), s(c[2]), c[3]]);
                 }
             }
-            for (point, &(x, y)) in &def.points {
+            for (point, &(x, y)) in &part_points {
                 points.insert(point.clone(), place(x, y));
                 // (A tagged layer's points under its tag too: `back_arm.hand`.)
                 if let Some(tag) = &l.tag {
@@ -410,7 +436,8 @@ pub fn compile(file: &ArtFile) -> Result<Art, String> {
     for (tag, arms) in &file.fans {
         for a in arms {
             let name = format!("{tag}@{}", a.angle);
-            let layer = Layer { part: a.part.clone(), at: fan_pivot, flip: false, shade: 1.0, outline: false, tag: None };
+            let turn = a.from.map_or(0.0, |f| a.angle - f);
+            let layer = Layer { part: a.part.clone(), at: fan_pivot, flip: false, shade: 1.0, outline: false, turn, tag: None };
             let (p, points) = compose(std::slice::from_ref(&layer), None, &format!("fan `{tag}`"))?;
             for (point, at) in &points {
                 pose_points.entry(point.clone()).or_default().insert(name.clone(), *at);
@@ -742,6 +769,29 @@ mod tests {
         assert!(bad(r#"(size: (2, 1), feet: (1, 1), palette: {}, frames: { "x": [".."] }, clips: { "c": (frames: ["y"], fps: 4) })"#).contains("no frame `y`"));
         assert!(bad(r#"(size: (2, 2), feet: (1, 1), palette: {}, frames: { "x": [".."] })"#).contains("1 rows"));
         assert!(bad(r#"(size: (2, 1), feet: (1, 1), palette: {}, derived: { "a": (from: "b"), "b": (from: "a") })"#).contains("doesn't exist"));
+    }
+
+    /// A turned layer: the part swung about its pivot, its points too.
+    #[test]
+    fn turned_layers_swing_parts_and_their_points() {
+        let file = parse(r#"(
+            size: (12, 12), feet: (6, 12),
+            palette: { 'a': (200, 200, 200) },
+            parts: { "arm": (pivot: (0, 0), points: { "hand": (4, 0) }, rows: ["aaaaa"]) },
+            poses: {
+                "out": [(part: "arm", at: (5, 6))],
+                "up": [(part: "arm", at: (5, 6), turn: 90)],
+            },
+            fans: { "arm": [(angle: -90, part: "arm", from: 0)] },
+            clips: { "idle": (frames: ["out", "up"], fps: 1) },
+        )"#).unwrap();
+        let art = compile(&file).unwrap();
+        let (out, up) = (&art.frames[art.index("out").unwrap()], &art.frames[art.index("up").unwrap()]);
+        assert!(out.opaque(9, 6) && !out.opaque(5, 2));
+        assert!(up.opaque(5, 2) && !up.opaque(9, 6), "turned 90: straight up");
+        assert_eq!(art.anchors["hand"][&art.index("up").unwrap()], (5, 2));
+        let down = art.index("arm@-90").unwrap();
+        assert!(art.frames[down].opaque(6, 10), "the fan arm made by turning: straight down");
     }
 
     #[test]

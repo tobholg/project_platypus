@@ -39,6 +39,7 @@ impl Plugin for CombatPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<MeleeRequest>()
             .add_message::<Hit>()
+            .add_message::<Recoil>()
             .add_message::<Dashed>()
             .init_resource::<HitStop>()
             .add_systems(Startup, load)
@@ -278,6 +279,15 @@ pub struct Hit {
     pub weight: f32,
 }
 
+/// What a swing does to the swinger: a lunge forward, a pogo up (which
+/// gives back its air jumps and dash).
+#[derive(Message, Clone, Copy, Debug)]
+pub struct Recoil {
+    pub who: Entity,
+    pub add: Vec2,
+    pub pogo: Option<f32>,
+}
+
 /// A body started a dash (a dodge).
 #[derive(Message, Clone, Copy, Debug)]
 pub struct Dashed(pub Entity);
@@ -335,6 +345,28 @@ impl Stamina {
     }
 }
 
+/// How a creature takes hits: `poise` damage shrugged off (no stun, a
+/// quarter of the knockback) before one staggers it (full knockback, stun,
+/// its own swing broken off), coming back after a pause; knockback divided
+/// by `heft`; `after_hit` s untouchable after being hit.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Sturdy {
+    pub poise: f32,
+    left: f32,
+    pub heft: f32,
+    pub after_hit: f32,
+    since: f32,
+}
+
+impl Sturdy {
+    pub fn new(poise: f32, heft: f32, after_hit: f32) -> Self {
+        Sturdy { poise, left: poise, heft: heft.max(0.1), after_hit, since: 0.0 }
+    }
+}
+
+/// Seconds without a hit before poise is whole again.
+const POISE_BACK: f32 = 1.5;
+
 /// Nothing hurts it for `left` s (a dodge): what it loses is given back.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Invulnerable {
@@ -385,11 +417,8 @@ fn start_swings(
         let Ok((k, wielding, swing, combo, stamina)) = q.get_mut(ask.attacker) else { continue };
         let Some(w) = wielding.0.as_deref().and_then(|id| weapons.index(id)) else { continue };
         if let Some(mut s) = swing {
-            // Late in a swing, the next is queued.
-            let mv = &weapons.def(s.weapon).moves[s.mv];
-            if s.t >= mv.windup {
-                s.queued = true;
-            }
+            // During a swing, the next is queued.
+            s.queued = true;
             continue;
         }
         let def = weapons.def(w);
@@ -434,7 +463,13 @@ fn dodge(mut commands: Commands, mut dashed: MessageReader<Dashed>, mut q: Query
     }
 }
 
-fn stamina(mut q: Query<&mut Stamina>, mut combos: Query<&mut Combo, Without<Swing>>) {
+fn stamina(mut q: Query<&mut Stamina>, mut combos: Query<&mut Combo, Without<Swing>>, mut sturdy: Query<&mut Sturdy>) {
+    for mut s in &mut sturdy {
+        s.since += DT;
+        if s.since >= POISE_BACK {
+            s.left = s.poise;
+        }
+    }
     for mut s in &mut q {
         s.since += DT;
         if s.since >= s.wait {
@@ -458,21 +493,23 @@ pub fn guard(mut commands: Commands, mut q: Query<(Entity, &mut Invulnerable, &m
     }
 }
 
-type Swinger<'a> = (Entity, &'a mut Swing, &'a mut Kinematics, &'a crate::actors::MoveStats, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>);
+type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>);
 type Target<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a Animator>, Has<Invulnerable>);
 
 /// Swings move on a tick; while they sweep, they hit.
+#[allow(clippy::too_many_arguments)]
 fn swing(
     mut commands: Commands,
     weapons: Option<Res<Weapons>>,
     mut sim: ResMut<SimWorld>,
     mut sparks: ResMut<Sparks>,
     mut hits: MessageWriter<Hit>,
+    mut recoil: MessageWriter<Recoil>,
     mut swingers: Query<Swinger>,
-    targets: Query<Target, Without<Swing>>,
+    targets: Query<Target>,
 ) {
     let Some(weapons) = weapons else { return };
-    for (me, mut s, mut k, stats, hand, team, mut stamina) in &mut swingers {
+    for (me, mut s, k, hand, team, mut stamina) in &mut swingers {
         let def = weapons.def(s.weapon).clone();
         let Some(mv) = def.moves.get(s.mv).cloned() else {
             commands.entity(me).remove::<Swing>();
@@ -516,7 +553,7 @@ fn swing(
         }
         if !s.lunged && k.loco.grounded() && mv.lunge > 0.0 {
             s.lunged = true;
-            k.body.vel.x += dir(s.aim).x.signum() * mv.lunge;
+            recoil.write(Recoil { who: me, add: Vec2::new(dir(s.aim).x.signum() * mv.lunge, 0.0), pogo: None });
         }
         // From last tick's angle to this one, a turn at a time.
         let from = s.prev.unwrap_or(angle);
@@ -576,30 +613,66 @@ fn swing(
                 let damage = def.damage * mv.damage;
                 hits.write(Hit { target: e, damage, knock: push, stun: def.stun, at, dir: dir(a), weight: damage / 12.0 });
                 if s.pogo {
-                    k.body.vel.y = weapons.file.pogo;
-                    k.loco.refresh_air(&stats.0);
+                    recoil.write(Recoil { who: me, add: Vec2::ZERO, pogo: Some(weapons.file.pogo) });
                 }
             }
         }
     }
 }
 
+type Struck<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a mut Sturdy>, &'a crate::actors::MoveStats, Has<Invulnerable>);
+
 /// What a hit does: damage, knockback and stun, sparks where it struck, a
 /// moment of hit-stop (longer, harder hits), a shake.
+#[allow(clippy::too_many_arguments)]
 fn apply_hits(
+    mut commands: Commands,
+    mut recoils: MessageReader<Recoil>,
     mut hits: MessageReader<Hit>,
     weapons: Option<Res<Weapons>>,
     mut sparks: ResMut<Sparks>,
     mut stop: ResMut<HitStop>,
     mut trauma: ResMut<crate::fx::Trauma>,
-    mut q: Query<(&mut Kinematics, &mut Health)>,
+    mut q: Query<Struck>,
 ) {
     let Some(weapons) = weapons else { return };
+    for r in recoils.read() {
+        let Ok((mut k, _, _, stats, _)) = q.get_mut(r.who) else { continue };
+        k.body.vel += r.add;
+        if let Some(up) = r.pogo {
+            k.body.vel.y = up;
+            k.loco.refresh_air(&stats.0);
+        }
+    }
     for h in hits.read() {
-        let Ok((mut k, mut health)) = q.get_mut(h.target) else { continue };
+        let Ok((mut k, mut health, sturdy, _, safe)) = q.get_mut(h.target) else { continue };
+        if safe {
+            continue;
+        }
         health.hp -= h.damage;
+        let (mut knock, mut stun) = (h.knock, h.stun);
+        if let Some(mut s) = sturdy {
+            knock /= s.heft;
+            s.since = 0.0;
+            s.left -= h.damage;
+            if s.left > 0.0 {
+                // Shrugged off.
+                knock *= 0.25;
+                stun = 0.0;
+            } else {
+                s.left = s.poise;
+                commands.entity(h.target).remove::<Swing>();
+            }
+            if s.after_hit > 0.0 {
+                commands.entity(h.target).insert(Invulnerable { left: s.after_hit, hp: health.hp });
+            }
+        }
         let k = &mut *k;
-        k.loco.knock(&mut k.body, h.knock, h.stun);
+        if stun > 0.0 {
+            k.loco.knock(&mut k.body, knock, stun);
+        } else {
+            k.body.vel += knock;
+        }
         let e = &weapons.file.hit;
         sparks.emit(e, e.count as usize, h.at, -h.dir, Vec2::ZERO);
         stop.hit(STOP * (0.7 + 0.3 * h.weight).min(2.0));

@@ -63,10 +63,24 @@ pub struct CreatureDef {
     /// A weapon it holds from the start (`assets/data/weapons.ron`).
     #[serde(default)]
     pub weapon: Option<String>,
+    /// Damage it shrugs off before a hit staggers it (it comes back after a
+    /// pause); 0: every hit does.
+    #[serde(default)]
+    pub poise: f32,
+    /// Knockback it takes is divided by this (a troll's 4).
+    #[serde(default = "one_f")]
+    pub heft: f32,
+    /// Seconds nothing hurts it after a hit (the player's grace).
+    #[serde(default)]
+    pub after_hit: f32,
     /// What it bleeds (a material; "" for nothing): it sprays when it's
     /// hurt and bursts out when it dies (`hurt.rs`).
     #[serde(default = "red_blood")]
     pub blood: String,
+}
+
+fn one_f() -> f32 {
+    1.0
 }
 
 fn default_z() -> f32 {
@@ -281,6 +295,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         if let Some(s) = def.stamina {
             e.insert(crate::combat::Stamina::new(s));
         }
+        e.insert(crate::combat::Sturdy::new(def.poise, def.heft, def.after_hit));
         if let Some(m) = blood {
             e.insert(super::hurt::Bleeds(m));
         }

@@ -24,7 +24,9 @@ impl Plugin for AiPlugin {
 pub struct Idle;
 
 /// Walks toward the nearest player, jumps over obstacles and up to ledges,
-/// wanders when nobody is near. (Attacks arrive with the combat phase.)
+/// wanders when nobody is near; within `reach`, swings what it wields
+/// (`combo` moves in a row, then waits `attack_every` s), standing its
+/// ground while it swings.
 #[derive(Component, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct MeleeWalker {
@@ -38,11 +40,17 @@ pub struct MeleeWalker {
     pub wander_every: f32,
     /// Jump when a player is this much higher (cells) and close horizontally.
     pub jump_to_reach: f32,
+    /// Swings at a player this close (cells; 0: never).
+    pub reach: f32,
+    /// Seconds it waits after an attack before the next (randomised ±30 %).
+    pub attack_every: f32,
+    /// Moves of its weapon's combo it swings in one attack.
+    pub combo: u8,
 }
 
 impl Default for MeleeWalker {
     fn default() -> Self {
-        MeleeWalker { aggro_range: 220.0, keep_distance: 10.0, wander_speed: 0.4, wander_every: 2.5, jump_to_reach: 18.0 }
+        MeleeWalker { aggro_range: 220.0, keep_distance: 10.0, wander_speed: 0.4, wander_every: 2.5, jump_to_reach: 18.0, reach: 0.0, attack_every: 1.5, combo: 1 }
     }
 }
 
@@ -51,16 +59,28 @@ impl Default for MeleeWalker {
 pub struct WanderState {
     until_tick: u64,
     dir: f32,
+    /// When it may attack next, swings still to ask for in this one, and
+    /// whether one is under way (the wait starts when it ends).
+    next_attack: u64,
+    swings_left: u8,
+    attacking: bool,
 }
+
+type Walker<'a> = (Entity, &'a MeleeWalker, &'a Kinematics, &'a mut Controls, Option<&'a mut WanderState>, Has<crate::combat::Swing>);
 
 fn melee_walker(
     mut commands: Commands,
     sim: Res<SimWorld>,
     players: Query<(&Kinematics, &Team), Without<MeleeWalker>>,
-    mut q: Query<(Entity, &MeleeWalker, &Kinematics, &mut Controls, Option<&mut WanderState>)>,
+    mut q: Query<Walker>,
+    mut swings: MessageWriter<crate::combat::MeleeRequest>,
 ) {
     let tick = sim.world.tick();
-    for (entity, brain, k, mut controls, wander) in &mut q {
+    for (entity, brain, k, mut controls, wander, swinging) in &mut q {
+        let Some(mut w) = wander else {
+            commands.entity(entity).insert(WanderState::default());
+            continue;
+        };
         let pos = k.body.pos;
         let target = players
             .iter()
@@ -71,17 +91,34 @@ fn melee_walker(
 
         let mut want_jump = false;
         let c = &k.loco.contacts;
+        controls.0.aim = target.unwrap_or(Vec2::ZERO);
         let move_x = match target {
             Some(t) => {
                 let d = t - pos;
                 want_jump = k.loco.grounded() && d.y > brain.jump_to_reach && d.x.abs() < brain.aggro_range * 0.25;
-                if d.x.abs() > brain.keep_distance { d.x.signum() } else { 0.0 }
+                // In reach: an attack (its combo asked for swing by swing).
+                let stunned = k.loco.state == platypus_physics::MoveState::Stunned;
+                let near = d.x.abs() < brain.reach && d.y.abs() < brain.reach;
+                if w.attacking && !swinging && w.swings_left == 0 {
+                    w.attacking = false;
+                    let mut rng = Rng::seeded(&[sim.world.seed(), tick, entity.to_bits(), 0xA77]);
+                    let secs = brain.attack_every * (0.7 + 0.6 * (rng.next_u32() % 1000) as f32 / 1000.0);
+                    w.next_attack = tick + (secs * 60.0) as u64;
+                }
+                if near && !stunned && brain.reach > 0.0 && tick >= w.next_attack && !w.attacking && !swinging {
+                    w.swings_left = brain.combo.max(1);
+                    w.attacking = true;
+                }
+                if w.swings_left > 0 && !stunned {
+                    swings.write(crate::combat::MeleeRequest { attacker: entity, at: t });
+                    // (A request during a swing queues the next move: one each.)
+                    if !swinging || brain.combo > 1 {
+                        w.swings_left -= 1;
+                    }
+                }
+                if swinging || d.x.abs() <= brain.keep_distance { 0.0 } else { d.x.signum() }
             }
             None => {
-                let Some(mut w) = wander else {
-                    commands.entity(entity).insert(WanderState::default());
-                    continue;
-                };
                 if tick >= w.until_tick {
                     let mut rng = Rng::seeded(&[sim.world.seed(), tick, entity.to_bits()]);
                     w.dir = [-1.0, 0.0, 1.0][(rng.next_u32() % 3) as usize];

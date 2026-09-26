@@ -1,0 +1,27 @@
+// A troll's club: a knotted tree limb, thick at the head, pointing right,
+// held at `grip`.
+(
+    size: (24, 8),
+    feet: (12, 8),
+    outline: (26, 20, 16),
+    palette: {
+        'w': (120, 86, 52),     // wood
+        'W': (88, 60, 36),      // wood, shade
+        'k': (70, 48, 30),      // knots
+        'l': (150, 112, 70),    // wood, lit
+    },
+    frames: {
+        "club": [
+            "................WWWW....",
+            "............WWwwwwwwW...",
+            "..........WWwwlllwkwwW..",
+            "WWwwwwwwwwwwwllwwwwwwwW.",
+            "WwwwwwwwwwwkwwwwwwkwwwwW",
+            "..........WWwwwwwwwwwWW.",
+            "............WWwwkwwWW...",
+            "................WWWW....",
+        ],
+    },
+    clips: { "held": (frames: ["club"], fps: 1) },
+    anchors: { "grip": { "club": (2, 4) } },
+)

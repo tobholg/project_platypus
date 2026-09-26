@@ -1,0 +1,31 @@
+// A troll: slow, huge, a club that sends you flying. It winds up long
+// enough to see it coming (dodge through it: Shift), and hits too light to
+// matter don't stop it: it staggers only after a lot.
+(
+    name: "Troll",
+    size: (15, 34),
+    health: 420,
+    team: Enemy,
+    fall_damage: (safe_height: 90, per_cell: 1.5),
+    movement: (
+        run_speed: 38,
+        ground_accel: 500,
+        ground_decel: 900,
+        jump_height: 16,
+        air_jumps: 0,
+        step_height: 5,
+        dash_speed: 0,
+    ),
+    art: "troll",
+    weapon: "club",
+    stamina: 120,
+    poise: 80,
+    heft: 4,
+    blood: "blood",
+    brain: (
+        kind: "melee_walker",
+        params: (aggro_range: 260, keep_distance: 18, wander_speed: 0.3, wander_every: 3.5, jump_to_reach: 30,
+                 reach: 30, attack_every: 2.2, combo: 1),
+    ),
+    z: 9,
+)

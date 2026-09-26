@@ -387,7 +387,7 @@ Stages:
 3. ✅ The arena (`PLATYPUS_WORLD=arena`: dummies, spawning, overlays, slow motion, frame stepping) and the in-game editor (canvas, palette, layers, frames, anchors, onion skin, live preview) (2026-09-26; SPEC 5.3, 5.4).
 4. ✅ The combat core: held weapons turning at the hand (pre-rotated, RotSprite-style), moves as data, pixel-mask hits, hit-stop and feedback, stamina, dodge; a shortsword and a longsword (2026-09-26; SPEC 6.2).
 5. The bow and arrows (drawn by holding, physical arrows that stick and can be picked up, burning arrows).
-6. The orcs redesigned (swordsman, archer) and a troll with a club, their AI choosing moves from what they hold.
+6. ✅ (but the archer, after the bow) The orcs redesigned (swordsman, archer) and a troll with a club, their AI choosing moves from what they hold (2026-09-26; SPEC 6.2). Done before stage 5, as the user asked.
 7. More critters and ambient life (fireflies that light the night, fish, bats).
 
 **Making arc (M1):** `platypus-art` and the arena: now part of A.

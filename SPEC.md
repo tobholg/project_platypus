@@ -863,6 +863,11 @@ deaths (blood). Rendered as one dynamic mesh.
   at each angle (`<tag>@<angle>`, its pivot at the frame's middle, the
   angle's part named `aim<angle>`, `aimm<angle>` below the horizon), its
   points carried. Neither needs a clip.
+- **Turned layers:** a layer's `turn` (degrees, + counter-clockwise as
+  facing right) swings its part about its pivot with RotSprite, its points
+  with it, so a limb is drawn once and posed by turning it; a fan arm's
+  `from` (the angle its part is drawn at) makes the whole fan from one part.
+  The troll is built this way: one arm, one leg, a torso and a head.
 - **Casting arm:** a caster (`Aiming`, set for a moment by each cast) is
   drawn as its pose without the front arm, with a separate arm sprite, the
   fan frame nearest the angle from the shoulder anchor to the cursor, laid
@@ -1000,6 +1005,21 @@ deaths (blood). Rendered as one dynamic mesh.
   **The dash is the dodge:** it costs 18 (none left: no dash) and makes
   you `Invulnerable` for 0.25 s (what you lose meanwhile is given back,
   just before damage is noticed).
+- **Taking hits** (a creature file's `poise`, `heft`, `after_hit`): hits
+  within `poise` damage (whole again 1.5 s after the last hit) are shrugged
+  off (no stun, a quarter of the knockback); the one that breaks it
+  staggers (full knockback and stun, its own swing broken off). Knockback
+  is divided by `heft`. `after_hit` s untouchable after a hit (the player
+  0.6, so a crowd can't juggle you).
+- **Enemies fight** with the same swings: the `melee_walker` brain's
+  `reach` (swing at a player that close), `combo` (moves of its weapon in
+  a row) and `attack_every` (the wait after an attack ends, ±30 %); it
+  faces its target, stands its ground while swinging and doesn't swing
+  while stunned. The orc (humanoid rig, a cleaver: hack, backhack; windups
+  0.26 / 0.18 s; poise 16) and the troll (a rig of turned limbs, 15 × 34,
+  420 hp, a club: smash, sweep, 30 damage, 0.5 / 0.4 s windups to read and
+  dodge; poise 80, heft 4). In the `fight` scenario the orc lands a hit,
+  the shortsword kills it in ~2 s; the troll's smash takes 30 and throws you.
 - The shortsword (12 damage: slash, backslash, thrust) and the longsword
   (24: cleave, sweep, drive; slower, heavier on stamina). In the `melee`
   scenario: the shortsword lands 5 hits (65) in 0.9 s; the longsword
