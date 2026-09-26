@@ -321,13 +321,13 @@ fn fire(
         match &cast.carrier {
             &Carrier::Bolt { speed, life } => spawn_spell(&mut commands, &f, speed, life, 0, 0.0, halo.clone()),
             &Carrier::Orb { speed, life, bounces } => spawn_spell(&mut commands, &f, speed, life, bounces, ORB_FALL, halo.clone()),
-            Carrier::Stream { material, rate, speed, spread, burning } => {
+            Carrier::Stream { material, rate, speed, spread, burning, life } => {
                 // (A stream's trail is what comes out of the wand with it.)
                 for e in &cast.trails {
                     sparks.emit(e, e.count.round() as usize, f.from + f.dir * STREAM_AHEAD, f.dir, Vec2::ZERO);
                 }
-                stream(&mut sim.world, &f, material, *rate, *speed, *spread, *burning);
-                let reach = speed * 0.25;
+                stream(&mut sim.world, &f, material, *rate, *speed, *spread, *burning, *life);
+                let reach = speed * life;
                 // Where it plays on something, it heats it (wood catches,
                 // ice melts, rock glows if you keep at it).
                 if *burning {
@@ -420,7 +420,8 @@ fn spawn_spell(commands: &mut Commands, f: &Fire, speed: f32, life: f32, bounces
 /// become real fire where they stop (rising, flickering, lighting what they
 /// touch), and one in six the burning material (a little lingers; more
 /// floods back under the caster's feet).
-fn stream(world: &mut World, f: &Fire, material: &str, rate: u32, speed: f32, spread: f32, burning: bool) {
+#[allow(clippy::too_many_arguments)]
+fn stream(world: &mut World, f: &Fire, material: &str, rate: u32, speed: f32, spread: f32, burning: bool, life: f32) {
     let mats = world.materials().clone();
     let Some(m) = mats.id(material) else { return };
     let fire = mats.fire();
@@ -432,7 +433,9 @@ fn stream(world: &mut World, f: &Fire, material: &str, rate: u32, speed: f32, sp
         let v = Vec2::from_angle(a).rotate(f.dir) * speed * (0.75 + 0.5 * unit(&mut rng)) / TICK_HZ as f32;
         let p = if burning && i % 6 != 5 && fire != MaterialId::AIR {
             let flame = mats.spawn(fire, &mut rng);
-            Particle { gravity: -0.05, ..Particle::new([at.x, at.y], [v.x, v.y], flame, 9 + rng.next_u8() as u16 / 24, Landing::Settle) }
+            // (Its life: `life` seconds, give or take a third.)
+            let ticks = (life * TICK_HZ as f32 * (0.67 + 0.66 * unit(&mut rng))) as u16;
+            Particle { gravity: -0.05, ..Particle::new([at.x, at.y], [v.x, v.y], flame, ticks.max(4), Landing::Settle) }
         } else {
             let mut cell = mats.spawn(m, &mut rng);
             if burning {
@@ -484,6 +487,21 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
                     h.hp -= d;
                     let k = &mut *k;
                     k.loco.knock(&mut k.body, (dir + Vec2::new(0.0, 0.5)).normalize() * d * 5.0, 0.2);
+                }
+            }
+            &Payload::Knock(power) => {
+                if let Some(e) = hit
+                    && let Ok((_, mut k, ..)) = bodies.get_mut(e)
+                {
+                    let k = &mut *k;
+                    k.loco.knock(&mut k.body, (dir + Vec2::new(0.0, 0.35)).normalize() * power, 0.25);
+                }
+            }
+            &Payload::Shatter { radius, hardness } => {
+                // (Not a body it hit: the ground.)
+                if hit.is_none() {
+                    let back = at - dir * 6.0;
+                    world.apply_edit(&WorldEdit::Shatter { center, from: CellPos::from_world(back.x, back.y), radius, max_hardness: hardness });
                 }
             }
             &Payload::Blast { radius, power } => {

@@ -37,6 +37,11 @@ pub enum WorldEdit {
     /// a rim into rubble (`crumbles_into`), ignite flammables, fill the crater
     /// with fire and smoke.
     Explode { center: CellPos, radius: i32, power: u8 },
+    /// A sharp hit (a spark bolt): the solids in a disc no harder than
+    /// `max_hardness` break and fly off as rubble (what they crumble into,
+    /// or themselves), thrown away from `from`. Liquids, gas and the
+    /// background are left alone.
+    Shatter { center: CellPos, from: CellPos, radius: i32, max_hardness: u8 },
     /// Set flammable cells alight; put flames in empty cells.
     Ignite { center: CellPos, radius: i32 },
     /// Set flammable cells alight, without flames in the empty ones (a

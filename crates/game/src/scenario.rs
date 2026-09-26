@@ -75,6 +75,10 @@
 //!   three pixels (9, 14–16) of the first thing in the first file in one stroke with
 //!   the real pointer (a pose paints its first layer's part), logs what
 //!   changed on disk; Ctrl+Z; logs whether the file is back as it was
+//! - `wands`      (`PLATYPUS_WORLD=arena`) the spark wand into the floor (logs
+//!   the cells it broke) and at a sandbag put 40 cells off (logs how far
+//!   it went), the
+//!   flame wand at the dummies 60 and 120 cells off (logs what each took)
 //! - `arena`      (`PLATYPUS_WORLD=arena`) overlays on; the spark wand at the
 //!   first dummy, a fireball at the second; an orc picked and spawned with O;
 //!   paused at 5 s and stepped three times (logs the sim ticks: 3), then a
@@ -126,7 +130,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, editor_script.after(InputSystems).before(crate::editor::capture))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -1574,4 +1578,84 @@ fn editor_script(
             window.set_cursor_position(at(7.0, 9.0));
         }
     }
+}
+
+/// The spark and flame wands against the arena's floor, sandbag and dummies.
+#[allow(clippy::too_many_arguments)]
+fn wands_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    dummies: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::dummy::Tally)>,
+    mut commands: Commands,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, usize, f32)>,
+) {
+    if s.name != "wands" {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    let p = k.body.pos;
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    // Solid cells of the floor's top 12 rows around x 680.
+    let solid = || (660..700).flat_map(|x| (floor - 12..floor).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| !c.is_air())).count();
+    // (The sandbag nearest the player: one is put 40 cells off at 2 s.)
+    let bag = || dummies.iter().filter(|(c, ..)| c.kind == "sandbag").map(|(_, dk, _)| dk.body.pos).min_by(|a, b| a.distance(p).total_cmp(&b.distance(p)));
+    let dummy = |x: f32| dummies.iter().find(|(c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 8.0);
+    for key in [KeyCode::Digit6, KeyCode::Digit9] {
+        keys.release(key);
+    }
+    let aim = match t {
+        t if (0.8..1.0).contains(&t) => {
+            state.1 = solid();
+            None
+        }
+        t if (1.0..2.0).contains(&t) => {
+            keys.press(KeyCode::Digit6);
+            Some(Vec2::new(680.0, floor as f32 - 2.0))
+        }
+        t if (2.0..2.2).contains(&t) => {
+            if state.0 == 0 {
+                info!("wands: the spark broke {} floor cells in a second", state.1 as i64 - solid() as i64);
+                crate::actors::creature::spawn_creature(&mut commands, "sandbag", Vec2::new(p.x + 40.0, floor as f32), |_| {});
+                state.0 = 1;
+            }
+            None
+        }
+        t if (2.2..3.2).contains(&t) => {
+            if state.2 == 0.0 {
+                state.2 = bag().map_or(0.0, |b| b.x);
+            }
+            keys.press(KeyCode::Digit6);
+            bag()
+        }
+        t if (3.2..3.4).contains(&t) => {
+            if state.0 == 1 {
+                info!("wands: the sandbag went from x {:.0} to {:?} (a second of sparks, {:?} hits)", state.2, bag().map(|b| b.x.round()), dummies.iter().filter(|(c, ..)| c.kind == "sandbag").map(|d| d.2.hits).max());
+                state.0 = 2;
+            }
+            None
+        }
+        t if (3.4..5.0).contains(&t) => {
+            keys.press(KeyCode::Digit9);
+            dummy(700.0).map(|d| d.1.body.pos)
+        }
+        t if (5.0..6.6).contains(&t) => {
+            keys.press(KeyCode::Digit9);
+            dummy(760.0).map(|d| d.1.body.pos)
+        }
+        _ => {
+            if state.0 == 2 {
+                let took = |x: f32| dummy(x).map_or(0.0, |d| d.2.total);
+                info!("wands: flames from x {:.0}: the dummy 60 off took {:.0}, the one 120 off {:.0}", p.x, took(700.0), took(760.0));
+                state.0 = 3;
+            }
+            None
+        }
+    };
+    cursor.0 = aim.or(Some(p + Vec2::new(30.0, 0.0)));
+    if aim.is_some() { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
 }

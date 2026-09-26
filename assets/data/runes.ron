@@ -6,7 +6,8 @@
 // mana: cost a cast · color: its glow (the projectile and its light; a cast
 // takes its last payload's)
 // Carrier(Bolt(speed, life) | Orb(speed, life, bounces)
-//         | Stream(material, rate, speed, spread, burning) | Lightning(range, targets)
+//         | Stream(material, rate, speed, spread, burning, life: flames' seconds; reach = speed × life)
+//         | Lightning(range, targets)
 //         | Well(radius, strength, lift, pull, grip, drain): a well held open at the
 //           cursor while the wand is: pulls in the loose, tears out solids up to
 //           `strength` hardness (`pull` tries a tick), holds what it can `lift` (a
@@ -18,7 +19,8 @@
 //           drags it in)
 // A channelled spell's mana doesn't come back while it's held.
 // Payload(Damage(hp) | Blast(radius, power) | Heat(radius, amount °C)
-//         | Ignite(radius) | Matter(material, cells))
+//         | Ignite(radius) | Matter(material, cells) | Knock(cells/s)
+//         | Shatter(radius, hardness): breaks what it lands on, no harder, into flying bits)
 // Modifier(Gravity(k) | Trail(material, burning) | Shed(material, cells, burning)
 //          | Speed(k) | Trigger)
 //
@@ -38,8 +40,8 @@
         (id: "orb", name: "Orb", mana: 10, color: (255, 150, 60), kind: Carrier(Orb(speed: 230, life: 3.0, bounces: 2)),
             look: (burst: (count: 12, life: (0.15, 0.35), colors: [(255, 250, 220), (255, 190, 90)], speed: 90, spread: 1.2, drag: 4, glow: true))),
         (id: "flame_stream", name: "Flame stream", mana: 1.2, color: (255, 140, 40),
-            kind: Carrier(Stream(material: "oil", rate: 12, speed: 200, spread: 0.12, burning: true)),
-            look: (trail: (count: 4, life: (0.12, 0.3), colors: [(255, 250, 210), (255, 200, 70), (255, 110, 30), (160, 40, 20)], speed: 190, spread: 0.18, gravity: -60, drag: 2.5, size: 1.5, glow: true))),
+            kind: Carrier(Stream(material: "oil", rate: 12, speed: 300, spread: 0.1, burning: true, life: 0.33)),
+            look: (trail: (count: 4, life: (0.15, 0.4), colors: [(255, 250, 210), (255, 200, 70), (255, 110, 30), (160, 40, 20)], speed: 280, spread: 0.18, gravity: -60, drag: 2.5, size: 1.5, glow: true))),
         (id: "lightning", name: "Lightning", mana: 25, color: (200, 220, 255), kind: Carrier(Lightning(range: 180, targets: 3)),
             look: (burst: (count: 26, life: (0.1, 0.35), colors: [(255, 255, 255), (170, 200, 255), (70, 110, 255)], speed: 110, drag: 5, jitter: 90, glow: true))),
 
@@ -61,6 +63,9 @@
         (id: "spark", name: "Spark", mana: 1, color: (190, 210, 255), kind: Payload(Damage(14)),
             look: (trail: (count: 0.6, life: (0.05, 0.15), colors: [(255, 255, 255), (140, 180, 255)], speed: 20, jitter: 120, glow: true),
                    burst: (count: 14, life: (0.08, 0.25), colors: [(255, 255, 255), (150, 190, 255), (60, 90, 230)], speed: 80, spread: 1.3, drag: 5, jitter: 80, glow: true))),
+        (id: "knock", name: "Knock", mana: 1, color: (190, 210, 255), kind: Payload(Knock(260))),
+        (id: "shatter", name: "Shatter", mana: 2, color: (200, 190, 170), kind: Payload(Shatter(radius: 3, hardness: 60)),
+            look: (burst: (count: 10, life: (0.2, 0.5), colors: [(220, 210, 190), (140, 130, 120)], speed: 60, spread: 1.2, gravity: 120, drag: 2))),
         (id: "blast", name: "Blast", mana: 16, color: (255, 150, 60), kind: Payload(Blast(radius: 16, power: 110)),
             look: (burst: (count: 70, life: (0.2, 0.7), colors: [(255, 255, 230), (255, 210, 90), (255, 120, 30), (150, 50, 20), (60, 50, 50)], speed: 170, drag: 3.5, gravity: 30, size: 1.5, glow: true))),
         (id: "ignite", name: "Ignite", mana: 3, color: (255, 120, 40), kind: Payload(Ignite(radius: 6)),

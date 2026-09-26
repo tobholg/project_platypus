@@ -404,6 +404,10 @@ impl World {
                     w.force(x, radius, storm, tick);
                 }
             }
+            WorldEdit::Shatter { center, from, radius, max_hardness } => {
+                self.shatter(center, from, radius, max_hardness, &mut report);
+                self.loosen_if_removed(center, radius, &report);
+            }
             WorldEdit::Explode { center, radius, power } => {
                 self.blasts.push((center, radius, power));
                 self.explode(center, radius, power, &mut report);
@@ -564,6 +568,26 @@ impl World {
             }
             if back { self.set_bg(p, c) } else { self.set(p, c) };
             report.placed += 1;
+        }
+    }
+
+    fn shatter(&mut self, center: CellPos, from: CellPos, radius: i32, max_hardness: u8, report: &mut EditReport) {
+        let mats = self.materials.clone();
+        let mut rng = self.rng_for(0x5A77, center);
+        for p in disc(center, radius) {
+            let Some(c) = self.get(p) else { continue };
+            let ph = *mats.phys(c.material);
+            if !matches!(ph.kind, Kind::Static | Kind::Powder) || ph.hardness == u8::MAX || ph.hardness > max_hardness {
+                continue;
+            }
+            report.add_removed(c.material);
+            self.set(p, Cell::AIR);
+            let mut bit = if ph.crumbles_into != MaterialId::AIR { mats.spawn(ph.crumbles_into, &mut rng) } else { c };
+            bit.flags = 0;
+            // Away from where it came from, spread out.
+            let speed = 1.6 + 2.0 * rng.next_u8() as f32 / 255.0;
+            let vel = outward(from, p, &mut rng, speed);
+            self.particles.push(Particle::new(center_of(p), vel, bit, 120, Landing::Settle));
         }
     }
 

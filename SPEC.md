@@ -968,7 +968,7 @@ deaths (blood). Rendered as one dynamic mesh.
 - **Runes** (`assets/data/runes.ron`, hot-reloaded) are one of three kinds:
   a *carrier* (how a spell travels: `Bolt`, `Orb`, `Stream`, `Lightning`), a
   *payload* (what it does where it lands: `Damage`, `Blast`, `Heat`,
-  `Ignite`, `Matter`) or a *modifier* (how it behaves: `Gravity`, `Trail`,
+  `Ignite`, `Matter`, `Knock`, `Shatter`) or a *modifier* (how it behaves: `Gravity`, `Trail`,
   `Speed`, `Trigger`). Each costs mana and has a colour.
 - **A wand** is an item (`Use::Cast { runes, delay, recharge }` in
   `items.ron`). Its runes read left to right into casts (`runes::casts`):
@@ -1004,9 +1004,15 @@ deaths (blood). Rendered as one dynamic mesh.
   `WorldEdit::Explode` (so a fireball digs, throws debris and bodies, and
   hurts like a small bomb), heat `WorldEdit::Heat`, ignite
   `WorldEdit::Ignite` plus setting alight creatures in the radius, matter a
-  `splash` of real cells, damage the body hit (with knockback).
-- **Streams** spray, from 6 cells ahead of the hand, flames that become real
-  fire cells where they stop (they rise, flicker and light what they touch)
+  `splash` of real cells, damage the body hit (with knockback), knock
+  throws the body hit (`Knock(260)`: along the flight, a little up),
+  shatter (`WorldEdit::Shatter`) breaks the solids and powders it lands on
+  up to its hardness in a radius and throws them off as rubble, away from
+  where it came (not when it hit a body). The spark wand is bolt + spark +
+  knock + shatter (radius 3, hardness 60: dirt and stone, not slate).
+- **Streams** spray, from 6 cells ahead of the hand, flames that last
+  `life` s (± a third; the flame wand: 300 cells/s × 0.33 s, about 100
+  cells) and become real fire cells where they stop (they rise, flicker and light what they touch)
   and one in six burning cells of their material; what the stream plays on
   is heated (+12 °C a cast, radius 3: wood catches, ice melts); what stands
   in it is scalded (2 a cast) and may catch.

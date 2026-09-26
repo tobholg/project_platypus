@@ -25,8 +25,17 @@ pub enum Carrier {
     /// Slower, falling, bouncing off what it hits `bounces` times.
     Orb { speed: f32, life: f32, bounces: u8 },
     /// A spray of cells of a material from the wand (a flamethrower): `rate`
-    /// a cast, at `speed`, spread `spread` radians; `burning` lights them.
-    Stream { material: String, rate: u32, speed: f32, spread: f32, burning: bool },
+    /// a cast, at `speed`, spread `spread` radians; `burning` lights them;
+    /// the flames last about `life` seconds (so reach `speed` × `life`).
+    Stream {
+        material: String,
+        rate: u32,
+        speed: f32,
+        spread: f32,
+        burning: bool,
+        #[serde(default = "stream_life")]
+        life: f32,
+    },
     /// The sky's lightning, from the wand: a bolt to up to `targets`
     /// creatures within `range` of the aim (or the aim itself).
     Lightning { range: f32, targets: u8 },
@@ -57,6 +66,15 @@ pub enum Payload {
     Ignite { radius: i32 },
     /// Splash cells of a material.
     Matter { material: String, cells: u32 },
+    /// Throw what it hits (cells/s, along its flight and a little up).
+    Knock(f32),
+    /// Break what it lands on, no harder than `hardness`, within `radius`:
+    /// the bits fly off (dirt, sand, stone at 60; not slate).
+    Shatter { radius: i32, hardness: u8 },
+}
+
+fn stream_life() -> f32 {
+    0.25
 }
 
 /// How a carrier behaves.
