@@ -11,9 +11,13 @@
 //     gold ore 85, basalt 95, ruby 100, mithril ore 110, obsidian 120.
 //     Pickaxe tiers climb with them: copper 70, iron 100, gold 115, mithril 150.
 //   Throw(Bomb | Glowstick) · Torch: plant one on a block face
-//   Focus(tier, element): a wand (tier 1) or staff (tier 2): hold to cast
-//     the spell ready (spells.ron; Q: the next) at the cursor, if its tier
-//     is no more than the focus's; the element it favours (optional)
+//   Focus(tier, element, spells): a wand (tier 1, one spell) or staff (tier
+//     2, two: left and right button) casting its spells (spells.ron) at the
+//     cursor; the element it favours (optional). Found in the world, it
+//     rolls its spells instead, from its element's up to its tier.
+// aura: (light, strength, sparks: an emitter as in runes.ron `look`, `count`
+//   a second; casting: times as many while it's used): what it gives off
+//   at its tip while held
 // about: a line for its tooltip
 //   Bow(bow): a bow (weapons.ron): hold the left button to draw, let go to
 //     loose an arrow (one of your `arrow` items) at the cursor.
@@ -33,34 +37,47 @@
         (id: "torch",          name: "Torch",          stack: 99, color: (255, 190, 90), use: Torch),
         (id: "bomb",           name: "Bomb",           stack: 30, color: (40, 40, 46), use: Throw(Bomb)),
         (id: "glowstick",      name: "Glow stick",     stack: 30, color: (90, 255, 150), use: Throw(Glowstick)),
-        // Foci (magic::spells): a wand is tier 1, a staff tier 2; a spell
-        // needs a focus of its tier or more in the hand. Its element is the
-        // one it favours (its stats: that element's power); taking it up
-        // readies the strongest spell of that element it can cast.
-        (id: "oak_wand",       name: "Oak wand",       color: (150, 110, 70), use: Focus(tier: 1),
-            gear: (slot: Held, stats: { SpellPower: 5, CastSpeed: 5 })),
-        (id: "storm_wand",     name: "Storm wand",     color: (200, 220, 255), use: Focus(tier: 1, element: Storm),
-            gear: (slot: Held, stats: { StormPower: 40, CastSpeed: 5 })),
-        (id: "fire_wand",      name: "Fire wand",      color: (255, 120, 40), use: Focus(tier: 1, element: Fire),
-            gear: (slot: Held, stats: { FirePower: 40, CastSpeed: 5 })),
-        (id: "acid_wand",      name: "Acid wand",      color: (120, 230, 60), use: Focus(tier: 1, element: Acid),
-            gear: (slot: Held, stats: { AcidPower: 40, CastSpeed: 5 })),
-        (id: "frost_wand",     name: "Frost wand",     color: (170, 220, 255), use: Focus(tier: 1, element: Frost),
-            gear: (slot: Held, stats: { FrostPower: 40, CastSpeed: 5 })),
-        (id: "gravity_wand",   name: "Gravity wand",   color: (150, 110, 255), use: Focus(tier: 1, element: Gravity),
-            gear: (slot: Held, stats: { GravityPower: 40 })),
-        (id: "force_wand",     name: "Force wand",     color: (140, 200, 255), use: Focus(tier: 1, element: Force),
-            gear: (slot: Held, stats: { ForcePower: 40 })),
-        (id: "arcane_staff",   name: "Arcane staff",   color: (170, 120, 230), use: Focus(tier: 2),
-            gear: (slot: Held, stats: { SpellPower: 25, Mana: 40, ManaRegen: 15 })),
-        (id: "fire_staff",     name: "Fire staff",     color: (255, 150, 50), use: Focus(tier: 2, element: Fire),
-            gear: (slot: Held, stats: { FirePower: 50, SpellPower: 10, Mana: 20 })),
-        (id: "storm_staff",    name: "Storm staff",    color: (200, 220, 255), use: Focus(tier: 2, element: Storm),
-            gear: (slot: Held, stats: { StormPower: 50, SpellPower: 10, Mana: 20 })),
-        (id: "gravity_staff",  name: "Gravity staff",  color: (150, 110, 255), use: Focus(tier: 2, element: Gravity),
-            gear: (slot: Held, stats: { GravityPower: 50, SpellPower: 10, Mana: 20 })),
-        (id: "force_staff",    name: "Force staff",    color: (140, 200, 255), use: Focus(tier: 2, element: Force),
-            gear: (slot: Held, stats: { ForcePower: 50, SpellPower: 10, Mana: 20 })),
+        // Foci (magic::spells): each holds its spells (a wand one, a staff
+        // two: left and right button), of its tier or less (a wand 1, a staff
+        // 2); its element is the one it favours (its stats: that element's
+        // power). One found in the world rolls its spells from its element's
+        // (any, with none). Its aura: the glow and sparks at its tip.
+        (id: "oak_wand",       name: "Oak wand",       color: (150, 110, 70), use: Focus(tier: 1, spells: ["spark_bolt"]),
+            gear: (slot: Held, stats: { SpellPower: 5, CastSpeed: 5 }),
+            aura: (light: (220, 200, 255), strength: 0.4, sparks: (count: 4, life: (0.5, 1.0), colors: [(255, 255, 255), (200, 170, 255)], speed: 5, drag: 1, glow: true))),
+        (id: "storm_wand",     name: "Storm wand",     color: (200, 220, 255), use: Focus(tier: 1, element: Storm, spells: ["spark_bolt"]),
+            gear: (slot: Held, stats: { StormPower: 40, CastSpeed: 5 }),
+            aura: (light: (190, 200, 255), sparks: (count: 12, life: (0.05, 0.15), colors: [(255, 255, 255), (160, 180, 255)], speed: 30, jitter: 120, glow: true))),
+        (id: "fire_wand",      name: "Fire wand",      color: (255, 120, 40), use: Focus(tier: 1, element: Fire, spells: ["fireball"]),
+            gear: (slot: Held, stats: { FirePower: 40, CastSpeed: 5 }),
+            aura: (light: (255, 140, 50), strength: 0.8, sparks: (count: 14, life: (0.3, 0.7), colors: [(255, 240, 180), (255, 160, 50), (200, 60, 20)], speed: 18, spread: 0.6, gravity: -40, drag: 2, glow: true))),
+        (id: "acid_wand",      name: "Acid wand",      color: (120, 230, 60), use: Focus(tier: 1, element: Acid, spells: ["acid_arrow"]),
+            gear: (slot: Held, stats: { AcidPower: 40, CastSpeed: 5 }),
+            aura: (light: (130, 240, 70), strength: 0.5, sparks: (count: 5, life: (0.4, 0.8), colors: [(200, 255, 120), (90, 200, 40)], speed: 2, spread: 0.3, gravity: 160, glow: true))),
+        (id: "frost_wand",     name: "Frost wand",     color: (170, 220, 255), use: Focus(tier: 1, element: Frost, spells: ["frost_bolt"]),
+            gear: (slot: Held, stats: { FrostPower: 40, CastSpeed: 5 }),
+            aura: (light: (140, 200, 255), sparks: (count: 10, life: (0.5, 1.0), colors: [(240, 250, 255), (170, 215, 255)], speed: 6, gravity: 20, drag: 3, glow: true))),
+        (id: "gravity_wand",   name: "Gravity wand",   color: (150, 110, 255), use: Focus(tier: 1, element: Gravity, spells: ["gravity_well"]),
+            gear: (slot: Held, stats: { GravityPower: 40 }),
+            aura: (light: (160, 120, 255), sparks: (count: 10, life: (0.4, 0.8), colors: [(220, 200, 255), (120, 80, 230), (40, 20, 90)], speed: 14, drag: 1, glow: true))),
+        (id: "force_wand",     name: "Force wand",     color: (140, 200, 255), use: Focus(tier: 1, element: Force, spells: ["force"]),
+            gear: (slot: Held, stats: { ForcePower: 40 }),
+            aura: (light: (150, 210, 255), sparks: (count: 8, life: (0.1, 0.3), colors: [(240, 250, 255), (140, 195, 255)], speed: 22, drag: 4, glow: true))),
+        (id: "arcane_staff",   name: "Arcane staff",   color: (170, 120, 230), use: Focus(tier: 2, spells: ["frost_bolt", "acid_arrow"]),
+            gear: (slot: Held, stats: { SpellPower: 25, Mana: 40, ManaRegen: 15 }),
+            aura: (light: (220, 200, 255), strength: 0.4, sparks: (count: 4, life: (0.5, 1.0), colors: [(255, 255, 255), (200, 170, 255)], speed: 5, drag: 1, glow: true))),
+        (id: "fire_staff",     name: "Fire staff",     color: (255, 150, 50), use: Focus(tier: 2, element: Fire, spells: ["flame_jet", "fireball"]),
+            gear: (slot: Held, stats: { FirePower: 50, SpellPower: 10, Mana: 20 }),
+            aura: (light: (255, 140, 50), strength: 0.8, sparks: (count: 14, life: (0.3, 0.7), colors: [(255, 240, 180), (255, 160, 50), (200, 60, 20)], speed: 18, spread: 0.6, gravity: -40, drag: 2, glow: true))),
+        (id: "storm_staff",    name: "Storm staff",    color: (200, 220, 255), use: Focus(tier: 2, element: Storm, spells: ["lightning", "spark_bolt"]),
+            gear: (slot: Held, stats: { StormPower: 50, SpellPower: 10, Mana: 20 }),
+            aura: (light: (190, 200, 255), sparks: (count: 12, life: (0.05, 0.15), colors: [(255, 255, 255), (160, 180, 255)], speed: 30, jitter: 120, glow: true))),
+        (id: "gravity_staff",  name: "Gravity staff",  color: (150, 110, 255), use: Focus(tier: 2, element: Gravity, spells: ["great_well", "force"]),
+            gear: (slot: Held, stats: { GravityPower: 50, SpellPower: 10, Mana: 20 }),
+            aura: (light: (160, 120, 255), sparks: (count: 10, life: (0.4, 0.8), colors: [(220, 200, 255), (120, 80, 230), (40, 20, 90)], speed: 14, drag: 1, glow: true))),
+        (id: "force_staff",    name: "Force staff",    color: (140, 200, 255), use: Focus(tier: 2, element: Force, spells: ["great_force", "force"]),
+            gear: (slot: Held, stats: { ForcePower: 50, SpellPower: 10, Mana: 20 }),
+            aura: (light: (150, 210, 255), sparks: (count: 8, life: (0.1, 0.3), colors: [(240, 250, 255), (140, 195, 255)], speed: 22, drag: 4, glow: true))),
         (id: "shortsword",     name: "Shortsword",     color: (200, 206, 216), use: Melee("shortsword"), gear: (slot: Held),
             about: "Quick: slash, backslash, thrust. Strike down in the air to bounce off what you hit."),
         (id: "longsword",      name: "Longsword",      color: (180, 188, 204), use: Melee("longsword"), gear: (slot: Held),
@@ -91,6 +108,5 @@
         ("glowstick", 6), ("gravity_wand", 1), ("force_wand", 1), ("gravity_staff", 1), ("force_staff", 1), ("frost_wand", 1),
         ("shortsword", 1), ("longsword", 1), ("bow", 1), ("arrow", 60),
         ("leather_cap", 1), ("chainmail", 1), ("apprentice_robe", 1), ("feather_boots", 1), ("ring_of_vigour", 1), ("ember_amulet", 1),
-        ("oak_wand", 1), ("arcane_staff", 1),
     ],
 )

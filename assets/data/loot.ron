@@ -45,6 +45,11 @@
             (item: "cloth_hood", weight: 3, count: (1, 1)),
             (item: "iron_helm", weight: 2, count: (1, 1)),
             (item: "shortsword", weight: 2, count: (1, 1)),
+            (item: "oak_wand", weight: 3, count: (1, 1)),
+            (item: "fire_wand", weight: 2, count: (1, 1)),
+            (item: "frost_wand", weight: 2, count: (1, 1)),
+            (item: "storm_wand", weight: 2, count: (1, 1)),
+            (item: "acid_wand", weight: 2, count: (1, 1)),
         ]),
         (name: "caverns", deeper_than: 2500, rolls: (3, 5), entries: [
             (item: "torch", weight: 25, count: (6, 14)),
@@ -64,6 +69,11 @@
             (item: "frost_charm", weight: 2, count: (1, 1)),
             (item: "longsword", weight: 2, count: (1, 1)),
             (item: "bow", weight: 2, count: (1, 1)),
+            (item: "fire_wand", weight: 2, count: (1, 1)),
+            (item: "frost_wand", weight: 2, count: (1, 1)),
+            (item: "gravity_wand", weight: 2, count: (1, 1)),
+            (item: "force_wand", weight: 2, count: (1, 1)),
+            (item: "arcane_staff", weight: 1, count: (1, 1)),
         ]),
         (name: "deep", deeper_than: 7000, rolls: (4, 6), entries: [
             (item: "bomb", weight: 25, count: (3, 7)),
@@ -83,6 +93,11 @@
             (item: "longsword", weight: 3, count: (1, 1)),
             (item: "broodmother_fang", weight: 1, count: (1, 1)),
             (item: "trolls_club", weight: 1, count: (1, 1)),
+            (item: "fire_staff", weight: 2, count: (1, 1)),
+            (item: "storm_staff", weight: 2, count: (1, 1)),
+            (item: "gravity_staff", weight: 1, count: (1, 1)),
+            (item: "force_staff", weight: 1, count: (1, 1)),
+            (item: "arcane_staff", weight: 2, count: (1, 1)),
         ]),
 
         // ---- creatures' (their bodies) ----
@@ -126,6 +141,8 @@
             (item: "frost_charm", weight: 2, count: (1, 1)),
             (item: "storm_ring", weight: 2, count: (1, 1)),
             (item: "shortsword", weight: 2, count: (1, 1)),
+            (item: "oak_wand", weight: 2, count: (1, 1)),
+            (item: "frost_wand", weight: 1, count: (1, 1)),
         ]),
         (name: "spider", rolls: (0, 1), entries: [
             (item: "nothing", weight: 16, count: (1, 1)),

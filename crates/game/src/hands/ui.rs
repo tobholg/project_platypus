@@ -77,7 +77,7 @@ struct PackRoot;
 #[derive(Component)]
 struct ItemLabel;
 
-/// The spell ready, over the hotbar while a focus is in hand.
+/// A focus's spells, over the hotbar while it's in hand.
 #[derive(Component)]
 struct SpellLabel;
 
@@ -712,38 +712,37 @@ fn show_gear(
     }
 }
 
-/// With a focus in hand: the spell ready, what it costs, whether the focus
-/// is up to it.
+/// With a focus in hand: its spells, which button casts each, what they
+/// cost.
 fn spell_label(
     items: Option<Res<Items>>,
     book: Res<Spellbook>,
-    player: Query<(&Equipment, Option<&crate::magic::Caster>), With<LocalPlayer>>,
-    mut label: Single<(&mut Text, &mut TextColor, &mut Visibility), With<SpellLabel>>,
+    player: Query<&Equipment, With<LocalPlayer>>,
+    mut label: Single<(&mut Text, &mut Visibility), With<SpellLabel>>,
 ) {
-    let (text, color, vis) = &mut *label;
-    let (Some(items), Ok((eq, caster))) = (items, player.single()) else { return };
-    let tier = eq.held.and_then(|s| match items.def(s.item).use_ {
-        Use::Focus { tier, .. } => Some(tier),
+    let (text, vis) = &mut *label;
+    let (Some(items), Ok(eq)) = (items, player.single()) else { return };
+    let spells = eq.held.and_then(|s| match &items.def(s.item).use_ {
+        Use::Focus { tier, element, spells } => Some(crate::magic::spells::focus_spells(&book.spells, *tier, *element, spells, &s.roll)),
         _ => None,
     });
-    let spell = caster.and_then(|c| c.spell()).and_then(|i| book.spells.get(i));
-    let (Some(tier), Some(spell)) = (tier, spell) else {
+    let Some(spells) = spells.filter(|s| !s.is_empty()) else {
         **vis = Visibility::Hidden;
         return;
     };
     **vis = Visibility::Inherited;
-    let (_, mana) = book.describe(&spell.runes);
-    let (t, c) = if spell.tier > tier {
-        (format!("{}: needs a staff (tier {})   |   Q: next spell", spell.name, spell.tier), Color::srgb(1.0, 0.5, 0.45))
-    } else {
-        let of = spell.element.map_or("arcane".to_string(), |e| format!("{e:?}").to_lowercase());
-        let about = spell.about.as_deref().map_or(String::new(), |a| format!("\n{a}"));
-        (format!("{} ({of}, {mana:.0} mana)   |   Q: next spell{about}", spell.name), Color::srgb(0.8, 0.85, 1.0))
-    };
+    let t = spells.iter().enumerate().map(|(k, &i)| spell_line(&book, i, if k == 0 { "LMB" } else { "RMB" })).collect::<Vec<_>>().join("   |   ");
     if text.0 != t {
         text.0 = t;
     }
-    color.0 = c;
+}
+
+/// A spell in a line: the button, its name, element and mana.
+fn spell_line(book: &Spellbook, i: usize, button: &str) -> String {
+    let s = &book.spells[i];
+    let (_, mana) = book.describe(&s.runes);
+    let of = s.element.map_or("arcane".to_string(), |e| format!("{e:?}").to_lowercase());
+    format!("{button}: {} ({of}, {mana:.0} mana)", s.name)
 }
 
 /// The open chest's (or body's) name over it.
@@ -837,13 +836,17 @@ fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<&crate::com
             lines.push(format!("Axe: trees and walls, up to hardness {tier}"));
             lines.push(format!("{power} a hit, {speed} hits a second, reach {reach} blocks"));
         }
-        Use::Focus { tier, element } => {
+        Use::Focus { tier, element, spells } => {
             let what = if *tier >= 2 { "Staff" } else { "Wand" };
-            let of = element.map_or(String::new(), |e| format!(", of {}", format!("{e:?}").to_lowercase()));
-            lines.push(format!("{what} (tier {tier}{of}): hold the left button to cast the spell ready (Q: the next)"));
+            let of = element.map_or(String::new(), |e| format!(" of {}", format!("{e:?}").to_lowercase()));
+            lines.push(format!("{what}{of}: hold a button to cast at the cursor"));
             if let Some(book) = book {
-                let can: Vec<&str> = book.spells.iter().filter(|s| s.tier <= *tier).map(|s| s.name.as_str()).collect();
-                lines.push(format!("Casts: {}", can.join(", ")));
+                for (k, i) in crate::magic::spells::focus_spells(&book.spells, *tier, *element, spells, &s.roll).into_iter().enumerate() {
+                    lines.push(spell_line(book, i, if k == 0 { "LMB" } else { "RMB" }));
+                    if let Some(about) = &book.spells[i].about {
+                        lines.push(format!("  {about}"));
+                    }
+                }
             }
         }
         Use::Bow(id) => {

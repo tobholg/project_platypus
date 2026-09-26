@@ -23,5 +23,6 @@
         ],
     },
     clips: { "held": (frames: ["wand"], fps: 1) },
-    anchors: { "grip": { "wand": (1, 2) } },
+    // grip: where the hand holds it; tip: where its aura glows.
+    anchors: { "tip": { "wand": (11, 2) }, "grip": { "wand": (1, 2) } },
 )

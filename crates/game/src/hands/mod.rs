@@ -336,7 +336,7 @@ fn wield(
     }
 }
 
-type User<'a> = (Entity, &'a Kinematics, &'a mut Inventory, Option<&'a crate::actors::animation::HandPos>, Option<&'a crate::magic::Caster>);
+type User<'a> = (Entity, &'a Kinematics, &'a mut Inventory, Option<&'a crate::actors::animation::HandPos>);
 
 #[allow(clippy::too_many_arguments)]
 fn use_hands(
@@ -360,7 +360,7 @@ fn use_hands(
     let clicked = std::mem::take(&mut input.clicked);
     hand.cooldown = (hand.cooldown - DT).max(0.0);
     let (Some(items), Some(cursor)) = (items, input.cursor) else { return };
-    let Ok((me, k, mut inv, hand_pos, caster)) = player.single_mut() else { return };
+    let Ok((me, k, mut inv, hand_pos)) = player.single_mut() else { return };
     let from = hand_at(k);
     let slot = if input.auto { auto_slot(&sim.world, &items, &inv, hand.bar_slots(), &k.body, from, cursor).unwrap_or(hand.active()) } else { hand.active() };
     let Some(stack) = inv.slots[slot] else { return };
@@ -418,14 +418,14 @@ fn use_hands(
             }
             inv.take(slot, 1);
         }
-        // A focus casts the spell ready, if it's up to it (the spell keeps
-        // its own time: `magic::request`). The arm points at the cursor
-        // while casting, and the spell leaves from its hand.
-        Use::Focus { tier, .. } if input.primary || input.secondary => {
-            let Some(spell) = caster.and_then(|c| c.spell()) else { return };
-            if book.spells.get(spell).is_none_or(|s| s.tier > tier) {
-                return;
-            }
+        // A focus casts its spell: the left button its first, the right
+        // its second (or the first again, "alt"). The spell keeps its own
+        // time (`magic::request`). The arm points at the cursor while
+        // casting, and the spell leaves from its hand.
+        Use::Focus { tier, element, ref spells } if input.primary || input.secondary => {
+            let held = crate::magic::spells::focus_spells(&book.spells, tier, element, spells, &stack.roll);
+            let pick = if input.primary { held.first() } else { held.get(1).or(held.first()) };
+            let Some(&spell) = pick else { return };
             commands.entity(me).insert(crate::actors::animation::Aiming { at: cursor, left: AIM_HOLD });
             let from = hand_pos.and_then(|h| h.at).unwrap_or(from);
             casts.write(crate::magic::CastRequest { caster: me, spell, from, toward: cursor, alt: !input.primary });

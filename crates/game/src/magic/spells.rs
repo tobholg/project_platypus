@@ -1,15 +1,15 @@
 //! Spells and foci (DESIGN §7b, §7c). A spell is its own thing, made of
-//! runes (`assets/data/spells.ron`); wands and staffs are foci, held gear
-//! that holds no spells: a spell of tier N needs a focus of tier N or more
-//! in the hand (a wand is tier 1, a staff tier 2), and the focus's stats
+//! runes (`assets/data/spells.ron`, recipes any focus can hold); wands and
+//! staffs are foci, held gear that holds spells up to its tier (a wand is
+//! tier 1, a staff tier 2), and the focus's stats
 //! (spell power, cast speed, an element's power: a fire wand's +40% fire)
 //! make it stronger. Every spell has an element (or none: arcane); its
 //! element's power and spell power scale what it does, and its hurt is of
 //! its element (resisted as such).
 //!
-//! A caster knows spells (`Caster`) and has one ready: Q steps to the next
-//! (Shift+Q back); taking up a focus of an element readies the strongest
-//! spell of that element it can cast.
+//! A focus holds its spells (changed 2026-09-26 from a spellbook with a
+//! spell ready): a wand one, a staff two (left and right button); written in
+//! items.ron, or, for a focus found in the world, rolled from what suits it.
 
 use std::sync::Arc;
 
@@ -84,21 +84,6 @@ pub struct SpellsFile {
     pub spells: Vec<SpellDef>,
 }
 
-/// The spells a caster knows (by index in the spellbook) and the one it
-/// has ready.
-#[derive(Component, Clone, Debug, Default)]
-pub struct Caster {
-    pub known: Vec<usize>,
-    pub ready: usize,
-}
-
-impl Caster {
-    /// The spell ready (its index in the spellbook).
-    pub fn spell(&self) -> Option<usize> {
-        self.known.get(self.ready).copied()
-    }
-}
-
 /// How much stronger a caster makes a spell: spell power, and its
 /// element's power.
 pub fn power(stats: &Stats, element: Option<Element>) -> f32 {
@@ -136,41 +121,28 @@ pub fn empower(cast: &Cast, power: f32, harm: Harm) -> Arc<Cast> {
     Arc::new(c)
 }
 
-/// Q readies the next spell a caster knows (Shift+Q the one before); taking
-/// up a focus of an element readies the strongest spell of that element it
-/// can cast.
-pub fn choose(
-    keys: Res<ButtonInput<KeyCode>>,
-    items: Option<Res<crate::hands::items::Items>>,
-    book: Res<super::Spellbook>,
-    open: Res<crate::hands::InventoryOpen>,
-    mut last: Local<Option<crate::hands::items::ItemId>>,
-    mut q: Query<(&mut Caster, &crate::gear::Equipment), With<crate::actors::player::LocalPlayer>>,
-) {
-    let (Some(items), Ok((mut c, eq))) = (items, q.single_mut()) else { return };
-    let n = c.known.len();
-    if n == 0 {
-        return;
+/// The spells a focus holds (by index in the spellbook): as written, or,
+/// for one found in the world (a rolled seed), picked from what its element
+/// and tier allow (a wand one, a staff two, different ones where it can).
+pub fn focus_spells(spells: &[SpellDef], tier: u8, element: Option<Element>, written: &[String], roll: &crate::hands::items::Roll) -> Vec<usize> {
+    let fixed: Vec<usize> = written.iter().filter_map(|id| spells.iter().position(|s| &s.id == id)).collect();
+    let pool: Vec<usize> = (0..spells.len()).filter(|&i| spells[i].tier <= tier && (element.is_none() || spells[i].element == element)).collect();
+    if roll.seed == 0 || pool.is_empty() {
+        return fixed;
     }
-    if keys.just_pressed(KeyCode::KeyQ) && !open.0 {
-        let back = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-        c.ready = if back { (c.ready + n - 1) % n } else { (c.ready + 1) % n };
-    }
-    let held = eq.held.map(|s| s.item);
-    if held != *last {
-        *last = held;
-        let focus = held.and_then(|i| match items.def(i).use_ {
-            crate::hands::items::Use::Focus { tier, element: Some(e) } => Some((tier, e)),
-            _ => None,
-        });
-        // The strongest it can cast of its element (the first of those).
-        if let Some((tier, e)) = focus {
-            let spell = |i: usize| book.spells.get(c.known[i]).filter(|s| s.element == Some(e) && s.tier <= tier);
-            if let Some(best) = (0..n).filter_map(|i| spell(i).map(|s| (i, s.tier))).max_by_key(|&(i, t)| (t, std::cmp::Reverse(i))) {
-                c.ready = best.0;
-            }
+    let mut rng = platypus_sim::rng::Rng::seeded(&[roll.seed as u64, 0x5_9E11]);
+    let mut pool = pool;
+    let n = if tier >= 2 { 2 } else { 1 };
+    let mut out = Vec::new();
+    for _ in 0..n {
+        if pool.is_empty() {
+            break;
         }
+        out.push(pool.remove(rng.next_u32() as usize % pool.len()));
     }
+    // (A staff's best spell first: its left button.)
+    out.sort_by_key(|&i| std::cmp::Reverse(spells[i].tier));
+    out
 }
 
 #[cfg(test)]
@@ -180,19 +152,30 @@ mod tests {
     use crate::magic::runes::{self, Runes, RunesFile};
 
     #[test]
-    fn every_spell_reads_and_some_focus_casts_it() {
+    fn every_spell_reads_and_every_focus_holds_what_it_can_cast() {
         let r = Runes::new(crate::data::parse_ron::<RunesFile>(include_str!("../../../../assets/data/runes.ron")).unwrap()).unwrap();
         let file: SpellsFile = crate::data::parse_ron(include_str!("../../../../assets/data/spells.ron")).unwrap();
         let items = crate::hands::items::test_items();
-        let foci: Vec<(u8, Option<Element>)> = (0..items.len())
-            .filter_map(|i| match items.def(crate::hands::items::ItemId(i as u16)).use_ {
-                Use::Focus { tier, element } => Some((tier, element)),
-                _ => None,
-            })
-            .collect();
         for s in &file.spells {
             assert!(!runes::casts(&r, &s.runes).unwrap().is_empty(), "{} casts nothing", s.id);
-            assert!(foci.iter().any(|&(t, e)| t >= s.tier && (e.is_none() || e == s.element)), "no focus casts {}", s.id);
+        }
+        // Every focus holds spells it can cast (a wand one, a staff two); a
+        // found one rolls as many of its element.
+        for i in 0..items.len() {
+            let def = items.def(crate::hands::items::ItemId(i as u16));
+            let Use::Focus { tier, element, spells } = &def.use_ else { continue };
+            let want = if *tier >= 2 { 2 } else { 1 };
+            let written = focus_spells(&file.spells, *tier, *element, spells, &Default::default());
+            assert_eq!(written.len(), want, "{} holds {} spells", def.id, written.len());
+            assert!(written.iter().all(|&k| file.spells[k].tier <= *tier), "{} holds a spell beyond it", def.id);
+            for seed in 1..20 {
+                let found = focus_spells(&file.spells, *tier, *element, spells, &crate::hands::items::Roll { rarity: 1, level: 5, seed });
+                assert!(!found.is_empty() && found.len() <= want, "{} found holds {found:?}", def.id);
+                assert!(found.iter().all(|&k| file.spells[k].tier <= *tier && (element.is_none() || file.spells[k].element == *element)), "{}: {found:?}", def.id);
+                if found.len() == 2 {
+                    assert_ne!(found[0], found[1]);
+                }
+            }
         }
         // A fireball from a fire wand (+40% fire) hurts as fire, harder.
         let fireball = file.spells.iter().find(|s| s.id == "fireball").unwrap();

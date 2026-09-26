@@ -2,7 +2,7 @@
 //! `runes.ron`); wands and staffs are the foci that cast them (`spells.rs`).
 //! `runes.rs` reads a spell's runes as casts, and this carries them out:
 //!
-//! - holding a focus asks for a cast of the ready spell every tick
+//! - holding a focus asks for a cast of its spell every tick
 //!   (`CastRequest`); the spell keeps its own time for each caster (a delay
 //!   between casts, a recharge after its last; the caster's cast speed
 //!   shortens both), the caster pays in mana, and its spell and element
@@ -41,7 +41,7 @@ use crate::vfx::{Halo, Sparks};
 use well::Well;
 use crate::world::{SimWorld, TICK_HZ, TickSet};
 use runes::{Carrier, Cast, Payload, Runes, RunesFile};
-pub use spells::{Caster, Element, SpellDef, SpellsFile};
+pub use spells::{Element, SpellDef, SpellsFile};
 
 
 pub struct MagicPlugin;
@@ -103,7 +103,7 @@ pub struct CastRequest {
     pub spell: usize,
     pub from: Vec2,
     pub toward: Vec2,
-    /// The other button (force: pull). Other spells ignore it.
+    /// Cast with the other button (force: pull). Other spells ignore it.
     pub alt: bool,
 }
 
@@ -210,7 +210,7 @@ impl Plugin for MagicPlugin {
             .init_resource::<Firing>()
             .add_message::<CastRequest>()
             .add_plugins(bevy::core_pipeline::fullscreen_material::FullscreenMaterialPlugin::<warp::Warp>::default())
-            .add_systems(Update, (reload_runes, give_mana, spells::choose, place_spells, well::give_warp, well::show))
+            .add_systems(Update, (reload_runes, give_mana, place_spells, well::give_warp, well::show))
             .add_systems(FixedUpdate, (recharge, request, fire, fly, well::channel).chain().in_set(TickSet::Bodies).before(crate::actors::hurt::notice));
     }
 }
@@ -232,11 +232,9 @@ fn reload_runes(mut book: ResMut<Spellbook>) {
     }
 }
 
-/// A player gets mana, and knows every spell (for now: learning them is
-/// next, DESIGN §7b).
-fn give_mana(mut commands: Commands, book: Res<Spellbook>, new: Query<Entity, (With<LocalPlayer>, Without<Mana>)>) {
+fn give_mana(mut commands: Commands, new: Query<Entity, (With<LocalPlayer>, Without<Mana>)>) {
     for e in &new {
-        commands.entity(e).insert((Mana::default(), Caster { known: (0..book.spells.len()).collect(), ready: 0 }));
+        commands.entity(e).insert(Mana::default());
     }
 }
 
@@ -281,10 +279,6 @@ fn request(
         }
         let cast = spells::empower(&casts[w.next % casts.len()], power, harm);
         let channelled = matches!(cast.carrier, Carrier::Well { .. } | Carrier::Force { .. });
-        // (Only force has a use for the other button.)
-        if r.alt && !matches!(cast.carrier, Carrier::Force { .. }) {
-            continue;
-        }
         // An open field stays open while it's held and paid for, a tick at
         // a time (whatever the wand's recharge).
         if channelled && let Some(e) = w.well {

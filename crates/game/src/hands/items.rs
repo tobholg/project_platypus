@@ -27,14 +27,17 @@ pub enum Use {
     /// Place a chest (the `chest` material's cells; the game keeps what's in
     /// it).
     Chest,
-    /// A focus (a wand, a staff): while it's in the hand, the left button
-    /// casts the spell ready (`magic::spells`) toward the cursor, if it's no
-    /// more than `tier`. Its element is the one it favours (its stats say
-    /// how much): taking it up readies a spell of that element.
+    /// A focus (a wand, a staff): it holds its spells (`spells.ron`), the
+    /// left button casting the first toward the cursor, the right button
+    /// the second (a staff's; a wand's one spell again, "alt": force
+    /// pulls). One found in the world rolls its spells instead: a wand one,
+    /// a staff two, of its element (any, if it has none) up to its `tier`.
     Focus {
         tier: u8,
         #[serde(default)]
         element: Option<crate::magic::Element>,
+        #[serde(default)]
+        spells: Vec<String>,
     },
     /// A weapon held in the hand (`weapons.ron`): the left button swings it
     /// at the cursor, holding it keeps swinging through the combo.
@@ -73,6 +76,31 @@ pub struct ItemDef {
     /// looks on a body.
     #[serde(default)]
     pub gear: Option<crate::gear::GearDef>,
+    /// Held, it glows and gives off sparks at its tip (a fire wand's
+    /// embers), more while it's used.
+    #[serde(default)]
+    pub aura: Option<Aura>,
+}
+
+/// What a held thing gives off at its tip: light, and sparks (`count` of
+/// them a second; `casting` times as many while it's used).
+#[derive(Clone, Debug, Deserialize)]
+pub struct Aura {
+    pub light: (u8, u8, u8),
+    #[serde(default = "aura_strength")]
+    pub strength: f32,
+    #[serde(default)]
+    pub sparks: Option<crate::magic::runes::Emitter>,
+    #[serde(default = "aura_casting")]
+    pub casting: f32,
+}
+
+fn aura_strength() -> f32 {
+    0.6
+}
+
+fn aura_casting() -> f32 {
+    3.0
 }
 
 fn one() -> u32 {
@@ -120,7 +148,7 @@ impl Items {
                 if let Some(first) = name.get_mut(0..1) {
                     first.make_ascii_uppercase();
                 }
-                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id), about: None, gear: None });
+                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id), about: None, gear: None, aura: None });
             }
         }
         let mut by_id = HashMap::new();

@@ -261,6 +261,8 @@ pub(crate) struct Pointer {
     pub burns: bool,
     /// The flame's place from the grip (cells, y up, pointing right).
     pub flame: Option<Vec2>,
+    /// Its tip's (a wand's gem: where its aura glows).
+    pub tip: Option<Vec2>,
 }
 
 /// Any sprite's first frame turned to every angle about its `grip` (a
@@ -397,8 +399,9 @@ impl Weapons {
                 }
                 None => {
                     let at = |name: &str| art.anchors.get(name).and_then(|m| m.get(&0)).copied();
-                    let flame = at("flame").zip(at("grip")).map(|((fx, fy), (gx, gy))| Vec2::new((fx - gx) as f32, (gy - fy) as f32));
-                    pointers.push((Pointer { id: id.clone(), rest: h.rest, burns: h.burns, flame }, Turned::build(frames, images, layouts)));
+                    let from_grip = |name: &str| at(name).zip(at("grip")).map(|((fx, fy), (gx, gy))| Vec2::new((fx - gx) as f32, (gy - fy) as f32));
+                    let (flame, tip) = (from_grip("flame"), from_grip("tip"));
+                    pointers.push((Pointer { id: id.clone(), rest: h.rest, burns: h.burns, flame, tip }, Turned::build(frames, images, layouts)));
                 }
             }
         }
@@ -958,6 +961,12 @@ fn apply_hits(
 #[derive(Component)]
 struct WeaponSprite;
 
+/// The light at the tip of something held with an aura (its child).
+#[derive(Component)]
+struct AuraGlow;
+
+type Glowing<'a> = (&'a mut Transform, &'a mut crate::light::LightSource);
+
 /// What's in the hand: a blade or a bow (by index).
 #[derive(Clone, Copy)]
 enum Held {
@@ -976,15 +985,27 @@ fn draw(
     lights: Res<crate::light::LightSettings>,
     holders: Query<Holder>,
     mut sprites: Query<(&mut Sprite, &mut Transform, &mut Visibility, Option<&mut crate::light::torch::Flame>), With<WeaponSprite>>,
+    items: Option<Res<crate::hands::items::Items>>,
+    time: Res<Time>,
+    mut sparks: ResMut<Sparks>,
+    mut glows: Query<Glowing, (With<AuraGlow>, Without<WeaponSprite>)>,
+    mut owed: Local<std::collections::HashMap<Entity, f32>>,
 ) {
     let Some(weapons) = weapons else { return };
     for (e, wielding, k, hand, swing, nocked, aiming, children) in &holders {
+        // What it holds glows at its tip (an aura: a wand's), placed below.
+        let glow = children.and_then(|c| c.iter().find(|c| glows.contains(*c)));
+        let aura = wielding.0.as_deref().and_then(|id| items.as_ref()?.id(id)).and_then(|i| items.as_ref()?.def(i).aura.clone());
+        let mut tip_at: Option<Vec3> = None;
         let sprite = children.and_then(|c| c.iter().find(|c| sprites.contains(*c)));
         let id = wielding.0.as_deref();
         let w = id.and_then(|id| {
             weapons.index(id).map(Held::Blade).or_else(|| weapons.bow_index(id).map(Held::Bow)).or_else(|| weapons.pointer_index(id).map(Held::Pointer))
         });
         let (Some(sprite), Some(w)) = (sprite, w) else {
+            if let Some(g) = glow {
+                commands.entity(g).despawn();
+            }
             if let (None, Some(_)) = (sprite, w) {
                 commands.entity(e).with_child((WeaponSprite, Sprite::default(), Transform::default(), Visibility::Hidden));
             }
@@ -1001,6 +1022,9 @@ fn draw(
         let Ok((mut sp, mut tf, mut vis, flame)) = sprites.get_mut(sprite) else { continue };
         let Some(local) = hand.and_then(|h| h.local) else {
             *vis = Visibility::Hidden;
+            if let Some(g) = glow {
+                commands.entity(g).despawn();
+            }
             continue;
         };
         // Where it points when it's being used.
@@ -1043,6 +1067,42 @@ fn draw(
         sp.flip_x = facing < 0.0;
         tf.translation = local + (dir * thrust).extend(0.03);
         *vis = Visibility::Inherited;
+        if let Held::Pointer(i) = w
+            && let Some(tip) = weapons.pointers[i].0.tip
+        {
+            let r = Vec2::from_angle(angle.to_radians()).rotate(tip);
+            tip_at = Some(local + Vec3::new(r.x * facing, r.y, 0.05));
+        }
+        match (&aura, tip_at, glow) {
+            (Some(a), Some(at), g) => {
+                let color = crate::light::rgb(a.light, a.strength);
+                match g.and_then(|g| glows.get_mut(g).ok()) {
+                    Some((mut gtf, mut light)) => {
+                        gtf.translation = at;
+                        light.color = color;
+                    }
+                    None => {
+                        commands.entity(e).with_child((AuraGlow, crate::light::LightSource { color, flicker: 0.2 }, Transform::from_translation(at)));
+                    }
+                }
+                // Its sparks, so many a second (more while it's used).
+                if let Some(em) = &a.sparks {
+                    let using = aiming.is_some_and(|a| a.left > 0.0);
+                    let rate = em.count * if using { a.casting } else { 1.0 };
+                    let due = owed.entry(e).or_insert(0.0);
+                    *due += rate * time.delta_secs();
+                    let n = *due as usize;
+                    *due -= n as f32;
+                    if n > 0 {
+                        sparks.emit(em, n, k.body.pos + at.truncate(), Vec2::Y, k.body.vel * 0.5);
+                    }
+                }
+            }
+            (_, _, Some(g)) => {
+                commands.entity(g).despawn();
+            }
+            _ => {}
+        }
         // A torch in the hand burns: its flame turned with it.
         match (burning, flame) {
             (Some(off), Some(mut f)) => {

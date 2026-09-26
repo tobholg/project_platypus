@@ -136,6 +136,10 @@
 //! - `fang`       (`PLATYPUS_WORLD=arena`) the Broodmother's Fang in hand
 //!   (hotbar slot 1) against an orc put beside the player (brain off) from
 //!   1 s; logs its health and whether it's envenomed (coated in acid)
+//! - `foci`       (`PLATYPUS_WORLD=arena`, try `PLATYPUS_HOUR=22`) holds a
+//!   focus to look at its aura: `PLATYPUS_SLOT` = hotbar slot 1–10, plus 10
+//!   for the second hotbar (13: the gravity staff); held out from 1.5 s
+//!   (`PLATYPUS_CAST=1`: casting, at the empty air ahead)
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end
@@ -186,6 +190,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, gear_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, loot_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fang_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -2612,6 +2617,35 @@ fn fang_script(
         match orc {
             Some((_, h, coat)) => info!("fang: t {t:.1} the orc has {:.0} hp, coated {:?}", h.hp, coat.map(|c| c.name.as_str())),
             None => info!("fang: t {t:.1} the orc is dead"),
+        }
+    }
+}
+
+/// A focus held, to see its aura.
+fn foci_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut hand: ResMut<crate::hands::Hand>,
+    player: Query<(Entity, &Kinematics), With<LocalPlayer>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+) {
+    if s.name != "foci" {
+        return;
+    }
+    let Ok((me, k)) = player.single() else { return };
+    let slot: usize = std::env::var("PLATYPUS_SLOT").ok().and_then(|v| v.parse().ok()).unwrap_or(7);
+    hand.bar = (slot - 1) / 10;
+    hand.slot = (slot - 1) % 10;
+    let at = k.body.pos + Vec2::new(30.0, 14.0);
+    cursor.0 = Some(at);
+    if s.elapsed > 1.5 {
+        if std::env::var("PLATYPUS_CAST").is_ok() {
+            if !mouse.pressed(MouseButton::Left) {
+                mouse.press(MouseButton::Left);
+            }
+        } else {
+            commands.entity(me).insert(crate::actors::animation::Aiming { at, left: 0.2 });
         }
     }
 }

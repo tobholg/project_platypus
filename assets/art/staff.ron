@@ -23,5 +23,6 @@
         ],
     },
     clips: { "held": (frames: ["staff"], fps: 1) },
-    anchors: { "grip": { "staff": (4, 2) } },
+    // grip: where the hand holds it; tip: where its aura glows.
+    anchors: { "tip": { "staff": (21, 2) }, "grip": { "staff": (4, 2) } },
 )

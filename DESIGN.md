@@ -263,9 +263,12 @@ wand.
 - **Anyone with hands casts the same way**: an orc shaman is an orc who
   knows some runes, with a staff.
 
-(C1 built wands that hold their runes. The split into spells + foci is built
-(`gear-arc`, 2026-09-26): spells.ron, foci with a tier and an element, Q readies
-spells; a focus is needed to cast. Learning runes and the spell editor are next.)
+(C1 built wands that hold their runes. REVISED 2026-09-26 by the user, after
+trying a free spellbook: **each wand or staff holds its spells** (a wand one,
+a staff two: left and right button), picked from spells.ron recipes; a found
+focus rolls its spells from its element's up to its tier; each focus has an
+aura (glow and sparks at its tip) so wands look like what they cast. The rune
+knowledge model survives as re-inscribing a focus at an arcane table, later.)
 The rune kinds:
 
 | Kind | Decides | Examples |
@@ -332,9 +335,9 @@ a stat is naming it once (`gear/stats.rs`) and reading it where it acts.
   what the creature wore and carried and a roll of its loot table. Right-
   click opens it with the chest window (chests and corpses are containers);
   an emptied one fades.
-- **Spells and foci:** spells come out of the wands into a spell bar (Q
-  cycles); wands and staffs are held foci with a tier (gating spells) and an
-  element they favour. A focus is needed to cast (see §7b).
+- **Spells and foci:** a wand holds one spell, a staff two (left/right
+  button), of its tier or less; spells are recipes in spells.ron; found foci
+  roll theirs from their element's; each has an aura (see §7b).
 - **Enemies wear gear** from their loot tables, and what they wear is what
   they drop.
 - Not now: durability and repair, coins and merchants.
