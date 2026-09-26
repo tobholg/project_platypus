@@ -124,8 +124,6 @@ pub enum RuneKind {
 #[derive(Clone, Debug, Deserialize)]
 pub struct RuneDef {
     pub id: String,
-    /// (For the rune table, C2.)
-    #[allow(dead_code)]
     pub name: String,
     /// Mana it costs, each cast.
     pub mana: f32,

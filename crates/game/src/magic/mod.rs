@@ -100,6 +100,14 @@ impl Spellbook {
         Spellbook { runes, wands: HashMap::new(), watch: Watched::new(path) }
     }
 
+    /// A wand's runes by name, and the mana of its first cast (with what it
+    /// sets off), for its tooltip.
+    pub fn describe(&self, ids: &[String]) -> (Vec<String>, f32) {
+        let names = ids.iter().map(|id| self.runes.get(id).map_or(format!("?{id}"), |r| r.name.clone())).collect();
+        let mana = runes::casts(&self.runes, ids).ok().and_then(|c| c.first().map(|c| c.total_mana())).unwrap_or(0.0);
+        (names, mana)
+    }
+
     /// A wand's casts, in order (read once, until the runes change).
     fn casts(&mut self, items: &Items, item: ItemId) -> Arc<Vec<Arc<Cast>>> {
         if let Some(c) = self.wands.get(&item) {

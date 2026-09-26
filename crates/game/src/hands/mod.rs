@@ -2,14 +2,15 @@
 //! items, an inventory with a hotbar, items on the ground. Play mode; F1
 //! switches to the dev tools (`tools.rs`) and back.
 //!
-//! 1–0 pick a hotbar slot · LMB use it · hold Ctrl: the right tool for the
-//! target (auto tool) · Alt: smart cursor on/off · I: inventory · RMB: open a
-//! chest (R takes all) · ` (or F1): dev tools.
+//! 1–0 pick a hotbar slot · X the next hotbar · LMB use it · hold Ctrl: the
+//! right tool for the target (auto tool) · Alt: smart cursor on/off · Esc or
+//! I: inventory · RMB: open a chest (R takes all) · ` (or F1): dev tools.
 
 pub mod chests;
+pub mod icons;
 pub mod items;
 pub mod target;
-mod ui;
+pub(crate) mod ui;
 
 use bevy::input::mouse::{AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
@@ -24,15 +25,15 @@ use crate::light::{LightSettings, plant_torch};
 use crate::props::{Thrown, spawn_bomb, spawn_glowstick};
 use crate::tools::ToolsConfig;
 use crate::world::{SimWorld, TICK_HZ, TickSet};
-use items::{BLOCK_CELLS, HOTBAR, Inventory, Items, ItemsFile, Stack, Throwable, Use};
+use items::{BARS, BLOCK_CELLS, HOTBAR, Inventory, Items, ItemsFile, Stack, Throwable, Use};
 
 pub use ui::InventoryOpen;
 
 pub struct HandsPlugin;
 
 const DT: f32 = (1.0 / TICK_HZ) as f32;
-/// Slots in a player's pack (the first `HOTBAR` are the hotbar).
-pub const PACK: usize = 40;
+/// Slots in a player's pack: `BARS` hotbars, then three rows of pack.
+pub const PACK: usize = HOTBAR * (BARS + 3);
 /// Blocks placed per second while the button is held.
 const PLACE_RATE: f32 = 8.0;
 /// Items on the ground drift to a player within this many cells...
@@ -55,7 +56,9 @@ fn play(dev: Res<DevTools>) -> bool {
 /// The local player's hands: the hotbar slot in use, when it can swing again.
 #[derive(Resource)]
 pub struct Hand {
+    /// The slot in the hotbar in use (0..HOTBAR), and which hotbar.
     pub slot: usize,
+    pub bar: usize,
     /// Smart cursor (Alt): dig a tunnel the body fits toward the cursor,
     /// rather than the block under it.
     pub smart: bool,
@@ -66,7 +69,19 @@ pub struct Hand {
 
 impl Default for Hand {
     fn default() -> Self {
-        Hand { slot: 0, smart: true, cooldown: 0.0, thrown: 0 }
+        Hand { slot: 0, bar: 0, smart: true, cooldown: 0.0, thrown: 0 }
+    }
+}
+
+impl Hand {
+    /// The inventory slot in use.
+    pub fn active(&self) -> usize {
+        self.bar * HOTBAR + self.slot
+    }
+
+    /// The inventory slots of the hotbar in use.
+    pub fn bar_slots(&self) -> std::ops::Range<usize> {
+        self.bar * HOTBAR..(self.bar + 1) * HOTBAR
     }
 }
 
@@ -95,7 +110,7 @@ impl Plugin for HandsPlugin {
             .init_resource::<HandInput>()
             .add_systems(Startup, build_items)
             .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor).after(bevy::ui::UiSystems::Focus))
-            .add_systems(Update, (toggle_dev, select, give_start, outline.run_if(play)))
+            .add_systems(Update, (toggle_dev, select, give_start, outline.run_if(play), icons::make_icons, icons::reload_icons))
             .add_systems(FixedUpdate, use_hands.run_if(play).in_set(TickSet::Intent))
             .add_systems(FixedUpdate, collect.after(crate::props::fly).in_set(TickSet::Bodies))
             .add_plugins((ui::UiPlugin, chests::ChestsPlugin));
@@ -179,6 +194,9 @@ fn select(keys: Res<ButtonInput<KeyCode>>, scroll: Res<AccumulatedMouseScroll>, 
             hand.slot = i;
         }
     }
+    if keys.just_pressed(KeyCode::KeyX) {
+        hand.bar = (hand.bar + 1) % BARS;
+    }
     const PIXELS_A_NOTCH: f32 = 40.0;
     *wheel += match scroll.unit {
         MouseScrollUnit::Line => scroll.delta.y,
@@ -252,10 +270,12 @@ fn mine_at(world: &World, body: &Body, hand: Vec2, cursor: Vec2, smart: bool, (b
 }
 
 /// With auto tool, the slot of the best tool for what's at the cursor.
-fn auto_slot(world: &World, items: &Items, inv: &Inventory, body: &Body, hand: Vec2, cursor: Vec2) -> Option<usize> {
-    let tools: Vec<(usize, bool, u8, u8, f32)> = inv.slots[..HOTBAR]
+fn auto_slot(world: &World, items: &Items, inv: &Inventory, bar: std::ops::Range<usize>, body: &Body, hand: Vec2, cursor: Vec2) -> Option<usize> {
+    let first = bar.start;
+    let tools: Vec<(usize, bool, u8, u8, f32)> = inv.slots[bar]
         .iter()
         .enumerate()
+        .map(|(i, s)| (first + i, s))
         .filter_map(|(i, s)| match items.def(s.as_ref()?.item).use_ {
             Use::Mine { back, power, tier, reach, .. } => Some((i, back, tier, power, reach)),
             _ => None,
@@ -297,7 +317,7 @@ fn use_hands(
     let (Some(items), Some(cursor)) = (items, input.cursor) else { return };
     let Ok((me, k, mut inv)) = player.single_mut() else { return };
     let from = hand_at(k);
-    let slot = if input.auto { auto_slot(&sim.world, &items, &inv, &k.body, from, cursor).unwrap_or(hand.slot) } else { hand.slot };
+    let slot = if input.auto { auto_slot(&sim.world, &items, &inv, hand.bar_slots(), &k.body, from, cursor).unwrap_or(hand.active()) } else { hand.active() };
     let Some(stack) = inv.slots[slot] else { return };
     match items.def(stack.item).use_.clone() {
         Use::Mine { back, power, tier, speed, reach } if input.primary && hand.cooldown == 0.0 => {
@@ -440,7 +460,7 @@ fn outline(
     let (Some(items), Some(cursor)) = (items, input.cursor) else { return };
     let Ok((k, inv)) = player.single() else { return };
     let from = hand_at(k);
-    let slot = if input.auto { auto_slot(&sim.world, &items, inv, &k.body, from, cursor).unwrap_or(hand.slot) } else { hand.slot };
+    let slot = if input.auto { auto_slot(&sim.world, &items, inv, hand.bar_slots(), &k.body, from, cursor).unwrap_or(hand.active()) } else { hand.active() };
     let Some(stack) = inv.slots[slot] else { return };
     let world = &sim.world;
     let (block, color) = match items.def(stack.item).use_ {

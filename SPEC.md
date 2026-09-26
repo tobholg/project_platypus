@@ -266,8 +266,21 @@ DESIGN.md §4–5, stage 4 of the world arc.
 - Items (game, `hands/`): `items.ron` for made things plus a block item per
   solid or powder material (counted in cells, shown in whole blocks: nothing
   lost to rounding). `Inventory` is a component any creature can carry; the
-  player's is 40 slots, the first 10 the hotbar (1–0). Mined blocks drop as
-  items that drift to a player with room (48 cells) and are picked up (6).
+  player's is 60 slots: three hotbars of 10 (1–0 picks a slot, X the next
+  hotbar), then three rows of pack. Mined blocks drop as items that drift to
+  a player with room (48 cells) and are picked up (6).
+- The inventory screen (Esc or I, `hands/ui.rs`): the three hotbars
+  (numbered; click one to use it) and the pack, Terraria-style: drag a stack
+  to a slot, or click it up and click it down (merging the same item,
+  otherwise swapping); right-click takes half; Shift-click moves it across
+  (hotbars and pack, or pack and an open chest); clicking outside the panels
+  with a stack in hand throws it out. Hovering a slot shows a tooltip (what
+  it is, what it does: a pickaxe's hardness and speed, a wand's runes and
+  mana, a note from `about`). Slots are hit-tested by cursor position, not
+  `Interaction` (a drag's first slot stays `Pressed`).
+- Icons (`icons.ron`, hot-reloaded): 16 × 16 text art, a shape in palette
+  letters plus a palette per item (so tiers and elements share one drawing);
+  blocks get a little block of their material; anything else its colour.
 - Smart cursor (on by default, Alt toggles): aimed mostly down, up or
   sideways, a pickaxe clears a tunnel the body fits, nearest first: hold the
   button with the cursor below and the whole row under your feet goes before

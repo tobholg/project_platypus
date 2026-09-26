@@ -38,13 +38,14 @@ for a double jump, against a wall to wall-jump) · S (or ↓) drops through a wo
 platform · Shift dash · + and − zoom (the keys that type them, on any layout; the
 keypad's too)
 
-**Hands** (the default; items in `assets/data/items.ron`): 1–0 or the mouse wheel pick a hotbar slot ·
+**Hands** (the default; items in `assets/data/items.ron`, icons in `icons.ron`): 1–0 or the mouse wheel pick a hotbar slot, X the next of three hotbars ·
 LMB use it (hold it with the cursor below you to dig straight down, beside you for a
 tunnel: the smart cursor digs a hole you fit; Alt toggles it) · hold Ctrl for the
 right tool for what's at the cursor (auto tool) · the key left of 1 (or F1) switches
 to the dev tools and back ·
-I opens the pack (click to pick up and put down a stack, Shift-click to move it
-between the hotbar and the pack). Mining and building work in 4 × 4-cell blocks;
+Esc (or I) opens the inventory: drag stacks between slots (or click one up and
+click it down), right-click takes half, Shift-click moves across, hover for what
+it is and does, click outside to throw it out. Mining and building work in 4 × 4-cell blocks;
 the outlined block is the one you'll hit (the first minable block on the line from
 your hand to the cursor, so you dig the face you see) or fill (under the cursor,
 or against whatever the line meets). What you mine drops out and drifts to you;
@@ -111,7 +112,7 @@ PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, 
 PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall), `strike` (lightning onto the nearest tree), `hands` (digs a shaft, builds, chops with auto tool, plants a torch), `chest` (places, opens, fills and breaks a chest), `chestfall` (digs out a chest's floor: it falls), `drop` (holds S on a platform), `magic` (every starter wand at orcs; `PLATYPUS_WORLD=flat` for a clear view), `shock` (lightning into a pool with orcs in it, flat world). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall), `strike` (lightning onto the nearest tree), `hands` (digs a shaft, builds, chops with auto tool, plants a torch), `chest` (places, opens, fills and breaks a chest), `chestfall` (digs out a chest's floor: it falls), `drop` (holds S on a platform), `magic` (every starter wand at orcs; `PLATYPUS_WORLD=flat` for a clear view), `shock` (lightning into a pool with orcs in it, flat world), `inventory` (opens it, hovers a wand, drags it to hotbar 3; moves the real mouse pointer). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
 capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length, `PLATYPUS_NOLIGHT=1` to start with lighting off.
 Scenarios run without vsync; `PLATYPUS_VSYNC=1` runs them with it, to see the
 frame pacing a player gets. For stutter, build with `--features spikes`: every

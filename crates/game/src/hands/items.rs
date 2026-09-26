@@ -55,6 +55,9 @@ pub struct ItemDef {
     pub color: (u8, u8, u8),
     #[serde(rename = "use", default = "no_use")]
     pub use_: Use,
+    /// A line for its tooltip, besides what it does.
+    #[serde(default)]
+    pub about: Option<String>,
 }
 
 fn one() -> u32 {
@@ -97,7 +100,7 @@ impl Items {
                 if let Some(first) = name.get_mut(0..1) {
                     first.make_ascii_uppercase();
                 }
-                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id) });
+                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id), about: None });
             }
         }
         let mut by_id = HashMap::new();
@@ -116,6 +119,11 @@ impl Items {
             .map(|(id, n)| by_id.get(id).map(|&i| (i, *n)).ok_or(format!("start: no item `{id}`")))
             .collect::<Result<_, _>>()?;
         Ok(Items { defs, by_id, blocks, start })
+    }
+
+    /// How many items there are (ids are 0..len).
+    pub fn len(&self) -> usize {
+        self.defs.len()
     }
 
     pub fn def(&self, id: ItemId) -> &ItemDef {
@@ -149,14 +157,16 @@ pub struct Stack {
     pub count: u32,
 }
 
-/// Slots of stacks: a creature's pack, a chest. The first `HOTBAR` of a
-/// player's are the hotbar.
+/// Slots of stacks: a creature's pack, a chest. A player's first `BARS`
+/// rows of `HOTBAR` are its hotbars (X switches between them).
 #[derive(Component, Clone, Debug)]
 pub struct Inventory {
     pub slots: Vec<Option<Stack>>,
 }
 
 pub const HOTBAR: usize = 10;
+/// Hotbars a player has.
+pub const BARS: usize = 3;
 
 impl Inventory {
     pub fn new(slots: usize) -> Inventory {

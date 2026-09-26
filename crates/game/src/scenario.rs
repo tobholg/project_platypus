@@ -43,6 +43,10 @@
 //! - `shock`      a pool dug beside the player (flat world), two orcs in its
 //!   far end at 3.5 s, lightning at them at 3.9 s: logs the zap and their
 //!   health
+//! - `inventory`  opens the inventory screen (Esc) at 1 s, switches to the
+//!   second hotbar (X) at 1.5 s, hovers the spark wand at 2 s (its tooltip;
+//!   this moves the real mouse pointer), drags it to hotbar 3 at 2.6–3 s;
+//!   logs where it ended up
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -84,7 +88,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -984,6 +988,66 @@ fn shock_script(
             let (cx, cy) = pool.expect("dug");
             info!("shock: after, orcs at the pool [{}]", near(cx, cy).join(", "));
             *step = 6;
+        }
+        _ => {}
+    }
+}
+
+/// The inventory screen through real input (see the module notes).
+#[allow(clippy::too_many_arguments)]
+fn inventory_script(
+    s: Res<Scenario>,
+    mut window: Single<&mut Window, With<bevy::window::PrimaryWindow>>,
+    slots: Query<(&crate::hands::ui::SlotUi, &bevy::ui::UiGlobalTransform, &InheritedVisibility)>,
+    items: Option<Res<crate::hands::items::Items>>,
+    player: Query<&crate::hands::items::Inventory, With<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut step: Local<u8>,
+) {
+    use crate::hands::ui::Holder;
+    if s.name != "inventory" {
+        return;
+    }
+    let t = s.elapsed;
+    keys.release(KeyCode::Escape);
+    keys.release(KeyCode::KeyX);
+    let scale = window.scale_factor();
+    // Where a slot of the inventory screen is, in window (logical) pixels.
+    let at = |i: usize| slots.iter().find(|(sl, _, v)| sl.0 == Holder::Pack && sl.1 == i && v.get()).map(|(_, tf, _)| tf.translation / scale);
+    match *step {
+        0 if t > 1.0 => {
+            keys.press(KeyCode::Escape);
+            *step = 1;
+        }
+        1 if t > 1.5 => {
+            keys.press(KeyCode::KeyX);
+            *step = 2;
+        }
+        2 if t > 2.0 => {
+            window.set_cursor_position(at(5));
+            *step = 3;
+        }
+        3 if t > 2.6 => {
+            mouse.press(MouseButton::Left);
+            *step = 4;
+        }
+        4 if t > 2.8 => {
+            window.set_cursor_position(at(20));
+            *step = 5;
+        }
+        5 if t > 3.0 => {
+            mouse.release(MouseButton::Left);
+            *step = 6;
+        }
+        6 if t > 3.3 => {
+            if let (Some(items), Ok(inv)) = (items, player.single()) {
+                let wand = items.id("spark_wand");
+                let found = inv.slots.iter().position(|s| s.is_some_and(|s| Some(s.item) == wand));
+                info!("inventory: the spark wand is in slot {found:?} (was 5; hotbar 3 starts at 20)");
+            }
+            window.set_cursor_position(None);
+            *step = 7;
         }
         _ => {}
     }
