@@ -130,8 +130,9 @@ fn spawn_panel(mut commands: Commands) {
             Panel,
             Visibility::Hidden,
             Node {
+                // (Under the player's hearts, stars and bolts: `hud.rs`.)
                 position_type: PositionType::Absolute,
-                top: px(8),
+                top: px(170),
                 right: px(8),
                 flex_direction: FlexDirection::Column,
                 row_gap: px(3),

@@ -1,8 +1,9 @@
 //! Rocket boots' exhaust (DESIGN §7c). While a creature's rocket boots fire
 //! (`physics::Locomotion`, jump held in the air), what they spew goes into
 //! the world: with `fire` boots, flames down out of the soles (most of them
-//! only flame, burning out in the air; now and then one that settles as
-//! real fire, or an ember, on what's below: grass and wood catch), and
+//! only flame, burning out in the air; one in five an ember that falls on
+//! and lights what it lands on, grass and wood; not when it's close over
+//! the ground, landing, or you'd land in your own fire), and
 //! whatever is in the jet under them is scorched and may catch; always a
 //! puff of hot air, as a double jump's.
 
@@ -26,6 +27,11 @@ const SPREAD: f32 = 0.3;
 /// Fire damage a tick to what's in the jet, and its chance (/256) a tick to
 /// catch fire.
 const SCORCH: f32 = 0.6;
+/// Closer than this to the ground (cells), no embers: you'd land in grass
+/// your own boots lit.
+const SETTLE_ABOVE: i32 = 20;
+/// An ember's life (ticks): long enough to reach the ground.
+const EMBER_LIFE: f32 = 90.0;
 const CATCH: u8 = 24;
 
 type Scorched<'a> = (Entity, &'a Kinematics, &'a mut Health, Option<&'a Resist>, Option<&'a Coated>);
@@ -61,19 +67,22 @@ pub fn exhaust(
         let world = &mut sim.world;
         let mats = world.materials().clone();
         let flame = mats.fire();
+        // Low over the ground (landing), the flames only flash: you'd land
+        // in your own fire.
+        let feet = platypus_sim::CellPos::from_world(r.at.x, r.at.y);
+        let low = (1..=SETTLE_ABOVE).any(|d| world.is_solid(platypus_sim::CellPos::new(feet.x, feet.y - d)));
         if flame != MaterialId::AIR {
             for i in 0..5 {
                 let a = (unit(&mut rng) - 0.5) * 2.0 * SPREAD;
                 let v = Vec2::from_angle(a).rotate(Vec2::NEG_Y) * (180.0 + 120.0 * unit(&mut rng)) / TICK_HZ as f32 + r.vel / TICK_HZ as f32 * 0.5;
                 let at = r.at - Vec2::Y * 2.0;
-                // Mostly flame that burns out in the air; one in five settles
-                // as fire where it lands, and an ember now and then.
-                let landing = match (i, rng.next_u32() % 12) {
-                    (0, 0) => Landing::Ember,
-                    (0, _) => Landing::Settle,
-                    _ => Landing::Vanish,
-                };
-                let life = (0.12 + 0.18 * unit(&mut rng)) * TICK_HZ as f32;
+                // Mostly flame that burns out in the air; one in five an
+                // ember that falls on, lighting what it lands on if it burns
+                // (an ember, not fire: flame left where it ran out of life
+                // would hang in the air, and you'd fall back through it).
+                let ember = i == 0 && !low;
+                let landing = if ember { Landing::Ember } else { Landing::Vanish };
+                let life = if ember { EMBER_LIFE } else { (0.12 + 0.18 * unit(&mut rng)) * TICK_HZ as f32 };
                 let cell = mats.spawn(flame, &mut rng);
                 world.emit(Particle { gravity: -0.05, ..Particle::new([at.x, at.y], [v.x, v.y], cell, life as u16 + 2, landing) });
             }

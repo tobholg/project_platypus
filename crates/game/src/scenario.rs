@@ -221,6 +221,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, conjure_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, call_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -3693,5 +3694,75 @@ fn void_script(
         } else if !on && mouse.pressed(b) {
             mouse.release(b);
         }
+    }
+}
+
+/// Falls: rocket high, fall, brake with the boots near the ground and land
+/// (no hurt); the same without braking (hurt); a triple jump in cloud boots
+/// (no hurt). Logs each landing.
+fn fall_script(
+    s: Res<Scenario>,
+    deaths: Res<crate::actors::PlayerDeaths>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut player: Query<(&mut Kinematics, &mut crate::actors::Health, &mut crate::gear::Equipment), With<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut state: Local<(u8, f32, f32, f32)>,
+) {
+    if s.name != "fall" {
+        return;
+    }
+    let Ok((mut k, mut hp, mut eq)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let height = k.body.pos.y - k.body.half.y - fl;
+    let grounded = k.loco.grounded();
+    let mut jump = false;
+    let dt = t - state.1;
+    // (phase, its start, the highest it got, the fastest it fell)
+    state.2 = state.2.max(height);
+    state.3 = state.3.min(k.body.vel.y);
+    let start = |state: &mut (u8, f32, f32, f32), k: &mut Kinematics, hp: &mut crate::actors::Health, phase: u8| {
+        *state = (phase, t, 0.0, 0.0);
+        k.body.pos = Vec2::new(620.0, fl + 8.0);
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+        hp.hp = hp.max;
+    };
+    match state.0 {
+        0 if t > 0.8 => start(&mut state, &mut k, &mut hp, 1),
+        // Rocket up 1.2 s, fall; brake from 110 cells up until nearly still.
+        1 | 3 => {
+            let brake = state.0 == 1;
+            jump = dt < 1.2 || brake && dt > 1.5 && height < 110.0 && k.body.vel.y < -40.0;
+            if dt > 1.6 && grounded {
+                info!("fall: rocket to {:.0} cells, fell at up to {:.0} cells/s, {}: landed with {:.0} of {:.0} hp (deaths so far {})", state.2, -state.3, if brake { "braked near the ground" } else { "no braking" }, hp.hp, hp.max, deaths.0);
+                let next = state.0 + 1;
+                start(&mut state, &mut k, &mut hp, next);
+            }
+        }
+        2 if dt > 0.5 => start(&mut state, &mut k, &mut hp, 3),
+        // A triple jump in cloud boots.
+        4 if dt > 0.5 => {
+            if let Some(items) = &items
+                && let Some(b) = items.id("cloud_boots")
+            {
+                eq.worn[4] = Some(crate::hands::items::Stack::new(b, 1));
+            }
+            start(&mut state, &mut k, &mut hp, 5);
+        }
+        5 => {
+            // A full jump, then two more off thin air, each held.
+            jump = dt < 0.35 || (0.4..0.75).contains(&dt) || (0.8..1.15).contains(&dt);
+            if dt > 0.6 && grounded {
+                info!("fall: a triple jump in cloud boots to {:.0} cells: landed with {:.0} of {:.0} hp", state.2, hp.hp, hp.max);
+                state.0 = 6;
+            }
+        }
+        _ => {}
+    }
+    if jump && !keys.pressed(KeyCode::Space) {
+        keys.press(KeyCode::Space);
+    } else if !jump && keys.pressed(KeyCode::Space) {
+        keys.release(KeyCode::Space);
     }
 }

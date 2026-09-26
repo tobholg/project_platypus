@@ -1292,10 +1292,13 @@ parts, so another is a new file, not new code:
 - **Fall damage** (`FallDamage`, per creature RON) is by distance, Terraria
   style (speed saturates at max fall within ~50 cells, so it couldn't tell
   a double jump from a cliff): falling further than `safe_height` cells
-  from the highest point since it last stood on something (or was in
-  water, or jumped off air or a wall: a double jump just before landing
-  saves you) hurts `per_cell` a cell over (player 100 and 0.6: a double jump
-  never hurts; orc 70 and 0.8); slamming into a wall or ceiling faster
+  from where the fall started hurts `per_cell` a cell over (player 120
+  and 0.6: a double or triple jump never hurts; orc 70 and 0.8). The fall
+  starts at the highest point since it last stood on something, was in
+  water, jumped off air or a wall (a double jump just before landing saves
+  you), hung from a rope, or came down gently (slower than 80 cells/s:
+  rocket boots braking near the ground, a wall slide: it counts from
+  there); slamming into a wall or ceiling faster
   than `slam_speed` (450 cells/s: flung, not walking or dashing) hurts
   `per_speed` (0.25) per cell/s over.
 - **Every explosion hurts** (`actors::blasted`, from `StepStats::detonated`):

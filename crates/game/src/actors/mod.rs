@@ -149,8 +149,9 @@ pub struct Controls(pub Intent);
 
 /// Fall damage, by how far it fell (Terraria-style; speed saturates at
 /// max fall within ~50 cells, so it can't tell a double jump from a cliff):
-/// falling further than `safe_height` cells, from the highest point since
-/// it left the ground, hurts `per_cell` a cell over; slamming into a wall
+/// falling further than `safe_height` cells, from where the fall started
+/// (the highest point since it left the ground or last came down gently:
+/// `GENTLE_FALL`), hurts `per_cell` a cell over; slamming into a wall
 /// or ceiling faster than `slam_speed` (flung by a spell, a blast) hurts
 /// `per_speed` per cell/s over.
 #[derive(Component, Clone, Copy, Debug, Deserialize)]
@@ -171,8 +172,13 @@ fn slam_per() -> f32 {
     0.25
 }
 
-/// The highest a body has been since it last stood on something (for fall
-/// damage).
+/// Coming down slower than this (cells/s), a fall hasn't started yet: it
+/// counts from where it last was this slow (the top of a jump, rocket boots
+/// braking near the ground, a wall slide), not from the highest point.
+const GENTLE_FALL: f32 = 80.0;
+
+/// Where a body's fall started: the highest point since it last stood on
+/// something or came down gently (for fall damage).
 #[derive(Component, Default)]
 pub struct FallTrack {
     top: Option<f32>,
@@ -319,8 +325,16 @@ pub(crate) fn move_creatures(
                 t.top = None;
             }
             let top = t.top.unwrap_or(y).max(y);
-            // (Standing on something, or in water: the fall starts over.)
-            t.top = if contacts.ground || contacts.submerged > 0.5 { None } else { Some(top) };
+            // (Standing on something, or in water: the fall starts over.
+            // Nearly still, or coming down gently (rocket boots braking, a
+            // wall slide): it starts from here.)
+            t.top = if contacts.ground || contacts.submerged > 0.5 {
+                None
+            } else if k.body.vel.y > -GENTLE_FALL {
+                Some(y)
+            } else {
+                Some(top)
+            };
             top - y
         });
         if k.loco.after_move(contacts).is_some() {
