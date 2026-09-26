@@ -60,9 +60,10 @@ carries (spark, blast, ignite, heat, frost, acid, water) and modifiers (heavy,
 fire trail, quick, trigger); change a wand's runes in `items.ron`. The gravity
 wand (hotbar 2) holds a well at the cursor while you hold the button: it lifts
 what's loose and tears out rock, spins it in a ball, carries creatures it can
-lift; swing it (whip it and some flies off), let go to drop it all. The force
-wand pushes everything away from the cursor (left button) or pulls it in
-(right). Held spells drain mana and it doesn't come back while you hold them.
+lift; swing it (whip it and some flies off), let go to drop it all. Swing the well and let go to throw what it holds (an orc thrown hard takes fall
+damage when it lands; rock dropped on something hurts it). The force wand is a
+telekinetic shout from you toward the cursor: left flings everything in the cone
+away, right drags it in. Held spells drain mana and it doesn't come back while you hold them.
 The staffs are level II of both: bigger, stronger. Spells work
 through the cell sim: a fireball's blast is a bomb's, smaller, and can hurt
 you; the storm wand's lightning is the sky's, from the wand, and charges any

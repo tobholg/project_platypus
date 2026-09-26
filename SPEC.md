@@ -644,6 +644,9 @@ deaths (blood). Rendered as one dynamic mesh.
   displaced is thrown up from the surface above (a particle, so many of them
   spread instead of stacking); a splash started inside a liquid starts from
   its surface. Nothing is lost.
+- Water dilutes acid where they touch (`chance_4096: 4`: reactions can be
+  given per 4096 for slow ones): a lone cell under water lasts ~2 s, a
+  puddle on a pool's floor ~half a minute, till it's all water.
 - Acid eats by hardness (`eats` in `materials.ron`, one rule, not a list of
   pairs): solids, powders and plants up to hardness 90 (dirt, wood, sand,
   stone, brick, most ores), softer ones faster, nothing `inert` (glass,
@@ -744,8 +747,8 @@ deaths (blood). Rendered as one dynamic mesh.
   what spells glow in.
 - **Hurt** (`actors/hurt.rs`): anything with `Health` that loses 2 or more
   in a tick flashes red for 0.12 s and, if it bleeds (`blood` in its RON,
-  default `blood`), sprays 2.5 cells of it a point lost (at most 160); a
-  death bursts out 220. Real cells: it pools, runs, boils, freezes,
+  default `blood`), sprays 1.2 cells of it a point lost (at most 70); a
+  death bursts out 110. Real cells: it pools, runs, boils, freezes,
   conducts lightning and coats what it touches; what it loses floats up as a number
   (hits in the first 0.35 s add to it; the player's red, others pale),
   noticed just before deaths so a killing blow shows.
@@ -869,12 +872,13 @@ deaths (blood). Rendered as one dynamic mesh.
   and sets it alight (`elements::zapped`), as the sky's lightning does. It
   doesn't flare the air in its first 8 cells (the caster's hand). Into water
   (or anything that `charges`) it charges the pool (§3.12).
-- **Channelled spells** (`magic/well.rs`): held open at the cursor while
-  the wand is held, paying `drain` mana a second, and the caster's mana
-  doesn't come back meanwhile; out of mana, or let go, and it lets go. The
-  field follows the cursor on a spring with a top speed and a most
-  acceleration (its heft).
-  - **A gravity well** (`Carrier::Well`) tries `pull` random cells in its
+- **Channelled spells** (`magic/well.rs`): held open while the wand is
+  held, paying `drain` mana a second, and the caster's mana doesn't come
+  back meanwhile; out of mana, or let go, and it lets go.
+  - **A gravity well** (`Carrier::Well`) sits at the cursor, following it
+    on a spring (top speed 700 cells/s, most acceleration 9000: it can be
+    swung, and what it holds keeps its speed when you let go: thrown). It
+    tries `pull` random cells in its
     reach each tick: powder, liquid and plants easily (more so nearer),
     solids up to its `strength` in hardness harder the harder they are
     (`World::pluck`, then `loosen_fragments` so what they held up falls), and
@@ -884,17 +888,20 @@ deaths (blood). Rendered as one dynamic mesh.
     a spinning ball with a limited `grip` (cells/s²): whip the cursor and
     the outer ones can't follow; past 1.4 × the reach they fly off as real
     cells with the speed they had. Bodies (not the caster) within what's
-    left of the lift are carried in its heart (gravity cancelled, stunned),
+    left of the lift are carried in its heart (their own fall gravity
+    cancelled, stunned),
     heavier ones only tugged; held rock grinds any body it's inside (by its
     speed through it). Released, it all drops keeping its momentum.
-  - **Force** (`Carrier::Force`): the left button pushes, the right pulls.
-    Each tick it walks its reach outermost first (innermost for a pull) and
-    flings up to `pull` cells (loose ones, solids up to `strength`) that
-    have somewhere to go (straight out, else mirrored upward, else flat to
-    the side: a push into the ground splashes), so the ones in front make
-    way and a pile blows apart; particles in flight are shoved; bodies (not
-    the caster) are launched at up to `power` cells/s (a push lifts a
-    little) and stunned.
+  - **Force** (`Carrier::Force`) comes from the caster, a telekinetic shout:
+    a cone from the hand toward the cursor (±0.7 rad, out to `radius`, not
+    the 4 cells at the hand); the left button flings everything in it away,
+    the right drags it in (bodies till they're 10 cells off). Each tick it
+    walks the cone farthest first (nearest for a pull) and flings up to
+    `pull` cells (loose ones, solids up to `strength`) that have somewhere
+    to go (straight on, else mirrored upward, else flat to the side: a push
+    into the ground splashes), so the ones in front make way and a pile
+    blows apart; particles in flight are shoved; bodies (not the caster) are
+    launched at up to `power` cells/s (a push lifts a little) and stunned.
   - Levels are runes: `gravity_well` / `gravity_well_ii`, `force` /
     `force_ii` (reach, lift or power, strength); wands carry level I,
     staffs level II.
@@ -910,6 +917,14 @@ deaths (blood). Rendered as one dynamic mesh.
   A cast shows the looks of all its runes, so a composed spell looks
   composed (fire trail + acid: flames and green drips). A bolt or orb is a
   pale core in a halo of its colour.
+- **What flies hurts** (`actors::pelted`): a particle of solid, powder or
+  liquid (not rain, dust or embers) faster than 90 cells/s passing through a
+  body deals its weight (density against water's; liquids half) × how many
+  times faster × 0.8, and is mostly stopped (30 % of its speed left),
+  shoving the body: a ball of rock dropped from a well, blast debris, a
+  flung stream of sand. Bodies slamming into walls or ceilings faster than
+  150 cells/s take fall damage by that speed (`Landed`); orcs now have fall
+  damage (safe 300 cells/s).
 - **Every explosion hurts** (`actors::blasted`, from `StepStats::detonated`):
   bodies within 1.6 × its radius take up to 0.65 × its power and are thrown
   at up to 3 × its power, falling off with distance. Magic can hurt its
