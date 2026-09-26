@@ -19,11 +19,21 @@
     // Moonlight: 1 = a dark blue night you can just see in, 0 = pitch black.
     moonlight: 1.0,
 
-    // What the player carries: a lantern always, a flashlight toggled with L
-    // (a cone toward the cursor, `angle` degrees wide, `range` cells).
+    // What the player carries: a lantern always; L steps through nothing, a
+    // small flashlight, the big one (a cone toward the cursor, `angle`
+    // degrees wide, `range` cells) and a torch in the off hand.
     lantern: (color: (255, 196, 130), strength: 0.5),
     flashlight: (color: (230, 238, 255), strength: 1.8, range: 240, angle: 46),
-    // T carries a torch, G plants one at the cursor; tool 7 throws glow sticks.
-    torch: (color: (255, 170, 80), strength: 1.1),
+    flashlight_small: (color: (240, 236, 220), strength: 1.1, range: 130, angle: 30),
+    // A torch (held, planted with G or the torch item): its light, and its
+    // fire, a look only (counts are a second's worth; see runes.ron for the
+    // fields): flames rising and shrinking from white to red, a wisp of
+    // smoke, now and then an ember.
+    torch: (color: (255, 158, 70), strength: 1.7),
+    fire: (
+        flame: (count: 110, life: (0.14, 0.4), colors: [(255, 252, 230), (255, 222, 120), (255, 150, 50), (225, 80, 25), (140, 40, 20)], speed: 20, spread: 0.22, gravity: -60, drag: 3, glow: true),
+        smoke: (count: 5, life: (0.8, 1.6), colors: [(70, 64, 60), (54, 50, 48), (40, 38, 38)], speed: 10, spread: 0.3, gravity: -8, drag: 1.2, size: 1.5),
+        embers: (count: 1.5, life: (0.5, 1.1), colors: [(255, 236, 170), (255, 150, 60), (190, 70, 25)], speed: 34, spread: 0.5, gravity: -25, drag: 1.5, jitter: 25),
+    ),
     glowstick: (strength: 1.1, secs: 90),
 )

@@ -107,9 +107,10 @@ pub struct Layer {
     pub shade: f32,
     #[serde(default)]
     pub outline: bool,
-    /// A layer a fan can stand in for (`front_arm`): the pose is also drawn
-    /// without it (`<pose>~<tag>`), and its pivot is the pose's `<tag>`
-    /// anchor.
+    /// A name for the layer (`front_arm`, `back_arm`): its pivot is the
+    /// pose's `<tag>` anchor and its points are also `<tag>.<point>`
+    /// (`back_arm.hand`); where a fan stands in for it, the pose is also
+    /// drawn without it (`<pose>~<tag>`).
     #[serde(default)]
     pub tag: Option<String>,
 }
@@ -372,6 +373,10 @@ pub fn compile(file: &ArtFile) -> Result<Art, String> {
             }
             for (point, &(x, y)) in &def.points {
                 points.insert(point.clone(), place(x, y));
+                // (A tagged layer's points under its tag too: `back_arm.hand`.)
+                if let Some(tag) = &l.tag {
+                    points.insert(format!("{tag}.{point}"), place(x, y));
+                }
             }
         }
         Ok((p, points))
@@ -387,7 +392,8 @@ pub fn compile(file: &ArtFile) -> Result<Art, String> {
             pose_points.entry(point.clone()).or_default().insert(name.clone(), *at);
         }
         drawn.insert(name.clone(), p);
-        let tags: std::collections::BTreeSet<&String> = layers.iter().filter_map(|l| l.tag.as_ref()).collect();
+        // (Drawn without a tagged layer only where a fan stands in for it.)
+        let tags: std::collections::BTreeSet<&String> = layers.iter().filter_map(|l| l.tag.as_ref()).filter(|t| file.fans.contains_key(*t)).collect();
         for tag in tags {
             let bare = format!("{name}~{tag}");
             let (p, points) = compose(layers, Some(tag), &format!("pose `{name}`"))?;

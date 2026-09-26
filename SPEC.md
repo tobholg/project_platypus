@@ -798,16 +798,24 @@ deaths (blood). Rendered as one dynamic mesh.
   it comes from, dimmed by what it passes: tree crowns barely (1 % of their
   opacity), walls behind rock fully.
 - Light sources: anything with a `LightSource` (colour, flicker) lights its
-  surroundings: planted torches (G), thrown glow sticks (tool 7, green and
-  blue in turn, 90 s, fading), later lanterns and glowing eyes. The player
-  carries a lantern always, a torch on T, a flashlight on L.
+  surroundings: planted torches (G, the torch item), thrown glow sticks (tool
+  7, green and blue in turn, 90 s, fading), later lanterns and glowing eyes.
+  Fire (`flicker` 1) sways, flutters and jitters (about 0.75–1) and reddens
+  as it dims (green by f^1.5, blue by f²). The player carries a lantern
+  always, and L steps through nothing, a small flashlight, the big one and a
+  torch in the off hand (at the back arm's hand, `back_arm.hand`).
+- Torches (`light/torch.rs`, `assets/art/torch.ron`: its `flame` and
+  `grip` anchors) burn with a look only (`lighting.ron` `fire`: flames of
+  rising motes shrinking from white to red, a wisp of smoke, an ember now
+  and then; a second's worth each), so a torch sets nothing alight.
 - Heat on the background: where the playfield is open, the heat tool warms
   background cells, which catch fire by the playfield's rule (a heat gun on
   a tree lights it). Background cells hold heat but don't conduct it.
 - Day and night: time of day from the tick (20-minute day by default), sky
   light white by day, golden at dawn and dusk, dim blue moonlight at night,
   greyer under cloud, flashed by lightning. `lighting.ron` sets all of it and
-  hot-reloads. Keys: L flashlight, F8 +3 hours, F9 lighting off.
+  hot-reloads. Keys: L what you carry (beam, big beam, torch, nothing), F8 +3
+  hours, F9 lighting off.
 
 ## 5. Bodies — "anything that can move" (`platypus_physics`)
 
@@ -848,9 +856,10 @@ deaths (blood). Rendered as one dynamic mesh.
   legs standing, four run strides, tucked and dangling; poses for standing,
   breathing, blinking, four run steps (arms swinging against the legs, a
   bob on the passing steps), rising, falling, dashing, wall-sliding, hurt.
-- **Tags and fans:** a pose layer may carry a `tag` (the player's front arm:
-  `front_arm`). Every pose also gets a `<pose>~<tag>` frame drawn without
-  that layer, and `fans: { "<tag>": [angles] }` draws the tagged part alone
+- **Tags and fans:** a pose layer may carry a `tag` (the player's arms:
+  `front_arm`, `back_arm`); its points are also the pose's `<tag>.<point>`
+  anchors (`back_arm.hand`: where the off hand is). For a tag with a fan,
+  every pose also gets a `<pose>~<tag>` frame drawn without that layer, and `fans: { "<tag>": [angles] }` draws the tagged part alone
   at each angle (`<tag>@<angle>`, its pivot at the frame's middle, the
   angle's part named `aim<angle>`, `aimm<angle>` below the horizon), its
   points carried. Neither needs a clip.

@@ -5,10 +5,14 @@
 //! dark) and added (a haze around what glows). Rendering only: the sim never
 //! reads it, so it costs co-op nothing.
 //!
-//! Keys: L flashlight, F8 +3 hours, F9 lighting on/off. `PLATYPUS_HOUR=19`
+//! Keys: L what you carry for light (none, a small beam, a big one, a torch
+//! in the off hand), F8 +3 hours, F9 lighting on/off. `PLATYPUS_HOUR=19`
 //! starts at that hour.
 
 pub mod grid;
+pub mod torch;
+
+pub use torch::{TorchArt, plant_torch};
 
 use std::time::{Duration, Instant};
 
@@ -72,8 +76,10 @@ pub struct LightSettings {
     pub moonlight: f32,
     pub lantern: LampCfg,
     pub flashlight: BeamCfg,
+    pub flashlight_small: BeamCfg,
     pub torch: LampCfg,
     pub glowstick: StickCfg,
+    pub fire: torch::FireLook,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -119,8 +125,29 @@ impl Daylight {
 #[derive(Resource)]
 pub struct LightToggles {
     pub enabled: bool,
-    pub flashlight: bool,
-    pub torch: bool,
+    /// What the player carries for light (besides its lantern).
+    pub carry: Carry,
+}
+
+/// L steps through these.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Carry {
+    #[default]
+    Nothing,
+    SmallBeam,
+    BigBeam,
+    Torch,
+}
+
+impl Carry {
+    fn next(self) -> Self {
+        match self {
+            Carry::Nothing => Carry::SmallBeam,
+            Carry::SmallBeam => Carry::BigBeam,
+            Carry::BigBeam => Carry::Torch,
+            Carry::Torch => Carry::Nothing,
+        }
+    }
 }
 
 /// A brief light: a blast, a lightning strike.
@@ -180,13 +207,13 @@ impl Plugin for LightPlugin {
             .insert_resource(settings)
             .insert_resource(SettingsWatch(Watched::new(path)))
             // PLATYPUS_NOLIGHT=1 starts with lighting off (F9 toggles).
-            .insert_resource(LightToggles { enabled: std::env::var("PLATYPUS_NOLIGHT").is_err(), flashlight: false, torch: false })
+            .insert_resource(LightToggles { enabled: std::env::var("PLATYPUS_NOLIGHT").is_err(), carry: Carry::Nothing })
             .insert_resource(Daylight { skipped: skip, ..default() })
             .init_resource::<Flashes>()
             .init_resource::<LightMetrics>()
             .init_resource::<Pending>()
-            .add_systems(Startup, spawn_overlay)
-            .add_systems(Update, (reload_settings, keys, collect_flashes))
+            .add_systems(Startup, (spawn_overlay, torch::load_art))
+            .add_systems(Update, (reload_settings, keys, collect_flashes, torch::hold.after(crate::actors::animation::animate), torch::burn))
             .add_systems(
                 PostUpdate,
                 (update_daylight, compute_light).chain().after(crate::camera::follow).before(TransformSystems::Propagate),
@@ -211,6 +238,7 @@ fn keys(
     mut commands: Commands,
     mut actions: MessageReader<crate::dev::DevAction>,
     settings: Res<LightSettings>,
+    art: Option<Res<TorchArt>>,
     mut toggles: ResMut<LightToggles>,
     mut day: ResMut<Daylight>,
     player: Query<&Kinematics, With<LocalPlayer>>,
@@ -218,14 +246,18 @@ fn keys(
     use crate::dev::DevAction;
     for a in actions.read() {
         match *a {
-            DevAction::Flashlight => toggles.flashlight = !toggles.flashlight,
-            DevAction::Torch => toggles.torch = !toggles.torch,
+            DevAction::Flashlight => {
+                toggles.carry = toggles.carry.next();
+                info!("carrying: {:?}", toggles.carry);
+            }
             DevAction::Lighting => toggles.enabled = !toggles.enabled,
             DevAction::Later => day.skipped += 3.0,
             DevAction::PlantTorch(at) => {
                 // From the panel: at the player's feet.
-                if let Some(at) = at.or_else(|| player.single().ok().map(|k| k.body.pos - Vec2::new(0.0, k.body.half.y - 3.0))) {
-                    plant_torch(&mut commands, at, &settings);
+                if let Some(at) = at.or_else(|| player.single().ok().map(|k| k.body.pos - Vec2::new(0.0, k.body.half.y)))
+                    && let Some(art) = art.as_deref()
+                {
+                    plant_torch(&mut commands, at, &settings, art);
                 }
             }
             _ => {}
@@ -233,24 +265,8 @@ fn keys(
     }
 }
 
-fn rgb((r, g, b): (u8, u8, u8), s: f32) -> Rgb {
+pub(crate) fn rgb((r, g, b): (u8, u8, u8), s: f32) -> Rgb {
     [r as f32 / 255.0 * s, g as f32 / 255.0 * s, b as f32 / 255.0 * s]
-}
-
-/// A torch stuck in the ground at `at`: a stick with a flame, flickering light.
-pub fn plant_torch(commands: &mut Commands, at: Vec2, settings: &LightSettings) {
-    commands
-        .spawn((
-            Name::new("Torch"),
-            PlantedTorch,
-            LightSource { color: rgb(settings.torch.color, settings.torch.strength), flicker: 0.25 },
-            Transform::from_translation(at.extend(9.0)),
-            Visibility::default(),
-        ))
-        .with_children(|t| {
-            t.spawn((Sprite::from_color(Color::srgb(0.38, 0.24, 0.12), Vec2::new(1.0, 6.0)), Transform::from_xyz(0.0, -2.0, 0.0)));
-            t.spawn((Sprite::from_color(Color::srgb(1.0, 0.75, 0.3), Vec2::new(2.0, 2.0)), Transform::from_xyz(0.0, 2.0, 0.1)));
-        });
 }
 
 /// Blasts and lightning light up their surroundings for a moment.
@@ -293,10 +309,12 @@ fn collect_flashes(
     });
 }
 
-/// A smooth wobble 0..1 over time, different per `salt`: fire flicker.
-fn wobble(t: f32, salt: u64) -> f32 {
+/// How bright a flame is now, about 0.75..1: a slow sway, a quicker
+/// flutter and a jitter a dozen times a second, different per `salt`.
+fn fire_flicker(t: f32, salt: u64) -> f32 {
     let s = salt as f32 * 1.7;
-    0.5 + 0.25 * (t * 9.0 + s).sin() + 0.25 * (t * 23.0 + s * 2.3).sin()
+    let jitter = (platypus_sim::rng::hash(&[salt, (t * 14.0) as u64]) % 1000) as f32 / 1000.0;
+    (0.86 + 0.06 * (t * 2.3 + s).sin() + 0.04 * (t * 11.0 + s * 2.3).sin() + 0.06 * (jitter - 0.5)).clamp(0.0, 1.0)
 }
 
 fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
@@ -492,15 +510,13 @@ fn compute_light(
         let at = k.body.pos + Vec2::new(0.0, k.body.half.y * 0.4);
         let c = |(r, g, b): (u8, u8, u8), s: f32| [r as f32 / 255.0 * s, g as f32 / 255.0 * s, b as f32 / 255.0 * s];
         g.seed_point([at.x, at.y], c(settings.lantern.color, settings.lantern.strength));
-        if toggles.torch {
-            let f = 0.85 + 0.15 * wobble(time.elapsed_secs(), 1);
-            g.seed_point([at.x, at.y + 3.0], c(settings.torch.color, settings.torch.strength * f));
-        }
-        if toggles.flashlight
-            && let Some(aim) = cursor.0
-        {
+        let beam = match toggles.carry {
+            Carry::SmallBeam => Some(settings.flashlight_small),
+            Carry::BigBeam => Some(settings.flashlight),
+            _ => None,
+        };
+        if let (Some(f), Some(aim)) = (beam, cursor.0) {
             let dir = (aim - at).normalize_or(Vec2::X);
-            let f = settings.flashlight;
             g.seed_beam([at.x, at.y], [dir.x, dir.y], f.angle.to_radians() / 2.0, f.range, c(f.color, f.strength));
         }
     }
@@ -516,8 +532,9 @@ fn compute_light(
     }
     for (i, (tf, src)) in sources.iter().enumerate() {
         let p = tf.translation();
-        let f = 1.0 - src.flicker * 0.5 * (1.0 - wobble(time.elapsed_secs(), i as u64 + 7));
-        g.seed_point([p.x, p.y], src.color.map(|c| c * f));
+        // Fire: brighter and dimmer, and redder as it dims.
+        let f = 1.0 - src.flicker * (1.0 - fire_flicker(time.elapsed_secs(), i as u64 + 7));
+        g.seed_point([p.x, p.y], [src.color[0] * f, src.color[1] * f.powf(1.5), src.color[2] * f * f]);
     }
     for f in &flashes.0 {
         let k = 1.0 - f.age / f.life;

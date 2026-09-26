@@ -322,6 +322,7 @@ fn use_hands(
     items: Option<Res<Items>>,
     tools: Res<ToolsConfig>,
     lights: Res<LightSettings>,
+    torch_art: Option<Res<crate::light::TorchArt>>,
     mut hand: ResMut<Hand>,
     mut sim: ResMut<SimWorld>,
     mut chests: ResMut<chests::Chests>,
@@ -411,7 +412,8 @@ fn use_hands(
             let bodies: Vec<Body> = Vec::new();
             let world = &sim.world;
             let Some(block) = target::place_target(from, cursor, 6.0 * BLOCK as f32, |b| free(world, b, &bodies), |b| supported(world, b)) else { return };
-            plant_torch(&mut commands, Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, block.y as f32 * BLOCK as f32 + 3.0), &lights);
+            let Some(art) = torch_art.as_deref() else { return };
+            plant_torch(&mut commands, Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, block.y as f32 * BLOCK as f32), &lights, art);
             inv.take(slot, 1);
         }
         _ => {}

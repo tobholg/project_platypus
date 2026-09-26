@@ -98,8 +98,7 @@ the heat tool reach both. RMB erases with any tool · the wheel (or `[` `]`) rad
 (WASD flies, Shift faster) ·
 dev actions (letters in dev mode, F-keys always, or the panel): H performance HUD
 (F3) · J chunk borders + dirty rects (F4) · V thunderstorm here (F5) · B clear skies (F6) ·
-N lightning at the cursor (F7) · M +3 hours (F8) · K lighting off (F9) · L flashlight ·
-T carry a torch · G plant a torch · O spawn an orc · the HUD at the top shows health and
+N lightning at the cursor (F7) · M +3 hours (F8) · K lighting off (F9) · L light (a small beam, a big one, a torch in the off hand, none) · G plant a torch · O spawn an orc · the HUD at the top shows health and
 status timers; dying just refills health (`PLATYPUS_RESPAWN=1` to respawn at the start)
 
 Things to try: pour water then lava on it (obsidian + steam) · oil on water, then

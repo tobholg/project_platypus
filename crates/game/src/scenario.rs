@@ -514,6 +514,7 @@ fn swim_script(
 fn dark_script(
     mut commands: Commands,
     lights: Res<crate::light::LightSettings>,
+    torch_art: Option<Res<crate::light::TorchArt>>,
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
     mut day: ResMut<crate::light::Daylight>,
@@ -546,11 +547,12 @@ fn dark_script(
         k.body.pos = Vec2::new(c.x as f32, c.y as f32 - 8.0);
         k.body.vel = Vec2::ZERO;
         k.prev_pos = k.body.pos;
-        toggles.flashlight = std::env::var("PLATYPUS_NOBEAM").is_err();
-        toggles.torch = true;
+        toggles.carry = if std::env::var("PLATYPUS_NOBEAM").is_err() { crate::light::Carry::BigBeam } else { crate::light::Carry::Torch };
         cursor.0 = Some(k.body.pos + Vec2::new(90.0, -10.0));
         // A torch planted to the left, glow sticks thrown both ways.
-        crate::light::plant_torch(&mut commands, k.body.pos + Vec2::new(-40.0, -4.0), &lights);
+        if let Some(art) = torch_art.as_deref() {
+            crate::light::plant_torch(&mut commands, k.body.pos + Vec2::new(-40.0, -k.body.half.y), &lights, art);
+        }
         let s = lights.glowstick.strength;
         crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(-20.0, 4.0), Vec2::new(-60.0, 40.0), [0.25 * s, s, 0.45 * s], 90.0);
         crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(30.0, 4.0), Vec2::new(60.0, 40.0), [0.2 * s, 0.55 * s, 1.1 * s], 90.0);

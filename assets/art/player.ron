@@ -218,21 +218,21 @@
     poses: {
         // Standing; breathing in (the chest and head a pixel up); a blink.
         "stand": [
-            (part: "arm", at: (9, 12), shade: 0.72),
+            (part: "arm", at: (9, 12), shade: 0.72, tag: "back_arm"),
             (part: "legs", at: (8, 17)),
             (part: "torso", at: (8, 11)),
             (part: "head", at: (8, 4)),
             (part: "arm", at: (12, 12), outline: true, tag: "front_arm"),
         ],
         "breathe": [
-            (part: "arm", at: (9, 11), shade: 0.72),
+            (part: "arm", at: (9, 11), shade: 0.72, tag: "back_arm"),
             (part: "legs", at: (8, 17)),
             (part: "torso", at: (8, 10)),
             (part: "head", at: (8, 3)),
             (part: "arm", at: (12, 11), outline: true, tag: "front_arm"),
         ],
         "blink": [
-            (part: "arm", at: (9, 12), shade: 0.72),
+            (part: "arm", at: (9, 12), shade: 0.72, tag: "back_arm"),
             (part: "legs", at: (8, 17)),
             (part: "torso", at: (8, 11)),
             (part: "blink", at: (8, 4)),
@@ -241,28 +241,28 @@
         // Running: legs through the stride, arms swinging against them, a
         // bob on the passing steps.
         "run_a": [
-            (part: "arm_fwd", at: (9, 12), shade: 0.72),
+            (part: "arm_fwd", at: (9, 12), shade: 0.72, tag: "back_arm"),
             (part: "run1", at: (7, 17)),
             (part: "torso", at: (8, 11)),
             (part: "head", at: (8, 4)),
             (part: "arm_back", at: (12, 12), outline: true, tag: "front_arm"),
         ],
         "run_b": [
-            (part: "arm", at: (9, 11), shade: 0.72),
+            (part: "arm", at: (9, 11), shade: 0.72, tag: "back_arm"),
             (part: "run2", at: (7, 16)),
             (part: "torso", at: (8, 10)),
             (part: "head", at: (8, 3)),
             (part: "arm", at: (12, 11), outline: true, tag: "front_arm"),
         ],
         "run_c": [
-            (part: "arm_back", at: (10, 12), shade: 0.72),
+            (part: "arm_back", at: (10, 12), shade: 0.72, tag: "back_arm"),
             (part: "run4", at: (7, 17)),
             (part: "torso", at: (8, 11)),
             (part: "head", at: (8, 4)),
             (part: "arm_fwd", at: (12, 12), outline: true, tag: "front_arm"),
         ],
         "run_d": [
-            (part: "arm", at: (9, 11), shade: 0.72),
+            (part: "arm", at: (9, 11), shade: 0.72, tag: "back_arm"),
             (part: "run3", at: (7, 16)),
             (part: "torso", at: (8, 10)),
             (part: "head", at: (8, 3)),
@@ -270,14 +270,14 @@
         ],
         // Rising: knees up, an arm thrown up. Falling: legs down, arms out.
         "rise": [
-            (part: "arm", at: (9, 11), shade: 0.72),
+            (part: "arm", at: (9, 11), shade: 0.72, tag: "back_arm"),
             (part: "tuck", at: (8, 17)),
             (part: "torso", at: (8, 11)),
             (part: "head", at: (8, 4)),
             (part: "arm_lift", at: (13, 14), outline: true, tag: "front_arm"),
         ],
         "drop": [
-            (part: "arm_up", at: (9, 12), shade: 0.72),
+            (part: "arm_up", at: (9, 12), shade: 0.72, tag: "back_arm"),
             (part: "dangle", at: (8, 17)),
             (part: "torso", at: (8, 11)),
             (part: "head", at: (8, 4)),
@@ -285,7 +285,7 @@
         ],
         // Dashing: leaning in, arms back.
         "dash": [
-            (part: "arm_back", at: (9, 13), shade: 0.72),
+            (part: "arm_back", at: (9, 13), shade: 0.72, tag: "back_arm"),
             (part: "run1", at: (6, 17)),
             (part: "torso", at: (9, 12)),
             (part: "head", at: (10, 6)),
@@ -293,7 +293,7 @@
         ],
         // Sliding down a wall (on the right): a hand on it.
         "wall": [
-            (part: "arm", at: (9, 12), shade: 0.72),
+            (part: "arm", at: (9, 12), shade: 0.72, tag: "back_arm"),
             (part: "dangle", at: (8, 17)),
             (part: "torso", at: (8, 11)),
             (part: "head", at: (8, 4)),
@@ -301,7 +301,8 @@
         ],
     },
     // The front arm at angles: shown instead of the pose's own front arm
-    // (tagged `front_arm`) while aiming.
+    // (tagged `front_arm`) while aiming. (The back arm is tagged too: its
+    // hand, `back_arm.hand`, holds a torch.)
     fans: {
         "front_arm": [
             (angle: -90, part: "aimm90"),

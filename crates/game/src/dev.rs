@@ -5,7 +5,8 @@
 //!
 //! Dev mode: V storm · B clear sky · N lightning at the cursor · M +3 hours ·
 //! K lighting on/off · H performance HUD · J chunk overlay. Always: L
-//! flashlight · T carry a torch · G plant a torch · O spawn an orc (or what
+//! what you carry for light (nothing, a small beam, a big one, a torch in
+//! the off hand) · G plant a torch · O spawn an orc (or what
 //! the arena panel picked) at the cursor.
 
 use bevy::prelude::*;
@@ -24,8 +25,8 @@ pub enum DevAction {
     Lightning(Option<Vec2>),
     Later,
     Lighting,
+    /// What the player carries for light: none, a small beam, a big one, a torch.
     Flashlight,
-    Torch,
     PlantTorch(Option<Vec2>),
     /// The kind picked to spawn (an orc unless the arena picked another).
     Spawn(Option<Vec2>),
@@ -89,7 +90,6 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, dev: Res<DevTools>, cursor: Res<CursorW
     }
     for (k, action) in [
         (KeyCode::KeyL, DevAction::Flashlight),
-        (KeyCode::KeyT, DevAction::Torch),
         (KeyCode::KeyG, DevAction::PlantTorch(at)),
         (KeyCode::KeyO, DevAction::Spawn(at)),
     ] {
@@ -108,14 +108,13 @@ fn buttons(clicks: Query<(&Interaction, &PanelButton), Changed<Interaction>>, mu
 }
 
 fn spawn_panel(mut commands: Commands) {
-    let entries: [(&str, DevAction); 15] = [
+    let entries: [(&str, DevAction); 14] = [
         ("Storm here   V", DevAction::Storm),
         ("Clear sky   B", DevAction::ClearSky),
         ("Lightning   N", DevAction::Lightning(None)),
         ("+3 hours   M", DevAction::Later),
         ("Lighting on/off   K", DevAction::Lighting),
-        ("Flashlight   L", DevAction::Flashlight),
-        ("Carry a torch   T", DevAction::Torch),
+        ("Light: beam, big, torch   L", DevAction::Flashlight),
         ("Plant a torch   G", DevAction::PlantTorch(None)),
         ("Spawn (an orc)   O", DevAction::Spawn(None)),
         ("Performance HUD   H", DevAction::PerfHud),

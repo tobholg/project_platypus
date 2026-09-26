@@ -37,6 +37,8 @@ pub struct Aiming {
 pub struct HandPos {
     pub at: Option<Vec2>,
     pub local: Option<Vec3>,
+    /// The off (back) hand, from its centre as drawn: a torch sits there.
+    pub off: Option<Vec3>,
 }
 
 #[derive(Component)]
@@ -214,7 +216,9 @@ pub fn animate(
             hand_at = Some(local(hx as f32, hy as f32));
         }
         anim.shown = index;
+        let off = def.rig.as_ref().and_then(|r| r.anchors.get("back_arm.hand")).and_then(|m| m.get(&index)).map(|&(x, y)| local(x as f32, y as f32));
         if let Some(mut h) = hand {
+            h.off = off;
             h.at = hand_at.map(|l| k.body.pos + l.truncate());
             h.local = hand_at;
         }
