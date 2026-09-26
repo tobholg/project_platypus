@@ -122,6 +122,48 @@ fn lava_meets_water() {
     assert!(count(&w, m.expect_id("steam")) + count(&w, m.expect_id("water")) > 0);
 }
 
+/// A heavy gas (miasma) sinks where smoke rises: released mid-air, it ends
+/// up low in the box.
+#[test]
+fn heavy_gas_sinks_where_smoke_rises() {
+    let mean_y = |name: &str| {
+        let mut w = boxed_world(1, 2, 21);
+        let id = w.materials().expect_id(name);
+        w.apply_edit(&WorldEdit::Paint { center: CellPos::new(32, 64), radius: 6, material: id, overwrite: false });
+        for _ in 0..150 {
+            w.step();
+        }
+        let ys: Vec<i32> = (0..CHUNK).flat_map(|x| (0..2 * CHUNK).map(move |y| (x, y))).filter(|&(x, y)| w.get(CellPos::new(x, y)).unwrap().material == id).map(|(_, y)| y).collect();
+        assert!(!ys.is_empty(), "some {name} left");
+        ys.iter().sum::<i32>() as f32 / ys.len() as f32
+    };
+    let (smoke, miasma) = (mean_y("smoke"), mean_y("miasma"));
+    assert!(smoke > 70.0, "smoke rose: {smoke}");
+    assert!(miasma < 40.0, "miasma sank: {miasma}");
+}
+
+/// Lava holds its heat against a passing chill (a frost bolt's), but
+/// enough cold at once (a frost ray's, swept over it) crusts it to basalt.
+#[test]
+fn lava_crusts_under_hard_cold() {
+    let crust = |amount: i16| {
+        let mut w = boxed_world(1, 1, 22);
+        let m = w.materials().clone();
+        w.apply_edit(&WorldEdit::Paint { center: CellPos::new(32, 6), radius: 5, material: m.expect_id("lava"), overwrite: false });
+        for _ in 0..60 {
+            w.step();
+        }
+        // (Swept across it, as a beam is.)
+        for i in 0..30 {
+            w.apply_edit(&WorldEdit::Heat { center: CellPos::new(24 + i / 2, 1), radius: 2, amount });
+            w.step();
+        }
+        count(&w, m.expect_id("basalt"))
+    };
+    assert_eq!(crust(-150), 0, "a frost bolt's chill doesn't crust lava");
+    assert!(crust(-350) > 3, "a frost ray's does");
+}
+
 /// Wood left of a 40×5 slab lit at one end with a fire of `radius`, per seed.
 fn slab_fire(radius: i32) -> Vec<usize> {
     let mut left: Vec<usize> = (100..120)

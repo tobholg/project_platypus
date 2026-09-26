@@ -21,6 +21,7 @@
 //! A `Trigger` cast fires what's after it from where it lands.
 
 pub mod beam;
+pub mod conjure;
 pub mod runes;
 pub mod spells;
 pub mod warp;
@@ -220,7 +221,7 @@ impl Plugin for MagicPlugin {
             .init_resource::<beam::BeamLights>()
             .add_systems(Update, (reload_runes, give_mana, place_spells, well::give_warp, well::show))
             .add_systems(PostUpdate, beam::draw.before(bevy::transform::TransformSystems::Propagate))
-            .add_systems(FixedUpdate, (recharge, request, fire, fly, well::channel).chain().in_set(TickSet::Bodies).before(crate::actors::hurt::notice));
+            .add_systems(FixedUpdate, (recharge, request, fire, fly, well::channel, conjure::hold).chain().in_set(TickSet::Bodies).before(crate::actors::hurt::notice));
     }
 }
 
@@ -386,6 +387,33 @@ fn fire(
             }
             // (Held open by `request`, run by `well::channel`.)
             Carrier::Well { .. } | Carrier::Force { .. } => {}
+            Carrier::Wall { material, width, height, range, hold } => {
+                let boxes: Vec<(Vec2, Vec2)> = bodies.iter().map(|(_, k, ..)| (k.body.pos, k.body.half)).collect();
+                let (tip, _) = beam::trace(&sim.world, std::iter::empty(), f.caster, f.from, f.dir, f.reach.min(*range));
+                if let Some((min, max)) = conjure::wall(&mut sim.world, material, tip, *width, *height, &boxes) {
+                    for e in &cast.bursts {
+                        for i in 0..4 {
+                            let at = Vec2::new((min.x + max.x) as f32 / 2.0, min.y as f32 + (max.y - min.y) as f32 * i as f32 / 3.0);
+                            sparks.emit(e, e.count as usize / 4, at, Vec2::Y, Vec2::ZERO);
+                        }
+                    }
+                    if *hold > 0.0 {
+                        commands.spawn((Name::new("Conjured wall"), conjure::Held { min, max, material: material.clone(), left: *hold }));
+                    }
+                }
+            }
+            Carrier::Cloud { material, radius, range } => {
+                let (tip, hit) = beam::trace(&sim.world, std::iter::empty(), f.caster, f.from, f.dir, f.reach.min(*range));
+                // (Just short of what stopped it.)
+                let at = if tip.distance(f.from) < f.reach.min(*range) - 0.5 { tip - f.dir * (*radius as f32 * 0.5) } else { tip };
+                if let Some(m) = sim.world.materials().id(material) {
+                    sim.world.apply_edit(&WorldEdit::Paint { center: CellPos::from_world(at.x, at.y), radius: *radius, material: m, overwrite: false });
+                }
+                for e in &cast.bursts {
+                    sparks.emit(e, e.count as usize, at, Vec2::Y, Vec2::ZERO);
+                }
+                land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, f.dir, false, false, &mut booms);
+            }
             &Carrier::Beam { range, width } => {
                 let (tip, hit) = beam::trace(&sim.world, bodies.iter().map(|(e, k, ..)| (e, k.body.pos, k.body.half)), f.caster, f.from, f.dir, range);
                 beams.add(&cast, f.from, tip, width, sim.world.tick());

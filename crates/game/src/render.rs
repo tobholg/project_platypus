@@ -149,12 +149,20 @@ fn flame_rgba(ph: &platypus_sim::material::MatPhys, c: Cell, lx: usize, ly: usiz
     [(a[0] + (b[0] - a[0]) * k) as u8, (a[1] + (b[1] - a[1]) * k) as u8, (a[2] + (b[2] - a[2]) * k) as u8, 255]
 }
 
+/// How opaque a gas cell is drawn, before its opacity adds to it.
+const GAS_ALPHA: u32 = 150;
+
 pub(crate) fn cell_rgba(mats: &MaterialTable, c: Cell, ambient: i32, dim: f32, lx: usize, ly: usize) -> [u8; 4] {
     let ph = mats.phys(c.material);
     if ph.kind == Kind::Fire {
         return flame_rgba(ph, c, lx, ly);
     }
     let mut rgba = mats.color(c);
+    // Gas is a haze: what's behind it shows through (thicker, the more
+    // light it stops).
+    if ph.kind == Kind::Gas {
+        rgba[3] = (GAS_ALPHA + ph.opacity as u32 * 4).min(235) as u8;
+    }
     // Mining damage on solids shows as darkening cracks.
     if c.life > 0 && matches!(ph.kind, Kind::Static | Kind::Powder) && ph.hardness > 0 && c.flags & flags::BURNING == 0 {
         let k = 1.0 - 0.6 * (c.life as f32 / ph.hardness as f32).min(1.0);

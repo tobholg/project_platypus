@@ -300,12 +300,14 @@ field (held at the cursor: well, force). Families: fire, frost, storm, acid,
 force, gravity, **radiant** (light: cuts and reveals; its hurt goes through
 armour), **void** (space: blink, portals, stasis), earth later. Built so far:
 the beam carrier with the fire ray, the frost ray (ice bridges, lava crusted
-to basalt: lava now freezes below 900 °C, which only a sustained cold beam
+to basalt: lava now freezes below 950 °C, which only a sustained cold beam
 reaches) and radiant's vaporiser (`Vaporise`: cells worn down by hardness,
 gone to smoke); the spark bolt moved to radiant, and the star bomb (a
 bouncing star: `Vaporise` + `Nova`, a blast that leaves cells be); storm's
-shock bolt (`Arc`: a spark of lightning where it lands). Next: wall and
-cloud (ice wall, fire wall, toxic cloud), call (call lightning conjures a
+shock bolt (`Arc`: a spark of lightning where it lands); the wall carrier
+(ice wall, left to melt; fire wall, kept burning for 5 s: `conjure.rs`)
+and the cloud carrier (toxic cloud: miasma, a new *heavy* gas that sinks
+and pools, corrosive and flammable). Next: call (call lightning conjures a
 cloud where there's none; meteor), void (blink bolt, a momentum-keeping
 portal pair for bodies, projectiles and liquids, stasis).
 

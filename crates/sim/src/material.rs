@@ -129,6 +129,10 @@ pub struct MaterialDef {
     /// (weather), so boiled water comes back as rain.
     #[serde(default)]
     pub vapour: bool,
+    /// A gas heavier than air: it sinks and pools (in pits, down shafts)
+    /// instead of rising.
+    #[serde(default)]
+    pub heavy: bool,
     /// What a charred cell becomes when its fire is put out (wood: charcoal).
     /// Default: it just stops burning.
     #[serde(default)]
@@ -326,6 +330,7 @@ pub struct MatPhys {
     /// Light stopped per cell, 0..255.
     pub opacity: u8,
     pub vapour: bool,
+    pub heavy: bool,
     /// `AIR` when the material doesn't crumble.
     pub crumbles_into: MaterialId,
     pub heat: i16,
@@ -536,6 +541,7 @@ impl MaterialTable {
                     Kind::Powder | Kind::Static => 175,
                 }),
                 vapour: d.vapour,
+                heavy: d.heavy,
                 crumbles_into,
                 heat: d.heat,
                 heat_source: d.heat_source,

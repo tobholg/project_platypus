@@ -17,6 +17,10 @@
 //           cone toward the cursor out to `radius`: the left button flings
 //           everything in it away (up to `power` cells/s nearest), the right
 //           drags it in
+//         | Wall(material, width, height, range, hold): a wall of the material raised
+//           on the ground below where it's aimed (open cells only, not where a
+//           body is if it's solid); `hold` s: kept filled that long (fire)
+//         | Cloud(material, radius, range): a disc of a gas conjured where it's aimed
 //         | Beam(range, width): held, an instant line from the hand to the first
 //           thing in its way (not air, gas or flame), `width` cells across; its
 //           payloads go off at its tip every tick (so its mana is a tick's, and
@@ -72,6 +76,13 @@
         // A beam's carrier (its payloads are a tick's worth) ...
         (id: "ray", name: "Ray", mana: 0.25, color: (255, 255, 255), kind: Carrier(Beam(range: 150, width: 2))),
         (id: "cutting_ray", name: "Cutting ray", mana: 0.35, color: (255, 250, 230), kind: Carrier(Beam(range: 110, width: 3))),
+        // Walls and clouds.
+        (id: "ice_wall", name: "Ice wall", mana: 22, color: (190, 230, 255), kind: Carrier(Wall(material: "ice", width: 8, height: 48, range: 140)),
+            look: (burst: (count: 40, life: (0.4, 1.0), colors: [(255, 255, 255), (200, 235, 255), (130, 190, 240)], speed: 50, spread: 1.4, gravity: 30, drag: 2, glow: true))),
+        (id: "fire_wall", name: "Fire wall", mana: 26, color: (255, 130, 40), kind: Carrier(Wall(material: "fire", width: 4, height: 30, range: 140, hold: 5)),
+            look: (burst: (count: 40, life: (0.3, 0.8), colors: [(255, 250, 210), (255, 180, 60), (220, 70, 20)], speed: 70, spread: 1.4, gravity: -60, drag: 2, glow: true))),
+        (id: "toxic_cloud", name: "Toxic cloud", mana: 18, color: (150, 190, 70), kind: Carrier(Cloud(material: "miasma", radius: 10, range: 150)),
+            look: (burst: (count: 30, life: (0.5, 1.2), colors: [(190, 220, 110), (140, 110, 160), (90, 120, 40)], speed: 40, gravity: 10, drag: 2))),
         // A star: a bouncing orb of light.
         (id: "star", name: "Star", mana: 8, color: (255, 245, 200), kind: Carrier(Orb(speed: 270, life: 2.5, bounces: 2)),
             look: (trail: (count: 1.2, life: (0.15, 0.45), colors: [(255, 255, 255), (255, 240, 170), (255, 200, 90)], speed: 12, drag: 3, glow: true))),

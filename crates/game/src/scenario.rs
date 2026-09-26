@@ -218,6 +218,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, beams_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, conjure_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -3303,6 +3304,126 @@ fn beams_script(
             if t > 12.8 {
                 info!("beams: a star bomb into the floor: {} solid cells gone", state.1 as usize - solid(480..680, floor - 40..floor));
                 state.0 = 7;
+            }
+        }
+        _ => {}
+    }
+    for (b, on) in [(MouseButton::Left, left), (MouseButton::Right, right)] {
+        if on && !mouse.pressed(b) {
+            mouse.press(b);
+        } else if !on && mouse.pressed(b) {
+            mouse.release(b);
+        }
+    }
+}
+
+type Conjurer<'a> = (&'a mut Kinematics, &'a mut crate::hands::items::Inventory, &'a mut crate::actors::Health);
+type ConjureFoe<'a> = (Entity, &'a Kinematics, &'a crate::actors::Health, Has<crate::actors::elements::Burning>);
+
+/// Walls and clouds: an ice wall between the player and a charging orc; a
+/// fire wall another orc walks through; a toxic cloud on the first, then
+/// lit with the fire ray. Logs each.
+#[allow(clippy::too_many_arguments)]
+fn conjure_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut hand: ResMut<crate::hands::Hand>,
+    mut player: Query<Conjurer, With<LocalPlayer>>,
+    orcs: Query<ConjureFoe, IceFoe>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, Option<Entity>, Option<Entity>)>,
+) {
+    if s.name != "conjure" {
+        return;
+    }
+    let Ok((mut k, mut inv, mut hp)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let count = |name: &str, xs: std::ops::Range<i32>, ys: std::ops::Range<i32>| {
+        let Some(m) = sim.materials().id(name) else { return 0 };
+        xs.flat_map(|x| ys.clone().map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count()
+    };
+    // (The player isn't what's being tested: kept standing and whole.)
+    k.body.pos.x = 600.0;
+    hp.hp = hp.max;
+    hand.bar = 2;
+    let orc = |e: Option<Entity>| e.and_then(|e| orcs.get(e).ok()).map(|(_, k, h, b)| (k.body.pos.x, h.hp, b));
+    let (mut left, mut right) = (false, false);
+    match state.0 {
+        0 if t > 0.5 => {
+            // The acid staff out of the pack, onto hotbar 3.
+            if let Some(items) = &items
+                && let Some(i) = inv.slots.iter().position(|s| s.is_some_and(|s| items.def(s.item).id == "acid_staff"))
+            {
+                inv.slots.swap(i, 25);
+            }
+            k.body.pos = Vec2::new(600.0, floor as f32 + 8.0);
+            k.prev_pos = k.body.pos;
+            crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(780.0, floor as f32 + 10.0), |_| {});
+            state.0 = 1;
+        }
+        1 => {
+            state.1 = orcs.iter().next().map(|(e, ..)| e);
+            if state.1.is_some() {
+                state.0 = 2;
+            }
+        }
+        // An ice wall in the right-hand orc's way.
+        2 => {
+            hand.slot = 8;
+            cursor.0 = Some(Vec2::new(650.0, floor as f32 + 20.0));
+            right = (0.8..0.9).contains(&t);
+            if t > 3.0 {
+                info!("conjure: ice wall at x 647..653: ice {} cells; the orc behind it at x {:?}", count("ice", 640..660, floor..floor + 40), orc(state.1).map(|o| o.0));
+                state.0 = 3;
+            }
+        }
+        // A fire wall the left-hand orc walks into.
+        3 => {
+            hand.slot = 9;
+            cursor.0 = Some(Vec2::new(540.0, floor as f32 + 20.0));
+            right = (3.1..3.2).contains(&t);
+            // Another orc, from the left, once the wall is up.
+            if t > 3.4 && state.2.is_none() {
+                info!("conjure: fire wall: {} cells of flame", count("fire", 530..550, floor..floor + 40));
+                crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(470.0, floor as f32 + 10.0), |_| {});
+                state.2 = Some(Entity::PLACEHOLDER);
+            }
+            if state.2 == Some(Entity::PLACEHOLDER) {
+                state.2 = orcs.iter().find(|(e, ..)| Some(*e) != state.1).map(|(e, ..)| e).or(state.2);
+            }
+            if t > 6.0 {
+                info!("conjure: the orc that walked into the fire wall: at x {:?}, hp {:?}, burning {:?}", orc(state.2).map(|o| o.0), orc(state.2).map(|o| o.1 as i32), orc(state.2).map(|o| o.2));
+                state.0 = 4;
+            }
+        }
+        // A toxic cloud on the orc behind the ice.
+        4 => {
+            hand.slot = 5;
+            let at = orc(state.1).map_or(700.0, |o| o.0);
+            cursor.0 = Some(Vec2::new(at, floor as f32 + 12.0));
+            left = (6.1..6.2).contains(&t);
+            if t > 9.0 {
+                info!("conjure: 2.7 s in the cloud: the orc's hp {:?}; miasma {} cells (sunk: {} below floor + 10)", orc(state.1).map(|o| o.1 as i32), count("miasma", 600..800, floor - 20..floor + 60), count("miasma", 600..800, floor - 20..floor + 10));
+                state.0 = 5;
+            }
+        }
+        // Lit with the fire ray.
+        5 => {
+            hand.slot = 9;
+            let at = orc(state.1).map_or(700.0, |o| o.0);
+            cursor.0 = Some(Vec2::new(at, floor as f32 + 6.0));
+            left = (9.1..9.6).contains(&t);
+            if t > 9.7 && t < 9.72 {
+                let lit = (600..800).flat_map(|x| (floor - 20..floor + 60).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.flags & platypus_sim::cell::flags::BURNING != 0)).count();
+                info!("conjure: fire ray into the cloud 0.6 s: {lit} cells burning, miasma {}", count("miasma", 600..800, floor - 20..floor + 60));
+            }
+            if t > 10.5 {
+                info!("conjure: fire ray into the cloud: miasma {} cells left, fire {}, the orc's hp {:?}, burning {:?}", count("miasma", 600..800, floor - 20..floor + 60), count("fire", 600..800, floor - 20..floor + 60), orc(state.1).map(|o| o.1 as i32), orc(state.1).map(|o| o.2));
+                state.0 = 6;
             }
         }
         _ => {}

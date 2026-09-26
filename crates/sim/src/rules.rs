@@ -848,13 +848,15 @@ fn gas(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) {
     }
     let free = |h: &Hood, tx: i32, ty: i32| h.get(tx, ty).is_some_and(|t| t.is_air());
     let d = downwind_sign(h);
+    // (A heavy gas does all this the other way up: it sinks.)
+    let up = if p.heavy { -1 } else { 1 };
     // Rise unevenly. If every cell of a cloud moved every tick, whole rows
     // would move in lockstep and a thick cloud would show as horizontal
     // stripes. Some ticks a cell hovers or drifts sideways instead (mostly
     // downwind), so a cloud churns and billows. Only while it can still rise:
     // gas with nowhere to go writes nothing and sleeps (sealed methane pockets).
     let roll = h.rng.next_u32() & 255;
-    let rising = free(h, x, y + 1) || free(h, x - 1, y + 1) || free(h, x + 1, y + 1);
+    let rising = free(h, x, y + up) || free(h, x - 1, y + up) || free(h, x + 1, y + up);
     if roll < 96 && rising {
         let dx = if roll < 72 { d } else { -d };
         if roll < 88 && free(h, x + dx, y) {
@@ -867,15 +869,15 @@ fn gas(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) {
     }
     // Billow: often drift up diagonally rather than rising in single file.
     let side = if h.rng.chance(170) { d } else { -d };
-    if h.rng.chance(100) && free(h, x + side, y + 1) {
-        return swap_to(h, x, y, x + side, y + 1, c);
+    if h.rng.chance(100) && free(h, x + side, y + up) {
+        return swap_to(h, x, y, x + side, y + up, c);
     }
-    if free(h, x, y + 1) {
-        return swap_to(h, x, y, x, y + 1, c);
+    if free(h, x, y + up) {
+        return swap_to(h, x, y, x, y + up, c);
     }
     for dx in [side, -side] {
-        if free(h, x + dx, y + 1) {
-            return swap_to(h, x, y, x + dx, y + 1, c);
+        if free(h, x + dx, y + up) {
+            return swap_to(h, x, y, x + dx, y + up, c);
         }
     }
     let reach = 1 + (h.rng.next_u32() % p.dispersion.max(1) as u32) as i32;

@@ -56,6 +56,23 @@ pub enum Carrier {
     /// `range`, drawn `width` cells across. Its payloads go off at its tip
     /// every tick it's held (a spell cast every tick: its mana is a tick's).
     Beam { range: f32, width: f32 },
+    /// A wall conjured where it's aimed (out to `range`): `width` × `height`
+    /// cells of `material` standing on the first ground below, in the open
+    /// cells only (a solid one not where a body is). With `hold` seconds it's
+    /// kept filled that long (flames die and come back: a fire wall);
+    /// without, it's left to the world (ice melts, stone stays).
+    Wall {
+        material: String,
+        width: i32,
+        height: i32,
+        range: f32,
+        #[serde(default)]
+        hold: f32,
+    },
+    /// A cloud of a gas conjured where it's aimed (out to `range`, stopped
+    /// by what's in the way): the open cells in a disc of `radius` filled.
+    /// Its payloads go off at its heart.
+    Cloud { material: String, radius: i32, range: f32 },
 }
 
 /// What a spell does where it lands (or what it hits).
