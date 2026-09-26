@@ -52,15 +52,15 @@ impl Plugin for CameraPlugin {
             .init_resource::<FreeCamera>()
             .insert_resource(StartAt(self.start))
             .add_systems(Startup, spawn_camera)
-            .add_systems(Update, (toggle_free, zoom, fly, apply_zoom).chain())
+            .add_systems(Update, ((toggle_free, zoom, fly, apply_zoom).chain(), fit_mirror))
             .add_systems(PreUpdate, track_cursor)
             .add_systems(PostUpdate, follow.before(TransformSystems::Propagate));
     }
 }
 
-/// `PLATYPUS_OFFSCREEN=1`: the camera draws into this image, not the window
-/// (screenshots from scenarios still work with the screen locked or asleep,
-/// when the window isn't drawn).
+/// `PLATYPUS_OFFSCREEN=1`: the camera draws into this image (screenshots
+/// from scenarios still work with the screen locked or asleep, when the
+/// window isn't drawn), and the window shows it.
 #[derive(Resource)]
 pub struct Offscreen(pub Handle<Image>);
 
@@ -75,7 +75,29 @@ fn spawn_camera(mut commands: Commands, start: Res<StartAt>, mut images: ResMut<
         let image = images.add(Image::new_target_texture(1512, 917, bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb, None));
         // (The panels too: the UI follows the camera marked for it.)
         cam.insert((bevy::camera::RenderTarget::Image(image.clone().into()), IsDefaultUiCamera));
+        // And the window shows that image (so a scenario can be watched):
+        // a camera of its own, seeing only the image, on a layer of its own.
+        let mirror = bevy::camera::visibility::RenderLayers::layer(MIRROR_LAYER);
+        commands.spawn((Name::new("Window mirror camera"), Camera2d, Camera { order: 1, ..default() }, mirror.clone()));
+        commands.spawn((Name::new("Window mirror"), OffscreenMirror, Sprite { image: image.clone(), ..default() }, mirror));
         commands.insert_resource(Offscreen(image));
+    }
+}
+
+/// The render layer the offscreen image is shown to the window on.
+const MIRROR_LAYER: usize = 31;
+
+/// The sprite showing the offscreen image in the window.
+#[derive(Component)]
+struct OffscreenMirror;
+
+/// The mirror fills the window, whatever its size.
+fn fit_mirror(window: Single<&Window, With<PrimaryWindow>>, mut mirror: Query<&mut Sprite, With<OffscreenMirror>>) {
+    let size = Vec2::new(window.width(), window.height());
+    for mut s in &mut mirror {
+        if s.custom_size != Some(size) {
+            s.custom_size = Some(size);
+        }
     }
 }
 
