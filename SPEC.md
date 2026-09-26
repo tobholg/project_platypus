@@ -861,6 +861,26 @@ deaths (blood). Rendered as one dynamic mesh.
   and sets it alight (`elements::zapped`), as the sky's lightning does. It
   doesn't flare the air in its first 8 cells (the caster's hand). Into water
   (or anything that `charges`) it charges the pool (§3.12).
+- **Gravity wells** (`Carrier::Well`, `magic/well.rs`): channelled. Holding
+  the wand keeps one open at the cursor (paid `drain` mana a second; out of
+  mana, or let go, it drops everything). It follows the cursor on a spring
+  with a top speed and a most acceleration (its heft). Each tick it tries
+  `pull` random cells within its reach: powder, liquid and plants come
+  easily (more so nearer), solids up to its `strength` in hardness harder
+  the harder they are (`World::pluck`, then `loosen_fragments` so what they
+  held up falls). Held cells (up to `most`) each steer toward a place in a
+  spinning ball (sized by how many) with a limited `grip` (cells/s²): whip
+  the cursor and the outer ones can't follow; past 1.4 × the reach they fly
+  off as real cells with the speed they had. Released, all drop as cells
+  keeping their momentum. Bodies in reach (not the caster) are drawn in and
+  held floating, stunned; solid held cells grind any body they're inside
+  (by their speed through it). Held cells are drawn each frame in their own
+  colour, shimmering toward the well's.
+- **The distortion** (`magic/warp.rs`, `shaders/warp.wgsl`): a screen-space
+  pass (Bevy's fullscreen material, in `Core2d` post-processing) around the
+  fullest well: swirl and pinch inside 1.3 × its reach (stronger the more it
+  holds), a dark heart, a faint bright ring. Strength 0 leaves the picture
+  alone.
 - **Looks** (visual only): each rune may have a `look`: a `trail` (sparks a
   cell flown; a stream's come out of the wand with it) and a `burst`
   (sparks where it lands, off the surface it hit, or back along its way).

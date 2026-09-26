@@ -16,6 +16,8 @@
 //! A `Trigger` cast fires what's after it from where it lands.
 
 pub mod runes;
+pub mod warp;
+pub mod well;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -32,6 +34,7 @@ use crate::data::{Watched, data_path, load_ron};
 use crate::hands::items::{ItemId, Items, Use};
 use crate::light::LightSource;
 use crate::vfx::{Halo, Sparks};
+use well::Well;
 use crate::world::{SimWorld, TICK_HZ, TickSet};
 use runes::{Carrier, Cast, Payload, Runes, RunesFile};
 
@@ -126,11 +129,13 @@ impl Spellbook {
     }
 }
 
-/// Where a caster's wand is in its runes, and how long until it can cast.
+/// Where a caster's wand is in its runes, how long until it can cast, and
+/// the gravity well it's holding open.
 #[derive(Default)]
 struct WandState {
     next: usize,
     wait: f32,
+    well: Option<Entity>,
 }
 
 #[derive(Resource, Default)]
@@ -173,8 +178,9 @@ impl Plugin for MagicPlugin {
             .init_resource::<Wands>()
             .init_resource::<Firing>()
             .add_message::<CastRequest>()
-            .add_systems(Update, (reload_runes, give_mana, place_spells))
-            .add_systems(FixedUpdate, (recharge, request, fire, fly).chain().in_set(TickSet::Bodies).before(crate::actors::hurt::notice));
+            .add_plugins(bevy::core_pipeline::fullscreen_material::FullscreenMaterialPlugin::<warp::Warp>::default())
+            .add_systems(Update, (reload_runes, give_mana, place_spells, well::give_warp, well::show))
+            .add_systems(FixedUpdate, (recharge, request, fire, fly, well::channel).chain().in_set(TickSet::Bodies).before(crate::actors::hurt::notice));
     }
 }
 
@@ -208,7 +214,10 @@ fn recharge(mut wands: ResMut<Wands>, mut mana: Query<&mut Mana>) {
 }
 
 /// A wand ready to cast casts its next cast, if the caster has the mana.
+#[allow(clippy::too_many_arguments)]
 fn request(
+    mut commands: Commands,
+    mut wells: Query<&mut Well>,
     mut requests: MessageReader<CastRequest>,
     items: Option<Res<Items>>,
     mut book: ResMut<Spellbook>,
@@ -221,16 +230,44 @@ fn request(
         let Use::Cast { delay, recharge, .. } = &items.def(r.item).use_ else { continue };
         let casts = book.casts(&items, r.item);
         let w = wands.0.entry((r.caster, r.item)).or_default();
-        if casts.is_empty() || w.wait > 0.0 {
+        if casts.is_empty() {
             continue;
         }
         let cast = casts[w.next % casts.len()].clone();
+        // An open well stays open while it's held and paid for, a tick at a
+        // time (whatever the wand's recharge).
+        if let Carrier::Well { drain, .. } = cast.carrier
+            && let Some(e) = w.well
+        {
+            if let Ok(mut well) = wells.get_mut(e) {
+                let paid = mana.get_mut(r.caster).map_or(true, |mut m| {
+                    let ok = m.cur >= drain * DT;
+                    if ok {
+                        m.cur -= drain * DT;
+                    }
+                    ok
+                });
+                if paid {
+                    well.feed(r.toward);
+                }
+                continue;
+            }
+            w.well = None;
+        }
+        if w.wait > 0.0 {
+            continue;
+        }
         if let Ok(mut m) = mana.get_mut(r.caster) {
             let cost = cast.total_mana();
             if m.cur < cost {
                 continue;
             }
             m.cur -= cost;
+        }
+        if matches!(cast.carrier, Carrier::Well { .. }) {
+            w.well = well::spawn_well(&mut commands, cast.clone(), r.caster, r.toward);
+            w.wait = *recharge;
+            continue;
         }
         w.next = (w.next + 1) % casts.len();
         w.wait = if w.next == 0 { *recharge } else { *delay };
@@ -287,6 +324,8 @@ fn fire(
                     }
                 }
             }
+            // (Held open by `request`, run by `well::channel`.)
+            Carrier::Well { .. } => {}
             // (Its hurt is the sim's: `elements::zapped`.)
             &Carrier::Lightning { range, targets } => {
                 let mut ends = lightning_targets(&bodies, &f, range, targets as usize);

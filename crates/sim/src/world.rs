@@ -1313,6 +1313,18 @@ impl World {
         out
     }
 
+    /// Take a cell out of the playfield (a spell lifting it): it's gone from
+    /// the world and the caller holds it. After taking solids, call
+    /// `loosen_fragments` so what they held up falls.
+    pub fn pluck(&mut self, p: CellPos) -> Option<Cell> {
+        let c = self.get(p)?;
+        if c.is_air() {
+            return None;
+        }
+        self.set(p, Cell::AIR);
+        Some(c)
+    }
+
     /// Lightning down column `x`: strikes the first solid, liquid, plant or
     /// background (a tree) below the cloud base (or `from_y`), sets it alight
     /// and scorches it.

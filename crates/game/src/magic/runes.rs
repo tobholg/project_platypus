@@ -30,6 +30,12 @@ pub enum Carrier {
     /// The sky's lightning, from the wand: a bolt to up to `targets`
     /// creatures within `range` of the aim (or the aim itself).
     Lightning { range: f32, targets: u8 },
+    /// A gravity well at the cursor while the wand is held (`well.rs`):
+    /// pulls in what's loose within `radius` and tears out solids up to
+    /// `strength` hardness (`pull` tries a tick), holds up to `most` cells
+    /// in a spinning ball with `grip` (cells/s², how hard it can swing
+    /// them), costs `drain` mana a second.
+    Well { radius: f32, strength: u8, pull: u32, most: u32, grip: f32, drain: f32 },
 }
 
 /// What a spell does where it lands (or what it hits).

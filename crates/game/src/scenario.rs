@@ -43,6 +43,10 @@
 //! - `shock`      a pool dug beside the player (flat world), two orcs in its
 //!   far end at 3.5 s, lightning at them at 3.9 s: logs the zap and their
 //!   health
+//! - `well`       (flat world) two orcs to the right at 1 s; the gravity wand
+//!   (hotbar 2) held on the ground ahead from 1.5 s, lifting it; the ball
+//!   carried up (3 s), whipped left and back (4–4.6 s: some flies off),
+//!   held over the orcs and let go at 6 s; logs what it holds and the orcs
 //! - `inventory`  opens the inventory screen (Esc) at 1 s, switches to the
 //!   second hotbar (X) at 1.5 s, hovers the spark wand at 2 s (its tooltip;
 //!   this moves the real mouse pointer), drags it to hotbar 3 at 2.6–3 s;
@@ -88,7 +92,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -1050,5 +1054,60 @@ fn inventory_script(
             *step = 7;
         }
         _ => {}
+    }
+}
+
+/// The gravity wand through real input (see the module notes).
+#[allow(clippy::too_many_arguments)]
+fn well_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut commands: Commands,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    orcs: Query<(&Kinematics, &crate::actors::Health), Others>,
+    wells: Query<&crate::magic::well::Well>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, f32, Option<Vec2>)>,
+) {
+    if s.name != "well" {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    let t = s.elapsed;
+    keys.release(KeyCode::KeyX);
+    keys.release(KeyCode::Digit2);
+    let home = *state.2.get_or_insert(k.body.pos);
+    if state.0 == 0 && t > 1.0 {
+        for dx in [70, 85] {
+            let x = home.x as i32 + dx;
+            if let Some(y) = find_ground(&sim.world, x, home.y as i32 + 60, 200) {
+                crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(x as f32, y as f32), |_| {});
+            }
+        }
+        // The second hotbar, its second slot: the gravity wand.
+        keys.press(KeyCode::KeyX);
+        keys.press(KeyCode::Digit2);
+        state.0 = 1;
+    }
+    let lerp = |a: Vec2, b: Vec2, f: f32| a.lerp(b, f.clamp(0.0, 1.0));
+    let (ground, up, left, over) = (home + Vec2::new(35.0, -6.0), home + Vec2::new(35.0, 45.0), home + Vec2::new(-70.0, 45.0), home + Vec2::new(78.0, 40.0));
+    let aim = match t {
+        t if t < 1.5 => None,
+        t if t < 3.0 => Some(ground),
+        t if t < 4.0 => Some(lerp(ground, up, (t - 3.0) / 0.6)),
+        t if t < 4.3 => Some(lerp(up, left, (t - 4.0) / 0.3)),
+        t if t < 4.6 => Some(lerp(left, up, (t - 4.3) / 0.3)),
+        t if t < 6.0 => Some(lerp(up, over, (t - 4.6) / 0.8)),
+        _ => None,
+    };
+    cursor.0 = aim.or(Some(home + Vec2::new(30.0, 20.0)));
+    if aim.is_some() { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    if t >= state.1 {
+        state.1 = (t * 2.0).floor() / 2.0 + 0.5;
+        let held: Vec<usize> = wells.iter().map(|w| w.holding()).collect();
+        let hp: Vec<String> = orcs.iter().filter(|(o, _)| o.body.pos.x > home.x + 40.0).map(|(_, h)| format!("{:.0}", h.hp)).collect();
+        info!("well: t {t:.1} holding {held:?} orcs [{}] particles {}", hp.join(", "), sim.world.particles().len());
     }
 }

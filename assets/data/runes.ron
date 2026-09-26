@@ -6,7 +6,11 @@
 // mana: cost a cast · color: its glow (the projectile and its light; a cast
 // takes its last payload's)
 // Carrier(Bolt(speed, life) | Orb(speed, life, bounces)
-//         | Stream(material, rate, speed, spread, burning) | Lightning(range, targets))
+//         | Stream(material, rate, speed, spread, burning) | Lightning(range, targets)
+//         | Well(radius, strength, pull, most, grip, drain)): a well is held open at
+//         the cursor while the wand is: pulls in the loose, tears out solids up to
+//         `strength` hardness (`pull` tries a tick), holds up to `most` cells in a
+//         spinning ball with `grip` cells/s², costs `drain` mana a second)
 // Payload(Damage(hp) | Blast(radius, power) | Heat(radius, amount °C)
 //         | Ignite(radius) | Matter(material, cells))
 // Modifier(Gravity(k) | Trail(material, burning) | Shed(material, cells, burning)
@@ -32,6 +36,10 @@
             look: (trail: (count: 4, life: (0.12, 0.3), colors: [(255, 250, 210), (255, 200, 70), (255, 110, 30), (160, 40, 20)], speed: 190, spread: 0.18, gravity: -60, drag: 2.5, size: 1.5, glow: true))),
         (id: "lightning", name: "Lightning", mana: 25, color: (200, 220, 255), kind: Carrier(Lightning(range: 180, targets: 3)),
             look: (burst: (count: 26, life: (0.1, 0.35), colors: [(255, 255, 255), (170, 200, 255), (70, 110, 255)], speed: 110, drag: 5, jitter: 90, glow: true))),
+
+        (id: "gravity_well", name: "Gravity well", mana: 8, color: (150, 110, 255),
+            kind: Carrier(Well(radius: 22, strength: 70, pull: 45, most: 1400, grip: 1800, drain: 40)),
+            look: (trail: (count: 3, life: (0.3, 0.8), colors: [(220, 205, 255), (140, 100, 240), (50, 30, 100)], speed: 60, drag: 1, glow: true))),
 
         // ---- payloads ----
         (id: "spark", name: "Spark", mana: 1, color: (190, 210, 255), kind: Payload(Damage(14)),

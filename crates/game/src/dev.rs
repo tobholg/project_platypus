@@ -53,8 +53,10 @@ impl Plugin for DevPlugin {
     }
 }
 
-fn pointer_over_ui(ui: Query<&Interaction>, mut over: ResMut<PointerOverUi>) {
-    over.0 = ui.iter().any(|i| *i != Interaction::None);
+fn pointer_over_ui(ui: Query<&Interaction>, scripted: Res<crate::camera::CursorOverride>, mut over: ResMut<PointerOverUi>) {
+    // (A scenario aiming its own cursor isn't pointing at the UI, wherever
+    // the real mouse pointer happens to rest.)
+    over.0 = scripted.0.is_none() && ui.iter().any(|i| *i != Interaction::None);
 }
 
 fn keys(keys: Res<ButtonInput<KeyCode>>, dev: Res<DevTools>, cursor: Res<CursorWorld>, mut out: MessageWriter<DevAction>) {

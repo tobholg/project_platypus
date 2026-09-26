@@ -43,16 +43,23 @@ struct Spark {
 #[derive(Resource)]
 pub struct Sparks {
     live: Vec<Spark>,
+    /// Drawn this frame only (a well's held cells): where, how big, colour.
+    now: Vec<([f32; 2], f32, [f32; 4])>,
     rng: Rng,
 }
 
 impl Default for Sparks {
     fn default() -> Self {
-        Sparks { live: Vec::new(), rng: Rng::seeded(&[0x5EA4]) }
+        Sparks { live: Vec::new(), now: Vec::new(), rng: Rng::seeded(&[0x5EA4]) }
     }
 }
 
 impl Sparks {
+    /// A square drawn this frame only.
+    pub fn draw_now(&mut self, at: Vec2, size: f32, rgba: [f32; 4]) {
+        self.now.push(([at.x, at.y], size, rgba));
+    }
+
     /// `n` sparks of an emitter at `at`, heading `dir` (± its spread),
     /// moving with `carry` besides (a trail keeps some of its spell's speed).
     pub fn emit(&mut self, e: &Emitter, n: usize, at: Vec2, dir: Vec2, carry: Vec2) {
@@ -174,9 +181,11 @@ fn color_of(s: &Spark) -> [f32; 4] {
     [rgb[0], rgb[1], rgb[2], alpha]
 }
 
-fn draw_sparks(mut commands: Commands, sparks: Res<Sparks>, mut set: ResMut<SparkMeshes>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<ColorMaterial>>) {
-    // A glowing spark is two quads (its halo, then it).
-    let mut quads: Vec<([f32; 2], f32, [f32; 4])> = Vec::with_capacity(sparks.live.len() * 2);
+fn draw_sparks(mut commands: Commands, mut sparks: ResMut<Sparks>, mut set: ResMut<SparkMeshes>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<ColorMaterial>>) {
+    // A glowing spark is two quads (its halo, then it); this frame's own
+    // squares go first.
+    let mut quads: Vec<([f32; 2], f32, [f32; 4])> = std::mem::take(&mut sparks.now);
+    quads.reserve(sparks.live.len() * 2);
     for s in &sparks.live {
         let c = color_of(s);
         if s.glow {
