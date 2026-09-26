@@ -313,8 +313,9 @@ a stat is naming it once (`gear/stats.rs`) and reading it where it acts.
   Light (cloth: mages; mana regen), Medium (leather: rangers), Heavy (mail
   and plate: warriors; armour and poise, at a cost in stamina and mana regen
   and a little speed). A battle-mage is possible, and paid for.
-- **Slots:** worn: head, body, hands, legs, feet, two trinkets. Held: the
-  hotbar item in the hand counts while it's there (weapons, tools, foci).
+- **Slots:** worn: head, body, hands, legs, feet, two trinkets, a hook.
+  Held: the hotbar item in the hand counts while it's there (weapons, tools,
+  foci).
 - **Stats** add up from everything worn and held (`Stats`): armour
   (`armor / (armor + 50)` of physical hurt stopped), health, poise,
   fire / frost / storm / acid / fall resistance, damage, attack speed, crit
@@ -340,6 +341,20 @@ a stat is naming it once (`gear/stats.rs`) and reading it where it acts.
   roll theirs from their element's; each has an aura (see §7b).
 - **Enemies wear gear** from their loot tables, and what they wear is what
   they drop.
+- **Gear that moves you:** boots with a trick (rocket boots: hold jump in the
+  air to thrust up, their exhaust real fire; cloud boots: air jumps), and a
+  **grappling hook** in its own slot, used with E whatever is in the hand. It
+  is Worms' ninja rope more than Terraria's hook: thrown at the cursor, it
+  takes hold of what it meets (a solid cell or a platform, a chest or a
+  body, a creature). From something that stays put you swing (A/D pumps the
+  swing and never brakes it; W climbs, S lets rope out, holding E reels in;
+  jump lets go with your speed kept); the rope wraps round corners and
+  unwraps swinging back; the cell it holds holds only while it's solid (dig
+  it, blast it, and the rope comes loose). Something smaller than you (a
+  chest, a body, a small creature) is leashed instead, and reeling pulls it
+  to you. The rope is a constraint on the body (`physics::tether`), drawn a
+  cell at a time; a hook's reach, reel, speed, bite and look are data
+  (`hook` in gear.ron).
 - Not now: durability and repair, coins and merchants.
 
 Build order (a commit each): stats + equipment → skins → rarity and bonuses

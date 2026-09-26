@@ -26,6 +26,7 @@
             (item: "block:ruby", weight: 2, count: (1, 2)),
             (item: "iron_pickaxe", weight: 6, count: (1, 1)),
             (item: "gold_pickaxe", weight: 3, count: (1, 1)),
+            (item: "chain_hook", weight: 2, count: (1, 1)),
             (item: "leather_cap", weight: 4, count: (1, 1)),
             (item: "leather_boots", weight: 4, count: (1, 1)),
             (item: "ring_of_vigour", weight: 2, count: (1, 1)),
@@ -50,6 +51,7 @@
             (item: "frost_wand", weight: 2, count: (1, 1)),
             (item: "storm_wand", weight: 2, count: (1, 1)),
             (item: "acid_wand", weight: 2, count: (1, 1)),
+            (item: "grappling_hook", weight: 3, count: (1, 1)),
         ]),
         (name: "caverns", deeper_than: 2500, rolls: (3, 5), entries: [
             (item: "torch", weight: 25, count: (6, 14)),
@@ -148,6 +150,7 @@
             (item: "nothing", weight: 16, count: (1, 1)),
             (item: "silk_gloves", weight: 4, count: (1, 1)),
             (item: "feather_boots", weight: 1, count: (1, 1)),
+            (item: "silk_line", weight: 1, count: (1, 1)),
             (item: "broodmother_fang", weight: 1, count: (1, 1)),
         ]),
         (name: "vampire_bat", rolls: (0, 1), entries: [

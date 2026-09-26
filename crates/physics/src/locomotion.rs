@@ -26,10 +26,48 @@ pub struct Intent {
     /// player's cursor); it faces it. Zero: not aiming (faces the way it
     /// moves).
     pub aim: Vec2,
+    /// Its grappling hook's button (held): a press throws it, holding reels
+    /// in.
+    pub hook: bool,
 }
 
 /// How hard a climber presses into what it holds on to (cells/s).
 const CLING_PRESS: f32 = 30.0;
+
+/// On a rope, steering pushes at this share of air acceleration, while
+/// it's going slower than this many times run speed that way.
+const SWING_PUMP: f32 = 0.4;
+const SWING_PUMP_MAX: f32 = 3.0;
+
+/// Fastest a rope lets a body go (cells/s).
+const TETHER_MAX: f32 = 900.0;
+
+/// A rope from `at`, `len` long, holding a body at its other end: it goes
+/// round `at` or toward it, never further. Speed outward is taken away (the
+/// swing kept); where it would end up past the rope's end it's pulled back
+/// onto it (a shortening rope, reeling in, pulls it). Returns whether the
+/// rope is taut. Call after `steer`, before `move_and_collide`.
+pub fn tether(body: &mut Body, at: Vec2, len: f32, dt: f32) -> bool {
+    let r = body.pos - at;
+    let d = r.length();
+    let next = body.pos + body.vel * dt - at;
+    if d < len && next.length() <= len {
+        return false;
+    }
+    let n = if d > 1e-4 { r / d } else { Vec2::NEG_Y };
+    let out = body.vel.dot(n);
+    if out > 0.0 {
+        body.vel -= n * out;
+    }
+    let next = body.pos + body.vel * dt - at;
+    let nd = next.length();
+    if nd > len && nd > 1e-4 {
+        let onto = at + next / nd * len;
+        body.vel = (onto - body.pos) / dt;
+    }
+    body.vel = body.vel.clamp_length_max(TETHER_MAX);
+    true
+}
 
 /// Below this share of its body under water (its head out), a jump leaves
 /// the water as a jump does, at this share of a jump's speed.
@@ -198,6 +236,9 @@ pub struct Locomotion {
     stroke_left: f32,
     /// Rocket boots' fuel left (seconds).
     pub rocket_left: f32,
+    /// Hanging from a rope (set before each `steer`): in the air it keeps
+    /// its swing (air control pumps it, never brakes it).
+    pub swinging: bool,
     /// Last tick's contacts, so brains and animation can read them.
     pub contacts: Contacts,
 }
@@ -221,6 +262,7 @@ impl Default for Locomotion {
             prev_dash: false,
             stroke_left: 0.0,
             rocket_left: 0.0,
+            swinging: false,
             cling: None,
             contacts: Contacts::default(),
         }
@@ -269,6 +311,23 @@ impl Locomotion {
 
     pub fn is_dashing(&self) -> bool {
         self.state == MoveState::Dash
+    }
+
+    /// Is jump pressed this tick (held now, not last tick)?
+    pub fn jump_pressed(&self, intent: &Intent) -> bool {
+        intent.jump && !self.prev_jump
+    }
+
+    /// Jump off something that isn't the ground (letting go of a rope): at
+    /// least `share` of a jump's speed up, whatever it had kept; the press
+    /// is spent (no air jump from it too), and letting go of the button
+    /// doesn't cut the rise (it's momentum, not a jump).
+    pub fn leap(&mut self, s: &MovementStats, intent: &Intent, body: &mut Body, share: f32) {
+        body.vel.y = body.vel.y.max(s.jump_speed() * share);
+        self.prev_jump = intent.jump;
+        self.buffer = 0.0;
+        self.rising_from_jump = false;
+        self.state = MoveState::Air;
     }
 
     /// Apply one tick of intent to `body.vel`. Call before `move_and_collide`,
@@ -401,7 +460,16 @@ impl Locomotion {
         } else {
             s.air_accel
         };
-        body.vel.x = approach(body.vel.x, target, accel * dt);
+        if self.swinging && !grounded {
+            // On a rope: steering pumps the swing (up to a few times run
+            // speed); nothing brakes it.
+            let push = intent.move_x.clamp(-1.0, 1.0);
+            if push != 0.0 && body.vel.x * push < s.run_speed * SWING_PUMP_MAX {
+                body.vel.x += push * s.air_accel * SWING_PUMP * dt;
+            }
+        } else {
+            body.vel.x = approach(body.vel.x, target, accel * dt);
+        }
 
         // Wall slide.
         let wall_dir = if self.contacts.wall_left { -1.0 } else if self.contacts.wall_right { 1.0 } else { 0.0 };
@@ -609,6 +677,36 @@ mod tests {
         assert!(l2.rocket_left <= 0.0, "the fuel ran out (80 ticks in, still up)");
         settle(&g, &s, &mut l2, &mut b2);
         assert!((l2.rocket_left - 1.0).abs() < 1e-3, "landing refills it");
+    }
+
+    /// A body on a rope swings down and up the other side nearly as high
+    /// as it started (the rope keeps its speed), and never past the rope's
+    /// length; swinging, air control doesn't brake it.
+    #[test]
+    fn a_rope_swings_and_holds() {
+        let mut rows = vec!["#                                                                                                                                                                                                      #"; 200];
+        rows.push("########################################################################################################################################################################################################");
+        let g = Ascii::new(&rows);
+        let (s, mut l, _) = player();
+        let at = Vec2::new(100.0, 150.0);
+        let mut b = Body::new(at + Vec2::new(-60.0, 0.0), Vec2::new(8.0, 16.0));
+        l.swinging = true;
+        let (mut top_right, mut far) = (f32::MIN, 0.0f32);
+        let mut crossed = false;
+        for _ in 0..240 {
+            l.steer(&s, &Intent::default(), &mut b, DT);
+            tether(&mut b, at, 60.0, DT);
+            let c = move_and_collide(&g, &mut b, DT);
+            l.after_move(c);
+            far = far.max(b.pos.distance(at));
+            if b.pos.x > at.x {
+                crossed = true;
+                top_right = top_right.max(b.pos.y);
+            }
+        }
+        assert!(crossed, "it swung through");
+        assert!(far < 61.5, "held at the rope's length: {far}");
+        assert!(top_right > at.y - 12.0, "it swung up the far side to {top_right} (from {})", at.y);
     }
 
     #[test]

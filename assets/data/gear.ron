@@ -192,6 +192,20 @@
             look: (recolor: [(colors: { 'B': (236, 236, 246), 'C': (190, 190, 206) })])),
             about: "Light as down: a jump in the air, and a softer landing."),
 
+        // ---- grappling hooks (the Hook slot; E) ----
+        // hook: its rope. `length` cells it reaches, `reel` cells/s holding E
+        // reels in, `speed` cells/s it flies out, `damage` to a creature it
+        // bites into; `rope` its colour, `links`: a chain.
+        (id: "grappling_hook", name: "Grappling hook", color: (176, 140, 90),
+            gear: (slot: Hook, hook: (length: 120, reel: 240, speed: 800, rope: (176, 140, 90))),
+            about: "E: throw it; swing on it. Hold E to reel in, W/S to climb, jump to let go."),
+        (id: "chain_hook", name: "Chain hook", color: (160, 162, 172),
+            gear: (slot: Hook, stats: { Armor: 1 }, hook: (length: 170, reel: 330, speed: 1000, damage: 8, rope: (160, 162, 172), links: true)),
+            about: "A longer reach, a faster reel, and a bite."),
+        (id: "silk_line", name: "Silk line", color: (236, 236, 244),
+            gear: (slot: Hook, hook: (length: 230, reel: 280, speed: 1200, damage: 2, rope: (236, 236, 244))),
+            about: "Spider silk: light, and very long."),
+
         // ---- trinkets ----
         (id: "ring_of_vigour", name: "Ring of vigour", color: (220, 60, 60),
             gear: (slot: Trinket, stats: { Health: 20, StaminaRegen: 10 })),

@@ -255,9 +255,9 @@ impl Grid for WorldGrid<'_> {
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 
 /// One movement code path for every creature.
-type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, Option<&'a elements::Chilled>, Option<&'a mut FallTrack>, Has<WebWalker>);
+type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, Option<&'a elements::Chilled>, Option<&'a mut FallTrack>, Has<WebWalker>, Option<&'a crate::gear::hook::Rope>);
 
-fn move_creatures(
+pub(crate) fn move_creatures(
     sim: Res<SimWorld>,
     mut q: Query<Movers>,
     mut landed: MessageWriter<Landed>,
@@ -266,7 +266,7 @@ fn move_creatures(
     mut dashed: MessageWriter<crate::combat::Dashed>,
 ) {
     let grid = WorldGrid(&sim.world);
-    for (entity, mut k, stats, controls, chilled, track, web_walker) in &mut q {
+    for (entity, mut k, stats, controls, chilled, track, web_walker, rope) in &mut q {
         // Frozen until the ground under it is loaded.
         if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
             continue;
@@ -283,7 +283,13 @@ fn move_creatures(
         } else {
             &stats.0
         };
+        // Hanging from a grappling hook's rope: it swings (`gear::hook`).
+        let tether = rope.and_then(|r| r.tether());
+        k.loco.swinging = tether.is_some();
         let ev = k.loco.steer(stats, &controls.0, &mut k.body, DT);
+        if let Some((at, len)) = tether {
+            platypus_physics::tether(&mut k.body, at, len, DT);
+        }
         if ev.dashed {
             dashed.write(crate::combat::Dashed(entity));
         }
@@ -295,7 +301,8 @@ fn move_creatures(
         }
         // A jump off air or a wall starts the fall over (a double jump just
         // before landing saves you, as in Terraria).
-        let rejumped = ev.air_jumped || ev.wall_jumped;
+        // (So does hanging from a rope.)
+        let rejumped = ev.air_jumped || ev.wall_jumped || tether.is_some();
         let before = k.body.vel;
         let contacts = move_and_collide(&grid, &mut k.body, DT);
         // Slammed into a wall or a ceiling (flung by a spell, a blast): an
@@ -490,7 +497,7 @@ fn deaths(
 
 /// Render between the last two ticks so 120 Hz displays stay smooth.
 /// (Paused, as the arena pauses to step a tick at a time: where it is now.)
-fn interpolate(time: Res<Time<Fixed>>, virt: Res<Time<Virtual>>, mut q: Query<(&Kinematics, &mut Transform)>) {
+pub(crate) fn interpolate(time: Res<Time<Fixed>>, virt: Res<Time<Virtual>>, mut q: Query<(&Kinematics, &mut Transform)>) {
     let a = if virt.is_paused() { 1.0 } else { time.overstep_fraction() };
     for (k, mut tf) in &mut q {
         let p = k.prev_pos.lerp(k.body.pos, a);

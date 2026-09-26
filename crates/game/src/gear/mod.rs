@@ -4,7 +4,7 @@
 //! `items.ron`. Every creature has `Equipment` (the humanoids wear it; any
 //! holds what's in its hand) and the `Stats` it adds up to:
 //!
-//! - worn: head, body, hands, legs, feet and two trinkets;
+//! - worn: head, body, hands, legs, feet, two trinkets and a grappling hook;
 //! - held: whatever's in the hand, while it's there (a sword's damage, a
 //!   staff's spell power);
 //! - each piece gives its own stats, and its armour's weight some more
@@ -15,6 +15,7 @@
 //! and movement. Combat and magic read the rest where they happen.
 
 pub mod boots;
+pub mod hook;
 pub mod look;
 pub mod roll;
 pub mod stats;
@@ -42,6 +43,8 @@ pub enum Slot {
     Feet,
     /// Rings, amulets, charms: two may be worn.
     Trinket,
+    /// A grappling hook (`hook.rs`), on the belt.
+    Hook,
     /// In the hand (the hotbar slot in use): weapons, tools, foci.
     Held,
 }
@@ -55,13 +58,14 @@ impl Slot {
             Slot::Legs => "Legs",
             Slot::Feet => "Feet",
             Slot::Trinket => "Trinket",
+            Slot::Hook => "Hook",
             Slot::Held => "Held",
         }
     }
 }
 
 /// The worn slots, in order (what `Equipment::worn` holds).
-pub const WORN: [Slot; 7] = [Slot::Head, Slot::Body, Slot::Hands, Slot::Legs, Slot::Feet, Slot::Trinket, Slot::Trinket];
+pub const WORN: [Slot; 8] = [Slot::Head, Slot::Body, Slot::Hands, Slot::Legs, Slot::Feet, Slot::Trinket, Slot::Trinket, Slot::Hook];
 
 /// How heavy a piece of armour is: what kind of fighter wears it. Its
 /// weight's stats (gear.ron `weights`) come with every piece.
@@ -100,6 +104,9 @@ pub struct GearDef {
     /// thrusts up (`boots.rs`).
     #[serde(default)]
     pub rocket: Option<RocketDef>,
+    /// A grappling hook's rope (`hook.rs`).
+    #[serde(default)]
+    pub hook: Option<hook::HookDef>,
 }
 
 /// Rocket boots: `time` s of thrust (refilled on landing), `thrust`
@@ -237,7 +244,9 @@ impl Plugin for GearPlugin {
         app.insert_resource(GearRules { weights: file.weights, rarities: file.rarities, bonuses: file.bonuses })
             .init_resource::<look::Wardrobe>()
             .add_systems(Update, (outfit, apply, look::dress).chain().after(crate::actors::creature::hot_reload_creatures))
-            .add_systems(FixedUpdate, boots::exhaust.in_set(crate::world::TickSet::Bodies));
+            .init_resource::<hook::RopeCanvas>()
+            .add_systems(FixedUpdate, (boots::exhaust.in_set(crate::world::TickSet::Bodies), hook::rope.in_set(crate::world::TickSet::Bodies).before(crate::actors::move_creatures)))
+            .add_systems(PostUpdate, hook::draw.after(crate::actors::interpolate).before(bevy::transform::TransformSystems::Propagate));
     }
 }
 
