@@ -259,8 +259,13 @@ fn collect_flashes(
     mut blasts: MessageReader<Explosion>,
     mut bolts: MessageReader<Lightning>,
     mut zaps: MessageReader<crate::fx::Zapped>,
+    mut puffs: MessageReader<crate::actors::AirJumped>,
     mut flashes: ResMut<Flashes>,
 ) {
+    // A double jump's cloud glows a moment (it shows in the dark).
+    for j in puffs.read() {
+        flashes.0.push(Flash { at: j.at, color: [0.5, 0.6, 0.85], age: 0.0, life: 0.45 });
+    }
     for e in blasts.read() {
         let k = (e.radius / 20.0).min(2.0);
         flashes.0.push(Flash { at: e.at, color: [1.3 * k, 0.95 * k, 0.55 * k], age: 0.0, life: 0.45 });

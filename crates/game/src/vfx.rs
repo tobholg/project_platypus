@@ -118,7 +118,7 @@ impl Plugin for VfxPlugin {
         app.init_resource::<Sparks>()
             .init_resource::<SparkMeshes>()
             .add_systems(Startup, make_halo)
-            .add_systems(Update, step_sparks)
+            .add_systems(Update, (step_sparks, air_puffs))
             .add_systems(PostUpdate, draw_sparks);
     }
 }
@@ -239,3 +239,39 @@ fn fill(mesh: &mut Mesh, quads: &[([f32; 2], f32, [f32; 4])]) {
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, col);
     mesh.insert_indices(Indices::U32(idx));
 }
+
+/// A double jump's cloud: a soft puff spreading out and down under the
+/// feet, and a ring of glowing motes (it lights the dark a moment, `light`).
+fn air_puffs(mut jumps: MessageReader<crate::actors::AirJumped>, mut sparks: ResMut<Sparks>) {
+    for j in jumps.read() {
+        sparks.emit(&PUFF, PUFF.count as usize, j.at, Vec2::NEG_Y, Vec2::ZERO);
+        sparks.emit(&PUFF_RING, PUFF_RING.count as usize, j.at, Vec2::X, Vec2::ZERO);
+        sparks.emit(&PUFF_RING, PUFF_RING.count as usize, j.at, Vec2::NEG_X, Vec2::ZERO);
+    }
+}
+
+static PUFF: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter {
+    count: 30.0,
+    life: (0.3, 0.75),
+    colors: vec![(255, 255, 255), (220, 232, 255), (160, 180, 225)],
+    speed: 95.0,
+    spread: 1.45,
+    gravity: -30.0,
+    drag: 5.0,
+    size: 1.5,
+    jitter: 8.0,
+    glow: false,
+});
+
+static PUFF_RING: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter {
+    count: 8.0,
+    life: (0.25, 0.5),
+    colors: vec![(235, 245, 255), (150, 190, 255)],
+    speed: 130.0,
+    spread: 0.3,
+    gravity: -10.0,
+    drag: 6.0,
+    size: 1.0,
+    jitter: 0.0,
+    glow: true,
+});

@@ -753,6 +753,9 @@ deaths (blood). Rendered as one dynamic mesh.
   third, an optional faint halo 3× their size. What spells look like is
   data (6.1, `look`). A soft round `Halo` image (tinted by the sprite) is
   what spells glow in.
+- **Air jumps** (`actors::AirJumped`) puff a small cloud under the feet
+  (sparks) and flash a soft blue light, so they show in the dark. The player
+  has 3 while developing; later gear gives them (a cloud in a bottle).
 - **Hurt** (`actors/hurt.rs`): anything with `Health` that loses 2 or more
   in a tick flashes red for 0.12 s and, if it bleeds (`blood` in its RON,
   default `blood`), sprays 1.2 cells of it a point lost (at most 70); a
@@ -959,7 +962,8 @@ deaths (blood). Rendered as one dynamic mesh.
   style (speed saturates at max fall within ~50 cells, so it couldn't tell
   a double jump from a cliff): falling further than `safe_height` cells
   from the highest point since it last stood on something (or was in
-  water) hurts `per_cell` a cell over (player 100 and 0.6: a double jump
+  water, or jumped off air or a wall: a double jump just before landing
+  saves you) hurts `per_cell` a cell over (player 100 and 0.6: a double jump
   never hurts; orc 70 and 0.8); slamming into a wall or ceiling faster
   than `slam_speed` (450 cells/s: flung, not walking or dashing) hurts
   `per_speed` (0.25) per cell/s over.

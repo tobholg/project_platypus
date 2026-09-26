@@ -28,6 +28,7 @@ pub struct ActorsPlugin;
 impl Plugin for ActorsPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<Landed>()
+            .add_message::<AirJumped>()
             .add_plugins((creature::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, animation::AnimationPlugin))
             .add_plugins((player::PlayerPlugin, ai::AiPlugin))
             .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, hurt::notice, deaths).chain().in_set(TickSet::Bodies))
@@ -109,6 +110,13 @@ pub struct FallTrack {
 /// into a wall).
 const SLAM_MIN: f32 = 150.0;
 
+/// A body jumped off thin air (a double jump) with its feet at `at`: a puff
+/// of cloud there (`vfx`), a soft flash of light (`light`).
+#[derive(Message, Clone, Copy, Debug)]
+pub struct AirJumped {
+    pub at: Vec2,
+}
+
 /// A body landed after falling `drop` cells, or slammed into a wall or
 /// ceiling at `slam` cells/s: fall damage reads it.
 #[derive(Message, Clone, Copy, Debug)]
@@ -147,6 +155,7 @@ fn move_creatures(
     sim: Res<SimWorld>,
     mut q: Query<Movers>,
     mut landed: MessageWriter<Landed>,
+    mut air: MessageWriter<AirJumped>,
 ) {
     let grid = WorldGrid(&sim.world);
     for (entity, mut k, stats, controls, chilled, track) in &mut q {
@@ -164,7 +173,13 @@ fn move_creatures(
             }
             None => &stats.0,
         };
-        k.loco.steer(stats, &controls.0, &mut k.body, DT);
+        let ev = k.loco.steer(stats, &controls.0, &mut k.body, DT);
+        if ev.air_jumped {
+            air.write(AirJumped { at: k.body.pos - Vec2::new(0.0, k.body.half.y) });
+        }
+        // A jump off air or a wall starts the fall over (a double jump just
+        // before landing saves you, as in Terraria).
+        let rejumped = ev.air_jumped || ev.wall_jumped;
         let before = k.body.vel;
         let contacts = move_and_collide(&grid, &mut k.body, DT);
         // Slammed into a wall or a ceiling (flung by a spell, a blast): an
@@ -174,6 +189,9 @@ fn move_creatures(
         let slam = walled.max(roofed);
         let y = k.body.pos.y;
         let drop = track.map_or(0.0, |mut t| {
+            if rejumped {
+                t.top = None;
+            }
             let top = t.top.unwrap_or(y).max(y);
             // (Standing on something, or in water: the fall starts over.)
             t.top = if contacts.ground || contacts.submerged > 0.5 { None } else { Some(top) };

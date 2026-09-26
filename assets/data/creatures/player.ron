@@ -19,7 +19,9 @@
         jump_cut: 0.45,
         coyote_time: 0.09,
         jump_buffer: 0.12,
-        air_jumps: 1,
+        // Three while developing (exploring); later gear gives them (a cloud
+        // in a bottle).
+        air_jumps: 3,
         dash_speed: 260,
         dash_time: 0.14,
         dash_cooldown: 0.45,

@@ -63,6 +63,10 @@
 //!   (7 s: alight), frost onto the pool (8.5 s: ice); logs water, steam,
 //!   ice, oil and burning (`RUST_LOG=warn,platypus::magic=debug` traces the
 //!   spells)
+//! - `airjump`    lifts the player 160 cells at 1 s; it falls and air jumps
+//!   (a cloud) just above the ground: no fall damage (`PLATYPUS_NOSAVE=1`:
+//!   no air jump, it hurts; `PLATYPUS_NIGHT=1`: at night); logs height and
+//!   health
 //! - `inventory`  opens the inventory screen (Esc) at 1 s, switches to the
 //!   second hotbar (X) at 1.5 s, hovers the spark wand at 2 s (its tooltip;
 //!   this moves the real mouse pointer), drags it to hotbar 3 at 2.6–3 s;
@@ -108,7 +112,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -1329,5 +1333,47 @@ fn splash_script(
         let burning: usize = sim.world.chunks().map(|c| c.cells().iter().filter(|c| c.flags & platypus_sim::cell::flags::BURNING != 0).count()).sum();
         let flying = sim.world.particles().iter().filter(|p| p.cell.material == water).count();
         info!("splash: t {t:.1} water {} (+{flying} flying) steam {} ice {} oil {} burning {burning}", count("water"), count("steam"), count("ice"), count("oil"));
+    }
+}
+
+/// A long fall, saved (or not) by an air jump just above the ground; and
+/// air jumps chained up (see the module notes).
+fn airjump_script(
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &crate::actors::Health), With<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut state: Local<(Option<f32>, f32, u8, f32)>,
+    mut day: ResMut<crate::light::Daylight>,
+) {
+    if s.name != "airjump" {
+        return;
+    }
+    // PLATYPUS_NIGHT=1: at 23:00 (the cloud's glow in the dark).
+    if std::env::var("PLATYPUS_NIGHT").is_ok_and(|v| !v.is_empty()) && state.0.is_none() {
+        day.skipped = (23.0 - day.time * 24.0).rem_euclid(24.0);
+    }
+    let Ok((mut k, h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let ground = *state.0.get_or_insert(k.body.pos.y);
+    // PLATYPUS_NOSAVE=1: no air jump before landing (it should hurt).
+    let nosave = std::env::var("PLATYPUS_NOSAVE").is_ok_and(|v| !v.is_empty());
+    // Lifted 160 cells up at 1 s: a fall well past the safe height.
+    if state.2 == 0 && t > 1.0 {
+        k.body.pos.y += 160.0;
+        k.prev_pos = k.body.pos;
+        k.body.vel = Vec2::ZERO;
+        state.2 = 1;
+    }
+    let low = k.body.pos.y - ground < 14.0;
+    let save = !nosave && state.2 == 1 && k.body.vel.y < 0.0 && low;
+    if save {
+        state.2 = 2;
+        state.3 = t;
+    }
+    let hold = state.2 == 2 && t - state.3 < 0.2;
+    if hold { keys.press(KeyCode::Space) } else { keys.release(KeyCode::Space) }
+    if t >= state.1 {
+        state.1 = (t * 4.0).floor() / 4.0 + 0.25;
+        info!("airjump: t {t:.2} height {:+.0} hp {:.0}{}", k.body.pos.y - ground, h.hp, if state.2 == 2 { " (saved)" } else { "" });
     }
 }
