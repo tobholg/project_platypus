@@ -75,6 +75,10 @@
 //!   three pixels (9, 14–16) of the first thing in the first file in one stroke with
 //!   the real pointer (a pose paints its first layer's part), logs what
 //!   changed on disk; Ctrl+Z; logs whether the file is back as it was
+//! - `archery`    (`PLATYPUS_WORLD=arena`) the bow (hotbar 2, slot 9): a full
+//!   draw at the first dummy, a short one into the floor, one down through a
+//!   lava puddle put behind (logs whether it burns); walks over the stuck arrows (logs arrows before and
+//!   after), then an orc archer put 110 cells off shoots back (logs hp)
 //! - `fight`      (`PLATYPUS_WORLD=arena`) the shortsword against an orc put
 //!   40 cells off, held at it from 1.5 s; a troll put 70 cells off at 5 s;
 //!   logs both sides' health, swings and staggers twice a second
@@ -138,7 +142,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, editor_script.after(InputSystems).before(crate::editor::capture))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -1846,6 +1850,95 @@ fn fight_script(
     }
     cursor.0 = swing.or(Some(p + Vec2::new(-30.0, 0.0)));
     match (swing.is_some(), mouse.pressed(MouseButton::Left)) {
+        (true, false) => mouse.press(MouseButton::Left),
+        (false, true) => mouse.release(MouseButton::Left),
+        _ => {}
+    }
+}
+
+/// The bow through real keys and buttons; then an orc archer.
+#[allow(clippy::too_many_arguments)]
+fn archery_script(
+    s: Res<Scenario>,
+    mut commands: Commands,
+    mut sim: ResMut<SimWorld>,
+    items: Option<Res<crate::hands::items::Items>>,
+    player: Query<(&Kinematics, &crate::actors::Health, &crate::hands::items::Inventory), With<LocalPlayer>>,
+    dummies: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::dummy::Tally)>,
+    arrows: Query<&crate::archery::Arrow>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, f32, u32)>,
+) {
+    if s.name != "archery" {
+        return;
+    }
+    let (Ok((k, h, inv)), Some(items)) = (player.single(), items) else { return };
+    let p = k.body.pos;
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR as f32;
+    let quiver = items.id("arrow").map_or(0, |a| inv.count(a));
+    let mut want = std::collections::HashSet::new();
+    if (0.3..0.4).contains(&t) {
+        want.insert(KeyCode::KeyX);
+    }
+    if (0.5..0.6).contains(&t) {
+        want.insert(KeyCode::Digit9);
+    }
+    let dummy = dummies.iter().find(|(c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - 700.0).abs() < 8.0);
+    let mut aim = None;
+    if (1.0..1.8).contains(&t) {
+        aim = dummy.map(|d| d.1.body.pos + Vec2::new(0.0, 4.0));
+    }
+    if (2.0..2.2).contains(&t) {
+        if state.0 == 0 {
+            info!("archery: a full draw at the dummy: it took {:.0} ({} hits); {quiver} arrows left", dummy.map_or(0.0, |d| d.2.total), dummy.map_or(0, |d| d.2.hits));
+            state.0 = 1;
+        }
+        aim = Some(Vec2::new(p.x + 30.0, floor - 2.0));
+    }
+    // A puddle of lava to shoot down through.
+    if (2.3..2.32).contains(&t) && state.0 == 1 {
+        if let Some(lava) = sim.materials().id("lava") {
+            sim.queue(WorldEdit::Paint { center: CellPos::new(p.x as i32 - 24, floor as i32 + 1), radius: 2, material: lava, overwrite: false });
+        }
+        state.0 = 2;
+    }
+    if (2.65..3.3).contains(&t) {
+        aim = Some(Vec2::new(p.x - 25.0, floor - 2.0));
+    }
+    if (3.4..3.42).contains(&t) {
+        info!("archery: through the fire: {} of {} arrows burning", arrows.iter().filter(|a| a.burning()).count(), arrows.iter().count());
+    }
+    if (3.5..3.6).contains(&t) && state.0 == 2 {
+        let stuck = arrows.iter().count();
+        info!("archery: {stuck} arrows about, {quiver} in the quiver");
+        state.0 = 3;
+        state.2 = quiver;
+    }
+    if (3.6..5.0).contains(&t) && p.x < 700.0 - 12.0 {
+        want.insert(KeyCode::KeyD);
+    }
+    if (5.2..5.3).contains(&t) && state.0 == 3 {
+        info!("archery: walked over them: {quiver} in the quiver (was {}), {} arrows about", state.2, arrows.iter().count());
+        crate::actors::creature::spawn_creature(&mut commands, "orc_archer", Vec2::new(p.x - 110.0, floor), |_| {});
+        state.0 = 4;
+        state.1 = h.hp;
+    }
+    if t > 9.5 && state.0 == 4 {
+        info!("archery: 4 s of the orc archer cost {:.0} hp", state.1 - h.hp);
+        state.0 = 5;
+    }
+    for key in [KeyCode::KeyX, KeyCode::Digit9, KeyCode::KeyD] {
+        match (want.contains(&key), keys.pressed(key)) {
+            (true, false) => keys.press(key),
+            (false, true) => keys.release(key),
+            _ => {}
+        }
+    }
+    cursor.0 = aim.or(Some(p + Vec2::new(30.0, 0.0)));
+    match (aim.is_some(), mouse.pressed(MouseButton::Left)) {
         (true, false) => mouse.press(MouseButton::Left),
         (false, true) => mouse.release(MouseButton::Left),
         _ => {}

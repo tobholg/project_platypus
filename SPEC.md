@@ -1020,6 +1020,26 @@ deaths (blood). Rendered as one dynamic mesh.
   420 hp, a club: smash, sweep, 30 damage, 0.5 / 0.4 s windups to read and
   dodge; poise 80, heft 4). In the `fight` scenario the orc lands a hit,
   the shortsword kills it in ~2 s; the troll's smash takes 30 and throws you.
+- **Bows** (`archery.rs`; `weapons.ron` `bows`, `arrow`): what wields one
+  draws it while it asks (`DrawBow` each tick: the player holding the left
+  button with arrows in the pack; an archer's brain) and looses when it
+  stops asking; drawn fully in `draw` s, the arrow's speed, damage and
+  knockback go from the first to the second of each pair by how far it was
+  drawn (under a tenth: nothing). The player's pack pays an `arrow` item a
+  shot. The bow shows (turned to the aim, drawn past a third) only while
+  drawn.
+- **Arrows** fly a cell at a time, turned to where they go, falling at
+  `gravity`; their tip strikes a body pixel against its frame (a `Hit`) or
+  sticks in stone and earth for `stuck` s (falling if what held it goes);
+  within `pickup` cells of the player a stuck one comes back as an item.
+  Through fire or lava one catches (burning `burn` s: a flame and a light
+  at it; water puts it out and slows it) and sets alight where it strikes.
+- **The orc archer** (`archer` brain: `near`, `far`, `draw`, `every`,
+  `wobble`): backs off within `near`, closes beyond `far`, stands to draw,
+  and looses at where you'll be (leading you and allowing for the drop),
+  its aim off by up to `wobble` degrees a shot. In the `archery` scenario a
+  full draw does 20 to a dummy, the stuck arrows come back, one shot down
+  through lava burns, and the archer costs ~17 hp in 4 s.
 - The shortsword (12 damage: slash, backslash, thrust) and the longsword
   (24: cleave, sweep, drive; slower, heavier on stamina). In the `melee`
   scenario: the shortsword lands 5 hits (65) in 0.9 s; the longsword

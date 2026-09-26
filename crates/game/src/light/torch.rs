@@ -43,6 +43,13 @@ pub struct Flame {
     owed: [f32; 3],
 }
 
+impl Flame {
+    /// Fire rising from `at` (from the entity, cells).
+    pub fn at(at: Vec2) -> Self {
+        Flame { at, owed: [0.0; 3] }
+    }
+}
+
 /// The torch in the player's off hand.
 #[derive(Component)]
 pub struct HeldTorch;

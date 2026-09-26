@@ -15,7 +15,8 @@ impl Plugin for AiPlugin {
     fn build(&self, app: &mut App) {
         app.register_brain::<MeleeWalker>("melee_walker")
             .register_brain::<Idle>("idle")
-            .add_systems(FixedUpdate, melee_walker.in_set(TickSet::Intent));
+            .register_brain::<Archer>("archer")
+            .add_systems(FixedUpdate, (melee_walker, archer).in_set(TickSet::Intent));
     }
 }
 
@@ -135,5 +136,103 @@ fn melee_walker(
         controls.0.move_x = move_x;
         // Brains hold buttons; release after a press so the next press registers.
         controls.0.jump = want_jump && !controls.0.jump;
+    }
+}
+
+/// Keeps its distance and shoots what it wields (a bow): backs off from a
+/// player nearer than `near`, closes on one further than `far`; draws for
+/// `draw` of the bow's full draw, stands still meanwhile, and looses at
+/// where the player will be (leading it, allowing for the arrow's drop);
+/// then waits `every` s (±30 %). Its aim wanders up to `wobble` degrees.
+#[derive(Component, Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct Archer {
+    pub aggro_range: f32,
+    pub near: f32,
+    pub far: f32,
+    pub draw: f32,
+    pub every: f32,
+    pub wander_speed: f32,
+    pub wobble: f32,
+}
+
+impl Default for Archer {
+    fn default() -> Self {
+        Archer { aggro_range: 260.0, near: 50.0, far: 140.0, draw: 0.9, every: 1.6, wander_speed: 0.4, wobble: 4.0 }
+    }
+}
+
+#[derive(Component, Default)]
+pub struct ArcherState {
+    next_shot: u64,
+    drawing: Option<u64>,
+}
+
+type Bowman<'a> = (Entity, &'a Archer, &'a Kinematics, &'a mut Controls, Option<&'a mut ArcherState>, &'a crate::combat::Wielding);
+
+fn archer(
+    mut commands: Commands,
+    sim: Res<SimWorld>,
+    weapons: Option<Res<crate::combat::Weapons>>,
+    players: Query<(&Kinematics, &Team), Without<Archer>>,
+    mut q: Query<Bowman>,
+    mut draws: MessageWriter<crate::archery::DrawBow>,
+) {
+    let Some(weapons) = weapons else { return };
+    let tick = sim.world.tick();
+    for (e, brain, k, mut controls, state, wielding) in &mut q {
+        let Some(mut st) = state else {
+            commands.entity(e).insert(ArcherState::default());
+            continue;
+        };
+        let pos = k.body.pos;
+        let target = players
+            .iter()
+            .filter(|(_, t)| **t == Team::Player)
+            .map(|(pk, _)| (pk.body.pos, pk.body.vel))
+            .filter(|(p, _)| p.distance(pos) < brain.aggro_range)
+            .min_by(|a, b| a.0.distance_squared(pos).total_cmp(&b.0.distance_squared(pos)));
+        let bow = wielding.0.as_deref().and_then(|id| weapons.bow_index(id)).map(|i| weapons.bow(i).clone());
+        let (Some((t, tv)), Some(bow)) = (target, bow) else {
+            controls.0.move_x = 0.0;
+            controls.0.aim = Vec2::ZERO;
+            continue;
+        };
+        let d = t - pos;
+        controls.0.aim = t;
+        let stunned = k.loco.state == platypus_physics::MoveState::Stunned;
+        // Drawing: keep at it, then let go.
+        if let Some(since) = st.drawing {
+            let held = (tick - since) as f32 / 60.0;
+            if stunned || held >= bow.draw * brain.draw {
+                st.drawing = None;
+                let mut rng = Rng::seeded(&[sim.world.seed(), tick, e.to_bits(), 0xB0E]);
+                st.next_shot = tick + (brain.every * (0.7 + 0.6 * (rng.next_u32() % 1000) as f32 / 1000.0) * 60.0) as u64;
+            } else {
+                // Where it'll be when the arrow gets there, and the drop.
+                let speed = bow.speed.0 + (bow.speed.1 - bow.speed.0) * brain.draw.min(1.0);
+                let flight = d.length() / speed.max(1.0);
+                let g = weapons.arrow_def().map_or(0.0, |a| a.gravity);
+                let aim = t + tv * flight + Vec2::new(0.0, 0.5 * g * flight * flight);
+                // (A wobble per shot, not per tick.)
+                let mut rng = Rng::seeded(&[sim.world.seed(), since, e.to_bits(), 0xA1A]);
+                let off = ((rng.next_u32() % 2001) as f32 / 1000.0 - 1.0) * brain.wobble.to_radians();
+                let aim = pos + Vec2::from_angle(off).rotate(aim - pos);
+                draws.write(crate::archery::DrawBow { archer: e, at: aim });
+            }
+            controls.0.move_x = 0.0;
+            continue;
+        }
+        let dist = d.x.abs();
+        if !stunned && tick >= st.next_shot && dist <= brain.far * 1.2 && k.loco.grounded() {
+            st.drawing = Some(tick);
+            draws.write(crate::archery::DrawBow { archer: e, at: t });
+            controls.0.move_x = 0.0;
+            continue;
+        }
+        controls.0.move_x = if dist < brain.near { -d.x.signum() } else if dist > brain.far { d.x.signum() } else { 0.0 };
+        let c = &k.loco.contacts;
+        let walled = (controls.0.move_x > 0.0 && c.wall_right) || (controls.0.move_x < 0.0 && c.wall_left);
+        controls.0.jump = walled && k.loco.grounded() && !controls.0.jump;
     }
 }

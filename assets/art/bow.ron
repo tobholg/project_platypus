@@ -1,0 +1,54 @@
+// A bow, the arrow's way to the right, held at `grip`: at rest, and drawn
+// (the string back, an arrow on it). The game turns it to where it's aimed.
+(
+    size: (13, 15),
+    feet: (6, 15),
+    outline: (30, 22, 16),
+    palette: {
+        'w': (150, 104, 58),    // the limbs
+        'W': (112, 76, 42),     // the limbs, shaded
+        'b': (70, 52, 40),      // the grip's wrap
+        's': (226, 220, 200),   // the string
+        'a': (170, 130, 80),    // the arrow
+        'h': (160, 164, 172),   // its head
+        'f': (200, 60, 50),     // its feathers
+    },
+    frames: {
+        "rest": [
+            "........w....",
+            ".......s.wW..",
+            ".......s.wW..",
+            ".......s..w..",
+            ".......s..wW.",
+            ".......s...wW",
+            ".......s...b.",
+            ".......s...b.",
+            ".......s...b.",
+            ".......s...w.",
+            ".......s..wW.",
+            ".......s..wW.",
+            ".......s.w...",
+            ".......s.wW..",
+            "........w....",
+        ],
+        "drawn": [
+            "........w....",
+            ".......s.wW..",
+            ".......s.wW..",
+            "......s...w..",
+            ".....s....wW.",
+            "....s......wW",
+            "...fs......h.",
+            "..faaaaaaaabh",
+            "...fs......h.",
+            "....s......w.",
+            ".....s....wW.",
+            "......s...wW.",
+            ".......s.w...",
+            ".......s.wW..",
+            "........w....",
+        ],
+    },
+    clips: { "held": (frames: ["rest", "drawn"], fps: 1) },
+    anchors: { "grip": { "rest": (11, 7), "drawn": (11, 7) } },
+)

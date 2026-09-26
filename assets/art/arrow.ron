@@ -1,0 +1,22 @@
+// An arrow in flight, pointing right; turned to where it flies. `tip` is
+// what strikes, `grip` (its middle) where it turns about.
+(
+    size: (11, 3),
+    feet: (5, 3),
+    outline: (30, 22, 16),
+    palette: {
+        'a': (176, 136, 84),    // shaft
+        'h': (150, 154, 164),   // head
+        'H': (206, 210, 216),   // head, the point
+        'f': (204, 62, 50),     // feathers
+    },
+    frames: {
+        "arrow": [
+            "f........h.",
+            "ffaaaaaaahH",
+            "f........h.",
+        ],
+    },
+    clips: { "flying": (frames: ["arrow"], fps: 1) },
+    anchors: { "grip": { "arrow": (5, 1) }, "tip": { "arrow": (10, 1) } },
+)

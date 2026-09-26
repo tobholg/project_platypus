@@ -1,0 +1,26 @@
+// An orc archer: keeps its distance (backs off if you close in), draws, and
+// looses where you'll be. Its arrows stick like yours, and you can take
+// them. The orc's rig (assets/art/orc.ron), a bow from weapons.ron.
+(
+    name: "Orc archer",
+    size: (7, 16),
+    health: 50,
+    team: Enemy,
+    fall_damage: (safe_height: 70, per_cell: 0.8),
+    movement: (
+        run_speed: 58,
+        jump_height: 24,
+        air_jumps: 0,
+        step_height: 3,
+        dash_speed: 0,
+    ),
+    art: "orc",
+    weapon: "bow",
+    stamina: 60,
+    poise: 8,
+    heft: 1.1,
+    brain: (
+        kind: "archer",
+        params: (aggro_range: 260, near: 50, far: 140, draw: 0.85, every: 1.8, wobble: 5),
+    ),
+)

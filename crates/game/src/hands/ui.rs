@@ -620,6 +620,12 @@ fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<&crate::com
                 lines.push(format!("{mana:.0} mana a cast, {:.1} casts a second", 1.0 / delay.max(0.01)));
             }
         }
+        Use::Bow(id) => {
+            lines.push("Bow: hold the left button to draw, let go to loose".into());
+            if let Some(b) = weapons.and_then(|w| w.bow_index(id).map(|i| w.bow(i))) {
+                lines.push(format!("{:.0} to {:.0} damage by how far it's drawn ({:.2} s full)", b.damage.0, b.damage.1, b.draw));
+            }
+        }
         Use::Melee(id) => {
             lines.push("Weapon: hold the left button to swing at the cursor".into());
             if let Some(w) = weapons.and_then(|w| w.index(id).map(|i| w.def(i))) {

@@ -34,6 +34,9 @@ pub enum Use {
     /// A weapon held in the hand (`weapons.ron`): the left button swings it
     /// at the cursor, holding it keeps swinging through the combo.
     Melee(String),
+    /// A bow (`weapons.ron`): hold the left button to draw, let go to loose
+    /// an arrow at the cursor (it takes one of your arrows).
+    Bow(String),
     /// A block of a material (made from the materials table, not written).
     #[serde(skip)]
     Block(MaterialId),
@@ -212,6 +215,21 @@ impl Inventory {
             self.slots[slot] = None;
         }
         got
+    }
+
+    /// Take `n` of an item from wherever it is: all of them, or none.
+    pub fn take_item(&mut self, items: &Items, item: ItemId, n: u32) -> bool {
+        let n = n * items.unit(item);
+        if self.count(item) < n {
+            return false;
+        }
+        let mut left = n;
+        for i in 0..self.slots.len() {
+            if left > 0 && self.slots[i].is_some_and(|s| s.item == item) {
+                left -= self.take(i, left);
+            }
+        }
+        true
     }
 
     pub fn count(&self, item: ItemId) -> u32 {

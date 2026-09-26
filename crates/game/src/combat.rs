@@ -71,6 +71,37 @@ struct WeaponsFile {
     clang: Emitter,
     trail: Emitter,
     weapons: Vec<WeaponDef>,
+    #[serde(default)]
+    bows: Vec<BowDef>,
+    #[serde(default)]
+    arrow: Option<ArrowDef>,
+}
+
+/// A bow: drawn fully in `draw` s; loosed, the arrow goes from the first
+/// to the second of `speed`, `damage` and `knock` by how far it was drawn.
+/// (It shows only while drawn: slung, it would hide the one holding it.)
+#[derive(Clone, Debug, Deserialize)]
+pub struct BowDef {
+    pub id: String,
+    pub art: String,
+    pub draw: f32,
+    pub speed: (f32, f32),
+    pub damage: (f32, f32),
+    pub knock: (f32, f32),
+    pub stun: f32,
+    pub stamina: f32,
+}
+
+/// Arrows: their sprite (a `grip` in the middle, a `tip`), how fast they
+/// fall (cells/s²), how long one stays stuck, how near you pick it up, how
+/// long a burning one burns.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ArrowDef {
+    pub art: String,
+    pub gravity: f32,
+    pub stuck: f32,
+    pub pickup: f32,
+    pub burn: f32,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -134,7 +165,7 @@ impl MoveDef {
 
 /// A weapon's picture at every angle (squares with the grip in the middle
 /// pixel), and the atlas they're drawn from.
-struct Turned {
+pub(crate) struct Turned {
     frames: Vec<Pixels>,
     side: u32,
     image: Handle<Image>,
@@ -142,41 +173,88 @@ struct Turned {
 }
 
 impl Turned {
-    fn index(angle: f32) -> usize {
+    pub(crate) fn index(angle: f32) -> usize {
         (((angle + 180.0) / STEP).round() as i64).rem_euclid(TURNS as i64) as usize
     }
 
     /// The blade's pixels at `angle` (from level, facing right), as offsets
     /// from the grip in cells (y up; mirrored facing left).
-    fn cells(&self, angle: f32, facing: f32) -> impl Iterator<Item = Vec2> + '_ {
+    pub(crate) fn cells(&self, angle: f32, facing: f32) -> impl Iterator<Item = Vec2> + '_ {
         let f = &self.frames[Self::index(angle)];
         let half = (self.side / 2) as i32;
         (0..self.side as i32).flat_map(move |y| (0..self.side as i32).map(move |x| (x, y))).filter(|&(x, y)| f.opaque(x, y)).map(move |(x, y)| Vec2::new((x - half) as f32 * facing, -(y - half) as f32))
     }
 }
 
-/// A weapon's sprite turned to every angle.
-fn turn(def: &WeaponDef) -> Result<Vec<Pixels>, String> {
-    let path = assets_dir().join("art").join(format!("{}.ron", def.art));
+/// A frame of a sprite (by name; the first if `None`) turned to every
+/// angle about its `grip` anchor.
+fn turn_art(art: &str, frame: Option<&str>) -> Result<Vec<Pixels>, String> {
+    let path = assets_dir().join("art").join(format!("{art}.ron"));
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let art = platypus_art::compile(&platypus_art::parse(&text)?)?;
-    let frame = art.frames.first().ok_or("no frames")?;
-    let grip = art.anchors.get("grip").and_then(|m| m.get(&0)).copied().ok_or(format!("{}: no `grip` anchor", def.art))?;
-    Ok((0..TURNS).map(|k| platypus_art::rotate::rotsprite(frame, grip, -180.0 + k as f32 * STEP)).collect())
+    let compiled = platypus_art::compile(&platypus_art::parse(&text)?)?;
+    let i = match frame {
+        Some(name) => compiled.index(name).ok_or(format!("{art}: no frame `{name}`"))?,
+        None => 0,
+    };
+    let grip = compiled.anchors.get("grip").and_then(|m| m.get(&i)).copied().ok_or(format!("{art}: no `grip` anchor"))?;
+    Ok((0..TURNS).map(|k| platypus_art::rotate::rotsprite(&compiled.frames[i], grip, -180.0 + k as f32 * STEP)).collect())
 }
 
-/// A weapon's picture for its icon: pointing up and to the right.
+/// A weapon's picture for its icon: a blade pointing up and to the right, a
+/// bow as it's drawn.
 pub fn icon(id: &str) -> Option<Pixels> {
     let file: WeaponsFile = load_ron(&data_path("weapons.ron")).ok()?;
-    let def = file.weapons.iter().find(|w| w.id == id)?;
-    let frames = turn(def).ok()?;
-    Some(frames[Turned::index(45.0)].clone())
+    if let Some(def) = file.weapons.iter().find(|w| w.id == id) {
+        return turn_art(&def.art, None).ok().map(|f| f[Turned::index(45.0)].clone());
+    }
+    let bow = file.bows.iter().find(|b| b.id == id)?;
+    turn_art(&bow.art, Some("rest")).ok().map(|f| f[Turned::index(0.0)].clone())
+}
+
+impl Turned {
+    fn build(frames: Vec<Pixels>, images: &mut Assets<Image>, layouts: &mut Assets<TextureAtlasLayout>) -> Turned {
+        let side = frames[0].w;
+        let cols = 8u32;
+        let rows = (TURNS as u32).div_ceil(cols);
+        let mut atlas = Pixels::new(side * cols, side * rows);
+        for (k, f) in frames.iter().enumerate() {
+            let (ox, oy) = ((k as u32 % cols) * side, (k as u32 / cols) * side);
+            for y in 0..side {
+                for x in 0..side {
+                    atlas.set((ox + x) as i32, (oy + y) as i32, f.get(x as i32, y as i32));
+                }
+            }
+        }
+        let image = images.add(Image::new(
+            Extent3d { width: atlas.w, height: atlas.h, depth_or_array_layers: 1 },
+            TextureDimension::D2,
+            atlas.rgba,
+            TextureFormat::Rgba8UnormSrgb,
+            RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+        ));
+        let layout = layouts.add(TextureAtlasLayout::from_grid(UVec2::splat(side), cols, rows, None, None));
+        Turned { frames, side, image, layout }
+    }
+
+    /// The sprite (atlas frame) pointing at `angle`.
+    pub(crate) fn sprite(&self, angle: f32) -> Sprite {
+        Sprite::from_atlas_image(self.image.clone(), TextureAtlas { layout: self.layout.clone(), index: Self::index(angle) })
+    }
+}
+
+/// Every weapon's pictures: blades; bows at rest and drawn; the arrow.
+struct Built {
+    turned: Vec<Turned>,
+    bows: Vec<[Turned; 2]>,
+    arrow: Option<Turned>,
 }
 
 #[derive(Resource)]
 pub struct Weapons {
     file: WeaponsFile,
     turned: Vec<Turned>,
+    pub(crate) bows: Vec<[Turned; 2]>,
+    pub(crate) arrow: Option<Turned>,
     watch: Watched,
     art_watch: Watched,
 }
@@ -190,42 +268,41 @@ impl Weapons {
         &self.file.weapons[i]
     }
 
-    fn build(file: WeaponsFile, images: &mut Assets<Image>, layouts: &mut Assets<TextureAtlasLayout>) -> Result<Vec<Turned>, String> {
-        file.weapons
-            .iter()
-            .map(|w| {
-                let frames = turn(w).map_err(|e| format!("weapon `{}`: {e}", w.id))?;
-                let side = frames[0].w;
-                let cols = 8u32;
-                let rows = (TURNS as u32).div_ceil(cols);
-                let mut atlas = Pixels::new(side * cols, side * rows);
-                for (k, f) in frames.iter().enumerate() {
-                    let (ox, oy) = ((k as u32 % cols) * side, (k as u32 / cols) * side);
-                    for y in 0..side {
-                        for x in 0..side {
-                            atlas.set((ox + x) as i32, (oy + y) as i32, f.get(x as i32, y as i32));
-                        }
-                    }
-                }
-                let image = images.add(Image::new(
-                    Extent3d { width: atlas.w, height: atlas.h, depth_or_array_layers: 1 },
-                    TextureDimension::D2,
-                    atlas.rgba,
-                    TextureFormat::Rgba8UnormSrgb,
-                    RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
-                ));
-                let layout = layouts.add(TextureAtlasLayout::from_grid(UVec2::splat(side), cols, rows, None, None));
-                Ok(Turned { frames, side, image, layout })
-            })
-            .collect()
+    pub fn bow_index(&self, id: &str) -> Option<usize> {
+        self.file.bows.iter().position(|b| b.id == id)
+    }
+
+    pub fn bow(&self, i: usize) -> &BowDef {
+        &self.file.bows[i]
+    }
+
+    pub fn arrow_def(&self) -> Option<&ArrowDef> {
+        self.file.arrow.as_ref()
+    }
+
+    fn build(file: &WeaponsFile, images: &mut Assets<Image>, layouts: &mut Assets<TextureAtlasLayout>) -> Result<Built, String> {
+        let mut turned = Vec::new();
+        for w in &file.weapons {
+            turned.push(Turned::build(turn_art(&w.art, None).map_err(|e| format!("weapon `{}`: {e}", w.id))?, images, layouts));
+        }
+        let mut bows = Vec::new();
+        for b in &file.bows {
+            let pose = |f| turn_art(&b.art, Some(f)).map_err(|e| format!("bow `{}`: {e}", b.id));
+            bows.push([Turned::build(pose("rest")?, images, layouts), Turned::build(pose("drawn")?, images, layouts)]);
+        }
+        let arrow = match &file.arrow {
+            Some(a) => Some(Turned::build(turn_art(&a.art, None)?, images, layouts)),
+            None => None,
+        };
+        Ok(Built { turned, bows, arrow })
     }
 }
 
 fn load(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut layouts: ResMut<Assets<TextureAtlasLayout>>) {
     let path = data_path("weapons.ron");
     let file: WeaponsFile = load_ron(&path).unwrap_or_else(|e| panic!("{e}"));
-    let turned = Weapons::build(file.clone(), &mut images, &mut layouts).unwrap_or_else(|e| panic!("{e}"));
-    commands.insert_resource(Weapons { file, turned, watch: Watched::new(path), art_watch: Watched::new(assets_dir().join("art")) });
+    let b = Weapons::build(&file, &mut images, &mut layouts).unwrap_or_else(|e| panic!("{e}"));
+    commands.insert_resource(Weapons { file, turned: b.turned, bows: b.bows, arrow: b.arrow, watch: Watched::new(path), art_watch: Watched::new(assets_dir().join("art")) });
 }
 
 /// Editing weapons.ron or a weapon's sprite takes effect at once.
@@ -239,10 +316,12 @@ fn reload(weapons: Option<ResMut<Weapons>>, mut images: ResMut<Assets<Image>>, m
         Ok(f) => f,
         Err(e) => return warn!("weapons not reloaded: {e}"),
     };
-    match Weapons::build(file.clone(), &mut images, &mut layouts) {
-        Ok(t) => {
+    match Weapons::build(&file, &mut images, &mut layouts) {
+        Ok(b) => {
             w.file = file;
-            w.turned = t;
+            w.turned = b.turned;
+            w.bows = b.bows;
+            w.arrow = b.arrow;
             info!("weapons reloaded");
         }
         Err(e) => warn!("weapons not reloaded: {e}"),
@@ -339,7 +418,7 @@ impl Stamina {
         Stamina { cur: max, max, regen: 45.0, wait: 0.5, since: 1.0 }
     }
 
-    fn spend(&mut self, n: f32) {
+    pub(crate) fn spend(&mut self, n: f32) {
         self.cur = (self.cur - n).max(0.0);
         self.since = 0.0;
     }
@@ -403,7 +482,7 @@ fn hit_stop(real: Res<Time<Real>>, mut stop: ResMut<HitStop>, mut virt: ResMut<T
 // ---- systems ----
 
 type Fighter<'a> = (&'a Kinematics, &'a Wielding, Option<&'a mut Swing>, Option<&'a mut Combo>, Option<&'a mut Stamina>);
-type Holder<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Swing>, Option<&'a Children>);
+type Holder<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Swing>, Option<&'a crate::archery::Nocked>, Option<&'a Children>);
 
 /// Swings begin (or queue the next) when asked for.
 fn start_swings(
@@ -683,6 +762,13 @@ fn apply_hits(
 #[derive(Component)]
 struct WeaponSprite;
 
+/// What's in the hand: a blade or a bow (by index).
+#[derive(Clone, Copy)]
+enum Held {
+    Blade(usize),
+    Bow(usize),
+}
+
 /// The weapon in the hand: at rest, or where the swing has it.
 fn draw(
     mut commands: Commands,
@@ -691,9 +777,11 @@ fn draw(
     mut sprites: Query<(&mut Sprite, &mut Transform, &mut Visibility), With<WeaponSprite>>,
 ) {
     let Some(weapons) = weapons else { return };
-    for (e, wielding, k, hand, swing, children) in &holders {
+    for (e, wielding, k, hand, swing, nocked, children) in &holders {
         let sprite = children.and_then(|c| c.iter().find(|c| sprites.contains(*c)));
-        let w = wielding.0.as_deref().and_then(|id| weapons.index(id));
+        let id = wielding.0.as_deref();
+        // A blade, or a bow (drawn or not).
+        let w = id.and_then(|id| weapons.index(id).map(Held::Blade).or_else(|| weapons.bow_index(id).map(Held::Bow)));
         let (Some(sprite), Some(w)) = (sprite, w) else {
             if let (None, Some(_)) = (sprite, w) {
                 commands.entity(e).with_child((WeaponSprite, Sprite::default(), Transform::default(), Visibility::Hidden));
@@ -710,9 +798,23 @@ fn draw(
             *vis = Visibility::Hidden;
             continue;
         };
-        let turned = &weapons.turned[w];
-        let facing = swing.map_or(k.loco.facing, |s| s.facing);
-        let (angle, thrust) = swing.map_or((weapons.def(w).rest, 0.0), |s| (s.angle, s.thrust));
+        let (turned, facing, angle, thrust) = match w {
+            Held::Blade(w) => {
+                let (angle, thrust) = swing.map_or((weapons.def(w).rest, 0.0), |s| (s.angle, s.thrust));
+                (&weapons.turned[w], swing.map_or(k.loco.facing, |s| s.facing), angle, thrust)
+            }
+            Held::Bow(b) => match nocked {
+                Some(n) => {
+                    let d = n.at - hand.and_then(|h| h.at).unwrap_or(k.body.pos);
+                    let pose = if n.drawn(&weapons) > 0.35 { 1 } else { 0 };
+                    (&weapons.bows[b][pose], k.loco.facing, d.y.atan2(d.x.abs()).to_degrees(), 0.0)
+                }
+                None => {
+                    *vis = Visibility::Hidden;
+                    continue;
+                }
+            },
+        };
         let dir = Vec2::new(angle.to_radians().cos() * facing, angle.to_radians().sin());
         if sp.image != turned.image {
             *sp = Sprite::from_atlas_image(turned.image.clone(), TextureAtlas { layout: turned.layout.clone(), index: 0 });

@@ -15,6 +15,8 @@
 //     at the cursor, one cast each `delay` s and `recharge` s after the last
 //     (a channelled one, a well or force, stays open while held)
 // about: a line for its tooltip
+//   Bow(bow): a bow (weapons.ron): hold the left button to draw, let go to
+//     loose an arrow (one of your `arrow` items) at the cursor.
 //   Melee(weapon): a weapon (weapons.ron): the left button swings it at the
 //     cursor; hold it to swing through the combo. Its icon is its sprite.
 //   Chest: place one (furniture, 12 × 10 cells, on the ground); right-click a chest to open it
@@ -47,6 +49,9 @@
             about: "Quick: slash, backslash, thrust. Strike down in the air to bounce off what you hit."),
         (id: "longsword",      name: "Longsword",      color: (180, 188, 204), use: Melee("longsword"),
             about: "Slow and heavy: cleave, sweep, drive. Strike down in the air to bounce off what you hit."),
+        (id: "bow",            name: "Bow",            color: (150, 104, 58), use: Bow("bow"),
+            about: "Hold to draw, let go to loose an arrow: the longer drawn, the harder and further. Arrows stick where they land; walk near to pick them up. Loose one through fire and it burns."),
+        (id: "arrow",          name: "Arrow",          stack: 99, color: (176, 136, 84)),
         (id: "chest",          name: "Chest",          stack: 20, color: (150, 104, 58), use: Chest),
     ],
     // (The first ten are the hotbar; the rest go in the pack.)
@@ -54,6 +59,6 @@
         ("copper_pickaxe", 1), ("copper_axe", 1), ("torch", 12), ("bomb", 5), ("block:platform", 40),
         ("spark_wand", 1), ("fire_wand", 1), ("acid_wand", 1), ("flame_wand", 1), ("storm_wand", 1),
         ("glowstick", 6), ("gravity_wand", 1), ("force_wand", 1), ("gravity_staff", 1), ("force_staff", 1), ("frost_wand", 1),
-        ("shortsword", 1), ("longsword", 1),
+        ("shortsword", 1), ("longsword", 1), ("bow", 1), ("arrow", 60),
     ],
 )

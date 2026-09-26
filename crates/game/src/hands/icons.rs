@@ -136,7 +136,7 @@ fn build(file: &IconsFile, items: &Items, mats: &MaterialTable, images: &mut Ass
                 return Some(images.add(image(block_icon(mats, Cell::new(m, 128), file.outline))));
             }
             // A weapon is its own sprite, turned to point up and forward.
-            if let Use::Melee(w) = &def.use_
+            if let Use::Melee(w) | Use::Bow(w) = &def.use_
                 && let Some(p) = crate::combat::icon(w)
             {
                 return Some(images.add(image(fit(&p))));

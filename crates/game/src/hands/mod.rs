@@ -307,7 +307,7 @@ fn wield(items: Option<Res<Items>>, hand: Res<Hand>, dev: Res<DevTools>, mut pla
     let (Some(items), Ok((inv, mut w))) = (items, player.single_mut()) else { return };
     let held = inv.slots.get(hand.active()).copied().flatten().filter(|_| !dev.0);
     let want = held.and_then(|s| match &items.def(s.item).use_ {
-        Use::Melee(id) => Some(id.clone()),
+        Use::Melee(id) | Use::Bow(id) => Some(id.clone()),
         _ => None,
     });
     if w.0 != want {
@@ -331,6 +331,7 @@ fn use_hands(
     mut found: Query<(Entity, &mut chests::Chest, &Kinematics), Without<LocalPlayer>>,
     mut casts: MessageWriter<crate::magic::CastRequest>,
     mut swings: MessageWriter<crate::combat::MeleeRequest>,
+    mut draws: MessageWriter<crate::archery::DrawBow>,
 ) {
     let clicked = std::mem::take(&mut input.clicked);
     hand.cooldown = (hand.cooldown - DT).max(0.0);
@@ -399,6 +400,10 @@ fn use_hands(
         }
         Use::Melee(_) if input.primary => {
             swings.write(crate::combat::MeleeRequest { attacker: me, at: cursor });
+        }
+        // (Drawn while held, loosed on letting go: `archery::nock`.)
+        Use::Bow(_) if input.primary && items.id("arrow").is_some_and(|a| inv.count(a) > 0) => {
+            draws.write(crate::archery::DrawBow { archer: me, at: cursor });
         }
         Use::Chest if clicked => {
             let Some(feet) = chests::place_spot(&sim.world, cursor) else { return };

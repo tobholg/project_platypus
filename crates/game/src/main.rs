@@ -7,6 +7,7 @@
 //! - `PLATYPUS_SCENARIO`  scripted perf run, see `scenario.rs`
 
 mod actors;
+mod archery;
 mod arena;
 mod camera;
 mod combat;
@@ -93,7 +94,7 @@ fn main() {
             light::LightPlugin,
             scenario::ScenarioPlugin,
         ))
-        .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin))
+        .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin))
         .add_plugins(spikes_plugin)
         .run();
 }
