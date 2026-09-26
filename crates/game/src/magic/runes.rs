@@ -51,6 +51,11 @@ pub enum Carrier {
     /// heart), the right pulls it in; tears out solids up to `strength`
     /// (`pull` tries a tick); `drain` mana a second.
     Force { radius: f32, power: f32, strength: u8, pull: u32, drain: f32 },
+    /// A beam, held: an instant line from the hand to the first thing in
+    /// its way (anything but air, gas and flame; or a body), out to
+    /// `range`, drawn `width` cells across. Its payloads go off at its tip
+    /// every tick it's held (a spell cast every tick: its mana is a tick's).
+    Beam { range: f32, width: f32 },
 }
 
 /// What a spell does where it lands (or what it hits).
@@ -71,6 +76,17 @@ pub enum Payload {
     /// Break what it lands on, no harder than `hardness`, within `radius`:
     /// the bits fly off (dirt, sand, stone at 60; not slate).
     Shatter { radius: i32, hardness: u8 },
+    /// Eat what it lands on: every solid within `radius` no harder than
+    /// `hardness` takes `power` (less toward the rim) and goes (to smoke)
+    /// once that adds up to its hardness: dirt at once, stone in a moment,
+    /// bedrock never.
+    Vaporise { radius: i32, power: u8, hardness: u8 },
+    /// A burst that hurts and throws what's near (as a blast of `power`
+    /// out to `radius`: flash, shake), leaving the cells be.
+    Nova { radius: f32, power: f32 },
+    /// A spark of lightning where it lands: it arcs into what's there,
+    /// through water and whatever's wet or metal in it.
+    Arc,
 }
 
 fn stream_life() -> f32 {

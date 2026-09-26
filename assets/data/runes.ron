@@ -16,11 +16,21 @@
 //         | Force(radius, power, strength, pull, drain): from the caster's hand, a
 //           cone toward the cursor out to `radius`: the left button flings
 //           everything in it away (up to `power` cells/s nearest), the right
-//           drags it in)
+//           drags it in
+//         | Beam(range, width): held, an instant line from the hand to the first
+//           thing in its way (not air, gas or flame), `width` cells across; its
+//           payloads go off at its tip every tick (so its mana is a tick's, and
+//           its payloads are small: a tick's worth))
 // A channelled spell's mana doesn't come back while it's held.
 // Payload(Damage(hp) | Blast(radius, power) | Heat(radius, amount °C)
 //         | Ignite(radius) | Matter(material, cells) | Knock(cells/s)
-//         | Shatter(radius, hardness): breaks what it lands on, no harder, into flying bits)
+//         | Shatter(radius, hardness): breaks what it lands on, no harder, into flying bits
+//         | Vaporise(radius, power, hardness): eats what it lands on, no harder: each
+//           cell takes `power` (less at the rim) until that reaches its hardness,
+//           and goes up in smoke (dirt at once, stone in a moment, bedrock never)
+//         | Nova(radius, power): a burst that hurts and throws what's near, as a
+//           blast of that power, leaving the cells be
+//         | Arc: a spark of lightning where it lands, into water and what's wet)
 // Modifier(Gravity(k) | Trail(material, burning) | Shed(material, cells, burning)
 //          | Speed(k) | Trigger)
 //
@@ -59,7 +69,34 @@
             kind: Carrier(Force(radius: 60, power: 500, strength: 65, pull: 150, drain: 26)),
             look: (trail: (count: 9, life: (0.15, 0.45), colors: [(245, 252, 255), (150, 205, 255), (40, 80, 160)], speed: 280, drag: 1.5, glow: true))),
 
+        // A beam's carrier (its payloads are a tick's worth) ...
+        (id: "ray", name: "Ray", mana: 0.25, color: (255, 255, 255), kind: Carrier(Beam(range: 150, width: 2))),
+        (id: "cutting_ray", name: "Cutting ray", mana: 0.35, color: (255, 250, 230), kind: Carrier(Beam(range: 110, width: 3))),
+        // A star: a bouncing orb of light.
+        (id: "star", name: "Star", mana: 8, color: (255, 245, 200), kind: Carrier(Orb(speed: 270, life: 2.5, bounces: 2)),
+            look: (trail: (count: 1.2, life: (0.15, 0.45), colors: [(255, 255, 255), (255, 240, 170), (255, 200, 90)], speed: 12, drag: 3, glow: true))),
+
         // ---- payloads ----
+        // ... and a beam's (a tick's worth each: 60 a second).
+        (id: "ray_burn", name: "Burning", mana: 0.05, color: (255, 150, 60), kind: Payload(Damage(0.35))),
+        (id: "ray_ignite", name: "Kindling", mana: 0.05, color: (255, 130, 40), kind: Payload(Ignite(radius: 1))),
+        (id: "ray_heat", name: "Searing", mana: 0.2, color: (255, 140, 50), kind: Payload(Heat(radius: 2, amount: 70)),
+            look: (trail: (count: 0.05, life: (0.15, 0.4), colors: [(255, 240, 180), (255, 160, 50), (200, 60, 20)], speed: 20, spread: 0.5, gravity: -60, drag: 2, glow: true),
+                   burst: (count: 3, life: (0.15, 0.45), colors: [(255, 250, 210), (255, 180, 60), (220, 70, 20)], speed: 60, spread: 1.2, gravity: -80, drag: 2, glow: true))),
+        (id: "ray_chill", name: "Numbing", mana: 0.05, color: (190, 230, 255), kind: Payload(Damage(0.2))),
+        (id: "ray_frost", name: "Freezing", mana: 0.25, color: (175, 225, 255), kind: Payload(Heat(radius: 1, amount: -350)),
+            look: (trail: (count: 0.04, life: (0.3, 0.8), colors: [(255, 255, 255), (190, 230, 255)], speed: 8, gravity: 20, drag: 3, glow: true),
+                   burst: (count: 3, life: (0.3, 0.8), colors: [(255, 255, 255), (200, 235, 255), (130, 190, 240)], speed: 45, spread: 1.3, gravity: 40, drag: 2, glow: true))),
+        (id: "ray_sear", name: "Searing light", mana: 0.1, color: (255, 240, 200), kind: Payload(Damage(0.8))),
+        (id: "ray_boil", name: "White heat", mana: 0.1, color: (255, 230, 180), kind: Payload(Heat(radius: 1, amount: 150))),
+        (id: "vaporise", name: "Vaporise", mana: 0.3, color: (255, 236, 170), kind: Payload(Vaporise(radius: 2, power: 14, hardness: 130)),
+            look: (trail: (count: 0.06, life: (0.1, 0.3), colors: [(255, 255, 255), (255, 230, 150)], speed: 25, drag: 3, glow: true),
+                   burst: (count: 5, life: (0.1, 0.35), colors: [(255, 255, 255), (255, 235, 160), (255, 160, 60)], speed: 90, spread: 1.2, drag: 3, glow: true))),
+        // A star bomb's burst: soft ground gone, what's near thrown.
+        (id: "starburst", name: "Starburst", mana: 10, color: (255, 240, 180), kind: Payload(Vaporise(radius: 11, power: 255, hardness: 65)),
+            look: (burst: (count: 90, life: (0.2, 0.8), colors: [(255, 255, 255), (255, 245, 190), (255, 210, 110), (200, 140, 60)], speed: 190, drag: 3.5, size: 1.5, glow: true))),
+        (id: "nova", name: "Nova", mana: 6, color: (255, 250, 220), kind: Payload(Nova(radius: 13, power: 55))),
+        (id: "arc", name: "Arc", mana: 4, color: (200, 220, 255), kind: Payload(Arc)),
         (id: "spark", name: "Spark", mana: 1, color: (190, 210, 255), kind: Payload(Damage(14)),
             look: (trail: (count: 0.6, life: (0.05, 0.15), colors: [(255, 255, 255), (140, 180, 255)], speed: 20, jitter: 120, glow: true),
                    burst: (count: 14, life: (0.08, 0.25), colors: [(255, 255, 255), (150, 190, 255), (60, 90, 230)], speed: 80, spread: 1.3, drag: 5, jitter: 80, glow: true))),

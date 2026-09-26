@@ -29,6 +29,10 @@ pub enum Element {
     Acid,
     Force,
     Gravity,
+    /// Light: cuts, burns through armour, reveals.
+    Radiant,
+    /// Space itself: blinks, portals, stasis.
+    Void,
 }
 
 impl Element {
@@ -41,6 +45,8 @@ impl Element {
             Element::Acid => Stat::AcidPower,
             Element::Force => Stat::ForcePower,
             Element::Gravity => Stat::GravityPower,
+            Element::Radiant => Stat::RadiantPower,
+            Element::Void => Stat::VoidPower,
         }
     }
 
@@ -51,7 +57,8 @@ impl Element {
             Element::Frost => Harm::Frost,
             Element::Storm => Harm::Storm,
             Element::Acid => Harm::Acid,
-            Element::Force | Element::Gravity => Harm::Physical,
+            Element::Radiant => Harm::Radiant,
+            Element::Force | Element::Gravity | Element::Void => Harm::Physical,
         }
     }
 }
@@ -107,7 +114,9 @@ pub fn empower(cast: &Cast, power: f32, harm: Harm) -> Arc<Cast> {
                 Payload::Heat { amount, .. } => *amount = (*amount as f32 * power).round().clamp(-3000.0, 3000.0) as i16,
                 Payload::Knock(k) => *k *= power,
                 Payload::Matter { cells, .. } => *cells = (*cells as f32 * power).round() as u32,
-                Payload::Ignite { .. } | Payload::Shatter { .. } => {}
+                Payload::Vaporise { power: v, .. } => *v = (*v as f32 * power).round().clamp(1.0, 255.0) as u8,
+                Payload::Nova { power: n, .. } => *n *= power,
+                Payload::Ignite { .. } | Payload::Shatter { .. } | Payload::Arc => {}
             }
         }
         match &mut c.carrier {

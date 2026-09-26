@@ -83,6 +83,8 @@ pub enum Harm {
     Storm,
     Acid,
     Fall,
+    /// Light (a radiant spell): no armour stops it.
+    Radiant,
 }
 
 /// Armour and resistances (shares 0..1 of each kind stopped).
@@ -110,6 +112,7 @@ impl Ward {
             Harm::Storm => self.storm,
             Harm::Acid => self.acid,
             Harm::Fall => self.fall,
+            Harm::Radiant => 0.0,
         };
         1.0 - stopped.clamp(0.0, 0.9)
     }

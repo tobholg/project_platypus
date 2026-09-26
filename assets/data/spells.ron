@@ -10,8 +10,12 @@
 // strongest of its element it can cast, the first of those.
 (
     spells: [
-        (id: "spark_bolt", name: "Spark bolt", runes: ["bolt", "spark", "knock", "shatter"], delay: 0.12, recharge: 0.12, element: Storm,
-            about: "Quick sparks: knock back what they hit and break earth and stone."),
+        (id: "spark_bolt", name: "Spark bolt", runes: ["bolt", "spark", "knock", "shatter"], delay: 0.12, recharge: 0.12, element: Radiant,
+            about: "Quick sparks of light: knock back what they hit and break earth and stone."),
+        (id: "shock_bolt", name: "Shock bolt", runes: ["bolt", "spark", "arc"], delay: 0.4, recharge: 0.4, element: Storm,
+            about: "A bolt that arcs where it lands: into water, and whatever's wet or standing in it."),
+        (id: "star_bomb", name: "Star bomb", runes: ["star", "starburst", "nova"], delay: 0.8, recharge: 0.8, element: Radiant,
+            about: "A bouncing star that bursts: soft ground vaporised, what's near thrown. No fire."),
         (id: "fireball", name: "Fireball", runes: ["trail_fire", "fire_drops", "orb", "blast", "ignite"], delay: 0.6, recharge: 0.6, element: Fire,
             about: "A bouncing orb of fire that bursts where it stops."),
         (id: "acid_arrow", name: "Acid arrow", runes: ["gravity", "arrow", "acid"], delay: 0.35, recharge: 0.35, element: Acid,
@@ -28,6 +32,12 @@
             about: "The sky's lightning, from your hand, to what's near where you aim."),
         (id: "great_well", name: "Great gravity well", runes: ["gravity_well_ii"], delay: 0.2, recharge: 0.4, tier: 2, element: Gravity,
             about: "A bigger well: lifts a crowd, tears out harder rock."),
+        (id: "fire_ray", name: "Fire ray", runes: ["ray", "ray_burn", "ray_ignite", "ray_heat"], delay: 0.0, recharge: 0.0, tier: 2, element: Fire,
+            about: "Hold: a ray of heat. Lights what burns at range, boils water, melts ice."),
+        (id: "frost_ray", name: "Frost ray", runes: ["ray", "ray_chill", "ray_frost"], delay: 0.0, recharge: 0.0, tier: 2, element: Frost,
+            about: "Hold: a freezing ray. Sweep it over water for an ice bridge; over lava, it crusts to stone."),
+        (id: "vaporiser", name: "Vaporiser", runes: ["cutting_ray", "ray_sear", "ray_boil", "vaporise"], delay: 0.0, recharge: 0.0, tier: 2, element: Radiant,
+            about: "Hold: a cutting beam. Eats what it plays on, dirt at once, stone in a moment; burns through armour."),
         (id: "great_force", name: "Great force", runes: ["force_ii"], delay: 0.1, recharge: 0.2, tier: 2, element: Force,
             about: "Stronger force: wider, harder, tears out rock."),
         // Creatures' own (`beast`: never on a wand).

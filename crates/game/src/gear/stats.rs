@@ -71,6 +71,8 @@ stats! {
     AcidPower: "acid power", true;
     ForcePower: "force power", true;
     GravityPower: "gravity power", true;
+    RadiantPower: "radiant power", true;
+    VoidPower: "void power", true;
     MoveSpeed: "move speed", true;
     JumpHeight: "jump height", true;
     AirJumps: "air jumps", false;

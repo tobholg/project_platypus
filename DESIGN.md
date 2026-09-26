@@ -290,6 +290,25 @@ particles per spell, mana.
 Electricity comes with it: conducting through water, metals and wet
 creatures.
 
+**Families and carriers (agreed 2026-09-26, branch `gear-arc`).** A spell
+is a family (its element) on a carrier; the matrix fills in as data once a
+carrier exists. Carriers: bolt, orb, beam (an instant line from the hand,
+held; its payloads go off at its tip every tick), stream, cloud (a lingering
+drifting area), wall (conjured into the world for a while), call (from above:
+the sky in the overworld, the ceiling underground; sky calls need open sky),
+field (held at the cursor: well, force). Families: fire, frost, storm, acid,
+force, gravity, **radiant** (light: cuts and reveals; its hurt goes through
+armour), **void** (space: blink, portals, stasis), earth later. Built so far:
+the beam carrier with the fire ray, the frost ray (ice bridges, lava crusted
+to basalt: lava now freezes below 900 °C, which only a sustained cold beam
+reaches) and radiant's vaporiser (`Vaporise`: cells worn down by hardness,
+gone to smoke); the spark bolt moved to radiant, and the star bomb (a
+bouncing star: `Vaporise` + `Nova`, a blast that leaves cells be); storm's
+shock bolt (`Arc`: a spark of lightning where it lands). Next: wall and
+cloud (ice wall, fire wall, toxic cloud), call (call lightning conjures a
+cloud where there's none; meteor), void (blink bolt, a momentum-keeping
+portal pair for bodies, projectiles and liquids, stasis).
+
 **Weapons.** Melee as §7 (moves as data per weapon class, sprite-mask hits,
 stamina and poise), plus coatings on blades (a sword dipped in oil and lit
 burns; dipped in acid, it corrodes). Ranged: bows and crossbows (arrows are

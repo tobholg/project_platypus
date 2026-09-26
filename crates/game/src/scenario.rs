@@ -217,6 +217,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, rocket_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, beams_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -3190,4 +3191,127 @@ fn hook_script(
         _ => {}
     }
     key(KeyCode::KeyE, hook);
+}
+
+type BeamTarget<'a> = (&'a Kinematics, Option<&'a crate::actors::dummy::Tally>, Has<crate::actors::elements::Burning>);
+
+/// Beams and light: the frost ray swept over the pool (ice) and the lava
+/// pit (stone), the fire ray on a dummy, the vaporiser into the floor and
+/// at the sandbag, a star bomb into the floor. Logs what each did.
+#[allow(clippy::too_many_arguments)]
+fn beams_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut hand: ResMut<crate::hands::Hand>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    dummies: Query<BeamTarget, (With<crate::actors::dummy::Dummy>, Without<LocalPlayer>)>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "beams" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let count = |name: &str, xs: std::ops::Range<i32>, ys: std::ops::Range<i32>| {
+        let Some(m) = sim.materials().id(name) else { return 0 };
+        xs.flat_map(|x| ys.clone().map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count()
+    };
+    let solid = |xs: std::ops::Range<i32>, ys: std::ops::Range<i32>| xs.flat_map(|x| ys.clone().map(move |y| (x, y))).filter(|&(x, y)| sim.world.is_solid(CellPos::new(x, y))).count();
+    let mut stand = |x: f32| {
+        if k.body.pos.distance(Vec2::new(x, floor as f32 + 8.0)) > 2.0 {
+            k.body.pos = Vec2::new(x, floor as f32 + 8.0);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+        }
+    };
+    let (mut left, mut right) = (false, false);
+    // (Hotbar 3: the radiant, frost and blaze staffs.)
+    hand.bar = 2;
+    let sweep = |a: f32, b: f32, from: f32, secs: f32| a + (b - a) * ((t - from) / secs).clamp(0.0, 1.0);
+    match state.0 {
+        0 if t > 0.5 => {
+            info!("beams: the pool's ice {} cells before", count("ice", 300..430, floor - 52..floor + 2));
+            state.0 = 1;
+        }
+        // The frost ray, along the pool from its left bank.
+        1 => {
+            hand.slot = 8;
+            stand(292.0);
+            cursor.0 = Some(Vec2::new(sweep(315.0, 415.0, 0.6, 2.4), floor as f32 - 1.0));
+            left = t > 0.6;
+            if t > 3.0 {
+                info!("beams: frost ray swept 2.4 s over the pool: ice {} cells", count("ice", 300..430, floor - 52..floor + 2));
+                state.0 = 2;
+            }
+        }
+        // ... over the lava pit.
+        2 => {
+            hand.slot = 8;
+            stand(884.0);
+            cursor.0 = Some(Vec2::new(sweep(904.0, 956.0, 3.2, 2.0), floor as f32 - 5.0));
+            left = t > 3.2;
+            if t > 5.4 {
+                info!("beams: frost ray over the lava 2 s: basalt {} cells, lava {} left", count("basalt", 898..962, floor - 26..floor), count("lava", 898..962, floor - 26..floor));
+                state.0 = 3;
+            }
+        }
+        // The fire ray on the first dummy.
+        3 => {
+            hand.slot = 9;
+            stand(640.0);
+            cursor.0 = Some(Vec2::new(700.0, floor as f32 + 10.0));
+            left = t > 5.6;
+            if t > 7.0 {
+                let (hurt, burning) = dummies.iter().min_by(|a, b| a.0.body.pos.x.total_cmp(&b.0.body.pos.x)).map_or((0.0, false), |(_, tl, b)| (tl.map_or(0.0, |x| x.total), b));
+                info!("beams: fire ray on the dummy 1.4 s: it took {hurt:.0}, burning {burning}");
+                state.0 = 4;
+                state.1 = solid(600..680, floor - 40..floor) as f32;
+            }
+        }
+        // The vaporiser into the floor ahead, then at the sandbag.
+        4 => {
+            hand.slot = 7;
+            stand(640.0);
+            cursor.0 = Some(Vec2::new(sweep(660.0, 675.0, 7.2, 1.6), floor as f32 - 30.0));
+            left = t > 7.2;
+            if t > 8.8 {
+                info!("beams: vaporiser into the floor 1.6 s: {} solid cells gone", state.1 as usize - solid(600..680, floor - 40..floor));
+                state.0 = 5;
+            }
+        }
+        5 => {
+            hand.slot = 7;
+            stand(846.0);
+            cursor.0 = Some(Vec2::new(870.0, floor as f32 + 10.0));
+            left = t > 9.0;
+            if t > 10.0 {
+                let hurt = dummies.iter().max_by(|a, b| a.0.body.pos.x.total_cmp(&b.0.body.pos.x)).map_or(0.0, |(_, tl, _)| tl.map_or(0.0, |x| x.total));
+                info!("beams: vaporiser on the sandbag 1 s: it took {hurt:.0}");
+                state.0 = 6;
+                state.1 = solid(480..680, floor - 40..floor) as f32;
+            }
+        }
+        // A star bomb into the floor.
+        6 => {
+            hand.slot = 7;
+            stand(520.0);
+            cursor.0 = Some(Vec2::new(570.0, floor as f32 - 5.0));
+            right = (10.8..11.2).contains(&t);
+            if t > 12.8 {
+                info!("beams: a star bomb into the floor: {} solid cells gone", state.1 as usize - solid(480..680, floor - 40..floor));
+                state.0 = 7;
+            }
+        }
+        _ => {}
+    }
+    for (b, on) in [(MouseButton::Left, left), (MouseButton::Right, right)] {
+        if on && !mouse.pressed(b) {
+            mouse.press(b);
+        } else if !on && mouse.pressed(b) {
+            mouse.release(b);
+        }
+    }
 }

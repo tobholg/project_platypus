@@ -14,10 +14,13 @@
 //! - a stream sprays burning cells (a flamethrower);
 //! - lightning is the sky's lightning, from the wand: `WorldEdit::Zap` to up
 //!   to N creatures near the aim (or the aim itself), a jagged bolt that
-//!   burns what it passes and bursts where it ends.
+//!   burns what it passes and bursts where it ends;
+//! - a beam is an instant line from the hand, held (`beam.rs`): what it
+//!   carries goes off where it stops, every tick.
 //!
 //! A `Trigger` cast fires what's after it from where it lands.
 
+pub mod beam;
 pub mod runes;
 pub mod spells;
 pub mod warp;
@@ -212,7 +215,11 @@ impl Plugin for MagicPlugin {
             .init_resource::<Firing>()
             .add_message::<CastRequest>()
             .add_plugins(bevy::core_pipeline::fullscreen_material::FullscreenMaterialPlugin::<warp::Warp>::default())
+            .init_resource::<beam::Beams>()
+            .init_resource::<beam::BeamCanvas>()
+            .init_resource::<beam::BeamLights>()
             .add_systems(Update, (reload_runes, give_mana, place_spells, well::give_warp, well::show))
+            .add_systems(PostUpdate, beam::draw.before(bevy::transform::TransformSystems::Propagate))
             .add_systems(FixedUpdate, (recharge, request, fire, fly, well::channel).chain().in_set(TickSet::Bodies).before(crate::actors::hurt::notice));
     }
 }
@@ -334,9 +341,12 @@ fn fire(
     coatings: Res<Coatings>,
     halo: Option<Res<Halo>>,
     mut sparks: ResMut<Sparks>,
+    mut beams: ResMut<beam::Beams>,
+    mut blasts: MessageWriter<crate::fx::Explosion>,
     mut bodies: Query<Hittable>,
 ) {
     let halo = halo.map(|h| h.0.clone());
+    let mut booms = Vec::new();
     for f in std::mem::take(&mut firing.0) {
         let cast = f.cast.clone();
         match &cast.carrier {
@@ -376,6 +386,29 @@ fn fire(
             }
             // (Held open by `request`, run by `well::channel`.)
             Carrier::Well { .. } | Carrier::Force { .. } => {}
+            &Carrier::Beam { range, width } => {
+                let (tip, hit) = beam::trace(&sim.world, bodies.iter().map(|(e, k, ..)| (e, k.body.pos, k.body.half)), f.caster, f.from, f.dir, range);
+                beams.add(&cast, f.from, tip, width, sim.world.tick());
+                // Sparks along it, and where it plays on something.
+                let len = tip.distance(f.from);
+                let mut rng = Rng::seeded(&[sim.world.tick(), f.caster.to_bits(), 0xBEA3]);
+                let mut unit = || rng.next_u32() as f32 / u32::MAX as f32;
+                for e in &cast.trails {
+                    let n = e.count * len;
+                    let whole = n as usize + (unit() < n.fract()) as usize;
+                    for _ in 0..whole {
+                        let at = f.from + f.dir * len * unit();
+                        let side = if unit() < 0.5 { 1.0 } else { -1.0 };
+                        sparks.emit(e, 1, at, f.dir.perp() * side, Vec2::ZERO);
+                    }
+                }
+                if len < range - 0.5 || hit.is_some() {
+                    for e in &cast.bursts {
+                        sparks.emit(e, e.count as usize, tip, -f.dir, Vec2::ZERO);
+                    }
+                    land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, tip, hit, f.dir, false, true, &mut booms);
+                }
+            }
             // (Its hurt is the sim's: `elements::zapped`.)
             &Carrier::Lightning { range, targets } => {
                 let mut ends = lightning_targets(&bodies, &f, range, targets as usize);
@@ -391,7 +424,7 @@ fn fire(
                     for e in &cast.bursts {
                         sparks.emit(e, e.count as usize, at, -dir, Vec2::ZERO);
                     }
-                    land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, dir, false);
+                    land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, dir, false, false, &mut booms);
                     if let Some(then) = &cast.then {
                         firing.0.push(Fire { cast: then.clone(), caster: f.caster, from: at - dir * 2.0, dir, reach: TRIGGERED_REACH });
                     }
@@ -399,7 +432,9 @@ fn fire(
             }
         }
     }
+    blasts.write_batch(booms);
 }
+
 
 fn spawn_spell(commands: &mut Commands, f: &Fire, speed: f32, life: f32, bounces: u8, fall: f32, halo: Option<Handle<Image>>) {
     let c = &f.cast;
@@ -494,8 +529,11 @@ fn lightning_targets(bodies: &Query<Hittable>, f: &Fire, range: f32, n: usize) -
 ///
 /// `doused`: it met water (or anything that puts fire out) burning: no fire,
 /// and its heat flashes the water around it to steam.
+///
+/// `beam`: a beam's tip, every tick it's held (it hurts without throwing).
+/// Blasts that leave the cells be (a nova) go in `booms`.
 #[allow(clippy::too_many_arguments)]
-fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies: &mut Query<Hittable>, cast: &Cast, at: Vec2, hit: Option<Entity>, dir: Vec2, doused: bool) {
+fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies: &mut Query<Hittable>, cast: &Cast, at: Vec2, hit: Option<Entity>, dir: Vec2, doused: bool, beam: bool, booms: &mut Vec<crate::fx::Explosion>) {
     let center = CellPos::from_world(at.x, at.y);
     let mats = world.materials().clone();
     let mut rng = Rng::seeded(&[world.tick(), center.x as u64, center.y as u64, 0x57EA]);
@@ -506,9 +544,30 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
                     && let Ok((_, mut k, mut h, ..)) = bodies.get_mut(e)
                 {
                     h.harm(d, cast.harm);
-                    let k = &mut *k;
-                    k.loco.knock(&mut k.body, (dir + Vec2::new(0.0, 0.5)).normalize() * d * 5.0, 0.2);
+                    if !beam {
+                        let k = &mut *k;
+                        k.loco.knock(&mut k.body, (dir + Vec2::new(0.0, 0.5)).normalize() * d * 5.0, 0.2);
+                    }
                 }
+            }
+            &Payload::Vaporise { radius, power, hardness } => {
+                let gone = world.apply_edit(&WorldEdit::Mine { center, radius, power, max_hardness: hardness, back: false });
+                // What it ate goes up in smoke.
+                let n: u32 = gone.removed.iter().map(|r| r.1).sum();
+                if n > 0
+                    && let Some(smoke) = mats.id("smoke")
+                {
+                    for _ in 0..(n / 3).clamp(1, 30) {
+                        let a = rng.next_u32() as f32 / u32::MAX as f32 * std::f32::consts::TAU;
+                        let v = Vec2::from_angle(a) * 0.4 - dir * 0.3;
+                        world.emit(Particle { gravity: -0.05, ..Particle::new([at.x, at.y], [v.x, v.y], mats.spawn(smoke, &mut rng), 30, Landing::Settle) });
+                    }
+                }
+            }
+            &Payload::Nova { radius, power } => booms.push(crate::fx::Explosion { at, radius, power }),
+            Payload::Arc => {
+                let back = at - dir * 6.0;
+                world.apply_edit(&WorldEdit::Zap { from: CellPos::from_world(back.x, back.y), to: center });
             }
             &Payload::Knock(power) => {
                 if let Some(e) = hit
@@ -587,6 +646,7 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
 /// Spells fly through open cells and liquids a cell at a time, and land on
 /// the first solid or body (an orb bounces off its first solids), or where
 /// they are when their time is up.
+#[allow(clippy::too_many_arguments)]
 fn fly(
     mut commands: Commands,
     mut sim: ResMut<SimWorld>,
@@ -595,7 +655,9 @@ fn fly(
     mut spells: Query<(Entity, &mut Spell)>,
     mut bodies: Query<Hittable>,
     mut sparks: ResMut<Sparks>,
+    mut blasts: MessageWriter<crate::fx::Explosion>,
 ) {
+    let mut booms = Vec::new();
     let mut landed = Vec::new();
     let mut trail = Vec::new();
     let mut shed = Vec::new();
@@ -750,12 +812,13 @@ fn fly(
                 sparks.emit(b, b.count as usize, at, off, Vec2::ZERO);
             }
         }
-        land(&mut commands, world, &coatings, &mut bodies, &cast, at, hit, dir, doused);
+        land(&mut commands, world, &coatings, &mut bodies, &cast, at, hit, dir, doused, false, &mut booms);
         if let Some(then) = &cast.then {
             let dir = if n == Vec2::ZERO { dir } else { dir - 2.0 * dir.dot(n) * n };
             firing.0.push(Fire { cast: then.clone(), caster, from: at, dir, reach: TRIGGERED_REACH });
         }
     }
+    blasts.write_batch(booms);
 }
 
 /// Throw up to `n` cells of a liquid's surface where a spell met it (real

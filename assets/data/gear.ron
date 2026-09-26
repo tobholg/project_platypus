@@ -10,7 +10,7 @@
 //     StormResist, AcidResist, FallResist, Damage, AttackSpeed, Crit,
 //     CritDamage, Knockback, StaminaRegen, ManaRegen, SpellPower, CastSpeed,
 //     FirePower, FrostPower, StormPower, AcidPower, ForcePower,
-//     GravityPower, MoveSpeed, JumpHeight.
+//     GravityPower, RadiantPower, VoidPower, MoveSpeed, JumpHeight.
 //
 //   look: how it's drawn worn, on any humanoid (player, orc, skeleton...):
 //     recolor: [(parts: [..], colors: { letter: colour })]: the wearer's
