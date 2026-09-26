@@ -414,6 +414,28 @@ fn fire(
                 }
                 land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, f.dir, false, false, &mut booms);
             }
+            &Carrier::Call { range, height, speed, sky, lightning } => {
+                let target = f.from + f.dir * f.reach.min(range);
+                let above = target + Vec2::new(if lightning { 0.0 } else { -height * 0.35 }, height);
+                if sky && !open_sky(&sim.world, target, height) {
+                    // (No sky here: a puff, and nothing.)
+                    sparks.emit(&FIZZLE_PUFF, FIZZLE_PUFF.count as usize, f.from + f.dir * 6.0, f.dir, Vec2::ZERO);
+                    continue;
+                }
+                // The cloud it comes out of.
+                sparks.emit(&CALL_CLOUD, CALL_CLOUD.count as usize, above, Vec2::Y, Vec2::ZERO);
+                if lightning {
+                    let x = target.x.floor() as i32;
+                    sim.world.apply_edit(&WorldEdit::Weather { x, radius: STORM_RADIUS, storm: true });
+                    sim.world.apply_edit(&WorldEdit::Lightning { x, from_y: above.y as i32 });
+                    land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, target, None, Vec2::NEG_Y, false, false, &mut booms);
+                } else {
+                    // Something falling (an orb that doesn't bounce), carrying the rest.
+                    let falling = Arc::new(Cast { carrier: Carrier::Orb { speed, life: 6.0, bounces: 0 }, ..(*cast).clone() });
+                    let fall = Fire { cast: falling, caster: f.caster, from: above, dir: (target - above).normalize_or(Vec2::NEG_Y), reach: height };
+                    spawn_spell(&mut commands, &fall, speed, 6.0, 0, ORB_FALL, halo.clone());
+                }
+            }
             &Carrier::Beam { range, width } => {
                 let (tip, hit) = beam::trace(&sim.world, bodies.iter().map(|(e, k, ..)| (e, k.body.pos, k.body.half)), f.caster, f.from, f.dir, range);
                 beams.add(&cast, f.from, tip, width, sim.world.tick());
@@ -848,6 +870,45 @@ fn fly(
     }
     blasts.write_batch(booms);
 }
+
+/// A forced storm's reach either side of a called lightning bolt (cells).
+const STORM_RADIUS: i32 = 48;
+
+/// Open sky over `at`: nothing solid for `height` cells up (or up to where
+/// the world isn't loaded: the sky).
+fn open_sky(world: &World, at: Vec2, height: f32) -> bool {
+    let mats = world.materials();
+    let (x, y0) = (at.x.floor() as i32, at.y.floor() as i32 + 1);
+    (y0..y0 + height as i32).all(|y| world.get(CellPos::new(x, y)).is_none_or(|c| !matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder)))
+}
+
+/// A called spell's cloud, gathering (visual).
+static CALL_CLOUD: std::sync::LazyLock<runes::Emitter> = std::sync::LazyLock::new(|| runes::Emitter {
+    count: 40.0,
+    life: (0.6, 1.4),
+    colors: vec![(120, 124, 140), (80, 84, 100), (50, 52, 64)],
+    speed: 30.0,
+    spread: 3.14,
+    gravity: 0.0,
+    drag: 1.5,
+    size: 3.0,
+    jitter: 0.0,
+    glow: false,
+});
+
+/// A called spell with no sky to come from: a puff from the hand (visual).
+static FIZZLE_PUFF: std::sync::LazyLock<runes::Emitter> = std::sync::LazyLock::new(|| runes::Emitter {
+    count: 10.0,
+    life: (0.2, 0.5),
+    colors: vec![(200, 200, 210), (120, 120, 130)],
+    speed: 25.0,
+    spread: 1.0,
+    gravity: -20.0,
+    drag: 3.0,
+    size: 1.0,
+    jitter: 0.0,
+    glow: false,
+});
 
 /// Throw up to `n` cells of a liquid's surface where a spell met it (real
 /// cells: nothing made, nothing lost).

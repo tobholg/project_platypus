@@ -73,6 +73,23 @@ pub enum Carrier {
     /// by what's in the way): the open cells in a disc of `radius` filled.
     /// Its payloads go off at its heart.
     Cloud { material: String, radius: i32, range: f32 },
+    /// Called down from above onto where it's aimed (out to `range`): its
+    /// payloads ride something falling from `height` cells up at `speed`
+    /// (a meteor: it lands on the first thing below); or, with
+    /// `lightning`, the sky's lightning, out of a storm gathered over the
+    /// spot (forced where there's none: rain comes with it). With `sky` it
+    /// needs open sky above the spot (nothing solid): underground it
+    /// fizzles.
+    Call {
+        range: f32,
+        height: f32,
+        #[serde(default)]
+        speed: f32,
+        #[serde(default)]
+        sky: bool,
+        #[serde(default)]
+        lightning: bool,
+    },
 }
 
 /// What a spell does where it lands (or what it hits).

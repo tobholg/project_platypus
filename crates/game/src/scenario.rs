@@ -219,6 +219,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, beams_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, conjure_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, call_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -3434,5 +3435,98 @@ fn conjure_script(
         } else if !on && mouse.pressed(b) {
             mouse.release(b);
         }
+    }
+}
+
+/// Called from the sky: lightning on an orc in the open, then on one under
+/// a stone roof (no sky: it fizzles), then a meteor on a third. Logs each.
+/// (The player stands between the roofed one and the others.)
+#[allow(clippy::too_many_arguments)]
+fn call_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut hand: ResMut<crate::hands::Hand>,
+    mut player: Query<(&mut Kinematics, &mut crate::actors::Health), With<LocalPlayer>>,
+    orcs: Query<ConjureFoe, IceFoe>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "call" {
+        return;
+    }
+    let Ok((mut k, mut hp)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    hp.hp = hp.max;
+    let at = |x: f32| orcs.iter().min_by(|a, b| (a.1.body.pos.x - x).abs().total_cmp(&(b.1.body.pos.x - x).abs())).map(|(_, k, h, burning)| (k.body.pos, h.hp, burning));
+    let mut right = false;
+    let hps = || orcs.iter().map(|(_, k, h, _)| (k.body.pos.x as i32, h.hp as i32)).collect::<Vec<_>>();
+    match state.0 {
+        0 if t > 0.5 => {
+            k.body.pos = Vec2::new(620.0, floor as f32 + 8.0);
+            k.prev_pos = k.body.pos;
+            // A stone roof over the right-hand one.
+            if let Some(stone) = sim.materials().id("stone") {
+                for x in (520..=580).step_by(4) {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, floor + 50), radius: 3, material: stone, overwrite: true });
+                }
+            }
+            for x in [740.0, 800.0, 550.0] {
+                crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(x, floor as f32 + 10.0), |e| {
+                    e.remove::<crate::actors::ai::MeleeWalker>();
+                });
+            }
+            state.0 = 1;
+        }
+        // Call lightning (the storm staff's right button) on the first.
+        1 if t > 1.0 => {
+            hand.bar = 0;
+            hand.slot = 9;
+            if let Some((p, ..)) = at(740.0) {
+                cursor.0 = Some(p);
+            }
+            right = t < 1.1;
+            if t > 2.2 {
+                info!("call: lightning on the orc at 740: orcs (x, hp) {:?}", hps());
+                state.0 = 2;
+            }
+        }
+        // ... on the one under the roof.
+        2 => {
+            if let Some((p, ..)) = at(550.0).filter(|(p, ..)| p.x < 600.0) {
+                cursor.0 = Some(p);
+            }
+            right = (2.5..2.6).contains(&t);
+            if t > 3.8 {
+                info!("call: lightning on the orc under a stone roof: orcs (x, hp) {:?}", hps());
+                state.0 = 3;
+            }
+        }
+        // A meteor (the fire staff's right button) on the middle one.
+        3 => {
+            hand.bar = 0;
+            hand.slot = 8;
+            if let Some((p, ..)) = at(800.0) {
+                cursor.0 = Some(p);
+            }
+            right = (4.0..4.1).contains(&t);
+            if t > 4.0 && state.1 == 0.0 {
+                state.1 = (760..840).flat_map(|x| (floor - 40..floor).map(move |y| (x, y))).filter(|&(x, y)| sim.world.is_solid(CellPos::new(x, y))).count() as f32;
+            }
+            if t > 6.5 {
+                let solid = (760..840).flat_map(|x| (floor - 40..floor).map(move |y| (x, y))).filter(|&(x, y)| sim.world.is_solid(CellPos::new(x, y))).count();
+                let lava = sim.materials().id("lava").map_or(0, |m| (700..900).flat_map(|x| (floor - 40..floor + 40).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
+                info!("call: a meteor on the orc at 800: orcs (x, hp) {:?}; a crater of {} cells, {} of lava about", hps(), state.1 as usize - solid, lava);
+                state.0 = 4;
+            }
+        }
+        _ => {}
+    }
+    if right && !mouse.pressed(MouseButton::Right) {
+        mouse.press(MouseButton::Right);
+    } else if !right && mouse.pressed(MouseButton::Right) {
+        mouse.release(MouseButton::Right);
     }
 }

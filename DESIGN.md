@@ -307,9 +307,11 @@ bouncing star: `Vaporise` + `Nova`, a blast that leaves cells be); storm's
 shock bolt (`Arc`: a spark of lightning where it lands); the wall carrier
 (ice wall, left to melt; fire wall, kept burning for 5 s: `conjure.rs`)
 and the cloud carrier (toxic cloud: miasma, a new *heavy* gas that sinks
-and pools, corrosive and flammable). Next: call (call lightning conjures a
-cloud where there's none; meteor), void (blink bolt, a momentum-keeping
-portal pair for bodies, projectiles and liquids, stasis).
+and pools, corrosive and flammable); the call carrier (call lightning:
+a storm forced over the spot, then the sky's lightning; meteor: a burning
+rock falling from high up, crater, fire, lava; both need open sky). Next:
+void (blink bolt, a momentum-keeping portal pair for bodies, projectiles
+and liquids, stasis).
 
 **Weapons.** Melee as §7 (moves as data per weapon class, sprite-mask hits,
 stamina and poise), plus coatings on blades (a sword dipped in oil and lit

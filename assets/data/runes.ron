@@ -21,6 +21,10 @@
 //           on the ground below where it's aimed (open cells only, not where a
 //           body is if it's solid); `hold` s: kept filled that long (fire)
 //         | Cloud(material, radius, range): a disc of a gas conjured where it's aimed
+//         | Call(range, height, speed, sky, lightning): down from above onto where it's
+//           aimed: its payloads ride something falling from `height` up at `speed`
+//           (a meteor), or with `lightning` the sky's lightning out of a storm
+//           forced over the spot; `sky`: only under open sky
 //         | Beam(range, width): held, an instant line from the hand to the first
 //           thing in its way (not air, gas or flame), `width` cells across; its
 //           payloads go off at its tip every tick (so its mana is a tick's, and
@@ -83,6 +87,13 @@
             look: (burst: (count: 40, life: (0.3, 0.8), colors: [(255, 250, 210), (255, 180, 60), (220, 70, 20)], speed: 70, spread: 1.4, gravity: -60, drag: 2, glow: true))),
         (id: "toxic_cloud", name: "Toxic cloud", mana: 18, color: (150, 190, 70), kind: Carrier(Cloud(material: "miasma", radius: 10, range: 150)),
             look: (burst: (count: 30, life: (0.5, 1.2), colors: [(190, 220, 110), (140, 110, 160), (90, 120, 40)], speed: 40, gravity: 10, drag: 2))),
+        // Called down from above.
+        (id: "call_lightning", name: "Call lightning", mana: 30, color: (200, 220, 255), kind: Carrier(Call(range: 240, height: 220, sky: true, lightning: true))),
+        (id: "meteor", name: "Meteor", mana: 22, color: (255, 120, 40), kind: Carrier(Call(range: 220, height: 260, speed: 380, sky: true)),
+            look: (trail: (count: 3, life: (0.3, 0.9), colors: [(255, 250, 210), (255, 180, 60), (220, 70, 20), (90, 60, 50)], speed: 20, drag: 1.5, size: 2, gravity: -30, glow: true))),
+        (id: "impact", name: "Impact", mana: 24, color: (255, 150, 60), kind: Payload(Blast(radius: 22, power: 150)),
+            look: (burst: (count: 120, life: (0.3, 1.0), colors: [(255, 255, 230), (255, 210, 90), (255, 120, 30), (150, 50, 20), (60, 50, 50)], speed: 220, drag: 3, gravity: 60, size: 2, glow: true))),
+        (id: "molten", name: "Molten", mana: 8, color: (255, 110, 30), kind: Payload(Matter(material: "lava", cells: 60))),
         // A star: a bouncing orb of light.
         (id: "star", name: "Star", mana: 8, color: (255, 245, 200), kind: Carrier(Orb(speed: 270, life: 2.5, bounces: 2)),
             look: (trail: (count: 1.2, life: (0.15, 0.45), colors: [(255, 255, 255), (255, 240, 170), (255, 200, 90)], speed: 12, drag: 3, glow: true))),
