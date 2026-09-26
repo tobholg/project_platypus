@@ -67,6 +67,9 @@
 //!   (a cloud) just above the ground: no fall damage (`PLATYPUS_NOSAVE=1`:
 //!   no air jump, it hurts; `PLATYPUS_NIGHT=1`: at night); logs height and
 //!   health
+//! - `critters`   (flat world) a rabbit, a bird and a frog placed 60–90 cells
+//!   to the right at 1 s; the player walks at them from 2 s: they should hop
+//!   and fly away; logs where the critters near the player are
 //! - `inventory`  opens the inventory screen (Esc) at 1 s, switches to the
 //!   second hotbar (X) at 1.5 s, hovers the spark wand at 2 s (its tooltip;
 //!   this moves the real mouse pointer), drags it to hotbar 3 at 2.6–3 s;
@@ -112,7 +115,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -1375,5 +1378,37 @@ fn airjump_script(
     if t >= state.1 {
         state.1 = (t * 4.0).floor() / 4.0 + 0.25;
         info!("airjump: t {t:.2} height {:+.0} hp {:.0}{}", k.body.pos.y - ground, h.hp, if state.2 == 2 { " (saved)" } else { "" });
+    }
+}
+
+/// Walk at a rabbit (see the module notes).
+fn critters_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut commands: Commands,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    critters: Query<(&crate::actors::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "critters" {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    let t = s.elapsed;
+    if state.0 == 0 && t > 1.0 {
+        for (dx, kind) in [(60, "rabbit"), (75, "bird"), (90, "frog")] {
+            let x = k.body.pos.x as i32 + dx;
+            if let Some(y) = find_ground(&sim.world, x, k.body.pos.y as i32 + 40, 100) {
+                crate::actors::creature::spawn_creature(&mut commands, kind, Vec2::new(x as f32 + 0.5, y as f32), |_| {});
+            }
+        }
+        state.0 = 1;
+    }
+    if t > 2.0 && t < 4.5 { keys.press(KeyCode::KeyD) } else { keys.release(KeyCode::KeyD) }
+    if t >= state.1 {
+        state.1 = (t * 2.0).floor() / 2.0 + 0.5;
+        let near: Vec<String> = critters.iter().filter(|(c, r)| c.kind != "orc" && r.body.pos.distance(k.body.pos) < 500.0).map(|(c, r)| format!("{} {:+.0},{:+.0}", c.kind, r.body.pos.x - k.body.pos.x, r.body.pos.y - k.body.pos.y)).collect();
+        info!("critters: t {t:.1} [{}]", near.join("; "));
     }
 }

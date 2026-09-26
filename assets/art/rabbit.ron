@@ -1,0 +1,81 @@
+// A rabbit, facing right (the game mirrors it). Sprite format: crates/art.
+(
+    size: (14, 11),
+    feet: (7, 11),
+    outline: (32, 24, 20),
+    palette: {
+        'b': (156, 118, 82),    // fur
+        'd': (118, 86, 58),     // fur, shade
+        'c': (214, 190, 150),   // belly, cheek
+        'w': (240, 236, 228),   // tail
+        'p': (214, 140, 140),   // inner ear
+        'k': (30, 22, 20),      // eye
+        'n': (200, 110, 110),   // nose
+    },
+    frames: {
+        "sit": [
+            "..............",
+            ".........dd...",
+            ".........pd...",
+            "........dpd...",
+            "........bbd...",
+            "....dddbbbbb..",
+            "...dbbbbbbkbb.",
+            "..wdbbbbbcbbn.",
+            "...dbbbcccc...",
+            "....dbb.cc....",
+            "..............",
+        ],
+        // Gathered up to spring.
+        "crouch": [
+            "..............",
+            "..............",
+            "..........dd..",
+            ".........dpd..",
+            "........dbbd..",
+            "...ddddbbbbbb.",
+            "..wdbbbbbbbkbn",
+            "...dbbbbbccbb.",
+            "...dbbbcccc...",
+            "....ddd.cc....",
+            "..............",
+        ],
+        // Stretched out in the air.
+        "leap": [
+            "..............",
+            "...........d..",
+            "..........dpd.",
+            ".........dbd..",
+            ".....dddbbbbb.",
+            "..wddbbbbbbkbn",
+            "...dbbbbbbccb.",
+            "..dbb.dbcc....",
+            ".dd.....cc....",
+            "..............",
+            "..............",
+        ],
+    },
+    derived: {
+        // Nose and ears twitch.
+        "twitch": (from: "sit", over: [
+            "..............",
+            "..........dd..",
+            ".........dpd..",
+            "........dpd___",
+            "..............",
+            "..............",
+            "..............",
+            "............b_",
+            "..............",
+            "..............",
+            "..............",
+        ]),
+        "land": (from: "crouch", shift: (0, 0)),
+    },
+    clips: {
+        "idle": (frames: ["sit", "sit", "sit", "sit", "twitch", "sit", "twitch", "sit", "sit"], fps: 5),
+        "run": (frames: ["crouch", "leap", "leap", "land"], fps: 10),
+        "jump": (frames: ["leap"], fps: 5),
+        "fall": (frames: ["leap"], fps: 5),
+    },
+)

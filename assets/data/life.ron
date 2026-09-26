@@ -1,0 +1,9 @@
+// Ambient life round the player (actors/critters.rs): each kind, where it
+// lives (Surface: open ground; Shore: within 30 cells of water), at most how
+// many near the player, and how readily it turns up (a chance a second).
+// Hot-reloaded.
+[
+    (kind: "rabbit", place: Surface, most: 4, rate: 0.5),
+    (kind: "bird", place: Surface, most: 6, rate: 0.6),
+    (kind: "frog", place: Shore, most: 4, rate: 0.6),
+]

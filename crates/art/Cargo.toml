@@ -1,0 +1,15 @@
+[package]
+name = "platypus_art"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Sprites as text: the format, its compiler and the platypus-art CLI (render, sheet, check, describe)."
+
+[dependencies]
+serde = { workspace = true }
+ron = { workspace = true }
+png = "0.18"
+
+[[bin]]
+name = "platypus-art"
+path = "src/main.rs"

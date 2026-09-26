@@ -1,0 +1,57 @@
+// A frog, facing right (the game mirrors it).
+(
+    size: (14, 10),
+    feet: (7, 10),
+    outline: (20, 30, 16),
+    palette: {
+        'g': (92, 160, 60),     // skin
+        'd': (58, 110, 40),     // spots, legs
+        'y': (206, 214, 120),   // belly, throat
+        'e': (222, 204, 92),    // eye
+        'k': (18, 16, 12),      // pupil
+    },
+    frames: {
+        "sit": [
+            "..............",
+            ".......ee.ee..",
+            ".......ek.ek..",
+            "......ggggggg.",
+            ".....gggggggg.",
+            "....ggdggggyy.",
+            "...gdggggyyy..",
+            "...dddggyyy...",
+            "..ddd.dd.dd...",
+            "..............",
+        ],
+        "croak": [
+            "..............",
+            ".......ee.ee..",
+            ".......ek.ek..",
+            "......ggggggg.",
+            ".....gggggggg.",
+            "....ggdgggyyy.",
+            "...gdgggyyyyy.",
+            "...dddggyyyy..",
+            "..ddd.dd.dd...",
+            "..............",
+        ],
+        "leap": [
+            "..............",
+            "..........e.e.",
+            ".........ekek.",
+            "........ggggg.",
+            "....gggggggyy.",
+            "...gdggggyyy..",
+            "..dd.ggyyy....",
+            ".dd...........",
+            "..............",
+            "..............",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["sit", "sit", "sit", "sit", "croak", "sit", "croak", "sit"], fps: 4),
+        "run": (frames: ["sit", "leap", "leap", "sit"], fps: 10),
+        "jump": (frames: ["leap"], fps: 5),
+        "fall": (frames: ["leap"], fps: 5),
+    },
+)

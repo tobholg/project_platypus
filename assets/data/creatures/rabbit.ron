@@ -1,0 +1,23 @@
+// A rabbit: sits, twitches, hops about; bolts from you (and blasts).
+(
+    name: "Rabbit",
+    size: (6, 5),
+    health: 8,
+    team: Neutral,
+    fall_damage: (safe_height: 60, per_cell: 0.3),
+    blood: "blood",
+    art: "rabbit",
+    movement: (
+        run_speed: 125,
+        ground_accel: 2400,
+        ground_decel: 2400,
+        air_accel: 400,
+        jump_height: 7,
+        air_jumps: 0,
+        step_height: 2,
+    ),
+    brain: (
+        kind: "critter",
+        params: (flee_range: 45, calm_after: 3.0, hops: true, wander_every: 1.6, rest: 0.65, wander_speed: 0.45),
+    ),
+)

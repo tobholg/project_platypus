@@ -29,6 +29,11 @@ impl Animator {
     pub fn new(def: Arc<CreatureDef>) -> Self {
         Animator { def, clip: String::new(), frame: 0, timer: 0.0, force: None }
     }
+
+    /// Pick the clip (and its image) again next frame (the art changed).
+    pub fn refresh(&mut self) {
+        self.clip.clear();
+    }
 }
 
 /// Clip wanted for a movement state, with fallbacks so a creature only needs `idle`.
@@ -55,6 +60,7 @@ fn animate(
     time: Res<Time>,
     assets: Res<AssetServer>,
     mut art: ResMut<CreatureArt>,
+    mut images: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut creatures: Query<(&Kinematics, &mut Animator, &Children)>,
     mut sprites: Query<(&mut Sprite, &mut Transform), With<CreatureSprite>>,
@@ -90,7 +96,7 @@ fn animate(
         for child in children.iter() {
             let Ok((mut sprite, mut tf)) = sprites.get_mut(child) else { continue };
             if changed {
-                sprite.image = art.image(&assets, &clip.image);
+                sprite.image = art.image(&assets, &mut images, &clip.image, def.atlas.as_deref());
                 if let Some(atlas) = sprite.texture_atlas.as_mut() {
                     atlas.layout = art.layout(&mut layouts, def.sprite.frame, clip.columns, clip.rows);
                 }

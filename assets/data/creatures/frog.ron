@@ -1,0 +1,22 @@
+// A frog: sits by water, croaks, leaps away (or into the water) when you come.
+(
+    name: "Frog",
+    size: (6, 5),
+    health: 6,
+    team: Neutral,
+    blood: "blood",
+    art: "frog",
+    movement: (
+        run_speed: 90,
+        ground_accel: 2400,
+        ground_decel: 2400,
+        air_accel: 500,
+        jump_height: 12,
+        air_jumps: 0,
+        step_height: 2,
+    ),
+    brain: (
+        kind: "critter",
+        params: (flee_range: 35, calm_after: 2.5, hops: true, wander_every: 2.5, rest: 0.75, wander_speed: 0.4),
+    ),
+)

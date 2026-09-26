@@ -1,0 +1,72 @@
+// A small songbird, facing right (the game mirrors it).
+(
+    size: (13, 10),
+    feet: (6, 10),
+    outline: (30, 22, 18),
+    palette: {
+        'b': (128, 96, 64),     // back, head
+        'd': (92, 66, 44),      // wing
+        't': (78, 58, 40),      // tail
+        'w': (226, 208, 176),   // breast
+        'r': (206, 120, 70),    // throat
+        'k': (20, 16, 14),      // eye
+        'o': (232, 176, 62),    // beak
+        'l': (168, 120, 84),    // legs
+    },
+    frames: {
+        "perch": [
+            ".............",
+            ".............",
+            ".......bb....",
+            "......bbkbo..",
+            "......bbrr...",
+            "...tbdddwww..",
+            "..ttbddwww...",
+            ".t...bwww....",
+            ".......l.l...",
+            ".............",
+        ],
+        "peck": [
+            ".............",
+            ".............",
+            ".............",
+            ".............",
+            "......bbb....",
+            "...tbdddbb...",
+            "..ttbddwbbkb.",
+            ".t...bwwwrro.",
+            ".......l.l...",
+            ".............",
+        ],
+        "wings_up": [
+            ".............",
+            "....dd.......",
+            ".....dd......",
+            ".....ddb.....",
+            "..ttbbbbbkbo.",
+            "...tbwwwwrr..",
+            ".....www.....",
+            ".............",
+            ".............",
+            ".............",
+        ],
+        "wings_down": [
+            ".............",
+            ".............",
+            ".............",
+            ".......b.....",
+            "..ttbbbbbkbo.",
+            "...tbdddwrr..",
+            "....dddww....",
+            "...dd........",
+            ".............",
+            ".............",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["perch", "perch", "perch", "peck", "perch", "perch", "peck", "peck", "perch"], fps: 4),
+        "run": (frames: ["perch", "peck"], fps: 8),
+        "jump": (frames: ["wings_up", "wings_down"], fps: 14),
+        "fall": (frames: ["wings_up", "wings_down", "wings_down", "wings_down"], fps: 8),
+    },
+)

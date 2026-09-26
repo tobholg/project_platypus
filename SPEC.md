@@ -821,6 +821,52 @@ deaths (blood). Rendered as one dynamic mesh.
   therefore work for every creature.
 - Particles (debris, blood, sparks) are plain arrays, not entities. When they
   come to rest they become cells, so blood pools and stains.
+- **Flyers** (`MovementStats::fly_speed` > 0): in the air, or steering up off
+  the ground, a body flies: its velocity steers toward (move_x, move_y) ×
+  `fly_speed` at `fly_accel`, sinking at 0.15 of it when steering neither
+  up nor down (a glide). Birds, later bats.
+
+### 5.1 Art as text (`platypus_art`, `assets/art/*.ron`)
+
+- A sprite is text: a size, the feet (the pixel standing on the ground), an
+  optional outline colour (drawn round every shape, sideways and up/down), a
+  palette of characters ('.' clear; '_' in overlays: erase), frames as grids
+  of them, derived frames (another frame moved by `shift`, mirrored by
+  `flip`, drawn `over`), clips (frames, fps, looping) and anchors (named
+  points per frame, for hands and weapons later). Written by hand, by the
+  model, or (later) by the in-game editor.
+- `compile` draws every frame (derived ones in dependency order, cycles
+  named), outlines, resolves clips and anchors, and packs an atlas (8
+  frames a row). Mistakes are errors that say where.
+- `check` warns about lone pixels, colours never used, frames no clip
+  plays, feet off the frame, odd frame rates; a test compiles every asset
+  with no warnings.
+- The CLI `platypus-art` is how the model sees its work: `sheet` (a contact
+  sheet, a row per clip and one of every frame, feet red, anchors blue, with
+  a legend of which row is what), `render` (one frame), `check`, `describe`
+  (a sprite in words: where each frame is drawn, its colours, symmetry,
+  clips), `import` (a picture of frames to a sprite file).
+- A creature with `art: "<name>"` is drawn from it: size, feet and clips
+  come from the art (clip images are `art:<name>`, made from the compiled
+  atlas once); editing the art file reloads every live creature drawn from
+  it.
+
+### 5.2 Critters (`actors/critters.rs`)
+
+- The `critter` brain (params: `flee_range`, `calm_after`, `hops`, `flies`,
+  `wander_every`, `rest`, `wander_speed`): rests and wanders when calm; flees
+  a player within `flee_range`, a blast within 4 × its radius, or being hurt,
+  for `calm_after` seconds, away from it. Hoppers move in hops (pausing
+  between them when ambling); flyers fly up and away when scared and glide
+  back down to land when calm. Walled, it turns round.
+- Ambient life (`assets/data/life.ron`, hot-reloaded): for each kind, where
+  it lives (`Surface`: open ground; `Shore`: within 30 cells of water), at
+  most how many within 450 cells of the player, and a chance a second: a
+  new one turns up 330–440 cells to either side (just off the screen), on
+  the first solid ground under open air near the surface; any further than
+  800 cells is gone.
+- Rabbits (hop, bolt), birds (hop and peck, fly off, glide back), frogs (by
+  water, leap).
 
 ## 6. Combat
 

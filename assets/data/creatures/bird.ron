@@ -1,0 +1,24 @@
+// A songbird: hops and pecks on the ground; flies off when you come near (or
+// something blows up), glides back down somewhere once it's calm.
+(
+    name: "Bird",
+    size: (5, 4),
+    health: 4,
+    team: Neutral,
+    blood: "blood",
+    art: "bird",
+    movement: (
+        run_speed: 30,
+        ground_accel: 2000,
+        ground_decel: 2000,
+        jump_height: 4,
+        air_jumps: 0,
+        step_height: 2,
+        fly_speed: 130,
+        fly_accel: 900,
+    ),
+    brain: (
+        kind: "critter",
+        params: (flee_range: 60, calm_after: 4.0, hops: true, flies: true, wander_every: 1.2, rest: 0.55, wander_speed: 0.6),
+    ),
+)

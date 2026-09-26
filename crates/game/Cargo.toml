@@ -9,6 +9,7 @@ publish.workspace = true
 platypus_sim.workspace = true
 platypus_worldgen.workspace = true
 platypus_physics.workspace = true
+platypus_art = { path = "../art" }
 bevy.workspace = true
 rayon.workspace = true
 serde.workspace = true

@@ -68,6 +68,12 @@ pub struct MovementStats {
     pub swim_stroke: f32,
     /// Seconds between strokes while jump is held in water.
     pub swim_stroke_every: f32,
+    /// Flyers (birds, bats): 0 = can't fly. A flyer in the air (or steering
+    /// up off the ground) flies: its velocity steers toward (move_x,
+    /// move_y) × this, at `fly_accel`, sinking slowly when it isn't steering
+    /// up or down (a glide).
+    pub fly_speed: f32,
+    pub fly_accel: f32,
 }
 
 impl MovementStats {
@@ -108,6 +114,8 @@ impl Default for MovementStats {
             wall_slide_speed: 60.0,
             wall_jump_push: 120.0,
             step_height: 3,
+            fly_speed: 0.0,
+            fly_accel: 600.0,
             swim_gravity: 0.1,
             swim_drag: 0.0005,
             swim_max_fall: 25.0,
@@ -271,6 +279,20 @@ impl Locomotion {
             }
             body.vel.x = self.dash_dir * s.run_speed;
             self.state = if grounded { MoveState::Ground } else { MoveState::Air };
+        }
+
+        // Fly: in the air (or taking off), steered by move_x/move_y.
+        if s.fly_speed > 0.0 && (!grounded || intent.move_y > 0.0) && self.contacts.submerged < 0.5 {
+            let steer = Vec2::new(intent.move_x.clamp(-1.0, 1.0), intent.move_y.clamp(-1.0, 1.0));
+            let mut want = steer * s.fly_speed;
+            if steer.y == 0.0 {
+                want.y = -s.fly_speed * 0.15;
+            }
+            let dv = want - body.vel;
+            body.vel += dv.clamp_length_max(s.fly_accel * dt);
+            self.state = MoveState::Air;
+            self.rising_from_jump = false;
+            return ev;
         }
 
         // Run.

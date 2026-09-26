@@ -3,6 +3,11 @@
 //!
 //! Editing a file while the game runs updates every live creature of that kind
 //! (movement, health max, animations). Adding a file adds a creature.
+//!
+//! Its look is either a picture sheet (`sprite` + `animations`) or, with
+//! `art: "rabbit"`, a sprite written as text (`assets/art/rabbit.ron`,
+//! `platypus_art`): compiled to an atlas at load, its clips the animations;
+//! editing the art file reloads it too.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -33,9 +38,18 @@ pub struct CreatureDef {
     /// Elemental resistances (heat, corrosion, fireproof). Default: none.
     #[serde(default)]
     pub resist: Resist,
+    /// A sprite written as text (`assets/art/<name>.ron`): sets `sprite` and
+    /// `animations` from its size, feet and clips.
+    #[serde(default)]
+    pub art: Option<String>,
+    #[serde(default)]
     pub sprite: SpriteDef,
     /// Clip name → clip. Standard names: idle, run, jump, fall, dash, wall.
+    #[serde(default)]
     pub animations: HashMap<String, AnimDef>,
+    /// The compiled art's atlas (from `art`).
+    #[serde(skip)]
+    pub atlas: Option<Arc<platypus_art::Pixels>>,
     pub brain: BrainDef,
     /// Draw order among creatures.
     #[serde(default = "default_z")]
@@ -54,7 +68,7 @@ fn red_blood() -> String {
     "blood".into()
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct SpriteDef {
     /// Frame size in pixels (1 pixel = 1 cell).
     pub frame: (u32, u32),
@@ -97,6 +111,8 @@ pub struct BrainDef {
 pub struct Creatures {
     defs: HashMap<String, Arc<CreatureDef>>,
     watch: Watched,
+    /// `assets/art`: text sprites (reload the creatures drawn from them).
+    art_watch: Watched,
 }
 
 impl Creatures {
@@ -113,7 +129,7 @@ impl Creatures {
         for path in entries.filter_map(|e| Some(e.ok()?.path())) {
             if path.extension().is_some_and(|e| e == "ron") {
                 let kind = path.file_stem().unwrap().to_string_lossy().into_owned();
-                match load_ron::<CreatureDef>(&path) {
+                match load_ron::<CreatureDef>(&path).and_then(with_art) {
                     Ok(def) => {
                         defs.insert(kind, Arc::new(def));
                     }
@@ -125,6 +141,24 @@ impl Creatures {
     }
 }
 
+/// A creature drawn from a text sprite: compile it, take its size, feet and
+/// clips (their image is `art:<name>`, the atlas kept on the definition).
+fn with_art(mut def: CreatureDef) -> Result<CreatureDef, String> {
+    let Some(name) = def.art.clone() else { return Ok(def) };
+    let path = data_path("").parent().expect("assets/data").join("art").join(format!("{name}.ron"));
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let art = platypus_art::parse(&text).and_then(|f| platypus_art::compile(&f)).map_err(|e| format!("{}: {e}", path.display()))?;
+    let (atlas, columns, rows) = art.atlas();
+    def.sprite = SpriteDef { frame: art.size, feet: art.feet };
+    def.animations = art
+        .clips
+        .iter()
+        .map(|(clip, c)| (clip.clone(), AnimDef { image: format!("art:{name}"), columns, rows, frames: c.frames.clone(), fps: c.fps, looping: c.looping }))
+        .collect();
+    def.atlas = Some(Arc::new(atlas));
+    Ok(def)
+}
+
 /// Loaded images and atlas layouts, shared by all creatures.
 #[derive(Resource, Default)]
 pub struct CreatureArt {
@@ -133,8 +167,29 @@ pub struct CreatureArt {
 }
 
 impl CreatureArt {
-    pub fn image(&mut self, assets: &AssetServer, path: &str) -> Handle<Image> {
-        self.images.entry(path.to_string()).or_insert_with(|| assets.load(path.to_string())).clone()
+    /// A picture under `assets/`, or `art:<name>`: a compiled text sprite's
+    /// atlas (`atlas`), made into an image once.
+    pub fn image(&mut self, assets: &AssetServer, images: &mut Assets<Image>, path: &str, atlas: Option<&platypus_art::Pixels>) -> Handle<Image> {
+        if let Some(h) = self.images.get(path) {
+            return h.clone();
+        }
+        let handle = match (path.strip_prefix("art:"), atlas) {
+            (Some(_), Some(a)) => images.add(Image::new(
+                bevy::render::render_resource::Extent3d { width: a.w, height: a.h, depth_or_array_layers: 1 },
+                bevy::render::render_resource::TextureDimension::D2,
+                a.rgba.clone(),
+                bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+                bevy::asset::RenderAssetUsages::MAIN_WORLD | bevy::asset::RenderAssetUsages::RENDER_WORLD,
+            )),
+            _ => assets.load(path.to_string()),
+        };
+        self.images.insert(path.to_string(), handle.clone());
+        handle
+    }
+
+    /// Forget compiled art (it changed): made again when next asked for.
+    pub fn forget_art(&mut self) {
+        self.images.retain(|k, _| !k.starts_with("art:"));
     }
 
     pub fn layout(&mut self, layouts: &mut Assets<TextureAtlasLayout>, frame: (u32, u32), cols: u32, rows: u32) -> Handle<TextureAtlasLayout> {
@@ -148,16 +203,19 @@ impl CreatureArt {
 impl Plugin for CreaturePlugin {
     fn build(&self, app: &mut App) {
         let dir = data_path("creatures");
-        app.insert_resource(Creatures { defs: Creatures::load_all(&dir), watch: Watched::new(dir) })
+        let art = data_path("").parent().expect("assets/data").join("art");
+        app.insert_resource(Creatures { defs: Creatures::load_all(&dir), watch: Watched::new(dir), art_watch: Watched::new(art) })
             .init_resource::<CreatureArt>()
             .add_systems(Update, hot_reload_creatures);
     }
 }
 
-fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut q: Query<(&Creature, &mut MoveStats, &mut Health, &mut Animator, &mut Resist)>) {
-    if !creatures.watch.changed() {
+fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut art: ResMut<CreatureArt>, mut q: Query<(&Creature, &mut MoveStats, &mut Health, &mut Animator, &mut Resist)>) {
+    let (a, b) = (creatures.watch.changed(), creatures.art_watch.changed());
+    if !a && !b {
         return;
     }
+    art.forget_art();
     let defs = Creatures::load_all(creatures.watch.path());
     for (c, mut stats, mut health, mut anim, mut resist) in &mut q {
         if let Some(def) = defs.get(&c.kind) {
@@ -166,6 +224,7 @@ fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut q: Query<(&Creatur
             health.hp = health.hp.min(def.health);
             health.max = def.health;
             anim.def = def.clone();
+            anim.refresh();
         }
     }
     info!("creatures reloaded ({} kinds)", defs.len());
@@ -187,7 +246,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
 
         let sprite = world.resource_scope(|world, mut art: Mut<CreatureArt>| {
             let first = def.animations.get("idle").or_else(|| def.animations.values().next())?;
-            let image = art.image(world.resource::<AssetServer>(), &first.image);
+            let image = world.resource_scope(|world, mut images: Mut<Assets<Image>>| art.image(world.resource::<AssetServer>(), &mut images, &first.image, def.atlas.as_deref()));
             let layout = art.layout(&mut world.resource_mut::<Assets<TextureAtlasLayout>>(), def.sprite.frame, first.columns, first.rows);
             Some(Sprite::from_atlas_image(image, TextureAtlas { layout, index: first.frames.first().copied().unwrap_or(0) }))
         });

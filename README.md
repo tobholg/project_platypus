@@ -123,7 +123,7 @@ PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, 
 PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall), `strike` (lightning onto the nearest tree), `hands` (digs a shaft, builds, chops with auto tool, plants a torch), `chest` (places, opens, fills and breaks a chest), `chestfall` (digs out a chest's floor: it falls), `drop` (holds S on a platform), `magic` (every starter wand at orcs; `PLATYPUS_WORLD=flat` for a clear view), `shock` (lightning into a pool with orcs in it, flat world), `inventory` (opens it, hovers a wand, drags it to hotbar 3; moves the real mouse pointer), `well` (the gravity wand lifts the ground and two orcs, swings, drops it; flat world), `force` (pushes a sand pile and orcs away, then pulls; flat world), `splash` (spells into a pool and an oil pit; flat world). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall), `strike` (lightning onto the nearest tree), `hands` (digs a shaft, builds, chops with auto tool, plants a torch), `chest` (places, opens, fills and breaks a chest), `chestfall` (digs out a chest's floor: it falls), `drop` (holds S on a platform), `magic` (every starter wand at orcs; `PLATYPUS_WORLD=flat` for a clear view), `shock` (lightning into a pool with orcs in it, flat world), `inventory` (opens it, hovers a wand, drags it to hotbar 3; moves the real mouse pointer), `well` (the gravity wand lifts the ground and two orcs, swings, drops it; flat world), `force` (pushes a sand pile and orcs away, then pulls; flat world), `splash` (spells into a pool and an oil pit; flat world), `critters` (a rabbit, a bird and a frog walked at: they flee). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
 capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length, `PLATYPUS_NOLIGHT=1` to start with lighting off.
 Scenarios run without vsync; `PLATYPUS_VSYNC=1` runs them with it, to see the
 frame pacing a player gets. For stutter, build with `--features spikes`: every
@@ -139,6 +139,12 @@ Everything under `assets/data/` hot-reloads while the game runs.
 - **A reaction:** add a line to `reactions` in the same file.
 - **An enemy with an existing AI:** copy `assets/data/creatures/orc.ron`, change sprite,
   size, stats, brain params. Spawn it by its file name.
+- **A sprite:** write `assets/art/<name>.ron` (palette characters, frames as text
+  grids, clips; see `crates/art/src/lib.rs`), look at it with
+  `cargo run -p platypus_art --release -- sheet assets/art/<name>.ron` (also `check`,
+  `describe`, `render`, `import`), and draw a creature with it: `art: "<name>"` in its
+  creature file. Editing it reloads the game's live creatures.
+- **Ambient life:** a kind in `assets/data/life.ron` (where it lives, how many).
 - **A new AI behaviour:** in `crates/game/src/actors/ai.rs` (or a new module), a component
   with its settings plus one system writing `Controls`:
 

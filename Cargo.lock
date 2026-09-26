@@ -4223,6 +4223,7 @@ name = "platypus"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "platypus_art",
  "platypus_physics",
  "platypus_sim",
  "platypus_worldgen",
@@ -4231,6 +4232,15 @@ dependencies = [
  "serde",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "platypus_art"
+version = "0.1.0"
+dependencies = [
+ "png",
+ "ron",
+ "serde",
 ]
 
 [[package]]
