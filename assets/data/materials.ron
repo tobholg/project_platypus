@@ -193,7 +193,7 @@
         (name: "coal",     kind: Powder, density: 1300, hardness: 10, flammability: 30, ignites_at: 350, burn_time: 200, burns_into: "ash", burns_into_chance: 90, colors: [(24, 24, 26), (40, 40, 44)]),
 
         // ---- liquids ------------------------------------------------------
-        (name: "water",    kind: Liquid, density: 1000, charges: true, dispersion: 6, above: (100, "steam"), below: (0, "ice"), coats: "wet", opacity: 30, latent: 250, colors: [(38, 92, 196), (48, 110, 214)]),
+        (name: "water",    kind: Liquid, density: 1000, charges: true, dispersion: 6, above: (100, "steam"), below: (0, "ice"), coats: "wet", opacity: 10, latent: 250, colors: [(38, 92, 196), (48, 110, 214)]),
         // Floats on water and burns on it (a burning liquid isn't put out by
         // what it floats on). A poor heat conductor, so a burning slick
         // doesn't boil away the lake under it.

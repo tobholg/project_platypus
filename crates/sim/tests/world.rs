@@ -1857,3 +1857,22 @@ fn a_zap_into_water_charges_the_whole_pool() {
     assert!(z.charged.len() >= 60 * 8 - 20, "the whole first pool: {}", z.charged.len());
     assert!(z.charged.iter().all(|p| p.x < 90), "not the pool across the wall");
 }
+
+/// A splash landing under water (an acid bolt into a pool) isn't lost: each
+/// cell takes a place in the water and the water it displaced goes up to the
+/// surface, so there's as much of both after.
+#[test]
+fn a_splash_under_water_lands_in_it() {
+    let m = mats();
+    let (acid, water) = (m.expect_id("acid"), m.expect_id("water"));
+    let mut w = boxed_world(2, 1, 31);
+    fill(&mut w, "glass", 20, 90, 1, 3);
+    fill(&mut w, "glass", 18, 20, 1, 40);
+    fill(&mut w, "glass", 90, 92, 1, 40);
+    fill(&mut w, "water", 20, 90, 3, 30);
+    let water0 = count(&w, water);
+    w.splash([55.0, 12.0], acid, 100, 1.0);
+    run_until_landed(&mut w, 400);
+    assert_eq!(count(&w, acid), 100, "every acid cell landed in the water");
+    assert_eq!(count(&w, water), water0, "and no water was lost");
+}

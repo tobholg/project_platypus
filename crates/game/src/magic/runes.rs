@@ -32,10 +32,16 @@ pub enum Carrier {
     Lightning { range: f32, targets: u8 },
     /// A gravity well at the cursor while the wand is held (`well.rs`):
     /// pulls in what's loose within `radius` and tears out solids up to
-    /// `strength` hardness (`pull` tries a tick), holds up to `most` cells
-    /// in a spinning ball with `grip` (cells/s², how hard it can swing
-    /// them), costs `drain` mana a second.
-    Well { radius: f32, strength: u8, pull: u32, most: u32, grip: f32, drain: f32 },
+    /// `strength` hardness (`pull` tries a tick), holds what it can `lift`
+    /// (a cell weighs its density against water's, a body its size in
+    /// cells: creatures too) in a spinning ball with `grip` (cells/s², how
+    /// hard it can swing them), costs `drain` mana a second.
+    Well { radius: f32, strength: u8, lift: f32, pull: u32, grip: f32, drain: f32 },
+    /// Force at the cursor while the wand is held: the left button pushes
+    /// everything within `radius` away (up to `power` cells/s at the
+    /// heart), the right pulls it in; tears out solids up to `strength`
+    /// (`pull` tries a tick); `drain` mana a second.
+    Force { radius: f32, power: f32, strength: u8, pull: u32, drain: f32 },
 }
 
 /// What a spell does where it lands (or what it hits).

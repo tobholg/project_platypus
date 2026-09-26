@@ -59,8 +59,11 @@ hot-reloaded): a carrier (bolt, orb, arrow, flame stream, lightning), what it
 carries (spark, blast, ignite, heat, frost, acid, water) and modifiers (heavy,
 fire trail, quick, trigger); change a wand's runes in `items.ron`. The gravity
 wand (hotbar 2) holds a well at the cursor while you hold the button: it lifts
-what's loose and tears out rock, spins it in a ball, drags creatures in; swing
-it (whip it and some flies off), let go to drop it all. Spells work
+what's loose and tears out rock, spins it in a ball, carries creatures it can
+lift; swing it (whip it and some flies off), let go to drop it all. The force
+wand pushes everything away from the cursor (left button) or pulls it in
+(right). Held spells drain mana and it doesn't come back while you hold them.
+The staffs are level II of both: bigger, stronger. Spells work
 through the cell sim: a fireball's blast is a bomb's, smaller, and can hurt
 you; the storm wand's lightning is the sky's, from the wand, and charges any
 water it strikes (everyone in the pool is shocked, you too). Acid eats most
@@ -115,7 +118,7 @@ PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, 
 PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall), `strike` (lightning onto the nearest tree), `hands` (digs a shaft, builds, chops with auto tool, plants a torch), `chest` (places, opens, fills and breaks a chest), `chestfall` (digs out a chest's floor: it falls), `drop` (holds S on a platform), `magic` (every starter wand at orcs; `PLATYPUS_WORLD=flat` for a clear view), `shock` (lightning into a pool with orcs in it, flat world), `inventory` (opens it, hovers a wand, drags it to hotbar 3; moves the real mouse pointer), `well` (the gravity wand lifts the ground, swings, drops it; flat world). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall), `strike` (lightning onto the nearest tree), `hands` (digs a shaft, builds, chops with auto tool, plants a torch), `chest` (places, opens, fills and breaks a chest), `chestfall` (digs out a chest's floor: it falls), `drop` (holds S on a platform), `magic` (every starter wand at orcs; `PLATYPUS_WORLD=flat` for a clear view), `shock` (lightning into a pool with orcs in it, flat world), `inventory` (opens it, hovers a wand, drags it to hotbar 3; moves the real mouse pointer), `well` (the gravity wand lifts the ground and two orcs, swings, drops it; flat world), `force` (pushes a sand pile and orcs away, then pulls; flat world). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
 capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length, `PLATYPUS_NOLIGHT=1` to start with lighting off.
 Scenarios run without vsync; `PLATYPUS_VSYNC=1` runs them with it, to see the
 frame pacing a player gets. For stutter, build with `--features spikes`: every

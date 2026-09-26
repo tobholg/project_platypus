@@ -198,20 +198,22 @@ fn blasted(mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<(&mut K
     }
 }
 
+type Mortal<'a> = (Entity, &'a mut Health, &'a mut Kinematics, Has<player::LocalPlayer>, Option<&'a hurt::Bleeds>);
+
 fn deaths(
     mut commands: Commands,
     mut sim: ResMut<SimWorld>,
     mut deaths: ResMut<PlayerDeaths>,
-    mut q: Query<(Entity, &mut Health, &mut Kinematics, Has<player::LocalPlayer>)>,
+    mut q: Query<Mortal>,
 ) {
     let spawn = sim.generator.spawn_point();
-    for (entity, mut h, mut k, is_player) in &mut q {
+    for (entity, mut h, mut k, is_player, bleeds) in &mut q {
         if h.hp > 0.0 {
             continue;
         }
-        if let Some(blood) = sim.materials().id("blood") {
+        if let Some(&hurt::Bleeds(blood)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.
-            sim.world.splash([k.body.pos.x, k.body.pos.y], blood, 70, 2.2);
+            sim.world.splash([k.body.pos.x, k.body.pos.y], blood, hurt::DEATH_BLOOD, 2.6);
         }
         if is_player {
             deaths.0 += 1;

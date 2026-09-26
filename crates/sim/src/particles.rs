@@ -70,6 +70,8 @@ impl Particle {
 pub(crate) trait ParticleWorld {
     fn get(&self, p: CellPos) -> Option<Cell>;
     fn set(&mut self, p: CellPos, cell: Cell) -> bool;
+    /// A new particle (flying from the next tick).
+    fn emit(&mut self, p: Particle);
     fn mats(&self) -> &MaterialTable;
     /// Set a flammable cell alight (same rules as everywhere else).
     fn ignite_at(&mut self, p: CellPos);
@@ -237,19 +239,52 @@ fn land(p: &Particle, hit: CellPos, world: &mut impl ParticleWorld) {
     }
 }
 
-/// Into the free cell it stopped in, or the first free one just above.
+/// Into the free cell it stopped in, or the first free one just above; or,
+/// stopped in a liquid (a splash landing under water, a pool flowing over
+/// it), into that cell, the liquid it displaced thrown up from the surface
+/// above (a particle, so a lot of them spread instead of stacking), so
+/// nothing is lost.
 fn settle(p: &Particle, here: CellPos, world: &mut impl ParticleWorld) {
+    let mut cell = p.cell;
+    if world.mats().phys(cell.material).kind == Kind::Static {
+        cell.flags |= flags::LOOSE;
+    }
+    // Keep falling at the speed it arrived with (rules: 1 + vy/4 cells/tick).
+    cell.vy = (-p.vel[1] * 4.0).clamp(0.0, 28.0) as i8;
     for up in 0..4 {
         let spot = here.offset(0, up);
         if world.get(spot).is_some_and(|c| open(world.mats(), c)) {
-            let mut cell = p.cell;
-            if world.mats().phys(cell.material).kind == Kind::Static {
-                cell.flags |= flags::LOOSE;
-            }
-            // Keep falling at the speed it arrived with (rules: 1 + vy/4 cells/tick).
-            cell.vy = (-p.vel[1] * 4.0).clamp(0.0, 28.0) as i8;
             world.set(spot, cell);
             return;
         }
     }
+    let liquid = |c: Cell| world.mats().phys(c.material).kind == Kind::Liquid;
+    let Some(displaced) = world.get(here).filter(|&c| liquid(c)) else { return };
+    // The top of this column of liquid, or of one beside it (a whole splash
+    // lands in one cell; one column fills up to a ceiling).
+    for dx in (0..=DISPLACE_SIDE).flat_map(|d| [d, -d]).skip(1) {
+        let column = here.offset(dx, 0);
+        if !world.get(column).is_some_and(liquid) {
+            continue;
+        }
+        for up in 1..DISPLACE_REACH {
+            let spot = column.offset(0, up);
+            match world.get(spot) {
+                Some(c) if open(world.mats(), c) => {
+                    world.set(here, cell);
+                    let h = crate::rng::hash(&[here.x as u64, here.y as u64, p.life as u64, dx as u64]);
+                    let side = (h % 1000) as f32 / 1000.0 - 0.5;
+                    world.emit(Particle::new([spot.x as f32 + 0.5, spot.y as f32 + 0.5], [side * 1.4, 0.5], displaced, 120, Landing::Settle));
+                    return;
+                }
+                Some(c) if liquid(c) => continue,
+                _ => break,
+            }
+        }
+    }
 }
+
+/// How far up through a liquid a landing cell looks for the surface to put
+/// what it displaced, and how many columns either side it tries.
+const DISPLACE_REACH: i32 = 96;
+const DISPLACE_SIDE: i32 = 12;

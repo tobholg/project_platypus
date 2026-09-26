@@ -4,10 +4,24 @@
 //! lowers `hp` shows, whatever did it: spells, blasts, fire, falls.
 
 use bevy::prelude::*;
+use platypus_sim::MaterialId;
 
 use super::Health;
 use super::Kinematics;
 use super::player::LocalPlayer;
+use crate::world::SimWorld;
+
+/// What a creature bleeds (from its RON `blood`).
+#[derive(Component, Clone, Copy)]
+pub struct Bleeds(pub MaterialId);
+
+/// Cells of blood a hit sprays for each point it takes (a bit much: it's
+/// more fun, and blood boils, freezes, conducts and washes off like the
+/// rest), at most this many a hit...
+const BLEED_PER_HP: f32 = 2.5;
+const BLEED_MOST: f32 = 160.0;
+/// ... and what a death bursts out.
+pub const DEATH_BLOOD: usize = 220;
 
 /// Seconds a creature flashes after a hit.
 const FLASH: f32 = 0.12;
@@ -43,23 +57,30 @@ pub fn watch(mut commands: Commands, new: Query<(Entity, &Health), Without<Hurt>
     }
 }
 
+type Wounded<'a> = (&'a Health, &'a Kinematics, &'a mut Hurt, Has<LocalPlayer>, Option<&'a Bleeds>);
+
 /// Health that fell since last tick: flash, and a number (or more on the
 /// last one). Runs just before deaths, so a killing blow shows too.
 pub fn notice(
     mut commands: Commands,
-    mut hurt: Query<(&Health, &Kinematics, &mut Hurt, Has<LocalPlayer>)>,
+    mut sim: ResMut<SimWorld>,
+    mut hurt: Query<Wounded>,
     mut numbers: Query<(&mut DamageNumber, &mut Text2d)>,
     mut shown: Local<u32>,
 ) {
-    for (health, k, mut h, player) in &mut hurt {
+    for (health, k, mut h, player, bleeds) in &mut hurt {
         let lost = h.last - health.hp;
         h.last = health.hp;
         if lost < 0.01 {
             continue;
         }
-        // A real hit flashes; burning's trickle only counts up.
+        // A real hit flashes and bleeds; burning's trickle only counts up.
         if lost >= FLASH_AT {
             h.flash = FLASH;
+            if let Some(&Bleeds(blood)) = bleeds {
+                let n = (lost * BLEED_PER_HP).min(BLEED_MOST) as usize;
+                sim.world.splash([k.body.pos.x, k.body.pos.y + k.body.half.y * 0.3], blood, n, 1.2 + (lost * 0.02).min(1.2));
+            }
         }
         if let Some(e) = h.number
             && let Ok((mut n, mut text)) = numbers.get_mut(e)

@@ -89,6 +89,8 @@ impl Hand {
 #[derive(Resource, Default)]
 struct HandInput {
     primary: bool,
+    /// The right button held (force: pull).
+    secondary: bool,
     clicked: bool,
     auto: bool,
     cursor: Option<Vec2>,
@@ -165,6 +167,7 @@ fn sample_input(
     // With the inventory open (or the pointer on a panel) the mouse is for the UI.
     let free = !open.0 && !ui.0;
     input.primary = free && mouse.pressed(MouseButton::Left);
+    input.secondary = free && mouse.pressed(MouseButton::Right);
     input.clicked |= free && mouse.just_pressed(MouseButton::Left);
     input.auto = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
     input.cursor = cursor.0;
@@ -371,8 +374,8 @@ fn use_hands(
             inv.take(slot, 1);
         }
         // (The wand keeps its own time: `magic::request`.)
-        Use::Cast { .. } if input.primary => {
-            casts.write(crate::magic::CastRequest { caster: me, item: stack.item, from, toward: cursor });
+        Use::Cast { .. } if input.primary || input.secondary => {
+            casts.write(crate::magic::CastRequest { caster: me, item: stack.item, from, toward: cursor, alt: !input.primary });
         }
         Use::Chest if clicked => {
             let Some(feet) = chests::place_spot(&sim.world, cursor) else { return };

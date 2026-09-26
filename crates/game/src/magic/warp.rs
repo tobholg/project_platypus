@@ -26,7 +26,9 @@ pub struct Warp {
     pub aspect: f32,
     /// Seconds, for the shimmer.
     pub time: f32,
-    pub _pad: Vec2,
+    /// 1: a push (swell and ripple outward); 0: draw in.
+    pub push: f32,
+    pub _pad: f32,
 }
 
 impl FullscreenMaterial for Warp {

@@ -121,6 +121,28 @@ impl World {
         &self.particles
     }
 
+    /// Particles in flight, to push around (a force spell).
+    pub fn particles_mut(&mut self) -> &mut [Particle] {
+        &mut self.particles
+    }
+
+    /// Take up to `most` particles in flight within `radius` of `center`
+    /// out of the world (a spell catching them).
+    pub fn take_particles(&mut self, center: [f32; 2], radius: f32, most: usize) -> Vec<Particle> {
+        let mut out = Vec::new();
+        let r2 = radius * radius;
+        self.particles.retain(|p| {
+            let (dx, dy) = (p.pos[0] - center[0], p.pos[1] - center[1]);
+            if out.len() < most && dx * dx + dy * dy < r2 {
+                out.push(*p);
+                false
+            } else {
+                true
+            }
+        });
+        out
+    }
+
     /// Everything flying as a rigid body.
     pub fn bodies(&self) -> &[Body] {
         &self.bodies
@@ -158,8 +180,18 @@ impl World {
 
     /// Burst of `material` flying out of `at` (blood from a wound, a splash).
     /// Lands as real cells.
+    ///
+    /// From inside a liquid (a bolt landing in a pool, a creature bleeding
+    /// in one) it bursts from the surface above instead: cells landing where
+    /// they start would all displace into one column.
     pub fn splash(&mut self, at: [f32; 2], material: MaterialId, count: usize, speed: f32) {
         let mut rng = self.rng_for(0x5B1A, CellPos::from_world(at[0], at[1]));
+        let liquid = |c: Cell| self.materials.phys(c.material).kind == Kind::Liquid;
+        let start = CellPos::from_world(at[0], at[1]);
+        let at = match (0..SPLASH_SURFACE).map(|up| start.offset(0, up)).take_while(|&p| self.get(p).is_some()).find(|&p| !self.get(p).is_some_and(liquid)) {
+            Some(p) if p != start => [at[0], p.y as f32 + 0.5],
+            _ => at,
+        };
         for _ in 0..count {
             let cell = self.materials.spawn(material, &mut rng);
             let a = rng.next_u32() as f32 / u32::MAX as f32 * std::f32::consts::TAU;
@@ -1607,6 +1639,8 @@ const EARTH_HEAT: i16 = 1500;
 /// Wand lightning: heat along it and where it lands (°C), and its burst.
 const ZAP_HEAT: i16 = 600;
 const ZAP_BLAST: u8 = 14;
+/// How far up a splash from inside a liquid looks for its surface.
+const SPLASH_SURFACE: i32 = 64;
 /// A zap doesn't flare air this close to the wand.
 const ZAP_CLEAR: usize = 8;
 /// Most cells one zap charges (a big lake conducts only this far).
@@ -1670,6 +1704,10 @@ impl ParticleWorld for ParticleCtx<'_> {
 
     fn set(&mut self, p: CellPos, cell: Cell) -> bool {
         self.world.set(p, cell)
+    }
+
+    fn emit(&mut self, p: Particle) {
+        self.world.particles.push(p);
     }
 
     fn mats(&self) -> &MaterialTable {

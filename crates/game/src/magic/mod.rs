@@ -86,6 +86,8 @@ pub struct CastRequest {
     pub item: ItemId,
     pub from: Vec2,
     pub toward: Vec2,
+    /// The other button (force: pull). Other spells ignore it.
+    pub alt: bool,
 }
 
 /// Every rune (hot-reloaded), and each wand's runes read as casts.
@@ -204,11 +206,16 @@ fn give_mana(mut commands: Commands, new: Query<Entity, (With<LocalPlayer>, With
     }
 }
 
-fn recharge(mut wands: ResMut<Wands>, mut mana: Query<&mut Mana>) {
+/// Wands recharge; mana comes back, except to someone holding a field open
+/// (a channelled spell runs it down).
+fn recharge(mut wands: ResMut<Wands>, mut mana: Query<(Entity, &mut Mana)>, fields: Query<&Well>) {
     for w in wands.0.values_mut() {
         w.wait = (w.wait - DT).max(0.0);
     }
-    for mut m in &mut mana {
+    for (e, mut m) in &mut mana {
+        if fields.iter().any(|f| f.caster == e) {
+            continue;
+        }
         m.cur = (m.cur + m.regen * DT).min(m.max);
     }
 }
@@ -234,12 +241,19 @@ fn request(
             continue;
         }
         let cast = casts[w.next % casts.len()].clone();
-        // An open well stays open while it's held and paid for, a tick at a
-        // time (whatever the wand's recharge).
-        if let Carrier::Well { drain, .. } = cast.carrier
-            && let Some(e) = w.well
-        {
+        let channelled = matches!(cast.carrier, Carrier::Well { .. } | Carrier::Force { .. });
+        // (Only force has a use for the other button.)
+        if r.alt && !matches!(cast.carrier, Carrier::Force { .. }) {
+            continue;
+        }
+        // An open field stays open while it's held and paid for, a tick at
+        // a time (whatever the wand's recharge).
+        if channelled && let Some(e) = w.well {
             if let Ok(mut well) = wells.get_mut(e) {
+                let drain = match cast.carrier {
+                    Carrier::Well { drain, .. } | Carrier::Force { drain, .. } => drain,
+                    _ => 0.0,
+                };
                 let paid = mana.get_mut(r.caster).map_or(true, |mut m| {
                     let ok = m.cur >= drain * DT;
                     if ok {
@@ -248,7 +262,7 @@ fn request(
                     ok
                 });
                 if paid {
-                    well.feed(r.toward);
+                    well.feed(r.toward, r.alt);
                 }
                 continue;
             }
@@ -264,8 +278,8 @@ fn request(
             }
             m.cur -= cost;
         }
-        if matches!(cast.carrier, Carrier::Well { .. }) {
-            w.well = well::spawn_well(&mut commands, cast.clone(), r.caster, r.toward);
+        if channelled {
+            w.well = well::spawn_field(&mut commands, cast.clone(), r.caster, r.toward, r.alt);
             w.wait = *recharge;
             continue;
         }
@@ -325,7 +339,7 @@ fn fire(
                 }
             }
             // (Held open by `request`, run by `well::channel`.)
-            Carrier::Well { .. } => {}
+            Carrier::Well { .. } | Carrier::Force { .. } => {}
             // (Its hurt is the sim's: `elements::zapped`.)
             &Carrier::Lightning { range, targets } => {
                 let mut ends = lightning_targets(&bodies, &f, range, targets as usize);

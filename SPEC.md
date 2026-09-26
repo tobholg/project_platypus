@@ -639,6 +639,11 @@ deaths (blood). Rendered as one dynamic mesh.
   and nothing moves), splashing out at speed. (It used to push the water in
   its box onto the surface beside it every tick: a body in water pumped up a
   wall of it.)
+- A particle that lands where there's already liquid (a splash from under
+  water, a pool flowing over it) takes that cell, and the liquid it
+  displaced is thrown up from the surface above (a particle, so many of them
+  spread instead of stacking); a splash started inside a liquid starts from
+  its surface. Nothing is lost.
 - Acid eats by hardness (`eats` in `materials.ron`, one rule, not a list of
   pairs): solids, powders and plants up to hardness 90 (dirt, wood, sand,
   stone, brick, most ores), softer ones faster, nothing `inert` (glass,
@@ -738,7 +743,10 @@ deaths (blood). Rendered as one dynamic mesh.
   data (6.1, `look`). A soft round `Halo` image (tinted by the sprite) is
   what spells glow in.
 - **Hurt** (`actors/hurt.rs`): anything with `Health` that loses 2 or more
-  in a tick flashes red for 0.12 s; what it loses floats up as a number
+  in a tick flashes red for 0.12 s and, if it bleeds (`blood` in its RON,
+  default `blood`), sprays 2.5 cells of it a point lost (at most 160); a
+  death bursts out 220. Real cells: it pools, runs, boils, freezes,
+  conducts lightning and coats what it touches; what it loses floats up as a number
   (hits in the first 0.35 s add to it; the player's red, others pale),
   noticed just before deaths so a killing blow shows.
 
@@ -861,26 +869,41 @@ deaths (blood). Rendered as one dynamic mesh.
   and sets it alight (`elements::zapped`), as the sky's lightning does. It
   doesn't flare the air in its first 8 cells (the caster's hand). Into water
   (or anything that `charges`) it charges the pool (§3.12).
-- **Gravity wells** (`Carrier::Well`, `magic/well.rs`): channelled. Holding
-  the wand keeps one open at the cursor (paid `drain` mana a second; out of
-  mana, or let go, it drops everything). It follows the cursor on a spring
-  with a top speed and a most acceleration (its heft). Each tick it tries
-  `pull` random cells within its reach: powder, liquid and plants come
-  easily (more so nearer), solids up to its `strength` in hardness harder
-  the harder they are (`World::pluck`, then `loosen_fragments` so what they
-  held up falls). Held cells (up to `most`) each steer toward a place in a
-  spinning ball (sized by how many) with a limited `grip` (cells/s²): whip
-  the cursor and the outer ones can't follow; past 1.4 × the reach they fly
-  off as real cells with the speed they had. Released, all drop as cells
-  keeping their momentum. Bodies in reach (not the caster) are drawn in and
-  held floating, stunned; solid held cells grind any body they're inside
-  (by their speed through it). Held cells are drawn each frame in their own
-  colour, shimmering toward the well's.
+- **Channelled spells** (`magic/well.rs`): held open at the cursor while
+  the wand is held, paying `drain` mana a second, and the caster's mana
+  doesn't come back meanwhile; out of mana, or let go, and it lets go. The
+  field follows the cursor on a spring with a top speed and a most
+  acceleration (its heft).
+  - **A gravity well** (`Carrier::Well`) tries `pull` random cells in its
+    reach each tick: powder, liquid and plants easily (more so nearer),
+    solids up to its `strength` in hardness harder the harder they are
+    (`World::pluck`, then `loosen_fragments` so what they held up falls), and
+    catches particles in flight (`World::take_particles`), up to what it can
+    `lift`: a cell weighs its density against water's (stone ≈ 2.6), a body
+    its size in cells (an orc 168). Held cells each steer toward a place in
+    a spinning ball with a limited `grip` (cells/s²): whip the cursor and
+    the outer ones can't follow; past 1.4 × the reach they fly off as real
+    cells with the speed they had. Bodies (not the caster) within what's
+    left of the lift are carried in its heart (gravity cancelled, stunned),
+    heavier ones only tugged; held rock grinds any body it's inside (by its
+    speed through it). Released, it all drops keeping its momentum.
+  - **Force** (`Carrier::Force`): the left button pushes, the right pulls.
+    Each tick it walks its reach outermost first (innermost for a pull) and
+    flings up to `pull` cells (loose ones, solids up to `strength`) that
+    have somewhere to go (straight out, else mirrored upward, else flat to
+    the side: a push into the ground splashes), so the ones in front make
+    way and a pile blows apart; particles in flight are shoved; bodies (not
+    the caster) are launched at up to `power` cells/s (a push lifts a
+    little) and stunned.
+  - Levels are runes: `gravity_well` / `gravity_well_ii`, `force` /
+    `force_ii` (reach, lift or power, strength); wands carry level I,
+    staffs level II.
 - **The distortion** (`magic/warp.rs`, `shaders/warp.wgsl`): a screen-space
   pass (Bevy's fullscreen material, in `Core2d` post-processing) around the
-  fullest well: swirl and pinch inside 1.3 × its reach (stronger the more it
-  holds), a dark heart, a faint bright ring. Strength 0 leaves the picture
-  alone.
+  strongest field: a well or a pull swirls and pinches inside 1.3 × its
+  reach (a well harder the more it holds) with a dark heart and a faint
+  bright ring; a push swells it with ripples running outward. Strength 0
+  leaves the picture alone.
 - **Looks** (visual only): each rune may have a `look`: a `trail` (sparks a
   cell flown; a stream's come out of the wand with it) and a `burst`
   (sparks where it lands, off the surface it hit, or back along its way).

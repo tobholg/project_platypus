@@ -40,10 +40,18 @@ pub struct CreatureDef {
     /// Draw order among creatures.
     #[serde(default = "default_z")]
     pub z: f32,
+    /// What it bleeds (a material; "" for nothing): it sprays when it's
+    /// hurt and bursts out when it dies (`hurt.rs`).
+    #[serde(default = "red_blood")]
+    pub blood: String,
 }
 
 fn default_z() -> f32 {
     10.0
+}
+
+fn red_blood() -> String {
+    "blood".into()
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -184,6 +192,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             Some(Sprite::from_atlas_image(image, TextureAtlas { layout, index: first.frames.first().copied().unwrap_or(0) }))
         });
 
+        let blood = world.resource::<crate::world::SimWorld>().materials().id(&def.blood);
         let mut e = world.spawn((
             Name::new(def.name.clone()),
             Creature { kind: kind.clone() },
@@ -200,6 +209,9 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             e.insert(f);
         }
         e.insert(def.resist);
+        if let Some(m) = blood {
+            e.insert(super::hurt::Bleeds(m));
+        }
         if let Some(sprite) = sprite {
             e.with_child((sprite, Transform::default(), CreatureSprite));
         }
