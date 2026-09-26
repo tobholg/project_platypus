@@ -22,6 +22,7 @@ and the RPG arc (rigs and gear skins, moves, corpses and loot, characters, spell
 | W5 | Elements on creatures (heat, cold, corrosion, burning, wet), acid fumes, oil fires, weather: clouds, rain, snow | done |
 | W6 | Lighting (glow/opacity data, light grid, lantern, flashlight, rim, haze) and day/night | done |
 | 3 | Worldgen v2: world plan (legacy mountains, sky islands, walker caves), biomes, save/load | not started |
+| C1 | Magic casting core: runes + wands as data, bolts/orbs/streams/wand lightning through the cell sim, mana, explosion damage for every blast (branch `magic-arc`) | done |
 | 4 | Combat: weapon swings, pixel masks, swept hits, hit-stop, knockback, enemy attacks | not started |
 | 5 | Terraria layer: items, inventory, mining yields, building, crafting, lighting | not started |
 | 6 | Hollow Knight layer: ability unlocks, map, bosses, benches, set pieces | not started |

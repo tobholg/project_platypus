@@ -35,6 +35,11 @@
 //! - `drop`       stands still until 3 s, then holds S: on a platform (e.g. a
 //!   crypt's entrance, `PLATYPUS_SPAWN_X` at a ruin) it drops through; logs
 //!   the feet before and after
+//! - `magic`      three orcs well to the right at 1 s; then each starter wand
+//!   through real input, held: sparks at the nearest orc (1.5 s), a fireball
+//!   at the ground ahead (3 s), acid lobbed up and over (4.5 s), the flame
+//!   wand at the orcs (5.5 s), lightning at them (7 s); logs mana, the orcs'
+//!   health, spells in flight, blasts and zaps each second
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end.
@@ -76,7 +81,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
-            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script).after(InputSystems).before(crate::camera::track_cursor));
+            .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
 
@@ -823,5 +828,85 @@ fn chest_script(
             *step = 6;
         }
         _ => {}
+    }
+}
+
+type Others = (With<crate::actors::Creature>, Without<LocalPlayer>);
+
+/// Every starter wand, through real input (see the module notes).
+#[allow(clippy::too_many_arguments)]
+fn magic_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut commands: Commands,
+    mut player: Query<(&Kinematics, &mut crate::actors::Health, Option<&mut crate::magic::Mana>), With<LocalPlayer>>,
+    orcs: Query<(&Kinematics, &crate::actors::Health), Others>,
+    spells: Query<(), With<crate::magic::Spell>>,
+    mut blasts: MessageReader<crate::fx::Explosion>,
+    mut zaps: MessageReader<crate::fx::Zapped>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, f32, u32, u32)>,
+) {
+    if s.name != "magic" {
+        return;
+    }
+    let Ok((k, mut me, mut mana)) = player.single_mut() else { return };
+    let p = k.body.pos;
+    let t = s.elapsed;
+    // Full mana and health for each wand, so each is seen on its own
+    // (what it costs, and what it does to its caster).
+    if [1.5, 3.0, 4.5, 5.5, 7.0].iter().any(|&at| (at..at + 0.05).contains(&t)) {
+        me.hp = me.max;
+        if let Some(m) = mana.as_deref_mut() {
+            m.cur = m.max;
+        }
+    }
+    state.2 += blasts.read().count() as u32;
+    state.3 += zaps.read().count() as u32;
+    if state.0 == 0 && t > 1.0 {
+        for dx in [90, 120, 150] {
+            let x = p.x as i32 + dx;
+            if let Some(y) = find_ground(&sim.world, x, p.y as i32 + 200, 400) {
+                crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(x as f32, y as f32), |_| {});
+            }
+        }
+        state.0 = 1;
+    }
+    const SLOTS: [KeyCode; 5] = [KeyCode::Digit6, KeyCode::Digit7, KeyCode::Digit8, KeyCode::Digit9, KeyCode::Digit0];
+    for key in SLOTS {
+        keys.release(key);
+    }
+    let nearest = orcs.iter().map(|(o, _)| o.body.pos).min_by(|a, b| a.distance(p).total_cmp(&b.distance(p)));
+    let at_orc = nearest.unwrap_or(p + Vec2::new(60.0, 0.0));
+    let (slot, aim) = match t {
+        t if t < 1.5 => (None, None),
+        t if t < 3.0 => (Some(0), Some(at_orc)),
+        t if t < 4.5 => (Some(1), Some(p + Vec2::new(50.0, -12.0))),
+        t if t < 5.5 => (Some(2), Some(p + Vec2::new(40.0, 40.0))),
+        t if t < 7.0 => (Some(3), Some(at_orc)),
+        t if t < 8.5 => (Some(4), Some(at_orc)),
+        _ => (None, None),
+    };
+    if let Some(i) = slot {
+        keys.press(SLOTS[i]);
+    }
+    cursor.0 = aim.or(Some(p + Vec2::new(30.0, 0.0)));
+    if aim.is_some() { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    if t >= state.1 && state.0 == 1 {
+        state.1 = (t * 4.0).floor() / 4.0 + 0.25;
+        let hp: Vec<String> = orcs.iter().map(|(_, h)| format!("{:.0}", h.hp)).collect();
+        info!(
+            "magic: t {:.0} slot {:?} hp {:.0} mana {:.0} orcs [{}] spells {} blasts {} zaps {}",
+            t,
+            slot.map(|i| i + 6),
+            me.hp,
+            mana.map_or(0.0, |m| m.cur),
+            hp.join(", "),
+            spells.iter().count(),
+            state.2,
+            state.3
+        );
     }
 }

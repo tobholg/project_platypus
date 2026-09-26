@@ -49,7 +49,16 @@ the outlined block is the one you'll hit (the first minable block on the line fr
 your hand to the cursor, so you dig the face you see) or fill (under the cursor,
 or against whatever the line meets). What you mine drops out and drifts to you;
 blocks count in cells, shown as whole blocks. You start with a copper pickaxe and
-axe, torches, bombs and glow sticks. Chests sit in cave pockets underground
+axe, torches, bombs, platforms, five wands (6–0: spark, fireball, acid arrow,
+flame, storm) and glow sticks (in the pack).
+
+**Magic:** hold LMB with a wand to cast at the cursor; casting costs mana (the
+blue bar, refilling). A wand is a list of runes (`assets/data/runes.ron`,
+hot-reloaded): a carrier (bolt, orb, arrow, flame stream, lightning), what it
+carries (spark, blast, ignite, heat, frost, acid, water) and modifiers (heavy,
+fire trail, quick, trigger); change a wand's runes in `items.ron`. Spells work
+through the cell sim: a fireball's blast is a bomb's, smaller, and can hurt
+you; the storm wand's lightning is the sky's, from the wand. Chests sit in cave pockets underground
 (right-click to open, R takes everything, loot by depth in `assets/data/loot.ron`);
 mine one to take it with you.
 
@@ -100,7 +109,7 @@ PLATYPUS_SCENARIO=run cargo run -p platypus --release   # scripted in-game run, 
 PLATYPUS_ZOOM=6 ...                                      # start zoomed in
 ```
 
-Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall), `strike` (lightning onto the nearest tree), `hands` (digs a shaft, builds, chops with auto tool, plants a torch), `chest` (places, opens, fills and breaks a chest), `chestfall` (digs out a chest's floor: it falls), `drop` (holds S on a platform). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
+Scenarios: `idle`, `pan`, `avalanche`, `run`, `tools`, `tree`, `blast`, `fell`, `burn`, `acid`, `rain`, `swim`, `night`, `dusk`, `cave`, `flood` (a block of water collapsing in a dug hall), `strike` (lightning onto the nearest tree), `hands` (digs a shaft, builds, chops with auto tool, plants a torch), `chest` (places, opens, fills and breaks a chest), `chestfall` (digs out a chest's floor: it falls), `drop` (holds S on a platform), `magic` (every starter wand at orcs; `PLATYPUS_WORLD=flat` for a clear view). Bench scenarios: `settled`, `deep`, `avalanche`, `streaming`. Add `PLATYPUS_SCREENSHOT=out.png` to
 capture the window, `PLATYPUS_SCENARIO_SECS=10` to change the length, `PLATYPUS_NOLIGHT=1` to start with lighting off.
 Scenarios run without vsync; `PLATYPUS_VSYNC=1` runs them with it, to see the
 frame pacing a player gets. For stutter, build with `--features spikes`: every

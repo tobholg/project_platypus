@@ -10,10 +10,11 @@
     // space (the pickaxe only mines the playfield).
     axe: (radius: 4, power: 3, max_hardness: 150),
 
-    // Click to throw toward the cursor; explodes after `fuse`.
+    // Click to throw toward the cursor; explodes after `fuse`. Creatures take
+    // up to 0.65 × power in damage and 3 × in knockback (every explosion does).
     // `chain_reaction`: blasts set off other bombs nearby (off, so a string
     // of bombs digs a shaft one after another).
-    bomb: (radius: 38, power: 140, fuse: 1.6, throw_speed: 240, bounce: 0.35, damage: 90, knockback: 420, chain_reaction: false),
+    bomb: (radius: 38, power: 140, fuse: 1.6, throw_speed: 240, bounce: 0.35, chain_reaction: false),
 
     // Hold to pour the selected material (Q/E to change). Shift also replaces solids.
     spawner: (radius: 5),

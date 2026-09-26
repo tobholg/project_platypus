@@ -96,8 +96,6 @@ pub struct BombCfg {
     pub fuse: f32,
     pub throw_speed: f32,
     pub bounce: f32,
-    pub damage: f32,
-    pub knockback: f32,
     /// Does a blast set off other bombs in its reach?
     #[serde(default)]
     pub chain_reaction: bool,

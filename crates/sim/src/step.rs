@@ -211,15 +211,17 @@ pub struct StepStats {
     /// Background cells the simulation destroyed this tick.
     pub broken_bg: Vec<CellPos>,
     /// Every explosion applied since the last tick and at its start,
-    /// whatever set it off (centre, radius): for screen shake and flashes,
-    /// and for what bodies feel.
-    pub detonated: Vec<(CellPos, i32)>,
+    /// whatever set it off (centre, radius, power): for screen shake and
+    /// flashes, and for what bodies feel.
+    pub detonated: Vec<(CellPos, i32, u8)>,
     /// Columns where vapour faded into the air this tick (the world feeds
     /// them to the clouds).
     pub vapour: Vec<i32>,
     /// Lightning that struck this tick (for the bolt, the flash, the thunder,
     /// and whoever stood there).
     pub lightning: Vec<Strike>,
+    /// Wand lightning since the last tick (for the bolt and the flash).
+    pub zaps: Vec<Zap>,
     /// Time spent this tick in: edits and detonations, cells, broken support
     /// checks, particles, bodies, weather (see `PHASES`).
     pub phases: [std::time::Duration; 6],
@@ -227,6 +229,15 @@ pub struct StepStats {
 
 /// Names of `StepStats::phases`.
 pub const PHASES: [&str; 6] = ["edits", "cells", "broken", "particles", "bodies", "weather"];
+
+/// Wand lightning: from where it left the wand to where it landed, and
+/// every cell it went through (the bolt, then its forks) to draw it by.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Zap {
+    pub from: CellPos,
+    pub to: CellPos,
+    pub path: Vec<CellPos>,
+}
 
 /// A lightning strike: down column `x` from `top` to the first cell it hit,
 /// then (through a tree) on down to where it `earth`ed.

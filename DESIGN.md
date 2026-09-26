@@ -341,7 +341,7 @@ The aim: the model can create, look at, and test a creature, item, room or struc
 7. Saving and loading.
 
 **Combat and magic arc (C, now, on branch `magic-arc`; before structures v2 and saving, since it changes what gets saved):**
-1. Casting core: runes and wands as data, projectiles that collide with cells and bodies, mana, wands as items, starter spells (spark bolt, fireball, acid arrow, flamethrower, wand lightning), cursor aim; the orcs to try them on.
+1. ✅ Casting core (2026-09-26): runes and wands as data, projectiles that collide with cells and bodies, mana, wands as items, starter spells (spark bolt, fireball, acid arrow, flamethrower, wand lightning), cursor aim; the orcs to try them on.
 2. Spellcrafting: runes as items, a wand editor (slots, triggers, modifiers), electricity, orc shamans.
 3. Melee: hand anchors, weapon sprites as text, moves as data for three weapon classes, hits, stamina, poise, block and dodge.
 4. Arena and art tool v1 (M1, below).

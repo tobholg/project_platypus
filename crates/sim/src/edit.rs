@@ -50,6 +50,10 @@ pub enum WorldEdit {
     /// Add (or with a negative amount, remove) heat in °C to every non-air
     /// cell, less towards the rim. Melting, boiling and freezing follow.
     Heat { center: CellPos, radius: i32, amount: i16 },
+    /// Lightning from a wand: a smaller bolt from `from` toward `to`,
+    /// jagged, stopped by the first solid thing in its way; what burns along
+    /// it catches, and where it lands it bursts, heats and lights.
+    Zap { from: CellPos, to: CellPos },
     /// Lightning down the column at `x` from the clouds (or from `from_y` if
     /// there are none): it strikes the first thing in its way, sets it alight
     /// and scorches it (SPEC §3.13).

@@ -1795,3 +1795,27 @@ fn cobwebs_hang_from_a_ceiling_and_nothing_else() {
     assert_eq!(at(20, 30, 74, 80), 60, "the web under the ceiling stays");
     assert_eq!(at(60, 64, 70, 74), 0, "a web in the air falls apart");
 }
+
+// ---- wand lightning ---------------------------------------------------------
+
+/// A zap reaches what it's aimed at through open air, lighting the
+/// background it passes; a wall stops it; the step reports it, with the
+/// burst where it ended.
+#[test]
+fn a_zap_reaches_its_target_and_a_wall_stops_it() {
+    let mut w = boxed_world(3, 1, 11);
+    fill_bg(&mut w, "wood", 20, 60, 16, 26);
+    let end = w.zap(CellPos::new(10, 20), CellPos::new(150, 20));
+    assert!((end.x - 150).abs() <= 1 && (end.y - 20).abs() <= 1, "open air all the way: ended at {end:?}");
+    let stats = w.step();
+    assert_eq!(stats.zaps.len(), 1);
+    assert_eq!(stats.zaps[0].to, end);
+    assert!(stats.detonated.iter().any(|&(at, ..)| at == end), "it bursts where it ends");
+    let caught = (20..60).any(|x| w.get_bg(CellPos::new(x, 20)).is_some_and(|c| c.flags & platypus_sim::cell::flags::BURNING != 0));
+    assert!(caught, "the wood it passed caught");
+
+    let mut w = boxed_world(3, 1, 12);
+    fill(&mut w, "stone", 80, 84, 1, 60);
+    let end = w.zap(CellPos::new(10, 20), CellPos::new(150, 20));
+    assert!((79..=84).contains(&end.x), "the wall stops it: ended at {end:?}");
+}

@@ -135,7 +135,7 @@ fn toggle_dev(keys: Res<ButtonInput<KeyCode>>, mut actions: MessageReader<crate:
     // whose < key by Z then reads as Backquote.)
     if keys.any_just_pressed([KeyCode::F1, KeyCode::Backquote, KeyCode::IntlBackslash]) {
         dev.0 = !dev.0;
-        info!("{}", if dev.0 { "dev tools (F1: hands)" } else { "hands (F1: dev tools)" });
+        info!("{}", if dev.0 { "dev tools (key left of 1: hands)" } else { "hands (key left of 1: dev tools)" });
     }
 }
 
@@ -195,8 +195,8 @@ fn select(keys: Res<ButtonInput<KeyCode>>, scroll: Res<AccumulatedMouseScroll>, 
     }
 }
 
-/// Where swings come from: a little above the body's centre.
-fn hand_at(k: &Kinematics) -> Vec2 {
+/// Where swings (and spells) come from: a little above the body's centre.
+pub fn hand_at(k: &Kinematics) -> Vec2 {
     k.body.pos + Vec2::new(0.0, k.body.half.y * 0.4)
 }
 
@@ -287,14 +287,15 @@ fn use_hands(
     mut hand: ResMut<Hand>,
     mut sim: ResMut<SimWorld>,
     mut chests: ResMut<chests::Chests>,
-    mut player: Query<(&Kinematics, &mut Inventory), With<LocalPlayer>>,
+    mut player: Query<(Entity, &Kinematics, &mut Inventory), With<LocalPlayer>>,
     creatures: Query<&Kinematics, With<Creature>>,
     mut found: Query<(Entity, &mut chests::Chest, &Kinematics), Without<LocalPlayer>>,
+    mut casts: MessageWriter<crate::magic::CastRequest>,
 ) {
     let clicked = std::mem::take(&mut input.clicked);
     hand.cooldown = (hand.cooldown - DT).max(0.0);
     let (Some(items), Some(cursor)) = (items, input.cursor) else { return };
-    let Ok((k, mut inv)) = player.single_mut() else { return };
+    let Ok((me, k, mut inv)) = player.single_mut() else { return };
     let from = hand_at(k);
     let slot = if input.auto { auto_slot(&sim.world, &items, &inv, &k.body, from, cursor).unwrap_or(hand.slot) } else { hand.slot };
     let Some(stack) = inv.slots[slot] else { return };
@@ -348,6 +349,10 @@ fn use_hands(
                 }
             }
             inv.take(slot, 1);
+        }
+        // (The wand keeps its own time: `magic::request`.)
+        Use::Cast { .. } if input.primary => {
+            casts.write(crate::magic::CastRequest { caster: me, item: stack.item, from, toward: cursor });
         }
         Use::Chest if clicked => {
             let Some(feet) = chests::place_spot(&sim.world, cursor) else { return };

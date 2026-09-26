@@ -14,6 +14,7 @@ mod fx;
 mod hands;
 mod hud;
 mod light;
+mod magic;
 mod particles;
 mod props;
 mod render;
@@ -84,7 +85,7 @@ fn main() {
             light::LightPlugin,
             scenario::ScenarioPlugin,
         ))
-        .add_plugins(dev::DevPlugin)
+        .add_plugins((dev::DevPlugin, magic::MagicPlugin))
         .add_plugins(spikes_plugin)
         .run();
 }

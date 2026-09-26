@@ -261,6 +261,11 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
 /// Reach of a lightning strike (cells) and the damage at its centre.
 const LIGHTNING_REACH: f32 = 10.0;
 const LIGHTNING_DAMAGE: f32 = 55.0;
+/// Wand lightning: hurts out to this many cells from where it ends (tight:
+/// it's aimed, and whoever cast it is usually near)...
+const ZAP_REACH: f32 = 3.0;
+/// ... this much, at most.
+const ZAP_DAMAGE: f32 = 30.0;
 
 type Strikable<'a> = (Entity, &'a mut Health, &'a Kinematics, Option<&'a Resist>, Option<&'a Coated>);
 
@@ -280,12 +285,35 @@ pub fn struck(
                 continue;
             }
             health.hp -= LIGHTNING_DAMAGE * (1.0 - d / LIGHTNING_REACH);
-            let coat = coated.and_then(|c| coatings.by_name.get(&c.name));
-            if !coat.is_some_and(|c| c.fireproof) && !resist.is_some_and(|r| r.fireproof) {
-                let burn = coat.map_or(1.0, |c| c.burn);
-                commands.entity(entity).insert(Burning::new(BURN_SECS * burn, burn));
-            }
+            catch_fire(&mut commands, entity, resist, coated, &coatings);
         }
+    }
+}
+
+/// Wand lightning (`fx::Zapped`): the sky's, smaller. It hurts what it ends
+/// at and sets it alight.
+pub fn zapped(mut commands: Commands, mut zaps: MessageReader<crate::fx::Zapped>, coatings: Res<Coatings>, mut q: Query<Strikable>) {
+    for crate::fx::Zapped(z) in zaps.read() {
+        let at = Vec2::new(z.to.x as f32 + 0.5, z.to.y as f32 + 0.5);
+        for (entity, mut health, k, resist, coated) in &mut q {
+            // (From the body's edge: the bolt ends at its centre or a wall.)
+            let d = (k.body.pos.distance(at) - k.body.half.min_element()).max(0.0);
+            if d > ZAP_REACH {
+                continue;
+            }
+            health.hp -= ZAP_DAMAGE * (1.0 - d / ZAP_REACH);
+            catch_fire(&mut commands, entity, resist, coated, &coatings);
+        }
+    }
+}
+
+/// Set a creature alight, unless its coating (wet) or its kind won't burn.
+/// An oily one burns longer and harder.
+pub fn catch_fire(commands: &mut Commands, entity: Entity, resist: Option<&Resist>, coated: Option<&Coated>, coatings: &Coatings) {
+    let coat = coated.and_then(|c| coatings.by_name.get(&c.name));
+    if !coat.is_some_and(|c| c.fireproof) && !resist.is_some_and(|r| r.fireproof) {
+        let burn = coat.map_or(1.0, |c| c.burn);
+        commands.entity(entity).insert(Burning::new(BURN_SECS * burn, burn));
     }
 }
 

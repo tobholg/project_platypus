@@ -254,13 +254,25 @@ pub fn plant_torch(commands: &mut Commands, at: Vec2, settings: &LightSettings) 
 }
 
 /// Blasts and lightning light up their surroundings for a moment.
-fn collect_flashes(time: Res<Time>, mut blasts: MessageReader<Explosion>, mut bolts: MessageReader<Lightning>, mut flashes: ResMut<Flashes>) {
+fn collect_flashes(
+    time: Res<Time>,
+    mut blasts: MessageReader<Explosion>,
+    mut bolts: MessageReader<Lightning>,
+    mut zaps: MessageReader<crate::fx::Zapped>,
+    mut flashes: ResMut<Flashes>,
+) {
     for e in blasts.read() {
         let k = (e.radius / 20.0).min(2.0);
         flashes.0.push(Flash { at: e.at, color: [1.3 * k, 0.95 * k, 0.55 * k], age: 0.0, life: 0.45 });
     }
     for Lightning(s) in bolts.read() {
         flashes.0.push(Flash { at: Vec2::new(s.hit.x as f32, s.hit.y as f32 + 4.0), color: [1.4, 1.45, 1.7], age: 0.0, life: 0.4 });
+    }
+    for crate::fx::Zapped(z) in zaps.read() {
+        let mid = Vec2::new((z.from.x + z.to.x) as f32 / 2.0, (z.from.y + z.to.y) as f32 / 2.0);
+        for at in [mid, Vec2::new(z.to.x as f32, z.to.y as f32)] {
+            flashes.0.push(Flash { at, color: [0.8, 0.85, 1.1], age: 0.0, life: 0.25 });
+        }
     }
     let dt = time.delta_secs();
     flashes.0.retain_mut(|f| {

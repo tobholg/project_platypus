@@ -9,12 +9,17 @@ use crate::camera::MainCamera;
 
 pub struct FxPlugin;
 
-/// Something blew up at `at` (cells) with this blast radius.
+/// Something blew up at `at` (cells) with this blast radius and power.
 #[derive(Message, Clone, Copy, Debug)]
 pub struct Explosion {
     pub at: Vec2,
     pub radius: f32,
+    pub power: f32,
 }
+
+/// Wand lightning struck (from the sim's `StepStats::zaps`).
+#[derive(Message, Clone, Debug)]
+pub struct Zapped(pub platypus_sim::Zap);
 
 /// Lightning struck (from the sim's `StepStats::lightning`).
 #[derive(Message, Clone, Copy, Debug)]
@@ -62,11 +67,12 @@ impl Plugin for FxPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<Explosion>()
             .add_message::<Lightning>()
+            .add_message::<Zapped>()
             .init_resource::<SkyFlash>()
             .init_resource::<Trauma>()
             .init_resource::<ShakeOffset>()
             .add_systems(Startup, setup)
-            .add_systems(Update, (on_explosion, on_lightning, shake, fade_flashes, fade_bolts).chain());
+            .add_systems(Update, (on_explosion, on_lightning, on_zap, shake, fade_flashes, fade_bolts).chain());
     }
 }
 
@@ -146,6 +152,56 @@ fn on_lightning(
             Transform::from_xyz(x0 as f32 + size.x / 2.0, y0 as f32 + size.y / 2.0, 16.0),
         ));
     }
+}
+
+fn on_zap(mut commands: Commands, mut zaps: MessageReader<Zapped>, mut images: ResMut<Assets<Image>>, mut trauma: ResMut<Trauma>) {
+    for Zapped(z) in zaps.read() {
+        trauma.0 = (trauma.0 + 0.08).min(1.0);
+        let (image, x0, y0) = zap_image(z);
+        let size = Vec2::new(image.width() as f32, image.height() as f32);
+        commands.spawn((
+            Bolt { age: 0.0 },
+            Sprite { image: images.add(image), custom_size: Some(size), ..default() },
+            Transform::from_xyz(x0 as f32 + size.x / 2.0, y0 as f32 + size.y / 2.0, 16.0),
+        ));
+    }
+}
+
+/// Wand lightning: the cells the sim's bolt went through (`Zap::path`, its
+/// forks too), one cell wide with a glow either side. Returns the image and
+/// its bottom-left cell.
+fn zap_image(z: &platypus_sim::Zap) -> (Image, i32, i32) {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    let mut points: Vec<(i32, i32)> = z.path.iter().map(|p| (p.x, p.y)).collect();
+    points.push((z.from.x, z.from.y));
+    let (x0, x1) = points.iter().fold((i32::MAX, i32::MIN), |(a, b), p| (a.min(p.0), b.max(p.0)));
+    let (y0, y1) = points.iter().fold((i32::MAX, i32::MIN), |(a, b), p| (a.min(p.1), b.max(p.1)));
+    let (x0, x1, y0, y1) = (x0 - 2, x1 + 2, y0 - 2, y1 + 2);
+    let (w, h) = ((x1 - x0 + 1) as u32, (y1 - y0 + 1) as u32);
+    let mut image = Image::new_fill(
+        Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        TextureDimension::D2,
+        &[0, 0, 0, 0],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    );
+    let data = image.data.as_mut().expect("fresh image");
+    let mut put = |x: i32, y: i32, c: [u8; 4]| {
+        let i = (((y1 - y) as u32 * w + (x - x0) as u32) * 4) as usize;
+        if data[i + 3] < c[3] {
+            data[i..i + 4].copy_from_slice(&c);
+        }
+    };
+    for &(x, y) in &points {
+        for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            put(x + dx, y + dy, [150, 170, 255, 110]);
+        }
+    }
+    for &(x, y) in &points {
+        put(x, y, [250, 250, 255, 255]);
+    }
+    (image, x0, y0)
 }
 
 /// A jagged bolt from the cloud to where it earthed (through a tree, down its

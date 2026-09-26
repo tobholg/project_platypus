@@ -774,6 +774,54 @@ deaths (blood). Rendered as one dynamic mesh.
 - Every hit becomes one `Hit` message; one system applies damage, i-frames,
   knockback, hit-stop and VFX.
 
+### 6.1 Magic (`game::magic`, DESIGN §7b)
+
+- **Runes** (`assets/data/runes.ron`, hot-reloaded) are one of three kinds:
+  a *carrier* (how a spell travels: `Bolt`, `Orb`, `Stream`, `Lightning`), a
+  *payload* (what it does where it lands: `Damage`, `Blast`, `Heat`,
+  `Ignite`, `Matter`) or a *modifier* (how it behaves: `Gravity`, `Trail`,
+  `Speed`, `Trigger`). Each costs mana and has a colour.
+- **A wand** is an item (`Use::Cast { runes, delay, recharge }` in
+  `items.ron`). Its runes read left to right into casts (`runes::casts`):
+  modifiers gather until a carrier; the payloads after the carrier ride it;
+  a `Trigger` makes the rest of the wand the cast set off where it lands,
+  otherwise the rest is the wand's next cast. A cast looks like its last
+  payload (acid is green) or its carrier.
+- **Casting.** Holding a wand sends a `CastRequest` every tick; the wand
+  (per caster) keeps its own time: `delay` after a cast, `recharge` after
+  its last. The caster pays the cast's mana (and what it triggers) up front
+  from `Mana` (the player: 100, +30/s, a bar under health); without enough,
+  nothing happens.
+- **Bolts and orbs** are `Spell` entities stepped a cell at a time: through
+  open cells and liquids, stopped by the first solid or powder cell (an orb
+  bounces off its first `bounces` solids, losing 30 %) or body with
+  `Health` (their caster after 0.3 s: a fireball can come back), or where
+  they are when their `life` runs out. Gravity: an orb falls at 0.3 of a
+  thrown thing's, plus any `Gravity` rune. Trails shed their material as
+  embers every other cell.
+- **Landing** applies the payloads through the sim's own edits: a blast is
+  `WorldEdit::Explode` (so a fireball digs, throws debris and bodies, and
+  hurts like a small bomb), heat `WorldEdit::Heat`, ignite
+  `WorldEdit::Ignite` plus setting alight creatures in the radius, matter a
+  `splash` of real cells, damage the body hit (with knockback).
+- **Streams** spray, from 6 cells ahead of the hand, flames (landing as
+  embers) and one in six burning cells of their material; what stands in
+  the stream is scalded (1.5 a cast) and may catch.
+- **Lightning** picks up to `targets` creatures within `range` toward the aim
+  (within 0.6 rad of it, or 30 cells of the cursor), nearest the line first,
+  or else aims at the cursor (up to `range`), and strikes each with
+  `World::zap`: a jagged walk (pulled back to the line, gathered in at both
+  ends) through open cells, stopped by the first solid, liquid or plant; two
+  forks off it through open air; what burns along it catches and some air
+  flares; where it ends it bursts (radius 2), heats and ignites. The sim
+  reports each zap with its path (`StepStats::zaps`); the game draws
+  exactly that path and hurts what's within 3 cells of the end (30 at most)
+  and sets it alight (`elements::zapped`), as the sky's lightning does.
+- **Every explosion hurts** (`actors::blasted`, from `StepStats::detonated`):
+  bodies within 1.6 × its radius take up to 0.65 × its power and are thrown
+  at up to 3 × its power, falling off with distance. Magic can hurt its
+  caster: a fireball at point blank does.
+
 ## 7. Extensibility — adding things without touching the engine
 
 | To add…              | You write…                                             |
@@ -783,6 +831,7 @@ deaths (blood). Rendered as one dynamic mesh.
 | an enemy (existing AI)| a creature RON (sprites, stats, attacks, brain + params)|
 | a new AI behaviour   | one module implementing a brain, registered by name    |
 | a weapon             | a weapon RON + sprite                                  |
+| a rune / a wand      | an entry in `runes.ron` / a `Cast` item in `items.ron` |
 | an item / recipe     | RON entries                                            |
 
 All RON under `assets/data/` hot-reloads while the game runs.

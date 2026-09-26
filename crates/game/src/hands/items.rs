@@ -27,6 +27,10 @@ pub enum Use {
     /// Place a chest (the `chest` material's cells; the game keeps what's in
     /// it).
     Chest,
+    /// A wand: casts its runes (`runes.ron`, left to right) toward the
+    /// cursor while held, one cast each `delay` seconds and `recharge` after
+    /// the last, paid in the caster's mana.
+    Cast { runes: Vec<String>, delay: f32, recharge: f32 },
     /// A block of a material (made from the materials table, not written).
     #[serde(skip)]
     Block(MaterialId),

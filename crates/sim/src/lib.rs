@@ -27,6 +27,6 @@ pub use edit::{BLOCK, EditReport, WorldEdit, block_cells, block_of};
 pub use hazard::Exposure;
 pub use material::{Kind, MaterialId, MaterialTable};
 pub use particles::{Landing, Particle};
-pub use step::{PHASES, StepStats, Strike};
+pub use step::{PHASES, StepStats, Strike, Zap};
 pub use weather::Weather;
 pub use world::{LEAF_REACH, World};

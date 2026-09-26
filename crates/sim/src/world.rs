@@ -11,7 +11,7 @@ use crate::edit::{BLOCK, EditReport, WorldEdit, block_cells, disc};
 use crate::material::{ExplosionDef, Kind, MatPhys, MaterialId, MaterialTable};
 use crate::particles::{self, Landing, Particle, ParticleWorld};
 use crate::rng::{Rng, hash};
-use crate::step::{StepStats, Strike, step_chunks};
+use crate::step::{StepStats, Strike, Zap, step_chunks};
 use crate::store;
 use crate::weather::{self, Weather};
 
@@ -44,7 +44,9 @@ pub struct World {
     pending_explosions: Vec<(CellPos, ExplosionDef)>,
     /// Every explosion applied since the last step, whatever set it off
     /// (bombs, edits, chains, lightning): reported in `StepStats::detonated`.
-    blasts: Vec<(CellPos, i32)>,
+    blasts: Vec<(CellPos, i32, u8)>,
+    /// Wand lightning since the last step: `StepStats::zaps`.
+    zaps: Vec<Zap>,
     /// Tiles where the simulation destroyed solids, awaiting a fragment check.
     pending_fragment_tiles: Vec<CellPos>,
     /// Same, for the background layer.
@@ -94,6 +96,7 @@ impl World {
             climate: Climate::default(),
             pending_explosions: Vec::new(),
             blasts: Vec::new(),
+            zaps: Vec::new(),
             pending_fragment_tiles: Vec::new(),
             pending_bg_tiles: Vec::new(),
             particles: Vec::new(),
@@ -360,6 +363,9 @@ impl World {
                 }
             }
             WorldEdit::Lightning { x, from_y } => self.lightning(x, from_y),
+            WorldEdit::Zap { from, to } => {
+                self.zap(from, to);
+            }
             WorldEdit::Weather { x, radius, storm } => {
                 let tick = self.tick;
                 if let Some(w) = &mut self.weather {
@@ -367,7 +373,7 @@ impl World {
                 }
             }
             WorldEdit::Explode { center, radius, power } => {
-                self.blasts.push((center, radius));
+                self.blasts.push((center, radius, power));
                 self.explode(center, radius, power, &mut report);
                 self.loosen_if_removed(center, radius + FLING_RIM, &report);
             }
@@ -1126,6 +1132,7 @@ impl World {
         let bodies = lap();
         self.step_weather(wind, &stats.vapour);
         stats.lightning = std::mem::take(&mut self.strikes);
+        stats.zaps = std::mem::take(&mut self.zaps);
         stats.phases = [edits, cells, broken, particles, bodies, lap()];
         stats
     }
@@ -1196,6 +1203,84 @@ impl World {
                 self.particles.push(particle);
             }
         }
+    }
+
+    /// Wand lightning (`WorldEdit::Zap`): the sky's lightning, smaller. A
+    /// jagged walk from `from` toward `to` (each step onward, and a step
+    /// aside now and then, pulled back to the line), stopped by the first
+    /// solid, liquid or plant cell; what burns along it catches, some air
+    /// cells flare, embers fly; where it lands it bursts, heats and lights.
+    /// Returns where it ended (a spell carries on from there).
+    pub fn zap(&mut self, from: CellPos, to: CellPos) -> CellPos {
+        let mats = self.materials.clone();
+        let mut rng = self.rng_for(0x2A9, to);
+        let (dx, dy) = ((to.x - from.x) as f32, (to.y - from.y) as f32);
+        let len = (dx * dx + dy * dy).sqrt().max(1.0);
+        let (ux, uy) = (dx / len, dy / len);
+        let open = |c: Cell| c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas | Kind::Fire);
+        let mut channel = Vec::new();
+        let (mut t, mut off) = (0.0f32, 0.0f32);
+        let mut end = from;
+        while t < len {
+            t += 1.0;
+            // Wander sideways, pulled back toward the line, and gathered in
+            // at both ends: out of the wand, onto what it's aimed at.
+            off += (rng.next_u8() as f32 / 255.0 - 0.5) * 1.6 - off * 0.12;
+            let side = off * (t / 6.0).min(1.0) * ((len - t) / 12.0).clamp(0.0, 1.0);
+            let p = CellPos::new((from.x as f32 + ux * t - uy * side).round() as i32, (from.y as f32 + uy * t + ux * side).round() as i32);
+            let Some(c) = self.get(p) else { break };
+            end = p;
+            if !open(c) {
+                break;
+            }
+            channel.push(p);
+        }
+        // Two forks off it, through open air only (a fork stops at what it
+        // meets): part of the bolt, burning what they pass like it.
+        let mut path = channel.clone();
+        path.push(end);
+        for _ in 0..2 {
+            let Some(&start) = channel.get(rng.next_u32() as usize % channel.len().max(1)) else { break };
+            let a = (rng.next_u8() as f32 / 255.0 - 0.5) * 1.6;
+            let (fx, fy) = (ux * a.cos() - uy * a.sin(), ux * a.sin() + uy * a.cos());
+            let mut off = 0.0f32;
+            for k in 1..(len / 5.0) as i32 + 3 {
+                off += (rng.next_u8() as f32 / 255.0 - 0.5) * 2.2 - off * 0.1;
+                let p = CellPos::new((start.x as f32 + fx * k as f32 - fy * off).round() as i32, (start.y as f32 + fy * k as f32 + fx * off).round() as i32);
+                if !self.get(p).is_some_and(open) {
+                    break;
+                }
+                channel.push(p);
+                path.push(p);
+            }
+        }
+        let fire = mats.fire();
+        for (i, &p) in channel.iter().enumerate() {
+            if let Some(mut b) = self.get_bg(p)
+                && mats.phys(b.material).flammability > 0
+            {
+                if b.flags & flags::BURNING == 0 {
+                    b.flags |= flags::BURNING;
+                    b.life = mats.phys(b.material).burn_time;
+                }
+                b.heat = ZAP_HEAT;
+                self.set_bg(p, b);
+            }
+            if fire != MaterialId::AIR && self.get(p).is_some_and(|c| c.is_air()) && rng.chance(35) {
+                let flame = mats.spawn(fire, &mut rng);
+                self.set(p, flame);
+            }
+            if i % 9 == 4 && fire != MaterialId::AIR {
+                let spark = mats.spawn(fire, &mut rng);
+                let vel = [(rng.next_u8() as f32 / 255.0 - 0.5) * 1.2, 0.2 + rng.next_u8() as f32 / 255.0 * 0.6];
+                self.particles.push(Particle { gravity: 0.1, ..Particle::new(center_of(p), vel, spark, 20 + rng.next_u8() as u16 / 8, Landing::Ember) });
+            }
+        }
+        self.apply_edit(&WorldEdit::Explode { center: end, radius: 2, power: ZAP_BLAST });
+        self.apply_edit(&WorldEdit::Heat { center: end, radius: 4, amount: ZAP_HEAT });
+        self.apply_edit(&WorldEdit::Ignite { center: end, radius: 2 });
+        self.zaps.push(Zap { from, to: end, path });
+        end
     }
 
     /// Lightning down column `x`: strikes the first solid, liquid, plant or
@@ -1477,6 +1562,9 @@ const LIGHTNING_ONE_IN: u32 = 12_000;
 const LIGHTNING_HEAT: i16 = 1200;
 /// Heat where it earths: enough to fuse sand (1100) into glass.
 const EARTH_HEAT: i16 = 1500;
+/// Wand lightning: heat along it and where it lands (°C), and its burst.
+const ZAP_HEAT: i16 = 600;
+const ZAP_BLAST: u8 = 14;
 /// Blast power where it strikes: shreds leaves, not wood.
 const LIGHTNING_BLAST: u8 = 24;
 /// A background fire hotter than this (°C) boils a raindrop off, losing

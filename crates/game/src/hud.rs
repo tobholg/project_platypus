@@ -1,4 +1,5 @@
-//! The player's HUD: a health bar (with a death count while developing) and
+//! The player's HUD: a health bar (with a death count while developing), a
+//! mana bar, and
 //! a round timer for each status (burning, chilled, the current coating),
 //! filled by how much of it is left.
 
@@ -21,6 +22,8 @@ struct HealthFill;
 #[derive(Component)]
 struct HealthText;
 #[derive(Component)]
+struct ManaFill;
+#[derive(Component)]
 struct StatusSlot(usize);
 #[derive(Component)]
 struct StatusLabel(usize);
@@ -30,7 +33,7 @@ struct Icons([Handle<Image>; SLOTS]);
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_hud).add_systems(Update, (update_health, update_statuses));
+        app.add_systems(Startup, spawn_hud).add_systems(Update, (update_health, update_mana, update_statuses));
     }
 }
 
@@ -68,6 +71,12 @@ fn spawn_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
                     Node { position_type: PositionType::Absolute, left: Val::Px(6.0), top: Val::Px(0.0), ..default() },
                 ));
             });
+            // Mana: a thinner bar under it.
+            root.spawn((
+                Node { width: Val::Percent(100.0), height: Val::Px(7.0), margin: UiRect::top(Val::Px(-3.0)), ..default() },
+                BackgroundColor(Color::srgba(0.04, 0.05, 0.1, 0.75)),
+            ))
+            .with_child((ManaFill, Node { width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(Color::srgb(0.25, 0.45, 1.0))));
             // Statuses: round timers with their name under them.
             root.spawn(Node { column_gap: Val::Px(10.0), justify_content: JustifyContent::Center, ..default() }).with_children(|row| {
                 for (i, icon) in icons.iter().enumerate() {
@@ -106,6 +115,13 @@ fn update_health(
     for mut t in &mut text {
         let died = if deaths.0 > 0 { format!("    died {}×", deaths.0) } else { String::new() };
         t.0 = format!("{:.0} / {:.0}{died}", h.hp.max(0.0), h.max);
+    }
+}
+
+fn update_mana(player: Query<&crate::magic::Mana, With<LocalPlayer>>, mut fill: Query<&mut Node, With<ManaFill>>) {
+    let Ok(m) = player.single() else { return };
+    for mut n in &mut fill {
+        n.width = Val::Percent((m.cur / m.max).clamp(0.0, 1.0) * 100.0);
     }
 }
 

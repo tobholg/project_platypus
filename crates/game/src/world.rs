@@ -102,14 +102,23 @@ impl Plugin for WorldPlugin {
     }
 }
 
-fn step_cells(mut sim: ResMut<SimWorld>, mut metrics: ResMut<SimMetrics>, mut fx: MessageWriter<Explosion>, mut bolts: MessageWriter<Lightning>) {
+fn step_cells(
+    mut sim: ResMut<SimWorld>,
+    mut metrics: ResMut<SimMetrics>,
+    mut fx: MessageWriter<Explosion>,
+    mut bolts: MessageWriter<Lightning>,
+    mut zaps: MessageWriter<crate::fx::Zapped>,
+) {
     let t = Instant::now();
     metrics.last = sim.world.step();
     for &s in &metrics.last.lightning {
         bolts.write(Lightning(s));
     }
-    for &(p, radius) in &metrics.last.detonated {
-        fx.write(Explosion { at: Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5), radius: radius as f32 });
+    for &(p, radius, power) in &metrics.last.detonated {
+        fx.write(Explosion { at: Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5), radius: radius as f32, power: power as f32 });
+    }
+    for z in std::mem::take(&mut metrics.last.zaps) {
+        zaps.write(crate::fx::Zapped(z));
     }
     metrics.tick_time = t.elapsed();
     #[cfg(feature = "spikes")]

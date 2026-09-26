@@ -34,7 +34,7 @@ impl Plugin for ActorsPlugin {
             .init_resource::<PlayerDeaths>()
             .add_systems(FixedUpdate, displace_liquid.after(move_creatures).in_set(TickSet::Bodies))
             .add_systems(Update, (elements::tint, elements::reload_coatings))
-            .add_systems(FixedUpdate, elements::struck.after(TickSet::Cells))
+            .add_systems(FixedUpdate, (elements::struck, elements::zapped, blasted).after(TickSet::Cells))
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate));
     }
 }
@@ -175,6 +175,28 @@ pub struct PlayerDeaths(pub u32);
 /// Dead creatures burst into blood particles that land as real cells (they
 /// run and pool). The player, while developing, just gets its health back
 /// where it stands; with `PLATYPUS_RESPAWN=1` it respawns at the start.
+/// Every explosion (a bomb, a fireball, a gas pocket, lightning's burst)
+/// hurts and throws the creatures near it, less the farther they are: out
+/// to 1.6 times its radius, up to 0.65 × its power in damage and 3 × in
+/// knockback (a bomb: 90 and 420).
+fn blasted(mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<(&mut Kinematics, &mut Health)>) {
+    for b in blasts.read() {
+        let reach = b.radius * 1.6;
+        for (mut k, mut health) in &mut q {
+            let d = k.body.pos - b.at;
+            let dist = d.length();
+            if dist > reach {
+                continue;
+            }
+            let f = 1.0 - dist / reach;
+            health.hp -= b.power * 0.65 * f;
+            let dir = (d.normalize_or(Vec2::Y) + Vec2::new(0.0, 0.6)).normalize();
+            let k = &mut *k;
+            k.loco.knock(&mut k.body, dir * b.power * 3.0 * (0.4 + 0.6 * f), 0.35);
+        }
+    }
+}
+
 fn deaths(
     mut commands: Commands,
     mut sim: ResMut<SimWorld>,
