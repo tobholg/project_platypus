@@ -205,7 +205,7 @@ impl Chests {
             spawn_drop(commands, items, at + Vec2::new(k as f32 * 0.7 - 3.0, 0.0), stack);
         }
         if whole && let Some(chest) = items.id("chest") {
-            spawn_drop(commands, items, at, Stack { item: chest, count: 1 });
+            spawn_drop(commands, items, at, Stack::new(chest, 1));
         }
     }
 }
@@ -233,7 +233,7 @@ fn roll(inv: &mut Inventory, t: &LootTable, items: &Items, rng: &mut Rng) {
             continue;
         };
         let n = e.count.0 + rng.next_u32() % (e.count.1 - e.count.0 + 1);
-        inv.add(items, Stack { item, count: n * items.unit(item) });
+        inv.add(items, Stack::new(item, n * items.unit(item)));
     }
 }
 
@@ -287,7 +287,7 @@ fn take_all(keys: Res<ButtonInput<KeyCode>>, items: Option<Res<Items>>, sim: Res
     for slot in chest.slots.iter_mut() {
         if let Some(s) = *slot {
             let left = inv.add(&items, s);
-            *slot = (left > 0).then_some(Stack { item: s.item, count: left });
+            *slot = (left > 0).then_some(Stack { count: left, ..s });
         }
     }
 }
@@ -365,14 +365,9 @@ pub fn place_spot(world: &World, cursor: Vec2) -> Option<Vec2> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hands::items::ItemsFile;
-    use platypus_sim::MaterialTable;
-
     fn setup() -> (Items, Vec<LootTable>) {
-        let mats = MaterialTable::from_ron(include_str!("../../../../assets/data/materials.ron")).unwrap();
-        let file: ItemsFile = crate::data::parse_ron(include_str!("../../../../assets/data/items.ron")).unwrap();
         let loot: LootFile = crate::data::parse_ron(include_str!("../../../../assets/data/loot.ron")).unwrap();
-        (Items::new(file, &mats).unwrap(), loot.tables)
+        (crate::hands::items::test_items(), loot.tables)
     }
 
     #[test]

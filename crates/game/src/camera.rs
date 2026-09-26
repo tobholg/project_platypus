@@ -73,7 +73,8 @@ fn spawn_camera(mut commands: Commands, start: Res<StartAt>, mut images: ResMut<
     ));
     if std::env::var("PLATYPUS_OFFSCREEN").is_ok_and(|v| !v.is_empty()) {
         let image = images.add(Image::new_target_texture(1512, 917, bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb, None));
-        cam.insert(bevy::camera::RenderTarget::Image(image.clone().into()));
+        // (The panels too: the UI follows the camera marked for it.)
+        cam.insert((bevy::camera::RenderTarget::Image(image.clone().into()), IsDefaultUiCamera));
         commands.insert_resource(Offscreen(image));
     }
 }

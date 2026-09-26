@@ -122,6 +122,11 @@
 //!   second hotbar (X) at 1.5 s, hovers the spark wand at 2 s (its tooltip;
 //!   this moves the real mouse pointer), drags it to hotbar 3 at 2.6–3 s;
 //!   logs where it ended up
+//! - `gear`       (`PLATYPUS_WORLD=arena`) a blast beside the player with
+//!   nothing on (logs what it cost), then a full iron set and a ring put on
+//!   (logs its stats) and the same blast (logs what it cost now); the
+//!   inventory opened, a leather jerkin in the pack hovered (its tooltip,
+//!   against the chainmail worn)
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end
@@ -169,6 +174,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, webs_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, crossing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, held_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, gear_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -882,7 +888,7 @@ fn chest_script(
     match *step {
         0 if s.elapsed > 0.8 => {
             // A chest in slot 9.
-            inv.slots[8] = Some(Stack { item: chest, count: 1 });
+            inv.slots[8] = Some(Stack::new(chest, 1));
             keys.press(KeyCode::Digit9);
             *step = 1;
         }
@@ -901,7 +907,7 @@ fn chest_script(
                 Some(c) => {
                     let taken = inv.slots.iter_mut().flatten().find(|st| st.item == bomb).map(|st| std::mem::replace(&mut st.count, 0)).unwrap_or(0);
                     inv.slots.iter_mut().for_each(|sl| if sl.is_some_and(|st| st.count == 0) { *sl = None });
-                    chests.contents(c, &sim.world, &items).add(&items, Stack { item: bomb, count: taken });
+                    chests.contents(c, &sim.world, &items).add(&items, Stack::new(bomb, taken));
                     info!("chest: placed and opened at {c:?}, {taken} bombs put in");
                 }
                 None => info!("chest: not open"),
@@ -2379,5 +2385,68 @@ fn webs_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut player: Query<&m
     if state.0 == 3 && t > 5.0 {
         info!("webs: through web: {:.0} cells in 1.5 s", k.body.pos.x - state.1);
         state.0 = 4;
+    }
+}
+
+/// Armour against a blast, and the equipment screen.
+#[allow(clippy::too_many_arguments)]
+fn gear_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut window: Single<&mut Window, With<bevy::window::PrimaryWindow>>,
+    slots: Query<(&crate::hands::ui::SlotUi, &bevy::ui::UiGlobalTransform, &InheritedVisibility)>,
+    mut player: Query<(&Kinematics, &mut crate::actors::Health, &mut crate::gear::Equipment, &crate::gear::Stats, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut state: Local<(u8, f32)>,
+) {
+    use crate::hands::items::Stack;
+    if s.name != "gear" {
+        return;
+    }
+    let (Some(items), Ok((k, mut h, mut eq, stats, mut inv))) = (items, player.single_mut()) else { return };
+    let t = s.elapsed;
+    let p = k.body.pos;
+    keys.release(KeyCode::Escape);
+    let blast = |sim: &mut SimWorld| sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 3, p.y as i32), radius: 3, power: 60 });
+    match state.0 {
+        0 if t > 0.8 => {
+            state.1 = h.hp;
+            blast(&mut sim);
+            state.0 = 1;
+        }
+        1 if t > 1.4 => {
+            info!("gear: the blast with nothing on cost {:.0} hp", state.1 - h.hp);
+            h.hp = h.max;
+            for (i, id) in ["iron_helm", "chainmail", "iron_gauntlets", "iron_greaves", "iron_boots", "ring_of_vigour"].iter().enumerate() {
+                eq.worn[i] = items.id(id).map(|it| Stack::new(it, 1));
+            }
+            if let Some(j) = items.id("leather_jerkin") {
+                inv.add(&items, Stack::new(j, 1));
+            }
+            state.0 = 2;
+        }
+        2 if t > 1.8 => {
+            let listed: Vec<String> = stats.nonzero().map(|(s, v)| crate::gear::stats::line(s, v)).collect();
+            info!("gear: in iron: health {:.0}/{:.0}, {}", h.hp, h.max, listed.join(", "));
+            state.1 = h.hp;
+            blast(&mut sim);
+            state.0 = 3;
+        }
+        3 if t > 2.4 => {
+            info!("gear: the same blast in iron cost {:.0} hp", state.1 - h.hp);
+            keys.press(KeyCode::Escape);
+            state.0 = 4;
+        }
+        4 if t > 2.8 => {
+            let jerkin = items.id("leather_jerkin");
+            let at = inv.slots.iter().position(|s| s.is_some_and(|s| Some(s.item) == jerkin));
+            let scale = window.scale_factor();
+            let pos = at.and_then(|i| slots.iter().find(|(sl, _, v)| sl.0 == crate::hands::ui::Holder::Pack && sl.1 == i && v.get()).map(|(_, tf, _)| tf.translation / scale));
+            info!("gear: hovering the jerkin in slot {at:?} at {pos:?}");
+            window.set_cursor_position(pos);
+            state.0 = 5;
+        }
+        _ => {}
     }
 }

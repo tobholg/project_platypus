@@ -263,7 +263,7 @@ impl Plugin for CreaturePlugin {
     }
 }
 
-fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut art: ResMut<CreatureArt>, mut q: Query<(&Creature, &mut MoveStats, &mut Health, &mut Animator, &mut Resist)>) {
+pub(crate) fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut art: ResMut<CreatureArt>, mut q: Query<(&Creature, &mut MoveStats, &mut Health, &mut Animator, &mut Resist)>) {
     let (a, b) = (creatures.watch.changed(), creatures.art_watch.changed());
     if !a && !b {
         return;
@@ -309,7 +309,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             Name::new(def.name.clone()),
             Creature { kind: kind.clone() },
             def.team,
-            Health { hp: def.health, max: def.health },
+            Health::new(def.health),
             Kinematics { body, loco: Locomotion::default(), prev_pos: center },
             MoveStats(def.movement.clone()),
             Controls::default(),
@@ -320,7 +320,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         if let Some(f) = def.fall_damage {
             e.insert((f, super::FallTrack::default()));
         }
-        e.insert((def.resist, crate::combat::Wielding(def.weapon.clone())));
+        e.insert((def.resist, crate::combat::Wielding(def.weapon.clone()), crate::gear::Equipment::default(), crate::gear::Stats::default()));
         if let Some(s) = def.stamina {
             e.insert(crate::combat::Stamina::new(s));
         }

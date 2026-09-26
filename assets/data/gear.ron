@@ -1,0 +1,80 @@
+// Gear (DESIGN §7c): armour and trinkets. Each is an item (as in items.ron:
+// id, name, color, about) with a `gear` block:
+//
+//   slot: Head | Body | Hands | Legs | Feet | Trinket (two may be worn)
+//         | Held (weapons, tools and foci: while in the hand; in items.ron)
+//   weight: Light (cloth: mages) | Medium (leather: rangers) | Heavy (mail
+//     and plate: warriors). Every piece brings its weight's stats (below).
+//   stats: { Stat: amount, .. } what it gives. Points: Armor, Health, Poise,
+//     Stamina, Mana, AirJumps, Luck. Percent: FireResist, FrostResist,
+//     StormResist, AcidResist, FallResist, Damage, AttackSpeed, Crit,
+//     CritDamage, Knockback, StaminaRegen, ManaRegen, SpellPower, CastSpeed,
+//     FirePower, FrostPower, StormPower, AcidPower, ForcePower,
+//     GravityPower, MoveSpeed, JumpHeight.
+//
+// Armour stops armor / (armor + 50) of physical hurt (a full iron set, 45:
+// nearly half). Resistances stop their share of their element (at most 90%).
+(
+    // What each weight costs (or gives), per piece worn.
+    weights: {
+        Light: { ManaRegen: 4 },
+        Medium: {},
+        Heavy: { StaminaRegen: -4, ManaRegen: -8, MoveSpeed: -1 },
+    },
+    items: [
+        // ---- cloth (Light): mages ----
+        (id: "cloth_hood", name: "Cloth hood", color: (96, 82, 150),
+            gear: (slot: Head, weight: Light, stats: { Armor: 2, Mana: 15 })),
+        (id: "apprentice_robe", name: "Apprentice robe", color: (84, 70, 140),
+            gear: (slot: Body, weight: Light, stats: { Armor: 4, Mana: 25, SpellPower: 5 })),
+        (id: "silk_gloves", name: "Spider-silk gloves", color: (226, 226, 232),
+            gear: (slot: Hands, weight: Light, stats: { Armor: 1, CastSpeed: 10, AttackSpeed: 5 }),
+            about: "Woven from what the spiders spin: nimble fingers."),
+        (id: "cloth_trousers", name: "Cloth trousers", color: (74, 64, 118),
+            gear: (slot: Legs, weight: Light, stats: { Armor: 2, ManaRegen: 5 })),
+        (id: "soft_boots", name: "Soft boots", color: (90, 70, 60),
+            gear: (slot: Feet, weight: Light, stats: { Armor: 1, MoveSpeed: 5 })),
+
+        // ---- leather (Medium): rangers ----
+        (id: "leather_cap", name: "Leather cap", color: (132, 92, 58),
+            gear: (slot: Head, weight: Medium, stats: { Armor: 4 })),
+        (id: "leather_jerkin", name: "Leather jerkin", color: (126, 88, 54),
+            gear: (slot: Body, weight: Medium, stats: { Armor: 8, Crit: 3 })),
+        (id: "leather_gloves", name: "Leather gloves", color: (110, 76, 46),
+            gear: (slot: Hands, weight: Medium, stats: { Armor: 2, AttackSpeed: 4 })),
+        (id: "leather_trousers", name: "Leather trousers", color: (104, 74, 48),
+            gear: (slot: Legs, weight: Medium, stats: { Armor: 5 })),
+        (id: "leather_boots", name: "Leather boots", color: (92, 64, 40),
+            gear: (slot: Feet, weight: Medium, stats: { Armor: 3, MoveSpeed: 5 })),
+
+        // ---- iron (Heavy): warriors ----
+        (id: "iron_helm", name: "Iron helm", color: (170, 172, 184),
+            gear: (slot: Head, weight: Heavy, stats: { Armor: 8, Poise: 5 })),
+        (id: "chainmail", name: "Chainmail", color: (150, 154, 166),
+            gear: (slot: Body, weight: Heavy, stats: { Armor: 16, Health: 10, Poise: 10 })),
+        (id: "iron_gauntlets", name: "Iron gauntlets", color: (160, 162, 174),
+            gear: (slot: Hands, weight: Heavy, stats: { Armor: 5, Damage: 3 })),
+        (id: "iron_greaves", name: "Iron greaves", color: (140, 144, 156),
+            gear: (slot: Legs, weight: Heavy, stats: { Armor: 10 })),
+        (id: "iron_boots", name: "Iron boots", color: (130, 134, 146),
+            gear: (slot: Feet, weight: Heavy, stats: { Armor: 6, FallResist: 10 })),
+
+        // ---- boots with a trick ----
+        (id: "feather_boots", name: "Feather boots", color: (236, 236, 246),
+            gear: (slot: Feet, weight: Light, stats: { AirJumps: 1, JumpHeight: 10, FallResist: 30 }),
+            about: "Light as down: a jump in the air, and a softer landing."),
+
+        // ---- trinkets ----
+        (id: "ring_of_vigour", name: "Ring of vigour", color: (220, 60, 60),
+            gear: (slot: Trinket, stats: { Health: 20, StaminaRegen: 10 })),
+        (id: "ember_amulet", name: "Ember amulet", color: (255, 130, 40),
+            gear: (slot: Trinket, stats: { FirePower: 25, FireResist: 15 })),
+        (id: "frost_charm", name: "Frost charm", color: (150, 210, 255),
+            gear: (slot: Trinket, stats: { FrostPower: 25, FrostResist: 15 })),
+        (id: "storm_ring", name: "Storm ring", color: (210, 220, 255),
+            gear: (slot: Trinket, stats: { StormPower: 25, StormResist: 15 })),
+        (id: "lucky_coin", name: "Lucky coin", color: (240, 200, 70),
+            gear: (slot: Trinket, stats: { Luck: 10, Crit: 5 }),
+            about: "Heads, you find something better."),
+    ],
+)

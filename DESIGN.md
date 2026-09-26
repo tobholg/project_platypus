@@ -298,6 +298,49 @@ alchemy table, arcane altar for runes); flasks and buckets hold cells of a
 material (throw acid, pour water, drink a potion); alchemy inside the sim
 (mixing in a cauldron) later.
 
+## 7c. Gear, loot and classes (agreed 2026-09-26, branch `gear-arc`)
+
+A general, data-driven gear system: adding a piece is a data entry, adding
+a stat is naming it once (`gear/stats.rs`) and reading it where it acts.
+
+- **No locked classes: gear makes the fighter.** Armour comes in three
+  weights, and each piece brings its weight's stats (gear.ron `weights`):
+  Light (cloth: mages; mana regen), Medium (leather: rangers), Heavy (mail
+  and plate: warriors; armour and poise, at a cost in stamina and mana regen
+  and a little speed). A battle-mage is possible, and paid for.
+- **Slots:** worn: head, body, hands, legs, feet, two trinkets. Held: the
+  hotbar item in the hand counts while it's there (weapons, tools, foci).
+- **Stats** add up from everything worn and held (`Stats`): armour
+  (`armor / (armor + 50)` of physical hurt stopped), health, poise,
+  fire / frost / storm / acid / fall resistance, damage, attack speed, crit
+  and crit damage, knockback, stamina and regen, mana and regen, spell power,
+  cast speed, a power per element (fire, frost, storm, acid, force,
+  gravity), move speed, jump height, air jumps, luck. Every hurt goes
+  through `Health::harm(amount, kind)`, which applies the ward.
+- **Rarity and item level:** common, uncommon, rare, epic (random bonuses
+  from a data table, named prefixes and suffixes, scaled by item level:
+  where it was found), and legendary uniques (hand-made, fixed). A piece
+  carries only its roll (rarity, level, seed): its bonuses are worked out
+  from it.
+- **Gear is drawn on the body** as skins: recolours of the humanoid rig's
+  palette roles (tunic, trousers, boots, skin) in chosen parts, and overlay
+  parts drawn over named parts (a helm over the head) wherever they're drawn,
+  in every pose and aiming frame. One drawing fits every humanoid.
+- **Corpses:** a death leaves a body that falls and can be thrown; it holds
+  what the creature wore and carried and a roll of its loot table. Right-
+  click opens it with the chest window (chests and corpses are containers);
+  an emptied one fades.
+- **Spells and foci:** spells come out of the wands into a spell bar (Q
+  cycles); wands and staffs are held foci with a tier (gating spells) and an
+  element they favour. A focus is needed to cast (see §7b).
+- **Enemies wear gear** from their loot tables, and what they wear is what
+  they drop.
+- Not now: durability and repair, coins and merchants.
+
+Build order (a commit each): stats + equipment → skins → rarity and bonuses
+→ corpses and containers → spells and foci → enemies equipped and example
+content.
+
 ## 8. Death and loot (D4)
 
 1. **Death.** The creature's current frame is turned into a rigid body of cells (a new `flesh` material plus blood coating). The body's cells keep their sprite pixels, so the corpse looks like the creature.

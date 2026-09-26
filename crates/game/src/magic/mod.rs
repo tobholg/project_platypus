@@ -346,7 +346,7 @@ fn fire(
                     if e == f.caster || d.length() > reach || d.normalize_or_zero().dot(f.dir) < (spread * 1.5 + 0.1).cos() {
                         continue;
                     }
-                    h.hp -= STREAM_DAMAGE;
+                    h.harm(STREAM_DAMAGE, crate::actors::Harm::Fire);
                     k.body.vel += f.dir * 6.0;
                     if rng.chance(STREAM_CATCH) {
                         catch_fire(&mut commands, e, resist, coated, &coatings);
@@ -484,7 +484,7 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
                 if let Some(e) = hit
                     && let Ok((_, mut k, mut h, ..)) = bodies.get_mut(e)
                 {
-                    h.hp -= d;
+                    h.harm(d, crate::actors::Harm::Physical);
                     let k = &mut *k;
                     k.loco.knock(&mut k.body, (dir + Vec2::new(0.0, 0.5)).normalize() * d * 5.0, 0.2);
                 }

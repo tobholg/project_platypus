@@ -138,7 +138,7 @@ fn crush(
                 continue;
             }
             hit.insert((body.id, entity));
-            health.hp -= (speed * DAMAGE_PER_SPEED).min(MAX_DAMAGE);
+            health.harm((speed * DAMAGE_PER_SPEED).min(MAX_DAMAGE), crate::actors::Harm::Physical);
             let k = &mut *k;
             let push = v * TICK_HZ as f32 * 0.7 + Vec2::new(0.0, 120.0);
             k.loco.knock(&mut k.body, push, 0.4);

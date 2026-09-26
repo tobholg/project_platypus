@@ -22,7 +22,7 @@ use platypus_sim::{CellPos, WorldEdit};
 use serde::Deserialize;
 
 use super::animation::CreatureSprite;
-use super::{Health, Kinematics};
+use super::{Harm, Health, Kinematics};
 use crate::data::{Watched, data_path, load_ron};
 use crate::world::{SimWorld, TICK_HZ};
 
@@ -199,8 +199,8 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
         // A coating's damage is what lingers after leaving the fluid; in it,
         // the fluid's own corrosion counts (not both).
         let corrosion = e.corrosion.max(coat.map_or(0.0, |c| c.damage));
-        let harm = e.heat * (1.0 - heat_resist) + corrosion * (1.0 - resist.corrosion).max(0.0);
-        health.hp -= harm * DT;
+        health.harm(e.heat * (1.0 - heat_resist) * DT, Harm::Fire);
+        health.harm(corrosion * (1.0 - resist.corrosion).max(0.0) * DT, Harm::Acid);
 
         // Cold: slowed while touching it and a moment after; resisted like heat.
         let cold = e.cold * (1.0 - resist.heat).max(0.0);
@@ -231,7 +231,7 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
                 }
                 // It burns out on its own: its own flames don't relight it.
                 b.left -= DT;
-                health.hp -= BURN_DAMAGE * b.power * DT;
+                health.harm(BURN_DAMAGE * b.power * DT, Harm::Fire);
                 b.spread -= DT;
                 if b.spread <= 0.0 {
                     b.spread = SPREAD_EVERY;
@@ -286,7 +286,7 @@ fn shock(charged: &[CellPos], damage: f32, q: &mut Query<Shockable>) {
         let (lo, hi) = (k.body.pos - k.body.half, k.body.pos + k.body.half);
         let touches = (lo.y.floor() as i32 - 1..=hi.y.ceil() as i32).any(|y| (lo.x.floor() as i32 - 1..=hi.x.ceil() as i32).any(|x| charged.contains(&CellPos::new(x, y))));
         if touches {
-            health.hp -= damage;
+            health.harm(damage, Harm::Storm);
             let k = &mut *k;
             let vel = k.body.vel * 0.3;
             k.loco.knock(&mut k.body, vel, SHOCK_STUN);
@@ -311,7 +311,7 @@ pub fn struck(
             if d > LIGHTNING_REACH {
                 continue;
             }
-            health.hp -= LIGHTNING_DAMAGE * (1.0 - d / LIGHTNING_REACH);
+            health.harm(LIGHTNING_DAMAGE * (1.0 - d / LIGHTNING_REACH), Harm::Storm);
             catch_fire(&mut commands, entity, resist, coated, &coatings);
         }
     }
@@ -330,7 +330,7 @@ pub fn zapped(mut commands: Commands, mut zaps: MessageReader<crate::fx::Zapped>
             if d > ZAP_REACH {
                 continue;
             }
-            health.hp -= ZAP_DAMAGE * (1.0 - d / ZAP_REACH);
+            health.harm(ZAP_DAMAGE * (1.0 - d / ZAP_REACH), Harm::Storm);
             catch_fire(&mut commands, entity, resist, coated, &coatings);
         }
     }
@@ -422,7 +422,7 @@ mod tests {
     fn creature(app: &mut App, at: Vec2, resist: Resist) -> Entity {
         let body = Body::new(at, Vec2::new(4.0, 8.0));
         app.world_mut()
-            .spawn((Kinematics { body, loco: Locomotion::default(), prev_pos: at }, Health { hp: 100.0, max: 100.0 }, resist))
+            .spawn((Kinematics { body, loco: Locomotion::default(), prev_pos: at }, Health::new(100.0), resist))
             .id()
     }
 

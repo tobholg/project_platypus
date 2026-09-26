@@ -16,6 +16,7 @@ mod debug;
 mod dev;
 mod editor;
 mod fx;
+mod gear;
 mod hands;
 mod hud;
 mod light;
@@ -94,7 +95,7 @@ fn main() {
             light::LightPlugin,
             scenario::ScenarioPlugin,
         ))
-        .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin))
+        .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
         .add_plugins(spikes_plugin)
         .run();
 }

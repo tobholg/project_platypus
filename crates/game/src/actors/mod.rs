@@ -65,6 +65,65 @@ pub enum Team {
 pub struct Health {
     pub hp: f32,
     pub max: f32,
+    /// What its gear stops (`gear::stats`): every hurt goes through `harm`.
+    pub ward: Ward,
+}
+
+/// Kinds of hurt: what armour stops (a blow, a bite, a blast), what each
+/// resistance stops, and falls (only fall resistance helps).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Harm {
+    Physical,
+    Fire,
+    #[allow(dead_code)] // (frost spells: next)
+    Frost,
+    Storm,
+    Acid,
+    Fall,
+}
+
+/// Armour and resistances (shares 0..1 of each kind stopped).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Ward {
+    pub armor: f32,
+    pub fire: f32,
+    pub frost: f32,
+    pub storm: f32,
+    pub acid: f32,
+    pub fall: f32,
+}
+
+/// Armour stops `armor / (armor + ARMOR_HALF)` of a physical hurt: half at
+/// this much, never all.
+pub const ARMOR_HALF: f32 = 50.0;
+
+impl Ward {
+    /// The share of a kind of hurt that gets through.
+    pub fn through(&self, kind: Harm) -> f32 {
+        let stopped = match kind {
+            Harm::Physical => self.armor.max(0.0) / (self.armor.max(0.0) + ARMOR_HALF),
+            Harm::Fire => self.fire,
+            Harm::Frost => self.frost,
+            Harm::Storm => self.storm,
+            Harm::Acid => self.acid,
+            Harm::Fall => self.fall,
+        };
+        1.0 - stopped.clamp(0.0, 0.9)
+    }
+}
+
+impl Health {
+    pub fn new(max: f32) -> Health {
+        Health { hp: max, max, ward: Ward::default() }
+    }
+
+    /// Hurt it: `amount` of a kind, less what its ward stops. Returns what
+    /// got through.
+    pub fn harm(&mut self, amount: f32, kind: Harm) -> f32 {
+        let got = amount * self.ward.through(kind);
+        self.hp -= got;
+        got
+    }
 }
 
 /// Physical state of a creature. `prev_pos` is for render interpolation.
@@ -260,7 +319,7 @@ fn fall_damage(mut landed: MessageReader<Landed>, mut q: Query<(&FallDamage, &mu
         if let Ok((f, mut h)) = q.get_mut(l.entity) {
             let fell = (l.drop - f.safe_height).max(0.0) * f.per_cell;
             let slammed = (l.slam - f.slam_speed).max(0.0) * f.per_speed;
-            h.hp -= fell.max(slammed);
+            h.harm(fell.max(slammed), Harm::Fall);
         }
     }
 }
@@ -312,7 +371,7 @@ fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Kinematics, &mut Health)
     }
     for (i, (mut k, mut h)) in q.iter_mut().enumerate() {
         if hurt[i] > 0.0 {
-            h.hp -= hurt[i];
+            h.harm(hurt[i], Harm::Physical);
             k.body.vel += shove[i];
         }
     }
@@ -332,7 +391,7 @@ fn blasted(mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<(&mut K
                 continue;
             }
             let f = 1.0 - dist / reach;
-            health.hp -= b.power * 0.65 * f;
+            health.harm(b.power * 0.65 * f, Harm::Physical);
             let dir = (d.normalize_or(Vec2::Y) + Vec2::new(0.0, 0.6)).normalize();
             let k = &mut *k;
             k.loco.knock(&mut k.body, dir * b.power * 3.0 * (0.4 + 0.6 * f), 0.35);
@@ -360,7 +419,7 @@ fn deaths(
         {
             for (id, n) in &anim.def.drops {
                 if let Some(item) = items.id(id) {
-                    crate::hands::spawn_drop(&mut commands, items, k.body.pos, crate::hands::items::Stack { item, count: n * items.unit(item) });
+                    crate::hands::spawn_drop(&mut commands, items, k.body.pos, crate::hands::items::Stack::new(item, n * items.unit(item)));
                 }
             }
         }

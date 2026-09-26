@@ -107,7 +107,9 @@ pub struct Dropped {
 
 impl Plugin for HandsPlugin {
     fn build(&self, app: &mut App) {
-        let file: ItemsFile = load_ron(&data_path("items.ron")).unwrap_or_else(|e| panic!("{e}"));
+        let mut file: ItemsFile = load_ron(&data_path("items.ron")).unwrap_or_else(|e| panic!("{e}"));
+        // (Armour and trinkets: gear.ron.)
+        file.items.extend(crate::gear::load().items);
         app.insert_resource(PendingItems(Some(file)))
             .init_resource::<DevTools>()
             .init_resource::<Hand>()
@@ -136,7 +138,7 @@ fn give_start(mut commands: Commands, items: Option<Res<Items>>, new: Query<Enti
     for e in &new {
         let mut inv = Inventory::new(PACK);
         for &(item, n) in &items.start {
-            inv.add(&items, Stack { item, count: n * items.unit(item) });
+            inv.add(&items, Stack::new(item, n * items.unit(item)));
         }
         commands.entity(e).insert(inv);
     }
@@ -302,16 +304,21 @@ fn auto_slot(world: &World, items: &Items, inv: &Inventory, bar: std::ops::Range
     if front_solid { best(false).or_else(|| best(true)) } else { best(true).or_else(|| best(false)) }
 }
 
-/// The player holds the weapon in its hand's slot (none in dev mode).
+/// The player holds the weapon in its hand's slot (none in dev mode), and
+/// what it holds counts toward its stats (held gear).
 fn wield(
     items: Option<Res<Items>>,
     weapons: Option<Res<crate::combat::Weapons>>,
     hand: Res<Hand>,
     dev: Res<DevTools>,
-    mut player: Query<(&Inventory, &mut crate::combat::Wielding), With<LocalPlayer>>,
+    mut player: Query<(&Inventory, &mut crate::combat::Wielding, &mut crate::gear::Equipment), With<LocalPlayer>>,
 ) {
-    let (Some(items), Some(weapons), Ok((inv, mut w))) = (items, weapons, player.single_mut()) else { return };
+    let (Some(items), Some(weapons), Ok((inv, mut w, mut eq))) = (items, weapons, player.single_mut()) else { return };
     let held = inv.slots.get(hand.active()).copied().flatten().filter(|_| !dev.0);
+    let in_hand = held.filter(|s| items.def(s.item).gear.is_some());
+    if eq.held != in_hand {
+        eq.held = in_hand;
+    }
     // A weapon by its weapon id; anything else by its own, if it's held
     // (tools, wands, torches: `held` in weapons.ron).
     let want = held
@@ -379,7 +386,7 @@ fn use_hands(
             let centre = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32);
             for &(material, n) in &report.removed {
                 if let Some(item) = items.block(material) {
-                    spawn_drop(&mut commands, &items, centre, Stack { item, count: n });
+                    spawn_drop(&mut commands, &items, centre, Stack::new(item, n));
                 }
             }
         }
@@ -476,7 +483,7 @@ fn collect(
         for (pk, mut inv) in &mut players {
             let to = pk.body.pos - k.body.pos;
             let dist = to.length();
-            if dist > MAGNET || !inv.has_room(&items, d.stack.item) {
+            if dist > MAGNET || !inv.has_room(&items, &d.stack) {
                 continue;
             }
             if dist < GRAB {

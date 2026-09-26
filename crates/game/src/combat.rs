@@ -484,6 +484,8 @@ pub struct Hit {
     pub dir: Vec2,
     /// How hard it lands, for the hit-stop (1: a shortsword's slash).
     pub weight: f32,
+    /// A critical hit (the stats' crit chance): more sparks, a longer stop.
+    pub crit: bool,
 }
 
 /// What a swing does to the swinger: a lunge forward, a pogo up (which
@@ -539,7 +541,7 @@ fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher>, bodies: Que
                 continue;
             }
             let push = (Vec2::new(d.x, 0.0).normalize_or(Vec2::X * k.loco.facing) + Vec2::new(0.0, 0.4)).normalize() * t.knock;
-            hits.write(Hit { target: e, damage: t.damage, knock: push, stun: t.stun, at: k.body.pos + d * 0.5, dir: d.normalize_or(Vec2::X), weight: t.damage / 12.0 });
+            hits.write(Hit { target: e, damage: t.damage, knock: push, stun: t.stun, at: k.body.pos + d * 0.5, dir: d.normalize_or(Vec2::X), weight: t.damage / 12.0, crit: false });
             t.rest = t.every;
             break;
         }
@@ -751,7 +753,7 @@ pub fn guard(mut commands: Commands, mut q: Query<(Entity, &mut Invulnerable, &m
     }
 }
 
-type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>);
+type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>);
 type Target<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a Animator>, Has<Invulnerable>);
 
 /// Swings move on a tick; while they sweep, they hit.
@@ -767,13 +769,15 @@ fn swing(
     targets: Query<Target, With<Health>>,
 ) {
     let Some(weapons) = weapons else { return };
-    for (me, mut s, k, hand, team, mut stamina) in &mut swingers {
+    let none = crate::gear::Stats::default();
+    for (me, mut s, k, hand, team, mut stamina, stats) in &mut swingers {
+        let stats = stats.unwrap_or(&none);
         let def = weapons.def(s.weapon).clone();
         let Some(mv) = def.moves.get(s.mv).cloned() else {
             commands.entity(me).remove::<Swing>();
             continue;
         };
-        s.t += DT;
+        s.t += DT * stats.mult(crate::gear::Stat::AttackSpeed);
         // Done: the next of the combo if it was asked for (and there's the
         // stamina for it), else rest.
         if s.t >= mv.length() {
@@ -867,9 +871,10 @@ fn swing(
                 let Some(&at) = touched else { continue };
                 s.hit.push(e);
                 let away = (tk.body.pos - k.body.pos).normalize_or(Vec2::X * facing);
-                let push = (Vec2::new(away.x, 0.0).normalize_or(Vec2::X * facing) + Vec2::new(0.0, 0.45)).normalize() * def.knock * mv.knock;
-                let damage = def.damage * mv.damage;
-                hits.write(Hit { target: e, damage, knock: push, stun: def.stun, at, dir: dir(a), weight: damage / 12.0 });
+                let roll = (platypus_sim::rng::hash(&[sim.world.tick(), me.to_bits(), e.to_bits()]) % 10_000) as f32 / 10_000.0;
+                let (damage, knock, crit) = stats.strike(def.damage * mv.damage, def.knock * mv.knock, roll);
+                let push = (Vec2::new(away.x, 0.0).normalize_or(Vec2::X * facing) + Vec2::new(0.0, 0.45)).normalize() * knock;
+                hits.write(Hit { target: e, damage, knock: push, stun: def.stun, at, dir: dir(a), weight: damage / 12.0, crit });
                 if s.pogo {
                     recoil.write(Recoil { who: me, add: Vec2::ZERO, pogo: Some(weapons.file.pogo) });
                 }
@@ -910,7 +915,7 @@ fn apply_hits(
         if safe || graced.contains(&h.target) {
             continue;
         }
-        health.hp -= h.damage;
+        health.harm(h.damage, crate::actors::Harm::Physical);
         let (mut knock, mut stun) = (h.knock, h.stun);
         if let Some(mut s) = sturdy {
             knock /= s.heft;
@@ -936,8 +941,9 @@ fn apply_hits(
             k.body.vel += knock;
         }
         let e = &weapons.file.hit;
-        sparks.emit(e, e.count as usize, h.at, -h.dir, Vec2::ZERO);
-        stop.hit(STOP * (0.7 + 0.3 * h.weight).min(2.0));
+        let (n, heavier) = if h.crit { (e.count as usize * 3, 1.6) } else { (e.count as usize, 1.0) };
+        sparks.emit(e, n, h.at, -h.dir, Vec2::ZERO);
+        stop.hit(STOP * (0.7 + 0.3 * h.weight).min(2.0) * heavier);
         trauma.0 = (trauma.0 + 0.12).min(1.0);
     }
 }

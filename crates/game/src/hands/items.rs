@@ -64,6 +64,10 @@ pub struct ItemDef {
     /// A line for its tooltip, besides what it does.
     #[serde(default)]
     pub about: Option<String>,
+    /// Worn or wielded, it's gear (`gear`): where it goes, its stats, how it
+    /// looks on a body.
+    #[serde(default)]
+    pub gear: Option<crate::gear::GearDef>,
 }
 
 fn one() -> u32 {
@@ -98,6 +102,11 @@ pub const BLOCK_CELLS: u32 = (BLOCK * BLOCK) as u32;
 impl Items {
     pub fn new(file: ItemsFile, mats: &MaterialTable) -> Result<Items, String> {
         let mut defs = file.items;
+        for d in &defs {
+            if d.gear.is_some() && d.stack > 1 {
+                return Err(format!("`{}`: gear doesn't stack", d.id));
+            }
+        }
         for (id, def) in mats.iter() {
             let ph = mats.phys(id);
             if matches!(def.kind, Kind::Static | Kind::Powder) && ph.hardness < u8::MAX {
@@ -106,7 +115,7 @@ impl Items {
                 if let Some(first) = name.get_mut(0..1) {
                     first.make_ascii_uppercase();
                 }
-                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id), about: None });
+                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id), about: None, gear: None });
             }
         }
         let mut by_id = HashMap::new();
@@ -156,11 +165,35 @@ impl Items {
     }
 }
 
-/// Some of one item: `count` units (cells for blocks).
+/// Some of one item: `count` units (cells for blocks); gear, one piece and
+/// its roll.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Stack {
     pub item: ItemId,
     pub count: u32,
+    pub roll: Roll,
+}
+
+impl Stack {
+    pub fn new(item: ItemId, count: u32) -> Stack {
+        Stack { item, count, roll: Roll::default() }
+    }
+
+    /// The same item, and the same roll: they stack.
+    pub fn same(&self, other: &Stack) -> bool {
+        self.item == other.item && self.roll == other.roll
+    }
+}
+
+/// What's particular to one piece of gear: how rare it is, its item level
+/// (how good its bonuses are: where it was found), and the seed they're
+/// rolled from (`gear::roll`: the bonuses are worked out from these, so a
+/// roll is all a piece needs to carry). Nothing else has one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Roll {
+    pub rarity: u8,
+    pub level: u8,
+    pub seed: u32,
 }
 
 /// Slots of stacks: a creature's pack, a chest. A player's first `BARS`
@@ -184,7 +217,7 @@ impl Inventory {
     pub fn add(&mut self, items: &Items, stack: Stack) -> u32 {
         let max = items.stack_units(stack.item);
         let mut left = stack.count;
-        for s in self.slots.iter_mut().flatten().filter(|s| s.item == stack.item) {
+        for s in self.slots.iter_mut().flatten().filter(|s| s.same(&stack)) {
             let n = left.min(max.saturating_sub(s.count));
             s.count += n;
             left -= n;
@@ -194,16 +227,16 @@ impl Inventory {
                 break;
             }
             let n = left.min(max);
-            *slot = Some(Stack { item: stack.item, count: n });
+            *slot = Some(Stack { count: n, ..stack });
             left -= n;
         }
         left
     }
 
     /// Would any of it fit?
-    pub fn has_room(&self, items: &Items, item: ItemId) -> bool {
-        let max = items.stack_units(item);
-        self.slots.iter().any(|s| s.is_none_or(|s| s.item == item && s.count < max))
+    pub fn has_room(&self, items: &Items, stack: &Stack) -> bool {
+        let max = items.stack_units(stack.item);
+        self.slots.iter().any(|s| s.is_none_or(|s| s.same(stack) && s.count < max))
     }
 
     /// Take up to `n` units from a slot; returns how many.
@@ -237,14 +270,22 @@ impl Inventory {
     }
 }
 
+/// Every item as written (items.ron and gear.ron), for tests.
+#[cfg(test)]
+pub fn test_items() -> Items {
+    let mats = MaterialTable::from_ron(include_str!("../../../../assets/data/materials.ron")).unwrap();
+    let mut file: ItemsFile = crate::data::parse_ron(include_str!("../../../../assets/data/items.ron")).unwrap();
+    let gear: crate::gear::GearFile = crate::data::parse_ron(include_str!("../../../../assets/data/gear.ron")).unwrap();
+    file.items.extend(gear.items);
+    Items::new(file, &mats).unwrap()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn items() -> Items {
-        let mats = MaterialTable::from_ron(include_str!("../../../../assets/data/materials.ron")).unwrap();
-        let file: ItemsFile = crate::data::parse_ron(include_str!("../../../../assets/data/items.ron")).unwrap();
-        Items::new(file, &mats).unwrap()
+        test_items()
     }
 
     #[test]
@@ -290,11 +331,11 @@ mod tests {
         let it = items();
         let torch = it.id("torch").unwrap();
         let mut inv = Inventory::new(3);
-        assert_eq!(inv.add(&it, Stack { item: torch, count: 150 }), 0);
-        assert_eq!(inv.slots[0], Some(Stack { item: torch, count: 99 }));
-        assert_eq!(inv.slots[1], Some(Stack { item: torch, count: 51 }));
-        assert_eq!(inv.add(&it, Stack { item: torch, count: 200 }), 200 - 48 - 99, "tops up 48, one slot of 99, the rest is left");
-        assert!(!inv.has_room(&it, torch));
+        assert_eq!(inv.add(&it, Stack::new(torch, 150)), 0);
+        assert_eq!(inv.slots[0], Some(Stack::new(torch, 99)));
+        assert_eq!(inv.slots[1], Some(Stack::new(torch, 51)));
+        assert_eq!(inv.add(&it, Stack::new(torch, 200)), 200 - 48 - 99, "tops up 48, one slot of 99, the rest is left");
+        assert!(!inv.has_room(&it, &Stack::new(torch, 1)));
         assert_eq!(inv.take(0, 10), 10);
         assert_eq!(inv.count(torch), 297 - 10);
     }

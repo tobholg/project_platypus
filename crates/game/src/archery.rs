@@ -77,6 +77,7 @@ pub struct Arrow {
     shooter: Entity,
     team: Option<Team>,
     damage: f32,
+    crit: bool,
     knock: f32,
     stun: f32,
     /// Seconds it still burns.
@@ -87,7 +88,7 @@ pub struct Arrow {
     angle: f32,
 }
 
-type Bowman<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Nocked>, Option<&'a mut Stamina>, Option<&'a mut Inventory>);
+type Bowman<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Nocked>, Option<&'a mut Stamina>, Option<&'a mut Inventory>, Option<&'a crate::gear::Stats>);
 
 /// Drawing while asked; loosing when not.
 #[allow(clippy::too_many_arguments)]
@@ -96,15 +97,17 @@ fn nock(
     mut asks: MessageReader<DrawBow>,
     weapons: Option<Res<Weapons>>,
     items: Option<Res<Items>>,
+    sim: Res<crate::world::SimWorld>,
     mut archers: Query<Bowman>,
 ) {
     let Some(weapons) = weapons else { return };
     for ask in asks.read() {
-        let Ok((_, wielding, _, _, _, nocked, ..)) = archers.get_mut(ask.archer) else { continue };
+        let Ok((_, wielding, _, _, _, nocked, _, _, stats)) = archers.get_mut(ask.archer) else { continue };
         let Some(bow) = wielding.0.as_deref().and_then(|id| weapons.bow_index(id)) else { continue };
+        let speed = stats.map_or(1.0, |s| s.mult(crate::gear::Stat::AttackSpeed));
         match nocked {
             Some(mut n) => {
-                n.t += DT;
+                n.t += DT * speed;
                 n.at = ask.at;
                 n.asked = true;
             }
@@ -114,7 +117,8 @@ fn nock(
         }
     }
     let arrow_item = items.as_ref().and_then(|i| i.id("arrow"));
-    for (e, _, k, hand, team, nocked, stamina, inv) in &mut archers {
+    let tick = sim.world.tick();
+    for (e, _, k, hand, team, nocked, stamina, inv, stats) in &mut archers {
         let Some(mut n) = nocked else { continue };
         if n.asked {
             n.asked = false;
@@ -140,17 +144,19 @@ fn nock(
         let lerp = |(a, b): (f32, f32)| a + (b - a) * d;
         let from = hand.and_then(|h| h.at).unwrap_or(k.body.pos);
         let dir = (n.at - from).normalize_or(Vec2::X * k.loco.facing);
-        spawn_arrow(&mut commands, &weapons, from + dir * 3.0, dir * lerp(def.speed), e, team.copied(), lerp(def.damage), lerp(def.knock), def.stun);
+        let roll = (platypus_sim::rng::hash(&[tick, e.to_bits(), n.t.to_bits() as u64]) % 10_000) as f32 / 10_000.0;
+        let (damage, knock, crit) = stats.cloned().unwrap_or_default().strike(lerp(def.damage), lerp(def.knock), roll);
+        spawn_arrow(&mut commands, &weapons, from + dir * 3.0, dir * lerp(def.speed), e, team.copied(), (damage, crit), knock, def.stun);
     }
 }
 
 #[allow(clippy::too_many_arguments)]
-fn spawn_arrow(commands: &mut Commands, weapons: &Weapons, at: Vec2, vel: Vec2, shooter: Entity, team: Option<Team>, damage: f32, knock: f32, stun: f32) {
+fn spawn_arrow(commands: &mut Commands, weapons: &Weapons, at: Vec2, vel: Vec2, shooter: Entity, team: Option<Team>, (damage, crit): (f32, bool), knock: f32, stun: f32) {
     let Some(turned) = weapons.arrow.as_ref() else { return };
     let angle = vel.y.atan2(vel.x).to_degrees();
     commands.spawn((
         Name::new("Arrow"),
-        Arrow { vel, shooter, team, damage, knock, stun, burning: 0.0, age: 0.0, stuck: None, angle },
+        Arrow { vel, shooter, team, damage, crit, knock, stun, burning: 0.0, age: 0.0, stuck: None, angle },
         turned.sprite(angle),
         Transform::from_translation(at.extend(12.0)),
     ));
@@ -250,7 +256,7 @@ fn fly(
                     continue;
                 }
                 let push = (Vec2::new(dir.x, 0.0).normalize_or(Vec2::X) + Vec2::new(0.0, 0.3)).normalize() * a.knock;
-                hits.write(Hit { target: te, damage: a.damage, knock: push, stun: a.stun, at: tip, dir, weight: a.damage / 12.0 });
+                hits.write(Hit { target: te, damage: a.damage, knock: push, stun: a.stun, at: tip, dir, weight: a.damage / 12.0, crit: a.crit });
                 if a.burning > 0.0 {
                     sim.world.apply_edit(&WorldEdit::Ignite { center: p, radius: 1 });
                 }
@@ -290,7 +296,7 @@ fn take_back(
         let at = tf.translation.truncate();
         if a.stuck.is_some() && at.distance(k.body.pos) < def.pickup {
             commands.entity(e).despawn();
-            crate::hands::spawn_drop(&mut commands, &items, at, crate::hands::items::Stack { item, count: 1 });
+            crate::hands::spawn_drop(&mut commands, &items, at, crate::hands::items::Stack::new(item, 1));
         }
     }
 }

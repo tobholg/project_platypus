@@ -8,7 +8,10 @@
 //!   chest open between the chest and the pack;
 //! - click outside the panels holding a stack to throw it out;
 //! - hover a slot for what's in it (a tooltip);
-//! - X switches hotbar (also: click a hotbar's number).
+//! - X switches hotbar (also: click a hotbar's number);
+//! - gear goes in the equipment slots beside the pack (drag it there, or
+//!   Shift-click it: on, and off again); what it all adds up to is listed
+//!   beside them.
 
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
@@ -20,6 +23,7 @@ use super::items::{BARS, HOTBAR, Inventory, ItemDef, Items, Stack, Use};
 use super::{DevTools, Hand, PACK, spawn_drop};
 use crate::actors::Kinematics;
 use crate::actors::player::LocalPlayer;
+use crate::gear::{Equipment, GearRules, Stats, WORN};
 use crate::magic::Spellbook;
 use crate::world::SimWorld;
 
@@ -38,12 +42,14 @@ struct Held {
 }
 
 /// Whose slot: the hotbar in use (bottom of the screen, by position), the
-/// player's inventory (by slot), or the open chest.
+/// player's inventory (by slot), the open chest, or what the player wears
+/// (by `gear::WORN` slot).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Holder {
     Bar,
     Pack,
     Chest,
+    Equip,
 }
 
 #[derive(Component)]
@@ -80,6 +86,14 @@ struct HeldCount;
 #[derive(Component)]
 struct Tooltip;
 
+/// An empty equipment slot's name.
+#[derive(Component)]
+struct SlotName(usize);
+
+/// What the player's gear adds up to.
+#[derive(Component)]
+struct StatsText;
+
 const SLOT: f32 = 44.0;
 const ICON_PX: f32 = 32.0;
 const EMPTY: Color = Color::srgba(0.08, 0.08, 0.1, 0.72);
@@ -92,7 +106,7 @@ impl Plugin for UiPlugin {
         app.init_resource::<InventoryOpen>()
             .init_resource::<Held>()
             .add_systems(Startup, spawn)
-            .add_systems(Update, (toggle, press, release, show, tooltip).chain());
+            .add_systems(Update, (toggle, press, release, show, show_gear, tooltip).chain());
     }
 }
 
@@ -115,6 +129,15 @@ fn slot(parent: &mut ChildSpawnerCommands, which: Holder, i: usize) {
         ))
         .with_children(|s| {
             s.spawn((SlotIcon(which, i), ImageNode::default(), Node { width: px(ICON_PX), height: px(ICON_PX), ..default() }, BackgroundColor(Color::NONE)));
+            if which == Holder::Equip {
+                s.spawn((
+                    SlotName(i),
+                    Text::new(WORN[i].label()),
+                    TextFont { font_size: FontSize::Px(10.0), ..default() },
+                    TextColor(Color::srgba(0.7, 0.7, 0.8, 0.55)),
+                    Node { position_type: PositionType::Absolute, ..default() },
+                ));
+            }
             s.spawn((
                 SlotCount(which, i),
                 Text::new(""),
@@ -170,10 +193,33 @@ fn spawn(mut commands: Commands) {
                 bottom: px(8),
                 width: percent(100),
                 justify_content: JustifyContent::Center,
+                align_items: AlignItems::End,
+                column_gap: px(6),
                 ..default()
             },
         ))
         .with_children(|root| {
+            // What the gear adds up to, and the gear, left of the pack.
+            root.spawn((
+                Interaction::None,
+                Node { flex_direction: FlexDirection::Column, row_gap: px(4), padding: UiRect::all(px(8)), width: px(200), ..default() },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.62)),
+            ))
+            .with_children(|panel| {
+                panel.spawn(small("Stats"));
+                panel.spawn((StatsText, Text::new(""), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::srgb(0.9, 0.9, 0.95))));
+            });
+            root.spawn((
+                Interaction::None,
+                Node { flex_direction: FlexDirection::Column, row_gap: px(3), padding: UiRect::all(px(8)), align_items: AlignItems::Center, ..default() },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.62)),
+            ))
+            .with_children(|panel| {
+                panel.spawn(small("Worn"));
+                for i in 0..WORN.len() {
+                    slot(panel, Holder::Equip, i);
+                }
+            });
             root.spawn((
                 Interaction::None,
                 Node { flex_direction: FlexDirection::Column, row_gap: px(6), padding: UiRect::all(px(8)), ..default() },
@@ -312,11 +358,17 @@ fn index(hand: &Hand, which: Holder, i: usize) -> usize {
 }
 
 /// A slot's stack, wherever it is.
-fn slot_mut<'a>(inv: &'a mut Inventory, chest: Option<&'a mut Inventory>, hand: &Hand, which: Holder, i: usize) -> Option<&'a mut Option<Stack>> {
+fn slot_mut<'a>(inv: &'a mut Inventory, chest: Option<&'a mut Inventory>, eq: &'a mut Equipment, hand: &Hand, which: Holder, i: usize) -> Option<&'a mut Option<Stack>> {
     match which {
         Holder::Bar | Holder::Pack => inv.slots.get_mut(index(hand, which, i)),
         Holder::Chest => chest?.slots.get_mut(i),
+        Holder::Equip => eq.worn.get_mut(i),
     }
+}
+
+/// Only gear of its kind goes in an equipment slot.
+fn allowed(items: &Items, which: Holder, i: usize, stack: Option<&Stack>) -> bool {
+    which != Holder::Equip || stack.is_none_or(|s| Equipment::fits(items, i, s))
 }
 
 /// Mouse down on a slot: pick up, put down, take half, move across.
@@ -334,9 +386,9 @@ fn press(
     mut held: ResMut<Held>,
     slots: Query<SlotQuery>,
     tags: Query<(&Interaction, &BarTag), Changed<Interaction>>,
-    mut player: Query<(&Kinematics, &mut Inventory), With<LocalPlayer>>,
+    mut player: Query<(&Kinematics, &mut Inventory, &mut Equipment), With<LocalPlayer>>,
 ) {
-    let (Some(items), Ok((k, mut inv))) = (items, player.single_mut()) else { return };
+    let (Some(items), Ok((k, mut inv, mut eq))) = (items, player.single_mut()) else { return };
     for (interaction, tag) in &tags {
         if *interaction == Interaction::Pressed {
             hand.bar = tag.0;
@@ -370,6 +422,27 @@ fn press(
         return;
     }
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+    if left && shift && held.stack.is_none() && which == Holder::Equip {
+        // Off: into the pack.
+        if let Some(s) = eq.worn[i].take()
+            && inv.add(&items, s) > 0
+        {
+            eq.worn[i] = Some(s);
+        }
+        return;
+    }
+    // Gear, with no chest open: on (what was worn goes where it was).
+    if left
+        && shift
+        && held.stack.is_none()
+        && chest_key.is_none()
+        && which != Holder::Chest
+        && let Some(s) = inv.slots[index(hand, which, i)]
+        && let Some(j) = eq.slot_for(&items, &s)
+    {
+        inv.slots[index(hand, which, i)] = eq.worn[j].replace(s);
+        return;
+    }
     if left && shift && held.stack.is_none() {
         // Across: chest → pack; pack → chest (open) or hotbars ↔ pack.
         let from = index(hand, which, i);
@@ -390,7 +463,7 @@ fn press(
             }
         };
         if left_over > 0 {
-            let back = Some(Stack { item: stack.item, count: left_over });
+            let back = Some(Stack { count: left_over, ..stack });
             match which {
                 Holder::Chest => {
                     if let Some(c) = chest_key {
@@ -403,7 +476,10 @@ fn press(
         return;
     }
     let chest = chest_key.map(|c| chests.contents(c, &sim.world, &items));
-    let Some(slot) = slot_mut(&mut inv, chest, hand, which, i) else { return };
+    if !allowed(&items, which, i, held.stack.as_ref()) {
+        return;
+    }
+    let Some(slot) = slot_mut(&mut inv, chest, &mut eq, hand, which, i) else { return };
     if right {
         // Half of it (whole items: rounded up) into the hand, if the hand is free.
         if held.stack.is_none()
@@ -412,8 +488,8 @@ fn press(
             let unit = items.unit(s.item);
             let half = (s.count / unit).div_ceil(2).max(1) * unit;
             let take = half.min(s.count);
-            held.stack = Some(Stack { item: s.item, count: take });
-            *slot = (s.count > take).then_some(Stack { item: s.item, count: s.count - take });
+            held.stack = Some(Stack { count: take, ..s });
+            *slot = (s.count > take).then_some(Stack { count: s.count - take, ..s });
         }
         return;
     }
@@ -439,19 +515,19 @@ fn release(
     mut chests: ResMut<Chests>,
     mut held: ResMut<Held>,
     slots: Query<SlotQuery>,
-    mut inv: Query<&mut Inventory, With<LocalPlayer>>,
+    mut player: Query<(&mut Inventory, &mut Equipment), With<LocalPlayer>>,
 ) {
     if !mouse.just_released(MouseButton::Left) || !open.0 {
         return;
     }
     let Some(from) = held.from.take() else { return };
-    let (Some(items), Ok(mut inv)) = (items, inv.single_mut()) else { return };
+    let (Some(items), Ok((mut inv, mut eq))) = (items, player.single_mut()) else { return };
     let Some((which, i)) = under(&slots) else { return };
-    if (which, i) == from {
+    if (which, i) == from || !allowed(&items, which, i, held.stack.as_ref()) {
         return;
     }
     let chest = chests.open.map(|c| chests.contents(c, &sim.world, &items));
-    let Some(slot) = slot_mut(&mut inv, chest, &hand, which, i) else { return };
+    let Some(slot) = slot_mut(&mut inv, chest, &mut eq, &hand, which, i) else { return };
     put(&items, &mut held.stack, slot);
 }
 
@@ -459,10 +535,10 @@ fn release(
 /// otherwise swap.
 fn put(items: &Items, held: &mut Option<Stack>, slot: &mut Option<Stack>) {
     match (*held, *slot) {
-        (Some(h), Some(s)) if h.item == s.item => {
+        (Some(h), Some(s)) if h.same(&s) => {
             let n = (items.stack_units(s.item) - s.count).min(h.count);
-            *slot = Some(Stack { item: s.item, count: s.count + n });
-            *held = (h.count > n).then_some(Stack { item: h.item, count: h.count - n });
+            *slot = Some(Stack { count: s.count + n, ..s });
+            *held = (h.count > n).then_some(Stack { count: h.count - n, ..h });
         }
         (h, s) => {
             *slot = h;
@@ -493,7 +569,7 @@ fn show(
     hand: Res<Hand>,
     held: Res<Held>,
     window: Single<&Window, With<PrimaryWindow>>,
-    inv: Query<&Inventory, With<LocalPlayer>>,
+    inv: Query<(&Inventory, &Equipment), With<LocalPlayer>>,
     sim: Res<SimWorld>,
     mut chests: ResMut<Chests>,
     mut borders: Query<(&SlotUi, &mut BorderColor)>,
@@ -504,7 +580,7 @@ fn show(
     mut grip: Single<Grip, GripOnly>,
     mut grip_count: Single<&mut Text, With<HeldCount>>,
 ) {
-    let (Some(items), Ok(inv)) = (items, inv.single()) else { return };
+    let (Some(items), Ok((inv, eq))) = (items, inv.single()) else { return };
     // An icon, or else the item's colour.
     let look = |s: Option<&Stack>| -> (Handle<Image>, Color) {
         let Some(s) = s else { return (Handle::default(), Color::NONE) };
@@ -520,9 +596,13 @@ fn show(
         Some(c) => chests.contents(c, &sim.world, &items).slots.clone(),
         None => vec![None; SLOTS],
     };
-    let slot_of = |which: Holder, i: usize| if which == Holder::Chest { stash[i] } else { inv.slots[index(&hand, which, i)] };
+    let slot_of = |which: Holder, i: usize| match which {
+        Holder::Chest => stash[i],
+        Holder::Equip => eq.worn[i],
+        _ => inv.slots[index(&hand, which, i)],
+    };
     for (&SlotUi(which, i), mut border) in &mut borders {
-        let chosen = which != Holder::Chest && index(&hand, which, i) == hand.active();
+        let chosen = matches!(which, Holder::Bar | Holder::Pack) && index(&hand, which, i) == hand.active();
         *border = BorderColor::all(if chosen { CHOSEN } else { EDGE });
     }
     for (tag, mut bg) in &mut tags {
@@ -564,10 +644,41 @@ fn show(
     }
 }
 
+/// Empty equipment slots say what goes there; the stats panel lists what
+/// the player's gear adds up to.
+fn show_gear(
+    open: Res<InventoryOpen>,
+    player: Query<(&Equipment, &Stats, &crate::actors::Health), With<LocalPlayer>>,
+    mut names: Query<(&SlotName, &mut Visibility)>,
+    mut text: Single<&mut Text, With<StatsText>>,
+) {
+    let Ok((eq, stats, health)) = player.single() else { return };
+    if !open.0 {
+        return;
+    }
+    for (n, mut v) in &mut names {
+        let want = if eq.worn[n.0].is_some() { Visibility::Hidden } else { Visibility::Inherited };
+        if *v != want {
+            *v = want;
+        }
+    }
+    let armor = stats.get(crate::gear::Stat::Armor);
+    let mut lines = vec![
+        format!("Health {:.0} / {:.0}", health.hp.max(0.0), health.max),
+        format!("Armour {armor:.0} (stops {:.0}%)", (1.0 - health.ward.through(crate::actors::Harm::Physical)) * 100.0),
+    ];
+    lines.extend(stats.nonzero().filter(|(s, _)| *s != crate::gear::Stat::Armor).map(|(s, v)| crate::gear::stats::line(s, v)));
+    let t = lines.join("\n");
+    if text.0 != t {
+        text.0 = t;
+    }
+}
+
 /// Over a slot with something in it: what it is and what it does.
 #[allow(clippy::too_many_arguments)]
 fn tooltip(
     items: Option<Res<Items>>,
+    rules: Res<GearRules>,
     book: Option<Res<Spellbook>>,
     weapons: Option<Res<crate::combat::Weapons>>,
     hand: Res<Hand>,
@@ -576,22 +687,25 @@ fn tooltip(
     window: Single<&Window, With<PrimaryWindow>>,
     mut chests: ResMut<Chests>,
     slots: Query<SlotQuery>,
-    inv: Query<&Inventory, With<LocalPlayer>>,
+    inv: Query<(&Inventory, &Equipment), With<LocalPlayer>>,
     mut tip: Single<(&mut Text, &mut Node, &mut Visibility), With<Tooltip>>,
 ) {
     let (text, node, vis) = &mut *tip;
     **vis = Visibility::Hidden;
-    let (Some(items), Ok(inv), Some(at)) = (items, inv.single(), window.cursor_position()) else { return };
+    let (Some(items), Ok((inv, eq)), Some(at)) = (items, inv.single(), window.cursor_position()) else { return };
     if held.stack.is_some() {
         return;
     }
     let Some((which, i)) = under(&slots) else { return };
     let stack = match which {
         Holder::Chest => chests.open.and_then(|c| chests.contents(c, &sim.world, &items).slots[i]),
+        Holder::Equip => eq.worn[i],
         _ => inv.slots[index(&hand, which, i)],
     };
     let Some(stack) = stack else { return };
-    text.0 = describe(&items, book.as_deref(), weapons.as_deref(), &stack);
+    // (Worn, it's not compared with itself.)
+    let against = (which != Holder::Equip).then_some(eq);
+    text.0 = describe(&items, book.as_deref(), weapons.as_deref(), Some((&rules, against)), &stack);
     node.left = px(at.x + 18.0);
     // (Above the cursor near the bottom, where the hotbars are.)
     node.top = px(if at.y > window.height() * 0.5 { at.y - 110.0 } else { at.y + 18.0 });
@@ -599,10 +713,31 @@ fn tooltip(
 }
 
 /// A stack, in words: its name and count, what it does, its note.
-fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<&crate::combat::Weapons>, s: &Stack) -> String {
+fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<&crate::combat::Weapons>, gear: Option<(&GearRules, Option<&Equipment>)>, s: &Stack) -> String {
     let def: &ItemDef = items.def(s.item);
     let n = whole(items, s);
     let mut lines = vec![if n > 1 { format!("{} ({n})", def.name) } else { def.name.clone() }];
+    if let (Some(g), Some((rules, worn))) = (&def.gear, gear) {
+        let weight = g.weight.map_or(String::new(), |w| format!(", {w:?} armour"));
+        lines.push(format!("{}{weight}", g.slot.label()));
+        let mine = crate::gear::piece_stats(items, rules, s);
+        lines.extend(mine.nonzero().map(|(st, v)| crate::gear::stats::line(st, v)));
+        // Against what's worn in its place (the first of its kind).
+        if let Some(eq) = worn
+            && let Some(j) = WORN.iter().position(|w| *w == g.slot)
+        {
+            let theirs = eq.worn[j].map(|w| crate::gear::piece_stats(items, rules, &w)).unwrap_or_default();
+            let mut diff = mine.clone();
+            for (st, v) in theirs.nonzero() {
+                diff.add(st, -v);
+            }
+            let changes: Vec<String> = diff.nonzero().map(|(st, v)| crate::gear::stats::line(st, v)).collect();
+            if !changes.is_empty() {
+                let what = if eq.worn[j].is_some() { "Instead of what you wear" } else { "Put on" };
+                lines.push(format!("{what}: {}", changes.join(", ")));
+            }
+        }
+    }
     match &def.use_ {
         Use::Mine { back: false, power, tier, speed, reach } => {
             lines.push(format!("Pickaxe: mines up to hardness {tier}"));
