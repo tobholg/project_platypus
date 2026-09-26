@@ -63,7 +63,8 @@ what's loose and tears out rock, spins it in a ball, carries creatures it can
 lift; swing it (whip it and some flies off), let go to drop it all. Swing the well and let go to throw what it holds (an orc thrown hard takes fall
 damage when it lands; rock dropped on something hurts it). The force wand is a
 telekinetic shout from you toward the cursor: left flings everything in the cone
-away, right drags it in. Held spells drain mana and it doesn't come back while you hold them.
+away, right drags it in. Pushed at the ground it throws you up (hold it to hover),
+at a wall it kicks you off it; pulling at a ceiling hauls you up. Held spells drain mana and it doesn't come back while you hold them.
 The staffs are level II of both: bigger, stronger. Spells work
 through the cell sim: a fireball's blast is a bomb's, smaller, and can hurt
 you; the storm wand's lightning is the sky's, from the wand, and charges any

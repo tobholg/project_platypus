@@ -50,7 +50,9 @@
 //!   holds, whom it carries, mana and the orcs (fall damage when they land)
 //! - `force`      (flat world) a sand pile and two orcs to the right at 1 s;
 //!   the force wand (hotbar 2) pushing toward them from 1.5 s, then pulling
-//!   (right button) from 3 s; logs the orcs' distance and mana
+//!   (right button) from 3 s, then pushing straight down (5–6 s: the
+//!   recoil lifts the player); logs the orcs' distance, the player's height
+//!   and mana
 //! - `inventory`  opens the inventory screen (Esc) at 1 s, switches to the
 //!   second hotbar (X) at 1.5 s, hovers the spark wand at 2 s (its tooltip;
 //!   this moves the real mouse pointer), drags it to hotbar 3 at 2.6–3 s;
@@ -1153,13 +1155,14 @@ fn force_script(
         keys.press(KeyCode::Digit3);
         state.0 = 1;
     }
-    let (push, pull) = (t > 1.5 && t < 2.0, t > 3.0 && t < 4.4);
-    cursor.0 = Some(home + Vec2::new(60.0, 0.0));
+    let down = t > 5.0 && t < 6.0;
+    let (push, pull) = ((t > 1.5 && t < 2.0) || down, t > 3.0 && t < 4.4);
+    cursor.0 = Some(if down { k.body.pos + Vec2::new(0.0, -40.0) } else { home + Vec2::new(60.0, 0.0) });
     if push { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     if pull { mouse.press(MouseButton::Right) } else { mouse.release(MouseButton::Right) }
     if t >= state.1 {
-        state.1 = (t * 2.0).floor() / 2.0 + 0.5;
+        state.1 = (t * 4.0).floor() / 4.0 + 0.25;
         let at: Vec<String> = orcs.iter().filter(|(o, _)| (o.body.pos.x - home.x).abs() < 250.0 && o.body.pos.x > home.x + 10.0).map(|(o, h)| format!("{:.0}@{:.0},{:.0}", h.hp, o.body.pos.x - home.x, o.body.pos.y - home.y)).collect();
-        info!("force: t {t:.1} {} mana {:.0} orcs [{}] particles {}", if push { "push" } else if pull { "pull" } else { "-" }, mana.map_or(0.0, |m| m.cur), at.join(" "), sim.world.particles().len());
+        info!("force: t {t:.2} {} player {:+.0} mana {:.0} orcs [{}] particles {}", if push { "push" } else if pull { "pull" } else { "-" }, k.body.pos.y - home.y, mana.map_or(0.0, |m| m.cur), at.join(" "), sim.world.particles().len());
     }
 }

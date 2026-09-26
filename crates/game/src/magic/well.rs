@@ -18,7 +18,9 @@
 //! **Force** comes from the caster, a telekinetic shout: everything in a cone
 //! from the hand toward the cursor, out to its reach, is flung away (push)
 //! or dragged in (pull), strongest nearest: loose cells and soft solids torn
-//! out as flying cells, particles in flight, bodies launched.
+//! out as flying cells, particles in flight, bodies launched. What it can't
+//! move pushes back: pushing at the ground throws the caster up (held, a
+//! hover), at a wall away from it; pulling at rock draws the caster to it.
 //!
 //! A well can be thrown: it follows the cursor fast (up to 700 cells/s), and
 //! what it holds keeps its speed when you let go.
@@ -47,6 +49,11 @@ const HEFT: f32 = 9000.0;
 const CONE: f32 = 0.7;
 const HAND: f32 = 4.0;
 const PULL_STOP: f32 = 10.0;
+/// The caster's recoil: up to this share of the force's power, times how
+/// solid the cone is, reached at most this share of the way a tick (so it
+/// builds like a thrust, not a snap).
+const RECOIL: f32 = 1.4;
+const RECOIL_RISE: f32 = 0.5;
 /// How fast a held cell corrects toward its place in the ball (1/s).
 const STEER: f32 = 10.0;
 /// Spin of the ball (radians/s), give or take 30 % a cell.
@@ -427,6 +434,10 @@ fn force(world: &mut platypus_sim::World, well: &mut Well, bodies: &mut Bodies, 
         .filter_map(|p| in_cone(well, Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5)).map(|d| (p, d)))
         .collect();
     order.sort_by(|a, b| if sign > 0.0 { b.1.total_cmp(&a.1) } else { a.1.total_cmp(&b.1) });
+    // How much of the cone is solid: what the force can't move pushes back
+    // on the caster (or, pulling, draws the caster to it).
+    let solid = order.iter().filter(|&&(p, _)| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder))).count();
+    let solidity = solid as f32 / order.len().max(1) as f32;
     let lift = if sign > 0.0 { Vec2::new(0.0, 0.3) } else { Vec2::ZERO };
     for (p, d) in order {
         if moved >= well.pull {
@@ -476,6 +487,14 @@ fn force(world: &mut platypus_sim::World, well: &mut Well, bodies: &mut Bodies, 
     // flings at their distance; stunned till they land.
     for (b, mut k, _, _) in bodies.iter_mut() {
         if b == well.caster {
+            // Recoil: pushing into the ground sends the caster up, into a
+            // wall away from it; pulling at rock draws the caster to it.
+            let back = -well.aim * sign;
+            let target = well.power * RECOIL * solidity;
+            let along = k.body.vel.dot(back);
+            if along < target {
+                k.body.vel += back * (target - along).min(target * RECOIL_RISE);
+            }
             continue;
         }
         let Some(dist) = in_cone(well, k.body.pos) else { continue };

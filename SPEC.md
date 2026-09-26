@@ -903,6 +903,12 @@ deaths (blood). Rendered as one dynamic mesh.
     into the ground splashes), so the ones in front make way and a pile
     blows apart; particles in flight are shoved; bodies (not the caster) are
     launched at up to `power` cells/s (a push lifts a little) and stunned.
+    What it can't move pushes back: the caster is driven the other way (a
+    pull: toward it) at up to 1.4 × `power` × the share of the cone that's
+    solid, reached half the way each tick: pushing straight down throws the
+    caster up (held, a hover that settles where the cone reaches less
+    ground), at a wall away from it; pulling at a ceiling hauls the caster
+    up to it.
   - Levels are runes: `gravity_well` / `gravity_well_ii`, `force` /
     `force_ii` (reach, lift or power, strength); wands carry level I,
     staffs level II.
