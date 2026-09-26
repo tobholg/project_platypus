@@ -65,6 +65,18 @@ pub struct ArtFile {
     pub parts: BTreeMap<String, Part>,
     #[serde(default)]
     pub poses: BTreeMap<String, Vec<Layer>>,
+    /// A limb drawn at angles (degrees from level, up positive, facing
+    /// right), each a part: the game shows the one nearest where the
+    /// creature aims, its pivot at the pose's anchor of the same name, over
+    /// the pose drawn without its layer of that tag.
+    #[serde(default)]
+    pub fans: BTreeMap<String, Vec<FanArm>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct FanArm {
+    pub angle: f32,
+    pub part: String,
 }
 
 /// A body part: a grid of any size, its pivot (the joint it hangs from) and
@@ -92,6 +104,11 @@ pub struct Layer {
     pub shade: f32,
     #[serde(default)]
     pub outline: bool,
+    /// A layer a fan can stand in for (`front_arm`): the pose is also drawn
+    /// without it (`<pose>~<tag>`), and its pivot is the pose's `<tag>`
+    /// anchor.
+    #[serde(default)]
+    pub tag: Option<String>,
 }
 
 fn one() -> f32 {
@@ -182,6 +199,19 @@ pub struct Art {
     pub frames: Vec<Pixels>,
     pub clips: BTreeMap<String, CompiledClip>,
     pub anchors: BTreeMap<String, HashMap<usize, (i32, i32)>>,
+    /// (frame, tag) → the frame drawn without that tag's layer.
+    pub without: HashMap<(usize, String), usize>,
+    /// Fans: (angle, frame) by tag, the frames drawn with their pivot at
+    /// `fan_pivot`.
+    pub fans: BTreeMap<String, Vec<(f32, usize)>>,
+    pub fan_pivot: (i32, i32),
+}
+
+impl Art {
+    /// The fan frame nearest `angle` (degrees).
+    pub fn fan_frame(&self, tag: &str, angle: f32) -> Option<usize> {
+        self.fans.get(tag)?.iter().min_by(|a, b| (a.0 - angle).abs().total_cmp(&(b.0 - angle).abs())).map(|f| f.1)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -257,6 +287,9 @@ fn outline(p: &Pixels, c: (u8, u8, u8)) -> Pixels {
     out
 }
 
+/// Named points in a frame (a part's or a pose's).
+type Points = BTreeMap<String, (i32, i32)>;
+
 /// Compile a sprite file: every frame drawn (derived ones from theirs),
 /// outlined, and the clips and anchors resolved. Errors name what's wrong.
 pub fn compile(file: &ArtFile) -> Result<Art, String> {
@@ -287,41 +320,32 @@ pub fn compile(file: &ArtFile) -> Result<Art, String> {
         draw(&mut p, &part.rows, &file.palette, false, &format!("part `{name}`"))?;
         parts.insert(name, p);
     }
-    let mut pose_points: BTreeMap<String, BTreeMap<String, (i32, i32)>> = BTreeMap::new();
-    for (name, layers) in &file.poses {
-        if drawn.contains_key(name) {
-            return Err(format!("pose `{name}`: a frame has that name"));
-        }
+    let mut pose_points: BTreeMap<String, Points> = BTreeMap::new();
+    // A pose (or a fan arm) drawn: its layers in order, those tagged `skip`
+    // left out; the points of what's drawn, and each tagged layer's pivot.
+    let compose = |layers: &[Layer], skip: Option<&str>, what: &str| -> Result<(Pixels, Points), String> {
         let mut p = Pixels::new(w, h);
+        let mut points = BTreeMap::new();
         for l in layers {
-            let def = file.parts.get(&l.part).ok_or(format!("pose `{name}`: no part `{}`", l.part))?;
-            let px = &parts[l.part.as_str()];
+            let def = file.parts.get(&l.part).ok_or(format!("{what}: no part `{}`", l.part))?;
             let (pvx, pvy) = def.pivot;
             let place = |x: i32, y: i32| {
                 let dx = if l.flip { pvx - x } else { x - pvx };
                 (l.at.0 + dx, l.at.1 + (y - pvy))
             };
+            if let Some(tag) = &l.tag {
+                points.insert(tag.clone(), l.at);
+                if skip == Some(tag.as_str()) {
+                    continue;
+                }
+            }
+            let px = &parts[l.part.as_str()];
             if l.outline
                 && let Some(oc) = file.outline
             {
-                for y in 0..px.h as i32 {
-                    for x in 0..px.w as i32 {
-                        if px.opaque(x, y) {
-                            continue;
-                        }
-                        let (tx, ty) = place(x, y);
-                        let near = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| px.opaque(x + dx, y + dy));
-                        if near && p.opaque(tx, ty) {
-                            p.set(tx, ty, [oc.0, oc.1, oc.2, 255]);
-                        }
-                    }
-                }
-                // (Round the part's own bounds too: its edge pixels' outer
-                // neighbours lie outside its grid.)
                 for y in -1..=px.h as i32 {
                     for x in -1..=px.w as i32 {
-                        let inside = x >= 0 && y >= 0 && x < px.w as i32 && y < px.h as i32;
-                        if inside {
+                        if px.opaque(x, y) {
                             continue;
                         }
                         let near = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| px.opaque(x + dx, y + dy));
@@ -344,10 +368,47 @@ pub fn compile(file: &ArtFile) -> Result<Art, String> {
                 }
             }
             for (point, &(x, y)) in &def.points {
-                pose_points.entry(point.clone()).or_default().insert(name.clone(), place(x, y));
+                points.insert(point.clone(), place(x, y));
             }
         }
+        Ok((p, points))
+    };
+    // (pose, tag) → the name of the pose drawn without it.
+    let mut without_names: Vec<(String, String, String)> = Vec::new();
+    for (name, layers) in &file.poses {
+        if drawn.contains_key(name) {
+            return Err(format!("pose `{name}`: a frame has that name"));
+        }
+        let (p, points) = compose(layers, None, &format!("pose `{name}`"))?;
+        for (point, at) in &points {
+            pose_points.entry(point.clone()).or_default().insert(name.clone(), *at);
+        }
         drawn.insert(name.clone(), p);
+        let tags: std::collections::BTreeSet<&String> = layers.iter().filter_map(|l| l.tag.as_ref()).collect();
+        for tag in tags {
+            let bare = format!("{name}~{tag}");
+            let (p, points) = compose(layers, Some(tag), &format!("pose `{name}`"))?;
+            for (point, at) in &points {
+                pose_points.entry(point.clone()).or_default().insert(bare.clone(), *at);
+            }
+            drawn.insert(bare.clone(), p);
+            without_names.push((name.clone(), tag.clone(), bare));
+        }
+    }
+    // Fans: each arm alone, its pivot at the frame's middle.
+    let fan_pivot = (w as i32 / 2, h as i32 / 2);
+    let mut fan_names: Vec<(String, f32, String)> = Vec::new();
+    for (tag, arms) in &file.fans {
+        for a in arms {
+            let name = format!("{tag}@{}", a.angle);
+            let layer = Layer { part: a.part.clone(), at: fan_pivot, flip: false, shade: 1.0, outline: false, tag: None };
+            let (p, points) = compose(std::slice::from_ref(&layer), None, &format!("fan `{tag}`"))?;
+            for (point, at) in &points {
+                pose_points.entry(point.clone()).or_default().insert(name.clone(), *at);
+            }
+            drawn.insert(name.clone(), p);
+            fan_names.push((tag.clone(), a.angle, name));
+        }
     }
     // Derived frames, in whatever order their bases allow.
     let mut left: Vec<&String> = file.derived.keys().collect();
@@ -408,7 +469,15 @@ pub fn compile(file: &ArtFile) -> Result<Art, String> {
             m.insert(index(f).ok_or(format!("anchor `{name}`: no frame `{f}`"))?, at);
         }
     }
-    Ok(Art { size: file.size, feet: file.feet, names, frames, clips, anchors })
+    let mut without = HashMap::new();
+    for (pose, tag, bare) in without_names {
+        without.insert((index(&pose).expect("drawn"), tag), index(&bare).expect("drawn"));
+    }
+    let mut fans: BTreeMap<String, Vec<(f32, usize)>> = BTreeMap::new();
+    for (tag, angle, name) in fan_names {
+        fans.entry(tag).or_default().push((angle, index(&name).expect("drawn")));
+    }
+    Ok(Art { size: file.size, feet: file.feet, names, frames, clips, anchors, without, fans, fan_pivot })
 }
 
 /// Things worth a look that aren't errors: lone pixels, colours never used,
@@ -439,8 +508,9 @@ pub fn check(file: &ArtFile, art: &Art) -> Vec<String> {
         }
     }
     let played: std::collections::HashSet<usize> = art.clips.values().flat_map(|c| c.frames.iter().copied()).collect();
+    let spare: std::collections::HashSet<usize> = art.without.values().copied().chain(art.fans.values().flatten().map(|f| f.1)).collect();
     for (i, name) in art.names.iter().enumerate() {
-        if !played.contains(&i) {
+        if !played.contains(&i) && !spare.contains(&i) {
             warn.push(format!("frame `{name}` isn't in any clip"));
         }
     }

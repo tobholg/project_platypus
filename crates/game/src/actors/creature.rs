@@ -50,6 +50,9 @@ pub struct CreatureDef {
     /// The compiled art's atlas (from `art`).
     #[serde(skip)]
     pub atlas: Option<Arc<platypus_art::Pixels>>,
+    /// The compiled art (anchors, arms at angles, frames without an arm).
+    #[serde(skip)]
+    pub rig: Option<Arc<platypus_art::Art>>,
     pub brain: BrainDef,
     /// Draw order among creatures.
     #[serde(default = "default_z")]
@@ -156,6 +159,7 @@ fn with_art(mut def: CreatureDef) -> Result<CreatureDef, String> {
         .map(|(clip, c)| (clip.clone(), AnimDef { image: format!("art:{name}"), columns, rows, frames: c.frames.clone(), fps: c.fps, looping: c.looping }))
         .collect();
     def.atlas = Some(Arc::new(atlas));
+    def.rig = Some(Arc::new(art));
     Ok(def)
 }
 
@@ -272,6 +276,11 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             e.insert(super::hurt::Bleeds(m));
         }
         if let Some(sprite) = sprite {
+            // Rigs with an arm that aims get a second sprite for it.
+            if def.rig.as_ref().is_some_and(|r| r.fans.contains_key(super::animation::FRONT_ARM)) {
+                e.insert(super::animation::HandPos::default());
+                e.with_child((sprite.clone(), Transform::default(), Visibility::Hidden, super::animation::ArmSprite));
+            }
             e.with_child((sprite, Transform::default(), CreatureSprite));
         }
         let id = e.id();

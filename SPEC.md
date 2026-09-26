@@ -848,6 +848,23 @@ deaths (blood). Rendered as one dynamic mesh.
   legs standing, four run strides, tucked and dangling; poses for standing,
   breathing, blinking, four run steps (arms swinging against the legs, a
   bob on the passing steps), rising, falling, dashing, wall-sliding, hurt.
+- **Tags and fans:** a pose layer may carry a `tag` (the player's front arm:
+  `front_arm`). Every pose also gets a `<pose>~<tag>` frame drawn without
+  that layer, and `fans: { "<tag>": [angles] }` draws the tagged part alone
+  at each angle (`<tag>@<angle>`, its pivot at the frame's middle, the
+  angle's part named `aim<angle>`, `aimm<angle>` below the horizon), its
+  points carried. Neither needs a clip.
+- **Casting arm:** a caster (`Aiming`, set for a moment by each cast) is
+  drawn as its pose without the front arm, with a separate arm sprite, the
+  fan frame nearest the angle from the shoulder anchor to the cursor, laid
+  at the shoulder; the fan frame's `hand` point is where the spell leaves
+  from (`HandPos`). Rigs without the fan simply don't aim.
+- **Facing and pace:** a creature faces the point it aims at (the player:
+  the cursor) whatever way it moves; running away from it plays the run
+  backwards. The run clip's rate follows speed (0.5–1.5 ×). Clips change
+  with hysteresis (airborne only after 0.12 s off the ground, running on
+  above 8 cells/s and off below 3), so steps and slopes don't flicker
+  between clips and restart them.
 - `compile` draws every frame (derived ones in dependency order, cycles
   named), outlines, resolves clips and anchors, and packs an atlas (8
   frames a row). Mistakes are errors that say where.

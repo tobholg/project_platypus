@@ -15,6 +15,26 @@ pub struct AnimationPlugin;
 #[derive(Component)]
 pub struct CreatureSprite;
 
+/// The fan (and pose tag) of an arm that aims.
+pub const FRONT_ARM: &str = "front_arm";
+
+/// The child entity drawing a rig's aiming arm (hidden unless aiming).
+#[derive(Component)]
+pub struct ArmSprite;
+
+/// Aiming at `at` (a world point) for `left` more seconds: a rig points its
+/// front arm there (casting; weapons later).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Aiming {
+    pub at: Vec2,
+    pub left: f32,
+}
+
+/// Where the creature's hand is, in the world, while it aims (spells leave
+/// from it).
+#[derive(Component, Default, Clone, Copy, Debug)]
+pub struct HandPos(pub Option<Vec2>);
+
 #[derive(Component)]
 pub struct Animator {
     pub def: Arc<CreatureDef>,
@@ -23,11 +43,15 @@ pub struct Animator {
     timer: f32,
     /// Set by gameplay (e.g. an attack) to play a clip regardless of movement.
     pub force: Option<String>,
+    /// Seconds off the ground (stepping up a bump lifts a body for a tick:
+    /// not a jump), and whether it's running (with some give either way).
+    air: f32,
+    running: bool,
 }
 
 impl Animator {
     pub fn new(def: Arc<CreatureDef>) -> Self {
-        Animator { def, clip: String::new(), frame: 0, timer: 0.0, force: None }
+        Animator { def, clip: String::new(), frame: 0, timer: 0.0, force: None, air: 0.0, running: false }
     }
 
     /// Pick the clip (and its image) again next frame (the art changed).
@@ -36,17 +60,28 @@ impl Animator {
     }
 }
 
-/// Clip wanted for a movement state, with fallbacks so a creature only needs `idle`.
-fn wanted(k: &Kinematics) -> &'static [&'static str] {
+/// Off the ground this long before it looks airborne (unless it jumped).
+const AIR_GRACE: f32 = 0.12;
+/// Starts running above this speed, stops below the lower one (cells/s).
+const RUN_ON: f32 = 8.0;
+const RUN_OFF: f32 = 3.0;
+
+/// Clip wanted for a movement state, with fallbacks so a creature only needs
+/// `idle`. Stepping up a bump (a tick off the ground) doesn't count as air;
+/// running starts and stops with some give, so it doesn't flicker.
+fn wanted(k: &Kinematics, anim: &mut Animator, dt: f32) -> &'static [&'static str] {
     let v = k.body.vel;
+    anim.air = if k.loco.state == MoveState::Air { anim.air + dt } else { 0.0 };
+    let airborne = anim.air > AIR_GRACE || v.y > 60.0;
+    anim.running = if anim.running { v.x.abs() > RUN_OFF } else { v.x.abs() > RUN_ON };
     match k.loco.state {
         MoveState::Dash => &["dash", "run", "idle"],
         MoveState::WallSlide => &["wall", "fall", "idle"],
         MoveState::Stunned => &["hurt", "fall", "idle"],
-        MoveState::Air if v.y > 0.0 => &["jump", "fall", "idle"],
-        MoveState::Air => &["fall", "jump", "idle"],
-        MoveState::Ground if v.x.abs() > 4.0 => &["run", "idle"],
-        MoveState::Ground => &["idle"],
+        MoveState::Air if airborne && v.y > 0.0 => &["jump", "fall", "idle"],
+        MoveState::Air if airborne => &["fall", "jump", "idle"],
+        _ if anim.running => &["run", "idle"],
+        _ => &["idle"],
     }
 }
 
@@ -56,34 +91,58 @@ impl Plugin for AnimationPlugin {
     }
 }
 
+type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>);
+type BodySprites = (With<CreatureSprite>, Without<ArmSprite>);
+type Arms<'a> = (&'a mut Sprite, &'a mut Transform, &'a mut Visibility);
+
+#[allow(clippy::too_many_arguments)]
 fn animate(
     time: Res<Time>,
     assets: Res<AssetServer>,
     mut art: ResMut<CreatureArt>,
     mut images: ResMut<Assets<Image>>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
-    mut creatures: Query<(&Kinematics, &mut Animator, &Children)>,
-    mut sprites: Query<(&mut Sprite, &mut Transform), With<CreatureSprite>>,
+    mut creatures: Query<Animated>,
+    mut sprites: Query<(&mut Sprite, &mut Transform), BodySprites>,
+    mut arms: Query<Arms, With<ArmSprite>>,
 ) {
-    for (k, mut anim, children) in &mut creatures {
+    for (k, mut anim, children, mut aiming, hand) in &mut creatures {
         let anim = &mut *anim;
         let def = anim.def.clone();
+        let dt = time.delta_secs();
+        let want = wanted(k, anim, dt);
         let name = match &anim.force {
             Some(f) if def.animations.contains_key(f) => f.clone(),
-            _ => wanted(k).iter().find(|n| def.animations.contains_key(**n)).map(|n| n.to_string()).unwrap_or_default(),
+            _ => want.iter().find(|n| def.animations.contains_key(**n)).map(|n| n.to_string()).unwrap_or_default(),
         };
         let Some(clip) = def.animations.get(&name) else { continue };
         let changed = name != anim.clip;
+        if changed {
+            debug!("clip {} -> {} (state {:?}, vel {:.0},{:.0})", anim.clip, name, k.loco.state, k.body.vel.x, k.body.vel.y);
+        }
         if changed {
             anim.clip = name;
             anim.frame = 0;
             anim.timer = 0.0;
         } else {
-            anim.timer += time.delta_secs();
+            // A run goes at the pace it's running (half to one and a half
+            // times its rate), and backwards when it moves away from where
+            // it faces (backing off while aiming).
+            let mut rate = 1.0;
+            let mut back = false;
+            if name == "run" {
+                let run = def.movement.run_speed.max(1.0);
+                rate = (k.body.vel.x.abs() / run).clamp(0.5, 1.5);
+                back = k.body.vel.x * k.loco.facing < 0.0;
+            }
+            anim.timer += dt * rate;
             let step = 1.0 / clip.fps.max(0.01);
+            let n = clip.frames.len();
             while anim.timer >= step {
                 anim.timer -= step;
-                anim.frame = if anim.frame + 1 < clip.frames.len() {
+                anim.frame = if back {
+                    (anim.frame + n - 1) % n
+                } else if anim.frame + 1 < n {
                     anim.frame + 1
                 } else if clip.looping {
                     0
@@ -93,7 +152,57 @@ fn animate(
             }
         }
 
+        let facing = k.loco.facing;
+        let (fw, fh) = (def.sprite.frame.0 as f32, def.sprite.frame.1 as f32);
+        let (ax, ay) = def.sprite.feet;
+        // The frame's `feet` pixel under the centre of the collision box.
+        let body_at = Vec3::new((fw / 2.0 - ax) * facing, -k.body.half.y + ay - fh / 2.0, 0.0);
+        let mut index = clip.frames.get(anim.frame).copied().unwrap_or(0);
+        // Aiming: the pose without its front arm, and the arm drawn at the
+        // angle nearest the aim, its pivot at the pose's shoulder.
+        if let Some(a) = aiming.as_deref_mut() {
+            a.left -= dt;
+        }
+        let mut arm: Option<(usize, Vec3)> = None;
+        let mut hand_at = None;
+        if let (Some(a), Some(rig)) = (aiming.as_deref(), def.rig.as_ref())
+            && a.left > 0.0
+            && let Some(&bare) = rig.without.get(&(index, FRONT_ARM.to_string()))
+            && let Some(&(sx, sy)) = rig.anchors.get(FRONT_ARM).and_then(|m| m.get(&index))
+        {
+            // (A frame pixel's place relative to the creature's centre.)
+            let local = |px: f32, py: f32| body_at + Vec3::new((px + 0.5 - fw / 2.0) * facing, -(py + 0.5 - fh / 2.0), 0.0);
+            let shoulder = k.body.pos + local(sx as f32, sy as f32).truncate();
+            let d = a.at - shoulder;
+            let angle = d.y.atan2(d.x.abs()).to_degrees();
+            if let Some(f) = rig.fan_frame(FRONT_ARM, angle) {
+                let (px, py) = rig.fan_pivot;
+                let offset = Vec3::new((sx - px) as f32 * facing, -((sy - py) as f32), 0.01);
+                arm = Some((f, body_at + offset));
+                index = bare;
+                if let Some(&(hx, hy)) = rig.anchors.get("hand").and_then(|m| m.get(&f)) {
+                    hand_at = Some(k.body.pos + (local(hx as f32, hy as f32) + offset).truncate());
+                }
+            }
+        }
+        if let Some(mut h) = hand {
+            h.0 = hand_at;
+        }
+
         for child in children.iter() {
+            if let Ok((mut sprite, mut tf, mut vis)) = arms.get_mut(child) {
+                *vis = if arm.is_some() { Visibility::Inherited } else { Visibility::Hidden };
+                if let Some((f, at)) = arm {
+                    sprite.image = art.image(&assets, &mut images, &clip.image, def.atlas.as_deref());
+                    if let Some(atlas) = sprite.texture_atlas.as_mut() {
+                        atlas.layout = art.layout(&mut layouts, def.sprite.frame, clip.columns, clip.rows);
+                        atlas.index = f;
+                    }
+                    sprite.flip_x = facing < 0.0;
+                    tf.translation = at;
+                }
+                continue;
+            }
             let Ok((mut sprite, mut tf)) = sprites.get_mut(child) else { continue };
             if changed {
                 sprite.image = art.image(&assets, &mut images, &clip.image, def.atlas.as_deref());
@@ -102,16 +211,10 @@ fn animate(
                 }
             }
             if let Some(atlas) = sprite.texture_atlas.as_mut() {
-                atlas.index = clip.frames.get(anim.frame).copied().unwrap_or(0);
+                atlas.index = index;
             }
-            // Put the frame's `feet` pixel under the centre of the collision box.
-            let facing = k.loco.facing;
             sprite.flip_x = facing < 0.0;
-            let (fw, fh) = (def.sprite.frame.0 as f32, def.sprite.frame.1 as f32);
-            let (ax, ay) = def.sprite.feet;
-            let dx = fw / 2.0 - ax;
-            let dy = ay - fh / 2.0;
-            tf.translation = Vec3::new(dx * facing, -k.body.half.y + dy, 0.0);
+            tf.translation = body_at;
         }
     }
 }

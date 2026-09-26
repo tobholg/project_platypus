@@ -97,6 +97,62 @@
             "tts...",
             "tt....",
         ]),
+        // The front arm pointing where it aims (casting, later weapons): at
+        // angles from straight down to straight up (the fan below).
+        "aimm90": (pivot: (1, 0), points: { "hand": (1, 6) }, rows: [
+            "tt",
+            "tt",
+            "ss",
+            "ss",
+            "ss",
+            "ss",
+            "SS",
+        ]),
+        "aimm60": (pivot: (0, 0), points: { "hand": (4, 6) }, rows: [
+            "tt...",
+            "tt...",
+            ".ss..",
+            "..ss.",
+            "..ss.",
+            "...sS",
+            "...SS",
+        ]),
+        "aimm30": (pivot: (0, 0), points: { "hand": (5, 3) }, rows: [
+            "tt....",
+            "ttss..",
+            "..sss.",
+            "...ssS",
+            ".....S",
+        ]),
+        "aim0": (pivot: (0, 0), points: { "hand": (6, 0) }, rows: [
+            "ttssssS",
+            "ttssssS",
+        ]),
+        "aim30": (pivot: (0, 3), points: { "hand": (5, 0) }, rows: [
+            ".....S",
+            "...ssS",
+            "..sss.",
+            "ttss..",
+            "tt....",
+        ]),
+        "aim60": (pivot: (0, 6), points: { "hand": (4, 0) }, rows: [
+            "...SS",
+            "...sS",
+            "..ss.",
+            "..ss.",
+            ".ss..",
+            "tt...",
+            "tt...",
+        ]),
+        "aim90": (pivot: (1, 6), points: { "hand": (1, 0) }, rows: [
+            "SS",
+            "ss",
+            "ss",
+            "ss",
+            "ss",
+            "tt",
+            "tt",
+        ]),
         // Legs from the hip: standing, a six-step run, in the air.
         "legs": (rows: [
             ".pppp..",
@@ -166,21 +222,21 @@
             (part: "legs", at: (8, 17)),
             (part: "torso", at: (8, 11)),
             (part: "head", at: (8, 4)),
-            (part: "arm", at: (12, 12), outline: true),
+            (part: "arm", at: (12, 12), outline: true, tag: "front_arm"),
         ],
         "breathe": [
             (part: "arm", at: (9, 11), shade: 0.72),
             (part: "legs", at: (8, 17)),
             (part: "torso", at: (8, 10)),
             (part: "head", at: (8, 3)),
-            (part: "arm", at: (12, 11), outline: true),
+            (part: "arm", at: (12, 11), outline: true, tag: "front_arm"),
         ],
         "blink": [
             (part: "arm", at: (9, 12), shade: 0.72),
             (part: "legs", at: (8, 17)),
             (part: "torso", at: (8, 11)),
             (part: "blink", at: (8, 4)),
-            (part: "arm", at: (12, 12), outline: true),
+            (part: "arm", at: (12, 12), outline: true, tag: "front_arm"),
         ],
         // Running: legs through the stride, arms swinging against them, a
         // bob on the passing steps.
@@ -189,28 +245,28 @@
             (part: "run1", at: (7, 17)),
             (part: "torso", at: (8, 11)),
             (part: "head", at: (8, 4)),
-            (part: "arm_back", at: (12, 12), outline: true),
+            (part: "arm_back", at: (12, 12), outline: true, tag: "front_arm"),
         ],
         "run_b": [
             (part: "arm", at: (9, 11), shade: 0.72),
             (part: "run2", at: (7, 16)),
             (part: "torso", at: (8, 10)),
             (part: "head", at: (8, 3)),
-            (part: "arm", at: (12, 11), outline: true),
+            (part: "arm", at: (12, 11), outline: true, tag: "front_arm"),
         ],
         "run_c": [
             (part: "arm_back", at: (10, 12), shade: 0.72),
             (part: "run4", at: (7, 17)),
             (part: "torso", at: (8, 11)),
             (part: "head", at: (8, 4)),
-            (part: "arm_fwd", at: (12, 12), outline: true),
+            (part: "arm_fwd", at: (12, 12), outline: true, tag: "front_arm"),
         ],
         "run_d": [
             (part: "arm", at: (9, 11), shade: 0.72),
             (part: "run3", at: (7, 16)),
             (part: "torso", at: (8, 10)),
             (part: "head", at: (8, 3)),
-            (part: "arm", at: (12, 11), outline: true),
+            (part: "arm", at: (12, 11), outline: true, tag: "front_arm"),
         ],
         // Rising: knees up, an arm thrown up. Falling: legs down, arms out.
         "rise": [
@@ -218,14 +274,14 @@
             (part: "tuck", at: (8, 17)),
             (part: "torso", at: (8, 11)),
             (part: "head", at: (8, 4)),
-            (part: "arm_lift", at: (13, 14), outline: true),
+            (part: "arm_lift", at: (13, 14), outline: true, tag: "front_arm"),
         ],
         "drop": [
             (part: "arm_up", at: (9, 12), shade: 0.72),
             (part: "dangle", at: (8, 17)),
             (part: "torso", at: (8, 11)),
             (part: "head", at: (8, 4)),
-            (part: "arm_fwd", at: (12, 12), outline: true),
+            (part: "arm_fwd", at: (12, 12), outline: true, tag: "front_arm"),
         ],
         // Dashing: leaning in, arms back.
         "dash": [
@@ -233,7 +289,7 @@
             (part: "run1", at: (6, 17)),
             (part: "torso", at: (9, 12)),
             (part: "head", at: (10, 6)),
-            (part: "arm_back", at: (11, 13), outline: true),
+            (part: "arm_back", at: (11, 13), outline: true, tag: "front_arm"),
         ],
         // Sliding down a wall (on the right): a hand on it.
         "wall": [
@@ -241,7 +297,20 @@
             (part: "dangle", at: (8, 17)),
             (part: "torso", at: (8, 11)),
             (part: "head", at: (8, 4)),
-            (part: "arm_reach", at: (13, 12), outline: true),
+            (part: "arm_reach", at: (13, 12), outline: true, tag: "front_arm"),
+        ],
+    },
+    // The front arm at angles: shown instead of the pose's own front arm
+    // (tagged `front_arm`) while aiming.
+    fans: {
+        "front_arm": [
+            (angle: -90, part: "aimm90"),
+            (angle: -60, part: "aimm60"),
+            (angle: -30, part: "aimm30"),
+            (angle: 0, part: "aim0"),
+            (angle: 30, part: "aim30"),
+            (angle: 60, part: "aim60"),
+            (angle: 90, part: "aim90"),
         ],
     },
     derived: {

@@ -34,6 +34,8 @@ pub struct HandsPlugin;
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// Slots in a player's pack: `BARS` hotbars, then three rows of pack.
 pub const PACK: usize = HOTBAR * (BARS + 3);
+/// The arm keeps pointing this long after a cast (seconds).
+const AIM_HOLD: f32 = 0.4;
 /// Blocks placed per second while the button is held.
 const PLACE_RATE: f32 = 8.0;
 /// Items on the ground drift to a player within this many cells...
@@ -310,7 +312,7 @@ fn use_hands(
     mut hand: ResMut<Hand>,
     mut sim: ResMut<SimWorld>,
     mut chests: ResMut<chests::Chests>,
-    mut player: Query<(Entity, &Kinematics, &mut Inventory), With<LocalPlayer>>,
+    mut player: Query<(Entity, &Kinematics, &mut Inventory, Option<&crate::actors::animation::HandPos>), With<LocalPlayer>>,
     creatures: Query<&Kinematics, With<Creature>>,
     mut found: Query<(Entity, &mut chests::Chest, &Kinematics), Without<LocalPlayer>>,
     mut casts: MessageWriter<crate::magic::CastRequest>,
@@ -318,7 +320,7 @@ fn use_hands(
     let clicked = std::mem::take(&mut input.clicked);
     hand.cooldown = (hand.cooldown - DT).max(0.0);
     let (Some(items), Some(cursor)) = (items, input.cursor) else { return };
-    let Ok((me, k, mut inv)) = player.single_mut() else { return };
+    let Ok((me, k, mut inv, hand_pos)) = player.single_mut() else { return };
     let from = hand_at(k);
     let slot = if input.auto { auto_slot(&sim.world, &items, &inv, hand.bar_slots(), &k.body, from, cursor).unwrap_or(hand.active()) } else { hand.active() };
     let Some(stack) = inv.slots[slot] else { return };
@@ -373,8 +375,11 @@ fn use_hands(
             }
             inv.take(slot, 1);
         }
-        // (The wand keeps its own time: `magic::request`.)
+        // (The wand keeps its own time: `magic::request`.) The arm points at
+        // the cursor while casting, and the spell leaves from its hand.
         Use::Cast { .. } if input.primary || input.secondary => {
+            commands.entity(me).insert(crate::actors::animation::Aiming { at: cursor, left: AIM_HOLD });
+            let from = hand_pos.map_or(from, |h| h.0.unwrap_or(from));
             casts.write(crate::magic::CastRequest { caster: me, item: stack.item, from, toward: cursor, alt: !input.primary });
         }
         Use::Chest if clicked => {

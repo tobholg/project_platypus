@@ -22,7 +22,9 @@ pub struct Intent {
     pub down: bool,
     /// -1..=1: up (+) or down (−), for swimming.
     pub move_y: f32,
-    /// World-space direction the creature is aiming (attacks, guns).
+    /// The world point the creature is aiming at (attacks, spells; the
+    /// player's cursor); it faces it. Zero: not aiming (faces the way it
+    /// moves).
     pub aim: Vec2,
 }
 
@@ -259,6 +261,14 @@ impl Locomotion {
 
         if intent.move_x != 0.0 {
             self.facing = intent.move_x.signum();
+        }
+        // Aiming at something (the player at the cursor): it faces that,
+        // whichever way it moves.
+        if intent.aim != Vec2::ZERO {
+            let d = intent.aim.x - body.pos.x;
+            if d.abs() > 0.5 {
+                self.facing = d.signum();
+            }
         }
 
         // Dash: fixed speed, no gravity, can't be steered.

@@ -33,7 +33,7 @@ islands with their positions, to point `--region` at.
 
 The toolchain is pinned in `rust-toolchain.toml`; rustup fetches it on first build.
 
-**Play:** A/D move · in water, hold Space to swim toward W/A/S/D · Space jump (hold for height, tap for a hop, again in the air
+**Play:** A/D move (you always face the cursor; moving away from it you backpedal) · in water, hold Space to swim toward W/A/S/D · Space jump (hold for height, tap for a hop, again in the air
 for up to three air jumps (each resets a fall), against a wall to wall-jump) · S (or ↓) drops through a wooden
 platform · Shift dash · + and − zoom (the keys that type them, on any layout; the
 keypad's too)
@@ -143,7 +143,8 @@ Everything under `assets/data/` hot-reloads while the game runs.
   grids, clips; see `crates/art/src/lib.rs`), look at it with
   `cargo run -p platypus_art --release -- sheet assets/art/<name>.ron` (also `check`,
   `describe`, `render`, `import`), and draw a creature with it: `art: "<name>"` in its
-  creature file. Editing it reloads the game's live creatures.
+  creature file. Editing it reloads the game's live creatures. A pose layer tagged
+  `front_arm` plus a `fans` entry gives the creature an arm that aims where it casts.
 - **Ambient life:** a kind in `assets/data/life.ron` (where it lives, how many).
 - **A new AI behaviour:** in `crates/game/src/actors/ai.rs` (or a new module), a component
   with its settings plus one system writing `Controls`:
