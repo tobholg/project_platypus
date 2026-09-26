@@ -126,7 +126,8 @@
 //!   nothing on (logs what it cost), then a full iron set and a ring put on
 //!   (logs its stats) and the same blast (logs what it cost now); the
 //!   inventory opened, a leather jerkin in the pack hovered (its tooltip,
-//!   against the chainmail worn); an orc in leather and a skeleton in cloth
+//!   against the chainmail worn) and picked up (the body slot lights up);
+//!   an orc in leather and a skeleton in cloth
 //!   stand by (brains off), to see gear on other humanoids
 //! - `loot`       (`PLATYPUS_WORLD=arena`) an orc in a rare helm and a jerkin
 //!   put beside the player (brain off) and struck dead at 1 s; logs its
@@ -2412,6 +2413,7 @@ fn gear_script(
     slots: Query<(&crate::hands::ui::SlotUi, &bevy::ui::UiGlobalTransform, &InheritedVisibility)>,
     mut player: Query<GearTester, With<LocalPlayer>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut grip: ResMut<crate::hands::ui::Held>,
     mut state: Local<(u8, f32)>,
 ) {
     use crate::hands::items::Stack;
@@ -2489,6 +2491,15 @@ fn gear_script(
             info!("gear: hovering the jerkin in slot {at:?} at {pos:?}");
             window.set_cursor_position(pos);
             state.0 = 5;
+        }
+        // Picked up (into the mouse's grip, as a click would with the
+        // pointer there): the body slot it goes in lights up.
+        5 if t > 3.0 => {
+            let jerkin = items.id("leather_jerkin");
+            if let Some(i) = inv.slots.iter().position(|s| s.is_some_and(|s| Some(s.item) == jerkin)) {
+                grip.stack = inv.slots[i].take();
+            }
+            state.0 = 6;
         }
         _ => {}
     }

@@ -49,7 +49,7 @@ what you hit (weapons and moves in `assets/data/weapons.ron`) ·
 Esc (or I) opens the inventory: drag stacks between slots (or click one up and
 click it down), right-click takes half, Shift-click moves across, hover for what
 it is and does, click outside to throw it out. Gear (armour, trinkets) goes in the
-Worn column beside it (drag it there, or Shift-click it on and off); the Stats panel
+Worn column beside it (drag it there: the slots it fits light up white; or Shift-click it on and off); the Stats panel
 shows what it adds up to, and a piece's tooltip compares it with what you wear. Gear found in
 chests is rolled: common, uncommon (green), rare (blue), epic (purple), with bonuses named
 into it ("Keen longsword of Slaughter"), better the deeper it's found. Creatures leave bodies: right-click one to loot what it wore and

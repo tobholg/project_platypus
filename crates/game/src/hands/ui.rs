@@ -10,8 +10,8 @@
 //! - hover a slot for what's in it (a tooltip);
 //! - X switches hotbar (also: click a hotbar's number);
 //! - gear goes in the equipment slots beside the pack (drag it there, or
-//!   Shift-click it: on, and off again); what it all adds up to is listed
-//!   beside them.
+//!   Shift-click it: on, and off again; while it's held, the slots it goes
+//!   in light up); what it all adds up to is listed beside them.
 
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
@@ -36,8 +36,8 @@ pub struct InventoryOpen(pub bool);
 /// A stack picked up with the mouse, on its way to another slot, and the
 /// slot it was dragged from (while the button is still down).
 #[derive(Resource, Default)]
-struct Held {
-    stack: Option<Stack>,
+pub(crate) struct Held {
+    pub(crate) stack: Option<Stack>,
     from: Option<(Holder, usize)>,
 }
 
@@ -111,6 +111,9 @@ const ICON_PX: f32 = 32.0;
 const EMPTY: Color = Color::srgba(0.08, 0.08, 0.1, 0.72);
 const EDGE: Color = Color::srgba(0.5, 0.5, 0.55, 0.8);
 const CHOSEN: Color = Color::srgb(1.0, 0.85, 0.3);
+/// An equipment slot the gear in the mouse's grip would go in (white: no
+/// rarity has it).
+const FITS: Color = Color::WHITE;
 const BAR_BG: Color = Color::srgba(0.1, 0.1, 0.16, 0.8);
 
 impl Plugin for UiPlugin {
@@ -630,7 +633,15 @@ fn show(
         let chosen = matches!(which, Holder::Bar | Holder::Pack) && index(&hand, which, i) == hand.active();
         // (Gear finer than common is edged in its rarity's colour.)
         let rare = slot_of(which, i).filter(|s| s.roll.rarity > 0).and_then(|s| rules.rarity(&items, &s)).map(|r| Color::srgb_u8(r.color.0, r.color.1, r.color.2));
-        *border = BorderColor::all(if chosen { CHOSEN } else { rare.unwrap_or(EDGE) });
+        // Holding gear: where it can go lights up.
+        let fits = which == Holder::Equip && held.stack.is_some_and(|h| Equipment::fits(&items, i, &h));
+        *border = BorderColor::all(if fits {
+            FITS
+        } else if chosen {
+            CHOSEN
+        } else {
+            rare.unwrap_or(EDGE)
+        });
     }
     for (tag, mut bg) in &mut tags {
         bg.0 = if tag.0 == hand.bar { Color::srgba(0.55, 0.45, 0.12, 0.9) } else { BAR_BG };
