@@ -1,0 +1,16 @@
+// Lairs: cave chambers something has made its home (worldgen/src/lairs.rs).
+// The world picks which chambers from its seed, at world creation (so a
+// change here shows in a new world, or chunks not yet visited).
+//   depth: how deep under the surface (cells, from, to)
+//   zones: underground biomes (fungal, crystal, toxic, none = plain rock); [] any
+//   chance: share of the chambers it could take that it does
+//   lining: what lines its walls (and hangs from its roof), density 0..1
+//   keepers: who lives there, and how many; min_size: half width at least
+[
+    (name: "spider nest", depth: (120, 100000), zones: ["none", "fungal"], chance: 0.14,
+     lining: "cobweb", density: 0.55, keepers: [("spider", 2), ("egg_sac", 3), ("spiderling", 2)]),
+    (name: "slime pit", depth: (60, 100000), zones: ["toxic"], chance: 0.3,
+     lining: "slime", density: 0.25, keepers: [("acid_slime", 3)]),
+    (name: "bone pit", depth: (400, 100000), zones: [], chance: 0.06,
+     lining: "cobweb", density: 0.2, keepers: [("skeleton", 3), ("vampire_bat", 2)]),
+]

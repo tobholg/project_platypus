@@ -5,6 +5,9 @@
 //   when: Any (default), Day or Night; out of its hours it leaves once out
 //     of sight
 //   above: (low, high): put that high above the spot (fliers in the air)
+//   depth: (from, to): only that deep under the surface (cells)
+//   zone: only in that underground biome (fungal, crystal, toxic, none)
+//   (Enemies too: what lives down there turns up as you go.)
 //   most: at most this many near the player; rate: a chance a second to add one
 // Hot-reloaded. Add a kind here and it lives in the world.
 [
@@ -14,4 +17,9 @@
     (kind: "firefly", place: Surface, when: Night, above: (6, 24), most: 14, rate: 3.0),
     (kind: "fish", place: Water, most: 8, rate: 1.2),
     (kind: "bat", place: Cave, most: 6, rate: 0.8),
+    (kind: "slime", place: Cave, depth: (40, 900), zone: "none", most: 3, rate: 0.4),
+    (kind: "acid_slime", place: Cave, zone: "toxic", most: 4, rate: 0.6),
+    (kind: "skeleton", place: Cave, depth: (200, 100000), most: 2, rate: 0.25),
+    (kind: "vampire_bat", place: Cave, depth: (300, 100000), most: 3, rate: 0.3),
+    (kind: "spider", place: Cave, depth: (150, 100000), most: 2, rate: 0.2),
 ]

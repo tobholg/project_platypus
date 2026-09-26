@@ -75,6 +75,9 @@
 //!   three pixels (9, 14–16) of the first thing in the first file in one stroke with
 //!   the real pointer (a pose paints its first layer's part), logs what
 //!   changed on disk; Ctrl+Z; logs whether the file is back as it was
+//! - `nest`       (a generated world, `small` is quickest) the player put in
+//!   the spider nest nearest the start, a torch in hand; logs what's about
+//!   after 3 s
 //! - `underground` (`PLATYPUS_WORLD=arena`) each underground enemy in turn
 //!   against the player (standing still): a spider, two slimes, two vampire
 //!   bats, a skeleton, an egg sac; logs the health each phase cost and what
@@ -160,7 +163,7 @@ impl Plugin for ScenarioPlugin {
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, editor_script.after(InputSystems).before(crate::editor::capture))
-            .add_systems(Update, (warband_script, life_script, underground_script))
+            .add_systems(Update, (warband_script, life_script, underground_script, nest_script))
             .add_systems(PreUpdate, crossing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, held_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -2279,5 +2282,59 @@ fn underground_script(
         if state.0 < phases.len() {
             state.4 = 0.0;
         }
+    }
+}
+
+/// Into the nearest spider nest, torch in hand.
+fn nest_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    foes: Query<(&crate::actors::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut state: Local<(u8, Option<Vec2>)>,
+) {
+    if s.name != "nest" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    if state.0 == 0 && s.elapsed > 0.3 {
+        let home = sim.generator.spawn_point();
+        let nest = sim
+            .generator
+            .landmarks()
+            .into_iter()
+            .filter(|(_, n)| n == "spider nest")
+            .min_by_key(|(p, _)| (p.x - home.x).abs() + (p.y - home.y).abs());
+        match nest {
+            Some((p, _)) => {
+                info!("nest: a spider nest at {},{} ({} cells down from the start)", p.x, p.y, home.y - p.y);
+                let at = Vec2::new(p.x as f32 - 20.0, p.y as f32);
+                k.body.pos = at;
+                k.body.vel = Vec2::ZERO;
+                k.prev_pos = at;
+                state.1 = Some(at);
+            }
+            None => info!("nest: no spider nest in this world"),
+        }
+        toggles.carry = crate::light::Carry::Torch;
+        state.0 = 1;
+    }
+    // (Held there while its chunks load, so it doesn't fall away first.)
+    if state.0 == 1 && s.elapsed < 1.5
+        && let Some(at) = state.1
+    {
+        k.body.pos = at;
+        k.body.vel = Vec2::ZERO;
+    }
+    if state.0 == 1 && s.elapsed > 3.3 {
+        let mut n = std::collections::BTreeMap::new();
+        for (c, fk) in &foes {
+            if fk.body.pos.distance(k.body.pos) < 150.0 {
+                *n.entry(c.kind.clone()).or_insert(0) += 1;
+            }
+        }
+        info!("nest: about the player: {n:?}");
+        state.0 = 2;
     }
 }

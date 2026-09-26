@@ -609,6 +609,11 @@ impl Caves {
         }
     }
 
+    /// The chambers touching a chunk (by index).
+    pub fn chambers_in(&self, cx: i32, cy: i32) -> &[u32] {
+        self.bins.get(&(cx, cy)).map_or(&[], |b| b.0.as_slice())
+    }
+
     /// The underground biome at a cell, if any.
     pub fn zone_at(&self, x: i32, y: i32) -> Option<Zone> {
         self.areas.iter().find(|a| a.contains(x as f32, y as f32)).map(|a| a.zone)

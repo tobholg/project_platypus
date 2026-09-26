@@ -257,6 +257,9 @@ pub struct PlayerDeaths(pub u32);
 /// Particles of solid, powder or liquid (not rain, dust or embers) faster
 /// than this (cells/s) hurt what they fly through...
 const PELT_SAFE: f32 = 90.0;
+/// (Liquids: faster than this: a death's burst of blood doesn't hurt what's
+/// beside it; water flung from a well still does.)
+const PELT_SAFE_LIQUID: f32 = 250.0;
 /// ... by their weight (density against water's; liquids half) × how many
 /// times faster × this, and are mostly stopped by it, shoving it.
 const PELT: f32 = 0.8;
@@ -277,14 +280,15 @@ fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Kinematics, &mut Health)
         }
         let v = Vec2::new(p.vel[0], p.vel[1]) * TICK_HZ as f32;
         let speed = v.length();
-        if speed < PELT_SAFE {
+        let ph = mats.phys(p.cell.material);
+        let safe = if ph.kind == Kind::Liquid { PELT_SAFE_LIQUID } else { PELT_SAFE };
+        if speed < safe {
             continue;
         }
         let at = Vec2::new(p.pos[0], p.pos[1]);
         let Some(i) = boxes.iter().position(|(lo, hi)| at.cmpge(*lo).all() && at.cmple(*hi).all()) else { continue };
-        let ph = mats.phys(p.cell.material);
         let weight = (ph.density as f32 / 1000.0).clamp(0.2, 5.0) * if ph.kind == Kind::Liquid { 0.5 } else { 1.0 };
-        hurt[i] += weight * (speed - PELT_SAFE) / PELT_SAFE * PELT;
+        hurt[i] += weight * (speed - safe) / safe * PELT;
         shove[i] += v * weight * 0.02;
         p.vel = [p.vel[0] * 0.3, p.vel[1] * 0.3];
     }

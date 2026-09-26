@@ -349,6 +349,25 @@ DESIGN.md §3.2 step 6, stage 5 of the world arc (`worldgen/src/minerals.rs`).
 - Cost: a deep column of chunks streams in ~2.2 ms (was 1.8 ms), under the
   4 ms budget.
 
+### 3.4f Lairs (`worldgen/src/lairs.rs`, `assets/data/lairs.ron`)
+- Cave chambers something has made its home: a spider nest, a slime pit
+  in the toxic grottos, a bone pit deep down. Each lair kind is data: its
+  `depth` under the surface, the underground biomes (`zones`: `fungal`,
+  `crystal`, `toxic`, `none`), a `chance` (the share of the chambers it
+  could take that it does), its `lining` and `density`, its `keepers`
+  (creature, how many) and a `min_size`. `TerrainGen::with_lairs` takes
+  them; which chambers they take (never a pool's) is decided from the seed
+  with the plan, so every peer agrees.
+- A lair's chamber is lined as its chunks generate: the lining on air cells
+  within two of rock, in clumps (`density`), and threads of it hanging from
+  the roof. Its keepers are reported (as `Spawn::Creature`) by the chunk of
+  the chamber's middle, across it; they fall to its floor.
+- `ChunkGenerator::landmarks` names them (tools, tests: the `nest`
+  scenario goes to the nearest spider nest), and `zone_at` gives the
+  underground biome at a cell. The worldview draws them (it loads the
+  game's lairs).
+- Crypts are kept by skeletons now; castles by orcs.
+
 ### 3.4e Structures: crypts and castles
 DESIGN.md §3.3, stage 6 of the world arc (`worldgen/src/structures.rs`,
 rooms in `assets/data/rooms/*.rooms`).
@@ -931,6 +950,14 @@ deaths (blood). Rendered as one dynamic mesh.
   further than 800 cells is gone.
 - Rabbits and birds (by day), frogs (by water), fireflies (at night over
   the ground, pulsing), fish (in lakes), bats (in caves).
+- Enemies come and go the same way: a haunt's `depth` (under the surface)
+  and `zone` (underground biome) keep slimes in the upper caves, acid
+  slimes in the toxic grottos, spiders, skeletons and vampire bats deeper;
+  a cave spawn is never nearer than ~180 cells (no popping in). Only kinds
+  in life.ron are taken away when far.
+- Pelting: a liquid hurts only above 250 cells/s (not 90), so a death's
+  burst of blood doesn't hurt what's beside it (a burst egg sac hurt its
+  own spiderlings).
 
 ### 5.3 The arena (`PLATYPUS_WORLD=arena`; `worldgen/src/arena.rs`, `game/src/arena.rs`)
 

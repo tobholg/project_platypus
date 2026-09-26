@@ -4278,6 +4278,8 @@ version = "0.1.0"
 dependencies = [
  "noise",
  "platypus_sim",
+ "ron",
+ "serde",
 ]
 
 [[package]]

@@ -240,6 +240,13 @@ pub struct Haunt {
     /// Put this high above the ground (cells, low..high): fireflies.
     #[serde(default)]
     pub above: Option<(f32, f32)>,
+    /// Only this deep under the surface (cells, from..to).
+    #[serde(default)]
+    pub depth: Option<(f32, f32)>,
+    /// Only in this underground biome (`fungal`, `crystal`, `toxic`, or
+    /// `none` for plain rock).
+    #[serde(default)]
+    pub zone: Option<String>,
     /// At most this many of it round the player.
     pub most: usize,
     /// A chance a second to spawn one when there are fewer.
@@ -330,7 +337,7 @@ fn ambient(
     life: Res<Life>,
     day: Res<crate::light::Daylight>,
     player: Query<&Kinematics, With<super::player::LocalPlayer>>,
-    critters: Query<(Entity, &Creature, &Kinematics), With<Critter>>,
+    critters: Query<(Entity, &Creature, &Kinematics), Without<super::player::LocalPlayer>>,
     mut clock: Local<f32>,
     mut seed: Local<u64>,
 ) {
@@ -339,10 +346,12 @@ fn ambient(
         return;
     }
     let p = pk.body.pos;
+    // (Only what life.ron brings comes and goes this way.)
     for (e, c, k) in &critters {
         let d = k.body.pos.distance(p);
+        let haunts = life.haunts.iter().any(|h| h.kind == c.kind);
         let off_hours = life.haunts.iter().any(|h| h.kind == c.kind && !h.when.now(day.time));
-        if d > GONE || (off_hours && d > OUT_OF_SIGHT) {
+        if haunts && (d > GONE || (off_hours && d > OUT_OF_SIGHT)) {
             commands.entity(e).despawn();
         }
     }
@@ -407,6 +416,19 @@ fn ambient(
             }),
         };
         let Some(mut at) = spot else { continue };
+        // Deep enough, in its biome, and out of sight (not popping in).
+        let depth = sim.generator.surface_hint(at.x as i32).map_or(0.0, |s| s as f32 - at.y);
+        if h.depth.is_some_and(|(lo, hi)| !(lo..hi).contains(&depth)) {
+            continue;
+        }
+        if let Some(z) = &h.zone
+            && sim.generator.zone_at(at.x as i32, at.y as i32).unwrap_or("none") != z
+        {
+            continue;
+        }
+        if h.place == Place::Cave && at.distance(p) < OUT_OF_SIGHT * 0.7 {
+            continue;
+        }
         if let Some((lo, hi)) = h.above {
             at.y += lo + unit(&mut rng) * (hi - lo);
         }

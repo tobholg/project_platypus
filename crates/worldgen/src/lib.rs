@@ -14,6 +14,7 @@ pub mod biome;
 pub mod caves;
 pub mod flora;
 pub mod islands;
+pub mod lairs;
 pub mod minerals;
 pub mod plan;
 pub mod structures;
@@ -59,6 +60,17 @@ pub trait ChunkGenerator: Send + Sync {
     /// unmodified chunk is generated again when it comes back into view).
     fn generate_with_spawns(&self, pos: ChunkPos) -> (Chunk, Vec<(CellPos, Spawn)>) {
         (self.generate(pos), Vec::new())
+    }
+
+    /// The underground biome at a cell (`fungal`, `crystal`, `toxic`), if
+    /// any: ambient life keyed to it.
+    fn zone_at(&self, _x: i32, _y: i32) -> Option<&'static str> {
+        None
+    }
+
+    /// Named places (a spider nest's middle), for tools and tests.
+    fn landmarks(&self) -> Vec<(CellPos, String)> {
+        Vec::new()
     }
 
     /// Whether the world has life of its own: enemies about the start,
@@ -178,6 +190,9 @@ pub struct TerrainGen {
     /// By material id: solid (static or powder), a plant.
     solid: Vec<bool>,
     plant: Vec<bool>,
+    /// Lairs (`with_lairs`), and which each chamber is, if any.
+    lairs: Vec<lairs::Lair>,
+    lair_of: Vec<Option<u16>>,
 }
 
 impl TerrainGen {
@@ -258,7 +273,79 @@ impl TerrainGen {
             pockets: Perlin::new(s(5)),
             strata: Perlin::new(s(6)),
             heat: mats.iter().map(|(id, _)| mats.phys(id).heat).collect(),
+            lairs: Vec::new(),
+            lair_of: Vec::new(),
         }
+    }
+
+    /// Lairs in its caves (`lairs.rs`): which chambers they take is from the
+    /// seed.
+    pub fn with_lairs(mut self, defs: &[lairs::LairDef], mats: &MaterialTable) -> Self {
+        self.lair_of = lairs::place(&self.plan, &self.plan.caves, defs);
+        self.lairs = lairs::ready(defs, mats);
+        self
+    }
+
+    /// Lairs dress their chambers: the lining on the walls (where rock is
+    /// within two cells), threads of it from the roof.
+    fn dress_lairs(&self, pos: ChunkPos, cells: &mut [Cell]) {
+        let o = pos.origin();
+        for &ci in self.plan.caves.chambers_in(pos.x, pos.y) {
+            let Some(Some(k)) = self.lair_of.get(ci as usize) else { continue };
+            let (c, lair) = (&self.plan.caves.chambers[ci as usize], &self.lairs[*k as usize]);
+            let at = |lx: i32, ly: i32| (0..CHUNK).contains(&lx) && (0..CHUNK).contains(&ly);
+            let solid = |cells: &[Cell], lx: i32, ly: i32| at(lx, ly) && self.solid[cells[(ly * CHUNK + lx) as usize].material.0 as usize];
+            let mut lining = Vec::new();
+            for ly in 0..CHUNK {
+                for lx in 0..CHUNK {
+                    let (x, y) = (o.x + lx, o.y + ly);
+                    let (dx, dy) = ((x as f32 - c.x) / c.rx, (y as f32 - c.y) / c.ry);
+                    if dx * dx + dy * dy > 1.6 || !cells[(ly * CHUNK + lx) as usize].is_air() {
+                        continue;
+                    }
+                    let h = hash(&[self.plan.seed, 0x3EB, x as u64, y as u64]);
+                    let wall = (-2..=2).any(|oy| (-2..=2).any(|ox| solid(cells, lx + ox, ly + oy)));
+                    let clumps = hash(&[self.plan.seed, 0x3EC, (x >> 2) as u64, (y >> 2) as u64]) % 1000;
+                    if wall && (clumps as f32) < lair.density * 1000.0 && !h.is_multiple_of(3) {
+                        lining.push((lx, ly));
+                    }
+                    // A thread from the roof.
+                    if solid(cells, lx, ly + 1) && h.is_multiple_of(11) {
+                        let long = 3 + (h >> 8) as i32 % 12;
+                        for d in 0..long {
+                            if !at(lx, ly - d) || !cells[((ly - d) * CHUNK + lx) as usize].is_air() {
+                                break;
+                            }
+                            lining.push((lx, ly - d));
+                        }
+                    }
+                }
+            }
+            for (lx, ly) in lining {
+                cells[(ly * CHUNK + lx) as usize] = Cell::new(lair.lining, (hash(&[lx as u64, ly as u64, 0x3ED]) & 255) as u8);
+            }
+        }
+    }
+
+    /// Lairs' keepers, from the chunk its chamber's middle is in: across the
+    /// middle (they fall to the floor).
+    fn lair_spawns(&self, pos: ChunkPos) -> Vec<(CellPos, Spawn)> {
+        let mut out = Vec::new();
+        for &ci in self.plan.caves.chambers_in(pos.x, pos.y) {
+            let Some(Some(k)) = self.lair_of.get(ci as usize) else { continue };
+            let c = &self.plan.caves.chambers[ci as usize];
+            let mid = CellPos::new(c.x as i32, c.y as i32);
+            if mid.chunk() != pos {
+                continue;
+            }
+            let keepers = &self.lairs[*k as usize].keepers;
+            let gap = (c.rx * 1.2 / keepers.len().max(1) as f32).min(10.0);
+            for (n, kind) in keepers.iter().enumerate() {
+                let dx = (n as f32 - (keepers.len() as f32 - 1.0) / 2.0) * gap;
+                out.push((CellPos::new(mid.x + dx as i32, mid.y), Spawn::Creature(kind)));
+            }
+        }
+        out
     }
 
     pub fn plan(&self) -> &WorldPlan {
@@ -690,19 +777,21 @@ impl TerrainGen {
         let o = pos.origin();
         let inside = |(x, y): &(i32, i32)| (o.x..o.x + CHUNK).contains(x) && (o.y..o.y + CHUNK).contains(y);
         let mut out = Vec::new();
-        for (_, piece) in self.plan.structures.pieces_in(pos.x, pos.y) {
+        for (s, piece) in self.plan.structures.pieces_in(pos.x, pos.y) {
+            // The dead keep crypts; castles are orcs'.
+            let guard = if s.kind == StructureKind::Crypt { "skeleton" } else { "orc" };
             // (A chest's glyph is its bottom-left block of four: its feet
             // are two blocks in.)
             for (x, y) in piece.blocks_of(Glyph::Chest).map(|(x, y)| (x + 4, y)).filter(inside) {
                 out.push((CellPos::new(x, y), Spawn::Chest));
             }
             for (x, y) in piece.blocks_of(Glyph::Spawn).map(|(x, y)| (x + 2, y)).filter(inside) {
-                out.push((CellPos::new(x, y), Spawn::Creature("orc")));
+                out.push((CellPos::new(x, y), Spawn::Creature(guard)));
             }
             // A boss is a pack, until there are bosses.
             for (x, y) in piece.blocks_of(Glyph::Boss).filter(inside) {
                 for dx in [-10, 2, 14] {
-                    out.push((CellPos::new(x + dx, y), Spawn::Creature("orc")));
+                    out.push((CellPos::new(x + dx, y), Spawn::Creature(guard)));
                 }
             }
         }
@@ -919,6 +1008,26 @@ impl ChunkGenerator for TerrainGen {
         self.plan.climate
     }
 
+    fn landmarks(&self) -> Vec<(CellPos, String)> {
+        self.lair_of
+            .iter()
+            .enumerate()
+            .filter_map(|(i, l)| l.map(|k| (i, k)))
+            .map(|(i, k)| {
+                let c = &self.plan.caves.chambers[i];
+                (CellPos::new(c.x as i32, c.y as i32), self.lairs[k as usize].name.clone())
+            })
+            .collect()
+    }
+
+    fn zone_at(&self, x: i32, y: i32) -> Option<&'static str> {
+        self.plan.caves.zone_at(x, y).map(|z| match z {
+            caves::Zone::Fungal => "fungal",
+            caves::Zone::Crystal => "crystal",
+            caves::Zone::Toxic => "toxic",
+        })
+    }
+
     fn surface_hint(&self, x: i32) -> Option<i32> {
         Some(self.surface_at(x))
     }
@@ -984,8 +1093,10 @@ impl ChunkGenerator for TerrainGen {
             }
         }
         self.dress(pos, &mut cells, &mut rng);
+        self.dress_lairs(pos, &mut cells);
         self.sweep_specks(pos, &mut cells);
         let mut spawns = self.structure_spawns(pos);
+        spawns.extend(self.lair_spawns(pos));
         spawns.extend(self.cave_chest(pos, &cells, &mut rng).map(|p| (p, Spawn::Chest)));
         (Chunk::with_background(pos, cells, bg), spawns)
     }
@@ -1738,4 +1849,38 @@ mod tests {
 
 
 
+
+    /// Lairs take some chambers (the same ones every time), line them, and
+    /// report their keepers once, from the chunk of the chamber's middle.
+    #[test]
+    fn lairs_take_chambers_line_them_and_keep_them() {
+        let m = mats();
+        let defs = vec![lairs::LairDef {
+            name: "spider nest".into(),
+            depth: (80.0, 100_000.0),
+            zones: vec![],
+            chance: 0.2,
+            lining: "cobweb".into(),
+            density: 0.6,
+            keepers: vec![("spider".into(), 1), ("egg_sac".into(), 2)],
+            min_size: 14.0,
+        }];
+        let g = TerrainGen::new(7, Preset::Small, &m).with_lairs(&defs, &m);
+        let again = TerrainGen::new(7, Preset::Small, &m).with_lairs(&defs, &m);
+        assert_eq!(g.lair_of, again.lair_of, "the same chambers every time");
+        let taken: Vec<usize> = g.lair_of.iter().enumerate().filter(|(_, l)| l.is_some()).map(|(i, _)| i).collect();
+        assert!(taken.len() >= 3, "some chambers are lairs: {}", taken.len());
+        let c = &g.plan.caves.chambers[taken[0]];
+        let mid = CellPos::new(c.x as i32, c.y as i32).chunk();
+        let (chunk, spawns) = g.generate_with_spawns(mid);
+        let kinds: Vec<&str> = spawns.iter().filter_map(|(_, s)| if let Spawn::Creature(k) = s { Some(*k) } else { None }).collect();
+        assert!(kinds.contains(&"spider") && kinds.iter().filter(|k| **k == "egg_sac").count() == 2, "its keepers: {kinds:?}");
+        let web = m.expect_id("cobweb");
+        let near: i32 = (-1..=1).flat_map(|dy| (-1..=1).map(move |dx| (dx, dy))).map(|(dx, dy)| {
+            let (ch, _) = g.generate_with_spawns(ChunkPos::new(mid.x + dx, mid.y + dy));
+            let _ = &chunk;
+            (0..CHUNK).flat_map(|y| (0..CHUNK).map(move |x| (x, y))).filter(|&(x, y)| ch.get(x as usize, y as usize).material == web).count() as i32
+        }).sum();
+        assert!(near > 20, "webs line it: {near} cells");
+    }
 }

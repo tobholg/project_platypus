@@ -52,8 +52,8 @@ fn main() {
         Ok("arena") => Arc::new(ArenaGen::new(&materials)),
         Ok("flat") => Arc::new(FlatGen { width_chunks: 64, height_chunks: 24, floor: 200, stone: materials.expect_id("stone") }),
         // PLATYPUS_WORLD=small: the small preset (quicker to look around).
-        Ok("small") => Arc::new(TerrainGen::new(seed, Preset::Small, &materials)),
-        _ => Arc::new(TerrainGen::new(seed, Preset::Large, &materials)),
+        Ok("small") => Arc::new(TerrainGen::new(seed, Preset::Small, &materials).with_lairs(&lairs(), &materials)),
+        _ => Arc::new(TerrainGen::new(seed, Preset::Large, &materials).with_lairs(&lairs(), &materials)),
     };
     let spawn = generator.spawn_point();
     // Scenarios run uncapped, unless PLATYPUS_VSYNC=1 (to see the frame
@@ -97,6 +97,14 @@ fn main() {
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin))
         .add_plugins(spikes_plugin)
         .run();
+}
+
+/// The lairs in the caves (`assets/data/lairs.ron`).
+fn lairs() -> Vec<platypus_worldgen::lairs::LairDef> {
+    data::load_ron(&data::data_path("lairs.ron")).unwrap_or_else(|e| {
+        warn!("{e}");
+        Vec::new()
+    })
 }
 
 #[cfg(feature = "spikes")]

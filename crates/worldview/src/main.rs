@@ -74,7 +74,12 @@ fn main() {
     let mats = Arc::new(MaterialTable::from_ron(&src).unwrap_or_else(|e| panic!("{e}")));
 
     let t = Instant::now();
-    let generator = TerrainGen::new(args.seed, args.preset, &mats);
+    // With the game's lairs, so the picture is the game's world.
+    let lairs = std::fs::read_to_string(root.with_file_name("lairs.ron")).map_err(|e| e.to_string()).and_then(|t| platypus_worldgen::lairs::parse(&t)).unwrap_or_else(|e| {
+        eprintln!("lairs.ron: {e}");
+        Vec::new()
+    });
+    let generator = TerrainGen::new(args.seed, args.preset, &mats).with_lairs(&lairs, &mats);
     let plan = generator.plan();
     println!("plan: seed {} {} {}×{} cells, sea level {}, planned in {:.2?}", args.seed, args.preset.name(), plan.width, plan.height, plan.sea_level, t.elapsed());
     for band in Band::ALL {

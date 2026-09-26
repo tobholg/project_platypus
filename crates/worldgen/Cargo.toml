@@ -8,3 +8,5 @@ publish.workspace = true
 [dependencies]
 platypus_sim.workspace = true
 noise.workspace = true
+serde.workspace = true
+ron.workspace = true
