@@ -75,17 +75,24 @@ pub struct PlaySound {
     pub at: Option<Vec2>,
     pub volume: f32,
     pub pitch: f32,
+    /// Through the music bus (its volume, not placed), not the effects'.
+    pub music: bool,
 }
 
 impl PlaySound {
     /// `name` at `at` in the world.
     pub fn at(name: impl Into<Cow<'static, str>>, at: Vec2) -> Self {
-        PlaySound { name: name.into(), at: Some(at), volume: 1.0, pitch: 1.0 }
+        PlaySound { name: name.into(), at: Some(at), volume: 1.0, pitch: 1.0, music: false }
     }
 
     /// `name`, not placed (the interface, what's yours).
     pub fn here(name: impl Into<Cow<'static, str>>) -> Self {
-        PlaySound { name: name.into(), at: None, volume: 1.0, pitch: 1.0 }
+        PlaySound { name: name.into(), at: None, volume: 1.0, pitch: 1.0, music: false }
+    }
+
+    /// `name` as music (a melody over the moods), on the music bus.
+    pub fn music(name: impl Into<Cow<'static, str>>) -> Self {
+        PlaySound { name: name.into(), at: None, volume: 1.0, pitch: 1.0, music: true }
     }
 
     pub fn volume(mut self, v: f32) -> Self {
@@ -363,7 +370,12 @@ fn play(
         }
         let take = takes[(rng.unit() * takes.len() as f32) as usize % takes.len()].clone();
         let speed = (ask.pitch * (1.0 + def.pitch * (rng.unit() * 2.0 - 1.0))).max(0.05) as f64;
-        let mut e = commands.spawn((SfxPool, SamplePlayer::new(take).with_volume(Volume::Linear(def.volume * ask.volume)), PlaybackSettings { speed, ..default() }));
+        let player = SamplePlayer::new(take).with_volume(Volume::Linear(def.volume * ask.volume));
+        if ask.music {
+            commands.spawn((MusicPool, player, PlaybackSettings { speed, ..default() }));
+            continue;
+        }
+        let mut e = commands.spawn((SfxPool, player, PlaybackSettings { speed, ..default() }));
         if let Some(at) = ask.at {
             e.insert(Transform::from_translation(at.extend(0.0)));
         }

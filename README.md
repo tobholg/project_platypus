@@ -178,7 +178,9 @@ status timers under them; dying just refills health (`PLATYPUS_RESPAWN=1` to res
 played by bevy_seedling. Effects are placed in the world; the ambience follows what's around
 you (fire, lava, water, rain, wind, a cave's air, drips) and the music its mood (day, night,
 underground). F11 mutes; `PLATYPUS_MUTE=1` starts muted; the arena panel's Sounds row plays
-each; `PLATYPUS_SOUND_LOG=1` logs what plays and what's heard.
+each; `PLATYPUS_SOUND_LOG=1` logs what plays and what's heard. On the surface a melody plays now
+and then over the music (`PLATYPUS_MELODY=1`: one soon and every 12 s); `PLATYPUS_HIT=g` (b … h,
+`old`) plays another take of the sword hit on every blow, to compare.
 
 **Backdrops** (DESIGN §4.3b): Noita-like ranges behind the surface (sharp faceted peaks,
 snow, cloud heaps rising behind, a look per biome, calm parallax), the sun by day, the moon and

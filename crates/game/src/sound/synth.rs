@@ -51,8 +51,15 @@ pub enum Make {
     /// behind it (`weight` Hz, dropping from about three times that), and
     /// a low rumble under all; `tear`: tiny wet bursts a second, scattered
     /// through it (flesh parting); saturated a little, muffled above
-    /// `muffle`. `weight` 0: no thump at all.
-    Slash { chop: f32, weight: f32, #[serde(default = "half")] edge: f32, #[serde(default = "half")] wet: f32, #[serde(default)] tear: f32, length: f32, #[serde(default = "open")] muffle: f32 },
+    /// `muffle`. `weight` 0: no thump at all. `slice`: a longer cut over
+    /// the bite (noise sweeping down from high, the blade going through);
+    /// `soft`: the chop's rise (s: longer, less of a knock at the start).
+    Slash { chop: f32, weight: f32, #[serde(default = "half")] edge: f32, #[serde(default = "half")] wet: f32, #[serde(default)] tear: f32, #[serde(default)] slice: f32, #[serde(default = "chop_rise")] soft: f32, length: f32, #[serde(default = "open")] muffle: f32 },
+    /// A tune (a one-shot): `notes` (semitones over `root` Hz, and beats
+    /// at `bpm`; a note at 99 is a rest) on a soft synth pluck: two
+    /// detuned voices, a filter closing from `bright` Hz, each note
+    /// ringing `ring` s, a little sine an octave down under it.
+    Melody { root: f32, bpm: f32, notes: Vec<(f32, f32)>, #[serde(default = "melody_bright")] bright: f32, #[serde(default = "melody_ring")] ring: f32 },
     /// Loops (`length` s): a fire's roar, hiss and crackles (per second).
     Fire { crackle: f32, roar: f32, #[serde(default = "tenth")] hiss: f32 },
     /// A cave: a low rumble, air moving through it, a faint low hum.
@@ -279,7 +286,8 @@ pub fn render(make: &Make, sr: f32, seed: u64, loops: f32) -> Buf {
         Make::Step { heel, scuff, q, grit, length, muffle } => Buf::mono(step(*heel, *scuff, *q, *grit, *length, *muffle, sr, rng)),
         Make::Swish { low, high, length, q, whistle } => Buf::mono(swish(*low, *high, *length, *q, *whistle, sr, rng)),
         Make::Impact { body, crack, flesh, slice, ring, length, muffle } => Buf::mono(impact(*body, *crack, *flesh, *slice, *ring, *length, *muffle, sr, rng)),
-        Make::Slash { chop, weight, edge, wet, tear, length, muffle } => Buf::mono(slash(*chop, *weight, *edge, *wet, *tear, *length, *muffle, sr, rng)),
+        Make::Slash { chop, weight, edge, wet, tear, slice, soft, length, muffle } => Buf::mono(slash(&SlashParts { chop: *chop, weight: *weight, edge: *edge, wet: *wet, tear: *tear, slice: *slice, soft: *soft, length: *length, muffle: *muffle }, sr, rng)),
+        Make::Melody { root, bpm, notes, bright, ring } => melody(*root, *bpm, notes, *bright, *ring, sr, rng),
         Make::Fire { crackle, roar, hiss } => looped(fire(*crackle, *roar, *hiss, total, sr, rng), loops, sr),
         Make::Cave { rumble, wind, hum } => looped(cave(*rumble, *wind, *hum, total, sr, rng), loops, sr),
         Make::Rain { drops } => looped(rain(*drops, total, sr, rng), loops, sr),
@@ -577,8 +585,33 @@ fn impact(body: f32, crack: f32, flesh: f32, slice: f32, ring: f32, length: f32,
         .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
-fn slash(chop: f32, weight: f32, edge: f32, wet: f32, tear: f32, length: f32, muffle: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
+fn chop_rise() -> f32 {
+    0.002
+}
+
+fn melody_bright() -> f32 {
+    2200.0
+}
+
+fn melody_ring() -> f32 {
+    1.1
+}
+
+/// `Make::Slash`'s parts.
+struct SlashParts {
+    chop: f32,
+    weight: f32,
+    edge: f32,
+    wet: f32,
+    tear: f32,
+    slice: f32,
+    soft: f32,
+    length: f32,
+    muffle: f32,
+}
+
+fn slash(p: &SlashParts, sr: f32, rng: &mut Rng) -> Vec<f32> {
+    let SlashParts { chop, weight, edge, wet, tear, slice, soft, length, muffle } = *p;
     let n = frames(length * 1.4 + 0.03, sr);
     // Flesh parting: tiny wet bursts (1.5-5 ms, 0.7-2.6 kHz) scattered through
     // the chop, thinning out, each its own pitch and loudness.
@@ -598,7 +631,7 @@ fn slash(chop: f32, weight: f32, edge: f32, wet: f32, tear: f32, length: f32, mu
             at += -(1.0 - rng.unit()).max(1e-6).ln() / tear;
         }
     }
-    let (mut bite, mut meat, mut under, mut soft) = (Filter::new(Pass::Band, 1.6, sr), Filter::new(Pass::Band, 0.9, sr), Filter::new(Pass::Low, 0.7, sr), Filter::new(Pass::Low, 0.6, sr));
+    let (mut bite, mut meat, mut under, mut lowpass, mut blade) = (Filter::new(Pass::Band, 1.6, sr), Filter::new(Pass::Band, 0.9, sr), Filter::new(Pass::Low, 0.7, sr), Filter::new(Pass::Low, 0.6, sr), Filter::new(Pass::Band, 2.2, sr));
     let (chop, weight) = (chop * rng.range(0.88, 1.12), weight * rng.range(0.9, 1.1));
     // (Each take its own flutter and a slightly different gap after the bite.)
     let (flutter, gap) = (rng.range(28.0, 46.0), rng.range(0.003, 0.007));
@@ -615,7 +648,10 @@ fn slash(chop: f32, weight: f32, edge: f32, wet: f32, tear: f32, length: f32, mu
             let on = if t < gap { 0.0 } else { 1.0 };
             let hz = chop * (1.35 - 0.7 * (tc / length).min(1.0));
             let squelch = 1.0 + wet * 0.7 * (TAU * flutter * tc).sin();
-            let c = meat.tick(x, hz) * env(tc, 0.002, length * 0.75) * squelch * on * 4.2;
+            let c = meat.tick(x, hz) * env(tc, soft, length * 0.75) * squelch * on * 4.2;
+            // The cut: noise sweeping down from high as the blade goes
+            // through.
+            let s = blade.tick(x, 1800.0 + 3700.0 * (-t / 0.03).exp()) * env(t, 0.0015, 0.06) * slice * 3.0;
             // The weight behind it: a thump dropping in pitch.
             ph += weight * (1.0 + 2.0 * (-tc / 0.012).exp()) / sr;
             // (Its overtones carry it on small speakers, which lose what's
@@ -624,9 +660,47 @@ fn slash(chop: f32, weight: f32, edge: f32, wet: f32, tear: f32, length: f32, mu
             let w = ((TAU * ph).sin() + 0.6 * (2.0 * TAU * ph).sin() + 0.3 * (3.0 * TAU * ph).sin()) * env(tc, 0.002, length * 0.6) * on * 0.3 * thump;
             // A low rumble under it all (none without the thump).
             let r = under.tick(x, 320.0) * env(tc, 0.004, length * 1.1) * on * 1.2 * thump;
-            soft.tick((1.6 * (b + c + w + r + grains[i])).tanh(), muffle)
+            lowpass.tick((1.6 * (b + s + c + w + r + grains[i])).tanh(), muffle)
         })
         .collect()
+}
+
+/// A tune on a soft pluck (`Make::Melody`), stereo: each voice a little
+/// to one side.
+fn melody(root: f32, bpm: f32, notes: &[(f32, f32)], bright: f32, ring: f32, sr: f32, rng: &mut Rng) -> Buf {
+    let beat = 60.0 / bpm.max(20.0);
+    let total: f32 = notes.iter().map(|n| n.1).sum::<f32>() * beat + ring + 0.1;
+    let mut b = Buf::zeros(frames(total, sr));
+    let mut at = 0.0;
+    for &(semis, beats) in notes {
+        if semis < 90.0 {
+            let f0 = root * 2f32.powf(semis / 12.0);
+            // (A touch of human: not quite on the beat, not quite as loud.)
+            let (start, loud) = (frames(at + rng.range(0.0, 0.008), sr), rng.range(0.85, 1.0));
+            for (voice, detune, pan) in [(0usize, 0.9971f32, -0.35f32), (1, 1.0029, 0.35)] {
+                let mut f = Filter::new(Pass::Low, 0.8, sr);
+                let mut ph = rng.unit();
+                for k in 0..frames(ring * 1.3, sr) {
+                    let t = k as f32 / sr;
+                    ph = (ph + f0 * detune / sr).fract();
+                    // Half triangle, half saw: soft, with a little edge.
+                    let tri = 1.0 - 4.0 * (ph - 0.5).abs();
+                    let saw = 2.0 * ph - 1.0;
+                    let x = 0.65 * tri + 0.35 * saw;
+                    // The filter closes fast (the pluck), then rests low.
+                    let cut = f0 * 1.5 + bright * (-t / 0.09).exp();
+                    let mut y = f.tick(x, cut) * env(t, 0.005, ring) * loud * 0.5;
+                    if voice == 0 {
+                        // The sine an octave down, under both.
+                        y += (TAU * f0 * 0.5 * t).sin() * env(t, 0.006, ring * 0.7) * loud * 0.35;
+                    }
+                    b.add(start + k, y, pan);
+                }
+            }
+        }
+        at += beats * beat;
+    }
+    b
 }
 
 // ---- loops ----
@@ -900,7 +974,8 @@ mod tests {
             Make::Step { heel: 80.0, scuff: 900.0, q: 0.8, grit: 0.3, length: 0.1, muffle: 1500.0 },
             Make::Swish { low: 350.0, high: 2600.0, length: 0.22, q: 1.8, whistle: 0.4 },
             Make::Impact { body: 110.0, crack: 0.6, flesh: 1300.0, slice: 0.5, ring: 0.3, length: 0.14, muffle: 3000.0 },
-            Make::Slash { chop: 900.0, weight: 80.0, edge: 0.6, wet: 0.5, tear: 200.0, length: 0.16, muffle: 5000.0 },
+            Make::Slash { chop: 900.0, weight: 80.0, edge: 0.6, wet: 0.5, tear: 200.0, slice: 0.5, soft: 0.01, length: 0.16, muffle: 5000.0 },
+            Make::Melody { root: 247.0, bpm: 112.0, notes: vec![(0.0, 0.5), (99.0, 0.5), (7.0, 1.0)], bright: 2200.0, ring: 1.0 },
             Make::Fire { crackle: 20.0, roar: 0.6, hiss: 0.1 },
             Make::Cave { rumble: 0.6, wind: 0.5, hum: 0.3 },
             Make::Rain { drops: 60.0 },
@@ -911,7 +986,7 @@ mod tests {
             Make::Pads { root: 110.0, chords: vec![vec![0.0, 7.0, 16.0], vec![5.0, 9.0, 12.0]], chord: 4.0, bright: 1200.0, plucks: 0.3, scale: vec![0.0, 2.0, 4.0, 7.0, 9.0] },
         ];
         for (i, m) in makes.iter().enumerate() {
-            let loops = if i >= 13 { 6.0 } else { 0.0 };
+            let loops = if i >= 14 { 6.0 } else { 0.0 };
             let mut b = render(m, sr, i as u64, loops);
             assert!(!b.is_empty(), "{m:?}: empty");
             assert!(b.l.iter().chain(&b.r).all(|x| x.is_finite()), "{m:?}: not finite");
