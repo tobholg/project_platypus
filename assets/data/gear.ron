@@ -198,7 +198,7 @@
         // to a creature it bites into; `rope` its colour, `links`: a chain.
         (id: "grappling_hook", name: "Grappling hook", color: (176, 140, 90),
             gear: (slot: Hook, hook: (length: 120, reel: 240, speed: 800, rope: (176, 140, 90))),
-            about: "E: throw it; it pulls you to what it grabs. Jump to let go."),
+            about: "E: throw it; it reels you to what it grabs. S: pay out, W: climb, A/D: swing. Jump to let go."),
         (id: "chain_hook", name: "Chain hook", color: (160, 162, 172),
             gear: (slot: Hook, stats: { Armor: 1 }, hook: (length: 170, reel: 330, speed: 1000, damage: 8, rope: (160, 162, 172), links: true)),
             about: "A longer reach, a faster pull, and a bite."),

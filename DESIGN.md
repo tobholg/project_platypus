@@ -386,12 +386,20 @@ a stat is naming it once (`gear/stats.rs`) and reading it where it acts.
 - **Gear that moves you:** boots with a trick (rocket boots: hold jump in the
   air to thrust up, their exhaust real fire; cloud boots: air jumps), and a
   **grappling hook** in its own slot, used with E whatever is in the hand:
-  Terraria's (changed 2026-09-26 from a Worms-style swinging rope). Thrown at
-  the cursor, it takes hold of what it meets (a solid cell or a platform, a
-  chest or a body, a creature) and pulls you straight in to hang there; jump
-  lets go with a full jump, E again hooks somewhere else. The cell it holds
-  holds only while it's solid (dig it, blast it, and it comes loose), and
-  anything coming between you frees it. Something smaller than you (a chest,
+  Terraria's by default, on a real rope (2026-09-27: the hybrid, after the
+  pure Terraria pull got stuck on walls). Thrown at the cursor, it takes hold
+  of what it meets (a solid cell or a platform, a chest or a body, a
+  creature) and reels you in to hang there; S stops the reel. The rope is a
+  length, not a spring: S pays it out (rappel), W climbs it, and hanging
+  loose you swing as a pendulum, A/D pumping it (gently: they never brake
+  it). Against a wall on the rope, pressing away kicks off it. The rope wraps
+  round corners it's pulled over and unwraps as you swing back; reeled into
+  a corner and stuck, you slip round it (and round a stall against a wall).
+  Hung near a ledge's lip, W or pressing toward it mantles up onto the top.
+  Jump lets go with a full jump on top of the swing's momentum, E again
+  hooks somewhere else. The cell it holds holds only while it's solid (dig
+  it, blast it, and it comes loose); a body anchor comes loose when
+  something comes between you. Something smaller than you (a chest,
   a body, a small creature) is pulled to you instead. A hook's reach, pull
   speed, throw speed, bite and look are data (`hook` in gear.ron).
 - Not now: durability and repair, coins and merchants.

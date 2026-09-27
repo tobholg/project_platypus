@@ -3057,9 +3057,11 @@ fn spider_script(
     }
 }
 
-/// The grappling hook (Terraria's): a chest pulled in; hooked on a stone
-/// beam overhead, pulled up to it and hanging; a jump off it (a full
-/// jump); hooked again, and the cell it holds dug out (it comes loose).
+/// The grappling hook: hooked on a wall above an overhang, from below and
+/// out (pulled up round the overhang's corner, not stuck on it); hooked on the wall's top edge and mantled up
+/// onto it; hooked on a beam overhead (pulled up, hanging), rope let out
+/// (rappelling down), a swing pumped and let go of mid-swing; a kick off
+/// the wall on the rope; a chest pulled in. Logs each.
 #[allow(clippy::too_many_arguments)]
 fn hook_script(
     mut commands: Commands,
@@ -3070,7 +3072,7 @@ fn hook_script(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut player: Query<(&mut Kinematics, Option<&crate::gear::hook::Rope>), With<LocalPlayer>>,
     boxes: Query<&Kinematics, (With<crate::hands::chests::Chest>, Without<LocalPlayer>)>,
-    mut state: Local<(u8, f32, f32)>,
+    mut state: Local<(u8, f32, f32, f32)>,
 ) {
     if s.name != "hook" {
         return;
@@ -3078,95 +3080,151 @@ fn hook_script(
     let Ok((mut k, rope)) = player.single_mut() else { return };
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR;
+    let fl = floor as f32;
     let beam = floor + 110;
-    let what = rope.map_or("none", |r| r.state(k.body.pos));
-    let height = k.body.pos.y - k.body.half.y - floor as f32;
-    let chest = boxes.iter().next().map(|c| c.body.pos);
+    let (what, wraps) = rope.map_or(("none", 0), |r| r.state());
+    let height = k.body.pos.y - k.body.half.y - fl;
     let dt = t - state.1;
-    let (mut hook, mut jump) = (false, false);
+    let mut held: Vec<KeyCode> = Vec::new();
+    let put = |k: &mut Kinematics, x: f32| {
+        k.body.pos = Vec2::new(x, fl + 8.0);
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+    };
+    let next = |state: &mut (u8, f32, f32, f32)| *state = (state.0 + 1, t, 0.0, 0.0);
     match state.0 {
         0 if t > 0.5 => {
-            // A stone beam overhead, and a chest out on the floor.
+            // A stone beam overhead; a stone column (700..707, up to 80)
+            // with a bump on its face at 40; a chest out on the floor.
             if let Some(stone) = sim.materials().id("stone") {
                 for x in (480..=780).step_by(4) {
                     sim.queue(WorldEdit::Paint { center: CellPos::new(x, beam + 3), radius: 3, material: stone, overwrite: true });
                 }
-                // And a wall to hook from the side.
-                for y in (floor..floor + 80).step_by(4) {
+                for y in (floor..floor + 78).step_by(3) {
                     sim.queue(WorldEdit::Paint { center: CellPos::new(703, y), radius: 3, material: stone, overwrite: true });
                 }
-            }
-            chests.spawn_placed(&mut commands, Vec2::new(650.0, floor as f32));
-            k.body.pos = Vec2::new(560.0, floor as f32 + 8.0);
-            k.body.vel = Vec2::ZERO;
-            k.prev_pos = k.body.pos;
-            state.0 = 1;
-        }
-        // The chest, pulled in.
-        1 if t > 1.2 => {
-            if let Some(c) = chest {
-                cursor.0 = Some(c);
-                info!("hook: the chest is {:.0} cells off; hooking it", c.distance(k.body.pos));
-                *state = (2, t, 0.0);
-            }
-        }
-        2 => {
-            hook = dt < 0.1;
-            if dt > 1.3 {
-                info!("hook: 1.3 s on: the hook {what}, the chest now {:.0} cells off", chest.map_or(-1.0, |c| c.distance(k.body.pos)));
-                *state = (3, t, 0.0);
-            }
-        }
-        // The beam overhead: pulled up to it, hanging.
-        3 => {
-            cursor.0 = Some(Vec2::new(600.0, beam as f32));
-            hook = (0.05..0.15).contains(&dt);
-            if dt > 1.2 {
-                info!("hook: hooked on the beam 1.1 s ago: the hook {what}, {height:.0} cells up (the beam's underside is at 110), moving {:.0}", k.body.vel.length());
-                *state = (4, t, height);
-            }
-        }
-        // Onto the wall from the side, and a jump off it.
-        4 => {
-            cursor.0 = Some(Vec2::new(700.0, floor as f32 + 50.0));
-            hook = (0.05..0.15).contains(&dt);
-            if dt > 1.2 {
-                info!("hook: hooked on the wall: the hook {what}, {height:.0} cells up, x {:.0}", k.body.pos.x);
-                *state = (7, t, height);
-            }
-        }
-        7 => {
-            jump = dt < 0.4;
-            state.2 = state.2.max(height);
-            if dt > 0.12 && dt < 0.14 {
-                info!("hook: jumped: the hook {what}, moving up at {:.0}", k.body.vel.y);
-            }
-            if dt > 1.5 {
-                info!("hook: the jump off the hook rose to {:.0} cells", state.2);
-                *state = (5, t, 0.0);
-            }
-        }
-        // Hooked again; the cell it holds dug out.
-        5 => {
-            cursor.0 = Some(Vec2::new(670.0, beam as f32));
-            hook = (0.05..0.15).contains(&dt);
-            if (1.2..1.25).contains(&dt) && state.2 == 0.0 {
-                state.2 = 1.0;
-                info!("hook: hooked on again: the hook {what}, {height:.0} cells up");
-                if let Some(air) = sim.materials().id("air") {
-                    for x in (640..=700).step_by(4) {
-                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, beam + 1), radius: 4, material: air, overwrite: true });
+                // An overhang: a slab out of the column's face at 50.
+                for x in 690..=700 {
+                    for y in [floor + 49, floor + 50] {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 1, material: stone, overwrite: true });
                     }
                 }
             }
-            if dt > 1.6 {
-                info!("hook: dug the beam out over it: the hook {what}, {height:.0} cells up, falling at {:.0}", -k.body.vel.y);
-                state.0 = 6;
+            chests.spawn_placed(&mut commands, Vec2::new(560.0, fl));
+            put(&mut k, 660.0);
+            next(&mut state);
+        }
+        // Up the column's face, past the bump.
+        1 if dt > 0.4 => {
+            cursor.0 = Some(Vec2::new(701.0, fl + 70.0));
+            if dt < 0.5 {
+                held.push(KeyCode::KeyE);
+            }
+            if dt > 1.8 {
+                info!("hook: hooked on the column's face above an overhang, from below and out: the hook {what}, at ({:.0}, {height:.0}) (the overhang's at 48..51, 689..701; hooked at ~70), moving {:.0}", k.body.pos.x, k.body.vel.length());
+                next(&mut state);
+            }
+        }
+        // Onto the column's top edge (from its right, out in the open); W:
+        // up onto it.
+        2 => {
+            if dt < 0.05 {
+                put(&mut k, 728.0);
+            }
+            cursor.0 = Some(Vec2::new(706.0, fl + 80.0));
+            if (0.1..0.2).contains(&dt) {
+                held.push(KeyCode::KeyE);
+            }
+            if dt > 1.0 {
+                held.push(KeyCode::KeyW);
+            }
+            if dt > 1.7 {
+                info!("hook: hooked on the column's top and W: the hook {what}, at ({:.0}, {height:.0}) (the top is at ~78, 700..706)", k.body.pos.x);
+                put(&mut k, 600.0);
+                next(&mut state);
+            }
+        }
+        // The beam overhead: pulled up, hanging.
+        3 => {
+            cursor.0 = Some(Vec2::new(600.0, beam as f32));
+            if dt < 0.1 {
+                held.push(KeyCode::KeyE);
+            }
+            if dt > 1.2 {
+                info!("hook: hooked on the beam: the hook {what}, {height:.0} cells up (the beam is at 110)");
+                state.2 = height;
+                next(&mut state);
+            }
+        }
+        // S: rappel down.
+        4 => {
+            held.push(KeyCode::KeyS);
+            if dt > 0.9 {
+                info!("hook: 0.9 s of S: down to {height:.0} cells, the hook {what}");
+                next(&mut state);
+            }
+        }
+        // D: pump a swing; then jump off.
+        5 => {
+            state.2 = state.2.max(k.body.pos.x - 600.0);
+            state.3 = state.3.min(k.body.pos.x - 600.0);
+            if dt < 2.4 {
+                held.push(if ((dt / 0.6) as i32) % 2 == 0 { KeyCode::KeyD } else { KeyCode::KeyA });
+            } else if k.body.vel.length() > 150.0 {
+                held.push(KeyCode::Space);
+                info!("hook: pumped 2.4 s: swung from x {:.0} to {:.0} of the anchor; let go moving ({:.0}, {:.0}), the hook {what}", state.3, state.2, k.body.vel.x, k.body.vel.y);
+                next(&mut state);
+            }
+            if dt > 4.0 {
+                info!("hook: never fast enough to let go (moving {:.0})", k.body.vel.length());
+                next(&mut state);
+            }
+        }
+        // By the column's left face: pushed against it, then away: a kick.
+        6 if dt > 1.2 => {
+            if dt < 1.3 {
+                put(&mut k, 690.0);
+            }
+            cursor.0 = Some(Vec2::new(694.0, beam as f32));
+            if (1.4..1.5).contains(&dt) {
+                held.push(KeyCode::KeyE);
+            }
+            if (2.5..3.2).contains(&dt) {
+                held.push(KeyCode::KeyS);
+            }
+            if (3.2..3.6).contains(&dt) {
+                held.push(KeyCode::KeyD);
+            }
+            if (3.6..3.7).contains(&dt) {
+                held.push(KeyCode::KeyA);
+                state.2 = state.2.min(k.body.vel.x);
+            }
+            if dt > 3.7 {
+                info!("hook: against the column on the rope, then away: kicked off at {:.0} cells/s, the hook {what} ({wraps} wraps)", -state.2);
+                next(&mut state);
+            }
+        }
+        // The chest, pulled in.
+        7 => {
+            if let Some(c) = boxes.iter().next() {
+                cursor.0 = Some(c.body.pos);
+                if dt < 0.1 {
+                    if state.2 == 0.0 {
+                        state.2 = 1.0;
+                        info!("hook: the chest is {:.0} cells off; hooking it", c.body.pos.distance(k.body.pos));
+                    }
+                    held.push(KeyCode::KeyE);
+                }
+                if dt > 1.4 {
+                    info!("hook: the hook {what}; the chest now {:.0} cells off", c.body.pos.distance(k.body.pos));
+                    next(&mut state);
+                }
             }
         }
         _ => {}
     }
-    for (key, on) in [(KeyCode::KeyE, hook), (KeyCode::Space, jump)] {
+    for key in [KeyCode::KeyE, KeyCode::KeyW, KeyCode::KeyS, KeyCode::KeyA, KeyCode::KeyD, KeyCode::Space] {
+        let on = held.contains(&key);
         if on && !keys.pressed(key) {
             keys.press(key);
         } else if !on && keys.pressed(key) {

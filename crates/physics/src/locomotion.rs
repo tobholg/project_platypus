@@ -34,6 +34,11 @@ pub struct Intent {
 /// How hard a climber presses into what it holds on to (cells/s).
 const CLING_PRESS: f32 = 30.0;
 
+/// On a rope, steering pushes at this share of air acceleration, while
+/// it's going slower than this many times run speed that way.
+const SWING_PUMP: f32 = 0.4;
+const SWING_PUMP_MAX: f32 = 3.0;
+
 /// Fastest a rope lets a body go (cells/s).
 const TETHER_MAX: f32 = 900.0;
 
@@ -231,6 +236,9 @@ pub struct Locomotion {
     stroke_left: f32,
     /// Rocket boots' fuel left (seconds).
     pub rocket_left: f32,
+    /// On a rope (set before each `steer`): in the air it keeps its swing
+    /// (air control pumps it, never brakes it).
+    pub swinging: bool,
     /// Last tick's contacts, so brains and animation can read them.
     pub contacts: Contacts,
 }
@@ -254,6 +262,7 @@ impl Default for Locomotion {
             prev_dash: false,
             stroke_left: 0.0,
             rocket_left: 0.0,
+            swinging: false,
             cling: None,
             contacts: Contacts::default(),
         }
@@ -451,7 +460,16 @@ impl Locomotion {
         } else {
             s.air_accel
         };
-        body.vel.x = approach(body.vel.x, target, accel * dt);
+        if self.swinging && !grounded {
+            // On a rope: steering pumps the swing (up to a few times run
+            // speed); nothing brakes it.
+            let push = intent.move_x.clamp(-1.0, 1.0);
+            if push != 0.0 && body.vel.x * push < s.run_speed * SWING_PUMP_MAX {
+                body.vel.x += push * s.air_accel * SWING_PUMP * dt;
+            }
+        } else {
+            body.vel.x = approach(body.vel.x, target, accel * dt);
+        }
 
         // Wall slide.
         let wall_dir = if self.contacts.wall_left { -1.0 } else if self.contacts.wall_right { 1.0 } else { 0.0 };
