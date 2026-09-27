@@ -179,8 +179,7 @@ played by bevy_seedling. Effects are placed in the world; the ambience follows w
 you (fire, lava, water, rain, wind, a cave's air, drips) and the music its mood (day, night,
 underground). F11 mutes; `PLATYPUS_MUTE=1` starts muted; the arena panel's Sounds row plays
 each; `PLATYPUS_SOUND_LOG=1` logs what plays and what's heard. `PLATYPUS_HIT=i` (b, j, k,
-`old`) plays another take of the sword hit on every blow, to compare; `song_a`..`song_c` on the
-Sounds row are options for the music.
+`old`) plays another take of the sword hit on every blow, to compare.
 
 **Backdrops** (DESIGN §4.3b): Noita-like ranges behind the surface (sharp faceted peaks,
 snow, cloud heaps rising behind, a look per biome, calm parallax), the sun by day, the moon and

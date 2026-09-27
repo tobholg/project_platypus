@@ -359,10 +359,9 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
                     row(p, &|r| label(r, "Clear the floor", ArenaAction::Clear));
                 });
                 section(p, 4, &|p| row(p, &|r| label(r, "Art editor  E", ArenaAction::Editor)));
-                // Sounds, grouped by their names' first word.
+                // Sounds, grouped: hits, steps and moving, hands, the rest.
                 section(p, 5, &|p| {
-                    let groups: [SoundGroup; 5] = [
-                        ("Music", &|n| n.starts_with("song_")),
+                    let groups: [SoundGroup; 4] = [
                         ("Hits", &|n| n.starts_with("hit") || n.starts_with("hurt") || n.starts_with("swing") || n.starts_with("clang")),
                         ("Steps and moving", &|n| n.starts_with("step_") || matches!(n, "land" | "jump" | "air_jump" | "dash")),
                         ("Hands", &|n| n.starts_with("mine_") || matches!(n, "break" | "place" | "craft" | "pickup")),

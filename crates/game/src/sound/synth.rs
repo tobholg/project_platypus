@@ -59,14 +59,10 @@ pub enum Make {
     /// up from `low` to `high` Hz as the blade arrives (`length` s), cut
     /// off sharply at the contact with a bright snap, then a short fall
     /// (the band dropping, `tail` s) with tiny wet bursts (`tear` a
-    /// second); nothing under 500 Hz.
-    Cut { low: f32, high: f32, length: f32, #[serde(default = "cut_tail")] tail: f32, #[serde(default)] tear: f32, #[serde(default = "half")] snap: f32 },
-    /// A piece of music: `chords` (semitones over `root` Hz), one every
-    /// `bar` beats at `bpm`, pads holding each, a bass pulsing on its
-    /// root, a soft arpeggio (`arp`: how loud, 0 none), and the melody:
-    /// `form` says, cycle by cycle through the chords, which of `phrases`
-    /// plays over it (-1: none). A phrase: (semitones, beats), 99 a rest.
-    Song { root: f32, bpm: f32, #[serde(default = "four")] bar: f32, chords: Vec<Vec<f32>>, phrases: Vec<Vec<(f32, f32)>>, form: Vec<i32>, #[serde(default = "tenth")] arp: f32, #[serde(default = "melody_bright")] bright: f32 },
+    /// second); nothing under 500 Hz. `meat`: a chunk of body at the
+    /// contact (noise about 900 Hz; the floor lowers towards 300 Hz);
+    /// `crunch`: dense gritty bursts and a little drive.
+    Cut { low: f32, high: f32, length: f32, #[serde(default = "cut_tail")] tail: f32, #[serde(default)] tear: f32, #[serde(default = "half")] snap: f32, #[serde(default)] meat: f32, #[serde(default)] crunch: f32 },
     /// Loops (`length` s): a fire's roar, hiss and crackles (per second).
     Fire { crackle: f32, roar: f32, #[serde(default = "tenth")] hiss: f32 },
     /// A cave: a low rumble, air moving through it, a faint low hum.
@@ -294,11 +290,7 @@ pub fn render(make: &Make, sr: f32, seed: u64, loops: f32) -> Buf {
         Make::Swish { low, high, length, q, whistle } => Buf::mono(swish(*low, *high, *length, *q, *whistle, sr, rng)),
         Make::Impact { body, crack, flesh, slice, ring, length, muffle } => Buf::mono(impact(*body, *crack, *flesh, *slice, *ring, *length, *muffle, sr, rng)),
         Make::Slash { chop, weight, edge, wet, tear, slice, soft, length, muffle } => Buf::mono(slash(&SlashParts { chop: *chop, weight: *weight, edge: *edge, wet: *wet, tear: *tear, slice: *slice, soft: *soft, length: *length, muffle: *muffle }, sr, rng)),
-        Make::Cut { low, high, length, tail, tear, snap } => Buf::mono(cut(*low, *high, *length, *tail, *tear, *snap, sr, rng)),
-        Make::Song { root, bpm, bar, chords, phrases, form, arp, bright } => {
-            let b = song(&SongParts { root: *root, bpm: *bpm, bar: *bar, chords, phrases, form, arp: *arp, bright: *bright }, sr, rng);
-            if loops > 0.0 { looped(b, loops, sr) } else { b }
-        }
+        Make::Cut { low, high, length, tail, tear, snap, meat, crunch } => Buf::mono(cut(&CutParts { low: *low, high: *high, length: *length, tail: *tail, tear: *tear, snap: *snap, meat: *meat, crunch: *crunch }, sr, rng)),
         Make::Fire { crackle, roar, hiss } => looped(fire(*crackle, *roar, *hiss, total, sr, rng), loops, sr),
         Make::Cave { rumble, wind, hum } => looped(cave(*rumble, *wind, *hum, total, sr, rng), loops, sr),
         Make::Rain { drops } => looped(rain(*drops, total, sr, rng), loops, sr),
@@ -600,23 +592,46 @@ fn chop_rise() -> f32 {
     0.002
 }
 
-fn melody_bright() -> f32 {
-    2200.0
-}
-
 fn cut_tail() -> f32 {
     0.06
 }
 
-fn four() -> f32 {
-    4.0
+/// `Make::Cut`'s parts.
+struct CutParts {
+    low: f32,
+    high: f32,
+    length: f32,
+    tail: f32,
+    tear: f32,
+    snap: f32,
+    meat: f32,
+    crunch: f32,
 }
 
-#[allow(clippy::too_many_arguments)]
-fn cut(low: f32, high: f32, length: f32, tail: f32, tear: f32, snap: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
+fn cut(p: &CutParts, sr: f32, rng: &mut Rng) -> Vec<f32> {
+    let CutParts { low, high, length, tail, tear, snap, meat, crunch } = *p;
     let n = frames(length + tail * 1.6 + 0.01, sr);
     let (low, high) = (low * rng.range(0.92, 1.08), high * rng.range(0.92, 1.08));
-    let (mut band, mut edge, mut hp, mut hp2, mut top) = (Filter::new(Pass::Band, 2.0, sr), Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::Low, 0.7, sr));
+    let (mut band, mut edge, mut hp, mut hp2, mut top, mut body) = (Filter::new(Pass::Band, 2.0, sr), Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::Low, 0.7, sr), Filter::new(Pass::Band, 1.2, sr));
+    // Crunch: dense, short, lower gritty bursts through the contact.
+    let mut grit = vec![0.0f32; n];
+    if crunch > 0.0 {
+        let mut at = length;
+        while at < length + tail * 0.8 {
+            let (hz, len, loud) = (rng.range(600.0, 2000.0), rng.range(0.0005, 0.002), rng.range(0.4, 1.0) * (-(at - length) / (tail * 0.4)).exp());
+            let mut f = Filter::new(Pass::Band, 2.0, sr);
+            let start = frames(at, sr);
+            for k in 0..frames(len * 3.0, sr) {
+                if let Some(g) = grit.get_mut(start + k) {
+                    *g += f.tick(rng.noise(), hz) * env(k as f32 / sr, 0.0001, len) * loud * crunch * 4.0;
+                }
+            }
+            // (Sparse enough to hear each: a crackle, not a hiss.)
+            at += -(1.0 - rng.unit()).max(1e-6).ln() / 380.0;
+        }
+    }
+    // (The floor: 500 Hz, lower with meat, never near a thump's.)
+    let floor = 500.0 - 200.0 * meat.min(1.0);
     // Tiny wet bursts after the contact.
     let mut grains = vec![0.0f32; n];
     if tear > 0.0 {
@@ -646,116 +661,19 @@ fn cut(low: f32, high: f32, length: f32, tail: f32, tear: f32, snap: f32, sr: f3
                 let k = (t - length) / tail.max(0.005);
                 (high * (1.0 - 0.45 * k.min(1.0)), (-k * 4.0).exp() * 0.8)
             };
-            let body = band.tick(x, hz) * a * 2.4;
+            let body_in = band.tick(x, hz) * a * 2.4;
             // The snap at the contact: a bright tick.
             let s = edge.tick(x, 3000.0) * env((t - length).max(0.0), 0.0003, 0.012) * if t >= length { snap * 2.2 } else { 0.0 };
-            // (Nothing low: two high-passes at 500 Hz; no hiss: nothing
+            // The meat: a chunk of body at the contact.
+            let m = body.tick(x, 850.0) * env((t - length).max(0.0), 0.002, tail * 0.9) * if t >= length { meat * 6.0 } else { 0.0 };
+            // (A little drive with the crunch.)
+            let y = body_in + s + m + grains[i] + grit[i];
+            let y = if crunch > 0.0 { (y * (1.0 + 2.0 * crunch)).tanh() / (1.0 + crunch) } else { y };
+            // (Nothing low: two high-passes at the floor; no hiss: nothing
             // much over 6 kHz.)
-            top.tick(hp2.tick(hp.tick(body + s + grains[i], 500.0), 500.0), 6000.0)
+            top.tick(hp2.tick(hp.tick(y, floor), floor), 6000.0)
         })
         .collect()
-}
-
-/// `Make::Song`'s parts.
-struct SongParts<'a> {
-    root: f32,
-    bpm: f32,
-    bar: f32,
-    chords: &'a [Vec<f32>],
-    phrases: &'a [Vec<(f32, f32)>],
-    form: &'a [i32],
-    arp: f32,
-    bright: f32,
-}
-
-/// One plucked note into `b`: two detuned tri/saw voices through a filter
-/// closing from `bright`, ringing `ring` s, `loud`, panned `pan`.
-#[allow(clippy::too_many_arguments)]
-fn pluck(b: &mut Buf, at: f32, f0: f32, ring: f32, bright: f32, loud: f32, pan: f32, sub: f32, sr: f32, rng: &mut Rng) {
-    let start = frames(at.max(0.0), sr);
-    for (voice, detune, side) in [(0usize, 0.9971f32, -0.35f32), (1, 1.0029, 0.35)] {
-        let mut f = Filter::new(Pass::Low, 0.8, sr);
-        let mut ph = rng.unit();
-        for k in 0..frames(ring * 1.3, sr) {
-            let t = k as f32 / sr;
-            ph = (ph + f0 * detune / sr).fract();
-            let x = 0.65 * (1.0 - 4.0 * (ph - 0.5).abs()) + 0.35 * (2.0 * ph - 1.0);
-            let cut = f0 * 1.5 + bright * (-t / 0.09).exp();
-            let mut y = f.tick(x, cut) * env(t, 0.005, ring) * loud * 0.5;
-            if voice == 0 && sub > 0.0 {
-                y += (TAU * f0 * 0.5 * t).sin() * env(t, 0.006, ring * 0.7) * loud * sub;
-            }
-            b.add(start + k, y, (pan + side).clamp(-1.0, 1.0));
-        }
-    }
-}
-
-/// A piece (`Make::Song`): chords held by pads, a pulsing bass, a soft
-/// arpeggio, the melody by the form.
-fn song(p: &SongParts, sr: f32, rng: &mut Rng) -> Buf {
-    let beat = 60.0 / p.bpm.max(20.0);
-    let bar = p.bar * beat;
-    let cycle = bar * p.chords.len().max(1) as f32;
-    let cycles = p.form.len().max(1);
-    let secs = cycle * cycles as f32;
-    let mut b = Buf::zeros(frames(secs + 2.5, sr));
-    let hz = |s: f32| p.root * 2f32.powf(s / 12.0);
-    for c in 0..cycles {
-        for (k, chord) in p.chords.iter().enumerate() {
-            let t0 = c as f32 * cycle + k as f32 * bar;
-            // Pads: the chord held, swelling in, fading into the next.
-            for ch in 0..2 {
-                let mut f = Filter::new(Pass::Low, 0.8, sr);
-                let detune = if ch == 0 { 0.996 } else { 1.004 };
-                let phases: Vec<f32> = chord.iter().map(|_| rng.unit()).collect();
-                let (i0, len) = (frames(t0, sr), frames(bar + 0.6, sr));
-                for i in 0..len {
-                    let t = i as f32 / sr;
-                    let w = (t / 0.35).min(1.0) * if t > bar { ((bar + 0.6 - t) / 0.6).max(0.0) } else { 1.0 };
-                    let mut x = 0.0;
-                    for (s, ph) in chord.iter().zip(&phases) {
-                        let f0 = hz(*s) * detune;
-                        x += ((f0 * t + ph).fract() * 2.0 - 1.0) * 0.5 + (TAU * (f0 * t + ph)).sin() * 0.5;
-                    }
-                    let y = f.tick(x * 0.07 * w, 900.0);
-                    if let Some(o) = if ch == 0 { b.l.get_mut(i0 + i) } else { b.r.get_mut(i0 + i) } {
-                        *o += y;
-                    }
-                }
-            }
-            // Bass: the root two octaves down, on 1, the "and" of 2, and 3.
-            let root = hz(chord.first().copied().unwrap_or(0.0) - 24.0);
-            for (at, len) in [(0.0, 1.4), (1.5, 0.4), (2.0, 1.8)] {
-                let start = frames(t0 + at * beat, sr);
-                for i in 0..frames(len * beat + 0.1, sr) {
-                    let t = i as f32 / sr;
-                    let ph = root * t;
-                    let x = (TAU * ph).sin() + 0.25 * (1.0 - 4.0 * ((ph).fract() - 0.5).abs());
-                    b.add(start + i, x * env(t, 0.008, len * beat * 1.2) * 0.22, 0.0);
-                }
-            }
-            // Arpeggio: the chord's notes an octave up, in eighths, soft.
-            if p.arp > 0.0 {
-                let order = [0usize, 1, 2, 1, 0, 1, 2, 1];
-                for (j, &o) in order.iter().enumerate().take((p.bar * 2.0) as usize) {
-                    let s = chord[o.min(chord.len() - 1)] + 12.0;
-                    pluck(&mut b, t0 + j as f32 * beat * 0.5, hz(s), 0.35, 900.0, p.arp, if j % 2 == 0 { -0.4 } else { 0.4 }, 0.0, sr, rng);
-                }
-            }
-        }
-        // The melody over this cycle, if the form has one.
-        if let Some(phrase) = usize::try_from(p.form[c]).ok().and_then(|i| p.phrases.get(i)) {
-            let mut at = c as f32 * cycle;
-            for &(s, beats) in phrase {
-                if s < 90.0 {
-                    let ring = (beats * beat * 1.6).clamp(0.35, 1.4);
-                    pluck(&mut b, at + rng.range(0.0, 0.006), hz(s), ring, p.bright, rng.range(0.85, 1.0), 0.0, 0.25, sr, rng);
-                }
-                at += beats * beat;
-            }
-        }
-    }
-    b
 }
 
 /// `Make::Slash`'s parts.
@@ -1098,8 +1016,7 @@ mod tests {
             Make::Swish { low: 350.0, high: 2600.0, length: 0.22, q: 1.8, whistle: 0.4 },
             Make::Impact { body: 110.0, crack: 0.6, flesh: 1300.0, slice: 0.5, ring: 0.3, length: 0.14, muffle: 3000.0 },
             Make::Slash { chop: 900.0, weight: 80.0, edge: 0.6, wet: 0.5, tear: 200.0, slice: 0.5, soft: 0.01, length: 0.16, muffle: 5000.0 },
-            Make::Cut { low: 900.0, high: 4200.0, length: 0.08, tail: 0.06, tear: 250.0, snap: 0.5 },
-            Make::Song { root: 220.0, bpm: 96.0, bar: 4.0, chords: vec![vec![0.0, 3.0, 7.0], vec![-4.0, 0.0, 3.0]], phrases: vec![vec![(12.0, 1.0), (15.0, 1.0)]], form: vec![-1, 0], arp: 0.1, bright: 2200.0 },
+            Make::Cut { low: 900.0, high: 4200.0, length: 0.08, tail: 0.06, tear: 250.0, snap: 0.5, meat: 0.5, crunch: 0.5 },
             Make::Fire { crackle: 20.0, roar: 0.6, hiss: 0.1 },
             Make::Cave { rumble: 0.6, wind: 0.5, hum: 0.3 },
             Make::Rain { drops: 60.0 },
@@ -1110,7 +1027,7 @@ mod tests {
             Make::Pads { root: 110.0, chords: vec![vec![0.0, 7.0, 16.0], vec![5.0, 9.0, 12.0]], chord: 4.0, bright: 1200.0, plucks: 0.3, scale: vec![0.0, 2.0, 4.0, 7.0, 9.0] },
         ];
         for (i, m) in makes.iter().enumerate() {
-            let loops = if i >= 15 { 6.0 } else { 0.0 };
+            let loops = if i >= 14 { 6.0 } else { 0.0 };
             let mut b = render(m, sr, i as u64, loops);
             assert!(!b.is_empty(), "{m:?}: empty");
             assert!(b.l.iter().chain(&b.r).all(|x| x.is_finite()), "{m:?}: not finite");
