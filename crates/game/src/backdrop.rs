@@ -44,35 +44,40 @@ impl Plugin for BackdropPlugin {
 }
 
 /// The surface's layers, far to near: their shares of the camera's motion
-/// run from the farthest's to the nearest's (far, so little), and their
-/// feet step down to the ground by `FEET_STEP` a layer (cells).
-const PARALLAX: (f32, f32) = (0.02, 0.1);
+/// across run from the farthest's to the nearest's (far, so little), up
+/// and down far less (the ranges sit still in the view however high or
+/// low on the surface you are); their feet step down to the ground by
+/// `FEET_STEP` a layer (cells).
+const PARALLAX: (f32, f32) = (0.01, 0.04);
+const PARALLAX_Y: (f32, f32) = (0.004, 0.015);
 const FEET_STEP: f32 = 12.0;
 
-/// Layer `k` of `n`: its share of the camera's motion, its feet over the
-/// ground.
-fn layer_at(k: usize, n: usize) -> (f32, f32) {
+/// Layer `k` of `n`: its share of the camera's motion across and up and
+/// down, its feet over the ground.
+fn layer_at(k: usize, n: usize) -> (f32, f32, f32) {
     let t = k as f32 / (n.max(2) - 1) as f32;
-    (PARALLAX.0 + (PARALLAX.1 - PARALLAX.0) * t, (n - 1 - k.min(n - 1)) as f32 * FEET_STEP)
+    let lerp = |(a, b): (f32, f32)| a + (b - a) * t;
+    (lerp(PARALLAX), lerp(PARALLAX_Y), (n - 1 - k.min(n - 1)) as f32 * FEET_STEP)
 }
 /// The far clouds: their share of the camera's motion, how fast they
 /// drift (cells a second), where their strip's bottom sits above the
 /// ground.
-const CLOUD_PARALLAX: f32 = 0.02;
+const CLOUD_PARALLAX: f32 = 0.008;
+const CLOUD_PARALLAX_Y: f32 = 0.004;
 const CLOUD_DRIFT: f32 = 1.2;
 const CLOUD_FOOT: f32 = 12.0;
 const CAVE_PARALLAX: [f32; CAVE_LAYERS] = [0.04, 0.1];
 /// The surface's strips: columns a tile, rows (layers, clouds).
 const TILE: usize = 256;
-const HEIGHT: usize = 190;
+const HEIGHT: usize = 380;
 const CLOUD_HEIGHT: usize = 170;
 /// The underground's tiles: square.
 const CAVE_TILE: usize = 128;
 /// How far below a surface tile its bottom row is stretched (valleys).
 const SKIRT: f32 = 300.0;
-/// Behind the world's back walls (-1), in front of the weather's clouds
-/// (-2); the sky's gradient behind all.
-const Z: f32 = -1.8;
+/// Behind the weather's clouds (-2) and the world's back walls (-1); the
+/// sky's gradient behind all.
+const Z: f32 = -2.6;
 const Z_GRADIENT: f32 = -3.0;
 /// Over the light overlay (15), under the glow haze (15.5).
 const Z_SKY: f32 = 15.2;
@@ -157,11 +162,11 @@ impl Backdrops {
             // Its foot (the layer's base row) a little above the ground; it
             // hardly moves as you climb.
             Part::Land => {
-                let (p, feet) = layer_at(key.k, self.looks[key.v].layers.len());
-                let foot = ground + feet + (cam.y - ground) * (1.0 - p);
+                let (_, py, feet) = layer_at(key.k, self.looks[key.v].layers.len());
+                let foot = ground + feet + (cam.y - ground) * (1.0 - py);
                 foot + self.looks[key.v].layers[key.k].base * h as f32 - h as f32 / 2.0
             }
-            Part::Clouds => ground + CLOUD_FOOT + (cam.y - ground) * (1.0 - CLOUD_PARALLAX) + h as f32 / 2.0,
+            Part::Clouds => ground + CLOUD_FOOT + (cam.y - ground) * (1.0 - CLOUD_PARALLAX_Y) + h as f32 / 2.0,
         };
         Vec2::new(x, y)
     }
@@ -369,7 +374,7 @@ fn gradient(g: Res<Gradient>, bd: Res<Backdrops>, clear: Res<ClearColor>, cam: S
     let half = loader.half_extent;
     // From the ground (a little above it: the horizon) up to 1.5 views
     // over it, hardly moving as you climb.
-    let horizon = bd.ground.unwrap_or(c.y) + 30.0 + (c.y - bd.ground.unwrap_or(c.y)) * 0.97;
+    let horizon = bd.ground.unwrap_or(c.y) + 30.0 + (c.y - bd.ground.unwrap_or(c.y)) * 0.995;
     let (bottom, top) = (horizon - half.y * 2.0, horizon + half.y * 1.6);
     stf.translation = Vec3::new(c.x, (bottom + top) / 2.0, Z_GRADIENT);
     s.custom_size = Some(Vec2::new(half.x * 2.0 + 4.0, top - bottom));

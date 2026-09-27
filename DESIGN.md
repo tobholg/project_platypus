@@ -187,13 +187,17 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
   sharp peaks cut into flat faces (wedges from the apex, lit on the left,
   shade on the right), concave flanks with shoulders, snow on the tops
   reaching down the gullies; range behind range fading into the sky's
-  haze, mist at their feet, a dark lowland band; big cloud heaps rising
-  behind the ranges (flat, faded bottoms hidden behind them), drifting.
+  haze, mist at their feet, and below the feet the ranges run on down
+  behind the ground (flanks steepening into shoulders, the gaps filled
+  with the range's body: no band under them); big cloud heaps rising
+  behind the ranges (faded bottoms hidden behind them), drifting. All of
+  it behind the weather's clouds (z -2) and the back walls.
   A look per biome (`for_biome`): `alpine` for mountains and tundra,
   `noita` everywhere else; `violet`, `misty`, `needles`, `broad` wait for
   places of their own. Looks crossfade as the biomes around the camera
-  change. Ranges move at 2–10 % of the camera's motion, far to near, and
-  sit on the ground as generated; tiles are placed to whole screen pixels
+  change. Ranges move at 1–4 % of the camera's motion across, far to
+  near, and hardly at all up and down (0.4–1.5 %: they sit still in the
+  view however high or low on the surface you are); tiles are placed to whole screen pixels
   from the camera (whole cells hopped 3 pixels: jitter). Below a range's
   feet, one flat colour (the skirt stretches the bottom row down). A sky
   gradient behind, tinted by the hour's sky colour. `platypus-backdrop

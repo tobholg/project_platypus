@@ -6,7 +6,7 @@
 //! coordinates (tiles side by side join up), in daylight colours (the
 //! game's lighting grades them).
 
-use crate::{Rgb, fbm1, hash, mix, noise1, noise2, rgb};
+use crate::{Rgb, hash, mix, noise1, noise2, rgb};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Kind {
@@ -14,15 +14,14 @@ pub enum Kind {
     /// (shares of the strip), `slope` how wide they spread a row down
     /// (cells; sides differ).
     Peaks { every: f32, size: (f32, f32), slope: (f32, f32) },
-    /// Low land (a lake's far shore, a valley floor): a gently rolling
-    /// band, flat colour.
-    Low { height: f32 },
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Layer {
     pub kind: Kind,
-    /// The feet (the base row, a share of the strip from its top).
+    /// The feet (the base row, a share of the strip from its top). Below
+    /// them the range runs on down to the strip's bottom: its flanks
+    /// steepen into shoulders, the gaps between filled with its body.
     pub base: f32,
     /// Faces towards the light, and away.
     pub lit: Rgb,
@@ -70,11 +69,15 @@ impl Peak {
         if d < 0.0 {
             return None;
         }
-        // Concave flanks (steep near the summit, flaring below), rough
+        // Concave flanks (steep near the summit, flaring down to the
+        // feet, then steepening again: the range runs on down), rough
         // edges: a wander that grows downhill, shoulders, a small crag.
-        let spread = self.tall * (d / self.tall).powf(1.35);
+        let spread = if d < self.tall { self.tall * (d / self.tall).powf(1.35) } else { self.tall + (d - self.tall) * 0.6 };
+        // (The wander stops growing past the feet: shoulders run straight
+        // on down.)
+        let g = d.min(self.tall * 1.1);
         let jag = |side: u64| {
-            (noise1(d * 0.04, self.seed ^ side) - 0.5) * d * 0.16 + (noise1(d * 0.13, self.seed ^ side ^ 0x33) - 0.5) * d * 0.1 + (noise1(d * 0.4, self.seed ^ side ^ 0x55) - 0.5) * 1.5
+            (noise1(d * 0.04, self.seed ^ side) - 0.5) * g * 0.16 + (noise1(d * 0.13, self.seed ^ side ^ 0x33) - 0.5) * g * 0.1 + (noise1(d * 0.4, self.seed ^ side ^ 0x55) - 0.5) * 1.5
         };
         Some((self.x - spread * self.left + jag(1), self.x + spread * self.right + jag(2)))
     }
@@ -82,9 +85,9 @@ impl Peak {
 
 /// The peaks of layer `l` whose spread may reach columns `x0 .. x1`.
 fn peaks(l: &Layer, k: usize, x0: f32, x1: f32, h: f32, seed: u64) -> Vec<Peak> {
-    let Kind::Peaks { every, size, slope } = l.kind else { return Vec::new() };
+    let Kind::Peaks { every, size, slope } = l.kind;
     let s = seed.wrapping_add(k as u64 * 9173 + 5);
-    let reach = size.1 * h * slope.1 * 1.4 + every;
+    let reach = (size.1 * h + (1.0 - l.base) * h * 0.6) * slope.1 * 1.3 + every;
     let mut out = Vec::new();
     for slot in ((x0 - reach) / every).floor() as i64..=((x1 + reach) / every).floor() as i64 {
         // A main peak most slots, and a lower shoulder beside it now and
@@ -111,29 +114,27 @@ pub fn layer_tile(look: &Look, k: usize, x0: i64, w: usize, h: usize, seed: u64)
     let foot = l.base * hf;
     let haze = look.sky.1;
     let fade = |p: Rgb, y: f32| {
-        let mist = l.mist * smoothstep(foot - hf * 0.3, foot, y);
+        let mist = l.mist * smoothstep(foot - hf * 0.15, foot + hf * 0.1, y);
         mix(p, haze, l.haze + (1.0 - l.haze) * mist * 0.7)
     };
-    let body = fade(mix(l.shade, l.lit, 0.25), foot);
-    let s = seed.wrapping_add(k as u64 * 9173 + 5);
+    // The range's body (between its shoulders, and at the very bottom,
+    // which the game stretches down).
+    let body = |y: f32| fade(mix(l.shade, l.lit, 0.3), y);
+    let last = h.saturating_sub(2) as f32;
     let mut out = vec![0u8; w * h * 4];
     let all = peaks(l, k, x0 as f32, (x0 + w as i64) as f32, hf, seed);
     for xi in 0..w {
         let xa = x0 + xi as i64;
         let xf = xa as f32 + 0.5;
-        // The peaks this column may cross, frontmost first.
-        let mut here: Vec<&Peak> = all.iter().filter(|p| xf > p.x - (foot - p.y) * p.left * 1.4 - 4.0 && xf < p.x + (foot - p.y) * p.right * 1.4 + 4.0).collect();
+        // The peaks this column may cross (as wide as they get at the
+        // strip's bottom), frontmost first.
+        let widest = |p: &Peak| (p.tall + (hf - p.y - p.tall).max(0.0) * 0.6) * 1.3 + 4.0;
+        let mut here: Vec<&Peak> = all.iter().filter(|p| xf > p.x - widest(p) * p.left && xf < p.x + widest(p) * p.right).collect();
         here.sort_by(|a, b| b.front.total_cmp(&a.front));
-        let low = match l.kind {
-            Kind::Low { height } => foot - height * hf * (0.5 + 0.5 * fbm1(xf / 90.0, 3, s)),
-            _ => f32::MAX,
-        };
         for y in 0..h {
             let yf = y as f32 + 0.5;
-            let p = if yf >= foot + 2.0 || yf >= low {
-                // Below the feet (stretched down in the game), or low land:
-                // flat.
-                if yf >= low && yf < foot + 2.0 { fade(mix(l.shade, l.lit, 0.35), yf) } else { body }
+            let p = if yf >= last {
+                body(foot + hf)
             } else if let Some((pk, (a, b))) = here.iter().find_map(|pk| pk.span(yf).filter(|(a, b)| xf >= *a && xf < *b).map(|sp| (*pk, sp))) {
                 let d = yf - pk.y;
                 // Faces: wedges from the apex. Where across the peak this
@@ -160,6 +161,9 @@ pub fn layer_tile(look: &Look, k: usize, x0: i64, w: usize, h: usize, seed: u64)
                     }
                 }
                 fade(c, yf)
+            } else if yf > foot {
+                // Below the feet, between the shoulders: the body.
+                body(yf)
             } else {
                 continue;
             };
@@ -268,41 +272,38 @@ pub fn looks() -> Vec<Look> {
     let peaks = |every, lo, hi, s0, s1| Kind::Peaks { every, size: (lo, hi), slope: (s0, s1) };
     vec![
         // As the screenshot: pale snowy ranges, a deep blue-violet one in
-        // front, a teal lowland.
+        // front.
         Look {
             name: "noita",
             sky,
             clouds,
             layers: vec![
-                l(peaks(90.0, 0.14, 0.30, 0.9, 1.6), 0.62, rgb(196, 212, 236), rgb(128, 150, 200), 0.35, 0.45, 0.6),
-                l(peaks(130.0, 0.19, 0.44, 0.8, 1.5), 0.8, rgb(206, 220, 242), rgb(104, 126, 190), 0.3, 0.12, 0.5),
-                l(peaks(220.0, 0.17, 0.47, 0.9, 1.7), 0.94, rgb(116, 128, 196), rgb(58, 66, 136), 0.0, 0.0, 0.25),
-                l(Kind::Low { height: 0.06 }, 0.98, rgb(56, 94, 98), rgb(34, 64, 72), 0.0, 0.0, 0.0),
+                l(peaks(90.0, 0.070, 0.150, 0.9, 1.6), 0.5, rgb(196, 212, 236), rgb(128, 150, 200), 0.35, 0.45, 0.6),
+                l(peaks(130.0, 0.095, 0.220, 0.8, 1.5), 0.5, rgb(206, 220, 242), rgb(104, 126, 190), 0.3, 0.12, 0.5),
+                l(peaks(220.0, 0.085, 0.235, 0.9, 1.7), 0.5, rgb(116, 128, 196), rgb(58, 66, 136), 0.0, 0.0, 0.25),
             ],
         },
-        // Whiter, snowier, a paler sky, a green floor.
+        // Whiter, snowier, a paler sky.
         Look {
             name: "alpine",
             sky: (rgb(84, 140, 220), rgb(178, 208, 240)),
             clouds: (0.8, 1.1, rgb(250, 252, 255), rgb(166, 186, 222)),
             layers: vec![
-                l(peaks(80.0, 0.17, 0.33, 0.8, 1.4), 0.62, rgb(214, 226, 244), rgb(146, 166, 210), 0.55, 0.45, 0.6),
-                l(peaks(120.0, 0.22, 0.47, 0.7, 1.3), 0.8, rgb(226, 234, 248), rgb(120, 142, 198), 0.5, 0.12, 0.5),
-                l(peaks(200.0, 0.14, 0.33, 1.0, 1.8), 0.94, rgb(112, 136, 170), rgb(64, 82, 118), 0.25, 0.0, 0.3),
-                l(Kind::Low { height: 0.06 }, 0.98, rgb(70, 110, 76), rgb(46, 80, 58), 0.0, 0.0, 0.0),
+                l(peaks(80.0, 0.085, 0.165, 0.8, 1.4), 0.5, rgb(214, 226, 244), rgb(146, 166, 210), 0.55, 0.45, 0.6),
+                l(peaks(120.0, 0.110, 0.235, 0.7, 1.3), 0.5, rgb(226, 234, 248), rgb(120, 142, 198), 0.5, 0.12, 0.5),
+                l(peaks(200.0, 0.070, 0.165, 1.0, 1.8), 0.5, rgb(112, 136, 170), rgb(64, 82, 118), 0.25, 0.0, 0.3),
             ],
         },
-        // Layer on layer fading into mist: five ranges, low contrast.
+        // Layer on layer fading into mist: four ranges, low contrast.
         Look {
             name: "misty",
             sky: (rgb(92, 128, 196), rgb(176, 196, 226)),
             clouds: (1.2, 0.9, rgb(236, 240, 250), rgb(162, 178, 212)),
             layers: vec![
-                l(peaks(70.0, 0.14, 0.28, 0.9, 1.5), 0.55, rgb(178, 196, 226), rgb(146, 164, 208), 0.25, 0.55, 0.9),
-                l(peaks(90.0, 0.14, 0.30, 0.9, 1.5), 0.66, rgb(160, 180, 220), rgb(122, 142, 196), 0.2, 0.4, 0.9),
-                l(peaks(120.0, 0.17, 0.36, 0.8, 1.5), 0.78, rgb(140, 160, 212), rgb(98, 116, 180), 0.15, 0.22, 0.9),
-                l(peaks(170.0, 0.17, 0.39, 0.9, 1.6), 0.9, rgb(108, 124, 186), rgb(70, 82, 146), 0.0, 0.05, 0.8),
-                l(Kind::Low { height: 0.05 }, 0.98, rgb(60, 86, 110), rgb(40, 60, 84), 0.0, 0.0, 0.0),
+                l(peaks(70.0, 0.070, 0.140, 0.9, 1.5), 0.5, rgb(178, 196, 226), rgb(146, 164, 208), 0.25, 0.55, 0.9),
+                l(peaks(90.0, 0.070, 0.150, 0.9, 1.5), 0.5, rgb(160, 180, 220), rgb(122, 142, 196), 0.2, 0.4, 0.9),
+                l(peaks(120.0, 0.085, 0.180, 0.8, 1.5), 0.5, rgb(140, 160, 212), rgb(98, 116, 180), 0.15, 0.22, 0.9),
+                l(peaks(170.0, 0.085, 0.195, 0.9, 1.6), 0.5, rgb(108, 124, 186), rgb(70, 82, 146), 0.0, 0.05, 0.8),
             ],
         },
         // Warmer: violet and rose ranges (a stranger place).
@@ -311,10 +312,9 @@ pub fn looks() -> Vec<Look> {
             sky: (rgb(86, 104, 196), rgb(196, 176, 222)),
             clouds: (1.0, 1.0, rgb(252, 240, 248), rgb(180, 150, 200)),
             layers: vec![
-                l(peaks(90.0, 0.14, 0.30, 0.9, 1.6), 0.62, rgb(222, 196, 226), rgb(160, 132, 196), 0.3, 0.45, 0.6),
-                l(peaks(130.0, 0.19, 0.44, 0.8, 1.5), 0.8, rgb(226, 204, 232), rgb(128, 102, 176), 0.25, 0.12, 0.5),
-                l(peaks(220.0, 0.17, 0.47, 0.9, 1.7), 0.94, rgb(140, 102, 176), rgb(76, 52, 120), 0.0, 0.0, 0.25),
-                l(Kind::Low { height: 0.06 }, 0.98, rgb(82, 70, 110), rgb(52, 44, 80), 0.0, 0.0, 0.0),
+                l(peaks(90.0, 0.070, 0.150, 0.9, 1.6), 0.5, rgb(222, 196, 226), rgb(160, 132, 196), 0.3, 0.45, 0.6),
+                l(peaks(130.0, 0.095, 0.220, 0.8, 1.5), 0.5, rgb(226, 204, 232), rgb(128, 102, 176), 0.25, 0.12, 0.5),
+                l(peaks(220.0, 0.085, 0.235, 0.9, 1.7), 0.5, rgb(140, 102, 176), rgb(76, 52, 120), 0.0, 0.0, 0.25),
             ],
         },
         // Needles: narrow, steep, crowded.
@@ -323,10 +323,9 @@ pub fn looks() -> Vec<Look> {
             sky,
             clouds,
             layers: vec![
-                l(peaks(45.0, 0.17, 0.33, 0.35, 0.7), 0.62, rgb(196, 212, 236), rgb(128, 150, 200), 0.3, 0.45, 0.6),
-                l(peaks(70.0, 0.22, 0.47, 0.3, 0.65), 0.8, rgb(206, 220, 242), rgb(104, 126, 190), 0.25, 0.12, 0.5),
-                l(peaks(120.0, 0.19, 0.50, 0.35, 0.8), 0.94, rgb(116, 128, 196), rgb(58, 66, 136), 0.0, 0.0, 0.25),
-                l(Kind::Low { height: 0.06 }, 0.98, rgb(56, 94, 98), rgb(34, 64, 72), 0.0, 0.0, 0.0),
+                l(peaks(45.0, 0.085, 0.165, 0.35, 0.7), 0.5, rgb(196, 212, 236), rgb(128, 150, 200), 0.3, 0.45, 0.6),
+                l(peaks(70.0, 0.110, 0.235, 0.3, 0.65), 0.5, rgb(206, 220, 242), rgb(104, 126, 190), 0.25, 0.12, 0.5),
+                l(peaks(120.0, 0.095, 0.250, 0.35, 0.8), 0.5, rgb(116, 128, 196), rgb(58, 66, 136), 0.0, 0.0, 0.25),
             ],
         },
         // Low and broad: old worn ranges, big skies, more cloud.
@@ -335,10 +334,9 @@ pub fn looks() -> Vec<Look> {
             sky: (rgb(64, 112, 204), rgb(150, 190, 236)),
             clouds: (1.4, 1.2, rgb(246, 248, 255), rgb(150, 172, 214)),
             layers: vec![
-                l(peaks(120.0, 0.08, 0.19, 1.6, 2.8), 0.66, rgb(188, 206, 234), rgb(130, 152, 204), 0.3, 0.45, 0.6),
-                l(peaks(170.0, 0.11, 0.25, 1.4, 2.6), 0.82, rgb(176, 196, 232), rgb(100, 122, 186), 0.2, 0.15, 0.5),
-                l(peaks(260.0, 0.08, 0.22, 1.8, 3.0), 0.94, rgb(96, 118, 170), rgb(56, 70, 124), 0.0, 0.0, 0.3),
-                l(Kind::Low { height: 0.06 }, 0.98, rgb(56, 94, 98), rgb(34, 64, 72), 0.0, 0.0, 0.0),
+                l(peaks(120.0, 0.040, 0.095, 1.6, 2.8), 0.5, rgb(188, 206, 234), rgb(130, 152, 204), 0.3, 0.45, 0.6),
+                l(peaks(170.0, 0.055, 0.125, 1.4, 2.6), 0.5, rgb(176, 196, 232), rgb(100, 122, 186), 0.2, 0.15, 0.5),
+                l(peaks(260.0, 0.040, 0.110, 1.8, 3.0), 0.5, rgb(96, 118, 170), rgb(56, 70, 124), 0.0, 0.0, 0.3),
             ],
         },
     ]
@@ -381,12 +379,13 @@ pub fn still(look: &Look, x: i64, w: usize, h: usize, seed: u64) -> Vec<u8> {
     };
     // Strips as tall as the view; each layer's feet where its base puts
     // them over the ground line, the clouds behind all but the farthest.
-    let lh = h;
+    let lh = 2 * h;
     let ground = h as f32 * 0.8;
     let n = look.layers.len();
     for k in 0..n {
-        // (Feet from well above the ground, far, down to it, near.)
-        let foot = ground - (n - 1 - k) as f32 * h as f32 * 0.06;
+        // (Feet from a little above the ground, far, down to it, near, as
+        // the game stacks them.)
+        let foot = ground - (n - 1 - k) as f32 * 12.0;
         let oy = (foot - look.layers[k].base * lh as f32) as i64;
         over(&mut out, &layer_tile(look, k, x, w, lh, seed), oy, lh);
         if k == 0 {
