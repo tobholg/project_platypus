@@ -575,6 +575,7 @@ fn impact(body: f32, crack: f32, flesh: f32, slice: f32, ring: f32, length: f32,
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn slash(chop: f32, weight: f32, edge: f32, wet: f32, length: f32, muffle: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
     let n = frames(length * 1.4 + 0.03, sr);
     let (mut bite, mut meat, mut under, mut soft) = (Filter::new(Pass::Band, 1.6, sr), Filter::new(Pass::Band, 0.9, sr), Filter::new(Pass::Low, 0.7, sr), Filter::new(Pass::Low, 0.6, sr));
