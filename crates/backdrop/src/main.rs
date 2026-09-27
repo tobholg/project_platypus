@@ -26,6 +26,47 @@ fn main() {
     }
     tiles(&out);
     vistas(&out);
+    peaks(&out);
+}
+
+/// The Noita-like looks (`peaks.rs`): `peaks.png` (all, by day, two
+/// across) and each at game scale (3×) by day, elsewhere along, at dusk
+/// and at night (graded roughly as the game's lighting would).
+fn peaks(out: &std::path::Path) {
+    use platypus_backdrop::peaks::{grade, looks, still};
+    let (w, h) = (504usize, 284usize);
+    let up = |px: &[u8], k: usize| -> Vec<u8> {
+        let mut o = Vec::with_capacity(w * h * k * k * 4);
+        for y in 0..h * k {
+            for x in 0..w * k {
+                o.extend_from_slice(&px[((y / k) * w + x / k) * 4..][..4]);
+            }
+        }
+        o
+    };
+    let all = looks();
+    let (cols, rows) = (2usize, all.len().div_ceil(2));
+    let (sw, sh) = (w * 2 * cols + 8 * (cols - 1), h * 2 * rows + 8 * (rows - 1));
+    let mut sheet = [20u8, 20, 24, 255].repeat(sw * sh);
+    for (n, look) in all.iter().enumerate() {
+        let px = up(&still(look, 0, w, h, 11), 2);
+        let (ox, oy) = ((n % cols) * (w * 2 + 8), (n / cols) * (h * 2 + 8));
+        for y in 0..h * 2 {
+            sheet[((oy + y) * sw + ox) * 4..][..w * 2 * 4].copy_from_slice(&px[y * w * 2 * 4..][..w * 2 * 4]);
+        }
+        let png = |px: Vec<u8>, name: String| platypus_art::write_png(&platypus_art::Pixels { w: 3 * w as u32, h: 3 * h as u32, rgba: px }, &out.join(name)).expect("png");
+        let day = still(look, 0, w, h, 11);
+        png(up(&day, 3), format!("peaks-{}.png", look.name));
+        png(up(&still(look, 2300, w, h, 11), 3), format!("peaks-{}-b.png", look.name));
+        let mut dusk = day.clone();
+        grade(&mut dusk, [1.0, 0.62, 0.42]);
+        png(up(&dusk, 3), format!("peaks-{}-dusk.png", look.name));
+        let mut night = day;
+        grade(&mut night, [0.14, 0.18, 0.32]);
+        png(up(&night, 3), format!("peaks-{}-night.png", look.name));
+        println!("peaks {}", look.name);
+    }
+    platypus_art::write_png(&platypus_art::Pixels { w: sw as u32, h: sh as u32, rgba: sheet }, &out.join("peaks.png")).expect("png");
 }
 
 /// The surface's vistas (`vista.rs`) as the game would show them, 3× (a
