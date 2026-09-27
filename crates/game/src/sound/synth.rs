@@ -61,8 +61,10 @@ pub enum Make {
     /// (the band dropping, `tail` s) with tiny wet bursts (`tear` a
     /// second); nothing under 500 Hz. `meat`: a chunk of body at the
     /// contact (noise about 900 Hz; the floor lowers towards 300 Hz);
-    /// `crunch`: dense gritty bursts and a little drive.
-    Cut { low: f32, high: f32, length: f32, #[serde(default = "cut_tail")] tail: f32, #[serde(default)] tear: f32, #[serde(default = "half")] snap: f32, #[serde(default)] meat: f32, #[serde(default)] crunch: f32 },
+    /// `crunch`: dense gritty bursts and a little drive; `knock`: a hint
+    /// of impact at the contact (a short pulse about 200 Hz, falling, with
+    /// its overtone: heard on small speakers, not a thump).
+    Cut { low: f32, high: f32, length: f32, #[serde(default = "cut_tail")] tail: f32, #[serde(default)] tear: f32, #[serde(default = "half")] snap: f32, #[serde(default)] meat: f32, #[serde(default)] crunch: f32, #[serde(default)] knock: f32 },
     /// Loops (`length` s): a fire's roar, hiss and crackles (per second).
     Fire { crackle: f32, roar: f32, #[serde(default = "tenth")] hiss: f32 },
     /// A cave: a low rumble, air moving through it, a faint low hum.
@@ -290,7 +292,7 @@ pub fn render(make: &Make, sr: f32, seed: u64, loops: f32) -> Buf {
         Make::Swish { low, high, length, q, whistle } => Buf::mono(swish(*low, *high, *length, *q, *whistle, sr, rng)),
         Make::Impact { body, crack, flesh, slice, ring, length, muffle } => Buf::mono(impact(*body, *crack, *flesh, *slice, *ring, *length, *muffle, sr, rng)),
         Make::Slash { chop, weight, edge, wet, tear, slice, soft, length, muffle } => Buf::mono(slash(&SlashParts { chop: *chop, weight: *weight, edge: *edge, wet: *wet, tear: *tear, slice: *slice, soft: *soft, length: *length, muffle: *muffle }, sr, rng)),
-        Make::Cut { low, high, length, tail, tear, snap, meat, crunch } => Buf::mono(cut(&CutParts { low: *low, high: *high, length: *length, tail: *tail, tear: *tear, snap: *snap, meat: *meat, crunch: *crunch }, sr, rng)),
+        Make::Cut { low, high, length, tail, tear, snap, meat, crunch, knock } => Buf::mono(cut(&CutParts { low: *low, high: *high, length: *length, tail: *tail, tear: *tear, snap: *snap, meat: *meat, crunch: *crunch, knock: *knock }, sr, rng)),
         Make::Fire { crackle, roar, hiss } => looped(fire(*crackle, *roar, *hiss, total, sr, rng), loops, sr),
         Make::Cave { rumble, wind, hum } => looped(cave(*rumble, *wind, *hum, total, sr, rng), loops, sr),
         Make::Rain { drops } => looped(rain(*drops, total, sr, rng), loops, sr),
@@ -606,10 +608,12 @@ struct CutParts {
     snap: f32,
     meat: f32,
     crunch: f32,
+    knock: f32,
 }
 
 fn cut(p: &CutParts, sr: f32, rng: &mut Rng) -> Vec<f32> {
-    let CutParts { low, high, length, tail, tear, snap, meat, crunch } = *p;
+    let CutParts { low, high, length, tail, tear, snap, meat, crunch, knock } = *p;
+    let mut kph = 0.0f32;
     let n = frames(length + tail * 1.6 + 0.01, sr);
     let (low, high) = (low * rng.range(0.92, 1.08), high * rng.range(0.92, 1.08));
     let (mut band, mut edge, mut hp, mut hp2, mut top, mut body) = (Filter::new(Pass::Band, 2.0, sr), Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::Low, 0.7, sr), Filter::new(Pass::Band, 1.2, sr));
@@ -671,7 +675,17 @@ fn cut(p: &CutParts, sr: f32, rng: &mut Rng) -> Vec<f32> {
             let y = if crunch > 0.0 { (y * (1.0 + 2.0 * crunch)).tanh() / (1.0 + crunch) } else { y };
             // (Nothing low: two high-passes at the floor; no hiss: nothing
             // much over 6 kHz.)
-            top.tick(hp2.tick(hp.tick(y, floor), floor), 6000.0)
+            let out = top.tick(hp2.tick(hp.tick(y, floor), floor), 6000.0);
+            // The knock (after the floor: it's meant to be low-ish): a
+            // pulse falling from 260 to 170 Hz, gone in ~30 ms.
+            let tk = t - length;
+            if knock > 0.0 && tk >= 0.0 {
+                kph += (170.0 + 90.0 * (-tk / 0.008).exp()) / sr;
+                let k = ((TAU * kph).sin() + 0.5 * (2.0 * TAU * kph).sin()) * env(tk, 0.001, 0.03) * knock * 0.7;
+                out + k
+            } else {
+                out
+            }
         })
         .collect()
 }
@@ -1016,7 +1030,7 @@ mod tests {
             Make::Swish { low: 350.0, high: 2600.0, length: 0.22, q: 1.8, whistle: 0.4 },
             Make::Impact { body: 110.0, crack: 0.6, flesh: 1300.0, slice: 0.5, ring: 0.3, length: 0.14, muffle: 3000.0 },
             Make::Slash { chop: 900.0, weight: 80.0, edge: 0.6, wet: 0.5, tear: 200.0, slice: 0.5, soft: 0.01, length: 0.16, muffle: 5000.0 },
-            Make::Cut { low: 900.0, high: 4200.0, length: 0.08, tail: 0.06, tear: 250.0, snap: 0.5, meat: 0.5, crunch: 0.5 },
+            Make::Cut { low: 900.0, high: 4200.0, length: 0.08, tail: 0.06, tear: 250.0, snap: 0.5, meat: 0.5, crunch: 0.5, knock: 0.3 },
             Make::Fire { crackle: 20.0, roar: 0.6, hiss: 0.1 },
             Make::Cave { rumble: 0.6, wind: 0.5, hum: 0.3 },
             Make::Rain { drops: 60.0 },

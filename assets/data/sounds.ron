@@ -27,7 +27,7 @@
 //                                               a second), the weight behind it (0: none)
 //     (Slash also: slice (a longer cut sweeping down from high), soft (the
 //     chop's rise, s: longer, less of a knock).)
-//     Cut(low, high, length, tail, tear, snap, meat, crunch)  a blade's cut, as its
+//     Cut(low, high, length, tail, tear, snap, meat, crunch, knock)  a blade's cut,
 //                                               swing: a band sweeping up, cut off
 //                                               at the contact, a short wet fall
 //     Impact(body, crack, flesh, slice, ring, length, muffle)  a blow: crack,
@@ -52,10 +52,10 @@
     sounds: {
         // ---- combat ----
         // A blade landing (a heavy blow, a crit: the same, lower); you, hurt.
-        // "hit" is j. (hit_b, hit_i .. hit_m: other takes to compare, heard
+        // "hit" is n. (hit_b, hit_i .. hit_o: other takes to compare, heard
         // on every blow with PLATYPUS_HIT=l (b, i, j, k, m, old), or from
         // the arena's Sounds row; hit_old: the first one.)
-        "hit": (make: Cut(low: 600, high: 2800, length: 0.045, tail: 0.08, tear: 200, snap: 0.4), variants: 6, pitch: 0.07, volume: 0.85),
+        "hit": (make: Cut(low: 550, high: 2600, length: 0.045, tail: 0.11, tear: 220, snap: 0.5, meat: 1.25, crunch: 0.9, knock: 0.3), variants: 6, pitch: 0.07, volume: 0.9),
         "hit_b": (make: Slash(chop: 600, weight: 110, edge: 0.35, wet: 0.8, length: 0.2, muffle: 4000), variants: 6, pitch: 0.07, volume: 0.9),
         // i, j, k: a cut shaped as the swing (the band sweeping up as the
         // blade arrives, cut off at the contact with a snap, a short wet
@@ -66,6 +66,10 @@
         // l, m: j (now "hit") meatier and crunchier; m the most.
         "hit_l": (make: Cut(low: 600, high: 2800, length: 0.045, tail: 0.09, tear: 200, snap: 0.45, meat: 0.6, crunch: 0.5), variants: 6, pitch: 0.07, volume: 0.9),
         "hit_m": (make: Cut(low: 550, high: 2600, length: 0.045, tail: 0.1, tear: 220, snap: 0.5, meat: 1.0, crunch: 0.9), variants: 6, pitch: 0.07, volume: 0.9),
+        // n, o: m meatier still, with a hint of impact (n: "hit" now; o: more
+        // knock).
+        "hit_n": (make: Cut(low: 550, high: 2600, length: 0.045, tail: 0.11, tear: 220, snap: 0.5, meat: 1.25, crunch: 0.9, knock: 0.3), variants: 6, pitch: 0.07, volume: 0.9),
+        "hit_o": (make: Cut(low: 550, high: 2600, length: 0.045, tail: 0.11, tear: 220, snap: 0.5, meat: 1.25, crunch: 0.9, knock: 0.6), variants: 6, pitch: 0.07, volume: 0.9),
         "hit_k": (make: Cut(low: 1200, high: 4200, length: 0.02, tail: 0.05, tear: 380, snap: 0.6), variants: 6, pitch: 0.07, volume: 0.8),
         "hit_old": (make: Impact(body: 150, crack: 0.25, flesh: 700, slice: 0.15, length: 0.16, muffle: 2800), variants: 5, pitch: 0.08, volume: 0.8),
         "hurt": (make: Impact(body: 95, crack: 0.15, flesh: 500, ring: 0.2, length: 0.22, muffle: 1600), variants: 3, pitch: 0.05, reverb: 0.12, room: 0.8, volume: 0.8, every: 0.25),
