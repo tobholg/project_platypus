@@ -153,6 +153,9 @@
 //!   the sky, a lightning strike; logs each second what's about (creatures,
 //!   bodies, spells, drops, arrows, sparks, particles). With
 //!   `--features spikes` and `PLATYPUS_PROFILE=1`: where the time goes.
+//! - `underdark` (`PLATYPUS_UNDERDARK` = starlit, myconid, crystal, ruin,
+//!   underworld) a prototype of a place's own backdrop: a cavern dug deep,
+//!   its back walls off, the backdrop behind it, its dim light in it
 //! - `rocketswim` (`PLATYPUS_WORLD=arena`) a pit of water 160 deep, the
 //!   player in it (far over the bottom) with its rocket boots empty: logs the charge
 //!   after 3 s in the water, then how far a held jump rose it in 1.5 s
@@ -226,7 +229,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, backwall_script)
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
-            .add_systems(Update, underlook_script)
+            .add_systems(Update, (underlook_script, underdark_script))
             .add_systems(PreUpdate, surface_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, walk_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, tempo_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3419,6 +3422,66 @@ fn underlook_script(mut commands: Commands, s: Res<Scenario>, mut sim: ResMut<Si
             }
             info!("underlook: the cavern: {open} cells open to nothing behind, {walled} with a back wall");
             state.0 = 6;
+        }
+        _ => {}
+    }
+}
+
+/// A place's own backdrop in the game (`PLATYPUS_UNDERDARK` = starlit,
+/// myconid, crystal, ruin or underworld): a cavern 640 by 230 dug 320
+/// cells down, its back walls taken away, the place's backdrop behind it
+/// and its dim light in it; the player on its floor.
+fn underdark_script(mut commands: Commands, s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut zones: ResMut<crate::light::AmbientZones>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut state: Local<(u8, Vec2)>) {
+    if s.name != "underdark" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let name = std::env::var("PLATYPUS_UNDERDARK").unwrap_or_else(|_| "starlit".into());
+    let t = s.elapsed;
+    let dig = |sim: &mut SimWorld, c: Vec2, back: bool| {
+        for dy in (-90..=90).step_by(if back { 18 } else { 30 }) {
+            for dx in (-300..=300).step_by(if back { 18 } else { 24 }) {
+                let at = CellPos::new(c.x as i32 + dx, c.y as i32 + dy + (10.0 * (dx as f32 * 0.02).sin()) as i32);
+                if back {
+                    sim.queue(WorldEdit::Mine { center: at, radius: 24, power: 255, max_hardness: 254, back: true });
+                } else {
+                    sim.queue(WorldEdit::Dig { center: at, radius: 50, max_hardness: 254 });
+                }
+            }
+        }
+    };
+    match state.0 {
+        0 if t > 0.5 => {
+            let c = k.body.pos - Vec2::new(0.0, 320.0);
+            dig(&mut sim, c, false);
+            // (Down past its floor: the place is what's around the camera.)
+            let rect = Rect::from_center_half_size(c - Vec2::new(0.0, 30.0), Vec2::new(330.0, 160.0));
+            commands.insert_resource(crate::backdrop::PlacePreview { name: name.clone(), rect });
+            if let Some(color) = platypus_backdrop::underdark::ambient_of(&name) {
+                zones.0.push(crate::light::AmbientZone { rect, color: color.map(|c| c * 0.75), fade: 40.0 });
+            }
+            *state = (1, c);
+        }
+        1 if t > 0.8 => {
+            k.body.pos = state.1 + Vec2::new(-40.0, -60.0);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            state.0 = 2;
+        }
+        // (Once the chunks down there are loaded: dug again, walls off.)
+        2 if t > 1.6 => {
+            dig(&mut sim, state.1, false);
+            state.0 = 3;
+        }
+        // (Walls off over a few frames: each pass wears them down.)
+        3..=6 if t > 1.8 + (state.0 - 3) as f32 * 0.15 => {
+            for _ in 0..2 {
+                dig(&mut sim, state.1, true);
+            }
+            state.0 += 1;
+        }
+        7 => {
+            state.0 = 8;
         }
         _ => {}
     }

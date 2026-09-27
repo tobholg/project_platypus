@@ -160,6 +160,75 @@ fn palette(t: Theme) -> Palette {
 
 /// An underdark of `theme`, `w`×`h` cells.
 pub fn vista(theme: Theme, w: usize, h: usize, seed: u64) -> Vec<u8> {
+    let (col, glows) = vista_scene(theme, w, h, seed);
+    finish(w, h, &col, &glows)
+}
+
+/// The same, as the game draws it: `base` under the lighting (its colours
+/// divided by the place's ambient light, which the lighting multiplies
+/// back in: lit only by that and what's near), `glow` the halos, drawn
+/// over the lighting; the ambient light to give the place.
+pub struct GameLayers {
+    pub base: Vec<u8>,
+    pub glow: Vec<u8>,
+    pub ambient: Rgb,
+}
+
+/// A place's layers for the game: an underdark theme's name, or
+/// "underworld".
+pub fn game_layers(name: &str, w: usize, h: usize, seed: u64) -> Option<GameLayers> {
+    let ambient = ambient_of(name)?;
+    let (col, glows) = match name {
+        "starlit" => vista_scene(Theme::Starlit, w, h, seed),
+        "myconid" => vista_scene(Theme::Myconid, w, h, seed),
+        "crystal" => vista_scene(Theme::Crystal, w, h, seed),
+        "ruin" => vista_scene(Theme::Ruin, w, h, seed),
+        _ => underworld_scene(w, h, seed),
+    };
+    let base = col.iter().flat_map(|c| [0, 1, 2].map(|k| ((c[k] / ambient[k]).clamp(0.0, 1.0) * 255.0).round() as u8).into_iter().chain([255])).collect();
+    let glow = finish_glow(w, h, &glows);
+    Some(GameLayers { base, glow, ambient })
+}
+
+/// A place's own dim light (what the game's lighting gives it
+/// everywhere): an underdark theme's name, or "underworld".
+pub fn ambient_of(name: &str) -> Option<Rgb> {
+    Some(match name {
+        "starlit" => [0.3, 0.4, 0.62],
+        "myconid" => [0.26, 0.46, 0.44],
+        "crystal" => [0.42, 0.33, 0.62],
+        "ruin" => [0.55, 0.4, 0.26],
+        "underworld" => [0.7, 0.3, 0.18],
+        _ => return None,
+    })
+}
+
+/// The halos alone, as RGBA (colour, and how strong as alpha).
+fn finish_glow(w: usize, h: usize, glows: &[Glow]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(w * h * 4);
+    for y in 0..h {
+        for x in 0..w {
+            let mut c = [0.0f32; 3];
+            for g in glows {
+                let d2 = (x as f32 - g.x).powi(2) + (y as f32 - g.y).powi(2);
+                if d2 > g.r * g.r * 9.0 {
+                    continue;
+                }
+                let a = g.k * (-d2 / (g.r * g.r)).exp();
+                for (k, v) in c.iter_mut().enumerate() {
+                    *v += g.c[k] * a;
+                }
+            }
+            let a = c[0].max(c[1]).max(c[2]).min(1.0);
+            let n = if a > 0.0 { 1.0 / c[0].max(c[1]).max(c[2]) } else { 0.0 };
+            out.extend(c.map(|v| ((v * n).clamp(0.0, 1.0) * 255.0) as u8));
+            out.push((a * 255.0) as u8);
+        }
+    }
+    out
+}
+
+fn vista_scene(theme: Theme, w: usize, h: usize, seed: u64) -> (Vec<Rgb>, Vec<Glow>) {
     let pl = palette(theme);
     let (wf, hf) = (w as f32, h as f32);
     // (Each theme its own cavern.)
@@ -218,7 +287,7 @@ pub fn vista(theme: Theme, w: usize, h: usize, seed: u64) -> Vec<u8> {
             col[((top + len) as usize).min(h - 1) * w + x as usize] = pl.glow;
         }
     }
-    finish(w, h, &col, &glows)
+    (col, glows)
 }
 
 /// The theme's few big landmarks, between the far cavern layer and the
@@ -336,6 +405,11 @@ fn landmarks(col: &mut [Rgb], glows: &mut Vec<Glow>, theme: Theme, pl: &Palette,
 /// The underworld's vault over the lava sea, `w`×`h` cells: a red haze
 /// lit from below, three layers of rock in silhouette, the sea's glow.
 pub fn underworld(w: usize, h: usize, seed: u64) -> Vec<u8> {
+    let (col, glows) = underworld_scene(w, h, seed);
+    finish(w, h, &col, &glows)
+}
+
+fn underworld_scene(w: usize, h: usize, seed: u64) -> (Vec<Rgb>, Vec<Glow>) {
     let (wf, hf) = (w as f32, h as f32);
     let s = seed ^ 0x1a7a;
     let (top, mist, near, lava) = (rgb(12, 3, 3), rgb(150, 46, 18), rgb(16, 5, 4), rgb(255, 150, 50));
@@ -378,7 +452,7 @@ pub fn underworld(w: usize, h: usize, seed: u64) -> Vec<u8> {
         col[(y as usize).min(h - 1) * w + (x as usize).min(w - 1)] = lava;
         glows.push(Glow { x, y, c: lava, r: 2.5, k: 0.4 });
     }
-    finish(w, h, &col, &glows)
+    (col, glows)
 }
 
 /// An ordinary cave, dug: the world's rock around a tunnel, the dark
