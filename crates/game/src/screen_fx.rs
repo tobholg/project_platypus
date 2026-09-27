@@ -1,8 +1,9 @@
 //! The screen's edges, telling how you are: a red flash fading in and out
 //! when you're hurt (stronger the harder), a red pulse while your health
-//! is low (quicker and stronger the lower), and a lush green glow when a
-//! potion heals you. Two overlays over the whole view (red, green), their
-//! colour at the edges only, fading to nothing towards the middle.
+//! is low (quicker and stronger the lower), and a lush green glow while a
+//! potion heals you: full as it starts, shrinking to nothing as the healing
+//! runs out. Two overlays over the whole view (red, green), their colour
+//! at the edges only, fading to nothing towards the middle.
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
@@ -41,18 +42,26 @@ struct Glows {
 
 /// Low health: below this share of it the edges pulse.
 const LOW: f32 = 0.3;
+/// How deep the glow reaches in from every edge (a share of the screen's
+/// height).
+const BAND: f32 = 0.26;
 
 fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
-    // The vignette: clear in the middle, rising towards the edges (an
-    // ellipse, the corners strongest), smooth (sampled linearly).
-    let (w, h) = (160u32, 90u32);
+    // The vignette: clear in the middle, rising towards the edges, the
+    // band as deep at the top and bottom as at the sides (measured in the
+    // screen's height, 16:9), the corners a little stronger; smooth
+    // (sampled linearly).
+    let (w, h) = (320u32, 180u32);
+    let aspect = w as f32 / h as f32;
     let mut px = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h {
         for x in 0..w {
-            let (u, v) = ((x as f32 + 0.5) / w as f32 * 2.0 - 1.0, (y as f32 + 0.5) / h as f32 * 2.0 - 1.0);
-            // (Rounded-rectangle distance: the edges, not a circle.)
-            let d = (u.abs().powf(4.0) + v.abs().powf(4.0)).powf(0.25);
-            let t = ((d - 0.62) / 0.4).clamp(0.0, 1.0);
+            let (fx, fy) = ((x as f32 + 0.5) / w as f32, (y as f32 + 0.5) / h as f32);
+            // Distance to the nearest edge, in heights; a soft minimum of
+            // the two (the corners fuller).
+            let (ex, ey) = (fx.min(1.0 - fx) * aspect, fy.min(1.0 - fy));
+            let d = (ex.powf(-3.0) + ey.powf(-3.0)).powf(-1.0 / 3.0);
+            let t = (1.0 - d / BAND).clamp(0.0, 1.0);
             let a = t * t * (3.0 - 2.0 * t);
             px.extend([255, 255, 255, (a * 255.0) as u8]);
         }
@@ -72,9 +81,9 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     }
 }
 
-fn show(time: Res<Time<Real>>, mut glows: ResMut<Glows>, mut drank: MessageReader<crate::potion::Drank>, player: Query<(Entity, &Health), With<LocalPlayer>>, mut edges: Query<(&Edge, &mut ImageNode)>) {
+fn show(time: Res<Time<Real>>, mut glows: ResMut<Glows>, player: Query<(&Health, Option<&crate::potion::Mending>), With<LocalPlayer>>, mut edges: Query<(&Edge, &mut ImageNode)>) {
     let dt = time.delta_secs().min(0.1);
-    let Ok((me, h)) = player.single() else { return };
+    let Ok((h, mending)) = player.single() else { return };
     // Hurt: a flash by how much of your health went (a scratch faint, a
     // big blow strong).
     if let Some(was) = glows.last_hp
@@ -84,12 +93,8 @@ fn show(time: Res<Time<Real>>, mut glows: ResMut<Glows>, mut drank: MessageReade
         glows.hurt = (glows.hurt + 0.35 + 2.0 * (was - h.hp) / h.max.max(1.0)).min(1.0);
     }
     glows.last_hp = Some(h.hp);
-    for d in drank.read() {
-        if d.who == me {
-            // (A bigger heal, a stronger glow.)
-            glows.heal = (0.6 + d.heal / h.max.max(1.0)).min(1.0);
-        }
-    }
+    // Healing: as much of it as is still to come.
+    glows.heal = mending.map_or(0.0, |m| (m.left / m.total.max(0.01)).clamp(0.0, 1.0));
     // Fading in quick, out slower.
     let ease = |shown: f32, target: f32, up: f32, down: f32| {
         let k = if target > shown { 1.0 - (-dt / up).exp() } else { 1.0 - (-dt / down).exp() };
@@ -97,8 +102,7 @@ fn show(time: Res<Time<Real>>, mut glows: ResMut<Glows>, mut drank: MessageReade
     };
     glows.hurt_shown = ease(glows.hurt_shown, glows.hurt, 0.04, 0.12);
     glows.hurt *= (-dt / 0.35).exp();
-    glows.heal_shown = ease(glows.heal_shown, glows.heal, 0.12, 0.25);
-    glows.heal *= (-dt / 0.7).exp();
+    glows.heal_shown = ease(glows.heal_shown, glows.heal, 0.08, 0.1);
     // Low health: a pulse, a heartbeat's pace, quicker and stronger the
     // lower.
     let share = h.hp / h.max.max(1.0);

@@ -33,8 +33,9 @@ pub use ui::InventoryOpen;
 pub struct HandsPlugin;
 
 const DT: f32 = (1.0 / TICK_HZ) as f32;
-/// Slots in a player's pack: `BARS` hotbars, then three rows of pack.
-pub const PACK: usize = HOTBAR * (BARS + 3);
+/// Slots in a player's pack: `BARS` hotbars, then five rows of pack.
+pub const PACK: usize = HOTBAR * (BARS + PACK_ROWS);
+pub const PACK_ROWS: usize = 5;
 /// The arm keeps pointing this long after a cast (seconds).
 const AIM_HOLD: f32 = 0.4;
 /// Blocks placed per second while the button is held.

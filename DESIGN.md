@@ -232,12 +232,19 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
   over, sickness)`. Click it in the hand, or H drinks the first healing one
   carried (Terraria's quick heal): `heal` back over `over` s, then potion
   sickness for `sickness` s (a status timer) when no healing potion works;
-  not drunk at full health or while sick. First: the small health potion
-  (40 over 0.6 s, 30 s sickness), from glass and a mushroom stem at a
-  workbench (a placeholder), in chests at every depth.
+  not drunk at full health or while sick. Healing comes back smoothly, 10
+  a second (`over` = heal / 10). First: the small health potion (40 over
+  4 s, 30 s sickness), from glass and a mushroom stem at a workbench (a
+  placeholder), in chests at every depth. Drinking: a pop and a fizz.
 - **The screen's edges** (`screen_fx.rs`): a red flash fading in and out
   when hurt (stronger the harder), a red pulse below 30 % health (quicker
-  and stronger the lower), a green glow when a potion heals.
+  and stronger the lower), a green glow while a potion heals: full as it
+  starts, shrinking to nothing as the healing runs out. The band as deep
+  from every edge.
+- **The inventory screen** (Esc): the hotbar in use (X for the next), five
+  rows of pack, and a discard slot (Terraria's trash): a stack dropped in
+  (or Ctrl-clicked from a slot) is kept there to take back until the next
+  goes in.
 - **Loot tables** (RON) by context, such as `crypt_deep` or `troll`: weighted entries, counts, rarity by depth.
 
 ## 6. Creatures and bodies

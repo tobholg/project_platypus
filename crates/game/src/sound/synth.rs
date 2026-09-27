@@ -65,6 +65,10 @@ pub enum Make {
     /// of impact at the contact (a short pulse about 200 Hz, falling, with
     /// its overtone: heard on small speakers, not a thump).
     Cut { low: f32, high: f32, length: f32, #[serde(default = "cut_tail")] tail: f32, #[serde(default)] tear: f32, #[serde(default = "half")] snap: f32, #[serde(default)] meat: f32, #[serde(default)] crunch: f32, #[serde(default)] knock: f32 },
+    /// A flask popped open: a soft pop (`pop`), then a fizzing hiss
+    /// (`hiss`, falling as the pressure goes, `length` s) with bubbles
+    /// (`bubbles` a second, thinning), nothing harsh over 9 kHz.
+    Fizz { pop: f32, hiss: f32, length: f32, #[serde(default)] bubbles: f32 },
     /// Loops (`length` s): a fire's roar, hiss and crackles (per second).
     Fire { crackle: f32, roar: f32, #[serde(default = "tenth")] hiss: f32 },
     /// A cave: a low rumble, air moving through it, a faint low hum.
@@ -292,6 +296,7 @@ pub fn render(make: &Make, sr: f32, seed: u64, loops: f32) -> Buf {
         Make::Swish { low, high, length, q, whistle } => Buf::mono(swish(*low, *high, *length, *q, *whistle, sr, rng)),
         Make::Impact { body, crack, flesh, slice, ring, length, muffle } => Buf::mono(impact(*body, *crack, *flesh, *slice, *ring, *length, *muffle, sr, rng)),
         Make::Slash { chop, weight, edge, wet, tear, slice, soft, length, muffle } => Buf::mono(slash(&SlashParts { chop: *chop, weight: *weight, edge: *edge, wet: *wet, tear: *tear, slice: *slice, soft: *soft, length: *length, muffle: *muffle }, sr, rng)),
+        Make::Fizz { pop, hiss, length, bubbles } => Buf::mono(fizz(*pop, *hiss, *length, *bubbles, sr, rng)),
         Make::Cut { low, high, length, tail, tear, snap, meat, crunch, knock } => Buf::mono(cut(&CutParts { low: *low, high: *high, length: *length, tail: *tail, tear: *tear, snap: *snap, meat: *meat, crunch: *crunch, knock: *knock }, sr, rng)),
         Make::Fire { crackle, roar, hiss } => looped(fire(*crackle, *roar, *hiss, total, sr, rng), loops, sr),
         Make::Cave { rumble, wind, hum } => looped(cave(*rumble, *wind, *hum, total, sr, rng), loops, sr),
@@ -596,6 +601,44 @@ fn chop_rise() -> f32 {
 
 fn cut_tail() -> f32 {
     0.06
+}
+
+fn fizz(pop: f32, hiss: f32, length: f32, bubbles: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
+    let n = frames(length * 1.3 + 0.03, sr);
+    // Bubbles: tiny bright ticks, thinning out.
+    let mut bub = vec![0.0f32; n];
+    if bubbles > 0.0 {
+        let mut at = 0.01;
+        while at < length {
+            let (hz, len, loud) = (rng.range(2200.0, 6000.0), rng.range(0.0008, 0.0025), rng.range(0.2, 1.0) * (-at / (length * 0.45)).exp());
+            let mut f = Filter::new(Pass::Band, 6.0, sr);
+            let start = frames(at, sr);
+            for k in 0..frames(len * 3.0, sr) {
+                if let Some(b) = bub.get_mut(start + k) {
+                    *b += f.tick(rng.noise(), hz) * env(k as f32 / sr, 0.0002, len) * loud * 1.2;
+                }
+            }
+            at += -(1.0 - rng.unit()).max(1e-6).ln() / bubbles;
+        }
+    }
+    let (mut click, mut air, mut soft) = (Filter::new(Pass::Band, 4.0, sr), Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::Low, 0.7, sr));
+    let mut ph = 0.0f32;
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / sr;
+            let x = rng.noise();
+            // The pop: a short resonant click and a little falling blip.
+            let c = click.tick(x, 1700.0) * env(t, 0.0003, 0.012) * pop * 2.0;
+            ph += (500.0 + 500.0 * (-t / 0.006).exp()) / sr;
+            let blip = (TAU * ph).sin() * env(t, 0.0005, 0.02) * pop * 0.35;
+            // The fizz: air rushing out, its pitch falling with the
+            // pressure.
+            let th = (t - 0.004).max(0.0);
+            let cut = 2500.0 + 3000.0 * (-th / (length * 0.4)).exp();
+            let f = air.tick(x, cut) * env(th, 0.006, length * 0.7) * if t > 0.004 { hiss } else { 0.0 };
+            soft.tick(c + blip + f + bub[i], 9000.0)
+        })
+        .collect()
 }
 
 /// `Make::Cut`'s parts.
@@ -1031,6 +1074,7 @@ mod tests {
             Make::Impact { body: 110.0, crack: 0.6, flesh: 1300.0, slice: 0.5, ring: 0.3, length: 0.14, muffle: 3000.0 },
             Make::Slash { chop: 900.0, weight: 80.0, edge: 0.6, wet: 0.5, tear: 200.0, slice: 0.5, soft: 0.01, length: 0.16, muffle: 5000.0 },
             Make::Cut { low: 900.0, high: 4200.0, length: 0.08, tail: 0.06, tear: 250.0, snap: 0.5, meat: 0.5, crunch: 0.5, knock: 0.3 },
+            Make::Fizz { pop: 0.8, hiss: 0.6, length: 0.6, bubbles: 60.0 },
             Make::Fire { crackle: 20.0, roar: 0.6, hiss: 0.1 },
             Make::Cave { rumble: 0.6, wind: 0.5, hum: 0.3 },
             Make::Rain { drops: 60.0 },
@@ -1041,7 +1085,7 @@ mod tests {
             Make::Pads { root: 110.0, chords: vec![vec![0.0, 7.0, 16.0], vec![5.0, 9.0, 12.0]], chord: 4.0, bright: 1200.0, plucks: 0.3, scale: vec![0.0, 2.0, 4.0, 7.0, 9.0] },
         ];
         for (i, m) in makes.iter().enumerate() {
-            let loops = if i >= 14 { 6.0 } else { 0.0 };
+            let loops = if i >= 15 { 6.0 } else { 0.0 };
             let mut b = render(m, sr, i as u64, loops);
             assert!(!b.is_empty(), "{m:?}: empty");
             assert!(b.l.iter().chain(&b.r).all(|x| x.is_finite()), "{m:?}: not finite");

@@ -42,7 +42,8 @@
         (id: "bomb",           name: "Bomb",           stack: 30, color: (40, 40, 46), use: Throw(Bomb)),
         (id: "glowstick",      name: "Glow stick",     stack: 30, color: (90, 255, 150), use: Throw(Glowstick)),
         // Potions: click to drink (or H, the first healing one carried).
-        (id: "small_health_potion", name: "Small health potion", stack: 30, color: (230, 60, 80), use: Potion(heal: 40, over: 0.6, sickness: 30),
+        // Healing comes back 10 a second: over = heal / 10.
+        (id: "small_health_potion", name: "Small health potion", stack: 30, color: (230, 60, 80), use: Potion(heal: 40, over: 4, sickness: 30),
             about: "A small red flask."),
         // Foci (magic::spells): each holds its spells (a wand one, a staff
         // two: left and right button), of its tier or less (a wand 1, a staff

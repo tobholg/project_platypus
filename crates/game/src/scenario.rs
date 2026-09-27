@@ -160,8 +160,8 @@
 //!   shows)
 //! - `potion`     (`PLATYPUS_WORLD=arena`) health down to 22 (the edges
 //!   pulse red), a blow at 2.5 s (a red flash), H at 4 s (a potion drunk:
-//!   green; logs the health before and after), H again at 5 s (sick: not
-//!   drunk; logs it)
+//!   green, shrinking as it heals; logs the health 2 s and 4 s after), H
+//!   again at 8.2 s (sick: not drunk; logs it), then the inventory opened
 //! - `rocketswim` (`PLATYPUS_WORLD=arena`) a pit of water 160 deep, the
 //!   player in it (far over the bottom) with its rocket boots empty: logs the charge
 //!   after 3 s in the water, then how far a held jump rose it in 1.5 s
@@ -3055,16 +3055,22 @@ fn potion_script(s: Res<Scenario>, items: Option<Res<crate::hands::items::Items>
             keys.press(KeyCode::KeyH);
             state.0 = 3;
         }
-        3 if t > 4.9 => {
-            info!("potion: after: {:.0} hp (+{:.0}), {} potions left, sick {sick}", h.hp, h.hp - state.1, potions());
-            state.1 = h.hp;
-            keys.press(KeyCode::KeyH);
+        3 if t > 6.0 => {
+            info!("potion: 2 s after: {:.0} hp (+{:.0}), {} potions left, sick {sick}", h.hp, h.hp - state.1, potions());
             state.0 = 4;
         }
-        4 if t > 5.4 => {
-            info!("potion: H again while sick: {:.0} hp (+{:.0}), {} potions left", h.hp, h.hp - state.1, potions());
+        4 if t > 8.2 => {
+            info!("potion: 4 s after: {:.0} hp (+{:.0})", h.hp, h.hp - state.1);
+            state.1 = h.hp;
+            keys.press(KeyCode::KeyH);
             state.0 = 5;
         }
+        5 if t > 8.7 => {
+            info!("potion: H again while sick: {:.0} hp (+{:.0}), {} potions left", h.hp, h.hp - state.1, potions());
+            keys.press(KeyCode::Escape);
+            state.0 = 6;
+        }
+        6 => keys.release(KeyCode::Escape),
         _ => {}
     }
 }

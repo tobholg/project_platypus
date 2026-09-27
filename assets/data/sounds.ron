@@ -27,6 +27,7 @@
 //                                               a second), the weight behind it (0: none)
 //     (Slash also: slice (a longer cut sweeping down from high), soft (the
 //     chop's rise, s: longer, less of a knock).)
+//     Fizz(pop, hiss, length, bubbles)          a flask popped: a pop, a fizz
 //     Cut(low, high, length, tail, tear, snap, meat, crunch, knock)  a blade's cut,
 //                                               swing: a band sweeping up, cut off
 //                                               at the contact, a short wet fall
@@ -105,10 +106,9 @@
         "place": (make: Thud(pitch: 140, drop: 0.2, noise: 0.4, length: 0.08, bright: 2000), variants: 3, pitch: 0.06, volume: 0.35),
         "craft": (make: Chime(pitch: 700, notes: [0, 7], length: 0.4), volume: 0.35),
         "toast": (make: Chime(pitch: 660, notes: [0, 4, 7, 12], length: 0.9), reverb: 0.3, volume: 0.4),
-        // A potion: drunk (a gulp), healing (a soft rising chime); not drunk
-        // (sick, or at full health).
-        "drink": (make: Burst(cutoff: 700, length: 0.09, q: 2.5, body: 190), variants: 3, pitch: 0.08, volume: 0.5),
-        "heal": (make: Chime(pitch: 660, notes: [0, 4, 7, 12], length: 0.6), reverb: 0.3, volume: 0.35),
+        // A potion: popped open and drunk (a pop and a fizz, a can opened,
+        // smoother); not drunk (sick, or at full health).
+        "drink": (make: Fizz(pop: 0.8, hiss: 0.55, length: 0.65, bubbles: 70), variants: 3, pitch: 0.06, reverb: 0.15, volume: 0.6),
         "potion_no": (make: Blip(pitch: 420, to: 300, length: 0.08), volume: 0.3, every: 0.3),
         "pickup": (make: Blip(pitch: 700, to: 1400, length: 0.07), variants: 2, pitch: 0.05, volume: 0.25, every: 0.05),
 

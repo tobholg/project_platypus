@@ -3,8 +3,9 @@
 //! the first one carried with H (quick heal, as Terraria's): it mends
 //! `heal` health over `over` seconds (0: at once), then potion sickness for
 //! `sickness` seconds, when no healing potion works (a status, top right).
-//! Not at full health: it'd be wasted. Drinking says so (`Drank`): the
-//! screen's edges glow green (`screen_fx.rs`), and it's heard.
+//! Not at full health: it'd be wasted. While it mends, the screen's edges
+//! glow green (`screen_fx.rs`: full at first, shrinking as it runs out);
+//! the flask pops open with a fizz.
 
 use bevy::prelude::*;
 
@@ -18,7 +19,6 @@ pub struct PotionPlugin;
 impl Plugin for PotionPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<Drink>()
-            .add_message::<Drank>()
             .add_systems(Update, quick_heal)
             .add_systems(FixedUpdate, (drink, mend, sicken).chain().in_set(TickSet::Intent));
     }
@@ -31,18 +31,12 @@ pub struct Drink {
     pub slot: usize,
 }
 
-/// A potion was drunk: how much it heals.
-#[derive(Message, Clone, Copy, Debug)]
-pub struct Drank {
-    pub who: Entity,
-    pub heal: f32,
-}
-
-/// Health coming back, `rate` a second, `left` more to come.
+/// Health coming back, `rate` a second, `left` more to come of `total`.
 #[derive(Component, Debug)]
 pub struct Mending {
     pub rate: f32,
     pub left: f32,
+    pub total: f32,
 }
 
 /// No healing potion works until it passes.
@@ -71,7 +65,7 @@ type Drinker<'a> = (&'a mut Inventory, &'a Health, Option<&'a PotionSickness>, &
 
 /// A potion drunk: one gone from its slot, the mending begun, sickness
 /// after.
-fn drink(mut commands: Commands, mut asks: MessageReader<Drink>, items: Option<Res<Items>>, mut drinkers: Query<Drinker>, mut drank: MessageWriter<Drank>, mut sounds: MessageWriter<crate::sound::PlaySound>) {
+fn drink(mut commands: Commands, mut asks: MessageReader<Drink>, items: Option<Res<Items>>, mut drinkers: Query<Drinker>, mut sounds: MessageWriter<crate::sound::PlaySound>) {
     let Some(items) = items else { return };
     for ask in asks.read() {
         let Ok((mut inv, health, sick, k)) = drinkers.get_mut(ask.who) else { continue };
@@ -84,10 +78,8 @@ fn drink(mut commands: Commands, mut asks: MessageReader<Drink>, items: Option<R
         }
         inv.take(ask.slot, 1);
         let over = over.max(DT);
-        commands.entity(ask.who).insert((Mending { rate: heal / over, left: heal }, PotionSickness { left: sickness, total: sickness.max(0.01) }));
-        drank.write(Drank { who: ask.who, heal });
+        commands.entity(ask.who).insert((Mending { rate: heal / over, left: heal, total: heal }, PotionSickness { left: sickness, total: sickness.max(0.01) }));
         sounds.write(crate::sound::PlaySound::at("drink", k.body.pos));
-        sounds.write(crate::sound::PlaySound::here("heal"));
     }
 }
 

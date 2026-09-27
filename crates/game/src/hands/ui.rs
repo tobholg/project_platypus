@@ -20,7 +20,7 @@ use bevy::window::PrimaryWindow;
 use super::chests::{Chests, SLOTS};
 use super::icons::Icons;
 use super::items::{BARS, HOTBAR, Inventory, ItemDef, Items, Stack, Use};
-use super::{DevTools, Hand, PACK, spawn_drop};
+use super::{DevTools, Hand, PACK, PACK_ROWS, spawn_drop};
 use crate::actors::Kinematics;
 use crate::actors::player::LocalPlayer;
 use crate::gear::{Equipment, GearRules, Stats, WORN};
@@ -39,17 +39,21 @@ pub struct InventoryOpen(pub bool);
 pub(crate) struct Held {
     pub(crate) stack: Option<Stack>,
     from: Option<(Holder, usize)>,
+    /// The discard slot's stack: the last thing thrown in, to take back
+    /// until the next goes in (and this one's gone for good).
+    trash: Option<Stack>,
 }
 
 /// Whose slot: the hotbar in use (bottom of the screen, by position), the
 /// player's inventory (by slot), the open chest, or what the player wears
-/// (by `gear::WORN` slot).
+/// (by `gear::WORN` slot), or the discard slot.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Holder {
     Bar,
     Pack,
     Chest,
     Equip,
+    Trash,
 }
 
 #[derive(Component)]
@@ -64,6 +68,10 @@ struct SlotCount(Holder, usize);
 /// A hotbar's number in the inventory screen (click: use that hotbar).
 #[derive(Component)]
 struct BarTag(usize);
+
+/// A hotbar's row on the inventory screen (only the one in use shows).
+#[derive(Component)]
+struct BarRow(usize);
 
 #[derive(Component)]
 struct ChestRoot;
@@ -121,7 +129,7 @@ impl Plugin for UiPlugin {
         app.init_resource::<InventoryOpen>()
             .init_resource::<Held>()
             .add_systems(Startup, spawn)
-            .add_systems(Update, (toggle, press, release, show, show_gear, title, spell_label, tooltip).chain());
+            .add_systems(Update, (toggle, bar_rows, press, release, show, show_gear, title, spell_label, tooltip).chain());
     }
 }
 
@@ -250,9 +258,10 @@ fn spawn(mut commands: Commands) {
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.62)),
             ))
             .with_children(|panel| {
-                panel.spawn(small("Inventory  |  drag or click: move  |  right-click: half  |  Shift-click: across  |  X: next hotbar"));
+                panel.spawn(small("Inventory  |  drag or click: move  |  right-click: half  |  Shift-click: across  |  Ctrl-click: discard  |  X: next hotbar"));
+                // (Only the hotbar in use shows: `bar_rows`.)
                 for bar in 0..BARS {
-                    panel.spawn(Node { column_gap: px(6), align_items: AlignItems::Center, ..default() }).with_children(|row| {
+                    panel.spawn((BarRow(bar), Node { column_gap: px(6), align_items: AlignItems::Center, ..default() })).with_children(|row| {
                         row.spawn((
                             Button,
                             BarTag(bar),
@@ -268,11 +277,17 @@ fn spawn(mut commands: Commands) {
                     });
                 }
                 panel.spawn(small("Pack"));
-                panel.spawn(Node { padding: UiRect::left(px(26)), ..default() }).with_children(|row| {
+                panel.spawn(Node { padding: UiRect::left(px(26)), column_gap: px(10), align_items: AlignItems::End, ..default() }).with_children(|row| {
                     row.spawn(grid()).with_children(|g| {
                         for i in BARS * HOTBAR..PACK {
                             slot(g, Holder::Pack, i);
                         }
+                    });
+                    // The discard slot: what goes in is gone once the next
+                    // thing does.
+                    row.spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(3), ..default() }).with_children(|c| {
+                        c.spawn(small("Discard"));
+                        slot(c, Holder::Trash, 0);
                     });
                 });
             });
@@ -284,7 +299,7 @@ fn spawn(mut commands: Commands) {
             Visibility::Hidden,
             Node {
                 position_type: PositionType::Absolute,
-                bottom: px((SLOT + 3.0) * (BARS + 3) as f32 + 100.0),
+                bottom: px((SLOT + 3.0) * (1 + PACK_ROWS) as f32 + 100.0),
                 width: percent(100),
                 justify_content: JustifyContent::Center,
                 ..default()
@@ -373,6 +388,16 @@ fn toggle(
 
 type SlotQuery<'a> = (&'a RelativeCursorPosition, &'a SlotUi, &'a InheritedVisibility);
 
+/// Only the hotbar in use has its row on the inventory screen.
+fn bar_rows(hand: Res<Hand>, mut rows: Query<(&BarRow, &mut Node)>) {
+    for (row, mut node) in &mut rows {
+        let want = if row.0 == hand.bar { Display::Flex } else { Display::None };
+        if node.display != want {
+            node.display = want;
+        }
+    }
+}
+
 /// The slot under the mouse (shown ones only). (Not `Interaction`: while
 /// a drag's button is down, the slot it started on stays `Pressed`.)
 fn under(slots: &Query<SlotQuery>) -> Option<(Holder, usize)> {
@@ -390,6 +415,8 @@ fn slot_mut<'a>(inv: &'a mut Inventory, chest: Option<&'a mut Inventory>, eq: &'
         Holder::Bar | Holder::Pack => inv.slots.get_mut(index(hand, which, i)),
         Holder::Chest => chest?.slots.get_mut(i),
         Holder::Equip => eq.worn.get_mut(i),
+        // (The discard slot is its own: `press`, `release`.)
+        Holder::Trash => None,
     }
 }
 
@@ -448,7 +475,29 @@ fn press(
     if which == Holder::Chest && chest_key.is_none() {
         return;
     }
+    // The discard slot: something in hand goes in (what was there is gone);
+    // an empty hand takes back what's there.
+    if which == Holder::Trash {
+        let h = &mut *held;
+        if left {
+            if h.stack.is_some() {
+                h.trash = h.stack.take();
+            } else {
+                h.stack = h.trash.take();
+                h.from = h.stack.map(|_| (which, i));
+            }
+        }
+        return;
+    }
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+    // Ctrl-click: straight into the discard slot (the pack and hotbars').
+    if left && keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]) && held.stack.is_none() && matches!(which, Holder::Bar | Holder::Pack) {
+        let j = index(hand, which, i);
+        if let Some(s) = inv.slots[j].take() {
+            held.trash = Some(s);
+        }
+        return;
+    }
     if left && shift && held.stack.is_none() && which == Holder::Equip {
         // Off: into the pack.
         if let Some(s) = eq.worn[i].take()
@@ -553,6 +602,12 @@ fn release(
     if (which, i) == from || !allowed(&items, which, i, held.stack.as_ref()) {
         return;
     }
+    // Dragged onto the discard slot: in it goes.
+    if which == Holder::Trash {
+        let h = &mut *held;
+        h.trash = h.stack.take();
+        return;
+    }
     let chest = chests.open.map(|c| chests.contents(c, &sim.world, &items));
     let Some(slot) = slot_mut(&mut inv, chest, &mut eq, &hand, which, i) else { return };
     put(&items, &mut held.stack, slot);
@@ -627,6 +682,7 @@ fn show(
     let slot_of = |which: Holder, i: usize| match which {
         Holder::Chest => stash[i],
         Holder::Equip => eq.worn[i],
+        Holder::Trash => held.trash,
         _ => inv.slots[index(&hand, which, i)],
     };
     for (&SlotUi(which, i), mut border) in &mut borders {
@@ -780,6 +836,7 @@ fn tooltip(
     let stack = match which {
         Holder::Chest => chests.open.and_then(|c| chests.contents(c, &sim.world, &items).slots[i]),
         Holder::Equip => eq.worn[i],
+        Holder::Trash => held.trash,
         _ => inv.slots[index(&hand, which, i)],
     };
     let Some(stack) = stack else { return };
