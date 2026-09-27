@@ -72,8 +72,6 @@ pub fn tether(body: &mut Body, at: Vec2, len: f32, dt: f32) -> bool {
 
 /// Rocket boots under water: shares of their thrust and top speed.
 const ROCKET_WATER: (f32, f32) = (0.5, 0.45);
-/// Seconds for rocket boots to fill back up in water, not firing.
-const ROCKET_WATER_REFILL: f32 = 2.0;
 
 /// Below this share of its body under water (its head out), a jump leaves
 /// the water as a jump does, at this share of a jump's speed.
@@ -386,7 +384,6 @@ impl Locomotion {
         if grounded {
             self.air_jumps_left = s.air_jumps;
             self.air_dash_used = false;
-            self.rocket_left = s.rocket_time;
         }
 
         let wet = self.contacts.submerged;
@@ -528,7 +525,6 @@ impl Locomotion {
         if self.state == MoveState::WallSlide {
             self.air_jumps_left = s.air_jumps;
             self.air_dash_used = false;
-            self.rocket_left = s.rocket_time;
         }
 
         // Swim: in water jump is a stroke toward where it steers (up if
@@ -609,10 +605,10 @@ impl Locomotion {
             // (The rocket, not the jump, now: letting go doesn't cut it.)
             self.rising_from_jump = false;
             ev.rocketed = true;
-        } else if swimming && s.rocket_time > 0.0 {
-            // In water (not firing) they fill back up, slowly: there's no
-            // ground to land on.
-            self.rocket_left = (self.rocket_left + dt * s.rocket_time / ROCKET_WATER_REFILL).min(s.rocket_time);
+        } else if s.rocket_time > 0.0 && (grounded || swimming || self.state == MoveState::WallSlide) {
+            // Resting (on the ground, a wall, in water) they fill back up
+            // over as long as they fire: a second's charge a second.
+            self.rocket_left = (self.rocket_left + dt).min(s.rocket_time);
         }
 
         // Gravity (none while a jump's rise is held).
@@ -708,7 +704,8 @@ mod tests {
     }
 
     /// Rocket boots: holding jump climbs far past a jump's height, for as
-    /// long as the fuel lasts; landing fills it again.
+    /// long as the fuel lasts; standing, it fills again over as long as it
+    /// fires (not at once on landing).
     #[test]
     fn rocket_boots_climb_while_jump_is_held() {
         let mut rows = vec!["#                                                                                                  #"; 400];
@@ -732,8 +729,20 @@ mod tests {
         let rocket = apex(&s, &mut l2, &mut b2, 80);
         assert!(rocket > plain * 2.0, "rocket {rocket} vs a jump {plain}");
         assert!(l2.rocket_left <= 0.0, "the fuel ran out (80 ticks in, still up)");
-        settle(&g, &s, &mut l2, &mut b2);
-        assert!((l2.rocket_left - 1.0).abs() < 1e-3, "landing refills it");
+        // Down (still empty, falling), then half a second on the ground:
+        // half full; a second: full.
+        while !l2.grounded() {
+            tick(&g, &s, &mut l2, &mut b2, Intent::default());
+        }
+        assert!(l2.rocket_left < 0.05, "landing doesn't refill it at once: {}", l2.rocket_left);
+        for _ in 0..30 {
+            tick(&g, &s, &mut l2, &mut b2, Intent::default());
+        }
+        assert!((l2.rocket_left - 0.5).abs() < 0.05, "half a second standing: half full, {}", l2.rocket_left);
+        for _ in 0..30 {
+            tick(&g, &s, &mut l2, &mut b2, Intent::default());
+        }
+        assert!((l2.rocket_left - 1.0).abs() < 1e-3, "a second standing: full, {}", l2.rocket_left);
     }
 
     /// A body on a rope swings down and up the other side nearly as high

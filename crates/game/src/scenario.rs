@@ -2995,6 +2995,9 @@ fn rocket_script(
             k.body.pos = Vec2::new(x as f32, floor as f32 + 40.0);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
+            // (Full boots: they refill over seconds now; clamped to what
+            // they hold.)
+            k.loco.rocket_left = f32::MAX;
             state.1 = k.body.pos.y;
             state.0 = 1;
         }
@@ -4571,6 +4574,9 @@ fn fall_script(
         k.body.vel = Vec2::ZERO;
         k.prev_pos = k.body.pos;
         hp.hp = hp.max;
+        // (Each run on full boots: they refill over seconds now; clamped to
+        // what they hold.)
+        k.loco.rocket_left = f32::MAX;
     };
     match state.0 {
         0 if t > 0.8 => start(&mut state, &mut k, &mut hp, 1),
