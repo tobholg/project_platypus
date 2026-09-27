@@ -28,7 +28,8 @@
         wall_jump: true,
         wall_slide_speed: 60,
         wall_jump_push: 120,
-        step_height: 3,
+        // Terraria steps up a whole tile unasked: a block and a half here.
+        step_height: 6,
     ),
     // Drawn on the humanoid rig (assets/art/player.ron).
     art: "player",

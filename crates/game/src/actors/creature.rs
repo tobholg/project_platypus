@@ -335,6 +335,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             Health::new(def.health),
             Kinematics { body, loco: Locomotion::default(), prev_pos: center },
             MoveStats(def.movement.clone()),
+            super::StepEase::default(),
             Controls::default(),
             Animator::new(def.clone()),
             Transform::from_translation(center.extend(def.z)),

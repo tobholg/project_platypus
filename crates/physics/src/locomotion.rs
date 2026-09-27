@@ -848,8 +848,38 @@ mod tests {
         assert!(jumped, "buffered jump fired on landing");
     }
 
+    /// Walking down a stair of small steps: it stays on the ground (walks
+    /// down each), never a hop.
+    #[test]
+    fn walking_down_small_steps_stays_on_the_ground() {
+        let mut rows = vec!["#                                                  #"; 20];
+        // (A cell lower every 10 cells to the right.)
+        rows.extend(["##########                                         #", "####################                               #", "##############################                     #", "########################################           #"]);
+        rows.push("####################################################");
+        let g = Ascii::new(&rows);
+        let (s, mut l, mut b) = player();
+        b.pos = Vec2::new(5.0, 20.0);
+        settle(&g, &s, &mut l, &mut b);
+        let mut airborne = 0;
+        for _ in 0..40 {
+            tick(&g, &s, &mut l, &mut b, Intent { move_x: -1.0, ..default_intent() });
+        }
+        b.pos.x = 5.0;
+        settle(&g, &s, &mut l, &mut b);
+        for _ in 0..40 {
+            tick(&g, &s, &mut l, &mut b, Intent { move_x: 1.0, ..default_intent() });
+            if !l.grounded() {
+                airborne += 1;
+            }
+        }
+        assert!(b.pos.x > 40.0, "walked down the stair: {:?}", b.pos);
+        assert_eq!(airborne, 0, "never off the ground");
+    }
+
     #[test]
     fn coyote_time_allows_late_jumps_off_ledges() {
+        // (A ledge taller than a step: off it, it falls; lower, it would
+        // walk down onto the floor.)
         let g = Ascii::new(&[
             "#                                        #",
             "#                                        #",
@@ -867,10 +897,10 @@ mod tests {
             "#                                        #",
             "#                                        #",
             "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
+            "###############                          #",
+            "###############                          #",
+            "###############                          #",
+            "###############                          #",
             "###############                          #",
             "###############                          #",
             "#########################################",

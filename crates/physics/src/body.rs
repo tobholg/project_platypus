@@ -61,6 +61,8 @@ pub struct Contacts {
     pub impact: f32,
     /// Cells climbed by step-up this tick.
     pub stepped: i32,
+    /// Cells it came down onto the ground below, walking off a bump.
+    pub snapped: f32,
     /// Fraction of the box inside liquid, 0..=1.
     pub submerged: f32,
     /// Standing on something, how much grip it gives (the least under its
@@ -137,6 +139,29 @@ pub fn move_and_collide(grid: &impl Grid, body: &mut Body, dt: f32) -> Contacts 
     move_y(grid, body, body.vel.y * dt, &mut c);
     if !c.ground && body.vel.y <= 0.0 {
         c.ground = grounded(grid, body);
+    }
+    // Walking off a bump (it was on the ground, isn't rising or dropping
+    // through): down onto ground no more than a step below, as it steps
+    // up, rather than a hop.
+    if !c.ground && was_grounded && body.vel.y <= 0.0 && !body.drop && body.step_height > 0 {
+        let start = body.pos;
+        let bottom = (body.pos.y - body.half.y).floor();
+        for d in 0..=body.step_height {
+            let next = Vec2::new(body.pos.x, bottom - d as f32 + body.half.y);
+            if blocked(grid, body, next) {
+                break;
+            }
+            body.pos = next;
+            if grounded(grid, body) {
+                c.ground = true;
+                c.snapped = start.y - next.y;
+                body.vel.y = 0.0;
+                break;
+            }
+        }
+        if !c.ground {
+            body.pos = start;
+        }
     }
     c.submerged = submerged(grid, body);
     c.grip = if c.ground { grip_under(grid, body) } else { 1.0 };

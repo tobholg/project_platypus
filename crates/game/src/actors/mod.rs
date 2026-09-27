@@ -132,6 +132,15 @@ impl Health {
     }
 }
 
+/// Stepping up a bump snaps the body up (a tick), and walking off one
+/// down; what's drawn (and the camera) follows smoothly instead: this many
+/// cells still to go (below: to rise; above: to come down).
+#[derive(Component, Default)]
+pub struct StepEase(pub f32);
+
+/// How fast what's drawn rises after a step up (cells/s).
+const STEP_EASE: f32 = 70.0;
+
 /// Physical state of a creature. `prev_pos` is for render interpolation.
 #[derive(Component, Clone, Debug)]
 pub struct Kinematics {
@@ -270,7 +279,7 @@ impl Grid for WorldGrid<'_> {
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 
 /// One movement code path for every creature.
-type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, Option<&'a elements::Chilled>, Option<&'a mut FallTrack>, Has<WebWalker>, Option<&'a crate::gear::hook::Rope>, Has<player::LocalPlayer>);
+type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, Option<&'a elements::Chilled>, Option<&'a mut FallTrack>, Has<WebWalker>, Option<&'a crate::gear::hook::Rope>, Has<player::LocalPlayer>, Option<&'a mut StepEase>);
 
 pub(crate) fn move_creatures(
     sim: Res<SimWorld>,
@@ -282,7 +291,7 @@ pub(crate) fn move_creatures(
     tempo: Res<crate::tempo::Tempo>,
 ) {
     let grid = WorldGrid(&sim.world);
-    for (entity, mut k, stats, controls, chilled, track, web_walker, rope, player) in &mut q {
+    for (entity, mut k, stats, controls, chilled, track, web_walker, rope, player, ease) in &mut q {
         // Frozen until the ground under it is loaded.
         if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
             continue;
@@ -326,6 +335,10 @@ pub(crate) fn move_creatures(
         let rejumped = ev.air_jumped || ev.wall_jumped || tether.is_some();
         let before = k.body.vel;
         let contacts = move_and_collide(&grid, &mut k.body, DT);
+        if let Some(mut e) = ease {
+            let most = 2.0 * stats.step_height as f32;
+            e.0 = (e.0 - contacts.stepped as f32 + contacts.snapped).clamp(-most, most);
+        }
         // (A plunge's dive lasts the tick it was given for.)
         k.loco.dive = 0.0;
         // Slammed into a wall or a ceiling (flung by a spell, a blast): an
@@ -531,11 +544,20 @@ fn deaths(
 
 /// Render between the last two ticks so 120 Hz displays stay smooth.
 /// (Paused, as the arena pauses to step a tick at a time: where it is now.)
-pub(crate) fn interpolate(time: Res<Time<Fixed>>, virt: Res<Time<Virtual>>, mut q: Query<(&Kinematics, &mut Transform)>) {
+pub(crate) fn interpolate(time: Res<Time<Fixed>>, virt: Res<Time<Virtual>>, mut q: Query<(&Kinematics, &mut Transform, Option<&mut StepEase>)>) {
     let a = if virt.is_paused() { 1.0 } else { time.overstep_fraction() };
-    for (k, mut tf) in &mut q {
+    let dt = virt.delta_secs();
+    for (k, mut tf, ease) in &mut q {
         let p = k.prev_pos.lerp(k.body.pos, a);
         tf.translation.x = p.x;
         tf.translation.y = p.y;
+        // (A step: drawn going to it.)
+        if let Some(mut e) = ease
+            && e.0 != 0.0
+        {
+            let go = STEP_EASE * dt;
+            e.0 = if e.0 < 0.0 { (e.0 + go).min(0.0) } else { (e.0 - go).max(0.0) };
+            tf.translation.y += e.0;
+        }
     }
 }

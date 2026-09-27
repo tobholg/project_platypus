@@ -170,6 +170,7 @@
 use bevy::input::InputSystems;
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
+use platypus_physics::MovementStats;
 use platypus_sim::{CellPos, WorldEdit};
 
 use crate::actors::Kinematics;
@@ -219,6 +220,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
+            .add_systems(PreUpdate, walk_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, tempo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, beams_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, conjure_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3065,6 +3067,59 @@ fn spider_script(
 /// onto it; hooked on a beam overhead (pulled up, hanging), rope let out
 /// (rappelling down), a swing pumped and let go of mid-swing; a kick off
 /// the wall on the rope; a chest pulled in. Logs each.
+/// The walk so far: start x, ticks seen, at full speed, dead stops,
+/// airborne, last vx, (unused), start y, done.
+type Walked = (f32, u32, u32, u32, u32, f32, bool, f32, bool);
+
+/// A plain walk right across the generated surface (D held, nothing
+/// else) for 8 s: how often it runs at full speed, the dead stops (a
+/// bump too tall to step: speed to nothing), the steps up, the hops off
+/// bumps (off the ground without jumping), how far it got.
+fn walk_script(
+    s: Res<Scenario>,
+    tempo: Res<crate::tempo::Tempo>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut state: Local<Walked>,
+) {
+    if s.name != "walk" || s.elapsed < 1.0 || state.8 {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    if state.1 == 0 {
+        state.0 = k.body.pos.x;
+        state.7 = k.body.pos.y;
+        keys.press(KeyCode::KeyD);
+    }
+    state.1 += 1;
+    let (vx, top) = (k.body.vel.x, 0.95 * tempo.apply(&MovementStats::default(), true).run_speed.min(95.0));
+    if vx >= top.min(60.0) {
+        state.2 += 1;
+    }
+    if state.5 > 30.0 && vx < 5.0 {
+        state.3 += 1;
+    }
+    if !k.loco.grounded() {
+        state.4 += 1;
+    }
+    state.5 = vx;
+    if s.elapsed > 9.0 {
+        keys.release(KeyCode::KeyD);
+        let n = state.1.max(1) as f32;
+        info!(
+            "walk: {}: {:.0} cells in 8 s ({:.0} cells/s), at full speed {:.0} % of the time, {} dead stops, off the ground {:.0} % (no jumps), {:.0} cells up/down",
+            tempo.name(),
+            k.body.pos.x - state.0,
+            (k.body.pos.x - state.0) / 8.0,
+            100.0 * state.2 as f32 / n,
+            state.3,
+            100.0 * state.4 as f32 / n,
+            k.body.pos.y - state.7
+        );
+        state.8 = true;
+    }
+}
+
 /// Each tempo preset in turn (`tempo.ron`), the same moves, measured: a
 /// run from a standstill (to 95 % of top speed, and the top), letting go
 /// (how far it slides), a turn (from full speed one way to 90 % the
