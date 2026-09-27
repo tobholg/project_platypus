@@ -1,8 +1,8 @@
 //! `platypus-backdrop <out dir> [width height]`: every scene as stills —
 //! each at dawn, day, dusk and night (the underground's at one), in each
 //! style — `<scene>-<time>-<style>.png`, at 1 art pixel a pixel; and the
-//! game's own tiles (`tile.rs`) as they come out: `tiles-mountains.png`
-//! (both ranges, over a sky), `tiles-cave.png` (both cave layers).
+//! game's own tiles as they come out: `tiles-cave.png` (both cave
+//! layers), `vistas.png` and `vista-*.png` (the surface's).
 
 use platypus_backdrop::{Style, Time, render, scenes};
 
@@ -72,9 +72,9 @@ fn vistas(out: &std::path::Path) {
     }
 }
 
-/// The game's tiles, a stretch of each layer, far over near.
+/// The cave's tiles, a stretch of each layer, far over near.
 fn tiles(out: &std::path::Path) {
-    use platypus_backdrop::tile::{CAVE_LAYERS, SURFACE_LAYERS, cave_tile, mountains_tile};
+    use platypus_backdrop::tile::{CAVE_LAYERS, cave_tile};
     let over = |under: &mut [u8], top: &[u8]| {
         for (u, t) in under.chunks_mut(4).zip(top.chunks(4)) {
             if t[3] > 0 {
@@ -82,12 +82,6 @@ fn tiles(out: &std::path::Path) {
             }
         }
     };
-    let (w, h) = (1024usize, 260usize);
-    let mut px: Vec<u8> = (0..w * h).flat_map(|i| { let y = (i / w) as f32 / h as f32; [(110.0 + 60.0 * y) as u8, (160.0 + 50.0 * y) as u8, 225, 255] }).collect();
-    for k in 0..SURFACE_LAYERS {
-        over(&mut px, &mountains_tile(k, 0, w, h, 7));
-    }
-    platypus_art::write_png(&platypus_art::Pixels { w: w as u32, h: h as u32, rgba: px }, &out.join("tiles-mountains.png")).expect("png");
     let (w, h) = (512usize, 384usize);
     let mut px: Vec<u8> = [12u8, 12, 16, 255].repeat(w * h);
     for k in 0..CAVE_LAYERS {

@@ -135,11 +135,23 @@ pub fn layer_tile(v: &Vista, k: usize, x0: i64, w: usize, h: usize, seed: u64) -
             roots.push((x, top(x) + 1.5, size, hash(slot, 5, s) * 100.0));
         }
     }
+    // Below the foot, one flat colour, undithered (the game stretches the
+    // bottom row down over valleys: a stripe there would run down the view).
+    let hills = matches!(l.shape, Shape::Hills { .. }) && l.grass >= 1.0;
+    let body = mix(if hills { scale(l.colors.grass, 0.9) } else { l.colors.rock }, v.haze(), haze + (1.0 - haze) * l.mist * 0.55);
+    let below = (foot + 3.0).ceil() as usize;
     let mut out = vec![0u8; w * h * 4];
     for xi in 0..w {
         let xa = x0 + xi as i64;
         let xf = xa as f32;
         let t = top(xf);
+        for y in below.min(h)..h {
+            let i = (y * w + xi) * 4;
+            for c in 0..3 {
+                out[i + c] = (((body[c].clamp(0.0, 1.0) * 40.0).round() / 40.0) * 255.0) as u8;
+            }
+            out[i + 3] = 255;
+        }
         let near: Vec<&(f32, f32, f32, f32)> = roots.iter().filter(|q| (q.0 - xf).abs() < q.2 * 0.5).collect();
         // How flat the top is here, and a drape of grass hanging from it.
         let slope = (top(xf + 2.0) - top(xf - 2.0)) / 4.0;
@@ -150,7 +162,7 @@ pub fn layer_tile(v: &Vista, k: usize, x0: i64, w: usize, h: usize, seed: u64) -
             ((n - 0.35).max(0.0) * 18.0 * long) * l.grass
         };
         let thick = if l.grass > 0.0 { (1.5 + 4.0 * flat) * l.grass.sqrt() + drip } else { 0.0 };
-        for y in 0..h {
+        for y in 0..below.min(h) {
             let yf = y as f32;
             let tree = yf < t && near.iter().any(|q| tree_covers(l.trees, xf, yf, (q.0, q.1), q.2, q.3));
             if yf < t && !tree {
@@ -310,7 +322,7 @@ pub fn vistas() -> Vec<Vista> {
             clouds: (1.0, 1.0),
             layers: vec![
                 l(Shape::Mesas { width: 120.0, steps: 3.0 }, 0.15, 0.7, 0.5, lilac_far, 0.6, Trees::None, 0.5),
-                l(Shape::Peaks { width: 110.0 }, 0.55, 0.8, 0.72, lilac, 1.0, Trees::None, 0.5),
+                l(Shape::Peaks { width: 110.0 }, 0.55, 0.8, 0.6, lilac, 1.0, Trees::None, 0.5),
                 l(Shape::Hills { width: 120.0 }, 0.85, 0.97, 0.18, green, 1.0, Trees::Round, 0.2),
             ],
         },
@@ -370,6 +382,18 @@ pub fn vistas() -> Vec<Vista> {
             ],
         },
     ]
+}
+
+/// Which vista a biome (the world plan's name) shows behind it.
+pub fn for_biome(biome: &str) -> &'static str {
+    match biome {
+        "mountains" => "crags",
+        "tundra" => "highlands",
+        "desert" => "canyons",
+        "jungle" | "swamp" => "rolling",
+        // forest, plains, deep forest, ocean
+        _ => "mesas",
+    }
 }
 
 /// A vista as the game would show it at `x`: sky, sun, the far layer,
