@@ -5,6 +5,10 @@
 //! P pause · . one tick (paused) · , slower (1, 1/2, 1/4, 1/10) · Y
 //! overlays · T the next tempo · E the art editor (`editor.rs`).
 //!
+//! The panel's sections fold (click a heading; which are open is
+//! remembered, `saves/arena_panel.txt`), and it's no taller than the
+//! window allows: the wheel scrolls it.
+//!
 //! Pausing pauses virtual time, so the sim, bodies, particles and
 //! animations all stop; a step hands the fixed clock exactly one tick.
 
@@ -59,13 +63,51 @@ struct PanelTitle;
 #[derive(Component)]
 struct PanelButton(ArenaAction);
 
+/// The panel's scrolling body.
+#[derive(Component)]
+struct PanelBody;
+
+/// A section's heading (click: fold or unfold) and its contents.
+#[derive(Component)]
+struct SectionHead(usize);
+#[derive(Component)]
+struct SectionBody(usize);
+
+/// The sections, in order, and which are open at first.
+const SECTIONS: [(&str, bool); 6] = [("Time", true), ("Tempo: T the next (tempo.ron)", true), ("Look", true), ("Spawn at the cursor: O (packs first)", false), ("Make", true), ("Sounds: click to hear (sounds.ron), F11 mute", false)];
+
+/// Which sections are open.
+#[derive(Resource)]
+struct Folds(Vec<bool>);
+
+fn folds_path() -> std::path::PathBuf {
+    crate::save::saves_dir().join("arena_panel.txt")
+}
+
+impl Default for Folds {
+    fn default() -> Self {
+        // (Remembered: a line per open section's first word.)
+        let saved = std::fs::read_to_string(folds_path()).ok();
+        let open = |i: usize| {
+            let (name, open) = SECTIONS[i];
+            saved.as_ref().map_or(open, |s| s.lines().any(|l| l == first_word(name)))
+        };
+        Folds((0..SECTIONS.len()).map(open).collect())
+    }
+}
+
+fn first_word(s: &str) -> &str {
+    s.split([' ', ':']).next().unwrap_or(s)
+}
+
 impl Plugin for ArenaPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<ArenaAction>()
             .init_resource::<ArenaView>()
             .init_resource::<StepOwed>()
+            .init_resource::<Folds>()
             .add_systems(Startup, spawn_panel)
-            .add_systems(PreUpdate, (keys, buttons, act).chain().after(bevy::ui::UiSystems::Focus))
+            .add_systems(PreUpdate, (keys, buttons, fold, scroll, act).chain().after(bevy::ui::UiSystems::Focus))
             .add_systems(PreUpdate, step.after(act))
             .add_systems(Update, (show_panel, overlays));
     }
@@ -115,6 +157,45 @@ fn buttons(clicks: Query<(&Interaction, &PanelButton), Changed<Interaction>>, mu
         if *i == Interaction::Pressed {
             out.write(b.0.clone());
         }
+    }
+}
+
+/// A heading clicked: its section folds or unfolds (and it's remembered).
+fn fold(heads: Query<(&Interaction, &SectionHead), Changed<Interaction>>, mut folds: ResMut<Folds>, mut bodies: Query<(&SectionBody, &mut Node)>, mut labels: Query<(&SectionHead, &mut Text)>) {
+    let mut changed = false;
+    for (i, h) in &heads {
+        if *i == Interaction::Pressed {
+            folds.0[h.0] = !folds.0[h.0];
+            changed = true;
+        }
+    }
+    if !changed && !folds.is_added() {
+        return;
+    }
+    for (b, mut node) in &mut bodies {
+        node.display = if folds.0[b.0] { Display::Flex } else { Display::None };
+    }
+    for (h, mut text) in &mut labels {
+        text.0 = format!("{} {}", if folds.0[h.0] { "-" } else { "+" }, SECTIONS[h.0].0);
+    }
+    if changed {
+        let open: Vec<&str> = SECTIONS.iter().zip(&folds.0).filter(|(_, o)| **o).map(|((n, _), _)| first_word(n)).collect();
+        let _ = std::fs::create_dir_all(crate::save::saves_dir());
+        let _ = std::fs::write(folds_path(), open.join("\n"));
+    }
+}
+
+/// The wheel over the panel scrolls it.
+fn scroll(wheel: Res<bevy::input::mouse::AccumulatedMouseScroll>, view: Res<ArenaView>, panel: Query<&bevy::ui::RelativeCursorPosition, With<Panel>>, mut body: Query<&mut ScrollPosition, With<PanelBody>>) {
+    if !view.open || wheel.delta.y == 0.0 || !panel.iter().any(|p| p.cursor_over()) {
+        return;
+    }
+    let dy = match wheel.unit {
+        bevy::input::mouse::MouseScrollUnit::Line => wheel.delta.y * 24.0,
+        bevy::input::mouse::MouseScrollUnit::Pixel => wheel.delta.y,
+    };
+    for mut s in &mut body {
+        s.y = (s.y - dy).max(0.0);
     }
 }
 
@@ -209,17 +290,18 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
         p.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(3), row_gap: px(3), max_width: px(230), ..default() })
             .with_children(|r| f(r));
     };
-    let heading = |p: &mut ChildSpawnerCommands, text: &str| {
-        p.spawn((Text::new(text), TextFont { font_size: FontSize::Px(11.0), ..default() }, TextColor(Color::srgb(0.75, 0.75, 0.8))));
-    };
     commands
         .spawn((
             Panel,
             Visibility::Hidden,
+            // (Hovering it counts as over the UI: the wheel is its.)
+            Interaction::default(),
+            bevy::ui::RelativeCursorPosition::default(),
             Node {
                 position_type: PositionType::Absolute,
                 top: px(150),
                 left: px(6),
+                // (Its most height: what the window leaves, `show_panel`.)
                 flex_direction: FlexDirection::Column,
                 row_gap: px(4),
                 padding: UiRect::all(px(6)),
@@ -229,38 +311,75 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
         ))
         .with_children(|p| {
             p.spawn((PanelTitle, Text::new("ARENA"), TextFont { font_size: FontSize::Px(13.0), ..default() }, TextColor(Color::srgb(1.0, 0.85, 0.3))));
-            heading(p, "Time");
-            row(p, &|r| {
-                label(r, "Pause  P", ArenaAction::Pause);
-                label(r, "Step  .", ArenaAction::Step);
-            });
-            row(p, &|r| {
-                for (s, t) in SPEEDS.iter().zip(["1x", "1/2", "1/4", "1/10"]) {
-                    label(r, t, ArenaAction::Speed(*s));
-                }
-            });
-            heading(p, "Tempo: T for the next (tempo.ron)");
-            row(p, &|r| {
-                for (i, name) in tempos.iter().enumerate() {
-                    label(r, name, ArenaAction::Tempo(i));
-                }
-            });
-            heading(p, "Look");
-            row(p, &|r| label(r, "Boxes and hands  Y", ArenaAction::Overlays));
-            heading(p, "Spawn at the cursor: O (packs first)");
-            row(p, &|r| {
-                for k in kinds() {
-                    label(r, &k, ArenaAction::Pick(k.clone()));
-                }
-            });
-            row(p, &|r| label(r, "Clear the floor", ArenaAction::Clear));
-            heading(p, "Make");
-            row(p, &|r| label(r, "Art editor  E", ArenaAction::Editor));
-            heading(p, "Sounds: click to hear (sounds.ron) · F11 mute");
-            row(p, &|r| {
-                for name in &sounds {
-                    label(r, name, ArenaAction::Sound(name.clone()));
-                }
+            p.spawn((
+                PanelBody,
+                ScrollPosition::default(),
+                Node { flex_direction: FlexDirection::Column, row_gap: px(4), overflow: Overflow::scroll_y(), min_height: px(0), flex_shrink: 1.0, ..default() },
+            ))
+            .with_children(|p| {
+                // Each section: a heading to click, then what's in it.
+                let section = |p: &mut ChildSpawnerCommands, i: usize, f: &dyn Fn(&mut ChildSpawnerCommands)| {
+                    p.spawn((Button, SectionHead(i), Node { padding: UiRect::axes(px(2), px(1)), ..default() }, BackgroundColor(Color::NONE)))
+                        .with_children(|b| {
+                            b.spawn((SectionHead(i), Text::new(SECTIONS[i].0), TextFont { font_size: FontSize::Px(11.0), ..default() }, TextColor(Color::srgb(0.75, 0.75, 0.8))));
+                        });
+                    p.spawn((SectionBody(i), Node { flex_direction: FlexDirection::Column, row_gap: px(3), ..default() })).with_children(|b| f(b));
+                };
+                let sub = |p: &mut ChildSpawnerCommands, text: &str| {
+                    p.spawn((Text::new(text), TextFont { font_size: FontSize::Px(10.0), ..default() }, TextColor(Color::srgb(0.6, 0.6, 0.65))));
+                };
+                section(p, 0, &|p| {
+                    row(p, &|r| {
+                        label(r, "Pause  P", ArenaAction::Pause);
+                        label(r, "Step  .", ArenaAction::Step);
+                    });
+                    row(p, &|r| {
+                        for (s, t) in SPEEDS.iter().zip(["1x", "1/2", "1/4", "1/10"]) {
+                            label(r, t, ArenaAction::Speed(*s));
+                        }
+                    });
+                });
+                section(p, 1, &|p| {
+                    row(p, &|r| {
+                        for (i, name) in tempos.iter().enumerate() {
+                            label(r, name, ArenaAction::Tempo(i));
+                        }
+                    });
+                });
+                section(p, 2, &|p| row(p, &|r| label(r, "Boxes and hands  Y", ArenaAction::Overlays)));
+                section(p, 3, &|p| {
+                    row(p, &|r| {
+                        for k in kinds() {
+                            label(r, &k, ArenaAction::Pick(k.clone()));
+                        }
+                    });
+                    row(p, &|r| label(r, "Clear the floor", ArenaAction::Clear));
+                });
+                section(p, 4, &|p| row(p, &|r| label(r, "Art editor  E", ArenaAction::Editor)));
+                // Sounds, grouped by their names' first word.
+                section(p, 5, &|p| {
+                    let groups: [(&str, &dyn Fn(&str) -> bool); 5] = [
+                        ("Music", &|n| n.starts_with("song_")),
+                        ("Hits", &|n| n.starts_with("hit") || n.starts_with("hurt") || n.starts_with("swing") || n.starts_with("clang")),
+                        ("Steps and moving", &|n| n.starts_with("step_") || matches!(n, "land" | "jump" | "air_jump" | "dash")),
+                        ("Hands", &|n| n.starts_with("mine_") || matches!(n, "break" | "place" | "craft" | "pickup")),
+                        ("The rest", &|_| true),
+                    ];
+                    let mut left: Vec<&String> = sounds.iter().collect();
+                    for (name, pick) in groups {
+                        let these: Vec<&String> = left.iter().copied().filter(|n| pick(n)).collect();
+                        left.retain(|n| !pick(n));
+                        if these.is_empty() {
+                            continue;
+                        }
+                        sub(p, name);
+                        row(p, &|r| {
+                            for n in &these {
+                                label(r, n, ArenaAction::Sound((*n).clone()));
+                            }
+                        });
+                    }
+                });
             });
         });
 }
@@ -273,12 +392,18 @@ fn show_panel(
     virt: Res<Time<Virtual>>,
     kind: Res<SpawnKind>,
     tempo: Res<crate::tempo::Tempo>,
-    mut panel: Query<&mut Visibility, With<Panel>>,
+    windows: Query<&Window>,
+    mut panel: Query<(&mut Visibility, &mut Node), With<Panel>>,
     mut title: Query<&mut Text, With<PanelTitle>>,
     mut buttons: Query<(&Interaction, &PanelButton, &mut BackgroundColor)>,
 ) {
-    for mut v in &mut panel {
+    // No taller than the window leaves: its top at 150, the hotbar below.
+    let most = windows.iter().next().map_or(600.0, |w| (w.height() - 150.0 - 100.0).max(120.0));
+    for (mut v, mut node) in &mut panel {
         *v = if view.open { Visibility::Visible } else { Visibility::Hidden };
+        if node.max_height != px(most) {
+            node.max_height = px(most);
+        }
     }
     let speed = virt.relative_speed();
     for mut t in &mut title {
