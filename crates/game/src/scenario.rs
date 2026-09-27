@@ -3281,10 +3281,10 @@ fn tempo_script(
     }
 }
 
-/// The underground's looks side by side (`PLATYPUS_UNDERBG`): a big
-/// cavern dug 260 cells down, its back walls taken away over its left two
-/// thirds (the right third keeps them), the player on its floor with two
-/// glow sticks thrown out.
+/// The underground's look: a big cavern dug 260 cells down, its back walls
+/// taken away over its left two thirds (the cave's far backdrop shows
+/// there, where light reaches), the player on its floor with two glow
+/// sticks thrown out.
 fn underlook_script(mut commands: Commands, s: Res<Scenario>, mut sim: ResMut<SimWorld>, lights: Res<crate::light::LightSettings>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut state: Local<(u8, Vec2)>) {
     if s.name != "underlook" {
         return;
@@ -3317,19 +3317,6 @@ fn underlook_script(mut commands: Commands, s: Res<Scenario>, mut sim: ResMut<Si
         }
         3 if t > 1.8 => {
             let c = state.1;
-            // (For the glowing walls: back walls put back, all over it.)
-            if std::env::var("PLATYPUS_UNDERBG").is_ok_and(|v| v == "walls")
-                && let Some(stone) = sim.materials().id("stone")
-            {
-                let b = platypus_sim::edit::BLOCK;
-                for by in ((c.y as i32 - 60) / b)..((c.y as i32 + 60) / b) {
-                    for bx in ((c.x as i32 - 170) / b)..((c.x as i32 + 170) / b) {
-                        sim.queue(WorldEdit::PlaceBlock { block: CellPos::new(bx, by), material: stone, back: true });
-                    }
-                }
-                state.0 = 4;
-                return;
-            }
             for dx in (-120..=40).step_by(16) {
                 let at = CellPos::new(c.x as i32 + dx, c.y as i32 + (12.0 * (dx as f32 * 0.03).sin()) as i32);
                 for _ in 0..3 {

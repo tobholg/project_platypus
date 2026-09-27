@@ -181,22 +181,29 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
 
 ## 4.3b Backdrops and the night sky (built 2026-09-27, branch `backdrop-arc`)
 
-- **Surface:** four Noita-like layers far to near (ridges, hills, mesas,
-  dunes, sea; pines, round trees, palms, dead trees, cacti, giant trunks),
-  generated (`crates/backdrop`), drawn in tiles as the camera goes, each
-  scrolling at its share of the camera's motion (0.06, 0.16, 0.3, 0.5),
-  blended between the biomes around each place (the world plan's), sitting
-  on the ground as generated, fading out underground. Drawn in daylight
-  colours under the lighting, which grades them by the hour.
-  `platypus-backdrop <dir>` renders every scene as stills to iterate on.
-- **Night:** near black (`moonlight` 0.45, a darker sky); stars and a moon
-  drawn over the lighting where the sky is open (no cell, no back wall, no
-  backdrop, no cloud), twinkling.
-- **Underground: to decide** (`PLATYPUS_UNDERBG`, the `underlook`
-  scenario): `void` (holes in the back wall filled with dark rock: now),
-  `motes` (open caverns full of faint glowing specks and haze, self-lit),
-  `walls` (bioluminescent specks on the back walls), `layers` (cave
-  silhouettes behind, under the lighting: seen only where light reaches).
+- **Surface:** distant mountains, the same everywhere (tried per-biome
+  scenes of four layers: too busy, and 6–50 % parallax made you seasick):
+  a far snowy range and a nearer, lower one with foothills and tiny trees
+  at its foot, moving at 2 % and 5 % of the camera's motion, sitting on
+  the ground as generated, fading out underground. Generated
+  (`crates/backdrop/src/tile.rs`) in tiles as the camera goes, from
+  absolute coordinates so they join up; drawn in daylight colours under
+  the lighting, which grades them by the hour. `platypus-backdrop <dir>`
+  writes stills of the tiles (and the earlier scenes) to iterate on.
+- **The sky:** the sun crossing by day (low and golden at either end, a
+  soft glow round it), the moon and twinkling stars by night, drawn over
+  the lighting where the sky is open (no cell, no back wall, no mountain,
+  dimmed by cloud). Nights are near black (`moonlight` 0.45, a darker sky).
+- **Underground** (chosen from four looks tried in the `underlook`
+  scenario): two layers of rock far off through the cave (4 % and 10 %),
+  small stalactites and stalagmites along their openings, in daylight
+  colours under the lighting, so only what light reaches shows; the rest
+  is black. The dark-rock fill behind holes in the back wall is kept only
+  just under the ground (40 cells). Glowing specks on the back walls in
+  fungal and crystal zones only; faint drifting motes when the view is
+  mostly open cavern (the zone's colour). Still to do: big caverns
+  generated without back walls in places, so the far rock shows in
+  natural caves, not just dug ones.
 
 ## 5. Items and inventory
 

@@ -234,13 +234,6 @@ fn px(lx: usize, ly: usize) -> usize {
 /// rock rather than sky (so a crater at the surface still opens to the sky).
 const BACKDROP_BELOW: i32 = 16;
 
-/// Holes in the background underground are filled with dark rock, unless
-/// a far background is to show through them (`PLATYPUS_UNDERBG=layers`).
-fn holes_filled() -> bool {
-    static FILLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *FILLED.get_or_init(|| std::env::var("PLATYPUS_UNDERBG").map_or(true, |v| v != "layers"))
-}
-
 /// What shows through a hole in the background underground, until there is a
 /// real far background (DESIGN: parallax layers per band): dark rock, earthy
 /// near the top and colder with depth, in faint strata.
@@ -272,7 +265,9 @@ fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: Cell
                 if let Some(ground) = ground {
                     let (x, y) = (origin.x + lx as i32, origin.y + ly as i32);
                     let depth = ground[lx] - y;
-                    if depth >= BACKDROP_BELOW && holes_filled() {
+                    // (Only just under the ground; deeper, the cave's far
+                    // backdrop shows through: `backdrop.rs`.)
+                    if (BACKDROP_BELOW..BACKDROP_BELOW + 40).contains(&depth) {
                         layer.base[px(lx, ly)..px(lx, ly) + 4].copy_from_slice(&backdrop(x, y, depth));
                     }
                 }
