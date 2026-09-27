@@ -13,6 +13,7 @@
 mod actors;
 mod archery;
 mod arena;
+mod backdrop;
 mod camera;
 mod canvas;
 mod combat;
@@ -126,6 +127,7 @@ fn main() {
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
         .add_plugins(tempo::TempoPlugin)
         .add_plugins(sound::SoundPlugin)
+        .add_plugins(backdrop::BackdropPlugin)
         .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed }))
         .add_plugins(spikes_plugin)
         .run();

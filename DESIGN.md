@@ -179,6 +179,25 @@ Mined material and drops are item entities. They fly out a little, settle, and d
 
 A material can have a `pattern`: a small tile of shade indices anchored to the world grid (for example 8 × 4 for bricks). Cells of that material draw their shade from the pattern instead of at random. Built walls, castles, planks and cobble then look like Terraria tiles without being tiles.
 
+## 4.3b Backdrops and the night sky (built 2026-09-27, branch `backdrop-arc`)
+
+- **Surface:** four Noita-like layers far to near (ridges, hills, mesas,
+  dunes, sea; pines, round trees, palms, dead trees, cacti, giant trunks),
+  generated (`crates/backdrop`), drawn in tiles as the camera goes, each
+  scrolling at its share of the camera's motion (0.06, 0.16, 0.3, 0.5),
+  blended between the biomes around each place (the world plan's), sitting
+  on the ground as generated, fading out underground. Drawn in daylight
+  colours under the lighting, which grades them by the hour.
+  `platypus-backdrop <dir>` renders every scene as stills to iterate on.
+- **Night:** near black (`moonlight` 0.45, a darker sky); stars and a moon
+  drawn over the lighting where the sky is open (no cell, no back wall, no
+  backdrop, no cloud), twinkling.
+- **Underground: to decide** (`PLATYPUS_UNDERBG`, the `underlook`
+  scenario): `void` (holes in the back wall filled with dark rock: now),
+  `motes` (open caverns full of faint glowing specks and haze, self-lit),
+  `walls` (bioluminescent specks on the back walls), `layers` (cave
+  silhouettes behind, under the lighting: seen only where light reaches).
+
 ## 5. Items and inventory
 
 - **Item definitions** (RON), made of optional parts:

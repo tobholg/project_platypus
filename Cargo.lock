@@ -4588,6 +4588,7 @@ dependencies = [
  "bevy_seedling",
  "fundsp",
  "platypus_art",
+ "platypus_backdrop",
  "platypus_physics",
  "platypus_sim",
  "platypus_worldgen",

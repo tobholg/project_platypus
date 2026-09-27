@@ -221,6 +221,8 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, sounds_script)
+            .add_systems(Update, backdrop_script)
+            .add_systems(Update, underlook_script)
             .add_systems(PreUpdate, surface_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, walk_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, tempo_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3276,6 +3278,123 @@ fn tempo_script(
     if next {
         st.1 += 1;
         st.2 = t;
+    }
+}
+
+/// The underground's looks side by side (`PLATYPUS_UNDERBG`): a big
+/// cavern dug 260 cells down, its back walls taken away over its left two
+/// thirds (the right third keeps them), the player on its floor with two
+/// glow sticks thrown out.
+fn underlook_script(mut commands: Commands, s: Res<Scenario>, mut sim: ResMut<SimWorld>, lights: Res<crate::light::LightSettings>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut state: Local<(u8, Vec2)>) {
+    if s.name != "underlook" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let t = s.elapsed;
+    match state.0 {
+        0 if t > 0.5 => {
+            let c = k.body.pos - Vec2::new(0.0, 260.0);
+            for dx in (-120..=120).step_by(20) {
+                let at = CellPos::new(c.x as i32 + dx, c.y as i32 + (12.0 * (dx as f32 * 0.03).sin()) as i32);
+                sim.queue(WorldEdit::Dig { center: at, radius: 42, max_hardness: 250 });
+            }
+            *state = (1, c);
+        }
+        1 if t > 0.8 => {
+            k.body.pos = state.1 + Vec2::new(-20.0, -10.0);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            state.0 = 2;
+        }
+        // (Once the chunks down there are loaded: dug again, walls off.)
+        2 if t > 1.6 => {
+            let c = state.1;
+            for dx in (-120..=120).step_by(20) {
+                let at = CellPos::new(c.x as i32 + dx, c.y as i32 + (12.0 * (dx as f32 * 0.03).sin()) as i32);
+                sim.queue(WorldEdit::Dig { center: at, radius: 42, max_hardness: 250 });
+            }
+            state.0 = 3;
+        }
+        3 if t > 1.8 => {
+            let c = state.1;
+            // (For the glowing walls: back walls put back, all over it.)
+            if std::env::var("PLATYPUS_UNDERBG").is_ok_and(|v| v == "walls")
+                && let Some(stone) = sim.materials().id("stone")
+            {
+                let b = platypus_sim::edit::BLOCK;
+                for by in ((c.y as i32 - 60) / b)..((c.y as i32 + 60) / b) {
+                    for bx in ((c.x as i32 - 170) / b)..((c.x as i32 + 170) / b) {
+                        sim.queue(WorldEdit::PlaceBlock { block: CellPos::new(bx, by), material: stone, back: true });
+                    }
+                }
+                state.0 = 4;
+                return;
+            }
+            for dx in (-120..=40).step_by(16) {
+                let at = CellPos::new(c.x as i32 + dx, c.y as i32 + (12.0 * (dx as f32 * 0.03).sin()) as i32);
+                for _ in 0..3 {
+                    sim.queue(WorldEdit::Mine { center: at, radius: 40, power: 255, max_hardness: 250, back: true });
+                }
+            }
+            state.0 = 4;
+        }
+        4 if t > 2.4 => {
+            let s = lights.glowstick.strength;
+            crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(-10.0, 4.0), Vec2::new(-90.0, 50.0), [0.25 * s, s, 0.45 * s], 90.0, lights.glowstick.haze);
+            crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(10.0, 4.0), Vec2::new(110.0, 60.0), [0.2 * s, 0.55 * s, 1.1 * s], 90.0, lights.glowstick.haze);
+            state.0 = 5;
+        }
+        5 if t > 3.0 => {
+            let c = state.1;
+            let (mut open, mut walled) = (0, 0);
+            for y in (c.y as i32 - 30)..(c.y as i32 + 30) {
+                for x in (c.x as i32 - 110)..(c.x as i32 + 110) {
+                    let p = CellPos::new(x, y);
+                    if sim.world.get(p).is_some_and(|c| c.is_air()) {
+                        if sim.world.get_bg(p).is_some_and(|c| c.is_air()) {
+                            open += 1;
+                        } else {
+                            walled += 1;
+                        }
+                    }
+                }
+            }
+            info!("underlook: the cavern: {open} cells open to nothing behind, {walled} with a back wall");
+            state.0 = 6;
+        }
+        _ => {}
+    }
+}
+
+/// A look at the backdrops: the player put on the surface in the middle of
+/// a biome (`PLATYPUS_BIOME`, the nearest wide stretch of it; default where
+/// it starts), the hour as `PLATYPUS_HOUR` has it; then it walks a little.
+fn backdrop_script(s: Res<Scenario>, sim: Res<SimWorld>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut keys: ResMut<ButtonInput<KeyCode>>, mut done: Local<bool>) {
+    if s.name != "backdrop" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    if !*done && s.elapsed > 0.5 {
+        *done = true;
+        let x0 = k.body.pos.x as i32;
+        if let Ok(want) = std::env::var("PLATYPUS_BIOME") {
+            // The nearest column with 600 cells of it either side.
+            let found = (0..200).flat_map(|i| [x0 + i * 200, x0 - i * 200]).find(|&x| (-3..=3).all(|d| sim.generator.biome_hint(x + d * 200) == Some(want.as_str())));
+            match found {
+                Some(x) => {
+                    let y = sim.generator.surface_hint(x).unwrap_or(0) as f32 + k.body.half.y + 2.0;
+                    k.body.pos = Vec2::new(x as f32, y);
+                    k.body.vel = Vec2::ZERO;
+                    k.prev_pos = k.body.pos;
+                    info!("backdrop: {want} at x {x}");
+                }
+                None => info!("backdrop: no {want} found"),
+            }
+        }
+    }
+    // (A walk right from 4 s: the layers slide at their own speeds.)
+    if s.elapsed > 4.0 && !keys.pressed(KeyCode::KeyD) {
+        keys.press(KeyCode::KeyD);
     }
 }
 

@@ -4,7 +4,9 @@
 //! stalactites and columns, crystals, mushrooms, lava's glow), each drawn
 //! from noise at a depth that sets its colour, its haze and (in the game)
 //! how slowly it scrolls. `render` draws a scene as one still (the
-//! concept sheets); the game draws its layers one by one.
+//! concept sheets); the game draws its layers in tiles (`tile.rs`).
+
+pub mod tile;
 
 use std::f32::consts::TAU;
 
@@ -12,7 +14,7 @@ pub type Rgb = [f32; 3];
 
 // ---- noise ----
 
-fn hash(a: i64, b: i64, seed: u64) -> f32 {
+pub(crate) fn hash(a: i64, b: i64, seed: u64) -> f32 {
     let mut h = seed ^ (a as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (b as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
     h ^= h >> 33;
     h = h.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
@@ -22,7 +24,7 @@ fn hash(a: i64, b: i64, seed: u64) -> f32 {
     (h >> 40) as f32 / (1u64 << 24) as f32
 }
 
-fn smooth(t: f32) -> f32 {
+pub(crate) fn smooth(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
@@ -66,25 +68,25 @@ pub fn fbm2(x: f32, y: f32, octaves: u32, seed: u64) -> f32 {
 }
 
 /// A 4×4 ordered dither threshold, 0..1.
-fn bayer(x: usize, y: usize) -> f32 {
+pub(crate) fn bayer(x: usize, y: usize) -> f32 {
     const M: [[u8; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
     (M[y & 3][x & 3] as f32 + 0.5) / 16.0
 }
 
-fn mix(a: Rgb, b: Rgb, t: f32) -> Rgb {
+pub(crate) fn mix(a: Rgb, b: Rgb, t: f32) -> Rgb {
     let t = t.clamp(0.0, 1.0);
     [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
 }
 
-fn scale(a: Rgb, k: f32) -> Rgb {
+pub(crate) fn scale(a: Rgb, k: f32) -> Rgb {
     [a[0] * k, a[1] * k, a[2] * k]
 }
 
-fn add(a: Rgb, b: Rgb) -> Rgb {
+pub(crate) fn add(a: Rgb, b: Rgb) -> Rgb {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 
-fn mul(a: Rgb, b: Rgb) -> Rgb {
+pub(crate) fn mul(a: Rgb, b: Rgb) -> Rgb {
     [a[0] * b[0], a[1] * b[1], a[2] * b[2]]
 }
 
@@ -268,7 +270,7 @@ pub struct Scene {
 // ---- drawing ----
 
 /// Where a layer's skyline is at column `x` (0..w), in rows from the top.
-fn skyline(l: &Layer, i: usize, x: f32, w: f32, h: f32, seed: u64) -> f32 {
+pub(crate) fn skyline(l: &Layer, i: usize, x: f32, w: f32, h: f32, seed: u64) -> f32 {
     let s = seed.wrapping_add(i as u64 * 31);
     let u = x / w;
     // (Nearer layers: finer, bigger features.)
@@ -299,7 +301,7 @@ fn skyline(l: &Layer, i: usize, x: f32, w: f32, h: f32, seed: u64) -> f32 {
 
 /// Does tree `style`, standing at `root` (x, skyline y) and `size` tall,
 /// cover pixel (px, py)?
-fn tree_covers(style: Trees, px: f32, py: f32, root: (f32, f32), size: f32, seed: f32) -> bool {
+pub(crate) fn tree_covers(style: Trees, px: f32, py: f32, root: (f32, f32), size: f32, seed: f32) -> bool {
     let (dx, up) = (px - root.0, root.1 - py);
     if up < -1.0 || up > size * 1.2 {
         return false;
@@ -655,7 +657,7 @@ fn land(c: &mut Canvas, owner: &mut [usize], i: usize, l: &Layer, scene: &Scene,
 /// Nearest two of a jittered grid's points to (x, y) (cells `size`
 /// across, stretched by `sx`, `sy`): which is nearest, how far each is,
 /// and where the nearest is.
-fn cells(x: f32, y: f32, size: f32, sx: f32, sy: f32, seed: u64) -> (i64, f32, f32, (f32, f32)) {
+pub(crate) fn cells(x: f32, y: f32, size: f32, sx: f32, sy: f32, seed: u64) -> (i64, f32, f32, (f32, f32)) {
     let (gx, gy) = (x / (size * sx), y / (size * sy));
     let (cx, cy) = (gx.floor() as i64, gy.floor() as i64);
     let (mut d1, mut d2, mut id, mut at) = (f32::MAX, f32::MAX, 0i64, (0.0, 0.0));
@@ -679,7 +681,7 @@ fn cells(x: f32, y: f32, size: f32, sx: f32, sy: f32, seed: u64) -> (i64, f32, f
 
 /// How a rock's surface shades at a pixel: each stone lit from above,
 /// dark in the cracks between.
-fn rock_shade(rock: Rock, x: f32, y: f32, size: f32, seed: u64) -> f32 {
+pub(crate) fn rock_shade(rock: Rock, x: f32, y: f32, size: f32, seed: u64) -> f32 {
     let (sx, sy, crack_w, bevel) = match rock {
         Rock::Cobble => (1.0, 0.8, 0.9, 0.22),
         Rock::Strata => (2.6, 0.55, 0.7, 0.12),
@@ -1009,17 +1011,19 @@ pub fn scenes() -> Vec<Scene> {
         sky(
             "plains",
             vec![
-                layer(Hills, 0.1, 0.72, 0.1, T::None, rgb(110, 130, 120)),
-                layer(Hills, 0.4, 0.8, 0.08, T::Round, rgb(84, 112, 70)),
-                layer(Hills, 0.8, 0.9, 0.06, T::None, rgb(60, 88, 48)),
+                layer(Hills, 0.05, 0.66, 0.08, T::None, rgb(130, 150, 150)),
+                layer(Hills, 0.3, 0.72, 0.1, T::None, rgb(110, 130, 120)),
+                layer(Hills, 0.55, 0.8, 0.08, T::Round, rgb(84, 112, 70)),
+                layer(Hills, 0.85, 0.9, 0.06, T::None, rgb(60, 88, 48)),
             ],
             Glows { fireflies: true, ..default() },
         ),
         sky(
             "deep forest",
             vec![
-                layer(Hills, 0.15, 0.7, 0.1, T::Pine, rgb(50, 70, 60)),
-                layer(Hills, 0.45, 0.85, 0.05, T::Giant, rgb(34, 46, 36)),
+                layer(Hills, 0.05, 0.66, 0.08, T::Pine, rgb(70, 90, 80)),
+                layer(Hills, 0.3, 0.7, 0.1, T::Pine, rgb(50, 70, 60)),
+                layer(Hills, 0.55, 0.85, 0.05, T::Giant, rgb(34, 46, 36)),
                 layer(Hills, 0.85, 0.95, 0.04, T::Giant, rgb(18, 26, 20)),
             ],
             Glows { fireflies: true, mushrooms: Some(rgb(120, 220, 255)), ..default() },
@@ -1027,9 +1031,10 @@ pub fn scenes() -> Vec<Scene> {
         sky(
             "desert",
             vec![
-                layer(Mesas, 0.1, 0.66, 0.2, T::None, rgb(186, 130, 96)),
-                layer(Dunes, 0.4, 0.78, 0.1, T::None, rgb(214, 170, 110)),
-                layer(Dunes, 0.8, 0.9, 0.08, T::Cactus, rgb(176, 130, 80)),
+                layer(Mesas, 0.05, 0.64, 0.2, T::None, rgb(186, 130, 96)),
+                layer(Mesas, 0.3, 0.7, 0.12, T::None, rgb(196, 140, 100)),
+                layer(Dunes, 0.55, 0.78, 0.1, T::None, rgb(214, 170, 110)),
+                layer(Dunes, 0.85, 0.9, 0.08, T::Cactus, rgb(176, 130, 80)),
             ],
             Glows::default(),
         ),
@@ -1037,25 +1042,28 @@ pub fn scenes() -> Vec<Scene> {
             "tundra",
             vec![
                 layer(Ridge { snow: 0.0 }, 0.05, 0.62, 0.38, T::None, rgb(150, 160, 180)),
-                layer(Ridge { snow: 0.3 }, 0.35, 0.72, 0.2, T::Pine, rgb(90, 100, 118)),
-                layer(Hills, 0.8, 0.88, 0.08, T::Pine, rgb(200, 210, 224)),
+                layer(Ridge { snow: 0.3 }, 0.3, 0.72, 0.2, T::Pine, rgb(90, 100, 118)),
+                layer(Hills, 0.55, 0.82, 0.1, T::Pine, rgb(170, 180, 196)),
+                layer(Hills, 0.85, 0.9, 0.06, T::Pine, rgb(200, 210, 224)),
             ],
             Glows { aurora: true, ..default() },
         ),
         sky(
             "jungle",
             vec![
-                layer(Ridge { snow: 1.0 }, 0.1, 0.62, 0.3, T::None, rgb(70, 110, 90)),
-                layer(Hills, 0.4, 0.76, 0.12, T::Round, rgb(40, 96, 56)),
-                layer(Hills, 0.8, 0.88, 0.08, T::Palm, rgb(24, 64, 34)),
+                layer(Ridge { snow: 1.0 }, 0.05, 0.62, 0.3, T::None, rgb(70, 110, 90)),
+                layer(Hills, 0.3, 0.72, 0.14, T::Round, rgb(50, 104, 66)),
+                layer(Hills, 0.55, 0.8, 0.1, T::Round, rgb(40, 96, 56)),
+                layer(Hills, 0.85, 0.9, 0.08, T::Palm, rgb(24, 64, 34)),
             ],
             Glows { fireflies: true, ..default() },
         ),
         sky(
             "swamp",
             vec![
-                layer(Hills, 0.15, 0.74, 0.05, T::Dead, rgb(80, 96, 84)),
-                layer(Sea, 0.4, 0.82, 0.0, T::None, rgb(40, 56, 50)),
+                layer(Hills, 0.05, 0.7, 0.06, T::None, rgb(96, 110, 100)),
+                layer(Hills, 0.3, 0.74, 0.05, T::Dead, rgb(80, 96, 84)),
+                layer(Sea, 0.55, 0.82, 0.0, T::None, rgb(40, 56, 50)),
                 layer(Hills, 0.85, 0.92, 0.04, T::Dead, rgb(30, 38, 30)),
             ],
             Glows { fireflies: true, ..default() },
@@ -1063,10 +1071,10 @@ pub fn scenes() -> Vec<Scene> {
         sky(
             "mountains",
             vec![
-                layer(Ridge { snow: 0.0 }, 0.02, 0.6, 0.45, T::None, rgb(140, 150, 170)),
+                layer(Ridge { snow: 0.0 }, 0.05, 0.6, 0.45, T::None, rgb(140, 150, 170)),
                 layer(Ridge { snow: 0.25 }, 0.3, 0.7, 0.35, T::None, rgb(100, 106, 120)),
-                layer(Ridge { snow: 0.6 }, 0.6, 0.82, 0.22, T::Pine, rgb(66, 72, 80)),
-                layer(Hills, 0.9, 0.93, 0.06, T::Pine, rgb(36, 46, 40)),
+                layer(Ridge { snow: 0.6 }, 0.55, 0.82, 0.22, T::Pine, rgb(66, 72, 80)),
+                layer(Hills, 0.85, 0.93, 0.06, T::Pine, rgb(36, 46, 40)),
             ],
             Glows::default(),
         ),
@@ -1075,6 +1083,7 @@ pub fn scenes() -> Vec<Scene> {
             vec![
                 layer(Hills, 0.05, 0.64, 0.06, T::None, rgb(110, 130, 150)),
                 layer(Sea, 0.3, 0.66, 0.0, T::None, rgb(40, 80, 120)),
+                layer(Sea, 0.55, 0.68, 0.0, T::None, rgb(36, 74, 112)),
                 layer(Dunes, 0.85, 0.94, 0.05, T::Palm, rgb(200, 180, 130)),
             ],
             Glows::default(),

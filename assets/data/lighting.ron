@@ -17,7 +17,7 @@
     day_minutes: 20,
     start_hour: 8,
     // Moonlight: 1 = a dark blue night you can just see in, 0 = pitch black.
-    moonlight: 1.0,
+    moonlight: 0.45,
 
     // What the player carries: a lantern always; L steps through nothing, a
     // small flashlight, the big one (a cone toward the cursor, `angle`

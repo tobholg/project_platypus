@@ -55,6 +55,13 @@ pub trait ChunkGenerator: Send + Sync {
         None
     }
 
+    /// The biome at column x, by name (plains, forest, deep forest,
+    /// desert, tundra, jungle, swamp, mountains, ocean), if the world has
+    /// biomes (the backdrops paint it).
+    fn biome_hint(&self, _x: i32) -> Option<&'static str> {
+        None
+    }
+
     /// A chunk and what it starts with besides cells (see `Spawn`), each
     /// reported by exactly one chunk; the game makes each once (an
     /// unmodified chunk is generated again when it comes back into view).
@@ -1030,6 +1037,20 @@ impl ChunkGenerator for TerrainGen {
 
     fn surface_hint(&self, x: i32) -> Option<i32> {
         Some(self.surface_at(x))
+    }
+
+    fn biome_hint(&self, x: i32) -> Option<&'static str> {
+        Some(match self.plan.biome_at(x) {
+            Biome::Ocean => "ocean",
+            Biome::Plains => "plains",
+            Biome::Forest => "forest",
+            Biome::Desert => "desert",
+            Biome::Tundra => "tundra",
+            Biome::Jungle => "jungle",
+            Biome::Swamp => "swamp",
+            Biome::DeepForest => "deep forest",
+            Biome::Mountains => "mountains",
+        })
     }
 
     fn cloud_band(&self) -> Option<(i32, i32)> {

@@ -370,7 +370,8 @@ pub fn sky_at(time: f32, moonlight: f32) -> (Rgb, Rgb) {
     let g = day.max(0.6);
     light = lerp3(light, [1.0 * g, 0.6 * g, 0.34 * g], golden * 0.85);
     let sky = SKY_COLOR.to_srgba();
-    let mut color = lerp3([0.3, 0.38, 0.7], [sky.red, sky.green, sky.blue], day);
+    // (Night: near black, a little blue; the stars carry it.)
+    let mut color = lerp3([0.05, 0.065, 0.15], [sky.red, sky.green, sky.blue], day);
     color = lerp3(color, [0.98, 0.58, 0.42], golden * 0.8);
     (light, color)
 }
