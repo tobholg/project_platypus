@@ -477,7 +477,10 @@ Systems first, with example content to iterate on.
   wind and rain in the open. Underground is rock overhead from open air, or
   being more than ~15 cells below the ground as generated (so a shaft dug
   up to the sky, or a chasm, doesn't flip the music to the surface's).
-  Underground, drops fall from real ceilings in view.
+  Underground, drops fall from real ceilings in view, and every effect is
+  sent to a cave reverb as deep as you are (`cave_reverb`). Rocket boots
+  roar while they fire (a bed, like the ambience). Everything that should
+  carry is kept above ~150 Hz: laptop speakers lose what's under it.
 - **Music:** chill synth pads, a loop per mood (day: D major; night: A
   minor; underground: low open fifths), all playing, crossfaded by where you
   are and the time of day.

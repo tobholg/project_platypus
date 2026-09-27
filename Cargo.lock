@@ -2610,6 +2610,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fft-convolver"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1dc2475d152b174858819508db05e86ae8df4542aeb1b2b21ef5a0dda3e64bf6"
+dependencies = [
+ "realfft",
+ "rtsan-standalone",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2731,6 +2742,7 @@ dependencies = [
  "bevy_ecs",
  "bevy_platform",
  "bevy_reflect",
+ "fft-convolver 0.4.0",
  "firewheel-core",
  "num-traits",
  "smallvec",
@@ -2877,7 +2889,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6969e5c9d5c5c704723f547237494fde9b1addf16f718f65cd786b3b6e320a4f"
 dependencies = [
  "dyn-clone",
- "fft-convolver",
+ "fft-convolver 0.3.0",
  "funutd",
  "hashbrown 0.16.1",
  "libm",

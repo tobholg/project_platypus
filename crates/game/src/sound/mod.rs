@@ -56,6 +56,9 @@ struct SfxBus;
 struct AmbienceBus;
 #[derive(NodeLabel, PartialEq, Eq, Debug, Hash, Clone)]
 struct MusicBus;
+/// The cave's reverb: effects are sent to it, as much as you're underground.
+#[derive(NodeLabel, PartialEq, Eq, Debug, Hash, Clone)]
+pub struct CaveVerb;
 
 #[derive(PoolLabel, PartialEq, Eq, Debug, Hash, Clone)]
 pub struct SfxPool;
@@ -105,6 +108,14 @@ pub struct Volumes {
     pub sfx: f32,
     pub ambience: f32,
     pub music: f32,
+    /// How much of every effect echoes underground (the cave reverb's send,
+    /// as deep as you are).
+    #[serde(default = "cave_reverb")]
+    pub cave_reverb: f32,
+}
+
+fn cave_reverb() -> f32 {
+    0.45
 }
 
 /// A sound: made from a recipe (`make`) or a recording (`file`, under
@@ -176,7 +187,7 @@ impl SoundBank {
         let path = data_path("sounds.ron");
         let file: SoundsFile = load_ron(&path).unwrap_or_else(|e| {
             warn!("sounds.ron: {e}");
-            SoundsFile { volumes: Volumes { master: 1.0, sfx: 1.0, ambience: 1.0, music: 1.0 }, sounds: BTreeMap::new() }
+            SoundsFile { volumes: Volumes { master: 1.0, sfx: 1.0, ambience: 1.0, music: 1.0, cave_reverb: cave_reverb() }, sounds: BTreeMap::new() }
         });
         SoundBank { volumes: file.volumes, defs: file.sounds, made: HashMap::new(), generation: 0, task: None, stale: true, watch: Watched::new(path) }
     }
@@ -198,13 +209,11 @@ impl Default for Muted {
 }
 
 fn buses(mut commands: Commands) {
-    for bus in [0, 1, 2] {
-        match bus {
-            0 => commands.spawn((VolumeNode::default(), SfxBus)),
-            1 => commands.spawn((VolumeNode::default(), AmbienceBus)),
-            _ => commands.spawn((VolumeNode::default(), MusicBus)),
-        };
-    }
+    // The cave: a big, darkish room; silent until you're underground.
+    commands.spawn((VolumeNode { volume: Volume::SILENT, ..default() }, CaveVerb)).chain_node(FreeverbNode { room_size: 0.88, damping: 0.55, width: 0.9, ..default() });
+    commands.spawn((VolumeNode::default(), SfxBus)).connect(MainBus).connect(CaveVerb);
+    commands.spawn((VolumeNode::default(), AmbienceBus));
+    commands.spawn((VolumeNode::default(), MusicBus));
     commands.spawn((SamplerPool(SfxPool), PoolSize(16..=64), sample_effects![SpatialBasicNode::default()])).connect(SfxBus);
     commands.spawn((SamplerPool(AmbiencePool), PoolSize(8..=16), sample_effects![VolumeNode::default(), SpatialBasicNode::default()])).connect(AmbienceBus);
     commands.spawn((SamplerPool(MusicPool), PoolSize(4..=8), sample_effects![VolumeNode::default()])).connect(MusicBus);

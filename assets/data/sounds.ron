@@ -2,11 +2,14 @@
 // when it starts (and again when this file is saved), or a recording.
 // The arena panel's Sounds row plays each. F11 mutes everything.
 //
-// volumes: the buses (master, effects, ambience, music), 0..1.
+// volumes: the buses (master, effects, ambience, music), 0..1; cave_reverb:
+//   how much of every effect echoes underground (a reverb the effects are
+//   sent to, as deep as you are).
 // sounds: by name (the code asks for them by these names). Each:
 //   make: the recipe (sound/synth.rs has them all):
 //     Thud(pitch, drop, noise, length, bright)  a blow: a falling tone, a burst
-//     Clang(pitch, ring, length)                metal or stone, ringing
+//     Clang(pitch, ring, length, grit, muffle)  metal or stone: partials ringing,
+//                                               a gritty scrape
 //     Whoosh(from, to, length, q)               air: noise through a sweeping band
 //     Burst(cutoff, length, q, body, grit)      steps, digging: a noise burst,
 //                                               a thump under it, crunch
@@ -24,6 +27,7 @@
 //                                               muffled above `muffle` Hz
 //   loops (seconds long): Fire(crackle, roar, hiss), Cave(rumble, wind, hum),
 //     Rain(drops), Wind(gust), Water(bubbles), Lava(glops),
+//     Thrust(roar, hiss, flutter),
 //     Pads(root Hz, chords [[semitones]], chord s, bright Hz, plucks, scale)
 //   file: "sounds/x.ogg" instead of make (a recording, under assets/).
 //   variants: takes made (one picked each play); volume; pitch: each play
@@ -35,7 +39,7 @@
 // (sound/ambience.rs): fire nearby, a cave's air, wind and rain in the
 // open, water moving, lava; the music's mood by where you are and when.
 (
-    volumes: (master: 0.8, sfx: 0.9, ambience: 0.7, music: 0.3),
+    volumes: (master: 0.8, sfx: 0.9, ambience: 0.7, music: 0.3, cave_reverb: 0.45),
     sounds: {
         // ---- combat ----
         // A blade landing; a heavy blow (a club, a crit); you, hurt.
@@ -43,10 +47,10 @@
         "hit_heavy": (make: Impact(body: 85, crack: 0.3, flesh: 450, slice: 0.05, length: 0.26, muffle: 2000), variants: 4, pitch: 0.06, volume: 0.9),
         "hurt": (make: Impact(body: 95, crack: 0.15, flesh: 500, ring: 0.2, length: 0.22, muffle: 1600), variants: 3, pitch: 0.05, reverb: 0.12, room: 0.8, volume: 0.8, every: 0.25),
         "death": (make: Thud(pitch: 55, drop: 1.0, noise: 0.8, length: 0.6, bright: 1400), variants: 2, reverb: 0.3, volume: 0.8),
-        "swing": (make: Swish(low: 350, high: 2600, length: 0.22, q: 1.8, whistle: 0.4), variants: 5, pitch: 0.08, volume: 0.5),
-        "swing_heavy": (make: Swish(low: 160, high: 1100, length: 0.34, q: 1.2, whistle: 0.15), variants: 4, pitch: 0.06, volume: 0.6),
-        "clang": (make: Clang(pitch: 1250, ring: 0.35, length: 0.6), variants: 4, pitch: 0.06, volume: 0.5, reverb: 0.15),
-        "bounce": (make: Clang(pitch: 1800, ring: 0.12, length: 0.25), variants: 3, pitch: 0.05, volume: 0.45),
+        "swing": (make: Swish(low: 250, high: 1800, length: 0.22, q: 1.8, whistle: 0.4), variants: 5, pitch: 0.08, volume: 0.5),
+        "swing_heavy": (make: Swish(low: 120, high: 800, length: 0.34, q: 1.2, whistle: 0.15), variants: 4, pitch: 0.06, volume: 0.6),
+        "clang": (make: Clang(pitch: 750, ring: 0.05, length: 0.16, grit: 1.0, muffle: 3500), variants: 5, pitch: 0.08, volume: 0.55),
+        "bounce": (make: Clang(pitch: 1100, ring: 0.06, length: 0.15, grit: 0.4, muffle: 5000), variants: 3, pitch: 0.05, volume: 0.45),
         "slam": (make: Boom(length: 0.7, sub: 1.2), variants: 2, volume: 0.8),
         "bow": (make: Whoosh(from: 1800, to: 700, length: 0.12, q: 2.5), variants: 3, pitch: 0.08, volume: 0.4),
 
@@ -63,10 +67,10 @@
         "air_jump": (make: Whoosh(from: 1600, to: 400, length: 0.18, q: 0.8), variants: 2, pitch: 0.05, volume: 0.35),
         "dash": (make: Whoosh(from: 600, to: 3000, length: 0.14, q: 0.9), variants: 3, pitch: 0.06, volume: 0.4),
         "hook_throw": (make: Whoosh(from: 1200, to: 500, length: 0.2, q: 1.5), variants: 2, pitch: 0.05, volume: 0.35),
-        "hook_bite": (make: Clang(pitch: 900, ring: 0.08, length: 0.18), variants: 3, pitch: 0.06, volume: 0.4),
+        "hook_bite": (make: Clang(pitch: 800, ring: 0.04, length: 0.12, grit: 0.6, muffle: 4000), variants: 3, pitch: 0.06, volume: 0.4),
 
         // ---- hands ----
-        "mine_stone": (make: Clang(pitch: 2100, ring: 0.05, length: 0.12), variants: 5, pitch: 0.08, volume: 0.3),
+        "mine_stone": (make: Clang(pitch: 1000, ring: 0.03, length: 0.1, grit: 0.9, muffle: 3000), variants: 5, pitch: 0.08, volume: 0.3),
         "mine_dirt": (make: Burst(cutoff: 800, length: 0.08, q: 0.7, body: 80, grit: 0.4), variants: 5, pitch: 0.08, volume: 0.35),
         "mine_sand": (make: Burst(cutoff: 3500, length: 0.1, q: 0.6, grit: 0.6), variants: 4, pitch: 0.08, volume: 0.3),
         "mine_wood": (make: Burst(cutoff: 600, length: 0.08, q: 2.5, body: 140), variants: 4, pitch: 0.06, volume: 0.4),
@@ -82,15 +86,17 @@
         "zap": (make: Zap(pitch: 180, length: 0.35), variants: 3, volume: 0.55),
         "cast": (make: Whoosh(from: 900, to: 3500, length: 0.22, q: 3.0), variants: 3, pitch: 0.08, reverb: 0.2, volume: 0.4),
         "spit": (make: Burst(cutoff: 1800, length: 0.15, q: 1.5, grit: 0.3), variants: 2, pitch: 0.1, volume: 0.45),
-        "drip": (make: Drip(pitch: 1300, rise: 0.7, length: 0.09), variants: 5, pitch: 0.12, echo: 0.3, reverb: 0.45, room: 2.5, volume: 0.45),
+        "drip": (make: Drip(pitch: 650, rise: 0.6, length: 0.12), variants: 5, pitch: 0.12, echo: 0.35, reverb: 0.65, room: 4.0, volume: 0.45),
 
         // ---- ambience beds (loops the world fades in and out) ----
         "fire_bed": (make: Fire(crackle: 22, roar: 0.7, hiss: 0.12), loops: 14, volume: 1.0),
-        "cave_bed": (make: Cave(rumble: 0.7, wind: 0.6, hum: 0.5), loops: 20, reverb: 0.3, room: 3.0, volume: 0.7),
+        "cave_bed": (make: Cave(rumble: 0.7, wind: 0.6, hum: 0.5), loops: 20, reverb: 0.45, room: 4.5, volume: 0.7),
         "wind_bed": (make: Wind(gust: 0.4), loops: 20, volume: 0.3),
         "rain_bed": (make: Rain(drops: 90), loops: 12, volume: 0.7),
         "water_bed": (make: Water(bubbles: 14), loops: 12, volume: 0.6),
         "lava_bed": (make: Lava(glops: 1.2), loops: 14, volume: 0.8),
+        // Rocket boots firing (faded in while they fire, out when they stop).
+        "rocket_bed": (make: Thrust(roar: 0.8, hiss: 1.2, flutter: 28), loops: 6, volume: 0.6),
 
         // ---- music (a mood each, crossfaded by where you are and when) ----
         // Day: D major, open and warm; a pluck now and then.

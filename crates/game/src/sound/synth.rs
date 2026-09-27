@@ -13,8 +13,10 @@ use std::f32::consts::{PI, TAU};
 pub enum Make {
     /// A body blow: a low tone falling in pitch, a burst of noise.
     Thud { pitch: f32, #[serde(default = "half")] drop: f32, #[serde(default = "half")] noise: f32, length: f32, #[serde(default = "bright")] bright: f32 },
-    /// Struck metal or stone: a few inharmonic partials ringing down.
-    Clang { pitch: f32, ring: f32, length: f32 },
+    /// Struck metal or stone: a few inharmonic partials ringing down, a
+    /// gritty burst with them (`grit`: stone's scrape rather than a bell),
+    /// muffled above `muffle` Hz.
+    Clang { pitch: f32, ring: f32, length: f32, #[serde(default)] grit: f32, #[serde(default = "open")] muffle: f32 },
     /// Air moved: noise through a band sweeping from `from` to `to` (Hz).
     Whoosh { from: f32, to: f32, length: f32, #[serde(default = "one")] q: f32 },
     /// A step, a scrape, a knock: a short filtered noise burst, with a thump
@@ -55,6 +57,8 @@ pub enum Make {
     Water { bubbles: f32 },
     /// Lava: a low churn and glops (per second).
     Lava { glops: f32 },
+    /// A rocket's thrust: a roar, a hiss, fluttering (`flutter` Hz).
+    Thrust { roar: f32, hiss: f32, flutter: f32 },
     /// Music: pads through a chord progression (semitones from `root` Hz),
     /// `chord` s each, a filter at `bright` Hz, and plucked notes from
     /// `scale` (the chance a beat has one).
@@ -195,13 +199,21 @@ impl Filter {
     }
 }
 
-/// Brown(ish) noise: white, integrated and leaking back to zero.
-struct Brown(f32);
+/// Brown(ish) noise: white, integrated and leaking back to zero, with the
+/// drift under ~20 Hz taken out (no one hears it; it only ate headroom).
+#[derive(Default)]
+struct Brown {
+    level: f32,
+    last: f32,
+    out: f32,
+}
 
 impl Brown {
     fn tick(&mut self, rng: &mut Rng) -> f32 {
-        self.0 = (self.0 + rng.noise() * 0.06) * 0.997;
-        self.0 * 3.0
+        self.level = (self.level + rng.noise() * 0.06) * 0.997;
+        self.out = self.level - self.last + 0.997 * self.out;
+        self.last = self.level;
+        self.out * 3.0
     }
 }
 
@@ -248,7 +260,7 @@ pub fn render(make: &Make, sr: f32, seed: u64, loops: f32) -> Buf {
     let total = loops + fold;
     match make {
         Make::Thud { pitch, drop, noise, length, bright } => Buf::mono(thud(*pitch, *drop, *noise, *length, *bright, sr, rng)),
-        Make::Clang { pitch, ring, length } => Buf::mono(clang(*pitch, *ring, *length, sr, rng)),
+        Make::Clang { pitch, ring, length, grit, muffle } => Buf::mono(clang(*pitch, *ring, *length, *grit, *muffle, sr, rng)),
         Make::Whoosh { from, to, length, q } => Buf::mono(whoosh(*from, *to, *length, *q, sr, rng)),
         Make::Burst { cutoff, length, q, body, grit } => Buf::mono(burst(*cutoff, *length, *q, *body, *grit, sr, rng)),
         Make::Drip { pitch, rise, length } => Buf::mono(drip(*pitch, *rise, *length, sr, rng)),
@@ -265,6 +277,7 @@ pub fn render(make: &Make, sr: f32, seed: u64, loops: f32) -> Buf {
         Make::Wind { gust } => looped(wind(*gust, total, sr, rng), loops, sr),
         Make::Water { bubbles } => looped(water(*bubbles, total, sr, rng), loops, sr),
         Make::Lava { glops } => looped(lava(*glops, total, sr, rng), loops, sr),
+        Make::Thrust { roar, hiss, flutter } => looped(thrust(*roar, *hiss, *flutter, total, sr, rng), loops, sr),
         Make::Pads { root, chords, chord, bright, plucks, scale } => looped(pads(*root, chords, *chord, *bright, *plucks, scale, total, sr, rng), loops, sr),
     }
 }
@@ -363,23 +376,26 @@ fn thud(pitch: f32, drop: f32, noise: f32, length: f32, bright: f32, sr: f32, rn
         .collect()
 }
 
-fn clang(pitch: f32, ring: f32, length: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
+#[allow(clippy::too_many_arguments)]
+fn clang(pitch: f32, ring: f32, length: f32, grit: f32, muffle: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
     let n = frames(length, sr);
     let partials = [(1.0, 1.0), (2.76, 0.6), (5.40, 0.35), (8.93, 0.22), (13.34, 0.12)];
     let pitch = pitch * rng.range(0.97, 1.03);
     let phases: Vec<f32> = partials.iter().map(|_| rng.unit()).collect();
-    let mut hp = Filter::new(Pass::High, 0.7, sr);
+    let (mut hp, mut scrape, mut soft) = (Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::Band, 1.5, sr), Filter::new(Pass::Low, 0.6, sr));
     (0..n)
         .map(|i| {
             let t = i as f32 / sr;
+            let x = rng.noise();
+            let rough = scrape.tick(x, pitch * 1.3) * env(t, 0.0008, 0.035) * grit * 3.0;
             let tone: f32 = partials
                 .iter()
                 .zip(&phases)
                 .enumerate()
                 .map(|(k, ((ratio, amp), ph))| amp * (TAU * (pitch * ratio * t + ph)).sin() * env(t, 0.0005, ring / (1.0 + k as f32 * 0.7)))
                 .sum();
-            let tick = hp.tick(rng.noise(), 3000.0) * env(t, 0.0003, 0.02);
-            tone * 0.6 + tick * 0.8
+            let tick = hp.tick(x, 3000.0) * env(t, 0.0003, 0.02);
+            soft.tick(tone * 0.6 + tick * 0.8 + rough, muffle)
         })
         .collect()
 }
@@ -526,7 +542,7 @@ fn swish(low: f32, high: f32, length: f32, q: f32, whistle: f32, sr: f32, rng: &
             let e = if k < 0.35 { (k / 0.35).powi(2) } else { (-(k - 0.35) * 6.0).exp() };
             let hz = low + (high - low) * e;
             let x = rng.noise();
-            body.tick(x, hz) * e * 2.2 + air.tick(x, 3500.0) * e * e * 0.18 + edge.tick(x, hz * 2.2) * e.powi(3) * whistle * 2.0
+            body.tick(x, hz) * e * 2.2 + air.tick(x, 3500.0) * e * e * 0.08 + edge.tick(x, hz * 1.8) * e.powi(3) * whistle * 1.6
         })
         .collect()
 }
@@ -579,12 +595,12 @@ fn fire(crackle: f32, roar: f32, hiss: f32, secs: f32, sr: f32, rng: &mut Rng) -
     let dt = 1.0 / sr;
     for (ch, seed) in [(0, 11u64), (1, 23)] {
         let mut r = Rng::new(rng.next() ^ seed);
-        let (mut brown, mut lp, mut hp) = (Brown(0.0), Filter::new(Pass::Low, 0.7, sr), Filter::new(Pass::High, 0.7, sr));
+        let (mut brown, mut lp, mut hp, mut floor) = (Brown::default(), Filter::new(Pass::Low, 0.7, sr), Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::High, 0.7, sr));
         let (mut breath, mut flare) = (Wander::new(&mut r, 0.5), Wander::new(&mut r, 1.5));
         let out = if ch == 0 { &mut b.l } else { &mut b.r };
         for o in out.iter_mut() {
             let (a, f) = (breath.tick(&mut r, dt), flare.tick(&mut r, dt));
-            let low = lp.tick(brown.tick(&mut r), 250.0 + 400.0 * a) * roar * (0.6 + 0.4 * a);
+            let low = floor.tick(lp.tick(brown.tick(&mut r), 400.0 + 600.0 * a), 140.0) * roar * 2.5 * (0.6 + 0.4 * a);
             let air = hp.tick(r.noise(), 4000.0) * hiss * (0.3 + 0.7 * f);
             *o = low + air;
         }
@@ -615,7 +631,7 @@ fn cave(rumble: f32, wind: f32, hum: f32, secs: f32, sr: f32, rng: &mut Rng) -> 
     let dt = 1.0 / sr;
     for ch in 0..2 {
         let mut r = Rng::new(rng.next());
-        let (mut brown, mut lp, mut bp) = (Brown(0.0), Filter::new(Pass::Low, 0.7, sr), Filter::new(Pass::Band, 1.2, sr));
+        let (mut brown, mut lp, mut bp) = (Brown::default(), Filter::new(Pass::Low, 0.7, sr), Filter::new(Pass::Band, 1.2, sr));
         let (mut sweep, mut swell) = (Wander::new(&mut r, 0.08), Wander::new(&mut r, 0.1));
         let out = if ch == 0 { &mut b.l } else { &mut b.r };
         for (i, o) in out.iter_mut().enumerate() {
@@ -658,7 +674,7 @@ fn wind(gust: f32, secs: f32, sr: f32, rng: &mut Rng) -> Buf {
     let dt = 1.0 / sr;
     for ch in 0..2 {
         let mut r = Rng::new(rng.next());
-        let (mut brown, mut bp, mut whistle) = (Brown(0.0), Filter::new(Pass::Band, 0.9, sr), Filter::new(Pass::Band, 14.0, sr));
+        let (mut brown, mut bp, mut whistle) = (Brown::default(), Filter::new(Pass::Band, 0.9, sr), Filter::new(Pass::Band, 14.0, sr));
         let mut g = Wander::new(&mut r, 0.15);
         let out = if ch == 0 { &mut b.l } else { &mut b.r };
         for o in out.iter_mut() {
@@ -703,7 +719,7 @@ fn lava(glops: f32, secs: f32, sr: f32, rng: &mut Rng) -> Buf {
     let mut b = Buf::zeros(n);
     for ch in 0..2 {
         let mut r = Rng::new(rng.next());
-        let (mut brown, mut lp, mut hp) = (Brown(0.0), Filter::new(Pass::Low, 0.7, sr), Filter::new(Pass::High, 0.7, sr));
+        let (mut brown, mut lp, mut hp) = (Brown::default(), Filter::new(Pass::Low, 0.7, sr), Filter::new(Pass::High, 0.7, sr));
         let out = if ch == 0 { &mut b.l } else { &mut b.r };
         for o in out.iter_mut() {
             *o = lp.tick(brown.tick(&mut r), 120.0) * 0.8 + hp.tick(r.noise(), 5000.0) * 0.03;
@@ -718,6 +734,29 @@ fn lava(glops: f32, secs: f32, sr: f32, rng: &mut Rng) -> Buf {
             b.add(at + k, ((TAU * ph).sin() + r.noise() * 0.2) * env(t, 0.005, 0.15) * 0.6, pan);
         }
     });
+    b
+}
+
+fn thrust(roar: f32, hiss: f32, flutter: f32, secs: f32, sr: f32, rng: &mut Rng) -> Buf {
+    let n = frames(secs, sr);
+    let mut b = Buf::zeros(n);
+    let dt = 1.0 / sr;
+    for ch in 0..2 {
+        let mut r = Rng::new(rng.next());
+        let (mut brown, mut lp, mut bp, mut floor) = (Brown::default(), Filter::new(Pass::Low, 0.8, sr), Filter::new(Pass::Band, 0.8, sr), Filter::new(Pass::High, 0.7, sr));
+        let mut drift = Wander::new(&mut r, 3.0);
+        let mut ph = r.unit();
+        let out = if ch == 0 { &mut b.l } else { &mut b.r };
+        for o in out.iter_mut() {
+            let d = drift.tick(&mut r, dt);
+            ph = (ph + flutter * (0.9 + 0.2 * d) * dt).fract();
+            let flap = 0.7 + 0.3 * (TAU * ph).sin();
+            // (Not all under 150 Hz: small speakers would lose it.)
+            let low = floor.tick(lp.tick(brown.tick(&mut r), 650.0 + 300.0 * d), 160.0) * roar * 2.5;
+            let air = bp.tick(r.noise(), 1600.0 + 800.0 * d) * hiss;
+            *o = (low + air) * flap;
+        }
+    }
     b
 }
 
@@ -789,7 +828,7 @@ mod tests {
         let sr = 48_000.0;
         let makes = [
             Make::Thud { pitch: 90.0, drop: 0.5, noise: 0.5, length: 0.2, bright: 2500.0 },
-            Make::Clang { pitch: 900.0, ring: 0.3, length: 0.5 },
+            Make::Clang { pitch: 900.0, ring: 0.3, length: 0.5, grit: 0.5, muffle: 4000.0 },
             Make::Whoosh { from: 300.0, to: 2000.0, length: 0.2, q: 1.0 },
             Make::Burst { cutoff: 1500.0, length: 0.08, q: 1.0, body: 120.0, grit: 0.5 },
             Make::Drip { pitch: 1400.0, rise: 0.5, length: 0.12 },
@@ -806,6 +845,7 @@ mod tests {
             Make::Wind { gust: 0.5 },
             Make::Water { bubbles: 12.0 },
             Make::Lava { glops: 1.5 },
+            Make::Thrust { roar: 1.0, hiss: 0.4, flutter: 30.0 },
             Make::Pads { root: 110.0, chords: vec![vec![0.0, 7.0, 16.0], vec![5.0, 9.0, 12.0]], chord: 4.0, bright: 1200.0, plucks: 0.3, scale: vec![0.0, 2.0, 4.0, 7.0, 9.0] },
         ];
         for (i, m) in makes.iter().enumerate() {

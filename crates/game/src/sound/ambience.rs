@@ -23,12 +23,13 @@ pub struct AmbiencePlugin;
 
 impl Plugin for AmbiencePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Heard>().add_systems(Update, (start, listen, drips, fade, report).chain().after(super::finish));
+        app.init_resource::<Heard>().add_systems(Update, (start, listen, rockets, drips, fade, report).chain().after(super::finish));
     }
 }
 
 /// The beds and the music, and what drives each.
-const BEDS: [(&str, Drive); 9] = [
+const BEDS: [(&str, Drive); 10] = [
+    ("rocket_bed", Drive::Rocket),
     ("fire_bed", Drive::Fire),
     ("lava_bed", Drive::Lava),
     ("water_bed", Drive::Water),
@@ -51,6 +52,7 @@ enum Drive {
     Day,
     Night,
     Deep,
+    Rocket,
 }
 
 /// A looping bed: how loud it is now (0..1 of its own volume).
@@ -73,6 +75,9 @@ pub struct Heard {
     pub under: f32,
     /// 0 night .. 1 day.
     pub day: f32,
+    /// The player's rocket boots firing (seconds of it left), and where.
+    pub rocket: f32,
+    pub rocket_at: Vec2,
     since: f32,
 }
 
@@ -177,6 +182,19 @@ fn listen(time: Res<Time<Real>>, sim: Res<SimWorld>, day: Option<Res<crate::ligh
     });
 }
 
+/// The player's rocket boots firing (the exhaust, `Rocketed`, each tick
+/// they do).
+fn rockets(time: Res<Time<Real>>, mut fired: MessageReader<crate::actors::Rocketed>, player: Query<Entity, With<crate::actors::player::LocalPlayer>>, mut heard: ResMut<Heard>) {
+    heard.rocket = (heard.rocket - time.delta_secs()).max(0.0);
+    let me = player.single().ok();
+    for r in fired.read() {
+        if Some(r.entity) == me {
+            heard.rocket = 0.12;
+            heard.rocket_at = r.at;
+        }
+    }
+}
+
 /// Underground, now and then a drop from a ceiling in view.
 fn drips(time: Res<Time<Real>>, sim: Res<SimWorld>, heard: Res<Heard>, cam: Query<&GlobalTransform, With<MainCamera>>, mut next: Local<f32>, mut rng: Local<Option<Rng>>, mut out: MessageWriter<PlaySound>) {
     let rng = rng.get_or_insert_with(|| Rng::new(99));
@@ -233,11 +251,21 @@ fn report(time: Res<Time<Real>>, heard: Res<Heard>, beds: Query<&Bed>, mut since
     );
 }
 
-/// Each bed toward what the world calls for.
-fn fade(time: Res<Time<Real>>, heard: Res<Heard>, cam: Query<&GlobalTransform, (With<MainCamera>, Without<Bed>)>, mut beds: Query<(&mut Bed, &SampleEffects, Option<&mut Transform>)>, mut vols: Query<&mut VolumeNode>) {
+/// Each bed toward what the world calls for; the cave's reverb as deep as
+/// you are.
+#[allow(clippy::too_many_arguments)]
+fn fade(time: Res<Time<Real>>, heard: Res<Heard>, bank: Res<SoundBank>, mut verb: Query<&mut VolumeNode, With<super::CaveVerb>>, cam: Query<&GlobalTransform, (With<MainCamera>, Without<Bed>)>, mut beds: Query<(&mut Bed, &SampleEffects, Option<&mut Transform>)>, mut vols: Query<&mut VolumeNode, Without<super::CaveVerb>>) {
     let dt = time.delta_secs();
     let c = cam.iter().next().map_or(Vec2::ZERO, |t| t.translation().truncate());
     let open = 1.0 - heard.under;
+    for mut v in &mut verb {
+        let want = heard.under * bank.volumes.cave_reverb;
+        let now = v.volume.linear();
+        let next = now + (want - now) * (dt * 1.5).min(1.0);
+        if (next - now).abs() > 1e-4 {
+            v.volume = Volume::Linear(next);
+        }
+    }
     for (mut bed, effects, tf) in &mut beds {
         let want = match bed.drive {
             Drive::Fire => heard.fire,
@@ -249,14 +277,23 @@ fn fade(time: Res<Time<Real>>, heard: Res<Heard>, cam: Query<&GlobalTransform, (
             Drive::Day => open * heard.day,
             Drive::Night => open * (1.0 - heard.day),
             Drive::Deep => heard.under,
+            Drive::Rocket => if heard.rocket > 0.0 { 1.0 } else { 0.0 },
         };
-        // (Music eases slower than the world's sounds.)
-        let rate = if matches!(bed.drive, Drive::Day | Drive::Night | Drive::Deep) { 0.4 } else { 2.0 };
+        // (Music eases slower than the world's sounds; a rocket at once.)
+        let rate = match bed.drive {
+            Drive::Day | Drive::Night | Drive::Deep => 0.4,
+            Drive::Rocket => 14.0,
+            _ => 2.0,
+        };
         bed.level += (want - bed.level) * (rate * dt).min(1.0);
         // A fire sounds from where it is (panned; its loudness is ours).
         if let Some(mut tf) = tf {
-            let off = if bed.drive == Drive::Fire { heard.fire_at * 0.3 } else { Vec2::ZERO };
-            tf.translation = (c + off).extend(0.0);
+            tf.translation = match bed.drive {
+                Drive::Fire => c + heard.fire_at * 0.3,
+                Drive::Rocket => heard.rocket_at,
+                _ => c,
+            }
+            .extend(0.0);
         }
         if let Ok(mut v) = vols.get_effect_mut(effects) {
             let gain = bed.level * bed.volume;
