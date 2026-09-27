@@ -210,8 +210,8 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
   the band and zone the camera is in (earth, stone, the deep blue-black;
   teal in fungal zones, violet in crystal, sickly green in toxic, red over
   the underworld), eased as they change, under the lighting: only near a
-  light does the tint show. In its dark a few faint twinkles, far off
-  (6 % of the camera's motion), each swelling and fading on its own slow
+  light does the tint show. In its dark a few very faint twinkles, one
+  pixel each, very far off (2 % of the camera's motion), each swelling and fading on its own slow
   beat, in the zone's colour, where the cave is open to the void. (Tried
   and turned down: far rock layers by band, per-zone art, and
   "underdarks": vast lit caverns with vistas.) Scenario `voidlook`.

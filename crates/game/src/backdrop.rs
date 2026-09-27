@@ -433,7 +433,7 @@ struct Star {
 /// `TWINKLE_CELL`² (sparse), moving at this share of the camera's motion.
 const TWINKLE_CELL: f32 = 9.0;
 const TWINKLE_CHANCE: u64 = 200;
-const TWINKLE_PARALLAX: f32 = 0.06;
+const TWINKLE_PARALLAX: f32 = 0.02;
 
 /// The sky's width in views (stars wrap round it).
 const SKY_WIDE: f32 = 3.0;
@@ -565,8 +565,8 @@ fn sky(
         }
     }
     // Underground: a few faint twinkles far off in the void (Siofra's,
-    // but sparse and dim), where the cave is open to it, drifting slowly
-    // with the camera (far: a small share of its motion), each fading in
+    // but sparse and very dim, one pixel each), where the cave is open to
+    // it, barely drifting with the camera (very far: 2 % of its motion), each fading in
     // and out on its own slow beat; the zone's colour.
     let deep = 1.0 - surface;
     if deep > 0.01 {
@@ -593,14 +593,9 @@ fn sky(
                 }
                 // Mostly dark, now and then a slow swell.
                 let beat = (t * (0.15 + 0.35 * r(3)) + r(4) * std::f32::consts::TAU).sin();
-                let a = (0.25 + 0.75 * (beat * 0.5 + 0.5).powi(2)) * (0.3 + 0.55 * r(5).powi(2)) * deep;
-                put(at.x - origin.x, at.y - origin.y, tint, a);
-                // (The brightest a touch bigger, dimmer at the edge.)
-                if r(5) > 0.7 {
-                    for (dx, dy) in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
-                        put(at.x - origin.x + dx, at.y - origin.y + dy, tint, a * 0.35);
-                    }
-                }
+                // (Far off: dim, and their colour half lost in the dark.)
+                let a = (0.2 + 0.8 * (beat * 0.5 + 0.5).powi(2)) * (0.1 + 0.2 * r(5).powi(2)) * deep;
+                put(at.x - origin.x, at.y - origin.y, tint.map(|v| v * 0.6 + 0.1), a);
             }
         }
     }
