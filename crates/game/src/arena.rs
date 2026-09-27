@@ -76,6 +76,9 @@ struct SectionBody(usize);
 /// The sections, in order, and which are open at first.
 const SECTIONS: [(&str, bool); 6] = [("Time", true), ("Tempo: T the next (tempo.ron)", true), ("Look", true), ("Spawn at the cursor: O (packs first)", false), ("Make", true), ("Sounds: click to hear (sounds.ron), F11 mute", false)];
 
+/// A group of the sound board: its name, and which sounds are in it.
+type SoundGroup<'a> = (&'a str, &'a dyn Fn(&str) -> bool);
+
 /// Which sections are open.
 #[derive(Resource)]
 struct Folds(Vec<bool>);
@@ -358,7 +361,7 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
                 section(p, 4, &|p| row(p, &|r| label(r, "Art editor  E", ArenaAction::Editor)));
                 // Sounds, grouped by their names' first word.
                 section(p, 5, &|p| {
-                    let groups: [(&str, &dyn Fn(&str) -> bool); 5] = [
+                    let groups: [SoundGroup; 5] = [
                         ("Music", &|n| n.starts_with("song_")),
                         ("Hits", &|n| n.starts_with("hit") || n.starts_with("hurt") || n.starts_with("swing") || n.starts_with("clang")),
                         ("Steps and moving", &|n| n.starts_with("step_") || matches!(n, "land" | "jump" | "air_jump" | "dash")),
@@ -387,6 +390,7 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
 const IDLE: Color = Color::srgba(0.25, 0.25, 0.3, 0.8);
 const PICKED: Color = Color::srgba(0.55, 0.45, 0.15, 0.9);
 
+#[allow(clippy::too_many_arguments)]
 fn show_panel(
     view: Res<ArenaView>,
     virt: Res<Time<Virtual>>,
