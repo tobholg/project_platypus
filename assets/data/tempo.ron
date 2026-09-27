@@ -1,6 +1,7 @@
 // The game's tempo (tempo.rs): presets of how fast and heavy movement is,
-// to try side by side: the dev panel's Tempo row, or PLATYPUS_TEMPO=<name>.
-// Hot-reloaded.
+// to try side by side: F10 anywhere for the next (the pick is remembered
+// in saves/tempo.txt), the arena panel's Tempo row, or PLATYPUS_TEMPO=<name>.
+// Hot-reloaded. `default`: the tempo a first run (and every scenario) has.
 //
 // Each preset: `player`, any of the player's movement fields (over its
 // creature file's; run_speed and jump_height stay scaled by what it wears):
@@ -15,7 +16,7 @@
 // In body heights (the player is 15 cells): Hollow Knight runs 6.3 a
 // second, jumps 2.7 high, 0.48 s in the air; Terraria 4.3, 2.5, 0.85 s.
 (
-    default: "Hollow Knight",
+    default: "Middle",
     presets: [
         // What the player's file says: snappy, heavy, fast.
         (name: "Hollow Knight", pace: 1.0),

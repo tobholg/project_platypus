@@ -173,11 +173,11 @@ N lightning at the cursor (F7) · M +3 hours (F8) · K lighting off (F9) · L li
 hearts (20 a heart), mana as blue stars and stamina as green bolts (20 each), and
 status timers under them; dying just refills health (`PLATYPUS_RESPAWN=1` to respawn at the start)
 
-**Tempo** (being decided: DESIGN D7): the arena panel's Tempo row (or T with the panel open)
-switches live between presets of how fast and heavy movement is, in `assets/data/tempo.ron`:
+**Tempo** (being decided: DESIGN D7): F10 anywhere (or the arena panel's Tempo row) switches
+live between presets of how fast and heavy movement is, in `assets/data/tempo.ron`:
 *Hollow Knight* (the player's file: snappy, heavy), *Middle*, and *Terraria* (its own numbers,
-scaled: a run-up, a skid when turning, a held steady rise to the jump, a slow fall).
-`PLATYPUS_TEMPO=Terraria` starts in one. Other creatures are paced with it.
+scaled: a run-up, a skid when turning, a held steady rise to the jump, a slow fall). *Middle*
+is the default; your pick is remembered (`saves/tempo.txt`). `PLATYPUS_TEMPO=Terraria` starts in one. Other creatures are paced with it.
 
 Things to try: pour water then lava on it (obsidian + steam) · oil on water, then
 ignite · a bomb in a wooden structure (paint wood with Q/E) · mine under a sand

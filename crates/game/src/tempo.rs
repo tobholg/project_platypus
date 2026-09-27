@@ -1,7 +1,9 @@
 //! The game's tempo (`assets/data/tempo.ron`): presets of how fast and how
-//! heavy movement is, to try side by side (the dev panel's Tempo row, or
-//! `PLATYPUS_TEMPO=<name>`). A preset sets the player's movement fields it
-//! names (over its creature file's; its run speed and jump height stay
+//! heavy movement is, to try side by side: F10 (anywhere) for the next,
+//! the arena panel's Tempo row, or `PLATYPUS_TEMPO=<name>`. The pick is
+//! remembered between runs (`saves/tempo.txt`; scenarios ignore it).
+//!
+//! A preset sets the player's movement fields it names (over its creature file's; its run speed and jump height stay
 //! scaled by what it wears), and paces every other creature: speeds × pace,
 //! accelerations and gravity × pace², times ÷ pace (the same arcs, slower).
 //!
@@ -19,7 +21,7 @@ pub struct TempoPlugin;
 
 impl Plugin for TempoPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Tempo::load()).add_systems(Update, reload);
+        app.insert_resource(Tempo::load()).add_systems(Update, (reload, keys, remember).chain());
     }
 }
 
@@ -61,7 +63,9 @@ impl Tempo {
             warn!("tempo.ron: {e}");
             TempoFile { default: String::new(), presets: Vec::new() }
         });
-        let pick = std::env::var("PLATYPUS_TEMPO").unwrap_or(file.default.clone());
+        // (The last pick, unless a scenario runs: they measure the default.)
+        let remembered = std::env::var("PLATYPUS_SCENARIO").is_err().then(|| std::fs::read_to_string(remembered_path()).ok()).flatten();
+        let pick = std::env::var("PLATYPUS_TEMPO").ok().or(remembered.map(|s| s.trim().to_string())).unwrap_or(file.default.clone());
         let active = file.presets.iter().position(|p| p.name.eq_ignore_ascii_case(&pick)).unwrap_or(0);
         let base = load_ron::<crate::actors::creature::CreatureDef>(&data_path("creatures/player.ron")).map_or((95.0, 40.0), |d| (d.movement.run_speed, d.movement.jump_height));
         Tempo { presets: file.presets, active, base, watch: Watched::new(path) }
@@ -113,6 +117,35 @@ impl Tempo {
         }
         m
     }
+}
+
+fn remembered_path() -> std::path::PathBuf {
+    crate::save::saves_dir().join("tempo.txt")
+}
+
+/// F10: the next tempo.
+fn keys(keys: Res<ButtonInput<KeyCode>>, taken: Res<crate::dev::KeyboardTaken>, mut tempo: ResMut<Tempo>) {
+    if keys.just_pressed(KeyCode::F10) && !taken.0 && !tempo.presets.is_empty() {
+        tempo.active = (tempo.active + 1) % tempo.presets.len();
+    }
+}
+
+/// A new pick (F10 or the panel): said, and remembered for next time.
+fn remember(tempo: Res<Tempo>, mut last: Local<Option<usize>>, mut toasts: MessageWriter<crate::progress::Toast>) {
+    if *last == Some(tempo.active) {
+        return;
+    }
+    if last.is_some() {
+        toasts.write(crate::progress::Toast(format!("Tempo: {} (F10 for the next)", tempo.name())));
+        if std::env::var("PLATYPUS_SCENARIO").is_err() {
+            let path = remembered_path();
+            let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+            if let Err(e) = std::fs::write(&path, tempo.name()) {
+                warn!("tempo: couldn't remember the pick: {e}");
+            }
+        }
+    }
+    *last = Some(tempo.active);
 }
 
 /// tempo.ron edited: the presets again (the pick kept by name).
