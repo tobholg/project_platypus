@@ -685,7 +685,9 @@ fn through_to_open(h: &mut Hood, x: i32, y: i32, dir: i32, m: MaterialId) -> Opt
         _ => RowScan { y, m, from: x, end: x + dir, end_open: None },
     };
     // Along it until what ends it, or past reach from here.
-    while r.end_open.is_none() && (r.end - x) * dir <= PRESSURE_REACH {
+    // (It moves the cell there: within reach only. A scan that runs out of
+    // reach finds nothing: `end_open` stays unknown.)
+    while r.end_open.is_none() && (r.end - x) * dir <= PRESSURE_REACH && (r.end - x) * dir <= Hood::room(x, dir) {
         let Some(t) = h.get(r.end, y) else {
             h.pressure[slot] = None;
             return None;
@@ -737,7 +739,7 @@ fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
         // further (up to `SEEK`) it heads that way. Either is purposeful and
         // costs no budget: water that knows where lower ground is doesn't
         // slosh, so it levels fast.
-        for i in 1..=SEEK.max(reach) {
+        for i in 1..=SEEK.max(reach).min(Hood::sight(x, dir)) {
             // Sideways only into air (or plants, which get washed away).
             // Layering (oil over water) happens by sinking; sideways swaps at
             // an interface would never end.

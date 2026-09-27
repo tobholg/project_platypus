@@ -92,6 +92,30 @@ fn water_flows_across_chunk_borders_and_levels() {
     assert!(hi - lo <= 2, "water not level: {lo}..{hi}: {heights:?}");
 }
 
+/// Drops on a wide flat floor (rain on a plain) look far along the row for
+/// lower ground: the look stops at the edge of the chunks a job holds (it
+/// used to run 128 cells, reading the wrong chunk past them, or panicking
+/// when the row under it was the chunk below's).
+#[test]
+fn drops_on_a_wide_flat_floor_look_only_within_reach() {
+    let mut w = boxed_world(5, 3, 3);
+    let (water, stone) = (w.materials().expect_id("water"), w.materials().expect_id("stone"));
+    // A floor on a chunk's top row, air under it: the drops sit on the
+    // bottom row of the chunk above, each near its chunk's edge, open floor
+    // either side.
+    for x in 1..5 * CHUNK - 1 {
+        w.set(CellPos::new(x, 2 * CHUNK - 1), Cell::new(stone, 0));
+    }
+    for x in [2 * CHUNK + 1, 3 * CHUNK - 2] {
+        w.set(CellPos::new(x, 2 * CHUNK), Cell::new(water, 0));
+    }
+    let before = count(&w, water);
+    for _ in 0..400 {
+        w.step();
+    }
+    assert_eq!(count(&w, water), before, "water is conserved");
+}
+
 #[test]
 fn oil_floats_on_water() {
     let mut w = boxed_world(1, 1, 3);

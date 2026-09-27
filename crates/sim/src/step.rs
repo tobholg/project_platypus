@@ -112,6 +112,20 @@ impl<'a> Hood<'a> {
         (sy * 3 + sx, i)
     }
 
+    /// How many cells from `lx` in `dir` (-1, 1) a job may write (and
+    /// read): its reach.
+    #[inline(always)]
+    pub fn room(lx: i32, dir: i32) -> i32 {
+        if dir < 0 { lx + MAX_REACH } else { CHUNK + MAX_REACH - 1 - lx }
+    }
+
+    /// How far a look (reads only, to decide) may go: to the edge of the
+    /// chunks the job holds. (Past it, `slot` is out of bounds.)
+    #[inline(always)]
+    pub fn sight(lx: i32, dir: i32) -> i32 {
+        if dir < 0 { lx + CHUNK } else { 2 * CHUNK - 1 - lx }
+    }
+
     /// `None` = chunk not loaded; callers treat it as solid.
     #[inline(always)]
     pub fn get(&self, lx: i32, ly: i32) -> Option<Cell> {
