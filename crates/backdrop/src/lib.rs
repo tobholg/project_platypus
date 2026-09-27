@@ -7,6 +7,7 @@
 //! concept sheets); the game draws its layers in tiles (`tile.rs`).
 
 pub mod tile;
+pub mod vista;
 
 use std::f32::consts::TAU;
 

@@ -25,6 +25,51 @@ fn main() {
         println!("{}", scene.name);
     }
     tiles(&out);
+    vistas(&out);
+}
+
+/// The surface's vistas (`vista.rs`) as the game would show them, 3× (a
+/// cell is 3 screen pixels): `vista-<name>.png` by day at two places,
+/// `vista-<name>-night.png`.
+fn vistas(out: &std::path::Path) {
+    let (w, h) = (504usize, 284usize);
+    let up = |px: &[u8]| -> Vec<u8> {
+        let mut o = Vec::with_capacity(w * h * 36);
+        for y in 0..h * 3 {
+            for x in 0..w * 3 {
+                o.extend_from_slice(&px[((y / 3) * w + x / 3) * 4..][..4]);
+            }
+        }
+        o
+    };
+    // All of them on one sheet (2×, two across), day.
+    let all = platypus_backdrop::vista::vistas();
+    let (cols, rows) = (2usize, all.len().div_ceil(2));
+    let (sw, sh) = (w * 2 * cols + 8 * (cols - 1), h * 2 * rows + 8 * (rows - 1));
+    let mut sheet = [20u8, 20, 24, 255].repeat(sw * sh);
+    for (n, v) in all.iter().enumerate() {
+        let px = platypus_backdrop::vista::still(v, 0, w, h, 11);
+        let (ox, oy) = ((n % cols) * (w * 2 + 8), (n / cols) * (h * 2 + 8));
+        for y in 0..h * 2 {
+            for x in 0..w * 2 {
+                let i = ((oy + y) * sw + ox + x) * 4;
+                sheet[i..i + 4].copy_from_slice(&px[((y / 2) * w + x / 2) * 4..][..4]);
+            }
+        }
+    }
+    platypus_art::write_png(&platypus_art::Pixels { w: sw as u32, h: sh as u32, rgba: sheet }, &out.join("vistas.png")).expect("png");
+    for v in all {
+        for (tag, x) in [("", 0i64), ("-b", 1700)] {
+            let px = platypus_backdrop::vista::still(&v, x, w, h, 11);
+            platypus_art::write_png(&platypus_art::Pixels { w: 3 * w as u32, h: 3 * h as u32, rgba: up(&px) }, &out.join(format!("vista-{}{tag}.png", v.name))).expect("png");
+            if tag.is_empty() {
+                let mut dark = px.clone();
+                platypus_backdrop::vista::night(&mut dark);
+                platypus_art::write_png(&platypus_art::Pixels { w: 3 * w as u32, h: 3 * h as u32, rgba: up(&dark) }, &out.join(format!("vista-{}-night.png", v.name))).expect("png");
+            }
+        }
+        println!("vista {}", v.name);
+    }
 }
 
 /// The game's tiles, a stretch of each layer, far over near.
