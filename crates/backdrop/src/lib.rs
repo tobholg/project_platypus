@@ -9,6 +9,7 @@
 pub mod depths;
 pub mod peaks;
 pub mod tile;
+pub mod underdark;
 pub mod vista;
 
 use std::f32::consts::TAU;

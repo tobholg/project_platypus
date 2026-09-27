@@ -28,6 +28,32 @@ fn main() {
     vistas(&out);
     peaks(&out);
     depths(&out);
+    underdarks(&out);
+}
+
+/// The underground's looks (`underdark.rs`), 3× (a cell 3 pixels): each
+/// underdark theme (`underdark-<theme>.png`), the ordinary caves' dark by
+/// band (`cave-dark-<k>.png`), the underworld (`underworld.png`).
+fn underdarks(out: &std::path::Path) {
+    use platypus_backdrop::underdark::{THEMES, cave, underworld, vista};
+    let (w, h) = (504usize, 284usize);
+    let png = |px: Vec<u8>, name: String| {
+        let mut big = Vec::with_capacity(w * h * 36);
+        for y in 0..h * 3 {
+            for x in 0..w * 3 {
+                big.extend_from_slice(&px[((y / 3) * w + x / 3) * 4..][..4]);
+            }
+        }
+        platypus_art::write_png(&platypus_art::Pixels { w: 3 * w as u32, h: 3 * h as u32, rgba: big }, &out.join(name)).expect("png");
+    };
+    for t in THEMES {
+        png(vista(t, w, h, 31), format!("underdark-{t:?}.png").to_lowercase());
+        println!("underdark {t:?}");
+    }
+    for k in 0..3 {
+        png(cave(k, w, h, 41 + k as u64), format!("cave-dark-{k}.png"));
+    }
+    png(underworld(w, h, 51), "underworld.png".into());
 }
 
 /// The underground's bands (`depths.rs`): `depths.png`, each band a row,
