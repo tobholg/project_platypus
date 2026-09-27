@@ -49,8 +49,10 @@ pub enum Make {
     /// edge's bite (a bright tick sweeping down: `edge`), the chop (noise
     /// about `chop` Hz, falling, with a wet flutter: `wet`), the weight
     /// behind it (`weight` Hz, dropping from about three times that), and
-    /// a low rumble under all; saturated a little, muffled above `muffle`.
-    Slash { chop: f32, weight: f32, #[serde(default = "half")] edge: f32, #[serde(default = "half")] wet: f32, length: f32, #[serde(default = "open")] muffle: f32 },
+    /// a low rumble under all; `tear`: tiny wet bursts a second, scattered
+    /// through it (flesh parting); saturated a little, muffled above
+    /// `muffle`. `weight` 0: no thump at all.
+    Slash { chop: f32, weight: f32, #[serde(default = "half")] edge: f32, #[serde(default = "half")] wet: f32, #[serde(default)] tear: f32, length: f32, #[serde(default = "open")] muffle: f32 },
     /// Loops (`length` s): a fire's roar, hiss and crackles (per second).
     Fire { crackle: f32, roar: f32, #[serde(default = "tenth")] hiss: f32 },
     /// A cave: a low rumble, air moving through it, a faint low hum.
@@ -277,7 +279,7 @@ pub fn render(make: &Make, sr: f32, seed: u64, loops: f32) -> Buf {
         Make::Step { heel, scuff, q, grit, length, muffle } => Buf::mono(step(*heel, *scuff, *q, *grit, *length, *muffle, sr, rng)),
         Make::Swish { low, high, length, q, whistle } => Buf::mono(swish(*low, *high, *length, *q, *whistle, sr, rng)),
         Make::Impact { body, crack, flesh, slice, ring, length, muffle } => Buf::mono(impact(*body, *crack, *flesh, *slice, *ring, *length, *muffle, sr, rng)),
-        Make::Slash { chop, weight, edge, wet, length, muffle } => Buf::mono(slash(*chop, *weight, *edge, *wet, *length, *muffle, sr, rng)),
+        Make::Slash { chop, weight, edge, wet, tear, length, muffle } => Buf::mono(slash(*chop, *weight, *edge, *wet, *tear, *length, *muffle, sr, rng)),
         Make::Fire { crackle, roar, hiss } => looped(fire(*crackle, *roar, *hiss, total, sr, rng), loops, sr),
         Make::Cave { rumble, wind, hum } => looped(cave(*rumble, *wind, *hum, total, sr, rng), loops, sr),
         Make::Rain { drops } => looped(rain(*drops, total, sr, rng), loops, sr),
@@ -576,8 +578,26 @@ fn impact(body: f32, crack: f32, flesh: f32, slice: f32, ring: f32, length: f32,
 }
 
 #[allow(clippy::too_many_arguments)]
-fn slash(chop: f32, weight: f32, edge: f32, wet: f32, length: f32, muffle: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
+fn slash(chop: f32, weight: f32, edge: f32, wet: f32, tear: f32, length: f32, muffle: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
     let n = frames(length * 1.4 + 0.03, sr);
+    // Flesh parting: tiny wet bursts (1.5-5 ms, 0.7-2.6 kHz) scattered through
+    // the chop, thinning out, each its own pitch and loudness.
+    let mut grains = vec![0.0f32; n];
+    if tear > 0.0 {
+        let mut at = 0.004;
+        while at < length {
+            let (hz, len, loud) = (rng.range(700.0, 2600.0), rng.range(0.0015, 0.005), rng.range(0.3, 1.0) * (-at / (length * 0.5)).exp());
+            let mut f = Filter::new(Pass::Band, 3.0, sr);
+            let start = frames(at, sr);
+            for k in 0..frames(len * 3.0, sr) {
+                if let Some(g) = grains.get_mut(start + k) {
+                    let t = k as f32 / sr;
+                    *g += f.tick(rng.noise(), hz) * env(t, 0.0002, len) * loud * 1.3;
+                }
+            }
+            at += -(1.0 - rng.unit()).max(1e-6).ln() / tear;
+        }
+    }
     let (mut bite, mut meat, mut under, mut soft) = (Filter::new(Pass::Band, 1.6, sr), Filter::new(Pass::Band, 0.9, sr), Filter::new(Pass::Low, 0.7, sr), Filter::new(Pass::Low, 0.6, sr));
     let (chop, weight) = (chop * rng.range(0.88, 1.12), weight * rng.range(0.9, 1.1));
     // (Each take its own flutter and a slightly different gap after the bite.)
@@ -600,10 +620,11 @@ fn slash(chop: f32, weight: f32, edge: f32, wet: f32, length: f32, muffle: f32, 
             ph += weight * (1.0 + 2.0 * (-tc / 0.012).exp()) / sr;
             // (Its overtones carry it on small speakers, which lose what's
             // under ~150 Hz.)
-            let w = ((TAU * ph).sin() + 0.6 * (2.0 * TAU * ph).sin() + 0.3 * (3.0 * TAU * ph).sin()) * env(tc, 0.002, length * 0.6) * on * 0.3;
-            // A low rumble under it all.
-            let r = under.tick(x, 320.0) * env(tc, 0.004, length * 1.1) * on * 1.2;
-            soft.tick((1.6 * (b + c + w + r)).tanh(), muffle)
+            let thump = if weight > 0.0 { 1.0 } else { 0.0 };
+            let w = ((TAU * ph).sin() + 0.6 * (2.0 * TAU * ph).sin() + 0.3 * (3.0 * TAU * ph).sin()) * env(tc, 0.002, length * 0.6) * on * 0.3 * thump;
+            // A low rumble under it all (none without the thump).
+            let r = under.tick(x, 320.0) * env(tc, 0.004, length * 1.1) * on * 1.2 * thump;
+            soft.tick((1.6 * (b + c + w + r + grains[i])).tanh(), muffle)
         })
         .collect()
 }
@@ -879,7 +900,7 @@ mod tests {
             Make::Step { heel: 80.0, scuff: 900.0, q: 0.8, grit: 0.3, length: 0.1, muffle: 1500.0 },
             Make::Swish { low: 350.0, high: 2600.0, length: 0.22, q: 1.8, whistle: 0.4 },
             Make::Impact { body: 110.0, crack: 0.6, flesh: 1300.0, slice: 0.5, ring: 0.3, length: 0.14, muffle: 3000.0 },
-            Make::Slash { chop: 900.0, weight: 80.0, edge: 0.6, wet: 0.5, length: 0.16, muffle: 5000.0 },
+            Make::Slash { chop: 900.0, weight: 80.0, edge: 0.6, wet: 0.5, tear: 200.0, length: 0.16, muffle: 5000.0 },
             Make::Fire { crackle: 20.0, roar: 0.6, hiss: 0.1 },
             Make::Cave { rumble: 0.6, wind: 0.5, hum: 0.3 },
             Make::Rain { drops: 60.0 },

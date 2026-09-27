@@ -48,14 +48,12 @@ fn hits(mut hits: MessageReader<crate::combat::Hit>, mut out: MessageWriter<Play
     }
 }
 
-/// Which "hit" a blow plays: `PLATYPUS_HIT`=b or c for the other takes
-/// (to compare by ear), `old` for the one before.
+/// Which "hit" a blow plays: `PLATYPUS_HIT`=b, c, … for the other takes
+/// in sounds.ron (`hit_b`, …; to compare by ear), `old` for the first.
 fn hit_name() -> &'static str {
     static NAME: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
-    NAME.get_or_init(|| match std::env::var("PLATYPUS_HIT").as_deref() {
-        Ok("b") => "hit_b",
-        Ok("c") => "hit_c",
-        Ok("old") => "hit_old",
+    NAME.get_or_init(|| match std::env::var("PLATYPUS_HIT") {
+        Ok(v) if !v.is_empty() => Box::leak(format!("hit_{v}").into_boxed_str()),
         _ => "hit",
     })
 }
