@@ -68,9 +68,9 @@ fn deaths(mut died: MessageReader<Died>, mut out: MessageWriter<PlaySound>) {
     }
 }
 
-/// The player's footsteps, by what's underfoot, a stride apart; a jump's
-/// push off.
-fn steps(sim: Res<crate::world::SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut walked: Local<f32>, mut was: Local<(bool, f32)>, mut out: MessageWriter<PlaySound>) {
+/// The player's footsteps: a steady beat while running on the ground (a
+/// little quicker the faster), by what's underfoot; a jump's push off.
+fn steps(sim: Res<crate::world::SimWorld>, time: Res<Time>, player: Query<&Kinematics, With<LocalPlayer>>, mut beat: Local<f32>, mut was: Local<(bool, f32)>, mut out: MessageWriter<PlaySound>) {
     let Ok(k) = player.single() else { return };
     let feet = k.body.pos - Vec2::Y * (k.body.half.y + 0.5);
     let ground = k.loco.grounded();
@@ -79,16 +79,24 @@ fn steps(sim: Res<crate::world::SimWorld>, player: Query<&Kinematics, With<Local
         out.write(PlaySound::at("jump", feet).volume(0.7));
     }
     *was = (ground, k.body.vel.y);
-    if !ground || k.body.vel.x.abs() < 15.0 {
-        *walked = walked.min(10.0);
+    let speed = k.body.vel.x.abs();
+    if !ground || speed < 20.0 {
+        // (The first step comes soon after starting.)
+        *beat = beat.min(0.1);
         return;
     }
-    *walked += (k.body.pos - k.prev_pos).length();
-    if *walked < 16.0 {
+    *beat -= time.delta_secs();
+    if *beat > 0.0 {
         return;
     }
-    *walked = 0.0;
-    if let Some(what) = underfoot(&sim.world, CellPos::from_world(feet.x, feet.y)) {
+    *beat = STEP_BEAT * (70.0 / speed).clamp(0.8, 1.3);
+    // (What it stands on anywhere under its feet: on a bump's corner the
+    // middle can be over air.)
+    let under = [0.0, -0.7, 0.7, -1.0, 1.0]
+        .iter()
+        .flat_map(|&dx| [0.0, 1.0].map(|dy| Vec2::new(feet.x + dx * (k.body.half.x - 0.5), feet.y - dy)))
+        .find_map(|p| underfoot(&sim.world, CellPos::from_world(p.x, p.y)));
+    if let Some(what) = under {
         let name = match what {
             "stone" => "step_stone",
             "dirt" => "step_dirt",
@@ -98,9 +106,12 @@ fn steps(sim: Res<crate::world::SimWorld>, player: Query<&Kinematics, With<Local
             "water" => "step_water",
             _ => "step_grass",
         };
-        out.write(PlaySound::at(name, feet).volume((k.body.vel.x.abs() / 90.0).clamp(0.5, 1.0)));
+        out.write(PlaySound::at(name, feet));
     }
 }
+
+/// Seconds between footsteps at a run (~70 cells/s).
+const STEP_BEAT: f32 = 0.3;
 
 /// Coming down: a thump by how far (small hops say nothing).
 fn landings(mut landed: MessageReader<Landed>, bodies: Query<(&Kinematics, Has<LocalPlayer>)>, mut out: MessageWriter<PlaySound>) {

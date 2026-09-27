@@ -15,12 +15,13 @@
 //     Zap(pitch, length)                        electricity
 //     Chime(pitch, notes, length)               bell notes (semitones)
 //     Blip(pitch, to, length)                   a sweep (interface)
-//     Step(heel, scuff, q, grit, length)        a footstep: heel thump, toe scuff
+//     Step(heel, scuff, q, grit, length, muffle)  a footstep: a soft pat
 //     Swish(low, high, length, q, whistle)      a swing: a band rising to `high`
 //                                               and back as the blade passes
-//     Impact(body, crack, flesh, slice, ring, length)  a blow landing: crack,
+//     Impact(body, crack, flesh, slice, ring, length, muffle)  a blow: crack,
 //                                               punch, thwack, a blade's slice,
-//                                               a glassy ring (being hurt)
+//                                               a glassy ring (being hurt), all
+//                                               muffled above `muffle` Hz
 //   loops (seconds long): Fire(crackle, roar, hiss), Cave(rumble, wind, hum),
 //     Rain(drops), Wind(gust), Water(bubbles), Lava(glops),
 //     Pads(root Hz, chords [[semitones]], chord s, bright Hz, plucks, scale)
@@ -38,9 +39,9 @@
     sounds: {
         // ---- combat ----
         // A blade landing; a heavy blow (a club, a crit); you, hurt.
-        "hit": (make: Impact(body: 120, crack: 0.6, flesh: 1400, slice: 0.5, length: 0.14), variants: 5, pitch: 0.08, volume: 0.75),
-        "hit_heavy": (make: Impact(body: 70, crack: 0.9, flesh: 650, slice: 0.15, length: 0.26), variants: 4, pitch: 0.06, volume: 0.9),
-        "hurt": (make: Impact(body: 85, crack: 1.0, flesh: 800, ring: 0.5, length: 0.22), variants: 3, pitch: 0.05, reverb: 0.15, room: 0.8, volume: 0.8, every: 0.25),
+        "hit": (make: Impact(body: 150, crack: 0.25, flesh: 700, slice: 0.15, length: 0.16, muffle: 2800), variants: 5, pitch: 0.08, volume: 0.8),
+        "hit_heavy": (make: Impact(body: 85, crack: 0.3, flesh: 450, slice: 0.05, length: 0.26, muffle: 2000), variants: 4, pitch: 0.06, volume: 0.9),
+        "hurt": (make: Impact(body: 95, crack: 0.15, flesh: 500, ring: 0.2, length: 0.22, muffle: 1600), variants: 3, pitch: 0.05, reverb: 0.12, room: 0.8, volume: 0.8, every: 0.25),
         "death": (make: Thud(pitch: 55, drop: 1.0, noise: 0.8, length: 0.6, bright: 1400), variants: 2, reverb: 0.3, volume: 0.8),
         "swing": (make: Swish(low: 350, high: 2600, length: 0.22, q: 1.8, whistle: 0.4), variants: 5, pitch: 0.08, volume: 0.5),
         "swing_heavy": (make: Swish(low: 160, high: 1100, length: 0.34, q: 1.2, whistle: 0.15), variants: 4, pitch: 0.06, volume: 0.6),
@@ -50,13 +51,13 @@
         "bow": (make: Whoosh(from: 1800, to: 700, length: 0.12, q: 2.5), variants: 3, pitch: 0.08, volume: 0.4),
 
         // ---- moving ----
-        "step_stone": (make: Step(heel: 95, scuff: 3000, q: 1.0, grit: 0.15, length: 0.08), variants: 6, pitch: 0.08, volume: 0.5),
-        "step_dirt": (make: Step(heel: 75, scuff: 700, q: 0.7, grit: 0.3, length: 0.1), variants: 6, pitch: 0.08, volume: 0.55),
-        "step_grass": (make: Step(heel: 70, scuff: 2500, q: 0.5, grit: 0.35, length: 0.12), variants: 6, pitch: 0.08, volume: 0.5),
-        "step_sand": (make: Step(heel: 60, scuff: 3800, q: 0.5, grit: 0.8, length: 0.14), variants: 6, pitch: 0.08, volume: 0.45),
-        "step_snow": (make: Step(heel: 70, scuff: 1600, q: 0.6, grit: 1.0, length: 0.16), variants: 5, pitch: 0.08, volume: 0.5),
-        "step_wood": (make: Step(heel: 140, scuff: 900, q: 2.5, length: 0.07), variants: 5, pitch: 0.06, volume: 0.55),
-        "step_water": (make: Step(scuff: 1200, q: 1.5, grit: 0.6, length: 0.2), variants: 4, pitch: 0.1, volume: 0.5),
+        "step_stone": (make: Step(heel: 90, scuff: 1400, q: 0.8, grit: 0.05, length: 0.07, muffle: 1800), variants: 6, pitch: 0.06, volume: 0.3),
+        "step_dirt": (make: Step(heel: 75, scuff: 600, q: 0.7, grit: 0.1, length: 0.08, muffle: 1200), variants: 6, pitch: 0.06, volume: 0.35),
+        "step_grass": (make: Step(heel: 70, scuff: 1100, q: 0.5, grit: 0.15, length: 0.09, muffle: 1600), variants: 6, pitch: 0.06, volume: 0.3),
+        "step_sand": (make: Step(heel: 60, scuff: 1600, q: 0.5, grit: 0.4, length: 0.1, muffle: 2000), variants: 6, pitch: 0.06, volume: 0.28),
+        "step_snow": (make: Step(heel: 70, scuff: 1100, q: 0.6, grit: 0.5, length: 0.11, muffle: 1800), variants: 5, pitch: 0.06, volume: 0.3),
+        "step_wood": (make: Step(heel: 130, scuff: 700, q: 2.0, length: 0.07, muffle: 1500), variants: 5, pitch: 0.05, volume: 0.35),
+        "step_water": (make: Step(scuff: 900, q: 1.2, grit: 0.3, length: 0.14, muffle: 2000), variants: 4, pitch: 0.08, volume: 0.3),
         "land": (make: Thud(pitch: 70, drop: 0.4, noise: 0.6, length: 0.14, bright: 1500), variants: 3, pitch: 0.05, volume: 0.55),
         "jump": (make: Burst(cutoff: 1500, length: 0.05, q: 0.7), variants: 3, pitch: 0.1, volume: 0.2),
         "air_jump": (make: Whoosh(from: 1600, to: 400, length: 0.18, q: 0.8), variants: 2, pitch: 0.05, volume: 0.35),
