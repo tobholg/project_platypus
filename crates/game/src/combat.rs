@@ -1096,7 +1096,7 @@ fn slam(
     }
 }
 
-type Struck<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a mut Sturdy>, &'a crate::actors::MoveStats, Has<Invulnerable>);
+type Struck<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a mut Sturdy>, &'a crate::actors::MoveStats, Has<Invulnerable>, Has<crate::actors::player::LocalPlayer>);
 
 /// What a hit does: damage, knockback and stun, sparks where it struck, a
 /// moment of hit-stop (longer, harder hits), a shake.
@@ -1110,13 +1110,15 @@ fn apply_hits(
     mut stop: ResMut<HitStop>,
     mut trauma: ResMut<crate::fx::Trauma>,
     mut q: Query<Struck>,
+    tempo: Res<crate::tempo::Tempo>,
 ) {
     let Some(weapons) = weapons else { return };
     for r in recoils.read() {
-        let Ok((mut k, _, _, stats, _)) = q.get_mut(r.who) else { continue };
+        let Ok((mut k, _, _, stats, _, player)) = q.get_mut(r.who) else { continue };
         k.body.vel += r.add;
-        if let Some(up) = r.pogo {
-            k.body.vel.y = up;
+        if let Some(share) = r.pogo {
+            // (Up to that share of its own jump's height, at the tempo.)
+            k.body.vel.y = tempo.apply(&stats.0, player).bounce_speed() * share.sqrt();
             k.loco.refresh_air(&stats.0);
         }
         if let Some(dive) = r.dive {
@@ -1128,7 +1130,7 @@ fn apply_hits(
     // a swarm's bites all land at once.)
     let mut graced = std::collections::HashSet::new();
     for h in hits.read() {
-        let Ok((mut k, mut health, sturdy, _, safe)) = q.get_mut(h.target) else { continue };
+        let Ok((mut k, mut health, sturdy, _, safe, _)) = q.get_mut(h.target) else { continue };
         if safe || graced.contains(&h.target) {
             continue;
         }

@@ -219,6 +219,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
+            .add_systems(PreUpdate, tempo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, beams_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, conjure_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, call_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3064,6 +3065,163 @@ fn spider_script(
 /// onto it; hooked on a beam overhead (pulled up, hanging), rope let out
 /// (rappelling down), a swing pumped and let go of mid-swing; a kick off
 /// the wall on the rope; a chest pulled in. Logs each.
+/// Each tempo preset in turn (`tempo.ron`), the same moves, measured: a
+/// run from a standstill (to 95 % of top speed, and the top), letting go
+/// (how far it slides), a turn (from full speed one way to 90 % the
+/// other), a full jump held (its height in cells and body heights, its
+/// time in the air), a tap (the hop), and a drop from 100 cells (the
+/// fastest fall, the time down).
+fn tempo_script(
+    s: Res<Scenario>,
+    mut tempo: ResMut<crate::tempo::Tempo>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    // (preset, step, step start, readings)
+    mut state: Local<(usize, u8, f32, Vec<f32>)>,
+) {
+    if s.name != "tempo" || s.elapsed < 0.5 {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    // (The dev start's rocket boots would fire on a held jump.)
+    k.loco.rocket_left = 0.0;
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let feet = k.body.pos.y - k.body.half.y - fl;
+    let st = &mut *state;
+    let dt = t - st.2;
+    let v = k.body.vel;
+    let mut want: Vec<KeyCode> = Vec::new();
+    let put = |k: &mut Kinematics, x: f32, y: f32| {
+        k.body.pos = Vec2::new(x, fl + y + k.body.half.y);
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+    };
+    let Some(preset) = tempo.presets.get(st.0).map(|p| p.name.clone()) else { return };
+    let (which, step) = (st.0, st.1);
+    let r = &mut st.3;
+    if r.len() < 12 {
+        r.resize(12, 0.0);
+    }
+    // readings: 0 time to 95 %, 1 top, 2 slide, 3 turn, 4 apex, 5 air, 6 hop, 7 fall max, 8 fall time, 9 x at let-go, 10 rising?, 11 left ground at
+    let next;
+    match step {
+        0 => {
+            tempo.active = which;
+            put(&mut k, 450.0, 1.0);
+            *r = vec![0.0; 12];
+            next = dt > 0.4;
+        }
+        // Run from a standstill.
+        1 => {
+            want.push(KeyCode::KeyD);
+            r[1] = r[1].max(v.x);
+            next = dt > 1.2;
+        }
+        // (The time to 95 % of the top, now the top is known: run again.)
+        2 => {
+            if dt < 0.05 {
+                put(&mut k, 450.0, 1.0);
+            } else {
+                want.push(KeyCode::KeyD);
+                if r[0] == 0.0 && v.x >= 0.95 * r[1] {
+                    r[0] = dt - 0.05;
+                }
+            }
+            next = dt > 1.2;
+            if next {
+                r[9] = k.body.pos.x;
+            }
+        }
+        // Let go: the slide.
+        3 => {
+            r[2] = k.body.pos.x - r[9];
+            next = dt > 0.8;
+        }
+        // Full speed, then turn.
+        4 => {
+            if dt < 1.0 {
+                want.push(KeyCode::KeyD);
+            } else {
+                want.push(KeyCode::KeyA);
+                if r[3] == 0.0 && v.x <= -0.9 * r[1] {
+                    r[3] = dt - 1.0;
+                }
+            }
+            next = dt > 2.4;
+        }
+        // A full jump, held.
+        5 => {
+            if dt < 0.05 {
+                put(&mut k, 520.0, 1.0);
+            } else if dt < 0.3 {
+                // (Settle first.)
+            } else {
+                want.push(KeyCode::Space);
+                r[4] = r[4].max(feet);
+                if feet > 0.5 && r[11] == 0.0 {
+                    r[11] = dt;
+                }
+                if r[11] > 0.0 && feet <= 0.5 && r[5] == 0.0 && dt - r[11] > 0.1 {
+                    r[5] = dt - r[11];
+                }
+            }
+            next = dt > 2.0;
+        }
+        // A tap.
+        6 => {
+            if dt < 0.05 {
+                put(&mut k, 520.0, 1.0);
+            }
+            if (0.3..0.34).contains(&dt) {
+                want.push(KeyCode::Space);
+            }
+            if dt > 0.1 {
+                r[6] = r[6].max(feet);
+            }
+            next = dt > 1.5;
+        }
+        // A drop from 100.
+        7 => {
+            if dt < 0.03 {
+                put(&mut k, 660.0, 100.0);
+                r[11] = 0.0;
+            } else {
+                r[7] = r[7].max(-v.y);
+                if feet > 50.0 {
+                    r[11] = 1.0;
+                }
+                if r[11] > 0.0 && feet <= 0.5 && r[8] == 0.0 {
+                    r[8] = dt - 0.03;
+                }
+            }
+            next = dt > 2.0;
+        }
+        _ => {
+            let h = 15.0;
+            info!(
+                "tempo: {preset}: to full run {:.2}s, top {:.0} cells/s ({:.1} heights/s), slide {:.1} cells, turn {:.2}s, jump {:.0} cells ({:.1} heights) {:.2}s in the air, tap {:.0} cells, fall at most {:.0} cells/s ({:.0} heights/s), 100 cells down in {:.2}s",
+                r[0], r[1], r[1] / h, r[2], r[3], r[4], r[4] / h, r[5], r[6], r[7], r[7] / h, r[8]
+            );
+            st.0 += 1;
+            st.1 = 0;
+            st.2 = t;
+            return;
+        }
+    }
+    for key in [KeyCode::KeyA, KeyCode::KeyD, KeyCode::Space] {
+        match (want.contains(&key), keys.pressed(key)) {
+            (true, false) => keys.press(key),
+            (false, true) => keys.release(key),
+            _ => {}
+        }
+    }
+    if next {
+        st.1 += 1;
+        st.2 = t;
+    }
+}
+
 /// Spiders on the wall behind: a wall of stone blocks put up in the
 /// background (x 560..660, up to 120), the player on a ledge at its top,
 /// a spider below on the floor; it climbs the wall at the player.
@@ -3153,7 +3311,7 @@ fn pogo_script(
     let hits = |x: f32| dummies.iter().find(|(_, c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 8.0).map_or(0, |d| d.3.hits);
     let dummy_at = |x: f32| dummies.iter().find(|(_, c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 8.0).map(|d| d.2.body.pos);
     // A bounce: rising fast just after falling.
-    if k.body.vel.y > 250.0 && state.4 < 100.0 {
+    if k.body.vel.y > 150.0 && state.4 < 60.0 {
         state.2 += 1;
     }
     state.3 = state.3.min(k.body.vel.y);
@@ -3415,14 +3573,16 @@ fn hook_script(
         5 => {
             state.2 = state.2.max(k.body.pos.x - 600.0);
             state.3 = state.3.min(k.body.pos.x - 600.0);
-            if dt < 2.4 {
-                held.push(if ((dt / 0.6) as i32) % 2 == 0 { KeyCode::KeyD } else { KeyCode::KeyA });
-            } else if k.body.vel.length() > 150.0 {
+            // (With the swing, as a player pumps: the way it's going; D to
+            // start it. Fast enough, a jump off it.)
+            if dt > 1.5 && k.body.vel.length() > 150.0 {
                 held.push(KeyCode::Space);
-                info!("hook: pumped 2.4 s: swung from x {:.0} to {:.0} of the anchor; let go moving ({:.0}, {:.0}), the hook {what}", state.3, state.2, k.body.vel.x, k.body.vel.y);
+                info!("hook: pumped {dt:.1} s: swung from x {:.0} to {:.0} of the anchor; let go moving ({:.0}, {:.0}), the hook {what}", state.3, state.2, k.body.vel.x, k.body.vel.y);
                 next(&mut state);
+            } else {
+                held.push(if k.body.vel.x < -5.0 { KeyCode::KeyA } else { KeyCode::KeyD });
             }
-            if dt > 4.0 {
+            if dt > 5.5 {
                 info!("hook: never fast enough to let go (moving {:.0})", k.body.vel.length());
                 next(&mut state);
             }

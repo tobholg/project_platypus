@@ -16,15 +16,16 @@
 //     it starts (on the ground). damage, knock: multipliers.
 // down: the down-strike, in the air with S held (or aimed well below you):
 //   a move whose angles are from straight down. What it hits bounces you up
-//   `pogo` cells/s and gives back your air jumps and dash: a creature, a
-//   hostile spell (cut out of the air), a hazard (lava, fire, acid, web).
-//   A slash bounces once; with `dive` it's a plunge: point down, falling
-//   at least `dive` cells/s, live until it lands (bouncing off all it
-//   meets on the way), and a landing slams what's within `slam` cells.
+//   (`pogo`: that share of your own jump's height, at the game's tempo) and
+//   gives back your air jumps and dash: a creature, a hostile spell (cut
+//   out of the air), a hazard (lava, fire, acid, web). A slash bounces
+//   once; with `dive` it's a plunge: point down, falling at least `dive`
+//   cells/s, live until it lands (bouncing off all it meets on the way),
+//   and a landing slams what's within `slam` cells.
 //   None: the first move, turned down.
 (
     combo_gap: 0.35,
-    pogo: 300,
+    pogo: 1.0,
     // Sparks where a blade bites flesh, and where it rings off stone; the
     // smear the outer part of the blade leaves as it sweeps (`trail`: motes
     // for every fourth pixel of it, each turn of the sweep).

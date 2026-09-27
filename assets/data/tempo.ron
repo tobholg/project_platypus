@@ -1,0 +1,40 @@
+// The game's tempo (tempo.rs): presets of how fast and heavy movement is,
+// to try side by side: the dev panel's Tempo row, or PLATYPUS_TEMPO=<name>.
+// Hot-reloaded.
+//
+// Each preset: `player`, any of the player's movement fields (over its
+// creature file's; run_speed and jump_height stay scaled by what it wears):
+//   run_speed, ground_accel (to run speed), ground_decel (to a stop),
+//   turn_accel (a skid, steering against the run), air_accel, gravity,
+//   fall_gravity (× gravity coming down), max_fall, jump_height (a full
+//   jump's apex), jump_hold (s of steady rise while jump is held: Terraria's
+//   jump), jump_cut (rise kept on letting go early), dash_speed, dash_time,
+//   wall_slide_speed, wall_jump_push.
+// `pace`: every other creature's (speeds × pace, accelerations × pace²).
+//
+// In body heights (the player is 15 cells): Hollow Knight runs 6.3 a
+// second, jumps 2.7 high, 0.48 s in the air; Terraria 4.3, 2.5, 0.85 s.
+(
+    default: "Hollow Knight",
+    presets: [
+        // What the player's file says: snappy, heavy, fast.
+        (name: "Hollow Knight", pace: 1.0),
+        // Between: some run-up and skid, a short held rise, ~0.65 s in the
+        // air, a softer fall.
+        (name: "Middle", pace: 0.8, player: {
+            "run_speed": 75, "ground_accel": 260, "ground_decel": 520, "turn_accel": 700,
+            "air_accel": 420, "gravity": 800, "fall_gravity": 1.25, "max_fall": 300,
+            "jump_height": 42, "jump_hold": 0.12, "jump_cut": 0.6,
+        }),
+        // Terraria's own numbers, scaled to our size (its player is 42 px
+        // tall, ours 15 cells: 0.357 cells a pixel; 60 ticks a second):
+        // run 3 px/tick; accelerate 0.08, slow 0.2 (a turn: both, 0.28);
+        // gravity 0.4, the same up and down; fall at most 10; jump 5.01
+        // px/tick held for 15 ticks. Air control as slow as the ground's.
+        (name: "Terraria", pace: 0.68, player: {
+            "run_speed": 64, "ground_accel": 103, "ground_decel": 257, "turn_accel": 360,
+            "air_accel": 103, "gravity": 514, "fall_gravity": 1.0, "max_fall": 214,
+            "jump_height": 38, "jump_hold": 0.25, "jump_cut": 1.0,
+        }),
+    ],
+)

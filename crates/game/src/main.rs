@@ -36,6 +36,7 @@ mod save;
 mod scenario;
 #[cfg(feature = "spikes")]
 mod spikes;
+mod tempo;
 mod sky;
 mod tools;
 mod vfx;
@@ -122,6 +123,7 @@ fn main() {
             scenario::ScenarioPlugin,
         ))
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
+        .add_plugins(tempo::TempoPlugin)
         .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed }))
         .add_plugins(spikes_plugin)
         .run();

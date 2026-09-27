@@ -34,9 +34,10 @@ pub struct Intent {
 /// How hard a climber presses into what it holds on to (cells/s).
 const CLING_PRESS: f32 = 30.0;
 
-/// On a rope, steering pushes at this share of air acceleration, while
-/// it's going slower than this many times run speed that way.
-const SWING_PUMP: f32 = 0.4;
+/// On a rope, steering pushes at this share of gravity (a pendulum's own
+/// scale, whatever the air control), while it's going slower than this
+/// many times run speed that way.
+const SWING_PUMP: f32 = 0.33;
 const SWING_PUMP_MAX: f32 = 3.0;
 
 /// Fastest a rope lets a body go (cells/s).
@@ -82,6 +83,9 @@ pub struct MovementStats {
     pub run_speed: f32,
     pub ground_accel: f32,
     pub ground_decel: f32,
+    /// Turning round on the ground (steering against how it's moving): a
+    /// skid (0: as `ground_accel`).
+    pub turn_accel: f32,
     pub air_accel: f32,
     pub gravity: f32,
     /// Gravity multiplier while falling (heavier fall = snappier jumps).
@@ -91,6 +95,10 @@ pub struct MovementStats {
     pub jump_height: f32,
     /// Upward speed is multiplied by this when jump is released early.
     pub jump_cut: f32,
+    /// Terraria's jump: for up to this many seconds while jump is held it
+    /// rises at its take-off speed, no gravity, then arcs over (0: a plain
+    /// arc). `jump_height` is still a full jump's apex.
+    pub jump_hold: f32,
     pub coyote_time: f32,
     pub jump_buffer: f32,
     pub air_jumps: u8,
@@ -161,12 +169,14 @@ impl Default for MovementStats {
             run_speed: 95.0,
             ground_accel: 1400.0,
             ground_decel: 1800.0,
+            turn_accel: 0.0,
             air_accel: 900.0,
             gravity: 1100.0,
             fall_gravity: 1.6,
             max_fall: 420.0,
             jump_height: 40.0,
             jump_cut: 0.45,
+            jump_hold: 0.0,
             coyote_time: 0.09,
             jump_buffer: 0.12,
             air_jumps: 0,
@@ -195,8 +205,16 @@ impl Default for MovementStats {
 }
 
 impl MovementStats {
-    /// Take-off speed that reaches `jump_height` under `gravity`.
+    /// Take-off speed that reaches `jump_height` under `gravity` (held for
+    /// `jump_hold` first: v·hold + v²/2g = height).
     pub fn jump_speed(&self) -> f32 {
+        let (g, h) = (self.gravity.max(1.0), self.jump_hold.max(0.0));
+        if h > 0.0 { g * (-h + (h * h + 2.0 * self.jump_height / g).sqrt()) } else { (2.0 * g * self.jump_height).sqrt() }
+    }
+
+    /// Straight up to a full jump's height with no hold (a bounce: the
+    /// pogo).
+    pub fn bounce_speed(&self) -> f32 {
         (2.0 * self.gravity * self.jump_height).sqrt()
     }
 }
@@ -226,6 +244,8 @@ pub struct Locomotion {
     dash_dir: f32,
     air_dash_used: bool,
     rising_from_jump: bool,
+    /// Seconds left of a jump's held rise (`jump_hold`).
+    hold_left: f32,
     wall_lock: f32,
     stun: f32,
     prev_jump: bool,
@@ -264,6 +284,7 @@ impl Default for Locomotion {
             dash_dir: 1.0,
             air_dash_used: false,
             rising_from_jump: false,
+            hold_left: 0.0,
             wall_lock: 0.0,
             stun: 0.0,
             prev_jump: false,
@@ -304,6 +325,7 @@ impl Locomotion {
         self.state = MoveState::Stunned;
         self.dash_left = 0.0;
         self.rising_from_jump = false;
+        self.hold_left = 0.0;
     }
 
     /// Air jumps and the air dash back, as if it had landed (a pogo off
@@ -337,6 +359,7 @@ impl Locomotion {
         self.prev_jump = intent.jump;
         self.buffer = 0.0;
         self.rising_from_jump = false;
+        self.hold_left = 0.0;
         self.state = MoveState::Air;
     }
 
@@ -468,8 +491,9 @@ impl Locomotion {
         // Run.
         let target = intent.move_x.clamp(-1.0, 1.0) * s.run_speed;
         // (On ice there's little grip to start, stop or turn with.)
+        let turning = target * body.vel.x < 0.0 && s.turn_accel > 0.0;
         let accel = if grounded {
-            (if target != 0.0 { s.ground_accel } else { s.ground_decel }) * self.contacts.grip
+            (if turning { s.turn_accel } else if target != 0.0 { s.ground_accel } else { s.ground_decel }) * self.contacts.grip
         } else if self.wall_lock > 0.0 {
             s.air_accel * 0.25
         } else {
@@ -480,7 +504,7 @@ impl Locomotion {
             // speed); nothing brakes it.
             let push = intent.move_x.clamp(-1.0, 1.0);
             if push != 0.0 && body.vel.x * push < s.run_speed * SWING_PUMP_MAX {
-                body.vel.x += push * s.air_accel * SWING_PUMP * dt;
+                body.vel.x += push * s.gravity * SWING_PUMP * dt;
             }
         } else {
             body.vel.x = approach(body.vel.x, target, accel * dt);
@@ -544,6 +568,7 @@ impl Locomotion {
                 self.buffer = 0.0;
                 self.coyote = 0.0;
                 self.rising_from_jump = true;
+                self.hold_left = s.jump_hold;
                 self.state = MoveState::Air;
             }
         }
@@ -577,9 +602,13 @@ impl Locomotion {
             ev.rocketed = true;
         }
 
-        // Gravity.
+        // Gravity (none while a jump's rise is held).
+        let holding = self.hold_left > 0.0 && intent.jump && body.vel.y > 0.0 && self.rising_from_jump;
+        self.hold_left = if holding { self.hold_left - dt } else { 0.0 };
         let g = s.gravity * if body.vel.y < 0.0 { s.fall_gravity } else { 1.0 } * gravity_scale;
-        body.vel.y -= g * dt;
+        if !holding {
+            body.vel.y -= g * dt;
+        }
         let max_fall = if self.state == MoveState::WallSlide { s.wall_slide_speed } else { s.max_fall.max(self.dive) };
         body.vel.y = body.vel.y.max(-max_fall);
         if wet > 0.0 {
@@ -735,6 +764,58 @@ mod tests {
         }
         let h = apex - floor;
         assert!((h - s.jump_height).abs() < 3.0, "jumped {h} cells, wanted {}", s.jump_height);
+    }
+
+    /// Terraria's jump: held, it rises at a steady speed for `jump_hold`,
+    /// then arcs over, to the same height, longer in the air; let go early,
+    /// it stops rising under power.
+    #[test]
+    fn a_held_jump_rises_steadily_then_arcs_to_the_same_height() {
+        let g = room();
+        let (base, _, _) = player();
+        let s = MovementStats { jump_hold: 0.25, gravity: 514.0, fall_gravity: 1.0, jump_height: 38.0, jump_cut: 1.0, ..base };
+        let (_, mut l, mut b) = player();
+        settle(&g, &s, &mut l, &mut b);
+        let floor = b.bottom();
+        let (mut apex, mut air) = (floor, 0);
+        let mut speeds = Vec::new();
+        for t in 0..120 {
+            tick(&g, &s, &mut l, &mut b, Intent { jump: true, ..default_intent() });
+            apex = apex.max(b.bottom());
+            if b.bottom() > floor + 0.5 {
+                air = t;
+            }
+            speeds.push(b.vel.y);
+        }
+        assert!((apex - floor - 38.0).abs() < 3.0, "a held jump reached {} cells", apex - floor);
+        assert!((speeds[5] - speeds[10]).abs() < 1.0, "steady while held: {} then {}", speeds[5], speeds[10]);
+        assert!(air > 40, "in the air {air} ticks");
+        // Let go at once: a hop.
+        let (_, mut l, mut b) = player();
+        settle(&g, &s, &mut l, &mut b);
+        let mut hop = floor;
+        for t in 0..90 {
+            tick(&g, &s, &mut l, &mut b, Intent { jump: t < 2, ..default_intent() });
+            hop = hop.max(b.bottom());
+        }
+        assert!(hop - floor < 20.0, "a tapped held-jump hopped {} cells", hop - floor);
+    }
+
+    /// Steering against its run on the ground: it turns at `turn_accel`.
+    #[test]
+    fn turning_round_skids_at_the_turn_rate() {
+        let g = room();
+        let (base, _, _) = player();
+        let turn = |turn_accel: f32| {
+            let s = MovementStats { ground_accel: 200.0, turn_accel, ..base.clone() };
+            let (_, mut l, mut b) = player();
+            settle(&g, &s, &mut l, &mut b);
+            b.vel.x = s.run_speed;
+            tick(&g, &s, &mut l, &mut b, Intent { move_x: -1.0, ..default_intent() });
+            s.run_speed - b.vel.x
+        };
+        let (plain, skid) = (turn(0.0), turn(1000.0));
+        assert!(skid > plain * 3.0, "a skid turns faster: {skid} vs {plain} a tick");
     }
 
     #[test]

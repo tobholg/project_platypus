@@ -288,6 +288,7 @@ pub fn rope(
     mut hits: MessageWriter<Hit>,
     mut holders: Query<Holder>,
     mut things: Query<Thing>,
+    tempo: Res<crate::tempo::Tempo>,
 ) {
     let Some(items) = items else { return };
     let grid = WorldGrid(&sim.world);
@@ -316,7 +317,8 @@ pub fn rope(
         let Ok((_, me, my_stats, ..)) = things.get(e) else { continue };
         let (pos, half, facing, contacts) = (me.body.pos, me.body.half, me.loco.facing, me.loco.contacts);
         let my_size = half.x * half.y;
-        let stats = my_stats.map(|s| s.0.clone()).unwrap_or_default();
+        // (At the game's tempo: hooks are the players'.)
+        let stats = tempo.apply(&my_stats.map(|s| s.0.clone()).unwrap_or_default(), true);
         let hand = pos + Vec2::new(facing * 2.0, half.y * 0.3);
         if pressed {
             let aim = if intent.aim != Vec2::ZERO { intent.aim } else { hand + Vec2::new(facing, 1.0) };

@@ -1,8 +1,9 @@
 //! The arena's tools (`PLATYPUS_WORLD=arena`, or the dev panel anywhere):
 //! time (pause, a tick at a time, slow motion), overlays (every body's box,
 //! its facing and hand), what `O` spawns at the cursor, and clearing the
-//! floor. A panel on the left, and keys: P pause · . one tick (paused) ·
-//! , slower (1, 1/2, 1/4, 1/10) · Y overlays · E the art editor (`editor.rs`).
+//! floor, and the game's tempo (`tempo.rs`). A panel on the left, and keys:
+//! P pause · . one tick (paused) · , slower (1, 1/2, 1/4, 1/10) · Y
+//! overlays · T the next tempo · E the art editor (`editor.rs`).
 //!
 //! Pausing pauses virtual time, so the sim, bodies, particles and
 //! animations all stop; a step hands the fixed clock exactly one tick.
@@ -34,6 +35,9 @@ pub enum ArenaAction {
     Clear,
     /// The art editor, open or shut.
     Editor,
+    /// A tempo preset (`tempo.ron`), or the next.
+    Tempo(usize),
+    NextTempo,
 }
 
 #[derive(Resource, Default)]
@@ -96,6 +100,7 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, view: Res<ArenaView>, taken: Res<crate:
         (KeyCode::Comma, ArenaAction::Slower),
         (KeyCode::KeyY, ArenaAction::Overlays),
         (KeyCode::KeyE, ArenaAction::Editor),
+        (KeyCode::KeyT, ArenaAction::NextTempo),
     ] {
         if keys.just_pressed(k) {
             out.write(a);
@@ -129,6 +134,7 @@ fn act(
     mut editor: ResMut<crate::editor::Editor>,
     creatures: Query<(Entity, Option<&Dummy>), Others>,
     mut owed: ResMut<StepOwed>,
+    mut tempo: ResMut<crate::tempo::Tempo>,
 ) {
     for a in dev.read() {
         if *a == crate::dev::DevAction::Arena {
@@ -157,6 +163,8 @@ fn act(
             ArenaAction::Overlays => view.overlays = !view.overlays,
             ArenaAction::Pick(k) => kind.0 = k.clone(),
             ArenaAction::Editor => editor.open = !editor.open,
+            ArenaAction::Tempo(i) => tempo.active = (*i).min(tempo.presets.len().saturating_sub(1)),
+            ArenaAction::NextTempo => tempo.active = (tempo.active + 1) % tempo.presets.len().max(1),
             // Everything but the player and the planted dummies.
             ArenaAction::Clear => {
                 for (e, d) in &creatures {
@@ -179,7 +187,8 @@ fn step(mut owed: ResMut<StepOwed>, mut fixed: ResMut<Time<Fixed>>) {
     }
 }
 
-fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<ArenaView>) {
+fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<ArenaView>, tempo: Res<crate::tempo::Tempo>) {
+    let tempos: Vec<String> = tempo.presets.iter().map(|p| p.name.clone()).collect();
     // Open from the start in the arena itself.
     view.open = !sim.generator.wild();
     let label = |p: &mut ChildSpawnerCommands, text: &str, action: ArenaAction| {
@@ -222,6 +231,12 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
                     label(r, t, ArenaAction::Speed(*s));
                 }
             });
+            heading(p, "Tempo: T for the next (tempo.ron)");
+            row(p, &|r| {
+                for (i, name) in tempos.iter().enumerate() {
+                    label(r, name, ArenaAction::Tempo(i));
+                }
+            });
             heading(p, "Look");
             row(p, &|r| label(r, "Boxes and hands  Y", ArenaAction::Overlays));
             heading(p, "Spawn at the cursor: O (packs first)");
@@ -243,6 +258,7 @@ fn show_panel(
     view: Res<ArenaView>,
     virt: Res<Time<Virtual>>,
     kind: Res<SpawnKind>,
+    tempo: Res<crate::tempo::Tempo>,
     mut panel: Query<&mut Visibility, With<Panel>>,
     mut title: Query<&mut Text, With<PanelTitle>>,
     mut buttons: Query<(&Interaction, &PanelButton, &mut BackgroundColor)>,
@@ -252,7 +268,8 @@ fn show_panel(
     }
     let speed = virt.relative_speed();
     for mut t in &mut title {
-        t.0 = if virt.is_paused() { "ARENA  paused".into() } else if speed < 1.0 { format!("ARENA  x{speed}") } else { "ARENA".into() };
+        let state = if virt.is_paused() { "  paused".to_string() } else if speed < 1.0 { format!("  x{speed}") } else { String::new() };
+        t.0 = format!("ARENA  {}{state}", tempo.name());
     }
     for (i, b, mut bg) in &mut buttons {
         let on = match &b.0 {
@@ -260,6 +277,7 @@ fn show_panel(
             ArenaAction::Pause => virt.is_paused(),
             ArenaAction::Overlays => view.overlays,
             ArenaAction::Pick(k) => *k == kind.0,
+            ArenaAction::Tempo(i) => *i == tempo.active,
             _ => false,
         };
         bg.0 = match i {

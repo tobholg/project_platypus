@@ -13,6 +13,7 @@ part moves into SPEC.md as its arc lands. Numbers are starting points.
 | D3 | How are humanoids drawn? | Terraria-style: layered frame sheets on one shared frame layout per body size. Gear is a "skin" painted onto body regions. Only held items rotate. |
 | D4 | How do you loot the dead? | The corpse becomes a physical cell body that holds the loot. Interact to loot it. Destroy the corpse and the loot scatters. |
 | D5 | How big are characters? | Keep 1 art pixel = 1 cell. Decide 18 px vs ~24 px humanoids from rendered mock-ups when the RPG arc starts. The 4 × 4 block works for both. |
+| D7 | What tempo does movement have? | Open (2026-09-27): Hollow Knight's (fast, snappy, heavy: where we are) or Terraria's (a slower run with a run-up and a skid, a held rise to the jump, ~0.85 s in the air, a slow fall), or between. Leaning: Terraria's tempo with Hollow Knight's control (coyote time, buffering, variable height, the dash, the pogo), so movement gear has room to make you faster. Presets to try live in `tempo.ron` (the arena panel's Tempo row). |
 | D6 | In what order? | World plan and viewer → terrain → hands (mining, items, chests) → ores → structures → saving → art tool and arena → RPG. |
 
 ## 1. Principles (carried over)
