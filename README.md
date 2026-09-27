@@ -179,11 +179,12 @@ you (fire, lava, water, rain, wind, a cave's air, drips) and the music its mood 
 underground). F11 mutes; `PLATYPUS_MUTE=1` starts muted; the arena panel's Sounds row plays
 each; `PLATYPUS_SOUND_LOG=1` logs what plays and what's heard.
 
-**Backdrops** (DESIGN §4.3b): distant mountains behind the surface (two ranges, barely
-moving), the sun by day, the moon and twinkling stars on near-black nights; underground, far
-rock that shows only where light reaches, glowing specks in fungal and crystal zones, motes in
-big caverns. `cargo run --release -p platypus_backdrop -- <dir>` writes stills of the tiles
-(`tiles-*.png`). Scenarios: `backdrop` (`PLATYPUS_BIOME=desert PLATYPUS_HOUR=18`: the player on
+**Backdrops** (DESIGN §4.3b): Noita-like ranges behind the surface (sharp faceted peaks,
+snow, cloud heaps rising behind, a look per biome, calm parallax), the sun by day, the moon and
+twinkling stars on near-black nights; underground, far rock that shows only where light
+reaches, glowing specks in fungal and crystal zones, motes in big caverns. `cargo run
+--release -p platypus_backdrop -- <dir>` writes stills (`peaks.png`, `peaks-*.png`,
+`tiles-cave.png`). Scenarios: `backdrop` (`PLATYPUS_BIOME=desert PLATYPUS_HOUR=18`: the player on
 that biome's surface), `underlook` (a big cavern 260 cells down, glow sticks thrown).
 
 **Tempo** (being decided: DESIGN D7): F10 anywhere (or the arena panel's Tempo row) switches

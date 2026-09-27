@@ -1,13 +1,14 @@
 //! Backdrops (DESIGN §4.3b): what's far behind the world.
 //!
-//! - The surface: a vista by biome (`platypus_backdrop::vista`), Terraria-
-//!   like: far hazy ranges, cliffs with grass on their tops, green hills
-//!   with tree lines, three layers moving at a small share of the
-//!   camera's motion; and far clouds of their own, drifting across. The
-//!   biomes around the camera choose the vista: travelling, one fades into
-//!   the next. They sit on the ground as generated and fade out
-//!   underground. Over them, the sun by day, the moon and stars by night;
-//!   behind, the sky darkening upward.
+//! - The surface: a look by biome (`platypus_backdrop::peaks`), Noita-
+//!   like: tall sharp peaks cut into flat lit and shaded faces, snow on
+//!   the tops, range behind range fading into the sky, a dark lowland at
+//!   their feet, each range moving at a small share of the camera's
+//!   motion (far, so little); big cloud heaps rising behind the ranges,
+//!   drifting. The biomes around the camera choose the look: travelling,
+//!   one fades into the next. They sit on the ground as generated and
+//!   fade out underground. Over them, the sun by day, the moon and stars
+//!   by night; behind, the sky darkening upward.
 //! - Underground: rock far off through the cave, two layers, drifting
 //!   slowly, in daylight colours under the lighting: only what your light
 //!   reaches shows. In fungal and crystal zones the back walls glow with
@@ -25,7 +26,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
 use platypus_backdrop::tile::{CAVE_LAYERS, cave_tile};
-use platypus_backdrop::vista::{Vista, cloud_tile, for_biome, layer_tile, vistas};
+use platypus_backdrop::peaks::{Look, cloud_tile, for_biome, layer_tile, looks};
 use platypus_sim::{CellPos, Kind};
 
 use crate::camera::MainCamera;
@@ -42,22 +43,29 @@ impl Plugin for BackdropPlugin {
     }
 }
 
-/// The surface's layers (far, middle, near): each one's share of the
-/// camera's motion (far, so little), and where its foot sits above the
-/// ground (cells).
-const PARALLAX: [f32; 3] = [0.03, 0.07, 0.13];
-const FEET: [f32; 3] = [60.0, 18.0, 0.0];
+/// The surface's layers, far to near: their shares of the camera's motion
+/// run from the farthest's to the nearest's (far, so little), and their
+/// feet step down to the ground by `FEET_STEP` a layer (cells).
+const PARALLAX: (f32, f32) = (0.02, 0.1);
+const FEET_STEP: f32 = 12.0;
+
+/// Layer `k` of `n`: its share of the camera's motion, its feet over the
+/// ground.
+fn layer_at(k: usize, n: usize) -> (f32, f32) {
+    let t = k as f32 / (n.max(2) - 1) as f32;
+    (PARALLAX.0 + (PARALLAX.1 - PARALLAX.0) * t, (n - 1 - k.min(n - 1)) as f32 * FEET_STEP)
+}
 /// The far clouds: their share of the camera's motion, how fast they
 /// drift (cells a second), where their strip's bottom sits above the
 /// ground.
 const CLOUD_PARALLAX: f32 = 0.02;
 const CLOUD_DRIFT: f32 = 1.2;
-const CLOUD_FOOT: f32 = 50.0;
+const CLOUD_FOOT: f32 = 12.0;
 const CAVE_PARALLAX: [f32; CAVE_LAYERS] = [0.04, 0.1];
 /// The surface's strips: columns a tile, rows (layers, clouds).
 const TILE: usize = 256;
-const HEIGHT: usize = 140;
-const CLOUD_HEIGHT: usize = 120;
+const HEIGHT: usize = 190;
+const CLOUD_HEIGHT: usize = 170;
 /// The underground's tiles: square.
 const CAVE_TILE: usize = 128;
 /// How far below a surface tile its bottom row is stretched (valleys).
@@ -71,13 +79,13 @@ const Z_SKY: f32 = 15.2;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum Part {
-    /// A vista's layer.
+    /// A look's layer.
     Land,
     Clouds,
     Cave,
 }
 
-/// A tile: what, which vista (surface) and layer, where (column; row for
+/// A tile: what, which look (surface) and layer, where (column; row for
 /// caves).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 struct Key {
@@ -98,8 +106,8 @@ struct Tile {
 
 #[derive(Resource)]
 pub struct Backdrops {
-    vistas: Arc<Vec<Vista>>,
-    /// Each vista's share of the view now (eased towards the biomes'
+    looks: Arc<Vec<Look>>,
+    /// Each look's share of the view now (eased towards the biomes'
     /// around the camera).
     weights: Vec<f32>,
     tiles: HashMap<Key, Tile>,
@@ -114,9 +122,9 @@ pub struct Backdrops {
 
 impl Backdrops {
     fn new() -> Self {
-        let vistas = Arc::new(vistas());
-        let weights = vistas.iter().map(|v| if v.name == "mesas" { 1.0 } else { 0.0 }).collect();
-        Backdrops { vistas, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0 }
+        let looks = Arc::new(looks());
+        let weights = looks.iter().map(|v| if v.name == "noita" { 1.0 } else { 0.0 }).collect();
+        Backdrops { looks, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0 }
     }
 
     /// A tile's size in cells.
@@ -129,9 +137,10 @@ impl Backdrops {
     }
 
     /// A strip's scroll for the camera at `cam`: world x = strip x + this.
-    fn scroll(&self, part: Part, k: usize, cam: Vec2) -> f32 {
+    /// (For land, `k` counts layers of look `v`.)
+    fn scroll(&self, part: Part, v: usize, k: usize, cam: Vec2) -> f32 {
         match part {
-            Part::Land => cam.x * (1.0 - PARALLAX[k]),
+            Part::Land => cam.x * (1.0 - layer_at(k, self.looks[v].layers.len()).0),
             Part::Clouds => cam.x * (1.0 - CLOUD_PARALLAX) + self.drift,
             Part::Cave => cam.x * (1.0 - CAVE_PARALLAX[k]),
         }
@@ -140,7 +149,7 @@ impl Backdrops {
     /// Where a tile is drawn (its centre), for the camera at `cam`.
     fn centre(&self, key: Key, cam: Vec2) -> Vec2 {
         let (w, h) = Self::size(key.part);
-        let x = (key.tx as f32 + 0.5) * w as f32 + self.scroll(key.part, key.k, cam);
+        let x = (key.tx as f32 + 0.5) * w as f32 + self.scroll(key.part, key.v, key.k, cam);
         let ground = self.ground.unwrap_or(cam.y);
         let y = match key.part {
             // (Rows go down: world y is up.)
@@ -148,16 +157,16 @@ impl Backdrops {
             // Its foot (the layer's base row) a little above the ground; it
             // hardly moves as you climb.
             Part::Land => {
-                let p = PARALLAX[key.k];
-                let foot = ground + FEET[key.k] + (cam.y - ground) * (1.0 - p);
-                foot + self.vistas[key.v].layers[key.k].base * h as f32 - h as f32 / 2.0
+                let (p, feet) = layer_at(key.k, self.looks[key.v].layers.len());
+                let foot = ground + feet + (cam.y - ground) * (1.0 - p);
+                foot + self.looks[key.v].layers[key.k].base * h as f32 - h as f32 / 2.0
             }
             Part::Clouds => ground + CLOUD_FOOT + (cam.y - ground) * (1.0 - CLOUD_PARALLAX) + h as f32 / 2.0,
         };
         Vec2::new(x, y)
     }
 
-    /// What hides the sky now: each mostly shown vista tile (layer or
+    /// What hides the sky now: each mostly shown look tile (layer or
     /// cloud) where it's drawn, for `Cover::covers`.
     fn cover(&self, cam: Vec2) -> Cover<'_> {
         let tiles = self
@@ -181,7 +190,7 @@ struct Cover<'a> {
 }
 
 impl Cover<'_> {
-    /// Is a vista's layer or cloud in front of this point of the sky?
+    /// Is a look's layer or cloud in front of this point of the sky?
     fn covers(&self, at: Vec2) -> bool {
         self.tiles.iter().any(|&(corner, w, h, land, alpha)| {
             let (lx, ly) = ((at.x - corner.x).floor() as i64, (corner.y - at.y).floor() as i64);
@@ -193,22 +202,22 @@ impl Cover<'_> {
     }
 }
 
-/// The vistas' shares: the biomes along the ground around the camera,
+/// The looks' shares: the biomes along the ground around the camera,
 /// nearer ones counting more.
 fn targets(bd: &Backdrops, sim: &SimWorld, x: f32) -> Vec<f32> {
-    let mut out = vec![0.0; bd.vistas.len()];
+    let mut out = vec![0.0; bd.looks.len()];
     for (d, w) in [(-3.0, 0.05), (-2.0, 0.1), (-1.0, 0.2), (0.0, 0.3), (1.0, 0.2), (2.0, 0.1), (3.0, 0.05)] {
         let name = for_biome(sim.generator.biome_hint((x + d * 150.0) as i32).unwrap_or("forest"));
-        if let Some(i) = bd.vistas.iter().position(|v| v.name == name) {
+        if let Some(i) = bd.looks.iter().position(|v| v.name == name) {
             out[i] += w;
         }
     }
-    // (A trace of a vista isn't worth its tiles: the rest share it.)
+    // (A trace of a look isn't worth its tiles: the rest share it.)
     let kept: f32 = out.iter().filter(|&&w| w >= 0.15).sum();
     out.iter().map(|&w| if w >= 0.15 { w / kept } else { 0.0 }).collect()
 }
 
-/// Tiles in view made, far ones dropped; the surface's (the vistas
+/// Tiles in view made, far ones dropped; the surface's (the looks
 /// showing) or the cave's by depth.
 fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, time: Res<Time>, cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>, mut images: ResMut<Assets<Image>>) {
     let (tf, loader) = *cam;
@@ -220,7 +229,7 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
     let g = bd.ground.unwrap_or(ground);
     bd.shown = (1.0 - (g - c.y - 40.0) / 80.0).clamp(0.0, 1.0);
     bd.drift += time.delta_secs() * CLOUD_DRIFT;
-    // The vistas' shares, eased (about a second to change over).
+    // The looks' shares, eased (about a second to change over).
     let target = targets(&bd, &sim, c.x);
     let ease = 1.0 - (-time.delta_secs() / 0.8).exp();
     for (w, t) in bd.weights.iter_mut().zip(&target) {
@@ -232,25 +241,25 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
     let seed = sim.world.seed();
     let pool = AsyncComputeTaskPool::get();
     let mut want: Vec<Key> = Vec::new();
-    let span = |bd: &Backdrops, part: Part, k: usize| {
+    let span = |bd: &Backdrops, part: Part, v: usize, k: usize| {
         let (w, _) = Backdrops::size(part);
-        let s = c.x - bd.scroll(part, k, c);
+        let s = c.x - bd.scroll(part, v, k, c);
         (((s - half.x - 32.0) / w as f32).floor() as i64, ((s + half.x + 32.0) / w as f32).floor() as i64)
     };
     if bd.shown > 0.0 {
-        for v in (0..bd.vistas.len()).filter(|&v| bd.weights[v] > 0.0) {
-            for k in 0..bd.vistas[v].layers.len().min(PARALLAX.len()) {
-                let (lo, hi) = span(&bd, Part::Land, k);
+        for v in (0..bd.looks.len()).filter(|&v| bd.weights[v] > 0.0) {
+            for k in 0..bd.looks[v].layers.len() {
+                let (lo, hi) = span(&bd, Part::Land, v, k);
                 want.extend((lo..=hi).map(|tx| Key { part: Part::Land, v, k, tx, ty: 0 }));
             }
-            let (lo, hi) = span(&bd, Part::Clouds, 0);
+            let (lo, hi) = span(&bd, Part::Clouds, v, 0);
             want.extend((lo..=hi).map(|tx| Key { part: Part::Clouds, v, k: 0, tx, ty: 0 }));
         }
     }
     if bd.shown < 1.0 {
         let t = CAVE_TILE as f32;
         for (k, &p) in CAVE_PARALLAX.iter().enumerate() {
-            let (x0, x1) = span(&bd, Part::Cave, k);
+            let (x0, x1) = span(&bd, Part::Cave, 0, k);
             let sy = -c.y * p;
             let (y0, y1) = (((sy - half.y - 16.0) / t).floor() as i64, ((sy + half.y + 16.0) / t).floor() as i64);
             for ty in y0..=y1 {
@@ -263,15 +272,15 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
             continue;
         }
         let (w, h) = Backdrops::size(key.part);
-        let vistas = bd.vistas.clone();
+        let looks = bd.looks.clone();
         let task = match key.part {
             Part::Cave => pool.spawn(async move { cave_tile(key.k, key.tx * w as i64, key.ty * h as i64, w, h, seed) }),
-            Part::Land => pool.spawn(async move { layer_tile(&vistas[key.v], key.k, key.tx * w as i64, w, h, seed) }),
-            Part::Clouds => pool.spawn(async move { cloud_tile(&vistas[key.v], key.tx * w as i64, w, h, seed) }),
+            Part::Land => pool.spawn(async move { layer_tile(&looks[key.v], key.k, key.tx * w as i64, w, h, seed) }),
+            Part::Clouds => pool.spawn(async move { cloud_tile(&looks[key.v], key.tx * w as i64, w, h, seed) }),
         };
         bd.making.insert(key, task);
     }
-    // Out of view (and a margin), or its vista gone: gone.
+    // Out of view (and a margin), or its look gone: gone.
     let stale: Vec<Key> = bd.tiles.keys().filter(|key| !want.iter().any(|w| w.part == key.part && w.v == key.v && w.k == key.k && (w.tx - key.tx).abs() <= 2 && (w.ty - key.ty).abs() <= 2)).copied().collect();
     for key in stale {
         if let Some(tile) = bd.tiles.remove(&key) {
@@ -288,12 +297,12 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
         let (w, h) = Backdrops::size(key.part);
         let alpha: Vec<u8> = if key.part == Part::Cave { Vec::new() } else { px.chunks(4).map(|p| p[3]).collect() };
         let handle = images.add(Image::new(Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::RENDER_WORLD));
-        // Far layer, clouds, the nearer layers; the caves behind them all
-        // (they never show together).
+        // The farthest range, the clouds, the nearer ranges; the caves
+        // behind them all (they never show together).
         let z = Z + key.v as f32 * 0.002
             + match key.part {
-                Part::Land => [0.0, 0.04, 0.06][key.k.min(2)],
-                Part::Clouds => 0.02,
+                Part::Land => key.k as f32 * 0.03,
+                Part::Clouds => 0.015,
                 Part::Cave => -0.1 + key.k as f32 * 0.02,
             };
         let entity = commands.spawn((Name::new("Backdrop tile"), Sprite::from_image(handle.clone()), Transform::from_xyz(0.0, 0.0, z))).id();
@@ -311,7 +320,7 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
 }
 
 /// Each tile where its layer puts it for the camera now, as strong as its
-/// vista's share; the surface's faded out underground, the cave's in.
+/// look's share; the surface's faded out underground, the cave's in.
 fn place(bd: Res<Backdrops>, zoom: Res<crate::camera::Zoom>, cam: Single<&Transform, (With<MainCamera>, Without<Sprite>)>, mut sprites: Query<(&mut Transform, &mut Sprite), Without<MainCamera>>) {
     let c = cam.translation.truncate();
     // (Snapped to whole screen pixels from the camera: crisp, and gliding

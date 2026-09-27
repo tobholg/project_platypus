@@ -181,15 +181,23 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
 
 ## 4.3b Backdrops and the night sky (built 2026-09-27, branch `backdrop-arc`)
 
-- **Surface:** distant mountains, the same everywhere (tried per-biome
-  scenes of four layers: too busy, and 6–50 % parallax made you seasick):
-  a far snowy range and a nearer, lower one with foothills and tiny trees
-  at its foot, moving at 2 % and 5 % of the camera's motion, sitting on
-  the ground as generated, fading out underground. Generated
-  (`crates/backdrop/src/tile.rs`) in tiles as the camera goes, from
-  absolute coordinates so they join up; drawn in daylight colours under
-  the lighting, which grades them by the hour. `platypus-backdrop <dir>`
-  writes stills of the tiles (and the earlier scenes) to iterate on.
+- **Surface:** Noita-like ranges (`crates/backdrop/src/peaks.rs`), after
+  two tries the user turned down (per-biome Noita scenes: too busy, and
+  6–50 % parallax made you seasick; Terraria-like cliffs: not it). Tall
+  sharp peaks cut into flat faces (wedges from the apex, lit on the left,
+  shade on the right), concave flanks with shoulders, snow on the tops
+  reaching down the gullies; range behind range fading into the sky's
+  haze, mist at their feet, a dark lowland band; big cloud heaps rising
+  behind the ranges (flat, faded bottoms hidden behind them), drifting.
+  A look per biome (`for_biome`): `alpine` for mountains and tundra,
+  `noita` everywhere else; `violet`, `misty`, `needles`, `broad` wait for
+  places of their own. Looks crossfade as the biomes around the camera
+  change. Ranges move at 2–10 % of the camera's motion, far to near, and
+  sit on the ground as generated; tiles are placed to whole screen pixels
+  from the camera (whole cells hopped 3 pixels: jitter). Below a range's
+  feet, one flat colour (the skirt stretches the bottom row down). A sky
+  gradient behind, tinted by the hour's sky colour. `platypus-backdrop
+  <dir>` writes `peaks.png` and each look by day, at dusk and at night.
 - **The sky:** the sun crossing by day (low and golden at either end, a
   soft glow round it), the moon and twinkling stars by night, drawn over
   the lighting where the sky is open (no cell, no back wall, no mountain,

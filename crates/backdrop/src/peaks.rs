@@ -187,7 +187,7 @@ pub fn cloud_tile(look: &Look, x0: i64, w: usize, h: usize, seed: u64) -> Vec<u8
         }
         let size = big * (0.6 + 0.8 * hash(k, 2, s));
         let cx = (k as f32 + 0.2 + 0.6 * hash(k, 3, s)) * every;
-        let bottom = hf * (0.95 - 0.25 * hash(k, 4, s));
+        let bottom = hf * (0.98 - 0.08 * hash(k, 4, s));
         let wide = size * (70.0 + 60.0 * hash(k, 5, s));
         let n = 5 + (hash(k, 6, s) * 6.0) as i64;
         for j in 0..n {
@@ -230,18 +230,19 @@ pub fn cloud_tile(look: &Look, x0: i64, w: usize, h: usize, seed: u64) -> Vec<u8
                 dx * dx + dy * dy < r * r
             };
             let Some(b) = col.iter().filter(inside).max_by(|a, b| a.1.total_cmp(&b.1)) else { continue };
-            // Lit from the upper left, shaded towards the lower right and
-            // the bottom; each puff's edge where it sits over another a
-            // little darker.
+            // Shaded by the heap as a whole: bright under its top edge here,
+            // bluer further down; a little by the puff (lit from the upper
+            // left), for roundness without each puff's outline.
+            let top = col.iter().filter(|c| c.4 == b.4).map(|c| c.1 - (c.2 * c.2 - (xf - c.0).powi(2)).max(0.0).sqrt()).fold(f32::MAX, f32::min);
+            let depth = smoothstep(0.0, (b.4 - top).max(8.0) * 0.9, yf - top);
             let (dx, dy) = ((xf - b.0) / b.2, (yf - b.1) / b.2);
-            let n = (dx * 0.5 + dy * 0.85).clamp(-1.0, 1.0);
-            let mut t = smoothstep(-0.35, 0.95, n);
-            // (A soft darkening towards a puff's lower rim, not a line.)
-            let edge = (dx * dx + dy * dy).sqrt();
-            t = (t + 0.12 * smoothstep(0.6, 1.0, edge) * smoothstep(-0.2, 0.6, dy)).min(1.0);
-            let under = smoothstep(hf * 0.6, hf, yf) * 0.35;
-            let c = mix(mix(lit, shade, t), shade, under);
+            let puff = smoothstep(-0.5, 1.0, dx * 0.5 + dy * 0.85);
+            let t = (0.65 * depth + 0.35 * puff).clamp(0.0, 1.0);
+            let c = mix(lit, shade, t);
+            // Its bottom thins into the air (hidden behind a range, mostly).
+            let a = smoothstep(b.4, b.4 - 10.0, yf);
             write(&mut out, xi, y, w, xa, mix(c, look.sky.1, 0.12));
+            out[(y * w + xi) * 4 + 3] = (a * 255.0) as u8;
         }
     }
     out
@@ -341,6 +342,15 @@ pub fn looks() -> Vec<Look> {
             ],
         },
     ]
+}
+
+/// Which look a biome (the world plan's name) shows behind it. (`violet`,
+/// `misty`, `needles` and `broad` wait for places of their own.)
+pub fn for_biome(biome: &str) -> &'static str {
+    match biome {
+        "mountains" | "tundra" => "alpine",
+        _ => "noita",
+    }
 }
 
 /// A look as the game would show it at `x`: sky, the far layers, the
