@@ -217,6 +217,8 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, rocket_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(Update, backwall_script)
             .add_systems(PreUpdate, beams_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, conjure_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, call_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -649,8 +651,8 @@ fn dark_script(
             crate::light::plant_torch(&mut commands, k.body.pos + Vec2::new(-40.0, -k.body.half.y), &lights, art);
         }
         let s = lights.glowstick.strength;
-        crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(-20.0, 4.0), Vec2::new(-60.0, 40.0), [0.25 * s, s, 0.45 * s], 90.0);
-        crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(30.0, 4.0), Vec2::new(60.0, 40.0), [0.2 * s, 0.55 * s, 1.1 * s], 90.0);
+        crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(-20.0, 4.0), Vec2::new(-60.0, 40.0), [0.25 * s, s, 0.45 * s], 90.0, lights.glowstick.haze);
+        crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(30.0, 4.0), Vec2::new(60.0, 40.0), [0.2 * s, 0.55 * s, 1.1 * s], 90.0, lights.glowstick.haze);
     }
     *done = true;
 }
@@ -3062,6 +3064,251 @@ fn spider_script(
 /// onto it; hooked on a beam overhead (pulled up, hanging), rope let out
 /// (rappelling down), a swing pumped and let go of mid-swing; a kick off
 /// the wall on the rope; a chest pulled in. Logs each.
+/// Spiders on the wall behind: a wall of stone blocks put up in the
+/// background (x 560..660, up to 120), the player on a ledge at its top,
+/// a spider below on the floor; it climbs the wall at the player.
+fn backwall_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    spiders: Query<(&crate::actors::Creature, &Kinematics), Without<LocalPlayer>>,
+    // (phase, highest it climbed, time it first held on behind, closest)
+    mut state: Local<(u8, f32, f32, f32)>,
+) {
+    if s.name != "backwall" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let fl = floor as f32;
+    match state.0 {
+        0 if t > 0.5 => {
+            if let Some(stone) = sim.materials().id("stone") {
+                let b = platypus_sim::edit::BLOCK;
+                for bx in 560 / b..660 / b {
+                    for by in floor / b..(floor + 120) / b {
+                        sim.queue(WorldEdit::PlaceBlock { block: CellPos::new(bx, by), material: stone, back: true });
+                    }
+                }
+                // A ledge at the top for the player.
+                for x in (600..=660).step_by(2) {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, floor + 121), radius: 2, material: stone, overwrite: true });
+                }
+            }
+            k.body.pos = Vec2::new(640.0, fl + 132.0);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            crate::actors::creature::spawn_creature(&mut commands, "spider", Vec2::new(580.0, fl + 6.0), |_| {});
+            *state = (1, 0.0, -1.0, f32::MAX);
+        }
+        1 => {
+            if let Some((_, sk)) = spiders.iter().find(|(c, _)| c.kind == "spider") {
+                state.1 = state.1.max(sk.body.pos.y - fl);
+                state.3 = state.3.min(sk.body.pos.distance(k.body.pos));
+                if state.2 < 0.0 && sk.loco.clinging() == Some(Vec2::ZERO) {
+                    state.2 = t;
+                    info!("backwall: the spider holds on to the wall behind at ({:.0}, {:.0}) after {:.1} s", sk.body.pos.x, sk.body.pos.y - fl, t - 0.5);
+                }
+            }
+            if t > 7.0 {
+                info!("backwall: the spider climbed to {:.0} cells up the wall behind (the ledge is at 121), came within {:.0} cells of the player", state.1, state.3);
+                state.0 = 2;
+            }
+        }
+        _ => {}
+    }
+}
+
+type Pogoer<'a> = (&'a mut Kinematics, &'a crate::actors::Health, Option<&'a crate::combat::Swing>);
+
+/// The down-strike (DESIGN §8): a shortsword's down slash chained across
+/// the three dummies with S held and the cursor off level ahead; the
+/// longsword's plunge onto a dummy (the dive, the bounce, bouncing again
+/// while S is held), then off a spider's spit thrown up at it; a bounce
+/// off the lava; a plunge onto the floor beside a dummy (the slam).
+#[allow(clippy::too_many_arguments)]
+fn pogo_script(
+    s: Res<Scenario>,
+    mut player: Query<Pogoer, With<LocalPlayer>>,
+    dummies: Query<(Entity, &crate::actors::Creature, &Kinematics, &crate::actors::dummy::Tally), Without<LocalPlayer>>,
+    spells: Query<&crate::magic::Spell>,
+    book: Res<crate::magic::Spellbook>,
+    mut casts: MessageWriter<crate::magic::CastRequest>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    // (phase, its start, bounces, the fastest fall, last vel.y, hits then)
+    mut state: Local<(u8, f32, u32, f32, f32, u32)>,
+) {
+    if s.name != "pogo" {
+        return;
+    }
+    let Ok((mut k, h, swing)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let p = k.body.pos;
+    let dt = t - state.1;
+    let hits = |x: f32| dummies.iter().find(|(_, c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 8.0).map_or(0, |d| d.3.hits);
+    let dummy_at = |x: f32| dummies.iter().find(|(_, c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 8.0).map(|d| d.2.body.pos);
+    // A bounce: rising fast just after falling.
+    if k.body.vel.y > 250.0 && state.4 < 100.0 {
+        state.2 += 1;
+    }
+    state.3 = state.3.min(k.body.vel.y);
+    state.4 = k.body.vel.y;
+    let mut want: Vec<KeyCode> = Vec::new();
+    let mut click = false;
+    let put = |k: &mut Kinematics, at: Vec2| {
+        k.body.pos = at;
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = at;
+    };
+    let next = |state: &mut (u8, f32, u32, f32, f32, u32)| *state = (state.0 + 1, t, 0, 0.0, 0.0, 0);
+    let all = || [700.0, 760.0, 820.0].iter().map(|&x| hits(x)).sum::<u32>();
+    match state.0 {
+        // The shortsword (hotbar 2, slot 7).
+        0 => {
+            if (0.3..0.4).contains(&t) {
+                want.push(KeyCode::KeyX);
+            }
+            if (0.5..0.6).contains(&t) {
+                want.push(KeyCode::Digit7);
+            }
+            if t > 0.8 {
+                put(&mut k, Vec2::new(694.0, fl + 60.0));
+                next(&mut state);
+            }
+        }
+        // S held, the cursor level ahead: over a dummy, falling, strike.
+        1 => {
+            want.push(KeyCode::KeyS);
+            let goal = [700.0, 760.0, 820.0].into_iter().find(|&x| hits(x) == 0);
+            if let Some(gx) = goal.and_then(dummy_at).map(|d| d.x) {
+                // (Along the row, left to right.)
+                if p.x < 830.0 {
+                    want.push(KeyCode::KeyD);
+                }
+                click = (p.x - gx).abs() < 14.0 && !k.loco.grounded() && k.body.vel.y < 0.0 && p.y - fl < 45.0;
+            }
+            cursor.0 = Some(p + Vec2::new(40.0, 2.0));
+            if goal.is_none() || dt > 3.5 {
+                info!(
+                    "pogo: shortsword down slash, S held, cursor level ahead: {} bounces, dummies hit {} / {} / {} in {:.1}s; hp {:.0}",
+                    state.2,
+                    hits(700.0),
+                    hits(760.0),
+                    hits(820.0),
+                    dt,
+                    h.hp
+                );
+                next(&mut state);
+            }
+        }
+        // The longsword (slot 8); up over the middle dummy.
+        2 => {
+            if dt < 0.1 {
+                want.push(KeyCode::Digit8);
+            }
+            if dt > 0.3 {
+                put(&mut k, Vec2::new(760.0, fl + 110.0));
+                next(&mut state);
+                state.5 = all();
+            }
+        }
+        // A plunge: S and one click; S held 2 s (bouncing on), then let go.
+        3 => {
+            cursor.0 = Some(p + Vec2::new(0.0, -30.0));
+            if dt < 2.0 {
+                want.push(KeyCode::KeyS);
+            }
+            click = (0.05..0.12).contains(&dt);
+            if (0.4..0.42).contains(&dt) {
+                info!("pogo: plunging: a down-strike {}, falling at {:.0} cells/s", swing.is_some_and(|s| s.downward()), -state.3);
+            }
+            if dt > 3.0 {
+                info!("pogo: longsword plunge from 110 up: fastest fall {:.0} cells/s, {} bounces (S held 2 s, then let go), the dummy struck {} times", -state.3, state.2, all() - state.5);
+                next(&mut state);
+            }
+        }
+        // Off a spider's spit: thrown up at the player as it plunges, off
+        // to the side of the dummies.
+        4 => {
+            if dt < 0.05 {
+                put(&mut k, Vec2::new(620.0, fl + 120.0));
+            }
+            cursor.0 = Some(p + Vec2::new(0.0, -30.0));
+            want.push(KeyCode::KeyS);
+            click = (0.1..0.15).contains(&dt);
+            if (0.12..0.14).contains(&dt)
+                && let Some(spell) = book.spells.iter().position(|x| x.id == "spider_spit")
+                && let Some((e, ..)) = dummies.iter().next()
+            {
+                casts.write(crate::magic::CastRequest { caster: e, spell, from: Vec2::new(p.x, fl + 6.0), toward: p, alt: false });
+            }
+            if dt > 1.4 {
+                info!("pogo: plunge onto a spit thrown up at it: {} bounces, {} spells left in the air, hp {:.0}", state.2, spells.iter().count(), h.hp);
+                next(&mut state);
+            }
+        }
+        // The shortsword, over the lava: S, and strike above it.
+        5 => {
+            if dt < 0.1 {
+                want.push(KeyCode::Digit7);
+            }
+            if (0.1..0.15).contains(&dt) {
+                put(&mut k, Vec2::new(930.0, fl + 30.0));
+            }
+            if dt > 0.15 {
+                want.push(KeyCode::KeyS);
+                click = k.body.vel.y < 0.0 && p.y - fl < 24.0;
+                if state.2 > 0 {
+                    want.push(KeyCode::KeyA);
+                }
+            }
+            cursor.0 = Some(p + Vec2::new(0.0, -30.0));
+            if dt > 2.5 || (state.2 > 0 && p.x < 890.0 && k.loco.grounded()) {
+                info!("pogo: over the lava: {} bounces, hp {:.0}, now at x {:.0} (the pit is 900..960)", state.2, h.hp, p.x);
+                next(&mut state);
+            }
+        }
+        // The longsword: a plunge onto the floor beside the last dummy.
+        6 => {
+            if dt < 0.1 {
+                want.push(KeyCode::Digit8);
+            }
+            // (Once the last swing's done and the longsword's in hand.)
+            if (0.5..0.55).contains(&dt) {
+                put(&mut k, Vec2::new(806.0, fl + 70.0));
+                state.5 = hits(820.0);
+            }
+            if dt > 0.55 {
+                cursor.0 = Some(p + Vec2::new(0.0, -30.0));
+                want.push(KeyCode::KeyS);
+                click = dt < 0.65;
+            }
+            if dt > 2.0 {
+                info!("pogo: plunge onto the floor 14 cells from a dummy: it was struck {} times; hp {:.0}", hits(820.0) - state.5, h.hp);
+                next(&mut state);
+            }
+        }
+        _ => {}
+    }
+    for key in [KeyCode::KeyX, KeyCode::Digit7, KeyCode::Digit8, KeyCode::KeyA, KeyCode::KeyD, KeyCode::KeyS] {
+        match (want.contains(&key), keys.pressed(key)) {
+            (true, false) => keys.press(key),
+            (false, true) => keys.release(key),
+            _ => {}
+        }
+    }
+    match (click, mouse.pressed(MouseButton::Left)) {
+        (true, false) => mouse.press(MouseButton::Left),
+        (false, true) => mouse.release(MouseButton::Left),
+        _ => {}
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn hook_script(
     mut commands: Commands,

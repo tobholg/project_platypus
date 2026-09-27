@@ -14,7 +14,14 @@
 //   thrust: cells the blade drives forward at the middle of the sweep.
 //   stamina: its cost (none left: no swing). lunge: cells/s forward as
 //     it starts (on the ground). damage, knock: multipliers.
-// Striking downward in the air, a hit bounces you up (a pogo).
+// down: the down-strike, in the air with S held (or aimed well below you):
+//   a move whose angles are from straight down. What it hits bounces you up
+//   `pogo` cells/s and gives back your air jumps and dash: a creature, a
+//   hostile spell (cut out of the air), a hazard (lava, fire, acid, web).
+//   A slash bounces once; with `dive` it's a plunge: point down, falling
+//   at least `dive` cells/s, live until it lands (bouncing off all it
+//   meets on the way), and a landing slams what's within `slam` cells.
+//   None: the first move, turned down.
 (
     combo_gap: 0.35,
     pogo: 300,
@@ -33,6 +40,7 @@
                 (name: "backslash", from: -75, to: 100, windup: 0.04, active: 0.09, recovery: 0.1, stamina: 8, lunge: 40),
                 (name: "thrust", from: 0, to: 0, thrust: 5, windup: 0.07, active: 0.08, recovery: 0.13, stamina: 11, lunge: 130, damage: 1.4, knock: 1.3),
             ],
+            down: (name: "down slash", from: 55, to: -55, thrust: 4, windup: 0.02, active: 0.14, recovery: 0.08, stamina: 8),
         ),
         (
             id: "longsword", art: "longsword",
@@ -42,6 +50,7 @@
                 (name: "sweep", from: -95, to: 115, windup: 0.09, active: 0.15, recovery: 0.2, stamina: 16, lunge: 30),
                 (name: "drive", from: 5, to: -5, thrust: 7, windup: 0.15, active: 0.1, recovery: 0.24, stamina: 22, lunge: 170, damage: 1.6, knock: 1.5),
             ],
+            down: (name: "plunge", from: 0, to: 0, thrust: 3, windup: 0.08, active: 4, recovery: 0.22, stamina: 14, dive: 520, slam: 14, damage: 1.2),
         ),
         // Enemies' weapons: slower, with windups to read.
         (
@@ -69,6 +78,7 @@
                 (name: "slash", from: 80, to: -60, windup: 0.03, active: 0.07, recovery: 0.06, stamina: 5, lunge: 40),
                 (name: "stab", from: -5, to: 5, thrust: 5, windup: 0.04, active: 0.06, recovery: 0.1, stamina: 7, lunge: 110, damage: 1.5),
             ],
+            down: (name: "down slash", from: 50, to: -50, thrust: 4, windup: 0.02, active: 0.11, recovery: 0.06, stamina: 5),
         ),
         (
             id: "club", art: "club",

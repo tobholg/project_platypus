@@ -231,6 +231,12 @@ fn stuck_in(world: &World, body: &Body) -> bool {
 /// The cell world as bodies see it. Unloaded chunks are solid.
 pub struct WorldGrid<'a>(pub &'a World);
 
+/// A wall behind this point (the background layer: a cave's wall, a built
+/// one, a trunk) to climb on.
+pub fn backed(world: &World, at: Vec2) -> bool {
+    world.get_bg(CellPos::from_world(at.x, at.y)).is_some_and(|c| world.materials().phys(c.material).kind != Kind::Empty)
+}
+
 /// Grip a body gets on something slippery (ice): it slides.
 const SLIPPERY_GRIP: f32 = 0.1;
 
@@ -296,6 +302,8 @@ pub(crate) fn move_creatures(
         // (reeling in pulls it up: `gear::hook`).
         let tether = rope.and_then(|r| r.tether());
         k.loco.swinging = tether.is_some();
+        // (A climber can hold on to the wall behind it.)
+        k.loco.backed = stats.cling && backed(&sim.world, k.body.pos);
         let ev = k.loco.steer(stats, &controls.0, &mut k.body, DT);
         if let Some((at, len)) = tether {
             platypus_physics::tether(&mut k.body, at, len, DT);
@@ -315,6 +323,8 @@ pub(crate) fn move_creatures(
         let rejumped = ev.air_jumped || ev.wall_jumped || tether.is_some();
         let before = k.body.vel;
         let contacts = move_and_collide(&grid, &mut k.body, DT);
+        // (A plunge's dive lasts the tick it was given for.)
+        k.loco.dive = 0.0;
         // Slammed into a wall or a ceiling (flung by a spell, a blast): an
         // impact like a landing, by the speed it hit at.
         let walled = if (contacts.wall_left && before.x < 0.0) || (contacts.wall_right && before.x > 0.0) { before.x.abs() } else { 0.0 };

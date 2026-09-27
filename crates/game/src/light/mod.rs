@@ -52,6 +52,10 @@ const MARGIN: f32 = 48.0;
 pub struct LampCfg {
     pub color: (u8, u8, u8),
     pub strength: f32,
+    /// A haze around it over the dark (a share of its light), as glowing
+    /// cells have.
+    #[serde(default)]
+    pub haze: f32,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -86,6 +90,8 @@ pub struct LightSettings {
 pub struct StickCfg {
     pub strength: f32,
     pub secs: f32,
+    #[serde(default)]
+    pub haze: f32,
 }
 
 /// Anything that gives off light: a planted torch, a glow stick (later a
@@ -95,6 +101,11 @@ pub struct LightSource {
     pub color: Rgb,
     pub flicker: f32,
 }
+
+/// A light that hazes over the dark around it too (a torch, a glow stick):
+/// this share of its light.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Haze(pub f32);
 
 /// A glowing light (glowing eyes; a haze over the dark, as glowing cells
 /// have): steady, or with a `period` swelling and fading (a firefly), out
@@ -445,7 +456,7 @@ fn compute_light(
     mut assets: OverlayAssets,
     cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>,
     player: Query<&Kinematics, With<LocalPlayer>>,
-    sources: Query<(&GlobalTransform, &LightSource, Has<Glow>)>,
+    sources: Query<(&GlobalTransform, &LightSource, Has<Glow>, Option<&Haze>)>,
     mut sprites: Query<(&mut Transform, &mut Visibility), Without<MainCamera>>,
 ) {
     let started = Instant::now();
@@ -552,8 +563,11 @@ fn compute_light(
             g.seed_point(p.pos, [0.4, 0.15, 0.03]);
         }
     }
-    for (i, (tf, src, glowing)) in sources.iter().enumerate() {
+    for (i, (tf, src, glowing, haze)) in sources.iter().enumerate() {
         let p = tf.translation();
+        if let Some(&Haze(k)) = haze {
+            g.seed_emit([p.x, p.y], src.color.map(|c| c * k));
+        }
         // Glowing creatures glow as glowing cells do: a haze over the dark.
         if glowing {
             g.seed_emit([p.x, p.y], src.color);

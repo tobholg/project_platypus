@@ -56,7 +56,7 @@ pub fn spawn_bomb(commands: &mut Commands, at: Vec2, vel: Vec2, cfg: BombCfg) {
 }
 
 /// Throw a glow stick (green or blue) that lights its surroundings.
-pub fn spawn_glowstick(commands: &mut Commands, at: Vec2, vel: Vec2, color: [f32; 3], life: f32) {
+pub fn spawn_glowstick(commands: &mut Commands, at: Vec2, vel: Vec2, color: [f32; 3], life: f32, haze: f32) {
     let mut body = Body::new(at, Vec2::new(2.0, 2.0));
     body.vel = vel;
     commands.spawn((
@@ -64,6 +64,7 @@ pub fn spawn_glowstick(commands: &mut Commands, at: Vec2, vel: Vec2, color: [f32
         Thrown { bounce: 0.3 },
         Glowstick { age: 0.0, life, color },
         LightSource { color, flicker: 0.0 },
+        crate::light::Haze(haze),
         Kinematics { body, loco: Locomotion::default(), prev_pos: at },
         Sprite::from_color(Color::srgb(color[0].min(1.0), color[1].min(1.0), color[2].min(1.0)), Vec2::new(1.0, 3.0)),
         Transform::from_translation(at.extend(12.0)),

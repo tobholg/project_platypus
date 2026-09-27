@@ -438,7 +438,7 @@ fn use_hands(
                     hand.thrown += 1;
                     let s = lights.glowstick.strength;
                     let color = if hand.thrown.is_multiple_of(2) { [0.25 * s, 1.0 * s, 0.45 * s] } else { [0.2 * s, 0.55 * s, 1.1 * s] };
-                    spawn_glowstick(&mut commands, from, vel, color, lights.glowstick.secs);
+                    spawn_glowstick(&mut commands, from, vel, color, lights.glowstick.secs, lights.glowstick.haze);
                 }
             }
             inv.take(slot, 1);

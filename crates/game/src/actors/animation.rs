@@ -248,8 +248,11 @@ pub fn animate(
                 atlas.index = index;
             }
             // A climber on a wall or ceiling is drawn turned to it, its
-            // feet on it (upside down on a ceiling, so it faces the other way).
-            let turn = k.loco.clinging().map_or(0.0, |d| d.y.atan2(d.x) + std::f32::consts::FRAC_PI_2);
+            // feet on it (upside down on a ceiling, so it faces the other way);
+            // on the wall behind, turned the way it crawls.
+            let v = k.body.vel;
+            let crawl = if v.length() > 5.0 { v.y.atan2(v.x.abs()) * facing } else { 0.0 };
+            let turn = k.loco.clinging().map_or(0.0, |d| if d == Vec2::ZERO { crawl } else { d.y.atan2(d.x) + std::f32::consts::FRAC_PI_2 });
             let rot = Quat::from_rotation_z(turn);
             sprite.flip_x = (facing < 0.0) != (turn.abs() > 3.0);
             tf.translation = rot * body_at;

@@ -48,6 +48,7 @@ impl Plugin for CombatPlugin {
             .add_systems(PreUpdate, hit_stop)
             .add_systems(FixedUpdate, (start_swings, dodge, stamina).chain().after(TickSet::Intent).before(TickSet::Bodies))
             .add_systems(FixedUpdate, (touch, swing, apply_hits).chain().after(TickSet::Bodies).before(TickSet::Cells))
+            .add_systems(Update, down_pose.before(crate::actors::animation::animate))
             .add_systems(Update, (reload, draw).chain().after(crate::actors::animation::animate));
     }
 }
@@ -139,6 +140,10 @@ pub struct WeaponDef {
     pub stun: f32,
     pub rest: f32,
     pub moves: Vec<MoveDef>,
+    /// The down-strike in the air (S and attack, or aimed well below): its
+    /// angles from straight down. None: the first move, turned down.
+    #[serde(default)]
+    pub down: Option<MoveDef>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -158,6 +163,21 @@ pub struct MoveDef {
     pub damage: f32,
     #[serde(default = "one")]
     pub knock: f32,
+    /// A plunge (a down-strike): the blade held point down, falling at
+    /// least this fast (cells/s), live until it lands (or `active` s).
+    #[serde(default)]
+    pub dive: f32,
+    /// A plunge landing slams the ground: what's within this many cells is
+    /// struck (the move's damage and knock, halved).
+    #[serde(default)]
+    pub slam: f32,
+}
+
+impl WeaponDef {
+    /// The move a swing is making: its combo move, or its down-strike.
+    fn move_of(&self, mv: usize, down: bool) -> Option<&MoveDef> {
+        if down { self.down.as_ref().or(self.moves.first()) } else { self.moves.get(mv) }
+    }
 }
 
 fn one() -> f32 {
@@ -394,7 +414,7 @@ impl Weapons {
             let frames = turn_compiled(&art, &look.shape, None)?;
             match &h.swing {
                 Some(sw) => {
-                    blades.push(WeaponDef { id: id.clone(), art: look.shape.clone(), damage: sw.damage, knock: sw.knock, stun: sw.stun, rest: h.rest, moves: sw.moves.clone() });
+                    blades.push(WeaponDef { id: id.clone(), art: look.shape.clone(), damage: sw.damage, knock: sw.knock, stun: sw.stun, rest: h.rest, moves: sw.moves.clone(), down: None });
                     turned.push(Turned::build(frames, images, layouts));
                 }
                 None => {
@@ -499,6 +519,8 @@ pub struct Recoil {
     pub who: Entity,
     pub add: Vec2,
     pub pogo: Option<f32>,
+    /// A plunge: falling at least this fast (cells/s).
+    pub dive: Option<f32>,
 }
 
 /// Contact damage: what it touches of another side (anyone can touch the
@@ -572,12 +594,36 @@ pub struct Swing {
     pub angle: f32,
     pub thrust: f32,
     hit: Vec<Entity>,
-    queued: bool,
+    /// The next swing asked for during this one: its aim, facing, and
+    /// whether it's a down-strike.
+    queued: Option<(f32, f32, bool)>,
     clanged: bool,
     lunged: bool,
-    /// Struck downward in the air: a hit bounces the swinger up.
-    pogo: bool,
+    /// A down-strike (struck downward in the air): what it hits (a
+    /// creature, a hostile spell, a hazard: lava, fire, acid, web) bounces
+    /// the swinger up, once a strike (a plunge: again after `rebound`).
+    down: bool,
+    bounced: bool,
+    rebound: f32,
+    /// A plunge: how long it's been diving, and whether it slammed.
+    dived: f32,
+    slammed: bool,
 }
+
+impl Swing {
+    /// A down-strike (a pogo) under way.
+    pub fn downward(&self) -> bool {
+        self.down
+    }
+}
+
+/// Aimed at least this far below level (the sine), a swing in the air is a
+/// down-strike (S held: always).
+const DOWN_AIM: f32 = 0.34;
+/// A plunge can bounce again this long after a bounce (s).
+const REBOUND: f32 = 0.2;
+/// The longest a plunge dives before it gives up (s).
+const PLUNGE_MAX: f32 = 4.0;
 
 /// Between swings: which move of the combo comes next, and how long since
 /// the last ended.
@@ -666,7 +712,7 @@ fn hit_stop(real: Res<Time<Real>>, mut stop: ResMut<HitStop>, mut virt: ResMut<T
 
 // ---- systems ----
 
-type Fighter<'a> = (&'a Kinematics, &'a Wielding, Option<&'a mut Swing>, Option<&'a mut Combo>, Option<&'a mut Stamina>);
+type Fighter<'a> = (&'a Kinematics, &'a Wielding, Option<&'a mut Swing>, Option<&'a mut Combo>, Option<&'a mut Stamina>, Option<&'a crate::actors::Controls>);
 type Holder<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Swing>, Option<&'a crate::archery::Nocked>, Option<&'a Aiming>, Option<&'a Children>);
 
 /// Swings begin (or queue the next) when asked for.
@@ -678,25 +724,28 @@ fn start_swings(
 ) {
     let Some(weapons) = weapons else { return };
     for ask in asks.read() {
-        let Ok((k, wielding, swing, combo, stamina)) = q.get_mut(ask.attacker) else { continue };
+        let Ok((k, wielding, swing, combo, stamina, controls)) = q.get_mut(ask.attacker) else { continue };
         let Some(w) = wielding.0.as_deref().and_then(|id| weapons.index(id)) else { continue };
+        // In the air, S held or aimed well below: a down-strike.
+        let d = ask.at - k.body.pos;
+        let held_down = controls.is_some_and(|c| c.0.move_y < 0.0 || c.0.down);
+        let down = !k.loco.grounded() && (held_down || d.normalize_or_zero().y < -DOWN_AIM);
+        let facing = if d.x.abs() > 0.5 { d.x.signum() } else { k.loco.facing };
+        let aim = if down { -90.0 } else { d.y.atan2(d.x.abs()).to_degrees() };
         if let Some(mut s) = swing {
             // During a swing, the next is queued.
-            s.queued = true;
+            s.queued = Some((aim, facing, down));
             continue;
         }
         let def = weapons.def(w);
         let mv_i = combo.as_ref().map_or(0, |c| if c.idle <= weapons.file.combo_gap { c.next % def.moves.len().max(1) } else { 0 });
-        let Some(mv) = def.moves.get(mv_i) else { continue };
+        let Some(mv) = def.move_of(mv_i, down) else { continue };
         if let Some(mut s) = stamina {
             if s.cur <= 0.0 {
                 continue;
             }
             s.spend(mv.stamina);
         }
-        let d = ask.at - k.body.pos;
-        let facing = if d.x.abs() > 0.5 { d.x.signum() } else { k.loco.facing };
-        let aim = d.y.atan2(d.x.abs()).to_degrees();
         commands.entity(ask.attacker).insert(Swing {
             weapon: w,
             mv: mv_i,
@@ -708,10 +757,14 @@ fn start_swings(
             angle: def.rest,
             thrust: 0.0,
             hit: Vec::new(),
-            queued: false,
+            queued: None,
             clanged: false,
             lunged: false,
-            pogo: !k.loco.grounded() && d.normalize_or_zero().y < -0.5,
+            down,
+            bounced: false,
+            rebound: 0.0,
+            dived: 0.0,
+            slammed: false,
         });
     }
 }
@@ -757,7 +810,7 @@ pub fn guard(mut commands: Commands, mut q: Query<(Entity, &mut Invulnerable, &m
     }
 }
 
-type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>);
+type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>, Option<&'a crate::actors::Controls>);
 type Target<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a Animator>, Has<Invulnerable>);
 
 /// Swings move on a tick; while they sweep, they hit.
@@ -773,42 +826,86 @@ fn swing(
     targets: Query<Target, With<Health>>,
     items: Option<Res<crate::hands::items::Items>>,
     coatings: Res<crate::actors::elements::Coatings>,
+    spells: Query<(Entity, &crate::magic::Spell)>,
+    (mut stop, mut trauma): (ResMut<HitStop>, ResMut<crate::fx::Trauma>),
 ) {
     let Some(weapons) = weapons else { return };
     let none = crate::gear::Stats::default();
-    for (me, mut s, k, hand, team, mut stamina, stats, eq) in &mut swingers {
+    for (me, mut s, k, hand, team, mut stamina, stats, eq, controls) in &mut swingers {
         let stats = stats.unwrap_or(&none);
         // What the weapon leaves on what it hits (venom).
         let coat = eq.and_then(|eq| eq.held).and_then(|h| items.as_ref()?.def(h.item).gear.as_ref()?.on_hit.as_ref()).and_then(|n| coatings.by_name.get(n).map(|c| (n.clone(), c.secs)));
         let def = weapons.def(s.weapon).clone();
-        let Some(mv) = def.moves.get(s.mv).cloned() else {
+        let Some(mv) = def.move_of(s.mv, s.down).cloned() else {
             commands.entity(me).remove::<Swing>();
             continue;
         };
         s.t += DT * stats.mult(crate::gear::Stat::AttackSpeed);
-        // Done: the next of the combo if it was asked for (and there's the
-        // stamina for it), else rest.
+        s.rebound -= DT;
+        let grounded = k.loco.grounded();
+        // A plunge: live until it lands (then it slams), diving on the way.
+        let plunge = s.down && mv.dive > 0.0;
+        let live_end = mv.windup + mv.active;
+        if plunge && s.t >= mv.windup && !s.slammed {
+            s.dived += DT;
+            if grounded || s.dived > PLUNGE_MAX {
+                s.slammed = true;
+                s.t = s.t.max(live_end);
+                if grounded && mv.slam > 0.0 {
+                    slam(me, k, team, &def, &mv, stats, &targets, &mut hits, &mut sparks, &mut trauma, &weapons.file.clang);
+                }
+            } else {
+                s.t = s.t.min(live_end - DT);
+                if k.body.vel.y < 0.0 {
+                    recoil.write(Recoil { who: me, add: Vec2::ZERO, pogo: None, dive: Some(mv.dive) });
+                }
+            }
+        }
+        // A plunge that bounced goes on (bouncing again a moment later)
+        // while S is held; else it ends there.
+        if plunge && s.bounced && !s.slammed {
+            if !controls.is_some_and(|c| c.0.move_y < 0.0 || c.0.down) {
+                s.slammed = true;
+                s.t = s.t.max(live_end);
+            } else if s.rebound <= 0.0 {
+                s.bounced = false;
+                s.hit.clear();
+            }
+        }
+        // Done: the next swing if it was asked for (and there's the stamina
+        // for it), else rest. A down-strike isn't a step of the combo.
         if s.t >= mv.length() {
-            let next = (s.mv + 1) % def.moves.len();
+            let next = if s.down { s.mv } else { (s.mv + 1) % def.moves.len() };
             let can = stamina.as_ref().is_none_or(|st| st.cur > 0.0);
-            if s.queued && can {
+            if let Some((aim, facing, down)) = s.queued.take()
+                && can
+            {
+                let down = down && !grounded;
+                let Some(m) = def.move_of(next, down) else { continue };
                 if let Some(st) = stamina.as_mut() {
-                    st.spend(def.moves[next].stamina);
+                    st.spend(m.stamina);
                 }
                 s.mv = next;
+                s.down = down;
+                s.aim = if down { -90.0 } else { aim };
+                s.facing = facing;
                 s.t = 0.0;
-                s.start = s.angle;
+                s.start = s.angle - s.aim;
                 s.prev = None;
                 s.hit.clear();
-                s.queued = false;
                 s.clanged = false;
                 s.lunged = false;
+                s.bounced = false;
+                s.dived = 0.0;
+                s.slammed = false;
                 continue;
             }
             commands.entity(me).remove::<Swing>().insert(Combo { next, idle: 0.0 });
             continue;
         }
         let (rel, thrust) = mv.pose(s.t, s.start);
+        // (A plunge holds its thrust all the way down.)
+        let thrust = if plunge && s.t >= mv.windup { mv.thrust } else { thrust };
         let angle = s.aim + rel;
         s.angle = angle;
         s.thrust = thrust;
@@ -823,7 +920,7 @@ fn swing(
         }
         if !s.lunged && k.loco.grounded() && mv.lunge > 0.0 {
             s.lunged = true;
-            recoil.write(Recoil { who: me, add: Vec2::new(dir(s.aim).x.signum() * mv.lunge, 0.0), pogo: None });
+            recoil.write(Recoil { who: me, add: Vec2::new(dir(s.aim).x.signum() * mv.lunge, 0.0), pogo: None, dive: None });
         }
         // From last tick's angle to this one, a turn at a time.
         let from = s.prev.unwrap_or(angle);
@@ -846,6 +943,15 @@ fn swing(
                 let p = CellPos::from_world(c.x, c.y);
                 let Some(cell) = sim.world.get(p) else { continue };
                 let ph = *sim.world.materials().phys(cell.material);
+                if s.down && !s.bounced && c.y < feet + 1.0 && springy(&ph) {
+                    // A down-strike bounces off a hazard (lava, fire, acid,
+                    // web) without touching it.
+                    s.bounced = true;
+                    s.rebound = REBOUND;
+                    recoil.write(Recoil { who: me, add: Vec2::ZERO, pogo: Some(weapons.file.pogo), dive: None });
+                    sparks.emit(&weapons.file.clang, weapons.file.clang.count as usize, c, Vec2::Y, Vec2::ZERO);
+                    stop.hit(STOP * 0.6);
+                }
                 if ph.kind == Kind::Plant && ph.hardness <= 2 {
                     sim.world.apply_edit(&WorldEdit::Dig { center: p, radius: 0, max_hardness: 2 });
                 } else if ph.kind == Kind::Static && ph.hardness >= 20 && c.y > feet + 1.0 && !s.clanged {
@@ -886,11 +992,107 @@ fn swing(
                 if let Some((name, secs)) = &coat {
                     commands.entity(e).insert(crate::actors::elements::Coated { name: name.clone(), left: *secs, total: *secs });
                 }
-                if s.pogo {
-                    recoil.write(Recoil { who: me, add: Vec2::ZERO, pogo: Some(weapons.file.pogo) });
+                if s.down && !s.bounced {
+                    s.bounced = true;
+                    s.rebound = REBOUND;
+                    recoil.write(Recoil { who: me, add: Vec2::ZERO, pogo: Some(weapons.file.pogo), dive: None });
+                }
+            }
+            // A down-strike cuts a hostile spell out of the air (a spit, a
+            // bolt) and bounces off it.
+            if s.down && !s.bounced {
+                // (Its way this tick, as seen from the swinger, against the
+                // blade: a plunge and a spit close fast.)
+                let (now, was) = (k.body.pos, k.prev_pos);
+                let cut = spells.iter().find(|(_, sp)| {
+                    let (a, b) = (sp.was() - was, sp.at() - now);
+                    sp.caster() != me && cells.iter().any(|c| near_segment(*c - now, a, b) < 2.5)
+                });
+                if let Some((e, sp)) = cut {
+                    s.bounced = true;
+                    s.rebound = REBOUND;
+                    recoil.write(Recoil { who: me, add: Vec2::ZERO, pogo: Some(weapons.file.pogo), dive: None });
+                    sparks.emit(&weapons.file.hit, weapons.file.hit.count as usize, sp.at(), Vec2::Y, Vec2::ZERO);
+                    stop.hit(STOP * 0.6);
+                    commands.entity(e).despawn();
                 }
             }
         }
+    }
+}
+
+/// A down-strike shows in the body: tucked for a slash, knees up over the
+/// blade for a plunge (clips `strike_down` and `plunge`, where the art has
+/// them).
+fn down_pose(weapons: Option<Res<Weapons>>, mut q: Query<(Option<&Swing>, &mut Animator)>) {
+    let Some(weapons) = weapons else { return };
+    for (swing, mut anim) in &mut q {
+        let want = swing.filter(|s| s.down).map(|s| {
+            let plunge = weapons.def(s.weapon).move_of(s.mv, true).is_some_and(|m| m.dive > 0.0);
+            if plunge { "plunge" } else { "strike_down" }
+        });
+        let now = anim.force.as_deref().filter(|f| *f == "plunge" || *f == "strike_down");
+        match (want, now) {
+            (Some(w), n) if n != Some(w) && anim.def.animations.contains_key(w) => anim.play(w),
+            (None, Some(_)) => anim.force = None,
+            _ => {}
+        }
+    }
+}
+
+/// How far `p` is from the segment `a`–`b`.
+fn near_segment(p: Vec2, a: Vec2, b: Vec2) -> f32 {
+    let ab = b - a;
+    let k = if ab.length_squared() > 1e-6 { ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0) } else { 0.0 };
+    p.distance(a + ab * k)
+}
+
+/// What a down-strike bounces off (besides creatures and spells): hazards
+/// you'd rather not land in.
+fn springy(ph: &platypus_sim::material::MatPhys) -> bool {
+    ph.kind == Kind::Fire || (ph.hot && ph.kind == Kind::Liquid) || (ph.corrosive > 0 && ph.kind == Kind::Liquid) || ph.sticky
+}
+
+/// A plunge lands: everything of another side near where it came down is
+/// struck up and away (half the move's damage and knock), dust flies, the
+/// ground shakes.
+#[allow(clippy::too_many_arguments)]
+fn slam(
+    me: Entity,
+    k: &Kinematics,
+    team: Option<&Team>,
+    def: &WeaponDef,
+    mv: &MoveDef,
+    stats: &crate::gear::Stats,
+    targets: &Query<Target, With<Health>>,
+    hits: &mut MessageWriter<Hit>,
+    sparks: &mut Sparks,
+    trauma: &mut crate::fx::Trauma,
+    dust: &Emitter,
+) {
+    let feet = k.body.pos - Vec2::Y * k.body.half.y;
+    for side in [-1.0, 1.0] {
+        sparks.emit(dust, dust.count as usize, feet + Vec2::X * side * 2.0, Vec2::new(side, 0.4), Vec2::ZERO);
+    }
+    trauma.0 = (trauma.0 + 0.25).min(1.0);
+    for (e, tk, tteam, _, safe) in targets {
+        // (Along the ground: its nearest side within `slam`, its feet near
+        // where the plunge came down.)
+        let near = (tk.body.pos.x - feet.x).abs() - tk.body.half.x <= mv.slam;
+        let level = (tk.body.pos.y - tk.body.half.y - feet.y).abs() <= 6.0;
+        if e == me || safe || !near || !level {
+            continue;
+        }
+        if let (Some(a), Some(b)) = (team, tteam)
+            && a == b
+            && *a != Team::Neutral
+        {
+            continue;
+        }
+        let away = (tk.body.pos.x - feet.x).signum();
+        let (damage, knock, crit) = stats.strike(def.damage * mv.damage * 0.5, def.knock * mv.knock * 0.5, 0.5);
+        let push = Vec2::new(away, 0.8).normalize() * knock;
+        hits.write(Hit { target: e, damage, knock: push, stun: def.stun, at: tk.body.pos, dir: Vec2::new(away, 0.0), weight: damage / 12.0, crit });
     }
 }
 
@@ -916,6 +1118,10 @@ fn apply_hits(
         if let Some(up) = r.pogo {
             k.body.vel.y = up;
             k.loco.refresh_air(&stats.0);
+        }
+        if let Some(dive) = r.dive {
+            k.body.vel.y = k.body.vel.y.min(-dive);
+            k.loco.dive = dive;
         }
     }
     // (Given its grace this tick: the rest of this tick's hits miss too, or
@@ -1112,10 +1318,10 @@ fn draw(
             }
             (Some(_), None) => {
                 let torch = crate::light::rgb(lights.torch.color, lights.torch.strength);
-                commands.entity(sprite).insert((crate::light::torch::Flame::at(Vec2::ZERO), crate::light::LightSource { color: torch, flicker: 1.0 }));
+                commands.entity(sprite).insert((crate::light::torch::Flame::at(Vec2::ZERO), crate::light::LightSource { color: torch, flicker: 1.0 }, crate::light::Haze(lights.torch.haze)));
             }
             (None, Some(_)) => {
-                commands.entity(sprite).remove::<(crate::light::torch::Flame, crate::light::LightSource)>();
+                commands.entity(sprite).remove::<(crate::light::torch::Flame, crate::light::LightSource, crate::light::Haze)>();
             }
             (None, None) => {}
         }

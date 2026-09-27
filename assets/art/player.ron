@@ -206,6 +206,13 @@
             ".qqq.BB",
             "..CC.BB",
         ]),
+        // Knees drawn up high (a plunge, over the blade).
+        "knees": (rows: [
+            "pppp...",
+            "ppppppp",
+            "qq...pp",
+            "CC...BB",
+        ]),
         "dangle": (rows: [
             ".pppp..",
             ".qq.pp.",
@@ -283,6 +290,22 @@
             (part: "head", at: (8, 4)),
             (part: "arm_fwd", at: (12, 12), outline: true, tag: "front_arm"),
         ],
+        // Striking down: tucked, the head down over the blade. Plunging:
+        // knees up high, the back arm up for balance.
+        "strike_down": [
+            (part: "arm_back", at: (9, 12), shade: 0.72, tag: "back_arm"),
+            (part: "tuck", at: (8, 16)),
+            (part: "torso", at: (8, 11)),
+            (part: "head", at: (9, 5)),
+            (part: "arm", at: (12, 12), outline: true, tag: "front_arm"),
+        ],
+        "plunge_pose": [
+            (part: "arm_up", at: (9, 12), shade: 0.72, tag: "back_arm"),
+            (part: "knees", at: (8, 16)),
+            (part: "torso", at: (8, 11)),
+            (part: "head", at: (8, 4)),
+            (part: "arm", at: (12, 12), outline: true, tag: "front_arm"),
+        ],
         // Dashing: leaning in, arms back.
         "dash": [
             (part: "arm_back", at: (9, 13), shade: 0.72, tag: "back_arm"),
@@ -326,5 +349,7 @@
         "dash": (frames: ["dash"], fps: 5),
         "wall": (frames: ["wall"], fps: 5),
         "hurt": (frames: ["hurt"], fps: 5),
+        "strike_down": (frames: ["strike_down"], fps: 5),
+        "plunge": (frames: ["plunge_pose"], fps: 5),
     },
 )

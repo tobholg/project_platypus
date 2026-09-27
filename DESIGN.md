@@ -244,6 +244,22 @@ Health, stamina (dash, attacks, blocking), poise (Elden Ring stagger), and movem
   - A spear thrust into water splashes.
 - **Spells are abilities.** A cast pose, then an effect: a projectile, a field, a beam or a summon. The effect applies world edits and exposure. A fireball is a projectile that explodes into heat and fire, so the existing systems carry it.
   - Noita-style wand modifiers can come later, as a list of effect modifiers.
+- **The down-strike (the pogo; built 2026-09-27):** in the air, S and
+  attack (or attack aimed more than ~20° below level) is a down-strike: the
+  weapon's `down` move, its angles from straight down, apart from the combo.
+  What it meets bounces you up a jump's worth (300 cells/s) and gives back
+  air jumps and the dash: a creature, a hostile spell (cut out of the air,
+  its path this tick checked against the blade), a hazard (lava, fire,
+  acid, web; not plain ground, or every landing and fall could be skipped).
+  Two kinds, by weapon: a **slash** (the shortsword, the dagger: a quick arc
+  under you, once a strike) and a **plunge** (the longsword: point down,
+  falling at least `dive` cells/s, past the fall cap, live until it lands;
+  with S held it bounces off all it meets on the way down, let go it ends at
+  the next bounce; landing, it slams what's within `slam` cells along the
+  ground). The body shows it (`strike_down`, `plunge` clips). Weapons
+  without a `down` move turn their first move down. Fall damage stays
+  height-based: a bounce starts the fall over; a plunge from high up still
+  lands as a fall.
 - **AI** picks moves from what the creature actually has equipped, using tags on moves: range, wind-up, area, gap-closer. An NPC with a spear pokes from range; the same NPC with a greatsword charges.
 
 ## 7b. Magic, weapons and crafting (agreed 2026-09-26, branch `magic-arc`)

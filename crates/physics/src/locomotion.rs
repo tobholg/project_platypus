@@ -230,7 +230,8 @@ pub struct Locomotion {
     stun: f32,
     prev_jump: bool,
     prev_dash: bool,
-    /// Holding on to a wall or ceiling: which way its feet point (a climber).
+    /// Holding on to a wall or ceiling: which way its feet point (a climber;
+    /// zero: on the wall behind).
     cling: Option<Vec2>,
     /// Seconds to the next swim stroke, while jump is held in water.
     stroke_left: f32,
@@ -239,6 +240,13 @@ pub struct Locomotion {
     /// On a rope (set before each `steer`): in the air it keeps its swing
     /// (air control pumps it, never brakes it).
     pub swinging: bool,
+    /// A wall behind it (the background: a cave's, a built wall, a trunk;
+    /// set before each `steer`): a climber can hold on to it anywhere and
+    /// crawl over it every way, as up a wall.
+    pub backed: bool,
+    /// A plunge (set for the next `steer`, then spent): it may fall this
+    /// fast, past `max_fall`.
+    pub dive: f32,
     /// Last tick's contacts, so brains and animation can read them.
     pub contacts: Contacts,
 }
@@ -263,6 +271,8 @@ impl Default for Locomotion {
             stroke_left: 0.0,
             rocket_left: 0.0,
             swinging: false,
+            backed: false,
+            dive: 0.0,
             cling: None,
             contacts: Contacts::default(),
         }
@@ -417,6 +427,11 @@ impl Locomotion {
             } else if on_wall {
                 body.vel = Vec2::new(wall * CLING_PRESS, my * s.run_speed);
                 self.cling = Some(Vec2::new(wall, 0.0));
+            } else if self.backed && (!grounded || my > 0.0) {
+                // On the wall behind: every way it steers (its feet point
+                // into the picture: no side).
+                body.vel = Vec2::new(mx, my).clamp_length_max(1.0) * s.run_speed;
+                self.cling = Some(Vec2::ZERO);
             }
             if self.cling.is_some() {
                 self.state = MoveState::Ground;
@@ -565,7 +580,7 @@ impl Locomotion {
         // Gravity.
         let g = s.gravity * if body.vel.y < 0.0 { s.fall_gravity } else { 1.0 } * gravity_scale;
         body.vel.y -= g * dt;
-        let max_fall = if self.state == MoveState::WallSlide { s.wall_slide_speed } else { s.max_fall };
+        let max_fall = if self.state == MoveState::WallSlide { s.wall_slide_speed } else { s.max_fall.max(self.dive) };
         body.vel.y = body.vel.y.max(-max_fall);
         if wet > 0.0 {
             body.vel *= s.swim_drag.powf(dt * wet);
@@ -923,6 +938,37 @@ mod tests {
             tick(&g, &s, &mut l, &mut b, Intent::default());
         }
         assert!(b.pos.y < 5.0, "let go and fell: {:?}", b.pos);
+    }
+
+    /// A wall behind (the background): a climber crawls over it every way,
+    /// out in the open, and doesn't fall; without it, it does.
+    #[test]
+    fn a_climber_crawls_over_the_wall_behind_it() {
+        let mut rows = vec!["#                                        #"; 40];
+        rows.push("##########################################");
+        let g = Ascii::new(&rows);
+        let s = MovementStats { cling: true, run_speed: 40.0, ..Default::default() };
+        let (_, mut l, _) = player();
+        let mut b = Body::new(Vec2::new(20.0, 3.0), Vec2::new(4.0, 3.0));
+        for _ in 0..30 {
+            l.backed = true;
+            tick(&g, &s, &mut l, &mut b, Intent { move_x: 1.0, move_y: 1.0, ..Default::default() });
+        }
+        assert!(b.pos.y > 12.0 && b.pos.x > 30.0, "up and across the open wall: {:?}", b.pos);
+        assert_eq!(l.clinging(), Some(Vec2::ZERO));
+        // Still, it stays put.
+        let at = b.pos;
+        for _ in 0..30 {
+            l.backed = true;
+            tick(&g, &s, &mut l, &mut b, Intent::default());
+        }
+        assert!(b.pos.distance(at) < 0.5, "holds on: {:?} from {at:?}", b.pos);
+        // Off the wall, it falls.
+        for _ in 0..30 {
+            l.backed = false;
+            tick(&g, &s, &mut l, &mut b, Intent::default());
+        }
+        assert!(b.pos.y < at.y - 5.0, "fell off the end of it: {:?}", b.pos);
     }
 
     #[test]

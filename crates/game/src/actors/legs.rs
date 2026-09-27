@@ -180,7 +180,11 @@ fn solid(sim: &SimWorld, p: Vec2) -> bool {
 /// (±90°), each to the first solid; of those, the one nearest 70 % of its
 /// reach (a leg stretched along a wall, not bunched against it), and least
 /// turned from its way. The last open point before the solid one.
-fn foothold(sim: &SimWorld, hip: Vec2, way: f32, reach: f32) -> Option<Vec2> {
+fn foothold(sim: &SimWorld, hip: Vec2, way: f32, reach: f32, back: bool) -> Option<Vec2> {
+    // On the wall behind: anywhere along its way on that wall (rock in
+    // reach still first).
+    let behind = hip + Vec2::from_angle(way) * reach * 0.7;
+    let back = (back && super::backed(&sim.world, behind) && !solid(sim, behind)).then_some(behind);
     let mut best: Option<(f32, Vec2)> = None;
     for sweep in [0.0f32, 15.0, -15.0, 30.0, -30.0, 45.0, -45.0, 60.0, -60.0, 75.0, -75.0, 90.0, -90.0] {
         let d = Vec2::from_angle(way + sweep.to_radians());
@@ -202,7 +206,7 @@ fn foothold(sim: &SimWorld, hip: Vec2, way: f32, reach: f32) -> Option<Vec2> {
             s += 0.7;
         }
     }
-    best.map(|(_, p)| p)
+    best.map(|(_, p)| p).or(back)
 }
 
 /// From `a` toward `b`, as far as it's open (a free leg never reaches into
@@ -273,7 +277,7 @@ fn grow_legs(
         let c = k.body.pos;
         for i in 0..legs.def.count {
             let hip = legs.hip(i, c);
-            let at = foothold(&sim, hip, legs.way(i), legs.def.reach).unwrap_or(hip + Vec2::from_angle(legs.way(i)) * legs.def.reach * 0.5);
+            let at = foothold(&sim, hip, legs.way(i), legs.def.reach, false).unwrap_or(hip + Vec2::from_angle(legs.way(i)) * legs.def.reach * 0.5);
             legs.feet.push(Foot { at, from: at, to: at, t: 1.0, grips: true, retry: 0.0 });
         }
         commands.entity(e).insert(legs);
@@ -349,6 +353,8 @@ fn walk(
         }
         // Steps.
         let (reach, n) = (legs.def.reach, legs.feet.len());
+        // (On the wall behind: its feet can hold on to it anywhere.)
+        let back = k.loco.clinging() == Some(Vec2::ZERO);
         let stepping = legs.feet.iter().filter(|f| f.t < 1.0).count();
         let step_time = legs.def.step;
         for i in 0..n {
@@ -370,7 +376,7 @@ fn walk(
             if !due || busy {
                 continue;
             }
-            let to = foothold(&sim, hip, way, reach);
+            let to = foothold(&sim, hip, way, reach, back);
             let foot = &mut legs.feet[i];
             foot.from = foot.at;
             match to {

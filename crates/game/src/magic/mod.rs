@@ -210,6 +210,22 @@ pub struct Spell {
     held: bool,
 }
 
+impl Spell {
+    /// Where it is, and who cast it.
+    pub fn at(&self) -> Vec2 {
+        self.pos
+    }
+
+    /// Where it was last tick.
+    pub fn was(&self) -> Vec2 {
+        self.prev
+    }
+
+    pub fn caster(&self) -> Entity {
+        self.caster
+    }
+}
+
 type Hittable<'a> = (Entity, &'a mut Kinematics, &'a mut Health, Option<&'a Resist>, Option<&'a Coated>);
 
 impl Plugin for MagicPlugin {
