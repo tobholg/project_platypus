@@ -206,16 +206,15 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
   soft glow round it), the moon and twinkling stars by night, drawn over
   the lighting where the sky is open (no cell, no back wall, no mountain,
   dimmed by cloud). Nights are near black (`moonlight` 0.45, a darker sky).
-- **Underground** (chosen from four looks tried in the `underlook`
-  scenario): two layers of rock far off through the cave (4 % and 10 %),
-  small stalactites and stalagmites along their openings, in daylight
-  colours under the lighting, so only what light reaches shows; the rest
-  is black. The dark-rock fill behind holes in the back wall is kept only
-  just under the ground (40 cells). Glowing specks on the back walls in
-  fungal and crystal zones only; faint drifting motes when the view is
-  mostly open cavern (the zone's colour). Still to do: big caverns
-  generated without back walls in places, so the far rock shows in
-  natural caves, not just dug ones.
+- **Underground:** behind the back walls, a dark void, tinted a little by
+  the band and zone the camera is in (earth, stone, the deep blue-black;
+  teal in fungal zones, violet in crystal, sickly green in toxic, red over
+  the underworld), eased as they change, under the lighting: only near a
+  light does the tint show. In its dark a few faint twinkles, far off
+  (6 % of the camera's motion), each swelling and fading on its own slow
+  beat, in the zone's colour, where the cave is open to the void. (Tried
+  and turned down: far rock layers by band, per-zone art, and
+  "underdarks": vast lit caverns with vistas.) Scenario `voidlook`.
 
 ## 5. Items and inventory
 

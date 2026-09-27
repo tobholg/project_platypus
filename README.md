@@ -182,8 +182,9 @@ each; `PLATYPUS_SOUND_LOG=1` logs what plays and what's heard.
 
 **Backdrops** (DESIGN §4.3b): Noita-like ranges behind the surface (sharp faceted peaks,
 snow, cloud heaps rising behind, a look per biome, calm parallax), the sun by day, the moon and
-twinkling stars on near-black nights; underground, far rock that shows only where light
-reaches, glowing specks in fungal and crystal zones, motes in big caverns. `cargo run
+twinkling stars on near-black nights; underground, a dark void behind the back walls tinted by
+the band and zone, with a few faint twinkles far off (scenario `voidlook`, `PLATYPUS_DEPTH` or
+`PLATYPUS_ZONE`). `cargo run
 --release -p platypus_backdrop -- <dir>` writes stills (`peaks.png`, `peaks-*.png`,
 `tiles-cave.png`). Scenarios: `backdrop` (`PLATYPUS_BIOME=desert PLATYPUS_HOUR=18`: the player on
 that biome's surface), `underlook` (a big cavern 260 cells down, glow sticks thrown).

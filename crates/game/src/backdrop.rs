@@ -9,14 +9,13 @@
 //!   one fades into the next. They sit on the ground as generated and
 //!   fade out underground. Over them, the sun by day, the moon and stars
 //!   by night; behind, the sky darkening upward.
-//! - Underground: rock far off through the cave, two layers, drifting
-//!   slowly, in daylight colours under the lighting: only what your light
-//!   reaches shows. In fungal and crystal zones the back walls glow with
-//!   little specks; big open caverns fill with faint drifting motes.
+//! - Underground: behind the back walls, a dark void, tinted a little by
+//!   the band and zone you're in (under the lighting: only near a light
+//!   does the tint show), and in its deep dark a few faint twinkles, far
+//!   off, drifting slowly (over the lighting, where it's open).
 //! - Tiles are made in the background as the camera goes (from absolute
 //!   coordinates: they join up) and dropped when far. The sun, moon,
-//!   stars, specks and motes are drawn over the lighting, where there's
-//!   open sky or open cave.
+//!   stars and twinkles are drawn over the lighting, where it's open.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,7 +24,6 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
-use platypus_backdrop::tile::{CAVE_LAYERS, cave_tile};
 use platypus_backdrop::peaks::{Look, cloud_tile, for_biome, layer_tile, looks};
 use platypus_sim::{CellPos, Kind};
 
@@ -38,8 +36,8 @@ pub struct BackdropPlugin;
 impl Plugin for BackdropPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Backdrops::new())
-            .add_systems(Startup, (sky_setup, gradient_setup))
-            .add_systems(PostUpdate, (tiles, place_setup, place_move, place, gradient, sky).chain().after(crate::camera::follow).before(bevy::transform::TransformSystems::Propagate));
+            .add_systems(Startup, (sky_setup, gradient_setup, void_setup))
+            .add_systems(PostUpdate, (tiles, place, gradient, void, sky).chain().after(crate::camera::follow).before(bevy::transform::TransformSystems::Propagate));
     }
 }
 
@@ -66,13 +64,10 @@ const CLOUD_PARALLAX: f32 = 0.008;
 const CLOUD_PARALLAX_Y: f32 = 0.004;
 const CLOUD_DRIFT: f32 = 1.2;
 const CLOUD_FOOT: f32 = 12.0;
-const CAVE_PARALLAX: [f32; CAVE_LAYERS] = [0.04, 0.1];
 /// The surface's strips: columns a tile, rows (layers, clouds).
 const TILE: usize = 256;
 const HEIGHT: usize = 380;
 const CLOUD_HEIGHT: usize = 170;
-/// The underground's tiles: square.
-const CAVE_TILE: usize = 128;
 /// How far below a surface tile its bottom row is stretched (valleys).
 const SKIRT: f32 = 300.0;
 /// Behind the weather's clouds (-2) and the world's back walls (-1); the
@@ -87,11 +82,9 @@ enum Part {
     /// A look's layer.
     Land,
     Clouds,
-    Cave,
 }
 
-/// A tile: what, which look (surface) and layer, where (column; row for
-/// caves).
+/// A tile: what, which look and layer, which column (`ty` unused: 0).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 struct Key {
     part: Part,
@@ -137,7 +130,6 @@ impl Backdrops {
         match part {
             Part::Land => (TILE, HEIGHT),
             Part::Clouds => (TILE, CLOUD_HEIGHT),
-            Part::Cave => (CAVE_TILE, CAVE_TILE),
         }
     }
 
@@ -147,7 +139,6 @@ impl Backdrops {
         match part {
             Part::Land => cam.x * (1.0 - layer_at(k, self.looks[v].layers.len()).0),
             Part::Clouds => cam.x * (1.0 - CLOUD_PARALLAX) + self.drift,
-            Part::Cave => cam.x * (1.0 - CAVE_PARALLAX[k]),
         }
     }
 
@@ -157,8 +148,6 @@ impl Backdrops {
         let x = (key.tx as f32 + 0.5) * w as f32 + self.scroll(key.part, key.v, key.k, cam);
         let ground = self.ground.unwrap_or(cam.y);
         let y = match key.part {
-            // (Rows go down: world y is up.)
-            Part::Cave => -(key.ty as f32 + 0.5) * h as f32 + cam.y * (1.0 - CAVE_PARALLAX[key.k]),
             // Its foot (the layer's base row) a little above the ground; it
             // hardly moves as you climb.
             Part::Land => {
@@ -177,7 +166,7 @@ impl Backdrops {
         let tiles = self
             .tiles
             .iter()
-            .filter(|(key, _)| key.part != Part::Cave && self.weights[key.v] >= 0.5)
+            .filter(|(key, _)| self.weights[key.v] >= 0.5)
             .map(|(key, tile)| {
                 let (w, h) = Self::size(key.part);
                 let c = self.centre(*key, cam);
@@ -261,17 +250,6 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
             want.extend((lo..=hi).map(|tx| Key { part: Part::Clouds, v, k: 0, tx, ty: 0 }));
         }
     }
-    if bd.shown < 1.0 {
-        let t = CAVE_TILE as f32;
-        for (k, &p) in CAVE_PARALLAX.iter().enumerate() {
-            let (x0, x1) = span(&bd, Part::Cave, 0, k);
-            let sy = -c.y * p;
-            let (y0, y1) = (((sy - half.y - 16.0) / t).floor() as i64, ((sy + half.y + 16.0) / t).floor() as i64);
-            for ty in y0..=y1 {
-                want.extend((x0..=x1).map(|tx| Key { part: Part::Cave, v: 0, k, tx, ty }));
-            }
-        }
-    }
     for &key in &want {
         if bd.tiles.contains_key(&key) || bd.making.contains_key(&key) {
             continue;
@@ -279,7 +257,6 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
         let (w, h) = Backdrops::size(key.part);
         let looks = bd.looks.clone();
         let task = match key.part {
-            Part::Cave => pool.spawn(async move { cave_tile(key.k, key.tx * w as i64, key.ty * h as i64, w, h, seed) }),
             Part::Land => pool.spawn(async move { layer_tile(&looks[key.v], key.k, key.tx * w as i64, w, h, seed) }),
             Part::Clouds => pool.spawn(async move { cloud_tile(&looks[key.v], key.tx * w as i64, w, h, seed) }),
         };
@@ -300,15 +277,13 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
     for (key, px) in ready {
         bd.making.remove(&key);
         let (w, h) = Backdrops::size(key.part);
-        let alpha: Vec<u8> = if key.part == Part::Cave { Vec::new() } else { px.chunks(4).map(|p| p[3]).collect() };
+        let alpha: Vec<u8> = px.chunks(4).map(|p| p[3]).collect();
         let handle = images.add(Image::new(Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::RENDER_WORLD));
-        // The farthest range, the clouds, the nearer ranges; the caves
-        // behind them all (they never show together).
+        // The farthest range, the clouds, the nearer ranges.
         let z = Z + key.v as f32 * 0.002
             + match key.part {
                 Part::Land => key.k as f32 * 0.03,
                 Part::Clouds => 0.015,
-                Part::Cave => -0.1 + key.k as f32 * 0.02,
             };
         let entity = commands.spawn((Name::new("Backdrop tile"), Sprite::from_image(handle.clone()), Transform::from_xyz(0.0, 0.0, z))).id();
         let skirt = (key.part == Part::Land).then(|| {
@@ -326,16 +301,14 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
 
 /// Each tile where its layer puts it for the camera now, as strong as its
 /// look's share; the surface's faded out underground, the cave's in.
-fn place(bd: Res<Backdrops>, shown: Option<Res<PlaceShown>>, zoom: Res<crate::camera::Zoom>, cam: Single<&Transform, (With<MainCamera>, Without<Sprite>)>, mut sprites: Query<(&mut Transform, &mut Sprite), Without<MainCamera>>) {
-    // (Inside a place with its own backdrop, the cave's give way.)
-    let inside = shown.as_ref().map_or(0.0, |s| s.inside);
+fn place(bd: Res<Backdrops>, zoom: Res<crate::camera::Zoom>, cam: Single<&Transform, (With<MainCamera>, Without<Sprite>)>, mut sprites: Query<(&mut Transform, &mut Sprite), Without<MainCamera>>) {
     let c = cam.translation.truncate();
     // (Snapped to whole screen pixels from the camera: crisp, and gliding
     // a pixel at a time. Snapped to whole cells it hopped 3 pixels at once.)
     let px = zoom.0.max(1) as f32;
     for (key, tile) in &bd.tiles {
         let at = c + ((bd.centre(*key, c) - c) * px).round() / px;
-        let alpha = if key.part == Part::Cave { (1.0 - bd.shown) * (1.0 - inside) } else { bd.shown * bd.weights[key.v] };
+        let alpha = bd.shown * bd.weights[key.v];
         let skirt = tile.skirt.map(|s| (s, at.y - HEIGHT as f32 / 2.0 - SKIRT / 2.0));
         for (e, y) in std::iter::once((tile.entity, at.y)).chain(skirt) {
             if let Ok((mut tf, mut sprite)) = sprites.get_mut(e) {
@@ -347,66 +320,51 @@ fn place(bd: Res<Backdrops>, shown: Option<Res<PlaceShown>>, zoom: Res<crate::ca
     }
 }
 
-// ---- a place's own backdrop (a prototype: the `underdark` scenario) ----
+// ---- the underground's void ----
 
-/// A place with a backdrop of its own (an underdark's, the underworld's):
-/// which (`platypus_backdrop::underdark::game_layers`), and where.
-#[derive(Resource, Clone)]
-pub struct PlacePreview {
-    pub name: String,
-    pub rect: Rect,
-}
-
-/// It, drawn: the layer under the lighting (a sprite), its halos (drawn
-/// over the lighting with the sky, where the cave is open), where it's
-/// drawn now, and how far in the camera is (0 outside .. 1).
+/// Behind the back walls underground: a flat dark, tinted by the band and
+/// zone the camera is in (eased as they change), under the lighting.
 #[derive(Resource)]
-pub struct PlaceShown {
-    base: Entity,
-    glow: Vec<u8>,
-    size: UVec2,
-    at: Vec2,
-    inside: f32,
+struct Void {
+    sprite: Entity,
+    tint: [f32; 3],
 }
 
-/// Its share of the camera's motion (far off, but a vista: a little more
-/// than the mountains').
-const PLACE_PARALLAX: f32 = 0.05;
-const PLACE_SIZE: UVec2 = UVec2::new(640, 360);
-/// How far its picture sits above the place's middle (cells).
-const PLACE_LIFT: f32 = 85.0;
-
-fn place_setup(mut commands: Commands, preview: Option<Res<PlacePreview>>, shown: Option<Res<PlaceShown>>, sim: Res<SimWorld>, mut images: ResMut<Assets<Image>>) {
-    let (Some(preview), None) = (preview, shown) else { return };
-    let size = PLACE_SIZE;
-    let Some(layers) = platypus_backdrop::underdark::game_layers(&preview.name, size.x as usize, size.y as usize, sim.world.seed()) else {
-        warn!("no place backdrop called {:?}", preview.name);
-        return;
-    };
-    let image = images.add(Image::new(Extent3d { width: size.x, height: size.y, depth_or_array_layers: 1 }, TextureDimension::D2, layers.base, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::RENDER_WORLD));
-    let base = commands.spawn((Name::new("Place backdrop"), Sprite::from_image(image), Transform::from_xyz(0.0, 0.0, Z - 0.08))).id();
-    let at = preview.rect.center();
-    commands.insert_resource(PlaceShown { base, glow: layers.glow, size, at, inside: 0.0 });
+fn void_setup(mut commands: Commands) {
+    let sprite = commands.spawn((Name::new("Underground void"), Sprite::from_color(Color::BLACK, Vec2::ONE), Transform::from_xyz(0.0, 0.0, Z_GRADIENT + 0.1))).id();
+    commands.insert_resource(Void { sprite, tint: VOID_TINTS[1].1 });
 }
 
-/// Where it's drawn for the camera now (pixel-snapped), how strongly (by
-/// how far in the camera is).
-fn place_move(bd: Res<Backdrops>, preview: Option<Res<PlacePreview>>, shown: Option<ResMut<PlaceShown>>, zoom: Res<crate::camera::Zoom>, cam: Single<&Transform, (With<MainCamera>, Without<Sprite>)>, mut sprites: Query<(&mut Transform, &mut Sprite), Without<MainCamera>>) {
-    let (Some(preview), Some(mut shown)) = (preview, shown) else { return };
-    let c = cam.translation.truncate();
-    let r = preview.rect;
-    let inset = (c.x - r.min.x).min(r.max.x - c.x).min(c.y - r.min.y).min(r.max.y - c.y);
-    // (All in once the camera's in the place; fading over 60 cells outside.)
-    shown.inside = ((inset + 60.0) / 60.0).clamp(0.0, 1.0);
-    // (Its landmarks' ground a little above the place's floor.)
-    let centre = r.center() + Vec2::new(0.0, PLACE_LIFT) + (c - r.center()) * (1.0 - PLACE_PARALLAX);
-    let px = zoom.0.max(1) as f32;
-    shown.at = c + ((centre - c) * px).round() / px;
-    if let Ok((mut tf, mut sprite)) = sprites.get_mut(shown.base) {
-        tf.translation.x = shown.at.x;
-        tf.translation.y = shown.at.y;
-        sprite.color = Color::srgba(1.0, 1.0, 1.0, shown.inside * (1.0 - bd.shown));
-    }
+/// The void's tint by band (the world plan's names), then by zone (which
+/// wins where there is one): dark, a touch of colour.
+const VOID_TINTS: [(&str, [f32; 3]); 9] = [
+    ("underground", [0.235, 0.165, 0.118]),
+    ("caverns", [0.172, 0.18, 0.204]),
+    ("deep", [0.11, 0.125, 0.19]),
+    ("underworld", [0.2, 0.07, 0.05]),
+    ("fungal", [0.08, 0.17, 0.16]),
+    ("crystal", [0.15, 0.1, 0.22]),
+    ("toxic", [0.12, 0.16, 0.07]),
+    // (Above the underground band: the dirt's.)
+    ("surface", [0.235, 0.165, 0.118]),
+    ("peaks", [0.172, 0.18, 0.204]),
+];
+
+fn void_tint(sim: &SimWorld, x: i32, y: i32) -> [f32; 3] {
+    let key = sim.generator.zone_at(x, y).or_else(|| sim.generator.band_hint(y)).unwrap_or("caverns");
+    VOID_TINTS.iter().find(|(k, _)| *k == key).map_or(VOID_TINTS[1].1, |(_, t)| *t)
+}
+
+fn void(time: Res<Time>, bd: Res<Backdrops>, sim: Res<SimWorld>, mut v: ResMut<Void>, cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>, mut sprites: Query<(&mut Transform, &mut Sprite), Without<MainCamera>>) {
+    let (tf, loader) = *cam;
+    let c = tf.translation.truncate();
+    let want = void_tint(&sim, c.x as i32, c.y as i32);
+    let ease = 1.0 - (-time.delta_secs() / 1.5).exp();
+    v.tint = [0, 1, 2].map(|k| v.tint[k] + (want[k] - v.tint[k]) * ease);
+    let Ok((mut stf, mut s)) = sprites.get_mut(v.sprite) else { return };
+    stf.translation = Vec3::new(c.x, c.y, Z_GRADIENT + 0.1);
+    s.custom_size = Some(loader.half_extent * 2.0 + Vec2::splat(8.0));
+    s.color = Color::srgba(v.tint[0], v.tint[1], v.tint[2], 1.0 - bd.shown);
 }
 
 // ---- the sky's gradient ----
@@ -471,6 +429,12 @@ struct Star {
     phase: f32,
 }
 
+/// The underground's twinkles: one in `TWINKLE_CHANCE`/1000 cells of
+/// `TWINKLE_CELL`² (sparse), moving at this share of the camera's motion.
+const TWINKLE_CELL: f32 = 9.0;
+const TWINKLE_CHANCE: u64 = 200;
+const TWINKLE_PARALLAX: f32 = 0.06;
+
 /// The sky's width in views (stars wrap round it).
 const SKY_WIDE: f32 = 3.0;
 
@@ -499,7 +463,6 @@ fn sky(
     mut images: ResMut<Assets<Image>>,
     cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>,
     mut sprites: Query<(&mut Transform, &mut Sprite), Without<MainCamera>>,
-    place: Option<Res<PlaceShown>>,
 ) {
     let (tf, loader) = *cam;
     let c = tf.translation.truncate();
@@ -601,86 +564,43 @@ fn sky(
             }
         }
     }
-    // A place's own halos, over the lighting, where the cave is open (every
-    // other cell each way: they're soft).
-    if let Some(pl) = place.as_ref().filter(|p| p.inside > 0.01 && surface < 0.99) {
-        let k = pl.inside * (1.0 - surface);
-        let (pw, ph) = (pl.size.x as i64, pl.size.y as i64);
-        let corner = pl.at + Vec2::new(-(pw as f32) / 2.0, ph as f32 / 2.0);
-        // (Over the image's pixels, finer than cells: no gaps.)
-        for iy in 0..size.y {
-            for ix in 0..size.x {
-                let (x, y) = ((ix as f32 + 0.5) / size.x as f32 * vw, (1.0 - (iy as f32 + 0.5) / size.y as f32) * vh);
-                let p = origin + Vec2::new(x, y);
-                let (lx, ly) = ((p.x - corner.x) as i64, (corner.y - p.y) as i64);
-                if lx < 0 || ly < 0 || lx >= pw || ly >= ph {
-                    continue;
-                }
-                let i = ((ly * pw + lx) * 4) as usize;
-                // (Blending is in linear light: a faint alpha still shows on
-                // the dark, so the tails fall away faster, to nothing.)
-                let a = (pl.glow[i + 3] as f32 / 255.0).powf(1.8) * 2.0;
-                if a < 0.002 || !open(p) {
-                    continue;
-                }
-                put(x, y, [pl.glow[i] as f32 / 255.0, pl.glow[i + 1] as f32 / 255.0, pl.glow[i + 2] as f32 / 255.0], a * k);
-            }
-        }
-    }
-    if surface < 0.99 {
-        // (Not in a place with its own backdrop: it has its own glows.)
-        let deep = (1.0 - surface) * (1.0 - place.as_ref().map_or(0.0, |p| p.inside));
-        let tint = |zone: Option<&str>| match zone {
-            Some("fungal") => [0.45, 1.0, 0.85],
-            Some("crystal") => [0.8, 0.6, 1.0],
-            Some("toxic") => [0.7, 1.0, 0.3],
-            _ => [0.55, 0.78, 1.0],
+    // Underground: a few faint twinkles far off in the void (Siofra's,
+    // but sparse and dim), where the cave is open to it, drifting slowly
+    // with the camera (far: a small share of its motion), each fading in
+    // and out on its own slow beat; the zone's colour.
+    let deep = 1.0 - surface;
+    if deep > 0.01 {
+        let tint = match sim.generator.zone_at(c.x as i32, c.y as i32) {
+            Some("fungal") => [0.55, 1.0, 0.88],
+            Some("crystal") => [0.85, 0.7, 1.0],
+            Some("toxic") => [0.8, 1.0, 0.55],
+            _ if sim.generator.band_hint(c.y as i32) == Some("underworld") => [1.0, 0.6, 0.35],
+            _ => [0.7, 0.85, 1.0],
         };
-        // Specks on the back walls, fungal and crystal zones only: a
-        // glowworm's thread, a lichen's dot, fixed to the walls, slowly
-        // breathing.
-        let (x0, y0) = (origin.x.floor() as i32, origin.y.floor() as i32);
-        let (x1, y1) = (x0 + vw as i32, y0 + vh as i32);
-        for by in y0.div_euclid(5)..=y1.div_euclid(5) {
-            for bx in x0.div_euclid(5)..=x1.div_euclid(5) {
-                let h = platypus_sim::rng::hash(&[bx as u64, by as u64, 0x6c]) % 1000;
-                if h > 70 {
+        // (Twinkle space: world = it + the camera × (1 − TWINKLE_PARALLAX).)
+        let shift = c * (1.0 - TWINKLE_PARALLAX);
+        let (lo, hi) = (origin - shift, origin + Vec2::new(vw, vh) - shift);
+        for by in (lo.y / TWINKLE_CELL).floor() as i64..=(hi.y / TWINKLE_CELL).floor() as i64 {
+            for bx in (lo.x / TWINKLE_CELL).floor() as i64..=(hi.x / TWINKLE_CELL).floor() as i64 {
+                let h = platypus_sim::rng::hash(&[bx as u64, by as u64, 0x7_1111]);
+                if h % 1000 >= TWINKLE_CHANCE {
                     continue;
                 }
-                let (wx, wy) = ((bx * 5 + (h % 5) as i32) as f32 + 0.5, (by * 5 + (h / 5 % 5) as i32) as f32 + 0.5);
-                let cell = CellPos::from_world(wx, wy);
-                if !empty(world.get(cell)) || empty(world.get_bg(cell)) {
+                let r = |k: u64| ((h >> (k * 10)) % 1024) as f32 / 1024.0;
+                let at = Vec2::new((bx as f32 + r(1)) * TWINKLE_CELL, (by as f32 + r(2)) * TWINKLE_CELL) + shift;
+                if !open(at) {
                     continue;
                 }
-                let zone = sim.generator.zone_at(wx as i32, wy as i32);
-                if !matches!(zone, Some("fungal") | Some("crystal")) {
-                    continue;
+                // Mostly dark, now and then a slow swell.
+                let beat = (t * (0.15 + 0.35 * r(3)) + r(4) * std::f32::consts::TAU).sin();
+                let a = (0.25 + 0.75 * (beat * 0.5 + 0.5).powi(2)) * (0.3 + 0.55 * r(5).powi(2)) * deep;
+                put(at.x - origin.x, at.y - origin.y, tint, a);
+                // (The brightest a touch bigger, dimmer at the edge.)
+                if r(5) > 0.7 {
+                    for (dx, dy) in [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)] {
+                        put(at.x - origin.x + dx, at.y - origin.y + dy, tint, a * 0.35);
+                    }
                 }
-                let breathe = 0.55 + 0.45 * (t * (0.4 + (h % 7) as f32 * 0.1) + h as f32).sin();
-                let a = (0.5 + 0.5 * (h as f32 / 70.0)) * breathe * deep;
-                put(wx - origin.x, wy - origin.y, tint(zone), a);
-                put(wx - origin.x, wy - origin.y - 1.0, tint(zone), a * 0.3);
-            }
-        }
-        // Motes: only where the cave opens up (most of the view open).
-        let (gx, gy) = (24, 14);
-        let opened = (0..gx).flat_map(|i| (0..gy).map(move |j| (i, j))).filter(|&(i, j)| open(origin + Vec2::new((i as f32 + 0.5) / gx as f32 * vw, (j as f32 + 0.5) / gy as f32 * vh))).count();
-        let big = ((opened as f32 / (gx * gy) as f32 - 0.3) / 0.25).clamp(0.0, 1.0) * deep;
-        if big > 0.01 {
-            let color = tint(sim.generator.zone_at(c.x as i32, c.y as i32));
-            let mut rng = Rng::new(0x3073);
-            for _ in 0..1200 {
-                let (u, v, b, rate, phase) = (rng.unit(), rng.unit(), rng.unit(), 0.3 + 2.0 * rng.unit(), rng.unit() * std::f32::consts::TAU);
-                let x = (u * vw * 3.0 - c.x * 0.05).rem_euclid(vw * 3.0);
-                if x >= vw {
-                    continue;
-                }
-                let y = (v * vh + t * (1.0 + 3.0 * b) - c.y * 0.05).rem_euclid(vh);
-                if !open(origin + Vec2::new(x, y)) {
-                    continue;
-                }
-                let tw = 0.5 + 0.5 * (t * rate + phase).sin();
-                put(x, y, color, (0.12 + 0.7 * b.powi(3)) * tw * big);
             }
         }
     }

@@ -243,7 +243,6 @@ impl Plugin for LightPlugin {
             .insert_resource(LightToggles { enabled: std::env::var("PLATYPUS_NOLIGHT").is_err(), carry: Carry::Nothing })
             .insert_resource(Daylight { skipped: skip, ..default() })
             .init_resource::<Flashes>()
-            .init_resource::<AmbientZones>()
             .init_resource::<LightMetrics>()
             .init_resource::<Pending>()
             .add_systems(Startup, (spawn_overlay, torch::load_art))
@@ -360,18 +359,6 @@ fn lerp3(a: Rgb, b: Rgb, t: f32) -> Rgb {
     [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
 }
 
-/// Places with their own dim light (an underdark's): light everywhere in
-/// them at least this, fading in over `fade` cells from their edge.
-#[derive(Resource, Default, Clone)]
-pub struct AmbientZones(pub Vec<AmbientZone>);
-
-#[derive(Clone, Copy, Debug)]
-pub struct AmbientZone {
-    pub rect: Rect,
-    pub color: [f32; 3],
-    pub fade: f32,
-}
-
 /// Sky light and sky colour for a time of day (0..1). Day white, golden
 /// around dawn and dusk, a dim blue moonlight at night.
 pub fn sky_at(time: f32, moonlight: f32) -> (Rgb, Rgb) {
@@ -460,7 +447,7 @@ fn compute_light(
     settings: Res<LightSettings>,
     toggles: Res<LightToggles>,
     day: Res<Daylight>,
-    (flashes, zones): (Res<Flashes>, Res<AmbientZones>),
+    flashes: Res<Flashes>,
     zoom: Res<Zoom>,
     time: Res<Time>,
     cursor: Res<CursorWorld>,
@@ -598,7 +585,6 @@ fn compute_light(
 
     let params = Params { air_falloff: settings.air_falloff, iterations: settings.iterations.clamp(1, 4), rim: settings.rim };
     let amb = settings.ambient.max(0.0);
-    let zones = zones.0.clone();
     let haze = settings.glow_haze.max(0.0);
     let (gw, gh) = (w as f32 * t as f32, h as f32 * t as f32);
     let center = Vec2::new(origin.x as f32 + gw / 2.0, origin.y as f32 + gh / 2.0);
@@ -625,16 +611,8 @@ fn compute_light(
             for x in 0..w {
                 let (l, gl) = (g.light[y * w + x], g.glow[y * w + x]);
                 let i = ((h - 1 - y) * w + x) * 4;
-                // A place's own dim light (an underdark's), fading in over
-                // its edge.
-                let at = Vec2::new(origin.x as f32 + (x as f32 + 0.5) * t as f32, origin.y as f32 + (y as f32 + 0.5) * t as f32);
-                let zone = zones.iter().fold([0.0f32; 3], |acc, z| {
-                    let inset = (at.x - z.rect.min.x).min(z.rect.max.x - at.x).min(at.y - z.rect.min.y).min(z.rect.max.y - at.y);
-                    let k = (inset / z.fade.max(1.0)).clamp(0.0, 1.0);
-                    [0, 1, 2].map(|c| acc[c].max(z.color[c] * k))
-                });
                 for ch in 0..3 {
-                    light[i + ch] = encode(l[ch].max(amb).max(zone[ch]));
+                    light[i + ch] = encode(l[ch].max(amb));
                     glow[i + ch] = encode(gl[ch] * haze);
                 }
             }

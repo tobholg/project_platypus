@@ -153,9 +153,11 @@
 //!   the sky, a lightning strike; logs each second what's about (creatures,
 //!   bodies, spells, drops, arrows, sparks, particles). With
 //!   `--features spikes` and `PLATYPUS_PROFILE=1`: where the time goes.
-//! - `underdark` (`PLATYPUS_UNDERDARK` = starlit, myconid, crystal, ruin,
-//!   underworld) a prototype of a place's own backdrop: a cavern dug deep,
-//!   its back walls off, the backdrop behind it, its dim light in it
+//! - `voidlook`   the underground's void as you'd meet it: a natural cave
+//!   `PLATYPUS_DEPTH` cells down (400), or in a zone (`PLATYPUS_ZONE` =
+//!   fungal, crystal, toxic), the player on its floor holding a torch, a
+//!   patch of back wall beside it axed away (logs where, and how much void
+//!   shows)
 //! - `rocketswim` (`PLATYPUS_WORLD=arena`) a pit of water 160 deep, the
 //!   player in it (far over the bottom) with its rocket boots empty: logs the charge
 //!   after 3 s in the water, then how far a held jump rose it in 1.5 s
@@ -229,7 +231,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, backwall_script)
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
-            .add_systems(Update, (underlook_script, underdark_script))
+            .add_systems(Update, (underlook_script, voidlook_script))
             .add_systems(PreUpdate, surface_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, walk_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, tempo_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3427,60 +3429,97 @@ fn underlook_script(mut commands: Commands, s: Res<Scenario>, mut sim: ResMut<Si
     }
 }
 
-/// A place's own backdrop in the game (`PLATYPUS_UNDERDARK` = starlit,
-/// myconid, crystal, ruin or underworld): a cavern 640 by 230 dug 320
-/// cells down, its back walls taken away, the place's backdrop behind it
-/// and its dim light in it; the player on its floor.
-fn underdark_script(mut commands: Commands, s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut zones: ResMut<crate::light::AmbientZones>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut state: Local<(u8, Vec2)>) {
-    if s.name != "underdark" {
+/// The underground's void in a natural cave (see the module docs).
+#[allow(clippy::too_many_arguments)]
+fn voidlook_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut state: Local<(u8, Vec2)>,
+) {
+    if s.name != "voidlook" {
         return;
     }
     let Ok(mut k) = player.single_mut() else { return };
-    let name = std::env::var("PLATYPUS_UNDERDARK").unwrap_or_else(|_| "starlit".into());
     let t = s.elapsed;
-    let dig = |sim: &mut SimWorld, c: Vec2, back: bool| {
-        for dy in (-90..=90).step_by(if back { 18 } else { 30 }) {
-            for dx in (-300..=300).step_by(if back { 18 } else { 24 }) {
-                let at = CellPos::new(c.x as i32 + dx, c.y as i32 + dy + (10.0 * (dx as f32 * 0.02).sin()) as i32);
-                if back {
-                    sim.queue(WorldEdit::Mine { center: at, radius: 24, power: 255, max_hardness: 254, back: true });
-                } else {
-                    sim.queue(WorldEdit::Dig { center: at, radius: 50, max_hardness: 254 });
-                }
-            }
-        }
-    };
+    // (Held where it's put until it's stood on a cave floor.)
+    if (1..=2).contains(&state.0) {
+        k.body.pos = state.1;
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+    }
     match state.0 {
-        0 if t > 0.5 => {
-            let c = k.body.pos - Vec2::new(0.0, 320.0);
-            dig(&mut sim, c, false);
-            // (Down past its floor: the place is what's around the camera.)
-            let rect = Rect::from_center_half_size(c - Vec2::new(0.0, 30.0), Vec2::new(330.0, 160.0));
-            commands.insert_resource(crate::backdrop::PlacePreview { name: name.clone(), rect });
-            if let Some(color) = platypus_backdrop::underdark::ambient_of(&name) {
-                zones.0.push(crate::light::AmbientZone { rect, color: color.map(|c| c * 0.75), fade: 40.0 });
-            }
-            *state = (1, c);
+        0 if t > 0.3 => {
+            let x0 = k.body.pos.x as i32;
+            let ground = |x: i32| sim.generator.surface_hint(x).unwrap_or(k.body.pos.y as i32);
+            let target = match std::env::var("PLATYPUS_ZONE") {
+                Ok(zone) => (0..300)
+                    .flat_map(|i| [x0 + i * 40, x0 - i * 40])
+                    .find_map(|x| (3..120).map(|j| ground(x) - j * 40).find(|&y| sim.generator.zone_at(x, y) == Some(zone.as_str())).map(|y| (x, y))),
+                Err(_) => {
+                    let depth: i32 = std::env::var("PLATYPUS_DEPTH").ok().and_then(|v| v.parse().ok()).unwrap_or(400);
+                    Some((x0, ground(x0) - depth))
+                }
+            };
+            let Some((x, y)) = target else {
+                info!("voidlook: no such zone near");
+                state.0 = 9;
+                return;
+            };
+            *state = (1, Vec2::new(x as f32, y as f32));
         }
-        1 if t > 0.8 => {
-            k.body.pos = state.1 + Vec2::new(-40.0, -60.0);
-            k.body.vel = Vec2::ZERO;
-            k.prev_pos = k.body.pos;
+        // Chunks loaded: the nearest cave floor (open 16 up, 5 either side,
+        // rock under it).
+        1 if t > 2.0 => {
+            let c = CellPos::from_world(state.1.x, state.1.y);
+            let air = |x: i32, y: i32| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.is_air());
+            let solid = |x: i32, y: i32| sim.world.is_solid(CellPos::new(x, y));
+            let floor = (0..260).flat_map(|r| {
+                let ring: Vec<(i32, i32)> = (-r..=r).flat_map(|d| [(c.x + d, c.y + r), (c.x + d, c.y - r), (c.x + r, c.y + d), (c.x - r, c.y + d)]).collect();
+                ring
+            }).find(|&(x, y)| {
+                // (In the zone asked for, if one was.)
+                let zone = std::env::var("PLATYPUS_ZONE").ok();
+                zone.is_none_or(|z| sim.generator.zone_at(x, y) == Some(z.as_str()))
+                    && solid(x, y - 1) && solid(x - 3, y - 1) && solid(x + 3, y - 1) && (0..16).all(|dy| (-5..=5).all(|dx| air(x + dx, y + dy)))
+            });
+            match floor {
+                Some((x, y)) => {
+                    state.1 = Vec2::new(x as f32, y as f32 + k.body.half.y + 0.5);
+                    let (zone, band) = (sim.generator.zone_at(x, y), sim.generator.band_hint(y));
+                    info!("voidlook: a cave floor at ({x}, {y}), {} down; band {band:?}, zone {zone:?}", sim.generator.surface_hint(x).unwrap_or(y) - y);
+                }
+                None => info!("voidlook: no cave floor near ({}, {})", c.x, c.y),
+            }
+            toggles.carry = crate::light::Carry::Torch;
             state.0 = 2;
         }
-        // (Once the chunks down there are loaded: dug again, walls off.)
-        2 if t > 1.6 => {
-            dig(&mut sim, state.1, false);
-            state.0 = 3;
-        }
-        // (Walls off over a few frames: each pass wears them down.)
-        3..=6 if t > 1.8 + (state.0 - 3) as f32 * 0.15 => {
-            for _ in 0..2 {
-                dig(&mut sim, state.1, true);
+        // Stood there; a patch of back wall beside it axed away, over a few
+        // frames (each pass wears it down), as a player would.
+        2 if t > 2.2 => state.0 = 3,
+        3..=6 if t > 2.2 + (state.0 - 3) as f32 * 0.1 => {
+            let c = state.1 + Vec2::new(26.0, 14.0);
+            for dy in (-16..=16).step_by(8) {
+                for dx in (-34..=34).step_by(8) {
+                    let at = CellPos::new(c.x as i32 + dx, c.y as i32 + dy);
+                    sim.queue(WorldEdit::Mine { center: at, radius: 7, power: 255, max_hardness: 250, back: true });
+                }
             }
             state.0 += 1;
         }
-        7 => {
+        7 if t > 3.5 => {
+            let c = state.1;
+            let (mut void, mut walled) = (0, 0);
+            for y in c.y as i32 - 40..c.y as i32 + 60 {
+                for x in c.x as i32 - 90..c.x as i32 + 90 {
+                    let p = CellPos::new(x, y);
+                    if sim.world.get(p).is_some_and(|c| c.is_air()) {
+                        if sim.world.get_bg(p).is_some_and(|c| c.is_air()) { void += 1 } else { walled += 1 }
+                    }
+                }
+            }
+            info!("voidlook: around the player {void} open cells show the void, {walled} a back wall");
             state.0 = 8;
         }
         _ => {}
