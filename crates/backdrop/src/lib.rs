@@ -205,13 +205,26 @@ pub enum Kind {
     /// Open water to the horizon.
     Sea,
     // Underground:
-    /// A rock face filling the view: strata, cracks.
-    Wall,
-    /// Hollows opening deeper into the rock (lighter, hazier).
-    Depths,
-    /// Stalactites from above, stalagmites from below, a column now and
-    /// then.
-    Teeth,
+    /// The far end of the cavern: a dim glow (its colour) in the dark,
+    /// mist drifting, now and then a shaft of light from above.
+    Hollow { shafts: bool },
+    /// A band of cave: a ragged ceiling (`roof`, 0..1 down) hung with
+    /// stalactites, a floor (`floor`) with stalagmites (`spikes`: how
+    /// long), pillars where they meet (`pillars`: how often), in `rock`.
+    Cave { roof: f32, floor: f32, spikes: f32, pillars: f32, rock: Rock },
+}
+
+/// What a cave's rock looks like up close.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Rock {
+    /// Rounded stones and boulders.
+    Cobble,
+    /// Earth in layers, pebbles in it, roots hanging from it.
+    Strata,
+    /// Big smooth planes, bright edges.
+    Ice,
+    /// Tall jointed columns (cooled lava).
+    Basalt,
 }
 
 /// One layer: what, how far (0 the horizon .. 1 near), where its skyline
@@ -279,7 +292,7 @@ fn skyline(l: &Layer, i: usize, x: f32, w: f32, h: f32, seed: u64) -> f32 {
             step * (0.8 + 0.2 * fbm1(u * 30.0, 2, s ^ 3))
         }
         Kind::Sea => 0.0,
-        Kind::Wall | Kind::Depths | Kind::Teeth => 0.0,
+        Kind::Hollow { .. } | Kind::Cave { .. } => 0.0,
     };
     (l.base - l.height * rise) * h
 }
@@ -387,15 +400,21 @@ pub fn render(scene: &Scene, time: Time, style: Style, seed: u64, w: usize, h: u
     }
     // What's drawn where so far (for rims: the layer above a pixel).
     let mut owner = vec![usize::MAX; w * h];
+    // (The nearest cave layer's floor: where crystals and mushrooms grow.)
+    let mut floor: Option<Vec<f32>> = None;
+    let last = scene.layers.len().saturating_sub(1);
     for (i, l) in scene.layers.iter().enumerate() {
+        // Water or lava lies behind the nearest band's floor.
+        if i == last && scene.underground.is_some() {
+            waters(&mut c, scene, seed);
+        }
         match l.kind {
-            Kind::Wall => wall(&mut c, l, scene, seed.wrapping_add(i as u64)),
-            Kind::Depths => depths(&mut c, l, scene, &lt, seed.wrapping_add(i as u64)),
-            Kind::Teeth => teeth(&mut c, &mut owner, i, l, scene, seed.wrapping_add(i as u64)),
+            Kind::Hollow { shafts } => hollow(&mut c, l, scene, shafts, seed.wrapping_add(i as u64)),
+            Kind::Cave { .. } => floor = Some(cave(&mut c, &mut owner, i, l, scene, style, seed.wrapping_add(i as u64 * 977))),
             _ => land(&mut c, &mut owner, i, l, scene, &lt, style, seed, mist, rim),
         }
     }
-    glows(&mut c, scene, &lt, seed);
+    glows(&mut c, scene, &lt, floor.as_deref(), seed);
     if style == Style::Moody {
         for y in 0..h {
             for x in 0..w {
@@ -633,110 +652,244 @@ fn land(c: &mut Canvas, owner: &mut [usize], i: usize, l: &Layer, scene: &Scene,
     let _ = scene;
 }
 
-/// A rock face: its colour broken by strata, cracks and a lumpy grain.
-fn wall(c: &mut Canvas, l: &Layer, scene: &Scene, seed: u64) {
-    let (w, h) = (c.w, c.h);
-    let dark = scene.underground.unwrap_or([0.0; 3]);
-    for y in 0..h {
-        for x in 0..w {
-            let (xf, yf) = (x as f32, y as f32);
-            let warp = fbm2(xf * 0.01, yf * 0.01, 3, seed ^ 1) * 30.0;
-            let strata = 0.5 + 0.5 * ((yf + warp) * 0.09).sin();
-            let grain = fbm2(xf * 0.06, yf * 0.1, 4, seed ^ 2);
-            let crack = (fbm2(xf * 0.02, yf * 0.02, 4, seed ^ 3) - 0.5).abs() < 0.005;
-            let k = 0.6 + 0.2 * strata + 0.3 * grain;
-            let mut col = mix(dark, scale(l.color, k), 0.15 + 0.4 * l.depth);
-            if crack {
-                col = scale(col, 0.75);
+/// Nearest two of a jittered grid's points to (x, y) (cells `size`
+/// across, stretched by `sx`, `sy`): which is nearest, how far each is,
+/// and where the nearest is.
+fn cells(x: f32, y: f32, size: f32, sx: f32, sy: f32, seed: u64) -> (i64, f32, f32, (f32, f32)) {
+    let (gx, gy) = (x / (size * sx), y / (size * sy));
+    let (cx, cy) = (gx.floor() as i64, gy.floor() as i64);
+    let (mut d1, mut d2, mut id, mut at) = (f32::MAX, f32::MAX, 0i64, (0.0, 0.0));
+    for oy in -1..=1 {
+        for ox in -1..=1 {
+            let (nx, ny) = (cx + ox, cy + oy);
+            let (px, py) = (nx as f32 + hash(nx, ny, seed), ny as f32 + hash(nx, ny, seed ^ 0x55));
+            let d = ((px - gx) * sx).hypot((py - gy) * sy) * size;
+            if d < d1 {
+                d2 = d1;
+                d1 = d;
+                id = nx.wrapping_mul(73_856_093) ^ ny.wrapping_mul(19_349_663);
+                at = (px * size * sx, py * size * sy);
+            } else if d < d2 {
+                d2 = d;
             }
-            *c.at(x, y) = col;
         }
     }
+    (id, d1, d2, at)
 }
 
-/// Hollows opening deeper into the rock: shapes out of noise, hazier and
-/// lighter the deeper they go (a cavern's far side seen through them).
-fn depths(c: &mut Canvas, l: &Layer, scene: &Scene, lt: &Light, seed: u64) {
-    let (w, h) = (c.w, c.h);
-    let dark = scene.underground.unwrap_or([0.0; 3]);
-    let glow = scene.glows.below;
-    for y in 0..h {
-        for x in 0..w {
-            let (xf, yf) = (x as f32, y as f32);
-            let n = fbm2(xf * 0.008, yf * 0.014, 4, seed);
-            let open = ((n - 0.47) * 6.0).clamp(0.0, 1.0);
-            if open <= 0.0 {
-                continue;
-            }
-            // Deeper in: fainter, hazier (a far cavern's glow).
-            let far = mix(scale(l.color, 0.9), mix(dark, l.color, 0.35), 1.0 - open);
-            let mut col = mix(*c.at(x, y), far, open * 0.9);
-            if let Some(g) = glow {
-                let k = (yf / h as f32).powi(2);
-                col = add(col, scale(g, k * 0.35 * open));
-            }
-            *c.at(x, y) = col;
-        }
+/// How a rock's surface shades at a pixel: each stone lit from above,
+/// dark in the cracks between.
+fn rock_shade(rock: Rock, x: f32, y: f32, size: f32, seed: u64) -> f32 {
+    let (sx, sy, crack_w, bevel) = match rock {
+        Rock::Cobble => (1.0, 0.8, 0.9, 0.22),
+        Rock::Strata => (2.6, 0.55, 0.7, 0.12),
+        Rock::Ice => (1.6, 1.4, 0.5, 0.35),
+        Rock::Basalt => (0.45, 2.8, 0.8, 0.18),
+    };
+    // (Warped, so stones aren't a grid.)
+    let (wx, wy) = (x + 6.0 * (fbm2(x * 0.03, y * 0.03, 2, seed ^ 0x11) - 0.5) * size * 0.4, y + 6.0 * (fbm2(x * 0.03 + 5.0, y * 0.03, 2, seed ^ 0x12) - 0.5) * size * 0.4);
+    let (id, d1, d2, at) = cells(wx, wy, size, sx, sy, seed);
+    let tone = 0.85 + 0.18 * hash(id, 7, seed);
+    // (Lit from above: the upper part of each stone brighter.)
+    let lift = ((at.1 - wy) / (size * sy)).clamp(-1.0, 1.0);
+    let mut k = tone * (1.0 + bevel * lift);
+    // Cracks: not between every stone, and not black.
+    if d2 - d1 < crack_w && fbm2(x * 0.02, y * 0.02, 2, seed ^ 0x13) > 0.42 {
+        k *= 0.7;
     }
-    let _ = lt;
+    if rock == Rock::Strata {
+        k *= 0.85 + 0.15 * ((y + 6.0 * noise1(x * 0.05, seed ^ 4)) * 0.25).sin();
+    }
+    k
 }
 
-/// Stalactites down from the top, stalagmites up from the bottom, columns
-/// where they meet; icicles in the cold.
-fn teeth(c: &mut Canvas, owner: &mut [usize], i: usize, l: &Layer, scene: &Scene, seed: u64) {
+/// The far end of the cavern: dark above and below, a hazy glow between,
+/// mist drifting through; shafts of light from cracks far above.
+fn hollow(c: &mut Canvas, l: &Layer, scene: &Scene, shafts: bool, seed: u64) {
     let (w, h) = (c.w, c.h);
     let (wf, hf) = (w as f32, h as f32);
     let dark = scene.underground.unwrap_or([0.0; 3]);
-    // (Near, and between you and the far side's light: darker than it.)
-    let col = mix(dark, l.color, 0.12 + 0.18 * (1.0 - l.depth));
-    let ceiling = hf * (0.08 + 0.06 * (1.0 - l.depth));
-    let floor = hf * (0.88 + 0.05 * (1.0 - l.depth));
+    for y in 0..h {
+        let v = y as f32 / hf;
+        let band = (-((v - 0.6) / 0.28).powi(2)).exp();
+        for x in 0..w {
+            let u = x as f32 / wf;
+            let mist = fbm2(u * 6.0, v * 22.0, 4, seed ^ 0x3a);
+            let mut col = mix(dark, l.color, band * (0.55 + 0.45 * mist));
+            if shafts {
+                // Slanted, soft-edged, a few.
+                let s = u * 5.0 + v * 1.2;
+                let beam = (noise1(s, seed ^ 0x5a) - 0.72).max(0.0) * 3.6;
+                col = add(col, scale(l.color, beam * (1.0 - v) * 0.5));
+            }
+            *c.at(x, y) = col;
+        }
+    }
+}
+
+/// A band of cave, far or near: its ceiling and floor ragged, hung with
+/// stalactites and grown with stalagmites, pillars where they meet; its
+/// rock in stones lit from above, its edges lit by the cavern's glow,
+/// mist at its foot. Returns its floor line (the row, per column).
+#[allow(clippy::too_many_arguments)]
+fn cave(c: &mut Canvas, owner: &mut [usize], i: usize, l: &Layer, scene: &Scene, style: Style, seed: u64) -> Vec<f32> {
+    let Kind::Cave { roof, floor, spikes, pillars, rock } = l.kind else { return Vec::new() };
+    let (w, h) = (c.w, c.h);
+    let (wf, hf) = (w as f32, h as f32);
+    let dark = scene.underground.unwrap_or([0.0; 3]);
+    // The far glow: the hollow's colour (the first layer's), if any.
+    let glow = scene.layers.iter().find_map(|l| matches!(l.kind, Kind::Hollow { .. }).then_some(l.color)).unwrap_or(l.color);
+    // Nearer: darker and larger; farther: hazed toward the glow.
+    let haze = (1.0 - l.depth).powf(1.2) * 0.75;
+    let base = mix(mix(dark, l.color, 0.35 + 0.25 * (1.0 - l.depth)), glow, haze * 0.6);
+    let f = 3.0 + 5.0 * (1.0 - l.depth);
+    // (Bays and overhangs: broad swells, and rougher edges on them.)
+    let wave = |x: usize, s: u64, amp: f32| amp * (fbm1(x as f32 / wf * f * 0.5, 3, s) - 0.5) * 2.0 + 0.03 * (fbm1(x as f32 / wf * f * 4.0, 2, s ^ 9) - 0.5);
+    let mut roofs: Vec<f32> = (0..w).map(|x| hf * (roof + 0.02 + wave(x, seed, 0.1)).max(0.0)).collect();
+    let mut floors: Vec<f32> = (0..w).map(|x| hf * (floor + wave(x, seed ^ 1, 0.08))).collect();
+    // Stalactites and stalagmites: tapering spikes.
     let mut k = 0i64;
-    let mut x = 0.0;
-    let mut spikes = Vec::new();
-    while x < wf {
+    let mut x0 = 0.0;
+    while x0 < wf {
         let r = hash(k, 0, seed);
-        let len = hf * (0.08 + 0.35 * r.powi(2)) * (0.5 + l.depth);
-        let width = (len * (0.12 + 0.1 * hash(k, 1, seed))).max(2.0);
-        let down = hash(k, 2, seed) < 0.6;
-        let column = hash(k, 3, seed) < 0.08;
-        spikes.push((x, width, len, down, column));
-        x += width * (1.2 + 2.5 * hash(k, 4, seed));
+        let len = hf * spikes * (0.2 + r.powi(2)) * (0.6 + 0.6 * l.depth);
+        let half = (len * (0.1 + 0.08 * hash(k, 1, seed))).max(1.5);
+        let down = hash(k, 2, seed) < 0.62;
+        for x in ((x0 - half).max(0.0) as usize)..((x0 + half) as usize).min(w) {
+            let t = 1.0 - ((x as f32 - x0).abs() / half);
+            let reach = len * t.powf(1.6);
+            if down {
+                roofs[x] = roofs[x].max(hf * roof - 2.0 + reach);
+            } else {
+                floors[x] = floors[x].min(hf * floor + 2.0 - reach * 0.7);
+            }
+        }
+        x0 += half * (1.5 + 3.0 * hash(k, 3, seed));
         k += 1;
     }
+    // Pillars: waisted, from ceiling to floor.
+    let mut columns = Vec::new();
+    let mut px = hash(9, 9, seed) * wf * 0.3;
+    let mut n = 0i64;
+    while px < wf {
+        if hash(n, 5, seed) < pillars {
+            columns.push((px, hf * (0.04 + 0.05 * l.depth) * (0.7 + 0.6 * hash(n, 6, seed))));
+        }
+        px += wf * (0.12 + 0.2 * hash(n, 7, seed));
+        n += 1;
+    }
+    let size = 4.0 + 9.0 * l.depth;
+    let textured = style != Style::Flat;
     for y in 0..h {
         for x in 0..w {
             let (xf, yf) = (x as f32, y as f32);
-            let mut on = yf < ceiling + 4.0 * noise1(xf * 0.1, seed ^ 5) || yf > floor - 4.0 * noise1(xf * 0.1, seed ^ 6);
-            for &(sx, sw, len, down, column) in &spikes {
-                let dx = (xf - sx).abs();
-                if column {
-                    if dx < sw * (0.5 + 0.5 * (((yf - hf / 2.0) / (hf / 2.0)).powi(2))) {
-                        on = true;
+            let mid = (roofs[x] + floors[x]) / 2.0;
+            let pillar = columns.iter().any(|&(cx, half)| {
+                let span = ((floors[x] - roofs[x]) / 2.0).max(1.0);
+                let waist = 0.55 + 0.45 * ((yf - mid) / span).powi(2);
+                (xf - cx).abs() < half * waist
+            });
+            if !(yf < roofs[x] || yf > floors[x] || pillar) {
+                continue;
+            }
+            // (Texture fades with distance: far rock is haze-smooth.)
+            let shade = if textured { 1.0 + (rock_shade(rock, xf, yf, size, seed ^ 0x40c) - 1.0) * (0.25 + 0.75 * l.depth) } else { 1.0 };
+            let mut col = scale(base, shade);
+            if rock == Rock::Ice {
+                col = mix(col, glow, 0.12);
+            }
+            *c.at(x, y) = col;
+            owner[y * w + x] = i;
+        }
+    }
+    // Edges toward the open cave, lit by the far glow (a hair of it).
+    if textured {
+        for y in 1..h - 1 {
+            for x in 1..w - 1 {
+                if owner[y * w + x] != i {
+                    continue;
+                }
+                let open = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)].iter().any(|&(ax, ay)| owner[ay * w + ax] != i);
+                if open {
+                    let p = c.at(x, y);
+                    *p = mix(*p, glow, 0.28 * (0.5 + 0.5 * l.depth));
+                }
+            }
+        }
+        // Mist lying on its floor.
+        for x in 0..w {
+            let top = floors[x];
+            for y in ((top - hf * 0.08).max(0.0) as usize)..(top as usize).min(h) {
+                if owner[y * w + x] == i {
+                    continue;
+                }
+                let a = (1.0 - (top - y as f32) / (hf * 0.08)).powi(2) * 0.35 * (1.0 - l.depth * 0.5);
+                let p = c.at(x, y);
+                *p = mix(*p, glow, a * (0.6 + 0.4 * fbm2(x as f32 * 0.03, y as f32 * 0.1, 2, seed ^ 0x77)));
+            }
+        }
+    }
+    // Roots down from the ceiling (earth); icicles (ice).
+    if rock == Rock::Strata || scene.glows.icicles {
+        let ice = scene.glows.icicles;
+        let mut k = 0i64;
+        let mut rx = 0.0;
+        while rx < wf {
+            let x = rx as usize;
+            if x < w {
+                let len = hf * (0.03 + 0.1 * hash(k, 1, seed ^ 0x2007).powi(2)) * (0.5 + l.depth);
+                let mut xx = rx;
+                for t in 0..len as usize {
+                    let y = roofs[x.min(w - 1)] as usize + t;
+                    if !ice {
+                        xx += (noise1(t as f32 * 0.3 + k as f32, seed ^ 0x2008) - 0.5) * 0.9;
                     }
-                } else if down {
-                    let d = yf - ceiling;
-                    if d >= 0.0 && d < len && dx < sw * (1.0 - d / len) {
-                        on = true;
-                    }
-                } else {
-                    let d = floor - yf;
-                    if d >= 0.0 && d < len * 0.7 && dx < sw * 1.2 * (1.0 - d / (len * 0.7)) {
-                        on = true;
+                    let (qx, qy) = (xx as usize, y);
+                    if qx < w && qy < h {
+                        let taper = if ice { 1.0 - t as f32 / len } else { 1.0 };
+                        let col = if ice { mix(base, rgb(200, 230, 255), 0.35 * taper) } else { scale(base, 0.7) };
+                        *c.at(qx, qy) = col;
                     }
                 }
             }
-            if on {
-                let n = fbm2(xf * 0.1, yf * 0.1, 3, seed ^ 8);
-                let mut p = scale(col, 0.85 + 0.25 * n);
-                if scene.glows.icicles && yf < hf * 0.5 {
-                    p = mix(p, rgb(120, 170, 220), 0.25);
-                }
-                if let Some(g) = scene.glows.below {
-                    p = add(p, scale(g, (yf / hf).powi(3) * 0.4));
-                }
-                *c.at(x, y) = p;
-                owner[y * w + x] = i;
+            rx += 3.0 + 14.0 * hash(k, 2, seed ^ 0x2007);
+            k += 1;
+        }
+    }
+    floors
+}
+
+/// Still water, or the lava sea, in the dips behind the nearest floor.
+fn waters(c: &mut Canvas, scene: &Scene, seed: u64) {
+    let (w, h) = (c.w, c.h);
+    let hf = h as f32;
+    let g = &scene.glows;
+    let line = (hf * 0.84) as usize;
+    if let Some(lava) = g.below {
+        for y in line..h {
+            for x in 0..w {
+                let k = (y - line) as f32 / (hf - line as f32);
+                let crust = fbm2(x as f32 * 0.05, y as f32 * 0.12, 3, seed ^ 0x1a);
+                let hot = mix(rgb(255, 230, 140), lava, (k * 2.0).min(1.0));
+                let col = if crust > 0.6 { scale(lava, 0.35) } else { hot };
+                *c.at(x, y) = col;
+            }
+        }
+        // Its light up the cave.
+        for y in 0..line {
+            let k = (1.0 - (line - y) as f32 / (hf * 0.6)).max(0.0);
+            for x in 0..w {
+                let p = c.at(x, y);
+                *p = add(*p, scale(lava, k * k * 0.3));
+            }
+        }
+    } else if g.pool {
+        for y in line..h {
+            for x in 0..w {
+                let mirror = line.saturating_sub(y - line + 1);
+                let above = *c.at(x, mirror);
+                let ripple = (noise2(x as f32 * 0.1, y as f32 * 0.8, seed ^ 0x9) - 0.5) * 0.3;
+                *c.at(x, y) = scale(mix(above, rgb(20, 40, 60), 0.45), 0.7 + ripple);
             }
         }
     }
@@ -744,15 +897,16 @@ fn teeth(c: &mut Canvas, owner: &mut [usize], i: usize, l: &Layer, scene: &Scene
 
 /// Crystals, mushrooms, embers, fireflies, a pool: the little lights, and
 /// the light they throw.
-fn glows(c: &mut Canvas, scene: &Scene, lt: &Light, seed: u64) {
+fn glows(c: &mut Canvas, scene: &Scene, lt: &Light, floor: Option<&[f32]>, seed: u64) {
     let (w, h) = (c.w, c.h);
     let (wf, hf) = (w as f32, h as f32);
     let g = &scene.glows;
     let mut lights: Vec<(f32, f32, Rgb, f32)> = Vec::new();
     if let Some(col) = g.crystals {
         for k in 0..14 {
-            // (On the floor, in clusters, and a few up on ledges.)
-            let (x, y) = (hash(k, 0, seed ^ 0xc1) * wf, hf * if k % 4 == 0 { 0.55 + 0.25 * hash(k, 1, seed ^ 0xc1) } else { 0.86 + 0.05 * hash(k, 1, seed ^ 0xc1) });
+            // (On the floor.)
+            let x = hash(k, 0, seed ^ 0xc1) * wf;
+            let y = floor.map_or(hf * 0.88, |f| f[(x as usize).min(w - 1)] + 1.0);
             let size = 2.0 + 6.0 * hash(k, 2, seed ^ 0xc1);
             // A cluster of shards.
             for s in 0..4 {
@@ -774,7 +928,8 @@ fn glows(c: &mut Canvas, scene: &Scene, lt: &Light, seed: u64) {
     }
     if let Some(col) = g.mushrooms {
         for k in 0..18 {
-            let (x, y) = (hash(k, 0, seed ^ 0x3c) * wf, hf * (0.86 + 0.08 * hash(k, 1, seed ^ 0x3c)));
+            let x = hash(k, 0, seed ^ 0x3c) * wf;
+            let y = floor.map_or(hf * 0.9, |f| f[(x as usize).min(w - 1)] + 1.0);
             let size = 2.0 + 5.0 * hash(k, 2, seed ^ 0x3c).powi(2);
             for t in 0..(size * 1.4) as i32 {
                 let (qx, qy) = (x as usize, (y - t as f32) as usize);
@@ -809,17 +964,6 @@ fn glows(c: &mut Canvas, scene: &Scene, lt: &Light, seed: u64) {
                 *c.at(qx, qy) = rgb(255, 170, 80);
             }
             lights.push((x, y, rgb(255, 120, 40), 4.0));
-        }
-    }
-    if g.pool {
-        let top = (hf * 0.9) as usize;
-        for y in top..h {
-            for x in 0..w {
-                let mirror = top.saturating_sub(y - top + 1);
-                let above = *c.at(x, mirror);
-                let ripple = (noise2(x as f32 * 0.1, y as f32 * 0.8, seed ^ 0x9) - 0.5) * 0.3;
-                *c.at(x, y) = scale(mix(above, rgb(20, 40, 60), 0.5), 0.6 + ripple);
-            }
         }
     }
     // The light they throw (additive, falling off).
@@ -937,32 +1081,58 @@ pub fn scenes() -> Vec<Scene> {
         ),
         cave(
             "underground",
-            rgb(10, 8, 6),
-            vec![layer(Wall, 0.25, 0.0, 0.0, T::None, rgb(92, 66, 48)), layer(Depths, 0.3, 0.0, 0.0, T::None, rgb(54, 42, 36)), layer(Teeth, 0.7, 0.0, 0.0, T::None, rgb(60, 44, 34))],
+            rgb(7, 5, 4),
+            vec![
+                // (Just under the surface: light down cracks from above.)
+                layer(Hollow { shafts: true }, 0.0, 0.0, 0.0, T::None, rgb(120, 90, 58)),
+                layer(Cave { roof: 0.2, floor: 0.72, spikes: 0.16, pillars: 0.2, rock: Rock::Strata }, 0.2, 0.0, 0.0, T::None, rgb(116, 88, 62)),
+                layer(Cave { roof: 0.12, floor: 0.82, spikes: 0.22, pillars: 0.25, rock: Rock::Strata }, 0.5, 0.0, 0.0, T::None, rgb(92, 68, 48)),
+                layer(Cave { roof: 0.05, floor: 0.92, spikes: 0.26, pillars: 0.15, rock: Rock::Strata }, 0.9, 0.0, 0.0, T::None, rgb(62, 46, 34)),
+            ],
             Glows::default(),
         ),
         cave(
             "caverns",
-            rgb(6, 7, 10),
-            vec![layer(Wall, 0.2, 0.0, 0.0, T::None, rgb(70, 74, 86)), layer(Depths, 0.3, 0.0, 0.0, T::None, rgb(40, 60, 80)), layer(Teeth, 0.75, 0.0, 0.0, T::None, rgb(56, 60, 70))],
-            Glows { crystals: Some(rgb(160, 110, 255)), pool: true, ..default() },
+            rgb(4, 5, 8),
+            vec![
+                layer(Hollow { shafts: true }, 0.0, 0.0, 0.0, T::None, rgb(64, 84, 112)),
+                layer(Cave { roof: 0.18, floor: 0.72, spikes: 0.3, pillars: 0.35, rock: Rock::Cobble }, 0.2, 0.0, 0.0, T::None, rgb(92, 98, 112)),
+                layer(Cave { roof: 0.1, floor: 0.82, spikes: 0.35, pillars: 0.3, rock: Rock::Cobble }, 0.5, 0.0, 0.0, T::None, rgb(72, 76, 88)),
+                layer(Cave { roof: 0.04, floor: 0.92, spikes: 0.4, pillars: 0.2, rock: Rock::Cobble }, 0.9, 0.0, 0.0, T::None, rgb(48, 50, 58)),
+            ],
+            Glows { crystals: Some(rgb(170, 120, 255)), pool: true, ..default() },
         ),
         cave(
             "fungal grotto",
-            rgb(4, 8, 10),
-            vec![layer(Wall, 0.2, 0.0, 0.0, T::None, rgb(40, 64, 64)), layer(Depths, 0.3, 0.0, 0.0, T::None, rgb(30, 70, 80)), layer(Teeth, 0.7, 0.0, 0.0, T::None, rgb(34, 54, 50))],
+            rgb(3, 6, 7),
+            vec![
+                layer(Hollow { shafts: false }, 0.0, 0.0, 0.0, T::None, rgb(40, 96, 104)),
+                layer(Cave { roof: 0.2, floor: 0.74, spikes: 0.2, pillars: 0.25, rock: Rock::Cobble }, 0.2, 0.0, 0.0, T::None, rgb(52, 84, 84)),
+                layer(Cave { roof: 0.1, floor: 0.84, spikes: 0.28, pillars: 0.3, rock: Rock::Cobble }, 0.5, 0.0, 0.0, T::None, rgb(40, 66, 64)),
+                layer(Cave { roof: 0.05, floor: 0.92, spikes: 0.3, pillars: 0.2, rock: Rock::Cobble }, 0.9, 0.0, 0.0, T::None, rgb(28, 44, 42)),
+            ],
             Glows { mushrooms: Some(rgb(90, 230, 255)), ..default() },
         ),
         cave(
             "ice cave",
             rgb(4, 7, 14),
-            vec![layer(Wall, 0.3, 0.0, 0.0, T::None, rgb(70, 96, 130)), layer(Depths, 0.35, 0.0, 0.0, T::None, rgb(70, 120, 170)), layer(Teeth, 0.75, 0.0, 0.0, T::None, rgb(90, 130, 170))],
+            vec![
+                layer(Hollow { shafts: true }, 0.0, 0.0, 0.0, T::None, rgb(80, 130, 180)),
+                layer(Cave { roof: 0.18, floor: 0.74, spikes: 0.35, pillars: 0.2, rock: Rock::Ice }, 0.2, 0.0, 0.0, T::None, rgb(120, 156, 196)),
+                layer(Cave { roof: 0.1, floor: 0.84, spikes: 0.4, pillars: 0.2, rock: Rock::Ice }, 0.5, 0.0, 0.0, T::None, rgb(90, 120, 160)),
+                layer(Cave { roof: 0.04, floor: 0.92, spikes: 0.45, pillars: 0.1, rock: Rock::Ice }, 0.9, 0.0, 0.0, T::None, rgb(60, 82, 116)),
+            ],
             Glows { icicles: true, crystals: Some(rgb(140, 220, 255)), ..default() },
         ),
         cave(
             "lava depths",
-            rgb(10, 4, 3),
-            vec![layer(Wall, 0.25, 0.0, 0.0, T::None, rgb(60, 32, 26)), layer(Depths, 0.3, 0.0, 0.0, T::None, rgb(120, 40, 20)), layer(Teeth, 0.7, 0.0, 0.0, T::None, rgb(34, 20, 18))],
+            rgb(8, 3, 2),
+            vec![
+                layer(Hollow { shafts: false }, 0.0, 0.0, 0.0, T::None, rgb(150, 50, 22)),
+                layer(Cave { roof: 0.16, floor: 0.7, spikes: 0.25, pillars: 0.3, rock: Rock::Basalt }, 0.2, 0.0, 0.0, T::None, rgb(80, 40, 34)),
+                layer(Cave { roof: 0.08, floor: 0.8, spikes: 0.3, pillars: 0.3, rock: Rock::Basalt }, 0.5, 0.0, 0.0, T::None, rgb(56, 30, 26)),
+                layer(Cave { roof: 0.03, floor: 0.9, spikes: 0.35, pillars: 0.15, rock: Rock::Basalt }, 0.9, 0.0, 0.0, T::None, rgb(30, 16, 14)),
+            ],
             Glows { below: Some(rgb(255, 90, 30)), embers: true, ..default() },
         ),
     ]
