@@ -55,7 +55,7 @@
     volumes: (master: 0.8, sfx: 0.9, ambience: 0.7, music: 0.3, cave_reverb: 0.45),
     sounds: {
         // ---- combat ----
-        // A blade landing; a heavy blow (a club, a crit); you, hurt.
+        // A blade landing (a heavy blow, a crit: the same, lower); you, hurt.
         // (hit_b, hit_i, hit_j, hit_k: other takes on "hit" to compare,
         // heard on every blow with PLATYPUS_HIT=b (i, j, k, old), or from
         // the arena's Sounds row; hit_old: the first one.)
@@ -69,7 +69,6 @@
         "hit_j": (make: Cut(low: 600, high: 2800, length: 0.045, tail: 0.08, tear: 200, snap: 0.4), variants: 6, pitch: 0.07, volume: 0.85),
         "hit_k": (make: Cut(low: 1200, high: 4200, length: 0.02, tail: 0.05, tear: 380, snap: 0.6), variants: 6, pitch: 0.07, volume: 0.8),
         "hit_old": (make: Impact(body: 150, crack: 0.25, flesh: 700, slice: 0.15, length: 0.16, muffle: 2800), variants: 5, pitch: 0.08, volume: 0.8),
-        "hit_heavy": (make: Slash(chop: 520, weight: 95, edge: 0.4, wet: 0.6, length: 0.26, muffle: 3500), variants: 4, pitch: 0.06, volume: 0.95),
         "hurt": (make: Impact(body: 95, crack: 0.15, flesh: 500, ring: 0.2, length: 0.22, muffle: 1600), variants: 3, pitch: 0.05, reverb: 0.12, room: 0.8, volume: 0.8, every: 0.25),
         "death": (make: Thud(pitch: 55, drop: 1.0, noise: 0.8, length: 0.6, bright: 1400), variants: 2, reverb: 0.3, volume: 0.8),
         "swing": (make: Swish(low: 250, high: 1800, length: 0.22, q: 1.8, whistle: 0.4), variants: 5, pitch: 0.08, volume: 0.5),

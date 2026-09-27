@@ -39,12 +39,14 @@ pub fn underfoot(world: &World, p: CellPos) -> Option<&'static str> {
     })
 }
 
-/// Every blow lands with a sound where it struck (a crit, louder).
+/// Every blow lands with a sound where it struck: the same sound for all
+/// (the one `PLATYPUS_HIT` picks), a heavy one (a longsword's, a crit)
+/// lower and louder.
 fn hits(mut hits: MessageReader<crate::combat::Hit>, mut out: MessageWriter<PlaySound>) {
     for h in hits.read() {
         let loud = (0.6 + h.weight * 0.3).min(1.3) * if h.crit { 1.3 } else { 1.0 };
         let heavy = h.weight >= 1.6 || h.crit;
-        out.write(PlaySound::at(if heavy { "hit_heavy" } else { hit_name() }, h.at).volume(loud));
+        out.write(PlaySound::at(hit_name(), h.at).volume(loud).pitch(if heavy { 0.86 } else { 1.0 }));
     }
 }
 
