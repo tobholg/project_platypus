@@ -9,10 +9,7 @@
 //! from a ceiling in view (`drip`).
 //!
 //! Music: a loop per mood (`music_day`, `music_night`, `music_cave`), all
-//! playing, crossfaded by where you are and the time of day; and on the
-//! surface, now and then (every 40-90 s), a melody over it: one of the
-//! `melody_day_*` or `melody_night_*` takes (`PLATYPUS_MELODY=1`: one
-//! soon and every 12 s, to hear them).
+//! playing, crossfaded by where you are and the time of day.
 
 use bevy::prelude::*;
 use bevy_seedling::prelude::*;
@@ -26,7 +23,7 @@ pub struct AmbiencePlugin;
 
 impl Plugin for AmbiencePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Heard>().add_systems(Update, (start, listen, rockets, drips, melodies, fade, report).chain().after(super::finish));
+        app.init_resource::<Heard>().add_systems(Update, (start, listen, rockets, drips, fade, report).chain().after(super::finish));
     }
 }
 
@@ -109,34 +106,6 @@ fn start(mut commands: Commands, bank: Res<SoundBank>, mut seen: Local<u32>, bed
             commands.spawn((AmbiencePool, player, bed, Transform::default(), sample_effects![quiet, SpatialBasicNode::default()]));
         }
     }
-}
-
-/// On the surface, a melody now and then: the time of day's takes, never
-/// the same one twice running.
-fn melodies(time: Res<Time<Real>>, heard: Res<Heard>, bank: Res<SoundBank>, mut next: Local<Option<f32>>, mut last: Local<String>, mut rng: Local<Option<Rng>>, mut out: MessageWriter<PlaySound>) {
-    let rng = rng.get_or_insert_with(|| Rng::new(0x3e10));
-    let now = time.elapsed_secs();
-    let test = std::env::var("PLATYPUS_MELODY").is_ok();
-    let when = *next.get_or_insert(if test { 2.0 } else { 15.0 + 20.0 * rng.unit() });
-    if now < when {
-        return;
-    }
-    *next = Some(now + if test { 12.0 } else { 40.0 + 50.0 * rng.unit() });
-    // (Not underground: the cave's music is its own.)
-    if heard.under > 0.3 {
-        return;
-    }
-    let kind = if heard.day > 0.5 { "melody_day_" } else { "melody_night_" };
-    let takes: Vec<&String> = bank.defs.keys().filter(|n| n.starts_with(kind) && **n != *last).collect();
-    if takes.is_empty() {
-        return;
-    }
-    let name = takes[(rng.unit() * takes.len() as f32) as usize % takes.len()].clone();
-    if test {
-        info!("melody: {name}");
-    }
-    out.write(PlaySound::music(name.clone()).volume(1.0 - heard.under));
-    *last = name;
 }
 
 /// Sample the world around the camera.

@@ -27,8 +27,13 @@
 //                                               a second), the weight behind it (0: none)
 //     (Slash also: slice (a longer cut sweeping down from high), soft (the
 //     chop's rise, s: longer, less of a knock).)
-//     Melody(root, bpm, notes: [(semitones, beats)], bright, ring)  a tune on a
-//                                               soft pluck (a note at 99: a rest)
+//     Cut(low, high, length, tail, tear, snap)  a blade's cut, shaped as its
+//                                               swing: a band sweeping up, cut off
+//                                               at the contact, a short wet fall
+//     Song(root, bpm, bar, chords, phrases, form, arp, bright)  a piece: pads,
+//                                               bass, arpeggio, and the melody (form:
+//                                               a phrase per cycle, -1 none; notes
+//                                               (semitones, beats), 99 a rest)
 //     Impact(body, crack, flesh, slice, ring, length, muffle)  a blow: crack,
 //                                               punch, thwack, a blade's slice,
 //                                               a glassy ring (being hurt), all
@@ -51,20 +56,18 @@
     sounds: {
         // ---- combat ----
         // A blade landing; a heavy blow (a club, a crit); you, hurt.
-        // (hit_b .. hit_f: other takes on "hit" to compare, heard on every
-        // blow with PLATYPUS_HIT=b (c, d, e, f, old), or from the arena's
-        // Sounds row; hit_old: the first one. d, e, f: b with no thump,
-        // flesh tearing: d as b, e crisper, f meatier.)
+        // (hit_b, hit_i, hit_j, hit_k: other takes on "hit" to compare,
+        // heard on every blow with PLATYPUS_HIT=b (i, j, k, old), or from
+        // the arena's Sounds row; hit_old: the first one.)
         "hit": (make: Slash(chop: 850, weight: 130, edge: 0.55, wet: 0.45, length: 0.15, muffle: 5500), variants: 6, pitch: 0.07, volume: 0.85),
         "hit_b": (make: Slash(chop: 600, weight: 110, edge: 0.35, wet: 0.8, length: 0.2, muffle: 4000), variants: 6, pitch: 0.07, volume: 0.9),
-        "hit_c": (make: Slash(chop: 1200, weight: 150, edge: 0.9, wet: 0.25, length: 0.12, muffle: 7500), variants: 6, pitch: 0.07, volume: 0.8),
-        "hit_d": (make: Slash(chop: 750, weight: 0, edge: 0.5, wet: 0.8, tear: 320, length: 0.17, muffle: 5000), variants: 6, pitch: 0.07, volume: 0.9),
-        "hit_e": (make: Slash(chop: 1050, weight: 0, edge: 0.8, wet: 0.6, tear: 450, length: 0.13, muffle: 7000), variants: 6, pitch: 0.07, volume: 0.85),
-        "hit_f": (make: Slash(chop: 620, weight: 150, edge: 0.4, wet: 1.0, tear: 220, length: 0.2, muffle: 4500), variants: 6, pitch: 0.07, volume: 0.9),
-        // g, h: d cut more than chopped: a slice sweeping down from high,
-        // the chop rising softly (no knock at the start). h thinner still.
-        "hit_g": (make: Slash(chop: 1100, weight: 0, edge: 0.8, wet: 0.7, tear: 350, slice: 1.0, soft: 0.014, length: 0.16, muffle: 7000), variants: 6, pitch: 0.07, volume: 0.9),
-        "hit_h": (make: Slash(chop: 1500, weight: 0, edge: 0.6, wet: 0.5, tear: 420, slice: 1.4, soft: 0.022, length: 0.14, muffle: 8500), variants: 6, pitch: 0.07, volume: 0.85),
+        // i, j, k: a cut shaped as the swing (the band sweeping up as the
+        // blade arrives, cut off at the contact with a snap, a short wet
+        // fall), nothing under 500 Hz. i: balanced; j: a longer swing into
+        // it; k: short and crisp.
+        "hit_i": (make: Cut(low: 900, high: 3400, length: 0.03, tail: 0.07, tear: 260, snap: 0.5), variants: 6, pitch: 0.07, volume: 0.85),
+        "hit_j": (make: Cut(low: 600, high: 2800, length: 0.045, tail: 0.08, tear: 200, snap: 0.4), variants: 6, pitch: 0.07, volume: 0.85),
+        "hit_k": (make: Cut(low: 1200, high: 4200, length: 0.02, tail: 0.05, tear: 380, snap: 0.6), variants: 6, pitch: 0.07, volume: 0.8),
         "hit_old": (make: Impact(body: 150, crack: 0.25, flesh: 700, slice: 0.15, length: 0.16, muffle: 2800), variants: 5, pitch: 0.08, volume: 0.8),
         "hit_heavy": (make: Slash(chop: 520, weight: 95, edge: 0.4, wet: 0.6, length: 0.26, muffle: 3500), variants: 4, pitch: 0.06, volume: 0.95),
         "hurt": (make: Impact(body: 95, crack: 0.15, flesh: 500, ring: 0.2, length: 0.22, muffle: 1600), variants: 3, pitch: 0.05, reverb: 0.12, room: 0.8, volume: 0.8, every: 0.25),
@@ -125,34 +128,34 @@
         "music_day": (make: Pads(root: 146.83, chords: [[0, 4, 7, 11], [5, 9, 12, 16], [9, 12, 16, 19], [7, 11, 14, 18]], chord: 6.0, bright: 1800, plucks: 0.25, scale: [0, 2, 4, 7, 9]), loops: 96, reverb: 0.5, room: 4.0, volume: 0.8),
         // Night: A minor, slower, darker.
         "music_night": (make: Pads(root: 110.0, chords: [[0, 3, 7, 10, 14], [-4, 0, 3, 7], [5, 8, 12, 15], [7, 10, 14, 17]], chord: 8.0, bright: 1100, plucks: 0.15, scale: [0, 3, 5, 7, 10]), loops: 128, reverb: 0.55, room: 5.0, volume: 0.8),
-        // Melodies over the moods, one now and then on the surface: a soft
-        // pluck, upbeat but minor. Day: B minor (D major's own notes),
-        // 112 bpm. Night: A minor, 100 bpm. Four bars each.
-        "melody_day_a": (make: Melody(root: 246.94, bpm: 112, notes: [
-            (7, 0.5), (10, 0.5), (12, 1), (10, 0.5), (7, 0.5), (5, 1),
-            (3, 0.5), (5, 0.5), (7, 0.75), (10, 0.25), (7, 1.5), (99, 0.5),
-            (7, 0.5), (10, 0.5), (12, 0.5), (15, 0.5), (14, 0.75), (12, 0.25), (10, 1),
-            (7, 0.5), (5, 0.5), (3, 0.5), (5, 0.5), (0, 1.5), (99, 0.5)]), reverb: 0.4, room: 3.5, echo: 0.15, volume: 0.9),
-        "melody_day_b": (make: Melody(root: 246.94, bpm: 112, notes: [
-            (12, 0.75), (15, 0.25), (12, 0.5), (10, 0.5), (7, 0.75), (10, 0.25), (7, 1),
-            (5, 0.5), (7, 0.5), (3, 0.5), (5, 0.5), (7, 2),
-            (12, 0.75), (15, 0.25), (17, 0.5), (15, 0.5), (12, 0.75), (10, 0.25), (12, 1),
-            (7, 0.5), (10, 0.5), (7, 0.5), (5, 0.5), (7, 1.5), (99, 0.5)]), reverb: 0.4, room: 3.5, echo: 0.15, volume: 0.9),
-        "melody_day_c": (make: Melody(root: 246.94, bpm: 112, notes: [
-            (0, 0.5), (3, 0.5), (7, 0.5), (3, 0.5), (2, 0.5), (5, 0.5), (10, 0.5), (5, 0.5),
-            (3, 0.5), (7, 0.5), (12, 0.75), (10, 0.25), (7, 2),
-            (8, 0.5), (12, 0.5), (15, 0.5), (12, 0.5), (7, 0.5), (10, 0.5), (14, 0.5), (10, 0.5),
-            (12, 0.75), (10, 0.25), (7, 0.5), (5, 0.5), (7, 1.5), (99, 0.5)]), reverb: 0.4, room: 3.5, echo: 0.15, volume: 0.9),
-        "melody_night_a": (make: Melody(root: 220, bpm: 100, notes: [
-            (7, 0.5), (10, 0.5), (12, 1), (10, 0.5), (7, 0.5), (5, 1),
-            (3, 0.5), (5, 0.5), (7, 0.75), (10, 0.25), (7, 1.5), (99, 0.5),
-            (12, 0.5), (15, 0.5), (14, 0.75), (12, 0.25), (10, 0.5), (7, 0.5), (10, 1),
-            (7, 0.5), (5, 0.5), (3, 0.5), (2, 0.5), (0, 1.5), (99, 0.5)], bright: 1600, ring: 1.4), reverb: 0.5, room: 4.5, echo: 0.2, volume: 0.85),
-        "melody_night_b": (make: Melody(root: 220, bpm: 100, notes: [
-            (0, 0.5), (3, 0.5), (7, 0.5), (3, 0.5), (5, 0.5), (8, 0.5), (12, 0.5), (8, 0.5),
-            (7, 0.5), (10, 0.5), (15, 0.75), (14, 0.25), (12, 2),
-            (8, 0.5), (12, 0.5), (15, 0.5), (12, 0.5), (7, 0.5), (10, 0.5), (14, 0.5), (10, 0.5),
-            (12, 0.75), (10, 0.25), (7, 0.5), (5, 0.5), (7, 1.5), (99, 0.5)], bright: 1600, ring: 1.4), reverb: 0.5, room: 4.5, echo: 0.2, volume: 0.85),
+        // Options for the music (melody, chords, bass, a soft arpeggio in
+        // one piece: the melody written against the chords), previews to
+        // hear from the arena's Sounds row: an intro, two phrases, a
+        // breath, two more.
+        // A minor, Am F C G, 96 bpm: lyrical, flowing.
+        "song_a": (make: Song(root: 220.0, bpm: 96, chords: [[0, 3, 7], [-4, 0, 3], [3, -2, 7], [-2, 2, 5]],
+            phrases: [
+                [(19, 1.5), (17, 0.5), (15, 1), (12, 1), (15, 1.5), (17, 0.5), (20, 1), (19, 1), (19, 2), (17, 0.5), (15, 0.5), (17, 1), (14, 1.5), (15, 0.5), (17, 2)],
+                [(19, 1.5), (17, 0.5), (15, 1), (12, 1), (15, 1.5), (17, 0.5), (20, 0.5), (22, 0.5), (24, 1), (22, 0.75), (19, 0.25), (19, 1), (17, 0.5), (15, 1.5), (17, 1), (15, 0.5), (14, 0.5), (14, 1.5), (99, 0.5)],
+                [(24, 0.75), (22, 0.25), (24, 0.5), (19, 0.5), (15, 0.5), (19, 0.5), (24, 1), (20, 0.75), (19, 0.25), (20, 0.5), (15, 0.5), (17, 0.5), (20, 0.5), (24, 1), (22, 0.75), (19, 0.25), (22, 0.5), (15, 0.5), (19, 1.5), (17, 0.5), (17, 0.75), (14, 0.25), (17, 0.5), (22, 0.5), (19, 1), (17, 1)],
+                [(24, 0.75), (22, 0.25), (24, 0.5), (19, 0.5), (15, 0.5), (19, 0.5), (24, 1), (20, 0.75), (19, 0.25), (20, 0.5), (24, 0.5), (22, 0.5), (20, 0.5), (19, 1), (19, 0.75), (17, 0.25), (15, 0.5), (19, 0.5), (22, 1.5), (19, 0.5), (17, 0.5), (19, 0.5), (17, 0.5), (14, 0.5), (12, 1.5), (99, 0.5)]],
+            form: [-1, 0, 1, -1, 2, 3], arp: 0.08), reverb: 0.45, room: 4.0, volume: 0.8),
+        // E minor, Em C G D, 108 bpm: bouncy, syncopated.
+        "song_b": (make: Song(root: 164.81, bpm: 108, chords: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]],
+            phrases: [
+                [(19, 0.5), (22, 0.5), (24, 0.75), (22, 0.25), (19, 0.5), (15, 0.5), (19, 1), (20, 0.5), (19, 0.5), (15, 0.5), (12, 0.5), (15, 1), (19, 1), (22, 0.5), (19, 0.5), (15, 0.5), (19, 0.5), (22, 0.75), (24, 0.25), (22, 1), (26, 0.5), (24, 0.5), (22, 0.5), (17, 0.5), (14, 1), (17, 0.5), (22, 0.5)],
+                [(24, 0.5), (27, 0.5), (26, 0.75), (24, 0.25), (22, 0.5), (19, 0.5), (24, 1), (20, 0.5), (24, 0.5), (27, 0.75), (24, 0.25), (20, 1), (19, 1), (22, 0.5), (19, 0.5), (15, 0.5), (22, 0.5), (27, 0.75), (26, 0.25), (24, 1), (22, 0.5), (26, 0.5), (24, 1), (22, 0.5), (22, 1), (99, 0.5)],
+                [(12, 0.5), (15, 0.5), (19, 0.5), (24, 0.5), (22, 0.75), (19, 0.25), (15, 1), (12, 0.5), (15, 0.5), (19, 0.5), (20, 0.5), (19, 1), (15, 1), (15, 0.5), (19, 0.5), (22, 0.5), (27, 0.5), (26, 0.75), (22, 0.25), (19, 1), (14, 0.5), (17, 0.5), (22, 0.5), (26, 0.5), (24, 1), (22, 1)],
+                [(24, 0.75), (22, 0.25), (19, 0.5), (22, 0.5), (24, 1), (27, 1), (24, 0.75), (20, 0.25), (19, 0.5), (20, 0.5), (24, 1), (19, 1), (22, 0.75), (19, 0.25), (15, 0.5), (19, 0.5), (22, 0.5), (24, 0.5), (26, 1), (24, 0.5), (22, 0.5), (19, 0.5), (17, 0.5), (19, 1.5), (99, 0.5)]],
+            form: [-1, 0, 1, -1, 2, 3], arp: 0.08), reverb: 0.45, room: 4.0, volume: 0.8),
+        // D dorian, Dm G F C, 100 bpm: hopeful minor.
+        "song_c": (make: Song(root: 146.83, bpm: 100, chords: [[0, 3, 7], [5, 9, 12], [3, 7, 10], [-2, 2, 5]],
+            phrases: [
+                [(19, 1), (24, 0.5), (22, 0.5), (19, 1), (15, 1), (21, 1.5), (19, 0.5), (17, 0.5), (21, 0.5), (26, 1), (24, 1), (22, 0.5), (19, 0.5), (15, 0.5), (17, 0.5), (19, 1), (22, 1.5), (19, 0.5), (17, 0.5), (14, 0.5), (17, 1)],
+                [(24, 0.75), (26, 0.25), (27, 0.5), (26, 0.5), (24, 1), (19, 1), (21, 0.75), (24, 0.25), (26, 0.5), (24, 0.5), (21, 1), (17, 1), (27, 0.75), (26, 0.25), (24, 0.5), (22, 0.5), (19, 1), (24, 1), (26, 0.5), (24, 0.5), (22, 0.5), (19, 0.5), (22, 1.5), (99, 0.5)],
+                [(12, 0.5), (15, 0.5), (19, 0.5), (24, 0.5), (22, 1), (19, 1), (17, 0.5), (21, 0.5), (24, 0.5), (26, 0.5), (24, 1), (21, 1), (15, 0.5), (19, 0.5), (22, 0.5), (27, 0.5), (26, 1), (24, 1), (22, 0.5), (19, 0.5), (17, 0.5), (14, 0.5), (17, 1.5), (99, 0.5)],
+                [(19, 0.75), (24, 0.25), (27, 0.5), (26, 0.5), (24, 1), (22, 1), (21, 0.75), (26, 0.25), (24, 0.5), (21, 0.5), (19, 1), (17, 1), (19, 0.75), (22, 0.25), (24, 0.5), (27, 0.5), (26, 1), (24, 1), (22, 0.75), (19, 0.25), (17, 0.5), (14, 0.5), (12, 1.5), (99, 0.5)]],
+            form: [-1, 0, 1, -1, 2, 3], arp: 0.08), reverb: 0.45, room: 4.0, volume: 0.8),
 
         // Underground: low, open fifths, uneasy; sparse.
         "music_cave": (make: Pads(root: 73.42, chords: [[0, 7, 15], [-2, 5, 14], [3, 10, 15], [0, 7, 13]], chord: 10.0, bright: 700, plucks: 0.1, scale: [0, 3, 7, 8, 12]), loops: 120, reverb: 0.6, room: 6.0, volume: 0.9),
