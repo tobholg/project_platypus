@@ -4608,6 +4608,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "platypus_backdrop"
+version = "0.1.0"
+dependencies = [
+ "platypus_art",
+]
+
+[[package]]
 name = "platypus_bench"
 version = "0.1.0"
 dependencies = [

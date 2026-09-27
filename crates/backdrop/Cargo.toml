@@ -1,0 +1,13 @@
+[package]
+name = "platypus_backdrop"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Parallax backgrounds, generated: skies, ridges, hills, treelines, dunes, caves, in layers (and the platypus-backdrop CLI that renders them as stills)."
+
+[dependencies]
+platypus_art = { path = "../art" }
+
+[[bin]]
+name = "platypus-backdrop"
+path = "src/main.rs"
