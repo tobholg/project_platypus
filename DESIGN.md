@@ -438,8 +438,9 @@ a stat is naming it once (`gear/stats.rs`) and reading it where it acts.
 - **Enemies wear gear** from their loot tables, and what they wear is what
   they drop.
 - **Gear that moves you:** boots with a trick (rocket boots: hold jump in the
-  air to thrust up, their exhaust real fire; refilling while resting (standing, on a
-  wall, in water), a second's charge a second, so as long as they fire; under water they fire at half thrust and 45 % of the
+  air to thrust up, their exhaust real fire; refilling whenever they're not firing (in
+  the air too; after 0.25 s; not while jump is held on empty, or they'd
+  sputter on for ever), a second's charge a second, so as long as they fire; under water they fire at half thrust and 45 % of the
   speed, bubbles, no flame; their charge a round timer top right while
   worn; cloud boots: air jumps), and a
   **grappling hook** in its own slot, used with E whatever is in the hand:

@@ -67,7 +67,7 @@ killed...) pop up at the top and give things or unlock recipes
 Esc (or I) opens the inventory: drag stacks between slots (or click one up and
 click it down), right-click takes half, Shift-click moves across, hover for what
 it is and does, click outside to throw it out. Boots can fly: in rocket boots (worn from the start while developing), hold
-Space in the air to thrust up (3 s, refilling while you stand, cling to a wall or swim, over as long as they fire; under water
+Space in the air to thrust up (3 s, refilling whenever they're not firing, a moment after they stop, over as long as they fire; under water
 they fire too, at about half thrust, bubbling, no flame; the exhaust is fire that burns
 what's under you and lights grass and wood; their charge shows top right while worn); cloud boots (in the pack) give a triple
 jump. E throws the grappling hook (worn in the Hook slot from the start while

@@ -16,8 +16,10 @@ use crate::actors::{Health, PlayerDeaths};
 pub struct HudPlugin;
 
 const SLOTS: usize = 5;
-/// Status icon size (pixels).
+/// Status icon size, and a status's width with its label under it
+/// (pixels; even, so the icon sits on whole pixels).
 const ICON: u32 = 34;
+const SLOT_WIDTH: f32 = 76.0;
 /// Life, mana or stamina an icon stands for.
 const PER: f32 = 20.0;
 /// Most icons of a kind shown (and hearts to a row).
@@ -179,7 +181,8 @@ fn spawn_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
             // Statuses: round timers with their name under them.
             root.spawn(Node { column_gap: Val::Px(10.0), margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|row| {
                 for (i, icon) in icons.iter().enumerate() {
-                    row.spawn((StatusSlot(i), Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, display: Display::None, ..default() }))
+                    // (A fixed width: a label changing never moves the row.)
+                    row.spawn((StatusSlot(i), Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, width: Val::Px(SLOT_WIDTH), display: Display::None, ..default() }))
                         .with_children(|slot| {
                             slot.spawn((ImageNode::new(icon.clone()), Node { width: Val::Px(ICON as f32), height: Val::Px(ICON as f32), ..default() }));
                             slot.spawn((StatusLabel(i), Text::new(""), TextFont { font_size: FontSize::Px(11.0), ..default() }, TextColor(Color::WHITE)));
@@ -250,7 +253,7 @@ fn update_statuses(
     player: Query<PlayerStatuses, With<LocalPlayer>>,
     mut slots: Query<(&StatusSlot, &mut Node)>,
     mut labels: Query<(&StatusLabel, &mut Text)>,
-    mut fuel_was: Local<f32>,
+    mut fuel: Local<(f32, bool)>,
 ) {
     let Ok((burning, chilled, coated, k, stats)) = player.single() else { return };
     // (label, colour, share left)
@@ -270,14 +273,22 @@ fn update_statuses(
     // Rocket boots worn: their charge, always, rightmost.
     if let Some(time) = stats.map(|s| s.0.rocket_time).filter(|&t| t > 0.0) {
         let left = k.loco.rocket_left;
-        let label = if left <= 0.0 {
+        // (Filling or not from how it last moved: the sim ticks slower
+        // than frames, so it's unchanged every other frame; judged frame by
+        // frame the label flickered, and the row with it.)
+        if left > fuel.0 + 1e-5 {
+            fuel.1 = true;
+        } else if left < fuel.0 - 1e-5 || left >= time {
+            fuel.1 = false;
+        }
+        fuel.0 = left;
+        let label = if left <= 0.0 && !fuel.1 {
             "Empty"
-        } else if left < time && left > *fuel_was {
+        } else if fuel.1 {
             "Recharging"
         } else {
             "Rockets"
         };
-        *fuel_was = left;
         shown.push((label.into(), [255, 176, 70], left / time));
     }
     // (Out of the layout when unused, not just hidden: the row stays

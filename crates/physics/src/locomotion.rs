@@ -73,6 +73,9 @@ pub fn tether(body: &mut Body, at: Vec2, len: f32, dt: f32) -> bool {
 /// Rocket boots under water: shares of their thrust and top speed.
 const ROCKET_WATER: (f32, f32) = (0.5, 0.45);
 
+/// Seconds after rocket boots stop firing before they start to refill.
+const ROCKET_RECHARGE_DELAY: f32 = 0.25;
+
 /// Below this share of its body under water (its head out), a jump leaves
 /// the water as a jump does, at this share of a jump's speed.
 const BREACH: f32 = 0.85;
@@ -260,6 +263,8 @@ pub struct Locomotion {
     stroke_left: f32,
     /// Rocket boots' fuel left (seconds).
     pub rocket_left: f32,
+    /// Seconds since the rocket boots last fired (or were held on empty).
+    rocket_rest: f32,
     /// On a rope (set before each `steer`): in the air it keeps its swing
     /// (air control pumps it, never brakes it).
     pub swinging: bool,
@@ -294,6 +299,7 @@ impl Default for Locomotion {
             prev_dash: false,
             stroke_left: 0.0,
             rocket_left: 0.0,
+            rocket_rest: 0.0,
             swinging: false,
             backed: false,
             dive: 0.0,
@@ -601,14 +607,21 @@ impl Locomotion {
             && body.vel.y < top
         {
             self.rocket_left -= dt;
+            self.rocket_rest = 0.0;
             body.vel.y = (body.vel.y + thrust * dt).min(top);
             // (The rocket, not the jump, now: letting go doesn't cut it.)
             self.rising_from_jump = false;
             ev.rocketed = true;
-        } else if s.rocket_time > 0.0 && (grounded || swimming || self.state == MoveState::WallSlide) {
-            // Resting (on the ground, a wall, in water) they fill back up
-            // over as long as they fire: a second's charge a second.
-            self.rocket_left = (self.rocket_left + dt).min(s.rocket_time);
+        } else if s.rocket_time > 0.0 {
+            // Not firing (anywhere: the ground, the air, water) they fill
+            // back up over as long as they fire, a second's charge a second,
+            // a moment after they stop; not while jump is held on empty in
+            // the air (it'd sputter on for ever).
+            let holding_empty = intent.jump && !grounded && self.rocket_left <= 0.0;
+            self.rocket_rest = if holding_empty { 0.0 } else { self.rocket_rest + dt };
+            if self.rocket_rest > ROCKET_RECHARGE_DELAY {
+                self.rocket_left = (self.rocket_left + dt).min(s.rocket_time);
+            }
         }
 
         // Gravity (none while a jump's rise is held).
@@ -704,8 +717,8 @@ mod tests {
     }
 
     /// Rocket boots: holding jump climbs far past a jump's height, for as
-    /// long as the fuel lasts; standing, it fills again over as long as it
-    /// fires (not at once on landing).
+    /// long as the fuel lasts; not firing (in the air too), it fills again
+    /// over as long as it fires (not at once on landing).
     #[test]
     fn rocket_boots_climb_while_jump_is_held() {
         let mut rows = vec!["#                                                                                                  #"; 400];
@@ -729,20 +742,22 @@ mod tests {
         let rocket = apex(&s, &mut l2, &mut b2, 80);
         assert!(rocket > plain * 2.0, "rocket {rocket} vs a jump {plain}");
         assert!(l2.rocket_left <= 0.0, "the fuel ran out (80 ticks in, still up)");
-        // Down (still empty, falling), then half a second on the ground:
-        // half full; a second: full.
-        while !l2.grounded() {
+        // Let go, still high up: after a moment it fills as it falls, over
+        // as long as it fires (not at once).
+        let delay = (ROCKET_RECHARGE_DELAY * 60.0).ceil() as usize;
+        for _ in 0..delay {
             tick(&g, &s, &mut l2, &mut b2, Intent::default());
         }
-        assert!(l2.rocket_left < 0.05, "landing doesn't refill it at once: {}", l2.rocket_left);
-        for _ in 0..30 {
+        assert!(l2.rocket_left < 0.02, "not during the pause: {}", l2.rocket_left);
+        for _ in 0..3 {
             tick(&g, &s, &mut l2, &mut b2, Intent::default());
         }
-        assert!((l2.rocket_left - 0.5).abs() < 0.05, "half a second standing: half full, {}", l2.rocket_left);
-        for _ in 0..30 {
+        assert!(!l2.grounded(), "still in the air");
+        assert!((l2.rocket_left - 3.0 / 60.0).abs() < 0.02, "3 ticks after the pause, in the air: filling, {}", l2.rocket_left);
+        for _ in 0..57 {
             tick(&g, &s, &mut l2, &mut b2, Intent::default());
         }
-        assert!((l2.rocket_left - 1.0).abs() < 1e-3, "a second standing: full, {}", l2.rocket_left);
+        assert!((l2.rocket_left - 1.0).abs() < 1e-3, "a second after it: full, {}", l2.rocket_left);
     }
 
     /// A body on a rope swings down and up the other side nearly as high
