@@ -44,8 +44,20 @@ fn hits(mut hits: MessageReader<crate::combat::Hit>, mut out: MessageWriter<Play
     for h in hits.read() {
         let loud = (0.6 + h.weight * 0.3).min(1.3) * if h.crit { 1.3 } else { 1.0 };
         let heavy = h.weight >= 1.6 || h.crit;
-        out.write(PlaySound::at(if heavy { "hit_heavy" } else { "hit" }, h.at).volume(loud));
+        out.write(PlaySound::at(if heavy { "hit_heavy" } else { hit_name() }, h.at).volume(loud));
     }
+}
+
+/// Which "hit" a blow plays: `PLATYPUS_HIT`=b or c for the other takes
+/// (to compare by ear), `old` for the one before.
+fn hit_name() -> &'static str {
+    static NAME: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| match std::env::var("PLATYPUS_HIT").as_deref() {
+        Ok("b") => "hit_b",
+        Ok("c") => "hit_c",
+        Ok("old") => "hit_old",
+        _ => "hit",
+    })
 }
 
 /// The player hurt, whatever hurt them (a blow, fire, a fall).

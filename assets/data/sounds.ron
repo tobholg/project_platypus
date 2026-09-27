@@ -21,6 +21,9 @@
 //     Step(heel, scuff, q, grit, length, muffle)  a footstep: a soft pat
 //     Swish(low, high, length, q, whistle)      a swing: a band rising to `high`
 //                                               and back as the blade passes
+//     Slash(chop, weight, edge, wet, length, muffle)  a blade biting in: the
+//                                               edge's bright tick, the chop (about
+//                                               `chop` Hz, wet), the weight behind it
 //     Impact(body, crack, flesh, slice, ring, length, muffle)  a blow: crack,
 //                                               punch, thwack, a blade's slice,
 //                                               a glassy ring (being hurt), all
@@ -43,8 +46,14 @@
     sounds: {
         // ---- combat ----
         // A blade landing; a heavy blow (a club, a crit); you, hurt.
-        "hit": (make: Impact(body: 150, crack: 0.25, flesh: 700, slice: 0.15, length: 0.16, muffle: 2800), variants: 5, pitch: 0.08, volume: 0.8),
-        "hit_heavy": (make: Impact(body: 85, crack: 0.3, flesh: 450, slice: 0.05, length: 0.26, muffle: 2000), variants: 4, pitch: 0.06, volume: 0.9),
+        // (hit_b, hit_c: other takes on "hit" to compare, heard on every
+        // blow with PLATYPUS_HIT=b or c, or from the arena's Sounds row;
+        // hit_old: the one before.)
+        "hit": (make: Slash(chop: 850, weight: 130, edge: 0.55, wet: 0.45, length: 0.15, muffle: 5500), variants: 6, pitch: 0.07, volume: 0.85),
+        "hit_b": (make: Slash(chop: 600, weight: 110, edge: 0.35, wet: 0.8, length: 0.2, muffle: 4000), variants: 6, pitch: 0.07, volume: 0.9),
+        "hit_c": (make: Slash(chop: 1200, weight: 150, edge: 0.9, wet: 0.25, length: 0.12, muffle: 7500), variants: 6, pitch: 0.07, volume: 0.8),
+        "hit_old": (make: Impact(body: 150, crack: 0.25, flesh: 700, slice: 0.15, length: 0.16, muffle: 2800), variants: 5, pitch: 0.08, volume: 0.8),
+        "hit_heavy": (make: Slash(chop: 520, weight: 95, edge: 0.4, wet: 0.6, length: 0.26, muffle: 3500), variants: 4, pitch: 0.06, volume: 0.95),
         "hurt": (make: Impact(body: 95, crack: 0.15, flesh: 500, ring: 0.2, length: 0.22, muffle: 1600), variants: 3, pitch: 0.05, reverb: 0.12, room: 0.8, volume: 0.8, every: 0.25),
         "death": (make: Thud(pitch: 55, drop: 1.0, noise: 0.8, length: 0.6, bright: 1400), variants: 2, reverb: 0.3, volume: 0.8),
         "swing": (make: Swish(low: 250, high: 1800, length: 0.22, q: 1.8, whistle: 0.4), variants: 5, pitch: 0.08, volume: 0.5),
