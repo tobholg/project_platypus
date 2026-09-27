@@ -24,6 +24,9 @@
 //   Melee(weapon): a weapon (weapons.ron): the left button swings it at the
 //     cursor; hold it to swing through the combo. Its icon is its sprite.
 //   Chest: place one (furniture, 12 × 10 cells, on the ground); right-click a chest to open it
+//   Potion(heal, over, sickness): drink it (click, or H: the first healing
+//     one carried): heal health back over `over` s (0: at once), then
+//     `sickness` s when no healing potion works
 //   Station(id): place a crafting station (crafting.ron); a pickaxe knocks it back
 // gear: (slot: Held, stats: {..}): counts toward its holder's stats while
 //   in the hand, and can be found rarer (gear.ron has the rest of the gear);
@@ -38,6 +41,9 @@
         (id: "torch",          name: "Torch",          stack: 99, color: (255, 190, 90), use: Torch),
         (id: "bomb",           name: "Bomb",           stack: 30, color: (40, 40, 46), use: Throw(Bomb)),
         (id: "glowstick",      name: "Glow stick",     stack: 30, color: (90, 255, 150), use: Throw(Glowstick)),
+        // Potions: click to drink (or H, the first healing one carried).
+        (id: "small_health_potion", name: "Small health potion", stack: 30, color: (230, 60, 80), use: Potion(heal: 40, over: 0.6, sickness: 30),
+            about: "A small red flask."),
         // Foci (magic::spells): each holds its spells (a wand one, a staff
         // two: left and right button), of its tier or less (a wand 1, a staff
         // 2); its element is the one it favours (its stats: that element's
@@ -142,7 +148,7 @@
     start: [
         ("copper_pickaxe", 1), ("copper_axe", 1), ("torch", 12), ("bomb", 5), ("block:platform", 40),
         ("radiant_wand", 1), ("fire_wand", 1), ("acid_wand", 1), ("fire_staff", 1), ("storm_staff", 1),
-        ("glowstick", 6), ("gravity_wand", 1), ("force_wand", 1), ("gravity_staff", 1), ("force_staff", 1), ("frost_wand", 1),
+        ("glowstick", 6), ("small_health_potion", 5), ("gravity_wand", 1), ("force_wand", 1), ("gravity_staff", 1), ("force_staff", 1), ("frost_wand", 1),
         ("shortsword", 1), ("longsword", 1), ("bow", 1), ("arrow", 60),
         ("leather_cap", 1), ("chainmail", 1), ("apprentice_robe", 1), ("feather_boots", 1), ("ring_of_vigour", 1), ("ember_amulet", 1),
         ("cloud_boots", 1), ("radiant_staff", 1), ("frost_staff", 1), ("blaze_staff", 1),

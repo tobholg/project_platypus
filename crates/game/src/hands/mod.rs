@@ -365,7 +365,7 @@ fn use_hands(
     mut found: Query<(Entity, &mut chests::Chest, &Kinematics), Without<LocalPlayer>>,
     (crafting, mut stations): (Res<crate::craft::Crafting>, Query<StationHit, (Without<LocalPlayer>, Without<chests::Chest>)>),
     book: Res<crate::magic::Spellbook>,
-    (mut casts, mut swings, mut draws, mut sounds): (MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::combat::MeleeRequest>, MessageWriter<crate::archery::DrawBow>, MessageWriter<crate::sound::PlaySound>),
+    (mut casts, mut swings, mut draws, mut sounds, mut drinks): (MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::combat::MeleeRequest>, MessageWriter<crate::archery::DrawBow>, MessageWriter<crate::sound::PlaySound>, MessageWriter<crate::potion::Drink>),
 ) {
     let clicked = std::mem::take(&mut input.clicked);
     hand.cooldown = (hand.cooldown - DT).max(0.0);
@@ -478,6 +478,10 @@ fn use_hands(
         // (Drawn while held, loosed on letting go: `archery::nock`.)
         Use::Bow(_) if input.primary && items.id("arrow").is_some_and(|a| inv.count(a) > 0) => {
             draws.write(crate::archery::DrawBow { archer: me, at: cursor });
+        }
+        // (Drunk, healed, the sickness after: `potion::drink`.)
+        Use::Potion { .. } if clicked => {
+            drinks.write(crate::potion::Drink { who: me, slot });
         }
         Use::Chest if clicked => {
             let Some(feet) = chests::place_spot(&sim.world, cursor) else { return };

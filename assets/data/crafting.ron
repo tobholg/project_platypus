@@ -98,6 +98,8 @@
         (makes: "mithril_bar", needs: [("block:mithril_ore", 5)], at: "furnace"),
         (makes: "block:glass", count: 2, needs: [("block:sand", 2)], at: "furnace"),
         (makes: "glowstick", count: 3, needs: [("block:glass", 1), ("block:emerald", 1)], at: "furnace"),
+        // (A placeholder: an alchemy table, herbs, later.)
+        (makes: "small_health_potion", count: 2, needs: [("block:glass", 1), ("block:mushroom_stem", 1)], at: "workbench"),
 
         // ---- at the anvil: tools, arms, armour, hooks ----
         (makes: "copper_pickaxe", needs: [("copper_bar", 6), ("block:planks", 2)], at: "anvil"),

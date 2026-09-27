@@ -15,7 +15,7 @@ use crate::actors::{Health, PlayerDeaths};
 
 pub struct HudPlugin;
 
-const SLOTS: usize = 5;
+const SLOTS: usize = 6;
 /// Status icon size, and a status's width with its label under it
 /// (pixels; even, so the icon sits on whole pixels).
 const ICON: u32 = 34;
@@ -244,7 +244,7 @@ fn update_pips(
     }
 }
 
-type PlayerStatuses<'a> = (Option<&'a Burning>, Option<&'a Chilled>, Option<&'a Coated>, &'a crate::actors::Kinematics, Option<&'a crate::actors::MoveStats>);
+type PlayerStatuses<'a> = (Option<&'a Burning>, Option<&'a Chilled>, Option<&'a Coated>, &'a crate::actors::Kinematics, Option<&'a crate::actors::MoveStats>, Option<&'a crate::potion::PotionSickness>);
 
 fn update_statuses(
     coatings: Res<Coatings>,
@@ -255,7 +255,7 @@ fn update_statuses(
     mut labels: Query<(&StatusLabel, &mut Text)>,
     mut fuel: Local<(f32, bool)>,
 ) {
-    let Ok((burning, chilled, coated, k, stats)) = player.single() else { return };
+    let Ok((burning, chilled, coated, k, stats, sick)) = player.single() else { return };
     // (label, colour, share left)
     let mut shown: Vec<(String, [u8; 3], f32)> = Vec::new();
     if let Some(b) = burning {
@@ -269,6 +269,9 @@ fn update_statuses(
     {
         let (r, g, b) = def.color;
         shown.push((def.label.clone(), [r, g, b], c.left / c.total.max(0.01)));
+    }
+    if let Some(s) = sick {
+        shown.push(("Potion sick".into(), [220, 120, 160], s.left / s.total));
     }
     // Rocket boots worn: their charge, always, rightmost.
     if let Some(time) = stats.map(|s| s.0.rocket_time).filter(|&t| t > 0.0) {

@@ -158,6 +158,10 @@
 //!   fungal, crystal, toxic), the player on its floor holding a torch, a
 //!   patch of back wall beside it axed away (logs where, and how much void
 //!   shows)
+//! - `potion`     (`PLATYPUS_WORLD=arena`) health down to 22 (the edges
+//!   pulse red), a blow at 2.5 s (a red flash), H at 4 s (a potion drunk:
+//!   green; logs the health before and after), H again at 5 s (sick: not
+//!   drunk; logs it)
 //! - `rocketswim` (`PLATYPUS_WORLD=arena`) a pit of water 160 deep, the
 //!   player in it (far over the bottom) with its rocket boots empty: logs the charge
 //!   after 3 s in the water, then how far a held jump rose it in 1.5 s
@@ -232,6 +236,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
             .add_systems(Update, (underlook_script, voidlook_script))
+            .add_systems(PreUpdate, potion_script.after(InputSystems))
             .add_systems(PreUpdate, surface_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, walk_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, tempo_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3022,6 +3027,44 @@ fn rocket_script(
     match (hold, keys.pressed(KeyCode::Space)) {
         (true, false) => keys.press(KeyCode::Space),
         (false, true) => keys.release(KeyCode::Space),
+        _ => {}
+    }
+}
+
+/// Potions and the screen's edges (see the module docs).
+fn potion_script(s: Res<Scenario>, items: Option<Res<crate::hands::items::Items>>, mut keys: ResMut<ButtonInput<KeyCode>>, mut player: Query<(&mut crate::actors::Health, &crate::hands::items::Inventory, Has<crate::potion::PotionSickness>), With<LocalPlayer>>, mut state: Local<(u8, f32)>) {
+    if s.name != "potion" {
+        return;
+    }
+    let Ok((mut h, inv, sick)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let potions = || items.as_ref().and_then(|i| i.id("small_health_potion")).map_or(0, |p| inv.count(p));
+    keys.release(KeyCode::KeyH);
+    match state.0 {
+        0 if t > 0.5 => {
+            h.hp = 22.0;
+            state.0 = 1;
+        }
+        1 if t > 2.5 => {
+            h.hp -= 8.0;
+            state.0 = 2;
+        }
+        2 if t > 4.0 => {
+            info!("potion: before: {:.0} of {:.0} hp, {} potions", h.hp, h.max, potions());
+            state.1 = h.hp;
+            keys.press(KeyCode::KeyH);
+            state.0 = 3;
+        }
+        3 if t > 4.9 => {
+            info!("potion: after: {:.0} hp (+{:.0}), {} potions left, sick {sick}", h.hp, h.hp - state.1, potions());
+            state.1 = h.hp;
+            keys.press(KeyCode::KeyH);
+            state.0 = 4;
+        }
+        4 if t > 5.4 => {
+            info!("potion: H again while sick: {:.0} hp (+{:.0}), {} potions left", h.hp, h.hp - state.1, potions());
+            state.0 = 5;
+        }
         _ => {}
     }
 }

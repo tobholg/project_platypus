@@ -228,6 +228,16 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
 - **Containers:**
   - A chest is furniture: an entity with a body (it falls, blasts throw it, fire burns it) and a key to its contents. It breaks and its contents scatter when it's had enough. (Changed from "bound to the cells of its footprint": see §4.2b.)
   - General rule: furniture (chests, barrels, lanterns, crates) is entities with bodies, made by worldgen as spawns alongside the cells.
+- **Potions** (`potion.rs`, built 2026-09-27): an item's `use: Potion(heal,
+  over, sickness)`. Click it in the hand, or H drinks the first healing one
+  carried (Terraria's quick heal): `heal` back over `over` s, then potion
+  sickness for `sickness` s (a status timer) when no healing potion works;
+  not drunk at full health or while sick. First: the small health potion
+  (40 over 0.6 s, 30 s sickness), from glass and a mushroom stem at a
+  workbench (a placeholder), in chests at every depth.
+- **The screen's edges** (`screen_fx.rs`): a red flash fading in and out
+  when hurt (stronger the harder), a red pulse below 30 % health (quicker
+  and stronger the lower), a green glow when a potion heals.
 - **Loot tables** (RON) by context, such as `crypt_deep` or `troll`: weighted entries, counts, rarity by depth.
 
 ## 6. Creatures and bodies

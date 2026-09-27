@@ -29,12 +29,14 @@ mod hud;
 mod light;
 mod magic;
 mod particles;
+mod potion;
 mod progress;
 mod props;
 mod render;
 mod rigid;
 mod save;
 mod scenario;
+mod screen_fx;
 #[cfg(feature = "spikes")]
 mod spikes;
 mod tempo;
@@ -125,7 +127,7 @@ fn main() {
             scenario::ScenarioPlugin,
         ))
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
-        .add_plugins(tempo::TempoPlugin)
+        .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin))
         .add_plugins(sound::SoundPlugin)
         .add_plugins(backdrop::BackdropPlugin)
         .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed }))

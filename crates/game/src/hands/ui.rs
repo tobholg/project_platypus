@@ -865,6 +865,11 @@ fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<&crate::com
         }
         Use::Throw(t) => lines.push(format!("{t:?}: click to throw it toward the cursor")),
         Use::Torch => lines.push("Click to plant it on a block: light".into()),
+        Use::Potion { heal, over, sickness } => {
+            let when = if *over > 0.0 { format!(" over {over:.0} s") } else { String::new() };
+            lines.push(format!("Heals {heal:.0}{when}; click (or H) to drink"));
+            lines.push(format!("Potion sickness {sickness:.0} s after"));
+        }
         Use::Chest => lines.push("Click to place it on the ground; right-click it to open".into()),
         Use::Block(_) => {
             let spare = s.count % items.unit(s.item);

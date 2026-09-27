@@ -48,6 +48,16 @@ pub enum Use {
     /// A bow (`weapons.ron`): hold the left button to draw, let go to loose
     /// an arrow at the cursor (it takes one of your arrows).
     Bow(String),
+    /// A potion (`potion.rs`): click it (or H, the first one carried) to
+    /// drink it: `heal` health back over `over` seconds (0: at once), then
+    /// `sickness` seconds when no healing potion works.
+    Potion {
+        heal: f32,
+        #[serde(default)]
+        over: f32,
+        #[serde(default = "potion_sickness")]
+        sickness: f32,
+    },
     /// A block of a material (made from the materials table, not written).
     #[serde(skip)]
     Block(MaterialId),
@@ -96,6 +106,10 @@ pub struct Aura {
     pub sparks: Option<crate::magic::runes::Emitter>,
     #[serde(default = "aura_casting")]
     pub casting: f32,
+}
+
+fn potion_sickness() -> f32 {
+    30.0
 }
 
 fn aura_strength() -> f32 {
