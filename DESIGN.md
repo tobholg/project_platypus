@@ -457,7 +457,7 @@ Systems first, with example content to iterate on.
 - **Engine:** bevy_seedling (Firewheel) plays; Bevy's own audio is off. Three
   buses (effects, ambience, music), their volumes in `sounds.ron`; F11 mutes.
 - **Made, not recorded:** every sound is a recipe in `sounds.ron` (thud, clang,
-  whoosh, burst, drip, boom, zap, chime, blip, grunt; loops: fire, cave, rain,
+  whoosh, burst, drip, boom, zap, chime, blip, step, swish, impact; loops: fire, cave, rain,
   wind, water, lava, pads), rendered at startup in the background (fundsp's
   filters and reverb, our own oscillators and envelopes), a few takes each,
   and again when the file is saved. Any sound can be a recording instead
@@ -474,8 +474,10 @@ Systems first, with example content to iterate on.
   camera are sampled (what burns, and where; lava; water that just moved;
   rain falling; rock overhead from open air) and looping beds fade toward
   that: a fire's roar and crackle panned toward it, a cave's rumble and air,
-  wind and rain in the open. Underground, drops fall from real ceilings in
-  view.
+  wind and rain in the open. Underground is rock overhead from open air, or
+  being more than ~15 cells below the ground as generated (so a shaft dug
+  up to the sky, or a chasm, doesn't flip the music to the surface's).
+  Underground, drops fall from real ceilings in view.
 - **Music:** chill synth pads, a loop per mood (day: D major; night: A
   minor; underground: low open fifths), all playing, crossfaded by where you
   are and the time of day.

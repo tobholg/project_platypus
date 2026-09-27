@@ -37,6 +37,8 @@ pub enum DevAction {
     Hands,
     /// The arena panel (time, overlays, spawning), anywhere.
     Arena,
+    /// Straight up to the surface (out of any cave).
+    Surface,
 }
 
 /// A screen has the keyboard (the art editor): the player and the keys
@@ -61,7 +63,7 @@ impl Plugin for DevPlugin {
             .init_resource::<KeyboardTaken>()
             .add_systems(Startup, spawn_panel)
             .add_systems(PreUpdate, pointer_over_ui.after(bevy::ui::UiSystems::Focus))
-            .add_systems(Update, (keys, buttons, show_panel));
+            .add_systems(Update, (keys, buttons, show_panel, to_surface));
     }
 }
 
@@ -83,6 +85,7 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, dev: Res<DevTools>, cursor: Res<CursorW
         (KeyCode::F9, KeyCode::KeyK, DevAction::Lighting),
         (KeyCode::F3, KeyCode::KeyH, DevAction::PerfHud),
         (KeyCode::F4, KeyCode::KeyJ, DevAction::Chunks),
+        (KeyCode::F2, KeyCode::KeyU, DevAction::Surface),
     ];
     for (f, letter, action) in pairs {
         if pressed(f) || (dev.0 && pressed(letter)) {
@@ -100,6 +103,31 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, dev: Res<DevTools>, cursor: Res<CursorW
     }
 }
 
+/// F2: the player straight up to the ground's surface above them (as
+/// generated; up out of whatever's dug), standing on it.
+fn to_surface(mut acts: MessageReader<DevAction>, sim: Res<crate::world::SimWorld>, mut player: Query<&mut crate::actors::Kinematics, With<crate::actors::player::LocalPlayer>>) {
+    if !acts.read().any(|a| *a == DevAction::Surface) {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let world = &sim.world;
+    let (x, half) = (k.body.pos.x, k.body.half);
+    let clear = |at: Vec2| {
+        let (lo, hi) = (at - half, at + half);
+        (lo.x.floor() as i32..=hi.x.floor() as i32).all(|cx| {
+            (lo.y.floor() as i32..=hi.y.floor() as i32).all(|cy| world.get(platypus_sim::CellPos::new(cx, cy)).is_none_or(|c| matches!(world.materials().phys(c.material).kind, platypus_sim::Kind::Empty | platypus_sim::Kind::Gas | platypus_sim::Kind::Plant)))
+        })
+    };
+    // From the ground as generated (or, with none, from here), up to where
+    // the body fits with open air over it.
+    let from = sim.generator.surface_hint(x as i32).map_or(k.body.pos.y, |s| (s as f32 + half.y + 1.0).max(k.body.pos.y));
+    let Some(y) = (0..2000).map(|up| from + up as f32).find(|&y| clear(Vec2::new(x, y)) && (1..40).all(|a| clear(Vec2::new(x, y + a as f32 * 2.0)))) else { return };
+    k.body.pos = Vec2::new(x, y);
+    k.body.vel = Vec2::ZERO;
+    k.prev_pos = k.body.pos;
+    info!("dev: up to the surface at ({x:.0}, {y:.0})");
+}
+
 fn buttons(clicks: Query<(&Interaction, &PanelButton), Changed<Interaction>>, mut out: MessageWriter<DevAction>) {
     for (i, b) in &clicks {
         if *i == Interaction::Pressed {
@@ -109,7 +137,8 @@ fn buttons(clicks: Query<(&Interaction, &PanelButton), Changed<Interaction>>, mu
 }
 
 fn spawn_panel(mut commands: Commands) {
-    let entries: [(&str, DevAction); 14] = [
+    let entries: [(&str, DevAction); 15] = [
+        ("To the surface   F2", DevAction::Surface),
         ("Storm here   V", DevAction::Storm),
         ("Clear sky   B", DevAction::ClearSky),
         ("Lightning   N", DevAction::Lightning(None)),

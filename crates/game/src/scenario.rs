@@ -221,6 +221,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, sounds_script)
+            .add_systems(PreUpdate, surface_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, walk_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, tempo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, beams_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3275,6 +3276,52 @@ fn tempo_script(
     if next {
         st.1 += 1;
         st.2 = t;
+    }
+}
+
+/// Down into the rock and back (F2): a pocket dug 200 cells under the
+/// player, the player put in it; then F2 up to the surface. Logs where
+/// and what the sound heard (underground or not) at each.
+fn surface_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    heard: Res<crate::sound::ambience::Heard>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut state: Local<(u8, Vec2)>,
+) {
+    if s.name != "surface" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let surface = sim.generator.surface_hint(k.body.pos.x as i32).unwrap_or(0) as f32;
+    match state.0 {
+        0 if t > 1.5 => {
+            let at = k.body.pos - Vec2::new(0.0, 200.0);
+            sim.queue(WorldEdit::Dig { center: CellPos::new(at.x as i32, at.y as i32), radius: 14, max_hardness: 255 });
+            *state = (1, at);
+        }
+        1 if t > 1.7 => {
+            k.body.pos = state.1;
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            state.0 = 2;
+        }
+        2 if t > 6.0 => {
+            info!("surface: in a pocket {:.0} cells below the ground: underground {:.2}", surface - (k.body.pos.y - k.body.half.y), heard.under);
+            keys.press(KeyCode::F2);
+            state.0 = 3;
+        }
+        3 => {
+            keys.release(KeyCode::F2);
+            state.0 = 4;
+        }
+        4 if t > 11.0 => {
+            info!("surface: after F2, feet {:.0} cells from the ground as generated: underground {:.2}", (k.body.pos.y - k.body.half.y) - surface, heard.under);
+            state.0 = 5;
+        }
+        _ => {}
     }
 }
 

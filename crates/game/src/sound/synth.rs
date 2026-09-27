@@ -30,9 +30,17 @@ pub enum Make {
     Chime { pitch: f32, notes: Vec<f32>, length: f32 },
     /// A sweep between two pitches (UI, pickups).
     Blip { pitch: f32, to: f32, length: f32 },
-    /// A voice: a buzz through two formants (`vowel` 0: "uh" .. 1: "oh"),
-    /// falling.
-    Grunt { pitch: f32, length: f32, #[serde(default)] vowel: f32 },
+    /// A footstep: a heel's thump (`heel` Hz, 0: none) then the toe's
+    /// scuff (noise about `scuff` Hz), with crunch (`grit`: sand, snow).
+    Step { #[serde(default)] heel: f32, scuff: f32, #[serde(default = "one")] q: f32, #[serde(default)] grit: f32, length: f32 },
+    /// A swing through the air: noise through a band that rises to `high`
+    /// as the swing peaks and falls back toward `low` (the blade passing),
+    /// a thin whistle over it (`whistle`: a blade's edge).
+    Swish { low: f32, high: f32, length: f32, #[serde(default = "q_swish")] q: f32, #[serde(default)] whistle: f32 },
+    /// A blow landing, in layers: a sharp crack, a punch (`body` Hz,
+    /// falling), a wet thwack (noise about `flesh` Hz, falling), a blade's
+    /// slice (high hiss), and a glassy ring (being hurt).
+    Impact { body: f32, #[serde(default = "half")] crack: f32, flesh: f32, #[serde(default)] slice: f32, #[serde(default)] ring: f32, length: f32 },
     /// Loops (`length` s): a fire's roar, hiss and crackles (per second).
     Fire { crackle: f32, roar: f32, #[serde(default = "tenth")] hiss: f32 },
     /// A cave: a low rumble, air moving through it, a faint low hum.
@@ -62,6 +70,9 @@ fn tenth() -> f32 {
 }
 fn bright() -> f32 {
     2500.0
+}
+fn q_swish() -> f32 {
+    1.6
 }
 
 /// A stereo buffer.
@@ -237,7 +248,9 @@ pub fn render(make: &Make, sr: f32, seed: u64, loops: f32) -> Buf {
         Make::Zap { pitch, length } => Buf::mono(zap(*pitch, *length, sr, rng)),
         Make::Chime { pitch, notes, length } => Buf::mono(chime(*pitch, notes, *length, sr, rng)),
         Make::Blip { pitch, to, length } => Buf::mono(blip(*pitch, *to, *length, sr)),
-        Make::Grunt { pitch, length, vowel } => Buf::mono(grunt(*pitch, *length, *vowel, sr, rng)),
+        Make::Step { heel, scuff, q, grit, length } => Buf::mono(step(*heel, *scuff, *q, *grit, *length, sr, rng)),
+        Make::Swish { low, high, length, q, whistle } => Buf::mono(swish(*low, *high, *length, *q, *whistle, sr, rng)),
+        Make::Impact { body, crack, flesh, slice, ring, length } => Buf::mono(impact(*body, *crack, *flesh, *slice, *ring, *length, sr, rng)),
         Make::Fire { crackle, roar, hiss } => looped(fire(*crackle, *roar, *hiss, total, sr, rng), loops, sr),
         Make::Cave { rumble, wind, hum } => looped(cave(*rumble, *wind, *hum, total, sr, rng), loops, sr),
         Make::Rain { drops } => looped(rain(*drops, total, sr, rng), loops, sr),
@@ -473,20 +486,61 @@ fn blip(pitch: f32, to: f32, length: f32, sr: f32) -> Vec<f32> {
         .collect()
 }
 
-fn grunt(pitch: f32, length: f32, vowel: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
-    let n = frames(length, sr);
-    let (f1, f2) = (640.0 + (450.0 - 640.0) * vowel, 1190.0 + (850.0 - 1190.0) * vowel);
-    let (mut a, mut b, mut breath) = (Filter::new(Pass::Band, 5.0, sr), Filter::new(Pass::Band, 6.0, sr), Filter::new(Pass::Band, 1.5, sr));
-    let pitch = pitch * rng.range(0.9, 1.1);
-    let mut ph = 0.0f32;
+fn step(heel: f32, scuff: f32, q: f32, grit: f32, length: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
+    let n = frames(length + 0.06, sr);
+    let (mut bp, mut click) = (Filter::new(Pass::Band, q, sr), Filter::new(Pass::Low, 0.7, sr));
+    let scuff = scuff * rng.range(0.85, 1.15);
+    // (The toe lands a moment after the heel, softer.)
+    let toe = rng.range(0.025, 0.045);
+    let mut ph = 0.0;
     (0..n)
         .map(|i| {
             let t = i as f32 / sr;
-            let hz = pitch * (1.0 - 0.3 * t / length) * (1.0 + 0.02 * rng.noise());
-            ph = (ph + hz / sr).fract();
-            let buzz = ph * 2.0 - 1.0;
-            let voice = a.tick(buzz, f1) + 0.6 * b.tick(buzz, f2) + 0.3 * breath.tick(rng.noise(), 1500.0);
-            (2.0 * voice * env(t, 0.012, length)).tanh()
+            ph += heel * (1.0 + 0.5 * (-t / 0.015).exp()) / sr;
+            let thump = if heel > 0.0 { (TAU * ph).sin() * env(t, 0.001, 0.05) + click.tick(rng.noise(), 1800.0) * env(t, 0.0003, 0.006) * 0.8 } else { 0.0 };
+            let mut x = rng.noise();
+            if grit > 0.0 && rng.unit() < grit * 0.015 {
+                x += rng.noise() * 5.0;
+            }
+            let shape = env(t, 0.004, length) + 0.6 * if t > toe { env(t - toe, 0.004, length * 0.7) } else { 0.0 };
+            thump * 0.4 + bp.tick(x, scuff) * shape * 2.6
+        })
+        .collect()
+}
+
+fn swish(low: f32, high: f32, length: f32, q: f32, whistle: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
+    let n = frames(length, sr);
+    let (mut body, mut air, mut edge) = (Filter::new(Pass::Band, q, sr), Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::Band, 12.0, sr));
+    let (low, high) = (low * rng.range(0.9, 1.1), high * rng.range(0.9, 1.1));
+    (0..n)
+        .map(|i| {
+            let k = i as f32 / n as f32;
+            // Up fast to the peak (a third in), then away.
+            let e = if k < 0.35 { (k / 0.35).powi(2) } else { (-(k - 0.35) * 6.0).exp() };
+            let hz = low + (high - low) * e;
+            let x = rng.noise();
+            body.tick(x, hz) * e * 2.2 + air.tick(x, 3500.0) * e * e * 0.18 + edge.tick(x, hz * 2.2) * e.powi(3) * whistle * 2.0
+        })
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn impact(body: f32, crack: f32, flesh: f32, slice: f32, ring: f32, length: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
+    let n = frames(length + 0.05, sr);
+    let (mut snap, mut wet, mut hiss) = (Filter::new(Pass::High, 0.7, sr), Filter::new(Pass::Band, 1.2, sr), Filter::new(Pass::High, 0.7, sr));
+    let (body, flesh) = (body * rng.range(0.9, 1.1), flesh * rng.range(0.85, 1.15));
+    let mut ph = 0.0;
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / sr;
+            let x = rng.noise();
+            let c = snap.tick(x, 1500.0) * env(t, 0.0003, 0.008) * crack * 3.0;
+            ph += body * (1.0 + (-t / 0.02).exp()) / sr;
+            let punch = (TAU * ph).sin() * env(t, 0.001, 0.07) * 0.45;
+            let thwack = wet.tick(x, flesh * (1.0 - 0.4 * (t / length).min(1.0))) * env(t, 0.001, length) * 3.2;
+            let cut = hiss.tick(x, 5000.0) * env(t, 0.002, 0.07) * slice * 1.5;
+            let glass = ring * 0.25 * ((TAU * 2250.0 * t).sin() + 0.6 * (TAU * 3140.0 * t).sin()) * env(t, 0.001, 0.2);
+            (1.8 * (c + punch + thwack + cut + glass)).tanh()
         })
         .collect()
 }
@@ -736,7 +790,9 @@ mod tests {
             Make::Zap { pitch: 200.0, length: 0.3 },
             Make::Chime { pitch: 800.0, notes: vec![0.0, 7.0, 12.0], length: 0.8 },
             Make::Blip { pitch: 600.0, to: 1200.0, length: 0.1 },
-            Make::Grunt { pitch: 140.0, length: 0.25, vowel: 0.3 },
+            Make::Step { heel: 80.0, scuff: 900.0, q: 0.8, grit: 0.3, length: 0.1 },
+            Make::Swish { low: 350.0, high: 2600.0, length: 0.22, q: 1.8, whistle: 0.4 },
+            Make::Impact { body: 110.0, crack: 0.6, flesh: 1300.0, slice: 0.5, ring: 0.3, length: 0.14 },
             Make::Fire { crackle: 20.0, roar: 0.6, hiss: 0.1 },
             Make::Cave { rumble: 0.6, wind: 0.5, hum: 0.3 },
             Make::Rain { drops: 60.0 },
@@ -746,7 +802,7 @@ mod tests {
             Make::Pads { root: 110.0, chords: vec![vec![0.0, 7.0, 16.0], vec![5.0, 9.0, 12.0]], chord: 4.0, bright: 1200.0, plucks: 0.3, scale: vec![0.0, 2.0, 4.0, 7.0, 9.0] },
         ];
         for (i, m) in makes.iter().enumerate() {
-            let loops = if i >= 10 { 6.0 } else { 0.0 };
+            let loops = if i >= 12 { 6.0 } else { 0.0 };
             let mut b = render(m, sr, i as u64, loops);
             assert!(!b.is_empty(), "{m:?}: empty");
             assert!(b.l.iter().chain(&b.r).all(|x| x.is_finite()), "{m:?}: not finite");

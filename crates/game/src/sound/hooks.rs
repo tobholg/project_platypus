@@ -43,7 +43,8 @@ pub fn underfoot(world: &World, p: CellPos) -> Option<&'static str> {
 fn hits(mut hits: MessageReader<crate::combat::Hit>, mut out: MessageWriter<PlaySound>) {
     for h in hits.read() {
         let loud = (0.6 + h.weight * 0.3).min(1.3) * if h.crit { 1.3 } else { 1.0 };
-        out.write(PlaySound::at("hit", h.at).volume(loud).pitch(if h.crit { 0.85 } else { 1.0 }));
+        let heavy = h.weight >= 1.6 || h.crit;
+        out.write(PlaySound::at(if heavy { "hit_heavy" } else { "hit" }, h.at).volume(loud));
     }
 }
 

@@ -158,7 +158,12 @@ fn listen(time: Res<Time<Real>>, sim: Res<SimWorld>, day: Option<Res<crate::ligh
             roofed += 1;
         }
     }
-    let covered = if open > 0 { roofed as f32 / open as f32 } else { heard.under };
+    let roof = if open > 0 { roofed as f32 / open as f32 } else { heard.under };
+    // And how deep below the ground as generated: well down, it's
+    // underground whatever's straight overhead (a shaft dug up to the sky,
+    // a chasm).
+    let deep = sim.generator.surface_hint(c.x as i32).map_or(0.0, |s| ((s as f32 - c.y - 15.0) / 45.0).clamp(0.0, 1.0));
+    let covered = roof.max(deep);
     let sat = |x: f32, k: f32| 1.0 - (-x / k).exp();
     heard.fire = sat(fire, 60.0);
     heard.fire_at = if fire > 0.0 { fire_at / fire } else { Vec2::ZERO };
