@@ -90,17 +90,18 @@ fn peaks(l: &Layer, k: usize, x0: f32, x1: f32, h: f32, seed: u64) -> Vec<Peak> 
     let reach = (size.1 * h + (1.0 - l.base) * h * 0.6) * slope.1 * 1.3 + every;
     let mut out = Vec::new();
     for slot in ((x0 - reach) / every).floor() as i64..=((x1 + reach) / every).floor() as i64 {
-        // A main peak most slots, and a lower shoulder beside it now and
-        // then.
-        for (part, chance, scale_h) in [(0i64, 0.85, 1.0), (1, 0.55, 0.55)] {
-            let q = slot * 2 + part;
+        // A main peak most slots, a lower shoulder beside it now and then,
+        // and low broad foothills in front (the valleys between hold small
+        // mountains, not a floor).
+        for (part, chance, scale_h, wide) in [(0i64, 0.85, 1.0, 1.0), (1, 0.55, 0.55, 1.0), (2, 0.8, 0.28, 1.7)] {
+            let q = slot * 3 + part;
             if hash(q, 1, s) > chance {
                 continue;
             }
             let tall = (size.0 + (size.1 - size.0) * hash(q, 2, s).powf(1.4)) * h * scale_h;
-            let x = (slot as f32 + 0.1 + 0.8 * hash(q, 3, s)) * every + if part == 1 { (hash(q, 7, s) - 0.5) * every } else { 0.0 };
+            let x = (slot as f32 + 0.1 + 0.8 * hash(q, 3, s)) * every + if part > 0 { (hash(q, 7, s) - 0.5) * every } else { 0.0 };
             let (a, b) = (slope.0 + (slope.1 - slope.0) * hash(q, 4, s), slope.0 + (slope.1 - slope.0) * hash(q, 5, s));
-            out.push(Peak { x, y: l.base * h - tall, tall, left: a, right: b, front: hash(q, 6, s) + if part == 1 { 1.0 } else { 0.0 }, seed: s ^ (q as u64).wrapping_mul(0x9E37_79B9) });
+            out.push(Peak { x, y: l.base * h - tall, tall, left: a * wide, right: b * wide, front: hash(q, 6, s) + part as f32, seed: s ^ (q as u64).wrapping_mul(0x9E37_79B9) });
         }
     }
     out
@@ -121,6 +122,7 @@ pub fn layer_tile(look: &Look, k: usize, x0: i64, w: usize, h: usize, seed: u64)
     // which the game stretches down).
     let body = |y: f32| fade(mix(l.shade, l.lit, 0.3), y);
     let last = h.saturating_sub(2) as f32;
+    let l_seed = seed.wrapping_add(k as u64 * 9173 + 5);
     let mut out = vec![0u8; w * h * 4];
     let all = peaks(l, k, x0 as f32, (x0 + w as i64) as f32, hf, seed);
     for xi in 0..w {
@@ -131,6 +133,10 @@ pub fn layer_tile(look: &Look, k: usize, x0: i64, w: usize, h: usize, seed: u64)
         let widest = |p: &Peak| (p.tall + (hf - p.y - p.tall).max(0.0) * 0.6) * 1.3 + 4.0;
         let mut here: Vec<&Peak> = all.iter().filter(|p| xf > p.x - widest(p) * p.left && xf < p.x + widest(p) * p.right).collect();
         here.sort_by(|a, b| b.front.total_cmp(&a.front));
+        // The body's rolling edge a little above the feet, and its slope.
+        let roll = |x: f32| foot - hf * 0.06 * (0.15 + 0.6 * noise1(x / 60.0, l_seed ^ 0x70) + 0.3 * noise1(x / 17.0, l_seed ^ 0x71));
+        let rolling = roll(xf);
+        let slope_r = roll(xf + 2.0) - roll(xf - 2.0);
         for y in 0..h {
             let yf = y as f32 + 0.5;
             let p = if yf >= last {
@@ -161,9 +167,12 @@ pub fn layer_tile(look: &Look, k: usize, x0: i64, w: usize, h: usize, seed: u64)
                     }
                 }
                 fade(c, yf)
-            } else if yf > foot {
-                // Below the feet, between the shoulders: the body.
-                body(yf)
+            } else if yf > rolling {
+                // Below the feet, between the shoulders: the body, under a
+                // rolling edge (no straight line across the valleys), its
+                // faces towards the light a little brighter near the top.
+                let lit = if slope_r > 0.15 && yf - rolling < 10.0 { 0.12 } else { 0.0 };
+                fade(mix(mix(l.shade, l.lit, 0.3), l.lit, lit), yf)
             } else {
                 continue;
             };

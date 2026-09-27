@@ -2,7 +2,8 @@
 //! ten to a row) with the numbers over them, mana as blue stars and
 //! stamina as green bolts (20 each), each icon filling from the left as
 //! it comes back; and under them a round timer for each status (burning,
-//! chilled, the current coating), filled by how much of it is left.
+//! chilled, the current coating), filled by how much of it is left, and
+//! while rocket boots are worn, always, their charge (the rightmost).
 
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
@@ -14,7 +15,7 @@ use crate::actors::{Health, PlayerDeaths};
 
 pub struct HudPlugin;
 
-const SLOTS: usize = 4;
+const SLOTS: usize = 5;
 /// Status icon size (pixels).
 const ICON: u32 = 34;
 /// Life, mana or stamina an icon stands for.
@@ -178,7 +179,7 @@ fn spawn_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
             // Statuses: round timers with their name under them.
             root.spawn(Node { column_gap: Val::Px(10.0), margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|row| {
                 for (i, icon) in icons.iter().enumerate() {
-                    row.spawn((StatusSlot(i), Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, ..default() }, Visibility::Hidden))
+                    row.spawn((StatusSlot(i), Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, display: Display::None, ..default() }))
                         .with_children(|slot| {
                             slot.spawn((ImageNode::new(icon.clone()), Node { width: Val::Px(ICON as f32), height: Val::Px(ICON as f32), ..default() }));
                             slot.spawn((StatusLabel(i), Text::new(""), TextFont { font_size: FontSize::Px(11.0), ..default() }, TextColor(Color::WHITE)));
@@ -240,17 +241,18 @@ fn update_pips(
     }
 }
 
-type PlayerStatuses<'a> = (Option<&'a Burning>, Option<&'a Chilled>, Option<&'a Coated>);
+type PlayerStatuses<'a> = (Option<&'a Burning>, Option<&'a Chilled>, Option<&'a Coated>, &'a crate::actors::Kinematics, Option<&'a crate::actors::MoveStats>);
 
 fn update_statuses(
     coatings: Res<Coatings>,
     icons: Res<Icons>,
     mut images: ResMut<Assets<Image>>,
     player: Query<PlayerStatuses, With<LocalPlayer>>,
-    mut slots: Query<(&StatusSlot, &mut Visibility)>,
+    mut slots: Query<(&StatusSlot, &mut Node)>,
     mut labels: Query<(&StatusLabel, &mut Text)>,
+    mut fuel_was: Local<f32>,
 ) {
-    let Ok((burning, chilled, coated)) = player.single() else { return };
+    let Ok((burning, chilled, coated, k, stats)) = player.single() else { return };
     // (label, colour, share left)
     let mut shown: Vec<(String, [u8; 3], f32)> = Vec::new();
     if let Some(b) = burning {
@@ -265,8 +267,26 @@ fn update_statuses(
         let (r, g, b) = def.color;
         shown.push((def.label.clone(), [r, g, b], c.left / c.total.max(0.01)));
     }
-    for (slot, mut vis) in &mut slots {
-        *vis = if slot.0 < shown.len() { Visibility::Inherited } else { Visibility::Hidden };
+    // Rocket boots worn: their charge, always, rightmost.
+    if let Some(time) = stats.map(|s| s.0.rocket_time).filter(|&t| t > 0.0) {
+        let left = k.loco.rocket_left;
+        let label = if left <= 0.0 {
+            "Empty"
+        } else if left < time && left > *fuel_was {
+            "Recharging"
+        } else {
+            "Rockets"
+        };
+        *fuel_was = left;
+        shown.push((label.into(), [255, 176, 70], left / time));
+    }
+    // (Out of the layout when unused, not just hidden: the row stays
+    // against the right edge, as the hearts do.)
+    for (slot, mut node) in &mut slots {
+        let display = if slot.0 < shown.len() { Display::Flex } else { Display::None };
+        if node.display != display {
+            node.display = display;
+        }
     }
     for (label, mut text) in &mut labels {
         if let Some((name, ..)) = shown.get(label.0) {

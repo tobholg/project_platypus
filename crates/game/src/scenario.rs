@@ -153,6 +153,10 @@
 //!   the sky, a lightning strike; logs each second what's about (creatures,
 //!   bodies, spells, drops, arrows, sparks, particles). With
 //!   `--features spikes` and `PLATYPUS_PROFILE=1`: where the time goes.
+//! - `rocketswim` (`PLATYPUS_WORLD=arena`) a pit of water 160 deep, the
+//!   player in it (far over the bottom) with its rocket boots empty: logs the charge
+//!   after 3 s in the water, then how far a held jump rose it in 1.5 s
+//!   (and whether the boots flamed: they shouldn't, under water)
 //! - `rocket`     (`PLATYPUS_WORLD=arena`, try `PLATYPUS_HOUR=22`) the player
 //!   in rocket boots over an orc on a wooden floor (brain off), holding
 //!   jump from 1 s: logs how high it gets, the fuel, what the exhaust does
@@ -215,7 +219,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
-            .add_systems(PreUpdate, rocket_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (rocket_script, rocketswim_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3007,6 +3011,73 @@ fn rocket_script(
         _ => {}
     }
     let hold = state.0 == 2;
+    match (hold, keys.pressed(KeyCode::Space)) {
+        (true, false) => keys.press(KeyCode::Space),
+        (false, true) => keys.release(KeyCode::Space),
+        _ => {}
+    }
+}
+
+/// Rocket boots under water: they fill back up there, and fire (slower,
+/// no flame).
+fn rocketswim_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &crate::actors::MoveStats), With<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut fired: MessageReader<crate::actors::Rocketed>,
+    mut state: Local<(u8, f32, f32, u32)>,
+) {
+    if s.name != "rocketswim" {
+        return;
+    }
+    let Ok((mut k, stats)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let x = 540;
+    state.3 += fired.read().count() as u32;
+    match state.0 {
+        // A pit 40 wide and 70 deep under the floor, then water in it.
+        0 if t > 0.3 => {
+            for dx in (-20..=20).step_by(5) {
+                for dy in (-172..=4).step_by(5) {
+                    sim.queue(WorldEdit::Dig { center: CellPos::new(x + dx, floor + dy), radius: 4, max_hardness: 250 });
+                }
+            }
+            state.0 = 1;
+        }
+        1 if t > 0.6 => {
+            if let Some(water) = sim.materials().id("water") {
+                for dx in (-20..=20).step_by(3) {
+                    for dy in (-172..=-12).step_by(3) {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, floor + dy), radius: 2, material: water, overwrite: false });
+                    }
+                }
+            }
+            // (Mid-water, far over the bottom: no ground to refill from.)
+            k.body.pos = Vec2::new(x as f32, (floor - 60) as f32);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            k.loco.rocket_left = 0.0;
+            state.0 = 2;
+        }
+        2 if t > 3.8 => {
+            info!("rocketswim: after 3 s in the water the boots hold {:.2} of {:.2} s", k.loco.rocket_left, stats.0.rocket_time);
+            state.1 = k.body.pos.y;
+            state.3 = 0;
+            state.0 = 3;
+        }
+        3 => {
+            state.2 = state.2.max(k.body.pos.y);
+            if t > 5.3 {
+                let wet = sim.world.get(CellPos::from_world(k.body.pos.x, k.body.pos.y)).is_some_and(|c| sim.materials().phys(c.material).kind == platypus_sim::Kind::Liquid);
+                info!("rocketswim: jump held 1.5 s under water: rose {:.0} cells, fired {} ticks, {:.2} s of charge left, still in water {wet}", state.2 - state.1, state.3, k.loco.rocket_left);
+                state.0 = 4;
+            }
+        }
+        _ => {}
+    }
+    let hold = state.0 == 3;
     match (hold, keys.pressed(KeyCode::Space)) {
         (true, false) => keys.press(KeyCode::Space),
         (false, true) => keys.release(KeyCode::Space),

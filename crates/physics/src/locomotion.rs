@@ -70,6 +70,11 @@ pub fn tether(body: &mut Body, at: Vec2, len: f32, dt: f32) -> bool {
     true
 }
 
+/// Rocket boots under water: shares of their thrust and top speed.
+const ROCKET_WATER: (f32, f32) = (0.5, 0.45);
+/// Seconds for rocket boots to fill back up in water, not firing.
+const ROCKET_WATER_REFILL: f32 = 2.0;
+
 /// Below this share of its body under water (its head out), a jump leaves
 /// the water as a jump does, at this share of a jump's speed.
 const BREACH: f32 = 0.85;
@@ -530,6 +535,9 @@ impl Locomotion {
         // nowhere): one on the press, then another every so often while
         // it's held. Between strokes the water's drag slows you: a glide.
         let swimming = self.contacts.submerged > 0.3;
+        // (Rocket boots with fuel: held jump under water fires them, not
+        // strokes.)
+        let rocket_ready = s.rocket_time > 0.0 && self.rocket_left > 0.0;
         self.stroke_left -= dt;
         // At the surface (its head out), a jump is a real jump: out of the
         // water, onto the bank.
@@ -539,7 +547,7 @@ impl Locomotion {
             self.buffer = 0.0;
             self.rising_from_jump = true;
             ev.jumped = true;
-        } else if swimming && intent.jump && (jump_pressed || self.stroke_left <= 0.0) {
+        } else if swimming && intent.jump && (jump_pressed || (self.stroke_left <= 0.0 && !rocket_ready)) {
             let steer = Vec2::new(intent.move_x, intent.move_y);
             let dir = if steer.length_squared() > 0.01 { steer.normalize() } else { Vec2::Y };
             body.vel = body.vel * 0.35 + dir * s.swim_stroke;
@@ -583,23 +591,28 @@ impl Locomotion {
         }
 
         // Rocket boots: jump held in the air once the jump's rise has slowed
-        // (and any air jumps are spent: a press uses those first).
+        // (and any air jumps are spent: a press uses those first); under
+        // water too, held after a stroke, pushing through the water at
+        // about half the thrust and speed.
         self.rocket_left = self.rocket_left.min(s.rocket_time);
+        let (thrust, top) = if swimming { (s.rocket_thrust * ROCKET_WATER.0, s.rocket_speed * ROCKET_WATER.1) } else { (s.rocket_thrust, s.rocket_speed) };
         if s.rocket_time > 0.0
             && self.rocket_left > 0.0
             && intent.jump
             && !jump_pressed
             && !grounded
-            && !swimming
-            && self.state == MoveState::Air
-            && self.air_jumps_left == 0
-            && body.vel.y < s.rocket_speed
+            && (swimming || (self.state == MoveState::Air && self.air_jumps_left == 0))
+            && body.vel.y < top
         {
             self.rocket_left -= dt;
-            body.vel.y = (body.vel.y + s.rocket_thrust * dt).min(s.rocket_speed);
+            body.vel.y = (body.vel.y + thrust * dt).min(top);
             // (The rocket, not the jump, now: letting go doesn't cut it.)
             self.rising_from_jump = false;
             ev.rocketed = true;
+        } else if swimming && s.rocket_time > 0.0 {
+            // In water (not firing) they fill back up, slowly: there's no
+            // ground to land on.
+            self.rocket_left = (self.rocket_left + dt * s.rocket_time / ROCKET_WATER_REFILL).min(s.rocket_time);
         }
 
         // Gravity (none while a jump's rise is held).

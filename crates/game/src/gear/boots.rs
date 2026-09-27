@@ -55,8 +55,12 @@ pub fn exhaust(
     }
     let tick = sim.world.tick();
     for r in fired {
-        let fire = wearers.get(r.entity).is_ok_and(|eq| eq.pieces(&items).any(|s| items.def(s.item).gear.as_ref().and_then(|g| g.rocket.as_ref()).is_some_and(|rd| rd.fire)));
-        // The hot air, always (thinner than a double jump's cloud).
+        // Under water: bubbles only, no flame (nothing burns there).
+        let sole = platypus_sim::CellPos::from_world(r.at.x, r.at.y - 1.0);
+        let wet = sim.world.get(sole).is_some_and(|c| sim.world.materials().phys(c.material).kind == platypus_sim::Kind::Liquid);
+        let fire = !wet && wearers.get(r.entity).is_ok_and(|eq| eq.pieces(&items).any(|s| items.def(s.item).gear.as_ref().and_then(|g| g.rocket.as_ref()).is_some_and(|rd| rd.fire)));
+        // The hot air, always (thinner than a double jump's cloud): under
+        // water, bubbles.
         sparks.emit(&PUFF, PUFF.count as usize, r.at, Vec2::NEG_Y, r.vel * 0.3);
         if !fire {
             continue;
