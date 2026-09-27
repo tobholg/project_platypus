@@ -27,6 +27,42 @@ fn main() {
     tiles(&out);
     vistas(&out);
     peaks(&out);
+    depths(&out);
+}
+
+/// The underground's bands (`depths.rs`): `depths.png`, each band a row,
+/// fully lit on the left and as the game would show it on the right (the
+/// world's rock in front, a torch, what glows by itself); and each as the
+/// game would, 3×: `depth-<band>.png`.
+fn depths(out: &std::path::Path) {
+    use platypus_backdrop::depths::{bands, still};
+    let (w, h) = (504usize, 284usize);
+    let all = bands();
+    let (sw, sh) = (w * 2 * 2 + 8, (h * 2 + 8) * all.len() - 8);
+    let mut sheet = [20u8, 20, 24, 255].repeat(sw * sh);
+    for (n, band) in all.iter().enumerate() {
+        for (col, torch) in [(0usize, false), (1, true)] {
+            let px = still(band, 0, 4000, w, h, torch, 21);
+            let (ox, oy) = (col * (w * 2 + 8), n * (h * 2 + 8));
+            for y in 0..h * 2 {
+                for x in 0..w * 2 {
+                    let i = ((oy + y) * sw + ox + x) * 4;
+                    sheet[i..i + 4].copy_from_slice(&px[((y / 2) * w + x / 2) * 4..][..4]);
+                }
+            }
+            if torch {
+                let mut big = Vec::with_capacity(w * h * 36);
+                for y in 0..h * 3 {
+                    for x in 0..w * 3 {
+                        big.extend_from_slice(&px[((y / 3) * w + x / 3) * 4..][..4]);
+                    }
+                }
+                platypus_art::write_png(&platypus_art::Pixels { w: 3 * w as u32, h: 3 * h as u32, rgba: big }, &out.join(format!("depth-{}.png", band.name))).expect("png");
+            }
+        }
+        println!("depth {}", band.name);
+    }
+    platypus_art::write_png(&platypus_art::Pixels { w: sw as u32, h: sh as u32, rgba: sheet }, &out.join("depths.png")).expect("png");
 }
 
 /// The Noita-like looks (`peaks.rs`): `peaks.png` (all, by day, two

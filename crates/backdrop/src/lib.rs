@@ -6,6 +6,7 @@
 //! how slowly it scrolls. `render` draws a scene as one still (the
 //! concept sheets); the game draws its layers in tiles (`tile.rs`).
 
+pub mod depths;
 pub mod peaks;
 pub mod tile;
 pub mod vista;
