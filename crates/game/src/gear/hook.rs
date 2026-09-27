@@ -289,6 +289,7 @@ pub fn rope(
     mut holders: Query<Holder>,
     mut things: Query<Thing>,
     tempo: Res<crate::tempo::Tempo>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
 ) {
     let Some(items) = items else { return };
     let grid = WorldGrid(&sim.world);
@@ -327,6 +328,7 @@ pub fn rope(
             rope.prev_tip = hand;
             rope.last = None;
             sparks.emit(&THROW, THROW.count as usize, hand, dir, Vec2::ZERO);
+            sounds.write(crate::sound::PlaySound::at("hook_throw", hand));
         }
         match rope.line.clone() {
             Line::Stowed => {}
@@ -373,6 +375,7 @@ pub fn rope(
                         rope.line = Line::Held(Hold { anchor, pivots: Vec::new(), length: pos.distance(point), reeling: true, leash, blocked: 0.0, stalled: 0.0 });
                         rope.prev_tip = point;
                         sparks.emit(&CLINK, CLINK.count as usize, point, -vel.normalize_or(Vec2::Y), Vec2::ZERO);
+                        sounds.write(crate::sound::PlaySound::at("hook_bite", point));
                         if let (Anchor::Body { entity, .. }, Some((_, true))) = (anchor, body) {
                             let dir = vel.normalize_or(Vec2::X);
                             hits.write(Hit { target: entity, damage: def.damage, knock: Vec2::ZERO, stun: 0.0, at: point, dir, weight: 0.4, crit: false });

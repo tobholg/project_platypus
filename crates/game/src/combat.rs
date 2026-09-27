@@ -599,6 +599,8 @@ pub struct Swing {
     queued: Option<(f32, f32, bool)>,
     clanged: bool,
     lunged: bool,
+    /// Its whoosh heard (as the blade starts to move).
+    whooshed: bool,
     /// A down-strike (struck downward in the air): what it hits (a
     /// creature, a hostile spell, a hazard: lava, fire, acid, web) bounces
     /// the swinger up, once a strike (a plunge: again after `rebound`).
@@ -760,6 +762,7 @@ fn start_swings(
             queued: None,
             clanged: false,
             lunged: false,
+            whooshed: false,
             down,
             bounced: false,
             rebound: 0.0,
@@ -827,7 +830,7 @@ fn swing(
     items: Option<Res<crate::hands::items::Items>>,
     coatings: Res<crate::actors::elements::Coatings>,
     spells: Query<(Entity, &crate::magic::Spell)>,
-    (mut stop, mut trauma): (ResMut<HitStop>, ResMut<crate::fx::Trauma>),
+    (mut stop, mut trauma, mut sounds): (ResMut<HitStop>, ResMut<crate::fx::Trauma>, MessageWriter<crate::sound::PlaySound>),
 ) {
     let Some(weapons) = weapons else { return };
     let none = crate::gear::Stats::default();
@@ -853,6 +856,7 @@ fn swing(
                 s.t = s.t.max(live_end);
                 if grounded && mv.slam > 0.0 {
                     slam(me, k, team, &def, &mv, stats, &targets, &mut hits, &mut sparks, &mut trauma, &weapons.file.clang);
+                    sounds.write(crate::sound::PlaySound::at("slam", k.body.pos - Vec2::Y * k.body.half.y));
                 }
             } else {
                 s.t = s.t.min(live_end - DT);
@@ -895,6 +899,7 @@ fn swing(
                 s.hit.clear();
                 s.clanged = false;
                 s.lunged = false;
+                s.whooshed = false;
                 s.bounced = false;
                 s.dived = 0.0;
                 s.slammed = false;
@@ -917,6 +922,12 @@ fn swing(
         if !mv.active_at(s.t) {
             s.prev = None;
             continue;
+        }
+        // (The blade moving: a whoosh, deeper for a heavy blade.)
+        if !s.whooshed {
+            s.whooshed = true;
+            let heavy = def.damage >= 20.0;
+            sounds.write(crate::sound::PlaySound::at(if heavy { "swing_heavy" } else { "swing" }, hand_at).pitch(if s.down { 0.9 } else { 1.0 }));
         }
         if !s.lunged && k.loco.grounded() && mv.lunge > 0.0 {
             s.lunged = true;
@@ -957,6 +968,7 @@ fn swing(
                 } else if ph.kind == Kind::Static && ph.hardness >= 20 && c.y > feet + 1.0 && !s.clanged {
                     s.clanged = true;
                     sparks.emit(&weapons.file.clang, weapons.file.clang.count as usize, c, -dir(a), Vec2::ZERO);
+                    sounds.write(crate::sound::PlaySound::at("clang", c));
                 }
             }
             let (lo, hi) = cells.iter().fold((Vec2::MAX, Vec2::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
@@ -1111,6 +1123,7 @@ fn apply_hits(
     mut trauma: ResMut<crate::fx::Trauma>,
     mut q: Query<Struck>,
     tempo: Res<crate::tempo::Tempo>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
 ) {
     let Some(weapons) = weapons else { return };
     for r in recoils.read() {
@@ -1120,6 +1133,7 @@ fn apply_hits(
             // (Up to that share of its own jump's height, at the tempo.)
             k.body.vel.y = tempo.apply(&stats.0, player).bounce_speed() * share.sqrt();
             k.loco.refresh_air(&stats.0);
+            sounds.write(crate::sound::PlaySound::at("bounce", k.body.pos - Vec2::Y * k.body.half.y));
         }
         if let Some(dive) = r.dive {
             k.body.vel.y = k.body.vel.y.min(-dive);

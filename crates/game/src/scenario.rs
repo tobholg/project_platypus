@@ -220,6 +220,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
+            .add_systems(Update, sounds_script)
             .add_systems(PreUpdate, walk_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, tempo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, beams_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3275,6 +3276,25 @@ fn tempo_script(
         st.1 += 1;
         st.2 = t;
     }
+}
+
+/// The sound board, played: every one-shot in sounds.ron in turn, 0.8 s
+/// apart, each named in the log, near the player; then the beds and the
+/// music go on under whatever's around.
+fn sounds_script(s: Res<Scenario>, bank: Res<crate::sound::SoundBank>, player: Query<&Kinematics, With<LocalPlayer>>, mut next: Local<usize>, mut out: MessageWriter<crate::sound::PlaySound>) {
+    if s.name != "sounds" || bank.made.is_empty() {
+        return;
+    }
+    let names: Vec<&String> = bank.defs.iter().filter(|(_, d)| d.loops <= 0.0).map(|(n, _)| n).collect();
+    let due = ((s.elapsed - 3.0) / 0.8).floor();
+    if due < 0.0 || *next >= names.len() || (*next as f32) > due {
+        return;
+    }
+    let at = player.single().map_or(Vec2::ZERO, |k| k.body.pos);
+    let name = names[*next].clone();
+    info!("sounds: {} ({} of {})", name, *next + 1, names.len());
+    out.write(crate::sound::PlaySound::at(name, at + Vec2::new(20.0, 0.0)));
+    *next += 1;
 }
 
 /// Spiders on the wall behind: a wall of stone blocks put up in the

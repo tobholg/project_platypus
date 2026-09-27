@@ -99,6 +99,7 @@ fn nock(
     items: Option<Res<Items>>,
     sim: Res<crate::world::SimWorld>,
     mut archers: Query<Bowman>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
 ) {
     let Some(weapons) = weapons else { return };
     for ask in asks.read() {
@@ -147,6 +148,7 @@ fn nock(
         let roll = (platypus_sim::rng::hash(&[tick, e.to_bits(), n.t.to_bits() as u64]) % 10_000) as f32 / 10_000.0;
         let (damage, knock, crit) = stats.cloned().unwrap_or_default().strike(lerp(def.damage), lerp(def.knock), roll);
         spawn_arrow(&mut commands, &weapons, from + dir * 3.0, dir * lerp(def.speed), e, team.copied(), (damage, crit), knock, def.stun);
+        sounds.write(crate::sound::PlaySound::at("bow", from).volume(0.5 + 0.5 * d));
     }
 }
 

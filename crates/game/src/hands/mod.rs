@@ -364,7 +364,7 @@ fn use_hands(
     mut found: Query<(Entity, &mut chests::Chest, &Kinematics), Without<LocalPlayer>>,
     (crafting, mut stations): (Res<crate::craft::Crafting>, Query<StationHit, (Without<LocalPlayer>, Without<chests::Chest>)>),
     book: Res<crate::magic::Spellbook>,
-    (mut casts, mut swings, mut draws): (MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::combat::MeleeRequest>, MessageWriter<crate::archery::DrawBow>),
+    (mut casts, mut swings, mut draws, mut sounds): (MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::combat::MeleeRequest>, MessageWriter<crate::archery::DrawBow>, MessageWriter<crate::sound::PlaySound>),
 ) {
     let clicked = std::mem::take(&mut input.clicked);
     hand.cooldown = (hand.cooldown - DT).max(0.0);
@@ -409,7 +409,20 @@ fn use_hands(
                 return;
             }
             let Some(block) = mine_at(&sim.world, &k.body, from, cursor, hand.smart, (back, tier, reach)) else { return };
+            // (What it sounds like: what's there, before the blow.)
+            let centre = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32);
+            let what = if back { Some("wood") } else { crate::sound::hooks::underfoot(&sim.world, CellPos::from_world(centre.x, centre.y)) };
             let report = sim.world.apply_edit(&WorldEdit::MineBlock { block, power, max_hardness: tier, back });
+            let hit = match what {
+                Some("stone") => "mine_stone",
+                Some("sand") | Some("snow") => "mine_sand",
+                Some("wood") => "mine_wood",
+                _ => "mine_dirt",
+            };
+            sounds.write(crate::sound::PlaySound::at(hit, centre));
+            if !report.removed.is_empty() {
+                sounds.write(crate::sound::PlaySound::at("break", centre).volume(0.8));
+            }
             debug!("hit {block:?} removed {:?}", report.removed);
             hand.cooldown = 1.0 / speed.max(0.1);
             let centre = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32);
@@ -424,6 +437,9 @@ fn use_hands(
             let world = &sim.world;
             let Some(block) = target::place_target(from, cursor, 6.0 * BLOCK as f32, |b| free(world, b, &bodies), |b| supported(world, b)) else { return };
             let report = sim.world.apply_edit(&WorldEdit::PlaceBlock { block, material, back: false });
+            if report.placed > 0 {
+                sounds.write(crate::sound::PlaySound::at("place", Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32)));
+            }
             inv.take(slot, report.placed);
             hand.cooldown = 1.0 / PLACE_RATE;
         }
@@ -516,6 +532,7 @@ fn collect(
     items: Option<Res<Items>>,
     mut drops: Query<(Entity, &mut Dropped, &mut Kinematics), Without<LocalPlayer>>,
     mut players: Query<(&Kinematics, &mut Inventory), With<LocalPlayer>>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
 ) {
     let Some(items) = items else { return };
     for (e, mut d, mut k) in &mut drops {
@@ -530,6 +547,7 @@ fn collect(
                 continue;
             }
             if dist < GRAB {
+                sounds.write(crate::sound::PlaySound::here("pickup"));
                 let left = inv.add(&items, d.stack);
                 if left == 0 {
                     commands.entity(e).despawn();

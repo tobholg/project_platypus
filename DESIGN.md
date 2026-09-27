@@ -452,6 +452,37 @@ Systems first, with example content to iterate on.
   hooks; gems unlock the arcane altar → foci; the deep unlocks mithril and
   void recipes. Ores already gate by pickaxe tier and depth.
 
+## 7e. Sound (built 2026-09-27, branch `sound-arc`)
+
+- **Engine:** bevy_seedling (Firewheel) plays; Bevy's own audio is off. Three
+  buses (effects, ambience, music), their volumes in `sounds.ron`; F11 mutes.
+- **Made, not recorded:** every sound is a recipe in `sounds.ron` (thud, clang,
+  whoosh, burst, drip, boom, zap, chime, blip, grunt; loops: fire, cave, rain,
+  wind, water, lava, pads), rendered at startup in the background (fundsp's
+  filters and reverb, our own oscillators and envelopes), a few takes each,
+  and again when the file is saved. Any sound can be a recording instead
+  (`file:`), under the same name: the plan is to swap in recordings only
+  where a recipe falls short (fire, rain, wind are the likeliest).
+- **Effects** are placed in the world (panned, fainter with distance from the
+  camera; a cell is ~0.1 m) and asked for by name (`PlaySound`): hits, hurts,
+  deaths, swings (heavier blades deeper), clangs off stone, pogo bounces, the
+  plunge's slam, footsteps and mining by what's underfoot (stone, dirt, sand,
+  wood, snow, grass, water), landings by how far, jumps, dashes, the hook,
+  the bow, blasts, thunder, wand lightning, casts, spits, pickups, crafting,
+  milestones.
+- **Ambience from the world:** four times a second the cells around the
+  camera are sampled (what burns, and where; lava; water that just moved;
+  rain falling; rock overhead from open air) and looping beds fade toward
+  that: a fire's roar and crackle panned toward it, a cave's rumble and air,
+  wind and rain in the open. Underground, drops fall from real ceilings in
+  view.
+- **Music:** chill synth pads, a loop per mood (day: D major; night: A
+  minor; underground: low open fifths), all playing, crossfaded by where you
+  are and the time of day.
+- **Next:** creature voices, spell sounds per element, torches crackling,
+  underwater and underground muffling, stretches of silence in the music,
+  recordings where recipes don't hold up.
+
 ## 8. Death and loot (D4)
 
 1. **Death.** The creature's current frame is turned into a rigid body of cells (a new `flesh` material plus blood coating). The body's cells keep their sprite pixels, so the corpse looks like the creature.

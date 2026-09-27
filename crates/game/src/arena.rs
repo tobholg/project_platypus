@@ -38,6 +38,8 @@ pub enum ArenaAction {
     /// A tempo preset (`tempo.ron`), or the next.
     Tempo(usize),
     NextTempo,
+    /// Play a sound (the sound board).
+    Sound(String),
 }
 
 #[derive(Resource, Default)]
@@ -135,6 +137,7 @@ fn act(
     creatures: Query<(Entity, Option<&Dummy>), Others>,
     mut owed: ResMut<StepOwed>,
     mut tempo: ResMut<crate::tempo::Tempo>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
 ) {
     for a in dev.read() {
         if *a == crate::dev::DevAction::Arena {
@@ -165,6 +168,9 @@ fn act(
             ArenaAction::Editor => editor.open = !editor.open,
             ArenaAction::Tempo(i) => tempo.active = (*i).min(tempo.presets.len().saturating_sub(1)),
             ArenaAction::NextTempo => tempo.active = (tempo.active + 1) % tempo.presets.len().max(1),
+            ArenaAction::Sound(name) => {
+                sounds.write(crate::sound::PlaySound::here(name.clone()));
+            }
             // Everything but the player and the planted dummies.
             ArenaAction::Clear => {
                 for (e, d) in &creatures {
@@ -187,8 +193,10 @@ fn step(mut owed: ResMut<StepOwed>, mut fixed: ResMut<Time<Fixed>>) {
     }
 }
 
-fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<ArenaView>, tempo: Res<crate::tempo::Tempo>) {
+fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<ArenaView>, tempo: Res<crate::tempo::Tempo>, bank: Res<crate::sound::SoundBank>) {
     let tempos: Vec<String> = tempo.presets.iter().map(|p| p.name.clone()).collect();
+    // (The one-shots: the beds and music play themselves.)
+    let sounds: Vec<String> = bank.defs.iter().filter(|(_, d)| d.loops <= 0.0).map(|(n, _)| n.clone()).collect();
     // Open from the start in the arena itself.
     view.open = !sim.generator.wild();
     let label = |p: &mut ChildSpawnerCommands, text: &str, action: ArenaAction| {
@@ -248,6 +256,12 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
             row(p, &|r| label(r, "Clear the floor", ArenaAction::Clear));
             heading(p, "Make");
             row(p, &|r| label(r, "Art editor  E", ArenaAction::Editor));
+            heading(p, "Sounds: click to hear (sounds.ron) · F11 mute");
+            row(p, &|r| {
+                for name in &sounds {
+                    label(r, name, ArenaAction::Sound(name.clone()));
+                }
+            });
         });
 }
 
