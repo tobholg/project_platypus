@@ -157,7 +157,8 @@
 //!   `PLATYPUS_DEPTH` cells down (400), or in a zone (`PLATYPUS_ZONE` =
 //!   fungal, crystal, toxic), the player on its floor holding a torch, a
 //!   patch of back wall beside it axed away (logs where, and how much void
-//!   shows)
+//!   shows); `PLATYPUS_NOTORCH=1` for the lantern alone, `PLATYPUS_SPAWN=`
+//!   kinds (`spider,bat`) put out in the dark on either side
 //! - `potion`     (`PLATYPUS_WORLD=arena`) health down to 22 (the edges
 //!   pulse red), a blow at 2.5 s (a red flash), H at 4 s (a potion drunk:
 //!   green, shrinking as it heals; logs the health 2 s and 4 s after), H
@@ -3573,6 +3574,7 @@ fn underlook_script(mut commands: Commands, s: Res<Scenario>, mut sim: ResMut<Si
 /// The underground's void in a natural cave (see the module docs).
 #[allow(clippy::too_many_arguments)]
 fn voidlook_script(
+    mut commands: Commands,
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
     mut toggles: ResMut<crate::light::LightToggles>,
@@ -3633,7 +3635,17 @@ fn voidlook_script(
                 }
                 None => info!("voidlook: no cave floor near ({}, {})", c.x, c.y),
             }
-            toggles.carry = crate::light::Carry::Torch;
+            // (`PLATYPUS_NOTORCH=1`: nothing in hand, the lantern alone.)
+            toggles.carry = if std::env::var("PLATYPUS_NOTORCH").is_ok() { crate::light::Carry::Nothing } else { crate::light::Carry::Torch };
+            // (`PLATYPUS_SPAWN=spider,bat`: those out in the dark, 40 cells
+            // on either side in turn, a little above the floor.)
+            if let Ok(kinds) = std::env::var("PLATYPUS_SPAWN") {
+                for (i, kind) in kinds.split(',').filter(|k| !k.is_empty()).enumerate() {
+                    let side = if i % 2 == 0 { 1.0 } else { -1.0 };
+                    let at = state.1 + Vec2::new(side * (40.0 + 14.0 * (i / 2) as f32), 2.0 + 8.0 * (i / 2) as f32 - k.body.half.y);
+                    crate::actors::creature::spawn_creature(&mut commands, kind, at, |_| {});
+                }
+            }
             state.0 = 2;
         }
         // Stood there; a patch of back wall beside it axed away, over a few

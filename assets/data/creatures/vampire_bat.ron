@@ -8,7 +8,10 @@
     team: Enemy,
     blood: "blood",
     art: "vampire_bat",
-    light: (color: (255, 30, 20), strength: 0.18, haze: true),
+    // A red eye, crisp in the dark (drawn over it, blinking now and then),
+    // the faintest red on what's right beside it: no glow.
+    eyes: (255, 64, 44),
+    light: (color: (255, 30, 20), strength: 0.04),
     movement: (
         run_speed: 20,
         fly_speed: 115,

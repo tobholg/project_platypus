@@ -264,8 +264,9 @@ fn update_statuses(
     if let Some(c) = chilled {
         shown.push(("Chilled".into(), [150, 215, 255], c.left / CHILL_SECS));
     }
-    // What's on you, each by how much of you it covers.
-    for (name, share) in coated.map_or(&[][..], |c| &c.coats[..]) {
+    // What's on you, each by how much of you it covers (a trace, under 5 %,
+    // not worth a slot).
+    for (name, share) in coated.map_or(&[][..], |c| &c.coats[..]).iter().filter(|(_, a)| *a >= 0.05) {
         if let Some(def) = coatings.by_name.get(name) {
             let (r, g, b) = def.color;
             shown.push((format!("{} {:.0}%", def.label, share * 100.0), [r, g, b], *share));

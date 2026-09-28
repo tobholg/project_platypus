@@ -104,6 +104,11 @@ pub struct CreatureDef {
     /// (seconds a swell; 0: steady).
     #[serde(default)]
     pub light: Option<CreatureLight>,
+    /// Its pixels of this colour are eyes (a text sprite's): drawn over the
+    /// dark, crisp, so they stand out in it as eyes do; they blink now and
+    /// then. (Spiders' are their `legs`' `eyes`.)
+    #[serde(default)]
+    pub eyes: Option<(u8, u8, u8)>,
     /// What it bleeds (a material; "" for nothing): it sprays when it's
     /// hurt and bursts out when it dies (`hurt.rs`).
     #[serde(default = "red_blood")]
@@ -260,6 +265,30 @@ impl CreatureArt {
         handle
     }
 
+    /// A compiled text sprite's atlas with only its pixels of `color` (its
+    /// eyes), made once.
+    pub fn eyes(&mut self, images: &mut Assets<Image>, path: &str, atlas: &platypus_art::Pixels, color: (u8, u8, u8)) -> Handle<Image> {
+        let key = format!("{path}#eyes");
+        if let Some(h) = self.images.get(&key) {
+            return h.clone();
+        }
+        let mut rgba = atlas.rgba.clone();
+        for p in rgba.chunks_mut(4) {
+            if (p[0], p[1], p[2]) != color {
+                p[3] = 0;
+            }
+        }
+        let handle = images.add(Image::new(
+            bevy::render::render_resource::Extent3d { width: atlas.w, height: atlas.h, depth_or_array_layers: 1 },
+            bevy::render::render_resource::TextureDimension::D2,
+            rgba,
+            bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+            bevy::asset::RenderAssetUsages::MAIN_WORLD | bevy::asset::RenderAssetUsages::RENDER_WORLD,
+        ));
+        self.images.insert(key, handle.clone());
+        handle
+    }
+
     /// Forget compiled art (it changed): made again when next asked for.
     pub fn forget_art(&mut self) {
         self.images.retain(|k, _| !k.starts_with("art:"));
@@ -320,12 +349,20 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         let mut body = Body::new(center, Vec2::new(w, h));
         body.step_height = def.movement.step_height;
 
-        let sprite = world.resource_scope(|world, mut art: Mut<CreatureArt>| {
-            let first = def.animations.get("idle").or_else(|| def.animations.values().next())?;
-            let image = world.resource_scope(|world, mut images: Mut<Assets<Image>>| art.image(world.resource::<AssetServer>(), &mut images, &first.image, def.atlas.as_deref()));
-            let layout = art.layout(&mut world.resource_mut::<Assets<TextureAtlasLayout>>(), def.sprite.frame, first.columns, first.rows);
-            Some(Sprite::from_atlas_image(image, TextureAtlas { layout, index: first.frames.first().copied().unwrap_or(0) }))
-        });
+        let (sprite, eyes) = world
+            .resource_scope(|world, mut art: Mut<CreatureArt>| {
+                let first = def.animations.get("idle").or_else(|| def.animations.values().next())?;
+                let image = world.resource_scope(|world, mut images: Mut<Assets<Image>>| art.image(world.resource::<AssetServer>(), &mut images, &first.image, def.atlas.as_deref()));
+                let layout = art.layout(&mut world.resource_mut::<Assets<TextureAtlasLayout>>(), def.sprite.frame, first.columns, first.rows);
+                let atlas = TextureAtlas { layout, index: first.frames.first().copied().unwrap_or(0) };
+                // (Its eyes: the same frames, only their pixels.)
+                let eyes = def.eyes.zip(def.atlas.as_deref()).map(|(color, pixels)| {
+                    let image = art.eyes(&mut world.resource_mut::<Assets<Image>>(), &first.image, pixels, color);
+                    Sprite::from_atlas_image(image, atlas.clone())
+                });
+                Some((Some(Sprite::from_atlas_image(image, atlas)), eyes))
+            })
+            .unwrap_or((None, None));
 
         let blood = world.resource::<crate::world::SimWorld>().materials().id(&def.blood);
         let mut e = world.spawn((
@@ -374,6 +411,9 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
                 e.with_child((sprite.clone(), Transform::default(), Visibility::Hidden, super::animation::ArmSprite));
             }
             e.with_child((sprite, Transform::default(), CreatureSprite));
+            if let Some(eyes) = eyes {
+                e.with_child((eyes, Transform::from_xyz(0.0, 0.0, super::animation::Z_EYES - def.z), super::animation::CreatureEyes, super::animation::Blinks));
+            }
         }
         let id = e.id();
 

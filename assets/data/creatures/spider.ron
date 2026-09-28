@@ -16,7 +16,9 @@
     legs: (count: 8, reach: 48, upper: 0.48, step: 0.1, lift: 8, hips: 4, spread: 7,
            color: (24, 18, 22), joint: (74, 36, 40), thick: 3, body: "spider_body", eyes: (255, 52, 38),
            stinger: "spider_stinger"),
-    light: (color: (255, 40, 30), strength: 0.14, haze: true),
+    // (Its eyes are drawn over the dark: `legs`' `eyes`. The faintest red on
+    // what's right beside it: no glow.)
+    light: (color: (255, 40, 30), strength: 0.04),
     movement: (
         run_speed: 82,
         ground_accel: 900,

@@ -15,6 +15,34 @@ pub struct AnimationPlugin;
 #[derive(Component)]
 pub struct CreatureSprite;
 
+/// The child that draws a creature's eyes alone (`CreatureDef::eyes`),
+/// over the dark: it follows the body's frame.
+#[derive(Component)]
+pub struct CreatureEyes;
+
+/// Eyes that blink now and then (each on its own beat): shut a moment.
+#[derive(Component)]
+pub struct Blinks;
+
+/// Over the darkness (the light overlay is at 15–15.5).
+pub const Z_EYES: f32 = 16.2;
+
+/// Blinks: every 2.5–6 s (each its own), shut this long.
+const BLINK_SHUT: f32 = 0.14;
+
+pub fn blink(time: Res<Time>, mut eyes: Query<(Entity, &mut Visibility), With<Blinks>>) {
+    let t = time.elapsed_secs();
+    for (e, mut vis) in &mut eyes {
+        let h = platypus_sim::rng::hash(&[e.to_bits(), 0xB11C]);
+        let period = 2.5 + (h % 1000) as f32 / 1000.0 * 3.5;
+        let phase = ((h >> 12) % 1000) as f32 / 1000.0 * period;
+        let want = if (t + phase).rem_euclid(period) < BLINK_SHUT { Visibility::Hidden } else { Visibility::Inherited };
+        if *vis != want {
+            *vis = want;
+        }
+    }
+}
+
 /// The fan (and pose tag) of an arm that aims.
 pub const FRONT_ARM: &str = "front_arm";
 
@@ -109,12 +137,13 @@ fn wanted(k: &Kinematics, anim: &mut Animator, dt: f32) -> &'static [&'static st
 
 impl Plugin for AnimationPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, animate);
+        app.add_systems(Update, (animate, blink));
     }
 }
 
 type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>);
-type BodySprites = (With<CreatureSprite>, Without<ArmSprite>);
+type BodySprites = (With<CreatureSprite>, Without<ArmSprite>, Without<CreatureEyes>);
+type EyeSprites = (With<CreatureEyes>, Without<CreatureSprite>, Without<ArmSprite>);
 type Arms<'a> = (&'a mut Sprite, &'a mut Transform, &'a mut Visibility);
 
 #[allow(clippy::too_many_arguments)]
@@ -127,6 +156,7 @@ pub fn animate(
     mut creatures: Query<Animated>,
     mut sprites: Query<(&mut Sprite, &mut Transform), BodySprites>,
     mut arms: Query<Arms, With<ArmSprite>>,
+    mut eyes: Query<(&mut Sprite, &mut Transform), EyeSprites>,
 ) {
     for (k, mut anim, children, mut aiming, hand) in &mut creatures {
         let anim = &mut *anim;
@@ -223,6 +253,7 @@ pub fn animate(
             h.local = hand_at;
         }
 
+        let mut shown = None;
         for child in children.iter() {
             if let Ok((mut sprite, mut tf, mut vis)) = arms.get_mut(child) {
                 *vis = if arm.is_some() { Visibility::Inherited } else { Visibility::Hidden };
@@ -257,6 +288,27 @@ pub fn animate(
             sprite.flip_x = (facing < 0.0) != (turn.abs() > 3.0);
             tf.translation = rot * body_at;
             tf.rotation = rot;
+            shown = Some((index, sprite.flip_x, tf.translation, rot));
+        }
+        // Its eyes: the body's frame, only their pixels, over the dark.
+        if let Some((index, flip, at, rot)) = shown
+            && let (Some(color), Some(pixels)) = (def.eyes, def.atlas.as_deref())
+        {
+            for child in children.iter() {
+                let Ok((mut sprite, mut tf)) = eyes.get_mut(child) else { continue };
+                if changed {
+                    sprite.image = art.eyes(&mut images, &clip.image, pixels, color);
+                    if let Some(atlas) = sprite.texture_atlas.as_mut() {
+                        atlas.layout = art.layout(&mut layouts, def.sprite.frame, clip.columns, clip.rows);
+                    }
+                }
+                if let Some(atlas) = sprite.texture_atlas.as_mut() {
+                    atlas.index = index;
+                }
+                sprite.flip_x = flip;
+                tf.translation = at.truncate().extend(Z_EYES - def.z);
+                tf.rotation = rot;
+            }
         }
     }
 }

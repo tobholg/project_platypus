@@ -140,8 +140,7 @@ struct LegBody;
 #[derive(Resource, Default)]
 struct BodyArt(HashMap<String, crate::combat::Turned>);
 
-/// Over the darkness (the light overlay is at 15–15.5).
-const Z_EYES: f32 = 16.2;
+use super::animation::Z_EYES;
 
 #[derive(Component)]
 struct LegEyes;
@@ -255,7 +254,7 @@ fn grow_legs(
         commands.entity(e).add_child(body);
         // The eyes: over the dark (a child of the root, lifted above the light).
         let root_z = anim.def.z;
-        let eyes = eyes_key.and_then(|key| art.0.get(&key)).map(|t| commands.spawn((LegEyes, t.sprite(0.0), Transform::from_xyz(0.0, 0.0, Z_EYES - root_z))).id());
+        let eyes = eyes_key.and_then(|key| art.0.get(&key)).map(|t| commands.spawn((LegEyes, super::animation::Blinks, t.sprite(0.0), Transform::from_xyz(0.0, 0.0, Z_EYES - root_z))).id());
         if let Some(eyes) = eyes {
             commands.entity(e).add_child(eyes);
         }

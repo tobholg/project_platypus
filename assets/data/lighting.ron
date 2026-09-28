@@ -19,10 +19,11 @@
     // Moonlight: 1 = a dark blue night you can just see in, 0 = pitch black.
     moonlight: 0.45,
 
-    // What the player carries: a lantern always; L steps through nothing, a
+    // What the player carries: a lantern always (faint: underground it shows
+    // you and the rock at your side, little more; bring a light); L steps through nothing, a
     // small flashlight, the big one (a cone toward the cursor, `angle`
     // degrees wide, `range` cells) and a torch in the off hand.
-    lantern: (color: (255, 196, 130), strength: 0.5),
+    lantern: (color: (255, 196, 130), strength: 0.08),
     flashlight: (color: (230, 238, 255), strength: 1.8, range: 240, angle: 46),
     flashlight_small: (color: (240, 236, 220), strength: 1.1, range: 130, angle: 30),
     // A torch (held, planted with G or the torch item): its light, and its

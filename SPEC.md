@@ -836,7 +836,8 @@ deaths (blood). Rendered as one dynamic mesh.
   7, green and blue in turn, 90 s, fading), later lanterns and glowing eyes.
   Fire (`flicker` 1) sways, flutters and jitters (about 0.75–1) and reddens
   as it dims (green by f^1.5, blue by f²). The player carries a lantern
-  always, and L steps through nothing, a small flashlight, the big one and a
+  always, faint (0.08: underground it shows you and the rock beside you,
+  little more; you need a light), and L steps through nothing, a small flashlight, the big one and a
   torch in the off hand (at the back arm's hand, `back_arm.hand`).
 - Torches (`light/torch.rs`, `assets/art/torch.ron`: its `flame` and
   `grip` anchors) burn with a look only (`lighting.ron` `fire`: flames of
@@ -1163,7 +1164,13 @@ parts, so another is a new file, not new code:
   creature is a `web_walker` (spiders). Blades cut webs (plants). In the
   `webs` scenario a walk covers 138 cells in 1.5 s in the open, 51 in web.
 - A creature's `light` can `haze` (glow like glowing cells: a steady
-  `Glow`): bats' faint red eyes. `drops`: items that fall out when it dies.
+  `Glow`). Eyes in the dark aren't a glow: a creature's `eyes` (a colour
+  in its text sprite; spiders' `legs` have their own) are drawn alone over
+  the darkness (z 16.2, following the body's frame, flip and turn), crisp
+  points of red, blinking now and then (shut 0.14 s every 2.5–6 s, each
+  its own beat); their light is only the faintest red on what's right
+  beside them (bats 0.03, no haze). `drops`: items that fall out when it
+  dies.
 - The cave spider (16 × 12, 70 hp: a body from above with eight glowing
   red eyes, legs 48 cells long, 3 thick; climbs, pounces, 12 a bite;
   bleeds `ichor`), spiderlings (the same, small), egg sacs (burst into four

@@ -7,8 +7,10 @@
     team: Neutral,
     blood: "blood",
     art: "bat",
-    // Eyes that glow, faintly red.
-    light: (color: (255, 40, 30), strength: 0.12, haze: true),
+    // A red eye, crisp in the dark (drawn over it, blinking now and then),
+    // the faintest red on what's right beside it: no glow.
+    eyes: (255, 70, 60),
+    light: (color: (255, 40, 30), strength: 0.03),
     movement: (
         run_speed: 20,
         fly_speed: 85,
