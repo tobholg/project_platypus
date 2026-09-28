@@ -1,6 +1,6 @@
 //! The screen's edges, telling how you are: a red flash fading in and out
-//! when you're hurt (stronger the harder), a red pulse while your health
-//! is low (quicker and stronger the lower), and a lush green glow while a
+//! when you're hurt (stronger the harder), a slow red breath while your
+//! health is low (a little quicker and stronger the lower; calm), and a lush green glow while a
 //! potion heals you: full as it's drunk, then dissolving in place as the
 //! healing runs out (its soft inner reach fading first, the rim at the
 //! screen's edge last), continuously. Each glow is two overlays over the
@@ -43,10 +43,19 @@ struct Glows {
     heal: f32,
     heal_shown: f32,
     last_hp: Option<f32>,
+    /// Where the low-health pulse is in its cycle (0..1): stepped on by its
+    /// pace each frame, so a change of pace never jumps it.
+    beat: f32,
+    /// How strong the low-health pulse is, eased (no step as health moves).
+    low: f32,
 }
 
 /// Low health: below this share of it the edges pulse.
 const LOW: f32 = 0.3;
+/// The low-health pulse: a slow breath, seconds a cycle (at the top of
+/// `LOW`, and at nearly none left). Calm, never a flicker.
+const PULSE_SLOW: f32 = 2.4;
+const PULSE_FAST: f32 = 1.7;
 /// How deep the soft band reaches in from every edge, and the rim (shares
 /// of the screen's height).
 const BAND: f32 = 0.15;
@@ -117,16 +126,16 @@ fn show(time: Res<Time<Real>>, mut glows: ResMut<Glows>, player: Query<(&Health,
     // (The green eases in over a moment, then follows the healing down
     // exactly, from the first frame it drops.)
     glows.heal_shown = if glows.heal > glows.heal_shown { glows.heal_shown + (glows.heal - glows.heal_shown) * (1.0 - (-dt / 0.05).exp()) } else { glows.heal };
-    // Low health: a pulse, a heartbeat's pace, quicker and stronger the
-    // lower.
+    // Low health: a slow, smooth breath of red (a little quicker and
+    // stronger the lower), never dropping to nothing between breaths.
     let share = h.hp / h.max.max(1.0);
-    let low = if h.hp > 0.0 && share < LOW {
-        let k = (LOW - share) / LOW;
-        let beat = (time.elapsed_secs() * std::f32::consts::TAU * (0.8 + 0.7 * k)).sin() * 0.5 + 0.5;
-        (0.18 + 0.32 * k) * (0.35 + 0.65 * beat * beat)
-    } else {
-        0.0
-    };
+    let k = if h.hp > 0.0 && share < LOW { (LOW - share) / LOW } else { 0.0 };
+    let period = PULSE_SLOW + (PULSE_FAST - PULSE_SLOW) * k;
+    glows.beat = (glows.beat + dt / period).fract();
+    let want = if k > 0.0 { 0.16 + 0.22 * k } else { 0.0 };
+    glows.low += (want - glows.low) * (1.0 - (-dt / 0.4).exp());
+    let breath = 0.5 - 0.5 * (glows.beat * std::f32::consts::TAU).cos();
+    let low = glows.low * (0.55 + 0.45 * breath);
     let red = (glows.hurt_shown * 0.55).max(low);
     // Healing: full as it's drunk, then dissolving in place: the soft band
     // fades quickest, the rim at the edge lingers, both smoothly to nothing.

@@ -69,7 +69,7 @@ killed...) pop up at the top and give things or unlock recipes
 Esc (or I) opens the inventory: drag stacks between slots (or click one up and
 click it down), right-click takes half, Shift-click moves across, hover for what
 it is and does, click outside to throw it out. Potions: click one in the hand, or H for the first healing one you carry (it heals 10 a second,
-then potion sickness for a while); the screen's edges flash red when you're hurt, pulse red at low health, glow green
+then potion sickness for a while); the screen's edges flash red when you're hurt, breathe slowly red at low health, glow green
 when you heal. Boots can fly: in rocket boots (worn from the start while developing), hold
 Space in the air to thrust up (3 s, refilling whenever they're not firing, a moment after they stop, over as long as they fire; under water
 they fire too, at about half thrust, bubbling, no flame; the exhaust is fire that burns

@@ -253,8 +253,11 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
   4 s, 30 s sickness), from glass and a mushroom stem at a workbench (a
   placeholder), in chests at every depth. Drinking: a pop and a fizz.
 - **The screen's edges** (`screen_fx.rs`): a red flash fading in and out
-  when hurt (stronger the harder), a red pulse below 30 % health (quicker
-  and stronger the lower), a green glow while a potion heals: full as it's
+  when hurt (stronger the harder), a slow red breath below 30 % health (a
+  cycle every 2.4 s, 1.7 s near death; smooth, never down to nothing, its
+  phase stepped on each frame so a change of health never jumps it: the
+  first one, up to 1.5 beats a second, sharpened, its phase from the clock
+  times a pace that moved with health, flickered), a green glow while a potion heals: full as it's
   drunk (easing in), then dissolving in place as the healing runs out, its
   soft inner reach fading first and the rim at the edge last, continuously.
   Each glow is a soft band (15 % of the screen's height deep, as deep from
