@@ -41,7 +41,9 @@ keypad's too)
 
 **Hands** (the default; items in `assets/data/items.ron`, icons in `icons.ron`; what you hold shows in your hand and moves: tools swing as they mine, wands point as they cast, a held torch burns — `held` in `weapons.ron`): 1–0 or the mouse wheel pick a hotbar slot, X the next of three hotbars ·
 LMB use it (hold it with the cursor below you to dig straight down, beside you for a
-tunnel: the smart cursor digs a hole you fit; Alt toggles it) · hold Ctrl for the
+tunnel: the smart cursor digs a hole you fit; Alt toggles it; what the pick will take is lit yellow) · C switches the
+pickaxe between a block at a time and a round bite out of the rock nearest you toward the cursor (it
+can't reach through rock) · hold Ctrl for the
 right tool for what's at the cursor (auto tool) · the key left of 1 (or F1) switches
 to the dev tools and back · swords and a bow: the shortsword, longsword and bow start on hotbar 2 (X, then 7, 8 or
 9; 60 arrows beside them). Hold LMB with the bow to draw, let go to loose. Swords: hold LMB to swing at the cursor through the combo. In the air, S + LMB (or LMB aimed well

@@ -167,6 +167,13 @@
 //!   player in it (far over the bottom) with its rocket boots empty: logs the charge
 //!   after 3 s in the water, then how far a held jump rose it in 1.5 s
 //!   (and whether the boots flamed: they shouldn't, under water)
+//! - `pickarea`   (`PLATYPUS_WORLD=arena`) the pickaxe's area mode: a dirt
+//!   wall 12 wide beside the player and more dirt past a gap behind it; C
+//!   pressed (the label says Area), the cursor aimed past the wall at the far
+//!   dirt; the button held 1.2 s from 1.4 s (screenshot at 1.2 s with
+//!   `PLATYPUS_SCENARIO_SECS=2.2`: the lit bite on the wall's face); logs
+//!   what was dug from the wall and from the far dirt (none: it can't reach
+//!   through)
 //! - `soak`       (`PLATYPUS_WORLD=arena`) what fluids leave on you: a step
 //!   into a two-cell acid puddle (logs how much acid's on you and your
 //!   health), out of it 1.4 s (it keeps eating), then set alight standing
@@ -235,7 +242,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
-            .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3089,6 +3096,69 @@ fn potion_script(s: Res<Scenario>, items: Option<Res<crate::hands::items::Items>
 
 /// Rocket boots under water: they fill back up there, and fire (slower,
 /// no flame).
+/// `pickarea`: area mode dug into a dirt wall, aimed past it.
+#[allow(clippy::too_many_arguments)]
+fn pickarea_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    hand: Res<crate::hands::Hand>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut state: Local<(u8, usize, usize)>,
+) {
+    if s.name != "pickarea" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let x = 540;
+    // The wall (x + 14 .. x + 26) and the far dirt (x + 30 .. x + 46).
+    let (wall, far) = ((x + 14, x + 26), (x + 30, x + 46));
+    let dirt = sim.materials().id("dirt");
+    let count = |sim: &SimWorld, (x0, x1): (i32, i32)| (x0..x1).flat_map(|cx| (floor..floor + 30).map(move |cy| CellPos::new(cx, cy))).filter(|&p| sim.world.get(p).is_some_and(|c| Some(c.material) == dirt)).count();
+    match state.0 {
+        0 if t > 0.3 => {
+            if let Some(d) = dirt {
+                for (x0, x1) in [wall, far] {
+                    for cx in x0..x1 {
+                        for cy in floor..floor + 30 {
+                            sim.queue(WorldEdit::Paint { center: CellPos::new(cx, cy), radius: 0, material: d, overwrite: true });
+                        }
+                    }
+                }
+            }
+            k.body.pos = Vec2::new(x as f32, floor as f32 + k.body.half.y);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            state.0 = 1;
+        }
+        1 if t > 0.8 => {
+            keys.press(KeyCode::KeyC);
+            state.1 = count(&sim, wall);
+            state.2 = count(&sim, far);
+            state.0 = 2;
+        }
+        2 if t > 0.9 => {
+            keys.release(KeyCode::KeyC);
+            info!("pickarea: C pressed: area mode {}; the wall has {} dirt cells, the far dirt {}", hand.area, state.1, state.2);
+            state.0 = 3;
+        }
+        3 if t > 2.6 => {
+            let (w, f) = (count(&sim, wall), count(&sim, far));
+            info!("pickarea: 1.2 s of swings aimed past the wall: {} cells dug from the wall, {} from the far dirt", state.1 - w, state.2 - f);
+            state.0 = 4;
+        }
+        _ => {}
+    }
+    // Aimed past the wall, at the far dirt, level with the chest.
+    cursor.0 = (state.0 >= 2).then(|| Vec2::new((far.0 + 8) as f32, floor as f32 + 12.0));
+    let hold = state.0 == 3 && (1.4..2.6).contains(&t);
+    if hold { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+}
+
 type Soaker<'a> = (Entity, &'a mut Kinematics, &'a crate::actors::Health, Option<&'a crate::actors::elements::Coated>, Has<crate::actors::elements::Burning>);
 
 /// `soak`: a step in acid, washed off in water; alight in a puddle, then

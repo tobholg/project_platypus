@@ -369,6 +369,11 @@ impl World {
                 self.mine(center, radius, power, max_hardness, back, &mut report);
                 self.loosen_if_removed(center, radius, &report);
             }
+            WorldEdit::MineReach { center, radius, from, bite, power, max_hardness } => {
+                let cells = self.within_reach(center, radius, from, bite, max_hardness);
+                self.mine_cells(center, radius, cells, power, max_hardness, false, &mut report);
+                self.loosen_if_removed(center, radius + 1, &report);
+            }
             WorldEdit::MineBlock { block, power, max_hardness, back } => {
                 self.mine_block(block, power, max_hardness, back, &mut report);
                 let c = block_cells(block).next().expect("a block has cells");
@@ -465,9 +470,60 @@ impl World {
     }
 
     fn mine(&mut self, center: CellPos, radius: i32, power: u8, max_hardness: u8, back: bool, report: &mut EditReport) {
+        self.mine_cells(center, radius, disc(center, radius).collect(), power, max_hardness, back, report);
+    }
+
+    /// The playfield cells of the disc (`center`, `radius`) a pickaxe swung
+    /// from `from` gets at: those it can break (no harder than
+    /// `max_hardness`), with no more than `bite` solid cells (rock or sand,
+    /// whatever it is) on the line between `from` and them. A pick doesn't
+    /// reach through rock: it bites into the face nearest it, not what's on
+    /// the other side.
+    pub fn within_reach(&self, center: CellPos, radius: i32, from: CellPos, bite: i32, max_hardness: u8) -> Vec<CellPos> {
+        let mats = self.materials();
+        let solid = |p: CellPos| self.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder));
+        let minable = |p: CellPos| {
+            self.get(p).is_some_and(|c| {
+                let ph = mats.phys(c.material);
+                !c.is_air() && matches!(ph.kind, Kind::Static | Kind::Powder | Kind::Plant) && ph.hardness <= max_hardness && ph.hardness < u8::MAX
+            })
+        };
+        disc(center, radius)
+            .filter(|&p| minable(p))
+            .filter(|&p| {
+                // (Along the line, half a cell at a time: each cell passed
+                // through once, the target itself not counted.)
+                let (dx, dy) = ((p.x - from.x) as f32, (p.y - from.y) as f32);
+                let steps = ((dx.abs().max(dy.abs())) * 2.0).ceil() as i32;
+                let mut last = from;
+                let mut crossed = 0;
+                for i in 1..steps {
+                    let t = i as f32 / steps as f32;
+                    let q = CellPos::new(from.x + (dx * t).round() as i32, from.y + (dy * t).round() as i32);
+                    if q == last || q == p {
+                        continue;
+                    }
+                    last = q;
+                    if solid(q) {
+                        crossed += 1;
+                        if crossed > bite {
+                            return false;
+                        }
+                    }
+                }
+                true
+            })
+            .collect()
+    }
+
+    /// Each of `cells` takes `power` damage (less towards the rim of the
+    /// disc `center`, `radius`: holes come out round), breaking at its
+    /// hardness.
+    #[allow(clippy::too_many_arguments)]
+    fn mine_cells(&mut self, center: CellPos, radius: i32, cells: Vec<CellPos>, power: u8, max_hardness: u8, back: bool, report: &mut EditReport) {
         let mats = self.materials.clone();
         let mut rng = self.rng_for(0x3113, center);
-        for p in disc(center, radius) {
+        for p in cells {
             let Some(front) = self.get(p) else { continue };
             // An axe reaches the background only where nothing stands in front.
             if back && !front.is_air() {

@@ -1801,6 +1801,33 @@ fn a_block_breaks_all_at_once_after_enough_hits() {
 }
 
 #[test]
+fn an_area_swing_bites_the_near_face_not_what_is_behind_it() {
+    let mut w = boxed_world(1, 1, 62);
+    // A dirt wall (x 30..40), a gap of air, then more dirt (x 44..60); the
+    // pick swings from the left, at the wall's face.
+    fill(&mut w, "dirt", 30, 40, 5, 40);
+    fill(&mut w, "dirt", 44, 60, 5, 40);
+    let dirt = w.materials().expect_id("dirt");
+    let (from, center) = (CellPos::new(18, 20), CellPos::new(30, 20));
+    let reach = w.within_reach(center, 4, from, 4, 100);
+    assert!(reach.contains(&CellPos::new(30, 20)) && reach.contains(&CellPos::new(33, 20)), "the face and a few cells in");
+    // Past the bite: not even in the disc's reach through the rock.
+    let behind = w.within_reach(CellPos::new(40, 20), 6, from, 4, 100);
+    assert!(behind.iter().all(|p| p.x < 40), "nothing on the far side of a 10-cell wall: {:?}", behind.iter().filter(|p| p.x >= 40).collect::<Vec<_>>());
+    // A swing (dirt 20 hard, power 30): the face goes, the far dirt stays.
+    let before = count(&w, dirt);
+    let r = w.apply_edit(&WorldEdit::MineReach { center, radius: 4, from, bite: 4, power: 30, max_hardness: 100 });
+    let gone = r.removed.iter().map(|(_, n)| n).sum::<u32>();
+    assert!(gone >= 10, "a bite out of the face: {gone} cells");
+    assert!(w.get(CellPos::new(30, 20)).unwrap().is_air(), "the face at the centre is gone");
+    assert!((44..60).all(|x| w.get(CellPos::new(x, 20)).unwrap().material == dirt), "the far side is whole");
+    assert!(count(&w, dirt) < before);
+    // Too hard for the tier: untouched.
+    fill(&mut w, "obsidian", 30, 40, 5, 40);
+    assert!(w.within_reach(center, 4, from, 4, 100).is_empty(), "obsidian is past this pick");
+}
+
+#[test]
 fn ore_beyond_a_tools_tier_stays_in_the_block() {
     let mut w = boxed_world(1, 1, 61);
     fill(&mut w, "stone", 1, 63, 1, 20);

@@ -3,7 +3,8 @@
 //! switches to the dev tools (`tools.rs`) and back.
 //!
 //! 1–0 pick a hotbar slot · X the next hotbar · LMB use it · hold Ctrl: the
-//! right tool for the target (auto tool) · Alt: smart cursor on/off · Esc or
+//! right tool for the target (auto tool) · Alt: smart cursor on/off · C: a
+//! pickaxe's mode (a block at a time, or a round bite: `area_at`) · Esc or
 //! I: inventory · RMB: open a chest or a body (R takes all) · ` (or F1): dev tools.
 
 pub mod chests;
@@ -66,6 +67,9 @@ pub struct Hand {
     /// Smart cursor (Alt): dig a tunnel the body fits toward the cursor,
     /// rather than the block under it.
     pub smart: bool,
+    /// A pickaxe's area mode (C): a round bite out of the rock nearest you,
+    /// not a block.
+    pub area: bool,
     cooldown: f32,
     /// Glow sticks thrown (they alternate colours).
     thrown: u32,
@@ -73,7 +77,7 @@ pub struct Hand {
 
 impl Default for Hand {
     fn default() -> Self {
-        Hand { slot: 0, bar: 0, smart: true, cooldown: 0.0, thrown: 0 }
+        Hand { slot: 0, bar: 0, smart: true, area: false, cooldown: 0.0, thrown: 0 }
     }
 }
 
@@ -118,7 +122,7 @@ impl Plugin for HandsPlugin {
             .init_resource::<HandInput>()
             .add_systems(Startup, build_items)
             .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor).after(bevy::ui::UiSystems::Focus))
-            .add_systems(Update, (toggle_dev, select, wield, give_start, outline.run_if(play), icons::make_icons, icons::reload_icons))
+            .add_systems(Update, (toggle_dev, select, wield, give_start, outline.run_if(play), mark, icons::make_icons, icons::reload_icons))
             .add_systems(FixedUpdate, use_hands.run_if(play).in_set(TickSet::Intent))
             .add_systems(FixedUpdate, collect.after(crate::props::fly).in_set(TickSet::Bodies))
             .add_plugins((ui::UiPlugin, chests::ChestsPlugin, corpses::CorpsesPlugin));
@@ -215,6 +219,9 @@ fn select(keys: Res<ButtonInput<KeyCode>>, scroll: Res<AccumulatedMouseScroll>, 
     if keys.just_pressed(KeyCode::KeyX) {
         hand.bar = (hand.bar + 1) % BARS;
     }
+    if keys.just_pressed(KeyCode::KeyC) {
+        hand.area = !hand.area;
+    }
     const PIXELS_A_NOTCH: f32 = 40.0;
     *wheel += match scroll.unit {
         MouseScrollUnit::Line => scroll.delta.y,
@@ -286,6 +293,31 @@ fn mine_at(world: &World, body: &Body, hand: Vec2, cursor: Vec2, smart: bool, (b
         (true, true) => target::mine_target(hand, cursor, reach, can),
         (false, _) => target::cursor_target(hand, cursor, reach, can),
     }
+}
+
+/// A pickaxe's area mode keeps this share of its power (it takes many
+/// cells a swing).
+const AREA_POWER: f32 = 0.75;
+
+/// A pickaxe's swing in area mode: its disc (centre, radius) and the cells
+/// it takes. The disc sits where the line from the hand toward the cursor
+/// first meets rock (a pick can't aim past it), else at the cursor (within
+/// reach; with the smart cursor the line goes on to full reach past it).
+/// What it takes is what it can get at from the hand: no more solid cells
+/// between than the disc's radius (`World::within_reach`).
+fn area_at(world: &World, hand: Vec2, cursor: Vec2, smart: bool, tier: u8, reach: f32, radius: f32) -> Option<(CellPos, i32, Vec<CellPos>)> {
+    let reach = reach * BLOCK as f32;
+    let to = cursor - hand;
+    let dir = to.normalize_or(Vec2::X);
+    let far = if smart { reach } else { to.length().min(reach) };
+    let mats = world.materials();
+    let solid = |p: Vec2| world.get(CellPos::from_world(p.x, p.y)).is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder));
+    let steps = (far * 2.0).ceil() as i32;
+    let hit = (1..=steps).map(|i| hand + dir * (i as f32 * 0.5).min(far)).find(|&p| solid(p));
+    let at = hit.unwrap_or(hand + dir * far);
+    let (centre, radius) = (CellPos::from_world(at.x, at.y), radius.round() as i32);
+    let cells = world.within_reach(centre, radius, CellPos::from_world(hand.x, hand.y), radius, tier);
+    (!cells.is_empty()).then_some((centre, radius, cells))
 }
 
 /// With auto tool, the slot of the best tool for what's at the cursor.
@@ -377,7 +409,7 @@ fn use_hands(
     let Some(stack) = inv.slots[slot] else { return };
     match items.def(stack.item).use_.clone() {
         // (A pickaxe or axe swings while it's used: `combat`, by its id.)
-        Use::Mine { back, power, tier, speed, reach } if input.primary && hand.cooldown == 0.0 => {
+        Use::Mine { back, power, tier, speed, reach, area } if input.primary && hand.cooldown == 0.0 => {
             swings.write(crate::combat::MeleeRequest { attacker: me, at: cursor });
             // A chest at the cursor, within reach, takes the hit (the last
             // one breaks it, spilling what's in it, and the chest).
@@ -407,6 +439,30 @@ fn use_hands(
                 {
                     spawn_drop(&mut commands, &items, pos, Stack::new(item, 1));
                     commands.entity(e).despawn();
+                }
+                return;
+            }
+            // Area mode: a round bite out of the rock nearest you.
+            if !back && hand.area && area > 0.0 {
+                let Some((centre, radius, _)) = area_at(&sim.world, from, cursor, hand.smart, tier, reach, area) else { return };
+                let at = Vec2::new(centre.x as f32 + 0.5, centre.y as f32 + 0.5);
+                let what = crate::sound::hooks::underfoot(&sim.world, centre);
+                let power = ((power as f32 * AREA_POWER).round() as u8).max(1);
+                let report = sim.world.apply_edit(&WorldEdit::MineReach { center: centre, radius, from: CellPos::from_world(from.x, from.y), bite: radius, power, max_hardness: tier });
+                let hit = match what {
+                    Some("stone") => "mine_stone",
+                    Some("sand") | Some("snow") => "mine_sand",
+                    _ => "mine_dirt",
+                };
+                sounds.write(crate::sound::PlaySound::at(hit, at));
+                if !report.removed.is_empty() {
+                    sounds.write(crate::sound::PlaySound::at("break", at).volume(0.8));
+                }
+                hand.cooldown = 1.0 / speed.max(0.1);
+                for &(material, n) in &report.removed {
+                    if let Some(item) = items.block(material) {
+                        spawn_drop(&mut commands, &items, at, Stack::new(item, n));
+                    }
                 }
                 return;
             }
@@ -571,7 +627,86 @@ fn collect(
     }
 }
 
-/// The block the hands would act on, outlined: yellow to mine, cyan to place.
+/// What a mining tool would take, lit (`mark`).
+#[derive(Component)]
+struct Marked;
+
+/// Over the dark (the light overlay is at 15–15.5), under creatures' eyes.
+const Z_MARK: f32 = 16.1;
+
+/// The cells the mining tool in hand would take next, lit as Terraria's
+/// smart cursor lights them: a see-through warm yellow over them (a
+/// block, or area mode's bite), a little stronger at their edge, breathing
+/// gently; over the dark, so it shows in it.
+#[allow(clippy::too_many_arguments)]
+fn mark(
+    mut commands: Commands,
+    time: Res<Time>,
+    input: Res<HandInput>,
+    items: Option<Res<Items>>,
+    hand: Res<Hand>,
+    dev: Res<DevTools>,
+    sim: Res<SimWorld>,
+    player: Query<(&Kinematics, &Inventory), With<LocalPlayer>>,
+    mut images: ResMut<Assets<Image>>,
+    mut marked: Query<(&mut Sprite, &mut Transform, &mut Visibility), With<Marked>>,
+    mut last: Local<Vec<CellPos>>,
+) {
+    let cells = (|| {
+        let (items, cursor, (k, inv)) = (items.as_ref()?, input.cursor?, player.single().ok()?);
+        if dev.0 {
+            return None;
+        }
+        let from = hand_at(k);
+        let world = &sim.world;
+        let slot = if input.auto { auto_slot(world, items, inv, hand.bar_slots(), &k.body, from, cursor).unwrap_or(hand.active()) } else { hand.active() };
+        let &Use::Mine { back, tier, reach, area, .. } = &items.def(inv.slots[slot]?.item).use_ else { return None };
+        if !back && hand.area && area > 0.0 {
+            return area_at(world, from, cursor, hand.smart, tier, reach, area).map(|(_, _, cells)| cells);
+        }
+        mine_at(world, &k.body, from, cursor, hand.smart, (back, tier, reach)).map(|b| block_cells(b).collect())
+    })()
+    .unwrap_or_default();
+    let Ok((mut sprite, mut tf, mut vis)) = marked.single_mut() else {
+        commands.spawn((Name::new("Mining mark"), Marked, Sprite::default(), Transform::from_xyz(0.0, 0.0, Z_MARK), Visibility::Hidden));
+        return;
+    };
+    if cells.is_empty() {
+        *vis = Visibility::Hidden;
+        last.clear();
+        return;
+    }
+    *vis = Visibility::Visible;
+    if *last != cells {
+        let lo = cells.iter().fold(IVec2::MAX, |m, p| m.min(IVec2::new(p.x, p.y)));
+        let hi = cells.iter().fold(IVec2::MIN, |m, p| m.max(IVec2::new(p.x, p.y)));
+        let (w, h) = ((hi.x - lo.x + 1) as u32, (hi.y - lo.y + 1) as u32);
+        let set: std::collections::HashSet<CellPos> = cells.iter().copied().collect();
+        let mut px = vec![0u8; (w * h * 4) as usize];
+        for p in &cells {
+            let edge = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| !set.contains(&CellPos::new(p.x + dx, p.y + dy)));
+            let i = (((hi.y - p.y) as u32 * w + (p.x - lo.x) as u32) * 4) as usize;
+            px[i..i + 4].copy_from_slice(&[255, 214, 90, if edge { 150 } else { 88 }]);
+        }
+        let mut image = Image::new(
+            bevy::render::render_resource::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+            bevy::render::render_resource::TextureDimension::D2,
+            px,
+            bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+            bevy::asset::RenderAssetUsages::RENDER_WORLD,
+        );
+        image.sampler = bevy::image::ImageSampler::nearest();
+        sprite.image = images.add(image);
+        sprite.custom_size = Some(Vec2::new(w as f32, h as f32));
+        tf.translation = Vec3::new(lo.x as f32 + w as f32 / 2.0, lo.y as f32 + h as f32 / 2.0, Z_MARK);
+        *last = cells;
+    }
+    let breath = 0.85 + 0.15 * (time.elapsed_secs() * 3.5).sin();
+    sprite.color = Color::srgba(1.0, 1.0, 1.0, breath);
+}
+
+/// The spot the hands would build on or set something down at, outlined in
+/// cyan (what a mining tool would take is lit: `mark`).
 #[allow(clippy::too_many_arguments)]
 fn outline(
     input: Res<HandInput>,
@@ -600,7 +735,6 @@ fn outline(
             }
             (None, Color::NONE)
         }
-        &Use::Mine { back, tier, reach, .. } => (mine_at(world, &k.body, from, cursor, hand.smart, (back, tier, reach)), Color::srgba(1.0, 0.9, 0.3, 0.9)),
         Use::Chest => {
             if let Some(feet) = chests::place_spot(world, cursor) {
                 let (w, h) = platypus_worldgen::CHEST_SIZE;

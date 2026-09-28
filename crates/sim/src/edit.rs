@@ -22,6 +22,12 @@ pub enum WorldEdit {
     /// reaches the hardest of them they all break at once. Cells harder than
     /// `max_hardness` stay (ore beyond a tool's tier).
     MineBlock { block: CellPos, power: u8, max_hardness: u8, back: bool },
+    /// A pickaxe's swing in its area mode: the playfield cells of a disc
+    /// that a pick swung from `from` can get at (`World::within_reach`: no
+    /// more than `bite` solid cells between it and them) take `power` damage
+    /// (less towards the rim) and break once their damage reaches their
+    /// hardness; harder than `max_hardness`, untouched.
+    MineReach { center: CellPos, radius: i32, from: CellPos, bite: i32, power: u8, max_hardness: u8 },
     /// Fill the empty cells of a block (air, or tall grass, smoke, flames:
     /// what building pushes aside) with a material (its pattern, if it has
     /// one, gives the shades). `EditReport::placed` says how many.

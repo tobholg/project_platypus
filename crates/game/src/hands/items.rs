@@ -18,8 +18,18 @@ pub struct ItemId(pub u16);
 pub enum Use {
     /// Mines blocks: the playfield (a pickaxe) or, with `back`, the
     /// background (an axe: trees, walls). `power` damage a hit, `speed` hits a
-    /// second, up to `tier` hardness, within `reach` blocks.
-    Mine { back: bool, power: u8, tier: u8, speed: f32, reach: f32 },
+    /// second, up to `tier` hardness, within `reach` blocks. A pickaxe with an
+    /// `area` (cells, a radius) has a second mode (C): it takes a round bite
+    /// that size out of the rock nearest you, toward the cursor.
+    Mine {
+        back: bool,
+        power: u8,
+        tier: u8,
+        speed: f32,
+        reach: f32,
+        #[serde(default)]
+        area: f32,
+    },
     /// Throw one toward the cursor.
     Throw(Throwable),
     /// Plant one on a block face within reach: it lights the place up.

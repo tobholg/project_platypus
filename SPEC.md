@@ -290,8 +290,24 @@ DESIGN.md §4–5, stage 4 of the world arc.
   block under it. A placement goes
   under the cursor if free and supported (a solid neighbour or a wall behind),
   else against whatever the line meets, never into open air. Pure functions
-  with unit tests. Ctrl picks the best tool for the target (auto tool). The
-  target is outlined.
+  with unit tests. Ctrl picks the best tool for the target (auto tool). What
+  a mining tool will take is lit as Terraria's smart cursor lights it: a
+  see-through warm yellow over its cells, a little stronger at their edge,
+  breathing gently, drawn over the dark (a sprite of one pixel a cell, z
+  16.1); a placement is outlined in cyan.
+- A pickaxe's two modes (C switches; the label says Precise or Area, the
+  hint line `precise [C]`): precise, a block at a time as above; area (its
+  `area` in items.ron, a radius in cells: copper 4, iron 4.5, gold 5,
+  mithril 5.5), a round bite. The bite's disc sits where the line from the
+  hand toward the cursor first meets solid (with the smart cursor it goes
+  on to full reach past the cursor), else at the cursor: a pick can't aim
+  past rock. It takes the disc's cells the pick can get at: no more solid
+  cells between the hand and them than the radius (`World::within_reach`),
+  so it bites into the face nearest you, never what's on the other side of
+  a wall. Each takes 3/4 of the pick's power (less towards the rim: round
+  holes) and breaks at its own hardness (`WorldEdit::MineReach`); what
+  it leaves unsupported falls. The `pickarea` scenario: 216 cells dug out
+  of a dirt wall in 1.2 s aimed past it, none from the dirt behind.
 - Pace: a copper pickaxe (power 35, 6 hits/s) takes dirt in one hit, stone in
   two; an iron one (power 60, 7/s) stone in one. The player's box is 6 × 15 cells, so it drops into a 2-block
   shaft and walks a 4-block tunnel.

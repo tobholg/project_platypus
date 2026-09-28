@@ -413,9 +413,12 @@ fn slot_mut<'a>(inv: &'a mut Inventory, chest: Option<&'a mut Inventory>, eq: &'
 }
 
 /// The keys' line: which hotbar, the cursor, the inventory, dev tools.
-fn hints(hand: Res<Hand>, mut text: Single<&mut Text, With<HintLabel>>) {
+fn hints(hand: Res<Hand>, items: Option<Res<Items>>, player: Query<&Inventory, With<LocalPlayer>>, mut text: Single<&mut Text, With<HintLabel>>) {
     let smart = if hand.smart { "smart cursor" } else { "plain cursor" };
-    let want = format!("hotbar {} of {BARS} [X]   |   {smart} [Alt]   |   inventory [Esc]   |   potion [H]   |   dev tools: key left of 1", hand.bar + 1);
+    // (A pickaxe in hand: its mode.)
+    let pick = items.as_ref().zip(player.single().ok()).and_then(|(items, inv)| inv.slots[hand.active()].map(|s| items.def(s.item).use_.clone())).is_some_and(|u| matches!(u, Use::Mine { back: false, area, .. } if area > 0.0));
+    let mode = if pick { format!("   |   {} [C]", if hand.area { "area" } else { "precise" }) } else { String::new() };
+    let want = format!("hotbar {} of {BARS} [X]   |   {smart} [Alt]{mode}   |   inventory [Esc]   |   potion [H]   |   dev tools: key left of 1", hand.bar + 1);
     if text.0 != want {
         text.0 = want;
     }
@@ -719,7 +722,10 @@ fn show(
         if unit > 1 && spare > 0 { format!("{} ({} + {spare}/{unit})", items.def(s.item).name, s.count / unit) } else { rules.name(&items, &s) }
     });
     // (Cut to LABEL_CHARS, well short of the hotbar's width.)
-    let name = if name.chars().count() > LABEL_CHARS { format!("{}…", name.chars().take(LABEL_CHARS - 1).collect::<String>().trim_end()) } else { name };
+    let name = if name.chars().count() > LABEL_CHARS { format!("{}...", name.chars().take(LABEL_CHARS - 3).collect::<String>().trim_end()) } else { name };
+    // (A pickaxe: its mode, C.)
+    let pick = inv.slots[hand.active()].is_some_and(|s| matches!(items.def(s.item).use_, Use::Mine { back: false, area, .. } if area > 0.0));
+    let name = if pick { format!("{name} ({})", if hand.area { "Area" } else { "Precise" }) } else { name };
     if label.0 != name {
         label.0 = name;
     }
@@ -864,11 +870,14 @@ fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<&crate::com
         }
     }
     match &def.use_ {
-        Use::Mine { back: false, power, tier, speed, reach } => {
+        Use::Mine { back: false, power, tier, speed, reach, area } => {
             lines.push(format!("Pickaxe: mines up to hardness {tier}"));
             lines.push(format!("{power} a hit, {speed} hits a second, reach {reach} blocks"));
+            if *area > 0.0 {
+                lines.push(format!("C: a block at a time, or a round bite {:.0} cells across", area * 2.0));
+            }
         }
-        Use::Mine { back: true, power, tier, speed, reach } => {
+        Use::Mine { back: true, power, tier, speed, reach, .. } => {
             lines.push(format!("Axe: trees and walls, up to hardness {tier}"));
             lines.push(format!("{power} a hit, {speed} hits a second, reach {reach} blocks"));
         }
