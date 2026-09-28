@@ -202,10 +202,17 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
   feet, one flat colour (the skirt stretches the bottom row down). A sky
   gradient behind, tinted by the hour's sky colour. `platypus-backdrop
   <dir>` writes `peaks.png` and each look by day, at dusk and at night.
-- **The sky:** the sun crossing by day (low and golden at either end, a
-  soft glow round it), the moon and twinkling stars by night, drawn over
-  the lighting where the sky is open (no cell, no back wall, no mountain,
-  dimmed by cloud). Nights are near black (`moonlight` 0.45, a darker sky).
+- **The sky:** the sun crossing by day (low and golden at either end): a
+  small white core in a warm bloom, the sky brightened wide about it. By
+  night single-pixel twinkling stars and a big moon with seas in two tones
+  and a wide soft halo, in its phase: eight nights a cycle, the first a full
+  moon, then waning (lit from the west) to new and waxing back (lit from
+  the east), the unlit part faintly there and the halo as bright as it's
+  lit (`PLATYPUS_MOON`=0–7 picks one: 0 new, 2 waxing half, 4 full, 6
+  waning half). Drawn over the lighting where the sky is open (no cell, no
+  back wall, no mountain, dimmed by cloud), stepped by the sky image's own
+  pixels (not square unless the window is 16:9). Nights are near black
+  (`moonlight` 0.45, a darker sky).
 - **Underground:** behind the back walls, a dark void, tinted a little by
   the band and zone the camera is in (earth, stone, the deep blue-black;
   teal in fungal zones, violet in crystal, sickly green in toxic, red over

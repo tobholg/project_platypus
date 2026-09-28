@@ -184,8 +184,8 @@ each; `PLATYPUS_SOUND_LOG=1` logs what plays and what's heard. `PLATYPUS_HIT=i` 
 `old`) plays another take of the sword hit on every blow, to compare.
 
 **Backdrops** (DESIGN §4.3b): Noita-like ranges behind the surface (sharp faceted peaks,
-snow, cloud heaps rising behind, a look per biome, calm parallax), the sun by day, the moon and
-twinkling stars on near-black nights; underground, a dark void behind the back walls tinted by
+snow, cloud heaps rising behind, a look per biome, calm parallax), the sun by day in a warm bloom, twinkling stars and
+a big phased moon on near-black nights (eight nights a cycle from full; `PLATYPUS_MOON`=0–7 to pick one); underground, a dark void behind the back walls tinted by
 the band and zone, with a few faint twinkles far off (scenario `voidlook`, `PLATYPUS_DEPTH` or
 `PLATYPUS_ZONE`). `cargo run
 --release -p platypus_backdrop -- <dir>` writes stills (`peaks.png`, `peaks-*.png`,

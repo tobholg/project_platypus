@@ -530,37 +530,86 @@ fn sky(
                 put(sx, sy, s.color, s.bright * twinkle * night * (1.0 - cloud(p.x)));
             }
         }
-        // A disc crossing the sky: the sun by day (low and golden at the
-        // ends of the day), the moon by night; a soft glow round it.
+        // A disc crossing the sky, the sun by day, the moon by night.
         let is_sun = (0.25..0.75).contains(&d.time);
         let phase = if is_sun { (d.time - 0.25) * 2.0 } else { (d.time - 0.75).rem_euclid(1.0) * 2.0 };
         let arc = (std::f32::consts::PI * phase).sin();
         let (dx, dy) = (vw * (0.12 + 0.76 * phase) - drift * 0.3, vh * (0.6 + 0.34 * arc));
         let low = 1.0 - arc;
-        let (radius, glow, body) = if is_sun { (7.0, 40.0, [1.0, 0.97 - 0.25 * low, 0.86 - 0.5 * low]) } else { (5.0, 14.0, [0.9, 0.92, 0.97]) };
         let fade = if is_sun { surface } else { night };
-        // (Over the image's pixels, finer than cells: no gaps.)
-        let step = vw / size.x as f32;
-        let reach = (glow / step) as i32;
-        for oy in -reach..=reach {
-            for ox in -reach..=reach {
-                let r = ((ox * ox + oy * oy) as f32).sqrt() * step;
-                if r > glow || fade <= 0.01 {
-                    continue;
+        // (Over the image's pixels, finer than cells, from the pixel the
+        // disc's centre is in: the pixels aren't square unless the window
+        // is 16:9, so each axis steps by its own; a wide glow every other
+        // pixel, drawn 2 × 2.)
+        let (sx, sy) = (vw / size.x as f32, vh / size.y as f32);
+        let (dx, dy) = (((dx / sx).floor() + 0.5) * sx, ((dy / sy).floor() + 0.5) * sy);
+        let each = |reach: f32, coarse: bool, f: &dyn Fn(f32, f32, f32) -> Option<([f32; 3], f32)>, put: &mut dyn FnMut(f32, f32, [f32; 3], f32)| {
+            let (nx, ny) = ((reach / sx) as i32 + 1, (reach / sy) as i32 + 1);
+            let by = if coarse { 2 } else { 1 };
+            for oy in (-ny..=ny).step_by(by) {
+                for ox in (-nx..=nx).step_by(by) {
+                    let (ex, ey) = (ox as f32 * sx, oy as f32 * sy);
+                    if (ex * ex + ey * ey).sqrt() > reach + 2.0 * sx.max(sy) {
+                        continue;
+                    }
+                    let (px, py) = (dx + ex, dy + ey);
+                    let p = origin + Vec2::new(px, py);
+                    if !sky_open(p) {
+                        continue;
+                    }
+                    let dim = fade * (1.0 - 0.8 * cloud(p.x));
+                    // (Coarse: the openness and the cloud looked up once for
+                    // the 2 × 2, but each pixel its own shade, so the glow
+                    // meets what's inside it without a gap or an overlap.)
+                    let subs: &[(i32, i32)] = if coarse { &[(0, 0), (1, 0), (0, 1), (1, 1)] } else { &[(0, 0)] };
+                    for &(ix, iy) in subs {
+                        let (ex, ey) = ((ox + ix) as f32 * sx, (oy + iy) as f32 * sy);
+                        let r = (ex * ex + ey * ey).sqrt();
+                        if r > reach {
+                            continue;
+                        }
+                        if let Some((c, a)) = f(ex, ey, r) {
+                            put(dx + ex, dy + ey, c, a * dim);
+                        }
+                    }
                 }
-                let (px, py) = (dx + ox as f32 * step, dy + oy as f32 * step);
-                let p = origin + Vec2::new(px, py);
-                if !sky_open(p) {
-                    continue;
-                }
-                let clouded = 1.0 - 0.8 * cloud(p.x);
-                if r <= radius {
-                    let k = if is_sun { 1.0 } else { 0.78 + 0.22 * platypus_backdrop::noise2(px * 0.5 + 3.0, py * 0.5, 77) };
-                    put(px, py, body.map(|v| v * k), fade * clouded);
-                } else {
-                    let a = (1.0 - (r - radius) / (glow - radius)).powi(2) * if is_sun { 0.45 } else { 0.18 };
-                    put(px, py, body, a * fade * clouded);
-                }
+            }
+        };
+        if fade > 0.01 {
+            if is_sun {
+                // The sun: a small white core, a warm glow round it, the sky
+                // brightened wide about it; golden when low.
+                let warm = [1.0, 0.93 - 0.2 * low, 0.8 - 0.45 * low];
+                each(110.0, true, &|_, _, r| (r > 18.0).then(|| (warm, (-(r / 55.0).powi(2)).exp() * 0.3)), &mut put);
+                each(18.0, false, &|_, _, r| (r > 5.0).then(|| (warm, (-(r / 9.0).powi(2)).exp() * 0.75 + (-(r / 55.0).powi(2)).exp() * 0.3)), &mut put);
+                each(5.0, false, &|_, _, r| (r <= 5.0).then_some(([1.0, 1.0, 0.96 - 0.3 * low], 1.0)), &mut put);
+            } else {
+                // The moon: big, its seas in two tones, lit from one side, in
+                // tonight's phase (the unlit part faintly there), a wide soft
+                // halo as bright as it's lit.
+                let mp = d.moon_phase();
+                let lit_share = 0.5 - 0.5 * (std::f32::consts::TAU * mp).cos();
+                let radius = 11.0;
+                each(46.0, true, &|_, _, r| (r > radius).then(|| ([0.63, 0.7, 0.95], (-(r / 24.0).powi(2)).exp() * 0.28 * (0.25 + 0.75 * lit_share))), &mut put);
+                each(radius, false, &|ex, ey, r| {
+                    if r > radius {
+                        return None;
+                    }
+                    let (nx, ny) = (ex / radius, ey / radius);
+                    // The terminator: lit east of it waxing, west waning.
+                    let k = (std::f32::consts::TAU * mp).cos() * (1.0 - ny * ny).max(0.0).sqrt();
+                    let lit = if mp < 0.5 { nx > k } else { nx < -k };
+                    if !lit {
+                        return Some(([0.23, 0.26, 0.38], 0.9));
+                    }
+                    let sea = platypus_backdrop::fbm2(nx * 2.4 + 4.0, ny * 2.4, 3, 91);
+                    let mut c = if sea > 0.58 { [0.59, 0.62, 0.71] } else if sea > 0.5 { [0.77, 0.79, 0.86] } else { [0.91, 0.93, 0.96] };
+                    // (The far limb a shade darker.)
+                    if nx + ny > 0.9 {
+                        c = c.map(|v| v * 0.8);
+                    }
+                    Some((c, 1.0))
+                }, &mut put);
             }
         }
     }

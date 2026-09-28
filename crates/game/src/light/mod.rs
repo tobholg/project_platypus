@@ -141,6 +141,8 @@ struct SettingsWatch(Watched);
 pub struct Daylight {
     /// 0 = midnight, 0.25 dawn, 0.5 noon, 0.75 dusk.
     pub time: f32,
+    /// Days gone by (the time of day its fraction).
+    pub days: f64,
     /// Hours the dev key (or a scenario) has skipped.
     pub skipped: f32,
     /// Light from the sky right now (sun or moon, cloud, lightning).
@@ -148,6 +150,16 @@ pub struct Daylight {
 }
 
 impl Daylight {
+    /// The moon's phase tonight (0 new, 0.5 full): eight nights round, the
+    /// first full (Terraria's). A night is the one begun at dusk: after
+    /// midnight it's still the last day's. (`PLATYPUS_MOON`=0..7 fixes it:
+    /// 4 full, 0 new.)
+    pub fn moon_phase(&self) -> f32 {
+        let night = (self.days + 0.25).floor() as i64 - 1;
+        let k = std::env::var("PLATYPUS_MOON").ok().and_then(|v| v.parse::<i64>().ok()).unwrap_or(night + 4);
+        k.rem_euclid(8) as f32 / 8.0
+    }
+
     /// "08:30".
     pub fn clock(&self) -> String {
         let minutes = (self.time * 24.0 * 60.0) as u32;
@@ -408,7 +420,8 @@ fn update_daylight(
 ) {
     let day_ticks = (settings.day_minutes.max(0.1) * 60.0 * TICK_HZ as f32) as f64;
     let hours = settings.start_hour + day.skipped;
-    day.time = ((hours / 24.0) as f64 + sim.world.tick() as f64 / day_ticks).fract() as f32;
+    day.days = (hours / 24.0) as f64 + sim.world.tick() as f64 / day_ticks;
+    day.time = day.days.fract() as f32;
     let (mut light, mut color) = sky_at(day.time, settings.moonlight);
     // Clouds overhead: dimmer and greyer.
     if let Some(w) = sim.world.weather() {
