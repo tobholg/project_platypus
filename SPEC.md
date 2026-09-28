@@ -1225,6 +1225,7 @@ parts, so another is a new file, not new code:
   dies.
 - The cave spider (16 × 12, 130 hp: a body from above with eight glowing
   red eyes, legs 48 cells long, 3 thick; climbs, pounces, 12 a bite;
+  poise 60 and heft 4, a troll's weight: it shrugs off most blows;
   bleeds acid, and acid doesn't hurt it; its spit a big glob, 150 cells of
   acid (`acid_glob`): it drenches you; dead, its body keeps its legs curled in over it:
   `corpses::curled_legs`), spiderlings (the same, small, acid too), spiderlings (the same, small), egg sacs (burst into four

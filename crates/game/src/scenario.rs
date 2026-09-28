@@ -168,8 +168,9 @@
 //!   after 3 s in the water, then how far a held jump rose it in 1.5 s
 //!   (and whether the boots flamed: they shouldn't, under water)
 //! - `spiderdeath` (`PLATYPUS_WORLD=arena`, try `PLATYPUS_HOUR=22`) a cave
-//!   spider beside the player, hurt at 1 s (it bleeds acid: logs the acid
-//!   about it), killed at 1.5 s: its body keeps its legs, curled
+//!   spider beside the player, struck twice by a longsword's blow at 1 s
+//!   and 1.1 s (logs how fast each sends it: shrugged off, then
+//!   staggered; it bleeds acid: logs the acid about it), killed at 1.5 s: its body keeps its legs, curled
 //!   (`PLATYPUS_SCENARIO_SECS=3` for a screenshot)
 //! - `camplook`   (a generated world) the nearest miners' camp the world
 //!   made (a mine cart, TNT, dynamite, a lantern), the player beside it with
@@ -3112,12 +3113,14 @@ fn potion_script(s: Res<Scenario>, items: Option<Res<crate::hands::items::Items>
 /// Rocket boots under water: they fill back up there, and fire (slower,
 /// no flame).
 /// `spiderdeath`: a spider bled and killed beside the player.
+#[allow(clippy::too_many_arguments)]
 fn spiderdeath_script(
     mut commands: Commands,
     s: Res<Scenario>,
     sim: Res<SimWorld>,
+    mut hits: MessageWriter<crate::combat::Hit>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
-    mut spiders: Query<(&crate::actors::Creature, &Kinematics, &mut crate::actors::Health), Without<LocalPlayer>>,
+    mut spiders: Query<(Entity, &crate::actors::Creature, &Kinematics, &mut crate::actors::Health), Without<LocalPlayer>>,
     mut state: Local<u8>,
 ) {
     if s.name != "spiderdeath" {
@@ -3136,24 +3139,35 @@ fn spiderdeath_script(
             crate::actors::creature::spawn_creature(&mut commands, "spider", Vec2::new(x + 40.0, floor), |_| {});
             *state = 1;
         }
-        1 if t > 1.0 => {
-            for (c, _, mut h) in &mut spiders {
+        // A longsword's blow (24, knocked 250 cells/s), twice (after its
+        // grace): how fast each sends it.
+        1 | 3 if t > if *state == 1 { 1.0 } else { 1.1 } => {
+            for (e, c, sk, _) in &spiders {
                 if c.kind == "spider" {
-                    h.harm(40.0, crate::actors::Harm::Physical);
+                    let dir = Vec2::new(1.0, 0.3).normalize();
+                    hits.write(crate::combat::Hit { target: e, damage: 24.0, knock: dir * 250.0, stun: 0.3, at: sk.body.pos, dir, weight: 2.0, crit: false });
                 }
             }
-            *state = 2;
+            *state += 1;
         }
-        2 if t > 1.5 => {
-            for (c, sk, mut h) in &mut spiders {
+        2 | 4 if t > if *state == 2 { 1.05 } else { 1.15 } => {
+            for (_, c, sk, _) in &spiders {
+                if c.kind == "spider" {
+                    info!("spiderdeath: struck ({}): moving {:.0} cells/s", if *state == 2 { "first" } else { "second" }, sk.body.vel.length());
+                }
+            }
+            *state += 1;
+        }
+        5 if t > 1.5 => {
+            for (_, c, sk, mut h) in &mut spiders {
                 if c.kind == "spider" {
                     let p = sk.body.pos;
                     let near = (-30..30).flat_map(|dx| (-20..20).map(move |dy| CellPos::from_world(p.x + dx as f32, p.y + dy as f32))).filter(|&q| sim.world.get(q).is_some_and(|cell| Some(cell.material) == acid)).count();
-                    info!("spiderdeath: a spider of {:.0} hp (after 40), {near} cells of acid about it", h.hp);
+                    info!("spiderdeath: a spider of {:.0} hp (after two blows), {near} cells of acid about it", h.hp);
                     h.hp = 0.0;
                 }
             }
-            *state = 3;
+            *state = 6;
         }
         _ => {}
     }

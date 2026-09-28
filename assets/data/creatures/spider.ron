@@ -34,8 +34,12 @@
         dash_speed: 0,
     ),
     web_walker: true,
-    poise: 14,
-    heft: 1.5,
+    // Heavy and planted on eight legs: it shrugs off most blows (poise:
+    // 5 shortsword slashes, 3 longsword ones, 2 of its drive, in a row
+    // before one staggers it) and barely moves when hit (knockback / heft:
+    // a longsword slash sends it 16 cells/s, was 167).
+    poise: 60,
+    heft: 4,
     brain: (
         kind: "crawler",
         params: (aggro_range: 170, pounce_range: 34, pounce_every: 1.5, wander_speed: 0.4,
