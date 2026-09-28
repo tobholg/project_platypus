@@ -3185,7 +3185,7 @@ fn pickarea_script(
     if hold { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
 }
 
-type Soaker<'a> = (Entity, &'a mut Kinematics, &'a crate::actors::Health, Option<&'a crate::actors::elements::Coated>, Has<crate::actors::elements::Burning>);
+type Soaker<'a> = (Entity, &'a mut Kinematics, &'a crate::actors::Health, Option<&'a crate::actors::elements::Coated>, Option<&'a crate::actors::elements::Burning>);
 
 /// `soak`: a step in acid, washed off in water; alight in a puddle, then
 /// in deep water.
@@ -3242,17 +3242,17 @@ fn soak_script(
         3 if t > 3.0 => {
             info!("soak: 1.4 s out of it: {}, health {:.0} (lost {:.1} since)", on(coated), health.hp, state.1 - health.hp);
             put(&mut k, 635, floor - puddle.2);
-            commands.entity(me).insert(crate::actors::elements::Burning::new(crate::actors::elements::BURN_SECS * 2.0, 1.0));
+            commands.entity(me).insert(crate::actors::elements::Burning::new(1.0));
             state.0 = 4;
         }
         4 if t > 4.4 => {
-            info!("soak: alight, 1.4 s standing in a two-cell water puddle: {}, burning {burning}", on(coated));
+            info!("soak: alight, 1.4 s standing in a two-cell water puddle: {}, burning {:.0}%", on(coated), burning.map_or(0.0, |b| b.share * 100.0));
             put(&mut k, 580, floor - 16);
             state.1 = health.hp;
             state.0 = 5;
         }
         5 if t > 5.2 => {
-            info!("soak: 0.8 s in deep water: {}, burning {burning}, health {:.0}", on(coated), health.hp);
+            info!("soak: 0.8 s in deep water: {}, burning {:.0}%, health {:.0}", on(coated), burning.map_or(0.0, |b| b.share * 100.0), health.hp);
             state.0 = 6;
         }
         6 if t > 6.5 => {

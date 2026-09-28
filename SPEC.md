@@ -653,13 +653,27 @@ deaths (blood). Rendered as one dynamic mesh.
   burning cells (it catches fire), and being mostly under a liquid that puts
   fires out. The worst cell counts, not the sum, so size doesn't matter.
 - The game keeps three statuses, each shown on the HUD as a round timer:
-  - `Burning`: 7 damage/s for 4 s (times its coatings' `burn`), flames
-    painted above it and grass it stands in lit (a burning orc running through
-    a meadow lights the meadow). It burns out: its own flames never relight
-    it. Being 40 % wet (water, blood: fireproof coatings) or hard frost puts
-    it out; a puddle at your feet doesn't. It shows: flames licking up from
-    all over it (the torch's fire, as many as a torch's for every 8 × 8
-    cells of it) and a flickering orange firelight on it.
+  - `Burning`: a share of it on fire (0–100 %, on the HUD as a percentage),
+    as the coatings are on it. It catches as much as touches flames
+    (`Exposure::flames`, the share of its cells in them, one just outside
+    counting 0.35): its fire rises at 3 a second towards 3 × that, so embers
+    underfoot light a few percent of a player, standing in a fire all of it;
+    heat alone lights what's oily. Spells, lightning and exhaust add a share
+    (`catch_fire`: lightning 100 %, a fireball's blast 80 %, a zap 60 %, the
+    flame jet 35 % a catch, rocket exhaust 30 %). It only grows from contact
+    or oil: on fire, it spreads over the oily part of it (2 a second) and
+    burns that oil away (0.12 a second where it burns). Left alone it burns
+    out, all of it in 4 s (times its oil's `burn`), a little in a moment.
+    What's wet (fireproof coatings: water, blood) takes its place: never
+    more of it alight than it's dry, and 40 % wet or hard frost puts it
+    out, so a puddle at your feet knocks it down and wading knee deep puts
+    it out; where it burns it dries (0.2 a second). It hurts 12 a second all
+    of it alight (was 7, all or nothing), less the less of it, times its
+    oil's `burn`. It shows as much as it burns: flames (the torch's fire; all
+    of it alight, as many as a torch's for every 8 × 8 cells of it) licking
+    up from its feet as far up it as it burns, an orange tint, a flickering
+    firelight as bright as it burns; and it lights what it stands in (grass,
+    a meadow) as often as it burns.
   - `Coated`: what fluids have left on it, Noita's way, from
     `assets/data/coatings.ron` via each material's `coats` (water/snow/ice:
     wet, oil: oily, blood: bloody, acid: acid). Each is a share of it

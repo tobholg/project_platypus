@@ -178,7 +178,8 @@ F2 (U in dev mode) up to the surface · N lightning at the cursor (F7) · M +3 h
 hearts (20 a heart), mana as blue stars and stamina as green bolts (20 each), and
 status timers under them (what's on you as a percentage each, Noita's way: wet, acid,
 oil, blood at once, never more than all of you; wading in water washes acid off, a
-puddle at your feet wets them but won't put you out; a step in acid clings and eats
+puddle at your feet wets them but won't put you out; fire too is a share of you: embers underfoot light a little of you
+and it soon burns out, standing in flames all of you; wet takes its place (a puddle knocks it down), oil spreads it; a step in acid clings and eats
 until it wears off or you jump in water; burning shows as flames all over you and a
 flickering firelight); underground it's dark: the lantern you always carry only shows you and
 the rock beside you, so bring a torch or a light, and what lives there shows as eyes in the dark

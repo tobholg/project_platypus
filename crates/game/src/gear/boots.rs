@@ -103,7 +103,7 @@ pub fn exhaust(
             }
             h.harm(SCORCH, Harm::Fire);
             if rng.chance(CATCH) {
-                catch_fire(&mut commands, e, resist, coated, &coatings);
+                catch_fire(&mut commands, e, resist, coated, &coatings, 0.3);
             }
         }
     }

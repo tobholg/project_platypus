@@ -10,7 +10,9 @@
 // soak:        how readily it soaks in: its share rises towards this × the
 //              share of the body in it (1.6 unless said)
 // color:       its icon and tint
-// fireproof:   wet: at 40 % or more it puts a fire out, and it can't catch
+// fireproof:   wet: at 40 % or more it puts a fire out, and it can't catch;
+//              under that, never more of you alight than you're dry (a
+//              fire dries it where it burns)
 // heat_resist: share of heat damage it ignores (0..1), all of it on
 // burn:        set alight while coated, it burns this many times as long and
 //              as hard (1 = normal), all of it on

@@ -31,8 +31,20 @@ use crate::world::{SimWorld, TICK_HZ};
 
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// Seconds a creature burns once set alight (times its coating's `burn`).
+/// Seconds all of it takes to burn out, left alone (times its oil's `burn`).
 pub const BURN_SECS: f32 = 4.0;
-const BURN_DAMAGE: f32 = 7.0;
+/// Damage a second all of it on fire (less the less of it; oil's `burn` more).
+const FIRE_DAMAGE: f32 = 12.0;
+/// Its fire rises towards this × the share of it touching flames...
+const FIRE_SOAK: f32 = 3.0;
+/// ... this fast (a share a second).
+const FIRE_RATE: f32 = 3.0;
+/// On fire, it spreads over the oily part of it this fast...
+const OIL_SPREAD: f32 = 2.0;
+/// ... and burns the oil away this fast where it burns (a share a second).
+const OIL_BURN: f32 = 0.12;
+/// Where it burns it dries this fast (a share a second).
+const FIRE_DRIES: f32 = 0.2;
 /// A burning creature lights what it touches this often (seconds).
 const SPREAD_EVERY: f32 = 0.25;
 /// Seconds it stays chilled after the cold contact ends.
@@ -133,12 +145,14 @@ pub fn reload_coatings(mut c: ResMut<Coatings>) {
     }
 }
 
+/// On fire, as the coatings are on it: how much of it burns (0..1). It
+/// catches as much as touches flames, spreads over what's oily, gives way
+/// to what's wet (drying it as it burns) and burns out left alone; it
+/// hurts, flames and lights as much as it burns.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Burning {
-    pub left: f32,
-    /// What it started with (for the timer).
-    pub total: f32,
-    /// Damage multiplier (oil burns hard).
+    pub share: f32,
+    /// Damage and length multiplier now (oil burns hard and long).
     pub power: f32,
     spread: f32,
     /// Flames owed (`blaze`).
@@ -146,8 +160,8 @@ pub struct Burning {
 }
 
 impl Burning {
-    pub fn new(secs: f32, power: f32) -> Self {
-        Burning { left: secs, total: secs, power, spread: 0.0, owed: 0.0 }
+    pub fn new(share: f32) -> Self {
+        Burning { share: share.clamp(0.0, 1.0), power: 1.0, spread: 0.0, owed: 0.0 }
     }
 }
 
@@ -158,17 +172,18 @@ pub struct Blaze;
 /// A burning creature's firelight: orange, flickering.
 const BLAZE_LIGHT: [f32; 3] = [1.6, 0.8, 0.3];
 
-/// Burning creatures blaze: flames licking up from all over them (the
-/// torch's fire, a little bigger and as many as a torch's for every 8 × 8
-/// cells of it; oil's hotter fire more), and a flickering firelight on them
-/// while it lasts.
+/// Burning creatures blaze as much as they burn: flames (the torch's fire,
+/// a little bigger; all of it on fire, as many as a torch's for every 8 × 8
+/// cells of it, oil's hotter fire more) licking up from its feet, as far up
+/// it as it burns (a few licks at its feet at 10 %, all over it at 100 %),
+/// and a flickering firelight on it, as bright as it burns.
 pub fn blaze(
     mut commands: Commands,
     time: Res<Time>,
     settings: Res<crate::light::LightSettings>,
     mut sparks: ResMut<crate::vfx::Sparks>,
     mut burning: Query<(Entity, &Kinematics, &mut Burning, Option<&Children>)>,
-    lights: Query<(Entity, &ChildOf), With<Blaze>>,
+    mut lights: Query<(Entity, &ChildOf, &mut crate::light::LightSource), With<Blaze>>,
 ) {
     let dt = time.delta_secs();
     let mut look = settings.fire.flame.clone();
@@ -176,7 +191,9 @@ pub fn blaze(
     look.speed *= 1.4;
     for (e, k, mut b, children) in &mut burning {
         let (pos, half) = (k.body.pos, k.body.half);
-        let rate = look.count * (half.x * half.y * 4.0 / 64.0).max(0.5) * b.power.sqrt();
+        let rate = look.count * (half.x * half.y * 4.0 / 64.0).max(0.5) * b.power.sqrt() * b.share;
+        // (How far up it: from its feet.)
+        let up = 0.3 + 0.7 * b.share;
         b.owed += rate * dt;
         let n = b.owed.floor();
         b.owed -= n;
@@ -184,15 +201,23 @@ pub fn blaze(
             let h = platypus_sim::rng::hash(&[time.elapsed().as_micros() as u64, e.to_bits(), i]);
             let unit = |k: u64| ((h >> k) & 1023) as f32 / 1023.0;
             // (Anywhere across it, most from its lower half up.)
-            let at = pos + Vec2::new((unit(0) * 2.0 - 1.0) * half.x * 0.9, half.y * (unit(10) * 1.7 - 1.0));
+            let at = pos + Vec2::new((unit(0) * 2.0 - 1.0) * half.x * 0.9, half.y * (unit(10) * 1.7 * up - 1.0));
             sparks.emit(&look, 1, at, Vec2::Y, k.body.vel * 0.6);
         }
-        if !children.is_some_and(|c| c.iter().any(|c| lights.contains(c))) {
-            commands.entity(e).with_child((Name::new("Blaze"), Blaze, crate::light::LightSource { color: BLAZE_LIGHT, flicker: 1.0 }, Transform::default()));
+        let glow = BLAZE_LIGHT.map(|c| c * (0.2 + 0.8 * b.share));
+        match children.and_then(|c| c.iter().find(|&c| lights.contains(c))) {
+            Some(l) => {
+                if let Ok((_, _, mut light)) = lights.get_mut(l) {
+                    light.color = glow;
+                }
+            }
+            None => {
+                commands.entity(e).with_child((Name::new("Blaze"), Blaze, crate::light::LightSource { color: glow, flicker: 1.0 }, Transform::default()));
+            }
         }
     }
     // Out: its light goes.
-    for (l, parent) in &lights {
+    for (l, parent, _) in &lights {
         if !burning.contains(parent.parent()) {
             commands.entity(l).despawn();
         }
@@ -240,6 +265,11 @@ impl Coated {
     /// Set alight, it burns this many times as long and as hard.
     pub fn burn(&self, rules: &HashMap<String, Coating>) -> f32 {
         1.0 + self.sum(rules, |c| c.burn - 1.0)
+    }
+
+    /// How oily: the share covered in coatings that catch from heat.
+    pub fn oily(&self, rules: &HashMap<String, Coating>) -> f32 {
+        self.sum(rules, |c| if c.catches { 1.0 } else { 0.0 })
     }
 
     /// Heat alone sets it alight.
@@ -334,7 +364,7 @@ type Exposed<'a> = (
 /// Runs after movement, before deaths.
 pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<Coatings>, mut q: Query<Exposed>) {
     let tick = sim.world.tick();
-    let fire = sim.materials().fire();
+    let fire_mat = sim.materials().fire();
     let rules = &coatings.by_name;
     for (entity, k, mut health, resist, burning, coated, chilled) in &mut q {
         let resist = resist.copied().unwrap_or_default();
@@ -374,22 +404,6 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
                 coat.soak(name, (now + rate * DT).min(*to), rules);
             }
         }
-        match coated {
-            Some(mut c) if coat.coats.is_empty() => {
-                c.coats.clear();
-                commands.entity(entity).remove::<Coated>();
-            }
-            Some(mut c) => {
-                if c.coats != coat.coats {
-                    *c = coat.clone();
-                }
-            }
-            None if !coat.coats.is_empty() => {
-                commands.entity(entity).insert(coat.clone());
-            }
-            None => {}
-        }
-
         let heat_resist = (resist.heat + coat.heat_resist(rules)).min(1.0);
         // What's on it eats at it (less as it wears off); in the fluid, the
         // fluid's own corrosion counts (not both).
@@ -416,41 +430,88 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
             None => {}
         }
 
-        // (Wet enough, or made not to burn: no fire. A puddle at its feet
-        // isn't enough.)
-        let fireproof = resist.fireproof || coat.doused(rules);
-        match burning {
-            Some(mut b) => {
-                // Water, snow or hard frost puts it out.
-                if fireproof || cold > 0.5 {
-                    commands.entity(entity).remove::<Burning>();
-                    continue;
+        // Fire, as the coatings: as much of it catches as touches flames
+        // (embers underfoot: a little; standing in a fire: all of it; heat
+        // alone lights what's oily), it spreads over the oily part, what's
+        // wet takes its place (40 % wet puts it out) and dries under it;
+        // left alone it burns out. (It only grows from contact or oil.)
+        let was = burning.as_ref().map_or(0.0, |b| b.share);
+        let power = coat.burn(rules);
+        let mut fire = was;
+        if resist.fireproof || cold > 0.5 || coat.doused(rules) {
+            fire = 0.0;
+        } else {
+            let oily = coat.oily(rules);
+            let heat_lit = coat.catches(rules) && e.heat > 0.0;
+            let lit = (e.flames * FIRE_SOAK).min(1.0).max(if heat_lit { oily } else { 0.0 });
+            let mut fed = false;
+            if lit > fire {
+                fire = (fire + FIRE_RATE * DT).min(lit);
+                fed = true;
+            }
+            if fire > 0.0 && oily > fire {
+                fire = (fire + OIL_SPREAD * DT).min(oily);
+                fed = true;
+            }
+            if !fed {
+                fire -= DT / (BURN_SECS * power.max(0.1));
+            }
+            fire = fire.clamp(0.0, 1.0 - coat.wet(rules));
+        }
+        if fire > 0.0 {
+            // Where it burns: wet dries, oil burns away.
+            for (n, a) in &mut coat.coats {
+                let Some(c) = rules.get(n) else { continue };
+                if c.fireproof {
+                    *a -= fire * FIRE_DRIES * DT;
+                } else if c.catches {
+                    *a -= fire * OIL_BURN * DT;
                 }
-                // It burns out on its own: its own flames don't relight it.
-                b.left -= DT;
-                health.harm(BURN_DAMAGE * b.power * DT, Harm::Fire);
+            }
+            coat.tidy();
+        }
+        match coated {
+            Some(mut c) if coat.coats.is_empty() => {
+                c.coats.clear();
+                commands.entity(entity).remove::<Coated>();
+            }
+            Some(mut c) => {
+                if c.coats != coat.coats {
+                    *c = coat.clone();
+                }
+            }
+            None if !coat.coats.is_empty() => {
+                commands.entity(entity).insert(coat.clone());
+            }
+            None => {}
+        }
+
+        match burning {
+            Some(mut b) if fire > 0.005 => {
+                b.share = fire;
+                b.power = power;
+                health.harm(FIRE_DAMAGE * fire * power * DT, Harm::Fire);
                 b.spread -= DT;
                 if b.spread <= 0.0 {
                     b.spread = SPREAD_EVERY;
                     // Flames above it (clear of its own body), and whatever
-                    // it's standing in catches.
+                    // it's standing in catches: as often as it burns.
                     let h = platypus_sim::rng::hash(&[tick, entity.to_bits()]);
-                    let dx = (h % 1000) as f32 / 1000.0 * 2.0 - 1.0;
-                    let at = pos + Vec2::new(dx * half.x, half.y + 3.0);
-                    sim.queue(WorldEdit::Paint { center: CellPos::from_world(at.x, at.y), radius: 1, material: fire, overwrite: false });
-                    sim.queue(WorldEdit::Scorch { center: CellPos::from_world(pos.x, pos.y - half.y + 1.0), radius: half.x as i32 + 1 });
-                }
-                if b.left <= 0.0 {
-                    commands.entity(entity).remove::<Burning>();
-                }
-            }
-            None => {
-                let heat_lit = coat.catches(rules) && e.heat > 0.0;
-                if (e.ignites || heat_lit) && !fireproof {
-                    let burn = coat.burn(rules);
-                    commands.entity(entity).insert(Burning::new(BURN_SECS * burn, burn));
+                    if (h >> 20) % 1000 < (fire * 1000.0) as u64 {
+                        let dx = (h % 1000) as f32 / 1000.0 * 2.0 - 1.0;
+                        let at = pos + Vec2::new(dx * half.x, half.y + 3.0);
+                        sim.queue(WorldEdit::Paint { center: CellPos::from_world(at.x, at.y), radius: 1, material: fire_mat, overwrite: false });
+                        sim.queue(WorldEdit::Scorch { center: CellPos::from_world(pos.x, pos.y - half.y + 1.0), radius: half.x as i32 + 1 });
+                    }
                 }
             }
+            Some(_) => {
+                commands.entity(entity).remove::<Burning>();
+            }
+            None if fire > 0.005 => {
+                commands.entity(entity).insert(Burning { share: fire, power, spread: 0.0, owed: 0.0 });
+            }
+            None => {}
         }
     }
 }
@@ -509,7 +570,7 @@ pub fn struck(
                 continue;
             }
             health.harm(LIGHTNING_DAMAGE * (1.0 - d / LIGHTNING_REACH), Harm::Storm);
-            catch_fire(&mut commands, entity, resist, coated, &coatings);
+            catch_fire(&mut commands, entity, resist, coated, &coatings, 1.0);
         }
     }
 }
@@ -528,7 +589,7 @@ pub fn zapped(mut commands: Commands, mut zaps: MessageReader<crate::fx::Zapped>
                 continue;
             }
             health.harm(ZAP_DAMAGE * (1.0 - d / ZAP_REACH), Harm::Storm);
-            catch_fire(&mut commands, entity, resist, coated, &coatings);
+            catch_fire(&mut commands, entity, resist, coated, &coatings, 0.6);
         }
     }
 }
@@ -544,17 +605,21 @@ pub fn chill(commands: &mut Commands, entity: Entity, resist: Option<&Resist>, n
     commands.entity(entity).insert(Chilled { left, cold });
 }
 
-/// Set a creature alight, unless it's wet enough or its kind won't burn.
-/// An oily one burns longer and harder.
-pub fn catch_fire(commands: &mut Commands, entity: Entity, resist: Option<&Resist>, coated: Option<&Coated>, coatings: &Coatings) {
-    let rules = &coatings.by_name;
-    if !coated.is_some_and(|c| c.doused(rules)) && !resist.is_some_and(|r| r.fireproof) {
-        let burn = coated.map_or(1.0, |c| c.burn(rules));
-        commands.entity(entity).insert(Burning::new(BURN_SECS * burn, burn));
+/// Set `share` more of a creature alight (lightning all of it, a spark
+/// some), unless it's wet enough or its kind won't burn.
+pub fn catch_fire(commands: &mut Commands, entity: Entity, resist: Option<&Resist>, coated: Option<&Coated>, coatings: &Coatings, share: f32) {
+    if coated.is_some_and(|c| c.doused(&coatings.by_name)) || resist.is_some_and(|r| r.fireproof) {
+        return;
     }
+    commands.entity(entity).queue_silenced(move |mut e: EntityWorldMut| match e.get_mut::<Burning>() {
+        Some(mut b) => b.share = (b.share + share).min(1.0),
+        None => {
+            e.insert(Burning::new(share));
+        }
+    });
 }
 
-type Statuses<'a> = (&'a Children, Has<Burning>, Option<&'a Coated>, Option<&'a Chilled>, Option<&'a mut super::hurt::Hurt>);
+type Statuses<'a> = (&'a Children, Option<&'a Burning>, Option<&'a Coated>, Option<&'a Chilled>, Option<&'a mut super::hurt::Hurt>);
 
 /// Just hit: a red flash. Otherwise burning creatures flicker orange;
 /// chilled ones go icy; coated ones take a little of their coating's colour.
@@ -572,10 +637,11 @@ pub fn tint(
         });
         let color = if flash {
             Color::srgb(1.0, 0.3, 0.28)
-        } else if burning {
-            // (Scorched and lit from within, flickering fast.)
+        } else if let Some(b) = burning {
+            // (Scorched and lit from within, flickering fast; as much as it
+            // burns.)
             let f = 0.5 + 0.5 * (t * 23.0).sin() * (t * 7.3).sin();
-            Color::srgb(1.0, 0.45 + 0.3 * f, 0.2 + 0.2 * f)
+            Color::WHITE.mix(&Color::srgb(1.0, 0.45 + 0.3 * f, 0.2 + 0.2 * f), (0.3 + 0.7 * b.share).min(1.0))
         } else if let Some(c) = chilled {
             let k = 0.25 + 0.45 * c.cold;
             Color::srgb(1.0 - 0.6 * k, 1.0 - 0.25 * k, 1.0)
@@ -672,6 +738,10 @@ mod tests {
         let e = creature(&mut app, IN, Resist::default());
         tick(&mut app, 1);
         assert!(app.world().get::<Burning>(e).is_some(), "caught fire");
+        // Standing in it: all of it alight in a moment.
+        tick(&mut app, 20);
+        let b = app.world().get::<Burning>(e).unwrap().share;
+        assert!(b > 0.95, "in the fire, all of it burns: {b}");
         // Out of the flames it keeps burning a while, and hurts.
         app.world_mut().get_mut::<Kinematics>(e).unwrap().body.pos = OUT;
         let hp = app.world().get::<Health>(e).unwrap().hp;
@@ -681,7 +751,7 @@ mod tests {
 
         let mut wet = app_with("water");
         let e = creature(&mut wet, IN, Resist::default());
-        wet.world_mut().entity_mut(e).insert(Burning::new(BURN_SECS, 1.0));
+        wet.world_mut().entity_mut(e).insert(Burning::new(1.0));
         // (It soaks in over a moment: a tenth of a second to douse.)
         tick(&mut wet, 10);
         assert!(wet.world().get::<Burning>(e).is_none(), "water put it out");
@@ -698,6 +768,45 @@ mod tests {
         let e = creature(&mut app, IN, Resist { fireproof: true, ..default() });
         tick(&mut app, 30);
         assert!(app.world().get::<Burning>(e).is_none(), "fireproof");
+    }
+
+    #[test]
+    fn embers_underfoot_light_a_little_and_it_burns_out() {
+        // A row of fire under its feet (the creature stands on it).
+        let mut app = app_region("fire", 0..30, 9..10);
+        let e = creature(&mut app, Vec2::new(13.0, 14.0), Resist::default());
+        tick(&mut app, 30);
+        let b = app.world().get::<Burning>(e).map_or(0.0, |b| b.share);
+        assert!(b > 0.0 && b < 0.3, "a little of it alight: {b}");
+        // Off them: out in a moment, having hurt a little.
+        app.world_mut().get_mut::<Kinematics>(e).unwrap().body.pos = OUT;
+        tick(&mut app, 90);
+        assert!(app.world().get::<Burning>(e).is_none(), "burned out");
+        let lost = 100.0 - app.world().get::<Health>(e).unwrap().hp;
+        assert!(lost < 4.0, "a sting, not a burning: lost {lost}");
+    }
+
+    #[test]
+    fn oil_spreads_a_spark_and_fire_dries_what_is_wet() {
+        // 80 % oily, a spark on it, nowhere near flames: it spreads over
+        // the oil and burns hot.
+        let mut app = app_with("stone");
+        let e = creature(&mut app, OUT, Resist::default());
+        app.world_mut().entity_mut(e).insert((Coated::with("oily", 0.8), Burning::new(0.05)));
+        tick(&mut app, 30);
+        let b = *app.world().get::<Burning>(e).unwrap();
+        assert!(b.share > 0.7, "over the oil: {}", b.share);
+        assert!(b.power > 1.9, "hotter: ×{}", b.power);
+        // A third wet (not enough to put it out), half on fire: the fire
+        // dries it faster than it'd dry on its own.
+        let mut app = app_with("stone");
+        let e = creature(&mut app, OUT, Resist::default());
+        app.world_mut().entity_mut(e).insert((Coated::with("wet", 0.3), Burning::new(0.6)));
+        tick(&mut app, 60);
+        let wet = share(&app, e, "wet");
+        assert!(wet < 0.3 - 1.0 / 6.0 - 0.05, "dried: {wet}");
+        let fire = app.world().get::<Burning>(e).map_or(0.0, |b| b.share);
+        assert!(fire <= 1.0 - wet + 1e-4, "never more alight than it's dry: {fire} with {wet} wet");
     }
 
     #[test]
@@ -721,7 +830,7 @@ mod tests {
         let mut app = app_with("snow");
         // Standing on the snow (its box starts just above the pocket's top at 20).
         let e = creature(&mut app, Vec2::new(13.0, 24.0), Resist::default());
-        app.world_mut().entity_mut(e).insert(Burning::new(BURN_SECS, 1.0));
+        app.world_mut().entity_mut(e).insert(Burning::new(1.0));
         tick(&mut app, 30);
         assert!(app.world().get::<Burning>(e).is_some(), "still burning");
         let wet = share(&app, e, "wet");
@@ -733,7 +842,7 @@ mod tests {
         // A row of water, the creature (4 × 8) standing in it (its feet at 10).
         let mut app = app_region("water", 0..30, 10..11);
         let e = creature(&mut app, Vec2::new(13.0, 14.0), Resist::default());
-        app.world_mut().entity_mut(e).insert(Burning::new(BURN_SECS, 1.0));
+        app.world_mut().entity_mut(e).insert(Burning::new(1.0));
         tick(&mut app, 30);
         let wet = share(&app, e, "wet");
         assert!((0.1..DOUSED).contains(&wet), "its feet wet: {wet}");
@@ -741,7 +850,7 @@ mod tests {
         // Waist deep: out.
         let mut app = app_region("water", 0..30, 10..14);
         let e = creature(&mut app, Vec2::new(13.0, 14.0), Resist::default());
-        app.world_mut().entity_mut(e).insert(Burning::new(BURN_SECS, 1.0));
+        app.world_mut().entity_mut(e).insert(Burning::new(1.0));
         tick(&mut app, 30);
         assert!(share(&app, e, "wet") > 0.7, "soaked: {}", share(&app, e, "wet"));
         assert!(app.world().get::<Burning>(e).is_none(), "wading deep puts it out");
@@ -800,7 +909,7 @@ mod tests {
         hot.world_mut().entity_mut(e).insert(Coated::with("oily", 1.0));
         tick(&mut hot, 1);
         let b = *hot.world().get::<Burning>(e).expect("caught from heat");
-        assert!(b.left > BURN_SECS * 2.0, "and burns long ({} s)", b.left);
+        assert!(b.power > 2.0, "and burns hard and long (×{})", b.power);
         // Into water: washed off, and out.
         let mut water = app_with("water");
         let e = creature(&mut water, IN, Resist::default());
@@ -831,7 +940,7 @@ mod tests {
         // In it (buried in the frozen pocket), burning: chilled, and the
         // fire goes out.
         app.world_mut().get_mut::<Kinematics>(e).unwrap().body.pos = Vec2::new(13.0, 15.0);
-        app.world_mut().entity_mut(e).insert(Burning::new(BURN_SECS, 1.0));
+        app.world_mut().entity_mut(e).insert(Burning::new(1.0));
         tick(&mut app, 1);
         let chilled = *app.world().get::<Chilled>(e).expect("chilled");
         assert!(chilled.speed() < 0.5, "slowed: {}", chilled.speed());

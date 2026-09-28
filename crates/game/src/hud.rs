@@ -9,7 +9,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-use crate::actors::elements::{BURN_SECS, Burning, CHILL_SECS, Chilled, Coated, Coatings};
+use crate::actors::elements::{Burning, CHILL_SECS, Chilled, Coated, Coatings};
 use crate::actors::player::LocalPlayer;
 use crate::actors::{Health, PlayerDeaths};
 
@@ -259,7 +259,7 @@ fn update_statuses(
     // (label, colour, share left)
     let mut shown: Vec<(String, [u8; 3], f32)> = Vec::new();
     if let Some(b) = burning {
-        shown.push(("Burning".into(), [255, 130, 30], b.left / b.total.max(BURN_SECS * 0.1)));
+        shown.push((format!("Burning {:.0}%", b.share * 100.0), [255, 130, 30], b.share));
     }
     if let Some(c) = chilled {
         shown.push(("Chilled".into(), [150, 215, 255], c.left / CHILL_SECS));

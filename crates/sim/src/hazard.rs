@@ -27,6 +27,10 @@ pub struct Exposure {
     pub corrosion: f32,
     /// Touching flames or something burning: it catches fire.
     pub ignites: bool,
+    /// How much of it touches flames or something burning: the share of its
+    /// body's cells that are, one touched just outside counting
+    /// `TOUCH_SHARE` (embers underfoot: a little; standing in a fire: a lot).
+    pub flames: f32,
     /// What it's getting coated in: the liquid it's in most of, else
     /// anything with a coating it touches (snow). See `MaterialDef::coats`.
     pub coat: Option<MaterialId>,
@@ -60,6 +64,7 @@ impl World {
         let mut touched = None;
         // (Cells of each coating, inside counting 1, touched `TOUCH_SHARE`.)
         let mut coating: Vec<(MaterialId, f32)> = Vec::new();
+        let mut flames = 0.0;
         for y in min.y - 1..=max.y + 1 {
             for x in min.x - 1..=max.x + 1 {
                 let inside = x >= min.x && x <= max.x && y >= min.y && y <= max.y;
@@ -73,6 +78,7 @@ impl World {
                 if burning {
                     // Flames set it alight; that does the harm, not their heat.
                     e.ignites = true;
+                    flames += if inside { 1.0 } else { TOUCH_SHARE };
                 } else {
                     let t = self.climate().ambient(x, y) + c.heat as i32;
                     e.heat = e.heat.max((t - HARMFUL_HEAT).max(0) as f32 * HEAT_DAMAGE);
@@ -107,6 +113,7 @@ impl World {
         }
         let area = ((max.x - min.x + 1) * (max.y - min.y + 1)).max(1);
         e.submerged = liquid as f32 / area as f32;
+        e.flames = (flames / area as f32).min(1.0);
         e.coat = soaking.iter().max_by_key(|(_, n)| *n).map(|(m, _)| *m).or(touched);
         coating.sort_by(|a, b| b.1.total_cmp(&a.1));
         for (slot, (m, n)) in e.coats.iter_mut().zip(coating) {
