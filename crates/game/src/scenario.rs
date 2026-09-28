@@ -174,11 +174,12 @@
 //! - `camplook`   (a generated world) the nearest miners' camp the world
 //!   made (a mine cart, TNT, dynamite, a lantern), the player beside it with
 //!   a torch; logs where
-//! - `camp`       (`PLATYPUS_WORLD=arena`) a miners' camp 70 cells off (a
+//! - `camp`       (`PLATYPUS_WORLD=arena`) a miners' camp 150 cells off (a
 //!   lantern, a mine cart loaded with TNT, a TNT barrel, dynamite); at 2 s a
 //!   spark lands on the cart (`PLATYPUS_CAMP=hit`: a blow instead, at once);
-//!   logs what's left and the player's health at 1.5 s and 5 s
-//!   (`PLATYPUS_SCENARIO_SECS=4` for a screenshot as it goes off)
+//!   logs what's left and the player's health at 1.5 s and every 0.8 s
+//!   after 5 s (in the open, the rubble raining down hurts: take cover;
+//!   `PLATYPUS_SCENARIO_SECS=4.4` for a screenshot as it goes off)
 //! - `pickarea`   (`PLATYPUS_WORLD=arena`) the pickaxe's area mode: a dirt
 //!   wall 12 wide beside the player and more dirt past a gap behind it; C
 //!   pressed (the label says Area), the cursor aimed past the wall at the far
@@ -3227,7 +3228,7 @@ fn camp_script(
     let left = |props: &Query<(Entity, &crate::actors::Creature, &mut crate::actors::Health), Without<LocalPlayer>>| kinds.iter().map(|&kind| format!("{kind} {}", props.iter().filter(|(_, c, _)| c.kind == kind).count())).collect::<Vec<_>>().join(", ");
     match *state {
         0 if t > 0.3 => {
-            for (kind, dx) in kinds.iter().zip([56.0, 74.0, 91.0, 99.0]) {
+            for (kind, dx) in kinds.iter().zip([130.0, 148.0, 165.0, 173.0]) {
                 crate::actors::creature::spawn_creature(&mut commands, kind, Vec2::new(x + dx, floor), |_| {});
             }
             k.body.pos = Vec2::new(x, floor + k.body.half.y);
@@ -3236,7 +3237,7 @@ fn camp_script(
             *state = 1;
         }
         1 if t > 1.5 => {
-            info!("camp: set up: {}; the player {:.0} hp, 74 cells from the cart", left(&props), hp.hp);
+            info!("camp: set up: {}; the player {:.0} hp, 148 cells from the cart", left(&props), hp.hp);
             *state = 2;
         }
         2 if t > 2.0 => {
@@ -3254,6 +3255,10 @@ fn camp_script(
         3 if t > 5.0 => {
             info!("camp: 3 s after the spark: {}; the player {:.0} hp", left(&props), hp.hp);
             *state = 4;
+        }
+        4..=7 if t > 5.0 + (*state - 3) as f32 * 0.8 => {
+            info!("camp: {:.1} s after the spark: the player {:.0} hp", t - 2.0, hp.hp);
+            *state += 1;
         }
         _ => {}
     }

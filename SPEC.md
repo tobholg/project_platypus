@@ -683,7 +683,9 @@ deaths (blood). Rendered as one dynamic mesh.
     What's wet (fireproof coatings: water, blood) takes its place: never
     more of it alight than it's dry, and 40 % wet or hard frost puts it
     out, so a puddle at your feet knocks it down and wading knee deep puts
-    it out; where it burns it dries (0.2 a second). It hurts 12 a second all
+    it out; falling faster than 140 cells/s the air beats it down too,
+    0.006 a second more for every cell/s over (flat out, ~300: a full fire
+    out in about a second); where it burns it dries (0.2 a second). It hurts 12 a second all
     of it alight (was 7, all or nothing), less the less of it, times its
     oil's `burn`. It shows as much as it burns: flames (the torch's fire; all
     of it alight, as many as a torch's for every 8 × 8 cells of it) licking
@@ -1223,15 +1225,16 @@ parts, so another is a new file, not new code:
   dies.
 - The cave spider (16 × 12, 130 hp: a body from above with eight glowing
   red eyes, legs 48 cells long, 3 thick; climbs, pounces, 12 a bite;
-  bleeds acid, and acid doesn't hurt it; its spit a big glob, 40 cells of
-  acid (`acid_glob`); dead, its body keeps its legs curled in over it:
+  bleeds acid, and acid doesn't hurt it; its spit a big glob, 150 cells of
+  acid (`acid_glob`): it drenches you; dead, its body keeps its legs curled in over it:
   `corpses::curled_legs`), spiderlings (the same, small, acid too), spiderlings (the same, small), egg sacs (burst into four
   spiderlings), cocoons (hung from a nest's roof by their thread: negative
   gravity takes them up; cut open: blood and a victim's things), the slime
   (hops; full of glowing `slime`), the acid slime (full of acid, which it
   resists; glows), explosives (`actors/explosive.rs`, brain `explosive`:
-  a TNT barrel, 15 hp, a blast of 32 / 150; dynamite, 8 hp, 22 / 130; a
-  mine cart loaded with both, 40 hp, 46 / 190; broken they go off at once,
+  a TNT barrel, 15 hp, a blast of 54 / 245; dynamite, 8 hp, 44 / 230; a
+  mine cart loaded with both, 40 hp, 72 / 255 (craters; their rubble
+  rains down far around: take cover); broken they go off at once,
   alight after their fuse, 0.6–1.3 s, sparks fizzing: anything that hurts
   a creature sets them off, another blast too, so they chain; they leave
   no body), a miner's lantern on its post (a warm light, 5 hp), the

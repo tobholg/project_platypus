@@ -51,6 +51,11 @@ const FIRE_RATE: f32 = 5.0;
 const OIL_SPREAD: f32 = 2.0;
 /// ... and burns the oil away this fast where it burns (a share a second).
 const OIL_BURN: f32 = 0.12;
+/// Falling faster than this (cells/s), the rush of air beats a fire down...
+const FALL_DOUSE: f32 = 140.0;
+/// ... by this much more a second for every cell/s faster (falling flat
+/// out, ~300: a full fire out in about a second).
+const FALL_DOUSE_RATE: f32 = 0.006;
 /// Where it burns it dries this fast (a share a second).
 const FIRE_DRIES: f32 = 0.2;
 /// A burning creature lights what it touches this often (seconds).
@@ -464,6 +469,8 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
             if !fed {
                 fire -= (BURN_SLOW + BURN_FAST * (1.0 - fire)) * DT / power.max(0.1);
             }
+            // (Falling fast, the air beats it down, fed or not.)
+            fire -= (-k.body.vel.y - FALL_DOUSE).max(0.0) * FALL_DOUSE_RATE * DT;
             fire = fire.clamp(0.0, 1.0 - coat.wet(rules));
         }
         if fire > 0.0 {
@@ -781,6 +788,19 @@ mod tests {
         let e = creature(&mut app, IN, Resist { fireproof: true, ..default() });
         tick(&mut app, 30);
         assert!(app.world().get::<Burning>(e).is_none(), "fireproof");
+    }
+
+    #[test]
+    fn falling_fast_beats_a_fire_out() {
+        let mut app = app_with("stone");
+        let (still, falling) = (creature(&mut app, OUT, Resist::default()), creature(&mut app, OUT + Vec2::new(20.0, 0.0), Resist::default()));
+        for e in [still, falling] {
+            app.world_mut().entity_mut(e).insert(Burning::new(1.0));
+        }
+        app.world_mut().get_mut::<Kinematics>(falling).unwrap().body.vel = Vec2::new(0.0, -300.0);
+        tick(&mut app, 72);
+        assert!(app.world().get::<Burning>(falling).is_none(), "falling flat out, out in a second or so");
+        assert!(app.world().get::<Burning>(still).is_some_and(|b| b.share > 0.8), "standing still it burns on");
     }
 
     #[test]
