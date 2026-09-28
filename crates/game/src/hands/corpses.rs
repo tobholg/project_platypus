@@ -10,6 +10,7 @@
 //! past that, the oldest go, with what's in them (a battle leaves a field
 //! of bodies, not a thousand of them). A creature with `corpse: false`
 //! (an egg sac, a cocoon, a firefly) leaves none: what it had spills out.
+//! A dead spider keeps its legs, curled in over its body (`curled_legs`).
 
 use bevy::prelude::*;
 use platypus_physics::{Body, Locomotion};
@@ -77,7 +78,65 @@ fn belongings(died: &Died, items: &Items, chests: &Chests, world: &platypus_sim:
     inv
 }
 
+/// A dead spider's legs (from above, its body pointing right): each thigh
+/// out from its hip, shorter than in life, the shin hooked back in over the
+/// body, as dead spiders curl; a little crooked each (from
+/// `seed`). Returns the picture and where its middle sits from the body's.
+fn curled_legs(def: &crate::actors::legs::LegsDef, seed: u64) -> (Image, Vec2) {
+    let (leg, joint) = (def.color, def.joint.unwrap_or(def.color));
+    let per_side = (def.count / 2).max(1);
+    let (thigh, shin) = (def.reach * def.upper * 0.5, def.reach * (1.0 - def.upper) * 0.55);
+    let mut rng = Rng::seeded(&[seed, 0x1E65]);
+    let mut jitter = |k: f32| (rng.next_u32() as f32 / u32::MAX as f32 * 2.0 - 1.0) * k;
+    let mut px: Vec<(IVec2, (u8, u8, u8))> = Vec::new();
+    let line = |a: Vec2, b: Vec2, thick: i32, c: (u8, u8, u8), px: &mut Vec<(IVec2, (u8, u8, u8))>| {
+        let n = (b - a).abs().max_element().ceil().max(1.0) as i32;
+        let d = b - a;
+        let across = if d.x.abs() > d.y.abs() { IVec2::Y } else { IVec2::X };
+        for i in 0..=n {
+            let p = a + d * (i as f32 / n as f32);
+            let p = IVec2::new(p.x.floor() as i32, p.y.floor() as i32);
+            for w in 0..thick.max(1) {
+                px.push((p + across * (w - (thick - 1) / 2), c));
+            }
+        }
+    };
+    for side in [1.0f32, -1.0] {
+        for j in 0..per_side {
+            let along = if per_side > 1 { j as f32 / (per_side - 1) as f32 - 0.5 } else { 0.0 };
+            let hip = Vec2::new(def.hips * 0.4 - along * def.spread * 1.6, side * 3.0);
+            // Front legs out and forward, back ones out and back...
+            let out = (80.0 - along * 120.0 + jitter(10.0)).to_radians();
+            let dir = Vec2::new(out.cos(), side * out.sin());
+            let knee = hip + dir * thigh * (0.9 + jitter(0.15));
+            // ... each shin hooked back in over the body, spindly.
+            let fold = Vec2::from_angle(side * (125.0 + jitter(14.0)).to_radians()).rotate(dir);
+            let foot = knee + fold * shin * (0.85 + jitter(0.2));
+            line(hip, knee, (def.thick as i32 - 1).max(1), leg, &mut px);
+            line(knee, foot, 1, leg, &mut px);
+            px.push((IVec2::new(knee.x.floor() as i32, knee.y.floor() as i32), joint));
+        }
+    }
+    let lo = px.iter().fold(IVec2::MAX, |m, (p, _)| m.min(*p));
+    let hi = px.iter().fold(IVec2::MIN, |m, (p, _)| m.max(*p));
+    let (w, h) = ((hi.x - lo.x + 1) as u32, (hi.y - lo.y + 1) as u32);
+    let mut rgba = vec![0u8; (w * h * 4) as usize];
+    for (p, (r, g, b)) in px {
+        let i = (((hi.y - p.y) as u32 * w + (p.x - lo.x) as u32) * 4) as usize;
+        rgba[i..i + 4].copy_from_slice(&[r, g, b, 255]);
+    }
+    let image = Image::new(
+        bevy::render::render_resource::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        bevy::render::render_resource::TextureDimension::D2,
+        rgba,
+        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::RENDER_WORLD,
+    );
+    (image, Vec2::new((lo.x + hi.x + 1) as f32 / 2.0, (lo.y + hi.y + 1) as f32 / 2.0))
+}
+
 /// Every creature that died leaves its body (or spills what it had).
+#[allow(clippy::too_many_arguments)]
 fn lay_out(
     mut commands: Commands,
     mut died: MessageReader<Died>,
@@ -85,6 +144,7 @@ fn lay_out(
     sim: Res<SimWorld>,
     mut chests: ResMut<Chests>,
     player: Query<&crate::gear::Stats, With<LocalPlayer>>,
+    mut images: ResMut<Assets<Image>>,
     mut count: Local<u64>,
 ) {
     let Some(items) = items else { return };
@@ -119,7 +179,17 @@ fn lay_out(
         if let Some((sprite, offset)) = &d.sprite {
             let mut sprite = sprite.clone();
             sprite.color = Color::srgb(DIM, DIM, DIM);
+            let flip = sprite.flip_x;
             e.with_child((CorpseSprite, sprite, Transform::from_translation((rot * offset.with_z(0.0)).with_z(0.0)).with_rotation(rot)));
+            // Legs: kept, curled in over the body.
+            if let Some(legs) = &d.def.legs {
+                let (image, centre) = curled_legs(legs, at.x.to_bits() as u64 ^ *count);
+                let mut s = Sprite::from_image(images.add(image));
+                s.flip_x = flip;
+                s.color = Color::srgb(DIM, DIM, DIM);
+                let centre = if flip { Vec2::new(-centre.x, centre.y) } else { centre };
+                e.with_child((CorpseSprite, s, Transform::from_translation((offset.truncate() + centre).extend(0.01))));
+            }
         }
     }
 }

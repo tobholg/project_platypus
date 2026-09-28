@@ -1,0 +1,37 @@
+// A miner's lantern hung from a post, still burning: a warm light in the
+// dark by a camp.
+(
+    size: (9, 16),
+    feet: (3.5, 16),
+    outline: (40, 30, 24),
+    palette: {
+        'p': (110, 78, 48),   // post
+        'k': (70, 64, 60),   // hook
+        'L': (62, 54, 44),   // lantern frame
+        'l': (250, 196, 110),   // glass
+        'y': (255, 228, 150),   // flame
+    },
+    frames: {
+        "stand": [
+            "...ppppp.",
+            "...p...k.",
+            "...p..LLL",
+            "...p..lyl",
+            "...p..lyl",
+            "...p..LLL",
+            "...p.....",
+            "...p.....",
+            "...p.....",
+            "...p.....",
+            "...p.....",
+            "...p.....",
+            "...p.....",
+            "...p.....",
+            "...p.....",
+            "...p.....",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["stand"], fps: 1),
+    },
+)

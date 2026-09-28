@@ -167,6 +167,18 @@
 //!   player in it (far over the bottom) with its rocket boots empty: logs the charge
 //!   after 3 s in the water, then how far a held jump rose it in 1.5 s
 //!   (and whether the boots flamed: they shouldn't, under water)
+//! - `spiderdeath` (`PLATYPUS_WORLD=arena`, try `PLATYPUS_HOUR=22`) a cave
+//!   spider beside the player, hurt at 1 s (it bleeds acid: logs the acid
+//!   about it), killed at 1.5 s: its body keeps its legs, curled
+//!   (`PLATYPUS_SCENARIO_SECS=3` for a screenshot)
+//! - `camplook`   (a generated world) the nearest miners' camp the world
+//!   made (a mine cart, TNT, dynamite, a lantern), the player beside it with
+//!   a torch; logs where
+//! - `camp`       (`PLATYPUS_WORLD=arena`) a miners' camp 70 cells off (a
+//!   lantern, a mine cart loaded with TNT, a TNT barrel, dynamite); at 2 s a
+//!   spark lands on the cart (`PLATYPUS_CAMP=hit`: a blow instead, at once);
+//!   logs what's left and the player's health at 1.5 s and 5 s
+//!   (`PLATYPUS_SCENARIO_SECS=4` for a screenshot as it goes off)
 //! - `pickarea`   (`PLATYPUS_WORLD=arena`) the pickaxe's area mode: a dirt
 //!   wall 12 wide beside the player and more dirt past a gap behind it; C
 //!   pressed (the label says Area), the cursor aimed past the wall at the far
@@ -243,6 +255,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
+            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3097,6 +3110,155 @@ fn potion_script(s: Res<Scenario>, items: Option<Res<crate::hands::items::Items>
 
 /// Rocket boots under water: they fill back up there, and fire (slower,
 /// no flame).
+/// `spiderdeath`: a spider bled and killed beside the player.
+fn spiderdeath_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut spiders: Query<(&crate::actors::Creature, &Kinematics, &mut crate::actors::Health), Without<LocalPlayer>>,
+    mut state: Local<u8>,
+) {
+    if s.name != "spiderdeath" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR as f32;
+    let x = 520.0;
+    let acid = sim.materials().id("acid");
+    match *state {
+        0 if t > 0.3 => {
+            k.body.pos = Vec2::new(x, floor + k.body.half.y);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            crate::actors::creature::spawn_creature(&mut commands, "spider", Vec2::new(x + 40.0, floor), |_| {});
+            *state = 1;
+        }
+        1 if t > 1.0 => {
+            for (c, _, mut h) in &mut spiders {
+                if c.kind == "spider" {
+                    h.harm(40.0, crate::actors::Harm::Physical);
+                }
+            }
+            *state = 2;
+        }
+        2 if t > 1.5 => {
+            for (c, sk, mut h) in &mut spiders {
+                if c.kind == "spider" {
+                    let p = sk.body.pos;
+                    let near = (-30..30).flat_map(|dx| (-20..20).map(move |dy| CellPos::from_world(p.x + dx as f32, p.y + dy as f32))).filter(|&q| sim.world.get(q).is_some_and(|cell| Some(cell.material) == acid)).count();
+                    info!("spiderdeath: a spider of {:.0} hp (after 40), {near} cells of acid about it", h.hp);
+                    h.hp = 0.0;
+                }
+            }
+            *state = 3;
+        }
+        _ => {}
+    }
+}
+
+/// `camplook`: to the nearest camp the world made.
+fn camplook_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut state: Local<(u8, Vec2)>,
+) {
+    if s.name != "camplook" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    if state.0 == 1 {
+        k.body.pos = state.1;
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = state.1;
+    }
+    if state.0 != 0 || s.elapsed < 0.3 {
+        return;
+    }
+    state.0 = 2;
+    let start = k.body.pos;
+    let (cx0, cy0) = ((start.x as i32).div_euclid(platypus_sim::CHUNK), (start.y as i32).div_euclid(platypus_sim::CHUNK));
+    let mut best: Option<(f32, CellPos)> = None;
+    let mut props = 0;
+    for dy in 2..40 {
+        for dx in -24..=24 {
+            let pos = platypus_sim::ChunkPos::new(cx0 + dx, cy0 - dy);
+            for (at, what) in sim.generator.generate_with_spawns(pos).1 {
+                props += matches!(what, platypus_worldgen::Spawn::Prop(_)) as usize;
+                if what == platypus_worldgen::Spawn::Prop("mine_cart") {
+                    let d = Vec2::new(at.x as f32, at.y as f32).distance(start);
+                    if best.is_none_or(|(b, _)| d < b) {
+                        best = Some((d, at));
+                    }
+                }
+            }
+        }
+    }
+    match best {
+        Some((d, at)) => {
+            info!("camplook: a camp's cart at ({}, {}), {d:.0} cells from the start", at.x, at.y);
+            state.1 = Vec2::new(at.x as f32 - 14.0, at.y as f32 + k.body.half.y + 0.5);
+            toggles.carry = crate::light::Carry::Torch;
+            state.0 = 1;
+        }
+        None => info!("camplook: no camp near the start ({props} props in the chunks looked at)"),
+    }
+}
+
+/// `camp`: a miners' camp set off from afar.
+fn camp_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &crate::actors::Health), With<LocalPlayer>>,
+    mut props: Query<(Entity, &crate::actors::Creature, &mut crate::actors::Health), Without<LocalPlayer>>,
+    mut state: Local<u8>,
+) {
+    if s.name != "camp" {
+        return;
+    }
+    let Ok((mut k, hp)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR as f32;
+    let x = 520.0;
+    let kinds = ["mine_lantern", "mine_cart", "tnt_barrel", "dynamite"];
+    let left = |props: &Query<(Entity, &crate::actors::Creature, &mut crate::actors::Health), Without<LocalPlayer>>| kinds.iter().map(|&kind| format!("{kind} {}", props.iter().filter(|(_, c, _)| c.kind == kind).count())).collect::<Vec<_>>().join(", ");
+    match *state {
+        0 if t > 0.3 => {
+            for (kind, dx) in kinds.iter().zip([56.0, 74.0, 91.0, 99.0]) {
+                crate::actors::creature::spawn_creature(&mut commands, kind, Vec2::new(x + dx, floor), |_| {});
+            }
+            k.body.pos = Vec2::new(x, floor + k.body.half.y);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            *state = 1;
+        }
+        1 if t > 1.5 => {
+            info!("camp: set up: {}; the player {:.0} hp, 74 cells from the cart", left(&props), hp.hp);
+            *state = 2;
+        }
+        2 if t > 2.0 => {
+            for (e, c, mut h) in &mut props {
+                if c.kind == "mine_cart" {
+                    if std::env::var("PLATYPUS_CAMP").is_ok_and(|v| v == "hit") {
+                        h.hp = 0.0;
+                    } else {
+                        commands.entity(e).insert(crate::actors::elements::Burning::new(0.1));
+                    }
+                }
+            }
+            *state = 3;
+        }
+        3 if t > 5.0 => {
+            info!("camp: 3 s after the spark: {}; the player {:.0} hp", left(&props), hp.hp);
+            *state = 4;
+        }
+        _ => {}
+    }
+}
+
 /// `pickarea`: area mode dug into a dirt wall, aimed past it.
 #[allow(clippy::too_many_arguments)]
 fn pickarea_script(

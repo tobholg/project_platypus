@@ -4,11 +4,11 @@
     feet: (7.5, 8),
     outline: (18, 14, 16),
     palette: {
-        'b': (62, 50, 58),   // body
-        'e': (80, 64, 74),   // ears
+        'b': (56, 50, 46),   // body (grey-brown: the vampire bat's the red one)
+        'e': (74, 66, 60),   // ears
         'k': (255, 70, 60),   // eye
-        'w': (98, 72, 86),   // wing, the skin
-        'W': (74, 56, 68),   // wing, the bones
+        'w': (82, 74, 68),   // wing, the skin
+        'W': (62, 56, 52),   // wing, the bones
     },
     frames: {
         "up": [

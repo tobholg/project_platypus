@@ -1,0 +1,42 @@
+// A mine cart left in the caves, loaded: two TNT barrels and a bundle of
+// dynamite in an iron tub on four wheels. It goes off (hard) when it's hit
+// or catches fire.
+(
+    size: (24, 14),
+    feet: (12, 14),
+    outline: (30, 26, 24),
+    palette: {
+        'm': (104, 96, 90),   // tub rim
+        'M': (74, 68, 64),   // tub
+        'o': (140, 130, 122),   // rivets
+        'w': (40, 36, 34),   // wheels
+        'W': (80, 74, 70),   // hubs
+        'h': (64, 54, 50),   // hoops
+        'r': (178, 44, 34),   // barrels
+        'y': (230, 194, 86),   // band
+        'd': (200, 52, 40),   // dynamite
+        'f': (150, 130, 96),   // fuse
+        's': (255, 214, 130),   // fuse tip
+    },
+    frames: {
+        "stand": [
+            "...hhhhhh.hhhhhh..s.....",
+            "...rrrrrr.rrrrrr..f.....",
+            "...yyyyyy.yyyyyy.ddd....",
+            "mmmmmmmmmmmmmmmmmmmmmmmm",
+            "mMMMMMMMMMMMMMMMMMMMMMMm",
+            "mMoMMMMMMMMMMMMMMMMMMoMm",
+            "mMMMMMMMMMMMMMMMMMMMMMMm",
+            ".mMMMMMMMMMMMMMMMMMMMMm.",
+            ".mMoMMMMMMMMMMMMMMMMoMm.",
+            "..mMMMMMMMMMMMMMMMMMMm..",
+            "..mmmmmmmmmmmmmmmmmmmm..",
+            "...ww..............ww...",
+            "..wWWw............wWWw..",
+            "...ww..............ww...",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["stand"], fps: 1),
+    },
+)

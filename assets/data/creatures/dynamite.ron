@@ -1,0 +1,13 @@
+// A bundle of dynamite: goes off when it's hit or catches fire (a short
+// fuse), smaller than a barrel but sharp.
+(
+    name: "Dynamite",
+    corpse: false,
+    size: (6, 8),
+    health: 8,
+    team: Neutral,
+    art: "dynamite",
+    blood: "",
+    movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0),
+    brain: (kind: "explosive", params: (radius: 22, power: 130, fuse: 0.6)),
+)

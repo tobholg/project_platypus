@@ -122,7 +122,7 @@ fn world_spawns(mut commands: Commands, fresh: Res<FreshChunks>, mut spawned: Re
             continue;
         }
         match what {
-            Spawn::Creature(kind) => spawn_creature(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), |_| {}),
+            Spawn::Creature(kind) | Spawn::Prop(kind) => spawn_creature(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), |_| {}),
             Spawn::Chest => chests.spawn_found(&mut commands, at),
         }
     }

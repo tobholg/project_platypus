@@ -3,15 +3,18 @@
 // floors, walls and ceilings, drops on you from above. Up close it crouches
 // and lunges to bite (it throws you), or rises on its legs and curls its
 // stinger over its back to strike (venom); from further off it rears and
-// spits acid (actors/spider.rs). Lives in nests (lairs.ron) and deep caves.
+// spits acid, a lot of it (actors/spider.rs). Dead, its legs curl up over
+// it. Lives in nests (lairs.ron) and deep caves.
 (
     name: "Cave spider",
     // What it may have on it when it dies (loot.ron), besides what it wears.
     loot: "spider",
     size: (16, 12),
-    health: 70,
+    health: 130,
     team: Enemy,
-    blood: "ichor",
+    // It bleeds acid (mind where you hit it), and acid doesn't hurt it.
+    blood: "acid",
+    resist: (corrosion: 1.0),
     art: "spider_body",
     legs: (count: 8, reach: 48, upper: 0.48, step: 0.1, lift: 8, hips: 4, spread: 7,
            color: (24, 18, 22), joint: (74, 36, 40), thick: 3, body: "spider_body", eyes: (255, 52, 38),

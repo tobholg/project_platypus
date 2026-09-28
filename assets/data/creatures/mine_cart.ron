@@ -1,0 +1,13 @@
+// A mine cart loaded with TNT and dynamite, left in a cave camp: the big
+// one. Set it off from a long way off (an arrow, a fire bolt, a bomb).
+(
+    name: "Mine cart",
+    corpse: false,
+    size: (22, 14),
+    health: 40,
+    team: Neutral,
+    art: "mine_cart",
+    blood: "",
+    movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0),
+    brain: (kind: "explosive", params: (radius: 46, power: 190, fuse: 1.3)),
+)

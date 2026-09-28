@@ -203,7 +203,14 @@ pub enum Open {
     /// cavern, may have taken the wall away: then it would float). `inside`:
     /// the cell is in the cave's open space (else in its rock).
     Grown { what: Growth, root: (i32, i32), inside: bool },
+    /// The rock right round an acid pool (under it and beside it, up to
+    /// just over its level): acid-proof crust, so the acid can't eat its
+    /// way out and drain away.
+    Lining,
 }
+
+/// How thick an acid pool's lining is (cells).
+const LINING: f32 = 3.0;
 
 fn unit(rng: &mut Rng) -> f32 {
     rng.next_u32() as f32 / u32::MAX as f32
@@ -310,8 +317,8 @@ impl Caves {
             if near {
                 continue;
             }
-            // Some hold a pool: water mostly, oil now and then, lava deep down;
-            // in the toxic grottos, every one a pool of acid.
+            // Some hold a pool: water mostly, oil and acid often enough to
+            // meet, lava deep down; in the toxic grottos, every one acid.
             let zone = zone_at(x, y);
             let pool = if zone == Some(Zone::Toxic) {
                 Some((Pool::Acid, y - ry + 2.0 * ry * range(&mut rng, (0.25, 0.45))))
@@ -326,6 +333,16 @@ impl Caves {
                 Some((kind, y - ry + 2.0 * ry * range(&mut rng, (0.2, 0.4))))
             } else {
                 None
+            };
+            // More oil and acid (the acid in an acid-proof lining), by a
+            // roll of its own (so the rest of the plan comes out as it did):
+            // a few dry chambers get a pool of one, and some water pools
+            // are one instead.
+            let roll = |salt: u64| (platypus_sim::rng::hash(&[seed, salt, x.to_bits() as u64, y.to_bits() as u64]) % 10_000) as f32 / 10_000.0;
+            let pool = match pool {
+                None if roll(0x0A11) < 0.18 => Some((if roll(0x0A12) < 0.5 { Pool::Oil } else { Pool::Acid }, y - ry + 2.0 * ry * (0.2 + 0.2 * roll(0x0A13)))),
+                Some((Pool::Water, level)) if roll(0x0A14) < 0.45 => Some((if roll(0x0A15) < 0.45 { Pool::Oil } else { Pool::Acid }, level)),
+                p => p,
             };
             grid.entry((kx, ky)).or_default().push(chambers.len());
             chambers.push(Chamber { x, y, rx, ry, pool, zone, spikes: Vec::new(), mushrooms: Vec::new(), shelves: Vec::new() });
@@ -526,8 +543,10 @@ impl Caves {
             (cy0..=cy1).flat_map(move |cy| (cx0..=cx1).map(move |cx| (cx, cy)))
         };
         for (i, c) in chambers.iter().enumerate() {
-            // (The rim can reach 30% past the ellipse.)
-            for k in chunks(c.x - c.rx * 1.35, c.y - c.ry * 1.35, c.x + c.rx * 1.35, c.y + c.ry * 1.35) {
+            // (The rim can reach 30% past the ellipse; an acid pool's lining
+            // a little further.)
+            let (ex, ey) = (c.rx * 1.35 + LINING + 1.0, c.ry * 1.35 + LINING + 1.0);
+            for k in chunks(c.x - ex, c.y - ey, c.x + ex, c.y + ey) {
                 bins.entry(k).or_default().0.push(i as u32);
             }
         }
@@ -676,14 +695,25 @@ impl Caves {
         let (cx, cy) = (x.div_euclid(CHUNK), y.div_euclid(CHUNK));
         let (chambers, segments) = self.bins.get(&(cx, cy))?;
         let p = (x as f32, y as f32);
+        let mut lining = false;
         for &i in chambers {
             let c = &self.chambers[i as usize];
             let (dx, dy) = ((p.0 - c.x) / c.rx, (p.1 - c.y) / c.ry);
             let r = (dx * dx + dy * dy).sqrt();
-            if r > 1.35 {
+            if r > 1.35 + LINING / c.rx.min(c.ry) {
                 continue;
             }
-            let inside = r < self.rim_at(i as usize, dx, dy);
+            let rim = self.rim_at(i as usize, dx, dy);
+            let inside = r < rim;
+            // (Round an acid pool, below its level and a little over: its
+            // lining, unless something else opens it.)
+            if !inside
+                && let Some((Pool::Acid, level)) = c.pool
+                && p.1 < level + 2.0
+                && r < rim + LINING / c.rx.min(c.ry)
+            {
+                lining = true;
+            }
             if let Some(s) = c.spikes.iter().find(|s| in_triangle(p, s.base[0], s.base[1], s.tip)) {
                 let root = ((s.base[0].0 + s.base[1].0) / 2.0, (s.base[0].1 + s.base[1].1) / 2.0);
                 return Some(Open::Grown { what: Growth::Crystal, root: (root.0 as i32, root.1 as i32), inside });
@@ -733,7 +763,7 @@ impl Caves {
                 return Some(Open::Air);
             }
         }
-        None
+        lining.then_some(Open::Lining)
     }
 
     /// A chamber's ragged edge in the direction (dx, dy) from its middle (in

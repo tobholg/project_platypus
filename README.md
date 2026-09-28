@@ -183,7 +183,10 @@ and it soon burns out, standing in flames all of you; wet takes its place (a pud
 until it wears off or you jump in water; burning shows as flames all over you and a
 flickering firelight); underground it's dark: the lantern you always carry only shows you and
 the rock beside you, so bring a torch or a light, and what lives there shows as eyes in the dark
-(crisp, blinking); dying just refills health (`PLATYPUS_RESPAWN=1` to respawn at the start)
+(crisp, blinking; bats grey-brown, vampire bats red); the caves hold oil pools, acid pools in acid-proof crust, loose
+TNT barrels and dynamite and now and then a miners' camp (a mine cart loaded with TNT, a barrel, dynamite, a lantern):
+hit them, shoot them or set them alight and they blow (in a chain) — do it from afar; big spiders are tougher, spit a
+lot of acid, bleed acid, shrug acid off, and keep their legs curled when dead; dying just refills health (`PLATYPUS_RESPAWN=1` to respawn at the start)
 
 **Sound** (DESIGN §7e): made from recipes in `assets/data/sounds.ron` (saved: made again),
 played by bevy_seedling. Effects are placed in the world; the ambience follows what's around

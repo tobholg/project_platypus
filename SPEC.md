@@ -167,7 +167,20 @@ checksums.
     inside mountains (half sizes 26–60 × 18–34: the first layer is easy),
     bigger in the caverns (45–140 × 28–80) and the deep (55–170 × 35–100);
     about 30 % hold a pool (water, some oil, lava in the deep), kept below
-    where any tunnel comes in so it doesn't spill;
+    where any tunnel comes in so it doesn't spill; then, by a roll of its
+    own (hashed from the chamber, so the rest of the plan is as it was), 18
+    % of the dry ones get a pool of oil or acid and 45 % of the water pools
+    are oil or acid instead. Every acid pool sits in a lining of acid-proof
+    `toxic_crust` (`caves::Open::Lining`: the rock within 3 cells of the
+    pool, up to 2 over its level; chambers are binned wide enough for it),
+    so it doesn't eat its way out and drain;
+  - miners' leavings (`TerrainGen::mine_camp`, spawned as `Spawn::Prop`
+    creatures): per chunk in the underground, caverns and deep, a try at a
+    camp (43–47 %: a mine cart on a floor 26 wide with 15 of air over it;
+    beside it on the nearest floor a TNT barrel and dynamite one way, a
+    lantern on its post the other) and one at a lone TNT barrel or bundle
+    of dynamite (17–20 %). A small world has ~50 camps and ~100 loose
+    explosives. `camplook` scenario: to the nearest camp;
   - tunnels: each chamber to its nearest few, a spanning tree of those so
     every chamber connects (tested: 95 %+ in one network) plus more for
     loops; wandering lines 22–44 cells wide (the player is 15 tall); steep
@@ -1205,13 +1218,21 @@ parts, so another is a new file, not new code:
   its own beat); their light is only the faintest red on what's right
   beside them (bats 0.03, no haze). `drops`: items that fall out when it
   dies.
-- The cave spider (16 × 12, 70 hp: a body from above with eight glowing
+- The cave spider (16 × 12, 130 hp: a body from above with eight glowing
   red eyes, legs 48 cells long, 3 thick; climbs, pounces, 12 a bite;
-  bleeds `ichor`), spiderlings (the same, small), egg sacs (burst into four
+  bleeds acid, and acid doesn't hurt it; its spit a big glob, 40 cells of
+  acid (`acid_glob`); dead, its body keeps its legs curled in over it:
+  `corpses::curled_legs`), spiderlings (the same, small, acid too), spiderlings (the same, small), egg sacs (burst into four
   spiderlings), cocoons (hung from a nest's roof by their thread: negative
   gravity takes them up; cut open: blood and a victim's things), the slime
   (hops; full of glowing `slime`), the acid slime (full of acid, which it
-  resists; glows), the skeleton (the humanoid rig in bone, a rusty sword;
+  resists; glows), explosives (`actors/explosive.rs`, brain `explosive`:
+  a TNT barrel, 15 hp, a blast of 32 / 150; dynamite, 8 hp, 22 / 130; a
+  mine cart loaded with both, 40 hp, 46 / 190; broken they go off at once,
+  alight after their fuse, 0.6–1.3 s, sparks fizzing: anything that hurts
+  a creature sets them off, another blast too, so they chain; they leave
+  no body), a miner's lantern on its post (a warm light, 5 hp), the
+  skeleton (the humanoid rig in bone, a rusty sword;
   crumbles to ash), the vampire bat (dives, bites). Packs `spiders` and
   `underground` spawn them together. In the `underground` scenario each
   hurts a player standing still (a spider ~36 hp in 3.5 s, spiderlings ~15

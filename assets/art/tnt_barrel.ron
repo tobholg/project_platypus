@@ -1,0 +1,35 @@
+// A TNT barrel: red staves, dark hoops, a yellow band stamped with
+// warnings. Left in the caves by miners. It goes off when it's hit or
+// catches fire (`creatures/tnt_barrel.ron`).
+(
+    size: (10, 12),
+    feet: (5, 12),
+    outline: (46, 20, 18),
+    palette: {
+        'r': (178, 44, 34),   // staves
+        'R': (136, 30, 24),   // staves, shade
+        'h': (64, 54, 50),   // hoops
+        'H': (96, 86, 80),   // hoops, lit
+        'y': (230, 194, 86),   // band
+        'k': (52, 30, 24),   // stamp
+    },
+    frames: {
+        "stand": [
+            "..hHhHhh..",
+            ".hrrrrRrh.",
+            ".rrRrrrRr.",
+            ".hHhHhHhh.",
+            ".rrrRrrrr.",
+            ".yyyyyyyy.",
+            ".ykyykyky.",
+            ".yyyyyyyy.",
+            ".rrrrRrrr.",
+            ".hHhHhHhh.",
+            ".rrRrrrRr.",
+            "..hhhhhh..",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["stand"], fps: 1),
+    },
+)

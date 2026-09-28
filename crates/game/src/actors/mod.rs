@@ -11,6 +11,7 @@ pub mod ai;
 pub mod animation;
 pub mod brain;
 pub mod creature;
+pub mod explosive;
 pub mod critters;
 pub mod dummy;
 pub mod elements;
@@ -40,8 +41,8 @@ impl Plugin for ActorsPlugin {
             .add_message::<Died>()
             .add_message::<Rocketed>()
             .add_plugins((creature::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, animation::AnimationPlugin))
-            .add_plugins((player::PlayerPlugin, ai::AiPlugin, critters::CrittersPlugin, monsters::MonstersPlugin, legs::LegsPlugin))
-            .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, crate::combat::guard, hurt::notice, dummy::tally, deaths).chain().in_set(TickSet::Bodies))
+            .add_plugins((player::PlayerPlugin, ai::AiPlugin, critters::CrittersPlugin, monsters::MonstersPlugin, legs::LegsPlugin, explosive::ExplosivePlugin))
+            .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, explosive::detonate, crate::combat::guard, hurt::notice, dummy::tally, deaths).chain().in_set(TickSet::Bodies))
             .insert_resource(elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
             .add_systems(FixedUpdate, displace_liquid.after(move_creatures).in_set(TickSet::Bodies))

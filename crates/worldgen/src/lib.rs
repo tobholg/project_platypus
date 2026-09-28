@@ -106,6 +106,9 @@ pub enum Spawn {
     Creature(&'static str),
     /// A chest, its loot rolled from where it was put.
     Chest,
+    /// A thing left in the caves, by creature id (it's a creature with no
+    /// mind: a TNT barrel, a mine cart, a lantern): miners' leavings.
+    Prop(&'static str),
 }
 
 /// A chest's size in cells (the game draws it this size; the world makes
@@ -883,6 +886,82 @@ impl TerrainGen {
         Some(CellPos::new(origin.x + lx + w / 2, origin.y + ly))
     }
 
+    /// Is there a cave floor at (`lx`, `ly`) (chunk cells) `w` wide with `h`
+    /// of air over it: most of it on rock, not over a liquid?
+    fn floor_at(&self, cells: &[Cell], lx: i32, ly: i32, w: i32, h: i32) -> bool {
+        let at = |lx: i32, ly: i32| cells[(ly * CHUNK + lx) as usize];
+        let open = (0..h).all(|dy| (0..w).all(|dx| at(lx + dx, ly + dy).is_air()));
+        let floor = (0..w)
+            .filter(|&dx| {
+                let c = at(lx + dx, ly - 1);
+                !c.is_air() && c.material != self.ids.water && c.material != self.ids.lava && c.material != self.ids.acid && c.material != self.ids.oil
+            })
+            .count();
+        open && floor >= (w * 7 / 10).max(1) as usize
+    }
+
+    /// A cave floor `w` wide with `h` of air over it, somewhere in the
+    /// chunk (columns 2 apart, from a random start): its left foot.
+    fn floor_spot(&self, cells: &[Cell], w: i32, h: i32, rng: &mut Rng) -> Option<(i32, i32)> {
+        let spots: Vec<(i32, i32)> = (0..=(CHUNK - w) / 2).flat_map(|i| (1..=CHUNK - h).map(move |ly| (i * 2, ly))).collect();
+        if spots.is_empty() {
+            return None;
+        }
+        let start = rng.next_u32() as usize % spots.len();
+        (0..spots.len()).map(|k| spots[(start + k) % spots.len()]).find(|&(lx, ly)| self.floor_at(cells, lx, ly, w, h))
+    }
+
+    /// What miners left in the caves: now and then a camp (a mine cart
+    /// loaded with TNT, a barrel of it beside it, a bundle of dynamite, a
+    /// lantern still burning on its post, each on the floor beside the cart
+    /// where there's room), more often a lone barrel or a bundle of
+    /// dynamite. Blow them up from afar.
+    fn mine_camp(&self, pos: ChunkPos, cells: &[Cell], rng: &mut Rng) -> Vec<(CellPos, Spawn)> {
+        let origin = pos.origin();
+        let (camp, lone) = match self.plan.band_at(origin.y + CHUNK / 2) {
+            Band::Underground => (110, 44),
+            Band::Caverns => (120, 52),
+            Band::Deep => (90, 44),
+            _ => return Vec::new(),
+        };
+        let feet = |lx: i32, ly: i32| CellPos::new(origin.x + lx, origin.y + ly);
+        if rng.chance(camp)
+            && let Some((lx, ly)) = self.floor_spot(cells, 26, 15, rng)
+        {
+            // The cart; its barrel, dynamite and lantern each on the nearest
+            // floor beside it (caves aren't flat), barrel and dynamite on one
+            // side, the lantern on the other, whichever way there's room.
+            let mut out = vec![(feet(lx + 13, ly), Spawn::Prop("mine_cart"))];
+            let side = if rng.chance(128) { 1 } else { -1 };
+            let beside = |from: i32, dir: i32, w: i32, h: i32| {
+                (0..24).map(|k| from + dir * k).filter(|&x| x >= 0 && x + w <= CHUNK).find_map(|x| {
+                    (0..=12).flat_map(|d| [ly + d, ly - d]).filter(|&y| y >= 1 && y + h <= CHUNK).find(|&y| self.floor_at(cells, x, y, w, h)).map(|y| (x, y))
+                })
+            };
+            let (right, left) = (lx + 27, lx - 1);
+            let (near, far) = if side > 0 { (right, left) } else { (left, right) };
+            let dir = |x: i32| if x == right { 1 } else { -1 };
+            if let Some((x, y)) = beside(if dir(near) > 0 { near } else { near - 10 }, dir(near), 10, 13) {
+                out.push((feet(x + 5, y), Spawn::Prop("tnt_barrel")));
+                let next = if dir(near) > 0 { x + 11 } else { x - 9 };
+                if let Some((x, y)) = beside(next, dir(near), 8, 10) {
+                    out.push((feet(x + 4, y), Spawn::Prop("dynamite")));
+                }
+            }
+            if let Some((x, y)) = beside(if dir(far) > 0 { far } else { far - 5 }, dir(far), 5, 17) {
+                out.push((feet(x + 2, y), Spawn::Prop("mine_lantern")));
+            }
+            return out;
+        }
+        if rng.chance(lone)
+            && let Some((lx, ly)) = self.floor_spot(cells, 12, 14, rng)
+        {
+            let what = if rng.chance(128) { "tnt_barrel" } else { "dynamite" };
+            return vec![(feet(lx + 6, ly), Spawn::Prop(what))];
+        }
+        Vec::new()
+    }
+
     /// The bedrock of a band: stone, then slate in the deep (with obsidian
     /// seams), basalt in the underworld; borders dither over ~100 cells.
     fn rock(&self, x: i32, y: i32, band: Band) -> MaterialId {
@@ -918,6 +997,7 @@ impl TerrainGen {
                 caves::Open::Pool(caves::Pool::Oil) => return Some(i.oil),
                 caves::Open::Pool(caves::Pool::Lava) => return Some(i.lava),
                 caves::Open::Pool(caves::Pool::Acid) => return Some(i.acid),
+                caves::Open::Lining => return Some(i.toxic_crust),
                 caves::Open::Grown { what, root, inside } => {
                     if self.rooted(root) {
                         return match what {
@@ -1129,6 +1209,9 @@ impl ChunkGenerator for TerrainGen {
         let mut spawns = self.structure_spawns(pos);
         spawns.extend(self.lair_spawns(pos));
         spawns.extend(self.cave_chest(pos, &cells, &mut rng).map(|p| (p, Spawn::Chest)));
+        if self.plan.structures.pieces_in(pos.x, pos.y).next().is_none() {
+            spawns.extend(self.mine_camp(pos, &cells, &mut rng));
+        }
         (Chunk::with_background(pos, cells, bg), spawns)
     }
 }
@@ -1304,6 +1387,7 @@ mod tests {
                         match what {
                             Spawn::Chest => chests_seen.push(p),
                             Spawn::Creature(_) => spawns.push(p),
+                            Spawn::Prop(_) => {}
                         }
                     }
                 }
@@ -1610,6 +1694,46 @@ mod tests {
             assert_eq!(g.material_at(s.x, s.y), MaterialId::AIR);
             assert_ne!(g.material_at(s.x, s.y - 3), MaterialId::AIR, "standing on ground");
         }
+    }
+
+    #[test]
+    fn acid_pools_away_from_the_grottos_sit_in_acid_proof_crust() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Small, &m);
+        let crust = m.expect_id("toxic_crust");
+        let pools: Vec<_> = g.plan.caves.chambers.iter().filter(|c| c.zone.is_none() && matches!(c.pool, Some((caves::Pool::Acid, _)))).collect();
+        assert!(pools.len() >= 3, "acid pools outside the toxic grottos: {}", pools.len());
+        for c in pools.iter().take(4) {
+            let Some((_, level)) = c.pool else { continue };
+            // Down from the pool's middle: acid, then (where the rock
+            // starts) crust.
+            let x = c.x as i32;
+            let below = (0..(c.ry * 2.0) as i32).map(|d| level as i32 - 1 - d).map(|y| g.material_at(x, y)).find(|&mm| mm != m.expect_id("acid") && mm != MaterialId::AIR);
+            assert_eq!(below, Some(crust), "the acid at ({x}, {level}) lies on crust");
+        }
+    }
+
+    #[test]
+    fn miners_left_camps_and_explosives_in_the_caves() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Small, &m);
+        let (a, b) = (g.plan.band_span(Band::Underground), g.plan.band_span(Band::Deep));
+        let (lo, hi) = (a.0.min(a.1).min(b.0).min(b.1), a.0.max(a.1).max(b.0).max(b.1));
+        let mut props: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        let mut chunks = 0;
+        for cx in (0..g.plan.width / CHUNK).step_by(2) {
+            for cy in (lo / CHUNK..hi / CHUNK).step_by(2) {
+                chunks += 1;
+                for (_, what) in g.generate_with_spawns(ChunkPos::new(cx, cy)).1 {
+                    if let Spawn::Prop(kind) = what {
+                        *props.entry(kind).or_default() += 1;
+                    }
+                }
+            }
+        }
+        eprintln!("{chunks} chunks (a quarter of the underground's): {props:?}");
+        assert!(props.get("mine_cart").copied().unwrap_or(0) >= 2, "camps: {props:?}");
+        assert!(props.get("tnt_barrel").copied().unwrap_or(0) + props.get("dynamite").copied().unwrap_or(0) >= 4, "explosives about: {props:?}");
     }
 
     #[test]

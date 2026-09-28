@@ -57,7 +57,7 @@
         (id: "great_force", name: "Great force", runes: ["force_ii"], delay: 0.1, recharge: 0.2, tier: 2, element: Force,
             about: "Stronger force: wider, harder, tears out rock."),
         // Creatures' own (`beast`: never on a wand).
-        (id: "spider_spit", name: "Spider spit", runes: ["gravity", "arrow", "venom_glob", "acid_drops"], delay: 0.1, recharge: 0.1, element: Acid, beast: true,
-            about: "A glob of acid, lobbed."),
+        (id: "spider_spit", name: "Spider spit", runes: ["gravity", "arrow", "venom_glob", "acid_glob"], delay: 0.1, recharge: 0.1, element: Acid, beast: true,
+            about: "A big glob of acid, lobbed: it splashes over what it hits."),
     ],
 )

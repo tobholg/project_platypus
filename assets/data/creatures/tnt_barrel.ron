@@ -1,0 +1,14 @@
+// A TNT barrel the miners left: hit it, shoot it, burn it, or let a blast
+// reach it, and it goes off (alight, after a moment's fuse). Blow it up
+// from afar. (`actors/explosive.rs`)
+(
+    name: "TNT barrel",
+    corpse: false,
+    size: (8, 12),
+    health: 15,
+    team: Neutral,
+    art: "tnt_barrel",
+    blood: "",
+    movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0),
+    brain: (kind: "explosive", params: (radius: 32, power: 150, fuse: 1.0)),
+)

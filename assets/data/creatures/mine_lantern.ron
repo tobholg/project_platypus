@@ -1,0 +1,14 @@
+// A miner's lantern on its post by a camp, still burning: a warm light
+// in the dark. A blow knocks it out.
+(
+    name: "Lantern",
+    corpse: false,
+    size: (3, 16),
+    health: 5,
+    team: Neutral,
+    art: "mine_lantern",
+    blood: "",
+    light: (color: (255, 196, 120), strength: 0.9),
+    movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0),
+    brain: (kind: "idle"),
+)
