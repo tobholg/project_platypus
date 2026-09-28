@@ -238,9 +238,11 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
   placeholder), in chests at every depth. Drinking: a pop and a fizz.
 - **The screen's edges** (`screen_fx.rs`): a red flash fading in and out
   when hurt (stronger the harder), a red pulse below 30 % health (quicker
-  and stronger the lower), a green glow while a potion heals: full as it
-  starts, shrinking to nothing as the healing runs out. The band as deep
-  from every edge.
+  and stronger the lower), a green glow while a potion heals: full as it's
+  drunk (easing in), then dissolving in place as the healing runs out, its
+  soft inner reach fading first and the rim at the edge last, continuously.
+  Each glow is a soft band (15 % of the screen's height deep, as deep from
+  every edge) and a thin rim (6 %).
 - **The inventory screen** (Esc): the hotbar in use (X for the next), five
   rows of pack, and a discard slot (Terraria's trash): a stack dropped in
   (or Ctrl-clicked from a slot) is kept there to take back until the next
