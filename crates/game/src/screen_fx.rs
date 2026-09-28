@@ -113,11 +113,8 @@ fn show(time: Res<Time<Real>>, mut glows: ResMut<Glows>, shrinking: Res<Shrinkin
     // Healing: as much of it as is still to come.
     glows.heal = mending.map_or(0.0, |m| (m.left / m.total.max(0.01)).clamp(0.0, 1.0));
     // Fading in quick, out slower.
-    let ease = |shown: f32, target: f32, up: f32, down: f32| {
-        let k = if target > shown { 1.0 - (-dt / up).exp() } else { 1.0 - (-dt / down).exp() };
-        shown + (target - shown) * k
-    };
-    glows.hurt_shown = ease(glows.hurt_shown, glows.hurt, 0.04, 0.12);
+    let k = if glows.hurt > glows.hurt_shown { 1.0 - (-dt / 0.04).exp() } else { 1.0 - (-dt / 0.12).exp() };
+    glows.hurt_shown += (glows.hurt - glows.hurt_shown) * k;
     glows.hurt *= (-dt / 0.35).exp();
     // (The green follows the healing at once: its band's depth is how
     // much is left, from the first frame.)
