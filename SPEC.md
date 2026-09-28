@@ -633,17 +633,29 @@ deaths (blood). Rendered as one dynamic mesh.
   burning cells (it catches fire), and being mostly under a liquid that puts
   fires out. The worst cell counts, not the sum, so size doesn't matter.
 - The game keeps three statuses, each shown on the HUD as a round timer:
-  - `Burning`: 7 damage/s for 4 s (times the coating's `burn`), flames
+  - `Burning`: 7 damage/s for 4 s (times its coatings' `burn`), flames
     painted above it and grass it stands in lit (a burning orc running through
     a meadow lights the meadow). It burns out: its own flames never relight
-    it. Water, snow, a fireproof coating or hard frost put it out.
-  - `Coated`: what the last fluid it touched left on it, from
+    it. Being 40 % wet (water, blood: fireproof coatings) or hard frost puts
+    it out; a puddle at your feet doesn't. It shows: flames licking up from
+    all over it (the torch's fire, as many as a torch's for every 8 × 8
+    cells of it) and a flickering orange firelight on it.
+  - `Coated`: what fluids have left on it, Noita's way, from
     `assets/data/coatings.ron` via each material's `coats` (water/snow/ice:
-    wet, oil: oily, blood: bloody, acid: acid). One coating at a time: a new
-    fluid replaces the old (jump in water to wash off oil); the same one
-    refreshes it. A coating can be fireproof, resist heat, make fire burn
-    longer and harder, catch from heat alone, or do damage. Standing in the
-    rain wets.
+    wet, oil: oily, blood: bloody, acid: acid). Each is a share of it
+    covered (0–100 %, shown as a percentage), several at once, never more
+    than 100 % together. In a fluid (or touching snow: a cell outside the
+    body counts 0.35 of one inside) a coating's share rises at 4 a second
+    towards `soak` (1.6; acid 5) × the share of the body in it: a two-cell
+    puddle wets a player's feet ~20 %, knee deep ~40 %, waist deep ~80 %, a
+    step in acid ~60 %. Rising, it pushes the others off to make room, so
+    jumping in water washes acid off; a clinging one (`sticks`: venom) only
+    a washing one (`washes`: water) pushes off. Out of it, each wears off
+    over its `secs` from full. Its effects scale with its share: heat
+    resistance, a fire's length and power, damage (acid 6/s all over, eating
+    until it's worn off or washed off; in the acid, the acid's own 30/s
+    counts instead); 40 % wet can't catch fire; 25 % oily catches from heat
+    alone. Standing in the rain wets you all over, slowly.
   - `Chilled`: slowed down to 40 % while touching the cold and 1.5 s after
     (`MovementStats::slowed`); hard frost puts a fire out.
   Creatures resist per kind in their RON (`resist: (heat, corrosion, fireproof)`).
@@ -829,7 +841,11 @@ deaths (blood). Rendered as one dynamic mesh.
 - Torches (`light/torch.rs`, `assets/art/torch.ron`: its `flame` and
   `grip` anchors) burn with a look only (`lighting.ron` `fire`: flames of
   rising motes shrinking from white to red, a wisp of smoke, an ember now
-  and then; a second's worth each), so a torch sets nothing alight.
+  and then; a second's worth each), so a torch sets nothing alight. Its
+  light is a warm white (255, 208, 152) × 2.4, as bright as the first
+  orange (255, 158, 70) × 3.0 (the same luminance) without its sepia cast,
+  hazing only 0.15 of it over the dark (was 0.35: glare); it flickers as
+  before.
 - Heat on the background: where the playfield is open, the heat tool warms
   background cells, which catch fire by the playfield's rule (a heat gun on
   a tree lights it). Background cells hold heat but don't conduct it.

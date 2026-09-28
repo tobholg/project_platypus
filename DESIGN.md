@@ -482,7 +482,8 @@ a stat is naming it once (`gear/stats.rs`) and reading it where it acts.
   the air too; after 0.25 s; not while jump is held on empty, or they'd
   sputter on for ever), a second's charge a second, so as long as they fire; under water they fire at half thrust and 45 % of the
   speed, bubbles, no flame; their charge a round timer top right while
-  worn; cloud boots: air jumps), and a
+  worn; thrust 2300 up to 210 cells/s, a little gentler than at first for
+  control; cloud boots: air jumps), and a
   **grappling hook** in its own slot, used with E whatever is in the hand:
   Terraria's by default, on a real rope (2026-09-27: the hybrid, after the
   pure Terraria pull got stuck on walls). Thrown at the cursor, it takes hold

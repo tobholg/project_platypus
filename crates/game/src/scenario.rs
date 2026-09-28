@@ -166,6 +166,12 @@
 //!   player in it (far over the bottom) with its rocket boots empty: logs the charge
 //!   after 3 s in the water, then how far a held jump rose it in 1.5 s
 //!   (and whether the boots flamed: they shouldn't, under water)
+//! - `soak`       (`PLATYPUS_WORLD=arena`) what fluids leave on you: a step
+//!   into a two-cell acid puddle (logs how much acid's on you and your
+//!   health), out of it 1.4 s (it keeps eating), then set alight standing
+//!   in a two-cell water puddle (a little wet, not put out: logs it at
+//!   4.4 s; `PLATYPUS_SCENARIO_SECS=5.3` for a screenshot of it), then into
+//!   deep water (the acid washed off, the fire out)
 //! - `rocket`     (`PLATYPUS_WORLD=arena`, try `PLATYPUS_HOUR=22`) the player
 //!   in rocket boots over an orc on a wooden floor (brain off), holding
 //!   jump from 1 s: logs how high it gets, the fuel, what the exhaust does
@@ -228,7 +234,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
-            .add_systems(PreUpdate, (rocket_script, rocketswim_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -2681,7 +2687,7 @@ fn fang_script(
         state.1 = t;
         state.0 += 1;
         match orc {
-            Some((_, h, coat)) => info!("fang: t {t:.1} the orc has {:.0} hp, coated {:?}", h.hp, coat.map(|c| c.name.as_str())),
+            Some((_, h, coat)) => info!("fang: t {t:.1} the orc has {:.0} hp, coated {:?}", h.hp, coat.map(|c| &c.coats)),
             None => info!("fang: t {t:.1} the orc is dead"),
         }
     }
@@ -3082,6 +3088,84 @@ fn potion_script(s: Res<Scenario>, items: Option<Res<crate::hands::items::Items>
 
 /// Rocket boots under water: they fill back up there, and fire (slower,
 /// no flame).
+type Soaker<'a> = (Entity, &'a mut Kinematics, &'a crate::actors::Health, Option<&'a crate::actors::elements::Coated>, Has<crate::actors::elements::Burning>);
+
+/// `soak`: a step in acid, washed off in water; alight in a puddle, then
+/// in deep water.
+fn soak_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<Soaker, With<LocalPlayer>>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "soak" {
+        return;
+    }
+    let Ok((me, mut k, health, coated, burning)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    // The acid puddle, the deep water, the water puddle: (x from, to, depth).
+    let (acid, deep, puddle) = ((500, 530, 2), (560, 600, 24), (620, 650, 2));
+    let put = |k: &mut Kinematics, x: i32, feet: i32| {
+        k.body.pos = Vec2::new(x as f32, feet as f32 + k.body.half.y);
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+    };
+    let on = |c: Option<&crate::actors::elements::Coated>| c.map_or(String::from("nothing"), |c| c.coats.iter().map(|(n, a)| format!("{n} {:.0}%", a * 100.0)).collect::<Vec<_>>().join(", "));
+    match state.0 {
+        0 if t > 0.3 => {
+            for (x0, x1, depth) in [acid, deep, puddle] {
+                for x in x0..=x1 {
+                    for y in floor - depth..floor {
+                        sim.queue(WorldEdit::Dig { center: CellPos::new(x, y), radius: 0, max_hardness: 250 });
+                    }
+                }
+            }
+            state.0 = 1;
+        }
+        1 if t > 0.5 => {
+            for ((x0, x1, depth), name) in [(acid, "acid"), (deep, "water"), (puddle, "water")] {
+                let Some(m) = sim.materials().id(name) else { continue };
+                for x in x0..=x1 {
+                    for y in floor - depth..floor {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: m, overwrite: true });
+                    }
+                }
+            }
+            put(&mut k, 515, floor - acid.2);
+            state.0 = 2;
+        }
+        2 if t > 1.6 => {
+            info!("soak: a second standing in the acid puddle: {}, health {:.0}", on(coated), health.hp);
+            put(&mut k, 545, floor);
+            state.1 = health.hp;
+            state.0 = 3;
+        }
+        3 if t > 3.0 => {
+            info!("soak: 1.4 s out of it: {}, health {:.0} (lost {:.1} since)", on(coated), health.hp, state.1 - health.hp);
+            put(&mut k, 635, floor - puddle.2);
+            commands.entity(me).insert(crate::actors::elements::Burning::new(crate::actors::elements::BURN_SECS * 2.0, 1.0));
+            state.0 = 4;
+        }
+        4 if t > 4.4 => {
+            info!("soak: alight, 1.4 s standing in a two-cell water puddle: {}, burning {burning}", on(coated));
+            put(&mut k, 580, floor - 16);
+            state.1 = health.hp;
+            state.0 = 5;
+        }
+        5 if t > 5.2 => {
+            info!("soak: 0.8 s in deep water: {}, burning {burning}, health {:.0}", on(coated), health.hp);
+            state.0 = 6;
+        }
+        6 if t > 6.5 => {
+            info!("soak: 1.3 s more in it: health {:.0} (lost {:.1} in the water)", health.hp, state.1 - health.hp);
+            state.0 = 7;
+        }
+        _ => {}
+    }
+}
+
 fn rocketswim_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
@@ -3189,7 +3273,7 @@ fn spider_script(
         for (sk, a) in &spiders {
             info!("spider: t {t:.1} at {:.0} cells, vel ({:.0},{:.0}), grounded {} clinging {:?}, doing {:?}", sk.body.pos.distance(k.body.pos), sk.body.vel.x, sk.body.vel.y, sk.loco.grounded(), sk.loco.clinging(), a.doing());
         }
-        if coat.is_some_and(|c| c.name == "venom") {
+        if coat.is_some_and(|c| c.share("venom") > 0.0) {
             info!("spider: t {t:.1} the player is envenomed");
         }
         if h.hp < h.max {

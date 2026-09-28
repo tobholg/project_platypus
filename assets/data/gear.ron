@@ -172,7 +172,7 @@
         // `speed` rising; `fire`: the exhaust is flame (it scorches what's
         // under it, and sets grass and wood alight).
         (id: "rocket_boots", name: "Rocket boots", color: (200, 70, 40),
-            gear: (slot: Feet, stats: { Armor: 2, FireResist: 25 }, rocket: (time: 3.0, thrust: 2800, speed: 240, fire: true),
+            gear: (slot: Feet, stats: { Armor: 2, FireResist: 25 }, rocket: (time: 3.0, thrust: 2300, speed: 210, fire: true),
             look: (recolor: [(colors: { 'B': (196, 64, 40), 'C': (140, 44, 30) })],
                 palette: { 'y': (236, 196, 80) }, over: [(parts: ["legs", "run*", "tuck", "dangle"], clip: true, rows: [
                 ".......",

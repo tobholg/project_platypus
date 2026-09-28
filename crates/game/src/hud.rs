@@ -15,7 +15,7 @@ use crate::actors::{Health, PlayerDeaths};
 
 pub struct HudPlugin;
 
-const SLOTS: usize = 6;
+const SLOTS: usize = 8;
 /// Status icon size, and a status's width with its label under it
 /// (pixels; even, so the icon sits on whole pixels).
 const ICON: u32 = 34;
@@ -264,11 +264,12 @@ fn update_statuses(
     if let Some(c) = chilled {
         shown.push(("Chilled".into(), [150, 215, 255], c.left / CHILL_SECS));
     }
-    if let Some(c) = coated
-        && let Some(def) = coatings.by_name.get(&c.name)
-    {
-        let (r, g, b) = def.color;
-        shown.push((def.label.clone(), [r, g, b], c.left / c.total.max(0.01)));
+    // What's on you, each by how much of you it covers.
+    for (name, share) in coated.map_or(&[][..], |c| &c.coats[..]) {
+        if let Some(def) = coatings.by_name.get(name) {
+            let (r, g, b) = def.color;
+            shown.push((format!("{} {:.0}%", def.label, share * 100.0), [r, g, b], *share));
+        }
     }
     if let Some(s) = sick {
         shown.push(("Potion sick".into(), [220, 120, 160], s.left / s.total));

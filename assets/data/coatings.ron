@@ -1,22 +1,31 @@
-// What fluids leave on a creature (materials.ron: `coats: "wet"`).
-// A creature carries one coating at a time; touching another fluid replaces
-// it (jump in water to wash off oil). Touching the same one refreshes it.
-// Edit while the game runs.
+// What fluids leave on a creature (materials.ron: `coats: "wet"`), Noita's
+// way: each is a share of the creature covered (0..100 %), several at once,
+// never more than all of it together. In a fluid its share rises towards
+// how deep in it you are (knee deep ~40 %, waist deep ~80 %, under: 100 %);
+// a new one pushes the others off to make room, so jumping in water washes
+// acid off. Out of it, a share wears off over `secs`. Edit while the game
+// runs.
 //
-// secs:        how long it lasts after the last contact
+// secs:        how long all of it takes to wear off
+// soak:        how readily it soaks in: its share rises towards this × the
+//              share of the body in it (1.6 unless said)
 // color:       its icon and tint
-// fireproof:   puts a fire out, and it can't catch while coated
-// heat_resist: share of heat damage it ignores (0..1)
+// fireproof:   wet: at 40 % or more it puts a fire out, and it can't catch
+// heat_resist: share of heat damage it ignores (0..1), all of it on
 // burn:        set alight while coated, it burns this many times as long and
-//              as hard (1 = normal)
-// catches:     catches fire from heat alone (anything above 60 °C), not just flames
-// damage:      damage per second while coated
-// sticks:      only water washes it off (other fluids don't replace it)
+//              as hard (1 = normal), all of it on
+// catches:     at 25 % or more it catches fire from heat alone (anything
+//              above 60 °C), not just flames
+// damage:      damage per second, all of it on (less as it wears off)
+// sticks:      only a washing fluid pushes it off (other fluids don't)
+// washes:      pushes even a sticky coating off
 {
-    "wet":    (label: "Wet",    secs: 6,  color: (80, 150, 235), fireproof: true, heat_resist: 0.5),
+    "wet":    (label: "Wet",    secs: 6,  color: (80, 150, 235), fireproof: true, heat_resist: 0.5, washes: true),
     "oily":   (label: "Oily",   secs: 12, color: (120, 90, 40),  burn: 2.5, catches: true),
     "bloody": (label: "Bloody", secs: 5,  color: (170, 20, 30),  fireproof: true, heat_resist: 0.2),
-    "acid":   (label: "Acid",   secs: 3,  color: (130, 235, 50), damage: 6),
+    // Clings: a step in it coats your legs well, and it eats until it's worn
+    // off or washed off (jump in water).
+    "acid":   (label: "Acid",   secs: 8,  color: (130, 235, 50), damage: 6, soak: 5),
     // A spider's sting (and a fang's bite): it burns in; wash it off.
-    "venom":  (label: "Venom",  secs: 7,  color: (150, 60, 200), damage: 4, sticks: true),
+    "venom":  (label: "Venom",  secs: 7,  color: (150, 60, 200), damage: 7, sticks: true),
 }

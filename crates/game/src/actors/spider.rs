@@ -286,8 +286,8 @@ pub fn attack(
                     {
                         a.struck = true;
                         hits.write(Hit { target: pe, damage: s.damage, knock: (dir + Vec2::Y * 0.3).normalize() * s.knock, stun: s.stun, at: head, dir, weight: s.damage / 12.0, crit: false });
-                        if let Some(v) = coatings.by_name.get(&s.venom) {
-                            commands.entity(pe).try_insert(super::elements::Coated { name: s.venom.clone(), left: v.secs, total: v.secs });
+                        if coatings.by_name.contains_key(&s.venom) {
+                            super::elements::stain(&mut commands, pe, &s.venom, 1.0, &coatings);
                         }
                     }
                 } else {

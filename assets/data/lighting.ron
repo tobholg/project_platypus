@@ -30,8 +30,10 @@
     // fields): flames rising and shrinking from white to red, a wisp of
     // smoke, now and then an ember.
     // (haze: a share of its light hazing over the dark around it, as
-    // glowing cells do.)
-    torch: (color: (255, 158, 70), strength: 3.0, haze: 0.35),
+    // glowing cells do.) A warm white, not orange: as bright as the old
+    // (255, 158, 70) × 3.0 was (the same luminance), without its sepia
+    // cast and glare.
+    torch: (color: (255, 208, 152), strength: 2.4, haze: 0.15),
     fire: (
         flame: (count: 110, life: (0.14, 0.4), colors: [(255, 252, 230), (255, 222, 120), (255, 150, 50), (225, 80, 25), (140, 40, 20)], speed: 20, spread: 0.22, gravity: -60, drag: 3, glow: true),
         smoke: (count: 5, life: (0.8, 1.6), colors: [(70, 64, 60), (54, 50, 48), (40, 38, 38)], speed: 10, spread: 0.3, gravity: -8, drag: 1.2, size: 1.5),

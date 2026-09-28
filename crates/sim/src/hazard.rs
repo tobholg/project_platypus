@@ -32,10 +32,19 @@ pub struct Exposure {
     pub coat: Option<MaterialId>,
     /// Share of the body inside liquid.
     pub submerged: f32,
+    /// Everything with a coating it's in or touches, and how much of it:
+    /// the share of its body's cells inside it, a cell touched outside its
+    /// body (snow underfoot) counting `TOUCH_SHARE` of one inside (the
+    /// four most).
+    pub coats: [Option<(MaterialId, f32)>; 4],
     /// 0..1: how chilled (slowed) the coldest cell it's in makes it (what
     /// it stands on or leans against doesn't count).
     pub cold: f32,
 }
+
+/// A coating cell touched just outside a body counts this much of one
+/// inside it.
+pub const TOUCH_SHARE: f32 = 0.35;
 
 impl World {
     /// Exposure of a body covering the cells from `min` to `max` (inclusive).
@@ -49,6 +58,8 @@ impl World {
         // Most common coating liquid inside, and any coating touched.
         let mut soaking: Vec<(MaterialId, u32)> = Vec::new();
         let mut touched = None;
+        // (Cells of each coating, inside counting 1, touched `TOUCH_SHARE`.)
+        let mut coating: Vec<(MaterialId, f32)> = Vec::new();
         for y in min.y - 1..=max.y + 1 {
             for x in min.x - 1..=max.x + 1 {
                 let inside = x >= min.x && x <= max.x && y >= min.y && y <= max.y;
@@ -74,6 +85,13 @@ impl World {
                 }
                 e.corrosion = e.corrosion.max(ph.corrosive as f32);
                 let coats = mats.def(c.material).coats.is_some();
+                if coats {
+                    let add = if inside { 1.0 } else { TOUCH_SHARE };
+                    match coating.iter_mut().find(|(m, _)| *m == c.material) {
+                        Some((_, n)) => *n += add,
+                        None => coating.push((c.material, add)),
+                    }
+                }
                 if inside && ph.kind == Kind::Liquid {
                     liquid += 1;
                     if coats {
@@ -90,6 +108,10 @@ impl World {
         let area = ((max.x - min.x + 1) * (max.y - min.y + 1)).max(1);
         e.submerged = liquid as f32 / area as f32;
         e.coat = soaking.iter().max_by_key(|(_, n)| *n).map(|(m, _)| *m).or(touched);
+        coating.sort_by(|a, b| b.1.total_cmp(&a.1));
+        for (slot, (m, n)) in e.coats.iter_mut().zip(coating) {
+            *slot = Some((m, (n / area as f32).min(1.0)));
+        }
         e
     }
 }

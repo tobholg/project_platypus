@@ -45,7 +45,7 @@ impl Plugin for ActorsPlugin {
             .insert_resource(elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
             .add_systems(FixedUpdate, displace_liquid.after(move_creatures).in_set(TickSet::Bodies))
-            .add_systems(Update, (elements::tint, elements::reload_coatings, hurt::watch, hurt::float, dummy::show))
+            .add_systems(Update, (elements::tint, elements::blaze, elements::reload_coatings, hurt::watch, hurt::float, dummy::show))
             .add_systems(FixedUpdate, (elements::struck, elements::zapped, blasted, pelted).after(TickSet::Cells))
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate));
     }
