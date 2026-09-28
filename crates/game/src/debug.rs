@@ -59,7 +59,8 @@ fn spawn_hud(mut commands: Commands) {
         TextFont { font_size: FontSize::Px(13.0), ..default() },
         TextColor(Color::WHITE),
         BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
-        Node { position_type: PositionType::Absolute, top: px(6), left: px(6), padding: UiRect::all(px(6)), ..default() },
+        // (Bottom left: the hotbar and inventory are top left.)
+        Node { position_type: PositionType::Absolute, bottom: px(26), left: px(6), padding: UiRect::all(px(6)), ..default() },
         HudText,
     ));
 }

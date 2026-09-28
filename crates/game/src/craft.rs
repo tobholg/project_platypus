@@ -270,7 +270,8 @@ fn spawn_panel(mut commands: Commands) {
             Visibility::Hidden,
             Node {
                 position_type: PositionType::Absolute,
-                top: px(120),
+                // (Under the status timers, top right.)
+                top: px(180),
                 right: px(8),
                 width: px(300),
                 flex_direction: FlexDirection::Column,

@@ -7,7 +7,8 @@
 //!
 //! The panel's sections fold (click a heading; which are open is
 //! remembered, `saves/arena_panel.txt`), and it's no taller than the
-//! window allows: the wheel scrolls it.
+//! window allows: the wheel scrolls it. It sits under the hotbar, and
+//! steps away while the inventory's open.
 //!
 //! Pausing pauses virtual time, so the sim, bodies, particles and
 //! animations all stop; a step hands the fixed clock exactly one tick.
@@ -23,6 +24,9 @@ use crate::data::data_path;
 use crate::world::SimWorld;
 
 pub struct ArenaPlugin;
+
+/// Where the panel starts: under the hotbar.
+const ARENA_TOP: f32 = 96.0;
 
 /// The speeds slow motion goes through.
 const SPEEDS: [f32; 4] = [1.0, 0.5, 0.25, 0.1];
@@ -302,7 +306,7 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
             bevy::ui::RelativeCursorPosition::default(),
             Node {
                 position_type: PositionType::Absolute,
-                top: px(150),
+                top: px(ARENA_TOP),
                 left: px(6),
                 // (Its most height: what the window leaves, `show_panel`.)
                 flex_direction: FlexDirection::Column,
@@ -396,14 +400,17 @@ fn show_panel(
     kind: Res<SpawnKind>,
     tempo: Res<crate::tempo::Tempo>,
     windows: Query<&Window>,
+    inventory: Res<crate::hands::ui::InventoryOpen>,
     mut panel: Query<(&mut Visibility, &mut Node), With<Panel>>,
     mut title: Query<&mut Text, With<PanelTitle>>,
     mut buttons: Query<(&Interaction, &PanelButton, &mut BackgroundColor)>,
 ) {
     // No taller than the window leaves: its top at 150, the hotbar below.
-    let most = windows.iter().next().map_or(600.0, |w| (w.height() - 150.0 - 100.0).max(120.0));
+    // (Under the hotbar, above the debug text; away while the inventory's
+    // open, which is where it'd be.)
+    let most = windows.iter().next().map_or(600.0, |w| (w.height() - ARENA_TOP - 150.0).max(120.0));
     for (mut v, mut node) in &mut panel {
-        *v = if view.open { Visibility::Visible } else { Visibility::Hidden };
+        *v = if view.open && !inventory.0 { Visibility::Visible } else { Visibility::Hidden };
         if node.max_height != px(most) {
             node.max_height = px(most);
         }

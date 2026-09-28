@@ -66,12 +66,9 @@ struct SlotIcon(Holder, usize);
 struct SlotCount(Holder, usize);
 
 /// A hotbar's number in the inventory screen (click: use that hotbar).
+/// The keys' line, bottom centre.
 #[derive(Component)]
-struct BarTag(usize);
-
-/// A hotbar's row on the inventory screen (only the one in use shows).
-#[derive(Component)]
-struct BarRow(usize);
+struct HintLabel;
 
 #[derive(Component)]
 struct ChestRoot;
@@ -114,22 +111,26 @@ struct StatsText;
 #[derive(Component)]
 struct ChestTitle;
 
+/// A slot's size, and the hotbar's chosen one (bigger, gold: Terraria's).
 const SLOT: f32 = 44.0;
+const SLOT_BIG: f32 = 52.0;
 const ICON_PX: f32 = 32.0;
-const EMPTY: Color = Color::srgba(0.08, 0.08, 0.1, 0.72);
-const EDGE: Color = Color::srgba(0.5, 0.5, 0.55, 0.8);
-const CHOSEN: Color = Color::srgb(1.0, 0.85, 0.3);
+/// Slots: rounded, deep blue, a darker edge.
+const EMPTY: Color = Color::srgba(0.16, 0.2, 0.42, 0.78);
+const EDGE: Color = Color::srgba(0.07, 0.08, 0.2, 0.9);
+const CHOSEN: Color = Color::srgb(1.0, 0.88, 0.35);
+const CHOSEN_BG: Color = Color::srgba(0.95, 0.76, 0.2, 0.92);
+const ROUND: f32 = 7.0;
 /// An equipment slot the gear in the mouse's grip would go in (white: no
 /// rarity has it).
 const FITS: Color = Color::WHITE;
-const BAR_BG: Color = Color::srgba(0.1, 0.1, 0.16, 0.8);
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<InventoryOpen>()
             .init_resource::<Held>()
             .add_systems(Startup, spawn)
-            .add_systems(Update, (toggle, bar_rows, press, release, show, show_gear, title, spell_label, tooltip).chain());
+            .add_systems(Update, (toggle, press, release, show, show_gear, title, spell_label, tooltip, hints).chain());
     }
 }
 
@@ -143,6 +144,7 @@ fn slot(parent: &mut ChildSpawnerCommands, which: Holder, i: usize) {
                 width: px(SLOT),
                 height: px(SLOT),
                 border: UiRect::all(px(2)),
+                border_radius: BorderRadius::all(px(ROUND)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
@@ -152,6 +154,15 @@ fn slot(parent: &mut ChildSpawnerCommands, which: Holder, i: usize) {
         ))
         .with_children(|s| {
             s.spawn((SlotIcon(which, i), ImageNode::default(), Node { width: px(ICON_PX), height: px(ICON_PX), ..default() }, BackgroundColor(Color::NONE)));
+            // The hotbar's slots: their key, top left.
+            if which == Holder::Bar {
+                s.spawn((
+                    Text::new(format!("{}", (i + 1) % 10)),
+                    TextFont { font_size: FontSize::Px(11.0), ..default() },
+                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.85)),
+                    Node { position_type: PositionType::Absolute, left: px(4), top: px(1), ..default() },
+                ));
+            }
             if which == Holder::Equip {
                 s.spawn((
                     SlotName(i),
@@ -172,49 +183,69 @@ fn slot(parent: &mut ChildSpawnerCommands, which: Holder, i: usize) {
 }
 
 fn grid() -> Node {
-    Node { display: Display::Grid, grid_template_columns: RepeatedGridTrack::px(HOTBAR as u16, SLOT), column_gap: px(3), row_gap: px(3), ..default() }
+    Node { display: Display::Grid, grid_template_columns: RepeatedGridTrack::px(HOTBAR as u16, SLOT), column_gap: px(4), row_gap: px(4), ..default() }
 }
+
+/// A tight dark shadow under text over the world (readable on sky or
+/// rock).
+fn shadow() -> TextShadow {
+    TextShadow { offset: Vec2::new(1.0, 1.0), color: Color::srgba(0.0, 0.0, 0.0, 0.85) }
+}
+
+/// Where the inventory starts: under the hotbar.
+const PACK_TOP: f32 = 86.0;
 
 fn spawn(mut commands: Commands) {
     let small = |s: &str| (Text::new(s), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::srgb(0.85, 0.85, 0.9)));
-    // The hotbar in use and its label, bottom centre.
+    // The hotbar in use, top left (Terraria's): what's held named over it,
+    // the spell under it. Open, the inventory hangs below it.
     commands
         .spawn((
             HotbarRoot,
             Node {
                 position_type: PositionType::Absolute,
-                bottom: px(8),
-                width: percent(100),
+                top: px(4),
+                left: px(10),
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
-                row_gap: px(4),
+                row_gap: px(3),
                 ..default()
             },
         ))
         .with_children(|root| {
             root.spawn((
+                ItemLabel,
+                Text::new(""),
+                TextFont { font_size: FontSize::Px(15.0), ..default() },
+                TextColor(Color::WHITE),
+                shadow(),
+                Node { min_height: px(18), ..default() },
+            ));
+            root.spawn(Node { column_gap: px(4), align_items: AlignItems::Center, ..default() }).with_children(|row| {
+                for i in 0..HOTBAR {
+                    slot(row, Holder::Bar, i);
+                }
+            });
+            root.spawn((
                 SpellLabel,
                 Text::new(""),
-                TextFont { font_size: FontSize::Px(14.0), ..default() },
+                TextFont { font_size: FontSize::Px(13.0), ..default() },
                 TextColor(Color::srgb(0.8, 0.85, 1.0)),
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.45)),
                 Node { padding: UiRect::axes(px(6), px(2)), ..default() },
                 Visibility::Hidden,
             ));
-            root.spawn((
-                ItemLabel,
-                Text::new(""),
-                TextFont { font_size: FontSize::Px(13.0), ..default() },
-                TextColor(Color::WHITE),
-                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.45)),
-                Node { padding: UiRect::axes(px(6), px(2)), ..default() },
-            ));
-            root.spawn(Node { column_gap: px(3), ..default() }).with_children(|row| {
-                for i in 0..HOTBAR {
-                    slot(row, Holder::Bar, i);
-                }
-            });
         });
+    // What the keys do, small, bottom centre.
+    commands.spawn((
+        Node { position_type: PositionType::Absolute, bottom: px(6), width: percent(100), justify_content: JustifyContent::Center, ..default() },
+    )).with_child((
+        HintLabel,
+        Text::new(""),
+        TextFont { font_size: FontSize::Px(12.0), ..default() },
+        TextColor(Color::srgba(0.85, 0.85, 0.9, 0.8)),
+        shadow(),
+    ));
     // The inventory screen: the hotbars (numbered), then the pack.
     commands
         .spawn((
@@ -222,16 +253,33 @@ fn spawn(mut commands: Commands) {
             Visibility::Hidden,
             Node {
                 position_type: PositionType::Absolute,
-                bottom: px(8),
-                width: percent(100),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::End,
+                top: px(PACK_TOP),
+                left: px(10),
+                align_items: AlignItems::Start,
                 column_gap: px(6),
                 ..default()
             },
         ))
         .with_children(|root| {
-            // What the gear adds up to, and the gear, left of the pack.
+            // (No box behind the pack, as Terraria's: just the slots.)
+            root.spawn((Interaction::None, Node { flex_direction: FlexDirection::Column, row_gap: px(6), ..default() }))
+            .with_children(|panel| {
+                panel.spawn((small("Inventory: drag or click to move, right-click half, Shift-click across, Ctrl-click to discard"), shadow()));
+                panel.spawn(Node { column_gap: px(10), align_items: AlignItems::End, ..default() }).with_children(|row| {
+                    row.spawn(grid()).with_children(|g| {
+                        for i in BARS * HOTBAR..PACK {
+                            slot(g, Holder::Pack, i);
+                        }
+                    });
+                    // The discard slot: what goes in is gone once the next
+                    // thing does.
+                    row.spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(3), ..default() }).with_children(|c| {
+                        c.spawn((small("Discard"), shadow()));
+                        slot(c, Holder::Trash, 0);
+                    });
+                });
+            });
+            // The gear worn, and what it adds up to, right of the pack.
             root.spawn((
                 Interaction::None,
                 Node { flex_direction: FlexDirection::Column, row_gap: px(4), padding: UiRect::all(px(8)), width: px(200), ..default() },
@@ -252,56 +300,17 @@ fn spawn(mut commands: Commands) {
                     slot(panel, Holder::Equip, i);
                 }
             });
-            root.spawn((
-                Interaction::None,
-                Node { flex_direction: FlexDirection::Column, row_gap: px(6), padding: UiRect::all(px(8)), ..default() },
-                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.62)),
-            ))
-            .with_children(|panel| {
-                panel.spawn(small("Inventory  |  drag or click: move  |  right-click: half  |  Shift-click: across  |  Ctrl-click: discard  |  X: next hotbar"));
-                // (Only the hotbar in use shows: `bar_rows`.)
-                for bar in 0..BARS {
-                    panel.spawn((BarRow(bar), Node { column_gap: px(6), align_items: AlignItems::Center, ..default() })).with_children(|row| {
-                        row.spawn((
-                            Button,
-                            BarTag(bar),
-                            Node { width: px(20), height: px(SLOT), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
-                            BackgroundColor(BAR_BG),
-                        ))
-                        .with_child((Text::new(format!("{}", bar + 1)), TextFont { font_size: FontSize::Px(13.0), ..default() }, TextColor(Color::WHITE)));
-                        row.spawn(grid()).with_children(|g| {
-                            for i in bar * HOTBAR..(bar + 1) * HOTBAR {
-                                slot(g, Holder::Pack, i);
-                            }
-                        });
-                    });
-                }
-                panel.spawn(small("Pack"));
-                panel.spawn(Node { padding: UiRect::left(px(26)), column_gap: px(10), align_items: AlignItems::End, ..default() }).with_children(|row| {
-                    row.spawn(grid()).with_children(|g| {
-                        for i in BARS * HOTBAR..PACK {
-                            slot(g, Holder::Pack, i);
-                        }
-                    });
-                    // The discard slot: what goes in is gone once the next
-                    // thing does.
-                    row.spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(3), ..default() }).with_children(|c| {
-                        c.spawn(small("Discard"));
-                        slot(c, Holder::Trash, 0);
-                    });
-                });
-            });
         });
     // An open chest, above the inventory.
     commands
         .spawn((
             ChestRoot,
             Visibility::Hidden,
+            // (Under the pack, top left.)
             Node {
                 position_type: PositionType::Absolute,
-                bottom: px((SLOT + 3.0) * (1 + PACK_ROWS) as f32 + 100.0),
-                width: percent(100),
-                justify_content: JustifyContent::Center,
+                top: px(PACK_TOP + (SLOT + 3.0) * PACK_ROWS as f32 + 50.0),
+                left: px(10),
                 ..default()
             },
         ))
@@ -363,9 +372,9 @@ fn toggle(
     for mut v in &mut chest_panel {
         *v = if chests.open.is_some() { Visibility::Visible } else { Visibility::Hidden };
     }
-    // (The inventory screen holds the hotbars, so the bottom one steps aside.)
+    // (The hotbar is the inventory's top row: it stays, but in dev mode.)
     for mut v in &mut hotbar {
-        *v = if dev.0 || open.0 { Visibility::Hidden } else { Visibility::Visible };
+        *v = if dev.0 { Visibility::Hidden } else { Visibility::Visible };
     }
     let want = if keys.any_just_pressed([KeyCode::KeyI, KeyCode::Escape]) { !open.0 } else { open.0 };
     if want == open.0 && pack.iter().next().is_some_and(|v| (*v == Visibility::Visible) == open.0) {
@@ -387,16 +396,6 @@ fn toggle(
 }
 
 type SlotQuery<'a> = (&'a RelativeCursorPosition, &'a SlotUi, &'a InheritedVisibility);
-
-/// Only the hotbar in use has its row on the inventory screen.
-fn bar_rows(hand: Res<Hand>, mut rows: Query<(&BarRow, &mut Node)>) {
-    for (row, mut node) in &mut rows {
-        let want = if row.0 == hand.bar { Display::Flex } else { Display::None };
-        if node.display != want {
-            node.display = want;
-        }
-    }
-}
 
 /// The slot under the mouse (shown ones only). (Not `Interaction`: while
 /// a drag's button is down, the slot it started on stays `Pressed`.)
@@ -420,6 +419,15 @@ fn slot_mut<'a>(inv: &'a mut Inventory, chest: Option<&'a mut Inventory>, eq: &'
     }
 }
 
+/// The keys' line: which hotbar, the cursor, the inventory, dev tools.
+fn hints(hand: Res<Hand>, mut text: Single<&mut Text, With<HintLabel>>) {
+    let smart = if hand.smart { "smart cursor" } else { "plain cursor" };
+    let want = format!("hotbar {} of {BARS} [X]   |   {smart} [Alt]   |   inventory [Esc]   |   potion [H]   |   dev tools: key left of 1", hand.bar + 1);
+    if text.0 != want {
+        text.0 = want;
+    }
+}
+
 /// Only gear of its kind goes in an equipment slot.
 fn allowed(items: &Items, which: Holder, i: usize, stack: Option<&Stack>) -> bool {
     which != Holder::Equip || stack.is_none_or(|s| Equipment::fits(items, i, s))
@@ -439,15 +447,9 @@ fn press(
     mut hand: ResMut<Hand>,
     mut held: ResMut<Held>,
     slots: Query<SlotQuery>,
-    tags: Query<(&Interaction, &BarTag), Changed<Interaction>>,
     mut player: Query<(&Kinematics, &mut Inventory, &mut Equipment), With<LocalPlayer>>,
 ) {
     let (Some(items), Ok((k, mut inv, mut eq))) = (items, player.single_mut()) else { return };
-    for (interaction, tag) in &tags {
-        if *interaction == Interaction::Pressed {
-            hand.bar = tag.0;
-        }
-    }
     let (left, right) = (mouse.just_pressed(MouseButton::Left), mouse.just_pressed(MouseButton::Right));
     if !left && !right {
         return;
@@ -632,8 +634,8 @@ fn put(items: &Items, held: &mut Option<Stack>, slot: &mut Option<Stack>) {
 // (The UI queries touch the same components on different nodes; these say
 // which.)
 type PackOnly = (With<PackRoot>, Without<ChestRoot>, Without<HotbarRoot>);
-type TagsOnly = (Without<SlotIcon>, Without<HeldIcon>);
-type IconsOnly = (Without<HeldIcon>, Without<BarTag>);
+type SlotsOnly = (Without<SlotIcon>, Without<HeldIcon>);
+type IconsOnly = (Without<HeldIcon>, Without<SlotUi>);
 type CountsOnly = (Without<ItemLabel>, Without<HeldCount>);
 type LabelOnly = (With<ItemLabel>, Without<HeldCount>);
 type Grip<'a> = (&'a mut Node, &'a mut ImageNode, &'a mut BackgroundColor, &'a mut Visibility);
@@ -655,8 +657,7 @@ fn show(
     inv: Query<(&Inventory, &Equipment), With<LocalPlayer>>,
     sim: Res<SimWorld>,
     mut chests: ResMut<Chests>,
-    mut borders: Query<(&SlotUi, &mut BorderColor)>,
-    mut tags: Query<(&BarTag, &mut BackgroundColor), TagsOnly>,
+    mut borders: Query<(&SlotUi, &mut BorderColor, &mut Node, &mut BackgroundColor), SlotsOnly>,
     mut slot_icons: Query<(&SlotIcon, &mut ImageNode, &mut BackgroundColor), IconsOnly>,
     mut counts: Query<(&SlotCount, &mut Text), CountsOnly>,
     mut label: Single<&mut Text, LabelOnly>,
@@ -685,8 +686,16 @@ fn show(
         Holder::Trash => held.trash,
         _ => inv.slots[index(&hand, which, i)],
     };
-    for (&SlotUi(which, i), mut border) in &mut borders {
+    for (&SlotUi(which, i), mut border, mut node, mut bg) in &mut borders {
         let chosen = matches!(which, Holder::Bar | Holder::Pack) && index(&hand, which, i) == hand.active();
+        // (The hotbar's chosen slot: bigger, gold.)
+        let big = which == Holder::Bar && chosen;
+        let size = px(if big { SLOT_BIG } else { SLOT });
+        if node.width != size {
+            node.width = size;
+            node.height = size;
+        }
+        bg.0 = if big { CHOSEN_BG } else { EMPTY };
         // (Gear finer than common is edged in its rarity's colour.)
         let rare = slot_of(which, i).filter(|s| s.roll.rarity > 0).and_then(|s| rules.rarity(&items, &s)).map(|r| Color::srgb_u8(r.color.0, r.color.1, r.color.2));
         // Holding gear: where it can go lights up.
@@ -698,9 +707,6 @@ fn show(
         } else {
             rare.unwrap_or(EDGE)
         });
-    }
-    for (tag, mut bg) in &mut tags {
-        bg.0 = if tag.0 == hand.bar { Color::srgba(0.55, 0.45, 0.12, 0.9) } else { BAR_BG };
     }
     for (&SlotIcon(which, i), mut image, mut bg) in &mut slot_icons {
         let (handle, color) = look(slot_of(which, i).as_ref());
@@ -719,8 +725,7 @@ fn show(
         let spare = s.count % unit;
         if unit > 1 && spare > 0 { format!("{} ({} + {spare}/{unit})", items.def(s.item).name, s.count / unit) } else { rules.name(&items, &s) }
     });
-    let smart = if hand.smart { "smart cursor" } else { "plain cursor" };
-    label.0 = format!("{name}   |   hotbar {} of {BARS} [X]   |   {smart} [Alt]   |   inventory [Esc]   |   dev tools: key left of 1", hand.bar + 1);
+    label.0 = name;
     let (node, image, bg, vis) = &mut *grip;
     match (held.stack, window.cursor_position()) {
         (Some(s), Some(at)) => {

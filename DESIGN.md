@@ -243,10 +243,15 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
   soft inner reach fading first and the rim at the edge last, continuously.
   Each glow is a soft band (15 % of the screen's height deep, as deep from
   every edge) and a thin rim (6 %).
-- **The inventory screen** (Esc): the hotbar in use (X for the next), five
-  rows of pack, and a discard slot (Terraria's trash): a stack dropped in
-  (or Ctrl-clicked from a slot) is kept there to take back until the next
-  goes in.
+- **The hotbar and inventory** (Terraria's layout): the hotbar top left,
+  what's held named over it; rounded slots, each with its key at its top
+  left, the chosen one bigger and gold. Esc opens the inventory under it
+  (the hotbar is its top row; X for the next hotbar): five rows of pack,
+  no box behind them, a discard slot (Terraria's trash: a stack dropped in,
+  or Ctrl-clicked from a slot, is kept there to take back until the next
+  goes in), the gear worn and the stats to the right, an open chest below.
+  The keys' line bottom centre; the debug text bottom left; the arena
+  panel under the hotbar (away while the inventory's open).
 - **Loot tables** (RON) by context, such as `crypt_deep` or `troll`: weighted entries, counts, rarity by depth.
 
 ## 6. Creatures and bodies
