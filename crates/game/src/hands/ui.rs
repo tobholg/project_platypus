@@ -82,10 +82,6 @@ struct PackRoot;
 #[derive(Component)]
 struct ItemLabel;
 
-/// A focus's spells, over the hotbar while it's in hand.
-#[derive(Component)]
-struct SpellLabel;
-
 #[derive(Component)]
 struct HeldIcon;
 
@@ -130,7 +126,7 @@ impl Plugin for UiPlugin {
         app.init_resource::<InventoryOpen>()
             .init_resource::<Held>()
             .add_systems(Startup, spawn)
-            .add_systems(Update, (toggle, press, release, show, show_gear, title, spell_label, tooltip, hints).chain());
+            .add_systems(Update, (toggle, press, release, show, show_gear, title, tooltip, hints).chain());
     }
 }
 
@@ -192,13 +188,16 @@ fn shadow() -> TextShadow {
     TextShadow { offset: Vec2::new(1.0, 1.0), color: Color::srgba(0.0, 0.0, 0.0, 0.85) }
 }
 
+/// The held item's name over the hotbar: at most this many letters.
+const LABEL_CHARS: usize = 34;
+
 /// Where the inventory starts: under the hotbar.
 const PACK_TOP: f32 = 86.0;
 
 fn spawn(mut commands: Commands) {
     let small = |s: &str| (Text::new(s), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::srgb(0.85, 0.85, 0.9)));
-    // The hotbar in use, top left (Terraria's): what's held named over it,
-    // the spell under it. Open, the inventory hangs below it.
+    // The hotbar in use, top left (Terraria's): what's held named over it.
+    // Open, the inventory hangs below it.
     commands
         .spawn((
             HotbarRoot,
@@ -219,6 +218,9 @@ fn spawn(mut commands: Commands) {
                 TextFont { font_size: FontSize::Px(15.0), ..default() },
                 TextColor(Color::WHITE),
                 shadow(),
+                // (One line; a long name is cut short with an ellipsis, so
+                // it never widens the column and pushes the hotbar out.)
+                TextLayout::default().with_no_wrap(),
                 Node { min_height: px(18), ..default() },
             ));
             root.spawn(Node { column_gap: px(4), align_items: AlignItems::Center, ..default() }).with_children(|row| {
@@ -226,15 +228,6 @@ fn spawn(mut commands: Commands) {
                     slot(row, Holder::Bar, i);
                 }
             });
-            root.spawn((
-                SpellLabel,
-                Text::new(""),
-                TextFont { font_size: FontSize::Px(13.0), ..default() },
-                TextColor(Color::srgb(0.8, 0.85, 1.0)),
-                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.45)),
-                Node { padding: UiRect::axes(px(6), px(2)), ..default() },
-                Visibility::Hidden,
-            ));
         });
     // What the keys do, small, bottom centre.
     commands.spawn((
@@ -725,7 +718,11 @@ fn show(
         let spare = s.count % unit;
         if unit > 1 && spare > 0 { format!("{} ({} + {spare}/{unit})", items.def(s.item).name, s.count / unit) } else { rules.name(&items, &s) }
     });
-    label.0 = name;
+    // (Cut to LABEL_CHARS, well short of the hotbar's width.)
+    let name = if name.chars().count() > LABEL_CHARS { format!("{}…", name.chars().take(LABEL_CHARS - 1).collect::<String>().trim_end()) } else { name };
+    if label.0 != name {
+        label.0 = name;
+    }
     let (node, image, bg, vis) = &mut *grip;
     match (held.stack, window.cursor_position()) {
         (Some(s), Some(at)) => {
@@ -775,29 +772,6 @@ fn show_gear(
 
 /// With a focus in hand: its spells, which button casts each, what they
 /// cost.
-fn spell_label(
-    items: Option<Res<Items>>,
-    book: Res<Spellbook>,
-    player: Query<&Equipment, With<LocalPlayer>>,
-    mut label: Single<(&mut Text, &mut Visibility), With<SpellLabel>>,
-) {
-    let (text, vis) = &mut *label;
-    let (Some(items), Ok(eq)) = (items, player.single()) else { return };
-    let spells = eq.held.and_then(|s| match &items.def(s.item).use_ {
-        Use::Focus { tier, element, spells } => Some(crate::magic::spells::focus_spells(&book.spells, *tier, *element, spells, &s.roll)),
-        _ => None,
-    });
-    let Some(spells) = spells.filter(|s| !s.is_empty()) else {
-        **vis = Visibility::Hidden;
-        return;
-    };
-    **vis = Visibility::Inherited;
-    let t = spells.iter().enumerate().map(|(k, &i)| spell_line(&book, i, if k == 0 { "LMB" } else { "RMB" })).collect::<Vec<_>>().join("   |   ");
-    if text.0 != t {
-        text.0 = t;
-    }
-}
-
 /// A spell in a line: the button, its name, element and mana.
 fn spell_line(book: &Spellbook, i: usize, button: &str) -> String {
     let s = &book.spells[i];

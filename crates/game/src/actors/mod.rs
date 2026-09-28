@@ -342,10 +342,11 @@ pub(crate) fn move_creatures(
         // (A plunge's dive lasts the tick it was given for.)
         k.loco.dive = 0.0;
         // Slammed into a wall or a ceiling (flung by a spell, a blast): an
-        // impact like a landing, by the speed it hit at.
+        // impact like a landing, by the speed it hit at. (Not on a hook's
+        // rope: it reels you in fast, right up to the rock it bit.)
         let walled = if (contacts.wall_left && before.x < 0.0) || (contacts.wall_right && before.x > 0.0) { before.x.abs() } else { 0.0 };
         let roofed = if contacts.ceiling && before.y > 0.0 { before.y } else { 0.0 };
-        let slam = walled.max(roofed);
+        let slam = if tether.is_some() { 0.0 } else { walled.max(roofed) };
         let y = k.body.pos.y;
         let drop = track.map_or(0.0, |mut t| {
             if rejumped {

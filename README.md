@@ -100,7 +100,7 @@ hotbar 3's 8, 9 and 0) and glow sticks (in the pack).
 
 **Magic:** wands and staffs hold their spells (recipes in
 `assets/data/spells.ron`): a wand one (LMB), a staff two (LMB and RMB); what a
-focus holds shows over the hotbar and in its tooltip. A found wand or staff
+focus holds shows in its tooltip. A found wand or staff
 rolls its spells from its element's (any, for a plain one) up to its tier (wands
 1, staffs 2: lightning and the flame jet are staff spells). Its stats (and your
 gear's) make them stronger: a fire wand's +40% fire power, spell power, cast
@@ -185,7 +185,7 @@ each; `PLATYPUS_SOUND_LOG=1` logs what plays and what's heard. `PLATYPUS_HIT=i` 
 
 **Backdrops** (DESIGN §4.3b): Noita-like ranges behind the surface (sharp faceted peaks,
 snow, cloud heaps rising behind, a look per biome, calm parallax), the sun by day in a warm bloom, twinkling stars and
-a big phased moon on near-black nights (eight nights a cycle from full; `PLATYPUS_MOON`=0–7 to pick one); underground, a dark void behind the back walls tinted by
+a big phased moon on near-black nights (eight nights a cycle from full; `PLATYPUS_MOON`=0–7 to pick one; all fixed to the view, too far off to move with it); underground, a dark void behind the back walls tinted by
 the band and zone, with a few faint twinkles far off (scenario `voidlook`, `PLATYPUS_DEPTH` or
 `PLATYPUS_ZONE`). `cargo run
 --release -p platypus_backdrop -- <dir>` writes stills (`peaks.png`, `peaks-*.png`,

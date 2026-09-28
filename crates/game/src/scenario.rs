@@ -3933,14 +3933,16 @@ fn hook_script(
     mut chests: ResMut<crate::hands::chests::Chests>,
     mut cursor: ResMut<CursorOverride>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
-    mut player: Query<(&mut Kinematics, Option<&crate::gear::hook::Rope>), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, Option<&crate::gear::hook::Rope>, &crate::actors::Health), With<LocalPlayer>>,
     boxes: Query<&Kinematics, (With<crate::hands::chests::Chest>, Without<LocalPlayer>)>,
     mut state: Local<(u8, f32, f32, f32)>,
 ) {
     if s.name != "hook" {
         return;
     }
-    let Ok((mut k, rope)) = player.single_mut() else { return };
+    let Ok((mut k, rope, health)) = player.single_mut() else { return };
+    // (Reeled in fast against rock, the rope never hurts: health stays.)
+    let hp = health.hp;
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR;
     let fl = floor as f32;
@@ -3984,7 +3986,7 @@ fn hook_script(
                 held.push(KeyCode::KeyE);
             }
             if dt > 1.8 {
-                info!("hook: hooked on the column's face above an overhang, from below and out: the hook {what}, at ({:.0}, {height:.0}) (the overhang's at 48..51, 689..701; hooked at ~70), moving {:.0}", k.body.pos.x, k.body.vel.length());
+                info!("hook: hooked on the column's face above an overhang, from below and out: the hook {what}, at ({:.0}, {height:.0}) (the overhang's at 48..51, 689..701; hooked at ~70), moving {:.0}, health {hp:.0}", k.body.pos.x, k.body.vel.length());
                 next(&mut state);
             }
         }
@@ -4002,7 +4004,7 @@ fn hook_script(
                 held.push(KeyCode::KeyW);
             }
             if dt > 1.7 {
-                info!("hook: hooked on the column's top and W: the hook {what}, at ({:.0}, {height:.0}) (the top is at ~78, 700..706)", k.body.pos.x);
+                info!("hook: hooked on the column's top and W: the hook {what}, at ({:.0}, {height:.0}) (the top is at ~78, 700..706), health {hp:.0}", k.body.pos.x);
                 put(&mut k, 600.0);
                 next(&mut state);
             }
@@ -4065,7 +4067,7 @@ fn hook_script(
                 state.2 = state.2.min(k.body.vel.x);
             }
             if dt > 3.7 {
-                info!("hook: against the column on the rope, then away: kicked off at {:.0} cells/s, the hook {what} ({wraps} wraps)", -state.2);
+                info!("hook: against the column on the rope, then away: kicked off at {:.0} cells/s, the hook {what} ({wraps} wraps), health {hp:.0}", -state.2);
                 next(&mut state);
             }
         }

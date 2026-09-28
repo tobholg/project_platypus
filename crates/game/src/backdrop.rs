@@ -68,6 +68,10 @@ const CLOUD_FOOT: f32 = 12.0;
 const TILE: usize = 256;
 const HEIGHT: usize = 380;
 const CLOUD_HEIGHT: usize = 170;
+/// Cloud tiles are scaled up this many times (each texel a block) and
+/// sampled smoothly, so they glide by fractions of a pixel as they drift:
+/// the blocks' edges blend a pixel wide, the rest stays crisp.
+const CLOUD_UP: usize = 3;
 /// How far below a surface tile its bottom row is stretched (valleys).
 const SKIRT: f32 = 300.0;
 /// Behind the weather's clouds (-2) and the world's back walls (-1); the
@@ -278,14 +282,21 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
         bd.making.remove(&key);
         let (w, h) = Backdrops::size(key.part);
         let alpha: Vec<u8> = px.chunks(4).map(|p| p[3]).collect();
-        let handle = images.add(Image::new(Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::RENDER_WORLD));
+        let clouds = key.part == Part::Clouds;
+        let (px, up) = if clouds { (upscale(px, w, h, CLOUD_UP), CLOUD_UP) } else { (px, 1) };
+        let mut image = Image::new(Extent3d { width: (w * up) as u32, height: (h * up) as u32, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::RENDER_WORLD);
+        if clouds {
+            image.sampler = bevy::image::ImageSampler::linear();
+        }
+        let handle = images.add(image);
         // The farthest range, the clouds, the nearer ranges.
         let z = Z + key.v as f32 * 0.002
             + match key.part {
                 Part::Land => key.k as f32 * 0.03,
                 Part::Clouds => 0.015,
             };
-        let entity = commands.spawn((Name::new("Backdrop tile"), Sprite::from_image(handle.clone()), Transform::from_xyz(0.0, 0.0, z))).id();
+        let sprite = Sprite { image: handle.clone(), custom_size: Some(Vec2::new(w as f32, h as f32)), ..default() };
+        let entity = commands.spawn((Name::new("Backdrop tile"), sprite, Transform::from_xyz(0.0, 0.0, z))).id();
         let skirt = (key.part == Part::Land).then(|| {
             commands
                 .spawn((
@@ -303,11 +314,14 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
 /// look's share; the surface's faded out underground, the cave's in.
 fn place(bd: Res<Backdrops>, zoom: Res<crate::camera::Zoom>, cam: Single<&Transform, (With<MainCamera>, Without<Sprite>)>, mut sprites: Query<(&mut Transform, &mut Sprite), Without<MainCamera>>) {
     let c = cam.translation.truncate();
-    // (Snapped to whole screen pixels from the camera: crisp, and gliding
-    // a pixel at a time. Snapped to whole cells it hopped 3 pixels at once.)
+    // (The ranges snapped to whole screen pixels from the camera: crisp,
+    // and gliding a pixel at a time; snapped to whole cells they hopped 3
+    // pixels at once. The clouds, drifting slowly on their own, aren't:
+    // they're drawn smooth, `CLOUD_UP`.)
     let px = zoom.0.max(1) as f32;
     for (key, tile) in &bd.tiles {
-        let at = c + ((bd.centre(*key, c) - c) * px).round() / px;
+        let exact = bd.centre(*key, c);
+        let at = if key.part == Part::Clouds { exact } else { c + ((exact - c) * px).round() / px };
         let alpha = bd.shown * bd.weights[key.v];
         let skirt = tile.skirt.map(|s| (s, at.y - HEIGHT as f32 / 2.0 - SKIRT / 2.0));
         for (e, y) in std::iter::once((tile.entity, at.y)).chain(skirt) {
@@ -318,6 +332,33 @@ fn place(bd: Res<Backdrops>, zoom: Res<crate::camera::Zoom>, cam: Single<&Transf
             }
         }
     }
+}
+
+/// A tile's pixels scaled up `n` times, each a block; see-through ones take
+/// their colour from a neighbour that isn't (sampled smoothly, the edges
+/// blend towards it, not towards black).
+fn upscale(px: Vec<u8>, w: usize, h: usize, n: usize) -> Vec<u8> {
+    let mut src = px.clone();
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) * 4;
+            if px[i + 3] > 0 {
+                continue;
+            }
+            let near = [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)].into_iter().filter(|&(nx, ny)| nx < w && ny < h).map(|(nx, ny)| (ny * w + nx) * 4).find(|&j| px[j + 3] > 0);
+            if let Some(j) = near {
+                src[i..i + 3].copy_from_slice(&px[j..j + 3]);
+            }
+        }
+    }
+    let mut out = vec![0u8; w * h * n * n * 4];
+    for y in 0..h * n {
+        for x in 0..w * n {
+            let (i, o) = (((y / n) * w + x / n) * 4, (y * w * n + x) * 4);
+            out[o..o + 4].copy_from_slice(&src[i..i + 4]);
+        }
+    }
+    out
 }
 
 // ---- the underground's void ----
@@ -407,8 +448,8 @@ fn gradient(g: Res<Gradient>, bd: Res<Backdrops>, clear: Res<ClearColor>, cam: S
 
 // ---- the sky, and the cave's own lights ----
 
-/// The sun, the moon and the stars (the sky's: a slight drift with the
-/// camera); underground, glowing specks on the walls (fungal and crystal
+/// The sun, the moon and the stars (fixed to the view: they're so far
+/// off that nothing the camera does moves them); underground, glowing specks on the walls (fungal and crystal
 /// zones) and motes in big caverns. Over the lighting, where it's open.
 #[derive(Resource)]
 struct Sky {
@@ -435,7 +476,8 @@ const TWINKLE_CELL: f32 = 9.0;
 const TWINKLE_CHANCE: u64 = 200;
 const TWINKLE_PARALLAX: f32 = 0.02;
 
-/// The sky's width in views (stars wrap round it).
+/// Stars are made over this many views' width and those in the first
+/// kept, spread over the view (the field as it was when the sky drifted).
 const SKY_WIDE: f32 = 3.0;
 
 fn sky_setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
@@ -449,6 +491,8 @@ fn sky_setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
             let color = if b > 0.93 { [1.0, 0.84, 0.7] } else if b > 0.85 { [0.72, 0.8, 1.0] } else { [0.93, 0.94, 1.0] };
             Star { at: Vec2::new(rng.unit(), rng.unit().powf(1.3)), bright: 0.2 + 0.8 * b.powi(4), color, rate: 0.5 + 3.0 * rng.unit(), phase: rng.unit() * std::f32::consts::TAU }
         })
+        .filter(|s: &Star| s.at.x * SKY_WIDE < 1.0)
+        .map(|s| Star { at: Vec2::new(s.at.x * SKY_WIDE, s.at.y), ..s })
         .collect();
     commands.insert_resource(Sky { image, sprite, size, stars, since: 1.0 });
 }
@@ -492,16 +536,25 @@ fn sky(
     let (vw, vh) = (half.x * 2.0, half.y * 2.0);
     let origin = c - half;
     // (x, y: from the view's bottom left, in cells.)
+    // (Laid over what's there: the moon over its halo over the stars.)
     let mut put = |x: f32, y: f32, rgb: [f32; 3], a: f32| {
-        let (ix, iy) = ((x / vw * size.x as f32) as i64, ((1.0 - y / vh) * size.y as f32) as i64);
+        let (ix, iy) = ((x / vw * size.x as f32).floor() as i64, ((1.0 - y / vh) * size.y as f32).floor() as i64);
         if ix < 0 || iy < 0 || ix >= size.x as i64 || iy >= size.y as i64 || a <= 0.0 {
             return;
         }
         let i = ((iy as u32 * size.x + ix as u32) * 4) as usize;
+        let a = a.min(1.0);
+        let under = data[i + 3] as f32 / 255.0;
+        let out = a + under * (1.0 - a);
         for (k, v) in rgb.iter().enumerate() {
-            data[i + k] = data[i + k].max((v * 255.0).clamp(0.0, 255.0) as u8);
+            let was = data[i + k] as f32 / 255.0;
+            data[i + k] = ((v * a + was * under * (1.0 - a)) / out.max(1e-4) * 255.0).round().clamp(0.0, 255.0) as u8;
         }
-        data[i + 3] = data[i + 3].max((a * 255.0).clamp(0.0, 255.0) as u8);
+        // (A still 4 × 4 ordered dither on the alpha: a faint glow's few
+        // levels would show as rings.)
+        const BAYER: [f32; 16] = [0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0];
+        let d = BAYER[((iy & 3) * 4 + (ix & 3)) as usize] / 16.0;
+        data[i + 3] = (out * 255.0 + d).clamp(0.0, 255.0) as u8;
     };
     let surface = bd.shown;
     if surface > 0.01
@@ -513,102 +566,114 @@ fn sky(
         let cloud = |x: f32| world.weather().map_or(0.0, |w| ((w.overcast(x as i32 - 4, x as i32 + 4) - 0.2) / 0.4).clamp(0.0, 1.0));
         let cover = bd.cover(c);
         let sky_open = |p: Vec2| open(p) && !cover.covers(p);
-        // (The sky drifts a little as the camera goes: it's very far.)
-        let drift = c.x * 0.01;
+        // A disc crossing the sky, the sun by day, the moon by night.
+        let is_sun = (0.25..0.75).contains(&d.time);
+        let phase = if is_sun { (d.time - 0.25) * 2.0 } else { (d.time - 0.75).rem_euclid(1.0) * 2.0 };
+        let arc = (std::f32::consts::PI * phase).sin();
+        let (dx, dy) = (vw * (0.12 + 0.76 * phase), vh * (0.6 + 0.34 * arc));
+        // (An image pixel's size on each axis: not square unless the window
+        // is 16:9.)
+        let (pw, ph) = (vw / size.x as f32, vh / size.y as f32);
+        let low = 1.0 - arc;
+        // The moon's disc (stars behind it hidden) and how lit it is.
+        let mp = d.moon_phase();
+        let lit_share = 0.5 - 0.5 * (std::f32::consts::TAU * mp).cos();
+        let radius = 11.0;
         if night > 0.01 {
             for s in &sky.stars {
-                let sx = (s.at.x * vw * SKY_WIDE - drift).rem_euclid(vw * SKY_WIDE);
-                if sx >= vw {
+                let (sx, sy) = (s.at.x * vw, vh - s.at.y * vh * 0.9);
+                // (Behind the moon: hidden; near it, washed out by its
+                // light, the more the fuller.)
+                let r = Vec2::new(sx - dx, sy - dy).length();
+                if !is_sun && r <= radius {
                     continue;
                 }
-                let sy = vh - s.at.y * vh * 0.9;
+                let washed = if is_sun { 1.0 } else { 1.0 - 0.8 * lit_share * (-(r / 20.0).powi(2)).exp() };
                 let p = origin + Vec2::new(sx, sy);
                 if !sky_open(p) {
                     continue;
                 }
                 let twinkle = 0.65 + 0.35 * (t * s.rate + s.phase).sin() * (t * s.rate * 0.37 + s.phase * 2.0).sin();
-                put(sx, sy, s.color, s.bright * twinkle * night * (1.0 - cloud(p.x)));
+                put(sx, sy, s.color, s.bright * twinkle * washed * night * (1.0 - cloud(p.x)));
             }
         }
-        // A disc crossing the sky, the sun by day, the moon by night.
-        let is_sun = (0.25..0.75).contains(&d.time);
-        let phase = if is_sun { (d.time - 0.25) * 2.0 } else { (d.time - 0.75).rem_euclid(1.0) * 2.0 };
-        let arc = (std::f32::consts::PI * phase).sin();
-        let (dx, dy) = (vw * (0.12 + 0.76 * phase) - drift * 0.3, vh * (0.6 + 0.34 * arc));
-        let low = 1.0 - arc;
         let fade = if is_sun { surface } else { night };
-        // (Over the image's pixels, finer than cells, from the pixel the
-        // disc's centre is in: the pixels aren't square unless the window
-        // is 16:9, so each axis steps by its own; a wide glow every other
-        // pixel, drawn 2 × 2.)
-        let (sx, sy) = (vw / size.x as f32, vh / size.y as f32);
-        let (dx, dy) = (((dx / sx).floor() + 0.5) * sx, ((dy / sy).floor() + 0.5) * sy);
+        // Over the image's pixels, each shaded by where its centre is from
+        // the disc's (not snapped to a pixel: it glides, its edges
+        // anti-aliased); a wide glow in blocks of 2 × 2 (on even pixels),
+        // the openness and the cloud looked up once a block but each pixel
+        // its own shade.
+        let (ci, cj) = ((dx / pw).floor() as i32, (dy / ph).floor() as i32);
         let each = |reach: f32, coarse: bool, f: &dyn Fn(f32, f32, f32) -> Option<([f32; 3], f32)>, put: &mut dyn FnMut(f32, f32, [f32; 3], f32)| {
-            let (nx, ny) = ((reach / sx) as i32 + 1, (reach / sy) as i32 + 1);
+            let (nx, ny) = ((reach / pw) as i32 + 2, (reach / ph) as i32 + 2);
             let by = if coarse { 2 } else { 1 };
-            for oy in (-ny..=ny).step_by(by) {
-                for ox in (-nx..=nx).step_by(by) {
-                    let (ex, ey) = (ox as f32 * sx, oy as f32 * sy);
-                    if (ex * ex + ey * ey).sqrt() > reach + 2.0 * sx.max(sy) {
+            let even = |v: i32| if coarse { v.div_euclid(2) * 2 } else { v };
+            for j in (even(cj - ny)..=cj + ny).step_by(by) {
+                for i in (even(ci - nx)..=ci + nx).step_by(by) {
+                    let (x, y) = ((i as f32 + 0.5) * pw, (j as f32 + 0.5) * ph);
+                    if Vec2::new(x - dx, y - dy).length() > reach + 2.0 * pw.max(ph) {
                         continue;
                     }
-                    let (px, py) = (dx + ex, dy + ey);
-                    let p = origin + Vec2::new(px, py);
+                    let p = origin + Vec2::new(x, y);
                     if !sky_open(p) {
                         continue;
                     }
                     let dim = fade * (1.0 - 0.8 * cloud(p.x));
-                    // (Coarse: the openness and the cloud looked up once for
-                    // the 2 × 2, but each pixel its own shade, so the glow
-                    // meets what's inside it without a gap or an overlap.)
                     let subs: &[(i32, i32)] = if coarse { &[(0, 0), (1, 0), (0, 1), (1, 1)] } else { &[(0, 0)] };
-                    for &(ix, iy) in subs {
-                        let (ex, ey) = ((ox + ix) as f32 * sx, (oy + iy) as f32 * sy);
+                    for &(si, sj) in subs {
+                        let (x, y) = ((i + si) as f32 * pw + 0.5 * pw, (j + sj) as f32 * ph + 0.5 * ph);
+                        let (ex, ey) = (x - dx, y - dy);
                         let r = (ex * ex + ey * ey).sqrt();
                         if r > reach {
                             continue;
                         }
                         if let Some((c, a)) = f(ex, ey, r) {
-                            put(dx + ex, dy + ey, c, a * dim);
+                            put(x, y, c, a * dim);
                         }
                     }
                 }
             }
         };
+        // (How much of a pixel lies inside an edge `d` cells in from it.)
+        let pix = pw.max(ph);
+        let inside = |d: f32| (d / pix + 0.5).clamp(0.0, 1.0);
+        let smooth = |e0: f32, e1: f32, v: f32| {
+            let t = ((v - e0) / (e1 - e0)).clamp(0.0, 1.0);
+            t * t * (3.0 - 2.0 * t)
+        };
+        let mix = |a: [f32; 3], b: [f32; 3], t: f32| [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
         if fade > 0.01 {
             if is_sun {
                 // The sun: a small white core, a warm glow round it, the sky
                 // brightened wide about it; golden when low.
                 let warm = [1.0, 0.93 - 0.2 * low, 0.8 - 0.45 * low];
-                each(110.0, true, &|_, _, r| (r > 18.0).then(|| (warm, (-(r / 55.0).powi(2)).exp() * 0.3)), &mut put);
-                each(18.0, false, &|_, _, r| (r > 5.0).then(|| (warm, (-(r / 9.0).powi(2)).exp() * 0.75 + (-(r / 55.0).powi(2)).exp() * 0.3)), &mut put);
-                each(5.0, false, &|_, _, r| (r <= 5.0).then_some(([1.0, 1.0, 0.96 - 0.3 * low], 1.0)), &mut put);
+                let core = 5.0;
+                each(110.0, true, &|_, _, r| Some((warm, (-(r / 55.0).powi(2)).exp() * 0.3)), &mut put);
+                each(22.0, false, &|_, _, r| Some((warm, (-(r / 9.0).powi(2)).exp() * 0.9)), &mut put);
+                each(core + pix, false, &|_, _, r| Some(([1.0, 1.0, 0.96 - 0.3 * low], inside(core - r))), &mut put);
             } else {
                 // The moon: big, its seas in two tones, lit from one side, in
-                // tonight's phase (the unlit part faintly there), a wide soft
-                // halo as bright as it's lit.
-                let mp = d.moon_phase();
-                let lit_share = 0.5 - 0.5 * (std::f32::consts::TAU * mp).cos();
-                let radius = 11.0;
-                each(46.0, true, &|_, _, r| (r > radius).then(|| ([0.63, 0.7, 0.95], (-(r / 24.0).powi(2)).exp() * 0.28 * (0.25 + 0.75 * lit_share))), &mut put);
-                each(radius, false, &|ex, ey, r| {
-                    if r > radius {
+                // tonight's phase (the unlit part faintly there), a soft halo
+                // as bright as it's lit.
+                each(34.0, true, &|_, _, r| Some(([0.63, 0.7, 0.95], (-(r / 17.0).powi(2)).exp() * 0.14 * (0.25 + 0.75 * lit_share))), &mut put);
+                each(radius + pix, false, &|ex, ey, r| {
+                    let edge = inside(radius - r);
+                    if edge <= 0.0 {
                         return None;
                     }
                     let (nx, ny) = (ex / radius, ey / radius);
-                    // The terminator: lit east of it waxing, west waning.
+                    // The terminator: lit east of it waxing, west waning
+                    // (how far past it, in cells, for its soft edge).
                     let k = (std::f32::consts::TAU * mp).cos() * (1.0 - ny * ny).max(0.0).sqrt();
-                    let lit = if mp < 0.5 { nx > k } else { nx < -k };
-                    if !lit {
-                        return Some(([0.23, 0.26, 0.38], 0.9));
-                    }
+                    let past = if mp < 0.5 { nx - k } else { -k - nx } * radius;
+                    let lit = inside(past);
+                    // (Its tones blended over a sliver: they drift as it
+                    // does, not hop a pixel at a time.)
                     let sea = platypus_backdrop::fbm2(nx * 2.4 + 4.0, ny * 2.4, 3, 91);
-                    let mut c = if sea > 0.58 { [0.59, 0.62, 0.71] } else if sea > 0.5 { [0.77, 0.79, 0.86] } else { [0.91, 0.93, 0.96] };
+                    let mut c = mix(mix([0.91, 0.93, 0.96], [0.77, 0.79, 0.86], smooth(0.49, 0.51, sea)), [0.59, 0.62, 0.71], smooth(0.57, 0.59, sea));
                     // (The far limb a shade darker.)
-                    if nx + ny > 0.9 {
-                        c = c.map(|v| v * 0.8);
-                    }
-                    Some((c, 1.0))
+                    c = c.map(|v| v * (1.0 - 0.2 * smooth(0.85, 0.95, nx + ny)));
+                    Some((mix([0.23, 0.26, 0.38], c, lit), (0.9 + 0.1 * lit) * edge))
                 }, &mut put);
             }
         }

@@ -197,21 +197,30 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
   places of their own. Looks crossfade as the biomes around the camera
   change. Ranges move at 1–4 % of the camera's motion across, far to
   near, and hardly at all up and down (0.4–1.5 %: they sit still in the
-  view however high or low on the surface you are); tiles are placed to whole screen pixels
-  from the camera (whole cells hopped 3 pixels: jitter). Below a range's
+  view however high or low on the surface you are); the ranges' tiles are placed to whole screen pixels
+  from the camera (whole cells hopped 3 pixels: jitter). The cloud heaps,
+  drifting on their own too slowly for a pixel at a time to look like
+  motion, are scaled up 3× and sampled smoothly instead: they glide by
+  fractions of a pixel, their blocks' edges blended a pixel wide. Below a range's
   feet, one flat colour (the skirt stretches the bottom row down). A sky
   gradient behind, tinted by the hour's sky colour. `platypus-backdrop
   <dir>` writes `peaks.png` and each look by day, at dusk and at night.
 - **The sky:** the sun crossing by day (low and golden at either end): a
   small white core in a warm bloom, the sky brightened wide about it. By
   night single-pixel twinkling stars and a big moon with seas in two tones
-  and a wide soft halo, in its phase: eight nights a cycle, the first a full
+  and a soft halo (stars behind the disc hidden, near it washed out), in
+  its phase: eight nights a cycle, the first a full
   moon, then waning (lit from the west) to new and waxing back (lit from
   the east), the unlit part faintly there and the halo as bright as it's
   lit (`PLATYPUS_MOON`=0–7 picks one: 0 new, 2 waxing half, 4 full, 6
   waning half). Drawn over the lighting where the sky is open (no cell, no
-  back wall, no mountain, dimmed by cloud), stepped by the sky image's own
-  pixels (not square unless the window is 16:9). Nights are near black
+  back wall, no mountain, dimmed by cloud), each of the sky image's pixels
+  (not square unless the window is 16:9) shaded by where its centre is
+  from the disc's: not snapped, the disc glides, its edge and terminator
+  anti-aliased, its tones blended; laid over what's there (the moon over
+  its halo over the stars), the alpha dithered so faint glows don't ring.
+  Sun, moon and stars are fixed to the view: too far off for the camera to
+  move them. Nights are near black
   (`moonlight` 0.45, a darker sky).
 - **Underground:** behind the back walls, a dark void, tinted a little by
   the band and zone the camera is in (earth, stone, the deep blue-black;
@@ -489,7 +498,9 @@ a stat is naming it once (`gear/stats.rs`) and reading it where it acts.
   hooks somewhere else. The cell it holds holds only while it's solid (dig
   it, blast it, and it comes loose); a body anchor comes loose when
   something comes between you. Something smaller than you (a chest,
-  a body, a small creature) is pulled to you instead. A hook's reach, pull
+  a body, a small creature) is pulled to you instead. On the rope you
+  never take a slam's damage against rock (reeled in fast, or flung round
+  a corner by the rope). A hook's reach, pull
   speed, throw speed, bite and look are data (`hook` in gear.ron).
 - Not now: durability and repair, coins and merchants.
 
