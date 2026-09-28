@@ -297,17 +297,21 @@ DESIGN.md §4–5, stage 4 of the world arc.
   16.1); a placement is outlined in cyan.
 - A pickaxe's two modes (C switches; the label says Precise or Area, the
   hint line `precise [C]`): precise, a block at a time as above; area (its
-  `area` in items.ron, a radius in cells: copper 4, iron 4.5, gold 5,
-  mithril 5.5), a round bite. The bite's disc sits where the line from the
+  `area` in items.ron, a radius in cells: copper 7, iron 7.5, gold 8,
+  mithril 9: dug straight down, a shaft ~13 cells wide, twice the player's
+  width, so you fall down it as you dig), a round bite. The bite's disc sits where the line from the
   hand toward the cursor first meets solid (with the smart cursor it goes
   on to full reach past the cursor), else at the cursor: a pick can't aim
   past rock. It takes the disc's cells the pick can get at: no more solid
   cells between the hand and them than the radius (`World::within_reach`),
   so it bites into the face nearest you, never what's on the other side of
-  a wall. Each takes 3/4 of the pick's power (less towards the rim: round
-  holes) and breaks at its own hardness (`WorldEdit::MineReach`); what
-  it leaves unsupported falls. The `pickarea` scenario: 216 cells dug out
-  of a dirt wall in 1.2 s aimed past it, none from the dirt behind.
+  a wall. Each takes 3/4 of the pick's power (30 % less at the rim: round
+  holes, but the whole width goes together) and breaks at its own hardness
+  (`WorldEdit::MineReach`); what it leaves unsupported falls. The
+  `pickarea` scenario: aimed past a 12-wide dirt wall, it digs the wall
+  (the dirt behind only once it's through); dug straight down with a
+  copper pick, 73 cells in 3 s (50 of dirt, then stone), falling as it
+  goes.
 - Pace: a copper pickaxe (power 35, 6 hits/s) takes dirt in one hit, stone in
   two; an iron one (power 60, 7/s) stone in one. The player's box is 6 × 15 cells, so it drops into a 2-block
   shaft and walks a 4-block tunnel.

@@ -24,6 +24,10 @@ const ANCHOR_BUDGET_BG: usize = 40_000;
 /// Fragment checks run per tick for cells the simulation destroyed (a forest
 /// fire can break thousands); the rest wait for the next tick.
 const MAX_FRAGMENT_CHECKS_PER_TICK: usize = 24;
+/// A pickaxe's area bite (`MineReach`) loses this share of its power at its
+/// rim (the dev tool's disc, 0.6): nearly as strong there as at its centre,
+/// so dug straight down the whole width goes together and you drop into it.
+const REACH_RIM: f32 = 0.3;
 const MAX_BG_CHECKS_PER_TICK: usize = 8;
 /// Destroyed cells are grouped into tiles of this size, one check per tile.
 const FRAGMENT_TILE_BITS: i32 = 4;
@@ -371,7 +375,7 @@ impl World {
             }
             WorldEdit::MineReach { center, radius, from, bite, power, max_hardness } => {
                 let cells = self.within_reach(center, radius, from, bite, max_hardness);
-                self.mine_cells(center, radius, cells, power, max_hardness, false, &mut report);
+                self.mine_cells(center, radius, cells, (power, REACH_RIM), max_hardness, false, &mut report);
                 self.loosen_if_removed(center, radius + 1, &report);
             }
             WorldEdit::MineBlock { block, power, max_hardness, back } => {
@@ -470,7 +474,7 @@ impl World {
     }
 
     fn mine(&mut self, center: CellPos, radius: i32, power: u8, max_hardness: u8, back: bool, report: &mut EditReport) {
-        self.mine_cells(center, radius, disc(center, radius).collect(), power, max_hardness, back, report);
+        self.mine_cells(center, radius, disc(center, radius).collect(), (power, 0.6), max_hardness, back, report);
     }
 
     /// The playfield cells of the disc (`center`, `radius`) a pickaxe swung
@@ -517,10 +521,10 @@ impl World {
     }
 
     /// Each of `cells` takes `power` damage (less towards the rim of the
-    /// disc `center`, `radius`: holes come out round), breaking at its
-    /// hardness.
+    /// disc `center`, `radius`, by `rim` of it at the edge: holes come out
+    /// round), breaking at its hardness.
     #[allow(clippy::too_many_arguments)]
-    fn mine_cells(&mut self, center: CellPos, radius: i32, cells: Vec<CellPos>, power: u8, max_hardness: u8, back: bool, report: &mut EditReport) {
+    fn mine_cells(&mut self, center: CellPos, radius: i32, cells: Vec<CellPos>, (power, rim): (u8, f32), max_hardness: u8, back: bool, report: &mut EditReport) {
         let mats = self.materials.clone();
         let mut rng = self.rng_for(0x3113, center);
         for p in cells {
@@ -536,7 +540,7 @@ impl World {
             }
             // Centre digs faster than the rim, so holes come out round.
             let d = distance(center, p) / (radius as f32 + 0.5);
-            let dmg = stochastic_round(power as f32 * (1.0 - 0.6 * d), &mut rng);
+            let dmg = stochastic_round(power as f32 * (1.0 - rim * d), &mut rng);
             let total = c.life as u32 + dmg;
             if total >= ph.hardness.max(1) as u32 {
                 report.add_removed(c.material);

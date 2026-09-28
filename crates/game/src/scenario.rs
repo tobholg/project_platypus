@@ -172,8 +172,9 @@
 //!   pressed (the label says Area), the cursor aimed past the wall at the far
 //!   dirt; the button held 1.2 s from 1.4 s (screenshot at 1.2 s with
 //!   `PLATYPUS_SCENARIO_SECS=2.2`: the lit bite on the wall's face); logs
-//!   what was dug from the wall and from the far dirt (none: it can't reach
-//!   through)
+//!   what was dug from the wall and from the far dirt (only once it's
+//!   through the wall: it can't reach through); then, on 50 cells of dirt, it digs straight down for 3 s
+//!   (logs how far it dropped: it should fall down the shaft as it digs)
 //! - `soak`       (`PLATYPUS_WORLD=arena`) what fluids leave on you: a step
 //!   into a two-cell acid puddle (logs how much acid's on you and your
 //!   health), out of it 1.4 s (it keeps eating), then set alight standing
@@ -3106,7 +3107,7 @@ fn pickarea_script(
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     hand: Res<crate::hands::Hand>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
-    mut state: Local<(u8, usize, usize)>,
+    mut state: Local<(u8, usize, usize, f32)>,
 ) {
     if s.name != "pickarea" {
         return;
@@ -3149,13 +3150,38 @@ fn pickarea_script(
         3 if t > 2.6 => {
             let (w, f) = (count(&sim, wall), count(&sim, far));
             info!("pickarea: 1.2 s of swings aimed past the wall: {} cells dug from the wall, {} from the far dirt", state.1 - w, state.2 - f);
+            // Then dirt 50 deep under a spot further on.
+            if let Some(d) = dirt {
+                for cx in x + 54..x + 86 {
+                    for cy in floor - 50..floor {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(cx, cy), radius: 0, material: d, overwrite: true });
+                    }
+                }
+            }
             state.0 = 4;
+        }
+        4 if t > 2.8 => {
+            k.body.pos = Vec2::new((x + 70) as f32, floor as f32 + k.body.half.y);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            state.3 = floor as f32;
+            state.0 = 5;
+        }
+        5 if t > 6.0 => {
+            let feet = k.body.pos.y - k.body.half.y;
+            info!("pickarea: 3 s digging straight down in dirt: dropped {:.0} cells (feet {:.0} below the surface), standing on something: {}", state.3 - feet, state.3 - feet, k.loco.grounded());
+            state.0 = 6;
         }
         _ => {}
     }
-    // Aimed past the wall, at the far dirt, level with the chest.
-    cursor.0 = (state.0 >= 2).then(|| Vec2::new((far.0 + 8) as f32, floor as f32 + 12.0));
-    let hold = state.0 == 3 && (1.4..2.6).contains(&t);
+    // Aimed past the wall, at the far dirt, level with the chest; then
+    // straight down.
+    cursor.0 = match state.0 {
+        2..=3 => Some(Vec2::new((far.0 + 8) as f32, floor as f32 + 12.0)),
+        5 => Some(k.body.pos - Vec2::new(0.0, 40.0)),
+        _ => None,
+    };
+    let hold = (state.0 == 3 && (1.4..2.6).contains(&t)) || state.0 == 5;
     if hold { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
 }
 
