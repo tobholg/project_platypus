@@ -669,14 +669,17 @@ deaths (blood). Rendered as one dynamic mesh.
   - `Burning`: a share of it on fire (0–100 %, on the HUD as a percentage),
     as the coatings are on it. It catches as much as touches flames
     (`Exposure::flames`, the share of its cells in them, one just outside
-    counting 0.35): its fire rises at 3 a second towards 3 × that, so embers
-    underfoot light a few percent of a player, standing in a fire all of it;
+    counting 0.35): its fire rises at 5 a second towards 5 × that, so embers
+    underfoot light ~15 % of a player, standing in a fire all of it;
     heat alone lights what's oily. Spells, lightning and exhaust add a share
     (`catch_fire`: lightning 100 %, a fireball's blast 80 %, a zap 60 %, the
     flame jet 35 % a catch, rocket exhaust 30 %). It only grows from contact
     or oil: on fire, it spreads over the oily part of it (2 a second) and
     burns that oil away (0.12 a second where it burns). Left alone it burns
-    out, all of it in 4 s (times its oil's `burn`), a little in a moment.
+    down on a curve, slow while it's big and quick as it gutters out: by
+    0.07 a second all of it alight, 0.32 a second nearly out (in between in
+    proportion; times its oil's `burn`), so all of it lasts ~6 s (over half
+    of it still after 3 s), a tenth ~0.3 s.
     What's wet (fireproof coatings: water, blood) takes its place: never
     more of it alight than it's dry, and 40 % wet or hard frost puts it
     out, so a puddle at your feet knocks it down and wading knee deep puts

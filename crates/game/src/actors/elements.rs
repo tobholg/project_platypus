@@ -31,14 +31,22 @@ use crate::world::{SimWorld, TICK_HZ};
 
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// Seconds a creature burns once set alight (times its coating's `burn`).
-/// Seconds all of it takes to burn out, left alone (times its oil's `burn`).
-pub const BURN_SECS: f32 = 4.0;
+/// Left alone, a fire burns down by `BURN_SLOW` a second all of it alight,
+/// `BURN_SLOW + BURN_FAST` a second as it gutters out (in between, in
+/// proportion): a big fire holds on, a little one dies quick. All of it
+/// takes ~6 s to burn out (half of it ~2 s, a tenth ~0.3 s); oil's `burn`
+/// stretches it.
+const BURN_SLOW: f32 = 0.07;
+const BURN_FAST: f32 = 0.25;
+/// About how long all of it burns, left alone (tests).
+#[cfg(test)]
+pub const BURN_SECS: f32 = 6.1;
 /// Damage a second all of it on fire (less the less of it; oil's `burn` more).
 const FIRE_DAMAGE: f32 = 12.0;
 /// Its fire rises towards this × the share of it touching flames...
-const FIRE_SOAK: f32 = 3.0;
+const FIRE_SOAK: f32 = 5.0;
 /// ... this fast (a share a second).
-const FIRE_RATE: f32 = 3.0;
+const FIRE_RATE: f32 = 5.0;
 /// On fire, it spreads over the oily part of it this fast...
 const OIL_SPREAD: f32 = 2.0;
 /// ... and burns the oil away this fast where it burns (a share a second).
@@ -454,7 +462,7 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
                 fed = true;
             }
             if !fed {
-                fire -= DT / (BURN_SECS * power.max(0.1));
+                fire -= (BURN_SLOW + BURN_FAST * (1.0 - fire)) * DT / power.max(0.1);
             }
             fire = fire.clamp(0.0, 1.0 - coat.wet(rules));
         }
@@ -742,12 +750,17 @@ mod tests {
         tick(&mut app, 20);
         let b = app.world().get::<Burning>(e).unwrap().share;
         assert!(b > 0.95, "in the fire, all of it burns: {b}");
-        // Out of the flames it keeps burning a while, and hurts.
+        // Out of the flames it keeps burning a while (all of it alight: past
+        // half of it after 3 s), and hurts.
         app.world_mut().get_mut::<Kinematics>(e).unwrap().body.pos = OUT;
         let hp = app.world().get::<Health>(e).unwrap().hp;
-        tick(&mut app, 60);
-        assert!(app.world().get::<Burning>(e).is_some(), "still burning");
-        assert!(app.world().get::<Health>(e).unwrap().hp < hp - 5.0, "burning hurts");
+        tick(&mut app, 180);
+        let left = app.world().get::<Burning>(e).map_or(0.0, |b| b.share);
+        assert!(left > 0.5, "a big fire holds on: {left} after 3 s");
+        assert!(app.world().get::<Health>(e).unwrap().hp < hp - 20.0, "burning hurts");
+        // ... then gutters out quick.
+        tick(&mut app, 210);
+        assert!(app.world().get::<Burning>(e).is_none(), "out in ~6 s all told");
 
         let mut wet = app_with("water");
         let e = creature(&mut wet, IN, Resist::default());
@@ -777,13 +790,13 @@ mod tests {
         let e = creature(&mut app, Vec2::new(13.0, 14.0), Resist::default());
         tick(&mut app, 30);
         let b = app.world().get::<Burning>(e).map_or(0.0, |b| b.share);
-        assert!(b > 0.0 && b < 0.3, "a little of it alight: {b}");
+        assert!(b > 0.0 && b < 0.45, "a little of it alight: {b}");
         // Off them: out in a moment, having hurt a little.
         app.world_mut().get_mut::<Kinematics>(e).unwrap().body.pos = OUT;
         tick(&mut app, 90);
         assert!(app.world().get::<Burning>(e).is_none(), "burned out");
         let lost = 100.0 - app.world().get::<Health>(e).unwrap().hp;
-        assert!(lost < 4.0, "a sting, not a burning: lost {lost}");
+        assert!(lost < 8.0, "a sting, not a burning: lost {lost}");
     }
 
     #[test]
