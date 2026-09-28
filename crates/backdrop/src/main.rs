@@ -29,6 +29,40 @@ fn main() {
     peaks(&out);
     depths(&out);
     underdarks(&out);
+    skies(&out);
+}
+
+/// The sky's lights to choose from (`skies.rs`): `skies-day.png` (four suns,
+/// two across) and `skies-night.png` (four moons and starfields), and each
+/// at the game's scale (3x): `sky-day-<a..d>.png`, `sky-night-<a..d>.png`.
+fn skies(out: &std::path::Path) {
+    use platypus_backdrop::skies::{day, night};
+    let look = platypus_backdrop::peaks::looks().into_iter().find(|l| l.name == "noita").expect("noita");
+    let (w, h) = (504usize, 284usize);
+    let up = |px: &[u8], k: usize| -> Vec<u8> {
+        let mut o = Vec::with_capacity(w * h * k * k * 4);
+        for y in 0..h * k {
+            for x in 0..w * k {
+                o.extend_from_slice(&px[((y / k) * w + x / k) * 4..][..4]);
+            }
+        }
+        o
+    };
+    for (name, f) in [("day", &day as &dyn Fn(&platypus_backdrop::peaks::Look, usize, usize, usize, u64) -> Vec<u8>), ("night", &night)] {
+        let (sw, sh) = (w * 2 * 2 + 8, h * 2 * 2 + 8);
+        let mut sheet = [20u8, 20, 24, 255].repeat(sw * sh);
+        for v in 0..4 {
+            let px = f(&look, v, w, h, 11);
+            let big = up(&px, 2);
+            let (ox, oy) = ((v % 2) * (w * 2 + 8), (v / 2) * (h * 2 + 8));
+            for y in 0..h * 2 {
+                sheet[((oy + y) * sw + ox) * 4..][..w * 2 * 4].copy_from_slice(&big[y * w * 2 * 4..][..w * 2 * 4]);
+            }
+            let letter = (b'a' + v as u8) as char;
+            platypus_art::write_png(&platypus_art::Pixels { w: 3 * w as u32, h: 3 * h as u32, rgba: up(&px, 3) }, &out.join(format!("sky-{name}-{letter}.png"))).expect("png");
+        }
+        platypus_art::write_png(&platypus_art::Pixels { w: sw as u32, h: sh as u32, rgba: sheet }, &out.join(format!("skies-{name}.png"))).expect("png");
+    }
 }
 
 /// The underground's looks (`underdark.rs`), 3× (a cell 3 pixels): each

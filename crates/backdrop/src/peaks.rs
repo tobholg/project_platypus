@@ -364,12 +364,19 @@ pub fn for_biome(biome: &str) -> &'static str {
 /// clouds rising behind the middle range, the near layers, a strip of the
 /// world's ground (for scale); `w`×`h` art pixels (cells), RGBA.
 pub fn still(look: &Look, x: i64, w: usize, h: usize, seed: u64) -> Vec<u8> {
+    still_masked(look, x, w, h, seed).0
+}
+
+/// `still`, and which of its pixels are open sky (where the sun, moon and
+/// stars would show).
+pub fn still_masked(look: &Look, x: i64, w: usize, h: usize, seed: u64) -> (Vec<u8>, Vec<bool>) {
     let mut out: Vec<u8> = Vec::with_capacity(w * h * 4);
     for y in 0..h {
         let p = mix(look.sky.0, look.sky.1, smoothstep(0.0, 0.7, y as f32 / h as f32));
         for _ in 0..w {
             out.extend(p.map(|c| (c.clamp(0.0, 1.0) * 255.0) as u8));
-            out.push(255);
+            // (254: sky, for the mask.)
+            out.push(254);
         }
     }
     let over = |out: &mut [u8], px: &[u8], oy: i64, oh: usize| {
@@ -408,9 +415,15 @@ pub fn still(look: &Look, x: i64, w: usize, h: usize, seed: u64) -> Vec<u8> {
             let i = (y * w + xi) * 4;
             let c = if y < g + 2 { [70, 150, 60] } else if y < g + 14 { [112, 78, 52] } else { [40, 30, 26] };
             out[i..i + 3].copy_from_slice(&c);
+            out[i + 3] = 255;
         }
     }
-    out
+    // (The sky was left at 254: everything drawn over it is 255.)
+    let sky = out.chunks(4).map(|p| p[3] == 254).collect();
+    for p in out.chunks_mut(4) {
+        p[3] = 255;
+    }
+    (out, sky)
 }
 
 /// Roughly as the game's lighting grades a still: `light` multiplies
