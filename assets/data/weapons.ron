@@ -120,5 +120,6 @@
         "torch": (rest: 75, burns: true),
         "bomb": (rest: 0, recolor: true),
         "glowstick": (rest: 70, recolor: true),
+        "potion": (rest: 0, recolor: true),
     },
 )

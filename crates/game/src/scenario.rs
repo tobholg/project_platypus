@@ -3032,7 +3032,7 @@ fn rocket_script(
 }
 
 /// Potions and the screen's edges (see the module docs).
-fn potion_script(s: Res<Scenario>, items: Option<Res<crate::hands::items::Items>>, mut keys: ResMut<ButtonInput<KeyCode>>, mut player: Query<(&mut crate::actors::Health, &crate::hands::items::Inventory, Has<crate::potion::PotionSickness>), With<LocalPlayer>>, mut state: Local<(u8, f32)>) {
+fn potion_script(s: Res<Scenario>, items: Option<Res<crate::hands::items::Items>>, mut hand: ResMut<crate::hands::Hand>, mut keys: ResMut<ButtonInput<KeyCode>>, mut player: Query<(&mut crate::actors::Health, &crate::hands::items::Inventory, Has<crate::potion::PotionSickness>), With<LocalPlayer>>, mut state: Local<(u8, f32)>) {
     if s.name != "potion" {
         return;
     }
@@ -3043,6 +3043,11 @@ fn potion_script(s: Res<Scenario>, items: Option<Res<crate::hands::items::Items>
     match state.0 {
         0 if t > 0.5 => {
             h.hp = 22.0;
+            // (The potion in hand: its flask shows.)
+            if let Some(i) = items.as_ref().and_then(|it| it.id("small_health_potion")).and_then(|p| inv.slots.iter().position(|s| s.is_some_and(|s| s.item == p))) {
+                hand.bar = i / crate::hands::items::HOTBAR;
+                hand.slot = i % crate::hands::items::HOTBAR;
+            }
             state.0 = 1;
         }
         1 if t > 2.5 => {

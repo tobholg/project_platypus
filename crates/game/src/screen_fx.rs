@@ -1,8 +1,8 @@
 //! The screen's edges, telling how you are: a red flash fading in and out
 //! when you're hurt (stronger the harder), a red pulse while your health
 //! is low (quicker and stronger the lower), and a lush green glow while a
-//! potion heals you: full as it starts, shrinking to nothing as the healing
-//! runs out. Two overlays over the whole view (red, green), their colour
+//! potion heals you: full as it starts, drawing back into the edges as the
+//! healing runs out, from the moment it's drunk. Two overlays over the whole view (red, green), their colour
 //! at the edges only, fading to nothing towards the middle.
 
 use bevy::asset::RenderAssetUsages;
@@ -46,11 +46,11 @@ const LOW: f32 = 0.3;
 /// height).
 const BAND: f32 = 0.26;
 
-fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
-    // The vignette: clear in the middle, rising towards the edges, the
-    // band as deep at the top and bottom as at the sides (measured in the
-    // screen's height, 16:9), the corners a little stronger; smooth
-    // (sampled linearly).
+/// The vignette with its band `band` deep (a share of the screen's
+/// height): clear in the middle, rising towards the edges, as deep from
+/// the top and bottom as from the sides (16:9), the corners a little
+/// stronger; smooth (sampled linearly).
+fn vignette(band: f32) -> Image {
     let (w, h) = (320u32, 180u32);
     let aspect = w as f32 / h as f32;
     let mut px = Vec::with_capacity((w * h * 4) as usize);
@@ -61,27 +61,44 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
             // the two (the corners fuller).
             let (ex, ey) = (fx.min(1.0 - fx) * aspect, fy.min(1.0 - fy));
             let d = (ex.powf(-3.0) + ey.powf(-3.0)).powf(-1.0 / 3.0);
-            let t = (1.0 - d / BAND).clamp(0.0, 1.0);
+            let t = (1.0 - d / band.max(1e-3)).clamp(0.0, 1.0);
             let a = t * t * (3.0 - 2.0 * t);
             px.extend([255, 255, 255, (a * 255.0) as u8]);
         }
     }
     let mut image = Image::new(Extent3d { width: w, height: h, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::RENDER_WORLD);
     image.sampler = ImageSampler::linear();
-    let image = images.add(image);
+    image
+}
+
+/// The green glow's vignettes, thinnest first: as a potion's healing runs
+/// out, the glow draws back into the edges.
+#[derive(Resource)]
+struct Shrinking(Vec<Handle<Image>>);
+
+const STEPS: usize = 24;
+
+fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
+    let full = images.add(vignette(BAND));
+    let steps: Vec<Handle<Image>> = (1..=STEPS).map(|k| images.add(vignette(BAND * k as f32 / STEPS as f32))).collect();
     for kind in [Kind::Red, Kind::Green] {
         commands.spawn((
             Edge(kind),
-            ImageNode::new(image.clone()).with_color(Color::NONE),
-            Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
+            // (Stretched to the node: by default an image keeps its own
+            // proportions, and a window taller than 16:9 left bars at the
+            // top and bottom uncovered.)
+            ImageNode::new(if kind == Kind::Red { full.clone() } else { steps[STEPS - 1].clone() }).with_color(Color::NONE).with_mode(bevy::ui::widget::NodeImageMode::Stretch),
+            // (Pinned to all four edges of the window.)
+            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), right: Val::Px(0.0), top: Val::Px(0.0), bottom: Val::Px(0.0), ..default() },
             // (Under the rest of the interface; never takes a click.)
             GlobalZIndex(-50),
             bevy::ui::FocusPolicy::Pass,
         ));
     }
+    commands.insert_resource(Shrinking(steps));
 }
 
-fn show(time: Res<Time<Real>>, mut glows: ResMut<Glows>, player: Query<(&Health, Option<&crate::potion::Mending>), With<LocalPlayer>>, mut edges: Query<(&Edge, &mut ImageNode)>) {
+fn show(time: Res<Time<Real>>, mut glows: ResMut<Glows>, shrinking: Res<Shrinking>, player: Query<(&Health, Option<&crate::potion::Mending>), With<LocalPlayer>>, mut edges: Query<(&Edge, &mut ImageNode)>) {
     let dt = time.delta_secs().min(0.1);
     let Ok((h, mending)) = player.single() else { return };
     // Hurt: a flash by how much of your health went (a scratch faint, a
@@ -102,7 +119,9 @@ fn show(time: Res<Time<Real>>, mut glows: ResMut<Glows>, player: Query<(&Health,
     };
     glows.hurt_shown = ease(glows.hurt_shown, glows.hurt, 0.04, 0.12);
     glows.hurt *= (-dt / 0.35).exp();
-    glows.heal_shown = ease(glows.heal_shown, glows.heal, 0.08, 0.1);
+    // (The green follows the healing at once: its band's depth is how
+    // much is left, from the first frame.)
+    glows.heal_shown = glows.heal;
     // Low health: a pulse, a heartbeat's pace, quicker and stronger the
     // lower.
     let share = h.hp / h.max.max(1.0);
@@ -114,11 +133,20 @@ fn show(time: Res<Time<Real>>, mut glows: ResMut<Glows>, player: Query<(&Health,
         0.0
     };
     let red = (glows.hurt_shown * 0.65).max(low);
-    let green = glows.heal_shown * 0.45;
+    // Healing: the green's band as deep as what's left of it, drawing back
+    // into the edges; a touch fainter as it goes.
+    let left = glows.heal_shown;
+    let green = if left > 0.0 { 0.35 + 0.15 * left } else { 0.0 };
+    let step = ((left * STEPS as f32).ceil() as usize).clamp(1, STEPS) - 1;
     for (edge, mut img) in &mut edges {
-        img.color = match edge.0 {
-            Kind::Red => Color::srgba(0.85, 0.05, 0.04, red),
-            Kind::Green => Color::srgba(0.25, 0.95, 0.35, green),
-        };
+        match edge.0 {
+            Kind::Red => img.color = Color::srgba(0.85, 0.05, 0.04, red),
+            Kind::Green => {
+                img.color = Color::srgba(0.25, 0.95, 0.35, green);
+                if img.image != shrinking.0[step] {
+                    img.image = shrinking.0[step].clone();
+                }
+            }
+        }
     }
 }
