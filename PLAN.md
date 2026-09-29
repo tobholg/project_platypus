@@ -73,11 +73,11 @@ world plans in under a second and plays as smoothly as today.
    of regions across the world; the live cloud field only round players,
    seeded and steered by it; rain on unloaded regions wets them and puts
    their fires out.
-3. Moisture and fire: living plants slow to catch by the region's wetness
+3. ✅ Moisture and fire: living plants slow to catch by the region's wetness
    (the biome's humidity, recent rain, a dry spell); a storm rains on its
    own strikes; `forestfire` scenario: a strike in a dry and in a wet
    forest, the cells lost counted.
-4. Regrowth toward the generated world: grass (~1 day), saplings (~2),
+4. ✅ Regrowth toward the generated world: grass (~1 day), saplings (~2),
    whole trees (by 5: a tree grows whole), never over what's built; live,
    grass creeps at its edges and saplings grow; `regrow` scenario (burn,
    skip days, look).

@@ -144,7 +144,7 @@ fn update_hud(
         light.texels,
         day.clock(),
         clock.now,
-        cursor.0.map_or(String::new(), |p| clock.describe(p.x as i32)),
+        cursor.0.map_or(String::new(), |p| clock.describe(p)),
     );
 }
 

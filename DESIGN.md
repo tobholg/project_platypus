@@ -728,6 +728,14 @@ live in. The arc, in order:
      leaves or wood, it comes back: grass in about a day, saplings by the
      second, whole trees by the fifth (~1.7 hours of play). A tree regrows
      whole (it grows), never half of one; nothing grows over what was built.
+   - *As built (`world-clock`, SPEC §3.14)*: no region grid yet; each
+     process keeps what it needs. Moisture is 512 columns across the world;
+     regrowth keeps lost trees by x and healing chunks by position, and
+     compares a chunk with itself made again from the seed. Healing happens
+     as chunks load (catching up) and hourly; growth shows in view (it's
+     gradual), clearing a dead tree waits until no one's looking. A lost tree
+     is a sapling the next day and whole by the fifth, a new one of its kind.
+     A chunk away an hour comes back with its fires out.
    - **Processes from the start**: regrowth; moisture, rainy spells and
      droughts; distant wildfires (lightning in a dry region; you find the
      scar, and it heals); lairs refill (and, left alone, spread into the

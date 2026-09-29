@@ -48,6 +48,9 @@ pub struct Tree {
     pub species: Species,
     /// Snow lies on it (conifers where it freezes).
     pub snowy: bool,
+    /// How big its kind grows here (1 usual; the deep forest's heart
+    /// grows giants): a tree regrowing in its place grows as big.
+    pub grow: f32,
     /// Bounding box (min x, min y, max x, max y) for quick rejects.
     pub bbox: (i32, i32, i32, i32),
 }
@@ -137,7 +140,7 @@ impl Tree {
             .collect();
         let reach = tiers.iter().map(|t| t.half).fold(0.0, f32::max) + 3.0;
         let bbox = ((x as f32 - reach - lean.abs()) as i32 - 2, base - ROOTS, (x as f32 + reach + lean.abs()) as i32 + 2, hi as i32 + 2);
-        Tree { x, base, height, girth, lean, branches: Vec::new(), blobs: Vec::new(), tiers, species: Species::Conifer, snowy, bbox }
+        Tree { x, base, height, girth, lean, branches: Vec::new(), blobs: Vec::new(), tiers, species: Species::Conifer, snowy, grow, bbox }
     }
 
     fn broadleaf(x: i32, base: i32, rng: &mut Rng, species: Species, grow: f32) -> Tree {
@@ -202,7 +205,7 @@ impl Tree {
             bbox.0 = bbox.0.min(b.to.0 as i32 - 2);
             bbox.2 = bbox.2.max(b.to.0 as i32 + 2);
         }
-        Tree { x, base, height, girth, lean, branches, blobs, tiers: Vec::new(), species, snowy: false, bbox }
+        Tree { x, base, height, girth, lean, branches, blobs, tiers: Vec::new(), species, snowy: false, grow, bbox }
     }
 
     /// Is a cell inside a conifer's needles? (The ragged edge is noise.)

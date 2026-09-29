@@ -114,6 +114,7 @@ fn reset(world: &mut World) {
         world.entity_mut(e).despawn();
     }
     world.resource_mut::<crate::hands::chests::Chests>().forget_all();
+    world.resource_mut::<crate::clock::WorldClock>().forget();
     world.resource_mut::<Spawned>().0.clear();
     world.resource_mut::<crate::world::FreshChunks>().0.clear();
     // You: back at the start (or, everything, a new you).

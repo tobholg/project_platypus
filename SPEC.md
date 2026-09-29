@@ -594,7 +594,8 @@ a burning cell lights a neighbour before burning out comes from flammability ×
 burn_time; above a tipping point (~50 %) fire sweeps everything, below it
 fires die out. Grass is tuned near that point: one spark in a meadow burns
 roughly half of it, sometimes fizzles, rarely takes everything (tested over 40
-seeds). Burned cells never regrow, so every fire ends; firebreaks (bare patches,
+seeds). Burned cells don't regrow while a fire lasts, so every fire ends (the
+world clock heals them over days, §3.14); firebreaks (bare patches,
 rock, water), wind and later rain shape where. A lit wooden slab still burns
 up on every seed; a tree takes a few seconds to catch and burns ~20 s.
 
@@ -836,6 +837,60 @@ deaths (blood). Rendered as one dynamic mesh.
   catch, and nothing is alight after 30 s.
 - Not yet: weather isn't saved (it restarts from the seed), wind gusts from
   storms, lightning conducting through water and metal.
+
+### 3.14 The world clock (`game/src/clock.rs`)
+A slow simulation of the whole world on the game's own time (`Daylight::days`:
+the sky's days, skipped hours included). Each process steps at its own pace
+and catches up whole steps when time jumps (at most 400 a frame); each has an
+abstract face (numbers, anywhere) and a live one (cells, where someone is).
+Saved with the world (`WorldFile::clock`; older saves load with none of it).
+- **Moisture**, every 10 game minutes, per column across the world (512 of
+  them, `Climate::wet`): rain soaks the land (rate 8 a day), otherwise it
+  dries toward its humidity (1.2 a day). The humidity is the biome's (desert
+  5 %, plains 35 %, forest 50 %, jungle 85 %, swamp and ocean 90 %; the plan
+  blurs it across borders) times a dry spell, a noise drifting over six days
+  between 0.35 and 1.25. The rain is `Weather::rain_outlook(x, tick)`, the
+  cloud the fronts want at x (the live clouds follow the same fronts), so it
+  rains on land no one is on. In the sim, `living` materials (grass, tall
+  grass, leaves, needles, dark leaves, moss, wood) catch the wetter they are:
+  ignition 60 °C higher soaked, the chance of catching each moment 85 % lower
+  and of flames reaching them 60 % lower. Land nobody set is dry (fire as
+  tuned). `forestfire` (`PLATYPUS_WET` pins it): 25 s after one crown is lit,
+  5 % wet 488 cells burnt, 20 % 1 331, 35 % 428, 50 % 77, 80 % 71.
+- **Regrowth**, hourly and as chunks load: nature heals toward the pristine
+  chunk (`ChunkGenerator::heal`, the chunk made again from the seed). Soil
+  where there was grass or moss turns back between 0.1 and 1 day after it
+  was hurt (each cell at its own moment); tall grass on bare grass between
+  0.6 and 1.6; ash and charcoal lying where there was air or grass go between
+  0.3 and 2 (in the background, 0.5 to 3). A tree as the seed made it, hurt
+  a little, mends between day 1 and day 3. One mostly gone (at least 12 of
+  its cells in a chunk, under 60 % of them standing) is lost: what's left of
+  it is cleared, and the clock notes when (`TreeRecord`). A new tree of its
+  kind (its look from `(seed, x, time)`) is a sapling a day later (8 % grown)
+  and full grown by day five. Only nature's cells are touched: in the
+  foreground those rules, in the background air, tree cells, ash and
+  charcoal; never what was built.
+- When: every chunk loaded from the store heals at once, catching up however
+  long it was away (a chunk's healing counts from when it was put away if
+  the clock hadn't noticed its hurt before); one made anew heals if a lost
+  tree is near. A chunk away an hour or more comes back with its fires out
+  (flames and smoke gone, burning cells put out, heat as it was made), so a
+  fire frozen in the store can't burn the regrown forest. Every game hour
+  the loaded chunks that were changed, are healing or have a lost tree near
+  heal, four a frame (~0.2 ms each). Growth is gradual, so it happens in
+  view too; clearing a lost tree's remains waits until it's out of view.
+  Trees are judged (found lost) only on the hourly pass when the hour before
+  was healed too: after a jump in time a regrowing tree would look hurt
+  before it's drawn at its new size.
+- Records: `trees` (x → when lost, which time), `land` (chunk → since when,
+  cells left); a reset forgets both. `regrow` scenario (a forest set alight
+  at 2 % wet, an hour, away for `PLATYPUS_DAYS`, back): forest cells before,
+  burnt, after 0/1/5 days: 31 510, ~7 000, 3 101/4 127/33 755; ash and
+  charcoal 1 979/1 276/5; burnt soil 198/8/8.
+- The dev readout says, for the cursor, how wet the land is, whether its
+  chunk is healing (cells, days in) and how far a lost tree near it has grown.
+  "A day ahead" in the dev panel skips 24 hours.
+- Not yet: distant wildfires, lairs refilling, the weather's fronts saved.
 
 ## 4. Rendering
 

@@ -95,6 +95,7 @@ impl Plugin for WorldPlugin {
             .insert_resource(MaterialsSource(Watched::new(self.materials_path.clone())))
             .init_resource::<SimMetrics>()
             .init_resource::<FreshChunks>()
+            .init_resource::<LoadedChunks>()
             .configure_sets(FixedUpdate, (TickSet::Intent, TickSet::Bodies, TickSet::Cells).chain())
             .add_systems(FixedUpdate, step_cells.in_set(TickSet::Cells))
             .add_systems(PreUpdate, stream_chunks)
@@ -136,6 +137,11 @@ fn step_cells(
 #[derive(Resource, Default)]
 pub struct FreshChunks(pub Vec<(platypus_sim::CellPos, platypus_worldgen::Spawn)>);
 
+/// The chunks loaded this frame: from the store (true) or generated; and
+/// those put in the store.
+#[derive(Resource, Default)]
+pub struct LoadedChunks(pub Vec<(ChunkPos, bool)>, pub Vec<ChunkPos>);
+
 /// Cells of weather simulated beyond the loaded chunks, either side.
 const WEATHER_MARGIN: i32 = 1_536;
 
@@ -143,8 +149,11 @@ fn stream_chunks(
     mut sim: ResMut<SimWorld>,
     mut metrics: ResMut<SimMetrics>,
     mut fresh: ResMut<FreshChunks>,
+    mut loaded: ResMut<LoadedChunks>,
     loaders: Query<(&GlobalTransform, &ChunkLoader)>,
 ) {
+    loaded.0.clear();
+    loaded.1.clear();
     let t = Instant::now();
     let rects: Vec<(IVec2, IVec2)> = loaders
         .iter()
@@ -176,6 +185,7 @@ fn stream_chunks(
             && chunk.is_modified()
         {
             sim.store.put(&chunk);
+            loaded.1.push(pos);
         }
     }
 
@@ -207,6 +217,7 @@ fn stream_chunks(
         .collect();
     let (generated, spawns): (Vec<_>, Vec<_>) = generated.into_iter().unzip();
     fresh.0 = spawns.into_iter().flatten().collect();
+    loaded.0 = from_store.iter().map(|c| (c.pos, true)).chain(generated.iter().map(|c| (c.pos, false))).collect();
     for chunk in from_store.into_iter().chain(generated) {
         sim.world.insert_chunk(chunk);
     }

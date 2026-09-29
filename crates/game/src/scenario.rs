@@ -266,7 +266,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
-            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script))
+            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3224,6 +3224,87 @@ fn forestfire_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut clock: Res
             let left = count(&sim, state.1);
             info!("forestfire: 25 s later, {:.0} % wet: {left} of {} cells of forest left ({} burnt)", wet * 100.0, state.2, state.2.saturating_sub(left));
             state.0 = 2;
+        }
+        _ => {}
+    }
+}
+
+/// `regrow`: a forest burnt (an hour passing, the player still there),
+/// the player away for `PLATYPUS_DAYS` (default 3) while the world clock
+/// runs, then back: how much has grown again.
+fn regrow_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut clock: ResMut<crate::clock::WorldClock>,
+    mut day: ResMut<crate::light::Daylight>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut state: Local<(u8, Vec2)>,
+) {
+    if s.name != "regrow" {
+        return;
+    }
+    let days: f32 = std::env::var("PLATYPUS_DAYS").ok().and_then(|v| v.parse().ok()).unwrap_or(3.0);
+    let t = s.elapsed;
+    let Ok(mut k) = player.single_mut() else { return };
+    let mats = sim.materials().clone();
+    let id = |n: &str| mats.id(n);
+    let tree = ["leaves", "needles", "dark_leaves", "wood"].map(id);
+    let tally = |sim: &SimWorld, at: Vec2| {
+        let (mut forest, mut grass, mut soil, mut ash) = (0, 0, 0, 0);
+        for y in (at.y as i32 - 80)..(at.y as i32 + 260) {
+            for x in (at.x as i32 - 300)..(at.x as i32 + 300) {
+                let p = CellPos::new(x, y);
+                if sim.world.get_bg(p).is_some_and(|c| tree.contains(&Some(c.material))) {
+                    forest += 1;
+                }
+                let Some(c) = sim.world.get(p) else { continue };
+                let m = Some(c.material);
+                grass += (m == id("grass")) as u32;
+                soil += (m == id("soil")) as u32;
+                ash += (m == id("ash") || m == id("charcoal")) as u32;
+            }
+        }
+        format!("{forest} cells of forest, {grass} of grass, {soil} of burnt soil, {ash} of ash and charcoal")
+    };
+    let put = |k: &mut Kinematics, at: Vec2| {
+        k.body.pos = at;
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = at;
+    };
+    match state.0 {
+        0 if t > 1.0 => {
+            clock.pinned = Some(0.02);
+            let p = k.body.pos;
+            state.1 = p;
+            info!("regrow: before: {}", tally(&sim, p));
+            for dx in [-160, -80, 0, 80, 160] {
+                sim.queue(WorldEdit::Ignite { center: CellPos::from_world(p.x + dx as f32, p.y + 60.0), radius: 6 });
+                sim.queue(WorldEdit::Ignite { center: CellPos::from_world(p.x + dx as f32, p.y - 2.0), radius: 6 });
+            }
+            state.0 = 1;
+        }
+        // (An hour on, with the player still there: the clock has seen it.)
+        1 if t > 40.0 => {
+            info!("regrow: burnt: {}", tally(&sim, state.1));
+            clock.pinned = None;
+            day.skipped += 1.0;
+            state.0 = 2;
+        }
+        2 if t > 42.0 => {
+            put(&mut k, state.1 + Vec2::new(4_000.0, 400.0));
+            state.0 = 7;
+        }
+        7 if t > 44.0 => {
+            day.skipped += 24.0 * days;
+            state.0 = 3;
+        }
+        3 if t > 46.0 => {
+            put(&mut k, state.1 + Vec2::new(0.0, 20.0));
+            state.0 = 4;
+        }
+        4 if t > 50.0 => {
+            info!("regrow: {days} days later: {} ({} trees regrowing, {} chunks healing)", tally(&sim, state.1), clock.trees.len(), clock.land.len());
+            state.0 = 5;
         }
         _ => {}
     }

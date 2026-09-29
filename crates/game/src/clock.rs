@@ -14,22 +14,35 @@
 //!   forest). The rain is the weather's, anywhere (`Weather::rain_outlook`:
 //!   the fronts the live clouds follow), so the abstract and the live agree.
 //!   Wet plants are slow to catch fire (`MatPhys::living`).
+//! - **Regrowth** (hourly, and as chunks load): nature heals toward what the
+//!   seed made (`ChunkGenerator::heal`). Burnt grass greens over about a
+//!   day, ash and charcoal are gone in two; a tree burnt or felled (mostly
+//!   gone) is a sapling a day later and full grown by day five: a new tree
+//!   of its kind, where it stood. The clock keeps what it needs (`trees`:
+//!   when each was lost; `land`: since when each chunk has been healing);
+//!   the cells change where no one is looking: out of view, or on load
+//!   (catching up however long it was away). What was built stays.
 //!
 //! Saved with the world (`save.rs`: `clock`).
+
+use std::collections::{BTreeMap, HashMap};
 
 use bevy::prelude::*;
 use platypus_sim::climate::WET_COLUMNS;
 use platypus_sim::rng::hash;
+use platypus_sim::{CHUNK, ChunkPos};
+use platypus_worldgen::{Healed, Healing, SAPLING};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::light::Daylight;
-use crate::world::SimWorld;
+use crate::world::{ChunkLoader, LoadedChunks, SimWorld};
 
 pub struct ClockPlugin;
 
 impl Plugin for ClockPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<WorldClock>().add_systems(PostStartup, start).add_systems(Update, run.after(crate::light::update_daylight));
+        app.init_resource::<WorldClock>().add_systems(PostStartup, start).add_systems(Update, (run, regrow).chain().after(crate::light::update_daylight));
     }
 }
 
@@ -51,6 +64,18 @@ const RAIN_MIN: f32 = 0.02;
 const SPELL: (f64, f64) = (0.35, 1.25);
 const SPELL_DAYS: f64 = 6.0;
 const SPELL_WIDTH: f64 = 12_000.0;
+/// A lost tree is a sapling this many days later...
+const SAPLING_DAYS: f64 = 1.0;
+/// ... and full grown this many after that.
+const GROW_DAYS: f64 = 4.0;
+/// Chunks healed a frame, at most (the hourly pass spreads over frames:
+/// each is about 0.2 ms, making the chunk again to compare).
+const HEALS_PER_FRAME: usize = 4;
+/// Trees reach this far either side of their x (cells): chunks this near a
+/// lost tree heal.
+const TREE_REACH: i32 = 96;
+/// A chunk away this long (days: an hour) comes back with its fires out.
+const COOL_DAYS: f64 = 1.0 / 24.0;
 
 /// The world clock's state.
 #[derive(Resource, Default)]
@@ -69,6 +94,33 @@ pub struct WorldClock {
     pending: Option<ClockFile>,
     /// Held at this wetness everywhere (a scenario's), or none.
     pub pinned: Option<f32>,
+    /// Trees lost, by x: regrowing (or regrown).
+    pub trees: BTreeMap<i32, TreeRecord>,
+    /// Chunks with land still to heal.
+    pub land: HashMap<(i32, i32), LandRecord>,
+    /// The hour last healed, and the chunks still to heal for it (and
+    /// whether to judge their trees: the hour before was healed too).
+    hour: i64,
+    queue: Vec<ChunkPos>,
+    judge: bool,
+    /// When each stored chunk was put away (this session: one missing has
+    /// been away since before, long).
+    away: HashMap<(i32, i32), f64>,
+}
+
+/// A tree lost (burnt, felled), and the time it's growing back: each time
+/// a new one of its kind (its look from the time).
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct TreeRecord {
+    pub lost: f64,
+    pub time: u32,
+}
+
+/// A chunk's land healing: since when, and how many cells were left then.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct LandRecord {
+    pub since: f64,
+    pub unhealed: u32,
 }
 
 /// What of the clock is saved (the rest follows from the world).
@@ -77,11 +129,36 @@ pub struct ClockFile {
     pub moisture_done: i64,
     /// The land's wetness per column, 0..255.
     pub wet: Vec<u8>,
+    #[serde(default)]
+    pub trees: Vec<(i32, TreeRecord)>,
+    #[serde(default)]
+    pub land: Vec<((i32, i32), LandRecord)>,
 }
 
 impl WorldClock {
     pub fn save(&self) -> ClockFile {
-        ClockFile { moisture_done: self.moisture_done, wet: self.wet.iter().map(|w| (w * 255.0).round() as u8).collect() }
+        ClockFile {
+            moisture_done: self.moisture_done,
+            wet: self.wet.iter().map(|w| (w * 255.0).round() as u8).collect(),
+            trees: self.trees.iter().map(|(&x, &r)| (x, r)).collect(),
+            land: self.land.iter().map(|(&p, &r)| (p, r)).collect(),
+        }
+    }
+
+    /// The world begins again (a reset): nothing is healing.
+    pub fn forget(&mut self) {
+        self.trees.clear();
+        self.land.clear();
+        self.queue.clear();
+    }
+
+    /// How far the tree at x has grown back (0 not yet … 1), and which
+    /// time; none: it stands as the seed made it.
+    pub fn tree(&self, x: i32) -> Option<(f32, u32)> {
+        let r = self.trees.get(&x)?;
+        let d = self.now - r.lost;
+        let g = if d < SAPLING_DAYS { 0.0 } else { SAPLING + (1.0 - SAPLING) * ((d - SAPLING_DAYS) / GROW_DAYS).clamp(0.0, 1.0) as f32 };
+        Some((g, r.time))
     }
 
     pub fn load(&mut self, f: &ClockFile) {
@@ -93,14 +170,18 @@ impl WorldClock {
             self.wet = f.wet.iter().map(|&w| w as f32 / 255.0).collect();
             self.moisture_done = f.moisture_done;
         }
+        self.trees = f.trees.iter().copied().collect();
+        self.land = f.land.iter().copied().collect();
     }
 
     fn column_of(&self, x: i32) -> usize {
         ((x.max(0) / self.column.max(1)) as usize).min(self.wet.len().saturating_sub(1))
     }
 
-    /// The land over world x, in words (the dev readout).
-    pub fn describe(&self, x: i32) -> String {
+    /// The land at a world point, in words (the dev readout): how wet, and
+    /// what's healing there.
+    pub fn describe(&self, at: Vec2) -> String {
+        let (x, chunk) = (at.x as i32, ChunkPos::new(at.x.div_euclid(CHUNK as f32) as i32, at.y.div_euclid(CHUNK as f32) as i32));
         let i = self.column_of(x);
         let (w, h) = (self.wet.get(i).copied().unwrap_or(0.0), self.humidity.get(i).copied().unwrap_or(0.0));
         let feel = match w {
@@ -110,7 +191,20 @@ impl WorldClock {
             w if w < 0.85 => "wet",
             _ => "soaked",
         };
-        format!("{feel} ({:.0} % wet, {:.0} % left to itself)", w * 100.0, h * 100.0)
+        let mut out = format!("{feel} ({:.0} % wet, {:.0} % left to itself)", w * 100.0, h * 100.0);
+        if let Some(r) = self.land.get(&(chunk.x, chunk.y)) {
+            out += &format!("; healing {} cells, {:.1} days in", r.unhealed, self.now - r.since);
+        }
+        if let Some((&tx, _)) = self.trees.range(x - 40..=x + 40).min_by_key(|(tx, _)| (**tx - x).abs())
+            && let Some((g, time)) = self.tree(tx)
+        {
+            out += &match g {
+                0.0 => format!("; a tree lost here (a sapling in {:.1} days)", self.trees[&tx].lost + SAPLING_DAYS - self.now),
+                g if g < 1.0 => format!("; a tree regrowing ({:.0} %, its {time}. time)", g * 100.0),
+                _ => format!("; a tree grown back (its {time}. time)"),
+            };
+        }
+        out
     }
 
     /// The dry spell over a column now: its humidity is multiplied by this.
@@ -189,6 +283,99 @@ fn moisture(clock: &mut WorldClock, sim: &SimWorld, seed: u64, tick: u64, t: f64
             m + (base - m) * dry
         };
         clock.wet[i] = next.clamp(0.0, 1.0) as f32;
+    }
+}
+
+/// Regrowth: the chunks just loaded heal at once (catching up), and every
+/// game hour the loaded ones that have anything to heal, a few a frame
+/// (growing back is gradual, so it happens in view too; what's left of a
+/// lost tree is cleared only out of view). The hourly pass finds the hurt
+/// (so healing counts from about when it happened), as long as time ran
+/// steadily: after a jump (a skipped day) it only draws.
+fn regrow(mut sim: ResMut<SimWorld>, mut clock: ResMut<WorldClock>, loaded: Res<LoadedChunks>, loaders: Query<(&GlobalTransform, &ChunkLoader)>) {
+    if !clock.started {
+        return;
+    }
+    let views: Vec<(Vec2, Vec2)> = loaders.iter().map(|(tf, l)| (tf.translation().truncate() - l.half_extent, tf.translation().truncate() + l.half_extent)).collect();
+    let seen = |p: ChunkPos| {
+        let (lo, hi) = (Vec2::new((p.x * CHUNK) as f32, (p.y * CHUNK) as f32), Vec2::new(((p.x + 1) * CHUNK) as f32, ((p.y + 1) * CHUNK) as f32));
+        views.iter().any(|(a, b)| lo.x < b.x && hi.x > a.x && lo.y < b.y && hi.y > a.y)
+    };
+    let at = clock.now;
+    for p in &loaded.1 {
+        clock.away.insert((p.x, p.y), at);
+    }
+    let near_tree = |clock: &WorldClock, p: ChunkPos| clock.trees.range(p.x * CHUNK - TREE_REACH..(p.x + 1) * CHUNK + TREE_REACH).next().is_some();
+    // Just loaded (not yet shown): from the store (maybe hurt), or made
+    // anew near a tree lost.
+    // (Hurt found on load happened before it was put away: from then.)
+    let mut now: Vec<(ChunkPos, bool, bool, bool)> = Vec::new();
+    let mut put_away: HashMap<(i32, i32), f64> = HashMap::new();
+    for &(p, stored) in &loaded.0 {
+        let away = clock.away.remove(&(p.x, p.y)).filter(|_| stored);
+        if let Some(t) = away {
+            put_away.insert((p.x, p.y), t);
+        }
+        let cooled = stored && away.is_none_or(|t| at - t > COOL_DAYS);
+        if stored || near_tree(&clock, p) {
+            now.push((p, false, false, cooled));
+        }
+    }
+    // The hour: whatever out of view has something to heal.
+    let hour = (clock.now * 24.0).floor() as i64;
+    if hour != clock.hour {
+        clock.judge = hour == clock.hour + 1;
+        clock.hour = hour;
+        let due: Vec<ChunkPos> = sim.world.chunks().map(|c| (c.pos, c.is_modified())).filter(|&(p, modified)| modified || clock.land.contains_key(&(p.x, p.y)) || near_tree(&clock, p)).map(|(p, _)| p).collect();
+        clock.queue = due;
+    }
+    while now.len() < HEALS_PER_FRAME {
+        let Some(p) = clock.queue.pop() else { break };
+        if sim.world.is_loaded(p) && !now.iter().any(|&(q, ..)| q == p) {
+            now.push((p, seen(p), clock.judge, false));
+        }
+    }
+    if now.is_empty() {
+        return;
+    }
+    let generator = sim.generator.clone();
+    let healed: Vec<(ChunkPos, bool, f64, Healed)> = {
+        let (clock, world) = (&*clock, &sim.world);
+        now.par_iter()
+            .filter_map(|&(p, looking, judge, cooled)| {
+                let chunk = world.chunk(p)?;
+                let since = clock.land.get(&(p.x, p.y)).map(|r| r.since).or_else(|| put_away.get(&(p.x, p.y)).copied()).unwrap_or(clock.now);
+                let tree = |x: i32| clock.tree(x);
+                generator.heal(chunk, &Healing { days: (clock.now - since) as f32, tree: &tree, judge, cooled }).map(|h| (p, looking, since, h))
+            })
+            .collect()
+    };
+    for (p, looking, since, h) in healed {
+        for c in h.clear.into_iter().filter(|_| !looking) {
+            sim.world.set_bg(c, platypus_sim::Cell::AIR);
+        }
+        for (c, back, cell) in h.edits {
+            if back {
+                sim.world.set_bg(c, cell);
+            } else {
+                sim.world.set(c, cell);
+            }
+        }
+        for x in h.hurt_trees {
+            let time = clock.trees.get(&x).map_or(1, |r| r.time + 1);
+            clock.trees.insert(x, TreeRecord { lost: at, time });
+        }
+        let key = (p.x, p.y);
+        if h.unhealed == 0 {
+            clock.land.remove(&key);
+        } else {
+            let r = clock.land.entry(key).or_insert(LandRecord { since, unhealed: h.unhealed });
+            // (Hurt again: healing starts over for what's new.)
+            if h.unhealed > r.unhealed {
+                r.since = at;
+            }
+            r.unhealed = h.unhealed;
+        }
     }
 }
 

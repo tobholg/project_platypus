@@ -74,6 +74,13 @@ pub trait ChunkGenerator: Send + Sync {
         None
     }
 
+    /// Nature healing a chunk toward what the seed made (the world clock,
+    /// DESIGN §13): see `Healing`, `Healed`. None: a world that doesn't heal
+    /// (the sandboxes).
+    fn heal(&self, _chunk: &Chunk, _how: &Healing) -> Option<Healed> {
+        None
+    }
+
     /// A chunk and what it starts with besides cells (see `Spawn`), each
     /// reported by exactly one chunk; the game makes each once (an
     /// unmodified chunk is generated again when it comes back into view).
@@ -117,6 +124,43 @@ pub enum Spawn {
     Prop(&'static str),
 }
 
+/// How far a chunk has healed (the world clock, DESIGN §13).
+pub struct Healing<'a> {
+    /// Days since its land was hurt (grass burnt to soil, ash and charcoal
+    /// left lying): grass comes back over about a day, the ash is gone in
+    /// two.
+    pub days: f32,
+    /// A tree regrowing (by its x): how far (0 not yet … 1 grown) and which
+    /// time (each time, a new tree of its kind); none: as the seed made it.
+    pub tree: &'a dyn Fn(i32) -> Option<(f32, u32)>,
+    /// Judge the trees (find the hurt ones): only when the chunk shows them
+    /// as they stood a moment ago (time ran on steadily since it was last
+    /// healed), else a tree that grew meanwhile looks hurt.
+    pub judge: bool,
+    /// Away long enough (unloaded an hour or more) that its fires have
+    /// burnt out: put out what burns, cool what's hot.
+    pub cooled: bool,
+}
+
+/// What healing a chunk does and finds.
+#[derive(Default, Debug)]
+pub struct Healed {
+    /// Cells to set, a few at a time (growing back): where, the
+    /// background or not, what.
+    pub edits: Vec<(CellPos, bool, Cell)>,
+    /// Background cells to clear at once: what's left of hurt trees (best
+    /// where no one sees).
+    pub clear: Vec<CellPos>,
+    /// Trees found mostly gone here (burnt, felled), by x: they regrow
+    /// whole (what's left of them is cleared).
+    pub hurt_trees: Vec<i32>,
+    /// Land still to heal here (cells): 0, and it's whole.
+    pub unhealed: u32,
+}
+
+/// Regrowth: a tree reappears (a sapling) once it's this far grown.
+pub const SAPLING: f32 = 0.08;
+
 /// A chest's size in cells (the game draws it this size; the world makes
 /// room for it).
 pub const CHEST_SIZE: (i32, i32) = (12, 10);
@@ -158,6 +202,11 @@ struct Ids {
     cracked_ashlar: MaterialId,
     false_ashlar: MaterialId,
     moss: MaterialId,
+    soil: MaterialId,
+    ash: MaterialId,
+    charcoal: MaterialId,
+    fire: MaterialId,
+    smoke: MaterialId,
     cobweb: MaterialId,
     acid: MaterialId,
     fungal_soil: MaterialId,
@@ -258,6 +307,11 @@ impl TerrainGen {
             cracked_ashlar: mats.expect_id("cracked_ashlar"),
             false_ashlar: mats.expect_id("false_ashlar"),
             moss: mats.expect_id("moss"),
+            soil: mats.expect_id("soil"),
+            ash: mats.expect_id("ash"),
+            charcoal: mats.expect_id("charcoal"),
+            fire: mats.expect_id("fire"),
+            smoke: mats.expect_id("smoke"),
             cobweb: mats.expect_id("cobweb"),
             acid: mats.expect_id("acid"),
             fungal_soil: mats.expect_id("fungal_soil"),
@@ -398,6 +452,153 @@ impl TerrainGen {
         let mut t = self.plan.forest.near(x0, x1);
         t.extend(self.plan.island_forest.near(x0, x1));
         t
+    }
+
+    /// Nature healing `chunk` toward what the seed made (`Healing`): the
+    /// land (grass on burnt soil and tall grass on bare ground over about a
+    /// day, ash and charcoal lying about gone in two), and the trees: each
+    /// as the world clock says it stands (as made, regrowing at its stage,
+    /// or not yet), found mostly gone, reported. Only nature's cells are
+    /// touched: never what was built.
+    fn heal_chunk(&self, chunk: &Chunk, how: &Healing) -> Healed {
+        let i = &self.ids;
+        let o = chunk.pos.origin();
+        let pristine = self.generate(chunk.pos);
+        let mut out = Healed::default();
+        if how.cooled {
+            self.cool(chunk, &mut out);
+        }
+        let smooth = |a: f32, b: f32, v: f32| {
+            let t = ((v - a) / (b - a)).clamp(0.0, 1.0);
+            t * t * (3.0 - 2.0 * t)
+        };
+        // (Each cell heals at its own moment: a share of them by now.)
+        let due = |x: i32, y: i32, salt: u64, (a, b): (f32, f32)| (hash(&[self.plan.seed, salt, x as u64, y as u64]) & 0xFFFF) as f32 / 65_536.0 < smooth(a, b, how.days);
+        for ly in 0..CHUNK {
+            for lx in 0..CHUNK {
+                let (x, y) = (o.x + lx, o.y + ly);
+                let (p, c) = (pristine.get(lx as usize, ly as usize), chunk.get(lx as usize, ly as usize));
+                let heal = if (p.material == i.grass || p.material == i.moss) && c.material == i.soil {
+                    Some((0xA11, (0.1, 1.0)))
+                } else if p.material == i.tall_grass && c.is_air() && ly > 0 && chunk.get(lx as usize, ly as usize - 1).material == i.grass {
+                    Some((0xA12, (0.6, 1.6)))
+                } else if (c.material == i.ash || c.material == i.charcoal) && (p.is_air() || p.material == i.tall_grass || p.material == i.grass || p.material == i.moss) {
+                    Some((0xA13, (0.3, 2.0)))
+                } else {
+                    None
+                };
+                if let Some((salt, span)) = heal {
+                    if due(x, y, salt, span) {
+                        out.edits.push((CellPos::new(x, y), false, p));
+                    } else {
+                        out.unhealed += 1;
+                    }
+                }
+            }
+        }
+        // The trees over it, as they stand now.
+        let trees = self.trees_near(o.x, o.x + CHUNK - 1);
+        if trees.is_empty() {
+            return out;
+        }
+        let regrown: Vec<Option<(f32, u32)>> = trees.iter().map(|t| (how.tree)(t.x)).collect();
+        let again: Vec<Option<flora::Tree>> = trees
+            .iter()
+            .zip(&regrown)
+            .map(|(t, r)| {
+                let &(grown, time) = r.as_ref()?;
+                (grown >= SAPLING).then(|| flora::Tree::plan(t.x, t.base, &mut Rng::seeded(&[self.plan.seed, 0x7EE6, t.x as u64, time as u64]), t.species, t.snowy, t.grow * grown))
+            })
+            .collect();
+        let is_tree = |m: MaterialId| m == i.wood || m == i.leaves || m == i.needles || m == i.dark_leaves;
+        let inside = |t: &flora::Tree| t.bbox.2 >= o.x && t.bbox.0 < o.x + CHUNK && t.bbox.3 >= o.y && t.bbox.1 < o.y + CHUNK;
+        // Mostly gone, as it should stand: hurt (it regrows whole). (One
+        // still growing is only drawn as it grows.)
+        let growing = |k: usize| regrown[k].is_some_and(|(g, _)| g < 1.0);
+        for (k, t) in trees.iter().enumerate() {
+            if !how.judge || growing(k) {
+                continue;
+            }
+            let expected: Option<&flora::Tree> = if regrown[k].is_some() { again[k].as_ref() } else { Some(t) };
+            let Some(e) = expected.filter(|e| inside(e)) else { continue };
+            let (mut all, mut standing) = (0, 0);
+            for ly in 0..CHUNK {
+                for lx in 0..CHUNK {
+                    if e.part_at(o.x + lx, o.y + ly, &self.leaf_edge).is_some() {
+                        all += 1;
+                        standing += is_tree(chunk.get_bg(lx as usize, ly as usize).material) as u32;
+                    }
+                }
+            }
+            if all >= 12 && standing * 10 < all * 6 {
+                out.hurt_trees.push(t.x);
+            }
+        }
+        // Drawn as they stand: the hurt ones gone (they regrow whole), the
+        // regrown ones as big as they are now, the rest (as the seed made
+        // them) mending where they were hurt (over a few days).
+        let standing: Vec<&flora::Tree> = trees
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| !out.hurt_trees.contains(&t.x))
+            .filter_map(|(k, t)| if regrown[k].is_some() { again[k].as_ref() } else { Some(*t) })
+            .collect();
+        let sprouting: Vec<&flora::Tree> = (0..trees.len()).filter(|&k| !out.hurt_trees.contains(&trees[k].x)).filter_map(|k| again[k].as_ref()).collect();
+        let natural = |m: MaterialId| m == i.air || is_tree(m) || m == i.charcoal || m == i.ash;
+        for ly in 0..CHUNK {
+            for lx in 0..CHUNK {
+                let (x, y) = (o.x + lx, o.y + ly);
+                let c = chunk.get_bg(lx as usize, ly as usize);
+                if !natural(c.material) {
+                    continue;
+                }
+                let (want, shade) = self.background_at(x, y, &standing);
+                let fix = if is_tree(want) {
+                    c.material != want
+                        && (sprouting.iter().any(|t| t.part_at(x, y, &self.leaf_edge).is_some()) || {
+                            let due = due(x, y, 0xA14, (1.0, 3.0));
+                            out.unhealed += !due as u32;
+                            due
+                        })
+                } else if c.material == i.charcoal || c.material == i.ash {
+                    let due = due(x, y, 0xA15, (0.5, 3.0));
+                    out.unhealed += !due as u32;
+                    due
+                } else {
+                    if is_tree(c.material) {
+                        out.clear.push(CellPos::new(x, y));
+                    }
+                    false
+                };
+                if fix {
+                    let cell = if want == i.air { Cell::AIR } else { Cell { heat: self.heat[want.0 as usize], ..Cell::new(want, shade.unwrap_or(128)) } };
+                    out.edits.push((CellPos::new(x, y), true, cell));
+                }
+            }
+        }
+        out
+    }
+
+    /// A chunk's fires burnt out (its cells into `out`): flames and smoke
+    /// gone, what burnt no longer burning, the heat back to what it was
+    /// made with.
+    fn cool(&self, chunk: &Chunk, out: &mut Healed) {
+        let i = &self.ids;
+        let o = chunk.pos.origin();
+        for ly in 0..CHUNK {
+            for lx in 0..CHUNK {
+                let p = CellPos::new(o.x + lx, o.y + ly);
+                for back in [false, true] {
+                    let c = if back { chunk.get_bg(lx as usize, ly as usize) } else { chunk.get(lx as usize, ly as usize) };
+                    let rest = self.heat[c.material.0 as usize];
+                    if c.material == i.fire || c.material == i.smoke {
+                        out.edits.push((p, back, Cell::AIR));
+                    } else if c.flags & platypus_sim::cell::flags::BURNING != 0 || (c.heat - rest).abs() > 60 {
+                        out.edits.push((p, back, Cell { heat: rest, flags: c.flags & !platypus_sim::cell::flags::BURNING, ..c }));
+                    }
+                }
+            }
+        }
     }
 
     /// The background layer: walls underground (what you see in caves), trees
@@ -1139,6 +1340,10 @@ impl ChunkGenerator for TerrainGen {
         Some(self.plan.reference_depth(y))
     }
 
+    fn heal(&self, chunk: &Chunk, how: &Healing) -> Option<Healed> {
+        Some(self.heal_chunk(chunk, how))
+    }
+
     fn biome_hint(&self, x: i32) -> Option<&'static str> {
         Some(match self.plan.biome_at(x) {
             Biome::Ocean => "ocean",
@@ -1716,6 +1921,63 @@ mod tests {
             assert!(green as i32 > i.w / 2, "island at {} is {} ({green} of {})", i.x0, if cold { "snowy" } else { "grassy" }, i.w);
         }
         assert!(p.island_forest.len() >= p.islands.len(), "trees on them ({})", p.island_forest.len());
+    }
+
+    /// Healing (the world clock's regrowth): a chunk as the seed made it has
+    /// nothing to heal; burnt, its tree is found hurt and nothing grows
+    /// back at once; days later (the tree regrowing, grown), it heals whole
+    /// and then rests.
+    #[test]
+    fn nature_heals_toward_the_seed() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Medium, &m);
+        let s = g.spawn_point();
+        let t = g.plan.forest.near(s.x - 600, s.x + 600).into_iter().find(|t| t.bbox.3 - t.base > 40).expect("a tree near the start");
+        let pos = CellPos::new(t.x, t.base + 12).chunk();
+        let none = |_: i32| None;
+        let pristine = g.generate(pos);
+        let h = g.heal(&pristine, &Healing { days: 0.0, tree: &none, judge: true, cooled: true }).unwrap();
+        assert!(h.edits.is_empty() && h.clear.is_empty() && h.hurt_trees.is_empty() && h.unhealed == 0, "as made, nothing to heal: {h:?}");
+
+        // Burnt: the trees to charcoal, the grass to soil.
+        let (charcoal, soil, grass) = (m.expect_id("charcoal"), m.expect_id("soil"), m.expect_id("grass"));
+        let trees = ["wood", "leaves", "needles", "dark_leaves"].map(|n| m.expect_id(n));
+        let mut c = g.generate(pos);
+        let mut burnt = 0;
+        for ly in 0..CHUNK as usize {
+            for lx in 0..CHUNK as usize {
+                if trees.contains(&c.get_bg(lx, ly).material) {
+                    c.set_bg(lx, ly, Cell::new(charcoal, 0));
+                    burnt += 1;
+                }
+                if c.get(lx, ly).material == grass {
+                    c.set(lx, ly, Cell::new(soil, 0));
+                }
+            }
+        }
+        assert!(burnt > 100, "the chunk had trees ({burnt} cells)");
+        let h = g.heal(&c, &Healing { days: 0.0, tree: &none, judge: true, cooled: false }).unwrap();
+        assert!(h.hurt_trees.contains(&t.x), "the burnt tree is found: {:?}", h.hurt_trees);
+        assert!(h.edits.is_empty() && h.unhealed > 0, "nothing grows back at once");
+
+        // Five days on, the tree regrown (a new one): whole, then at rest.
+        let regrown = |x: i32| h.hurt_trees.contains(&x).then_some((1.0, 1));
+        for pass in 0..3 {
+            let h = g.heal(&c, &Healing { days: 5.0, tree: &regrown, judge: false, cooled: false }).unwrap();
+            if h.edits.is_empty() {
+                assert_eq!(h.unhealed, 0);
+                let back = (0..CHUNK as usize).flat_map(|y| (0..CHUNK as usize).map(move |x| (x, y))).filter(|&(x, y)| trees.contains(&c.get_bg(x, y).material)).count();
+                assert!(back > burnt / 4, "the trees are back ({back} cells, {burnt} burnt)");
+                assert!((0..CHUNK as usize).flat_map(|y| (0..CHUNK as usize).map(move |x| (x, y))).all(|(x, y)| c.get(x, y).material != soil || pristine.get(x, y).material == soil), "the grass is back");
+                return;
+            }
+            assert!(pass < 2, "healing settles");
+            let o = pos.origin();
+            for (p, back, cell) in h.edits {
+                let (lx, ly) = ((p.x - o.x) as usize, (p.y - o.y) as usize);
+                if back { c.set_bg(lx, ly, cell) } else { c.set(lx, ly, cell) }
+            }
+        }
     }
 
     #[test]
