@@ -38,6 +38,8 @@
 //               plants up to `hardness` (softer faster, `chance`/256 a tick at
 //               the softest); each cell of it takes `bites` before it's spent
 // inert:        nothing eats it (glass, gold)
+// flung:        a blast throws it whole instead of destroying it (gold)
+// counted:      the game tallies it, never a block item (gold: gold.rs)
 // charges:      carries electricity: lightning into it charges all of it that's
 //               connected (water, acid, blood, metal ores)
 // colors:       gradient; each cell gets a fixed point on it
@@ -181,6 +183,18 @@
         (name: "tall_grass", kind: Plant, living: true, density: 100, hardness: 1, flammability: 8, spread: 176, ignites_at: 240, burn_time: 5, chars_at: 1.0, colors: [(64, 146, 46), (92, 176, 62), (54, 124, 40)]),
 
         // ---- powders ------------------------------------------------------
+        // Gold (the game's gold.rs): the player's money as dust, one cell a
+        // coin. Counted, not carried: walked into, it's taken into the tally
+        // (never a block). Heavy (sinks through water and lava), nothing eats
+        // it (acid pools on it), blasts throw it whole (flung), it glitters
+        // and glows; it melts in lava (at 900 °C, below real gold's 1 064: lava
+        // here is never cooler than 950, and a pit's cold floor keeps it
+        // under that) and sets back into gold dust as it cools: nothing is
+        // lost.
+        (name: "gold",     kind: Powder, density: 19300, hardness: 2, inert: true, flung: true, charges: true, counted: true, conductivity: 200, glow: (110, 76, 14), shimmer: 255,
+            above: (900, "molten_gold"), latent: 200, colors: [(196, 136, 26), (236, 180, 44), (252, 210, 76), (255, 234, 136), (255, 250, 214)]),
+        (name: "molten_gold", kind: Liquid, density: 17300, dispersion: 2, viscosity: 60, hot: true, heat: 1100, inert: true, flung: true, charges: true, conductivity: 200, glow: (255, 170, 40),
+            below: (850, "gold"), latent: 200, colors: [(255, 150, 30), (255, 196, 70), (255, 230, 140)]),
         (name: "sand",     kind: Powder, density: 1600, hardness: 5,  above: (1100, "glass"), colors: [(206, 176, 110), (226, 198, 132), (196, 164, 100)]),
         // Under desert sand: sand pressed into rock.
         (name: "sandstone", kind: Static, density: 2200, hardness: 35, crumbles_into: "sand", colors: [(178, 142, 90), (192, 156, 100), (166, 132, 84), (184, 150, 96)]),

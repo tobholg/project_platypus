@@ -173,7 +173,7 @@ impl Items {
         }
         for (id, def) in mats.iter() {
             let ph = mats.phys(id);
-            if matches!(def.kind, Kind::Static | Kind::Powder) && ph.hardness < u8::MAX {
+            if matches!(def.kind, Kind::Static | Kind::Powder) && ph.hardness < u8::MAX && !def.counted {
                 let (r, g, b) = def.colors[def.colors.len() / 2];
                 let mut name = def.name.replace('_', " ");
                 if let Some(first) = name.get_mut(0..1) {

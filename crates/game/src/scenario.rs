@@ -266,7 +266,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
-            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script))
+            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3462,6 +3462,160 @@ fn refill_script(
         5 if t > 13.0 => {
             info!("refill: {days} days later: {:?} about", about(&foes, state.1));
             state.0 = 6;
+        }
+        _ => {}
+    }
+}
+
+/// `gold` (arena world): a warband struck dead (its gold bursts out as
+/// dust; the player walks over and takes it), then gold thrown into lava,
+/// an acid puddle and the water pool, and a blast in a heap. Logs each.
+fn gold_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut queue: ResMut<crate::gold::GoldQueue>,
+    mut player: Query<(&mut Kinematics, &crate::gold::Gold), With<LocalPlayer>>,
+    mut foes: Query<(&crate::actors::Creature, &mut crate::actors::Health), Without<LocalPlayer>>,
+    mut state: Local<u8>,
+) {
+    if s.name != "gold" {
+        return;
+    }
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let Ok((mut k, gold)) = player.single_mut() else { return };
+    let put = |k: &mut Kinematics, x: f32| {
+        k.body.pos = Vec2::new(x, floor as f32 + k.body.half.y);
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+    };
+    // Gold (and molten gold) between two x: cells, the lowest, the span.
+    let (g, molten) = (sim.materials().id("gold"), sim.materials().id("molten_gold"));
+    let lying = |sim: &SimWorld, x0: i32, x1: i32| {
+        let (mut n, mut m, mut low, mut lo, mut hi) = (0, 0, i32::MAX, i32::MAX, i32::MIN);
+        for y in floor - 80..floor + 120 {
+            for x in x0..x1 {
+                let c = sim.world.get(CellPos::new(x, y)).map(|c| Some(c.material));
+                if c == Some(g) {
+                    n += 1;
+                    (low, lo, hi) = (low.min(y), lo.min(x), hi.max(x));
+                } else if c == Some(molten) {
+                    m += 1;
+                }
+            }
+        }
+        (n, m, low, lo, hi)
+    };
+    match *state {
+        0 if t > 0.5 => {
+            put(&mut k, 560.0);
+            for (i, kind) in ["orc", "orc", "orc_archer", "orc", "troll"].iter().enumerate() {
+                crate::actors::creature::spawn_creature(&mut commands, kind, Vec2::new(700.0 + i as f32 * 16.0, floor as f32), |_| {});
+            }
+            *state = 1;
+        }
+        1 if t > 0.8 => {
+            for (c, mut h) in &mut foes {
+                if ["orc", "orc_archer", "troll"].contains(&c.kind.as_str()) {
+                    h.hp = 0.0;
+                }
+            }
+            *state = 2;
+        }
+        2 if t > 3.0 => {
+            let (n, _, _, lo, hi) = lying(&sim, 600, 900);
+            info!("gold: the warband's gold burst out and settled: {n} gold from x {lo} to {hi}; the player has {}", gold.0);
+            put(&mut k, 700.0);
+            *state = 3;
+        }
+        3 if t > 3.5 => {
+            put(&mut k, 760.0);
+            *state = 4;
+        }
+        4 if t > 5.0 => {
+            let (n, ..) = lying(&sim, 600, 900);
+            info!("gold: walked over it: the player has {}, {n} left lying", gold.0);
+            put(&mut k, 600.0);
+            let acid = sim.materials().id("acid");
+            for x in 470..500 {
+                for y in (floor - 4)..floor {
+                    sim.queue(WorldEdit::Dig { center: CellPos::new(x, y), radius: 0, max_hardness: 250 });
+                    if let Some(m) = acid {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: m, overwrite: true });
+                    }
+                }
+            }
+            *state = 5;
+        }
+        5 if t > 5.5 => {
+            queue.burst.extend([(Vec2::new(930.0, floor as f32 + 20.0), 100), (Vec2::new(485.0, floor as f32 + 6.0), 60), (Vec2::new(365.0, floor as f32 + 6.0), 60)]);
+            *state = 6;
+        }
+        6 if t > 10.0 => {
+            let (lava, acid, pool) = (lying(&sim, 890, 970), lying(&sim, 440, 520), lying(&sim, 300, 430));
+            info!("gold: 100 into the lava: {} gold, {} molten; 60 into acid: {} gold (the lowest at y {}); 60 into the pool: {} gold, the lowest at y {} (its floor at {})", lava.0, lava.1, acid.0, acid.2, pool.0, pool.2, floor - 50);
+            put(&mut k, 1010.0);
+            queue.burst.push((Vec2::new(1100.0, floor as f32 + 4.0), 150));
+            *state = 7;
+        }
+        7 if t > 12.0 => {
+            let (n, _, _, lo, hi) = lying(&sim, 1040, 1300);
+            info!("gold: a heap: {n} gold from x {lo} to {hi}; a blast in it");
+            sim.queue(WorldEdit::Explode { center: CellPos::new(1100, floor + 2), radius: 10, power: 90 });
+            *state = 8;
+        }
+        8 if t > 14.0 => {
+            let (n, _, _, lo, hi) = lying(&sim, 1030, 1400);
+            info!("gold: after the blast: {n} gold from x {lo} to {hi}");
+            *state = 9;
+        }
+        9 if t > 24.0 => {
+            let lava = lying(&sim, 890, 970);
+            info!("gold: the lava pit, 18 s on: {} gold, {} molten", lava.0, lava.1);
+            *state = 10;
+        }
+        _ => {}
+    }
+}
+
+/// `goldheap` (a generated world): a hollow dug under the start, the
+/// player in it, and `PLATYPUS_GOLD` (default 6 000) poured in from its
+/// roof: how a hoard looks in the dark.
+fn goldheap_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut queue: ResMut<crate::gold::GoldQueue>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut state: Local<(u8, Vec2)>) {
+    if s.name != "goldheap" {
+        return;
+    }
+    let t = s.elapsed;
+    let amount: u32 = std::env::var("PLATYPUS_GOLD").ok().and_then(|v| v.parse().ok()).unwrap_or(6_000);
+    let Ok(mut k) = player.single_mut() else { return };
+    match state.0 {
+        0 if t > 0.5 => {
+            let home = sim.generator.spawn_point();
+            let c = Vec2::new(home.x as f32, home.y as f32 - 220.0);
+            for dx in (-60..=60).step_by(8) {
+                for dy in (-24..=24).step_by(8) {
+                    sim.queue(WorldEdit::Dig { center: CellPos::new(c.x as i32 + dx, c.y as i32 + dy), radius: 9, max_hardness: 250 });
+                }
+            }
+            state.1 = c;
+            state.0 = 1;
+        }
+        1 if t > 1.0 => {
+            let c = state.1;
+            k.body.pos = Vec2::new(c.x - 40.0, c.y - 20.0);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            for dx in [-8.0, 14.0, 30.0] {
+                queue.burst.push((Vec2::new(c.x + dx, c.y + 18.0), amount / 3));
+            }
+            info!("goldheap: {amount} gold poured into a hollow at ({:.0}, {:.0})", c.x, c.y);
+            state.0 = 2;
+        }
+        // (Held away from the heap: it isn't taken.)
+        2 => {
+            let c = state.1;
+            k.body.pos.x = c.x - 40.0;
         }
         _ => {}
     }

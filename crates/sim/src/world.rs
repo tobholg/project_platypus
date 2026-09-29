@@ -716,11 +716,12 @@ impl World {
             if d <= r {
                 let force = power as f32 * (1.0 - 0.5 * (d / r).powi(2));
                 let mut now_air = c.is_air();
-                if ph.kind == Kind::Liquid {
+                if ph.kind == Kind::Liquid || (ph.flung && !c.is_air()) {
                     // Liquid isn't destroyed, it's thrown: up and out, a
                     // geyser; near the heart some flashes to vapour (water
-                    // to steam); what burns goes up burning (oil).
-                    if d < r * 0.5 && ph.above_into != MaterialId::AIR && rng.chance(BLAST_BOIL) {
+                    // to steam); what burns goes up burning (oil). So is
+                    // what's `flung` (gold), whole.
+                    if ph.kind == Kind::Liquid && d < r * 0.5 && ph.above_into != MaterialId::AIR && rng.chance(BLAST_BOIL) {
                         let mut vapour = mats.spawn(ph.above_into, &mut rng);
                         vapour.heat = vapour.heat.max(BLAST_VAPOUR_HEAT);
                         self.set(p, vapour);

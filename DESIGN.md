@@ -767,6 +767,11 @@ live in. The arc, in order:
    scatter it; heat past its melting point (lava) melts it (at first it's
    gone; with metals, §13.1, into molten gold); the vaporiser and void
    magic erase it; off the world's edge it's lost. Nuggets can be kicked.
+   *As built (`gold`, SPEC §3.4g)*: not nugget bodies but a material, gold
+   dust (one cell a coin), so it acts as any other: it piles and slides,
+   sinks, glitters and glows (a hoard lights a cave, as in Noita), blasts
+   throw it whole, lava melts it into molten gold that sets back into dust;
+   walked into, it's taken.
 8. **Later**: mine carts on rails, stronger travel and building,
    teleport stations.
 

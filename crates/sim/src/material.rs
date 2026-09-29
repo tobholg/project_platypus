@@ -183,6 +183,15 @@ pub struct MaterialDef {
     /// and the less readily flames spread to it.
     #[serde(default)]
     pub living: bool,
+    /// Counted, not carried (gold): the game keeps a tally of it and never
+    /// makes it a block item; what's dug of it is added to the tally. The
+    /// game's business.
+    #[serde(default)]
+    pub counted: bool,
+    /// A blast throws it whole instead of destroying it, as it does a
+    /// liquid (gold: nothing is lost).
+    #[serde(default)]
+    pub flung: bool,
     /// How deep its glow glimmers: small patches swell from nearly dark to
     /// full and back, each on its own quick cycle (gems, crystals).
     /// Rendering only.
@@ -321,6 +330,8 @@ pub struct MatPhys {
     pub grows: bool,
     /// See `MaterialDef::living`.
     pub living: bool,
+    /// A blast throws it whole (`MaterialDef::flung`).
+    pub flung: bool,
     /// See `MaterialDef::platform`.
     pub platform: bool,
     /// See `MaterialDef::sticky`.
@@ -532,6 +543,7 @@ impl MaterialTable {
                 hangs: d.hangs,
                 grows: d.grows,
                 living: d.living,
+                flung: d.flung,
                 platform: d.platform,
                 sticky: d.sticky,
                 slippery: d.slippery,

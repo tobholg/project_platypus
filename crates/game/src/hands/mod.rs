@@ -398,7 +398,7 @@ fn use_hands(
     mut found: Query<(Entity, &mut chests::Chest, &Kinematics), Without<LocalPlayer>>,
     (crafting, mut stations): (Res<crate::craft::Crafting>, Query<StationHit, (Without<LocalPlayer>, Without<chests::Chest>)>),
     book: Res<crate::magic::Spellbook>,
-    (mut casts, mut swings, mut draws, mut sounds, mut drinks): (MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::combat::MeleeRequest>, MessageWriter<crate::archery::DrawBow>, MessageWriter<crate::sound::PlaySound>, MessageWriter<crate::potion::Drink>),
+    (mut casts, mut swings, mut draws, mut sounds, mut drinks, mut dug): (MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::combat::MeleeRequest>, MessageWriter<crate::archery::DrawBow>, MessageWriter<crate::sound::PlaySound>, MessageWriter<crate::potion::Drink>, MessageWriter<crate::gold::Dug>),
 ) {
     let clicked = std::mem::take(&mut input.clicked);
     hand.cooldown = (hand.cooldown - DT).max(0.0);
@@ -462,6 +462,8 @@ fn use_hands(
                 for &(material, n) in &report.removed {
                     if let Some(item) = items.block(material) {
                         spawn_drop(&mut commands, &items, at, Stack::new(item, n));
+                    } else if sim.world.materials().def(material).counted {
+                        dug.write(crate::gold::Dug(n));
                     }
                 }
                 return;
@@ -487,6 +489,8 @@ fn use_hands(
             for &(material, n) in &report.removed {
                 if let Some(item) = items.block(material) {
                     spawn_drop(&mut commands, &items, centre, Stack::new(item, n));
+                } else if sim.world.materials().def(material).counted {
+                    dug.write(crate::gold::Dug(n));
                 }
             }
         }

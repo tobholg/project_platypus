@@ -399,6 +399,30 @@ fn explosions_crater_crumble_and_spare_bedrock() {
     assert!(count(&w, m.expect_id("fire")) > 0, "fire in the crater or burning wood");
 }
 
+/// A blast throws gold (`flung`) rather than destroying it: every cell of
+/// it lands somewhere (as dust, or molten where the blast heated it).
+#[test]
+fn a_blast_throws_gold_whole() {
+    let mut w = boxed_world(3, 3, 14);
+    let m = w.materials().clone();
+    let (gold, molten) = (m.expect_id("gold"), m.expect_id("molten_gold"));
+    w.apply_edit(&WorldEdit::Paint { center: CellPos::new(96, 8), radius: 6, material: gold, overwrite: false });
+    run_until_asleep(&mut w, 2_000);
+    let before = count(&w, gold);
+    let r = w.apply_edit(&WorldEdit::Explode { center: CellPos::new(96, 4), radius: 10, power: 60 });
+    assert!(r.removed.iter().all(|&(id, _)| id != gold), "no gold destroyed: {:?}", r.removed);
+    for _ in 0..3_000 {
+        w.step();
+        if w.particles().is_empty() {
+            break;
+        }
+    }
+    let after = count(&w, gold) + count(&w, molten);
+    assert_eq!(after, before, "all of it landed");
+    let spread = w.chunks().flat_map(|c| (0..CHUNK).flat_map(move |y| (0..CHUNK).map(move |x| (c, x, y)))).filter(|(c, x, y)| c.get(*x as usize, *y as usize).material == gold).map(|(c, x, _)| c.pos.origin().x + x).fold((i32::MAX, i32::MIN), |(a, b), x| (a.min(x), b.max(x)));
+    assert!(spread.1 - spread.0 > 20, "thrown about: x {spread:?}");
+}
+
 #[test]
 fn igniting_burns_flammables_only() {
     let mut w = boxed_world(1, 1, 13);

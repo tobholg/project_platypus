@@ -113,7 +113,7 @@ fn process_queue(mut commands: Commands, sim: Res<SimWorld>, mut queue: ResMut<S
         if p.local_player {
             // Each player keeps the world around it simulated (co-op: every player).
             spawn_creature(&mut commands, &p.kind, feet, |e| {
-                e.insert((LocalPlayer, CameraTarget, ChunkLoader { half_extent: Vec2::new(420.0, 260.0) }));
+                e.insert((LocalPlayer, CameraTarget, ChunkLoader { half_extent: Vec2::new(420.0, 260.0) }, crate::gold::Gold::default()));
             });
         } else {
             spawn_creature(&mut commands, &p.kind, feet, |_| {});

@@ -111,6 +111,8 @@
         "drink": (make: Fizz(pop: 0.8, hiss: 0.55, length: 0.65, bubbles: 70), variants: 3, pitch: 0.06, reverb: 0.15, volume: 0.6),
         "potion_no": (make: Blip(pitch: 420, to: 300, length: 0.08), volume: 0.3, every: 0.3),
         "pickup": (make: Blip(pitch: 700, to: 1400, length: 0.07), variants: 2, pitch: 0.05, volume: 0.25, every: 0.05),
+        // Gold taken (a bright two-note ting).
+        "gold": (make: Chime(pitch: 1900, notes: [0, 7], length: 0.2), variants: 3, pitch: 0.04, volume: 0.28, every: 0.035),
 
         // ---- the world ----
         "boom": (make: Boom(length: 1.6, sub: 1.0), variants: 3, pitch: 0.05, reverb: 0.25, room: 2.5, volume: 1.0),

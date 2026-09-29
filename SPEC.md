@@ -423,6 +423,44 @@ DESIGN.md §3.2 step 6, stage 5 of the world arc (`worldgen/src/minerals.rs`).
   game's lairs).
 - Crypts are kept by skeletons now; castles by orcs.
 
+### 3.4g Gold (`game/src/gold.rs`, the `gold` material)
+Noita's gold (DESIGN §13 item 7): a count, not a thing in the pack.
+- The player's gold is a number (`Gold` on the player, saved in player.ron),
+  shown in the HUD under the stamina bolts: a nugget and the count.
+- In the world gold is a material, `gold`: a heavy powder (density 19 300),
+  one cell a coin, glittering (`shimmer` 255) and glowing warm (110, 76, 14):
+  a heap lights the cave round it. Being a material, everything else is the
+  simulation's: it's saved with its chunk, forever; it sinks through water;
+  acid can't eat it (`inert`); a blast throws it whole instead of destroying
+  it (`flung`, a new material flag: the blast's liquid path, without the
+  boiling); lava melts it into `molten_gold` (at 900 °C: lava here is never
+  below 950, and a pit's cold floor keeps gold under real gold's 1 064),
+  which sets back into gold dust below 850; the vaporiser erases it.
+  `counted` (a new material flag): never a block item; what the hands dig
+  of it is counted (`gold::Dug`).
+- Where it comes from: the loot tables' `gold: (min, max)` (loot.ron),
+  times one more for every 2 500 cells below sea level. A creature's bursts
+  out as it dies (not looted: orc 4–12, archer 3–10, troll 25–50, skeleton
+  5–14, spider 2–8, bat 1–4, slime 1–5); a chest's as it's first opened or
+  broken (high 20–50, underground 25–60, caverns 40–90, deep 60–140).
+  `Chests::gold_found` collects both; `gold.rs` throws each as that many
+  specks (sim particles, `Landing::Settle`) up and out in a fountain,
+  landing as dust, at most 600 a frame (a hoard pours out over a moment).
+- Taking it: the local player takes every gold cell within 6 of its body,
+  48 a tick at most (a heap drains at ~2 900 a second), with golden specks
+  streaming in (every fourth cell) and a two-note ting.
+- `gold` scenario (arena): a warband struck dead: 69 gold bursts out over 80
+  cells, walking through it takes 41. 100 thrown into the lava pit: after 18
+  s, 57 molten and 33 still dust on the pit's cooler floor, nothing lost; 60
+  into an acid puddle: 58 lie in it, uneaten; 60 into the pool: 53 at its
+  bottom (y 110, the floor). A blast in a heap of 28: 28 after it, thrown
+  over 24 cells. `goldheap` (a generated world): 6 000 poured into a hollow
+  dug under the start settle in 8 s (the sim at 0.1 ms a tick after), a
+  glittering heap lighting the cave. A sim test: a blast in a pile of gold
+  destroys none of it and every cell lands.
+- Not yet: rarer and deeper loot tables giving more, a merchant to spend it
+  with (the village), molten gold cast into bars (matter, §13.1).
+
 ### 3.4e Structures: crypts and castles
 DESIGN.md §3.3, stage 6 of the world arc (`worldgen/src/structures.rs`,
 rooms in `assets/data/rooms/*.rooms`).

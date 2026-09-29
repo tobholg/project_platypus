@@ -3,7 +3,8 @@
 //! stamina as green bolts (20 each), each icon filling from the left as
 //! it comes back; and under them a round timer for each status (burning,
 //! chilled, the current coating), filled by how much of it is left, and
-//! while rocket boots are worn, always, their charge (the rightmost).
+//! while rocket boots are worn, always, their charge (the rightmost). Under
+//! the vitals, a nugget and the player's gold (`gold.rs`).
 
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
@@ -86,6 +87,8 @@ const VITALS: [Vital; 3] = [
 
 #[derive(Component)]
 struct LifeText;
+#[derive(Component)]
+struct GoldText;
 /// One icon: which vital, and which of them.
 #[derive(Component)]
 struct Pip(usize, usize);
@@ -104,7 +107,7 @@ struct PipImages(Vec<Vec<Handle<Image>>>);
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_hud).add_systems(Update, (update_life, update_pips, update_statuses));
+        app.add_systems(Startup, spawn_hud).add_systems(Update, (update_life, update_pips, update_statuses, update_gold));
     }
 }
 
@@ -143,6 +146,7 @@ fn pip_image(v: &Vital, share: f32) -> Image {
 fn spawn_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let icons: [Handle<Image>; SLOTS] = std::array::from_fn(|_| images.add(blank()));
     let pips: Vec<Vec<Handle<Image>>> = VITALS.iter().map(|v| (0..=LEVELS).map(|l| images.add(pip_image(v, l as f32 / LEVELS as f32))).collect()).collect();
+    let nugget = images.add(nugget_image());
     commands
         .spawn(Node {
             position_type: PositionType::Absolute,
@@ -178,6 +182,12 @@ fn spawn_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
                     }
                 });
             }
+            // Gold: a nugget and the count.
+            root.spawn(Node { column_gap: Val::Px(5.0), align_items: AlignItems::Center, margin: UiRect::top(Val::Px(2.0)), ..default() }).with_children(|row| {
+                let (w, h) = (crate::gold::ICON[0].len() as f32 * SCALE as f32, crate::gold::ICON.len() as f32 * SCALE as f32);
+                row.spawn((ImageNode::new(nugget.clone()), Node { width: Val::Px(w), height: Val::Px(h), ..default() }));
+                row.spawn((GoldText, Text::new("0"), TextFont { font_size: FontSize::Px(14.0), ..default() }, TextColor(Color::srgb_u8(255, 222, 120))));
+            });
             // Statuses: round timers with their name under them.
             root.spawn(Node { column_gap: Val::Px(10.0), margin: UiRect::top(Val::Px(4.0)), ..default() }).with_children(|row| {
                 for (i, icon) in icons.iter().enumerate() {
@@ -192,6 +202,30 @@ fn spawn_hud(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         });
     commands.insert_resource(Icons(icons));
     commands.insert_resource(PipImages(pips));
+}
+
+/// The HUD's nugget, drawn at the icons' scale.
+fn nugget_image() -> Image {
+    let art = crate::gold::ICON;
+    let (w, h) = (art[0].len() as u32, art.len() as u32);
+    let mut data = vec![0u8; (w * SCALE * h * SCALE * 4) as usize];
+    for y in 0..h * SCALE {
+        for x in 0..w * SCALE {
+            let c = art[(y / SCALE) as usize].as_bytes()[(x / SCALE) as usize] as char;
+            if let Some(rgba) = crate::gold::art_color(c) {
+                let i = ((y * w * SCALE + x) * 4) as usize;
+                data[i..i + 4].copy_from_slice(&rgba);
+            }
+        }
+    }
+    Image::new(Extent3d { width: w * SCALE, height: h * SCALE, depth_or_array_layers: 1 }, TextureDimension::D2, data, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD)
+}
+
+fn update_gold(player: Query<&crate::gold::Gold, (With<LocalPlayer>, Changed<crate::gold::Gold>)>, mut text: Query<&mut Text, With<GoldText>>) {
+    let Ok(gold) = player.single() else { return };
+    for mut t in &mut text {
+        t.0 = gold.0.to_string();
+    }
 }
 
 fn blank() -> Image {

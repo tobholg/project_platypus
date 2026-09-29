@@ -152,6 +152,14 @@ fn lay_out(
     for d in died.read() {
         let inv = belongings(d, &items, &chests, &sim.world, luck);
         let at = d.body.pos;
+        // Its gold bursts out (not looted: `gold.rs`).
+        if let Some(table) = &d.def.loot {
+            let mut rng = Rng::seeded(&[sim.world.seed(), sim.world.tick(), at.x.to_bits() as u64, at.y.to_bits() as u64, 0x601D]);
+            let gold = chests.gold_of(table, &sim.world, at, &mut rng);
+            if gold > 0 {
+                chests.gold_found.push((at, gold));
+            }
+        }
         if !d.def.corpse {
             for (k, s) in inv.slots.iter().flatten().enumerate() {
                 spawn_drop(&mut commands, &items, at + Vec2::new(k as f32 * 0.7 - 2.0, 0.0), *s);

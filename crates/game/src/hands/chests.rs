@@ -82,6 +82,9 @@ pub struct LootTable {
     deeper_than: Option<i32>,
     rolls: (u32, u32),
     entries: Vec<LootEntry>,
+    /// Gold (`gold.rs`): how much, before the depth (`gold_at`) multiplies it.
+    #[serde(default)]
+    gold: Option<(u32, u32)>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -131,6 +134,9 @@ pub struct Chests {
     /// whoever opens it first.
     rarities: Vec<crate::gear::roll::Rarity>,
     luck: f32,
+    /// Gold found (a chest opened the first time, the dying): where, how
+    /// much; `gold.rs` spills it.
+    pub gold_found: Vec<(Vec2, u32)>,
 }
 
 pub struct ChestsPlugin;
@@ -245,10 +251,17 @@ impl Chests {
         let table = self.tables.iter().rev().find(|t| t.deeper_than.is_some_and(|d| depth >= d));
         let origin = stash.origin;
         let found = Found { rarities: &self.rarities, level: item_level(depth), luck: self.luck };
+        let gold_found = &mut self.gold_found;
         stash.contents.get_or_insert_with(|| {
             let mut inv = Inventory::new(SLOTS);
             if let Some(t) = table {
-                roll(&mut inv, t, items, &found, &mut Rng::seeded(&[world.seed(), 0xC4E57, origin.x as u64, origin.y as u64]));
+                let mut rng = Rng::seeded(&[world.seed(), 0xC4E57, origin.x as u64, origin.y as u64]);
+                roll(&mut inv, t, items, &found, &mut rng);
+                // (Its gold bursts out as it's opened.)
+                let gold = gold_at(t, depth, &mut rng);
+                if gold > 0 {
+                    gold_found.push((Vec2::new(origin.x as f32, origin.y as f32 + 6.0), gold));
+                }
             }
             inv
         })
@@ -280,6 +293,12 @@ impl Chests {
         item_level(Self::depth(&self.world, world, at.y as i32) as i32)
     }
 
+    /// A creature's gold (its loot table's, by name), dying at `at`.
+    pub fn gold_of(&self, name: &str, world: &World, at: Vec2, rng: &mut Rng) -> u32 {
+        let depth = Self::depth(&self.world, world, at.y as i32) as i32;
+        self.tables.iter().find(|t| t.name == name).map_or(0, |t| gold_at(t, depth, rng))
+    }
+
     /// Roll a creature's loot table (by name) into `inv`.
     pub fn roll_table(&self, name: &str, inv: &mut Inventory, items: &Items, level: u8, luck: f32, rng: &mut Rng) {
         match self.tables.iter().find(|t| t.name == name) {
@@ -304,6 +323,15 @@ impl Chests {
             spawn_drop(commands, items, at, Stack::new(chest, 1));
         }
     }
+}
+
+/// A table's gold, this deep: its `gold` range, times one more for every
+/// 2 500 cells below sea level (the reference world's: the caverns about
+/// double it, the deep more than triples it).
+fn gold_at(t: &LootTable, depth: i32, rng: &mut Rng) -> u32 {
+    let Some((lo, hi)) = t.gold else { return 0 };
+    let base = lo + rng.next_u32() % (hi.saturating_sub(lo) + 1);
+    (base as f32 * (1.0 + depth.max(0) as f32 / 2_500.0)).round() as u32
 }
 
 /// The item level of what's found this deep (cells below sea level, large

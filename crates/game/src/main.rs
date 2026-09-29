@@ -27,6 +27,7 @@ mod dev;
 mod editor;
 mod fx;
 mod gear;
+mod gold;
 mod hands;
 mod hud;
 mod light;
@@ -132,7 +133,7 @@ fn main() {
             scenario::ScenarioPlugin,
         ))
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
-        .add_plugins((reset::ResetPlugin, clock::ClockPlugin))
+        .add_plugins((reset::ResetPlugin, clock::ClockPlugin, gold::GoldPlugin))
         .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin))
         .add_plugins(sound::SoundPlugin)
         .add_plugins(backdrop::BackdropPlugin)

@@ -89,7 +89,10 @@ Done when: a burnt forest is back in 5 game days whether you stayed,
 left, or came back halfway; fires spread less in wet forests than in dry
 ones (measured); nothing pops into view.
 
-**3. `gold`: Noita's gold.**
+**3. `gold`: Noita's gold.** Built as a material (user, 2026-09-29: "gold
+can act as other materials ... a very large amount should look like"
+Noita's glowing heaps): dust, one cell a coin, instead of nugget bodies; the
+rest is the simulation's. SPEC §3.4g.
 1. The count (on the player, saved) and the HUD's nugget and number.
 2. Nuggets (1, 5, 25, 100): glinting, a faint warm light, bouncing and
    rolling, drifting to you, a clink; merging when they lie together far
