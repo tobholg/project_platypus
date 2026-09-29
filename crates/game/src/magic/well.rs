@@ -18,7 +18,9 @@
 //! **Force** comes from the caster, a telekinetic shout: everything in a cone
 //! from the hand toward the cursor, out to its reach, is flung away (push)
 //! or dragged in (pull), strongest nearest: loose cells and soft solids torn
-//! out as flying cells, particles in flight, bodies launched. What it can't
+//! out as flying cells, things (`object` materials: a log, a casting) lifted
+//! out whole and shoved by their weight, particles in flight, bodies
+//! launched. A well holds things whole too, on a spring to its heart. What it can't
 //! move pushes back: pushing at the ground throws the caster up (held, a
 //! hover), at a wall away from it; pulling at rock draws the caster to it.
 //!
@@ -57,6 +59,18 @@ const RECOIL: f32 = 1.4;
 /// push at the hand: the wand ~12, the staff ~20).
 const FORCE_HIT: f32 = 0.04;
 const RECOIL_RISE: f32 = 0.5;
+/// Things (bodies) in a well: the spring to its heart (1/s), the share of
+/// the way to what it wants a tick, and the lift against their weight
+/// (cells/tick a tick: gravity's).
+const BODY_SPRING: f32 = 6.0;
+const BODY_GRIP: f32 = 0.2;
+const BODY_HOLD: f32 = platypus_sim::particles::GRAVITY;
+/// Force moves a thing up to this heavy (cells) at full speed; heavier,
+/// slower by its weight.
+const BODY_HEFT: f32 = 120.0;
+/// A body's weight in a well per cell of it (its cells' density against
+/// water's: wood's).
+const BODY_DENSITY: f32 = 0.7;
 /// How fast a held cell corrects toward its place in the ball (1/s).
 const STEER: f32 = 10.0;
 /// Spin of the ball (radians/s), give or take 30 % a cell.
@@ -306,6 +320,12 @@ pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Que
                 continue;
             }
             let ph = mats.phys(c.material);
+            // A thing (a log, a casting) comes whole, however hard it is: a
+            // body the well holds by its weight.
+            if ph.object {
+                world.lift(p);
+                continue;
+            }
             if unit(rng) >= odds(ph, well.strength, 1.0 - d / reach) {
                 continue;
             }
@@ -318,6 +338,25 @@ pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Que
         }
         if tore && well.tick.is_multiple_of(LOOSEN_EVERY) {
             world.loosen_fragments(CellPos::from_world(center.x, center.y), reach as i32 + 6);
+        }
+        // Bodies within reach (things it lifted, things flying by): drawn to
+        // its heart on a spring, as far as what's left of its lift allows
+        // (a body weighs as its cells would: wood a little under water's).
+        let mut room = (well.lift - well.carried).max(0.0);
+        for b in world.bodies_mut() {
+            let at = Vec2::from(b.pos);
+            if at.distance(center) > reach * 1.2 {
+                continue;
+            }
+            let weight = b.mass() * BODY_DENSITY;
+            let share = (room / weight).clamp(0.0, 1.0);
+            room -= weight.min(room);
+            let want = ((center - at) * BODY_SPRING + well.vel) / TICK_HZ as f32;
+            let v = Vec2::from(b.vel);
+            let nv = v + (want - v) * share * BODY_GRIP;
+            let at = b.pos;
+            b.impulse([(nv.x - v.x) * b.mass(), (nv.y - v.y + BODY_HOLD * share) * b.mass()], at);
+            b.omega *= 0.95;
         }
 
         // Hold: each cell toward its place in the spinning ball, as far as
@@ -457,6 +496,13 @@ fn force(world: &mut platypus_sim::World, well: &mut Well, bodies: &mut Bodies, 
         }
         let near = 1.0 - d / reach;
         let ph = mats.phys(c.material);
+        // A thing (a log, a casting) comes whole, however hard it is: a
+        // body, pushed below by its weight.
+        if ph.object {
+            world.lift(p);
+            moved += 1;
+            continue;
+        }
         let rng = &mut well.rng;
         if unit(rng) >= odds(ph, well.strength, near) {
             continue;
@@ -481,6 +527,25 @@ fn force(world: &mut platypus_sim::World, well: &mut Well, bodies: &mut Bodies, 
     }
     if tore && well.tick.is_multiple_of(LOOSEN_EVERY) {
         world.loosen_fragments(CellPos::from_world(origin.x + well.aim.x * reach * 0.5, origin.y + well.aim.y * reach * 0.5), reach as i32);
+    }
+    // Bodies in the cone (things lifted just now, things flying): pushed
+    // (or pulled) as the cells are, by their weight.
+    for b in world.bodies_mut() {
+        let at = Vec2::from(b.pos);
+        let Some(dist) = in_cone(well, at) else { continue };
+        if sign < 0.0 && dist < PULL_STOP {
+            continue;
+        }
+        let near = 1.0 - dist / reach;
+        let dir = ((at - origin) / dist * sign + lift).normalize();
+        let want = well.power * (0.45 + 0.55 * near) / TICK_HZ as f32 * (BODY_HEFT / b.mass()).min(1.0);
+        let along = Vec2::from(b.vel).dot(dir);
+        // (As creatures are: up to its speed at once, a shove, not a creep.)
+        if along < want {
+            let j = dir * (want - along) * b.mass();
+            let at = b.pos;
+            b.impulse([j.x, j.y], at);
+        }
     }
     // Particles in flight in the cone: shoved.
     for p in world.particles_mut() {

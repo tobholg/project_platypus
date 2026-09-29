@@ -1727,6 +1727,11 @@ impl World {
         self.bodies.iter_mut().find(|b| b.id == id)
     }
 
+    /// Every flying body (force and gravity magic move them).
+    pub fn bodies_mut(&mut self) -> &mut [Body] {
+        &mut self.bodies
+    }
+
     /// A kick (Noita's): whatever's loose in the box `lo..=hi` is sent along
     /// `dir` (cells/tick at full strength): objects there lift out as bodies
     /// and take the kick by their mass (`power`: the impulse, in cells of

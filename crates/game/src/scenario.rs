@@ -267,6 +267,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script))
+            .add_systems(PreUpdate, logmagic_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3712,6 +3713,75 @@ fn kick_script(
             *state = 9;
         }
         _ => {}
+    }
+}
+
+/// `logmagic` (flat world): a log (30 × 5 cells of wood) pushed by the force
+/// wand, then lifted by the gravity wand, carried up and let go. Logs the
+/// log (cells lying, bodies flying, where) every quarter second.
+#[allow(clippy::too_many_arguments)]
+fn logmagic_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    player: Query<(&Kinematics, Option<&crate::magic::Mana>, &crate::hands::items::Inventory), With<LocalPlayer>>,
+    mut hand: ResMut<crate::hands::Hand>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut state: Local<(u8, f32, Option<Vec2>)>,
+) {
+    if s.name != "logmagic" {
+        return;
+    }
+    let Ok((k, mana, inv)) = player.single() else { return };
+    let t = s.elapsed;
+    let home = *state.2.get_or_insert(k.body.pos);
+    let wood = sim.materials().expect_id("wood");
+    if state.0 == 0 && t > 0.5 {
+        let Some(ground) = find_ground(&sim.world, home.x as i32 + 45, home.y as i32 + 40, 100) else { return };
+        for x in home.x as i32 + 30..home.x as i32 + 60 {
+            for y in ground..ground + 5 {
+                sim.world.set(CellPos::new(x, y), platypus_sim::Cell::new(wood, 128));
+            }
+        }
+        state.0 = 1;
+    }
+    // (Once the kit's in hand.) The wand in hand, wherever it is in the
+    // hotbars: the force wand, then the gravity wand.
+    let take = |id: &str, hand: &mut crate::hands::Hand| {
+        let Some(i) = items.as_ref().and_then(|items| inv.slots.iter().position(|st| st.is_some_and(|st| items.def(st.item).id == id))) else { return };
+        (hand.bar, hand.slot) = (i / crate::hands::items::HOTBAR, i % crate::hands::items::HOTBAR);
+    };
+    if state.0 == 1 && t > 1.0 {
+        take("force_wand", &mut hand);
+        state.0 = 5;
+    }
+    if state.0 == 5 && t > 3.0 {
+        take("gravity_wand", &mut hand);
+        state.0 = 2;
+    }
+    // Where the log is (its middle, lying or flying).
+    let log_at = |sim: &SimWorld| {
+        let xs: Vec<i32> = (home.y as i32 - 20..home.y as i32 + 120).flat_map(|y| (home.x as i32 - 50..home.x as i32 + 400).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == wood)).map(|(x, _)| x).collect();
+        sim.world.bodies().first().map_or(xs.iter().sum::<i32>() as f32 / xs.len().max(1) as f32, |b| b.pos[0])
+    };
+    let log = |sim: &SimWorld| {
+        let lying = (home.y as i32 - 20..home.y as i32 + 120).flat_map(|y| (home.x as i32 - 50..home.x as i32 + 400).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == wood)).count();
+        let flying: Vec<String> = sim.world.bodies().iter().map(|b| format!("{:.0},{:.0}", b.pos[0] - home.x, b.pos[1] - home.y)).collect();
+        (lying, flying)
+    };
+    let push = t > 1.5 && t < 2.0;
+    let hold = t > 3.4 && t < 6.5;
+    // The well: on the log, then up and over.
+    let at = log_at(&sim);
+    let lift_to = if t < 4.2 { Vec2::new(at - home.x, 6.0) } else { Vec2::new(at - home.x + (t - 4.2) * 20.0, 40.0) };
+    cursor.0 = Some(home + if hold { lift_to } else { Vec2::new(60.0, 2.0) });
+    if push || hold { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    if t >= state.1 {
+        state.1 = (t * 4.0).floor() / 4.0 + 0.25;
+        let (lying, flying) = log(&sim);
+        let held = inv.slots[hand.active()].and_then(|st| items.as_ref().map(|i| i.def(st.item).id.clone()));
+        info!("logmagic: t {t:.2} {} wood lying {lying}, flying {flying:?}, the log at x {:+.0} mana {:.0} holding {held:?}", if push { "push" } else if hold { "hold" } else { "-" }, log_at(&sim) - home.x, mana.map_or(0.0, |m| m.cur));
     }
 }
 
