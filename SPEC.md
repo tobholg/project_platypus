@@ -713,8 +713,28 @@ deaths (blood). Rendered as one dynamic mesh.
 - The game draws a body by mapping each world cell it covers back into it,
   so it stays on the cell grid at any angle, and a fast-moving trunk damages
   and knocks back creatures it hits (once per body per creature).
-- Not yet: bodies aren't saved with the world, don't collide with each other
-  or with creatures, and playfield pieces still fall as rubble.
+- **Objects** (`object` materials: wood for now; metals and boulders next):
+  a thing, not ground. At rest an object is ordinary cells (it costs nothing,
+  is saved with its chunk, is stood on and flowed round like any cell); it's
+  a thing because of its material. `World::lift` takes the connected cells of
+  its material (4 to `OBJECT_MAX` 2 500: bigger is ground) out as a body. A
+  playfield piece that loses its hold falls whole as a body if any of it is
+  an object (a casting with rock stuck to it comes away together), unless
+  it's lying on something (powder, liquid, a solid, not rubble): lifted it
+  would only land and settle again. Settling, a cell that meets something
+  solid goes just above it (up to 4 cells), so an object keeps every cell.
+- **The kick** (`World::kick(lo, hi, dir, power)`, the game's F): in the box
+  before the feet, objects lift out and every body there takes the impulse
+  through its centre of mass (at an end it would only lever the thing up on
+  its other end), loose powder and rubble fly as specks (gold too), and
+  particles in flight are pushed; ground takes nothing. The game's impulse
+  is 300 (a 300-cell log leaves at a cell a tick). `kick` scenario (arena):
+  a 150-cell log goes 52 cells and lands whole, a sand heap flies, a TNT
+  barrel goes 29 cells, the floor takes nothing. A sim test: a kicked log
+  lands whole and further on, a log on a post falls whole when the post's
+  foot is dug away, the stone floor doesn't lift.
+- Not yet: bodies aren't saved with the world (in flight: at rest they're
+  cells) and don't collide with each other.
 
 ### 3.12 Elements on bodies
 - One rule, `World::exposure(min, max)`, says what the cells a body covers

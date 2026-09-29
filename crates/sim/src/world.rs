@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::bodies::{BODY_MIN_CELLS, Body, Surface};
+use crate::bodies::{BODY_MIN_CELLS, Body, OBJECT_MAX, OBJECT_MIN_CELLS, Surface};
 use crate::cell::{Cell, flags};
 use crate::chunk::Chunk;
 use crate::climate::Climate;
@@ -1091,6 +1091,26 @@ impl World {
                 if pass != Pass::Front {
                     removed.extend(self.drop_background(&piece));
                 }
+                // A thing (a log, a casting: with anything stuck to it) falls
+                // whole; lying on sand or in water it stays (it rests there:
+                // lifted, it would only land and settle again).
+                if pass == Pass::Front
+                    && piece.len() >= OBJECT_MIN_CELLS
+                    && piece.len() <= OBJECT_MAX
+                    && piece.iter().any(|&p| self.get(p).is_some_and(|c| mats.phys(c.material).object))
+                {
+                    let inside: FxHashSet<CellPos> = piece.iter().copied().collect();
+                    let resting = piece.iter().any(|p| {
+                        let q = p.offset(0, -1);
+                        // (Not on rubble: that's falling itself.)
+                        !inside.contains(&q) && self.get(q).is_some_and(|c| !c.is_air() && c.flags & flags::LOOSE == 0 && matches!(mats.phys(c.material).kind, Kind::Powder | Kind::Liquid | Kind::Static))
+                    });
+                    if !resting {
+                        let cells = std::mem::take(&mut piece);
+                        self.lift_cells(cells);
+                    }
+                    continue;
+                }
                 for &p in &piece {
                     if pass == Pass::Front
                         && let Some(mut c) = self.get(p)
@@ -1651,6 +1671,121 @@ impl World {
         (near && !back.is_air() && mats.phys(back.material).kind == Kind::Static).then_some(Surface::Back)
     }
 
+    /// The object at `at` (its material's connected cells, `object`
+    /// materials only, at most `OBJECT_MAX`) out of the playfield as a
+    /// rigid body. Its id, or none (not an object, or too big: ground).
+    pub fn lift(&mut self, at: CellPos) -> Option<u32> {
+        let c = self.get(at)?;
+        let mats = self.materials.clone();
+        if c.is_air() || !mats.phys(c.material).object {
+            return None;
+        }
+        let m = c.material;
+        let mut piece = vec![at];
+        let mut seen: FxHashSet<CellPos> = FxHashSet::default();
+        seen.insert(at);
+        let mut i = 0;
+        while i < piece.len() {
+            let p = piece[i];
+            i += 1;
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                let q = p.offset(dx, dy);
+                if seen.insert(q) && self.get(q).is_some_and(|c| c.material == m) {
+                    piece.push(q);
+                    if piece.len() > OBJECT_MAX {
+                        return None;
+                    }
+                }
+            }
+        }
+        (piece.len() >= OBJECT_MIN_CELLS).then(|| self.lift_cells(piece))
+    }
+
+    /// Cells out of the playfield into a body (it lands in the playfield).
+    fn lift_cells(&mut self, piece: Vec<CellPos>) -> u32 {
+        let mats = self.materials.clone();
+        let mut cells: Vec<(CellPos, Cell)> = piece.iter().filter_map(|&p| self.get(p).map(|c| (p, c))).collect();
+        // (Hash order isn't stable across machines; the body must be.)
+        cells.sort_by_key(|(p, _)| (p.y, p.x));
+        for &(p, _) in &cells {
+            self.set(p, Cell::AIR);
+        }
+        let id = self.next_body;
+        self.next_body = self.next_body.wrapping_add(1);
+        let mut body = Body::new(id, &cells, &mats);
+        body.rests_on_front = true;
+        self.bodies.push(body);
+        // What it held up may go next.
+        let (lo, hi) = cells.iter().fold((CellPos::new(i32::MAX, i32::MAX), CellPos::new(i32::MIN, i32::MIN)), |(a, b), (p, _)| (CellPos::new(a.x.min(p.x), a.y.min(p.y)), CellPos::new(b.x.max(p.x), b.y.max(p.y))));
+        let broken: Vec<CellPos> = (lo.x - 1..=hi.x + 1).flat_map(|x| [CellPos::new(x, hi.y + 1)]).collect();
+        self.check_broken(&broken, Layer::Front);
+        id
+    }
+
+    /// A flying body, by id.
+    pub fn body_mut(&mut self, id: u32) -> Option<&mut Body> {
+        self.bodies.iter_mut().find(|b| b.id == id)
+    }
+
+    /// A kick (Noita's): whatever's loose in the box `lo..=hi` is sent along
+    /// `dir` (cells/tick at full strength): objects there lift out as bodies
+    /// and take the kick by their mass (`power`: the impulse, in cells of
+    /// mass × cells/tick), flying bodies too; loose powder and rubble fly as
+    /// specks; particles in flight are pushed. Ground takes nothing. Returns
+    /// what was moved (bodies, cells).
+    pub fn kick(&mut self, lo: CellPos, hi: CellPos, dir: [f32; 2], power: f32) -> (usize, usize) {
+        let mats = self.materials.clone();
+        let mut rng = self.rng_for(0x41C4, lo);
+        let mut ids: Vec<u32> = Vec::new();
+        for y in lo.y..=hi.y {
+            for x in lo.x..=hi.x {
+                let p = CellPos::new(x, y);
+                let Some(c) = self.get(p) else { continue };
+                if c.is_air() {
+                    continue;
+                }
+                let ph = mats.phys(c.material);
+                if ph.object {
+                    if let Some(id) = self.lift(p) {
+                        ids.push(id);
+                    }
+                } else if ph.kind == Kind::Powder || (ph.kind == Kind::Static && c.flags & flags::LOOSE != 0) {
+                    self.set(p, Cell::AIR);
+                    let mut speck = c;
+                    speck.flags &= !flags::LOOSE;
+                    let jig = |r: &mut Rng| r.next_u8() as f32 / 255.0 - 0.5;
+                    let v = [dir[0] * (0.7 + 0.3 * jig(&mut rng)) + jig(&mut rng) * 0.4, dir[1] * 0.8 + 0.5 + jig(&mut rng).abs() * 0.5];
+                    self.particles.push(Particle::new(center_of(p), v, speck, 120, Landing::Settle));
+                    ids.push(u32::MAX);
+                }
+            }
+        }
+        let specks = ids.iter().filter(|&&i| i == u32::MAX).count();
+        ids.retain(|&i| i != u32::MAX);
+        // Bodies in the box (lifted just now, or already flying).
+        let box_ = ([lo.x as f32, lo.y as f32], [hi.x as f32 + 1.0, hi.y as f32 + 1.0]);
+        for b in &self.bodies {
+            let (a, z) = b.bounds();
+            if !ids.contains(&b.id) && a.x as f32 <= box_.1[0] && z.x as f32 >= box_.0[0] && a.y as f32 <= box_.1[1] && z.y as f32 >= box_.0[1] {
+                ids.push(b.id);
+            }
+        }
+        // (Through its middle: a kick at a log's end would only lever it up
+        // on its other end.)
+        for &id in &ids {
+            if let Some(b) = self.body_mut(id) {
+                let at = b.pos;
+                b.impulse([dir[0] * power, dir[1] * power + power * 0.35], at);
+            }
+        }
+        for p in &mut self.particles {
+            if p.pos[0] >= box_.0[0] && p.pos[0] <= box_.1[0] && p.pos[1] >= box_.0[1] && p.pos[1] <= box_.1[1] {
+                p.vel = [p.vel[0] + dir[0], p.vel[1] + dir[1] + 0.3];
+            }
+        }
+        (ids.len(), specks)
+    }
+
     /// A body at rest becomes cells again: a log in the playfield if it came
     /// down on the ground, back into the background if something in the
     /// background holds it (leaning on another tree). Leaves still on it
@@ -1670,13 +1805,13 @@ impl World {
         let cells: Vec<(CellPos, Cell)> = body.world_cells().collect();
         for (p, c) in cells {
             if front {
-                let Some(f) = self.get(p) else { continue };
-                let kind = if f.is_air() { Kind::Empty } else { mats.phys(f.material).kind };
-                match kind {
-                    Kind::Empty | Kind::Gas | Kind::Fire | Kind::Plant => {}
+                // (Sunk a little into what it rests on: a cell that meets
+                // something solid goes just above it, not lost.)
+                let open = |w: &World, q: CellPos| w.get(q).map(|f| (f, if f.is_air() { Kind::Empty } else { mats.phys(f.material).kind })).filter(|(_, k)| matches!(k, Kind::Empty | Kind::Gas | Kind::Fire | Kind::Plant | Kind::Liquid));
+                let Some((p, (f, kind))) = (0..=4).map(|dy| p.offset(0, dy)).find_map(|q| open(self, q).map(|o| (q, o))) else { continue };
+                if kind == Kind::Liquid {
                     // Water it lands in is pushed up out of the way, not lost.
-                    Kind::Liquid => self.particles.push(Particle::new(center_of(p), [0.0, 0.6], f, 120, Landing::Settle)),
-                    _ => continue,
+                    self.particles.push(Particle::new(center_of(p), [0.0, 0.6], f, 120, Landing::Settle));
                 }
                 let mut c = c;
                 c.flags &= !flags::LOOSE;

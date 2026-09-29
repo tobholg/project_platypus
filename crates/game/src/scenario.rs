@@ -266,7 +266,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
-            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script))
+            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3616,6 +3616,100 @@ fn goldheap_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut queue: ResMu
         2 => {
             let c = state.1;
             k.body.pos.x = c.x - 40.0;
+        }
+        _ => {}
+    }
+}
+
+/// `kick` (arena world): a log of wood, a heap of sand and a TNT barrel,
+/// each kicked in turn from its left; then a kick into the floor.
+/// Logs where each went.
+#[allow(clippy::too_many_arguments)]
+fn kick_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut cursor: ResMut<CursorOverride>,
+    mut kicks: MessageWriter<crate::kick::Kick>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    others: Query<(&Kinematics, Option<&crate::actors::Creature>), Without<LocalPlayer>>,
+    mut state: Local<u8>,
+) {
+    if s.name != "kick" {
+        return;
+    }
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let Ok(mut k) = player.single_mut() else { return };
+    let mut stand = |k: &mut Kinematics, x: f32| {
+        k.body.pos = Vec2::new(x, floor as f32 + k.body.half.y);
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+        cursor.0 = Some(Vec2::new(x + 60.0, floor as f32 + 8.0));
+    };
+    let mats = sim.materials().clone();
+    let (wood, sand) = (mats.expect_id("wood"), mats.expect_id("sand"));
+    let span = |sim: &SimWorld, m, x0: i32, x1: i32| {
+        let xs: Vec<i32> = (floor - 10..floor + 60).flat_map(|y| (x0..x1).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).map(|(x, _)| x).collect();
+        (xs.len(), xs.iter().copied().min().unwrap_or(0), xs.iter().copied().max().unwrap_or(0))
+    };
+    match *state {
+        0 if t > 0.5 => {
+            // A log (30 × 5) on the floor at 640; sand at 760; a barrel
+            // at 860.
+            for x in 640..670 {
+                for y in floor..floor + 5 {
+                    sim.world.set(CellPos::new(x, y), platypus_sim::Cell::new(wood, 128));
+                }
+            }
+            sim.queue(WorldEdit::Paint { center: CellPos::new(765, floor + 4), radius: 4, material: sand, overwrite: false });
+            crate::actors::creature::spawn_creature(&mut commands, "tnt_barrel", Vec2::new(868.0, floor as f32), |_| {});
+            stand(&mut k, 630.0);
+            *state = 1;
+        }
+        1 if t > 1.5 => {
+            info!("kick: the log: {:?} (cells, from x, to x)", span(&sim, wood, 560, 900));
+            kicks.write(crate::kick::Kick);
+            *state = 2;
+        }
+        2 if t > 3.5 => {
+            info!("kick: the log after: {:?}", span(&sim, wood, 560, 1000));
+            stand(&mut k, 757.0);
+            *state = 3;
+        }
+        3 if t > 4.0 => {
+            info!("kick: the sand: {:?}", span(&sim, sand, 700, 900));
+            kicks.write(crate::kick::Kick);
+            *state = 4;
+        }
+        4 if t > 6.0 => {
+            info!("kick: the sand after: {:?}", span(&sim, sand, 700, 1000));
+            stand(&mut k, 856.0);
+            *state = 5;
+        }
+        5 if t > 6.5 => {
+            let barrel = others.iter().find(|(_, c)| c.is_some_and(|c| c.kind == "tnt_barrel")).map(|(k, ..)| k.body.pos.round());
+            info!("kick: the barrel at {barrel:?}");
+            kicks.write(crate::kick::Kick);
+            *state = 6;
+        }
+        6 if t > 8.0 => {
+            let barrel = others.iter().find(|(_, c)| c.is_some_and(|c| c.kind == "tnt_barrel")).map(|(k, ..)| k.body.pos.round());
+            info!("kick: the barrel after: {barrel:?}");
+            // (Into bare floor: nothing to move.)
+            stand(&mut k, 580.0);
+            *state = 7;
+        }
+        7 if t > 8.5 => {
+            let (n, ..) = span(&sim, mats.expect_id("stone"), 560, 620);
+            info!("kick: the floor: {n} cells of stone about");
+            kicks.write(crate::kick::Kick);
+            *state = 8;
+        }
+        8 if t > 9.5 => {
+            let (n, ..) = span(&sim, mats.expect_id("stone"), 560, 620);
+            info!("kick: the floor after: {n}");
+            *state = 9;
         }
         _ => {}
     }

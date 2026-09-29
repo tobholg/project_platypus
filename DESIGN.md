@@ -805,7 +805,10 @@ touched), instead of turning back into cells, so it can be moved: kicked,
 pushed and lifted by force and gravity magic (the well, the force wand;
 later a telekinesis spell that holds one), rolled, knocked by blasts,
 crushed under. Objects are saved with their chunk. (Big settled
-landslides still become cells: a size limit decides.)
+landslides still become cells: a size limit decides.) *As built (SPEC
+§3.11)*: an object at rest *is* cells, a thing by its material (`object`):
+kicked or pushed, its connected piece lifts out as a body again; so a
+hundred sleeping objects cost nothing and are saved as the world is.
 
 **Boulders and falling rock.** Rock pieces as bodies; round ones roll
 down slopes. **Fracture**: an impact, a fall, a blow or a blast past a

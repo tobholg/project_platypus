@@ -105,10 +105,11 @@ Done when: gold flows from fights and chests and never disappears except
 as designed.
 
 **4. `matter`: metals, casting, objects, boulders, the kick (DESIGN §13.1).**
-1. Objects: a free piece stays a sleeping rigid body at rest (under a size
-   limit), waking when touched; bodies hit creatures (push, hurt by
-   momentum) and each other; saved with their chunk (version 4).
-2. The kick (F): an impulse by mass to objects, items, gold, bodies,
+1. ✅ Objects: built simpler than planned (SPEC §3.11): at rest an object is
+   cells (saved, stood on, free), a thing by its material (`object`); a
+   kick or a push lifts its connected piece out as a body, and one that
+   loses its hold falls whole. Bodies already hurt creatures (`crush`).
+2. ✅ The kick (F): an impulse by mass to objects, items, gold, bodies,
    rubble, particles, barrels; a shove to small creatures.
 3. Force and gravity magic move objects (the well lifts them, the force
    wand throws them).

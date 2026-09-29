@@ -192,6 +192,12 @@ pub struct MaterialDef {
     /// liquid (gold: nothing is lost).
     #[serde(default)]
     pub flung: bool,
+    /// A piece of it is a thing, not ground (a log, a casting, a boulder):
+    /// kicked or pushed by force, the piece (its connected cells, up to
+    /// `OBJECT_MAX`) lifts out whole as a rigid body; losing its hold, it
+    /// falls whole instead of crumbling. At rest it's cells again.
+    #[serde(default)]
+    pub object: bool,
     /// How deep its glow glimmers: small patches swell from nearly dark to
     /// full and back, each on its own quick cycle (gems, crystals).
     /// Rendering only.
@@ -332,6 +338,8 @@ pub struct MatPhys {
     pub living: bool,
     /// A blast throws it whole (`MaterialDef::flung`).
     pub flung: bool,
+    /// A piece of it is a thing (`MaterialDef::object`).
+    pub object: bool,
     /// See `MaterialDef::platform`.
     pub platform: bool,
     /// See `MaterialDef::sticky`.
@@ -544,6 +552,7 @@ impl MaterialTable {
                 grows: d.grows,
                 living: d.living,
                 flung: d.flung,
+                object: d.object,
                 platform: d.platform,
                 sticky: d.sticky,
                 slippery: d.slippery,

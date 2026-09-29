@@ -423,6 +423,61 @@ fn a_blast_throws_gold_whole() {
     assert!(spread.1 - spread.0 > 20, "thrown about: x {spread:?}");
 }
 
+/// Objects (`object` materials: wood): a kick lifts the log whole and sends
+/// it along, and it lands whole; one whose prop is dug away falls whole (a
+/// body, not rubble); ground (stone) doesn't lift.
+#[test]
+fn objects_are_kicked_and_fall_whole() {
+    let mut w = boxed_world(4, 2, 15);
+    let m = w.materials().clone();
+    let (wood, stone) = (m.expect_id("wood"), m.expect_id("stone"));
+    let settle = |w: &mut World| {
+        for _ in 0..3_000 {
+            w.step();
+            if w.bodies().is_empty() && w.particles().is_empty() {
+                return;
+            }
+        }
+        panic!("still moving");
+    };
+    let span = |w: &World| {
+        let xs: Vec<i32> = w.chunks().flat_map(|c| (0..CHUNK).flat_map(move |y| (0..CHUNK).map(move |x| (c, x, y)))).filter(|(c, x, y)| c.get(*x as usize, *y as usize).material == wood).map(|(c, x, _)| c.pos.origin().x + x).collect();
+        (xs.len(), xs.iter().copied().min().unwrap_or(0))
+    };
+    // A log on the floor.
+    for x in 40..70 {
+        for y in 1..6 {
+            w.set(CellPos::new(x, y), Cell::new(wood, 128));
+        }
+    }
+    let (n, x0) = span(&w);
+    assert_eq!(w.kick(CellPos::new(34, 1), CellPos::new(42, 8), [1.6, 0.4], 300.0).0, 1, "the log lifts");
+    settle(&mut w);
+    let (after, x1) = span(&w);
+    assert_eq!(after, n, "it lands whole");
+    assert!(x1 > x0 + 10, "and further on: {x0} -> {x1}");
+    // Ground doesn't lift.
+    assert!(w.lift(CellPos::new(100, 0)).is_none(), "the stone floor stays");
+    // A log on a stone post: the post dug away, it falls whole.
+    for y in 1..20 {
+        w.set(CellPos::new(160, y), Cell::new(stone, 0));
+    }
+    for x in 150..171 {
+        for y in 20..24 {
+            w.set(CellPos::new(x, y), Cell::new(wood, 128));
+        }
+    }
+    let before = span(&w).0;
+    // (The post's foot: what's left of it hangs from the log and comes too.)
+    w.apply_edit(&WorldEdit::Dig { center: CellPos::new(160, 6), radius: 5, max_hardness: 250 });
+    for _ in 0..3 {
+        w.step();
+    }
+    assert!(!w.bodies().is_empty(), "the log comes away as a body");
+    settle(&mut w);
+    assert_eq!(span(&w).0, before, "and lands whole");
+}
+
 #[test]
 fn igniting_burns_flammables_only() {
     let mut w = boxed_world(1, 1, 13);
@@ -661,14 +716,15 @@ fn a_methane_pocket_goes_up_in_a_chain_of_explosions() {
     assert!(reported >= 3, "detonations are reported ({reported})");
 }
 
-/// Every non-loose solid cell must be attached (edge-connected through solids)
-/// to the floor row or a wall; returns the ones that aren't.
+/// Every non-loose solid cell must be held up (edge-connected to the floor
+/// row or a wall through what bears weight: solids, and the powder, liquid
+/// and rubble a fallen log may lie on); returns the ones that aren't.
 fn floating_solids(w: &World, x0: i32, x1: i32, y1: i32) -> Vec<(i32, i32)> {
+    use platypus_sim::Kind;
     use platypus_sim::cell::flags::LOOSE;
     let m = w.materials();
-    let solid = |x: i32, y: i32| {
-        w.get(CellPos::new(x, y)).is_some_and(|c| m.phys(c.material).kind == platypus_sim::Kind::Static && c.flags & LOOSE == 0)
-    };
+    let solid = |x: i32, y: i32| w.get(CellPos::new(x, y)).is_some_and(|c| m.phys(c.material).kind == Kind::Static && c.flags & LOOSE == 0);
+    let holds = |x: i32, y: i32| w.get(CellPos::new(x, y)).is_some_and(|c| !c.is_air() && matches!(m.phys(c.material).kind, Kind::Static | Kind::Powder | Kind::Liquid));
     let mut attached = std::collections::HashSet::new();
     let mut stack: Vec<(i32, i32)> = (x0..x1).map(|x| (x, 0)).filter(|&(x, y)| solid(x, y)).collect();
     while let Some((x, y)) = stack.pop() {
@@ -677,7 +733,7 @@ fn floating_solids(w: &World, x0: i32, x1: i32, y1: i32) -> Vec<(i32, i32)> {
         }
         for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
             let (nx, ny) = (x + dx, y + dy);
-            if nx >= x0 && nx < x1 && ny >= 0 && ny < y1 && solid(nx, ny) && !attached.contains(&(nx, ny)) {
+            if nx >= x0 && nx < x1 && ny >= 0 && ny < y1 && holds(nx, ny) && !attached.contains(&(nx, ny)) {
                 stack.push((nx, ny));
             }
         }

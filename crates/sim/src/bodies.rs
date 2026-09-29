@@ -18,6 +18,11 @@ use crate::material::{Kind, MaterialTable};
 
 /// Detached pieces at least this big become bodies; smaller ones crumble.
 pub const BODY_MIN_CELLS: usize = 64;
+/// Objects (`MaterialDef::object`) as small as this still come away whole.
+pub const OBJECT_MIN_CELLS: usize = 4;
+/// Biggest piece that lifts out as an object (bigger is ground: a kick
+/// into a mountain does nothing).
+pub const OBJECT_MAX: usize = 2_500;
 /// Cells per tick²; the same as particles and creatures.
 const GRAVITY: f32 = crate::particles::GRAVITY;
 /// Fastest a boundary cell may move per substep (cells), so it can't skip
@@ -291,6 +296,20 @@ impl Body {
 
     pub fn is_empty(&self) -> bool {
         self.hull.is_empty()
+    }
+
+    /// Its mass (cells; leaves count less).
+    pub fn mass(&self) -> f32 {
+        1.0 / self.inv_mass.max(1e-6)
+    }
+
+    /// An impulse (mass × cells/tick) at world point `at`: moved and spun
+    /// by its mass.
+    pub fn impulse(&mut self, j: [f32; 2], at: [f32; 2]) {
+        let r = [at[0] - self.pos[0], at[1] - self.pos[1]];
+        self.apply(r, j);
+        // (Kicked awake: it isn't at rest any more.)
+        self.still = 0;
     }
 
     /// One tick. `solid` says what a world cell is to the body.
