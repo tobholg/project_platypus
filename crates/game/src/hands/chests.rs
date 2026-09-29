@@ -122,8 +122,9 @@ pub struct Chests {
     pub open: Option<u64>,
     pub open_name: String,
     tables: Vec<LootTable>,
-    /// Loot depths are written for the large world; others scale them.
-    depth_scale: f32,
+    /// Loot depths are written for the reference world (`medium`): the
+    /// world measures a depth as that one would (`reference_depth`).
+    world: Option<std::sync::Arc<dyn platypus_worldgen::ChunkGenerator>>,
     placed: u64,
     art: Handle<Image>,
     /// Gear found in chests is rolled (`gear::roll`), with the luck of
@@ -139,7 +140,7 @@ impl Plugin for ChestsPlugin {
         let file: LootFile = load_ron(&data_path("loot.ron")).unwrap_or_else(|e| panic!("{e}"));
         let mut tables = file.tables;
         tables.sort_by_key(|t| t.deeper_than.unwrap_or(i32::MIN));
-        app.insert_resource(Chests { tables, depth_scale: 1.0, ..default() })
+        app.insert_resource(Chests { tables, ..default() })
             .add_systems(Startup, setup)
             .add_systems(Update, (open_chest, take_all, close_far))
             .add_systems(FixedUpdate, batter.in_set(crate::world::TickSet::Bodies).after(crate::props::fly));
@@ -148,8 +149,7 @@ impl Plugin for ChestsPlugin {
 
 fn setup(sim: Res<SimWorld>, rules: Res<crate::gear::GearRules>, mut chests: ResMut<Chests>, mut images: ResMut<Assets<Image>>) {
     chests.rarities = rules.rarities.clone();
-    let (lo, hi) = sim.generator.bounds();
-    chests.depth_scale = ((hi.y - lo.y + 1) * platypus_sim::CHUNK) as f32 / 16_384.0;
+    chests.world = Some(sim.generator.clone());
     let (w, h) = CHEST_SIZE;
     let data: Vec<u8> = ART.iter().flat_map(|row| row.chars().flat_map(art_color)).collect();
     assert_eq!(data.len(), (w * h * 4) as usize, "the chest's picture is {w} × {h}");
@@ -232,10 +232,16 @@ impl Chests {
         ));
     }
 
+    /// How deep `y` is, as the reference world measures it (loot depths
+    /// are written for it).
+    fn depth(generator: &Option<std::sync::Arc<dyn platypus_worldgen::ChunkGenerator>>, world: &World, y: i32) -> f32 {
+        generator.as_ref().and_then(|g| g.reference_depth(y)).unwrap_or((world.climate().sea_level - y) as f32)
+    }
+
     /// A chest's contents, rolling them the first time.
     pub fn contents(&mut self, key: u64, world: &World, items: &Items) -> &mut Inventory {
         let stash = self.known.entry(key).or_insert(Stash { origin: CellPos::new(0, 0), contents: None });
-        let depth = ((world.climate().sea_level - stash.origin.y) as f32 / self.depth_scale) as i32;
+        let depth = Self::depth(&self.world, world, stash.origin.y) as i32;
         let table = self.tables.iter().rev().find(|t| t.deeper_than.is_some_and(|d| depth >= d));
         let origin = stash.origin;
         let found = Found { rarities: &self.rarities, level: item_level(depth), luck: self.luck };
@@ -271,7 +277,7 @@ impl Chests {
 
     /// The item level of what's found at `at` (the depth, as a chest's).
     pub fn level_at(&self, world: &World, at: Vec2) -> u8 {
-        item_level(((world.climate().sea_level as f32 - at.y) / self.depth_scale) as i32)
+        item_level(Self::depth(&self.world, world, at.y as i32) as i32)
     }
 
     /// Roll a creature's loot table (by name) into `inv`.

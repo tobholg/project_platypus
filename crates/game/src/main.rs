@@ -2,7 +2,9 @@
 //!
 //! Environment:
 //! - `PLATYPUS_SEED`      world seed (default 1)
-//! - `PLATYPUS_WORLD`     `terrain` (default), `small`, `flat` (an empty box) or
+//! - `PLATYPUS_WORLD`     `large` (default: 131 072 × 32 768 cells), `medium`
+//!   (the reference world, a quarter as wide and half as deep), `small`,
+//!   `flat` (an empty box) or
 //!   `arena` (the sandbox: dummies, time controls, overlays, the art editor)
 //! - `PLATYPUS_SCENARIO`  scripted perf run, see `scenario.rs`
 //! - `PLATYPUS_SAVE`      the save to use (default: world and seed, `large-1`;
@@ -83,6 +85,7 @@ fn main() {
         Ok("flat") => Arc::new(FlatGen { width_chunks: 64, height_chunks: 24, floor: 200, stone: materials.expect_id("stone") }),
         // PLATYPUS_WORLD=small: the small preset (quicker to look around).
         Ok("small") => Arc::new(TerrainGen::new(seed, Preset::Small, &materials).with_lairs(&lairs(), &materials)),
+        Ok("medium") => Arc::new(TerrainGen::new(seed, Preset::Medium, &materials).with_lairs(&lairs(), &materials)),
         _ => Arc::new(TerrainGen::new(seed, Preset::Large, &materials).with_lairs(&lairs(), &materials)),
     };
     let spawn = generator.spawn_point();

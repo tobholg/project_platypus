@@ -54,6 +54,12 @@ pub struct Weather {
     /// Forced weather per column (dev tools, spells): +1 storm, -1 clear.
     /// Moves with the air and fades back to 0.
     bias: Vec<f32>,
+    /// The columns that are simulated (inclusive; none: all of them): the
+    /// players' neighbourhood (`set_window`), so a wide world's weather
+    /// costs no more than a narrow one's. The rest keep what they had and
+    /// catch up as they come back into it. (The world clock's coarse
+    /// weather takes over outside it, DESIGN §13.)
+    window: Option<(usize, usize)>,
 }
 
 /// Columns whose shape is recomputed per step: all of them every this many steps.
@@ -86,6 +92,7 @@ impl Weather {
             rain: vec![0.0; cols],
             shapes: Vec::new(),
             bias: vec![0.0; cols],
+            window: None,
         };
         w.shapes = (0..cols).map(|c| w.shape(c, 0)).collect();
         // Start in the weather the seed has for tick 0, not a clear sky.
@@ -95,6 +102,19 @@ impl Weather {
             }
         }
         w
+    }
+
+    /// Simulate only the columns over world x `x0..=x1` (clamped to the
+    /// world); the rest wait.
+    pub fn set_window(&mut self, x0: i32, x1: i32) {
+        let hi = self.cols as i32 - 1;
+        let (a, b) = ((x0 / TEXEL).clamp(0, hi), (x1 / TEXEL).clamp(0, hi));
+        self.window = Some((a.min(b) as usize, a.max(b) as usize));
+    }
+
+    /// The columns simulated, as a range.
+    fn span(&self) -> (usize, usize) {
+        self.window.unwrap_or((0, self.cols - 1))
     }
 
     /// Width the field wraps at (cells).
@@ -217,7 +237,9 @@ impl Weather {
             self.drift(tick, wind);
         }
         let mut out = Vec::new();
-        for c in (lane..cols).step_by(STEP_EVERY as usize) {
+        let (lo, hi) = self.span();
+        let first = lo + (lane + STEP_EVERY as usize - lo % STEP_EVERY as usize) % STEP_EVERY as usize;
+        for c in (first..=hi.min(cols - 1)).step_by(STEP_EVERY as usize) {
             // Vapour rising from below spreads through the lower half of the
             // band (all into one row, it piled up as a thin bright bar).
             let fed = std::mem::take(&mut self.fed[c]);
@@ -273,8 +295,10 @@ impl Weather {
         for b in &mut self.bias {
             *b *= BIAS_FADE;
         }
-        let phase = (tick / STEP_EVERY) % SHAPE_REFRESH;
-        for c in (phase as usize..cols).step_by(SHAPE_REFRESH as usize) {
+        let phase = ((tick / STEP_EVERY) % SHAPE_REFRESH) as usize;
+        let (lo, hi) = self.span();
+        let first = lo + (phase + SHAPE_REFRESH as usize - lo % SHAPE_REFRESH as usize) % SHAPE_REFRESH as usize;
+        for c in (first..=hi.min(cols - 1)).step_by(SHAPE_REFRESH as usize) {
             self.shapes[c] = self.shape(c, tick);
         }
     }
@@ -410,6 +434,22 @@ mod tests {
             w.step(t, 0.0);
         }
         assert!((0..w.rows).all(|r| w.moisture[r * w.cols + c] < CLOUD_AT), "and stays clear for a while");
+    }
+
+    #[test]
+    fn only_the_window_is_simulated() {
+        let mut w = weather();
+        w.set_window(4_000, 6_000);
+        let before = w.moisture.clone();
+        let mut rained_outside = false;
+        for t in 1..=3_000 {
+            rained_outside |= w.step(t, 0.0).iter().any(|p| !(4_000..=6_000).contains(&p.x));
+        }
+        let (a, b) = (4_000 / TEXEL as usize, 6_000 / TEXEL as usize);
+        let changed = |c: usize| (0..w.rows).any(|r| w.moisture[r * w.cols + c] != before[r * w.cols + c]);
+        assert!(!rained_outside, "no rain out of the window");
+        assert!((0..a).chain(b + 1..w.cols).all(|c| !changed(c)), "outside it waits");
+        assert!((a..=b).any(changed), "inside it goes on");
     }
 
     #[test]

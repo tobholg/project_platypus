@@ -85,6 +85,11 @@ pub struct Spike {
     pub tip: (f32, f32),
 }
 
+/// A chamber's room, floor to ceiling, as its ellipse has it, that a
+/// mushroom can count on: the real, ragged walls (0.68 to 1.32 of its
+/// radius) close the ceiling in to about this share.
+const ROOM_SURE: f32 = 0.85;
+
 /// A kind of giant mushroom.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Species {
@@ -243,8 +248,8 @@ pub struct Ground<'a> {
     pub deep_top: i32,
     /// Keep mouths away from here (the spawn).
     pub spawn_x: i32,
-    /// World size relative to the large world (scales counts).
-    pub scale: (f64, f64),
+    /// The world's size against the reference world's (sizes, counts).
+    pub scale: crate::plan::Scale,
 }
 
 impl Caves {
@@ -267,8 +272,9 @@ impl Caves {
         // Underground biomes: two of each (one in a small world), in the
         // caverns (toxic grottos in the deep too), apart from each other.
         let mut areas: Vec<Area> = Vec::new();
-        let (sw, sh) = (g.scale.0 as f32, g.scale.1 as f32);
-        let each = if sw < 0.5 { 1 } else { 2 };
+        let (sw, sh) = (g.scale.size.0 as f32, g.scale.size.1 as f32);
+        // (Two of each in the reference world, one at the least.)
+        let each = ((2.0 * g.scale.count).round() as usize).max(1);
         for zone in Zone::ALL {
             let mut placed = 0;
             for _ in 0..400 {
@@ -396,7 +402,7 @@ impl Caves {
 
         // Mouths: down from the surface into the nearest chamber, on dry land
         // away from the spawn.
-        let mouths = (40.0 * g.scale.0).round().max(4.0) as usize;
+        let mouths = (40.0 * g.scale.count).round().max(4.0) as usize;
         let mut made = 0;
         for n in 0..mouths * 20 {
             if made == mouths {
@@ -500,22 +506,31 @@ impl Caves {
                         let x = c.x + c.rx * u;
                         let floor = c.y - c.ry * (1.0 - u * u).sqrt();
                         let room = c.y + c.ry * (1.0 - u * u).sqrt() - floor;
+                        // (The chamber's real walls are ragged, 0.7 to 1.3 of
+                        // its radius: sized to the room the lowest ceiling
+                        // leaves, a mushroom never grows into the rock, where
+                        // the ceiling would hold it up; too short to be a
+                        // giant, it isn't one.)
+                        let room = room * ROOM_SURE;
                         if unit(&mut rng) < 0.55 {
-                            let h = (room * range(&mut rng, (0.45, 0.75))).clamp(24.0, 110.0);
+                            let h = (room * range(&mut rng, (0.45, 0.75))).min(110.0);
                             let cap = (h * range(&mut rng, (0.35, 0.55))).clamp(10.0, 42.0);
                             let lean = range(&mut rng, (-0.25, 0.25)) * h;
                             // Room to itself: its cap clear of the others' (so
                             // they don't grow together and hold each other up).
-                            if c.mushrooms.iter().any(|o| (o.x - x).abs() < cap + o.cap.max(8.0) + 6.0) {
+                            if h < 24.0 || c.mushrooms.iter().any(|o| (o.x - x).abs() < cap + o.cap.max(8.0) + 6.0) {
                                 continue;
                             }
                             c.mushrooms.push(Mushroom { species: Species::Parasol, x, foot: floor - 12.0, top: floor + h, stem: (cap / 6.0).clamp(2.0, 5.0), cap, lean });
                         } else {
                             for _ in 0..3 + (rng.next_u32() % 3) as usize {
                                 let x = x + range(&mut rng, (-14.0, 14.0));
-                                let h = (room * range(&mut rng, (0.2, 0.55))).clamp(14.0, 70.0);
+                                let h = (room * range(&mut rng, (0.2, 0.55))).min(70.0);
                                 let lean = range(&mut rng, (-0.15, 0.15)) * h;
-                                c.mushrooms.push(Mushroom { species: Species::Lantern, x, foot: floor - 12.0, top: floor + h, stem: 1.5, cap: range(&mut rng, (2.5, 5.0)), lean });
+                                let cap = range(&mut rng, (2.5, 5.0));
+                                if h >= 14.0 {
+                                    c.mushrooms.push(Mushroom { species: Species::Lantern, x, foot: floor - 12.0, top: floor + h, stem: 1.5, cap, lean });
+                                }
                             }
                         }
                     }

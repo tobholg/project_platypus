@@ -298,6 +298,11 @@ damage-number text entities in a big fight.
 
 ## Known issues
 
+- Worldgen, rare (seen in the 8× world's many more places, 2026-09-29):
+  small specks of rock float in the caverns (about one per three places
+  looked at); a fungus shelf grown from a wall can hold a felled giant
+  mushroom up; a crypt's ruin can stand in a lake's shallows.
+
 - Generated trees whose branches interlock with a neighbour's hold each other
   up: cut one and it stays standing. Physically right; the forest plan could
   keep wood apart (found by the felling test in the larger world).

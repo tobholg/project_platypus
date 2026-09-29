@@ -2,6 +2,8 @@
 //!
 //! `cargo run -p platypus_bench --release [-- scenario-name]`
 //! Prints a table and exits with status 1 if any scenario is over budget.
+//! The worlds are the `medium` preset (the reference world, what `large`
+//! was before it grew 8×), so the numbers stay comparable over time.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -51,7 +53,7 @@ fn time_ticks(world: &mut World, ticks: usize) -> (Duration, Duration, usize) {
 
 /// Real terrain around the surface after its initial collapse has settled.
 fn settled(m: &Arc<MaterialTable>) -> Outcome {
-    let g = TerrainGen::new(1234, Preset::Large, m);
+    let g = TerrainGen::new(1234, Preset::Medium, m);
     let mut w = World::new(1234, m.clone());
     w.set_climate(g.climate());
     let cx = 128;
@@ -73,7 +75,7 @@ fn settled(m: &Arc<MaterialTable>) -> Outcome {
 
 /// Deep underground: lava lakes, obsidian, gas pockets. Heat must settle too.
 fn deep(m: &Arc<MaterialTable>) -> Outcome {
-    let g = TerrainGen::new(1234, Preset::Large, m);
+    let g = TerrainGen::new(1234, Preset::Medium, m);
     let mut w = World::new(1234, m.clone());
     w.set_climate(g.climate());
     load_region(&mut w, &g, ChunkPos::new(122, 2), VIEW_W, VIEW_H);
@@ -119,14 +121,14 @@ fn avalanche(m: &Arc<MaterialTable>) -> Outcome {
 
 /// Cost of bringing a new column of chunks into view (generation + insert).
 fn streaming(m: &Arc<MaterialTable>) -> Outcome {
-    let g = TerrainGen::new(77, Preset::Large, m);
+    let g = TerrainGen::new(77, Preset::Medium, m);
     let cy = g.surface_at(64 * CHUNK) / CHUNK - VIEW_H / 2;
     stream_columns(m, &g, cy, "streaming", "at the surface")
 }
 
 /// The same deep underground (caverns: the most noise per cell).
 fn streaming_deep(m: &Arc<MaterialTable>) -> Outcome {
-    let g = TerrainGen::new(77, Preset::Large, m);
+    let g = TerrainGen::new(77, Preset::Medium, m);
     let (lo, hi) = g.plan().band_span(Band::Caverns);
     stream_columns(m, &g, (lo + hi) / 2 / CHUNK, "stream_deep", "in the caverns")
 }

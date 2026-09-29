@@ -136,6 +136,9 @@ fn step_cells(
 #[derive(Resource, Default)]
 pub struct FreshChunks(pub Vec<(platypus_sim::CellPos, platypus_worldgen::Spawn)>);
 
+/// Cells of weather simulated beyond the loaded chunks, either side.
+const WEATHER_MARGIN: i32 = 1_536;
+
 fn stream_chunks(
     mut sim: ResMut<SimWorld>,
     mut metrics: ResMut<SimMetrics>,
@@ -158,6 +161,12 @@ fn stream_chunks(
     let wanted = |p: ChunkPos, pad: i32| {
         rects.iter().any(|(lo, hi)| p.x >= lo.x - pad && p.y >= lo.y - pad && p.x <= hi.x + pad && p.y <= hi.y + pad)
     };
+    // The weather is simulated over the players and a good way round them
+    // (clouds are seen far off); the rest of the world's waits.
+    let (x0, x1) = rects.iter().fold((i32::MAX, i32::MIN), |(a, b), (lo, hi)| (a.min(lo.x * CHUNK), b.max((hi.x + 1) * CHUNK)));
+    if let Some(w) = sim.world.weather_mut() {
+        w.set_window(x0 - WEATHER_MARGIN, x1 + WEATHER_MARGIN);
+    }
 
     // Unload.
     let stale: Vec<ChunkPos> =

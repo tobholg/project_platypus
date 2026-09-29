@@ -15,37 +15,41 @@ use crate::islands::{self, Island};
 use crate::caves::{self, Caves};
 use crate::structures::{self, Structure, Structures};
 
-/// World sizes. `Large` is the world we play in; `Small` is quick to look at
-/// and to test with (the same world scaled down; small things like hills and
-/// trees keep their size).
+/// World sizes. `Large` is the world we play in (131 072 × 32 768 cells);
+/// `Medium` is the reference world the plan's sizes are written for (a
+/// quarter as wide, half as deep); `Small` is quick to look at and to test
+/// with (the reference scaled down; small things like hills and trees keep
+/// their size). Everything is sized from the preset (`Scale`): a bigger
+/// world has more of everything, not bigger things.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Preset {
     Small,
+    Medium,
     Large,
 }
 
 impl Preset {
+    pub const ALL: [Preset; 3] = [Preset::Small, Preset::Medium, Preset::Large];
+
     /// Size in chunks: (width, height).
     pub fn chunks(self) -> (i32, i32) {
         match self {
             Preset::Small => (128, 64),
-            Preset::Large => (512, 256),
+            Preset::Medium => (512, 256),
+            Preset::Large => (2_048, 512),
         }
     }
 
     pub fn name(self) -> &'static str {
         match self {
             Preset::Small => "small",
+            Preset::Medium => "medium",
             Preset::Large => "large",
         }
     }
 
     pub fn from_name(name: &str) -> Option<Preset> {
-        match name {
-            "small" => Some(Preset::Small),
-            "large" => Some(Preset::Large),
-            _ => None,
-        }
+        Preset::ALL.into_iter().find(|p| p.name() == name)
     }
 }
 
@@ -78,12 +82,57 @@ impl Band {
 }
 
 /// Where each band below the sky starts, in cells above (+) or below (−)
-/// sea level, in the large world; other heights scale them.
+/// sea level, in the reference world; smaller heights scale them.
 const BAND_TOPS: [i32; 6] = [2_500, 800, -200, -2_500, -7_000, -11_000];
-const LARGE_WIDTH: f64 = 32_768.0;
-const LARGE_HEIGHT: f64 = 16_384.0;
-/// Sea level, as a share of the world's height (a quarter from the top).
+/// The world the sizes here are written for (the `medium` preset). A smaller
+/// world is this one scaled down; a bigger one has more of everything, each
+/// the size it is here (`Scale`).
+const REF_WIDTH: f64 = 32_768.0;
+const REF_HEIGHT: f64 = 16_384.0;
+/// Sea level, as a share of the reference world's height (a quarter from
+/// the top).
 const SEA_LEVEL: f64 = 0.75;
+/// A world taller than the reference: this share of the extra height goes
+/// to the sky (over the peaks), the rest below the surface...
+const EXTRA_SKY: f64 = 0.2;
+/// ... shared out as the floors of the bands in `BAND_TOPS` sink: the
+/// underground a little taller, the caverns and the deep most, the
+/// underworld as it is.
+const EXTRA_BELOW: [f64; 6] = [0.0, 0.0, 0.0, 0.12, 0.56, 1.0];
+
+/// How a world's size compares with the reference world's.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Scale {
+    /// Sizes (a mountain, a biome's breadth, a lake, a chasm) across and
+    /// up: the world's share of the reference, never over 1. A bigger world
+    /// has more of each, not bigger ones.
+    pub size: (f64, f64),
+    /// Counts across the world (how many mountains, lakes, crypts...): its
+    /// width's share of the reference's (4 in `large`, ¼ in `small`).
+    pub count: f64,
+}
+
+impl Scale {
+    pub fn of(width: i32, height: i32) -> Scale {
+        let (w, h) = (width as f64 / REF_WIDTH, height as f64 / REF_HEIGHT);
+        Scale { size: (w.min(1.0), h.min(1.0)), count: w }
+    }
+}
+
+/// Sea level and the floors of the bands (`Band::ALL` order) for a world
+/// this tall: the reference's scaled down, or, taller, the reference's with
+/// the extra height shared out (`EXTRA_SKY`, `EXTRA_BELOW`).
+fn bands(height: i32, sy: f64) -> (i32, [i32; 7]) {
+    let extra = (height as f64 - REF_HEIGHT).max(0.0);
+    let above = REF_HEIGHT * (1.0 - SEA_LEVEL) * sy + extra * EXTRA_SKY;
+    let sea_level = height - above as i32;
+    let below = extra * (1.0 - EXTRA_SKY);
+    let mut floors = [0; 7];
+    for (i, top) in BAND_TOPS.iter().enumerate() {
+        floors[i] = sea_level + (*top as f64 * sy - EXTRA_BELOW[i] * below) as i32;
+    }
+    (sea_level, floors)
+}
 /// °C at sea level (before a biome's warmth).
 const SURFACE_TEMP: i32 = 15;
 /// Cells of climb per 1 °C colder (large world): 0 °C at +900 in a
@@ -99,7 +148,8 @@ const WARMER_AT_BOTTOM: i32 = 85;
 const TREE_LINE: i32 = 4;
 const CONIFER_LINE: i32 = -18;
 
-// Large-world sizes (scaled by width or height for smaller worlds).
+// Reference-world sizes (`Scale`: smaller worlds scale them down; bigger ones
+// keep them, and have more of each).
 const OCEAN_WIDTH: f64 = 1_600.0;
 const OCEAN_DEPTH: f64 = 380.0;
 const REGION_WIDTH: (f64, f64) = (1_800.0, 4_500.0);
@@ -196,13 +246,11 @@ impl WorldPlan {
         let mut rng = Rng::seeded(&[seed, 0x9A4B]);
         let (wc, hc) = preset.chunks();
         let (width, height) = (wc * CHUNK, hc * CHUNK);
-        let (sw, sh) = (width as f64 / LARGE_WIDTH, height as f64 / LARGE_HEIGHT);
-        let sea_level = (height as f64 * SEA_LEVEL) as i32;
+        let scale = Scale::of(width, height);
+        // (Sizes across and up, and counts across.)
+        let ((sw, sh), cw) = (scale.size, scale.count);
+        let (sea_level, band_floors) = bands(height, sh);
         let sea = sea_level as f64;
-        let mut band_floors = [0; 7];
-        for (i, top) in BAND_TOPS.iter().enumerate() {
-            band_floors[i] = sea_level + (*top as f64 * sh) as i32;
-        }
         let mid = width / 2;
 
         // Biome regions, laid out like Terraria's: a forest at the spawn, a
@@ -234,6 +282,21 @@ impl WorldPlan {
                 kinds[r] = Some(b);
             }
         }
+        // A world wider than the reference has one of each of the special
+        // biomes per reference's width: more tundra and jungle on their
+        // sides (and, below, more ranges, deep forests and deserts).
+        let each = cw.round().max(1.0) as usize;
+        for _ in 1..each {
+            for ((lo, hi), b) in [((cold.0, (cold.0 + cold.1).div_ceil(2)), Biome::Tundra), (((warm.0 + warm.1) / 2, warm.1), Biome::Jungle)] {
+                // (Apart from others of its kind: two side by side make one
+                // wide one, and a tundra twice as wide is a treeless waste.)
+                let near_kind = |r: usize| [r.wrapping_sub(1), r + 1].iter().any(|&q| q < n && kinds[q] == Some(b));
+                let choices: Vec<usize> = (lo..hi.min(n)).filter(|&r| kinds[r].is_none() && r.abs_diff(spawn) >= 2 && !near_kind(r)).collect();
+                if !choices.is_empty() {
+                    kinds[choices[(rng.next_u32() as usize) % choices.len()]] = Some(b);
+                }
+            }
+        }
         // A mountain range on the cold side, between the tundra and the
         // spawn; a deep forest anywhere else away from the spawn. Each takes a
         // free neighbour too, so they're wide.
@@ -250,15 +313,21 @@ impl WorldPlan {
                 kinds[next[(rng.next_u32() as usize) % next.len()]] = Some(b);
             }
         };
-        let range_choices = free_in(&kinds, cold.0, cold.1);
-        grow(&mut kinds, &mut rng, range_choices, Biome::Mountains);
-        let forest_choices = free_in(&kinds, 0, n);
-        grow(&mut kinds, &mut rng, forest_choices, Biome::DeepForest);
+        for _ in 0..each {
+            let range_choices = free_in(&kinds, cold.0, cold.1);
+            grow(&mut kinds, &mut rng, range_choices, Biome::Mountains);
+        }
+        for _ in 0..each {
+            let forest_choices = free_in(&kinds, 0, n);
+            grow(&mut kinds, &mut rng, forest_choices, Biome::DeepForest);
+        }
         // The desert: anywhere free, not next to the tundra or the range.
-        let cold_ones: Vec<usize> = (0..n).filter(|&r| matches!(kinds[r], Some(Biome::Tundra | Biome::Mountains))).collect();
-        let free: Vec<usize> = (0..n).filter(|&r| kinds[r].is_none() && cold_ones.iter().all(|&c| r.abs_diff(c) > 1)).collect();
-        if !free.is_empty() {
-            kinds[free[(rng.next_u32() as usize) % free.len()]] = Some(Biome::Desert);
+        for _ in 0..each {
+            let cold_ones: Vec<usize> = (0..n).filter(|&r| matches!(kinds[r], Some(Biome::Tundra | Biome::Mountains))).collect();
+            let free: Vec<usize> = (0..n).filter(|&r| kinds[r].is_none() && cold_ones.iter().all(|&c| r.abs_diff(c) > 1)).collect();
+            if !free.is_empty() {
+                kinds[free[(rng.next_u32() as usize) % free.len()]] = Some(Biome::Desert);
+            }
         }
         let temperate = [Biome::Forest, Biome::Plains, Biome::Forest, Biome::Swamp, Biome::Plains];
         for r in 0..n {
@@ -342,7 +411,7 @@ impl WorldPlan {
         // Big lake bowls in the gentler land (rain would fill them anyway).
         let land = |x: i32| matches!(biomes[x as usize], Biome::Plains | Biome::Forest | Biome::Swamp);
         let mut bowls: Vec<(i32, i32)> = Vec::new();
-        for _ in 0..(LAKE_BOWLS * sw).round().max(1.0) as usize {
+        for _ in 0..(LAKE_BOWLS * cw).round().max(1.0) as usize {
             for _try in 0..100 {
                 let half = (range(&mut rng, (400.0, 800.0)) * sw.max(0.4)) as i32;
                 let cx = ocean_w + half + (unit(&mut rng) * (width - 2 * (ocean_w + half)) as f64) as i32;
@@ -390,7 +459,7 @@ impl WorldPlan {
                 cx += (range(&mut rng, RANGE_STEP) * sw) as i32;
             }
         }
-        for _ in 0..(MOUNTAINS * sw).round().max(1.0) as usize {
+        for _ in 0..(MOUNTAINS * cw).round().max(1.0) as usize {
             for _try in 0..200 {
                 let half = (range(&mut rng, MOUNTAIN_HALF_WIDTH) * sw) as i32;
                 let peak = range(&mut rng, MOUNTAIN_PEAK) * sh;
@@ -400,8 +469,10 @@ impl WorldPlan {
                     break;
                 }
                 let cx = lo + (unit(&mut rng) * (hi - lo) as f64) as i32;
-                // Not in the deep forest or on a range (they have their own).
-                let own = |x: i32| matches!(biomes[x.clamp(0, width - 1) as usize], Biome::DeepForest | Biome::Mountains);
+                // Not in the deep forest or on a range (they have their own),
+                // nor on the tundra (lifted into the cold, its pine forest
+                // was a treeless waste).
+                let own = |x: i32| matches!(biomes[x.clamp(0, width - 1) as usize], Biome::DeepForest | Biome::Mountains | Biome::Tundra);
                 let clear = (cx - mid).abs() > half + (SPAWN_CLEAR * sw) as i32
                     && !own(cx - half) && !own(cx) && !own(cx + half)
                     // Ranges may run into each other (a joined range), but not stack.
@@ -434,7 +505,7 @@ impl WorldPlan {
         let (sky_lo, sky_hi) = (band_floors[0], height - 1);
         let islands = islands::plan(
             seed,
-            (ISLANDS * sw).round().max(2.0) as usize,
+            (ISLANDS * cw).round().max(2.0) as usize,
             (ocean_w, width - ocean_w),
             (sky_lo + (sky_hi - sky_lo) * 9 / 20, sky_hi - (sky_hi - sky_lo) / 8),
             (90.0 * sw.max(0.5), 240.0 * sw.max(0.5)),
@@ -443,7 +514,7 @@ impl WorldPlan {
         // Chasms: a few shafts from the lowland surface down into the deep,
         // away from the spawn, lakes and mountains, wandering as they fall.
         let mut chasms: Vec<Chasm> = Vec::new();
-        for k in 0..(CHASMS * sw).round().max(2.0) as usize {
+        for k in 0..(CHASMS * cw).round().max(2.0) as usize {
             for _try in 0..200 {
                 let x = ocean_w + 400 + (unit(&mut rng) * (width - 2 * ocean_w - 800) as f64) as i32;
                 let w = range(&mut rng, CHASM_WIDTH) * sw.max(0.5);
@@ -481,11 +552,11 @@ impl WorldPlan {
                 caverns_top: band_floors[3],
                 deep_top: band_floors[4],
                 spawn_x: mid,
-                scale: (sw, sh),
+                scale,
             },
         );
-        let mut list = crypts(seed, &surface, &water, &biomes, &chasms, (width, ocean_w, mid), (sw, sh), band_floors);
-        list.extend(castles(seed, &surface, &biomes, width, (sw, sh)));
+        let mut list = crypts(seed, &surface, &water, &biomes, &chasms, (width, ocean_w, mid), scale, band_floors);
+        list.extend(castles(seed, &surface, &biomes, width, scale));
         list.extend(sunken(&surface, &water, &biomes, sh));
         let structures = Structures::new(list);
 
@@ -580,6 +651,29 @@ impl WorldPlan {
     }
 
     /// The band a height lies in.
+    /// How deep `y` lies (cells below sea level, negative above it), as the
+    /// reference world measures it, band by band: the top of the caverns is
+    /// as deep as the reference's, however tall this world is. (Loot by
+    /// depth, and anything else tuned for the reference world.)
+    pub fn reference_depth(&self, y: i32) -> f32 {
+        let sy = Scale::of(self.width, self.height).size.1 as f32;
+        let f = &self.band_floors;
+        if y >= f[2] {
+            return (self.sea_level - y) as f32 / sy;
+        }
+        // (The floors of the surface, underground, caverns and deep bands,
+        // and the bottom, here and in the reference world.)
+        let here = [f[2], f[3], f[4], f[5], 0];
+        let there = [200.0, 2_500.0, 7_000.0, 11_000.0, REF_HEIGHT as f32 * SEA_LEVEL as f32];
+        for i in 0..4 {
+            if y >= here[i + 1] {
+                let t = (here[i] - y) as f32 / (here[i] - here[i + 1]).max(1) as f32;
+                return there[i] + (there[i + 1] - there[i]) * t;
+            }
+        }
+        there[4]
+    }
+
     pub fn band_at(&self, y: i32) -> Band {
         Band::ALL.into_iter().zip(self.band_floors).find(|&(_, floor)| y >= floor).map_or(Band::Underworld, |(b, _)| b)
     }
@@ -670,10 +764,11 @@ impl Chasm {
 /// from the spawn, the chasms and each other; a ruin on the surface over a
 /// shaft down to a grid of rooms in the underground.
 #[allow(clippy::too_many_arguments)]
-fn crypts(seed: u64, surface: &[i32], water: &[i32], biomes: &[Biome], chasms: &[Chasm], (width, ocean_w, mid): (i32, i32, i32), (sw, sh): (f64, f64), band_floors: [i32; 7]) -> Vec<Structure> {
+fn crypts(seed: u64, surface: &[i32], water: &[i32], biomes: &[Biome], chasms: &[Chasm], (width, ocean_w, mid): (i32, i32, i32), scale: Scale, band_floors: [i32; 7]) -> Vec<Structure> {
+    let ((sw, sh), cw) = (scale.size, scale.count);
     let mut rng = Rng::seeded(&[seed, 0xC7497]);
     let at = |x: i32| surface[x.clamp(0, width - 1) as usize];
-    let wanted = (CRYPTS * sw).round().max(2.0) as usize;
+    let wanted = (CRYPTS * cw).round().max(2.0) as usize;
     let spacing = (CRYPT_SPACING * sw.max(0.25)) as i32;
     let (surface_lo, surface_hi) = (band_floors[2], band_floors[1]);
     let mut out: Vec<Structure> = Vec::new();
@@ -706,7 +801,8 @@ fn crypts(seed: u64, surface: &[i32], water: &[i32], biomes: &[Biome], chasms: &
 /// cells): a keep between two
 /// towers, a gate and a stair down the mountainside, foundations to the
 /// rock where the ground falls away.
-fn castles(seed: u64, surface: &[i32], biomes: &[Biome], width: i32, (sw, sh): (f64, f64)) -> Vec<Structure> {
+fn castles(seed: u64, surface: &[i32], biomes: &[Biome], width: i32, scale: Scale) -> Vec<Structure> {
+    let ((sw, sh), cw) = (scale.size, scale.count);
     let mut rng = Rng::seeded(&[seed, 0xCA57]);
     let at = |x: i32| surface[x.clamp(0, width - 1) as usize];
     let small = sh < 0.5;
@@ -725,7 +821,7 @@ fn castles(seed: u64, surface: &[i32], biomes: &[Biome], width: i32, (sw, sh): (
         .filter(|&(_, hi, lo)| hi - lo <= 300)
         .collect();
     sites.sort_by_key(|&(_, hi, lo)| -(hi - 3 * (hi - lo)));
-    let wanted = (CASTLES * sw).round().max(1.0) as usize;
+    let wanted = (CASTLES * cw).round().max(1.0) as usize;
     let mut out: Vec<Structure> = Vec::new();
     for (x, hi, lo) in sites {
         if out.len() == wanted {
@@ -814,7 +910,10 @@ fn water_levels(surface: &[i32], biomes: &[Biome], rugged: &[f32], bowls: &[(i32
         if !bowl && hash(&[seed, 0x1A4E, start as u64]) % 256 >= chance {
             continue;
         }
-        let level = run.clone().map(|i| hold[i]).min().unwrap_or(0);
+        // (No higher than the ground either side of it, either: the rims
+        // the window saw can stand off from the run's ends, and a plain's
+        // hollow came out a film a cell over its own banks.)
+        let level = run.clone().map(|i| hold[i]).min().unwrap_or(0).min(surface[start - 1]).min(surface[x.min(n - 1)]);
         let floor = run.clone().map(|i| surface[i]).min().unwrap_or(level);
         let deepest = run.clone().map(|i| biomes[i].lake_depth()).fold(0.0, f64::max);
         // Deserts are dry, but for the odd oasis.
@@ -902,5 +1001,100 @@ fn massif(mountains: &mut [f64], rng: &mut Rng, ridge: &Fbm<Perlin>, warp: &Perl
         }
         let i = x.clamp(0, width - 1) as usize;
         mountains[i] = mountains[i].max(m);
+    }
+}
+
+#[cfg(test)]
+mod scale_tests {
+    use super::*;
+    use crate::structures::StructureKind;
+
+    /// What a world has, per reference width (or, the caves, per reference
+    /// area underground).
+    fn census(p: &WorldPlan) -> Vec<(&'static str, f64)> {
+        let per_width = REF_WIDTH / p.width as f64;
+        let runs = |b: Biome| {
+            let mut n = 0;
+            for x in 1..p.width {
+                if p.biome_at(x) == b && p.biome_at(x - 1) != b {
+                    n += 1;
+                }
+            }
+            n as f64
+        };
+        let (lo, hi) = (p.band_span(Band::Deep).0, p.band_span(Band::Underground).1);
+        let ref_under = REF_HEIGHT * (SEA_LEVEL - (1.0 - 11_000.0 / 12_288.0) * SEA_LEVEL);
+        let kinds = |k: StructureKind| p.structures.list.iter().filter(|s| s.kind == k).count() as f64;
+        let mut regions = 0;
+        for x in 1..p.width {
+            if p.biome_at(x) != p.biome_at(x - 1) {
+                regions += 1;
+            }
+        }
+        vec![
+            ("biome regions", regions as f64 * per_width),
+            ("tundras", runs(Biome::Tundra) * per_width),
+            ("jungles", runs(Biome::Jungle) * per_width),
+            ("deserts", runs(Biome::Desert) * per_width),
+            ("mountain ranges", runs(Biome::Mountains) * per_width),
+            ("chasms", p.chasms.len() as f64 * per_width),
+            ("sky islands", p.islands.len() as f64 * per_width),
+            ("crypts", kinds(StructureKind::Crypt) * per_width),
+            ("castles", kinds(StructureKind::Castle) * per_width),
+            ("cave chambers", p.caves.chambers.len() as f64 * (REF_WIDTH * ref_under) / (p.width as f64 * (hi - lo) as f64)),
+        ]
+    }
+
+    #[test]
+    fn a_bigger_world_has_more_of_everything_not_bigger_things() {
+        let (medium, large) = (WorldPlan::new(3, Preset::Medium), WorldPlan::new(3, Preset::Large));
+        let (m, l) = (census(&medium), census(&large));
+        for ((name, a), (_, b)) in m.iter().zip(&l) {
+            eprintln!("{name}: medium {a:.1}, large {b:.1} (per reference width)");
+            assert!(*a > 0.0, "the medium world has {name}");
+            let ratio = b / a;
+            assert!((0.5..=2.0).contains(&ratio), "{name}: as dense in the large world as the medium ({a:.1} vs {b:.1})");
+        }
+        // The same sizes: its highest peak and deepest lake like the medium's.
+        let top = |p: &WorldPlan| (0..p.width).map(|x| p.surface_at(x)).max().unwrap() - p.sea_level;
+        let (tm, tl) = (top(&medium), top(&large));
+        assert!((tl as f64) < tm as f64 * 1.4 && (tl as f64) > tm as f64 * 0.6, "peaks as high: {tm} vs {tl}");
+        // Taller: most of the extra depth under the surface, some over it.
+        let span = |p: &WorldPlan, b: Band| {
+            let (lo, hi) = p.band_span(b);
+            hi - lo
+        };
+        assert!(span(&large, Band::Caverns) > span(&medium, Band::Caverns) * 3 / 2, "taller caverns");
+        assert!(span(&large, Band::Deep) > span(&medium, Band::Deep) * 3 / 2, "a taller deep");
+        assert!(span(&large, Band::Sky) > span(&medium, Band::Sky), "more sky");
+        assert_eq!(span(&large, Band::Peaks), span(&medium, Band::Peaks), "the mountains' band as it was");
+    }
+
+    #[test]
+    fn depths_are_measured_as_the_reference_world_would() {
+        for preset in Preset::ALL {
+            let p = WorldPlan::new(3, preset);
+            // The top of each band below the surface is as deep as the
+            // reference's, whatever the size.
+            for (band, depth) in [(Band::Caverns, 2_500.0), (Band::Deep, 7_000.0), (Band::Underworld, 11_000.0)] {
+                let top = p.band_span(band).1;
+                let d = p.reference_depth(top);
+                assert!((d - depth).abs() < 20.0, "{}: the top of the {} at {d}, not {depth}", preset.name(), band.name());
+            }
+        }
+        // The reference world: its own depth.
+        let m = WorldPlan::new(3, Preset::Medium);
+        for d in [-300, 0, 150, 1_000, 4_000, 9_000, 12_000] {
+            assert!((m.reference_depth(m.sea_level - d) - d as f32).abs() < 1.0, "{d}");
+        }
+    }
+
+    #[test]
+    fn a_small_world_is_the_reference_scaled_down_with_all_of_it() {
+        let small = WorldPlan::new(3, Preset::Small);
+        for (name, n) in census(&small) {
+            assert!(n > 0.0, "the small world has {name}");
+        }
+        assert_eq!(Scale::of(small.width, small.height), Scale { size: (0.25, 0.25), count: 0.25 });
     }
 }

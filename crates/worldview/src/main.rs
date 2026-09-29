@@ -4,7 +4,7 @@
 //! ```text
 //! cargo run -p platypus_worldview --release -- [options]
 //!   --seed N              world seed (default 1)
-//!   --preset small|large  world size (default large)
+//!   --preset small|medium|large  world size (default large)
 //!   --scale N             world cells per pixel (default: the whole world ~2048 px wide)
 //!   --region X,Y,W,H      only this rectangle (world cells; y up), rasterised
 //!                         exactly as the game generates it (trees, shades)
@@ -42,7 +42,7 @@ fn parse_args() -> Result<Args, String> {
             "--seed" => a.seed = value()?.parse().map_err(|e| format!("--seed: {e}"))?,
             "--preset" => {
                 let v = value()?;
-                a.preset = Preset::from_name(&v).ok_or(format!("--preset: {v}? (small, large)"))?;
+                a.preset = Preset::from_name(&v).ok_or(format!("--preset: {v}? (small, medium, large)"))?;
             }
             "--scale" => a.scale = Some(value()?.parse().map_err(|e| format!("--scale: {e}"))?),
             "--region" => {
@@ -65,7 +65,7 @@ fn main() {
             if !e.is_empty() {
                 eprintln!("{e}");
             }
-            eprintln!("usage: platypus-worldview [--seed N] [--preset small|large] [--scale N] [--region X,Y,W,H] [--out FILE]");
+            eprintln!("usage: platypus-worldview [--seed N] [--preset small|medium|large] [--scale N] [--region X,Y,W,H] [--out FILE]");
             std::process::exit(2);
         }
     };

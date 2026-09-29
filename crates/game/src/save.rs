@@ -41,8 +41,10 @@ use crate::hands::{Dropped, Hand, spawn_drop};
 use crate::magic::Mana;
 use crate::world::SimWorld;
 
-/// The save format's version: a save of another is refused.
-const VERSION: u32 = 1;
+/// The save format's version: a save of another is refused (and kept, moved
+/// aside: `<name>.v<version>`). 2: the large world became 8× as big
+/// (DESIGN §13).
+const VERSION: u32 = 2;
 /// Seconds between saves while playing.
 const AUTOSAVE: f32 = 60.0;
 /// What starts `chunks.bin`.
@@ -376,7 +378,10 @@ fn load_world(
         Err(e) => return error!("save: {e}; starting a new world"),
     };
     if file.version != VERSION || file.kind != slot.kind || file.seed != slot.seed {
-        return error!("save: {} is of {} (seed {}, version {}), not {} (seed {}, version {VERSION}); starting a new world", dir.display(), file.kind, file.seed, file.version, slot.kind, slot.seed);
+        // (Never lost: moved aside, and a new world begun in its place.)
+        let aside = (0..).map(|n| dir.with_extension(if n == 0 { format!("v{}", file.version) } else { format!("v{}-{n}", file.version) })).find(|p| !p.exists()).expect("a free name");
+        let kept = std::fs::rename(dir, &aside).map_or_else(|e| format!("could not move it aside: {e}"), |_| format!("kept as {}", aside.display()));
+        return error!("save: {} is of {} (seed {}, version {}), not {} (seed {}, version {VERSION}); {kept}; starting a new world", dir.display(), file.kind, file.seed, file.version, slot.kind, slot.seed);
     }
     // Materials by name: a save made with them in another order still reads.
     let mats = sim.world.materials().clone();
