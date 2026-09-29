@@ -735,7 +735,8 @@ live in. The arc, in order:
      marches on a village; there, you fight it; away, it's damaged and
      rebuilds, faster for gold), merchant caravans on the roads, falling
      stars (a crater, rare ore, a guardian; villagers say where), seasons
-     (the snow line, lakes freezing), earthquakes. A blood moon: later.
+     (the snow line, lakes freezing), earthquakes (with fracture, §13.1).
+     A blood moon: later.
 5. **A start worth starting in**: a wide, flattened plain round the spawn
    (±300 cells, forest or plains), a village a short walk away (the
    structure system's rooms: timber houses, a well, a smithy, a path).
@@ -750,41 +751,58 @@ live in. The arc, in order:
    (not looted) and lie in chests. Gold stays forever (saved with its
    chunk; resting nuggets far off merge, the value kept). Acid doesn't
    touch it (it sinks and waits, glinting); it sinks in water; blasts
-   scatter it; heat past its melting point (lava) melts it (into the metal
-   system, below); the vaporiser and void magic erase it; off the world's
-   edge it's lost.
+   scatter it; heat past its melting point (lava) melts it (at first it's
+   gone; with metals, §13.1, into molten gold); the vaporiser and void
+   magic erase it; off the world's edge it's lost. Nuggets can be kicked.
 8. **Later**: mine carts on rails, stronger travel and building,
    teleport stations.
 
-### 13.1 Proposed: metals (ore → molten → solid)
+### 13.1 Matter: metals, casting, objects, boulders, the kick (agreed 2026-09-29)
 
-Discussing (2026-09-29). Each metal has three forms as materials: its ore,
-molten metal (a hot, glowing liquid that lights what it touches) and solid
-metal (heavy, conducts heat and lightning). Heat moves between them as it
-does between ice, water and steam: ore past its melting point melts into
-molten metal and slag (not lava, as now); molten metal below its freezing
-point sets solid where it lies (a puddle into a plate on the floor, a drip
-into a lump that falls as a body). Gold nuggets in lava melt into molten
-gold (so many cells for their value) and set into gold; mining solid
-metal gives back its worth (gold: nuggets; others: bars, one per 16 cells,
-the block's). The furnace keeps its recipes and gains a real crucible:
-ore in, heat, pour into a mould (a shape of stone), a bar out. Mostly
-data and a few rules on systems that exist (heat, phase changes, bodies).
+**Metals.** Every metal (copper, iron, silver, gold, mithril; data, so more
+later) has three forms as materials: its ore, molten metal (a hot, glowing
+liquid that lights what it touches) and solid metal (heavy, conducts heat
+and lightning). Heat moves between them as between ice, water and steam:
+ore past its melting point melts into molten metal and slag (not lava, as
+now); molten metal below its freezing point sets where it lies. **A bar is
+metal**: 16 cells of it, as a block is 16 cells of its material, so ore,
+melt, casting and bar are one thing. Mining solid metal gives its bars
+back; solid gold gives its gold back. Gold nuggets in lava melt into
+molten gold (so many cells for their value): nothing is lost, only moved.
 
-### 13.2 Proposed: boulders and falling rock
+**Casting, the player's own.** A mould is anything you build of a material
+that stands the heat (stone holds copper and gold; iron wants firebrick, a
+new craftable heat-proof block; mithril the best). Molten metal gets there
+two ways: the furnace melts what you feed it and pours from its spout when
+you open it (set it over your mould), and a **ladle** (a crucible on a
+handle; a new held item) carries molten metal from a furnace or a pool to
+pour at the cursor. (A general liquid container: a bucket for water, a
+flask for acid and oil come the same way.) It cools and sets in the
+mould's shape; mine the mould away and the casting is yours: a free
+object in exactly the shape you made.
 
-Discussing (2026-09-29). Rigid bodies exist (a felled tree breaks off
-whole, falls, rotates, hurts what it hits, becomes cells at rest); loose
-rock already falls when what held it goes. Boulders extend them:
-- rock pieces as bodies (a boulder, a slab cut loose), round ones rolling
-  down slopes (they stay bodies while they move);
-- **fracture**: an impact, a fall or a blow past the rock's strength (its
-  hardness) breaks a body into smaller bodies and rubble; small enough, it
-  crumbles;
-- **crushing**: bodies pushing and hurting creatures by their momentum
-  (and each other);
-- **traps** (worldgen): a boulder over a tunnel held by a wooden prop or a
-  rope, a tripwire or a pressure plate; break what holds it and it drops.
+**Objects.** A free piece (a casting, a boulder, a log, a slab of rock)
+stays a rigid body when it comes to rest, asleep (it costs nothing until
+touched), instead of turning back into cells, so it can be moved: kicked,
+pushed and lifted by force and gravity magic (the well, the force wand;
+later a telekinesis spell that holds one), rolled, knocked by blasts,
+crushed under. Objects are saved with their chunk. (Big settled
+landslides still become cells: a size limit decides.)
+
+**Boulders and falling rock.** Rock pieces as bodies; round ones roll
+down slopes. **Fracture**: an impact, a fall, a blow or a blast past a
+body's strength (its material's hardness) breaks it into smaller bodies
+and rubble (too small to be a body: it crumbles into particles).
+**Crushing**: bodies push and hurt creatures by their momentum, and hit
+each other. **Traps** (worldgen): a boulder over a tunnel held by a wooden
+prop or a rope; a tripwire or a pressure plate (small mechanisms, new)
+lets it go.
+
+**The kick** (Noita's): a key (F) kicks what's in front of your feet: an
+impulse by its mass to objects, items, gold, bodies, rubble and loose
+particles, explosive barrels (kick one down a slope into a camp), small
+creatures (a shove). A kick into rock does nothing; a kick with rocket
+boots lit is a kick with fire.
 
 ## 14. Open questions and risks
 
