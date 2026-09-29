@@ -109,11 +109,30 @@ is then a pure function of the plan and its position, never of another chunk;
 a test generates chunks in two orders on four threads and compares
 checksums.
 
-- Presets: `large` (32 768 × 16 384 cells, the game's default) and `small`
-  (8 192 × 4 096, for looking and testing; `PLATYPUS_WORLD=small`).
-- Sea level sits a quarter of the way down. Bands relative to it in the large
-  world (others scale): sky above +2 500, peaks +800, surface −200, underground
-  −2 500, caverns −7 000, deep −11 000, underworld below.
+- Presets (2026-09-29): `large` (131 072 × 32 768 cells, 2 048 × 512
+  chunks: the game's default), `medium` (32 768 × 16 384: the reference
+  world the plan's numbers are written for; the bench's;
+  `PLATYPUS_WORLD=medium`) and `small` (8 192 × 4 096: the reference scaled
+  down, for looking and testing; `PLATYPUS_WORLD=small`). Everything is
+  sized from the preset (`plan::Scale`): sizes (a mountain, a biome's
+  breadth, a lake) are the reference's times the world's share of it,
+  never more than 1, so a bigger world has more of each, not bigger ones;
+  counts (mountains, lakes, crypts, castles, islands, chasms, cave mouths,
+  underground zones, and one of each special biome per reference width:
+  tundras and jungles on their sides, apart from their own kind) are the
+  reference's times its width's share. Tests: the same density at every
+  size, the same peak heights, the bands. Lone massifs keep off the
+  tundra (lifted, its pine forest was a treeless waste); a lake is never
+  above its own banks; a giant mushroom never grows into its chamber's
+  ceiling.
+- Sea level sits a quarter of the way down in the reference world. Bands
+  relative to it there: sky above +2 500, peaks +800, surface −200,
+  underground −2 500, caverns −7 000, deep −11 000, underworld below. A
+  smaller world scales them down; a taller one shares out the extra
+  height: a fifth to the sky, the rest below (the underground 12 %, the
+  caverns and the deep 44 % each, the underworld as it is). Depth as the
+  reference world measures it (`reference_depth`, band by band) sets
+  loot.
 - Climate (`Climate`, in the sim): 15 °C at sea level; 1 °C colder per 60
   cells up (so a temperate peak is below freezing from about +900) until the
   sky band, where the air warms again (1 °C per 18 cells, back to 15 °C: the

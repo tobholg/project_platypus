@@ -8,7 +8,7 @@ part moves into SPEC.md as its arc lands. Numbers are starting points.
 
 | # | Question | Decision |
 |---|---|---|
-| D1 | How big is the world? | 32 768 × 16 384 cells (512 × 256 chunks), with smaller presets for testing. |
+| D1 | How big is the world? | 131 072 × 32 768 cells (2 048 × 512 chunks; grown 8× on 2026-09-29, §13), sized from the preset; `medium` (32 768 × 16 384, the first size) is the reference, `small` for tests. |
 | D2 | What unit do mining and building work in? | Blocks of 4 × 4 cells on a fixed grid. The world stays cells. |
 | D3 | How are humanoids drawn? | Terraria-style: layered frame sheets on one shared frame layout per body size. Gear is a "skin" painted onto body regions. Only held items rotate. |
 | D4 | How do you loot the dead? | The corpse becomes a physical cell body that holds the loot. Interact to loot it. Destroy the corpse and the loot scatters. |
@@ -30,10 +30,10 @@ At 1 cell = 1 art pixel, the player is 8 × 16 cells and runs 95 cells/s.
 
 | | Cells | In player heights | Terraria large (in player heights) |
 |---|---|---|---|
-| Width | 32 768 | 2 048 | ~2 800 |
-| Height | 16 384 | 1 024 | ~800 |
+| Width | 131 072 (was 32 768) | 8 192 | ~2 800 |
+| Height | 32 768 (was 16 384) | 2 048 | ~800 |
 
-Crossing the world on foot takes about 6 minutes. Vertical bands (sea level at about 25 % from the top):
+Crossing the world on foot takes about 24 minutes (it was 6). Vertical bands, in the reference world (`medium`; the large world's sky, caverns and deep are taller: SPEC, presets) (sea level at about 25 % from the top):
 
 | Band | Height (cells, relative to sea level) | What's there |
 |---|---|---|
@@ -46,7 +46,7 @@ Crossing the world on foot takes about 6 minutes. Vertical bands (sea level at a
 | Underworld | −11 000 … bottom | A lava sea, obsidian, heat |
 
 Costs that grow with the world:
-- **Weather** spans the width: about 0.6 ms per tick at 32 768 wide after the lane fix. Away from players it can run at 8-cell texels.
+- **Weather** spans the width, simulated only over a window round the players (1 536 cells beyond the loaded chunks); the rest waits, until the world clock's coarse weather (§13) takes it over.
 - **The plan** is per-column arrays plus fields at 1/16 resolution (2 048 × 1 024), a few MB.
 - **Saving** stores only modified chunks (lz4).
 - **Streaming** is unchanged: only what's around players is loaded.

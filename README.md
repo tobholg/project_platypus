@@ -12,7 +12,7 @@ prototype, kept for reference.
 cargo run -p platypus --release                    # the game
 PLATYPUS_WORLD=flat cargo run -p platypus --release  # an empty sandbox box
 PLATYPUS_WORLD=arena cargo run -p platypus --release # the arena: dummies, pause/step/slow motion (P . ,), boxes (Y), O spawns what's picked in its panel (a pack, or one kind)
-PLATYPUS_WORLD=small cargo run -p platypus --release # the small world preset (8192 × 4096; default large, 32768 × 16384)
+PLATYPUS_WORLD=small cargo run -p platypus --release # the small world preset (8192 × 4096; medium 32768 × 16384; default large, 131072 × 32768)
 PLATYPUS_SEED=42 cargo run -p platypus --release     # another world
 PLATYPUS_SPAWN_X=2600 cargo run -p platypus --release  # start elsewhere (e.g. the tundra; worldview lists the biomes)
 PLATYPUS_SPAWN_Y=3200 cargo run -p platypus --release  # start on a cave floor that deep (3200 = the deep band: mithril, rubies)
