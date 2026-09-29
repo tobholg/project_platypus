@@ -98,7 +98,7 @@ fn update_hud(
     cursor: Res<CursorWorld>,
     zoom: Res<Zoom>,
     light: Res<crate::light::LightMetrics>,
-    day: Res<crate::light::Daylight>,
+    (day, clock): (Res<crate::light::Daylight>, Res<crate::clock::WorldClock>),
     entities: Query<Entity>,
     mut text: Single<&mut Text, With<HudText>>,
 ) {
@@ -117,6 +117,7 @@ fn update_hud(
          entities {} | particles {} | bodies {} | tick {} | zoom {} px/cell\n\
          tool {} r{} | cursor {}\n\
          light {:.2} ms (+{:.2} ms bg), {} texels | {}\n\
+         world clock: day {:.2} | the land under the cursor {}\n\
          dev panel: key left of 1 | + - zoom",
         stats.avg_ms,
         stats.worst_ms,
@@ -142,6 +143,8 @@ fn update_hud(
         light.solve.as_secs_f64() * 1e3,
         light.texels,
         day.clock(),
+        clock.now,
+        cursor.0.map_or(String::new(), |p| clock.describe(p.x as i32)),
     );
 }
 

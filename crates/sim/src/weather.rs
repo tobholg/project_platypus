@@ -18,6 +18,8 @@ pub const STEP_EVERY: u64 = 4;
 pub const CLOUD_AT: f32 = 0.35;
 /// Moisture above which it rains (or snows) out.
 pub const RAIN_AT: f32 = 0.9;
+/// A cloud's heart at its wettest (a storm in a humid front: `shape`).
+const PEAK_MAX: f32 = 2.1;
 /// Cloud drift at full wind, cells per tick (~3 cells/s).
 const DRIFT: f32 = 0.05;
 /// A forced storm or clear sky fades back to the natural weather by this
@@ -115,6 +117,18 @@ impl Weather {
     /// The columns simulated, as a range.
     fn span(&self) -> (usize, usize) {
         self.window.unwrap_or((0, self.cols - 1))
+    }
+
+    /// How hard it's raining over world x at `tick` (0 dry … 1 a downpour),
+    /// anywhere in the world: the cloud the weather wants there (the same
+    /// fronts, storms and forcing the live field relaxes toward), whether
+    /// or not the field is simulated there. The world clock reads it.
+    pub fn rain_outlook(&self, x: i32, tick: u64) -> f32 {
+        let shape = self.shape(self.col(x), tick);
+        if shape.thickness < 1.0 {
+            return 0.0;
+        }
+        ((shape.peak - RAIN_AT) / (PEAK_MAX - RAIN_AT)).clamp(0.0, 1.0)
     }
 
     /// Width the field wraps at (cells).

@@ -39,6 +39,8 @@ pub enum DevAction {
     Arena,
     /// Straight up to the surface (out of any cave).
     Surface,
+    /// A day ahead (the world clock catches up: `clock.rs`).
+    DayAhead,
     /// Reset the world (`reset.rs`; twice to be sure): the land and what's
     /// in it, or everything (you too).
     ResetWorld,
@@ -141,12 +143,13 @@ fn buttons(clicks: Query<(&Interaction, &PanelButton), Changed<Interaction>>, mu
 }
 
 fn spawn_panel(mut commands: Commands) {
-    let entries: [(&str, DevAction); 17] = [
+    let entries: [(&str, DevAction); 18] = [
         ("To the surface   F2", DevAction::Surface),
         ("Storm here   V", DevAction::Storm),
         ("Clear sky   B", DevAction::ClearSky),
         ("Lightning   N", DevAction::Lightning(None)),
         ("+3 hours   M", DevAction::Later),
+        ("A day ahead", DevAction::DayAhead),
         ("Lighting on/off   K", DevAction::Lighting),
         ("Light: beam, big, torch   L", DevAction::Flashlight),
         ("Plant a torch   G", DevAction::PlantTorch(None)),

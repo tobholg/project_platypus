@@ -297,6 +297,7 @@ fn keys(
             }
             DevAction::Lighting => toggles.enabled = !toggles.enabled,
             DevAction::Later => day.skipped += 3.0,
+            DevAction::DayAhead => day.skipped += 24.0,
             DevAction::PlantTorch(at) => {
                 // From the panel: at the player's feet.
                 if let Some(at) = at.or_else(|| player.single().ok().map(|k| k.body.pos - Vec2::new(0.0, k.body.half.y)))
@@ -409,7 +410,7 @@ fn sky_lights(time: f32, light: Rgb) -> [([f32; 2], Rgb); 3] {
     [(sun_dir(time), light), ([s, -c], diffuse), ([-s, -c], diffuse)]
 }
 
-fn update_daylight(
+pub(crate) fn update_daylight(
     sim: Res<SimWorld>,
     settings: Res<LightSettings>,
     flash: Res<SkyFlash>,

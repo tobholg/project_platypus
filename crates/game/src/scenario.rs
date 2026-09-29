@@ -172,6 +172,10 @@
 //!   and 1.1 s (logs how fast each sends it: shrugged off, then
 //!   staggered; it bleeds acid: logs the acid about it), killed at 1.5 s: its body keeps its legs, curled
 //!   (`PLATYPUS_SCENARIO_SECS=3` for a screenshot)
+//! - `forestfire` (a generated world) the land's wetness pinned
+//!   (`PLATYPUS_WET`, 0..1, default 0.05: tinder-dry), then the nearest tree
+//!   crown to the start set alight at 1 s; logs how much of the forest
+//!   within 250 cells (leaves, needles, wood) is left after 25 s
 //! - `reset`      (a generated world) a big hole dug where the player
 //!   stands and an orc beside it; at 2 s the dev panel's "reset the world"
 //!   clicked twice (`PLATYPUS_RESET=all`: "reset everything"); logs, before
@@ -262,7 +266,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
-            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script))
+            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3173,6 +3177,53 @@ fn spiderdeath_script(
                 }
             }
             *state = 6;
+        }
+        _ => {}
+    }
+}
+
+/// `forestfire`: a forest set alight, the land pinned at a wetness.
+fn forestfire_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut clock: ResMut<crate::clock::WorldClock>, player: Query<&Kinematics, With<LocalPlayer>>, mut state: Local<(u8, Vec2, usize)>) {
+    if s.name != "forestfire" {
+        return;
+    }
+    let wet: f32 = std::env::var("PLATYPUS_WET").ok().and_then(|v| v.parse().ok()).unwrap_or(0.05);
+    clock.pinned = Some(wet);
+    let t = s.elapsed;
+    let Ok(k) = player.single() else { return };
+    let mats = sim.materials().clone();
+    let forest = ["leaves", "needles", "dark_leaves", "wood"].map(|n| mats.id(n));
+    let count = |sim: &SimWorld, at: Vec2| {
+        let mut n = 0;
+        for y in (at.y as i32 - 60)..(at.y as i32 + 260) {
+            for x in (at.x as i32 - 250)..(at.x as i32 + 250) {
+                if sim.world.get_bg(CellPos::new(x, y)).is_some_and(|c| forest.contains(&Some(c.material)) && c.flags & platypus_sim::cell::flags::BURNING == 0) {
+                    n += 1;
+                }
+            }
+        }
+        n
+    };
+    match state.0 {
+        0 if t > 1.0 => {
+            // The nearest crown: leaves in the background above the start.
+            let p = k.body.pos;
+            let crown = (0..200).flat_map(|r| [(r, 0), (-r, 0)]).flat_map(|(dx, _)| (20..160).map(move |dy| Vec2::new(p.x + dx as f32, p.y + dy as f32))).find(|q| sim.world.get_bg(CellPos::from_world(q.x, q.y)).is_some_and(|c| Some(c.material) == forest[0] || Some(c.material) == forest[1]));
+            let Some(crown) = crown else {
+                info!("forestfire: no tree near the start");
+                state.0 = 9;
+                return;
+            };
+            state.1 = crown;
+            state.2 = count(&sim, crown);
+            sim.queue(WorldEdit::Ignite { center: CellPos::from_world(crown.x, crown.y), radius: 4 });
+            info!("forestfire: the land {:.0} % wet; a crown at ({:.0}, {:.0}) set alight; {} cells of forest about it", wet * 100.0, crown.x, crown.y, state.2);
+            state.0 = 1;
+        }
+        1 if t > 26.0 => {
+            let left = count(&sim, state.1);
+            info!("forestfire: 25 s later, {:.0} % wet: {left} of {} cells of forest left ({} burnt)", wet * 100.0, state.2, state.2.saturating_sub(left));
+            state.0 = 2;
         }
         _ => {}
     }

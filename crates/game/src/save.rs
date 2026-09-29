@@ -145,6 +145,12 @@ struct WorldFile {
     materials: Vec<String>,
     spawned: Vec<(i32, i32)>,
     keys: u64,
+    /// Hours skipped (the dev key's), so the day and the clock carry on.
+    #[serde(default)]
+    skipped: f32,
+    /// The world clock (`clock.rs`).
+    #[serde(default)]
+    clock: crate::clock::ClockFile,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -255,6 +261,8 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, mut now: MessageWriter<SaveNow>) {
 }
 
 type SavedPlayer<'a> = (&'a Kinematics, &'a Health, Option<&'a Mana>, Option<&'a Inventory>, &'a Equipment, Option<&'a crate::progress::Progress>);
+/// (More for `save`, past Bevy's count of parameters.)
+type SavedAlso<'w, 's> = (Res<'w, crate::craft::Crafting>, Query<'w, 's, (&'static crate::craft::Station, &'static Kinematics)>, Res<'w, crate::light::Daylight>, Res<'w, crate::clock::WorldClock>);
 type SavedCreatures<'a> = (&'a Creature, &'a Kinematics, &'a Health);
 
 /// Save, when it's time, when asked, and on the way out.
@@ -274,7 +282,7 @@ fn save(
     drops: Query<(&Dropped, &Kinematics)>,
     bodies: Query<(&Corpse, &Kinematics)>,
     creatures: Query<SavedCreatures, Without<LocalPlayer>>,
-    (crafting, stations): (Res<crate::craft::Crafting>, Query<(&crate::craft::Station, &Kinematics)>),
+    (crafting, stations, day, clock): SavedAlso,
     mut toasts: MessageWriter<crate::progress::Toast>,
 ) {
     slot.next -= time.delta_secs();
@@ -302,6 +310,8 @@ fn save(
         materials: (0..mats.len()).map(|i| mats.def(MaterialId(i as u16)).name.clone()).collect(),
         spawned: spawned.0.iter().map(|p| (p.x, p.y)).collect(),
         keys: chests.placed(),
+        skipped: day.skipped,
+        clock: clock.save(),
     };
     let mut chunks: Vec<(ChunkPos, Vec<u8>)> = world.chunks().filter(|c| c.is_modified()).map(|c| (c.pos, store::encode(c))).collect();
     chunks.extend(sim.store.iter().map(|(p, b)| (p, b.to_vec())));
@@ -368,6 +378,7 @@ fn load_world(
     mut chests: ResMut<Chests>,
     mut spawned: ResMut<Spawned>,
     crafting: Res<crate::craft::Crafting>,
+    (mut day, mut clock): (ResMut<crate::light::Daylight>, ResMut<crate::clock::WorldClock>),
 ) {
     if !slot.load {
         return;
@@ -408,6 +419,8 @@ fn load_world(
         }
     }
     sim.world.set_tick(file.tick);
+    day.skipped = file.skipped;
+    clock.load(&file.clock);
     spawned.0 = file.spawned.iter().map(|&(x, y)| CellPos::new(x, y)).collect::<HashSet<_>>();
     let Some(items) = items else { return error!("save: items aren't loaded") };
     let things: ThingsFile = read_ron(&dir.join("things.ron")).unwrap_or_else(|e| {

@@ -376,6 +376,16 @@ impl WorldPlan {
             let (a, b) = (i << column_bits, (i + 1) << column_bits);
             *c = (warmth[a..b].iter().sum::<f64>() / (b - a) as f64).round() as i8;
         }
+        // The land's wetness, left to itself (the world clock's baseline).
+        let humid = per_column(Biome::humidity);
+        let wet_bits = Climate::wet_bits_for(width);
+        let mut wet = [platypus_sim::climate::WET_DEFAULT; platypus_sim::climate::WET_COLUMNS];
+        for (i, w) in wet.iter_mut().enumerate() {
+            let (a, b) = ((i << wet_bits).min(width as usize - 1), ((i + 1) << wet_bits).min(width as usize));
+            if b > a {
+                *w = (humid[a..b].iter().sum::<f64>() / (b - a) as f64 * 255.0).round().clamp(0.0, 255.0) as u8;
+            }
+        }
         let climate = Climate {
             sea_level,
             surface_temp: SURFACE_TEMP,
@@ -385,6 +395,8 @@ impl WorldPlan {
             column_bits,
             warm_above: band_floors[0],
             cells_per_degree_inversion: (INVERSION * sh).max(1.0) as i32,
+            wet,
+            wet_bits,
         };
 
         // The land: rolling hills and cliffs on each biome's lift; oceans

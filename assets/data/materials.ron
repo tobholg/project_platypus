@@ -26,6 +26,9 @@
 // grows:        a growth (wood, stems): in the background it carries what grows on
 //               it and falls when cut off; background that doesn't grow (walls)
 //               stays put and holds nothing up
+// living:       alive and holding water (grass, leaves, a living trunk): the wetter
+//               the land (the world clock), the hotter it must get to catch and the
+//               less readily flames reach it
 // platform:     creatures stand on it but pass up through it (and drop through
 //               holding down)
 // pulse:        how much its glow breathes (0 steady … 255 full to nothing)
@@ -49,11 +52,11 @@
         (name: "bedrock",  kind: Static, density: 9999, hardness: 255, colors: [(28, 26, 32), (44, 40, 50)]),
         (name: "stone",    kind: Static, density: 2600, hardness: 60,  crumbles_into: "gravel", above: (1400, "lava"), colors: [(92, 92, 100), (122, 120, 128), (104, 104, 112)]),
         (name: "dirt",     kind: Static, density: 1500, hardness: 20,  crumbles_into: "soil", colors: [(96, 62, 36), (118, 78, 44), (104, 68, 40)]),
-        (name: "grass",    kind: Static, density: 1400, hardness: 10,  flammability: 2, ignites_at: 250, burn_time: 10, burns_into: "soil", crumbles_into: "soil", chars_at: 1.0, colors: [(58, 140, 44), (82, 170, 56)]),
+        (name: "grass",    kind: Static, living: true, density: 1400, hardness: 10,  flammability: 2, ignites_at: 250, burn_time: 10, burns_into: "soil", crumbles_into: "soil", chars_at: 1.0, colors: [(58, 140, 44), (82, 170, 56)]),
         (name: "snow",     kind: Static, density: 400,  hardness: 5,   heat: -10, above: (1, "water"), conductivity: 15, coats: "wet", latent: 300, colors: [(226, 232, 240), (246, 248, 252)]),
         // Hard to get going: a small fire on a trunk often fizzles (fizzles:
         // a lone flame goes out), a crown or a blaze takes it (SPEC §3.8).
-        (name: "wood",     kind: Static, grows: true, density: 700,  hardness: 25,  flammability: 6, ignites_at: 280, conductivity: 12, burn_time: 225, spread: 2, fizzles: 40, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal", colors: [(58, 36, 20), (88, 58, 30), (118, 80, 42), (138, 96, 54)]),
+        (name: "wood",     kind: Static, living: true, grows: true, density: 700,  hardness: 25,  flammability: 6, ignites_at: 280, conductivity: 12, burn_time: 225, spread: 2, fizzles: 40, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal", colors: [(58, 36, 20), (88, 58, 30), (118, 80, 42), (138, 96, 54)]),
         (name: "obsidian", kind: Static, density: 2800, hardness: 120, crumbles_into: "gravel", above: (1600, "lava"), colors: [(34, 18, 52), (52, 30, 74)]),
         // The deep's rock: darker and harder than stone.
         (name: "slate",    kind: Static, density: 2800, hardness: 80, crumbles_into: "gravel", above: (1500, "lava"), colors: [(62, 64, 76), (74, 76, 90), (56, 58, 68), (68, 70, 82)]),
@@ -160,22 +163,22 @@
         (name: "frozen_blood", kind: Static, slippery: true, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), coats: "bloody", latent: 480, colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),
 
         // ---- plants: don't block creatures, burn readily, sway in the wind ----
-        (name: "leaves",     kind: Plant, density: 200, hardness: 2, flammability: 18, ignites_at: 260, burn_time: 40, chars_at: 1.0, opacity: 70, colors: [(24, 64, 26), (36, 92, 34), (52, 122, 42), (76, 150, 54)]),
+        (name: "leaves",     kind: Plant, living: true, density: 200, hardness: 2, flammability: 18, ignites_at: 260, burn_time: 40, chars_at: 1.0, opacity: 70, colors: [(24, 64, 26), (36, 92, 34), (52, 122, 42), (76, 150, 54)]),
         // Conifer needles; the white end of the ramp is snow lying on them (the
         // worldgen shades a snowy tree's tops from it).
-        (name: "needles",    kind: Plant, density: 200, hardness: 2, flammability: 22, ignites_at: 250, burn_time: 36, chars_at: 1.0, opacity: 85,
+        (name: "needles",    kind: Plant, living: true, density: 200, hardness: 2, flammability: 22, ignites_at: 250, burn_time: 36, chars_at: 1.0, opacity: 85,
             colors: [(12, 30, 20), (20, 46, 28), (28, 60, 34), (36, 74, 40), (42, 84, 46), (206, 218, 230), (238, 242, 248)]),
         // Old growth in the deep forest: darker, and thick enough to keep the
         // light out.
-        (name: "dark_leaves", kind: Plant, density: 200, hardness: 2, flammability: 16, ignites_at: 265, burn_time: 44, chars_at: 1.0, opacity: 140,
+        (name: "dark_leaves", kind: Plant, living: true, density: 200, hardness: 2, flammability: 16, ignites_at: 265, burn_time: 44, chars_at: 1.0, opacity: 140,
             colors: [(10, 30, 22), (16, 44, 30), (24, 60, 38), (34, 76, 46)]),
         // Age: a crypt's damp floors grow moss; corners gather cobwebs, which
         // hang from the ceiling and go up in a flash.
-        (name: "moss",       kind: Plant, still: true, density: 150, hardness: 1, flammability: 6, ignites_at: 280, burn_time: 20, chars_at: 1.0, opacity: 20,
+        (name: "moss",       kind: Plant, living: true, still: true, density: 150, hardness: 1, flammability: 6, ignites_at: 280, burn_time: 20, chars_at: 1.0, opacity: 20,
             colors: [(34, 62, 30), (52, 88, 40), (70, 110, 50), (92, 128, 62)]),
         (name: "cobweb",     kind: Plant, still: true, hangs: true, sticky: true, density: 20, hardness: 1, flammability: 90, ignites_at: 200, burn_time: 6, opacity: 12,
             colors: [(150, 150, 150), (190, 190, 194), (220, 220, 226)]),
-        (name: "tall_grass", kind: Plant, density: 100, hardness: 1, flammability: 8, spread: 176, ignites_at: 240, burn_time: 5, chars_at: 1.0, colors: [(64, 146, 46), (92, 176, 62), (54, 124, 40)]),
+        (name: "tall_grass", kind: Plant, living: true, density: 100, hardness: 1, flammability: 8, spread: 176, ignites_at: 240, burn_time: 5, chars_at: 1.0, colors: [(64, 146, 46), (92, 176, 62), (54, 124, 40)]),
 
         // ---- powders ------------------------------------------------------
         (name: "sand",     kind: Powder, density: 1600, hardness: 5,  above: (1100, "glass"), colors: [(206, 176, 110), (226, 198, 132), (196, 164, 100)]),

@@ -17,6 +17,7 @@ mod archery;
 mod arena;
 mod backdrop;
 mod camera;
+mod clock;
 mod canvas;
 mod combat;
 mod craft;
@@ -131,7 +132,7 @@ fn main() {
             scenario::ScenarioPlugin,
         ))
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
-        .add_plugins(reset::ResetPlugin)
+        .add_plugins((reset::ResetPlugin, clock::ClockPlugin))
         .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin))
         .add_plugins(sound::SoundPlugin)
         .add_plugins(backdrop::BackdropPlugin)

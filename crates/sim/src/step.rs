@@ -54,6 +54,14 @@ impl ChunkRaw {
 
 /// The 3×3 chunks around the one being updated, addressed in coordinates
 /// local to the centre chunk (`-CHUNK..2*CHUNK`).
+/// Soaked, a living plant catches a little hotter (°C)...
+pub const WET_IGNITION: f32 = 60.0;
+/// ... and, hot enough, is this much less likely to catch each moment, and
+/// flames reach it this much less readily (shares). (By chance rather than
+/// by heat alone: a raised ignition point was a switch, all or nothing.)
+pub const WET_CATCH: f32 = 0.85;
+pub const WET_SPREAD: f32 = 0.6;
+
 pub(crate) struct Hood<'a> {
     chunks: [Option<ChunkRaw>; 9],
     dirty: [Rect; 9],
@@ -194,6 +202,28 @@ impl<'a> Hood<'a> {
     #[inline(always)]
     pub fn ambient(&self, lx: i32, ly: i32) -> i32 {
         self.climate.ambient(self.origin.x + lx, self.origin.y + ly)
+    }
+
+    /// The temperature a material catches fire at, here: a living plant's
+    /// rises with the land's wetness (`WET_IGNITION` °C more, soaked).
+    #[inline(always)]
+    pub fn ignites_at(&self, lx: i32, p: &crate::material::MatPhys) -> i32 {
+        if p.living { p.ignites_at as i32 + (self.climate.wetness(self.origin.x + lx) * WET_IGNITION) as i32 } else { p.ignites_at as i32 }
+    }
+
+    /// How likely a material is to catch here, hot enough (1 = as its
+    /// flammability says): a living plant less, the wetter it is.
+    #[inline(always)]
+    pub fn catch_share(&self, lx: i32, p: &crate::material::MatPhys) -> f32 {
+        if p.living { 1.0 - WET_CATCH * self.climate.wetness(self.origin.x + lx) } else { 1.0 }
+    }
+
+    /// How readily flames reach a material here (1 = as its `spread` says): a
+    /// living plant takes them less, the wetter it is (a quarter as well,
+    /// soaked).
+    #[inline(always)]
+    pub fn spread_share(&self, lx: i32, p: &crate::material::MatPhys) -> f32 {
+        if p.living { 1.0 - WET_SPREAD * self.climate.wetness(self.origin.x + lx) } else { 1.0 }
     }
 
     /// World-space centre of a local cell, for launching particles.

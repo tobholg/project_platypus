@@ -76,6 +76,23 @@ impl Biome {
         }
     }
 
+    /// How wet its living plants are, left to itself (0 a desert's, 1
+    /// soaked): the world clock's baseline, rain and dry spells moving it
+    /// (DESIGN §13). Wet plants are slow to catch fire.
+    pub fn humidity(self) -> f64 {
+        match self {
+            Biome::Ocean => 0.9,
+            Biome::Plains => 0.35,
+            Biome::Forest => 0.5,
+            Biome::Desert => 0.05,
+            Biome::Tundra => 0.45,
+            Biome::Jungle => 0.85,
+            Biome::Swamp => 0.9,
+            Biome::DeepForest => 0.6,
+            Biome::Mountains => 0.4,
+        }
+    }
+
     /// How far above sea level the land sits (cells).
     pub fn lift(self) -> f64 {
         match self {

@@ -178,6 +178,11 @@ pub struct MaterialDef {
     /// nothing up.
     #[serde(default)]
     pub grows: bool,
+    /// Alive and holding water (grass, leaves, needles, a living trunk): the
+    /// wetter the land (`Climate::wet`), the hotter it has to get to catch
+    /// and the less readily flames spread to it.
+    #[serde(default)]
+    pub living: bool,
     /// How deep its glow glimmers: small patches swell from nearly dark to
     /// full and back, each on its own quick cycle (gems, crystals).
     /// Rendering only.
@@ -314,6 +319,8 @@ pub struct MatPhys {
     pub hangs: bool,
     /// See `MaterialDef::grows`.
     pub grows: bool,
+    /// See `MaterialDef::living`.
+    pub living: bool,
     /// See `MaterialDef::platform`.
     pub platform: bool,
     /// See `MaterialDef::sticky`.
@@ -524,6 +531,7 @@ impl MaterialTable {
                 fizzles: d.fizzles,
                 hangs: d.hangs,
                 grows: d.grows,
+                living: d.living,
                 platform: d.platform,
                 sticky: d.sticky,
                 slippery: d.slippery,

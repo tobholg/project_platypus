@@ -963,6 +963,31 @@ fn a_forest_fire_burns_through_the_background_and_leaves_nothing_hanging() {
 }
 
 #[test]
+fn a_wet_forest_is_slow_to_burn() {
+    // The same canopy fire, on dry land and on soaked (the world clock's
+    // wetness, `Climate::wet`): the wet one loses much less.
+    let burnt = |wet: u8| {
+        let mut w = boxed_world(3, 2, 52);
+        let mut climate = w.climate();
+        climate.wet = [wet; platypus_sim::climate::WET_COLUMNS];
+        w.set_climate(climate);
+        plant_tree(&mut w, 40);
+        plant_tree(&mut w, 72);
+        plant_tree(&mut w, 104);
+        let leaves = w.materials().expect_id("leaves");
+        let before = count_bg(&w, leaves);
+        w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(40, 52), radius: 3 });
+        for _ in 0..3_000 {
+            w.step();
+        }
+        before - count_bg(&w, leaves)
+    };
+    // (Crowns touching, a big fire pushes through even so: slower.)
+    let (dry, soaked) = (burnt(0), burnt(255));
+    assert!((soaked as f32) < dry as f32 * 0.6, "soaked {soaked} leaves burnt, dry {dry}");
+}
+
+#[test]
 fn tall_grass_is_crushed_by_sand_and_withers_without_ground() {
     let mut w = boxed_world(1, 1, 53);
     let m = w.materials().clone();

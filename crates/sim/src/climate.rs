@@ -5,6 +5,12 @@
 
 /// Entries in the across-the-world temperature table.
 pub const CLIMATE_COLUMNS: usize = 128;
+/// Entries in the across-the-world wetness table (finer: rain fronts are
+/// narrower than biomes).
+pub const WET_COLUMNS: usize = 512;
+/// Wetness where nothing's said (tests, sandboxes): dry, fire as it was
+/// tuned before the land had a wetness.
+pub const WET_DEFAULT: u8 = 0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Climate {
@@ -26,6 +32,12 @@ pub struct Climate {
     /// back up to `surface_temp`.
     pub warm_above: i32,
     pub cells_per_degree_inversion: i32,
+    /// How wet the living plants are across the world (0 a drought, 255
+    /// soaked), one entry per `1 << wet_bits` cells: set by the world clock
+    /// (rain, the land's humidity, dry spells). Wet plants are slow to
+    /// catch fire (`MatPhys::living`).
+    pub wet: [u8; WET_COLUMNS],
+    pub wet_bits: u32,
 }
 
 impl Default for Climate {
@@ -40,11 +52,25 @@ impl Default for Climate {
             column_bits: 16,
             warm_above: i32::MAX,
             cells_per_degree_inversion: i32::MAX,
+            wet: [WET_DEFAULT; WET_COLUMNS],
+            wet_bits: 16,
         }
     }
 }
 
 impl Climate {
+    /// How wet the living plants are over world x (0..1).
+    #[inline]
+    pub fn wetness(&self, x: i32) -> f32 {
+        self.wet[((x.max(0) >> self.wet_bits) as usize).min(WET_COLUMNS - 1)] as f32 / 255.0
+    }
+
+    /// The wetness table's bits for a world this wide (so its entries
+    /// cover it).
+    pub fn wet_bits_for(width: i32) -> u32 {
+        ((width.max(1) as usize).div_ceil(WET_COLUMNS)).next_power_of_two().trailing_zeros()
+    }
+
     /// Ambient °C at a world cell.
     #[inline]
     pub fn ambient(&self, x: i32, y: i32) -> i32 {

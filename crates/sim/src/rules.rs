@@ -106,15 +106,16 @@ fn spawn(h: &mut Hood, id: MaterialId) -> Cell {
 /// Returns true if the cell became something else.
 fn transition(h: &mut Hood, x: i32, y: i32, c: Cell, p: &MatPhys) -> bool {
     let t = h.ambient(x, y) + c.heat as i32;
-    if t >= p.ignites_at as i32 && c.flags & flags::BURNING == 0 {
+    let catch = h.ignites_at(x, p);
+    if t >= catch && c.flags & flags::BURNING == 0 {
         // Warm enough to catch: a chance per tick set by flammability, certain
         // only well above the ignition point. (Certain ignition at the
         // threshold made heat carry every fire across every meadow.)
         // The chance grows with how far above it is: warm wood beside a
         // fire rarely catches from heat alone; wood in a furnace does.
-        let excess = (t - p.ignites_at as i32) as u32;
-        let chance = (p.flammability.max(1) as u32 * 16 * excess.min(HEAT_RAMP) / HEAT_RAMP).max(1);
-        if t >= p.ignites_at as i32 + SURE_IGNITION_MARGIN || h.rng.chance4096(chance) {
+        let excess = (t - catch) as u32;
+        let chance = ((p.flammability.max(1) as u32 * 16 * excess.min(HEAT_RAMP) / HEAT_RAMP) as f32 * h.catch_share(x, p)).max(1.0) as u32;
+        if t >= catch + SURE_IGNITION_MARGIN || h.rng.chance4096(chance) {
             ignite(h, x, y, p);
             return true;
         }
@@ -299,10 +300,11 @@ pub(crate) fn background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
     if !burning {
         b.heat = heat as i16;
         let t = h.ambient(x, y) + heat;
-        if bp.flammability > 0 && t >= bp.ignites_at as i32 {
-            let excess = (t - bp.ignites_at as i32) as u32;
-            let chance = (bp.flammability.max(1) as u32 * 16 * excess.min(HEAT_RAMP) / HEAT_RAMP).max(1);
-            if t >= bp.ignites_at as i32 + SURE_IGNITION_MARGIN || h.rng.chance4096(chance) {
+        let catch = h.ignites_at(x, &bp);
+        if bp.flammability > 0 && t >= catch {
+            let excess = (t - catch) as u32;
+            let chance = ((bp.flammability.max(1) as u32 * 16 * excess.min(HEAT_RAMP) / HEAT_RAMP) as f32 * h.catch_share(x, &bp)).max(1.0) as u32;
+            if t >= catch + SURE_IGNITION_MARGIN || h.rng.chance4096(chance) {
                 b.flags |= flags::BURNING;
                 b.life = bp.burn_time;
             }
@@ -434,7 +436,7 @@ fn burn(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) -> bool {
             continue;
         }
         let np = *h.mats.phys(n.material);
-        if np.flammability > 0 && h.rng.chance4096(spread_chance(&np, dy)) {
+        if np.flammability > 0 && h.rng.chance4096((spread_chance(&np, dy) as f32 * h.spread_share(x + dx, &np)) as u32) {
             ignite(h, x + dx, y + dy, &np);
         }
     }
