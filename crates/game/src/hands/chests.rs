@@ -193,6 +193,13 @@ impl Chests {
         self.known.get(&key)?.contents.as_ref()
     }
 
+    /// A world reset: every chest's and body's contents forgotten (the
+    /// count of keys made kept, so new ones don't reuse old keys).
+    pub fn forget_all(&mut self) {
+        self.known.clear();
+        self.open = None;
+    }
+
     /// Put back what a save kept: the stashes and the count of chests made.
     pub fn restore(&mut self, stashes: Vec<(u64, CellPos, Option<Inventory>)>, placed: u64) {
         for (key, origin, contents) in stashes {

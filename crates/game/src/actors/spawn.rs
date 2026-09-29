@@ -74,9 +74,15 @@ impl Plugin for SpawnPlugin {
 fn queue_start(sim: Res<SimWorld>, mut queue: ResMut<SpawnQueue>) {
     let s = sim.generator.spawn_point();
     queue.0.push(PendingSpawn { kind: "player".into(), x: s.x, from_y: s.y + 120, local_player: true });
+    queue_start_enemies(&sim, &mut queue);
+}
+
+/// The enemies about the start (a new world, a reset).
+pub fn queue_start_enemies(sim: &SimWorld, queue: &mut SpawnQueue) {
     if !sim.generator.wild() {
         return;
     }
+    let s = sim.generator.spawn_point();
     for (kind, dx) in START_ENEMIES {
         queue.0.push(PendingSpawn { kind: kind.into(), x: s.x + dx, from_y: s.y + 250, local_player: false });
     }

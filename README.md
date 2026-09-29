@@ -174,7 +174,7 @@ the heat tool reach both. RMB erases with any tool · the wheel (or `[` `]`) rad
 (WASD flies, Shift faster) ·
 dev actions (letters in dev mode, F-keys always, or the panel): H performance HUD
 (F3) · J chunk borders + dirty rects (F4) · V thunderstorm here (F5) · B clear skies (F6) ·
-F2 (U in dev mode) up to the surface · N lightning at the cursor (F7) · M +3 hours (F8) · K lighting off (F9) · L light (a small beam, a big one, a torch in the off hand, none) · G plant a torch · O spawn a warband (a troll, three orcs, two archers; packs in `assets/data/packs.ron`, or pick one kind in the arena panel) · the HUD at the top right shows life as
+F2 (U in dev mode) up to the surface · the dev panel's reset buttons (click twice): reset the world (the land as the seed made it, what's in it gone; you and your pack stay, back at the start) or reset everything (a fresh start) · N lightning at the cursor (F7) · M +3 hours (F8) · K lighting off (F9) · L light (a small beam, a big one, a torch in the off hand, none) · G plant a torch · O spawn a warband (a troll, three orcs, two archers; packs in `assets/data/packs.ron`, or pick one kind in the arena panel) · the HUD at the top right shows life as
 hearts (20 a heart), mana as blue stars and stamina as green bolts (20 each), and
 status timers under them (what's on you as a percentage each, Noita's way: wet, acid,
 oil, blood at once, never more than all of you; wading in water washes acid off, a

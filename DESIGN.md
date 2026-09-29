@@ -679,10 +679,117 @@ Stages:
 
 **Then:** co-op, and the Hollow Knight layer (abilities, map, bosses).
 
-## 12. Open questions and risks
+## 13. The living world (agreed 2026-09-29)
+
+Forests kept burning down and never came back: the fire physics is right
+and stays; what was missing is a world that heals, and one big enough to
+live in. The arc, in order:
+
+1. **Dev: reset the world**, two ways: the world only (you and what you
+   carry stay) and everything (a fresh start). Two clicks to confirm.
+2. **A bigger world, sized from its preset.** `large` becomes 4× wider and
+   2× deeper: 131 072 × 32 768 cells (2 048 × 512 chunks), 8× the area,
+   ~24 minutes to walk across. Most of the new depth goes to the underground
+   (the caverns and the deep), some to the sky. Everything is derived from
+   the preset's dimensions from now on (biomes, lakes, structures, chambers
+   per width or area; bands as shares of the height; the start and the
+   village from the spawn; the clock's region grid), held by "same density
+   at any size" tests over `small`, a new `medium`, and `large`. `small`
+   stays for tests. Old saves don't carry over.
+3. **Fire that spreads like it should**, the physics untouched: living
+   plants carry moisture (the biome's humidity, recent rain, a dry spell)
+   that makes them slow to catch; dry needles in a drought are tinder, a
+   forest after rain barely lights. A storm rains on its own strikes. A
+   scenario burns a forest and counts what's lost. Frequent fires are fine:
+   the world heals.
+4. **The world clock**: one system, a slow simulation of the whole world.
+   - **Regions** (256 × 256 cells, ~65 000 in `large`), each with a small
+     state (forest health, moisture, lairs' numbers, a village's state, when
+     it last changed), saved with the world.
+   - **Processes**, each at its own pace (weather fronts about every game
+     minute, ecology every game hour), each with two faces: **abstract**
+     where no one is (it moves the region's numbers) and **live** where
+     someone is (it acts through the real simulation, gradually and
+     preferably out of sight: grass creeps at its edges, a sapling grows, a
+     raid walks in from the edge; nothing pops into view).
+   - **Handing over**: arriving, a region catches up as its chunks load
+     (they load beyond the screen's edge, so it's done before it's seen);
+     leaving, its numbers are taken from what's there (the burnt cells, the
+     spiders left alive). The numbers are the truth for slow things, the
+     cells for fast ones.
+   - **Weather moves into it**: the fronts, where it's wet or dry, storms and
+     droughts and seasons, as a coarse row of regions the whole width; the
+     live cloud field (clouds, rain, lightning) only around players, seeded
+     and steered by it. The per-tick cost no longer grows with the width.
+     Rain on regions no one's in wets their forests, fills their lakes and
+     puts out their fires.
+   - **Regrowth**: toward the generated world (the pristine chunk, from the
+     seed): where there's ash, charcoal or bare soil where there was grass,
+     leaves or wood, it comes back: grass in about a day, saplings by the
+     second, whole trees by the fifth (~1.7 hours of play). A tree regrows
+     whole (it grows), never half of one; nothing grows over what was built.
+   - **Processes from the start**: regrowth; moisture, rainy spells and
+     droughts; distant wildfires (lightning in a dry region; you find the
+     scar, and it heals); lairs refill (and, left alone, spread into the
+     caves beside them). Then, with villages and gold: raids (a warband
+     marches on a village; there, you fight it; away, it's damaged and
+     rebuilds, faster for gold), merchant caravans on the roads, falling
+     stars (a crater, rare ore, a guardian; villagers say where), seasons
+     (the snow line, lakes freezing), earthquakes. A blood moon: later.
+5. **A start worth starting in**: a wide, flattened plain round the spawn
+   (±300 cells, forest or plains), a village a short walk away (the
+   structure system's rooms: timber houses, a well, a smithy, a path).
+6. **NPCs, as data**: a file per kind (body and look, role, what they say,
+   services: sell, craft, heal), a villager brain (a day's schedule, home
+   at night, flee danger, talk when you're near), a friendly team that
+   monsters hunt too. New roles are new files. First: a guide, a smith, a
+   healer; the merchant with gold.
+7. **Gold, Noita's way**: a count in the HUD (a nugget and a number), not a
+   thing in the pack. Nuggets (1, 5, 25, 100) glint, give a faint warm
+   light, bounce and roll, and drift to you; they burst out of the dying
+   (not looted) and lie in chests. Gold stays forever (saved with its
+   chunk; resting nuggets far off merge, the value kept). Acid doesn't
+   touch it (it sinks and waits, glinting); it sinks in water; blasts
+   scatter it; heat past its melting point (lava) melts it (into the metal
+   system, below); the vaporiser and void magic erase it; off the world's
+   edge it's lost.
+8. **Later**: mine carts on rails, stronger travel and building,
+   teleport stations.
+
+### 13.1 Proposed: metals (ore → molten → solid)
+
+Discussing (2026-09-29). Each metal has three forms as materials: its ore,
+molten metal (a hot, glowing liquid that lights what it touches) and solid
+metal (heavy, conducts heat and lightning). Heat moves between them as it
+does between ice, water and steam: ore past its melting point melts into
+molten metal and slag (not lava, as now); molten metal below its freezing
+point sets solid where it lies (a puddle into a plate on the floor, a drip
+into a lump that falls as a body). Gold nuggets in lava melt into molten
+gold (so many cells for their value) and set into gold; mining solid
+metal gives back its worth (gold: nuggets; others: bars, one per 16 cells,
+the block's). The furnace keeps its recipes and gains a real crucible:
+ore in, heat, pour into a mould (a shape of stone), a bar out. Mostly
+data and a few rules on systems that exist (heat, phase changes, bodies).
+
+### 13.2 Proposed: boulders and falling rock
+
+Discussing (2026-09-29). Rigid bodies exist (a felled tree breaks off
+whole, falls, rotates, hurts what it hits, becomes cells at rest); loose
+rock already falls when what held it goes. Boulders extend them:
+- rock pieces as bodies (a boulder, a slab cut loose), round ones rolling
+  down slopes (they stay bodies while they move);
+- **fracture**: an impact, a fall or a blow past the rock's strength (its
+  hardness) breaks a body into smaller bodies and rubble; small enough, it
+  crumbles;
+- **crushing**: bodies pushing and hurting creatures by their momentum
+  (and each other);
+- **traps** (worldgen): a boulder over a tunnel held by a wooden prop or a
+  rope, a tripwire or a pressure plate; break what holds it and it drops.
+
+## 14. Open questions and risks
 
 - **Character pixel size (D5):** 18 px reads like Noita. Elden Ring-style gear may want about 24 px. Decide from mock-ups. The cost is zooming out a little and loading more.
 - **Gear skins might look generic.** Fallback: hand-drawn per-frame gear for hero items only.
 - **Corpses as cell bodies:** a rendering change. Bodies must carry per-cell colours (their sprite pixels), not just material shades.
-- **Weather cost** grows with width. Plan: coarse weather far from players.
+- **Weather cost** grows with width. Plan: the coarse weather moves into the world clock (§13); the live field only round players.
 - **Freezing the save format:** structures and items must be in before saving is finalised. That's why saving is step 7.

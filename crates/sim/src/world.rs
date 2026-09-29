@@ -257,6 +257,12 @@ impl World {
         self.chunks.remove(&pos)
     }
 
+    /// Everything loose goes (particles, bodies in flight): a world reset.
+    pub fn clear_loose(&mut self) {
+        self.particles.clear();
+        self.bodies.clear();
+    }
+
     pub fn chunk(&self, pos: ChunkPos) -> Option<&Chunk> {
         self.chunks.get(&pos).map(|b| &**b)
     }

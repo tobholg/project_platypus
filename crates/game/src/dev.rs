@@ -39,6 +39,10 @@ pub enum DevAction {
     Arena,
     /// Straight up to the surface (out of any cave).
     Surface,
+    /// Reset the world (`reset.rs`; twice to be sure): the land and what's
+    /// in it, or everything (you too).
+    ResetWorld,
+    ResetAll,
 }
 
 /// A screen has the keyboard (the art editor): the player and the keys
@@ -137,7 +141,7 @@ fn buttons(clicks: Query<(&Interaction, &PanelButton), Changed<Interaction>>, mu
 }
 
 fn spawn_panel(mut commands: Commands) {
-    let entries: [(&str, DevAction); 15] = [
+    let entries: [(&str, DevAction); 17] = [
         ("To the surface   F2", DevAction::Surface),
         ("Storm here   V", DevAction::Storm),
         ("Clear sky   B", DevAction::ClearSky),
@@ -153,6 +157,8 @@ fn spawn_panel(mut commands: Commands) {
         ("Radius +   wheel", DevAction::Radius(1)),
         ("Arena tools", DevAction::Arena),
         ("Back to hands   key left of 1", DevAction::Hands),
+        ("Reset the world (twice)", DevAction::ResetWorld),
+        ("Reset everything (twice)", DevAction::ResetAll),
     ];
     commands
         .spawn((
@@ -180,7 +186,17 @@ fn spawn_panel(mut commands: Commands) {
                     BackgroundColor(Color::srgba(0.25, 0.25, 0.3, 0.8)),
                 ))
                 .with_children(|b| {
-                    b.spawn((Text::new(label), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::WHITE)));
+                    let mut t = b.spawn((Text::new(label), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::WHITE)));
+                    // (The resets ask to be sure: `reset.rs` relabels them.)
+                    match action {
+                        DevAction::ResetWorld => {
+                            t.insert(crate::reset::ResetLabel(crate::reset::Reset::World));
+                        }
+                        DevAction::ResetAll => {
+                            t.insert(crate::reset::ResetLabel(crate::reset::Reset::Everything));
+                        }
+                        _ => {}
+                    }
                 });
             }
         });

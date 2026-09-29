@@ -172,6 +172,11 @@
 //!   and 1.1 s (logs how fast each sends it: shrugged off, then
 //!   staggered; it bleeds acid: logs the acid about it), killed at 1.5 s: its body keeps its legs, curled
 //!   (`PLATYPUS_SCENARIO_SECS=3` for a screenshot)
+//! - `reset`      (a generated world) a big hole dug where the player
+//!   stands and an orc beside it; at 2 s the dev panel's "reset the world"
+//!   clicked twice (`PLATYPUS_RESET=all`: "reset everything"); logs, before
+//!   and after, whether the hole's there, the creatures about and where
+//!   the player is
 //! - `camplook`   (a generated world) the nearest miners' camp the world
 //!   made (a mine cart, TNT, dynamite, a lantern), the player beside it with
 //!   a torch; logs where
@@ -257,7 +262,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
-            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script))
+            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3168,6 +3173,49 @@ fn spiderdeath_script(
                 }
             }
             *state = 6;
+        }
+        _ => {}
+    }
+}
+
+/// `reset`: the world reset from the dev panel.
+fn reset_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut acts: MessageWriter<crate::dev::DevAction>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    creatures: Query<&crate::actors::Creature, Without<LocalPlayer>>,
+    mut state: Local<(u8, Vec2)>,
+) {
+    if s.name != "reset" {
+        return;
+    }
+    let t = s.elapsed;
+    let pos = player.single().map(|k| k.body.pos).ok();
+    let hole = |sim: &SimWorld, at: Vec2| (0..20).filter(|d| sim.world.get(CellPos::from_world(at.x, at.y - 10.0 - *d as f32)).is_some_and(|c| c.is_air())).count();
+    match state.0 {
+        0 if t > 1.0 => {
+            let Some(p) = pos else { return };
+            for d in 0..8 {
+                sim.queue(WorldEdit::Dig { center: CellPos::from_world(p.x + 30.0, p.y - 10.0 - d as f32 * 4.0), radius: 8, max_hardness: 250 });
+            }
+            crate::actors::creature::spawn_creature(&mut commands, "orc", p + Vec2::new(-40.0, 0.0), |_| {});
+            state.1 = Vec2::new(p.x + 30.0, p.y);
+            state.0 = 1;
+        }
+        1 if t > 1.8 => {
+            info!("reset: before: {} of 20 cells of the hole open, {} creatures about, the player at {:?}", hole(&sim, state.1), creatures.iter().count(), pos.map(|p| p.round()));
+            state.0 = 2;
+        }
+        2 | 3 if t > 2.0 + (state.0 - 2) as f32 * 0.3 => {
+            let all = std::env::var("PLATYPUS_RESET").is_ok_and(|v| v == "all");
+            acts.write(if all { crate::dev::DevAction::ResetAll } else { crate::dev::DevAction::ResetWorld });
+            state.0 += 1;
+        }
+        4 if t > 5.0 => {
+            info!("reset: after: {} of 20 cells of the hole open, {} creatures about, the player at {:?}, {} chunks loaded", hole(&sim, state.1), creatures.iter().count(), pos.map(|p| p.round()), sim.world.loaded_count());
+            state.0 = 5;
         }
         _ => {}
     }
