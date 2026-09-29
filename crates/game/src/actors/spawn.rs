@@ -122,7 +122,7 @@ fn process_queue(mut commands: Commands, sim: Res<SimWorld>, mut queue: ResMut<S
     });
 }
 
-fn world_spawns(mut commands: Commands, fresh: Res<FreshChunks>, mut spawned: ResMut<Spawned>, mut chests: ResMut<crate::hands::chests::Chests>) {
+fn world_spawns(mut commands: Commands, fresh: Res<FreshChunks>, mut spawned: ResMut<Spawned>, mut chests: ResMut<crate::hands::chests::Chests>, mut clock: ResMut<crate::clock::WorldClock>) {
     for &(at, what) in &fresh.0 {
         if !spawned.0.insert(at) {
             continue;
@@ -130,6 +130,14 @@ fn world_spawns(mut commands: Commands, fresh: Res<FreshChunks>, mut spawned: Re
         match what {
             Spawn::Creature(kind) | Spawn::Prop(kind) => spawn_creature(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), |_| {}),
             Spawn::Chest => chests.spawn_found(&mut commands, at),
+            // (The world clock refills its lair: see `clock::lairs`.)
+            Spawn::Keeper(kind) => {
+                spawn_creature(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), move |e| {
+                    e.insert(crate::clock::Keeps((at.x, at.y)));
+                });
+                let seen = clock.now;
+                clock.keepers.insert((at.x, at.y), crate::clock::Keeper { kind: kind.to_string(), seen });
+            }
         }
     }
 }

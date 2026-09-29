@@ -266,7 +266,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
-            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script))
+            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3239,6 +3239,7 @@ fn regrow_script(
     mut day: ResMut<crate::light::Daylight>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
     mut state: Local<(u8, Vec2)>,
+    mut stay: Local<Option<f32>>,
 ) {
     if s.name != "regrow" {
         return;
@@ -3290,6 +3291,18 @@ fn regrow_script(
             day.skipped += 1.0;
             state.0 = 2;
         }
+        // (PLATYPUS_STAY=1: the player stays, an hour passing every tenth
+        // of a second, as it would in play.)
+        2 if t > 42.0 && std::env::var("PLATYPUS_STAY").is_ok() => {
+            let hours = (days * 24.0).round() as u32;
+            let done = ((t - 42.0) * 10.0) as u32;
+            if done >= hours {
+                state.0 = 4;
+                return;
+            }
+            let base = *stay.get_or_insert(day.skipped);
+            day.skipped = base + done as f32;
+        }
         2 if t > 42.0 => {
             put(&mut k, state.1 + Vec2::new(4_000.0, 400.0));
             state.0 = 7;
@@ -3302,9 +3315,153 @@ fn regrow_script(
             put(&mut k, state.1 + Vec2::new(0.0, 20.0));
             state.0 = 4;
         }
-        4 if t > 50.0 => {
+        4 if t > 50.0 && (std::env::var("PLATYPUS_STAY").is_err() || t > 44.0 + days * 2.4 + 2.0) => {
             info!("regrow: {days} days later: {} ({} trees regrowing, {} chunks healing)", tally(&sim, state.1), clock.trees.len(), clock.land.len());
             state.0 = 5;
+        }
+        _ => {}
+    }
+}
+
+/// `wildfire`: the world clock's lightning in a forest well away from the
+/// start, `PLATYPUS_DAYS` (default 0.25) passing, then the player there:
+/// the scar (and, days on, its healing).
+fn wildfire_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut clock: ResMut<crate::clock::WorldClock>,
+    mut day: ResMut<crate::light::Daylight>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut state: Local<(u8, i32)>,
+) {
+    if s.name != "wildfire" {
+        return;
+    }
+    let days: f32 = std::env::var("PLATYPUS_DAYS").ok().and_then(|v| v.parse().ok()).unwrap_or(0.25);
+    let t = s.elapsed;
+    let Ok(mut k) = player.single_mut() else { return };
+    let home = sim.generator.spawn_point();
+    match state.0 {
+        0 if t > 1.0 => {
+            let Some(&x) = sim.generator.trees_between(home.x + 2_500, home.x + 8_000).first() else {
+                info!("wildfire: no forest east of the start");
+                state.0 = 9;
+                return;
+            };
+            let took = clock.wildfire(&*sim.generator, x, 1.0);
+            let f = clock.fires.last().copied();
+            info!("wildfire: lightning at x {x}: {took} trees, the scar {:?}", f.map(|f| (f.x0, f.x1)));
+            state.1 = f.map_or(x, |f| (f.x0 + f.x1) / 2);
+            state.0 = 1;
+        }
+        1 if t > 2.0 => {
+            day.skipped += 24.0 * days;
+            state.0 = 2;
+        }
+        2 if t > 3.0 => {
+            let x = state.1;
+            let y = sim.generator.surface_hint(x).unwrap_or(home.y) + 30;
+            k.body.pos = Vec2::new(x as f32, y as f32);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            state.0 = 3;
+        }
+        3 if t > 8.0 => {
+            let mats = sim.materials();
+            let (soil, ash, grass) = (mats.id("soil"), mats.id("ash"), mats.id("grass"));
+            let tree = ["wood", "leaves", "needles", "dark_leaves"].map(|n| mats.id(n));
+            let at = k.body.pos;
+            let (mut n_soil, mut n_ash, mut n_grass, mut n_tree) = (0, 0, 0, 0);
+            for y in (at.y as i32 - 80)..(at.y as i32 + 220) {
+                for x in (at.x as i32 - 300)..(at.x as i32 + 300) {
+                    let p = platypus_sim::CellPos::new(x, y);
+                    let m = sim.world.get(p).map(|c| c.material);
+                    n_soil += (m == soil) as u32;
+                    n_ash += (m == ash) as u32;
+                    n_grass += (m == grass) as u32;
+                    n_tree += sim.world.get_bg(p).is_some_and(|c| tree.contains(&Some(c.material))) as u32;
+                }
+            }
+            info!("wildfire: {days} days after: {n_tree} cells of forest, {n_grass} of grass, {n_soil} of burnt soil, {n_ash} of ash; {}", clock.describe(at));
+            state.0 = 4;
+        }
+        _ => {}
+    }
+}
+
+/// `refill`: the nearest spider nest, its keepers killed, the player away
+/// for `PLATYPUS_DAYS` (default 4), back: the lair refilled.
+fn refill_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    clock: Res<crate::clock::WorldClock>,
+    mut day: ResMut<crate::light::Daylight>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut foes: Query<(&crate::actors::Creature, &Kinematics, &mut crate::actors::Health), Without<LocalPlayer>>,
+    mut state: Local<(u8, Vec2)>,
+) {
+    if s.name != "refill" {
+        return;
+    }
+    let days: f32 = std::env::var("PLATYPUS_DAYS").ok().and_then(|v| v.parse().ok()).unwrap_or(4.0);
+    let t = s.elapsed;
+    let Ok(mut k) = player.single_mut() else { return };
+    let home = sim.generator.spawn_point();
+    let put = |k: &mut Kinematics, at: Vec2| {
+        k.body.pos = at;
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = at;
+    };
+    let about = |foes: &Query<(&crate::actors::Creature, &Kinematics, &mut crate::actors::Health), Without<LocalPlayer>>, at: Vec2| {
+        let mut n = std::collections::BTreeMap::new();
+        for (c, fk, h) in foes {
+            if h.hp > 0.0 && fk.body.pos.distance(at) < 150.0 {
+                *n.entry(c.kind.clone()).or_insert(0) += 1;
+            }
+        }
+        n
+    };
+    match state.0 {
+        0 if t > 0.3 => {
+            let nest = sim.generator.landmarks().into_iter().filter(|(_, n)| n == "spider nest").min_by_key(|(p, _)| (p.x - home.x).abs() + (p.y - home.y).abs());
+            let Some((p, _)) = nest else {
+                info!("refill: no spider nest in this world");
+                state.0 = 9;
+                return;
+            };
+            state.1 = Vec2::new(p.x as f32 - 20.0, p.y as f32);
+            put(&mut k, state.1);
+            state.0 = 1;
+        }
+        1 if t < 1.5 => put(&mut k, state.1),
+        1 if t > 3.0 => {
+            let near = clock.keepers.iter().filter(|((x, y), _)| Vec2::new(*x as f32, *y as f32).distance(state.1) < 150.0).map(|(_, k)| k.kind.clone()).collect::<Vec<_>>();
+            info!("refill: at the nest: {:?} about; the clock keeps {near:?}", about(&foes, state.1));
+            for (c, fk, mut h) in &mut foes {
+                if near.contains(&c.kind) && fk.body.pos.distance(state.1) < 150.0 {
+                    h.hp = 0.0;
+                }
+            }
+            state.0 = 2;
+        }
+        2 if t > 5.0 => {
+            info!("refill: killed: {:?} about", about(&foes, state.1));
+            let away = Vec2::new(home.x as f32 + 3_000.0, sim.generator.surface_hint(home.x + 3_000).unwrap_or(home.y) as f32 + 30.0);
+            put(&mut k, away);
+            state.0 = 3;
+        }
+        3 if t > 7.0 => {
+            day.skipped += 24.0 * days;
+            state.0 = 4;
+        }
+        4 if t > 9.0 => {
+            put(&mut k, state.1);
+            state.0 = 5;
+        }
+        5 if t < 10.5 => put(&mut k, state.1),
+        5 if t > 13.0 => {
+            info!("refill: {days} days later: {:?} about", about(&foes, state.1));
+            state.0 = 6;
         }
         _ => {}
     }

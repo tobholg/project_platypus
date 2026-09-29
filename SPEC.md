@@ -412,8 +412,11 @@ DESIGN.md §3.2 step 6, stage 5 of the world arc (`worldgen/src/minerals.rs`).
   with the plan, so every peer agrees.
 - A lair's chamber is lined as its chunks generate: the lining on air cells
   within two of rock, in clumps (`density`), and threads of it hanging from
-  the roof. Its keepers are reported (as `Spawn::Creature`) by the chunk of
-  the chamber's middle, across it; they fall to its floor.
+  the roof. Its keepers are reported (as `Spawn::Keeper`) by the chunk of
+  the chamber's middle, across it; they fall to its floor. Each carries
+  where it was put (`clock::Keeps`, saved with it); the world clock refills
+  a lair (§3.14). Ambient life's comings and goings (`life.ron`) leave
+  keepers alone: a lair's bats stay when you walk away.
 - `ChunkGenerator::landmarks` names them (tools, tests: the `nest`
   scenario goes to the nearest spider nest), and `zone_at` gives the
   underground biome at a cell. The worldview draws them (it loads the
@@ -886,11 +889,39 @@ Saved with the world (`WorldFile::clock`; older saves load with none of it).
   cells left); a reset forgets both. `regrow` scenario (a forest set alight
   at 2 % wet, an hour, away for `PLATYPUS_DAYS`, back): forest cells before,
   burnt, after 0/1/5 days: 31 510, ~7 000, 3 101/4 127/33 755; ash and
-  charcoal 1 979/1 276/5; burnt soil 198/8/8.
-- The dev readout says, for the cursor, how wet the land is, whether its
-  chunk is healing (cells, days in) and how far a lost tree near it has grown.
-  "A day ahead" in the dev panel skips 24 hours.
-- Not yet: distant wildfires, lairs refilling, the weather's fronts saved.
+  charcoal 1 979/1 276/5; burnt soil 198/8/8. `PLATYPUS_STAY=1`: the player
+  stays, an hour passing every tenth of a second: after 5 days 34 498 forest
+  cells, grass 475 of 498 (healing in view, hour by hour).
+- **Snags**: a lost tree's trunk stands charred (charcoal, a third to two
+  thirds of its height, its shade halved) until the one in its place is
+  30 % grown; then it goes as any charcoal does. Drawn, like clearing a
+  lost tree's remains, only where no one is looking.
+- **Wildfires**, hourly (catching up): lightning in dry forest where no one
+  is (no player within 2 000 cells). Each column of land drier than 30 %
+  has a chance an hour of 0.0004 per 256 cells of width at tinder-dry,
+  falling off linearly to none at 30 %. The fire walks out from the strike
+  through the trees (as the seed made them, `trees_between`) while they
+  stand within 80 cells of each other, up to 80 cells (damp) to 600
+  (tinder-dry) either side; young trees don't carry it. The trees it takes
+  are lost (as above); the land from the first to the last is scorched for
+  five days (`Wildfire { x0, x1, at }`, `Healing::scorched`): grass as soil,
+  tall grass gone, ash on half the cells over grass, each until its moment
+  to heal as a burn would from the fire's day, so the scar is the same
+  however often it's healed and comes back on the same schedule. Logged.
+  `wildfire` scenario (a strike 2 500+ cells east of the start, the player
+  there `PLATYPUS_DAYS` later): 13 trees taken in a deep forest; at 0.25
+  days charred snags over 543 cells of burnt soil and 313 of ash; at 2 a
+  young forest, the grass back; at 5 grown.
+- **Lairs refill**, hourly: a keeper alive anywhere keeps its record's day;
+  one gone three days is back where it was put (the spot out of view).
+  `refill` scenario (the nearest spider nest's keepers killed, away four
+  days, back): exactly the seven that were killed come back; the other
+  lairs, their keepers alive, are left as they are.
+- The dev readout says, for the cursor, how wet the land is, a wildfire's
+  scar there, whether its chunk is healing (cells, days in) and how far a
+  lost tree near it has grown. "A day ahead" in the dev panel skips 24 hours.
+- Not yet: lairs spreading into the caves beside them, the weather's fronts
+  saved, rain on regions no one's in putting out their fires.
 
 ## 4. Rendering
 

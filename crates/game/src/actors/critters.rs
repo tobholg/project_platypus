@@ -329,6 +329,9 @@ const OUT_OF_SIGHT: f32 = 260.0;
 /// Tries to find a spot of water or cave a spawn.
 const TRIES: usize = 16;
 
+/// Passing life: not the player, not a lair's keeper (they stay).
+type Passing = (Without<super::player::LocalPlayer>, Without<crate::clock::Keeps>);
+
 #[allow(clippy::too_many_arguments)]
 fn ambient(
     mut commands: Commands,
@@ -337,7 +340,7 @@ fn ambient(
     life: Res<Life>,
     day: Res<crate::light::Daylight>,
     player: Query<&Kinematics, With<super::player::LocalPlayer>>,
-    critters: Query<(Entity, &Creature, &Kinematics), Without<super::player::LocalPlayer>>,
+    critters: Query<(Entity, &Creature, &Kinematics), Passing>,
     mut clock: Local<f32>,
     mut seed: Local<u64>,
 ) {

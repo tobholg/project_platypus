@@ -180,6 +180,9 @@ struct SavedCreature {
     kind: String,
     feet: (f32, f32),
     hp: f32,
+    /// A lair's keeper: where it was put (`clock::Keeps`).
+    #[serde(default)]
+    keeps: Option<(i32, i32)>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -263,7 +266,7 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, mut now: MessageWriter<SaveNow>) {
 type SavedPlayer<'a> = (&'a Kinematics, &'a Health, Option<&'a Mana>, Option<&'a Inventory>, &'a Equipment, Option<&'a crate::progress::Progress>);
 /// (More for `save`, past Bevy's count of parameters.)
 type SavedAlso<'w, 's> = (Res<'w, crate::craft::Crafting>, Query<'w, 's, (&'static crate::craft::Station, &'static Kinematics)>, Res<'w, crate::light::Daylight>, Res<'w, crate::clock::WorldClock>);
-type SavedCreatures<'a> = (&'a Creature, &'a Kinematics, &'a Health);
+type SavedCreatures<'a> = (&'a Creature, &'a Kinematics, &'a Health, Option<&'a crate::clock::Keeps>);
 
 /// Save, when it's time, when asked, and on the way out.
 #[allow(clippy::too_many_arguments)]
@@ -335,7 +338,7 @@ fn save(
             .map(|(key, origin, contents)| SavedStash { key, origin: (origin.x, origin.y), contents: contents.map(|i| slots_out(&items, &i.slots)) })
             .collect(),
         drops: drops.iter().map(|(d, k)| ((k.body.pos.x, k.body.pos.y), stack_out(&items, &d.stack))).collect(),
-        creatures: creatures.iter().map(|(c, k, h)| SavedCreature { kind: c.kind.clone(), feet: (k.body.pos.x, k.body.pos.y - k.body.half.y), hp: h.hp }).collect(),
+        creatures: creatures.iter().map(|(c, k, h, keeps)| SavedCreature { kind: c.kind.clone(), feet: (k.body.pos.x, k.body.pos.y - k.body.half.y), hp: h.hp, keeps: keeps.map(|k| k.0) }).collect(),
     };
     for (b, k) in &bodies {
         if let Some(inv) = chests.inventory(b.key) {
@@ -448,10 +451,13 @@ fn load_world(
         }
     }
     for c in &things.creatures {
-        let hp = c.hp;
+        let (hp, keeps) = (c.hp, c.keeps);
         crate::actors::creature::spawn_creature(&mut commands, &c.kind, Vec2::new(c.feet.0, c.feet.1), move |e| {
             if let Some(mut h) = e.get_mut::<Health>() {
                 h.hp = hp.min(h.max);
+            }
+            if let Some(k) = keeps {
+                e.insert(crate::clock::Keeps(k));
             }
         });
     }

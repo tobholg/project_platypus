@@ -81,6 +81,11 @@ pub trait ChunkGenerator: Send + Sync {
         None
     }
 
+    /// The trees standing (as the seed made them) between two x, by x.
+    fn trees_between(&self, _x0: i32, _x1: i32) -> Vec<i32> {
+        Vec::new()
+    }
+
     /// A chunk and what it starts with besides cells (see `Spawn`), each
     /// reported by exactly one chunk; the game makes each once (an
     /// unmodified chunk is generated again when it comes back into view).
@@ -117,6 +122,9 @@ pub trait ChunkGenerator: Send + Sync {
 pub enum Spawn {
     /// A creature, by id: a crypt's guard.
     Creature(&'static str),
+    /// A lair's keeper, by id: it comes back (the world clock refills a
+    /// lair left empty).
+    Keeper(&'static str),
     /// A chest, its loot rolled from where it was put.
     Chest,
     /// A thing left in the caves, by creature id (it's a creature with no
@@ -140,6 +148,9 @@ pub struct Healing<'a> {
     /// Away long enough (unloaded an hour or more) that its fires have
     /// burnt out: put out what burns, cool what's hot.
     pub cooled: bool,
+    /// Days since a wildfire swept over it (the world clock's, where no one
+    /// was): its grass burnt to soil and ash lying, healing as any burn.
+    pub scorched: Option<f32>,
 }
 
 /// What healing a chunk does and finds.
@@ -148,9 +159,9 @@ pub struct Healed {
     /// Cells to set, a few at a time (growing back): where, the
     /// background or not, what.
     pub edits: Vec<(CellPos, bool, Cell)>,
-    /// Background cells to clear at once: what's left of hurt trees (best
-    /// where no one sees).
-    pub clear: Vec<CellPos>,
+    /// Background cells to set at once (best where no one sees): what's
+    /// left of a lost tree cleared, its charred snag.
+    pub sudden: Vec<(CellPos, Cell)>,
     /// Trees found mostly gone here (burnt, felled), by x: they regrow
     /// whole (what's left of them is cleared).
     pub hurt_trees: Vec<i32>,
@@ -160,6 +171,9 @@ pub struct Healed {
 
 /// Regrowth: a tree reappears (a sapling) once it's this far grown.
 pub const SAPLING: f32 = 0.08;
+/// A lost tree's trunk stands charred (a snag, a third to two thirds of its
+/// height) until the one growing in its place is this far grown.
+pub const SNAG_UNTIL: f32 = 0.3;
 
 /// A chest's size in cells (the game draws it this size; the world makes
 /// room for it).
@@ -418,7 +432,7 @@ impl TerrainGen {
             let gap = (c.rx * 1.2 / keepers.len().max(1) as f32).min(10.0);
             for (n, kind) in keepers.iter().enumerate() {
                 let dx = (n as f32 - (keepers.len() as f32 - 1.0) / 2.0) * gap;
-                out.push((CellPos::new(mid.x + dx as i32, mid.y), Spawn::Creature(kind)));
+                out.push((CellPos::new(mid.x + dx as i32, mid.y), Spawn::Keeper(kind)));
             }
         }
         out
@@ -473,23 +487,53 @@ impl TerrainGen {
             t * t * (3.0 - 2.0 * t)
         };
         // (Each cell heals at its own moment: a share of them by now.)
-        let due = |x: i32, y: i32, salt: u64, (a, b): (f32, f32)| (hash(&[self.plan.seed, salt, x as u64, y as u64]) & 0xFFFF) as f32 / 65_536.0 < smooth(a, b, how.days);
+        // (A wildfire's scar heals as any burn, from the fire; the land's own
+        // hurt from when it was seen.)
+        let days = how.days.max(how.scorched.unwrap_or(0.0));
+        let due_by = |d: f32, x: i32, y: i32, salt: u64, (a, b): (f32, f32)| (hash(&[self.plan.seed, salt, x as u64, y as u64]) & 0xFFFF) as f32 / 65_536.0 < smooth(a, b, d);
+        let due = |x: i32, y: i32, salt: u64, span: (f32, f32)| due_by(days, x, y, salt, span);
         for ly in 0..CHUNK {
             for lx in 0..CHUNK {
                 let (x, y) = (o.x + lx, o.y + ly);
                 let (p, c) = (pristine.get(lx as usize, ly as usize), chunk.get(lx as usize, ly as usize));
+                // (A wildfire's scar, as it would be by now: each cell burnt
+                // until its moment to heal. As made, it's burnt.)
+                if let Some(s) = how.scorched
+                    && c.material == p.material
+                {
+                    let under_grass = ly > 0 && pristine.get(lx as usize, ly as usize - 1).material == i.grass;
+                    let ashen = (p.is_air() || p.material == i.tall_grass) && under_grass && hash(&[self.plan.seed, 0xA16, x as u64, y as u64]) & 1 == 0 && !due_by(s, x, y, 0xA13, (0.3, 2.0));
+                    let burnt = if p.material == i.grass && !due_by(s, x, y, 0xA11, (0.1, 1.0)) {
+                        Some(Cell::new(i.soil, p.shade))
+                    } else if ashen {
+                        Some(Cell::new(i.ash, p.shade))
+                    } else if p.material == i.tall_grass && !due_by(s, x, y, 0xA12, (0.6, 1.6)) {
+                        Some(Cell::AIR)
+                    } else {
+                        None
+                    };
+                    if let Some(b) = burnt {
+                        out.edits.push((CellPos::new(x, y), false, b));
+                        out.unhealed += 1;
+                        continue;
+                    }
+                }
+                // (Each step back one at a time: ash where grass stood goes to
+                // soil, where tall grass stood to bare air; they come back on
+                // their own time.)
                 let heal = if (p.material == i.grass || p.material == i.moss) && c.material == i.soil {
-                    Some((0xA11, (0.1, 1.0)))
-                } else if p.material == i.tall_grass && c.is_air() && ly > 0 && chunk.get(lx as usize, ly as usize - 1).material == i.grass {
-                    Some((0xA12, (0.6, 1.6)))
+                    Some((0xA11, (0.1, 1.0), p))
+                } else if p.material == i.tall_grass && c.is_air() && ly > 0 && [i.grass, i.tall_grass].contains(&chunk.get(lx as usize, ly as usize - 1).material) {
+                    Some((0xA12, (0.6, 1.6), p))
                 } else if (c.material == i.ash || c.material == i.charcoal) && (p.is_air() || p.material == i.tall_grass || p.material == i.grass || p.material == i.moss) {
-                    Some((0xA13, (0.3, 2.0)))
+                    let to = if p.material == i.grass || p.material == i.moss { Cell::new(i.soil, p.shade) } else { Cell::AIR };
+                    Some((0xA13, (0.3, 2.0), to))
                 } else {
                     None
                 };
-                if let Some((salt, span)) = heal {
+                if let Some((salt, span, to)) = heal {
                     if due(x, y, salt, span) {
-                        out.edits.push((CellPos::new(x, y), false, p));
+                        out.edits.push((CellPos::new(x, y), false, to));
                     } else {
                         out.unhealed += 1;
                     }
@@ -544,6 +588,31 @@ impl TerrainGen {
             .filter_map(|(k, t)| if regrown[k].is_some() { again[k].as_ref() } else { Some(*t) })
             .collect();
         let sprouting: Vec<&flora::Tree> = (0..trees.len()).filter(|&k| !out.hurt_trees.contains(&trees[k].x)).filter_map(|k| again[k].as_ref()).collect();
+        // The dead: each lost tree (as it stood: as made, or its last
+        // regrown self) while the new one is small, its trunk to a height.
+        let dead: Vec<(flora::Tree, i32)> = trees
+            .iter()
+            .zip(&regrown)
+            .filter_map(|(t, r)| {
+                let &(grown, time) = r.as_ref()?;
+                if grown >= SNAG_UNTIL || out.hurt_trees.contains(&t.x) {
+                    return None;
+                }
+                let was = if time <= 1 { (*t).clone() } else { flora::Tree::plan(t.x, t.base, &mut Rng::seeded(&[self.plan.seed, 0x7EE6, t.x as u64, time as u64 - 1]), t.species, t.snowy, t.grow) };
+                let share = 0.35 + 0.3 * (hash(&[self.plan.seed, 0x5A6, t.x as u64, time as u64]) & 0xFF) as f32 / 255.0;
+                let top = was.base + (was.height as f32 * share) as i32;
+                Some((was, top))
+            })
+            .collect();
+        let snag = |x: i32, y: i32| {
+            dead.iter().find_map(|(t, top)| {
+                let mid = t.x as f32 + t.lean * ((y - t.base) as f32 / t.height.max(1) as f32).max(0.0);
+                match t.part_at(x, y, &self.leaf_edge) {
+                    Some(TreePart::Wood(shade)) if y < *top && (x as f32 - mid).abs() <= t.girth + 1.5 => Some(shade / 2),
+                    _ => None,
+                }
+            })
+        };
         let natural = |m: MaterialId| m == i.air || is_tree(m) || m == i.charcoal || m == i.ash;
         for ly in 0..CHUNK {
             for lx in 0..CHUNK {
@@ -553,6 +622,7 @@ impl TerrainGen {
                     continue;
                 }
                 let (want, shade) = self.background_at(x, y, &standing);
+                let charred = if is_tree(want) || dead.is_empty() { None } else { snag(x, y) };
                 let fix = if is_tree(want) {
                     c.material != want
                         && (sprouting.iter().any(|t| t.part_at(x, y, &self.leaf_edge).is_some()) || {
@@ -560,13 +630,18 @@ impl TerrainGen {
                             out.unhealed += !due as u32;
                             due
                         })
+                } else if let Some(shade) = charred {
+                    if c.material != i.charcoal {
+                        out.sudden.push((CellPos::new(x, y), Cell { heat: self.heat[i.charcoal.0 as usize], ..Cell::new(i.charcoal, shade) }));
+                    }
+                    false
                 } else if c.material == i.charcoal || c.material == i.ash {
                     let due = due(x, y, 0xA15, (0.5, 3.0));
                     out.unhealed += !due as u32;
                     due
                 } else {
                     if is_tree(c.material) {
-                        out.clear.push(CellPos::new(x, y));
+                        out.sudden.push((CellPos::new(x, y), Cell::AIR));
                     }
                     false
                 };
@@ -1344,6 +1419,13 @@ impl ChunkGenerator for TerrainGen {
         Some(self.heal_chunk(chunk, how))
     }
 
+    fn trees_between(&self, x0: i32, x1: i32) -> Vec<i32> {
+        let mut xs: Vec<i32> = self.trees_near(x0, x1).iter().map(|t| t.x).filter(|x| (x0..=x1).contains(x)).collect();
+        xs.sort_unstable();
+        xs.dedup();
+        xs
+    }
+
     fn biome_hint(&self, x: i32) -> Option<&'static str> {
         Some(match self.plan.biome_at(x) {
             Biome::Ocean => "ocean",
@@ -1602,7 +1684,7 @@ mod tests {
                         match what {
                             Spawn::Chest => chests_seen.push(p),
                             Spawn::Creature(_) => spawns.push(p),
-                            Spawn::Prop(_) => {}
+                            Spawn::Prop(_) | Spawn::Keeper(_) => {}
                         }
                     }
                 }
@@ -1936,8 +2018,8 @@ mod tests {
         let pos = CellPos::new(t.x, t.base + 12).chunk();
         let none = |_: i32| None;
         let pristine = g.generate(pos);
-        let h = g.heal(&pristine, &Healing { days: 0.0, tree: &none, judge: true, cooled: true }).unwrap();
-        assert!(h.edits.is_empty() && h.clear.is_empty() && h.hurt_trees.is_empty() && h.unhealed == 0, "as made, nothing to heal: {h:?}");
+        let h = g.heal(&pristine, &Healing { days: 0.0, tree: &none, judge: true, cooled: true, scorched: None }).unwrap();
+        assert!(h.edits.is_empty() && h.sudden.is_empty() && h.hurt_trees.is_empty() && h.unhealed == 0, "as made, nothing to heal: {h:?}");
 
         // Burnt: the trees to charcoal, the grass to soil.
         let (charcoal, soil, grass) = (m.expect_id("charcoal"), m.expect_id("soil"), m.expect_id("grass"));
@@ -1956,14 +2038,14 @@ mod tests {
             }
         }
         assert!(burnt > 100, "the chunk had trees ({burnt} cells)");
-        let h = g.heal(&c, &Healing { days: 0.0, tree: &none, judge: true, cooled: false }).unwrap();
+        let h = g.heal(&c, &Healing { days: 0.0, tree: &none, judge: true, cooled: false, scorched: None }).unwrap();
         assert!(h.hurt_trees.contains(&t.x), "the burnt tree is found: {:?}", h.hurt_trees);
         assert!(h.edits.is_empty() && h.unhealed > 0, "nothing grows back at once");
 
         // Five days on, the tree regrown (a new one): whole, then at rest.
         let regrown = |x: i32| h.hurt_trees.contains(&x).then_some((1.0, 1));
         for pass in 0..3 {
-            let h = g.heal(&c, &Healing { days: 5.0, tree: &regrown, judge: false, cooled: false }).unwrap();
+            let h = g.heal(&c, &Healing { days: 5.0, tree: &regrown, judge: false, cooled: false, scorched: None }).unwrap();
             if h.edits.is_empty() {
                 assert_eq!(h.unhealed, 0);
                 let back = (0..CHUNK as usize).flat_map(|y| (0..CHUNK as usize).map(move |x| (x, y))).filter(|&(x, y)| trees.contains(&c.get_bg(x, y).material)).count();
@@ -1977,6 +2059,46 @@ mod tests {
                 let (lx, ly) = ((p.x - o.x) as usize, (p.y - o.y) as usize);
                 if back { c.set_bg(lx, ly, cell) } else { c.set(lx, ly, cell) }
             }
+        }
+    }
+
+    /// A wildfire's scar (the world clock's, where no one was): as it would
+    /// be by now, the same however often it's asked; days on, healed.
+    #[test]
+    fn a_wildfire_scar_heals_like_a_burn() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Medium, &m);
+        let s = g.spawn_point();
+        let pos = CellPos::new(s.x, s.y).chunk();
+        let pristine = g.generate(pos);
+        let none = |_: i32| None;
+        let grass = m.expect_id("grass");
+        let count = |c: &Chunk, id: MaterialId| (0..CHUNK as usize).flat_map(|y| (0..CHUNK as usize).map(move |x| (x, y))).filter(|&(x, y)| c.get(x, y).material == id).count();
+        let apply = |c: &mut Chunk, h: Healed| {
+            let o = pos.origin();
+            for (p, back, cell) in h.edits {
+                let (lx, ly) = ((p.x - o.x) as usize, (p.y - o.y) as usize);
+                if back { c.set_bg(lx, ly, cell) } else { c.set(lx, ly, cell) }
+            }
+        };
+        assert!(count(&pristine, grass) > 20, "grass at the start");
+        let mut c = g.generate(pos);
+        let fresh = Healing { days: 0.0, tree: &none, judge: false, cooled: false, scorched: Some(0.05) };
+        let h = g.heal(&c, &fresh).unwrap();
+        assert!(h.unhealed > 0);
+        apply(&mut c, h);
+        assert!(count(&c, grass) * 10 < count(&pristine, grass), "the grass burnt: {} of {}", count(&c, grass), count(&pristine, grass));
+        assert!(count(&c, m.expect_id("ash")) > 0, "ash lying");
+        let h = g.heal(&c, &fresh).unwrap();
+        assert!(h.edits.is_empty(), "the same scar when asked again ({} edits)", h.edits.len());
+        let later = Healing { scorched: Some(3.0), ..fresh };
+        for _ in 0..12 {
+            let h = g.heal(&c, &later).unwrap();
+            apply(&mut c, h);
+        }
+        for name in ["grass", "soil", "ash", "tall_grass"] {
+            let id = m.expect_id(name);
+            assert_eq!(count(&c, id), count(&pristine, id), "healed: {name}");
         }
     }
 
@@ -2344,7 +2466,7 @@ mod tests {
         let c = &g.plan.caves.chambers[taken[0]];
         let mid = CellPos::new(c.x as i32, c.y as i32).chunk();
         let (chunk, spawns) = g.generate_with_spawns(mid);
-        let kinds: Vec<&str> = spawns.iter().filter_map(|(_, s)| if let Spawn::Creature(k) = s { Some(*k) } else { None }).collect();
+        let kinds: Vec<&str> = spawns.iter().filter_map(|(_, s)| if let Spawn::Keeper(k) = s { Some(*k) } else { None }).collect();
         assert!(kinds.contains(&"spider") && kinds.iter().filter(|k| **k == "egg_sac").count() == 2, "its keepers: {kinds:?}");
         let web = m.expect_id("cobweb");
         let near: i32 = (-1..=1).flat_map(|dy| (-1..=1).map(move |dx| (dx, dy))).map(|(dx, dy)| {

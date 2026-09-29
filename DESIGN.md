@@ -735,7 +735,12 @@ live in. The arc, in order:
      as chunks load (catching up) and hourly; growth shows in view (it's
      gradual), clearing a dead tree waits until no one's looking. A lost tree
      is a sapling the next day and whole by the fifth, a new one of its kind.
-     A chunk away an hour comes back with its fires out.
+     A chunk away an hour comes back with its fires out. A lost tree
+     leaves a charred snag until its successor is a third grown. Wildfires
+     happen where no one is: they mark trees lost and scorch the ground as
+     a function of the days since (the same scar however often it's
+     looked at). Lairs refill three days after their last keeper died;
+     spreading into nearby caves is still to come.
    - **Processes from the start**: regrowth; moisture, rainy spells and
      droughts; distant wildfires (lightning in a dry region; you find the
      scar, and it heals); lairs refill (and, left alone, spread into the

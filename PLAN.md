@@ -81,10 +81,10 @@ world plans in under a second and plays as smoothly as today.
    whole trees (by 5: a tree grows whole), never over what's built; live,
    grass creeps at its edges and saplings grow; `regrow` scenario (burn,
    skip days, look).
-5. Distant wildfires (lightning in dry regions no one's in: the scar is
+5. ✅ Distant wildfires (lightning in dry regions no one's in: the scar is
    found, and heals); lairs refill after they're cleared (and, left alone,
    spread into the caves beside them).
-6. The dev panel: a day ahead, the region under the cursor (its numbers).
+6. ✅ The dev panel: a day ahead, the region under the cursor (its numbers).
 Done when: a burnt forest is back in 5 game days whether you stayed,
 left, or came back halfway; fires spread less in wet forests than in dry
 ones (measured); nothing pops into view.
