@@ -206,6 +206,9 @@ fn rise(at: f32, speed: f32, to: f32, dt: f32) -> (f32, f32) {
     (next, speed)
 }
 
+/// What the camera follows: where it's drawn, and its body (on the ground?).
+type Target<'a> = (&'a GlobalTransform, Option<&'a crate::actors::Kinematics>);
+
 #[allow(clippy::too_many_arguments)]
 pub fn follow(
     time: Res<Time>,
@@ -214,7 +217,7 @@ pub fn follow(
     shake: Res<crate::fx::ShakeOffset>,
     mut shaken: Local<Vec2>,
     mut glide: Local<Glide>,
-    target: Query<(&GlobalTransform, Option<&crate::actors::Kinematics>), (With<CameraTarget>, Without<MainCamera>)>,
+    target: Query<Target, (With<CameraTarget>, Without<MainCamera>)>,
     mut cam: Single<&mut Transform, With<MainCamera>>,
 ) {
     // Undo last frame's shake, so a free camera doesn't drift.
