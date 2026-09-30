@@ -1176,10 +1176,12 @@ Saved with the world (`WorldFile::clock`; older saves load with none of it).
   world (from a corner every 64 texels), not on the light grid that follows
   the camera, so a lit edge stays put as you move (on the grid, climbing or
   walking made the sun's edge on slopes and crowns flicker).
-- The camera's height follows the player's through a critically damped
-  spring (0.1 s, never more than 6 cells behind): stepping up a hill snaps
-  the body up a cell or two a tick and pauses, and a camera on it lurched
-  with every step; across it follows exactly.
+- On the ground the camera's height follows the player's through a
+  critically damped spring (0.1 s, never more than 6 cells behind): stepping
+  up a hill snaps the body up a cell or two a tick and pauses, and a camera
+  on it lurched with every step. In the air it moves with the player from
+  the first frame (a spring there sat still for frames as rocket boots took
+  off), what it was behind closing in 0.05 s. Across it follows exactly.
 - The camera snaps to whole screen pixels a quarter pixel off the halves: a
   body at rest stands half a cell up, a tie at 3 pixels a cell, and float
   noise flipped it (the world hopping a pixel against the sky).

@@ -253,15 +253,15 @@ static FRAME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0
 
 /// Where the camera is for each captured frame (after it followed); with
 /// `PLATYPUS_CAMLOG=1`, every frame (the time, the camera, the player).
-fn frame_cams(time: Res<Time>, cam: Single<&Transform, With<MainCamera>>, player: Query<&Kinematics, With<LocalPlayer>>, mut log: Local<Option<bool>>) {
+fn frame_cams(time: Res<Time>, cam: Single<&Transform, With<MainCamera>>, player: Query<(&Kinematics, &Transform), (With<LocalPlayer>, Without<MainCamera>)>, mut log: Local<Option<bool>>) {
     let i = FRAME.load(std::sync::atomic::Ordering::Relaxed);
     if i > 0 {
         println!("FRAME {:03} cam {} {}", i - 1, cam.translation.x, cam.translation.y);
     }
     if *log.get_or_insert_with(|| std::env::var("PLATYPUS_CAMLOG").is_ok())
-        && let Ok(k) = player.single()
+        && let Ok((k, tf)) = player.single()
     {
-        println!("CAM {} {} {} {} {}", time.elapsed_secs(), cam.translation.x, cam.translation.y, k.body.pos.y, k.loco.grounded());
+        println!("CAM {} {} {} {} {} {}", time.elapsed_secs(), cam.translation.x, cam.translation.y, k.body.pos.y, k.loco.grounded(), tf.translation.y);
     }
 }
 

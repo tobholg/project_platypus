@@ -171,15 +171,21 @@ pub struct Glide {
     last: Option<Vec2>,
     from: Option<(Vec2, f32)>,
     height: Option<(f32, f32)>,
+    /// Where the target was last frame (its height).
+    to: Option<f32>,
 }
 
-/// The camera's height follows the target's through a critically damped
-/// spring this quick (seconds): a body stepping up a hill snaps up a cell
-/// or two a tick and pauses, and a camera on it lurched with every step;
-/// on the spring a staircase is a ramp. Never more than `RISE_LAG` cells
-/// behind (a jump or a fall stays in view).
+/// On the ground the camera's height follows the target's through a
+/// critically damped spring this quick (seconds): a body stepping up a hill
+/// snaps up a cell or two a tick and pauses, and a camera on it lurched
+/// with every step; on the spring a staircase is a ramp. Never more than
+/// `RISE_LAG` cells behind. In the air it moves with the target from the
+/// first frame (rocket boots, a jump: a spring started from rest sat still
+/// for frames as they took off), what it was behind closing over
+/// `AIR_CATCH` seconds.
 const RISE_TIME: f32 = 0.1;
 const RISE_LAG: f32 = 6.0;
+const AIR_CATCH: f32 = 0.05;
 
 /// A critically damped spring from `at` (moving at `speed`) toward `to`
 /// over `dt` (as `SmoothDamp`, Game Programming Gems 4, 1.10): the new
@@ -208,13 +214,14 @@ pub fn follow(
     shake: Res<crate::fx::ShakeOffset>,
     mut shaken: Local<Vec2>,
     mut glide: Local<Glide>,
-    target: Query<&GlobalTransform, (With<CameraTarget>, Without<MainCamera>)>,
+    target: Query<(&GlobalTransform, Option<&crate::actors::Kinematics>), (With<CameraTarget>, Without<MainCamera>)>,
     mut cam: Single<&mut Transform, With<MainCamera>>,
 ) {
     // Undo last frame's shake, so a free camera doesn't drift.
     cam.translation -= shaken.extend(0.0);
-    if let Some(t) = target.iter().next().filter(|_| !free.0) {
+    if let Some((t, k)) = target.iter().next().filter(|_| !free.0) {
         let p = t.translation().truncate();
+        let grounded = k.is_none_or(|k| k.loco.grounded());
         // A jump across the world (a blink, a portal): glide there rather
         // than cut.
         if glide.last.is_some_and(|l| l.distance(p) > TELEPORT) {
@@ -234,13 +241,22 @@ pub fn follow(
         // (Gliding, or just taken up: straight there.)
         let dt = time.delta_secs().min(0.1);
         let (y, speed) = match glide.height {
-            Some((y, speed)) if glide.from.is_none() => rise(y, speed, at.y, dt),
+            Some((y, speed)) if glide.from.is_none() && grounded => rise(y, speed, at.y, dt),
+            // (In the air: with it, the gap closing; how fast it went, for
+            // the spring when it lands.)
+            Some((y, _)) if glide.from.is_none() && dt > 0.0 => {
+                let gap = (y - glide.to.unwrap_or(at.y)) * (-dt / AIR_CATCH).exp();
+                let next = at.y + gap;
+                (next, (next - y) / dt)
+            }
             _ => (at.y, 0.0),
         };
+        glide.to = Some(at.y);
         glide.height = Some((y, speed));
         cam.translation.y = y;
     } else {
         glide.height = None;
+        glide.to = None;
     }
     // Snap to whole screen pixels so cells never shimmer; the shake too.
     // (A quarter pixel off the halves: a body at rest stands half a cell
