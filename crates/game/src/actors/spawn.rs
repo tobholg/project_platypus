@@ -122,7 +122,14 @@ fn process_queue(mut commands: Commands, sim: Res<SimWorld>, mut queue: ResMut<S
     });
 }
 
-fn world_spawns(mut commands: Commands, fresh: Res<FreshChunks>, mut spawned: ResMut<Spawned>, mut chests: ResMut<crate::hands::chests::Chests>, mut clock: ResMut<crate::clock::WorldClock>) {
+fn world_spawns(
+    mut commands: Commands,
+    fresh: Res<FreshChunks>,
+    mut spawned: ResMut<Spawned>,
+    mut chests: ResMut<crate::hands::chests::Chests>,
+    mut clock: ResMut<crate::clock::WorldClock>,
+    crafting: Res<crate::craft::Crafting>,
+) {
     for &(at, what) in &fresh.0 {
         if !spawned.0.insert(at) {
             continue;
@@ -130,6 +137,11 @@ fn world_spawns(mut commands: Commands, fresh: Res<FreshChunks>, mut spawned: Re
         match what {
             Spawn::Creature(kind) | Spawn::Prop(kind) => spawn_creature(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), |_| {}),
             Spawn::Chest => chests.spawn_found(&mut commands, at),
+            // (A village's anvil, furnace, workbench.)
+            Spawn::Station(id) => match crafting.station(id) {
+                Some(kind) => crafting.spawn(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32)),
+                None => warn!("no crafting station `{id}`"),
+            },
             // (The world clock refills its lair: see `clock::lairs`.)
             Spawn::Keeper(kind) => {
                 spawn_creature(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), move |e| {

@@ -130,6 +130,8 @@ pub enum Spawn {
     /// A thing left in the caves, by creature id (it's a creature with no
     /// mind: a TNT barrel, a mine cart, a lantern): miners' leavings.
     Prop(&'static str),
+    /// A crafting station, by id (crafting.ron): the village smithy's anvil.
+    Station(&'static str),
 }
 
 /// How far a chunk has healed (the world clock, DESIGN §13).
@@ -230,6 +232,7 @@ struct Ids {
     candle: MaterialId,
     spikes: MaterialId,
     planks: MaterialId,
+    brick: MaterialId,
     ashlar: MaterialId,
     cracked_ashlar: MaterialId,
     false_ashlar: MaterialId,
@@ -265,6 +268,9 @@ impl Ids {
             StructureKind::Crypt => (self.crypt_stone, self.cracked_stone, self.false_wall),
             StructureKind::Castle => (self.ashlar, self.cracked_ashlar, self.false_ashlar),
             StructureKind::Sunken => (self.sand, self.sand, self.sand),
+            // Timber walls; brick where it's weak ('%': foundations, a
+            // chimney, the well).
+            StructureKind::Village => (self.planks, self.brick, self.planks),
         }
     }
 }
@@ -339,6 +345,7 @@ impl TerrainGen {
             candle: mats.expect_id("candle"),
             spikes: mats.expect_id("spikes"),
             planks: mats.expect_id("planks"),
+            brick: mats.expect_id("brick"),
             ashlar: mats.expect_id("ashlar"),
             cracked_ashlar: mats.expect_id("cracked_ashlar"),
             false_ashlar: mats.expect_id("false_ashlar"),
@@ -926,7 +933,8 @@ impl TerrainGen {
                     }
                 });
                 // (Some corners: by the 8-cell tile.)
-                let webbed = hash(&[self.plan.seed, 0xA70, (x >> 3) as u64, (y >> 3) as u64]).is_multiple_of(3);
+                // (Not where people live.)
+                let webbed = kind != StructureKind::Village && hash(&[self.plan.seed, 0xA70, (x >> 3) as u64, (y >> 3) as u64]).is_multiple_of(3);
                 match side.min() {
                     Some(d) if up + d < 7 && webbed && !cell.is_multiple_of(5) => i.cobweb,
                     _ => i.air,
@@ -1101,6 +1109,10 @@ impl TerrainGen {
         let o = pos.origin();
         let inside = |(x, y): &(i32, i32)| (o.x..o.x + CHUNK).contains(x) && (o.y..o.y + CHUNK).contains(y);
         let mut out = Vec::new();
+        // (What the structures put besides their glyphs': the village's.)
+        for s in &self.plan.structures.list {
+            out.extend(s.spawns.iter().filter(|(x, y, _)| inside(&(*x, *y))).map(|&(x, y, what)| (CellPos::new(x, y), what)));
+        }
         for (s, piece) in self.plan.structures.pieces_in(pos.x, pos.y) {
             // The dead keep crypts; castles are orcs'.
             let guard = if s.kind == StructureKind::Crypt { "skeleton" } else { "orc" };
@@ -1808,7 +1820,7 @@ mod tests {
                         match what {
                             Spawn::Chest => chests_seen.push(p),
                             Spawn::Creature(_) => spawns.push(p),
-                            Spawn::Prop(_) | Spawn::Keeper(_) => {}
+                            Spawn::Prop(_) | Spawn::Keeper(_) | Spawn::Station(_) => {}
                         }
                     }
                 }
@@ -2240,6 +2252,38 @@ mod tests {
             assert!(worst <= 6, "{preset:?}: the plain rolls {worst} cells from its level");
             assert!((x0..=x1).all(|x| g.plan.water_at(x).is_none()), "{preset:?}: the plain is dry");
             eprintln!("{preset:?}: a plain {} wide at {level}, rolling at most {worst}", x1 - x0);
+        }
+    }
+
+    /// The village stands on the plain beside the spawn: its people and
+    /// its stations, in the medium and large worlds (the small one's plain
+    /// has room for a house or two).
+    #[test]
+    fn a_village_by_the_spawn() {
+        let m = mats();
+        for preset in [Preset::Medium, Preset::Large] {
+            let g = TerrainGen::new(1, preset, &m);
+            let v = g.plan.structures.list.iter().find(|s| s.kind == StructureKind::Village).expect("a village");
+            let (x0, _, x1, _) = v.bbox();
+            let (p0, p1, _) = g.plan.plain;
+            assert!(x0 > g.spawn_point().x && x0 >= p0 && x1 <= p1, "{preset:?}: the village ({x0}..{x1}) on the plain ({p0}..{p1}), right of the spawn");
+            let people: Vec<&str> = v.spawns.iter().filter_map(|s| if let Spawn::Creature(k) = s.2 { Some(k) } else { None }).collect();
+            let stations = v.spawns.iter().filter(|s| matches!(s.2, Spawn::Station(_))).count();
+            assert_eq!(people, ["guide", "smith", "healer", "merchant"], "{preset:?}");
+            assert_eq!(stations, 3, "{preset:?}: an anvil, a furnace, a workbench");
+            // Every one of them stands in the open, on the floor.
+            for &(x, y, _) in &v.spawns {
+                assert_eq!(g.material_at(x, y), MaterialId::AIR, "{preset:?}: open where one stands ({x}, {y})");
+                assert_ne!(g.material_at(x, y - 1), MaterialId::AIR, "{preset:?}: a floor under ({x}, {y})");
+            }
+            // And the spawn's chunk gives them to the game.
+            let mut found = 0;
+            for cx in x0.div_euclid(CHUNK)..=x1.div_euclid(CHUNK) {
+                for cy in (v.site.1 - 64).div_euclid(CHUNK)..=(v.site.1 + 64).div_euclid(CHUNK) {
+                    found += g.generate_with_spawns(ChunkPos::new(cx, cy)).1.iter().filter(|(_, s)| matches!(s, Spawn::Creature(_) | Spawn::Station(_))).count();
+                }
+            }
+            assert_eq!(found, 7, "{preset:?}: each reported once, by its chunk");
         }
     }
 

@@ -574,6 +574,7 @@ impl WorldPlan {
         );
         let mut list = crypts(seed, &surface, &water, &biomes, &chasms, (width, ocean_w, mid), scale, band_floors);
         list.extend(castles(seed, &surface, &biomes, width, scale));
+        list.extend(structures::village(plain, mid, &|x| surface[x.clamp(0, width - 1) as usize]));
         list.extend(sunken(&surface, &water, &biomes, sh));
         let structures = Structures::new(list);
 

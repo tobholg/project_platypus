@@ -350,6 +350,8 @@ pub enum StructureKind {
     Castle,
     /// A chest at the bottom of a lake.
     Sunken,
+    /// The village beside the spawn (timber houses, a well, a smithy).
+    Village,
 }
 
 impl StructureKind {
@@ -358,6 +360,7 @@ impl StructureKind {
             StructureKind::Crypt => "crypt",
             StructureKind::Castle => "castle",
             StructureKind::Sunken => "sunken chest",
+            StructureKind::Village => "village",
         }
     }
 }
@@ -371,6 +374,9 @@ pub struct Structure {
     pub rooms: usize,
     pub grid: (i32, i32),
     pub pieces: Vec<Piece>,
+    /// What stands in it besides its glyphs' (the village's people and
+    /// stations): where (the feet), what.
+    pub spawns: Vec<(i32, i32, crate::Spawn)>,
 }
 
 impl Structure {
@@ -622,7 +628,7 @@ pub fn crypt(rooms: &[Room], rng: &mut Rng, site: (i32, i32), grid: (i32, i32), 
     pieces.push(shaft(rx, top, ry - top));
     let shaft_door = |n: &Node| (n.cx == entrance && n.cy == 0).then_some(n.socket(entrance, Side::T));
     pieces.extend(furnish(rooms, rng, &nodes, &slot_at, &shaft_door));
-    Structure { kind: StructureKind::Crypt, site, rooms: nodes.len(), grid, pieces }
+    Structure { kind: StructureKind::Crypt, site, rooms: nodes.len(), grid, pieces, spawns: Vec::new() }
 }
 
 /// A castle on a summit: its floor at `site`, a keep `keep` slots wide and
@@ -702,7 +708,113 @@ pub fn castle(rooms: &[Room], rng: &mut Rng, site: (i32, i32), keep: (i32, i32),
         }
         pieces.push(Piece::new(x0, lo, w, h, glyphs));
     }
-    Structure { kind: StructureKind::Castle, site, rooms: nodes.len(), grid: (gw, gh), pieces }
+    Structure { kind: StructureKind::Castle, site, rooms: nodes.len(), grid: (gw, gh), pieces, spawns: Vec::new() }
+}
+
+/// One of the village's buildings, as written (`village.buildings`): its
+/// size in blocks, its glyphs (the bottom row first), and its marks (who
+/// or what stands on which block: block x, block y from the bottom, the
+/// letter).
+pub struct Building {
+    pub name: String,
+    w: i32,
+    h: i32,
+    glyphs: Vec<Glyph>,
+    marks: Vec<(i32, i32, char)>,
+}
+
+/// The letters that mark who or what stands on a block (an open one).
+const MARKS: &str = "gshmAFB";
+
+/// The village's buildings (assets/data/village.buildings).
+pub fn village_buildings() -> &'static [Building] {
+    static BUILDINGS: OnceLock<Vec<Building>> = OnceLock::new();
+    BUILDINGS.get_or_init(|| parse_buildings(include_str!("../../../assets/data/village.buildings")).unwrap_or_else(|e| panic!("village.buildings: {e}")))
+}
+
+pub fn parse_buildings(text: &str) -> Result<Vec<Building>, String> {
+    let mut out: Vec<(String, Vec<&str>)> = Vec::new();
+    for line in text.lines() {
+        if line.trim_start().starts_with("//") {
+            continue;
+        }
+        if let Some(name) = line.strip_prefix("building ") {
+            out.push((name.trim().to_string(), Vec::new()));
+        } else if !line.trim().is_empty() {
+            out.last_mut().ok_or("rows before any `building`")?.1.push(line);
+        }
+    }
+    out.into_iter()
+        .map(|(name, rows)| {
+            let w = rows.iter().map(|r| r.chars().count()).max().unwrap_or(0) as i32;
+            let h = rows.len() as i32;
+            let mut glyphs = vec![Glyph::Keep; (w * h) as usize];
+            let mut marks = Vec::new();
+            for (ry, row) in rows.iter().enumerate() {
+                let by = h - 1 - ry as i32;
+                for (bx, c) in row.chars().enumerate() {
+                    let g = if MARKS.contains(c) {
+                        marks.push((bx as i32, by, c));
+                        Glyph::Open
+                    } else {
+                        Glyph::from_char(c).ok_or(format!("`{name}`: `{c}` isn't a glyph"))?
+                    };
+                    glyphs[(by * w + bx as i32) as usize] = g;
+                }
+            }
+            Ok(Building { name, w, h, glyphs, marks })
+        })
+        .collect()
+}
+
+/// Blocks between the village's buildings, and from the spawn to the first.
+const VILLAGE_GAP: i32 = 2;
+const VILLAGE_FROM: i32 = 8;
+
+/// The village: its buildings in a row on the plain (`plain`: from x, to x,
+/// level) from a little right of the spawn (`mid`), as many as fit, each
+/// floor on the ground under its middle and brick down under it where the
+/// ground dips; its people and stations where its buildings mark them.
+pub fn village(plain: (i32, i32, i32), mid: i32, ground: &dyn Fn(i32) -> i32) -> Option<Structure> {
+    let mut pieces = Vec::new();
+    let mut spawns = Vec::new();
+    let mut bx = mid.div_euclid(BLOCK) + VILLAGE_FROM;
+    for b in village_buildings() {
+        if (bx + b.w) * BLOCK > plain.1 - 2 * BLOCK {
+            break;
+        }
+        // The floor row: the ground's top block under its middle.
+        let floor = ground((bx + b.w / 2) * BLOCK + 2).div_euclid(BLOCK) - 1;
+        pieces.push(Piece::new(bx, floor, b.w, b.h, b.glyphs.clone()));
+        // Foundations: brick from the floor down to under the ground.
+        let tops: Vec<i32> = (0..b.w).map(|x| ground((bx + x) * BLOCK + 2).div_euclid(BLOCK) - 1).collect();
+        let lowest = tops.iter().copied().min().unwrap_or(floor).min(floor) - 1;
+        if lowest < floor {
+            let depth = floor - lowest;
+            let mut glyphs = vec![Glyph::Keep; (b.w * depth) as usize];
+            for (x, &top) in tops.iter().enumerate() {
+                for by in (top - 1 - lowest).max(0)..depth {
+                    glyphs[(by * b.w + x as i32) as usize] = Glyph::Weak;
+                }
+            }
+            pieces.push(Piece::new(bx, lowest, b.w, depth, glyphs));
+        }
+        for &(mx, my, c) in &b.marks {
+            let at = ((bx + mx) * BLOCK + 2, (floor + my) * BLOCK);
+            let what = match c {
+                'g' => crate::Spawn::Creature("guide"),
+                's' => crate::Spawn::Creature("smith"),
+                'h' => crate::Spawn::Creature("healer"),
+                'm' => crate::Spawn::Creature("merchant"),
+                'A' => crate::Spawn::Station("anvil"),
+                'F' => crate::Spawn::Station("furnace"),
+                _ => crate::Spawn::Station("workbench"),
+            };
+            spawns.push((at.0, at.1, what));
+        }
+        bx += b.w + VILLAGE_GAP;
+    }
+    (!pieces.is_empty()).then(|| Structure { kind: StructureKind::Village, site: (mid, plain.2), rooms: 0, grid: (0, 0), pieces, spawns })
 }
 
 /// A chest on a lake's bed at column x (`bed`: the first water cell above
@@ -710,7 +822,7 @@ pub fn castle(rooms: &[Room], rng: &mut Rng, site: (i32, i32), keep: (i32, i32),
 pub fn sunken(x: i32, bed: i32) -> Structure {
     let (bx, by) = (x.div_euclid(BLOCK) - 1, bed.div_euclid(BLOCK));
     let glyphs = vec![Glyph::Chest, Glyph::Keep, Glyph::Keep, Glyph::Keep];
-    Structure { kind: StructureKind::Sunken, site: (x, bed), rooms: 0, grid: (0, 0), pieces: vec![Piece::new(bx, by, 2, 2, glyphs)] }
+    Structure { kind: StructureKind::Sunken, site: (x, bed), rooms: 0, grid: (0, 0), pieces: vec![Piece::new(bx, by, 2, 2, glyphs)], spawns: Vec::new() }
 }
 
 /// The way down from a ruin to its crypt: a shaft `h` blocks tall whose
