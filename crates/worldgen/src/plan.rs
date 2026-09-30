@@ -196,6 +196,8 @@ pub struct WorldPlan {
     biomes: Vec<Biome>,
     /// First air cell above the ground, per world column.
     surface: Vec<i32>,
+    /// The plain round the spawn (`start_plain`): from x, to x, its level.
+    pub plain: (i32, i32, i32),
     /// Water surface per column (first air above the water), or 0 for none.
     water: Vec<i32>,
     /// 0 … 1: how mountainous a column is (overhangs, bare rock).
@@ -504,7 +506,10 @@ impl WorldPlan {
         // so no peak is sliced flat.)
         let top = band_floors[0] as f64 - 150.0 * sh;
         let soft = |h: f64| if h > top { top + (h - top) * 150.0 * sh / (h - top + 150.0 * sh) } else { h };
-        let surface: Vec<i32> = surface.iter().zip(&mountains).map(|(&h, &m)| soft(h + m).max(band_floors[3] as f64) as i32).collect();
+        let mut surface: Vec<i32> = surface.iter().zip(&mountains).map(|(&h, &m)| soft(h + m).max(band_floors[3] as f64) as i32).collect();
+        // The start: a wide plain round the spawn (a twentieth of the land's
+        // roll left, so it isn't a table), easing back into the land beyond.
+        let plain = start_plain(&mut surface, mid, sw);
 
         let water = water_levels(&surface, &biomes, &rugged, &bowls, sea_level, ocean_w, sh, sw, seed);
         for (r, &w) in rugged.iter_mut().zip(&water) {
@@ -623,7 +628,7 @@ impl WorldPlan {
             )
         };
 
-        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, water, rugged, islands, chasms, water_tables, climate, forest, island_forest, structures, caves }
+        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, water, rugged, islands, chasms, water_tables, climate, forest, island_forest, structures, caves }
     }
 
     /// First air cell above the ground at a world column.
@@ -885,6 +890,33 @@ fn smoothstep(a: f64, b: f64, x: f64) -> f64 {
 /// lower rim, levelled flat per lake and capped at the biome's lake depth;
 /// no lakes in rugged notches; puddles dropped.
 #[allow(clippy::too_many_arguments)]
+/// Half the plain's width round the spawn, and how far it eases back into
+/// the land beyond (cells, in the reference world: sized with it).
+const PLAIN: f64 = 300.0;
+const PLAIN_EASE: f64 = 150.0;
+/// How much of the land's roll the plain keeps (a twentieth).
+const PLAIN_ROLL: f64 = 0.05;
+
+/// Flatten the ground round `mid` into a plain at its median height (a
+/// twentieth of the roll kept), easing back into the land over `PLAIN_EASE`.
+/// Returns (from x, to x, level) of the plain proper.
+fn start_plain(surface: &mut [i32], mid: i32, sw: f64) -> (i32, i32, i32) {
+    let (half, ease) = ((PLAIN * sw) as i32, (PLAIN_EASE * sw).max(8.0) as i32);
+    let n = surface.len() as i32;
+    let (x0, x1) = ((mid - half).max(0), (mid + half).min(n - 1));
+    let mut heights: Vec<i32> = surface[x0 as usize..=x1 as usize].to_vec();
+    heights.sort_unstable();
+    let level = heights[heights.len() / 2];
+    for x in (x0 - ease).max(0)..=(x1 + ease).min(n - 1) {
+        let out = (x0 - x).max(x - x1).max(0) as f64 / ease as f64;
+        let s = out * out * (3.0 - 2.0 * out);
+        let h = surface[x as usize] as f64;
+        let flat = level as f64 + (h - level as f64) * PLAIN_ROLL;
+        surface[x as usize] = (flat + (h - flat) * s).round() as i32;
+    }
+    (x0, x1, level)
+}
+
 fn water_levels(surface: &[i32], biomes: &[Biome], rugged: &[f32], bowls: &[(i32, i32)], sea_level: i32, ocean_w: i32, sh: f64, sw: f64, seed: u64) -> Vec<i32> {
     let n = surface.len();
     let mut water = vec![0; n];

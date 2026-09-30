@@ -2226,6 +2226,23 @@ mod tests {
         }
     }
 
+    /// The start is a plain: round the spawn, at every size, the ground
+    /// barely rolls (a few cells either way of its level), and it's dry.
+    #[test]
+    fn the_start_is_a_plain() {
+        let m = mats();
+        for preset in Preset::ALL {
+            let g = TerrainGen::new(1, preset, &m);
+            let (x0, x1, level) = g.plan.plain;
+            let s = g.spawn_point();
+            assert!((x0..=x1).contains(&s.x), "{preset:?}: the spawn ({}) on the plain ({x0}..{x1})", s.x);
+            let worst = (x0..=x1).map(|x| (g.plan.surface_at(x) - level).abs()).max().unwrap();
+            assert!(worst <= 6, "{preset:?}: the plain rolls {worst} cells from its level");
+            assert!((x0..=x1).all(|x| g.plan.water_at(x).is_none()), "{preset:?}: the plain is dry");
+            eprintln!("{preset:?}: a plain {} wide at {level}, rolling at most {worst}", x1 - x0);
+        }
+    }
+
     #[test]
     fn spawn_is_dry_forest_ground() {
         let m = mats();
@@ -2242,7 +2259,8 @@ mod tests {
     #[test]
     fn acid_pools_away_from_the_grottos_sit_in_acid_proof_crust() {
         let m = mats();
-        let g = TerrainGen::new(1, Preset::Small, &m);
+        // (The medium world: the small one has too few chambers to count on.)
+        let g = TerrainGen::new(1, Preset::Medium, &m);
         let crust = m.expect_id("toxic_crust");
         let pools: Vec<_> = g.plan.caves.chambers.iter().filter(|c| c.zone.is_none() && matches!(c.pool, Some((caves::Pool::Acid, _)))).collect();
         assert!(pools.len() >= 3, "acid pools outside the toxic grottos: {}", pools.len());

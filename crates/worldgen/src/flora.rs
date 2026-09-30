@@ -98,8 +98,13 @@ fn range(rng: &mut Rng, lo: f32, hi: f32) -> f32 {
     lo + (hi - lo) * unit(rng)
 }
 
+/// Biggest cluster of foliage (radius, cells): its outer leaves stay within
+/// the sim's `LEAF_REACH` of wood (a giant's crown reached 73).
+const CLUSTER_MAX: f32 = 30.0;
+
 /// A cluster of foliage: one big blob and several smaller ones around it.
 fn foliage(blobs: &mut Vec<Blob>, rng: &mut Rng, cx: f32, cy: f32, r: f32) {
+    let r = r.min(CLUSTER_MAX);
     blobs.push(Blob { x: cx, y: cy, r });
     for _ in 0..(3 + rng.next_u32() % 3) {
         let a = unit(rng) * std::f32::consts::TAU;
