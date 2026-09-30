@@ -1,0 +1,17 @@
+// The village's merchant (creatures/merchant.ron): the player's rig, a
+// fox-red beard of hair, a purple coat, a gold buckle.
+(
+    base: "player",
+    palette: {
+        'h': (176, 90, 40),     // hair
+        'H': (136, 66, 28),
+        's': (230, 188, 156),
+        'S': (194, 150, 118),
+        't': (110, 60, 130),    // coat
+        'T': (82, 42, 98),
+        'b': (60, 40, 30),
+        'y': (240, 200, 80),
+        'p': (70, 60, 80),
+        'q': (54, 46, 62),
+    },
+)

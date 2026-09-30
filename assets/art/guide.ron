@@ -1,0 +1,17 @@
+// The village's guide (a villager: creatures/guide.ron): the player's rig
+// and clothes, an old hand's grey hair and a traveller's blue coat.
+(
+    base: "player",
+    palette: {
+        'h': (176, 174, 170),   // hair, grey
+        'H': (132, 130, 128),
+        's': (222, 176, 142),
+        'S': (186, 136, 108),
+        't': (64, 96, 150),     // coat
+        'T': (46, 70, 116),
+        'b': (90, 62, 40),
+        'y': (190, 190, 200),
+        'p': (96, 86, 70),
+        'q': (74, 66, 54),
+    },
+)

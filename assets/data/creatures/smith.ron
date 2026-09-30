@@ -1,0 +1,27 @@
+// The village's smith: works the anvil and furnace in the smithy, and sells
+// what comes off them for gold. A villager (actors/villager.rs, talk.rs).
+(
+    name: "Smith",
+    size: (7, 16),
+    health: 80,
+    team: Villager,
+    movement: (run_speed: 56, jump_height: 22, air_jumps: 0, step_height: 3, dash_speed: 0),
+    stamina: 60,
+    poise: 10,
+    heft: 1.0,
+    art: "smith",
+    brain: (
+        kind: "villager",
+        params: (
+            role: "smith",
+            wander: 16,
+            lines: [
+                "Iron wants a firebrick mould. Stone melts before iron does.",
+                "Bring me gold and I'll put a proper edge in your hand.",
+                "Pour it hot and let it set. The shape is yours to make.",
+                "That anvil's older than the village.",
+            ],
+            sells: [("iron_pickaxe", 60), ("gold_pickaxe", 180), ("shortsword", 70), ("longsword", 160), ("iron_helm", 90), ("chainmail", 150), ("ladle", 40), ("bucket", 30), ("block:firebrick", 3)],
+        ),
+    ),
+)

@@ -267,7 +267,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -4033,6 +4033,47 @@ fn trap_script(
             state.0 = 4;
         }
         _ => {}
+    }
+}
+
+/// `village` (a generated world; try `PLATYPUS_HOUR=22`): from the start,
+/// the village's people and stations logged, then a walk through the
+/// village (D held) and a stop by each of them. Logs where each is and
+/// what they're doing, every second.
+fn village_script(
+    s: Res<Scenario>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    people: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::villager::Routine, Option<&crate::actors::villager::Home>)>,
+    stations: Query<&Kinematics, With<crate::craft::Station>>,
+    day: Res<crate::light::Daylight>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "village" {
+        return;
+    }
+    let t = s.elapsed;
+    let Ok(k) = player.single() else { return };
+    if state.0 == 0 && t > 2.0 {
+        keys.press(KeyCode::KeyD);
+        state.0 = 1;
+    }
+    // (Walk on till past the last of them, then stand.)
+    let last = people.iter().map(|(_, pk, ..)| pk.body.pos.x).fold(f32::MIN, f32::max);
+    if state.0 == 1 && k.body.pos.x > last + 30.0 {
+        keys.release(KeyCode::KeyD);
+        state.0 = 2;
+    }
+    if t >= state.1 {
+        state.1 = t.floor() + 1.0;
+        let who: Vec<String> = people
+            .iter()
+            .map(|(c, pk, r, home)| {
+                let doing = if r.fleeing { "running" } else if r.talking { "talking" } else { "about" };
+                format!("{} at {:+.0} (home {:+.0}) {doing}", c.kind, pk.body.pos.x - k.body.pos.x, home.map_or(0.0, |h| h.0.x - pk.body.pos.x))
+            })
+            .collect();
+        info!("village: t {t:.0} ({}) player at x {:.0}; {} stations; {}", day.clock(), k.body.pos.x, stations.iter().count(), who.join("; "));
     }
 }
 

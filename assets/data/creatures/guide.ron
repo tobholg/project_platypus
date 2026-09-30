@@ -1,0 +1,31 @@
+// The village's guide: an old traveller who knows the land and tells you
+// how things are done. The first face you meet (the house nearest the
+// start). A villager (actors/villager.rs); talking to them: talk.rs.
+(
+    name: "Guide",
+    size: (7, 16),
+    health: 80,
+    team: Villager,
+    movement: (run_speed: 56, jump_height: 22, air_jumps: 0, step_height: 3, dash_speed: 0),
+    stamina: 60,
+    poise: 10,
+    heft: 1.0,
+    art: "guide",
+    brain: (
+        kind: "villager",
+        params: (
+            role: "guide",
+            wander: 60,
+            lines: [
+                "Welcome, traveller. The village is small, but it's safe by day.",
+                "Dig down with your pickaxe; ore gets richer the deeper you go.",
+                "A furnace melts ore into bars; the smith makes more of them.",
+                "Press F to kick. Logs, barrels, even a casting of your own.",
+                "Gold comes out of whatever you fell. Walk into it to take it.",
+                "Burnt forests grow back in a few days. The world heals.",
+                "Mind the ropes in the tunnels: something heavy hangs on them.",
+                "The merchant buys what you don't need. For gold, of course.",
+            ],
+        ),
+    ),
+)

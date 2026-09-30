@@ -217,7 +217,9 @@ fn with_art(mut def: CreatureDef) -> Result<CreatureDef, String> {
     let Some(name) = def.art.clone() else { return Ok(def) };
     let path = data_path("").parent().expect("assets/data").join("art").join(format!("{name}.ron"));
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let file = platypus_art::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let dir = path.parent().expect("assets/art").to_path_buf();
+    let read = |base: &str| std::fs::read_to_string(dir.join(format!("{base}.ron"))).map_err(|e| format!("{base}.ron: {e}"));
+    let file = platypus_art::parse_based(&text, &read).map_err(|e| format!("{}: {e}", path.display()))?;
     let art = platypus_art::compile(&file).map_err(|e| format!("{}: {e}", path.display()))?;
     def.art_file = Some(Arc::new(file));
     set_art(&mut def, &name, art);

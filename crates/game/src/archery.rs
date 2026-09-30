@@ -239,8 +239,7 @@ fn fly(
                     continue;
                 }
                 if let (Some(x), Some(y)) = (a.team, tteam)
-                    && x == *y
-                    && x != Team::Neutral
+                    && x.allied(*y)
                 {
                     continue;
                 }

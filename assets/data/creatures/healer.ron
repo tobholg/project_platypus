@@ -1,0 +1,28 @@
+// The village's healer: mends you for a little gold, and sells potions.
+// A villager (actors/villager.rs, talk.rs).
+(
+    name: "Healer",
+    size: (7, 16),
+    health: 80,
+    team: Villager,
+    movement: (run_speed: 56, jump_height: 22, air_jumps: 0, step_height: 3, dash_speed: 0),
+    stamina: 60,
+    poise: 10,
+    heft: 1.0,
+    art: "healer",
+    brain: (
+        kind: "villager",
+        params: (
+            role: "healer",
+            wander: 30,
+            lines: [
+                "You look pale. Sit, let me see to that.",
+                "Acid won't wash off with water from a puddle. Find deep water.",
+                "Don't drink two potions at once. Your body won't take it.",
+                "Burning? Roll in the water, or fall fast. Either puts it out.",
+            ],
+            heals: Some(15),
+            sells: [("small_health_potion", 25)],
+        ),
+    ),
+)

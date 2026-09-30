@@ -1,0 +1,19 @@
+// The village's smith (creatures/smith.ron): the player's rig, black hair,
+// a leather apron over a soot-grey shirt, heavy boots.
+(
+    base: "player",
+    palette: {
+        'h': (30, 24, 22),      // hair
+        'H': (20, 16, 14),
+        's': (200, 146, 110),
+        'S': (164, 112, 82),
+        't': (124, 84, 50),     // apron
+        'T': (92, 60, 36),
+        'b': (60, 44, 32),
+        'y': (150, 150, 158),
+        'p': (70, 70, 76),
+        'q': (54, 54, 60),
+        'B': (44, 32, 26),
+        'C': (34, 24, 20),
+    },
+)

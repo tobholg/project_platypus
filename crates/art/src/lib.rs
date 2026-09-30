@@ -269,6 +269,43 @@ pub fn parse(text: &str) -> Result<ArtFile, String> {
     ron::Options::default().with_default_extension(ron::extensions::Extensions::IMPLICIT_SOME).from_str(text).map_err(|e| e.to_string())
 }
 
+/// Art drawn on another's (`base`, a file name beside it): its palette
+/// (and any parts, poses, clips, overlays it gives) over the base's; the
+/// rest is the base's. A villager in the player's clothes, recoloured.
+#[derive(Clone, Debug, Deserialize)]
+struct Based {
+    base: String,
+    #[serde(default)]
+    outline: Option<(u8, u8, u8)>,
+    #[serde(default)]
+    palette: BTreeMap<char, Color>,
+    #[serde(default)]
+    parts: BTreeMap<String, Part>,
+    #[serde(default)]
+    poses: BTreeMap<String, Vec<Layer>>,
+    #[serde(default)]
+    clips: BTreeMap<String, Clip>,
+    #[serde(default)]
+    over: BTreeMap<String, Vec<String>>,
+}
+
+/// Parse art that may be drawn on another's (`base: "player"`): `read`
+/// gives a base's text by its name.
+pub fn parse_based(text: &str, read: &dyn Fn(&str) -> Result<String, String>) -> Result<ArtFile, String> {
+    let based: Result<Based, _> = ron::Options::default().with_default_extension(ron::extensions::Extensions::IMPLICIT_SOME).from_str(text);
+    let Ok(b) = based else { return parse(text) };
+    let mut file = parse_based(&read(&b.base)?, read).map_err(|e| format!("base `{}`: {e}", b.base))?;
+    if b.outline.is_some() {
+        file.outline = b.outline;
+    }
+    file.palette.extend(b.palette);
+    file.parts.extend(b.parts);
+    file.poses.extend(b.poses);
+    file.clips.extend(b.clips);
+    file.over.extend(b.over);
+    Ok(file)
+}
+
 /// A grid to pixels (`overlay`: '.' keeps, '_' clears).
 fn draw(into: &mut Pixels, rows: &[String], palette: &BTreeMap<char, Color>, overlay: bool, what: &str) -> Result<(), String> {
     if rows.len() != into.h as usize {
@@ -838,7 +875,8 @@ mod tests {
             if path.extension().is_none_or(|e| e != "ron") {
                 continue;
             }
-            let file = parse(&std::fs::read_to_string(&path).unwrap()).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            let read = |base: &str| std::fs::read_to_string(dir.join(format!("{base}.ron"))).map_err(|e| e.to_string());
+            let file = parse_based(&std::fs::read_to_string(&path).unwrap(), &read).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             let art = compile(&file).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             assert_eq!(check(&file, &art), Vec::<String>::new(), "{}", path.display());
             n += 1;

@@ -184,7 +184,8 @@ impl Editor {
         // (PLATYPUS_EDIT_DIR: sprites somewhere else, a scratch copy.)
         let dir = std::env::var("PLATYPUS_EDIT_DIR").map(PathBuf::from).unwrap_or_else(|_| assets_dir().join("art"));
         let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
-            .map(|d| d.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "ron")).collect())
+            // (Art drawn on another's, `base:`, is edited as its base.)
+            .map(|d| d.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "ron") && !std::fs::read_to_string(p).is_ok_and(|t| t.contains("\n    base: "))).collect())
             .unwrap_or_default();
         files.sort();
         // The player first: it's what's drawn most.

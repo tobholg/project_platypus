@@ -85,7 +85,7 @@ fn melee_walker(
         let pos = k.body.pos;
         let target = players
             .iter()
-            .filter(|(_, t)| **t == Team::Player)
+            .filter(|(_, t)| t.hunted())
             .map(|(pk, _)| pk.body.pos)
             .filter(|p| p.distance(pos) < brain.aggro_range)
             .min_by(|a, b| a.distance_squared(pos).total_cmp(&b.distance_squared(pos)));
@@ -188,7 +188,7 @@ fn archer(
         let pos = k.body.pos;
         let target = players
             .iter()
-            .filter(|(_, t)| **t == Team::Player)
+            .filter(|(_, t)| t.hunted())
             .map(|(pk, _)| (pk.body.pos, pk.body.vel))
             .filter(|(p, _)| p.distance(pos) < brain.aggro_range)
             .min_by(|a, b| a.0.distance_squared(pos).total_cmp(&b.0.distance_squared(pos)));

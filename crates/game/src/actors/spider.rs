@@ -171,7 +171,7 @@ pub fn attack(
         // Start one.
         if a.doing.is_none() {
             *rear = Rear::default();
-            let Some((pe, pk, _)) = prey.iter().filter(|(_, _, t)| **t == Team::Player).min_by(|x, y| x.1.body.pos.distance(pos).total_cmp(&y.1.body.pos.distance(pos))) else { continue };
+            let Some((pe, pk, _)) = prey.iter().filter(|(_, _, t)| t.hunted()).min_by(|x, y| x.1.body.pos.distance(pos).total_cmp(&y.1.body.pos.distance(pos))) else { continue };
             let to = pk.body.pos - pos;
             let dist = to.length();
             let dir = to.normalize_or(Vec2::X);

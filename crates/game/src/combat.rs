@@ -558,7 +558,7 @@ fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher>, bodies: Que
             }
             // (Not its own side; and a critter can't hurt a critter.)
             match (team, tteam) {
-                (Some(a), Some(b)) if a == b => continue,
+                (Some(a), Some(b)) if a == b || a.allied(*b) => continue,
                 (Some(Team::Neutral), _) => continue,
                 _ => {}
             }
@@ -978,8 +978,7 @@ fn swing(
                 }
                 // (No hitting your own side; anyone can hit the neutral.)
                 if let (Some(a), Some(b)) = (team, tteam)
-                    && a == b
-                    && *a != Team::Neutral
+                    && a.allied(*b)
                 {
                     continue;
                 }
@@ -1096,8 +1095,7 @@ fn slam(
             continue;
         }
         if let (Some(a), Some(b)) = (team, tteam)
-            && a == b
-            && *a != Team::Neutral
+            && a.allied(*b)
         {
             continue;
         }

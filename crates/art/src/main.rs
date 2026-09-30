@@ -45,7 +45,9 @@ fn flag(args: &[String], name: &str) -> Option<String> {
 
 fn load(path: &str) -> Result<(platypus_art::ArtFile, platypus_art::Art), String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
-    let file = parse(&text).map_err(|e| format!("{path}: {e}"))?;
+    let dir = Path::new(path).parent().unwrap_or(Path::new(".")).to_path_buf();
+    let read = |base: &str| std::fs::read_to_string(dir.join(format!("{base}.ron"))).map_err(|e| format!("{base}.ron: {e}"));
+    let file = platypus_art::parse_based(&text, &read).map_err(|e| format!("{path}: {e}"))?;
     let art = compile(&file).map_err(|e| format!("{path}: {e}"))?;
     Ok((file, art))
 }

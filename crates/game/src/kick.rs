@@ -65,7 +65,7 @@ fn kick(
     mut sim: ResMut<SimWorld>,
     mut timing: Local<(f32, Option<f32>)>,
     mut player: Query<(&Kinematics, Option<&mut crate::actors::animation::Animator>), With<LocalPlayer>>,
-    mut things: Query<(Entity, &mut Kinematics, Option<&Creature>, Has<Thrown>, Has<crate::actors::explosive::Explosive>), Without<LocalPlayer>>,
+    mut things: Query<(Entity, &mut Kinematics, Option<&Creature>, Has<Thrown>, Has<crate::actors::explosive::Explosive>, Option<&crate::actors::Team>), Without<LocalPlayer>>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut sparks: ResMut<crate::vfx::Sparks>,
@@ -100,7 +100,7 @@ fn kick(
     let (y0, y1) = (feet.y - 1.0, feet.y + HEIGHT);
     let (moved, specks) = sim.world.kick(CellPos::from_world(x0, y0), CellPos::from_world(x1, y1), [facing * 1.6, 0.4], IMPULSE);
     let mut hit = moved + specks;
-    for (e, mut k, creature, thrown, prop) in &mut things {
+    for (e, mut k, creature, thrown, prop, team) in &mut things {
         let p = k.body.pos;
         let (lo, hi) = (p - k.body.half, p + k.body.half);
         if hi.x < x0 || lo.x > x1 || hi.y < y0 || lo.y > y1 {
@@ -117,7 +117,7 @@ fn kick(
             let k = &mut *k;
             k.loco.knock(&mut k.body, Vec2::new(facing * THROW.x, THROW.y) * 0.9, 0.8);
             hit += 1;
-        } else if creature.is_some() {
+        } else if creature.is_some() && !team.is_some_and(|t| t.allied(crate::actors::Team::Player)) {
             // A blow (as a blade's: poise and heft decide how far it goes).
             let knock = Vec2::new(facing * KNOCK.x, KNOCK.y);
             hits.write(crate::combat::Hit { target: e, damage: DAMAGE, knock, stun: STUN, at: p, dir: Vec2::new(facing, 0.0), weight: DAMAGE / 12.0, crit: false });

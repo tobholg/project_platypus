@@ -1,0 +1,28 @@
+// The village's merchant: sells what travellers need and buys what they
+// carry back, for gold. A villager (actors/villager.rs, talk.rs).
+(
+    name: "Merchant",
+    size: (7, 16),
+    health: 80,
+    team: Villager,
+    movement: (run_speed: 56, jump_height: 22, air_jumps: 0, step_height: 3, dash_speed: 0),
+    stamina: 60,
+    poise: 10,
+    heft: 1.0,
+    art: "merchant",
+    brain: (
+        kind: "villager",
+        params: (
+            role: "merchant",
+            wander: 40,
+            lines: [
+                "Buying and selling! Everything has its price.",
+                "Torches, rope, bombs. What'll it be?",
+                "Found something shiny down there? I'll take it off your hands.",
+                "Gold dust is gold. I weigh it fair.",
+            ],
+            sells: [("torch", 2), ("glowstick", 4), ("bomb", 12), ("arrow", 1), ("chest", 20), ("block:planks", 1), ("block:platform", 1), ("flask", 20)],
+            buys: true,
+        ),
+    ),
+)

@@ -40,7 +40,7 @@ type Players<'w, 's> = Query<'w, 's, (&'static Kinematics, &'static Team)>;
 fn nearest(players: &Players, pos: Vec2, range: f32) -> Option<Vec2> {
     players
         .iter()
-        .filter(|(_, t)| **t == Team::Player)
+        .filter(|(_, t)| t.hunted())
         .map(|(k, _)| k.body.pos)
         .filter(|p| p.distance(pos) < range)
         .min_by(|a, b| a.distance_squared(pos).total_cmp(&b.distance_squared(pos)))

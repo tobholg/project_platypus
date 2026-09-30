@@ -21,6 +21,7 @@ pub mod monsters;
 pub mod player;
 pub mod spawn;
 pub mod spider;
+pub mod villager;
 
 use bevy::prelude::*;
 use platypus_physics::{Body, Grid, Intent, Locomotion, MovementStats, Occupancy, move_and_collide};
@@ -41,7 +42,7 @@ impl Plugin for ActorsPlugin {
             .add_message::<Died>()
             .add_message::<Rocketed>()
             .add_plugins((creature::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, animation::AnimationPlugin))
-            .add_plugins((player::PlayerPlugin, ai::AiPlugin, critters::CrittersPlugin, monsters::MonstersPlugin, legs::LegsPlugin, explosive::ExplosivePlugin))
+            .add_plugins((player::PlayerPlugin, ai::AiPlugin, critters::CrittersPlugin, monsters::MonstersPlugin, legs::LegsPlugin, explosive::ExplosivePlugin, villager::VillagerPlugin))
             .add_systems(FixedUpdate, (move_creatures, fall_damage, elements::expose, explosive::detonate, crate::combat::guard, hurt::notice, dummy::tally, deaths).chain().in_set(TickSet::Bodies))
             .insert_resource(elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
@@ -63,6 +64,26 @@ pub enum Team {
     Player,
     Enemy,
     Neutral,
+    /// The village's people: on the player's side (its blows pass them by),
+    /// and hunted as the player is.
+    Villager,
+}
+
+impl Team {
+    /// On the same side: blows between them don't land (anyone can hit the
+    /// neutral).
+    pub fn allied(self, other: Team) -> bool {
+        match (self, other) {
+            (Team::Neutral, _) | (_, Team::Neutral) => false,
+            (Team::Player, Team::Villager) | (Team::Villager, Team::Player) => true,
+            (a, b) => a == b,
+        }
+    }
+
+    /// What monsters hunt: the player and the villagers.
+    pub fn hunted(self) -> bool {
+        matches!(self, Team::Player | Team::Villager)
+    }
 }
 
 #[derive(Component, Clone, Copy, Debug)]
