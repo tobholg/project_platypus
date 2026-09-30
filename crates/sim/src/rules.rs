@@ -359,6 +359,7 @@ pub(crate) fn background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
             if carries {
                 h.note_broken_bg(x, y);
             }
+            crumble_scraps(h, x, y);
             // Some of what's left (charcoal from wood) drops out in front, a
             // third as often as in the playfield: a burnt forest leaves some,
             // not a carpet.
@@ -379,6 +380,38 @@ pub(crate) fn background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
         }
     }
     h.set_bg(x, y, b);
+}
+
+/// A background scrap with at most this many neighbours comes apart when
+/// the fire beside it burns out; looked for this far from where it did.
+const SCRAP_MOST: usize = 1;
+const SCRAP_REACH: i32 = 4;
+
+/// A background cell burnt away: a flammable scrap beside it left with at
+/// most `SCRAP_MOST` neighbours comes apart, and a scrap beside that, and
+/// so on. Fire spreads from cell to cell and can leave the last few of a
+/// wall unlit, and a built wall (planks) never falls: a burnt house left
+/// specks hanging in the air.
+fn crumble_scraps(h: &mut Hood, x: i32, y: i32) {
+    let mut todo = vec![(x, y)];
+    while let Some((cx, cy)) = todo.pop() {
+        for (dx, dy) in NEIGHBOURS8 {
+            let (nx, ny) = (cx + dx, cy + dy);
+            if (nx - x).abs() > SCRAP_REACH || (ny - y).abs() > SCRAP_REACH {
+                continue;
+            }
+            let Some(n) = h.get_bg(nx, ny) else { continue };
+            if n.is_air() || h.mats.phys(n.material).flammability == 0 {
+                continue;
+            }
+            // (Unloaded counts as held.)
+            let held = NEIGHBOURS8.iter().filter(|(ex, ey)| h.get_bg(nx + ex, ny + ey).is_none_or(|m| !m.is_air())).count();
+            if held <= SCRAP_MOST {
+                h.set_bg(nx, ny, Cell::AIR);
+                todo.push((nx, ny));
+            }
+        }
+    }
 }
 
 /// One tick of a burning cell. Returns true if it burned out (replaced).

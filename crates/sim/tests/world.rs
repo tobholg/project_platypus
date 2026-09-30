@@ -1168,6 +1168,36 @@ fn a_forest_fire_burns_through_the_background_and_leaves_nothing_hanging() {
 }
 
 #[test]
+fn a_burnt_wooden_wall_leaves_no_scraps_hanging() {
+    // A house's back wall of planks with windows and a door, on a stone
+    // floor, set alight: fire spreads cell to cell and can leave the last
+    // few unlit, and a built wall never falls; what's left alone comes
+    // apart with the fire beside it.
+    let mut w = boxed_world(3, 2, 57);
+    fill(&mut w, "stone", 1, 191, 1, 10);
+    fill_bg(&mut w, "planks", 40, 150, 10, 50);
+    for (x0, x1, y0, y1) in [(50, 60, 25, 35), (80, 92, 10, 26), (110, 118, 30, 40), (130, 140, 20, 28)] {
+        for x in x0..x1 {
+            for y in y0..y1 {
+                w.set_bg(CellPos::new(x, y), Cell::AIR);
+            }
+        }
+    }
+    let planks = w.materials().expect_id("planks");
+    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(70, 30), radius: 4 });
+    for _ in 0..12_000 {
+        w.step();
+    }
+    assert!(count_bg(&w, planks) < 400, "the wall burned ({} left)", count_bg(&w, planks));
+    let lone: Vec<CellPos> = (0..192)
+        .flat_map(|x| (0..128).map(move |y| CellPos::new(x, y)))
+        .filter(|&p| w.get_bg(p).is_some_and(|c| c.material == planks))
+        .filter(|&p| [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)].iter().filter(|&&(dx, dy)| w.get_bg(p.offset(dx, dy)).is_some_and(|c| !c.is_air())).count() <= 1)
+        .collect();
+    assert!(lone.is_empty(), "{} scraps of wall hanging alone, e.g. {:?}", lone.len(), &lone[..lone.len().min(5)]);
+}
+
+#[test]
 fn a_wet_forest_is_slow_to_burn() {
     // The same canopy fire, on dry land and on soaked (the world clock's
     // wetness, `Climate::wet`): the wet one loses much less.

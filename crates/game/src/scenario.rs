@@ -251,11 +251,17 @@ struct Scenario {
 /// The frame being captured (1-based; 0: none), for `frame_cams`.
 static FRAME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
-/// Where the camera is for each captured frame (after it followed).
-fn frame_cams(cam: Single<&Transform, With<MainCamera>>) {
+/// Where the camera is for each captured frame (after it followed); with
+/// `PLATYPUS_CAMLOG=1`, every frame (the time, the camera, the player).
+fn frame_cams(time: Res<Time>, cam: Single<&Transform, With<MainCamera>>, player: Query<&Kinematics, With<LocalPlayer>>, mut log: Local<Option<bool>>) {
     let i = FRAME.load(std::sync::atomic::Ordering::Relaxed);
     if i > 0 {
         println!("FRAME {:03} cam {} {}", i - 1, cam.translation.x, cam.translation.y);
+    }
+    if *log.get_or_insert_with(|| std::env::var("PLATYPUS_CAMLOG").is_ok())
+        && let Ok(k) = player.single()
+    {
+        println!("CAM {} {} {} {} {}", time.elapsed_secs(), cam.translation.x, cam.translation.y, k.body.pos.y, k.loco.grounded());
     }
 }
 
@@ -4248,9 +4254,11 @@ fn climb_script(
         return;
     }
     let (next, snap, changes, jump_until, last_tick) = &mut *state;
-    keys.press(KeyCode::KeyA);
+    // (PLATYPUS_WAY=right: the other way.)
+    let right = std::env::var("PLATYPUS_WAY").is_ok_and(|w| w == "right");
+    keys.press(if right { KeyCode::KeyD } else { KeyCode::KeyA });
     let c = &k.loco.contacts;
-    if c.wall_left && k.loco.grounded() && t > *jump_until {
+    if (if right { c.wall_right } else { c.wall_left }) && k.loco.grounded() && t > *jump_until {
         *jump_until = t + 0.35;
     }
     if t < *jump_until {

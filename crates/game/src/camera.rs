@@ -164,11 +164,40 @@ const GLIDE: f32 = 0.3;
 const SNAP_BIAS: f32 = 0.25;
 
 /// Where the camera last saw its target, and a glide under way (where it
-/// started, how far in).
+/// started, how far in); the height it's at and how fast that's moving
+/// (`rise`).
 #[derive(Default)]
 pub struct Glide {
     last: Option<Vec2>,
     from: Option<(Vec2, f32)>,
+    height: Option<(f32, f32)>,
+}
+
+/// The camera's height follows the target's through a critically damped
+/// spring this quick (seconds): a body stepping up a hill snaps up a cell
+/// or two a tick and pauses, and a camera on it lurched with every step;
+/// on the spring a staircase is a ramp. Never more than `RISE_LAG` cells
+/// behind (a jump or a fall stays in view).
+const RISE_TIME: f32 = 0.1;
+const RISE_LAG: f32 = 6.0;
+
+/// A critically damped spring from `at` (moving at `speed`) toward `to`
+/// over `dt` (as `SmoothDamp`, Game Programming Gems 4, 1.10): the new
+/// height and speed.
+fn rise(at: f32, speed: f32, to: f32, dt: f32) -> (f32, f32) {
+    let omega = 2.0 / RISE_TIME;
+    let x = omega * dt;
+    let decay = 1.0 / (1.0 + x + 0.48 * x * x + 0.235 * x * x * x);
+    let change = (at - to).clamp(-RISE_LAG, RISE_LAG);
+    let temp = (speed + omega * change) * dt;
+    let speed = (speed - omega * temp) * decay;
+    let mut next = to + (change + temp) * decay;
+    // (Not past the target.)
+    if (to - at > 0.0) == (next > to) {
+        next = to;
+        return (next, 0.0);
+    }
+    (next, speed)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -202,7 +231,16 @@ pub fn follow(
             None => p,
         };
         cam.translation.x = at.x;
-        cam.translation.y = at.y;
+        // (Gliding, or just taken up: straight there.)
+        let dt = time.delta_secs().min(0.1);
+        let (y, speed) = match glide.height {
+            Some((y, speed)) if glide.from.is_none() => rise(y, speed, at.y, dt),
+            _ => (at.y, 0.0),
+        };
+        glide.height = Some((y, speed));
+        cam.translation.y = y;
+    } else {
+        glide.height = None;
     }
     // Snap to whole screen pixels so cells never shimmer; the shake too.
     // (A quarter pixel off the halves: a body at rest stands half a cell

@@ -656,7 +656,10 @@ Solids, powders and liquids burn *in place* (`BURNING` flag): the cell keeps
 its material and position, glows, heats and ignites neighbours (diagonals
 included), puts flames and smoke into the air around it, and after
 `burn_time` becomes `burns_into` (a quarter of wood leaves charcoal) or nothing;
-burned-out background drops a third as much into the playfield. Water puts it
+burned-out background drops a third as much into the playfield, and a
+flammable background scrap beside it left with at most one neighbour comes
+apart with it (so on along the scrap, within 4 cells): fire can leave the last
+cells of a wall unlit, and a built wall never falls. Water puts it
 out; a charred cell put out becomes `chars_into` (wood: charcoal). Charcoal has
 flammability 0 (flames don't catch on it) and lights only above 700 °C, hotter
 than burning wood, so it survives the fire that made it. Gases flash into flame. Flammable things falling into flames
@@ -1173,6 +1176,10 @@ Saved with the world (`WorldFile::clock`; older saves load with none of it).
   world (from a corner every 64 texels), not on the light grid that follows
   the camera, so a lit edge stays put as you move (on the grid, climbing or
   walking made the sun's edge on slopes and crowns flicker).
+- The camera's height follows the player's through a critically damped
+  spring (0.1 s, never more than 6 cells behind): stepping up a hill snaps
+  the body up a cell or two a tick and pauses, and a camera on it lurched
+  with every step; across it follows exactly.
 - The camera snaps to whole screen pixels a quarter pixel off the halves: a
   body at rest stands half a cell up, a tie at 3 pixels a cell, and float
   noise flipped it (the world hopping a pixel against the sky).
