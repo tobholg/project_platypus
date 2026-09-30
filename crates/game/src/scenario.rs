@@ -266,7 +266,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
-            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script))
+            .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
             .add_systems(PreUpdate, (logmagic_script, cast_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
@@ -3881,6 +3881,52 @@ fn cast_script(
             *state = 7;
         }
         _ => {}
+    }
+}
+
+/// `boulder` (flat world): a round boulder (radius 7) let go at the top of a
+/// ramp; it rolls down into a stone wall and breaks. Logs the pieces in
+/// flight and the rock every quarter second.
+fn boulder_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut state: Local<(u8, f32, Option<Vec2>)>) {
+    if s.name != "boulder" {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    let t = s.elapsed;
+    let home = *state.2.get_or_insert(k.body.pos);
+    let mats = sim.materials().clone();
+    let (stone, boulder) = (mats.expect_id("stone"), mats.expect_id("boulder"));
+    let Some(ground) = find_ground(&sim.world, home.x as i32, home.y as i32 + 40, 100) else { return };
+    let (x0, y0) = (home.x as i32 + 30, ground);
+    if state.0 == 0 && t > 0.5 {
+        // A ramp 120 up, falling 1 in 1 to the right over 120 cells, and a
+        // wall 100 further on.
+        for dx in 0..120 {
+            for y in y0..y0 + 120 - dx {
+                sim.world.set(CellPos::new(x0 + dx, y), platypus_sim::Cell::new(stone, 0));
+            }
+        }
+        for dx in 220..232 {
+            for y in y0..y0 + 50 {
+                sim.world.set(CellPos::new(x0 + dx, y), platypus_sim::Cell::new(stone, 0));
+            }
+        }
+        let (cx, cy) = (x0 + 8, y0 + 120 + 8);
+        for y in cy - 7..=cy + 7 {
+            for x in cx - 7..=cx + 7 {
+                if (x - cx) * (x - cx) + (y - cy) * (y - cy) <= 49 {
+                    sim.world.set(CellPos::new(x, y), platypus_sim::Cell::new(boulder, 128));
+                }
+            }
+        }
+        sim.world.lift(CellPos::new(cx, cy));
+        state.0 = 1;
+    }
+    if state.0 == 1 && t >= state.1 {
+        state.1 = (t * 4.0).floor() / 4.0 + 0.25;
+        let rock = (y0 - 5..y0 + 140).flat_map(|y| (x0 - 20..x0 + 260).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == boulder)).count();
+        let flying: Vec<String> = sim.world.bodies().iter().map(|b| format!("{:.0},{:.0}", b.pos[0] - x0 as f32, b.pos[1] - y0 as f32)).collect();
+        info!("boulder: t {t:.2} rock lying {rock}, bodies {flying:?}, rubble in flight {}", sim.world.particles().len());
     }
 }
 

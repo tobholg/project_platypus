@@ -41,6 +41,7 @@
 // object:       a piece of it is a thing (a log, a casting): kicked or pushed it lifts out
 //               whole as a body, losing its hold it falls whole (not as rubble)
 // item:         its block item is this item (a metal: its bar, 16 cells of it)
+// brittle:      a body of it breaks when it hits hard (a boulder): pieces, and rubble
 // flung:        a blast throws it whole instead of destroying it (gold)
 // counted:      the game tallies it, never a block item (gold: gold.rs)
 // charges:      carries electricity: lightning into it charges all of it that's
@@ -198,6 +199,11 @@
             above: (900, "molten_gold"), latent: 200, colors: [(196, 136, 26), (236, 180, 44), (252, 210, 76), (255, 234, 136), (255, 250, 214)]),
         (name: "molten_gold", kind: Liquid, density: 17300, dispersion: 2, viscosity: 60, hot: true, heat: 1100, inert: true, flung: true, charges: true, conductivity: 200, glow: (255, 170, 40),
             below: (850, "solid_gold"), latent: 200, colors: [(255, 150, 30), (255, 196, 70), (255, 230, 140)]),
+        // A boulder (rock in one piece: a thing): it rolls (round ones), and
+        // it's brittle: a fall of ~18 cells, a blast, a hard knock breaks it
+        // into pieces and rubble.
+        (name: "boulder",  kind: Static, density: 2700, hardness: 60, object: true, brittle: true, crumbles_into: "gravel", above: (1400, "lava"),
+            colors: [(96, 90, 86), (118, 110, 104), (140, 132, 124), (160, 150, 140)]),
         // Metals (DESIGN §13.1): each solid, and molten. Solid metal is a thing
         // (object: a casting is kicked, thrown, lifted whole), carries heat
         // and lightning, and its block is its bar (item: 16 cells of it, so

@@ -198,6 +198,10 @@ pub struct MaterialDef {
     /// falls whole instead of crumbling. At rest it's cells again.
     #[serde(default)]
     pub object: bool,
+    /// A body of it breaks when it hits hard (rock, a boulder): into pieces
+    /// that fly apart, the smallest as rubble. Harder breaks harder.
+    #[serde(default)]
+    pub brittle: bool,
     /// Its block item is this item (a metal's bar: 16 cells of it), rather
     /// than a `block:` one. The game's business.
     #[serde(default)]
@@ -344,6 +348,8 @@ pub struct MatPhys {
     pub flung: bool,
     /// A piece of it is a thing (`MaterialDef::object`).
     pub object: bool,
+    /// Breaks when it hits hard (`MaterialDef::brittle`).
+    pub brittle: bool,
     /// See `MaterialDef::platform`.
     pub platform: bool,
     /// See `MaterialDef::sticky`.
@@ -557,6 +563,7 @@ impl MaterialTable {
                 living: d.living,
                 flung: d.flung,
                 object: d.object,
+                brittle: d.brittle,
                 platform: d.platform,
                 sticky: d.sticky,
                 slippery: d.slippery,

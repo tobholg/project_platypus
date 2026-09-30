@@ -789,6 +789,18 @@ deaths (blood). Rendered as one dynamic mesh.
   over and drops it, and it lands whole.
 - The unloaded world is a wall to a body, as to cells (a log flung off the
   loaded area used to fall out of the world). Sim test.
+- **Boulders and fracture.** `boulder` is rock in one piece: an object, and
+  `brittle` (a new flag). A round one rolls (the solver's friction and spin
+  do it). A brittle body (most of its cells) breaks when one knock takes
+  more than its hardness / 20 cells a tick out of it (a boulder: 3, a fall
+  of ~18 cells; not a kick, not a roll on the flat), at least 6 ticks old
+  and 12 cells big: in two along a line through its middle (one of four
+  directions, from its id and age), each half flying off the other at
+  0.35 cells a tick; a half under 4 cells is rubble. Rock is never lost.
+  A sim test: a radius-5 boulder dropped from 150 breaks (81 cells of rock
+  before and after), from 12 lands whole, on a 1-in-2 slope rolls 216
+  cells. `boulder` scenario (flat world): one rolls down a steep ramp,
+  crushing an orc on the way, and breaks in two at its foot.
 - Not yet: bodies aren't saved with the world (in flight: at rest they're
   cells) and don't collide with each other.
 

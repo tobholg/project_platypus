@@ -541,6 +541,60 @@ fn molten_metal_sets_in_its_mould() {
     assert_eq!(count(&w, stone), cup, "the cup held");
 }
 
+/// A round boulder (brittle): dropped from high it breaks (pieces, rubble)
+/// and no rock is lost; dropped from low it lands whole; set on a slope it
+/// rolls down.
+#[test]
+fn boulders_roll_and_break() {
+    let m = mats();
+    let boulder = m.expect_id("boulder");
+    let stone = m.expect_id("stone");
+    let ball = |w: &mut World, cx: i32, cy: i32| {
+        for y in cy - 5..=cy + 5 {
+            for x in cx - 5..=cx + 5 {
+                if (x - cx) * (x - cx) + (y - cy) * (y - cy) <= 25 {
+                    w.set(CellPos::new(x, y), Cell::new(boulder, 128));
+                }
+            }
+        }
+        w.lift(CellPos::new(cx, cy)).expect("a boulder lifts")
+    };
+    let rest = |w: &mut World| {
+        let mut most = 0;
+        for _ in 0..4_000 {
+            w.step();
+            most = most.max(w.bodies().len());
+            if w.bodies().is_empty() && w.particles().is_empty() {
+                return most;
+            }
+        }
+        panic!("still moving");
+    };
+    // From high: it breaks.
+    let mut w = boxed_world(3, 3, 18);
+    ball(&mut w, 96, 150);
+    let n = count(&w, boulder) + w.bodies().iter().map(|b| b.world_cells().count()).sum::<usize>();
+    let most = rest(&mut w);
+    assert!(most > 1, "it broke into pieces (at most {most} bodies at once)");
+    assert_eq!(count(&w, boulder), n, "no rock lost");
+    // From low: whole.
+    let mut w = boxed_world(3, 3, 19);
+    ball(&mut w, 96, 12);
+    assert_eq!(rest(&mut w), 1, "a short drop doesn't break it");
+    // On a slope (1 in 2, falling to the right): it rolls down.
+    let mut w = boxed_world(4, 2, 20);
+    for x in 1..200 {
+        for y in 1..(100 - x / 2).max(1) {
+            w.set(CellPos::new(x, y), Cell::new(stone, 0));
+        }
+    }
+    ball(&mut w, 20, 97);
+    rest(&mut w);
+    let xs: Vec<i32> = w.chunks().flat_map(|c| (0..CHUNK).flat_map(move |y| (0..CHUNK).map(move |x| (c, x, y)))).filter(|(c, x, y)| c.get(*x as usize, *y as usize).material == boulder).map(|(c, x, _)| c.pos.origin().x + x).collect();
+    let at = xs.iter().sum::<i32>() / xs.len().max(1) as i32;
+    assert!(at > 60, "it rolled down the slope: now at x {at}");
+}
+
 #[test]
 fn igniting_burns_flammables_only() {
     let mut w = boxed_world(1, 1, 13);

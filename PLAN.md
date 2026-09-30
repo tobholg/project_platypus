@@ -120,7 +120,7 @@ as designed.
    ladle (and a bucket and a flask: carried liquids) pours at the cursor;
    a mould of what stands the heat; the casting freed as an object.
 6. ✅ Gold in lava melts into molten gold and sets into gold (mined: gold).
-7. Boulders: rock bodies, round ones rolling; fracture (impact, fall, blow,
+7. ✅ (impact and fall; blows and blasts act on the cells as before) Boulders: rock bodies, round ones rolling; fracture (impact, fall, blow,
    blast past the material's strength: smaller bodies and rubble).
 8. Traps: boulders held by a prop or a rope; tripwires and pressure plates
    (mechanisms); worldgen puts some in tunnels.

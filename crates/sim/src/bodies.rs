@@ -95,6 +95,9 @@ pub(crate) struct BodyEvents {
     pub shed: bool,
     /// Came to rest (or timed out): turn it back into cells.
     pub settled: bool,
+    /// The hardest knock it took this tick: the speed (cells/tick) the ground
+    /// took out of it in one substep. A brittle body breaks past its limit.
+    pub impact: f32,
 }
 
 #[inline]
@@ -298,6 +301,17 @@ impl Body {
         self.hull.is_empty()
     }
 
+    /// Break along a line through its centre of mass at `angle` (given as
+    /// (cos, sin)): its cells on each side, as world cells.
+    pub(crate) fn split(&self, dir: [f32; 2]) -> [Vec<(CellPos, Cell)>; 2] {
+        let mut sides = [Vec::new(), Vec::new()];
+        for (p, c) in self.world_cells() {
+            let r = [p.x as f32 + 0.5 - self.pos[0], p.y as f32 + 0.5 - self.pos[1]];
+            sides[(dot(r, dir) >= 0.0) as usize].push((p, c));
+        }
+        sides
+    }
+
     /// Lying nearly square (within ~11° of a quarter turn), exactly square:
     /// written back into the grid it then maps cell for cell (tilted, the
     /// grid resamples it and a cell can come or go). Comparisons only, no
@@ -363,7 +377,9 @@ impl Body {
             }
             touched = true;
             self.rests_on_front = on_front;
+            let before = self.vel;
             self.solve(&contacts);
+            ev.impact = ev.impact.max(len([self.vel[0] - before[0], self.vel[1] - before[1]]));
             // Out of the ground, along the average normal.
             let mut push = [0.0f32; 2];
             for (_, n) in &contacts {

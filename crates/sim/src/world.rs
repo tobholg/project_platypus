@@ -19,6 +19,12 @@ use crate::weather::{self, Weather};
 /// pieces that touch neither bedrock nor unloaded world are floating and fall.
 /// Fastest a kick sends a body (cells a tick at the fastest dir, before
 /// its lift: ~120 cells a second).
+/// Fracture (brittle bodies): not in its first ticks (just broken off), not
+/// when smaller than this (cells: it's rubble's size), and each part flies
+/// off its fellow this fast (cells a tick).
+const FRACTURE_AFTER: u32 = 6;
+const FRACTURE_MIN: f32 = 12.0;
+const FRACTURE_PART: f32 = 0.35;
 const KICK_SPEED: f32 = 1.3;
 const ANCHOR_BUDGET: usize = 3_000;
 /// The same for the background, where a whole tree with its crown must fit
@@ -1648,6 +1654,10 @@ impl World {
             if body.is_empty() {
                 continue;
             }
+            if self.fractures(&body, ev.impact) {
+                self.fracture(body);
+                continue;
+            }
             if ev.settled { settled.push(body) } else { flying.push(body) }
         }
         // Bodies made while settling (a piece that lost its hold again) come after.
@@ -1655,6 +1665,56 @@ impl World {
         self.bodies = flying;
         for body in settled {
             self.settle_body(body);
+        }
+    }
+
+    /// Whether a knock this hard breaks this body: brittle (most of it), big
+    /// enough to break (`FRACTURE_MIN`), not just broken off (a few ticks
+    /// old), and past its limit: its hardness / 20 cells a tick (a boulder
+    /// of rock 3: a fall of ~18 cells, not a kick).
+    fn fractures(&self, body: &Body, impact: f32) -> bool {
+        if body.age < FRACTURE_AFTER || body.mass() < FRACTURE_MIN || impact <= 0.0 {
+            return false;
+        }
+        let mats = &self.materials;
+        let (mut n, mut brittle, mut hard) = (0u32, 0u32, 0u32);
+        for (_, c) in body.world_cells() {
+            let ph = mats.phys(c.material);
+            n += 1;
+            if ph.brittle {
+                brittle += 1;
+                hard += ph.hardness as u32;
+            }
+        }
+        brittle * 2 > n && impact > hard as f32 / brittle as f32 / 20.0
+    }
+
+    /// A body breaks in two along a line through its middle (a direction from
+    /// its id and age); a half big enough flies on as a body, apart from the
+    /// other; a smaller one is rubble.
+    fn fracture(&mut self, body: Body) {
+        const DIRS: [[f32; 2]; 4] = [[1.0, 0.0], [0.707, 0.707], [0.0, 1.0], [-0.707, 0.707]];
+        let dir = DIRS[(hash(&[body.id as u64, body.age as u64, 0xF4AC]) % 4) as usize];
+        let vel = body.vel;
+        let mats = self.materials.clone();
+        let mut rng = self.rng_for(0xF4AC, CellPos::new(body.pos[0] as i32, body.pos[1] as i32));
+        for (side, cells) in body.split(dir).into_iter().enumerate() {
+            let away = if side == 1 { 1.0 } else { -1.0 } * FRACTURE_PART;
+            let v = [vel[0] * 0.7 + dir[0] * away, vel[1] * 0.7 + dir[1] * away];
+            if cells.len() >= OBJECT_MIN_CELLS {
+                let mut part = Body::new(self.next_body, &cells, &mats);
+                self.next_body = self.next_body.wrapping_add(1);
+                part.vel = v;
+                part.omega = away * 0.02;
+                part.rests_on_front = true;
+                self.bodies.push(part);
+            } else {
+                for (p, mut c) in cells {
+                    c.flags |= flags::LOOSE;
+                    let jig = |r: &mut Rng| (r.next_u8() as f32 / 255.0 - 0.5) * 0.6;
+                    self.particles.push(Particle::new(center_of(p), [v[0] + jig(&mut rng), v[1] + jig(&mut rng).abs()], c, 150, Landing::Settle));
+                }
+            }
         }
     }
 
