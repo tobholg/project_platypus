@@ -106,10 +106,16 @@ pub fn find_ground(world: &World, x: i32, from_y: i32, depth: i32) -> Option<i32
     None
 }
 
-fn process_queue(mut commands: Commands, sim: Res<SimWorld>, mut queue: ResMut<SpawnQueue>) {
+fn process_queue(mut commands: Commands, sim: Res<SimWorld>, saved: Option<Res<crate::save::PendingPlayer>>, mut queue: ResMut<SpawnQueue>) {
     queue.0.retain(|p| {
-        let Some(ground) = find_ground(&sim.world, p.x, p.from_y, 600) else {
-            return true; // not loaded yet
+        // A saved player is put back where it was (`save::apply_player`), so
+        // it needn't find ground here first: it mightn't (a shaft dug down
+        // from the spawn, open past the loaded world, and the player never
+        // came).
+        let ground = match find_ground(&sim.world, p.x, p.from_y, 600) {
+            Some(g) => g,
+            None if p.local_player && saved.is_some() => p.from_y,
+            None => return true, // not loaded yet
         };
         let feet = Vec2::new(p.x as f32 + 0.5, ground as f32);
         if p.local_player {
