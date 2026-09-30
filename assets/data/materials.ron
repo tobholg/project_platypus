@@ -40,6 +40,7 @@
 // inert:        nothing eats it (glass, gold)
 // object:       a piece of it is a thing (a log, a casting): kicked or pushed it lifts out
 //               whole as a body, losing its hold it falls whole (not as rubble)
+// item:         its block item is this item (a metal: its bar, 16 cells of it)
 // flung:        a blast throws it whole instead of destroying it (gold)
 // counted:      the game tallies it, never a block item (gold: gold.rs)
 // charges:      carries electricity: lightning into it charges all of it that's
@@ -78,15 +79,15 @@
         // pickaxe's tier sets how deep you can profit (copper 70, iron 100,
         // gold 115, mithril 150). Ores are rock flecked with metal (the ramp
         // alternates), gems glow faintly where they break into a cave.
-        (name: "copper_ore",  kind: Static, charges: true, density: 2800, hardness: 50, crumbles_into: "gravel", above: (1300, "lava"),
+        (name: "copper_ore",  kind: Static, charges: true, density: 2800, hardness: 50, crumbles_into: "gravel", above: (1285, "molten_copper"),
             colors: [(98, 94, 98), (178, 96, 50), (112, 106, 108), (220, 134, 70), (96, 90, 92)]),
-        (name: "iron_ore",    kind: Static, charges: true, density: 3200, hardness: 65, crumbles_into: "gravel", above: (1450, "lava"),
+        (name: "iron_ore",    kind: Static, charges: true, density: 3200, hardness: 65, crumbles_into: "gravel", above: (1738, "molten_iron"),
             colors: [(100, 96, 100), (176, 100, 74), (118, 110, 112), (216, 148, 110), (92, 88, 92)]),
-        (name: "silver_ore",  kind: Static, charges: true, density: 3300, hardness: 75, crumbles_into: "gravel", above: (1350, "lava"),
+        (name: "silver_ore",  kind: Static, charges: true, density: 3300, hardness: 75, crumbles_into: "gravel", above: (1160, "molten_silver"),
             colors: [(84, 86, 96), (196, 202, 214), (100, 102, 112), (236, 240, 248), (80, 82, 92)]),
-        (name: "gold_ore",    kind: Static, density: 3600, hardness: 85, inert: true, charges: true, crumbles_into: "gravel", above: (1300, "lava"),
+        (name: "gold_ore",    kind: Static, density: 3600, hardness: 85, inert: true, charges: true, crumbles_into: "gravel", above: (1264, "molten_gold"),
             colors: [(78, 74, 76), (214, 170, 52), (92, 86, 84), (252, 214, 96), (74, 70, 72)]),
-        (name: "mithril_ore", kind: Static, charges: true, density: 3000, hardness: 110, crumbles_into: "gravel", above: (1700, "lava"), glow: (6, 24, 28), shimmer: 220,
+        (name: "mithril_ore", kind: Static, charges: true, density: 3000, hardness: 110, crumbles_into: "gravel", above: (1950, "molten_mithril"), glow: (6, 24, 28), shimmer: 220,
             colors: [(58, 60, 74), (80, 186, 200), (68, 70, 86), (150, 240, 244), (54, 56, 70)]),
         (name: "amethyst",    kind: Static, density: 2650, hardness: 60, crumbles_into: "gravel", glow: (46, 18, 70), opacity: 40, shimmer: 255,
             colors: [(96, 44, 146), (150, 86, 212), (196, 146, 246), (120, 60, 180)]),
@@ -196,7 +197,43 @@
         (name: "gold",     kind: Powder, density: 19300, hardness: 2, inert: true, flung: true, charges: true, counted: true, conductivity: 200, glow: (110, 76, 14), shimmer: 255,
             above: (900, "molten_gold"), latent: 200, colors: [(196, 136, 26), (236, 180, 44), (252, 210, 76), (255, 234, 136), (255, 250, 214)]),
         (name: "molten_gold", kind: Liquid, density: 17300, dispersion: 2, viscosity: 60, hot: true, heat: 1100, inert: true, flung: true, charges: true, conductivity: 200, glow: (255, 170, 40),
-            below: (850, "gold"), latent: 200, colors: [(255, 150, 30), (255, 196, 70), (255, 230, 140)]),
+            below: (850, "solid_gold"), latent: 200, colors: [(255, 150, 30), (255, 196, 70), (255, 230, 140)]),
+        // Metals (DESIGN §13.1): each solid, and molten. Solid metal is a thing
+        // (object: a casting is kicked, thrown, lifted whole), carries heat
+        // and lightning, and its block is its bar (item: 16 cells of it, so
+        // mining a casting gives bars and a bar laid down is metal). Past its
+        // melting point it runs as a glowing liquid that lights and burns
+        // what it touches, and sets again where it cools. Its ore melts into
+        // it a little hotter (a furnace's heat; lava only melts silver's).
+        // Stone gives way at 1 400: iron and mithril want firebrick moulds.
+        // Molten, it gives up its heat slowly (conductivity 25) and lingers
+        // past its freezing point (latent 1 200: it sets with chance (d /
+        // 1 200)² a tick, d degrees under), so it runs and fills a mould for a
+        // few seconds before it sets, as metal does.
+        (name: "copper",   kind: Static, density: 8900, hardness: 45, object: true, charges: true, conductivity: 200, item: "copper_bar", above: (1085, "molten_copper"), latent: 150,
+            colors: [(150, 82, 40), (196, 112, 58), (226, 146, 86), (240, 180, 120)]),
+        (name: "molten_copper", kind: Liquid, density: 8000, dispersion: 2, viscosity: 70, hot: true, heat: 1300, charges: true, conductivity: 25, glow: (255, 120, 40), below: (1025, "copper"), latent: 1200,
+            colors: [(255, 110, 30), (255, 150, 60), (255, 190, 110)]),
+        (name: "iron",     kind: Static, density: 7900, hardness: 70, object: true, charges: true, conductivity: 180, item: "iron_bar", above: (1538, "molten_iron"), latent: 150,
+            colors: [(92, 94, 102), (128, 130, 140), (160, 162, 172), (196, 198, 206)]),
+        (name: "molten_iron", kind: Liquid, density: 7000, dispersion: 2, viscosity: 90, hot: true, heat: 1750, charges: true, conductivity: 25, glow: (255, 170, 70), below: (1470, "iron"), latent: 1200,
+            colors: [(255, 150, 50), (255, 200, 110), (255, 235, 180)]),
+        (name: "silver",   kind: Static, density: 10500, hardness: 55, object: true, charges: true, conductivity: 220, item: "silver_bar", above: (962, "molten_silver"), latent: 150,
+            colors: [(160, 164, 176), (196, 200, 212), (224, 228, 238), (250, 250, 255)]),
+        (name: "molten_silver", kind: Liquid, density: 9300, dispersion: 2, viscosity: 60, hot: true, heat: 1180, charges: true, conductivity: 25, glow: (255, 150, 90), below: (900, "silver"), latent: 1200,
+            colors: [(255, 180, 120), (255, 214, 170), (255, 240, 220)]),
+        (name: "mithril",  kind: Static, density: 4500, hardness: 100, object: true, charges: true, conductivity: 200, item: "mithril_bar", above: (1750, "molten_mithril"), latent: 150, glow: (6, 24, 28), shimmer: 180,
+            colors: [(70, 150, 160), (100, 196, 206), (140, 230, 236), (200, 250, 252)]),
+        (name: "molten_mithril", kind: Liquid, density: 4000, dispersion: 2, viscosity: 80, hot: true, heat: 1950, charges: true, conductivity: 25, glow: (120, 240, 255), below: (1680, "mithril"), latent: 1200,
+            colors: [(140, 240, 255), (190, 250, 255), (230, 255, 255)]),
+        // Gold set solid (molten gold cooled: in a mould, on a lava pit's
+        // floor). A thing like any metal, but gold is counted, never carried:
+        // dug, it's coins (gold.rs); it melts back at gold dust's 900.
+        (name: "solid_gold", kind: Static, density: 19300, hardness: 35, object: true, inert: true, counted: true, charges: true, conductivity: 200, glow: (60, 42, 8), shimmer: 220,
+            above: (900, "molten_gold"), latent: 200, colors: [(180, 124, 28), (226, 172, 48), (250, 208, 90), (255, 236, 160)]),
+        // Heat-proof brick (furnace-made): holds molten iron and mithril.
+        (name: "firebrick", kind: Static, density: 2300, hardness: 75, conductivity: 8, crumbles_into: "gravel", above: (2100, "lava"),
+            colors: [(196, 170, 120), (214, 190, 140), (180, 152, 104)]),
         (name: "sand",     kind: Powder, density: 1600, hardness: 5,  above: (1100, "glass"), colors: [(206, 176, 110), (226, 198, 132), (196, 164, 100)]),
         // Under desert sand: sand pressed into rock.
         (name: "sandstone", kind: Static, density: 2200, hardness: 35, crumbles_into: "sand", colors: [(178, 142, 90), (192, 156, 100), (166, 132, 84), (184, 150, 96)]),

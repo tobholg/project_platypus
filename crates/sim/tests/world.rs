@@ -505,6 +505,42 @@ fn a_body_stays_in_the_loaded_world() {
     assert_eq!(count(&w, wood), 60, "the log came to rest whole, in the world");
 }
 
+/// Casting: molten copper poured into a stone cup cools and sets into as
+/// much solid copper, and the cup holds (copper runs at 1 200, stone gives
+/// way at 1 400).
+#[test]
+fn molten_metal_sets_in_its_mould() {
+    let mut w = boxed_world(1, 1, 17);
+    let m = w.materials().clone();
+    let (stone, molten, copper) = (m.expect_id("stone"), m.expect_id("molten_copper"), m.expect_id("copper"));
+    for y in 1..12 {
+        w.set(CellPos::new(20, y), Cell::new(stone, 0));
+        w.set(CellPos::new(31, y), Cell::new(stone, 0));
+    }
+    for x in 20..32 {
+        w.set(CellPos::new(x, 1), Cell::new(stone, 0));
+    }
+    let cup = count(&w, stone);
+    for x in 21..31 {
+        for y in 2..6 {
+            w.set(CellPos::new(x, y), m.spawn(molten, &mut Rng::seeded(&[x as u64, y as u64])));
+        }
+    }
+    let mut took = 0;
+    for t in 0..8_000 {
+        w.step();
+        if count(&w, molten) == 0 {
+            took = t;
+            break;
+        }
+    }
+    assert_eq!(count(&w, molten), 0, "it set");
+    // (~100 ticks: a second or two to run and fill, then it's set.)
+    assert!((60..=420).contains(&took), "it runs a while, then sets ({took} ticks)");
+    assert_eq!(count(&w, copper), 40, "every cell of it");
+    assert_eq!(count(&w, stone), cup, "the cup held");
+}
+
 #[test]
 fn igniting_burns_flammables_only() {
     let mut w = boxed_world(1, 1, 13);

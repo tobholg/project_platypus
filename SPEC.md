@@ -435,7 +435,8 @@ Noita's gold (DESIGN §13 item 7): a count, not a thing in the pack.
   it (`flung`, a new material flag: the blast's liquid path, without the
   boiling); lava melts it into `molten_gold` (at 900 °C: lava here is never
   below 950, and a pit's cold floor keeps gold under real gold's 1 064),
-  which sets back into gold dust below 850; the vaporiser erases it.
+  which sets into `solid_gold` below 850 (a thing, like the metals: dug, it's
+  coins; SPEC §3.4h); the vaporiser erases it.
   `counted` (a new material flag): never a block item; what the hands dig
   of it is counted (`gold::Dug`).
 - Where it comes from: the loot tables' `gold: (min, max)` (loot.ron),
@@ -460,6 +461,33 @@ Noita's gold (DESIGN §13 item 7): a count, not a thing in the pack.
   destroys none of it and every cell lands.
 - Not yet: rarer and deeper loot tables giving more, a merchant to spend it
   with (the village), molten gold cast into bars (matter, §13.1).
+
+### 3.4h Metals (materials.ron; DESIGN §13.1)
+- Each metal (copper, iron, silver, mithril) is two materials: solid (an
+  `object`: a casting is kicked, thrown, lifted whole; carries heat and
+  lightning) and molten (a glowing liquid that lights and burns what it
+  touches). Heat moves between them as between ice and water: solid past its
+  melting point runs (copper 1 085 °C, silver 962, iron 1 538, mithril
+  1 750), molten sets again 60–70 °C under it.
+- A bar *is* metal: a material's `item` names its block item, so the bar
+  items (`copper_bar` …) are the metals' blocks, 16 cells each. Mining a
+  casting gives bars; a bar laid down is 16 cells of metal. Recipes and
+  rewards count bars as before (units: a bar is 16 cells).
+- Ore melts into its molten metal ~200 °C over the metal's point (a
+  furnace's heat: lava at 1 200 melts silver ore only).
+- Molten metal is poured hot (copper at 1 300, iron 1 750), gives its heat up
+  slowly (conductivity 25), and lingers past its freezing point (latent
+  1 200: it sets with chance (d / 1 200)² a tick, d degrees under), so it runs
+  for a second or two before it sets, as metal does. Stone holds copper,
+  silver and gold (it gives way at 1 400); iron and mithril want firebrick.
+- `firebrick` (furnace: a brick and a block of sand): heat-proof to 2 100,
+  a poor conductor.
+- Gold: molten gold sets into `solid_gold` (a thing, glowing, `counted`: dug,
+  it's coins), which melts back at 900.
+- Sim test: molten copper poured into a stone cup sets into 40 cells of
+  copper, every one, in ~100 ticks, and the cup holds.
+- Not yet: slag (ore melts wholly into metal for now), casting from the
+  furnace and a ladle (next).
 
 ### 3.4e Structures: crypts and castles
 DESIGN.md §3.3, stage 6 of the world arc (`worldgen/src/structures.rs`,

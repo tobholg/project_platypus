@@ -8,7 +8,8 @@
 //! heap lights a cave. Being a material, the rest is the simulation's: it's
 //! saved with its chunk, forever; it sinks in water; acid can't eat it
 //! (`inert`); blasts throw it; lava melts it into `molten_gold`, which sets
-//! back into gold dust as it cools; the vaporiser erases it.
+//! into `solid_gold` as it cools (a thing, like any metal: dug, it's coins
+//! again); the vaporiser erases it.
 //!
 //! A player takes the gold near it: walked into, it streams in (glinting
 //! specks), up to `TAKE_PER_TICK` cells a tick, so a heap drains in a gush.

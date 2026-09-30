@@ -3492,7 +3492,7 @@ fn gold_script(
         k.prev_pos = k.body.pos;
     };
     // Gold (and molten gold) between two x: cells, the lowest, the span.
-    let (g, molten) = (sim.materials().id("gold"), sim.materials().id("molten_gold"));
+    let (g, molten, set) = (sim.materials().id("gold"), sim.materials().id("molten_gold"), sim.materials().id("solid_gold"));
     let lying = |sim: &SimWorld, x0: i32, x1: i32| {
         let (mut n, mut m, mut low, mut lo, mut hi) = (0, 0, i32::MAX, i32::MAX, i32::MIN);
         for y in floor - 80..floor + 120 {
@@ -3501,7 +3501,7 @@ fn gold_script(
                 if c == Some(g) {
                     n += 1;
                     (low, lo, hi) = (low.min(y), lo.min(x), hi.max(x));
-                } else if c == Some(molten) {
+                } else if c == Some(molten) || c == Some(set) {
                     m += 1;
                 }
             }
@@ -3555,7 +3555,7 @@ fn gold_script(
         }
         6 if t > 10.0 => {
             let (lava, acid, pool) = (lying(&sim, 890, 970), lying(&sim, 440, 520), lying(&sim, 300, 430));
-            info!("gold: 100 into the lava: {} gold, {} molten; 60 into acid: {} gold (the lowest at y {}); 60 into the pool: {} gold, the lowest at y {} (its floor at {})", lava.0, lava.1, acid.0, acid.2, pool.0, pool.2, floor - 50);
+            info!("gold: 100 into the lava: {} gold dust, {} molten or set solid; 60 into acid: {} gold (the lowest at y {}); 60 into the pool: {} gold, the lowest at y {} (its floor at {})", lava.0, lava.1, acid.0, acid.2, pool.0, pool.2, floor - 50);
             put(&mut k, 1010.0);
             queue.burst.push((Vec2::new(1100.0, floor as f32 + 4.0), 150));
             *state = 7;
@@ -3573,7 +3573,7 @@ fn gold_script(
         }
         9 if t > 24.0 => {
             let lava = lying(&sim, 890, 970);
-            info!("gold: the lava pit, 18 s on: {} gold, {} molten", lava.0, lava.1);
+            info!("gold: the lava pit, 18 s on: {} gold dust, {} molten or set solid", lava.0, lava.1);
             *state = 10;
         }
         _ => {}

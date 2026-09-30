@@ -198,6 +198,10 @@ pub struct MaterialDef {
     /// falls whole instead of crumbling. At rest it's cells again.
     #[serde(default)]
     pub object: bool,
+    /// Its block item is this item (a metal's bar: 16 cells of it), rather
+    /// than a `block:` one. The game's business.
+    #[serde(default)]
+    pub item: Option<String>,
     /// How deep its glow glimmers: small patches swell from nearly dark to
     /// full and back, each on its own quick cycle (gems, crystals).
     /// Rendering only.

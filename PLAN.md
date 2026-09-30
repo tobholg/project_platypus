@@ -113,13 +113,13 @@ as designed.
    rubble, particles, barrels; a shove to small creatures.
 3. ✅ Force and gravity magic move objects (the well lifts them, the force
    wand throws them).
-4. Metals: ore, molten and solid for each metal, and slag; the heat rules
+4. ✅ (no slag yet) Metals: ore, molten and solid for each metal, and slag; the heat rules
    between them; molten metal glows and lights what it touches; a bar is 16
    cells of its metal (mining it gives bars back); firebrick (heat-proof).
 5. Casting: the furnace melts what it's fed and pours from its spout; the
    ladle (and a bucket and a flask: carried liquids) pours at the cursor;
    a mould of what stands the heat; the casting freed as an object.
-6. Gold in lava melts into molten gold and sets into gold (mined: gold).
+6. ✅ Gold in lava melts into molten gold and sets into gold (mined: gold).
 7. Boulders: rock bodies, round ones rolling; fracture (impact, fall, blow,
    blast past the material's strength: smaller bodies and rubble).
 8. Traps: boulders held by a prop or a rope; tripwires and pressure plates

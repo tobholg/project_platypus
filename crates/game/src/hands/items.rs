@@ -173,6 +173,12 @@ impl Items {
         }
         for (id, def) in mats.iter() {
             let ph = mats.phys(id);
+            // (A metal's block is its bar: `item`.)
+            if let Some(bar) = &def.item {
+                let d = defs.iter_mut().find(|d| &d.id == bar).ok_or(format!("material `{}`: no item `{bar}`", def.name))?;
+                d.use_ = Use::Block(id);
+                continue;
+            }
             if matches!(def.kind, Kind::Static | Kind::Powder) && ph.hardness < u8::MAX && !def.counted {
                 let (r, g, b) = def.colors[def.colors.len() / 2];
                 let mut name = def.name.replace('_', " ");
