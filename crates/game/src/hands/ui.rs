@@ -193,6 +193,8 @@ const LABEL_CHARS: usize = 34;
 
 /// Where the inventory starts: under the hotbar.
 const PACK_TOP: f32 = 86.0;
+/// Where a panel under the pack starts (an open chest, a villager's).
+pub(crate) const UNDER_PACK: f32 = PACK_TOP + (SLOT + 3.0) * PACK_ROWS as f32 + 50.0;
 
 fn spawn(mut commands: Commands) {
     let small = |s: &str| (Text::new(s), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::srgb(0.85, 0.85, 0.9)));
@@ -302,7 +304,7 @@ fn spawn(mut commands: Commands) {
             // (Under the pack, top left.)
             Node {
                 position_type: PositionType::Absolute,
-                top: px(PACK_TOP + (SLOT + 3.0) * PACK_ROWS as f32 + 50.0),
+                top: px(UNDER_PACK),
                 left: px(10),
                 ..default()
             },

@@ -580,6 +580,32 @@ rooms in `assets/data/rooms/*.rooms`).
 - Not yet: keys and locked doors (with the RPG arc), rooms behind
   waterfalls (no waterfalls yet), bosses (a pack of orcs for now).
 
+### 3.4i The start and the village (`worldgen/src/plan.rs`, `structures.rs`, `assets/data/village.buildings`)
+DESIGN §13 items 5–6.
+- The start is a plain: the ground ±300 cells (× the preset's width
+  scale) round the spawn is set to its median height, keeping a twentieth
+  of its roll (`PLAIN_ROLL`), and eased back into the land over the next
+  150. Trees still grow on it (a foliage cluster is capped at 30 cells from
+  its wood, so a crown can't sprawl over a flattened edge).
+- The village is a structure (`StructureKind::Village`: planks, brick, no
+  cobwebs) laid out once with the plan, from 8 blocks right of the spawn:
+  the buildings in `village.buildings`, in file order, 2 blocks apart, each
+  on the ground under its middle with brick foundations down into the
+  land. A building is a text grid at block resolution in the rooms' legend
+  (`#` planks, `%` brick, `W` water, `,` a window: no back wall, the sky
+  shows through, `.` open) and a letter a
+  person or a station on the row over the floor: `g` guide, `s` smith, `h`
+  healer, `m` merchant, `A` anvil, `F` furnace, `B` workbench). Doors are
+  open five blocks high at both ends. Today: a guide's house, a well, a
+  smithy (anvil, furnace), a healer's, a merchant's (workbench).
+- The structure carries its people and stations (`Structure.spawns`,
+  `Spawn::Creature`, `Spawn::Station`), reported by the chunk that holds
+  them and spawned once like any structure's guards.
+- The orcs round a new world's start stand 800–1250 cells out, beyond the
+  plain and out of the village's sight.
+- Tests: the start is flat (a plain round the spawn); a village stands by
+  the spawn, its buildings on the ground, its people and stations reported.
+
 ### 3.5 Streaming and persistence
 Chunks load around every player (co-op: the union). Missing chunks come from
 the chunk store (previously modified, lz4-compressed) or from worldgen.
@@ -1343,6 +1369,38 @@ Saved with the world (`WorldFile::clock`; older saves load with none of it).
 - The same edits from the command line, for the model and scripts:
   `platypus-art get|set|paint` (set and paint write only if the file still
   compiles).
+
+### 5.5 Villagers and talking (`actors/villager.rs`, `talk.rs`, `assets/data/creatures/{guide,smith,healer,merchant}.ron`)
+DESIGN §13 item 6.
+- A villager is a creature file: its look on the player's rig (art `base:
+  "player"` with its own palette: `parse_based`), team `Villager` (the
+  player's ally: neither hurts the other; monsters hunt both), and the
+  `villager` brain, whose params say who it is: `role`, `lines`, `wander`
+  (cells from home), `wander_speed`, `flee_range`, `sells` (item id, gold
+  each), `buys`, `heals` (gold for a full heal). New people are new files.
+- Its day: home is where it was first put. By day it potters within
+  `wander` of it, a new spot every 3–9 s; from 20:30 to 06:30 it walks home
+  and stays. A monster within `flee_range` (110) and it runs from it. A
+  player within 36 cells and it stops and faces them (`Routine.talking`).
+- The talking villager nearest the player says its lines, one every 4.5 s,
+  in a bubble over its head (world text, shadowed, wrapped); walk off and
+  back and it goes on to the next.
+- Right-click one within 36 cells: its panel opens under the pack (and the
+  pack with it). Rows of what it sells (icon, name, price; red when out of
+  reach): click buys one, Shift-click ten (as many as the gold and the pack
+  allow; blocks by the block). The healer's first row heals you whole. The
+  merchant's slot takes a stack dropped on it (let go over it, or clicked
+  down on it): half what anyone in the village sells one for (at least 1,
+  × (1 + rarity) for gear), a gold apiece for what no one sells, nothing
+  for plain blocks; held over it, the slot says what it would fetch. The
+  guide's panel lists its tips. The panel shuts when the pack does, when
+  you're 54 cells off, or when it runs. Clicks are `Trade` messages.
+- Today: the guide (tips), the smith (pickaxes, swords, armour, ladle,
+  bucket, firebrick), the healer (a heal for 15, potions), the merchant
+  (torches, glow sticks, bombs, arrows, chests, planks, platforms, flasks;
+  buys).
+- Scenarios: `village` (a walk through by day or night, `PLATYPUS_HOUR`),
+  `shop` (a trade with the smith, the healer and the merchant).
 
 ## 6. Combat
 

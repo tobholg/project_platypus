@@ -18,6 +18,7 @@
             wander: 60,
             lines: [
                 "Welcome, traveller. The village is small, but it's safe by day.",
+                "Right-click any of us to see what we can do for you.",
                 "Dig down with your pickaxe; ore gets richer the deeper you go.",
                 "A furnace melts ore into bars; the smith makes more of them.",
                 "Press F to kick. Logs, barrels, even a casting of your own.",

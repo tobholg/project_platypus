@@ -267,7 +267,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -4074,6 +4074,111 @@ fn village_script(
             })
             .collect();
         info!("village: t {t:.0} ({}) player at x {:.0}; {} stations; {}", day.clock(), k.body.pos.x, stations.iter().count(), who.join("; "));
+    }
+}
+
+/// `shop` (a generated world): the player, with 400 gold and hurt, walks
+/// through the village (D held) and stops at the smith (buys a pickaxe and
+/// ten firebricks), the healer (a heal, two potions) and the merchant
+/// (sells it the pickaxe; buys ten torches, held over its slot to the
+/// end, for the screenshot). Logs each trade: gold, health, pack.
+#[allow(clippy::too_many_arguments)]
+fn shop_script(
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut player: Query<(&Kinematics, &mut crate::gold::Gold, &mut crate::actors::Health, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    people: Query<(Entity, &crate::actors::villager::Villager, &crate::actors::villager::Routine)>,
+    foes: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::Team), Without<LocalPlayer>>,
+    mut shop: ResMut<crate::talk::Shop>,
+    mut open: ResMut<crate::hands::InventoryOpen>,
+    mut held: ResMut<crate::hands::ui::Held>,
+    mut trades: MessageWriter<crate::talk::Trade>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut state: Local<(usize, u8, f32)>,
+) {
+    use crate::talk::Trade;
+    if s.name != "shop" {
+        return;
+    }
+    let t = s.elapsed;
+    let (Some(items), Ok((pk, mut gold, mut health, mut inv))) = (items, player.single_mut()) else { return };
+    let pk = pk.body.pos;
+    const VISIT: [&str; 3] = ["smith", "healer", "merchant"];
+    let (visit, step, at) = &mut *state;
+    if *visit == 0 && *step == 0 {
+        if t < 2.0 {
+            return;
+        }
+        gold.0 = 400;
+        health.hp = 30.0;
+        keys.press(KeyCode::KeyD);
+        *step = 1;
+        return;
+    }
+    let Some(role) = VISIT.get(*visit) else { return };
+    let log = |what: &str, gold: u32, hp: f32, inv: &crate::hands::items::Inventory| {
+        let pack: Vec<String> = inv.slots.iter().flatten().map(|st| format!("{}×{}", items.def(st.item).name, st.count / items.unit(st.item))).collect();
+        info!("shop: {role}: {what}: gold {gold}, health {hp:.0}, pack [{}]", pack.join(", "));
+    };
+    match *step {
+        // Walking: stop when it turns to talk.
+        1 => {
+            if let Some((e, v, _)) = people.iter().find(|(_, v, r)| v.role == *role && r.talking) {
+                keys.release(KeyCode::KeyD);
+                *shop = crate::talk::open_for(e, v, &items);
+                open.0 = true;
+                *step = 2;
+                *at = t;
+                log("opened", gold.0, health.hp, &inv);
+            }
+        }
+        2 if t > *at + 1.0 => {
+            match *role {
+                "smith" => {
+                    trades.write(Trade::Take { offer: 0, n: 1 });
+                    let last = shop.offers.len() - 1;
+                    trades.write(Trade::Take { offer: last, n: 10 });
+                }
+                "healer" => {
+                    trades.write(Trade::Take { offer: 0, n: 1 });
+                    trades.write(Trade::Take { offer: 1, n: 2 });
+                }
+                _ => {
+                    // The pickaxe, from the pack to the merchant.
+                    let pick = items.id("iron_pickaxe");
+                    if let Some(i) = inv.slots.iter().position(|st| st.is_some_and(|st| Some(st.item) == pick)) {
+                        held.stack = inv.slots[i].take();
+                        trades.write(Trade::Sell);
+                    }
+                    trades.write(Trade::Take { offer: 0, n: 10 });
+                }
+            }
+            *step = 3;
+            *at = t;
+        }
+        3 if t > *at + 0.5 => {
+            let running = people.iter().any(|(_, v, r)| v.role == *role && r.fleeing);
+            let near: Vec<String> = foes.iter().filter(|(_, fk, team)| **team == crate::actors::Team::Enemy && fk.body.pos.distance(pk) < 200.0).map(|(c, fk, _)| format!("{} at {:+.0}", c.kind, fk.body.pos.x - pk.x)).collect();
+            log(&if shop.with.is_some() { "traded".to_string() } else if running { format!("it ran ({})", near.join(", ")) } else { "shut".to_string() }, gold.0, health.hp, &inv);
+            if *role == "merchant" {
+                // (Torches in hand, over the slot: what they'd fetch.)
+                let torch = items.id("torch");
+                if let Some(i) = inv.slots.iter().position(|st| st.is_some_and(|st| Some(st.item) == torch)) {
+                    held.stack = inv.slots[i].take();
+                }
+                *step = 5;
+                return;
+            }
+            *step = 4;
+            *at = t;
+        }
+        4 if t > *at + 1.5 => {
+            open.0 = false;
+            *visit += 1;
+            *step = 1;
+            keys.press(KeyCode::KeyD);
+        }
+        _ => {}
     }
 }
 

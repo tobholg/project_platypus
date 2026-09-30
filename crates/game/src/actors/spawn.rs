@@ -58,9 +58,10 @@ pub struct SpawnQueue(pub Vec<PendingSpawn>);
 pub struct Spawned(pub std::collections::HashSet<CellPos>);
 
 /// How many enemies to scatter around the start (tunable later via RON).
-/// (Beyond the plain and its village: the start is safe ground.)
+/// (Beyond the plain and out of sight of its village, whose far end is
+/// ~200 cells out: an orc sees 220. The start is safe ground.)
 const START_ENEMIES: [(&str, i32); 8] =
-    [("orc", -1100), ("orc", -900), ("orc", -720), ("orc", -560), ("orc", 560), ("orc", 720), ("orc", 900), ("orc", 1100)];
+    [("orc", -1250), ("orc", -1100), ("orc", -950), ("orc", -800), ("orc", 800), ("orc", 950), ("orc", 1100), ("orc", 1250)];
 
 impl Plugin for SpawnPlugin {
     fn build(&self, app: &mut App) {

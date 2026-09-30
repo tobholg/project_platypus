@@ -758,6 +758,19 @@ live in. The arc, in order:
    at night, flee danger, talk when you're near), a friendly team that
    monsters hunt too. New roles are new files. First: a guide, a smith, a
    healer; the merchant with gold.
+   *As built (`village`, SPEC §3.4i, §5.5)*: the plain is the median of the
+   ground ±300 cells round the spawn (a gentle roll), eased back into the
+   land; the village's buildings are text (`village.buildings`: a guide's
+   house, a well, a smithy with its anvil and furnace, a healer's, a
+   merchant's) set side by side from the spawn. A villager is a creature
+   file on the player's rig (art `base: "player"`, its own colours) with
+   the `villager` brain: potters about its home by day, home from dusk,
+   runs from monsters, stops and turns to you when you're near. The one
+   nearest you speaks its lines in a bubble; right-click it for its panel:
+   buy for gold (click one, Shift ten), the healer heals whole, the
+   merchant buys (half what anyone in the village sells it for; a gold
+   apiece for the rest, nothing for plain blocks), the guide lists tips.
+   The smith sells what it would make rather than crafting to order.
 7. **Gold, Noita's way**: a count in the HUD (a nugget and a number), not a
    thing in the pack. Nuggets (1, 5, 25, 100) glint, give a faint warm
    light, bounce and roll, and drift to you; they burst out of the dying

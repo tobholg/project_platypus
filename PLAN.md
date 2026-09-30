@@ -131,18 +131,21 @@ Done when: you can make an object of your own shape and kick it about;
 boulders roll, crush and break; the bench holds with a hundred sleeping
 objects about.
 
-**5. `village`: a start worth starting in, and people.**
-1. The start: a wide flattened plain round the spawn (±300 cells, forest
+**5. `village`: a start worth starting in, and people.** SPEC §3.4i, §5.5.
+1. ✅ The start: a wide flattened plain round the spawn (±300 cells, forest
    or plains) (worldgen, from the preset).
-2. The village: a structure a short walk away (rooms as text: timber
+2. ✅ (the buildings as text in `village.buildings`; a stone well, no path)
+   The village: a structure a short walk away (rooms as text: timber
    houses, a well, a smithy, a path), placed from the spawn.
-3. NPCs as data: a file per kind (body and look on the humanoid rig, role,
+3. ✅ NPCs as data: a file per kind (body and look on the humanoid rig, role,
    lines, services), the villager brain (a day's schedule, home at night,
    flee danger, talk when near), a friendly team monsters hunt.
-4. Talking: a speech bubble over them; a panel for services.
-5. First roles: a guide (tips), a smith (crafts at their anvil, for gold),
-   a healer (heals, sells potions); a merchant (buys and sells for gold).
-6. `village` scenario (walk in by day and by night).
+4. ✅ Talking: a speech bubble over them; a panel for services.
+5. ✅ (the smith sells what it would make, not crafts to order) First roles:
+   a guide (tips), a smith (crafts at their anvil, for gold), a healer
+   (heals, sells potions); a merchant (buys and sells for gold).
+6. ✅ (and `shop`: a trade with each) `village` scenario (walk in by day
+   and by night).
 Done when: a new world starts on the plain with the village in sight, and
 its people live their day.
 
