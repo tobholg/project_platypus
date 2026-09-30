@@ -124,7 +124,7 @@ as designed.
    blast past the material's strength: smaller bodies and rubble).
 8. ✅ (a rope, not a prop) Traps: boulders held by a prop or a rope; tripwires and pressure plates
    (mechanisms); worldgen puts some in tunnels.
-9. Scenarios: `cast` (a mould built, iron poured, mined out, the casting
+9. ✅ (copper, not iron; the barrel kicked in the arena) Scenarios: `cast` (a mould built, iron poured, mined out, the casting
    kicked), `boulder` (one down a slope into a wall: it breaks), `trap`,
    `kick` (a barrel kicked into a camp).
 Done when: you can make an object of your own shape and kick it about;
