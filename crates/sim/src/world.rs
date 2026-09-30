@@ -1661,7 +1661,9 @@ impl World {
     /// through: caught in a neighbour's branches, a trunk hung in mid-air.
     fn body_surface(&self, p: CellPos, hinge: Option<(CellPos, i32)>) -> Option<Surface> {
         let mats = &self.materials;
-        let front = self.get(p)?;
+        // (The unloaded world is a wall, as it is to cells: a body flying off
+        // the loaded area stops there instead of falling out of the world.)
+        let Some(front) = self.get(p) else { return Some(Surface::Front) };
         if !front.is_air() && matches!(mats.phys(front.material).kind, Kind::Static | Kind::Powder) {
             return Some(Surface::Front);
         }

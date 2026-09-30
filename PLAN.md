@@ -111,7 +111,7 @@ as designed.
    loses its hold falls whole. Bodies already hurt creatures (`crush`).
 2. ✅ The kick (F): an impulse by mass to objects, items, gold, bodies,
    rubble, particles, barrels; a shove to small creatures.
-3. Force and gravity magic move objects (the well lifts them, the force
+3. ✅ Force and gravity magic move objects (the well lifts them, the force
    wand throws them).
 4. Metals: ore, molten and solid for each metal, and slag; the heat rules
    between them; molten metal glows and lights what it touches; a bar is 16

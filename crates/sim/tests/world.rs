@@ -478,6 +478,33 @@ fn objects_are_kicked_and_fall_whole() {
     assert_eq!(span(&w).0, before, "and lands whole");
 }
 
+/// The unloaded world is a wall to a body, as to cells: kicked off the
+/// loaded area, a log stops at its edge instead of falling out of the world.
+#[test]
+fn a_body_stays_in_the_loaded_world() {
+    let m = mats();
+    let (stone, wood) = (m.expect_id("stone"), m.expect_id("wood"));
+    let mut w = World::new(16, m);
+    w.insert_chunk(Chunk::filled(ChunkPos::new(0, 0), Cell::AIR));
+    for x in 0..CHUNK {
+        w.set(CellPos::new(x, 0), Cell::new(stone, 0));
+    }
+    for x in 40..60 {
+        for y in 1..4 {
+            w.set(CellPos::new(x, y), Cell::new(wood, 128));
+        }
+    }
+    w.kick(CellPos::new(38, 1), CellPos::new(42, 4), [1.6, 0.4], 600.0);
+    for _ in 0..600 {
+        w.step();
+        if w.bodies().is_empty() {
+            break;
+        }
+    }
+    assert!(w.bodies().iter().all(|b| b.pos[1] > 0.0 && b.pos[0] < CHUNK as f32 + 2.0), "no body out of the world");
+    assert_eq!(count(&w, wood), 60, "the log came to rest whole, in the world");
+}
+
 #[test]
 fn igniting_burns_flammables_only() {
     let mut w = boxed_world(1, 1, 13);

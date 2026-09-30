@@ -733,6 +733,17 @@ deaths (blood). Rendered as one dynamic mesh.
   barrel goes 29 cells, the floor takes nothing. A sim test: a kicked log
   lands whole and further on, a log on a post falls whole when the post's
   foot is dug away, the stone floor doesn't lift.
+- **Magic moves objects** (`game/src/magic/well.rs`): force and the well lift
+  an object whole, whatever its hardness (they'd tear its cells out one by
+  one otherwise). Force shoves every body in its cone to its speed at once,
+  as it does creatures (slower past 120 cells: by weight); a well holds the
+  bodies within its reach on a spring to its heart (6/s, a fifth of the way
+  a tick) against gravity, each weighing 0.7 a cell against what's left of
+  its lift that tick. `logmagic` scenario (flat world): the force wand throws
+  a 150-cell log 19 cells; the gravity wand lifts it ~40 cells, carries it 50
+  over and drops it, and it lands whole.
+- The unloaded world is a wall to a body, as to cells (a log flung off the
+  loaded area used to fall out of the world). Sim test.
 - Not yet: bodies aren't saved with the world (in flight: at rest they're
   cells) and don't collide with each other.
 

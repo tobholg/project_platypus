@@ -3729,6 +3729,7 @@ fn logmagic_script(
     mut cursor: ResMut<CursorOverride>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     mut state: Local<(u8, f32, Option<Vec2>)>,
+    mut anchor: Local<Option<f32>>,
 ) {
     if s.name != "logmagic" {
         return;
@@ -3773,8 +3774,10 @@ fn logmagic_script(
     let push = t > 1.5 && t < 2.0;
     let hold = t > 3.4 && t < 6.5;
     // The well: on the log, then up and over.
-    let at = log_at(&sim);
-    let lift_to = if t < 4.2 { Vec2::new(at - home.x, 6.0) } else { Vec2::new(at - home.x + (t - 4.2) * 20.0, 40.0) };
+    // (Where the log lay as the hold began: the well goes there, then up
+    // and slowly over, not after the log itself.)
+    let from = if hold { *anchor.get_or_insert_with(|| log_at(&sim) - home.x) } else { log_at(&sim) - home.x };
+    let lift_to = if t < 4.2 { Vec2::new(from, 6.0) } else { Vec2::new(from + (t - 4.2) * 20.0, 40.0) };
     cursor.0 = Some(home + if hold { lift_to } else { Vec2::new(60.0, 2.0) });
     if push || hold { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     if t >= state.1 {
