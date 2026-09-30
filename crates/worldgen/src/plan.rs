@@ -889,7 +889,6 @@ fn smoothstep(a: f64, b: f64, x: f64) -> f64 {
 /// inland, local basins (rims within `LAKE_REACH` either side) filled to the
 /// lower rim, levelled flat per lake and capped at the biome's lake depth;
 /// no lakes in rugged notches; puddles dropped.
-#[allow(clippy::too_many_arguments)]
 /// Half the plain's width round the spawn, and how far it eases back into
 /// the land beyond (cells, in the reference world: sized with it).
 const PLAIN: f64 = 300.0;
@@ -917,6 +916,7 @@ fn start_plain(surface: &mut [i32], mid: i32, sw: f64) -> (i32, i32, i32) {
     (x0, x1, level)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn water_levels(surface: &[i32], biomes: &[Biome], rugged: &[f32], bowls: &[(i32, i32)], sea_level: i32, ocean_w: i32, sh: f64, sw: f64, seed: u64) -> Vec<i32> {
     let n = surface.len();
     let mut water = vec![0; n];
