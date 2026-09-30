@@ -814,7 +814,7 @@ pub fn village(plain: (i32, i32, i32), mid: i32, ground: &dyn Fn(i32) -> i32) ->
         }
         bx += b.w + VILLAGE_GAP;
     }
-    (!pieces.is_empty()).then(|| Structure { kind: StructureKind::Village, site: (mid, plain.2), rooms: 0, grid: (0, 0), pieces, spawns })
+    (!pieces.is_empty()).then_some(Structure { kind: StructureKind::Village, site: (mid, plain.2), rooms: 0, grid: (0, 0), pieces, spawns })
 }
 
 /// A chest on a lake's bed at column x (`bed`: the first water cell above
