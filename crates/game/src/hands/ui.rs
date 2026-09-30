@@ -910,6 +910,19 @@ fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<&crate::com
         }
         Use::Throw(t) => lines.push(format!("{t:?}: click to throw it toward the cursor")),
         Use::Torch => lines.push("Click to plant it on a block: light".into()),
+        Use::Vessel { holds, hot, acidproof } => {
+            let takes = match (hot, acidproof) {
+                (true, _) => "any liquid, molten metal too",
+                (false, true) => "any cool liquid, acid too",
+                _ => "a cool liquid (not acid)",
+            };
+            lines.push(format!("Holds {holds} cells of {takes}"));
+            lines.push("RMB: fill it (at a furnace: melt bars and ore from your pack into it); LMB: pour".into());
+            match s.fill.and_then(|(m, n)| items.material_name(m).map(|name| (name.replace('_', " "), n))) {
+                Some((name, n)) => lines.push(format!("{n} cells of {name} in it")),
+                None => lines.push("Empty".into()),
+            }
+        }
         Use::Potion { heal, over, sickness } => {
             let when = if *over > 0.0 { format!(" over {over:.0} s") } else { String::new() };
             lines.push(format!("Heals {heal:.0}{when}; click (or H) to drink"));

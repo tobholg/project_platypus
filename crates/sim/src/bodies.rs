@@ -298,6 +298,20 @@ impl Body {
         self.hull.is_empty()
     }
 
+    /// Lying nearly square (within ~11° of a quarter turn), exactly square:
+    /// written back into the grid it then maps cell for cell (tilted, the
+    /// grid resamples it and a cell can come or go). Comparisons only, no
+    /// trig: the same on every machine.
+    pub(crate) fn square_up(&mut self) {
+        const NEAR: f32 = 0.2;
+        let [c, s] = self.rot;
+        if s.abs() < NEAR {
+            self.rot = [c.signum(), 0.0];
+        } else if c.abs() < NEAR {
+            self.rot = [0.0, s.signum()];
+        }
+    }
+
     /// Its mass (cells; leaves count less).
     pub fn mass(&self) -> f32 {
         1.0 / self.inv_mass.max(1e-6)

@@ -824,7 +824,15 @@ fn a_burning_tree_leaves_nothing_floating() {
         }
     }
     w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(64, 30), radius: 3 });
-    for _ in 0..4_000 {
+    // (Until it's burnt out: what the last flames leave is checked last.)
+    let fire = w.materials().expect_id("fire");
+    for t in 0..12_000 {
+        w.step();
+        if t > 4_000 && burning(&w) == 0 && count(&w, fire) == 0 && w.bodies().is_empty() {
+            break;
+        }
+    }
+    for _ in 0..60 {
         w.step();
     }
     let floating = floating_solids(&w, 1, 127, 127);

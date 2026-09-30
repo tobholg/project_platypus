@@ -41,6 +41,12 @@ pub const PACK_ROWS: usize = 5;
 const AIM_HOLD: f32 = 0.4;
 /// Blocks placed per second while the button is held.
 const PLACE_RATE: f32 = 8.0;
+/// A vessel reaches this far (cells), scoops within this many cells of the
+/// cursor, this many a tick, and pours this many a tick.
+const VESSEL_REACH: f32 = 40.0;
+const VESSEL_SCOOP: i32 = 3;
+const VESSEL_RATE: u32 = 6;
+const VESSEL_POUR: u32 = 1;
 /// Items on the ground drift to a player within this many cells...
 const MAGNET: f32 = 48.0;
 /// ... and are picked up within this many.
@@ -494,6 +500,62 @@ fn use_hands(
                 }
             }
         }
+        Use::Vessel { holds, hot, acidproof } if input.primary || input.secondary => {
+            let mats = sim.world.materials().clone();
+            let mut st = stack;
+            if input.secondary {
+                let furnace = crate::craft::station_at(cursor, stations.iter())
+                    .filter(|&(_, kind, pos)| crafting.stations.get(kind).is_some_and(|d| d.id == "furnace") && pos.distance(from) <= VESSEL_REACH);
+                if furnace.is_some() {
+                    // At a furnace: what the pack holds that melts, into it.
+                    if hot && hand.cooldown == 0.0 && melt_into(&mut inv, &mut st, &items, &mats, holds) {
+                        sounds.write(crate::sound::PlaySound::at("pour", cursor));
+                        hand.cooldown = 0.4;
+                    }
+                } else if cursor.distance(from) <= VESSEL_REACH {
+                    // Scoop the liquid at the cursor (one kind at a time).
+                    let c = CellPos::from_world(cursor.x, cursor.y);
+                    let mut taken = 0;
+                    'scoop: for dy in -VESSEL_SCOOP..=VESSEL_SCOOP {
+                        for dx in -VESSEL_SCOOP..=VESSEL_SCOOP {
+                            let (have, n) = st.fill.map_or((None, 0), |(m, n)| (Some(m), n));
+                            if n >= holds || taken >= VESSEL_RATE {
+                                break 'scoop;
+                            }
+                            let p = c.offset(dx, dy);
+                            let Some(cell) = sim.world.get(p) else { continue };
+                            let ph = mats.phys(cell.material);
+                            let fits = ph.kind == Kind::Liquid && (hot || !ph.hot) && (acidproof || ph.corrosive == 0) && have.is_none_or(|m| m == cell.material);
+                            if fits && sim.world.pluck(p).is_some() {
+                                st.fill = Some((cell.material, n + 1));
+                                taken += 1;
+                            }
+                        }
+                    }
+                    if taken > 0 {
+                        sounds.write(crate::sound::PlaySound::at("drip", cursor).volume(0.5));
+                    }
+                }
+            } else if let Some((m, n)) = st.fill {
+                // Pour: a stream from the hand that lands at the cursor (thrown
+                // so, under gravity: a flight of `ticks`).
+                let start = from + (cursor - from).normalize_or(Vec2::X) * 3.0;
+                let to = cursor - start;
+                let ticks = (to.length() / 1.5).clamp(6.0, 40.0);
+                let g = platypus_sim::particles::GRAVITY;
+                let aim = Vec2::new(to.x / ticks, to.y / ticks + 0.5 * g * ticks);
+                let k = n.min(VESSEL_POUR);
+                let mut rng = platypus_sim::rng::Rng::seeded(&[sim.world.tick(), n as u64, 0x7057]);
+                for _ in 0..k {
+                    let cell = mats.spawn(m, &mut rng);
+                    let jiggle = (rng.next_u32() as f32 / u32::MAX as f32 - 0.5) * 0.06;
+                    let v = aim * (1.0 + jiggle);
+                    sim.world.emit(platypus_sim::Particle::new([start.x, start.y], [v.x, v.y], cell, 200, platypus_sim::Landing::Settle));
+                }
+                st.fill = (n > k).then_some((m, n - k));
+            }
+            inv.slots[slot] = Some(st);
+        }
         Use::Block(material) if input.primary && hand.cooldown == 0.0 && stack.count >= BLOCK_CELLS => {
             let bodies: Vec<Body> = creatures.iter().map(|k| k.body).collect();
             let world = &sim.world;
@@ -573,6 +635,44 @@ fn use_hands(
         }
         _ => {}
     }
+}
+
+/// A furnace melts what the pack holds that melts (a metal's bars, its ore:
+/// blocks whose material melts into a hot liquid) into the vessel `st`, up to
+/// what it `holds`, one liquid at a time: a bar gives its 16 cells, ore half
+/// (the rest is slag). Whether anything went in.
+fn melt_into(inv: &mut Inventory, st: &mut Stack, items: &Items, mats: &platypus_sim::MaterialTable, holds: u32) -> bool {
+    let (have, mut n) = st.fill.map_or((None, 0), |(m, n)| (Some(m), n));
+    let mut into = have;
+    for slot in inv.slots.iter_mut() {
+        let Some(s) = slot.as_mut() else { continue };
+        let Use::Block(m) = items.def(s.item).use_ else { continue };
+        let molten = mats.phys(m).above_into;
+        if molten == platypus_sim::MaterialId::AIR || mats.phys(molten).kind != Kind::Liquid || !mats.phys(molten).hot || into.is_some_and(|i| i != molten) {
+            continue;
+        }
+        // (Cells of it per cell of metal: a bar's all metal, ore half.)
+        let per = if mats.def(m).item.is_some() { 1 } else { 2 };
+        let take = ((holds - n) * per).min(s.count);
+        if take < per {
+            continue;
+        }
+        let take = take - take % per;
+        s.count -= take;
+        n += take / per;
+        into = Some(molten);
+        if s.count == 0 {
+            *slot = None;
+        }
+        if n >= holds {
+            break;
+        }
+    }
+    let changed = into.is_some() && (have.is_none() || n > st.fill.map_or(0, |f| f.1));
+    if let Some(m) = into {
+        st.fill = Some((m, n));
+    }
+    changed
 }
 
 /// Put a stack on the ground at `at`, popping out a little.

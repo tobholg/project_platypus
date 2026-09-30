@@ -105,6 +105,9 @@ pub struct SavedStack {
     pub level: u8,
     #[serde(default, skip_serializing_if = "is_zero32")]
     pub seed: u32,
+    /// A vessel's contents: the liquid by name, and cells.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<(String, u32)>,
 }
 
 fn is_zero(v: &u8) -> bool {
@@ -116,7 +119,8 @@ fn is_zero32(v: &u32) -> bool {
 }
 
 pub fn stack_out(items: &Items, s: &Stack) -> SavedStack {
-    SavedStack { id: items.def(s.item).id.clone(), count: s.count, rarity: s.roll.rarity, level: s.roll.level, seed: s.roll.seed }
+    let fill = s.fill.and_then(|(m, n)| items.material_name(m).map(|name| (name.to_string(), n)));
+    SavedStack { id: items.def(s.item).id.clone(), count: s.count, rarity: s.roll.rarity, level: s.roll.level, seed: s.roll.seed, fill }
 }
 
 /// A saved stack as a stack, if its item still exists.
@@ -125,7 +129,8 @@ pub fn stack_in(items: &Items, s: &SavedStack) -> Option<Stack> {
         warn!("save: no item `{}` any more; dropped", s.id);
         return None;
     };
-    Some(Stack { item, count: s.count, roll: Roll { rarity: s.rarity, level: s.level, seed: s.seed } })
+    let fill = s.fill.as_ref().and_then(|(name, n)| items.material(name).map(|m| (m, *n)));
+    Some(Stack { item, count: s.count, roll: Roll { rarity: s.rarity, level: s.level, seed: s.seed }, fill })
 }
 
 fn slots_out(items: &Items, slots: &[Option<Stack>]) -> Vec<Option<SavedStack>> {

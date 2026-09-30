@@ -17,6 +17,9 @@ use crate::weather::{self, Weather};
 
 /// A connected solid piece bigger than this counts as ground (anchored). Smaller
 /// pieces that touch neither bedrock nor unloaded world are floating and fall.
+/// Fastest a kick sends a body (cells a tick at the fastest dir, before
+/// its lift: ~120 cells a second).
+const KICK_SPEED: f32 = 1.3;
 const ANCHOR_BUDGET: usize = 3_000;
 /// The same for the background, where a whole tree with its crown must fit
 /// (a giant is ~20k cells): anything bigger isn't a tree and counts as held.
@@ -1782,7 +1785,10 @@ impl World {
         for &id in &ids {
             if let Some(b) = self.body_mut(id) {
                 let at = b.pos;
-                b.impulse([dir[0] * power, dir[1] * power + power * 0.35], at);
+                // (A light thing takes no more than `KICK_SPEED`: a kick
+                // sends it, not shoots it.)
+                let p = power.min(b.mass() * KICK_SPEED);
+                b.impulse([dir[0] * p, dir[1] * p + p * 0.35], at);
             }
         }
         for p in &mut self.particles {
@@ -1809,13 +1815,14 @@ impl World {
             }
         }
         let front = body.rests_on_front;
+        body.square_up();
         let cells: Vec<(CellPos, Cell)> = body.world_cells().collect();
         for (p, c) in cells {
             if front {
                 // (Sunk a little into what it rests on: a cell that meets
-                // something solid goes just above it, not lost.)
+                // something solid goes just above it (up to 10), not lost.)
                 let open = |w: &World, q: CellPos| w.get(q).map(|f| (f, if f.is_air() { Kind::Empty } else { mats.phys(f.material).kind })).filter(|(_, k)| matches!(k, Kind::Empty | Kind::Gas | Kind::Fire | Kind::Plant | Kind::Liquid));
-                let Some((p, (f, kind))) = (0..=4).map(|dy| p.offset(0, dy)).find_map(|q| open(self, q).map(|o| (q, o))) else { continue };
+                let Some((p, (f, kind))) = (0..=10).map(|dy| p.offset(0, dy)).find_map(|q| open(self, q).map(|o| (q, o))) else { continue };
                 if kind == Kind::Liquid {
                     // Water it lands in is pushed up out of the way, not lost.
                     self.particles.push(Particle::new(center_of(p), [0.0, 0.6], f, 120, Landing::Settle));

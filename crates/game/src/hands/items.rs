@@ -68,6 +68,18 @@ pub enum Use {
         #[serde(default = "potion_sickness")]
         sickness: f32,
     },
+    /// A vessel for liquids (a ladle, a bucket, a flask): the right button
+    /// fills it (scooping the liquid at the cursor, or, at a furnace, melting
+    /// bars and ore from the pack into it), the left pours it toward the
+    /// cursor. It `holds` so many cells of one liquid; molten metal only if
+    /// it's `hot`, acid only if it's `acidproof`.
+    Vessel {
+        holds: u32,
+        #[serde(default)]
+        hot: bool,
+        #[serde(default)]
+        acidproof: bool,
+    },
     /// A block of a material (made from the materials table, not written).
     #[serde(skip)]
     Block(MaterialId),
@@ -153,6 +165,9 @@ pub struct ItemsFile {
 #[derive(Resource, Clone, Debug)]
 pub struct Items {
     defs: Vec<ItemDef>,
+    /// The materials by name (what a vessel holds is saved by name).
+    materials: HashMap<String, MaterialId>,
+    names: HashMap<MaterialId, String>,
     by_id: HashMap<String, ItemId>,
     blocks: HashMap<MaterialId, ItemId>,
     pub start: Vec<(ItemId, u32)>,
@@ -204,7 +219,9 @@ impl Items {
             .map(|(id, n)| by_id.get(id).map(|&i| (i, *n)).ok_or(format!("start: no item `{id}`")))
             .collect::<Result<_, _>>()?;
         let wear = file.wear.iter().map(|id| by_id.get(id).copied().ok_or(format!("wear: no item `{id}`"))).collect::<Result<_, _>>()?;
-        Ok(Items { defs, by_id, blocks, start, wear })
+        let materials: HashMap<String, MaterialId> = mats.iter().map(|(id, d)| (d.name.clone(), id)).collect();
+        let names = materials.iter().map(|(n, &id)| (id, n.clone())).collect();
+        Ok(Items { defs, materials, names, by_id, blocks, start, wear })
     }
 
     /// How many items there are (ids are 0..len).
@@ -218,6 +235,15 @@ impl Items {
 
     pub fn id(&self, name: &str) -> Option<ItemId> {
         self.by_id.get(name).copied()
+    }
+
+    /// A material by name, and a material's name.
+    pub fn material(&self, name: &str) -> Option<MaterialId> {
+        self.materials.get(name).copied()
+    }
+
+    pub fn material_name(&self, id: MaterialId) -> Option<&str> {
+        self.names.get(&id).map(|s| s.as_str())
     }
 
     /// The block item of a material, if it has one.
@@ -243,16 +269,18 @@ pub struct Stack {
     pub item: ItemId,
     pub count: u32,
     pub roll: Roll,
+    /// A vessel's contents: which liquid, how many cells.
+    pub fill: Option<(MaterialId, u32)>,
 }
 
 impl Stack {
     pub fn new(item: ItemId, count: u32) -> Stack {
-        Stack { item, count, roll: Roll::default() }
+        Stack { item, count, roll: Roll::default(), fill: None }
     }
 
-    /// The same item, and the same roll: they stack.
+    /// The same item, the same roll, the same contents: they stack.
     pub fn same(&self, other: &Stack) -> bool {
-        self.item == other.item && self.roll == other.roll
+        self.item == other.item && self.roll == other.roll && self.fill == other.fill
     }
 }
 

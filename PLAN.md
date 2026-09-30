@@ -116,7 +116,7 @@ as designed.
 4. ✅ (no slag yet) Metals: ore, molten and solid for each metal, and slag; the heat rules
    between them; molten metal glows and lights what it touches; a bar is 16
    cells of its metal (mining it gives bars back); firebrick (heat-proof).
-5. Casting: the furnace melts what it's fed and pours from its spout; the
+5. ✅ (no spout: the ladle is filled at the furnace) Casting: the furnace melts what it's fed and pours from its spout; the
    ladle (and a bucket and a flask: carried liquids) pours at the cursor;
    a mould of what stands the heat; the casting freed as an object.
 6. ✅ Gold in lava melts into molten gold and sets into gold (mined: gold).

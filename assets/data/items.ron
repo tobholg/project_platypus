@@ -143,6 +143,15 @@
             about: "Set it down; bars become tools, arms, armour and hooks here."),
         (id: "arcane_altar",   name: "Arcane altar",   stack: 10, color: (170, 120, 240), use: Station("arcane_altar"),
             about: "Set it down; wands and staffs are made here."),
+        // Vessels (casting, carrying): RMB fills (scoops at the cursor; at a
+        // furnace, melts bars and ore from the pack into it), LMB pours.
+        (id: "ladle",          name: "Ladle",          color: (120, 110, 110), use: Vessel(holds: 64, hot: true),
+            about: "A crucible on a handle: carries molten metal from a furnace to your mould."),
+        (id: "bucket",         name: "Bucket",         color: (150, 150, 160), use: Vessel(holds: 64),
+            about: "Carries water, oil or the like."),
+        (id: "flask",          name: "Flask",          color: (170, 220, 200), use: Vessel(holds: 16, acidproof: true),
+            about: "Glass: carries a little of anything cool, acid too."),
+        // A bar is its metal's block (materials.ron `item`): 16 cells of it.
         (id: "copper_bar",     name: "Copper bar",     stack: 99, color: (205, 127, 50)),
         (id: "iron_bar",       name: "Iron bar",       stack: 99, color: (176, 178, 190)),
         (id: "silver_bar",     name: "Silver bar",     stack: 99, color: (214, 218, 230)),
@@ -158,6 +167,7 @@
         ("leather_cap", 1), ("chainmail", 1), ("apprentice_robe", 1), ("feather_boots", 1), ("ring_of_vigour", 1), ("ember_amulet", 1),
         ("cloud_boots", 1), ("radiant_staff", 1), ("frost_staff", 1), ("blaze_staff", 1),
         ("storm_wand", 1), ("acid_staff", 1), ("void_wand", 1), ("void_staff", 1),
+        ("ladle", 1), ("bucket", 1), ("flask", 1), ("copper_bar", 12), ("iron_bar", 12), ("block:firebrick", 30),
     ],
     // What a new player wears (while developing: rocket boots and a
     // grappling hook to try).

@@ -267,7 +267,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script))
-            .add_systems(PreUpdate, logmagic_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3785,6 +3785,102 @@ fn logmagic_script(
         let (lying, flying) = log(&sim);
         let held = inv.slots[hand.active()].and_then(|st| items.as_ref().map(|i| i.def(st.item).id.clone()));
         info!("logmagic: t {t:.2} {} wood lying {lying}, flying {flying:?}, the log at x {:+.0} mana {:.0} holding {held:?}", if push { "push" } else if hold { "hold" } else { "-" }, log_at(&sim) - home.x, mana.map_or(0.0, |m| m.cur));
+    }
+}
+
+/// `cast` (arena world): a mould of stone built on the floor (a plate with a
+/// notch), a furnace set down; the ladle filled at the furnace from the copper
+/// bars in the pack, poured into the mould; set, the mould's walls dug away
+/// and the casting kicked. Logs each step.
+#[allow(clippy::too_many_arguments)]
+fn cast_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    crafting: Res<crate::craft::Crafting>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut hand: ResMut<crate::hands::Hand>,
+    mut player: Query<(&mut Kinematics, &crate::hands::items::Inventory), With<LocalPlayer>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut kicks: MessageWriter<crate::kick::Kick>,
+    mut state: Local<u8>,
+) {
+    if s.name != "cast" {
+        return;
+    }
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let Ok((mut k, inv)) = player.single_mut() else { return };
+    let Some(items) = items else { return };
+    let mats = sim.materials().clone();
+    let (stone, copper, molten) = (mats.expect_id("stone"), mats.expect_id("copper"), mats.expect_id("molten_copper"));
+    let count = |sim: &SimWorld, m| (floor - 60..floor + 120).flat_map(|y| (560..1500).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).collect::<Vec<_>>();
+    let span = |cells: &[(i32, i32)]| (cells.len(), cells.iter().map(|c| c.0).min().unwrap_or(0), cells.iter().map(|c| c.0).max().unwrap_or(0));
+    let ladle = || inv.slots.iter().flatten().find(|st| items.def(st.item).id == "ladle").and_then(|st| st.fill.map(|(_, n)| n)).unwrap_or(0);
+    // The mould: walls at 640..641 and 663..664, and a block in it (650..653,
+    // 2 high): the casting's notch.
+    let walls: Vec<CellPos> = (floor..floor + 8).flat_map(|y| [640, 641, 663, 664].map(|x| CellPos::new(x, y))).chain((650..654).flat_map(|x| (floor..floor + 2).map(move |y| CellPos::new(x, y)))).collect();
+    match *state {
+        0 if t > 0.5 => {
+            for &p in &walls {
+                sim.world.set(p, platypus_sim::Cell::new(stone, 0));
+            }
+            if let Some(kind) = crafting.station("furnace") {
+                crafting.spawn(&mut commands, kind, Vec2::new(600.0, floor as f32));
+            }
+            k.body.pos = Vec2::new(620.0, floor as f32 + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            *state = 1;
+        }
+        1 if t > 1.0 => {
+            if let Some(i) = inv.slots.iter().position(|st| st.is_some_and(|st| items.def(st.item).id == "ladle")) {
+                (hand.bar, hand.slot) = (i / crate::hands::items::HOTBAR, i % crate::hands::items::HOTBAR);
+            }
+            *state = 2;
+        }
+        2 if t > 1.3 => {
+            // At the furnace: fill the ladle from the bars.
+            cursor.0 = Some(Vec2::new(600.0, floor as f32 + 6.0));
+            mouse.press(MouseButton::Right);
+            if t > 1.6 {
+                mouse.release(MouseButton::Right);
+                let bars = inv.slots.iter().flatten().filter(|st| items.def(st.item).id == "copper_bar").map(|st| st.count).sum::<u32>();
+                info!("cast: the ladle filled at the furnace: {} cells of molten copper; {} cells of copper bars left in the pack", ladle(), bars);
+                *state = 3;
+            }
+        }
+        3 => {
+            // Pour into the mould.
+            cursor.0 = Some(Vec2::new(652.0, floor as f32 + 4.0));
+            mouse.press(MouseButton::Left);
+            if ladle() == 0 && t > 2.0 {
+                mouse.release(MouseButton::Left);
+                info!("cast: poured at t {t:.1}");
+                *state = 4;
+            }
+        }
+        4 if t > 7.0 => {
+            let (c, m) = (count(&sim, copper), count(&sim, molten));
+            info!("cast: set: {:?} copper (cells, from x, to x), {} still molten", span(&c), m.len());
+            for &p in &walls {
+                sim.world.set(p, platypus_sim::Cell::AIR);
+            }
+            k.body.pos = Vec2::new(637.0, floor as f32 + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            cursor.0 = Some(Vec2::new(700.0, floor as f32 + 8.0));
+            *state = 5;
+        }
+        5 if t > 7.5 => {
+            kicks.write(crate::kick::Kick);
+            *state = 6;
+        }
+        6 if t > 9.5 => {
+            let flying: Vec<String> = sim.world.bodies().iter().map(|b| format!("{:.0},{:.0}", b.pos[0], b.pos[1])).collect();
+            info!("cast: kicked: {:?} copper lying, bodies {flying:?}", span(&count(&sim, copper)));
+            *state = 7;
+        }
+        _ => {}
     }
 }
 

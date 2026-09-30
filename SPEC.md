@@ -486,8 +486,25 @@ Noita's gold (DESIGN §13 item 7): a count, not a thing in the pack.
   it's coins), which melts back at 900.
 - Sim test: molten copper poured into a stone cup sets into 40 cells of
   copper, every one, in ~100 ticks, and the cup holds.
-- Not yet: slag (ore melts wholly into metal for now), casting from the
-  furnace and a ladle (next).
+- **Casting.** Vessels (`Use::Vessel { holds, hot, acidproof }`; a stack
+  carries its `fill`, saved by the liquid's name): the ladle (64 cells,
+  molten metal too; anvil, 4 iron bars), the bucket (64 cool cells; anvil, 3
+  iron bars), the flask (16, acid too; furnace, glass). RMB fills: scoops the
+  liquid round the cursor (6 cells a tick, one kind), or, at a furnace, melts
+  what the pack holds that melts into it (a metal's bars, 16 cells each; its
+  ore, half: the rest is slag). LMB pours a cell a tick, thrown so it lands
+  at the cursor (under gravity), hot as fresh. A mould is anything built of
+  what stands the heat; the casting sets in its shape, and once the mould is
+  mined away it's a thing: kicked, thrown, lifted, mined back into bars.
+  `cast` scenario (arena): the ladle filled at a furnace from 4 copper bars
+  (64 cells), poured into a stone mould with a notch, set in its shape (64
+  cells), the mould dug away, kicked 22 cells, every cell kept.
+- A kick sends a body at most 1.3 cells a tick (a 64-cell casting kicked
+  at 300 flew 290 cells into the lava). A body settling nearly square
+  (within ~11° of a quarter turn) is squared up first, so it maps cell for
+  cell (resampled at a slight tilt a log came back a cell short); a cell
+  that meets something solid looks up to 10 above for room.
+- Not yet: slag as a material, a furnace spout that pours on its own.
 
 ### 3.4e Structures: crypts and castles
 DESIGN.md §3.3, stage 6 of the world arc (`worldgen/src/structures.rs`,
