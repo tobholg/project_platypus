@@ -49,6 +49,7 @@ mod tempo;
 mod sky;
 mod sound;
 mod tools;
+mod traps;
 mod vfx;
 mod world;
 
@@ -134,7 +135,7 @@ fn main() {
             scenario::ScenarioPlugin,
         ))
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
-        .add_plugins((reset::ResetPlugin, clock::ClockPlugin, gold::GoldPlugin, kick::KickPlugin))
+        .add_plugins((reset::ResetPlugin, clock::ClockPlugin, gold::GoldPlugin, kick::KickPlugin, traps::TrapsPlugin))
         .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin))
         .add_plugins(sound::SoundPlugin)
         .add_plugins(backdrop::BackdropPlugin)

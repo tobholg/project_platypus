@@ -113,6 +113,8 @@
         "drink": (make: Fizz(pop: 0.8, hiss: 0.55, length: 0.65, bubbles: 70), variants: 3, pitch: 0.06, reverb: 0.15, volume: 0.6),
         "potion_no": (make: Blip(pitch: 420, to: 300, length: 0.08), volume: 0.3, every: 0.3),
         "pickup": (make: Blip(pitch: 700, to: 1400, length: 0.07), variants: 2, pitch: 0.05, volume: 0.25, every: 0.05),
+        // A trap sprung: the rope snaps.
+        "snap": (make: Whoosh(from: 2600, to: 600, length: 0.1, q: 3.0), variants: 2, pitch: 0.06, volume: 0.5),
         // A kick: into something (a solid knock), into nothing (a swish).
         "kick": (make: Thud(pitch: 90, drop: 0.5, noise: 0.7, length: 0.16, bright: 1800), variants: 3, pitch: 0.06, volume: 0.6),
         "kick_miss": (make: Whoosh(from: 400, to: 900, length: 0.12, q: 1.2), variants: 2, pitch: 0.06, volume: 0.25),

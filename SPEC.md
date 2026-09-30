@@ -801,6 +801,26 @@ deaths (blood). Rendered as one dynamic mesh.
   before and after), from 12 lands whole, on a 1-in-2 slope rolls 216
   cells. `boulder` scenario (flat world): one rolls down a steep ramp,
   crushing an orc on the way, and breaks in two at its foot.
+- **Traps** (worldgen `TerrainGen::trap_at`, game `traps.rs`): all
+  materials, so they're saved with the world and nothing else keeps them.
+  A round boulder (radius 4) sits in a niche cut into a tunnel's ceiling, a
+  cell clear of any rock all round, held by one cell of `rope` (weak,
+  flammable, load-bearing) from rock at the niche's top; under it a
+  `tripwire` (a plant: walked through) across the floor or a
+  `pressure_plate` in it. A creature touching the wire, or standing on the
+  plate (the cell half a cell under its feet), springs it: the wire snaps,
+  the rope within 24 across and 60 up is cut, and the boulder, held by
+  nothing, falls whole (and, from the tunnel's height, may break). Cut or
+  burn the rope and it falls too. Placement is judged in world coordinates
+  on the plan's ground, so a trap spans chunks: spots on a 40-cell grid,
+  60/256 of them tried (half again in the caverns and the deep), wanting a
+  floor 60 % rock over 28 cells, 19 to 34 cells of headroom, a player's
+  height of walking room within 9 either side, and rock for the rope: 97
+  in the medium world (44 plates). Streaming a column in the caverns costs
+  ~0.2 ms more (the judging). Worldgen test: so many, each written as it
+  should be. `trap` scenario (medium world): the nearest one found, the
+  player walks onto its plate, the boulder drops (and breaks in two), the
+  player through before it lands.
 - Not yet: bodies aren't saved with the world (in flight: at rest they're
   cells) and don't collide with each other.
 

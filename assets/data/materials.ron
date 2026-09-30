@@ -204,6 +204,14 @@
         // into pieces and rubble.
         (name: "boulder",  kind: Static, density: 2700, hardness: 60, object: true, brittle: true, crumbles_into: "gravel", above: (1400, "lava"),
             colors: [(96, 90, 86), (118, 110, 104), (140, 132, 124), (160, 150, 140)]),
+        // Traps (worldgen: game/src/traps.rs springs them): a boulder hangs
+        // from a tunnel's ceiling on a rope (it bears the load; cut it, burn
+        // it and the boulder falls whole); a tripwire across the floor, or a
+        // pressure plate in it, cuts the rope above when a creature touches it.
+        (name: "rope",     kind: Static, density: 400, hardness: 4, flammability: 12, ignites_at: 250, burn_time: 60, spread: 20,
+            colors: [(132, 104, 60), (150, 120, 70), (176, 146, 92)]),
+        (name: "tripwire", kind: Plant, still: true, density: 100, hardness: 1, opacity: 10, colors: [(150, 150, 140), (184, 184, 172)]),
+        (name: "pressure_plate", kind: Static, density: 2600, hardness: 60, crumbles_into: "gravel", colors: [(100, 96, 90), (124, 118, 110), (140, 134, 124)]),
         // Metals (DESIGN §13.1): each solid, and molten. Solid metal is a thing
         // (object: a casting is kicked, thrown, lifted whole), carries heat
         // and lightning, and its block is its bar (item: 16 cells of it, so

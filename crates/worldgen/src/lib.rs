@@ -175,6 +175,24 @@ pub const SAPLING: f32 = 0.08;
 /// height) until the one growing in its place is this far grown.
 pub const SNAG_UNTIL: f32 = 0.3;
 
+/// Boulder traps (`TerrainGen::trap_at`): a spot of this grid (cells)
+/// each, a few in `TRAP_CHANCE`/256 of them; the boulder's radius, the room
+/// under it (the tunnel's height at least) and the stretch it's in.
+const TRAP_GRID: i32 = 40;
+const TRAP_CHANCE: u32 = 60;
+const TRAP_R: i32 = 4;
+const TRAP_UNDER: i32 = 19;
+const TRAP_WIDE: i32 = 28;
+
+/// A boulder trap: its middle, the floor's first open row, the boulder's
+/// middle (in its niche over the ceiling); sprung by a plate (or a wire).
+struct Trap {
+    cx: i32,
+    ly: i32,
+    by: i32,
+    plate: bool,
+}
+
 /// A chest's size in cells (the game draws it this size; the world makes
 /// room for it).
 pub const CHEST_SIZE: (i32, i32) = (12, 10);
@@ -220,6 +238,10 @@ struct Ids {
     ash: MaterialId,
     charcoal: MaterialId,
     fire: MaterialId,
+    boulder: MaterialId,
+    rope: MaterialId,
+    tripwire: MaterialId,
+    pressure_plate: MaterialId,
     smoke: MaterialId,
     cobweb: MaterialId,
     acid: MaterialId,
@@ -325,6 +347,10 @@ impl TerrainGen {
             ash: mats.expect_id("ash"),
             charcoal: mats.expect_id("charcoal"),
             fire: mats.expect_id("fire"),
+            boulder: mats.expect_id("boulder"),
+            rope: mats.expect_id("rope"),
+            tripwire: mats.expect_id("tripwire"),
+            pressure_plate: mats.expect_id("pressure_plate"),
             smoke: mats.expect_id("smoke"),
             cobweb: mats.expect_id("cobweb"),
             acid: mats.expect_id("acid"),
@@ -1193,6 +1219,103 @@ impl TerrainGen {
         (0..spots.len()).map(|k| spots[(start + k) % spots.len()]).find(|&(lx, ly)| self.floor_at(cells, lx, ly, w, h))
     }
 
+    /// A boulder trap, if the world has one at this spot of its grid
+    /// (`TRAP_GRID`, a few spots in `TRAP_CHANCE`/256, underground): a
+    /// stretch of tunnel floor `TRAP_WIDE` long, `TRAP_UNDER` to 14 more
+    /// high (room to walk), with rock over it: a round boulder (radius
+    /// `TRAP_R`) sits in a niche cut into the ceiling, a cell clear of any
+    /// rock all round, held by a rope from rock at the niche's top. Judged on the
+    /// plan's ground (`material_at`), so it's the same from whichever chunk
+    /// it's asked, and spans chunks.
+    fn trap_at(&self, gx: i32, gy: i32) -> Option<Trap> {
+        let (ax, ay) = (gx * TRAP_GRID, gy * TRAP_GRID);
+        let chance = match self.plan.band_at(ay) {
+            Band::Underground => TRAP_CHANCE,
+            Band::Caverns | Band::Deep => TRAP_CHANCE * 3 / 2,
+            _ => return None,
+        };
+        let h = hash(&[self.plan.seed, 0x7A9, gx as u64, gy as u64]);
+        if (h & 0xFF) as u32 >= chance {
+            return None;
+        }
+        let i = &self.ids;
+        let open = |x: i32, y: i32| self.material_at(x, y) == i.air;
+        let rock = |m: MaterialId| m == i.stone || m == i.slate || m == i.dirt || m == i.basalt;
+        // The floor under the spot (within a grid's height below), and the
+        // ceiling over it.
+        let cx = ax + ((h >> 8) % TRAP_GRID as u64) as i32;
+        let start = ay + ((h >> 16) % TRAP_GRID as u64) as i32;
+        if !open(cx, start) {
+            return None;
+        }
+        let ly = (1..TRAP_GRID).map(|d| start - d).find(|&y| !open(cx, y))? + 1;
+        let cy = (ly + 1..ly + TRAP_UNDER + 16).find(|&y| !open(cx, y))?;
+        if cy - ly < TRAP_UNDER || !rock(self.material_at(cx, cy)) {
+            return None;
+        }
+        let half = TRAP_WIDE / 2;
+        let floor = (cx - half..cx + half).filter(|&x| rock(self.material_at(x, ly - 1))).count() as i32;
+        if floor < TRAP_WIDE * 6 / 10 {
+            return None;
+        }
+        // Walking room near it (a player's height over bumps of 3), and rock
+        // for the rope to hang from (the niche is cut round the boulder).
+        let walk = (ly + 3..ly + 17).step_by(2).all(|y| (cx - 9..=cx + 9).step_by(3).all(|x| open(x, y)));
+        let by = cy + TRAP_R;
+        let anchor = rock(self.material_at(cx, by + TRAP_R + 2));
+        (walk && anchor).then_some(Trap { cx, ly, by, plate: (h >> 24) & 1 == 1 })
+    }
+
+    /// The boulder traps over `pos`, written into its cells (where they're
+    /// open: what the chunk put there first stays).
+    fn boulder_traps(&self, pos: ChunkPos, cells: &mut [Cell]) {
+        let o = pos.origin();
+        let i = &self.ids;
+        let reach = TRAP_WIDE / 2 + TRAP_GRID;
+        let (gx0, gx1) = ((o.x - reach).div_euclid(TRAP_GRID), (o.x + CHUNK + reach).div_euclid(TRAP_GRID));
+        let (gy0, gy1) = ((o.y - 80).div_euclid(TRAP_GRID), (o.y + CHUNK + TRAP_GRID).div_euclid(TRAP_GRID));
+        for gy in gy0..=gy1 {
+            for gx in gx0..=gx1 {
+                let Some(t) = self.trap_at(gx, gy) else { continue };
+                let mut put = |x: i32, y: i32, m: MaterialId, replace_floor: bool| {
+                    let (lx, ly) = (x - o.x, y - o.y);
+                    if !(0..CHUNK).contains(&lx) || !(0..CHUNK).contains(&ly) {
+                        return;
+                    }
+                    let c = &mut cells[(ly * CHUNK + lx) as usize];
+                    if c.is_air() != replace_floor {
+                        let shade = (hash(&[self.plan.seed, x as u64, y as u64, 0xB0]) & 0xFF) as u8;
+                        *c = Cell { heat: self.heat[m.0 as usize], ..Cell::new(m, shade) };
+                    }
+                };
+                // The niche (a cell clear of the boulder all round), the
+                // boulder in it, the rope from the niche's top.
+                for y in t.by - TRAP_R - 1..=t.by + TRAP_R + 1 {
+                    for x in t.cx - TRAP_R - 1..=t.cx + TRAP_R + 1 {
+                        let d = (x - t.cx) * (x - t.cx) + (y - t.by) * (y - t.by);
+                        if d <= TRAP_R * TRAP_R {
+                            put(x, y, i.boulder, true);
+                            put(x, y, i.boulder, false);
+                        } else if d <= (TRAP_R + 1) * (TRAP_R + 1) + 1 {
+                            put(x, y, i.air, true);
+                        }
+                    }
+                }
+                put(t.cx, t.by + TRAP_R + 1, i.rope, true);
+                put(t.cx, t.by + TRAP_R + 1, i.rope, false);
+                if t.plate {
+                    for x in t.cx - 3..=t.cx + 3 {
+                        put(x, t.ly - 1, i.pressure_plate, true);
+                    }
+                } else {
+                    for x in t.cx - 6..=t.cx + 6 {
+                        put(x, t.ly, i.tripwire, false);
+                    }
+                }
+            }
+        }
+    }
+
     /// What miners left in the caves: now and then a camp (a mine cart
     /// loaded with TNT, a barrel of it beside it, a bundle of dynamite, a
     /// lantern still burning on its post, each on the floor beside the cart
@@ -1502,6 +1625,7 @@ impl ChunkGenerator for TerrainGen {
         }
         self.dress(pos, &mut cells, &mut rng);
         self.dress_lairs(pos, &mut cells);
+        self.boulder_traps(pos, &mut cells);
         self.sweep_specks(pos, &mut cells);
         let mut spawns = self.structure_spawns(pos);
         spawns.extend(self.lair_spawns(pos));
@@ -2153,6 +2277,36 @@ mod tests {
         eprintln!("{chunks} chunks (a quarter of the underground's): {props:?}");
         assert!(props.get("mine_cart").copied().unwrap_or(0) >= 2, "camps: {props:?}");
         assert!(props.get("tnt_barrel").copied().unwrap_or(0) + props.get("dynamite").copied().unwrap_or(0) >= 4, "explosives about: {props:?}");
+    }
+
+    /// Boulder traps hang in the tunnels (the medium world): so many, each
+    /// written as it should be (a rope up to rock, the boulder under it,
+    /// the plate or the wire on the floor), whichever chunk it's in.
+    #[test]
+    fn boulder_traps_hang_in_the_tunnels() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Medium, &m);
+        let (a, b) = (g.plan.band_span(Band::Underground), g.plan.band_span(Band::Deep));
+        let (lo, hi) = (a.0.min(a.1).min(b.0).min(b.1), a.0.max(a.1).max(b.0).max(b.1));
+        let (rope, boulder, wire, plate) = (m.expect_id("rope"), m.expect_id("boulder"), m.expect_id("tripwire"), m.expect_id("pressure_plate"));
+        let traps: Vec<Trap> = (lo / TRAP_GRID..hi / TRAP_GRID).flat_map(|gy| (0..g.plan.width / TRAP_GRID).map(move |gx| (gx, gy))).filter_map(|(gx, gy)| g.trap_at(gx, gy)).collect();
+        let plates = traps.iter().filter(|t| t.plate).count();
+        eprintln!("{} boulder traps ({plates} plates)", traps.len());
+        assert!(traps.len() >= 20 && plates >= 5 && traps.len() - plates >= 5, "{} traps, {plates} plates", traps.len());
+        let cell = |x: i32, y: i32| {
+            let p = CellPos::new(x, y);
+            let c = g.generate(p.chunk());
+            let (lx, ly) = p.local();
+            c.get(lx, ly).material
+        };
+        for t in traps.iter().take(6) {
+            assert_eq!(cell(t.cx, t.by + TRAP_R + 1), rope, "a rope over the boulder at {}", t.cx);
+            assert_eq!(cell(t.cx, t.by), boulder, "the boulder at {}", t.cx);
+            assert_eq!(cell(t.cx, t.by + TRAP_R + 2), g.material_at(t.cx, t.by + TRAP_R + 2), "the rope hangs from rock");
+            assert!((t.by - TRAP_R - 1..=t.by + TRAP_R + 1).all(|y| cell(t.cx - TRAP_R - 1, y) == MaterialId::AIR || (y - t.by).abs() > 1), "a cell clear of it at its side");
+            let trigger = if t.plate { cell(t.cx, t.ly - 1) } else { cell(t.cx, t.ly) };
+            assert_eq!(trigger, if t.plate { plate } else { wire }, "what springs it, under it");
+        }
     }
 
     #[test]

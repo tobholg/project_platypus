@@ -267,7 +267,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3927,6 +3927,92 @@ fn boulder_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Ki
         let rock = (y0 - 5..y0 + 140).flat_map(|y| (x0 - 20..x0 + 260).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == boulder)).count();
         let flying: Vec<String> = sim.world.bodies().iter().map(|b| format!("{:.0},{:.0}", b.pos[0] - x0 as f32, b.pos[1] - y0 as f32)).collect();
         info!("boulder: t {t:.2} rock lying {rock}, bodies {flying:?}, rubble in flight {}", sim.world.particles().len());
+    }
+}
+
+/// The `trap` scenario's steps: the step, when it's next logged, and where
+/// the player starts and the rope's x.
+type TrapWalk = (u8, f32, Option<(Vec2, i32)>);
+
+/// `trap` (a generated world): to the boulder trap nearest the start
+/// (found by generating the chunks round it), the player set down just
+/// short of its wire (or plate) and walked in (D held). Logs the trap, the fall and the
+/// player's health.
+#[allow(clippy::too_many_arguments)]
+fn trap_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut player: Query<(&mut Kinematics, &crate::actors::Health), With<LocalPlayer>>,
+    mut others: Query<(&Kinematics, &mut crate::actors::Health), Others>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut state: Local<TrapWalk>,
+) {
+    if s.name != "trap" {
+        return;
+    }
+    let t = s.elapsed;
+    let Ok((mut k, health)) = player.single_mut() else { return };
+    let mats = sim.materials().clone();
+    let (rope, boulder) = (mats.expect_id("rope"), mats.expect_id("boulder"));
+    if state.0 == 0 && t > 0.3 {
+        // Rings of chunks round the start, under the surface: the first rope
+        // over a boulder.
+        let home = sim.generator.spawn_point().chunk();
+        let found = (0..60).find_map(|r: i32| {
+            (-r..=r).flat_map(|dx| [dx]).flat_map(|dx| (-60..-4).map(move |dy| platypus_sim::ChunkPos::new(home.x + dx, home.y + dy))).filter(|p| (p.x - home.x).abs() == r).find_map(|p| {
+                let c = sim.generator.generate(p);
+                let o = p.origin();
+                (0..platypus_sim::CHUNK).flat_map(|y| (0..platypus_sim::CHUNK).map(move |x| (x, y))).find(|&(x, y)| y > 0 && c.get(x as usize, y as usize).material == rope && c.get(x as usize, y as usize - 1).material == boulder).map(|(x, y)| (o.x + x, o.y + y))
+            })
+        });
+        let Some((x, y)) = found else {
+            info!("trap: no boulder trap near the start");
+            state.0 = 9;
+            return;
+        };
+        // The floor under it.
+        let floor = (1..60).map(|d| y - d).find(|&fy| sim.generator.generate(CellPos::new(x, fy).chunk()).get((x - CellPos::new(x, fy).chunk().origin().x) as usize, (fy - CellPos::new(x, fy).chunk().origin().y) as usize).material != platypus_sim::MaterialId::AIR && fy < y - 12);
+        info!("trap: a boulder trap, its rope at ({x}, {y}), the floor under it at {floor:?}");
+        // (Set down at the wire's or plate's edge: the tunnel's floor is only
+        // 14 wide, walled in either side.)
+        // (Set down 11 short of it: the tunnel runs 14 either side.)
+        state.2 = floor.map(|f| (Vec2::new(x as f32 - 11.0, f as f32 + 1.0), x));
+        state.0 = 1;
+    }
+    let Some((start, x)) = state.2 else { return };
+    match state.0 {
+        1 => {
+            // Held there while its chunks load.
+            k.body.pos = start + Vec2::new(0.0, k.body.half.y);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            if t > 2.0 {
+                // (The tunnel's own creatures, gone: to walk in undisturbed.)
+                for (ok, mut h) in &mut others {
+                    if ok.body.pos.distance(start) < 150.0 {
+                        h.hp = 0.0;
+                    }
+                }
+                state.0 = 2;
+                state.1 = t;
+            }
+        }
+        2 => {
+            keys.press(KeyCode::KeyD);
+            if k.body.pos.x > x as f32 + 20.0 || t > state.1 + 3.0 {
+                keys.release(KeyCode::KeyD);
+                state.0 = 3;
+            }
+            if t >= state.1 {
+                state.1 = t + 0.25;
+                info!("trap: t {t:.2} player at {:+.0} (the rope's x), health {:.0}, bodies {}", k.body.pos.x - x as f32, health.hp, sim.world.bodies().len());
+            }
+        }
+        3 => {
+            info!("trap: past it: health {:.0}, bodies {}", health.hp, sim.world.bodies().len());
+            state.0 = 4;
+        }
+        _ => {}
     }
 }
 

@@ -122,7 +122,7 @@ as designed.
 6. ✅ Gold in lava melts into molten gold and sets into gold (mined: gold).
 7. ✅ (impact and fall; blows and blasts act on the cells as before) Boulders: rock bodies, round ones rolling; fracture (impact, fall, blow,
    blast past the material's strength: smaller bodies and rubble).
-8. Traps: boulders held by a prop or a rope; tripwires and pressure plates
+8. ✅ (a rope, not a prop) Traps: boulders held by a prop or a rope; tripwires and pressure plates
    (mechanisms); worldgen puts some in tunnels.
 9. Scenarios: `cast` (a mould built, iron poured, mined out, the casting
    kicked), `boulder` (one down a slope into a wall: it breaks), `trap`,
