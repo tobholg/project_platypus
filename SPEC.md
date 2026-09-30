@@ -1169,7 +1169,13 @@ Saved with the world (`WorldFile::clock`; older saves load with none of it).
   vertical at 55 %, so shade is soft and nothing casts a hard shadow straight
   down. Each enters at the tops of columns open to the sky and down the side
   it comes from, dimmed by what it passes: tree crowns barely (1 % of their
-  opacity), walls behind rock fully.
+  opacity), walls behind rock fully. The rays lie on a lattice fixed in the
+  world (from a corner every 64 texels), not on the light grid that follows
+  the camera, so a lit edge stays put as you move (on the grid, climbing or
+  walking made the sun's edge on slopes and crowns flicker).
+- The camera snaps to whole screen pixels a quarter pixel off the halves: a
+  body at rest stands half a cell up, a tie at 3 pixels a cell, and float
+  noise flipped it (the world hopping a pixel against the sky).
 - Light sources: anything with a `LightSource` (colour, flicker) lights its
   surroundings: planted torches (G, the torch item), thrown glow sticks (tool
   7, green and blue in turn, 90 s, fading), later lanterns and glowing eyes.

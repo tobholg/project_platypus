@@ -160,6 +160,8 @@ fn fly(
 const TELEPORT: f32 = 40.0;
 /// ... over this long (seconds), easing in and out.
 const GLIDE: f32 = 0.3;
+/// Pixels added before snapping the camera (see `follow`).
+const SNAP_BIAS: f32 = 0.25;
 
 /// Where the camera last saw its target, and a glide under way (where it
 /// started, how far in).
@@ -203,9 +205,13 @@ pub fn follow(
         cam.translation.y = at.y;
     }
     // Snap to whole screen pixels so cells never shimmer; the shake too.
+    // (A quarter pixel off the halves: a body at rest stands half a cell
+    // up, which at 3 pixels a cell is a tie, and float noise flipped it,
+    // the whole world hopping a pixel up and down against the sky.)
     let ppc = zoom.0 as f32;
-    cam.translation.x = (cam.translation.x * ppc).round() / ppc;
-    cam.translation.y = (cam.translation.y * ppc).round() / ppc;
+    let snap = |v: f32| (v * ppc + SNAP_BIAS).round() / ppc;
+    cam.translation.x = snap(cam.translation.x);
+    cam.translation.y = snap(cam.translation.y);
     *shaken = (shake.0 * ppc).round() / ppc;
     cam.translation += shaken.extend(0.0);
 }

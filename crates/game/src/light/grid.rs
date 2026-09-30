@@ -219,12 +219,33 @@ impl LightGrid {
                 Some(solid.map_or(0, |y| y + 1))
             })
             .collect();
-        let mut starts: Vec<(f32, f32)> = (0..w).filter(|&x| open_top[x]).map(|x| (x as f32 + 0.5, h as f32 - 0.5)).collect();
+        // The rays lie on a lattice fixed in the world (one a texel across
+        // them), not on the grid: the grid follows the camera, and rays
+        // started from its top row crossed the world a fraction of a texel
+        // elsewhere each time it moved, the sun's edge on a slope or a crown
+        // flickering as you walk. A ray starts on the lattice where it's in
+        // its start texel: steep, `X + sx·Y` is a half; shallow, `Y − k·X`
+        // is (texels, k the rise a texel across). X and Y are counted from
+        // a corner of `LATTICE` texels, not the world's: the sun creeps
+        // across the sky, and its creep times a whole world's rows would
+        // sweep the rays over everything every frame.
+        let (ox, oy) = ((self.origin.x / self.texel).rem_euclid(LATTICE) as f64, (self.origin.y / self.texel).rem_euclid(LATTICE) as f64);
+        let (sx64, k) = (sx as f64, (sy * sx.signum()) as f64);
+        let start = |x: usize, y: usize| -> (f32, f32) {
+            if steep {
+                let phase = (0.5 - sx64 * (oy + y as f64 + 0.5)).rem_euclid(1.0);
+                (x as f32 + phase as f32, y as f32 + 0.5)
+            } else {
+                let phase = (0.5 + k * (ox + x as f64 + 0.5)).rem_euclid(1.0);
+                (x as f32 + 0.5, y as f32 + phase as f32)
+            }
+        };
+        let mut starts: Vec<(f32, f32)> = (0..w).filter(|&x| open_top[x]).map(|x| start(x, h - 1)).collect();
         let edge = if dir[0] > 0.0 { 0 } else { w - 1 };
         if dir[0] != 0.0
             && let Some(f) = floor[edge]
         {
-            starts.extend((f..h).map(|y| (edge as f32 + 0.5, y as f32 + 0.5)));
+            starts.extend((f..h).map(|y| start(edge, y)));
         }
         for (mut x, mut y) in starts {
             let mut v = color;
@@ -423,6 +444,10 @@ impl LightGrid {
         Previous { origin: self.origin, texel: self.texel, w: self.w, h: self.h, light: self.light, glow: self.glow }
     }
 }
+
+/// Sun rays are laid out from a corner every this many texels (see
+/// `seed_directional`).
+const LATTICE: i32 = 64;
 
 /// Share of a beam's light that scatters off what it hits into the room.
 const BEAM_SCATTER: f32 = 0.35;
@@ -632,6 +657,68 @@ mod tests {
         assert!(lit(30, 6) < 0.05, "shadow on the ground west of the post");
         assert!(lit(41, 16) > 0.9 && lit(45, 6) > 0.9, "the top of the post and the ground east of it in sun");
         assert!(lit(20, 6) > 0.9, "the shadow ends");
+    }
+
+    #[test]
+    fn sunlight_stays_put_as_the_view_moves() {
+        // A slope with an overhang, in world cells; the view (the grid) moved
+        // a texel at a time about it. The sun must light the same world texels
+        // the same way whichever texel the grid starts on, or shadow edges
+        // shimmer as the camera moves (climbing, walking past a crown).
+        let solid = |x: i32, y: i32| y < x / 2 || ((50..58).contains(&x) && (44..47).contains(&y));
+        for dir in [[-0.5f32, -0.87], [0.3, -0.95], [-0.9, -0.44], [0.85, -0.53]] {
+            let n = (dir[0] * dir[0] + dir[1] * dir[1]).sqrt();
+            let dir = [dir[0] / n, dir[1] / n];
+            let lit = |ox: i32, oy: i32| {
+                let mut g = LightGrid::new(CellPos::new(ox, oy), 60, 40, 1);
+                for y in 0..40 {
+                    for x in 0..60 {
+                        if solid(ox + x as i32, oy + y as i32) {
+                            g.opacity[y * 60 + x] = 0.95;
+                            g.sky_opacity[y * 60 + x] = 0.95;
+                        }
+                    }
+                }
+                let open: Vec<bool> = (0..60).map(|x| (0..100).all(|d| !solid(ox + x, oy + 40 + d))).collect();
+                g.seed_directional(dir, [1.0; 3], &open);
+                g
+            };
+            let base = lit(40, 20);
+            // The sun creeps: a frame's worth (and more) moves an edge a
+            // texel at most, here and there, and doesn't sweep the rays.
+            let creep = |d: [f32; 2], a: f32| [d[0] * a.cos() - d[1] * a.sin(), d[0] * a.sin() + d[1] * a.cos()];
+            for (ox, oy) in [(40, 20), (30_000, 12_600)] {
+                let at = |d: [f32; 2]| {
+                    let mut g = LightGrid::new(CellPos::new(ox, oy), 60, 40, 1);
+                    let open = vec![true; 60];
+                    for y in 0..40 {
+                        for x in 0..60 {
+                            if solid(40 + x as i32, 20 + y as i32) {
+                                g.opacity[y * 60 + x] = 0.95;
+                                g.sky_opacity[y * 60 + x] = 0.95;
+                            }
+                        }
+                    }
+                    g.seed_directional(d, [1.0; 3], &open);
+                    g
+                };
+                let (a, b) = (at(dir), at(creep(dir, 2e-4)));
+                let flips = (0..60 * 40).filter(|&i| (a.seed[i][0] - b.seed[i][0]).abs() > 0.2).count();
+                assert!(flips <= 4, "sun {dir:?} at ({ox}, {oy}): a creep of the sun flips {flips} texels");
+            }
+            for (dx, dy) in [(1, 0), (0, 1), (0, -1), (3, 2), (-2, 5)] {
+                let moved = lit(40 + dx, 20 + dy);
+                // (Away from the grid's edges, where rays enter.)
+                for y in 12..28 {
+                    for x in 12..48 {
+                        let (wx, wy) = (40 + x, 20 + y);
+                        let (mx, my) = ((wx - 40 - dx) as usize, (wy - 20 - dy) as usize);
+                        let (a, b) = (base.seed[y as usize * 60 + x as usize][0], moved.seed[my * 60 + mx][0]);
+                        assert!((a - b).abs() < 0.02, "sun {dir:?}, view moved ({dx}, {dy}): world ({wx}, {wy}) lit {a} then {b}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

@@ -244,14 +244,28 @@ struct Scenario {
     next_drop: f32,
     reports: Vec<(f32, f32, f32)>,
     screenshot: Option<String>,
+    /// Frames being captured (`PLATYPUS_FRAMES`): the path, which, how many.
+    frames: Option<(String, u32, u32)>,
+}
+
+/// The frame being captured (1-based; 0: none), for `frame_cams`.
+static FRAME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Where the camera is for each captured frame (after it followed).
+fn frame_cams(cam: Single<&Transform, With<MainCamera>>) {
+    let i = FRAME.load(std::sync::atomic::Ordering::Relaxed);
+    if i > 0 {
+        println!("FRAME {:03} cam {} {}", i - 1, cam.translation.x, cam.translation.y);
+    }
 }
 
 impl Plugin for ScenarioPlugin {
     fn build(&self, app: &mut App) {
         let Ok(name) = std::env::var("PLATYPUS_SCENARIO") else { return };
         let duration = std::env::var("PLATYPUS_SCENARIO_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(20.0);
-        app.insert_resource(Scenario { name, elapsed: 0.0, duration, next_report: 2.0, next_drop: 1.0, reports: Vec::new(), screenshot: std::env::var("PLATYPUS_SCREENSHOT").ok() })
+        app.insert_resource(Scenario { name, elapsed: 0.0, duration, next_report: 2.0, next_drop: 1.0, reports: Vec::new(), screenshot: std::env::var("PLATYPUS_SCREENSHOT").ok(), frames: None })
             .add_systems(Update, run)
+            .add_systems(PostUpdate, frame_cams.after(crate::camera::follow))
             // Inject input where real input arrives: after Bevy reads devices,
             // before anything reads the cursor or buttons.
             .add_systems(PreUpdate, tools_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -267,7 +281,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -359,7 +373,25 @@ fn run(
             Some(o) => Screenshot::image(o.0.clone()),
             None => Screenshot::primary_window(),
         };
-        commands.spawn(shot).observe(save_to_disk(path));
+        commands.spawn(shot).observe(save_to_disk(path.clone()));
+        // PLATYPUS_FRAMES=n: the next n frames too, as <path>.<i>.png (to
+        // look for flicker frame to frame; `frame_cams` logs where the
+        // camera was for each).
+        let n = std::env::var("PLATYPUS_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+        if n > 0 {
+            s.frames = Some((path, 0, n));
+        }
+    }
+    if let Some((path, i, n)) = s.frames.clone() {
+        let shot = match &offscreen {
+            Some(o) => Screenshot::image(o.0.clone()),
+            None => Screenshot::primary_window(),
+        };
+        commands.spawn(shot).observe(save_to_disk(format!("{path}.{i:03}.png")));
+        s.frames = (i + 1 < n).then_some((path, i + 1, n));
+        FRAME.store(i + 1, std::sync::atomic::Ordering::Relaxed);
+    } else {
+        FRAME.store(0, std::sync::atomic::Ordering::Relaxed);
     }
     if s.elapsed >= s.duration {
         let n = s.reports.len().max(1) as f32;
@@ -4179,6 +4211,80 @@ fn shop_script(
             keys.press(KeyCode::KeyD);
         }
         _ => {}
+    }
+}
+
+/// `climb` (a generated world; seed 1's mountain is west of the start):
+/// the player walks left (A held, jumping at a wall) up the mountain by
+/// the village. Every second it logs where the player is and the cells
+/// that changed, tick to tick, in a window round it (from → to, the
+/// commonest first): what's moving on the slope.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn climb_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut free: ResMut<crate::camera::FreeCamera>,
+    mut cam: Single<&mut Transform, With<MainCamera>>,
+    mut glide_from: Local<Option<Vec2>>,
+    mut state: Local<(f32, Option<(CellPos, Vec<platypus_sim::MaterialId>)>, std::collections::HashMap<(platypus_sim::MaterialId, platypus_sim::MaterialId), u32>, f32, u64)>,
+) {
+    const W: i32 = 200;
+    const H: i32 = 140;
+    if s.name != "climb" || s.elapsed < 1.0 {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    let t = s.elapsed;
+    // PLATYPUS_GLIDE=1: the camera, not the player, goes up the slope, at
+    // a steady (-30, 20) cells a second from where the player starts:
+    // camera motion alone, the same every run.
+    if std::env::var("PLATYPUS_GLIDE").is_ok() {
+        free.0 = true;
+        let from = *glide_from.get_or_insert(k.body.pos);
+        cam.translation.x = from.x - 30.0 * (t - 1.0);
+        cam.translation.y = from.y + 20.0 * (t - 1.0);
+        return;
+    }
+    let (next, snap, changes, jump_until, last_tick) = &mut *state;
+    keys.press(KeyCode::KeyA);
+    let c = &k.loco.contacts;
+    if c.wall_left && k.loco.grounded() && t > *jump_until {
+        *jump_until = t + 0.35;
+    }
+    if t < *jump_until {
+        keys.press(KeyCode::Space);
+    } else {
+        keys.release(KeyCode::Space);
+    }
+    let tick = sim.world.tick();
+    if tick != *last_tick {
+        *last_tick = tick;
+        if let Some((o, prev)) = snap.as_mut() {
+            for y in 0..H {
+                for x in 0..W {
+                    let m = sim.world.get(CellPos::new(o.x + x, o.y + y)).map_or(platypus_sim::MaterialId::AIR, |c| c.material);
+                    let i = (y * W + x) as usize;
+                    if prev[i] != m {
+                        *changes.entry((prev[i], m)).or_default() += 1;
+                        prev[i] = m;
+                    }
+                }
+            }
+        }
+    }
+    if t >= *next || snap.is_none() {
+        *next = t.floor() + 1.0;
+        let mats = sim.world.materials();
+        let mut top: Vec<_> = changes.drain().collect();
+        top.sort_by_key(|x| std::cmp::Reverse(x.1));
+        let total: u32 = top.iter().map(|x| x.1).sum();
+        let list: Vec<String> = top.iter().take(6).map(|((a, b), n)| format!("{}→{} {n}", mats.def(*a).name, mats.def(*b).name)).collect();
+        info!("climb: t {t:.0} at ({:.0}, {:.0}) {} changes: {}", k.body.pos.x, k.body.pos.y, total, list.join(", "));
+        let o = CellPos::new(k.body.pos.x as i32 - W / 2, k.body.pos.y as i32 - H / 2);
+        let cells = (0..H).flat_map(|y| (0..W).map(move |x| (x, y))).map(|(x, y)| sim.world.get(CellPos::new(o.x + x, o.y + y)).map_or(platypus_sim::MaterialId::AIR, |c| c.material)).collect();
+        *snap = Some((o, cells));
     }
 }
 
