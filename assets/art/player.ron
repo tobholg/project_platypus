@@ -221,6 +221,26 @@
             ".CC..BB",
             ".C...BB",
         ]),
+        // A kick: the near knee drawn up (the far leg planted), then the leg
+        // out straight at the hip, the boot's sole leading.
+        "kick_knee": (rows: [
+            ".pppp....",
+            ".qqppppp.",
+            ".qq...pp.",
+            ".qq..BB..",
+            ".qq......",
+            ".CC......",
+            ".CCC.....",
+        ]),
+        "kick_leg": (rows: [
+            ".pppp.......",
+            ".qqpppppppBB",
+            ".qq......BBB",
+            ".qq.........",
+            ".qq.........",
+            ".CC.........",
+            ".CCC........",
+        ]),
     },
     poses: {
         // Standing; breathing in (the chest and head a pixel up); a blink.
@@ -306,6 +326,22 @@
             (part: "head", at: (8, 4)),
             (part: "arm", at: (12, 12), outline: true, tag: "front_arm"),
         ],
+        // Kicking: the knee up, leaning back a little, the arms swung
+        // against the leg for balance; then the leg out, leaning back more.
+        "kick_wind": [
+            (part: "arm_fwd", at: (8, 12), shade: 0.72, tag: "back_arm"),
+            (part: "kick_knee", at: (8, 17)),
+            (part: "torso", at: (7, 11)),
+            (part: "head", at: (7, 4)),
+            (part: "arm_back", at: (11, 12), outline: true, tag: "front_arm"),
+        ],
+        "kick_out": [
+            (part: "arm_fwd", at: (7, 12), shade: 0.72, tag: "back_arm"),
+            (part: "kick_leg", at: (8, 17)),
+            (part: "torso", at: (7, 11)),
+            (part: "head", at: (6, 5)),
+            (part: "arm_back", at: (10, 12), outline: true, tag: "front_arm"),
+        ],
         // Dashing: leaning in, arms back.
         "dash": [
             (part: "arm_back", at: (9, 13), shade: 0.72, tag: "back_arm"),
@@ -351,5 +387,7 @@
         "hurt": (frames: ["hurt"], fps: 5),
         "strike_down": (frames: ["strike_down"], fps: 5),
         "plunge": (frames: ["plunge_pose"], fps: 5),
+        // Once through (kick.rs plays it): up, out, held, back.
+        "kick": (frames: ["kick_wind", "kick_out", "kick_out", "kick_wind"], fps: 16, looping: false),
     },
 )

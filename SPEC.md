@@ -773,7 +773,12 @@ deaths (blood). Rendered as one dynamic mesh.
   through its centre of mass (at an end it would only lever the thing up on
   its other end), loose powder and rubble fly as specks (gold too), and
   particles in flight are pushed; ground takes nothing. The game's impulse
-  is 300 (a 300-cell log leaves at a cell a tick). `kick` scenario (arena):
+  is 300 (a 300-cell log leaves at a cell a tick). It shows: the player's
+  `kick` clip (player.ron: `kick_knee`, then `kick_leg` straight out at the
+  hip, leaning back, the arms swung against it; 16 fps, once through), the
+  blow landing a sixteenth of a second after the key (the leg out), a puff
+  of dust at the foot and, when it moved something, a small jolt of the
+  camera. `kick` scenario (arena):
   a 150-cell log goes 52 cells and lands whole, a sand heap flies, a TNT
   barrel goes 29 cells, the floor takes nothing. A sim test: a kicked log
   lands whole and further on, a log on a post falls whole when the post's

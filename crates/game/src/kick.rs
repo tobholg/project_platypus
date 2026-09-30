@@ -3,8 +3,11 @@
 //! materials, lifted out whole as a body) is sent along, the heavier the
 //! slower; loose powder and rubble fly (gold with them); items, bodies,
 //! barrels and carts are sent flying (by their size); a small creature is
-//! shoved. Ground takes
-//! nothing: a kick into rock is just a kick.
+//! shoved. Ground takes nothing: a kick into rock is just a kick.
+//!
+//! It shows: the player's `kick` clip (the knee up, the leg out, back), the
+//! blow landing as the leg is out (`LANDS` after the key), a puff of dust
+//! at the foot and, when it moved something, a small jolt of the camera.
 
 use bevy::prelude::*;
 use platypus_sim::CellPos;
@@ -18,12 +21,16 @@ pub struct KickPlugin;
 
 impl Plugin for KickPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<Kick>().add_systems(Update, (kick_key, kick).chain().run_if(not(crate::hands::dev_tools)));
+        app.add_message::<Kick>().add_systems(Update, ((kick_key, kick).chain().run_if(not(crate::hands::dev_tools)), kick_done));
     }
 }
 
-/// Seconds between kicks.
+/// Seconds between kicks, and from the key to the blow (the clip's second
+/// frame: the leg out).
 const COOLDOWN: f32 = 0.45;
+const LANDS: f32 = 1.0 / 16.0;
+/// The camera's jolt when a kick moves something.
+const JOLT: f32 = 0.12;
 /// How far in front of the feet the kick reaches, and how high (cells).
 const REACH: f32 = 8.0;
 const HEIGHT: f32 = 7.0;
@@ -45,22 +52,38 @@ fn kick_key(keys: Res<ButtonInput<KeyCode>>, open: Res<crate::hands::InventoryOp
     }
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn kick(
     time: Res<Time>,
     mut kicks: MessageReader<Kick>,
     mut sim: ResMut<SimWorld>,
-    mut ready: Local<f32>,
-    player: Query<&Kinematics, With<LocalPlayer>>,
+    mut timing: Local<(f32, Option<f32>)>,
+    mut player: Query<(&Kinematics, Option<&mut crate::actors::animation::Animator>), With<LocalPlayer>>,
     mut things: Query<(&mut Kinematics, Option<&Creature>, Has<Thrown>, Has<crate::actors::explosive::Explosive>), Without<LocalPlayer>>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
+    mut sparks: ResMut<crate::vfx::Sparks>,
+    mut trauma: ResMut<crate::fx::Trauma>,
 ) {
-    *ready -= time.delta_secs();
-    if kicks.read().count() == 0 || *ready > 0.0 {
+    let dt = time.delta_secs();
+    let (ready, lands) = &mut *timing;
+    *ready -= dt;
+    let Ok((me, anim)) = player.single_mut() else { return };
+    // The key: the leg comes up and out; the blow lands as it's out.
+    if kicks.read().count() > 0 && *ready <= 0.0 {
+        *ready = COOLDOWN;
+        *lands = Some(LANDS);
+        if let Some(mut anim) = anim
+            && anim.def.animations.contains_key("kick")
+        {
+            anim.play("kick");
+        }
+    }
+    let Some(left) = lands.as_mut() else { return };
+    *left -= dt;
+    if *left > 0.0 {
         return;
     }
-    let Ok(me) = player.single() else { return };
-    *ready = COOLDOWN;
+    *lands = None;
     let facing = if me.loco.facing < 0.0 { -1.0 } else { 1.0 };
     let feet = me.body.pos - Vec2::new(0.0, me.body.half.y);
     // The box in front of the feet.
@@ -95,4 +118,35 @@ fn kick(
     }
     let at = Vec2::new((x0 + x1) / 2.0, feet.y + 2.0);
     sounds.write(crate::sound::PlaySound::at(if hit > 0 { "kick" } else { "kick_miss" }, at));
+    // Dust at the foot (more when it met something), and a jolt.
+    let foot = Vec2::new(feet.x + facing * (me.body.half.x + 4.0), feet.y + 5.0);
+    sparks.emit(&dust(), if hit > 0 { 10 } else { 4 }, foot, Vec2::new(facing, 0.6), Vec2::ZERO);
+    if hit > 0 {
+        trauma.0 = (trauma.0 + JOLT).min(1.0);
+    }
+}
+
+/// The kick's clip, let go once it's played.
+fn kick_done(mut q: Query<&mut crate::actors::animation::Animator, With<LocalPlayer>>) {
+    for mut anim in &mut q {
+        if anim.force.as_deref() == Some("kick") && anim.finished() {
+            anim.force = None;
+        }
+    }
+}
+
+/// A kick's puff of dust.
+fn dust() -> crate::magic::runes::Emitter {
+    crate::magic::runes::Emitter {
+        count: 1.0,
+        life: (0.2, 0.45),
+        colors: vec![(176, 166, 150), (128, 120, 108)],
+        speed: 45.0,
+        spread: 1.1,
+        gravity: 30.0,
+        drag: 3.0,
+        size: 1.0,
+        jitter: 0.0,
+        glow: false,
+    }
 }
