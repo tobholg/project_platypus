@@ -773,7 +773,12 @@ deaths (blood). Rendered as one dynamic mesh.
   through its centre of mass (at an end it would only lever the thing up on
   its other end), loose powder and rubble fly as specks (gold too), and
   particles in flight are pushed; ground takes nothing. The game's impulse
-  is 300 (a 300-cell log leaves at a cell a tick). It shows: the player's
+  is 300 (a 300-cell log leaves at a cell a tick). A creature in the box
+  takes a blow (`combat::Hit`, as a blade's): 8 damage, knocked back 150
+  cells/s (before its heft) and stunned 0.3 s unless its poise shrugs it
+  off; barrels and carts are only sent rolling (a kick doesn't set them
+  off). `kick` scenario: an orc 70 → 63 (its armour), a troll 420 → 412,
+  both shrugging off the knock. It shows: the player's
   `kick` clip (player.ron: `kick_knee`, then `kick_leg` straight out at the
   hip, leaning back, the arms swung against it; 16 fps, once through), the
   blow landing a sixteenth of a second after the key (the leg out), a puff

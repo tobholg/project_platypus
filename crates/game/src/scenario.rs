@@ -3623,8 +3623,8 @@ fn goldheap_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut queue: ResMu
 }
 
 /// `kick` (arena world): a log of wood, a heap of sand and a TNT barrel,
-/// each kicked in turn from its left; then a kick into the floor.
-/// Logs where each went.
+/// each kicked in turn from its left; then a kick into the floor; then an
+/// orc and a troll, each kicked. Logs where each went, and the health.
 #[allow(clippy::too_many_arguments)]
 fn kick_script(
     mut commands: Commands,
@@ -3634,6 +3634,7 @@ fn kick_script(
     mut kicks: MessageWriter<crate::kick::Kick>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
     others: Query<(&Kinematics, Option<&crate::actors::Creature>), Without<LocalPlayer>>,
+    health: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::Health), Without<LocalPlayer>>,
     mut state: Local<u8>,
 ) {
     if s.name != "kick" {
@@ -3710,7 +3711,26 @@ fn kick_script(
         8 if t > 9.5 => {
             let (n, ..) = span(&sim, mats.expect_id("stone"), 560, 620);
             info!("kick: the floor after: {n}");
-            *state = 9;
+            // Then creatures: an orc, then a troll, each kicked from its left.
+            crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(1080.0, floor as f32), |_| {});
+            crate::actors::creature::spawn_creature(&mut commands, "troll", Vec2::new(1180.0, floor as f32), |_| {});
+            *state = 10;
+        }
+        10 | 12 if t > if *state == 10 { 10.0 } else { 11.6 } => {
+            let kind = if *state == 10 { "orc" } else { "troll" };
+            if let Some((_, ok, h)) = health.iter().find(|(c, ..)| c.kind == kind) {
+                info!("kick: the {kind} at x {:.0}, health {:.0}; kicked", ok.body.pos.x, h.hp);
+                stand(&mut k, ok.body.pos.x - ok.body.half.x - 7.0);
+                kicks.write(crate::kick::Kick);
+            }
+            *state += 1;
+        }
+        11 | 13 if t > if *state == 11 { 10.6 } else { 12.2 } => {
+            let kind = if *state == 11 { "orc" } else { "troll" };
+            if let Some((_, ok, h)) = health.iter().find(|(c, ..)| c.kind == kind) {
+                info!("kick: the {kind} after: at x {:.0}, health {:.0}", ok.body.pos.x, h.hp);
+            }
+            *state += 1;
         }
         _ => {}
     }

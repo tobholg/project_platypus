@@ -2,8 +2,10 @@
 //! Things take it by their weight: an object (a log, a casting: `object`
 //! materials, lifted out whole as a body) is sent along, the heavier the
 //! slower; loose powder and rubble fly (gold with them); items, bodies,
-//! barrels and carts are sent flying (by their size); a small creature is
-//! shoved. Ground takes nothing: a kick into rock is just a kick.
+//! barrels and carts are sent flying (by their size, no harm done: a barrel
+//! rolls, it doesn't go off); a creature takes a blow (damage, knockback,
+//! a moment's stun, as a blade's: `combat::Hit`, its poise and heft
+//! deciding). Ground takes nothing: a kick into rock is just a kick.
 //!
 //! It shows: the player's `kick` clip (the knee up, the leg out, back), the
 //! blow landing as the leg is out (`LANDS` after the key), a puff of dust
@@ -39,8 +41,12 @@ const HEIGHT: f32 = 7.0;
 const IMPULSE: f32 = 300.0;
 /// What things on the move take (cells a second), before their size.
 const THROW: Vec2 = Vec2::new(170.0, 110.0);
-/// Creatures smaller than this (cells of box) are shoved; bigger ones stand.
-const SHOVE_BELOW: f32 = 60.0;
+/// A creature kicked takes a blow (`combat::Hit`): this much damage (a
+/// shortsword's slash is ~12), knocked this hard (cells/s, before its heft)
+/// and stunned this long, unless its poise shrugs it off.
+const DAMAGE: f32 = 8.0;
+const KNOCK: Vec2 = Vec2::new(150.0, 90.0);
+const STUN: f32 = 0.3;
 
 /// A kick, by the local player (a key, or a scenario).
 #[derive(Message, Clone, Copy, Debug)]
@@ -59,7 +65,8 @@ fn kick(
     mut sim: ResMut<SimWorld>,
     mut timing: Local<(f32, Option<f32>)>,
     mut player: Query<(&Kinematics, Option<&mut crate::actors::animation::Animator>), With<LocalPlayer>>,
-    mut things: Query<(&mut Kinematics, Option<&Creature>, Has<Thrown>, Has<crate::actors::explosive::Explosive>), Without<LocalPlayer>>,
+    mut things: Query<(Entity, &mut Kinematics, Option<&Creature>, Has<Thrown>, Has<crate::actors::explosive::Explosive>), Without<LocalPlayer>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut sparks: ResMut<crate::vfx::Sparks>,
     mut trauma: ResMut<crate::fx::Trauma>,
@@ -93,7 +100,7 @@ fn kick(
     let (y0, y1) = (feet.y - 1.0, feet.y + HEIGHT);
     let (moved, specks) = sim.world.kick(CellPos::from_world(x0, y0), CellPos::from_world(x1, y1), [facing * 1.6, 0.4], IMPULSE);
     let mut hit = moved + specks;
-    for (mut k, creature, thrown, prop) in &mut things {
+    for (e, mut k, creature, thrown, prop) in &mut things {
         let p = k.body.pos;
         let (lo, hi) = (p - k.body.half, p + k.body.half);
         if hi.x < x0 || lo.x > x1 || hi.y < y0 || lo.y > y1 {
@@ -110,9 +117,10 @@ fn kick(
             let k = &mut *k;
             k.loco.knock(&mut k.body, Vec2::new(facing * THROW.x, THROW.y) * 0.9, 0.8);
             hit += 1;
-        } else if creature.is_some() && area < SHOVE_BELOW {
-            let k = &mut *k;
-            k.loco.knock(&mut k.body, push, 0.35);
+        } else if creature.is_some() {
+            // A blow (as a blade's: poise and heft decide how far it goes).
+            let knock = Vec2::new(facing * KNOCK.x, KNOCK.y);
+            hits.write(crate::combat::Hit { target: e, damage: DAMAGE, knock, stun: STUN, at: p, dir: Vec2::new(facing, 0.0), weight: DAMAGE / 12.0, crit: false });
             hit += 1;
         }
     }

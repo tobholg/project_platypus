@@ -51,7 +51,7 @@ below you) strikes down: whatever it hits bounces you up a jump's height and giv
 dash (creatures, hostile spits and bolts, lava, fire, acid, webs). The shortsword slashes under you; the
 longsword plunges, point down and falling fast, bouncing on as long as S is held and slamming what's near
 where it lands (weapons and moves in `assets/data/weapons.ron`) ·
-A ladle, bucket or flask: RMB fills it (at a furnace, melts bars and ore from your pack into it), LMB pours it at the cursor · F kicks what's at your feet (logs and other objects by their weight, sand and gold, items, barrels, small creatures) · Gold (top right, under the bolts) is dust in the world, one cell a coin: it bursts out of the dying and out of chests, glitters and glows, and is taken when you walk into it ·
+A ladle, bucket or flask: RMB fills it (at a furnace, melts bars and ore from your pack into it), LMB pours it at the cursor · F kicks what's at your feet (logs and other objects by their weight, sand and gold, items, barrels; creatures take a blow: 8 damage and a knock) · Gold (top right, under the bolts) is dust in the world, one cell a coin: it bursts out of the dying and out of chests, glitters and glows, and is taken when you walk into it ·
 The game saves (to `saves/<world>-<seed>/`, every minute, on quitting and with
 Ctrl+S) and loads that save at start: what you changed in the world, where you
 are, what you carry and wear, chests, stations, creatures. `PLATYPUS_SAVE=name`
