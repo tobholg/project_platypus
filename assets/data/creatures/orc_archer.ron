@@ -6,17 +6,17 @@
     // What it may have on it when it dies (loot.ron), besides what it wears.
     loot: "orc_archer",
     wears: [("leather_cap", 0.6), ("leather_gloves", 0.5), ("leather_boots", 0.4), ("leather_jerkin", 0.2)],
-    size: (7, 16),
+    size: (11, 24),
     health: 50,
     team: Enemy,
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "humanoid",
-    fall_damage: (safe_height: 70, per_cell: 0.8),
+    fall_damage: (safe_height: 105, per_cell: 0.53),
     movement: (
-        run_speed: 58,
-        jump_height: 24,
+        run_speed: 87,
+        jump_height: 36,
         air_jumps: 0,
-        step_height: 3,
+        step_height: 5,
         dash_speed: 0,
     ),
     art: "orc",
@@ -27,6 +27,6 @@
     brain: (
         kind: "hunter",
         // (It stands its ground with no one about.)
-        params: (aggro: 260, close: Range(near: 50, far: 140), attack: Shoot(draw: 0.85, every: 1.8, wobble: 5), wander: (speed: 0)),
+        params: (aggro: 390, close: Range(near: 75, far: 210), attack: Shoot(draw: 0.85, every: 1.8, wobble: 5), wander: (speed: 0)),
     ),
 )

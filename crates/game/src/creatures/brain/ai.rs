@@ -27,7 +27,7 @@ pub struct Idle;
 pub struct Marching(pub f32);
 
 /// Near enough the march's end (cells): it's there.
-const MARCHED: f32 = 24.0;
+const MARCHED: f32 = 36.0;
 
 /// Which way a march goes from `x` (0 there, or not marching).
 pub fn march(m: Option<&Marching>, x: f32) -> f32 {

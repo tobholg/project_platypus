@@ -4,7 +4,7 @@
     name: "Firefly",
     // Leaves no body: what it had spills out.
     corpse: false,
-    size: (2, 2),
+    size: (3, 3),
     health: 1,
     team: Neutral,
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -13,14 +13,14 @@
     art: "firefly",
     light: (color: (200, 255, 110), strength: 0.9, pulse: 2.2),
     movement: (
-        run_speed: 10,
-        fly_speed: 16,
-        fly_accel: 50,
+        run_speed: 15,
+        fly_speed: 24,
+        fly_accel: 75,
         air_jumps: 0,
         step_height: 0,
     ),
     brain: (
         kind: "critter",
-        params: (flee_range: 14, calm_after: 1.0, flies: true, hovers: (4, 28), wander_every: 1.2, rest: 0.1, wander_speed: 0.7),
+        params: (flee_range: 21, calm_after: 1.0, flies: true, hovers: (6, 42), wander_every: 1.2, rest: 0.1, wander_speed: 0.7),
     ),
 )

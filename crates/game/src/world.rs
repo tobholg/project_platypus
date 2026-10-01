@@ -78,7 +78,7 @@ struct MaterialsSource(Watched);
 /// Chunks beyond the loaded area that stay loaded, so turning around is free.
 const UNLOAD_HYSTERESIS: i32 = 2;
 /// Cap on chunks generated per frame, so a teleport doesn't stall a frame.
-const MAX_LOADS_PER_FRAME: usize = 48;
+const MAX_LOADS_PER_FRAME: usize = 108;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
@@ -143,7 +143,7 @@ pub struct FreshChunks(pub Vec<(platypus_sim::CellPos, platypus_worldgen::Spawn)
 pub struct LoadedChunks(pub Vec<(ChunkPos, bool)>, pub Vec<ChunkPos>);
 
 /// Cells of weather simulated beyond the loaded chunks, either side.
-const WEATHER_MARGIN: i32 = 1_536;
+const WEATHER_MARGIN: i32 = 2_304;
 
 fn stream_chunks(
     mut sim: ResMut<SimWorld>,

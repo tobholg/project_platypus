@@ -66,7 +66,7 @@ fn draw(
                 // Fading in as it leaves the cloud (rain drops live 900 ticks).
                 let age = 900u16.saturating_sub(p.life);
                 rgba = [96, 142, 222, (190 * age.min(10) / 10) as u8];
-                tall = (1.0 + p.vel[1].abs()).min(4.0) as i32;
+                tall = (1.0 + p.vel[1].abs()).min(6.0) as i32;
             }
             Landing::Snow => rgba = [244, 246, 250, 230],
             _ => {}

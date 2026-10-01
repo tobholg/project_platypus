@@ -26,9 +26,9 @@ use crate::magic::runes::Emitter;
 use crate::world::{SimWorld, TickSet};
 
 /// A player takes gold this many cells from its body (all round).
-const REACH: i32 = 6;
+const REACH: i32 = 9;
 /// Most gold taken a tick (a heap drains at ~2 900 a second).
-const TAKE_PER_TICK: u32 = 48;
+const TAKE_PER_TICK: u32 = 108;
 /// Most specks a burst throws a frame (the rest wait for the next).
 const BURST_PER_FRAME: u32 = 600;
 
@@ -79,11 +79,11 @@ fn burst(sim: &mut SimWorld, gold: MaterialId, at: Vec2, amount: u32, seed: u64)
     for _ in 0..amount {
         // (Cells a tick: up and out, a fountain.)
         let a = (55.0 + 70.0 * unit(&mut rng)).to_radians();
-        let speed = 0.4 + 0.9 * unit(&mut rng);
+        let speed = 0.6 + 1.35 * unit(&mut rng);
         let vel = [a.cos() * speed, a.sin() * speed];
-        let jiggle = [unit(&mut rng) * 3.0 - 1.5, unit(&mut rng) * 2.0];
+        let jiggle = [unit(&mut rng) * 4.5 - 2.25, unit(&mut rng) * 3.0];
         let cell: Cell = mats.spawn(gold, &mut rng);
-        sim.world.emit(Particle::new([at.x + jiggle[0], at.y + 2.0 + jiggle[1]], vel, cell, 90, Landing::Settle));
+        sim.world.emit(Particle::new([at.x + jiggle[0], at.y + 3.0 + jiggle[1]], vel, cell, 90, Landing::Settle));
     }
 }
 

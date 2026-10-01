@@ -232,7 +232,7 @@ fn px(lx: usize, ly: usize) -> usize {
 
 /// Cells below the ground as generated before a hole in the background shows
 /// rock rather than sky (so a crater at the surface still opens to the sky).
-const BACKDROP_BELOW: i32 = 16;
+const BACKDROP_BELOW: i32 = 24;
 
 /// What shows through a hole in the background underground, until there is a
 /// real far background (DESIGN: parallax layers per band): dark rock, earthy
@@ -240,7 +240,7 @@ const BACKDROP_BELOW: i32 = 16;
 fn backdrop(x: i32, y: i32, depth: i32) -> [u8; 4] {
     let (earth, rock, deep) = ([46.0, 33.0, 24.0], [40.0, 40.0, 46.0], [27.0, 27.0, 35.0]);
     let mix = |a: [f32; 3], b: [f32; 3], t: f32| [0, 1, 2].map(|i| a[i] + (b[i] - a[i]) * t.clamp(0.0, 1.0));
-    let base = if depth < 120 { mix(earth, rock, (depth - BACKDROP_BELOW) as f32 / 100.0) } else { mix(rock, deep, (depth - 120) as f32 / 1500.0) };
+    let base = if depth < 180 { mix(earth, rock, (depth - BACKDROP_BELOW) as f32 / 150.0) } else { mix(rock, deep, (depth - 180) as f32 / 2250.0) };
     // Strata: bands a few cells thick that wander a little, plus grain.
     let band = platypus_sim::rng::hash(&[((y + (x >> 5) % 3) >> 2) as u64]) % 9;
     let grain = platypus_sim::rng::hash(&[x as u64, y as u64]) % 5;
@@ -267,7 +267,7 @@ fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: Cell
                     let depth = ground[lx] - y;
                     // (Only just under the ground; deeper, the cave's far
                     // backdrop shows through: `backdrop.rs`.)
-                    if (BACKDROP_BELOW..BACKDROP_BELOW + 40).contains(&depth) {
+                    if (BACKDROP_BELOW..BACKDROP_BELOW + 60).contains(&depth) {
                         layer.base[px(lx, ly)..px(lx, ly) + 4].copy_from_slice(&backdrop(x, y, depth));
                     }
                 }
@@ -297,7 +297,7 @@ fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: Cell
             }
             if !back && is_plant(mats, c) && c.flags & flags::BURNING == 0 {
                 // Height above its root: plant cells below it in this column.
-                let lift = (1..=15).take_while(|d| ly >= *d && is_plant(mats, cells[(ly - d) * N + lx])).count() as u8 + 1;
+                let lift = (1..=23).take_while(|d| ly >= *d && is_plant(mats, cells[(ly - d) * N + lx])).count() as u8 + 1;
                 layer.plants.push(PlantPx { x: lx as u8, y: ly as u8, rgba, lift });
             } else {
                 layer.base[px(lx, ly)..px(lx, ly) + 4].copy_from_slice(&rgba);
@@ -317,10 +317,10 @@ fn compose(layer: &Layer, data: &mut [u8], origin: (i32, i32), sway: &Sway, spri
     data.copy_from_slice(&layer.base);
     for p in &layer.plants {
         let (wx, wy) = (origin.0 + p.x as i32, origin.1 + p.y as i32);
-        let wave = (sway.t * 2.4 + wx as f32 * 0.11).sin();
+        let wave = (sway.t * 2.4 + wx as f32 * 0.073).sin();
         let lean = sway.wind * 1.2 + wave * (0.35 + 0.7 * sway.wind.abs());
-        let offset = (lean + springs.disp(wx, wy)) * (p.lift as f32 / 5.0).min(1.6);
-        let x = (p.x as i32 + offset.round().clamp(-4.0, 4.0) as i32).clamp(0, CHUNK - 1) as usize;
+        let offset = (lean + springs.disp(wx, wy)) * (p.lift as f32 / 7.5).min(1.6);
+        let x = (p.x as i32 + offset.round().clamp(-6.0, 6.0) as i32).clamp(0, CHUNK - 1) as usize;
         let i = px(x, p.y as usize);
         data[i..i + 4].copy_from_slice(&p.rgba);
     }
@@ -463,7 +463,7 @@ fn sparkle(
                 let at = Vec2::new(o.x as f32 + gl.x as f32 + 0.5, o.y as f32 + gl.y as f32 + 0.5);
                 if roll() < dt / 60.0 {
                     let rgb = gl.rgb.map(|c| (c as f32 / 255.0 * 0.7 + 0.3).min(1.0));
-                    let vel = Vec2::new((roll() - 0.5) * 4.0, 2.0 + roll() * 4.0);
+                    let vel = Vec2::new((roll() - 0.5) * 6.0, 3.0 + roll() * 6.0);
                     commands.spawn((Sparkle { age: 0.0, life: 2.0 + roll() * 2.0, vel, rgb }, Sprite::from_color(Color::NONE, Vec2::ONE), Transform::from_translation(at.extend(Z_SPARKLES))));
                     count += 1;
                 }
@@ -482,16 +482,16 @@ fn excite_foliage(time: Res<Time>, mut springs: ResMut<FoliageSprings>, bodies: 
 
 impl FoliageSprings {
     /// How far (cells beyond its half-width) a body parts the foliage.
-    const REACH: f32 = 9.0;
+    const REACH: f32 = 14.0;
 
     fn push(&mut self, b: &platypus_physics::Body, dt: f32) {
         let speed = b.vel.length();
         let reach = b.half.x + Self::REACH;
         let (x0, x1) = ((b.pos.x - reach) as i32, (b.pos.x + reach) as i32);
-        let (y0, y1) = ((b.pos.y - b.half.y - 2.0) as i32, (b.pos.y + b.half.y) as i32);
+        let (y0, y1) = ((b.pos.y - b.half.y - 3.0) as i32, (b.pos.y + b.half.y) as i32);
         // A body in the grass holds it parted; moving through, parts it further
         // and drags it along the direction of travel.
-        let effort = (0.75 + speed / 400.0).min(1.2);
+        let effort = (0.75 + speed / 600.0).min(1.2);
         for col in (x0 >> SPRING_COL_BITS)..=(x1 >> SPRING_COL_BITS) {
             let cx = ((col << SPRING_COL_BITS) + 1) as f32;
             let dx = cx - b.pos.x;
@@ -500,7 +500,7 @@ impl FoliageSprings {
                 continue;
             }
             let close = edge.powf(0.6);
-            let target = dx.signum() * 4.0 * close * effort + b.vel.x * 0.01;
+            let target = dx.signum() * 6.0 * close * effort + b.vel.x * 0.01;
             for row in (y0 >> SPRING_ROW_BITS)..=(y1 >> SPRING_ROW_BITS) {
                 let s = self.springs.entry((col, row)).or_default();
                 // Strong enough to win against the grass's own springiness.
@@ -515,7 +515,7 @@ impl FoliageSprings {
         const DAMPING: f32 = 5.0;
         self.springs.retain(|_, s| {
             s.vel += (-STIFFNESS * s.disp - DAMPING * s.vel) * dt;
-            s.disp = (s.disp + s.vel * dt).clamp(-4.0, 4.0);
+            s.disp = (s.disp + s.vel * dt).clamp(-6.0, 6.0);
             s.disp.abs() > 0.02 || s.vel.abs() > 0.05
         });
     }

@@ -3,7 +3,7 @@
 (
     name: "Lantern",
     corpse: false,
-    size: (3, 16),
+    size: (5, 24),
     health: 5,
     team: Neutral,
     // Its kind (kinds.ron): how it takes each kind of hurt.

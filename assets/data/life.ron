@@ -1,5 +1,5 @@
 // Ambient life round the player (actors/critters.rs). Each kind:
-//   place: Surface (open ground), Shore (within 30 cells of water), Water
+//   place: Surface (open ground), Shore (within 45 cells of water), Water
 //     (in cool liquid with room round it), Cave (in the open air of a cave,
 //     a roof above, under the surface)
 //   when: Any (default), Day or Night; out of its hours it leaves once out
@@ -14,12 +14,12 @@
     (kind: "rabbit", place: Surface, when: Day, most: 4, rate: 0.5),
     (kind: "bird", place: Surface, when: Day, most: 6, rate: 0.6),
     (kind: "frog", place: Shore, most: 4, rate: 0.6),
-    (kind: "firefly", place: Surface, when: Night, above: (6, 24), most: 14, rate: 3.0),
+    (kind: "firefly", place: Surface, when: Night, above: (9, 36), most: 14, rate: 3.0),
     (kind: "fish", place: Water, most: 8, rate: 1.2),
     (kind: "bat", place: Cave, most: 3, rate: 0.35),
-    (kind: "slime", place: Cave, depth: (40, 900), zone: "none", most: 3, rate: 0.4),
+    (kind: "slime", place: Cave, depth: (60, 1350), zone: "none", most: 3, rate: 0.4),
     (kind: "acid_slime", place: Cave, zone: "toxic", most: 4, rate: 0.6),
-    (kind: "skeleton", place: Cave, depth: (200, 100000), most: 2, rate: 0.25),
-    (kind: "vampire_bat", place: Cave, depth: (300, 100000), most: 2, rate: 0.12),
-    (kind: "spider", place: Cave, depth: (150, 100000), most: 1, rate: 0.06),
+    (kind: "skeleton", place: Cave, depth: (300, 150000), most: 2, rate: 0.25),
+    (kind: "vampire_bat", place: Cave, depth: (450, 150000), most: 2, rate: 0.12),
+    (kind: "spider", place: Cave, depth: (225, 150000), most: 1, rate: 0.06),
 ]

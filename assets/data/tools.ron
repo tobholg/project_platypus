@@ -4,29 +4,29 @@
     // Hold to mine. Each tick every cell in the radius takes `power` damage
     // (less at the rim) and breaks when damage reaches its hardness:
     // dirt (20) goes fast, stone (60) slower, obsidian (120) slowly, bedrock never.
-    pickaxe: (radius: 4, power: 3, max_hardness: 150),
+    pickaxe: (radius: 6, power: 3, max_hardness: 150),
 
     // Hold to chop the background: standing trees, and walls behind open
     // space (the pickaxe only mines the playfield).
-    axe: (radius: 4, power: 3, max_hardness: 150),
+    axe: (radius: 6, power: 3, max_hardness: 150),
 
     // Click to throw toward the cursor; explodes after `fuse`. Creatures take
     // up to 0.65 × power in damage and 3 × in knockback (every explosion does).
     // `chain_reaction`: blasts set off other bombs nearby (off, so a string
     // of bombs digs a shaft one after another).
-    bomb: (radius: 38, power: 140, fuse: 1.6, throw_speed: 240, bounce: 0.35, chain_reaction: false),
+    bomb: (radius: 57, power: 140, fuse: 1.6, throw_speed: 360, bounce: 0.35, chain_reaction: false),
 
     // Hold to pour the selected material (Q/E to change). Shift also replaces solids.
-    spawner: (radius: 5),
+    spawner: (radius: 8),
 
     // Hold to set flammable cells alight.
-    igniter: (radius: 4),
+    igniter: (radius: 6),
 
     // Hold to delete anything but bedrock, instantly. Also on the right mouse button.
-    eraser: (radius: 8),
+    eraser: (radius: 12),
 
     // Hold to heat (°C per tick at the centre); Shift+hold to freeze.
     // Stone melts at 1400 °C, sand turns to glass at 1100, water boils at 100
     // and freezes at 0, wood ignites at 280, methane explodes.
-    heat: (radius: 5, rate: 60, cool_rate: 30),
+    heat: (radius: 8, rate: 60, cool_rate: 30),
 )

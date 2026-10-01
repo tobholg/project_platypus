@@ -6,18 +6,18 @@
     loot: "skeleton",
     // The armour it died in, rusted on.
     wears: [("iron_helm", 0.3), ("chainmail", 0.25), ("iron_greaves", 0.2), ("cloth_hood", 0.15)],
-    size: (6, 15),
+    size: (9, 23),
     health: 55,
     team: Enemy,
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "undead",
     blood: "ash",
-    fall_damage: (safe_height: 70, per_cell: 0.8),
+    fall_damage: (safe_height: 105, per_cell: 0.53),
     movement: (
-        run_speed: 58,
-        jump_height: 24,
+        run_speed: 87,
+        jump_height: 36,
         air_jumps: 0,
-        step_height: 3,
+        step_height: 5,
         dash_speed: 0,
     ),
     art: "skeleton",
@@ -26,6 +26,6 @@
     poise: 12,
     brain: (
         kind: "hunter",
-        params: (aggro: 200, close: Walk(keep: 10, jump_to_reach: 18), attack: Swing(reach: 15, every: 1.3, combo: 2), wander: (speed: 0.3, every: 3.0)),
+        params: (aggro: 300, close: Walk(keep: 15, jump_to_reach: 27), attack: Swing(reach: 23, every: 1.3, combo: 2), wander: (speed: 0.3, every: 3.0)),
     ),
 )

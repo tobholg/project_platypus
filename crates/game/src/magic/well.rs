@@ -44,20 +44,20 @@ const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// The field's spring toward the cursor (1/s²), critically damped, its top
 /// speed (cells/s) and most acceleration (cells/s²): its heft.
 const FOLLOW: f32 = 180.0;
-const TOP_SPEED: f32 = 700.0;
-const HEFT: f32 = 9000.0;
+const TOP_SPEED: f32 = 1050.0;
+const HEFT: f32 = 13500.0;
 /// Force: half the cone's angle (radians), how near the hand it leaves
 /// alone (cells), and how near it drags things in a pull.
 const CONE: f32 = 0.7;
-const HAND: f32 = 4.0;
-const PULL_STOP: f32 = 10.0;
+const HAND: f32 = 6.0;
+const PULL_STOP: f32 = 15.0;
 /// The caster's recoil: up to this share of the force's power, times how
 /// solid the cone is, reached at most this share of the way a tick (so it
 /// builds like a thrust, not a snap).
 const RECOIL: f32 = 1.4;
 /// Force hurts a body this much per cell/s it changes its speed by (a full
 /// push at the hand: the wand ~12, the staff ~20).
-const FORCE_HIT: f32 = 0.04;
+const FORCE_HIT: f32 = 0.0267;
 const RECOIL_RISE: f32 = 0.5;
 /// Things (bodies) in a well: the spring to its heart (1/s), the share of
 /// the way to what it wants a tick, and the lift against their weight
@@ -67,7 +67,7 @@ const BODY_GRIP: f32 = 0.2;
 const BODY_HOLD: f32 = platypus_sim::particles::GRAVITY;
 /// Force moves a thing up to this heavy (cells) at full speed; heavier,
 /// slower by its weight.
-const BODY_HEFT: f32 = 120.0;
+const BODY_HEFT: f32 = 270.0;
 /// A body's weight in a well per cell of it (its cells' density against
 /// water's: wood's).
 const BODY_DENSITY: f32 = 0.7;
@@ -79,14 +79,14 @@ const SPIN: f32 = 2.6;
 const SLIP: f32 = 1.4;
 /// Grinding: damage a tick for each solid held cell inside a body, per
 /// cell/s of speed between them.
-const GRIND: f32 = 0.00025;
+const GRIND: f32 = 0.000167;
 /// How hard a well tugs a body too heavy to lift (cells/s²).
-const TUG: f32 = 180.0;
+const TUG: f32 = 270.0;
 /// Every so many ticks after tearing solids out, what they held up is let go.
 const LOOSEN_EVERY: u32 = 6;
 /// Gravity on a stunned body without movement stats (cancelled while
 /// carried).
-const GRAVITY: f32 = 1760.0;
+const GRAVITY: f32 = 2640.0;
 
 /// What the field is doing.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -337,7 +337,7 @@ pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Que
             well.held.push(Floating { cell, pos: Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5), vel: well.vel, depth, spin });
         }
         if tore && well.tick.is_multiple_of(LOOSEN_EVERY) {
-            world.loosen_fragments(CellPos::from_world(center.x, center.y), reach as i32 + 6);
+            world.loosen_fragments(CellPos::from_world(center.x, center.y), reach as i32 + 9);
         }
         // Bodies within reach (things it lifted, things flying by): drawn to
         // its heart on a spring, as far as what's left of its lift allows
@@ -361,7 +361,7 @@ pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Que
 
         // Hold: each cell toward its place in the spinning ball, as far as
         // the grip allows; those flung too far are gone.
-        let ball = (well.held.len() as f32 / std::f32::consts::PI).sqrt() * 1.25 + 1.5;
+        let ball = (well.held.len() as f32 / std::f32::consts::PI).sqrt() * 1.25 + 2.25;
         let (grip, vel) = (well.grip, well.vel);
         let mut kept = Vec::with_capacity(well.held.len());
         for mut f in std::mem::take(&mut well.held) {
@@ -511,7 +511,7 @@ fn force(world: &mut platypus_sim::World, well: &mut Well, bodies: &mut Bodies, 
         let straight = ((at - origin).normalize_or(well.aim) * sign + lift).normalize();
         let side = if straight.x < 0.0 { -1.0 } else { 1.0 };
         let free = |d: Vec2| {
-            let ahead = CellPos::from_world(at.x + d.x * 1.5, at.y + d.y * 1.5);
+            let ahead = CellPos::from_world(at.x + d.x * 2.25, at.y + d.y * 2.25);
             world.get(ahead).is_some_and(|c| c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas | Kind::Fire))
         };
         let Some(dir) = [straight, Vec2::new(straight.x, straight.y.abs()).normalize(), Vec2::new(side, 0.25).normalize()].into_iter().find(|&d| free(d)) else { continue };

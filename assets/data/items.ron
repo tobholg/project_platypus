@@ -5,7 +5,7 @@
 // use:
 //   Mine(back, power, tier, speed, reach, area): a pickaxe (back: false) or an axe
 //     (back: true, the background: trees, walls); power damage a hit, speed
-//     hits a second, up to tier hardness, within reach blocks (4 cells each).
+//     hits a second, up to tier hardness, within reach blocks (6 cells each).
 //     area (a pickaxe's, cells): C switches it to a round bite this radius
 //     out of the rock nearest you toward the cursor (it can't reach through
 //     rock), at 3/4 of its power, a little less towards the rim; big enough
@@ -27,7 +27,7 @@
 //     loose an arrow (one of your `arrow` items) at the cursor.
 //   Melee(weapon): a weapon (weapons.ron): the left button swings it at the
 //     cursor; hold it to swing through the combo. Its icon is its sprite.
-//   Chest: place one (furniture, 12 × 10 cells, on the ground); right-click a chest to open it
+//   Chest: place one (furniture, 18 × 15 cells, on the ground); right-click a chest to open it
 //   Potion(heal, over, sickness): drink it (click, or H: the first healing
 //     one carried): heal health back over `over` s (0: at once), then
 //     `sickness` s when no healing potion works
@@ -37,10 +37,10 @@
 //   on_hit: a coating (coatings.ron) left on what it hits ("venom")
 (
     items: [
-        (id: "copper_pickaxe", name: "Copper pickaxe", color: (205, 127, 50), use: Mine(back: false, power: 35, tier: 70, speed: 6.0, reach: 6.0, area: 7.0)),
-        (id: "iron_pickaxe",   name: "Iron pickaxe",   color: (176, 178, 190), use: Mine(back: false, power: 60, tier: 100, speed: 7.0, reach: 6.5, area: 7.5)),
-        (id: "gold_pickaxe",   name: "Gold pickaxe",   color: (236, 196, 72), use: Mine(back: false, power: 75, tier: 115, speed: 7.5, reach: 7.0, area: 8.0)),
-        (id: "mithril_pickaxe", name: "Mithril pickaxe", color: (110, 220, 228), use: Mine(back: false, power: 100, tier: 150, speed: 9.0, reach: 7.5, area: 9.0)),
+        (id: "copper_pickaxe", name: "Copper pickaxe", color: (205, 127, 50), use: Mine(back: false, power: 35, tier: 70, speed: 6.0, reach: 6.0, area: 10.5)),
+        (id: "iron_pickaxe",   name: "Iron pickaxe",   color: (176, 178, 190), use: Mine(back: false, power: 60, tier: 100, speed: 7.0, reach: 6.5, area: 11.25)),
+        (id: "gold_pickaxe",   name: "Gold pickaxe",   color: (236, 196, 72), use: Mine(back: false, power: 75, tier: 115, speed: 7.5, reach: 7.0, area: 12.0)),
+        (id: "mithril_pickaxe", name: "Mithril pickaxe", color: (110, 220, 228), use: Mine(back: false, power: 100, tier: 150, speed: 9.0, reach: 7.5, area: 13.5)),
         (id: "copper_axe",     name: "Copper axe",     color: (190, 110, 45), use: Mine(back: true, power: 30, tier: 60, speed: 5.0, reach: 6.0)),
         (id: "torch",          name: "Torch",          stack: 99, color: (255, 190, 90), use: Torch),
         (id: "bomb",           name: "Bomb",           stack: 30, color: (40, 40, 46), use: Throw(Bomb)),
@@ -56,61 +56,61 @@
         // (any, with none). Its aura: the glow and sparks at its tip.
         (id: "oak_wand",       name: "Oak wand",       color: (150, 110, 70), use: Focus(tier: 1, spells: ["spark_bolt"]),
             gear: (slot: Held, stats: { SpellPower: 5, CastSpeed: 5 }),
-            aura: (light: (220, 200, 255), strength: 0.4, sparks: (count: 4, life: (0.5, 1.0), colors: [(255, 255, 255), (200, 170, 255)], speed: 5, drag: 1, glow: true))),
+            aura: (light: (220, 200, 255), strength: 0.4, sparks: (count: 4, life: (0.5, 1.0), colors: [(255, 255, 255), (200, 170, 255)], speed: 8, drag: 1, glow: true))),
         (id: "storm_wand",     name: "Storm wand",     color: (200, 220, 255), use: Focus(tier: 1, element: Storm, spells: ["shock_bolt"]),
             gear: (slot: Held, stats: { StormPower: 40, CastSpeed: 5 }),
-            aura: (light: (190, 200, 255), sparks: (count: 12, life: (0.05, 0.15), colors: [(255, 255, 255), (160, 180, 255)], speed: 30, jitter: 120, glow: true))),
+            aura: (light: (190, 200, 255), sparks: (count: 12, life: (0.05, 0.15), colors: [(255, 255, 255), (160, 180, 255)], speed: 45, jitter: 180, glow: true))),
         (id: "fire_wand",      name: "Fire wand",      color: (255, 120, 40), use: Focus(tier: 1, element: Fire, spells: ["fireball"]),
             gear: (slot: Held, stats: { FirePower: 40, CastSpeed: 5 }),
-            aura: (light: (255, 140, 50), strength: 0.8, sparks: (count: 14, life: (0.3, 0.7), colors: [(255, 240, 180), (255, 160, 50), (200, 60, 20)], speed: 18, spread: 0.6, gravity: -40, drag: 2, glow: true))),
+            aura: (light: (255, 140, 50), strength: 0.8, sparks: (count: 14, life: (0.3, 0.7), colors: [(255, 240, 180), (255, 160, 50), (200, 60, 20)], speed: 27, spread: 0.6, gravity: -60, drag: 2, glow: true))),
         (id: "acid_wand",      name: "Acid wand",      color: (120, 230, 60), use: Focus(tier: 1, element: Acid, spells: ["acid_arrow"]),
             gear: (slot: Held, stats: { AcidPower: 40, CastSpeed: 5 }),
-            aura: (light: (130, 240, 70), strength: 0.5, sparks: (count: 5, life: (0.4, 0.8), colors: [(200, 255, 120), (90, 200, 40)], speed: 2, spread: 0.3, gravity: 160, glow: true))),
+            aura: (light: (130, 240, 70), strength: 0.5, sparks: (count: 5, life: (0.4, 0.8), colors: [(200, 255, 120), (90, 200, 40)], speed: 3, spread: 0.3, gravity: 240, glow: true))),
         (id: "frost_wand",     name: "Frost wand",     color: (170, 220, 255), use: Focus(tier: 1, element: Frost, spells: ["frost_bolt"]),
             gear: (slot: Held, stats: { FrostPower: 40, CastSpeed: 5 }),
-            aura: (light: (140, 200, 255), sparks: (count: 10, life: (0.5, 1.0), colors: [(240, 250, 255), (170, 215, 255)], speed: 6, gravity: 20, drag: 3, glow: true))),
+            aura: (light: (140, 200, 255), sparks: (count: 10, life: (0.5, 1.0), colors: [(240, 250, 255), (170, 215, 255)], speed: 9, gravity: 30, drag: 3, glow: true))),
         (id: "gravity_wand",   name: "Gravity wand",   color: (150, 110, 255), use: Focus(tier: 1, element: Gravity, spells: ["gravity_well"]),
             gear: (slot: Held, stats: { GravityPower: 40 }),
-            aura: (light: (160, 120, 255), sparks: (count: 10, life: (0.4, 0.8), colors: [(220, 200, 255), (120, 80, 230), (40, 20, 90)], speed: 14, drag: 1, glow: true))),
+            aura: (light: (160, 120, 255), sparks: (count: 10, life: (0.4, 0.8), colors: [(220, 200, 255), (120, 80, 230), (40, 20, 90)], speed: 21, drag: 1, glow: true))),
         (id: "force_wand",     name: "Force wand",     color: (140, 200, 255), use: Focus(tier: 1, element: Force, spells: ["force"]),
             gear: (slot: Held, stats: { ForcePower: 40 }),
-            aura: (light: (150, 210, 255), sparks: (count: 8, life: (0.1, 0.3), colors: [(240, 250, 255), (140, 195, 255)], speed: 22, drag: 4, glow: true))),
+            aura: (light: (150, 210, 255), sparks: (count: 8, life: (0.1, 0.3), colors: [(240, 250, 255), (140, 195, 255)], speed: 33, drag: 4, glow: true))),
         (id: "arcane_staff",   name: "Arcane staff",   color: (170, 120, 230), use: Focus(tier: 2, spells: ["frost_bolt", "acid_arrow"]),
             gear: (slot: Held, stats: { SpellPower: 25, Mana: 40, ManaRegen: 15 }),
-            aura: (light: (220, 200, 255), strength: 0.4, sparks: (count: 4, life: (0.5, 1.0), colors: [(255, 255, 255), (200, 170, 255)], speed: 5, drag: 1, glow: true))),
+            aura: (light: (220, 200, 255), strength: 0.4, sparks: (count: 4, life: (0.5, 1.0), colors: [(255, 255, 255), (200, 170, 255)], speed: 8, drag: 1, glow: true))),
         (id: "fire_staff",     name: "Fire staff",     color: (255, 150, 50), use: Focus(tier: 2, element: Fire, spells: ["flame_jet", "meteor"]),
             gear: (slot: Held, stats: { FirePower: 50, SpellPower: 10, Mana: 20 }),
-            aura: (light: (255, 140, 50), strength: 0.8, sparks: (count: 14, life: (0.3, 0.7), colors: [(255, 240, 180), (255, 160, 50), (200, 60, 20)], speed: 18, spread: 0.6, gravity: -40, drag: 2, glow: true))),
+            aura: (light: (255, 140, 50), strength: 0.8, sparks: (count: 14, life: (0.3, 0.7), colors: [(255, 240, 180), (255, 160, 50), (200, 60, 20)], speed: 27, spread: 0.6, gravity: -60, drag: 2, glow: true))),
         (id: "storm_staff",    name: "Storm staff",    color: (200, 220, 255), use: Focus(tier: 2, element: Storm, spells: ["lightning", "call_lightning"]),
             gear: (slot: Held, stats: { StormPower: 50, SpellPower: 10, Mana: 20 }),
-            aura: (light: (190, 200, 255), sparks: (count: 12, life: (0.05, 0.15), colors: [(255, 255, 255), (160, 180, 255)], speed: 30, jitter: 120, glow: true))),
+            aura: (light: (190, 200, 255), sparks: (count: 12, life: (0.05, 0.15), colors: [(255, 255, 255), (160, 180, 255)], speed: 45, jitter: 180, glow: true))),
         (id: "gravity_staff",  name: "Gravity staff",  color: (150, 110, 255), use: Focus(tier: 2, element: Gravity, spells: ["great_well", "force"]),
             gear: (slot: Held, stats: { GravityPower: 50, SpellPower: 10, Mana: 20 }),
-            aura: (light: (160, 120, 255), sparks: (count: 10, life: (0.4, 0.8), colors: [(220, 200, 255), (120, 80, 230), (40, 20, 90)], speed: 14, drag: 1, glow: true))),
+            aura: (light: (160, 120, 255), sparks: (count: 10, life: (0.4, 0.8), colors: [(220, 200, 255), (120, 80, 230), (40, 20, 90)], speed: 21, drag: 1, glow: true))),
         (id: "force_staff",    name: "Force staff",    color: (140, 200, 255), use: Focus(tier: 2, element: Force, spells: ["great_force", "force"]),
             gear: (slot: Held, stats: { ForcePower: 50, SpellPower: 10, Mana: 20 }),
-            aura: (light: (150, 210, 255), sparks: (count: 8, life: (0.1, 0.3), colors: [(240, 250, 255), (140, 195, 255)], speed: 22, drag: 4, glow: true))),
+            aura: (light: (150, 210, 255), sparks: (count: 8, life: (0.1, 0.3), colors: [(240, 250, 255), (140, 195, 255)], speed: 33, drag: 4, glow: true))),
         (id: "radiant_wand",   name: "Radiant wand",   color: (255, 236, 160), use: Focus(tier: 1, element: Radiant, spells: ["spark_bolt"]),
             gear: (slot: Held, stats: { RadiantPower: 40, CastSpeed: 5 }),
-            aura: (light: (255, 240, 190), strength: 0.7, sparks: (count: 10, life: (0.3, 0.8), colors: [(255, 255, 255), (255, 235, 150), (255, 190, 80)], speed: 8, drag: 2, glow: true))),
+            aura: (light: (255, 240, 190), strength: 0.7, sparks: (count: 10, life: (0.3, 0.8), colors: [(255, 255, 255), (255, 235, 150), (255, 190, 80)], speed: 12, drag: 2, glow: true))),
         (id: "radiant_staff",  name: "Radiant staff",  color: (255, 236, 160), use: Focus(tier: 2, element: Radiant, spells: ["vaporiser", "star_bomb"]),
             gear: (slot: Held, stats: { RadiantPower: 50, SpellPower: 10, Mana: 20 }),
-            aura: (light: (255, 240, 190), strength: 0.8, sparks: (count: 12, life: (0.3, 0.8), colors: [(255, 255, 255), (255, 235, 150), (255, 190, 80)], speed: 8, drag: 2, glow: true))),
+            aura: (light: (255, 240, 190), strength: 0.8, sparks: (count: 12, life: (0.3, 0.8), colors: [(255, 255, 255), (255, 235, 150), (255, 190, 80)], speed: 12, drag: 2, glow: true))),
         (id: "frost_staff",    name: "Frost staff",    color: (170, 220, 255), use: Focus(tier: 2, element: Frost, spells: ["frost_ray", "ice_wall"]),
             gear: (slot: Held, stats: { FrostPower: 50, SpellPower: 10, Mana: 20 }),
-            aura: (light: (140, 200, 255), sparks: (count: 10, life: (0.5, 1.0), colors: [(240, 250, 255), (170, 215, 255)], speed: 6, gravity: 20, drag: 3, glow: true))),
+            aura: (light: (140, 200, 255), sparks: (count: 10, life: (0.5, 1.0), colors: [(240, 250, 255), (170, 215, 255)], speed: 9, gravity: 30, drag: 3, glow: true))),
         (id: "blaze_staff",    name: "Blaze staff",    color: (255, 110, 40), use: Focus(tier: 2, element: Fire, spells: ["fire_ray", "fire_wall"]),
             gear: (slot: Held, stats: { FirePower: 50, SpellPower: 10, Mana: 20 }),
-            aura: (light: (255, 140, 50), strength: 0.8, sparks: (count: 16, life: (0.3, 0.7), colors: [(255, 240, 180), (255, 160, 50), (200, 60, 20)], speed: 18, spread: 0.6, gravity: -40, drag: 2, glow: true))),
+            aura: (light: (255, 140, 50), strength: 0.8, sparks: (count: 16, life: (0.3, 0.7), colors: [(255, 240, 180), (255, 160, 50), (200, 60, 20)], speed: 27, spread: 0.6, gravity: -60, drag: 2, glow: true))),
         (id: "acid_staff",     name: "Acid staff",     color: (120, 230, 60), use: Focus(tier: 2, element: Acid, spells: ["toxic_cloud", "acid_arrow"]),
             gear: (slot: Held, stats: { AcidPower: 50, SpellPower: 10, Mana: 20 }),
-            aura: (light: (130, 240, 70), strength: 0.6, sparks: (count: 6, life: (0.4, 0.9), colors: [(200, 255, 120), (140, 110, 160), (90, 200, 40)], speed: 3, spread: 0.4, gravity: 120, glow: true))),
+            aura: (light: (130, 240, 70), strength: 0.6, sparks: (count: 6, life: (0.4, 0.9), colors: [(200, 255, 120), (140, 110, 160), (90, 200, 40)], speed: 5, spread: 0.4, gravity: 180, glow: true))),
         (id: "void_wand",      name: "Void wand",      color: (150, 110, 240), use: Focus(tier: 1, element: Void, spells: ["blink_bolt"]),
             gear: (slot: Held, stats: { VoidPower: 40, CastSpeed: 5 }),
-            aura: (light: (160, 120, 255), strength: 0.5, sparks: (count: 8, life: (0.3, 0.8), colors: [(230, 210, 255), (140, 90, 240), (40, 20, 90)], speed: 6, drag: 2, glow: true))),
+            aura: (light: (160, 120, 255), strength: 0.5, sparks: (count: 8, life: (0.3, 0.8), colors: [(230, 210, 255), (140, 90, 240), (40, 20, 90)], speed: 9, drag: 2, glow: true))),
         (id: "void_staff",     name: "Void staff",     color: (150, 110, 240), use: Focus(tier: 2, element: Void, spells: ["portal", "stasis"]),
             gear: (slot: Held, stats: { VoidPower: 50, SpellPower: 10, Mana: 20 }),
-            aura: (light: (160, 120, 255), strength: 0.6, sparks: (count: 10, life: (0.3, 0.9), colors: [(230, 210, 255), (140, 90, 240), (40, 20, 90)], speed: 6, drag: 2, glow: true))),
+            aura: (light: (160, 120, 255), strength: 0.6, sparks: (count: 10, life: (0.3, 0.9), colors: [(230, 210, 255), (140, 90, 240), (40, 20, 90)], speed: 9, drag: 2, glow: true))),
         (id: "shortsword",     name: "Shortsword",     color: (200, 206, 216), use: Melee("shortsword"), gear: (slot: Held),
             about: "Quick: slash, backslash, thrust. Strike down in the air to bounce off what you hit."),
         (id: "longsword",      name: "Longsword",      color: (180, 188, 204), use: Melee("longsword"), gear: (slot: Held),
@@ -145,13 +145,13 @@
             about: "Set it down; wands and staffs are made here."),
         // Vessels (casting, carrying): RMB fills (scoops at the cursor; at a
         // furnace, melts bars and ore from the pack into it), LMB pours.
-        (id: "ladle",          name: "Ladle",          color: (120, 110, 110), use: Vessel(holds: 64, hot: true),
+        (id: "ladle",          name: "Ladle",          color: (120, 110, 110), use: Vessel(holds: 144, hot: true),
             about: "A crucible on a handle: carries molten metal from a furnace to your mould."),
-        (id: "bucket",         name: "Bucket",         color: (150, 150, 160), use: Vessel(holds: 64),
+        (id: "bucket",         name: "Bucket",         color: (150, 150, 160), use: Vessel(holds: 144),
             about: "Carries water, oil or the like."),
-        (id: "flask",          name: "Flask",          color: (170, 220, 200), use: Vessel(holds: 16, acidproof: true),
+        (id: "flask",          name: "Flask",          color: (170, 220, 200), use: Vessel(holds: 36, acidproof: true),
             about: "Glass: carries a little of anything cool, acid too."),
-        // A bar is its metal's block (materials.ron `item`): 16 cells of it.
+        // A bar is its metal's block (materials.ron `item`): 36 cells of it.
         (id: "copper_bar",     name: "Copper bar",     stack: 99, color: (205, 127, 50)),
         (id: "iron_bar",       name: "Iron bar",       stack: 99, color: (176, 178, 190)),
         (id: "silver_bar",     name: "Silver bar",     stack: 99, color: (214, 218, 230)),

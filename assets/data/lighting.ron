@@ -3,13 +3,14 @@
     // Light everywhere at least this bright: 0 is Noita-dark (unlit caves are
     // black), ~0.12 is Terraria-ish.
     ambient: 0.0,
-    // Light kept per cell of clear air: higher reaches further.
-    air_falloff: 0.955,
+    // Light kept per cell of clear air: higher reaches further. (Per cell:
+    // at 1.5× the cells, 0.955^(1/1.5), the same reach on screen.)
+    air_falloff: 0.970,
     // Spreading passes; 2 lets light turn corners.
     iterations: 2,
     // Light kept per cell going into rock from a lit face: how deep a lit
     // wall shows (it never passes through walls).
-    rim: 0.9,
+    rim: 0.932,
     // Haze added around glowing things (fire, lava, acid) in the dark.
     glow_haze: 0.3,
 
@@ -24,8 +25,8 @@
     // small flashlight, the big one (a cone toward the cursor, `angle`
     // degrees wide, `range` cells) and a torch in the off hand.
     lantern: (color: (255, 196, 130), strength: 0.08),
-    flashlight: (color: (230, 238, 255), strength: 1.8, range: 240, angle: 46),
-    flashlight_small: (color: (240, 236, 220), strength: 1.1, range: 130, angle: 30),
+    flashlight: (color: (230, 238, 255), strength: 1.8, range: 360, angle: 46),
+    flashlight_small: (color: (240, 236, 220), strength: 1.1, range: 195, angle: 30),
     // A torch (held, planted with G or the torch item): its light, and its
     // fire, a look only (counts are a second's worth; see runes.ron for the
     // fields): flames rising and shrinking from white to red, a wisp of
@@ -36,9 +37,9 @@
     // cast and glare.
     torch: (color: (255, 208, 152), strength: 2.4, haze: 0.15),
     fire: (
-        flame: (count: 110, life: (0.14, 0.4), colors: [(255, 252, 230), (255, 222, 120), (255, 150, 50), (225, 80, 25), (140, 40, 20)], speed: 20, spread: 0.22, gravity: -60, drag: 3, glow: true),
-        smoke: (count: 5, life: (0.8, 1.6), colors: [(70, 64, 60), (54, 50, 48), (40, 38, 38)], speed: 10, spread: 0.3, gravity: -8, drag: 1.2, size: 1.5),
-        embers: (count: 1.5, life: (0.5, 1.1), colors: [(255, 236, 170), (255, 150, 60), (190, 70, 25)], speed: 34, spread: 0.5, gravity: -25, drag: 1.5, jitter: 25),
+        flame: (count: 110, life: (0.14, 0.4), colors: [(255, 252, 230), (255, 222, 120), (255, 150, 50), (225, 80, 25), (140, 40, 20)], speed: 30, spread: 0.22, gravity: -90, drag: 3, glow: true),
+        smoke: (count: 5, life: (0.8, 1.6), colors: [(70, 64, 60), (54, 50, 48), (40, 38, 38)], speed: 15, spread: 0.3, gravity: -12, drag: 1.2, size: 1.5),
+        embers: (count: 1.5, life: (0.5, 1.1), colors: [(255, 236, 170), (255, 150, 60), (190, 70, 25)], speed: 51, spread: 0.5, gravity: -38, drag: 1.5, jitter: 38),
     ),
     glowstick: (strength: 2.2, secs: 90, haze: 0.4),
 )

@@ -30,23 +30,23 @@ use crate::world::{ChunkLoader, SimWorld, TICK_HZ};
 
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// Half a portal's length along the surface (cells).
-const MOUTH: f32 = 9.0;
+const MOUTH: f32 = 14.0;
 /// Seconds a portal stays open.
 const PORTAL_LIFE: f32 = 60.0;
 /// Seconds before something that went through can go through again.
 const COOLDOWN: f32 = 0.25;
 /// Cells of liquid or sand a portal takes in a tick, at most.
-const POUR: usize = 28;
+const POUR: usize = 63;
 /// How fast what pours out leaves (cells a tick).
-const POUR_SPEED: f32 = 1.6;
+const POUR_SPEED: f32 = 2.4;
 /// How far back from where a blink lands it looks for room (cells).
-const BLINK_BACK: i32 = 40;
+const BLINK_BACK: i32 = 60;
 /// Portal colours: the first of a pair, the second.
 const COLORS: [(u8, u8, u8); 2] = [(90, 170, 255), (255, 150, 50)];
 /// Above the light overlay (as beams are).
 const Z_VOID: f32 = 15.7;
 /// How far a portal's oval stands out of its surface (cells).
-const DEPTH: i32 = 6;
+const DEPTH: i32 = 9;
 
 /// What void spells did this tick (from `fly`), carried out after it.
 pub enum Act {
@@ -129,7 +129,7 @@ pub fn act(
                 // Back along the way it came until there's room (standing up
                 // off what it landed on, if need be).
                 let back = dir.normalize_or(Vec2::X);
-                let lift = (half.y * 2.0 + 2.0) as i32;
+                let lift = (half.y * 2.0 + 3.0) as i32;
                 let Some(to) = (0..BLINK_BACK).flat_map(|i| (0..=lift).map(move |l| at - back * (half.max_element() * 0.5 + i as f32) + Vec2::Y * l as f32)).find(|&p| fits(&grid, p, half)) else { continue };
                 sparks.emit(&BLINK, BLINK.count as usize, k.body.pos, Vec2::Y, Vec2::ZERO);
                 sparks.emit(&BLINK, BLINK.count as usize, to, Vec2::Y, Vec2::ZERO);
@@ -150,7 +150,7 @@ pub fn act(
                         Name::new("Portal"),
                         Portal { owner: caster, at: at + normal * 0.5, normal, which, left: PORTAL_LIFE },
                         LightSource { color: [r as f32 / 255.0 * 1.6, g as f32 / 255.0 * 1.6, b as f32 / 255.0 * 1.6], flicker: 0.1 },
-                        Transform::from_translation((at + normal * 3.0).extend(0.0)),
+                        Transform::from_translation((at + normal * 4.5).extend(0.0)),
                     ))
                     .id();
                 open[which] = Some(e);
@@ -230,11 +230,11 @@ pub fn through(
                 let (along, out) = a.local(k.body.pos);
                 let half = k.body.half;
                 let depth = (half.x * a.normal.x).abs() + (half.y * a.normal.y).abs();
-                if along.abs() > MOUTH || out > depth + 2.5 || out < -2.0 || k.body.vel.dot(a.normal) >= 0.0 {
+                if along.abs() > MOUTH || out > depth + 3.75 || out < -3.0 || k.body.vel.dot(a.normal) >= 0.0 {
                     continue;
                 }
-                let clearance = (half.x * b.normal.x).abs() + (half.y * b.normal.y).abs() + 1.5;
-                let (pos, vel) = carry(a, b, along.clamp(-MOUTH + 2.0, MOUTH - 2.0), k.body.vel, clearance);
+                let clearance = (half.x * b.normal.x).abs() + (half.y * b.normal.y).abs() + 2.25;
+                let (pos, vel) = carry(a, b, along.clamp(-MOUTH + 3.0, MOUTH - 3.0), k.body.vel, clearance);
                 if fits(&grid, pos, half) {
                     moves.push((e, pos, vel));
                 }
@@ -257,10 +257,10 @@ pub fn through(
         for (_, a) in &portals {
             let Some(b) = twin(pairs, &portals, a) else { continue };
             let (along, out) = a.local(s.pos);
-            if along.abs() > MOUTH || !(-1.0..3.0).contains(&out) || s.vel.dot(a.normal) >= 0.0 {
+            if along.abs() > MOUTH || !(-1.5..4.5).contains(&out) || s.vel.dot(a.normal) >= 0.0 {
                 continue;
             }
-            let (pos, vel) = carry(a, b, along, s.vel, 2.5);
+            let (pos, vel) = carry(a, b, along, s.vel, 3.75);
             s.pos = pos;
             s.prev = pos;
             s.vel = vel;
@@ -276,7 +276,7 @@ pub fn through(
         let mut rng = Rng::seeded(&[world.tick(), pe.to_bits(), 0x9087]);
         let mut poured = 0;
         'mouth: for i in -(MOUTH as i32)..=(MOUTH as i32) {
-            for o in [0.5f32, 1.5, 2.5] {
+            for o in [0.75f32, 2.25, 3.75] {
                 let p = a.at + a.tangent() * i as f32 + a.normal * o;
                 let q = CellPos::from_world(p.x, p.y);
                 let Some(c) = world.get(q) else { continue };
@@ -285,7 +285,7 @@ pub fn through(
                 }
                 let Some(c) = world.pluck(q) else { continue };
                 let jiggle = (rng.next_u32() as f32 / u32::MAX as f32 - 0.5) * 0.4;
-                let at = b.at - b.tangent() * i as f32 + b.normal * 1.5;
+                let at = b.at - b.tangent() * i as f32 + b.normal * 2.25;
                 let v = b.normal * POUR_SPEED + b.tangent() * jiggle;
                 world.emit(Particle::new([at.x, at.y], [v.x, v.y], c, 120, platypus_sim::Landing::Settle));
                 poured += 1;
@@ -432,7 +432,7 @@ pub fn draw(
     // What's held glints.
     for tf in &held {
         let c = tf.translation.truncate().floor().as_ivec2();
-        px.put(c.x, c.y + 9, [200, 180, 255, 200]);
+        px.put(c.x, c.y + 14, [200, 180, 255, 200]);
     }
 }
 
@@ -441,7 +441,7 @@ static BLINK: std::sync::LazyLock<super::runes::Emitter> = std::sync::LazyLock::
     count: 30.0,
     life: (0.2, 0.6),
     colors: vec![(240, 220, 255), (170, 120, 255), (80, 40, 160)],
-    speed: 70.0,
+    speed: 105.0,
     spread: std::f32::consts::PI,
     gravity: 0.0,
     drag: 3.0,

@@ -2,31 +2,39 @@
 // warnings. Left in the caves by miners. It goes off when it's hit or
 // catches fire (`creatures/tnt_barrel.ron`).
 (
-    size: (10, 12),
-    feet: (5, 12),
+    size: (15, 18),
+    feet: (8, 18),
     outline: (46, 20, 18),
     palette: {
         'r': (178, 44, 34),   // staves
         'R': (136, 30, 24),   // staves, shade
+        'l': (214, 74, 56),   // staves, lit
         'h': (64, 54, 50),   // hoops
         'H': (96, 86, 80),   // hoops, lit
         'y': (230, 194, 86),   // band
+        'Y': (186, 150, 62),   // band, shade
         'k': (52, 30, 24),   // stamp
     },
     frames: {
         "stand": [
-            "..hHhHhh..",
-            ".hrrrrRrh.",
-            ".rrRrrrRr.",
-            ".hHhHhHhh.",
-            ".rrrRrrrr.",
-            ".yyyyyyyy.",
-            ".ykyykyky.",
-            ".yyyyyyyy.",
-            ".rrrrRrrr.",
-            ".hHhHhHhh.",
-            ".rrRrrrRr.",
-            "..hhhhhh..",
+            "...hhhhHHHHh...",
+            "..hhhhhhHHHHh..",
+            "..rrRrrrRrlRl..",
+            ".RrrRrrrRrlRlr.",
+            ".hhhhhhhHHHHHh.",
+            ".RrrRrrrRrlRlr.",
+            ".Yyyyyyyyyyyyy.",
+            ".Ykkkykkkykkky.",
+            ".Yykyykykyykyy.",
+            ".Yykyykykyykyy.",
+            ".Yyyyyyyyyyyyy.",
+            ".RrrRrrrRrlRlr.",
+            ".hhhhhhhHHHHHh.",
+            ".RrrRrrrRrlRlr.",
+            "..rrRrrrRrlRl..",
+            "..rrRrrrRrlRl..",
+            "..hhhhhhHHHHh..",
+            "...hhhhhhhhh...",
         ],
     },
     clips: {

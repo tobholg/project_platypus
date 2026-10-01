@@ -7,7 +7,7 @@
 
 use noise::{Fbm, MultiFractal, NoiseFn, Perlin};
 use platypus_sim::rng::{Rng, hash};
-use platypus_sim::{CHUNK, CHUNK_AREA, Cell, CellPos, Chunk, ChunkPos, Climate, MaterialId, MaterialTable};
+use platypus_sim::{BLOCK, CHUNK, CHUNK_AREA, Cell, CellPos, Chunk, ChunkPos, Climate, MaterialId, MaterialTable};
 
 pub mod arena;
 pub mod biome;
@@ -186,11 +186,11 @@ pub const SNAG_UNTIL: f32 = 0.3;
 /// Boulder traps (`TerrainGen::trap_at`): a spot of this grid (cells)
 /// each, a few in `TRAP_CHANCE`/256 of them; the boulder's radius, the room
 /// under it (the tunnel's height at least) and the stretch it's in.
-const TRAP_GRID: i32 = 40;
+const TRAP_GRID: i32 = 60;
 const TRAP_CHANCE: u32 = 60;
-const TRAP_R: i32 = 4;
-const TRAP_UNDER: i32 = 19;
-const TRAP_WIDE: i32 = 28;
+const TRAP_R: i32 = 6;
+const TRAP_UNDER: i32 = 29;
+const TRAP_WIDE: i32 = 42;
 
 /// A boulder trap: its middle, the floor's first open row, the boulder's
 /// middle (in its niche over the ceiling); sprung by a plate (or a wire).
@@ -203,11 +203,11 @@ struct Trap {
 
 /// A chest's size in cells (the game draws it this size; the world makes
 /// room for it).
-pub const CHEST_SIZE: (i32, i32) = (12, 10);
+pub const CHEST_SIZE: (i32, i32) = (18, 15);
 
 /// How far mountain ground wanders from the planned surface (overhangs,
 /// arches, ledges), at full ruggedness.
-const OVERHANG: f64 = 34.0;
+const OVERHANG: f64 = 51.0;
 
 struct Ids {
     air: MaterialId,
@@ -398,10 +398,10 @@ impl TerrainGen {
                 .collect(),
             leaf_edge: Perlin::new(s(7)),
             meadow: Perlin::new(s(8)),
-            overhang: Fbm::<Perlin>::new(s(9)).set_octaves(3).set_frequency(1.0 / 60.0),
-            caverns: Fbm::<Perlin>::new(s(15)).set_octaves(3).set_frequency(1.0 / 600.0),
+            overhang: Fbm::<Perlin>::new(s(9)).set_octaves(3).set_frequency(1.0 / 90.0),
+            caverns: Fbm::<Perlin>::new(s(15)).set_octaves(3).set_frequency(1.0 / 900.0),
             drips: Perlin::new(s(16)),
-            vault: Fbm::<Perlin>::new(s(17)).set_octaves(3).set_frequency(1.0 / 400.0),
+            vault: Fbm::<Perlin>::new(s(17)).set_octaves(3).set_frequency(1.0 / 600.0),
             pockets: Perlin::new(s(5)),
             strata: Perlin::new(s(6)),
             heat: mats.iter().map(|(id, _)| mats.phys(id).heat).collect(),
@@ -420,7 +420,7 @@ impl TerrainGen {
     }
 
     /// Lairs dress their chambers: the lining on the walls (where rock is
-    /// within two cells), threads of it from the roof.
+    /// within three cells), threads of it from the roof.
     fn dress_lairs(&self, pos: ChunkPos, cells: &mut [Cell]) {
         let o = pos.origin();
         for &ci in self.plan.caves.chambers_in(pos.x, pos.y) {
@@ -437,14 +437,14 @@ impl TerrainGen {
                         continue;
                     }
                     let h = hash(&[self.plan.seed, 0x3EB, x as u64, y as u64]);
-                    let wall = (-2..=2).any(|oy| (-2..=2).any(|ox| solid(cells, lx + ox, ly + oy)));
-                    let clumps = hash(&[self.plan.seed, 0x3EC, (x >> 2) as u64, (y >> 2) as u64]) % 1000;
+                    let wall = (-3..=3).any(|oy| (-3..=3).any(|ox| solid(cells, lx + ox, ly + oy)));
+                    let clumps = hash(&[self.plan.seed, 0x3EC, x.div_euclid(6) as u64, y.div_euclid(6) as u64]) % 1000;
                     if wall && (clumps as f32) < lair.density * 1000.0 && !h.is_multiple_of(3) {
                         lining.push((lx, ly));
                     }
                     // A thread from the roof.
-                    if solid(cells, lx, ly + 1) && h.is_multiple_of(11) {
-                        let long = 3 + (h >> 8) as i32 % 12;
+                    if solid(cells, lx, ly + 1) && h.is_multiple_of(17) {
+                        let long = 5 + (h >> 8) as i32 % 18;
                         for d in 0..long {
                             if !at(lx, ly - d) || !cells[((ly - d) * CHUNK + lx) as usize].is_air() {
                                 break;
@@ -472,7 +472,7 @@ impl TerrainGen {
                 continue;
             }
             let keepers = &self.lairs[*k as usize].keepers;
-            let gap = (c.rx * 1.2 / keepers.len().max(1) as f32).min(10.0);
+            let gap = (c.rx * 1.2 / keepers.len().max(1) as f32).min(15.0);
             for (n, kind) in keepers.iter().enumerate() {
                 let dx = (n as f32 - (keepers.len() as f32 - 1.0) / 2.0) * gap;
                 out.push((CellPos::new(mid.x + dx as i32, mid.y), Spawn::Keeper(kind)));
@@ -617,7 +617,7 @@ impl TerrainGen {
                     }
                 }
             }
-            if all >= 12 && standing * 10 < all * 6 {
+            if all >= 27 && standing * 10 < all * 6 {
                 out.hurt_trees.push(t.x);
             }
         }
@@ -651,7 +651,7 @@ impl TerrainGen {
             dead.iter().find_map(|(t, top)| {
                 let mid = t.x as f32 + t.lean * ((y - t.base) as f32 / t.height.max(1) as f32).max(0.0);
                 match t.part_at(x, y, &self.leaf_edge) {
-                    Some(TreePart::Wood(shade)) if y < *top && (x as f32 - mid).abs() <= t.girth + 1.5 => Some(shade / 2),
+                    Some(TreePart::Wood(shade)) if y < *top && (x as f32 - mid).abs() <= t.girth + 2.25 => Some(shade / 2),
                     _ => None,
                 }
             })
@@ -752,7 +752,7 @@ impl TerrainGen {
             return (i.stone, None);
         }
         let depth = self.surface_at(x) - y;
-        if depth > 16
+        if depth > 24
             && let Some((m, foot)) = self.plan.caves.mushroom_at(x, y)
             && self.rooted(foot)
         {
@@ -763,7 +763,7 @@ impl TerrainGen {
                 caves::Shroom::Glow => (i.mushroom_glow, None),
             };
         }
-        let wall = if depth > 16 { self.rock(x, y, self.plan.band_at(y)) } else if depth > 6 { i.dirt } else { i.air };
+        let wall = if depth > 24 { self.rock(x, y, self.plan.band_at(y)) } else if depth > 9 { i.dirt } else { i.air };
         (wall, None)
     }
 
@@ -771,7 +771,7 @@ impl TerrainGen {
     fn grass_at(&self, x: i32, y: i32) -> bool {
         let surface = self.surface_at(x);
         let above = y - surface; // 0 = first cell above the grass
-        if !(0..=12).contains(&above) {
+        if !(0..=18).contains(&above) {
             return false;
         }
         let ground = self.material_at(x, surface - 1);
@@ -779,16 +779,16 @@ impl TerrainGen {
             return false;
         }
         // Meadows with bare patches between them (natural firebreaks).
-        let m = self.meadow.get([x as f64 / 70.0, 3.3]);
+        let m = self.meadow.get([x as f64 / 105.0, 3.3]);
         let blade = (hash(&[self.plan.seed, 0x6A55, x as u64]) % 100) as f64 / 100.0;
-        let height = ((m + 0.2) * 13.0 * (0.45 + 0.55 * blade)) as i32;
+        let height = ((m + 0.2) * 19.5 * (0.45 + 0.55 * blade)) as i32;
         above < height
     }
 
     fn material_at(&self, x: i32, y: i32) -> MaterialId {
         let i = &self.ids;
         let plan = &*self.plan;
-        if y < 6 + (hash(&[plan.seed, 77, x as u64]) % 4) as i32 {
+        if y < 9 + (hash(&[plan.seed, 77, x as u64]) % 6) as i32 {
             return i.bedrock;
         }
         if let Some((g, kind)) = plan.structures.glyph_at(x, y) {
@@ -800,7 +800,7 @@ impl TerrainGen {
         // planned surface a little way off, so they get overhangs and ledges
         // while crests and gentle slopes (where trees stand) stay put.
         let rugged = plan.rugged_at(x) as f64;
-        let slope = (plan.surface_at(x + 4) - plan.surface_at(x - 4)).abs() as f64 / 8.0;
+        let slope = (plan.surface_at(x + 6) - plan.surface_at(x - 6)).abs() as f64 / 12.0;
         let wander = OVERHANG * rugged * ((slope - 0.8) / 0.8).clamp(0.0, 1.0);
         let ground = if wander > 0.5 { plan.surface_at(x + (self.overhang.get([xf, yf * 1.3]) * wander) as i32) } else { surface };
         let depth = ground - y;
@@ -837,18 +837,18 @@ impl TerrainGen {
         let under_water = plan.water_at(x).is_some();
 
         let biome = plan.biome_at(x);
-        let soil = 8 + (self.strata.get([xf / 40.0, 0.5]) * 5.0) as i32;
+        let soil = 12 + (self.strata.get([xf / 60.0, 0.5]) * 7.5) as i32;
         if under_water {
             // Lake and sea beds: sand over the usual ground.
-            if depth <= 5 + soil / 2 {
+            if depth <= 8 + soil / 2 {
                 return i.sand;
             }
         } else if matches!(biome, Biome::Ocean | Biome::Desert) && slope < 1.2 {
-            let sand = if biome == Biome::Desert { 30 + (self.strata.get([xf / 90.0, 2.5]) * 14.0) as i32 } else { 12 };
+            let sand = if biome == Biome::Desert { 45 + (self.strata.get([xf / 135.0, 2.5]) * 21.0) as i32 } else { 18 };
             if depth <= sand {
                 return i.sand;
             }
-            if biome == Biome::Desert && depth <= sand + 60 {
+            if biome == Biome::Desert && depth <= sand + 90 {
                 return i.sandstone;
             }
         } else {
@@ -859,8 +859,9 @@ impl TerrainGen {
             let t = plan.climate.ambient(x, surface);
             if cold && slope < if t <= -15 { 5.0 } else if t <= -8 { 3.0 } else { 1.6 } {
                 // As thick across a steep face as on the flat (depth here is
-                // measured straight down).
-                if depth as f64 <= ((2 - t).min(24) as f64) * (1.0 + slope) {
+                // measured straight down): a cell and a half a degree of
+                // frost, 36 at most.
+                if depth as f64 <= ((2 - t) as f64 * 1.5).min(36.0) * (1.0 + slope) {
                     return i.snow;
                 }
             }
@@ -872,21 +873,21 @@ impl TerrainGen {
             if depth <= soil {
                 return i.dirt;
             }
-            if rugged > 0.3 && depth <= 3 && self.pockets.get([xf / 12.0, yf / 12.0, 5.5]) > 0.3 {
+            if rugged > 0.3 && depth <= 5 && self.pockets.get([xf / 18.0, yf / 18.0, 5.5]) > 0.3 {
                 return i.gravel;
             }
         }
         // Sealed gas bubbles deep in the rock: bomb or dig into one with fire nearby.
-        if depth > 90 && self.pockets.get([xf / 34.0, yf / 22.0, 23.3]) > 0.66 {
+        if depth > 135 && self.pockets.get([xf / 51.0, yf / 33.0, 23.3]) > 0.66 {
             return i.methane;
         }
         let shallow = matches!(band, Band::Sky | Band::Peaks | Band::Surface | Band::Underground);
         // Pockets inside rock: sand and gravel up high, rarer below.
-        let p = self.pockets.get([xf / 45.0, yf / 45.0, 7.1]);
-        if p > if shallow { 0.55 } else { 0.7 } && depth > 12 {
+        let p = self.pockets.get([xf / 67.5, yf / 67.5, 7.1]);
+        if p > if shallow { 0.55 } else { 0.7 } && depth > 18 {
             return i.sand;
         }
-        if p < if shallow { -0.6 } else { -0.7 } && depth > 12 {
+        if p < if shallow { -0.6 } else { -0.7 } && depth > 18 {
             return i.gravel;
         }
         if let Some(m) = self.mineral(x, y, band) {
@@ -895,7 +896,7 @@ impl TerrainGen {
         self.rock(x, y, band)
     }
 
-    /// A dry cave floor with room to stand (8 × 20 cells), searching out from
+    /// A dry cave floor with room to stand (12 × 30 cells), searching out from
     /// `x` and down from `y`.
     fn cave_floor_near(&self, x: i32, y: i32) -> Option<CellPos> {
         let air = |x: i32, y: i32| self.material_at(x, y) == self.ids.air;
@@ -903,22 +904,23 @@ impl TerrainGen {
             let m = self.material_at(x, y);
             m != self.ids.air && m != self.ids.water && m != self.ids.lava && m != self.ids.oil && m != self.ids.acid
         };
-        (0..3_000).step_by(8).flat_map(|d| [x + d, x - d]).find_map(|x| {
-            (y - 800..=y).rev().find(|&y| solid(x, y - 1) && (0..20).all(|dy| air(x, y + dy) && air(x + 7, y + dy)) && solid(x + 7, y - 1)).map(|y| CellPos::new(x + 4, y + 2))
+        (0..4_500).step_by(12).flat_map(|d| [x + d, x - d]).find_map(|x| {
+            (y - 1_200..=y).rev().find(|&y| solid(x, y - 1) && (0..30).all(|dy| air(x, y + dy) && air(x + 11, y + dy)) && solid(x + 11, y - 1)).map(|y| CellPos::new(x + 6, y + 3))
         })
     }
 
-    /// What a structure's glyph makes at a cell. Candles and spikes are
-    /// shapes inside their block; chests aren't cells (see
-    /// `structure_spawns`).
+    /// What a structure's glyph makes at a cell. Candles, spikes,
+    /// platforms, moss and cobwebs are shapes inside their block (drawn for
+    /// a 6-cell block); chests aren't cells (see `structure_spawns`).
     fn built(&self, g: Glyph, kind: StructureKind, x: i32, y: i32) -> MaterialId {
+        const _: () = assert!(BLOCK == 6, "the shapes inside a block below are drawn for 6 × 6 cells: redraw them");
         let i = &self.ids;
-        let (bx, by) = (x & 3, y & 3);
+        let (bx, by) = (x.rem_euclid(BLOCK), y.rem_euclid(BLOCK));
         let (wall, weak, illusory) = i.style(kind);
         let s = &self.plan.structures;
-        let glyph = |dx: i32, dy: i32| s.glyph_at(x + dx * 4, y + dy * 4).map(|(g, _)| g);
+        let glyph = |dx: i32, dy: i32| s.glyph_at(x + dx * BLOCK, y + dy * BLOCK).map(|(g, _)| g);
         // Age, from the place alone: a block's roll, and a cell's.
-        let block = hash(&[self.plan.seed, 0xA6E, (x >> 2) as u64, (y >> 2) as u64]);
+        let block = hash(&[self.plan.seed, 0xA6E, x.div_euclid(BLOCK) as u64, y.div_euclid(BLOCK) as u64]);
         let cell = hash(&[self.plan.seed, 0xA6F, x as u64, y as u64]);
         let crypt = kind == StructureKind::Crypt;
         match g {
@@ -926,40 +928,55 @@ impl TerrainGen {
             Glyph::Wall if crypt && block % 100 < 4 && glyph(0, -1) == Some(Glyph::Open) && glyph(0, 1) == Some(Glyph::Wall) => i.gravel,
             Glyph::Wall => wall,
             Glyph::Open => {
-                // Moss on a crypt's floors, in patches.
-                if crypt && by == 0 && glyph(0, -1) == Some(Glyph::Wall) && block.is_multiple_of(3) && !cell.is_multiple_of(4) {
+                // Moss on a crypt's floors, in patches: a cell thick, tufts
+                // of two.
+                if crypt && (by == 0 || by == 1 && (cell >> 8).is_multiple_of(3)) && glyph(0, -1) == Some(Glyph::Wall) && block.is_multiple_of(3) && !cell.is_multiple_of(4) {
                     return i.moss;
                 }
                 // Cobwebs in the top corners of rooms: a triangle up to
-                // seven cells from the corner, ragged.
-                let up = if glyph(0, 1) == Some(Glyph::Wall) { 3 - by } else if glyph(0, 2) == Some(Glyph::Wall) && glyph(0, 1) == Some(Glyph::Open) { 7 - by } else { return i.air };
-                let side = [(-1, bx), (1, 3 - bx)].into_iter().filter_map(|(d, near)| {
+                // eleven cells from the corner, ragged.
+                let up = if glyph(0, 1) == Some(Glyph::Wall) {
+                    BLOCK - 1 - by
+                } else if glyph(0, 2) == Some(Glyph::Wall) && glyph(0, 1) == Some(Glyph::Open) {
+                    2 * BLOCK - 1 - by
+                } else {
+                    return i.air;
+                };
+                let side = [(-1, bx), (1, BLOCK - 1 - bx)].into_iter().filter_map(|(d, near)| {
                     if glyph(d, 0) == Some(Glyph::Wall) {
                         Some(near)
                     } else if glyph(d * 2, 0) == Some(Glyph::Wall) && glyph(d, 0) == Some(Glyph::Open) {
-                        Some(near + 4)
+                        Some(near + BLOCK)
                     } else {
                         None
                     }
                 });
-                // (Some corners: by the 8-cell tile.)
+                // (Some corners: by the two-block tile.)
                 // (Not where people live.)
-                let webbed = kind != StructureKind::Village && hash(&[self.plan.seed, 0xA70, (x >> 3) as u64, (y >> 3) as u64]).is_multiple_of(3);
+                let webbed = kind != StructureKind::Village && hash(&[self.plan.seed, 0xA70, x.div_euclid(2 * BLOCK) as u64, y.div_euclid(2 * BLOCK) as u64]).is_multiple_of(3);
                 match side.min() {
-                    Some(d) if up + d < 7 && webbed && !cell.is_multiple_of(5) => i.cobweb,
+                    Some(d) if up + d < 11 && webbed && !cell.is_multiple_of(5) => i.cobweb,
                     _ => i.air,
                 }
             }
             Glyph::Weak => weak,
             Glyph::Illusory => illusory,
             Glyph::Planks => i.planks,
-            Glyph::Platform if by >= 2 => i.platform,
+            // The block's top three cells.
+            Glyph::Platform if by >= BLOCK - 3 => i.platform,
             Glyph::Rubble => i.gravel,
             Glyph::Water => i.water,
             Glyph::Lava => i.lava,
-            Glyph::Candle if bx == 1 && by <= 2 => i.candle,
-            // Two spikes a block, pointing up.
-            Glyph::Spikes if by == 0 || (by == 1 && bx != 3) || (by == 2 && bx == 1) => i.spikes,
+            // A candle in the middle of its block, two cells wide: three of
+            // wax, the flame over them tapering to a point (`generate`
+            // shades the flame).
+            Glyph::Candle if (2..=3).contains(&bx) && (by <= 3 || by == 4 && bx == 2) => i.candle,
+            // A tooth a block, pointing up, with a gap between teeth:
+            //   ..#...
+            //   .###..
+            //   #####.
+            //   ######
+            Glyph::Spikes if by == 0 || (by == 1 && bx <= 4) || (by == 2 && (1..=3).contains(&bx)) || (by == 3 && bx == 2) => i.spikes,
             _ => i.air,
         }
     }
@@ -1040,9 +1057,9 @@ impl TerrainGen {
             return;
         }
         let built = self.plan.structures.pieces_in(pos.x, pos.y).next().is_some();
-        // The chunk as generated, with a margin of two cells from the chunks
-        // around (asked once each).
-        const M: i32 = 2;
+        // The chunk as generated, with a margin of three cells from the
+        // chunks around (asked once each; the widest `near_open` below).
+        const M: i32 = 3;
         const W: i32 = CHUNK + 2 * M;
         let mut before = vec![MaterialId::AIR; (W * W) as usize];
         for y in -M..CHUNK + M {
@@ -1072,20 +1089,20 @@ impl TerrainGen {
                 let h = hash(&[self.plan.seed, 0xD7E5, x as u64, y as u64]);
                 match zone {
                     caves::Zone::Fungal => {
-                        if rock(m) && near_open(lx, ly, 2) {
+                        if rock(m) && near_open(lx, ly, 3) {
                             set(cells, lx, ly, i.fungal_soil, rng.next_u8());
-                        } else if m == i.air && rock(at(lx, ly + 1)) && h.is_multiple_of(7) {
+                        } else if m == i.air && rock(at(lx, ly + 1)) && h.is_multiple_of(11) {
                             // A vine hanging from the ceiling, brighter toward its tip.
-                            let long = 4 + (h >> 8) as i32 % 16;
+                            let long = 6 + (h >> 8) as i32 % 24;
                             for k in 0..long {
                                 if ly - k < 0 || at(lx, ly - k) != i.air {
                                     break;
                                 }
                                 set(cells, lx, ly - k, i.glow_vine, (k * 255 / long).min(255) as u8);
                             }
-                        } else if m == i.air && ly > 0 && rock(at(lx, ly - 1)) && h.is_multiple_of(5) {
-                            // A sprout: a stem or two, a glowing tip.
-                            let tall = 1 + (h >> 8) as i32 % 3;
+                        } else if m == i.air && ly > 0 && rock(at(lx, ly - 1)) && h.is_multiple_of(8) {
+                            // A sprout: a stem of a few cells, a glowing tip.
+                            let tall = 2 + (h >> 8) as i32 % 4;
                             for k in 0..=tall {
                                 if ly + k >= CHUNK || at(lx, ly + k) != i.air {
                                     break;
@@ -1095,8 +1112,8 @@ impl TerrainGen {
                         }
                     }
                     caves::Zone::Crystal => {
-                        // Studs of two by two.
-                        if rock(m) && near_open(lx, ly, 1) && hash(&[self.plan.seed, 0xC7A1, (x >> 1) as u64, (y >> 1) as u64]).is_multiple_of(5) {
+                        // Studs of three by three, two deep.
+                        if rock(m) && near_open(lx, ly, 2) && hash(&[self.plan.seed, 0xC7A1, x.div_euclid(3) as u64, y.div_euclid(3) as u64]).is_multiple_of(5) {
                             set(cells, lx, ly, i.crystal, rng.next_u8());
                         }
                     }
@@ -1105,7 +1122,7 @@ impl TerrainGen {
                         // too: acid eats what isn't, so a pool with one ore in
                         // its lining would eat its way out into the rock.)
                         let touches_acid = || (-1..=1).any(|dy| (-1..=1).any(|dx| at(lx + dx, ly + dy) == i.acid));
-                        if (rock(m) && near_open(lx, ly, 1)) || (!open(m) && m != i.toxic_crust && touches_acid()) {
+                        if (rock(m) && near_open(lx, ly, 2)) || (!open(m) && m != i.toxic_crust && touches_acid()) {
                             set(cells, lx, ly, i.toxic_crust, rng.next_u8());
                         }
                     }
@@ -1126,17 +1143,17 @@ impl TerrainGen {
         for (s, piece) in self.plan.structures.pieces_in(pos.x, pos.y) {
             // The dead keep crypts; castles are orcs'.
             let guard = if s.kind == StructureKind::Crypt { "skeleton" } else { "orc" };
-            // (A chest's glyph is its bottom-left block of four: its feet
-            // are two blocks in.)
-            for (x, y) in piece.blocks_of(Glyph::Chest).map(|(x, y)| (x + 4, y)).filter(inside) {
+            // (A chest's glyph is its bottom-left block of four, two by
+            // two: its feet are a block in, its middle.)
+            for (x, y) in piece.blocks_of(Glyph::Chest).map(|(x, y)| (x + BLOCK, y)).filter(inside) {
                 out.push((CellPos::new(x, y), Spawn::Chest));
             }
-            for (x, y) in piece.blocks_of(Glyph::Spawn).map(|(x, y)| (x + 2, y)).filter(inside) {
+            for (x, y) in piece.blocks_of(Glyph::Spawn).map(|(x, y)| (x + BLOCK / 2, y)).filter(inside) {
                 out.push((CellPos::new(x, y), Spawn::Creature(guard)));
             }
             // A boss is a pack, until there are bosses.
             for (x, y) in piece.blocks_of(Glyph::Boss).filter(inside) {
-                for dx in [-10, 2, 14] {
+                for dx in [-15, 3, 21] {
                     out.push((CellPos::new(x + dx, y), Spawn::Creature(guard)));
                 }
             }
@@ -1186,19 +1203,21 @@ impl TerrainGen {
     fn cave_chest(&self, pos: ChunkPos, cells: &[Cell], rng: &mut Rng) -> Option<CellPos> {
         let (w, h) = CHEST_SIZE;
         let origin = pos.origin();
-        // (Most chunks have no cave with room for one: these are tries.)
+        // (Most chunks have no cave with room for one: these are tries. A
+        // chest is a big share of a chunk (it must fit inside it), so these
+        // are tuned by measuring, for chests per world, not per chunk.)
         let chance = match self.plan.band_at(origin.y + CHUNK / 2) {
-            Band::Underground => 36,
-            Band::Caverns => 54,
-            Band::Deep => 72,
+            Band::Underground => 49,
+            Band::Caverns => 73,
+            Band::Deep => 97,
             _ => return None,
         };
         if !rng.chance(chance) {
             return None;
         }
-        // Every spot (columns 4 apart, any height), from a random start: the
+        // Every spot (columns 6 apart, any height), from a random start: the
         // first cave floor.
-        let spots: Vec<(i32, i32)> = (0..=(CHUNK - w) / 4).flat_map(|i| (1..=CHUNK - h).map(move |ly| (i * 4, ly))).collect();
+        let spots: Vec<(i32, i32)> = (0..=(CHUNK - w) / 6).flat_map(|i| (1..=CHUNK - h).map(move |ly| (i * 6, ly))).collect();
         let start = rng.next_u32() as usize % spots.len();
         let at = |lx: i32, ly: i32| cells[(ly * CHUNK + lx) as usize];
         let (lx, ly) = (0..spots.len()).map(|k| spots[(start + k) % spots.len()]).find(|&(lx, ly)| {
@@ -1231,9 +1250,9 @@ impl TerrainGen {
     }
 
     /// A cave floor `w` wide with `h` of air over it, somewhere in the
-    /// chunk (columns 2 apart, from a random start): its left foot.
+    /// chunk (columns 3 apart, from a random start): its left foot.
     fn floor_spot(&self, cells: &[Cell], w: i32, h: i32, rng: &mut Rng) -> Option<(i32, i32)> {
-        let spots: Vec<(i32, i32)> = (0..=(CHUNK - w) / 2).flat_map(|i| (1..=CHUNK - h).map(move |ly| (i * 2, ly))).collect();
+        let spots: Vec<(i32, i32)> = (0..=(CHUNK - w) / 3).flat_map(|i| (1..=CHUNK - h).map(move |ly| (i * 3, ly))).collect();
         if spots.is_empty() {
             return None;
         }
@@ -1243,7 +1262,7 @@ impl TerrainGen {
 
     /// A boulder trap, if the world has one at this spot of its grid
     /// (`TRAP_GRID`, a few spots in `TRAP_CHANCE`/256, underground): a
-    /// stretch of tunnel floor `TRAP_WIDE` long, `TRAP_UNDER` to 14 more
+    /// stretch of tunnel floor `TRAP_WIDE` long, `TRAP_UNDER` to 23 more
     /// high (room to walk), with rock over it: a round boulder (radius
     /// `TRAP_R`) sits in a niche cut into the ceiling, a cell clear of any
     /// rock all round, held by a rope from rock at the niche's top. Judged on the
@@ -1271,7 +1290,7 @@ impl TerrainGen {
             return None;
         }
         let ly = (1..TRAP_GRID).map(|d| start - d).find(|&y| !open(cx, y))? + 1;
-        let cy = (ly + 1..ly + TRAP_UNDER + 16).find(|&y| !open(cx, y))?;
+        let cy = (ly + 1..ly + TRAP_UNDER + 24).find(|&y| !open(cx, y))?;
         if cy - ly < TRAP_UNDER || !rock(self.material_at(cx, cy)) {
             return None;
         }
@@ -1280,11 +1299,11 @@ impl TerrainGen {
         if floor < TRAP_WIDE * 6 / 10 {
             return None;
         }
-        // Walking room near it (a player's height over bumps of 3), and rock
+        // Walking room near it (a player's height over bumps of 5), and rock
         // for the rope to hang from (the niche is cut round the boulder).
-        let walk = (ly + 3..ly + 17).step_by(2).all(|y| (cx - 9..=cx + 9).step_by(3).all(|x| open(x, y)));
+        let walk = (ly + 5..ly + 26).step_by(3).all(|y| (cx - 14..=cx + 14).step_by(5).all(|x| open(x, y)));
         let by = cy + TRAP_R;
-        let anchor = rock(self.material_at(cx, by + TRAP_R + 2));
+        let anchor = rock(self.material_at(cx, by + TRAP_R + 3));
         (walk && anchor).then_some(Trap { cx, ly, by, plate: (h >> 24) & 1 == 1 })
     }
 
@@ -1295,7 +1314,7 @@ impl TerrainGen {
         let i = &self.ids;
         let reach = TRAP_WIDE / 2 + TRAP_GRID;
         let (gx0, gx1) = ((o.x - reach).div_euclid(TRAP_GRID), (o.x + CHUNK + reach).div_euclid(TRAP_GRID));
-        let (gy0, gy1) = ((o.y - 80).div_euclid(TRAP_GRID), (o.y + CHUNK + TRAP_GRID).div_euclid(TRAP_GRID));
+        let (gy0, gy1) = ((o.y - 120).div_euclid(TRAP_GRID), (o.y + CHUNK + TRAP_GRID).div_euclid(TRAP_GRID));
         for gy in gy0..=gy1 {
             for gx in gx0..=gx1 {
                 let Some(t) = self.trap_at(gx, gy) else { continue };
@@ -1326,11 +1345,11 @@ impl TerrainGen {
                 put(t.cx, t.by + TRAP_R + 1, i.rope, true);
                 put(t.cx, t.by + TRAP_R + 1, i.rope, false);
                 if t.plate {
-                    for x in t.cx - 3..=t.cx + 3 {
+                    for x in t.cx - 5..=t.cx + 5 {
                         put(x, t.ly - 1, i.pressure_plate, true);
                     }
                 } else {
-                    for x in t.cx - 6..=t.cx + 6 {
+                    for x in t.cx - 9..=t.cx + 9 {
                         put(x, t.ly, i.tripwire, false);
                     }
                 }
@@ -1345,62 +1364,67 @@ impl TerrainGen {
     /// dynamite. Blow them up from afar.
     fn mine_camp(&self, pos: ChunkPos, cells: &[Cell], rng: &mut Rng) -> Vec<(CellPos, Spawn)> {
         let origin = pos.origin();
+        // (Tries, as a cave chest's: a camp needs a floor nearly the
+        // chunk's width, and few chunks have one.)
         let (camp, lone) = match self.plan.band_at(origin.y + CHUNK / 2) {
-            Band::Underground => (110, 44),
-            Band::Caverns => (120, 52),
-            Band::Deep => (90, 44),
+            Band::Underground => (188, 54),
+            Band::Caverns => (205, 63),
+            Band::Deep => (154, 54),
             _ => return Vec::new(),
         };
         let feet = |lx: i32, ly: i32| CellPos::new(origin.x + lx, origin.y + ly);
+        // (Footprints: each prop's size (its creature file's) and a little
+        // room round it; the feet in the middle.)
         if rng.chance(camp)
-            && let Some((lx, ly)) = self.floor_spot(cells, 26, 15, rng)
+            && let Some((lx, ly)) = self.floor_spot(cells, 39, 23, rng)
         {
             // The cart; its barrel, dynamite and lantern each on the nearest
             // floor beside it (caves aren't flat), barrel and dynamite on one
             // side, the lantern on the other, whichever way there's room.
-            let mut out = vec![(feet(lx + 13, ly), Spawn::Prop("mine_cart"))];
+            let mut out = vec![(feet(lx + 20, ly), Spawn::Prop("mine_cart"))];
             let side = if rng.chance(128) { 1 } else { -1 };
             let beside = |from: i32, dir: i32, w: i32, h: i32| {
-                (0..24).map(|k| from + dir * k).filter(|&x| x >= 0 && x + w <= CHUNK).find_map(|x| {
-                    (0..=12).flat_map(|d| [ly + d, ly - d]).filter(|&y| y >= 1 && y + h <= CHUNK).find(|&y| self.floor_at(cells, x, y, w, h)).map(|y| (x, y))
+                (0..36).map(|k| from + dir * k).filter(|&x| x >= 0 && x + w <= CHUNK).find_map(|x| {
+                    (0..=18).flat_map(|d| [ly + d, ly - d]).filter(|&y| y >= 1 && y + h <= CHUNK).find(|&y| self.floor_at(cells, x, y, w, h)).map(|y| (x, y))
                 })
             };
-            let (right, left) = (lx + 27, lx - 1);
+            // (Two cells clear of the cart's footprint either side.)
+            let (right, left) = (lx + 41, lx - 2);
             let (near, far) = if side > 0 { (right, left) } else { (left, right) };
             let dir = |x: i32| if x == right { 1 } else { -1 };
-            if let Some((x, y)) = beside(if dir(near) > 0 { near } else { near - 10 }, dir(near), 10, 13) {
-                out.push((feet(x + 5, y), Spawn::Prop("tnt_barrel")));
-                let next = if dir(near) > 0 { x + 11 } else { x - 9 };
-                if let Some((x, y)) = beside(next, dir(near), 8, 10) {
-                    out.push((feet(x + 4, y), Spawn::Prop("dynamite")));
+            if let Some((x, y)) = beside(if dir(near) > 0 { near } else { near - 15 }, dir(near), 15, 20) {
+                out.push((feet(x + 8, y), Spawn::Prop("tnt_barrel")));
+                let next = if dir(near) > 0 { x + 17 } else { x - 14 };
+                if let Some((x, y)) = beside(next, dir(near), 12, 15) {
+                    out.push((feet(x + 6, y), Spawn::Prop("dynamite")));
                 }
             }
-            if let Some((x, y)) = beside(if dir(far) > 0 { far } else { far - 5 }, dir(far), 5, 17) {
-                out.push((feet(x + 2, y), Spawn::Prop("mine_lantern")));
+            if let Some((x, y)) = beside(if dir(far) > 0 { far } else { far - 8 }, dir(far), 8, 26) {
+                out.push((feet(x + 4, y), Spawn::Prop("mine_lantern")));
             }
             return out;
         }
         if rng.chance(lone)
-            && let Some((lx, ly)) = self.floor_spot(cells, 12, 14, rng)
+            && let Some((lx, ly)) = self.floor_spot(cells, 18, 21, rng)
         {
             let what = if rng.chance(128) { "tnt_barrel" } else { "dynamite" };
-            return vec![(feet(lx + 6, ly), Spawn::Prop(what))];
+            return vec![(feet(lx + 9, ly), Spawn::Prop(what))];
         }
         Vec::new()
     }
 
     /// The bedrock of a band: stone, then slate in the deep (with obsidian
-    /// seams), basalt in the underworld; borders dither over ~100 cells.
+    /// seams), basalt in the underworld; borders dither over ~150 cells.
     fn rock(&self, x: i32, y: i32, band: Band) -> MaterialId {
         let i = &self.ids;
         let (xf, yf) = (x as f64, y as f64);
         let (deep_lo, deep_hi) = self.plan.band_span(Band::Deep);
-        let jitter = (self.strata.get([xf / 30.0, yf / 30.0]) * 60.0) as i32;
+        let jitter = (self.strata.get([xf / 45.0, yf / 45.0]) * 90.0) as i32;
         if band == Band::Underworld || y + jitter < deep_lo {
             return i.basalt;
         }
         if y + jitter <= deep_hi {
-            if self.strata.get([xf / 70.0, yf / 70.0]) > 0.5 {
+            if self.strata.get([xf / 105.0, yf / 105.0]) > 0.5 {
                 return i.obsidian;
             }
             return i.slate;
@@ -1464,34 +1488,34 @@ impl TerrainGen {
         let (xf, yf) = (x as f64, y as f64);
         // Kept away from lake and ocean beds.
         let under_water = plan.water_at(x).is_some();
-        if depth < if under_water { 120 } else { 60 } {
+        if depth < if under_water { 180 } else { 90 } {
             return None;
         }
         // Chambers, wider than tall, with stalactites: each column of a
         // chamber hangs one as long as a smooth noise across the columns
         // says (so they taper to points), rock wherever the ceiling is
         // within that of it. Hanging from the real ceiling, they never
-        // float, and floors stay clear. (Fading in over the band's top 300
+        // float, and floors stay clear. (Fading in over the band's top 450
         // cells.)
-        let entry = ((plan.band_span(Band::Caverns).1 - y) as f64 / 300.0).clamp(0.0, 1.0);
+        let entry = ((plan.band_span(Band::Caverns).1 - y) as f64 / 450.0).clamp(0.0, 1.0);
         let fade = if band == Band::Caverns { entry } else { 1.0 };
         let base = |y: f64| self.caverns.get([xf / 1.6, y]) * fade;
         if base(yf) <= 0.22 {
             return None;
         }
-        let long = ((self.drips.get([xf / 6.0, 0.3, 7.7]).abs() - 0.35) * 110.0).max(0.0);
+        let long = ((self.drips.get([xf / 9.0, 0.3, 7.7]).abs() - 0.35) * 165.0).max(0.0);
         // How far up the ceiling is, from how fast the chamber closes going
         // up (smooth, so a stalactite has no gaps in it).
         let chamber = long < 1.0 || {
             let open = base(yf);
-            let closing = (open - base(yf + 4.0)) / 4.0;
+            let closing = (open - base(yf + 6.0)) / 6.0;
             let up = if closing > 1e-5 { (open - 0.22) / closing } else { f64::MAX };
             // (And nothing else carved between here and that ceiling: a
             // tunnel through it would leave the rest hanging.)
             // (And the ceiling really is there: the estimate's short where
             // the ceiling domes up, which would leave a stalactite hanging
             // under the dome.)
-            up >= long || base(yf + up + 2.0) > 0.22 || (1..=(up as i32 + 3) / 3).any(|k| plan.caves.at(x, y + k * 3).is_some())
+            up >= long || base(yf + up + 3.0) > 0.22 || (1..=(up as i32 + 4) / 4).any(|k| plan.caves.at(x, y + k * 4).is_some())
         };
         chamber.then(|| if y < plan.water_table(x) && band == Band::Caverns { i.water } else { i.air })
     }
@@ -1505,14 +1529,14 @@ impl TerrainGen {
         let h = (hi - lo) as f64;
         // One level, so the sea is asleep on load.
         let lava = (lo as f64 + h * 0.2).floor();
-        let roof = hi as f64 - h * 0.15 + self.vault.get([xf, 3.3]) * h * 0.12 - self.drips.get([xf / 9.0, yf / 50.0, 1.7]).abs() * h * 0.05;
+        let roof = hi as f64 - h * 0.15 + self.vault.get([xf, 3.3]) * h * 0.12 - self.drips.get([xf / 13.5, yf / 75.0, 1.7]).abs() * h * 0.05;
         if yf > roof {
             return self.rock(x, y, Band::Underworld);
         }
         // Islands: blobs of basalt, crusted with obsidian near the lava.
         let island = self.vault.get([xf / 1.3, yf * 1.1 + 900.0]);
         if island > 0.3 {
-            return if yf < lava + 30.0 { i.obsidian } else { i.basalt };
+            return if yf < lava + 45.0 { i.obsidian } else { i.basalt };
         }
         if yf < lava { i.lava } else { i.air }
     }
@@ -1531,7 +1555,7 @@ impl ChunkGenerator for TerrainGen {
     fn village(&self) -> Option<(CellPos, CellPos)> {
         let v = self.plan.structures.list.iter().find(|s| s.kind == StructureKind::Village)?;
         let lo = v.pieces.iter().fold((i32::MAX, i32::MAX), |(x, y), p| (x.min(p.x), y.min(p.y)));
-        let hi = v.pieces.iter().fold((i32::MIN, i32::MIN), |(x, y), p| (x.max(p.x + p.w * structures::BLOCK), y.max(p.y + p.h * structures::BLOCK)));
+        let hi = v.pieces.iter().fold((i32::MIN, i32::MIN), |(x, y), p| (x.max(p.x + p.w * BLOCK), y.max(p.y + p.h * BLOCK)));
         Some((CellPos::new(lo.0, lo.1), CellPos::new(hi.0 - 1, hi.1 - 1)))
     }
 
@@ -1595,7 +1619,7 @@ impl ChunkGenerator for TerrainGen {
     fn cloud_band(&self) -> Option<(i32, i32)> {
         // Above the tallest trees (lightning needs room to fall), low enough
         // to be in view from the surface; the highest peaks poke into it.
-        Some((self.plan.sea_level + 150, 176))
+        Some((self.plan.sea_level + 225, 264))
     }
 
     fn spawn_point(&self) -> CellPos {
@@ -1611,7 +1635,7 @@ impl ChunkGenerator for TerrainGen {
             {
                 return p;
             }
-            let x = (0..2_000).flat_map(|d| [mid + d, mid - d]).find(|&x| self.plan.water_at(x).is_none()).unwrap_or(mid);
+            let x = (0..3_000).flat_map(|d| [mid + d, mid - d]).find(|&x| self.plan.water_at(x).is_none()).unwrap_or(mid);
             CellPos::new(x, self.surface_at(x) + 2)
         })
     }
@@ -1633,7 +1657,7 @@ impl ChunkGenerator for TerrainGen {
             // Laid in a pattern, or a candle's wax and flame, or random.
             let shade = match &self.patterns[m.0 as usize] {
                 Some(tile) => tile[(ly * CHUNK + lx) as usize],
-                None if m == self.ids.candle => if (origin.y + ly) & 3 == 2 { 230 } else { 40 + rng.next_u8() / 4 },
+                None if m == self.ids.candle => if (origin.y + ly).rem_euclid(BLOCK) >= 3 { 230 } else { 40 + rng.next_u8() / 4 },
                 None => rng.next_u8(),
             };
             Cell { heat: self.heat[m.0 as usize], ..Cell::new(m, shade) }
@@ -1712,7 +1736,7 @@ mod tests {
         let g = TerrainGen::new(3, Preset::Large, &m);
         assert!(g.plan.forest.len() > 50, "a world has forests ({} trees)", g.plan.forest.len());
         // A tree's trunk continues into the ground behind the surface.
-        let t = g.plan.forest.near(8000, 12000)[0];
+        let t = g.plan.forest.near(12_000, 18_000)[0];
         let root = g.background_at(t.x, t.base - 2, &g.plan.forest.near(t.x, t.x)).0;
         assert_eq!(root, m.expect_id("wood"));
         assert_ne!(g.material_at(t.x, t.base - 2), MaterialId::AIR, "the root is behind solid ground");
@@ -1737,7 +1761,7 @@ mod tests {
         let m = mats();
         assert_eq!(WorldPlan::new(11, Preset::Small).checksum(), WorldPlan::new(11, Preset::Small).checksum());
         assert_ne!(WorldPlan::new(11, Preset::Small).checksum(), WorldPlan::new(12, Preset::Small).checksum());
-        let positions: Vec<ChunkPos> = (0..128).step_by(9).flat_map(|x| (0..64).step_by(5).map(move |y| ChunkPos::new(x, y))).collect();
+        let positions: Vec<ChunkPos> = (0..192).step_by(13).flat_map(|x| (0..96).step_by(7).map(move |y| ChunkPos::new(x, y))).collect();
         let g = TerrainGen::new(11, Preset::Small, &m);
         let forward: Vec<_> = positions.iter().map(|&p| store::checksum(&g.generate(p))).collect();
         // Backwards, on four threads, from a second generator.
@@ -1784,7 +1808,7 @@ mod tests {
                 if ids[..6].contains(&here) {
                     ore_total += 1;
                 }
-                if [(2, 0), (-2, 0), (0, 2), (0, -2)].iter().any(|(dx, dy)| g.material_at(x + dx, y + dy) == MaterialId::AIR) {
+                if [(3, 0), (-3, 0), (0, 3), (0, -3)].iter().any(|(dx, dy)| g.material_at(x + dx, y + dy) == MaterialId::AIR) {
                     wall_rock += 1;
                     wall_ore += u32::from(ids[..6].contains(&here));
                 }
@@ -1827,9 +1851,9 @@ mod tests {
         for c in crypts {
             let ruin = &c.pieces[0];
             let (x0, _, x1, _) = ruin.bbox();
-            assert!((ruin.y + 4 - g.surface_at(c.site.0)).abs() <= 4, "the ruin's floor is the ground");
+            assert!((ruin.y + BLOCK - g.surface_at(c.site.0)).abs() <= BLOCK, "the ruin's floor is the ground");
             // (A neighbour's crown may reach over it.)
-            assert!(g.plan.forest.near(x0, x1).iter().all(|t| t.x < x0 - 8 || t.x > x1 + 8), "no tree grows in the ruin at {}", c.site.0);
+            assert!(g.plan.forest.near(x0, x1).iter().all(|t| t.x < x0 - 12 || t.x > x1 + 12), "no tree grows in the ruin at {}", c.site.0);
             let (bx0, by0, bx1, by1) = c.bbox();
             let (lo, hi) = (CellPos::new(bx0, by0).chunk(), CellPos::new(bx1, by1).chunk());
             let (mut chests_seen, mut spawns) = (Vec::new(), Vec::new());
@@ -1846,7 +1870,7 @@ mod tests {
             }
             let chests: usize = c.pieces.iter().map(|p| p.blocks_of(Glyph::Chest).count()).sum();
             // (Cave chests can turn up in the crypt's chunks too.)
-            let placed = chests_seen.iter().filter(|p| c.pieces.iter().any(|piece| piece.blocks_of(Glyph::Chest).any(|(x, y)| (x + 4, y) == (p.x, p.y)))).count();
+            let placed = chests_seen.iter().filter(|p| c.pieces.iter().any(|piece| piece.blocks_of(Glyph::Chest).any(|(x, y)| (x + BLOCK, y) == (p.x, p.y)))).count();
             assert_eq!(placed, chests, "each chest reported once");
             let guards: usize = c.pieces.iter().map(|p| p.blocks_of(Glyph::Spawn).count() + 3 * p.blocks_of(Glyph::Boss).count()).sum();
             assert_eq!(spawns.len(), guards, "each guard reported once");
@@ -1863,15 +1887,15 @@ mod tests {
         assert!(sunken.len() >= 3, "{} lake chests", sunken.len());
         for s in sunken {
             let (x, bed) = s.site;
-            assert!(g.plan.water_at(x).is_some_and(|w| w > bed + 20), "deep water over the chest at {x}");
+            assert!(g.plan.water_at(x).is_some_and(|w| w > bed + 30), "deep water over the chest at {x}");
             let piece = &s.pieces[0];
-            let feet = CellPos::new(piece.x + 4, piece.y);
+            let feet = CellPos::new(piece.x + BLOCK, piece.y);
             assert!(g.generate_with_spawns(feet.chunk()).1.contains(&(feet, Spawn::Chest)), "the chest is on the bed at {x}");
         }
     }
 
     /// Along the tunnels, as generated, there's room for the player (a
-    /// 6 × 15 box within a few cells of the path; ledges take half the width
+    /// 9 × 23 box within a few cells of the path; ledges take half the width
     /// at some heights).
     #[test]
     fn the_player_fits_through_the_tunnels() {
@@ -1887,11 +1911,11 @@ mod tests {
             for &(px, py) in &t.points[1..t.points.len() - 1] {
                 let (x, y) = (px as i32, py as i32);
                 // (Structures and chasms are their own business.)
-                if g.plan.structures.glyph_at(x, y).is_some() || g.plan.chasm_at(x, y) || y >= g.surface_at(x) - 20 {
+                if g.plan.structures.glyph_at(x, y).is_some() || g.plan.chasm_at(x, y) || y >= g.surface_at(x) - 30 {
                     continue;
                 }
                 checked += 1;
-                let fits = (-8..=8).any(|dx| (-10..=2).any(|dy| (0..6).all(|bx| (0..15).all(|by| !solid(x + dx + bx - 3, y + dy + by - 7)))));
+                let fits = (-12..=12).any(|dx| (-15..=3).any(|dy| (0..9).all(|bx| (0..23).all(|by| !solid(x + dx + bx - 4, y + dy + by - 11)))));
                 if !fits {
                     blocked.push((x, y));
                 }
@@ -1950,7 +1974,7 @@ mod tests {
         let g = TerrainGen::new(1, preset, &m);
         let solid = |c: Cell| matches!(m.phys(c.material).kind, Kind::Static | Kind::Powder);
         let mut floating = Vec::new();
-        let areas: Vec<(i32, i32)> = g.plan.caves.areas.iter().map(|a| (a.x as i32, a.y as i32)).chain([(16_000, 11_000), (16_000, 7_600), (12_000, 3_500)]).collect();
+        let areas: Vec<(i32, i32)> = g.plan.caves.areas.iter().map(|a| (a.x as i32, a.y as i32)).chain([(24_000, 16_500), (24_000, 11_400), (18_000, 5_250)]).collect();
         for (x, y) in areas {
             let c0 = CellPos::new(x, y).chunk();
             const R: i32 = 3;
@@ -2011,7 +2035,7 @@ mod tests {
         // can stand free, like boulders in a cavern.
         // (A rare speck is let be: about one in three places looked at;
         // PLAN, known issues.)
-        let small: Vec<_> = floating.iter().filter(|f| f.2 < 1_000).collect();
+        let small: Vec<_> = floating.iter().filter(|f| f.2 < 2_250).collect();
         let looked = g.plan.caves.areas.len() + 3;
         assert!(small.len() * 3 <= looked, "{}: {} small pieces of rock floating in {looked} places: {:?}", preset.name(), small.len(), &small[..small.len().min(10)]);
     }
@@ -2032,15 +2056,15 @@ mod tests {
             .chambers
             .iter()
             .flat_map(|c| c.mushrooms.iter().copied())
-            .filter(|s| s.species == caves::Species::Parasol && s.top - s.foot > 50.0 && s.lean.abs() < 6.0 && g.rooted((s.x as i32, s.foot as i32 + 9)))
+            .filter(|s| s.species == caves::Species::Parasol && s.top - s.foot > 75.0 && s.lean.abs() < 9.0 && g.rooted((s.x as i32, s.foot as i32 + 14)))
             // (Alone: no other mushroom within reach of its stem.)
-            .filter(|s| g.plan.caves.chambers.iter().flat_map(|c| &c.mushrooms).filter(|o| (o.x - s.x).abs() < 40.0 && (o.foot - s.foot).abs() < 80.0).count() == 1)
+            .filter(|s| g.plan.caves.chambers.iter().flat_map(|c| &c.mushrooms).filter(|o| (o.x - s.x).abs() < 60.0 && (o.foot - s.foot).abs() < 120.0).count() == 1)
             .take(3)
             .collect();
         assert!(!parasols.is_empty(), "a parasol to fell");
         let stem = m.expect_id("mushroom_stem");
         for s in parasols {
-            let (x, floor) = (s.x as i32, s.foot as i32 + 10);
+            let (x, floor) = (s.x as i32, s.foot as i32 + 15);
             // It stands on its floor: the cell under its foot of stem is rock.
             assert!(g.material_at(x, floor - 1) != MaterialId::AIR, "the mushroom at {x} stands on the floor");
             let mut w = World::new(1, m.clone());
@@ -2051,11 +2075,11 @@ mod tests {
                     w.insert_chunk(g.generate(ChunkPos::new(cx + dx, cy + dy)));
                 }
             }
-            assert_eq!(w.get_bg(CellPos::new(x, floor + 12)).map(|c| c.material), Some(stem), "its stem at {x}");
-            w.apply_edit(&WorldEdit::Dig { center: CellPos::new(x, floor + 12), radius: s.stem as i32 + 4, max_hardness: 200 });
+            assert_eq!(w.get_bg(CellPos::new(x, floor + 18)).map(|c| c.material), Some(stem), "its stem at {x}");
+            w.apply_edit(&WorldEdit::Dig { center: CellPos::new(x, floor + 18), radius: s.stem as i32 + 6, max_hardness: 200 });
             if w.bodies().is_empty() {
-                for y in (floor + 12..s.top as i32 + 4).step_by(3) {
-                    let row: String = (x - 8..=x + 8)
+                for y in (floor + 18..s.top as i32 + 6).step_by(3) {
+                    let row: String = (x - 12..=x + 12)
                         .map(|xx| {
                             let p = CellPos::new(xx, y);
                             let f = w.get(p).map(|c| c.material).unwrap_or(MaterialId::AIR);
@@ -2100,11 +2124,11 @@ mod tests {
         let m = mats();
         let g = TerrainGen::new(1, preset, &m);
         let p = g.plan();
-        assert_eq!(p.water_at(10), Some(p.sea_level), "an ocean on the left");
-        assert_eq!(p.water_at(p.width - 10), Some(p.sea_level), "and on the right");
+        assert_eq!(p.water_at(15), Some(p.sea_level), "an ocean on the left");
+        assert_eq!(p.water_at(p.width - 15), Some(p.sea_level), "and on the right");
         let inland: Vec<_> = lakes(p).into_iter().filter(|&(a, b, _)| p.biome_at(a) != Biome::Ocean && p.biome_at(b - 1) != Biome::Ocean).collect();
         assert!(inland.len() >= 3, "lakes inland ({})", inland.len());
-        assert!(inland.iter().any(|&(a, b, _)| b - a > 600), "at least one big one: {inland:?}");
+        assert!(inland.iter().any(|&(a, b, _)| b - a > 900), "at least one big one: {inland:?}");
         for (a, b, level) in inland {
             // Held: the ground either side reaches the water line, so it's
             // asleep on load, not pouring away.
@@ -2126,15 +2150,15 @@ mod tests {
         let g = TerrainGen::new(1, Preset::Large, &m);
         let p = g.plan();
         let (peaks_floor, _) = p.band_span(Band::Peaks);
-        assert!((0..p.width).any(|x| p.surface_at(x) > peaks_floor + 600), "mountains rise well into the peaks band");
+        assert!((0..p.width).any(|x| p.surface_at(x) > peaks_floor + 900), "mountains rise well into the peaks band");
         // Where it's well below freezing and not steep, the ground is snow.
         let cold: Vec<i32> = (0..p.width)
-            .filter(|&x| p.climate.ambient(x, p.surface_at(x)) <= -5 && (p.surface_at(x + 4) - p.surface_at(x - 4)).abs() <= 4)
+            .filter(|&x| p.climate.ambient(x, p.surface_at(x)) <= -5 && (p.surface_at(x + 6) - p.surface_at(x - 6)).abs() <= 6)
             .filter(|&x| p.water_at(x).is_none()) // (a frozen lake's bed is sand)
             .filter(|&x| !p.chasm_at(x, p.surface_at(x) - 1)) // (a chasm's mouth is air)
-            .filter(|&x| !p.structures.near_column(x, 250)) // (a castle's roof, its stair)
+            .filter(|&x| !p.structures.near_column(x, 375)) // (a castle's roof, its stair)
             .collect();
-        assert!(cold.len() > 100, "some cold, gentle ground ({})", cold.len());
+        assert!(cold.len() > 150, "some cold, gentle ground ({})", cold.len());
         let snow = m.expect_id("snow");
         let snowy = cold.iter().filter(|&&x| g.material_at(x, p.surface_at(x) - 1) == snow).count();
         assert!(snowy * 10 >= cold.len() * 9, "{snowy} of {} cold, gentle columns are snow", cold.len());
@@ -2169,8 +2193,8 @@ mod tests {
         let m = mats();
         let g = TerrainGen::new(1, Preset::Medium, &m);
         let s = g.spawn_point();
-        let t = g.plan.forest.near(s.x - 600, s.x + 600).into_iter().find(|t| t.bbox.3 - t.base > 40).expect("a tree near the start");
-        let pos = CellPos::new(t.x, t.base + 12).chunk();
+        let t = g.plan.forest.near(s.x - 900, s.x + 900).into_iter().find(|t| t.bbox.3 - t.base > 60).expect("a tree near the start");
+        let pos = CellPos::new(t.x, t.base + 18).chunk();
         let none = |_: i32| None;
         let pristine = g.generate(pos);
         let h = g.heal(&pristine, &Healing { days: 0.0, tree: &none, judge: true, cooled: true, scorched: None }).unwrap();
@@ -2192,7 +2216,7 @@ mod tests {
                 }
             }
         }
-        assert!(burnt > 100, "the chunk had trees ({burnt} cells)");
+        assert!(burnt > 225, "the chunk had trees ({burnt} cells)");
         let h = g.heal(&c, &Healing { days: 0.0, tree: &none, judge: true, cooled: false, scorched: None }).unwrap();
         assert!(h.hurt_trees.contains(&t.x), "the burnt tree is found: {:?}", h.hurt_trees);
         assert!(h.edits.is_empty() && h.unhealed > 0, "nothing grows back at once");
@@ -2247,7 +2271,8 @@ mod tests {
         let h = g.heal(&c, &fresh).unwrap();
         assert!(h.edits.is_empty(), "the same scar when asked again ({} edits)", h.edits.len());
         let later = Healing { scorched: Some(3.0), ..fresh };
-        for _ in 0..12 {
+        // (Tall grass grows back a row a pass: its height's worth.)
+        for _ in 0..18 {
             let h = g.heal(&c, &later).unwrap();
             apply(&mut c, h);
         }
@@ -2268,7 +2293,7 @@ mod tests {
             let s = g.spawn_point();
             assert!((x0..=x1).contains(&s.x), "{preset:?}: the spawn ({}) on the plain ({x0}..{x1})", s.x);
             let worst = (x0..=x1).map(|x| (g.plan.surface_at(x) - level).abs()).max().unwrap();
-            assert!(worst <= 6, "{preset:?}: the plain rolls {worst} cells from its level");
+            assert!(worst <= 9, "{preset:?}: the plain rolls {worst} cells from its level");
             assert!((x0..=x1).all(|x| g.plan.water_at(x).is_none()), "{preset:?}: the plain is dry");
             eprintln!("{preset:?}: a plain {} wide at {level}, rolling at most {worst}", x1 - x0);
         }
@@ -2299,7 +2324,7 @@ mod tests {
             // And the spawn's chunk gives them to the game.
             let mut found = 0;
             for cx in x0.div_euclid(CHUNK)..=x1.div_euclid(CHUNK) {
-                for cy in (v.site.1 - 64).div_euclid(CHUNK)..=(v.site.1 + 64).div_euclid(CHUNK) {
+                for cy in (v.site.1 - 96).div_euclid(CHUNK)..=(v.site.1 + 96).div_euclid(CHUNK) {
                     found += g.generate_with_spawns(ChunkPos::new(cx, cy)).1.iter().filter(|(_, s)| matches!(s, Spawn::Keeper(_) | Spawn::Station(_))).count();
                 }
             }
@@ -2400,8 +2425,8 @@ mod tests {
         let (deep_lo, deep_hi) = p.band_span(Band::Deep);
         for c in &p.chasms {
             assert!(c.bottom > deep_lo && c.bottom < deep_hi, "chasm at {} ends in the deep", c.x);
-            // Open down its whole length: its centre is air every 50 cells.
-            let blocked: Vec<i32> = (c.bottom + 400..c.top - 10).step_by(50).filter(|&y| g.material_at(c.at(y).0 as i32, y) != MaterialId::AIR).collect();
+            // Open down its whole length: its centre is air every 75 cells.
+            let blocked: Vec<i32> = (c.bottom + 600..c.top - 15).step_by(75).filter(|&y| g.material_at(c.at(y).0 as i32, y) != MaterialId::AIR).collect();
             assert!(blocked.is_empty(), "chasm at {} blocked at {:?}", c.x, &blocked[..blocked.len().min(5)]);
         }
     }
@@ -2413,7 +2438,7 @@ mod tests {
         let p = g.plan();
         let share = |band: Band, id: MaterialId| {
             let (lo, hi) = p.band_span(band);
-            let cells: Vec<MaterialId> = (0..400).map(|k| g.material_at(2_000 + k * 71, lo + (k * 37) % (hi - lo))).collect();
+            let cells: Vec<MaterialId> = (0..400).map(|k| g.material_at(3_000 + k * 107, lo + (k * 37) % (hi - lo))).collect();
             cells.iter().filter(|&&c| c == id).count() as f32 / cells.len() as f32
         };
         assert!(share(Band::Underground, m.expect_id("stone")) > 0.4);
@@ -2422,10 +2447,10 @@ mod tests {
         // The sea is flat (asleep on load) and a vault opens over it.
         let level = (lo as f64 + (hi - lo) as f64 * 0.2).floor() as i32;
         let lava = m.expect_id("lava");
-        let seas = (0..200).map(|k| 1_000 + k * 150).filter(|&x| g.material_at(x, level - 1) == lava).count();
+        let seas = (0..200).map(|k| 1_500 + k * 225).filter(|&x| g.material_at(x, level - 1) == lava).count();
         assert!(seas > 120, "lava sea under most of the world ({seas} of 200)");
-        assert!((0..200).map(|k| 1_000 + k * 150).all(|x| g.material_at(x, level) != lava), "flat at {level}");
-        let open = (0..200).map(|k| 1_000 + k * 150).filter(|&x| g.material_at(x, level + 80) == MaterialId::AIR).count();
+        assert!((0..200).map(|k| 1_500 + k * 225).all(|x| g.material_at(x, level) != lava), "flat at {level}");
+        let open = (0..200).map(|k| 1_500 + k * 225).filter(|&x| g.material_at(x, level + 120) == MaterialId::AIR).count();
         assert!(open > 120, "a vault over it ({open} of 200)");
     }
 
@@ -2437,8 +2462,8 @@ mod tests {
         let (lo, hi) = p.band_span(Band::Caverns);
         let water = m.expect_id("water");
         let (mut wet, mut open) = (0, 0);
-        for x in (1_700..31_000).step_by(97) {
-            for y in (lo..hi).step_by(53) {
+        for x in (2_550..46_500).step_by(146) {
+            for y in (lo..hi).step_by(80) {
                 match g.material_at(x, y) {
                     id if id == water => wet += 1,
                     MaterialId::AIR => open += 1,
@@ -2457,8 +2482,8 @@ mod tests {
         let (_, hi) = g.plan().band_span(Band::Underground);
         let (w, h) = CHEST_SIZE;
         let (mut chunks, mut chests) = (0, 0);
-        for cx in (30..480).step_by(7) {
-            for cy in (lo / CHUNK..hi / CHUNK).step_by(9) {
+        for cx in (45..720).step_by(10) {
+            for cy in (lo / CHUNK..hi / CHUNK).step_by(13) {
                 let (c, spawns) = g.generate_with_spawns(ChunkPos::new(cx, cy));
                 chunks += 1;
                 let o = c.pos.origin();
@@ -2477,9 +2502,9 @@ mod tests {
                 }
             }
         }
-        // Roughly one in fifty underground chunks.
+        // Roughly one in a hundred and ten underground chunks.
         println!("{chests} chests in {chunks} chunks");
-        assert!(chests * 150 > chunks && chests * 20 < chunks, "{chests} chests in {chunks} chunks");
+        assert!(chests * 340 > chunks && chests * 45 < chunks, "{chests} chests in {chunks} chunks");
     }
 
 
@@ -2491,13 +2516,15 @@ mod tests {
             // Every tundra: all pines, a forest of them over them all.
             let (mut pines, mut across) = (0, 0);
             for (x0, x1, _) in p.regions().into_iter().filter(|r| r.2 == Biome::Tundra) {
-                let trees = p.forest.near(x0 + 300, x1 - 300);
+                let trees = p.forest.near(x0 + 450, x1 - 450);
                 pines += trees.iter().filter(|t| t.species == flora::Species::Conifer && t.snowy).count();
-                across += (x1 - x0 - 600).max(0) as usize;
+                across += (x1 - x0 - 900).max(0) as usize;
                 assert!(trees.iter().all(|t| t.species == flora::Species::Conifer), "{}: no broadleaves in the cold at {x0}", preset.name());
             }
             assert!(across > 0, "{}: a tundra", preset.name());
-            assert!(pines * 1000 >= across * 8, "{}: a forest: {pines} snowy pines over {across} cells", preset.name());
+            // (Seven per 1 500 cells: eight, less the trees that would
+            // stand over a cave's mouth and are left out.)
+            assert!(pines * 1_500 >= across * 7, "{}: a forest: {pines} snowy pines over {across} cells", preset.name());
         }
         let _ = m;
     }
@@ -2519,7 +2546,7 @@ mod tests {
             }
         }
         let (x0, x1) = forests.into_iter().max_by_key(|(a, b)| b - a).expect("a deep forest");
-        assert!(x1 - x0 >= 5_000, "wide enough to get lost in ({} cells)", x1 - x0);
+        assert!(x1 - x0 >= 7_500, "wide enough to get lost in ({} cells)", x1 - x0);
         let (w, mid) = ((x1 - x0) / 5, (x0 + x1) / 2);
         let heart = p.forest.near(mid - w / 2, mid + w / 2);
         let edge = p.forest.near(x0, x0 + w);
@@ -2534,18 +2561,18 @@ mod tests {
         let g = TerrainGen::new(1, Preset::Large, &m);
         let p = g.plan();
         let (x0, x1, _) = p.regions().into_iter().find(|r| r.2 == Biome::Mountains).expect("a range");
-        // Peaks: local maxima over ±300 cells, 1 200+ above sea level.
+        // Peaks: local maxima over ±450 cells, 1 800+ above sea level.
         let peaks: Vec<i32> = (x0..x1)
-            .step_by(20)
-            .filter(|&x| p.surface_at(x) > p.sea_level + 1_200 && (x - 300..=x + 300).step_by(20).all(|q| p.surface_at(q) <= p.surface_at(x)))
+            .step_by(30)
+            .filter(|&x| p.surface_at(x) > p.sea_level + 1_800 && (x - 450..=x + 450).step_by(30).all(|q| p.surface_at(q) <= p.surface_at(x)))
             .collect();
         assert!(peaks.len() >= 4, "{} peaks: {peaks:?}", peaks.len());
         let snow = m.expect_id("snow");
         // (A castle on a summit isn't snow.)
-        for &x in peaks.iter().filter(|&&x| !p.structures.near_column(x, 250)) {
-            let top = (p.surface_at(x) - 60..p.surface_at(x) + 60).rev().find(|&y| g.material_at(x, y) != MaterialId::AIR).unwrap();
-            let white = (-40..=40).filter(|&d| g.material_at(x + d, (top - 400..top + 80).rev().find(|&y| g.material_at(x + d, y) != MaterialId::AIR).unwrap_or(top)) == snow).count();
-            assert!(white > 40, "peak at {x} is snowy ({white} of 81 columns)");
+        for &x in peaks.iter().filter(|&&x| !p.structures.near_column(x, 375)) {
+            let top = (p.surface_at(x) - 90..p.surface_at(x) + 90).rev().find(|&y| g.material_at(x, y) != MaterialId::AIR).unwrap();
+            let white = (-60..=60).filter(|&d| g.material_at(x + d, (top - 600..top + 120).rev().find(|&y| g.material_at(x + d, y) != MaterialId::AIR).unwrap_or(top)) == snow).count();
+            assert!(white > 60, "peak at {x} is snowy ({white} of 121 columns)");
         }
     }
 
@@ -2573,17 +2600,17 @@ mod tests {
         let mut worst = 0u32;
         // (Tall broadleaves round the start, the forest there.)
         let s = g.spawn_point().x;
-        for t in g.plan.forest.near(s - 12_000, s + 12_000).into_iter().filter(|t| t.height > 110 && t.species != flora::Species::Conifer).take(12) {
+        for t in g.plan.forest.near(s - 18_000, s + 18_000).into_iter().filter(|t| t.height > 165 && t.species != flora::Species::Conifer).take(12) {
             // The tree and every tree overlapping it: a neighbour's crown
             // reaching in is held by its own wood, which may be outside t's box.
-            let trees = g.plan.forest.near(t.bbox.0 - 2, t.bbox.2 + 2);
+            let trees = g.plan.forest.near(t.bbox.0 - 3, t.bbox.2 + 3);
             let (x0, y0, x1, y1) = trees.iter().fold(t.bbox, |b, n| (b.0.min(n.bbox.0), b.1.min(n.bbox.1), b.2.max(n.bbox.2), b.3.max(n.bbox.3)));
-            let trees = g.plan.forest.near(x0 - 2, x1 + 2);
+            let trees = g.plan.forest.near(x0 - 3, x1 + 3);
             let at = |x: i32, y: i32| g.background_at(x, y, &trees).0;
             let mut dist: HashMap<(i32, i32), u32> = HashMap::new();
             let mut q = VecDeque::new();
-            for y in y0 - 2..=y1 + 2 {
-                for x in x0 - 2..=x1 + 2 {
+            for y in y0 - 3..=y1 + 3 {
+                for x in x0 - 3..=x1 + 3 {
                     if at(x, y) == wood {
                         dist.insert((x, y), 0);
                         q.push_back((x, y));
@@ -2594,7 +2621,7 @@ mod tests {
                 let d = dist[&(x, y)];
                 for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
                     let n = (x + dx, y + dy);
-                    if n.0 < x0 - 2 || n.0 > x1 + 2 || n.1 < y0 - 2 || n.1 > y1 + 2 || dist.contains_key(&n) || at(n.0, n.1) != leaves {
+                    if n.0 < x0 - 3 || n.0 > x1 + 3 || n.1 < y0 - 3 || n.1 > y1 + 3 || dist.contains_key(&n) || at(n.0, n.1) != leaves {
                         continue;
                     }
                     dist.insert(n, d + 1);
@@ -2603,7 +2630,7 @@ mod tests {
                 }
             }
         }
-        assert!(worst > 20 && worst < platypus_sim::LEAF_REACH, "farthest leaf from wood: {worst}");
+        assert!(worst > 30 && worst < platypus_sim::LEAF_REACH, "farthest leaf from wood: {worst}");
     }
 
     /// Felling real generated trees: each comes down as one body, and no
@@ -2625,21 +2652,21 @@ mod tests {
                 !(x0..=x1).any(|x| (y0..=y1).any(|y| wood(t, x, y) && [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dy)| wood(n, x + dx, y + dy))))
             })
         };
-        let mut picks: Vec<&&flora::Tree> = near.iter().filter(|t| t.height > 60).filter(alone).take(5).collect();
-        picks.extend(near.iter().filter(|t| t.height > 130).filter(alone).take(1));
+        let mut picks: Vec<&&flora::Tree> = near.iter().filter(|t| t.height > 90).filter(alone).take(5).collect();
+        picks.extend(near.iter().filter(|t| t.height > 195).filter(alone).take(1));
         assert_eq!(picks.len(), 6, "five trees and a giant");
         let trees: Vec<(i32, i32, f32)> = picks.iter().map(|t| (t.x, t.base, t.girth)).collect();
         for (x, base, girth) in trees {
             let mut w = World::new(3, m.clone());
             w.set_climate(g.climate());
             let (cx, cy) = (x.div_euclid(CHUNK), base.div_euclid(CHUNK));
-            for dy in -2..=4 {
-                for dx in -4..=4 {
+            for dy in -3..=6 {
+                for dx in -6..=6 {
                     w.insert_chunk(g.generate(ChunkPos::new(cx + dx, cy + dy)));
                 }
             }
-            let (x0, y0) = ((cx - 4) * CHUNK, (cy - 2) * CHUNK);
-            let (x1, y1) = ((cx + 5) * CHUNK, (cy + 5) * CHUNK);
+            let (x0, y0) = ((cx - 6) * CHUNK, (cy - 3) * CHUNK);
+            let (x1, y1) = ((cx + 7) * CHUNK, (cy + 7) * CHUNK);
             // Background cells not connected (by edges, through background)
             // to anything resting on solid playfield (or running out of the
             // loaded region: a neighbour's trunk may root below it).
@@ -2664,7 +2691,7 @@ mod tests {
             let before = hanging(&w);
             assert!(before.is_empty(), "worldgen: {} cells hanging, e.g. {:?}", before.len(), &before[..before.len().min(6)]);
             for _ in 0..2 {
-                w.apply_edit(&WorldEdit::Dig { center: CellPos::new(x, base + 20), radius: girth as i32 + 4, max_hardness: 200 });
+                w.apply_edit(&WorldEdit::Dig { center: CellPos::new(x, base + 30), radius: girth as i32 + 6, max_hardness: 200 });
             }
             assert!(!w.bodies().is_empty(), "tree at {x} came down");
             for _ in 0..1_200 {
@@ -2686,13 +2713,13 @@ mod tests {
         let m = mats();
         let defs = vec![lairs::LairDef {
             name: "spider nest".into(),
-            depth: (80.0, 100_000.0),
+            depth: (120.0, 100_000.0),
             zones: vec![],
             chance: 0.2,
             lining: "cobweb".into(),
             density: 0.6,
             keepers: vec![("spider".into(), 1), ("egg_sac".into(), 2)],
-            min_size: 14.0,
+            min_size: 21.0,
         }];
         let g = TerrainGen::new(7, Preset::Small, &m).with_lairs(&defs, &m);
         let again = TerrainGen::new(7, Preset::Small, &m).with_lairs(&defs, &m);

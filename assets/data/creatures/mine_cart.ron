@@ -3,7 +3,7 @@
 (
     name: "Mine cart",
     corpse: false,
-    size: (22, 14),
+    size: (33, 21),
     health: 40,
     team: Neutral,
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -11,5 +11,5 @@
     art: "mine_cart",
     blood: "",
     movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0),
-    custom: (name: "explosive", params: (radius: 72, power: 255, fuse: 1.3)),
+    custom: (name: "explosive", params: (radius: 108, power: 255, fuse: 1.3)),
 )

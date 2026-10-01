@@ -48,7 +48,7 @@ fn half() -> f32 {
 }
 
 fn roomy() -> f32 {
-    14.0
+    21.0
 }
 
 /// Lairs as written (`assets/data/lairs.ron`; `Some` may be left out).

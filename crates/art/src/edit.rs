@@ -364,9 +364,9 @@ mod tests {
 
     #[test]
     fn finds_what_it_is_asked_for() {
-        assert_eq!(get(PLAYER, &[Seg::Field("size")]).unwrap(), "(24, 25)");
+        assert_eq!(get(PLAYER, &[Seg::Field("size")]).unwrap(), "(36, 38)");
         assert_eq!(get(PLAYER, &[Seg::Field("palette"), Seg::Char('h')]).unwrap(), "(96, 62, 40)");
-        assert_eq!(get(PLAYER, &[Seg::Field("parts"), Seg::Key("arm"), Seg::Field("points"), Seg::Key("hand")]).unwrap(), "(0, 5)");
+        assert_eq!(get(PLAYER, &[Seg::Field("parts"), Seg::Key("arm"), Seg::Field("points"), Seg::Key("hand")]).unwrap(), "(0, 8)");
         assert!(get(PLAYER, &[Seg::Field("poses"), Seg::Key("stand"), Seg::Index(0), Seg::Field("at")]).is_ok());
         assert!(get(PLAYER, &[Seg::Field("nothing")]).is_err());
     }
@@ -398,7 +398,7 @@ mod tests {
         assert_eq!(keyed(&parse_path("parts.arm.points.hand")), vec![Seg::Field("parts"), Seg::Key("arm"), Seg::Field("points"), Seg::Key("hand")]);
         assert_eq!(parse_path("palette.'a'"), vec![Seg::Field("palette"), Seg::Char('a')]);
         assert_eq!(parse_path("poses.stand.0.at")[2], Seg::Index(0));
-        assert_eq!(grid(PLAYER, &parse_path("parts.arm.rows")).unwrap().len(), 6);
+        assert_eq!(grid(PLAYER, &parse_path("parts.arm.rows")).unwrap().len(), 9);
     }
 
     #[test]
@@ -416,6 +416,6 @@ mod tests {
         let f = crate::parse(&t).unwrap();
         assert!(!f.palette.contains_key(&'Z'));
         assert!(!f.parts["arm"].points.contains_key("grip"));
-        assert_eq!(f.parts["arm"].points["hand"], (0, 5));
+        assert_eq!(f.parts["arm"].points["hand"], (0, 8));
     }
 }

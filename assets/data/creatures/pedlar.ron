@@ -3,12 +3,12 @@
 // villager (actors/villager.rs, talk.rs) who doesn't live here.
 (
     name: "Pedlar",
-    size: (7, 16),
+    size: (11, 24),
     health: 140,
     team: Villager,
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "humanoid",
-    movement: (run_speed: 68, jump_height: 22, air_jumps: 0, step_height: 3, dash_speed: 0),
+    movement: (run_speed: 102, jump_height: 33, air_jumps: 0, step_height: 5, dash_speed: 0),
     stamina: 60,
     poise: 10,
     heft: 1.0,
@@ -17,7 +17,7 @@
         kind: "villager",
         params: (
             role: "pedlar",
-            wander: 30,
+            wander: 45,
             lines: [
                 "From far off, all of it. You won't find these at the smith's.",
                 "I'm gone in the morning. Buy while I'm here.",

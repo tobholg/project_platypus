@@ -18,10 +18,10 @@ pub struct Bleeds(pub MaterialId);
 /// Cells of blood a hit sprays for each point it takes (a bit much: it's
 /// more fun, and blood boils, freezes, conducts and washes off like the
 /// rest), at most this many a hit...
-const BLEED_PER_HP: f32 = 1.2;
-const BLEED_MOST: f32 = 70.0;
+const BLEED_PER_HP: f32 = 2.7;
+const BLEED_MOST: f32 = 158.0;
 /// ... and what a death bursts out.
-pub const DEATH_BLOOD: usize = 110;
+pub const DEATH_BLOOD: usize = 248;
 
 /// Seconds a creature flashes after a hit.
 const FLASH: f32 = 0.12;
@@ -31,9 +31,9 @@ const FLASH_AT: f32 = 2.0;
 const MERGE: f32 = 0.35;
 /// How long a number floats, and how fast (cells/s).
 const NUMBER_LIFE: f32 = 0.9;
-const NUMBER_RISE: f32 = 18.0;
+const NUMBER_RISE: f32 = 27.0;
 /// Height of the digits, in cells.
-const NUMBER_SIZE: f32 = 7.0;
+const NUMBER_SIZE: f32 = 10.5;
 
 /// What `Health` was last tick, how long it still flashes, and the number
 /// it's showing (to add the next hit to).
@@ -79,7 +79,7 @@ pub fn notice(
             h.flash = FLASH;
             if let Some(&Bleeds(blood)) = bleeds {
                 let n = (lost * BLEED_PER_HP).min(BLEED_MOST) as usize;
-                sim.world.splash([k.body.pos.x, k.body.pos.y + k.body.half.y * 0.3], blood, n, 1.2 + (lost * 0.02).min(1.2));
+                sim.world.splash([k.body.pos.x, k.body.pos.y + k.body.half.y * 0.3], blood, n, 1.8 + (lost * 0.03).min(1.8));
             }
         }
         if let Some(e) = h.number
@@ -93,7 +93,7 @@ pub fn notice(
         let color = if player { Color::srgb(1.0, 0.35, 0.3) } else { Color::srgb(1.0, 0.92, 0.7) };
         // (Side by side, a little, so hits in a row don't print over each other.)
         *shown = shown.wrapping_add(1);
-        let at = k.body.pos + Vec2::new((*shown % 5) as f32 * 2.0 - 4.0, k.body.half.y + 4.0);
+        let at = k.body.pos + Vec2::new((*shown % 5) as f32 * 3.0 - 6.0, k.body.half.y + 6.0);
         let e = commands
             .spawn((
                 Name::new("Damage"),

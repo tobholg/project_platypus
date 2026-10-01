@@ -37,9 +37,9 @@ const DT: f32 = 1.0 / TICK_HZ as f32;
 /// An arrow in flight this long without striking anything is gone.
 const FLIGHT: f32 = 8.0;
 /// Speed kept per cell of liquid an arrow goes through.
-const WADE: f32 = 0.93;
+const WADE: f32 = 0.953;
 /// Too slow to fly on: it drops.
-const SPENT: f32 = 25.0;
+const SPENT: f32 = 38.0;
 
 /// Draw (or keep drawing) the bow, aimed at `at`. Stop asking to loose.
 #[derive(Message, Clone, Copy, Debug)]
@@ -147,7 +147,7 @@ fn nock(
         let dir = (n.at - from).normalize_or(Vec2::X * k.loco.facing);
         let roll = (platypus_sim::rng::hash(&[tick, e.to_bits(), n.t.to_bits() as u64]) % 10_000) as f32 / 10_000.0;
         let (damage, knock, crit) = stats.cloned().unwrap_or_default().strike(lerp(def.damage), lerp(def.knock), roll);
-        spawn_arrow(&mut commands, &weapons, from + dir * 3.0, dir * lerp(def.speed), e, team.copied(), (damage, crit), knock, def.stun);
+        spawn_arrow(&mut commands, &weapons, from + dir * 4.5, dir * lerp(def.speed), e, team.copied(), (damage, crit), knock, def.stun);
         sounds.write(crate::sound::PlaySound::at("bow", from).volume(0.5 + 0.5 * d));
     }
 }
@@ -183,7 +183,7 @@ fn fly(
         if let Some(left) = a.stuck {
             let left = left - DT;
             a.stuck = Some(left);
-            let tip = tf.translation.truncate() + Vec2::from_angle(a.angle.to_radians()) * 4.0;
+            let tip = tf.translation.truncate() + Vec2::from_angle(a.angle.to_radians()) * 6.0;
             let held = sim.world.get(CellPos::from_world(tip.x, tip.y)).is_some_and(|c| matches!(sim.world.materials().phys(c.material).kind, Kind::Static | Kind::Powder));
             if left <= 0.0 {
                 commands.entity(e).despawn();
@@ -210,7 +210,7 @@ fn fly(
         a.angle = dir.y.atan2(dir.x).to_degrees();
         'flight: for _ in 0..n {
             pos += step / n as f32;
-            let tip = pos + dir * 4.0;
+            let tip = pos + dir * 6.0;
             let p = CellPos::from_world(tip.x, tip.y);
             if let Some(c) = sim.world.get(p) {
                 let ph = *sim.world.materials().phys(c.material);
@@ -243,7 +243,7 @@ fn fly(
                 {
                     continue;
                 }
-                if (tip - tk.body.pos).abs().cmpgt(tk.body.half + 2.0).any() {
+                if (tip - tk.body.pos).abs().cmpgt(tk.body.half + 3.0).any() {
                     continue;
                 }
                 let struck = match anim.and_then(|an| an.def.rig.as_ref().map(|r| (an, r))) {

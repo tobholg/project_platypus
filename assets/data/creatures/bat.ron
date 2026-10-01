@@ -2,7 +2,7 @@
 // you and from blasts.
 (
     name: "Bat",
-    size: (5, 4),
+    size: (8, 6),
     health: 6,
     team: Neutral,
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -14,14 +14,14 @@
     eyes: (255, 70, 60),
     light: (color: (255, 40, 30), strength: 0.03),
     movement: (
-        run_speed: 20,
-        fly_speed: 85,
-        fly_accel: 700,
+        run_speed: 30,
+        fly_speed: 128,
+        fly_accel: 1050,
         air_jumps: 0,
         step_height: 0,
     ),
     brain: (
         kind: "critter",
-        params: (flee_range: 35, calm_after: 1.5, flies: true, hovers: (5, 40), wander_every: 0.35, rest: 0.0, wander_speed: 0.8),
+        params: (flee_range: 53, calm_after: 1.5, flies: true, hovers: (8, 60), wander_every: 0.35, rest: 0.0, wander_speed: 0.8),
     ),
 )

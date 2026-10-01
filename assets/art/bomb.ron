@@ -1,7 +1,7 @@
 // A bomb held in the hand (it isn't turned: a ball), its fuse up.
 (
-    size: (6, 7),
-    feet: (3.0, 7),
+    size: (9, 11),
+    feet: (5, 11),
     outline: (24, 18, 16),
     palette: {
         'b': (46, 46, 54),   // shell
@@ -12,15 +12,19 @@
     },
     frames: {
         "bomb": [
-            "....y.",
-            "...H..",
-            "..bb..",
-            ".bBwb.",
-            "bBBbbb",
-            "bBbbbb",
-            ".bbbb.",
+            ".....yy..",
+            "....H....",
+            "...bBb...",
+            "..bbbbb..",
+            ".bbbbBBb.",
+            "bbbbBwBb.",
+            "bbbbbBbb.",
+            "bbbbbbbb.",
+            "bbbbbbbb.",
+            ".bbbbbb..",
+            "..bbbb...",
         ],
     },
     clips: { "held": (frames: ["bomb"], fps: 1) },
-    anchors: { "grip": { "bomb": (2, 5) } },
+    anchors: { "grip": { "bomb": (3, 8) } },
 )

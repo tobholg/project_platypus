@@ -1,27 +1,34 @@
 // A bundle of dynamite: three red sticks tied with cord, a fuse from the
 // middle one. It goes off when it's hit or catches fire.
 (
-    size: (7, 9),
-    feet: (3.5, 9),
+    size: (11, 14),
+    feet: (5.5, 14),
     outline: (50, 20, 16),
     palette: {
         'r': (200, 52, 40),   // stick
+        'l': (236, 96, 72),   // stick, lit
         'R': (150, 34, 28),   // between the sticks
         'b': (92, 70, 46),   // cord
+        'c': (132, 104, 68),   // cord, lit
         'f': (150, 130, 96),   // fuse
         's': (255, 214, 130),   // the fuse tip
     },
     frames: {
         "stand": [
-            "....s..",
-            "...f...",
-            "rRrRrRr",
-            "rRrRrRr",
-            "rRrRrRr",
-            "bbbbbbb",
-            "rRrRrRr",
-            "rRrRrRr",
-            "rRrRrRr",
+            "......s....",
+            ".....f.....",
+            ".....rl....",
+            ".rl.rrl..rl",
+            "rrlRrrlRrrl",
+            "rrlRrrlRrrl",
+            "rrlRrrlRrrl",
+            "rrlRrrlRrrl",
+            "cbbcbbcbbcb",
+            "bbcbbcbbcbb",
+            "rrlRrrlRrrl",
+            "rrlRrrlRrrl",
+            "rrlRrrlRrrl",
+            "rrlRrrlRrrl",
         ],
     },
     clips: {

@@ -391,7 +391,7 @@ mod tests {
     fn every_solid_has_a_block_item_counted_in_cells() {
         let it = items();
         let stone = it.id("block:stone").expect("stone blocks");
-        assert_eq!(it.unit(stone), 16);
+        assert_eq!(it.unit(stone), 36);
         assert!(it.id("block:bedrock").is_none(), "no unbreakable blocks");
         assert!(it.id("block:water").is_none(), "no liquid blocks");
         assert!(!it.start.is_empty(), "a new player carries something");

@@ -7,7 +7,7 @@
 //   a glow (r, g, b).
 // recipes: makes (an item id) × count, from needs [(item, count)], at a
 //   station (none: by hand). Counts are in the item's own units: blocks as
-//   blocks (a block is 4 × 4 cells). locked: shown only once a milestone
+//   blocks (a block is 6 × 6 cells). locked: shown only once a milestone
 //   (progression.ron) unlocks it. A recipe shows once you've held anything
 //   that goes into it or comes out of it.
 //
@@ -15,64 +15,122 @@
 // torches → furnace; ore → bars; iron bars → anvil; bars → tools, armour,
 // hooks; silver, gems → arcane altar → foci.
 (
-    reach: 60,
+    reach: 90,
     stations: [
         (id: "workbench", name: "Workbench",
-            palette: { 'o': (40, 26, 16), 'L': (176, 124, 70), 'l': (140, 96, 52), 'd': (110, 74, 40) },
+            palette: {
+                'o': (40, 26, 16),    // outline
+                'H': (206, 156, 96),  // lit edge
+                'L': (176, 124, 70),  // wood, light
+                'l': (140, 96, 52),   // wood
+                'd': (110, 74, 40),   // wood, shade; grain
+                'n': (150, 146, 140), // nail heads
+            },
             art: [
-                "oooooooooooooooo",
-                "oLLlLLLLlLLLLlLo",
-                "oddddddddddddddo",
-                ".ol.........lo..",
-                ".ol..oooooo.lo..",
-                ".ol..oLLLLo.lo..",
-                ".ol..oooooo.lo..",
-                ".oo.........oo..",
+                "oooooooooooooooooooooooo",
+                "oLLLLlLLHLLLLLLlLLLHHHHo",
+                "ollnlldddlllllllddlnlLLo",
+                "odddddddlldddddddddddllo",
+                "oooooooooooooooooooooooo",
+                ".odLo..olLLLLHo..odLo...",
+                ".odLo..olLooLLo..odLo...",
+                ".odLo..oddddddo..odLo...",
+                ".odLo..oooooooo..odLo...",
+                ".odLo............odLo...",
+                ".odLo............odLo...",
+                ".oooo............oooo...",
             ]),
         (id: "furnace", name: "Furnace", light: (1.3, 0.6, 0.2),
-            palette: { 'o': (30, 28, 30), 's': (110, 108, 114), 'S': (140, 138, 146), 'y': (255, 190, 60), 'Y': (255, 240, 170), 'r': (230, 90, 30) },
+            palette: {
+                'o': (30, 28, 30),    // outline
+                'k': (78, 76, 82),    // mortar
+                's': (110, 108, 114), // stone, shade
+                'S': (140, 138, 146), // stone
+                'T': (172, 170, 178), // stone, lit
+                'w': (172, 136, 116), // stone in the fire's light
+                'K': (52, 30, 26),    // soot, the firebox's back
+                'c': (74, 42, 30),    // logs
+                'r': (230, 90, 30),   // flame
+                'y': (255, 190, 60),  // flame, hot
+                'Y': (255, 240, 170), // flame, hotter
+                'W': (255, 252, 236), // the white-hot heart
+            },
             art: [
-                "..oooooooooo..",
-                ".osssSssssSso.",
-                "osSssssSsssSso",
-                "osssSsssSsssso",
-                "osSsoooooosSso",
-                "ossoyyYYyyosso",
-                "osSoyYrrYyoSso",
-                "ossoyrYYryosso",
-                "osSooooooooSso",
-                "ossSssSsssSsso",
-                "osssSssssSssso",
-                "oSssssSsssssSo",
-                "oooooooooooooo",
+                "...ooooooooooooooo...",
+                "..osSSSkSSSSSkSSTTo..",
+                ".ossssskssssskssSSSo.",
+                "okkkkkkkkkkkkkkkkkkko",
+                "osSkSSSSSkSSSSSkSSTTo",
+                "osskssssskssssskssSSo",
+                "okkkkkkoooooookkkkkko",
+                "osSSSSooKKKKKooSSTTTo",
+                "ossssoKKKKKKKKKossSSo",
+                "okkkkoKKrKKKKrKokkkko",
+                "osSkSoKrrKKrKrKoSSTTo",
+                "ossksorryrKrryrossSSo",
+                "okkkkoryyyrYyyrokkkko",
+                "osSSSoryYYYYYyroSTTTo",
+                "ossssocyYWWWYycossSSo",
+                "okkkkoooooooooookkkko",
+                "osSkSTwwwwwwwwwTSSTTo",
+                "osskssssskssssskssSSo",
+                "okkkkkkkkkkkkkkkkkkko",
+                "ooooooooooooooooooooo",
             ]),
         (id: "anvil", name: "Anvil",
-            palette: { 'o': (26, 26, 32), 'M': (180, 184, 196), 'm': (110, 112, 124) },
+            palette: {
+                'o': (26, 26, 32),    // outline
+                'W': (226, 229, 238), // the face, lit
+                'M': (180, 184, 196), // iron, light
+                'n': (146, 149, 162), // iron
+                'm': (110, 112, 124), // iron, shade
+                'k': (78, 80, 92),    // iron, deep shade
+            },
             art: [
-                "..oooooooooo..",
-                "ooMMMMMMMMMMoo",
-                ".oMmmmmmmmmMo.",
-                "...oommmmoo...",
-                "....ommmmo....",
-                "...ommmmmmo...",
-                "..ommmmmmmmo..",
-                "..oooooooooo..",
+                ".......oooooooooooooo",
+                "....oooWWWWWWWWWWWWWo",
+                "..ooWWMMMMMMMMMMMMMMo",
+                "ooWMMnnnnnnnnnnnnnnMo",
+                "..oonnmmmmmmmmmmmmmno",
+                "....oooooookmmmnMoooo",
+                ".........okmmmnMo....",
+                ".........okmmmnMo....",
+                "........okkmmmnnMo...",
+                ".......okkmmmmmnnMo..",
+                "......okkmmoooomnnMo.",
+                "......ooooo....ooooo.",
             ]),
         (id: "arcane_altar", name: "Arcane altar", light: (0.6, 0.3, 1.0),
-            palette: { 'o': (20, 16, 30), 'G': (190, 120, 255), 'W': (250, 235, 255), 'p': (70, 66, 90), 'P': (130, 110, 170) },
+            palette: {
+                'o': (20, 16, 30),    // outline
+                'W': (250, 235, 255), // the crystal's light
+                'G': (190, 120, 255), // glow
+                'g': (124, 72, 200),  // glow, shade
+                'q': (46, 42, 62),    // stone, shade
+                'p': (70, 66, 90),    // stone
+                'r': (98, 94, 120),   // stone, lit
+                'R': (140, 132, 170), // stone, lit edge
+                'P': (130, 110, 170), // runes
+            },
             art: [
-                "......oo......",
-                ".....oGGo.....",
-                "....oGWGGo....",
-                ".....oGGo.....",
-                "......oo......",
-                "..oooooooooo..",
-                "..oppppppppo..",
-                "...opPppPpo...",
-                "...oppppppo...",
-                "...opPppPpo...",
-                "..oppppppppo..",
-                ".oooooooooooo.",
+                "..........o..........",
+                ".........oWo...W.....",
+                "........oGGWo........",
+                ".......ogGGWWo.......",
+                ".....G..ogGGo........",
+                ".........ogo.........",
+                "..........o..........",
+                ".....................",
+                "..ooooooooooooooooo..",
+                "..orrrrrrPGPrrrrRRo..",
+                "..oqppPpppppppPprro..",
+                "..ooooooooooooooooo..",
+                "....oqppppGpppRro....",
+                "....oqppPGWGPpRro....",
+                "....oqppppGpppRro....",
+                ".ooooqpPpppppPRroooo.",
+                ".oqqpppppppppppppRRo.",
+                ".ooooooooooooooooooo.",
             ]),
     ],
     recipes: [

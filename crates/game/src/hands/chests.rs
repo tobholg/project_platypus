@@ -35,7 +35,7 @@ use crate::world::SimWorld;
 /// Slots in a chest.
 pub const SLOTS: usize = 20;
 /// How far from the player a chest can be opened (cells).
-const REACH: f32 = 28.0;
+const REACH: f32 = 42.0;
 /// Hit points: two hits of a copper pickaxe, a bomb beside it, a few
 /// seconds in a fire.
 const TOUGHNESS: f32 = 60.0;
@@ -43,17 +43,22 @@ const TOUGHNESS: f32 = 60.0;
 const Z: f32 = 6.0;
 
 /// The picture, one character a cell (top row first).
-const ART: [&str; 10] = [
-    "..oooooooo..",
-    ".oLLLLLLLLo.",
-    "oLllllllllLo",
-    "oGGGGGGGGGGo",
-    "oLlllGYGlllo",
-    "olllLGYGlllo",
-    "oLllllllllLo",
-    "oddddddddddo",
-    "oGGGGGGGGGGo",
-    "oooooooooooo",
+const ART: [&str; 15] = [
+    "..oooooooooooooo..",
+    ".oLLLLLLLLLLLLLLo.",
+    "oLLlllllllllllllLo",
+    "oGllldllllldllllGo",
+    "oGllllllllllllllGo",
+    "oGGGGGGGYYGGGGGGGo",
+    "oggggggYYYYggggggo",
+    "oGLlllYYkkYYlllLGo",
+    "oGllllYYkkYYllllGo",
+    "oGlldllYYYYlldllGo",
+    "oGllllllllllllllGo",
+    "oGlllldllllldlllGo",
+    "oddddddddddddddddo",
+    "oGGGGGGGGGGGGGGGGo",
+    "oooooooooooooooooo",
 ];
 
 fn art_color(c: char) -> [u8; 4] {
@@ -63,7 +68,9 @@ fn art_color(c: char) -> [u8; 4] {
         'l' => [134, 90, 48, 255],
         'd' => [104, 68, 36, 255],
         'G' => [214, 176, 72, 255],
+        'g' => [170, 134, 48, 255],
         'Y' => [252, 230, 130, 255],
+        'k' => [40, 24, 12, 255],
         _ => [0, 0, 0, 0],
     }
 }
@@ -260,7 +267,7 @@ impl Chests {
                 // (Its gold bursts out as it's opened.)
                 let gold = gold_at(t, depth, &mut rng);
                 if gold > 0 {
-                    gold_found.push((Vec2::new(origin.x as f32, origin.y as f32 + 6.0), gold));
+                    gold_found.push((Vec2::new(origin.x as f32, origin.y as f32 + 9.0), gold));
                 }
             }
             inv
@@ -317,7 +324,7 @@ impl Chests {
             self.open = None;
         }
         for (k, stack) in inside.into_iter().enumerate() {
-            spawn_drop(commands, items, at + Vec2::new(k as f32 * 0.7 - 3.0, 0.0), stack);
+            spawn_drop(commands, items, at + Vec2::new(k as f32 * 1.05 - 4.5, 0.0), stack);
         }
         if whole && let Some(chest) = items.id("chest") {
             spawn_drop(commands, items, at, Stack::new(chest, 1));
@@ -331,13 +338,13 @@ impl Chests {
 fn gold_at(t: &LootTable, depth: i32, rng: &mut Rng) -> u32 {
     let Some((lo, hi)) = t.gold else { return 0 };
     let base = lo + rng.next_u32() % (hi.saturating_sub(lo) + 1);
-    (base as f32 * (1.0 + depth.max(0) as f32 / 2_500.0)).round() as u32
+    (base as f32 * (1.0 + depth.max(0) as f32 / 3_750.0)).round() as u32
 }
 
 /// The item level of what's found this deep (cells below sea level, large
 /// world): 1 at the surface, a level every 150 cells, at most 60.
 pub fn item_level(depth: i32) -> u8 {
-    (1 + depth.max(0) / 150).min(60) as u8
+    (1 + depth.max(0) / 225).min(60) as u8
 }
 
 /// How gear found is rolled: the rarities, the item level where it's
@@ -389,7 +396,7 @@ fn roll(inv: &mut Inventory, t: &LootTable, items: &Items, found: &Found, rng: &
 /// The chest under `at` (a little forgiving), if any: its entity, key and
 /// centre.
 pub fn chest_at<'a>(at: Vec2, mut chests: impl Iterator<Item = (Entity, &'a Chest, &'a Kinematics)>) -> Option<(Entity, u64, Vec2)> {
-    chests.find(|(_, _, k)| ((k.body.pos - at).abs() - k.body.half).max_element() <= 2.0).map(|(e, c, k)| (e, c.key, k.body.pos))
+    chests.find(|(_, _, k)| ((k.body.pos - at).abs() - k.body.half).max_element() <= 3.0).map(|(e, c, k)| (e, c.key, k.body.pos))
 }
 
 impl Chest {
@@ -418,7 +425,7 @@ fn open_chest(
     }
     let (Some(at), Some(items), Ok((k, stats))) = (cursor.0, items, player.single()) else { return };
     // (A little forgiving: bodies are thin.)
-    let Some((c, ck)) = found.iter().filter(|(_, ck)| ((ck.body.pos - at).abs() - ck.body.half).max_element() <= 3.0).min_by(|a, b| a.1.body.pos.distance(at).total_cmp(&b.1.body.pos.distance(at))) else { return };
+    let Some((c, ck)) = found.iter().filter(|(_, ck)| ((ck.body.pos - at).abs() - ck.body.half).max_element() <= 4.5).min_by(|a, b| a.1.body.pos.distance(at).total_cmp(&b.1.body.pos.distance(at))) else { return };
     let (key, pos) = (c.key, ck.body.pos);
     if pos.distance(k.body.pos) > REACH {
         return;
@@ -473,13 +480,13 @@ fn batter(
     let dt = EVERY as f32 / crate::world::TICK_HZ as f32;
     for (entity, mut chest, mut k) in &mut q {
         for b in &blasts {
-            let reach = b.radius * 1.6 + 6.0;
+            let reach = b.radius * 1.6 + 9.0;
             let d = k.body.pos.distance(b.at);
             if d < reach {
                 let f = 1.0 - d / reach;
                 chest.hp -= 120.0 * f;
                 let away = (k.body.pos - b.at).normalize_or(Vec2::Y);
-                k.body.vel += (away + Vec2::new(0.0, 0.6)) * 260.0 * f;
+                k.body.vel += (away + Vec2::new(0.0, 0.6)) * 390.0 * f;
             }
         }
         if (*tick).is_multiple_of(EVERY) {
@@ -508,9 +515,9 @@ pub fn place_spot_sized(world: &World, cursor: Vec2, (w, h): (i32, i32)) -> Opti
     let mats = world.materials();
     let solid = |p: CellPos| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder));
     let x0 = cursor.x.floor() as i32 - w / 2;
-    let y = cursor.y.floor() as i32 + 4;
+    let y = cursor.y.floor() as i32 + 6;
     // Each column's ground: the first solid cell going down.
-    let tops: Vec<Option<i32>> = (0..w).map(|dx| (0..20).map(|d| y - d).find(|&yy| solid(CellPos::new(x0 + dx, yy)))).collect();
+    let tops: Vec<Option<i32>> = (0..w).map(|dx| (0..30).map(|d| y - d).find(|&yy| solid(CellPos::new(x0 + dx, yy)))).collect();
     let floor = tops.iter().flatten().max()? + 1;
     let resting = tops.iter().filter(|t| **t == Some(floor - 1)).count();
     // (Tall grass and smoke don't count: a chest goes over them.)

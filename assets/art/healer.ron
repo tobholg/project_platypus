@@ -3,6 +3,8 @@
 (
     base: "player",
     palette: {
+        'j': (184, 98, 60),     // hair, lit
+        'L': (244, 243, 234),   // robe, lit
         'h': (150, 70, 40),     // hair, auburn
         'H': (112, 50, 30),
         't': (224, 222, 210),   // robe

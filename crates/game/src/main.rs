@@ -87,8 +87,8 @@ fn main() {
     let generator: Arc<dyn ChunkGenerator> = match std::env::var("PLATYPUS_WORLD").as_deref() {
         // PLATYPUS_WORLD=arena: a sandbox for weapons, spells and creatures
         // (dummies, time controls, overlays, the art editor: `arena.rs`).
-        Ok("arena") => Arc::new(ArenaGen::new(&materials).scaled(if data::hd() { 1.5 } else { 1.0 })),
-        Ok("flat") => Arc::new(FlatGen { width_chunks: 64, height_chunks: 24, floor: 200, stone: materials.expect_id("stone") }),
+        Ok("arena") => Arc::new(ArenaGen::new(&materials)),
+        Ok("flat") => Arc::new(FlatGen { width_chunks: 96, height_chunks: 36, floor: 300, stone: materials.expect_id("stone") }),
         // PLATYPUS_WORLD=small: the small preset (quicker to look around).
         Ok("small") => Arc::new(TerrainGen::new(seed, Preset::Small, &materials).with_lairs(&lairs(), &materials)),
         Ok("medium") => Arc::new(TerrainGen::new(seed, Preset::Medium, &materials).with_lairs(&lairs(), &materials)),
@@ -122,7 +122,7 @@ fn main() {
         .add_plugins((
             world::WorldPlugin { seed, materials, materials_path, generator },
             render::ChunkRenderPlugin,
-            camera::CameraPlugin { start: Vec2::new(spawn.x as f32, spawn.y as f32 + 40.0) },
+            camera::CameraPlugin { start: Vec2::new(spawn.x as f32, spawn.y as f32 + 60.0) },
             tools::ToolsPlugin,
             hands::HandsPlugin,
             props::PropsPlugin,

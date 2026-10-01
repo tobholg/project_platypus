@@ -222,6 +222,31 @@ with steel alone and can with a torch.
 (`archery` fires no arrows on main either: a separate fix); the `troll`
 scenario: held at 3 hp by the sword, dead 0.1 s after it's set alight.
 
+**1½. `scale`: everything 1.5× in cells, seen at 2 px a cell (SC, agreed
+2026-10-01).** The spike (`scale-spike`, spike/hd_spike.png) showed the
+same scene on screen with 2.25× the pixels in every thing; the user: "love
+it, lets do it". Measured: the cell sim +45 % in `chaos` with the same
+debris (the particle cap must rise 2.25×), frame time unchanged. The rule:
+lengths and distances ×1.5, speeds and accelerations ×1.5, areas and cell
+counts ×2.25, per-cell decay (light falloff) to the 1/1.5 power; durations,
+damage, hardness, chances and counts of decorative sparks stay (sparks get
+finer: the point). `tools/scale/ron_scale.py` holds the rules for data.
+1. Data: every creature file, weapons, runes (fireballs' blasts and fire),
+   items, gear (rocket boots, hooks), tools, tempo, lighting, lairs, life,
+   loot, progression.
+2. Code: every constant in cells (camera, hands, combat, magic, fx, light,
+   events, physics defaults, brain defaults); the zoom starts at 2.
+3. The sim and worldgen: world presets 1.5× each way, terrain frequencies
+   ÷1.5, caves, trees, villages, lairs, structures; the particle cap.
+4. Art, redrawn by hand at 1.5× (not upscaled): the humanoid rig and its
+   villagers, gear looks, the skeleton, the troll, spiders, critters,
+   slimes, bats, wisps, props, weapons and held things.
+5. Rocket boots fire from each boot (user, 2026-10-01): the leg parts mark
+   their feet, the exhaust comes from both.
+6. Scenarios and the bench re-measured; budgets kept or argued.
+Done when: nothing on screen is drawn at the old scale, the scenarios hold
+their stories (who wins, what breaks), the bench holds its budgets.
+
 **2. `moves`: moves as data, and seeing that it hurts.**
 1. The move vocabulary: wind-up, active, recovery; hit shapes; lunges;
    projectiles; summons; grabs; beams; area slams; every move with a tell.

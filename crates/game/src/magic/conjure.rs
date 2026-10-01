@@ -12,7 +12,7 @@ use crate::world::{SimWorld, TICK_HZ};
 
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// How far below where it's aimed a wall looks for ground to stand on.
-const GROUND_BELOW: i32 = 80;
+const GROUND_BELOW: i32 = 120;
 /// A held wall refills an open cell with this chance (/256) a tick.
 const REFILL: u8 = 90;
 

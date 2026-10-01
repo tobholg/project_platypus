@@ -124,11 +124,11 @@ pub struct RocketDef {
 }
 
 fn rocket_thrust() -> f32 {
-    2600.0
+    3900.0
 }
 
 fn rocket_speed() -> f32 {
-    230.0
+    345.0
 }
 
 /// gear.ron: what armour's weight costs, the rarities and the bonuses

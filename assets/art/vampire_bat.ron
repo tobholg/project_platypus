@@ -1,35 +1,47 @@
-// A vampire bat: the bat's drawing in blood-red, a red eye. It dives at you.
+// A vampire bat: the bat's drawing in blood-red, red eyes. It dives at you.
 (
-    size: (15, 8),
-    feet: (7.5, 8),
+    size: (23, 12),
+    feet: (11.5, 12),
     outline: (18, 14, 16),
     palette: {
         'b': (74, 30, 38),   // body
+        'B': (98, 42, 50),   // body, lit (the crown, the chest)
+        'd': (56, 22, 30),   // body, shade (the belly, the legs)
         'e': (96, 40, 48),   // ears
+        'f': (230, 214, 200),   // fangs
         'k': (255, 64, 44),   // eye
         'w': (140, 44, 56),   // wing, the skin
+        'v': (166, 58, 68),   // wing, the skin lit
         'W': (104, 32, 42),   // wing, the bones
     },
     frames: {
         "up": [
-            "...............",
-            ".W....e.e....W.",
-            ".WW...bbb...WW.",
-            ".WWW.wbkbw.WWW.",
-            "..WWwwbbbwwWW..",
-            ".....bbbbb.....",
-            "......b.b......",
-            "...............",
+            ".......................",
+            ".W.......e...e.......W.",
+            ".WW......ee.ee......WW.",
+            ".WvW.....bBBBb.....WvW.",
+            ".WvvW...bbkbkbb...WvvW.",
+            ".WwvvW.wbbbBbbbw.WvvwW.",
+            ".WwwvvWwwdfdfdwwWvvwwW.",
+            ".WW.wwwwwbbBbbwwwww.WW.",
+            "..W...wwwdbbbdwww...W..",
+            ".........dbbbd.........",
+            "..........d.d..........",
+            ".......................",
         ],
         "down": [
-            "...............",
-            "......e.e......",
-            "......bbb......",
-            "....wwbkbww....",
-            "..WWWwbbbwWWW..",
-            ".WWW..bbb..WWW.",
-            ".W.....b.....W.",
-            "...............",
+            ".......................",
+            ".........e...e.........",
+            ".........ee.ee.........",
+            ".........bBBBb.........",
+            "......vvbbkbkbbvv......",
+            "....WWvvwbbBbbwvvWW....",
+            "..WWvwwwwdfdfdwwwwvWW..",
+            ".WvwwWwwwbbBbbwwwWwwvW.",
+            ".WwwW.wWwdbbbdwWw.WwwW.",
+            ".Ww..W..W.dbd.W..W..wW.",
+            ".W........d.d........W.",
+            ".......................",
         ],
     },
     clips: {

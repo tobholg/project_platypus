@@ -3,7 +3,7 @@
     name: "Vampire bat",
     // What it may have on it when it dies (loot.ron), besides what it wears.
     loot: "vampire_bat",
-    size: (6, 4),
+    size: (9, 6),
     health: 16,
     team: Enemy,
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -16,16 +16,16 @@
     eyes: (255, 64, 44),
     light: (color: (255, 30, 20), strength: 0.04),
     movement: (
-        run_speed: 20,
-        fly_speed: 115,
-        fly_accel: 900,
+        run_speed: 30,
+        fly_speed: 173,
+        fly_accel: 1350,
         air_jumps: 0,
         step_height: 0,
         dash_speed: 0,
     ),
-    touch: (damage: 6, knock: 80, stun: 0.1, every: 0.8),
+    touch: (damage: 6, knock: 120, stun: 0.1, every: 0.8),
     brain: (
         kind: "hunter",
-        params: (aggro: 160, close: Swoop(hover: (18, 45), dive_time: 1.2, dive_every: 2.2)),
+        params: (aggro: 240, close: Swoop(hover: (27, 68), dive_time: 1.2, dive_every: 2.2)),
     ),
 )

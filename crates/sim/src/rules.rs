@@ -7,9 +7,21 @@ use crate::material::{Kind, MatPhys, MaterialId};
 use crate::particles::{Landing, Particle};
 use crate::step::{Hood, RowScan};
 
-/// Fall-speed cap; a falling cell moves `1 + vy / 4` cells per tick (max 8).
+/// Fall-speed cap; a falling cell moves `fall_cells(vy)` cells per tick
+/// (`1 + 3·vy / 8`: 0.375 cells/tick² as particles' `GRAVITY`, at most 12).
 /// Must stay well under `MAX_REACH`.
-pub(crate) const MAX_FALL: i8 = 28;
+pub(crate) const MAX_FALL: i8 = 30;
+
+/// Cells a falling cell moves this tick at fall speed `vy` (0..=MAX_FALL).
+pub(crate) fn fall_cells(vy: i32) -> i32 {
+    1 + vy * 3 / 8
+}
+
+/// The fall speed (`vy`) of something moving `cells` a tick down: what a
+/// landing particle keeps falling at (`fall_cells`' inverse).
+pub(crate) fn fall_speed_of(cells: f32) -> i8 {
+    ((cells - 1.0).max(0.0) * 8.0 / 3.0).clamp(0.0, MAX_FALL as f32) as i8
+}
 
 const NEIGHBOURS: [(i32, i32); 4] = [(0, 1), (0, -1), (-1, 0), (1, 0)];
 /// -1 or 1, leaning downwind (`wind` in -1..1).
@@ -345,8 +357,8 @@ pub(crate) fn background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
     }
     // Only a blaze throws embers.
     if !charred && heat > BLAZE_HEAT && h.rng.chance(EMBER_CHANCE / 2 + 1) && h.get(x, y + 1).is_some_and(|a| a.is_air()) {
-        let vx = (h.rng.next_u8() as f32 / 255.0 - 0.5) * 0.9 + h.wind * 0.3;
-        let vy = 0.35 + h.rng.next_u8() as f32 / 255.0 * 0.5;
+        let vx = (h.rng.next_u8() as f32 / 255.0 - 0.5) * 1.35 + h.wind * 0.45;
+        let vy = 0.52 + h.rng.next_u8() as f32 / 255.0 * 0.75;
         let life = 40 + h.rng.next_u8() as u16 / 2;
         let ember = Particle { gravity: 0.06, ..Particle::new(h.centre(x, y + 1), [vx, vy], b, life, Landing::Ember) };
         h.emit(ember);
@@ -385,7 +397,7 @@ pub(crate) fn background(h: &mut Hood, x: i32, y: i32, mut b: Cell) {
 /// A background scrap with at most this many neighbours comes apart when
 /// the fire beside it burns out; looked for this far from where it did.
 const SCRAP_MOST: usize = 1;
-const SCRAP_REACH: i32 = 4;
+const SCRAP_REACH: i32 = 6;
 
 /// A background cell burnt away: a flammable scrap beside it left with at
 /// most `SCRAP_MOST` neighbours comes apart, and a scrap beside that, and
@@ -489,8 +501,8 @@ fn burn(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) -> bool {
     // Embers: burning specks thrown up that can start fires where they land.
     // Only a blaze throws embers, not a lone flame.
     if flaming && h.rng.chance(EMBER_CHANCE) && h.get(x, y + 1).is_some_and(|a| a.is_air()) && flaming_around(h, x, y, false) >= BLAZE {
-        let vx = (h.rng.next_u8() as f32 / 255.0 - 0.5) * 0.9;
-        let vy = 0.35 + h.rng.next_u8() as f32 / 255.0 * 0.5;
+        let vx = (h.rng.next_u8() as f32 / 255.0 - 0.5) * 1.35;
+        let vy = 0.52 + h.rng.next_u8() as f32 / 255.0 * 0.75;
         let life = 40 + h.rng.next_u8() as u16 / 2;
         let ember = Particle { gravity: 0.06, ..Particle::new(h.centre(x, y + 1), [vx, vy], *c, life, Landing::Ember) };
         h.emit(ember);
@@ -650,7 +662,7 @@ fn interact(h: &mut Hood, x: i32, y: i32, c: Cell, p: &MatPhys) -> bool {
 fn fall(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
     // Thick liquids pour slowly.
     let max_fall = MAX_FALL as i32 * (256 - p.viscosity as i32) / 256;
-    let speed = 1 + (c.vy.max(0) as i32).min(max_fall) / 4;
+    let speed = fall_cells((c.vy.max(0) as i32).min(max_fall));
     let mut ty = y;
     for _ in 0..speed {
         let t = h.get(x, ty - 1);
@@ -694,7 +706,7 @@ fn slide(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
 const DOZE: u8 = 16;
 
 /// Furthest a pressured liquid cell pushes through its own kind.
-const PRESSURE_REACH: i32 = 48;
+const PRESSURE_REACH: i32 = 72;
 
 /// Distance to the first open cell (air or plant) along the row through
 /// cells of `m` only, if there is one within `PRESSURE_REACH`.
@@ -747,7 +759,7 @@ fn depth_above(h: &Hood, x: i32, y: i32, m: MaterialId, cap: i32) -> i32 {
 }
 
 /// How far along the surface a liquid looks for lower ground.
-const SEEK: i32 = 128;
+const SEEK: i32 = 192;
 
 /// Could it slide down a diagonal? (A thick liquid that waits a tick still
 /// counts as moving, so it doesn't flow sideways instead.)

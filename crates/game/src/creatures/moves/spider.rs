@@ -41,7 +41,7 @@ pub struct Bite {
 
 impl Default for Bite {
     fn default() -> Self {
-        Bite { range: 24.0, windup: 0.3, lunge: 280.0, damage: 16.0, knock: 330.0, stun: 0.35, every: 1.5 }
+        Bite { range: 36.0, windup: 0.3, lunge: 420.0, damage: 16.0, knock: 495.0, stun: 0.35, every: 1.5 }
     }
 }
 
@@ -58,7 +58,7 @@ pub struct Spit {
 
 impl Default for Spit {
     fn default() -> Self {
-        Spit { spell: "spider_spit".into(), range: (16.0, 170.0), windup: 0.45, every: 3.5 }
+        Spit { spell: "spider_spit".into(), range: (24.0, 255.0), windup: 0.45, every: 3.5 }
     }
 }
 
@@ -80,7 +80,7 @@ pub struct Sting {
 
 impl Default for Sting {
     fn default() -> Self {
-        Sting { range: 28.0, rise: 0.5, hold: 0.35, damage: 30.0, knock: 220.0, stun: 0.4, venom: "venom".into(), every: 5.0 }
+        Sting { range: 42.0, rise: 0.5, hold: 0.35, damage: 30.0, knock: 330.0, stun: 0.4, venom: "venom".into(), every: 5.0 }
     }
 }
 
@@ -120,11 +120,11 @@ const STRIKE: f32 = 0.12;
 const LUNGE: f32 = 0.22;
 const RECOVER: f32 = 0.45;
 /// Its jaws (and its stinger's reach past its head), from its middle.
-const HEAD: f32 = 10.0;
+const HEAD: f32 = 15.0;
 /// A spit's speed and how fast it falls (the `arrow` rune's, with `heavy`:
 /// cells/s, cells/s²), to aim the lob.
-const SPIT_SPEED: f32 = 300.0;
-const SPIT_FALL: f32 = 450.0;
+const SPIT_SPEED: f32 = 450.0;
+const SPIT_FALL: f32 = 675.0;
 
 fn smooth(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
@@ -220,18 +220,18 @@ pub fn attack(
             Move::Bite => {
                 let b = brain.bite.as_ref().expect("biting");
                 if t < b.windup {
-                    rear.back = 3.0 * smooth(t / b.windup);
-                    rear.lift = 2.0 * smooth(t / b.windup);
+                    rear.back = 4.5 * smooth(t / b.windup);
+                    rear.lift = 3.0 * smooth(t / b.windup);
                 } else if t < b.windup + LUNGE {
                     rear.back = 0.0;
-                    rear.lift = 1.0;
+                    rear.lift = 1.5;
                     if t - DT < b.windup {
                         // (Off the ground a little: a leap, not a slide.)
-                        k.body.vel = dir * b.lunge + Vec2::Y * 60.0;
+                        k.body.vel = dir * b.lunge + Vec2::Y * 90.0;
                     }
                     if !a.struck
                         && let Some(pk) = target
-                        && reaches(pk, 4.0)
+                        && reaches(pk, 6.0)
                     {
                         a.struck = true;
                         hits.write(Hit { target: pe, damage: b.damage, harm: crate::creatures::Harm::Pierce, knock: (dir + Vec2::Y * 0.4).normalize() * b.knock, stun: b.stun, at: head, dir, weight: b.damage / 12.0, crit: false });
@@ -244,15 +244,15 @@ pub fn attack(
             Move::Spit => {
                 let s = brain.spit.as_ref().expect("spitting");
                 if t < s.windup {
-                    rear.lift = 4.0 * smooth(t / s.windup);
-                    rear.back = 2.0 * smooth(t / s.windup);
+                    rear.lift = 6.0 * smooth(t / s.windup);
+                    rear.back = 3.0 * smooth(t / s.windup);
                 } else if !a.struck {
                     a.struck = true;
-                    rear.back = -2.0;
+                    rear.back = -3.0;
                     if let (Some(pk), Some(spell)) = (target, book.spells.iter().position(|x| x.id == s.spell)) {
                         // Where they'll be when it gets there, and above
                         // that by as far as the glob falls on the way (a lob).
-                        let from = head + Vec2::Y * 3.0;
+                        let from = head + Vec2::Y * 4.5;
                         let flight = from.distance(pk.body.pos) / SPIT_SPEED;
                         let lead = pk.body.pos + pk.body.vel * flight + Vec2::Y * 0.5 * SPIT_FALL * flight * flight;
                         casts.write(crate::magic::CastRequest { caster: e, spell, from, toward: lead, alt: false });
@@ -268,21 +268,21 @@ pub fn attack(
                 if t < s.rise {
                     // Up on its legs, the stinger curling up over its back.
                     let f = smooth(t / s.rise);
-                    rear.lift = 8.0 * f;
+                    rear.lift = 12.0 * f;
                     rear.curl = 0.55 * f;
                 } else if t < s.rise + s.hold {
                     // Held, trembling.
-                    rear.lift = 8.0;
+                    rear.lift = 12.0;
                     rear.curl = 0.55 + 0.03 * ((t * 40.0).sin());
                 } else if t < s.rise + s.hold + STRIKE {
                     // Down past its head.
                     let f = (t - s.rise - s.hold) / STRIKE;
                     rear.curl = 0.55 + 0.45 * f;
-                    rear.lift = 8.0 - 4.0 * f;
+                    rear.lift = 12.0 - 6.0 * f;
                     if !a.struck
                         && f > 0.5
                         && let Some(pk) = target
-                        && reaches(pk, 8.0)
+                        && reaches(pk, 12.0)
                     {
                         a.struck = true;
                         hits.write(Hit { target: pe, damage: s.damage, harm: crate::creatures::Harm::Pierce, knock: (dir + Vec2::Y * 0.3).normalize() * s.knock, stun: s.stun, at: head, dir, weight: s.damage / 12.0, crit: false });
@@ -293,7 +293,7 @@ pub fn attack(
                 } else {
                     let f = ((t - s.rise - s.hold - STRIKE) / RECOVER).clamp(0.0, 1.0);
                     rear.curl = 1.0 - f;
-                    rear.lift = 4.0 * (1.0 - f);
+                    rear.lift = 6.0 * (1.0 - f);
                 }
                 t >= s.rise + s.hold + STRIKE + RECOVER
             }

@@ -48,9 +48,9 @@ const LINE_SECS: f32 = 4.5;
 /// The bubble: its text size (drawn big, scaled down: crisp), how much
 /// smaller it's drawn, how wide it wraps, how far over the head.
 const BUBBLE_FONT: f32 = 22.0;
-const BUBBLE_SCALE: f32 = 0.25;
+const BUBBLE_SCALE: f32 = 0.375;
 const BUBBLE_WIDTH: f32 = 230.0;
-const BUBBLE_OVER: f32 = 5.0;
+const BUBBLE_OVER: f32 = 7.5;
 /// Shift-click buys this many.
 const MANY: u32 = 10;
 /// The gold colour of prices.
@@ -207,7 +207,7 @@ fn open(
     let (Some(at), Some(items), Ok(pk)) = (cursor.0, items, player.single()) else { return };
     let Some((e, v, _)) = folk
         .iter()
-        .filter(|(_, _, k)| ((k.body.pos - at).abs() - k.body.half).max_element() <= 3.0 && k.body.pos.distance(pk.body.pos) <= TALK_NEAR)
+        .filter(|(_, _, k)| ((k.body.pos - at).abs() - k.body.half).max_element() <= 4.5 && k.body.pos.distance(pk.body.pos) <= TALK_NEAR)
         .min_by(|a, b| a.2.body.pos.distance(at).total_cmp(&b.2.body.pos.distance(at)))
     else {
         return;

@@ -13,7 +13,7 @@ use crate::world::{SimWorld, TICK_HZ, TickSet};
 pub struct PropsPlugin;
 
 const DT: f32 = (1.0 / TICK_HZ) as f32;
-const GRAVITY: f32 = 900.0;
+const GRAVITY: f32 = 1350.0;
 
 /// Flies ballistically and bounces (anything thrown).
 #[derive(Component)]
@@ -43,21 +43,21 @@ impl Plugin for PropsPlugin {
 }
 
 pub fn spawn_bomb(commands: &mut Commands, at: Vec2, vel: Vec2, cfg: BombCfg) {
-    let mut body = Body::new(at, Vec2::splat(3.0));
+    let mut body = Body::new(at, Vec2::splat(4.5));
     body.vel = vel;
     commands.spawn((
         Name::new("Bomb"),
         Thrown { bounce: cfg.bounce },
         Bomb { fuse: cfg.fuse, cfg },
         Kinematics { body, loco: Locomotion::default(), prev_pos: at },
-        Sprite::from_color(Color::srgb(0.12, 0.12, 0.14), Vec2::splat(4.0)),
+        Sprite::from_color(Color::srgb(0.12, 0.12, 0.14), Vec2::splat(6.0)),
         Transform::from_translation(at.extend(12.0)),
     ));
 }
 
 /// Throw a glow stick (green or blue) that lights its surroundings.
 pub fn spawn_glowstick(commands: &mut Commands, at: Vec2, vel: Vec2, color: [f32; 3], life: f32, haze: f32) {
-    let mut body = Body::new(at, Vec2::new(2.0, 2.0));
+    let mut body = Body::new(at, Vec2::new(3.0, 3.0));
     body.vel = vel;
     commands.spawn((
         Name::new("Glowstick"),
@@ -66,7 +66,7 @@ pub fn spawn_glowstick(commands: &mut Commands, at: Vec2, vel: Vec2, color: [f32
         LightSource { color, flicker: 0.0 },
         crate::light::Haze(haze),
         Kinematics { body, loco: Locomotion::default(), prev_pos: at },
-        Sprite::from_color(Color::srgb(color[0].min(1.0), color[1].min(1.0), color[2].min(1.0)), Vec2::new(1.0, 3.0)),
+        Sprite::from_color(Color::srgb(color[0].min(1.0), color[1].min(1.0), color[2].min(1.0)), Vec2::new(1.5, 4.5)),
         Transform::from_translation(at.extend(12.0)),
     ));
 }
@@ -106,7 +106,7 @@ pub fn fly(sim: Res<SimWorld>, mut q: Query<(&mut Kinematics, &Thrown)>) {
         let c = move_and_collide(&grid, &mut k.body, DT);
         let e = thrown.bounce;
         if c.ground || c.ceiling {
-            k.body.vel.y = if before.y.abs() > 40.0 { -before.y * e } else { 0.0 };
+            k.body.vel.y = if before.y.abs() > 60.0 { -before.y * e } else { 0.0 };
             k.body.vel.x *= if c.ground { 0.75 } else { 1.0 };
         }
         if c.wall_left || c.wall_right {
@@ -116,7 +116,7 @@ pub fn fly(sim: Res<SimWorld>, mut q: Query<(&mut Kinematics, &Thrown)>) {
             k.body.vel *= 0.9;
         }
         // Barely sliding on the ground: stopped.
-        if c.ground && k.body.vel.y == 0.0 && k.body.vel.x.abs() < 2.0 {
+        if c.ground && k.body.vel.y == 0.0 && k.body.vel.x.abs() < 3.0 {
             k.body.vel.x = 0.0;
         }
     }

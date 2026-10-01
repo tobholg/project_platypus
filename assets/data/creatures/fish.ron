@@ -2,7 +2,7 @@
 // darts away from you; stranded, it flops.
 (
     name: "Fish",
-    size: (6, 3),
+    size: (9, 5),
     health: 6,
     team: Neutral,
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -10,15 +10,15 @@
     blood: "blood",
     art: "fish",
     movement: (
-        run_speed: 20,
-        jump_height: 5,
+        run_speed: 30,
+        jump_height: 8,
         air_jumps: 0,
         step_height: 0,
-        swim_speed: 45,
-        swim_accel: 200,
+        swim_speed: 68,
+        swim_accel: 300,
     ),
     brain: (
         kind: "critter",
-        params: (flee_range: 30, calm_after: 2.0, swims: true, wander_every: 1.6, rest: 0.25, wander_speed: 0.5),
+        params: (flee_range: 45, calm_after: 2.0, swims: true, wander_every: 1.6, rest: 0.25, wander_speed: 0.5),
     ),
 )

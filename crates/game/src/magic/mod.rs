@@ -53,7 +53,7 @@ pub struct MagicPlugin;
 
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// What a thrown thing falls at (cells/s²); spells fall at a share of it.
-const GRAVITY: f32 = 900.0;
+const GRAVITY: f32 = 1350.0;
 /// An orb falls at this share even without a `Gravity` rune.
 const ORB_FALL: f32 = 0.3;
 /// A spell can hit its own caster once it has flown this long (a bouncing
@@ -62,9 +62,9 @@ const SELF_SAFE: f32 = 0.3;
 /// Lightning looks for creatures within this angle of the aim (radians)...
 const LIGHTNING_CONE: f32 = 0.6;
 /// ... or this close to where the cursor is (cells).
-const LIGHTNING_NEAR_AIM: f32 = 30.0;
+const LIGHTNING_NEAR_AIM: f32 = 45.0;
 /// How far ahead a cast set off where something landed looks for its aim.
-const TRIGGERED_REACH: f32 = 80.0;
+const TRIGGERED_REACH: f32 = 120.0;
 /// Seconds frost keeps what it hits chilled.
 const FROST_CHILL: f32 = 3.0;
 /// A stream sets alight what stands in it (a chance a cast, in 255ths)
@@ -75,18 +75,18 @@ const STREAM_DAMAGE: f32 = 2.0;
 const STREAM_HEAT: i16 = 12;
 /// A stream starts this far ahead of the hand (so it doesn't douse its
 /// caster).
-const STREAM_AHEAD: f32 = 6.0;
+const STREAM_AHEAD: f32 = 9.0;
 /// Meeting a liquid: an orb skips off it (at most this many times) when it
 /// comes in shallower than this (vertical to horizontal speed) and faster
 /// than this (cells/s)...
 const ORB_SKIPS: u8 = 3;
 const SKIP_SLOPE: f32 = 0.6;
-const SKIP_SPEED: f32 = 110.0;
+const SKIP_SPEED: f32 = 165.0;
 /// ... anything else goes in, keeping this share of its speed a cell and
 /// burning its life this much faster, gone below this speed.
-const WET_STEP: f32 = 0.9;
+const WET_STEP: f32 = 0.932;
 const WET_AGE: f32 = 3.0;
-const FIZZLE: f32 = 50.0;
+const FIZZLE: f32 = 75.0;
 
 /// What casting costs. Refills `regen` a second.
 #[derive(Component, Clone, Copy, Debug)]
@@ -396,7 +396,7 @@ fn fire(
                     let open = |p: Vec2| world.get(CellPos::from_world(p.x, p.y)).is_some_and(|c| c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas | Kind::Fire | Kind::Plant));
                     let tip = (STREAM_AHEAD as i32..reach as i32).map(|t| f.from + f.dir * t as f32).find(|&p| !open(p));
                     if let Some(tip) = tip {
-                        sim.world.apply_edit(&WorldEdit::Heat { center: CellPos::from_world(tip.x, tip.y), radius: 3, amount: STREAM_HEAT });
+                        sim.world.apply_edit(&WorldEdit::Heat { center: CellPos::from_world(tip.x, tip.y), radius: 5, amount: STREAM_HEAT });
                     }
                 }
                 // What stands in it is scalded, and may catch.
@@ -407,7 +407,7 @@ fn fire(
                         continue;
                     }
                     h.harm(STREAM_DAMAGE, cast.harm);
-                    k.body.vel += f.dir * 6.0;
+                    k.body.vel += f.dir * 9.0;
                     if rng.chance(STREAM_CATCH) {
                         catch_fire(&mut commands, e, &h.nature, coated, &coatings, 0.35);
                     }
@@ -447,7 +447,7 @@ fn fire(
                 let above = target + Vec2::new(if lightning { 0.0 } else { -height * 0.35 }, height);
                 if sky && !open_sky(&sim.world, target, height) {
                     // (No sky here: a puff, and nothing.)
-                    sparks.emit(&FIZZLE_PUFF, FIZZLE_PUFF.count as usize, f.from + f.dir * 6.0, f.dir, Vec2::ZERO);
+                    sparks.emit(&FIZZLE_PUFF, FIZZLE_PUFF.count as usize, f.from + f.dir * 9.0, f.dir, Vec2::ZERO);
                     continue;
                 }
                 // The cloud it comes out of.
@@ -491,20 +491,20 @@ fn fire(
             &Carrier::Lightning { range, targets } => {
                 let mut ends = lightning_targets(&bodies, &f, range, targets as usize);
                 if ends.is_empty() {
-                    ends.push((f.from + f.dir * f.reach.clamp(12.0, range), None));
+                    ends.push((f.from + f.dir * f.reach.clamp(18.0, range), None));
                 }
                 for (to, target) in ends {
                     let end = sim.world.zap(CellPos::from_world(f.from.x, f.from.y), CellPos::from_world(to.x, to.y));
                     let at = Vec2::new(end.x as f32 + 0.5, end.y as f32 + 0.5);
                     // (Walled off: it hit the wall, not them.)
-                    let hit = target.filter(|_| at.distance(to) < 4.0);
+                    let hit = target.filter(|_| at.distance(to) < 6.0);
                     let dir = (to - f.from).normalize_or(f.dir);
                     for e in &cast.bursts {
                         sparks.emit(e, e.count as usize, at, -dir, Vec2::ZERO);
                     }
                     land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, dir, false, false, &mut booms);
                     if let Some(then) = &cast.then {
-                        firing.0.push(Fire { cast: then.clone(), caster: f.caster, from: at - dir * 2.0, dir, reach: TRIGGERED_REACH });
+                        firing.0.push(Fire { cast: then.clone(), caster: f.caster, from: at - dir * 3.0, dir, reach: TRIGGERED_REACH });
                     }
                 }
             }
@@ -519,7 +519,7 @@ fn spawn_spell(commands: &mut Commands, f: &Fire, speed: f32, life: f32, bounces
     let vel = f.dir * speed * c.speed_scale();
     let (r, g, b) = c.color;
     let color = [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0];
-    let (size, glow) = if matches!(c.carrier, Carrier::Orb { .. }) { (Vec2::splat(5.0), 2.4) } else { (Vec2::new(4.0, 1.5), 1.4) };
+    let (size, glow) = if matches!(c.carrier, Carrier::Orb { .. }) { (Vec2::splat(7.5), 2.4) } else { (Vec2::new(6.0, 2.25), 1.4) };
     // A hot, pale core in a soft halo of its colour.
     let core = Color::srgb(0.5 + color[0] * 0.5, 0.5 + color[1] * 0.5, 0.5 + color[2] * 0.5);
     let mut spell = commands.spawn((
@@ -625,7 +625,7 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
                     h.harm(d, cast.harm);
                     if !beam {
                         let k = &mut *k;
-                        k.loco.knock(&mut k.body, (dir + Vec2::new(0.0, 0.5)).normalize() * d * 5.0, 0.2);
+                        k.loco.knock(&mut k.body, (dir + Vec2::new(0.0, 0.5)).normalize() * d * 7.5, 0.2);
                     }
                 }
             }
@@ -638,7 +638,7 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
                 {
                     for _ in 0..(n / 3).clamp(1, 30) {
                         let a = rng.next_u32() as f32 / u32::MAX as f32 * std::f32::consts::TAU;
-                        let v = Vec2::from_angle(a) * 0.4 - dir * 0.3;
+                        let v = Vec2::from_angle(a) * 0.6 - dir * 0.45;
                         world.emit(Particle { gravity: -0.05, ..Particle::new([at.x, at.y], [v.x, v.y], mats.spawn(smoke, &mut rng), 30, Landing::Settle) });
                     }
                 }
@@ -647,7 +647,7 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
             // (Void: `fly` hands these to `void::act`.)
             Payload::Blink | Payload::Portal | Payload::Stasis { .. } => {}
             Payload::Arc => {
-                let back = at - dir * 6.0;
+                let back = at - dir * 9.0;
                 world.apply_edit(&WorldEdit::Zap { from: CellPos::from_world(back.x, back.y), to: center });
             }
             &Payload::Knock(power) => {
@@ -661,7 +661,7 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
             &Payload::Shatter { radius, hardness } => {
                 // (Not a body it hit: the ground.)
                 if hit.is_none() {
-                    let back = at - dir * 6.0;
+                    let back = at - dir * 9.0;
                     world.apply_edit(&WorldEdit::Shatter { center, from: CellPos::from_world(back.x, back.y), radius, max_hardness: hardness });
                 }
             }
@@ -683,7 +683,7 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
                 }
                 // Hot into water: it flashes to steam. Cold: the water it
                 // lands on or beside freezes (an ice patch to stand on).
-                let r = radius + if amount < 0 { 3 } else { 0 };
+                let r = radius + if amount < 0 { 5 } else { 0 };
                 for dy in -r..=r {
                     for dx in -r..=r {
                         if dx * dx + dy * dy > r * r {
@@ -717,7 +717,7 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
             }
             Payload::Matter { material, cells } => {
                 if let Some(m) = world.materials().id(material) {
-                    world.splash([at.x, at.y], m, *cells as usize, 1.2);
+                    world.splash([at.x, at.y], m, *cells as usize, 1.8);
                 }
             }
         }
@@ -796,7 +796,7 @@ fn fly(
                             s.skips -= 1;
                             debug!("spell skipped off a liquid at {next:?}");
                             s.vel = Vec2::new(s.vel.x * 0.85, s.vel.y.abs() * 0.5);
-                            surface.push((next, 10, douses));
+                            surface.push((next, 23, douses));
                             break;
                         }
                         // Fire into water is doused: it goes off at the
@@ -806,14 +806,14 @@ fn fly(
                             debug!("spell met a liquid at {next:?}: doused {douses}, oil {oil}");
                             doused = douses;
                             if douses {
-                                surface.push((next, 16, true));
+                                surface.push((next, 36, true));
                             }
                             end = Some((None, Vec2::Y));
                             break;
                         }
                         // Anything else plunges in.
                         s.wet = true;
-                        surface.push((next, 6, false));
+                        surface.push((next, 14, false));
                     }
                     (None, true) => s.wet = false,
                     _ => {}
@@ -828,7 +828,7 @@ fn fly(
                     sparks.trail(e, 1.0, s.pos, -s.vel, s.vel * 0.15);
                 }
                 let (caster, age) = (s.caster, s.age);
-                let inside = |k: &Kinematics| ((next - k.body.pos).abs() - k.body.half).max_element() < 1.0;
+                let inside = |k: &Kinematics| ((next - k.body.pos).abs() - k.body.half).max_element() < 1.5;
                 if let Some((hit, ..)) = bodies.iter().find(|(b, k, ..)| (*b != caster || age > SELF_SAFE) && inside(k)) {
                     end = Some((Some(hit), Vec2::ZERO));
                     break;
@@ -864,7 +864,7 @@ fn fly(
             cell.flags |= flags::BURNING;
             cell.life = mats.phys(m).burn_time;
         }
-        let vel = [(rng.next_u8() as f32 / 255.0 - 0.5) * 0.3, 0.1 + rng.next_u8() as f32 / 255.0 * 0.2];
+        let vel = [(rng.next_u8() as f32 / 255.0 - 0.5) * 0.45, 0.15 + rng.next_u8() as f32 / 255.0 * 0.3];
         world.emit(Particle { gravity: -0.1, ..Particle::new([at.x, at.y], vel, cell, 10 + rng.next_u8() as u16 / 32, Landing::Ember) });
     }
     for (at, material, cells, burning) in shed {
@@ -876,14 +876,14 @@ fn fly(
                 cell.life = mats.phys(m).burn_time;
             }
             let a = rng.next_u32() as f32 / u32::MAX as f32 * std::f32::consts::PI;
-            let s = 0.4 + rng.next_u8() as f32 / 255.0 * 0.8;
+            let s = 0.6 + rng.next_u8() as f32 / 255.0 * 1.2;
             world.emit(Particle::new([at.x, at.y], [a.cos() * s, a.sin() * s], cell, 90, Landing::Settle));
         }
     }
     for (at, n, steam) in surface {
         splash_surface(world, at, n, &mut rng);
         if steam {
-            sparks.emit(&HISS, HISS.count as usize, at + Vec2::Y * 2.0, Vec2::Y, Vec2::ZERO);
+            sparks.emit(&HISS, HISS.count as usize, at + Vec2::Y * 3.0, Vec2::Y, Vec2::ZERO);
         }
     }
     for (e, cast, caster, at, hit, dir, n, doused) in landed {
@@ -916,7 +916,7 @@ fn fly(
 }
 
 /// A forced storm's reach either side of a called lightning bolt (cells).
-const STORM_RADIUS: i32 = 48;
+const STORM_RADIUS: i32 = 72;
 
 /// Open sky over `at`: nothing solid for `height` cells up (or up to where
 /// the world isn't loaded: the sky).
@@ -931,7 +931,7 @@ static CALL_CLOUD: std::sync::LazyLock<runes::Emitter> = std::sync::LazyLock::ne
     count: 40.0,
     life: (0.6, 1.4),
     colors: vec![(120, 124, 140), (80, 84, 100), (50, 52, 64)],
-    speed: 30.0,
+    speed: 45.0,
     spread: std::f32::consts::PI,
     gravity: 0.0,
     drag: 1.5,
@@ -945,9 +945,9 @@ static FIZZLE_PUFF: std::sync::LazyLock<runes::Emitter> = std::sync::LazyLock::n
     count: 10.0,
     life: (0.2, 0.5),
     colors: vec![(200, 200, 210), (120, 120, 130)],
-    speed: 25.0,
+    speed: 38.0,
     spread: 1.0,
-    gravity: -20.0,
+    gravity: -30.0,
     drag: 3.0,
     size: 1.0,
     jitter: 0.0,
@@ -960,11 +960,11 @@ fn splash_surface(world: &mut World, at: Vec2, n: usize, rng: &mut Rng) {
     let mats = world.materials().clone();
     let unit = |rng: &mut Rng| rng.next_u32() as f32 / u32::MAX as f32;
     for _ in 0..n * 2 {
-        let q = CellPos::from_world(at.x + (unit(rng) - 0.5) * 6.0, at.y - unit(rng) * 3.0);
+        let q = CellPos::from_world(at.x + (unit(rng) - 0.5) * 9.0, at.y - unit(rng) * 4.5);
         let Some(c) = world.get(q).filter(|c| mats.phys(c.material).kind == Kind::Liquid) else { continue };
         let Some(c) = world.pluck(q).map(|_| c) else { continue };
-        let v = [(unit(rng) - 0.5) * 1.6, 1.0 + unit(rng) * 1.6];
-        world.emit(Particle::new([q.x as f32 + 0.5, q.y as f32 + 1.5], v, c, 150, Landing::Settle));
+        let v = [(unit(rng) - 0.5) * 2.4, 1.5 + unit(rng) * 2.4];
+        world.emit(Particle::new([q.x as f32 + 0.5, q.y as f32 + 2.25], v, c, 150, Landing::Settle));
     }
 }
 
@@ -973,12 +973,12 @@ static HISS: std::sync::LazyLock<runes::Emitter> = std::sync::LazyLock::new(|| r
     count: 34.0,
     life: (0.5, 1.4),
     colors: vec![(250, 250, 255), (210, 215, 225), (150, 155, 165)],
-    speed: 45.0,
+    speed: 68.0,
     spread: 1.2,
-    gravity: -40.0,
+    gravity: -60.0,
     drag: 1.5,
     size: 2.0,
-    jitter: 6.0,
+    jitter: 9.0,
     glow: false,
 });
 

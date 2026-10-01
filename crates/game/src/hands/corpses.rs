@@ -104,7 +104,7 @@ fn curled_legs(def: &crate::creatures::body::legs::LegsDef, seed: u64) -> (Image
     for side in [1.0f32, -1.0] {
         for j in 0..per_side {
             let along = if per_side > 1 { j as f32 / (per_side - 1) as f32 - 0.5 } else { 0.0 };
-            let hip = Vec2::new(def.hips * 0.4 - along * def.spread * 1.6, side * 3.0);
+            let hip = Vec2::new(def.hips * 0.4 - along * def.spread * 1.6, side * 4.5);
             // Front legs out and forward, back ones out and back...
             let out = (80.0 - along * 120.0 + jitter(10.0)).to_radians();
             let dir = Vec2::new(out.cos(), side * out.sin());
@@ -162,7 +162,7 @@ fn lay_out(
         }
         if !d.def.corpse {
             for (k, s) in inv.slots.iter().flatten().enumerate() {
-                spawn_drop(&mut commands, &items, at + Vec2::new(k as f32 * 0.7 - 2.0, 0.0), *s);
+                spawn_drop(&mut commands, &items, at + Vec2::new(k as f32 * 1.05 - 3.0, 0.0), *s);
             }
             continue;
         }
@@ -173,7 +173,7 @@ fn lay_out(
         let rot = Quat::from_rotation_z(turn);
         let size = d.body.half * 2.0;
         let size = if turn == 0.0 { size } else { Vec2::new(size.y, size.x) };
-        let mut body = Body::new(at, size.max(Vec2::splat(2.0)));
+        let mut body = Body::new(at, size.max(Vec2::splat(3.0)));
         body.vel = d.body.vel * 0.5;
         let mut e = commands.spawn((
             Name::new(format!("Body of {}", d.def.name)),
@@ -206,11 +206,11 @@ fn lay_out(
 fn batter(mut blasts: MessageReader<Explosion>, mut q: Query<&mut Kinematics, With<Corpse>>) {
     for b in blasts.read() {
         for mut k in &mut q {
-            let reach = b.radius * 1.6 + 6.0;
+            let reach = b.radius * 1.6 + 9.0;
             let d = k.body.pos.distance(b.at);
             if d < reach {
                 let away = (k.body.pos - b.at).normalize_or(Vec2::Y);
-                k.body.vel += (away + Vec2::new(0.0, 0.6)) * b.power * 3.0 * (1.0 - d / reach);
+                k.body.vel += (away + Vec2::new(0.0, 0.6)) * b.power * 4.5 * (1.0 - d / reach);
             }
         }
     }

@@ -124,7 +124,7 @@ fn reset(world: &mut World) {
             let mut q = world.query_filtered::<&mut Kinematics, With<LocalPlayer>>();
             for mut k in q.iter_mut(world) {
                 // (Over the start, frozen until the ground under it is back.)
-                k.body.pos = Vec2::new(start.x as f32 + 0.5, start.y as f32 + 40.0);
+                k.body.pos = Vec2::new(start.x as f32 + 0.5, start.y as f32 + 60.0);
                 k.body.vel = Vec2::ZERO;
                 k.prev_pos = k.body.pos;
             }
@@ -134,7 +134,7 @@ fn reset(world: &mut World) {
             for e in players {
                 world.entity_mut(e).despawn();
             }
-            world.resource_mut::<SpawnQueue>().0.push(PendingSpawn { kind: "player".into(), x: start.x, from_y: start.y + 120, local_player: true });
+            world.resource_mut::<SpawnQueue>().0.push(PendingSpawn { kind: "player".into(), x: start.x, from_y: start.y + 180, local_player: true });
             world.resource_mut::<crate::world::SimWorld>().world.set_tick(0);
             world.resource_mut::<crate::light::Daylight>().skipped = 0.0;
             world.resource_mut::<crate::creatures::PlayerDeaths>().0 = 0;

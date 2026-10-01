@@ -33,7 +33,7 @@ struct Clouds {
 /// slide of the whole texture.
 const REDRAW_EVERY: u64 = 30;
 /// Cells drawn beyond the view each side, so the slide has room.
-const MARGIN: i32 = 96;
+const MARGIN: i32 = 144;
 /// The texture's width is a multiple of this (cells).
 const SIZE_STEP: u32 = 128;
 /// The puff table tiles every this many cells.
@@ -79,7 +79,7 @@ fn puff_table() -> Vec<f32> {
     let mut t = vec![0.0; n * n];
     for y in 0..n {
         for x in 0..n {
-            t[y * n + x] = 0.6 * octave(x, y, 32, 0xC1) + 0.4 * octave(x, y, 8, 0xC2);
+            t[y * n + x] = 0.6 * octave(x, y, 48, 0xC1) + 0.4 * octave(x, y, 12, 0xC2);
         }
     }
     t
@@ -157,14 +157,14 @@ fn paint(data: &mut [u8], size: UVec2, x0: i32, x1: i32, weather: &Weather, puff
     let inside = |x: i32, y: i32| {
         let billow = 1.0 - (2.0 * puff(puffs, x, y) - 1.0).abs();
         let sway = puff(puffs, x * 7 / 10 + 311, y * 7 / 10);
-        let (wx, wy) = ((sway - 0.5) * 22.0, (billow - 0.5) * 20.0);
+        let (wx, wy) = ((sway - 0.5) * 33.0, (billow - 0.5) * 30.0);
         weather.moisture_air(x as f32 + 0.5 + wx, y as f32 + 0.5 + wy) >= CLOUD_AT
     };
     let height = (y1 - y0) as usize;
     let mut column = vec![false; height];
     for x in x0..x1 {
         // Rain darkens a cloud, smoothed over its width (per column it striped).
-        let rain = (-3..=3).map(|k| weather.rain_air(x + k * 6)).sum::<f32>() / 7.0;
+        let rain = (-3..=3).map(|k| weather.rain_air(x + k * 9)).sum::<f32>() / 7.0;
         let rain = rain.min(0.12) / 0.12;
         for (k, v) in column.iter_mut().enumerate() {
             *v = inside(x, y0 + k as i32);
@@ -190,13 +190,13 @@ fn paint(data: &mut [u8], size: UVec2, x0: i32, x1: i32, weather: &Weather, puff
                 let y = y0 + j as i32;
                 let from_top = (top - j) as f32;
                 let from_bottom = (j - bottom) as f32;
-                let belly = (depth * 0.28).clamp(2.0, 14.0);
+                let belly = (depth * 0.28).clamp(3.0, 21.0);
                 let checker = (x + y).rem_euclid(2) == 0;
-                let tone: [f32; 3] = if from_top < 1.5 {
+                let tone: [f32; 3] = if from_top < 2.25 {
                     [255.0, 255.0, 255.0]
-                } else if from_bottom < belly - 1.0 || (from_bottom < belly + 1.0 && checker) {
+                } else if from_bottom < belly - 1.5 || (from_bottom < belly + 1.5 && checker) {
                     [168.0, 178.0, 196.0]
-                } else if from_top < 5.0 || (from_top < 7.0 && checker) {
+                } else if from_top < 7.5 || (from_top < 10.5 && checker) {
                     [240.0, 243.0, 250.0]
                 } else {
                     [214.0, 220.0, 232.0]

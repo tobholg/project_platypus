@@ -76,7 +76,7 @@ const RAIN_MIN: f32 = 0.02;
 /// many days (a noise across the world and the days).
 const SPELL: (f64, f64) = (0.35, 1.25);
 const SPELL_DAYS: f64 = 6.0;
-const SPELL_WIDTH: f64 = 12_000.0;
+const SPELL_WIDTH: f64 = 18_000.0;
 /// A lost tree is a sapling this many days later...
 const SAPLING_DAYS: f64 = 1.0;
 /// ... and full grown this many after that.
@@ -93,15 +93,15 @@ const COOL_DAYS: f64 = 1.0 / 24.0;
 /// (cells) of tinder-dry land; land wetter than `FIRE_DRY` doesn't catch
 /// (the chance falls off to it).
 const FIRE_RATE: f64 = 0.0004;
-const FIRE_WIDTH: f64 = 256.0;
+const FIRE_WIDTH: f64 = 384.0;
 const FIRE_DRY: f32 = 0.3;
 /// How far a wildfire runs either side of its strike (cells), from damp to
 /// tinder-dry; a gap this wide between trees stops it.
-const FIRE_REACH: (f32, f32) = (80.0, 600.0);
-const FIRE_GAP: i32 = 80;
+const FIRE_REACH: (f32, f32) = (120.0, 900.0);
+const FIRE_GAP: i32 = 120;
 /// Where players are and this far round them (cells), no wildfires: those
 /// are the live simulation's.
-const FIRE_AWAY: f32 = 2_000.0;
+const FIRE_AWAY: f32 = 3_000.0;
 /// A wildfire's scar is kept this long (days; it's healed by then).
 const SCAR_DAYS: f64 = 5.0;
 /// A lair's keeper gone comes back this many days after it was last seen
@@ -320,7 +320,7 @@ impl WorldClock {
         if let Some(r) = self.land.get(&(chunk.x, chunk.y)) {
             out += &format!("; healing {} cells, {:.1} days in", r.unhealed, self.now - r.since);
         }
-        if let Some((&tx, _)) = self.trees.range(x - 40..=x + 40).min_by_key(|(tx, _)| (**tx - x).abs())
+        if let Some((&tx, _)) = self.trees.range(x - 60..=x + 60).min_by_key(|(tx, _)| (**tx - x).abs())
             && let Some((g, time)) = self.tree(tx)
         {
             out += &match g {
@@ -554,7 +554,7 @@ fn lairs(mut commands: Commands, mut clock: ResMut<WorldClock>, creatures: Query
     }
     clock.lair_hour = hour;
     let now = clock.now;
-    let views: Vec<(Vec2, Vec2)> = loaders.iter().map(|(tf, l)| (tf.translation().truncate() - l.half_extent - 32.0, tf.translation().truncate() + l.half_extent + 32.0)).collect();
+    let views: Vec<(Vec2, Vec2)> = loaders.iter().map(|(tf, l)| (tf.translation().truncate() - l.half_extent - 48.0, tf.translation().truncate() + l.half_extent + 48.0)).collect();
     for (&(x, y), keeper) in clock.keepers.iter_mut() {
         let spot = Vec2::new(x as f32, y as f32);
         if creatures.iter().any(|(k, h)| k.0 == (x, y) && h.hp > 0.0) {

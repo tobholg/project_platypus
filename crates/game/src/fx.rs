@@ -92,7 +92,7 @@ fn on_explosion(
         // Closer and bigger shakes harder; far-off blasts are a rumble.
         let dist = cam.translation.truncate().distance(e.at);
         let near = (1.0 - dist / (e.radius * 14.0)).clamp(0.0, 1.0);
-        trauma.0 = (trauma.0 + near * (e.radius / 26.0).min(1.5) * 0.75).min(1.0);
+        trauma.0 = (trauma.0 + near * (e.radius / 39.0).min(1.5) * 0.75).min(1.0);
         commands.spawn((
             Flash { age: 0.0, radius: e.radius },
             Mesh2d(assets.mesh.clone()),
@@ -141,7 +141,7 @@ fn on_lightning(
     cam: Single<&Transform, With<MainCamera>>,
 ) {
     for Lightning(s) in strikes.read() {
-        let near = (1.0 - cam.translation.truncate().distance(Vec2::new(s.x as f32, s.hit.y as f32)) / 900.0).clamp(0.0, 1.0);
+        let near = (1.0 - cam.translation.truncate().distance(Vec2::new(s.x as f32, s.hit.y as f32)) / 1350.0).clamp(0.0, 1.0);
         trauma.0 = (trauma.0 + 0.35 * near).min(1.0);
         flash.0 = flash.0.max(0.4 + 0.6 * near);
         let (image, x0, y0) = bolt_image(s);
@@ -273,13 +273,13 @@ fn bolt_image(s: &platypus_sim::Strike) -> (Image, i32, i32) {
     walk(&mut rng, (s.x, s.top), height, Some(s.earth.x), &mut points);
     // Pull the last stretch onto where it earthed.
     let main = points.clone();
-    for (i, &(px, py)) in main.iter().enumerate().skip(main.len().saturating_sub(12)) {
+    for (i, &(px, py)) in main.iter().enumerate().skip(main.len().saturating_sub(18)) {
         let k = (i + 12 - main.len()) as f32 / 12.0;
         points[i] = ((px as f32 + (s.earth.x - px) as f32 * k).round() as i32, py);
     }
     for _ in 0..3 {
         let at = main[(rng.next_u32() as usize) % main.len().max(1)];
-        let len = (height / 6).max(4) + (rng.next_u8() as i32 % 20);
+        let len = (height / 6).max(6) + (rng.next_u8() as i32 % 30);
         walk(&mut rng, at, len, None, &mut points);
     }
     let (x0, x1) = points.iter().fold((i32::MAX, i32::MIN), |(a, b), p| (a.min(p.0), b.max(p.0)));

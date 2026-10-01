@@ -162,7 +162,7 @@ impl Health {
 pub struct StepEase(pub f32);
 
 /// How fast what's drawn rises after a step up (cells/s).
-const STEP_EASE: f32 = 70.0;
+const STEP_EASE: f32 = 105.0;
 
 /// Physical state of a creature. `prev_pos` is for render interpolation.
 #[derive(Component, Clone, Debug)]
@@ -197,17 +197,17 @@ pub struct FallDamage {
 }
 
 fn slam_speed() -> f32 {
-    450.0
+    675.0
 }
 
 fn slam_per() -> f32 {
-    0.25
+    0.167
 }
 
 /// Coming down slower than this (cells/s), a fall hasn't started yet: it
 /// counts from where it last was this slow (the top of a jump, rocket boots
 /// braking near the ground, a wall slide), not from the highest point.
-const GENTLE_FALL: f32 = 80.0;
+const GENTLE_FALL: f32 = 120.0;
 
 /// Where a body's fall started: the highest point since it last stood on
 /// something or came down gently (for fall damage).
@@ -218,7 +218,7 @@ pub struct FallTrack {
 
 /// Hitting a wall or ceiling slower than this isn't worth reporting (walking
 /// into a wall).
-const SLAM_MIN: f32 = 150.0;
+const SLAM_MIN: f32 = 225.0;
 
 /// A creature's rocket boots fired this tick (`gear::boots`: the exhaust).
 #[derive(Message, Clone, Copy, Debug)]
@@ -435,10 +435,10 @@ pub struct PlayerDeaths(pub u32);
 /// where it stands; with `PLATYPUS_RESPAWN=1` it respawns at the start.
 /// Particles of solid, powder or liquid (not rain, dust or embers) faster
 /// than this (cells/s) hurt what they fly through...
-const PELT_SAFE: f32 = 90.0;
+const PELT_SAFE: f32 = 135.0;
 /// (Liquids: faster than this: a death's burst of blood doesn't hurt what's
 /// beside it; water flung from a well still does.)
-const PELT_SAFE_LIQUID: f32 = 250.0;
+const PELT_SAFE_LIQUID: f32 = 375.0;
 /// ... by their weight (density against water's; liquids half) × how many
 /// times faster × this, and are mostly stopped by it, shoving it.
 const PELT: f32 = 0.8;
@@ -496,7 +496,7 @@ fn blasted(mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<(&mut K
             health.harm(b.power * 0.65 * f, Harm::Blunt);
             let dir = (d.normalize_or(Vec2::Y) + Vec2::new(0.0, 0.6)).normalize();
             let k = &mut *k;
-            k.loco.knock(&mut k.body, dir * b.power * 3.0 * (0.4 + 0.6 * f), 0.35);
+            k.loco.knock(&mut k.body, dir * b.power * 4.5 * (0.4 + 0.6 * f), 0.35);
         }
     }
 }
@@ -549,14 +549,14 @@ pub(crate) fn deaths(
         }
         if let Some(&body::hurt::Bleeds(blood)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.
-            sim.world.splash([k.body.pos.x, k.body.pos.y], blood, body::hurt::DEATH_BLOOD, 2.6);
+            sim.world.splash([k.body.pos.x, k.body.pos.y], blood, body::hurt::DEATH_BLOOD, 3.9);
         }
         if is_player {
             deaths.0 += 1;
             commands.entity(entity).remove::<(body::elements::Burning, body::elements::Coated, body::elements::Chilled)>();
             h.hp = h.max;
             if std::env::var("PLATYPUS_RESPAWN").is_ok() {
-                k.body.pos = Vec2::new(spawn.x as f32, spawn.y as f32 + 60.0);
+                k.body.pos = Vec2::new(spawn.x as f32, spawn.y as f32 + 90.0);
                 k.body.vel = Vec2::ZERO;
                 k.prev_pos = k.body.pos;
             }

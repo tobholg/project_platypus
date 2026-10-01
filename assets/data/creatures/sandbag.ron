@@ -2,7 +2,7 @@
 // throw it about; it leaks sand where it's hit, and never dies.
 (
     name: "Sandbag",
-    size: (10, 13),
+    size: (15, 20),
     health: 300,
     team: Neutral,
     // Its kind (kinds.ron): how it takes each kind of hurt.

@@ -1,6 +1,6 @@
 // The village's buildings (worldgen structures::village lays them in a row
 // on the plain beside the spawn, in this order, as many as fit). One
-// character is one block (4 × 4 cells); the bottom row is the floor, set on
+// character is one block (6 × 6 cells); the bottom row is the floor, set on
 // the ground (brick foundations go down under it where the ground dips).
 //
 // ' ' the land as it is · '#' planks · '%' brick · '.' open, planks behind

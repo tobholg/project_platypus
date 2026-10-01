@@ -251,7 +251,7 @@ fn turn_art(art: &str, frame: Option<&str>) -> Result<Vec<Pixels>, String> {
 /// A sprite compiled, its colours for these letters swapped for others (an
 /// item's icon colours: one pickaxe drawing, every tier).
 fn compile_art(art: &str, colors: Option<&HashMap<char, (u8, u8, u8)>>) -> Result<platypus_art::Art, String> {
-    let path = assets_dir().join("art").join(format!("{}.ron", crate::data::hd_art(art)));
+    let path = assets_dir().join("art").join(format!("{art}.ron"));
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut file = platypus_art::parse(&text)?;
     for (c, &(r, g, b)) in colors.into_iter().flatten() {
@@ -587,7 +587,7 @@ fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher>, bodies: Que
                 _ => {}
             }
             let d = tk.body.pos - k.body.pos;
-            if (d.abs() - (tk.body.half + k.body.half)).max_element() > 0.5 {
+            if (d.abs() - (tk.body.half + k.body.half)).max_element() > 0.75 {
                 continue;
             }
             let push = (Vec2::new(d.x, 0.0).normalize_or(Vec2::X * k.loco.facing) + Vec2::new(0.0, 0.4)).normalize() * t.knock;
@@ -942,7 +942,7 @@ fn swing(
         let dir = |a: f32| Vec2::new(a.to_radians().cos() * facing, a.to_radians().sin());
         // The arm follows the blade.
         let hand_at = hand.and_then(|h| h.at).unwrap_or(k.body.pos);
-        commands.entity(me).insert(Aiming { at: hand_at + dir(angle) * 30.0, left: 0.1 });
+        commands.entity(me).insert(Aiming { at: hand_at + dir(angle) * 45.0, left: 0.1 });
         if !mv.active_at(s.t) {
             s.prev = None;
             continue;
@@ -978,7 +978,7 @@ fn swing(
                 let p = CellPos::from_world(c.x, c.y);
                 let Some(cell) = sim.world.get(p) else { continue };
                 let ph = *sim.world.materials().phys(cell.material);
-                if s.down && !s.bounced && c.y < feet + 1.0 && springy(&ph) {
+                if s.down && !s.bounced && c.y < feet + 1.5 && springy(&ph) {
                     // A down-strike bounces off a hazard (lava, fire, acid,
                     // web) without touching it.
                     s.bounced = true;
@@ -989,7 +989,7 @@ fn swing(
                 }
                 if ph.kind == Kind::Plant && ph.hardness <= 2 {
                     sim.world.apply_edit(&WorldEdit::Dig { center: p, radius: 0, max_hardness: 2 });
-                } else if ph.kind == Kind::Static && ph.hardness >= 20 && c.y > feet + 1.0 && !s.clanged {
+                } else if ph.kind == Kind::Static && ph.hardness >= 20 && c.y > feet + 1.5 && !s.clanged {
                     s.clanged = true;
                     sparks.emit(&weapons.file.clang, weapons.file.clang.count as usize, c, -dir(a), Vec2::ZERO);
                     sounds.write(crate::sound::PlaySound::at("clang", c));
@@ -1006,7 +1006,7 @@ fn swing(
                 {
                     continue;
                 }
-                let (bmin, bmax) = (tk.body.pos - tk.body.half - 3.0, tk.body.pos + tk.body.half + 3.0);
+                let (bmin, bmax) = (tk.body.pos - tk.body.half - 4.5, tk.body.pos + tk.body.half + 4.5);
                 if hi.x < bmin.x || lo.x > bmax.x || hi.y < bmin.y || lo.y > bmax.y {
                     continue;
                 }
@@ -1041,7 +1041,7 @@ fn swing(
                 let (now, was) = (k.body.pos, k.prev_pos);
                 let cut = spells.iter().find(|(_, sp)| {
                     let (a, b) = (sp.was() - was, sp.at() - now);
-                    sp.caster() != me && cells.iter().any(|c| near_segment(*c - now, a, b) < 2.5)
+                    sp.caster() != me && cells.iter().any(|c| near_segment(*c - now, a, b) < 3.75)
                 });
                 if let Some((e, sp)) = cut {
                     s.bounced = true;
@@ -1107,14 +1107,14 @@ fn slam(
 ) {
     let feet = k.body.pos - Vec2::Y * k.body.half.y;
     for side in [-1.0, 1.0] {
-        sparks.emit(dust, dust.count as usize, feet + Vec2::X * side * 2.0, Vec2::new(side, 0.4), Vec2::ZERO);
+        sparks.emit(dust, dust.count as usize, feet + Vec2::X * side * 3.0, Vec2::new(side, 0.4), Vec2::ZERO);
     }
     trauma.0 = (trauma.0 + 0.25).min(1.0);
     for (e, tk, tteam, _, safe) in targets {
         // (Along the ground: its nearest side within `slam`, its feet near
         // where the plunge came down.)
         let near = (tk.body.pos.x - feet.x).abs() - tk.body.half.x <= mv.slam;
-        let level = (tk.body.pos.y - tk.body.half.y - feet.y).abs() <= 6.0;
+        let level = (tk.body.pos.y - tk.body.half.y - feet.y).abs() <= 9.0;
         if e == me || safe || !near || !level {
             continue;
         }
@@ -1352,7 +1352,7 @@ fn draw(
         match (burning, flame) {
             (Some(off), Some(mut f)) => {
                 let r = Vec2::from_angle(angle.to_radians()).rotate(off);
-                f.at = Vec2::new(r.x * facing, r.y) + Vec2::Y;
+                f.at = Vec2::new(r.x * facing, r.y) + Vec2::Y * 1.5;
             }
             (Some(_), None) => {
                 let torch = crate::light::rgb(lights.torch.color, lights.torch.strength);

@@ -3,7 +3,7 @@
 (
     name: "Dynamite",
     corpse: false,
-    size: (6, 8),
+    size: (9, 12),
     health: 8,
     team: Neutral,
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -11,5 +11,5 @@
     art: "dynamite",
     blood: "",
     movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0),
-    custom: (name: "explosive", params: (radius: 44, power: 230, fuse: 0.6)),
+    custom: (name: "explosive", params: (radius: 66, power: 230, fuse: 0.6)),
 )

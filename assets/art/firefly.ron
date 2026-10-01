@@ -1,31 +1,40 @@
 // A firefly: a dark little beetle with a glowing tail (its light is its
 // creature file's `light`, pulsing). Wings up, wings down.
 (
-    size: (7, 6),
-    feet: (3.5, 6),
+    size: (11, 9),
+    feet: (5.5, 9),
     outline: (20, 18, 16),
     palette: {
         'b': (46, 40, 34),   // body
+        'B': (78, 68, 58),   // body, the sheen on its back
         'L': (226, 255, 120),   // the glowing tail
+        'c': (248, 255, 200),   // the tail's hot heart
         'l': (170, 220, 80),   // the tail, dimmer
         'w': (190, 200, 220),   // wings
+        'W': (150, 160, 186),   // wings, the veins
     },
     frames: {
         "up": [
-            ".......",
-            ".w.w...",
-            "..bb...",
-            "..bLL..",
-            "...lL..",
-            ".......",
+            "...........",
+            ".w...w.....",
+            ".Ww..Ww....",
+            "..wwbBw....",
+            "..bbBbb....",
+            "....bLLL...",
+            "....lLcL...",
+            ".....lLL...",
+            "...........",
         ],
         "down": [
-            ".......",
-            ".......",
-            "wwbbw..",
-            "..bLL..",
-            "...lL..",
-            ".......",
+            "...........",
+            "...........",
+            "...........",
+            ".wwwbBbww..",
+            "WwWbbBbWwW.",
+            "....bLLL...",
+            "....lLcL...",
+            ".....lLL...",
+            "...........",
         ],
     },
     clips: {

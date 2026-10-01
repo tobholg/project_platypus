@@ -4,7 +4,7 @@
 (
     name: "TNT barrel",
     corpse: false,
-    size: (8, 12),
+    size: (12, 18),
     health: 15,
     team: Neutral,
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -12,5 +12,5 @@
     art: "tnt_barrel",
     blood: "",
     movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0),
-    custom: (name: "explosive", params: (radius: 54, power: 245, fuse: 1.0)),
+    custom: (name: "explosive", params: (radius: 81, power: 245, fuse: 1.0)),
 )

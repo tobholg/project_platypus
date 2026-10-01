@@ -550,9 +550,9 @@ fn boulders_roll_and_break() {
     let boulder = m.expect_id("boulder");
     let stone = m.expect_id("stone");
     let ball = |w: &mut World, cx: i32, cy: i32| {
-        for y in cy - 5..=cy + 5 {
-            for x in cx - 5..=cx + 5 {
-                if (x - cx) * (x - cx) + (y - cy) * (y - cy) <= 25 {
+        for y in cy - 8..=cy + 8 {
+            for x in cx - 8..=cx + 8 {
+                if (x - cx) * (x - cx) + (y - cy) * (y - cy) <= 64 {
                     w.set(CellPos::new(x, y), Cell::new(boulder, 128));
                 }
             }
@@ -571,28 +571,28 @@ fn boulders_roll_and_break() {
         panic!("still moving");
     };
     // From high: it breaks.
-    let mut w = boxed_world(3, 3, 18);
-    ball(&mut w, 96, 150);
+    let mut w = boxed_world(5, 4, 18);
+    ball(&mut w, 144, 225);
     let n = count(&w, boulder) + w.bodies().iter().map(|b| b.world_cells().count()).sum::<usize>();
     let most = rest(&mut w);
     assert!(most > 1, "it broke into pieces (at most {most} bodies at once)");
     assert_eq!(count(&w, boulder), n, "no rock lost");
     // From low: whole.
-    let mut w = boxed_world(3, 3, 19);
-    ball(&mut w, 96, 12);
+    let mut w = boxed_world(5, 4, 19);
+    ball(&mut w, 144, 18);
     assert_eq!(rest(&mut w), 1, "a short drop doesn't break it");
     // On a slope (1 in 2, falling to the right): it rolls down.
-    let mut w = boxed_world(4, 2, 20);
-    for x in 1..200 {
-        for y in 1..(100 - x / 2).max(1) {
+    let mut w = boxed_world(6, 3, 20);
+    for x in 1..300 {
+        for y in 1..(150 - x / 2).max(1) {
             w.set(CellPos::new(x, y), Cell::new(stone, 0));
         }
     }
-    ball(&mut w, 20, 97);
+    ball(&mut w, 30, 145);
     rest(&mut w);
     let xs: Vec<i32> = w.chunks().flat_map(|c| (0..CHUNK).flat_map(move |y| (0..CHUNK).map(move |x| (c, x, y)))).filter(|(c, x, y)| c.get(*x as usize, *y as usize).material == boulder).map(|(c, x, _)| c.pos.origin().x + x).collect();
     let at = xs.iter().sum::<i32>() / xs.len().max(1) as i32;
-    assert!(at > 60, "it rolled down the slope: now at x {at}");
+    assert!(at > 90, "it rolled down the slope: now at x {at}");
 }
 
 #[test]
@@ -777,7 +777,7 @@ fn wood_catches_fire_from_heat_alone() {
 #[test]
 fn water_freezes_in_a_cold_column_only() {
     let mut w = boxed_world(2, 1, 26);
-    let mut climate = platypus_sim::Climate { surface_temp: 5, column_bits: 6, ..Default::default() };
+    let mut climate = platypus_sim::Climate { surface_temp: 5, column_width: 64, ..Default::default() };
     climate.columns[1] = -15; // x 64..127: -10 °C
     w.set_climate(climate);
     fill(&mut w, "stone", 1, 127, 1, 4);
@@ -1278,14 +1278,14 @@ fn store_roundtrips_the_background() {
 /// A meadow like the generated ones: dirt, a grass surface, tall grass
 /// blades of varied height with bare gaps. Returns (world, grass cells).
 fn meadow(seed: u64) -> (World, usize) {
-    let mut w = boxed_world(3, 1, seed);
-    fill(&mut w, "dirt", 1, 191, 1, 8);
-    fill(&mut w, "grass", 1, 191, 8, 9);
+    let mut w = boxed_world(5, 1, seed);
+    fill(&mut w, "dirt", 1, 287, 1, 12);
+    fill(&mut w, "grass", 1, 287, 12, 13);
     let tall = w.materials().expect_id("tall_grass");
     let mut rng = Rng::seeded(&[seed, 0x3EAD]);
-    for x in 1..191 {
-        let h = [0, 2, 3, 4, 5, 6, 7, 8][(rng.next_u32() % 8) as usize];
-        for y in 9..9 + h {
+    for x in 1..287 {
+        let h = [0, 3, 5, 6, 8, 9, 11, 12][(rng.next_u32() % 8) as usize];
+        for y in 13..13 + h {
             let c = w.materials().spawn(tall, &mut rng);
             w.set(CellPos::new(x, y), c);
         }
@@ -1300,7 +1300,7 @@ fn meadow_burn_fractions(seeds: std::ops::Range<u64>) -> Vec<f32> {
         .map(|seed| {
             let (mut w, n) = meadow(seed);
             let (tall, grass) = (w.materials().expect_id("tall_grass"), w.materials().expect_id("grass"));
-            w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(96, 10), radius: 1 });
+            w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(144, 14), radius: 2 });
             for _ in 0..6_000 {
                 w.step();
             }
@@ -1682,10 +1682,10 @@ fn a_lightning_struck_tree_burns_up_faster_than_a_lit_one() {
 
 #[test]
 fn a_thunderstorm_throws_lightning() {
-    let mut w = boxed_world(3, 2, 92);
+    let mut w = boxed_world(5, 3, 92);
     // The real band's height (thin clouds can't rain that hard).
-    w.set_weather(platypus_sim::Weather::new(92, 192, 100, 176));
-    w.apply_edit(&WorldEdit::Weather { x: 96, radius: 90, storm: true });
+    w.set_weather(platypus_sim::Weather::new(92, 288, 150, 264));
+    w.apply_edit(&WorldEdit::Weather { x: 144, radius: 135, storm: true });
     let mut strikes = 0;
     let mut most_drops = 0;
     for _ in 0..6_000 {
@@ -2015,9 +2015,10 @@ fn embers_seldom_carry_a_fire_across_a_gap() {
     let mut near = 0;
     let mut far = 0;
     for seed in 0..8 {
-        let mut w = boxed_world(5, 2, 500 + seed);
-        fill(&mut w, "stone", 1, 319, 1, 4);
-        for x in [60, 120, 230] {
+        let mut w = boxed_world(6, 2, 500 + seed);
+        fill(&mut w, "stone", 1, 383, 1, 4);
+        // (Embers fly 1.5× as far as they did at the old scale: so do the gaps.)
+        for x in [60, 150, 315] {
             plant_tree(&mut w, x);
         }
         w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(60, 52), radius: 14 });
@@ -2026,15 +2027,15 @@ fn embers_seldom_carry_a_fire_across_a_gap() {
         }
         let leaves = w.materials().expect_id("leaves");
         let crown = |w: &World, t: i32| (t - 16..=t + 16).flat_map(|x| (46..=58).map(move |y| CellPos::new(x, y))).filter(|&p| w.get_bg(p).is_some_and(|b| b.material == leaves)).count();
-        let (a, b, c) = (crown(&w, 60), crown(&w, 120), crown(&w, 230));
+        let (a, b, c) = (crown(&w, 60), crown(&w, 150), crown(&w, 315));
         assert!(a < 50, "the lit crown burned ({a} left)");
         near += (b < 350) as u32;
         far += (c < 350) as u32;
     }
     // Measured: 2/8 and 0/8 (before, when an ember lit the first leaf it
     // brushed: 4/8 and 2/8).
-    assert!(near <= 3, "a tree 28 cells off caught {near}/8 times");
-    assert!(far <= 1, "a tree 108 cells off caught {far}/8 times");
+    assert!(near <= 3, "a tree 58 cells off caught {near}/8 times");
+    assert!(far <= 1, "a tree 223 cells off caught {far}/8 times");
 }
 
 // ---- blocks (hands) -----------------------------------------------------------
@@ -2043,9 +2044,9 @@ fn embers_seldom_carry_a_fire_across_a_gap() {
 fn a_block_breaks_all_at_once_after_enough_hits() {
     use platypus_sim::{BLOCK, block_cells};
     let mut w = boxed_world(1, 1, 60);
-    fill(&mut w, "stone", 1, 63, 1, 20);
+    fill(&mut w, "stone", 1, 63, 1, 30);
     let stone = w.materials().expect_id("stone");
-    let block = CellPos::new(5, 3); // cells 20..24 × 12..16
+    let block = CellPos::new(5, 3); // cells 30..36 × 18..24
     let before = count(&w, stone);
     // Stone is 60 hard: a power-35 pick takes two hits, and the first
     // removes nothing.
@@ -2053,11 +2054,11 @@ fn a_block_breaks_all_at_once_after_enough_hits() {
     assert!(w.apply_edit(&hit).removed.is_empty(), "one hit only cracks it");
     assert_eq!(count(&w, stone), before);
     let r = w.apply_edit(&hit);
-    assert_eq!(r.removed, vec![(stone, (BLOCK * BLOCK) as u32)], "the second takes all 16 cells");
+    assert_eq!(r.removed, vec![(stone, (BLOCK * BLOCK) as u32)], "the second takes all 36 cells");
     assert!(block_cells(block).all(|p| w.get(p).unwrap().is_air()));
     // Just the block: its neighbours are whole.
-    assert_eq!(count(&w, stone), before - 16);
-    assert_ne!(w.get(CellPos::new(19, 13)).unwrap().material, MaterialId::AIR);
+    assert_eq!(count(&w, stone), before - 36);
+    assert_ne!(w.get(CellPos::new(29, 19)).unwrap().material, MaterialId::AIR);
 }
 
 #[test]
@@ -2090,48 +2091,48 @@ fn an_area_swing_bites_the_near_face_not_what_is_behind_it() {
 #[test]
 fn ore_beyond_a_tools_tier_stays_in_the_block() {
     let mut w = boxed_world(1, 1, 61);
-    fill(&mut w, "stone", 1, 63, 1, 20);
+    fill(&mut w, "stone", 1, 63, 1, 30);
     let (stone, obsidian) = (w.materials().expect_id("stone"), w.materials().expect_id("obsidian"));
     // Two cells of the block are too hard for this pick.
-    w.set(CellPos::new(21, 13), Cell::new(obsidian, 0));
-    w.set(CellPos::new(22, 13), Cell::new(obsidian, 0));
+    w.set(CellPos::new(31, 19), Cell::new(obsidian, 0));
+    w.set(CellPos::new(32, 19), Cell::new(obsidian, 0));
     let hit = WorldEdit::MineBlock { block: CellPos::new(5, 3), power: 35, max_hardness: 100, back: false };
     w.apply_edit(&hit);
     let r = w.apply_edit(&hit);
-    assert_eq!(r.removed, vec![(stone, 14)]);
-    assert_eq!(w.get(CellPos::new(21, 13)).unwrap().material, obsidian, "the hard bit stays");
+    assert_eq!(r.removed, vec![(stone, 34)]);
+    assert_eq!(w.get(CellPos::new(31, 19)).unwrap().material, obsidian, "the hard bit stays");
 }
 
 #[test]
 fn placing_a_block_fills_its_empty_cells_with_the_pattern() {
     use platypus_sim::block_cells;
     let mut w = boxed_world(1, 1, 62);
-    fill(&mut w, "stone", 1, 63, 1, 8);
+    fill(&mut w, "stone", 1, 63, 1, 12);
     let brick = w.materials().expect_id("brick");
-    let block = CellPos::new(5, 2); // cells 20..24 × 8..12, on the floor
-    w.set(CellPos::new(21, 9), Cell::new(w.materials().expect_id("dirt"), 0));
+    let block = CellPos::new(5, 2); // cells 30..36 × 12..18, on the floor
+    w.set(CellPos::new(31, 13), Cell::new(w.materials().expect_id("dirt"), 0));
     let r = w.apply_edit(&WorldEdit::PlaceBlock { block, material: brick, back: false });
-    assert_eq!(r.placed, 15, "all but the one taken");
-    for p in block_cells(block).filter(|&p| p != CellPos::new(21, 9)) {
+    assert_eq!(r.placed, 35, "all but the one taken");
+    for p in block_cells(block).filter(|&p| p != CellPos::new(31, 13)) {
         let c = w.get(p).unwrap();
         assert_eq!(c.material, brick);
         assert_eq!(Some(c.shade), w.materials().pattern_shade(brick, p.x, p.y), "shaded by the pattern at {p:?}");
     }
     // The pattern is anchored to the world: the same cell of the next block
     // over (8 cells on, one pattern width) has the same shade.
-    w.apply_edit(&WorldEdit::PlaceBlock { block: CellPos::new(7, 2), material: brick, back: false });
-    assert_eq!(w.get(CellPos::new(20, 10)).unwrap().shade, w.get(CellPos::new(28, 10)).unwrap().shade);
+    w.apply_edit(&WorldEdit::PlaceBlock { block: CellPos::new(6, 2), material: brick, back: false });
+    assert_eq!(w.get(CellPos::new(30, 14)).unwrap().shade, w.get(CellPos::new(38, 14)).unwrap().shade);
 }
 
 #[test]
 fn an_axe_block_takes_the_background_only_where_the_front_is_open() {
     let mut w = boxed_world(1, 1, 63);
-    fill_bg(&mut w, "wood", 20, 28, 8, 12);
+    fill_bg(&mut w, "wood", 30, 42, 12, 18);
     // Something standing in front of half of it.
-    fill(&mut w, "stone", 24, 28, 8, 12);
+    fill(&mut w, "stone", 36, 42, 12, 18);
     let wood = w.materials().expect_id("wood");
     let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(5, 2), power: 50, max_hardness: 100, back: true });
-    assert_eq!(r.removed, vec![(wood, 16)]);
+    assert_eq!(r.removed, vec![(wood, 36)]);
     let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(6, 2), power: 50, max_hardness: 100, back: true });
     assert!(r.removed.is_empty(), "behind the stone it can't reach");
 }

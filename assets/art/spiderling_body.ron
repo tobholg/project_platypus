@@ -1,11 +1,12 @@
 // A spiderling seen from above: the spider small (legs.rs gives it legs).
 (
-    size: (10, 7),
-    feet: (5.0, 7),
+    size: (15, 11),
+    feet: (8, 11),
     outline: (14, 8, 12),
     palette: {
         'b': (36, 26, 32),   // abdomen
         'B': (62, 46, 56),   // abdomen, lit
+        'L': (84, 64, 78),   // abdomen, the light on its back
         'x': (150, 26, 26),   // its mark
         'c': (44, 32, 40),   // head
         'C': (70, 54, 64),   // head, lit
@@ -13,17 +14,21 @@
     },
     frames: {
         "body": [
-            "..........",
-            ".BBbb.....",
-            "BBbbbbCce.",
-            "BbbxbCccce",
-            "bbbbbbcce.",
-            ".bbbb.....",
-            "..........",
+            "...............",
+            "...............",
+            "..BBBbbb.......",
+            ".BLLBbbbb.CCe..",
+            "BLLBxbbbbCCccee",
+            "BBBBbxbbbCcccc.",
+            "BbbbxbbbbcCccee",
+            ".bbbbbbbb.cce..",
+            "..bbbbbb.......",
+            "...............",
+            "...............",
         ],
     },
     clips: {
         "idle": (frames: ["body"], fps: 1),
     },
-    anchors: { "grip": { "body": (5, 3) } },
+    anchors: { "grip": { "body": (9, 5) } },
 )

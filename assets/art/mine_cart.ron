@@ -2,38 +2,52 @@
 // dynamite in an iron tub on four wheels. It goes off (hard) when it's hit
 // or catches fire.
 (
-    size: (24, 14),
-    feet: (12, 14),
+    size: (36, 21),
+    feet: (18, 21),
     outline: (30, 26, 24),
     palette: {
+        'L': (138, 130, 122),   // tub rim, lit
         'm': (104, 96, 90),   // tub rim
         'M': (74, 68, 64),   // tub
+        'n': (56, 50, 48),   // tub, shade
         'o': (140, 130, 122),   // rivets
         'w': (40, 36, 34),   // wheels
         'W': (80, 74, 70),   // hubs
         'h': (64, 54, 50),   // hoops
+        'H': (96, 86, 80),   // hoops, lit
         'r': (178, 44, 34),   // barrels
+        'R': (136, 30, 24),   // barrels, shade
+        'l': (214, 74, 56),   // barrels, lit
         'y': (230, 194, 86),   // band
+        'Y': (186, 150, 62),   // band, shade
         'd': (200, 52, 40),   // dynamite
+        'D': (150, 34, 28),   // dynamite, between the sticks
         'f': (150, 130, 96),   // fuse
         's': (255, 214, 130),   // fuse tip
     },
     frames: {
         "stand": [
-            "...hhhhhh.hhhhhh..s.....",
-            "...rrrrrr.rrrrrr..f.....",
-            "...yyyyyy.yyyyyy.ddd....",
-            "mmmmmmmmmmmmmmmmmmmmmmmm",
-            "mMMMMMMMMMMMMMMMMMMMMMMm",
-            "mMoMMMMMMMMMMMMMMMMMMoMm",
-            "mMMMMMMMMMMMMMMMMMMMMMMm",
-            ".mMMMMMMMMMMMMMMMMMMMMm.",
-            ".mMoMMMMMMMMMMMMMMMMoMm.",
-            "..mMMMMMMMMMMMMMMMMMMm..",
-            "..mmmmmmmmmmmmmmmmmmmm..",
-            "...ww..............ww...",
-            "..wWWw............wWWw..",
-            "...ww..............ww...",
+            "....hhhhHHh...hhhhHHh.......s.......",
+            "...hhhhhHHHh.hhhhhHHHh.....f........",
+            "...RrrRrrlRr.RrrRrrlRr.Dd.Ddd.Dd....",
+            "...Yyyyyyyyy.Yyyyyyyyy.DddDddDdd....",
+            "...Yyyyyyyyy.Yyyyyyyyy.DddDddDdd....",
+            "LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL",
+            "mmommmmmmmmommmmmmmmmmmmommmmmmmmomm",
+            ".nMMMMMMMMmnMMMMMMMMMMMMMmnMMMMMMMm.",
+            ".nMoMMMMMMonMMMMMMMMMMMMMonMMMMMoMm.",
+            ".nMMMMMMMMmnMMMMMMMMMMMMMmnMMMMMMMm.",
+            ".nMMMMMMMMmnMMMMMMMMMMMMMmnMMMMMMMm.",
+            ".nMMMMMMMMmnMMMMMMMMMMMMMmnMMMMMMMm.",
+            "..noMMMMMMonMMMMMMMMMMMMMonMMMMMom..",
+            "..nMMMMMMMmnMMMMMMMMMMMMMmnMMMMMMm..",
+            "...nnnnnnnnnnnnnnnnnnnnnnnnnnnnnn...",
+            ".....nnnnnnnnnnnnnnnnnnnnnnnnnn.....",
+            ".....WWW....................WWW.....",
+            "....WwwwW..................WwwwW....",
+            "....WwowW..................WwowW....",
+            "....WwwwW..................WwwwW....",
+            ".....WWW....................WWW.....",
         ],
     },
     clips: {

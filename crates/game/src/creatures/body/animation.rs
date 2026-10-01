@@ -69,6 +69,15 @@ pub struct HandPos {
     pub off: Option<Vec3>,
 }
 
+/// Where its feet are as drawn, from its centre: the pose's `foot_near` and
+/// `foot_far` anchors (each leg part marks the middle of its sole). Rocket
+/// boots fire from them (`gear::boots`).
+#[derive(Component, Default, Clone, Copy, Debug)]
+pub struct Soles {
+    pub near: Option<Vec2>,
+    pub far: Option<Vec2>,
+}
+
 #[derive(Component)]
 pub struct Animator {
     pub def: Arc<CreatureDef>,
@@ -113,8 +122,8 @@ impl Animator {
 /// Off the ground this long before it looks airborne (unless it jumped).
 const AIR_GRACE: f32 = 0.12;
 /// Starts running above this speed, stops below the lower one (cells/s).
-const RUN_ON: f32 = 8.0;
-const RUN_OFF: f32 = 3.0;
+const RUN_ON: f32 = 12.0;
+const RUN_OFF: f32 = 4.5;
 
 /// Clip wanted for a movement state, with fallbacks so a creature only needs
 /// `idle`. Stepping up a bump (a tick off the ground) doesn't count as air;
@@ -122,7 +131,7 @@ const RUN_OFF: f32 = 3.0;
 fn wanted(k: &Kinematics, anim: &mut Animator, dt: f32) -> &'static [&'static str] {
     let v = k.body.vel;
     anim.air = if k.loco.state == MoveState::Air { anim.air + dt } else { 0.0 };
-    let airborne = anim.air > AIR_GRACE || v.y > 60.0;
+    let airborne = anim.air > AIR_GRACE || v.y > 90.0;
     anim.running = if anim.running { v.x.abs() > RUN_OFF } else { v.x.abs() > RUN_ON };
     match k.loco.state {
         MoveState::Dash => &["dash", "run", "idle"],
@@ -141,7 +150,7 @@ impl Plugin for AnimationPlugin {
     }
 }
 
-type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>);
+type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>, Option<&'a mut Soles>);
 type BodySprites = (With<CreatureSprite>, Without<ArmSprite>, Without<CreatureEyes>);
 type EyeSprites = (With<CreatureEyes>, Without<CreatureSprite>, Without<ArmSprite>);
 type Arms<'a> = (&'a mut Sprite, &'a mut Transform, &'a mut Visibility);
@@ -158,7 +167,7 @@ pub fn animate(
     mut arms: Query<Arms, With<ArmSprite>>,
     mut eyes: Query<(&mut Sprite, &mut Transform), EyeSprites>,
 ) {
-    for (k, mut anim, children, mut aiming, hand) in &mut creatures {
+    for (k, mut anim, children, mut aiming, hand, soles) in &mut creatures {
         let anim = &mut *anim;
         let def = anim.def.clone();
         let dt = time.delta_secs();
@@ -246,6 +255,11 @@ pub fn animate(
             hand_at = Some(local(hx as f32, hy as f32));
         }
         anim.shown = index;
+        if let Some(mut s) = soles {
+            let foot = |name: &str| def.rig.as_ref().and_then(|r| r.anchors.get(name)).and_then(|m| m.get(&index)).map(|&(x, y)| local(x as f32, y as f32).truncate());
+            s.near = foot("foot_near");
+            s.far = foot("foot_far");
+        }
         let off = def.rig.as_ref().and_then(|r| r.anchors.get("back_arm.hand")).and_then(|m| m.get(&index)).map(|&(x, y)| local(x as f32, y as f32));
         if let Some(mut h) = hand {
             h.off = off;
@@ -282,7 +296,7 @@ pub fn animate(
             // feet on it (upside down on a ceiling, so it faces the other way);
             // on the wall behind, turned the way it crawls.
             let v = k.body.vel;
-            let crawl = if v.length() > 5.0 { v.y.atan2(v.x.abs()) * facing } else { 0.0 };
+            let crawl = if v.length() > 7.5 { v.y.atan2(v.x.abs()) * facing } else { 0.0 };
             let turn = k.loco.clinging().map_or(0.0, |d| if d == Vec2::ZERO { crawl } else { d.y.atan2(d.x) + std::f32::consts::FRAC_PI_2 });
             let rot = Quat::from_rotation_z(turn);
             sprite.flip_x = (facing < 0.0) != (turn.abs() > 3.0);

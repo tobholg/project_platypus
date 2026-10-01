@@ -1,36 +1,49 @@
 // A cave slime: a quivering green blob with two eyes; it hops.
 (
-    size: (12, 9),
-    feet: (6, 9),
+    size: (18, 14),
+    feet: (9, 14),
     outline: (20, 50, 24),
     palette: {
         'g': (60, 150, 64),   // its skin
         'G': (104, 204, 104, 225),   // its jelly
+        'S': (82, 172, 84, 225),   // its jelly, the shade low and behind
+        'H': (176, 240, 168, 235),   // its jelly, where the light catches it
         'k': (16, 36, 18),   // eyes
+        'w': (210, 250, 200),   // the shine in the eyes
         'm': (40, 90, 44),   // mouth
     },
     frames: {
         "squat": [
-            "............",
-            "............",
-            "....gggg....",
-            "..gGGGGGgg..",
-            ".gGGkGGkGGg.",
-            ".gGGGGGGGGg.",
-            "gGGGGmmGGGGg",
-            "gGGGGGGGGGGg",
-            ".gggggggggg.",
+            "..................",
+            "..................",
+            "..................",
+            "......gggggg......",
+            "....ggGGGGGHHg....",
+            "...gGGGGGGGGHHg...",
+            "..gGGGGGGGGGGGHg..",
+            "..gGGGkwGGGkwGGg..",
+            ".gGGGGkGGGGkGGGGg.",
+            ".gGGGGGGGGGGGGGGg.",
+            "gGGGGGGmmmmGGGGGGg",
+            "gSSSGGGGGGGGGGGGGg",
+            "gSSSSSSSSSSGGGGGGg",
+            ".gggggggggggggggg.",
         ],
         "tall": [
-            "....ggg.....",
-            "...gGGGg....",
-            "..gGGGGGg...",
-            "..gGkGkGg...",
-            "..gGGGGGg...",
-            "..gGGmGGg...",
-            "..gGGGGGg...",
-            "..gGGGGGg...",
-            "...ggggg....",
+            "......ggggg.......",
+            ".....gGGGHHg......",
+            "....gGGGGGHHg.....",
+            "...gGGGGGGGHGg....",
+            "...gGGGGGGGGGg....",
+            "...gGGkwGGkwGg....",
+            "...gGGkGGGkGGg....",
+            "...gGGGGGGGGGg....",
+            "...gGGGGmGGGGg....",
+            "...gGGGGmGGGGg....",
+            "...gSGGGGGGGGg....",
+            "...gSSGGGGGGGg....",
+            "...gSSSSSGGGGg....",
+            "....ggggggggg.....",
         ],
     },
     clips: {

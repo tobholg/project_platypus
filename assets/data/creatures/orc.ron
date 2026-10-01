@@ -7,18 +7,18 @@
     loot: "orc",
     // What it may wear (and the chance of each), found as gear is where it stands.
     wears: [("leather_cap", 0.5), ("leather_jerkin", 0.4), ("leather_trousers", 0.3), ("leather_boots", 0.4), ("iron_helm", 0.1)],
-    size: (7, 16),
+    size: (11, 24),
     health: 70,
     team: Enemy,
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "humanoid",
     // Dropped from a height or flung into rock, it hurts.
-    fall_damage: (safe_height: 70, per_cell: 0.8),
+    fall_damage: (safe_height: 105, per_cell: 0.53),
     movement: (
-        run_speed: 62,
-        jump_height: 24,
+        run_speed: 93,
+        jump_height: 36,
         air_jumps: 0,
-        step_height: 3,
+        step_height: 5,
         dash_speed: 0,
     ),
     art: "orc",
@@ -30,6 +30,6 @@
     heft: 1.2,
     brain: (
         kind: "hunter",
-        params: (aggro: 220, close: Walk(keep: 11, jump_to_reach: 18), attack: Swing(reach: 16, every: 1.1, combo: 2), wander: (speed: 0.4, every: 2.5)),
+        params: (aggro: 330, close: Walk(keep: 17, jump_to_reach: 27), attack: Swing(reach: 24, every: 1.1, combo: 2), wander: (speed: 0.4, every: 2.5)),
     ),
 )

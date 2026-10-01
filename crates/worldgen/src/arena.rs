@@ -10,13 +10,13 @@ use platypus_sim::{CHUNK, CellPos, Cell, Chunk, ChunkPos, MaterialId, MaterialTa
 use crate::{ChunkGenerator, Spawn};
 
 /// Size in chunks.
-const W: i32 = 20;
-const H: i32 = 10;
+const W: i32 = 30;
+const H: i32 = 15;
 /// The floor's top: solid below it.
 pub const FLOOR: i32 = 160;
 /// Where the player starts, and the dummies stand (x, what).
-const START: i32 = 640;
-const DUMMIES: [(i32, &str); 4] = [(700, "dummy"), (760, "dummy"), (820, "dummy"), (870, "sandbag")];
+const START: i32 = 960;
+const DUMMIES: [(i32, &str); 4] = [(1050, "dummy"), (1140, "dummy"), (1230, "dummy"), (1305, "sandbag")];
 
 pub struct ArenaGen {
     stone: MaterialId,
@@ -26,9 +26,6 @@ pub struct ArenaGen {
     sand: MaterialId,
     planks: MaterialId,
     platform: MaterialId,
-    /// Everything this much bigger in cells (the HD spike: 1.5); the floor
-    /// stays at `FLOOR`.
-    scale: f32,
 }
 
 impl ArenaGen {
@@ -41,53 +38,30 @@ impl ArenaGen {
             sand: m.expect_id("sand"),
             planks: m.expect_id("planks"),
             platform: m.expect_id("platform"),
-            scale: 1.0,
         }
-    }
-
-    pub fn scaled(self, scale: f32) -> Self {
-        ArenaGen { scale, ..self }
-    }
-
-    fn chunks(&self) -> (i32, i32) {
-        ((W as f32 * self.scale).ceil() as i32, (H as f32 * self.scale).ceil() as i32)
-    }
-
-    /// At a scale: the edges where they are, the rest drawn bigger.
-    fn scaled_at(&self, x: i32, y: i32) -> Option<MaterialId> {
-        if self.scale == 1.0 {
-            return self.at(x, y);
-        }
-        let right = self.chunks().0 * CHUNK;
-        if y < 8 || x < 8 || x >= right - 8 {
-            return Some(self.bedrock);
-        }
-        let s = self.scale;
-        let (ox, oy) = ((x as f32 / s).floor() as i32, FLOOR + ((y - FLOOR) as f32 / s).floor() as i32);
-        self.at(ox.clamp(8, W * CHUNK - 9), oy.max(8))
     }
 
     /// What's at (x, y) (`None`: air).
     fn at(&self, x: i32, y: i32) -> Option<MaterialId> {
         let f = FLOOR;
         let right = W * CHUNK;
-        if y < 8 || x < 8 || x >= right - 8 {
+        if y < 12 || x < 12 || x >= right - 12 {
             return Some(self.bedrock);
         }
         // Side walls, higher than anything can be thrown.
-        if (x < 24 || x >= right - 24) && y < f + 320 {
+        if (x < 36 || x >= right - 36) && y < f + 480 {
             return Some(self.stone);
         }
-        // Stairs up (5-cell steps every 16), a ledge, a ramp down.
+        // Stairs up (7–8-cell steps every 24), a ledge, a ramp down.
         let ground = match x {
-            40..160 => f + ((x - 40) / 16 + 1) * 5,
-            160..200 => f + 40,
-            200..280 => f + 40 - (x - 200) / 2,
+            60..240 => f + ((x - 60) / 24 + 1) * 15 / 2,
+            240..300 => f + 60,
+            300..420 => f + 60 - (x - 300) / 2,
             _ => f,
         };
         // Pits, sunk into the floor: (from, to, depth, what fills them, the
         // gap left above).
-        let pits = [(310, 420, 50, self.water, 0), (900, 960, 24, self.lava, 4)];
+        let pits = [(465, 630, 75, self.water, 0), (1350, 1440, 36, self.lava, 6)];
         for (x0, x1, depth, fill, gap) in pits {
             if (x0..x1).contains(&x) && y >= f - depth && y < f {
                 return (y < f - gap).then_some(fill);
@@ -97,19 +71,19 @@ impl ArenaGen {
             return Some(self.stone);
         }
         // Platforms to drop through and jump up on.
-        let platforms = [(450, 510, f + 28), (470, 530, f + 56)];
-        if platforms.iter().any(|&(x0, x1, py)| (x0..x1).contains(&x) && (py..py + 2).contains(&y)) {
+        let platforms = [(675, 765, f + 42), (705, 795, f + 84)];
+        if platforms.iter().any(|&(x0, x1, py)| (x0..x1).contains(&x) && (py..py + 3).contains(&y)) {
             return Some(self.platform);
         }
         // A heap of sand (it'll settle a little).
-        if (990..1060).contains(&x) && y < f + 35 - (x - 1025).abs() {
+        if (1485..1590).contains(&x) && y < f + 52 - (x - 1537).abs() {
             return Some(self.sand);
         }
         // Two columns to wall-jump between, and planks to burn.
-        if ((1100..1116).contains(&x) && y < f + 140) || ((1150..1166).contains(&x) && y < f + 100) {
+        if ((1650..1674).contains(&x) && y < f + 210) || ((1725..1749).contains(&x) && y < f + 150) {
             return Some(self.stone);
         }
-        if (1190..1230).contains(&x) && y < f + 30 {
+        if (1785..1845).contains(&x) && y < f + 45 {
             return Some(self.planks);
         }
         None
@@ -118,12 +92,11 @@ impl ArenaGen {
 
 impl ChunkGenerator for ArenaGen {
     fn bounds(&self) -> (ChunkPos, ChunkPos) {
-        let (w, h) = self.chunks();
-        (ChunkPos::new(0, 0), ChunkPos::new(w - 1, h - 1))
+        (ChunkPos::new(0, 0), ChunkPos::new(W - 1, H - 1))
     }
 
     fn spawn_point(&self) -> CellPos {
-        CellPos::new((START as f32 * self.scale) as i32, FLOOR)
+        CellPos::new(START, FLOOR)
     }
 
     fn wild(&self) -> bool {
@@ -140,7 +113,7 @@ impl ChunkGenerator for ArenaGen {
             .flat_map(|ly| (0..CHUNK).map(move |lx| (lx, ly)))
             .map(|(lx, ly)| {
                 let (x, y) = (o.x + lx, o.y + ly);
-                self.scaled_at(x, y).map_or(Cell::AIR, |m| Cell::new(m, ((x * 7 + y * 13) & 255) as u8))
+                self.at(x, y).map_or(Cell::AIR, |m| Cell::new(m, ((x * 7 + y * 13) & 255) as u8))
             })
             .collect();
         Chunk::new(pos, cells)
@@ -149,7 +122,7 @@ impl ChunkGenerator for ArenaGen {
     fn generate_with_spawns(&self, pos: ChunkPos) -> (Chunk, Vec<(CellPos, Spawn)>) {
         let spawns = DUMMIES
             .iter()
-            .map(|&(x, kind)| (CellPos::new((x as f32 * self.scale) as i32, FLOOR), Spawn::Creature(kind)))
+            .map(|&(x, kind)| (CellPos::new(x, FLOOR), Spawn::Creature(kind)))
             .filter(|(at, _)| at.chunk() == pos)
             .collect();
         (self.generate(pos), spawns)
@@ -166,9 +139,9 @@ mod tests {
         let g = ArenaGen::new(&m);
         assert_eq!(g.at(START, FLOOR), None, "the start is open");
         assert_eq!(g.at(START, FLOOR - 1), Some(g.stone), "and stood on");
-        assert_eq!(g.at(360, FLOOR - 10), Some(g.water));
-        assert_eq!(g.at(930, FLOOR - 10), Some(g.lava));
-        assert_eq!(g.at(930, FLOOR - 2), None, "lava sits below the lip");
+        assert_eq!(g.at(540, FLOOR - 15), Some(g.water));
+        assert_eq!(g.at(1395, FLOOR - 15), Some(g.lava));
+        assert_eq!(g.at(1395, FLOOR - 3), None, "lava sits below the lip");
         let (lo, hi) = g.bounds();
         let mut n = 0;
         for cy in lo.y..=hi.y {

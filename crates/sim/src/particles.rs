@@ -34,10 +34,10 @@ pub enum Landing {
 }
 
 /// One raindrop in this many lands as water: enough for puddles and rising
-/// lakes in a downpour (~3 cells a minute), not a flood.
-pub const RAIN_KEEP: u64 = 150;
+/// lakes in a downpour (~4.5 cells a minute), not a flood.
+pub const RAIN_KEEP: u64 = 100;
 /// One flake in this many settles.
-pub const SNOW_KEEP: u64 = 10;
+pub const SNOW_KEEP: u64 = 7;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Particle {
@@ -53,14 +53,14 @@ pub struct Particle {
     pub gravity: f32,
 }
 
-/// Gravity in cells per tick² (≈ 900 cells/s² at 60 Hz).
-pub const GRAVITY: f32 = 0.25;
+/// Gravity in cells per tick² (≈ 1350 cells/s² at 60 Hz).
+pub const GRAVITY: f32 = 0.375;
 /// Velocity kept per tick (air drag).
 const DRAG: f32 = 0.985;
 /// Fastest a particle may travel per tick.
-const MAX_SPEED: f32 = 8.0;
+const MAX_SPEED: f32 = 12.0;
 /// Most particles alive at once; the oldest are dropped beyond this.
-pub const MAX_PARTICLES: usize = 30_000;
+pub const MAX_PARTICLES: usize = 67_500;
 
 impl Particle {
     pub fn new(pos: [f32; 2], vel: [f32; 2], cell: Cell, life: u16, landing: Landing) -> Self {
@@ -96,9 +96,9 @@ pub(crate) trait ParticleWorld {
 /// How strongly wind pushes each kind of particle (cells/tick² at full wind).
 fn wind_push(landing: Landing) -> f32 {
     match landing {
-        Landing::Ember | Landing::Vanish | Landing::Snow => 0.035,
-        Landing::Rain => 0.012,
-        Landing::Settle => 0.004,
+        Landing::Ember | Landing::Vanish | Landing::Snow => 0.052,
+        Landing::Rain => 0.018,
+        Landing::Settle => 0.006,
     }
 }
 
@@ -311,9 +311,9 @@ fn settle(p: &Particle, here: CellPos, world: &mut impl ParticleWorld) {
     if world.mats().phys(cell.material).kind == Kind::Static {
         cell.flags |= flags::LOOSE;
     }
-    // Keep falling at the speed it arrived with (rules: 1 + vy/4 cells/tick).
-    cell.vy = (-p.vel[1] * 4.0).clamp(0.0, 28.0) as i8;
-    for up in 0..4 {
+    // Keep falling at the speed it arrived with (rules::fall_cells).
+    cell.vy = crate::rules::fall_speed_of(-p.vel[1]);
+    for up in 0..6 {
         let spot = here.offset(0, up);
         if world.get(spot).is_some_and(|c| open(world.mats(), c)) {
             world.set(spot, cell);
@@ -336,7 +336,7 @@ fn settle(p: &Particle, here: CellPos, world: &mut impl ParticleWorld) {
                     world.set(here, cell);
                     let h = crate::rng::hash(&[here.x as u64, here.y as u64, p.life as u64, dx as u64]);
                     let side = (h % 1000) as f32 / 1000.0 - 0.5;
-                    world.emit(Particle::new([spot.x as f32 + 0.5, spot.y as f32 + 0.5], [side * 1.4, 0.5], displaced, 120, Landing::Settle));
+                    world.emit(Particle::new([spot.x as f32 + 0.5, spot.y as f32 + 0.5], [side * 2.1, 0.75], displaced, 120, Landing::Settle));
                     return;
                 }
                 Some(c) if liquid(c) => continue,
@@ -348,5 +348,5 @@ fn settle(p: &Particle, here: CellPos, world: &mut impl ParticleWorld) {
 
 /// How far up through a liquid a landing cell looks for the surface to put
 /// what it displaced, and how many columns either side it tries.
-const DISPLACE_REACH: i32 = 96;
-const DISPLACE_SIDE: i32 = 12;
+const DISPLACE_REACH: i32 = 144;
+const DISPLACE_SIDE: i32 = 18;

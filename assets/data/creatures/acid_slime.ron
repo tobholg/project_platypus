@@ -4,7 +4,7 @@
     name: "Acid slime",
     // What it may have on it when it dies (loot.ron), besides what it wears.
     loot: "slime",
-    size: (10, 7),
+    size: (15, 11),
     health: 36,
     team: Enemy,
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -14,16 +14,16 @@
     art: "acid_slime",
     light: (color: (150, 220, 60), strength: 0.25),
     movement: (
-        run_speed: 55,
-        air_accel: 400,
-        jump_height: 22,
+        run_speed: 83,
+        air_accel: 600,
+        jump_height: 33,
         air_jumps: 0,
-        step_height: 1,
+        step_height: 2,
         dash_speed: 0,
     ),
-    touch: (harm: acid, damage: 10, knock: 120, stun: 0.15),
+    touch: (harm: acid, damage: 10, knock: 180, stun: 0.15),
     brain: (
         kind: "hunter",
-        params: (aggro: 140, close: Hop(every: 1.2)),
+        params: (aggro: 210, close: Hop(every: 1.2)),
     ),
 )

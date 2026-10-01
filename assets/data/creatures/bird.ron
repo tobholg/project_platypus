@@ -2,7 +2,7 @@
 // something blows up), glides back down somewhere once it's calm.
 (
     name: "Bird",
-    size: (5, 4),
+    size: (8, 6),
     health: 4,
     team: Neutral,
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -10,17 +10,17 @@
     blood: "blood",
     art: "bird",
     movement: (
-        run_speed: 30,
-        ground_accel: 2000,
-        ground_decel: 2000,
-        jump_height: 4,
+        run_speed: 45,
+        ground_accel: 3000,
+        ground_decel: 3000,
+        jump_height: 6,
         air_jumps: 0,
-        step_height: 2,
-        fly_speed: 130,
-        fly_accel: 900,
+        step_height: 3,
+        fly_speed: 195,
+        fly_accel: 1350,
     ),
     brain: (
         kind: "critter",
-        params: (flee_range: 60, calm_after: 4.0, hops: true, flies: true, wander_every: 1.2, rest: 0.55, wander_speed: 0.6),
+        params: (flee_range: 90, calm_after: 4.0, hops: true, flies: true, wander_every: 1.2, rest: 0.55, wander_speed: 0.6),
     ),
 )

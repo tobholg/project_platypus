@@ -67,7 +67,7 @@ pub fn plan(seed: u64, count: usize, (x_lo, x_hi): (i32, i32), (y_lo, y_hi): (i3
     let surf = Perlin::new((seed ^ 0x15AF) as u32);
     let edge = Perlin::new((seed ^ 0x15ED) as u32);
     let mut islands: Vec<Island> = Vec::new();
-    const GAP: i32 = 60;
+    const GAP: i32 = 90;
     for _ in 0..count {
         for _try in 0..200 {
             let rx = rx_lo + unit(&mut rng) * (rx_hi - rx_lo);
@@ -88,9 +88,9 @@ pub fn plan(seed: u64, count: usize, (x_lo, x_hi): (i32, i32), (y_lo, y_hi): (i3
 
 fn carve(rng: &mut Rng, surf: &Perlin, edge: &Perlin, cx: i32, top: i32, rx: f64, depth: f64) -> Island {
     let w = 2 * rx as i32 + 1;
-    let h = (depth * 1.4) as i32 + 12;
+    let h = (depth * 1.4) as i32 + 18;
     let x0 = cx - rx as i32;
-    let y0 = top - h + 6;
+    let y0 = top - h + 9;
     let mut isl = Island { x0, y0, w, h, cells: vec![IslandCell::None; (w * h) as usize], top: vec![None; w as usize] };
     for lx in 0..w {
         let x = x0 + lx;
@@ -99,20 +99,20 @@ fn carve(rng: &mut Rng, surf: &Perlin, edge: &Perlin, cx: i32, top: i32, rx: f64
             continue;
         }
         // A gently waving grass line; the edges roll off.
-        let crest = top + (surf.get([x as f64 * 0.03, 0.5]) * 3.0) as i32 - (nx.powi(6) * 6.0) as i32;
+        let crest = top + (surf.get([x as f64 * 0.02, 0.5]) * 4.5) as i32 - (nx.powi(6) * 9.0) as i32;
         // A ragged, tapering underside, sometimes hanging down in a point.
         let taper = (1.0 - nx * nx).sqrt();
-        let hang = 1.0 + 0.35 * edge.get([x as f64 * 0.02, 3.1]);
-        let under = (depth * taper * hang) as i32 + 3;
+        let hang = 1.0 + 0.35 * edge.get([x as f64 / 75.0, 3.1]);
+        let under = (depth * taper * hang) as i32 + 5;
         for d in 0..under {
             let y = crest - 1 - d;
             // Jitter the rim without punching holes through it.
-            if d >= under - 3 && edge.get([x as f64 * 0.2, y as f64 * 0.2]) < -0.1 {
+            if d >= under - 5 && edge.get([x as f64 / 7.5, y as f64 / 7.5]) < -0.1 {
                 continue;
             }
             let c = match d {
                 0 => IslandCell::Grass,
-                1..=5 => IslandCell::Dirt,
+                1..=8 => IslandCell::Dirt,
                 _ => IslandCell::Stone,
             };
             isl.set(lx, y - y0, c);
@@ -122,20 +122,20 @@ fn carve(rng: &mut Rng, surf: &Perlin, edge: &Perlin, cx: i32, top: i32, rx: f64
     // Caves: a walker or two wandering inside, tunnels and small rooms,
     // turning back before the shell.
     for _ in 0..1 + (rng.next_u32() % 2) {
-        let (mut px, mut py) = (rx + (unit(rng) - 0.5) * rx * 0.6, (h - 6) as f64 - depth * (0.35 + unit(rng) * 0.3));
+        let (mut px, mut py) = (rx + (unit(rng) - 0.5) * rx * 0.6, (h - 9) as f64 - depth * (0.35 + unit(rng) * 0.3));
         let a = unit(rng) * std::f64::consts::TAU;
         let (mut dx, mut dy) = (a.cos(), a.sin() * 0.3);
-        let steps = (rx * 1.6) as usize + (rng.next_u32() % 100) as usize;
+        let steps = (rx * 1.6) as usize + (rng.next_u32() % 150) as usize;
         for _ in 0..steps {
-            let r = if rng.chance(18) { 4 + (rng.next_u32() % 3) as i32 } else { 1 + (rng.next_u32() % 2) as i32 };
+            let r = if rng.chance(18) { 6 + (rng.next_u32() % 4) as i32 } else { 2 + (rng.next_u32() % 2) as i32 };
             for oy in -r..=r {
                 for ox in -r..=r {
                     if ox * ox + oy * oy > r * r + r {
                         continue;
                     }
                     let (lx, ly) = (px as i32 + ox, py as i32 + oy);
-                    // Keep a shell: stay 3 cells inside solid rock.
-                    let shell = (-3..=3).all(|k| isl.get(lx + k, ly) != IslandCell::None && isl.get(lx, ly + k) != IslandCell::None);
+                    // Keep a shell: stay 5 cells inside solid rock.
+                    let shell = (-5..=5).all(|k| isl.get(lx + k, ly) != IslandCell::None && isl.get(lx, ly + k) != IslandCell::None);
                     if shell && isl.get(lx, ly) == IslandCell::Stone {
                         isl.set(lx, ly, IslandCell::Cave);
                     }
@@ -146,7 +146,7 @@ fn carve(rng: &mut Rng, surf: &Perlin, edge: &Perlin, cx: i32, top: i32, rx: f64
                 (dx, dy) = (dx * t.cos() - dy * t.sin(), dx * t.sin() + dy * t.cos());
             }
             let (nx, ny) = (px + dx, py + dy);
-            if isl.get(nx as i32, ny as i32) == IslandCell::None || isl.get(nx as i32, ny as i32 + 5) == IslandCell::None {
+            if isl.get(nx as i32, ny as i32) == IslandCell::None || isl.get(nx as i32, ny as i32 + 8) == IslandCell::None {
                 (dx, dy) = (-dx, -dy);
             } else {
                 (px, py) = (nx, ny);

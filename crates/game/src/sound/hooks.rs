@@ -75,7 +75,7 @@ fn hurts(player: Query<(&Health, &Kinematics), With<LocalPlayer>>, mut last: Loc
 fn deaths(mut died: MessageReader<Died>, mut out: MessageWriter<PlaySound>) {
     for d in died.read() {
         // (Bigger, lower.)
-        let size = (d.body.half.y / 8.0).clamp(0.5, 2.5);
+        let size = (d.body.half.y / 12.0).clamp(0.5, 2.5);
         out.write(PlaySound::at("death", d.body.pos).pitch(1.0 / size.sqrt()).volume(0.7 + 0.2 * size));
     }
 }
@@ -84,15 +84,15 @@ fn deaths(mut died: MessageReader<Died>, mut out: MessageWriter<PlaySound>) {
 /// little quicker the faster), by what's underfoot; a jump's push off.
 fn steps(sim: Res<crate::world::SimWorld>, time: Res<Time>, player: Query<&Kinematics, With<LocalPlayer>>, mut beat: Local<f32>, mut was: Local<(bool, f32)>, mut out: MessageWriter<PlaySound>) {
     let Ok(k) = player.single() else { return };
-    let feet = k.body.pos - Vec2::Y * (k.body.half.y + 0.5);
+    let feet = k.body.pos - Vec2::Y * (k.body.half.y + 0.75);
     let ground = k.loco.grounded();
     // A jump: off the ground, rising fast.
-    if was.0 && !ground && k.body.vel.y > 120.0 && was.1 <= 20.0 {
+    if was.0 && !ground && k.body.vel.y > 180.0 && was.1 <= 30.0 {
         out.write(PlaySound::at("jump", feet).volume(0.7));
     }
     *was = (ground, k.body.vel.y);
     let speed = k.body.vel.x.abs();
-    if !ground || speed < 20.0 {
+    if !ground || speed < 30.0 {
         // (The first step comes soon after starting.)
         *beat = beat.min(0.1);
         return;
@@ -101,7 +101,7 @@ fn steps(sim: Res<crate::world::SimWorld>, time: Res<Time>, player: Query<&Kinem
     if *beat > 0.0 {
         return;
     }
-    *beat = STEP_BEAT * (70.0 / speed).clamp(0.8, 1.3);
+    *beat = STEP_BEAT * (105.0 / speed).clamp(0.8, 1.3);
     // (What it stands on anywhere under its feet: on a bump's corner the
     // middle can be over air.)
     let under = [0.0, -0.7, 0.7, -1.0, 1.0]
@@ -129,10 +129,10 @@ const STEP_BEAT: f32 = 0.3;
 fn landings(mut landed: MessageReader<Landed>, bodies: Query<(&Kinematics, Has<LocalPlayer>)>, mut out: MessageWriter<PlaySound>) {
     for l in landed.read() {
         let Ok((k, player)) = bodies.get(l.entity) else { continue };
-        if l.drop < 6.0 && l.slam < 150.0 {
+        if l.drop < 9.0 && l.slam < 225.0 {
             continue;
         }
-        let hard = ((l.drop / 80.0).max(l.slam / 500.0)).clamp(0.2, 1.3);
+        let hard = ((l.drop / 120.0).max(l.slam / 750.0)).clamp(0.2, 1.3);
         let at = k.body.pos - Vec2::Y * k.body.half.y;
         out.write(PlaySound::at("land", at).volume(hard * if player { 1.0 } else { 0.7 }).pitch((1.0 - hard * 0.2).max(0.7)));
     }
@@ -149,7 +149,7 @@ fn world_sounds(
     mut out: MessageWriter<PlaySound>,
 ) {
     for b in blasts.read() {
-        let big = (b.radius / 20.0).clamp(0.3, 2.0);
+        let big = (b.radius / 30.0).clamp(0.3, 2.0);
         out.write(PlaySound::at("boom", b.at).volume((0.5 + big * 0.5).min(1.4)).pitch(1.0 / big.sqrt()));
     }
     for s in strikes.read() {

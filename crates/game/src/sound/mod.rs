@@ -38,7 +38,7 @@ impl Plugin for SoundPlugin {
         app.add_plugins(SeedlingPlugins)
             // (A cell is about a tenth of a metre: a sound at the edge of the
             // view is some 15 dB down.)
-            .insert_resource(DefaultSpatialScale(Vec3::splat(0.1)))
+            .insert_resource(DefaultSpatialScale(Vec3::splat(0.0667)))
             .insert_resource(SoundBank::load())
             .init_resource::<Muted>()
             .add_message::<PlaySound>()
@@ -100,7 +100,7 @@ impl PlaySound {
 }
 
 /// Fainter than this far from the camera (cells), an effect isn't played.
-const HEAR: f32 = 420.0;
+const HEAR: f32 = 630.0;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Volumes {

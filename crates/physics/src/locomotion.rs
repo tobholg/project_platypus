@@ -32,7 +32,7 @@ pub struct Intent {
 }
 
 /// How hard a climber presses into what it holds on to (cells/s).
-const CLING_PRESS: f32 = 30.0;
+const CLING_PRESS: f32 = 45.0;
 
 /// On a rope, steering pushes at this share of gravity (a pendulum's own
 /// scale, whatever the air control), while it's going slower than this
@@ -41,7 +41,7 @@ const SWING_PUMP: f32 = 0.33;
 const SWING_PUMP_MAX: f32 = 3.0;
 
 /// Fastest a rope lets a body go (cells/s).
-const TETHER_MAX: f32 = 900.0;
+const TETHER_MAX: f32 = 1350.0;
 
 /// A rope from `at`, `len` long, holding a body at its other end: it goes
 /// round `at` or toward it, never further. Speed outward is taken away (the
@@ -172,15 +172,15 @@ impl MovementStats {
 impl Default for MovementStats {
     fn default() -> Self {
         MovementStats {
-            run_speed: 95.0,
-            ground_accel: 1400.0,
-            ground_decel: 1800.0,
+            run_speed: 142.0,
+            ground_accel: 2100.0,
+            ground_decel: 2700.0,
             turn_accel: 0.0,
-            air_accel: 900.0,
-            gravity: 1100.0,
+            air_accel: 1350.0,
+            gravity: 1650.0,
             fall_gravity: 1.6,
-            max_fall: 420.0,
-            jump_height: 40.0,
+            max_fall: 630.0,
+            jump_height: 60.0,
             jump_cut: 0.45,
             jump_hold: 0.0,
             coyote_time: 0.09,
@@ -190,22 +190,22 @@ impl Default for MovementStats {
             dash_time: 0.14,
             dash_cooldown: 0.45,
             wall_jump: false,
-            wall_slide_speed: 60.0,
-            wall_jump_push: 120.0,
-            step_height: 3,
+            wall_slide_speed: 90.0,
+            wall_jump_push: 180.0,
+            step_height: 5,
             fly_speed: 0.0,
-            fly_accel: 600.0,
+            fly_accel: 900.0,
             cling: false,
             swim_speed: 0.0,
-            swim_accel: 400.0,
+            swim_accel: 600.0,
             swim_gravity: 0.1,
             swim_drag: 0.0005,
-            swim_max_fall: 25.0,
-            swim_stroke: 150.0,
+            swim_max_fall: 38.0,
+            swim_stroke: 225.0,
             swim_stroke_every: 0.35,
             rocket_time: 0.0,
-            rocket_thrust: 2600.0,
-            rocket_speed: 230.0,
+            rocket_thrust: 3900.0,
+            rocket_speed: 345.0,
         }
     }
 }
@@ -417,7 +417,7 @@ impl Locomotion {
         // whichever way it moves.
         if intent.aim != Vec2::ZERO {
             let d = intent.aim.x - body.pos.x;
-            if d.abs() > 0.5 {
+            if d.abs() > 0.75 {
                 self.facing = d.signum();
             }
         }
@@ -666,8 +666,10 @@ mod tests {
     const DT: f32 = 1.0 / 60.0;
 
     fn room() -> Ascii {
-        let mut rows = vec!["#                                                                                                  #"; 80];
-        rows.push("####################################################################################################");
+        let wall = format!("#{}#", " ".repeat(148));
+        let floor = "#".repeat(150);
+        let mut rows = vec![wall.as_str(); 120];
+        rows.push(&floor);
         Ascii::new(&rows)
     }
 
@@ -686,8 +688,8 @@ mod tests {
     }
 
     fn player() -> (MovementStats, Locomotion, Body) {
-        let s = MovementStats { dash_speed: 260.0, air_jumps: 1, wall_jump: true, ..Default::default() };
-        let mut b = Body::new(Vec2::new(20.0, 10.0), Vec2::new(8.0, 16.0));
+        let s = MovementStats { dash_speed: 390.0, air_jumps: 1, wall_jump: true, ..Default::default() };
+        let mut b = Body::new(Vec2::new(30.0, 15.0), Vec2::new(12.0, 24.0));
         b.step_height = s.step_height;
         (s, Locomotion::default(), b)
     }
@@ -800,7 +802,7 @@ mod tests {
             apex = apex.max(b.bottom());
         }
         let h = apex - floor;
-        assert!((h - s.jump_height).abs() < 3.0, "jumped {h} cells, wanted {}", s.jump_height);
+        assert!((h - s.jump_height).abs() < 4.5, "jumped {h} cells, wanted {}", s.jump_height);
     }
 
     /// Terraria's jump: held, it rises at a steady speed for `jump_hold`,
@@ -889,19 +891,55 @@ mod tests {
     /// down each), never a hop.
     #[test]
     fn walking_down_small_steps_stays_on_the_ground() {
-        let mut rows = vec!["#                                                  #"; 20];
-        // (A cell lower every 10 cells to the right.)
-        rows.extend(["##########                                         #", "####################                               #", "##############################                     #", "########################################           #"]);
-        rows.push("####################################################");
-        let g = Ascii::new(&rows);
+        // (A cell or two lower every 15 cells to the right.)
+        let g = Ascii::new(&[
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "##                                                                           #",
+            "###############                                                              #",
+            "###############                                                              #",
+            "##############################                                               #",
+            "#############################################                                #",
+            "#############################################                                #",
+            "############################################################                 #",
+            "##############################################################################",
+            "##############################################################################",
+        ]);
         let (s, mut l, mut b) = player();
-        b.pos = Vec2::new(5.0, 20.0);
+        b.pos = Vec2::new(8.0, 30.0);
         settle(&g, &s, &mut l, &mut b);
         let mut airborne = 0;
         for _ in 0..40 {
             tick(&g, &s, &mut l, &mut b, Intent { move_x: -1.0, ..default_intent() });
         }
-        b.pos.x = 5.0;
+        b.pos.x = 8.0;
         settle(&g, &s, &mut l, &mut b);
         for _ in 0..40 {
             tick(&g, &s, &mut l, &mut b, Intent { move_x: 1.0, ..default_intent() });
@@ -909,7 +947,7 @@ mod tests {
                 airborne += 1;
             }
         }
-        assert!(b.pos.x > 40.0, "walked down the stair: {:?}", b.pos);
+        assert!(b.pos.x > 60.0, "walked down the stair: {:?}", b.pos);
         assert_eq!(airborne, 0, "never off the ground");
     }
 
@@ -918,32 +956,44 @@ mod tests {
         // (A ledge taller than a step: off it, it falls; lower, it would
         // walk down onto the floor.)
         let g = Ascii::new(&[
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "#                                        #",
-            "###############                          #",
-            "###############                          #",
-            "###############                          #",
-            "###############                          #",
-            "###############                          #",
-            "###############                          #",
-            "#########################################",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "##                                                            #",
+            "#######################                                       #",
+            "#######################                                       #",
+            "#######################                                       #",
+            "#######################                                       #",
+            "#######################                                       #",
+            "#######################                                       #",
+            "#######################                                       #",
+            "#######################                                       #",
+            "#######################                                       #",
+            "############################################################## ",
+            "############################################################## ",
         ]);
         let (s, mut l, mut b) = player();
-        b.pos = Vec2::new(8.0, 12.0);
+        b.pos = Vec2::new(12.0, 18.0);
         settle(&g, &s, &mut l, &mut b);
         // Run off the ledge, press jump 3 ticks after leaving it.
         let mut left_at = None;

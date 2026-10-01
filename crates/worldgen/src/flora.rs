@@ -12,9 +12,9 @@ use noise::{NoiseFn, Perlin};
 use platypus_sim::rng::Rng;
 
 /// Widest a tree reaches from its trunk, for chunk overlap tests.
-pub const TREE_REACH: i32 = 140;
+pub const TREE_REACH: i32 = 210;
 /// Deepest a trunk is rooted below the surface (anchors it in the ground).
-const ROOTS: i32 = 6;
+const ROOTS: i32 = 9;
 
 #[derive(Clone, Debug)]
 pub struct Branch {
@@ -99,8 +99,8 @@ fn range(rng: &mut Rng, lo: f32, hi: f32) -> f32 {
 }
 
 /// Biggest cluster of foliage (radius, cells): its outer leaves stay within
-/// the sim's `LEAF_REACH` of wood (a giant's crown reached 73).
-const CLUSTER_MAX: f32 = 30.0;
+/// the sim's `LEAF_REACH` of wood (a giant's crown reached 110).
+const CLUSTER_MAX: f32 = 45.0;
 
 /// A cluster of foliage: one big blob and several smaller ones around it.
 fn foliage(blobs: &mut Vec<Blob>, rng: &mut Rng, cx: f32, cy: f32, r: f32) {
@@ -126,31 +126,31 @@ impl Tree {
     fn conifer(x: i32, base: i32, rng: &mut Rng, snowy: bool, grow: f32) -> Tree {
         // Taller and slimmer than a broadleaf; some saplings, some giants.
         let size = ((0.55 + 1.3 * unit(rng).powf(1.5)) * grow).min(2.3);
-        let height = (range(rng, 58.0, 84.0) * size) as i32;
+        let height = (range(rng, 87.0, 126.0) * size) as i32;
         let h = height as f32;
-        let girth = (range(rng, 2.2, 3.2) * size.powf(0.8)).max(1.6);
+        let girth = (range(rng, 3.3, 4.8) * size.powf(0.8)).max(2.4);
         let lean = range(rng, -0.03, 0.03) * h;
         // Tiers from a fifth of the way up to a spire over the top, each one
         // overlapping the next, narrowing upward.
-        let (lo, hi) = (base as f32 + h * range(rng, 0.14, 0.24), base as f32 + h + 3.0);
+        let (lo, hi) = (base as f32 + h * range(rng, 0.14, 0.24), base as f32 + h + 4.5);
         let n = 4 + (size * 2.6) as usize;
         let widest = h * range(rng, 0.23, 0.29);
         let tiers: Vec<Tier> = (0..n)
             .map(|k| {
                 // Overlapping a little, so each tier's top shows (and holds snow).
                 let (t0, t1) = (k as f32 / n as f32, ((k as f32 + 1.3) / n as f32).min(1.0));
-                let half = (widest * (1.0 - t0).powf(0.9) * range(rng, 0.85, 1.1)).max(2.5);
+                let half = (widest * (1.0 - t0).powf(0.9) * range(rng, 0.85, 1.1)).max(3.75);
                 Tier { bottom: lo + (hi - lo) * t0, top: lo + (hi - lo) * t1, half }
             })
             .collect();
-        let reach = tiers.iter().map(|t| t.half).fold(0.0, f32::max) + 3.0;
-        let bbox = ((x as f32 - reach - lean.abs()) as i32 - 2, base - ROOTS, (x as f32 + reach + lean.abs()) as i32 + 2, hi as i32 + 2);
+        let reach = tiers.iter().map(|t| t.half).fold(0.0, f32::max) + 4.5;
+        let bbox = ((x as f32 - reach - lean.abs()) as i32 - 3, base - ROOTS, (x as f32 + reach + lean.abs()) as i32 + 3, hi as i32 + 3);
         Tree { x, base, height, girth, lean, branches: Vec::new(), blobs: Vec::new(), tiers, species: Species::Conifer, snowy, grow, bbox }
     }
 
     fn broadleaf(x: i32, base: i32, rng: &mut Rng, species: Species, grow: f32) -> Tree {
         // Mostly medium trees, some saplings, big ones, and one in eight a
-        // giant (up to ~160 cells tall); elders run bigger.
+        // giant (up to ~240 cells tall); elders run bigger.
         let size = if species == Species::Elder {
             (range(rng, 1.4, 2.4) * grow).min(2.75)
         } else if rng.chance(32) {
@@ -158,9 +158,9 @@ impl Tree {
         } else {
             ((0.55 + 1.35 * unit(rng).powf(1.7)) * grow).min(2.75)
         };
-        let height = (range(rng, 46.0, 66.0) * size) as i32;
+        let height = (range(rng, 69.0, 99.0) * size) as i32;
         let h = height as f32;
-        let girth = (range(rng, 3.0, 4.4) * size.powf(0.9)).max(2.0);
+        let girth = (range(rng, 4.5, 6.6) * size.powf(0.9)).max(3.0);
         let lean = range(rng, -0.08, 0.08) * h;
         let trunk_x = |t: f32| x as f32 + 0.5 + lean * t * t;
 
@@ -181,34 +181,34 @@ impl Tree {
             let len = h * range(rng, 0.24, 0.4) * (1.2 - t * 0.55);
             let angle = range(rng, 0.35, 0.95); // radians above horizontal
             let to = (from.0 + side * len * angle.cos(), from.1 + len * angle.sin());
-            let thick0 = (girth * range(rng, 0.55, 0.75) * (1.25 - t * 0.6)).max(1.4);
-            branches.push(Branch { from, to, thick: (thick0, (thick0 * 0.45).max(0.9)) });
+            let thick0 = (girth * range(rng, 0.55, 0.75) * (1.25 - t * 0.6)).max(2.1);
+            branches.push(Branch { from, to, thick: (thick0, (thick0 * 0.45).max(1.35)) });
             // A twig from the middle, angled further out.
             if rng.chance(170) {
                 let m = (from.0 + (to.0 - from.0) * 0.55, from.1 + (to.1 - from.1) * 0.55);
                 let tl = len * range(rng, 0.35, 0.5);
                 let ta = angle + range(rng, 0.2, 0.5);
                 let tt = (m.0 + side * tl * ta.cos() * 0.6, m.1 + tl * ta.sin());
-                branches.push(Branch { from: m, to: tt, thick: ((thick0 * 0.5).max(0.9), 0.8) });
+                branches.push(Branch { from: m, to: tt, thick: ((thick0 * 0.5).max(1.35), 1.2) });
                 let r = h * range(rng, 0.11, 0.15);
                 foliage(&mut blobs, rng, tt.0, tt.1, r);
             }
             let r = h * range(rng, 0.15, 0.2);
-            foliage(&mut blobs, rng, to.0, to.1 + 1.0, r);
+            foliage(&mut blobs, rng, to.0, to.1 + 1.5, r);
             // Leaves partway along the branch too, so the canopy reads as one mass.
             let mid = (from.0 + (to.0 - from.0) * 0.6, from.1 + (to.1 - from.1) * 0.6 + h * 0.04);
             blobs.push(Blob { x: mid.0, y: mid.1, r: h * range(rng, 0.1, 0.13) });
         }
 
-        let mut bbox = (x - (girth * 2.0) as i32 - 2, base - ROOTS, x + (girth * 2.0) as i32 + 2, base + height);
+        let mut bbox = (x - (girth * 2.0) as i32 - 3, base - ROOTS, x + (girth * 2.0) as i32 + 3, base + height);
         for b in &blobs {
             bbox.0 = bbox.0.min((b.x - b.r * 1.3) as i32);
             bbox.2 = bbox.2.max((b.x + b.r * 1.3) as i32 + 1);
             bbox.3 = bbox.3.max((b.y + b.r * 1.3) as i32 + 1);
         }
         for b in &branches {
-            bbox.0 = bbox.0.min(b.to.0 as i32 - 2);
-            bbox.2 = bbox.2.max(b.to.0 as i32 + 2);
+            bbox.0 = bbox.0.min(b.to.0 as i32 - 3);
+            bbox.2 = bbox.2.max(b.to.0 as i32 + 3);
         }
         Tree { x, base, height, girth, lean, branches, blobs, tiers: Vec::new(), species, snowy: false, grow, bbox }
     }
@@ -220,7 +220,7 @@ impl Tree {
         // Ragged by row and side, not by cell: each row of needles is one
         // span out from the trunk, so none float loose.
         let side = if xf < cx { 7.3 } else { 1.1 };
-        let rag = edge.get([y as f64 * 0.47, side]) as f32 * 2.2;
+        let rag = edge.get([y as f64 * 0.31, side]) as f32 * 3.3;
         for t in &self.tiers {
             if yf < t.bottom || yf > t.top {
                 continue;
@@ -255,10 +255,10 @@ impl Tree {
         if y <= self.base + self.height {
             let t = ((yf - self.base as f32) / self.height as f32).clamp(0.0, 1.0);
             let flare = if t < 0.1 { 1.0 + 0.9 * (1.0 - t / 0.1).powi(2) } else { 1.0 };
-            let mut half = (self.girth * (1.0 - 0.55 * t) * flare).max(0.9);
+            let mut half = (self.girth * (1.0 - 0.55 * t) * flare).max(1.35);
             // A conifer's trunk is a thin line through its needles.
             if self.species == Species::Conifer && self.tiers.first().is_some_and(|t| yf > t.bottom) {
-                half = half.min(1.0);
+                half = half.min(1.5);
             }
             let cx = self.x as f32 + 0.5 + self.lean * t * t;
             let u = (xf - cx) / half; // -1 … 1 across the trunk
@@ -280,7 +280,7 @@ impl Tree {
         if self.species == Species::Conifer {
             let (u, across) = self.in_tiers(x, y, edge)?;
             // Snow lies along the top of each tier where it freezes.
-            if self.snowy && (1..=3).any(|d| self.in_tiers(x, y + d, edge).is_none()) {
+            if self.snowy && (1..=5).any(|d| self.in_tiers(x, y + d, edge).is_none()) {
                 return Some(TreePart::Leaves(Foliage::Needles, 245));
             }
             // Darker under each tier's hem and on the shaded side (greens are
@@ -323,7 +323,7 @@ impl Tree {
 /// Bark shade across a trunk or branch: dark on the left/bottom, lit on the
 /// right/top, with vertical grain.
 fn bark(u: f32, x: i32, y: i32) -> u8 {
-    let grain = ((x.wrapping_mul(7919) ^ (y / 3).wrapping_mul(104_729)) & 31) as f32 / 31.0 - 0.5;
+    let grain = ((x.wrapping_mul(7919) ^ (y / 5).wrapping_mul(104_729)) & 31) as f32 / 31.0 - 0.5;
     ((0.5 + 0.42 * u + 0.18 * grain).clamp(0.0, 1.0) * 255.0) as u8
 }
 
@@ -360,11 +360,11 @@ impl Forest {
         let mut trees: Vec<Tree> = Vec::new();
         let mut x = TREE_REACH;
         while x < width - TREE_REACH {
-            let d = density.get([x as f64 / 1100.0, 0.5]) + lush(x) * 0.6;
+            let d = density.get([x as f64 / 1_650.0, 0.5]) + lush(x) * 0.6;
             // Dense woods, open woodland, or meadow.
-            let gap = if d > 0.12 { 34 } else if d > -0.22 { 90 } else { 0 };
+            let gap = if d > 0.12 { 51 } else if d > -0.22 { 135 } else { 0 };
             if gap == 0 {
-                x += 60;
+                x += 90;
                 continue;
             }
             x += gap + (rng.next_u32() % (gap as u32 / 2 + 1)) as i32;
@@ -410,6 +410,6 @@ mod tests {
             assert!(-l <= TREE_REACH && r <= TREE_REACH, "tree {} tall spans {l}..{r}", t.height);
             tallest = tallest.max(t.height);
         }
-        assert!(tallest >= 140, "giants grow ({tallest})");
+        assert!(tallest >= 210, "giants grow ({tallest})");
     }
 }

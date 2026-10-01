@@ -1,10 +1,10 @@
 //! Structures (DESIGN §3.3): crypts now, castles next. A structure is a
-//! list of pieces, each a grid of glyphs at block resolution (4 × 4 cells,
-//! on the mining grid) placed in the world. Rooms come from text files
-//! (`assets/data/rooms/*.rooms`) and are assembled Spelunky-style: a path of
-//! rooms from the entrance to a goal room on a coarse grid, side rooms off
-//! it, a secret or two behind illusory walls, the doors nobody uses walled
-//! up.
+//! list of pieces, each a grid of glyphs at block resolution (`BLOCK` ×
+//! `BLOCK` cells, on the mining grid) placed in the world. Rooms come from
+//! text files (`assets/data/rooms/*.rooms`) and are assembled
+//! Spelunky-style: a path of rooms from the entrance to a goal room on a
+//! coarse grid, side rooms off it, a secret or two behind illusory walls,
+//! the doors nobody uses walled up.
 //!
 //! Layouts are made once, when the world is planned (from the seed and the
 //! site), and chunks rasterise whatever parts of them they touch.
@@ -15,8 +15,8 @@ use std::sync::OnceLock;
 use platypus_sim::CHUNK;
 use platypus_sim::rng::Rng;
 
-/// Cells per block (the mining grid).
-pub const BLOCK: i32 = 4;
+/// Cells per block (the mining grid, the sim's).
+pub use platypus_sim::BLOCK;
 /// A room slot, in blocks.
 pub const SLOT_W: i32 = 16;
 pub const SLOT_H: i32 = 10;
@@ -45,7 +45,7 @@ pub enum Glyph {
     Illusory,
     Weak,
     Planks,
-    /// A one-way wooden platform (its block's top two cells).
+    /// A one-way wooden platform (its block's top three cells).
     Platform,
     Rubble,
 }
@@ -661,11 +661,11 @@ pub fn castle(rooms: &[Room], rng: &mut Rng, site: (i32, i32), keep: (i32, i32),
 
     // Foundations: wall from the floor down into the ground, every column.
     let w = gw * SLOT_W;
-    let lowest = (0..w).map(|bx| ground((gx + bx) * BLOCK + 2).div_euclid(BLOCK) - 2).min().expect("a castle has width").min(floor - 1);
+    let lowest = (0..w).map(|bx| ground((gx + bx) * BLOCK + BLOCK / 2).div_euclid(BLOCK) - 2).min().expect("a castle has width").min(floor - 1);
     let depth = floor - lowest;
     let mut glyphs = vec![Glyph::Keep; (w * depth) as usize];
     for bx in 0..w {
-        let bottom = ground((gx + bx) * BLOCK + 2).div_euclid(BLOCK) - 2 - lowest;
+        let bottom = ground((gx + bx) * BLOCK + BLOCK / 2).div_euclid(BLOCK) - 2 - lowest;
         for by in bottom.max(0)..depth {
             glyphs[(by * w + bx) as usize] = Glyph::Wall;
         }
@@ -677,7 +677,7 @@ pub fn castle(rooms: &[Room], rng: &mut Rng, site: (i32, i32), keep: (i32, i32),
     // it rises; either at most 60 blocks, until it meets the open ground.
     let (out, from) = if gate == 0 { (-1, gx - 1) } else { (1, gx + w) };
     let column = |d: i32| from + out * d;
-    let height = |d: i32| ground(column(d) * BLOCK + 2).div_euclid(BLOCK);
+    let height = |d: i32| ground(column(d) * BLOCK + BLOCK / 2).div_euclid(BLOCK);
     let mut cols: Vec<(i32, Vec<(i32, Glyph)>)> = Vec::new(); // (block x, (block row, glyph))
     for d in 0..60 {
         let under = height(d);
@@ -784,10 +784,10 @@ pub fn village(plain: (i32, i32, i32), mid: i32, ground: &dyn Fn(i32) -> i32) ->
             break;
         }
         // The floor row: the ground's top block under its middle.
-        let floor = ground((bx + b.w / 2) * BLOCK + 2).div_euclid(BLOCK) - 1;
+        let floor = ground((bx + b.w / 2) * BLOCK + BLOCK / 2).div_euclid(BLOCK) - 1;
         pieces.push(Piece::new(bx, floor, b.w, b.h, b.glyphs.clone()));
         // Foundations: brick from the floor down to under the ground.
-        let tops: Vec<i32> = (0..b.w).map(|x| ground((bx + x) * BLOCK + 2).div_euclid(BLOCK) - 1).collect();
+        let tops: Vec<i32> = (0..b.w).map(|x| ground((bx + x) * BLOCK + BLOCK / 2).div_euclid(BLOCK) - 1).collect();
         let lowest = tops.iter().copied().min().unwrap_or(floor).min(floor) - 1;
         if lowest < floor {
             let depth = floor - lowest;
@@ -800,7 +800,7 @@ pub fn village(plain: (i32, i32, i32), mid: i32, ground: &dyn Fn(i32) -> i32) ->
             pieces.push(Piece::new(bx, lowest, b.w, depth, glyphs));
         }
         for &(mx, my, c) in &b.marks {
-            let at = ((bx + mx) * BLOCK + 2, (floor + my) * BLOCK);
+            let at = ((bx + mx) * BLOCK + BLOCK / 2, (floor + my) * BLOCK);
             let what = match c {
                 'g' => crate::Spawn::Keeper("guide"),
                 's' => crate::Spawn::Keeper("smith"),
@@ -873,7 +873,7 @@ mod tests {
         assert!(parse("room bad\n#..#").is_err(), "a room must be whole slots");
     }
 
-    /// A body the player's size, in blocks (the player is 6 × 15 cells).
+    /// A body the player's size, in blocks (the player is 9 × 23 cells).
     const BODY: (i32, i32) = (2, 4);
 
     /// Where a player-sized body can get to from `start` (its bottom-left

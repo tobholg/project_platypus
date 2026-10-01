@@ -97,10 +97,10 @@ fn step_time() -> f32 {
     0.12
 }
 fn lift() -> f32 {
-    3.0
+    4.5
 }
 fn spread() -> f32 {
-    3.0
+    4.5
 }
 fn one() -> u8 {
     1
@@ -307,7 +307,7 @@ fn walk(
         let c = middle + legs.offset;
         // Heading: where it goes (or, still, where it aims), turning steadily.
         let v = k.body.vel;
-        let want = if v.length() > 6.0 { v.y.atan2(v.x) } else { legs.heading };
+        let want = if v.length() > 9.0 { v.y.atan2(v.x) } else { legs.heading };
         let mut d = (want - legs.heading + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
         d = d.clamp(-8.0 * dt, 8.0 * dt);
         legs.heading += d;
@@ -342,8 +342,8 @@ fn walk(
         if let Some(Ok((mut s, mut t, mut vis))) = legs.stinger.map(|e| stingers.get_mut(e)) {
             let curl = rear.curl.clamp(0.0, 1.0);
             *vis = if curl > 0.05 { Visibility::Inherited } else { Visibility::Hidden };
-            let along = -14.0 + 32.0 * curl;
-            let at = offset + fwd * along + up * (std::f32::consts::PI * curl).sin() * 16.0;
+            let along = -21.0 + 48.0 * curl;
+            let at = offset + fwd * along + up * (std::f32::consts::PI * curl).sin() * 24.0;
             let angle = legs.heading + std::f32::consts::PI * (1.0 - curl);
             if let Some(atlas) = s.texture_atlas.as_mut() {
                 atlas.index = crate::combat::Turned::index(angle.to_degrees());
@@ -364,7 +364,7 @@ fn walk(
                 continue;
             }
             let off = f.at - hip;
-            let twisted = off.length() > 0.5 && Vec2::from_angle(way).dot(off.normalize()) < 0.2;
+            let twisted = off.length() > 0.75 && Vec2::from_angle(way).dot(off.normalize()) < 0.2;
             let stretched = off.length() > reach * 0.98;
             let crowded = off.length() < reach * 0.25;
             let dangling = !f.grips;

@@ -22,7 +22,7 @@ pub struct Hatchery {
 
 impl Default for Hatchery {
     fn default() -> Self {
-        Hatchery { brood: "spiderling".into(), count: 3, range: 40.0 }
+        Hatchery { brood: "spiderling".into(), count: 3, range: 60.0 }
     }
 }
 
@@ -43,8 +43,8 @@ fn hatch(mut commands: Commands, sim: Res<SimWorld>, hunted: Query<(&Kinematics,
         }
         let mut rng = Rng::seeded(&[sim.world.seed(), sim.world.tick(), e.to_bits(), 0xE66]);
         for _ in 0..h.count {
-            let dx = (rng.next_u32() as f32 / u32::MAX as f32 - 0.5) * 8.0;
-            spawn_creature(&mut commands, &h.brood, k.body.pos + Vec2::new(dx, 1.0), |_| {});
+            let dx = (rng.next_u32() as f32 / u32::MAX as f32 - 0.5) * 12.0;
+            spawn_creature(&mut commands, &h.brood, k.body.pos + Vec2::new(dx, 1.5), |_| {});
         }
         hp.hp = 0.0;
     }

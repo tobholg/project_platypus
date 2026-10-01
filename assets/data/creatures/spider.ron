@@ -9,7 +9,7 @@
     name: "Cave spider",
     // What it may have on it when it dies (loot.ron), besides what it wears.
     loot: "spider",
-    size: (16, 12),
+    size: (24, 18),
     health: 130,
     team: Enemy,
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -18,20 +18,20 @@
     // It bleeds acid (mind where you hit it), and acid doesn't hurt it.
     blood: "acid",
     art: "spider_body",
-    legs: (count: 8, reach: 48, upper: 0.48, step: 0.1, lift: 8, hips: 4, spread: 7,
-           color: (24, 18, 22), joint: (74, 36, 40), thick: 3, body: "spider_body", eyes: (255, 52, 38),
+    legs: (count: 8, reach: 72, upper: 0.48, step: 0.1, lift: 12, hips: 6, spread: 11,
+           color: (24, 18, 22), joint: (74, 36, 40), thick: 5, body: "spider_body", eyes: (255, 52, 38),
            stinger: "spider_stinger"),
     // (Its eyes are drawn over the dark: `legs`' `eyes`. The faintest red on
     // what's right beside it: no glow.)
     light: (color: (255, 40, 30), strength: 0.04),
     movement: (
-        run_speed: 82,
-        ground_accel: 900,
-        ground_decel: 1200,
-        air_accel: 500,
-        jump_height: 22,
+        run_speed: 123,
+        ground_accel: 1350,
+        ground_decel: 1800,
+        air_accel: 750,
+        jump_height: 33,
         air_jumps: 0,
-        step_height: 2,
+        step_height: 3,
         cling: true,
         dash_speed: 0,
     ),
@@ -39,15 +39,15 @@
     // Heavy and planted on eight legs: it shrugs off most blows (poise:
     // 5 shortsword slashes, 3 longsword ones, 2 of its drive, in a row
     // before one staggers it) and barely moves when hit (knockback / heft:
-    // a longsword slash sends it 16 cells/s, was 167).
+    // a longsword slash sends it 24 cells/s, was 250).
     poise: 60,
     heft: 4,
     brain: (
         kind: "hunter",
-        params: (aggro: 170, close: Crawl(pounce_range: 34, pounce_every: 1.5), wander: (speed: 0.4),
+        params: (aggro: 255, close: Crawl(pounce_range: 51, pounce_every: 1.5), wander: (speed: 0.4),
             // (range, cells; windup, s; lunge, cells/s; damage; knock, cells/s; stun, s; every, s)
-            bite: (range: 24, windup: 0.3, lunge: 280, damage: 16, knock: 330, stun: 0.35, every: 1.5),
-            spit: (spell: "spider_spit", range: (16, 170), windup: 0.45, every: 3.5),
-            sting: (range: 28, rise: 0.5, hold: 0.35, damage: 30, knock: 220, stun: 0.4, venom: "venom", every: 5.0)),
+            bite: (range: 36, windup: 0.3, lunge: 420, damage: 16, knock: 495, stun: 0.35, every: 1.5),
+            spit: (spell: "spider_spit", range: (24, 255), windup: 0.45, every: 3.5),
+            sting: (range: 42, rise: 0.5, hold: 0.35, damage: 30, knock: 330, stun: 0.4, venom: "venom", every: 5.0)),
     ),
 )

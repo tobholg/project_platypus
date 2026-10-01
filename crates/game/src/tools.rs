@@ -241,7 +241,7 @@ fn select(
     if d != 0 {
         let i = belt.tool.index();
         let r = belt.radius[i];
-        belt.radius[i] = (r + d * (1 + r / 8)).clamp(0, 48);
+        belt.radius[i] = (r + d * (1 + r / 8)).clamp(0, 72);
     }
 }
 
@@ -298,7 +298,7 @@ fn use_tools(
                     Ok(k) => {
                         let from = k.body.pos + Vec2::new(0.0, k.body.half.y * 0.5);
                         let dir = (at - from).normalize_or(Vec2::X);
-                        let speed = cfg.bomb.throw_speed * ((at - from).length() / 120.0).clamp(0.35, 1.0);
+                        let speed = cfg.bomb.throw_speed * ((at - from).length() / 180.0).clamp(0.35, 1.0);
                         (from, dir * speed + k.body.vel * 0.5)
                     }
                     Err(_) => (at, Vec2::ZERO),
@@ -399,16 +399,16 @@ fn weather_keys(mut actions: MessageReader<crate::dev::DevAction>, cam: Single<&
     let x = c.x as i32;
     for a in actions.read() {
         match *a {
-            DevAction::Storm => sim.queue(WorldEdit::Weather { x, radius: 400, storm: true }),
-            DevAction::ClearSky => sim.queue(WorldEdit::Weather { x, radius: 600, storm: false }),
+            DevAction::Storm => sim.queue(WorldEdit::Weather { x, radius: 600, storm: true }),
+            DevAction::ClearSky => sim.queue(WorldEdit::Weather { x, radius: 900, storm: false }),
             DevAction::Lightning(at) => {
-                let at = at.unwrap_or(c + Vec2::new(60.0, 0.0));
-                sim.queue(WorldEdit::Lightning { x: at.x.floor() as i32, from_y: at.y as i32 + 200 });
+                let at = at.unwrap_or(c + Vec2::new(90.0, 0.0));
+                sim.queue(WorldEdit::Lightning { x: at.x.floor() as i32, from_y: at.y as i32 + 300 });
             }
             DevAction::Radius(d) => {
                 let i = belt.tool.index();
                 let r = belt.radius[i];
-                belt.radius[i] = (r + d * (1 + r / 8)).clamp(0, 48);
+                belt.radius[i] = (r + d * (1 + r / 8)).clamp(0, 72);
             }
             _ => {}
         }

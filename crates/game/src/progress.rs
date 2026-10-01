@@ -25,7 +25,7 @@ use crate::hands::items::{Inventory, Items, Stack};
 use crate::world::SimWorld;
 
 /// A killed creature counts for the player within this many cells of it.
-const WITNESS: f32 = 300.0;
+const WITNESS: f32 = 450.0;
 /// Seconds between looks at the milestones.
 const CHECK_EVERY: f32 = 0.5;
 /// Seconds a toast stays up.

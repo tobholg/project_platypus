@@ -31,77 +31,77 @@
     // Sparks where a blade bites flesh, and where it rings off stone; the
     // smear the outer part of the blade leaves as it sweeps (`trail`: motes
     // for every fourth pixel of it, each turn of the sweep).
-    hit: (count: 12, life: (0.08, 0.22), colors: [(255, 255, 240), (255, 230, 150), (200, 120, 60)], speed: 120, spread: 0.9, drag: 5),
-    trail: (count: 1, life: (0.03, 0.08), colors: [(255, 255, 255), (220, 232, 255), (170, 190, 235)], speed: 3, drag: 8),
-    clang: (count: 7, life: (0.06, 0.18), colors: [(255, 255, 255), (255, 220, 120)], speed: 140, spread: 1.2, drag: 5, gravity: 200, glow: true),
+    hit: (count: 12, life: (0.08, 0.22), colors: [(255, 255, 240), (255, 230, 150), (200, 120, 60)], speed: 180, spread: 0.9, drag: 5),
+    trail: (count: 1, life: (0.03, 0.08), colors: [(255, 255, 255), (220, 232, 255), (170, 190, 235)], speed: 5, drag: 8),
+    clang: (count: 7, life: (0.06, 0.18), colors: [(255, 255, 255), (255, 220, 120)], speed: 210, spread: 1.2, drag: 5, gravity: 300, glow: true),
     weapons: [
         (
             id: "shortsword", art: "shortsword",
-            damage: 12, knock: 150, stun: 0.18, rest: -35,
+            damage: 12, knock: 225, stun: 0.18, rest: -35,
             moves: [
-                (name: "slash", from: 105, to: -75, windup: 0.05, active: 0.09, recovery: 0.09, stamina: 8, lunge: 50),
-                (name: "backslash", from: -75, to: 100, windup: 0.04, active: 0.09, recovery: 0.1, stamina: 8, lunge: 40),
-                (name: "thrust", harm: pierce, from: 0, to: 0, thrust: 5, windup: 0.07, active: 0.08, recovery: 0.13, stamina: 11, lunge: 130, damage: 1.4, knock: 1.3),
+                (name: "slash", from: 105, to: -75, windup: 0.05, active: 0.09, recovery: 0.09, stamina: 8, lunge: 75),
+                (name: "backslash", from: -75, to: 100, windup: 0.04, active: 0.09, recovery: 0.1, stamina: 8, lunge: 60),
+                (name: "thrust", harm: pierce, from: 0, to: 0, thrust: 8, windup: 0.07, active: 0.08, recovery: 0.13, stamina: 11, lunge: 195, damage: 1.4, knock: 1.3),
             ],
-            down: (name: "down slash", from: 55, to: -55, thrust: 4, windup: 0.02, active: 0.14, recovery: 0.08, stamina: 8),
+            down: (name: "down slash", from: 55, to: -55, thrust: 6, windup: 0.02, active: 0.14, recovery: 0.08, stamina: 8),
         ),
         (
             id: "longsword", art: "longsword",
-            damage: 24, knock: 250, stun: 0.3, rest: -30,
+            damage: 24, knock: 375, stun: 0.3, rest: -30,
             moves: [
-                (name: "cleave", from: 125, to: -95, windup: 0.13, active: 0.15, recovery: 0.18, stamina: 16, lunge: 40),
-                (name: "sweep", from: -95, to: 115, windup: 0.09, active: 0.15, recovery: 0.2, stamina: 16, lunge: 30),
-                (name: "drive", harm: pierce, from: 5, to: -5, thrust: 7, windup: 0.15, active: 0.1, recovery: 0.24, stamina: 22, lunge: 170, damage: 1.6, knock: 1.5),
+                (name: "cleave", from: 125, to: -95, windup: 0.13, active: 0.15, recovery: 0.18, stamina: 16, lunge: 60),
+                (name: "sweep", from: -95, to: 115, windup: 0.09, active: 0.15, recovery: 0.2, stamina: 16, lunge: 45),
+                (name: "drive", harm: pierce, from: 5, to: -5, thrust: 11, windup: 0.15, active: 0.1, recovery: 0.24, stamina: 22, lunge: 255, damage: 1.6, knock: 1.5),
             ],
-            down: (name: "plunge", harm: pierce, from: 0, to: 0, thrust: 3, windup: 0.08, active: 4, recovery: 0.22, stamina: 14, dive: 520, slam: 14, damage: 1.2),
+            down: (name: "plunge", harm: pierce, from: 0, to: 0, thrust: 5, windup: 0.08, active: 4, recovery: 0.22, stamina: 14, dive: 780, slam: 21, damage: 1.2),
         ),
         // Enemies' weapons: slower, with windups to read.
         (
             id: "cleaver", art: "cleaver",
-            damage: 11, knock: 170, stun: 0.25, rest: -40,
+            damage: 11, knock: 255, stun: 0.25, rest: -40,
             moves: [
-                (name: "hack", from: 110, to: -70, windup: 0.26, active: 0.11, recovery: 0.2, stamina: 14, lunge: 60),
-                (name: "backhack", from: -70, to: 95, windup: 0.18, active: 0.11, recovery: 0.3, stamina: 14, lunge: 40),
+                (name: "hack", from: 110, to: -70, windup: 0.26, active: 0.11, recovery: 0.2, stamina: 14, lunge: 90),
+                (name: "backhack", from: -70, to: 95, windup: 0.18, active: 0.11, recovery: 0.3, stamina: 14, lunge: 60),
             ],
         ),
         (
             id: "rusty_sword", art: "rusty_sword",
-            damage: 9, knock: 140, stun: 0.2, rest: -40,
+            damage: 9, knock: 210, stun: 0.2, rest: -40,
             moves: [
-                (name: "hack", from: 105, to: -70, windup: 0.24, active: 0.1, recovery: 0.2, stamina: 12, lunge: 50),
-                (name: "backhack", from: -70, to: 95, windup: 0.18, active: 0.1, recovery: 0.3, stamina: 12, lunge: 30),
+                (name: "hack", from: 105, to: -70, windup: 0.24, active: 0.1, recovery: 0.2, stamina: 12, lunge: 75),
+                (name: "backhack", from: -70, to: 95, windup: 0.18, active: 0.1, recovery: 0.3, stamina: 12, lunge: 45),
             ],
         ),
         // A dagger: quick stabs, little reach.
         (
             id: "fang", art: "fang", harm: pierce,
-            damage: 8, knock: 70, stun: 0.12, rest: -30,
+            damage: 8, knock: 105, stun: 0.12, rest: -30,
             moves: [
-                (name: "stab", from: 10, to: -10, thrust: 4, windup: 0.03, active: 0.06, recovery: 0.06, stamina: 5, lunge: 70),
-                (name: "slash", from: 80, to: -60, windup: 0.03, active: 0.07, recovery: 0.06, stamina: 5, lunge: 40),
-                (name: "stab", from: -5, to: 5, thrust: 5, windup: 0.04, active: 0.06, recovery: 0.1, stamina: 7, lunge: 110, damage: 1.5),
+                (name: "stab", from: 10, to: -10, thrust: 6, windup: 0.03, active: 0.06, recovery: 0.06, stamina: 5, lunge: 105),
+                (name: "slash", from: 80, to: -60, windup: 0.03, active: 0.07, recovery: 0.06, stamina: 5, lunge: 60),
+                (name: "stab", from: -5, to: 5, thrust: 8, windup: 0.04, active: 0.06, recovery: 0.1, stamina: 7, lunge: 165, damage: 1.5),
             ],
-            down: (name: "down slash", from: 50, to: -50, thrust: 4, windup: 0.02, active: 0.11, recovery: 0.06, stamina: 5),
+            down: (name: "down slash", from: 50, to: -50, thrust: 6, windup: 0.02, active: 0.11, recovery: 0.06, stamina: 5),
         ),
         (
             id: "club", art: "club", harm: blunt,
-            damage: 30, knock: 300, stun: 0.5, rest: -60,
+            damage: 30, knock: 450, stun: 0.5, rest: -60,
             moves: [
-                (name: "smash", from: 120, to: -75, windup: 0.5, active: 0.16, recovery: 0.55, stamina: 40, lunge: 30),
-                (name: "sweep", from: -75, to: 70, windup: 0.4, active: 0.2, recovery: 0.5, stamina: 40, lunge: 20),
+                (name: "smash", from: 120, to: -75, windup: 0.5, active: 0.16, recovery: 0.55, stamina: 40, lunge: 45),
+                (name: "sweep", from: -75, to: 70, windup: 0.4, active: 0.2, recovery: 0.5, stamina: 40, lunge: 30),
             ],
         ),
     ],    // Bows (archery.rs): hold to draw (fully in `draw` s), let go to loose;
     // the arrow's speed (cells/s), damage and knockback go from the first
     // to the second by how far it was drawn. (It shows only while drawn.)
     bows: [
-        (id: "bow", art: "bow", draw: 0.65, speed: (170, 440), damage: (5, 20), knock: (40, 170), stun: 0.15, stamina: 6),
+        (id: "bow", art: "bow", draw: 0.65, speed: (255, 660), damage: (5, 20), knock: (60, 255), stun: 0.15, stamina: 6),
     ],
     // Arrows fly and fall (`gravity` cells/s²), stick where they strike
     // stone or earth for `stuck` s, come back to you within `pickup`
     // cells; through fire or lava they catch and burn for `burn` s,
     // setting alight what they strike (water puts them out).
-    arrow: (art: "arrow", gravity: 360, stuck: 60, pickup: 12, burn: 6),
+    arrow: (art: "arrow", gravity: 540, stuck: 60, pickup: 18, burn: 6),
     // Everything else you hold, by its icon's shape (icons.ron): drawn from
     // the sprite of that name (assets/art/<shape>.ron: pointing right, a
     // `grip`), in the item's icon colours with `recolor` (one pickaxe
@@ -111,10 +111,10 @@
     // chopping: it can hit what's in the way too); `burns`: alight in the
     // hand (a flame and light, like a planted torch).
     held: {
-        "pickaxe": (rest: -35, recolor: true, swing: (harm: pierce, damage: 5, knock: 80, stun: 0.1, moves: [
+        "pickaxe": (rest: -35, recolor: true, swing: (harm: pierce, damage: 5, knock: 120, stun: 0.1, moves: [
             (name: "pick", from: 105, to: -50, windup: 0.04, active: 0.07, recovery: 0.03, stamina: 0),
         ])),
-        "axe": (rest: -35, recolor: true, swing: (damage: 8, knock: 110, stun: 0.12, moves: [
+        "axe": (rest: -35, recolor: true, swing: (damage: 8, knock: 165, stun: 0.12, moves: [
             (name: "chop", from: 110, to: -45, windup: 0.05, active: 0.08, recovery: 0.05, stamina: 0),
         ])),
         "wand": (rest: -35, recolor: true),

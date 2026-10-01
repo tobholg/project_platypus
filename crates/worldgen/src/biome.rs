@@ -97,29 +97,29 @@ impl Biome {
     pub fn lift(self) -> f64 {
         match self {
             Biome::Ocean => 0.0,
-            Biome::Plains => 40.0,
-            Biome::Forest => 60.0,
-            Biome::Desert => 50.0,
-            Biome::Tundra => 55.0,
-            Biome::Jungle => 45.0,
-            Biome::Swamp => 6.0,
-            Biome::DeepForest => 70.0,
-            Biome::Mountains => 260.0,
+            Biome::Plains => 60.0,
+            Biome::Forest => 90.0,
+            Biome::Desert => 75.0,
+            Biome::Tundra => 82.5,
+            Biome::Jungle => 67.5,
+            Biome::Swamp => 9.0,
+            Biome::DeepForest => 105.0,
+            Biome::Mountains => 390.0,
         }
     }
 
     /// How much the land rolls (cells).
     pub fn hills(self) -> f64 {
         match self {
-            Biome::Ocean => 30.0,
-            Biome::Plains => 45.0,
-            Biome::Forest => 90.0,
-            Biome::Desert => 70.0,
-            Biome::Tundra => 80.0,
-            Biome::Jungle => 110.0,
-            Biome::Swamp => 10.0,
-            Biome::DeepForest => 100.0,
-            Biome::Mountains => 140.0,
+            Biome::Ocean => 45.0,
+            Biome::Plains => 67.5,
+            Biome::Forest => 135.0,
+            Biome::Desert => 105.0,
+            Biome::Tundra => 120.0,
+            Biome::Jungle => 165.0,
+            Biome::Swamp => 15.0,
+            Biome::DeepForest => 150.0,
+            Biome::Mountains => 210.0,
         }
     }
 
@@ -169,10 +169,10 @@ impl Biome {
         match self {
             Biome::Ocean => 0.0,
             Biome::Desert => 0.0,
-            Biome::Swamp => 22.0,
+            Biome::Swamp => 33.0,
             // Ponds under the trees, not lakes that clear the forest.
-            Biome::DeepForest | Biome::Tundra => 35.0,
-            _ => 150.0,
+            Biome::DeepForest | Biome::Tundra => 52.5,
+            _ => 225.0,
         }
     }
 }

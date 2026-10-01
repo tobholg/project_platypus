@@ -3,45 +3,58 @@
 // it goes and gives it legs (`legs` in its creature file; actors/legs.rs);
 // `grip` is where the legs meet.
 (
-    size: (30, 20),
-    feet: (11.0, 15),
+    size: (45, 30),
+    feet: (17, 23),
     outline: (14, 8, 12),
     palette: {
         'b': (36, 26, 32),   // abdomen
         'B': (62, 46, 56),   // abdomen, lit
+        'L': (84, 64, 78),   // abdomen, the light on its back
         'h': (96, 78, 86),   // bristles
         'x': (150, 26, 26),   // its mark
+        'X': (110, 18, 22),   // its mark, deeper
         'c': (44, 32, 40),   // head
         'C': (70, 54, 64),   // head, lit
         'e': (255, 52, 38),   // eyes (they glow: the creature's light)
         'f': (208, 196, 172),   // fangs
+        'F': (150, 138, 120),   // fangs, shade
     },
     frames: {
         "body": [
-            "..............................",
-            "........BBBB..................",
-            ".....BBBBBBbbbb...............",
-            "....BBBBhBbbhhbb..............",
-            "...BBBBBBbbbbbbbb.............",
-            "..hhBhBBbbbbbbbbbb.CCCCc......",
-            ".BBBBBBbbbbhbbbbbbCCCcccc.....",
-            ".BBBBxbbbbbbbbbbbCCCcccccce...",
-            ".BBBBbbbxbxbbbbbCCCccccccec.ff",
-            "BBBxbbbxbxbxbxbbCCccccccecce..",
-            "BBBxxbbxbxbxxxbbCcccccccecce..",
-            ".Bbbbbbbxbxbbbbbcccccccccec.ff",
-            ".bbbbxbbbbbbbbbbbccccccccce...",
-            ".bbbbbbbbbbbbbbbbbccccccc.....",
-            "..bbbbbbbbbbbbbbbb.ccccc......",
-            "...hbbbbbbhbbbhbb.............",
-            "....bbbbbbbbbbbb..............",
-            ".....bbbbbbbbbb...............",
-            "........bbbb..................",
-            "..............................",
+            ".............................................",
+            ".............................................",
+            "..........BBBBBBh............................",
+            ".....h.BBBBBBBBBBbb..........................",
+            "......LLBBBBBBBBBBbb.........................",
+            "....LLLLLBBBBBBBBBbbbb.......................",
+            "....LLLLLLBBBBBBBBbbbb.......................",
+            "...LLLhhLLBBBBBBBBbbbbb......................",
+            ".hBLLLLLLLBBBBBBBBbbbbbb.....................",
+            ".BBLLLLLLLBBBBBxxBbbbbbbb......CCCCc.........",
+            ".BBLLLLLLLBBBBBBBBbbbbbbb....CCCCCCccc.......",
+            ".BBBLLLLLBBBBBBBBBbbbbbbb..CCCCCCCeCccccCC...",
+            "BBBBBBBBBBxxBBBBBbbbbbbbbb.CCCCCCCCCecccccff.",
+            "BBBBBxxBBBBxxBBBBxxbbbbbbbCCCCCCCCCCcceecc.Ff",
+            "BBBBBBxxBBBBxxBBbbxxbbbbbbCCCCCCCCCccceee....",
+            "BBBBBBBxxBBBBxxBbbbxxbbbbbcCCCCbbbccccccb....",
+            "BBBBBBXXBBBBXXBbbbXXbbbbbbcccccccccccceee....",
+            "BBBBBXXBBBBXXBbbbXXbbbbbbbcccccccccccceecc.Ff",
+            "bBBBBBBBBBXXbbbbbbbbbbbbbb.cccccccccebbbccff.",
+            ".bbBBBBBBBbbbbbbbbbbbbbbb..cccccccebbbbbCC...",
+            "hbbbbbbbbbbbbbbbbbbbbbbbb....bbbbbbbbb.......",
+            ".bbbbbbbbbbbbbbXXbbbbbbbb......bbbbb.........",
+            "..bbbbbbbbbbbbbbbbbbbbbb.....................",
+            "...bbbbbbbbbbbbbbbbbbbh......................",
+            "....bbbbbbbbbbbbbbbbbb.......................",
+            "....hbbbbbbbbbbbbbbbbb.......................",
+            "......bbbbbbbbbbbbbb.........................",
+            ".......bbbbbbbbbbbb..........................",
+            "..........bbbbhb.............................",
+            ".............................................",
         ],
     },
     clips: {
         "idle": (frames: ["body"], fps: 1),
     },
-    anchors: { "grip": { "body": (16, 10) } },
+    anchors: { "grip": { "body": (26, 15) } },
 )

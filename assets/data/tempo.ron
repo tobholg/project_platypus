@@ -13,7 +13,7 @@
 //   wall_slide_speed, wall_jump_push.
 // `pace`: every other creature's (speeds × pace, accelerations × pace²).
 //
-// In body heights (the player is 15 cells): Hollow Knight runs 6.3 a
+// In body heights (the player is 23 cells): Hollow Knight runs 6.3 a
 // second, jumps 2.7 high, 0.48 s in the air; Terraria 4.3, 2.5, 0.85 s.
 (
     default: "Middle",
@@ -23,19 +23,19 @@
         // Between: some run-up and skid, a short held rise, ~0.65 s in the
         // air, a softer fall.
         (name: "Middle", pace: 0.8, player: {
-            "run_speed": 75, "ground_accel": 260, "ground_decel": 520, "turn_accel": 700,
-            "air_accel": 420, "gravity": 800, "fall_gravity": 1.25, "max_fall": 300,
-            "jump_height": 42, "jump_hold": 0.12, "jump_cut": 0.6,
+            "run_speed": 113, "ground_accel": 390, "ground_decel": 780, "turn_accel": 1050,
+            "air_accel": 630, "gravity": 1200, "fall_gravity": 1.25, "max_fall": 450,
+            "jump_height": 63, "jump_hold": 0.12, "jump_cut": 0.6,
         }),
         // Terraria's own numbers, scaled to our size (its player is 42 px
-        // tall, ours 15 cells: 0.357 cells a pixel; 60 ticks a second):
+        // tall, ours 23 cells: 0.548 cells a pixel; 60 ticks a second):
         // run 3 px/tick; accelerate 0.08, slow 0.2 (a turn: both, 0.28);
         // gravity 0.4, the same up and down; fall at most 10; jump 5.01
         // px/tick held for 15 ticks. Air control as slow as the ground's.
         (name: "Terraria", pace: 0.68, player: {
-            "run_speed": 64, "ground_accel": 103, "ground_decel": 257, "turn_accel": 360,
-            "air_accel": 103, "gravity": 514, "fall_gravity": 1.0, "max_fall": 214,
-            "jump_height": 38, "jump_hold": 0.25, "jump_cut": 1.0,
+            "run_speed": 96, "ground_accel": 155, "ground_decel": 386, "turn_accel": 540,
+            "air_accel": 155, "gravity": 771, "fall_gravity": 1.0, "max_fall": 321,
+            "jump_height": 57, "jump_hold": 0.25, "jump_cut": 1.0,
         }),
     ],
 )

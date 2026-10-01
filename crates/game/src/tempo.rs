@@ -67,7 +67,7 @@ impl Tempo {
         let remembered = std::env::var("PLATYPUS_SCENARIO").is_err().then(|| std::fs::read_to_string(remembered_path()).ok()).flatten();
         let pick = std::env::var("PLATYPUS_TEMPO").ok().or(remembered.map(|s| s.trim().to_string())).unwrap_or(file.default.clone());
         let active = file.presets.iter().position(|p| p.name.eq_ignore_ascii_case(&pick)).unwrap_or(0);
-        let base = load_ron::<crate::creatures::def::CreatureDef>(&data_path("creatures/player.ron")).map_or((95.0, 40.0), |d| (d.movement.run_speed, d.movement.jump_height));
+        let base = load_ron::<crate::creatures::def::CreatureDef>(&data_path("creatures/player.ron")).map_or((142.0, 60.0), |d| (d.movement.run_speed, d.movement.jump_height));
         Tempo { presets: file.presets, active, base, watch: Watched::new(path) }
     }
 

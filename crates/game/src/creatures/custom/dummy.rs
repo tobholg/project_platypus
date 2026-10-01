@@ -70,9 +70,9 @@ pub fn tally(
             commands.entity(e).insert(Tally::default()).with_child((
                 TallyLabel,
                 Text2d::new(""),
-                TextFont { font_size: FontSize::Px(6.0), ..default() },
+                TextFont { font_size: FontSize::Px(9.0), ..default() },
                 TextColor(Color::srgba(1.0, 0.95, 0.8, 0.0)),
-                Transform::from_xyz(0.0, k.body.half.y + 10.0, 30.0),
+                Transform::from_xyz(0.0, k.body.half.y + 15.0, 30.0),
             ));
             continue;
         };

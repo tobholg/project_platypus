@@ -53,10 +53,10 @@ const OIL_SPREAD: f32 = 2.0;
 /// ... and burns the oil away this fast where it burns (a share a second).
 const OIL_BURN: f32 = 0.12;
 /// Falling faster than this (cells/s), the rush of air beats a fire down...
-const FALL_DOUSE: f32 = 140.0;
+const FALL_DOUSE: f32 = 210.0;
 /// ... by this much more a second for every cell/s faster (falling flat
 /// out, ~300: a full fire out in about a second).
-const FALL_DOUSE_RATE: f32 = 0.006;
+const FALL_DOUSE_RATE: f32 = 0.004;
 /// Where it burns it dries this fast (a share a second).
 const FIRE_DRIES: f32 = 0.2;
 /// A burning creature lights what it touches this often (seconds).
@@ -202,7 +202,7 @@ pub fn blaze(
     look.speed *= 1.4;
     for (e, k, mut b, children) in &mut burning {
         let (pos, half) = (k.body.pos, k.body.half);
-        let rate = look.count * (half.x * half.y * 4.0 / 64.0).max(0.5) * b.power.sqrt() * b.share;
+        let rate = look.count * (half.x * half.y * 4.0 / 144.0).max(0.5) * b.power.sqrt() * b.share;
         // (How far up it: from its feet.)
         let up = 0.3 + 0.7 * b.share;
         b.owed += rate * dt;
@@ -518,9 +518,9 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
                     let h = platypus_sim::rng::hash(&[tick, entity.to_bits()]);
                     if (h >> 20) % 1000 < (fire * 1000.0) as u64 {
                         let dx = (h % 1000) as f32 / 1000.0 * 2.0 - 1.0;
-                        let at = pos + Vec2::new(dx * half.x, half.y + 3.0);
+                        let at = pos + Vec2::new(dx * half.x, half.y + 4.5);
                         sim.queue(WorldEdit::Paint { center: CellPos::from_world(at.x, at.y), radius: 1, material: fire_mat, overwrite: false });
-                        sim.queue(WorldEdit::Scorch { center: CellPos::from_world(pos.x, pos.y - half.y + 1.0), radius: half.x as i32 + 1 });
+                        sim.queue(WorldEdit::Scorch { center: CellPos::from_world(pos.x, pos.y - half.y + 1.5), radius: half.x as i32 + 2 });
                     }
                 }
             }
@@ -536,11 +536,11 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
 }
 
 /// Reach of a lightning strike (cells) and the damage at its centre.
-const LIGHTNING_REACH: f32 = 10.0;
+const LIGHTNING_REACH: f32 = 15.0;
 const LIGHTNING_DAMAGE: f32 = 55.0;
 /// Wand lightning: hurts out to this many cells from where it ends (tight:
 /// it's aimed, and whoever cast it is usually near)...
-const ZAP_REACH: f32 = 3.0;
+const ZAP_REACH: f32 = 4.5;
 /// ... this much, at most.
 const ZAP_DAMAGE: f32 = 30.0;
 /// Touching what a zap charged (in the pool it struck): this much, and
@@ -798,11 +798,11 @@ mod tests {
     #[test]
     fn falling_fast_beats_a_fire_out() {
         let mut app = app_with("stone");
-        let (still, falling) = (creature(&mut app, OUT, Nature::default()), creature(&mut app, OUT + Vec2::new(20.0, 0.0), Nature::default()));
+        let (still, falling) = (creature(&mut app, OUT, Nature::default()), creature(&mut app, OUT + Vec2::new(30.0, 0.0), Nature::default()));
         for e in [still, falling] {
             app.world_mut().entity_mut(e).insert(Burning::new(1.0));
         }
-        app.world_mut().get_mut::<Kinematics>(falling).unwrap().body.vel = Vec2::new(0.0, -300.0);
+        app.world_mut().get_mut::<Kinematics>(falling).unwrap().body.vel = Vec2::new(0.0, -450.0);
         tick(&mut app, 72);
         assert!(app.world().get::<Burning>(falling).is_none(), "falling flat out, out in a second or so");
         assert!(app.world().get::<Burning>(still).is_some_and(|b| b.share > 0.8), "standing still it burns on");

@@ -243,14 +243,6 @@ impl Creatures {
                 }
             }
         }
-        // The HD spike: a creature's `_hd` file stands in for it.
-        if crate::data::hd() {
-            let twins: Vec<String> = defs.keys().filter_map(|k| k.strip_suffix("_hd").map(str::to_string)).collect();
-            for base in twins {
-                let twin = defs[&format!("{base}_hd")].clone();
-                defs.insert(base, twin);
-            }
-        }
         defs
     }
 }
@@ -452,6 +444,9 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         }
         if let Some(m) = blood {
             e.insert(super::body::hurt::Bleeds(m));
+        }
+        if def.rig.as_ref().is_some_and(|r| r.anchors.contains_key("foot_near")) {
+            e.insert(super::body::animation::Soles::default());
         }
         if let Some(sprite) = sprite {
             // Rigs with an arm that aims get a second sprite for it.

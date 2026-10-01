@@ -108,10 +108,12 @@ fn peaks(l: &Layer, k: usize, x0: f32, x1: f32, h: f32, seed: u64) -> Vec<Peak> 
 }
 
 /// Layer `k` of `look`, strip columns `x0 .. x0 + w`, `h` rows, RGBA (clear
-/// above the skyline).
-pub fn layer_tile(look: &Look, k: usize, x0: i64, w: usize, h: usize, seed: u64) -> Vec<u8> {
+/// above the skyline). `detail`: pixels per unit of the shapes (`every`,
+/// the jags, the clouds' sizes are in units): 1.5 draws the same ranges
+/// 1.5× as fine, as many pixels again each way.
+pub fn layer_tile(look: &Look, k: usize, x0: i64, w: usize, h: usize, detail: f32, seed: u64) -> Vec<u8> {
     let l = &look.layers[k];
-    let hf = h as f32;
+    let hf = h as f32 / detail;
     let foot = l.base * hf;
     let haze = look.sky.1;
     let fade = |p: Rgb, y: f32| {
@@ -121,13 +123,13 @@ pub fn layer_tile(look: &Look, k: usize, x0: i64, w: usize, h: usize, seed: u64)
     // The range's body (between its shoulders, and at the very bottom,
     // which the game stretches down).
     let body = |y: f32| fade(mix(l.shade, l.lit, 0.3), y);
-    let last = h.saturating_sub(2) as f32;
+    let last = h.saturating_sub(2) as f32 / detail;
     let l_seed = seed.wrapping_add(k as u64 * 9173 + 5);
     let mut out = vec![0u8; w * h * 4];
-    let all = peaks(l, k, x0 as f32, (x0 + w as i64) as f32, hf, seed);
+    let all = peaks(l, k, x0 as f32 / detail, (x0 + w as i64) as f32 / detail, hf, seed);
     for xi in 0..w {
         let xa = x0 + xi as i64;
-        let xf = xa as f32 + 0.5;
+        let xf = (xa as f32 + 0.5) / detail;
         // The peaks this column may cross (as wide as they get at the
         // strip's bottom), frontmost first.
         let widest = |p: &Peak| (p.tall + (hf - p.y - p.tall).max(0.0) * 0.6) * 1.3 + 4.0;
@@ -138,7 +140,7 @@ pub fn layer_tile(look: &Look, k: usize, x0: i64, w: usize, h: usize, seed: u64)
         let rolling = roll(xf);
         let slope_r = roll(xf + 2.0) - roll(xf - 2.0);
         for y in 0..h {
-            let yf = y as f32 + 0.5;
+            let yf = (y as f32 + 0.5) / detail;
             let p = if yf >= last {
                 body(foot + hf)
             } else if let Some((pk, (a, b))) = here.iter().find_map(|pk| pk.span(yf).filter(|(a, b)| xf >= *a && xf < *b).map(|sp| (*pk, sp))) {
@@ -184,17 +186,18 @@ pub fn layer_tile(look: &Look, k: usize, x0: i64, w: usize, h: usize, seed: u64)
 
 /// Clouds, strip columns `x0 .. x0 + w`, `h` rows, RGBA: big billowing
 /// heaps, lit from the upper left, their lower parts shaded blue, meant
-/// to rise from behind a range.
-pub fn cloud_tile(look: &Look, x0: i64, w: usize, h: usize, seed: u64) -> Vec<u8> {
+/// to rise from behind a range. (`detail` as `layer_tile`'s.)
+pub fn cloud_tile(look: &Look, x0: i64, w: usize, h: usize, detail: f32, seed: u64) -> Vec<u8> {
     let s = seed ^ 0xc10d5;
     let (many, big, lit, shade) = look.clouds;
     let every = 150.0 / many.max(0.05);
-    let hf = h as f32;
+    let hf = h as f32 / detail;
+    let (xs, xe) = (x0 as f32 / detail, (x0 + w as i64) as f32 / detail);
     // Blobs (x, y, r), heaped: a broad bottom row, smaller ones stacked
     // on top towards the middle.
     let reach = 140.0 * big;
     let mut blobs: Vec<(f32, f32, f32, u64, f32)> = Vec::new();
-    for k in ((x0 as f32 - reach) / every).floor() as i64..=((x0 as f32 + w as f32 + reach) / every).floor() as i64 {
+    for k in ((xs - reach) / every).floor() as i64..=((xe + reach) / every).floor() as i64 {
         if hash(k, 1, s) > 0.8 {
             continue;
         }
@@ -223,13 +226,13 @@ pub fn cloud_tile(look: &Look, x0: i64, w: usize, h: usize, seed: u64) -> Vec<u8
     let mut out = vec![0u8; w * h * 4];
     for xi in 0..w {
         let xa = x0 + xi as i64;
-        let xf = xa as f32 + 0.5;
+        let xf = (xa as f32 + 0.5) / detail;
         let col: Vec<&(f32, f32, f32, u64, f32)> = blobs.iter().filter(|b| (xf - b.0).abs() < b.2 * 1.15).collect();
         if col.is_empty() {
             continue;
         }
         for y in 0..h {
-            let yf = y as f32 + 0.5;
+            let yf = (y as f32 + 0.5) / detail;
             // The blob this pixel is in, the lowest (nearest) in front; its
             // outline wobbles.
             // (A heap's bottom is flat.)
@@ -403,10 +406,10 @@ pub fn still_masked(look: &Look, x: i64, w: usize, h: usize, seed: u64) -> (Vec<
         // the game stacks them.)
         let foot = ground - (n - 1 - k) as f32 * 12.0;
         let oy = (foot - look.layers[k].base * lh as f32) as i64;
-        over(&mut out, &layer_tile(look, k, x, w, lh, seed), oy, lh);
+        over(&mut out, &layer_tile(look, k, x, w, lh, 1.0, seed), oy, lh);
         if k == 0 {
             let ch = (h as f32 * 0.6) as usize;
-            over(&mut out, &cloud_tile(look, x, w, ch, seed), (ground - h as f32 * 0.12) as i64 - ch as i64, ch);
+            over(&mut out, &cloud_tile(look, x, w, ch, 1.0, seed), (ground - h as f32 * 0.12) as i64 - ch as i64, ch);
         }
     }
     for xi in 0..w {
@@ -445,16 +448,16 @@ mod tests {
         let look = &looks()[0];
         let (w, h) = (80, 120);
         for k in 0..look.layers.len() {
-            let whole = layer_tile(look, k, 0, 2 * w, h, 3);
-            let right = layer_tile(look, k, w as i64, w, h, 3);
+            let whole = layer_tile(look, k, 0, 2 * w, h, 1.5, 3);
+            let right = layer_tile(look, k, w as i64, w, h, 1.5, 3);
             for y in 0..h {
                 for x in 0..w {
                     assert_eq!(&whole[(y * 2 * w + w + x) * 4..][..4], &right[(y * w + x) * 4..][..4], "layer {k}: ({x}, {y})");
                 }
             }
         }
-        let whole = cloud_tile(look, 0, 2 * w, h, 3);
-        let right = cloud_tile(look, w as i64, w, h, 3);
+        let whole = cloud_tile(look, 0, 2 * w, h, 1.5, 3);
+        let right = cloud_tile(look, w as i64, w, h, 1.5, 3);
         for y in 0..h {
             for x in 0..w {
                 assert_eq!(&whole[(y * 2 * w + w + x) * 4..][..4], &right[(y * w + x) * 4..][..4], "clouds: ({x}, {y})");

@@ -2,13 +2,13 @@
 // carry back, for gold. A villager (actors/villager.rs, talk.rs).
 (
     name: "Merchant",
-    size: (7, 16),
+    size: (11, 24),
     // (Tough and quick: a raid is a fight you can come to, not over in a moment.)
     health: 140,
     team: Villager,
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "humanoid",
-    movement: (run_speed: 68, jump_height: 22, air_jumps: 0, step_height: 3, dash_speed: 0),
+    movement: (run_speed: 102, jump_height: 33, air_jumps: 0, step_height: 5, dash_speed: 0),
     stamina: 60,
     poise: 10,
     heft: 1.0,
@@ -17,7 +17,7 @@
         kind: "villager",
         params: (
             role: "merchant",
-            wander: 40,
+            wander: 60,
             lines: [
                 "Buying and selling! Everything has its price.",
                 "Torches, rope, bombs. What'll it be?",

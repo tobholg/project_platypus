@@ -1,6 +1,8 @@
 //! Rocket boots' exhaust (DESIGN §7c). While a creature's rocket boots fire
 //! (`physics::Locomotion`, jump held in the air), what they spew goes into
-//! the world: with `fire` boots, flames down out of the soles (most of them
+//! the world, a jet out of each boot (where its pose has its feet:
+//! `animation::Soles`; one under the middle for a body without them): with
+//! `fire` boots, flames down out of the soles (most of them
 //! only flame, burning out in the air; one in five an ember that falls on
 //! and lights what it lands on, grass and wood; not when it's close over
 //! the ground, landing, or you'd land in your own fire), and
@@ -11,6 +13,7 @@ use bevy::prelude::*;
 use platypus_sim::rng::Rng;
 use platypus_sim::{Landing, MaterialId, Particle};
 
+use crate::creatures::body::animation::Soles;
 use crate::creatures::body::elements::{Coated, Coatings, catch_fire};
 use crate::creatures::{Harm, Health, Kinematics, Rocketed};
 use crate::hands::items::Items;
@@ -22,14 +25,14 @@ use super::Equipment;
 
 /// How far down the jet reaches (cells), and how wide it opens (radians
 /// either side).
-const JET: f32 = 26.0;
+const JET: f32 = 39.0;
 const SPREAD: f32 = 0.3;
 /// Fire damage a tick to what's in the jet, and its chance (/256) a tick to
 /// catch fire.
 const SCORCH: f32 = 0.6;
 /// Closer than this to the ground (cells), no embers: you'd land in grass
 /// your own boots lit.
-const SETTLE_ABOVE: i32 = 20;
+const SETTLE_ABOVE: i32 = 30;
 /// An ember's life (ticks): long enough to reach the ground.
 const EMBER_LIFE: f32 = 90.0;
 const CATCH: u8 = 24;
@@ -46,6 +49,7 @@ pub fn exhaust(
     mut sim: ResMut<SimWorld>,
     mut sparks: ResMut<Sparks>,
     wearers: Query<&Equipment>,
+    soles: Query<(&Kinematics, &Soles)>,
     mut bodies: Query<Scorched>,
 ) {
     let Some(items) = items else { return };
@@ -61,11 +65,22 @@ pub fn exhaust(
         let fire = !wet && wearers.get(r.entity).is_ok_and(|eq| eq.pieces(&items).any(|s| items.def(s.item).gear.as_ref().and_then(|g| g.rocket.as_ref()).is_some_and(|rd| rd.fire)));
         // The hot air, always (thinner than a double jump's cloud): under
         // water, bubbles.
-        sparks.emit(&PUFF, PUFF.count as usize, r.at, Vec2::NEG_Y, r.vel * 0.3);
+        // A jet out of each sole (from just under it).
+        let jets: Vec<Vec2> = soles
+            .get(r.entity)
+            .ok()
+            .and_then(|(k, s)| Some(vec![k.body.pos + s.near? - Vec2::Y * 0.5, k.body.pos + s.far? - Vec2::Y * 0.5]))
+            .unwrap_or_else(|| vec![r.at]);
+        let share = |count: f32| (count / jets.len() as f32).ceil() as usize;
+        for &at in &jets {
+            sparks.emit(&PUFF, share(PUFF.count), at, Vec2::NEG_Y, r.vel * 0.3);
+        }
         if !fire {
             continue;
         }
-        sparks.emit(&FLAME, FLAME.count as usize, r.at, Vec2::NEG_Y, r.vel * 0.5);
+        for &at in &jets {
+            sparks.emit(&FLAME, share(FLAME.count), at, Vec2::NEG_Y, r.vel * 0.5);
+        }
         let mut rng = Rng::seeded(&[tick, r.entity.to_bits(), 0xB0075]);
         let unit = |rng: &mut Rng| rng.next_u32() as f32 / u32::MAX as f32;
         let world = &mut sim.world;
@@ -76,11 +91,12 @@ pub fn exhaust(
         let feet = platypus_sim::CellPos::from_world(r.at.x, r.at.y);
         let low = (1..=SETTLE_ABOVE).any(|d| world.is_solid(platypus_sim::CellPos::new(feet.x, feet.y - d)));
         if flame != MaterialId::AIR {
-            for i in 0..5 {
+            for i in 0..6 {
+                let jet = jets[i % jets.len()];
                 let a = (unit(&mut rng) - 0.5) * 2.0 * SPREAD;
-                let v = Vec2::from_angle(a).rotate(Vec2::NEG_Y) * (180.0 + 120.0 * unit(&mut rng)) / TICK_HZ as f32 + r.vel / TICK_HZ as f32 * 0.5;
-                let at = r.at - Vec2::Y * 2.0;
-                // Mostly flame that burns out in the air; one in five an
+                let v = Vec2::from_angle(a).rotate(Vec2::NEG_Y) * (270.0 + 180.0 * unit(&mut rng)) / TICK_HZ as f32 + r.vel / TICK_HZ as f32 * 0.5;
+                let at = jet - Vec2::Y * 3.0;
+                // Mostly flame that burns out in the air; one in six an
                 // ember that falls on, lighting what it lands on if it burns
                 // (an ember, not fire: flame left where it ran out of life
                 // would hang in the air, and you'd fall back through it).
@@ -98,7 +114,7 @@ pub fn exhaust(
             }
             let d = k.body.pos - r.at;
             let down = -d.y;
-            if down < -k.body.half.y || down > JET + k.body.half.y || d.x.abs() > k.body.half.x + 4.0 + down.max(0.0) * SPREAD {
+            if down < -k.body.half.y || down > JET + k.body.half.y || d.x.abs() > k.body.half.x + 6.0 + down.max(0.0) * SPREAD {
                 continue;
             }
             h.harm(SCORCH, Harm::Fire);
@@ -114,9 +130,9 @@ static FLAME: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter
     count: 6.0,
     life: (0.06, 0.22),
     colors: vec![(255, 250, 210), (255, 200, 80), (255, 110, 30), (150, 40, 20)],
-    speed: 220.0,
+    speed: 330.0,
     spread: SPREAD,
-    gravity: -80.0,
+    gravity: -120.0,
     drag: 3.0,
     size: 1.5,
     jitter: 0.0,
@@ -128,9 +144,9 @@ static PUFF: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter 
     count: 2.0,
     life: (0.2, 0.5),
     colors: vec![(255, 255, 255), (220, 232, 255), (160, 180, 225)],
-    speed: 70.0,
+    speed: 105.0,
     spread: 0.9,
-    gravity: -20.0,
+    gravity: -30.0,
     drag: 4.0,
     size: 1.0,
     jitter: 0.0,

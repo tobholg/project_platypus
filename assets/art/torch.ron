@@ -2,30 +2,36 @@
 // a wisp of smoke and the odd ember rise from `flame`; held, it's gripped
 // at `grip` (in the back hand, `back_arm.hand`).
 (
-    size: (3, 10),
-    feet: (1.5, 10),
+    size: (5, 15),
+    feet: (2.5, 15),
     outline: (24, 18, 14),
     palette: {
         'p': (52, 34, 26),      // pitch, charred
         'P': (88, 54, 32),      // the wrap
+        'Q': (126, 82, 46),     // the wrap, lit
         'e': (240, 150, 60),    // embers in it
         'w': (132, 92, 54),     // the stick
         'W': (98, 66, 38),      // the stick, shaded
     },
     frames: {
         "torch": [
-            ".e.",
-            "pep",
-            "PpP",
-            "pPp",
-            ".w.",
-            ".w.",
-            ".W.",
-            ".w.",
-            ".W.",
-            ".W.",
+            "..e..",
+            ".pep.",
+            "pppep",
+            "pPPQP",
+            "ppppp",
+            "pPPQP",
+            ".pPQ.",
+            "..Ww.",
+            "..Ww.",
+            "..Ww.",
+            "..WW.",
+            "..Ww.",
+            "..Ww.",
+            "..Ww.",
+            "..WW.",
         ],
     },
     clips: { "lit": (frames: ["torch"], fps: 1) },
-    anchors: { "flame": { "torch": (1, 0) }, "grip": { "torch": (1, 6) } },
+    anchors: { "flame": { "torch": (2, 0) }, "grip": { "torch": (2, 9) } },
 )

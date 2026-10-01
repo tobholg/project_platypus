@@ -43,14 +43,14 @@ const AIM_HOLD: f32 = 0.4;
 const PLACE_RATE: f32 = 8.0;
 /// A vessel reaches this far (cells), scoops within this many cells of the
 /// cursor, this many a tick, and pours this many a tick.
-const VESSEL_REACH: f32 = 40.0;
-const VESSEL_SCOOP: i32 = 3;
-const VESSEL_RATE: u32 = 6;
-const VESSEL_POUR: u32 = 1;
+const VESSEL_REACH: f32 = 60.0;
+const VESSEL_SCOOP: i32 = 5;
+const VESSEL_RATE: u32 = 14;
+const VESSEL_POUR: u32 = 2;
 /// Items on the ground drift to a player within this many cells...
-const MAGNET: f32 = 48.0;
+const MAGNET: f32 = 72.0;
 /// ... and are picked up within this many.
-const GRAB: f32 = 6.0;
+const GRAB: f32 = 9.0;
 
 /// Dev tools on (F1): the old toolbelt instead of the hands.
 #[derive(Resource, Default)]
@@ -539,9 +539,9 @@ fn use_hands(
             } else if let Some((m, n)) = st.fill {
                 // Pour: a stream from the hand that lands at the cursor (thrown
                 // so, under gravity: a flight of `ticks`).
-                let start = from + (cursor - from).normalize_or(Vec2::X) * 3.0;
+                let start = from + (cursor - from).normalize_or(Vec2::X) * 4.5;
                 let to = cursor - start;
-                let ticks = (to.length() / 1.5).clamp(6.0, 40.0);
+                let ticks = (to.length() / 2.25).clamp(6.0, 40.0);
                 let g = platypus_sim::particles::GRAVITY;
                 let aim = Vec2::new(to.x / ticks, to.y / ticks + 0.5 * g * ticks);
                 let k = n.min(VESSEL_POUR);
@@ -570,7 +570,7 @@ fn use_hands(
         Use::Throw(what) if clicked => {
             commands.entity(me).insert(crate::creatures::body::animation::Aiming { at: cursor, left: AIM_HOLD });
             let dir = (cursor - from).normalize_or(Vec2::X);
-            let speed = tools.bomb.throw_speed * ((cursor - from).length() / 120.0).clamp(0.35, 1.0);
+            let speed = tools.bomb.throw_speed * ((cursor - from).length() / 180.0).clamp(0.35, 1.0);
             let vel = dir * speed + k.body.vel * 0.5;
             match what {
                 Throwable::Bomb => spawn_bomb(&mut commands, from, vel, tools.bomb.clone()),
@@ -679,15 +679,15 @@ fn melt_into(inv: &mut Inventory, st: &mut Stack, items: &Items, mats: &platypus
 pub fn spawn_drop(commands: &mut Commands, items: &Items, at: Vec2, stack: Stack) {
     let h = platypus_sim::rng::hash(&[at.x.to_bits() as u64, at.y.to_bits() as u64, stack.item.0 as u64]);
     let jitter = (h % 1000) as f32 / 1000.0 - 0.5;
-    let mut body = Body::new(at, Vec2::splat(1.5));
-    body.vel = Vec2::new(jitter * 60.0, 70.0);
+    let mut body = Body::new(at, Vec2::splat(2.25));
+    body.vel = Vec2::new(jitter * 90.0, 105.0);
     let (r, g, b) = items.def(stack.item).color;
     commands.spawn((
         Name::new("Dropped"),
         Dropped { stack, age: 0.0 },
         Thrown { bounce: 0.2 },
         Kinematics { body, loco: Locomotion::default(), prev_pos: at },
-        Sprite::from_color(Color::srgb_u8(r, g, b), Vec2::splat(3.0)),
+        Sprite::from_color(Color::srgb_u8(r, g, b), Vec2::splat(4.5)),
         Transform::from_translation(at.extend(12.5)),
     ));
 }
@@ -723,7 +723,7 @@ fn collect(
                 break;
             }
             // Pulled in, through whatever is in the way.
-            let speed = 60.0 + (MAGNET - dist) * 6.0;
+            let speed = 90.0 + (MAGNET - dist) * 6.0;
             k.body.vel = Vec2::ZERO;
             k.body.pos += to / dist * speed * DT;
             break;

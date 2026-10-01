@@ -34,7 +34,7 @@ pub struct Explosive {
 
 impl Default for Explosive {
     fn default() -> Self {
-        Explosive { radius: 30, power: 140, fuse: 0.8, lit: None }
+        Explosive { radius: 45, power: 140, fuse: 0.8, lit: None }
     }
 }
 

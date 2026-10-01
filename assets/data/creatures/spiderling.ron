@@ -1,7 +1,7 @@
 // A spiderling: small, fast, many (they hatch from egg sacs); a nip each.
 (
     name: "Spiderling",
-    size: (5, 4),
+    size: (8, 6),
     health: 8,
     team: Enemy,
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -10,22 +10,22 @@
     // Acid in its veins, like its mother's; acid doesn't hurt it.
     blood: "acid",
     art: "spiderling_body",
-    legs: (count: 8, reach: 9, upper: 0.5, step: 0.07, lift: 2, hips: 0, spread: 2,
+    legs: (count: 8, reach: 14, upper: 0.5, step: 0.07, lift: 3, hips: 0, spread: 3,
            color: (30, 22, 26), body: "spiderling_body", eyes: (255, 52, 38)),
     light: (color: (255, 40, 30), strength: 0.025),
     movement: (
-        run_speed: 88,
-        ground_accel: 1200,
-        jump_height: 12,
+        run_speed: 132,
+        ground_accel: 1800,
+        jump_height: 18,
         air_jumps: 0,
-        step_height: 1,
+        step_height: 2,
         cling: true,
         dash_speed: 0,
     ),
     web_walker: true,
-    touch: (damage: 3, knock: 50, every: 0.5),
+    touch: (damage: 3, knock: 75, every: 0.5),
     brain: (
         kind: "hunter",
-        params: (aggro: 140, close: Crawl(pounce_range: 20, pounce_every: 1.0), wander: (speed: 0.6)),
+        params: (aggro: 210, close: Crawl(pounce_range: 30, pounce_every: 1.0), wander: (speed: 0.6)),
     ),
 )

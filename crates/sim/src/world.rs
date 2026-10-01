@@ -18,18 +18,18 @@ use crate::weather::{self, Weather};
 /// A connected solid piece bigger than this counts as ground (anchored). Smaller
 /// pieces that touch neither bedrock nor unloaded world are floating and fall.
 /// Fastest a kick sends a body (cells a tick at the fastest dir, before
-/// its lift: ~120 cells a second).
+/// its lift: ~180 cells a second).
 /// Fracture (brittle bodies): not in its first ticks (just broken off), not
 /// when smaller than this (cells: it's rubble's size), and each part flies
 /// off its fellow this fast (cells a tick).
 const FRACTURE_AFTER: u32 = 6;
-const FRACTURE_MIN: f32 = 12.0;
-const FRACTURE_PART: f32 = 0.35;
-const KICK_SPEED: f32 = 1.3;
-const ANCHOR_BUDGET: usize = 3_000;
+const FRACTURE_MIN: f32 = 27.0;
+const FRACTURE_PART: f32 = 0.52;
+const KICK_SPEED: f32 = 1.95;
+const ANCHOR_BUDGET: usize = 6_750;
 /// The same for the background, where a whole tree with its crown must fit
-/// (a giant is ~20k cells): anything bigger isn't a tree and counts as held.
-const ANCHOR_BUDGET_BG: usize = 40_000;
+/// (a giant is ~45k cells): anything bigger isn't a tree and counts as held.
+const ANCHOR_BUDGET_BG: usize = 90_000;
 /// Fragment checks run per tick for cells the simulation destroyed (a forest
 /// fire can break thousands); the rest wait for the next tick.
 const MAX_FRAGMENT_CHECKS_PER_TICK: usize = 24;
@@ -96,7 +96,7 @@ enum Pass {
 
 /// Leaves are held by wood at most this far away (cells, through leaves).
 /// Worldgen stays inside it (`generated_leaves_are_near_wood`).
-pub const LEAF_REACH: u32 = 72;
+pub const LEAF_REACH: u32 = 108;
 
 impl World {
     pub fn new(seed: u64, materials: Arc<MaterialTable>) -> Self {
@@ -209,7 +209,7 @@ impl World {
             let cell = self.materials.spawn(material, &mut rng);
             let a = rng.next_u32() as f32 / u32::MAX as f32 * std::f32::consts::TAU;
             let s = speed * (0.3 + 0.7 * rng.next_u32() as f32 / u32::MAX as f32);
-            let vel = [a.cos() * s, a.sin().abs() * s * 0.8 + 0.4];
+            let vel = [a.cos() * s, a.sin().abs() * s * 0.8 + 0.6];
             self.particles.push(Particle::new(at, vel, cell, 180, Landing::Settle));
         }
     }
@@ -567,7 +567,7 @@ impl World {
                 if rng.chance(DUST_CHANCE) {
                     let mut dust = c;
                     dust.flags = 0;
-                    let vel = outward(center, p, &mut rng, 0.6);
+                    let vel = outward(center, p, &mut rng, 0.9);
                     let mut d = Particle::new(center_of(p), vel, dust, 10 + rng.next_u8() as u16 / 16, Landing::Vanish);
                     d.gravity = 0.5;
                     self.particles.push(d);
@@ -616,7 +616,7 @@ impl World {
                 if rng.chance(DUST_CHANCE * 2) {
                     let mut dust = c;
                     dust.flags = 0;
-                    let vel = outward(centre, p, &mut rng, 0.6);
+                    let vel = outward(centre, p, &mut rng, 0.9);
                     let mut d = Particle::new(center_of(p), vel, dust, 10 + rng.next_u8() as u16 / 16, Landing::Vanish);
                     d.gravity = 0.5;
                     self.particles.push(d);
@@ -640,7 +640,7 @@ impl World {
         for p in block_cells(block) {
             let here = if back { self.get_bg(p) } else { self.get(p) };
             // A platform is the top half of its block.
-            if !here.is_some_and(|c| Self::room(&mats, c)) || (mats.phys(material).platform && p.y.rem_euclid(BLOCK) < 2) {
+            if !here.is_some_and(|c| Self::room(&mats, c)) || (mats.phys(material).platform && p.y.rem_euclid(BLOCK) < BLOCK / 2) {
                 continue;
             }
             let mut c = mats.spawn(material, &mut rng);
@@ -666,7 +666,7 @@ impl World {
             let mut bit = if ph.crumbles_into != MaterialId::AIR { mats.spawn(ph.crumbles_into, &mut rng) } else { c };
             bit.flags = 0;
             // Away from where it came from, spread out.
-            let speed = 1.6 + 2.0 * rng.next_u8() as f32 / 255.0;
+            let speed = 2.4 + 3.0 * rng.next_u8() as f32 / 255.0;
             let vel = outward(from, p, &mut rng, speed);
             self.particles.push(Particle::new(center_of(p), vel, bit, 120, Landing::Settle));
         }
@@ -680,7 +680,7 @@ impl World {
         if fire != MaterialId::AIR {
             for _ in 0..(radius * 2).clamp(8, 60) {
                 let spark = mats.spawn(fire, &mut rng);
-                let speed = 3.0 + 4.0 * rng.next_u8() as f32 / 255.0;
+                let speed = 4.5 + 6.0 * rng.next_u8() as f32 / 255.0;
                 let vel = outward(center, center, &mut rng, speed);
                 let mut sp = Particle::new(center_of(center), vel, spark, 8 + rng.next_u8() as u16 / 16, Landing::Vanish);
                 sp.gravity = 0.4;
@@ -694,12 +694,12 @@ impl World {
             let Some(c) = self.get(p) else { continue };
             let ph = *mats.phys(c.material);
             let d = distance(center, p);
-            if d > r + 3.0 {
+            if d > r + 4.5 {
                 // Beyond the shattered rim: the shockwave flings loose stuff.
                 let loose = matches!(ph.kind, Kind::Powder | Kind::Liquid) || c.flags & flags::LOOSE != 0;
                 if !c.is_air() && loose && rng.chance(110) {
                     self.set(p, Cell::AIR);
-                    let speed = power as f32 / 100.0 * (1.2 + 2.0 * (1.0 - (d - r) / FLING_RIM as f32));
+                    let speed = power as f32 / 100.0 * (1.8 + 3.0 * (1.0 - (d - r) / FLING_RIM as f32));
                     let vel = outward(center, p, &mut rng, speed);
                     self.particles.push(Particle::new(center_of(p), vel, c, 150, Landing::Settle));
                 }
@@ -742,8 +742,8 @@ impl World {
                             drop.flags |= flags::BURNING;
                             drop.life = ph.burn_time;
                         }
-                        let mut vel = outward(center, p, &mut rng, power as f32 / 100.0 * (1.5 + 3.5 * (1.0 - d / (r + 1.0))));
-                        vel[1] = vel[1].abs() * 0.6 + power as f32 / 100.0 * (1.0 + rng.next_u8() as f32 / 255.0);
+                        let mut vel = outward(center, p, &mut rng, power as f32 / 100.0 * (2.25 + 5.25 * (1.0 - d / (r + 1.0))));
+                        vel[1] = vel[1].abs() * 0.6 + power as f32 / 100.0 * (1.5 + 1.5 * rng.next_u8() as f32 / 255.0);
                         self.particles.push(Particle::new(center_of(p), vel, drop, 200, Landing::Settle));
                     }
                     continue;
@@ -758,7 +758,7 @@ impl World {
                             let mut debris = c;
                             debris.flags = 0;
                             debris.heat = debris.heat.saturating_add(BLAST_DEBRIS_HEAT);
-                            let vel = outward(center, p, &mut rng, power as f32 / 100.0 * (2.0 + 4.5 * (1.0 - d / (r + 1.0))));
+                            let vel = outward(center, p, &mut rng, power as f32 / 100.0 * (3.0 + 6.75 * (1.0 - d / (r + 1.0))));
                             self.particles.push(Particle::new(center_of(p), vel, debris, 150, Landing::Settle));
                         }
                     } else if breakable(ph.hardness) && ph.crumbles_into != MaterialId::AIR {
@@ -767,7 +767,7 @@ impl World {
                     } else if ph.flammability > 0 {
                         self.ignite_cell(p, &ph, &mut rng);
                     } else {
-                        self.add_heat(p, (BLAST_HEAT * (1.0 - d / (r + 3.0))) as i16);
+                        self.add_heat(p, (BLAST_HEAT * (1.0 - d / (r + 4.5))) as i16);
                     }
                 }
                 if now_air && d < r * 0.85 {
@@ -786,7 +786,7 @@ impl World {
                 } else if ph.flammability > 0 && rng.chance(ph.flammability.saturating_mul(4)) {
                     self.ignite_cell(p, &ph, &mut rng);
                 } else {
-                    self.add_heat(p, (BLAST_HEAT * 0.4 * (1.0 - (d - r) / 3.0).max(0.0)) as i16);
+                    self.add_heat(p, (BLAST_HEAT * 0.4 * (1.0 - (d - r) / 4.5).max(0.0)) as i16);
                 }
             }
         }
@@ -920,7 +920,7 @@ impl World {
                     let up = speed * (0.35 + rng.next_u8() as f32 / 600.0);
                     let v = [side * speed * 0.3 + vel[0] * 0.3, up];
                     self.set(p, Cell::AIR);
-                    self.particles.push(Particle::new([x as f32 + 0.5, max.y as f32 + 1.5], v, c, 120, Landing::Settle));
+                    self.particles.push(Particle::new([x as f32 + 0.5, max.y as f32 + 2.25], v, c, 120, Landing::Settle));
                     room.pop();
                     continue;
                 }
@@ -1043,7 +1043,7 @@ impl World {
         let mut seen: FxHashSet<CellPos> = FxHashSet::default();
         let mut stack: Vec<CellPos> = Vec::new();
         // Start from the damaged area and its rim: what was attached through it.
-        let reach = reach + 2;
+        let reach = reach + 3;
         let mut seeds: Vec<CellPos> =
             (-reach..=reach).rev().flat_map(|dy| (-reach..=reach).rev().map(move |dx| center.offset(dx, dy))).collect();
         for &p in extra {
@@ -1237,7 +1237,7 @@ impl World {
             let side = if lean.abs() > 0.5 { lean.signum() } else if rng.coin() { 1.0 } else { -1.0 };
             body.omega = -side * 0.004;
             // It pivots on its stump but passes through other trees.
-            let half = (base.iter().max().unwrap_or(&0) - base.iter().min().unwrap_or(&0)) / 2 + 4;
+            let half = (base.iter().max().unwrap_or(&0) - base.iter().min().unwrap_or(&0)) / 2 + 6;
             body.hinge = Some((CellPos::new(base_x.floor() as i32, low), half));
             self.bodies.push(body);
             let mut removed: Vec<CellPos> = cells.into_iter().map(|(p, _)| p).collect();
@@ -1260,7 +1260,7 @@ impl World {
             let ph = mats.phys(b.material);
             if ph.kind == Kind::Plant {
                 if rng.chance(90) {
-                    let vx = (rng.next_u8() as f32 / 255.0 - 0.5) * 0.6;
+                    let vx = (rng.next_u8() as f32 / 255.0 - 0.5) * 0.9;
                     let mut leaf = Particle::new(center_of(p), [vx, 0.0], b, 60 + rng.next_u8() as u16 / 2, Landing::Vanish);
                     leaf.gravity = 0.15;
                     self.particles.push(leaf);
@@ -1375,13 +1375,13 @@ impl World {
             for _ in 0..n {
                 // Anywhere in the lower cloud, so drops don't all start on one line.
                 let x = p.x as f32 + rng.next_u8() as f32 / 256.0 * weather::TEXEL as f32;
-                let y = p.y as f32 + rng.next_u8() as f32 / 256.0 * 16.0;
+                let y = p.y as f32 + rng.next_u8() as f32 / 256.0 * 24.0;
                 let cell = self.materials.spawn(id, &mut rng);
                 let particle = if frozen {
-                    let drift = (rng.next_u8() as f32 / 255.0 - 0.5) * 0.3;
-                    Particle { gravity: 0.03, ..Particle::new([x, y], [drift + wind * 0.2, -0.3], cell, 1_500, Landing::Snow) }
+                    let drift = (rng.next_u8() as f32 / 255.0 - 0.5) * 0.45;
+                    Particle { gravity: 0.03, ..Particle::new([x, y], [drift + wind * 0.3, -0.45], cell, 1_500, Landing::Snow) }
                 } else {
-                    Particle { gravity: RAIN_GRAVITY, ..Particle::new([x, y], [wind * 0.6, -1.5], cell, 900, Landing::Rain) }
+                    Particle { gravity: RAIN_GRAVITY, ..Particle::new([x, y], [wind * 0.9, -2.25], cell, 900, Landing::Rain) }
                 };
                 self.particles.push(particle);
             }
@@ -1408,8 +1408,8 @@ impl World {
             t += 1.0;
             // Wander sideways, pulled back toward the line, and gathered in
             // at both ends: out of the wand, onto what it's aimed at.
-            off += (rng.next_u8() as f32 / 255.0 - 0.5) * 1.6 - off * 0.12;
-            let side = off * (t / 6.0).min(1.0) * ((len - t) / 12.0).clamp(0.0, 1.0);
+            off += (rng.next_u8() as f32 / 255.0 - 0.5) * 2.4 - off * 0.12;
+            let side = off * (t / 9.0).min(1.0) * ((len - t) / 18.0).clamp(0.0, 1.0);
             let p = CellPos::new((from.x as f32 + ux * t - uy * side).round() as i32, (from.y as f32 + uy * t + ux * side).round() as i32);
             let Some(c) = self.get(p) else { break };
             end = p;
@@ -1428,7 +1428,7 @@ impl World {
             let (fx, fy) = (ux * a.cos() - uy * a.sin(), ux * a.sin() + uy * a.cos());
             let mut off = 0.0f32;
             for k in 1..(len / 5.0) as i32 + 3 {
-                off += (rng.next_u8() as f32 / 255.0 - 0.5) * 2.2 - off * 0.1;
+                off += (rng.next_u8() as f32 / 255.0 - 0.5) * 3.3 - off * 0.1;
                 let p = CellPos::new((start.x as f32 + fx * k as f32 - fy * off).round() as i32, (start.y as f32 + fy * k as f32 + fx * off).round() as i32);
                 if !self.get(p).is_some_and(open) {
                     break;
@@ -1454,17 +1454,17 @@ impl World {
                 let flame = mats.spawn(fire, &mut rng);
                 self.set(p, flame);
             }
-            if i % 9 == 4 && fire != MaterialId::AIR {
+            if i % 13 == 6 && fire != MaterialId::AIR {
                 let spark = mats.spawn(fire, &mut rng);
-                let vel = [(rng.next_u8() as f32 / 255.0 - 0.5) * 1.2, 0.2 + rng.next_u8() as f32 / 255.0 * 0.6];
+                let vel = [(rng.next_u8() as f32 / 255.0 - 0.5) * 1.8, 0.3 + rng.next_u8() as f32 / 255.0 * 0.9];
                 self.particles.push(Particle { gravity: 0.1, ..Particle::new(center_of(p), vel, spark, 20 + rng.next_u8() as u16 / 8, Landing::Ember) });
             }
         }
         // (Traced before its burst blows the water at its end away.)
         let charged = self.charge(end);
-        self.apply_edit(&WorldEdit::Explode { center: end, radius: 2, power: ZAP_BLAST });
-        self.apply_edit(&WorldEdit::Heat { center: end, radius: 4, amount: ZAP_HEAT });
-        self.apply_edit(&WorldEdit::Ignite { center: end, radius: 2 });
+        self.apply_edit(&WorldEdit::Explode { center: end, radius: 3, power: ZAP_BLAST });
+        self.apply_edit(&WorldEdit::Heat { center: end, radius: 6, amount: ZAP_HEAT });
+        self.apply_edit(&WorldEdit::Ignite { center: end, radius: 3 });
         self.zaps.push(Zap { from, to: end, path, charged });
         end
     }
@@ -1478,7 +1478,7 @@ impl World {
         let mut seen = FxHashSet::default();
         // (Seeded from what its burst reaches: striking a pool's rim
         // charges the pool.)
-        let mut todo: Vec<CellPos> = (-2..=2).flat_map(|dy| (-2..=2).map(move |dx| at.offset(dx, dy))).filter(|&p| carries(p)).collect();
+        let mut todo: Vec<CellPos> = (-3..=3).flat_map(|dy| (-3..=3).map(move |dx| at.offset(dx, dy))).filter(|&p| carries(p)).collect();
         seen.extend(todo.iter().copied());
         let mut out = Vec::new();
         while let Some(p) = todo.pop() {
@@ -1526,7 +1526,7 @@ impl World {
                 break p;
             }
             y -= 1;
-            if top - y > 2_000 {
+            if top - y > 3_000 {
                 return;
             }
         };
@@ -1554,7 +1554,7 @@ impl World {
         let mut rng = self.rng_for(0x1165, hit);
         let fire = mats.fire();
         for (i, &p) in channel.iter().enumerate() {
-            for q in disc(p, 1) {
+            for q in disc(p, 2) {
                 if let Some(mut b) = self.get_bg(q)
                     && self.get(q).is_some_and(open)
                     && mats.phys(b.material).flammability > 0
@@ -1573,10 +1573,10 @@ impl World {
             }
             if let Some(b) = self.get_bg(p)
                 && !b.is_air()
-                && i % 3 == 0
+                && i % 4 == 0
             {
                 let side = if rng.next_u8() < 128 { -1.0 } else { 1.0 };
-                let vel = [side * (0.3 + rng.next_u8() as f32 / 255.0 * 0.7), 0.4 + rng.next_u8() as f32 / 255.0 * 0.8];
+                let vel = [side * (0.45 + rng.next_u8() as f32 / 255.0 * 1.05), 0.6 + rng.next_u8() as f32 / 255.0 * 1.2];
                 let life = 50 + rng.next_u8() as u16 / 2;
                 self.particles.push(Particle { gravity: 0.06, ..Particle::new(center_of(p), vel, b, life, Landing::Ember) });
             }
@@ -1590,10 +1590,10 @@ impl World {
         // Where it strikes it bursts (a shredded crown, a small crater),
         // setting what's around alight; where it earths the ground glows
         // and sand fuses to glass.
-        self.apply_edit(&WorldEdit::Explode { center: hit, radius: 4, power: LIGHTNING_BLAST });
-        self.apply_edit(&WorldEdit::Heat { center: hit, radius: 8, amount: LIGHTNING_HEAT / 2 });
-        self.apply_edit(&WorldEdit::Heat { center: earth, radius: 2, amount: EARTH_HEAT });
-        self.apply_edit(&WorldEdit::Ignite { center: earth, radius: 3 });
+        self.apply_edit(&WorldEdit::Explode { center: hit, radius: 6, power: LIGHTNING_BLAST });
+        self.apply_edit(&WorldEdit::Heat { center: hit, radius: 12, amount: LIGHTNING_HEAT / 2 });
+        self.apply_edit(&WorldEdit::Heat { center: earth, radius: 3, amount: EARTH_HEAT });
+        self.apply_edit(&WorldEdit::Ignite { center: earth, radius: 5 });
         self.strikes.push(Strike { x, top, hit, earth, charged });
     }
 
@@ -1601,13 +1601,13 @@ impl World {
     /// or `y - 300` if there's none that close.
     fn ground_below(&self, x: i32, y: i32) -> i32 {
         let mats = &self.materials;
-        (y - 300..y)
+        (y - 450..y)
             .rev()
             .find(|&yy| {
                 self.get(CellPos::new(x, yy))
                     .is_some_and(|c| !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder | Kind::Liquid))
             })
-            .unwrap_or(y - 300)
+            .unwrap_or(y - 450)
     }
 
     /// The highest loaded cell at or below `y` in column `x` (searching a
@@ -1686,7 +1686,7 @@ impl World {
                 hard += ph.hardness as u32;
             }
         }
-        brittle * 2 > n && impact > hard as f32 / brittle as f32 / 20.0
+        brittle * 2 > n && impact > hard as f32 / brittle as f32 / 13.3
     }
 
     /// A body breaks in two along a line through its middle (a direction from
@@ -1711,7 +1711,7 @@ impl World {
             } else {
                 for (p, mut c) in cells {
                     c.flags |= flags::LOOSE;
-                    let jig = |r: &mut Rng| (r.next_u8() as f32 / 255.0 - 0.5) * 0.6;
+                    let jig = |r: &mut Rng| (r.next_u8() as f32 / 255.0 - 0.5) * 0.9;
                     self.particles.push(Particle::new(center_of(p), [v[0] + jig(&mut rng), v[1] + jig(&mut rng).abs()], c, 150, Landing::Settle));
                 }
             }
@@ -1824,7 +1824,7 @@ impl World {
                     let mut speck = c;
                     speck.flags &= !flags::LOOSE;
                     let jig = |r: &mut Rng| r.next_u8() as f32 / 255.0 - 0.5;
-                    let v = [dir[0] * (0.7 + 0.3 * jig(&mut rng)) + jig(&mut rng) * 0.4, dir[1] * 0.8 + 0.5 + jig(&mut rng).abs() * 0.5];
+                    let v = [dir[0] * (0.7 + 0.3 * jig(&mut rng)) + jig(&mut rng) * 0.6, dir[1] * 0.8 + 0.75 + jig(&mut rng).abs() * 0.75];
                     self.particles.push(Particle::new(center_of(p), v, speck, 120, Landing::Settle));
                     ids.push(u32::MAX);
                 }
@@ -1853,7 +1853,7 @@ impl World {
         }
         for p in &mut self.particles {
             if p.pos[0] >= box_.0[0] && p.pos[0] <= box_.1[0] && p.pos[1] >= box_.0[1] && p.pos[1] <= box_.1[1] {
-                p.vel = [p.vel[0] + dir[0], p.vel[1] + dir[1] + 0.3];
+                p.vel = [p.vel[0] + dir[0], p.vel[1] + dir[1] + 0.45];
             }
         }
         (ids.len(), specks)
@@ -1882,10 +1882,10 @@ impl World {
                 // (Sunk a little into what it rests on: a cell that meets
                 // something solid goes just above it (up to 10), not lost.)
                 let open = |w: &World, q: CellPos| w.get(q).map(|f| (f, if f.is_air() { Kind::Empty } else { mats.phys(f.material).kind })).filter(|(_, k)| matches!(k, Kind::Empty | Kind::Gas | Kind::Fire | Kind::Plant | Kind::Liquid));
-                let Some((p, (f, kind))) = (0..=10).map(|dy| p.offset(0, dy)).find_map(|q| open(self, q).map(|o| (q, o))) else { continue };
+                let Some((p, (f, kind))) = (0..=15).map(|dy| p.offset(0, dy)).find_map(|q| open(self, q).map(|o| (q, o))) else { continue };
                 if kind == Kind::Liquid {
                     // Water it lands in is pushed up out of the way, not lost.
-                    self.particles.push(Particle::new(center_of(p), [0.0, 0.6], f, 120, Landing::Settle));
+                    self.particles.push(Particle::new(center_of(p), [0.0, 0.9], f, 120, Landing::Settle));
                 }
                 let mut c = c;
                 c.flags &= !flags::LOOSE;
@@ -1957,14 +1957,14 @@ impl World {
 const RAIN_GRAVITY: f32 = 0.12;
 /// A body faster than this (cells/tick) splashes liquid out instead of
 /// pushing it up.
-const SPLASH_SPEED: f32 = 2.5;
+const SPLASH_SPEED: f32 = 3.75;
 /// Chance /256 per displaced cell that it splashes, at speed.
 const SPLASH_CHANCE: u8 = 120;
 /// Cloud moisture a faded cell of steam adds.
 const VAPOUR_MOISTURE: f32 = 0.05;
 /// Raindrops or flakes per unit of moisture rained out (a heavy column rains
 /// out ~0.1 per weather step).
-const DROPS_PER_MOISTURE: f32 = 25.0;
+const DROPS_PER_MOISTURE: f32 = 37.5;
 /// A thunderstorm column throws lightning once per this many weather steps
 /// (a storm over a screen: a strike every ~10 s).
 const LIGHTNING_ONE_IN: u32 = 12_000;
@@ -1977,11 +1977,11 @@ const EARTH_HEAT: i16 = 1500;
 const ZAP_HEAT: i16 = 600;
 const ZAP_BLAST: u8 = 14;
 /// How far up a splash from inside a liquid looks for its surface.
-const SPLASH_SURFACE: i32 = 64;
+const SPLASH_SURFACE: i32 = 96;
 /// A zap doesn't flare air this close to the wand.
-const ZAP_CLEAR: usize = 8;
+const ZAP_CLEAR: usize = 12;
 /// Most cells one zap charges (a big lake conducts only this far).
-const MAX_CHARGED: usize = 6000;
+const MAX_CHARGED: usize = 13_500;
 /// Blast power where it strikes: shreds leaves, not wood.
 const LIGHTNING_BLAST: u8 = 24;
 /// A background fire hotter than this (°C) boils a raindrop off, losing
@@ -1994,9 +1994,9 @@ const RAIN_QUENCH: i16 = 60;
 /// How long (ticks) a weather column's ground height is trusted.
 const GROUND_STALE: u64 = 600;
 /// Longest run down through a tree to the ground.
-const LIGHTNING_CHANNEL: i32 = 400;
-/// New drops stop above this many particles in flight (the cap is 30 000).
-const RAIN_BUDGET: u32 = 18_000;
+const LIGHTNING_CHANNEL: i32 = 600;
+/// New drops stop above this many particles in flight (the cap is 67 500).
+const RAIN_BUDGET: u32 = 40_500;
 
 /// Chance /256 that a cell destroyed by a blast flies as debris.
 const DEBRIS_CHANCE: u8 = 120;
@@ -2004,7 +2004,7 @@ const DEBRIS_CHANCE: u8 = 120;
 const BLAST_BOIL: u8 = 70;
 const BLAST_VAPOUR_HEAT: i16 = 140;
 /// How far past the crater loose material (sand, gravel, water) is flung.
-const FLING_RIM: i32 = 7;
+const FLING_RIM: i32 = 11;
 /// Extra heat on blast debris, so it glows in flight.
 const BLAST_DEBRIS_HEAT: i16 = 450;
 /// Chance /256 that a mined cell puffs out as dust.

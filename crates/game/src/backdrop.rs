@@ -48,7 +48,7 @@ impl Plugin for BackdropPlugin {
 /// `FEET_STEP` a layer (cells).
 const PARALLAX: (f32, f32) = (0.01, 0.04);
 const PARALLAX_Y: (f32, f32) = (0.004, 0.015);
-const FEET_STEP: f32 = 12.0;
+const FEET_STEP: f32 = 18.0;
 
 /// Layer `k` of `n`: its share of the camera's motion across and up and
 /// down, its feet over the ground.
@@ -62,18 +62,21 @@ fn layer_at(k: usize, n: usize) -> (f32, f32, f32) {
 /// ground.
 const CLOUD_PARALLAX: f32 = 0.008;
 const CLOUD_PARALLAX_Y: f32 = 0.004;
-const CLOUD_DRIFT: f32 = 1.2;
-const CLOUD_FOOT: f32 = 12.0;
+const CLOUD_DRIFT: f32 = 1.8;
+const CLOUD_FOOT: f32 = 18.0;
 /// The surface's strips: columns a tile, rows (layers, clouds).
-const TILE: usize = 256;
-const HEIGHT: usize = 380;
-const CLOUD_HEIGHT: usize = 170;
+const TILE: usize = 384;
+/// The looks' shapes are drawn this fine: a cell a pixel, the ranges 1.5×
+/// the size their numbers (`peaks::looks`) say.
+const DETAIL: f32 = 1.5;
+const HEIGHT: usize = 570;
+const CLOUD_HEIGHT: usize = 255;
 /// Cloud tiles are scaled up this many times (each texel a block) and
 /// sampled smoothly, so they glide by fractions of a pixel as they drift:
 /// the blocks' edges blend a pixel wide, the rest stays crisp.
 const CLOUD_UP: usize = 3;
 /// How far below a surface tile its bottom row is stretched (valleys).
-const SKIRT: f32 = 300.0;
+const SKIRT: f32 = 450.0;
 /// Behind the weather's clouds (-2) and the world's back walls (-1); the
 /// sky's gradient behind all.
 const Z: f32 = -2.6;
@@ -149,7 +152,8 @@ impl Backdrops {
     /// Where a tile is drawn (its centre), for the camera at `cam`.
     fn centre(&self, key: Key, cam: Vec2) -> Vec2 {
         let (w, h) = Self::size(key.part);
-        let x = (key.tx as f32 + 0.5) * w as f32 + self.scroll(key.part, key.v, key.k, cam);
+        let (w, h) = (w as f32, h as f32);
+        let x = (key.tx as f32 + 0.5) * w + self.scroll(key.part, key.v, key.k, cam);
         let ground = self.ground.unwrap_or(cam.y);
         let y = match key.part {
             // Its foot (the layer's base row) a little above the ground; it
@@ -157,9 +161,9 @@ impl Backdrops {
             Part::Land => {
                 let (_, py, feet) = layer_at(key.k, self.looks[key.v].layers.len());
                 let foot = ground + feet + (cam.y - ground) * (1.0 - py);
-                foot + self.looks[key.v].layers[key.k].base * h as f32 - h as f32 / 2.0
+                foot + self.looks[key.v].layers[key.k].base * h - h / 2.0
             }
-            Part::Clouds => ground + CLOUD_FOOT + (cam.y - ground) * (1.0 - CLOUD_PARALLAX_Y) + h as f32 / 2.0,
+            Part::Clouds => ground + CLOUD_FOOT + (cam.y - ground) * (1.0 - CLOUD_PARALLAX_Y) + h / 2.0,
         };
         Vec2::new(x, y)
     }
@@ -205,7 +209,7 @@ impl Cover<'_> {
 fn targets(bd: &Backdrops, sim: &SimWorld, x: f32) -> Vec<f32> {
     let mut out = vec![0.0; bd.looks.len()];
     for (d, w) in [(-3.0, 0.05), (-2.0, 0.1), (-1.0, 0.2), (0.0, 0.3), (1.0, 0.2), (2.0, 0.1), (3.0, 0.05)] {
-        let name = for_biome(sim.generator.biome_hint((x + d * 150.0) as i32).unwrap_or("forest"));
+        let name = for_biome(sim.generator.biome_hint((x + d * 225.0) as i32).unwrap_or("forest"));
         if let Some(i) = bd.looks.iter().position(|v| v.name == name) {
             out[i] += w;
         }
@@ -222,10 +226,10 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
     let c = tf.translation.truncate();
     let half = loader.half_extent;
     // The ground where the camera is, eased (a cliff isn't a jolt).
-    let ground = sim.generator.surface_hint(c.x as i32).map_or(c.y - 60.0, |g| g as f32);
+    let ground = sim.generator.surface_hint(c.x as i32).map_or(c.y - 90.0, |g| g as f32);
     bd.ground = Some(bd.ground.map_or(ground, |g| g + (ground - g) * 0.05));
     let g = bd.ground.unwrap_or(ground);
-    bd.shown = (1.0 - (g - c.y - 40.0) / 80.0).clamp(0.0, 1.0);
+    bd.shown = (1.0 - (g - c.y - 60.0) / 120.0).clamp(0.0, 1.0);
     bd.drift += time.delta_secs() * CLOUD_DRIFT;
     // The looks' shares, eased (about a second to change over).
     let target = targets(&bd, &sim, c.x);
@@ -242,7 +246,7 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
     let span = |bd: &Backdrops, part: Part, v: usize, k: usize| {
         let (w, _) = Backdrops::size(part);
         let s = c.x - bd.scroll(part, v, k, c);
-        (((s - half.x - 32.0) / w as f32).floor() as i64, ((s + half.x + 32.0) / w as f32).floor() as i64)
+        (((s - half.x - 48.0) / w as f32).floor() as i64, ((s + half.x + 48.0) / w as f32).floor() as i64)
     };
     if bd.shown > 0.0 {
         for v in (0..bd.looks.len()).filter(|&v| bd.weights[v] > 0.0) {
@@ -261,8 +265,8 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
         let (w, h) = Backdrops::size(key.part);
         let looks = bd.looks.clone();
         let task = match key.part {
-            Part::Land => pool.spawn(async move { layer_tile(&looks[key.v], key.k, key.tx * w as i64, w, h, seed) }),
-            Part::Clouds => pool.spawn(async move { cloud_tile(&looks[key.v], key.tx * w as i64, w, h, seed) }),
+            Part::Land => pool.spawn(async move { layer_tile(&looks[key.v], key.k, key.tx * w as i64, w, h, DETAIL, seed) }),
+            Part::Clouds => pool.spawn(async move { cloud_tile(&looks[key.v], key.tx * w as i64, w, h, DETAIL, seed) }),
         };
         bd.making.insert(key, task);
     }
@@ -437,7 +441,7 @@ fn gradient(g: Res<Gradient>, bd: Res<Backdrops>, clear: Res<ClearColor>, cam: S
     let half = loader.half_extent;
     // From the ground (a little above it: the horizon) up to 1.5 views
     // over it, hardly moving as you climb.
-    let horizon = bd.ground.unwrap_or(c.y) + 30.0 + (c.y - bd.ground.unwrap_or(c.y)) * 0.995;
+    let horizon = bd.ground.unwrap_or(c.y) + 45.0 + (c.y - bd.ground.unwrap_or(c.y)) * 0.995;
     let (bottom, top) = (horizon - half.y * 2.0, horizon + half.y * 1.6);
     stf.translation = Vec3::new(c.x, (bottom + top) / 2.0, Z_GRADIENT);
     s.custom_size = Some(Vec2::new(half.x * 2.0 + 4.0, top - bottom));
@@ -578,7 +582,7 @@ fn sky(
         // The moon's disc (stars behind it hidden) and how lit it is.
         let mp = d.moon_phase();
         let lit_share = 0.5 - 0.5 * (std::f32::consts::TAU * mp).cos();
-        let radius = 11.0;
+        let radius = 16.5;
         if night > 0.01 {
             for s in &sky.stars {
                 let (sx, sy) = (s.at.x * vw, vh - s.at.y * vh * 0.9);
@@ -588,7 +592,7 @@ fn sky(
                 if !is_sun && r <= radius {
                     continue;
                 }
-                let washed = if is_sun { 1.0 } else { 1.0 - 0.8 * lit_share * (-(r / 20.0).powi(2)).exp() };
+                let washed = if is_sun { 1.0 } else { 1.0 - 0.8 * lit_share * (-(r / 30.0).powi(2)).exp() };
                 let p = origin + Vec2::new(sx, sy);
                 if !sky_open(p) {
                     continue;
@@ -647,15 +651,15 @@ fn sky(
                 // The sun: a small white core, a warm glow round it, the sky
                 // brightened wide about it; golden when low.
                 let warm = [1.0, 0.93 - 0.2 * low, 0.8 - 0.45 * low];
-                let core = 5.0;
-                each(110.0, true, &|_, _, r| Some((warm, (-(r / 55.0).powi(2)).exp() * 0.3)), &mut put);
-                each(22.0, false, &|_, _, r| Some((warm, (-(r / 9.0).powi(2)).exp() * 0.9)), &mut put);
+                let core = 7.5;
+                each(165.0, true, &|_, _, r| Some((warm, (-(r / 83.0).powi(2)).exp() * 0.3)), &mut put);
+                each(33.0, false, &|_, _, r| Some((warm, (-(r / 13.5).powi(2)).exp() * 0.9)), &mut put);
                 each(core + pix, false, &|_, _, r| Some(([1.0, 1.0, 0.96 - 0.3 * low], inside(core - r))), &mut put);
             } else {
                 // The moon: big, its seas in two tones, lit from one side, in
                 // tonight's phase (the unlit part faintly there), a soft halo
                 // as bright as it's lit.
-                each(34.0, true, &|_, _, r| Some(([0.63, 0.7, 0.95], (-(r / 17.0).powi(2)).exp() * 0.14 * (0.25 + 0.75 * lit_share))), &mut put);
+                each(51.0, true, &|_, _, r| Some(([0.63, 0.7, 0.95], (-(r / 25.5).powi(2)).exp() * 0.14 * (0.25 + 0.75 * lit_share))), &mut put);
                 each(radius + pix, false, &|ex, ey, r| {
                     let edge = inside(radius - r);
                     if edge <= 0.0 {

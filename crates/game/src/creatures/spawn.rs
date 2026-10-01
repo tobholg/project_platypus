@@ -48,7 +48,7 @@ pub fn packs() -> std::collections::BTreeMap<String, Vec<(String, u32)>> {
 }
 
 /// Cells between a pack's members as they stand in line.
-const PACK_GAP: f32 = 14.0;
+const PACK_GAP: f32 = 21.0;
 
 #[derive(Resource, Default)]
 pub struct SpawnQueue(pub Vec<PendingSpawn>);
@@ -59,9 +59,9 @@ pub struct Spawned(pub std::collections::HashSet<CellPos>);
 
 /// How many enemies to scatter around the start (tunable later via RON).
 /// (Beyond the plain and out of sight of its village, whose far end is
-/// ~200 cells out: an orc sees 220. The start is safe ground.)
+/// ~300 cells out: an orc sees 330. The start is safe ground.)
 const START_ENEMIES: [(&str, i32); 8] =
-    [("orc", -1250), ("orc", -1100), ("orc", -950), ("orc", -800), ("orc", 800), ("orc", 950), ("orc", 1100), ("orc", 1250)];
+    [("orc", -1875), ("orc", -1650), ("orc", -1425), ("orc", -1200), ("orc", 1200), ("orc", 1425), ("orc", 1650), ("orc", 1875)];
 
 impl Plugin for SpawnPlugin {
     fn build(&self, app: &mut App) {
@@ -75,7 +75,7 @@ impl Plugin for SpawnPlugin {
 
 fn queue_start(sim: Res<SimWorld>, mut queue: ResMut<SpawnQueue>) {
     let s = sim.generator.spawn_point();
-    queue.0.push(PendingSpawn { kind: "player".into(), x: s.x, from_y: s.y + 120, local_player: true });
+    queue.0.push(PendingSpawn { kind: "player".into(), x: s.x, from_y: s.y + 180, local_player: true });
     queue_start_enemies(&sim, &mut queue);
 }
 
@@ -86,7 +86,7 @@ pub fn queue_start_enemies(sim: &SimWorld, queue: &mut SpawnQueue) {
     }
     let s = sim.generator.spawn_point();
     for (kind, dx) in START_ENEMIES {
-        queue.0.push(PendingSpawn { kind: kind.into(), x: s.x + dx, from_y: s.y + 250, local_player: false });
+        queue.0.push(PendingSpawn { kind: kind.into(), x: s.x + dx, from_y: s.y + 375, local_player: false });
     }
 }
 
@@ -112,7 +112,7 @@ fn process_queue(mut commands: Commands, sim: Res<SimWorld>, saved: Option<Res<c
         // it needn't find ground here first: it mightn't (a shaft dug down
         // from the spawn, open past the loaded world, and the player never
         // came).
-        let ground = match find_ground(&sim.world, p.x, p.from_y, 600) {
+        let ground = match find_ground(&sim.world, p.x, p.from_y, 900) {
             Some(g) => g,
             None if p.local_player && saved.is_some() => p.from_y,
             None => return true, // not loaded yet
@@ -121,7 +121,7 @@ fn process_queue(mut commands: Commands, sim: Res<SimWorld>, saved: Option<Res<c
         if p.local_player {
             // Each player keeps the world around it simulated (co-op: every player).
             spawn_creature(&mut commands, &p.kind, feet, |e| {
-                e.insert((LocalPlayer, CameraTarget, ChunkLoader { half_extent: Vec2::new(420.0, 260.0) }, crate::gold::Gold::default()));
+                e.insert((LocalPlayer, CameraTarget, ChunkLoader { half_extent: Vec2::new(630.0, 390.0) }, crate::gold::Gold::default()));
             });
         } else {
             spawn_creature(&mut commands, &p.kind, feet, |_| {});
@@ -172,7 +172,7 @@ fn debug_spawn(
     for a in actions.read() {
         let crate::dev::DevAction::Spawn(at) = *a else { continue };
         // From the panel: a way off from the player.
-        let Some(at) = at.or_else(|| player.single().ok().map(|k| k.body.pos + Vec2::new(60.0, 10.0))) else { continue };
+        let Some(at) = at.or_else(|| player.single().ok().map(|k| k.body.pos + Vec2::new(90.0, 15.0))) else { continue };
         let Some(pack) = packs().remove(&kind.0) else {
             spawn_creature(&mut commands, &kind.0, at, |_| {});
             continue;
@@ -182,7 +182,7 @@ fn debug_spawn(
         let half = (members.len() as f32 - 1.0) / 2.0;
         for (i, k) in members.into_iter().enumerate() {
             let x = at.x + (i as f32 - half) * PACK_GAP;
-            queue.0.push(PendingSpawn { kind: k.clone(), x: x as i32, from_y: at.y as i32 + 40, local_player: false });
+            queue.0.push(PendingSpawn { kind: k.clone(), x: x as i32, from_y: at.y as i32 + 60, local_player: false });
         }
     }
 }

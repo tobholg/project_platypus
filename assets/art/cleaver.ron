@@ -1,8 +1,9 @@
+// HD spike (PLATYPUS_HD=1): drawn at 1.5x.
 // An orc cleaver: a broad, notched slab of iron on a short grip, pointing
 // right, held at `grip`.
 (
-    size: (14, 6),
-    feet: (7, 6),
+    size: (21, 9),
+    feet: (11, 9),
     outline: (28, 24, 22),
     palette: {
         'D': (78, 80, 86),      // iron, dark
@@ -14,14 +15,17 @@
     },
     frames: {
         "blade": [
-            "...y.DDDDDD...",
-            "...yDMMMrMMD..",
-            "wwwyMMMMMMMMD.",
-            "...yMMrMMMMMMD",
-            "...yLLLLL.LLLL",
-            "..............",
+            "....y..DDDDDDDDD.....",
+            "....y.DMMMMMMMMMD....",
+            "....yDMMMMrMMMMMMD...",
+            "wwwwyMMMMMrrMMMMMMD..",
+            "wwwwyMMMMMMMMMMMMMMD.",
+            "....yMMMrMMMMMMMMMMMD",
+            "....yMMMMMMMMMMMMMMMD",
+            "....yLLLLLLL.LLLLLLLL",
+            ".....................",
         ],
     },
     clips: { "held": (frames: ["blade"], fps: 1) },
-    anchors: { "grip": { "blade": (1, 2) } },
+    anchors: { "grip": { "blade": (2, 3) } },
 )

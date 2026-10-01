@@ -5,7 +5,7 @@
     name: "Cocoon",
     // Leaves no body: what it had spills out.
     corpse: false,
-    size: (6, 16),
+    size: (9, 24),
     health: 20,
     team: Neutral,
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -13,7 +13,7 @@
     profile: {fire: 2.0},
     blood: "blood",
     art: "cocoon",
-    movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0, dash_speed: 0, gravity: -300, max_fall: 60),
+    movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0, dash_speed: 0, gravity: -450, max_fall: 90),
     drops: [("torch", 3), ("bomb", 1), ("arrow", 8)],
     brain: (kind: "idle"),
 )

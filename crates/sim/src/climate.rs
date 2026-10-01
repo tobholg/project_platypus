@@ -3,8 +3,11 @@
 //! stay frozen), warmer with depth, and warmer or colder across the world
 //! (a hot desert, a frozen tundra).
 
-/// Entries in the across-the-world temperature table.
-pub const CLIMATE_COLUMNS: usize = 128;
+use crate::CHUNK;
+
+/// Entries in the across-the-world temperature table (a large world's is
+/// 1 024 cells an entry).
+pub const CLIMATE_COLUMNS: usize = 192;
 /// Entries in the across-the-world wetness table (finer: rain fronts are
 /// narrower than biomes).
 pub const WET_COLUMNS: usize = 512;
@@ -22,11 +25,11 @@ pub struct Climate {
     pub cells_per_degree_up: i32,
     /// Cells of descent per 1 °C warmer below sea level.
     pub cells_per_degree_down: i32,
-    /// °C added across the world's width, one entry per `1 << column_bits`
-    /// cells (a whole number of chunks, so a chunk has one entry). Zero by
-    /// default.
+    /// °C added across the world's width, one entry per `column_width`
+    /// cells (a whole number of chunks, so a chunk has one entry: see
+    /// `column_width_for`). Zero by default.
     pub columns: [i8; CLIMATE_COLUMNS],
-    pub column_bits: u32,
+    pub column_width: i32,
     /// Above this height the air warms again (an inversion over the peaks,
     /// so the sky islands are mild), 1 °C per `cells_per_degree_inversion`,
     /// back up to `surface_temp`.
@@ -49,7 +52,7 @@ impl Default for Climate {
             cells_per_degree_up: i32::MAX,
             cells_per_degree_down: i32::MAX,
             columns: [0; CLIMATE_COLUMNS],
-            column_bits: 16,
+            column_width: 1 << 16,
             warm_above: i32::MAX,
             cells_per_degree_inversion: i32::MAX,
             wet: [WET_DEFAULT; WET_COLUMNS],
@@ -71,10 +74,17 @@ impl Climate {
         ((width.max(1) as usize).div_ceil(WET_COLUMNS)).next_power_of_two().trailing_zeros()
     }
 
+    /// The temperature table's entry width for a world this wide: whole
+    /// chunks, as few as still cover the world (any width, not only powers
+    /// of two).
+    pub fn column_width_for(width: i32) -> i32 {
+        (width.max(1) as usize).div_ceil(CLIMATE_COLUMNS).next_multiple_of(CHUNK as usize) as i32
+    }
+
     /// Ambient °C at a world cell.
     #[inline]
     pub fn ambient(&self, x: i32, y: i32) -> i32 {
-        let column = self.columns[((x.max(0) >> self.column_bits) as usize).min(CLIMATE_COLUMNS - 1)] as i32;
+        let column = self.columns[((x.max(0) / self.column_width.max(1)) as usize).min(CLIMATE_COLUMNS - 1)] as i32;
         let height = if y >= self.warm_above {
             // (Back up to sea level's warmth, no further.)
             (self.surface_temp - (self.warm_above - self.sea_level) / self.cells_per_degree_up.max(1) + (y - self.warm_above) / self.cells_per_degree_inversion.max(1))

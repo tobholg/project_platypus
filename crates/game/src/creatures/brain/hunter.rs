@@ -69,7 +69,7 @@ pub struct Hunter {
 
 impl Default for Hunter {
     fn default() -> Self {
-        Hunter { aggro: 200.0, close: Close::default(), attack: Attack::Touch, wander: Wander::default(), leash: 0.0, bite: None, spit: None, sting: None }
+        Hunter { aggro: 300.0, close: Close::default(), attack: Attack::Touch, wander: Wander::default(), leash: 0.0, bite: None, spit: None, sting: None }
     }
 }
 
@@ -95,11 +95,11 @@ impl Default for Close {
 }
 
 fn keep() -> f32 {
-    10.0
+    15.0
 }
 
 fn jump_to_reach() -> f32 {
-    18.0
+    27.0
 }
 
 /// How it attacks.
@@ -318,21 +318,21 @@ fn hunt(
             // near, or dropping on it from above.
             (Close::Crawl { pounce_range, pounce_every }, Some((t, _))) => {
                 let d = t - pos;
-                move_y = if d.y > 4.0 {
+                move_y = if d.y > 6.0 {
                     1.0
-                } else if d.y < -4.0 {
+                } else if d.y < -6.0 {
                     -1.0
                 } else {
                     0.0
                 };
                 let clinging = k.loco.clinging();
-                let over_you = clinging == Some(Vec2::Y) && d.x.abs() < 8.0;
+                let over_you = clinging == Some(Vec2::Y) && d.x.abs() < 12.0;
                 let near = d.length() < *pounce_range;
                 if tick >= m.next && (over_you || (near && (grounded || clinging.is_some()))) {
                     jump = true;
                     m.next = tick + ticks(pounce_every * (0.7 + 0.6 * unit(&sim, e, 1)));
                 }
-                if d.x.abs() > 2.0 { d.x.signum() } else { 0.0 }
+                if d.x.abs() > 3.0 { d.x.signum() } else { 0.0 }
             }
             (Close::Crawl { .. }, None) => {
                 if tick >= m.wander_until {

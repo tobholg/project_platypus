@@ -82,7 +82,7 @@ pub struct Heard {
 }
 
 /// How far around the camera it listens (cells).
-const REACH: f32 = 200.0;
+const REACH: f32 = 300.0;
 /// Seconds between listens.
 const EVERY: f32 = 0.25;
 
@@ -145,7 +145,7 @@ fn listen(time: Res<Time<Real>>, sim: Res<SimWorld>, day: Option<Res<crate::ligh
             }
         }
     }
-    let rain = world.particles().iter().filter(|p| p.vel[1] < -0.3 && mats.phys(p.cell.material).kind == Kind::Liquid && (Vec2::from(p.pos) - c).length() < REACH).count() as f32;
+    let rain = world.particles().iter().filter(|p| p.vel[1] < -0.45 && mats.phys(p.cell.material).kind == Kind::Liquid && (Vec2::from(p.pos) - c).length() < REACH).count() as f32;
     // Rock overhead: columns about the camera, looking up from open air (a
     // hillside beside you, or a tree, isn't a roof).
     let rock = |cell: platypus_sim::Cell| {
@@ -154,12 +154,12 @@ fn listen(time: Res<Time<Real>>, sim: Res<SimWorld>, day: Option<Res<crate::ligh
     };
     let (mut roofed, mut open) = (0, 0);
     for k in -3..=3 {
-        let x = c.x as i32 + k * 20;
+        let x = c.x as i32 + k * 30;
         if world.get(CellPos::new(x, c.y as i32)).is_some_and(|cell| mats.phys(cell.material).kind != Kind::Empty) {
             continue;
         }
         open += 1;
-        if (4..160).step_by(2).any(|up| world.get(CellPos::new(x, c.y as i32 + up)).is_some_and(rock)) {
+        if (6..240).step_by(2).any(|up| world.get(CellPos::new(x, c.y as i32 + up)).is_some_and(rock)) {
             roofed += 1;
         }
     }
@@ -167,14 +167,14 @@ fn listen(time: Res<Time<Real>>, sim: Res<SimWorld>, day: Option<Res<crate::ligh
     // And how deep below the ground as generated: well down, it's
     // underground whatever's straight overhead (a shaft dug up to the sky,
     // a chasm).
-    let deep = sim.generator.surface_hint(c.x as i32).map_or(0.0, |s| ((s as f32 - c.y - 15.0) / 45.0).clamp(0.0, 1.0));
+    let deep = sim.generator.surface_hint(c.x as i32).map_or(0.0, |s| ((s as f32 - c.y - 23.0) / 68.0).clamp(0.0, 1.0));
     let covered = roof.max(deep);
     let sat = |x: f32, k: f32| 1.0 - (-x / k).exp();
-    heard.fire = sat(fire, 60.0);
+    heard.fire = sat(fire, 135.0);
     heard.fire_at = if fire > 0.0 { fire_at / fire } else { Vec2::ZERO };
-    heard.lava = sat(lava, 400.0);
-    heard.water = sat(water, 150.0);
-    heard.rain = sat(rain, 250.0) * (1.0 - covered);
+    heard.lava = sat(lava, 900.0);
+    heard.water = sat(water, 338.0);
+    heard.rain = sat(rain, 563.0) * (1.0 - covered);
     heard.under = covered;
     heard.day = day.map_or(1.0, |d| {
         let sun = -(d.time * std::f32::consts::TAU).cos();
@@ -213,12 +213,12 @@ fn drips(time: Res<Time<Real>>, sim: Res<SimWorld>, heard: Res<Heard>, cam: Quer
     let open = |p: CellPos| world.get(p).is_some_and(|cell| matches!(mats.phys(cell.material).kind, Kind::Empty | Kind::Gas));
     let solid = |p: CellPos| world.get(p).is_some_and(|cell| mats.phys(cell.material).kind == Kind::Static);
     for _ in 0..24 {
-        let p = CellPos::new(c.x as i32 + (rng.unit() * 360.0 - 180.0) as i32, c.y as i32 + (rng.unit() * 220.0 - 110.0) as i32);
+        let p = CellPos::new(c.x as i32 + (rng.unit() * 540.0 - 270.0) as i32, c.y as i32 + (rng.unit() * 330.0 - 165.0) as i32);
         if !open(p) {
             continue;
         }
         // Up to the ceiling above it.
-        if let Some(up) = (1..40).find(|&k| !open(CellPos::new(p.x, p.y + k))) {
+        if let Some(up) = (1..60).find(|&k| !open(CellPos::new(p.x, p.y + k))) {
             let roof = CellPos::new(p.x, p.y + up);
             if solid(roof) {
                 out.write(PlaySound::at("drip", Vec2::new(p.x as f32 + 0.5, (p.y + up) as f32 - 1.0)).volume(0.6 + 0.4 * rng.unit()));

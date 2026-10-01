@@ -111,7 +111,7 @@ pub struct Village {
 pub const MEND_PRICE: u32 = 60;
 
 /// Someone this near (cells across) and it happens live.
-const LIVE_NEAR: i32 = 700;
+const LIVE_NEAR: i32 = 1_050;
 /// An event's time passed longer ago than this (days: a skipped hour) and
 /// no one saw it: it happened away.
 const LATE: f64 = 0.05;
@@ -123,54 +123,54 @@ const KEEP_DAYS: f64 = 10.0;
 /// hours; this far from the spawn (cells, either way).
 const STAR_CHANCE: f64 = 0.35;
 const STAR_HOURS: (f64, f64) = (21.0, 29.0);
-const STAR_FROM: (f64, f64) = (900.0, 4_000.0);
+const STAR_FROM: (f64, f64) = (1_350.0, 6_000.0);
 /// The streak: how long it flies (seconds), from how far up and across.
 const STAR_FLIGHT: f32 = 1.4;
-const STAR_FROM_UP: f32 = 360.0;
-const STAR_FROM_ACROSS: f32 = 480.0;
+const STAR_FROM_UP: f32 = 540.0;
+const STAR_FROM_ACROSS: f32 = 720.0;
 /// The crater: the blast's size and power (live), the hole (away), the
 /// meteorite's radius and how deep it lies, the mithril beside it.
-const CRATER: i32 = 16;
+const CRATER: i32 = 24;
 const CRATER_POWER: u8 = 150;
-const METEORITE: i32 = 4;
-const METEORITE_DEEP: i32 = 9;
-const MITHRIL: [(i32, i32, i32); 4] = [(-9, -12, 2), (8, -13, 2), (-3, -16, 1), (4, -17, 2)];
+const METEORITE: i32 = 6;
+const METEORITE_DEEP: i32 = 14;
+const MITHRIL: [(i32, i32, i32); 4] = [(-14, -18, 3), (12, -20, 3), (-5, -24, 2), (6, -26, 3)];
 /// Its heat (°C, over this radius): the rim glows, grass round it catches.
-const CRATER_HEAT: (i32, i16) = (10, 700);
+const CRATER_HEAT: (i32, i16) = (15, 700);
 /// What keeps it: how many, hovering this high over the ground.
 const GUARDS: usize = 2;
-const GUARD_UP: f32 = 22.0;
+const GUARD_UP: f32 = 33.0;
 
 /// Raids: the chance an evening has one; it comes between these hours.
 const RAID_CHANCE: f64 = 0.3;
 const RAID_HOURS: (f64, f64) = (17.0, 21.0);
 /// Live, the warband comes in from this far beyond the middle of the view
 /// (cells: out of sight, in the loaded world).
-const RAID_FROM: f32 = 330.0;
+const RAID_FROM: f32 = 495.0;
 /// Away, holes knocked in the houses: how many, how big.
 const RAID_HOLES: u64 = 5;
-const RAID_HOLE: i32 = 4;
+const RAID_HOLE: i32 = 6;
 /// Mending: cells put back a game hour (a raid's damage is mended in about
 /// half a day), and what's this near a player (across, up) is in view and
 /// waits.
-const MEND_PER_HOUR: usize = 40;
-const VIEW: (i32, i32) = (280, 170);
+const MEND_PER_HOUR: usize = 90;
+const VIEW: (i32, i32) = (420, 255);
 
 /// Earthquakes: the chance a day has one; its heart this far from the
 /// spawn (cells, either way); felt this far from it (live).
 const QUAKE_CHANCE: f64 = 0.12;
-const QUAKE_FROM: (f64, f64) = (800.0, 6_000.0);
-const QUAKE_FELT: i32 = 3_000;
+const QUAKE_FROM: (f64, f64) = (1_200.0, 9_000.0);
+const QUAKE_FELT: i32 = 4_500;
 /// It shakes this long (seconds), this hard (camera trauma, 0..1), and
 /// brings down a piece of cave ceiling round each player (within this, in
 /// cells across and down) this often (seconds).
 const QUAKE_SECS: f32 = 5.0;
 const QUAKE_TRAUMA: f32 = 0.55;
 const QUAKE_FALL_EVERY: f32 = 0.12;
-const QUAKE_NEAR: (i32, i32) = (170, 130);
+const QUAKE_NEAR: (i32, i32) = (255, 195);
 /// The chasm at its heart: how deep (cells, a range), how wide at the top.
-const CHASM_DEEP: (i32, i32) = (60, 110);
-const CHASM_WIDE: i32 = 8;
+const CHASM_DEEP: (i32, i32) = (90, 165);
+const CHASM_WIDE: i32 = 12;
 
 /// The pedlar: the chance a morning brings one; it comes between these
 /// hours, and stays this long (days).
@@ -297,12 +297,12 @@ fn dev_event(mut acts: MessageReader<crate::dev::DevAction>, mut next: Local<usi
         let day = clock.now;
         let ahead = if k.loco.facing >= 0.0 { 1 } else { -1 };
         let (x, from) = match kind {
-            EventKind::Star => ((k.body.pos.x + ahead as f32 * 140.0) as i32, 0),
+            EventKind::Star => ((k.body.pos.x + ahead as f32 * 210.0) as i32, 0),
             EventKind::Raid => match sim.generator.village() {
                 Some((lo, hi)) => ((lo.x + hi.x) / 2, ahead),
                 None => continue,
             },
-            EventKind::Quake => ((k.body.pos.x + ahead as f32 * 200.0) as i32, 0),
+            EventKind::Quake => ((k.body.pos.x + ahead as f32 * 300.0) as i32, 0),
             EventKind::Pedlar => match sim.generator.village() {
                 Some((lo, hi)) => ((lo.x + hi.x) / 2, ahead),
                 None => continue,
@@ -354,10 +354,10 @@ fn begin(
                     // surface by night, a streak toward it, gone over the
                     // horizon.
                     let dark = !(0.27..0.77).contains(&day.time);
-                    let above = sim.generator.surface_hint(c.x as i32).is_none_or(|s| c.y > s as f32 - 40.0);
+                    let above = sim.generator.surface_hint(c.x as i32).is_none_or(|s| c.y > s as f32 - 60.0);
                     if dark && above && clock.now - h.day < LATE {
-                        let from = c + Vec2::new(-side * 200.0, 150.0);
-                        let to = c + Vec2::new(side * 320.0, 20.0);
+                        let from = c + Vec2::new(-side * 300.0, 225.0);
+                        let to = c + Vec2::new(side * 480.0, 30.0);
                         commands.spawn(streak(from, to, false));
                         toasts.write(crate::progress::Toast(format!("A star falls, far to the {}", if west { "west" } else { "east" })));
                     }
@@ -373,9 +373,9 @@ fn begin(
                 let start = c.x + h.from as f32 * RAID_FROM;
                 let members: Vec<String> = crate::creatures::spawn::packs().remove("raiders").unwrap_or_default().into_iter().flat_map(|(k, n)| std::iter::repeat_n(k, n as usize)).collect();
                 for (i, kind) in members.into_iter().enumerate() {
-                    let x = (start + h.from as f32 * i as f32 * 12.0) as i32;
+                    let x = (start + h.from as f32 * i as f32 * 18.0) as i32;
                     let hint = sim.generator.surface_hint(x).unwrap_or(c.y as i32);
-                    let Some(ground) = find_ground(&sim.world, x, hint + 80, 300) else { continue };
+                    let Some(ground) = find_ground(&sim.world, x, hint + 120, 450) else { continue };
                     let target = h.x as f32;
                     spawn_creature(&mut commands, &kind, Vec2::new(x as f32 + 0.5, ground as f32), move |e| {
                         e.insert(Marching(target));
@@ -438,10 +438,10 @@ fn shake(
         let (tick, seed) = (sim.world.tick(), sim.world.seed());
         for (i, p) in players(&loaders).into_iter().enumerate() {
             let unit = |salt: u64| (hash(&[seed, tick, i as u64, salt, 0x0AE7]) % 10_000) as f32 / 10_000.0;
-            let at = CellPos::new(p.x as i32 + ((unit(0) * 2.0 - 1.0) * QUAKE_NEAR.0 as f32) as i32, p.y as i32 - (unit(1) * QUAKE_NEAR.1 as f32) as i32 + 30);
+            let at = CellPos::new(p.x as i32 + ((unit(0) * 2.0 - 1.0) * QUAKE_NEAR.0 as f32) as i32, p.y as i32 - (unit(1) * QUAKE_NEAR.1 as f32) as i32 + 45);
             if let Some(c) = ceiling(&sim, at) {
                 quake.fell += 1;
-                sim.queue(WorldEdit::Shatter { center: c, from: c.offset(0, 4), radius: 2 + (unit(2) * 2.0) as i32, max_hardness: 120 });
+                sim.queue(WorldEdit::Shatter { center: c, from: c.offset(0, 6), radius: 3 + (unit(2) * 3.0) as i32, max_hardness: 120 });
             }
         }
     }
@@ -455,7 +455,7 @@ fn ceiling(sim: &SimWorld, at: CellPos) -> Option<CellPos> {
         return None;
     }
     let surface = sim.generator.surface_hint(at.x)?;
-    (1..30).map(|d| at.offset(0, d)).find(|&p| !open(p) && sim.world.get(p).is_some()).filter(|p| p.y < surface - 10)
+    (1..45).map(|d| at.offset(0, d)).find(|&p| !open(p) && sim.world.get(p).is_some()).filter(|p| p.y < surface - 15)
 }
 
 /// A chasm at x: a jagged crack down from the ground, narrowing (the same
@@ -478,7 +478,7 @@ fn streak(from: Vec2, to: Vec2, lands: bool) -> impl Bundle {
         Name::new("Falling star"),
         Streak { from, to, t: 0.0, lands },
         Transform::from_translation(from.extend(40.0)),
-        Sprite::from_color(Color::srgb(1.0, 1.0, 1.0), Vec2::splat(3.0)),
+        Sprite::from_color(Color::srgb(1.0, 1.0, 1.0), Vec2::splat(4.5)),
         LightSource { color: [0.9, 0.95, 1.4], flicker: 0.1 },
     )
 }
@@ -489,7 +489,7 @@ fn trail() -> Emitter {
         count: 1.0,
         life: (0.25, 0.7),
         colors: vec![(255, 255, 255), (190, 210, 255), (90, 120, 230)],
-        speed: 14.0,
+        speed: 21.0,
         spread: 0.5,
         gravity: 0.0,
         drag: 2.0,
@@ -526,7 +526,7 @@ fn stars(
         }
         // Where it really lands: the ground under it as it is now.
         let x = s.to.x as i32;
-        let ground = find_ground(&sim.world, x, s.to.y as i32 + 120, 400).unwrap_or(s.to.y as i32);
+        let ground = find_ground(&sim.world, x, s.to.y as i32 + 180, 600).unwrap_or(s.to.y as i32);
         sim.queue(WorldEdit::Explode { center: CellPos::new(x, ground), radius: CRATER, power: CRATER_POWER });
         fill_crater(&mut sim, x, ground);
         guard(&mut commands, x, ground);
@@ -548,7 +548,7 @@ fn fill_crater(sim: &mut SimWorld, x: i32, ground: i32) {
 /// Star wisps hovering over the crater.
 fn guard(commands: &mut Commands, x: i32, ground: i32) {
     for i in 0..GUARDS {
-        let dx = (i as f32 * 2.0 - 1.0) * 10.0;
+        let dx = (i as f32 * 2.0 - 1.0) * 15.0;
         // (Its place, kept with it in a save: it stays on its leash.)
         spawn_creature(commands, "star_wisp", Vec2::new(x as f32 + dx, ground as f32 + GUARD_UP), move |e| {
             e.insert(crate::clock::Keeps((x, ground)));
@@ -570,7 +570,7 @@ fn land(mut commands: Commands, mut sim: ResMut<SimWorld>, mut clock: ResMut<Wor
             }
             for i in 0..RAID_HOLES {
                 let u = |salt: u64| (hash(&[seed, h.day.to_bits(), i, salt, 0x4A1D]) % 10_000) as i32;
-                let at = CellPos::new(lo.x + u(0) % (hi.x - lo.x).max(1), lo.y + 8 + u(1) % (hi.y - lo.y - 8).max(1));
+                let at = CellPos::new(lo.x + u(0) % (hi.x - lo.x).max(1), lo.y + 12 + u(1) % (hi.y - lo.y - 12).max(1));
                 sim.queue(WorldEdit::Dig { center: at, radius: RAID_HOLE, max_hardness: 200 });
             }
             h.stage = Stage::Done;
@@ -583,10 +583,10 @@ fn land(mut commands: Commands, mut sim: ResMut<SimWorld>, mut clock: ResMut<Wor
     for h in clock.events.iter_mut().filter(|h| h.kind == EventKind::Quake && h.stage == Stage::Away) {
         let x = h.x;
         let Some(hint) = sim.generator.surface_hint(x) else { continue };
-        if [hint + 10, hint - CHASM_DEEP.1].iter().any(|&y| sim.world.get(CellPos::new(x, y)).is_none()) {
+        if [hint + 15, hint - CHASM_DEEP.1].iter().any(|&y| sim.world.get(CellPos::new(x, y)).is_none()) {
             continue;
         }
-        let Some(ground) = find_ground(&sim.world, x, hint + 120, 400) else { continue };
+        let Some(ground) = find_ground(&sim.world, x, hint + 180, 600) else { continue };
         chasm(&mut sim, x, ground, h.day);
         h.stage = Stage::Done;
         info!("events: a quake's chasm opened at x {x} (ground {ground})");
@@ -594,13 +594,13 @@ fn land(mut commands: Commands, mut sim: ResMut<SimWorld>, mut clock: ResMut<Wor
     for h in clock.events.iter_mut().filter(|h| h.kind == EventKind::Star && h.stage == Stage::Away) {
         let x = h.x;
         let Some(hint) = sim.generator.surface_hint(x) else { continue };
-        let loaded = (-1..=1).all(|i| sim.world.get(CellPos::new(x + i * 40, hint)).is_some() && sim.world.get(CellPos::new(x + i * 40, hint - 60)).is_some());
+        let loaded = (-1..=1).all(|i| sim.world.get(CellPos::new(x + i * 60, hint)).is_some() && sim.world.get(CellPos::new(x + i * 60, hint - 90)).is_some());
         if !loaded {
             continue;
         }
-        let Some(ground) = find_ground(&sim.world, x, hint + 120, 400) else { continue };
-        sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground), radius: CRATER - 2, max_hardness: 200 });
-        sim.queue(WorldEdit::Scorch { center: CellPos::new(x, ground), radius: CRATER + 4 });
+        let Some(ground) = find_ground(&sim.world, x, hint + 180, 600) else { continue };
+        sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground), radius: CRATER - 3, max_hardness: 200 });
+        sim.queue(WorldEdit::Scorch { center: CellPos::new(x, ground), radius: CRATER + 6 });
         fill_crater(&mut sim, x, ground);
         guard(&mut commands, x, ground);
         h.stage = Stage::Done;
@@ -728,7 +728,7 @@ fn pedlar(
         if seen(k.body.pos.x, k.body.pos.y) {
             if let Some(mut home) = home {
                 let side = if k.body.pos.x < mid as f32 { -1.0 } else { 1.0 };
-                home.0.x = mid as f32 + side * 900.0;
+                home.0.x = mid as f32 + side * 1_350.0;
             }
         } else {
             commands.entity(e).despawn();
@@ -738,7 +738,7 @@ fn pedlar(
     if here || !near.iter().any(|p| (p.x as i32 - mid).abs() < LIVE_NEAR) {
         return;
     }
-    let ground = |x: i32| sim.generator.surface_hint(x).and_then(|hint| find_ground(&sim.world, x, hint + 80, 300));
+    let ground = |x: i32| sim.generator.surface_hint(x).and_then(|hint| find_ground(&sim.world, x, hint + 120, 450));
     let Some(home_y) = ground(mid) else { return };
     let home = Vec2::new(mid as f32 + 0.5, home_y as f32);
     let x = if seen(home.x, home.y) { (cam.translation.x + h.from as f32 * RAID_FROM) as i32 } else { mid };
@@ -777,9 +777,9 @@ fn news(clock: Res<WorldClock>, sim: Res<SimWorld>, mut news: ResMut<News>) {
     news.0 = told.into_iter().map(|(_, l)| l).collect();
 }
 
-/// How far a walk is, said (a walk is ~3 600 cells a minute).
+/// How far a walk is, said (a walk is ~5 400 cells a minute).
 fn walk(cells: i32) -> String {
-    match cells / 3_600 {
+    match cells / 5_400 {
         0 => "a short walk".into(),
         1 => "a minute's walk".into(),
         n => format!("{n} minutes' walk"),

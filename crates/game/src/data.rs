@@ -13,20 +13,6 @@ pub fn assets_dir() -> PathBuf {
         .join("assets")
 }
 
-/// The HD spike (`PLATYPUS_HD=1`): everything 1.5× in cells, seen at 2 px
-/// a cell instead of 3, so the same scene on screen with 2.25× the pixels
-/// in each thing. Creature files and sprites with an `_hd` twin use it.
-pub fn hd() -> bool {
-    static HD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *HD.get_or_init(|| std::env::var("PLATYPUS_HD").is_ok_and(|v| v != "0"))
-}
-
-/// The sprite `name`, or its HD twin (`<name>_hd`) under the HD spike.
-pub fn hd_art(name: &str) -> String {
-    let twin = format!("{name}_hd");
-    if hd() && assets_dir().join("art").join(format!("{twin}.ron")).exists() { twin } else { name.to_string() }
-}
-
 pub fn data_path(rel: &str) -> PathBuf {
     assets_dir().join("data").join(rel)
 }

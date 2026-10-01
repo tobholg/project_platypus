@@ -21,8 +21,8 @@ impl Plugin for TrapsPlugin {
 }
 
 /// How far from what springs it the rope may be: across, and up.
-const REACH: i32 = 24;
-const UP: i32 = 60;
+const REACH: i32 = 36;
+const UP: i32 = 90;
 
 /// A creature on a wire or a plate springs what's above it.
 fn spring(mut sim: ResMut<SimWorld>, creatures: Query<(&Kinematics, Option<&crate::creatures::Creature>)>, mut sounds: MessageWriter<crate::sound::PlaySound>) {
@@ -60,7 +60,7 @@ fn spring(mut sim: ResMut<SimWorld>, creatures: Query<(&Kinematics, Option<&crat
             }
         }
         if let Some(p) = cut {
-            sim.world.loosen_fragments(p, 12);
+            sim.world.loosen_fragments(p, 18);
             sounds.write(crate::sound::PlaySound::at("snap", Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5)));
             info!("traps: sprung at ({}, {}) by a {who}: the rope at ({}, {}) cut", at.x, at.y, p.x, p.y);
         }

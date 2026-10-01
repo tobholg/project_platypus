@@ -2,8 +2,8 @@
 // blade below its end (the edge leads the swing down). Drawn in its icon's
 // colours.
 (
-    size: (14, 7),
-    feet: (7.0, 7),
+    size: (21, 11),
+    feet: (11, 11),
     outline: (24, 18, 16),
     palette: {
         'M': (236, 160, 90),   // head, lit (copper; each tier its icon's)
@@ -14,15 +14,19 @@
     },
     frames: {
         "axe": [
-            "...........Hm.",
-            "hhHhhHhhhhHhmm",
-            ".........Mmmmd",
-            "........MMmmdd",
-            "........Mmmmd.",
-            ".........Mmd..",
-            "..........d...",
+            "................mMMm.",
+            "hhhhHhhhhhhhHhhhdmmmM",
+            "HHHHHHHHHHHHHHHHdmmmd",
+            "................ddmd.",
+            ".................dmd.",
+            ".................dmd.",
+            "................dmmd.",
+            "..............ddmmmd.",
+            "............MMmmmmmmd",
+            "...........MMmmmmmmmd",
+            "............MMMMMMMd.",
         ],
     },
     clips: { "held": (frames: ["axe"], fps: 1) },
-    anchors: { "grip": { "axe": (1, 1) } },
+    anchors: { "grip": { "axe": (2, 2) } },
 )

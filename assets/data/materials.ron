@@ -40,7 +40,7 @@
 // inert:        nothing eats it (glass, gold)
 // object:       a piece of it is a thing (a log, a casting): kicked or pushed it lifts out
 //               whole as a body, losing its hold it falls whole (not as rubble)
-// item:         its block item is this item (a metal: its bar, 16 cells of it)
+// item:         its block item is this item (a metal: its bar, 36 cells of it)
 // brittle:      a body of it breaks when it hits hard (a boulder): pieces, and rubble
 // flung:        a blast throws it whole instead of destroying it (gold)
 // counted:      the game tallies it, never a block item (gold: gold.rs)
@@ -201,10 +201,10 @@
         // lost.
         (name: "gold",     kind: Powder, density: 19300, hardness: 2, inert: true, flung: true, charges: true, counted: true, conductivity: 200, glow: (110, 76, 14), shimmer: 255,
             above: (900, "molten_gold"), latent: 200, colors: [(196, 136, 26), (236, 180, 44), (252, 210, 76), (255, 234, 136), (255, 250, 214)]),
-        (name: "molten_gold", kind: Liquid, density: 17300, dispersion: 2, viscosity: 60, hot: true, heat: 1100, inert: true, flung: true, charges: true, conductivity: 200, glow: (255, 170, 40),
+        (name: "molten_gold", kind: Liquid, density: 17300, dispersion: 3, viscosity: 60, hot: true, heat: 1100, inert: true, flung: true, charges: true, conductivity: 200, glow: (255, 170, 40),
             below: (850, "solid_gold"), latent: 200, colors: [(255, 150, 30), (255, 196, 70), (255, 230, 140)]),
         // A boulder (rock in one piece: a thing): it rolls (round ones), and
-        // it's brittle: a fall of ~18 cells, a blast, a hard knock breaks it
+        // it's brittle: a fall of ~27 cells, a blast, a hard knock breaks it
         // into pieces and rubble.
         (name: "boulder",  kind: Static, density: 2700, hardness: 60, object: true, brittle: true, crumbles_into: "gravel", above: (1400, "lava"),
             colors: [(96, 90, 86), (118, 110, 104), (140, 132, 124), (160, 150, 140)]),
@@ -218,7 +218,7 @@
         (name: "pressure_plate", kind: Static, density: 2600, hardness: 60, crumbles_into: "gravel", colors: [(100, 96, 90), (124, 118, 110), (140, 134, 124)]),
         // Metals (DESIGN §13.1): each solid, and molten. Solid metal is a thing
         // (object: a casting is kicked, thrown, lifted whole), carries heat
-        // and lightning, and its block is its bar (item: 16 cells of it, so
+        // and lightning, and its block is its bar (item: 36 cells of it, so
         // mining a casting gives bars and a bar laid down is metal). Past its
         // melting point it runs as a glowing liquid that lights and burns
         // what it touches, and sets again where it cools. Its ore melts into
@@ -230,19 +230,19 @@
         // few seconds before it sets, as metal does.
         (name: "copper",   kind: Static, density: 8900, hardness: 45, object: true, charges: true, conductivity: 200, item: "copper_bar", above: (1085, "molten_copper"), latent: 150,
             colors: [(150, 82, 40), (196, 112, 58), (226, 146, 86), (240, 180, 120)]),
-        (name: "molten_copper", kind: Liquid, density: 8000, dispersion: 2, viscosity: 70, hot: true, heat: 1300, charges: true, conductivity: 25, glow: (255, 120, 40), below: (1025, "copper"), latent: 1200,
+        (name: "molten_copper", kind: Liquid, density: 8000, dispersion: 3, viscosity: 70, hot: true, heat: 1300, charges: true, conductivity: 25, glow: (255, 120, 40), below: (1025, "copper"), latent: 1200,
             colors: [(255, 110, 30), (255, 150, 60), (255, 190, 110)]),
         (name: "iron",     kind: Static, density: 7900, hardness: 70, object: true, charges: true, conductivity: 180, item: "iron_bar", above: (1538, "molten_iron"), latent: 150,
             colors: [(92, 94, 102), (128, 130, 140), (160, 162, 172), (196, 198, 206)]),
-        (name: "molten_iron", kind: Liquid, density: 7000, dispersion: 2, viscosity: 90, hot: true, heat: 1750, charges: true, conductivity: 25, glow: (255, 170, 70), below: (1470, "iron"), latent: 1200,
+        (name: "molten_iron", kind: Liquid, density: 7000, dispersion: 3, viscosity: 90, hot: true, heat: 1750, charges: true, conductivity: 25, glow: (255, 170, 70), below: (1470, "iron"), latent: 1200,
             colors: [(255, 150, 50), (255, 200, 110), (255, 235, 180)]),
         (name: "silver",   kind: Static, density: 10500, hardness: 55, object: true, charges: true, conductivity: 220, item: "silver_bar", above: (962, "molten_silver"), latent: 150,
             colors: [(160, 164, 176), (196, 200, 212), (224, 228, 238), (250, 250, 255)]),
-        (name: "molten_silver", kind: Liquid, density: 9300, dispersion: 2, viscosity: 60, hot: true, heat: 1180, charges: true, conductivity: 25, glow: (255, 150, 90), below: (900, "silver"), latent: 1200,
+        (name: "molten_silver", kind: Liquid, density: 9300, dispersion: 3, viscosity: 60, hot: true, heat: 1180, charges: true, conductivity: 25, glow: (255, 150, 90), below: (900, "silver"), latent: 1200,
             colors: [(255, 180, 120), (255, 214, 170), (255, 240, 220)]),
         (name: "mithril",  kind: Static, density: 4500, hardness: 100, object: true, charges: true, conductivity: 200, item: "mithril_bar", above: (1750, "molten_mithril"), latent: 150, glow: (6, 24, 28), shimmer: 180,
             colors: [(70, 150, 160), (100, 196, 206), (140, 230, 236), (200, 250, 252)]),
-        (name: "molten_mithril", kind: Liquid, density: 4000, dispersion: 2, viscosity: 80, hot: true, heat: 1950, charges: true, conductivity: 25, glow: (120, 240, 255), below: (1680, "mithril"), latent: 1200,
+        (name: "molten_mithril", kind: Liquid, density: 4000, dispersion: 3, viscosity: 80, hot: true, heat: 1950, charges: true, conductivity: 25, glow: (120, 240, 255), below: (1680, "mithril"), latent: 1200,
             colors: [(140, 240, 255), (190, 250, 255), (230, 255, 255)]),
         // Gold set solid (molten gold cooled: in a mould, on a lava pit's
         // floor). A thing like any metal, but gold is counted, never carried:
@@ -267,39 +267,39 @@
         (name: "coal",     kind: Powder, density: 1300, hardness: 10, flammability: 30, ignites_at: 350, burn_time: 200, burns_into: "ash", burns_into_chance: 90, colors: [(24, 24, 26), (40, 40, 44)]),
 
         // ---- liquids ------------------------------------------------------
-        (name: "water",    kind: Liquid, density: 1000, charges: true, dispersion: 6, above: (100, "steam"), below: (0, "ice"), coats: "wet", opacity: 10, latent: 250, colors: [(38, 92, 196), (48, 110, 214)]),
+        (name: "water",    kind: Liquid, density: 1000, charges: true, dispersion: 9, above: (100, "steam"), below: (0, "ice"), coats: "wet", opacity: 10, latent: 250, colors: [(38, 92, 196), (48, 110, 214)]),
         // Floats on water and burns on it (a burning liquid isn't put out by
         // what it floats on). A poor heat conductor, so a burning slick
         // doesn't boil away the lake under it.
-        (name: "oil",      kind: Liquid, density: 800,  dispersion: 4, flammability: 90, ignites_at: 220, burn_time: 25, conductivity: 6, coats: "oily", viscosity: 40, colors: [(56, 38, 24), (72, 52, 30)]),
+        (name: "oil",      kind: Liquid, density: 800,  dispersion: 6, flammability: 90, ignites_at: 220, burn_time: 25, conductivity: 6, coats: "oily", viscosity: 40, colors: [(56, 38, 24), (72, 52, 30)]),
         // Boils and freezes like water (a little below 0: what's dissolved in it).
-        (name: "blood",    kind: Liquid, density: 1060, charges: true, dispersion: 3, above: (100, "blood_steam"), below: (-2, "frozen_blood"), coats: "bloody", latent: 250, viscosity: 70, colors: [(136, 10, 16), (164, 18, 24)]),
+        (name: "blood",    kind: Liquid, density: 1060, charges: true, dispersion: 5, above: (100, "blood_steam"), below: (-2, "frozen_blood"), coats: "bloody", latent: 250, viscosity: 70, colors: [(136, 10, 16), (164, 18, 24)]),
         // What spiders bleed, and slimes are full of (a slime glows a little).
-        (name: "ichor",    kind: Liquid, density: 1040, dispersion: 3, viscosity: 110, above: (100, "steam"), colors: [(156, 172, 64), (128, 146, 46)]),
-        (name: "slime",    kind: Liquid, density: 1100, dispersion: 1, viscosity: 220, above: (100, "steam"), glow: (6, 22, 8), opacity: 20, colors: [(96, 196, 96), (76, 170, 80), (110, 210, 110)]),
-        (name: "lava",     kind: Liquid, density: 2500, dispersion: 2, hot: true, heat: 1200, heat_source: true, below: (950, "basalt"), conductivity: 60, glow: (255, 105, 30), viscosity: 200, colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
+        (name: "ichor",    kind: Liquid, density: 1040, dispersion: 5, viscosity: 110, above: (100, "steam"), colors: [(156, 172, 64), (128, 146, 46)]),
+        (name: "slime",    kind: Liquid, density: 1100, dispersion: 2, viscosity: 220, above: (100, "steam"), glow: (6, 22, 8), opacity: 20, colors: [(96, 196, 96), (76, 170, 80), (110, 210, 110)]),
+        (name: "lava",     kind: Liquid, density: 2500, dispersion: 3, hot: true, heat: 1200, heat_source: true, below: (950, "basalt"), conductivity: 60, glow: (255, 105, 30), viscosity: 200, colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
         // Eats anything up to stone-and-ore hard (not glass or gold), each cell
         // good for 6 bites; burns what it touches (corrosive, damage/s); carries
         // lightning. Boils into acid fumes.
-        (name: "acid",     kind: Liquid, density: 1100, dispersion: 4, corrosive: 30, charges: true,
+        (name: "acid",     kind: Liquid, density: 1100, dispersion: 6, corrosive: 30, charges: true,
             eats: (hardness: 90, bites: 6, chance: 48, spent_into: "smoke"), above: (110, "acid_fumes"), coats: "acid", glow: (70, 200, 25), viscosity: 15, colors: [(120, 230, 40), (150, 250, 70)]),
 
         // ---- gases --------------------------------------------------------
-        (name: "steam",    kind: Gas, density: 1, dispersion: 3, lifetime: (60, 200), decay_every: 3, decays_into: "water", decays_into_chance: 70, vapour: true, opacity: 5, colors: [(200, 206, 216), (228, 232, 240)]),
+        (name: "steam",    kind: Gas, density: 1, dispersion: 5, lifetime: (60, 200), decay_every: 3, decays_into: "water", decays_into_chance: 70, vapour: true, opacity: 5, colors: [(200, 206, 216), (228, 232, 240)]),
         // Off boiling acid: corrodes what it drifts into, weaker than acid and
         // used up doing it, condenses into acid rain downwind, and is
         // flammable: a spark flashes the cloud into fire (and the odd pop),
         // which boils more acid.
-        (name: "acid_fumes", kind: Gas, density: 2, dispersion: 2, lifetime: (80, 220), decay_every: 3, decays_into: "acid", decays_into_chance: 110, corrosive: 8, flammability: 60, ignites_at: 300, explodes: (radius: 3, power: 25, chance: 4), glow: (30, 90, 10), opacity: 6, colors: [(168, 214, 70), (190, 230, 96), (150, 196, 60)]),
+        (name: "acid_fumes", kind: Gas, density: 2, dispersion: 3, lifetime: (80, 220), decay_every: 3, decays_into: "acid", decays_into_chance: 110, corrosive: 8, flammability: 60, ignites_at: 300, explodes: (radius: 5, power: 25, chance: 4), glow: (30, 90, 10), opacity: 6, colors: [(168, 214, 70), (190, 230, 96), (150, 196, 60)]),
         // A red haze off boiling blood; condenses back into blood like steam into water.
-        (name: "blood_steam", kind: Gas, density: 1, dispersion: 3, lifetime: (60, 200), decay_every: 3, decays_into: "blood", decays_into_chance: 70, colors: [(196, 120, 124), (220, 150, 152), (180, 96, 102)]),
+        (name: "blood_steam", kind: Gas, density: 1, dispersion: 5, lifetime: (60, 200), decay_every: 3, decays_into: "blood", decays_into_chance: 70, colors: [(196, 120, 124), (220, 150, 152), (180, 96, 102)]),
         // Underground gas pockets. Faintly visible; very explosive.
-        (name: "methane",  kind: Gas, density: 1, dispersion: 1, flammability: 255, ignites_at: 500, explodes: (radius: 10, power: 70, chance: 40), colors: [(120, 150, 110), (134, 164, 120)]),
+        (name: "methane",  kind: Gas, density: 1, dispersion: 2, flammability: 255, ignites_at: 500, explodes: (radius: 15, power: 70, chance: 40), colors: [(120, 150, 110), (134, 164, 120)]),
         // A toxic cloud's (the acid staff): heavy, so it sinks and pools in
         // pits and down shafts; eats at what breathes it; flammable, and a
         // spark flashes it through with pops.
-        (name: "miasma",   kind: Gas, heavy: true, density: 3, dispersion: 4, lifetime: (90, 200), decay_every: 4, corrosive: 12, flammability: 80, ignites_at: 260, explodes: (radius: 2, power: 20, chance: 3), glow: (18, 30, 4), opacity: 14, colors: [(150, 184, 80), (160, 128, 172), (128, 164, 64), (140, 112, 156)]),
-        (name: "smoke",    kind: Gas, density: 2, dispersion: 2, lifetime: (40, 120), decay_every: 2, opacity: 6, colors: [(56, 54, 54), (84, 80, 80)]),
+        (name: "miasma",   kind: Gas, heavy: true, density: 3, dispersion: 6, lifetime: (90, 200), decay_every: 4, corrosive: 12, flammability: 80, ignites_at: 260, explodes: (radius: 3, power: 20, chance: 3), glow: (18, 30, 4), opacity: 14, colors: [(150, 184, 80), (160, 128, 172), (128, 164, 64), (140, 112, 156)]),
+        (name: "smoke",    kind: Gas, density: 2, dispersion: 3, lifetime: (40, 120), decay_every: 2, opacity: 6, colors: [(56, 54, 54), (84, 80, 80)]),
 
         // ---- fire ---------------------------------------------------------
         (name: "fire",     kind: Fire, hot: true, heat: 800, heat_source: true, lifetime: (12, 40), decays_into: "smoke", glow: (255, 170, 70), colors: [(255, 220, 90), (255, 140, 30), (230, 70, 20)]),

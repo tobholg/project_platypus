@@ -45,7 +45,7 @@ struct StartAt(Vec2);
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         // PLATYPUS_ZOOM=6 starts closer in (screenshots, detail work).
-        let start_zoom = std::env::var("PLATYPUS_ZOOM").ok().and_then(|z| z.parse().ok()).filter(|z| ZOOM_LEVELS.contains(z)).unwrap_or(if crate::data::hd() { 2 } else { 3 });
+        let start_zoom = std::env::var("PLATYPUS_ZOOM").ok().and_then(|z| z.parse().ok()).filter(|z| ZOOM_LEVELS.contains(z)).unwrap_or(2);
         app.insert_resource(Zoom(start_zoom))
             .init_resource::<CursorWorld>()
             .init_resource::<CursorOverride>()
@@ -157,7 +157,7 @@ fn fly(
 
 /// The target moved further than this in a frame (cells): it went through
 /// a portal or blinked, and the camera glides after it...
-const TELEPORT: f32 = 40.0;
+const TELEPORT: f32 = 60.0;
 /// ... over this long (seconds), easing in and out.
 const GLIDE: f32 = 0.3;
 /// Pixels added before snapping the camera (see `follow`).
@@ -184,7 +184,7 @@ pub struct Glide {
 /// for frames as they took off), what it was behind closing over
 /// `AIR_CATCH` seconds.
 const RISE_TIME: f32 = 0.1;
-const RISE_LAG: f32 = 6.0;
+const RISE_LAG: f32 = 9.0;
 const AIR_CATCH: f32 = 0.05;
 
 /// A critically damped spring from `at` (moving at `speed`) toward `to`

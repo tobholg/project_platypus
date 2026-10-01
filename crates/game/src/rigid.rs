@@ -20,8 +20,8 @@ const Z_BODIES: f32 = -0.5;
 /// Falling trees are background things until they land; drawn like one.
 const DIM: f32 = 0.85;
 /// Fastest point (cells/tick) that still does no harm.
-const HARMLESS_SPEED: f32 = 1.2;
-const DAMAGE_PER_SPEED: f32 = 14.0;
+const HARMLESS_SPEED: f32 = 1.8;
+const DAMAGE_PER_SPEED: f32 = 9.33;
 const MAX_DAMAGE: f32 = 80.0;
 
 struct Drawn {
@@ -121,7 +121,7 @@ fn crush(
         let (lo, hi) = body.bounds();
         for (entity, mut k, mut health) in &mut creatures {
             let (pos, half) = (k.body.pos, k.body.half);
-            if pos.x + half.x < lo.x as f32 || pos.x - half.x > hi.x as f32 + 1.0 || pos.y + half.y < lo.y as f32 || pos.y - half.y > hi.y as f32 + 1.0 {
+            if pos.x + half.x < lo.x as f32 || pos.x - half.x > hi.x as f32 + 1.5 || pos.y + half.y < lo.y as f32 || pos.y - half.y > hi.y as f32 + 1.5 {
                 continue;
             }
             if hit.contains(&(body.id, entity)) {
@@ -140,7 +140,7 @@ fn crush(
             hit.insert((body.id, entity));
             health.harm((speed * DAMAGE_PER_SPEED).min(MAX_DAMAGE), crate::creatures::Harm::Blunt);
             let k = &mut *k;
-            let push = v * TICK_HZ as f32 * 0.7 + Vec2::new(0.0, 120.0);
+            let push = v * TICK_HZ as f32 * 0.7 + Vec2::new(0.0, 180.0);
             k.loco.knock(&mut k.body, push, 0.4);
         }
     }

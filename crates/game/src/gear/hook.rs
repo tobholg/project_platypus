@@ -60,21 +60,21 @@ pub struct HookDef {
 
 impl Default for HookDef {
     fn default() -> Self {
-        HookDef { length: 120.0, reel: 240.0, speed: 800.0, damage: 4.0, rope: (176, 140, 90), links: false }
+        HookDef { length: 180.0, reel: 360.0, speed: 1200.0, damage: 4.0, rope: (176, 140, 90), links: false }
     }
 }
 
 /// The least rope between you and what it holds (cells), past your box
 /// (reeled all the way in, you hang just off it).
-const SHORTEST: f32 = 2.0;
+const SHORTEST: f32 = 3.0;
 /// W and S: rope taken in and let out (cells/s).
-const CLIMB: f32 = 90.0;
+const CLIMB: f32 = 135.0;
 /// Something with less than this share of your size is pulled to you;
 /// more, you to it.
 const SMALLER: f32 = 0.75;
 /// A pulled thing further than this past where it should be (stuck behind
 /// something as you go): the hook lets go.
-const STRAIN: f32 = 24.0;
+const STRAIN: f32 = 36.0;
 /// The rope's line to a body blocked this long: it lets go.
 const BLOCKED: f32 = 0.25;
 /// Letting go with a jump: half a jump on top of how you were moving up,
@@ -85,17 +85,17 @@ const RETURN: f32 = 1.6;
 /// Pulled in and getting no nearer this long, against something: you slip
 /// round it, up to this many cells along it.
 const STALL: f32 = 0.08;
-const SLIP: i32 = 4;
+const SLIP: i32 = 6;
 /// A kick off a wall: sideways (cells/s) and a little up; and how long
 /// before another.
-const KICK: f32 = 260.0;
-const KICK_UP: f32 = 60.0;
+const KICK: f32 = 390.0;
+const KICK_UP: f32 = 90.0;
 const KICK_AGAIN: f32 = 0.35;
 /// Rock this near the point the rope is held at doesn't count as in its way
 /// (the rock it's hooked on, a corner it's wrapped round).
-const HELD_CLEAR: f32 = 2.0;
+const HELD_CLEAR: f32 = 3.0;
 /// Within this much of hanging, you can mantle onto the ledge you hang from.
-const MANTLE_NEAR: f32 = 3.0;
+const MANTLE_NEAR: f32 = 4.5;
 
 /// What the hook has hold of.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -235,7 +235,7 @@ fn corner(grid: &WorldGrid, from: Vec2, was: Vec2, now: Vec2) -> Option<Vec2> {
     let t = ((centre - from).dot(line) / line.length_squared().max(1e-4)).clamp(0.0, 1.0);
     let near = from + line * t;
     let out = (near - centre).normalize_or(Vec2::Y);
-    let at = centre + out * 1.2;
+    let at = centre + out * 1.8;
     let c = CellPos::from_world(at.x, at.y);
     Some(if solid(grid, c) { near } else { at })
 }
@@ -250,7 +250,7 @@ fn round(grid: &WorldGrid, from: Vec2, to: Vec2) -> Option<Vec2> {
     let t = ((centre - from).dot(line) / line.length_squared().max(1e-4)).clamp(0.0, 1.0);
     let near = from + line * t;
     let out = (near - centre).normalize_or(line.perp().normalize_or(Vec2::Y));
-    (1..=3).map(|k| centre + out * (0.7 + k as f32 * 0.5)).find(|p| !solid(grid, CellPos::from_world(p.x, p.y)))
+    (1..=3).map(|k| centre + out * (1.05 + k as f32 * 0.75)).find(|p| !solid(grid, CellPos::from_world(p.x, p.y)))
 }
 
 /// How far from the point it hangs from a body hangs (its box's edge just
@@ -265,12 +265,12 @@ fn hang_distance(half: Vec2, d: Vec2) -> f32 {
 fn mantle_spot(grid: &WorldGrid, point: Vec2, side: f32, pos: Vec2, half: Vec2) -> Option<Vec2> {
     // The rock the point is on (it sits just off the face).
     let c = CellPos::from_world(point.x + side * 0.6, point.y);
-    let reach = (c.y + 4).max((pos.y + half.y) as i32 + 3);
-    let top = (c.y - 2..=reach).find(|&y| solid(grid, CellPos::new(c.x, y - 1)) && !solid(grid, CellPos::new(c.x, y)))?;
+    let reach = (c.y + 6).max((pos.y + half.y) as i32 + 5);
+    let top = (c.y - 3..=reach).find(|&y| solid(grid, CellPos::new(c.x, y - 1)) && !solid(grid, CellPos::new(c.x, y)))?;
     // Along the top, the first place that fits with rock under its middle
     // (lifted a little over a rounded or ragged top).
-    (0..=(half.x * 2.0) as i32 + 2)
-        .flat_map(|k| (0..=4).map(move |lift| Vec2::new(point.x + side * k as f32, top as f32 + half.y + 0.05 + lift as f32)))
+    (0..=(half.x * 2.0) as i32 + 3)
+        .flat_map(|k| (0..=6).map(move |lift| Vec2::new(point.x + side * k as f32, top as f32 + half.y + 0.05 + lift as f32)))
         .find(|&p| fits(grid, p, half) && solid(grid, CellPos::from_world(p.x, p.y - half.y - 0.5)))
 }
 
@@ -320,7 +320,7 @@ pub fn rope(
         let my_size = half.x * half.y;
         // (At the game's tempo: hooks are the players'.)
         let stats = tempo.apply(&my_stats.map(|s| s.0.clone()).unwrap_or_default(), true);
-        let hand = pos + Vec2::new(facing * 2.0, half.y * 0.3);
+        let hand = pos + Vec2::new(facing * 3.0, half.y * 0.3);
         if pressed {
             let aim = if intent.aim != Vec2::ZERO { intent.aim } else { hand + Vec2::new(facing, 1.0) };
             let dir = (aim - hand).normalize_or(Vec2::new(facing, 0.0));
@@ -352,7 +352,7 @@ pub fn rope(
                     // A body in the way: the nearest of them.
                     let hit = things.iter().filter(|(t, _, _, creature, container)| *t != e && (*creature || *container)).find(|(_, k, ..)| {
                         let d = (next - k.body.pos).abs() - k.body.half;
-                        d.max_element() <= 0.5
+                        d.max_element() <= 0.75
                     });
                     if let Some((t, k, _, creature, _)) = hit {
                         let off = (next - k.body.pos).clamp(-k.body.half, k.body.half);
@@ -476,7 +476,7 @@ pub fn rope(
                         // clear place it was, round what's in the way.)
                         let wrapped = rope.last.and_then(|was| first_solid(&grid, from, was, HELD_CLEAR).is_none().then(|| corner(&grid, from, was, pos)).flatten()).or_else(|| round(&grid, from, pos));
                         match wrapped {
-                            Some(at) if at.distance(from) > 1.5 => h.pivots.push(Pivot { at, side: cross(at - from, pos - at).signum() }),
+                            Some(at) if at.distance(from) > 2.25 => h.pivots.push(Pivot { at, side: cross(at - from, pos - at).signum() }),
                             // (The same corner again.)
                             Some(_) if !h.pivots.is_empty() => break,
                             _ => {
@@ -523,7 +523,7 @@ pub fn rope(
                 h.length = h.length.clamp(chain + stop, def.length.max(chain + stop));
                 let pulling = h.reeling || intent.move_y > 0.0;
                 // (Up at the hook itself, not a corner on the way.)
-                if h.reeling && h.pivots.is_empty() && h.length <= chain + stop + 0.5 {
+                if h.reeling && h.pivots.is_empty() && h.length <= chain + stop + 0.75 {
                     h.reeling = false;
                 }
                 let hanging = chain + dist <= h.length.max(chain + stop) + MANTLE_NEAR && h.length <= chain + stop + MANTLE_NEAR;
@@ -533,15 +533,15 @@ pub fn rope(
                 // so it unwraps and the pull goes on.)
                 let touching = contacts.wall_left || contacts.wall_right || contacts.ceiling || contacts.ground;
                 let nearer = rope.last.is_some_and(|was| was.distance(from) - dist > CLIMB.min(def.reel) * DT * 0.3);
-                let at_corner = !h.pivots.is_empty() && dist <= stop + 1.5;
-                h.stalled = if pulling && ((touching && !nearer && dist > stop + 1.0) || at_corner) { h.stalled + DT } else { 0.0 };
+                let at_corner = !h.pivots.is_empty() && dist <= stop + 2.25;
+                h.stalled = if pulling && ((touching && !nearer && dist > stop + 1.5) || at_corner) { h.stalled + DT } else { 0.0 };
                 if h.stalled > STALL {
                     let along = d.perp();
                     // (Past a corner: where the rope from the one before is clear.)
                     let beyond = if at_corner { h.pivots.len().checked_sub(2).map_or(point, |i| h.pivots[i].at) } else { from };
                     let slip = (1..=SLIP + 2)
                         .flat_map(|n| [n as f32, -(n as f32)])
-                        .flat_map(|n| [pos + along * n - d, pos + along * n - d * 3.0])
+                        .flat_map(|n| [pos + along * n - d, pos + along * n - d * 4.5])
                         .find(|&p| fits(&grid, p, half) && first_solid(&grid, beyond, p, HELD_CLEAR).is_none());
                     if let Some(p) = slip {
                         k.body.pos = p;
@@ -555,7 +555,7 @@ pub fn rope(
                 }
                 // Hanging from a ledge's lip: W, or pressing toward the ledge,
                 // climbs up onto it.
-                let side = if (point.x - pos.x).abs() > 0.5 { (point.x - pos.x).signum() } else { facing };
+                let side = if (point.x - pos.x).abs() > 0.75 { (point.x - pos.x).signum() } else { facing };
                 let toward = intent.move_x != 0.0 && intent.move_x.signum() == side;
                 if hanging
                     && h.pivots.is_empty()
@@ -626,7 +626,7 @@ pub fn draw(
     for (rope, tf, k) in &ropes {
         let def = &rope.look;
         let me = tf.translation.truncate();
-        let hand = me + Vec2::new(k.loco.facing * 2.0, k.body.half.y * 0.3);
+        let hand = me + Vec2::new(k.loco.facing * 3.0, k.body.half.y * 0.3);
         let (tip, length, pivots): (Vec2, Option<f32>, &[Pivot]) = match &rope.line {
             Line::Stowed => continue,
             Line::Out { tip, .. } | Line::Back { tip } => (rope.prev_tip.lerp(*tip, a), None, &[]),
@@ -652,7 +652,7 @@ pub fn draw(
         for (i, w) in points.windows(2).enumerate() {
             let (p, q) = (w[0], w[1]);
             // The last stretch (to the hand) sags with the slack.
-            let sag = if i + 1 == segs { (slack * p.distance(q)).sqrt().min(40.0) * 0.5 } else { 0.0 };
+            let sag = if i + 1 == segs { (slack * p.distance(q)).sqrt().min(60.0) * 0.5 } else { 0.0 };
             let mid = (p + q) / 2.0 - Vec2::Y * sag;
             let steps = (p.distance(q) * 2.0).ceil().max(1.0) as i32 + (sag * 2.0) as i32;
             let mut last = IVec2::MAX;
@@ -686,7 +686,7 @@ static THROW: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter
     count: 3.0,
     life: (0.08, 0.18),
     colors: vec![(230, 230, 240), (180, 180, 200)],
-    speed: 60.0,
+    speed: 90.0,
     spread: 0.5,
     gravity: 0.0,
     drag: 5.0,
@@ -700,9 +700,9 @@ static CLINK: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter
     count: 6.0,
     life: (0.06, 0.2),
     colors: vec![(255, 250, 220), (255, 220, 140), (200, 200, 210)],
-    speed: 110.0,
+    speed: 165.0,
     spread: 1.2,
-    gravity: -200.0,
+    gravity: -300.0,
     drag: 3.0,
     size: 1.0,
     jitter: 0.0,

@@ -453,10 +453,10 @@ fn overlays(view: Res<ArenaView>, mut gizmos: Gizmos, q: Query<(&Kinematics, &Tr
         let (p, h) = (tf.translation.truncate(), k.body.half);
         gizmos.rect_2d(Isometry2d::from_translation(p), h * 2.0, color);
         let f = k.loco.facing;
-        gizmos.line_2d(p + Vec2::new(h.x * f, 0.0), p + Vec2::new((h.x + 3.0) * f, 0.0), color);
-        gizmos.line_2d(p + Vec2::new(-h.x - 1.0, -h.y), p + Vec2::new(h.x + 1.0, -h.y), Color::WHITE);
+        gizmos.line_2d(p + Vec2::new(h.x * f, 0.0), p + Vec2::new((h.x + 4.5) * f, 0.0), color);
+        gizmos.line_2d(p + Vec2::new(-h.x - 1.5, -h.y), p + Vec2::new(h.x + 1.5, -h.y), Color::WHITE);
         if let Some(HandPos { at: Some(at), .. }) = hand {
-            gizmos.circle_2d(Isometry2d::from_translation(*at), 1.0, Color::srgb(1.0, 0.9, 0.2));
+            gizmos.circle_2d(Isometry2d::from_translation(*at), 1.5, Color::srgb(1.0, 0.9, 0.2));
         }
     }
 }

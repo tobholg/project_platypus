@@ -129,7 +129,7 @@ fn to_surface(mut acts: MessageReader<DevAction>, sim: Res<crate::world::SimWorl
     // From the ground as generated (or, with none, from here), up to where
     // the body fits with open air over it.
     let from = sim.generator.surface_hint(x as i32).map_or(k.body.pos.y, |s| (s as f32 + half.y + 1.0).max(k.body.pos.y));
-    let Some(y) = (0..2000).map(|up| from + up as f32).find(|&y| clear(Vec2::new(x, y)) && (1..40).all(|a| clear(Vec2::new(x, y + a as f32 * 2.0)))) else { return };
+    let Some(y) = (0..3000).map(|up| from + up as f32).find(|&y| clear(Vec2::new(x, y)) && (1..60).all(|a| clear(Vec2::new(x, y + a as f32 * 2.0)))) else { return };
     k.body.pos = Vec2::new(x, y);
     k.body.vel = Vec2::ZERO;
     k.prev_pos = k.body.pos;

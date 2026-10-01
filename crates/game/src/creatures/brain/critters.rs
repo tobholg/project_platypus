@@ -55,7 +55,7 @@ pub struct Critter {
 
 impl Default for Critter {
     fn default() -> Self {
-        Critter { flee_range: 40.0, calm_after: 3.0, hops: false, flies: false, wander_every: 2.0, rest: 0.6, wander_speed: 0.5, hovers: None, swims: false }
+        Critter { flee_range: 60.0, calm_after: 3.0, hops: false, flies: false, wander_every: 2.0, rest: 0.6, wander_speed: 0.5, hovers: None, swims: false }
     }
 }
 
@@ -82,7 +82,7 @@ fn scare(mut blasts: MessageReader<crate::fx::Explosion>, time: Res<Time>, mut q
         }
         if m.last_hp.is_some_and(|last| h.hp < last - 0.5) {
             m.until = now + c.calm_after;
-            m.from = k.body.pos - Vec2::new(k.loco.facing, 0.0) * 10.0;
+            m.from = k.body.pos - Vec2::new(k.loco.facing, 0.0) * 15.0;
         }
         m.last_hp = Some(h.hp);
     }
@@ -148,12 +148,12 @@ fn critters(
                 };
                 // Not out of the water: turn back at its edges, and stay
                 // under its surface.
-                let ahead = pos + dir.normalize_or_zero() * (k.body.half.x + 3.0);
+                let ahead = pos + dir.normalize_or_zero() * (k.body.half.x + 4.5);
                 if dir != Vec2::ZERO && !liquid(world, ahead) {
                     dir = -dir;
                     m.dir = dir;
                 }
-                if !liquid(world, pos + Vec2::new(0.0, k.body.half.y + 2.0)) {
+                if !liquid(world, pos + Vec2::new(0.0, k.body.half.y + 3.0)) {
                     dir.y = dir.y.min(-0.3);
                 }
                 let speed = if fleeing { 1.0 } else { c.wander_speed };
@@ -206,7 +206,7 @@ fn critters(
             if (move_x > 0.0 && cts.wall_right) || (move_x < 0.0 && cts.wall_left) {
                 m.dir.x = -m.dir.x;
                 if fleeing {
-                    m.from = pos + Vec2::new(move_x * 10.0, 0.0);
+                    m.from = pos + Vec2::new(move_x * 15.0, 0.0);
                 }
                 move_x = -move_x;
             }
@@ -323,9 +323,9 @@ fn reload_life(mut life: ResMut<Life>) {
 /// Critters come and go round the player: spawned out of sight (just past
 /// the screen's edge, on the surface; anywhere near for water and caves),
 /// gone when far away, or out of their hours and out of sight.
-const NEAR: f32 = 450.0;
-const GONE: f32 = 800.0;
-const OUT_OF_SIGHT: f32 = 260.0;
+const NEAR: f32 = 675.0;
+const GONE: f32 = 1200.0;
+const OUT_OF_SIGHT: f32 = 390.0;
 /// Tries to find a spot of water or cave a spawn.
 const TRIES: usize = 16;
 
@@ -380,21 +380,21 @@ fn ambient(
         let spot = match h.place {
             Place::Surface | Place::Shore => {
                 let side = if unit(&mut rng) < 0.5 { -1.0 } else { 1.0 };
-                let x = (p.x + side * (330.0 + unit(&mut rng) * 110.0)) as i32;
+                let x = (p.x + side * (495.0 + unit(&mut rng) * 165.0)) as i32;
                 // The ground there: the first solid cell under open air, near
                 // the player's height (not in a cave far below).
-                let top = sim.generator.surface_hint(x).unwrap_or(p.y as i32) + 40;
-                let Some(y) = (top - 160..=top).rev().find(|&y| {
+                let top = sim.generator.surface_hint(x).unwrap_or(p.y as i32) + 60;
+                let Some(y) = (top - 240..=top).rev().find(|&y| {
                     let here = world.get(CellPos::new(x, y));
                     let above = world.get(CellPos::new(x, y + 1));
                     here.is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder)) && above.is_some_and(|c| c.is_air() || mats.phys(c.material).kind == Kind::Plant)
                 }) else {
                     continue;
                 };
-                if (y as f32 - p.y).abs() > 200.0 {
+                if (y as f32 - p.y).abs() > 300.0 {
                     continue;
                 }
-                let shore = (-30..=30).any(|dx| world.get(CellPos::new(x + dx, y)).is_some_and(|c| mats.phys(c.material).kind == Kind::Liquid));
+                let shore = (-45..=45).any(|dx| world.get(CellPos::new(x + dx, y)).is_some_and(|c| mats.phys(c.material).kind == Kind::Liquid));
                 if (h.place == Place::Shore) != shore {
                     continue;
                 }
@@ -402,20 +402,20 @@ fn ambient(
             }
             // Somewhere near in cool liquid, with room round it.
             Place::Water => (0..TRIES).find_map(|_| {
-                let (x, y) = ((p.x + (unit(&mut rng) - 0.5) * 760.0) as i32, (p.y + (unit(&mut rng) - 0.5) * 400.0) as i32);
+                let (x, y) = ((p.x + (unit(&mut rng) - 0.5) * 1140.0) as i32, (p.y + (unit(&mut rng) - 0.5) * 600.0) as i32);
                 let wet = |dx: i32, dy: i32| kind_at(x + dx, y + dy).is_some_and(|(_, ph)| ph.kind == Kind::Liquid && !ph.hot);
-                (wet(0, 0) && wet(-4, 0) && wet(4, 0) && wet(0, 3) && wet(0, -3)).then(|| Vec2::new(x as f32 + 0.5, y as f32 - 1.0))
+                (wet(0, 0) && wet(-6, 0) && wet(6, 0) && wet(0, 5) && wet(0, -5)).then(|| Vec2::new(x as f32 + 0.5, y as f32 - 1.0))
             }),
             // In the air of a cave: open round it, a roof above, well under
             // the surface.
             Place::Cave => (0..TRIES).find_map(|_| {
-                let (x, y) = ((p.x + (unit(&mut rng) - 0.5) * 800.0) as i32, (p.y + (unit(&mut rng) - 0.5) * 520.0) as i32);
-                if sim.generator.surface_hint(x).is_some_and(|s| y > s - 30) {
+                let (x, y) = ((p.x + (unit(&mut rng) - 0.5) * 1200.0) as i32, (p.y + (unit(&mut rng) - 0.5) * 780.0) as i32);
+                if sim.generator.surface_hint(x).is_some_and(|s| y > s - 45) {
                     return None;
                 }
                 let open = |dx: i32, dy: i32| kind_at(x + dx, y + dy).is_some_and(|(air, _)| air);
-                let roofed = (4..40).any(|dy| kind_at(x, y + dy).is_some_and(|(_, ph)| matches!(ph.kind, Kind::Static)));
-                (open(0, 0) && open(-4, 0) && open(4, 0) && open(0, 4) && open(0, -4) && roofed).then(|| Vec2::new(x as f32 + 0.5, y as f32))
+                let roofed = (6..60).any(|dy| kind_at(x, y + dy).is_some_and(|(_, ph)| matches!(ph.kind, Kind::Static)));
+                (open(0, 0) && open(-6, 0) && open(6, 0) && open(0, 6) && open(0, -6) && roofed).then(|| Vec2::new(x as f32 + 0.5, y as f32))
             }),
         };
         let Some(mut at) = spot else { continue };

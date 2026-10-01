@@ -37,17 +37,17 @@ pub struct Gem {
 /// How much lower the threshold is where a cave is near: ore shows on walls.
 pub const EXPOSED_BONUS: f64 = 0.1;
 /// How far (cells) to look for a cave when deciding "exposed".
-pub const EXPOSED_REACH: i32 = 5;
+pub const EXPOSED_REACH: i32 = 8;
 /// Gem clusters: noise above this, in a wall within `GEM_REACH` of a cave,
 /// in the stretches of wall where gems grow at all (a coarser noise above
 /// `GEM_ZONE`, every `GEM_ZONE_SCALE` cells or so), so they're a find rather
 /// than a lining.
 pub const GEM_THRESHOLD: f64 = 0.4;
 pub const GEM_ZONE: f64 = 0.55;
-pub const GEM_ZONE_SCALE: f64 = 140.0;
-pub const GEM_REACH: i32 = 4;
+pub const GEM_ZONE_SCALE: f64 = 210.0;
+pub const GEM_REACH: i32 = 6;
 /// Cells per noise unit for gem clusters (a few cells across).
-pub const GEM_SCALE: f64 = 7.0;
+pub const GEM_SCALE: f64 = 10.5;
 
 /// Every ore and gem, placed for this plan's bands.
 pub fn rules(plan: &WorldPlan, mats: &MaterialTable) -> (Vec<Ore>, Vec<Gem>) {
@@ -65,17 +65,17 @@ pub fn rules(plan: &WorldPlan, mats: &MaterialTable) -> (Vec<Ore>, Vec<Gem>) {
     // (Windows are (lowest y, highest y): the deeper point first.)
     let ores = vec![
         // Coal: shallow seams, flat and wide, up into the mountains.
-        ore("coal", (at(Band::Caverns, 0.5), top), (34.0, 13.0), 0.56, 11.9),
+        ore("coal", (at(Band::Caverns, 0.5), top), (51.0, 19.5), 0.56, 11.9),
         // Copper: common veins from the mountains down through the underground.
-        ore("copper_ore", (at(Band::Underground, 1.0), top), (44.0, 16.0), 0.5, 21.3),
+        ore("copper_ore", (at(Band::Underground, 1.0), top), (66.0, 24.0), 0.5, 21.3),
         // Iron: veins from mid-underground to the upper caverns.
-        ore("iron_ore", (at(Band::Caverns, 0.4), at(Band::Underground, 0.35)), (40.0, 15.0), 0.52, 33.7),
+        ore("iron_ore", (at(Band::Caverns, 0.4), at(Band::Underground, 0.35)), (60.0, 22.5), 0.52, 33.7),
         // Silver: blobs through the caverns.
-        ore("silver_ore", (at(Band::Caverns, 1.0), at(Band::Caverns, 0.1)), (20.0, 16.0), 0.55, 45.1),
+        ore("silver_ore", (at(Band::Caverns, 1.0), at(Band::Caverns, 0.1)), (30.0, 24.0), 0.55, 45.1),
         // Gold: smaller blobs, lower caverns and the upper deep.
-        ore("gold_ore", (at(Band::Deep, 0.55), at(Band::Caverns, 0.5)), (17.0, 14.0), 0.57, 57.9),
+        ore("gold_ore", (at(Band::Deep, 0.55), at(Band::Caverns, 0.5)), (25.5, 21.0), 0.57, 57.9),
         // Mithril: long rare seams in the deep's slate.
-        ore("mithril_ore", (span(Band::Deep).0, at(Band::Deep, 0.2)), (34.0, 10.0), 0.68, 69.4),
+        ore("mithril_ore", (span(Band::Deep).0, at(Band::Deep, 0.2)), (51.0, 15.0), 0.68, 69.4),
     ];
     let gem = |name: &str, band: Band, salt: f64| Gem { material: mats.expect_id(name), band, salt };
     let gems = vec![gem("amethyst", Band::Underground, 81.7), gem("emerald", Band::Caverns, 93.1), gem("ruby", Band::Deep, 105.3)];
@@ -84,14 +84,14 @@ pub fn rules(plan: &WorldPlan, mats: &MaterialTable) -> (Vec<Ore>, Vec<Gem>) {
 
 impl Ore {
     /// The threshold at `y`: the rule's inside the window, rising toward its
-    /// ends (over 15% of it, at most 400 cells) so ore thins out rather than
+    /// ends (over 15% of it, at most 600 cells) so ore thins out rather than
     /// stopping at a line. `None` outside.
     pub fn threshold_at(&self, y: i32) -> Option<f64> {
         let (lo, hi) = self.window;
         if y < lo || y > hi {
             return None;
         }
-        let fade = ((hi - lo) as f64 * 0.15).clamp(1.0, 400.0);
+        let fade = ((hi - lo) as f64 * 0.15).clamp(1.0, 600.0);
         let edge = ((y - lo).min(hi - y) as f64 / fade).min(1.0);
         Some(self.threshold + (1.0 - edge) * 0.25)
     }

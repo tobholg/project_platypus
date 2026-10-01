@@ -11,7 +11,7 @@
 use crate::rng::hash;
 
 /// Cells per weather texel, each way.
-pub const TEXEL: i32 = 4;
+pub const TEXEL: i32 = 6;
 /// The field steps every this many ticks.
 pub const STEP_EVERY: u64 = 4;
 /// Moisture above which a texel shows as cloud.
@@ -20,8 +20,8 @@ pub const CLOUD_AT: f32 = 0.35;
 pub const RAIN_AT: f32 = 0.9;
 /// A cloud's heart at its wettest (a storm in a humid front: `shape`).
 const PEAK_MAX: f32 = 2.1;
-/// Cloud drift at full wind, cells per tick (~3 cells/s).
-const DRIFT: f32 = 0.05;
+/// Cloud drift at full wind, cells per tick (~4.5 cells/s).
+const DRIFT: f32 = 0.075;
 /// A forced storm or clear sky fades back to the natural weather by this
 /// factor per step (half-life ~2.5 minutes).
 const BIAS_FADE: f32 = 0.9997;
@@ -325,13 +325,13 @@ impl Weather {
         let x = c as f32 * TEXEL as f32 - (self.offset / TEXEL as f32).floor() * TEXEL as f32;
         let t = tick as f32;
         // Fronts come and go over tens of minutes; a storm lasts minutes.
-        let broad = noise2(self.seed, 0xC10D, x / 1_600.0, t / 90_000.0);
-        let medium = noise2(self.seed, 0xC10E, x / 260.0, t / 30_000.0);
+        let broad = noise2(self.seed, 0xC10D, x / 2_400.0, t / 90_000.0);
+        let medium = noise2(self.seed, 0xC10E, x / 390.0, t / 30_000.0);
         let bias = self.bias[c];
         let humid = (smoothstep(0.45, 0.8, 0.72 * broad + 0.28 * medium) + bias).clamp(0.0, 1.0);
-        let heap = noise2(self.seed, 0xC10F, x / 70.0, t / 15_000.0);
+        let heap = noise2(self.seed, 0xC10F, x / 105.0, t / 15_000.0);
         let rows = self.rows as f32;
-        let base = rows * 0.12 + 3.0 * noise2(self.seed, 0xC110, x / 150.0, t / 20_000.0);
+        let base = rows * 0.12 + 3.0 * noise2(self.seed, 0xC110, x / 225.0, t / 20_000.0);
         // Separate heaps with clear sky between, more of them joined up the
         // more humid it is.
         let heaped = smoothstep(0.55 - 0.35 * humid, 0.85 - 0.25 * humid, heap).max(bias);
@@ -389,7 +389,7 @@ mod tests {
     use super::*;
 
     fn weather() -> Weather {
-        Weather::new(7, 16_384, 3_000, 160)
+        Weather::new(7, 24_576, 4_500, 240)
     }
 
     #[test]
@@ -407,8 +407,8 @@ mod tests {
         for t in 1..=400 {
             w.step(t, 1.0);
         }
-        // 400 ticks at full wind: 20 cells = 5 texels to the right.
-        assert!((w.offset() - 20.0).abs() < 0.01, "air moved {}", w.offset());
+        // 400 ticks at full wind: 30 cells = 5 texels to the right.
+        assert!((w.offset() - 30.0).abs() < 0.01, "air moved {}", w.offset());
         let (cols, row) = (w.cols, w.rows / 2);
         let moved = (0..cols).filter(|&c| (w.moisture[row * cols + (c + 5) % cols] - before[row * cols + c]).abs() < 0.2).count();
         assert!(moved as f32 > cols as f32 * 0.9, "the pattern moved 5 texels right ({moved} of {cols} match)");
@@ -433,15 +433,15 @@ mod tests {
     #[test]
     fn a_forced_storm_rains_hard_and_a_forced_clear_sky_is_clear() {
         let mut w = weather();
-        let x = 8_000;
-        w.force(x, 200, true, 0);
+        let x = 12_000;
+        w.force(x, 300, true, 0);
         let mut storm = 0.0f32;
         for t in 1..=400 {
             let out = w.step(t, 0.0);
-            storm = storm.max(out.iter().filter(|p| (p.x - x).abs() < 40).map(|p| p.amount).fold(0.0, f32::max));
+            storm = storm.max(out.iter().filter(|p| (p.x - x).abs() < 60).map(|p| p.amount).fold(0.0, f32::max));
         }
         assert!(storm > STORM_RAIN, "a thunderstorm ({storm})");
-        w.force(x, 200, false, 400);
+        w.force(x, 300, false, 400);
         let c = w.col(x);
         assert!((0..w.rows).all(|r| w.moisture[r * w.cols + c] < CLOUD_AT), "clear at once");
         for t in 401..=2_000 {
@@ -453,13 +453,13 @@ mod tests {
     #[test]
     fn only_the_window_is_simulated() {
         let mut w = weather();
-        w.set_window(4_000, 6_000);
+        w.set_window(6_000, 9_000);
         let before = w.moisture.clone();
         let mut rained_outside = false;
         for t in 1..=3_000 {
-            rained_outside |= w.step(t, 0.0).iter().any(|p| !(4_000..=6_000).contains(&p.x));
+            rained_outside |= w.step(t, 0.0).iter().any(|p| !(6_000..=9_000).contains(&p.x));
         }
-        let (a, b) = (4_000 / TEXEL as usize, 6_000 / TEXEL as usize);
+        let (a, b) = (6_000 / TEXEL as usize, 9_000 / TEXEL as usize);
         let changed = |c: usize| (0..w.rows).any(|r| w.moisture[r * w.cols + c] != before[r * w.cols + c]);
         assert!(!rained_outside, "no rain out of the window");
         assert!((0..a).chain(b + 1..w.cols).all(|c| !changed(c)), "outside it waits");

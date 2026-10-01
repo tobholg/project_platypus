@@ -5,7 +5,7 @@
     name: "Troll",
     // What it may have on it when it dies (loot.ron), besides what it wears.
     loot: "troll",
-    size: (15, 34),
+    size: (23, 51),
     health: 420,
     team: Enemy,
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -14,14 +14,14 @@
     // the last 5 s, and while they close it can't die: steel brings it
     // down to its last breath and it heals; burnt, any blow finishes it.
     regen: (per_sec: 10, stopped_by: [fire, acid], pause: 5, undying: true),
-    fall_damage: (safe_height: 90, per_cell: 1.5),
+    fall_damage: (safe_height: 135, per_cell: 1.0),
     movement: (
-        run_speed: 38,
-        ground_accel: 500,
-        ground_decel: 900,
-        jump_height: 16,
+        run_speed: 57,
+        ground_accel: 750,
+        ground_decel: 1350,
+        jump_height: 24,
         air_jumps: 0,
-        step_height: 5,
+        step_height: 8,
         dash_speed: 0,
     ),
     art: "troll",
@@ -32,7 +32,7 @@
     blood: "blood",
     brain: (
         kind: "hunter",
-        params: (aggro: 260, close: Walk(keep: 18, jump_to_reach: 30), attack: Swing(reach: 30, every: 2.2, combo: 1), wander: (speed: 0.3, every: 3.5)),
+        params: (aggro: 390, close: Walk(keep: 27, jump_to_reach: 45), attack: Swing(reach: 45, every: 2.2, combo: 1), wander: (speed: 0.3, every: 3.5)),
     ),
     z: 9,
 )

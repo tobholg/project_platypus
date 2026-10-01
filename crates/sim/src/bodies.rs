@@ -17,19 +17,19 @@ use crate::coords::CellPos;
 use crate::material::{Kind, MaterialTable};
 
 /// Detached pieces at least this big become bodies; smaller ones crumble.
-pub const BODY_MIN_CELLS: usize = 64;
+pub const BODY_MIN_CELLS: usize = 144;
 /// Objects (`MaterialDef::object`) as small as this still come away whole.
-pub const OBJECT_MIN_CELLS: usize = 4;
+pub const OBJECT_MIN_CELLS: usize = 9;
 /// Biggest piece that lifts out as an object (bigger is ground: a kick
 /// into a mountain does nothing).
-pub const OBJECT_MAX: usize = 2_500;
+pub const OBJECT_MAX: usize = 5_625;
 /// Cells per tick²; the same as particles and creatures.
 const GRAVITY: f32 = crate::particles::GRAVITY;
 /// Fastest a boundary cell may move per substep (cells), so it can't skip
 /// through a thin floor.
 const MAX_SUBSTEP_TRAVEL: f32 = 0.6;
-const MAX_SUBSTEPS: u32 = 24;
-const MAX_SPEED: f32 = 12.0;
+const MAX_SUBSTEPS: u32 = 36;
+const MAX_SPEED: f32 = 18.0;
 const MAX_SPIN: f32 = 0.25;
 const FRICTION: f32 = 0.7;
 const SOLVER_ITERATIONS: usize = 6;
@@ -38,7 +38,7 @@ const SOLVER_ITERATIONS: usize = 6;
 /// forever and never settled.)
 const PUSH_OUT: f32 = 0.8;
 /// Slower than this (cells/tick at the fastest point) counts as still.
-const REST_SPEED: f32 = 0.04;
+const REST_SPEED: f32 = 0.06;
 const REST_TICKS: u32 = 15;
 /// Gives up and settles wherever it is (wedged, or balanced on a point).
 const MAX_AGE: u32 = 600;

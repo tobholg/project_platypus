@@ -29,7 +29,7 @@ impl Plugin for VillagerPlugin {
 }
 
 /// A player this near (cells) and a villager stops to talk.
-pub const TALK_NEAR: f32 = 36.0;
+pub const TALK_NEAR: f32 = 54.0;
 /// Home from this hour to that (it's night).
 const HOME_FROM: f32 = 20.5;
 const HOME_UNTIL: f32 = 6.5;
@@ -58,7 +58,7 @@ pub struct Villager {
 
 impl Default for Villager {
     fn default() -> Self {
-        Villager { role: String::new(), lines: Vec::new(), wander: 40.0, wander_speed: 0.35, flee_range: 110.0, sells: Vec::new(), buys: false, heals: None }
+        Villager { role: String::new(), lines: Vec::new(), wander: 60.0, wander_speed: 0.35, flee_range: 165.0, sells: Vec::new(), buys: false, heals: None }
     }
 }
 
@@ -72,7 +72,7 @@ pub struct Home(pub Vec2);
 pub struct Hiding;
 
 /// Within this of home (cells across), it's home.
-const AT_HOME: f32 = 4.0;
+const AT_HOME: f32 = 6.0;
 
 /// A villager's day: where it's heading, till when; and whether it's
 /// talking to a player (near) or running.
@@ -122,7 +122,7 @@ fn live(
             let d = home.0.x - pos.x;
             if d.abs() < AT_HOME { 0.0 } else { d.signum() }
         } else if let Some(p) = player {
-            controls.0.aim = p + Vec2::new(0.0, 6.0);
+            controls.0.aim = p + Vec2::new(0.0, 9.0);
             0.0
         } else {
             let target = if night {
@@ -137,7 +137,7 @@ fn live(
                 r.target
             };
             let d = target - pos.x;
-            if d.abs() < 3.0 { 0.0 } else { d.signum() * if night { 0.6 } else { v.wander_speed } }
+            if d.abs() < 4.5 { 0.0 } else { d.signum() * if night { 0.6 } else { v.wander_speed } }
         };
         // A step it can't take: jump it.
         let c = &k.loco.contacts;

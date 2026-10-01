@@ -1,42 +1,58 @@
 // A fish: silver-blue, a tail that beats. Out of water it flops.
 (
-    size: (12, 7),
-    feet: (6, 7),
+    size: (18, 11),
+    feet: (9, 11),
     outline: (22, 30, 40),
     palette: {
         'f': (150, 176, 196),   // body
+        'L': (190, 210, 224),   // body, the silver sheen
         'F': (96, 120, 150),   // back
+        'g': (120, 146, 170),   // gill line, scales
         'l': (214, 226, 232),   // belly
         'k': (20, 24, 30),   // eye
+        'm': (64, 82, 104),   // mouth
         't': (110, 136, 166),   // tail and fins
+        'T': (84, 106, 136),   // tail and fins, the rays
     },
     frames: {
         "swim_a": [
-            "............",
-            ".....FFF....",
-            ".t..FfffFF..",
-            ".ttFffffkff.",
-            ".t..llllll..",
-            ".....lll....",
-            "............",
+            "..................",
+            "........tTt.......",
+            ".t......FFFFF.....",
+            ".Tt...FFFFFFFFF...",
+            ".tTtFFfffffgfLkfF.",
+            "..ttfLLLLLLgffffm.",
+            ".tTt.llllllllllll.",
+            ".Tt...lllllllll...",
+            ".t.......tTl......",
+            "..................",
+            "..................",
         ],
         "swim_b": [
-            "............",
-            ".....FFF....",
-            "....FfffFF..",
-            ".ttFffffkff.",
-            ".tt.llllll..",
-            ".....lll....",
-            "............",
+            "..................",
+            "........tTt.......",
+            "........FFFFF.....",
+            "......FFFFFFFFF...",
+            "..ttFFfffffgfLkfF.",
+            ".tTTfLLLLLLgffffm.",
+            ".ttt.llllllllllll.",
+            ".......llllllll...",
+            ".........tTl......",
+            "..................",
+            "..................",
         ],
         "flop": [
-            "............",
-            "............",
-            "..t..FFFF...",
-            "..ttFffffkf.",
-            "..t.llllll..",
-            "............",
-            "............",
+            "..................",
+            "..................",
+            "..................",
+            "..t.......FFFFF...",
+            "..Tt..FFFFFFFFFF..",
+            "..tTtFfffffgfLkfF.",
+            "..Tt.LLLLLLgllllm.",
+            "..t....lllllllll..",
+            "..................",
+            "..................",
+            "..................",
         ],
     },
     clips: {

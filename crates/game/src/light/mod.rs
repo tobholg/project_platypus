@@ -46,7 +46,7 @@ pub struct LightPlugin;
 const Z_LIGHT: f32 = 15.0;
 const Z_GLOW: f32 = 15.5;
 /// Cells of light grid beyond the view, so lights just off screen shine in.
-const MARGIN: f32 = 48.0;
+const MARGIN: f32 = 72.0;
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 pub struct LampCfg {
@@ -329,11 +329,11 @@ fn collect_flashes(
         flashes.0.push(Flash { at: j.at, color: [0.5, 0.6, 0.85], age: 0.0, life: 0.45 });
     }
     for e in blasts.read() {
-        let k = (e.radius / 20.0).min(2.0);
+        let k = (e.radius / 30.0).min(2.0);
         flashes.0.push(Flash { at: e.at, color: [1.3 * k, 0.95 * k, 0.55 * k], age: 0.0, life: 0.45 });
     }
     for Lightning(s) in bolts.read() {
-        flashes.0.push(Flash { at: Vec2::new(s.hit.x as f32, s.hit.y as f32 + 4.0), color: [1.4, 1.45, 1.7], age: 0.0, life: 0.4 });
+        flashes.0.push(Flash { at: Vec2::new(s.hit.x as f32, s.hit.y as f32 + 6.0), color: [1.4, 1.45, 1.7], age: 0.0, life: 0.4 });
         for p in s.charged.iter().step_by(120).take(24) {
             flashes.0.push(Flash { at: Vec2::new(p.x as f32, p.y as f32), color: [0.35, 0.5, 0.9], age: 0.0, life: 0.3 });
         }
@@ -536,7 +536,7 @@ fn compute_light(
     let generator = &sim.generator;
     let open = |tx: usize| {
         let x = origin.x + tx as i32 * t + t / 2;
-        for y in top..top + 600 {
+        for y in top..top + 900 {
             match world.get(CellPos::new(x, y)) {
                 // Past what's loaded: open if above the ground as generated.
                 None => return generator.surface_hint(x).is_none_or(|s| y >= s),

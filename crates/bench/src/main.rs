@@ -12,9 +12,9 @@ use platypus_sim::{CHUNK, CellPos, ChunkPos, MaterialTable, World, WorldEdit};
 use platypus_worldgen::{Band, ChunkGenerator, FlatGen, Preset, TerrainGen};
 use rayon::prelude::*;
 
-/// The region a 1080p screen at 3 px/cell needs (640×360 cells) plus a margin.
-const VIEW_W: i32 = 12;
-const VIEW_H: i32 = 8;
+/// The region a 1080p screen at 2 px/cell needs (960×540 cells) plus a margin.
+const VIEW_W: i32 = 18;
+const VIEW_H: i32 = 12;
 
 struct Outcome {
     name: &'static str,
@@ -158,23 +158,11 @@ fn stream_columns(m: &Arc<MaterialTable>, g: &TerrainGen, cy: i32, name: &'stati
 /// among them, for 40 s. Prints where a tick's time goes (phases), how many
 /// chunks are awake and how many cells they visit.
 fn chaos(m: &Arc<MaterialTable>) -> Outcome {
-    chaos_at(m, 1.0, "chaos")
-}
-
-/// The HD spike: the same chaos with everything 1.5× in cells (the arena,
-/// the blobs, the blasts, the blood), as it would be with every creature
-/// and thing drawn 1.5× bigger and seen at 2 px a cell.
-fn chaos_hd(m: &Arc<MaterialTable>) -> Outcome {
-    chaos_at(m, 1.5, "chaos_hd")
-}
-
-fn chaos_at(m: &Arc<MaterialTable>, scale: f32, name: &'static str) -> Outcome {
-    let k = |v: i32| (v as f32 * scale).round() as i32;
-    let g = platypus_worldgen::ArenaGen::new(m).scaled(scale);
+    let g = platypus_worldgen::ArenaGen::new(m);
     let mut w = World::new(5, m.clone());
     w.set_climate(g.climate());
     let (lo, hi) = g.bounds();
-    load_region(&mut w, &g, lo, hi.x - lo.x + 1, k(12));
+    load_region(&mut w, &g, lo, hi.x - lo.x + 1, 18);
     for _ in 0..200 {
         w.step();
     }
@@ -190,22 +178,22 @@ fn chaos_at(m: &Arc<MaterialTable>, scale: f32, name: &'static str) -> Outcome {
         if t % 180 == 0 {
             let n = 1 + t / 180;
             for j in 0..n.min(8) {
-                let x = k(320 + (rng.next_u32() % 600) as i32);
-                let y = floor + k(100 + (rng.next_u32() % 60) as i32);
-                let (mat, r) = (mats[j % 4], k([10, 12, 6, 8][j % 4]));
+                let x = 480 + (rng.next_u32() % 900) as i32;
+                let y = floor + 150 + (rng.next_u32() % 90) as i32;
+                let (mat, r) = (mats[j % 4], [15, 18, 9, 12][j % 4]);
                 w.apply_edit(&WorldEdit::Paint { center: CellPos::new(x, y), radius: r, material: mat, overwrite: false });
             }
             for _ in 0..(4 + n).min(12) {
-                let x = k(320 + (rng.next_u32() % 600) as i32);
-                w.apply_edit(&WorldEdit::Explode { center: CellPos::new(x, floor + k(4)), radius: k(20), power: 90 });
+                let x = 480 + (rng.next_u32() % 900) as i32;
+                w.apply_edit(&WorldEdit::Explode { center: CellPos::new(x, floor + 6), radius: 30, power: 90 });
             }
         }
-        // Deaths: bursts of blood (a creature's, 220 cells), a few a tick in
+        // Deaths: bursts of blood (a creature's, 495 cells), a few a tick in
         // a big fight.
         if t % 6 == 0 {
             for _ in 0..3 {
-                let x = (320.0 + (rng.next_u32() % 600) as f32) * scale;
-                w.splash([x, floor as f32 + 10.0 * scale], mats[3], (220.0 * scale * scale) as usize, 2.6 * scale);
+                let x = 480.0 + (rng.next_u32() % 900) as f32;
+                w.splash([x, floor as f32 + 15.0], mats[3], 495, 3.9);
             }
         }
         let at = Instant::now();
@@ -225,7 +213,7 @@ fn chaos_at(m: &Arc<MaterialTable>, scale: f32, name: &'static str) -> Outcome {
     }
     let phases: Vec<String> = platypus_sim::PHASES.iter().zip(phases).map(|(n, d)| format!("{n} {:.2}", d.as_secs_f64() * 1000.0 / ticks as f64)).collect();
     Outcome {
-        name,
+        name: "chaos",
         what: format!("up to {active} awake, {most} particles, {} cells visited a tick; ms a tick: {}; {}", visited / ticks, phases.join(", "), report.join(", ")),
         avg: total / ticks as u32,
         worst,
@@ -237,8 +225,8 @@ fn main() {
     let only = std::env::args().nth(1);
     let m = materials();
     type Scenario = fn(&Arc<MaterialTable>) -> Outcome;
-    let scenarios: [(&str, Scenario); 7] =
-        [("settled", settled), ("deep", deep), ("avalanche", avalanche), ("streaming", streaming), ("stream_deep", streaming_deep), ("chaos", chaos), ("chaos_hd", chaos_hd)];
+    let scenarios: [(&str, Scenario); 6] =
+        [("settled", settled), ("deep", deep), ("avalanche", avalanche), ("streaming", streaming), ("stream_deep", streaming_deep), ("chaos", chaos)];
     println!("platypus_bench — {} worker threads\n", rayon::current_num_threads());
     println!("{:<11} {:>10} {:>10} {:>10}", "scenario", "avg", "worst", "budget");
     let mut failed = false;

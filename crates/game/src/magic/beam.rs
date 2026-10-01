@@ -29,7 +29,7 @@ pub fn trace(world: &World, bodies: impl Iterator<Item = (Entity, Vec2, Vec2)>, 
     let near: Vec<(Entity, Vec2, Vec2)> = bodies
         .filter(|&(e, pos, half)| {
             let t = (pos - from).dot(dir).clamp(0.0, range);
-            e != caster && (from + dir * t).distance(pos) <= half.max_element() + 1.0
+            e != caster && (from + dir * t).distance(pos) <= half.max_element() + 1.5
         })
         .collect();
     let steps = (range * 2.0) as i32;
@@ -100,7 +100,7 @@ pub fn draw(
     // (Of each caster's beam, the latest: two ticks in a frame drew two.)
     let mut lines: Vec<&Line> = Vec::new();
     for l in beams.lines.iter().rev() {
-        if !lines.iter().any(|m| m.from.distance(l.from) < 6.0 && m.color == l.color) {
+        if !lines.iter().any(|m| m.from.distance(l.from) < 9.0 && m.color == l.color) {
             lines.push(l);
         }
     }

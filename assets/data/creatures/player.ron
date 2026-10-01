@@ -3,35 +3,35 @@
 (
     name: "Player",
     // 1.5 blocks wide, just under 4 tall: fits a 2-wide shaft, a 4-tall tunnel.
-    size: (6, 15),
+    size: (9, 23),
     health: 100,
     team: Player,
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "humanoid",
-    // (Safe past a triple jump's height: ~105 cells in cloud boots.)
-    fall_damage: (safe_height: 120, per_cell: 0.6),
+    // (Safe past a triple jump's height: ~158 cells in cloud boots.)
+    fall_damage: (safe_height: 180, per_cell: 0.4),
     movement: (
-        run_speed: 95,
-        ground_accel: 1400,
-        ground_decel: 1800,
-        air_accel: 900,
-        gravity: 1100,
+        run_speed: 143,
+        ground_accel: 2100,
+        ground_decel: 2700,
+        air_accel: 1350,
+        gravity: 1650,
         fall_gravity: 1.6,
-        max_fall: 420,
-        jump_height: 40,
+        max_fall: 630,
+        jump_height: 60,
         jump_cut: 0.45,
         coyote_time: 0.09,
         jump_buffer: 0.12,
         // None of its own: boots give them (cloud boots: a triple jump).
         air_jumps: 0,
-        dash_speed: 260,
+        dash_speed: 390,
         dash_time: 0.14,
         dash_cooldown: 0.45,
         wall_jump: true,
-        wall_slide_speed: 60,
-        wall_jump_push: 120,
+        wall_slide_speed: 90,
+        wall_jump_push: 180,
         // Terraria steps up a whole tile unasked: a block and a half here.
-        step_height: 6,
+        step_height: 9,
     ),
     // Drawn on the humanoid rig (assets/art/player.ron).
     art: "player",
