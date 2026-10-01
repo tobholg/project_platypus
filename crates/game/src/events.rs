@@ -21,6 +21,10 @@
 //!   Away, holes are knocked in the houses. Either way the village mends
 //!   itself toward what it was, out of view, over the hours after; the guide
 //!   takes gold to have it done by morning (`Village`).
+//! - **Earthquakes** (rare): felt far and wide. Near you the screen shakes
+//!   with a low rumble and cave ceilings round you come loose and fall; at
+//!   the quake's heart a chasm opens in the surface (dug as it loads, near
+//!   or away).
 
 use bevy::prelude::*;
 use platypus_sim::rng::hash;
@@ -43,7 +47,7 @@ impl Plugin for EventsPlugin {
         app.init_resource::<News>()
             .init_resource::<Village>()
             .add_message::<Begins>()
-            .add_systems(Update, (timetable, dev_event, begin, land, stars, mend, news).chain().after(crate::clock::ClockSet));
+            .add_systems(Update, (timetable, dev_event, begin, land, stars, shake, mend, news).chain().after(crate::clock::ClockSet));
     }
 }
 
@@ -52,6 +56,7 @@ impl Plugin for EventsPlugin {
 pub enum EventKind {
     Star,
     Raid,
+    Quake,
 }
 
 /// Where a happening is up to.
@@ -147,6 +152,22 @@ const RAID_HOLE: i32 = 4;
 const MEND_PER_HOUR: usize = 40;
 const VIEW: (i32, i32) = (280, 170);
 
+/// Earthquakes: the chance a day has one; its heart this far from the
+/// spawn (cells, either way); felt this far from it (live).
+const QUAKE_CHANCE: f64 = 0.12;
+const QUAKE_FROM: (f64, f64) = (800.0, 6_000.0);
+const QUAKE_FELT: i32 = 3_000;
+/// It shakes this long (seconds), this hard (camera trauma, 0..1), and
+/// brings down a piece of cave ceiling round each player (within this, in
+/// cells across and down) this often (seconds).
+const QUAKE_SECS: f32 = 5.0;
+const QUAKE_TRAUMA: f32 = 0.55;
+const QUAKE_FALL_EVERY: f32 = 0.12;
+const QUAKE_NEAR: (i32, i32) = (170, 130);
+/// The chasm at its heart: how deep (cells, a range), how wide at the top.
+const CHASM_DEEP: (i32, i32) = (60, 110);
+const CHASM_WIDE: i32 = 8;
+
 /// Where things happen from: the spawn, and the village's bounds.
 #[derive(Clone, Copy)]
 pub struct Places {
@@ -168,6 +189,13 @@ pub fn roll(seed: u64, places: Places, d: i64, kind: EventKind) -> Option<(f64, 
             let off = STAR_FROM.0 + (STAR_FROM.1 - STAR_FROM.0) * unit(3);
             Some((d as f64 + hour / 24.0, places.spawn_x + side * off as i32, 0))
         }
+        EventKind::Quake => {
+            if unit(0) >= QUAKE_CHANCE {
+                return None;
+            }
+            let off = QUAKE_FROM.0 + (QUAKE_FROM.1 - QUAKE_FROM.0) * unit(3);
+            Some((d as f64 + unit(1), places.spawn_x + side * off as i32, 0))
+        }
         EventKind::Raid => {
             let (lo, hi) = places.village?;
             if unit(0) >= RAID_CHANCE {
@@ -179,7 +207,15 @@ pub fn roll(seed: u64, places: Places, d: i64, kind: EventKind) -> Option<(f64, 
     }
 }
 
-const KINDS: [EventKind; 2] = [EventKind::Star, EventKind::Raid];
+const KINDS: [EventKind; 3] = [EventKind::Star, EventKind::Raid, EventKind::Quake];
+
+/// How near (cells across) someone must be for a kind to happen live.
+fn live_near(kind: EventKind) -> i32 {
+    match kind {
+        EventKind::Quake => QUAKE_FELT,
+        _ => LIVE_NEAR,
+    }
+}
 
 /// One begins, and whether someone's there.
 #[derive(Message, Clone, Debug)]
@@ -221,8 +257,9 @@ fn timetable(sim: Res<SimWorld>, mut clock: ResMut<WorldClock>, loaders: Query<(
         if h.stage != Stage::Coming || h.day > now {
             continue;
         }
-        let live = now - h.day < LATE && near.iter().any(|p| (p.x as i32 - h.x).abs() < LIVE_NEAR);
-        h.stage = if live { Stage::Done } else { Stage::Away };
+        let live = now - h.day < LATE && near.iter().any(|p| (p.x as i32 - h.x).abs() < live_near(h.kind));
+        // (A quake felt here still has its chasm to open, where it struck.)
+        h.stage = if live && h.kind != EventKind::Quake { Stage::Done } else { Stage::Away };
         out.write(Begins { h: h.clone(), live });
     }
     clock.events.retain(|h| h.stage != Stage::Done || now - h.day < KEEP_DAYS);
@@ -246,6 +283,7 @@ fn dev_event(mut acts: MessageReader<crate::dev::DevAction>, mut next: Local<usi
                 Some((lo, hi)) => ((lo.x + hi.x) / 2, ahead),
                 None => continue,
             },
+            EventKind::Quake => ((k.body.pos.x + ahead as f32 * 200.0) as i32, 0),
         };
         clock.events.push(Happening { kind, day, x, stage: Stage::Coming, from });
     }
@@ -271,6 +309,7 @@ fn begin(
     day: Res<Daylight>,
     cam: Single<&Transform, With<crate::camera::MainCamera>>,
     mut toasts: MessageWriter<crate::progress::Toast>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut village: ResMut<Village>,
 ) {
     for b in begins.read() {
@@ -323,7 +362,86 @@ fn begin(
                 village.look = Some(sim.world.tick() + 2);
                 village.allowance = 0.0;
             }
+            EventKind::Quake => {
+                if b.live {
+                    commands.spawn((Name::new("Earthquake"), Quaking { left: QUAKE_SECS, next: 0.0, fell: 0 }));
+                    sounds.write(crate::sound::PlaySound::here("thunder").pitch(0.45).volume(1.0));
+                    toasts.write(crate::progress::Toast("The ground shakes!".into()));
+                }
+            }
         }
+    }
+}
+
+/// An earthquake under way: how long it has left, and when the next piece
+/// of ceiling comes down.
+#[derive(Component)]
+struct Quaking {
+    left: f32,
+    next: f32,
+    fell: u32,
+}
+
+/// The ground shaking: the camera, and round each player pieces of cave
+/// ceiling come loose and fall (rubble, thrown down).
+fn shake(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut sim: ResMut<SimWorld>,
+    mut trauma: ResMut<crate::fx::Trauma>,
+    loaders: Query<(&GlobalTransform, &ChunkLoader)>,
+    mut q: Query<(Entity, &mut Quaking)>,
+) {
+    let dt = time.delta_secs();
+    for (e, mut quake) in &mut q {
+        quake.left -= dt;
+        if quake.left <= 0.0 {
+            info!("events: the quake brought down {} pieces of cave ceiling", quake.fell);
+            commands.entity(e).despawn();
+            continue;
+        }
+        // (Easing off over its last second.)
+        trauma.0 = trauma.0.max(QUAKE_TRAUMA * quake.left.min(1.0));
+        quake.next -= dt;
+        if quake.next > 0.0 {
+            continue;
+        }
+        quake.next = QUAKE_FALL_EVERY;
+        let (tick, seed) = (sim.world.tick(), sim.world.seed());
+        for (i, p) in players(&loaders).into_iter().enumerate() {
+            let unit = |salt: u64| (hash(&[seed, tick, i as u64, salt, 0x0AE7]) % 10_000) as f32 / 10_000.0;
+            let at = CellPos::new(p.x as i32 + ((unit(0) * 2.0 - 1.0) * QUAKE_NEAR.0 as f32) as i32, p.y as i32 - (unit(1) * QUAKE_NEAR.1 as f32) as i32 + 30);
+            if let Some(c) = ceiling(&sim, at) {
+                quake.fell += 1;
+                sim.queue(WorldEdit::Shatter { center: c, from: c.offset(0, 4), radius: 2 + (unit(2) * 2.0) as i32, max_hardness: 120 });
+            }
+        }
+    }
+}
+
+/// A cave's ceiling over `at` (open air there), underground: the first
+/// solid cell up from it with air under it, within 30 cells.
+fn ceiling(sim: &SimWorld, at: CellPos) -> Option<CellPos> {
+    let open = |p: CellPos| sim.world.get(p).is_some_and(|c| c.is_air());
+    if !open(at) {
+        return None;
+    }
+    let surface = sim.generator.surface_hint(at.x)?;
+    (1..30).map(|d| at.offset(0, d)).find(|&p| !open(p) && sim.world.get(p).is_some()).filter(|p| p.y < surface - 10)
+}
+
+/// A chasm at x: a jagged crack down from the ground, narrowing (the same
+/// from the seed and the day wherever it's dug from).
+fn chasm(sim: &mut SimWorld, x: i32, ground: i32, day: f64) {
+    let seed = sim.world.seed();
+    let u = |salt: u64| (hash(&[seed, day.to_bits(), salt, 0xC4A5]) % 10_000) as i32;
+    let deep = CHASM_DEEP.0 + u(0) % (CHASM_DEEP.1 - CHASM_DEEP.0);
+    let mut cx = x;
+    for (i, y) in (0..deep).step_by(3).enumerate() {
+        let k = 1.0 - y as f32 / deep as f32;
+        let r = ((CHASM_WIDE as f32 / 2.0) * k).max(1.0) as i32;
+        cx += u(10 + i as u64) % 3 - 1;
+        sim.queue(WorldEdit::Dig { center: CellPos::new(cx, ground + 2 - y), radius: r, max_hardness: 200 });
     }
 }
 
@@ -432,6 +550,18 @@ fn land(mut commands: Commands, mut sim: ResMut<SimWorld>, mut clock: ResMut<Wor
             village.allowance = 0.0;
             info!("events: a raid on the village while no one was there; {RAID_HOLES} holes knocked in its houses");
         }
+    }
+    // A quake's chasm, where it struck, once it's in.
+    for h in clock.events.iter_mut().filter(|h| h.kind == EventKind::Quake && h.stage == Stage::Away) {
+        let x = h.x;
+        let Some(hint) = sim.generator.surface_hint(x) else { continue };
+        if [hint + 10, hint - CHASM_DEEP.1].iter().any(|&y| sim.world.get(CellPos::new(x, y)).is_none()) {
+            continue;
+        }
+        let Some(ground) = find_ground(&sim.world, x, hint + 120, 400) else { continue };
+        chasm(&mut sim, x, ground, h.day);
+        h.stage = Stage::Done;
+        info!("events: a quake's chasm opened at x {x} (ground {ground})");
     }
     for h in clock.events.iter_mut().filter(|h| h.kind == EventKind::Star && h.stage == Stage::Away) {
         let x = h.x;
@@ -550,6 +680,7 @@ fn news(clock: Res<WorldClock>, sim: Res<SimWorld>, mut news: ResMut<News>) {
             let (dir, far) = (if h.x < village { "west" } else { "east" }, walk((h.x - village).abs()));
             let line = match h.kind {
                 EventKind::Star => format!("A star fell {when}, {far} {dir} of here. Something keeps it."),
+                EventKind::Quake => format!("Did you feel the ground shake {}? They say it split open, {far} {dir} of here.", if now - h.day < 0.6 { "today" } else { "the other day" }),
                 EventKind::Raid => {
                     let when = if now - h.day < 0.6 { "this evening" } else { "the other evening" };
                     format!("Orcs came at us from the {} {when}. We're mending what they broke.", if h.from < 0 { "west" } else { "east" })

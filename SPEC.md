@@ -1162,10 +1162,20 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   later, out of sight. A villager with a monster near runs home and hides
   there (`villager::Hiding`): monsters let it be (their targeting skips it)
   till the danger's gone.
+- **Earthquakes**: 12 % of days, any hour, their heart 800–6 000 cells
+  from the spawn either way; felt (live) within 3 000 cells. Felt: the
+  screen shakes for 5 s (camera trauma 0.55, easing off over the last
+  second) with a low rumble ("The ground shakes!"), and every 0.12 s a spot
+  round each player (170 across, 130 down) is tried: open air under a cave
+  ceiling, underground, and that ceiling comes down as rubble (a `Shatter`
+  thrown down, radius 2–3). At its heart, felt or not, a chasm opens in the
+  surface as its chunks load: a jagged crack 60–110 cells down, 8 wide at
+  the top narrowing to 2 (from the seed and the day). News: "Did you feel
+  the ground shake today? They say it split open, …".
 - The world generator gives the village's bounds (`ChunkGenerator::village`).
-- Dev panel: "An event (star, raid)": each in turn, now (a star 140 cells
-  ahead; a raid on the village from the side you face). Scenarios `star`,
-  `raid`.
+- Dev panel: "An event (star, raid, quake)": each in turn, now (a star 140
+  cells ahead; a raid on the village from the side you face; a quake whose
+  heart is 200 cells ahead). Scenarios `star`, `raid`, `quake`.
 
 ## 4. Rendering
 

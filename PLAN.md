@@ -165,7 +165,7 @@ the land as its chunks load), and a scenario.
    walks in from out of sight and you fight it (the villagers run);
    away, houses are damaged, and the village rebuilds toward what it was
    over days, faster for gold (the guide takes it).
-4. Earthquakes (rare): the screen shakes; near you cave ceilings come
+4. ✅ Earthquakes (rare): the screen shakes; near you cave ceilings come
    loose and fall; a chasm opens in the surface (away: it's there when you
    come).
 5. Seasons (a short year): winter snows (snow falls instead of rain, the

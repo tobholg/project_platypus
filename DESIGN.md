@@ -758,6 +758,8 @@ live in. The arc, in order:
      a warband marching in from out of sight (the villagers hide at home),
      or holes in the houses while you're away; the village mends itself out
      of view by the hour (the guide takes gold to have it done by morning).
+     Earthquakes: the screen shakes, cave ceilings round you fall as rubble,
+     and a chasm opens at the quake's heart.
 5. **A start worth starting in**: a wide, flattened plain round the spawn
    (±300 cells, forest or plains), a village a short walk away (the
    structure system's rooms: timber houses, a well, a smithy, a path).

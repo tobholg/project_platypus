@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -4448,6 +4448,58 @@ fn raid_script(
             keys.release(KeyCode::KeyD);
             info!("raid: away, paid, walked back into the village (x {:+.0}): {} cells missing; village {}..{}", k.body.pos.x - mid as f32, village.missing, lo.x - mid, hi.x - mid);
             *step = 8;
+        }
+        _ => {}
+    }
+}
+
+/// `quake` (a generated world, best with `PLATYPUS_SPAWN_Y` on a cave floor,
+/// e.g. 3200): an earthquake felt where the player is; for its 5 s, the
+/// rubble falling round the player each second (particles and bodies in
+/// flight within 150 cells). `PLATYPUS_QUAKE=surface` (at the start): its
+/// heart 200 cells west; the chasm there: how deep it's open below the
+/// ground, how wide at the top.
+fn quake_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut clock: ResMut<crate::clock::WorldClock>,
+    news: Res<crate::events::News>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    mut state: Local<(u8, f32, i32, f32)>,
+) {
+    if s.name != "quake" {
+        return;
+    }
+    let t = s.elapsed;
+    let Ok(k) = player.single() else { return };
+    let surface = std::env::var("PLATYPUS_QUAKE").is_ok_and(|v| v == "surface");
+    let (step, at, x, next) = &mut *state;
+    match *step {
+        0 if t > 2.0 => {
+            *x = k.body.pos.x as i32 - if surface { 200 } else { 0 };
+            let day = clock.now;
+            clock.events.push(crate::events::Happening { kind: crate::events::EventKind::Quake, day, x: *x, stage: crate::events::Stage::Coming, from: 0 });
+            *step = 1;
+            *at = t;
+            *next = t + 1.0;
+        }
+        1 if t >= *next && t < *at + 6.0 => {
+            *next += 1.0;
+            let p = k.body.pos;
+            let falling = sim.world.particles().iter().filter(|q| (Vec2::new(q.pos[0], q.pos[1]) - p).length() < 150.0).count();
+            let bodies = sim.world.bodies().iter().filter(|b| (Vec2::new(b.pos[0], b.pos[1]) - p).length() < 150.0).count();
+            info!("quake: t {:.0}: {falling} particles and {bodies} bodies in flight round the player", t - *at);
+        }
+        1 if t > *at + 6.0 => {
+            if surface {
+                let ground = sim.generator.surface_hint(*x).unwrap_or(0);
+                let open = |cx: i32| (0..200).take_while(|d| sim.world.get(CellPos::new(cx, ground + 2 - d)).is_some_and(|c| c.is_air())).count();
+                let deep = (*x - 6..=*x + 6).map(open).max().unwrap_or(0);
+                let wide = (*x - 20..=*x + 20).filter(|&cx| sim.world.get(CellPos::new(cx, ground - 2)).is_some_and(|c| c.is_air())).count();
+                info!("quake: the chasm at x {x}: open {deep} cells down, {wide} wide at the top");
+            }
+            info!("quake: the news: {:?}", news.0.first());
+            *step = 2;
         }
         _ => {}
     }
