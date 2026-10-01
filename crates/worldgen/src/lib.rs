@@ -19,7 +19,7 @@ pub mod minerals;
 pub mod plan;
 pub mod structures;
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use flora::{Foliage, TreePart};
 pub use arena::ArenaGen;
@@ -312,6 +312,9 @@ pub struct TerrainGen {
     /// Lairs (`with_lairs`), and which each chamber is, if any.
     lairs: Vec<lairs::Lair>,
     lair_of: Vec<Option<u16>>,
+    /// Where the player starts, found once: systems ask every tick, and a
+    /// deep start (`PLATYPUS_SPAWN_Y`) is a search of thousands of columns.
+    spawn: OnceLock<CellPos>,
 }
 
 impl TerrainGen {
@@ -404,6 +407,7 @@ impl TerrainGen {
             heat: mats.iter().map(|(id, _)| mats.phys(id).heat).collect(),
             lairs: Vec::new(),
             lair_of: Vec::new(),
+            spawn: OnceLock::new(),
         }
     }
 
@@ -1595,19 +1599,21 @@ impl ChunkGenerator for TerrainGen {
     }
 
     fn spawn_point(&self) -> CellPos {
-        // The middle of the world (or PLATYPUS_SPAWN_X, to try a biome), on
-        // the nearest dry ground.
-        let var = |name: &str| std::env::var(name).ok().and_then(|v| v.parse::<i32>().ok());
-        let mid = var("PLATYPUS_SPAWN_X").unwrap_or(self.plan.width / 2);
-        // PLATYPUS_SPAWN_Y: the nearest cave floor at or below that height
-        // instead (to look at the deep bands).
-        if let Some(y) = var("PLATYPUS_SPAWN_Y")
-            && let Some(p) = self.cave_floor_near(mid, y)
-        {
-            return p;
-        }
-        let x = (0..2_000).flat_map(|d| [mid + d, mid - d]).find(|&x| self.plan.water_at(x).is_none()).unwrap_or(mid);
-        CellPos::new(x, self.surface_at(x) + 2)
+        *self.spawn.get_or_init(|| {
+            // The middle of the world (or PLATYPUS_SPAWN_X, to try a biome),
+            // on the nearest dry ground.
+            let var = |name: &str| std::env::var(name).ok().and_then(|v| v.parse::<i32>().ok());
+            let mid = var("PLATYPUS_SPAWN_X").unwrap_or(self.plan.width / 2);
+            // PLATYPUS_SPAWN_Y: the nearest cave floor at or below that
+            // height instead (to look at the deep bands).
+            if let Some(y) = var("PLATYPUS_SPAWN_Y")
+                && let Some(p) = self.cave_floor_near(mid, y)
+            {
+                return p;
+            }
+            let x = (0..2_000).flat_map(|d| [mid + d, mid - d]).find(|&x| self.plan.water_at(x).is_none()).unwrap_or(mid);
+            CellPos::new(x, self.surface_at(x) + 2)
+        })
     }
 
     fn generate(&self, pos: ChunkPos) -> Chunk {
