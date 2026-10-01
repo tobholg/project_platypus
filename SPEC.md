@@ -918,7 +918,11 @@ deaths (blood). Rendered as one dynamic mesh.
     alone. Standing in the rain wets you all over, slowly.
   - `Chilled`: slowed down to 40 % while touching the cold and 1.5 s after
     (`MovementStats::slowed`); hard frost puts a fire out.
-  Creatures resist per kind in their RON (`resist: (heat, corrosion, fireproof)`).
+  What heat, acid, venom and cold do to a creature is its nature (§6.4):
+  heat hurts as fire, acid as acid, venom as poison (none to what `cant:
+  [poison]`), cold slows by its frost (none to what `cant: [chill]`); what
+  `cant: [burn]` never catches fire. What drinks acid (a negative
+  multiplier) heals in it.
 - Bodies in liquid: water is thick (strong drag) and you're nearly buoyant
   (a tenth of gravity, sinking at ≤ 25 cells/s). Swimming: jump is a stroke
   toward where you steer (W/S/A/D or the arrows; up if nowhere), one on the
@@ -1137,7 +1141,7 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
 - `meteorite`: dark, glassy, flecked with light, a cold blue glow, hardness
   95 (an iron pick).
 - Star wisps (`star_wisp.ron`): small white-blue stars, fireproof, on the
-  `swooper` brain with a `leash` (80 cells round their crater, kept as their
+  `hunter` brain, `Swoop`, with a `leash` (80 cells round their crater, kept as their
   `clock::Keeps`, so a save keeps it too): they dive at you only near it and
   drift back when you go. They don't come back once killed. 20–45 gold.
 - **Raids**: 30 % of evenings (17:00–21:00), on the village, from the west
@@ -1210,10 +1214,10 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   third, an optional faint halo 3× their size. What spells look like is
   data (6.1, `look`). A soft round `Halo` image (tinted by the sprite) is
   what spells glow in.
-- **Air jumps** (`actors::AirJumped`) puff a small cloud under the feet
+- **Air jumps** (`creatures::AirJumped`) puff a small cloud under the feet
   (sparks) and flash a soft blue light, so they show in the dark. The player
   has 3 while developing; later gear gives them (a cloud in a bottle).
-- **Hurt** (`actors/hurt.rs`): anything with `Health` that loses 2 or more
+- **Hurt** (`creatures/body/hurt.rs`): anything with `Health` that loses 2 or more
   in a tick flashes red for 0.12 s and, if it bleeds (`blood` in its RON,
   default `blood`), sprays 1.2 cells of it a point lost (at most 70); a
   death bursts out 110. Real cells: it pools, runs, boils, freezes,
@@ -1369,7 +1373,7 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   atlas once); editing the art file reloads every live creature drawn from
   it.
 
-### 5.2 Critters (`actors/critters.rs`)
+### 5.2 Critters (`creatures/brain/critters.rs`)
 
 - The `critter` brain (params: `flee_range`, `calm_after`, `hops`, `flies`,
   `wander_every`, `rest`, `wander_speed`, `hovers`, `swims`): rests and
@@ -1466,7 +1470,7 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   `platypus-art get|set|paint` (set and paint write only if the file still
   compiles).
 
-### 5.5 Villagers and talking (`actors/villager.rs`, `talk.rs`, `assets/data/creatures/{guide,smith,healer,merchant}.ron`)
+### 5.5 Villagers and talking (`creatures/brain/villager.rs`, `talk.rs`, `assets/data/creatures/{guide,smith,healer,merchant}.ron`)
 DESIGN §13 item 6.
 - A villager is a creature file: its look on the player's rig (art `base:
   "player"` with its own palette: `parse_based`), team `Villager` (the
@@ -1546,15 +1550,18 @@ DESIGN §13 item 6.
   staggers (full knockback and stun, its own swing broken off). Knockback
   is divided by `heft`. `after_hit` s untouchable after a hit (the player
   0.6, so a crowd can't juggle you).
-- **Enemies fight** with the same swings: the `melee_walker` brain's
+- **Enemies fight** with the same swings: the `hunter` brain's `Swing`:
   `reach` (swing at a player that close), `combo` (moves of its weapon in
-  a row) and `attack_every` (the wait after an attack ends, ±30 %); it
+  a row) and `every` (the wait after an attack ends, ±30 %); it
   faces its target, stands its ground while swinging and doesn't swing
   while stunned. The orc (humanoid rig, a cleaver: hack, backhack; windups
   0.26 / 0.18 s; poise 16) and the troll (a rig of turned limbs, 15 × 34,
   420 hp, a club: smash, sweep, 30 damage, 0.5 / 0.4 s windups to read and
   dodge; poise 80, heft 4). In the `fight` scenario the orc lands a hit,
   the shortsword kills it in ~2 s; the troll's smash takes 30 and throws you.
+  The troll heals (§6.4 `regen`): steel brings it to 1 hp and no further;
+  fire or acid stop its healing, and then it dies (the `troll` scenario:
+  held at 3 hp by the sword, dead 0.1 s after it's set alight).
 - **Everything held shows** (`weapons.ron` `held`, by icon shape): an item
   whose icon's shape is listed is drawn from the sprite of that name
   (`assets/art/pickaxe.ron`, `axe`, `wand`, `staff`, `torch`, `bomb`,
@@ -1594,7 +1601,7 @@ DESIGN §13 item 6.
   empties the stamina bar in 1.5 s; striking down from above bounces
   (300 cells/s); a blast mid-dodge costs 3 hp against ~15 standing.
 
-### 6.3 Underground enemies (`actors/monsters.rs`, `assets/data/creatures/`)
+### 6.3 Underground enemies (`creatures/brain/hunter.rs`, `assets/data/creatures/`)
 
 Each is a creature file (art, stats, brain and its params) on shared
 parts, so another is a new file, not new code:
@@ -1606,13 +1613,14 @@ parts, so another is a new file, not new code:
 - **`cling`** (movement): a climber touching a wall or ceiling holds on
   (pressing into it), goes along it where it steers, and lets go on a
   jump; the sprite is turned to the surface (upside down on a ceiling).
-- Brains: `crawler` (at you over any surface, a pounce when near, a drop
-  from a ceiling above you), `hopper` (a hop at you every `hop_every`),
-  `swooper` (flits in a band above the ground; dives at you for
-  `dive_time`, back up for `dive_every`), `hatchery` (still until you come
-  within `range` or hit it, then bursts into `count` of `brood`), and
-  `melee_walker` for anything that wields a weapon.
-- **Procedural legs** (`actors/legs.rs`, a creature file's `legs`): a body
+- All fight with the `hunter` brain (§6.4), closing with `Crawl` (at you
+  over any surface, a pounce when near, a drop from a ceiling above you),
+  `Hop` (a hop at you every `every`), `Swoop` (flits in a band above the
+  ground; dives at you for `dive_time`, back up every `dive_every`) or
+  `Walk` with a `Swing` for anything that wields a weapon. The egg sac is
+  its own code (`custom/hatchery.rs`: still until you come within `range`
+  or hit it, then bursts into `count` of `brood`).
+- **Procedural legs** (`creatures/body/legs.rs`, a creature file's `legs`): a body
   seen from above (its sprite, pointing right, a `grip` where the legs
   meet) turned with RotSprite to where it heads, and `count` legs fanned
   front to back on both sides. Each foot holds a real solid cell: rays
@@ -1648,7 +1656,7 @@ parts, so another is a new file, not new code:
   spiderlings), cocoons (hung from a nest's roof by their thread: negative
   gravity takes them up; cut open: blood and a victim's things), the slime
   (hops; full of glowing `slime`), the acid slime (full of acid, which it
-  resists; glows), explosives (`actors/explosive.rs`, brain `explosive`:
+  resists; glows), explosives (`creatures/custom/explosive.rs`, its own code `explosive`:
   a TNT barrel, 15 hp, a blast of 54 / 245; dynamite, 8 hp, 44 / 230; a
   mine cart loaded with both, 40 hp, 72 / 255 (craters; their rubble
   rains down far around: take cover); broken they go off at once,
@@ -1660,6 +1668,56 @@ parts, so another is a new file, not new code:
   `underground` spawn them together. In the `underground` scenario each
   hurts a player standing still (a spider ~36 hp in 3.5 s, spiderlings ~15
   in 3 s), and a spider climbs a 140-cell column to the player on top.
+
+### 6.4 Creatures as data (`game/src/creatures/`, `assets/data/kinds.ron`, DESIGN §14)
+
+Everything creature lives under `creatures/`: the core (`mod.rs`: health,
+deaths, what hurts bodies), `def.rs` (creature files, spawning, hot
+reload), `nature.rs` (kinds of hurt), `player.rs`, `spawn.rs`; `body/`
+(animation, legs, hurt, elements); `brain/` (the shared brains); `moves/`
+(attacks with their own code: the spider's); `custom/` (one creature's
+own code).
+
+- **Ten kinds of hurt** (`nature::Harm`): slash, pierce, blunt, fire,
+  frost, storm, acid, poison, radiant, void (and fall). Every `Hit` has
+  one: a weapon's `harm` (default slash; a move's own `harm` over it), a
+  `touch`'s (default pierce), a spell's element (no element: blunt), a
+  blast's or a thrown thing's blunt, a coating's (acid; venom poison); a
+  fall is its own.
+- **Health::harm**: armour (`Ward`) takes its share of slash, pierce and
+  blunt only; then the creature's multiplier for that kind. A negative
+  one heals. It remembers which kinds hurt it this tick (`felt`), for
+  what reacts to them.
+- **Kinds** (`kinds.ron`): `humanoid`, `beast` (fire 1.5), `insect`
+  (poison 0.3, fire and frost 1.5), `undead` (pierce 0.5, slash 0.75,
+  blunt 1.5, fire 1.25, radiant 2, void −0.5; can't be poisoned),
+  `spirit` (steel and blows 0.25, radiant 2), `ooze` (blunt 0.25, pierce
+  0.5, fire 1.5), `construct` (blades and points 0.25, blunt 1.25, acid
+  1.5; can't burn), `starfire` (drinks fire, frost 2), `thing` (props and
+  dummies: plain). A creature file says its `kind`, and may change any
+  multiplier (`profile: {acid: -0.25}`: the spider drinks acid) or add to
+  what it can't suffer (`cant: [burn, chill, poison, web, stagger]`).
+  Every file must name a known kind (a test loads them all).
+- **`regen: (per_sec, stopped_by, pause, undying)`**: heals `per_sec`
+  while hurt, stopped for `pause` s (default 5) by any of `stopped_by`;
+  `undying`: while healing it can't be brought below 1 hp (the troll:
+  10/s, stopped by fire and acid).
+- **`brain: (kind, params)`**: the shared brains (`brain/`), `params` kept
+  as written and read when it's spawned (so choices like `Walk(keep: 11)`
+  survive). `hunter` (`brain/hunter.rs`) is every fighter: `aggro`
+  (cells), `close` (`Walk(keep, jump_to_reach)`, `Range(near, far)`,
+  `Swoop(hover, dive_time, dive_every)`, `Hop(every)`,
+  `Crawl(pounce_range, pounce_every)`), `attack` (`Touch`, `Swing(reach,
+  every, combo)`, `Shoot(draw, every, wobble)`), `wander: (speed, every)`,
+  `leash`, and the spider's `bite`, `spit`, `sting`. Also `critter`,
+  `villager`, `idle` (the default), `keyboard` (the player).
+- **`custom: (name, params)`**: a creature's own code (`custom/`, one file
+  each, registered in `CustomPlugin`): a component read from `params`
+  and the hooks it needs (spawn, think after the brains in
+  `CustomSet::Think`, hit, death); `_template.rs` stubs each. Now:
+  `dummy` (the tallies), `explosive` (barrels, dynamite, the mine cart),
+  `hatchery` (the egg sac). A file naming a brain or module that doesn't
+  exist is an error at start.
 
 ### 6.1 Magic (`game::magic`, DESIGN §7b)
 
@@ -1784,7 +1842,7 @@ parts, so another is a new file, not new code:
   A cast shows the looks of all its runes, so a composed spell looks
   composed (fire trail + acid: flames and green drips). A bolt or orb is a
   pale core in a halo of its colour.
-- **What flies hurts** (`actors::pelted`): a particle of solid, powder or
+- **What flies hurts** (`creatures::pelted`): a particle of solid, powder or
   liquid (not rain, dust or embers) faster than 90 cells/s passing through a
   body deals its weight (density against water's; liquids half) × how many
   times faster × 0.8, and is mostly stopped (30 % of its speed left),
@@ -1802,7 +1860,7 @@ parts, so another is a new file, not new code:
   there); slamming into a wall or ceiling faster
   than `slam_speed` (450 cells/s: flung, not walking or dashing) hurts
   `per_speed` (0.25) per cell/s over.
-- **Every explosion hurts** (`actors::blasted`, from `StepStats::detonated`):
+- **Every explosion hurts** (`creatures::blasted`, from `StepStats::detonated`):
   bodies within 1.6 × its radius take up to 0.65 × its power and are thrown
   at up to 3 × its power, falling off with distance. Magic can hurt its
   caster: a fireball at point blank does.
@@ -1813,8 +1871,10 @@ parts, so another is a new file, not new code:
 |----------------------|--------------------------------------------------------|
 | a material           | an entry in `materials.ron`                            |
 | a reaction           | a line in the reactions list of `materials.ron`        |
-| an enemy (existing AI)| a creature RON (sprites, stats, attacks, brain + params)|
-| a new AI behaviour   | one module implementing a brain, registered by name    |
+| an enemy (existing AI)| a creature RON (sprites, stats, kind, attacks, brain + params)|
+| a new way of fighting | a choice in `hunter` (`brain/hunter.rs`), or a new brain registered by name |
+| one creature's trick | a module in `creatures/custom/`, one line in `CustomPlugin` |
+| a kind of creature   | an entry in `kinds.ron`                                 |
 | a weapon             | a weapon RON + sprite                                  |
 | a rune / a wand      | an entry in `runes.ron` / a `Cast` item in `items.ron` |
 | an item / recipe     | RON entries                                            |

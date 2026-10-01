@@ -2,8 +2,8 @@
 
 Each phase ends with something playable or measurable. See SPEC.md for the design.
 
-**Next:** the bestiary arc (BE, DESIGN §14, agreed 2026-10-01), its first
-branch `creatures`; then the world editor and sites (WE); then progression.
+**Next:** the bestiary arc (BE, DESIGN §14, agreed 2026-10-01): `creatures`
+done 2026-10-01, next branch `moves`; then the world editor and sites (WE); then progression.
 
 ## Status (2026-09-25)
 
@@ -29,7 +29,7 @@ branch `creatures`; then the world editor and sites (WE); then progression.
 | S1 | Sound (branch `sound-arc`, DESIGN §7e): bevy_seedling buses, ~37 effects and 6 ambience beds and 3 music moods all made from recipes in `sounds.ron`, world-driven ambience (fire, lava, water, rain, wind, caves, drips), positional effects hooked into combat, movement, mining, the hook, the bow, blasts, spells; the arena panel's sound board | first version, to tune by ear |
 | B1 | Backdrops (branch `backdrop-arc`, DESIGN §4.3b): Noita-like ranges by biome (`peaks.rs`: noita, alpine; running down behind the ground; 1–4 % parallax across, ~1 % up and down, pixel-snapped; behind the weather's clouds), drifting cloud heaps, a sky gradient, a blooming sun, a big moon in phases (8-night cycle) and twinkling stars over near-black nights; underground a tinted void with faint far twinkles | first version; next: big caverns without back walls in places |
 | L1 | The living world (DESIGN §13, agreed 2026-09-29): dev world reset (world only / everything) → an 8× world sized from its preset (4× wide, 2× deep; density tests) → fire moisture and storm rain → the world clock (regions, processes at their own pace with abstract and live faces; weather's fronts, regrowth, moisture, wildfires, lairs) → a flat start and a village → NPCs as data → gold (Noita's) → raids, caravans, falling stars, seasons. Proposed: metals (ore → molten → solid, §13.1), boulders (§13.2). Later: mine carts, teleport stations | done 2026-10-01: world-scale, world-clock (moisture, regrowth, wildfires, lairs), gold, matter, village, world-events (stars, raids and mending, quakes, the pedlar); seasons dropped for biomes; travel moved later (after the world editor) |
-| BE | The bestiary (DESIGN §14, agreed 2026-10-01): creatures as data with custom modules, ten damage types and resistance profiles, moves, damage feedback, the bestiary and arena v2, a path planner and digging, general limbs, the creature editor, wounds and severing, firearms and new materials, the roster, the bosses | next: `creatures` |
+| BE | The bestiary (DESIGN §14, agreed 2026-10-01): creatures as data with custom modules, ten damage types and resistance profiles, moves, damage feedback, the bestiary and arena v2, a path planner and digging, general limbs, the creature editor, wounds and severing, firearms and new materials, the roster, the bosses | `creatures` done; next: `moves` |
 | WE | The world editor and sites (DESIGN §14 "Where this sits"): authored places placed by the world plan, edit and play on the same world, then mechanisms, a map with rest points and travel, factions, a vertical slice; then progression | after BE |
 | 6 | Hollow Knight layer: ability unlocks, map, bosses, benches, set pieces | not started; the tempo (DESIGN D7) being tried: `tempo.ron` presets, `turn_accel` and `jump_hold` in movement, the arena panel's Tempo row, the `tempo` scenario; walking real terrain fixed (a 6-cell step up and walking down onto ground below, both eased on screen: full speed 12 % → 70–90 % of a walk; `walk` scenario) |
 | 7 | Pixel rigid bodies (falling terrain chunks) | optional |
@@ -188,8 +188,8 @@ the rest of the sandbox (DESIGN §14 "Where this sits"), progression.
 Branches in order; each merges to `main` when its "done when" holds (tests,
 clippy, the bench, its scenarios and screenshots). The testing loop (the
 bestiary and arena v2) comes third so everything after it is built and
-judged in it. Running alongside: deep caves run at ~42 ms a frame (a
-separate task; it must be fixed before the roster's cave fights).
+judged in it. (Deep caves ran at ~42 ms a frame: fixed on main, 0b9a6cb,
+before this arc began.)
 
 **1. `creatures`: one model, every creature on it.**
 1. ✅ `crates/game/src/creatures/` (the old `actors`, renamed: `def`,
@@ -205,8 +205,10 @@ separate task; it must be fixed before the roster's cave fights).
 3. ✅ Ten damage types on every weapon, spell, blast, fall and hazard; one
    resistance profile for creatures and gear (replacing `Ward` and
    `Resist`); kinds as templates; absorbing; what each can't suffer;
-   regeneration (the troll's, stopped by fire and acid).
-4. Every existing creature moved onto it, with a kind: orcs, the archer,
+   regeneration (the troll's, stopped by fire and acid). As built: gear
+   keeps its `Ward` (slash, pierce, blunt) ahead of the creature's
+   multiplier; gear on the profile comes with gear's own work.
+4. ✅ Every existing creature moved onto it, with a kind: orcs, the archer,
    the troll, spiders, spiderlings, egg sacs, skeletons, slimes, acid
    slimes, bats, vampire bats, star wisps, villagers, the pedlar.
 Done when: no hand-written brain is left outside the vocabulary
@@ -214,6 +216,11 @@ Done when: no hand-written brain is left outside the vocabulary
 the existing fight scenarios (`fight`, `melee`, `underground`, `warband`,
 `archery`, `spider`, `raid`) hold their numbers; the troll can't be beaten
 with steel alone and can with a torch.
+**Done 2026-10-01**: the five fighting brains are `hunter`'s settings
+(each creature's exact old numbers); `fight`, `melee`, `underground`,
+`warband`, `spider`, `raid`, `star` match main within run-to-run noise
+(`archery` fires no arrows on main either: a separate fix); the `troll`
+scenario: held at 3 hp by the sword, dead 0.1 s after it's set alight.
 
 **2. `moves`: moves as data, and seeing that it hurts.**
 1. The move vocabulary: wind-up, active, recovery; hit shapes; lunges;

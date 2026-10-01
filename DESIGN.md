@@ -906,6 +906,17 @@ twin, so the model can make, render and check what a person can.
   limbs, hit areas), `locomotion/`, `moves/`, `brain/`, `custom/`
   (`mod.rs` the registry, `_template.rs`, one file per creature); every
   creature's file in `assets/data/creatures/`.
+- **As built (BE 1, `creatures`)**: the layout is in place (`body/`,
+  `brain/`, `moves/`, `custom/`; locomotion still in `platypus_physics`).
+  Behaviour is one brain, `hunter`, from choices (`close`: Walk, Range,
+  Swoop, Hop, Crawl; `attack`: Touch, Swing, Shoot); the old five brains
+  are its settings. Picking among moves by rules comes with `moves` (BE
+  2). A module is a component read from `params` plus whatever systems
+  and observers it needs (`CustomCreature::build`), its thinking in
+  `CustomSet::Think` after the brains: plain Bevy rather than one trait of
+  hook methods, so a hook is only what it uses. An unknown brain or
+  module is a loud error at start (not a refusal to load). Modules now:
+  `dummy`, `explosive`, `hatchery`.
 
 ### 14.2 Damage types, resistances, and kinds
 
@@ -936,6 +947,12 @@ twin, so the model can make, render and check what a person can.
 - **Regeneration as data**: a rate, and what stops it for how long. The
   troll regenerates unless fire or acid hurt it in the last 5 s: plain
   steel can't win, a torch can.
+- **As built (BE 1)**: `nature.rs` and `kinds.ron`, the kinds above
+  (elemental as `starfire` for now; no `arachnid` apart from `insect`).
+  Gear keeps its `Ward` for slash, pierce and blunt, before the
+  creature's multiplier; gear on the same profile comes with the gear's
+  own arc. `regen` with `undying`: while it heals it can't go below 1 hp,
+  so steel holds the troll at 1–3 hp and fire finishes it.
 
 ### 14.3 Seeing that it hurts (no health bars)
 
