@@ -1,0 +1,52 @@
+// Moves (DESIGN §14.1, creatures/moves/): what creatures do with their own
+// bodies, named in a creature's file (`moves: [..]`, tried in that order).
+// Hot-reloaded.
+//
+// when: (range: (near, far) cells to the target, footing: standing or
+//   clinging, line: nothing solid between)
+// every: seconds after it ends before it may come again (and any move is
+//   followed by 0.4 s before the next)
+// phases: in order, each `secs` long (0: a moment), named for readouts
+//   and the bestiary (windup, strike, recover):
+//   pose: (lift, back, curl) how the body is held (`legs::Rear`: raised,
+//     crouched back, tail curled over), eased to over the phase:
+//     ease: Smooth (default), Linear, Snap; tremble: the curl shaking
+//   acts: done as the phase starts, but a strike, live through it:
+//     Lunge(speed, up): off at the target (cells/s)
+//     Strike((at, reach, damage, harm, knock, up, stun, from, coat)): what's
+//       within `reach` of a point `at` cells toward the target is hit once
+//       (`from`: live from that share of the phase; `coat`: left on it)
+//     Cast(spell, at, up): a spell (spells.ron) from there, aimed where the
+//       target will be and lobbed by as far as it falls
+//     Slam((radius, damage, harm, knock, stun)): round its feet
+//     Summon(kind, count, spread): creatures beside it
+//     Sound(name): sounds.ron
+(
+    moves: [
+        // The big spider's. It crouches back, then leaps at you: its jaws.
+        (id: "spider_bite", every: 1.5, when: (range: (0, 36), footing: true), phases: [
+            (name: "windup", secs: 0.3, pose: Some((lift: 3, back: 4.5))),
+            (name: "strike", secs: 0.22, ease: Snap, pose: Some((lift: 1.5)), acts: [
+                Lunge(speed: 420, up: 90),
+                Strike((at: 15, reach: 6, damage: 16, harm: pierce, knock: 495, up: 0.4, stun: 0.35)),
+            ]),
+            (name: "recover", secs: 0.45, ease: Snap, pose: Some(())),
+        ]),
+        // At range with a clear line: it rears and lobs a glob of acid.
+        (id: "spider_spit", every: 3.5, when: (range: (24, 255), line: true), phases: [
+            (name: "windup", secs: 0.45, pose: Some((lift: 6, back: 3))),
+            (name: "strike", secs: 0, ease: Snap, pose: Some((lift: 6, back: -3)), acts: [Cast(spell: "spider_spit", at: 15, up: 4.5)]),
+            (name: "recover", secs: 0.45, pose: Some(())),
+        ]),
+        // Close: up on its legs, its stinger curled over its back and held
+        // there trembling, then down past its head: a heavy blow, and venom.
+        (id: "spider_sting", every: 5.0, when: (range: (0, 42), footing: true), phases: [
+            (name: "windup", secs: 0.5, pose: Some((lift: 12, curl: 0.55))),
+            (name: "hold", secs: 0.35, ease: Snap, pose: Some((lift: 12, curl: 0.55)), tremble: 0.03),
+            (name: "strike", secs: 0.12, ease: Linear, pose: Some((lift: 6, curl: 1.0)), acts: [
+                Strike((at: 15, reach: 12, damage: 30, harm: pierce, knock: 330, up: 0.3, stun: 0.4, from: 0.5, coat: Some("venom"))),
+            ]),
+            (name: "recover", secs: 0.45, ease: Linear, pose: Some(())),
+        ]),
+    ],
+)

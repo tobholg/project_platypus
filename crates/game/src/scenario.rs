@@ -5008,9 +5008,10 @@ fn spider_script(
     mut commands: Commands,
     s: Res<Scenario>,
     mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>), With<LocalPlayer>>,
-    spiders: Query<(&Kinematics, &crate::creatures::moves::spider::Assault), Without<LocalPlayer>>,
+    spiders: Query<(&Kinematics, &crate::creatures::moves::Moves), Without<LocalPlayer>>,
+    book: Res<crate::creatures::moves::MoveBook>,
     mut hits: MessageReader<crate::combat::Hit>,
-    mut state: Local<(u8, f32, Option<&'static str>)>,
+    mut state: Local<(u8, f32, Option<String>)>,
 ) {
     if s.name != "spider" {
         return;
@@ -5031,9 +5032,9 @@ fn spider_script(
         }
     }
     for (sk, a) in &spiders {
-        let now = a.doing().map(|d| d.0);
+        let now = a.doing(&book).map(|d| d.0.to_string());
         if now != state.2 {
-            if let Some(what) = now {
+            if let Some(what) = &now {
                 info!("spider: t {t:.2} {what} from {:.0} cells", sk.body.pos.distance(k.body.pos));
             }
             state.2 = now;
@@ -5042,7 +5043,7 @@ fn spider_script(
     if t > state.1 + 1.0 {
         state.1 = t;
         for (sk, a) in &spiders {
-            info!("spider: t {t:.1} at {:.0} cells, vel ({:.0},{:.0}), grounded {} clinging {:?}, doing {:?}", sk.body.pos.distance(k.body.pos), sk.body.vel.x, sk.body.vel.y, sk.loco.grounded(), sk.loco.clinging(), a.doing());
+            info!("spider: t {t:.1} at {:.0} cells, vel ({:.0},{:.0}), grounded {} clinging {:?}, doing {:?}", sk.body.pos.distance(k.body.pos), sk.body.vel.x, sk.body.vel.y, sk.loco.grounded(), sk.loco.clinging(), a.doing(&book));
         }
         if coat.is_some_and(|c| c.share("venom") > 0.0) {
             info!("spider: t {t:.1} the player is envenomed");

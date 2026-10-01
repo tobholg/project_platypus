@@ -74,6 +74,9 @@ pub struct CreatureDef {
     /// Code of its own, for what data can't say (`custom/`).
     #[serde(default)]
     pub custom: Option<super::custom::CustomDef>,
+    /// Its own moves (moves.ron), in the order it tries them.
+    #[serde(default)]
+    pub moves: Vec<String>,
     /// Draw order among creatures.
     #[serde(default = "default_z")]
     pub z: f32,
@@ -468,6 +471,9 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
                 error!("creature `{kind}`: {err}");
             }
         });
+        if !def.moves.is_empty() {
+            world.entity_mut(id).insert(super::moves::Moves::new(def.moves.clone()));
+        }
         // Then its own code, if it has any.
         if let Some(c) = &def.custom {
             world.resource_scope(|world, registry: Mut<super::custom::CustomRegistry>| {
@@ -492,9 +498,14 @@ mod tests {
         let files = std::fs::read_dir(&dir).unwrap().filter(|e| e.as_ref().unwrap().path().extension().is_some_and(|x| x == "ron")).count();
         let defs = Creatures::load_all(&dir);
         assert_eq!(defs.len(), files, "a creature file didn't load (see the log)");
+        let moves = super::super::moves::MoveBook::load();
         for (id, def) in &defs {
             assert!(def.kind.is_some(), "{id} names its kind");
+            for m in &def.moves {
+                assert!(moves.has(m), "{id}: no move `{m}` in moves.ron");
+            }
         }
+        assert_eq!(defs["spider"].moves, ["spider_sting", "spider_bite", "spider_spit"]);
         // Their natures as designed.
         let of = |id: &str, h: Harm| defs[id].nature.of(h);
         assert!(of("skeleton", Harm::Blunt) > 1.0 && of("skeleton", Harm::Pierce) < 1.0);

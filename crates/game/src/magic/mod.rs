@@ -150,6 +150,18 @@ impl Spellbook {
         (names, mana)
     }
 
+    /// How a spell's first cast flies, if it flies: its speed (cells/s)
+    /// and how fast it falls (cells/s²), to aim a lob (a creature's spit).
+    pub fn flight(&self, spell: usize) -> Option<(f32, f32)> {
+        let cast = runes::casts(&self.runes, &self.spells.get(spell)?.runes).ok()?.into_iter().next()?;
+        let (speed, fall) = match cast.carrier {
+            Carrier::Bolt { speed, .. } => (speed, 0.0),
+            Carrier::Orb { speed, .. } => (speed, ORB_FALL),
+            _ => return None,
+        };
+        Some((speed * cast.speed_scale(), (fall + cast.gravity()) * GRAVITY))
+    }
+
     /// A spell's casts, in order (read once, until the runes change).
     fn casts(&mut self, spell: usize) -> Arc<Vec<Arc<Cast>>> {
         if let Some(c) = self.read.get(&spell) {

@@ -43,7 +43,7 @@ pub struct HunterPlugin;
 
 impl Plugin for HunterPlugin {
     fn build(&self, app: &mut App) {
-        app.register_brain::<Hunter>("hunter").add_systems(FixedUpdate, (hunt, crate::creatures::moves::spider::attack).chain().in_set(super::BrainSet));
+        app.register_brain::<Hunter>("hunter").add_systems(FixedUpdate, (hunt, crate::creatures::moves::run).chain().in_set(super::BrainSet));
     }
 }
 
@@ -58,18 +58,11 @@ pub struct Hunter {
     pub attack: Attack,
     pub wander: Wander,
     pub leash: f32,
-    /// The big spider's moves (`moves/spider.rs`), until moves are data.
-    #[serde(deserialize_with = "crate::data::some")]
-    pub bite: Option<crate::creatures::moves::spider::Bite>,
-    #[serde(deserialize_with = "crate::data::some")]
-    pub spit: Option<crate::creatures::moves::spider::Spit>,
-    #[serde(deserialize_with = "crate::data::some")]
-    pub sting: Option<crate::creatures::moves::spider::Sting>,
 }
 
 impl Default for Hunter {
     fn default() -> Self {
-        Hunter { aggro: 300.0, close: Close::default(), attack: Attack::Touch, wander: Wander::default(), leash: 0.0, bite: None, spit: None, sting: None }
+        Hunter { aggro: 300.0, close: Close::default(), attack: Attack::Touch, wander: Wander::default(), leash: 0.0 }
     }
 }
 

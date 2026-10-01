@@ -133,9 +133,9 @@ impl RegisterCustom for App {
     }
 }
 
-/// Every creature file's brain and own code exist (else it's said, loudly,
+/// Every creature file's brain, own code and moves exist (else it's said, loudly,
 /// at start: not when one first walks into view).
-fn check_names(creatures: Res<Creatures>, brains: Res<BrainRegistry>, custom: Res<CustomRegistry>) {
+fn check_names(creatures: Res<Creatures>, brains: Res<BrainRegistry>, custom: Res<CustomRegistry>, moves: Res<super::moves::MoveBook>) {
     let mut bad = Vec::new();
     for (id, def) in creatures.all() {
         if !brains.has(&def.brain.kind) {
@@ -145,6 +145,9 @@ fn check_names(creatures: Res<Creatures>, brains: Res<BrainRegistry>, custom: Re
             && !custom.has(&c.name)
         {
             bad.push(format!("{id}: no custom module `{}` (registered: {})", c.name, custom.names().join(", ")));
+        }
+        for m in def.moves.iter().filter(|m| !moves.has(m)) {
+            bad.push(format!("{id}: no move `{m}` (moves.ron)"));
         }
     }
     for b in &bad {

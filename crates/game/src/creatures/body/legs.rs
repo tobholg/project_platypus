@@ -77,7 +77,7 @@ pub struct LegsDef {
     pub stinger: Option<String>,
 }
 
-/// How a legged body is held (an attack: `spider.rs`): raised `lift` cells
+/// How a legged body is held (a move: `moves/`): raised `lift` cells
 /// off what it holds, drawn `back` cells behind its heading (a crouch), its
 /// stinger curled `curl` of the way over its back and past its head.
 #[derive(Component, Clone, Copy, Debug, Default)]
