@@ -203,6 +203,11 @@ pub struct BrainDef {
     pub params: Option<Box<ron::value::RawValue>>,
 }
 
+/// Read the creature files again now (the bestiary's Reload), changed or
+/// not; `moves.ron` too.
+#[derive(Message, Clone, Copy, Debug)]
+pub struct ReloadCreatures;
+
 #[derive(Resource)]
 pub struct Creatures {
     defs: HashMap<String, Arc<CreatureDef>>,
@@ -214,6 +219,14 @@ pub struct Creatures {
 impl Creatures {
     pub fn get(&self, kind: &str) -> Option<&Arc<CreatureDef>> {
         self.defs.get(kind)
+    }
+
+    /// Every creature file as loaded at start (the tests' and tools').
+    #[cfg(test)]
+    pub fn load_for_tests() -> Self {
+        let dir = data_path("creatures");
+        let art = data_path("").parent().expect("assets/data").join("art");
+        Creatures { defs: Creatures::load_all(&dir), watch: Watched::new(dir), art_watch: Watched::new(art) }
     }
 
     /// Every creature file, by id.
@@ -347,20 +360,22 @@ impl Plugin for CreaturePlugin {
     fn build(&self, app: &mut App) {
         let dir = data_path("creatures");
         let art = data_path("").parent().expect("assets/data").join("art");
-        app.insert_resource(Creatures { defs: Creatures::load_all(&dir), watch: Watched::new(dir), art_watch: Watched::new(art) })
+        app.add_message::<ReloadCreatures>()
+            .insert_resource(Creatures { defs: Creatures::load_all(&dir), watch: Watched::new(dir), art_watch: Watched::new(art) })
             .init_resource::<CreatureArt>()
             .add_systems(Update, hot_reload_creatures);
     }
 }
 
-pub(crate) fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut art: ResMut<CreatureArt>, mut q: Query<(&Creature, &mut MoveStats, &mut Health, &mut Animator)>) {
+pub(crate) fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut art: ResMut<CreatureArt>, mut asked: MessageReader<ReloadCreatures>, mut q: Query<(&Creature, &mut MoveStats, &mut Health, &mut Animator)>) {
     // (Polled without marking it changed: what reads `is_changed` redresses
     // and restats every creature.)
     let polled = creatures.bypass_change_detection();
     let (a, b) = (polled.watch.changed(), polled.art_watch.changed());
-    if !a && !b {
+    if !a && !b && asked.read().count() == 0 {
         return;
     }
+    asked.clear();
     art.forget_art();
     let defs = Creatures::load_all(creatures.watch.path());
     for (c, mut stats, mut health, mut anim) in &mut q {

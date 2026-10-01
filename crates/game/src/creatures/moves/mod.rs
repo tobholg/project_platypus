@@ -259,10 +259,13 @@ impl MoveBook {
     }
 }
 
-fn reload(mut book: ResMut<MoveBook>) {
-    if !book.watch.changed() {
+fn reload(mut book: ResMut<MoveBook>, mut asked: MessageReader<crate::creatures::def::ReloadCreatures>) {
+    // (Polled without marking it changed: the bestiary rereads on a change.)
+    let changed = book.bypass_change_detection().watch.changed();
+    if !changed && asked.read().count() == 0 {
         return;
     }
+    asked.clear();
     match MoveBook::read(book.watch.path()) {
         Ok(moves) => {
             book.set(moves);

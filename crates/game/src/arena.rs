@@ -51,6 +51,8 @@ pub enum ArenaAction {
     Sound(String),
     /// Start the readouts' fight afresh (`fight.rs`).
     NewFight,
+    /// The bestiary, open or shut (`bestiary/`).
+    Bestiary,
 }
 
 #[derive(Resource, Default)]
@@ -232,6 +234,7 @@ fn act(
     mut tempo: ResMut<crate::tempo::Tempo>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut new_fight: MessageWriter<crate::fight::NewFight>,
+    mut bestiary: ResMut<crate::bestiary::panel::Bestiary>,
 ) {
     for a in dev.read() {
         if *a == crate::dev::DevAction::Arena {
@@ -268,6 +271,7 @@ fn act(
             ArenaAction::NewFight => {
                 new_fight.write(crate::fight::NewFight);
             }
+            ArenaAction::Bestiary => bestiary.open = !bestiary.open,
             // Everything but the player and the planted dummies.
             ArenaAction::Clear => {
                 for (e, d) in &creatures {
@@ -369,6 +373,7 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
                 });
                 section(p, 3, &|p| row(p, &|r| label(r, "Boxes and hands  Y", ArenaAction::Overlays)));
                 section(p, 4, &|p| {
+                    row(p, &|r| label(r, "Bestiary  F12", ArenaAction::Bestiary));
                     row(p, &|r| {
                         for k in kinds() {
                             label(r, &k, ArenaAction::Pick(k.clone()));

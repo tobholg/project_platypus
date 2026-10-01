@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -4800,6 +4800,27 @@ fn grab_script(
         }
         _ => {}
     }
+}
+
+/// `bestiary`: the bestiary opened, `PLATYPUS_PICK` (default the troll)
+/// opened in it, `PLATYPUS_SEARCH` typed; logs the cards shown and the
+/// opened one's details (for a screenshot: `PLATYPUS_SCREENSHOT`).
+fn bestiary_script(s: Res<Scenario>, mut b: ResMut<crate::bestiary::panel::Bestiary>, mut done: Local<bool>) {
+    if s.name != "bestiary" || *done || s.elapsed < 1.0 {
+        return;
+    }
+    *done = true;
+    b.open = true;
+    b.search = std::env::var("PLATYPUS_SEARCH").unwrap_or_default();
+    let pick = std::env::var("PLATYPUS_PICK").unwrap_or_else(|_| "troll".into());
+    let shown: Vec<String> = b.shown().map(|e| e.id.clone()).collect();
+    info!("bestiary: {} cards shown: {}", shown.len(), shown.join(", "));
+    if let Some(e) = b.shown().find(|e| e.id == pick) {
+        for (head, lines) in e.details() {
+            info!("bestiary: {}: {head}: {}", e.id, lines.join(" | "));
+        }
+    }
+    b.picked = Some(pick);
 }
 
 /// `reset`: the world reset from the dev panel.
