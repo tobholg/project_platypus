@@ -22,7 +22,8 @@ pub struct ResetPlugin;
 
 impl Plugin for ResetPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Armed>().init_resource::<Pending>().add_systems(Update, (arm, label, reset.run_if(|p: Res<Pending>| p.0.is_some())).chain());
+        app.add_message::<ResetNow>()
+            .init_resource::<Armed>().init_resource::<Pending>().add_systems(Update, (arm, label, reset.run_if(|p: Res<Pending>| p.0.is_some())).chain());
     }
 }
 
@@ -32,6 +33,10 @@ pub enum Reset {
     World,
     Everything,
 }
+
+/// Reset now, no asking twice (the arena's layouts).
+#[derive(Message, Clone, Copy, Debug)]
+pub struct ResetNow(pub Reset);
 
 /// Clicked once: this reset, if clicked again before the time's up.
 #[derive(Resource, Default)]
@@ -47,7 +52,10 @@ pub struct ResetLabel(pub Reset);
 /// Seconds a first click waits for the second.
 const SURE: f32 = 3.0;
 
-fn arm(time: Res<Time<Real>>, mut acts: MessageReader<DevAction>, mut armed: ResMut<Armed>, mut pending: ResMut<Pending>) {
+fn arm(time: Res<Time<Real>>, mut acts: MessageReader<DevAction>, mut now_please: MessageReader<ResetNow>, mut armed: ResMut<Armed>, mut pending: ResMut<Pending>) {
+    if let Some(r) = now_please.read().last() {
+        pending.0 = Some(r.0);
+    }
     let now = time.elapsed_secs();
     if armed.0.is_some_and(|(_, until)| now > until) {
         armed.0 = None;

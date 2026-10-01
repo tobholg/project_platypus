@@ -53,6 +53,9 @@ pub enum ArenaAction {
     NewFight,
     /// The bestiary, open or shut (`bestiary/`).
     Bestiary,
+    /// The arena's floor made another way (`worldgen::arena::Layout`, by
+    /// name): the world reset, the player kept.
+    Layout(String),
 }
 
 #[derive(Resource, Default)]
@@ -83,7 +86,7 @@ struct SectionHead(usize);
 struct SectionBody(usize);
 
 /// The sections, in order, and which are open at first.
-const SECTIONS: [(&str, bool); 7] = [("Time", true), ("Fight: to them above, to you below", true), ("Tempo: T the next (tempo.ron)", true), ("Look", true), ("Spawn at the cursor: O (packs first)", false), ("Make", true), ("Sounds: click to hear (sounds.ron), F11 mute", false)];
+const SECTIONS: [(&str, bool); 8] = [("Time", true), ("Fight: to them above, to you below", true), ("Layout: the floor (the world reset, you kept)", false), ("Tempo: T the next (tempo.ron)", true), ("Look", true), ("Spawn at the cursor: O (packs first)", false), ("Make", true), ("Sounds: click to hear (sounds.ron), F11 mute", false)];
 
 /// A group of the sound board: its name, and which sounds are in it.
 type SoundGroup<'a> = (&'a str, &'a dyn Fn(&str) -> bool);
@@ -235,6 +238,7 @@ fn act(
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut new_fight: MessageWriter<crate::fight::NewFight>,
     mut bestiary: ResMut<crate::bestiary::panel::Bestiary>,
+    (mut sim, mut resets): (ResMut<SimWorld>, MessageWriter<crate::reset::ResetNow>),
 ) {
     for a in dev.read() {
         if *a == crate::dev::DevAction::Arena {
@@ -272,6 +276,13 @@ fn act(
                 new_fight.write(crate::fight::NewFight);
             }
             ArenaAction::Bestiary => bestiary.open = !bestiary.open,
+            ArenaAction::Layout(name) => {
+                let layout = platypus_worldgen::arena::Layout::parse(name);
+                info!("arena: the {} layout", layout.name());
+                let arena = platypus_worldgen::ArenaGen::with_layout(sim.materials(), layout);
+                sim.generator = std::sync::Arc::new(arena);
+                resets.write(crate::reset::ResetNow(crate::reset::Reset::World));
+            }
             // Everything but the player and the planted dummies.
             ArenaAction::Clear => {
                 for (e, d) in &creatures {
@@ -366,13 +377,21 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
                 });
                 section(p, 2, &|p| {
                     row(p, &|r| {
+                        for l in ["sandbox", "flat", "cave", "slopes", "stairs", "real"] {
+                            label(r, l, ArenaAction::Layout(l.into()));
+                        }
+                    });
+                    sub(p, "real: the real world's start (seed 1); PLATYPUS_ARENA=real:SEED:X:Y another place");
+                });
+                section(p, 3, &|p| {
+                    row(p, &|r| {
                         for (i, name) in tempos.iter().enumerate() {
                             label(r, name, ArenaAction::Tempo(i));
                         }
                     });
                 });
-                section(p, 3, &|p| row(p, &|r| label(r, "Boxes and hands  Y", ArenaAction::Overlays)));
-                section(p, 4, &|p| {
+                section(p, 4, &|p| row(p, &|r| label(r, "Boxes and hands  Y", ArenaAction::Overlays)));
+                section(p, 5, &|p| {
                     row(p, &|r| label(r, "Bestiary  F12", ArenaAction::Bestiary));
                     row(p, &|r| {
                         for k in kinds() {
@@ -381,9 +400,9 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
                     });
                     row(p, &|r| label(r, "Clear the floor", ArenaAction::Clear));
                 });
-                section(p, 5, &|p| row(p, &|r| label(r, "Art editor  E", ArenaAction::Editor)));
+                section(p, 6, &|p| row(p, &|r| label(r, "Art editor  E", ArenaAction::Editor)));
                 // Sounds, grouped: hits, steps and moving, hands, the rest.
-                section(p, 6, &|p| {
+                section(p, 7, &|p| {
                     let groups: [SoundGroup; 4] = [
                         ("Hits", &|n| n.starts_with("hit") || n.starts_with("hurt") || n.starts_with("swing") || n.starts_with("clang")),
                         ("Steps and moving", &|n| n.starts_with("step_") || matches!(n, "land" | "jump" | "air_jump" | "dash")),

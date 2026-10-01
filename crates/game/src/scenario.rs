@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -4874,6 +4874,31 @@ fn reload_script(
         }
         _ => {}
     }
+}
+
+/// `layouts`: the arena's floor made each way in turn from its panel (the
+/// world reset, the player kept), 3 s each; logs where the player stands
+/// and what's under it after each.
+fn layouts_script(s: Res<Scenario>, sim: Res<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut acts: MessageWriter<crate::arena::ArenaAction>, mut step: Local<usize>) {
+    if s.name != "layouts" {
+        return;
+    }
+    const ALL: [&str; 6] = ["flat", "cave", "slopes", "stairs", "real", "sandbox"];
+    let t = s.elapsed;
+    if t < 1.0 + *step as f32 * 3.0 {
+        return;
+    }
+    if *step > 0
+        && let Ok(k) = player.single()
+    {
+        let feet = k.body.pos - Vec2::Y * (k.body.half.y + 1.0);
+        let under = sim.world.get(CellPos::from_world(feet.x, feet.y)).map_or("nothing".to_string(), |c| sim.materials().def(c.material).name.clone());
+        info!("layouts: {}: the player at {:?}, standing {} on {under}", ALL[*step - 1], k.body.pos.round(), k.loco.grounded());
+    }
+    if let Some(l) = ALL.get(*step) {
+        acts.write(crate::arena::ArenaAction::Layout((*l).into()));
+    }
+    *step += 1;
 }
 
 /// `reset`: the world reset from the dev panel.

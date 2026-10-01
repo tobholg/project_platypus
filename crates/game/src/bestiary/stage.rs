@@ -99,8 +99,13 @@ fn cast(
     weapons: Option<Res<crate::combat::Weapons>>,
     mut cams: Query<(&mut Camera, &Transform)>,
     mut view: ResMut<crate::canvas::StageView>,
+    staged: Query<(), With<Staged>>,
 ) {
     let Some(mut stage) = stage else { return };
+    // (Taken away, the world reset: put on again.)
+    if [stage.actor, stage.stand_in].iter().flatten().any(|e| !staged.contains(*e)) {
+        stage.showing = None;
+    }
     let wanted = bestiary.picked.clone().filter(|_| bestiary.open);
     if let Ok((mut c, tf)) = cams.get_mut(stage.camera) {
         c.is_active = wanted.is_some();
