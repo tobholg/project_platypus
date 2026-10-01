@@ -3,7 +3,7 @@
 Each phase ends with something playable or measurable. See SPEC.md for the design.
 
 **Next:** the bestiary arc (BE, DESIGN §14, agreed 2026-10-01): `creatures`
-done 2026-10-01, next branch `moves`; then the world editor and sites (WE); then progression.
+and the 1.5× rescale (`scale`) done 2026-10-01, next branch `moves`; then the world editor and sites (WE); then progression.
 
 ## Status (2026-09-25)
 
@@ -231,21 +231,35 @@ lengths and distances ×1.5, speeds and accelerations ×1.5, areas and cell
 counts ×2.25, per-cell decay (light falloff) to the 1/1.5 power; durations,
 damage, hardness, chances and counts of decorative sparks stay (sparks get
 finer: the point). `tools/scale/ron_scale.py` holds the rules for data.
-1. Data: every creature file, weapons, runes (fireballs' blasts and fire),
+1. ✅ Data: every creature file, weapons, runes (fireballs' blasts and fire),
    items, gear (rocket boots, hooks), tools, tempo, lighting, lairs, life,
    loot, progression.
-2. Code: every constant in cells (camera, hands, combat, magic, fx, light,
+2. ✅ Code: every constant in cells (camera, hands, combat, magic, fx, light,
    events, physics defaults, brain defaults); the zoom starts at 2.
-3. The sim and worldgen: world presets 1.5× each way, terrain frequencies
+3. ✅ The sim and worldgen: world presets 1.5× each way, terrain frequencies
    ÷1.5, caves, trees, villages, lairs, structures; the particle cap.
-4. Art, redrawn by hand at 1.5× (not upscaled): the humanoid rig and its
+4. ✅ Art, redrawn by hand at 1.5× (not upscaled): the humanoid rig and its
    villagers, gear looks, the skeleton, the troll, spiders, critters,
    slimes, bats, wisps, props, weapons and held things.
-5. Rocket boots fire from each boot (user, 2026-10-01): the leg parts mark
+5. ✅ Rocket boots fire from each boot (user, 2026-10-01): the leg parts mark
    their feet, the exhaust comes from both.
-6. Scenarios and the bench re-measured; budgets kept or argued.
+6. ✅ Scenarios and the bench re-measured; budgets kept or argued.
 Done when: nothing on screen is drawn at the old scale, the scenarios hold
 their stories (who wins, what breaks), the bench holds its budgets.
+**Done 2026-10-01** (with sub-agents in parallel: art in five batches,
+worldgen, scenarios, docs). Also: the backdrop's ranges generated 1.5× as
+fine (not stretched); material patterns at 12 × 12; BLOCK is 6 cells (every
+room, village and castle follows); the building grid, chests (18 × 15) and
+stations redrawn. Found and fixed on the way: a liquid's pressure look ran
+past the step's chunks (a pool deeper than a chunk panicked); lightning's
+earthed stretch in two places (a 2-billion-wide texture); kicks scaled twice;
+boulder traps held at their niche's corners; trees over cave and chasm
+mouths. Scenarios now run with no window (`PLATYPUS_OFFSCREEN`, user: "not
+in the foreground"). Bench: `chaos` 3.1 ms a tick (budget 4), streaming a
+12-chunk column (the view at 2 px/cell) 1.7 / 3.3 ms. Known: a coal seam
+in the `trap` scenario's tunnel pours onto its tripwire and buries it
+(powder ores in cave walls fall at load: worldgen, separate); `archery` and
+`beams` scenarios pick the wrong hotbar slots (separate task).
 
 **2. `moves`: moves as data, and seeing that it hurts.**
 1. The move vocabulary: wind-up, active, recovery; hit shapes; lunges;
