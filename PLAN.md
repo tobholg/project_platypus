@@ -2,9 +2,8 @@
 
 Each phase ends with something playable or measurable. See SPEC.md for the design.
 
-**Next:** DESIGN.md (proposed 2026-09-25): the world arc (plan, relief, underground, mining and
-building in 4 × 4 blocks, items and chests, ores, structures, saving), the asset tools and arena,
-and the RPG arc (rigs and gear skins, moves, corpses and loot, characters, spells).
+**Next:** the bestiary arc (BE, DESIGN §14, agreed 2026-10-01), its first
+branch `creatures`; then the world editor and sites (WE); then progression.
 
 ## Status (2026-09-25)
 
@@ -21,7 +20,7 @@ and the RPG arc (rigs and gear skins, moves, corpses and loot, characters, spell
 | W4 | Rigid bodies: felled trees topple, shed their crown, land as logs, hurt what they hit | done |
 | W5 | Elements on creatures (heat, cold, corrosion, burning, wet), acid fumes, oil fires, weather: clouds, rain, snow | done |
 | W6 | Lighting (glow/opacity data, light grid, lantern, flashlight, rim, haze) and day/night | done |
-| 3 | Worldgen v2: world plan (legacy mountains, sky islands, walker caves), biomes, save/load | not started |
+| 3 | Worldgen v2: world plan (legacy mountains, sky islands, walker caves), biomes, save/load | done (world-arc, then L1 `world-scale`) |
 | C1 | Magic casting core: runes + wands as data, bolts/orbs/streams/wand lightning through the cell sim, mana, explosion damage for every blast (branch `magic-arc`) | done |
 | A1–A3 | Art pipeline: sprites as text + `platypus-art` CLI (sheet/render/check/describe/get/set/paint/import), critters, the humanoid rig and player, casting arm; the arena (dummies, pause/step/slow motion, overlays, spawning) and the in-game art editor (branch `combat-arc`) | done |
 | 4 | Combat: weapon swings, pixel masks, swept hits, hit-stop, knockback, stamina, dodge (SPEC 6.2); enemy attacks come with the orcs' redesign (arc A stage 6); the down-strike (S + attack in the air: a slash or a plunge per weapon, bouncing off creatures, hostile spells and hazards, a plunge's dive and slam; DESIGN §7, on `progression-arc`) | core done |
@@ -29,7 +28,9 @@ and the RPG arc (rigs and gear skins, moves, corpses and loot, characters, spell
 | 5 | Terraria layer: items, inventory, mining yields, building, crafting, lighting | items, inventory, mining, building, lighting done (torches and glow sticks brighter, with a haze over the dark, 2026-09-27); P1 (branch `progression-arc`, DESIGN §3.5, §7d): saving (changed chunks, player, chests, stations, creatures; by name; autosave + Ctrl+S + on quit), crafting (stations as furniture, recipes as data, the crafting panel), progression (progress record, milestones with rewards and unlocks, recipe discovery, toasts): first versions with example content, done |
 | S1 | Sound (branch `sound-arc`, DESIGN §7e): bevy_seedling buses, ~37 effects and 6 ambience beds and 3 music moods all made from recipes in `sounds.ron`, world-driven ambience (fire, lava, water, rain, wind, caves, drips), positional effects hooked into combat, movement, mining, the hook, the bow, blasts, spells; the arena panel's sound board | first version, to tune by ear |
 | B1 | Backdrops (branch `backdrop-arc`, DESIGN §4.3b): Noita-like ranges by biome (`peaks.rs`: noita, alpine; running down behind the ground; 1–4 % parallax across, ~1 % up and down, pixel-snapped; behind the weather's clouds), drifting cloud heaps, a sky gradient, a blooming sun, a big moon in phases (8-night cycle) and twinkling stars over near-black nights; underground a tinted void with faint far twinkles | first version; next: big caverns without back walls in places |
-| L1 | The living world (DESIGN §13, agreed 2026-09-29): dev world reset (world only / everything) → an 8× world sized from its preset (4× wide, 2× deep; density tests) → fire moisture and storm rain → the world clock (regions, processes at their own pace with abstract and live faces; weather's fronts, regrowth, moisture, wildfires, lairs) → a flat start and a village → NPCs as data → gold (Noita's) → raids, caravans, falling stars, seasons. Proposed: metals (ore → molten → solid, §13.1), boulders (§13.2). Later: mine carts, teleport stations | the reset done; 0 (merge) done; 1 `world-scale` done 2026-09-29 (large 131 072 × 32 768, `medium` the reference, everything sized from the preset, density tests, the weather's window, loot depth by band, save version 2 with old saves kept aside); 2 `world-clock` in progress: the clock, moisture and fire done (stage 1); next: regrowth |
+| L1 | The living world (DESIGN §13, agreed 2026-09-29): dev world reset (world only / everything) → an 8× world sized from its preset (4× wide, 2× deep; density tests) → fire moisture and storm rain → the world clock (regions, processes at their own pace with abstract and live faces; weather's fronts, regrowth, moisture, wildfires, lairs) → a flat start and a village → NPCs as data → gold (Noita's) → raids, caravans, falling stars, seasons. Proposed: metals (ore → molten → solid, §13.1), boulders (§13.2). Later: mine carts, teleport stations | done 2026-10-01: world-scale, world-clock (moisture, regrowth, wildfires, lairs), gold, matter, village, world-events (stars, raids and mending, quakes, the pedlar); seasons dropped for biomes; travel moved later (after the world editor) |
+| BE | The bestiary (DESIGN §14, agreed 2026-10-01): creatures as data with custom modules, ten damage types and resistance profiles, moves, damage feedback, the bestiary and arena v2, a path planner and digging, general limbs, the creature editor, wounds and severing, firearms and new materials, the roster, the bosses | next: `creatures` |
+| WE | The world editor and sites (DESIGN §14 "Where this sits"): authored places placed by the world plan, edit and play on the same world, then mechanisms, a map with rest points and travel, factions, a vertical slice; then progression | after BE |
 | 6 | Hollow Knight layer: ability unlocks, map, bosses, benches, set pieces | not started; the tempo (DESIGN D7) being tried: `tempo.ron` presets, `turn_accel` and `jump_hold` in movement, the arena panel's Tempo row, the `tempo` scenario; walking real terrain fixed (a 6-cell step up and walking down onto ground below, both eased on screen: full speed 12 % → 70–90 % of a walk; `walk` scenario) |
 | 7 | Pixel rigid bodies (falling terrain chunks) | optional |
 | — | Co-op networking (host-authoritative, checksum + chunk resync) | seams in place, not built |
@@ -179,6 +180,129 @@ and the merchant visits, near you and away, all from one timetable.
 
 **7. Later: travel.** Mine carts on rails, stronger travel and building,
 teleport stations. A blood moon.
+
+## The bestiary: implementation plan (BE, agreed 2026-10-01, DESIGN §14)
+
+Creatures, encounters and their tools, before the world editor and, after
+the rest of the sandbox (DESIGN §14 "Where this sits"), progression.
+Branches in order; each merges to `main` when its "done when" holds (tests,
+clippy, the bench, its scenarios and screenshots). The testing loop (the
+bestiary and arena v2) comes third so everything after it is built and
+judged in it. Running alongside: deep caves run at ~42 ms a frame (a
+separate task; it must be fixed before the roster's cave fights).
+
+**1. `creatures`: one model, every creature on it.**
+1. `crates/game/src/creatures/` (body, locomotion, moves, brain, custom);
+   the five data layers; the general brain with the brains we have as its
+   presets.
+2. Custom modules: the trait, the registry (an unknown name fails at load),
+   `_template.rs`.
+3. Ten damage types on every weapon, spell, blast, fall and hazard; one
+   resistance profile for creatures and gear (replacing `Ward` and
+   `Resist`); kinds as templates; absorbing; what each can't suffer;
+   regeneration (the troll's, stopped by fire and acid).
+4. Every existing creature moved onto it, with a kind: orcs, the archer,
+   the troll, spiders, spiderlings, egg sacs, skeletons, slimes, acid
+   slimes, bats, vampire bats, star wisps, villagers, the pedlar.
+Done when: no hand-written brain is left outside the presets and `custom/`;
+the existing fight scenarios (`fight`, `melee`, `underground`, `warband`,
+`archery`, `spider`, `raid`) hold their numbers; the troll can't be beaten
+with steel alone and can with a torch.
+
+**2. `moves`: moves as data, and seeing that it hurts.**
+1. The move vocabulary: wind-up, active, recovery; hit shapes; lunges;
+   projectiles; summons; grabs; beams; area slams; every move with a tell.
+2. Damage feedback (DESIGN §14.3): reactions scaled by the share of health
+   taken; wound drips and staggers; hurt, resisted and absorbed hits told
+   apart.
+3. Observations recorded (what the player saw each kind of creature do),
+   for the player's bestiary later.
+4. Arena readouts: a timeline of hits, damage per second, damage taken, by
+   type.
+Done when: the existing creatures' attacks are moves in data, unchanged in
+feel; a scenario hits a skeleton with each damage type and logs the three
+reactions as designed.
+
+**3. `bestiary`: the browser, arena v2, and the command line.**
+1. The bestiary panel: cards, filters, search; the expanded view with the
+   live preview stage, stats, profile, moves, phases, buttons (place, fight,
+   open, reload).
+2. Arena v2: layouts (flat, cave, slopes, stairs, a copy of real terrain);
+   live reload of creature and move files mid-fight; recorded fights
+   replayed as tests.
+3. `platypus-bestiary`: cards and preview strips as images, stats listed.
+Done when: every creature is in the bestiary with a working preview; one is
+placed, fought, edited mid-fight and the fight replayed as a test; the CLI
+renders the whole bestiary.
+
+**4. `navigation`: the path planner, and digging.**
+1. The shared path planner (walk, climb, jump, swim, fly, each a cost).
+2. Digging: claws, acid, tunnel, blast; its cost by hardness; tells
+   (scratching, dust, cracks, hiss); caps per creature and frame.
+Done when: a creature finds its way round an obstacle course it used to
+stick on; the cave spider digs and spits its way to a player walled in
+dirt, slows at stone, stops at obsidian and glass; the bench holds with
+diggers at work.
+
+**5. `limbs`: general procedural limbs.**
+1. Side-view legs (2, 4, 6) whose planted feet carry the body (height and
+   tilt follow the ground); chains; segments; moves that drive limbs.
+2. Hit areas per part.
+3. Spiders onto the general system (their look kept).
+Done when: a four-legged walker crosses the arena's real-terrain layout
+with its body following the ground; a chain aims; a segmented crawler
+climbs a wall and a ceiling.
+
+**6. `creature-editor`: from a sketch of the whole to a creature.**
+Sketch (layers), slice, rig, pose and moves, test; editing a part in place
+on the whole; big parts as palette PNGs, the rest text; every step also
+from the command line.
+Done when: a new creature is sketched, sliced, rigged, given two moves and
+fought, without leaving the game; the model makes one the same way from
+scripts and renders it.
+
+**7. `wounds`: wounds you can see, limbs that break.**
+1. Depth by kind (skin, flesh, bone; ichor; stone; ectoplasm); each damage
+   type's mark; blood from the wound along the hit.
+2. Parts and limbs with their own health; severing (the piece falls, the
+   stump bleeds); the consequences (gait, climbing, lost attacks); bodies
+   keep their wounds.
+Done when: shooting a spider's legs off on a ceiling drops it, bleeding
+acid; a zombie loses an arm and a leg and crawls on; each damage type
+leaves its own mark; a fight with a dozen wounded creatures stays in
+budget.
+
+**8. `powder`: firearms and new materials.**
+The flintlock pistol and the musket; gunpowder (charcoal and sulfur, a new
+mineral by the underworld's lava); iron and silver shot; muzzle flash,
+smoke, recoil, reload. Blight and ectoplasm.
+Done when: a powder trail burns like a fuse and a barrel blows; a musket
+ball leaves a wound and a spray; silver shot hurts the undead more; blight
+withers grass and poisons; ectoplasm slows.
+
+**9. `roster`: the new creatures.**
+Necromancer, risen skeletons, zombies, chain wraith, watcher, stilt
+stalker, crag crab, scorpion, cave centipede, the reworked cave spider,
+bloat toad, splitting slime, shield orc, orc sapper, mimic, bat swarm
+(DESIGN §14.11): each a file (and a module only where needed), each in the
+bestiary, each with a scenario and a recorded fight.
+Done when: all of them are fought in arena v2 and in the world, and each
+tests what it was chosen to test.
+
+**10. `bosses`: one branch each.** The Broodmother, the Necromancer lord,
+the Ruin colossus, the Sand wyrm, each to the puzzle pattern (DESIGN
+§14.8): a preparable weakness, an arena trick, an emergent route, a hint in
+the world; its scenario plays the intended solution once.
+
+**Spike: concept images to pixel art** (DESIGN §14.6), once an image API is
+available: the converter, a dozen generated creatures and props through
+it, shown side by side; go or no-go before it goes into the editor.
+
+Done when (the arc): every creature, old and new, is a data file and, where
+needed, one custom module; the bestiary shows them all with live previews;
+each can be placed, fought and recorded in the arena; each boss's intended
+solution plays out in its scenario; the bench and a crowded fight stay in
+budget.
 
 ## Measured (Apple M2 Max, 1080p window, 3 px per cell)
 

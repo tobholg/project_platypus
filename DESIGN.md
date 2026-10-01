@@ -850,7 +850,304 @@ particles, explosive barrels (kick one down a slope into a camp), small
 creatures (a shove). A kick into rock does nothing; a kick with rocket
 boots lit is a kick with fire.
 
-## 14. Open questions and risks
+## 14. Creatures, encounters and the bestiary (agreed 2026-10-01)
+
+**Where this sits.** The outer loop: first the world, the sandbox, the
+systems and the simulation, performant and fun to explore and play with
+using the dev tools; then progression (character creation, difficulty,
+story, a canonical path the player is free to leave, soft-gated by gear
+and stats, as an RPG). Before progression, still to build, in order: this
+arc (creatures, encounters, the bestiary and their tools), then authored
+places and a world editor that is the game (sites: castles on the scale
+of Elden Ring's, hand-built, placed by the world plan; edit and play on
+the same world), mechanisms (doors, levers, gates, lifts, wiring), getting
+around a big world (a discovered map, rest points as checkpoints and fast
+travel, travel), factions with places they hold, and a vertical slice (one
+authored castle with patrols, mechanisms and a legged boss, built with the
+new tools, measured). Throughout: every editor action has a command-line
+twin, so the model can make, render and check what a person can.
+
+### 14.1 Every creature is data; a few also have code
+
+- **Five data layers**, each a vocabulary a creature file picks from:
+  - **Body**: size, mass, shape; sprite or a rig of parts; procedural limbs
+    (legs that plant and carry the body, chains for tails and necks,
+    segments); hit areas per part (weak points); blood; loot.
+  - **Locomotion**: walker, hopper, flyer, swimmer, climber, burrower;
+    speeds, jumps; a dig method (§14.4).
+  - **Moves**: a library like `weapons.ron`: wind-up, active, recovery;
+    hit shapes; lunges; projectiles (the arrows and spells we have);
+    summons; grabs; beams; area slams. Every move has a tell and an
+    animation; a creature lists its moves.
+  - **Behaviour**: one general brain from settings: senses (sight,
+    hearing, aggro), tactics (keep distance, flank, retreat when hurt,
+    call others), rules for picking a move (range, cooldown, weight,
+    conditions). The brains we have (`melee_walker`, `archer`, `swooper`,
+    ...) become presets of it. Rules, not a scripting language: easier to
+    test, render and reason about; the code hook is the escape hatch.
+  - **Phases** (bosses): at a share of health, swap moves, summon adds,
+    change the arena (light it, flood it, darken it), transform.
+- **Custom modules** for what data can't say, named in the file
+  (`custom: "wyrm"`). One file each under `creatures/custom/`, one trait,
+  every hook optional: `on_spawn`, `think` (a decision, or none to let the
+  general brain decide), `moves` (named moves the data can then use),
+  `on_hit`, `on_phase`, `on_death`; one context (the creature, its
+  targets, the world, requesting moves, spawning). A file naming a module
+  that doesn't exist fails at load. A template with every hook stubbed and
+  explained; each module has its scenario.
+- **Custom code uses the engine, never goes round it**: its moves still
+  have hit shapes, tells, limbs and animation, so every creature gets the
+  same arena tools.
+- **Promotion**: start in data; write a module for what data can't say;
+  when a second creature needs the same trick, it moves into the
+  vocabulary. `custom/` keeps only the truly one-of-a-kind. NPCs too: a
+  talking villager is data; the pedlar's comings and goings a module.
+- **Layout**: `crates/game/src/creatures/` with `body/` (sprites, rigs,
+  limbs, hit areas), `locomotion/`, `moves/`, `brain/`, `custom/`
+  (`mod.rs` the registry, `_template.rs`, one file per creature); every
+  creature's file in `assets/data/creatures/`.
+
+### 14.2 Damage types, resistances, and kinds
+
+- **Ten damage types**, each with sources in the world: slash (swords,
+  claws), pierce (arrows, thrusts, stingers, shot), blunt (clubs, kicks,
+  falling rock, boulders, blasts), fire, frost, storm (lightning, charged
+  water), acid, poison (venom, blight), radiant (light), void (the void
+  wand, necromancy). Fall stays special (not an attack). The player's gear
+  uses the same list: "fire resistance" on armour and "weak to fire" on a
+  beast are one number seen from two sides.
+- **One profile per creature** (and the same model for gear, replacing
+  `Ward` and `Resist`): a multiplier per type (0 immune, 0.5 resistant, 1,
+  1.5–2 weak, negative: it absorbs, healing); what it can't suffer
+  (burning, chill, poison, webbing, stagger); what touching a material
+  does to it.
+- **Kinds as templates**, adjusted per creature: beast (weak to fire);
+  humanoid (neutral); insect/arachnid (poison-resistant; fire and frost
+  hurt, cold slows); undead (pierce and slash resisted; blunt, radiant,
+  fire hurt; no poison; void heals); spirit (most physical resisted;
+  radiant hurts; no blood); ooze (blunt resisted; fire hurts; absorbs what
+  it's made of); construct (slash, pierce, storm resisted; blunt and acid
+  hurt; no poison); elemental (absorbs its element; the opposite hurts).
+- **Hard immunities are rare and obvious** (a skeleton can't be poisoned);
+  otherwise strong resistance, so a determined player can brute-force it.
+- **Absorbing is rare, on theme, and always visible** (§14.3), and works
+  through the sim: an acid spider resting in acid heals (drain the pool,
+  lure her out, freeze it); a fire wisp grows stronger in burning grass.
+- **Regeneration as data**: a rate, and what stops it for how long. The
+  troll regenerates unless fire or acid hurt it in the last 5 s: plain
+  steel can't win, a torch can.
+
+### 14.3 Seeing that it hurts (no health bars)
+
+- **Reactions scale with the share of maximum health taken**: flash, how
+  much blood sprays, knockback, the hit sound's pitch. A big hit on a small
+  thing is a big reaction; the same on a colossus, small.
+- **Wounds that show**: under half health it drips its own blood (ichor,
+  ectoplasm, sparks); under a quarter it staggers, slows, breathes hard.
+  (No darkening: decided 2026-10-01.)
+- **Three distinct hits**: hurt (flash, blood); resisted (dull sparks, a
+  clang, no flash, no blood); absorbed ("it drank that": a glow, the drip
+  stops). Damage numbers stay an option.
+- All from what every creature's data already has (size, blood, maximum
+  health, its profile): no per-creature work.
+
+### 14.4 Moving through the world: a path planner, and digging
+
+- **A shared path planner**: a coarse grid over the nearby terrain;
+  walking, climbing, jumping, swimming, flying each with a cost. Every
+  creature navigates better for it.
+- **Digging**, any creature's, by method and strength (the hardest
+  material, how fast): claws (break the cells ahead, as a pickaxe:
+  spiders, zombies at wooden doors), acid (spit at what's in the way and
+  let the sim eat it: acid spiders, acid slimes), tunnel (swallow through
+  soft ground: the sand wyrm, the centipede), blast (bombs: an orc
+  sapper). For diggers, breaking a cell costs more the harder it is: dirt
+  before stone, never what it can't break.
+- **A tell**: scratching that grows louder, dust trickling from your
+  ceiling, cracks, a hiss of acid behind the wall.
+- **Building matters**: wood doesn't stop a spider, stone slows it,
+  obsidian or crypt stone stops it, glass (`inert`) is acid-proof; most
+  diggers won't swim (moats), lava trenches.
+- Capped per creature and per frame: a swarm can't flood the sim with
+  edits.
+
+### 14.5 Bodies of parts, limbs that carry them, wounds you can see
+
+- **Big creatures are made of parts**: a few drawn pieces (head, jaw, body
+  plates) with generated limbs, chains and segments; the motion comes from
+  the rig, not frame-by-frame drawing. Big parts are palette PNGs beside the
+  text files; the rig, poses and moves are text.
+- **General procedural limbs** (the spider's grow up): side-view legs (2,
+  4, 6) whose planted feet hold the body (its height and tilt follow the
+  ground); chains (tails, necks, a wraith's chains); segments (worms,
+  wyrms); moves can drive limbs (a stomp lifts a leg and slams it).
+- **Every limb and part can have its own health** (a share of the
+  creature's; some damage passes to the body), hit where it's drawn, and
+  can be **severed**: it comes off as a piece of its own that falls and
+  lands; the stump bleeds the creature's own blood (a spider's acid, which
+  pools and eats the floor). The creature carries on without it: fewer
+  legs, a slower limping gait (the step rules already cope); below a
+  threshold it can't climb (shoot the legs off a spider on the ceiling and
+  it falls); a scorpion without its tail loses its sting; a zombie without
+  legs crawls; a head can be a weak point; a boss can have parts designed
+  to break (the colossus's legs). Spirit parts can be marked unbreakable.
+- **Wounds carved into the picture**: each body part has depth (skin, fur,
+  chitin, stone or cloth outside; then flesh; then bone), and a hit
+  removes pixels where it landed: shallow shows flesh, deeper bone, deep
+  enough a hole. Each damage type marks its own way: pierce a round hole
+  with blood spurting along the shot; slash a cut along the swing; blunt a
+  dent and limbs knocked loose; fire charred black; acid pixels eaten away
+  with a green edge; frost frosted. What's inside comes from the kind
+  (flesh and bone; ichor; stone with cracks; ectoplasm; goo): no gore art
+  per creature. Small, the edges darkened a little: visible and
+  satisfying, not cartoonish. Stored per part in its own coordinates (it
+  stays put as the part moves), updated only on a hit; bodies keep their
+  wounds. Zombies are the showcase.
+
+### 14.6 The creature editor: from a sketch of the whole to a creature
+
+One editor, five modes you can go back through; the whole creature is
+always in view:
+1. **Sketch**: a free canvas with layers (sketch, colour, shading, notes),
+   the creature at its real size in cells.
+2. **Slice**: select regions (box, lasso) and make them parts; set each
+   pivot. The sketch stays as a faint layer underneath.
+3. **Rig**: connect parts with joints; draw a line from a hip to the ground
+   and it's a leg of that length; draw a curve and it's a chain.
+4. **Pose and moves**: poses for each move, on the whole creature with its
+   limbs working, onion-skinned.
+5. **Test**: the live preview stage (§14.7), then fight it in the arena.
+
+Editing a part is in place: click it on the assembled creature, the rest
+dims, the whole updates live. Everything it writes the model can write
+and render from scripts too.
+
+**Image models (a spike, go/no-go)**: concept images from an image model
+as a starting point, never finished art. Ask for the right image (side
+view, flat shapes, few colours, plain background, whole in frame, or a
+sheet of parts); convert (cut out the background; shrink by the commonest
+colour per block, not by blurring; snap to the game's palette; a one-pixel
+outline; remove stray pixels), with size and palette knobs and the result
+beside the original. It lands in the sketch layer. Expected good for
+props, objects, items, silhouettes, colour schemes and big creatures to
+slice; less so for small sprites and animation frames. Castles: concept
+images as a reference layer, not converted. Once an image API is
+available: a dozen creatures and props run through it, shown side by
+side, then decide.
+
+### 14.7 The bestiary and arena v2
+
+- **One bestiary panel, two homes**: the arena (pick something to fight)
+  and later the world editor (place a spawn in a site). Cards: a portrait
+  from its art; name, kind, size, health; a badge if it has custom code;
+  filters (kind, biome, tier) and search. Expanded: a **live preview
+  stage** (a strip of real terrain, the real creature, rendered to a
+  texture) cycling idle, walk and each move with its tell and hit shapes
+  drawn over; stats, profile, weak points, loot; moves (timings, damage,
+  range); phases; its file. Buttons: place in the arena, fight it (a chosen
+  loadout), open its file, reload.
+- **Arena v2**: layouts (flat, cave, slopes, stairs, and a copy of a real
+  piece of the world: "fight it here"); creature and move files reloaded
+  live while fighting; readouts (a timeline of hits, damage per second,
+  damage taken, by type); recorded inputs replayed, so a fight is a
+  regression test.
+- **`platypus-bestiary`** (command line): the same cards and preview strips
+  rendered to images, stats listed: the model checks a creature it wrote
+  without opening the game.
+- **The player's bestiary** (the progression arc, later; the data recorded
+  from now): the same panel filtered by what the player knows. Seen (a
+  silhouette, a guessed name); encountered (the real name and picture, and
+  observations written from what happened in their fights: "It drank in
+  the acid", "Arrows did little", "The flames stopped its wounds closing",
+  "It came apart when struck hard"); studied (the full profile, from books
+  bought from the pedlar or a scholar or found in crypt and castle
+  libraries: one per kind, rare ones per boss; killing enough fills in
+  some).
+
+### 14.8 Bosses as puzzles
+
+Each boss uses only systems the player knows, and gets: a preparable
+weakness (an element, a resistance, a weapon type); an arena trick
+(something in the room that matters); an emergent route the sim allows; a
+hint in the world (villager news, the arena itself, an old note). Its
+scenario plays the intended solution once.
+- **Broodmother**: webs are a flammable hanging material, so fire burns
+  you free (bring fire resistance and a torch); her lair is full of web,
+  so lighting it burns her; she heals in her acid pools; frost slows her.
+  "Webs burn, if you're brave enough to stand in the fire."
+- **Necromancer lord**: raises skeletons from the dead, so burn or crush
+  the bodies first; radiant light weakens him; void heals his minions;
+  phases: adds, a darkened arena, at last a wraith.
+- **Ruin colossus**: stone (swords scratch; hammers, bombs and acid work,
+  acid really dissolving its plates); break a leg and it falls, its core
+  bare; lure it onto thin ground and blow the floor away.
+- **Sand wyrm**: burrows through sand and dirt, not stone: build a stone
+  floor and it must surface; water makes its sand mud.
+Emergent, from the sim as it is: lure orcs into a pool and zap it; kick a
+powder barrel into the adds; a grass fire upwind of a camp; a boulder trap
+on a troll; a dead bloat toad's gas lit beside a crowd.
+
+### 14.9 Firearms, black powder
+
+- **Guns**: a flintlock pistol (quick, short); a musket (slow reload, long,
+  hard-hitting); later a blunderbuss (a spread up close) and a hand cannon
+  (an exploding shell).
+- **Gunpowder is a material**: charcoal (we have) and **sulfur** (a new
+  mineral near the underworld's lava: guns are a mid-game find). Poured in
+  a trail and lit it burns along like a fuse; a barrel explodes; wet, it
+  fails; a stray spark sets it off.
+- **Shot**: iron (pierce), silver (radiant: for the undead), fire
+  (incendiary).
+- **Firing**: a muzzle flash that lights the scene, real smoke into the
+  sim, recoil that pushes you (a blunderbuss in mid-air: a jump), a reload
+  to time, real wounds where the ball lands.
+
+### 14.10 New harmful liquids
+
+- **Blight**: glowing purple sludge (the Watcher's spit). It doesn't eat
+  stone; it poisons what it touches, withers grass and leaves, and slowly
+  gives off a toxic mist.
+- **Ectoplasm**: what wraiths leave: pale, glowing, sticky; slows you;
+  drips from ceilings.
+
+### 14.11 The roster that proves it
+
+Chosen so each stresses a different part of the system:
+- **Necromancer**: keeps away, bolts, raises skeletons, blinks away when
+  cornered (spell moves, summons, retreat).
+- **Risen skeletons**: claw out of the earth (summoned spawns, a rise).
+- **Zombies**: slow, undead, hard to kill; pierce barely slows them, a
+  headshot drops them, blunt knocks limbs off; claw through wooden doors
+  (wounds, severing, weak points, digging).
+- **Chain wraith**: night only, drifts through walls, chains swinging from
+  its wrists, whips one to pull you in; can't cross running water (spawning
+  by time, phasing, chains, a grab).
+- **Watcher**: a floating eye; keeps its distance, follows you with its
+  gaze, spits blight, charges a beam with a long tell; blinded by bright
+  light (hovering, aiming, a beam).
+- **Stilt stalker**: a small body on very long legs, stepping over
+  boulders, stabbing down with a leg (long-legged limbs on rough ground, a
+  leg as the weapon).
+- **Crag crab**: six legs from the side, sideways, two claws, an armoured
+  front, a soft back (side-view legs, attacks by limb, weak points).
+- **Scorpion**: a segmented tail arched overhead aiming its sting; poison
+  (chain aiming).
+- **Cave centipede**: segmented, on walls and ceilings, drops on you
+  (segments, ceiling climbing, tunnelling).
+- **Cave spider** (reworked): legs with their own health, acid blood,
+  claws and acid to dig to you.
+- **Bloat toad**: hops; a tongue that grabs from range; bursts into
+  flammable gas when it dies (hopping, a long grab, death reactions).
+- **Splitting slime**: splits in two when killed (spawn on death as data).
+- **Shield orc**: blocks from the front; flank it, kick it, break its
+  guard (armour from one side, stagger).
+- **Orc sapper**: bombs walls to reach you (blast digging).
+- **Mimic**: a chest that bites (an ambush; a small module).
+- **Bat swarm**: flocks and splits round you (group behaviour).
+- **Bosses**, one at a time: the Broodmother, the Necromancer lord, the
+  Ruin colossus, the Sand wyrm (§14.8).
+
+## 15. Open questions and risks
 
 - **Character pixel size (D5):** 18 px reads like Noita. Elden Ring-style gear may want about 24 px. Decide from mock-ups. The cost is zooming out a little and loading more.
 - **Gear skins might look generic.** Fallback: hand-drawn per-frame gear for hero items only.
