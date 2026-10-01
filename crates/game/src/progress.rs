@@ -24,8 +24,9 @@ use crate::data::{Watched, data_path, load_ron};
 use crate::hands::items::{Inventory, Items, Stack};
 use crate::world::SimWorld;
 
-/// A killed creature counts for the player within this many cells of it.
-const WITNESS: f32 = 450.0;
+/// A killed creature counts for the player within this many cells of it
+/// (and what it sees creatures do: `observe`).
+pub(crate) const WITNESS: f32 = 450.0;
 /// Seconds between looks at the milestones.
 const CHECK_EVERY: f32 = 0.5;
 /// Seconds a toast stays up.
@@ -47,6 +48,8 @@ pub struct Progress {
     /// they make).
     pub done: BTreeSet<String>,
     pub unlocked: BTreeSet<String>,
+    /// What it has seen each kind of creature do (`observe`), by kind.
+    pub observed: BTreeMap<String, crate::observe::Seen>,
 }
 
 /// When a milestone is reached.

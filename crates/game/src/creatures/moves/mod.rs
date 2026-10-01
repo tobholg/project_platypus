@@ -37,7 +37,7 @@ pub struct MovesPlugin;
 
 impl Plugin for MovesPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(MoveBook::load()).add_systems(Update, reload);
+        app.insert_resource(MoveBook::load()).add_message::<Began>().add_systems(Update, reload);
     }
 }
 
@@ -233,6 +233,13 @@ fn reload(mut book: ResMut<MoveBook>) {
 
 /// A creature's moves (its file's `moves`, in the order it tries them),
 /// when each may come again, and the one under way.
+/// A creature began a move (by id): what onlookers see (`observe`).
+#[derive(Message, Clone, Debug)]
+pub struct Began {
+    pub who: Entity,
+    pub id: String,
+}
+
 #[derive(Component, Debug)]
 pub struct Moves {
     ids: Vec<String>,
@@ -310,6 +317,7 @@ pub fn run(
     mut hits: MessageWriter<Hit>,
     mut casts: MessageWriter<crate::magic::CastRequest>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
+    mut began: MessageWriter<Began>,
     mut q: ParamSet<(Query<Mover>, Query<Prey, Without<crate::creatures::brain::villager::Hiding>>)>,
 ) {
     let now = time.elapsed_secs();
@@ -335,6 +343,7 @@ pub fn run(
             if let Some(which) = start {
                 // (`phase` past the end: the first phase's start is still to come.)
                 moves.doing = Some(Doing { which, t: 0.0, phase: usize::MAX, start: 0.0, target: pe, dir: to.normalize_or(Vec2::X), struck: false, from: Pose::default() });
+                began.write(Began { who: e, id: moves.ids[which].clone() });
             } else {
                 continue;
             }

@@ -878,7 +878,11 @@ twin, so the model can make, render and check what a person can.
   - **Moves**: a library like `weapons.ron`: wind-up, active, recovery;
     hit shapes; lunges; projectiles (the arrows and spells we have);
     summons; grabs; beams; area slams. Every move has a tell and an
-    animation; a creature lists its moves.
+    animation; a creature lists its moves. As built (`moves`, 2026-10-01):
+    `assets/data/moves.ron`, phases named (windup, hold, strike, recover)
+    each easing a pose and doing acts (lunge, strike, cast, slam, summon,
+    sound); weapons stay `weapons.ron`'s. Grabs and beams wait for the
+    roster's first creature that needs one.
   - **Behaviour**: one general brain from settings: senses (sight,
     hearing, aggro), tactics (keep distance, flank, retreat when hurt,
     call others), rules for picking a move (range, cooldown, weight,
@@ -967,6 +971,11 @@ twin, so the model can make, render and check what a person can.
   stops). Damage numbers stay an option.
 - All from what every creature's data already has (size, blood, maximum
   health, its profile): no per-creature work.
+- As built (`moves`, 2026-10-01): the three told apart by what got
+  through against what was meant (half or less: resisted; below 0:
+  absorbed); staggering is a falter (75 % speed). Every hurt from every
+  source is kept by kind on the body and tallied once a tick: what the
+  player's observations (§14.7) and the arena's readouts are made of.
 
 ### 14.4 Moving through the world: a path planner, and digging
 
@@ -1067,7 +1076,8 @@ side, then decide.
   piece of the world: "fight it here"); creature and move files reloaded
   live while fighting; readouts (a timeline of hits, damage per second,
   damage taken, by type); recorded inputs replayed, so a fight is a
-  regression test.
+  regression test. (Readouts built in `moves`: the arena panel's Fight
+  section, to them and to you by kind, per second, a 20 s timeline.)
 - **`platypus-bestiary`** (command line): the same cards and preview strips
   rendered to images, stats listed: the model checks a creature it wrote
   without opening the game.
@@ -1079,7 +1089,9 @@ side, then decide.
   "It came apart when struck hard"); studied (the full profile, from books
   bought from the pedlar or a scholar or found in crypt and castle
   libraries: one per kind, rare ones per boss; killing enough fills in
-  some).
+  some). Recorded since `moves` (`observe.rs`, saved with the player):
+  per kind, met, moves seen, what they carried, how each kind of hurt
+  landed, what felled them, healing seen and what stopped it.
 
 ### 14.8 Bosses as puzzles
 

@@ -1461,6 +1461,17 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   troll, three orcs, two archers — by default, everywhere) or any creature
   file but the player's; clear the floor (all but
   the player and planted dummies).
+- **Fight** (the panel's second section; `fight.rs`): the fight as it
+  goes, from every `Took` (blows, spells, burning, falls; the dummies'
+  too): its length, what's been done **to them** (everyone but the
+  player) and **to you**, each with damage a second (a single blow: over a
+  second) and by kind, most first, as it landed (`slash 120`, `pierce 4
+  of 12`: shrugged off, `void drank 3`); and a timeline of the last 20 s,
+  a pixel a tenth of a second, to them above the line and to you below,
+  each kind its colour (`hurt::color_of`), a tick a second. A fight runs
+  from its first hurt until 5 s pass with none (the next starts afresh);
+  "New fight" starts one now. Which sections are open is remembered by
+  name, shut ones too (`-Name`), so a new section starts as it's meant to.
 
 ### 5.4 The art editor (`game/src/editor.rs`, `art/src/edit.rs`)
 
@@ -1668,11 +1679,12 @@ parts, so another is a new file, not new code:
   beside them (bats 0.03, no haze). `drops`: items that fall out when it
   dies.
 - The cave spider (24 × 18, 130 hp: a body from above with eight glowing
-  red eyes, legs 72 cells long, 5 thick; climbs, pounces, 12 a bite;
+  red eyes, legs 72 cells long, 5 thick; climbs, pounces; bites, spits
+  and stings: its moves, §6.4;
   poise 60 and heft 4, a troll's weight: it shrugs off most blows;
   bleeds acid, and acid doesn't hurt it; its spit a big glob, 338 cells of
   acid (`acid_glob`): it drenches you; dead, its body keeps its legs curled in over it:
-  `corpses::curled_legs`), spiderlings (the same, small, acid too), spiderlings (the same, small), egg sacs (burst into four
+  `corpses::curled_legs`), spiderlings (the same, small, acid too), egg sacs (burst into four
   spiderlings), cocoons (hung from a nest's roof by their thread: negative
   gravity takes them up; cut open: blood and a victim's things), the slime
   (hops; full of glowing `slime`), the acid slime (full of acid, which it
@@ -1695,8 +1707,9 @@ Everything creature lives under `creatures/`: the core (`mod.rs`: health,
 deaths, what hurts bodies), `def.rs` (creature files, spawning, hot
 reload), `nature.rs` (kinds of hurt), `player.rs`, `spawn.rs`; `body/`
 (animation, legs, hurt, elements); `brain/` (the shared brains); `moves/`
-(attacks with their own code: the spider's); `custom/` (one creature's
-own code).
+(moves as data, `assets/data/moves.ron`, and their one runner);
+`custom/` (one creature's own code). Beside them: `observe.rs` (what the
+player has seen creatures do) and `fight.rs` (the arena's readouts).
 
 - **Ten kinds of hurt** (`nature::Harm`): slash, pierce, blunt, fire,
   frost, storm, acid, poison, radiant, void (and fall). Every `Hit` has
@@ -1707,7 +1720,12 @@ own code).
 - **Health::harm**: armour (`Ward`) takes its share of slash, pierce and
   blunt only; then the creature's multiplier for that kind. A negative
   one heals. It remembers which kinds hurt it this tick (`felt`), for
-  what reacts to them.
+  what reacts to them, and keeps a ledger by kind (`took`: what was
+  meant, what got through, below 0 drunk in), from every source (blows,
+  spells, burning, acid, falls, blasts). Once a tick, just before deaths
+  (so a killing blow is in it), `tally` turns each body's ledger into
+  `Took` messages (target, kind, meant, dealt, dead or not) and clears it:
+  what observations and readouts are made of.
 - **Kinds** (`kinds.ron`): `humanoid`, `beast` (fire 1.5), `insect`
   (poison 0.3, fire and frost 1.5), `undead` (pierce 0.5, slash 0.75,
   blunt 1.5, fire 1.25, radiant 2, void −0.5; can't be poisoned),
@@ -1729,7 +1747,7 @@ own code).
   `Swoop(hover, dive_time, dive_every)`, `Hop(every)`,
   `Crawl(pounce_range, pounce_every)`), `attack` (`Touch`, `Swing(reach,
   every, combo)`, `Shoot(draw, every, wobble)`), `wander: (speed, every)`,
-  `leash`, and the spider's `bite`, `spit`, `sting`. Also `critter`,
+  `leash`. Also `critter`,
   `villager`, `idle` (the default), `keyboard` (the player).
 - **`custom: (name, params)`**: a creature's own code (`custom/`, one file
   each, registered in `CustomPlugin`): a component read from `params`
@@ -1738,6 +1756,59 @@ own code).
   `dummy` (the tallies), `explosive` (barrels, dynamite, the mine cart),
   `hatchery` (the egg sac). A file naming a brain or module that doesn't
   exist is an error at start.
+- **Moves** (`moves/`, `assets/data/moves.ron`, hot-reloaded; DESIGN
+  §14.1): what a creature does with its own body, as data. A creature
+  file names its moves (`moves: ["spider_sting", "spider_bite",
+  "spider_spit"]`, tried in that order; an unknown one is reported at
+  start and fails a test). A move: `when` (`range: (near, far)` cells to
+  its target, `footing`: standing or clinging, `line`: nothing solid
+  between), `every` (seconds after it ends before it may come again; any
+  move is followed by 0.4 s before the next), and `phases`, each named
+  (windup, hold, strike, recover: the tell is what the windup shows),
+  `secs` long, easing the body's pose (`legs::Rear`: `lift`, `back`,
+  `curl`; `ease` Smooth, Linear or Snap; `tremble`) and doing its `acts`
+  as it starts: `Lunge(speed, up)`; `Strike((at, reach, damage, harm,
+  knock, up, stun, from, coat))`, live through the phase from `from` (a
+  share of it): what's within `reach` of the point `at` cells toward the
+  target is hit, once, and the coating left on it; `Cast(spell, at, up)`,
+  aimed where the target will be and lobbed by the spell's own fall
+  (`Spellbook::flight`); `Slam((radius, damage, harm, knock, stun))` round
+  its feet; `Summon(kind, count, spread)`; `Sound(name)`. A move starts
+  (`Began`) when one's in range, ready and its needs are met; while it
+  runs the creature stands (after the brain, `moves::run`). Weapons stay
+  weapons: `hunter`'s `Swing` and `Shoot` use what's wielded
+  (`weapons.ron`), `Touch` the creature's `touch`. Not yet: grabs and
+  beams (with the first creature that needs one, the roster: a held
+  ray needs casting held, a grab needs limbs).
+  The spider's are all moves: in the `spider` scenario the spit from 180
+  cells at 0.57 s, the sting's 30 at ~4.06 s with its venom, the bite's 16.
+- **Seeing that it hurts** (`body/hurt.rs`, DESIGN §14.3; no health
+  bars): every `Hit` as it lands is `combat::Felt` (what it meant, what it
+  did, as a share of the target's health), shown as one of three
+  (`hurt::reaction`, `Reacted`): **hurt** (a red flash and blood, both as
+  much as the share: 0.08 s + 0.6 × share, at most 0.3; blood 300 cells a
+  whole health, at most 158; the hit's pitch lower the more it took);
+  **resisted** (half or less of what was meant got through: dull sparks, a
+  clang, no flash, no blood, a third of the hit-stop); **absorbed** (it
+  healed: a glow of the hurt's colour, sparks of it, a draught; its
+  dripping stops for 3 s). Under half its health a creature drips (its
+  blood, or dust: 5 a second); under a quarter it falters (`Faltering`:
+  75 % speed). The player shows neither (the hearts say it). In the
+  `reactions` scenario (arena), a skeleton struck with 3 of each kind:
+  slash, blunt, fire, frost, storm, acid, radiant hurt; pierce and poison
+  resisted; void absorbed (+2 %); it drips under half, falters under a
+  quarter.
+- **What the player has seen** (`observe.rs`, kept in `Progress::observed`
+  by kind, saved with the player; the player's bestiary is made from it
+  later, DESIGN §14.7): within `progress::WITNESS` (450 cells) of the
+  player, from anyone's doing: how many of a kind it has met (each once),
+  the moves it saw them begin, what they carried, how they took each kind
+  of hurt (meant and got through, added up: `Taken::reaction` says hurt,
+  shrugged off or drunk in), what finished the ones that died (the kind
+  that did most in the last tick), whether it saw one heal and which
+  kinds it saw stop that. Facts, not words: "It drank in the acid" is
+  written from them later. The `reactions` scenario logs the skeleton's:
+  met 1, felled by blunt, every kind as above.
 
 ### 6.1 Magic (`game::magic`, DESIGN §7b)
 

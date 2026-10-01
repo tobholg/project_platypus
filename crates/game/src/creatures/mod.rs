@@ -37,12 +37,13 @@ impl Plugin for CreaturesPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<Landed>()
             .add_message::<body::hurt::Reacted>()
+            .add_message::<Took>()
             .add_message::<AirJumped>()
             .add_message::<Died>()
             .add_message::<Rocketed>()
             .add_plugins((def::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, body::animation::AnimationPlugin))
             .add_plugins((player::PlayerPlugin, brain::ai::AiPlugin, brain::critters::CrittersPlugin, brain::hunter::HunterPlugin, body::legs::LegsPlugin, custom::CustomPlugin, brain::villager::VillagerPlugin, moves::MovesPlugin))
-            .add_systems(FixedUpdate, (move_creatures, fall_damage, body::elements::expose, crate::combat::guard, body::hurt::notice, nature::regenerate, deaths).chain().in_set(TickSet::Bodies))
+            .add_systems(FixedUpdate, (move_creatures, fall_damage, body::elements::expose, crate::combat::guard, body::hurt::notice, nature::regenerate, tally, crate::observe::observe, deaths).chain().in_set(TickSet::Bodies))
             .insert_resource(body::elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
             .add_systems(FixedUpdate, displace_liquid.after(move_creatures).in_set(TickSet::Bodies))
@@ -98,6 +99,9 @@ pub struct Health {
     /// The kinds of hurt it's felt since this was last looked at (a bit
     /// each, `Harm::bit`): what stops a troll's healing.
     pub felt: u16,
+    /// What it's taken since the last tick's `tally`, by kind (`Harm as
+    /// usize`): what was meant, and what got through (below 0: drunk in).
+    pub took: [(f32, f32); 11],
 }
 
 pub use nature::{Harm, Nature};
@@ -135,7 +139,7 @@ impl Ward {
 
 impl Health {
     pub fn new(max: f32) -> Health {
-        Health { hp: max, max, ward: Ward::default(), nature: Nature::default(), felt: 0 }
+        Health { hp: max, max, ward: Ward::default(), nature: Nature::default(), felt: 0, took: [(0.0, 0.0); 11] }
     }
 
     /// Hurt it: `amount` of a kind, less what its gear stops, times how its
@@ -147,13 +151,18 @@ impl Health {
         }
         self.felt |= kind.bit();
         let m = self.nature.of(kind);
-        if m < 0.0 {
+        let got = if m < 0.0 {
             let heal = amount * -m;
             self.hp = (self.hp + heal).min(self.max);
-            return -heal;
-        }
-        let got = amount * self.ward.through(kind) * m;
-        self.hp -= got;
+            -heal
+        } else {
+            let got = amount * self.ward.through(kind) * m;
+            self.hp -= got;
+            got
+        };
+        let t = &mut self.took[kind as usize];
+        t.0 += amount;
+        t.1 += got;
         got
     }
 }
@@ -517,6 +526,34 @@ pub struct Died {
     /// Its picture as it fell, and where it sat on the body.
     pub sprite: Option<(Sprite, Vec3)>,
     pub worn: Vec<crate::hands::items::Stack>,
+}
+
+/// What a body took in a tick, of one kind (`Health::took`, from every
+/// source: blows, spells, burning, falls): what was meant, what got through
+/// (below 0: drunk in), and whether it's dead.
+/// Written just before deaths, so the killing blow is in it.
+#[derive(Message, Clone, Copy, Debug)]
+pub struct Took {
+    pub target: Entity,
+    pub harm: Harm,
+    pub meant: f32,
+    pub dealt: f32,
+    pub killed: bool,
+}
+
+/// Each body's takings since the last tick, as `Took`s.
+pub(crate) fn tally(mut took: MessageWriter<Took>, mut q: Query<(Entity, &mut Health)>) {
+    for (e, mut h) in &mut q {
+        if h.took.iter().all(|t| t.0 == 0.0) {
+            continue;
+        }
+        let killed = h.hp <= 0.0;
+        for (harm, t) in Harm::ALL.into_iter().zip(std::mem::take(&mut h.took)) {
+            if t.0 > 0.0 {
+                took.write(Took { target: e, harm, meant: t.0, dealt: t.1, killed });
+            }
+        }
+    }
 }
 
 type Mortal<'a> = (

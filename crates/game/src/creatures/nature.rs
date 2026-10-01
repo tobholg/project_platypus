@@ -42,6 +42,26 @@ pub enum Harm {
 }
 
 impl Harm {
+    /// Every kind, in order (`Harm as usize` is its place).
+    pub const ALL: [Harm; 11] = [
+        Harm::Slash,
+        Harm::Pierce,
+        Harm::Blunt,
+        Harm::Fire,
+        Harm::Frost,
+        Harm::Storm,
+        Harm::Acid,
+        Harm::Poison,
+        Harm::Radiant,
+        Harm::Void,
+        Harm::Fall,
+    ];
+
+    /// Its name, as files write it.
+    pub fn name(self) -> &'static str {
+        ["slash", "pierce", "blunt", "fire", "frost", "storm", "acid", "poison", "radiant", "void", "fall"][self as usize]
+    }
+
     /// Its bit (for sets of kinds: `Health::felt`).
     pub fn bit(self) -> u16 {
         1 << self as u16
@@ -215,6 +235,23 @@ pub(crate) fn regenerate(mut q: Query<(&mut Regenerates, &mut Health)>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_hurt_is_kept_by_kind_until_tallied() {
+        for (i, h) in Harm::ALL.into_iter().enumerate() {
+            assert_eq!(h as usize, i, "{h:?} in its place");
+        }
+        let mut nature = Nature::default();
+        nature.by[Harm::Void as usize] = -0.5;
+        let mut h = Health { nature, ..Health::new(50.0) };
+        h.hp = 40.0;
+        h.harm(10.0, Harm::Slash);
+        h.harm(5.0, Harm::Slash);
+        h.harm(4.0, Harm::Void);
+        assert_eq!(h.took[Harm::Slash as usize], (15.0, 15.0));
+        assert_eq!(h.took[Harm::Void as usize], (4.0, -2.0));
+        assert_eq!(h.took[Harm::Fire as usize], (0.0, 0.0));
+    }
 
     #[test]
     fn every_kind_reads_and_makes_sense() {

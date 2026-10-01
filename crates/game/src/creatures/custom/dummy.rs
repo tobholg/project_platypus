@@ -31,7 +31,7 @@ impl super::CustomCreature for Dummy {
     const NAME: &'static str = "dummy";
 
     fn build(app: &mut App) {
-        app.add_systems(FixedUpdate, tally.in_set(crate::world::TickSet::Bodies).after(crate::combat::guard).before(crate::creatures::deaths)).add_systems(Update, show);
+        app.add_systems(FixedUpdate, tally.in_set(crate::world::TickSet::Bodies).after(crate::combat::guard).before(crate::creatures::tally)).add_systems(Update, show);
     }
 }
 

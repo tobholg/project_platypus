@@ -4625,15 +4625,18 @@ fn troll_script(
 
 /// `reactions`: a skeleton standing still, struck lightly with each kind of
 /// hurt in turn (DESIGN §14.3): how each lands (hurt, resisted, absorbed);
-/// then slashes until it drips (under half) and falters (under a quarter).
-#[allow(clippy::type_complexity)]
+/// then slashes until it drips (under half) and falters (under a quarter);
+/// the player is stung twice, and the skeleton clubbed to pieces. Then the
+/// arena's readout (`fight.rs`) and what the player saw (`observe.rs`).
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn reactions_script(
     mut commands: Commands,
     s: Res<Scenario>,
-    player: Query<&Kinematics, With<LocalPlayer>>,
+    player: Query<(Entity, &Kinematics, Option<&crate::progress::Progress>), With<LocalPlayer>>,
     foes: Query<(Entity, &crate::creatures::Creature, &crate::creatures::Health, Has<crate::creatures::body::hurt::Faltering>)>,
     mut reacted: MessageReader<crate::creatures::body::hurt::Reacted>,
     mut hits: MessageWriter<crate::combat::Hit>,
+    fight: Res<crate::fight::Fight>,
     mut state: Local<(u8, f32, usize, bool, bool)>,
 ) {
     use crate::creatures::Harm;
@@ -4642,7 +4645,7 @@ fn reactions_script(
     }
     const KINDS: [Harm; 10] = [Harm::Slash, Harm::Pierce, Harm::Blunt, Harm::Fire, Harm::Frost, Harm::Storm, Harm::Acid, Harm::Poison, Harm::Radiant, Harm::Void];
     let t = s.elapsed;
-    let Ok(pk) = player.single() else { return };
+    let Ok((me, pk, progress)) = player.single() else { return };
     let (step, next, n, dripping, faltering) = &mut *state;
     if *step == 0 && t > 0.5 {
         crate::creatures::def::spawn_creature(&mut commands, "skeleton", pk.body.pos + Vec2::new(90.0, -pk.body.half.y), |e| {
@@ -4652,7 +4655,21 @@ fn reactions_script(
         *next = 1.5;
         return;
     }
-    let Some((e, _, h, falters)) = foes.iter().find(|(_, c, ..)| c.kind == "skeleton") else { return };
+    let Some((e, _, h, falters)) = foes.iter().find(|(_, c, ..)| c.kind == "skeleton") else {
+        if *step == 2 {
+            *step = 3;
+            *next = t + 1.0;
+        }
+        if *step == 3 && t > *next {
+            *step = 4;
+            info!("reactions: the readout:\n{}", *fight);
+            if let Some(seen) = progress.and_then(|p| p.observed.get("skeleton")) {
+                let took: Vec<String> = seen.took.iter().map(|(k, v)| format!("{k} {:?}", v.reaction())).collect();
+                info!("reactions: seen of skeletons: met {}, felled by {:?}, took: {}", seen.met, seen.felled, took.join(", "));
+            }
+        }
+        return;
+    };
     for r in reacted.read().filter(|r| r.target == e) {
         info!("reactions: skeleton, {:?}: {:?} ({:+.0} % of its health), now {:.1} hp", r.harm, r.reaction, -r.share * 100.0, h.hp);
     }
@@ -4671,6 +4688,14 @@ fn reactions_script(
         *faltering = true;
         info!("reactions: under a quarter ({:.1}): it falters", h.hp);
         *step = 2;
+        *n = 0;
+    }
+    // The player stung twice, then the skeleton clubbed till it's dead.
+    if *step == 2 && t >= *next {
+        let (target, harm, at) = if *n < 2 { (me, Harm::Pierce, pk.body.pos) } else { (e, Harm::Blunt, pk.body.pos + Vec2::new(90.0, 0.0)) };
+        hits.write(crate::combat::Hit { target, damage: 5.0, harm, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::X, weight: 1.0, crit: false });
+        *n += 1;
+        *next = t + 0.5;
     }
 }
 

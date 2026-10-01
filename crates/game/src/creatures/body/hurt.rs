@@ -214,8 +214,12 @@ pub fn react(mut felt: MessageReader<Felt>, mut sim: ResMut<SimWorld>, mut spark
 }
 
 /// A kind of hurt's colour (an absorbed hit glows it).
-fn color_of(harm: Harm) -> (u8, u8, u8) {
+pub(crate) fn color_of(harm: Harm) -> (u8, u8, u8) {
     match harm {
+        Harm::Slash => (235, 235, 240),
+        Harm::Pierce => (215, 195, 150),
+        Harm::Blunt => (165, 150, 140),
+        Harm::Fall => (120, 110, 105),
         Harm::Fire => (255, 160, 60),
         Harm::Frost => (170, 220, 255),
         Harm::Storm => (200, 220, 255),
@@ -223,7 +227,6 @@ fn color_of(harm: Harm) -> (u8, u8, u8) {
         Harm::Poison => (160, 210, 80),
         Harm::Radiant => (255, 244, 200),
         Harm::Void => (180, 130, 255),
-        _ => (235, 235, 240),
     }
 }
 

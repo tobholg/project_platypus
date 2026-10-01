@@ -26,6 +26,7 @@ mod debug;
 mod dev;
 mod editor;
 mod events;
+mod fight;
 mod fx;
 mod gear;
 mod gold;
@@ -36,6 +37,7 @@ mod light;
 mod magic;
 mod particles;
 mod potion;
+mod observe;
 mod progress;
 mod props;
 mod render;
@@ -145,6 +147,7 @@ fn main() {
             scenario::ScenarioPlugin,
         ))
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
+        .add_plugins(fight::FightPlugin)
         .add_plugins((reset::ResetPlugin, clock::ClockPlugin, gold::GoldPlugin, kick::KickPlugin, traps::TrapsPlugin, talk::TalkPlugin, events::EventsPlugin))
         .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin))
         .add_plugins(sound::SoundPlugin)

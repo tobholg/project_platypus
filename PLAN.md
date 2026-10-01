@@ -262,18 +262,30 @@ in the `trap` scenario's tunnel pours onto its tripwire and buries it
 `beams` scenarios pick the wrong hotbar slots (separate task).
 
 **2. `moves`: moves as data, and seeing that it hurts.**
-1. The move vocabulary: wind-up, active, recovery; hit shapes; lunges;
+1. ✅ The move vocabulary: wind-up, active, recovery; hit shapes; lunges;
    projectiles; summons; grabs; beams; area slams; every move with a tell.
-2. Damage feedback (DESIGN §14.3): reactions scaled by the share of health
+   As built: `moves.ron` (phases with poses and acts: lunge, strike, cast,
+   slam, summon, sound), one runner; grabs and beams wait for the roster's
+   first creature that needs one.
+2. ✅ Damage feedback (DESIGN §14.3): reactions scaled by the share of health
    taken; wound drips and staggers; hurt, resisted and absorbed hits told
    apart.
-3. Observations recorded (what the player saw each kind of creature do),
+3. ✅ Observations recorded (what the player saw each kind of creature do),
    for the player's bestiary later.
-4. Arena readouts: a timeline of hits, damage per second, damage taken, by
+4. ✅ Arena readouts: a timeline of hits, damage per second, damage taken, by
    type.
 Done when: the existing creatures' attacks are moves in data, unchanged in
 feel; a scenario hits a skeleton with each damage type and logs the three
 reactions as designed.
+**Done 2026-10-01**: the spider's bite, spit and sting are moves in
+`moves.ron` (the `spider` scenario as before: the spit from 180 at
+0.57 s, the sting's 30 at ~4.06 s, venom, the bite's 16); weapons stay
+`weapons.ron`'s (`Swing`, `Shoot`), contact `touch`. `reactions`: slash,
+blunt, fire, frost, storm, acid, radiant hurt; pierce and poison resisted;
+void absorbed; drips under half, falters under a quarter; then the Fight
+readout and the player's record of skeletons (met 1, felled by blunt).
+Every hurt from every source is kept on the body by kind and tallied once
+a tick (`Took`): observations and readouts both read it.
 
 **3. `bestiary`: the browser, arena v2, and the command line.**
 1. The bestiary panel: cards, filters, search; the expanded view with the

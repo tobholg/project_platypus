@@ -21,6 +21,7 @@ use crate::creatures::spawn::SpawnKind;
 use crate::creatures::{Creature, Kinematics, Team};
 use crate::creatures::body::animation::HandPos;
 use crate::data::data_path;
+use crate::fight::FightText;
 use crate::world::SimWorld;
 
 pub struct ArenaPlugin;
@@ -48,6 +49,8 @@ pub enum ArenaAction {
     NextTempo,
     /// Play a sound (the sound board).
     Sound(String),
+    /// Start the readouts' fight afresh (`fight.rs`).
+    NewFight,
 }
 
 #[derive(Resource, Default)]
@@ -78,7 +81,7 @@ struct SectionHead(usize);
 struct SectionBody(usize);
 
 /// The sections, in order, and which are open at first.
-const SECTIONS: [(&str, bool); 6] = [("Time", true), ("Tempo: T the next (tempo.ron)", true), ("Look", true), ("Spawn at the cursor: O (packs first)", false), ("Make", true), ("Sounds: click to hear (sounds.ron), F11 mute", false)];
+const SECTIONS: [(&str, bool); 7] = [("Time", true), ("Fight: to them above, to you below", true), ("Tempo: T the next (tempo.ron)", true), ("Look", true), ("Spawn at the cursor: O (packs first)", false), ("Make", true), ("Sounds: click to hear (sounds.ron), F11 mute", false)];
 
 /// A group of the sound board: its name, and which sounds are in it.
 type SoundGroup<'a> = (&'a str, &'a dyn Fn(&str) -> bool);
@@ -93,11 +96,13 @@ fn folds_path() -> std::path::PathBuf {
 
 impl Default for Folds {
     fn default() -> Self {
-        // (Remembered: a line per open section's first word.)
-        let saved = std::fs::read_to_string(folds_path()).ok();
+        // (Remembered: a line per section's first word, `-` before it when
+        // it's shut; one the file doesn't name, as it starts.)
+        let saved = std::fs::read_to_string(folds_path()).unwrap_or_default();
         let open = |i: usize| {
             let (name, open) = SECTIONS[i];
-            saved.as_ref().map_or(open, |s| s.lines().any(|l| l == first_word(name)))
+            let word = first_word(name);
+            saved.lines().find_map(|l| (l.trim_start_matches('-') == word).then(|| !l.starts_with('-'))).unwrap_or(open)
         };
         Folds((0..SECTIONS.len()).map(open).collect())
     }
@@ -113,7 +118,7 @@ impl Plugin for ArenaPlugin {
             .init_resource::<ArenaView>()
             .init_resource::<StepOwed>()
             .init_resource::<Folds>()
-            .add_systems(Startup, spawn_panel)
+            .add_systems(Startup, spawn_panel.after(crate::fight::make_timeline))
             .add_systems(PreUpdate, (keys, buttons, fold, scroll, act).chain().after(bevy::ui::UiSystems::Focus))
             .add_systems(PreUpdate, step.after(act))
             .add_systems(Update, (show_panel, overlays));
@@ -186,9 +191,9 @@ fn fold(heads: Query<(&Interaction, &SectionHead), Changed<Interaction>>, mut fo
         text.0 = format!("{} {}", if folds.0[h.0] { "-" } else { "+" }, SECTIONS[h.0].0);
     }
     if changed {
-        let open: Vec<&str> = SECTIONS.iter().zip(&folds.0).filter(|(_, o)| **o).map(|((n, _), _)| first_word(n)).collect();
+        let lines: Vec<String> = SECTIONS.iter().zip(&folds.0).map(|((n, _), o)| format!("{}{}", if *o { "" } else { "-" }, first_word(n))).collect();
         let _ = std::fs::create_dir_all(crate::save::saves_dir());
-        let _ = std::fs::write(folds_path(), open.join("\n"));
+        let _ = std::fs::write(folds_path(), lines.join("\n"));
     }
 }
 
@@ -226,6 +231,7 @@ fn act(
     mut owed: ResMut<StepOwed>,
     mut tempo: ResMut<crate::tempo::Tempo>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
+    mut new_fight: MessageWriter<crate::fight::NewFight>,
 ) {
     for a in dev.read() {
         if *a == crate::dev::DevAction::Arena {
@@ -259,6 +265,9 @@ fn act(
             ArenaAction::Sound(name) => {
                 sounds.write(crate::sound::PlaySound::here(name.clone()));
             }
+            ArenaAction::NewFight => {
+                new_fight.write(crate::fight::NewFight);
+            }
             // Everything but the player and the planted dummies.
             ArenaAction::Clear => {
                 for (e, d) in &creatures {
@@ -281,7 +290,7 @@ fn step(mut owed: ResMut<StepOwed>, mut fixed: ResMut<Time<Fixed>>) {
     }
 }
 
-fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<ArenaView>, tempo: Res<crate::tempo::Tempo>, bank: Res<crate::sound::SoundBank>) {
+fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<ArenaView>, tempo: Res<crate::tempo::Tempo>, bank: Res<crate::sound::SoundBank>, timeline: Res<crate::fight::Timeline>) {
     let tempos: Vec<String> = tempo.presets.iter().map(|p| p.name.clone()).collect();
     // (The one-shots: the beds and music play themselves.)
     let sounds: Vec<String> = bank.defs.iter().filter(|(_, d)| d.loops <= 0.0).map(|(n, _)| n.clone()).collect();
@@ -347,14 +356,19 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
                     });
                 });
                 section(p, 1, &|p| {
+                    p.spawn((FightText, Text::new(""), TextFont { font_size: FontSize::Px(10.0), ..default() }, TextColor(Color::srgb(0.9, 0.9, 0.92)), Node { max_width: px(230), ..default() }));
+                    p.spawn((ImageNode::new(timeline.0.clone()), Node { width: px(200), height: px(41), ..default() }, BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6))));
+                    row(p, &|r| label(r, "New fight", ArenaAction::NewFight));
+                });
+                section(p, 2, &|p| {
                     row(p, &|r| {
                         for (i, name) in tempos.iter().enumerate() {
                             label(r, name, ArenaAction::Tempo(i));
                         }
                     });
                 });
-                section(p, 2, &|p| row(p, &|r| label(r, "Boxes and hands  Y", ArenaAction::Overlays)));
-                section(p, 3, &|p| {
+                section(p, 3, &|p| row(p, &|r| label(r, "Boxes and hands  Y", ArenaAction::Overlays)));
+                section(p, 4, &|p| {
                     row(p, &|r| {
                         for k in kinds() {
                             label(r, &k, ArenaAction::Pick(k.clone()));
@@ -362,9 +376,9 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
                     });
                     row(p, &|r| label(r, "Clear the floor", ArenaAction::Clear));
                 });
-                section(p, 4, &|p| row(p, &|r| label(r, "Art editor  E", ArenaAction::Editor)));
+                section(p, 5, &|p| row(p, &|r| label(r, "Art editor  E", ArenaAction::Editor)));
                 // Sounds, grouped: hits, steps and moving, hands, the rest.
-                section(p, 5, &|p| {
+                section(p, 6, &|p| {
                     let groups: [SoundGroup; 4] = [
                         ("Hits", &|n| n.starts_with("hit") || n.starts_with("hurt") || n.starts_with("swing") || n.starts_with("clang")),
                         ("Steps and moving", &|n| n.starts_with("step_") || matches!(n, "land" | "jump" | "air_jump" | "dash")),
