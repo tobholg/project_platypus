@@ -1402,24 +1402,46 @@ impl TerrainGen {
             // side, the lantern on the other, whichever way there's room.
             let mut out = vec![(feet(lx + 20, ly), Spawn::Prop("mine_cart"))];
             let side = if rng.chance(128) { 1 } else { -1 };
-            let beside = |from: i32, dir: i32, w: i32, h: i32| {
-                (0..36).map(|k| from + dir * k).filter(|&x| x >= 0 && x + w <= CHUNK).find_map(|x| {
-                    (0..=18).flat_map(|d| [ly + d, ly - d]).filter(|&y| y >= 1 && y + h <= CHUNK).find(|&y| self.floor_at(cells, x, y, w, h)).map(|y| (x, y))
-                })
+            // (A camp is wider than a chunk: what's beside the cart may stand
+            // in the next one over, its floor read from the world's own
+            // terrain there, this chunk's cells here. Feet in chunk cells,
+            // so past its edges too.)
+            let i = &self.ids;
+            let material = |lx: i32, ly: i32| {
+                if (0..CHUNK).contains(&lx) && (0..CHUNK).contains(&ly) { cells[(ly * CHUNK + lx) as usize].material } else { self.material_at(origin.x + lx, origin.y + ly) }
             };
-            // (Two cells clear of the cart's footprint either side.)
+            let floor_at = |x: i32, y: i32, w: i32, h: i32| {
+                let floor = (0..w).filter(|&dx| ![i.air, i.water, i.lava, i.acid, i.oil].contains(&material(x + dx, y - 1))).count();
+                // (Half of it on rock is enough: caves slope, and a prop
+                // settles where it stands.)
+                floor >= (w / 2).max(1) as usize && (0..h).all(|dy| (0..w).all(|dx| material(x + dx, y + dy) == i.air))
+            };
+            let beside = |from: i32, dir: i32, w: i32, h: i32| (0..36).map(|k| from + dir * k).find_map(|x| (0..=24).flat_map(|d| [ly + d, ly - d]).find(|&y| floor_at(x, y, w, h)).map(|y| (x, y)));
+            // (Two cells clear of the cart's footprint either side.) Where a
+            // prop `w` wide starts going out one way (`dir`).
             let (right, left) = (lx + 41, lx - 2);
-            let (near, far) = if side > 0 { (right, left) } else { (left, right) };
-            let dir = |x: i32| if x == right { 1 } else { -1 };
-            if let Some((x, y)) = beside(if dir(near) > 0 { near } else { near - 15 }, dir(near), 15, 20) {
-                out.push((feet(x + 8, y), Spawn::Prop("tnt_barrel")));
-                let next = if dir(near) > 0 { x + 17 } else { x - 14 };
-                if let Some((x, y)) = beside(next, dir(near), 12, 15) {
-                    out.push((feet(x + 6, y), Spawn::Prop("dynamite")));
+            let out_from = |dir: i32, w: i32| if dir > 0 { right } else { left - w };
+            // The barrel and dynamite on one side (the chosen first, else
+            // whichever has room: a cart on a ledge has a wall at one end)...
+            let mut used: Option<(i32, i32)> = None;
+            for dir in [side, -side] {
+                let Some((x, y)) = beside(out_from(dir, 13), dir, 13, 19) else { continue };
+                out.push((feet(x + 7, y), Spawn::Prop("tnt_barrel")));
+                let mut reach = if dir > 0 { x + 13 } else { x };
+                if let Some((x, y)) = beside(if dir > 0 { x + 14 } else { x - 11 }, dir, 10, 13) {
+                    out.push((feet(x + 5, y), Spawn::Prop("dynamite")));
+                    reach = if dir > 0 { x + 10 } else { x };
                 }
+                used = Some((dir, reach));
+                break;
             }
-            if let Some((x, y)) = beside(if dir(far) > 0 { far } else { far - 8 }, dir(far), 8, 26) {
-                out.push((feet(x + 4, y), Spawn::Prop("mine_lantern")));
+            // ...the lantern on the other, or past them if only there's room.
+            let lantern = match used {
+                Some((dir, reach)) => beside(out_from(-dir, 6), -dir, 6, 25).or_else(|| beside(if dir > 0 { reach + 1 } else { reach - 7 }, dir, 6, 25)),
+                None => beside(out_from(-side, 6), -side, 6, 25).or_else(|| beside(out_from(side, 6), side, 6, 25)),
+            };
+            if let Some((x, y)) = lantern {
+                out.push((feet(x + 3, y), Spawn::Prop("mine_lantern")));
             }
             return out;
         }
@@ -2390,17 +2412,30 @@ mod tests {
         let (lo, hi) = (a.0.min(a.1).min(b.0).min(b.1), a.0.max(a.1).max(b.0).max(b.1));
         let mut props: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
         let mut chunks = 0;
+        // Camps: (with an explosive beside the cart, with a lantern).
+        let (mut camps, mut armed, mut lit) = (0, 0, 0);
         for cx in (0..g.plan.width / CHUNK).step_by(2) {
-            for cy in (lo / CHUNK..hi / CHUNK).step_by(2) {
+            for cy in (lo / CHUNK..hi / CHUNK).step_by(1) {
                 chunks += 1;
-                for (_, what) in g.generate_with_spawns(ChunkPos::new(cx, cy)).1 {
+                let spawns = g.generate_with_spawns(ChunkPos::new(cx, cy)).1;
+                let has = |k: &'static str| spawns.iter().any(|(_, w)| *w == Spawn::Prop(k));
+                if has("mine_cart") {
+                    camps += 1;
+                    armed += (has("tnt_barrel") || has("dynamite")) as usize;
+                    lit += has("mine_lantern") as usize;
+                }
+                for (_, what) in spawns {
                     if let Spawn::Prop(kind) = what {
                         *props.entry(kind).or_default() += 1;
                     }
                 }
             }
         }
-        eprintln!("{chunks} chunks (a quarter of the underground's): {props:?}");
+        eprintln!("{chunks} chunks (half the underground's): {props:?}; {camps} camps, {armed} with explosives beside, {lit} lit");
+        // (Wider than a chunk at this scale: what's beside the cart stands
+        // in the next chunk if it must.)
+        // (Before the rescale: 5 of 12 armed, 8 lit; caves aren't flat.)
+        assert!(armed * 3 >= camps && lit * 2 >= camps, "camps have their explosives and lantern: {camps} camps, {armed} armed, {lit} lit");
         assert!(props.get("mine_cart").copied().unwrap_or(0) >= 2, "camps: {props:?}");
         assert!(props.get("tnt_barrel").copied().unwrap_or(0) + props.get("dynamite").copied().unwrap_or(0) >= 4, "explosives about: {props:?}");
     }

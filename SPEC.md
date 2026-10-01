@@ -79,12 +79,12 @@ lakes sleep. A liquid is pushed by the column above it: a cell with its own
 kind on top passes *through* its own kind (up to 72 cells) to the first open
 cell, reaching `dispersion + depth above` cells, scaled down by viscosity. So
 a block of water collapses like a dam break, bottom first (a 64-tall block
-is 30 tall after 1 s, 14 after 4 s), instead of eroding from its face while
+is ~25 tall after 1 s, 14 after 4 s), instead of eroding from its face while
 only the top trickles out. Surface cells beside an open step doze rather than
 sleep (they wake 1 tick in 16 to re-check), so a pressure-flattened pool
 never freezes into stairs. `viscosity` (0 water … 255) makes a liquid move on fewer ticks,
 pour slower and give up sooner: measured in a basin, water settles flat in
-~3 s, oil ~4.5 s, blood and acid ~6 s, lava ~20 s in mounds.
+~4 s, oil ~6 s, blood and acid ~8–13 s, lava ~16 s in mounds.
 
 "Every element falls" is realised as: every element is a simulated cell with
 a behaviour class. `Static` cells (rock, dirt, brick) hold position until
@@ -210,7 +210,7 @@ checksums.
     camp (60–80 %: a mine cart on a floor 39 wide with 23 of air over it;
     beside it on the nearest floor a TNT barrel and dynamite one way, a
     lantern on its post the other) and one at a lone TNT barrel or bundle
-    of dynamite (21–25 %). A small world has ~50 camps and ~100 loose
+    of dynamite (21–25 %). A small world has ~20 camps and ~70 loose
     explosives. `camplook` scenario: to the nearest camp;
   - tunnels: each chamber to its nearest few, a spanning tree of those so
     every chamber connects (tested: 95 %+ in one network) plus more for
@@ -225,7 +225,8 @@ checksums.
     tunnels meet the flooded chambers the water is already level.
   - Tests: tunnels fit the player (a 9 × 23 box along 160 sampled tunnels,
     ≤ 1 % blocked), the network connects without crevices, crevices are few.
-    Planned in ~50 ms with the rest of the plan.
+    Planned in ~70 ms with the rest of the plan (the medium world; the
+    large ~650 ms).
 - Underground biomes (regions, two each in a large world, one in a small;
   everything else keeps its plain rock, and the underground layer stays
   plain and easy): elliptical areas ~1 350–2 250 × 675–1 125 half size in
@@ -279,7 +280,7 @@ checksums.
   - deep: slate (with obsidian seams), chambers, lava pools;
   - underworld: basalt; a vault with a ragged, dripping roof, basalt islands
     hanging in it, and a lava sea at one flat level (asleep on load, the
-    bench's 80 000 lava cells settle in 122 ticks); obsidian crusts where
+    bench's 265 000 lava cells settle in 118 ticks); obsidian crusts where
     rock meets the lava.
   - Chasms: about five shafts from the lowland surface (away from the spawn,
     lakes and mountains; no trees at their lips) down into the deep, 165–360
@@ -288,8 +289,8 @@ checksums.
   - Rock and walls follow the band (stone, slate, basalt), dithered at the
     borders. Slate melts at 1 500 °C and basalt at 1 650 °C, above what a lava
     sea heats them to.
-  - Cost: a caverns chunk takes ~2.6× a surface chunk to generate (8-chunk
-    column 1.8 ms vs 0.7 ms, bench `stream_deep`).
+  - Cost: a caverns chunk takes ~1.9× a surface chunk to generate (12-chunk
+    column 3.2 ms vs 1.7 ms, bench `stream_deep`).
 - Not yet: waterfalls, jungle and swamp materials (mud, vines), creatures of
   the underground biomes, spore gas, more biomes.
 
@@ -352,9 +353,9 @@ DESIGN.md §4–5, stage 4 of the world arc.
   a wall. Each takes 3/4 of the pick's power (30 % less at the rim: round
   holes, but the whole width goes together) and breaks at its own hardness
   (`WorldEdit::MineReach`); what it leaves unsupported falls. The
-  `pickarea` scenario: aimed past a 12-wide dirt wall, it digs the wall
+  `pickarea` scenario: aimed past an 18-wide dirt wall, it digs the wall
   (the dirt behind only once it's through); dug straight down with a
-  copper pick, 73 cells in 3 s (50 of dirt, then stone), falling as it
+  copper pick, 109 cells in 3 s (75 of dirt, then stone), falling as it
   goes.
 - Pace: a copper pickaxe (power 35, 6 hits/s) takes dirt in one hit, stone in
   two; an iron one (power 60, 7/s) stone in one. The player's box is 9 × 23 cells, so it drops into a 2-block
@@ -369,7 +370,7 @@ DESIGN.md §4–5, stage 4 of the world arc.
 - Worldgen doesn't draw chests: generating a chunk also reports what it
   starts with besides cells (`ChunkGenerator::generate_with_spawns`:
   `Spawn::Chest` or `Spawn::Creature` at their feet): a cave chest on the
-  first cave floor with room for one in some underground chunks (~one in 30),
+  first cave floor with room for one in some underground chunks (~one in 75),
   a structure's chests and guards. The game makes each once (remembered by
   place: an unmodified chunk is generated again when it comes back).
 - Contents live in the `Chests` resource under a key that stays when the
@@ -403,15 +404,14 @@ DESIGN.md §3.2 step 6, stage 5 of the world arc (`worldgen/src/minerals.rs`).
 - Each ore has a depth window with a fade at its ends (the threshold rises
   over 15% of it, at most 600 cells), and noise stretched along the strata
   (veins) or round (blobs). Where a cave is within 8 cells the threshold is
-  0.1 lower, so ore shows on cave walls: about 5% of the rock is ore, 9% of
+  0.1 lower, so ore shows on cave walls: about 5% of the rock is ore, 10% of
   the rock at cave walls.
 - Gems grow only in cave walls (within 6 cells of open space), in clusters,
   and only along some stretches of wall (a coarse noise), so they are a
   find, not a lining: amethyst in the underground (60), emerald in the
   caverns (80), ruby in the deep (100). They glow faintly, which lights the
   caves around them.
-- Cost: a deep column of chunks streams in ~2.2 ms (was 1.8 ms), under the
-  4 ms budget.
+- Cost: a deep column of chunks streams in ~3.2 ms, under the 4 ms budget.
 
 ### 3.4f Lairs (`worldgen/src/lairs.rs`, `assets/data/lairs.ron`)
 - Cave chambers something has made its home: a spider nest, a slime pit
@@ -462,15 +462,16 @@ Noita's gold (DESIGN §13 item 7): a count, not a thing in the pack.
 - Taking it: the local player takes every gold cell within 9 of its body,
   108 a tick at most (a heap drains at ~6 500 a second), with golden specks
   streaming in (every fourth cell) and a two-note ting.
-- `gold` scenario (arena): a warband struck dead: 69 gold bursts out over 80
-  cells, walking through it takes 41. 100 thrown into the lava pit: after 18
-  s, 57 molten and 33 still dust on the pit's cooler floor, nothing lost; 60
-  into an acid puddle: 58 lie in it, uneaten; 60 into the pool: 53 at its
-  bottom (y 110, the floor). A blast in a heap of 28: 28 after it, thrown
-  over 24 cells. `goldheap` (a generated world): 6 000 poured into a hollow
-  dug under the start settle in 8 s (the sim at 0.1 ms a tick after), a
-  glittering heap lighting the cave. A sim test: a blast in a pile of gold
-  destroys none of it and every cell lands.
+- `gold` scenario (arena): a warband struck dead: ~32 gold bursts out over 90
+  cells, walking through it takes 5–10. 100 thrown into the lava pit: after
+  18 s, all 100 molten, nothing lost; 60 into an acid puddle: 58 lie in it,
+  uneaten; 60 into the pool: all 60 at its bottom (y 85, the floor). A
+  blast in a heap of ~40: ~40 after it, thrown over 45–70 cells. `goldheap`
+  (a generated world): 6 000 poured into a hollow dug under the start (it
+  opens into a cave now) heap and spill down it, ~15 chunks still awake
+  after 45 s (the sim at ~1.2 ms a tick), a glittering heap lighting the
+  cave. A sim test: a blast in a pile of gold destroys none of it and every
+  cell lands.
 - Not yet: rarer and deeper loot tables giving more, a merchant to spend it
   with (the village), molten gold cast into bars (matter, §13.1).
 
@@ -509,8 +510,8 @@ Noita's gold (DESIGN §13 item 7): a count, not a thing in the pack.
   what stands the heat; the casting sets in its shape, and once the mould is
   mined away it's a thing: kicked, thrown, lifted, mined back into bars.
   `cast` scenario (arena): the ladle filled at a furnace from 4 copper bars
-  (144 cells), poured into a stone mould with a notch, set in its shape (64
-  cells), the mould dug away, kicked 22 cells, every cell kept.
+  (144 cells), poured into a stone mould with a notch, set in its shape (144
+  cells), the mould dug away, kicked 31 cells, every cell kept.
 - A kick sends a body at most 1.3 × its direction (the player's: 2.4 cells a
   tick across; a 64-cell casting kicked
   at 300 flew 290 cells into the lava). A body settling nearly square
@@ -774,7 +775,7 @@ deaths (blood). Rendered as one dynamic mesh.
   last 80 ticks, and goes out in flight 1 tick in 60. In a canopy it touches
   one leaf (more often the more flammable) and is spent, lit or not.
   Measured over 8 seeds: a burning crown sets the next tree 58 cells off
-  alight 2 times, one 223 cells off never (4 and 2 when the first leaf an
+  alight 3 times, one 223 cells off never (4 and 2 when the first leaf an
   ember brushed caught).
 - Grass sway is rendering only: grass pixels are drawn shifted by wind, a
   travelling wave, and springs that creatures excite as they move through
@@ -819,15 +820,15 @@ deaths (blood). Rendered as one dynamic mesh.
   takes a blow (`combat::Hit`, as a blade's): 8 damage, knocked back 225
   cells/s (before its heft) and stunned 0.3 s unless its poise shrugs it
   off; barrels and carts are only sent rolling (a kick doesn't set them
-  off). `kick` scenario: an orc 70 → 63 (its armour), a troll 420 → 412,
+  off). `kick` scenario: an orc 70 → 63 (its armour), a troll 420 → 417,
   both shrugging off the knock. It shows: the player's
   `kick` clip (player.ron: `kick_knee`, then `kick_leg` straight out at the
   hip, leaning back, the arms swung against it; 16 fps, once through), the
   blow landing a sixteenth of a second after the key (the leg out), a puff
   of dust at the foot and, when it moved something, a small jolt of the
   camera. `kick` scenario (arena):
-  a 150-cell log goes 52 cells and lands whole, a sand heap flies, a TNT
-  barrel goes 29 cells, the floor takes nothing. A sim test: a kicked log
+  a 360-cell log goes 31 cells and lands whole, a sand heap flies, a TNT
+  barrel goes 43 cells, the floor takes nothing. A sim test: a kicked log
   lands whole and further on, a log on a post falls whole when the post's
   foot is dug away, the stone floor doesn't lift.
 - **Magic moves objects** (`game/src/magic/well.rs`): force and the well lift
@@ -837,7 +838,7 @@ deaths (blood). Rendered as one dynamic mesh.
   bodies within its reach on a spring to its heart (6/s, a fifth of the way
   a tick) against gravity, each weighing 0.7 a cell against what's left of
   its lift that tick. `logmagic` scenario (flat world): the force wand throws
-  a 150-cell log 19 cells; the gravity wand lifts it ~40 cells, carries it 50
+  a 360-cell log 24 cells; the gravity wand lifts it ~60 cells, carries it 75
   over and drops it, and it lands whole.
 - The unloaded world is a wall to a body, as to cells (a log flung off the
   loaded area used to fall out of the world). Sim test.
@@ -867,8 +868,8 @@ deaths (blood). Rendered as one dynamic mesh.
   on the plan's ground, so a trap spans chunks: spots on a 60-cell grid,
   60/256 of them tried (half again in the caverns and the deep), wanting a
   floor 60 % rock over 42 cells, 29 to 52 cells of headroom, a player's
-  height of walking room within 14 either side, and rock for the rope: 97
-  in the medium world (44 plates). Streaming a column in the caverns costs
+  height of walking room within 14 either side, and rock for the rope: 85
+  in the medium world (34 plates). Streaming a column in the caverns costs
   ~0.2 ms more (the judging). Worldgen test: so many, each written as it
   should be. `trap` scenario (medium world): the nearest one found, the
   player walks onto its plate, the boulder drops (and breaks in two), the
@@ -919,9 +920,9 @@ deaths (blood). Rendered as one dynamic mesh.
     covered (0–100 %, shown as a percentage), several at once, never more
     than 100 % together. In a fluid (or touching snow: a cell outside the
     body counts 0.35 of one inside) a coating's share rises at 4 a second
-    towards `soak` (1.6; acid 5) × the share of the body in it: a two-cell
-    puddle wets a player's feet ~20 %, knee deep ~40 %, waist deep ~80 %, a
-    step in acid ~60 %. Rising, it pushes the others off to make room, so
+    towards `soak` (1.6; acid 5) × the share of the body in it: a three-cell
+    puddle wets a player's feet ~22 %, knee deep ~40 %, waist deep ~80 %, a
+    step in acid ~45 %. Rising, it pushes the others off to make room, so
     jumping in water washes acid off; a clinging one (`sticks`: venom) only
     a washing one (`washes`: water) pushes off. Out of it, each wears off
     over its `secs` from full. Its effects scale with its share: heat
@@ -1017,8 +1018,8 @@ deaths (blood). Rendered as one dynamic mesh.
   cells of its path flashes alight at 1200 °C, the most a background cell
   holds, spitting flames and embers, so the tree burns from crown to foot at
   once. It blows the top of the trunk off. Where it earths the ground reaches
-  1500 °C (sand fuses to glass) and catches. Measured: a struck tree has 47
-  of 240 wood cells left after 20 s, one lit at its foot 146. Creatures
+  1500 °C (sand fuses to glass) and catches. Measured: a struck tree has 26
+  of 240 wood cells left after 20 s, one lit at its foot 138. Creatures
   within 15 cells take up to 55 damage and catch fire (unless wet). The game
   draws a forked bolt down to where it earthed, flashes the sky and shakes
   the camera.
@@ -1026,9 +1027,10 @@ deaths (blood). Rendered as one dynamic mesh.
   over ~2.5 minutes) and `WorldEdit::Lightning` strikes a column: dev V, B
   and N (or F5-F7, or the dev panel), and later spells or events.
 - The field steps each column every 4 ticks, a quarter of the columns each
-  tick, so its cost (~1.2 ms for the world's width) is spread evenly rather
-  than landing on every fourth tick. The ground under a raining column is
-  looked up once every 10 s.
+  tick, so its cost (~0.35 ms for the window round the players, ~3 ms for
+  the medium world's whole width) is spread evenly rather than landing on
+  every fourth tick. The ground under a raining column is looked up once
+  every 10 s.
 - The band sits 225 cells above sea level, over the tallest trees. It is often
   above the loaded area (zoomed in): rain, snow and lightning enter the world at
   the top of what's loaded below the cloud. Rain or snow is decided by the
@@ -1061,7 +1063,10 @@ Saved with the world (`WorldFile::clock`; older saves load with none of it).
   ignition 60 °C higher soaked, the chance of catching each moment 85 % lower
   and of flames reaching them 60 % lower. Land nobody set is dry (fire as
   tuned). `forestfire` (`PLATYPUS_WET` pins it): 25 s after one crown is lit,
-  5 % wet 488 cells burnt, 20 % 1 331, 35 % 428, 50 % 77, 80 % 71.
+  of ~15 000 cells of forest about it, 5 % wet 4 200–9 900 burnt, 20 %
+  4 900–6 700, 35 % ~4 400, 50 % 3 800–5 300, 80 % ~3 800–4 000: wet land
+  slows a forest fire, it doesn't stop one (so before the 1.5× rescale too:
+  45 % of the forest dry, 35 % at 80 % wet).
 - **Regrowth**, hourly and as chunks load: nature heals toward the pristine
   chunk (`ChunkGenerator::heal`, the chunk made again from the seed). Soil
   where there was grass or moss turns back between 0.1 and 1 day after it
@@ -1090,10 +1095,11 @@ Saved with the world (`WorldFile::clock`; older saves load with none of it).
 - Records: `trees` (x → when lost, which time), `land` (chunk → since when,
   cells left); a reset forgets both. `regrow` scenario (a forest set alight
   at 2 % wet, an hour, away for `PLATYPUS_DAYS`, back): forest cells before,
-  burnt, after 0/1/5 days: 31 510, ~7 000, 3 101/4 127/33 755; ash and
-  charcoal 1 979/1 276/5; burnt soil 198/8/8. `PLATYPUS_STAY=1`: the player
-  stays, an hour passing every tenth of a second: after 5 days 34 498 forest
-  cells, grass 475 of 498 (healing in view, hour by hour).
+  burnt, after 0/1/5 days: 15 207, 7 000–11 000, 3 300–6 800/~5 000/
+  19 000–34 000; ash and charcoal ~2 000/~1 250/~350; burnt soil ~130/1/3.
+  `PLATYPUS_STAY=1`: the player stays, an hour passing every tenth of a
+  second: after 5 days 31 000–37 000 forest cells, grass 480–560 of 576
+  (healing in view, hour by hour).
 - **Snags**: a lost tree's trunk stands charred (charcoal, a third to two
   thirds of its height, its shade halved) until the one in its place is
   30 % grown; then it goes as any charcoal does. Drawn, like clearing a
@@ -1111,9 +1117,9 @@ Saved with the world (`WorldFile::clock`; older saves load with none of it).
   to heal as a burn would from the fire's day, so the scar is the same
   however often it's healed and comes back on the same schedule. Logged.
   `wildfire` scenario (a strike 3 750+ cells east of the start, the player
-  there `PLATYPUS_DAYS` later): 13 trees taken in a deep forest; at 0.25
-  days charred snags over 543 cells of burnt soil and 313 of ash; at 2 a
-  young forest, the grass back; at 5 grown.
+  there `PLATYPUS_DAYS` later): 1 tree taken (the land there 44 % wet); at
+  0.25 days a charred snag over 135 cells of burnt soil and 70 of ash; at 2
+  a young forest, the grass back; at 5 grown.
 - **Lairs refill**, hourly: a keeper alive anywhere keeps its record's day;
   one gone three days is back where it was put (the spot out of view).
   `refill` scenario (the nearest spider nest's keepers killed, away four
@@ -1255,7 +1261,7 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   as rays into a direct buffer (hard shadows) of which a third scatters off
   what it lands on.
 - The solve runs on the async pool and is shown the next frame; the frame
-  pays only for reading the world (~1 ms at 3 px/cell).
+  pays only for reading the world (~1.5–2 ms at 2 px/cell).
 - Light eases between frames (in over ~20 ms, out over ~50 ms), so moving
   smoke, flames and embers make fire glow and flicker rather than strobe.
 - Gases barely dim light (smoke and steam cast no real shadows); trees shade
@@ -1571,10 +1577,10 @@ DESIGN §13 item 6.
   0.26 / 0.18 s; poise 16) and the troll (a rig of turned limbs, 23 × 51,
   420 hp, a club: smash, sweep, 30 damage, 0.5 / 0.4 s windups to read and
   dodge; poise 80, heft 4). In the `fight` scenario the orc lands a hit,
-  the shortsword kills it in ~2 s; the troll's smash takes 30 and throws you.
+  the shortsword kills it in ~4 s; the troll's smash takes 29 and throws you.
   The troll heals (§6.4 `regen`): steel brings it to 1 hp and no further;
   fire or acid stop its healing, and then it dies (the `troll` scenario:
-  held at 3 hp by the sword, dead 0.1 s after it's set alight).
+  held at 2 hp by the sword, dead 0.1 s after it's set alight).
 - **Everything held shows** (`weapons.ron` `held`, by icon shape): an item
   whose icon's shape is listed is drawn from the sprite of that name
   (`assets/art/pickaxe.ron`, `axe`, `wand`, `staff`, `torch`, `bomb`,
@@ -1607,12 +1613,13 @@ DESIGN §13 item 6.
   and looses at where you'll be (leading you and allowing for the drop),
   its aim off by up to `wobble` degrees a shot. In the `archery` scenario a
   full draw does 20 to a dummy, the stuck arrows come back, one shot down
-  through lava burns, and the archer costs ~17 hp in 4 s.
+  through lava burns, and the archer costs ~17 hp in 4 s (measured before
+  the rescale: since, the scenario's bow looses nothing, a known bug).
 - The shortsword (12 damage: slash, backslash, thrust) and the longsword
   (24: cleave, sweep, drive; slower, heavier on stamina). In the `melee`
-  scenario: the shortsword lands 5 hits (65) in 0.9 s; the longsword
+  scenario: the shortsword lands 4 hits (53) in 0.7 s; the longsword
   empties the stamina bar in 1.5 s; striking down from above bounces
-  (300 cells/s); a blast mid-dodge costs 3 hp against ~15 standing.
+  (389 cells/s); a blast mid-dodge costs 0 hp against ~12 standing.
 
 ### 6.3 Underground enemies (`creatures/brain/hunter.rs`, `assets/data/creatures/`)
 
@@ -1651,7 +1658,7 @@ parts, so another is a new file, not new code:
 - **Webs snare:** a material can be `sticky` (cobweb): a body in any of
   its cells moves at 30 % (with chill, the slower of the two), unless its
   creature is a `web_walker` (spiders). Blades cut webs (plants). In the
-  `webs` scenario a walk covers 138 cells in 1.5 s in the open, 51 in web.
+  `webs` scenario a walk covers 150 cells in 1.5 s in the open, ~53 in web.
 - A creature's `light` can `haze` (glow like glowing cells: a steady
   `Glow`). Eyes in the dark aren't a glow: a creature's `eyes` (a colour
   in its text sprite; spiders' `legs` have their own) are drawn alone over
@@ -1679,8 +1686,8 @@ parts, so another is a new file, not new code:
   skeleton (the humanoid rig in bone, a rusty sword;
   crumbles to ash), the vampire bat (dives, bites). Packs `spiders` and
   `underground` spawn them together. In the `underground` scenario each
-  hurts a player standing still (a spider ~36 hp in 3.5 s, spiderlings ~15
-  in 3 s), and a spider climbs a 140-cell column to the player on top.
+  hurts a player standing still (a spider ~90–100 hp in 3.5 s, spiderlings
+  nothing in 3 s), and a spider climbs a 150-cell column to the player on top.
 
 ### 6.4 Creatures as data (`game/src/creatures/`, `assets/data/kinds.ron`, DESIGN §14)
 

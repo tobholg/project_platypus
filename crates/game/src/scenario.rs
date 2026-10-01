@@ -1971,13 +1971,13 @@ fn melee_script(
     }
     if t > 6.26 && state.0 == 3 {
         state.2 = h.hp;
-        sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 4, p.y as i32), radius: 4, power: 60 });
+        sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 6, p.y as i32), radius: 6, power: 60 });
         state.0 = 4;
     }
     if t > 6.9 && state.0 == 4 {
         info!("melee: a blast mid-dodge cost {:.0} hp", state.2 - h.hp);
         state.2 = h.hp;
-        sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 4, p.y as i32), radius: 4, power: 60 });
+        sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 6, p.y as i32), radius: 6, power: 60 });
         state.0 = 5;
     }
     if t > 7.4 && state.0 == 5 {
@@ -2578,7 +2578,7 @@ fn gear_script(
     let t = s.elapsed;
     let p = k.body.pos;
     keys.release(KeyCode::Escape);
-    let blast = |sim: &mut SimWorld| sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 4, p.y as i32), radius: 4, power: 60 });
+    let blast = |sim: &mut SimWorld| sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 6, p.y as i32), radius: 6, power: 60 });
     match state.0 {
         0 if t > 0.8 => {
             state.1 = h.hp;
@@ -3520,7 +3520,7 @@ fn gold_script(
     mut sim: ResMut<SimWorld>,
     mut queue: ResMut<crate::gold::GoldQueue>,
     mut player: Query<(&mut Kinematics, &crate::gold::Gold), With<LocalPlayer>>,
-    mut foes: Query<(&crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>,
+    mut foes: Query<(Entity, &crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>,
     mut state: Local<u8>,
 ) {
     if s.name != "gold" {
@@ -3560,8 +3560,11 @@ fn gold_script(
             *state = 1;
         }
         1 if t > 0.8 => {
-            for (c, mut h) in &mut foes {
+            for (e, c, mut h) in &mut foes {
                 if ["orc", "orc_archer", "troll"].contains(&c.kind.as_str()) {
+                    // (The troll heals and won't go below 1 while it does:
+                    // struck dead, it doesn't.)
+                    commands.entity(e).remove::<crate::creatures::nature::Regenerates>();
                     h.hp = 0.0;
                 }
             }
