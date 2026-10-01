@@ -1172,10 +1172,22 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   surface as its chunks load: a jagged crack 60–110 cells down, 8 wide at
   the top narrowing to 2 (from the seed and the day). News: "Did you feel
   the ground shake today? They say it split open, …".
+- **A travelling pedlar**: 25 % of mornings (08:00–11:00), staying a day.
+  While it's staying and someone is within 700 cells of the village with
+  no pedlar about, one is made: at the village's middle if that's out of
+  view, else walking in from 330 cells beyond the middle of the view on its
+  side (its `Home` the village's middle). Its stay over, it walks off that
+  way and is gone once out of view. A villager (`pedlar.ron`) with things
+  from far off: rocket and cloud boots, a grappling hook, charms, a mithril
+  pickaxe and bars; it doesn't buy. News: "A pedlar came to the village
+  this morning. Off again tomorrow, he says."
+- Seasons: dropped (the biomes carry the climate: the tundra snows, its
+  lakes are frozen).
 - The world generator gives the village's bounds (`ChunkGenerator::village`).
-- Dev panel: "An event (star, raid, quake)": each in turn, now (a star 140
-  cells ahead; a raid on the village from the side you face; a quake whose
-  heart is 200 cells ahead). Scenarios `star`, `raid`, `quake`.
+- Dev panel: "An event (star, raid, quake, pedlar)": each in turn, now (a
+  star 140 cells ahead; a raid on the village from the side you face; a
+  quake whose heart is 200 cells ahead; a pedlar). Scenarios `star`,
+  `raid`, `quake`, `pedlar`.
 
 ## 4. Rendering
 

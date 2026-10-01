@@ -25,6 +25,9 @@
 //!   with a low rumble and cave ceilings round you come loose and fall; at
 //!   the quake's heart a chasm opens in the surface (dug as it loads, near
 //!   or away).
+//! - **A travelling pedlar** (some mornings): walks in to the village from
+//!   out of sight (or is there already, if you come later), stays the day
+//!   with things from far off, and walks on.
 
 use bevy::prelude::*;
 use platypus_sim::rng::hash;
@@ -47,7 +50,7 @@ impl Plugin for EventsPlugin {
         app.init_resource::<News>()
             .init_resource::<Village>()
             .add_message::<Begins>()
-            .add_systems(Update, (timetable, dev_event, begin, land, stars, shake, mend, news).chain().after(crate::clock::ClockSet));
+            .add_systems(Update, (timetable, dev_event, begin, land, stars, shake, mend, pedlar, news).chain().after(crate::clock::ClockSet));
     }
 }
 
@@ -57,6 +60,7 @@ pub enum EventKind {
     Star,
     Raid,
     Quake,
+    Pedlar,
 }
 
 /// Where a happening is up to.
@@ -168,6 +172,12 @@ const QUAKE_NEAR: (i32, i32) = (170, 130);
 const CHASM_DEEP: (i32, i32) = (60, 110);
 const CHASM_WIDE: i32 = 8;
 
+/// The pedlar: the chance a morning brings one; it comes between these
+/// hours, and stays this long (days).
+const PEDLAR_CHANCE: f64 = 0.25;
+const PEDLAR_HOURS: (f64, f64) = (8.0, 11.0);
+const PEDLAR_STAY: f64 = 1.0;
+
 /// Where things happen from: the spawn, and the village's bounds.
 #[derive(Clone, Copy)]
 pub struct Places {
@@ -196,6 +206,14 @@ pub fn roll(seed: u64, places: Places, d: i64, kind: EventKind) -> Option<(f64, 
             let off = QUAKE_FROM.0 + (QUAKE_FROM.1 - QUAKE_FROM.0) * unit(3);
             Some((d as f64 + unit(1), places.spawn_x + side * off as i32, 0))
         }
+        EventKind::Pedlar => {
+            let (lo, hi) = places.village?;
+            if unit(0) >= PEDLAR_CHANCE {
+                return None;
+            }
+            let hour = PEDLAR_HOURS.0 + (PEDLAR_HOURS.1 - PEDLAR_HOURS.0) * unit(1);
+            Some((d as f64 + hour / 24.0, (lo.x + hi.x) / 2, side))
+        }
         EventKind::Raid => {
             let (lo, hi) = places.village?;
             if unit(0) >= RAID_CHANCE {
@@ -207,7 +225,7 @@ pub fn roll(seed: u64, places: Places, d: i64, kind: EventKind) -> Option<(f64, 
     }
 }
 
-const KINDS: [EventKind; 3] = [EventKind::Star, EventKind::Raid, EventKind::Quake];
+const KINDS: [EventKind; 4] = [EventKind::Star, EventKind::Raid, EventKind::Quake, EventKind::Pedlar];
 
 /// How near (cells across) someone must be for a kind to happen live.
 fn live_near(kind: EventKind) -> i32 {
@@ -259,7 +277,8 @@ fn timetable(sim: Res<SimWorld>, mut clock: ResMut<WorldClock>, loaders: Query<(
         }
         let live = now - h.day < LATE && near.iter().any(|p| (p.x as i32 - h.x).abs() < live_near(h.kind));
         // (A quake felt here still has its chasm to open, where it struck.)
-        h.stage = if live && h.kind != EventKind::Quake { Stage::Done } else { Stage::Away };
+        // (The pedlar's there or not by the day: `pedlar`.)
+        h.stage = if (live && h.kind != EventKind::Quake) || h.kind == EventKind::Pedlar { Stage::Done } else { Stage::Away };
         out.write(Begins { h: h.clone(), live });
     }
     clock.events.retain(|h| h.stage != Stage::Done || now - h.day < KEEP_DAYS);
@@ -284,6 +303,10 @@ fn dev_event(mut acts: MessageReader<crate::dev::DevAction>, mut next: Local<usi
                 None => continue,
             },
             EventKind::Quake => ((k.body.pos.x + ahead as f32 * 200.0) as i32, 0),
+            EventKind::Pedlar => match sim.generator.village() {
+                Some((lo, hi)) => ((lo.x + hi.x) / 2, ahead),
+                None => continue,
+            },
         };
         clock.events.push(Happening { kind, day, x, stage: Stage::Coming, from });
     }
@@ -361,6 +384,11 @@ fn begin(
                 toasts.write(crate::progress::Toast(format!("A warband is coming from the {}!", if h.from < 0 { "west" } else { "east" })));
                 village.look = Some(sim.world.tick() + 2);
                 village.allowance = 0.0;
+            }
+            EventKind::Pedlar => {
+                if b.live {
+                    toasts.write(crate::progress::Toast("A travelling pedlar is coming to the village".into()));
+                }
             }
             EventKind::Quake => {
                 if b.live {
@@ -667,6 +695,60 @@ fn mend(
     }
 }
 
+/// The pedlar, while one's staying: there's someone near the village and
+/// no pedlar about, one's made, at the village if that's out of view, else
+/// walking in from out of sight on its side (its home the village's
+/// middle). Its stay over, it walks off that way and is gone once no one
+/// sees it.
+#[allow(clippy::too_many_arguments)]
+fn pedlar(
+    mut commands: Commands,
+    sim: Res<SimWorld>,
+    clock: Res<WorldClock>,
+    cam: Single<&Transform, With<crate::camera::MainCamera>>,
+    loaders: Query<(&GlobalTransform, &ChunkLoader)>,
+    mut folk: Query<(Entity, &crate::actors::villager::Villager, &crate::actors::Kinematics, Option<&mut crate::actors::villager::Home>)>,
+) {
+    let Some((lo, hi)) = sim.generator.village() else { return };
+    let mid = (lo.x + hi.x) / 2;
+    let now = clock.now;
+    let staying = clock.events.iter().find(|h| h.kind == EventKind::Pedlar && h.day <= now && now < h.day + PEDLAR_STAY);
+    let near = players(&loaders);
+    let seen = |x: f32, y: f32| near.iter().any(|p| (p.x - x).abs() < VIEW.0 as f32 && (p.y - y).abs() < VIEW.1 as f32);
+    let mut here = false;
+    for (e, v, k, home) in &mut folk {
+        if v.role != "pedlar" {
+            continue;
+        }
+        here = true;
+        if staying.is_some() {
+            continue;
+        }
+        // Off: away the way it came, gone once out of sight.
+        if seen(k.body.pos.x, k.body.pos.y) {
+            if let Some(mut home) = home {
+                let side = if k.body.pos.x < mid as f32 { -1.0 } else { 1.0 };
+                home.0.x = mid as f32 + side * 900.0;
+            }
+        } else {
+            commands.entity(e).despawn();
+        }
+    }
+    let Some(h) = staying else { return };
+    if here || !near.iter().any(|p| (p.x as i32 - mid).abs() < LIVE_NEAR) {
+        return;
+    }
+    let ground = |x: i32| sim.generator.surface_hint(x).and_then(|hint| find_ground(&sim.world, x, hint + 80, 300));
+    let Some(home_y) = ground(mid) else { return };
+    let home = Vec2::new(mid as f32 + 0.5, home_y as f32);
+    let x = if seen(home.x, home.y) { (cam.translation.x + h.from as f32 * RAID_FROM) as i32 } else { mid };
+    let Some(y) = ground(x) else { return };
+    spawn_creature(&mut commands, "pedlar", Vec2::new(x as f32 + 0.5, y as f32), move |e| {
+        e.insert((crate::actors::villager::Home(home), crate::actors::villager::Routine::default()));
+    });
+    info!("events: the pedlar at x {:+} from the village's middle", x - mid);
+}
+
 /// What the villagers say happened: the last few days', newest first.
 fn news(clock: Res<WorldClock>, sim: Res<SimWorld>, mut news: ResMut<News>) {
     let village = sim.generator.spawn_point().x;
@@ -680,6 +762,8 @@ fn news(clock: Res<WorldClock>, sim: Res<SimWorld>, mut news: ResMut<News>) {
             let (dir, far) = (if h.x < village { "west" } else { "east" }, walk((h.x - village).abs()));
             let line = match h.kind {
                 EventKind::Star => format!("A star fell {when}, {far} {dir} of here. Something keeps it."),
+                EventKind::Pedlar if now < h.day + PEDLAR_STAY => "A pedlar came to the village this morning. Off again tomorrow, he says.".into(),
+                EventKind::Pedlar => "The pedlar's gone on. He'll be back some day.".into(),
                 EventKind::Quake => format!("Did you feel the ground shake {}? They say it split open, {far} {dir} of here.", if now - h.day < 0.6 { "today" } else { "the other day" }),
                 EventKind::Raid => {
                     let when = if now - h.day < 0.6 { "this evening" } else { "the other evening" };

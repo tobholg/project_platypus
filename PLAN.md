@@ -168,14 +168,14 @@ the land as its chunks load), and a scenario.
 4. ✅ Earthquakes (rare): the screen shakes; near you cave ceilings come
    loose and fall; a chasm opens in the surface (away: it's there when you
    come).
-5. Seasons (a short year): winter snows (snow falls instead of rain, the
+5. ✗ Dropped (user, 2026-10-01: biomes, not seasons; the tundra already
+   snows, its lakes freeze and its trees are snowy). Was: Seasons (a short year): winter snows (snow falls instead of rain, the
    snow line comes down, lakes freeze over), spring blooms; the land
    follows the season as it loads and, in view, gradually.
-6. A travelling merchant (no roads yet, so not a caravan): every few days
+6. ✅ (a "pedlar") A travelling merchant (no roads yet, so not a caravan): every few days
    one walks in to the village, stays a day with rarer goods, and leaves.
-Done when: in a few days' play stars fall, raids come, the ground shakes,
-the year turns and the merchant visits, near you and away, all from one
-timetable.
+Done when: in a few days' play stars fall, raids come, the ground shakes
+and the merchant visits, near you and away, all from one timetable.
 
 **7. Later: travel.** Mine carts on rails, stronger travel and building,
 teleport stations. A blood moon.

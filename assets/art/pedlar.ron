@@ -1,0 +1,17 @@
+// The travelling pedlar (creatures/pedlar.ron): the player's rig, grey
+// hair, a teal travelling cloak, a brass buckle.
+(
+    base: "player",
+    palette: {
+        'h': (168, 168, 160),   // hair
+        'H': (128, 128, 122),
+        's': (222, 176, 140),
+        'S': (186, 140, 108),
+        't': (40, 120, 118),    // cloak
+        'T': (28, 88, 88),
+        'b': (70, 50, 34),
+        'y': (210, 170, 70),
+        'p': (64, 56, 50),
+        'q': (48, 42, 38),
+    },
+)

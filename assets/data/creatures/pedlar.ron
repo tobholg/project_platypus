@@ -1,0 +1,27 @@
+// A travelling pedlar (events.rs): some mornings one walks in to the
+// village, stays the day with things from far off, and walks on. A
+// villager (actors/villager.rs, talk.rs) who doesn't live here.
+(
+    name: "Pedlar",
+    size: (7, 16),
+    health: 140,
+    team: Villager,
+    movement: (run_speed: 68, jump_height: 22, air_jumps: 0, step_height: 3, dash_speed: 0),
+    stamina: 60,
+    poise: 10,
+    heft: 1.0,
+    art: "pedlar",
+    brain: (
+        kind: "villager",
+        params: (
+            role: "pedlar",
+            wander: 30,
+            lines: [
+                "From far off, all of it. You won't find these at the smith's.",
+                "I'm gone in the morning. Buy while I'm here.",
+                "Boots that fly, rope that bites. Roads are long; I've seen things.",
+            ],
+            sells: [("rocket_boots", 420), ("cloud_boots", 360), ("grappling_hook", 220), ("ring_of_vigour", 260), ("frost_charm", 240), ("lucky_coin", 300), ("mithril_pickaxe", 650), ("mithril_bar", 90)],
+        ),
+    ),
+)

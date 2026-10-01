@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -4502,6 +4502,55 @@ fn quake_script(
             *step = 2;
         }
         _ => {}
+    }
+}
+
+/// `pedlar` (a generated world): a pedlar comes to the village (from the
+/// east), the player at the start; every 2 s where it is from the
+/// village's middle; at 14 s its wares (its shop opened); then a day ahead
+/// (its stay over): it walks off, and is gone once out of sight.
+#[allow(clippy::too_many_arguments)]
+fn pedlar_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut clock: ResMut<crate::clock::WorldClock>,
+    news: Res<crate::events::News>,
+    mut acts: MessageWriter<crate::dev::DevAction>,
+    folk: Query<(Entity, &crate::actors::villager::Villager, &Kinematics)>,
+    mut state: Local<(u8, f32, f32)>,
+) {
+    if s.name != "pedlar" {
+        return;
+    }
+    let t = s.elapsed;
+    let Some((lo, hi)) = sim.generator.village() else { return };
+    let mid = (lo.x + hi.x) as f32 / 2.0;
+    let (step, at, next) = &mut *state;
+    let pedlar = folk.iter().find(|(_, v, _)| v.role == "pedlar");
+    if *step == 0 && t > 2.0 {
+        let day = clock.now;
+        clock.events.push(crate::events::Happening { kind: crate::events::EventKind::Pedlar, day, x: mid as i32, stage: crate::events::Stage::Coming, from: 1 });
+        *step = 1;
+        *at = t;
+        *next = t + 2.0;
+        return;
+    }
+    if *step >= 1 && t >= *next {
+        *next += 2.0;
+        info!("pedlar: t {:.0}: {}; the news: {:?}", t - *at, pedlar.map_or("none about".to_string(), |(_, _, k)| format!("at {:+.0} from the village's middle", k.body.pos.x - mid)), news.0.first());
+    }
+    if *step == 1 && t > *at + 12.0 {
+        if let (Some((e, v, _)), Some(items)) = (pedlar, items) {
+            let shop = crate::talk::open_for(e, v, &items, false);
+            let wares: Vec<String> = shop.offers.iter().map(|o| match o {
+                crate::talk::Offer::Buy { item, price } => format!("{} {price}", items.def(*item).name),
+                other => format!("{other:?}"),
+            }).collect();
+            info!("pedlar: its wares: {}", wares.join(", "));
+        }
+        acts.write(crate::dev::DevAction::DayAhead);
+        *step = 2;
     }
 }
 
