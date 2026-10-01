@@ -27,7 +27,7 @@ impl Plugin for BestiaryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Bestiary>()
             .add_systems(PreUpdate, capture.after(InputSystems).after(crate::editor::capture))
-            .add_systems(Update, (refresh, clicks, build).chain());
+            .add_systems(Update, (refresh, clicks, build, caption).chain());
     }
 }
 
@@ -72,6 +72,19 @@ enum Do {
 
 #[derive(Component)]
 struct Root;
+
+/// What the stage is showing, under its picture.
+#[derive(Component)]
+struct Caption;
+
+fn caption(stage: Option<Res<super::stage::Stage>>, mut q: Query<&mut Text, With<Caption>>) {
+    let Some(stage) = stage else { return };
+    for mut t in &mut q {
+        if t.0 != stage.caption {
+            t.0.clone_from(&stage.caption);
+        }
+    }
+}
 
 /// While it's open: F12 or Esc (search cleared first, then a card, then
 /// the panel) and typing are its; nothing else hears the keyboard.
@@ -195,7 +208,7 @@ fn fit(size: UVec2, room: (f32, f32)) -> (f32, f32) {
 }
 
 /// Built again whenever what it shows changes.
-fn build(mut commands: Commands, mut b: ResMut<Bestiary>, roots: Query<Entity, With<Root>>, mut buttons: Query<(&Interaction, &Do, &mut BackgroundColor)>) {
+fn build(mut commands: Commands, mut b: ResMut<Bestiary>, stage: Option<Res<super::stage::Stage>>, roots: Query<Entity, With<Root>>, mut buttons: Query<(&Interaction, &Do, &mut BackgroundColor)>) {
     let shape = if b.open { format!("{}|{:?}|{:?}|{:?}|{}", b.search, b.role, b.kind, b.picked, b.entries.len()) } else { String::new() };
     if shape == b.shape && !b.stale {
         // Hover.
@@ -277,10 +290,20 @@ fn build(mut commands: Commands, mut b: ResMut<Bestiary>, roots: Query<Entity, W
                     }
                 });
                 let Some(e) = b.picked.as_ref().and_then(|id| b.entries.iter().find(|e| &e.id == id)) else { return };
-                main.spawn((Node { width: px(380), flex_direction: FlexDirection::Column, row_gap: px(6), padding: UiRect::all(px(10)), overflow: Overflow::scroll_y(), ..default() }, BackgroundColor(CARD))).with_children(|side| {
+                // (Wider with the live stage in it.)
+                let live = stage.as_ref().map(|s| s.image.clone());
+                let width = if live.is_some() { 560.0 } else { 380.0 };
+                main.spawn((Node { width: px(width), flex_direction: FlexDirection::Column, row_gap: px(6), padding: UiRect::all(px(10)), overflow: Overflow::scroll_y(), ..default() }, BackgroundColor(CARD))).with_children(|side| {
                     side.spawn((Text::new(e.name.clone()), font(18.0), TextColor(GOLD)));
                     side.spawn((Text::new(format!("{}.ron", e.id)), font(10.0), TextColor(DIM)));
-                    picture(side, &e.id, BIG_PIC);
+                    match &live {
+                        // The live stage: the real thing, doing what it does.
+                        Some(image) => {
+                            side.spawn((ImageNode::new(image.clone()), Node { width: px(540), height: px(540.0 * 312.0 / 660.0), ..default() }));
+                            side.spawn((Caption, Text::new(""), font(11.0), TextColor(DIM)));
+                        }
+                        None => picture(side, &e.id, BIG_PIC),
+                    }
                     side.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(4), row_gap: px(4), ..default() }).with_children(|row| {
                         chip(row, "Place", Do::Place, false);
                         chip(row, "Fight", Do::Fight, false);
@@ -290,7 +313,7 @@ fn build(mut commands: Commands, mut b: ResMut<Bestiary>, roots: Query<Entity, W
                     });
                     for (head, lines) in e.details() {
                         side.spawn((Text::new(head), font(12.0), TextColor(GOLD)));
-                        side.spawn((Text::new(lines.join("\n")), font(11.0), TextColor(Color::WHITE), Node { max_width: px(360), ..default() }));
+                        side.spawn((Text::new(lines.join("\n")), font(11.0), TextColor(Color::WHITE), Node { max_width: px(width - 20.0), ..default() }));
                     }
                 });
             });

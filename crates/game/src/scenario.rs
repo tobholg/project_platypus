@@ -4805,8 +4805,18 @@ fn grab_script(
 /// `bestiary`: the bestiary opened, `PLATYPUS_PICK` (default the troll)
 /// opened in it, `PLATYPUS_SEARCH` typed; logs the cards shown and the
 /// opened one's details (for a screenshot: `PLATYPUS_SCREENSHOT`).
-fn bestiary_script(s: Res<Scenario>, mut b: ResMut<crate::bestiary::panel::Bestiary>, mut done: Local<bool>) {
-    if s.name != "bestiary" || *done || s.elapsed < 1.0 {
+fn bestiary_script(s: Res<Scenario>, mut b: ResMut<crate::bestiary::panel::Bestiary>, stage: Option<Res<crate::bestiary::stage::Stage>>, mut done: Local<bool>, mut said: Local<String>) {
+    if s.name != "bestiary" || s.elapsed < 1.0 {
+        return;
+    }
+    // What the live stage shows, as it changes.
+    if let Some(st) = &stage
+        && st.caption != *said
+    {
+        info!("bestiary: t {:.2} stage: {}", s.elapsed, st.caption);
+        said.clone_from(&st.caption);
+    }
+    if *done {
         return;
     }
     *done = true;

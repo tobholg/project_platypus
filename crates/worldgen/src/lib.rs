@@ -116,6 +116,13 @@ pub trait ChunkGenerator: Send + Sync {
         true
     }
 
+    /// A sealed room for the bestiary's live preview (the arena's): its
+    /// inside, from the floor's top-left corner (lo) to the ceiling's
+    /// right (hi). None: no preview stage in this world.
+    fn stage(&self) -> Option<(CellPos, CellPos)> {
+        None
+    }
+
     fn in_bounds(&self, pos: ChunkPos) -> bool {
         let (lo, hi) = self.bounds();
         pos.x >= lo.x && pos.y >= lo.y && pos.x <= hi.x && pos.y <= hi.y

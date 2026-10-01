@@ -12,6 +12,11 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 /// Cells drawn past each edge of the view.
 const MARGIN: f32 = 8.0;
 
+/// A second view canvases are drawn for, while it's on (the bestiary's
+/// stage, `bestiary/stage.rs`): its middle and half size in cells.
+#[derive(Resource, Default)]
+pub struct StageView(pub Option<(Vec2, Vec2)>);
+
 /// Marks a canvas's sprite.
 #[derive(Component)]
 pub struct CanvasSprite;

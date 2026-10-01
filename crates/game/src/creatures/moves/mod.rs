@@ -317,6 +317,46 @@ impl Moves {
         Moves { ids, ready, doing: None }
     }
 
+    /// Its moves (ids), in the order it tries them.
+    pub fn ids(&self) -> &[String] {
+        &self.ids
+    }
+
+    /// Start move `which` at `target` now, whatever its range and wait (the
+    /// bestiary's stage).
+    pub fn force(&mut self, which: usize, target: Entity, dir: Vec2) {
+        if which < self.ids.len() {
+            let dir = dir.normalize_or(Vec2::X);
+            self.doing = Some(Doing { which, t: 0.0, phase: usize::MAX, start: 0.0, target, dir, struck: false, held: None, aim: dir, from: Pose::default() });
+        }
+    }
+
+    /// What its move can hit, from where it stands (`pos`): each a box's
+    /// middle, its half size, what it is (`strike`, `grab`, `slam`) and
+    /// whether it's live now (else coming: this phase's before it's live,
+    /// or the next phase's while this one only winds up).
+    pub fn shapes(&self, book: &MoveBook, pos: Vec2, half: Vec2) -> Vec<(Vec2, f32, &'static str, bool)> {
+        let Some(d) = &self.doing else { return Vec::new() };
+        let Some(m) = book.get(&self.ids[d.which]) else { return Vec::new() };
+        let Some(p) = m.phases.get(d.phase) else { return Vec::new() };
+        let f = if p.secs > 0.0 { ((d.t - d.start) / p.secs).clamp(0.0, 1.0) } else { 1.0 };
+        let of = |acts: &[Act], now: bool| -> Vec<(Vec2, f32, &'static str, bool)> {
+            acts.iter()
+                .filter_map(|a| match a {
+                    Act::Strike(s) => Some((pos + d.dir * s.at, s.reach, "strike", now && f >= s.from && !d.struck)),
+                    Act::Grab(g) => Some((pos + d.dir * g.at, g.reach, "grab", now && f >= g.from && d.held.is_none())),
+                    Act::Slam(s) => Some((pos - Vec2::Y * half.y, s.radius, "slam", now && !d.struck)),
+                    _ => None,
+                })
+                .collect()
+        };
+        let here = of(&p.acts, true);
+        if !here.is_empty() {
+            return here;
+        }
+        m.phases.get(d.phase + 1).map_or_else(Vec::new, |next| of(&next.acts, false))
+    }
+
     /// Busy with a move (its weapon waits: `hunter`).
     pub fn busy(&self) -> bool {
         self.doing.is_some()
@@ -365,7 +405,7 @@ pub fn start(
     sim: Res<SimWorld>,
     book: Res<MoveBook>,
     mut began: MessageWriter<Began>,
-    mut movers: Query<(Entity, &mut Moves, &Kinematics, Has<crate::combat::Swing>)>,
+    mut movers: Query<(Entity, &mut Moves, &Kinematics, Has<crate::combat::Swing>), Without<crate::creatures::brain::Staged>>,
     prey: Query<Prey, Without<crate::creatures::brain::villager::Hiding>>,
 ) {
     let now = time.elapsed_secs();

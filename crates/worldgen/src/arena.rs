@@ -3,7 +3,9 @@
 //! everything along it, left to right: stairs and a ramp, a water pool,
 //! one-way platforms, the open floor with training dummies (the player
 //! starts here), a lava pit, a sand heap, and two tall columns to wall-jump
-//! between beside a block of planks to burn.
+//! between beside a block of planks to burn. High in the top right, sealed
+//! in bedrock, the bestiary's stage (`STAGE`): a floor with a step, where
+//! a creature is shown off live.
 
 use platypus_sim::{CHUNK, CellPos, Cell, Chunk, ChunkPos, MaterialId, MaterialTable};
 
@@ -17,6 +19,12 @@ pub const FLOOR: i32 = 160;
 /// Where the player starts, and the dummies stand (x, what).
 const START: i32 = 960;
 const DUMMIES: [(i32, &str); 4] = [(1050, "dummy"), (1140, "dummy"), (1230, "dummy"), (1305, "sandbag")];
+/// The stage's inside (x0, floor, x1, ceiling), its bedrock this thick
+/// round it; a step up this high at its right end, from `STEP_AT`.
+pub const STAGE: (i32, i32, i32, i32) = (1530, 744, 1860, 900);
+const STAGE_WALL: i32 = 12;
+const STEP_AT: i32 = 1800;
+const STEP: i32 = 9;
 
 pub struct ArenaGen {
     stone: MaterialId,
@@ -47,6 +55,17 @@ impl ArenaGen {
         let right = W * CHUNK;
         if y < 12 || x < 12 || x >= right - 12 {
             return Some(self.bedrock);
+        }
+        // The stage: stone underfoot (a step at the right), bedrock round.
+        let (sx0, sf, sx1, sy1) = STAGE;
+        if (sx0 - STAGE_WALL..sx1 + STAGE_WALL).contains(&x) && (sf - STAGE_WALL..sy1 + STAGE_WALL).contains(&y) {
+            let within = (sx0..sx1).contains(&x);
+            let ground = if x >= STEP_AT { sf + STEP } else { sf };
+            return match () {
+                _ if within && (sf - 6..ground).contains(&y) => Some(self.stone),
+                _ if within && (ground..sy1).contains(&y) => None,
+                _ => Some(self.bedrock),
+            };
         }
         // Side walls, higher than anything can be thrown.
         if (x < 36 || x >= right - 36) && y < f + 480 {
@@ -103,6 +122,10 @@ impl ChunkGenerator for ArenaGen {
         false
     }
 
+    fn stage(&self) -> Option<(CellPos, CellPos)> {
+        Some((CellPos::new(STAGE.0, STAGE.1), CellPos::new(STAGE.2, STAGE.3)))
+    }
+
     fn surface_hint(&self, _x: i32) -> Option<i32> {
         Some(FLOOR)
     }
@@ -150,5 +173,14 @@ mod tests {
             }
         }
         assert_eq!(n, DUMMIES.len());
+        // The stage: sealed, open inside, stood on, a step at the right.
+        let (x0, f, x1, top) = STAGE;
+        assert_eq!(g.at(x0 + 40, f), None);
+        assert_eq!(g.at(x0 + 40, f - 1), Some(g.stone));
+        assert_eq!(g.at(STEP_AT + 5, f + STEP - 1), Some(g.stone));
+        assert_eq!(g.at(x0 - 1, f + 20), Some(g.bedrock));
+        assert_eq!(g.at(x1, f + 20), Some(g.bedrock));
+        assert_eq!(g.at(x0 + 40, top), Some(g.bedrock));
+        assert!(g.at(x0 + 40, f - STAGE_WALL - 1).is_none(), "open sky below it");
     }
 }

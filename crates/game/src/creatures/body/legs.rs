@@ -33,6 +33,7 @@ pub struct LegsPlugin;
 impl Plugin for LegsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LegCanvas>()
+            .init_resource::<crate::canvas::StageView>()
             .init_resource::<BodyArt>()
             .add_systems(Update, (grow_legs, walk, draw).chain().after(crate::creatures::body::animation::animate).after(TransformSystems::Propagate));
     }
@@ -468,11 +469,12 @@ fn cells(a: Vec2, b: Vec2, out: &mut Vec<IVec2>) {
 /// The legs' canvas (`canvas.rs`): every leg a cell at a time, under the
 /// bodies.
 #[derive(Resource)]
-struct LegCanvas(crate::canvas::Canvas);
+struct LegCanvas(crate::canvas::Canvas, crate::canvas::Canvas);
 
 impl Default for LegCanvas {
     fn default() -> Self {
-        LegCanvas(crate::canvas::Canvas::new("Legs", 9.5))
+        // (And one for the bestiary's stage, when it's on.)
+        LegCanvas(crate::canvas::Canvas::new("Legs", 9.5), crate::canvas::Canvas::new("Legs on the stage", 9.5))
     }
 }
 
@@ -485,6 +487,7 @@ fn draw(
     mut images: ResMut<Assets<Image>>,
     camera: Query<(&GlobalTransform, &crate::world::ChunkLoader), With<crate::camera::MainCamera>>,
     mut sprites: crate::canvas::CanvasSprites,
+    stage: Res<crate::canvas::StageView>,
     q: Query<(&Legs, &GlobalTransform)>,
 ) {
     let mut quads: Vec<(IVec2, [u8; 4])> = Vec::new();
@@ -517,6 +520,13 @@ fn draw(
             thick(hip, k, legs.def.thick, &mut quads);
             thick(k, foot, legs.def.thick.saturating_sub(1), &mut quads);
             quads.push((IVec2::new(k.x.floor() as i32, k.y.floor() as i32), joint));
+        }
+    }
+    if let Some((centre, half)) = stage.0
+        && let Some(mut px) = canvas.1.frame(&mut commands, &mut images, &mut sprites, centre, half, !quads.is_empty())
+    {
+        for (p, c) in &quads {
+            px.put(p.x, p.y, *c);
         }
     }
     let Ok((cam, loader)) = camera.single() else { return };

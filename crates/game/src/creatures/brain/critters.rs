@@ -330,7 +330,7 @@ const OUT_OF_SIGHT: f32 = 390.0;
 const TRIES: usize = 16;
 
 /// Passing life: not the player, not a lair's keeper (they stay).
-type Passing = (Without<crate::creatures::player::LocalPlayer>, Without<crate::clock::Keeps>);
+type Passing = (Without<crate::creatures::player::LocalPlayer>, Without<crate::clock::Keeps>, Without<super::Staged>);
 
 #[allow(clippy::too_many_arguments)]
 fn ambient(

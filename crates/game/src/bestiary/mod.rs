@@ -8,6 +8,7 @@
 //! and reload.
 
 pub mod panel;
+pub mod stage;
 
 use std::path::PathBuf;
 use std::sync::Arc;
