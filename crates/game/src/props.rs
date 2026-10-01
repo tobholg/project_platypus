@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use platypus_physics::{Body, Locomotion, move_and_collide};
 use platypus_sim::{CellPos, WorldEdit};
 
-use crate::actors::{Kinematics, WorldGrid};
+use crate::creatures::{Kinematics, WorldGrid};
 use crate::light::LightSource;
 use crate::tools::BombCfg;
 use crate::world::{SimWorld, TICK_HZ, TickSet};
@@ -137,7 +137,7 @@ fn explode_bombs(
     }
     for (at, cfg) in blasts {
         // (The sim reports it with the rest, `StepStats::detonated`, and
-        // creatures feel it from there: `actors::blasted`.)
+        // creatures feel it from there: `creatures::blasted`.)
         sim.world.apply_edit(&WorldEdit::Explode { center: CellPos::from_world(at.x, at.y), radius: cfg.radius, power: cfg.power });
         let reach = cfg.radius as f32 * 1.6;
         // Off by default, so a string of bombs digs a shaft instead of

@@ -21,7 +21,7 @@ use platypus_sim::rng::Rng;
 use platypus_sim::{CellPos, Kind, Particle};
 
 use super::Spell;
-use crate::actors::{Kinematics, WorldGrid};
+use crate::creatures::{Kinematics, WorldGrid};
 use crate::camera::MainCamera;
 use crate::canvas::{Canvas, CanvasSprite, CanvasSprites};
 use crate::light::LightSource;

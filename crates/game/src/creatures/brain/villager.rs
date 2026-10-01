@@ -15,16 +15,16 @@ use bevy::prelude::*;
 use platypus_sim::rng::Rng;
 use serde::Deserialize;
 
-use super::brain::RegisterBrain;
-use super::player::LocalPlayer;
-use super::{Controls, Health, Kinematics, Team};
-use crate::world::{SimWorld, TickSet};
+use crate::creatures::brain::RegisterBrain;
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::{Controls, Health, Kinematics, Team};
+use crate::world::SimWorld;
 
 pub struct VillagerPlugin;
 
 impl Plugin for VillagerPlugin {
     fn build(&self, app: &mut App) {
-        app.register_brain::<Villager>("villager").add_systems(FixedUpdate, live.in_set(TickSet::Intent));
+        app.register_brain::<Villager>("villager").add_systems(FixedUpdate, live.in_set(super::BrainSet));
     }
 }
 

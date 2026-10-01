@@ -18,8 +18,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::actors::player::LocalPlayer;
-use crate::actors::{Died, Kinematics};
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::{Died, Kinematics};
 use crate::data::{Watched, data_path, load_ron};
 use crate::hands::items::{Inventory, Items, Stack};
 use crate::world::SimWorld;

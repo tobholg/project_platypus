@@ -7,8 +7,6 @@
 //! - `hopper` (slimes): hops at you, a hop every so often.
 //! - `swooper` (vampire bats): flits in the air above; dives at you, then
 //!   flies back up.
-//! - `hatchery` (egg sacs): lies still until you come near (or hit it),
-//!   then bursts into its brood.
 //!
 //! Each targets the nearest player within its `aggro_range`, and wanders
 //! when none is near.
@@ -17,10 +15,9 @@ use bevy::prelude::*;
 use platypus_sim::rng::Rng;
 use serde::Deserialize;
 
-use super::brain::RegisterBrain;
-use super::creature::spawn_creature;
-use super::{Controls, Health, Kinematics, Team};
-use crate::world::{SimWorld, TickSet};
+use crate::creatures::brain::RegisterBrain;
+use crate::creatures::{Controls, Kinematics, Team};
+use crate::world::SimWorld;
 
 pub struct MonstersPlugin;
 
@@ -29,13 +26,12 @@ impl Plugin for MonstersPlugin {
         app.register_brain::<Crawler>("crawler")
             .register_brain::<Hopper>("hopper")
             .register_brain::<Swooper>("swooper")
-            .register_brain::<Hatchery>("hatchery")
-            .add_systems(FixedUpdate, ((crawler, super::spider::attack).chain(), hopper, swooper, hatchery).in_set(TickSet::Intent));
+            .add_systems(FixedUpdate, ((crawler, crate::creatures::moves::spider::attack).chain(), hopper, swooper).in_set(super::BrainSet));
     }
 }
 
 /// What monsters hunt (a villager hiding at home is let be).
-type Players<'w, 's> = Query<'w, 's, (&'static Kinematics, &'static Team), Without<super::villager::Hiding>>;
+type Players<'w, 's> = Query<'w, 's, (&'static Kinematics, &'static Team), Without<crate::creatures::brain::villager::Hiding>>;
 
 /// The nearest player within `range` of `pos`.
 fn nearest(players: &Players, pos: Vec2, range: f32) -> Option<Vec2> {
@@ -81,11 +77,11 @@ pub struct Crawler {
     pub wander_speed: f32,
     /// A big spider's attacks (`spider.rs`); none: it hurts by touch only.
     #[serde(deserialize_with = "crate::data::some")]
-    pub bite: Option<super::spider::Bite>,
+    pub bite: Option<crate::creatures::moves::spider::Bite>,
     #[serde(deserialize_with = "crate::data::some")]
-    pub spit: Option<super::spider::Spit>,
+    pub spit: Option<crate::creatures::moves::spider::Spit>,
     #[serde(deserialize_with = "crate::data::some")]
-    pub sting: Option<super::spider::Sting>,
+    pub sting: Option<crate::creatures::moves::spider::Sting>,
 }
 
 impl Default for Crawler {
@@ -232,7 +228,7 @@ fn swooper(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, players:
                     steer.x = (h.x - pos.x).signum();
                 }
                 // Back up into its band above the ground.
-                let h = super::critters::height(&sim.world, pos, (b.hover.1 as i32) * 2);
+                let h = crate::creatures::brain::critters::height(&sim.world, pos, (b.hover.1 as i32) * 2);
                 if h < b.hover.0 {
                     steer.y = steer.y.abs().max(0.7);
                 } else if h > b.hover.1 {
@@ -244,37 +240,5 @@ fn swooper(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, players:
         c.0.move_y = if steer.y == 0.0 { 0.15 } else { steer.y };
         c.0.aim = target.unwrap_or(Vec2::ZERO);
         c.0.jump = false;
-    }
-}
-
-/// Egg sacs: still until you come near or hit it; then its brood bursts out.
-#[derive(Component, Deserialize, Clone, Debug)]
-#[serde(default)]
-pub struct Hatchery {
-    /// What hatches, and how many.
-    pub brood: String,
-    pub count: u32,
-    /// Hatches when a player comes this near (cells).
-    pub range: f32,
-}
-
-impl Default for Hatchery {
-    fn default() -> Self {
-        Hatchery { brood: "spiderling".into(), count: 3, range: 40.0 }
-    }
-}
-
-fn hatchery(mut commands: Commands, sim: Res<SimWorld>, players: Players, mut q: Query<(Entity, &Hatchery, &Kinematics, &mut Health)>) {
-    for (e, h, k, mut hp) in &mut q {
-        let near = nearest(&players, k.body.pos, h.range).is_some();
-        if !near && hp.hp >= hp.max {
-            continue;
-        }
-        for i in 0..h.count {
-            let dx = (unit(&sim, e, 10 + i as u64) - 0.5) * 8.0;
-            spawn_creature(&mut commands, &h.brood, k.body.pos + Vec2::new(dx, 1.0), |_| {});
-        }
-        // It bursts (its `blood`: what it's full of).
-        hp.hp = 0.0;
     }
 }

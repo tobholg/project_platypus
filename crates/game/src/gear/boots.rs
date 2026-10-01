@@ -11,8 +11,8 @@ use bevy::prelude::*;
 use platypus_sim::rng::Rng;
 use platypus_sim::{Landing, MaterialId, Particle};
 
-use crate::actors::elements::{Coated, Coatings, catch_fire};
-use crate::actors::{Harm, Health, Kinematics, Rocketed};
+use crate::creatures::body::elements::{Coated, Coatings, catch_fire};
+use crate::creatures::{Harm, Health, Kinematics, Rocketed};
 use crate::hands::items::Items;
 use crate::magic::runes::Emitter;
 use crate::vfx::Sparks;

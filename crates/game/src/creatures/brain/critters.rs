@@ -9,11 +9,11 @@ use platypus_sim::rng::Rng;
 use platypus_sim::{CellPos, Kind};
 use serde::Deserialize;
 
-use super::brain::RegisterBrain;
-use super::creature::spawn_creature;
-use super::{Controls, Creature, Health, Kinematics, Team};
+use crate::creatures::brain::RegisterBrain;
+use crate::creatures::def::spawn_creature;
+use crate::creatures::{Controls, Creature, Health, Kinematics, Team};
 use crate::data::{Watched, data_path, load_ron};
-use crate::world::{SimWorld, TickSet};
+use crate::world::SimWorld;
 
 pub struct CrittersPlugin;
 
@@ -21,7 +21,7 @@ impl Plugin for CrittersPlugin {
     fn build(&self, app: &mut App) {
         app.register_brain::<Critter>("critter")
             .insert_resource(Life::load())
-            .add_systems(FixedUpdate, (scare, critters).chain().in_set(TickSet::Intent))
+            .add_systems(FixedUpdate, (scare, critters).chain().in_set(super::BrainSet))
             .add_systems(Update, (reload_life, ambient));
     }
 }
@@ -330,7 +330,7 @@ const OUT_OF_SIGHT: f32 = 260.0;
 const TRIES: usize = 16;
 
 /// Passing life: not the player, not a lair's keeper (they stay).
-type Passing = (Without<super::player::LocalPlayer>, Without<crate::clock::Keeps>);
+type Passing = (Without<crate::creatures::player::LocalPlayer>, Without<crate::clock::Keeps>);
 
 #[allow(clippy::too_many_arguments)]
 fn ambient(
@@ -339,7 +339,7 @@ fn ambient(
     sim: Res<SimWorld>,
     life: Res<Life>,
     day: Res<crate::light::Daylight>,
-    player: Query<&Kinematics, With<super::player::LocalPlayer>>,
+    player: Query<&Kinematics, With<crate::creatures::player::LocalPlayer>>,
     critters: Query<(Entity, &Creature, &Kinematics), Passing>,
     mut clock: Local<f32>,
     mut seed: Local<u64>,

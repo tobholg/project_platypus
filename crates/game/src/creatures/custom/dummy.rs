@@ -8,10 +8,10 @@
 use bevy::prelude::*;
 use serde::Deserialize;
 
-use super::animation::Animator;
-use super::{Health, Kinematics};
+use crate::creatures::body::animation::Animator;
+use crate::creatures::{Health, Kinematics};
 
-/// A dummy's brain (its creature file's `brain.params`).
+/// A dummy (its creature file's `custom.params`).
 #[derive(Component, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct Dummy {
@@ -24,6 +24,14 @@ pub struct Dummy {
 impl Default for Dummy {
     fn default() -> Self {
         Dummy { anchored: true, reset_after: 3.0 }
+    }
+}
+
+impl super::CustomCreature for Dummy {
+    const NAME: &'static str = "dummy";
+
+    fn build(app: &mut App) {
+        app.add_systems(FixedUpdate, tally.in_set(crate::world::TickSet::Bodies).after(crate::combat::guard).before(crate::creatures::deaths)).add_systems(Update, show);
     }
 }
 

@@ -20,8 +20,8 @@ use bevy::prelude::*;
 use platypus_sim::rng::{Rng, hash};
 use platypus_sim::{Cell, CellPos, Landing, MaterialId, Particle};
 
-use crate::actors::Kinematics;
-use crate::actors::player::LocalPlayer;
+use crate::creatures::Kinematics;
+use crate::creatures::player::LocalPlayer;
 use crate::magic::runes::Emitter;
 use crate::world::{SimWorld, TickSet};
 

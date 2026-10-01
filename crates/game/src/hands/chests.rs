@@ -24,8 +24,8 @@ use serde::Deserialize;
 
 use super::items::{Inventory, Items, Stack};
 use super::{DevTools, spawn_drop};
-use crate::actors::Kinematics;
-use crate::actors::player::LocalPlayer;
+use crate::creatures::Kinematics;
+use crate::creatures::player::LocalPlayer;
 use crate::camera::CursorWorld;
 use crate::data::{data_path, load_ron};
 use crate::fx::Explosion;

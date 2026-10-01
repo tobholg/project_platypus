@@ -12,5 +12,5 @@
     art: "tnt_barrel",
     blood: "",
     movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0),
-    brain: (kind: "explosive", params: (radius: 54, power: 245, fuse: 1.0)),
+    custom: (name: "explosive", params: (radius: 54, power: 245, fuse: 1.0)),
 )

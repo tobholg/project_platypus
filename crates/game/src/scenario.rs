@@ -224,9 +224,9 @@ use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use platypus_physics::MovementStats;
 use platypus_sim::{CellPos, WorldEdit};
 
-use crate::actors::Kinematics;
-use crate::actors::player::LocalPlayer;
-use crate::actors::spawn::find_ground;
+use crate::creatures::Kinematics;
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::spawn::find_ground;
 use crate::camera::{CursorOverride, MainCamera};
 use crate::props::spawn_bomb;
 use crate::tools::{Toolbelt, ToolsConfig};
@@ -1085,7 +1085,7 @@ fn chest_script(
     }
 }
 
-type Others = (With<crate::actors::Creature>, Without<LocalPlayer>);
+type Others = (With<crate::creatures::Creature>, Without<LocalPlayer>);
 
 /// Every starter wand, through real input (see the module notes).
 #[allow(clippy::too_many_arguments)]
@@ -1093,8 +1093,8 @@ fn magic_script(
     s: Res<Scenario>,
     sim: Res<SimWorld>,
     mut commands: Commands,
-    mut player: Query<(&Kinematics, &mut crate::actors::Health, Option<&mut crate::magic::Mana>), With<LocalPlayer>>,
-    orcs: Query<(&Kinematics, &crate::actors::Health), Others>,
+    mut player: Query<(&Kinematics, &mut crate::creatures::Health, Option<&mut crate::magic::Mana>), With<LocalPlayer>>,
+    orcs: Query<(&Kinematics, &crate::creatures::Health), Others>,
     spells: Query<(), With<crate::magic::Spell>>,
     mut blasts: MessageReader<crate::fx::Explosion>,
     mut zaps: MessageReader<crate::fx::Zapped>,
@@ -1123,7 +1123,7 @@ fn magic_script(
         for dx in [90, 120, 150] {
             let x = p.x as i32 + dx;
             if let Some(y) = find_ground(&sim.world, x, p.y as i32 + 200, 400) {
-                crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(x as f32, y as f32), |_| {});
+                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x as f32, y as f32), |_| {});
             }
         }
         state.0 = 1;
@@ -1172,7 +1172,7 @@ fn shock_script(
     mut sim: ResMut<SimWorld>,
     mut commands: Commands,
     player: Query<&Kinematics, With<LocalPlayer>>,
-    orcs: Query<(&Kinematics, &crate::actors::Health), Others>,
+    orcs: Query<(&Kinematics, &crate::creatures::Health), Others>,
     mut cursor: ResMut<CursorOverride>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
@@ -1214,7 +1214,7 @@ fn shock_script(
         2 if s.elapsed > 3.5 => {
             let (cx, cy) = pool.expect("dug");
             for dx in [22, 34] {
-                crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new((cx + dx) as f32, cy as f32 + 2.0), |_| {});
+                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new((cx + dx) as f32, cy as f32 + 2.0), |_| {});
             }
             *step = 3;
         }
@@ -1307,7 +1307,7 @@ fn well_script(
     sim: Res<SimWorld>,
     mut commands: Commands,
     player: Query<(&Kinematics, Option<&crate::magic::Mana>), With<LocalPlayer>>,
-    orcs: Query<(&Kinematics, &crate::actors::Health), Others>,
+    orcs: Query<(&Kinematics, &crate::creatures::Health), Others>,
     wells: Query<&crate::magic::well::Well>,
     mut cursor: ResMut<CursorOverride>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
@@ -1326,7 +1326,7 @@ fn well_script(
         for dx in [70, 85] {
             let x = home.x as i32 + dx;
             if let Some(y) = find_ground(&sim.world, x, home.y as i32 + 60, 200) {
-                crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(x as f32, y as f32), |_| {});
+                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x as f32, y as f32), |_| {});
             }
         }
         // The second hotbar, its second slot: the gravity wand.
@@ -1361,8 +1361,8 @@ fn force_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
     mut commands: Commands,
-    player: Query<(&Kinematics, Option<&crate::magic::Mana>, &crate::actors::Health), With<LocalPlayer>>,
-    orcs: Query<(&Kinematics, &crate::actors::Health), Others>,
+    player: Query<(&Kinematics, Option<&crate::magic::Mana>, &crate::creatures::Health), With<LocalPlayer>>,
+    orcs: Query<(&Kinematics, &crate::creatures::Health), Others>,
     mut cursor: ResMut<CursorOverride>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
@@ -1384,7 +1384,7 @@ fn force_script(
         for dx in [50, 62] {
             let x = home.x as i32 + dx;
             if let Some(y) = find_ground(&sim.world, x, home.y as i32 + 60, 200) {
-                crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(x as f32, y as f32), |_| {});
+                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x as f32, y as f32), |_| {});
             }
         }
         // The second hotbar, its third slot: the force wand.
@@ -1565,7 +1565,7 @@ fn airjump_script(
     s: Res<Scenario>,
     items: Option<Res<crate::hands::items::Items>>,
     mut worn: Query<&mut crate::gear::Equipment, With<LocalPlayer>>,
-    mut player: Query<(&mut Kinematics, &crate::actors::Health), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut state: Local<(Option<f32>, f32, u8, f32)>,
     mut day: ResMut<crate::light::Daylight>,
@@ -1617,7 +1617,7 @@ fn critters_script(
     sim: Res<SimWorld>,
     mut commands: Commands,
     player: Query<&Kinematics, With<LocalPlayer>>,
-    critters: Query<(&crate::actors::Creature, &Kinematics), Without<LocalPlayer>>,
+    critters: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut state: Local<(u8, f32)>,
 ) {
@@ -1630,7 +1630,7 @@ fn critters_script(
         for (dx, kind) in [(60, "rabbit"), (75, "bird"), (90, "frog")] {
             let x = k.body.pos.x as i32 + dx;
             if let Some(y) = find_ground(&sim.world, x, k.body.pos.y as i32 + 40, 100) {
-                crate::actors::creature::spawn_creature(&mut commands, kind, Vec2::new(x as f32 + 0.5, y as f32), |_| {});
+                crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x as f32 + 0.5, y as f32), |_| {});
             }
         }
         state.0 = 1;
@@ -1650,7 +1650,7 @@ fn arena_script(
     s: Res<Scenario>,
     sim: Res<SimWorld>,
     player: Query<&Kinematics, With<LocalPlayer>>,
-    dummies: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::dummy::Tally)>,
+    dummies: Query<(&crate::creatures::Creature, &Kinematics, &crate::creatures::custom::dummy::Tally)>,
     mut arena: MessageWriter<crate::arena::ArenaAction>,
     mut dev: MessageWriter<crate::dev::DevAction>,
     mut cursor: ResMut<CursorOverride>,
@@ -1801,7 +1801,7 @@ fn wands_script(
     s: Res<Scenario>,
     sim: Res<SimWorld>,
     player: Query<&Kinematics, With<LocalPlayer>>,
-    dummies: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::dummy::Tally)>,
+    dummies: Query<(&crate::creatures::Creature, &Kinematics, &crate::creatures::custom::dummy::Tally)>,
     mut commands: Commands,
     mut cursor: ResMut<CursorOverride>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
@@ -1835,7 +1835,7 @@ fn wands_script(
         t if (2.0..2.2).contains(&t) => {
             if state.0 == 0 {
                 info!("wands: the spark broke {} floor cells in a second", state.1 as i64 - solid() as i64);
-                crate::actors::creature::spawn_creature(&mut commands, "sandbag", Vec2::new(p.x + 40.0, floor as f32), |_| {});
+                crate::creatures::def::spawn_creature(&mut commands, "sandbag", Vec2::new(p.x + 40.0, floor as f32), |_| {});
                 state.0 = 1;
             }
             None
@@ -1875,7 +1875,7 @@ fn wands_script(
     if aim.is_some() { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
 }
 
-type Fighting<'a> = (&'a Kinematics, &'a crate::actors::Health, Option<&'a crate::combat::Stamina>, Option<&'a crate::combat::Wielding>);
+type Fighting<'a> = (&'a Kinematics, &'a crate::creatures::Health, Option<&'a crate::combat::Stamina>, Option<&'a crate::combat::Wielding>);
 
 /// The swords through real keys and buttons, against the first dummy.
 #[allow(clippy::too_many_arguments)]
@@ -1883,7 +1883,7 @@ fn melee_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
     player: Query<Fighting, With<LocalPlayer>>,
-    dummies: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::dummy::Tally), Without<LocalPlayer>>,
+    dummies: Query<(&crate::creatures::Creature, &Kinematics, &crate::creatures::custom::dummy::Tally), Without<LocalPlayer>>,
     mut cursor: ResMut<CursorOverride>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
@@ -2001,8 +2001,8 @@ fn melee_script(
 fn fight_script(
     s: Res<Scenario>,
     mut commands: Commands,
-    player: Query<(&Kinematics, &crate::actors::Health), With<LocalPlayer>>,
-    foes: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::Health, Has<crate::combat::Swing>), Without<LocalPlayer>>,
+    player: Query<(&Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
+    foes: Query<(&crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Has<crate::combat::Swing>), Without<LocalPlayer>>,
     mut cursor: ResMut<CursorOverride>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
@@ -2023,11 +2023,11 @@ fn fight_script(
         want.insert(KeyCode::Digit7);
     }
     if state.0 == 0 && t > 0.8 {
-        crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(p.x - 40.0, floor), |_| {});
+        crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(p.x - 40.0, floor), |_| {});
         state.0 = 1;
     }
     if state.0 == 1 && t > 5.0 {
-        crate::actors::creature::spawn_creature(&mut commands, "troll", Vec2::new(p.x - 70.0, floor), |_| {});
+        crate::creatures::def::spawn_creature(&mut commands, "troll", Vec2::new(p.x - 70.0, floor), |_| {});
         state.0 = 2;
     }
     let near = foes.iter().filter(|(c, ..)| c.kind == "orc" || c.kind == "troll").min_by(|a, b| a.1.body.pos.distance(p).total_cmp(&b.1.body.pos.distance(p)));
@@ -2064,8 +2064,8 @@ fn archery_script(
     mut commands: Commands,
     mut sim: ResMut<SimWorld>,
     items: Option<Res<crate::hands::items::Items>>,
-    player: Query<(&Kinematics, &crate::actors::Health, &crate::hands::items::Inventory), With<LocalPlayer>>,
-    dummies: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::dummy::Tally)>,
+    player: Query<(&Kinematics, &crate::creatures::Health, &crate::hands::items::Inventory), With<LocalPlayer>>,
+    dummies: Query<(&crate::creatures::Creature, &Kinematics, &crate::creatures::custom::dummy::Tally)>,
     arrows: Query<&crate::archery::Arrow>,
     mut cursor: ResMut<CursorOverride>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
@@ -2123,7 +2123,7 @@ fn archery_script(
     }
     if (5.2..5.3).contains(&t) && state.0 == 3 {
         info!("archery: walked over them: {quiver} in the quiver (was {}), {} arrows about", state.2, arrows.iter().count());
-        crate::actors::creature::spawn_creature(&mut commands, "orc_archer", Vec2::new(p.x - 110.0, floor), |_| {});
+        crate::creatures::def::spawn_creature(&mut commands, "orc_archer", Vec2::new(p.x - 110.0, floor), |_| {});
         state.0 = 4;
         state.1 = h.hp;
     }
@@ -2150,7 +2150,7 @@ fn archery_script(
 fn warband_script(
     s: Res<Scenario>,
     player: Query<&Kinematics, With<LocalPlayer>>,
-    foes: Query<&crate::actors::Creature, Without<LocalPlayer>>,
+    foes: Query<&crate::creatures::Creature, Without<LocalPlayer>>,
     mut dev: MessageWriter<crate::dev::DevAction>,
     mut state: Local<u8>,
 ) {
@@ -2326,7 +2326,7 @@ fn life_script(
     mut commands: Commands,
     sim: Res<SimWorld>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
-    critters: Query<(&crate::actors::Creature, &Kinematics), Without<LocalPlayer>>,
+    critters: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
     mut state: Local<u8>,
 ) {
     if s.name != "life" {
@@ -2341,13 +2341,13 @@ fn life_script(
         }
         for i in 0..6 {
             let x = 460.0 + i as f32 * 12.0;
-            crate::actors::creature::spawn_creature(&mut commands, "firefly", Vec2::new(x, floor + 8.0 + (i % 3) as f32 * 6.0), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "firefly", Vec2::new(x, floor + 8.0 + (i % 3) as f32 * 6.0), |_| {});
         }
         for i in 0..4 {
-            crate::actors::creature::spawn_creature(&mut commands, "fish", Vec2::new(330.0 + i as f32 * 22.0, floor - 20.0 - (i % 2) as f32 * 12.0), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "fish", Vec2::new(330.0 + i as f32 * 22.0, floor - 20.0 - (i % 2) as f32 * 12.0), |_| {});
         }
         for i in 0..4 {
-            crate::actors::creature::spawn_creature(&mut commands, "bat", Vec2::new(500.0 + i as f32 * 14.0, floor + 40.0 + i as f32 * 8.0), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "bat", Vec2::new(500.0 + i as f32 * 14.0, floor + 40.0 + i as f32 * 8.0), |_| {});
         }
         *state = 1;
     }
@@ -2374,16 +2374,16 @@ fn life_script(
 type Phase<'a> = (&'a str, &'a [(&'a str, f32)], f32);
 
 /// Creatures but the player and the arena's dummies.
-type Foes = (Without<LocalPlayer>, Without<crate::actors::dummy::Dummy>);
+type Foes = (Without<LocalPlayer>, Without<crate::creatures::custom::dummy::Dummy>);
 
 /// The underground enemies, one kind at a time, against a player who stands.
 #[allow(clippy::too_many_arguments)]
 fn underground_script(
     s: Res<Scenario>,
     mut commands: Commands,
-    mut player: Query<(&mut Kinematics, &mut crate::actors::Health), With<LocalPlayer>>,
-    foes: Query<(Entity, &crate::actors::Creature, &Kinematics), Foes>,
-    deaths: Res<crate::actors::PlayerDeaths>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    foes: Query<(Entity, &crate::creatures::Creature, &Kinematics), Foes>,
+    deaths: Res<crate::creatures::PlayerDeaths>,
     mut state: Local<(usize, f32, f32, u32, f32)>,
 ) {
     if s.name != "underground" {
@@ -2424,13 +2424,13 @@ fn underground_script(
             k.body.pos = Vec2::new(1108.0, floor + 140.0 + 8.0);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
-            crate::actors::creature::spawn_creature(&mut commands, "spider", Vec2::new(1085.0, floor), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(1085.0, floor), |_| {});
             k.body.pos
         } else {
             k.body.pos
         };
         for &(kind, dx) in what {
-            crate::actors::creature::spawn_creature(&mut commands, kind, Vec2::new(at.x + dx, floor + if kind == "vampire_bat" { 40.0 } else { 0.0 }), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(at.x + dx, floor + if kind == "vampire_bat" { 40.0 } else { 0.0 }), |_| {});
         }
         state.4 = start[i] + 0.002;
     }
@@ -2462,7 +2462,7 @@ fn nest_script(
     sim: Res<SimWorld>,
     mut toggles: ResMut<crate::light::LightToggles>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
-    foes: Query<(&crate::actors::Creature, &Kinematics), Without<LocalPlayer>>,
+    foes: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
     mut state: Local<(u8, Option<Vec2>)>,
 ) {
     if s.name != "nest" {
@@ -2550,7 +2550,7 @@ fn webs_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut player: Query<&m
     }
 }
 
-type GearTester<'a> = (Entity, &'a mut Kinematics, &'a mut crate::actors::Health, &'a mut crate::gear::Equipment, &'a crate::gear::Stats, &'a mut crate::hands::items::Inventory);
+type GearTester<'a> = (Entity, &'a mut Kinematics, &'a mut crate::creatures::Health, &'a mut crate::gear::Equipment, &'a crate::gear::Stats, &'a mut crate::hands::items::Inventory);
 
 /// Armour against a blast, and the equipment screen.
 #[allow(clippy::too_many_arguments)]
@@ -2613,7 +2613,7 @@ fn gear_script(
             info!("gear: the same blast in iron cost {:.0} hp", state.1 - h.hp);
             keys.press(KeyCode::Escape);
             // (Washed, and out of the blood the blasts left: it tints.)
-            commands.entity(me).remove::<crate::actors::elements::Coated>();
+            commands.entity(me).remove::<crate::creatures::body::elements::Coated>();
             k.body.pos.x -= 50.0;
             k.prev_pos = k.body.pos;
             let floor = platypus_worldgen::arena::FLOOR as f32;
@@ -2623,8 +2623,8 @@ fn gear_script(
                 ("skeleton", 44.0, ["cloth_hood", "apprentice_robe", "silk_gloves", "cloth_trousers", "soft_boots"]),
             ] {
                 let pieces: Vec<Option<Stack>> = wear.iter().map(|id| items.id(id).map(|it| Stack::new(it, 1))).collect();
-                crate::actors::creature::spawn_creature(&mut commands, kind, Vec2::new(x + dx, floor), move |e| {
-                    e.remove::<(crate::actors::ai::MeleeWalker, crate::actors::ai::Archer)>();
+                crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x + dx, floor), move |e| {
+                    e.remove::<(crate::creatures::brain::ai::MeleeWalker, crate::creatures::brain::ai::Archer)>();
                     let mut eq = crate::gear::Equipment::default();
                     for (i, piece) in pieces.into_iter().enumerate() {
                         eq.worn[i] = piece;
@@ -2666,7 +2666,7 @@ fn loot_script(
     rules: Res<crate::gear::GearRules>,
     mut chests: ResMut<crate::hands::chests::Chests>,
     player: Query<&Kinematics, With<LocalPlayer>>,
-    mut foes: Query<&mut crate::actors::Health, (With<crate::actors::Creature>, Without<LocalPlayer>)>,
+    mut foes: Query<&mut crate::creatures::Health, (With<crate::creatures::Creature>, Without<LocalPlayer>)>,
     bodies: Query<(&crate::hands::corpses::Corpse, &Kinematics)>,
     mut cursor: ResMut<CursorOverride>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
@@ -2684,8 +2684,8 @@ fn loot_script(
             let helm = items.id("iron_helm").map(|i| Stack { roll: Roll { rarity: 2, level: 12, seed: 4242 }, ..Stack::new(i, 1) });
             let jerkin = items.id("leather_jerkin").map(|i| Stack::new(i, 1));
             let floor = platypus_worldgen::arena::FLOOR as f32;
-            crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(k.body.pos.x + 24.0, floor), move |e| {
-                e.remove::<crate::actors::ai::MeleeWalker>();
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(k.body.pos.x + 24.0, floor), move |e| {
+                e.remove::<crate::creatures::brain::ai::MeleeWalker>();
                 let mut eq = crate::gear::Equipment::default();
                 eq.worn[0] = helm;
                 eq.worn[1] = jerkin;
@@ -2720,7 +2720,7 @@ fn loot_script(
     }
 }
 
-type Foe = (With<crate::actors::Creature>, Without<LocalPlayer>, Without<crate::actors::dummy::Dummy>);
+type Foe = (With<crate::creatures::Creature>, Without<LocalPlayer>, Without<crate::creatures::custom::dummy::Dummy>);
 
 /// The Broodmother's Fang at an orc.
 #[allow(clippy::too_many_arguments)]
@@ -2729,7 +2729,7 @@ fn fang_script(
     s: Res<Scenario>,
     items: Option<Res<crate::hands::items::Items>>,
     mut player: Query<(&Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
-    foes: Query<(&Kinematics, &crate::actors::Health, Option<&crate::actors::elements::Coated>), Foe>,
+    foes: Query<(&Kinematics, &crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>), Foe>,
     mut cursor: ResMut<CursorOverride>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     mut state: Local<(u8, f32)>,
@@ -2742,8 +2742,8 @@ fn fang_script(
     if state.0 == 0 && t > 0.3 {
         inv.slots[0] = items.id("broodmother_fang").map(|f| crate::hands::items::Stack { roll: crate::hands::items::Roll { rarity: 4, level: 1, seed: 1 }, ..crate::hands::items::Stack::new(f, 1) });
         let floor = platypus_worldgen::arena::FLOOR as f32;
-        crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(k.body.pos.x + 12.0, floor), |e| {
-            e.remove::<crate::actors::ai::MeleeWalker>();
+        crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(k.body.pos.x + 12.0, floor), |e| {
+            e.remove::<crate::creatures::brain::ai::MeleeWalker>();
         });
         state.0 = 1;
     }
@@ -2791,13 +2791,13 @@ fn foci_script(
                 mouse.press(MouseButton::Left);
             }
         } else {
-            commands.entity(me).insert(crate::actors::animation::Aiming { at, left: 0.2 });
+            commands.entity(me).insert(crate::creatures::body::animation::Aiming { at, left: 0.2 });
         }
     }
 }
 
-type IceWalker<'a> = (&'a mut Kinematics, Option<&'a crate::actors::elements::Chilled>);
-type IceFoe = (With<crate::actors::Creature>, Without<LocalPlayer>, Without<crate::actors::dummy::Dummy>);
+type IceWalker<'a> = (&'a mut Kinematics, Option<&'a crate::creatures::body::elements::Chilled>);
+type IceFoe = (With<crate::creatures::Creature>, Without<LocalPlayer>, Without<crate::creatures::custom::dummy::Dummy>);
 
 /// Frost on the pool: ice to slide on, and a chilled orc.
 #[allow(clippy::too_many_arguments)]
@@ -2807,7 +2807,7 @@ fn ice_script(
     sim: Res<SimWorld>,
     mut hand: ResMut<crate::hands::Hand>,
     mut player: Query<IceWalker, With<LocalPlayer>>,
-    foes: Query<(&Kinematics, Option<&crate::actors::elements::Chilled>), IceFoe>,
+    foes: Query<(&Kinematics, Option<&crate::creatures::body::elements::Chilled>), IceFoe>,
     mut cursor: ResMut<CursorOverride>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
@@ -2868,8 +2868,8 @@ fn ice_script(
             info!("ice: on stone it slid {:.0} cells", k.body.pos.x - state.1);
             k.body.pos = Vec2::new(300.0, floor as f32 + 8.0);
             k.prev_pos = k.body.pos;
-            crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(350.0, floor as f32 + 1.0), |e| {
-                e.remove::<crate::actors::ai::MeleeWalker>();
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(350.0, floor as f32 + 1.0), |e| {
+                e.remove::<crate::creatures::brain::ai::MeleeWalker>();
             });
             state.0 = 7;
         }
@@ -2906,7 +2906,7 @@ fn ice_script(
 /// What's about, for the chaos report.
 #[derive(bevy::ecs::system::SystemParam)]
 struct Census<'w, 's> {
-    creatures: Query<'w, 's, (), (With<crate::actors::Creature>, Without<LocalPlayer>)>,
+    creatures: Query<'w, 's, (), (With<crate::creatures::Creature>, Without<LocalPlayer>)>,
     bodies: Query<'w, 's, (), With<crate::hands::corpses::Corpse>>,
     spells: Query<'w, 's, (), With<crate::magic::Spell>>,
     drops: Query<'w, 's, (), With<crate::hands::Dropped>>,
@@ -2926,7 +2926,7 @@ fn chaos_script(
     mut sim: ResMut<SimWorld>,
     tools: Res<crate::tools::ToolsConfig>,
     book: Res<crate::magic::Spellbook>,
-    mut player: Query<(Entity, &mut Kinematics, &mut crate::actors::Health), With<LocalPlayer>>,
+    mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
     foes: Query<&Kinematics, Foe>,
     mut census: Census,
     mut casts: MessageWriter<crate::magic::CastRequest>,
@@ -2987,7 +2987,7 @@ fn chaos_script(
             }).map_or("orc", |k| k.0);
             let side = if unit() < 0.5 { -1.0 } else { 1.0 };
             let x = home.x + side * (60.0 + unit() * 260.0);
-            crate::actors::creature::spawn_creature(&mut commands, kind, Vec2::new(x, floor + 60.0 + unit() * 40.0), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x, floor + 60.0 + unit() * 40.0), |_| {});
         }
         // Bombs, blobs from the sky, a strike.
         for _ in 0..4 + state.0 {
@@ -3042,7 +3042,7 @@ fn chaos_script(
     }
 }
 
-type RocketFoe = (With<crate::actors::Creature>, Without<LocalPlayer>, Without<crate::actors::dummy::Dummy>);
+type RocketFoe = (With<crate::creatures::Creature>, Without<LocalPlayer>, Without<crate::creatures::custom::dummy::Dummy>);
 
 /// Rocket boots over an orc on planks.
 #[allow(clippy::too_many_arguments)]
@@ -3051,7 +3051,7 @@ fn rocket_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
-    foes: Query<(&crate::actors::Health, Has<crate::actors::elements::Burning>), RocketFoe>,
+    foes: Query<(&crate::creatures::Health, Has<crate::creatures::body::elements::Burning>), RocketFoe>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut state: Local<(u8, f32, f32)>,
 ) {
@@ -3074,8 +3074,8 @@ fn rocket_script(
                     sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, floor + 1), radius: 3, material: planks, overwrite: false });
                 }
             }
-            crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(x as f32 + 4.0, floor as f32 + 5.0), |e| {
-                e.remove::<crate::actors::ai::MeleeWalker>();
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x as f32 + 4.0, floor as f32 + 5.0), |e| {
+                e.remove::<crate::creatures::brain::ai::MeleeWalker>();
             });
             k.body.pos = Vec2::new(x as f32, floor as f32 + 40.0);
             k.body.vel = Vec2::ZERO;
@@ -3112,7 +3112,7 @@ fn rocket_script(
 }
 
 /// Potions and the screen's edges (see the module docs).
-fn potion_script(s: Res<Scenario>, items: Option<Res<crate::hands::items::Items>>, mut hand: ResMut<crate::hands::Hand>, mut keys: ResMut<ButtonInput<KeyCode>>, mut player: Query<(&mut crate::actors::Health, &crate::hands::items::Inventory, Has<crate::potion::PotionSickness>), With<LocalPlayer>>, mut state: Local<(u8, f32)>) {
+fn potion_script(s: Res<Scenario>, items: Option<Res<crate::hands::items::Items>>, mut hand: ResMut<crate::hands::Hand>, mut keys: ResMut<ButtonInput<KeyCode>>, mut player: Query<(&mut crate::creatures::Health, &crate::hands::items::Inventory, Has<crate::potion::PotionSickness>), With<LocalPlayer>>, mut state: Local<(u8, f32)>) {
     if s.name != "potion" {
         return;
     }
@@ -3170,7 +3170,7 @@ fn spiderdeath_script(
     sim: Res<SimWorld>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
-    mut spiders: Query<(Entity, &crate::actors::Creature, &Kinematics, &mut crate::actors::Health), Without<LocalPlayer>>,
+    mut spiders: Query<(Entity, &crate::creatures::Creature, &Kinematics, &mut crate::creatures::Health), Without<LocalPlayer>>,
     mut state: Local<u8>,
 ) {
     if s.name != "spiderdeath" {
@@ -3186,7 +3186,7 @@ fn spiderdeath_script(
             k.body.pos = Vec2::new(x, floor + k.body.half.y);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
-            crate::actors::creature::spawn_creature(&mut commands, "spider", Vec2::new(x + 40.0, floor), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(x + 40.0, floor), |_| {});
             *state = 1;
         }
         // A longsword's blow (24, knocked 250 cells/s), twice (after its
@@ -3195,7 +3195,7 @@ fn spiderdeath_script(
             for (e, c, sk, _) in &spiders {
                 if c.kind == "spider" {
                     let dir = Vec2::new(1.0, 0.3).normalize();
-                    hits.write(crate::combat::Hit { target: e, damage: 24.0, harm: crate::actors::Harm::Slash, knock: dir * 250.0, stun: 0.3, at: sk.body.pos, dir, weight: 2.0, crit: false });
+                    hits.write(crate::combat::Hit { target: e, damage: 24.0, harm: crate::creatures::Harm::Slash, knock: dir * 250.0, stun: 0.3, at: sk.body.pos, dir, weight: 2.0, crit: false });
                 }
             }
             *state += 1;
@@ -3438,7 +3438,7 @@ fn refill_script(
     clock: Res<crate::clock::WorldClock>,
     mut day: ResMut<crate::light::Daylight>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
-    mut foes: Query<(&crate::actors::Creature, &Kinematics, &mut crate::actors::Health), Without<LocalPlayer>>,
+    mut foes: Query<(&crate::creatures::Creature, &Kinematics, &mut crate::creatures::Health), Without<LocalPlayer>>,
     mut state: Local<(u8, Vec2)>,
 ) {
     if s.name != "refill" {
@@ -3453,7 +3453,7 @@ fn refill_script(
         k.body.vel = Vec2::ZERO;
         k.prev_pos = at;
     };
-    let about = |foes: &Query<(&crate::actors::Creature, &Kinematics, &mut crate::actors::Health), Without<LocalPlayer>>, at: Vec2| {
+    let about = |foes: &Query<(&crate::creatures::Creature, &Kinematics, &mut crate::creatures::Health), Without<LocalPlayer>>, at: Vec2| {
         let mut n = std::collections::BTreeMap::new();
         for (c, fk, h) in foes {
             if h.hp > 0.0 && fk.body.pos.distance(at) < 150.0 {
@@ -3517,7 +3517,7 @@ fn gold_script(
     mut sim: ResMut<SimWorld>,
     mut queue: ResMut<crate::gold::GoldQueue>,
     mut player: Query<(&mut Kinematics, &crate::gold::Gold), With<LocalPlayer>>,
-    mut foes: Query<(&crate::actors::Creature, &mut crate::actors::Health), Without<LocalPlayer>>,
+    mut foes: Query<(&crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>,
     mut state: Local<u8>,
 ) {
     if s.name != "gold" {
@@ -3552,7 +3552,7 @@ fn gold_script(
         0 if t > 0.5 => {
             put(&mut k, 560.0);
             for (i, kind) in ["orc", "orc", "orc_archer", "orc", "troll"].iter().enumerate() {
-                crate::actors::creature::spawn_creature(&mut commands, kind, Vec2::new(700.0 + i as f32 * 16.0, floor as f32), |_| {});
+                crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(700.0 + i as f32 * 16.0, floor as f32), |_| {});
             }
             *state = 1;
         }
@@ -3673,8 +3673,8 @@ fn kick_script(
     mut cursor: ResMut<CursorOverride>,
     mut kicks: MessageWriter<crate::kick::Kick>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
-    others: Query<(&Kinematics, Option<&crate::actors::Creature>), Without<LocalPlayer>>,
-    health: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::Health), Without<LocalPlayer>>,
+    others: Query<(&Kinematics, Option<&crate::creatures::Creature>), Without<LocalPlayer>>,
+    health: Query<(&crate::creatures::Creature, &Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
     mut state: Local<u8>,
 ) {
     if s.name != "kick" {
@@ -3705,7 +3705,7 @@ fn kick_script(
                 }
             }
             sim.queue(WorldEdit::Paint { center: CellPos::new(765, floor + 4), radius: 4, material: sand, overwrite: false });
-            crate::actors::creature::spawn_creature(&mut commands, "tnt_barrel", Vec2::new(868.0, floor as f32), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "tnt_barrel", Vec2::new(868.0, floor as f32), |_| {});
             stand(&mut k, 630.0);
             *state = 1;
         }
@@ -3752,8 +3752,8 @@ fn kick_script(
             let (n, ..) = span(&sim, mats.expect_id("stone"), 560, 620);
             info!("kick: the floor after: {n}");
             // Then creatures: an orc, then a troll, each kicked from its left.
-            crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(1080.0, floor as f32), |_| {});
-            crate::actors::creature::spawn_creature(&mut commands, "troll", Vec2::new(1180.0, floor as f32), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(1080.0, floor as f32), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "troll", Vec2::new(1180.0, floor as f32), |_| {});
             *state = 10;
         }
         10 | 12 if t > if *state == 10 { 10.0 } else { 11.6 } => {
@@ -4002,8 +4002,8 @@ type TrapWalk = (u8, f32, Option<(Vec2, i32)>);
 fn trap_script(
     s: Res<Scenario>,
     sim: Res<SimWorld>,
-    mut player: Query<(&mut Kinematics, &crate::actors::Health), With<LocalPlayer>>,
-    mut others: Query<(&Kinematics, &mut crate::actors::Health), Others>,
+    mut player: Query<(&mut Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
+    mut others: Query<(&Kinematics, &mut crate::creatures::Health), Others>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut state: Local<TrapWalk>,
 ) {
@@ -4083,7 +4083,7 @@ fn trap_script(
 fn village_script(
     s: Res<Scenario>,
     player: Query<&Kinematics, With<LocalPlayer>>,
-    people: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::villager::Routine, Option<&crate::actors::villager::Home>)>,
+    people: Query<(&crate::creatures::Creature, &Kinematics, &crate::creatures::brain::villager::Routine, Option<&crate::creatures::brain::villager::Home>)>,
     stations: Query<&Kinematics, With<crate::craft::Station>>,
     day: Res<crate::light::Daylight>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
@@ -4126,9 +4126,9 @@ fn village_script(
 fn shop_script(
     s: Res<Scenario>,
     items: Option<Res<crate::hands::items::Items>>,
-    mut player: Query<(&Kinematics, &mut crate::gold::Gold, &mut crate::actors::Health, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
-    people: Query<(Entity, &crate::actors::villager::Villager, &crate::actors::villager::Routine)>,
-    foes: Query<(&crate::actors::Creature, &Kinematics, &crate::actors::Team), Without<LocalPlayer>>,
+    mut player: Query<(&Kinematics, &mut crate::gold::Gold, &mut crate::creatures::Health, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    people: Query<(Entity, &crate::creatures::brain::villager::Villager, &crate::creatures::brain::villager::Routine)>,
+    foes: Query<(&crate::creatures::Creature, &Kinematics, &crate::creatures::Team), Without<LocalPlayer>>,
     mut shop: ResMut<crate::talk::Shop>,
     mut open: ResMut<crate::hands::InventoryOpen>,
     mut held: ResMut<crate::hands::ui::Held>,
@@ -4198,7 +4198,7 @@ fn shop_script(
         }
         3 if t > *at + 0.5 => {
             let running = people.iter().any(|(_, v, r)| v.role == *role && r.fleeing);
-            let near: Vec<String> = foes.iter().filter(|(_, fk, team)| **team == crate::actors::Team::Enemy && fk.body.pos.distance(pk) < 200.0).map(|(c, fk, _)| format!("{} at {:+.0}", c.kind, fk.body.pos.x - pk.x)).collect();
+            let near: Vec<String> = foes.iter().filter(|(_, fk, team)| **team == crate::creatures::Team::Enemy && fk.body.pos.distance(pk) < 200.0).map(|(c, fk, _)| format!("{} at {:+.0}", c.kind, fk.body.pos.x - pk.x)).collect();
             log(&if shop.with.is_some() { "traded".to_string() } else if running { format!("it ran ({})", near.join(", ")) } else { "shut".to_string() }, gold.0, health.hp, &inv);
             if *role == "merchant" {
                 // (Torches in hand, over the slot: what they'd fetch.)
@@ -4311,8 +4311,8 @@ fn star_script(
     mut clock: ResMut<crate::clock::WorldClock>,
     news: Res<crate::events::News>,
     mut acts: MessageWriter<crate::dev::DevAction>,
-    mut player: Query<(&mut Kinematics, &crate::actors::Health), With<LocalPlayer>>,
-    creatures: Query<(&crate::actors::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
+    creatures: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
     mut state: Local<(u8, f32, i32)>,
 ) {
     if s.name != "star" {
@@ -4366,7 +4366,7 @@ fn star_script(
     }
 }
 
-type Raiders = (With<crate::actors::ai::Marching>, Without<LocalPlayer>);
+type Raiders = (With<crate::creatures::brain::ai::Marching>, Without<LocalPlayer>);
 
 /// `raid` (a generated world): a raid on the village from the east, the
 /// player standing at the start; every 2 s, the raiders (alive, how far
@@ -4384,9 +4384,9 @@ fn raid_script(
     news: Res<crate::events::News>,
     mut acts: MessageWriter<crate::dev::DevAction>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
-    mut player: Query<(&mut Kinematics, &crate::actors::Health), With<LocalPlayer>>,
-    raiders: Query<(&Kinematics, &crate::actors::Health), Raiders>,
-    folk: Query<(&crate::actors::villager::Villager, &crate::actors::villager::Routine, &crate::actors::Health)>,
+    mut player: Query<(&mut Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
+    raiders: Query<(&Kinematics, &crate::creatures::Health), Raiders>,
+    folk: Query<(&crate::creatures::brain::villager::Villager, &crate::creatures::brain::villager::Routine, &crate::creatures::Health)>,
     mut state: Local<(u8, f32, f32)>,
 ) {
     if s.name != "raid" {
@@ -4517,7 +4517,7 @@ fn pedlar_script(
     mut clock: ResMut<crate::clock::WorldClock>,
     news: Res<crate::events::News>,
     mut acts: MessageWriter<crate::dev::DevAction>,
-    folk: Query<(Entity, &crate::actors::villager::Villager, &Kinematics)>,
+    folk: Query<(Entity, &crate::creatures::brain::villager::Villager, &Kinematics)>,
     mut state: Local<(u8, f32, f32)>,
 ) {
     if s.name != "pedlar" {
@@ -4561,9 +4561,9 @@ fn pedlar_script(
 fn troll_script(
     mut commands: Commands,
     s: Res<Scenario>,
-    coatings: Res<crate::actors::elements::Coatings>,
+    coatings: Res<crate::creatures::body::elements::Coatings>,
     player: Query<&Kinematics, With<LocalPlayer>>,
-    trolls: Query<(Entity, &crate::actors::Creature, &Kinematics, &crate::actors::Health)>,
+    trolls: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health)>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut state: Local<(u8, f32, f32, Option<Entity>)>,
 ) {
@@ -4574,7 +4574,7 @@ fn troll_script(
     let Ok(pk) = player.single() else { return };
     let (step, next_hit, next_log, troll) = &mut *state;
     if *step == 0 && t > 1.0 {
-        crate::actors::creature::spawn_creature(&mut commands, "troll", pk.body.pos + Vec2::new(60.0, -pk.body.half.y), |_| {});
+        crate::creatures::def::spawn_creature(&mut commands, "troll", pk.body.pos + Vec2::new(60.0, -pk.body.half.y), |_| {});
         *step = 1;
         return;
     }
@@ -4593,10 +4593,10 @@ fn troll_script(
     };
     if t >= *next_hit {
         *next_hit += 0.25;
-        hits.write(crate::combat::Hit { target: e, damage: 24.0, harm: crate::actors::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: k.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        hits.write(crate::combat::Hit { target: e, damage: 24.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: k.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
     }
     if *step == 1 && t > 11.0 {
-        crate::actors::elements::catch_fire(&mut commands, e, &h.nature, None, &coatings, 1.0);
+        crate::creatures::body::elements::catch_fire(&mut commands, e, &h.nature, None, &coatings, 1.0);
         info!("troll: set alight at t {t:.1} (health {:.0})", h.hp);
         *step = 2;
     }
@@ -4613,7 +4613,7 @@ fn reset_script(
     mut sim: ResMut<SimWorld>,
     mut acts: MessageWriter<crate::dev::DevAction>,
     player: Query<&Kinematics, With<LocalPlayer>>,
-    creatures: Query<&crate::actors::Creature, Without<LocalPlayer>>,
+    creatures: Query<&crate::creatures::Creature, Without<LocalPlayer>>,
     mut state: Local<(u8, Vec2)>,
 ) {
     if s.name != "reset" {
@@ -4628,7 +4628,7 @@ fn reset_script(
             for d in 0..8 {
                 sim.queue(WorldEdit::Dig { center: CellPos::from_world(p.x + 30.0, p.y - 10.0 - d as f32 * 4.0), radius: 8, max_hardness: 250 });
             }
-            crate::actors::creature::spawn_creature(&mut commands, "orc", p + Vec2::new(-40.0, 0.0), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "orc", p + Vec2::new(-40.0, 0.0), |_| {});
             state.1 = Vec2::new(p.x + 30.0, p.y);
             state.0 = 1;
         }
@@ -4703,8 +4703,8 @@ fn camplook_script(
 fn camp_script(
     mut commands: Commands,
     s: Res<Scenario>,
-    mut player: Query<(&mut Kinematics, &crate::actors::Health), With<LocalPlayer>>,
-    mut props: Query<(Entity, &crate::actors::Creature, &mut crate::actors::Health), Without<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
+    mut props: Query<(Entity, &crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>,
     mut state: Local<u8>,
 ) {
     if s.name != "camp" {
@@ -4715,11 +4715,11 @@ fn camp_script(
     let floor = platypus_worldgen::arena::FLOOR as f32;
     let x = 520.0;
     let kinds = ["mine_lantern", "mine_cart", "tnt_barrel", "dynamite"];
-    let left = |props: &Query<(Entity, &crate::actors::Creature, &mut crate::actors::Health), Without<LocalPlayer>>| kinds.iter().map(|&kind| format!("{kind} {}", props.iter().filter(|(_, c, _)| c.kind == kind).count())).collect::<Vec<_>>().join(", ");
+    let left = |props: &Query<(Entity, &crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>| kinds.iter().map(|&kind| format!("{kind} {}", props.iter().filter(|(_, c, _)| c.kind == kind).count())).collect::<Vec<_>>().join(", ");
     match *state {
         0 if t > 0.3 => {
             for (kind, dx) in kinds.iter().zip([130.0, 148.0, 165.0, 173.0]) {
-                crate::actors::creature::spawn_creature(&mut commands, kind, Vec2::new(x + dx, floor), |_| {});
+                crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x + dx, floor), |_| {});
             }
             k.body.pos = Vec2::new(x, floor + k.body.half.y);
             k.body.vel = Vec2::ZERO;
@@ -4736,7 +4736,7 @@ fn camp_script(
                     if std::env::var("PLATYPUS_CAMP").is_ok_and(|v| v == "hit") {
                         h.hp = 0.0;
                     } else {
-                        commands.entity(e).insert(crate::actors::elements::Burning::new(0.1));
+                        commands.entity(e).insert(crate::creatures::body::elements::Burning::new(0.1));
                     }
                 }
             }
@@ -4842,7 +4842,7 @@ fn pickarea_script(
     if hold { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
 }
 
-type Soaker<'a> = (Entity, &'a mut Kinematics, &'a crate::actors::Health, Option<&'a crate::actors::elements::Coated>, Option<&'a crate::actors::elements::Burning>);
+type Soaker<'a> = (Entity, &'a mut Kinematics, &'a crate::creatures::Health, Option<&'a crate::creatures::body::elements::Coated>, Option<&'a crate::creatures::body::elements::Burning>);
 
 /// `soak`: a step in acid, washed off in water; alight in a puddle, then
 /// in deep water.
@@ -4866,7 +4866,7 @@ fn soak_script(
         k.body.vel = Vec2::ZERO;
         k.prev_pos = k.body.pos;
     };
-    let on = |c: Option<&crate::actors::elements::Coated>| c.map_or(String::from("nothing"), |c| c.coats.iter().map(|(n, a)| format!("{n} {:.0}%", a * 100.0)).collect::<Vec<_>>().join(", "));
+    let on = |c: Option<&crate::creatures::body::elements::Coated>| c.map_or(String::from("nothing"), |c| c.coats.iter().map(|(n, a)| format!("{n} {:.0}%", a * 100.0)).collect::<Vec<_>>().join(", "));
     match state.0 {
         0 if t > 0.3 => {
             for (x0, x1, depth) in [acid, deep, puddle] {
@@ -4899,7 +4899,7 @@ fn soak_script(
         3 if t > 3.0 => {
             info!("soak: 1.4 s out of it: {}, health {:.0} (lost {:.1} since)", on(coated), health.hp, state.1 - health.hp);
             put(&mut k, 635, floor - puddle.2);
-            commands.entity(me).insert(crate::actors::elements::Burning::new(1.0));
+            commands.entity(me).insert(crate::creatures::body::elements::Burning::new(1.0));
             state.0 = 4;
         }
         4 if t > 4.4 => {
@@ -4923,9 +4923,9 @@ fn soak_script(
 fn rocketswim_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
-    mut player: Query<(&mut Kinematics, &crate::actors::MoveStats), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &crate::creatures::MoveStats), With<LocalPlayer>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
-    mut fired: MessageReader<crate::actors::Rocketed>,
+    mut fired: MessageReader<crate::creatures::Rocketed>,
     mut state: Local<(u8, f32, f32, u32)>,
 ) {
     if s.name != "rocketswim" {
@@ -4990,8 +4990,8 @@ fn rocketswim_script(
 fn spider_script(
     mut commands: Commands,
     s: Res<Scenario>,
-    mut player: Query<(Entity, &mut Kinematics, &mut crate::actors::Health, Option<&crate::actors::elements::Coated>), With<LocalPlayer>>,
-    spiders: Query<(&Kinematics, &crate::actors::spider::Assault), Without<LocalPlayer>>,
+    mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>), With<LocalPlayer>>,
+    spiders: Query<(&Kinematics, &crate::creatures::moves::spider::Assault), Without<LocalPlayer>>,
     mut hits: MessageReader<crate::combat::Hit>,
     mut state: Local<(u8, f32, Option<&'static str>)>,
 ) {
@@ -5005,7 +5005,7 @@ fn spider_script(
         let floor = platypus_worldgen::arena::FLOOR as f32;
         k.body.pos = Vec2::new(560.0, floor + 8.0);
         k.prev_pos = k.body.pos;
-        crate::actors::creature::spawn_creature(&mut commands, "spider", Vec2::new(680.0, floor), |_| {});
+        crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(680.0, floor), |_| {});
         state.0 = 1;
     }
     for hit in hits.read() {
@@ -5396,7 +5396,7 @@ fn voidlook_script(
                 for (i, kind) in kinds.split(',').filter(|k| !k.is_empty()).enumerate() {
                     let side = if i % 2 == 0 { 1.0 } else { -1.0 };
                     let at = state.1 + Vec2::new(side * (40.0 + 14.0 * (i / 2) as f32), 2.0 + 8.0 * (i / 2) as f32 - k.body.half.y);
-                    crate::actors::creature::spawn_creature(&mut commands, kind, at, |_| {});
+                    crate::creatures::def::spawn_creature(&mut commands, kind, at, |_| {});
                 }
             }
             state.0 = 2;
@@ -5537,7 +5537,7 @@ fn backwall_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
-    spiders: Query<(&crate::actors::Creature, &Kinematics), Without<LocalPlayer>>,
+    spiders: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
     // (phase, highest it climbed, time it first held on behind, closest)
     mut state: Local<(u8, f32, f32, f32)>,
 ) {
@@ -5565,7 +5565,7 @@ fn backwall_script(
             k.body.pos = Vec2::new(640.0, fl + 132.0);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
-            crate::actors::creature::spawn_creature(&mut commands, "spider", Vec2::new(580.0, fl + 6.0), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(580.0, fl + 6.0), |_| {});
             *state = (1, 0.0, -1.0, f32::MAX);
         }
         1 => {
@@ -5586,7 +5586,7 @@ fn backwall_script(
     }
 }
 
-type Pogoer<'a> = (&'a mut Kinematics, &'a crate::actors::Health, Option<&'a crate::combat::Swing>);
+type Pogoer<'a> = (&'a mut Kinematics, &'a crate::creatures::Health, Option<&'a crate::combat::Swing>);
 
 /// The down-strike (DESIGN §8): a shortsword's down slash chained across
 /// the three dummies with S held and the cursor off level ahead; the
@@ -5597,7 +5597,7 @@ type Pogoer<'a> = (&'a mut Kinematics, &'a crate::actors::Health, Option<&'a cra
 fn pogo_script(
     s: Res<Scenario>,
     mut player: Query<Pogoer, With<LocalPlayer>>,
-    dummies: Query<(Entity, &crate::actors::Creature, &Kinematics, &crate::actors::dummy::Tally), Without<LocalPlayer>>,
+    dummies: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::custom::dummy::Tally), Without<LocalPlayer>>,
     spells: Query<&crate::magic::Spell>,
     book: Res<crate::magic::Spellbook>,
     mut casts: MessageWriter<crate::magic::CastRequest>,
@@ -5782,7 +5782,7 @@ fn hook_script(
     mut chests: ResMut<crate::hands::chests::Chests>,
     mut cursor: ResMut<CursorOverride>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
-    mut player: Query<(&mut Kinematics, Option<&crate::gear::hook::Rope>, &crate::actors::Health), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, Option<&crate::gear::hook::Rope>, &crate::creatures::Health), With<LocalPlayer>>,
     boxes: Query<&Kinematics, (With<crate::hands::chests::Chest>, Without<LocalPlayer>)>,
     mut state: Local<(u8, f32, f32, f32)>,
 ) {
@@ -5949,7 +5949,7 @@ fn hook_script(
     }
 }
 
-type BeamTarget<'a> = (&'a Kinematics, Option<&'a crate::actors::dummy::Tally>, Has<crate::actors::elements::Burning>);
+type BeamTarget<'a> = (&'a Kinematics, Option<&'a crate::creatures::custom::dummy::Tally>, Has<crate::creatures::body::elements::Burning>);
 
 /// Beams and light: the frost ray swept over the pool (ice) and the lava
 /// pit (stone), the fire ray on a dummy, the vaporiser into the floor and
@@ -5960,7 +5960,7 @@ fn beams_script(
     sim: Res<SimWorld>,
     mut hand: ResMut<crate::hands::Hand>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
-    dummies: Query<BeamTarget, (With<crate::actors::dummy::Dummy>, Without<LocalPlayer>)>,
+    dummies: Query<BeamTarget, (With<crate::creatures::custom::dummy::Dummy>, Without<LocalPlayer>)>,
     mut cursor: ResMut<CursorOverride>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     mut state: Local<(u8, f32)>,
@@ -6072,8 +6072,8 @@ fn beams_script(
     }
 }
 
-type Conjurer<'a> = (&'a mut Kinematics, &'a mut crate::hands::items::Inventory, &'a mut crate::actors::Health);
-type ConjureFoe<'a> = (Entity, &'a Kinematics, &'a crate::actors::Health, Has<crate::actors::elements::Burning>);
+type Conjurer<'a> = (&'a mut Kinematics, &'a mut crate::hands::items::Inventory, &'a mut crate::creatures::Health);
+type ConjureFoe<'a> = (Entity, &'a Kinematics, &'a crate::creatures::Health, Has<crate::creatures::body::elements::Burning>);
 
 /// Walls and clouds: an ice wall between the player and a charging orc; a
 /// fire wall another orc walks through; a toxic cloud on the first, then
@@ -6117,7 +6117,7 @@ fn conjure_script(
             }
             k.body.pos = Vec2::new(600.0, floor as f32 + 8.0);
             k.prev_pos = k.body.pos;
-            crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(780.0, floor as f32 + 10.0), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(780.0, floor as f32 + 10.0), |_| {});
             state.0 = 1;
         }
         1 => {
@@ -6144,7 +6144,7 @@ fn conjure_script(
             // Another orc, from the left, once the wall is up.
             if t > 3.4 && state.2.is_none() {
                 info!("conjure: fire wall: {} cells of flame", count("fire", 530..550, floor..floor + 40));
-                crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(470.0, floor as f32 + 10.0), |_| {});
+                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(470.0, floor as f32 + 10.0), |_| {});
                 state.2 = Some(Entity::PLACEHOLDER);
             }
             if state.2 == Some(Entity::PLACEHOLDER) {
@@ -6201,7 +6201,7 @@ fn call_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
     mut hand: ResMut<crate::hands::Hand>,
-    mut player: Query<(&mut Kinematics, &mut crate::actors::Health), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
     orcs: Query<ConjureFoe, IceFoe>,
     mut cursor: ResMut<CursorOverride>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
@@ -6228,8 +6228,8 @@ fn call_script(
                 }
             }
             for x in [740.0, 800.0, 550.0] {
-                crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(x, floor as f32 + 10.0), |e| {
-                    e.remove::<crate::actors::ai::MeleeWalker>();
+                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x, floor as f32 + 10.0), |e| {
+                    e.remove::<crate::creatures::brain::ai::MeleeWalker>();
                 });
             }
             state.0 = 1;
@@ -6285,7 +6285,7 @@ fn call_script(
     }
 }
 
-type VoidCaster<'a> = (&'a mut Kinematics, &'a mut crate::hands::items::Inventory, &'a mut crate::actors::Health);
+type VoidCaster<'a> = (&'a mut Kinematics, &'a mut crate::hands::items::Inventory, &'a mut crate::creatures::Health);
 
 /// Void: a blink along the floor; a portal pair (one in the floor, one on
 /// the left face of a stone column) and a chest, water and the player
@@ -6406,7 +6406,7 @@ fn void_script(
             if t - state.1 > 1.5 {
                 info!("void: 1.5 s later the player is at ({:.0}, {:.0})", k.body.pos.x, k.body.pos.y - fl);
                 put(&mut k, Vec2::new(620.0, fl + 8.0));
-                crate::actors::creature::spawn_creature(&mut commands, "orc", Vec2::new(760.0, fl + 10.0), |_| {});
+                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(760.0, fl + 10.0), |_| {});
                 state.0 = 6;
                 state.1 = t;
             }
@@ -6454,9 +6454,9 @@ fn void_script(
 /// (no hurt). Logs each landing.
 fn fall_script(
     s: Res<Scenario>,
-    deaths: Res<crate::actors::PlayerDeaths>,
+    deaths: Res<crate::creatures::PlayerDeaths>,
     items: Option<Res<crate::hands::items::Items>>,
-    mut player: Query<(&mut Kinematics, &mut crate::actors::Health, &mut crate::gear::Equipment), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, &mut crate::gear::Equipment), With<LocalPlayer>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut state: Local<(u8, f32, f32, f32)>,
 ) {
@@ -6473,7 +6473,7 @@ fn fall_script(
     // (phase, its start, the highest it got, the fastest it fell)
     state.2 = state.2.max(height);
     state.3 = state.3.min(k.body.vel.y);
-    let start = |state: &mut (u8, f32, f32, f32), k: &mut Kinematics, hp: &mut crate::actors::Health, phase: u8| {
+    let start = |state: &mut (u8, f32, f32, f32), k: &mut Kinematics, hp: &mut crate::creatures::Health, phase: u8| {
         *state = (phase, t, 0.0, 0.0);
         k.body.pos = Vec2::new(620.0, fl + 8.0);
         k.body.vel = Vec2::ZERO;
@@ -6539,7 +6539,7 @@ fn save_script(
     mut player: Query<Saver, With<LocalPlayer>>,
     boxes: Query<&crate::hands::chests::Chest>,
     stations: Query<&crate::craft::Station>,
-    creatures: Query<&crate::actors::Creature, Without<LocalPlayer>>,
+    creatures: Query<&crate::creatures::Creature, Without<LocalPlayer>>,
     day: Res<crate::light::Daylight>,
     mut now: MessageWriter<crate::save::SaveNow>,
     mut state: Local<u8>,

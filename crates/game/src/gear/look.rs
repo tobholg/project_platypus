@@ -13,9 +13,9 @@ use bevy::prelude::*;
 use platypus_art::dress::Skin;
 
 use super::{Equipment, Slot, WORN};
-use crate::actors::Creature;
-use crate::actors::animation::Animator;
-use crate::actors::creature::{CreatureDef, Creatures, set_art};
+use crate::creatures::Creature;
+use crate::creatures::body::animation::Animator;
+use crate::creatures::def::{CreatureDef, Creatures, set_art};
 use crate::hands::items::Items;
 
 /// Outfits made so far: (creature kind, what's worn) → the creature drawn

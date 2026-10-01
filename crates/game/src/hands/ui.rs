@@ -21,8 +21,8 @@ use super::chests::{Chests, SLOTS};
 use super::icons::Icons;
 use super::items::{BARS, HOTBAR, Inventory, ItemDef, Items, Stack, Use};
 use super::{DevTools, Hand, PACK, PACK_ROWS, spawn_drop};
-use crate::actors::Kinematics;
-use crate::actors::player::LocalPlayer;
+use crate::creatures::Kinematics;
+use crate::creatures::player::LocalPlayer;
 use crate::gear::{Equipment, GearRules, Stats, WORN};
 use crate::magic::Spellbook;
 use crate::world::SimWorld;
@@ -752,7 +752,7 @@ fn show(
 /// the player's gear adds up to.
 fn show_gear(
     open: Res<InventoryOpen>,
-    player: Query<(&Equipment, &Stats, &crate::actors::Health), With<LocalPlayer>>,
+    player: Query<(&Equipment, &Stats, &crate::creatures::Health), With<LocalPlayer>>,
     mut names: Query<(&SlotName, &mut Visibility)>,
     mut text: Single<&mut Text, With<StatsText>>,
 ) {
@@ -769,7 +769,7 @@ fn show_gear(
     let armor = stats.get(crate::gear::Stat::Armor);
     let mut lines = vec![
         format!("Health {:.0} / {:.0}", health.hp.max(0.0), health.max),
-        format!("Armour {armor:.0} (stops {:.0}%)", (1.0 - health.ward.through(crate::actors::Harm::Slash)) * 100.0),
+        format!("Armour {armor:.0} (stops {:.0}%)", (1.0 - health.ward.through(crate::creatures::Harm::Slash)) * 100.0),
     ];
     lines.extend(stats.nonzero().filter(|(s, _)| *s != crate::gear::Stat::Armor).map(|(s, v)| crate::gear::stats::line(s, v)));
     let t = lines.join("\n");

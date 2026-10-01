@@ -19,8 +19,8 @@ use platypus_sim::rng::Rng;
 use super::chests::{Chests, Container, SLOTS};
 use super::items::{Inventory, Items, Stack};
 use super::spawn_drop;
-use crate::actors::player::LocalPlayer;
-use crate::actors::{Died, Kinematics};
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::{Died, Kinematics};
 use crate::fx::Explosion;
 use crate::props::Thrown;
 use crate::world::{SimWorld, TICK_HZ, TickSet};
@@ -82,7 +82,7 @@ fn belongings(died: &Died, items: &Items, chests: &Chests, world: &platypus_sim:
 /// out from its hip, shorter than in life, the shin hooked back in over the
 /// body, as dead spiders curl; a little crooked each (from
 /// `seed`). Returns the picture and where its middle sits from the body's.
-fn curled_legs(def: &crate::actors::legs::LegsDef, seed: u64) -> (Image, Vec2) {
+fn curled_legs(def: &crate::creatures::body::legs::LegsDef, seed: u64) -> (Image, Vec2) {
     let (leg, joint) = (def.color, def.joint.unwrap_or(def.color));
     let per_side = (def.count / 2).max(1);
     let (thigh, shin) = (def.reach * def.upper * 0.5, def.reach * (1.0 - def.upper) * 0.55);

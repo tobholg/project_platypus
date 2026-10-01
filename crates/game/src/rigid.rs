@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use platypus_sim::Kind;
 
-use crate::actors::{Health, Kinematics};
+use crate::creatures::{Health, Kinematics};
 use crate::render::cell_rgba;
 use crate::world::{SimWorld, TICK_HZ, TickSet};
 
@@ -138,7 +138,7 @@ fn crush(
                 continue;
             }
             hit.insert((body.id, entity));
-            health.harm((speed * DAMAGE_PER_SPEED).min(MAX_DAMAGE), crate::actors::Harm::Blunt);
+            health.harm((speed * DAMAGE_PER_SPEED).min(MAX_DAMAGE), crate::creatures::Harm::Blunt);
             let k = &mut *k;
             let push = v * TICK_HZ as f32 * 0.7 + Vec2::new(0.0, 120.0);
             k.loco.knock(&mut k.body, push, 0.4);

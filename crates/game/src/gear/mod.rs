@@ -25,8 +25,8 @@ use std::collections::BTreeMap;
 use bevy::prelude::*;
 use serde::Deserialize;
 
-use crate::actors::creature::Creatures;
-use crate::actors::{Creature, Health, MoveStats, Ward};
+use crate::creatures::def::Creatures;
+use crate::creatures::{Creature, Health, MoveStats, Ward};
 use crate::combat::{Stamina, Sturdy};
 use crate::data::{data_path, load_ron};
 use crate::hands::items::{ItemDef, Items, Stack};
@@ -243,10 +243,10 @@ impl Plugin for GearPlugin {
         let file = load();
         app.insert_resource(GearRules { weights: file.weights, rarities: file.rarities, bonuses: file.bonuses })
             .init_resource::<look::Wardrobe>()
-            .add_systems(Update, (outfit, apply, look::dress).chain().after(crate::actors::creature::hot_reload_creatures))
+            .add_systems(Update, (outfit, apply, look::dress).chain().after(crate::creatures::def::hot_reload_creatures))
             .init_resource::<hook::RopeCanvas>()
-            .add_systems(FixedUpdate, (boots::exhaust.in_set(crate::world::TickSet::Bodies), hook::rope.in_set(crate::world::TickSet::Bodies).before(crate::actors::move_creatures)))
-            .add_systems(PostUpdate, hook::draw.after(crate::actors::interpolate).before(bevy::transform::TransformSystems::Propagate));
+            .add_systems(FixedUpdate, (boots::exhaust.in_set(crate::world::TickSet::Bodies), hook::rope.in_set(crate::world::TickSet::Bodies).before(crate::creatures::move_creatures)))
+            .add_systems(PostUpdate, hook::draw.after(crate::creatures::interpolate).before(bevy::transform::TransformSystems::Propagate));
     }
 }
 
@@ -320,7 +320,7 @@ pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures:
     }
 }
 
-type NewCreature = (Added<Creature>, Without<crate::actors::player::LocalPlayer>);
+type NewCreature = (Added<Creature>, Without<crate::creatures::player::LocalPlayer>);
 
 /// A creature just come into the world is armed and dressed: the item of the
 /// weapon it holds (if there is one: it's held gear, and on its body when it
@@ -332,7 +332,7 @@ fn outfit(
     creatures: Res<Creatures>,
     chests: Res<crate::hands::chests::Chests>,
     sim: Res<crate::world::SimWorld>,
-    mut q: Query<(Entity, &Creature, &mut Equipment, &crate::actors::Kinematics), NewCreature>,
+    mut q: Query<(Entity, &Creature, &mut Equipment, &crate::creatures::Kinematics), NewCreature>,
 ) {
     use crate::hands::items::{ItemId, Use};
     let Some(items) = items else { return };

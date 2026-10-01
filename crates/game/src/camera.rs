@@ -207,7 +207,7 @@ fn rise(at: f32, speed: f32, to: f32, dt: f32) -> (f32, f32) {
 }
 
 /// What the camera follows: where it's drawn, and its body (on the ground?).
-type Target<'a> = (&'a GlobalTransform, Option<&'a crate::actors::Kinematics>);
+type Target<'a> = (&'a GlobalTransform, Option<&'a crate::creatures::Kinematics>);
 
 #[allow(clippy::too_many_arguments)]
 pub fn follow(

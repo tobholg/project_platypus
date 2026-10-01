@@ -6,8 +6,8 @@ use std::sync::Arc;
 use bevy::prelude::*;
 use platypus_physics::MoveState;
 
-use super::Kinematics;
-use super::creature::{CreatureArt, CreatureDef};
+use crate::creatures::Kinematics;
+use crate::creatures::def::{CreatureArt, CreatureDef};
 
 pub struct AnimationPlugin;
 

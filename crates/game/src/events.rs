@@ -34,10 +34,10 @@ use platypus_sim::rng::hash;
 use platypus_sim::{CellPos, MaterialId, WorldEdit};
 use serde::{Deserialize, Serialize};
 
-use crate::actors::ai::Marching;
-use crate::actors::player::LocalPlayer;
-use crate::actors::creature::spawn_creature;
-use crate::actors::spawn::find_ground;
+use crate::creatures::brain::ai::Marching;
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::def::spawn_creature;
+use crate::creatures::spawn::find_ground;
 use crate::clock::WorldClock;
 use crate::light::{Daylight, LightSource};
 use crate::magic::runes::Emitter;
@@ -286,7 +286,7 @@ fn timetable(sim: Res<SimWorld>, mut clock: ResMut<WorldClock>, loaders: Query<(
 
 /// The dev panel's "An event": one now, near you, each kind in turn (a
 /// star a little ahead; a raid on the village).
-fn dev_event(mut acts: MessageReader<crate::dev::DevAction>, mut next: Local<usize>, sim: Res<SimWorld>, mut clock: ResMut<WorldClock>, player: Query<&crate::actors::Kinematics, With<LocalPlayer>>) {
+fn dev_event(mut acts: MessageReader<crate::dev::DevAction>, mut next: Local<usize>, sim: Res<SimWorld>, mut clock: ResMut<WorldClock>, player: Query<&crate::creatures::Kinematics, With<LocalPlayer>>) {
     for a in acts.read() {
         if !matches!(a, crate::dev::DevAction::Event) {
             continue;
@@ -371,7 +371,7 @@ fn begin(
                 // In from out of sight on its side, marching on the village.
                 let c = cam.translation.truncate();
                 let start = c.x + h.from as f32 * RAID_FROM;
-                let members: Vec<String> = crate::actors::spawn::packs().remove("raiders").unwrap_or_default().into_iter().flat_map(|(k, n)| std::iter::repeat_n(k, n as usize)).collect();
+                let members: Vec<String> = crate::creatures::spawn::packs().remove("raiders").unwrap_or_default().into_iter().flat_map(|(k, n)| std::iter::repeat_n(k, n as usize)).collect();
                 for (i, kind) in members.into_iter().enumerate() {
                     let x = (start + h.from as f32 * i as f32 * 12.0) as i32;
                     let hint = sim.generator.surface_hint(x).unwrap_or(c.y as i32);
@@ -707,7 +707,7 @@ fn pedlar(
     clock: Res<WorldClock>,
     cam: Single<&Transform, With<crate::camera::MainCamera>>,
     loaders: Query<(&GlobalTransform, &ChunkLoader)>,
-    mut folk: Query<(Entity, &crate::actors::villager::Villager, &crate::actors::Kinematics, Option<&mut crate::actors::villager::Home>)>,
+    mut folk: Query<(Entity, &crate::creatures::brain::villager::Villager, &crate::creatures::Kinematics, Option<&mut crate::creatures::brain::villager::Home>)>,
 ) {
     let Some((lo, hi)) = sim.generator.village() else { return };
     let mid = (lo.x + hi.x) / 2;
@@ -744,7 +744,7 @@ fn pedlar(
     let x = if seen(home.x, home.y) { (cam.translation.x + h.from as f32 * RAID_FROM) as i32 } else { mid };
     let Some(y) = ground(x) else { return };
     spawn_creature(&mut commands, "pedlar", Vec2::new(x as f32 + 0.5, y as f32), move |e| {
-        e.insert((crate::actors::villager::Home(home), crate::actors::villager::Routine::default()));
+        e.insert((crate::creatures::brain::villager::Home(home), crate::creatures::brain::villager::Routine::default()));
     });
     info!("events: the pedlar at x {:+} from the village's middle", x - mid);
 }

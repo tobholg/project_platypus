@@ -247,7 +247,7 @@ fn fill(mesh: &mut Mesh, quads: &[([f32; 2], f32, [f32; 4])]) {
 
 /// A double jump's cloud: a soft puff spreading out and down under the
 /// feet, and a ring of glowing motes (it lights the dark a moment, `light`).
-fn air_puffs(mut jumps: MessageReader<crate::actors::AirJumped>, mut sparks: ResMut<Sparks>) {
+fn air_puffs(mut jumps: MessageReader<crate::creatures::AirJumped>, mut sparks: ResMut<Sparks>) {
     for j in jumps.read() {
         sparks.emit(&PUFF, PUFF.count as usize, j.at, Vec2::NEG_Y, Vec2::ZERO);
         sparks.emit(&PUFF_RING, PUFF_RING.count as usize, j.at, Vec2::X, Vec2::ZERO);

@@ -192,19 +192,25 @@ judged in it. Running alongside: deep caves run at ~42 ms a frame (a
 separate task; it must be fixed before the roster's cave fights).
 
 **1. `creatures`: one model, every creature on it.**
-1. `crates/game/src/creatures/` (body, locomotion, moves, brain, custom);
-   the five data layers; the general brain with the brains we have as its
-   presets.
-2. Custom modules: the trait, the registry (an unknown name fails at load),
-   `_template.rs`.
-3. Ten damage types on every weapon, spell, blast, fall and hazard; one
+1. ✅ `crates/game/src/creatures/` (the old `actors`, renamed: `def`,
+   `nature`, `body/`, `brain/`, `moves/`, `custom/`; locomotion stays the
+   physics crate's until it needs its own); the brain vocabulary:
+   `hunter` (the general fighting brain: how it closes, how it attacks,
+   what it does idle, a leash, a march) with the fighting brains we have as
+   its presets; `critter` and `villager` (wild life and people: their own
+   routines, shared by many creatures, so vocabulary, not custom).
+2. ✅ Custom modules: the trait, the registry (an unknown name is reported
+   at start), `_template.rs` (compiled with the tests); the dummy, the
+   explosives and the egg sac's hatching moved onto it.
+3. ✅ Ten damage types on every weapon, spell, blast, fall and hazard; one
    resistance profile for creatures and gear (replacing `Ward` and
    `Resist`); kinds as templates; absorbing; what each can't suffer;
    regeneration (the troll's, stopped by fire and acid).
 4. Every existing creature moved onto it, with a kind: orcs, the archer,
    the troll, spiders, spiderlings, egg sacs, skeletons, slimes, acid
    slimes, bats, vampire bats, star wisps, villagers, the pedlar.
-Done when: no hand-written brain is left outside the presets and `custom/`;
+Done when: no hand-written brain is left outside the vocabulary
+(`hunter`'s presets, `critter`, `villager`) and `custom/`;
 the existing fight scenarios (`fight`, `melee`, `underground`, `warband`,
 `archery`, `spider`, `raid`) hold their numbers; the troll can't be beaten
 with steel alone and can with a torch.

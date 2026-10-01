@@ -19,8 +19,8 @@ use bevy::prelude::*;
 use platypus_physics::{Body, Locomotion};
 use platypus_sim::{BLOCK, CellPos, Kind, World, WorldEdit, block_cells};
 
-use crate::actors::player::LocalPlayer;
-use crate::actors::{Creature, Kinematics};
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::{Creature, Kinematics};
 use crate::camera::CursorWorld;
 use crate::data::{data_path, load_ron};
 use crate::light::{LightSettings, plant_torch};
@@ -385,7 +385,7 @@ fn wield(
     }
 }
 
-type User<'a> = (Entity, &'a Kinematics, &'a mut Inventory, Option<&'a crate::actors::animation::HandPos>);
+type User<'a> = (Entity, &'a Kinematics, &'a mut Inventory, Option<&'a crate::creatures::body::animation::HandPos>);
 type StationHit<'a> = (Entity, &'a mut crate::craft::Station, &'a Kinematics);
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -568,7 +568,7 @@ fn use_hands(
             hand.cooldown = 1.0 / PLACE_RATE;
         }
         Use::Throw(what) if clicked => {
-            commands.entity(me).insert(crate::actors::animation::Aiming { at: cursor, left: AIM_HOLD });
+            commands.entity(me).insert(crate::creatures::body::animation::Aiming { at: cursor, left: AIM_HOLD });
             let dir = (cursor - from).normalize_or(Vec2::X);
             let speed = tools.bomb.throw_speed * ((cursor - from).length() / 120.0).clamp(0.35, 1.0);
             let vel = dir * speed + k.body.vel * 0.5;
@@ -591,7 +591,7 @@ fn use_hands(
             let held = crate::magic::spells::focus_spells(&book.spells, tier, element, spells, &stack.roll);
             let pick = if input.primary { held.first() } else { held.get(1).or(held.first()) };
             let Some(&spell) = pick else { return };
-            commands.entity(me).insert(crate::actors::animation::Aiming { at: cursor, left: AIM_HOLD });
+            commands.entity(me).insert(crate::creatures::body::animation::Aiming { at: cursor, left: AIM_HOLD });
             let from = hand_pos.and_then(|h| h.at).unwrap_or(from);
             casts.write(crate::magic::CastRequest { caster: me, spell, from, toward: cursor, alt: !input.primary });
         }
@@ -629,7 +629,7 @@ fn use_hands(
             let Some(block) = target::place_target(from, cursor, 6.0 * BLOCK as f32, |b| free(world, b, &bodies), |b| supported(world, b)) else { return };
             let Some(art) = torch_art.as_deref() else { return };
             let at = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, block.y as f32 * BLOCK as f32);
-            commands.entity(me).insert(crate::actors::animation::Aiming { at, left: AIM_HOLD });
+            commands.entity(me).insert(crate::creatures::body::animation::Aiming { at, left: AIM_HOLD });
             plant_torch(&mut commands, at, &lights, art);
             inv.take(slot, 1);
         }

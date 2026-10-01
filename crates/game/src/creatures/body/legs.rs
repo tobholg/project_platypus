@@ -24,8 +24,8 @@ use bevy::prelude::*;
 use platypus_sim::{CellPos, Kind};
 use serde::Deserialize;
 
-use super::animation::{Animator, CreatureSprite};
-use super::Kinematics;
+use crate::creatures::body::animation::{Animator, CreatureSprite};
+use crate::creatures::Kinematics;
 use crate::world::SimWorld;
 
 pub struct LegsPlugin;
@@ -34,7 +34,7 @@ impl Plugin for LegsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LegCanvas>()
             .init_resource::<BodyArt>()
-            .add_systems(Update, (grow_legs, walk, draw).chain().after(super::animation::animate).after(TransformSystems::Propagate));
+            .add_systems(Update, (grow_legs, walk, draw).chain().after(crate::creatures::body::animation::animate).after(TransformSystems::Propagate));
     }
 }
 
@@ -140,7 +140,7 @@ struct LegBody;
 #[derive(Resource, Default)]
 struct BodyArt(HashMap<String, crate::combat::Turned>);
 
-use super::animation::Z_EYES;
+use crate::creatures::body::animation::Z_EYES;
 
 #[derive(Component)]
 struct LegEyes;
@@ -183,7 +183,7 @@ fn foothold(sim: &SimWorld, hip: Vec2, way: f32, reach: f32, back: bool) -> Opti
     // On the wall behind: anywhere along its way on that wall (rock in
     // reach still first).
     let behind = hip + Vec2::from_angle(way) * reach * 0.7;
-    let back = (back && super::backed(&sim.world, behind) && !solid(sim, behind)).then_some(behind);
+    let back = (back && crate::creatures::backed(&sim.world, behind) && !solid(sim, behind)).then_some(behind);
     let mut best: Option<(f32, Vec2)> = None;
     for sweep in [0.0f32, 15.0, -15.0, 30.0, -30.0, 45.0, -45.0, 60.0, -60.0, 75.0, -75.0, 90.0, -90.0] {
         let d = Vec2::from_angle(way + sweep.to_radians());
@@ -254,7 +254,7 @@ fn grow_legs(
         commands.entity(e).add_child(body);
         // The eyes: over the dark (a child of the root, lifted above the light).
         let root_z = anim.def.z;
-        let eyes = eyes_key.and_then(|key| art.0.get(&key)).map(|t| commands.spawn((LegEyes, super::animation::Blinks, t.sprite(0.0), Transform::from_xyz(0.0, 0.0, Z_EYES - root_z))).id());
+        let eyes = eyes_key.and_then(|key| art.0.get(&key)).map(|t| commands.spawn((LegEyes, crate::creatures::body::animation::Blinks, t.sprite(0.0), Transform::from_xyz(0.0, 0.0, Z_EYES - root_z))).id());
         if let Some(eyes) = eyes {
             commands.entity(e).add_child(eyes);
         }

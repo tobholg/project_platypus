@@ -9,7 +9,7 @@
 use bevy::prelude::*;
 use platypus_sim::{Cell, CellPos, MaterialId};
 
-use crate::actors::Kinematics;
+use crate::creatures::Kinematics;
 use crate::world::{SimWorld, TickSet};
 
 pub struct TrapsPlugin;
@@ -25,7 +25,7 @@ const REACH: i32 = 24;
 const UP: i32 = 60;
 
 /// A creature on a wire or a plate springs what's above it.
-fn spring(mut sim: ResMut<SimWorld>, creatures: Query<(&Kinematics, Option<&crate::actors::Creature>)>, mut sounds: MessageWriter<crate::sound::PlaySound>) {
+fn spring(mut sim: ResMut<SimWorld>, creatures: Query<(&Kinematics, Option<&crate::creatures::Creature>)>, mut sounds: MessageWriter<crate::sound::PlaySound>) {
     let mats = sim.materials().clone();
     let (Some(wire), Some(plate), Some(rope)) = (mats.id("tripwire"), mats.id("pressure_plate"), mats.id("rope")) else { return };
     let mut sprung: Vec<(CellPos, String)> = Vec::new();

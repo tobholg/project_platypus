@@ -15,10 +15,10 @@
 use bevy::prelude::*;
 use serde::Deserialize;
 
-use super::elements::Coatings;
-use super::legs::Rear;
-use super::monsters::Crawler;
-use super::{Controls, Kinematics, Team};
+use crate::creatures::body::elements::Coatings;
+use crate::creatures::body::legs::Rear;
+use crate::creatures::brain::monsters::Crawler;
+use crate::creatures::{Controls, Kinematics, Team};
 use crate::combat::Hit;
 use crate::world::{SimWorld, TICK_HZ};
 
@@ -154,8 +154,8 @@ pub fn attack(
     coatings: Res<Coatings>,
     mut hits: MessageWriter<Hit>,
     mut casts: MessageWriter<crate::magic::CastRequest>,
-    mut spiders: Query<Attacker, Without<crate::actors::player::LocalPlayer>>,
-    prey: Query<Prey, With<crate::actors::player::LocalPlayer>>,
+    mut spiders: Query<Attacker, Without<crate::creatures::player::LocalPlayer>>,
+    prey: Query<Prey, With<crate::creatures::player::LocalPlayer>>,
 ) {
     let now = time.elapsed_secs();
     for (e, brain, mut k, mut c, assault, rear) in &mut spiders {
@@ -234,7 +234,7 @@ pub fn attack(
                         && reaches(pk, 4.0)
                     {
                         a.struck = true;
-                        hits.write(Hit { target: pe, damage: b.damage, harm: crate::actors::Harm::Pierce, knock: (dir + Vec2::Y * 0.4).normalize() * b.knock, stun: b.stun, at: head, dir, weight: b.damage / 12.0, crit: false });
+                        hits.write(Hit { target: pe, damage: b.damage, harm: crate::creatures::Harm::Pierce, knock: (dir + Vec2::Y * 0.4).normalize() * b.knock, stun: b.stun, at: head, dir, weight: b.damage / 12.0, crit: false });
                     }
                 } else {
                     rear.lift = 0.0;
@@ -285,9 +285,9 @@ pub fn attack(
                         && reaches(pk, 8.0)
                     {
                         a.struck = true;
-                        hits.write(Hit { target: pe, damage: s.damage, harm: crate::actors::Harm::Pierce, knock: (dir + Vec2::Y * 0.3).normalize() * s.knock, stun: s.stun, at: head, dir, weight: s.damage / 12.0, crit: false });
+                        hits.write(Hit { target: pe, damage: s.damage, harm: crate::creatures::Harm::Pierce, knock: (dir + Vec2::Y * 0.3).normalize() * s.knock, stun: s.stun, at: head, dir, weight: s.damage / 12.0, crit: false });
                         if coatings.by_name.contains_key(&s.venom) {
-                            super::elements::stain(&mut commands, pe, &s.venom, 1.0, &coatings);
+                            crate::creatures::body::elements::stain(&mut commands, pe, &s.venom, 1.0, &coatings);
                         }
                     }
                 } else {

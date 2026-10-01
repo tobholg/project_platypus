@@ -31,8 +31,8 @@ use platypus_sim::cell::flags;
 use platypus_sim::{CellPos, Landing};
 use serde::Deserialize;
 
-use crate::actors::Kinematics;
-use crate::actors::player::LocalPlayer;
+use crate::creatures::Kinematics;
+use crate::creatures::player::LocalPlayer;
 use crate::camera::{CursorWorld, MainCamera, Zoom};
 use crate::data::{Watched, data_path, load_ron};
 use crate::fx::{Explosion, Lightning, SkyFlash};
@@ -258,7 +258,7 @@ impl Plugin for LightPlugin {
             .init_resource::<LightMetrics>()
             .init_resource::<Pending>()
             .add_systems(Startup, (spawn_overlay, torch::load_art))
-            .add_systems(Update, (reload_settings, keys, collect_flashes, glow, torch::hold.after(crate::actors::animation::animate), torch::burn))
+            .add_systems(Update, (reload_settings, keys, collect_flashes, glow, torch::hold.after(crate::creatures::body::animation::animate), torch::burn))
             .add_systems(
                 PostUpdate,
                 (update_daylight, compute_light).chain().after(crate::camera::follow).before(TransformSystems::Propagate),
@@ -321,7 +321,7 @@ fn collect_flashes(
     mut blasts: MessageReader<Explosion>,
     mut bolts: MessageReader<Lightning>,
     mut zaps: MessageReader<crate::fx::Zapped>,
-    mut puffs: MessageReader<crate::actors::AirJumped>,
+    mut puffs: MessageReader<crate::creatures::AirJumped>,
     mut flashes: ResMut<Flashes>,
 ) {
     // A double jump's cloud glows a moment (it shows in the dark).

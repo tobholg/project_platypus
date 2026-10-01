@@ -41,7 +41,7 @@ use platypus_worldgen::{Healed, Healing, SAPLING};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::actors::Health;
+use crate::creatures::Health;
 use crate::light::Daylight;
 use crate::world::{ChunkLoader, LoadedChunks, SimWorld};
 
@@ -560,7 +560,7 @@ fn lairs(mut commands: Commands, mut clock: ResMut<WorldClock>, creatures: Query
         if creatures.iter().any(|(k, h)| k.0 == (x, y) && h.hp > 0.0) {
             keeper.seen = now;
         } else if now - keeper.seen >= REFILL_DAYS && !views.iter().any(|(a, b)| spot.cmpge(*a).all() && spot.cmple(*b).all()) {
-            crate::actors::creature::spawn_creature(&mut commands, &keeper.kind, spot, move |e| {
+            crate::creatures::def::spawn_creature(&mut commands, &keeper.kind, spot, move |e| {
                 e.insert(Keeps((x, y)));
             });
             info!("world clock: a {} back in its lair at ({x}, {y})", keeper.kind);

@@ -5,9 +5,9 @@ use bevy::prelude::*;
 use platypus_sim::rng::Rng;
 use serde::Deserialize;
 
-use super::brain::RegisterBrain;
-use super::{Controls, Kinematics, Team};
-use crate::world::{SimWorld, TickSet};
+use crate::creatures::brain::RegisterBrain;
+use crate::creatures::{Controls, Kinematics, Team};
+use crate::world::SimWorld;
 
 pub struct AiPlugin;
 
@@ -16,7 +16,7 @@ impl Plugin for AiPlugin {
         app.register_brain::<MeleeWalker>("melee_walker")
             .register_brain::<Idle>("idle")
             .register_brain::<Archer>("archer")
-            .add_systems(FixedUpdate, (melee_walker, archer).in_set(TickSet::Intent));
+            .add_systems(FixedUpdate, (melee_walker, archer).in_set(super::BrainSet));
     }
 }
 
@@ -88,7 +88,7 @@ type Walker<'a> = (Entity, &'a MeleeWalker, &'a Kinematics, &'a mut Controls, Op
 fn melee_walker(
     mut commands: Commands,
     sim: Res<SimWorld>,
-    players: Query<Hunted, (Without<MeleeWalker>, Without<super::villager::Hiding>)>,
+    players: Query<Hunted, (Without<MeleeWalker>, Without<crate::creatures::brain::villager::Hiding>)>,
     mut q: Query<Walker>,
     mut swings: MessageWriter<crate::combat::MeleeRequest>,
 ) {
@@ -191,7 +191,7 @@ fn archer(
     mut commands: Commands,
     sim: Res<SimWorld>,
     weapons: Option<Res<crate::combat::Weapons>>,
-    players: Query<Hunted, (Without<Archer>, Without<super::villager::Hiding>)>,
+    players: Query<Hunted, (Without<Archer>, Without<crate::creatures::brain::villager::Hiding>)>,
     mut q: Query<Bowman>,
     mut draws: MessageWriter<crate::archery::DrawBow>,
 ) {

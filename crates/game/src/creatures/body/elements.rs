@@ -24,8 +24,8 @@ use bevy::prelude::*;
 use platypus_sim::{CellPos, WorldEdit};
 use serde::Deserialize;
 
-use super::animation::CreatureSprite;
-use super::{Harm, Health, Kinematics, Nature};
+use crate::creatures::body::animation::CreatureSprite;
+use crate::creatures::{Harm, Health, Kinematics, Nature};
 use crate::creatures::nature::Cant;
 use crate::data::{Watched, data_path, load_ron};
 use crate::world::{SimWorld, TICK_HZ};
@@ -639,7 +639,7 @@ pub fn catch_fire(commands: &mut Commands, entity: Entity, nature: &Nature, coat
     });
 }
 
-type Statuses<'a> = (&'a Children, Option<&'a Burning>, Option<&'a Coated>, Option<&'a Chilled>, Option<&'a mut super::hurt::Hurt>);
+type Statuses<'a> = (&'a Children, Option<&'a Burning>, Option<&'a Coated>, Option<&'a Chilled>, Option<&'a mut crate::creatures::body::hurt::Hurt>);
 
 /// Just hit: a red flash. Otherwise burning creatures flicker orange;
 /// chilled ones go icy; coated ones take a little of their coating's colour.
@@ -698,7 +698,7 @@ mod tests {
 
     /// One chunk of air with `material` over `xs` × `ys`.
     fn app_region(material: &str, xs: std::ops::Range<i32>, ys: std::ops::Range<i32>) -> App {
-        let mats = Arc::new(MaterialTable::from_ron(include_str!("../../../../assets/data/materials.ron")).unwrap());
+        let mats = Arc::new(MaterialTable::from_ron(include_str!("../../../../../assets/data/materials.ron")).unwrap());
         let mut world = SimCells::new(1, mats.clone());
         world.insert_chunk(Chunk::filled(ChunkPos::new(0, 0), Cell::AIR));
         let id = mats.expect_id(material);
@@ -711,7 +711,7 @@ mod tests {
         let generator = Arc::new(FlatGen { width_chunks: 1, height_chunks: 1, floor: 1, stone: mats.expect_id("stone") });
         let mut app = App::new();
         app.insert_resource(SimWorld { world, generator, store: ChunkStore::default() });
-        app.insert_resource(Coatings::from_ron(include_str!("../../../../assets/data/coatings.ron")).unwrap());
+        app.insert_resource(Coatings::from_ron(include_str!("../../../../../assets/data/coatings.ron")).unwrap());
         app
     }
 
@@ -921,7 +921,7 @@ mod tests {
 
     #[test]
     fn coatings_share_you_and_venom_clings_but_water_washes_it() {
-        let rules = Coatings::from_ron(include_str!("../../../../assets/data/coatings.ron")).unwrap().by_name;
+        let rules = Coatings::from_ron(include_str!("../../../../../assets/data/coatings.ron")).unwrap().by_name;
         let mut c = Coated::default();
         c.soak("bloody", 0.7, &rules);
         c.soak("oily", 0.6, &rules);

@@ -12,8 +12,8 @@ use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-use crate::actors::Health;
-use crate::actors::player::LocalPlayer;
+use crate::creatures::Health;
+use crate::creatures::player::LocalPlayer;
 
 pub struct ScreenFxPlugin;
 

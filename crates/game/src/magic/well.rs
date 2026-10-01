@@ -34,7 +34,7 @@ use platypus_sim::rng::Rng;
 use platypus_sim::{Cell, CellPos, Kind, Landing, Particle};
 
 use super::runes::{Carrier, Cast};
-use crate::actors::{Health, Kinematics, MoveStats};
+use crate::creatures::{Health, Kinematics, MoveStats};
 use crate::camera::MainCamera;
 use crate::light::LightSource;
 use crate::vfx::Sparks;
@@ -424,7 +424,7 @@ pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Que
                     .filter(|f| f.pos.cmpge(lo).all() && f.pos.cmple(hi).all())
                     .map(|f| (f.vel - k.body.vel).length())
                     .sum();
-                h.harm(hits * GRIND, crate::actors::Harm::Blunt);
+                h.harm(hits * GRIND, crate::creatures::Harm::Blunt);
             }
         }
         // (Bodies gone from the world are gone from its hold.)
@@ -586,7 +586,7 @@ fn force(world: &mut platypus_sim::World, well: &mut Well, bodies: &mut Bodies, 
         // The blow itself hurts, by how hard it changed its course (so the
         // first of a held push hurts, not every tick of it).
         if let Some(mut h) = health {
-            h.harm(kick * FORCE_HIT, crate::actors::Harm::Blunt);
+            h.harm(kick * FORCE_HIT, crate::creatures::Harm::Blunt);
         }
     }
     // Motes rushing out along the cone, or in toward the hand.

@@ -11,7 +11,7 @@
 use bevy::prelude::*;
 use platypus_sim::{CellPos, Kind, World};
 
-use super::creature::spawn_creature;
+use super::def::spawn_creature;
 use super::player::LocalPlayer;
 use crate::camera::CameraTarget;
 use super::Kinematics;

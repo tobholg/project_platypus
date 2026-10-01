@@ -10,9 +10,9 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-use crate::actors::elements::{Burning, CHILL_SECS, Chilled, Coated, Coatings};
-use crate::actors::player::LocalPlayer;
-use crate::actors::{Health, PlayerDeaths};
+use crate::creatures::body::elements::{Burning, CHILL_SECS, Chilled, Coated, Coatings};
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::{Health, PlayerDeaths};
 
 pub struct HudPlugin;
 
@@ -278,7 +278,7 @@ fn update_pips(
     }
 }
 
-type PlayerStatuses<'a> = (Option<&'a Burning>, Option<&'a Chilled>, Option<&'a Coated>, &'a crate::actors::Kinematics, Option<&'a crate::actors::MoveStats>, Option<&'a crate::potion::PotionSickness>);
+type PlayerStatuses<'a> = (Option<&'a Burning>, Option<&'a Chilled>, Option<&'a Coated>, &'a crate::creatures::Kinematics, Option<&'a crate::creatures::MoveStats>, Option<&'a crate::potion::PotionSickness>);
 
 fn update_statuses(
     coatings: Res<Coatings>,

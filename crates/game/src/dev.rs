@@ -113,7 +113,7 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, dev: Res<DevTools>, cursor: Res<CursorW
 
 /// F2: the player straight up to the ground's surface above them (as
 /// generated; up out of whatever's dug), standing on it.
-fn to_surface(mut acts: MessageReader<DevAction>, sim: Res<crate::world::SimWorld>, mut player: Query<&mut crate::actors::Kinematics, With<crate::actors::player::LocalPlayer>>) {
+fn to_surface(mut acts: MessageReader<DevAction>, sim: Res<crate::world::SimWorld>, mut player: Query<&mut crate::creatures::Kinematics, With<crate::creatures::player::LocalPlayer>>) {
     if !acts.read().any(|a| *a == DevAction::Surface) {
         return;
     }

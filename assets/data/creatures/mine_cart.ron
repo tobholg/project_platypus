@@ -11,5 +11,5 @@
     art: "mine_cart",
     blood: "",
     movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0),
-    brain: (kind: "explosive", params: (radius: 72, power: 255, fuse: 1.3)),
+    custom: (name: "explosive", params: (radius: 72, power: 255, fuse: 1.3)),
 )

@@ -1,32 +1,23 @@
 //! Explosives (TNT barrels, dynamite, a mine cart loaded with them): props
 //! the miners left in the caves, creatures with no mind (their creature
-//! file's brain `explosive`), so whatever hurts a creature sets them off:
+//! file's own code: `custom: (name: "explosive")`), so whatever hurts a creature sets them off:
 //! a blade, an arrow, a spell, another blast (they go off in a chain).
 //! Broken, one goes off at once; caught alight (a spark, embers, a fire
 //! bolt), its fuse fizzes for `fuse` seconds first. Either way the blast is
 //! a bomb's (`WorldEdit::Explode`: it digs, burns and throws; creatures
 //! feel it through `fx::Explosion`), `radius` and `power` its own.
 //!
-//! A lantern on a post (brain `idle`, a light) stands with them.
+//! A lantern on a post (no code of its own, a light) stands with them.
 
 use bevy::prelude::*;
 use platypus_sim::{CellPos, WorldEdit};
 use serde::Deserialize;
 
-use super::brain::RegisterBrain;
-use super::elements::Burning;
-use super::{Health, Kinematics};
+use crate::creatures::body::elements::Burning;
+use crate::creatures::{Health, Kinematics};
 use crate::world::{SimWorld, TICK_HZ};
 
 const DT: f32 = (1.0 / TICK_HZ) as f32;
-
-pub struct ExplosivePlugin;
-
-impl Plugin for ExplosivePlugin {
-    fn build(&self, app: &mut App) {
-        app.register_brain::<Explosive>("explosive").add_systems(Update, fizz);
-    }
-}
 
 /// How it goes off: the blast's radius (cells) and power (a bomb's are 38
 /// and 140), and the fuse once it's alight (seconds).
@@ -44,6 +35,15 @@ pub struct Explosive {
 impl Default for Explosive {
     fn default() -> Self {
         Explosive { radius: 30, power: 140, fuse: 0.8, lit: None }
+    }
+}
+
+impl super::CustomCreature for Explosive {
+    const NAME: &'static str = "explosive";
+
+    fn build(app: &mut App) {
+        app.add_systems(FixedUpdate, detonate.in_set(crate::world::TickSet::Bodies).after(crate::creatures::body::elements::expose).before(crate::creatures::deaths))
+            .add_systems(Update, fizz);
     }
 }
 

@@ -7,8 +7,8 @@ use bevy::prelude::*;
 use platypus_sim::{CellPos, Kind, World};
 
 use super::PlaySound;
-use crate::actors::player::LocalPlayer;
-use crate::actors::{Died, Health, Kinematics, Landed};
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::{Died, Health, Kinematics, Landed};
 
 pub struct HooksPlugin;
 
@@ -143,7 +143,7 @@ fn world_sounds(
     mut blasts: MessageReader<crate::fx::Explosion>,
     mut strikes: MessageReader<crate::fx::Lightning>,
     mut zaps: MessageReader<crate::fx::Zapped>,
-    mut air: MessageReader<crate::actors::AirJumped>,
+    mut air: MessageReader<crate::creatures::AirJumped>,
     mut dashes: MessageReader<crate::combat::Dashed>,
     bodies: Query<&Kinematics>,
     mut out: MessageWriter<PlaySound>,

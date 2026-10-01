@@ -10,8 +10,8 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use serde::Deserialize;
 
 use super::{Carry, LightSettings, LightSource, LightToggles, PlantedTorch, rgb};
-use crate::actors::animation::HandPos;
-use crate::actors::player::LocalPlayer;
+use crate::creatures::body::animation::HandPos;
+use crate::creatures::player::LocalPlayer;
 use crate::data::assets_dir;
 use crate::magic::runes::Emitter;
 use crate::vfx::Sparks;

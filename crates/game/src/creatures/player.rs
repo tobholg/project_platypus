@@ -9,7 +9,6 @@ use serde::Deserialize;
 use super::Controls;
 use super::brain::RegisterBrain;
 use crate::camera::{CursorWorld, FreeCamera};
-use crate::world::TickSet;
 
 pub struct PlayerPlugin;
 
@@ -28,7 +27,7 @@ impl Plugin for PlayerPlugin {
         app.register_brain::<KeyboardBrain>("keyboard")
             .init_resource::<HeldKeys>()
             .add_systems(PreUpdate, sample_keys)
-            .add_systems(FixedUpdate, keyboard_brain.in_set(TickSet::Intent));
+            .add_systems(FixedUpdate, keyboard_brain.in_set(super::brain::BrainSet));
     }
 }
 

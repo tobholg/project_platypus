@@ -16,8 +16,8 @@ use bevy::prelude::*;
 use platypus_sim::{CellPos, EditReport, Kind, MaterialId, WorldEdit};
 use serde::Deserialize;
 
-use crate::actors::Kinematics;
-use crate::actors::player::LocalPlayer;
+use crate::creatures::Kinematics;
+use crate::creatures::player::LocalPlayer;
 use crate::camera::{CursorWorld, MainCamera};
 use crate::data::{Watched, data_path, load_ron};
 use crate::hands::{DevTools, dev_tools};

@@ -17,7 +17,7 @@ use bevy::prelude::*;
 use serde::Deserialize;
 
 use super::runes::{Carrier, Cast, Payload};
-use crate::actors::Harm;
+use crate::creatures::Harm;
 use crate::gear::{Stat, Stats};
 
 /// What a spell (or a focus) is of.

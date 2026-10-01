@@ -9,8 +9,8 @@
 
 use bevy::prelude::*;
 
-use crate::actors::Health;
-use crate::actors::player::LocalPlayer;
+use crate::creatures::Health;
+use crate::creatures::player::LocalPlayer;
 use crate::hands::items::{Inventory, Items, Use};
 use crate::world::{TICK_HZ, TickSet};
 
@@ -61,7 +61,7 @@ fn quick_heal(keys: Res<ButtonInput<KeyCode>>, dev: Res<crate::hands::DevTools>,
     }
 }
 
-type Drinker<'a> = (&'a mut Inventory, &'a Health, Option<&'a PotionSickness>, &'a crate::actors::Kinematics);
+type Drinker<'a> = (&'a mut Inventory, &'a Health, Option<&'a PotionSickness>, &'a crate::creatures::Kinematics);
 
 /// A potion drunk: one gone from its slot, the mending begun, sickness
 /// after.

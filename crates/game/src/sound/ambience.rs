@@ -184,7 +184,7 @@ fn listen(time: Res<Time<Real>>, sim: Res<SimWorld>, day: Option<Res<crate::ligh
 
 /// The player's rocket boots firing (the exhaust, `Rocketed`, each tick
 /// they do).
-fn rockets(time: Res<Time<Real>>, mut fired: MessageReader<crate::actors::Rocketed>, player: Query<Entity, With<crate::actors::player::LocalPlayer>>, mut heard: ResMut<Heard>) {
+fn rockets(time: Res<Time<Real>>, mut fired: MessageReader<crate::creatures::Rocketed>, player: Query<Entity, With<crate::creatures::player::LocalPlayer>>, mut heard: ResMut<Heard>) {
     heard.rocket = (heard.rocket - time.delta_secs()).max(0.0);
     let me = player.single().ok();
     for r in fired.read() {

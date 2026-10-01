@@ -16,7 +16,7 @@ use bevy::prelude::*;
 use platypus_physics::{Body, Locomotion, MovementStats};
 use serde::Deserialize;
 
-use super::animation::{Animator, CreatureSprite};
+use super::body::animation::{Animator, CreatureSprite};
 use super::brain::BrainRegistry;
 use super::{Controls, Creature, FallDamage, Health, Kinematics, MoveStats, Team};
 use crate::data::{Watched, data_path, load_ron};
@@ -68,7 +68,12 @@ pub struct CreatureDef {
     /// The art as written (what's worn is drawn onto it: `gear::look`).
     #[serde(skip)]
     pub art_file: Option<Arc<platypus_art::ArtFile>>,
+    /// How it decides (`brain/`): none said, it stands still (`idle`).
+    #[serde(default = "idle")]
     pub brain: BrainDef,
+    /// Code of its own, for what data can't say (`custom/`).
+    #[serde(default)]
+    pub custom: Option<super::custom::CustomDef>,
     /// Draw order among creatures.
     #[serde(default = "default_z")]
     pub z: f32,
@@ -111,7 +116,7 @@ pub struct CreatureDef {
     pub corpse: bool,
     /// Procedural legs and a body seen from above (spiders: `legs.rs`).
     #[serde(default)]
-    pub legs: Option<super::legs::LegsDef>,
+    pub legs: Option<super::body::legs::LegsDef>,
     /// It gives off light (a firefly): its colour, how bright, and a pulse
     /// (seconds a swell; 0: steady).
     #[serde(default)]
@@ -144,6 +149,10 @@ fn one_f() -> f32 {
 
 fn default_z() -> f32 {
     10.0
+}
+
+fn idle() -> BrainDef {
+    BrainDef { kind: "idle".into(), params: None }
 }
 
 fn red_blood() -> String {
@@ -200,6 +209,11 @@ pub struct Creatures {
 impl Creatures {
     pub fn get(&self, kind: &str) -> Option<&Arc<CreatureDef>> {
         self.defs.get(kind)
+    }
+
+    /// Every creature file, by id.
+    pub fn all(&self) -> impl Iterator<Item = (&String, &Arc<CreatureDef>)> {
+        self.defs.iter()
     }
 
     fn load_all(dir: &std::path::Path) -> HashMap<String, Arc<CreatureDef>> {
@@ -404,7 +418,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             e.insert((f, super::FallTrack::default()));
         }
         if let Some(r) = &def.regen {
-            e.insert(crate::creatures::Regenerates::new(r));
+            e.insert(crate::creatures::nature::Regenerates::new(r));
         }
         e.insert((crate::combat::Wielding(def.weapon.clone()), crate::gear::Equipment::default(), crate::gear::Stats::default()));
         if let Some(s) = def.stamina {
@@ -427,17 +441,17 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             }
         }
         if let Some(m) = blood {
-            e.insert(super::hurt::Bleeds(m));
+            e.insert(super::body::hurt::Bleeds(m));
         }
         if let Some(sprite) = sprite {
             // Rigs with an arm that aims get a second sprite for it.
-            if def.rig.as_ref().is_some_and(|r| r.fans.contains_key(super::animation::FRONT_ARM)) {
-                e.insert(super::animation::HandPos::default());
-                e.with_child((sprite.clone(), Transform::default(), Visibility::Hidden, super::animation::ArmSprite));
+            if def.rig.as_ref().is_some_and(|r| r.fans.contains_key(super::body::animation::FRONT_ARM)) {
+                e.insert(super::body::animation::HandPos::default());
+                e.with_child((sprite.clone(), Transform::default(), Visibility::Hidden, super::body::animation::ArmSprite));
             }
             e.with_child((sprite, Transform::default(), CreatureSprite));
             if let Some(eyes) = eyes {
-                e.with_child((eyes, Transform::from_xyz(0.0, 0.0, super::animation::Z_EYES - def.z), super::animation::CreatureEyes, super::animation::Blinks));
+                e.with_child((eyes, Transform::from_xyz(0.0, 0.0, super::body::animation::Z_EYES - def.z), super::body::animation::CreatureEyes, super::body::animation::Blinks));
             }
         }
         let id = e.id();
@@ -449,6 +463,15 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
                 error!("creature `{kind}`: {err}");
             }
         });
+        // Then its own code, if it has any.
+        if let Some(c) = &def.custom {
+            world.resource_scope(|world, registry: Mut<super::custom::CustomRegistry>| {
+                let mut e = world.entity_mut(id);
+                if let Err(err) = registry.insert(c, &mut e) {
+                    error!("creature `{kind}`: {err}");
+                }
+            });
+        }
         then(&mut world.entity_mut(id));
     });
 }

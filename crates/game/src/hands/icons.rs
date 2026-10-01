@@ -13,7 +13,7 @@ use platypus_sim::{Cell, MaterialTable};
 use serde::Deserialize;
 
 use super::items::{ItemId, Items, Use};
-use crate::actors::creature::Creatures;
+use crate::creatures::def::Creatures;
 use crate::data::{Watched, data_path, load_ron};
 use crate::world::SimWorld;
 

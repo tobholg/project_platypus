@@ -36,9 +36,9 @@ use platypus_sim::cell::flags;
 use platypus_sim::rng::Rng;
 use platypus_sim::{CellPos, Kind, Landing, MaterialId, Particle, World, WorldEdit};
 
-use crate::actors::elements::{Coated, Coatings, catch_fire};
-use crate::actors::player::LocalPlayer;
-use crate::actors::{Health, Kinematics};
+use crate::creatures::body::elements::{Coated, Coatings, catch_fire};
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::{Health, Kinematics};
 use crate::data::{Watched, data_path, load_ron};
 
 use crate::light::LightSource;
@@ -244,10 +244,10 @@ impl Plugin for MagicPlugin {
             .init_resource::<void::Pairs>()
             .init_resource::<void::Recent>()
             .init_resource::<void::VoidCanvas>()
-            .add_systems(FixedUpdate, (recharge, request, fire, void::stasis, fly, void::act, well::channel, conjure::hold).chain().in_set(TickSet::Bodies).before(crate::actors::hurt::notice))
+            .add_systems(FixedUpdate, (recharge, request, fire, void::stasis, fly, void::act, well::channel, conjure::hold).chain().in_set(TickSet::Bodies).before(crate::creatures::body::hurt::notice))
             .add_systems(
                 FixedUpdate,
-                (void::pin, void::through, void::age).chain().in_set(TickSet::Bodies).after(void::act).after(crate::actors::move_creatures).after(crate::props::fly),
+                (void::pin, void::through, void::age).chain().in_set(TickSet::Bodies).after(void::act).after(crate::creatures::move_creatures).after(crate::props::fly),
             )
             .add_systems(PostUpdate, void::draw.before(bevy::transform::TransformSystems::Propagate));
     }
@@ -310,7 +310,7 @@ fn request(
         let st = stats.get(r.caster).unwrap_or(&none);
         let quick = st.mult(crate::gear::Stat::CastSpeed);
         let (delay, recharge) = (&(def.delay / quick), &(def.recharge / quick));
-        let (power, harm) = (spells::power(st, def.element), def.element.map_or(crate::actors::Harm::Blunt, |e| e.harm()));
+        let (power, harm) = (spells::power(st, def.element), def.element.map_or(crate::creatures::Harm::Blunt, |e| e.harm()));
         let casts = book.casts(r.spell);
         let w = wands.0.entry((r.caster, r.spell)).or_default();
         if casts.is_empty() {
@@ -677,7 +677,7 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
                     for (e, k, h, _) in bodies.iter() {
                         let near = (k.body.pos.distance(at) - k.body.half.max_element()).max(0.0) <= radius as f32;
                         if Some(e) == hit || near {
-                            crate::actors::elements::chill(commands, e, &h.nature, None, cold, FROST_CHILL);
+                            crate::creatures::body::elements::chill(commands, e, &h.nature, None, cold, FROST_CHILL);
                         }
                     }
                 }

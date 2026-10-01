@@ -23,8 +23,8 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use platypus_physics::{Body, Locomotion};
 use serde::Deserialize;
 
-use crate::actors::Kinematics;
-use crate::actors::player::LocalPlayer;
+use crate::creatures::Kinematics;
+use crate::creatures::player::LocalPlayer;
 use crate::data::{Watched, data_path, load_ron};
 use crate::hands::items::{Inventory, Items, Stack};
 use crate::progress::{Progress, Toast};

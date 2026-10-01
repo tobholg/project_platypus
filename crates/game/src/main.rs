@@ -12,7 +12,6 @@
 //!   it's given), `PLATYPUS_FRESH=1`
 //!   to start it over: see `save.rs`
 
-mod actors;
 mod archery;
 mod arena;
 mod backdrop;
@@ -130,7 +129,7 @@ fn main() {
             rigid::RigidPlugin,
             particles::ParticlesPlugin,
             sky::SkyPlugin,
-            actors::ActorsPlugin,
+            creatures::CreaturesPlugin,
             debug::DebugPlugin,
             fx::FxPlugin,
             hud::HudPlugin,
@@ -138,7 +137,7 @@ fn main() {
             scenario::ScenarioPlugin,
         ))
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
-        .add_plugins((reset::ResetPlugin, clock::ClockPlugin, gold::GoldPlugin, kick::KickPlugin, traps::TrapsPlugin, talk::TalkPlugin, events::EventsPlugin, creatures::CreaturesPlugin))
+        .add_plugins((reset::ResetPlugin, clock::ClockPlugin, gold::GoldPlugin, kick::KickPlugin, traps::TrapsPlugin, talk::TalkPlugin, events::EventsPlugin))
         .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin))
         .add_plugins(sound::SoundPlugin)
         .add_plugins(backdrop::BackdropPlugin)

@@ -22,7 +22,7 @@
 //! - Something smaller than you (a chest, a body, a bat): it's pulled to you.
 //!
 //! The rope is drawn a cell at a time, on its own canvas (`canvas.rs`).
-//! `physics::tether` holds the body at its end; `actors::move_creatures`
+//! `physics::tether` holds the body at its end; `creatures::move_creatures`
 //! applies it, between steering and moving.
 
 use bevy::prelude::*;
@@ -31,7 +31,7 @@ use platypus_sim::CellPos;
 use serde::Deserialize;
 
 use super::Equipment;
-use crate::actors::{Controls, Creature, Kinematics, MoveStats, WorldGrid};
+use crate::creatures::{Controls, Creature, Kinematics, MoveStats, WorldGrid};
 use crate::camera::MainCamera;
 use crate::canvas::{Canvas, CanvasSprite, CanvasSprites};
 use crate::combat::Hit;
@@ -378,7 +378,7 @@ pub fn rope(
                         sounds.write(crate::sound::PlaySound::at("hook_bite", point));
                         if let (Anchor::Body { entity, .. }, Some((_, true))) = (anchor, body) {
                             let dir = vel.normalize_or(Vec2::X);
-                            hits.write(Hit { target: entity, damage: def.damage, harm: crate::actors::Harm::Pierce, knock: Vec2::ZERO, stun: 0.0, at: point, dir, weight: 0.4, crit: false });
+                            hits.write(Hit { target: entity, damage: def.damage, harm: crate::creatures::Harm::Pierce, knock: Vec2::ZERO, stun: 0.0, at: point, dir, weight: 0.4, crit: false });
                         }
                         if !leash && let Ok((_, mut k, ..)) = things.get_mut(e) {
                             // (Hooked on in the air: your jumps back, as on landing.)

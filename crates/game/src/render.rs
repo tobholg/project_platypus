@@ -18,7 +18,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use platypus_sim::cell::flags;
 use platypus_sim::{CHUNK, Cell, CellPos, ChunkPos, Climate, Kind, MaterialTable};
 
-use crate::actors::Kinematics;
+use crate::creatures::Kinematics;
 use crate::camera::MainCamera;
 use crate::world::{ChunkLoader, SimWorld};
 

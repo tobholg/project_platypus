@@ -6,9 +6,9 @@
 use bevy::prelude::*;
 use platypus_sim::MaterialId;
 
-use super::Health;
-use super::Kinematics;
-use super::player::LocalPlayer;
+use crate::creatures::Health;
+use crate::creatures::Kinematics;
+use crate::creatures::player::LocalPlayer;
 use crate::world::SimWorld;
 
 /// What a creature bleeds (from its RON `blood`).

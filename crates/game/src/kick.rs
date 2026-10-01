@@ -14,8 +14,8 @@
 use bevy::prelude::*;
 use platypus_sim::CellPos;
 
-use crate::actors::player::LocalPlayer;
-use crate::actors::{Creature, Kinematics};
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::{Creature, Kinematics};
 use crate::props::Thrown;
 use crate::world::SimWorld;
 
@@ -64,8 +64,8 @@ fn kick(
     mut kicks: MessageReader<Kick>,
     mut sim: ResMut<SimWorld>,
     mut timing: Local<(f32, Option<f32>)>,
-    mut player: Query<(&Kinematics, Option<&mut crate::actors::animation::Animator>), With<LocalPlayer>>,
-    mut things: Query<(Entity, &mut Kinematics, Option<&Creature>, Has<Thrown>, Has<crate::actors::explosive::Explosive>, Option<&crate::actors::Team>), Without<LocalPlayer>>,
+    mut player: Query<(&Kinematics, Option<&mut crate::creatures::body::animation::Animator>), With<LocalPlayer>>,
+    mut things: Query<(Entity, &mut Kinematics, Option<&Creature>, Has<Thrown>, Has<crate::creatures::custom::explosive::Explosive>, Option<&crate::creatures::Team>), Without<LocalPlayer>>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut sparks: ResMut<crate::vfx::Sparks>,
@@ -117,10 +117,10 @@ fn kick(
             let k = &mut *k;
             k.loco.knock(&mut k.body, Vec2::new(facing * THROW.x, THROW.y) * 0.9, 0.8);
             hit += 1;
-        } else if creature.is_some() && !team.is_some_and(|t| t.allied(crate::actors::Team::Player)) {
+        } else if creature.is_some() && !team.is_some_and(|t| t.allied(crate::creatures::Team::Player)) {
             // A blow (as a blade's: poise and heft decide how far it goes).
             let knock = Vec2::new(facing * KNOCK.x, KNOCK.y);
-            hits.write(crate::combat::Hit { target: e, damage: DAMAGE, harm: crate::actors::Harm::Blunt, knock, stun: STUN, at: p, dir: Vec2::new(facing, 0.0), weight: DAMAGE / 12.0, crit: false });
+            hits.write(crate::combat::Hit { target: e, damage: DAMAGE, harm: crate::creatures::Harm::Blunt, knock, stun: STUN, at: p, dir: Vec2::new(facing, 0.0), weight: DAMAGE / 12.0, crit: false });
             hit += 1;
         }
     }
@@ -135,7 +135,7 @@ fn kick(
 }
 
 /// The kick's clip, let go once it's played.
-fn kick_done(mut q: Query<&mut crate::actors::animation::Animator, With<LocalPlayer>>) {
+fn kick_done(mut q: Query<&mut crate::creatures::body::animation::Animator, With<LocalPlayer>>) {
     for mut anim in &mut q {
         if anim.force.as_deref() == Some("kick") && anim.finished() {
             anim.force = None;

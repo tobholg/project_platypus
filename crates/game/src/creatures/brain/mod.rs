@@ -1,6 +1,6 @@
 //! Brains decide; bodies obey. A brain is a component holding its settings
 //! (deserialised from the creature file's `brain.params`) plus systems in
-//! `TickSet::Intent` that write `Controls`.
+//! `BrainSet` (in `TickSet::Intent`) that write `Controls`.
 //!
 //! Adding a behaviour:
 //! ```ignore
@@ -9,23 +9,37 @@
 //! struct Hopper { interval: f32 }
 //!
 //! app.register_brain::<Hopper>("hopper")
-//!    .add_systems(FixedUpdate, hop.in_set(TickSet::Intent));
+//!    .add_systems(FixedUpdate, hop.in_set(BrainSet));
 //! ```
 //! and any creature file can then say `brain: (kind: "hopper", params: (interval: 1.5))`.
+
+pub mod ai;
+pub mod critters;
+pub mod monsters;
+pub mod villager;
 
 use std::collections::HashMap;
 
 use bevy::prelude::*;
 use serde::de::DeserializeOwned;
 
-use super::creature::BrainDef;
+use super::def::BrainDef;
 
 type Inserter = Box<dyn Fn(&mut EntityWorldMut, Option<&ron::Value>) -> Result<(), String> + Send + Sync>;
 
 #[derive(Resource, Default)]
 pub struct BrainRegistry(HashMap<String, Inserter>);
 
+/// When brains decide: each tick, in `TickSet::Intent` (creatures' own
+/// code thinks after them: `custom::CustomSet::Think`).
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct BrainSet;
+
 impl BrainRegistry {
+    pub fn has(&self, name: &str) -> bool {
+        self.0.contains_key(name)
+    }
+
     pub fn insert(&self, def: &BrainDef, entity: &mut EntityWorldMut) -> Result<(), String> {
         let inserter = self.0.get(&def.kind).ok_or_else(|| {
             let mut known: Vec<_> = self.0.keys().cloned().collect();
@@ -62,6 +76,6 @@ pub struct BrainPlugin;
 
 impl Plugin for BrainPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<BrainRegistry>();
+        app.init_resource::<BrainRegistry>().configure_sets(FixedUpdate, BrainSet.in_set(crate::world::TickSet::Intent));
     }
 }

@@ -13,9 +13,9 @@
 
 use bevy::prelude::*;
 
-use crate::actors::player::LocalPlayer;
-use crate::actors::spawn::{PendingSpawn, SpawnQueue, Spawned};
-use crate::actors::{Creature, Kinematics};
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::spawn::{PendingSpawn, SpawnQueue, Spawned};
+use crate::creatures::{Creature, Kinematics};
 use crate::dev::DevAction;
 
 pub struct ResetPlugin;
@@ -137,11 +137,11 @@ fn reset(world: &mut World) {
             world.resource_mut::<SpawnQueue>().0.push(PendingSpawn { kind: "player".into(), x: start.x, from_y: start.y + 120, local_player: true });
             world.resource_mut::<crate::world::SimWorld>().world.set_tick(0);
             world.resource_mut::<crate::light::Daylight>().skipped = 0.0;
-            world.resource_mut::<crate::actors::PlayerDeaths>().0 = 0;
+            world.resource_mut::<crate::creatures::PlayerDeaths>().0 = 0;
         }
     }
     // (The enemies about the start, as a new world has them.)
-    world.resource_scope(|world, mut queue: Mut<SpawnQueue>| crate::actors::spawn::queue_start_enemies(world.resource::<crate::world::SimWorld>(), &mut queue));
+    world.resource_scope(|world, mut queue: Mut<SpawnQueue>| crate::creatures::spawn::queue_start_enemies(world.resource::<crate::world::SimWorld>(), &mut queue));
     world.write_message(crate::save::SaveNow);
     info!("dev: reset {} ({chunks} chunks let go, {n} things taken away)", if which == Reset::World { "the world" } else { "everything" });
 }

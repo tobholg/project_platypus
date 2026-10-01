@@ -30,9 +30,9 @@ use bevy::prelude::*;
 use platypus_sim::{CellPos, ChunkPos, MaterialId, store};
 use serde::{Deserialize, Serialize};
 
-use crate::actors::player::LocalPlayer;
-use crate::actors::spawn::Spawned;
-use crate::actors::{Creature, Health, Kinematics};
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::spawn::Spawned;
+use crate::creatures::{Creature, Health, Kinematics};
 use crate::gear::Equipment;
 use crate::hands::chests::{Chest, Chests};
 use crate::hands::corpses::Corpse;
@@ -461,7 +461,7 @@ fn load_world(
     }
     for c in &things.creatures {
         let (hp, keeps) = (c.hp, c.keeps);
-        crate::actors::creature::spawn_creature(&mut commands, &c.kind, Vec2::new(c.feet.0, c.feet.1), move |e| {
+        crate::creatures::def::spawn_creature(&mut commands, &c.kind, Vec2::new(c.feet.0, c.feet.1), move |e| {
             if let Some(mut h) = e.get_mut::<Health>() {
                 h.hp = hp.min(h.max);
             }

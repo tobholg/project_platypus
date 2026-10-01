@@ -15,11 +15,11 @@
 
 use bevy::prelude::*;
 
-use crate::actors::dummy::Dummy;
-use crate::actors::player::LocalPlayer;
-use crate::actors::spawn::SpawnKind;
-use crate::actors::{Creature, Kinematics, Team};
-use crate::actors::animation::HandPos;
+use crate::creatures::custom::dummy::Dummy;
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::spawn::SpawnKind;
+use crate::creatures::{Creature, Kinematics, Team};
+use crate::creatures::body::animation::HandPos;
 use crate::data::data_path;
 use crate::world::SimWorld;
 
@@ -123,7 +123,7 @@ impl Plugin for ArenaPlugin {
 /// Every pack (`packs.ron`), then every creature kind there's a file for
 /// (but the player).
 fn kinds() -> Vec<String> {
-    let mut v: Vec<String> = crate::actors::spawn::packs().into_keys().collect();
+    let mut v: Vec<String> = crate::creatures::spawn::packs().into_keys().collect();
     v.extend(creature_kinds());
     v
 }

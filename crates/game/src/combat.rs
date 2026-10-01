@@ -28,8 +28,8 @@ use platypus_art::Pixels;
 use platypus_sim::{CellPos, Kind, WorldEdit};
 use serde::Deserialize;
 
-use crate::actors::animation::{Aiming, Animator, HandPos, pixel_at};
-use crate::actors::{Health, Kinematics, Team};
+use crate::creatures::body::animation::{Aiming, Animator, HandPos, pixel_at};
+use crate::creatures::{Health, Kinematics, Team};
 use crate::data::{Watched, assets_dir, data_path, load_ron};
 use crate::magic::runes::Emitter;
 use crate::vfx::Sparks;
@@ -48,8 +48,8 @@ impl Plugin for CombatPlugin {
             .add_systems(PreUpdate, hit_stop)
             .add_systems(FixedUpdate, (start_swings, dodge, stamina).chain().after(TickSet::Intent).before(TickSet::Bodies))
             .add_systems(FixedUpdate, (touch, swing, apply_hits).chain().after(TickSet::Bodies).before(TickSet::Cells))
-            .add_systems(Update, down_pose.before(crate::actors::animation::animate))
-            .add_systems(Update, (reload, draw).chain().after(crate::actors::animation::animate));
+            .add_systems(Update, down_pose.before(crate::creatures::body::animation::animate))
+            .add_systems(Update, (reload, draw).chain().after(crate::creatures::body::animation::animate));
     }
 }
 
@@ -101,7 +101,7 @@ pub struct SwingDef {
     pub damage: f32,
     /// Its kind of hurt (an axe slashes, a pickaxe pierces).
     #[serde(default = "slash")]
-    pub harm: crate::actors::Harm,
+    pub harm: crate::creatures::Harm,
     pub knock: f32,
     pub stun: f32,
     pub moves: Vec<MoveDef>,
@@ -142,7 +142,7 @@ pub struct WeaponDef {
     /// What kind of hurt its moves do (a move may say otherwise: a thrust
     /// pierces).
     #[serde(default = "slash")]
-    pub harm: crate::actors::Harm,
+    pub harm: crate::creatures::Harm,
     pub knock: f32,
     pub stun: f32,
     pub rest: f32,
@@ -158,7 +158,7 @@ pub struct MoveDef {
     pub name: String,
     /// Its kind of hurt, if not its weapon's.
     #[serde(default)]
-    pub harm: Option<crate::actors::Harm>,
+    pub harm: Option<crate::creatures::Harm>,
     pub from: f32,
     pub to: f32,
     #[serde(default)]
@@ -511,7 +511,7 @@ pub struct Hit {
     pub target: Entity,
     pub damage: f32,
     /// What kind of hurt it is (a blade's slash, a point's pierce, a blow).
-    pub harm: crate::actors::Harm,
+    pub harm: crate::creatures::Harm,
     /// The knockback (cells/s) and how long it takes control away.
     pub knock: Vec2,
     pub stun: f32,
@@ -543,7 +543,7 @@ pub struct Touch {
     /// What kind of hurt: a bite pierces (the default), a slime's touch
     /// is a blow, an acid slime's burns.
     #[serde(default = "pierce")]
-    pub harm: crate::actors::Harm,
+    pub harm: crate::creatures::Harm,
     #[serde(default)]
     pub knock: f32,
     #[serde(default)]
@@ -554,12 +554,12 @@ pub struct Touch {
     rest: f32,
 }
 
-fn slash() -> crate::actors::Harm {
-    crate::actors::Harm::Slash
+fn slash() -> crate::creatures::Harm {
+    crate::creatures::Harm::Slash
 }
 
-fn pierce() -> crate::actors::Harm {
-    crate::actors::Harm::Pierce
+fn pierce() -> crate::creatures::Harm {
+    crate::creatures::Harm::Pierce
 }
 
 fn touch_every() -> f32 {
@@ -738,7 +738,7 @@ fn hit_stop(real: Res<Time<Real>>, mut stop: ResMut<HitStop>, mut virt: ResMut<T
 
 // ---- systems ----
 
-type Fighter<'a> = (&'a Kinematics, &'a Wielding, Option<&'a mut Swing>, Option<&'a mut Combo>, Option<&'a mut Stamina>, Option<&'a crate::actors::Controls>);
+type Fighter<'a> = (&'a Kinematics, &'a Wielding, Option<&'a mut Swing>, Option<&'a mut Combo>, Option<&'a mut Stamina>, Option<&'a crate::creatures::Controls>);
 type Holder<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Swing>, Option<&'a crate::archery::Nocked>, Option<&'a Aiming>, Option<&'a Children>);
 
 /// Swings begin (or queue the next) when asked for.
@@ -837,7 +837,7 @@ pub fn guard(mut commands: Commands, mut q: Query<(Entity, &mut Invulnerable, &m
     }
 }
 
-type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>, Option<&'a crate::actors::Controls>);
+type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>, Option<&'a crate::creatures::Controls>);
 type Target<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a Animator>, Has<Invulnerable>);
 
 /// Swings move on a tick; while they sweep, they hit.
@@ -852,7 +852,7 @@ fn swing(
     mut swingers: Query<Swinger>,
     targets: Query<Target, With<Health>>,
     items: Option<Res<crate::hands::items::Items>>,
-    coatings: Res<crate::actors::elements::Coatings>,
+    coatings: Res<crate::creatures::body::elements::Coatings>,
     spells: Query<(Entity, &crate::magic::Spell)>,
     (mut stop, mut trauma, mut sounds): (ResMut<HitStop>, ResMut<crate::fx::Trauma>, MessageWriter<crate::sound::PlaySound>),
 ) {
@@ -1025,7 +1025,7 @@ fn swing(
                 let push = (Vec2::new(away.x, 0.0).normalize_or(Vec2::X * facing) + Vec2::new(0.0, 0.45)).normalize() * knock;
                 hits.write(Hit { target: e, damage, harm: mv.harm.unwrap_or(def.harm), knock: push, stun: def.stun, at, dir: dir(a), weight: damage / 12.0, crit });
                 if let Some(name) = &coat {
-                    crate::actors::elements::stain(&mut commands, e, name, 1.0, &coatings);
+                    crate::creatures::body::elements::stain(&mut commands, e, name, 1.0, &coatings);
                 }
                 if s.down && !s.bounced {
                     s.bounced = true;
@@ -1130,7 +1130,7 @@ fn slam(
     }
 }
 
-type Struck<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a mut Sturdy>, &'a crate::actors::MoveStats, Has<Invulnerable>, Has<crate::actors::player::LocalPlayer>);
+type Struck<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a mut Sturdy>, &'a crate::creatures::MoveStats, Has<Invulnerable>, Has<crate::creatures::player::LocalPlayer>);
 
 /// What a hit does: damage, knockback and stun, sparks where it struck, a
 /// moment of hit-stop (longer, harder hits), a shake.

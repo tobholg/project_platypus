@@ -13,9 +13,9 @@
 use bevy::prelude::*;
 use platypus_sim::{CellPos, Kind, WorldEdit};
 
-use crate::actors::animation::{Aiming, Animator, HandPos, pixel_at};
-use crate::actors::player::LocalPlayer;
-use crate::actors::{Health, Kinematics, Team};
+use crate::creatures::body::animation::{Aiming, Animator, HandPos, pixel_at};
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::{Health, Kinematics, Team};
 use crate::combat::{Hit, Invulnerable, Stamina, Turned, Weapons, Wielding};
 use crate::hands::items::{Inventory, Items};
 use crate::light::LightSource;
@@ -29,7 +29,7 @@ impl Plugin for ArcheryPlugin {
         app.add_message::<DrawBow>()
             .add_systems(FixedUpdate, nock.after(TickSet::Intent).before(TickSet::Bodies))
             .add_systems(FixedUpdate, fly.after(TickSet::Bodies).before(TickSet::Cells))
-            .add_systems(Update, (take_back, show).after(crate::actors::animation::animate));
+            .add_systems(Update, (take_back, show).after(crate::creatures::body::animation::animate));
     }
 }
 
@@ -257,7 +257,7 @@ fn fly(
                     continue;
                 }
                 let push = (Vec2::new(dir.x, 0.0).normalize_or(Vec2::X) + Vec2::new(0.0, 0.3)).normalize() * a.knock;
-                hits.write(Hit { target: te, damage: a.damage, harm: crate::actors::Harm::Pierce, knock: push, stun: a.stun, at: tip, dir, weight: a.damage / 12.0, crit: a.crit });
+                hits.write(Hit { target: te, damage: a.damage, harm: crate::creatures::Harm::Pierce, knock: push, stun: a.stun, at: tip, dir, weight: a.damage / 12.0, crit: a.crit });
                 if a.burning > 0.0 {
                     sim.world.apply_edit(&WorldEdit::Ignite { center: p, radius: 1 });
                 }

@@ -21,9 +21,9 @@ use bevy::sprite::{Anchor, Text2dShadow};
 use bevy::text::TextBounds;
 use std::collections::HashMap;
 
-use crate::actors::player::LocalPlayer;
-use crate::actors::villager::{Routine, TALK_NEAR, Villager};
-use crate::actors::{Health, Kinematics};
+use crate::creatures::player::LocalPlayer;
+use crate::creatures::brain::villager::{Routine, TALK_NEAR, Villager};
+use crate::creatures::{Health, Kinematics};
 use crate::camera::CursorWorld;
 use crate::gold::Gold;
 use crate::hands::icons::Icons;
