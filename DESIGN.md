@@ -754,7 +754,10 @@ live in. The arc, in order:
      the seed and the day for every kind; live within 700 cells, otherwise
      put into the land as its chunks load; the villagers tell the last two
      days' news. Falling stars first: a streak, a blast, a crater with a
-     glowing meteorite and mithril, star wisps on a leash keeping it.
+     glowing meteorite and mithril, star wisps on a leash keeping it. Raids:
+     a warband marching in from out of sight (the villagers hide at home),
+     or holes in the houses while you're away; the village mends itself out
+     of view by the hour (the guide takes gold to have it done by morning).
 5. **A start worth starting in**: a wide, flattened plain round the spawn
    (±300 cells, forest or plains), a village a short walk away (the
    structure system's rooms: timber houses, a well, a smithy, a path).

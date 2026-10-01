@@ -152,7 +152,7 @@ fn spawn_panel(mut commands: Commands) {
         ("Lightning   N", DevAction::Lightning(None)),
         ("+3 hours   M", DevAction::Later),
         ("A day ahead", DevAction::DayAhead),
-        ("A falling star", DevAction::Event),
+        ("An event (star, raid)", DevAction::Event),
         ("Lighting on/off   K", DevAction::Lighting),
         ("Light: beam, big, torch   L", DevAction::Flashlight),
         ("Plant a torch   G", DevAction::PlantTorch(None)),

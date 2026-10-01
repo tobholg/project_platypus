@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -4165,7 +4165,7 @@ fn shop_script(
         1 => {
             if let Some((e, v, _)) = people.iter().find(|(_, v, r)| v.role == *role && r.talking) {
                 keys.release(KeyCode::KeyD);
-                *shop = crate::talk::open_for(e, v, &items);
+                *shop = crate::talk::open_for(e, v, &items, false);
                 open.0 = true;
                 *step = 2;
                 *at = t;
@@ -4329,7 +4329,7 @@ fn star_script(
             info!("star: the player at x {:.0}, health {:.0}", k.body.pos.x, health.hp);
             if away {
                 let day = clock.now - 0.125;
-                clock.events.push(crate::events::Happening { kind: crate::events::EventKind::Star, day, x: *x, stage: crate::events::Stage::Coming });
+                clock.events.push(crate::events::Happening { kind: crate::events::EventKind::Star, day, x: *x, stage: crate::events::Stage::Coming, from: 0 });
             } else {
                 k.loco.facing = -1.0;
                 acts.write(crate::dev::DevAction::Event);
@@ -4361,6 +4361,93 @@ fn star_script(
             let stage = clock.events.iter().find(|h| h.x == *x).map(|h| format!("{:?}", h.stage)).unwrap_or_default();
             info!("star: at x {x} ({stage}): {m} meteorite cells, {o} mithril ore, {wisps} star wisps; the player's health {:.0}; the news: {:?}", health.hp, news.0.first());
             *step = 3;
+        }
+        _ => {}
+    }
+}
+
+type Raiders = (With<crate::actors::ai::Marching>, Without<LocalPlayer>);
+
+/// `raid` (a generated world): a raid on the village from the east, the
+/// player standing at the start; every 2 s, the raiders (alive, how far
+/// from the village's middle), the villagers (alive, running) and the
+/// player's health. `PLATYPUS_RAID=away`: one that came hours ago while no
+/// one was there: the cells of the village missing; then the player 700
+/// cells west and 3 hours on, three times (mending); then the guide paid
+/// and 3 hours on.
+#[allow(clippy::too_many_arguments)]
+fn raid_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut clock: ResMut<crate::clock::WorldClock>,
+    mut village: ResMut<crate::events::Village>,
+    news: Res<crate::events::News>,
+    mut acts: MessageWriter<crate::dev::DevAction>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(&mut Kinematics, &crate::actors::Health), With<LocalPlayer>>,
+    raiders: Query<(&Kinematics, &crate::actors::Health), Raiders>,
+    folk: Query<(&crate::actors::villager::Villager, &crate::actors::villager::Routine, &crate::actors::Health)>,
+    mut state: Local<(u8, f32, f32)>,
+) {
+    if s.name != "raid" {
+        return;
+    }
+    let t = s.elapsed;
+    let Ok((mut k, health)) = player.single_mut() else { return };
+    let Some((lo, hi)) = sim.generator.village() else { return };
+    let mid = (lo.x + hi.x) / 2;
+    let away = std::env::var("PLATYPUS_RAID").is_ok_and(|v| v == "away");
+    let (step, at, next_log) = &mut *state;
+    if *step == 0 && t > 2.0 {
+        let day = if away { clock.now - 0.1 } else { clock.now };
+        clock.events.push(crate::events::Happening { kind: crate::events::EventKind::Raid, day, x: mid, stage: crate::events::Stage::Coming, from: 1 });
+        *step = 1;
+        *at = t;
+        return;
+    }
+    if !away {
+        if *step == 1 && t >= *next_log {
+            *next_log = t.floor() + 2.0;
+            let r: Vec<String> = raiders.iter().map(|(rk, rh)| format!("{:+.0}{}", rk.body.pos.x - mid as f32, if rh.hp <= 0.0 { "†" } else { "" })).collect();
+            let v: Vec<String> = folk.iter().map(|(v, r, h)| format!("{}{}", v.role, if h.hp <= 0.0 { " dead" } else if r.fleeing { " running" } else { "" })).collect();
+            info!("raid: t {t:.0}: raiders at [{}] from the village's middle; villagers [{}]; the player's health {:.0}", r.join(" "), v.join(", "), health.hp);
+        }
+        return;
+    }
+    match *step {
+        1 if t > *at + 1.0 => {
+            info!("raid: away: {} cells of the village missing; the news: {:?}", village.missing, news.0.first());
+            k.body.pos.x = mid as f32 - 700.0;
+            k.prev_pos = k.body.pos;
+            *step = 2;
+            *at = t;
+        }
+        2..=4 if t > *at + 1.5 => {
+            acts.write(crate::dev::DevAction::Later);
+            *step += 1;
+            *at = t;
+            info!("raid: away, {} hours on", (*step - 2) * 3);
+        }
+        5 if t > *at + 1.5 => {
+            info!("raid: away, 9 hours on: the guide paid");
+            village.paid = true;
+            acts.write(crate::dev::DevAction::Later);
+            *step = 6;
+            *at = t;
+        }
+        6 if t > *at + 1.5 => {
+            // (Back, walking in as anyone would: what's due is done as the
+            // village loads, before it's in view.)
+            k.body.pos.x = mid as f32 - 450.0;
+            k.prev_pos = k.body.pos;
+            keys.press(KeyCode::KeyD);
+            *step = 7;
+            *at = t;
+        }
+        7 if k.body.pos.x > mid as f32 - 60.0 || t > *at + 9.0 => {
+            keys.release(KeyCode::KeyD);
+            info!("raid: away, paid, walked back into the village (x {:+.0}): {} cells missing; village {}..{}", k.body.pos.x - mid as f32, village.missing, lo.x - mid, hi.x - mid);
+            *step = 8;
         }
         _ => {}
     }

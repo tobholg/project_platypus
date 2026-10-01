@@ -594,7 +594,7 @@ DESIGN §13 items 5–6.
   land. A building is a text grid at block resolution in the rooms' legend
   (`#` planks, `%` brick, `W` water, `,` a window: no back wall, the sky
   shows through, `.` open) and a letter a
-  person or a station on the row over the floor: `g` guide, `s` smith, `h`
+  person (a keeper: `Spawn::Keeper`) or a station on the row over the floor: `g` guide, `s` smith, `h`
   healer, `m` merchant, `A` anvil, `F` furnace, `B` workbench). Doors are
   open five blocks high at both ends. Today: a guide's house, a well, a
   smithy (anvil, furnace), a healer's, a merchant's (workbench).
@@ -1140,7 +1140,32 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   `swooper` brain with a `leash` (80 cells round their crater, kept as their
   `clock::Keeps`, so a save keeps it too): they dive at you only near it and
   drift back when you go. They don't come back once killed. 20–45 gold.
-- Dev panel: "A falling star" (one now, 140 cells ahead). Scenario `star`.
+- **Raids**: 30 % of evenings (17:00–21:00), on the village, from the west
+  or east. Live (someone within 700 cells of the village): the `raiders`
+  pack (packs.ron: three orcs, an archer) comes in 330 cells beyond the
+  middle of the view on its side, out of sight, `ai::Marching` on the
+  village's middle (with no one to fight, a marcher walks there instead of
+  wandering, and stops); "A warband is coming from the east!". Away: five
+  holes (radius 4) knocked in the houses as the village's chunks load
+  (what they held up comes down too). News: "Orcs came at us from the east
+  this evening. We're mending what they broke."
+- The village mends toward what the seed made (`events::mend`): its
+  walls, roofs and floors (planks, brick, platforms, front and back) where
+  there's nothing now (or ash, charcoal, rubble), from the bottom up, out of
+  view (300 × 170 cells round a player), chunk by chunk as each is in
+  (hourly, just after a raid, and as one loads: coming back, what's due is
+  done before it's in view). An allowance of 40 cells a game hour accrues
+  whether it's loaded or not (a raid starts it again); paid for, all of it.
+  What's been built over stays. The guide offers "Mend the village by
+  morning" for 60 gold while there's mending owed (`talk.rs`).
+- Villagers are keepers (`Spawn::Keeper`): one killed comes back three days
+  later, out of sight. A villager with a monster near runs home and hides
+  there (`villager::Hiding`): monsters let it be (their targeting skips it)
+  till the danger's gone.
+- The world generator gives the village's bounds (`ChunkGenerator::village`).
+- Dev panel: "An event (star, raid)": each in turn, now (a star 140 cells
+  ahead; a raid on the village from the side you face). Scenarios `star`,
+  `raid`.
 
 ## 4. Rendering
 
@@ -1429,7 +1454,8 @@ DESIGN §13 item 6.
   each), `buys`, `heals` (gold for a full heal). New people are new files.
 - Its day: home is where it was first put. By day it potters within
   `wander` of it, a new spot every 3–9 s; from 20:30 to 06:30 it walks home
-  and stays. A monster within `flee_range` (110) and it runs from it. A
+  and stays. A monster within `flee_range` (110) and it runs home and hides
+  there (monsters let it be) till it's gone. Health 140, quick (68). A
   player within 36 cells and it stops and faces them (`Routine.talking`).
 - The talking villager nearest the player says its lines, one every 4.5 s,
   in a bubble over its head (world text, shadowed, wrapped); walk off and

@@ -3,6 +3,8 @@
 // on the ground under it. Edit freely; it's read at every spawn.
 {
     "warband": [("troll", 1), ("orc", 3), ("orc_archer", 2)],
+    // A raid on the village (events.rs).
+    "raiders": [("orc", 3), ("orc_archer", 1)],
     "trolls": [("troll", 2)],
     "orcs": [("orc", 4), ("orc_archer", 2)],
     "spiders": [("spider", 2), ("spiderling", 4), ("egg_sac", 2)],

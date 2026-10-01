@@ -67,17 +67,33 @@ pub struct WanderState {
     attacking: bool,
 }
 
-type Walker<'a> = (Entity, &'a MeleeWalker, &'a Kinematics, &'a mut Controls, Option<&'a mut WanderState>, Has<crate::combat::Swing>);
+/// What a brain may go after: where it is, and on whose side.
+type Hunted<'a> = (&'a Kinematics, &'a Team);
+
+/// On the march (a raid: `events.rs`): with no one to fight, it walks to
+/// this x rather than wandering, and stops there.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Marching(pub f32);
+
+/// Near enough the march's end (cells): it's there.
+const MARCHED: f32 = 24.0;
+
+/// Which way a march goes from `x` (0 there, or not marching).
+fn march(m: Option<&Marching>, x: f32) -> f32 {
+    m.map_or(0.0, |m| if (m.0 - x).abs() < MARCHED { 0.0 } else { (m.0 - x).signum() })
+}
+
+type Walker<'a> = (Entity, &'a MeleeWalker, &'a Kinematics, &'a mut Controls, Option<&'a mut WanderState>, Has<crate::combat::Swing>, Option<&'a Marching>);
 
 fn melee_walker(
     mut commands: Commands,
     sim: Res<SimWorld>,
-    players: Query<(&Kinematics, &Team), Without<MeleeWalker>>,
+    players: Query<Hunted, (Without<MeleeWalker>, Without<super::villager::Hiding>)>,
     mut q: Query<Walker>,
     mut swings: MessageWriter<crate::combat::MeleeRequest>,
 ) {
     let tick = sim.world.tick();
-    for (entity, brain, k, mut controls, wander, swinging) in &mut q {
+    for (entity, brain, k, mut controls, wander, swinging, marching) in &mut q {
         let Some(mut w) = wander else {
             commands.entity(entity).insert(WanderState::default());
             continue;
@@ -119,6 +135,7 @@ fn melee_walker(
                 }
                 if swinging || d.x.abs() <= brain.keep_distance { 0.0 } else { d.x.signum() }
             }
+            None if march(marching, pos.x) != 0.0 => march(marching, pos.x),
             None => {
                 if tick >= w.until_tick {
                     let mut rng = Rng::seeded(&[sim.world.seed(), tick, entity.to_bits()]);
@@ -168,19 +185,19 @@ pub struct ArcherState {
     drawing: Option<u64>,
 }
 
-type Bowman<'a> = (Entity, &'a Archer, &'a Kinematics, &'a mut Controls, Option<&'a mut ArcherState>, &'a crate::combat::Wielding);
+type Bowman<'a> = (Entity, &'a Archer, &'a Kinematics, &'a mut Controls, Option<&'a mut ArcherState>, &'a crate::combat::Wielding, Option<&'a Marching>);
 
 fn archer(
     mut commands: Commands,
     sim: Res<SimWorld>,
     weapons: Option<Res<crate::combat::Weapons>>,
-    players: Query<(&Kinematics, &Team), Without<Archer>>,
+    players: Query<Hunted, (Without<Archer>, Without<super::villager::Hiding>)>,
     mut q: Query<Bowman>,
     mut draws: MessageWriter<crate::archery::DrawBow>,
 ) {
     let Some(weapons) = weapons else { return };
     let tick = sim.world.tick();
-    for (e, brain, k, mut controls, state, wielding) in &mut q {
+    for (e, brain, k, mut controls, state, wielding, marching) in &mut q {
         let Some(mut st) = state else {
             commands.entity(e).insert(ArcherState::default());
             continue;
@@ -194,7 +211,11 @@ fn archer(
             .min_by(|a, b| a.0.distance_squared(pos).total_cmp(&b.0.distance_squared(pos)));
         let bow = wielding.0.as_deref().and_then(|id| weapons.bow_index(id)).map(|i| weapons.bow(i).clone());
         let (Some((t, tv)), Some(bow)) = (target, bow) else {
-            controls.0.move_x = 0.0;
+            // (On the march: on with it, a wall jumped.)
+            let go = march(marching, pos.x);
+            let c = &k.loco.contacts;
+            controls.0.move_x = go;
+            controls.0.jump = ((go > 0.0 && c.wall_right) || (go < 0.0 && c.wall_left)) && k.loco.grounded() && !controls.0.jump;
             controls.0.aim = Vec2::ZERO;
             continue;
         };

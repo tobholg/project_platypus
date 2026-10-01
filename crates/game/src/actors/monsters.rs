@@ -34,7 +34,8 @@ impl Plugin for MonstersPlugin {
     }
 }
 
-type Players<'w, 's> = Query<'w, 's, (&'static Kinematics, &'static Team)>;
+/// What monsters hunt (a villager hiding at home is let be).
+type Players<'w, 's> = Query<'w, 's, (&'static Kinematics, &'static Team), Without<super::villager::Hiding>>;
 
 /// The nearest player within `range` of `pos`.
 fn nearest(players: &Players, pos: Vec2, range: f32) -> Option<Vec2> {

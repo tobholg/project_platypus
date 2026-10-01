@@ -15,12 +15,19 @@
 //!   it lands; a crater with a glowing meteorite (`meteorite`) and mithril
 //!   ore in it, star wisps keeping it. Away, the crater's there when you
 //!   come. Seen from far off, a streak toward where it fell.
+//! - **Raids** (some evenings): a warband marches on the village. There, it
+//!   walks in from out of sight (`ai::Marching`) and you fight it; the
+//!   villagers run (one killed comes back days later: they're keepers).
+//!   Away, holes are knocked in the houses. Either way the village mends
+//!   itself toward what it was, out of view, over the hours after; the guide
+//!   takes gold to have it done by morning (`Village`).
 
 use bevy::prelude::*;
 use platypus_sim::rng::hash;
 use platypus_sim::{CellPos, MaterialId, WorldEdit};
 use serde::{Deserialize, Serialize};
 
+use crate::actors::ai::Marching;
 use crate::actors::player::LocalPlayer;
 use crate::actors::creature::spawn_creature;
 use crate::actors::spawn::find_ground;
@@ -34,8 +41,9 @@ pub struct EventsPlugin;
 impl Plugin for EventsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<News>()
+            .init_resource::<Village>()
             .add_message::<Begins>()
-            .add_systems(Update, (timetable, dev_event, begin, land, stars, news).chain().after(crate::clock::ClockSet));
+            .add_systems(Update, (timetable, dev_event, begin, land, stars, mend, news).chain().after(crate::clock::ClockSet));
     }
 }
 
@@ -43,6 +51,7 @@ impl Plugin for EventsPlugin {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EventKind {
     Star,
+    Raid,
 }
 
 /// Where a happening is up to.
@@ -64,11 +73,33 @@ pub struct Happening {
     pub day: f64,
     pub x: i32,
     pub stage: Stage,
+    /// Which way it comes from (a raid: -1 west, 1 east).
+    #[serde(default)]
+    pub from: i32,
 }
 
 /// What the villagers have to tell (newest first).
 #[derive(Resource, Default)]
 pub struct News(pub Vec<String>);
+
+/// The village's mending: cells of it missing (its walls, roofs, floors,
+/// as the seed made them; in the chunks last looked at), whether the guide's
+/// been paid to have it done, and how many cells may be put back (it
+/// accrues by the hour, loaded or not; a raid starts it again).
+#[derive(Resource, Default)]
+pub struct Village {
+    pub missing: u32,
+    pub paid: bool,
+    allowance: f64,
+    /// The game hour last looked at, the day the allowance was last added
+    /// to, and a tick to look again at (after a raid's edits are in).
+    hour: i64,
+    accrued: Option<f64>,
+    look: Option<u64>,
+}
+
+/// What the guide takes to have the village mended by morning (gold).
+pub const MEND_PRICE: u32 = 60;
 
 /// Someone this near (cells across) and it happens live.
 const LIVE_NEAR: i32 = 700;
@@ -101,24 +132,54 @@ const CRATER_HEAT: (i32, i16) = (10, 700);
 const GUARDS: usize = 2;
 const GUARD_UP: f32 = 22.0;
 
+/// Raids: the chance an evening has one; it comes between these hours.
+const RAID_CHANCE: f64 = 0.3;
+const RAID_HOURS: (f64, f64) = (17.0, 21.0);
+/// Live, the warband comes in from this far beyond the middle of the view
+/// (cells: out of sight, in the loaded world).
+const RAID_FROM: f32 = 330.0;
+/// Away, holes knocked in the houses: how many, how big.
+const RAID_HOLES: u64 = 5;
+const RAID_HOLE: i32 = 4;
+/// Mending: cells put back a game hour (a raid's damage is mended in about
+/// half a day), and what's this near a player (across, up) is in view and
+/// waits.
+const MEND_PER_HOUR: usize = 40;
+const VIEW: (i32, i32) = (280, 170);
+
+/// Where things happen from: the spawn, and the village's bounds.
+#[derive(Clone, Copy)]
+pub struct Places {
+    pub spawn_x: i32,
+    pub village: Option<(CellPos, CellPos)>,
+}
+
 /// The whole days rolled (the timetable), each kind's chance a day: what
 /// happens on day `d`, if anything, and when and where.
-pub fn roll(seed: u64, spawn_x: i32, d: i64, kind: EventKind) -> Option<(f64, i32)> {
+pub fn roll(seed: u64, places: Places, d: i64, kind: EventKind) -> Option<(f64, i32, i32)> {
     let unit = |salt: u64| (hash(&[seed, d as u64, kind as u64, salt, 0xE7E1]) % 1_000_000) as f64 / 1_000_000.0;
+    let side = if unit(2) < 0.5 { -1 } else { 1 };
     match kind {
         EventKind::Star => {
             if unit(0) >= STAR_CHANCE {
                 return None;
             }
             let hour = STAR_HOURS.0 + (STAR_HOURS.1 - STAR_HOURS.0) * unit(1);
-            let side = if unit(2) < 0.5 { -1.0 } else { 1.0 };
             let off = STAR_FROM.0 + (STAR_FROM.1 - STAR_FROM.0) * unit(3);
-            Some((d as f64 + hour / 24.0, spawn_x + (side * off) as i32))
+            Some((d as f64 + hour / 24.0, places.spawn_x + side * off as i32, 0))
+        }
+        EventKind::Raid => {
+            let (lo, hi) = places.village?;
+            if unit(0) >= RAID_CHANCE {
+                return None;
+            }
+            let hour = RAID_HOURS.0 + (RAID_HOURS.1 - RAID_HOURS.0) * unit(1);
+            Some((d as f64 + hour / 24.0, (lo.x + hi.x) / 2, side))
         }
     }
 }
 
-const KINDS: [EventKind; 1] = [EventKind::Star];
+const KINDS: [EventKind; 2] = [EventKind::Star, EventKind::Raid];
 
 /// One begins, and whether someone's there.
 #[derive(Message, Clone, Debug)]
@@ -144,12 +205,13 @@ fn timetable(sim: Res<SimWorld>, mut clock: ResMut<WorldClock>, loaders: Query<(
     if clock.events_rolled == 0 {
         clock.events_rolled = today;
     }
-    let (seed, spawn_x) = (sim.world.seed(), sim.generator.spawn_point().x);
+    let seed = sim.world.seed();
+    let places = Places { spawn_x: sim.generator.spawn_point().x, village: sim.generator.village() };
     while clock.events_rolled <= today {
         let d = clock.events_rolled + 1;
         for kind in KINDS {
-            if let Some((day, x)) = roll(seed, spawn_x, d, kind) {
-                clock.events.push(Happening { kind, day, x, stage: Stage::Coming });
+            if let Some((day, x, from)) = roll(seed, places, d, kind) {
+                clock.events.push(Happening { kind, day, x, stage: Stage::Coming, from });
             }
         }
         clock.events_rolled = d;
@@ -166,17 +228,26 @@ fn timetable(sim: Res<SimWorld>, mut clock: ResMut<WorldClock>, loaders: Query<(
     clock.events.retain(|h| h.stage != Stage::Done || now - h.day < KEEP_DAYS);
 }
 
-/// The dev panel's "A falling star": one now, a little ahead of you.
-fn dev_event(mut acts: MessageReader<crate::dev::DevAction>, mut clock: ResMut<WorldClock>, player: Query<&crate::actors::Kinematics, With<LocalPlayer>>) {
+/// The dev panel's "An event": one now, near you, each kind in turn (a
+/// star a little ahead; a raid on the village).
+fn dev_event(mut acts: MessageReader<crate::dev::DevAction>, mut next: Local<usize>, sim: Res<SimWorld>, mut clock: ResMut<WorldClock>, player: Query<&crate::actors::Kinematics, With<LocalPlayer>>) {
     for a in acts.read() {
         if !matches!(a, crate::dev::DevAction::Event) {
             continue;
         }
         let Ok(k) = player.single() else { continue };
-        let ahead = if k.loco.facing >= 0.0 { 1.0 } else { -1.0 };
-        let x = (k.body.pos.x + ahead * 140.0) as i32;
+        let kind = KINDS[*next % KINDS.len()];
+        *next += 1;
         let day = clock.now;
-        clock.events.push(Happening { kind: EventKind::Star, day, x, stage: Stage::Coming });
+        let ahead = if k.loco.facing >= 0.0 { 1 } else { -1 };
+        let (x, from) = match kind {
+            EventKind::Star => ((k.body.pos.x + ahead as f32 * 140.0) as i32, 0),
+            EventKind::Raid => match sim.generator.village() {
+                Some((lo, hi)) => ((lo.x + hi.x) / 2, ahead),
+                None => continue,
+            },
+        };
+        clock.events.push(Happening { kind, day, x, stage: Stage::Coming, from });
     }
 }
 
@@ -200,6 +271,7 @@ fn begin(
     day: Res<Daylight>,
     cam: Single<&Transform, With<crate::camera::MainCamera>>,
     mut toasts: MessageWriter<crate::progress::Toast>,
+    mut village: ResMut<Village>,
 ) {
     for b in begins.read() {
         let h = &b.h;
@@ -228,6 +300,28 @@ fn begin(
                         toasts.write(crate::progress::Toast(format!("A star falls, far to the {}", if west { "west" } else { "east" })));
                     }
                 }
+            }
+            EventKind::Raid => {
+                if !b.live {
+                    // (Away: the damage is done as its chunks load: `land`.)
+                    continue;
+                }
+                // In from out of sight on its side, marching on the village.
+                let c = cam.translation.truncate();
+                let start = c.x + h.from as f32 * RAID_FROM;
+                let members: Vec<String> = crate::actors::spawn::packs().remove("raiders").unwrap_or_default().into_iter().flat_map(|(k, n)| std::iter::repeat_n(k, n as usize)).collect();
+                for (i, kind) in members.into_iter().enumerate() {
+                    let x = (start + h.from as f32 * i as f32 * 12.0) as i32;
+                    let hint = sim.generator.surface_hint(x).unwrap_or(c.y as i32);
+                    let Some(ground) = find_ground(&sim.world, x, hint + 80, 300) else { continue };
+                    let target = h.x as f32;
+                    spawn_creature(&mut commands, &kind, Vec2::new(x as f32 + 0.5, ground as f32), move |e| {
+                        e.insert(Marching(target));
+                    });
+                }
+                toasts.write(crate::progress::Toast(format!("A warband is coming from the {}!", if h.from < 0 { "west" } else { "east" })));
+                village.look = Some(sim.world.tick() + 2);
+                village.allowance = 0.0;
             }
         }
     }
@@ -319,7 +413,26 @@ fn guard(commands: &mut Commands, x: i32, ground: i32) {
 /// A star that fell where no one was: the crater's dug into the land once
 /// its chunks are in round it (they load beyond the screen's edge), quietly
 /// (no blast to hear): the hole, the scorched rim, what's in it, its keepers.
-fn land(mut commands: Commands, mut sim: ResMut<SimWorld>, mut clock: ResMut<WorldClock>) {
+fn land(mut commands: Commands, mut sim: ResMut<SimWorld>, mut clock: ResMut<WorldClock>, mut village: ResMut<Village>) {
+    // A raid where no one was: holes knocked in the houses, once they're in.
+    if let Some((lo, hi)) = sim.generator.village() {
+        let seed = sim.world.seed();
+        for h in clock.events.iter_mut().filter(|h| h.kind == EventKind::Raid && h.stage == Stage::Away) {
+            let corners = [(lo.x, lo.y), (hi.x, lo.y), (lo.x, hi.y), (hi.x, hi.y)];
+            if corners.iter().any(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_none()) {
+                continue;
+            }
+            for i in 0..RAID_HOLES {
+                let u = |salt: u64| (hash(&[seed, h.day.to_bits(), i, salt, 0x4A1D]) % 10_000) as i32;
+                let at = CellPos::new(lo.x + u(0) % (hi.x - lo.x).max(1), lo.y + 8 + u(1) % (hi.y - lo.y - 8).max(1));
+                sim.queue(WorldEdit::Dig { center: at, radius: RAID_HOLE, max_hardness: 200 });
+            }
+            h.stage = Stage::Done;
+            village.look = Some(sim.world.tick() + 2);
+            village.allowance = 0.0;
+            info!("events: a raid on the village while no one was there; {RAID_HOLES} holes knocked in its houses");
+        }
+    }
     for h in clock.events.iter_mut().filter(|h| h.kind == EventKind::Star && h.stage == Stage::Away) {
         let x = h.x;
         let Some(hint) = sim.generator.surface_hint(x) else { continue };
@@ -337,6 +450,93 @@ fn land(mut commands: Commands, mut sim: ResMut<SimWorld>, mut clock: ResMut<Wor
     }
 }
 
+/// The village mends itself toward what the seed made. What's missing of
+/// its walls, roofs and floors (as they were made: planks, brick, platforms;
+/// in front and behind) where there's nothing now (or ash, charcoal,
+/// rubble) is put back, out of view, as the allowance allows
+/// (`MEND_PER_HOUR` a game hour; all of it, paid for). Looked at chunk by
+/// chunk, each as it's in: hourly, just after a raid, and as one loads (it
+/// loads beyond the screen's edge: coming back, what's due is done before
+/// you see it). What's been built over stays.
+fn mend(
+    mut sim: ResMut<SimWorld>,
+    clock: Res<WorldClock>,
+    mut village: ResMut<Village>,
+    loaded: Res<crate::world::LoadedChunks>,
+    loaders: Query<(&GlobalTransform, &ChunkLoader)>,
+) {
+    let Some((lo, hi)) = sim.generator.village() else { return };
+    if !clock.started {
+        return;
+    }
+    // The allowance, by the hour.
+    let accrued = *village.accrued.get_or_insert(clock.now);
+    let hours = ((clock.now - accrued) * 24.0).floor().max(0.0);
+    village.accrued = Some(accrued + hours / 24.0);
+    village.allowance = (village.allowance + hours * MEND_PER_HOUR as f64).min(1e6);
+    let (c0, c1) = (lo.chunk(), hi.chunk());
+    let hour = (clock.now * 24.0).floor() as i64;
+    let looking = village.look.is_some_and(|t| sim.world.tick() >= t);
+    let came_in = loaded.0.iter().any(|(p, _)| (c0.x..=c1.x).contains(&p.x) && (c0.y..=c1.y).contains(&p.y));
+    if hour == village.hour && !looking && !came_in {
+        return;
+    }
+    village.hour = hour;
+    village.look = None;
+    let mats = sim.world.materials().clone();
+    let made: Vec<MaterialId> = ["planks", "brick", "platform"].iter().filter_map(|n| mats.id(n)).collect();
+    let gone: Vec<MaterialId> = ["ash", "charcoal", "gravel", "fire", "smoke"].iter().filter_map(|n| mats.id(n)).collect();
+    let empty = |c: platypus_sim::Cell| c.is_air() || gone.contains(&c.material);
+    let near: Vec<Vec2> = players(&loaders);
+    let in_view = |p: CellPos| near.iter().any(|v| (p.x - v.x as i32).abs() < VIEW.0 && (p.y - v.y as i32).abs() < VIEW.1);
+    // What's missing, front and back, in the chunks that are in (each made
+    // again from the seed).
+    let mut missing: Vec<(CellPos, platypus_sim::Cell, bool)> = Vec::new();
+    let mut all_in = true;
+    for cy in c0.y..=c1.y {
+        for cx in c0.x..=c1.x {
+            let pos = platypus_sim::ChunkPos::new(cx, cy);
+            if sim.world.get(pos.origin()).is_none() {
+                all_in = false;
+                continue;
+            }
+            let made_chunk = sim.generator.generate(pos);
+            let origin = made_chunk.pos.origin();
+            for (i, (front, back)) in made_chunk.cells().iter().zip(made_chunk.background()).enumerate() {
+                let p = origin.offset((i % platypus_sim::CHUNK as usize) as i32, (i / platypus_sim::CHUNK as usize) as i32);
+                if p.x < lo.x || p.x > hi.x || p.y < lo.y || p.y > hi.y {
+                    continue;
+                }
+                if made.contains(&front.material) && sim.world.get(p).is_some_and(empty) {
+                    missing.push((p, *front, false));
+                }
+                if made.contains(&back.material) && sim.world.get_bg(p).is_some_and(|b| b.is_air()) {
+                    missing.push((p, *back, true));
+                }
+            }
+        }
+    }
+    // From the bottom up (a wall before its roof).
+    missing.sort_by_key(|(p, _, _)| (p.y, p.x));
+    let most = if village.paid { usize::MAX } else { village.allowance as usize };
+    let mut put = 0;
+    for &(p, cell, back) in missing.iter().filter(|(p, _, _)| !in_view(*p)).take(most) {
+        if back {
+            sim.world.set_bg(p, cell);
+        } else {
+            sim.world.set(p, cell);
+        }
+        put += 1;
+    }
+    village.allowance = (village.allowance - put as f64).max(0.0);
+    village.missing = (missing.len() - put) as u32;
+    // (All of it whole: nothing owed, nothing saved up.)
+    if all_in && village.missing == 0 {
+        village.paid = false;
+        village.allowance = 0.0;
+    }
+}
+
 /// What the villagers say happened: the last few days', newest first.
 fn news(clock: Res<WorldClock>, sim: Res<SimWorld>, mut news: ResMut<News>) {
     let village = sim.generator.spawn_point().x;
@@ -350,6 +550,10 @@ fn news(clock: Res<WorldClock>, sim: Res<SimWorld>, mut news: ResMut<News>) {
             let (dir, far) = (if h.x < village { "west" } else { "east" }, walk((h.x - village).abs()));
             let line = match h.kind {
                 EventKind::Star => format!("A star fell {when}, {far} {dir} of here. Something keeps it."),
+                EventKind::Raid => {
+                    let when = if now - h.day < 0.6 { "this evening" } else { "the other evening" };
+                    format!("Orcs came at us from the {} {when}. We're mending what they broke.", if h.from < 0 { "west" } else { "east" })
+                }
             };
             (h.day, line)
         })
@@ -374,15 +578,22 @@ mod tests {
     #[test]
     fn the_timetable_is_the_same_however_it_is_read() {
         // Rolled twice, the same; some nights a star, not most.
-        let a: Vec<_> = (0..200).filter_map(|d| roll(7, 65_536, d, EventKind::Star)).collect();
-        let b: Vec<_> = (0..200).filter_map(|d| roll(7, 65_536, d, EventKind::Star)).collect();
+        let places = Places { spawn_x: 65_536, village: None };
+        let a: Vec<_> = (0..200).filter_map(|d| roll(7, places, d, EventKind::Star)).collect();
+        let b: Vec<_> = (0..200).filter_map(|d| roll(7, places, d, EventKind::Star)).collect();
         assert_eq!(a, b);
         assert!((40..100).contains(&a.len()), "{} stars in 200 nights", a.len());
-        for (day, x) in a {
+        for (day, x, _) in a {
             let hour = day.fract() * 24.0;
             assert!(!(5.0..21.0).contains(&hour), "a star by day ({hour:.1} h)");
             let off = (x - 65_536).abs() as f64;
             assert!((STAR_FROM.0 - 1.0..=STAR_FROM.1).contains(&off), "{off} cells from the spawn");
         }
+        // No village, no raids; with one, some evenings, at it.
+        assert!((0..50).all(|d| roll(7, places, d, EventKind::Raid).is_none()));
+        let village = Places { village: Some((CellPos::new(65_600, 25_470), CellPos::new(65_800, 25_530))), ..places };
+        let raids: Vec<_> = (0..200).filter_map(|d| roll(7, village, d, EventKind::Raid)).collect();
+        assert!((30..90).contains(&raids.len()), "{} raids in 200 days", raids.len());
+        assert!(raids.iter().all(|&(day, x, from)| x == 65_700 && from.abs() == 1 && (17.0..21.0).contains(&(day.fract() * 24.0))));
     }
 }

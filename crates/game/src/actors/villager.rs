@@ -7,7 +7,8 @@
 //!
 //! Its day: it lives where it was first put (its home, `Home`). By day it
 //! potters about within `wander` of it; from dusk to dawn it goes home and
-//! stays there. A monster near (`flee_range`) and it runs from it. A player
+//! stays there. A monster near (`flee_range`) and it runs home and hides
+//! there (`Hiding`: monsters let it be) till the danger's gone. A player
 //! near (`TALK_NEAR`) and it stops and turns to them.
 
 use bevy::prelude::*;
@@ -65,6 +66,14 @@ impl Default for Villager {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Home(pub Vec2);
 
+/// Hiding at home from a monster near: monsters let it be (`ai.rs`,
+/// `monsters.rs`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Hiding;
+
+/// Within this of home (cells across), it's home.
+const AT_HOME: f32 = 4.0;
+
 /// A villager's day: where it's heading, till when; and whether it's
 /// talking to a player (near) or running.
 #[derive(Component, Default, Debug)]
@@ -75,7 +84,7 @@ pub struct Routine {
     pub fleeing: bool,
 }
 
-type Living<'a> = (Entity, &'a Villager, &'a Kinematics, &'a mut Controls, Option<&'a Home>, Option<&'a mut Routine>);
+type Living<'a> = (Entity, &'a Villager, &'a Kinematics, &'a mut Controls, Option<&'a Home>, Option<&'a mut Routine>, Has<Hiding>);
 
 fn live(
     mut commands: Commands,
@@ -88,7 +97,7 @@ fn live(
     let tick = sim.world.tick();
     let hour = day.time * 24.0;
     let night = !(HOME_UNTIL..HOME_FROM).contains(&hour);
-    for (e, v, k, mut controls, home, routine) in &mut q {
+    for (e, v, k, mut controls, home, routine, hiding) in &mut q {
         let pos = k.body.pos;
         let (Some(home), Some(mut r)) = (home, routine) else {
             commands.entity(e).insert((Home(pos), Routine { target: pos.x, ..default() }));
@@ -99,9 +108,19 @@ fn live(
         r.fleeing = threat.is_some();
         r.talking = player.is_some() && !r.fleeing;
         controls.0.aim = Vec2::ZERO;
-        let move_x = if let Some(t) = threat {
-            // Away from it, full tilt.
-            if pos.x >= t.x { 1.0 } else { -1.0 }
+        // Home and hidden while there's danger; out again once it's gone.
+        let home_now = threat.is_some() && (home.0.x - pos.x).abs() < AT_HOME;
+        if home_now != hiding {
+            if home_now {
+                commands.entity(e).insert(Hiding);
+            } else {
+                commands.entity(e).remove::<Hiding>();
+            }
+        }
+        let move_x = if threat.is_some() {
+            // Home, full tilt.
+            let d = home.0.x - pos.x;
+            if d.abs() < AT_HOME { 0.0 } else { d.signum() }
         } else if let Some(p) = player {
             controls.0.aim = p + Vec2::new(0.0, 6.0);
             0.0

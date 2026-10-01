@@ -3,9 +3,10 @@
 (
     name: "Healer",
     size: (7, 16),
-    health: 80,
+    // (Tough and quick: a raid is a fight you can come to, not over in a moment.)
+    health: 140,
     team: Villager,
-    movement: (run_speed: 56, jump_height: 22, air_jumps: 0, step_height: 3, dash_speed: 0),
+    movement: (run_speed: 68, jump_height: 22, air_jumps: 0, step_height: 3, dash_speed: 0),
     stamina: 60,
     poise: 10,
     heft: 1.0,

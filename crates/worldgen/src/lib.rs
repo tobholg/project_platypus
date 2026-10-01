@@ -104,6 +104,12 @@ pub trait ChunkGenerator: Send + Sync {
         Vec::new()
     }
 
+    /// The village's bounds (bottom-left and top-right cells, its
+    /// foundations to its roofs), if the world has one.
+    fn village(&self) -> Option<(CellPos, CellPos)> {
+        None
+    }
+
     /// Whether the world has life of its own: enemies about the start,
     /// critters coming and going. (Not the arena: only what's put there.)
     fn wild(&self) -> bool {
@@ -1518,6 +1524,13 @@ impl ChunkGenerator for TerrainGen {
         self.plan.climate
     }
 
+    fn village(&self) -> Option<(CellPos, CellPos)> {
+        let v = self.plan.structures.list.iter().find(|s| s.kind == StructureKind::Village)?;
+        let lo = v.pieces.iter().fold((i32::MAX, i32::MAX), |(x, y), p| (x.min(p.x), y.min(p.y)));
+        let hi = v.pieces.iter().fold((i32::MIN, i32::MIN), |(x, y), p| (x.max(p.x + p.w * structures::BLOCK), y.max(p.y + p.h * structures::BLOCK)));
+        Some((CellPos::new(lo.0, lo.1), CellPos::new(hi.0 - 1, hi.1 - 1)))
+    }
+
     fn landmarks(&self) -> Vec<(CellPos, String)> {
         self.lair_of
             .iter()
@@ -2267,7 +2280,8 @@ mod tests {
             let (x0, _, x1, _) = v.bbox();
             let (p0, p1, _) = g.plan.plain;
             assert!(x0 > g.spawn_point().x && x0 >= p0 && x1 <= p1, "{preset:?}: the village ({x0}..{x1}) on the plain ({p0}..{p1}), right of the spawn");
-            let people: Vec<&str> = v.spawns.iter().filter_map(|s| if let Spawn::Creature(k) = s.2 { Some(k) } else { None }).collect();
+            // (Keepers: one killed comes back, as a lair's do.)
+            let people: Vec<&str> = v.spawns.iter().filter_map(|s| if let Spawn::Keeper(k) = s.2 { Some(k) } else { None }).collect();
             let stations = v.spawns.iter().filter(|s| matches!(s.2, Spawn::Station(_))).count();
             assert_eq!(people, ["guide", "smith", "healer", "merchant"], "{preset:?}");
             assert_eq!(stations, 3, "{preset:?}: an anvil, a furnace, a workbench");
@@ -2280,7 +2294,7 @@ mod tests {
             let mut found = 0;
             for cx in x0.div_euclid(CHUNK)..=x1.div_euclid(CHUNK) {
                 for cy in (v.site.1 - 64).div_euclid(CHUNK)..=(v.site.1 + 64).div_euclid(CHUNK) {
-                    found += g.generate_with_spawns(ChunkPos::new(cx, cy)).1.iter().filter(|(_, s)| matches!(s, Spawn::Creature(_) | Spawn::Station(_))).count();
+                    found += g.generate_with_spawns(ChunkPos::new(cx, cy)).1.iter().filter(|(_, s)| matches!(s, Spawn::Keeper(_) | Spawn::Station(_))).count();
                 }
             }
             assert_eq!(found, 7, "{preset:?}: each reported once, by its chunk");

@@ -161,7 +161,7 @@ the land as its chunks load), and a scenario.
    crater with a glowing meteorite in it (a new material) and rare ore
    (mithril) at the surface; a guardian (a glowing creature, keeping it).
    Away: the crater's there when you come (dug as its chunks load).
-3. Raids: every few days a warband sets out for the village; there, it
+3. ✅ (villagers run home and hide; killed, they come back as keepers) Raids: every few days a warband sets out for the village; there, it
    walks in from out of sight and you fight it (the villagers run);
    away, houses are damaged, and the village rebuilds toward what it was
    over days, faster for gold (the guide takes it).

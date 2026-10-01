@@ -802,10 +802,10 @@ pub fn village(plain: (i32, i32, i32), mid: i32, ground: &dyn Fn(i32) -> i32) ->
         for &(mx, my, c) in &b.marks {
             let at = ((bx + mx) * BLOCK + 2, (floor + my) * BLOCK);
             let what = match c {
-                'g' => crate::Spawn::Creature("guide"),
-                's' => crate::Spawn::Creature("smith"),
-                'h' => crate::Spawn::Creature("healer"),
-                'm' => crate::Spawn::Creature("merchant"),
+                'g' => crate::Spawn::Keeper("guide"),
+                's' => crate::Spawn::Keeper("smith"),
+                'h' => crate::Spawn::Keeper("healer"),
+                'm' => crate::Spawn::Keeper("merchant"),
                 'A' => crate::Spawn::Station("anvil"),
                 'F' => crate::Spawn::Station("furnace"),
                 _ => crate::Spawn::Station("workbench"),

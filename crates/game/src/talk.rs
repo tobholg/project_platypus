@@ -7,7 +7,8 @@
 //!
 //! Right-click one (near) and its panel opens beside the pack: what it does
 //! for you, for gold. The smith and the merchant sell (click: one; Shift:
-//! ten); the healer heals you whole and sells potions; the merchant buys
+//! ten); the healer heals you whole and sells potions; after a raid the
+//! guide takes gold to have the village mended by morning; the merchant buys
 //! (drop a stack on its slot: half what anyone here sells it for, a gold
 //! apiece for what nobody sells, nothing for plain blocks); the guide lists
 //! its tips. Walk off, or close the pack, and it shuts.
@@ -72,6 +73,8 @@ pub enum Offer {
     Buy { item: ItemId, price: u32 },
     /// Health back, all of it.
     Heal(u32),
+    /// The village mended by morning (the guide's, after a raid).
+    Mend(u32),
 }
 
 /// What the player does at the panel.
@@ -194,6 +197,7 @@ fn open(
     mut shop: ResMut<Shop>,
     mut inv_open: ResMut<InventoryOpen>,
     mut chests: ResMut<crate::hands::chests::Chests>,
+    village: Res<crate::events::Village>,
     player: Query<&Kinematics, With<LocalPlayer>>,
     folk: Query<(Entity, &Villager, &Kinematics)>,
 ) {
@@ -208,14 +212,18 @@ fn open(
     else {
         return;
     };
-    *shop = open_for(e, v, &items);
+    *shop = open_for(e, v, &items, village.missing > 0 && !village.paid);
     chests.open = None;
     inv_open.0 = true;
 }
 
-/// What `v` offers.
-pub fn open_for(e: Entity, v: &Villager, items: &Items) -> Shop {
+/// What `v` offers (`mend`: the village wants mending, unpaid for: the
+/// guide takes gold for it).
+pub fn open_for(e: Entity, v: &Villager, items: &Items, mend: bool) -> Shop {
     let mut offers: Vec<Offer> = v.heals.map(Offer::Heal).into_iter().collect();
+    if mend && v.role == "guide" {
+        offers.push(Offer::Mend(crate::events::MEND_PRICE));
+    }
     for (name, price) in &v.sells {
         match items.id(name) {
             Some(item) => offers.push(Offer::Buy { item, price: *price }),
@@ -300,6 +308,7 @@ fn build_panel(
                         (Some((img.unwrap_or_default(), bg)), def.name.clone())
                     }
                     Offer::Heal(_) => (None, "Heal all your wounds".to_string()),
+                    Offer::Mend(_) => (None, "Mend the village by morning".to_string()),
                 };
                 let square = Node { width: px(32), height: px(32), ..default() };
                 match icon {
@@ -311,7 +320,8 @@ fn build_panel(
                         row.spawn((ImageNode::new(img), square, BackgroundColor(bg)));
                     }
                     None => {
-                        row.spawn((text("♥", 22.0, Color::srgb(0.95, 0.3, 0.35)), Node { width: px(32), justify_content: JustifyContent::Center, ..default() }));
+                        let (mark, color) = if matches!(offer, Offer::Mend(_)) { ("#", Color::srgb(0.75, 0.55, 0.3)) } else { ("♥", Color::srgb(0.95, 0.3, 0.35)) };
+                        row.spawn((text(mark, 22.0, color), Node { width: px(32), justify_content: JustifyContent::Center, ..default() }));
                     }
                 }
                 row.spawn((text(name, 14.0, Color::WHITE), Node { flex_grow: 1.0, ..default() }));
@@ -386,6 +396,7 @@ fn trade(
     mut shop: ResMut<Shop>,
     items: Option<Res<Items>>,
     mut held: ResMut<Held>,
+    mut village: ResMut<crate::events::Village>,
     folk: Query<&Villager>,
     mut player: Query<(&mut Gold, &mut Inventory, &mut Health), With<LocalPlayer>>,
     mut sounds: MessageWriter<PlaySound>,
@@ -430,6 +441,20 @@ fn trade(
                     gold.0 -= price;
                     health.hp = health.max;
                     shop.note = "Healed".into();
+                    true
+                }
+                Some(Offer::Mend(price)) => {
+                    if village.paid || village.missing == 0 {
+                        shop.note = "It's in hand already".into();
+                        continue;
+                    }
+                    if gold.0 < price {
+                        shop.note = "Not enough gold".into();
+                        continue;
+                    }
+                    gold.0 -= price;
+                    village.paid = true;
+                    shop.note = "It'll be mended by morning".into();
                     true
                 }
                 None => continue,
@@ -493,7 +518,7 @@ fn show(
     }
     for (p, mut t, mut c) in &mut prices {
         let price = match shop.offers.get(p.0) {
-            Some(Offer::Buy { price, .. }) | Some(Offer::Heal(price)) => *price,
+            Some(Offer::Buy { price, .. }) | Some(Offer::Heal(price)) | Some(Offer::Mend(price)) => *price,
             None => continue,
         };
         t.0 = format!("{price} g");
