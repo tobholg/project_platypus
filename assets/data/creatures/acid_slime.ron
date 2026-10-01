@@ -23,7 +23,7 @@
     ),
     touch: (harm: acid, damage: 10, knock: 120, stun: 0.15),
     brain: (
-        kind: "hopper",
-        params: (aggro_range: 140, hop_every: 1.2),
+        kind: "hunter",
+        params: (aggro: 140, close: Hop(every: 1.2)),
     ),
 )

@@ -22,8 +22,8 @@
     ),
     touch: (harm: fire, damage: 10, knock: 110, stun: 0.15, every: 0.9),
     brain: (
-        kind: "swooper",
+        kind: "hunter",
         // (It keeps its crater: `leash`.)
-        params: (aggro_range: 90, hover: (14, 30), dive_time: 1.0, dive_every: 2.6, leash: 80),
+        params: (aggro: 90, close: Swoop(hover: (14, 30), dive_time: 1.0, dive_every: 2.6), leash: 80),
     ),
 )

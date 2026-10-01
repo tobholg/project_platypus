@@ -25,7 +25,8 @@
     poise: 8,
     heft: 1.1,
     brain: (
-        kind: "archer",
-        params: (aggro_range: 260, near: 50, far: 140, draw: 0.85, every: 1.8, wobble: 5),
+        kind: "hunter",
+        // (It stands its ground with no one about.)
+        params: (aggro: 260, close: Range(near: 50, far: 140), attack: Shoot(draw: 0.85, every: 1.8, wobble: 5), wander: (speed: 0)),
     ),
 )

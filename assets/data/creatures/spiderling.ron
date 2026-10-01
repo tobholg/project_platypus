@@ -25,7 +25,7 @@
     web_walker: true,
     touch: (damage: 3, knock: 50, every: 0.5),
     brain: (
-        kind: "crawler",
-        params: (aggro_range: 140, pounce_range: 20, pounce_every: 1.0, wander_speed: 0.6),
+        kind: "hunter",
+        params: (aggro: 140, close: Crawl(pounce_range: 20, pounce_every: 1.0), wander: (speed: 0.6)),
     ),
 )

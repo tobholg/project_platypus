@@ -29,8 +29,7 @@
     poise: 16,
     heft: 1.2,
     brain: (
-        kind: "melee_walker",
-        params: (aggro_range: 220, keep_distance: 11, wander_speed: 0.4, wander_every: 2.5, jump_to_reach: 18,
-                 reach: 16, attack_every: 1.1, combo: 2),
+        kind: "hunter",
+        params: (aggro: 220, close: Walk(keep: 11, jump_to_reach: 18), attack: Swing(reach: 16, every: 1.1, combo: 2), wander: (speed: 0.4, every: 2.5)),
     ),
 )

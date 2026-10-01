@@ -83,11 +83,12 @@ pub trait CustomCreature: Component + DeserializeOwned + Default {
 #[derive(Clone, Debug, Deserialize)]
 pub struct CustomDef {
     pub name: String,
+    /// (Kept as written, as a brain's are.)
     #[serde(default)]
-    pub params: Option<ron::Value>,
+    pub params: Option<Box<ron::value::RawValue>>,
 }
 
-type Inserter = Box<dyn Fn(&mut EntityWorldMut, Option<&ron::Value>) -> Result<(), String> + Send + Sync>;
+type Inserter = Box<dyn Fn(&mut EntityWorldMut, Option<&ron::value::RawValue>) -> Result<(), String> + Send + Sync>;
 
 /// The modules, by name.
 #[derive(Resource, Default)]
@@ -96,7 +97,7 @@ pub struct CustomRegistry(HashMap<String, Inserter>);
 impl CustomRegistry {
     pub fn insert(&self, def: &CustomDef, entity: &mut EntityWorldMut) -> Result<(), String> {
         let inserter = self.0.get(&def.name).ok_or_else(|| format!("no custom module `{}` (registered: {})", def.name, self.names().join(", ")))?;
-        inserter(entity, def.params.as_ref())
+        inserter(entity, def.params.as_deref())
     }
 
     pub fn has(&self, name: &str) -> bool {
@@ -121,7 +122,7 @@ impl RegisterCustom for App {
             Box::new(|entity, params| {
                 let c: C = match params {
                     None => C::default(),
-                    Some(v) => v.clone().into_rust().map_err(|e| format!("custom `{}` params: {e}", C::NAME))?,
+                    Some(v) => crate::data::parse_ron(v.get_ron()).map_err(|e| format!("custom `{}` params: {e}", C::NAME))?,
                 };
                 entity.insert(c);
                 Ok(())

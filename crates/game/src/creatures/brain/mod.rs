@@ -2,20 +2,25 @@
 //! (deserialised from the creature file's `brain.params`) plus systems in
 //! `BrainSet` (in `TickSet::Intent`) that write `Controls`.
 //!
-//! Adding a behaviour:
+//! The vocabulary: `hunter` (everything that fights: `hunter.rs` lists its
+//! choices), `critter` (flees), `villager`, `idle`. A new way of fighting
+//! is first a choice in `hunter` (a `Close` or an `Attack`); one creature's
+//! trick is its own code (`custom/`) until a second needs it.
+//!
+//! Adding a brain, when no setting of these will do:
 //! ```ignore
 //! #[derive(Component, Deserialize, Default)]
 //! #[serde(default)]
-//! struct Hopper { interval: f32 }
+//! struct Shepherd { flock: f32 }
 //!
-//! app.register_brain::<Hopper>("hopper")
-//!    .add_systems(FixedUpdate, hop.in_set(BrainSet));
+//! app.register_brain::<Shepherd>("shepherd")
+//!    .add_systems(FixedUpdate, herd.in_set(BrainSet));
 //! ```
-//! and any creature file can then say `brain: (kind: "hopper", params: (interval: 1.5))`.
+//! and any creature file can then say `brain: (kind: "shepherd", params: (flock: 40))`.
 
 pub mod ai;
 pub mod critters;
-pub mod monsters;
+pub mod hunter;
 pub mod villager;
 
 use std::collections::HashMap;
@@ -25,7 +30,7 @@ use serde::de::DeserializeOwned;
 
 use super::def::BrainDef;
 
-type Inserter = Box<dyn Fn(&mut EntityWorldMut, Option<&ron::Value>) -> Result<(), String> + Send + Sync>;
+type Inserter = Box<dyn Fn(&mut EntityWorldMut, Option<&ron::value::RawValue>) -> Result<(), String> + Send + Sync>;
 
 #[derive(Resource, Default)]
 pub struct BrainRegistry(HashMap<String, Inserter>);
@@ -46,7 +51,7 @@ impl BrainRegistry {
             known.sort();
             format!("unknown brain `{}` (registered: {})", def.kind, known.join(", "))
         })?;
-        inserter(entity, def.params.as_ref())
+        inserter(entity, def.params.as_deref())
     }
 }
 
@@ -62,7 +67,7 @@ impl RegisterBrain for App {
             Box::new(move |entity, params| {
                 let brain: B = match params {
                     None => B::default(),
-                    Some(v) => v.clone().into_rust().map_err(|e| format!("brain `{name_owned}` params: {e}"))?,
+                    Some(v) => crate::data::parse_ron(v.get_ron()).map_err(|e| format!("brain `{name_owned}` params: {e}"))?,
                 };
                 entity.insert(brain);
                 Ok(())

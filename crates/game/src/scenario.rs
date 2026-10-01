@@ -2448,7 +2448,7 @@ fn underground_script(
             *kinds.entry(c.kind.clone()).or_insert(0) += 1;
         }
         let extra = if phases[i].0 == "climb" { format!("; the spider got {:.0} cells up (the player is at {:.0})", state.2, k.body.pos.y - floor) } else { String::new() };
-        info!("underground: {}: the player lost {lost:.0} hp in {:.1} s; about: {kinds:?}{extra}", phases[i].0, phases[i].2);
+        info!("underground: {}: the player lost {lost:.0} hp in {:.1} s; about: {kinds:?}{extra}; the player ends at ({:.0}, {:+.0} from the floor)", phases[i].0, phases[i].2, k.body.pos.x, k.body.pos.y - k.body.half.y - floor);
         state.0 += 1;
         if state.0 < phases.len() {
             state.4 = 0.0;
@@ -2624,7 +2624,7 @@ fn gear_script(
             ] {
                 let pieces: Vec<Option<Stack>> = wear.iter().map(|id| items.id(id).map(|it| Stack::new(it, 1))).collect();
                 crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x + dx, floor), move |e| {
-                    e.remove::<(crate::creatures::brain::ai::MeleeWalker, crate::creatures::brain::ai::Archer)>();
+                    e.remove::<crate::creatures::brain::hunter::Hunter>();
                     let mut eq = crate::gear::Equipment::default();
                     for (i, piece) in pieces.into_iter().enumerate() {
                         eq.worn[i] = piece;
@@ -2685,7 +2685,7 @@ fn loot_script(
             let jerkin = items.id("leather_jerkin").map(|i| Stack::new(i, 1));
             let floor = platypus_worldgen::arena::FLOOR as f32;
             crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(k.body.pos.x + 24.0, floor), move |e| {
-                e.remove::<crate::creatures::brain::ai::MeleeWalker>();
+                e.remove::<crate::creatures::brain::hunter::Hunter>();
                 let mut eq = crate::gear::Equipment::default();
                 eq.worn[0] = helm;
                 eq.worn[1] = jerkin;
@@ -2743,7 +2743,7 @@ fn fang_script(
         inv.slots[0] = items.id("broodmother_fang").map(|f| crate::hands::items::Stack { roll: crate::hands::items::Roll { rarity: 4, level: 1, seed: 1 }, ..crate::hands::items::Stack::new(f, 1) });
         let floor = platypus_worldgen::arena::FLOOR as f32;
         crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(k.body.pos.x + 12.0, floor), |e| {
-            e.remove::<crate::creatures::brain::ai::MeleeWalker>();
+            e.remove::<crate::creatures::brain::hunter::Hunter>();
         });
         state.0 = 1;
     }
@@ -2869,7 +2869,7 @@ fn ice_script(
             k.body.pos = Vec2::new(300.0, floor as f32 + 8.0);
             k.prev_pos = k.body.pos;
             crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(350.0, floor as f32 + 1.0), |e| {
-                e.remove::<crate::creatures::brain::ai::MeleeWalker>();
+                e.remove::<crate::creatures::brain::hunter::Hunter>();
             });
             state.0 = 7;
         }
@@ -3075,7 +3075,7 @@ fn rocket_script(
                 }
             }
             crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x as f32 + 4.0, floor as f32 + 5.0), |e| {
-                e.remove::<crate::creatures::brain::ai::MeleeWalker>();
+                e.remove::<crate::creatures::brain::hunter::Hunter>();
             });
             k.body.pos = Vec2::new(x as f32, floor as f32 + 40.0);
             k.body.vel = Vec2::ZERO;
@@ -6229,7 +6229,7 @@ fn call_script(
             }
             for x in [740.0, 800.0, 550.0] {
                 crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x, floor as f32 + 10.0), |e| {
-                    e.remove::<crate::creatures::brain::ai::MeleeWalker>();
+                    e.remove::<crate::creatures::brain::hunter::Hunter>();
                 });
             }
             state.0 = 1;

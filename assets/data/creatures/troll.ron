@@ -31,9 +31,8 @@
     heft: 4,
     blood: "blood",
     brain: (
-        kind: "melee_walker",
-        params: (aggro_range: 260, keep_distance: 18, wander_speed: 0.3, wander_every: 3.5, jump_to_reach: 30,
-                 reach: 30, attack_every: 2.2, combo: 1),
+        kind: "hunter",
+        params: (aggro: 260, close: Walk(keep: 18, jump_to_reach: 30), attack: Swing(reach: 30, every: 2.2, combo: 1), wander: (speed: 0.3, every: 3.5)),
     ),
     z: 9,
 )

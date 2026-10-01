@@ -43,8 +43,8 @@
     poise: 60,
     heft: 4,
     brain: (
-        kind: "crawler",
-        params: (aggro_range: 170, pounce_range: 34, pounce_every: 1.5, wander_speed: 0.4,
+        kind: "hunter",
+        params: (aggro: 170, close: Crawl(pounce_range: 34, pounce_every: 1.5), wander: (speed: 0.4),
             // (range, cells; windup, s; lunge, cells/s; damage; knock, cells/s; stun, s; every, s)
             bite: (range: 24, windup: 0.3, lunge: 280, damage: 16, knock: 330, stun: 0.35, every: 1.5),
             spit: (spell: "spider_spit", range: (16, 170), windup: 0.45, every: 3.5),

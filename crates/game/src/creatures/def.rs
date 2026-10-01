@@ -194,8 +194,10 @@ pub struct BrainDef {
     /// Name a brain was registered under (`App::register_brain`).
     pub kind: String,
     /// Brain-specific settings, deserialised into the brain component.
+    /// (Kept as written: enums with fields, `close: Walk(keep: 11)`, read
+    /// as they're meant.)
     #[serde(default)]
-    pub params: Option<ron::Value>,
+    pub params: Option<Box<ron::value::RawValue>>,
 }
 
 #[derive(Resource)]

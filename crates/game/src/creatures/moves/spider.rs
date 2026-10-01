@@ -1,4 +1,4 @@
-//! A big spider's attacks (its `crawler` brain's `bite`, `spit`, `sting`):
+//! A big spider's attacks (its `hunter` brain's `bite`, `spit`, `sting`):
 //! each with a moment to read before it lands.
 //!
 //! - Bite: it crouches back, then lunges; what its jaws meet is hurt and
@@ -17,7 +17,7 @@ use serde::Deserialize;
 
 use crate::creatures::body::elements::Coatings;
 use crate::creatures::body::legs::Rear;
-use crate::creatures::brain::monsters::Crawler;
+use crate::creatures::brain::hunter::Hunter;
 use crate::creatures::{Controls, Kinematics, Team};
 use crate::combat::Hit;
 use crate::world::{SimWorld, TICK_HZ};
@@ -140,7 +140,7 @@ fn clear(sim: &SimWorld, a: Vec2, b: Vec2) -> bool {
     })
 }
 
-type Attacker<'a> = (Entity, &'a Crawler, &'a mut Kinematics, &'a mut Controls, Option<&'a mut Assault>, Option<&'a mut Rear>);
+type Attacker<'a> = (Entity, &'a Hunter, &'a mut Kinematics, &'a mut Controls, Option<&'a mut Assault>, Option<&'a mut Rear>);
 type Prey<'a> = (Entity, &'a Kinematics, &'a Team);
 
 /// Start an attack when one's in reach and ready; carry on the one under
