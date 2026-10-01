@@ -291,16 +291,27 @@ troll catches the player, squeezes twice, hurls it 235 cells; a staggering
 blow breaks a grab; a skeleton's fire ray sets the player alight.
 
 **3. `bestiary`: the browser, arena v2, and the command line.**
-1. The bestiary panel: cards, filters, search; the expanded view with the
+1. ✅ The bestiary panel: cards, filters, search; the expanded view with the
    live preview stage, stats, profile, moves, phases, buttons (place, fight,
    open, reload).
-2. Arena v2: layouts (flat, cave, slopes, stairs, a copy of real terrain);
+2. ✅ Arena v2: layouts (flat, cave, slopes, stairs, a copy of real terrain);
    live reload of creature and move files mid-fight; recorded fights
    replayed as tests.
-3. `platypus-bestiary`: cards and preview strips as images, stats listed.
+3. ✅ `platypus-bestiary`: cards and preview strips as images, stats listed.
 Done when: every creature is in the bestiary with a working preview; one is
 placed, fought, edited mid-fight and the fight replayed as a test; the CLI
 renders the whole bestiary.
+**Done 2026-10-01**: the catalogue and panel (F12: search, part and kind
+filters, cards, the opened card with Place, Fight, Open file, Reload); the
+live stage (a sealed room in the arena, the real creature driven through
+standing, walking, its weapon and each move, hit shapes drawn); creature
+files reload into creatures already about (`reload` scenario); layouts
+(flat, cave, slopes, stairs, real terrain; `layouts` scenario); fights
+recorded and played back headless as a test (`record`, then
+`PLATYPUS_REPLAY`: PASS twice, a doctored ending FAILs); creatures'
+rolls from their own numbers, not entity ids; `platypus-bestiary`: all 29
+creatures, cards, strips and numbers, in ~2 min. Not done: biome and tier
+filters (the world doesn't say yet); the live stage outside the arena.
 
 **4. `navigation`: the path planner, and digging.**
 1. The shared path planner (walk, climb, jump, swim, fly, each a cost).

@@ -1472,6 +1472,36 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   from its first hurt until 5 s pass with none (the next starts afresh);
   "New fight" starts one now. Which sections are open is remembered by
   name, shut ones too (`-Name`), so a new section starts as it's meant to.
+- **Layouts** (`worldgen::arena::Layout`; `PLATYPUS_ARENA`, or the panel's
+  Layout section: the generator swapped, the world reset at once,
+  `reset::ResetNow`, the player kept): `sandbox` (the floor above), `flat`,
+  `cave` (a tunnel 70 cells high, its roof and floor wavering, three
+  pillars), `slopes` (rolling hills, ±58 cells), `stairs` (8-cell steps up
+  from 300 to 780 and down from 1020 to 1500, a ledge 96 up, platforms),
+  `real` (the real world's chunks, copied whole from a seed and place,
+  `real:SEED:X:Y`, by default seed 1's start: that place is the start;
+  "fight it here"). Every layout has the same walls and the bestiary's
+  stage; dummies stand on the ground (none in the real world's). Tested:
+  each walled, staged, a start to stand on with room above.
+- **Recorded fights** (`replay.rs`; the Fight section's Record, "Stop and
+  save", "Replay the last"): recording resets everything first (the
+  layout's world, a new player, tick 0, creatures numbered from 1), then
+  keeps every frame (its length, the time's speed and pause, play's keys
+  and mouse buttons held, not the arena's, dev's or a screen's, none while
+  the pointer's on a panel, the cursor's world point) and each creature
+  put down (O, the bestiary's Place); saved with how it ended (the
+  player's health and deaths, who's left with their health, the readout's
+  totals) to `saves/fights/fight-N.ron`. Played back (`PLATYPUS_REPLAY=`
+  file, headless: exit 0 if it ended as recorded, 1 with how not): the
+  same layout and reset, each frame the same length
+  (`TimeUpdateStrategy::ManualDuration`, the fixed clock's leftover as it
+  was), the same input and cursor, the same creatures put down; matched if
+  the same are dead and health and the totals are within 15 %. A
+  creature's rolls come from its number (`creatures::Stable`), not its
+  entity id (which depends on everything made before, menus too). The
+  `record` scenario's fight played back twice: the player at 89.4 hp both
+  times, the orc dead; a doctored ending fails with exit 1. Don't step
+  (.) while recording (a step isn't kept).
 
 ### 5.4 The art editor (`game/src/editor.rs`, `art/src/edit.rs`)
 
@@ -1532,6 +1562,55 @@ DESIGN §13 item 6.
   buys).
 - Scenarios: `village` (a walk through by day or night, `PLATYPUS_HOUR`),
   `shop` (a trade with the smith, the healer and the merchant).
+
+### 5.6 The bestiary (`game/src/bestiary/`, DESIGN §14.7)
+
+- **The catalogue** (`bestiary/mod.rs`): every creature file but the
+  player's, read from what the game has (the files, `kinds.ron`,
+  `moves.ron`, the art), nothing written twice: name, kind, part (foe:
+  enemies; villager; critter: the `critter` brain; thing: the rest), box,
+  health, speed, poise and heft, brain and code, weapon, touch, moves
+  (range, how often, phases, what they do), the kinds of hurt it doesn't
+  take as anyone would, what it can't suffer, healing, loot. Its picture:
+  its idle clip's first frame, trimmed. Tested: every creature has a card,
+  a picture and its file.
+- **The panel** (F12; the arena panel's "Bestiary"; `panel.rs`): over
+  everything, with the keyboard while it's open. Search (typed), part and
+  kind filters, a card each (picture, name, kind, health, "code" if it has
+  its own); one opened on the right: its picture (or the live stage),
+  Place (90 cells in front of the player), Fight (placed, the Fight
+  readout afresh), Open file (`open -t`), Reload (`ReloadCreatures`:
+  creature and move files read again, changed or not), Back; its details
+  (Body, Hurt, Attacks, Carries). Esc clears the search, then the card,
+  then closes.
+- **The live stage** (`stage.rs`; worlds with `ChunkGenerator::stage`:
+  the arena's, a room 330 × 156 sealed in bedrock at its top right, a
+  stone floor with a 9-cell step): the opened creature on the real floor
+  with a stand-in (a dummy on the hunted side, never dying), seen by its
+  own camera into the card (2 px a cell, 660 × 312; its room kept loaded
+  while it's on; the legs' canvas drawn for its view too). Its brain
+  taken off (`BrainRegistry::remove`, `Staged`: not cleared as a far
+  critter, moves started only by the stage), it's driven round and round:
+  standing 1.2 s, walking 1 s there and back, two swings or a shot of
+  what it wields, then each of its moves (`Moves::force`; the stand-in put
+  at the middle of the move's range; never mid-swing). What a move can hit
+  is drawn over it (`Moves::shapes`: strikes red, grabs violet, slams
+  orange; faint while coming, bright while live; everyone's with the
+  arena's overlays on). The caption says what's showing. The room is made
+  afresh for each creature; one taken away by a reset is put back.
+- **Live reload**: a creature file changed (or Reload) reaches the
+  creatures of it already about: stats, health and profile, art, healing,
+  poise, touch, weapon, moves (if the list changed) and brain (put on
+  again from the new settings); not the player's, nor a staged one's. The
+  `reload` scenario takes a troll's moves, brain and poise away and lowers
+  its health cap; after Reload it has them all back.
+- **`platypus-bestiary [dir] [creature ...]`** (`cli.rs`, the launcher in
+  `src/bin/`): the game run headless in the arena (`PLATYPUS_BESTIARY`),
+  the clock a tick a frame; for each creature its card opened: its
+  details into `bestiary.md`, the panel as `<id>_card.png`, the stage
+  caught 0.05 s into each thing it shows, put together as
+  `<id>_strip.png` (half size, four to a row, numbered in the markdown).
+  Every creature (29) in about 2 minutes.
 
 ## 6. Combat
 

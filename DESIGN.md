@@ -1077,10 +1077,18 @@ side, then decide.
   live while fighting; readouts (a timeline of hits, damage per second,
   damage taken, by type); recorded inputs replayed, so a fight is a
   regression test. (Readouts built in `moves`: the arena panel's Fight
-  section, to them and to you by kind, per second, a 20 s timeline.)
+  section, to them and to you by kind, per second, a 20 s timeline. As
+  built in `bestiary`: layouts flat, cave, slopes, stairs and the real
+  world's terrain at a seed and place; files reloaded into the fight;
+  fights recorded frame by frame and played back headless as a test,
+  matched within 15 %.)
 - **`platypus-bestiary`** (command line): the same cards and preview strips
   rendered to images, stats listed: the model checks a creature it wrote
-  without opening the game.
+  without opening the game. (As built: the game itself run headless, its
+  real cards and stage caught: `bestiary.md`, a card and a strip each.
+  The panel's filters are part and kind; biome and tier wait for the
+  world to say where things live. The live stage is the arena's; outside
+  it, a card shows its picture.)
 - **The player's bestiary** (the progression arc, later; the data recorded
   from now): the same panel filtered by what the player knows. Seen (a
   silhouette, a guessed name); encountered (the real name and picture, and
