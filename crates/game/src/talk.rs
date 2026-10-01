@@ -1,8 +1,9 @@
 //! Talking to villagers (DESIGN §13 item 6).
 //!
-//! Walk up to one and it stops and says something: its `lines`, one after
-//! another, in a speech bubble over its head (the next time you come by, it
-//! goes on where it left off).
+//! Walk up to one and it stops and says something: the news (what's
+//! happened lately: `events.rs`), then its `lines`, one after another, in a
+//! speech bubble over its head (the next time you come by, it goes on
+//! where it left off).
 //!
 //! Right-click one (near) and its panel opens beside the pack: what it does
 //! for you, for gold. The smith and the merchant sell (click: one; Shift:
@@ -122,6 +123,7 @@ fn bubbles(
     mut said: Local<HashMap<Entity, Said>>,
     player: Query<&Kinematics, With<LocalPlayer>>,
     folk: Query<(Entity, &Villager, &Kinematics, &Routine)>,
+    news: Res<crate::events::News>,
     mut shown: Query<(&mut Text2d, &mut Transform), With<Bubble>>,
 ) {
     let now = time.elapsed_secs();
@@ -132,7 +134,9 @@ fn bubbles(
     for (e, v, k, _) in &folk {
         let s = said.entry(e).or_insert(Said { bubble: None, line: 0, next: 0.0 });
         let at = (k.body.pos + Vec2::new(0.0, k.body.half.y + BUBBLE_OVER)).extend(30.0);
-        if speaker != Some(e) || v.lines.is_empty() {
+        // (The news first: what's happened lately.)
+        let lines: Vec<&String> = news.0.iter().take(1).chain(&v.lines).collect();
+        if speaker != Some(e) || lines.is_empty() {
             if let Some(b) = s.bubble.take() {
                 commands.entity(b).despawn();
                 // (Next time, the next line.)
@@ -140,7 +144,7 @@ fn bubbles(
             }
             continue;
         }
-        let line = |i: usize| v.lines[i % v.lines.len()].clone();
+        let line = |i: usize| lines[i % lines.len()].clone();
         match s.bubble.and_then(|b| shown.get_mut(b).ok()) {
             Some((mut text, mut tf)) => {
                 tf.translation = at;

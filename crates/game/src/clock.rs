@@ -49,9 +49,15 @@ pub struct ClockPlugin;
 
 impl Plugin for ClockPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<WorldClock>().add_systems(PostStartup, start).add_systems(Update, (run, wildfires, regrow, lairs).chain().after(crate::light::update_daylight));
+        app.init_resource::<WorldClock>()
+            .add_systems(PostStartup, start)
+            .add_systems(Update, (run, wildfires, regrow, lairs).chain().in_set(ClockSet).after(crate::light::update_daylight));
     }
 }
+
+/// The clock's systems (what follows the clock runs after them: `events.rs`).
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ClockSet;
 
 /// Game minutes between moisture steps.
 const MOISTURE_STEP: f64 = 10.0 / (24.0 * 60.0);
@@ -107,6 +113,10 @@ const REFILL_DAYS: f64 = 3.0;
 pub struct WorldClock {
     /// Game time (days), as the sky has it.
     pub now: f64,
+    /// The events (`events.rs`): what's happened and what's coming, and the
+    /// last whole day their timetable has been rolled for.
+    pub events: Vec<crate::events::Happening>,
+    pub events_rolled: i64,
     /// Steps done, per process (in its own steps since day 0).
     moisture_done: i64,
     /// How wet the land is per column (0..1), and what it is left to itself.
@@ -114,7 +124,7 @@ pub struct WorldClock {
     pub humidity: Vec<f32>,
     /// Cells per wet column.
     column: i32,
-    started: bool,
+    pub started: bool,
     /// A save's, until the clock has started.
     pending: Option<ClockFile>,
     /// Held at this wetness everywhere (a scenario's), or none.
@@ -155,7 +165,9 @@ pub struct Wildfire {
     pub at: f64,
 }
 
-/// On a lair's keeper: where it was put (its record in `WorldClock::keepers`).
+/// On a lair's keeper: where it was put (its record in `WorldClock::keepers`;
+/// it comes back there). On a star's guardian (`events.rs`): the crater it
+/// keeps (no record: it doesn't come back), its leash's end.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Keeps(pub (i32, i32));
 
@@ -189,6 +201,12 @@ pub struct ClockFile {
     pub fires: Vec<Wildfire>,
     #[serde(default)]
     pub keepers: Vec<((i32, i32), Keeper)>,
+    /// The events' (`events.rs`): what's happened and is coming, and the
+    /// last day rolled.
+    #[serde(default)]
+    pub events: Vec<crate::events::Happening>,
+    #[serde(default)]
+    pub events_rolled: i64,
 }
 
 impl WorldClock {
@@ -201,6 +219,8 @@ impl WorldClock {
             fires_done: self.fires_done,
             fires: self.fires.clone(),
             keepers: self.keepers.iter().map(|(&p, k)| (p, k.clone())).collect(),
+            events: self.events.clone(),
+            events_rolled: self.events_rolled,
         }
     }
 
@@ -271,6 +291,8 @@ impl WorldClock {
         self.land = f.land.iter().copied().collect();
         self.fires_done = f.fires_done;
         self.fires = f.fires.clone();
+        self.events = f.events.clone();
+        self.events_rolled = f.events_rolled;
         self.keepers = f.keepers.iter().cloned().collect();
     }
 

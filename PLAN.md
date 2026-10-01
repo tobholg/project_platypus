@@ -149,13 +149,33 @@ objects about.
 Done when: a new world starts on the plain with the village in sight, and
 its people live their day.
 
-**6. `world-events`: the clock's events.**
-Raids (a warband from a castle or a camp marches on a village: fought
-live, or damage and rebuilding, faster for gold); merchant caravans on the
-roads; falling stars (a streak, a crater, rare ore, a guardian; villagers
-say where); seasons (the snow line, lakes freezing, blooms); earthquakes
-(fracture: a tunnel falls, a chasm opens). Each with its abstract and live
-face and a scenario.
+**6. `world-events`: the clock's events.** Each on the pattern of the
+wildfires: a timetable rolled from the seed and the day (so the abstract
+and the live agree), a live face where someone is (through the simulation,
+arriving from out of sight), an abstract face where no one is (applied to
+the land as its chunks load), and a scenario.
+1. ✅ The events' core (`events.rs`): the timetable, a log of what happened
+   (saved with the world), news (villagers say what happened and where; a
+   line on screen when it's near you), the dev panel's "An event".
+2. ✅ (debris from the blast can hurt you far off: kept, it's real) Falling stars (at night): a streak across the sky, a flash and a boom; a
+   crater with a glowing meteorite in it (a new material) and rare ore
+   (mithril) at the surface; a guardian (a glowing creature, keeping it).
+   Away: the crater's there when you come (dug as its chunks load).
+3. Raids: every few days a warband sets out for the village; there, it
+   walks in from out of sight and you fight it (the villagers run);
+   away, houses are damaged, and the village rebuilds toward what it was
+   over days, faster for gold (the guide takes it).
+4. Earthquakes (rare): the screen shakes; near you cave ceilings come
+   loose and fall; a chasm opens in the surface (away: it's there when you
+   come).
+5. Seasons (a short year): winter snows (snow falls instead of rain, the
+   snow line comes down, lakes freeze over), spring blooms; the land
+   follows the season as it loads and, in view, gradually.
+6. A travelling merchant (no roads yet, so not a caravan): every few days
+   one walks in to the village, stays a day with rarer goods, and leaves.
+Done when: in a few days' play stars fall, raids come, the ground shakes,
+the year turns and the merchant visits, near you and away, all from one
+timetable.
 
 **7. Later: travel.** Mine carts on rails, stronger travel and building,
 teleport stations. A blood moon.

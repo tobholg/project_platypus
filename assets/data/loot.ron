@@ -167,6 +167,11 @@
             (item: "silk_line", weight: 1, count: (1, 1)),
             (item: "broodmother_fang", weight: 1, count: (1, 1)),
         ]),
+        // What keeps a fallen star: star metal's worth in gold, now and then a charm.
+        (name: "star_wisp", rolls: (0, 1), gold: (20, 45), entries: [
+            (item: "nothing", weight: 6, count: (1, 1)),
+            (item: "lucky_coin", weight: 1, count: (1, 1)),
+        ]),
         (name: "vampire_bat", rolls: (0, 1), gold: (1, 4), entries: [
             (item: "nothing", weight: 20, count: (1, 1)),
             (item: "lucky_coin", weight: 1, count: (1, 1)),

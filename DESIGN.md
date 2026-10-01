@@ -750,6 +750,11 @@ live in. The arc, in order:
      stars (a crater, rare ore, a guardian; villagers say where), seasons
      (the snow line, lakes freezing), earthquakes (with fracture, §13.1).
      A blood moon: later.
+   - *As built (`world-events`, SPEC §3.15)*: one timetable rolled from
+     the seed and the day for every kind; live within 700 cells, otherwise
+     put into the land as its chunks load; the villagers tell the last two
+     days' news. Falling stars first: a streak, a blast, a crater with a
+     glowing meteorite and mithril, star wisps on a leash keeping it.
 5. **A start worth starting in**: a wide, flattened plain round the spawn
    (±300 cells, forest or plains), a village a short walk away (the
    structure system's rooms: timber houses, a well, a smithy, a path).

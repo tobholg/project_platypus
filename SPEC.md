@@ -1108,6 +1108,40 @@ Saved with the world (`WorldFile::clock`; older saves load with none of it).
 - Not yet: lairs spreading into the caves beside them, the weather's fronts
   saved, rain on regions no one's in putting out their fires.
 
+### 3.15 The world's events (`game/src/events.rs`)
+DESIGN §13 item 4, PLAN L1 `world-events`.
+- A timetable rolled from the seed and the day (`events::roll`): each whole
+  day, each kind's chance, and when and where it happens. Rolled a day
+  ahead; a new world from its first day. So what happens is the same
+  however the time passes, watched or skipped.
+- When an event's time comes: someone within 700 cells (across) and it
+  happens **live**, through the simulation; no one there, or its time
+  passed in a skip (more than 0.05 days ago), and it happens **away**: it's
+  put into the land when its chunks load (beyond the screen's edge), quietly.
+  What happened is kept 10 days (`WorldClock::events`, saved with the clock).
+- **News**: what happened in the last two days, newest first (`News`); the
+  villager talking to you says the latest first, then its own lines ("A star
+  fell last night, a short walk west of here. Something keeps it."). Where:
+  west or east of the village, and how far a walk (~3 600 cells a minute).
+  Near you, a line on screen too (the progress toasts).
+- **Falling stars**: 35 % of nights, between 21:00 and 05:00, 900–4 000
+  cells from the spawn either way. Live: a streak in from high across the
+  sky over 1.4 s (a glowing head that lights the land, a trail of blue
+  sparks), then a blast where it lands (radius 16, power 150: the flash, the
+  boom, the shake, flying debris that can hurt from far off). Away: the hole
+  dug and its rim scorched, no blast. Either way: a meteorite (radius 4, 9
+  cells down) and mithril ore beside and under it, the crater heated to
+  700 °C (it glows; grass round it may catch), and two star wisps hovering
+  over it. Seen from the surface by night, a star falling far off streaks
+  across the sky toward it and is gone ("A star falls, far to the west").
+- `meteorite`: dark, glassy, flecked with light, a cold blue glow, hardness
+  95 (an iron pick).
+- Star wisps (`star_wisp.ron`): small white-blue stars, fireproof, on the
+  `swooper` brain with a `leash` (80 cells round their crater, kept as their
+  `clock::Keeps`, so a save keeps it too): they dive at you only near it and
+  drift back when you go. They don't come back once killed. 20–45 gold.
+- Dev panel: "A falling star" (one now, 140 cells ahead). Scenario `star`.
+
 ## 4. Rendering
 
 - One texture + one sprite per loaded chunk (~100 entities on screen, not

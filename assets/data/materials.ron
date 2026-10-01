@@ -90,6 +90,10 @@
             colors: [(78, 74, 76), (214, 170, 52), (92, 86, 84), (252, 214, 96), (74, 70, 72)]),
         (name: "mithril_ore", kind: Static, charges: true, density: 3000, hardness: 110, crumbles_into: "gravel", above: (1950, "molten_mithril"), glow: (6, 24, 28), shimmer: 220,
             colors: [(58, 60, 74), (80, 186, 200), (68, 70, 86), (150, 240, 244), (54, 56, 70)]),
+        // A fallen star's heart (world-events: events.rs): dark, glassy,
+        // flecked with light, glowing a cold blue; an iron pick takes it.
+        (name: "meteorite",   kind: Static, density: 3400, hardness: 95, crumbles_into: "gravel", glow: (22, 30, 58), shimmer: 200,
+            colors: [(40, 40, 52), (58, 58, 74), (32, 32, 44), (170, 190, 255), (48, 48, 62)]),
         (name: "amethyst",    kind: Static, density: 2650, hardness: 60, crumbles_into: "gravel", glow: (46, 18, 70), opacity: 40, shimmer: 255,
             colors: [(96, 44, 146), (150, 86, 212), (196, 146, 246), (120, 60, 180)]),
         (name: "emerald",     kind: Static, density: 2750, hardness: 80, crumbles_into: "gravel", glow: (4, 22, 10), opacity: 40, shimmer: 255,

@@ -189,20 +189,26 @@ pub struct Swooper {
     /// A dive lasts at most this long (s), and it rests this long between.
     pub dive_time: f32,
     pub dive_every: f32,
+    /// One that keeps a place (`clock::Keeps`: a star's crater) stays this
+    /// near it (cells): it goes for you only there, and drifts back when
+    /// you've gone. 0: it roams.
+    pub leash: f32,
 }
 
 impl Default for Swooper {
     fn default() -> Self {
-        Swooper { aggro_range: 150.0, hover: (20.0, 50.0), dive_time: 1.2, dive_every: 2.5 }
+        Swooper { aggro_range: 150.0, hover: (20.0, 50.0), dive_time: 1.2, dive_every: 2.5, leash: 0.0 }
     }
 }
 
-fn swooper(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, players: Players, mut q: Query<Mover<Swooper>>) {
+fn swooper(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, players: Players, homes: Query<&crate::clock::Keeps>, mut q: Query<Mover<Swooper>>) {
     let now = time.elapsed_secs();
     for (e, b, k, mut c, m) in &mut q {
         let Some(mut m) = mind(&mut commands, e, m) else { continue };
         let pos = k.body.pos;
-        let target = nearest(&players, pos, b.aggro_range);
+        // (On a leash: only what's near its place.)
+        let home = homes.get(e).ok().filter(|_| b.leash > 0.0).map(|h| Vec2::new(h.0.0 as f32, h.0.1 as f32));
+        let target = nearest(&players, pos, b.aggro_range).filter(|t| home.is_none_or(|h| t.distance(h) < b.leash));
         let mut steer: Vec2;
         match target {
             // Diving: straight at you.
@@ -218,6 +224,12 @@ fn swooper(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, players:
                     m.wander_until = now + 0.3 + 0.4 * unit(&sim, e, 9);
                 }
                 steer = m.wander;
+                // Strayed from its place: back toward it.
+                if let Some(h) = home
+                    && pos.distance(h) > b.leash * 0.5
+                {
+                    steer.x = (h.x - pos.x).signum();
+                }
                 // Back up into its band above the ground.
                 let h = super::critters::height(&sim.world, pos, (b.hover.1 as i32) * 2);
                 if h < b.hover.0 {

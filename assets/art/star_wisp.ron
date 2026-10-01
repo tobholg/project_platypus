@@ -1,0 +1,41 @@
+// A star wisp: a small white-blue star, its points flickering.
+(
+    size: (9, 9),
+    feet: (4.5, 9),
+    outline: (30, 34, 70),
+    palette: {
+        'c': (255, 255, 255),   // the heart
+        'b': (176, 200, 255),   // the glow
+        'd': (96, 120, 220),    // the points
+    },
+    frames: {
+        "up": [
+            "....d....",
+            "....b....",
+            "...bbb...",
+            ".dbbcbbd.",
+            "dbbcccbbd",
+            ".dbbcbbd.",
+            "...bbb...",
+            "....b....",
+            "....d....",
+        ],
+        "down": [
+            ".........",
+            ".d..b..d.",
+            "..bbbbb..",
+            "..bbcbb..",
+            ".bbcccbb.",
+            "..bbcbb..",
+            "..bbbbb..",
+            ".d..b..d.",
+            ".........",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["up", "down"], fps: 8),
+        "run": (frames: ["up", "down"], fps: 8),
+        "jump": (frames: ["up", "down"], fps: 8),
+        "fall": (frames: ["up", "down"], fps: 8),
+    },
+)

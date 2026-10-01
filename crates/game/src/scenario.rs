@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -4295,6 +4295,74 @@ fn climb_script(
         let o = CellPos::new(k.body.pos.x as i32 - W / 2, k.body.pos.y as i32 - H / 2);
         let cells = (0..H).flat_map(|y| (0..W).map(move |x| (x, y))).map(|(x, y)| sim.world.get(CellPos::new(o.x + x, o.y + y)).map_or(platypus_sim::MaterialId::AIR, |c| c.material)).collect();
         *snap = Some((o, cells));
+    }
+}
+
+/// `star` (a generated world, try `PLATYPUS_HOUR=22`): a falling star
+/// called just ahead of the player (the dev panel's; west, over the plain);
+/// 4 s after it lands, what's in the crater (meteorite and mithril cells,
+/// star wisps about). `PLATYPUS_STAR=away`: one fell 3 hours ago, 300 cells
+/// west, where no one was; the player's taken there; the crater, and the
+/// news.
+#[allow(clippy::too_many_arguments)]
+fn star_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut clock: ResMut<crate::clock::WorldClock>,
+    news: Res<crate::events::News>,
+    mut acts: MessageWriter<crate::dev::DevAction>,
+    mut player: Query<(&mut Kinematics, &crate::actors::Health), With<LocalPlayer>>,
+    creatures: Query<(&crate::actors::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut state: Local<(u8, f32, i32)>,
+) {
+    if s.name != "star" {
+        return;
+    }
+    let t = s.elapsed;
+    let Ok((mut k, health)) = player.single_mut() else { return };
+    let away = std::env::var("PLATYPUS_STAR").is_ok_and(|v| v == "away");
+    let (step, at, x) = &mut *state;
+    match *step {
+        0 if t > 2.0 => {
+            // (West, over the plain: the village is east of the start.)
+            *x = k.body.pos.x as i32 - if away { 300 } else { 140 };
+            info!("star: the player at x {:.0}, health {:.0}", k.body.pos.x, health.hp);
+            if away {
+                let day = clock.now - 0.125;
+                clock.events.push(crate::events::Happening { kind: crate::events::EventKind::Star, day, x: *x, stage: crate::events::Stage::Coming });
+            } else {
+                k.loco.facing = -1.0;
+                acts.write(crate::dev::DevAction::Event);
+            }
+            *step = 1;
+            *at = t;
+        }
+        1 if t > *at + 1.0 && away => {
+            // (Over to it: just short of the crater's rim.)
+            k.body.pos.x = *x as f32 + 40.0;
+            k.prev_pos = k.body.pos;
+            *step = 2;
+            *at = t;
+        }
+        1 if t > *at + 6.0 => *step = 2,
+        2 if t > *at + 1.0 => {
+            let mats = sim.world.materials();
+            let (meteorite, mithril) = (mats.id("meteorite"), mats.id("mithril_ore"));
+            let ground = sim.generator.surface_hint(*x).unwrap_or(0);
+            let (mut m, mut o) = (0, 0);
+            for y in ground - 60..ground + 20 {
+                for cx in *x - 40..*x + 40 {
+                    let c = sim.world.get(CellPos::new(cx, y)).map(|c| c.material);
+                    m += (c == meteorite) as u32;
+                    o += (c == mithril) as u32;
+                }
+            }
+            let wisps = creatures.iter().filter(|(c, ck)| c.kind == "star_wisp" && (ck.body.pos.x as i32 - *x).abs() < 120).count();
+            let stage = clock.events.iter().find(|h| h.x == *x).map(|h| format!("{:?}", h.stage)).unwrap_or_default();
+            info!("star: at x {x} ({stage}): {m} meteorite cells, {o} mithril ore, {wisps} star wisps; the player's health {:.0}; the news: {:?}", health.hp, news.0.first());
+            *step = 3;
+        }
+        _ => {}
     }
 }
 

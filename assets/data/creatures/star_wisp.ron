@@ -1,0 +1,29 @@
+// A star wisp: what keeps a fallen star (events.rs). A cold flame that
+// hovers over the crater and dives at whoever comes for it.
+(
+    name: "Star wisp",
+    loot: "star_wisp",
+    corpse: false,
+    size: (6, 6),
+    health: 40,
+    team: Enemy,
+    blood: "",
+    // Starfire: its own crater's heat and flames don't touch it.
+    resist: (heat: 1.0, fireproof: true),
+    art: "star_wisp",
+    light: (color: (150, 180, 255), strength: 0.8, pulse: 1.6, haze: true),
+    movement: (
+        run_speed: 20,
+        fly_speed: 95,
+        fly_accel: 700,
+        air_jumps: 0,
+        step_height: 0,
+        dash_speed: 0,
+    ),
+    touch: (damage: 10, knock: 110, stun: 0.15, every: 0.9),
+    brain: (
+        kind: "swooper",
+        // (It keeps its crater: `leash`.)
+        params: (aggro_range: 90, hover: (14, 30), dive_time: 1.0, dive_every: 2.6, leash: 80),
+    ),
+)
