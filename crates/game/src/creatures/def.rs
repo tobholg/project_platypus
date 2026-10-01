@@ -367,7 +367,14 @@ impl Plugin for CreaturePlugin {
     }
 }
 
-pub(crate) fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut art: ResMut<CreatureArt>, mut asked: MessageReader<ReloadCreatures>, mut q: Query<(&Creature, &mut MoveStats, &mut Health, &mut Animator)>) {
+type Reloaded<'a> = (Entity, &'a Creature, &'a mut MoveStats, &'a mut Health, &'a mut Animator, Option<&'a super::moves::Moves>, Has<super::brain::Staged>, Has<super::player::LocalPlayer>);
+
+/// A creature file changed (or the bestiary asked): every creature of it
+/// takes the new numbers where it stands, mid-fight: stats, health and
+/// its profile, art, healing, poise, touch, weapon, its moves (if the
+/// list changed) and its brain (put on again from the new settings; not
+/// on the player, nor one on the bestiary's stage).
+pub(crate) fn hot_reload_creatures(mut commands: Commands, mut creatures: ResMut<Creatures>, mut art: ResMut<CreatureArt>, mut asked: MessageReader<ReloadCreatures>, mut q: Query<Reloaded>) {
     // (Polled without marking it changed: what reads `is_changed` redresses
     // and restats every creature.)
     let polled = creatures.bypass_change_detection();
@@ -378,14 +385,49 @@ pub(crate) fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut art: Re
     asked.clear();
     art.forget_art();
     let defs = Creatures::load_all(creatures.watch.path());
-    for (c, mut stats, mut health, mut anim) in &mut q {
-        if let Some(def) = defs.get(&c.kind) {
-            stats.0 = def.movement.clone();
-            health.nature = def.nature;
-            health.hp = health.hp.min(def.health);
-            health.max = def.health;
-            anim.def = def.clone();
-            anim.refresh();
+    for (e, c, mut stats, mut health, mut anim, moves, staged, player) in &mut q {
+        let Some(def) = defs.get(&c.kind) else { continue };
+        let old = anim.def.brain.kind.clone();
+        stats.0 = def.movement.clone();
+        health.nature = def.nature;
+        health.hp = health.hp.min(def.health);
+        health.max = def.health;
+        anim.def = def.clone();
+        anim.refresh();
+        if player {
+            continue;
+        }
+        let mut ec = commands.entity(e);
+        match &def.regen {
+            Some(r) => ec.insert(crate::creatures::nature::Regenerates::new(r)),
+            None => ec.remove::<crate::creatures::nature::Regenerates>(),
+        };
+        ec.insert((crate::combat::Sturdy::new(def.poise, def.heft, def.after_hit), crate::combat::Wielding(def.weapon.clone())));
+        match def.touch {
+            Some(t) => ec.insert(t),
+            None => ec.remove::<crate::combat::Touch>(),
+        };
+        if moves.map_or(&[][..], |m| m.ids()) != def.moves.as_slice() {
+            if def.moves.is_empty() {
+                ec.remove::<super::moves::Moves>();
+            } else {
+                ec.insert(super::moves::Moves::new(def.moves.clone()));
+            }
+        }
+        if !staged {
+            let def = def.clone();
+            ec.queue_silenced(move |mut ew: EntityWorldMut| {
+                ew.world_scope(|world| {
+                    world.resource_scope(|world, reg: Mut<super::brain::BrainRegistry>| {
+                        if let Ok(mut ew) = world.get_entity_mut(e) {
+                            reg.remove(&old, &mut ew);
+                            if let Err(err) = reg.insert(&def.brain, &mut ew) {
+                                error!("{}: {err}", def.name);
+                            }
+                        }
+                    })
+                });
+            });
         }
     }
     info!("creatures reloaded ({} kinds)", defs.len());

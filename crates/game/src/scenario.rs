@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -4831,6 +4831,49 @@ fn bestiary_script(s: Res<Scenario>, mut b: ResMut<crate::bestiary::panel::Besti
         }
     }
     b.picked = Some(pick);
+}
+
+/// `reload`: a troll spawned, then its moves, brain and touch taken away
+/// and its health cap lowered, as if its file had been different; the
+/// bestiary's Reload (`ReloadCreatures`): it has them back, mid-fight.
+#[allow(clippy::type_complexity)]
+fn reload_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    mut trolls: Query<(Entity, &crate::creatures::Creature, &mut crate::creatures::Health, Has<crate::creatures::moves::Moves>, Has<crate::creatures::brain::hunter::Hunter>, Has<crate::combat::Sturdy>)>,
+    mut reload: MessageWriter<crate::creatures::def::ReloadCreatures>,
+    mut step: Local<u8>,
+) {
+    if s.name != "reload" {
+        return;
+    }
+    let t = s.elapsed;
+    let troll = trolls.iter_mut().find(|q| q.1.kind == "troll");
+    match (*step, troll) {
+        (0, _) if t > 0.5 => {
+            let Ok(pk) = player.single() else { return };
+            crate::creatures::def::spawn_creature(&mut commands, "troll", pk.body.pos + Vec2::new(200.0, -pk.body.half.y), |_| {});
+            *step = 1;
+        }
+        (1, Some((e, _, mut h, moves, brain, sturdy))) if t > 1.0 => {
+            info!("reload: before: moves {moves}, brain {brain}, poise {sturdy}, health {:.0} / {:.0}", h.hp, h.max);
+            commands.entity(e).remove::<(crate::creatures::moves::Moves, crate::creatures::brain::hunter::Hunter, crate::combat::Sturdy)>();
+            h.max = 100.0;
+            h.hp = 100.0;
+            *step = 2;
+        }
+        (2, Some((_, _, h, moves, brain, sturdy))) if t > 1.5 => {
+            info!("reload: changed: moves {moves}, brain {brain}, poise {sturdy}, health {:.0} / {:.0}", h.hp, h.max);
+            reload.write(crate::creatures::def::ReloadCreatures);
+            *step = 3;
+        }
+        (3, Some((_, _, h, moves, brain, sturdy))) if t > 2.0 => {
+            info!("reload: after the reload: moves {moves}, brain {brain}, poise {sturdy}, health {:.0} / {:.0}", h.hp, h.max);
+            *step = 4;
+        }
+        _ => {}
+    }
 }
 
 /// `reset`: the world reset from the dev panel.
