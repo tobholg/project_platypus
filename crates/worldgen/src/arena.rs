@@ -26,6 +26,9 @@ pub struct ArenaGen {
     sand: MaterialId,
     planks: MaterialId,
     platform: MaterialId,
+    /// Everything this much bigger in cells (the HD spike: 1.5); the floor
+    /// stays at `FLOOR`.
+    scale: f32,
 }
 
 impl ArenaGen {
@@ -38,7 +41,30 @@ impl ArenaGen {
             sand: m.expect_id("sand"),
             planks: m.expect_id("planks"),
             platform: m.expect_id("platform"),
+            scale: 1.0,
         }
+    }
+
+    pub fn scaled(self, scale: f32) -> Self {
+        ArenaGen { scale, ..self }
+    }
+
+    fn chunks(&self) -> (i32, i32) {
+        ((W as f32 * self.scale).ceil() as i32, (H as f32 * self.scale).ceil() as i32)
+    }
+
+    /// At a scale: the edges where they are, the rest drawn bigger.
+    fn scaled_at(&self, x: i32, y: i32) -> Option<MaterialId> {
+        if self.scale == 1.0 {
+            return self.at(x, y);
+        }
+        let right = self.chunks().0 * CHUNK;
+        if y < 8 || x < 8 || x >= right - 8 {
+            return Some(self.bedrock);
+        }
+        let s = self.scale;
+        let (ox, oy) = ((x as f32 / s).floor() as i32, FLOOR + ((y - FLOOR) as f32 / s).floor() as i32);
+        self.at(ox.clamp(8, W * CHUNK - 9), oy.max(8))
     }
 
     /// What's at (x, y) (`None`: air).
@@ -92,11 +118,12 @@ impl ArenaGen {
 
 impl ChunkGenerator for ArenaGen {
     fn bounds(&self) -> (ChunkPos, ChunkPos) {
-        (ChunkPos::new(0, 0), ChunkPos::new(W - 1, H - 1))
+        let (w, h) = self.chunks();
+        (ChunkPos::new(0, 0), ChunkPos::new(w - 1, h - 1))
     }
 
     fn spawn_point(&self) -> CellPos {
-        CellPos::new(START, FLOOR)
+        CellPos::new((START as f32 * self.scale) as i32, FLOOR)
     }
 
     fn wild(&self) -> bool {
@@ -113,7 +140,7 @@ impl ChunkGenerator for ArenaGen {
             .flat_map(|ly| (0..CHUNK).map(move |lx| (lx, ly)))
             .map(|(lx, ly)| {
                 let (x, y) = (o.x + lx, o.y + ly);
-                self.at(x, y).map_or(Cell::AIR, |m| Cell::new(m, ((x * 7 + y * 13) & 255) as u8))
+                self.scaled_at(x, y).map_or(Cell::AIR, |m| Cell::new(m, ((x * 7 + y * 13) & 255) as u8))
             })
             .collect();
         Chunk::new(pos, cells)
@@ -122,7 +149,7 @@ impl ChunkGenerator for ArenaGen {
     fn generate_with_spawns(&self, pos: ChunkPos) -> (Chunk, Vec<(CellPos, Spawn)>) {
         let spawns = DUMMIES
             .iter()
-            .map(|&(x, kind)| (CellPos::new(x, FLOOR), Spawn::Creature(kind)))
+            .map(|&(x, kind)| (CellPos::new((x as f32 * self.scale) as i32, FLOOR), Spawn::Creature(kind)))
             .filter(|(at, _)| at.chunk() == pos)
             .collect();
         (self.generate(pos), spawns)

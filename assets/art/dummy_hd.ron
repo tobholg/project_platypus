@@ -1,0 +1,94 @@
+// A training dummy: a stitched sack head on a straw body, a crossbar for
+// arms, a target on its chest, on a post. Leans back when hit. (The arena's.)
+(
+    size: (21, 33),
+    feet: (11, 33),
+    outline: (40, 30, 24),
+    palette: {
+        'b': (196, 168, 116),   // burlap
+        'B': (152, 124, 84),    // burlap, shade
+        'k': (70, 48, 38),      // stitches
+        'r': (170, 136, 86),    // rope
+        'y': (230, 200, 100),   // straw
+        'Y': (184, 152, 66),    // straw, shade
+        'w': (126, 88, 52),     // wood
+        'W': (90, 62, 38),      // wood, shade
+        'x': (184, 48, 42),     // target
+    },
+    frames: {
+        "stand": [
+            "........bbbbbb.......",
+            "........bbbbbb.......",
+            "......bbbbbbbbB......",
+            "......bbkbbkbbB......",
+            "......bbkbbkbbB......",
+            "......bbbbbbbbB......",
+            "......bbkkkkbbB......",
+            "......bbkkkkbbB......",
+            "........bbbbBB.......",
+            ".........rrr.........",
+            ".........rrr.........",
+            "YY...bbbbbbbbbB.....Y",
+            "yyywwwwwwwwwwwwwwwyyy",
+            "yyywwwwwwwwwwwwwwwyyy",
+            "YY...bbbxxxxbbB.....Y",
+            ".....bxxbbbbxxB......",
+            ".....bxxbbbbxxB......",
+            ".....bxxbxxbxxB......",
+            ".....bxxbbbbxxB......",
+            ".....bxxbbbbxxB......",
+            ".....bbbxxxxbbB......",
+            ".....rrrrrrrrrr......",
+            ".....rrrrrrrrrr......",
+            "......yyYyyYyy.......",
+            ".........wwW.........",
+            ".........wwW.........",
+            ".........wwW.........",
+            ".........wwW.........",
+            ".........wwW.........",
+            ".........wwW.........",
+            "......WWwwwwwwW......",
+            "......WWwwwwwwW......",
+            ".....WWWWWWWWWWWW....",
+        ],
+        "hit": [
+            "...........bbbbbb....",
+            "...........bbbbbb....",
+            ".........bbbbbbbbB...",
+            ".........bbkbbkbbB...",
+            ".........bbkbbkbbB...",
+            ".........bbbbbbbbB...",
+            ".........bbkkkkbbB...",
+            ".........bbkkkkbbB...",
+            "...........bbbbBB....",
+            "............rrr......",
+            "............rrr......",
+            "..Y...bbbbbbbbbBB....",
+            "..yyywwwwwwwwwwwwwwwy",
+            "..yyywwwwwwwwwwwwwwwy",
+            "..Y...bbbxxxxxbBB....",
+            "......bbxbbbbbxBB....",
+            "......bbxbbbbbxBB....",
+            "......bbxbbxbbxBB....",
+            "......bbxbbbbbxBB....",
+            "......bbxbbbbbxBB....",
+            "......bbbxxxxxbBB....",
+            "......rrrrrrrrrrr....",
+            "......rrrrrrrrrrr....",
+            "........yYYyYYy......",
+            ".........wwW.........",
+            ".........wwW.........",
+            ".........wwW.........",
+            ".........wwW.........",
+            ".........wwW.........",
+            ".........wwW.........",
+            "......WWwwwwwwW......",
+            "......WWwwwwwwW......",
+            ".....WWWWWWWWWWWW....",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["stand"], fps: 4),
+        "hit": (frames: ["hit", "stand"], fps: 12, looping: false),
+    },
+)

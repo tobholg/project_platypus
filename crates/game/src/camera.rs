@@ -45,7 +45,7 @@ struct StartAt(Vec2);
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         // PLATYPUS_ZOOM=6 starts closer in (screenshots, detail work).
-        let start_zoom = std::env::var("PLATYPUS_ZOOM").ok().and_then(|z| z.parse().ok()).filter(|z| ZOOM_LEVELS.contains(z)).unwrap_or(3);
+        let start_zoom = std::env::var("PLATYPUS_ZOOM").ok().and_then(|z| z.parse().ok()).filter(|z| ZOOM_LEVELS.contains(z)).unwrap_or(if crate::data::hd() { 2 } else { 3 });
         app.insert_resource(Zoom(start_zoom))
             .init_resource::<CursorWorld>()
             .init_resource::<CursorOverride>()

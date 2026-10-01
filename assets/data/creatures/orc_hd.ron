@@ -1,0 +1,41 @@
+// HD spike (PLATYPUS_HD=1): the orc at 1.5x, every length scaled; no
+// gear (gear is drawn for the 1x rig).
+// An orc swordsman: comes at you with a cleaver, hacks twice and backs off a
+// step; a couple of solid hits stagger it. Drawn on the humanoid rig
+// (assets/art/orc.ron), its weapon from weapons.ron.
+(
+    name: "Orc",
+    // What it may have on it when it dies (loot.ron), besides what it wears.
+    loot: "orc",
+    // What it may wear (and the chance of each), found as gear is where it stands.
+    size: (10, 24),
+    health: 70,
+    team: Enemy,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "humanoid",
+    // Dropped from a height or flung into rock, it hurts.
+    fall_damage: (safe_height: 105, per_cell: 0.53),
+    movement: (
+        run_speed: 93,
+        ground_accel: 2100,
+        ground_decel: 2700,
+        air_accel: 1350,
+        gravity: 1650,
+        max_fall: 630,
+        jump_height: 36,
+        air_jumps: 0,
+        step_height: 5,
+        dash_speed: 0,
+    ),
+    art: "orc_hd",
+    weapon: "cleaver",
+    stamina: 60,
+    // Hits it shrugs off before one staggers it (damage), and how hard it
+    // is to throw (knockback is divided by it).
+    poise: 16,
+    heft: 1.2,
+    brain: (
+        kind: "hunter",
+        params: (aggro: 330, close: Walk(keep: 16, jump_to_reach: 27), attack: Swing(reach: 24, every: 1.1, combo: 2), wander: (speed: 0.4, every: 2.5)),
+    ),
+)

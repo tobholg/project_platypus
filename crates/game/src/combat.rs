@@ -251,7 +251,7 @@ fn turn_art(art: &str, frame: Option<&str>) -> Result<Vec<Pixels>, String> {
 /// A sprite compiled, its colours for these letters swapped for others (an
 /// item's icon colours: one pickaxe drawing, every tier).
 fn compile_art(art: &str, colors: Option<&HashMap<char, (u8, u8, u8)>>) -> Result<platypus_art::Art, String> {
-    let path = assets_dir().join("art").join(format!("{art}.ron"));
+    let path = assets_dir().join("art").join(format!("{}.ron", crate::data::hd_art(art)));
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut file = platypus_art::parse(&text)?;
     for (c, &(r, g, b)) in colors.into_iter().flatten() {

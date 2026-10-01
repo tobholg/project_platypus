@@ -243,6 +243,14 @@ impl Creatures {
                 }
             }
         }
+        // The HD spike: a creature's `_hd` file stands in for it.
+        if crate::data::hd() {
+            let twins: Vec<String> = defs.keys().filter_map(|k| k.strip_suffix("_hd").map(str::to_string)).collect();
+            for base in twins {
+                let twin = defs[&format!("{base}_hd")].clone();
+                defs.insert(base, twin);
+            }
+        }
         defs
     }
 }
