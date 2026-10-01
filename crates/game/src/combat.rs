@@ -41,13 +41,14 @@ impl Plugin for CombatPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<MeleeRequest>()
             .add_message::<Hit>()
+            .add_message::<Felt>()
             .add_message::<Recoil>()
             .add_message::<Dashed>()
             .init_resource::<HitStop>()
             .add_systems(Startup, load)
             .add_systems(PreUpdate, hit_stop)
             .add_systems(FixedUpdate, (start_swings, dodge, stamina).chain().after(TickSet::Intent).before(TickSet::Bodies))
-            .add_systems(FixedUpdate, (touch, swing, apply_hits).chain().after(TickSet::Bodies).before(TickSet::Cells))
+            .add_systems(FixedUpdate, (touch, swing, apply_hits).chain().in_set(Hits).after(TickSet::Bodies).before(TickSet::Cells))
             .add_systems(Update, down_pose.before(crate::creatures::body::animation::animate))
             .add_systems(Update, (reload, draw).chain().after(crate::creatures::body::animation::animate));
     }
@@ -504,6 +505,11 @@ pub struct MeleeRequest {
     pub at: Vec2,
 }
 
+/// When hits land (touch, swings, then `apply_hits`): after it, `Felt`
+/// says how each did.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Hits;
+
 /// Something was struck: every hit is one of these, and one system
 /// (`apply_hits`) does what hits do, whatever struck.
 #[derive(Message, Clone, Copy, Debug)]
@@ -521,6 +527,23 @@ pub struct Hit {
     /// How hard it lands, for the hit-stop (1: a shortsword's slash).
     pub weight: f32,
     /// A critical hit (the stats' crit chance): more sparks, a longer stop.
+    pub crit: bool,
+}
+
+/// A hit as it landed: what it meant to do and what it did (its kind's
+/// multiplier and armour between), as a share of the target's health
+/// (negative: it healed). How it's shown (`hurt::react`) and heard comes
+/// from this.
+#[derive(Message, Clone, Copy, Debug)]
+pub struct Felt {
+    pub target: Entity,
+    pub meant: f32,
+    pub dealt: f32,
+    pub share: f32,
+    pub harm: crate::creatures::Harm,
+    pub at: Vec2,
+    pub dir: Vec2,
+    pub weight: f32,
     pub crit: bool,
 }
 
@@ -1146,6 +1169,7 @@ fn apply_hits(
     mut q: Query<Struck>,
     tempo: Res<crate::tempo::Tempo>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
+    mut felt: MessageWriter<Felt>,
 ) {
     let Some(weapons) = weapons else { return };
     for r in recoils.read() {
@@ -1170,7 +1194,9 @@ fn apply_hits(
         if safe || graced.contains(&h.target) {
             continue;
         }
-        health.harm(h.damage, h.harm);
+        let dealt = health.harm(h.damage, h.harm);
+        let reaction = crate::creatures::body::hurt::reaction(h.damage, dealt);
+        felt.write(Felt { target: h.target, meant: h.damage, dealt, share: dealt / health.max.max(1.0), harm: h.harm, at: h.at, dir: h.dir, weight: h.weight, crit: h.crit });
         let (mut knock, mut stun) = (h.knock, h.stun);
         if let Some(mut s) = sturdy {
             knock /= s.heft;
@@ -1195,11 +1221,21 @@ fn apply_hits(
         } else {
             k.body.vel += knock;
         }
-        let e = &weapons.file.hit;
-        let (n, heavier) = if h.crit { (e.count as usize * 3, 1.6) } else { (e.count as usize, 1.0) };
-        sparks.emit(e, n, h.at, -h.dir, Vec2::ZERO);
-        stop.hit(STOP * (0.7 + 0.3 * h.weight).min(2.0) * heavier);
-        trauma.0 = (trauma.0 + 0.12).min(1.0);
+        // Sparks where it struck: bright off flesh, dull off what shrugs it
+        // off (and a shorter stop); what drank it glows instead (`hurt`).
+        use crate::creatures::body::hurt::Reaction;
+        let (e, stop_by) = match reaction {
+            Reaction::Hurt => (Some(&weapons.file.hit), 1.0),
+            Reaction::Resisted => (None, 0.5),
+            Reaction::Absorbed => (None, 0.3),
+        };
+        let heavier = if h.crit { 1.6 } else { 1.0 };
+        if let Some(e) = e {
+            let n = if h.crit { e.count as usize * 3 } else { e.count as usize };
+            sparks.emit(e, n, h.at, -h.dir, Vec2::ZERO);
+        }
+        stop.hit(STOP * (0.7 + 0.3 * h.weight).min(2.0) * heavier * stop_by);
+        trauma.0 = (trauma.0 + 0.12 * stop_by).min(1.0);
     }
 }
 

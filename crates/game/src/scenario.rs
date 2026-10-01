@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -4620,6 +4620,57 @@ fn troll_script(
         *next_log += 1.0;
         let fire = burns.get(e).map_or(String::new(), |b| format!(", burning ({:.0} %)", b.share * 100.0));
         info!("troll: t {t:.0}: health {:.0} / {:.0}{fire}", h.hp, h.max);
+    }
+}
+
+/// `reactions`: a skeleton standing still, struck lightly with each kind of
+/// hurt in turn (DESIGN §14.3): how each lands (hurt, resisted, absorbed);
+/// then slashes until it drips (under half) and falters (under a quarter).
+#[allow(clippy::type_complexity)]
+fn reactions_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    foes: Query<(Entity, &crate::creatures::Creature, &crate::creatures::Health, Has<crate::creatures::body::hurt::Faltering>)>,
+    mut reacted: MessageReader<crate::creatures::body::hurt::Reacted>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, usize, bool, bool)>,
+) {
+    use crate::creatures::Harm;
+    if s.name != "reactions" {
+        return;
+    }
+    const KINDS: [Harm; 10] = [Harm::Slash, Harm::Pierce, Harm::Blunt, Harm::Fire, Harm::Frost, Harm::Storm, Harm::Acid, Harm::Poison, Harm::Radiant, Harm::Void];
+    let t = s.elapsed;
+    let Ok(pk) = player.single() else { return };
+    let (step, next, n, dripping, faltering) = &mut *state;
+    if *step == 0 && t > 0.5 {
+        crate::creatures::def::spawn_creature(&mut commands, "skeleton", pk.body.pos + Vec2::new(90.0, -pk.body.half.y), |e| {
+            e.remove::<crate::creatures::brain::hunter::Hunter>();
+        });
+        *step = 1;
+        *next = 1.5;
+        return;
+    }
+    let Some((e, _, h, falters)) = foes.iter().find(|(_, c, ..)| c.kind == "skeleton") else { return };
+    for r in reacted.read().filter(|r| r.target == e) {
+        info!("reactions: skeleton, {:?}: {:?} ({:+.0} % of its health), now {:.1} hp", r.harm, r.reaction, -r.share * 100.0, h.hp);
+    }
+    if *step == 1 && t >= *next {
+        // Each kind in turn; then slashes.
+        let harm = KINDS.get(*n).copied().unwrap_or(Harm::Slash);
+        hits.write(crate::combat::Hit { target: e, damage: 3.0, harm, knock: Vec2::ZERO, stun: 0.0, at: pk.body.pos + Vec2::new(90.0, 0.0), dir: Vec2::X, weight: 1.0, crit: false });
+        *n += 1;
+        *next = t + 0.5;
+    }
+    if !*dripping && h.hp < h.max * 0.5 {
+        *dripping = true;
+        info!("reactions: under half its health ({:.1} of {:.0}): it drips", h.hp, h.max);
+    }
+    if !*faltering && falters {
+        *faltering = true;
+        info!("reactions: under a quarter ({:.1}): it falters", h.hp);
+        *step = 2;
     }
 }
 

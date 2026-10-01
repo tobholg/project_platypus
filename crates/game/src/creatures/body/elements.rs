@@ -651,12 +651,17 @@ pub fn tint(
 ) {
     let t = time.elapsed_secs();
     for (children, burning, coated, chilled, hurt) in &mut creatures {
-        let flash = hurt.is_some_and(|mut h| {
-            h.flash = (h.flash - time.delta_secs()).max(0.0);
-            h.flash > 0.0
+        let dt = time.delta_secs();
+        let (flash, glow) = hurt.map_or((false, None), |mut h| {
+            h.flash = (h.flash - dt).max(0.0);
+            h.glow = (h.glow - dt).max(0.0);
+            (h.flash > 0.0, (h.glow > 0.0).then_some((h.glow_color, h.glow / crate::creatures::body::hurt::GLOW)))
         });
         let color = if flash {
             Color::srgb(1.0, 0.3, 0.28)
+        } else if let Some(((r, g, b), f)) = glow {
+            // (Drank it: its colour, fading.)
+            Color::WHITE.mix(&Color::srgb_u8(r, g, b), 0.75 * f)
         } else if let Some(b) = burning {
             // (Scorched and lit from within, flickering fast; as much as it
             // burns.)

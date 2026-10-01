@@ -42,11 +42,22 @@ pub fn underfoot(world: &World, p: CellPos) -> Option<&'static str> {
 /// Every blow lands with a sound where it struck: the same sound for all
 /// (the one `PLATYPUS_HIT` picks), a heavy one (a longsword's, a crit)
 /// lower and louder.
-fn hits(mut hits: MessageReader<crate::combat::Hit>, mut out: MessageWriter<PlaySound>) {
-    for h in hits.read() {
+/// A hit heard as it landed: flesh (deeper the more of it it took), a clang
+/// off what shrugs it off, a draught for what drank it.
+fn hits(mut felt: MessageReader<crate::combat::Felt>, mut out: MessageWriter<PlaySound>) {
+    use crate::creatures::body::hurt::{Reaction, reaction};
+    for h in felt.read() {
         let loud = (0.6 + h.weight * 0.3).min(1.3) * if h.crit { 1.3 } else { 1.0 };
-        let heavy = h.weight >= 1.6 || h.crit;
-        out.write(PlaySound::at(hit_name(), h.at).volume(loud).pitch(if heavy { 0.86 } else { 1.0 }));
+        let sound = match reaction(h.meant, h.dealt) {
+            Reaction::Hurt => {
+                // (A big share of it lower: a third of its health, ~0.8.)
+                let pitch = (1.12 - h.share * 0.9).clamp(0.72, 1.12) * if h.crit { 0.9 } else { 1.0 };
+                PlaySound::at(hit_name(), h.at).volume(loud).pitch(pitch)
+            }
+            Reaction::Resisted => PlaySound::at("clang", h.at).volume(loud * 0.8),
+            Reaction::Absorbed => PlaySound::at("drink", h.at).volume(0.7).pitch(0.8),
+        };
+        out.write(sound);
     }
 }
 
