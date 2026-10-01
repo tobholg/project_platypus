@@ -15,6 +15,8 @@ use crate::creatures::brain::{BrainRegistry, BrainSet, Staged};
 use crate::creatures::def::Creatures;
 use crate::creatures::moves::{MoveBook, Moves};
 use crate::creatures::{Controls, Creature, Health, Kinematics, Team};
+use platypus_sim::CellPos;
+
 use crate::world::SimWorld;
 
 /// The image (px): the room at 2 screen pixels a cell.
@@ -66,6 +68,13 @@ pub struct Stage {
     pub caption: String,
 }
 
+impl Stage {
+    /// Which stretch of the show it's at (0 again: round once).
+    pub fn beat(&self) -> usize {
+        self.beat
+    }
+}
+
 fn setup(mut commands: Commands, sim: Res<SimWorld>, mut images: ResMut<Assets<Image>>) {
     let Some((lo, hi)) = sim.generator.stage() else { return };
     let (lo, hi) = (Vec2::new(lo.x as f32, lo.y as f32), Vec2::new(hi.x as f32, hi.y as f32));
@@ -100,6 +109,7 @@ fn cast(
     mut cams: Query<(&mut Camera, &Transform)>,
     mut view: ResMut<crate::canvas::StageView>,
     staged: Query<(), With<Staged>>,
+    mut sim: ResMut<SimWorld>,
 ) {
     let Some(mut stage) = stage else { return };
     // (Taken away, the world reset: put on again.)
@@ -122,6 +132,7 @@ fn cast(
     stage.showing = wanted.clone();
     stage.caption.clear();
     let Some(id) = wanted else { return };
+    clean(&mut sim, stage.lo, stage.hi);
     let Some(def) = creatures.get(&id).cloned() else { return };
     let floor = stage.lo.y;
     let at = Vec2::new(stage.lo.x + 60.0 + def.size.0 / 2.0, floor + 1.0);
@@ -155,6 +166,35 @@ fn cast(
     stage.beats = beats;
     stage.beat = 0;
     stage.t = 0.0;
+}
+
+/// The room as it was made: what the last left there (acid, blood, holes)
+/// gone, its floor and step stone again (as the arena makes them).
+fn clean(sim: &mut SimWorld, lo: Vec2, hi: Vec2) {
+    let Some(stone) = sim.materials().id("stone") else { return };
+    let (x0, f, x1, y1) = (lo.x as i32, lo.y as i32, hi.x as i32, hi.y as i32);
+    // (The few chunks it's in, as made.)
+    let mut made: std::collections::HashMap<platypus_sim::ChunkPos, platypus_sim::Chunk> = Default::default();
+    for x in x0..x1 {
+        // (Its step: as high as the ground the generator says is there.)
+        let ground = (f..f + 24)
+            .find(|&y| {
+                let at = CellPos::new(x, y).chunk();
+                let chunk = made.entry(at).or_insert_with(|| sim.generator.generate(at));
+                chunk.cells()[cell_index(x, y)].material == platypus_sim::MaterialId::AIR
+            })
+            .unwrap_or(f);
+        for y in f - 6..y1 {
+            let cell = if y < ground { platypus_sim::Cell::new(stone, ((x * 7 + y * 13) & 255) as u8) } else { platypus_sim::Cell::AIR };
+            sim.world.set(CellPos::new(x, y), cell);
+        }
+    }
+}
+
+/// A cell's place in its chunk's cells.
+fn cell_index(x: i32, y: i32) -> usize {
+    let c = platypus_sim::CHUNK;
+    (y.rem_euclid(c) * c + x.rem_euclid(c)) as usize
 }
 
 /// Who was put on (filled in as they're spawned).

@@ -7,6 +7,7 @@
 //! moves, what it carries, and buttons to place it, fight it, open its file
 //! and reload.
 
+pub mod cli;
 pub mod panel;
 pub mod stage;
 

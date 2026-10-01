@@ -151,7 +151,7 @@ fn main() {
             scenario::ScenarioPlugin,
         ))
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
-        .add_plugins((replay::ReplayPlugin, fight::FightPlugin, bestiary::panel::BestiaryPlugin, bestiary::stage::StagePlugin))
+        .add_plugins((replay::ReplayPlugin, fight::FightPlugin, bestiary::panel::BestiaryPlugin, bestiary::stage::StagePlugin, bestiary::cli::CliPlugin))
         .add_plugins((reset::ResetPlugin, clock::ClockPlugin, gold::GoldPlugin, kick::KickPlugin, traps::TrapsPlugin, talk::TalkPlugin, events::EventsPlugin))
         .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin))
         .add_plugins(sound::SoundPlugin)
