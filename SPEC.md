@@ -1773,13 +1773,28 @@ player has seen creatures do) and `fight.rs` (the arena's readouts).
   target is hit, once, and the coating left on it; `Cast(spell, at, up)`,
   aimed where the target will be and lobbed by the spell's own fall
   (`Spellbook::flight`); `Slam((radius, damage, harm, knock, stun))` round
-  its feet; `Summon(kind, count, spread)`; `Sound(name)`. A move starts
-  (`Began`) when one's in range, ready and its needs are met; while it
-  runs the creature stands (after the brain, `moves::run`). Weapons stay
-  weapons: `hunter`'s `Swing` and `Shoot` use what's wielded
-  (`weapons.ron`), `Touch` the creature's `touch`. Not yet: grabs and
-  beams (with the first creature that needs one, the roster: a held
-  ray needs casting held, a grab needs limbs).
+  its feet; `Summon(kind, count, spread)`; `Sound(name)`;
+  `Grab((at, reach, from))`, live: what's within `reach` of the point is
+  caught and held there (`Held`, pinned by `moves::pin` after the bodies
+  move: no fall, no control) until the move ends, a `Throw(speed, up,
+  stun)`, or the grabber is stunned (it lets go, the move's off); strikes
+  in later phases land on what's held (a strike lands once a phase); a
+  grab that catches nothing goes straight to the last phase;
+  `Beam(spell, at, turn)`, live: a ray spell cast every tick, its aim
+  swinging after the target at most `turn` radians a second. A phase may
+  play a `clip` of the creature's art (a rig's pose) through it. A move
+  starts (`moves::start`, `Began`) before the brain thinks, when one's in
+  range, ready, its needs are met and the creature isn't mid-swing; while
+  it runs the brain's weapon waits (`Moves::busy`) and the creature stands
+  (`moves::run`, after the brain). Weapons stay weapons: `hunter`'s
+  `Swing` and `Shoot` use what's wielded (`weapons.ron`, the player's
+  too), `Touch` the creature's `touch`. The troll's `troll_grab` (every
+  9 s within 40 cells): its free arm drawn back (0.6 s, the tell), the
+  snatch, two squeezes of 10, a hurl (520 cells/s, 330 up). `fire_ray`
+  (a 0.9 s trembling windup, a 1.6 s sweep) waits for a creature that
+  burns. The `grab` scenario: caught, squeezed (19 after armour), hurled
+  235 cells; a second grab broken by a staggering blow; a skeleton given
+  `fire_ray` sets the player alight.
   The spider's are all moves: in the `spider` scenario the spit from 180
   cells at 0.57 s, the sting's 30 at ~4.06 s with its venom, the bite's 16.
 - **Seeing that it hurts** (`body/hurt.rs`, DESIGN §14.3; no health

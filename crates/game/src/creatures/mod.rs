@@ -47,6 +47,8 @@ impl Plugin for CreaturesPlugin {
             .insert_resource(body::elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
             .add_systems(FixedUpdate, displace_liquid.after(move_creatures).in_set(TickSet::Bodies))
+            // What a grab holds stays in its grip.
+            .add_systems(FixedUpdate, moves::pin.after(move_creatures).before(deaths).in_set(TickSet::Bodies))
             .add_systems(Update, (body::elements::tint, body::elements::blaze, body::elements::reload_coatings, body::hurt::watch, body::hurt::float))
             // Hits as they landed, shown (`hurt`); the badly hurt drip and falter.
             .add_systems(FixedUpdate, (body::hurt::react, body::hurt::wounded).chain().after(crate::combat::Hits))

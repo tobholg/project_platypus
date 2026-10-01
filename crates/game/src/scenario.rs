@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -4696,6 +4696,109 @@ fn reactions_script(
         hits.write(crate::combat::Hit { target, damage: 5.0, harm, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::X, weight: 1.0, crit: false });
         *n += 1;
         *next = t + 0.5;
+    }
+}
+
+/// `grab`: a troll beside a player standing still: it snatches the player
+/// up, squeezes twice and hurls them; a second grab is broken by striking
+/// the troll hard (stunned, it lets go). Then a skeleton given the
+/// `fire_ray` move sweeps its ray at the player (each part from the same
+/// place, healed). Logs each phase, where the
+/// player is held, its health, the throw and the ray.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn grab_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    book: Res<crate::creatures::moves::MoveBook>,
+    player: Query<(Entity, &Kinematics, &crate::creatures::Health, Option<&crate::creatures::moves::Held>, Has<crate::creatures::body::elements::Burning>), With<LocalPlayer>>,
+    foes: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::moves::Moves), Without<LocalPlayer>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, String, bool, f32, Vec2, f32)>,
+) {
+    if s.name != "grab" {
+        return;
+    }
+    let t = s.elapsed;
+    let Ok((me, pk, ph, held, burning)) = player.single() else { return };
+    let (step, next, last, was_held, hp0, home, x0) = &mut *state;
+    let doing = |kind: &str| foes.iter().find(|f| f.1.kind == kind).and_then(|f| f.3.doing(&book).map(|(id, _, ph)| format!("{id} {ph}")));
+    // Each part from the same place on the open floor, healed, nothing about.
+    let fresh = |commands: &mut Commands, home: Vec2| {
+        for (e, ..) in &foes {
+            commands.entity(e).despawn();
+        }
+        commands.entity(me).queue(move |mut ew: EntityWorldMut| {
+            if let Some(mut k) = ew.get_mut::<Kinematics>() {
+                k.body.pos = home;
+                k.body.vel = Vec2::ZERO;
+                k.prev_pos = home;
+            }
+            if let Some(mut h) = ew.get_mut::<crate::creatures::Health>() {
+                h.hp = h.max;
+            }
+        });
+    };
+    match *step {
+        0 if t > 0.5 => {
+            *home = pk.body.pos;
+            crate::creatures::def::spawn_creature(&mut commands, "troll", pk.body.pos + Vec2::new(36.0, -pk.body.half.y), |_| {});
+            *step = 1;
+            *hp0 = ph.hp;
+        }
+        1 | 2 => {
+            let now = doing("troll").unwrap_or_default();
+            if now != *last {
+                info!("grab: t {t:.2} troll: {}  (player hp {:.0})", if now.is_empty() { "-" } else { &now }, ph.hp);
+                *last = now.clone();
+            }
+            if held.is_some() != *was_held {
+                *was_held = held.is_some();
+                if *was_held {
+                    let tk = foes.iter().find(|f| f.1.kind == "troll").map(|f| f.2.body.pos).unwrap_or_default();
+                    info!("grab: t {t:.2} the player is held, {:?} from the troll's middle", (pk.body.pos - tk).round());
+                    if *step == 2
+                        && let Some((te, ..)) = foes.iter().find(|f| f.1.kind == "troll")
+                    {
+                        // Struck hard enough to stagger it: it lets go.
+                        hits.write(crate::combat::Hit { target: te, damage: 90.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.5, at: pk.body.pos, dir: Vec2::X, weight: 2.0, crit: false });
+                        info!("grab: t {t:.2} the troll struck hard");
+                    }
+                } else {
+                    info!("grab: t {t:.2} let go, moving {:?} (hp {:.0}, {:.0} before)", pk.body.vel.round(), ph.hp, *hp0);
+                    *x0 = pk.body.pos.x;
+                    *next = t + 1.5;
+                }
+            }
+            if !*was_held && *next > 0.0 && t > *next {
+                info!("grab: t {t:.2} landed {:.0} cells from where it was let go, hp {:.0}", pk.body.pos.x - *x0, ph.hp);
+                *next = 0.0;
+                *step += 1;
+                fresh(&mut commands, *home);
+                *hp0 = 100.0;
+                if *step == 2 {
+                    crate::creatures::def::spawn_creature(&mut commands, "troll", *home + Vec2::new(36.0, -pk.body.half.y), |_| {});
+                } else {
+                    // (West of the player: the dummies stand east, in the ray's way.)
+                    crate::creatures::def::spawn_creature(&mut commands, "skeleton", *home + Vec2::new(-150.0, -pk.body.half.y), |e| {
+                        e.remove::<crate::creatures::brain::hunter::Hunter>();
+                        e.insert(crate::creatures::moves::Moves::new(vec!["fire_ray".into()]));
+                    });
+                    *next = t + 4.0;
+                }
+            }
+        }
+        3 => {
+            let now = doing("skeleton").unwrap_or_default();
+            if now != *last {
+                info!("grab: t {t:.2} skeleton: {}  (player hp {:.0}{})", if now.is_empty() { "-" } else { &now }, ph.hp, if burning { ", burning" } else { "" });
+                *last = now;
+            }
+            if t > *next {
+                info!("grab: the ray: the player at hp {:.0}{}", ph.hp, if burning { ", burning" } else { "" });
+                *step = 4;
+            }
+        }
+        _ => {}
     }
 }
 

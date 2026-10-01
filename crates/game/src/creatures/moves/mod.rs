@@ -23,6 +23,7 @@ use bevy::prelude::*;
 use serde::Deserialize;
 
 use crate::combat::Hit;
+use crate::creatures::body::animation::Animator;
 use crate::creatures::body::elements::Coatings;
 use crate::creatures::body::legs::Rear;
 use crate::creatures::{Controls, Harm, Kinematics, Team};
@@ -89,12 +90,15 @@ pub struct Phase {
     pub ease: Ease,
     /// The curl trembling, this much, while it lasts.
     pub tremble: f32,
+    /// An animation clip of its art played through it (a rig's pose: the
+    /// troll's `reach`), till another phase's or the move's end.
+    pub clip: Option<String>,
     pub acts: Vec<Act>,
 }
 
 impl Default for Phase {
     fn default() -> Self {
-        Phase { name: String::new(), secs: 0.0, pose: None, ease: Ease::Smooth, tremble: 0.0, acts: Vec::new() }
+        Phase { name: String::new(), secs: 0.0, pose: None, ease: Ease::Smooth, tremble: 0.0, clip: None, acts: Vec::new() }
     }
 }
 
@@ -137,6 +141,43 @@ pub enum Act {
     Summon { kind: String, count: u32, #[serde(default)] spread: f32 },
     /// A sound (sounds.ron) where it is.
     Sound(String),
+    /// Live through the phase: what's within `reach` of a point `at` cells
+    /// toward the target is caught (from `from` of the way in) and held
+    /// there, helpless, until the move ends, a `Throw`, or the grabber is
+    /// stunned (it lets go). Strikes in later phases land on what's held.
+    /// A grab that catches nothing goes straight to the move's last phase.
+    Grab(Grab),
+    /// What's held let go, flung `speed` cells/s along the way it faces and
+    /// `up` more upward (stunned `stun` s).
+    Throw { speed: f32, #[serde(default)] up: f32, #[serde(default = "throw_stun")] stun: f32 },
+    /// Live through the phase: a held spell (a ray: spells.ron) cast every
+    /// tick from `at` cells toward the target, its aim swinging after them
+    /// at most `turn` radians a second (outrun it, or get under it).
+    Beam { spell: String, #[serde(default)] at: f32, #[serde(default = "beam_turn")] turn: f32 },
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Grab {
+    pub at: f32,
+    pub reach: f32,
+    #[serde(default)]
+    pub from: f32,
+}
+
+fn throw_stun() -> f32 {
+    0.4
+}
+
+fn beam_turn() -> f32 {
+    1.5
+}
+
+/// Caught by a grab: held at `at` (where the grabber holds it) while it
+/// lasts, its body pinned there (`pin`), no control of its own.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Held {
+    pub by: Entity,
+    pub at: Vec2,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -257,6 +298,10 @@ struct Doing {
     /// Toward the target as it started.
     dir: Vec2,
     struck: bool,
+    /// What its grab holds, and where (cells toward the target).
+    held: Option<(Entity, f32)>,
+    /// Where a beam points (it swings after the target).
+    aim: Vec2,
     /// When the phase began (s into the move).
     start: f32,
     /// The pose the phase eases from.
@@ -267,6 +312,11 @@ impl Moves {
     pub fn new(ids: Vec<String>) -> Self {
         let ready = vec![0.0; ids.len()];
         Moves { ids, ready, doing: None }
+    }
+
+    /// Busy with a move (its weapon waits: `hunter`).
+    pub fn busy(&self) -> bool {
+        self.doing.is_some()
     }
 
     /// The move under way, if any: its id, how far in (seconds) and the
@@ -292,7 +342,7 @@ fn clear(sim: &SimWorld, a: Vec2, b: Vec2) -> bool {
     })
 }
 
-type Mover<'a> = (Entity, &'a mut Moves, &'a mut Kinematics, &'a mut Controls, Option<&'a mut Rear>);
+type Mover<'a> = (Entity, &'a mut Moves, &'a mut Kinematics, &'a mut Controls, Option<&'a mut Rear>, Option<&'a mut Animator>);
 type Prey<'a> = (Entity, &'a Kinematics, &'a Team);
 
 /// What a move goes for: where it is, how it's moving, its half size.
@@ -304,50 +354,67 @@ struct Quarry {
     half: Vec2,
 }
 
-/// Start a move when one's in reach and ready; carry on the one under way
-/// (after the brain: a creature mid-move stands).
+/// Start a move when one's in reach and ready (before the brain, so it
+/// knows: its weapon waits, `Moves::busy`); not mid-swing of what it
+/// wields.
+pub fn start(
+    time: Res<Time>,
+    sim: Res<SimWorld>,
+    book: Res<MoveBook>,
+    mut began: MessageWriter<Began>,
+    mut movers: Query<(Entity, &mut Moves, &Kinematics, Has<crate::combat::Swing>)>,
+    prey: Query<Prey, Without<crate::creatures::brain::villager::Hiding>>,
+) {
+    let now = time.elapsed_secs();
+    for (e, mut moves, k, swinging) in &mut movers {
+        if moves.doing.is_some() || swinging {
+            continue;
+        }
+        let pos = k.body.pos;
+        let holds = k.loco.grounded() || k.loco.clinging().is_some();
+        let Some((pe, pk, _)) = prey.iter().filter(|(p, _, t)| *p != e && t.hunted()).min_by(|x, y| x.1.body.pos.distance(pos).total_cmp(&y.1.body.pos.distance(pos))) else { continue };
+        let to = pk.body.pos - pos;
+        let dist = to.length();
+        let start = (0..moves.ids.len()).find(|&i| {
+            let Some(m) = book.get(&moves.ids[i]) else { return false };
+            now >= moves.ready[i] && (m.when.range.0..m.when.range.1).contains(&dist) && (!m.when.footing || holds) && (!m.when.line || clear(&sim, pos, pk.body.pos))
+        });
+        if let Some(which) = start {
+            // (`phase` past the end: the first phase's start is still to come.)
+            let dir = to.normalize_or(Vec2::X);
+            moves.doing = Some(Doing { which, t: 0.0, phase: usize::MAX, start: 0.0, target: pe, dir, struck: false, held: None, aim: dir, from: Pose::default() });
+            began.write(Began { who: e, id: moves.ids[which].clone() });
+        }
+    }
+}
+
+/// Carry on the move under way (after the brain: a creature mid-move
+/// stands).
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn run(
     mut commands: Commands,
     time: Res<Time>,
-    sim: Res<SimWorld>,
     book: Res<MoveBook>,
     spells: Res<crate::magic::Spellbook>,
     coatings: Res<Coatings>,
     mut hits: MessageWriter<Hit>,
     mut casts: MessageWriter<crate::magic::CastRequest>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
-    mut began: MessageWriter<Began>,
     mut q: ParamSet<(Query<Mover>, Query<Prey, Without<crate::creatures::brain::villager::Hiding>>)>,
 ) {
     let now = time.elapsed_secs();
     // (What's hunted, as it stands before any of this tick's moves.)
     let prey: Vec<Quarry> = q.p1().iter().filter(|(_, _, t)| t.hunted()).map(|(e, k, _)| Quarry { e, pos: k.body.pos, vel: k.body.vel, half: k.body.half }).collect();
     let mut movers = q.p0();
-    for (e, mut moves, mut k, mut c, rear) in &mut movers {
+    for (e, mut moves, mut k, mut c, rear, mut anim) in &mut movers {
         let Some(mut rear) = rear else {
             commands.entity(e).insert(Rear::default());
             continue;
         };
-        let pos = k.body.pos;
-        // Start one.
         if moves.doing.is_none() {
-            let holds = k.loco.grounded() || k.loco.clinging().is_some();
-            let Some(pk) = prey.iter().filter(|p| p.e != e).min_by(|x, y| x.pos.distance(pos).total_cmp(&y.pos.distance(pos))) else { continue };
-            let (pe, to) = (pk.e, pk.pos - pos);
-            let dist = to.length();
-            let start = (0..moves.ids.len()).find(|&i| {
-                let Some(m) = book.get(&moves.ids[i]) else { return false };
-                now >= moves.ready[i] && (m.when.range.0..m.when.range.1).contains(&dist) && (!m.when.footing || holds) && (!m.when.line || clear(&sim, pos, pk.pos))
-            });
-            if let Some(which) = start {
-                // (`phase` past the end: the first phase's start is still to come.)
-                moves.doing = Some(Doing { which, t: 0.0, phase: usize::MAX, start: 0.0, target: pe, dir: to.normalize_or(Vec2::X), struck: false, from: Pose::default() });
-                began.write(Began { who: e, id: moves.ids[which].clone() });
-            } else {
-                continue;
-            }
+            continue;
         }
+        let pos = k.body.pos;
         let id = moves.doing.as_ref().map(|d| moves.ids[d.which].clone()).expect("a move under way");
         let Some(m) = book.get(&id).cloned() else {
             moves.doing = None;
@@ -364,6 +431,17 @@ pub fn run(
         }
         let dir = d.dir;
         let at = |along: f32| pos + dir * along;
+        // Holding something: it's where it's held, unless it's gone, or
+        // the grabber's been struck senseless (it lets go).
+        let stunned = k.loco.state == platypus_physics::MoveState::Stunned;
+        if let Some((h, along)) = d.held {
+            if stunned || target.is_none() {
+                commands.entity(h).try_remove::<Held>();
+                d.held = None;
+            } else {
+                commands.entity(h).try_insert(Held { by: e, at: at(along) });
+            }
+        }
         // Into each phase whose time has come (one of no length goes by at
         // once, its pose taken and what it does done).
         let mut done = false;
@@ -372,7 +450,9 @@ pub fn run(
                 0
             } else if d.t >= d.start + m.phases[d.phase].secs {
                 d.start += m.phases[d.phase].secs;
-                d.phase + 1
+                // (A grab that caught nothing: straight to the last phase.)
+                let missed = d.held.is_none() && m.phases[d.phase].acts.iter().any(|a| matches!(a, Act::Grab(_)));
+                if missed { (d.phase + 1).max(m.phases.len() - 1) } else { d.phase + 1 }
             } else {
                 break;
             };
@@ -381,6 +461,10 @@ pub fn run(
                 break;
             };
             d.phase = next;
+            d.struck = false;
+            if let (Some(clip), Some(a)) = (&p.clip, anim.as_deref_mut()) {
+                a.play(clip);
+            }
             d.from = Pose { lift: rear.lift, back: rear.back, curl: rear.curl };
             if let Some(pose) = p.pose
                 && (p.ease == Ease::Snap || p.secs == 0.0)
@@ -390,8 +474,34 @@ pub fn run(
             let mut vel = k.body.vel;
             begin(p, e, &k, dir, target.as_ref(), &spells, &mut vel, at, &mut casts, &mut sounds, &mut commands);
             k.body.vel = vel;
+            for act in &p.acts {
+                if let Act::Throw { speed, up, stun } = act
+                    && let Some((h, _)) = d.held.take()
+                {
+                    let fling = dir * *speed + Vec2::Y * *up;
+                    let stun = *stun;
+                    commands.entity(h).try_remove::<Held>().queue_silenced(move |mut ew: EntityWorldMut| {
+                        if let Some(mut hk) = ew.get_mut::<Kinematics>() {
+                            let hk = &mut *hk;
+                            hk.loco.knock(&mut hk.body, fling, stun);
+                        }
+                    });
+                }
+            }
+        }
+        if stunned && d.held.is_none() && m.phases.get(d.phase).is_some_and(|p| p.acts.iter().any(|a| matches!(a, Act::Grab(_) | Act::Beam { .. }))) {
+            // (Struck senseless mid-grab or mid-beam: the move's off.)
+            done = true;
         }
         if done {
+            if let Some((h, _)) = d.held.take() {
+                commands.entity(h).try_remove::<Held>();
+            }
+            if let Some(a) = anim.as_deref_mut()
+                && m.phases.iter().any(|p| p.clip.is_some())
+            {
+                a.force = None;
+            }
             let which = d.which;
             moves.ready[which] = now + m.every;
             for r in &mut moves.ready {
@@ -431,6 +541,26 @@ pub fn run(
                         }
                     }
                 }
+                Act::Grab(g) if d.held.is_none() && f >= g.from => {
+                    if let Some(pk) = &target {
+                        let hand = at(g.at);
+                        if ((pk.pos - hand).abs() - pk.half).max_element() <= g.reach {
+                            d.held = Some((pk.e, g.at));
+                            commands.entity(pk.e).try_insert(Held { by: e, at: hand });
+                        }
+                    }
+                }
+                Act::Beam { spell, at: along, turn } => {
+                    if let (Some(pk), Some(i)) = (&target, spells.spells.iter().position(|s| &s.id == spell)) {
+                        let from = at(*along);
+                        // (Swinging after them, no faster than it can turn.)
+                        let want = (pk.pos - from).normalize_or(d.aim);
+                        let swing = d.aim.angle_to(want).clamp(-turn * DT, turn * DT);
+                        d.aim = Vec2::from_angle(swing).rotate(d.aim);
+                        c.0.aim = from + d.aim * 60.0;
+                        casts.write(crate::magic::CastRequest { caster: e, spell: i, from, toward: from + d.aim * 60.0, alt: false });
+                    }
+                }
                 Act::Slam(s) if !d.struck && f >= 0.0 => {
                     d.struck = true;
                     let feet = pos - Vec2::Y * k.body.half.y;
@@ -445,6 +575,20 @@ pub fn run(
             }
         }
         d.t += DT;
+    }
+}
+
+/// What's held stays where it's held: no fall, no control (stunned a
+/// moment at a time while it lasts). Let go if the grabber's gone.
+pub(crate) fn pin(mut commands: Commands, mut q: Query<(Entity, &Held, &mut Kinematics)>, grabbers: Query<(), With<Moves>>) {
+    for (e, h, mut k) in &mut q {
+        if grabbers.get(h.by).is_err() {
+            commands.entity(e).remove::<Held>();
+            continue;
+        }
+        let k = &mut *k;
+        k.body.pos = h.at;
+        k.loco.knock(&mut k.body, Vec2::ZERO, 2.0 * DT);
     }
 }
 
@@ -495,7 +639,7 @@ fn begin(
             Act::Sound(name) => {
                 sounds.write(crate::sound::PlaySound::at(name.clone(), k.body.pos));
             }
-            Act::Strike(_) | Act::Slam(_) => {}
+            Act::Strike(_) | Act::Slam(_) | Act::Grab(_) | Act::Throw { .. } | Act::Beam { .. } => {}
         }
     }
 }

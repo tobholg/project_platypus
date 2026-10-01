@@ -265,8 +265,9 @@ in the `trap` scenario's tunnel pours onto its tripwire and buries it
 1. ✅ The move vocabulary: wind-up, active, recovery; hit shapes; lunges;
    projectiles; summons; grabs; beams; area slams; every move with a tell.
    As built: `moves.ron` (phases with poses and acts: lunge, strike, cast,
-   slam, summon, sound), one runner; grabs and beams wait for the roster's
-   first creature that needs one.
+   slam, summon, sound, grab, throw, beam; a phase's clip), chosen before
+   the brain thinks (its weapon waits), carried out after; the troll's
+   grab (`grab` scenario); `fire_ray` ready for a creature that burns.
 2. ✅ Damage feedback (DESIGN §14.3): reactions scaled by the share of health
    taken; wound drips and staggers; hurt, resisted and absorbed hits told
    apart.
@@ -285,7 +286,9 @@ blunt, fire, frost, storm, acid, radiant hurt; pierce and poison resisted;
 void absorbed; drips under half, falters under a quarter; then the Fight
 readout and the player's record of skeletons (met 1, felled by blunt).
 Every hurt from every source is kept on the body by kind and tallied once
-a tick (`Took`): observations and readouts both read it.
+a tick (`Took`): observations and readouts both read it. `grab`: the
+troll catches the player, squeezes twice, hurls it 235 cells; a staggering
+blow breaks a grab; a skeleton's fire ray sets the player alight.
 
 **3. `bestiary`: the browser, arena v2, and the command line.**
 1. The bestiary panel: cards, filters, search; the expanded view with the

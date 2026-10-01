@@ -21,8 +21,40 @@
 //     Slam((radius, damage, harm, knock, stun)): round its feet
 //     Summon(kind, count, spread): creatures beside it
 //     Sound(name): sounds.ron
+//     Grab((at, reach, from)): live through the phase: what's within
+//       `reach` of the point is caught and held there, helpless, till the
+//       move ends, a Throw, or the grabber's stunned; later strikes land on
+//       it; a grab that catches nothing skips to the last phase
+//     Throw(speed, up, stun): what's held, flung
+//     Beam(spell, at, turn): live through the phase: a ray (spells.ron)
+//       cast every tick, its aim swinging after the target at most `turn`
+//       radians a second
+//   clip: an animation clip of its art played through the phase (a rig's
+//     pose: the troll's reach)
 (
     moves: [
+        // The troll's, between its club swings, when you're close: it draws
+        // its free arm back, snatches you up, squeezes twice and hurls you.
+        // (Strike it hard enough to stun it and it lets go.)
+        (id: "troll_grab", every: 9.0, when: (range: (0, 40), footing: true), phases: [
+            (name: "windup", secs: 0.6, clip: Some("reach_back"), acts: [Sound("swing_heavy")]),
+            (name: "grab", secs: 0.25, clip: Some("reach"), acts: [Grab((at: 30, reach: 9, from: 0.3))]),
+            (name: "squeeze", secs: 0.75, clip: Some("hoist"), acts: [
+                Strike((at: 30, reach: 9, damage: 10, harm: blunt, knock: 0, stun: 0.3, from: 0.8)),
+            ]),
+            (name: "squeeze", secs: 0.75, clip: Some("hoist"), acts: [
+                Strike((at: 30, reach: 9, damage: 10, harm: blunt, knock: 0, stun: 0.3, from: 0.8)),
+            ]),
+            (name: "throw", secs: 0.0, clip: Some("hurl"), acts: [Throw(speed: 520, up: 330), Sound("swing_heavy")]),
+            (name: "recover", secs: 0.7, clip: Some("hurl")),
+        ]),
+        // A ray for something that burns (not on any creature yet: the
+        // roster's). A long tell, then a sweep you can outrun.
+        (id: "fire_ray", every: 6.0, when: (range: (40, 240), line: true), phases: [
+            (name: "windup", secs: 0.9, pose: Some((lift: 4)), tremble: 0.02),
+            (name: "beam", secs: 1.6, acts: [Beam(spell: "fire_ray", at: 10, turn: 0.9)]),
+            (name: "recover", secs: 0.5, pose: Some(())),
+        ]),
         // The big spider's. It crouches back, then leaps at you: its jaws.
         (id: "spider_bite", every: 1.5, when: (range: (0, 36), footing: true), phases: [
             (name: "windup", secs: 0.3, pose: Some((lift: 3, back: 4.5))),

@@ -34,5 +34,7 @@
         kind: "hunter",
         params: (aggro: 390, close: Walk(keep: 27, jump_to_reach: 45), attack: Swing(reach: 45, every: 2.2, combo: 1), wander: (speed: 0.3, every: 3.5)),
     ),
+    // Between its club swings, close: it snatches you up (moves.ron).
+    moves: ["troll_grab"],
     z: 9,
 )

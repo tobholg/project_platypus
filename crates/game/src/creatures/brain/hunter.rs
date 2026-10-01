@@ -43,7 +43,7 @@ pub struct HunterPlugin;
 
 impl Plugin for HunterPlugin {
     fn build(&self, app: &mut App) {
-        app.register_brain::<Hunter>("hunter").add_systems(FixedUpdate, (hunt, crate::creatures::moves::run).chain().in_set(super::BrainSet));
+        app.register_brain::<Hunter>("hunter").add_systems(FixedUpdate, (crate::creatures::moves::start, hunt, crate::creatures::moves::run).chain().in_set(super::BrainSet));
     }
 }
 
@@ -148,6 +148,7 @@ type Hunting<'a> = (
     Option<&'a crate::clock::Keeps>,
     Has<crate::combat::Swing>,
     Option<&'a crate::combat::Wielding>,
+    Option<&'a crate::creatures::moves::Moves>,
 );
 
 /// 0..1 from a roll seeded by the world, the tick, the creature and a salt.
@@ -177,7 +178,7 @@ fn hunt(
     mut draws: MessageWriter<crate::archery::DrawBow>,
 ) {
     let tick = sim.world.tick();
-    for (e, h, k, mut c, mind, marching, keeps, swinging, wielding) in &mut q {
+    for (e, h, k, mut c, mind, marching, keeps, swinging, wielding, moves) in &mut q {
         let Some(mut m) = mind else {
             commands.entity(e).insert(HunterMind::default());
             continue;
@@ -193,7 +194,8 @@ fn hunt(
             .min_by(|a, b| a.0.distance_squared(pos).total_cmp(&b.0.distance_squared(pos)));
         let contacts = k.loco.contacts;
         let grounded = k.loco.grounded();
-        let stunned = k.loco.state == platypus_physics::MoveState::Stunned;
+        // (Stunned, or busy with a move of its own: no swing, no shot.)
+        let stunned = k.loco.state == platypus_physics::MoveState::Stunned || moves.is_some_and(|m| m.busy());
         c.0.aim = target.map_or(Vec2::ZERO, |t| t.0);
         let mut jump = false;
         let mut move_y = 0.0;

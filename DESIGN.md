@@ -881,8 +881,8 @@ twin, so the model can make, render and check what a person can.
     animation; a creature lists its moves. As built (`moves`, 2026-10-01):
     `assets/data/moves.ron`, phases named (windup, hold, strike, recover)
     each easing a pose and doing acts (lunge, strike, cast, slam, summon,
-    sound); weapons stay `weapons.ron`'s. Grabs and beams wait for the
-    roster's first creature that needs one.
+    sound, grab and throw, beam), a phase's clip from the creature's art
+    (the troll's reach); weapons stay `weapons.ron`'s. The troll grabs.
   - **Behaviour**: one general brain from settings: senses (sight,
     hearing, aggro), tactics (keep distance, flank, retreat when hurt,
     call others), rules for picking a move (range, cooldown, weight,
