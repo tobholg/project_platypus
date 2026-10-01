@@ -308,6 +308,8 @@ pub struct TerrainGen {
     patterns: Vec<Option<Vec<u8>>>,
     /// By material id: solid (static or powder), a plant.
     solid: Vec<bool>,
+    /// By material id: a powder (it falls if what holds it is cut away).
+    powder: Vec<bool>,
     plant: Vec<bool>,
     /// Lairs (`with_lairs`), and which each chamber is, if any.
     lairs: Vec<lairs::Lair>,
@@ -391,6 +393,7 @@ impl TerrainGen {
             gems,
             minerals: Perlin::new(s(18)),
             solid: mats.iter().map(|(id, _)| matches!(mats.phys(id).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder)).collect(),
+            powder: mats.iter().map(|(id, _)| mats.phys(id).kind == platypus_sim::Kind::Powder).collect(),
             plant: mats.iter().map(|(id, _)| mats.phys(id).kind == platypus_sim::Kind::Plant).collect(),
             patterns: mats
                 .iter()
@@ -1318,6 +1321,20 @@ impl TerrainGen {
         for gy in gy0..=gy1 {
             for gx in gx0..=gx1 {
                 let Some(t) = self.trap_at(gx, gy) else { continue };
+                // Lined: what was loose round the niche (sand, coal, gravel)
+                // is stone, or it'd pour out past the boulder.
+                for y in t.by - TRAP_R - 4..=t.by + TRAP_R + 4 {
+                    for x in t.cx - TRAP_R - 4..=t.cx + TRAP_R + 4 {
+                        let (lx, ly) = (x - o.x, y - o.y);
+                        let d = (x - t.cx) * (x - t.cx) + (y - t.by) * (y - t.by);
+                        if (0..CHUNK).contains(&lx) && (0..CHUNK).contains(&ly) && 4 * d <= (2 * TRAP_R + 7) * (2 * TRAP_R + 7) {
+                            let c = &mut cells[(ly * CHUNK + lx) as usize];
+                            if self.powder[c.material.0 as usize] {
+                                *c = Cell::new(i.stone, c.shade);
+                            }
+                        }
+                    }
+                }
                 let mut put = |x: i32, y: i32, m: MaterialId, replace_floor: bool| {
                     let (lx, ly) = (x - o.x, y - o.y);
                     if !(0..CHUNK).contains(&lx) || !(0..CHUNK).contains(&ly) {
@@ -1329,15 +1346,17 @@ impl TerrainGen {
                         *c = Cell { heat: self.heat[m.0 as usize], ..Cell::new(m, shade) };
                     }
                 };
-                // The niche (a cell clear of the boulder all round), the
-                // boulder in it, the rope from the niche's top.
-                for y in t.by - TRAP_R - 1..=t.by + TRAP_R + 1 {
-                    for x in t.cx - TRAP_R - 1..=t.cx + TRAP_R + 1 {
+                // The niche (a cell and a half clear of the boulder all
+                // round: no rock touching it even at a corner, or it's held
+                // when the rope goes), the boulder in it, the rope from the
+                // niche's top.
+                for y in t.by - TRAP_R - 2..=t.by + TRAP_R + 2 {
+                    for x in t.cx - TRAP_R - 2..=t.cx + TRAP_R + 2 {
                         let d = (x - t.cx) * (x - t.cx) + (y - t.by) * (y - t.by);
                         if d <= TRAP_R * TRAP_R {
                             put(x, y, i.boulder, true);
                             put(x, y, i.boulder, false);
-                        } else if d <= (TRAP_R + 1) * (TRAP_R + 1) + 1 {
+                        } else if 4 * d <= (2 * TRAP_R + 3) * (2 * TRAP_R + 3) {
                             put(x, y, i.air, true);
                         }
                     }
@@ -2410,7 +2429,19 @@ mod tests {
             assert_eq!(cell(t.cx, t.by + TRAP_R + 1), rope, "a rope over the boulder at {}", t.cx);
             assert_eq!(cell(t.cx, t.by), boulder, "the boulder at {}", t.cx);
             assert_eq!(cell(t.cx, t.by + TRAP_R + 2), g.material_at(t.cx, t.by + TRAP_R + 2), "the rope hangs from rock");
-            assert!((t.by - TRAP_R - 1..=t.by + TRAP_R + 1).all(|y| cell(t.cx - TRAP_R - 1, y) == MaterialId::AIR || (y - t.by).abs() > 1), "a cell clear of it at its side");
+            // Nothing touches it but the rope, even at a corner (or it's
+            // held when the rope goes).
+            for y in t.by - TRAP_R..=t.by + TRAP_R {
+                for x in t.cx - TRAP_R..=t.cx + TRAP_R {
+                    if cell(x, y) != boulder {
+                        continue;
+                    }
+                    for (dx, dy) in [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)] {
+                        let n = cell(x + dx, y + dy);
+                        assert!(n == MaterialId::AIR || n == boulder || n == rope, "the boulder at {} touches {n:?} at ({}, {})", t.cx, x + dx, y + dy);
+                    }
+                }
+            }
             let trigger = if t.plate { cell(t.cx, t.ly - 1) } else { cell(t.cx, t.ly) };
             assert_eq!(trigger, if t.plate { plate } else { wire }, "what springs it, under it");
         }

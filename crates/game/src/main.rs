@@ -98,13 +98,21 @@ fn main() {
     // Scenarios run uncapped, unless PLATYPUS_VSYNC=1 (to see the frame
     // pacing a player gets).
     let benchmarking = std::env::var("PLATYPUS_SCENARIO").is_ok() && std::env::var("PLATYPUS_VSYNC").is_err();
+    // Offscreen (scenarios, tests): no window, so a run never takes the
+    // focus (macOS brings a new window's app to the front); frames run on
+    // as fast as they can instead of with the screen.
+    let headless = camera::headless();
+    let mut plugins = DefaultPlugins.build();
+    if headless {
+        plugins = plugins.disable::<bevy::winit::WinitPlugin>().add(bevy::app::ScheduleRunnerPlugin::run_loop(std::time::Duration::ZERO));
+    }
 
     App::new()
         // A command on something that's gone this tick (a creature killed by
         // one thing while another acts on it) is logged, not fatal.
         .set_error_handler(bevy::ecs::error::warn)
         .add_plugins(
-            DefaultPlugins
+            plugins
                 .set(ImagePlugin::default_nearest())
                 .set(WindowPlugin {
                     primary_window: Some(Window {

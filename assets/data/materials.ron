@@ -72,10 +72,10 @@
         // from the top, hex 0 dark … f light), so bricks and planks tile.
         (name: "brick",    kind: Static, density: 2400, hardness: 70, crumbles_into: "gravel", above: (1450, "lava"),
             colors: [(52, 50, 54), (96, 94, 100), (132, 128, 134), (156, 152, 158)],
-            pattern: ["33333333", "3cbbbaa9", "3baaa998", "3a999887", "33333333", "aa93cbbb", "9983baaa", "8873a999"]),
+            pattern: ["333333333333", "3cccbcbaaa99", "3bcaab9a9a98", "3aaaa9999888", "39aa88887787", "389988877777", "333333333333", "aaaaa93cbbbb", "a999983bbbaa", "9989783abb9a", "8978873a9999", "788777389998"]),
         (name: "planks",   kind: Static, density: 650, hardness: 22, flammability: 7, ignites_at: 270, conductivity: 12, burn_time: 180, spread: 3, fizzles: 30, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal",
             colors: [(60, 38, 22), (102, 68, 38), (136, 94, 54), (158, 112, 66)],
-            pattern: ["aabbbabb", "99aaa2aa", "8899929a", "22222222", "bbabbbaa", "a2aaaa99", "92999888", "22222222"]),
+            pattern: ["bbbaaabab2bb", "aaaaaabbb2bb", "aaaa9a9992a9", "999aaa999299", "999888998288", "222222222222", "bba2bbbbbabb", "bbb2aabbbaa9", "9992aaabbaaa", "a9a2aa999999", "888299888989", "222222222222"]),
         // Ores and gems (DESIGN §3.2 step 6): harder the deeper they lie, so a
         // pickaxe's tier sets how deep you can profit (copper 70, iron 100,
         // gold 115, mithril 150). Ores are rock flecked with metal (the ramp
@@ -104,33 +104,33 @@
         // drop through it holding down. To everything else it's wood.
         (name: "platform", kind: Static, platform: true, density: 650, hardness: 20, flammability: 7, ignites_at: 270, conductivity: 12, burn_time: 150, spread: 3, fizzles: 30, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal", opacity: 60,
             colors: [(60, 38, 22), (102, 68, 38), (136, 94, 54), (158, 112, 66)],
-            pattern: ["aabbbabb", "88999899", "aabbbabb", "88999899", "aabbbabb", "88999899", "aabbbabb", "88999899"]),
+            pattern: ["bbbbabbbbbab", "aaa9aaaa9aaa", "889888898888", "bbbbabbbbbab", "aaa9aaaa9aaa", "889888898888", "bbbbabbbbbab", "aaa9aaaa9aaa", "889888898888", "bbbbabbbbbab", "aaa9aaaa9aaa", "889888898888"]),
         // Built: what structures are made of (worldgen/src/structures.rs).
         // Crypt stone: big dark blocks in offset courses, hard enough that a
         // copper pickaxe won't dig a way round the rooms.
         (name: "crypt_stone", kind: Static, density: 2600, hardness: 90, crumbles_into: "gravel", above: (1400, "lava"),
             colors: [(40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116)],
-            pattern: ["11111111", "7a9b9a81", "69a9a871", "5878a761", "11111111", "9a81ba9b", "8971a9a8", "7861a878"]),
+            pattern: ["111111111111", "bab99a988881", "aaa998888671", "a88888877761", "887877765651", "877766655551", "111111111111", "a99881bbbba9", "878671aa9989", "7767518a8888", "765551988776", "555551887667"]),
         // A weak wall: crypt stone, cracked (a sharp eye sees the cracks); one
         // hit breaks it.
         (name: "cracked_stone", kind: Static, density: 2400, hardness: 4, crumbles_into: "gravel",
             colors: [(40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116)],
-            pattern: ["11111111", "7a9b3a81", "69a3a871", "5873a761", "11111111", "9a81b39b", "8971a3a8", "7861a838"]),
+            pattern: ["111111111111", "bab93a988881", "aaa938888671", "a88883877761", "887877365651", "877766355551", "111111111111", "a99881bbbba9", "873671aa9989", "7763518a8888", "765351988776", "555531887667"]),
         // An illusory wall: looks like crypt stone, but it's a (still) plant,
         // so creatures walk straight through it.
         (name: "false_wall", kind: Plant, still: true, density: 200, hardness: 4, opacity: 220,
             colors: [(40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116)],
-            pattern: ["11111111", "7a9b9a81", "69a9a871", "5878a761", "11111111", "9a81ba9b", "8971a9a8", "7861a878"]),
+            pattern: ["111111111111", "bab99a988881", "aaa998888671", "a88888877761", "887877765651", "877766655551", "111111111111", "a99881bbbba9", "878671aa9989", "7767518a8888", "765551988776", "555551887667"]),
         // Castle stone: big pale ashlar blocks; harder than crypt stone.
         (name: "ashlar", kind: Static, density: 2600, hardness: 100, crumbles_into: "gravel", above: (1450, "lava"),
             colors: [(62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152)],
-            pattern: ["11111111", "9aba9ab1", "8a9a8a91", "7898a781", "11111111", "b1a9aba9", "a18a9a8a", "917898a7"]),
+            pattern: ["111111111111", "aababa9a9981", "aabaa9898891", "9a9889888881", "a99998778771", "998778777771", "111111111111", "a99981baaba9", "989881aabaa9", "888881baa998", "877771988989", "877771889877"]),
         (name: "cracked_ashlar", kind: Static, density: 2400, hardness: 4, crumbles_into: "gravel",
             colors: [(62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152)],
-            pattern: ["11111111", "9ab39ab1", "8a938a91", "78938781", "11111111", "b1a93ba9", "a18a3a8a", "91789387"]),
+            pattern: ["111111111111", "aab3ba9a9981", "aaba39898891", "9a9839888881", "a99993778771", "998778777771", "111111111111", "a99981ba3ba9", "989881aa3aa9", "888881baa398", "877771988389", "877771889877"]),
         (name: "false_ashlar", kind: Plant, still: true, density: 200, hardness: 4, opacity: 220,
             colors: [(62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152)],
-            pattern: ["11111111", "9aba9ab1", "8a9a8a91", "7898a781", "11111111", "b1a9aba9", "a18a9a8a", "917898a7"]),
+            pattern: ["111111111111", "aababa9a9981", "aabaa9898891", "9a9889888881", "a99998778771", "998778777771", "111111111111", "a99981baaba9", "989881aabaa9", "888881baa998", "877771988989", "877771889877"]),
         // Underground biomes (worldgen/src/caves.rs). Fungi are wet: they
         // take more heat than wood to catch (and shrivel to ash when very
         // hot). Fungal hollows: dark,

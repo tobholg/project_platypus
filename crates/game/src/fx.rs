@@ -271,10 +271,11 @@ fn bolt_image(s: &platypus_sim::Strike) -> (Image, i32, i32) {
         }
     };
     walk(&mut rng, (s.x, s.top), height, Some(s.earth.x), &mut points);
-    // Pull the last stretch onto where it earthed.
+    // Pull the last stretch (`PULL` cells) onto where it earthed.
+    const PULL: usize = 18;
     let main = points.clone();
-    for (i, &(px, py)) in main.iter().enumerate().skip(main.len().saturating_sub(18)) {
-        let k = (i + 12 - main.len()) as f32 / 12.0;
+    for (i, &(px, py)) in main.iter().enumerate().skip(main.len().saturating_sub(PULL)) {
+        let k = (i + PULL - main.len()) as f32 / PULL as f32;
         points[i] = ((px as f32 + (s.earth.x - px) as f32 * k).round() as i32, py);
     }
     for _ in 0..3 {

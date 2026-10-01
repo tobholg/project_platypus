@@ -60,9 +60,21 @@ impl Plugin for CameraPlugin {
 
 /// `PLATYPUS_OFFSCREEN=1`: the camera draws into this image (screenshots
 /// from scenarios still work with the screen locked or asleep, when the
-/// window isn't drawn), and the window shows it.
+/// window isn't drawn). There's no window then (nothing takes the focus
+/// from what you're doing: `headless`) unless `PLATYPUS_SHOW=1`, when the
+/// window shows the image.
 #[derive(Resource)]
 pub struct Offscreen(pub Handle<Image>);
+
+/// Drawing into an image (`Offscreen`).
+pub fn offscreen() -> bool {
+    std::env::var("PLATYPUS_OFFSCREEN").is_ok_and(|v| !v.is_empty())
+}
+
+/// Offscreen with no window at all (not `PLATYPUS_SHOW`).
+pub fn headless() -> bool {
+    offscreen() && std::env::var("PLATYPUS_SHOW").is_err()
+}
 
 fn spawn_camera(mut commands: Commands, start: Res<StartAt>, mut images: ResMut<Assets<Image>>) {
     let mut cam = commands.spawn((
@@ -71,15 +83,18 @@ fn spawn_camera(mut commands: Commands, start: Res<StartAt>, mut images: ResMut<
         Transform::from_translation(start.0.extend(100.0)),
         ChunkLoader { half_extent: Vec2::new(400.0, 240.0) },
     ));
-    if std::env::var("PLATYPUS_OFFSCREEN").is_ok_and(|v| !v.is_empty()) {
+    if offscreen() {
         let image = images.add(Image::new_target_texture(1512, 917, bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb, None));
         // (The panels too: the UI follows the camera marked for it.)
         cam.insert((bevy::camera::RenderTarget::Image(image.clone().into()), IsDefaultUiCamera));
-        // And the window shows that image (so a scenario can be watched):
-        // a camera of its own, seeing only the image, on a layer of its own.
-        let mirror = bevy::camera::visibility::RenderLayers::layer(MIRROR_LAYER);
-        commands.spawn((Name::new("Window mirror camera"), Camera2d, Camera { order: 1, ..default() }, mirror.clone()));
-        commands.spawn((Name::new("Window mirror"), OffscreenMirror, Sprite { image: image.clone(), ..default() }, mirror));
+        // And the window, if there is one, shows that image (so a scenario
+        // can be watched): a camera of its own, seeing only the image, on a
+        // layer of its own.
+        if !headless() {
+            let mirror = bevy::camera::visibility::RenderLayers::layer(MIRROR_LAYER);
+            commands.spawn((Name::new("Window mirror camera"), Camera2d, Camera { order: 1, ..default() }, mirror.clone()));
+            commands.spawn((Name::new("Window mirror"), OffscreenMirror, Sprite { image: image.clone(), ..default() }, mirror));
+        }
         commands.insert_resource(Offscreen(image));
     }
 }

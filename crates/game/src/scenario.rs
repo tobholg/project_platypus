@@ -3,7 +3,7 @@
 //! `PLATYPUS_SCENARIO=pan cargo run -p platypus --release`
 //!
 //! - `idle`       camera still
-//! - `pan`        camera sweeps right at 150 cells/s (legacy "walking" was 83 tiles/s at 3 px)
+//! - `pan`        camera sweeps right at 225 cells/s (legacy "walking" was 83 tiles/s at 3 px)
 //! - `avalanche`  big blobs of sand, water, lava and oil every half second, slow pan
 //! - `run`        the player runs right through real input: holds D, jumps, dashes
 //! - `tools`      scripted cursor: pickaxe, bomb, pour water and oil, ignite, melt rock
@@ -63,11 +63,11 @@
 //!   (7 s: alight), frost onto the pool (8.5 s: ice); logs water, steam,
 //!   ice, oil and burning (`RUST_LOG=warn,platypus::magic=debug` traces the
 //!   spells)
-//! - `airjump`    (in cloud boots) lifts the player 160 cells at 1 s; it falls and air jumps
+//! - `airjump`    (in cloud boots) lifts the player 240 cells at 1 s; it falls and air jumps
 //!   (a cloud) just above the ground: no fall damage (`PLATYPUS_NOSAVE=1`:
 //!   no air jump, it hurts; `PLATYPUS_NIGHT=1`: at night); logs height and
 //!   health
-//! - `critters`   (flat world) a rabbit, a bird and a frog placed 60–90 cells
+//! - `critters`   (flat world) a rabbit, a bird and a frog placed 90–135 cells
 //!   to the right at 1 s; the player walks at them from 2 s: they should hop
 //!   and fly away; logs where the critters near the player are
 //! - `editor`     (`PLATYPUS_WORLD=arena`, `PLATYPUS_EDIT_DIR` = a folder
@@ -88,19 +88,19 @@
 //! - `life`       (`PLATYPUS_WORLD=arena`; try `PLATYPUS_HOUR=22`) fireflies
 //!   over the floor, fish in the pool, bats in the air above; logs
 //!   after 5 s whether each is still where it lives
-//! - `crossing`   (`PLATYPUS_WORLD=arena`) a stream of sand poured 30 cells
+//! - `crossing`   (`PLATYPUS_WORLD=arena`) a stream of sand poured 45 cells
 //!   ahead, walked through (logs how far the player got); then a pit dug
-//!   with water 12 cells below its rim, the player put in it, swimming up
+//!   with water 18 cells below its rim, the player put in it, swimming up
 //!   and jumping for the bank (logs whether it got out)
 //! - `held`       (`PLATYPUS_WORLD=arena`) each tool in the hand in turn: the
 //!   pickaxe into the floor (logs cells dug and swings), the torch, the
 //!   spark wand at the first dummy, a bomb thrown, the axe swung
-//! - `warband`    (`PLATYPUS_WORLD=arena`) O (the dev action) 120 cells off at
+//! - `warband`    (`PLATYPUS_WORLD=arena`) O (the dev action) 180 cells off at
 //!   1 s; logs what stands there at 3 s (a troll, three orcs, two archers)
 //! - `archery`    (`PLATYPUS_WORLD=arena`) the bow (hotbar 2, slot 9): a full
 //!   draw at the first dummy, a short one into the floor, one down through a
 //!   lava puddle put behind (logs whether it burns); walks over the stuck arrows (logs arrows before and
-//!   after), then an orc archer put 110 cells off shoots back (logs hp)
+//!   after), then an orc archer put 165 cells off shoots back (logs hp)
 //! - `fight`      (`PLATYPUS_WORLD=arena`) the shortsword against an orc put
 //!   40 cells off, held at it from 1.5 s; a troll put 70 cells off at 5 s;
 //!   logs both sides' health, swings and staggers twice a second
@@ -110,9 +110,9 @@
 //!   (logs the pogo); a blast on the player mid-dodge and one without (logs
 //!   what each cost)
 //! - `wands`      (`PLATYPUS_WORLD=arena`) the spark wand into the floor (logs
-//!   the cells it broke) and at a sandbag put 40 cells off (logs how far
+//!   the cells it broke) and at a sandbag put 60 cells off (logs how far
 //!   it went), the
-//!   flame wand at the dummies 60 and 120 cells off (logs what each took)
+//!   flame wand at the dummies 90 and 180 cells off (logs what each took)
 //! - `arena`      (`PLATYPUS_WORLD=arena`) overlays on; the spark wand at the
 //!   first dummy, a fireball at the second; an orc picked and spawned with O;
 //!   paused at 5 s and stepped three times (logs the sim ticks: 3), then a
@@ -154,7 +154,7 @@
 //!   bodies, spells, drops, arrows, sparks, particles). With
 //!   `--features spikes` and `PLATYPUS_PROFILE=1`: where the time goes.
 //! - `voidlook`   the underground's void as you'd meet it: a natural cave
-//!   `PLATYPUS_DEPTH` cells down (400), or in a zone (`PLATYPUS_ZONE` =
+//!   `PLATYPUS_DEPTH` cells down (600), or in a zone (`PLATYPUS_ZONE` =
 //!   fungal, crystal, toxic), the player on its floor holding a torch, a
 //!   patch of back wall beside it axed away (logs where, and how much void
 //!   shows); `PLATYPUS_NOTORCH=1` for the lantern alone, `PLATYPUS_SPAWN=`
@@ -163,7 +163,7 @@
 //!   pulse red), a blow at 2.5 s (a red flash), H at 4 s (a potion drunk:
 //!   green, shrinking as it heals; logs the health 2 s and 4 s after), H
 //!   again at 8.2 s (sick: not drunk; logs it), then the inventory opened
-//! - `rocketswim` (`PLATYPUS_WORLD=arena`) a pit of water 160 deep, the
+//! - `rocketswim` (`PLATYPUS_WORLD=arena`) a pit of water 240 deep, the
 //!   player in it (far over the bottom) with its rocket boots empty: logs the charge
 //!   after 3 s in the water, then how far a held jump rose it in 1.5 s
 //!   (and whether the boots flamed: they shouldn't, under water)
@@ -175,7 +175,7 @@
 //! - `forestfire` (a generated world) the land's wetness pinned
 //!   (`PLATYPUS_WET`, 0..1, default 0.05: tinder-dry), then the nearest tree
 //!   crown to the start set alight at 1 s; logs how much of the forest
-//!   within 250 cells (leaves, needles, wood) is left after 25 s
+//!   within 375 cells (leaves, needles, wood) is left after 25 s
 //! - `reset`      (a generated world) a big hole dug where the player
 //!   stands and an orc beside it; at 2 s the dev panel's "reset the world"
 //!   clicked twice (`PLATYPUS_RESET=all`: "reset everything"); logs, before
@@ -184,24 +184,24 @@
 //! - `camplook`   (a generated world) the nearest miners' camp the world
 //!   made (a mine cart, TNT, dynamite, a lantern), the player beside it with
 //!   a torch; logs where
-//! - `camp`       (`PLATYPUS_WORLD=arena`) a miners' camp 150 cells off (a
+//! - `camp`       (`PLATYPUS_WORLD=arena`) a miners' camp 225 cells off (a
 //!   lantern, a mine cart loaded with TNT, a TNT barrel, dynamite); at 2 s a
 //!   spark lands on the cart (`PLATYPUS_CAMP=hit`: a blow instead, at once);
 //!   logs what's left and the player's health at 1.5 s and every 0.8 s
 //!   after 5 s (in the open, the rubble raining down hurts: take cover;
 //!   `PLATYPUS_SCENARIO_SECS=4.4` for a screenshot as it goes off)
 //! - `pickarea`   (`PLATYPUS_WORLD=arena`) the pickaxe's area mode: a dirt
-//!   wall 12 wide beside the player and more dirt past a gap behind it; C
+//!   wall 18 wide beside the player and more dirt past a gap behind it; C
 //!   pressed (the label says Area), the cursor aimed past the wall at the far
 //!   dirt; the button held 1.2 s from 1.4 s (screenshot at 1.2 s with
 //!   `PLATYPUS_SCENARIO_SECS=2.2`: the lit bite on the wall's face); logs
 //!   what was dug from the wall and from the far dirt (only once it's
-//!   through the wall: it can't reach through); then, on 50 cells of dirt, it digs straight down for 3 s
+//!   through the wall: it can't reach through); then, on 75 cells of dirt, it digs straight down for 3 s
 //!   (logs how far it dropped: it should fall down the shaft as it digs)
 //! - `soak`       (`PLATYPUS_WORLD=arena`) what fluids leave on you: a step
-//!   into a two-cell acid puddle (logs how much acid's on you and your
+//!   into a three-cell acid puddle (logs how much acid's on you and your
 //!   health), out of it 1.4 s (it keeps eating), then set alight standing
-//!   in a two-cell water puddle (a little wet, not put out: logs it at
+//!   in a three-cell water puddle (a little wet, not put out: logs it at
 //!   4.4 s; `PLATYPUS_SCENARIO_SECS=5.3` for a screenshot of it), then into
 //!   deep water (the acid washed off, the fire out)
 //! - `rocket`     (`PLATYPUS_WORLD=arena`, try `PLATYPUS_HOUR=22`) the player
@@ -209,7 +209,7 @@
 //!   jump from 1 s: logs how high it gets, the fuel, what the exhaust does
 //!   to the orc and the floor (fire, burning planks), and that landing
 //!   refills it
-//! - `spider`     (`PLATYPUS_WORLD=arena`) a cave spider put 120 cells from the
+//! - `spider`     (`PLATYPUS_WORLD=arena`) a cave spider put 180 cells from the
 //!   player (standing still, healed each second): logs each attack it
 //!   starts (spit, bite, sting), each hit the player takes, and venom
 //!
@@ -330,8 +330,8 @@ fn run(
     let dt = time.delta_secs().min(0.1);
     s.elapsed += dt;
     let pan = match s.name.as_str() {
-        "pan" => 150.0,
-        "avalanche" => 20.0,
+        "pan" => 225.0,
+        "avalanche" => 30.0,
         _ => 0.0,
     };
     cam.translation.x += pan * dt;
@@ -352,8 +352,8 @@ fn run(
         for i in 0..4 {
             let name = names[(k + i) % names.len()];
             let Some(material) = sim.materials().id(name) else { continue };
-            let center = CellPos::new((cam.translation.x - 240.0 + i as f32 * 160.0) as i32, (cam.translation.y + 120.0) as i32);
-            sim.queue(WorldEdit::Paint { center, radius: 22, material, overwrite: false });
+            let center = CellPos::new((cam.translation.x - 360.0 + i as f32 * 240.0) as i32, (cam.translation.y + 180.0) as i32);
+            sim.queue(WorldEdit::Paint { center, radius: 33, material, overwrite: false });
         }
     }
 
@@ -435,7 +435,7 @@ fn tools_script(
     // Aim relative to the ground surface dx cells away (dy > 0 above it, < 0 into it).
     let at = |dx: f32, dy: f32| {
         let x = p.body.pos.x + dx;
-        let ground = find_ground(&sim.world, x as i32, p.body.pos.y as i32 + 60, 300)? as f32;
+        let ground = find_ground(&sim.world, x as i32, p.body.pos.y as i32 + 90, 450)? as f32;
         Some(Vec2::new(x, ground + dy))
     };
     let hold = |mouse: &mut ButtonInput<MouseButton>, on: bool| {
@@ -448,13 +448,13 @@ fn tools_script(
         t if t < 0.5 => {}
         t if t < 2.5 => {
             keys.press(KeyCode::Digit1);
-            cursor.0 = at(30.0, -3.0);
+            cursor.0 = at(45.0, -4.5);
             hold(&mut mouse, true);
         }
         t if t < 2.7 => hold(&mut mouse, false),
         t if t < 2.8 => {
             keys.press(KeyCode::Digit2);
-            cursor.0 = at(70.0, 2.0);
+            cursor.0 = at(105.0, 3.0);
             hold(&mut mouse, true);
         }
         t if t < 5.0 => hold(&mut mouse, false),
@@ -463,31 +463,31 @@ fn tools_script(
             if let Some(w) = sim.materials().id("water") {
                 belt.material = w;
             }
-            cursor.0 = at(-60.0, 40.0);
+            cursor.0 = at(-90.0, 60.0);
             hold(&mut mouse, true);
         }
         t if t < 7.2 => {
             if let Some(o) = sim.materials().id("oil") {
                 belt.material = o;
             }
-            cursor.0 = at(-60.0, 40.0);
+            cursor.0 = at(-90.0, 60.0);
         }
         t if t < 8.2 => hold(&mut mouse, false),
         t if t < 8.8 => {
             keys.press(KeyCode::Digit4);
-            cursor.0 = at(-60.0, 3.0);
+            cursor.0 = at(-90.0, 4.5);
             hold(&mut mouse, true);
         }
         t if t < 9.0 => hold(&mut mouse, false),
         t if t < 11.5 => {
             // Melt a hole into the rock next to the player.
             keys.press(KeyCode::Digit6);
-            cursor.0 = at(25.0, -6.0);
+            cursor.0 = at(37.5, -9.0);
             hold(&mut mouse, true);
         }
         _ => {
             hold(&mut mouse, false);
-            cursor.0 = at(0.0, 70.0);
+            cursor.0 = at(0.0, 105.0);
         }
     }
 }
@@ -507,8 +507,8 @@ fn tree_script(
     let t = s.elapsed - t0;
     let Some(wood) = sim.materials().id("wood") else { return };
     if state.1 == 0 && t > 0.3 {
-        let x = p.body.pos.x + 70.0;
-        let Some(ground) = find_ground(&sim.world, x as i32, p.body.pos.y as i32 + 60, 300) else { return };
+        let x = p.body.pos.x + 105.0;
+        let Some(ground) = find_ground(&sim.world, x as i32, p.body.pos.y as i32 + 90, 450) else { return };
         let base = Vec2::new(x, ground as f32);
         state.2 = base;
         let mut line = |a: Vec2, b: Vec2, r: i32| {
@@ -518,22 +518,22 @@ fn tree_script(
                 sim.queue(WorldEdit::Paint { center: CellPos::from_world(q.x, q.y), radius: r, material: wood, overwrite: true });
             }
         };
-        let top = base + Vec2::new(0.0, 70.0);
-        line(base, top, 2);
-        for (from, dir) in [(40.0, -1.0), (52.0, 1.0), (62.0, -1.0), (30.0, 1.0)] {
+        let top = base + Vec2::new(0.0, 105.0);
+        line(base, top, 3);
+        for (from, dir) in [(60.0, -1.0), (78.0, 1.0), (93.0, -1.0), (45.0, 1.0)] {
             let start = base + Vec2::new(0.0, from);
-            let end = start + Vec2::new(dir * 26.0, 12.0);
-            line(start, end, 1);
+            let end = start + Vec2::new(dir * 39.0, 18.0);
+            line(start, end, 2);
             for k in 0..3 {
                 let twig = start.lerp(end, 0.4 + k as f32 * 0.25);
-                line(twig, twig + Vec2::new(dir * 3.0, 7.0), 0);
+                line(twig, twig + Vec2::new(dir * 4.5, 10.5), 0);
             }
         }
         state.1 = 1;
     }
     if state.1 == 1 && t > 1.2 {
         let base = state.2;
-        sim.queue(WorldEdit::Ignite { center: CellPos::from_world(base.x, base.y + 4.0), radius: 3 });
+        sim.queue(WorldEdit::Ignite { center: CellPos::from_world(base.x, base.y + 6.0), radius: 4 });
         state.1 = 2;
     }
 }
@@ -555,8 +555,8 @@ fn blast_script(
     }
     let Ok(p) = player.single() else { return };
     let (x, top) = *shaft.get_or_insert_with(|| {
-        let x = p.body.pos.x + 70.0;
-        (x, find_ground(&sim.world, x as i32, p.body.pos.y as i32 + 60, 300).unwrap_or(p.body.pos.y as i32) + 12)
+        let x = p.body.pos.x + 105.0;
+        (x, find_ground(&sim.world, x as i32, p.body.pos.y as i32 + 90, 450).unwrap_or(p.body.pos.y as i32) + 18)
     });
     spawn_bomb(&mut commands, Vec2::new(x, top as f32), Vec2::ZERO, tools.bomb.clone());
     *dropped += 1;
@@ -568,11 +568,11 @@ fn fell_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
     }
     let Ok(p) = player.single() else { return };
     let (px, py) = (p.body.pos.x as i32, p.body.pos.y as i32);
-    // The first background wood 20 cells above the ground (clear of tall
+    // The first background wood 30 cells above the ground (clear of tall
     // grass, below the branches): a trunk.
-    for x in px + 30..px + 260 {
-        let Some(ground) = find_ground(&sim.world, x, py + 80, 300) else { continue };
-        let at = CellPos::new(x, ground + 20);
+    for x in px + 45..px + 390 {
+        let Some(ground) = find_ground(&sim.world, x, py + 120, 450) else { continue };
+        let at = CellPos::new(x, ground + 30);
         let wood = |x: i32| {
             let q = CellPos::new(x, at.y);
             sim.world.get_bg(q).is_some_and(|b| !b.is_air() && sim.world.materials().phys(b.material).kind == platypus_sim::Kind::Static)
@@ -581,17 +581,17 @@ fn fell_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
             continue;
         }
         // Both edges: the search may start inside a trunk.
-        let left = x - (1..40).take_while(|&d| wood(x - d)).count() as i32;
-        let width = (left..left + 60).take_while(|&x| wood(x)).count() as i32;
+        let left = x - (1..60).take_while(|&d| wood(x - d)).count() as i32;
+        let width = (left..left + 90).take_while(|&x| wood(x)).count() as i32;
         let center = CellPos::new(left + width / 2, at.y);
         if s.name == "burn" {
-            sim.queue(WorldEdit::Ignite { center: CellPos::new(center.x, ground + 3), radius: width / 2 + 2 });
+            sim.queue(WorldEdit::Ignite { center: CellPos::new(center.x, ground + 4), radius: width / 2 + 3 });
         } else if s.name == "strike" {
-            sim.queue(WorldEdit::Lightning { x: center.x, from_y: py + 300 });
+            sim.queue(WorldEdit::Lightning { x: center.x, from_y: py + 450 });
         } else {
             // Twice: a dig clears the playfield first where anything stands in front.
             for _ in 0..2 {
-                sim.queue(WorldEdit::Dig { center, radius: width / 2 + 3, max_hardness: 200 });
+                sim.queue(WorldEdit::Dig { center, radius: width / 2 + 4, max_hardness: 200 });
             }
         }
         info!("{}: trunk {width} wide at {center:?}, player at {px}", s.name);
@@ -605,24 +605,24 @@ fn acid_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
         return;
     }
     let Ok(p) = player.single() else { return };
-    let x = p.body.pos.x as i32 + 60;
-    let Some(ground) = find_ground(&sim.world, x, p.body.pos.y as i32 + 60, 300) else { return };
-    let at = CellPos::new(x, ground + 4);
+    let x = p.body.pos.x as i32 + 90;
+    let Some(ground) = find_ground(&sim.world, x, p.body.pos.y as i32 + 90, 450) else { return };
+    let at = CellPos::new(x, ground + 6);
     match *step {
         0 if s.elapsed > 1.0 => {
             // A glass basin (acid eats dirt and stone, not glass), then the acid.
             let (Some(glass), Some(acid)) = (sim.materials().id("glass"), sim.materials().id("acid")) else { return };
-            sim.queue(WorldEdit::Paint { center: at.offset(0, -10), radius: 14, material: glass, overwrite: true });
-            sim.queue(WorldEdit::Dig { center: at.offset(0, -2), radius: 9, max_hardness: 40 });
-            sim.queue(WorldEdit::Paint { center: at.offset(0, 2), radius: 8, material: acid, overwrite: false });
+            sim.queue(WorldEdit::Paint { center: at.offset(0, -15), radius: 21, material: glass, overwrite: true });
+            sim.queue(WorldEdit::Dig { center: at.offset(0, -3), radius: 14, max_hardness: 40 });
+            sim.queue(WorldEdit::Paint { center: at.offset(0, 3), radius: 12, material: acid, overwrite: false });
             *step = 1;
         }
         1 if s.elapsed > 2.0 => {
-            sim.queue(WorldEdit::Heat { center: at, radius: 12, amount: 250 });
+            sim.queue(WorldEdit::Heat { center: at, radius: 18, amount: 250 });
             *step = 2;
         }
         2 if s.elapsed > 3.6 => {
-            sim.queue(WorldEdit::Ignite { center: at.offset(0, 20), radius: 6 });
+            sim.queue(WorldEdit::Ignite { center: at.offset(0, 30), radius: 9 });
             *step = 3;
         }
         _ => {}
@@ -637,19 +637,19 @@ fn rain_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
     let x = p.body.pos.x as i32;
     match *step {
         0 if s.elapsed > 2.0 => {
-            if let Some(ground) = find_ground(&sim.world, x + 80, p.body.pos.y as i32 + 60, 300) {
-                sim.queue(WorldEdit::Ignite { center: CellPos::new(x + 80, ground + 2), radius: 6 });
+            if let Some(ground) = find_ground(&sim.world, x + 120, p.body.pos.y as i32 + 90, 450) {
+                sim.queue(WorldEdit::Ignite { center: CellPos::new(x + 120, ground + 3), radius: 9 });
             }
             *step = 1;
         }
         // What F5 does.
         1 if s.elapsed > 3.0 => {
-            sim.queue(WorldEdit::Weather { x, radius: 400, storm: true });
+            sim.queue(WorldEdit::Weather { x, radius: 600, storm: true });
             *step = 2;
         }
         // What F7 does, onto a spot left of the player.
         2 if s.elapsed > 6.0 => {
-            sim.queue(WorldEdit::Lightning { x: x - 60, from_y: p.body.pos.y as i32 + 200 });
+            sim.queue(WorldEdit::Lightning { x: x - 90, from_y: p.body.pos.y as i32 + 300 });
             *step = 3;
         }
         _ => {}
@@ -669,35 +669,35 @@ fn swim_script(
     }
     let Ok(p) = player.single() else { return };
     let (px, py) = (p.body.pos.x as i32, p.body.pos.y as i32);
-    let &mut (x, ground) = pool.get_or_insert_with(|| (px + 40, find_ground(&sim.world, px + 40, py + 60, 300).unwrap_or(py)));
+    let &mut (x, ground) = pool.get_or_insert_with(|| (px + 60, find_ground(&sim.world, px + 60, py + 90, 450).unwrap_or(py)));
     match *step {
         0 if s.elapsed > 0.5 => {
             let Some(glass) = sim.materials().id("glass") else { return };
-            // A glass-lined pit, 28 wide and 30 deep, full of water.
-            for dx in (-16..=16).step_by(2) {
-                sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, ground - 18), radius: 16, material: glass, overwrite: true });
+            // A glass-lined pit, 42 wide and 45 deep, full of water.
+            for dx in (-24..=24).step_by(3) {
+                sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, ground - 27), radius: 24, material: glass, overwrite: true });
             }
-            for dx in (-14..=14).step_by(2) {
-                sim.queue(WorldEdit::Dig { center: CellPos::new(x + dx, ground - 14), radius: 14, max_hardness: 200 });
+            for dx in (-21..=21).step_by(3) {
+                sim.queue(WorldEdit::Dig { center: CellPos::new(x + dx, ground - 21), radius: 21, max_hardness: 200 });
             }
             *step = 1;
         }
         1 if s.elapsed > 0.6 => {
             if let Some(water) = sim.materials().id("water") {
-                for dx in (-12..=12).step_by(4) {
-                    sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, ground - 12), radius: 12, material: water, overwrite: false });
+                for dx in (-18..=18).step_by(6) {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, ground - 18), radius: 18, material: water, overwrite: false });
                 }
             }
             *step = 2;
         }
         2 if s.elapsed > 2.0 => {
             if let Some(oil) = sim.materials().id("oil") {
-                sim.queue(WorldEdit::Paint { center: CellPos::new(px, py + 14), radius: 4, material: oil, overwrite: false });
+                sim.queue(WorldEdit::Paint { center: CellPos::new(px, py + 21), radius: 6, material: oil, overwrite: false });
             }
             *step = 3;
         }
         3 if s.elapsed > 2.6 => {
-            sim.queue(WorldEdit::Ignite { center: CellPos::new(px, py), radius: 6 });
+            sim.queue(WorldEdit::Ignite { center: CellPos::new(px, py), radius: 9 });
             *step = 4;
         }
         4 if s.elapsed > 3.2 => keys.press(KeyCode::KeyD),
@@ -730,30 +730,30 @@ fn dark_script(
     let hour = if s.name == "dusk" { 18.25 } else { 23.0 };
     day.skipped = (hour - day.time * 24.0).rem_euclid(24.0);
     if s.name == "cave" {
-        // A chamber 90 below the surface, a lava pool on one side, acid on the
+        // A chamber 150 below the surface, a lava pool on one side, acid on the
         // other; the player on its floor with the flashlight on.
         let x = k.body.pos.x as i32;
-        let c = CellPos::new(x, k.body.pos.y as i32 - 100);
+        let c = CellPos::new(x, k.body.pos.y as i32 - 150);
         let (Some(lava), Some(acid), Some(glass)) = (sim.materials().id("lava"), sim.materials().id("acid"), sim.materials().id("glass")) else { return };
-        for dx in (-50..=50).step_by(10) {
-            sim.queue(WorldEdit::Dig { center: c.offset(dx, (dx.abs() / 6) - 4), radius: 22, max_hardness: 250 });
+        for dx in (-75..=75).step_by(15) {
+            sim.queue(WorldEdit::Dig { center: c.offset(dx, (dx.abs() / 6) - 6), radius: 33, max_hardness: 250 });
         }
-        sim.queue(WorldEdit::Paint { center: c.offset(62, -26), radius: 9, material: lava, overwrite: true });
-        sim.queue(WorldEdit::Paint { center: c.offset(-58, -30), radius: 10, material: glass, overwrite: true });
-        sim.queue(WorldEdit::Dig { center: c.offset(-58, -26), radius: 7, max_hardness: 250 });
-        sim.queue(WorldEdit::Paint { center: c.offset(-58, -25), radius: 6, material: acid, overwrite: false });
-        k.body.pos = Vec2::new(c.x as f32, c.y as f32 - 8.0);
+        sim.queue(WorldEdit::Paint { center: c.offset(93, -39), radius: 14, material: lava, overwrite: true });
+        sim.queue(WorldEdit::Paint { center: c.offset(-87, -45), radius: 15, material: glass, overwrite: true });
+        sim.queue(WorldEdit::Dig { center: c.offset(-87, -39), radius: 11, max_hardness: 250 });
+        sim.queue(WorldEdit::Paint { center: c.offset(-87, -38), radius: 9, material: acid, overwrite: false });
+        k.body.pos = Vec2::new(c.x as f32, c.y as f32 - 12.0);
         k.body.vel = Vec2::ZERO;
         k.prev_pos = k.body.pos;
         toggles.carry = if std::env::var("PLATYPUS_NOBEAM").is_err() { crate::light::Carry::BigBeam } else { crate::light::Carry::Torch };
-        cursor.0 = Some(k.body.pos + Vec2::new(90.0, -10.0));
+        cursor.0 = Some(k.body.pos + Vec2::new(135.0, -15.0));
         // A torch planted to the left, glow sticks thrown both ways.
         if let Some(art) = torch_art.as_deref() {
-            crate::light::plant_torch(&mut commands, k.body.pos + Vec2::new(-40.0, -k.body.half.y), &lights, art);
+            crate::light::plant_torch(&mut commands, k.body.pos + Vec2::new(-60.0, -k.body.half.y), &lights, art);
         }
         let s = lights.glowstick.strength;
-        crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(-20.0, 4.0), Vec2::new(-60.0, 40.0), [0.25 * s, s, 0.45 * s], 90.0, lights.glowstick.haze);
-        crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(30.0, 4.0), Vec2::new(60.0, 40.0), [0.2 * s, 0.55 * s, 1.1 * s], 90.0, lights.glowstick.haze);
+        crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(-30.0, 6.0), Vec2::new(-90.0, 60.0), [0.25 * s, s, 0.45 * s], 90.0, lights.glowstick.haze);
+        crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(45.0, 6.0), Vec2::new(90.0, 60.0), [0.2 * s, 0.55 * s, 1.1 * s], 90.0, lights.glowstick.haze);
     }
     *done = true;
 }
@@ -763,28 +763,28 @@ fn flood_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kine
         return;
     }
     let Ok(p) = player.single() else { return };
-    let c = *at.get_or_insert_with(|| CellPos::new(p.body.pos.x as i32 + 20, p.body.pos.y as i32 - 170));
+    let c = *at.get_or_insert_with(|| CellPos::new(p.body.pos.x as i32 + 30, p.body.pos.y as i32 - 255));
     match *step {
-        // A hall 200 wide, 70 high, with stone floor; then a block of water
-        // 50 wide and 60 high at its left end.
+        // A hall 300 wide, 105 high, with stone floor; then a block of water
+        // 75 wide and 90 high at its left end.
         0 if s.elapsed > 0.5 => {
             let (Some(stone), Some(water)) = (sim.materials().id("stone"), sim.materials().id("water")) else { return };
-            for x in (-110..=110).step_by(6) {
-                for y in (-6..=76).step_by(6) {
-                    sim.queue(WorldEdit::Dig { center: c.offset(x, y), radius: 5, max_hardness: 250 });
+            for x in (-165..=165).step_by(9) {
+                for y in (-9..=114).step_by(9) {
+                    sim.queue(WorldEdit::Dig { center: c.offset(x, y), radius: 8, max_hardness: 250 });
                 }
             }
-            for x in (-110..=110).step_by(4) {
-                sim.queue(WorldEdit::Paint { center: c.offset(x, -10), radius: 4, material: stone, overwrite: true });
+            for x in (-165..=165).step_by(6) {
+                sim.queue(WorldEdit::Paint { center: c.offset(x, -15), radius: 6, material: stone, overwrite: true });
             }
             *step = 1;
             let _ = water;
         }
         1 if s.elapsed > 0.8 => {
             let Some(water) = sim.materials().id("water") else { return };
-            for x in (-100..=-55).step_by(3) {
-                for y in (-3..=60).step_by(3) {
-                    sim.queue(WorldEdit::Paint { center: c.offset(x, y), radius: 2, material: water, overwrite: false });
+            for x in (-150..=-82).step_by(4) {
+                for y in (-4..=90).step_by(4) {
+                    sim.queue(WorldEdit::Paint { center: c.offset(x, y), radius: 3, material: water, overwrite: false });
                 }
             }
             *step = 2;
@@ -813,7 +813,7 @@ fn chestfall_script(
     match *step {
         0 if s.elapsed > 1.0 => {
             // Somewhere to the side with room for it.
-            let spot = (20..120).step_by(6).flat_map(|dx| [dx, -dx]).find_map(|dx| (-30..30).step_by(6).find_map(|dy| crate::hands::chests::place_spot(&sim.world, k.body.pos + Vec2::new(dx as f32, dy as f32))));
+            let spot = (30..180).step_by(9).flat_map(|dx| [dx, -dx]).find_map(|dx| (-45..45).step_by(9).find_map(|dy| crate::hands::chests::place_spot(&sim.world, k.body.pos + Vec2::new(dx as f32, dy as f32))));
             let Some(at) = spot else { return };
             chests.spawn_placed(&mut commands, at);
             *feet = Some(at);
@@ -822,20 +822,22 @@ fn chestfall_script(
         1 if s.elapsed > 1.9 => {
             info!("chestfall: chest standing at {:?}", chest_y());
             let at = feet.expect("placed");
-            sim.queue(WorldEdit::Dig { center: CellPos::new(at.x as i32, at.y as i32 - 14), radius: 14, max_hardness: 255 });
+            // (Centred a little high, so the hole's mouth is wider than the
+            // chest, 18 cells: a circle just under its feet opens only 13.)
+            sim.queue(WorldEdit::Dig { center: CellPos::new(at.x as i32, at.y as i32 - 14), radius: 21, max_hardness: 255 });
             *step = 2;
         }
         2 if s.elapsed > 4.0 => {
             info!("chestfall: chest now at {:?}, centre {:?}", chest_y(), found.iter().next().map(|c| c.body.pos));
             // A small blast beside it: thrown, not broken; then a big one on it.
             let c = found.iter().next().map(|c| c.body.pos).expect("a chest");
-            sim.queue(WorldEdit::Explode { center: CellPos::new(c.x as i32 + 12, c.y as i32), radius: 5, power: 60 });
+            sim.queue(WorldEdit::Explode { center: CellPos::new(c.x as i32 + 18, c.y as i32), radius: 8, power: 60 });
             *step = 3;
         }
         3 if s.elapsed > 5.0 => {
             info!("chestfall: after a blast beside it: {:?}", found.iter().next().map(|c| c.body.pos));
             if let Some(c) = found.iter().next().map(|c| c.body.pos) {
-                sim.queue(WorldEdit::Explode { center: CellPos::new(c.x as i32, c.y as i32), radius: 14, power: 100 });
+                sim.queue(WorldEdit::Explode { center: CellPos::new(c.x as i32, c.y as i32), radius: 21, power: 100 });
             }
             *step = 4;
         }
@@ -893,8 +895,8 @@ fn shroom_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kin
             let Some(stem) = sim.materials().id("mushroom_stem") else { return };
             // The nearest stem cell with open air in front, a little up it.
             let p = CellPos::from_world(k.body.pos.x, k.body.pos.y);
-            let found = (0..200).flat_map(|r: i32| (-r..=r).flat_map(move |dx| [(dx, r), (dx, -r), (r, dx), (-r, dx)])).map(|(dx, dy)| p.offset(dx, dy)).find(|&q| {
-                sim.world.get_bg(q).is_some_and(|c| c.material == stem) && sim.world.get_bg(q.offset(0, -6)).is_some_and(|c| c.material == stem) && sim.world.get(q).is_some_and(|c| c.is_air())
+            let found = (0..300).flat_map(|r: i32| (-r..=r).flat_map(move |dx| [(dx, r), (dx, -r), (r, dx), (-r, dx)])).map(|(dx, dy)| p.offset(dx, dy)).find(|&q| {
+                sim.world.get_bg(q).is_some_and(|c| c.material == stem) && sim.world.get_bg(q.offset(0, -9)).is_some_and(|c| c.material == stem) && sim.world.get(q).is_some_and(|c| c.is_air())
             });
             let Some(at) = found else {
                 info!("shroom: no mushroom near");
@@ -903,7 +905,7 @@ fn shroom_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kin
             };
             info!("shroom: cutting the stem at {at:?} ({} bodies)", sim.world.bodies().len());
             for dx in -3..=3 {
-                let block = CellPos::new((at.x + dx * 4).div_euclid(4), at.y.div_euclid(4));
+                let block = CellPos::new((at.x + dx * platypus_sim::BLOCK).div_euclid(platypus_sim::BLOCK), at.y.div_euclid(platypus_sim::BLOCK));
                 sim.world.apply_edit(&WorldEdit::MineBlock { block, power: 255, max_hardness: 254, back: true });
             }
             *step = 1;
@@ -972,10 +974,10 @@ fn hands_script(
                 *logged = 2;
                 info!("hands: dug down {:.0} cells in 5.2 s", start_y.unwrap_or(p.y) - p.y);
             }
-            (Some(p + Vec2::new(0.0, -30.0)), true, false)
+            (Some(p + Vec2::new(0.0, -45.0)), true, false)
         }
         // Into the shaft's wall.
-        t if t < 7.0 => (Some(p + Vec2::new(14.0, -2.0)), true, false),
+        t if t < 7.0 => (Some(p + Vec2::new(21.0, -3.0)), true, false),
         // Build with a stack that has a whole block.
         t if t < 8.5 => {
             if build_slot.is_none() {
@@ -984,18 +986,18 @@ fn hands_script(
             if let Some(i) = *build_slot {
                 pick(&mut keys, i);
             }
-            (Some(p + Vec2::new(-10.0, 4.0)), true, false)
+            (Some(p + Vec2::new(-15.0, 6.0)), true, false)
         }
         // Auto tool (Ctrl) at whatever's up and to the right.
-        t if t < 10.0 => (Some(p + Vec2::new(20.0, 24.0)), true, true),
+        t if t < 10.0 => (Some(p + Vec2::new(30.0, 36.0)), true, true),
         // A torch on the floor.
         t if t < 10.3 => {
             if let Some(i) = items.id("torch").and_then(|torch| (0..10).find(|&i| inv.slots[i].is_some_and(|st| st.item == torch))) {
                 pick(&mut keys, i);
             }
-            (Some(p + Vec2::new(-6.0, -8.0)), false, false)
+            (Some(p + Vec2::new(-9.0, -12.0)), false, false)
         }
-        t if t < 10.4 => (Some(p + Vec2::new(-6.0, -8.0)), true, false),
+        t if t < 10.4 => (Some(p + Vec2::new(-9.0, -12.0)), true, false),
         _ => (None, false, false),
     };
     cursor.0 = aim;
@@ -1036,7 +1038,7 @@ fn chest_script(
     }
     mouse.release(MouseButton::Left);
     mouse.release(MouseButton::Right);
-    let at = *spot.get_or_insert(p + Vec2::new(16.0, 0.0));
+    let at = *spot.get_or_insert(p + Vec2::new(24.0, 0.0));
     match *step {
         0 if s.elapsed > 0.8 => {
             // A chest in slot 9.
@@ -1050,7 +1052,7 @@ fn chest_script(
             *step = 2;
         }
         2 if s.elapsed > 1.6 => {
-            cursor.0 = Some(at + Vec2::new(0.0, -4.0));
+            cursor.0 = Some(at + Vec2::new(0.0, -6.0));
             mouse.press(MouseButton::Right);
             *step = 3;
         }
@@ -1072,7 +1074,7 @@ fn chest_script(
             *step = 5;
         }
         5 if s.elapsed > 2.5 && s.elapsed < 5.0 => {
-            cursor.0 = Some(at + Vec2::new(0.0, -4.0));
+            cursor.0 = Some(at + Vec2::new(0.0, -6.0));
             mouse.press(MouseButton::Left);
         }
         5 if s.elapsed >= 6.0 => {
@@ -1120,9 +1122,9 @@ fn magic_script(
     state.2 += blasts.read().count() as u32;
     state.3 += zaps.read().count() as u32;
     if state.0 == 0 && t > 1.0 {
-        for dx in [90, 120, 150] {
+        for dx in [135, 180, 225] {
             let x = p.x as i32 + dx;
-            if let Some(y) = find_ground(&sim.world, x, p.y as i32 + 200, 400) {
+            if let Some(y) = find_ground(&sim.world, x, p.y as i32 + 300, 600) {
                 crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x as f32, y as f32), |_| {});
             }
         }
@@ -1133,12 +1135,12 @@ fn magic_script(
         keys.release(key);
     }
     let nearest = orcs.iter().map(|(o, _)| o.body.pos).min_by(|a, b| a.distance(p).total_cmp(&b.distance(p)));
-    let at_orc = nearest.unwrap_or(p + Vec2::new(60.0, 0.0));
+    let at_orc = nearest.unwrap_or(p + Vec2::new(90.0, 0.0));
     let (slot, aim) = match t {
         t if t < 1.5 => (None, None),
         t if t < 3.0 => (Some(0), Some(at_orc)),
-        t if t < 4.5 => (Some(1), Some(p + Vec2::new(50.0, -12.0))),
-        t if t < 5.5 => (Some(2), Some(p + Vec2::new(40.0, 40.0))),
+        t if t < 4.5 => (Some(1), Some(p + Vec2::new(75.0, -18.0))),
+        t if t < 5.5 => (Some(2), Some(p + Vec2::new(60.0, 60.0))),
         t if t < 7.0 => (Some(3), Some(at_orc)),
         t if t < 8.5 => (Some(4), Some(at_orc)),
         _ => (None, None),
@@ -1146,7 +1148,7 @@ fn magic_script(
     if let Some(i) = slot {
         keys.press(SLOTS[i]);
     }
-    cursor.0 = aim.or(Some(p + Vec2::new(30.0, 0.0)));
+    cursor.0 = aim.or(Some(p + Vec2::new(45.0, 0.0)));
     if aim.is_some() { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     if t >= state.1 && state.0 == 1 {
         state.1 = (t * 4.0).floor() / 4.0 + 0.25;
@@ -1189,23 +1191,23 @@ fn shock_script(
     }
     let Ok(k) = player.single() else { return };
     let p = k.body.pos;
-    let near = |x: i32, y: i32| orcs.iter().filter(|(o, _)| (o.body.pos.x as i32 - x).abs() < 50 && (o.body.pos.y as i32 - y).abs() < 30).map(|(_, h)| format!("{:.0}", h.hp)).collect::<Vec<_>>();
+    let near = |x: i32, y: i32| orcs.iter().filter(|(o, _)| (o.body.pos.x as i32 - x).abs() < 75 && (o.body.pos.y as i32 - y).abs() < 45).map(|(_, h)| format!("{:.0}", h.hp)).collect::<Vec<_>>();
     match *step {
         0 if s.elapsed > 1.0 => {
-            // A trough 80 wide, 14 deep, 40 to the right; then water in it.
-            let Some(ground) = find_ground(&sim.world, p.x as i32 + 80, p.y as i32 + 40, 100) else { return };
-            for x in (p.x as i32 + 40..p.x as i32 + 120).step_by(4) {
-                sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground - 8), radius: 8, max_hardness: 255 });
+            // A trough 120 wide, 21 deep, 60 to the right; then water in it.
+            let Some(ground) = find_ground(&sim.world, p.x as i32 + 120, p.y as i32 + 60, 150) else { return };
+            for x in (p.x as i32 + 60..p.x as i32 + 180).step_by(6) {
+                sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground - 12), radius: 12, max_hardness: 255 });
             }
-            *pool = Some((p.x as i32 + 80, ground - 8));
+            *pool = Some((p.x as i32 + 120, ground - 12));
             *step = 1;
         }
         1 if s.elapsed > 1.3 => {
             let (cx, cy) = pool.expect("dug");
             let water = sim.materials().expect_id("water");
-            for x in (cx - 40..cx + 40).step_by(3) {
-                for dy in [-4, 2] {
-                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, cy + dy), radius: 7, material: water, overwrite: false });
+            for x in (cx - 60..cx + 60).step_by(4) {
+                for dy in [-6, 3] {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, cy + dy), radius: 10, material: water, overwrite: false });
                 }
             }
             *step = 2;
@@ -1213,8 +1215,8 @@ fn shock_script(
         // (In the far end, and struck before they wade out toward the player.)
         2 if s.elapsed > 3.5 => {
             let (cx, cy) = pool.expect("dug");
-            for dx in [22, 34] {
-                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new((cx + dx) as f32, cy as f32 + 2.0), |_| {});
+            for dx in [33, 51] {
+                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new((cx + dx) as f32, cy as f32 + 3.0), |_| {});
             }
             *step = 3;
         }
@@ -1323,9 +1325,9 @@ fn well_script(
     keys.release(KeyCode::Digit2);
     let home = *state.2.get_or_insert(k.body.pos);
     if state.0 == 0 && t > 1.0 {
-        for dx in [70, 85] {
+        for dx in [105, 128] {
             let x = home.x as i32 + dx;
-            if let Some(y) = find_ground(&sim.world, x, home.y as i32 + 60, 200) {
+            if let Some(y) = find_ground(&sim.world, x, home.y as i32 + 90, 300) {
                 crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x as f32, y as f32), |_| {});
             }
         }
@@ -1335,8 +1337,8 @@ fn well_script(
         state.0 = 1;
     }
     let lerp = |a: Vec2, b: Vec2, f: f32| a.lerp(b, f.clamp(0.0, 1.0));
-    let nearest = orcs.iter().map(|(o, _)| o.body.pos).filter(|o| o.x > home.x + 20.0).min_by(|a, b| a.x.total_cmp(&b.x)).unwrap_or(home + Vec2::new(70.0, 8.0));
-    let (ground, up, throw) = (home + Vec2::new(35.0, -6.0), home + Vec2::new(40.0, 30.0), home + Vec2::new(160.0, 130.0));
+    let nearest = orcs.iter().map(|(o, _)| o.body.pos).filter(|o| o.x > home.x + 30.0).min_by(|a, b| a.x.total_cmp(&b.x)).unwrap_or(home + Vec2::new(105.0, 12.0));
+    let (ground, up, throw) = (home + Vec2::new(52.0, -9.0), home + Vec2::new(60.0, 45.0), home + Vec2::new(240.0, 195.0));
     let aim = match t {
         t if t < 1.5 => None,
         t if t < 2.6 => Some(ground),
@@ -1345,12 +1347,12 @@ fn well_script(
         t if t < 3.75 => Some(lerp(up, throw, (t - 3.6) / 0.15)),
         _ => None,
     };
-    cursor.0 = aim.or(Some(home + Vec2::new(30.0, 20.0)));
+    cursor.0 = aim.or(Some(home + Vec2::new(45.0, 30.0)));
     if aim.is_some() { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     if t >= state.1 {
         state.1 = (t * 4.0).floor() / 4.0 + 0.25;
         let held: Vec<(usize, usize)> = wells.iter().map(|w| (w.holding(), w.carrying())).collect();
-        let hp: Vec<String> = orcs.iter().filter(|(o, _)| o.body.pos.x > home.x + 20.0).map(|(o, h)| format!("{:.0}@{:.0},{:.0}", h.hp, o.body.pos.x - home.x, o.body.pos.y - home.y)).collect();
+        let hp: Vec<String> = orcs.iter().filter(|(o, _)| o.body.pos.x > home.x + 30.0).map(|(o, h)| format!("{:.0}@{:.0},{:.0}", h.hp, o.body.pos.x - home.x, o.body.pos.y - home.y)).collect();
         info!("well: t {t:.1} (cells, bodies) {held:?} mana {:.0} orcs [{}] particles {}", mana.map_or(0.0, |m| m.cur), hp.join(" "), sim.world.particles().len());
     }
 }
@@ -1378,12 +1380,12 @@ fn force_script(
     let home = *state.2.get_or_insert(k.body.pos);
     if state.0 == 0 && t > 1.0 {
         let sand = sim.materials().expect_id("sand");
-        for dx in [34, 40, 46] {
-            sim.queue(WorldEdit::Paint { center: CellPos::new(home.x as i32 + dx, home.y as i32 + 2), radius: 6, material: sand, overwrite: false });
+        for dx in [51, 60, 69] {
+            sim.queue(WorldEdit::Paint { center: CellPos::new(home.x as i32 + dx, home.y as i32 + 3), radius: 9, material: sand, overwrite: false });
         }
-        for dx in [50, 62] {
+        for dx in [75, 93] {
             let x = home.x as i32 + dx;
-            if let Some(y) = find_ground(&sim.world, x, home.y as i32 + 60, 200) {
+            if let Some(y) = find_ground(&sim.world, x, home.y as i32 + 90, 300) {
                 crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x as f32, y as f32), |_| {});
             }
         }
@@ -1394,12 +1396,12 @@ fn force_script(
     }
     let down = t > 5.0 && t < 6.0;
     let (push, pull) = ((t > 1.5 && t < 2.0) || down, t > 3.0 && t < 4.4);
-    cursor.0 = Some(if down { k.body.pos + Vec2::new(0.0, -40.0) } else { home + Vec2::new(60.0, 0.0) });
+    cursor.0 = Some(if down { k.body.pos + Vec2::new(0.0, -60.0) } else { home + Vec2::new(90.0, 0.0) });
     if push { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     if pull { mouse.press(MouseButton::Right) } else { mouse.release(MouseButton::Right) }
     if t >= state.1 {
         state.1 = (t * 4.0).floor() / 4.0 + 0.25;
-        let at: Vec<String> = orcs.iter().filter(|(o, _)| (o.body.pos.x - home.x).abs() < 250.0 && o.body.pos.x > home.x + 10.0).map(|(o, h)| format!("{:.0}@{:.0},{:.0}", h.hp, o.body.pos.x - home.x, o.body.pos.y - home.y)).collect();
+        let at: Vec<String> = orcs.iter().filter(|(o, _)| (o.body.pos.x - home.x).abs() < 375.0 && o.body.pos.x > home.x + 15.0).map(|(o, h)| format!("{:.0}@{:.0},{:.0}", h.hp, o.body.pos.x - home.x, o.body.pos.y - home.y)).collect();
         info!("force: t {t:.2} {} player {:+.0} hp {:.0} mana {:.0} orcs [{}] particles {}", if push { "push" } else if pull { "pull" } else { "-" }, k.body.pos.y - home.y, me.hp, mana.map_or(0.0, |m| m.cur), at.join(" "), sim.world.particles().len());
     }
 }
@@ -1429,16 +1431,16 @@ fn wellwater_script(
     let home = *state.2.get_or_insert(k.body.pos);
     let water = sim.materials().expect_id("water");
     if state.0 == 0 && t > 0.5 {
-        let Some(ground) = find_ground(&sim.world, home.x as i32 + 60, home.y as i32 + 40, 100) else { return };
-        for x in (home.x as i32 + 40..home.x as i32 + 80).step_by(4) {
-            sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground - 6), radius: 6, max_hardness: 255 });
+        let Some(ground) = find_ground(&sim.world, home.x as i32 + 90, home.y as i32 + 60, 150) else { return };
+        for x in (home.x as i32 + 60..home.x as i32 + 120).step_by(6) {
+            sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground - 9), radius: 9, max_hardness: 255 });
         }
         state.0 = 1;
     }
     if state.0 == 1 && t > 0.8 {
-        let Some(ground) = find_ground(&sim.world, home.x as i32 + 60, home.y as i32 + 40, 100) else { return };
-        for x in (home.x as i32 + 42..home.x as i32 + 78).step_by(3) {
-            sim.queue(WorldEdit::Paint { center: CellPos::new(x, ground - 3), radius: 4, material: water, overwrite: false });
+        let Some(ground) = find_ground(&sim.world, home.x as i32 + 90, home.y as i32 + 60, 150) else { return };
+        for x in (home.x as i32 + 63..home.x as i32 + 117).step_by(4) {
+            sim.queue(WorldEdit::Paint { center: CellPos::new(x, ground - 4), radius: 6, material: water, overwrite: false });
         }
         keys.press(KeyCode::KeyX);
         keys.press(if staff { KeyCode::Digit4 } else { KeyCode::Digit2 });
@@ -1448,7 +1450,7 @@ fn wellwater_script(
     let phase = t - 1.8;
     let lift = phase > 0.0 && (phase as i32) < cycles * 2 && phase.rem_euclid(2.4) < 1.4 && phase < cycles as f32 * 2.4;
     let high = lift && phase.rem_euclid(2.4) > 0.8;
-    let over = home + Vec2::new(60.0, if high { 40.0 } else { -2.0 });
+    let over = home + Vec2::new(90.0, if high { 60.0 } else { -3.0 });
     cursor.0 = Some(over);
     if lift { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     if t >= state.1 && state.0 == 2 {
@@ -1497,30 +1499,30 @@ fn splash_script(
     let home = *state.2.get_or_insert(k.body.pos);
     let (water, oil) = (sim.materials().expect_id("water"), sim.materials().expect_id("oil"));
     if state.0 == 0 && t > 0.5 {
-        let Some(ground) = find_ground(&sim.world, home.x as i32 + 80, home.y as i32 + 40, 100) else { return };
-        for x in (home.x as i32 + 40..home.x as i32 + 130).step_by(4) {
-            sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground - 7), radius: 7, max_hardness: 255 });
+        let Some(ground) = find_ground(&sim.world, home.x as i32 + 120, home.y as i32 + 60, 150) else { return };
+        for x in (home.x as i32 + 60..home.x as i32 + 195).step_by(6) {
+            sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground - 10), radius: 10, max_hardness: 255 });
         }
         // A pit of its own for the oil (on the pool it spreads over all of it).
-        for x in (home.x as i32 + 150..home.x as i32 + 175).step_by(4) {
-            sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground - 5), radius: 5, max_hardness: 255 });
+        for x in (home.x as i32 + 225..home.x as i32 + 262).step_by(6) {
+            sim.queue(WorldEdit::Dig { center: CellPos::new(x, ground - 8), radius: 8, max_hardness: 255 });
         }
         state.3 = ground;
         state.0 = 1;
     }
     if state.0 == 1 && t > 0.8 {
         let ground = state.3;
-        for x in (home.x as i32 + 42..home.x as i32 + 128).step_by(3) {
-            for dy in [-7, -3] {
-                sim.queue(WorldEdit::Paint { center: CellPos::new(x, ground + dy), radius: 4, material: water, overwrite: false });
+        for x in (home.x as i32 + 63..home.x as i32 + 192).step_by(4) {
+            for dy in [-10, -4] {
+                sim.queue(WorldEdit::Paint { center: CellPos::new(x, ground + dy), radius: 6, material: water, overwrite: false });
             }
         }
         state.0 = 2;
     }
     if state.0 == 2 && t > 1.3 {
         let ground = state.3;
-        for x in (home.x as i32 + 152..home.x as i32 + 173).step_by(3) {
-            sim.queue(WorldEdit::Paint { center: CellPos::new(x, ground - 3), radius: 3, material: oil, overwrite: false });
+        for x in (home.x as i32 + 228..home.x as i32 + 260).step_by(4) {
+            sim.queue(WorldEdit::Paint { center: CellPos::new(x, ground - 4), radius: 4, material: oil, overwrite: false });
         }
         state.0 = 3;
     }
@@ -1528,12 +1530,12 @@ fn splash_script(
     // (wand key, aim, from, to): the fireball is hotbar 1 slot 7; spark 6;
     // acid 8; frost hotbar 2 slot 6.
     let plan: [(KeyCode, bool, Vec2, f32, f32); 6] = [
-        (KeyCode::Digit7, false, home + Vec2::new(13.0, 54.0), 2.0, 2.1),
-        (KeyCode::Digit7, false, Vec2::new(home.x + 110.0, ground), 3.5, 3.6),
-        (KeyCode::Digit6, false, Vec2::new(home.x + 75.0, ground - 6.0), 5.0, 5.1),
-        (KeyCode::Digit8, false, Vec2::new(home.x + 75.0, ground + 8.0), 6.0, 6.1),
-        (KeyCode::Digit7, false, home + Vec2::new(23.0, 44.0), 7.0, 7.1),
-        (KeyCode::Digit6, true, Vec2::new(home.x + 75.0, ground - 6.0), 8.5, 8.6),
+        (KeyCode::Digit7, false, home + Vec2::new(19.5, 81.0), 2.0, 2.1),
+        (KeyCode::Digit7, false, Vec2::new(home.x + 165.0, ground), 3.5, 3.6),
+        (KeyCode::Digit6, false, Vec2::new(home.x + 112.0, ground - 9.0), 5.0, 5.1),
+        (KeyCode::Digit8, false, Vec2::new(home.x + 112.0, ground + 12.0), 6.0, 6.1),
+        (KeyCode::Digit7, false, home + Vec2::new(34.5, 66.0), 7.0, 7.1),
+        (KeyCode::Digit6, true, Vec2::new(home.x + 112.0, ground - 9.0), 8.5, 8.6),
     ];
     let now = plan.iter().find(|p| t >= p.3 - 0.3 && t < p.4);
     if let Some(&(key, bar2, aim, from, _)) = now {
@@ -1549,7 +1551,7 @@ fn splash_script(
         if t >= from { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     } else {
         mouse.release(MouseButton::Left);
-        cursor.0 = Some(home + Vec2::new(20.0, 10.0));
+        cursor.0 = Some(home + Vec2::new(30.0, 15.0));
     }
     if (t * 2.0).floor() != ((t - 0.017) * 2.0).floor() && state.0 >= 2 {
         let count = |n: &str| sim.materials().id(n).map_or(0, |m| sim.world.chunks().map(|c| c.cells().iter().filter(|c| c.material == m).count()).sum::<usize>());
@@ -1590,14 +1592,14 @@ fn airjump_script(
     {
         eq.worn[4] = Some(crate::hands::items::Stack::new(b, 1));
     }
-    // Lifted 160 cells up at 1 s: a fall well past the safe height.
+    // Lifted 240 cells up at 1 s: a fall well past the safe height.
     if state.2 == 0 && t > 1.0 {
-        k.body.pos.y += 160.0;
+        k.body.pos.y += 240.0;
         k.prev_pos = k.body.pos;
         k.body.vel = Vec2::ZERO;
         state.2 = 1;
     }
-    let low = k.body.pos.y - ground < 14.0;
+    let low = k.body.pos.y - ground < 21.0;
     let save = !nosave && state.2 == 1 && k.body.vel.y < 0.0 && low;
     if save {
         state.2 = 2;
@@ -1627,9 +1629,9 @@ fn critters_script(
     let Ok(k) = player.single() else { return };
     let t = s.elapsed;
     if state.0 == 0 && t > 1.0 {
-        for (dx, kind) in [(60, "rabbit"), (75, "bird"), (90, "frog")] {
+        for (dx, kind) in [(90, "rabbit"), (112, "bird"), (135, "frog")] {
             let x = k.body.pos.x as i32 + dx;
-            if let Some(y) = find_ground(&sim.world, x, k.body.pos.y as i32 + 40, 100) {
+            if let Some(y) = find_ground(&sim.world, x, k.body.pos.y as i32 + 60, 150) {
                 crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x as f32 + 0.5, y as f32), |_| {});
             }
         }
@@ -1638,7 +1640,7 @@ fn critters_script(
     if t > 2.0 && t < 4.5 { keys.press(KeyCode::KeyD) } else { keys.release(KeyCode::KeyD) }
     if t >= state.1 {
         state.1 = (t * 2.0).floor() / 2.0 + 0.5;
-        let near: Vec<String> = critters.iter().filter(|(c, r)| c.kind != "orc" && r.body.pos.distance(k.body.pos) < 500.0).map(|(c, r)| format!("{} {:+.0},{:+.0}", c.kind, r.body.pos.x - k.body.pos.x, r.body.pos.y - k.body.pos.y)).collect();
+        let near: Vec<String> = critters.iter().filter(|(c, r)| c.kind != "orc" && r.body.pos.distance(k.body.pos) < 750.0).map(|(c, r)| format!("{} {:+.0},{:+.0}", c.kind, r.body.pos.x - k.body.pos.x, r.body.pos.y - k.body.pos.y)).collect();
         info!("critters: t {t:.1} [{}]", near.join("; "));
     }
 }
@@ -1680,7 +1682,7 @@ fn arena_script(
             }
             2 => {
                 arena.write(A::Pick("orc".into()));
-                dev.write(crate::dev::DevAction::Spawn(Some(p + Vec2::new(-80.0, 10.0))));
+                dev.write(crate::dev::DevAction::Spawn(Some(p + Vec2::new(-120.0, 15.0))));
             }
             3 => {
                 arena.write(A::Pause);
@@ -1708,19 +1710,19 @@ fn arena_script(
     for key in SLOTS {
         keys.release(key);
     }
-    let dummy = |x: f32| dummies.iter().map(|(_, dk, _)| dk.body.pos).find(|d| (d.x - x).abs() < 8.0);
+    let dummy = |x: f32| dummies.iter().map(|(_, dk, _)| dk.body.pos).find(|d| (d.x - x).abs() < 12.0);
     let aim = match t {
         t if (1.0..3.0).contains(&t) => {
             keys.press(SLOTS[0]);
-            dummy(700.0)
+            dummy(1050.0)
         }
         t if (3.0..4.4).contains(&t) => {
             keys.press(SLOTS[1]);
-            dummy(760.0)
+            dummy(1140.0)
         }
         _ => None,
     };
-    cursor.0 = aim.or(Some(p + Vec2::new(30.0, 0.0)));
+    cursor.0 = aim.or(Some(p + Vec2::new(45.0, 0.0)));
     if aim.is_some() { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     if t >= *logged {
         *logged = (t * 2.0).floor() / 2.0 + 0.5;
@@ -1815,11 +1817,11 @@ fn wands_script(
     let p = k.body.pos;
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR;
-    // Solid cells of the floor's top 12 rows around x 680.
-    let solid = || (660..700).flat_map(|x| (floor - 12..floor).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| !c.is_air())).count();
-    // (The sandbag nearest the player: one is put 40 cells off at 2 s.)
+    // Solid cells of the floor's top 18 rows around x 1020.
+    let solid = || (990..1050).flat_map(|x| (floor - 18..floor).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| !c.is_air())).count();
+    // (The sandbag nearest the player: one is put 60 cells off at 2 s.)
     let bag = || dummies.iter().filter(|(c, ..)| c.kind == "sandbag").map(|(_, dk, _)| dk.body.pos).min_by(|a, b| a.distance(p).total_cmp(&b.distance(p)));
-    let dummy = |x: f32| dummies.iter().find(|(c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 8.0);
+    let dummy = |x: f32| dummies.iter().find(|(c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 12.0);
     for key in [KeyCode::Digit6, KeyCode::Digit9] {
         keys.release(key);
     }
@@ -1830,12 +1832,12 @@ fn wands_script(
         }
         t if (1.0..2.0).contains(&t) => {
             keys.press(KeyCode::Digit6);
-            Some(Vec2::new(680.0, floor as f32 - 2.0))
+            Some(Vec2::new(1020.0, floor as f32 - 3.0))
         }
         t if (2.0..2.2).contains(&t) => {
             if state.0 == 0 {
                 info!("wands: the spark broke {} floor cells in a second", state.1 as i64 - solid() as i64);
-                crate::creatures::def::spawn_creature(&mut commands, "sandbag", Vec2::new(p.x + 40.0, floor as f32), |_| {});
+                crate::creatures::def::spawn_creature(&mut commands, "sandbag", Vec2::new(p.x + 60.0, floor as f32), |_| {});
                 state.0 = 1;
             }
             None
@@ -1856,22 +1858,22 @@ fn wands_script(
         }
         t if (3.4..5.0).contains(&t) => {
             keys.press(KeyCode::Digit9);
-            dummy(700.0).map(|d| d.1.body.pos)
+            dummy(1050.0).map(|d| d.1.body.pos)
         }
         t if (5.0..6.6).contains(&t) => {
             keys.press(KeyCode::Digit9);
-            dummy(760.0).map(|d| d.1.body.pos)
+            dummy(1140.0).map(|d| d.1.body.pos)
         }
         _ => {
             if state.0 == 2 {
                 let took = |x: f32| dummy(x).map_or(0.0, |d| d.2.total);
-                info!("wands: flames from x {:.0}: the dummy 60 off took {:.0}, the one 120 off {:.0}", p.x, took(700.0), took(760.0));
+                info!("wands: flames from x {:.0}: the dummy 90 off took {:.0}, the one 180 off {:.0}", p.x, took(1050.0), took(1140.0));
                 state.0 = 3;
             }
             None
         }
     };
-    cursor.0 = aim.or(Some(p + Vec2::new(30.0, 0.0)));
+    cursor.0 = aim.or(Some(p + Vec2::new(45.0, 0.0)));
     if aim.is_some() { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
 }
 
@@ -1899,7 +1901,7 @@ fn melee_script(
     let Ok((k, h, stamina, wielding)) = player.single() else { return };
     let p = k.body.pos;
     let t = s.elapsed;
-    let Some((_, dk, tally)) = dummies.iter().find(|(c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - 700.0).abs() < 8.0) else { return };
+    let Some((_, dk, tally)) = dummies.iter().find(|(c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - 1050.0).abs() < 12.0) else { return };
     let d = dk.body.pos;
     // Each key held while wanted, so a press is one press.
     let mut want = std::collections::HashSet::new();
@@ -1907,21 +1909,22 @@ fn melee_script(
     if window(0.3, 0.4) {
         want.insert(KeyCode::KeyX);
     }
+    // (Hotbar 2: the shortsword at 8, the longsword at 9.)
     if window(0.5, 0.6) {
-        want.insert(KeyCode::Digit7);
+        want.insert(KeyCode::Digit8);
     }
     if window(2.5, 2.6) {
-        want.insert(KeyCode::Digit8);
+        want.insert(KeyCode::Digit9);
     }
     let stam = stamina.map_or(0.0, |s| s.cur);
     let held = wielding.and_then(|w| w.0.clone()).unwrap_or_default();
     let mut swing = None;
     if window(0.6, 2.4) {
-        if d.x - p.x > 12.0 {
+        if d.x - p.x > 18.0 {
             want.insert(KeyCode::KeyD);
         }
         if t > 0.9 {
-            swing = Some(d + Vec2::new(0.0, 2.0));
+            swing = Some(d + Vec2::new(0.0, 3.0));
         }
         state.4 = state.4.min(stam);
     }
@@ -1932,7 +1935,7 @@ fn melee_script(
         state.4 = 100.0;
     }
     if window(2.7, 4.2) {
-        swing = Some(d + Vec2::new(0.0, 2.0));
+        swing = Some(d + Vec2::new(0.0, 3.0));
         state.4 = state.4.min(stam);
     }
     if window(4.2, 4.6) {
@@ -1946,11 +1949,11 @@ fn melee_script(
         if t < 4.9 {
             want.insert(KeyCode::Space);
         }
-        if p.x < d.x - 2.0 {
+        if p.x < d.x - 3.0 {
             want.insert(KeyCode::KeyD);
         }
         // Over it: strike down; how fast it rises after is the pogo.
-        if !k.loco.grounded() && p.y > d.y + 12.0 {
+        if !k.loco.grounded() && p.y > d.y + 18.0 {
             swing = Some(d);
             state.3 = f32::max(state.3, tally.hits as f32);
         }
@@ -1968,27 +1971,27 @@ fn melee_script(
     }
     if t > 6.26 && state.0 == 3 {
         state.2 = h.hp;
-        sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 3, p.y as i32), radius: 3, power: 60 });
+        sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 4, p.y as i32), radius: 4, power: 60 });
         state.0 = 4;
     }
     if t > 6.9 && state.0 == 4 {
         info!("melee: a blast mid-dodge cost {:.0} hp", state.2 - h.hp);
         state.2 = h.hp;
-        sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 3, p.y as i32), radius: 3, power: 60 });
+        sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 4, p.y as i32), radius: 4, power: 60 });
         state.0 = 5;
     }
     if t > 7.4 && state.0 == 5 {
         info!("melee: the same blast standing cost {:.0} hp", state.2 - h.hp);
         state.0 = 6;
     }
-    for key in [KeyCode::KeyX, KeyCode::Digit7, KeyCode::Digit8, KeyCode::KeyD, KeyCode::KeyA, KeyCode::Space, KeyCode::ShiftLeft] {
+    for key in [KeyCode::KeyX, KeyCode::Digit8, KeyCode::Digit9, KeyCode::KeyD, KeyCode::KeyA, KeyCode::Space, KeyCode::ShiftLeft] {
         match (want.contains(&key), keys.pressed(key)) {
             (true, false) => keys.press(key),
             (false, true) => keys.release(key),
             _ => {}
         }
     }
-    cursor.0 = swing.or(Some(p + Vec2::new(30.0, 0.0)));
+    cursor.0 = swing.or(Some(p + Vec2::new(45.0, 0.0)));
     match (swing.is_some(), mouse.pressed(MouseButton::Left)) {
         (true, false) => mouse.press(MouseButton::Left),
         (false, true) => mouse.release(MouseButton::Left),
@@ -2020,18 +2023,18 @@ fn fight_script(
         want.insert(KeyCode::KeyX);
     }
     if (0.5..0.6).contains(&t) {
-        want.insert(KeyCode::Digit7);
+        want.insert(KeyCode::Digit8);
     }
     if state.0 == 0 && t > 0.8 {
-        crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(p.x - 40.0, floor), |_| {});
+        crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(p.x - 60.0, floor), |_| {});
         state.0 = 1;
     }
     if state.0 == 1 && t > 5.0 {
-        crate::creatures::def::spawn_creature(&mut commands, "troll", Vec2::new(p.x - 70.0, floor), |_| {});
+        crate::creatures::def::spawn_creature(&mut commands, "troll", Vec2::new(p.x - 105.0, floor), |_| {});
         state.0 = 2;
     }
     let near = foes.iter().filter(|(c, ..)| c.kind == "orc" || c.kind == "troll").min_by(|a, b| a.1.body.pos.distance(p).total_cmp(&b.1.body.pos.distance(p)));
-    let swing = near.filter(|(_, fk, ..)| t > 1.5 && fk.body.pos.distance(p) < 30.0).map(|(_, fk, ..)| fk.body.pos);
+    let swing = near.filter(|(_, fk, ..)| t > 1.5 && fk.body.pos.distance(p) < 45.0).map(|(_, fk, ..)| fk.body.pos);
     for (_, _, _, swinging) in &foes {
         if swinging {
             state.3 += 1;
@@ -2042,14 +2045,14 @@ fn fight_script(
         let them: Vec<String> = foes.iter().filter(|(c, ..)| c.kind == "orc" || c.kind == "troll").map(|(c, fk, fh, sw)| format!("{} {:+.0} hp {:.0}{}", c.kind, fk.body.pos.x - p.x, fh.hp, if sw { " swinging" } else { "" })).collect();
         info!("fight: t {t:.1} player hp {:.0} [{}] ({} ticks of enemy swings so far)", h.hp, them.join("; "), state.3);
     }
-    for key in [KeyCode::KeyX, KeyCode::Digit7] {
+    for key in [KeyCode::KeyX, KeyCode::Digit8] {
         match (want.contains(&key), keys.pressed(key)) {
             (true, false) => keys.press(key),
             (false, true) => keys.release(key),
             _ => {}
         }
     }
-    cursor.0 = swing.or(Some(p + Vec2::new(-30.0, 0.0)));
+    cursor.0 = swing.or(Some(p + Vec2::new(-45.0, 0.0)));
     match (swing.is_some(), mouse.pressed(MouseButton::Left)) {
         (true, false) => mouse.press(MouseButton::Left),
         (false, true) => mouse.release(MouseButton::Left),
@@ -2087,27 +2090,27 @@ fn archery_script(
     if (0.5..0.6).contains(&t) {
         want.insert(KeyCode::Digit9);
     }
-    let dummy = dummies.iter().find(|(c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - 700.0).abs() < 8.0);
+    let dummy = dummies.iter().find(|(c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - 1050.0).abs() < 12.0);
     let mut aim = None;
     if (1.0..1.8).contains(&t) {
-        aim = dummy.map(|d| d.1.body.pos + Vec2::new(0.0, 4.0));
+        aim = dummy.map(|d| d.1.body.pos + Vec2::new(0.0, 6.0));
     }
     if (2.0..2.2).contains(&t) {
         if state.0 == 0 {
             info!("archery: a full draw at the dummy: it took {:.0} ({} hits); {quiver} arrows left", dummy.map_or(0.0, |d| d.2.total), dummy.map_or(0, |d| d.2.hits));
             state.0 = 1;
         }
-        aim = Some(Vec2::new(p.x + 30.0, floor - 2.0));
+        aim = Some(Vec2::new(p.x + 45.0, floor - 3.0));
     }
     // A puddle of lava to shoot down through.
     if (2.3..2.32).contains(&t) && state.0 == 1 {
         if let Some(lava) = sim.materials().id("lava") {
-            sim.queue(WorldEdit::Paint { center: CellPos::new(p.x as i32 - 24, floor as i32 + 1), radius: 2, material: lava, overwrite: false });
+            sim.queue(WorldEdit::Paint { center: CellPos::new(p.x as i32 - 36, floor as i32 + 2), radius: 3, material: lava, overwrite: false });
         }
         state.0 = 2;
     }
     if (2.65..3.3).contains(&t) {
-        aim = Some(Vec2::new(p.x - 25.0, floor - 2.0));
+        aim = Some(Vec2::new(p.x - 37.5, floor - 3.0));
     }
     if (3.4..3.42).contains(&t) {
         info!("archery: through the fire: {} of {} arrows burning", arrows.iter().filter(|a| a.burning()).count(), arrows.iter().count());
@@ -2118,12 +2121,12 @@ fn archery_script(
         state.0 = 3;
         state.2 = quiver;
     }
-    if (3.6..5.0).contains(&t) && p.x < 700.0 - 12.0 {
+    if (3.6..5.0).contains(&t) && p.x < 1050.0 - 18.0 {
         want.insert(KeyCode::KeyD);
     }
     if (5.2..5.3).contains(&t) && state.0 == 3 {
         info!("archery: walked over them: {quiver} in the quiver (was {}), {} arrows about", state.2, arrows.iter().count());
-        crate::creatures::def::spawn_creature(&mut commands, "orc_archer", Vec2::new(p.x - 110.0, floor), |_| {});
+        crate::creatures::def::spawn_creature(&mut commands, "orc_archer", Vec2::new(p.x - 165.0, floor), |_| {});
         state.0 = 4;
         state.1 = h.hp;
     }
@@ -2138,7 +2141,7 @@ fn archery_script(
             _ => {}
         }
     }
-    cursor.0 = aim.or(Some(p + Vec2::new(30.0, 0.0)));
+    cursor.0 = aim.or(Some(p + Vec2::new(45.0, 0.0)));
     match (aim.is_some(), mouse.pressed(MouseButton::Left)) {
         (true, false) => mouse.press(MouseButton::Left),
         (false, true) => mouse.release(MouseButton::Left),
@@ -2159,7 +2162,7 @@ fn warband_script(
     }
     let Ok(k) = player.single() else { return };
     if *state == 0 && s.elapsed > 1.0 {
-        dev.write(crate::dev::DevAction::Spawn(Some(k.body.pos + Vec2::new(120.0, 20.0))));
+        dev.write(crate::dev::DevAction::Spawn(Some(k.body.pos + Vec2::new(180.0, 30.0))));
         *state = 1;
     }
     if *state == 1 && s.elapsed > 3.0 {
@@ -2190,7 +2193,7 @@ fn held_script(
     let p = k.body.pos;
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR;
-    let solid = || (640..680).flat_map(|x| (floor - 16..floor).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| !c.is_air())).count();
+    let solid = || (960..1020).flat_map(|x| (floor - 24..floor).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| !c.is_air())).count();
     // Swings started (a swing seen after none).
     let swinging = swing.is_some();
     if swinging && !state.3 {
@@ -2212,10 +2215,10 @@ fn held_script(
         state.1 = solid();
     }
     let aim = match t {
-        t if (0.5..2.0).contains(&t) => Some(Vec2::new(p.x + 14.0, floor as f32 - 3.0)),
-        t if (3.2..3.8).contains(&t) => Some(Vec2::new(700.0, floor as f32 + 10.0)),
-        t if (4.3..4.35).contains(&t) => Some(p + Vec2::new(60.0, 40.0)),
-        t if (5.0..5.6).contains(&t) => Some(p + Vec2::new(20.0, 5.0)),
+        t if (0.5..2.0).contains(&t) => Some(Vec2::new(p.x + 21.0, floor as f32 - 4.5)),
+        t if (3.2..3.8).contains(&t) => Some(Vec2::new(1050.0, floor as f32 + 15.0)),
+        t if (4.3..4.35).contains(&t) => Some(p + Vec2::new(90.0, 60.0)),
+        t if (5.0..5.6).contains(&t) => Some(p + Vec2::new(30.0, 7.5)),
         _ => None,
     };
     if (2.05..2.1).contains(&t) && state.0 == 0 {
@@ -2234,7 +2237,7 @@ fn held_script(
             _ => {}
         }
     }
-    cursor.0 = aim.or(Some(p + Vec2::new(30.0, 0.0)));
+    cursor.0 = aim.or(Some(p + Vec2::new(45.0, 0.0)));
     match (aim.is_some(), mouse.pressed(MouseButton::Left)) {
         (true, false) => mouse.press(MouseButton::Left),
         (false, true) => mouse.release(MouseButton::Left),
@@ -2262,29 +2265,29 @@ fn crossing_script(
         state.0 = 1;
     }
     let x0 = state.1 as i32;
-    // Sand pouring from high up, 30 cells ahead.
+    // Sand pouring from high up, 45 cells ahead.
     if (0.3..3.0).contains(&t)
         && let Some(sand) = sim.materials().id("sand")
     {
-        sim.queue(WorldEdit::Paint { center: CellPos::new(x0 + 30, floor + 70), radius: 1, material: sand, overwrite: false });
+        sim.queue(WorldEdit::Paint { center: CellPos::new(x0 + 45, floor + 105), radius: 2, material: sand, overwrite: false });
     }
     if (1.2..3.0).contains(&t) {
         want.insert(KeyCode::KeyD);
     }
     if state.0 == 1 && t > 3.0 {
-        info!("crossing: walked {:.0} cells through a sand stream 30 ahead (past it: {})", k.body.pos.x - state.1, k.body.pos.x - state.1 > 36.0);
-        // A pit: 30 wide, 40 deep, water to 12 below the rim.
-        let px = x0 + 90;
-        sim.queue(WorldEdit::Dig { center: CellPos::new(px, floor - 20), radius: 20, max_hardness: 250 });
+        info!("crossing: walked {:.0} cells through a sand stream 45 ahead (past it: {})", k.body.pos.x - state.1, k.body.pos.x - state.1 > 54.0);
+        // A pit: 45 wide, 60 deep, water to 18 below the rim.
+        let px = x0 + 135;
+        sim.queue(WorldEdit::Dig { center: CellPos::new(px, floor - 30), radius: 30, max_hardness: 250 });
         if let Some(water) = sim.materials().id("water") {
-            for y in (floor - 40..floor - 12).step_by(4) {
-                sim.queue(WorldEdit::Paint { center: CellPos::new(px, y), radius: 16, material: water, overwrite: false });
+            for y in (floor - 60..floor - 18).step_by(6) {
+                sim.queue(WorldEdit::Paint { center: CellPos::new(px, y), radius: 24, material: water, overwrite: false });
             }
         }
         state.0 = 2;
     }
     if state.0 == 2 && t > 3.6 {
-        k.body.pos = Vec2::new((x0 + 90) as f32, (floor - 22) as f32);
+        k.body.pos = Vec2::new((x0 + 135) as f32, (floor - 33) as f32);
         k.body.vel = Vec2::ZERO;
         k.prev_pos = k.body.pos;
         state.0 = 3;
@@ -2307,7 +2310,7 @@ fn crossing_script(
         }
         state.2 = state.2.max(k.body.bottom());
         if t > 7.5 {
-            info!("crossing: out of the pit: feet at {:+.0} from the rim (highest {:+.0}), {}", k.body.bottom() - floor as f32, state.2 - floor as f32, if k.body.bottom() >= floor as f32 - 0.5 && k.loco.contacts.submerged < 0.1 { "out" } else { "still in" });
+            info!("crossing: out of the pit: feet at {:+.0} from the rim (highest {:+.0}), {}", k.body.bottom() - floor as f32, state.2 - floor as f32, if k.body.bottom() >= floor as f32 - 0.75 && k.loco.contacts.submerged < 0.1 { "out" } else { "still in" });
             state.0 = 4;
         }
     }
@@ -2336,18 +2339,18 @@ fn life_script(
     if *state == 0 && s.elapsed > 0.5 {
         // The player by the pool, to watch.
         if let Ok(mut k) = player.single_mut() {
-            k.body.pos = Vec2::new(440.0, floor + 8.0);
+            k.body.pos = Vec2::new(660.0, floor + 12.0);
             k.prev_pos = k.body.pos;
         }
         for i in 0..6 {
-            let x = 460.0 + i as f32 * 12.0;
-            crate::creatures::def::spawn_creature(&mut commands, "firefly", Vec2::new(x, floor + 8.0 + (i % 3) as f32 * 6.0), |_| {});
+            let x = 690.0 + i as f32 * 18.0;
+            crate::creatures::def::spawn_creature(&mut commands, "firefly", Vec2::new(x, floor + 12.0 + (i % 3) as f32 * 9.0), |_| {});
         }
         for i in 0..4 {
-            crate::creatures::def::spawn_creature(&mut commands, "fish", Vec2::new(330.0 + i as f32 * 22.0, floor - 20.0 - (i % 2) as f32 * 12.0), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "fish", Vec2::new(495.0 + i as f32 * 33.0, floor - 30.0 - (i % 2) as f32 * 18.0), |_| {});
         }
         for i in 0..4 {
-            crate::creatures::def::spawn_creature(&mut commands, "bat", Vec2::new(500.0 + i as f32 * 14.0, floor + 40.0 + i as f32 * 8.0), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "bat", Vec2::new(750.0 + i as f32 * 21.0, floor + 60.0 + i as f32 * 12.0), |_| {});
         }
         *state = 1;
     }
@@ -2360,7 +2363,7 @@ fn life_script(
                 .iter()
                 .filter(|k| match kind {
                     "fish" => wet(k.body.pos),
-                    _ => !k.loco.grounded() && k.body.pos.y > floor + 2.0,
+                    _ => !k.loco.grounded() && k.body.pos.y > floor + 3.0,
                 })
                 .count();
             let heights: Vec<String> = all.iter().map(|k| format!("{:.0}", k.body.pos.y - floor)).collect();
@@ -2394,11 +2397,11 @@ fn underground_script(
     let floor = platypus_worldgen::arena::FLOOR as f32;
     // (name, what: (kind, dx from the player), how long)
     let phases: [Phase; 6] = [
-        ("spider", &[("spider", 40.0)], 3.5),
-        ("slimes", &[("slime", 35.0), ("acid_slime", -35.0)], 3.5),
-        ("vampire bats", &[("vampire_bat", 30.0), ("vampire_bat", -30.0)], 4.0),
-        ("skeleton", &[("skeleton", 40.0)], 4.0),
-        ("egg sac", &[("egg_sac", 28.0)], 3.0),
+        ("spider", &[("spider", 60.0)], 3.5),
+        ("slimes", &[("slime", 52.0), ("acid_slime", -52.0)], 3.5),
+        ("vampire bats", &[("vampire_bat", 45.0), ("vampire_bat", -45.0)], 4.0),
+        ("skeleton", &[("skeleton", 60.0)], 4.0),
+        ("egg sac", &[("egg_sac", 42.0)], 3.0),
         ("climb", &[], 5.0),
     ];
     let start: Vec<f32> = phases.iter().scan(0.5, |acc, p| { let a = *acc; *acc += p.2; Some(a) }).collect();
@@ -2421,16 +2424,16 @@ fn underground_script(
         let (name, what, _) = phases[i];
         let at = if name == "climb" {
             // On top of the tall column, a spider at its foot.
-            k.body.pos = Vec2::new(1108.0, floor + 140.0 + 8.0);
+            k.body.pos = Vec2::new(1662.0, floor + 210.0 + 12.0);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
-            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(1085.0, floor), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(1628.0, floor), |_| {});
             k.body.pos
         } else {
             k.body.pos
         };
         for &(kind, dx) in what {
-            crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(at.x + dx, floor + if kind == "vampire_bat" { 40.0 } else { 0.0 }), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(at.x + dx, floor + if kind == "vampire_bat" { 60.0 } else { 0.0 }), |_| {});
         }
         state.4 = start[i] + 0.002;
     }
@@ -2480,7 +2483,7 @@ fn nest_script(
         match nest {
             Some((p, _)) => {
                 info!("nest: a spider nest at {},{} ({} cells down from the start)", p.x, p.y, home.y - p.y);
-                let at = Vec2::new(p.x as f32 - 20.0, p.y as f32);
+                let at = Vec2::new(p.x as f32 - 30.0, p.y as f32);
                 k.body.pos = at;
                 k.body.vel = Vec2::ZERO;
                 k.prev_pos = at;
@@ -2501,7 +2504,7 @@ fn nest_script(
     if state.0 == 1 && s.elapsed > 3.3 {
         let mut n = std::collections::BTreeMap::new();
         for (c, fk) in &foes {
-            if fk.body.pos.distance(k.body.pos) < 150.0 {
+            if fk.body.pos.distance(k.body.pos) < 225.0 {
                 *n.entry(c.kind.clone()).or_insert(0) += 1;
             }
         }
@@ -2531,11 +2534,11 @@ fn webs_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut player: Query<&m
     if state.0 == 1 && t > 2.5 {
         info!("webs: open air: {:.0} cells in 1.5 s", k.body.pos.x - state.1);
         // Back, and a thicket of web ahead.
-        k.body.pos.x = 560.0;
+        k.body.pos.x = 840.0;
         k.prev_pos = k.body.pos;
         if let Some(web) = sim.materials().id("cobweb") {
-            for dx in (0..60).step_by(8) {
-                sim.queue(WorldEdit::Paint { center: CellPos::new(575 + dx, floor + 8), radius: 8, material: web, overwrite: false });
+            for dx in (0..90).step_by(12) {
+                sim.queue(WorldEdit::Paint { center: CellPos::new(862 + dx, floor + 12), radius: 12, material: web, overwrite: false });
             }
         }
         state.0 = 2;
@@ -2575,7 +2578,7 @@ fn gear_script(
     let t = s.elapsed;
     let p = k.body.pos;
     keys.release(KeyCode::Escape);
-    let blast = |sim: &mut SimWorld| sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 3, p.y as i32), radius: 3, power: 60 });
+    let blast = |sim: &mut SimWorld| sim.queue(WorldEdit::Explode { center: CellPos::new(p.x as i32 + 4, p.y as i32), radius: 4, power: 60 });
     match state.0 {
         0 if t > 0.8 => {
             state.1 = h.hp;
@@ -2614,13 +2617,13 @@ fn gear_script(
             keys.press(KeyCode::Escape);
             // (Washed, and out of the blood the blasts left: it tints.)
             commands.entity(me).remove::<crate::creatures::body::elements::Coated>();
-            k.body.pos.x -= 50.0;
+            k.body.pos.x -= 75.0;
             k.prev_pos = k.body.pos;
             let floor = platypus_worldgen::arena::FLOOR as f32;
             let x = k.body.pos.x;
             for (kind, dx, wear) in [
-                ("orc", 26.0, ["leather_cap", "leather_jerkin", "leather_gloves", "leather_trousers", "leather_boots"]),
-                ("skeleton", 44.0, ["cloth_hood", "apprentice_robe", "silk_gloves", "cloth_trousers", "soft_boots"]),
+                ("orc", 39.0, ["leather_cap", "leather_jerkin", "leather_gloves", "leather_trousers", "leather_boots"]),
+                ("skeleton", 66.0, ["cloth_hood", "apprentice_robe", "silk_gloves", "cloth_trousers", "soft_boots"]),
             ] {
                 let pieces: Vec<Option<Stack>> = wear.iter().map(|id| items.id(id).map(|it| Stack::new(it, 1))).collect();
                 crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x + dx, floor), move |e| {
@@ -2684,7 +2687,7 @@ fn loot_script(
             let helm = items.id("iron_helm").map(|i| Stack { roll: Roll { rarity: 2, level: 12, seed: 4242 }, ..Stack::new(i, 1) });
             let jerkin = items.id("leather_jerkin").map(|i| Stack::new(i, 1));
             let floor = platypus_worldgen::arena::FLOOR as f32;
-            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(k.body.pos.x + 24.0, floor), move |e| {
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(k.body.pos.x + 36.0, floor), move |e| {
                 e.remove::<crate::creatures::brain::hunter::Hunter>();
                 let mut eq = crate::gear::Equipment::default();
                 eq.worn[0] = helm;
@@ -2742,7 +2745,7 @@ fn fang_script(
     if state.0 == 0 && t > 0.3 {
         inv.slots[0] = items.id("broodmother_fang").map(|f| crate::hands::items::Stack { roll: crate::hands::items::Roll { rarity: 4, level: 1, seed: 1 }, ..crate::hands::items::Stack::new(f, 1) });
         let floor = platypus_worldgen::arena::FLOOR as f32;
-        crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(k.body.pos.x + 12.0, floor), |e| {
+        crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(k.body.pos.x + 18.0, floor), |e| {
             e.remove::<crate::creatures::brain::hunter::Hunter>();
         });
         state.0 = 1;
@@ -2783,7 +2786,7 @@ fn foci_script(
     let slot: usize = std::env::var("PLATYPUS_SLOT").ok().and_then(|v| v.parse().ok()).unwrap_or(7);
     hand.bar = (slot - 1) / 10;
     hand.slot = (slot - 1) % 10;
-    let at = k.body.pos + Vec2::new(30.0, 14.0);
+    let at = k.body.pos + Vec2::new(45.0, 21.0);
     cursor.0 = Some(at);
     if s.elapsed > 1.5 {
         if std::env::var("PLATYPUS_CAST").is_ok() {
@@ -2821,27 +2824,27 @@ fn ice_script(
     let floor = platypus_worldgen::arena::FLOOR;
     let ice = || {
         let Some(m) = sim.materials().id("ice") else { return 0 };
-        (300..430).flat_map(|x| (floor - 12..floor + 2).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count()
+        (450..645).flat_map(|x| (floor - 18..floor + 3).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count()
     };
     let mut want = std::collections::HashSet::new();
     let mut fire = None;
     // Frost along the pool, from its left bank.
     if t < 0.4 {
-        k.body.pos = Vec2::new(296.0, floor as f32 + 8.0);
+        k.body.pos = Vec2::new(444.0, floor as f32 + 12.0);
         k.body.vel = Vec2::ZERO;
         k.prev_pos = k.body.pos;
         hand.bar = 1;
         hand.slot = 5;
     }
     if (0.5..3.5).contains(&t) {
-        let x = 316.0 + ((t - 0.5) / 3.0) * 100.0;
-        fire = Some(Vec2::new(x, floor as f32 - 2.0));
+        let x = 474.0 + ((t - 0.5) / 3.0) * 150.0;
+        fire = Some(Vec2::new(x, floor as f32 - 3.0));
     }
     match state.0 {
         0 if t > 3.8 => {
             info!("ice: frost made {} cells of ice on the pool", ice());
             // Run from the stone onto the ice, then let go.
-            k.body.pos = Vec2::new(290.0, floor as f32 + 8.0);
+            k.body.pos = Vec2::new(435.0, floor as f32 + 12.0);
             k.prev_pos = k.body.pos;
             state.0 = 1;
         }
@@ -2855,7 +2858,7 @@ fn ice_script(
         3 if t > 6.0 => {
             info!("ice: let go on the ice at x {:.0}, slid {:.0} cells; chilled: {}", state.1, k.body.pos.x - state.1, chilled.is_some());
             // The same on stone, right of the pool.
-            k.body.pos = Vec2::new(440.0, floor as f32 + 8.0);
+            k.body.pos = Vec2::new(660.0, floor as f32 + 12.0);
             k.prev_pos = k.body.pos;
             state.0 = 4;
         }
@@ -2866,9 +2869,9 @@ fn ice_script(
         }
         6 if t > 8.1 => {
             info!("ice: on stone it slid {:.0} cells", k.body.pos.x - state.1);
-            k.body.pos = Vec2::new(300.0, floor as f32 + 8.0);
+            k.body.pos = Vec2::new(450.0, floor as f32 + 12.0);
             k.prev_pos = k.body.pos;
-            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(350.0, floor as f32 + 1.0), |e| {
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(525.0, floor as f32 + 1.5), |e| {
                 e.remove::<crate::creatures::brain::hunter::Hunter>();
             });
             state.0 = 7;
@@ -2895,7 +2898,7 @@ fn ice_script(
             _ => {}
         }
     }
-    cursor.0 = fire.or(Some(k.body.pos + Vec2::new(40.0, 0.0)));
+    cursor.0 = fire.or(Some(k.body.pos + Vec2::new(60.0, 0.0)));
     match (fire.is_some(), mouse.pressed(MouseButton::Left)) {
         (true, false) => mouse.press(MouseButton::Left),
         (false, true) => mouse.release(MouseButton::Left),
@@ -2954,19 +2957,19 @@ fn chaos_script(
     let Ok((me, mut k, mut h)) = player.single_mut() else { return };
     let t = s.elapsed;
     // The arena's middle; in a generated world, where the player started
-    // (with PLATYPUS_CHAOS_RUN=1 moving right at 60 cells/s: the fight
+    // (with PLATYPUS_CHAOS_RUN=1 moving right at 90 cells/s: the fight
     // streams the world in as it goes).
     if state.2 == 0 {
         state.2 = if sim.generator.wild() { (k.body.pos.x.to_bits() as u64) << 32 | k.body.pos.y.to_bits() as u64 } else { 1 };
     }
-    let start = if state.2 == 1 { Vec2::new(620.0, platypus_worldgen::arena::FLOOR as f32 + 8.0) } else { Vec2::new(f32::from_bits((state.2 >> 32) as u32), f32::from_bits(state.2 as u32)) };
-    let run = if std::env::var("PLATYPUS_CHAOS_RUN").is_ok() { 60.0 * t } else { 0.0 };
+    let start = if state.2 == 1 { Vec2::new(930.0, platypus_worldgen::arena::FLOOR as f32 + 12.0) } else { Vec2::new(f32::from_bits((state.2 >> 32) as u32), f32::from_bits(state.2 as u32)) };
+    let run = if std::env::var("PLATYPUS_CHAOS_RUN").is_ok() { 90.0 * t } else { 0.0 };
     let home = start + Vec2::new(run, 0.0);
-    let floor = find_ground(&sim.world, home.x as i32, home.y as i32 + 40, 200).unwrap_or(home.y as i32 - 8) as f32;
-    let home = Vec2::new(home.x, floor + 8.0);
+    let floor = find_ground(&sim.world, home.x as i32, home.y as i32 + 60, 300).unwrap_or(home.y as i32 - 12) as f32;
+    let home = Vec2::new(home.x, floor + 12.0);
     // Untouchable, and kept in the middle of it.
     h.hp = h.max;
-    if k.body.pos.distance(home) > 30.0 {
+    if k.body.pos.distance(home) > 45.0 {
         k.body.pos = home;
         k.body.vel = Vec2::ZERO;
         k.prev_pos = home;
@@ -2986,22 +2989,22 @@ fn chaos_script(
                 pick <= 0.0
             }).map_or("orc", |k| k.0);
             let side = if unit() < 0.5 { -1.0 } else { 1.0 };
-            let x = home.x + side * (60.0 + unit() * 260.0);
-            crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x, floor + 60.0 + unit() * 40.0), |_| {});
+            let x = home.x + side * (90.0 + unit() * 390.0);
+            crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x, floor + 90.0 + unit() * 60.0), |_| {});
         }
         // Bombs, blobs from the sky, a strike.
         for _ in 0..4 + state.0 {
-            let at = Vec2::new(home.x + (unit() - 0.5) * 500.0, floor + 120.0);
-            crate::props::spawn_bomb(&mut commands, at, Vec2::new((unit() - 0.5) * 100.0, 0.0), tools.bomb.clone());
+            let at = Vec2::new(home.x + (unit() - 0.5) * 750.0, floor + 180.0);
+            crate::props::spawn_bomb(&mut commands, at, Vec2::new((unit() - 0.5) * 150.0, 0.0), tools.bomb.clone());
         }
         let mats = sim.materials().clone();
-        for (name, r) in [("sand", 10), ("water", 12), ("lava", 6)] {
+        for (name, r) in [("sand", 15), ("water", 18), ("lava", 9)] {
             if let Some(m) = mats.id(name) {
-                let at = CellPos::new((home.x + (unit() - 0.5) * 400.0) as i32, (floor + 100.0 + unit() * 60.0) as i32);
+                let at = CellPos::new((home.x + (unit() - 0.5) * 600.0) as i32, (floor + 150.0 + unit() * 90.0) as i32);
                 sim.queue(WorldEdit::Paint { center: at, radius: r, material: m, overwrite: false });
             }
         }
-        sim.queue(WorldEdit::Lightning { x: (home.x + (unit() - 0.5) * 300.0) as i32, from_y: (floor + 200.0) as i32 });
+        sim.queue(WorldEdit::Lightning { x: (home.x + (unit() - 0.5) * 450.0) as i32, from_y: (floor + 300.0) as i32 });
         info!("chaos: wave {} ({} spawned)", state.0, n);
     }
     // A salvo of spells at the crowd, every spell as fast as it goes.
@@ -3009,7 +3012,7 @@ fn chaos_script(
     if let Some(at) = target {
         for id in ["fireball", "lightning", "acid_arrow", "spark_bolt", "frost_bolt"] {
             if let Some(spell) = book.spells.iter().position(|s| s.id == id) {
-                casts.write(crate::magic::CastRequest { caster: me, spell, from: k.body.pos + Vec2::new(0.0, 6.0), toward: at, alt: false });
+                casts.write(crate::magic::CastRequest { caster: me, spell, from: k.body.pos + Vec2::new(0.0, 9.0), toward: at, alt: false });
             }
         }
     }
@@ -3061,23 +3064,23 @@ fn rocket_script(
     let Ok(mut k) = player.single_mut() else { return };
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR;
-    let x = 620;
+    let x = 930;
     let burning = |sim: &SimWorld| {
         let mats = sim.materials();
-        (x - 40..x + 40).flat_map(|xx| (floor - 2..floor + 60).map(move |y| (xx, y))).filter(|&(xx, y)| sim.world.get(CellPos::new(xx, y)).is_some_and(|c| !c.is_air() && (mats.phys(c.material).kind == platypus_sim::Kind::Fire || c.flags & platypus_sim::cell::flags::BURNING != 0))).count()
+        (x - 60..x + 60).flat_map(|xx| (floor - 3..floor + 90).map(move |y| (xx, y))).filter(|&(xx, y)| sim.world.get(CellPos::new(xx, y)).is_some_and(|c| !c.is_air() && (mats.phys(c.material).kind == platypus_sim::Kind::Fire || c.flags & platypus_sim::cell::flags::BURNING != 0))).count()
     };
     match state.0 {
         0 if t > 0.3 => {
             // A wooden floor, and an orc on it.
             if let Some(planks) = sim.materials().id("planks") {
-                for dx in (-36..=36).step_by(6) {
-                    sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, floor + 1), radius: 3, material: planks, overwrite: false });
+                for dx in (-54..=54).step_by(9) {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, floor + 2), radius: 4, material: planks, overwrite: false });
                 }
             }
-            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x as f32 + 4.0, floor as f32 + 5.0), |e| {
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x as f32 + 6.0, floor as f32 + 8.0), |e| {
                 e.remove::<crate::creatures::brain::hunter::Hunter>();
             });
-            k.body.pos = Vec2::new(x as f32, floor as f32 + 40.0);
+            k.body.pos = Vec2::new(x as f32, floor as f32 + 60.0);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
             // (Full boots: they refill over seconds now; clamped to what
@@ -3093,7 +3096,7 @@ fn rocket_script(
                 let fuel = sim.world.tick();
                 let _ = fuel;
                 let (hp, lit) = foes.iter().next().map_or((0.0, false), |(h, b)| (h.hp, b));
-                info!("rocket: held jump 2.2 s: rose {:.0} cells above where it started (a jump is 40); the orc under it: {hp:.0} hp, burning {lit}; fire on the planks: {} cells", state.2 - state.1, burning(&sim));
+                info!("rocket: held jump 2.2 s: rose {:.0} cells above where it started (a jump is 60); the orc under it: {hp:.0} hp, burning {lit}; fire on the planks: {} cells", state.2 - state.1, burning(&sim));
                 state.0 = 3;
             }
         }
@@ -3179,23 +3182,23 @@ fn spiderdeath_script(
     let Ok(mut k) = player.single_mut() else { return };
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR as f32;
-    let x = 520.0;
+    let x = 780.0;
     let acid = sim.materials().id("acid");
     match *state {
         0 if t > 0.3 => {
             k.body.pos = Vec2::new(x, floor + k.body.half.y);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
-            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(x + 40.0, floor), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(x + 60.0, floor), |_| {});
             *state = 1;
         }
-        // A longsword's blow (24, knocked 250 cells/s), twice (after its
+        // A longsword's blow (24, knocked 375 cells/s), twice (after its
         // grace): how fast each sends it.
         1 | 3 if t > if *state == 1 { 1.0 } else { 1.1 } => {
             for (e, c, sk, _) in &spiders {
                 if c.kind == "spider" {
                     let dir = Vec2::new(1.0, 0.3).normalize();
-                    hits.write(crate::combat::Hit { target: e, damage: 24.0, harm: crate::creatures::Harm::Slash, knock: dir * 250.0, stun: 0.3, at: sk.body.pos, dir, weight: 2.0, crit: false });
+                    hits.write(crate::combat::Hit { target: e, damage: 24.0, harm: crate::creatures::Harm::Slash, knock: dir * 375.0, stun: 0.3, at: sk.body.pos, dir, weight: 2.0, crit: false });
                 }
             }
             *state += 1;
@@ -3212,7 +3215,7 @@ fn spiderdeath_script(
             for (_, c, sk, mut h) in &mut spiders {
                 if c.kind == "spider" {
                     let p = sk.body.pos;
-                    let near = (-30..30).flat_map(|dx| (-20..20).map(move |dy| CellPos::from_world(p.x + dx as f32, p.y + dy as f32))).filter(|&q| sim.world.get(q).is_some_and(|cell| Some(cell.material) == acid)).count();
+                    let near = (-45..45).flat_map(|dx| (-30..30).map(move |dy| CellPos::from_world(p.x + dx as f32, p.y + dy as f32))).filter(|&q| sim.world.get(q).is_some_and(|cell| Some(cell.material) == acid)).count();
                     info!("spiderdeath: a spider of {:.0} hp (after two blows), {near} cells of acid about it", h.hp);
                     h.hp = 0.0;
                 }
@@ -3236,8 +3239,8 @@ fn forestfire_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut clock: Res
     let forest = ["leaves", "needles", "dark_leaves", "wood"].map(|n| mats.id(n));
     let count = |sim: &SimWorld, at: Vec2| {
         let mut n = 0;
-        for y in (at.y as i32 - 60)..(at.y as i32 + 260) {
-            for x in (at.x as i32 - 250)..(at.x as i32 + 250) {
+        for y in (at.y as i32 - 90)..(at.y as i32 + 390) {
+            for x in (at.x as i32 - 375)..(at.x as i32 + 375) {
                 if sim.world.get_bg(CellPos::new(x, y)).is_some_and(|c| forest.contains(&Some(c.material)) && c.flags & platypus_sim::cell::flags::BURNING == 0) {
                     n += 1;
                 }
@@ -3249,7 +3252,7 @@ fn forestfire_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut clock: Res
         0 if t > 1.0 => {
             // The nearest crown: leaves in the background above the start.
             let p = k.body.pos;
-            let crown = (0..200).flat_map(|r| [(r, 0), (-r, 0)]).flat_map(|(dx, _)| (20..160).map(move |dy| Vec2::new(p.x + dx as f32, p.y + dy as f32))).find(|q| sim.world.get_bg(CellPos::from_world(q.x, q.y)).is_some_and(|c| Some(c.material) == forest[0] || Some(c.material) == forest[1]));
+            let crown = (0..300).flat_map(|r| [(r, 0), (-r, 0)]).flat_map(|(dx, _)| (30..240).map(move |dy| Vec2::new(p.x + dx as f32, p.y + dy as f32))).find(|q| sim.world.get_bg(CellPos::from_world(q.x, q.y)).is_some_and(|c| Some(c.material) == forest[0] || Some(c.material) == forest[1]));
             let Some(crown) = crown else {
                 info!("forestfire: no tree near the start");
                 state.0 = 9;
@@ -3257,7 +3260,7 @@ fn forestfire_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut clock: Res
             };
             state.1 = crown;
             state.2 = count(&sim, crown);
-            sim.queue(WorldEdit::Ignite { center: CellPos::from_world(crown.x, crown.y), radius: 4 });
+            sim.queue(WorldEdit::Ignite { center: CellPos::from_world(crown.x, crown.y), radius: 6 });
             info!("forestfire: the land {:.0} % wet; a crown at ({:.0}, {:.0}) set alight; {} cells of forest about it", wet * 100.0, crown.x, crown.y, state.2);
             state.0 = 1;
         }
@@ -3293,8 +3296,8 @@ fn regrow_script(
     let tree = ["leaves", "needles", "dark_leaves", "wood"].map(id);
     let tally = |sim: &SimWorld, at: Vec2| {
         let (mut forest, mut grass, mut soil, mut ash) = (0, 0, 0, 0);
-        for y in (at.y as i32 - 80)..(at.y as i32 + 260) {
-            for x in (at.x as i32 - 300)..(at.x as i32 + 300) {
+        for y in (at.y as i32 - 120)..(at.y as i32 + 390) {
+            for x in (at.x as i32 - 450)..(at.x as i32 + 450) {
                 let p = CellPos::new(x, y);
                 if sim.world.get_bg(p).is_some_and(|c| tree.contains(&Some(c.material))) {
                     forest += 1;
@@ -3319,9 +3322,9 @@ fn regrow_script(
             let p = k.body.pos;
             state.1 = p;
             info!("regrow: before: {}", tally(&sim, p));
-            for dx in [-160, -80, 0, 80, 160] {
-                sim.queue(WorldEdit::Ignite { center: CellPos::from_world(p.x + dx as f32, p.y + 60.0), radius: 6 });
-                sim.queue(WorldEdit::Ignite { center: CellPos::from_world(p.x + dx as f32, p.y - 2.0), radius: 6 });
+            for dx in [-240, -120, 0, 120, 240] {
+                sim.queue(WorldEdit::Ignite { center: CellPos::from_world(p.x + dx as f32, p.y + 90.0), radius: 9 });
+                sim.queue(WorldEdit::Ignite { center: CellPos::from_world(p.x + dx as f32, p.y - 3.0), radius: 9 });
             }
             state.0 = 1;
         }
@@ -3345,7 +3348,7 @@ fn regrow_script(
             day.skipped = base + done as f32;
         }
         2 if t > 42.0 => {
-            put(&mut k, state.1 + Vec2::new(4_000.0, 400.0));
+            put(&mut k, state.1 + Vec2::new(6_000.0, 600.0));
             state.0 = 7;
         }
         7 if t > 44.0 => {
@@ -3353,7 +3356,7 @@ fn regrow_script(
             state.0 = 3;
         }
         3 if t > 46.0 => {
-            put(&mut k, state.1 + Vec2::new(0.0, 20.0));
+            put(&mut k, state.1 + Vec2::new(0.0, 30.0));
             state.0 = 4;
         }
         4 if t > 50.0 && (std::env::var("PLATYPUS_STAY").is_err() || t > 44.0 + days * 2.4 + 2.0) => {
@@ -3384,7 +3387,7 @@ fn wildfire_script(
     let home = sim.generator.spawn_point();
     match state.0 {
         0 if t > 1.0 => {
-            let Some(&x) = sim.generator.trees_between(home.x + 2_500, home.x + 8_000).first() else {
+            let Some(&x) = sim.generator.trees_between(home.x + 3_750, home.x + 12_000).first() else {
                 info!("wildfire: no forest east of the start");
                 state.0 = 9;
                 return;
@@ -3401,7 +3404,7 @@ fn wildfire_script(
         }
         2 if t > 3.0 => {
             let x = state.1;
-            let y = sim.generator.surface_hint(x).unwrap_or(home.y) + 30;
+            let y = sim.generator.surface_hint(x).unwrap_or(home.y) + 45;
             k.body.pos = Vec2::new(x as f32, y as f32);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
@@ -3413,8 +3416,8 @@ fn wildfire_script(
             let tree = ["wood", "leaves", "needles", "dark_leaves"].map(|n| mats.id(n));
             let at = k.body.pos;
             let (mut n_soil, mut n_ash, mut n_grass, mut n_tree) = (0, 0, 0, 0);
-            for y in (at.y as i32 - 80)..(at.y as i32 + 220) {
-                for x in (at.x as i32 - 300)..(at.x as i32 + 300) {
+            for y in (at.y as i32 - 120)..(at.y as i32 + 330) {
+                for x in (at.x as i32 - 450)..(at.x as i32 + 450) {
                     let p = platypus_sim::CellPos::new(x, y);
                     let m = sim.world.get(p).map(|c| c.material);
                     n_soil += (m == soil) as u32;
@@ -3456,7 +3459,7 @@ fn refill_script(
     let about = |foes: &Query<(&crate::creatures::Creature, &Kinematics, &mut crate::creatures::Health), Without<LocalPlayer>>, at: Vec2| {
         let mut n = std::collections::BTreeMap::new();
         for (c, fk, h) in foes {
-            if h.hp > 0.0 && fk.body.pos.distance(at) < 150.0 {
+            if h.hp > 0.0 && fk.body.pos.distance(at) < 225.0 {
                 *n.entry(c.kind.clone()).or_insert(0) += 1;
             }
         }
@@ -3470,16 +3473,16 @@ fn refill_script(
                 state.0 = 9;
                 return;
             };
-            state.1 = Vec2::new(p.x as f32 - 20.0, p.y as f32);
+            state.1 = Vec2::new(p.x as f32 - 30.0, p.y as f32);
             put(&mut k, state.1);
             state.0 = 1;
         }
         1 if t < 1.5 => put(&mut k, state.1),
         1 if t > 3.0 => {
-            let near = clock.keepers.iter().filter(|((x, y), _)| Vec2::new(*x as f32, *y as f32).distance(state.1) < 150.0).map(|(_, k)| k.kind.clone()).collect::<Vec<_>>();
+            let near = clock.keepers.iter().filter(|((x, y), _)| Vec2::new(*x as f32, *y as f32).distance(state.1) < 225.0).map(|(_, k)| k.kind.clone()).collect::<Vec<_>>();
             info!("refill: at the nest: {:?} about; the clock keeps {near:?}", about(&foes, state.1));
             for (c, fk, mut h) in &mut foes {
-                if near.contains(&c.kind) && fk.body.pos.distance(state.1) < 150.0 {
+                if near.contains(&c.kind) && fk.body.pos.distance(state.1) < 225.0 {
                     h.hp = 0.0;
                 }
             }
@@ -3487,7 +3490,7 @@ fn refill_script(
         }
         2 if t > 5.0 => {
             info!("refill: killed: {:?} about", about(&foes, state.1));
-            let away = Vec2::new(home.x as f32 + 3_000.0, sim.generator.surface_hint(home.x + 3_000).unwrap_or(home.y) as f32 + 30.0);
+            let away = Vec2::new(home.x as f32 + 4_500.0, sim.generator.surface_hint(home.x + 4_500).unwrap_or(home.y) as f32 + 45.0);
             put(&mut k, away);
             state.0 = 3;
         }
@@ -3535,7 +3538,7 @@ fn gold_script(
     let (g, molten, set) = (sim.materials().id("gold"), sim.materials().id("molten_gold"), sim.materials().id("solid_gold"));
     let lying = |sim: &SimWorld, x0: i32, x1: i32| {
         let (mut n, mut m, mut low, mut lo, mut hi) = (0, 0, i32::MAX, i32::MAX, i32::MIN);
-        for y in floor - 80..floor + 120 {
+        for y in floor - 120..floor + 180 {
             for x in x0..x1 {
                 let c = sim.world.get(CellPos::new(x, y)).map(|c| Some(c.material));
                 if c == Some(g) {
@@ -3550,9 +3553,9 @@ fn gold_script(
     };
     match *state {
         0 if t > 0.5 => {
-            put(&mut k, 560.0);
+            put(&mut k, 840.0);
             for (i, kind) in ["orc", "orc", "orc_archer", "orc", "troll"].iter().enumerate() {
-                crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(700.0 + i as f32 * 16.0, floor as f32), |_| {});
+                crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(1050.0 + i as f32 * 24.0, floor as f32), |_| {});
             }
             *state = 1;
         }
@@ -3565,22 +3568,22 @@ fn gold_script(
             *state = 2;
         }
         2 if t > 3.0 => {
-            let (n, _, _, lo, hi) = lying(&sim, 600, 900);
+            let (n, _, _, lo, hi) = lying(&sim, 900, 1350);
             info!("gold: the warband's gold burst out and settled: {n} gold from x {lo} to {hi}; the player has {}", gold.0);
-            put(&mut k, 700.0);
+            put(&mut k, 1050.0);
             *state = 3;
         }
         3 if t > 3.5 => {
-            put(&mut k, 760.0);
+            put(&mut k, 1140.0);
             *state = 4;
         }
         4 if t > 5.0 => {
-            let (n, ..) = lying(&sim, 600, 900);
+            let (n, ..) = lying(&sim, 900, 1350);
             info!("gold: walked over it: the player has {}, {n} left lying", gold.0);
-            put(&mut k, 600.0);
+            put(&mut k, 900.0);
             let acid = sim.materials().id("acid");
-            for x in 470..500 {
-                for y in (floor - 4)..floor {
+            for x in 705..750 {
+                for y in (floor - 6)..floor {
                     sim.queue(WorldEdit::Dig { center: CellPos::new(x, y), radius: 0, max_hardness: 250 });
                     if let Some(m) = acid {
                         sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: m, overwrite: true });
@@ -3590,29 +3593,29 @@ fn gold_script(
             *state = 5;
         }
         5 if t > 5.5 => {
-            queue.burst.extend([(Vec2::new(930.0, floor as f32 + 20.0), 100), (Vec2::new(485.0, floor as f32 + 6.0), 60), (Vec2::new(365.0, floor as f32 + 6.0), 60)]);
+            queue.burst.extend([(Vec2::new(1395.0, floor as f32 + 30.0), 100), (Vec2::new(727.0, floor as f32 + 9.0), 60), (Vec2::new(547.0, floor as f32 + 9.0), 60)]);
             *state = 6;
         }
         6 if t > 10.0 => {
-            let (lava, acid, pool) = (lying(&sim, 890, 970), lying(&sim, 440, 520), lying(&sim, 300, 430));
-            info!("gold: 100 into the lava: {} gold dust, {} molten or set solid; 60 into acid: {} gold (the lowest at y {}); 60 into the pool: {} gold, the lowest at y {} (its floor at {})", lava.0, lava.1, acid.0, acid.2, pool.0, pool.2, floor - 50);
-            put(&mut k, 1010.0);
-            queue.burst.push((Vec2::new(1100.0, floor as f32 + 4.0), 150));
+            let (lava, acid, pool) = (lying(&sim, 1335, 1455), lying(&sim, 660, 780), lying(&sim, 450, 645));
+            info!("gold: 100 into the lava: {} gold dust, {} molten or set solid; 60 into acid: {} gold (the lowest at y {}); 60 into the pool: {} gold, the lowest at y {} (its floor at {})", lava.0, lava.1, acid.0, acid.2, pool.0, pool.2, floor - 75);
+            put(&mut k, 1515.0);
+            queue.burst.push((Vec2::new(1650.0, floor as f32 + 6.0), 150));
             *state = 7;
         }
         7 if t > 12.0 => {
-            let (n, _, _, lo, hi) = lying(&sim, 1040, 1300);
+            let (n, _, _, lo, hi) = lying(&sim, 1560, 1950);
             info!("gold: a heap: {n} gold from x {lo} to {hi}; a blast in it");
-            sim.queue(WorldEdit::Explode { center: CellPos::new(1100, floor + 2), radius: 10, power: 90 });
+            sim.queue(WorldEdit::Explode { center: CellPos::new(1650, floor + 3), radius: 15, power: 90 });
             *state = 8;
         }
         8 if t > 14.0 => {
-            let (n, _, _, lo, hi) = lying(&sim, 1030, 1400);
+            let (n, _, _, lo, hi) = lying(&sim, 1545, 2100);
             info!("gold: after the blast: {n} gold from x {lo} to {hi}");
             *state = 9;
         }
         9 if t > 24.0 => {
-            let lava = lying(&sim, 890, 970);
+            let lava = lying(&sim, 1335, 1455);
             info!("gold: the lava pit, 18 s on: {} gold dust, {} molten or set solid", lava.0, lava.1);
             *state = 10;
         }
@@ -3633,10 +3636,10 @@ fn goldheap_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut queue: ResMu
     match state.0 {
         0 if t > 0.5 => {
             let home = sim.generator.spawn_point();
-            let c = Vec2::new(home.x as f32, home.y as f32 - 220.0);
-            for dx in (-60..=60).step_by(8) {
-                for dy in (-24..=24).step_by(8) {
-                    sim.queue(WorldEdit::Dig { center: CellPos::new(c.x as i32 + dx, c.y as i32 + dy), radius: 9, max_hardness: 250 });
+            let c = Vec2::new(home.x as f32, home.y as f32 - 330.0);
+            for dx in (-90..=90).step_by(12) {
+                for dy in (-36..=36).step_by(12) {
+                    sim.queue(WorldEdit::Dig { center: CellPos::new(c.x as i32 + dx, c.y as i32 + dy), radius: 14, max_hardness: 250 });
                 }
             }
             state.1 = c;
@@ -3644,11 +3647,11 @@ fn goldheap_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut queue: ResMu
         }
         1 if t > 1.0 => {
             let c = state.1;
-            k.body.pos = Vec2::new(c.x - 40.0, c.y - 20.0);
+            k.body.pos = Vec2::new(c.x - 60.0, c.y - 30.0);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
-            for dx in [-8.0, 14.0, 30.0] {
-                queue.burst.push((Vec2::new(c.x + dx, c.y + 18.0), amount / 3));
+            for dx in [-12.0, 21.0, 45.0] {
+                queue.burst.push((Vec2::new(c.x + dx, c.y + 27.0), amount / 3));
             }
             info!("goldheap: {amount} gold poured into a hollow at ({:.0}, {:.0})", c.x, c.y);
             state.0 = 2;
@@ -3656,7 +3659,7 @@ fn goldheap_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut queue: ResMu
         // (Held away from the heap: it isn't taken.)
         2 => {
             let c = state.1;
-            k.body.pos.x = c.x - 40.0;
+            k.body.pos.x = c.x - 60.0;
         }
         _ => {}
     }
@@ -3687,46 +3690,46 @@ fn kick_script(
         k.body.pos = Vec2::new(x, floor as f32 + k.body.half.y);
         k.body.vel = Vec2::ZERO;
         k.prev_pos = k.body.pos;
-        cursor.0 = Some(Vec2::new(x + 60.0, floor as f32 + 8.0));
+        cursor.0 = Some(Vec2::new(x + 90.0, floor as f32 + 12.0));
     };
     let mats = sim.materials().clone();
     let (wood, sand) = (mats.expect_id("wood"), mats.expect_id("sand"));
     let span = |sim: &SimWorld, m, x0: i32, x1: i32| {
-        let xs: Vec<i32> = (floor - 10..floor + 60).flat_map(|y| (x0..x1).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).map(|(x, _)| x).collect();
+        let xs: Vec<i32> = (floor - 15..floor + 90).flat_map(|y| (x0..x1).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).map(|(x, _)| x).collect();
         (xs.len(), xs.iter().copied().min().unwrap_or(0), xs.iter().copied().max().unwrap_or(0))
     };
     match *state {
         0 if t > 0.5 => {
-            // A log (30 × 5) on the floor at 640; sand at 760; a barrel
-            // at 860.
-            for x in 640..670 {
-                for y in floor..floor + 5 {
+            // A log (45 × 8) on the floor at 960; sand at 1140; a barrel
+            // at 1290.
+            for x in 960..1005 {
+                for y in floor..floor + 8 {
                     sim.world.set(CellPos::new(x, y), platypus_sim::Cell::new(wood, 128));
                 }
             }
-            sim.queue(WorldEdit::Paint { center: CellPos::new(765, floor + 4), radius: 4, material: sand, overwrite: false });
-            crate::creatures::def::spawn_creature(&mut commands, "tnt_barrel", Vec2::new(868.0, floor as f32), |_| {});
-            stand(&mut k, 630.0);
+            sim.queue(WorldEdit::Paint { center: CellPos::new(1147, floor + 6), radius: 6, material: sand, overwrite: false });
+            crate::creatures::def::spawn_creature(&mut commands, "tnt_barrel", Vec2::new(1302.0, floor as f32), |_| {});
+            stand(&mut k, 945.0);
             *state = 1;
         }
         1 if t > 1.5 => {
-            info!("kick: the log: {:?} (cells, from x, to x)", span(&sim, wood, 560, 900));
+            info!("kick: the log: {:?} (cells, from x, to x)", span(&sim, wood, 840, 1350));
             kicks.write(crate::kick::Kick);
             *state = 2;
         }
         2 if t > 3.5 => {
-            info!("kick: the log after: {:?}", span(&sim, wood, 560, 1000));
-            stand(&mut k, 757.0);
+            info!("kick: the log after: {:?}", span(&sim, wood, 840, 1500));
+            stand(&mut k, 1135.0);
             *state = 3;
         }
         3 if t > 4.0 => {
-            info!("kick: the sand: {:?}", span(&sim, sand, 700, 900));
+            info!("kick: the sand: {:?}", span(&sim, sand, 1050, 1350));
             kicks.write(crate::kick::Kick);
             *state = 4;
         }
         4 if t > 6.0 => {
-            info!("kick: the sand after: {:?}", span(&sim, sand, 700, 1000));
-            stand(&mut k, 856.0);
+            info!("kick: the sand after: {:?}", span(&sim, sand, 1050, 1500));
+            stand(&mut k, 1284.0);
             *state = 5;
         }
         5 if t > 6.5 => {
@@ -3739,28 +3742,28 @@ fn kick_script(
             let barrel = others.iter().find(|(_, c)| c.is_some_and(|c| c.kind == "tnt_barrel")).map(|(k, ..)| k.body.pos.round());
             info!("kick: the barrel after: {barrel:?}");
             // (Into bare floor: nothing to move.)
-            stand(&mut k, 580.0);
+            stand(&mut k, 870.0);
             *state = 7;
         }
         7 if t > 8.5 => {
-            let (n, ..) = span(&sim, mats.expect_id("stone"), 560, 620);
+            let (n, ..) = span(&sim, mats.expect_id("stone"), 840, 930);
             info!("kick: the floor: {n} cells of stone about");
             kicks.write(crate::kick::Kick);
             *state = 8;
         }
         8 if t > 9.5 => {
-            let (n, ..) = span(&sim, mats.expect_id("stone"), 560, 620);
+            let (n, ..) = span(&sim, mats.expect_id("stone"), 840, 930);
             info!("kick: the floor after: {n}");
             // Then creatures: an orc, then a troll, each kicked from its left.
-            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(1080.0, floor as f32), |_| {});
-            crate::creatures::def::spawn_creature(&mut commands, "troll", Vec2::new(1180.0, floor as f32), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(1620.0, floor as f32), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "troll", Vec2::new(1770.0, floor as f32), |_| {});
             *state = 10;
         }
         10 | 12 if t > if *state == 10 { 10.0 } else { 11.6 } => {
             let kind = if *state == 10 { "orc" } else { "troll" };
             if let Some((_, ok, h)) = health.iter().find(|(c, ..)| c.kind == kind) {
                 info!("kick: the {kind} at x {:.0}, health {:.0}; kicked", ok.body.pos.x, h.hp);
-                stand(&mut k, ok.body.pos.x - ok.body.half.x - 7.0);
+                stand(&mut k, ok.body.pos.x - ok.body.half.x - 10.0);
                 kicks.write(crate::kick::Kick);
             }
             *state += 1;
@@ -3776,7 +3779,7 @@ fn kick_script(
     }
 }
 
-/// `logmagic` (flat world): a log (30 × 5 cells of wood) pushed by the force
+/// `logmagic` (flat world): a log (45 × 8 cells of wood) pushed by the force
 /// wand, then lifted by the gravity wand, carried up and let go. Logs the
 /// log (cells lying, bodies flying, where) every quarter second.
 #[allow(clippy::too_many_arguments)]
@@ -3799,9 +3802,9 @@ fn logmagic_script(
     let home = *state.2.get_or_insert(k.body.pos);
     let wood = sim.materials().expect_id("wood");
     if state.0 == 0 && t > 0.5 {
-        let Some(ground) = find_ground(&sim.world, home.x as i32 + 45, home.y as i32 + 40, 100) else { return };
-        for x in home.x as i32 + 30..home.x as i32 + 60 {
-            for y in ground..ground + 5 {
+        let Some(ground) = find_ground(&sim.world, home.x as i32 + 68, home.y as i32 + 60, 150) else { return };
+        for x in home.x as i32 + 45..home.x as i32 + 90 {
+            for y in ground..ground + 8 {
                 sim.world.set(CellPos::new(x, y), platypus_sim::Cell::new(wood, 128));
             }
         }
@@ -3823,11 +3826,11 @@ fn logmagic_script(
     }
     // Where the log is (its middle, lying or flying).
     let log_at = |sim: &SimWorld| {
-        let xs: Vec<i32> = (home.y as i32 - 20..home.y as i32 + 120).flat_map(|y| (home.x as i32 - 50..home.x as i32 + 400).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == wood)).map(|(x, _)| x).collect();
+        let xs: Vec<i32> = (home.y as i32 - 30..home.y as i32 + 180).flat_map(|y| (home.x as i32 - 75..home.x as i32 + 600).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == wood)).map(|(x, _)| x).collect();
         sim.world.bodies().first().map_or(xs.iter().sum::<i32>() as f32 / xs.len().max(1) as f32, |b| b.pos[0])
     };
     let log = |sim: &SimWorld| {
-        let lying = (home.y as i32 - 20..home.y as i32 + 120).flat_map(|y| (home.x as i32 - 50..home.x as i32 + 400).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == wood)).count();
+        let lying = (home.y as i32 - 30..home.y as i32 + 180).flat_map(|y| (home.x as i32 - 75..home.x as i32 + 600).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == wood)).count();
         let flying: Vec<String> = sim.world.bodies().iter().map(|b| format!("{:.0},{:.0}", b.pos[0] - home.x, b.pos[1] - home.y)).collect();
         (lying, flying)
     };
@@ -3837,8 +3840,8 @@ fn logmagic_script(
     // (Where the log lay as the hold began: the well goes there, then up
     // and slowly over, not after the log itself.)
     let from = if hold { *anchor.get_or_insert_with(|| log_at(&sim) - home.x) } else { log_at(&sim) - home.x };
-    let lift_to = if t < 4.2 { Vec2::new(from, 6.0) } else { Vec2::new(from + (t - 4.2) * 20.0, 40.0) };
-    cursor.0 = Some(home + if hold { lift_to } else { Vec2::new(60.0, 2.0) });
+    let lift_to = if t < 4.2 { Vec2::new(from, 9.0) } else { Vec2::new(from + (t - 4.2) * 30.0, 60.0) };
+    cursor.0 = Some(home + if hold { lift_to } else { Vec2::new(90.0, 3.0) });
     if push || hold { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     if t >= state.1 {
         state.1 = (t * 4.0).floor() / 4.0 + 0.25;
@@ -3875,21 +3878,21 @@ fn cast_script(
     let Some(items) = items else { return };
     let mats = sim.materials().clone();
     let (stone, copper, molten) = (mats.expect_id("stone"), mats.expect_id("copper"), mats.expect_id("molten_copper"));
-    let count = |sim: &SimWorld, m| (floor - 60..floor + 120).flat_map(|y| (560..1500).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).collect::<Vec<_>>();
+    let count = |sim: &SimWorld, m| (floor - 90..floor + 180).flat_map(|y| (840..2250).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).collect::<Vec<_>>();
     let span = |cells: &[(i32, i32)]| (cells.len(), cells.iter().map(|c| c.0).min().unwrap_or(0), cells.iter().map(|c| c.0).max().unwrap_or(0));
     let ladle = || inv.slots.iter().flatten().find(|st| items.def(st.item).id == "ladle").and_then(|st| st.fill.map(|(_, n)| n)).unwrap_or(0);
-    // The mould: walls at 640..641 and 663..664, and a block in it (650..653,
-    // 2 high): the casting's notch.
-    let walls: Vec<CellPos> = (floor..floor + 8).flat_map(|y| [640, 641, 663, 664].map(|x| CellPos::new(x, y))).chain((650..654).flat_map(|x| (floor..floor + 2).map(move |y| CellPos::new(x, y)))).collect();
+    // The mould: walls at 960..962 and 994..996, and a block in it (975..980,
+    // 3 high): the casting's notch.
+    let walls: Vec<CellPos> = (floor..floor + 12).flat_map(|y| [960, 961, 962, 994, 995, 996].map(|x| CellPos::new(x, y))).chain((975..981).flat_map(|x| (floor..floor + 3).map(move |y| CellPos::new(x, y)))).collect();
     match *state {
         0 if t > 0.5 => {
             for &p in &walls {
                 sim.world.set(p, platypus_sim::Cell::new(stone, 0));
             }
             if let Some(kind) = crafting.station("furnace") {
-                crafting.spawn(&mut commands, kind, Vec2::new(600.0, floor as f32));
+                crafting.spawn(&mut commands, kind, Vec2::new(900.0, floor as f32));
             }
-            k.body.pos = Vec2::new(620.0, floor as f32 + k.body.half.y);
+            k.body.pos = Vec2::new(930.0, floor as f32 + k.body.half.y);
             k.prev_pos = k.body.pos;
             *state = 1;
         }
@@ -3901,7 +3904,7 @@ fn cast_script(
         }
         2 if t > 1.3 => {
             // At the furnace: fill the ladle from the bars.
-            cursor.0 = Some(Vec2::new(600.0, floor as f32 + 6.0));
+            cursor.0 = Some(Vec2::new(900.0, floor as f32 + 9.0));
             mouse.press(MouseButton::Right);
             if t > 1.6 {
                 mouse.release(MouseButton::Right);
@@ -3912,7 +3915,7 @@ fn cast_script(
         }
         3 => {
             // Pour into the mould.
-            cursor.0 = Some(Vec2::new(652.0, floor as f32 + 4.0));
+            cursor.0 = Some(Vec2::new(978.0, floor as f32 + 6.0));
             mouse.press(MouseButton::Left);
             if ladle() == 0 && t > 2.0 {
                 mouse.release(MouseButton::Left);
@@ -3926,9 +3929,9 @@ fn cast_script(
             for &p in &walls {
                 sim.world.set(p, platypus_sim::Cell::AIR);
             }
-            k.body.pos = Vec2::new(637.0, floor as f32 + k.body.half.y);
+            k.body.pos = Vec2::new(955.0, floor as f32 + k.body.half.y);
             k.prev_pos = k.body.pos;
-            cursor.0 = Some(Vec2::new(700.0, floor as f32 + 8.0));
+            cursor.0 = Some(Vec2::new(1050.0, floor as f32 + 12.0));
             *state = 5;
         }
         5 if t > 7.5 => {
@@ -3944,7 +3947,7 @@ fn cast_script(
     }
 }
 
-/// `boulder` (flat world): a round boulder (radius 7) let go at the top of a
+/// `boulder` (flat world): a round boulder (radius 10) let go at the top of a
 /// ramp; it rolls down into a stone wall and breaks. Logs the pieces in
 /// flight and the rock every quarter second.
 fn boulder_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut state: Local<(u8, f32, Option<Vec2>)>) {
@@ -3956,25 +3959,25 @@ fn boulder_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Ki
     let home = *state.2.get_or_insert(k.body.pos);
     let mats = sim.materials().clone();
     let (stone, boulder) = (mats.expect_id("stone"), mats.expect_id("boulder"));
-    let Some(ground) = find_ground(&sim.world, home.x as i32, home.y as i32 + 40, 100) else { return };
-    let (x0, y0) = (home.x as i32 + 30, ground);
+    let Some(ground) = find_ground(&sim.world, home.x as i32, home.y as i32 + 60, 150) else { return };
+    let (x0, y0) = (home.x as i32 + 45, ground);
     if state.0 == 0 && t > 0.5 {
-        // A ramp 120 up, falling 1 in 1 to the right over 120 cells, and a
-        // wall 100 further on.
-        for dx in 0..120 {
-            for y in y0..y0 + 120 - dx {
+        // A ramp 180 up, falling 1 in 1 to the right over 180 cells, and a
+        // wall 150 further on.
+        for dx in 0..180 {
+            for y in y0..y0 + 180 - dx {
                 sim.world.set(CellPos::new(x0 + dx, y), platypus_sim::Cell::new(stone, 0));
             }
         }
-        for dx in 220..232 {
-            for y in y0..y0 + 50 {
+        for dx in 330..348 {
+            for y in y0..y0 + 75 {
                 sim.world.set(CellPos::new(x0 + dx, y), platypus_sim::Cell::new(stone, 0));
             }
         }
-        let (cx, cy) = (x0 + 8, y0 + 120 + 8);
-        for y in cy - 7..=cy + 7 {
-            for x in cx - 7..=cx + 7 {
-                if (x - cx) * (x - cx) + (y - cy) * (y - cy) <= 49 {
+        let (cx, cy) = (x0 + 12, y0 + 180 + 12);
+        for y in cy - 10..=cy + 10 {
+            for x in cx - 10..=cx + 10 {
+                if (x - cx) * (x - cx) + (y - cy) * (y - cy) <= 110 {
                     sim.world.set(CellPos::new(x, y), platypus_sim::Cell::new(boulder, 128));
                 }
             }
@@ -3984,7 +3987,7 @@ fn boulder_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Ki
     }
     if state.0 == 1 && t >= state.1 {
         state.1 = (t * 4.0).floor() / 4.0 + 0.25;
-        let rock = (y0 - 5..y0 + 140).flat_map(|y| (x0 - 20..x0 + 260).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == boulder)).count();
+        let rock = (y0 - 8..y0 + 210).flat_map(|y| (x0 - 30..x0 + 390).map(move |x| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == boulder)).count();
         let flying: Vec<String> = sim.world.bodies().iter().map(|b| format!("{:.0},{:.0}", b.pos[0] - x0 as f32, b.pos[1] - y0 as f32)).collect();
         info!("boulder: t {t:.2} rock lying {rock}, bodies {flying:?}, rubble in flight {}", sim.world.particles().len());
     }
@@ -4018,8 +4021,8 @@ fn trap_script(
         // Rings of chunks round the start, under the surface: the first rope
         // over a boulder.
         let home = sim.generator.spawn_point().chunk();
-        let found = (0..60).find_map(|r: i32| {
-            (-r..=r).flat_map(|dx| [dx]).flat_map(|dx| (-60..-4).map(move |dy| platypus_sim::ChunkPos::new(home.x + dx, home.y + dy))).filter(|p| (p.x - home.x).abs() == r).find_map(|p| {
+        let found = (0..90).find_map(|r: i32| {
+            (-r..=r).flat_map(|dx| [dx]).flat_map(|dx| (-90..-6).map(move |dy| platypus_sim::ChunkPos::new(home.x + dx, home.y + dy))).filter(|p| (p.x - home.x).abs() == r).find_map(|p| {
                 let c = sim.generator.generate(p);
                 let o = p.origin();
                 (0..platypus_sim::CHUNK).flat_map(|y| (0..platypus_sim::CHUNK).map(move |x| (x, y))).find(|&(x, y)| y > 0 && c.get(x as usize, y as usize).material == rope && c.get(x as usize, y as usize - 1).material == boulder).map(|(x, y)| (o.x + x, o.y + y))
@@ -4031,12 +4034,12 @@ fn trap_script(
             return;
         };
         // The floor under it.
-        let floor = (1..60).map(|d| y - d).find(|&fy| sim.generator.generate(CellPos::new(x, fy).chunk()).get((x - CellPos::new(x, fy).chunk().origin().x) as usize, (fy - CellPos::new(x, fy).chunk().origin().y) as usize).material != platypus_sim::MaterialId::AIR && fy < y - 12);
+        let floor = (1..90).map(|d| y - d).find(|&fy| sim.generator.generate(CellPos::new(x, fy).chunk()).get((x - CellPos::new(x, fy).chunk().origin().x) as usize, (fy - CellPos::new(x, fy).chunk().origin().y) as usize).material != platypus_sim::MaterialId::AIR && fy < y - 18);
         info!("trap: a boulder trap, its rope at ({x}, {y}), the floor under it at {floor:?}");
         // (Set down at the wire's or plate's edge: the tunnel's floor is only
-        // 14 wide, walled in either side.)
-        // (Set down 11 short of it: the tunnel runs 14 either side.)
-        state.2 = floor.map(|f| (Vec2::new(x as f32 - 11.0, f as f32 + 1.0), x));
+        // 21 wide, walled in either side.)
+        // (Set down 16 short of it: the tunnel runs 21 either side.)
+        state.2 = floor.map(|f| (Vec2::new(x as f32 - 16.0, f as f32 + 1.0), x));
         state.0 = 1;
     }
     let Some((start, x)) = state.2 else { return };
@@ -4049,7 +4052,7 @@ fn trap_script(
             if t > 2.0 {
                 // (The tunnel's own creatures, gone: to walk in undisturbed.)
                 for (ok, mut h) in &mut others {
-                    if ok.body.pos.distance(start) < 150.0 {
+                    if ok.body.pos.distance(start) < 225.0 {
                         h.hp = 0.0;
                     }
                 }
@@ -4059,7 +4062,7 @@ fn trap_script(
         }
         2 => {
             keys.press(KeyCode::KeyD);
-            if k.body.pos.x > x as f32 + 20.0 || t > state.1 + 3.0 {
+            if k.body.pos.x > x as f32 + 30.0 || t > state.1 + 3.0 {
                 keys.release(KeyCode::KeyD);
                 state.0 = 3;
             }
@@ -4100,7 +4103,7 @@ fn village_script(
     }
     // (Walk on till past the last of them, then stand.)
     let last = people.iter().map(|(_, pk, ..)| pk.body.pos.x).fold(f32::MIN, f32::max);
-    if state.0 == 1 && k.body.pos.x > last + 30.0 {
+    if state.0 == 1 && k.body.pos.x > last + 45.0 {
         keys.release(KeyCode::KeyD);
         state.0 = 2;
     }
@@ -4198,7 +4201,7 @@ fn shop_script(
         }
         3 if t > *at + 0.5 => {
             let running = people.iter().any(|(_, v, r)| v.role == *role && r.fleeing);
-            let near: Vec<String> = foes.iter().filter(|(_, fk, team)| **team == crate::creatures::Team::Enemy && fk.body.pos.distance(pk) < 200.0).map(|(c, fk, _)| format!("{} at {:+.0}", c.kind, fk.body.pos.x - pk.x)).collect();
+            let near: Vec<String> = foes.iter().filter(|(_, fk, team)| **team == crate::creatures::Team::Enemy && fk.body.pos.distance(pk) < 300.0).map(|(c, fk, _)| format!("{} at {:+.0}", c.kind, fk.body.pos.x - pk.x)).collect();
             log(&if shop.with.is_some() { "traded".to_string() } else if running { format!("it ran ({})", near.join(", ")) } else { "shut".to_string() }, gold.0, health.hp, &inv);
             if *role == "merchant" {
                 // (Torches in hand, over the slot: what they'd fetch.)
@@ -4238,21 +4241,21 @@ fn climb_script(
     mut glide_from: Local<Option<Vec2>>,
     mut state: Local<(f32, Option<(CellPos, Vec<platypus_sim::MaterialId>)>, std::collections::HashMap<(platypus_sim::MaterialId, platypus_sim::MaterialId), u32>, f32, u64)>,
 ) {
-    const W: i32 = 200;
-    const H: i32 = 140;
+    const W: i32 = 300;
+    const H: i32 = 210;
     if s.name != "climb" || s.elapsed < 1.0 {
         return;
     }
     let Ok(k) = player.single() else { return };
     let t = s.elapsed;
     // PLATYPUS_GLIDE=1: the camera, not the player, goes up the slope, at
-    // a steady (-30, 20) cells a second from where the player starts:
+    // a steady (-45, 30) cells a second from where the player starts:
     // camera motion alone, the same every run.
     if std::env::var("PLATYPUS_GLIDE").is_ok() {
         free.0 = true;
         let from = *glide_from.get_or_insert(k.body.pos);
-        cam.translation.x = from.x - 30.0 * (t - 1.0);
-        cam.translation.y = from.y + 20.0 * (t - 1.0);
+        cam.translation.x = from.x - 45.0 * (t - 1.0);
+        cam.translation.y = from.y + 30.0 * (t - 1.0);
         return;
     }
     let (next, snap, changes, jump_until, last_tick) = &mut *state;
@@ -4301,7 +4304,7 @@ fn climb_script(
 /// `star` (a generated world, try `PLATYPUS_HOUR=22`): a falling star
 /// called just ahead of the player (the dev panel's; west, over the plain);
 /// 4 s after it lands, what's in the crater (meteorite and mithril cells,
-/// star wisps about). `PLATYPUS_STAR=away`: one fell 3 hours ago, 300 cells
+/// star wisps about). `PLATYPUS_STAR=away`: one fell 3 hours ago, 450 cells
 /// west, where no one was; the player's taken there; the crater, and the
 /// news.
 #[allow(clippy::too_many_arguments)]
@@ -4325,7 +4328,7 @@ fn star_script(
     match *step {
         0 if t > 2.0 => {
             // (West, over the plain: the village is east of the start.)
-            *x = k.body.pos.x as i32 - if away { 300 } else { 140 };
+            *x = k.body.pos.x as i32 - if away { 450 } else { 210 };
             info!("star: the player at x {:.0}, health {:.0}", k.body.pos.x, health.hp);
             if away {
                 let day = clock.now - 0.125;
@@ -4339,7 +4342,7 @@ fn star_script(
         }
         1 if t > *at + 1.0 && away => {
             // (Over to it: just short of the crater's rim.)
-            k.body.pos.x = *x as f32 + 40.0;
+            k.body.pos.x = *x as f32 + 60.0;
             k.prev_pos = k.body.pos;
             *step = 2;
             *at = t;
@@ -4350,14 +4353,14 @@ fn star_script(
             let (meteorite, mithril) = (mats.id("meteorite"), mats.id("mithril_ore"));
             let ground = sim.generator.surface_hint(*x).unwrap_or(0);
             let (mut m, mut o) = (0, 0);
-            for y in ground - 60..ground + 20 {
-                for cx in *x - 40..*x + 40 {
+            for y in ground - 90..ground + 30 {
+                for cx in *x - 60..*x + 60 {
                     let c = sim.world.get(CellPos::new(cx, y)).map(|c| c.material);
                     m += (c == meteorite) as u32;
                     o += (c == mithril) as u32;
                 }
             }
-            let wisps = creatures.iter().filter(|(c, ck)| c.kind == "star_wisp" && (ck.body.pos.x as i32 - *x).abs() < 120).count();
+            let wisps = creatures.iter().filter(|(c, ck)| c.kind == "star_wisp" && (ck.body.pos.x as i32 - *x).abs() < 180).count();
             let stage = clock.events.iter().find(|h| h.x == *x).map(|h| format!("{:?}", h.stage)).unwrap_or_default();
             info!("star: at x {x} ({stage}): {m} meteorite cells, {o} mithril ore, {wisps} star wisps; the player's health {:.0}; the news: {:?}", health.hp, news.0.first());
             *step = 3;
@@ -4372,7 +4375,7 @@ type Raiders = (With<crate::creatures::brain::ai::Marching>, Without<LocalPlayer
 /// player standing at the start; every 2 s, the raiders (alive, how far
 /// from the village's middle), the villagers (alive, running) and the
 /// player's health. `PLATYPUS_RAID=away`: one that came hours ago while no
-/// one was there: the cells of the village missing; then the player 700
+/// one was there: the cells of the village missing; then the player 1050
 /// cells west and 3 hours on, three times (mending); then the guide paid
 /// and 3 hours on.
 #[allow(clippy::too_many_arguments)]
@@ -4417,7 +4420,7 @@ fn raid_script(
     match *step {
         1 if t > *at + 1.0 => {
             info!("raid: away: {} cells of the village missing; the news: {:?}", village.missing, news.0.first());
-            k.body.pos.x = mid as f32 - 700.0;
+            k.body.pos.x = mid as f32 - 1050.0;
             k.prev_pos = k.body.pos;
             *step = 2;
             *at = t;
@@ -4438,13 +4441,13 @@ fn raid_script(
         6 if t > *at + 1.5 => {
             // (Back, walking in as anyone would: what's due is done as the
             // village loads, before it's in view.)
-            k.body.pos.x = mid as f32 - 450.0;
+            k.body.pos.x = mid as f32 - 675.0;
             k.prev_pos = k.body.pos;
             keys.press(KeyCode::KeyD);
             *step = 7;
             *at = t;
         }
-        7 if k.body.pos.x > mid as f32 - 60.0 || t > *at + 9.0 => {
+        7 if k.body.pos.x > mid as f32 - 90.0 || t > *at + 9.0 => {
             keys.release(KeyCode::KeyD);
             info!("raid: away, paid, walked back into the village (x {:+.0}): {} cells missing; village {}..{}", k.body.pos.x - mid as f32, village.missing, lo.x - mid, hi.x - mid);
             *step = 8;
@@ -4454,10 +4457,10 @@ fn raid_script(
 }
 
 /// `quake` (a generated world, best with `PLATYPUS_SPAWN_Y` on a cave floor,
-/// e.g. 3200): an earthquake felt where the player is; for its 5 s, the
+/// e.g. 4800): an earthquake felt where the player is; for its 5 s, the
 /// rubble falling round the player each second (particles and bodies in
-/// flight within 150 cells). `PLATYPUS_QUAKE=surface` (at the start): its
-/// heart 200 cells west; the chasm there: how deep it's open below the
+/// flight within 225 cells). `PLATYPUS_QUAKE=surface` (at the start): its
+/// heart 300 cells west; the chasm there: how deep it's open below the
 /// ground, how wide at the top.
 fn quake_script(
     s: Res<Scenario>,
@@ -4476,7 +4479,7 @@ fn quake_script(
     let (step, at, x, next) = &mut *state;
     match *step {
         0 if t > 2.0 => {
-            *x = k.body.pos.x as i32 - if surface { 200 } else { 0 };
+            *x = k.body.pos.x as i32 - if surface { 300 } else { 0 };
             let day = clock.now;
             clock.events.push(crate::events::Happening { kind: crate::events::EventKind::Quake, day, x: *x, stage: crate::events::Stage::Coming, from: 0 });
             *step = 1;
@@ -4486,16 +4489,16 @@ fn quake_script(
         1 if t >= *next && t < *at + 6.0 => {
             *next += 1.0;
             let p = k.body.pos;
-            let falling = sim.world.particles().iter().filter(|q| (Vec2::new(q.pos[0], q.pos[1]) - p).length() < 150.0).count();
-            let bodies = sim.world.bodies().iter().filter(|b| (Vec2::new(b.pos[0], b.pos[1]) - p).length() < 150.0).count();
+            let falling = sim.world.particles().iter().filter(|q| (Vec2::new(q.pos[0], q.pos[1]) - p).length() < 225.0).count();
+            let bodies = sim.world.bodies().iter().filter(|b| (Vec2::new(b.pos[0], b.pos[1]) - p).length() < 225.0).count();
             info!("quake: t {:.0}: {falling} particles and {bodies} bodies in flight round the player", t - *at);
         }
         1 if t > *at + 6.0 => {
             if surface {
                 let ground = sim.generator.surface_hint(*x).unwrap_or(0);
-                let open = |cx: i32| (0..200).take_while(|d| sim.world.get(CellPos::new(cx, ground + 2 - d)).is_some_and(|c| c.is_air())).count();
-                let deep = (*x - 6..=*x + 6).map(open).max().unwrap_or(0);
-                let wide = (*x - 20..=*x + 20).filter(|&cx| sim.world.get(CellPos::new(cx, ground - 2)).is_some_and(|c| c.is_air())).count();
+                let open = |cx: i32| (0..300).take_while(|d| sim.world.get(CellPos::new(cx, ground + 3 - d)).is_some_and(|c| c.is_air())).count();
+                let deep = (*x - 9..=*x + 9).map(open).max().unwrap_or(0);
+                let wide = (*x - 30..=*x + 30).filter(|&cx| sim.world.get(CellPos::new(cx, ground - 3)).is_some_and(|c| c.is_air())).count();
                 info!("quake: the chasm at x {x}: open {deep} cells down, {wide} wide at the top");
             }
             info!("quake: the news: {:?}", news.0.first());
@@ -4554,7 +4557,7 @@ fn pedlar_script(
     }
 }
 
-/// `troll` (arena world): a troll 60 cells off, struck by a blade (24, a
+/// `troll` (arena world): a troll 90 cells off, struck by a blade (24, a
 /// longsword's, four a second) for 8 s: its health each second (it can't
 /// die while it heals); then set alight, still struck: when it dies.
 #[allow(clippy::too_many_arguments)]
@@ -4564,6 +4567,7 @@ fn troll_script(
     coatings: Res<crate::creatures::body::elements::Coatings>,
     player: Query<&Kinematics, With<LocalPlayer>>,
     trolls: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health)>,
+    burns: Query<&crate::creatures::body::elements::Burning>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut state: Local<(u8, f32, f32, Option<Entity>)>,
 ) {
@@ -4574,7 +4578,7 @@ fn troll_script(
     let Ok(pk) = player.single() else { return };
     let (step, next_hit, next_log, troll) = &mut *state;
     if *step == 0 && t > 1.0 {
-        crate::creatures::def::spawn_creature(&mut commands, "troll", pk.body.pos + Vec2::new(60.0, -pk.body.half.y), |_| {});
+        crate::creatures::def::spawn_creature(&mut commands, "troll", pk.body.pos + Vec2::new(90.0, -pk.body.half.y), |_| {});
         *step = 1;
         return;
     }
@@ -4596,13 +4600,23 @@ fn troll_script(
         hits.write(crate::combat::Hit { target: e, damage: 24.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: k.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
     }
     if *step == 1 && t > 11.0 {
+        // (Out of the pool of its own blood first, and wiped dry: soaked
+        // in it, as anything 40 % wet, it wouldn't catch.)
+        commands.entity(e).queue(|mut ew: EntityWorldMut| {
+            if let Some(mut k) = ew.get_mut::<Kinematics>() {
+                k.body.pos.x += 60.0;
+                k.prev_pos = k.body.pos;
+            }
+            ew.remove::<crate::creatures::body::elements::Coated>();
+        });
         crate::creatures::body::elements::catch_fire(&mut commands, e, &h.nature, None, &coatings, 1.0);
         info!("troll: set alight at t {t:.1} (health {:.0})", h.hp);
         *step = 2;
     }
     if t >= *next_log {
         *next_log += 1.0;
-        info!("troll: t {t:.0}: health {:.0} / {:.0}{}", h.hp, h.max, if *step == 2 { ", burning" } else { "" });
+        let fire = burns.get(e).map_or(String::new(), |b| format!(", burning ({:.0} %)", b.share * 100.0));
+        info!("troll: t {t:.0}: health {:.0} / {:.0}{fire}", h.hp, h.max);
     }
 }
 
@@ -4621,19 +4635,19 @@ fn reset_script(
     }
     let t = s.elapsed;
     let pos = player.single().map(|k| k.body.pos).ok();
-    let hole = |sim: &SimWorld, at: Vec2| (0..20).filter(|d| sim.world.get(CellPos::from_world(at.x, at.y - 10.0 - *d as f32)).is_some_and(|c| c.is_air())).count();
+    let hole = |sim: &SimWorld, at: Vec2| (0..30).filter(|d| sim.world.get(CellPos::from_world(at.x, at.y - 15.0 - *d as f32)).is_some_and(|c| c.is_air())).count();
     match state.0 {
         0 if t > 1.0 => {
             let Some(p) = pos else { return };
             for d in 0..8 {
-                sim.queue(WorldEdit::Dig { center: CellPos::from_world(p.x + 30.0, p.y - 10.0 - d as f32 * 4.0), radius: 8, max_hardness: 250 });
+                sim.queue(WorldEdit::Dig { center: CellPos::from_world(p.x + 45.0, p.y - 15.0 - d as f32 * 6.0), radius: 12, max_hardness: 250 });
             }
-            crate::creatures::def::spawn_creature(&mut commands, "orc", p + Vec2::new(-40.0, 0.0), |_| {});
-            state.1 = Vec2::new(p.x + 30.0, p.y);
+            crate::creatures::def::spawn_creature(&mut commands, "orc", p + Vec2::new(-60.0, 0.0), |_| {});
+            state.1 = Vec2::new(p.x + 45.0, p.y);
             state.0 = 1;
         }
         1 if t > 1.8 => {
-            info!("reset: before: {} of 20 cells of the hole open, {} creatures about, the player at {:?}", hole(&sim, state.1), creatures.iter().count(), pos.map(|p| p.round()));
+            info!("reset: before: {} of 30 cells of the hole open, {} creatures about, the player at {:?}", hole(&sim, state.1), creatures.iter().count(), pos.map(|p| p.round()));
             state.0 = 2;
         }
         2 | 3 if t > 2.0 + (state.0 - 2) as f32 * 0.3 => {
@@ -4642,7 +4656,7 @@ fn reset_script(
             state.0 += 1;
         }
         4 if t > 5.0 => {
-            info!("reset: after: {} of 20 cells of the hole open, {} creatures about, the player at {:?}, {} chunks loaded", hole(&sim, state.1), creatures.iter().count(), pos.map(|p| p.round()), sim.world.loaded_count());
+            info!("reset: after: {} of 30 cells of the hole open, {} creatures about, the player at {:?}, {} chunks loaded", hole(&sim, state.1), creatures.iter().count(), pos.map(|p| p.round()), sim.world.loaded_count());
             state.0 = 5;
         }
         _ => {}
@@ -4674,8 +4688,8 @@ fn camplook_script(
     let (cx0, cy0) = ((start.x as i32).div_euclid(platypus_sim::CHUNK), (start.y as i32).div_euclid(platypus_sim::CHUNK));
     let mut best: Option<(f32, CellPos)> = None;
     let mut props = 0;
-    for dy in 2..40 {
-        for dx in -24..=24 {
+    for dy in 3..60 {
+        for dx in -36..=36 {
             let pos = platypus_sim::ChunkPos::new(cx0 + dx, cy0 - dy);
             for (at, what) in sim.generator.generate_with_spawns(pos).1 {
                 props += matches!(what, platypus_worldgen::Spawn::Prop(_)) as usize;
@@ -4691,7 +4705,7 @@ fn camplook_script(
     match best {
         Some((d, at)) => {
             info!("camplook: a camp's cart at ({}, {}), {d:.0} cells from the start", at.x, at.y);
-            state.1 = Vec2::new(at.x as f32 - 14.0, at.y as f32 + k.body.half.y + 0.5);
+            state.1 = Vec2::new(at.x as f32 - 21.0, at.y as f32 + k.body.half.y + 0.5);
             toggles.carry = crate::light::Carry::Torch;
             state.0 = 1;
         }
@@ -4713,12 +4727,12 @@ fn camp_script(
     let Ok((mut k, hp)) = player.single_mut() else { return };
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR as f32;
-    let x = 520.0;
+    let x = 780.0;
     let kinds = ["mine_lantern", "mine_cart", "tnt_barrel", "dynamite"];
     let left = |props: &Query<(Entity, &crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>| kinds.iter().map(|&kind| format!("{kind} {}", props.iter().filter(|(_, c, _)| c.kind == kind).count())).collect::<Vec<_>>().join(", ");
     match *state {
         0 if t > 0.3 => {
-            for (kind, dx) in kinds.iter().zip([130.0, 148.0, 165.0, 173.0]) {
+            for (kind, dx) in kinds.iter().zip([195.0, 222.0, 248.0, 260.0]) {
                 crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x + dx, floor), |_| {});
             }
             k.body.pos = Vec2::new(x, floor + k.body.half.y);
@@ -4727,7 +4741,7 @@ fn camp_script(
             *state = 1;
         }
         1 if t > 1.5 => {
-            info!("camp: set up: {}; the player {:.0} hp, 148 cells from the cart", left(&props), hp.hp);
+            info!("camp: set up: {}; the player {:.0} hp, 222 cells from the cart", left(&props), hp.hp);
             *state = 2;
         }
         2 if t > 2.0 => {
@@ -4772,17 +4786,17 @@ fn pickarea_script(
     let Ok(mut k) = player.single_mut() else { return };
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR;
-    let x = 540;
-    // The wall (x + 14 .. x + 26) and the far dirt (x + 30 .. x + 46).
-    let (wall, far) = ((x + 14, x + 26), (x + 30, x + 46));
+    let x = 810;
+    // The wall (x + 21 .. x + 39) and the far dirt (x + 45 .. x + 69).
+    let (wall, far) = ((x + 21, x + 39), (x + 45, x + 69));
     let dirt = sim.materials().id("dirt");
-    let count = |sim: &SimWorld, (x0, x1): (i32, i32)| (x0..x1).flat_map(|cx| (floor..floor + 30).map(move |cy| CellPos::new(cx, cy))).filter(|&p| sim.world.get(p).is_some_and(|c| Some(c.material) == dirt)).count();
+    let count = |sim: &SimWorld, (x0, x1): (i32, i32)| (x0..x1).flat_map(|cx| (floor..floor + 45).map(move |cy| CellPos::new(cx, cy))).filter(|&p| sim.world.get(p).is_some_and(|c| Some(c.material) == dirt)).count();
     match state.0 {
         0 if t > 0.3 => {
             if let Some(d) = dirt {
                 for (x0, x1) in [wall, far] {
                     for cx in x0..x1 {
-                        for cy in floor..floor + 30 {
+                        for cy in floor..floor + 45 {
                             sim.queue(WorldEdit::Paint { center: CellPos::new(cx, cy), radius: 0, material: d, overwrite: true });
                         }
                     }
@@ -4807,10 +4821,10 @@ fn pickarea_script(
         3 if t > 2.6 => {
             let (w, f) = (count(&sim, wall), count(&sim, far));
             info!("pickarea: 1.2 s of swings aimed past the wall: {} cells dug from the wall, {} from the far dirt", state.1 - w, state.2 - f);
-            // Then dirt 50 deep under a spot further on.
+            // Then dirt 75 deep under a spot further on.
             if let Some(d) = dirt {
-                for cx in x + 54..x + 86 {
-                    for cy in floor - 50..floor {
+                for cx in x + 81..x + 129 {
+                    for cy in floor - 75..floor {
                         sim.queue(WorldEdit::Paint { center: CellPos::new(cx, cy), radius: 0, material: d, overwrite: true });
                     }
                 }
@@ -4818,7 +4832,7 @@ fn pickarea_script(
             state.0 = 4;
         }
         4 if t > 2.8 => {
-            k.body.pos = Vec2::new((x + 70) as f32, floor as f32 + k.body.half.y);
+            k.body.pos = Vec2::new((x + 105) as f32, floor as f32 + k.body.half.y);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
             state.3 = floor as f32;
@@ -4834,8 +4848,8 @@ fn pickarea_script(
     // Aimed past the wall, at the far dirt, level with the chest; then
     // straight down.
     cursor.0 = match state.0 {
-        2..=3 => Some(Vec2::new((far.0 + 8) as f32, floor as f32 + 12.0)),
-        5 => Some(k.body.pos - Vec2::new(0.0, 40.0)),
+        2..=3 => Some(Vec2::new((far.0 + 12) as f32, floor as f32 + 18.0)),
+        5 => Some(k.body.pos - Vec2::new(0.0, 60.0)),
         _ => None,
     };
     let hold = (state.0 == 3 && (1.4..2.6).contains(&t)) || state.0 == 5;
@@ -4860,7 +4874,7 @@ fn soak_script(
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR;
     // The acid puddle, the deep water, the water puddle: (x from, to, depth).
-    let (acid, deep, puddle) = ((500, 530, 2), (560, 600, 24), (620, 650, 2));
+    let (acid, deep, puddle) = ((750, 795, 3), (840, 900, 36), (930, 975, 3));
     let put = |k: &mut Kinematics, x: i32, feet: i32| {
         k.body.pos = Vec2::new(x as f32, feet as f32 + k.body.half.y);
         k.body.vel = Vec2::ZERO;
@@ -4887,24 +4901,24 @@ fn soak_script(
                     }
                 }
             }
-            put(&mut k, 515, floor - acid.2);
+            put(&mut k, 772, floor - acid.2);
             state.0 = 2;
         }
         2 if t > 1.6 => {
             info!("soak: a second standing in the acid puddle: {}, health {:.0}", on(coated), health.hp);
-            put(&mut k, 545, floor);
+            put(&mut k, 818, floor);
             state.1 = health.hp;
             state.0 = 3;
         }
         3 if t > 3.0 => {
             info!("soak: 1.4 s out of it: {}, health {:.0} (lost {:.1} since)", on(coated), health.hp, state.1 - health.hp);
-            put(&mut k, 635, floor - puddle.2);
+            put(&mut k, 952, floor - puddle.2);
             commands.entity(me).insert(crate::creatures::body::elements::Burning::new(1.0));
             state.0 = 4;
         }
         4 if t > 4.4 => {
-            info!("soak: alight, 1.4 s standing in a two-cell water puddle: {}, burning {:.0}%", on(coated), burning.map_or(0.0, |b| b.share * 100.0));
-            put(&mut k, 580, floor - 16);
+            info!("soak: alight, 1.4 s standing in a three-cell water puddle: {}, burning {:.0}%", on(coated), burning.map_or(0.0, |b| b.share * 100.0));
+            put(&mut k, 870, floor - 24);
             state.1 = health.hp;
             state.0 = 5;
         }
@@ -4934,28 +4948,28 @@ fn rocketswim_script(
     let Ok((mut k, stats)) = player.single_mut() else { return };
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR;
-    let x = 540;
+    let x = 810;
     state.3 += fired.read().count() as u32;
     match state.0 {
-        // A pit 40 wide and 70 deep under the floor, then water in it.
+        // A pit 60 wide and 260 deep under the floor, then water in it.
         0 if t > 0.3 => {
-            for dx in (-20..=20).step_by(5) {
-                for dy in (-172..=4).step_by(5) {
-                    sim.queue(WorldEdit::Dig { center: CellPos::new(x + dx, floor + dy), radius: 4, max_hardness: 250 });
+            for dx in (-30..=30).step_by(7) {
+                for dy in (-258..=6).step_by(7) {
+                    sim.queue(WorldEdit::Dig { center: CellPos::new(x + dx, floor + dy), radius: 6, max_hardness: 250 });
                 }
             }
             state.0 = 1;
         }
         1 if t > 0.6 => {
             if let Some(water) = sim.materials().id("water") {
-                for dx in (-20..=20).step_by(3) {
-                    for dy in (-172..=-12).step_by(3) {
-                        sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, floor + dy), radius: 2, material: water, overwrite: false });
+                for dx in (-30..=30).step_by(4) {
+                    for dy in (-258..=-18).step_by(4) {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, floor + dy), radius: 3, material: water, overwrite: false });
                     }
                 }
             }
             // (Mid-water, far over the bottom: no ground to refill from.)
-            k.body.pos = Vec2::new(x as f32, (floor - 60) as f32);
+            k.body.pos = Vec2::new(x as f32, (floor - 90) as f32);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
             k.loco.rocket_left = 0.0;
@@ -5000,12 +5014,12 @@ fn spider_script(
     }
     let Ok((me, mut k, mut h, coat)) = player.single_mut() else { return };
     let t = s.elapsed;
-    // On open floor, the spider 120 cells off.
+    // On open floor, the spider 180 cells off.
     if state.0 == 0 && t > 0.5 {
         let floor = platypus_worldgen::arena::FLOOR as f32;
-        k.body.pos = Vec2::new(560.0, floor + 8.0);
+        k.body.pos = Vec2::new(840.0, floor + 12.0);
         k.prev_pos = k.body.pos;
-        crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(680.0, floor), |_| {});
+        crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(1020.0, floor), |_| {});
         state.0 = 1;
     }
     for hit in hits.read() {
@@ -5067,11 +5081,11 @@ fn walk_script(
         keys.press(KeyCode::KeyD);
     }
     state.1 += 1;
-    let (vx, top) = (k.body.vel.x, 0.95 * tempo.apply(&MovementStats::default(), true).run_speed.min(95.0));
-    if vx >= top.min(60.0) {
+    let (vx, top) = (k.body.vel.x, 0.95 * tempo.apply(&MovementStats::default(), true).run_speed.min(142.0));
+    if vx >= top.min(90.0) {
         state.2 += 1;
     }
-    if state.5 > 30.0 && vx < 5.0 {
+    if state.5 > 45.0 && vx < 7.5 {
         state.3 += 1;
     }
     if !k.loco.grounded() {
@@ -5099,7 +5113,7 @@ fn walk_script(
 /// run from a standstill (to 95 % of top speed, and the top), letting go
 /// (how far it slides), a turn (from full speed one way to 90 % the
 /// other), a full jump held (its height in cells and body heights, its
-/// time in the air), a tap (the hop), and a drop from 100 cells (the
+/// time in the air), a tap (the hop), and a drop from 150 cells (the
 /// fastest fall, the time down).
 fn tempo_script(
     s: Res<Scenario>,
@@ -5138,7 +5152,7 @@ fn tempo_script(
     match step {
         0 => {
             tempo.active = which;
-            put(&mut k, 450.0, 1.0);
+            put(&mut k, 675.0, 1.5);
             *r = vec![0.0; 12];
             next = dt > 0.4;
         }
@@ -5151,7 +5165,7 @@ fn tempo_script(
         // (The time to 95 % of the top, now the top is known: run again.)
         2 => {
             if dt < 0.05 {
-                put(&mut k, 450.0, 1.0);
+                put(&mut k, 675.0, 1.5);
             } else {
                 want.push(KeyCode::KeyD);
                 if r[0] == 0.0 && v.x >= 0.95 * r[1] {
@@ -5183,16 +5197,16 @@ fn tempo_script(
         // A full jump, held.
         5 => {
             if dt < 0.05 {
-                put(&mut k, 520.0, 1.0);
+                put(&mut k, 780.0, 1.5);
             } else if dt < 0.3 {
                 // (Settle first.)
             } else {
                 want.push(KeyCode::Space);
                 r[4] = r[4].max(feet);
-                if feet > 0.5 && r[11] == 0.0 {
+                if feet > 0.75 && r[11] == 0.0 {
                     r[11] = dt;
                 }
-                if r[11] > 0.0 && feet <= 0.5 && r[5] == 0.0 && dt - r[11] > 0.1 {
+                if r[11] > 0.0 && feet <= 0.75 && r[5] == 0.0 && dt - r[11] > 0.1 {
                     r[5] = dt - r[11];
                 }
             }
@@ -5201,7 +5215,7 @@ fn tempo_script(
         // A tap.
         6 => {
             if dt < 0.05 {
-                put(&mut k, 520.0, 1.0);
+                put(&mut k, 780.0, 1.5);
             }
             if (0.3..0.34).contains(&dt) {
                 want.push(KeyCode::Space);
@@ -5211,26 +5225,26 @@ fn tempo_script(
             }
             next = dt > 1.5;
         }
-        // A drop from 100.
+        // A drop from 150.
         7 => {
             if dt < 0.03 {
-                put(&mut k, 660.0, 100.0);
+                put(&mut k, 990.0, 150.0);
                 r[11] = 0.0;
             } else {
                 r[7] = r[7].max(-v.y);
-                if feet > 50.0 {
+                if feet > 75.0 {
                     r[11] = 1.0;
                 }
-                if r[11] > 0.0 && feet <= 0.5 && r[8] == 0.0 {
+                if r[11] > 0.0 && feet <= 0.75 && r[8] == 0.0 {
                     r[8] = dt - 0.03;
                 }
             }
             next = dt > 2.0;
         }
         _ => {
-            let h = 15.0;
+            let h = 23.0;
             info!(
-                "tempo: {preset}: to full run {:.2}s, top {:.0} cells/s ({:.1} heights/s), slide {:.1} cells, turn {:.2}s, jump {:.0} cells ({:.1} heights) {:.2}s in the air, tap {:.0} cells, fall at most {:.0} cells/s ({:.0} heights/s), 100 cells down in {:.2}s",
+                "tempo: {preset}: to full run {:.2}s, top {:.0} cells/s ({:.1} heights/s), slide {:.1} cells, turn {:.2}s, jump {:.0} cells ({:.1} heights) {:.2}s in the air, tap {:.0} cells, fall at most {:.0} cells/s ({:.0} heights/s), 150 cells down in {:.2}s",
                 r[0], r[1], r[1] / h, r[2], r[3], r[4], r[4] / h, r[5], r[6], r[7], r[7] / h, r[8]
             );
             st.0 += 1;
@@ -5252,7 +5266,7 @@ fn tempo_script(
     }
 }
 
-/// The underground's look: a big cavern dug 260 cells down, its back walls
+/// The underground's look: a big cavern dug 390 cells down, its back walls
 /// taken away over its left two thirds (the cave's far backdrop shows
 /// there, where light reaches), the player on its floor with two glow
 /// sticks thrown out.
@@ -5264,15 +5278,15 @@ fn underlook_script(mut commands: Commands, s: Res<Scenario>, mut sim: ResMut<Si
     let t = s.elapsed;
     match state.0 {
         0 if t > 0.5 => {
-            let c = k.body.pos - Vec2::new(0.0, 260.0);
-            for dx in (-120..=120).step_by(20) {
-                let at = CellPos::new(c.x as i32 + dx, c.y as i32 + (12.0 * (dx as f32 * 0.03).sin()) as i32);
-                sim.queue(WorldEdit::Dig { center: at, radius: 42, max_hardness: 250 });
+            let c = k.body.pos - Vec2::new(0.0, 390.0);
+            for dx in (-180..=180).step_by(30) {
+                let at = CellPos::new(c.x as i32 + dx, c.y as i32 + (18.0 * (dx as f32 * 0.02).sin()) as i32);
+                sim.queue(WorldEdit::Dig { center: at, radius: 63, max_hardness: 250 });
             }
             *state = (1, c);
         }
         1 if t > 0.8 => {
-            k.body.pos = state.1 + Vec2::new(-20.0, -10.0);
+            k.body.pos = state.1 + Vec2::new(-30.0, -15.0);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
             state.0 = 2;
@@ -5280,33 +5294,33 @@ fn underlook_script(mut commands: Commands, s: Res<Scenario>, mut sim: ResMut<Si
         // (Once the chunks down there are loaded: dug again, walls off.)
         2 if t > 1.6 => {
             let c = state.1;
-            for dx in (-120..=120).step_by(20) {
-                let at = CellPos::new(c.x as i32 + dx, c.y as i32 + (12.0 * (dx as f32 * 0.03).sin()) as i32);
-                sim.queue(WorldEdit::Dig { center: at, radius: 42, max_hardness: 250 });
+            for dx in (-180..=180).step_by(30) {
+                let at = CellPos::new(c.x as i32 + dx, c.y as i32 + (18.0 * (dx as f32 * 0.02).sin()) as i32);
+                sim.queue(WorldEdit::Dig { center: at, radius: 63, max_hardness: 250 });
             }
             state.0 = 3;
         }
         3 if t > 1.8 => {
             let c = state.1;
-            for dx in (-120..=40).step_by(16) {
-                let at = CellPos::new(c.x as i32 + dx, c.y as i32 + (12.0 * (dx as f32 * 0.03).sin()) as i32);
+            for dx in (-180..=60).step_by(24) {
+                let at = CellPos::new(c.x as i32 + dx, c.y as i32 + (18.0 * (dx as f32 * 0.02).sin()) as i32);
                 for _ in 0..3 {
-                    sim.queue(WorldEdit::Mine { center: at, radius: 40, power: 255, max_hardness: 250, back: true });
+                    sim.queue(WorldEdit::Mine { center: at, radius: 60, power: 255, max_hardness: 250, back: true });
                 }
             }
             state.0 = 4;
         }
         4 if t > 2.4 => {
             let s = lights.glowstick.strength;
-            crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(-10.0, 4.0), Vec2::new(-90.0, 50.0), [0.25 * s, s, 0.45 * s], 90.0, lights.glowstick.haze);
-            crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(10.0, 4.0), Vec2::new(110.0, 60.0), [0.2 * s, 0.55 * s, 1.1 * s], 90.0, lights.glowstick.haze);
+            crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(-15.0, 6.0), Vec2::new(-135.0, 75.0), [0.25 * s, s, 0.45 * s], 90.0, lights.glowstick.haze);
+            crate::props::spawn_glowstick(&mut commands, k.body.pos + Vec2::new(15.0, 6.0), Vec2::new(165.0, 90.0), [0.2 * s, 0.55 * s, 1.1 * s], 90.0, lights.glowstick.haze);
             state.0 = 5;
         }
         5 if t > 3.0 => {
             let c = state.1;
             let (mut open, mut walled) = (0, 0);
-            for y in (c.y as i32 - 30)..(c.y as i32 + 30) {
-                for x in (c.x as i32 - 110)..(c.x as i32 + 110) {
+            for y in (c.y as i32 - 45)..(c.y as i32 + 45) {
+                for x in (c.x as i32 - 165)..(c.x as i32 + 165) {
                     let p = CellPos::new(x, y);
                     if sim.world.get(p).is_some_and(|c| c.is_air()) {
                         if sim.world.get_bg(p).is_some_and(|c| c.is_air()) {
@@ -5351,10 +5365,10 @@ fn voidlook_script(
             let ground = |x: i32| sim.generator.surface_hint(x).unwrap_or(k.body.pos.y as i32);
             let target = match std::env::var("PLATYPUS_ZONE") {
                 Ok(zone) => (0..300)
-                    .flat_map(|i| [x0 + i * 40, x0 - i * 40])
-                    .find_map(|x| (3..120).map(|j| ground(x) - j * 40).find(|&y| sim.generator.zone_at(x, y) == Some(zone.as_str())).map(|y| (x, y))),
+                    .flat_map(|i| [x0 + i * 60, x0 - i * 60])
+                    .find_map(|x| (3..120).map(|j| ground(x) - j * 60).find(|&y| sim.generator.zone_at(x, y) == Some(zone.as_str())).map(|y| (x, y))),
                 Err(_) => {
-                    let depth: i32 = std::env::var("PLATYPUS_DEPTH").ok().and_then(|v| v.parse().ok()).unwrap_or(400);
+                    let depth: i32 = std::env::var("PLATYPUS_DEPTH").ok().and_then(|v| v.parse().ok()).unwrap_or(600);
                     Some((x0, ground(x0) - depth))
                 }
             };
@@ -5365,20 +5379,20 @@ fn voidlook_script(
             };
             *state = (1, Vec2::new(x as f32, y as f32));
         }
-        // Chunks loaded: the nearest cave floor (open 16 up, 5 either side,
+        // Chunks loaded: the nearest cave floor (open 24 up, 8 either side,
         // rock under it).
         1 if t > 2.0 => {
             let c = CellPos::from_world(state.1.x, state.1.y);
             let air = |x: i32, y: i32| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.is_air());
             let solid = |x: i32, y: i32| sim.world.is_solid(CellPos::new(x, y));
-            let floor = (0..260).flat_map(|r| {
+            let floor = (0..390).flat_map(|r| {
                 let ring: Vec<(i32, i32)> = (-r..=r).flat_map(|d| [(c.x + d, c.y + r), (c.x + d, c.y - r), (c.x + r, c.y + d), (c.x - r, c.y + d)]).collect();
                 ring
             }).find(|&(x, y)| {
                 // (In the zone asked for, if one was.)
                 let zone = std::env::var("PLATYPUS_ZONE").ok();
                 zone.is_none_or(|z| sim.generator.zone_at(x, y) == Some(z.as_str()))
-                    && solid(x, y - 1) && solid(x - 3, y - 1) && solid(x + 3, y - 1) && (0..16).all(|dy| (-5..=5).all(|dx| air(x + dx, y + dy)))
+                    && solid(x, y - 1) && solid(x - 4, y - 1) && solid(x + 4, y - 1) && (0..24).all(|dy| (-8..=8).all(|dx| air(x + dx, y + dy)))
             });
             match floor {
                 Some((x, y)) => {
@@ -5390,12 +5404,12 @@ fn voidlook_script(
             }
             // (`PLATYPUS_NOTORCH=1`: nothing in hand, the lantern alone.)
             toggles.carry = if std::env::var("PLATYPUS_NOTORCH").is_ok() { crate::light::Carry::Nothing } else { crate::light::Carry::Torch };
-            // (`PLATYPUS_SPAWN=spider,bat`: those out in the dark, 40 cells
+            // (`PLATYPUS_SPAWN=spider,bat`: those out in the dark, 60 cells
             // on either side in turn, a little above the floor.)
             if let Ok(kinds) = std::env::var("PLATYPUS_SPAWN") {
                 for (i, kind) in kinds.split(',').filter(|k| !k.is_empty()).enumerate() {
                     let side = if i % 2 == 0 { 1.0 } else { -1.0 };
-                    let at = state.1 + Vec2::new(side * (40.0 + 14.0 * (i / 2) as f32), 2.0 + 8.0 * (i / 2) as f32 - k.body.half.y);
+                    let at = state.1 + Vec2::new(side * (60.0 + 21.0 * (i / 2) as f32), 3.0 + 12.0 * (i / 2) as f32 - k.body.half.y);
                     crate::creatures::def::spawn_creature(&mut commands, kind, at, |_| {});
                 }
             }
@@ -5405,11 +5419,11 @@ fn voidlook_script(
         // frames (each pass wears it down), as a player would.
         2 if t > 2.2 => state.0 = 3,
         3..=6 if t > 2.2 + (state.0 - 3) as f32 * 0.1 => {
-            let c = state.1 + Vec2::new(26.0, 14.0);
-            for dy in (-16..=16).step_by(8) {
-                for dx in (-34..=34).step_by(8) {
+            let c = state.1 + Vec2::new(39.0, 21.0);
+            for dy in (-24..=24).step_by(12) {
+                for dx in (-51..=51).step_by(12) {
                     let at = CellPos::new(c.x as i32 + dx, c.y as i32 + dy);
-                    sim.queue(WorldEdit::Mine { center: at, radius: 7, power: 255, max_hardness: 250, back: true });
+                    sim.queue(WorldEdit::Mine { center: at, radius: 10, power: 255, max_hardness: 250, back: true });
                 }
             }
             state.0 += 1;
@@ -5417,8 +5431,8 @@ fn voidlook_script(
         7 if t > 3.5 => {
             let c = state.1;
             let (mut void, mut walled) = (0, 0);
-            for y in c.y as i32 - 40..c.y as i32 + 60 {
-                for x in c.x as i32 - 90..c.x as i32 + 90 {
+            for y in c.y as i32 - 60..c.y as i32 + 90 {
+                for x in c.x as i32 - 135..c.x as i32 + 135 {
                     let p = CellPos::new(x, y);
                     if sim.world.get(p).is_some_and(|c| c.is_air()) {
                         if sim.world.get_bg(p).is_some_and(|c| c.is_air()) { void += 1 } else { walled += 1 }
@@ -5444,11 +5458,11 @@ fn backdrop_script(s: Res<Scenario>, sim: Res<SimWorld>, mut player: Query<&mut 
         *done = true;
         let x0 = k.body.pos.x as i32;
         if let Ok(want) = std::env::var("PLATYPUS_BIOME") {
-            // The nearest column with 600 cells of it either side.
-            let found = (0..200).flat_map(|i| [x0 + i * 200, x0 - i * 200]).find(|&x| (-3..=3).all(|d| sim.generator.biome_hint(x + d * 200) == Some(want.as_str())));
+            // The nearest column with 900 cells of it either side.
+            let found = (0..200).flat_map(|i| [x0 + i * 300, x0 - i * 300]).find(|&x| (-3..=3).all(|d| sim.generator.biome_hint(x + d * 300) == Some(want.as_str())));
             match found {
                 Some(x) => {
-                    let y = sim.generator.surface_hint(x).unwrap_or(0) as f32 + k.body.half.y + 2.0;
+                    let y = sim.generator.surface_hint(x).unwrap_or(0) as f32 + k.body.half.y + 3.0;
                     k.body.pos = Vec2::new(x as f32, y);
                     k.body.vel = Vec2::ZERO;
                     k.prev_pos = k.body.pos;
@@ -5464,7 +5478,7 @@ fn backdrop_script(s: Res<Scenario>, sim: Res<SimWorld>, mut player: Query<&mut 
     }
 }
 
-/// Down into the rock and back (F2): a pocket dug 200 cells under the
+/// Down into the rock and back (F2): a pocket dug 300 cells under the
 /// player, the player put in it; then F2 up to the surface. Logs where
 /// and what the sound heard (underground or not) at each.
 fn surface_script(
@@ -5483,8 +5497,8 @@ fn surface_script(
     let surface = sim.generator.surface_hint(k.body.pos.x as i32).unwrap_or(0) as f32;
     match state.0 {
         0 if t > 1.5 => {
-            let at = k.body.pos - Vec2::new(0.0, 200.0);
-            sim.queue(WorldEdit::Dig { center: CellPos::new(at.x as i32, at.y as i32), radius: 14, max_hardness: 255 });
+            let at = k.body.pos - Vec2::new(0.0, 300.0);
+            sim.queue(WorldEdit::Dig { center: CellPos::new(at.x as i32, at.y as i32), radius: 21, max_hardness: 255 });
             *state = (1, at);
         }
         1 if t > 1.7 => {
@@ -5525,12 +5539,12 @@ fn sounds_script(s: Res<Scenario>, bank: Res<crate::sound::SoundBank>, player: Q
     let at = player.single().map_or(Vec2::ZERO, |k| k.body.pos);
     let name = names[*next].clone();
     info!("sounds: {} ({} of {})", name, *next + 1, names.len());
-    out.write(crate::sound::PlaySound::at(name, at + Vec2::new(20.0, 0.0)));
+    out.write(crate::sound::PlaySound::at(name, at + Vec2::new(30.0, 0.0)));
     *next += 1;
 }
 
 /// Spiders on the wall behind: a wall of stone blocks put up in the
-/// background (x 560..660, up to 120), the player on a ledge at its top,
+/// background (x 840..990, up to 180), the player on a ledge at its top,
 /// a spider below on the floor; it climbs the wall at the player.
 fn backwall_script(
     mut commands: Commands,
@@ -5552,20 +5566,20 @@ fn backwall_script(
         0 if t > 0.5 => {
             if let Some(stone) = sim.materials().id("stone") {
                 let b = platypus_sim::edit::BLOCK;
-                for bx in 560 / b..660 / b {
-                    for by in floor / b..(floor + 120) / b {
+                for bx in 840 / b..990 / b {
+                    for by in floor / b..(floor + 180) / b {
                         sim.queue(WorldEdit::PlaceBlock { block: CellPos::new(bx, by), material: stone, back: true });
                     }
                 }
                 // A ledge at the top for the player.
-                for x in (600..=660).step_by(2) {
-                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, floor + 121), radius: 2, material: stone, overwrite: true });
+                for x in (900..=990).step_by(3) {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, floor + 182), radius: 3, material: stone, overwrite: true });
                 }
             }
-            k.body.pos = Vec2::new(640.0, fl + 132.0);
+            k.body.pos = Vec2::new(960.0, fl + 198.0);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
-            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(580.0, fl + 6.0), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(870.0, fl + 9.0), |_| {});
             *state = (1, 0.0, -1.0, f32::MAX);
         }
         1 => {
@@ -5578,7 +5592,7 @@ fn backwall_script(
                 }
             }
             if t > 7.0 {
-                info!("backwall: the spider climbed to {:.0} cells up the wall behind (the ledge is at 121), came within {:.0} cells of the player", state.1, state.3);
+                info!("backwall: the spider climbed to {:.0} cells up the wall behind (the ledge is at 182), came within {:.0} cells of the player", state.1, state.3);
                 state.0 = 2;
             }
         }
@@ -5615,10 +5629,12 @@ fn pogo_script(
     let fl = platypus_worldgen::arena::FLOOR as f32;
     let p = k.body.pos;
     let dt = t - state.1;
-    let hits = |x: f32| dummies.iter().find(|(_, c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 8.0).map_or(0, |d| d.3.hits);
-    let dummy_at = |x: f32| dummies.iter().find(|(_, c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 8.0).map(|d| d.2.body.pos);
+    // (A dummy within 30 of where it stood: they're 90 apart, and a slam
+    // beside one shoves it.)
+    let hits = |x: f32| dummies.iter().find(|(_, c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 30.0).map_or(0, |d| d.3.hits);
+    let dummy_at = |x: f32| dummies.iter().find(|(_, c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 30.0).map(|d| d.2.body.pos);
     // A bounce: rising fast just after falling.
-    if k.body.vel.y > 150.0 && state.4 < 60.0 {
+    if k.body.vel.y > 225.0 && state.4 < 90.0 {
         state.2 += 1;
     }
     state.3 = state.3.min(k.body.vel.y);
@@ -5631,7 +5647,7 @@ fn pogo_script(
         k.prev_pos = at;
     };
     let next = |state: &mut (u8, f32, u32, f32, f32, u32)| *state = (state.0 + 1, t, 0, 0.0, 0.0, 0);
-    let all = || [700.0, 760.0, 820.0].iter().map(|&x| hits(x)).sum::<u32>();
+    let all = || [1050.0, 1140.0, 1230.0].iter().map(|&x| hits(x)).sum::<u32>();
     match state.0 {
         // The shortsword (hotbar 2, slot 7).
         0 => {
@@ -5642,29 +5658,29 @@ fn pogo_script(
                 want.push(KeyCode::Digit7);
             }
             if t > 0.8 {
-                put(&mut k, Vec2::new(694.0, fl + 60.0));
+                put(&mut k, Vec2::new(1041.0, fl + 90.0));
                 next(&mut state);
             }
         }
         // S held, the cursor level ahead: over a dummy, falling, strike.
         1 => {
             want.push(KeyCode::KeyS);
-            let goal = [700.0, 760.0, 820.0].into_iter().find(|&x| hits(x) == 0);
+            let goal = [1050.0, 1140.0, 1230.0].into_iter().find(|&x| hits(x) == 0);
             if let Some(gx) = goal.and_then(dummy_at).map(|d| d.x) {
                 // (Along the row, left to right.)
-                if p.x < 830.0 {
+                if p.x < 1245.0 {
                     want.push(KeyCode::KeyD);
                 }
-                click = (p.x - gx).abs() < 14.0 && !k.loco.grounded() && k.body.vel.y < 0.0 && p.y - fl < 45.0;
+                click = (p.x - gx).abs() < 21.0 && !k.loco.grounded() && k.body.vel.y < 0.0 && p.y - fl < 68.0;
             }
-            cursor.0 = Some(p + Vec2::new(40.0, 2.0));
+            cursor.0 = Some(p + Vec2::new(60.0, 3.0));
             if goal.is_none() || dt > 3.5 {
                 info!(
                     "pogo: shortsword down slash, S held, cursor level ahead: {} bounces, dummies hit {} / {} / {} in {:.1}s; hp {:.0}",
                     state.2,
-                    hits(700.0),
-                    hits(760.0),
-                    hits(820.0),
+                    hits(1050.0),
+                    hits(1140.0),
+                    hits(1230.0),
                     dt,
                     h.hp
                 );
@@ -5677,14 +5693,14 @@ fn pogo_script(
                 want.push(KeyCode::Digit8);
             }
             if dt > 0.3 {
-                put(&mut k, Vec2::new(760.0, fl + 110.0));
+                put(&mut k, Vec2::new(1140.0, fl + 165.0));
                 next(&mut state);
                 state.5 = all();
             }
         }
         // A plunge: S and one click; S held 2 s (bouncing on), then let go.
         3 => {
-            cursor.0 = Some(p + Vec2::new(0.0, -30.0));
+            cursor.0 = Some(p + Vec2::new(0.0, -45.0));
             if dt < 2.0 {
                 want.push(KeyCode::KeyS);
             }
@@ -5693,7 +5709,7 @@ fn pogo_script(
                 info!("pogo: plunging: a down-strike {}, falling at {:.0} cells/s", swing.is_some_and(|s| s.downward()), -state.3);
             }
             if dt > 3.0 {
-                info!("pogo: longsword plunge from 110 up: fastest fall {:.0} cells/s, {} bounces (S held 2 s, then let go), the dummy struck {} times", -state.3, state.2, all() - state.5);
+                info!("pogo: longsword plunge from 165 up: fastest fall {:.0} cells/s, {} bounces (S held 2 s, then let go), the dummy struck {} times", -state.3, state.2, all() - state.5);
                 next(&mut state);
             }
         }
@@ -5701,16 +5717,16 @@ fn pogo_script(
         // to the side of the dummies.
         4 => {
             if dt < 0.05 {
-                put(&mut k, Vec2::new(620.0, fl + 120.0));
+                put(&mut k, Vec2::new(930.0, fl + 180.0));
             }
-            cursor.0 = Some(p + Vec2::new(0.0, -30.0));
+            cursor.0 = Some(p + Vec2::new(0.0, -45.0));
             want.push(KeyCode::KeyS);
             click = (0.1..0.15).contains(&dt);
             if (0.12..0.14).contains(&dt)
                 && let Some(spell) = book.spells.iter().position(|x| x.id == "spider_spit")
                 && let Some((e, ..)) = dummies.iter().next()
             {
-                casts.write(crate::magic::CastRequest { caster: e, spell, from: Vec2::new(p.x, fl + 6.0), toward: p, alt: false });
+                casts.write(crate::magic::CastRequest { caster: e, spell, from: Vec2::new(p.x, fl + 9.0), toward: p, alt: false });
             }
             if dt > 1.4 {
                 info!("pogo: plunge onto a spit thrown up at it: {} bounces, {} spells left in the air, hp {:.0}", state.2, spells.iter().count(), h.hp);
@@ -5723,18 +5739,18 @@ fn pogo_script(
                 want.push(KeyCode::Digit7);
             }
             if (0.1..0.15).contains(&dt) {
-                put(&mut k, Vec2::new(930.0, fl + 30.0));
+                put(&mut k, Vec2::new(1395.0, fl + 45.0));
             }
             if dt > 0.15 {
                 want.push(KeyCode::KeyS);
-                click = k.body.vel.y < 0.0 && p.y - fl < 24.0;
+                click = k.body.vel.y < 0.0 && p.y - fl < 36.0;
                 if state.2 > 0 {
                     want.push(KeyCode::KeyA);
                 }
             }
-            cursor.0 = Some(p + Vec2::new(0.0, -30.0));
-            if dt > 2.5 || (state.2 > 0 && p.x < 890.0 && k.loco.grounded()) {
-                info!("pogo: over the lava: {} bounces, hp {:.0}, now at x {:.0} (the pit is 900..960)", state.2, h.hp, p.x);
+            cursor.0 = Some(p + Vec2::new(0.0, -45.0));
+            if dt > 2.5 || (state.2 > 0 && p.x < 1335.0 && k.loco.grounded()) {
+                info!("pogo: over the lava: {} bounces, hp {:.0}, now at x {:.0} (the pit is 1350..1440)", state.2, h.hp, p.x);
                 next(&mut state);
             }
         }
@@ -5745,16 +5761,16 @@ fn pogo_script(
             }
             // (Once the last swing's done and the longsword's in hand.)
             if (0.5..0.55).contains(&dt) {
-                put(&mut k, Vec2::new(806.0, fl + 70.0));
-                state.5 = hits(820.0);
+                put(&mut k, Vec2::new(1209.0, fl + 105.0));
+                state.5 = hits(1230.0);
             }
             if dt > 0.55 {
-                cursor.0 = Some(p + Vec2::new(0.0, -30.0));
+                cursor.0 = Some(p + Vec2::new(0.0, -45.0));
                 want.push(KeyCode::KeyS);
                 click = dt < 0.65;
             }
             if dt > 2.0 {
-                info!("pogo: plunge onto the floor 14 cells from a dummy: it was struck {} times; hp {:.0}", hits(820.0) - state.5, h.hp);
+                info!("pogo: plunge onto the floor 21 cells from a dummy: it was struck {} times; hp {:.0}", hits(1230.0).saturating_sub(state.5), h.hp);
                 next(&mut state);
             }
         }
@@ -5795,47 +5811,47 @@ fn hook_script(
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR;
     let fl = floor as f32;
-    let beam = floor + 110;
+    let beam = floor + 165;
     let (what, wraps) = rope.map_or(("none", 0), |r| r.state());
     let height = k.body.pos.y - k.body.half.y - fl;
     let dt = t - state.1;
     let mut held: Vec<KeyCode> = Vec::new();
     let put = |k: &mut Kinematics, x: f32| {
-        k.body.pos = Vec2::new(x, fl + 8.0);
+        k.body.pos = Vec2::new(x, fl + 12.0);
         k.body.vel = Vec2::ZERO;
         k.prev_pos = k.body.pos;
     };
     let next = |state: &mut (u8, f32, f32, f32)| *state = (state.0 + 1, t, 0.0, 0.0);
     match state.0 {
         0 if t > 0.5 => {
-            // A stone beam overhead; a stone column (700..707, up to 80)
-            // with a bump on its face at 40; a chest out on the floor.
+            // A stone beam overhead; a stone column (1049..1060, up to 120)
+            // with a bump on its face at 60; a chest out on the floor.
             if let Some(stone) = sim.materials().id("stone") {
-                for x in (480..=780).step_by(4) {
-                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, beam + 3), radius: 3, material: stone, overwrite: true });
+                for x in (720..=1170).step_by(6) {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, beam + 4), radius: 4, material: stone, overwrite: true });
                 }
-                for y in (floor..floor + 78).step_by(3) {
-                    sim.queue(WorldEdit::Paint { center: CellPos::new(703, y), radius: 3, material: stone, overwrite: true });
+                for y in (floor..floor + 117).step_by(4) {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(1054, y), radius: 5, material: stone, overwrite: true });
                 }
-                // An overhang: a slab out of the column's face at 50.
-                for x in 690..=700 {
-                    for y in [floor + 49, floor + 50] {
-                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 1, material: stone, overwrite: true });
+                // An overhang: a slab out of the column's face at 75.
+                for x in 1035..=1050 {
+                    for y in [floor + 74, floor + 75] {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 2, material: stone, overwrite: true });
                     }
                 }
             }
-            chests.spawn_placed(&mut commands, Vec2::new(560.0, fl));
-            put(&mut k, 660.0);
+            chests.spawn_placed(&mut commands, Vec2::new(840.0, fl));
+            put(&mut k, 990.0);
             next(&mut state);
         }
         // Up the column's face, past the bump.
         1 if dt > 0.4 => {
-            cursor.0 = Some(Vec2::new(701.0, fl + 70.0));
+            cursor.0 = Some(Vec2::new(1051.0, fl + 105.0));
             if dt < 0.5 {
                 held.push(KeyCode::KeyE);
             }
             if dt > 1.8 {
-                info!("hook: hooked on the column's face above an overhang, from below and out: the hook {what}, at ({:.0}, {height:.0}) (the overhang's at 48..51, 689..701; hooked at ~70), moving {:.0}, health {hp:.0}", k.body.pos.x, k.body.vel.length());
+                info!("hook: hooked on the column's face above an overhang, from below and out: the hook {what}, at ({:.0}, {height:.0}) (the overhang's at 72..77, 1033..1052; hooked at ~105), moving {:.0}, health {hp:.0}", k.body.pos.x, k.body.vel.length());
                 next(&mut state);
             }
         }
@@ -5843,9 +5859,9 @@ fn hook_script(
         // up onto it.
         2 => {
             if dt < 0.05 {
-                put(&mut k, 728.0);
+                put(&mut k, 1092.0);
             }
-            cursor.0 = Some(Vec2::new(706.0, fl + 80.0));
+            cursor.0 = Some(Vec2::new(1059.0, fl + 120.0));
             if (0.1..0.2).contains(&dt) {
                 held.push(KeyCode::KeyE);
             }
@@ -5853,19 +5869,19 @@ fn hook_script(
                 held.push(KeyCode::KeyW);
             }
             if dt > 1.7 {
-                info!("hook: hooked on the column's top and W: the hook {what}, at ({:.0}, {height:.0}) (the top is at ~78, 700..706), health {hp:.0}", k.body.pos.x);
-                put(&mut k, 600.0);
+                info!("hook: hooked on the column's top and W: the hook {what}, at ({:.0}, {height:.0}) (the top is at ~117, 1049..1059), health {hp:.0}", k.body.pos.x);
+                put(&mut k, 900.0);
                 next(&mut state);
             }
         }
         // The beam overhead: pulled up, hanging.
         3 => {
-            cursor.0 = Some(Vec2::new(600.0, beam as f32));
+            cursor.0 = Some(Vec2::new(900.0, beam as f32));
             if dt < 0.1 {
                 held.push(KeyCode::KeyE);
             }
             if dt > 1.2 {
-                info!("hook: hooked on the beam: the hook {what}, {height:.0} cells up (the beam is at 110)");
+                info!("hook: hooked on the beam: the hook {what}, {height:.0} cells up (the beam is at 165)");
                 state.2 = height;
                 next(&mut state);
             }
@@ -5880,16 +5896,16 @@ fn hook_script(
         }
         // D: pump a swing; then jump off.
         5 => {
-            state.2 = state.2.max(k.body.pos.x - 600.0);
-            state.3 = state.3.min(k.body.pos.x - 600.0);
+            state.2 = state.2.max(k.body.pos.x - 900.0);
+            state.3 = state.3.min(k.body.pos.x - 900.0);
             // (With the swing, as a player pumps: the way it's going; D to
             // start it. Fast enough, a jump off it.)
-            if dt > 1.5 && k.body.vel.length() > 150.0 {
+            if dt > 1.5 && k.body.vel.length() > 225.0 {
                 held.push(KeyCode::Space);
                 info!("hook: pumped {dt:.1} s: swung from x {:.0} to {:.0} of the anchor; let go moving ({:.0}, {:.0}), the hook {what}", state.3, state.2, k.body.vel.x, k.body.vel.y);
                 next(&mut state);
             } else {
-                held.push(if k.body.vel.x < -5.0 { KeyCode::KeyA } else { KeyCode::KeyD });
+                held.push(if k.body.vel.x < -7.5 { KeyCode::KeyA } else { KeyCode::KeyD });
             }
             if dt > 5.5 {
                 info!("hook: never fast enough to let go (moving {:.0})", k.body.vel.length());
@@ -5899,9 +5915,9 @@ fn hook_script(
         // By the column's left face: pushed against it, then away: a kick.
         6 if dt > 1.2 => {
             if dt < 1.3 {
-                put(&mut k, 690.0);
+                put(&mut k, 1035.0);
             }
-            cursor.0 = Some(Vec2::new(694.0, beam as f32));
+            cursor.0 = Some(Vec2::new(1041.0, beam as f32));
             if (1.4..1.5).contains(&dt) {
                 held.push(KeyCode::KeyE);
             }
@@ -5977,8 +5993,8 @@ fn beams_script(
     };
     let solid = |xs: std::ops::Range<i32>, ys: std::ops::Range<i32>| xs.flat_map(|x| ys.clone().map(move |y| (x, y))).filter(|&(x, y)| sim.world.is_solid(CellPos::new(x, y))).count();
     let mut stand = |x: f32| {
-        if k.body.pos.distance(Vec2::new(x, floor as f32 + 8.0)) > 2.0 {
-            k.body.pos = Vec2::new(x, floor as f32 + 8.0);
+        if k.body.pos.distance(Vec2::new(x, floor as f32 + 12.0)) > 3.0 {
+            k.body.pos = Vec2::new(x, floor as f32 + 12.0);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
         }
@@ -5989,75 +6005,75 @@ fn beams_script(
     let sweep = |a: f32, b: f32, from: f32, secs: f32| a + (b - a) * ((t - from) / secs).clamp(0.0, 1.0);
     match state.0 {
         0 if t > 0.5 => {
-            info!("beams: the pool's ice {} cells before", count("ice", 300..430, floor - 52..floor + 2));
+            info!("beams: the pool's ice {} cells before", count("ice", 450..645, floor - 78..floor + 3));
             state.0 = 1;
         }
         // The frost ray, along the pool from its left bank.
         1 => {
             hand.slot = 8;
-            stand(292.0);
-            cursor.0 = Some(Vec2::new(sweep(315.0, 415.0, 0.6, 2.4), floor as f32 - 1.0));
+            stand(438.0);
+            cursor.0 = Some(Vec2::new(sweep(472.0, 622.0, 0.6, 2.4), floor as f32 - 1.5));
             left = t > 0.6;
             if t > 3.0 {
-                info!("beams: frost ray swept 2.4 s over the pool: ice {} cells", count("ice", 300..430, floor - 52..floor + 2));
+                info!("beams: frost ray swept 2.4 s over the pool: ice {} cells", count("ice", 450..645, floor - 78..floor + 3));
                 state.0 = 2;
             }
         }
         // ... over the lava pit.
         2 => {
             hand.slot = 8;
-            stand(884.0);
-            cursor.0 = Some(Vec2::new(sweep(904.0, 956.0, 3.2, 2.0), floor as f32 - 5.0));
+            stand(1326.0);
+            cursor.0 = Some(Vec2::new(sweep(1356.0, 1434.0, 3.2, 2.0), floor as f32 - 7.5));
             left = t > 3.2;
             if t > 5.4 {
-                info!("beams: frost ray over the lava 2 s: basalt {} cells, lava {} left", count("basalt", 898..962, floor - 26..floor), count("lava", 898..962, floor - 26..floor));
+                info!("beams: frost ray over the lava 2 s: basalt {} cells, lava {} left", count("basalt", 1347..1443, floor - 39..floor), count("lava", 1347..1443, floor - 39..floor));
                 state.0 = 3;
             }
         }
         // The fire ray on the first dummy.
         3 => {
             hand.slot = 9;
-            stand(640.0);
-            cursor.0 = Some(Vec2::new(700.0, floor as f32 + 10.0));
+            stand(960.0);
+            cursor.0 = Some(Vec2::new(1050.0, floor as f32 + 15.0));
             left = t > 5.6;
             if t > 7.0 {
                 let (hurt, burning) = dummies.iter().min_by(|a, b| a.0.body.pos.x.total_cmp(&b.0.body.pos.x)).map_or((0.0, false), |(_, tl, b)| (tl.map_or(0.0, |x| x.total), b));
                 info!("beams: fire ray on the dummy 1.4 s: it took {hurt:.0}, burning {burning}");
                 state.0 = 4;
-                state.1 = solid(600..680, floor - 40..floor) as f32;
+                state.1 = solid(900..1020, floor - 60..floor) as f32;
             }
         }
         // The vaporiser into the floor ahead, then at the sandbag.
         4 => {
             hand.slot = 7;
-            stand(640.0);
-            cursor.0 = Some(Vec2::new(sweep(660.0, 675.0, 7.2, 1.6), floor as f32 - 30.0));
+            stand(960.0);
+            cursor.0 = Some(Vec2::new(sweep(990.0, 1012.0, 7.2, 1.6), floor as f32 - 45.0));
             left = t > 7.2;
             if t > 8.8 {
-                info!("beams: vaporiser into the floor 1.6 s: {} solid cells gone", state.1 as usize - solid(600..680, floor - 40..floor));
+                info!("beams: vaporiser into the floor 1.6 s: {} solid cells gone", state.1 as usize - solid(900..1020, floor - 60..floor));
                 state.0 = 5;
             }
         }
         5 => {
             hand.slot = 7;
-            stand(846.0);
-            cursor.0 = Some(Vec2::new(870.0, floor as f32 + 10.0));
+            stand(1269.0);
+            cursor.0 = Some(Vec2::new(1305.0, floor as f32 + 15.0));
             left = t > 9.0;
             if t > 10.0 {
                 let hurt = dummies.iter().max_by(|a, b| a.0.body.pos.x.total_cmp(&b.0.body.pos.x)).map_or(0.0, |(_, tl, _)| tl.map_or(0.0, |x| x.total));
                 info!("beams: vaporiser on the sandbag 1 s: it took {hurt:.0}");
                 state.0 = 6;
-                state.1 = solid(480..680, floor - 40..floor) as f32;
+                state.1 = solid(720..1020, floor - 60..floor) as f32;
             }
         }
         // A star bomb into the floor.
         6 => {
             hand.slot = 7;
-            stand(520.0);
-            cursor.0 = Some(Vec2::new(570.0, floor as f32 - 5.0));
+            stand(780.0);
+            cursor.0 = Some(Vec2::new(855.0, floor as f32 - 7.5));
             right = (10.8..11.2).contains(&t);
             if t > 12.8 {
-                info!("beams: a star bomb into the floor: {} solid cells gone", state.1 as usize - solid(480..680, floor - 40..floor));
+                info!("beams: a star bomb into the floor: {} solid cells gone", state.1 as usize - solid(720..1020, floor - 60..floor));
                 state.0 = 7;
             }
         }
@@ -6102,7 +6118,7 @@ fn conjure_script(
         xs.flat_map(|x| ys.clone().map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count()
     };
     // (The player isn't what's being tested: kept standing and whole.)
-    k.body.pos.x = 600.0;
+    k.body.pos.x = 900.0;
     hp.hp = hp.max;
     hand.bar = 2;
     let orc = |e: Option<Entity>| e.and_then(|e| orcs.get(e).ok()).map(|(_, k, h, b)| (k.body.pos.x, h.hp, b));
@@ -6115,9 +6131,9 @@ fn conjure_script(
             {
                 inv.slots.swap(i, 25);
             }
-            k.body.pos = Vec2::new(600.0, floor as f32 + 8.0);
+            k.body.pos = Vec2::new(900.0, floor as f32 + 12.0);
             k.prev_pos = k.body.pos;
-            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(780.0, floor as f32 + 10.0), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(1170.0, floor as f32 + 15.0), |_| {});
             state.0 = 1;
         }
         1 => {
@@ -6129,22 +6145,22 @@ fn conjure_script(
         // An ice wall in the right-hand orc's way.
         2 => {
             hand.slot = 8;
-            cursor.0 = Some(Vec2::new(650.0, floor as f32 + 20.0));
+            cursor.0 = Some(Vec2::new(975.0, floor as f32 + 30.0));
             right = (0.8..0.9).contains(&t);
             if t > 3.0 {
-                info!("conjure: ice wall at x 647..653: ice {} cells; the orc behind it at x {:?}", count("ice", 640..660, floor..floor + 40), orc(state.1).map(|o| o.0));
+                info!("conjure: ice wall at x 970..980: ice {} cells; the orc behind it at x {:?}", count("ice", 960..990, floor..floor + 60), orc(state.1).map(|o| o.0));
                 state.0 = 3;
             }
         }
         // A fire wall the left-hand orc walks into.
         3 => {
             hand.slot = 9;
-            cursor.0 = Some(Vec2::new(540.0, floor as f32 + 20.0));
+            cursor.0 = Some(Vec2::new(810.0, floor as f32 + 30.0));
             right = (3.1..3.2).contains(&t);
             // Another orc, from the left, once the wall is up.
             if t > 3.4 && state.2.is_none() {
-                info!("conjure: fire wall: {} cells of flame", count("fire", 530..550, floor..floor + 40));
-                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(470.0, floor as f32 + 10.0), |_| {});
+                info!("conjure: fire wall: {} cells of flame", count("fire", 795..825, floor..floor + 60));
+                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(705.0, floor as f32 + 15.0), |_| {});
                 state.2 = Some(Entity::PLACEHOLDER);
             }
             if state.2 == Some(Entity::PLACEHOLDER) {
@@ -6158,26 +6174,26 @@ fn conjure_script(
         // A toxic cloud on the orc behind the ice.
         4 => {
             hand.slot = 5;
-            let at = orc(state.1).map_or(700.0, |o| o.0);
-            cursor.0 = Some(Vec2::new(at, floor as f32 + 12.0));
+            let at = orc(state.1).map_or(1050.0, |o| o.0);
+            cursor.0 = Some(Vec2::new(at, floor as f32 + 18.0));
             left = (6.1..6.2).contains(&t);
             if t > 9.0 {
-                info!("conjure: 2.7 s in the cloud: the orc's hp {:?}; miasma {} cells (sunk: {} below floor + 10)", orc(state.1).map(|o| o.1 as i32), count("miasma", 600..800, floor - 20..floor + 60), count("miasma", 600..800, floor - 20..floor + 10));
+                info!("conjure: 2.7 s in the cloud: the orc's hp {:?}; miasma {} cells (sunk: {} below floor + 15)", orc(state.1).map(|o| o.1 as i32), count("miasma", 900..1200, floor - 30..floor + 90), count("miasma", 900..1200, floor - 30..floor + 15));
                 state.0 = 5;
             }
         }
         // Lit with the fire ray.
         5 => {
             hand.slot = 9;
-            let at = orc(state.1).map_or(700.0, |o| o.0);
-            cursor.0 = Some(Vec2::new(at, floor as f32 + 6.0));
+            let at = orc(state.1).map_or(1050.0, |o| o.0);
+            cursor.0 = Some(Vec2::new(at, floor as f32 + 9.0));
             left = (9.1..9.6).contains(&t);
             if t > 9.7 && t < 9.72 {
-                let lit = (600..800).flat_map(|x| (floor - 20..floor + 60).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.flags & platypus_sim::cell::flags::BURNING != 0)).count();
-                info!("conjure: fire ray into the cloud 0.6 s: {lit} cells burning, miasma {}", count("miasma", 600..800, floor - 20..floor + 60));
+                let lit = (900..1200).flat_map(|x| (floor - 30..floor + 90).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.flags & platypus_sim::cell::flags::BURNING != 0)).count();
+                info!("conjure: fire ray into the cloud 0.6 s: {lit} cells burning, miasma {}", count("miasma", 900..1200, floor - 30..floor + 90));
             }
             if t > 10.5 {
-                info!("conjure: fire ray into the cloud: miasma {} cells left, fire {}, the orc's hp {:?}, burning {:?}", count("miasma", 600..800, floor - 20..floor + 60), count("fire", 600..800, floor - 20..floor + 60), orc(state.1).map(|o| o.1 as i32), orc(state.1).map(|o| o.2));
+                info!("conjure: fire ray into the cloud: miasma {} cells left, fire {}, the orc's hp {:?}, burning {:?}", count("miasma", 900..1200, floor - 30..floor + 90), count("fire", 900..1200, floor - 30..floor + 90), orc(state.1).map(|o| o.1 as i32), orc(state.1).map(|o| o.2));
                 state.0 = 6;
             }
         }
@@ -6219,16 +6235,16 @@ fn call_script(
     let hps = || orcs.iter().map(|(_, k, h, _)| (k.body.pos.x as i32, h.hp as i32)).collect::<Vec<_>>();
     match state.0 {
         0 if t > 0.5 => {
-            k.body.pos = Vec2::new(620.0, floor as f32 + 8.0);
+            k.body.pos = Vec2::new(930.0, floor as f32 + 12.0);
             k.prev_pos = k.body.pos;
             // A stone roof over the right-hand one.
             if let Some(stone) = sim.materials().id("stone") {
-                for x in (520..=580).step_by(4) {
-                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, floor + 50), radius: 3, material: stone, overwrite: true });
+                for x in (780..=870).step_by(6) {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, floor + 75), radius: 4, material: stone, overwrite: true });
                 }
             }
-            for x in [740.0, 800.0, 550.0] {
-                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x, floor as f32 + 10.0), |e| {
+            for x in [1110.0, 1200.0, 825.0] {
+                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x, floor as f32 + 15.0), |e| {
                     e.remove::<crate::creatures::brain::hunter::Hunter>();
                 });
             }
@@ -6238,18 +6254,18 @@ fn call_script(
         1 if t > 1.0 => {
             hand.bar = 0;
             hand.slot = 9;
-            if let Some((p, ..)) = at(740.0) {
+            if let Some((p, ..)) = at(1110.0) {
                 cursor.0 = Some(p);
             }
             right = t < 1.1;
             if t > 2.2 {
-                info!("call: lightning on the orc at 740: orcs (x, hp) {:?}", hps());
+                info!("call: lightning on the orc at 1110: orcs (x, hp) {:?}", hps());
                 state.0 = 2;
             }
         }
         // ... on the one under the roof.
         2 => {
-            if let Some((p, ..)) = at(550.0).filter(|(p, ..)| p.x < 600.0) {
+            if let Some((p, ..)) = at(825.0).filter(|(p, ..)| p.x < 900.0) {
                 cursor.0 = Some(p);
             }
             right = (2.5..2.6).contains(&t);
@@ -6262,17 +6278,17 @@ fn call_script(
         3 => {
             hand.bar = 0;
             hand.slot = 8;
-            if let Some((p, ..)) = at(800.0) {
+            if let Some((p, ..)) = at(1200.0) {
                 cursor.0 = Some(p);
             }
             right = (4.0..4.1).contains(&t);
             if t > 4.0 && state.1 == 0.0 {
-                state.1 = (760..840).flat_map(|x| (floor - 40..floor).map(move |y| (x, y))).filter(|&(x, y)| sim.world.is_solid(CellPos::new(x, y))).count() as f32;
+                state.1 = (1140..1260).flat_map(|x| (floor - 60..floor).map(move |y| (x, y))).filter(|&(x, y)| sim.world.is_solid(CellPos::new(x, y))).count() as f32;
             }
             if t > 6.5 {
-                let solid = (760..840).flat_map(|x| (floor - 40..floor).map(move |y| (x, y))).filter(|&(x, y)| sim.world.is_solid(CellPos::new(x, y))).count();
-                let lava = sim.materials().id("lava").map_or(0, |m| (700..900).flat_map(|x| (floor - 40..floor + 40).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
-                info!("call: a meteor on the orc at 800: orcs (x, hp) {:?}; a crater of {} cells, {} of lava about", hps(), state.1 as usize - solid, lava);
+                let solid = (1140..1260).flat_map(|x| (floor - 60..floor).map(move |y| (x, y))).filter(|&(x, y)| sim.world.is_solid(CellPos::new(x, y))).count();
+                let lava = sim.materials().id("lava").map_or(0, |m| (1050..1350).flat_map(|x| (floor - 60..floor + 60).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
+                info!("call: a meteor on the orc at 1200: orcs (x, hp) {:?}; a crater of {} cells, {} of lava about", hps(), state.1 as usize - solid, lava);
                 state.0 = 4;
             }
         }
@@ -6322,7 +6338,7 @@ fn void_script(
         k.body.vel = Vec2::ZERO;
         k.prev_pos = at;
     };
-    let water = |sim: &SimWorld, xs: std::ops::Range<i32>| sim.materials().id("water").map_or(0, |m| xs.flat_map(|x| (floor..floor + 120).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
+    let water = |sim: &SimWorld, xs: std::ops::Range<i32>| sim.materials().id("water").map_or(0, |m| xs.flat_map(|x| (floor..floor + 180).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
     match state.0 {
         0 if t > 0.5 => {
             // The void wand and staff out of the pack, onto hotbar 3.
@@ -6333,36 +6349,36 @@ fn void_script(
                     }
                 }
             }
-            put(&mut k, Vec2::new(520.0, fl + 8.0));
+            put(&mut k, Vec2::new(780.0, fl + 12.0));
             state.0 = 1;
         }
         // Blink along the floor.
         1 => {
             hand.bar = 2;
             hand.slot = 0;
-            cursor.0 = Some(Vec2::new(640.0, fl - 2.0));
+            cursor.0 = Some(Vec2::new(960.0, fl - 3.0));
             left = (0.7..0.75).contains(&t);
             if t > 1.4 {
-                info!("void: blinked from x 520 toward x 640: now at x {:.0}, y {:.0}", k.body.pos.x, k.body.pos.y - fl);
-                put(&mut k, Vec2::new(620.0, fl + 8.0));
+                info!("void: blinked from x 780 toward x 960: now at x {:.0}, y {:.0}", k.body.pos.x, k.body.pos.y - fl);
+                put(&mut k, Vec2::new(930.0, fl + 12.0));
                 state.0 = 2;
             }
         }
-        // A portal in the floor at 580, then one on the column's left face.
+        // A portal in the floor at 870, then one on the column's left face.
         2 => {
             hand.bar = 2;
             hand.slot = 1;
-            // (The second from nearer the column: a void bolt reaches ~330 cells.)
+            // (The second from nearer the column: a void bolt reaches ~500 cells.)
             if t > 2.0 {
-                put(&mut k, Vec2::new(975.0, fl + 8.0));
+                put(&mut k, Vec2::new(1462.0, fl + 12.0));
             }
-            cursor.0 = Some(if t < 2.0 { Vec2::new(580.0, fl - 2.0) } else { Vec2::new(1100.0, fl + 90.0) });
+            cursor.0 = Some(if t < 2.0 { Vec2::new(870.0, fl - 3.0) } else { Vec2::new(1650.0, fl + 135.0) });
             left = (1.6..1.65).contains(&t) || (2.2..2.25).contains(&t);
             if t > 2.8 {
                 let at: Vec<String> = portals.iter().map(|p| format!("({:.0}, {:.0}) facing ({:.0}, {:.0})", p.at.x, p.at.y - fl, p.normal.x, p.normal.y)).collect();
                 info!("void: portals open: {at:?}");
-                put(&mut k, Vec2::new(520.0, fl + 8.0));
-                chests.spawn_placed(&mut commands, Vec2::new(581.0, fl + 60.0));
+                put(&mut k, Vec2::new(780.0, fl + 12.0));
+                chests.spawn_placed(&mut commands, Vec2::new(871.0, fl + 90.0));
                 state.0 = 3;
                 state.1 = t;
             }
@@ -6371,7 +6387,7 @@ fn void_script(
         3 => {
             if let Some(c) = boxes.iter().next()
                 && state.2 == Vec2::ZERO
-                && c.body.pos.x > 1000.0
+                && c.body.pos.x > 1500.0
             {
                 state.2 = c.body.pos;
                 info!("void: the chest dropped into the floor portal came out at ({:.0}, {:.0}) moving ({:.0}, {:.0})", c.body.pos.x, c.body.pos.y - fl, c.body.vel.x, c.body.vel.y);
@@ -6381,7 +6397,7 @@ fn void_script(
                 info!("void: 1.5 s later the chest is at {:?}", c.map(|c| (c.x as i32, (c.y - fl) as i32)));
                 // Water poured over the floor portal.
                 if let Some(w) = sim.materials().id("water") {
-                    sim.queue(WorldEdit::Paint { center: CellPos::new(580, floor + 40), radius: 8, material: w, overwrite: false });
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(870, floor + 60), radius: 12, material: w, overwrite: false });
                 }
                 state.0 = 4;
                 state.1 = t;
@@ -6389,24 +6405,27 @@ fn void_script(
         }
         4 => {
             if t - state.1 > 2.0 {
-                let obsidian = sim.materials().id("obsidian").map_or(0, |m| (890..970).flat_map(|x| (floor - 30..floor + 10).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
-                info!("void: water poured over the floor portal: {} cells left by it, {} by the column (x 960..1100), {} obsidian on the lava pit", water(&sim, 540..620), water(&sim, 960..1100), obsidian);
-                // The player dropped in.
-                put(&mut k, Vec2::new(580.0, fl + 40.0));
+                let obsidian = sim.materials().id("obsidian").map_or(0, |m| (1335..1455).flat_map(|x| (floor - 45..floor + 15).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
+                info!("void: water poured over the floor portal: {} cells left by it, {} by the column (x 1440..1650), {} obsidian on the lava pit", water(&sim, 810..930), water(&sim, 1440..1650), obsidian);
+                // The player dropped in (over the floor portal, wherever the
+                // bolt opened it; from 64 up: from 60 the tick before it
+                // lands is just out of the portal's reach, and it stands on it).
+                let over = portals.iter().find(|p| p.normal.y > 0.5).map_or(870.0, |p| p.at.x);
+                put(&mut k, Vec2::new(over, fl + 64.0));
                 state.0 = 5;
                 state.1 = t;
                 state.2 = Vec2::ZERO;
             }
         }
         5 => {
-            if state.2 == Vec2::ZERO && k.body.pos.x > 1000.0 {
+            if state.2 == Vec2::ZERO && k.body.pos.x > 1500.0 {
                 state.2 = k.body.pos;
                 info!("void: the player, dropped into the floor portal, came out at ({:.0}, {:.0}) moving ({:.0}, {:.0})", k.body.pos.x, k.body.pos.y - fl, k.body.vel.x, k.body.vel.y);
             }
             if t - state.1 > 1.5 {
                 info!("void: 1.5 s later the player is at ({:.0}, {:.0})", k.body.pos.x, k.body.pos.y - fl);
-                put(&mut k, Vec2::new(620.0, fl + 8.0));
-                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(760.0, fl + 10.0), |_| {});
+                put(&mut k, Vec2::new(930.0, fl + 12.0));
+                crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(1140.0, fl + 15.0), |_| {});
                 state.0 = 6;
                 state.1 = t;
             }
@@ -6475,7 +6494,7 @@ fn fall_script(
     state.3 = state.3.min(k.body.vel.y);
     let start = |state: &mut (u8, f32, f32, f32), k: &mut Kinematics, hp: &mut crate::creatures::Health, phase: u8| {
         *state = (phase, t, 0.0, 0.0);
-        k.body.pos = Vec2::new(620.0, fl + 8.0);
+        k.body.pos = Vec2::new(930.0, fl + 12.0);
         k.body.vel = Vec2::ZERO;
         k.prev_pos = k.body.pos;
         hp.hp = hp.max;
@@ -6485,10 +6504,10 @@ fn fall_script(
     };
     match state.0 {
         0 if t > 0.8 => start(&mut state, &mut k, &mut hp, 1),
-        // Rocket up 1.2 s, fall; brake from 110 cells up until nearly still.
+        // Rocket up 1.2 s, fall; brake from 165 cells up until nearly still.
         1 | 3 => {
             let brake = state.0 == 1;
-            jump = dt < 1.2 || brake && dt > 1.5 && height < 110.0 && k.body.vel.y < -40.0;
+            jump = dt < 1.2 || brake && dt > 1.5 && height < 165.0 && k.body.vel.y < -60.0;
             if dt > 1.6 && grounded {
                 info!("fall: rocket to {:.0} cells, fell at up to {:.0} cells/s, {}: landed with {:.0} of {:.0} hp (deaths so far {})", state.2, -state.3, if brake { "braked near the ground" } else { "no braking" }, hp.hp, hp.max, deaths.0);
                 let next = state.0 + 1;
@@ -6558,22 +6577,22 @@ fn save_script(
     if a && *state == 0 && t > 1.5 {
         *state = 1;
         let mats = sim.materials().clone();
-        sim.queue(WorldEdit::Paint { center: CellPos::new(700, floor - 10), radius: 8, material: platypus_sim::MaterialId::AIR, overwrite: true });
+        sim.queue(WorldEdit::Paint { center: CellPos::new(1050, floor - 15), radius: 12, material: platypus_sim::MaterialId::AIR, overwrite: true });
         if let Some(brick) = mats.id("brick") {
-            sim.queue(WorldEdit::Paint { center: CellPos::new(560, floor + 30), radius: 4, material: brick, overwrite: true });
+            sim.queue(WorldEdit::Paint { center: CellPos::new(840, floor + 45), radius: 6, material: brick, overwrite: true });
         }
-        chests.spawn_placed(&mut commands, Vec2::new(600.0, floor as f32));
+        chests.spawn_placed(&mut commands, Vec2::new(900.0, floor as f32));
         if let (Some(key), Some(iron)) = (chests.stashes().map(|(k, ..)| k).max(), items.id("iron_bar")) {
             let world = &sim.world;
             chests.contents(key, world, &items).add(&items, crate::hands::items::Stack::new(iron, 3));
         }
         if let Some(bench) = crafting.station("workbench") {
-            crafting.spawn(&mut commands, bench, Vec2::new(640.0, floor as f32));
+            crafting.spawn(&mut commands, bench, Vec2::new(960.0, floor as f32));
         }
         if let (Some(inv), Some(gold)) = (inv.as_mut(), items.id("gold_bar")) {
             inv.add(&items, crate::hands::items::Stack::new(gold, 7));
         }
-        k.body.pos = Vec2::new(520.0, floor as f32 + 8.0);
+        k.body.pos = Vec2::new(780.0, floor as f32 + 12.0);
         k.prev_pos = k.body.pos;
         return;
     }
@@ -6590,8 +6609,8 @@ fn save_script(
         info!(
             "{}: the hole {} air cells, bricks {}; the player at ({:.0}, {:.0}) with {} gold bars; {} chests ({} iron bars in them), {} stations, {} creatures; tick {}, {}; seen {} items",
             s.name,
-            count(&sim, None, 692..709, floor - 18..floor - 1),
-            count(&sim, brick, 554..567, floor + 24..floor + 37),
+            count(&sim, None, 1038..1064, floor - 27..floor - 1),
+            count(&sim, brick, 831..851, floor + 36..floor + 56),
             k.body.pos.x,
             k.body.pos.y - floor as f32,
             inv.as_ref().map_or(0, |i| gold.map_or(0, |g| i.count(g))),
@@ -6654,7 +6673,7 @@ fn craft_script(
     let next = |state: &mut (u8, f32)| *state = (state.0 + 1, t);
     match state.0 {
         0 if t > 0.8 => {
-            k.body.pos = Vec2::new(620.0, floor + 8.0);
+            k.body.pos = Vec2::new(930.0, floor + 12.0);
             k.prev_pos = k.body.pos;
             for (id, n) in [("block:wood", 8), ("block:stone", 12), ("block:copper_ore", 6), ("block:iron_ore", 24), ("block:coal", 2), ("block:amethyst", 3)] {
                 if let Some(item) = items.id(id) {
@@ -6669,13 +6688,13 @@ fn craft_script(
             ask("workbench", 1);
             next(&mut state);
         }
-        // (Set down within the hand's reach: 24 cells.)
+        // (Set down within the hand's reach: 36 cells.)
         2 if dt > 0.2 => {
             if dt < 0.22 {
                 info!("craft: by hand: {} planks left, {} workbench", have(&inv, "block:planks"), have(&inv, "workbench"));
             }
             hold(&mut inv, "workbench");
-            cursor.0 = Some(Vec2::new(624.0, floor + 2.0));
+            cursor.0 = Some(Vec2::new(936.0, floor + 3.0));
             click = dt < 0.4;
             if dt > 0.55 {
                 next(&mut state);
@@ -6688,7 +6707,7 @@ fn craft_script(
             }
             if dt > 0.2 {
                 hold(&mut inv, "furnace");
-                cursor.0 = Some(Vec2::new(606.0, floor + 2.0));
+                cursor.0 = Some(Vec2::new(909.0, floor + 3.0));
                 click = dt < 0.45;
             }
             if dt > 0.6 {
@@ -6708,7 +6727,7 @@ fn craft_script(
             }
             if dt > 0.4 {
                 hold(&mut inv, "anvil");
-                cursor.0 = Some(Vec2::new(640.0, floor + 2.0));
+                cursor.0 = Some(Vec2::new(960.0, floor + 3.0));
                 click = dt < 0.65;
             }
             if dt > 0.8 {

@@ -319,7 +319,7 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
 fn place(bd: Res<Backdrops>, zoom: Res<crate::camera::Zoom>, cam: Single<&Transform, (With<MainCamera>, Without<Sprite>)>, mut sprites: Query<(&mut Transform, &mut Sprite), Without<MainCamera>>) {
     let c = cam.translation.truncate();
     // (The ranges snapped to whole screen pixels from the camera: crisp,
-    // and gliding a pixel at a time; snapped to whole cells they hopped 3
+    // and gliding a pixel at a time; snapped to whole cells they hopped 2
     // pixels at once. The clouds, drifting slowly on their own, aren't:
     // they're drawn smooth, `CLOUD_UP`.)
     let px = zoom.0.max(1) as f32;

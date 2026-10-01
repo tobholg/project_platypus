@@ -17,15 +17,16 @@ use crate::weather::{self, Weather};
 
 /// A connected solid piece bigger than this counts as ground (anchored). Smaller
 /// pieces that touch neither bedrock nor unloaded world are floating and fall.
-/// Fastest a kick sends a body (cells a tick at the fastest dir, before
-/// its lift: ~180 cells a second).
+/// Fastest a kick sends a body, as a share of the kick's `dir` (cells a
+/// tick: the speed is in `dir`, which the specks and particles take as
+/// it is; at the player's, ~190 cells a second before its lift).
 /// Fracture (brittle bodies): not in its first ticks (just broken off), not
 /// when smaller than this (cells: it's rubble's size), and each part flies
 /// off its fellow this fast (cells a tick).
 const FRACTURE_AFTER: u32 = 6;
 const FRACTURE_MIN: f32 = 27.0;
 const FRACTURE_PART: f32 = 0.52;
-const KICK_SPEED: f32 = 1.95;
+const KICK_SPEED: f32 = 1.3;
 const ANCHOR_BUDGET: usize = 6_750;
 /// The same for the background, where a whole tree with its crown must fit
 /// (a giant is ~45k cells): anything bigger isn't a tree and counts as held.
@@ -1880,7 +1881,7 @@ impl World {
         for (p, c) in cells {
             if front {
                 // (Sunk a little into what it rests on: a cell that meets
-                // something solid goes just above it (up to 10), not lost.)
+                // something solid goes just above it (up to 15), not lost.)
                 let open = |w: &World, q: CellPos| w.get(q).map(|f| (f, if f.is_air() { Kind::Empty } else { mats.phys(f.material).kind })).filter(|(_, k)| matches!(k, Kind::Empty | Kind::Gas | Kind::Fire | Kind::Plant | Kind::Liquid));
                 let Some((p, (f, kind))) = (0..=15).map(|dy| p.offset(0, dy)).find_map(|q| open(self, q).map(|o| (q, o))) else { continue };
                 if kind == Kind::Liquid {

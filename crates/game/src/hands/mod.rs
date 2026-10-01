@@ -639,7 +639,7 @@ fn use_hands(
 
 /// A furnace melts what the pack holds that melts (a metal's bars, its ore:
 /// blocks whose material melts into a hot liquid) into the vessel `st`, up to
-/// what it `holds`, one liquid at a time: a bar gives its 16 cells, ore half
+/// what it `holds`, one liquid at a time: a bar gives its 36 cells, ore half
 /// (the rest is slag). Whether anything went in.
 fn melt_into(inv: &mut Inventory, st: &mut Stack, items: &Items, mats: &platypus_sim::MaterialTable, holds: u32) -> bool {
     let (have, mut n) = st.fill.map_or((None, 0), |(m, n)| (Some(m), n));

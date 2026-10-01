@@ -2119,9 +2119,9 @@ fn placing_a_block_fills_its_empty_cells_with_the_pattern() {
         assert_eq!(Some(c.shade), w.materials().pattern_shade(brick, p.x, p.y), "shaded by the pattern at {p:?}");
     }
     // The pattern is anchored to the world: the same cell of the next block
-    // over (8 cells on, one pattern width) has the same shade.
-    w.apply_edit(&WorldEdit::PlaceBlock { block: CellPos::new(6, 2), material: brick, back: false });
-    assert_eq!(w.get(CellPos::new(30, 14)).unwrap().shade, w.get(CellPos::new(38, 14)).unwrap().shade);
+    // over (12 cells on, one pattern width) has the same shade.
+    w.apply_edit(&WorldEdit::PlaceBlock { block: CellPos::new(7, 2), material: brick, back: false });
+    assert_eq!(w.get(CellPos::new(30, 14)).unwrap().shade, w.get(CellPos::new(42, 14)).unwrap().shade);
 }
 
 #[test]
@@ -2281,4 +2281,18 @@ fn a_blast_in_water_throws_it_up() {
     assert!(flying > 200, "a geyser ({flying} thrown)");
     assert!(w.particles().iter().filter(|p| p.cell.material == water).all(|p| p.vel[1] > 0.0), "thrown up");
     assert!(count(&w, steam) > 10, "some flashed to steam");
+}
+
+/// Water deeper than a chunk is tall: its pressure looks up the column no
+/// further than the step can see (a 72-cell look read past the chunks it
+/// held, and panicked).
+#[test]
+fn a_pool_deeper_than_a_chunk_settles() {
+    let mut w = boxed_world(2, 5, 71);
+    fill(&mut w, "stone", 1, 127, 1, 4);
+    fill(&mut w, "water", 20, 60, 4, 280);
+    for _ in 0..300 {
+        w.step();
+    }
+    assert!(count(&w, w.materials().expect_id("water")) > 5_000, "the water's still there");
 }

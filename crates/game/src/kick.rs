@@ -36,9 +36,9 @@ const JOLT: f32 = 0.12;
 /// How far in front of the feet the kick reaches, and how high (cells).
 const REACH: f32 = 12.0;
 const HEIGHT: f32 = 11.0;
-/// A kick's impulse into the world (mass in cells × cells a tick: a
-/// 675-cell log leaves at 1.5 cells a tick, ~90 cells a second).
-const IMPULSE: f32 = 1013.0;
+/// A kick's impulse into the world (mass in cells, times `dir` below: a
+/// 675-cell log leaves at `dir`, 2.4 cells a tick, ~140 cells a second).
+const IMPULSE: f32 = 675.0;
 /// What things on the move take (cells a second), before their size.
 const THROW: Vec2 = Vec2::new(255.0, 165.0);
 /// A creature kicked takes a blow (`combat::Hit`): this much damage (a

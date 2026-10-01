@@ -1,8 +1,6 @@
-// HD spike (PLATYPUS_HD=1): drawn at 1.5x (head, torso, arms, legs and
-// the run by hand; the rest upscaled, placeholders).
 // The player: an adventurer in a green tunic, drawn on the humanoid rig
 // (parts put together into poses; crates/art). Facing right; the game
-// mirrors it. ~20 px tall on a 6×15 body (the head may overhang it).
+// mirrors it. ~33 px tall on a 9×23 body (the head may overhang it).
 (
     size: (36, 38),
     feet: (17.5, 38),

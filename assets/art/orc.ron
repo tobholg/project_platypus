@@ -1,5 +1,3 @@
-// HD spike (PLATYPUS_HD=1): drawn at 1.5x (head, torso, arms, legs and
-// the run by hand; the rest upscaled, placeholders).
 // An orc, drawn on the humanoid rig (the player's parts and poses, crates/art):
 // green skin, a topknot, a heavy brow, red eyes, a tusk; leather and bone.
 // Facing right; the game mirrors it.

@@ -8,11 +8,11 @@ part moves into SPEC.md as its arc lands. Numbers are starting points.
 
 | # | Question | Decision |
 |---|---|---|
-| D1 | How big is the world? | 131 072 × 32 768 cells (2 048 × 512 chunks; grown 8× on 2026-09-29, §13), sized from the preset; `medium` (32 768 × 16 384, the first size) is the reference, `small` for tests. |
-| D2 | What unit do mining and building work in? | Blocks of 4 × 4 cells on a fixed grid. The world stays cells. |
+| D1 | How big is the world? | 196 608 × 49 152 cells (3 072 × 768 chunks; grown 8× on 2026-09-29, §13), sized from the preset; `medium` (49 152 × 24 576, the first size) is the reference, `small` for tests. |
+| D2 | What unit do mining and building work in? | Blocks of 6 × 6 cells on a fixed grid. The world stays cells. |
 | D3 | How are humanoids drawn? | Terraria-style: layered frame sheets on one shared frame layout per body size. Gear is a "skin" painted onto body regions. Only held items rotate. |
 | D4 | How do you loot the dead? | The corpse becomes a physical cell body that holds the loot. Interact to loot it. Destroy the corpse and the loot scatters. |
-| D5 | How big are characters? | Keep 1 art pixel = 1 cell. Decide 18 px vs ~24 px humanoids from rendered mock-ups when the RPG arc starts. The 4 × 4 block works for both. |
+| D5 | How big are characters? | Keep 1 art pixel = 1 cell. Decide 27 px vs ~36 px humanoids from rendered mock-ups when the RPG arc starts. The 6 × 6 block works for both. |
 | D7 | What tempo does movement have? | Open (2026-09-27): Hollow Knight's (fast, snappy, heavy: where we are) or Terraria's (a slower run with a run-up and a skid, a held rise to the jump, ~0.85 s in the air, a slow fall), or between. Leaning: Terraria's tempo with Hollow Knight's control (coyote time, buffering, variable height, the dash, the pogo), so movement gear has room to make you faster. Presets to try live in `tempo.ron` (the arena panel's Tempo row). |
 | D6 | In what order? | World plan and viewer → terrain → hands (mining, items, chests) → ores → structures → saving → art tool and arena → RPG. |
 
@@ -26,28 +26,28 @@ part moves into SPEC.md as its arc lands. Numbers are starting points.
 
 ## 2. Scale
 
-At 1 cell = 1 art pixel, the player is 8 × 16 cells and runs 95 cells/s.
+At 1 cell = 1 art pixel, the player is 9 × 23 cells and runs 143 cells/s.
 
 | | Cells | In player heights | Terraria large (in player heights) |
 |---|---|---|---|
-| Width | 131 072 (was 32 768) | 8 192 | ~2 800 |
-| Height | 32 768 (was 16 384) | 2 048 | ~800 |
+| Width | 196 608 (was 49 152) | ~8 500 | ~2 800 |
+| Height | 49 152 (was 24 576) | ~2 100 | ~800 |
 
 Crossing the world on foot takes about 24 minutes (it was 6). Vertical bands, in the reference world (`medium`; the large world's sky, caverns and deep are taller: SPEC, presets) (sea level at about 25 % from the top):
 
 | Band | Height (cells, relative to sea level) | What's there |
 |---|---|---|
-| Sky | +2 500 … +4 000 | Sky islands, shrines on them, the cloud band, wyverns later |
-| Peaks | +800 … +2 500 | Mountains above the snow line (the climate makes snow, it isn't painted on), castles, cliffs |
-| Surface | −200 … +800 | Biomes, forests, lakes, ruins, crypt entrances |
-| Underground | −200 … −2 500 | Caves, mines, ores (copper, iron), crypts |
-| Caverns | −2 500 … −7 000 | Huge chambers, underground lakes, crystal and mushroom caves, silver and gold |
-| Deep | −7 000 … −11 000 | Chasms, the deepest ores, old ruins |
-| Underworld | −11 000 … bottom | A lava sea, obsidian, heat |
+| Sky | +3 750 … +6 000 | Sky islands, shrines on them, the cloud band, wyverns later |
+| Peaks | +1 200 … +3 750 | Mountains above the snow line (the climate makes snow, it isn't painted on), castles, cliffs |
+| Surface | −300 … +1 200 | Biomes, forests, lakes, ruins, crypt entrances |
+| Underground | −300 … −3 750 | Caves, mines, ores (copper, iron), crypts |
+| Caverns | −3 750 … −10 500 | Huge chambers, underground lakes, crystal and mushroom caves, silver and gold |
+| Deep | −10 500 … −16 500 | Chasms, the deepest ores, old ruins |
+| Underworld | −16 500 … bottom | A lava sea, obsidian, heat |
 
 Costs that grow with the world:
-- **Weather** spans the width, simulated only over a window round the players (1 536 cells beyond the loaded chunks); the rest waits, until the world clock's coarse weather (§13) takes it over.
-- **The plan** is per-column arrays plus fields at 1/16 resolution (2 048 × 1 024), a few MB.
+- **Weather** spans the width, simulated only over a window round the players (2 304 cells beyond the loaded chunks); the rest waits, until the world clock's coarse weather (§13) takes it over.
+- **The plan** is per-column arrays plus fields at 1/24 resolution (2 048 × 1 024), a few MB.
 - **Saving** stores only modified chunks (lz4).
 - **Streaming** is unchanged: only what's around players is loaded.
 
@@ -87,7 +87,7 @@ Costs that grow with the world:
 
 ### 3.3 Structures: castles, crypts, ruins
 
-- **Rooms are text files.** Each is a grid at block resolution (one character per 4 × 4 cells), with a legend mapping characters to materials and markers:
+- **Rooms are text files.** Each is a grid at block resolution (one character per 6 × 6 cells), with a legend mapping characters to materials and markers:
   - `D` door socket, `C` chest, `S` spawn group, `T` torch, `L` ladder or platform;
   - `?` illusory wall, `W` water, `B` boss spawn.
   Sockets on the edges say which sides connect.
@@ -102,13 +102,13 @@ Costs that grow with the world:
 ### 3.4 Tools for generation
 
 - **`platypus-worldview`** renders the plan (or rasterised regions) to PNG:
-  - the whole world at 1:16;
+  - the whole world at 1:24;
   - any region at 1:1;
   - overlays for biomes, bands, structures, ores and chests.
 
   The model reads these images to check its own changes. This is the main loop for tuning generation.
 - **A determinism test.** Generate chunks in different orders and on different threads, then compare checksums.
-- **World presets.** `small` (8 192 × 4 096) for tests and scenarios, `large` for play.
+- **World presets.** `small` (12 288 × 6 144) for tests and scenarios, `large` for play.
 
 ### 3.5 Saving
 
@@ -141,11 +141,11 @@ The current per-cell radius pickaxe removes an uneven blob and gives nothing bac
 
 ### 4.1 Blocks
 
-- The grid is fixed at 4 × 4 cells (D2): block `(x >> 2, y >> 2)`. The player is 2 blocks wide and 4 tall. Terraria's is 2 × 3.
+- The grid is fixed at 6 × 6 cells (D2): block `(x.div_euclid(6), y.div_euclid(6))`. The player is 2 blocks wide and 4 tall. Terraria's is 2 × 3.
 - **Mining a block.** Each hit adds damage to the block; cracks show. When it breaks, every cell in the block that the tool can mine is removed at once. Harder cells, such as ore in a weaker tool's hit, stay.
 - **Generated terrain stays cell-detailed.** A block at a cave edge may be half air. Mining it yields what was there.
-- **Yield.** The inventory counts materials in cells and shows whole blocks (16 cells = 1 block). Partial blocks add up, and nothing is lost to rounding.
-- **Placing a block.** It fills the empty cells of one grid block, using 16 cells of material.
+- **Yield.** The inventory counts materials in cells and shows whole blocks (36 cells = 1 block). Partial blocks add up, and nothing is lost to rounding.
+- **Placing a block.** It fills the empty cells of one grid block, using 36 cells of material.
   - Placed powder falls and placed liquid flows (sand, and water later from a bucket).
   - Placed stone is static. It needs support like any terrain (the existing fragment checks).
 - **Tools and tiers.**
@@ -164,7 +164,7 @@ The target is chosen for you and outlined:
 
 ### 4.2b As built (stage 4)
 
-- The player's box became 6 × 15 cells (was 8 × 16): exactly two blocks wide,
+- The player's box became 9 × 23 cells (was 12 × 24): exactly two blocks wide,
   it never fit a 2-wide shaft unless perfectly aligned with the grid.
 - Chests became furniture entities (2026-09-25): as cells they hung in the
   air when their floor was mined out, and a rigid body of chest cells would
@@ -198,7 +198,7 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
   change. Ranges move at 1–4 % of the camera's motion across, far to
   near, and hardly at all up and down (0.4–1.5 %: they sit still in the
   view however high or low on the surface you are); the ranges' tiles are placed to whole screen pixels
-  from the camera (whole cells hopped 3 pixels: jitter). The cloud heaps,
+  from the camera (whole cells hopped 2 pixels: jitter). The cloud heaps,
   drifting on their own too slowly for a pixel at a time to look like
   motion, are scaled up 3× and sampled smoothly instead: they glide by
   fractions of a pixel, their blocks' edges blended a pixel wide. Below a range's
@@ -285,7 +285,7 @@ A creature is a body with movement and a brain (as now), plus optional parts:
 
 ### 6.1 Rigs, not a humanoid type
 
-- **Humanoid rig classes:** `small` (goblin, ~12 px), `human` (player, bandits, knights, ~18–24 px), `large` (troll, ogre, ~36–48 px).
+- **Humanoid rig classes:** `small` (goblin, ~18 px), `human` (player, bandits, knights, ~27–36 px), `large` (troll, ogre, ~54–72 px).
   - Each class has one frame template: idle, walk cycle, jump, fall, dash, wall slide, a fan of arm angles for holding and swinging, hurt, death.
   - Each frame records anchors: hand front and back, head, back, and the weapon grip angle.
 - **Body art** for a race is drawn on its class's template, as layers: back arm, legs, torso, head, front arm. Races differ in body art and base stats, not in code.
@@ -328,7 +328,7 @@ Health, stamina (dash, attacks, blocking), poise (Elden Ring stagger), and movem
 - **The down-strike (the pogo; built 2026-09-27):** in the air, S and
   attack (or attack aimed more than ~20° below level) is a down-strike: the
   weapon's `down` move, its angles from straight down, apart from the combo.
-  What it meets bounces you up a jump's worth (300 cells/s) and gives back
+  What it meets bounces you up a jump's worth (445 cells/s) and gives back
   air jumps and the dash: a creature, a hostile spell (cut out of the air,
   its path this tick checked against the blade), a hazard (lava, fire,
   acid, web; not plain ground, or every landing and fall could be skipped).
@@ -485,7 +485,7 @@ a stat is naming it once (`gear/stats.rs`) and reading it where it acts.
   the air too; after 0.25 s; not while jump is held on empty, or they'd
   sputter on for ever), a second's charge a second, so as long as they fire; under water they fire at half thrust and 45 % of the
   speed, bubbles, no flame; their charge a round timer top right while
-  worn; thrust 2300 up to 210 cells/s, a little gentler than at first for
+  worn; thrust 3450 up to 315 cells/s, a little gentler than at first for
   control; cloud boots: air jumps), and a
   **grappling hook** in its own slot, used with E whatever is in the hand:
   Terraria's by default, on a real rope (2026-09-27: the hybrid, after the
@@ -551,7 +551,7 @@ Systems first, with example content to iterate on.
   (`file:`), under the same name: the plan is to swap in recordings only
   where a recipe falls short (fire, rain, wind are the likeliest).
 - **Effects** are placed in the world (panned, fainter with distance from the
-  camera; a cell is ~0.1 m) and asked for by name (`PlaySound`): hits, hurts,
+  camera; a cell is ~0.07 m) and asked for by name (`PlaySound`): hits, hurts,
   deaths, swings (heavier blades deeper), clangs off stone, pogo bounces, the
   plunge's slam, footsteps and mining by what's underfoot (stone, dirt, sand,
   wood, snow, grass, water), landings by how far, jumps, dashes, the hook,
@@ -562,7 +562,7 @@ Systems first, with example content to iterate on.
   rain falling; rock overhead from open air) and looping beds fade toward
   that: a fire's roar and crackle panned toward it, a cave's rumble and air,
   wind and rain in the open. Underground is rock overhead from open air, or
-  being more than ~15 cells below the ground as generated (so a shaft dug
+  being more than ~23 cells below the ground as generated (so a shaft dug
   up to the sky, or a chasm, doesn't flip the music to the surface's).
   Underground, drops fall from real ceilings in view, and every effect is
   sent to a cave reverb as deep as you are (`cave_reverb`). Rocket boots
@@ -653,7 +653,7 @@ The aim: the model can create, look at, and test a creature, item, room or struc
 Then structures v2 (bigger crypts and castles, the ruin catalogue) and saving.
 
 **Art and combat arc (A, agreed 2026-09-26, on branch `combat-arc`; `magic-arc` merged into `world-arc` first).** Decisions:
-- Humanoids are ~20 px tall (the player's body grows from 6×15 to ~7×17 cells); a troll ~40.
+- Humanoids are ~30 px tall (the player's body grows from 9×23 to ~11×26 cells); a troll ~60.
 - Combat is a hybrid: swings aimed toward the cursor, a Hollow Knight down-slash pogo in the air, and a light Souls layer (stamina, a dodge with invulnerability, poise and stagger).
 - The editor lives in the game, next to the arena; everything it edits is text (`assets/art/*.ron`) that the model writes and reads too, with the `platypus-art` CLI (render, sheet, check, describe, import) as the model's eyes.
 - Critters come first, as the pipeline's first test.
@@ -688,7 +688,7 @@ live in. The arc, in order:
 1. **Dev: reset the world**, two ways: the world only (you and what you
    carry stay) and everything (a fresh start). Two clicks to confirm.
 2. **A bigger world, sized from its preset.** `large` becomes 4× wider and
-   2× deeper: 131 072 × 32 768 cells (2 048 × 512 chunks), 8× the area,
+   2× deeper: 196 608 × 49 152 cells (3 072 × 768 chunks), 8× the area,
    ~24 minutes to walk across. Most of the new depth goes to the underground
    (the caverns and the deep), some to the sky. Everything is derived from
    the preset's dimensions from now on (biomes, lakes, structures, chambers
@@ -703,7 +703,7 @@ live in. The arc, in order:
    scenario burns a forest and counts what's lost. Frequent fires are fine:
    the world heals.
 4. **The world clock**: one system, a slow simulation of the whole world.
-   - **Regions** (256 × 256 cells, ~65 000 in `large`), each with a small
+   - **Regions** (384 × 384 cells, ~65 000 in `large`), each with a small
      state (forest health, moisture, lairs' numbers, a village's state, when
      it last changed), saved with the world.
    - **Processes**, each at its own pace (weather fronts about every game
@@ -751,7 +751,7 @@ live in. The arc, in order:
      (the snow line, lakes freezing), earthquakes (with fracture, §13.1).
      A blood moon: later.
    - *As built (`world-events`, SPEC §3.15)*: one timetable rolled from
-     the seed and the day for every kind; live within 700 cells, otherwise
+     the seed and the day for every kind; live within 1 050 cells, otherwise
      put into the land as its chunks load; the villagers tell the last two
      days' news. Falling stars first: a streak, a blast, a crater with a
      glowing meteorite and mithril, star wisps on a leash keeping it. Raids:
@@ -763,7 +763,7 @@ live in. The arc, in order:
      with rarer goods (no roads yet, so no caravans). Seasons dropped: the
      biomes carry the climate.
 5. **A start worth starting in**: a wide, flattened plain round the spawn
-   (±300 cells, forest or plains), a village a short walk away (the
+   (±450 cells, forest or plains), a village a short walk away (the
    structure system's rooms: timber houses, a well, a smithy, a path).
 6. **NPCs, as data**: a file per kind (body and look, role, what they say,
    services: sell, craft, heal), a villager brain (a day's schedule, home
@@ -771,7 +771,7 @@ live in. The arc, in order:
    monsters hunt too. New roles are new files. First: a guide, a smith, a
    healer; the merchant with gold.
    *As built (`village`, SPEC §3.4i, §5.5)*: the plain is the median of the
-   ground ±300 cells round the spawn (a gentle roll), eased back into the
+   ground ±450 cells round the spawn (a gentle roll), eased back into the
    land; the village's buildings are text (`village.buildings`: a guide's
    house, a well, a smithy with its anvil and furnace, a healer's, a
    merchant's) set side by side from the spawn. A villager is a creature
@@ -808,7 +808,7 @@ liquid that lights what it touches) and solid metal (heavy, conducts heat
 and lightning). Heat moves between them as between ice, water and steam:
 ore past its melting point melts into molten metal and slag (not lava, as
 now); molten metal below its freezing point sets where it lies. **A bar is
-metal**: 16 cells of it, as a block is 16 cells of its material, so ore,
+metal**: 36 cells of it, as a block is 36 cells of its material, so ore,
 melt, casting and bar are one thing. Mining solid metal gives its bars
 back; solid gold gives its gold back. Gold nuggets in lava melt into
 molten gold (so many cells for their value): nothing is lost, only moved.
@@ -1166,7 +1166,7 @@ Chosen so each stresses a different part of the system:
 
 ## 15. Open questions and risks
 
-- **Character pixel size (D5):** 18 px reads like Noita. Elden Ring-style gear may want about 24 px. Decide from mock-ups. The cost is zooming out a little and loading more.
+- **Character pixel size (D5):** 27 px reads like Noita. Elden Ring-style gear may want about 36 px. Decide from mock-ups. The cost is zooming out a little and loading more.
 - **Gear skins might look generic.** Fallback: hand-drawn per-frame gear for hero items only.
 - **Corpses as cell bodies:** a rendering change. Bodies must carry per-cell colours (their sprite pixels), not just material shades.
 - **Weather cost** grows with width. Plan: the coarse weather moves into the world clock (§13); the live field only round players.

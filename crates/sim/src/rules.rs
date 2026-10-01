@@ -753,9 +753,11 @@ fn through_to_open(h: &mut Hood, x: i32, y: i32, dir: i32, m: MaterialId) -> Opt
     (r.end_open == Some(true) && d > 1 && d <= PRESSURE_REACH && h.get(r.end, y).is_some_and(|t| open(h, t))).then_some(d)
 }
 
-/// Cells of `m` stacked directly above (up to `cap`): the pressure here.
+/// Cells of `m` stacked directly above (up to `cap`, and no further than
+/// the job can see: a column deeper than a chunk reads past its edge
+/// otherwise): the pressure here.
 fn depth_above(h: &Hood, x: i32, y: i32, m: MaterialId, cap: i32) -> i32 {
-    (1..=cap).take_while(|&k| h.get(x, y + k).is_some_and(|t| t.material == m)).count() as i32
+    (1..=cap.min(Hood::sight(y, 1))).take_while(|&k| h.get(x, y + k).is_some_and(|t| t.material == m)).count() as i32
 }
 
 /// How far along the surface a liquid looks for lower ground.
