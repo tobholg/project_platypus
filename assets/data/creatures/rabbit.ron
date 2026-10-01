@@ -4,6 +4,8 @@
     size: (6, 5),
     health: 8,
     team: Neutral,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "beast",
     fall_damage: (safe_height: 60, per_cell: 0.3),
     blood: "blood",
     art: "rabbit",

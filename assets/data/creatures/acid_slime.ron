@@ -7,10 +7,12 @@
     size: (10, 7),
     health: 36,
     team: Enemy,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "ooze",
+    profile: {acid: -0.5},
     blood: "acid",
     art: "acid_slime",
     light: (color: (150, 220, 60), strength: 0.25),
-    resist: (corrosion: 1.0),
     movement: (
         run_speed: 55,
         air_accel: 400,
@@ -19,7 +21,7 @@
         step_height: 1,
         dash_speed: 0,
     ),
-    touch: (damage: 10, knock: 120, stun: 0.15),
+    touch: (harm: acid, damage: 10, knock: 120, stun: 0.15),
     brain: (
         kind: "hopper",
         params: (aggro_range: 140, hop_every: 1.2),

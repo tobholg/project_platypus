@@ -120,7 +120,7 @@ fn kick(
         } else if creature.is_some() && !team.is_some_and(|t| t.allied(crate::actors::Team::Player)) {
             // A blow (as a blade's: poise and heft decide how far it goes).
             let knock = Vec2::new(facing * KNOCK.x, KNOCK.y);
-            hits.write(crate::combat::Hit { target: e, damage: DAMAGE, knock, stun: STUN, at: p, dir: Vec2::new(facing, 0.0), weight: DAMAGE / 12.0, crit: false });
+            hits.write(crate::combat::Hit { target: e, damage: DAMAGE, harm: crate::actors::Harm::Blunt, knock, stun: STUN, at: p, dir: Vec2::new(facing, 0.0), weight: DAMAGE / 12.0, crit: false });
             hit += 1;
         }
     }

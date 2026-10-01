@@ -257,7 +257,7 @@ fn fly(
                     continue;
                 }
                 let push = (Vec2::new(dir.x, 0.0).normalize_or(Vec2::X) + Vec2::new(0.0, 0.3)).normalize() * a.knock;
-                hits.write(Hit { target: te, damage: a.damage, knock: push, stun: a.stun, at: tip, dir, weight: a.damage / 12.0, crit: a.crit });
+                hits.write(Hit { target: te, damage: a.damage, harm: crate::actors::Harm::Pierce, knock: push, stun: a.stun, at: tip, dir, weight: a.damage / 12.0, crit: a.crit });
                 if a.burning > 0.0 {
                     sim.world.apply_edit(&WorldEdit::Ignite { center: p, radius: 1 });
                 }

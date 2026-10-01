@@ -5,6 +5,8 @@
     size: (10, 13),
     health: 300,
     team: Neutral,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "thing",
     art: "sandbag",
     blood: "sand",
     movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0),

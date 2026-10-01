@@ -7,6 +7,9 @@
     size: (7, 9),
     health: 20,
     team: Enemy,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "insect",
+    profile: {fire: 2.0},
     blood: "ichor",
     art: "egg_sac",
     movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0, dash_speed: 0),

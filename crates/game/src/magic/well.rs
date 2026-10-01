@@ -424,7 +424,7 @@ pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Que
                     .filter(|f| f.pos.cmpge(lo).all() && f.pos.cmple(hi).all())
                     .map(|f| (f.vel - k.body.vel).length())
                     .sum();
-                h.harm(hits * GRIND, crate::actors::Harm::Physical);
+                h.harm(hits * GRIND, crate::actors::Harm::Blunt);
             }
         }
         // (Bodies gone from the world are gone from its hold.)
@@ -586,7 +586,7 @@ fn force(world: &mut platypus_sim::World, well: &mut Well, bodies: &mut Bodies, 
         // The blow itself hurts, by how hard it changed its course (so the
         // first of a held push hurts, not every tick of it).
         if let Some(mut h) = health {
-            h.harm(kick * FORCE_HIT, crate::actors::Harm::Physical);
+            h.harm(kick * FORCE_HIT, crate::actors::Harm::Blunt);
         }
     }
     // Motes rushing out along the cone, or in toward the hand.

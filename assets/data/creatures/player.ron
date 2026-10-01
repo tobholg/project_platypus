@@ -6,6 +6,8 @@
     size: (6, 15),
     health: 100,
     team: Player,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "humanoid",
     // (Safe past a triple jump's height: ~105 cells in cloud boots.)
     fall_damage: (safe_height: 120, per_cell: 0.6),
     movement: (

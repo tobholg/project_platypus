@@ -25,7 +25,8 @@ use platypus_sim::{CellPos, WorldEdit};
 use serde::Deserialize;
 
 use super::animation::CreatureSprite;
-use super::{Harm, Health, Kinematics};
+use super::{Harm, Health, Kinematics, Nature};
+use crate::creatures::nature::Cant;
 use crate::data::{Watched, data_path, load_ron};
 use crate::world::{SimWorld, TICK_HZ};
 
@@ -65,14 +66,8 @@ pub const CHILL_SECS: f32 = 1.5;
 /// Fully chilled, it moves at this share of its speed.
 const CHILL_SLOW: f32 = 0.4;
 
-/// Shares (0..1) of elemental damage a creature ignores, and whether it can
-/// catch fire at all. Default: none, and it can.
-#[derive(Component, Clone, Copy, Debug, Default, Deserialize)]
-#[serde(default)]
-pub struct Resist {
-    pub heat: f32,
-    pub corrosion: f32,
-    pub fireproof: bool,
+fn acid() -> Harm {
+    Harm::Acid
 }
 
 /// One coating's rules (see `assets/data/coatings.ron`).
@@ -80,6 +75,9 @@ pub struct Resist {
 pub struct Coating {
     pub label: String,
     pub secs: f32,
+    /// What kind of hurt its `damage` is (acid burns, venom poisons).
+    #[serde(default = "acid")]
+    pub harm: Harm,
     pub color: (u8, u8, u8),
     #[serde(default)]
     pub fireproof: bool,
@@ -291,8 +289,9 @@ impl Coated {
     }
 
     /// Damage a second from what's on it.
-    pub fn damage(&self, rules: &HashMap<String, Coating>) -> f32 {
-        self.sum(rules, |c| c.damage)
+    /// What its coatings of one kind of hurt do a second (acid's, venom's).
+    pub fn damage_as(&self, rules: &HashMap<String, Coating>, kind: Harm) -> f32 {
+        self.sum(rules, |c| if c.harm == kind { c.damage } else { 0.0 })
     }
 
     /// The coating covering most of it.
@@ -368,7 +367,6 @@ type Exposed<'a> = (
     Entity,
     &'a Kinematics,
     &'a mut Health,
-    Option<&'a Resist>,
     Option<&'a mut Burning>,
     Option<&'a mut Coated>,
     Option<&'a mut Chilled>,
@@ -379,8 +377,8 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
     let tick = sim.world.tick();
     let fire_mat = sim.materials().fire();
     let rules = &coatings.by_name;
-    for (entity, k, mut health, resist, burning, coated, chilled) in &mut q {
-        let resist = resist.copied().unwrap_or_default();
+    for (entity, k, mut health, burning, coated, chilled) in &mut q {
+        let nature = health.nature;
         let (pos, half) = (k.body.pos, k.body.half);
         // The same cells collision uses.
         let (lo, hi) = k.body.cells_at(pos);
@@ -417,15 +415,21 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
                 coat.soak(name, (now + rate * DT).min(*to), rules);
             }
         }
-        let heat_resist = (resist.heat + coat.heat_resist(rules)).min(1.0);
-        // What's on it eats at it (less as it wears off); in the fluid, the
+        // (How its kind takes heat and acid is its nature's: `harm`.)
+        let heat_resist = coat.heat_resist(rules).min(1.0);
+        // What's on it eats at it (less as it wears off), each coating its
+        // own kind of hurt (acid burns, venom poisons); in the fluid, the
         // fluid's own corrosion counts (not both).
-        let corrosion = e.corrosion.max(coat.damage(rules));
+        let corrosion = e.corrosion.max(coat.damage_as(rules, Harm::Acid));
         health.harm(e.heat * (1.0 - heat_resist) * DT, Harm::Fire);
-        health.harm(corrosion * (1.0 - resist.corrosion).max(0.0) * DT, Harm::Acid);
+        health.harm(corrosion * DT, Harm::Acid);
+        if !nature.cant(Cant::Poison) {
+            health.harm(coat.damage_as(rules, Harm::Poison) * DT, Harm::Poison);
+        }
 
-        // Cold: slowed while touching it and a moment after; resisted like heat.
-        let cold = e.cold * (1.0 - resist.heat).max(0.0);
+        // Cold: slowed while touching it and a moment after, as its kind
+        // takes frost (what can't be chilled isn't).
+        let cold = if nature.cant(Cant::Chill) { 0.0 } else { e.cold * nature.of(Harm::Frost).clamp(0.0, 1.5) };
         match chilled {
             Some(mut c) if cold > 0.0 => {
                 c.left = CHILL_SECS;
@@ -451,7 +455,7 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
         let was = burning.as_ref().map_or(0.0, |b| b.share);
         let power = coat.burn(rules);
         let mut fire = was;
-        if resist.fireproof || cold > 0.5 || coat.doused(rules) {
+        if nature.cant(Cant::Burn) || cold > 0.5 || coat.doused(rules) {
             fire = 0.0;
         } else {
             let oily = coat.oily(rules);
@@ -546,7 +550,7 @@ const SHOCK_DAMAGE: f32 = 25.0;
 const SKY_SHOCK_DAMAGE: f32 = 40.0;
 const SHOCK_STUN: f32 = 0.6;
 
-type Shockable<'a> = (Entity, &'a mut Health, &'a mut Kinematics, Option<&'a Resist>, Option<&'a Coated>);
+type Shockable<'a> = (Entity, &'a mut Health, &'a mut Kinematics, Option<&'a Coated>);
 
 /// Everything touching a charged cell (a pool lightning struck) is
 /// shocked: hurt and stunned a moment.
@@ -579,13 +583,13 @@ pub fn struck(
     for crate::fx::Lightning(s) in strikes.read() {
         shock(&s.charged, SKY_SHOCK_DAMAGE, &mut q);
         let at = Vec2::new(s.hit.x as f32 + 0.5, s.hit.y as f32 + 0.5);
-        for (entity, mut health, k, resist, coated) in &mut q {
+        for (entity, mut health, k, coated) in &mut q {
             let d = k.body.pos.distance(at);
             if d > LIGHTNING_REACH {
                 continue;
             }
             health.harm(LIGHTNING_DAMAGE * (1.0 - d / LIGHTNING_REACH), Harm::Storm);
-            catch_fire(&mut commands, entity, resist, coated, &coatings, 1.0);
+            catch_fire(&mut commands, entity, &health.nature, coated, &coatings, 1.0);
         }
     }
 }
@@ -597,22 +601,23 @@ pub fn zapped(mut commands: Commands, mut zaps: MessageReader<crate::fx::Zapped>
     for crate::fx::Zapped(z) in zaps.read() {
         shock(&z.charged, SHOCK_DAMAGE, &mut q);
         let at = Vec2::new(z.to.x as f32 + 0.5, z.to.y as f32 + 0.5);
-        for (entity, mut health, k, resist, coated) in &mut q {
+        for (entity, mut health, k, coated) in &mut q {
             // (From the body's edge: the bolt ends at its centre or a wall.)
             let d = (k.body.pos.distance(at) - k.body.half.min_element()).max(0.0);
             if d > ZAP_REACH {
                 continue;
             }
             health.harm(ZAP_DAMAGE * (1.0 - d / ZAP_REACH), Harm::Storm);
-            catch_fire(&mut commands, entity, resist, coated, &coatings, 0.6);
+            catch_fire(&mut commands, entity, &health.nature, coated, &coatings, 0.6);
         }
     }
 }
 
 /// Chill a creature (a frost spell hit it): slowed by `cold` (0..1, less
-/// what it resists) for `secs`, or longer or harder if it's colder already.
-pub fn chill(commands: &mut Commands, entity: Entity, resist: Option<&Resist>, now: Option<&Chilled>, cold: f32, secs: f32) {
-    let cold = cold * (1.0 - resist.map_or(0.0, |r| r.heat)).max(0.0);
+/// as its kind takes frost) for `secs`, or longer or harder if it's colder
+/// already.
+pub fn chill(commands: &mut Commands, entity: Entity, nature: &Nature, now: Option<&Chilled>, cold: f32, secs: f32) {
+    let cold = if nature.cant(Cant::Chill) { 0.0 } else { cold * nature.of(Harm::Frost).clamp(0.0, 1.5) };
     if cold <= 0.0 {
         return;
     }
@@ -622,8 +627,8 @@ pub fn chill(commands: &mut Commands, entity: Entity, resist: Option<&Resist>, n
 
 /// Set `share` more of a creature alight (lightning all of it, a spark
 /// some), unless it's wet enough or its kind won't burn.
-pub fn catch_fire(commands: &mut Commands, entity: Entity, resist: Option<&Resist>, coated: Option<&Coated>, coatings: &Coatings, share: f32) {
-    if coated.is_some_and(|c| c.doused(&coatings.by_name)) || resist.is_some_and(|r| r.fireproof) {
+pub fn catch_fire(commands: &mut Commands, entity: Entity, nature: &Nature, coated: Option<&Coated>, coatings: &Coatings, share: f32) {
+    if coated.is_some_and(|c| c.doused(&coatings.by_name)) || nature.cant(Cant::Burn) {
         return;
     }
     commands.entity(entity).queue_silenced(move |mut e: EntityWorldMut| match e.get_mut::<Burning>() {
@@ -719,10 +724,10 @@ mod tests {
         app.world().get::<Coated>(e).map_or(0.0, |c| c.share(name))
     }
 
-    fn creature(app: &mut App, at: Vec2, resist: Resist) -> Entity {
+    fn creature(app: &mut App, at: Vec2, nature: Nature) -> Entity {
         let body = Body::new(at, Vec2::new(4.0, 8.0));
         app.world_mut()
-            .spawn((Kinematics { body, loco: Locomotion::default(), prev_pos: at }, Health::new(100.0), resist))
+            .spawn((Kinematics { body, loco: Locomotion::default(), prev_pos: at }, Health { nature, ..Health::new(100.0) }))
             .id()
     }
 
@@ -740,7 +745,7 @@ mod tests {
         for (material, lo, hi) in [("lava", 50.0f32, 120.0f32), ("acid", 20.0, 40.0), ("air", 0.0, 0.0)] {
             let mut app = app_with(if material == "air" { "stone" } else { material });
             let at = if material == "air" { OUT } else { IN };
-            let e = creature(&mut app, at, Resist::default());
+            let e = creature(&mut app, at, Nature::default());
             tick(&mut app, 60);
             let lost = 100.0 - app.world().get::<Health>(e).unwrap().hp;
             assert!((lo..=hi).contains(&lost), "{material}: lost {lost} in a second");
@@ -750,7 +755,7 @@ mod tests {
     #[test]
     fn fire_sets_you_alight_water_puts_it_out_and_wet_things_dont_catch() {
         let mut app = app_with("fire");
-        let e = creature(&mut app, IN, Resist::default());
+        let e = creature(&mut app, IN, Nature::default());
         tick(&mut app, 1);
         assert!(app.world().get::<Burning>(e).is_some(), "caught fire");
         // Standing in it: all of it alight in a moment.
@@ -770,7 +775,7 @@ mod tests {
         assert!(app.world().get::<Burning>(e).is_none(), "out in ~6 s all told");
 
         let mut wet = app_with("water");
-        let e = creature(&mut wet, IN, Resist::default());
+        let e = creature(&mut wet, IN, Nature::default());
         wet.world_mut().entity_mut(e).insert(Burning::new(1.0));
         // (It soaks in over a moment: a tenth of a second to douse.)
         tick(&mut wet, 10);
@@ -779,13 +784,13 @@ mod tests {
 
         // Wet, then straight into flames: doesn't catch.
         let mut app = app_with("fire");
-        let e = creature(&mut app, IN, Resist::default());
+        let e = creature(&mut app, IN, Nature::default());
         app.world_mut().entity_mut(e).insert(Coated::with("wet", 1.0));
         tick(&mut app, 1);
         assert!(app.world().get::<Burning>(e).is_none(), "wet things don't catch");
 
         let mut app = app_with("fire");
-        let e = creature(&mut app, IN, Resist { fireproof: true, ..default() });
+        let e = creature(&mut app, IN, Nature::default().without(Cant::Burn));
         tick(&mut app, 30);
         assert!(app.world().get::<Burning>(e).is_none(), "fireproof");
     }
@@ -793,7 +798,7 @@ mod tests {
     #[test]
     fn falling_fast_beats_a_fire_out() {
         let mut app = app_with("stone");
-        let (still, falling) = (creature(&mut app, OUT, Resist::default()), creature(&mut app, OUT + Vec2::new(20.0, 0.0), Resist::default()));
+        let (still, falling) = (creature(&mut app, OUT, Nature::default()), creature(&mut app, OUT + Vec2::new(20.0, 0.0), Nature::default()));
         for e in [still, falling] {
             app.world_mut().entity_mut(e).insert(Burning::new(1.0));
         }
@@ -807,7 +812,7 @@ mod tests {
     fn embers_underfoot_light_a_little_and_it_burns_out() {
         // A row of fire under its feet (the creature stands on it).
         let mut app = app_region("fire", 0..30, 9..10);
-        let e = creature(&mut app, Vec2::new(13.0, 14.0), Resist::default());
+        let e = creature(&mut app, Vec2::new(13.0, 14.0), Nature::default());
         tick(&mut app, 30);
         let b = app.world().get::<Burning>(e).map_or(0.0, |b| b.share);
         assert!(b > 0.0 && b < 0.45, "a little of it alight: {b}");
@@ -824,7 +829,7 @@ mod tests {
         // 80 % oily, a spark on it, nowhere near flames: it spreads over
         // the oil and burns hot.
         let mut app = app_with("stone");
-        let e = creature(&mut app, OUT, Resist::default());
+        let e = creature(&mut app, OUT, Nature::default());
         app.world_mut().entity_mut(e).insert((Coated::with("oily", 0.8), Burning::new(0.05)));
         tick(&mut app, 30);
         let b = *app.world().get::<Burning>(e).unwrap();
@@ -833,7 +838,7 @@ mod tests {
         // A third wet (not enough to put it out), half on fire: the fire
         // dries it faster than it'd dry on its own.
         let mut app = app_with("stone");
-        let e = creature(&mut app, OUT, Resist::default());
+        let e = creature(&mut app, OUT, Nature::default());
         app.world_mut().entity_mut(e).insert((Coated::with("wet", 0.3), Burning::new(0.6)));
         tick(&mut app, 60);
         let wet = share(&app, e, "wet");
@@ -845,7 +850,7 @@ mod tests {
     #[test]
     fn a_brush_with_fire_burns_out_and_does_not_kill() {
         let mut app = app_with("fire");
-        let e = creature(&mut app, IN, Resist::default());
+        let e = creature(&mut app, IN, Nature::default());
         tick(&mut app, 1);
         app.world_mut().get_mut::<Kinematics>(e).unwrap().body.pos = OUT;
         // Step the sim too: its own flames are painted above it.
@@ -862,7 +867,7 @@ mod tests {
     fn snow_underfoot_wets_your_feet_but_does_not_put_you_out() {
         let mut app = app_with("snow");
         // Standing on the snow (its box starts just above the pocket's top at 20).
-        let e = creature(&mut app, Vec2::new(13.0, 24.0), Resist::default());
+        let e = creature(&mut app, Vec2::new(13.0, 24.0), Nature::default());
         app.world_mut().entity_mut(e).insert(Burning::new(1.0));
         tick(&mut app, 30);
         assert!(app.world().get::<Burning>(e).is_some(), "still burning");
@@ -874,7 +879,7 @@ mod tests {
     fn a_puddle_wets_your_feet_but_wading_deep_puts_you_out() {
         // A row of water, the creature (4 × 8) standing in it (its feet at 10).
         let mut app = app_region("water", 0..30, 10..11);
-        let e = creature(&mut app, Vec2::new(13.0, 14.0), Resist::default());
+        let e = creature(&mut app, Vec2::new(13.0, 14.0), Nature::default());
         app.world_mut().entity_mut(e).insert(Burning::new(1.0));
         tick(&mut app, 30);
         let wet = share(&app, e, "wet");
@@ -882,7 +887,7 @@ mod tests {
         assert!(app.world().get::<Burning>(e).is_some(), "a puddle doesn't put a fire out");
         // Waist deep: out.
         let mut app = app_region("water", 0..30, 10..14);
-        let e = creature(&mut app, Vec2::new(13.0, 14.0), Resist::default());
+        let e = creature(&mut app, Vec2::new(13.0, 14.0), Nature::default());
         app.world_mut().entity_mut(e).insert(Burning::new(1.0));
         tick(&mut app, 30);
         assert!(share(&app, e, "wet") > 0.7, "soaked: {}", share(&app, e, "wet"));
@@ -893,7 +898,7 @@ mod tests {
     fn a_step_in_acid_clings_and_eats_until_water_washes_it_off() {
         // A step into a shallow acid puddle, then out of it.
         let mut app = app_region("acid", 0..30, 10..11);
-        let e = creature(&mut app, Vec2::new(13.0, 14.0), Resist::default());
+        let e = creature(&mut app, Vec2::new(13.0, 14.0), Nature::default());
         tick(&mut app, 15);
         let acid = share(&app, e, "acid");
         assert!(acid > 0.5, "a step coats you well: {acid}");
@@ -905,7 +910,7 @@ mod tests {
         assert!(share(&app, e, "acid") < acid, "and wears off");
         // Into water: washed off in a moment, and it stops.
         let mut water = app_with("water");
-        let e = creature(&mut water, IN, Resist::default());
+        let e = creature(&mut water, IN, Nature::default());
         water.world_mut().entity_mut(e).insert(Coated::with("acid", 0.6));
         tick(&mut water, 20);
         assert!(share(&water, e, "acid") < 0.05, "washed off: {}", share(&water, e, "acid"));
@@ -932,20 +937,20 @@ mod tests {
     #[test]
     fn oil_burns_long_catches_from_heat_and_water_washes_it_off() {
         let mut app = app_with("oil");
-        let e = creature(&mut app, IN, Resist::default());
+        let e = creature(&mut app, IN, Nature::default());
         tick(&mut app, 1);
         assert_eq!(coat(&app, e).as_deref(), Some("oily"));
         // Out of the oil, onto hot stone: an oily creature catches from heat alone.
         let mut hot = app_with("stone");
         hot.world_mut().resource_mut::<SimWorld>().world.apply_edit(&WorldEdit::Heat { center: CellPos::new(13, 15), radius: 8, amount: 200 });
-        let e = creature(&mut hot, Vec2::new(13.0, 24.0), Resist::default());
+        let e = creature(&mut hot, Vec2::new(13.0, 24.0), Nature::default());
         hot.world_mut().entity_mut(e).insert(Coated::with("oily", 1.0));
         tick(&mut hot, 1);
         let b = *hot.world().get::<Burning>(e).expect("caught from heat");
         assert!(b.power > 2.0, "and burns hard and long (×{})", b.power);
         // Into water: washed off, and out.
         let mut water = app_with("water");
-        let e = creature(&mut water, IN, Resist::default());
+        let e = creature(&mut water, IN, Nature::default());
         water.world_mut().entity_mut(e).insert((Coated::with("oily", 1.0), b));
         tick(&mut water, 30);
         assert_eq!(coat(&water, e).as_deref(), Some("wet"), "the water replaced the oil");
@@ -955,10 +960,20 @@ mod tests {
     #[test]
     fn resistance_scales_the_harm() {
         let mut app = app_with("acid");
-        let e = creature(&mut app, IN, Resist { corrosion: 0.75, ..default() });
+        let e = creature(&mut app, IN, Nature::default().with(Harm::Acid, 0.25));
         tick(&mut app, 60);
         let lost = 100.0 - app.world().get::<Health>(e).unwrap().hp;
         assert!((6.0..9.0).contains(&lost), "a quarter of acid's 30/s: lost {lost}");
+    }
+
+    #[test]
+    fn what_drinks_acid_heals_in_it() {
+        let mut app = app_with("acid");
+        let e = creature(&mut app, IN, Nature::default().with(Harm::Acid, -0.5));
+        app.world_mut().get_mut::<Health>(e).unwrap().hp = 50.0;
+        tick(&mut app, 60);
+        let hp = app.world().get::<Health>(e).unwrap().hp;
+        assert!((60.0..70.0).contains(&hp), "half of acid's 30/s back: {hp}");
     }
 
     #[test]
@@ -967,7 +982,7 @@ mod tests {
         // Freeze the stone pocket hard, and stand a creature on it: ice
         // underfoot doesn't chill.
         app.world_mut().resource_mut::<SimWorld>().world.apply_edit(&WorldEdit::Heat { center: CellPos::new(13, 15), radius: 8, amount: -200 });
-        let e = creature(&mut app, Vec2::new(13.0, 24.0), Resist::default());
+        let e = creature(&mut app, Vec2::new(13.0, 24.0), Nature::default());
         tick(&mut app, 1);
         assert!(app.world().get::<Chilled>(e).is_none(), "standing on the frozen stone chills nothing");
         // In it (buried in the frozen pocket), burning: chilled, and the

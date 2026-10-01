@@ -234,7 +234,7 @@ pub fn attack(
                         && reaches(pk, 4.0)
                     {
                         a.struck = true;
-                        hits.write(Hit { target: pe, damage: b.damage, knock: (dir + Vec2::Y * 0.4).normalize() * b.knock, stun: b.stun, at: head, dir, weight: b.damage / 12.0, crit: false });
+                        hits.write(Hit { target: pe, damage: b.damage, harm: crate::actors::Harm::Pierce, knock: (dir + Vec2::Y * 0.4).normalize() * b.knock, stun: b.stun, at: head, dir, weight: b.damage / 12.0, crit: false });
                     }
                 } else {
                     rear.lift = 0.0;
@@ -285,7 +285,7 @@ pub fn attack(
                         && reaches(pk, 8.0)
                     {
                         a.struck = true;
-                        hits.write(Hit { target: pe, damage: s.damage, knock: (dir + Vec2::Y * 0.3).normalize() * s.knock, stun: s.stun, at: head, dir, weight: s.damage / 12.0, crit: false });
+                        hits.write(Hit { target: pe, damage: s.damage, harm: crate::actors::Harm::Pierce, knock: (dir + Vec2::Y * 0.3).normalize() * s.knock, stun: s.stun, at: head, dir, weight: s.damage / 12.0, crit: false });
                         if coatings.by_name.contains_key(&s.venom) {
                             super::elements::stain(&mut commands, pe, &s.venom, 1.0, &coatings);
                         }

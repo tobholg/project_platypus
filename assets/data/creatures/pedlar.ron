@@ -6,6 +6,8 @@
     size: (7, 16),
     health: 140,
     team: Villager,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "humanoid",
     movement: (run_speed: 68, jump_height: 22, air_jumps: 0, step_height: 3, dash_speed: 0),
     stamina: 60,
     poise: 10,

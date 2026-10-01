@@ -8,6 +8,12 @@
     size: (15, 34),
     health: 420,
     team: Enemy,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "beast",
+    // A troll's wounds close (10 a second) unless fire or acid hurt it in
+    // the last 5 s, and while they close it can't die: steel brings it
+    // down to its last breath and it heals; burnt, any blow finishes it.
+    regen: (per_sec: 10, stopped_by: [fire, acid], pause: 5, undying: true),
     fall_damage: (safe_height: 90, per_cell: 1.5),
     movement: (
         run_speed: 38,

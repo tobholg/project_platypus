@@ -92,22 +92,14 @@ pub struct Health {
     pub max: f32,
     /// What its gear stops (`gear::stats`): every hurt goes through `harm`.
     pub ward: Ward,
+    /// How its kind takes each kind of hurt (`creatures::nature`).
+    pub nature: Nature,
+    /// The kinds of hurt it's felt since this was last looked at (a bit
+    /// each, `Harm::bit`): what stops a troll's healing.
+    pub felt: u16,
 }
 
-/// Kinds of hurt: what armour stops (a blow, a bite, a blast), what each
-/// resistance stops, and falls (only fall resistance helps).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Harm {
-    Physical,
-    Fire,
-    #[allow(dead_code)] // (frost spells: next)
-    Frost,
-    Storm,
-    Acid,
-    Fall,
-    /// Light (a radiant spell): no armour stops it.
-    Radiant,
-}
+pub use crate::creatures::nature::{Harm, Nature};
 
 /// Armour and resistances (shares 0..1 of each kind stopped).
 #[derive(Clone, Copy, Debug, Default)]
@@ -128,13 +120,13 @@ impl Ward {
     /// The share of a kind of hurt that gets through.
     pub fn through(&self, kind: Harm) -> f32 {
         let stopped = match kind {
-            Harm::Physical => self.armor.max(0.0) / (self.armor.max(0.0) + ARMOR_HALF),
+            Harm::Slash | Harm::Pierce | Harm::Blunt => self.armor.max(0.0) / (self.armor.max(0.0) + ARMOR_HALF),
             Harm::Fire => self.fire,
             Harm::Frost => self.frost,
             Harm::Storm => self.storm,
             Harm::Acid => self.acid,
             Harm::Fall => self.fall,
-            Harm::Radiant => 0.0,
+            Harm::Poison | Harm::Radiant | Harm::Void => 0.0,
         };
         1.0 - stopped.clamp(0.0, 0.9)
     }
@@ -142,13 +134,24 @@ impl Ward {
 
 impl Health {
     pub fn new(max: f32) -> Health {
-        Health { hp: max, max, ward: Ward::default() }
+        Health { hp: max, max, ward: Ward::default(), nature: Nature::default(), felt: 0 }
     }
 
-    /// Hurt it: `amount` of a kind, less what its ward stops. Returns what
-    /// got through.
+    /// Hurt it: `amount` of a kind, less what its gear stops, times how its
+    /// kind takes it. Returns what got through; below 0, it drank it in
+    /// (its nature heals it: up to its maximum).
     pub fn harm(&mut self, amount: f32, kind: Harm) -> f32 {
-        let got = amount * self.ward.through(kind);
+        if amount <= 0.0 {
+            return 0.0;
+        }
+        self.felt |= kind.bit();
+        let m = self.nature.of(kind);
+        if m < 0.0 {
+            let heal = amount * -m;
+            self.hp = (self.hp + heal).min(self.max);
+            return -heal;
+        }
+        let got = amount * self.ward.through(kind) * m;
         self.hp -= got;
         got
     }
@@ -472,7 +475,7 @@ fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Kinematics, &mut Health)
     }
     for (i, (mut k, mut h)) in q.iter_mut().enumerate() {
         if hurt[i] > 0.0 {
-            h.harm(hurt[i], Harm::Physical);
+            h.harm(hurt[i], Harm::Blunt);
             k.body.vel += shove[i];
         }
     }
@@ -492,7 +495,7 @@ fn blasted(mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<(&mut K
                 continue;
             }
             let f = 1.0 - dist / reach;
-            health.harm(b.power * 0.65 * f, Harm::Physical);
+            health.harm(b.power * 0.65 * f, Harm::Blunt);
             let dir = (d.normalize_or(Vec2::Y) + Vec2::new(0.0, 0.6)).normalize();
             let k = &mut *k;
             k.loco.knock(&mut k.body, dir * b.power * 3.0 * (0.4 + 0.6 * f), 0.35);
@@ -527,7 +530,7 @@ type Mortal<'a> = (
 );
 
 #[allow(clippy::too_many_arguments)]
-fn deaths(
+pub(crate) fn deaths(
     mut commands: Commands,
     mut sim: ResMut<SimWorld>,
     mut deaths: ResMut<PlayerDeaths>,

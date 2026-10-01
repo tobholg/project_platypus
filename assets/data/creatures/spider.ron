@@ -12,9 +12,11 @@
     size: (16, 12),
     health: 130,
     team: Enemy,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "insect",
+    profile: {acid: -0.25},
     // It bleeds acid (mind where you hit it), and acid doesn't hurt it.
     blood: "acid",
-    resist: (corrosion: 1.0),
     art: "spider_body",
     legs: (count: 8, reach: 48, upper: 0.48, step: 0.1, lift: 8, hips: 4, spread: 7,
            color: (24, 18, 22), joint: (74, 36, 40), thick: 3, body: "spider_body", eyes: (255, 52, 38),

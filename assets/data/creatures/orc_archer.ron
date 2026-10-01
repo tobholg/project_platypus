@@ -9,6 +9,8 @@
     size: (7, 16),
     health: 50,
     team: Enemy,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "humanoid",
     fall_damage: (safe_height: 70, per_cell: 0.8),
     movement: (
         run_speed: 58,

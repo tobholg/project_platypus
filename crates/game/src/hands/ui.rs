@@ -769,7 +769,7 @@ fn show_gear(
     let armor = stats.get(crate::gear::Stat::Armor);
     let mut lines = vec![
         format!("Health {:.0} / {:.0}", health.hp.max(0.0), health.max),
-        format!("Armour {armor:.0} (stops {:.0}%)", (1.0 - health.ward.through(crate::actors::Harm::Physical)) * 100.0),
+        format!("Armour {armor:.0} (stops {:.0}%)", (1.0 - health.ward.through(crate::actors::Harm::Slash)) * 100.0),
     ];
     lines.extend(stats.nonzero().filter(|(s, _)| *s != crate::gear::Stat::Armor).map(|(s, v)| crate::gear::stats::line(s, v)));
     let t = lines.join("\n");

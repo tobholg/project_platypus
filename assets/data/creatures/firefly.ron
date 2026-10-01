@@ -7,6 +7,8 @@
     size: (2, 2),
     health: 1,
     team: Neutral,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "insect",
     blood: "",
     art: "firefly",
     light: (color: (200, 255, 110), strength: 0.9, pulse: 2.2),

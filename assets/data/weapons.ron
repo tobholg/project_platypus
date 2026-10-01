@@ -4,6 +4,8 @@
 // what hits (pixel against the target's pixels).
 //
 // damage, knock (cells/s), stun (s): per hit, before a move's multipliers.
+// harm: its kind of hurt (DESIGN §14.2): slash (the default), pierce, blunt;
+//   a move may say its own (a thrust pierces).
 // rest: how it's held when not swinging (degrees from level; + up).
 // moves: the combo, in order (pressing again during one queues the next;
 //   a pause of `combo_gap` s starts over). Each:
@@ -39,7 +41,7 @@
             moves: [
                 (name: "slash", from: 105, to: -75, windup: 0.05, active: 0.09, recovery: 0.09, stamina: 8, lunge: 50),
                 (name: "backslash", from: -75, to: 100, windup: 0.04, active: 0.09, recovery: 0.1, stamina: 8, lunge: 40),
-                (name: "thrust", from: 0, to: 0, thrust: 5, windup: 0.07, active: 0.08, recovery: 0.13, stamina: 11, lunge: 130, damage: 1.4, knock: 1.3),
+                (name: "thrust", harm: pierce, from: 0, to: 0, thrust: 5, windup: 0.07, active: 0.08, recovery: 0.13, stamina: 11, lunge: 130, damage: 1.4, knock: 1.3),
             ],
             down: (name: "down slash", from: 55, to: -55, thrust: 4, windup: 0.02, active: 0.14, recovery: 0.08, stamina: 8),
         ),
@@ -49,9 +51,9 @@
             moves: [
                 (name: "cleave", from: 125, to: -95, windup: 0.13, active: 0.15, recovery: 0.18, stamina: 16, lunge: 40),
                 (name: "sweep", from: -95, to: 115, windup: 0.09, active: 0.15, recovery: 0.2, stamina: 16, lunge: 30),
-                (name: "drive", from: 5, to: -5, thrust: 7, windup: 0.15, active: 0.1, recovery: 0.24, stamina: 22, lunge: 170, damage: 1.6, knock: 1.5),
+                (name: "drive", harm: pierce, from: 5, to: -5, thrust: 7, windup: 0.15, active: 0.1, recovery: 0.24, stamina: 22, lunge: 170, damage: 1.6, knock: 1.5),
             ],
-            down: (name: "plunge", from: 0, to: 0, thrust: 3, windup: 0.08, active: 4, recovery: 0.22, stamina: 14, dive: 520, slam: 14, damage: 1.2),
+            down: (name: "plunge", harm: pierce, from: 0, to: 0, thrust: 3, windup: 0.08, active: 4, recovery: 0.22, stamina: 14, dive: 520, slam: 14, damage: 1.2),
         ),
         // Enemies' weapons: slower, with windups to read.
         (
@@ -72,7 +74,7 @@
         ),
         // A dagger: quick stabs, little reach.
         (
-            id: "fang", art: "fang",
+            id: "fang", art: "fang", harm: pierce,
             damage: 8, knock: 70, stun: 0.12, rest: -30,
             moves: [
                 (name: "stab", from: 10, to: -10, thrust: 4, windup: 0.03, active: 0.06, recovery: 0.06, stamina: 5, lunge: 70),
@@ -82,7 +84,7 @@
             down: (name: "down slash", from: 50, to: -50, thrust: 4, windup: 0.02, active: 0.11, recovery: 0.06, stamina: 5),
         ),
         (
-            id: "club", art: "club",
+            id: "club", art: "club", harm: blunt,
             damage: 30, knock: 300, stun: 0.5, rest: -60,
             moves: [
                 (name: "smash", from: 120, to: -75, windup: 0.5, active: 0.16, recovery: 0.55, stamina: 40, lunge: 30),
@@ -109,7 +111,7 @@
     // chopping: it can hit what's in the way too); `burns`: alight in the
     // hand (a flame and light, like a planted torch).
     held: {
-        "pickaxe": (rest: -35, recolor: true, swing: (damage: 5, knock: 80, stun: 0.1, moves: [
+        "pickaxe": (rest: -35, recolor: true, swing: (harm: pierce, damage: 5, knock: 80, stun: 0.1, moves: [
             (name: "pick", from: 105, to: -50, windup: 0.04, active: 0.07, recovery: 0.03, stamina: 0),
         ])),
         "axe": (rest: -35, recolor: true, swing: (damage: 8, knock: 110, stun: 0.12, moves: [

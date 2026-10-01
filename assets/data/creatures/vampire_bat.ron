@@ -6,6 +6,9 @@
     size: (6, 4),
     health: 16,
     team: Enemy,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "beast",
+    profile: {radiant: 1.5},
     blood: "blood",
     art: "vampire_bat",
     // A red eye, crisp in the dark (drawn over it, blinking now and then),

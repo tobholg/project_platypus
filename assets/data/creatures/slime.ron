@@ -7,6 +7,8 @@
     size: (10, 7),
     health: 30,
     team: Enemy,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "ooze",
     blood: "slime",
     art: "slime",
     movement: (
@@ -17,7 +19,7 @@
         step_height: 1,
         dash_speed: 0,
     ),
-    touch: (damage: 7, knock: 120, stun: 0.15),
+    touch: (harm: blunt, damage: 7, knock: 120, stun: 0.15),
     brain: (
         kind: "hopper",
         params: (aggro_range: 140, hop_every: 1.3),

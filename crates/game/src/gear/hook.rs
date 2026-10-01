@@ -378,7 +378,7 @@ pub fn rope(
                         sounds.write(crate::sound::PlaySound::at("hook_bite", point));
                         if let (Anchor::Body { entity, .. }, Some((_, true))) = (anchor, body) {
                             let dir = vel.normalize_or(Vec2::X);
-                            hits.write(Hit { target: entity, damage: def.damage, knock: Vec2::ZERO, stun: 0.0, at: point, dir, weight: 0.4, crit: false });
+                            hits.write(Hit { target: entity, damage: def.damage, harm: crate::actors::Harm::Pierce, knock: Vec2::ZERO, stun: 0.0, at: point, dir, weight: 0.4, crit: false });
                         }
                         if !leash && let Ok((_, mut k, ..)) = things.get_mut(e) {
                             // (Hooked on in the air: your jumps back, as on landing.)

@@ -4,6 +4,8 @@
     size: (6, 5),
     health: 6,
     team: Neutral,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "beast",
     blood: "blood",
     art: "frog",
     movement: (

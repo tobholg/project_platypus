@@ -11,7 +11,7 @@ use bevy::prelude::*;
 use platypus_sim::rng::Rng;
 use platypus_sim::{Landing, MaterialId, Particle};
 
-use crate::actors::elements::{Coated, Coatings, Resist, catch_fire};
+use crate::actors::elements::{Coated, Coatings, catch_fire};
 use crate::actors::{Harm, Health, Kinematics, Rocketed};
 use crate::hands::items::Items;
 use crate::magic::runes::Emitter;
@@ -34,7 +34,7 @@ const SETTLE_ABOVE: i32 = 20;
 const EMBER_LIFE: f32 = 90.0;
 const CATCH: u8 = 24;
 
-type Scorched<'a> = (Entity, &'a Kinematics, &'a mut Health, Option<&'a Resist>, Option<&'a Coated>);
+type Scorched<'a> = (Entity, &'a Kinematics, &'a mut Health, Option<&'a Coated>);
 
 /// Each tick a pair of boots fires: flames, a puff, and the jet's scorch.
 #[allow(clippy::too_many_arguments)]
@@ -92,7 +92,7 @@ pub fn exhaust(
             }
         }
         // What's in the jet under it is scorched.
-        for (e, k, mut h, resist, coated) in &mut bodies {
+        for (e, k, mut h, coated) in &mut bodies {
             if e == r.entity {
                 continue;
             }
@@ -103,7 +103,7 @@ pub fn exhaust(
             }
             h.harm(SCORCH, Harm::Fire);
             if rng.chance(CATCH) {
-                catch_fire(&mut commands, e, resist, coated, &coatings, 0.3);
+                catch_fire(&mut commands, e, &h.nature, coated, &coatings, 0.3);
             }
         }
     }

@@ -6,6 +6,8 @@
     size: (3, 16),
     health: 5,
     team: Neutral,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "thing",
     art: "mine_lantern",
     blood: "",
     light: (color: (255, 196, 120), strength: 0.9),

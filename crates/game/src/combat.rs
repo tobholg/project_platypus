@@ -99,6 +99,9 @@ pub struct HeldDef {
 #[derive(Clone, Debug, Deserialize)]
 pub struct SwingDef {
     pub damage: f32,
+    /// Its kind of hurt (an axe slashes, a pickaxe pierces).
+    #[serde(default = "slash")]
+    pub harm: crate::actors::Harm,
     pub knock: f32,
     pub stun: f32,
     pub moves: Vec<MoveDef>,
@@ -136,6 +139,10 @@ pub struct WeaponDef {
     pub id: String,
     pub art: String,
     pub damage: f32,
+    /// What kind of hurt its moves do (a move may say otherwise: a thrust
+    /// pierces).
+    #[serde(default = "slash")]
+    pub harm: crate::actors::Harm,
     pub knock: f32,
     pub stun: f32,
     pub rest: f32,
@@ -149,6 +156,9 @@ pub struct WeaponDef {
 #[derive(Clone, Debug, Deserialize)]
 pub struct MoveDef {
     pub name: String,
+    /// Its kind of hurt, if not its weapon's.
+    #[serde(default)]
+    pub harm: Option<crate::actors::Harm>,
     pub from: f32,
     pub to: f32,
     #[serde(default)]
@@ -414,7 +424,7 @@ impl Weapons {
             let frames = turn_compiled(&art, &look.shape, None)?;
             match &h.swing {
                 Some(sw) => {
-                    blades.push(WeaponDef { id: id.clone(), art: look.shape.clone(), damage: sw.damage, knock: sw.knock, stun: sw.stun, rest: h.rest, moves: sw.moves.clone(), down: None });
+                    blades.push(WeaponDef { id: id.clone(), art: look.shape.clone(), damage: sw.damage, harm: sw.harm, knock: sw.knock, stun: sw.stun, rest: h.rest, moves: sw.moves.clone(), down: None });
                     turned.push(Turned::build(frames, images, layouts));
                 }
                 None => {
@@ -500,6 +510,8 @@ pub struct MeleeRequest {
 pub struct Hit {
     pub target: Entity,
     pub damage: f32,
+    /// What kind of hurt it is (a blade's slash, a point's pierce, a blow).
+    pub harm: crate::actors::Harm,
     /// The knockback (cells/s) and how long it takes control away.
     pub knock: Vec2,
     pub stun: f32,
@@ -528,6 +540,10 @@ pub struct Recoil {
 #[derive(Component, Clone, Copy, Debug, Deserialize)]
 pub struct Touch {
     pub damage: f32,
+    /// What kind of hurt: a bite pierces (the default), a slime's touch
+    /// is a blow, an acid slime's burns.
+    #[serde(default = "pierce")]
+    pub harm: crate::actors::Harm,
     #[serde(default)]
     pub knock: f32,
     #[serde(default)]
@@ -536,6 +552,14 @@ pub struct Touch {
     pub every: f32,
     #[serde(skip)]
     rest: f32,
+}
+
+fn slash() -> crate::actors::Harm {
+    crate::actors::Harm::Slash
+}
+
+fn pierce() -> crate::actors::Harm {
+    crate::actors::Harm::Pierce
 }
 
 fn touch_every() -> f32 {
@@ -567,7 +591,7 @@ fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher>, bodies: Que
                 continue;
             }
             let push = (Vec2::new(d.x, 0.0).normalize_or(Vec2::X * k.loco.facing) + Vec2::new(0.0, 0.4)).normalize() * t.knock;
-            hits.write(Hit { target: e, damage: t.damage, knock: push, stun: t.stun, at: k.body.pos + d * 0.5, dir: d.normalize_or(Vec2::X), weight: t.damage / 12.0, crit: false });
+            hits.write(Hit { target: e, damage: t.damage, harm: t.harm, knock: push, stun: t.stun, at: k.body.pos + d * 0.5, dir: d.normalize_or(Vec2::X), weight: t.damage / 12.0, crit: false });
             t.rest = t.every;
             break;
         }
@@ -999,7 +1023,7 @@ fn swing(
                 let roll = (platypus_sim::rng::hash(&[sim.world.tick(), me.to_bits(), e.to_bits()]) % 10_000) as f32 / 10_000.0;
                 let (damage, knock, crit) = stats.strike(def.damage * mv.damage, def.knock * mv.knock, roll);
                 let push = (Vec2::new(away.x, 0.0).normalize_or(Vec2::X * facing) + Vec2::new(0.0, 0.45)).normalize() * knock;
-                hits.write(Hit { target: e, damage, knock: push, stun: def.stun, at, dir: dir(a), weight: damage / 12.0, crit });
+                hits.write(Hit { target: e, damage, harm: mv.harm.unwrap_or(def.harm), knock: push, stun: def.stun, at, dir: dir(a), weight: damage / 12.0, crit });
                 if let Some(name) = &coat {
                     crate::actors::elements::stain(&mut commands, e, name, 1.0, &coatings);
                 }
@@ -1102,7 +1126,7 @@ fn slam(
         let away = (tk.body.pos.x - feet.x).signum();
         let (damage, knock, crit) = stats.strike(def.damage * mv.damage * 0.5, def.knock * mv.knock * 0.5, 0.5);
         let push = Vec2::new(away, 0.8).normalize() * knock;
-        hits.write(Hit { target: e, damage, knock: push, stun: def.stun, at: tk.body.pos, dir: Vec2::new(away, 0.0), weight: damage / 12.0, crit });
+        hits.write(Hit { target: e, damage, harm: mv.harm.unwrap_or(def.harm), knock: push, stun: def.stun, at: tk.body.pos, dir: Vec2::new(away, 0.0), weight: damage / 12.0, crit });
     }
 }
 
@@ -1146,7 +1170,7 @@ fn apply_hits(
         if safe || graced.contains(&h.target) {
             continue;
         }
-        health.harm(h.damage, crate::actors::Harm::Physical);
+        health.harm(h.damage, h.harm);
         let (mut knock, mut stun) = (h.knock, h.stun);
         if let Some(mut s) = sturdy {
             knock /= s.heft;

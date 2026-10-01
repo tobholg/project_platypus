@@ -36,7 +36,7 @@ use platypus_sim::cell::flags;
 use platypus_sim::rng::Rng;
 use platypus_sim::{CellPos, Kind, Landing, MaterialId, Particle, World, WorldEdit};
 
-use crate::actors::elements::{Coated, Coatings, Resist, catch_fire};
+use crate::actors::elements::{Coated, Coatings, catch_fire};
 use crate::actors::player::LocalPlayer;
 use crate::actors::{Health, Kinematics};
 use crate::data::{Watched, data_path, load_ron};
@@ -226,7 +226,7 @@ impl Spell {
     }
 }
 
-type Hittable<'a> = (Entity, &'a mut Kinematics, &'a mut Health, Option<&'a Resist>, Option<&'a Coated>);
+type Hittable<'a> = (Entity, &'a mut Kinematics, &'a mut Health, Option<&'a Coated>);
 
 impl Plugin for MagicPlugin {
     fn build(&self, app: &mut App) {
@@ -310,7 +310,7 @@ fn request(
         let st = stats.get(r.caster).unwrap_or(&none);
         let quick = st.mult(crate::gear::Stat::CastSpeed);
         let (delay, recharge) = (&(def.delay / quick), &(def.recharge / quick));
-        let (power, harm) = (spells::power(st, def.element), def.element.map_or(crate::actors::Harm::Physical, |e| e.harm()));
+        let (power, harm) = (spells::power(st, def.element), def.element.map_or(crate::actors::Harm::Blunt, |e| e.harm()));
         let casts = book.casts(r.spell);
         let w = wands.0.entry((r.caster, r.spell)).or_default();
         if casts.is_empty() {
@@ -401,7 +401,7 @@ fn fire(
                 }
                 // What stands in it is scalded, and may catch.
                 let mut rng = Rng::seeded(&[sim.world.tick(), 0x57AE]);
-                for (e, mut k, mut h, resist, coated) in &mut bodies {
+                for (e, mut k, mut h, coated) in &mut bodies {
                     let d = k.body.pos - f.from;
                     if e == f.caster || d.length() > reach || d.normalize_or_zero().dot(f.dir) < (spread * 1.5 + 0.1).cos() {
                         continue;
@@ -409,7 +409,7 @@ fn fire(
                     h.harm(STREAM_DAMAGE, cast.harm);
                     k.body.vel += f.dir * 6.0;
                     if rng.chance(STREAM_CATCH) {
-                        catch_fire(&mut commands, e, resist, coated, &coatings, 0.35);
+                        catch_fire(&mut commands, e, &h.nature, coated, &coatings, 0.35);
                     }
                 }
             }
@@ -674,10 +674,10 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
                 // the ice it leaves: that's only slippery).
                 if amount < 0 {
                     let cold = (-amount as f32 / 150.0).clamp(0.3, 1.0);
-                    for (e, k, _, resist, _) in bodies.iter() {
+                    for (e, k, h, _) in bodies.iter() {
                         let near = (k.body.pos.distance(at) - k.body.half.max_element()).max(0.0) <= radius as f32;
                         if Some(e) == hit || near {
-                            crate::actors::elements::chill(commands, e, resist, None, cold, FROST_CHILL);
+                            crate::actors::elements::chill(commands, e, &h.nature, None, cold, FROST_CHILL);
                         }
                     }
                 }
@@ -709,9 +709,9 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
             Payload::Ignite { .. } if doused => {}
             &Payload::Ignite { radius } => {
                 world.apply_edit(&WorldEdit::Ignite { center, radius });
-                for (e, k, _, resist, coated) in bodies.iter() {
+                for (e, k, h, coated) in bodies.iter() {
                     if k.body.pos.distance(at) < radius as f32 + k.body.half.max_element() {
-                        catch_fire(commands, e, resist, coated, coatings, 0.8);
+                        catch_fire(commands, e, &h.nature, coated, coatings, 0.8);
                     }
                 }
             }

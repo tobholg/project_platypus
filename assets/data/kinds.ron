@@ -1,0 +1,33 @@
+// Kinds of creature (DESIGN §14.2, creatures/nature.rs): how each takes
+// the ten kinds of hurt, and what it can't suffer. A creature file names
+// its `kind` and may change any of it (`profile`, `cant`).
+//
+// profile: kind of hurt → multiplier. 1 as anyone (the default for what's
+//   not listed); 0.5 resists; 0 shrugs it off; 1.5–2 a weakness; below 0 it
+//   heals from it (it drinks it in). Kinds: slash, pierce, blunt, fire,
+//   frost, storm, acid, poison, radiant, void (and fall).
+// cant: what it can't suffer: burn, chill, poison, web, stagger.
+//
+// Hard immunities are rare and obvious (bones can't be poisoned); otherwise
+// strong resistance, so a determined player can brute-force it.
+{
+    "humanoid": (label: "humanoid"),
+    "beast": (label: "beast", profile: {fire: 1.5}),
+    // Bugs and spiders: venom barely touches them; fire and cold do (cold
+    // slows them).
+    "insect": (label: "insect", profile: {poison: 0.3, fire: 1.5, frost: 1.5}),
+    // Bones and dead flesh: points pass through, blows break them; light
+    // and fire undo them; the void feeds them.
+    "undead": (label: "the undead", profile: {pierce: 0.5, slash: 0.75, blunt: 1.5, fire: 1.25, radiant: 2.0, void: -0.5, poison: 0.0}, cant: [poison]),
+    // Ghosts: steel and blows pass through; light burns them.
+    "spirit": (label: "spirit", profile: {slash: 0.25, pierce: 0.25, blunt: 0.25, radiant: 2.0, void: 0.5, poison: 0.0}, cant: [poison, web, stagger]),
+    // Slimes: blows sink in; fire boils them.
+    "ooze": (label: "ooze", profile: {blunt: 0.25, pierce: 0.5, fire: 1.5}),
+    // Stone and metal: blades and points scratch; hammers, blasts and acid
+    // work; lightning runs off.
+    "construct": (label: "construct", profile: {slash: 0.25, pierce: 0.25, blunt: 1.25, storm: 0.5, acid: 1.5, poison: 0.0}, cant: [burn, poison, web]),
+    // Fallen-star fire (star wisps): drinks fire, cold puts it out.
+    "starfire": (label: "starfire", profile: {fire: -0.5, frost: 2.0, slash: 0.5, pierce: 0.5, radiant: 0.5, void: 1.5, poison: 0.0}, cant: [burn, poison, web]),
+    // Props and practice dummies: nothing special (readouts stay honest).
+    "thing": (label: "thing", cant: [poison, web]),
+}

@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3195,7 +3195,7 @@ fn spiderdeath_script(
             for (e, c, sk, _) in &spiders {
                 if c.kind == "spider" {
                     let dir = Vec2::new(1.0, 0.3).normalize();
-                    hits.write(crate::combat::Hit { target: e, damage: 24.0, knock: dir * 250.0, stun: 0.3, at: sk.body.pos, dir, weight: 2.0, crit: false });
+                    hits.write(crate::combat::Hit { target: e, damage: 24.0, harm: crate::actors::Harm::Slash, knock: dir * 250.0, stun: 0.3, at: sk.body.pos, dir, weight: 2.0, crit: false });
                 }
             }
             *state += 1;
@@ -4551,6 +4551,58 @@ fn pedlar_script(
         }
         acts.write(crate::dev::DevAction::DayAhead);
         *step = 2;
+    }
+}
+
+/// `troll` (arena world): a troll 60 cells off, struck by a blade (24, a
+/// longsword's, four a second) for 8 s: its health each second (it can't
+/// die while it heals); then set alight, still struck: when it dies.
+#[allow(clippy::too_many_arguments)]
+fn troll_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    coatings: Res<crate::actors::elements::Coatings>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    trolls: Query<(Entity, &crate::actors::Creature, &Kinematics, &crate::actors::Health)>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, f32, Option<Entity>)>,
+) {
+    if s.name != "troll" {
+        return;
+    }
+    let t = s.elapsed;
+    let Ok(pk) = player.single() else { return };
+    let (step, next_hit, next_log, troll) = &mut *state;
+    if *step == 0 && t > 1.0 {
+        crate::actors::creature::spawn_creature(&mut commands, "troll", pk.body.pos + Vec2::new(60.0, -pk.body.half.y), |_| {});
+        *step = 1;
+        return;
+    }
+    if troll.is_none() {
+        *troll = trolls.iter().find(|(_, c, ..)| c.kind == "troll").map(|(e, ..)| e);
+        *next_hit = t;
+        *next_log = t.floor() + 1.0;
+        return;
+    }
+    let Ok((e, _, k, h)) = trolls.get(troll.unwrap()) else {
+        if *step < 9 {
+            info!("troll: dead at t {t:.1}");
+            *step = 9;
+        }
+        return;
+    };
+    if t >= *next_hit {
+        *next_hit += 0.25;
+        hits.write(crate::combat::Hit { target: e, damage: 24.0, harm: crate::actors::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: k.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+    }
+    if *step == 1 && t > 11.0 {
+        crate::actors::elements::catch_fire(&mut commands, e, &h.nature, None, &coatings, 1.0);
+        info!("troll: set alight at t {t:.1} (health {:.0})", h.hp);
+        *step = 2;
+    }
+    if t >= *next_log {
+        *next_log += 1.0;
+        info!("troll: t {t:.0}: health {:.0} / {:.0}{}", h.hp, h.max, if *step == 2 { ", burning" } else { "" });
     }
 }
 

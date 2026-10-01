@@ -18,7 +18,6 @@ use serde::Deserialize;
 
 use super::animation::{Animator, CreatureSprite};
 use super::brain::BrainRegistry;
-use super::elements::Resist;
 use super::{Controls, Creature, FallDamage, Health, Kinematics, MoveStats, Team};
 use crate::data::{Watched, data_path, load_ron};
 
@@ -35,9 +34,22 @@ pub struct CreatureDef {
     pub movement: MovementStats,
     #[serde(default)]
     pub fall_damage: Option<FallDamage>,
-    /// Elemental resistances (heat, corrosion, fireproof). Default: none.
+    /// What kind of creature it is (`kinds.ron`: beast, humanoid, insect,
+    /// undead, spirit, ooze, construct, ...): how it takes each kind of hurt.
     #[serde(default)]
-    pub resist: Resist,
+    pub kind: Option<String>,
+    /// Its own changes to its kind's: kind of hurt → multiplier (1 as
+    /// anyone, 0 none, below 0 it heals), and what it can't suffer.
+    #[serde(default)]
+    pub profile: HashMap<crate::creatures::nature::Harm, f32>,
+    #[serde(default)]
+    pub cant: Vec<crate::creatures::nature::Cant>,
+    /// It heals over time, stopped a while by some kinds of hurt (a troll).
+    #[serde(default)]
+    pub regen: Option<crate::creatures::nature::RegenDef>,
+    /// Its kind and its changes, put together (at load).
+    #[serde(skip)]
+    pub nature: crate::creatures::nature::Nature,
     /// A sprite written as text (`assets/art/<name>.ron`): sets `sprite` and
     /// `animations` from its size, feet and clips.
     #[serde(default)]
@@ -192,6 +204,14 @@ impl Creatures {
 
     fn load_all(dir: &std::path::Path) -> HashMap<String, Arc<CreatureDef>> {
         let mut defs = HashMap::new();
+        let kinds = crate::creatures::nature::Kinds::load().unwrap_or_else(|e| {
+            error!("kinds not loaded: {e}");
+            Default::default()
+        });
+        let with_nature = |mut def: CreatureDef| -> Result<CreatureDef, String> {
+            def.nature = crate::creatures::nature::Nature::of_kind(&kinds, def.kind.as_deref(), &def.profile, &def.cant).map_err(|e| format!("{}: {e}", def.name))?;
+            Ok(def)
+        };
         let Ok(entries) = std::fs::read_dir(dir) else {
             warn!("no creature directory at {}", dir.display());
             return defs;
@@ -199,7 +219,7 @@ impl Creatures {
         for path in entries.filter_map(|e| Some(e.ok()?.path())) {
             if path.extension().is_some_and(|e| e == "ron") {
                 let kind = path.file_stem().unwrap().to_string_lossy().into_owned();
-                match load_ron::<CreatureDef>(&path).and_then(with_art) {
+                match load_ron::<CreatureDef>(&path).and_then(with_art).and_then(with_nature) {
                     Ok(def) => {
                         defs.insert(kind, Arc::new(def));
                     }
@@ -314,7 +334,7 @@ impl Plugin for CreaturePlugin {
     }
 }
 
-pub(crate) fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut art: ResMut<CreatureArt>, mut q: Query<(&Creature, &mut MoveStats, &mut Health, &mut Animator, &mut Resist)>) {
+pub(crate) fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut art: ResMut<CreatureArt>, mut q: Query<(&Creature, &mut MoveStats, &mut Health, &mut Animator)>) {
     // (Polled without marking it changed: what reads `is_changed` redresses
     // and restats every creature.)
     let polled = creatures.bypass_change_detection();
@@ -324,10 +344,10 @@ pub(crate) fn hot_reload_creatures(mut creatures: ResMut<Creatures>, mut art: Re
     }
     art.forget_art();
     let defs = Creatures::load_all(creatures.watch.path());
-    for (c, mut stats, mut health, mut anim, mut resist) in &mut q {
+    for (c, mut stats, mut health, mut anim) in &mut q {
         if let Some(def) = defs.get(&c.kind) {
             stats.0 = def.movement.clone();
-            *resist = def.resist;
+            health.nature = def.nature;
             health.hp = health.hp.min(def.health);
             health.max = def.health;
             anim.def = def.clone();
@@ -371,7 +391,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             Name::new(def.name.clone()),
             Creature { kind: kind.clone() },
             def.team,
-            Health::new(def.health),
+            Health { nature: def.nature, ..Health::new(def.health) },
             Kinematics { body, loco: Locomotion::default(), prev_pos: center },
             MoveStats(def.movement.clone()),
             super::StepEase::default(),
@@ -383,7 +403,10 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         if let Some(f) = def.fall_damage {
             e.insert((f, super::FallTrack::default()));
         }
-        e.insert((def.resist, crate::combat::Wielding(def.weapon.clone()), crate::gear::Equipment::default(), crate::gear::Stats::default()));
+        if let Some(r) = &def.regen {
+            e.insert(crate::creatures::Regenerates::new(r));
+        }
+        e.insert((crate::combat::Wielding(def.weapon.clone()), crate::gear::Equipment::default(), crate::gear::Stats::default()));
         if let Some(s) = def.stamina {
             e.insert(crate::combat::Stamina::new(s));
         }
@@ -428,4 +451,28 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         });
         then(&mut world.entity_mut(id));
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::creatures::nature::Harm;
+
+    #[test]
+    fn every_creature_file_loads_with_its_kind() {
+        let dir = data_path("creatures");
+        let files = std::fs::read_dir(&dir).unwrap().filter(|e| e.as_ref().unwrap().path().extension().is_some_and(|x| x == "ron")).count();
+        let defs = Creatures::load_all(&dir);
+        assert_eq!(defs.len(), files, "a creature file didn't load (see the log)");
+        for (id, def) in &defs {
+            assert!(def.kind.is_some(), "{id} names its kind");
+        }
+        // Their natures as designed.
+        let of = |id: &str, h: Harm| defs[id].nature.of(h);
+        assert!(of("skeleton", Harm::Blunt) > 1.0 && of("skeleton", Harm::Pierce) < 1.0);
+        assert!(of("spider", Harm::Acid) < 0.0, "spiders drink acid");
+        assert!(of("star_wisp", Harm::Fire) < 0.0 && of("star_wisp", Harm::Frost) > 1.0);
+        assert!(defs["troll"].regen.as_ref().is_some_and(|r| r.stopped_by.contains(&Harm::Fire)));
+        assert_eq!(of("dummy", Harm::Slash), 1.0, "practice dummies take hits as anyone (readouts stay honest)");
+    }
 }

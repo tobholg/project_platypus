@@ -29,5 +29,5 @@
     // off or washed off (jump in water).
     "acid":   (label: "Acid",   secs: 8,  color: (130, 235, 50), damage: 6, soak: 5),
     // A spider's sting (and a fang's bite): it burns in; wash it off.
-    "venom":  (label: "Venom",  secs: 7,  color: (150, 60, 200), damage: 7, sticks: true),
+    "venom":  (label: "Venom",  secs: 7,  color: (150, 60, 200), damage: 7, harm: poison, sticks: true),
 }

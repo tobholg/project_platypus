@@ -58,7 +58,8 @@ impl Element {
             Element::Storm => Harm::Storm,
             Element::Acid => Harm::Acid,
             Element::Radiant => Harm::Radiant,
-            Element::Force | Element::Gravity | Element::Void => Harm::Physical,
+            Element::Void => Harm::Void,
+            Element::Force | Element::Gravity => Harm::Blunt,
         }
     }
 }
