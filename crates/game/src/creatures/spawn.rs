@@ -168,13 +168,27 @@ fn debug_spawn(
     kind: Res<SpawnKind>,
     mut queue: ResMut<SpawnQueue>,
     player: Query<&Kinematics, With<LocalPlayer>>,
+    mut tape: ResMut<crate::replay::Tape>,
 ) {
-    for a in actions.read() {
-        let crate::dev::DevAction::Spawn(at) = *a else { continue };
-        // From the panel: a way off from the player.
-        let Some(at) = at.or_else(|| player.single().ok().map(|k| k.body.pos + Vec2::new(90.0, 15.0))) else { continue };
-        let Some(pack) = packs().remove(&kind.0) else {
-            spawn_creature(&mut commands, &kind.0, at, |_| {});
+    // Played back: what was put down then, as it was (asks now ignored).
+    let asked: Vec<(String, Vec2)> = if tape.playing() {
+        actions.clear();
+        tape.spawns_now()
+    } else {
+        actions
+            .read()
+            .filter_map(|a| if let crate::dev::DevAction::Spawn(at) = *a { Some(at) } else { None })
+            // From the panel: a way off from the player.
+            .filter_map(|at| at.or_else(|| player.single().ok().map(|k| k.body.pos + Vec2::new(90.0, 15.0))))
+            .map(|at| (kind.0.clone(), at))
+            .collect()
+    };
+    for (kind, at) in asked {
+        if tape.recording() {
+            tape.note_spawn(&kind, at);
+        }
+        let Some(pack) = packs().remove(&kind) else {
+            spawn_creature(&mut commands, &kind, at, |_| {});
             continue;
         };
         // In a line across the cursor, each on the ground under its place.

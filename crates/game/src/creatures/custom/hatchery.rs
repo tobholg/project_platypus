@@ -35,13 +35,13 @@ impl CustomCreature for Hatchery {
 }
 
 /// Hurt, or someone it hunts near: its brood out, and it bursts.
-fn hatch(mut commands: Commands, sim: Res<SimWorld>, hunted: Query<(&Kinematics, &Team), Without<crate::creatures::brain::villager::Hiding>>, mut q: Query<(Entity, &Hatchery, &Kinematics, &mut Health)>) {
+fn hatch(mut commands: Commands, sim: Res<SimWorld>, hunted: Query<(&Kinematics, &Team), Without<crate::creatures::brain::villager::Hiding>>, mut q: Query<(Entity, &Hatchery, &Kinematics, &mut Health)>, ids: Query<&crate::creatures::Stable>) {
     for (e, h, k, mut hp) in &mut q {
         let near = hunted.iter().any(|(pk, t)| t.hunted() && pk.body.pos.distance(k.body.pos) < h.range);
         if !near && hp.hp >= hp.max {
             continue;
         }
-        let mut rng = Rng::seeded(&[sim.world.seed(), sim.world.tick(), e.to_bits(), 0xE66]);
+        let mut rng = Rng::seeded(&[sim.world.seed(), sim.world.tick(), crate::creatures::stable(&ids, e), 0xE66]);
         for _ in 0..h.count {
             let dx = (rng.next_u32() as f32 / u32::MAX as f32 - 0.5) * 12.0;
             spawn_creature(&mut commands, &h.brood, k.body.pos + Vec2::new(dx, 1.5), |_| {});

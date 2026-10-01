@@ -56,6 +56,21 @@ pub enum ArenaAction {
     /// The arena's floor made another way (`worldgen::arena::Layout`, by
     /// name): the world reset, the player kept.
     Layout(String),
+    /// A fight recorded, stopped and saved, or the last played back
+    /// (`replay.rs`).
+    Record,
+    Stop,
+    ReplayLast,
+}
+
+/// The arena's layout now, by name (`PLATYPUS_ARENA`, or the panel's).
+#[derive(Resource)]
+pub struct CurrentLayout(pub String);
+
+impl Default for CurrentLayout {
+    fn default() -> Self {
+        CurrentLayout(std::env::var("PLATYPUS_ARENA").unwrap_or_else(|_| "sandbox".into()))
+    }
 }
 
 #[derive(Resource, Default)]
@@ -121,6 +136,7 @@ impl Plugin for ArenaPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<ArenaAction>()
             .init_resource::<ArenaView>()
+            .init_resource::<CurrentLayout>()
             .init_resource::<StepOwed>()
             .init_resource::<Folds>()
             .add_systems(Startup, spawn_panel.after(crate::fight::make_timeline))
@@ -238,7 +254,7 @@ fn act(
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut new_fight: MessageWriter<crate::fight::NewFight>,
     mut bestiary: ResMut<crate::bestiary::panel::Bestiary>,
-    (mut sim, mut resets): (ResMut<SimWorld>, MessageWriter<crate::reset::ResetNow>),
+    (mut sim, mut resets, mut current, mut tape): (ResMut<SimWorld>, MessageWriter<crate::reset::ResetNow>, ResMut<CurrentLayout>, MessageWriter<crate::replay::TapeAction>),
 ) {
     for a in dev.read() {
         if *a == crate::dev::DevAction::Arena {
@@ -276,11 +292,21 @@ fn act(
                 new_fight.write(crate::fight::NewFight);
             }
             ArenaAction::Bestiary => bestiary.open = !bestiary.open,
+            ArenaAction::Record => {
+                tape.write(crate::replay::TapeAction::Record);
+            }
+            ArenaAction::Stop => {
+                tape.write(crate::replay::TapeAction::Stop);
+            }
+            ArenaAction::ReplayLast => {
+                tape.write(crate::replay::TapeAction::Replay(None));
+            }
             ArenaAction::Layout(name) => {
                 let layout = platypus_worldgen::arena::Layout::parse(name);
                 info!("arena: the {} layout", layout.name());
                 let arena = platypus_worldgen::ArenaGen::with_layout(sim.materials(), layout);
                 sim.generator = std::sync::Arc::new(arena);
+                current.0.clone_from(name);
                 resets.write(crate::reset::ResetNow(crate::reset::Reset::World));
             }
             // Everything but the player and the planted dummies.
@@ -374,6 +400,12 @@ fn spawn_panel(mut commands: Commands, sim: Res<SimWorld>, mut view: ResMut<Aren
                     p.spawn((FightText, Text::new(""), TextFont { font_size: FontSize::Px(10.0), ..default() }, TextColor(Color::srgb(0.9, 0.9, 0.92)), Node { max_width: px(230), ..default() }));
                     p.spawn((ImageNode::new(timeline.0.clone()), Node { width: px(200), height: px(41), ..default() }, BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6))));
                     row(p, &|r| label(r, "New fight", ArenaAction::NewFight));
+                    // A fight kept, to play back as a test (`replay.rs`).
+                    row(p, &|r| {
+                        label(r, "Record", ArenaAction::Record);
+                        label(r, "Stop and save", ArenaAction::Stop);
+                        label(r, "Replay the last", ArenaAction::ReplayLast);
+                    });
                 });
                 section(p, 2, &|p| {
                     row(p, &|r| {

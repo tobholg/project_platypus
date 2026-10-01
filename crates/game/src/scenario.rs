@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script, record_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -4899,6 +4899,86 @@ fn layouts_script(s: Res<Scenario>, sim: Res<SimWorld>, player: Query<&Kinematic
         acts.write(crate::arena::ArenaAction::Layout((*l).into()));
     }
     *step += 1;
+}
+
+/// `record`: a fight recorded from the arena panel (`replay.rs`): an orc
+/// put down, the shortsword taken (hotbar 2, slot 8), the player stepping
+/// in and swinging at it for 9 s, then stopped and saved
+/// (`saves/fights/fight-N.ron`, or `PLATYPUS_SAVE_DIR`'s). Play it back
+/// as a test with `PLATYPUS_REPLAY=` that file.
+#[allow(clippy::too_many_arguments)]
+fn record_script(
+    s: Res<Scenario>,
+    tape: Res<crate::replay::Tape>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    foes: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut acts: MessageWriter<crate::replay::TapeAction>,
+    mut dev: MessageWriter<crate::dev::DevAction>,
+    mut kind: ResMut<crate::creatures::spawn::SpawnKind>,
+    (mut cursor, mut keys, mut mouse): (ResMut<CursorOverride>, ResMut<ButtonInput<KeyCode>>, ResMut<ButtonInput<MouseButton>>),
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "record" {
+        return;
+    }
+    let t = s.elapsed;
+    let (step, since) = &mut *state;
+    if *step == 0 && t > 1.0 {
+        acts.write(crate::replay::TapeAction::Record);
+        *step = 1;
+        return;
+    }
+    if *step == 1 && tape.recording() {
+        *step = 2;
+        *since = t;
+    }
+    if *step < 2 {
+        return;
+    }
+    let r = t - *since;
+    let Ok(pk) = player.single() else { return };
+    let mut want = std::collections::HashSet::new();
+    let window = |a: f32, b: f32| r >= a && r < b;
+    if *step == 2 && r >= 0.6 {
+        *step = 3;
+        kind.0 = "orc".into();
+        dev.write(crate::dev::DevAction::Spawn(Some(pk.body.pos + Vec2::new(120.0, 0.0))));
+    }
+    if window(0.8, 0.9) {
+        want.insert(KeyCode::KeyX);
+    }
+    if window(1.0, 1.1) {
+        want.insert(KeyCode::Digit8);
+    }
+    let orc = foes.iter().find(|(c, _)| c.kind == "orc").map(|(_, k)| k.body.pos);
+    let mut swing = false;
+    if let Some(o) = orc
+        && window(1.3, 10.3)
+    {
+        if (o.x - pk.body.pos.x).abs() > 22.0 {
+            want.insert(if o.x > pk.body.pos.x { KeyCode::KeyD } else { KeyCode::KeyA });
+        }
+        cursor.0 = Some(o);
+        swing = true;
+    }
+    for k in [KeyCode::KeyA, KeyCode::KeyD, KeyCode::KeyX, KeyCode::Digit8] {
+        match (want.contains(&k), keys.pressed(k)) {
+            (true, false) => keys.press(k),
+            (false, true) => keys.release(k),
+            _ => {}
+        }
+    }
+    match (swing, mouse.pressed(MouseButton::Left)) {
+        (true, false) => mouse.press(MouseButton::Left),
+        (false, true) => mouse.release(MouseButton::Left),
+        _ => {}
+    }
+    if *step == 3 && r > 10.5 {
+        cursor.0 = None;
+        acts.write(crate::replay::TapeAction::Stop);
+        info!("record: stopped at {r:.1} s; the orc {}", if orc.is_some() { "still standing" } else { "dead" });
+        *step = 4;
+    }
 }
 
 /// `reset`: the world reset from the dev panel.

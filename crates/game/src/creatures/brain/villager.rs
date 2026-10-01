@@ -93,6 +93,7 @@ fn live(
     players: Query<&Kinematics, With<LocalPlayer>>,
     others: Query<(&Kinematics, &Team, &Health), Without<Villager>>,
     mut q: Query<Living>,
+    ids: Query<&crate::creatures::Stable>,
 ) {
     let tick = sim.world.tick();
     let hour = day.time * 24.0;
@@ -129,7 +130,7 @@ fn live(
                 home.0.x
             } else {
                 if tick >= r.until {
-                    let mut rng = Rng::seeded(&[sim.world.seed(), tick, e.to_bits(), 0x411]);
+                    let mut rng = Rng::seeded(&[sim.world.seed(), tick, crate::creatures::stable(&ids, e), 0x411]);
                     let unit = |rng: &mut Rng| (rng.next_u32() % 10_000) as f32 / 10_000.0;
                     r.target = home.0.x + (unit(&mut rng) * 2.0 - 1.0) * v.wander;
                     r.until = tick + ((3.0 + unit(&mut rng) * 6.0) * 60.0) as u64;

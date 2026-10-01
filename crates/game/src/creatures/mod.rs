@@ -46,6 +46,7 @@ impl Plugin for CreaturesPlugin {
             .add_systems(FixedUpdate, (move_creatures, fall_damage, body::elements::expose, crate::combat::guard, body::hurt::notice, nature::regenerate, tally, crate::observe::observe, deaths).chain().in_set(TickSet::Bodies))
             .insert_resource(body::elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
+            .init_resource::<StableIds>()
             .add_systems(FixedUpdate, displace_liquid.after(move_creatures).in_set(TickSet::Bodies))
             // What a grab holds stays in its grip.
             .add_systems(FixedUpdate, moves::pin.after(move_creatures).before(deaths).in_set(TickSet::Bodies))
@@ -55,6 +56,22 @@ impl Plugin for CreaturesPlugin {
             .add_systems(FixedUpdate, (body::elements::struck, body::elements::zapped, blasted, pelted).after(TickSet::Cells))
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate));
     }
+}
+
+/// A creature's number, in the order creatures were made since the world
+/// began (or was reset whole): what its rolls are seeded from, so the same
+/// fight played again rolls the same (entity ids depend on everything
+/// else ever made, menus too).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Stable(pub u64);
+
+/// The next creature's number.
+#[derive(Resource, Default)]
+pub struct StableIds(pub u64);
+
+/// A creature's number for its rolls (an entity's bits, if it has none).
+pub fn stable(ids: &Query<&Stable>, e: Entity) -> u64 {
+    ids.get(e).map_or(e.to_bits(), |s| s.0)
 }
 
 /// Instance of a creature definition (file stem in `assets/data/creatures/`).

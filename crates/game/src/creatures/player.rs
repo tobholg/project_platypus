@@ -34,14 +34,14 @@ impl Plugin for PlayerPlugin {
 /// Keys are sampled every frame and consumed every tick, so a tap between two
 /// ticks is never lost (frames and ticks run at different rates).
 #[derive(Resource, Default)]
-struct HeldKeys {
+pub(crate) struct HeldKeys {
     intent: Intent,
     jump_tapped: bool,
     dash_tapped: bool,
     hook_tapped: bool,
 }
 
-fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, taken: Res<crate::dev::KeyboardTaken>, mut held: ResMut<HeldKeys>) {
+pub(crate) fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, taken: Res<crate::dev::KeyboardTaken>, mut held: ResMut<HeldKeys>) {
     if taken.0 {
         // (The art editor has the keyboard: stand still, keep looking.)
         held.intent = Intent { aim: held.intent.aim, ..default() };

@@ -167,12 +167,13 @@ impl std::fmt::Display for Fight {
 
 /// The readout and the timeline, a few times a second (while the panel's
 /// open).
-fn show(view: Res<crate::arena::ArenaView>, fight: Res<Fight>, timeline: Option<Res<Timeline>>, mut images: ResMut<Assets<Image>>, mut text: Query<&mut Text, With<FightText>>) {
+fn show(view: Res<crate::arena::ArenaView>, fight: Res<Fight>, tape: Res<crate::replay::Tape>, timeline: Option<Res<Timeline>>, mut images: ResMut<Assets<Image>>, mut text: Query<&mut Text, With<FightText>>) {
     if !view.open {
         return;
     }
     for mut t in &mut text {
-        t.0 = fight.to_string();
+        // (Recording or playing back, said first.)
+        t.0 = if tape.status.is_empty() { fight.to_string() } else { format!("{}\n{}", tape.status, *fight) };
     }
     let Some(mut image) = timeline.and_then(|t| images.get_mut(&t.0)) else { return };
     let w = BINS as i32;

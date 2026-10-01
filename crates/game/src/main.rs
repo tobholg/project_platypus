@@ -42,6 +42,7 @@ mod observe;
 mod progress;
 mod props;
 mod render;
+mod replay;
 mod reset;
 mod rigid;
 mod save;
@@ -112,7 +113,7 @@ fn main() {
         plugins = plugins.disable::<bevy::winit::WinitPlugin>().add(bevy::app::ScheduleRunnerPlugin::run_loop(std::time::Duration::ZERO));
     }
 
-    App::new()
+    let exit = App::new()
         // A command on something that's gone this tick (a creature killed by
         // one thing while another acts on it) is logged, not fatal.
         .set_error_handler(bevy::ecs::error::warn)
@@ -150,7 +151,7 @@ fn main() {
             scenario::ScenarioPlugin,
         ))
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
-        .add_plugins((fight::FightPlugin, bestiary::panel::BestiaryPlugin, bestiary::stage::StagePlugin))
+        .add_plugins((replay::ReplayPlugin, fight::FightPlugin, bestiary::panel::BestiaryPlugin, bestiary::stage::StagePlugin))
         .add_plugins((reset::ResetPlugin, clock::ClockPlugin, gold::GoldPlugin, kick::KickPlugin, traps::TrapsPlugin, talk::TalkPlugin, events::EventsPlugin))
         .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin))
         .add_plugins(sound::SoundPlugin)
@@ -158,6 +159,10 @@ fn main() {
         .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed }))
         .add_plugins(spikes_plugin)
         .run();
+    // (A replay run as a test says how it went: `replay.rs`.)
+    if let AppExit::Error(code) = exit {
+        std::process::exit(code.get() as i32);
+    }
 }
 
 /// The lairs in the caves (`assets/data/lairs.ron`).

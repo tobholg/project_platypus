@@ -463,6 +463,11 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             .unwrap_or((None, None));
 
         let blood = world.resource::<crate::world::SimWorld>().materials().id(&def.blood);
+        let number = {
+            let mut ids = world.resource_mut::<super::StableIds>();
+            ids.0 += 1;
+            ids.0
+        };
         let mut e = world.spawn((
             Name::new(def.name.clone()),
             Creature { kind: kind.clone() },
@@ -476,6 +481,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             Transform::from_translation(center.extend(def.z)),
             Visibility::default(),
         ));
+        e.insert(super::Stable(number));
         if let Some(f) = def.fall_damage {
             e.insert((f, super::FallTrack::default()));
         }

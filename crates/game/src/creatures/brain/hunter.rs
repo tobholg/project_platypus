@@ -152,8 +152,8 @@ type Hunting<'a> = (
 );
 
 /// 0..1 from a roll seeded by the world, the tick, the creature and a salt.
-fn unit(sim: &SimWorld, e: Entity, salt: u64) -> f32 {
-    let mut rng = Rng::seeded(&[sim.world.seed(), sim.world.tick(), e.to_bits(), salt]);
+fn unit(sim: &SimWorld, id: u64, salt: u64) -> f32 {
+    let mut rng = Rng::seeded(&[sim.world.seed(), sim.world.tick(), id, salt]);
     (rng.next_u32() % 10_001) as f32 / 10_000.0
 }
 
@@ -176,6 +176,7 @@ fn hunt(
     mut q: Query<Hunting>,
     mut swings: MessageWriter<crate::combat::MeleeRequest>,
     mut draws: MessageWriter<crate::archery::DrawBow>,
+    ids: Query<&crate::creatures::Stable>,
 ) {
     let tick = sim.world.tick();
     for (e, h, k, mut c, mind, marching, keeps, swinging, wielding, moves) in &mut q {
@@ -183,6 +184,7 @@ fn hunt(
             commands.entity(e).insert(HunterMind::default());
             continue;
         };
+        let id = crate::creatures::stable(&ids, e);
         let pos = k.body.pos;
         // (On a leash: only what's near its place.)
         let home = keeps.filter(|_| h.leash > 0.0).map(|kp| Vec2::new(kp.0.0 as f32, kp.0.1 as f32));
@@ -208,7 +210,7 @@ fn hunt(
                     let near = d.x.abs() < reach && d.y.abs() < reach;
                     if m.attacking && !swinging && m.swings_left == 0 {
                         m.attacking = false;
-                        m.next = tick + ticks(every * (0.7 + 0.6 * unit(&sim, e, 0xA77)));
+                        m.next = tick + ticks(every * (0.7 + 0.6 * unit(&sim, id, 0xA77)));
                     }
                     if near && !stunned && reach > 0.0 && tick >= m.next && !m.attacking && !swinging {
                         m.swings_left = combo.max(1);
@@ -238,7 +240,7 @@ fn hunt(
                             let held = (tick - since) as f32 / TICKS;
                             if stunned || held >= bow.draw * draw {
                                 m.drawing = None;
-                                m.next = tick + ticks(every * (0.7 + 0.6 * unit(&sim, e, 0xB0E)));
+                                m.next = tick + ticks(every * (0.7 + 0.6 * unit(&sim, id, 0xB0E)));
                             } else {
                                 // Where it'll be when the arrow gets there, and the drop.
                                 let speed = bow.speed.0 + (bow.speed.1 - bow.speed.0) * draw.min(1.0);
@@ -246,7 +248,7 @@ fn hunt(
                                 let g = w.arrow_def().map_or(0.0, |a| a.gravity);
                                 let aim = t + tv * flight + Vec2::new(0.0, 0.5 * g * flight * flight);
                                 // (A wobble per shot, not per tick.)
-                                let mut rng = Rng::seeded(&[sim.world.seed(), since, e.to_bits(), 0xA1A]);
+                                let mut rng = Rng::seeded(&[sim.world.seed(), since, id, 0xA1A]);
                                 let off = ((rng.next_u32() % 2001) as f32 / 1000.0 - 1.0) * wobble.to_radians();
                                 let aim = pos + Vec2::from_angle(off).rotate(aim - pos);
                                 draws.write(crate::archery::DrawBow { archer: e, at: aim });
@@ -269,16 +271,16 @@ fn hunt(
                     (t - pos).normalize_or_zero()
                 } else if tick >= m.next {
                     m.dive_until = tick + ticks(*dive_time);
-                    m.next = m.dive_until + ticks(dive_every * (0.7 + 0.6 * unit(&sim, e, 7)));
+                    m.next = m.dive_until + ticks(dive_every * (0.7 + 0.6 * unit(&sim, id, 7)));
                     (t - pos).normalize_or_zero()
                 } else {
-                    flit(&sim, e, tick, &mut m, pos, *hover, home, h.leash)
+                    flit(&sim, id, tick, &mut m, pos, *hover, home, h.leash)
                 };
                 move_y = if steer.y == 0.0 { 0.15 } else { steer.y };
                 steer.x
             }
             (Close::Swoop { hover, .. }, None) => {
-                let steer = flit(&sim, e, tick, &mut m, pos, *hover, home, h.leash);
+                let steer = flit(&sim, id, tick, &mut m, pos, *hover, home, h.leash);
                 move_y = if steer.y == 0.0 { 0.15 } else { steer.y };
                 let go = march(marching, pos.x);
                 if go != 0.0 { go } else { steer.x }
@@ -290,8 +292,8 @@ fn hunt(
                     let dir = match target {
                         Some((t, _)) => (t.x - pos.x).signum(),
                         // (Idle: a hop now and then, either way.)
-                        None if unit(&sim, e, 4) < 0.3 => {
-                            if unit(&sim, e, 5) < 0.5 {
+                        None if unit(&sim, id, 4) < 0.3 => {
+                            if unit(&sim, id, 5) < 0.5 {
                                 -1.0
                             } else {
                                 1.0
@@ -304,7 +306,7 @@ fn hunt(
                         mx = dir;
                     }
                     let every = if target.is_some() { *every } else { every * 2.5 };
-                    m.next = tick + ticks(every * (0.7 + 0.6 * unit(&sim, e, 6)));
+                    m.next = tick + ticks(every * (0.7 + 0.6 * unit(&sim, id, 6)));
                 }
                 // (Airborne, it keeps going the way it hopped.)
                 if grounded { mx } else { c.0.move_x }
@@ -325,14 +327,14 @@ fn hunt(
                 let near = d.length() < *pounce_range;
                 if tick >= m.next && (over_you || (near && (grounded || clinging.is_some()))) {
                     jump = true;
-                    m.next = tick + ticks(pounce_every * (0.7 + 0.6 * unit(&sim, e, 1)));
+                    m.next = tick + ticks(pounce_every * (0.7 + 0.6 * unit(&sim, id, 1)));
                 }
                 if d.x.abs() > 3.0 { d.x.signum() } else { 0.0 }
             }
             (Close::Crawl { .. }, None) => {
                 if tick >= m.wander_until {
-                    m.wander = Vec2::from_angle(unit(&sim, e, 2) * std::f32::consts::TAU);
-                    m.wander_until = tick + ticks(1.0 + 2.0 * unit(&sim, e, 3));
+                    m.wander = Vec2::from_angle(unit(&sim, id, 2) * std::f32::consts::TAU);
+                    m.wander_until = tick + ticks(1.0 + 2.0 * unit(&sim, id, 3));
                 }
                 move_y = m.wander.y.signum();
                 m.wander.x.signum() * h.wander.speed
@@ -344,7 +346,7 @@ fn hunt(
                     go
                 } else {
                     if tick >= m.wander_until {
-                        let mut rng = Rng::seeded(&[sim.world.seed(), tick, e.to_bits()]);
+                        let mut rng = Rng::seeded(&[sim.world.seed(), tick, id]);
                         m.wander.x = [-1.0, 0.0, 1.0][(rng.next_u32() % 3) as usize];
                         m.wander_until = tick + ticks(h.wander.every * (0.5 + (rng.next_u32() % 1000) as f32 / 1000.0));
                     }
@@ -378,10 +380,10 @@ fn range(d: Vec2, near: f32, far: f32) -> f32 {
 /// Flitting about in its band over the ground (and back toward its place,
 /// strayed past half its leash).
 #[allow(clippy::too_many_arguments)]
-fn flit(sim: &SimWorld, e: Entity, tick: u64, m: &mut HunterMind, pos: Vec2, hover: (f32, f32), home: Option<Vec2>, leash: f32) -> Vec2 {
+fn flit(sim: &SimWorld, id: u64, tick: u64, m: &mut HunterMind, pos: Vec2, hover: (f32, f32), home: Option<Vec2>, leash: f32) -> Vec2 {
     if tick >= m.wander_until {
-        m.wander = Vec2::from_angle(unit(sim, e, 8) * std::f32::consts::TAU);
-        m.wander_until = tick + ticks(0.3 + 0.4 * unit(sim, e, 9));
+        m.wander = Vec2::from_angle(unit(sim, id, 8) * std::f32::consts::TAU);
+        m.wander_until = tick + ticks(0.3 + 0.4 * unit(sim, id, 9));
     }
     let mut steer = m.wander;
     if let Some(h) = home

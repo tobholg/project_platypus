@@ -333,13 +333,14 @@ fn outfit(
     chests: Res<crate::hands::chests::Chests>,
     sim: Res<crate::world::SimWorld>,
     mut q: Query<(Entity, &Creature, &mut Equipment, &crate::creatures::Kinematics), NewCreature>,
+    ids: Query<&crate::creatures::Stable>,
 ) {
     use crate::hands::items::{ItemId, Use};
     let Some(items) = items else { return };
     for (e, c, mut eq, k) in &mut q {
         let Some(def) = creatures.get(&c.kind) else { continue };
         let level = chests.level_at(&sim.world, k.body.pos);
-        let mut rng = platypus_sim::rng::Rng::seeded(&[sim.world.seed(), sim.world.tick(), e.to_bits(), 0x0F17]);
+        let mut rng = platypus_sim::rng::Rng::seeded(&[sim.world.seed(), sim.world.tick(), crate::creatures::stable(&ids, e), 0x0F17]);
         let roll = |item: ItemId, rng: &mut platypus_sim::rng::Rng| Stack { roll: roll::roll(&rules.rarities, items.def(item), level, 0.0, rng), ..Stack::new(item, 1) };
         if eq.held.is_none()
             && let Some(w) = &def.weapon

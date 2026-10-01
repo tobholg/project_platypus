@@ -106,6 +106,7 @@ fn critters(
     sim: Res<SimWorld>,
     players: Query<(&Kinematics, &Team), Without<Critter>>,
     mut q: Query<(Entity, &Critter, &Kinematics, &mut Controls, Option<&mut CritterMind>)>,
+    ids: Query<&crate::creatures::Stable>,
 ) {
     let now = time.elapsed_secs();
     let world = &sim.world;
@@ -121,7 +122,7 @@ fn critters(
         }
         let fleeing = now < m.until;
         let grounded = k.loco.grounded();
-        let mut rng = Rng::seeded(&[world.seed(), world.tick(), e.to_bits()]);
+        let mut rng = Rng::seeded(&[world.seed(), world.tick(), crate::creatures::stable(&ids, e)]);
         let unit = |rng: &mut Rng| rng.next_u32() as f32 / u32::MAX as f32;
         let away = (pos - m.from).normalize_or(Vec2::X);
         // Every so often, a new way to go (or none: a rest).

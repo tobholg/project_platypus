@@ -877,7 +877,7 @@ fn swing(
     items: Option<Res<crate::hands::items::Items>>,
     coatings: Res<crate::creatures::body::elements::Coatings>,
     spells: Query<(Entity, &crate::magic::Spell)>,
-    (mut stop, mut trauma, mut sounds): (ResMut<HitStop>, ResMut<crate::fx::Trauma>, MessageWriter<crate::sound::PlaySound>),
+    (mut stop, mut trauma, mut sounds, ids): (ResMut<HitStop>, ResMut<crate::fx::Trauma>, MessageWriter<crate::sound::PlaySound>, Query<&crate::creatures::Stable>),
 ) {
     let Some(weapons) = weapons else { return };
     let none = crate::gear::Stats::default();
@@ -1043,7 +1043,7 @@ fn swing(
                 let Some(&at) = touched else { continue };
                 s.hit.push(e);
                 let away = (tk.body.pos - k.body.pos).normalize_or(Vec2::X * facing);
-                let roll = (platypus_sim::rng::hash(&[sim.world.tick(), me.to_bits(), e.to_bits()]) % 10_000) as f32 / 10_000.0;
+                let roll = (platypus_sim::rng::hash(&[sim.world.tick(), crate::creatures::stable(&ids, me), crate::creatures::stable(&ids, e)]) % 10_000) as f32 / 10_000.0;
                 let (damage, knock, crit) = stats.strike(def.damage * mv.damage, def.knock * mv.knock, roll);
                 let push = (Vec2::new(away.x, 0.0).normalize_or(Vec2::X * facing) + Vec2::new(0.0, 0.45)).normalize() * knock;
                 hits.write(Hit { target: e, damage, harm: mv.harm.unwrap_or(def.harm), knock: push, stun: def.stun, at, dir: dir(a), weight: damage / 12.0, crit });

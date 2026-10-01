@@ -373,7 +373,7 @@ type Exposed<'a> = (
 );
 
 /// Runs after movement, before deaths.
-pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<Coatings>, mut q: Query<Exposed>) {
+pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<Coatings>, mut q: Query<Exposed>, ids: Query<&crate::creatures::Stable>) {
     let tick = sim.world.tick();
     let fire_mat = sim.materials().fire();
     let rules = &coatings.by_name;
@@ -515,7 +515,7 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
                     b.spread = SPREAD_EVERY;
                     // Flames above it (clear of its own body), and whatever
                     // it's standing in catches: as often as it burns.
-                    let h = platypus_sim::rng::hash(&[tick, entity.to_bits()]);
+                    let h = platypus_sim::rng::hash(&[tick, crate::creatures::stable(&ids, entity)]);
                     if (h >> 20) % 1000 < (fire * 1000.0) as u64 {
                         let dx = (h % 1000) as f32 / 1000.0 * 2.0 - 1.0;
                         let at = pos + Vec2::new(dx * half.x, half.y + 4.5);
