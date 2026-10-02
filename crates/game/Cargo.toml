@@ -4,6 +4,8 @@ description = "The game: Bevy plugins gluing the simulation crates to rendering,
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+# (`cargo run -p platypus` is the game; `platypus-bestiary` beside it.)
+default-run = "platypus"
 
 [dependencies]
 platypus_sim.workspace = true
