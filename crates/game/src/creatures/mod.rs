@@ -42,7 +42,7 @@ impl Plugin for CreaturesPlugin {
             .add_message::<Died>()
             .add_message::<Rocketed>()
             .add_plugins((def::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, body::animation::AnimationPlugin))
-            .add_plugins((player::PlayerPlugin, brain::ai::AiPlugin, brain::critters::CrittersPlugin, brain::hunter::HunterPlugin, body::legs::LegsPlugin, custom::CustomPlugin, brain::villager::VillagerPlugin, moves::MovesPlugin))
+            .add_plugins((player::PlayerPlugin, brain::ai::AiPlugin, brain::critters::CrittersPlugin, brain::hunter::HunterPlugin, body::legs::LegsPlugin, custom::CustomPlugin, brain::villager::VillagerPlugin, moves::MovesPlugin, brain::way::WayPlugin))
             .add_systems(FixedUpdate, (move_creatures, fall_damage, body::elements::expose, crate::combat::guard, body::hurt::notice, nature::regenerate, tally, crate::observe::observe, deaths).chain().in_set(TickSet::Bodies))
             .insert_resource(body::elements::Coatings::load())
             .init_resource::<PlayerDeaths>()

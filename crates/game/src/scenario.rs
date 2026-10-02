@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script, record_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script, record_script, course_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -4978,6 +4978,56 @@ fn record_script(
         acts.write(crate::replay::TapeAction::Stop);
         info!("record: stopped at {r:.1} s; the orc {}", if orc.is_some() { "still standing" } else { "dead" });
         *step = 4;
+    }
+}
+
+/// `course` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=course`): the player on
+/// the course's tower, a creature (`PLATYPUS_KIND`, default the orc) put
+/// down at the far left; logs where it is each second and how near it
+/// is, and when it gets to the player (within 40 cells), or that it
+/// didn't in `PLATYPUS_SCENARIO_SECS`. `PLATYPUS_NONAV=1`: with no way
+/// found, to compare.
+fn course_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    ways: Res<crate::creatures::brain::way::Ways>,
+    player: Query<(&Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
+    foes: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut state: Local<(u8, f32, String)>,
+) {
+    if s.name != "course" {
+        return;
+    }
+    let t = s.elapsed;
+    let Ok((pk, _)) = player.single() else { return };
+    let (step, next, kind) = &mut *state;
+    if *step == 0 && t > 1.0 {
+        *kind = std::env::var("PLATYPUS_KIND").unwrap_or_else(|_| "orc".into());
+        // (The ground kept loaded round it, and it knows where the player is.)
+        crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(150.0, platypus_worldgen::arena::FLOOR as f32), |e| {
+            e.insert(crate::world::ChunkLoader { half_extent: Vec2::new(200.0, 200.0) });
+            if let Some(mut h) = e.get_mut::<crate::creatures::brain::hunter::Hunter>() {
+                h.aggro = 4000.0;
+            }
+        });
+        info!("course: the player at {:?}; a {kind} put down at the far left", pk.body.pos.round());
+        *step = 1;
+        *next = t + 1.0;
+        return;
+    }
+    let Some((_, fk)) = foes.iter().find(|(c, _)| c.kind == *kind) else { return };
+    let d = fk.body.pos.distance(pk.body.pos);
+    if *step == 1 && d < 40.0 {
+        info!("course: the {kind} got to the player at t {:.1} (it set out at 1.0); {} searches, {} nodes, {} µs", t, ways.searches, ways.looked, ways.micros);
+        *step = 2;
+    }
+    if *step == 1 && t >= *next {
+        *next += 1.0;
+        info!("course: t {:.0}: the {kind} at {:?}, {:.0} from the player", t, fk.body.pos.round(), d);
+    }
+    if *step == 1 && t > s.duration - 1.2 {
+        info!("course: the {kind} didn't get there; {:.0} away at the end", d);
+        *step = 3;
     }
 }
 

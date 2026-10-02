@@ -138,6 +138,9 @@ pub struct HunterMind {
 /// What hunters go after (a villager hiding at home is let be).
 type Hunted<'w, 's> = Query<'w, 's, (&'static Kinematics, &'static Team), Without<super::villager::Hiding>>;
 
+/// Its way (`way.rs`), and what it is (its profile's kind).
+type Finding<'a> = (&'a crate::creatures::Creature, Option<&'a mut super::way::Way>);
+
 type Hunting<'a> = (
     Entity,
     &'a Hunter,
@@ -149,6 +152,7 @@ type Hunting<'a> = (
     Has<crate::combat::Swing>,
     Option<&'a crate::combat::Wielding>,
     Option<&'a crate::creatures::moves::Moves>,
+    Finding<'a>,
 );
 
 /// 0..1 from a roll seeded by the world, the tick, the creature and a salt.
@@ -177,11 +181,12 @@ fn hunt(
     mut swings: MessageWriter<crate::combat::MeleeRequest>,
     mut draws: MessageWriter<crate::archery::DrawBow>,
     ids: Query<&crate::creatures::Stable>,
+    (mut ways, creatures, tempo): (ResMut<super::way::Ways>, Res<crate::creatures::def::Creatures>, Res<crate::tempo::Tempo>),
 ) {
     let tick = sim.world.tick();
-    for (e, h, k, mut c, mind, marching, keeps, swinging, wielding, moves) in &mut q {
-        let Some(mut m) = mind else {
-            commands.entity(e).insert(HunterMind::default());
+    for (e, h, k, mut c, mind, marching, keeps, swinging, wielding, moves, (kind, way)) in &mut q {
+        let (Some(mut m), Some(mut way)) = (mind, way) else {
+            commands.entity(e).insert((HunterMind::default(), super::way::Way::default()));
             continue;
         };
         let id = crate::creatures::stable(&ids, e);
@@ -191,9 +196,15 @@ fn hunt(
         let target = hunted
             .iter()
             .filter(|(_, t)| t.hunted())
-            .map(|(pk, _)| (pk.body.pos, pk.body.vel))
-            .filter(|(p, _)| p.distance(pos) < h.aggro && home.is_none_or(|hm| p.distance(hm) < h.leash))
+            .map(|(pk, _)| (pk.body.pos, pk.body.vel, pk.body.half))
+            .filter(|(p, ..)| p.distance(pos) < h.aggro && home.is_none_or(|hm| p.distance(hm) < h.leash))
             .min_by(|a, b| a.0.distance_squared(pos).total_cmp(&b.0.distance_squared(pos)));
+        // The way to it, where it can't be gone at straight (`way.rs`):
+        // what to press, if a way's known.
+        let feet = pos - Vec2::Y * k.body.half.y;
+        let route = |ways: &mut super::way::Ways, way: &mut super::way::Way, goal: Vec2| ways.steer(&sim.world, &creatures, &tempo, kind, k, way, goal, tick);
+        let walkable = |t: Vec2, th: Vec2| super::way::straight(&sim.world, feet, t - Vec2::Y * th.y, k.body.half, k.body.step_height as f32);
+        let mut steer: Option<super::way::Steer> = None;
         let contacts = k.loco.contacts;
         let grounded = k.loco.grounded();
         // (Stunned, or busy with a move of its own: no swing, no shot.)
@@ -203,9 +214,16 @@ fn hunt(
         let mut move_y = 0.0;
         let move_x: f32 = match (&h.close, target) {
             // On foot at it: up to `keep` off, its weapon's combo when near.
-            (Close::Walk { keep, jump_to_reach }, Some((t, _))) => {
+            (Close::Walk { keep, jump_to_reach }, Some((t, _, th))) => {
                 let d = t - pos;
-                jump = grounded && d.y > *jump_to_reach && d.x.abs() < h.aggro * 0.25;
+                // (Far across, or out of reach above or below, and not a
+                // straight walk: the way there.)
+                if (d.x.abs() > *keep || d.y.abs() > *jump_to_reach) && !walkable(t, th) {
+                    steer = route(&mut ways, &mut way, t - Vec2::Y * th.y);
+                }
+                // (Up at you when you're above and near; following a way,
+                // the way says when to jump.)
+                jump = steer.is_none() && grounded && d.y > *jump_to_reach && d.x.abs() < h.aggro * 0.25;
                 if let Attack::Swing { reach, every, combo } = h.attack {
                     let near = d.x.abs() < reach && d.y.abs() < reach;
                     if m.attacking && !swinging && m.swings_left == 0 {
@@ -224,11 +242,20 @@ fn hunt(
                         }
                     }
                 }
-                if swinging || d.x.abs() <= *keep { 0.0 } else { d.x.signum() }
+                match steer {
+                    _ if swinging => 0.0,
+                    Some(s) => s.move_x,
+                    None if d.x.abs() <= *keep => 0.0,
+                    None => d.x.signum(),
+                }
             }
             // On foot, at a distance: back off, close in, draw and loose.
-            (Close::Range { near, far }, Some((t, tv))) => {
+            (Close::Range { near, far }, Some((t, tv, th))) => {
                 let d = t - pos;
+                // (Too far, and not straight there: the way round.)
+                if d.x.abs() > *far && !walkable(t, th) {
+                    steer = route(&mut ways, &mut way, t - Vec2::Y * th.y);
+                }
                 let bow = match (&h.attack, &weapons) {
                     (Attack::Shoot { .. }, Some(w)) => wielding.and_then(|wd| wd.0.as_deref()).and_then(|id| w.bow_index(id)).map(|i| w.bow(i).clone()),
                     _ => None,
@@ -259,14 +286,22 @@ fn hunt(
                             draws.write(crate::archery::DrawBow { archer: e, at: t });
                             0.0
                         } else {
-                            range(d, *near, *far)
+                            steer.map_or_else(|| range(d, *near, *far), |s| s.move_x)
                         }
                     }
-                    _ => range(d, *near, *far),
+                    _ => steer.map_or_else(|| range(d, *near, *far), |s| s.move_x),
                 }
             }
             // Flying: a dive at it now and then, else hovering in its band.
-            (Close::Swoop { hover, dive_time, dive_every }, Some((t, _))) => {
+            (Close::Swoop { hover, dive_time, dive_every }, Some((t, _, th))) if !crate::creatures::moves::clear(&sim, pos, t) => {
+                // Out of sight behind something: the way round (flying).
+                steer = route(&mut ways, &mut way, t - Vec2::Y * th.y);
+                let s = steer.unwrap_or_default();
+                let _ = (hover, dive_time, dive_every);
+                move_y = s.move_y;
+                s.move_x
+            }
+            (Close::Swoop { hover, dive_time, dive_every }, Some((t, ..))) => {
                 let steer = if tick < m.dive_until {
                     (t - pos).normalize_or_zero()
                 } else if tick >= m.next {
@@ -290,7 +325,9 @@ fn hunt(
                 let mut mx = 0.0;
                 if grounded && tick >= m.next {
                     let dir = match target {
-                        Some((t, _)) => (t.x - pos.x).signum(),
+                        // (The way round, if it isn't straight there.)
+                        Some((t, _, th)) if !walkable(t, th) => route(&mut ways, &mut way, t - Vec2::Y * th.y).map_or((t.x - pos.x).signum(), |s| if s.move_x == 0.0 { (t.x - pos.x).signum() } else { s.move_x }),
+                        Some((t, ..)) => (t.x - pos.x).signum(),
                         // (Idle: a hop now and then, either way.)
                         None if unit(&sim, id, 4) < 0.3 => {
                             if unit(&sim, id, 5) < 0.5 {
@@ -313,7 +350,7 @@ fn hunt(
             }
             // Crawling: up walls toward it, along ceilings; a pounce when
             // near, or dropping on it from above.
-            (Close::Crawl { pounce_range, pounce_every }, Some((t, _))) => {
+            (Close::Crawl { pounce_range, pounce_every }, Some((t, _, th))) => {
                 let d = t - pos;
                 move_y = if d.y > 6.0 {
                     1.0
@@ -322,6 +359,13 @@ fn hunt(
                 } else {
                     0.0
                 };
+                // Out of sight: the way round, over walls and ceilings.
+                if !crate::creatures::moves::clear(&sim, pos, t) {
+                    steer = route(&mut ways, &mut way, t - Vec2::Y * th.y);
+                    if let Some(s) = steer {
+                        move_y = s.move_y;
+                    }
+                }
                 let clinging = k.loco.clinging();
                 let over_you = clinging == Some(Vec2::Y) && d.x.abs() < 12.0;
                 let near = d.length() < *pounce_range;
@@ -329,7 +373,11 @@ fn hunt(
                     jump = true;
                     m.next = tick + ticks(pounce_every * (0.7 + 0.6 * unit(&sim, id, 1)));
                 }
-                if d.x.abs() > 3.0 { d.x.signum() } else { 0.0 }
+                match steer {
+                    Some(s) => s.move_x,
+                    None if d.x.abs() > 3.0 => d.x.signum(),
+                    None => 0.0,
+                }
             }
             (Close::Crawl { .. }, None) => {
                 if tick >= m.wander_until {
@@ -354,14 +402,22 @@ fn hunt(
                 }
             }
         };
-        // On foot or hopping, a wall it's walking into: jump it.
-        if matches!(h.close, Close::Walk { .. } | Close::Range { .. }) && ((move_x > 0.0 && contacts.wall_right) || (move_x < 0.0 && contacts.wall_left)) {
+        // On foot or hopping, a wall it's walking into: jump it (unless a
+        // way's being followed: it knows when to).
+        if steer.is_none() && matches!(h.close, Close::Walk { .. } | Close::Range { .. }) && ((move_x > 0.0 && contacts.wall_right) || (move_x < 0.0 && contacts.wall_left)) {
             jump = grounded;
+        }
+        let hold = steer.is_some_and(|s| s.hold);
+        if let Some(s) = steer
+            && !matches!(h.close, Close::Hop { .. })
+        {
+            jump |= s.jump;
         }
         c.0.move_x = move_x;
         c.0.move_y = move_y;
-        // Brains hold buttons; release after a press so the next press registers.
-        c.0.jump = jump && !c.0.jump;
+        // Brains hold buttons; release after a press so the next press
+        // registers (a way's jump is held as its arc was).
+        c.0.jump = if hold && c.0.jump { true } else { jump && !c.0.jump };
     }
 }
 

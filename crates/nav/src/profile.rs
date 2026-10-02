@@ -13,13 +13,14 @@ const DT: f32 = 1.0 / 60.0;
 /// The longest an arc is followed (s).
 const LONGEST: f32 = 2.5;
 
-/// One jump: where it comes down (node offset, facing right), the nodes
-/// it passes through on the way (the body must fit in each), how long it
-/// takes, how long the key is held, and whether it runs at it first.
+/// One jump: where it comes down (node offset, facing right), where its
+/// feet are each tick on the way (cells from where it took off: the body
+/// must fit at each), how long it takes, how long the key is held, and
+/// whether it runs at it first.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Jump {
     pub to: IVec2,
-    pub through: Vec<IVec2>,
+    pub arc: Vec<IVec2>,
     pub secs: f32,
     pub hold: f32,
     pub run_up: bool,
@@ -84,7 +85,7 @@ impl Profile {
             let mut h = std::hash::DefaultHasher::new();
             (p.size, p.step, p.drop, p.climb, p.fly > 0.0, p.swim > 0.0).hash(&mut h);
             for j in &p.jumps {
-                (j.to, &j.through).hash(&mut h);
+                (j.to, &j.arc).hash(&mut h);
             }
             h.finish()
         };
@@ -97,6 +98,12 @@ impl Profile {
         self.run.max(self.fly).max(self.swim)
     }
 
+    /// How far it can get back up (nodes): its highest jump; any height
+    /// for a climber or a flyer.
+    pub fn back_up(&self) -> i32 {
+        if self.climb || self.fly > 0.0 { i32::MAX } else { self.jumps.iter().map(|j| j.to.y).max().unwrap_or(0).max(self.step / crate::tile::NODE) }
+    }
+
     /// The move a kind and offset is (a path's steps say which).
     pub fn move_of(&self, kind: Kind, d: IVec2) -> Option<&Move> {
         self.moves.iter().find(|m| m.kind == kind && m.d == d)
@@ -105,7 +112,7 @@ impl Profile {
 
 /// Every arc its jump can make, run in the physics: held short, half and
 /// full, standing and at a run. Where each comes down on the way down (a
-/// node it passes falling), the quickest arc to each.
+/// node it passes falling), each way of jumping's arc to each.
 fn jumps(size: (u16, u16), stats: &MovementStats, drop: f32) -> Vec<Jump> {
     let (w, h) = (size.0 as f32, size.1 as f32);
     let room = Room(size.0 as i32);
@@ -127,7 +134,7 @@ fn jumps(size: (u16, u16), stats: &MovementStats, drop: f32) -> Vec<Jump> {
             if run_up {
                 b.vel.x = stats.run_speed;
             }
-            let mut through: Vec<IVec2> = Vec::new();
+            let mut arc: Vec<IVec2> = Vec::new();
             let mut t = 0.0;
             let mut rising = true;
             while t < LONGEST {
@@ -140,9 +147,7 @@ fn jumps(size: (u16, u16), stats: &MovementStats, drop: f32) -> Vec<Jump> {
                 let feet = Vec2::new(b.pos.x, b.pos.y - h / 2.0) - start;
                 // (Nodes from where it stood: its feet in the middle of a node's bottom.)
                 let n = IVec2::new(((feet.x + (NODE / 2) as f32) / NODE as f32).floor() as i32, (feet.y / NODE as f32).floor() as i32);
-                if through.last() != Some(&n) {
-                    through.push(n);
-                }
+                arc.push(IVec2::new(feet.x.round() as i32, feet.y.floor() as i32));
                 rising &= b.vel.y > 0.0;
                 if feet.y < -drop {
                     break;
@@ -150,11 +155,13 @@ fn jumps(size: (u16, u16), stats: &MovementStats, drop: f32) -> Vec<Jump> {
                 // Coming down: it could land here.
                 if !rising && b.vel.y <= 0.0 && n.x >= 1 && !(n.x <= 1 && n.y == 0) && n != IVec2::ZERO {
                     let to = n;
-                    let path: Vec<IVec2> = through[..through.len() - 1].to_vec();
-                    match best.iter_mut().find(|j| j.to == to) {
+                    let path: Vec<IVec2> = arc.clone();
+                    // (Each way of jumping kept: a higher, slower arc gets
+                    // up a wall the quickest doesn't.)
+                    match best.iter_mut().find(|j| j.to == to && j.hold == hold && j.run_up == run_up) {
                         Some(j) if j.secs <= t => {}
-                        Some(j) => *j = Jump { to, through: path, secs: t, hold, run_up },
-                        None => best.push(Jump { to, through: path, secs: t, hold, run_up }),
+                        Some(j) => *j = Jump { to, arc: path, secs: t, hold, run_up },
+                        None => best.push(Jump { to, arc: path, secs: t, hold, run_up }),
                     }
                 }
             }
@@ -188,4 +195,6 @@ mod tests {
         assert!(Profile::new((24.0, 18.0), &MovementStats { cling: true, ..stats }, 60.0).climb);
     }
 }
+
+
 

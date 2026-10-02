@@ -26,6 +26,11 @@ pub enum Layout {
     Cave,
     Slopes,
     Stairs,
+    /// An obstacle course for finding the way (`COURSE`): a wall to jump,
+    /// a pit, a tunnel too low for a man with a step up onto its roof, and
+    /// a tower whose face can't be climbed, a passage through its foot, its
+    /// stairs on the far side.
+    Course,
     /// The real world (`seed`, the medium preset) around (x, y): its
     /// chunks, copied whole, that place at the arena's start.
     Real { seed: u64, x: i32, y: i32 },
@@ -41,6 +46,7 @@ impl Layout {
             "cave" => Layout::Cave,
             "slopes" => Layout::Slopes,
             "stairs" => Layout::Stairs,
+            "course" => Layout::Course,
             "real" => {
                 let n: Vec<i64> = parts.filter_map(|p| p.parse().ok()).collect();
                 match n[..] {
@@ -60,6 +66,7 @@ impl Layout {
             Layout::Cave => "cave",
             Layout::Slopes => "slopes",
             Layout::Stairs => "stairs",
+            Layout::Course => "course",
             Layout::Real { .. } => "real",
         }
     }
@@ -82,6 +89,13 @@ pub const FLOOR: i32 = 160;
 /// Where the player starts, and the dummies stand (x, what).
 const START: i32 = 960;
 const DUMMIES: [(i32, &str); 4] = [(1050, "dummy"), (1140, "dummy"), (1230, "dummy"), (1305, "sandbag")];
+/// The course's tower (its left face, its top's height over the floor),
+/// where the player waits on top; its stairs go down to the right.
+pub const COURSE: (i32, i32) = (1200, 100);
+const COURSE_TOWER: i32 = 120;
+const COURSE_STEPS: i32 = 10;
+const COURSE_STEP_W: i32 = 24;
+
 /// The stage's inside (x0, floor, x1, ceiling), its bedrock this thick
 /// round it; a step up this high at its right end, from `STEP_AT`.
 pub const STAGE: (i32, i32, i32, i32) = (1530, 744, 1860, 900);
@@ -193,6 +207,37 @@ impl ArenaGen {
                 }
                 (y < self.ground(x)).then_some(self.stone)
             }
+            Layout::Course => {
+                let f = FLOOR;
+                let (tx, top) = COURSE;
+                let stairs = tx + COURSE_TOWER;
+                let end = stairs + COURSE_STEPS * COURSE_STEP_W;
+                // The tower, then its stairs down to the right (each step
+                // lower, the last 32 over the floor: a jump up), and under
+                // them all a passage 28 high: the way up is through it, out
+                // the far side and up the stairs.
+                let height = if (tx..stairs).contains(&x) {
+                    f + top
+                } else if (stairs..end).contains(&x) {
+                    let i = (x - stairs) / COURSE_STEP_W + 1;
+                    f + top - (top - 32) * i / COURSE_STEPS
+                } else {
+                    f
+                };
+                let solid = match x {
+                    // A wall to jump (27), a pit to jump (14 wide, 40 deep:
+                    // a man falling in can't get out).
+                    300..312 => y < f + 27,
+                    420..434 => y < f - 40,
+                    // A step up, and the tunnel: open under 18 (a man can't
+                    // stand in it), its roof 44 up.
+                    540..560 => y < f + 22,
+                    560..640 => y < f || (f + 18..f + 44).contains(&y),
+                    x if (tx..end).contains(&x) => y < f || (f + 28..height).contains(&y),
+                    _ => y < height,
+                };
+                solid.then_some(self.stone)
+            }
             Layout::Cave => {
                 // A tunnel: its roof 70 up and wavering, rock above to the
                 // walls' top; a few pillars, roof to floor.
@@ -255,6 +300,8 @@ impl ChunkGenerator for ArenaGen {
             // (Its ground there, wherever that lands.)
             Some(r) => r.start,
             None if self.layout == Layout::Sandbox => CellPos::new(START, FLOOR),
+            // (The course: the player on the tower.)
+            None if self.layout == Layout::Course => CellPos::new(COURSE.0 + 60, FLOOR + COURSE.1),
             None => CellPos::new(START, self.ground(START)),
         }
     }
@@ -270,7 +317,7 @@ impl ChunkGenerator for ArenaGen {
     fn surface_hint(&self, x: i32) -> Option<i32> {
         match &self.real {
             Some(r) => Some(r.terrain.surface_at(x + r.shift.origin().x) - r.shift.origin().y),
-            None if matches!(self.layout, Layout::Sandbox | Layout::Cave) => Some(FLOOR),
+            None if matches!(self.layout, Layout::Sandbox | Layout::Cave | Layout::Course) => Some(FLOOR),
             None => Some(self.ground(x)),
         }
     }
@@ -305,7 +352,7 @@ impl ChunkGenerator for ArenaGen {
         let ground = |x: i32| self.surface_hint(x).unwrap_or(FLOOR);
         let spawns = DUMMIES
             .iter()
-            .filter(|_| self.real.is_none())
+            .filter(|_| self.real.is_none() && self.layout != Layout::Course)
             .map(|&(x, kind)| (CellPos::new(x, ground(x)), Spawn::Creature(kind)))
             .filter(|(at, _)| at.chunk() == pos)
             .collect();
@@ -348,7 +395,7 @@ mod tests {
     #[test]
     fn every_layout_has_its_walls_its_stage_and_a_start_to_stand_on() {
         let m = MaterialTable::from_ron(include_str!("../../../assets/data/materials.ron")).unwrap();
-        for l in ["flat", "cave", "slopes", "stairs", "real:1"] {
+        for l in ["flat", "cave", "slopes", "stairs", "course", "real:1"] {
             let g = ArenaGen::with_layout(&m, Layout::parse(l));
             assert_eq!(g.layout.name(), l.split(':').next().unwrap());
             let s = g.spawn_point();

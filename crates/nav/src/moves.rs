@@ -31,6 +31,10 @@ pub struct Move {
     pub secs: f32,
 }
 
+/// What a jump costs besides its time (s), and a running one more.
+const JUMP_EXTRA: f32 = 0.2;
+const RUN_UP_EXTRA: f32 = 0.3;
+
 const AROUND: [IVec2; 8] = [IVec2::new(1, 0), IVec2::new(-1, 0), IVec2::new(0, 1), IVec2::new(0, -1), IVec2::new(1, 1), IVec2::new(-1, 1), IVec2::new(1, -1), IVec2::new(-1, -1)];
 
 /// Every move a profile has, both ways.
@@ -49,9 +53,14 @@ pub fn all(p: &Profile) -> Vec<Move> {
                 out.push(Move { kind: Kind::Drop, d: IVec2::new(dx, -k), secs: node / p.run + fall });
             }
         }
+        // (A jump costs more than its time: it's chancier than walking, so
+        // a body walks where it can and doesn't hop along the flat.)
         for (i, j) in p.jumps.iter().enumerate() {
             for dx in [1, -1] {
-                out.push(Move { kind: Kind::Jump(i as u16), d: IVec2::new(j.to.x * dx, j.to.y), secs: j.secs });
+                // (A running jump the more so: it needs the speed it was
+                // made at, a standing one only to stop first.)
+                let extra = if j.run_up { JUMP_EXTRA + RUN_UP_EXTRA } else { JUMP_EXTRA };
+                out.push(Move { kind: Kind::Jump(i as u16), d: IVec2::new(j.to.x * dx, j.to.y), secs: j.secs + extra });
             }
         }
     }
@@ -96,10 +105,38 @@ pub fn check<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, m: &Move)
                 return false;
             }
             let flip = if m.d.x < 0 { -1 } else { 1 };
-            j.through.iter().all(|n| {
-                let at = from + IVec2::new(n.x * flip, n.y);
-                at == from || v.fits(at)
-            })
+            // Not onto an edge: ground goes on a node past where it comes
+            // down (it may come down a little further than the arc says).
+            let beyond = to + IVec2::new(flip, 0);
+            if [beyond, beyond + IVec2::Y, beyond - IVec2::Y].iter().all(|n| v.stand(*n).is_none()) {
+                return false;
+            }
+            // The arc played over the cells, a tick at a time, from where
+            // it takes off (the middle of its node, its floor): up and down
+            // as it was; across as it was unless something's in the way,
+            // when it stays put (and the way across it lost is lost: a body
+            // stopped by a wall goes on up it, not on through); no room even
+            // where it is: no jump. It must come down where it says (onto
+            // its floor, over its node).
+            let (Some(floor), Some(land)) = (v.stand(from), v.stand(to)) else { return false };
+            let base = IVec2::new(from.x * NODE + NODE / 2, floor);
+            let (mut x, mut last, mut top) = (base.x, 0, 0);
+            for s in &j.arc {
+                let y = base.y + s.y;
+                // Coming down onto the floor it's making for: there.
+                if s.y < top && y <= land {
+                    return x.div_euclid(NODE) == to.x && v.fits_cell(x, land);
+                }
+                top = top.max(s.y);
+                let next = x + (s.x - last) * flip;
+                last = s.x;
+                if v.fits_cell(next, y) {
+                    x = next;
+                } else if !v.fits_cell(x, y) {
+                    return false;
+                }
+            }
+            x.div_euclid(NODE) == to.x
         }
         Kind::Climb => {
             let ok = |v: &mut View<W>, n: NodePos| v.hold(n) || v.stand(n).is_some();

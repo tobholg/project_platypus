@@ -377,7 +377,7 @@ fn smooth(t: f32) -> f32 {
 }
 
 /// Nothing solid on the line from `a` to `b` (a look every two cells).
-fn clear(sim: &SimWorld, a: Vec2, b: Vec2) -> bool {
+pub(crate) fn clear(sim: &SimWorld, a: Vec2, b: Vec2) -> bool {
     let n = (a.distance(b) / 2.0).ceil() as i32;
     (1..n).all(|i| {
         let p = a.lerp(b, i as f32 / n as f32);

@@ -22,6 +22,7 @@ pub mod ai;
 pub mod critters;
 pub mod hunter;
 pub mod villager;
+pub mod way;
 
 use std::collections::HashMap;
 

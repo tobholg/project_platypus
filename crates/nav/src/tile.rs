@@ -39,6 +39,9 @@ pub fn node_feet(n: NodePos) -> Vec2 {
 /// bottom), wet (its middle in liquid), hold (a climber can hold on there).
 #[derive(Clone)]
 pub struct Tile {
+    /// Each of its cells' clearance: open cells upward, up to the body's
+    /// height (a jump's arc is checked against these, to the cell).
+    open: Box<[u8]>,
     floor: [i8; (TILE * TILE) as usize],
     fits: [u16; TILE as usize],
     wet: [u16; TILE as usize],
@@ -49,12 +52,14 @@ impl Tile {
     /// Made from the world (the tile's cells, and a body's size round them).
     pub fn build(world: &impl NavWorld, tile: IVec2, w: i32, h: i32) -> Tile {
         let (x0, y0) = (tile.x * TILE_CELLS, tile.y * TILE_CELLS);
-        let left = w / 2;
+        // (A body centred on a cell overlaps `half` cells each way: an odd
+        // width's edges fall in the middle of a cell.)
+        let half = (w + 1) / 2;
         // Columns a body centred in any node here can cover, a cell beyond
         // for its sides; rows from the one under the tile to a body's height
         // over it.
         // (And a node's width beyond, where a climber reaches for a wall.)
-        let (cx0, cx1) = (x0 + NODE / 2 - left - NODE, x0 + TILE_CELLS + w + NODE);
+        let (cx0, cx1) = (x0 + NODE / 2 - half - NODE, x0 + TILE_CELLS + w + NODE);
         let (ry0, ry1) = (y0 - 1, y0 + TILE_CELLS + h + NODE);
         let (cols, rows) = ((cx1 - cx0) as usize, (ry1 - ry0) as usize);
         // Open cells upward from each (capped at the body's height: all a
@@ -78,9 +83,15 @@ impl Tile {
             }
         }
         let at = |x: i32, y: i32| ((x - cx0) as usize) * rows + (y - ry0) as usize;
-        let fits = |xc: i32, y: i32| (xc - left..xc - left + w).all(|x| up[at(x, y)] >= cap);
-        let stood_on = |xc: i32, y: i32| (xc - left..xc - left + w).any(|x| under[at(x, y - 1)]);
-        let mut t = Tile { floor: [-1; (TILE * TILE) as usize], fits: [0; TILE as usize], wet: [0; TILE as usize], hold: [0; TILE as usize] };
+        let fits = |xc: i32, y: i32| (xc - half..xc + half).all(|x| up[at(x, y)] >= cap);
+        let stood_on = |xc: i32, y: i32| (xc - half..xc + half).any(|x| under[at(x, y - 1)]);
+        let mut open = vec![0u8; (TILE_CELLS * TILE_CELLS) as usize].into_boxed_slice();
+        for y in 0..TILE_CELLS {
+            for x in 0..TILE_CELLS {
+                open[(y * TILE_CELLS + x) as usize] = up[at(x0 + x, y0 + y)];
+            }
+        }
+        let mut t = Tile { open, floor: [-1; (TILE * TILE) as usize], fits: [0; TILE as usize], wet: [0; TILE as usize], hold: [0; TILE as usize] };
         for ny in 0..TILE {
             for nx in 0..TILE {
                 let xc = x0 + nx * NODE + NODE / 2;
@@ -103,8 +114,8 @@ impl Tile {
                 // either side, the ceiling over it, the ground, or a wall
                 // behind.
                 let side = |x: i32| [yb, yb + h / 2, yb + h - 1].iter().any(|&y| solid[at(x, y)]);
-                let walled = (1..=NODE).any(|d| side(xc - left - d) || side(xc - left + w - 1 + d));
-                let roof = (0..NODE).any(|d| (xc - left..xc - left + w).any(|x| solid[at(x, yb + h + d)]));
+                let walled = (1..=NODE).any(|d| side(xc - half - d) || side(xc + half - 1 + d));
+                let roof = (0..NODE).any(|d| (xc - half..xc + half).any(|x| solid[at(x, yb + h + d)]));
                 if walled || roof || stood_on(xc, yb) || world.backed(xc, yb + h / 2) {
                     t.hold[ny as usize] |= bit;
                 }
@@ -203,6 +214,21 @@ pub struct View<'a, W: NavWorld> {
 }
 
 impl<W: NavWorld> View<'_, W> {
+    /// Whether the body fits with its feet's middle at this cell (to the
+    /// cell: a jump's arc).
+    pub fn fits_cell(&mut self, x: i32, y: i32) -> bool {
+        let (w, h) = (self.size.0 as i32, self.size.1 as i32);
+        let cap = h.clamp(1, 255) as u8;
+        let half = (w + 1) / 2;
+        (x - half..x + half).all(|cx| {
+            let n = IVec2::new(cx.div_euclid(NODE), y.div_euclid(NODE));
+            self.with(n, |t, _| {
+                let (lx, ly) = (cx.rem_euclid(TILE_CELLS), y.rem_euclid(TILE_CELLS));
+                t.open[(ly * TILE_CELLS + lx) as usize] >= cap
+            })
+        })
+    }
+
     #[inline]
     fn with<T>(&mut self, n: NodePos, f: impl FnOnce(&Tile, IVec2) -> T) -> T {
         let t = tile_of(n);

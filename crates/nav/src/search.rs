@@ -344,6 +344,26 @@ mod tests {
     }
 
     #[test]
+    fn up_onto_a_block_from_right_beside_it() {
+        // An orc at the game's pace, a block 22 high it can't step: jumped,
+        // from right against it as from further off.
+        let k = 0.8f32;
+        let mut st = MovementStats { run_speed: 93.0, jump_height: 36.0, step_height: 5, ..MovementStats::default() };
+        st.run_speed *= k;
+        st.max_fall *= k;
+        for a in [&mut st.ground_accel, &mut st.ground_decel, &mut st.air_accel, &mut st.gravity] {
+            *a *= k * k;
+        }
+        let p = Profile::new((11.0, 24.0), &st, 105.0);
+        let block = room(220, 100, |x, y| ((100..120).contains(&x) && y < 26).then_some(b'#'));
+        for start in [30, 92, 94] {
+            let mut nav = Nav::default();
+            let path = find(&mut nav.view(&block, p.size), &p, feet(start, 4), feet(110, 26), 0, 20000);
+            assert!(path.whole, "from {start}: {:?}", kinds(&path));
+        }
+    }
+
+    #[test]
     fn out_of_budget_it_goes_as_near_as_it_got() {
         let p = walker();
         let mut nav = Nav::default();

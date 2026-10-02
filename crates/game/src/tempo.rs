@@ -76,6 +76,11 @@ impl Tempo {
     }
 
     /// A creature's movement at this tempo (`player`: it's the player's).
+    /// Every creature's pace but the player's (1: as written).
+    pub fn pace(&self) -> f32 {
+        self.presets.get(self.active).map_or(1.0, |p| p.pace)
+    }
+
     pub fn apply(&self, s: &MovementStats, player: bool) -> MovementStats {
         let mut m = s.clone();
         let Some(p) = self.presets.get(self.active) else { return m };
