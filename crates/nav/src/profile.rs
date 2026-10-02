@@ -45,6 +45,9 @@ pub struct Profile {
     pub jumps: Vec<Jump>,
     /// Every move it has (both ways), its jumps' among them.
     pub moves: Vec<Move>,
+    /// What it is, as the grid's cached edges know it (the same for two
+    /// profiles that move the same way).
+    pub key: u64,
 }
 
 /// An empty room with a floor to stand on at the start.
@@ -73,8 +76,18 @@ impl Profile {
             swim: stats.swim_speed,
             jumps: if walks && stats.jump_height > 0.0 { jumps(size, stats, drop) } else { Vec::new() },
             moves: Vec::new(),
+            key: 0,
         };
         p.moves = crate::moves::all(&p);
+        p.key = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::hash::DefaultHasher::new();
+            (p.size, p.step, p.drop, p.climb, p.fly > 0.0, p.swim > 0.0).hash(&mut h);
+            for j in &p.jumps {
+                (j.to, &j.through).hash(&mut h);
+            }
+            h.finish()
+        };
         p
     }
 

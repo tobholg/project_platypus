@@ -3,12 +3,14 @@
 //! a profile's moves, both with a budget of nodes.
 
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
+
+use rustc_hash::FxHashMap as HashMap;
 
 use glam::IVec2;
 
 use crate::NavWorld;
-use crate::moves::{Kind, Move, check};
+use crate::moves::{Kind, Move};
 use crate::profile::Profile;
 use crate::tile::{NODE, NodePos, View};
 
@@ -64,7 +66,7 @@ pub fn find<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, to: NodePo
     let speed = p.fastest() / NODE as f32;
     let guess = |n: NodePos| (n - to).as_vec2().length() / speed;
     let mut open = BinaryHeap::new();
-    let mut came: HashMap<NodePos, (f32, Option<(NodePos, Move)>)> = HashMap::new();
+    let mut came: HashMap<NodePos, (f32, Option<(NodePos, Move)>)> = HashMap::default();
     came.insert(start, (0.0, None));
     open.push(Open { f: guess(start), g: 0.0, n: start });
     let (mut best, mut best_h) = (start, guess(start));
@@ -86,10 +88,11 @@ pub fn find<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, to: NodePo
         if looked >= budget {
             break;
         }
-        for m in &p.moves {
+        for &mi in v.edges(p, n).iter() {
+            let m = &p.moves[mi as usize];
             let next = n + m.d;
             let ng = g + m.secs;
-            if came.get(&next).is_some_and(|c| c.0 <= ng) || !check(v, p, n, m) {
+            if came.get(&next).is_some_and(|c| c.0 <= ng) {
                 continue;
             }
             came.insert(next, (ng, Some((n, *m))));
@@ -171,7 +174,8 @@ pub fn field<W: NavWorld>(v: &mut View<W>, p: &Profile, goal: NodePos, near: i32
             let from = n - m.d;
             let Some(j) = f.at(from) else { continue };
             let ng = g + m.secs;
-            if f.cost[j] <= ng || !check(v, p, from, m) {
+            // (Somewhere it can be at all, first: most nodes are air or rock.)
+            if f.cost[j] <= ng || !can_be(v, p, from) || !v.can(p, from, mi as u16) {
                 continue;
             }
             f.cost[j] = ng;

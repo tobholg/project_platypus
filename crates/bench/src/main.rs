@@ -263,24 +263,38 @@ fn nav(m: &Arc<MaterialTable>) -> Outcome {
         }
     }
     let mut rng = platypus_sim::rng::Rng::seeded(&[9]);
-    let (mut total, mut worst, mut whole, mut looked, mut n) = (Duration::ZERO, Duration::ZERO, 0, 0, 0);
-    let mut v = nav.view(&grid, p.size);
-    while n < 200 && !stands.is_empty() {
+    let mut pairs = Vec::new();
+    while pairs.len() < 200 && !stands.is_empty() {
         let a = stands[rng.next_u32() as usize % stands.len()];
         let b = stands[rng.next_u32() as usize % stands.len()];
-        let d = ((a - b).as_vec2() * 4.0).length();
-        if !(100.0..250.0).contains(&d) {
-            continue;
+        if (100.0..250.0).contains(&((a - b).as_vec2() * 4.0).length()) {
+            pairs.push((a, b));
         }
-        let t = Instant::now();
-        let path = find(&mut v, &p, a, b, 1, 4000);
-        let e = t.elapsed();
-        total += e;
-        worst = worst.max(e);
-        whole += path.whole as u32;
-        looked += path.looked;
-        n += 1;
     }
+    let mut v = nav.view(&grid, p.size);
+    // Twice: the first with every node's moves to work out, the second as
+    // a fight's searches are (the edges kept).
+    let mut runs = Vec::new();
+    for _ in 0..2 {
+        let (mut total, mut worst, mut whole, mut looked) = (Duration::ZERO, Duration::ZERO, 0, 0);
+        for &(a, b) in &pairs {
+            let t = Instant::now();
+            let path = find(&mut v, &p, a, b, 1, 4000);
+            let e = t.elapsed();
+            total += e;
+            worst = worst.max(e);
+            whole += path.whole as u32;
+            looked += path.looked;
+        }
+        runs.push((total / pairs.len().max(1) as u32, worst, whole, looked / pairs.len().max(1)));
+    }
+    let n = pairs.len();
+    let (total, worst, whole, looked) = runs[1];
+    // The worst case: somewhere it can't get to (up in the sky), the whole
+    // budget spent.
+    let t = Instant::now();
+    let sky = find(&mut v, &p, pairs[0].0, pairs[0].0 + glam::IVec2::new(10, 60), 0, 4000);
+    let hopeless = t.elapsed();
     let t = Instant::now();
     // (On the surface in the middle: the highest ground there.)
     let mid = (lo.x + hi.x) * 8;
@@ -291,11 +305,12 @@ fn nav(m: &Arc<MaterialTable>) -> Outcome {
     Outcome {
         name: "nav",
         what: format!(
-            "{tiles} tiles at {per_tile:.1?} each; {n} searches, {whole} reached, {} nodes each; a map of {} nodes in {field_ms:.2} ms",
-            looked / n.max(1),
+            "{tiles} tiles at {per_tile:.1?} each; {n} searches, {whole} reached, {looked} nodes each, {:.0?} each the first time; one it can't reach: {} nodes in {hopeless:.1?}; a map of {} nodes in {field_ms:.2} ms",
+            runs[0].0,
+            sky.looked,
             f.looked
         ),
-        avg: total / n.max(1) as u32,
+        avg: total,
         worst,
         budget: Duration::from_micros(300),
     }

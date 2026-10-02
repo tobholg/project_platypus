@@ -9,3 +9,4 @@ publish.workspace = true
 glam.workspace = true
 platypus_physics.workspace = true
 platypus_sim.workspace = true
+rustc-hash.workspace = true

@@ -1,11 +1,12 @@
 //! The coarse grid, a tile (one chunk) at a time, for one size of body.
 
-use std::collections::HashMap;
-
 use glam::{IVec2, Vec2};
 use platypus_physics::Occupancy;
+use rustc_hash::FxHashMap as HashMap;
 
 use crate::NavWorld;
+use crate::moves::check;
+use crate::profile::Profile;
 
 /// Cells to a node, each way.
 pub const NODE: i32 = 4;
@@ -117,6 +118,9 @@ impl Tile {
     }
 }
 
+/// A tile's nodes' moves, for one profile (none: not worked out yet).
+type EdgeTile = Vec<Option<Box<[u16]>>>;
+
 /// Every tile made so far, by tile and body size: kept in one list, found
 /// by an index (a search asks thousands of times a node; the view keeps the
 /// last few at hand).
@@ -125,6 +129,9 @@ pub struct Nav {
     arena: Vec<Tile>,
     index: HashMap<(IVec2, (u16, u16)), u32>,
     free: Vec<u32>,
+    /// Each node's moves that can be made from it, by profile and tile
+    /// (worked out once; forgotten with the tiles round it).
+    edges: HashMap<(u64, IVec2), EdgeTile>,
     /// Tiles made (for readouts).
     pub built: u64,
 }
@@ -139,12 +146,15 @@ impl Nav {
                 self.free.push(i);
             }
         }
+        // (A move from a tile beside it may pass through it: a jump.)
+        self.edges.retain(|(_, t), _| (t.x - tile.x).abs() > 1 || (t.y - tile.y).abs() > 1);
     }
 
     pub fn forget_all(&mut self) {
         self.arena.clear();
         self.index.clear();
         self.free.clear();
+        self.edges.clear();
     }
 
     /// How many tiles it holds (all sizes).
@@ -231,5 +241,29 @@ impl<W: NavWorld> View<'_, W> {
     #[inline]
     pub fn hold(&mut self, n: NodePos) -> bool {
         self.with(n, |t, l| Tile::bit(&t.hold, l))
+    }
+
+    /// The moves a profile can make from a node (indices into its
+    /// `moves`), worked out the first time and kept.
+    pub fn edges(&mut self, p: &Profile, n: NodePos) -> Box<[u16]> {
+        self.with_edges(p, n, |e| e.into())
+    }
+
+    /// Whether a profile can make a move (by its index) from a node.
+    pub fn can(&mut self, p: &Profile, n: NodePos, m: u16) -> bool {
+        self.with_edges(p, n, |e| e.contains(&m))
+    }
+
+    fn with_edges<T>(&mut self, p: &Profile, n: NodePos, f: impl FnOnce(&[u16]) -> T) -> T {
+        let t = tile_of(n);
+        let l = n - t * TILE;
+        let i = (l.y * TILE + l.x) as usize;
+        if let Some(Some(e)) = self.nav.edges.get(&(p.key, t)).map(|v| &v[i]) {
+            return f(e);
+        }
+        let e: Box<[u16]> = p.moves.iter().enumerate().filter(|(_, m)| check(self, p, n, m)).map(|(k, _)| k as u16).collect();
+        let out = f(&e);
+        self.nav.edges.entry((p.key, t)).or_insert_with(|| vec![None; (TILE * TILE) as usize])[i] = Some(e);
+        out
     }
 }
