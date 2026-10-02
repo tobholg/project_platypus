@@ -4589,6 +4589,7 @@ dependencies = [
  "fundsp",
  "platypus_art",
  "platypus_backdrop",
+ "platypus_nav",
  "platypus_physics",
  "platypus_sim",
  "platypus_worldgen",
@@ -4619,9 +4620,21 @@ dependencies = [
 name = "platypus_bench"
 version = "0.1.0"
 dependencies = [
+ "glam 0.32.1",
+ "platypus_nav",
+ "platypus_physics",
  "platypus_sim",
  "platypus_worldgen",
  "rayon",
+]
+
+[[package]]
+name = "platypus_nav"
+version = "0.1.0"
+dependencies = [
+ "glam 0.32.1",
+ "platypus_physics",
+ "platypus_sim",
 ]
 
 [[package]]

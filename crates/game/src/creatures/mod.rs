@@ -291,44 +291,8 @@ fn stuck_in(world: &World, body: &Body) -> bool {
     })
 }
 
-/// The cell world as bodies see it. Unloaded chunks are solid.
-pub struct WorldGrid<'a>(pub &'a World);
-
-/// A wall behind this point (the background layer: a cave's wall, a built
-/// one, a trunk) to climb on.
-pub fn backed(world: &World, at: Vec2) -> bool {
-    world.get_bg(CellPos::from_world(at.x, at.y)).is_some_and(|c| world.materials().phys(c.material).kind != Kind::Empty)
-}
-
-/// Grip a body gets on something slippery (ice): it slides.
-const SLIPPERY_GRIP: f32 = 0.1;
-
-impl Grid for WorldGrid<'_> {
-    #[inline]
-    fn grip(&self, x: i32, y: i32) -> f32 {
-        match self.0.get(CellPos::new(x, y)) {
-            Some(c) if self.0.materials().phys(c.material).slippery => SLIPPERY_GRIP,
-            _ => 1.0,
-        }
-    }
-
-    #[inline]
-    fn occupancy(&self, x: i32, y: i32) -> Occupancy {
-        match self.0.get(CellPos::new(x, y)) {
-            None => Occupancy::Solid,
-            Some(c) => match self.0.materials().phys(c.material) {
-                p if p.platform => Occupancy::Platform,
-                p => match p.kind {
-                    // (Sand still falling, a stream of it: you walk through.)
-                    Kind::Powder if c.vy > 0 => Occupancy::Empty,
-                    Kind::Static | Kind::Powder => Occupancy::Solid,
-                Kind::Liquid => Occupancy::Liquid,
-                    Kind::Empty | Kind::Gas | Kind::Fire | Kind::Plant => Occupancy::Empty,
-                },
-            },
-        }
-    }
-}
+/// The cell world as bodies (and the planner) see it: `platypus_nav`.
+pub use platypus_nav::world::{WorldGrid, backed};
 
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 

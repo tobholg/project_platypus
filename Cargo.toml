@@ -12,6 +12,7 @@ publish = false
 platypus_sim      = { path = "crates/sim" }
 platypus_worldgen = { path = "crates/worldgen" }
 platypus_physics  = { path = "crates/physics" }
+platypus_nav      = { path = "crates/nav" }
 # (Without Bevy's own audio: the game's is bevy_seedling's.)
 bevy       = { version = "0.19.1", default-features = false, features = ["2d", "3d", "ui"] }
 rayon      = "1.12"

@@ -221,12 +221,92 @@ fn chaos(m: &Arc<MaterialTable>) -> Outcome {
     }
 }
 
+/// Finding the way over real terrain (around the surface, a 12 × 8 chunk
+/// region at the medium preset's start): every tile made cold for a
+/// walker 11 × 24 (an orc), then 200 searches between standing places
+/// 100–250 cells apart (each looking at no more than 4 000 nodes), and one
+/// map spreading from a target over 96 × 64 nodes. The budget is the
+/// average search.
+fn nav(m: &Arc<MaterialTable>) -> Outcome {
+    use platypus_nav::{Nav, Profile, field, find, node_of};
+    let g = TerrainGen::new(1234, Preset::Medium, m);
+    let mut w = World::new(1234, m.clone());
+    let cx = 128;
+    let cy = g.surface_at(cx * CHUNK) / CHUNK - 4;
+    load_region(&mut w, &g, ChunkPos::new(cx - 6, cy), 12, 8);
+    let grid = platypus_nav::world::WorldGrid(&w);
+    let p = Profile::new((11.0, 24.0), &platypus_physics::MovementStats::default(), 60.0);
+    let mut nav = Nav::default();
+    let (lo, hi) = (ChunkPos::new(cx - 6, cy), ChunkPos::new(cx + 6, cy + 8));
+    let t = Instant::now();
+    {
+        let mut v = nav.view(&grid, p.size);
+        for ny in lo.y * 16..hi.y * 16 {
+            for nx in lo.x * 16..hi.x * 16 {
+                v.stand(glam::IVec2::new(nx, ny));
+            }
+        }
+    }
+    let tiles = nav.built;
+    let per_tile = t.elapsed() / tiles.max(1) as u32;
+    // Standing places to go between.
+    let mut stands = Vec::new();
+    {
+        let mut v = nav.view(&grid, p.size);
+        for ny in (lo.y * 16 + 2..hi.y * 16 - 2).step_by(3) {
+            for nx in (lo.x * 16 + 4..hi.x * 16 - 4).step_by(5) {
+                let n = glam::IVec2::new(nx, ny);
+                if v.stand(n).is_some() {
+                    stands.push(n);
+                }
+            }
+        }
+    }
+    let mut rng = platypus_sim::rng::Rng::seeded(&[9]);
+    let (mut total, mut worst, mut whole, mut looked, mut n) = (Duration::ZERO, Duration::ZERO, 0, 0, 0);
+    let mut v = nav.view(&grid, p.size);
+    while n < 200 && !stands.is_empty() {
+        let a = stands[rng.next_u32() as usize % stands.len()];
+        let b = stands[rng.next_u32() as usize % stands.len()];
+        let d = ((a - b).as_vec2() * 4.0).length();
+        if !(100.0..250.0).contains(&d) {
+            continue;
+        }
+        let t = Instant::now();
+        let path = find(&mut v, &p, a, b, 1, 4000);
+        let e = t.elapsed();
+        total += e;
+        worst = worst.max(e);
+        whole += path.whole as u32;
+        looked += path.looked;
+        n += 1;
+    }
+    let t = Instant::now();
+    // (On the surface in the middle: the highest ground there.)
+    let mid = (lo.x + hi.x) * 8;
+    let goal = stands.iter().filter(|n| (n.x - mid).abs() < 6).max_by_key(|n| n.y).copied().unwrap_or(stands[0]);
+    let f = field(&mut v, &p, goal, 1, goal - glam::IVec2::new(48, 32), goal + glam::IVec2::new(48, 32), 20_000);
+    let field_ms = t.elapsed().as_secs_f64() * 1000.0;
+    let _ = node_of;
+    Outcome {
+        name: "nav",
+        what: format!(
+            "{tiles} tiles at {per_tile:.1?} each; {n} searches, {whole} reached, {} nodes each; a map of {} nodes in {field_ms:.2} ms",
+            looked / n.max(1),
+            f.looked
+        ),
+        avg: total / n.max(1) as u32,
+        worst,
+        budget: Duration::from_micros(300),
+    }
+}
+
 fn main() {
     let only = std::env::args().nth(1);
     let m = materials();
     type Scenario = fn(&Arc<MaterialTable>) -> Outcome;
-    let scenarios: [(&str, Scenario); 6] =
-        [("settled", settled), ("deep", deep), ("avalanche", avalanche), ("streaming", streaming), ("stream_deep", streaming_deep), ("chaos", chaos)];
+    let scenarios: [(&str, Scenario); 7] =
+        [("settled", settled), ("deep", deep), ("avalanche", avalanche), ("streaming", streaming), ("stream_deep", streaming_deep), ("chaos", chaos), ("nav", nav)];
     println!("platypus_bench — {} worker threads\n", rayon::current_num_threads());
     println!("{:<11} {:>10} {:>10} {:>10}", "scenario", "avg", "worst", "budget");
     let mut failed = false;

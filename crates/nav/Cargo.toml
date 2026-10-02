@@ -1,0 +1,11 @@
+[package]
+name = "platypus_nav"
+description = "Finding the way: a coarse grid over the cells, creatures' moves as data, local searches and shared maps. No Bevy."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+glam.workspace = true
+platypus_physics.workspace = true
+platypus_sim.workspace = true

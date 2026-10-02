@@ -8,4 +8,7 @@ publish.workspace = true
 [dependencies]
 platypus_sim.workspace = true
 platypus_worldgen.workspace = true
+platypus_nav.workspace = true
+platypus_physics.workspace = true
+glam.workspace = true
 rayon.workspace = true

@@ -11,6 +11,7 @@ default-run = "platypus"
 platypus_sim.workspace = true
 platypus_worldgen.workspace = true
 platypus_physics.workspace = true
+platypus_nav = { path = "../nav" }
 platypus_art = { path = "../art" }
 platypus_backdrop = { path = "../backdrop" }
 bevy.workspace = true

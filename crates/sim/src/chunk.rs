@@ -70,6 +70,9 @@ pub struct Chunk {
     pub(crate) bg_render_dirty: AtomicBool,
     /// Differs from what worldgen would produce; must be persisted.
     pub(crate) modified: AtomicBool,
+    /// Cells (either layer) changed since navigation last looked (its
+    /// tiles are made again: `platypus_nav`).
+    pub(crate) nav_dirty: AtomicBool,
 }
 
 impl Chunk {
@@ -89,6 +92,7 @@ impl Chunk {
             render_dirty: AtomicBool::new(true),
             bg_render_dirty: AtomicBool::new(true),
             modified: AtomicBool::new(false),
+            nav_dirty: AtomicBool::new(true),
         }
     }
 
@@ -122,6 +126,7 @@ impl Chunk {
         self.next_dirty.include(Rect { min_x: x - 1, min_y: y - 1, max_x: x + 1, max_y: y + 1 }.clamp_to_chunk());
         *self.bg_render_dirty.get_mut() = true;
         *self.modified.get_mut() = true;
+        *self.nav_dirty.get_mut() = true;
     }
 
     /// Direct write; wakes the cell and its neighbours inside this chunk.
@@ -133,6 +138,7 @@ impl Chunk {
         self.next_dirty.include(Rect { min_x: x - 1, min_y: y - 1, max_x: x + 1, max_y: y + 1 }.clamp_to_chunk());
         *self.render_dirty.get_mut() = true;
         *self.modified.get_mut() = true;
+        *self.nav_dirty.get_mut() = true;
     }
 
     pub fn wake(&self, r: Rect) {
@@ -151,6 +157,16 @@ impl Chunk {
     /// Returns true once after cells changed; the renderer calls this.
     pub fn take_render_dirty(&self) -> bool {
         self.render_dirty.swap(false, Relaxed)
+    }
+
+    /// Whether cells changed since navigation last cleared it (it reads,
+    /// then clears when it has made its tiles again: `clear_nav_dirty`).
+    pub fn nav_dirty(&self) -> bool {
+        self.nav_dirty.load(Relaxed)
+    }
+
+    pub fn clear_nav_dirty(&self) {
+        self.nav_dirty.store(false, Relaxed);
     }
 
     /// The same, for the background.
