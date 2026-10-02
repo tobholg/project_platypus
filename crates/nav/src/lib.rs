@@ -14,7 +14,8 @@
 //!   than is safe), jump (arcs recorded once per profile by running the real
 //!   physics with the creature's own movement), climb, fly, swim.
 //! - **Searches** (`search.rs`): A* from a creature toward a goal, with a
-//!   budget of nodes (out of it: the way toward the nearest it got); and a
+//!   budget of nodes (out of it: the way toward the nearest it got), that
+//!   can be put down at a deadline and taken up next tick (`Search`); and a
 //!   map spreading out from a target (`Field`) that every creature of a
 //!   profile chasing it walks downhill on (fifty orcs cost one search).
 
@@ -25,8 +26,8 @@ pub mod tile;
 pub mod world;
 
 pub use moves::{Kind, Move};
-pub use profile::{Jump, Profile};
-pub use search::{Field, Path, field, find, find_until};
+pub use profile::{Digging, Jump, Profile};
+pub use search::{Field, Path, Search, field, find, find_until};
 pub use tile::{NODE, Nav, NodePos, TILE, View, node_feet, node_of, tile_of};
 
 use platypus_physics::Grid;
@@ -37,6 +38,20 @@ pub trait NavWorld: Grid {
     /// A wall behind this cell to climb on (a cave's, a built wall, a trunk).
     fn backed(&self, _x: i32, _y: i32) -> bool {
         false
+    }
+
+    /// A solid cell's hardness and whether nothing eats it (acid), for a
+    /// digger; None: open (air, liquid, a plant: nothing to dig).
+    fn solid_cell(&self, x: i32, y: i32) -> Option<(u8, bool)> {
+        (self.occupancy(x, y) == platypus_physics::Occupancy::Solid).then_some((255, true))
+    }
+
+    /// A column's solid cells from `y0` up (`solid_cell` each), into
+    /// `out` (a world reads it a chunk at a time).
+    fn solid_column(&self, x: i32, y0: i32, out: &mut [Option<(u8, bool)>]) {
+        for (i, o) in out.iter_mut().enumerate() {
+            *o = self.solid_cell(x, y0 + i as i32);
+        }
     }
 
     /// A column's occupancy from `y0` up, into `out` (a world reads it a

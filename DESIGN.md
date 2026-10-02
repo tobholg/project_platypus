@@ -996,6 +996,16 @@ twin, so the model can make, render and check what a person can.
   diggers won't swim (moats), lava trenches.
 - Capped per creature and per frame: a swarm can't flood the sim with
   edits.
+- *As built (branch `navigation`, SPEC §5.7)*: the planner is its own
+  crate (`platypus_nav`): nodes of 4 × 4 cells, tiles a chunk, moves as
+  data with jumps recorded from the real physics, A* with a node budget
+  that can be put down at a tick's 2 ms and taken up next tick, edges
+  kept per node and forgotten with the tiles. Digging is claws and acid
+  so far (tunnel and blast not yet); the digger eats the cells itself at
+  the rate the planner counts (acid left to the sim ran down the face
+  instead of into it, and the planner couldn't know how fast), spitting
+  a few drops to show it; the tells are the scratch, the crumbs and the
+  hiss (no cracks yet). Capped at 400 cells a tick, everyone's.
 
 ### 14.5 Bodies of parts, limbs that carry them, wounds you can see
 

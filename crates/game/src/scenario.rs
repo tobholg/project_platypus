@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script, record_script, course_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script, record_script, course_script, dig_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -5027,6 +5027,55 @@ fn course_script(
     }
     if *step == 1 && t > s.duration - 1.2 {
         info!("course: the {kind} didn't get there; {:.0} away at the end", d);
+        *step = 3;
+    }
+}
+
+/// `dig` (arena): the player sealed in a shell of `PLATYPUS_WALL` (dirt by
+/// default; stone, obsidian, glass) 24 thick round a pocket, a cave spider
+/// put down 200 cells off; logs how near it is each second and when it's
+/// in with the player (within 40), or that it isn't.
+fn dig_script(mut commands: Commands, s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, foes: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>, mut state: Local<(u8, f32, String)>) {
+    if s.name != "dig" {
+        return;
+    }
+    let t = s.elapsed;
+    let Ok(pk) = player.single() else { return };
+    let (step, next, wall) = &mut *state;
+    if *step == 0 && t > 0.8 {
+        *wall = std::env::var("PLATYPUS_WALL").unwrap_or_else(|_| "dirt".into());
+        let Some(m) = sim.materials().id(wall) else { return error!("dig: no material `{wall}`") };
+        let (px, floor) = (pk.body.pos.x as i32, (pk.body.pos.y - pk.body.half.y) as i32);
+        for x in px - 64..px + 64 {
+            for y in floor..floor + 84 {
+                let inside = (px - 30..px + 30).contains(&x) && y < floor + 40;
+                if !inside {
+                    sim.world.set(CellPos::new(x, y), platypus_sim::Cell::new(m, ((x * 7 + y * 13) & 255) as u8));
+                }
+            }
+        }
+        crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(px as f32 - 200.0, floor as f32), |e| {
+            if let Some(mut h) = e.get_mut::<crate::creatures::brain::hunter::Hunter>() {
+                h.aggro = 1000.0;
+            }
+        });
+        info!("dig: the player sealed in {wall}; a spider 200 off");
+        *step = 1;
+        *next = t + 2.0;
+        return;
+    }
+    let Some((_, fk)) = foes.iter().find(|(c, _)| c.kind == "spider") else { return };
+    let d = fk.body.pos.distance(pk.body.pos);
+    if *step == 1 && d < 40.0 {
+        info!("dig: the spider is in, through {wall}, at t {t:.1} (put down at 0.8)");
+        *step = 2;
+    }
+    if *step == 1 && t >= *next {
+        *next += 2.0;
+        info!("dig: t {t:.0}: the spider at {:?}, {d:.0} from the player", fk.body.pos.round());
+    }
+    if *step == 1 && t > s.duration - 1.2 {
+        info!("dig: the spider isn't in ({wall}); {d:.0} away at the end");
         *step = 3;
     }
 }

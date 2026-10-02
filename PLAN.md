@@ -3,8 +3,8 @@
 Each phase ends with something playable or measurable. See SPEC.md for the design.
 
 **Next:** the bestiary arc (BE, DESIGN §14, agreed 2026-10-01): `creatures`,
-the 1.5× rescale (`scale`), `moves` and `bestiary` done 2026-10-01; next
-branch `navigation`; then the world editor and sites (WE); then progression.
+the 1.5× rescale (`scale`), `moves` and `bestiary` done 2026-10-01,
+`navigation` 2026-10-02; next branch `limbs`; then the world editor and sites (WE); then progression.
 
 ## Status (2026-09-25)
 
@@ -30,7 +30,7 @@ branch `navigation`; then the world editor and sites (WE); then progression.
 | S1 | Sound (branch `sound-arc`, DESIGN §7e): bevy_seedling buses, ~37 effects and 6 ambience beds and 3 music moods all made from recipes in `sounds.ron`, world-driven ambience (fire, lava, water, rain, wind, caves, drips), positional effects hooked into combat, movement, mining, the hook, the bow, blasts, spells; the arena panel's sound board | first version, to tune by ear |
 | B1 | Backdrops (branch `backdrop-arc`, DESIGN §4.3b): Noita-like ranges by biome (`peaks.rs`: noita, alpine; running down behind the ground; 1–4 % parallax across, ~1 % up and down, pixel-snapped; behind the weather's clouds), drifting cloud heaps, a sky gradient, a blooming sun, a big moon in phases (8-night cycle) and twinkling stars over near-black nights; underground a tinted void with faint far twinkles | first version; next: big caverns without back walls in places |
 | L1 | The living world (DESIGN §13, agreed 2026-09-29): dev world reset (world only / everything) → an 8× world sized from its preset (4× wide, 2× deep; density tests) → fire moisture and storm rain → the world clock (regions, processes at their own pace with abstract and live faces; weather's fronts, regrowth, moisture, wildfires, lairs) → a flat start and a village → NPCs as data → gold (Noita's) → raids, caravans, falling stars, seasons. Proposed: metals (ore → molten → solid, §13.1), boulders (§13.2). Later: mine carts, teleport stations | done 2026-10-01: world-scale, world-clock (moisture, regrowth, wildfires, lairs), gold, matter, village, world-events (stars, raids and mending, quakes, the pedlar); seasons dropped for biomes; travel moved later (after the world editor) |
-| BE | The bestiary (DESIGN §14, agreed 2026-10-01): creatures as data with custom modules, ten damage types and resistance profiles, moves, damage feedback, the bestiary and arena v2, a path planner and digging, general limbs, the creature editor, wounds and severing, firearms and new materials, the roster, the bosses | `creatures`, `scale`, `moves`, `bestiary` done; next: `navigation` |
+| BE | The bestiary (DESIGN §14, agreed 2026-10-01): creatures as data with custom modules, ten damage types and resistance profiles, moves, damage feedback, the bestiary and arena v2, a path planner and digging, general limbs, the creature editor, wounds and severing, firearms and new materials, the roster, the bosses | `creatures`, `scale`, `moves`, `bestiary`, `navigation` done; next: `limbs` |
 | WE | The world editor and sites (DESIGN §14 "Where this sits"): authored places placed by the world plan, edit and play on the same world, then mechanisms, a map with rest points and travel, factions, a vertical slice; then progression | after BE |
 | 6 | Hollow Knight layer: ability unlocks, map, bosses, benches, set pieces | not started; the tempo (DESIGN D7) being tried: `tempo.ron` presets, `turn_accel` and `jump_hold` in movement, the arena panel's Tempo row, the `tempo` scenario; walking real terrain fixed (a 6-cell step up and walking down onto ground below, both eased on screen: full speed 12 % → 70–90 % of a walk; `walk` scenario) |
 | 7 | Pixel rigid bodies (falling terrain chunks) | optional |
@@ -322,6 +322,15 @@ Done when: a creature finds its way round an obstacle course it used to
 stick on; the cave spider digs and spits its way to a player walled in
 dirt, slows at stone, stops at obsidian and glass; the bench holds with
 diggers at work.
+Done (branch `navigation`): `platypus_nav` (grid, moves, jumps from the
+physics, A* sliced across ticks, fields), the follower, claws and acid;
+the course: orc, skeleton, spider, bat, wisp get there, slime and troll
+can't (their jumps are short of it), none of the walkers without it; the
+spider through dirt in 29 s, stone in 60, not obsidian or glass; `chaos`
+7.6 ms a frame, worst 24 (7.2 and 25 without), `nav_dig` a tick's
+planning ≤ 2.3 ms. Not done: tunnel and blast digging, cracks as a tell,
+fields used by packs; a digger's search into deep stone rarely finishes
+inside its budget (it follows the part it found, and looks again).
 
 **5. `limbs`: general procedural limbs.**
 1. Side-view legs (2, 4, 6) whose planted feet carry the body (height and

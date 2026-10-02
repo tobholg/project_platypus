@@ -55,6 +55,41 @@ impl WorldGrid<'_> {
 }
 
 impl NavWorld for WorldGrid<'_> {
+    fn solid_column(&self, x: i32, y0: i32, out: &mut [Option<(u8, bool)>]) {
+        let chunk = platypus_sim::CHUNK;
+        let mut i = 0;
+        while i < out.len() {
+            let y = y0 + i as i32;
+            let p = CellPos::new(x, y);
+            let run = ((chunk - y.rem_euclid(chunk)) as usize).min(out.len() - i);
+            match self.0.chunk(p.chunk()) {
+                None => out[i..i + run].fill(Some((255, true))),
+                Some(c) => {
+                    let (lx, ly) = p.local();
+                    for k in 0..run {
+                        let cell = c.get(lx, ly + k);
+                        out[i + k] = (self.class(cell) == Occupancy::Solid).then(|| {
+                            let ph = self.0.materials().phys(cell.material);
+                            (ph.hardness, ph.inert)
+                        });
+                    }
+                }
+            }
+            i += run;
+        }
+    }
+
+    fn solid_cell(&self, x: i32, y: i32) -> Option<(u8, bool)> {
+        match self.0.get(CellPos::new(x, y)) {
+            None => Some((255, true)),
+            Some(c) if self.class(c) == Occupancy::Solid => {
+                let p = self.0.materials().phys(c.material);
+                Some((p.hardness, p.inert))
+            }
+            Some(_) => None,
+        }
+    }
+
     fn column(&self, x: i32, y0: i32, out: &mut [Occupancy]) {
         let chunk = platypus_sim::CHUNK;
         let mut i = 0;

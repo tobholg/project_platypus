@@ -49,14 +49,18 @@ impl PartialOrd for Open {
 /// Where a body can be at a node, for its profile: standing (walkers), or
 /// anywhere it fits (flyers), or holding on (climbers), or in liquid.
 pub fn can_be<W: NavWorld>(v: &mut View<W>, p: &Profile, n: NodePos) -> bool {
-    v.stand(n).is_some() || (p.fly > 0.0 && v.fits(n)) || (p.climb && v.hold(n)) || v.wet(n)
+    // (A digger: anywhere it could dig itself into, too.)
+    v.stand(n).is_some() || (p.fly > 0.0 && v.fits(n)) || (p.climb && v.hold(n)) || v.wet(n) || (p.dig.is_some() && !v.fits(n))
 }
 
 /// The node to start from: where it is, or the nearest it can be (a body
 /// mid-jump, or its feet just over a node's line).
 pub fn settle<W: NavWorld>(v: &mut View<W>, p: &Profile, at: NodePos) -> Option<NodePos> {
     let near = [IVec2::ZERO, IVec2::new(0, -1), IVec2::new(0, 1), IVec2::new(1, 0), IVec2::new(-1, 0), IVec2::new(0, -2), IVec2::new(1, -1), IVec2::new(-1, -1), IVec2::new(0, -3)];
-    near.iter().map(|d| at + *d).find(|n| can_be(v, p, *n))
+    // (Somewhere it fits first: a digger's feet just over a node's line
+    // are not in a tunnel.)
+    let open = |v: &mut View<W>, n: NodePos| v.stand(n).is_some() || (p.fly > 0.0 && v.fits(n)) || (p.climb && v.hold(n)) || v.wet(n);
+    near.iter().map(|d| at + *d).find(|n| open(v, *n)).or_else(|| near.iter().map(|d| at + *d).find(|n| can_be(v, p, *n)))
 }
 
 /// A* from `from` to within `near` nodes of `to`, looking at no more than
@@ -68,51 +72,112 @@ pub fn find<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, to: NodePo
 /// The same, stopping at `deadline` too (the way as near as it got by
 /// then): a first search over new ground works out every node's moves.
 pub fn find_until<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, to: NodePos, near: i32, budget: usize, deadline: Option<std::time::Instant>) -> Path {
-    let Some(start) = settle(v, p, from) else { return Path::default() };
-    let speed = p.fastest() / NODE as f32;
-    let guess = |n: NodePos| (n - to).as_vec2().length() / speed;
-    let mut open = BinaryHeap::new();
-    let mut came: HashMap<NodePos, (f32, Option<(NodePos, Move)>)> = HashMap::default();
-    came.insert(start, (0.0, None));
-    open.push(Open { f: guess(start), g: 0.0, n: start });
-    let (mut best, mut best_h) = (start, guess(start));
-    let mut looked = 0;
-    let mut whole = false;
-    while let Some(Open { g, n, .. }) = open.pop() {
-        if came.get(&n).is_some_and(|c| c.0 < g) {
-            continue;
+    let mut s = Search::new(v, p, from, to, near, budget);
+    s.run(v, p, deadline).unwrap_or_else(|| s.so_far())
+}
+
+/// An A* that can be put down and taken up again (a tick's time for
+/// planning spent, it goes on next tick): from `start` (where the body was,
+/// settled) to within `near` nodes of `to`, looking at no more than
+/// `budget` nodes. (What it learnt of the grid may be out of date by the
+/// time it's done: the way's followed and looked at again anyway.)
+pub struct Search {
+    pub start: NodePos,
+    pub to: NodePos,
+    near: i32,
+    budget: usize,
+    open: BinaryHeap<Open>,
+    came: HashMap<NodePos, (f32, Option<(NodePos, Move)>)>,
+    best: NodePos,
+    best_h: f32,
+    looked: usize,
+    whole: bool,
+    over: bool,
+}
+
+impl std::fmt::Debug for Search {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Search {{ {} -> {}, looked {} }}", self.start, self.to, self.looked)
+    }
+}
+
+impl Search {
+    pub fn new<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, to: NodePos, near: i32, budget: usize) -> Search {
+        let start = settle(v, p, from);
+        let mut s = Search { start: start.unwrap_or(from), to, near, budget, open: BinaryHeap::new(), came: HashMap::default(), best: from, best_h: f32::MAX, looked: 0, whole: false, over: start.is_none() };
+        if let Some(start) = start {
+            let h = s.guess(p, start);
+            s.came.insert(start, (0.0, None));
+            s.open.push(Open { f: h, g: 0.0, n: start });
+            (s.best, s.best_h) = (start, h);
         }
-        looked += 1;
-        let h = guess(n);
-        if h < best_h {
-            (best, best_h) = (n, h);
-        }
-        if (n - to).as_vec2().length() <= near as f32 {
-            (best, whole) = (n, true);
-            break;
-        }
-        if looked >= budget || (looked % 16 == 0 && deadline.is_some_and(|d| std::time::Instant::now() >= d)) {
-            break;
-        }
-        for &mi in v.edges(p, n).iter() {
-            let m = &p.moves[mi as usize];
-            let next = n + m.d;
-            let ng = g + m.secs;
-            if came.get(&next).is_some_and(|c| c.0 <= ng) {
+        s
+    }
+
+    fn guess(&self, p: &Profile, n: NodePos) -> f32 {
+        (n - self.to).as_vec2().length() / (p.fastest() / NODE as f32)
+    }
+
+    /// On until it's done (the way: whole, or as near as it got, its
+    /// budget spent or nowhere left to look), or until `deadline` (None:
+    /// not done yet).
+    pub fn run<W: NavWorld>(&mut self, v: &mut View<W>, p: &Profile, deadline: Option<std::time::Instant>) -> Option<Path> {
+        let mut here = 0;
+        while !self.over {
+            let Some(Open { g, n, .. }) = self.open.pop() else {
+                self.over = true;
+                break;
+            };
+            if self.came.get(&n).is_some_and(|c| c.0 < g) {
                 continue;
             }
-            came.insert(next, (ng, Some((n, *m))));
-            open.push(Open { f: ng + guess(next), g: ng, n: next });
+            self.looked += 1;
+            here += 1;
+            let h = self.guess(p, n);
+            if h < self.best_h {
+                (self.best, self.best_h) = (n, h);
+            }
+            if (n - self.to).as_vec2().length() <= self.near as f32 {
+                (self.best, self.whole, self.over) = (n, true, true);
+                break;
+            }
+            if self.looked >= self.budget {
+                self.over = true;
+                break;
+            }
+            for &(mi, extra) in v.edges(p, n).iter() {
+                let m = &p.moves[mi as usize];
+                let next = n + m.d;
+                let ng = g + m.secs + extra;
+                if self.came.get(&next).is_some_and(|c| c.0 <= ng) {
+                    continue;
+                }
+                self.came.insert(next, (ng, Some((n, *m))));
+                self.open.push(Open { f: ng + self.guess(p, next), g: ng, n: next });
+            }
+            if here % 16 == 0 && deadline.is_some_and(|d| std::time::Instant::now() >= d) {
+                return None;
+            }
         }
+        Some(self.so_far())
     }
-    let mut steps = Vec::new();
-    let mut at = best;
-    while let Some((_, Some((prev, m)))) = came.get(&at) {
-        steps.push((at, *m));
-        at = *prev;
+
+    /// The way as near as it's got.
+    pub fn so_far(&self) -> Path {
+        let mut steps = Vec::new();
+        let mut at = self.best;
+        while let Some((_, Some((prev, m)))) = self.came.get(&at) {
+            steps.push((at, *m));
+            at = *prev;
+        }
+        steps.reverse();
+        Path { steps, whole: self.whole, looked: self.looked }
     }
-    steps.reverse();
-    Path { steps, whole, looked }
+
+    /// Nodes looked at so far.
+    pub fn looked(&self) -> usize {
+        self.looked
+    }
 }
 
 /// The way to a target from everywhere near it, for one profile: each
@@ -179,9 +244,13 @@ pub fn field<W: NavWorld>(v: &mut View<W>, p: &Profile, goal: NodePos, near: i32
         for (mi, m) in p.moves.iter().enumerate() {
             let from = n - m.d;
             let Some(j) = f.at(from) else { continue };
-            let ng = g + m.secs;
             // (Somewhere it can be at all, first: most nodes are air or rock.)
-            if f.cost[j] <= ng || !can_be(v, p, from) || !v.can(p, from, mi as u16) {
+            if f.cost[j] <= g + m.secs || !can_be(v, p, from) {
+                continue;
+            }
+            let Some(extra) = v.can(p, from, mi as u16) else { continue };
+            let ng = g + m.secs + extra;
+            if f.cost[j] <= ng {
                 continue;
             }
             f.cost[j] = ng;
@@ -222,7 +291,7 @@ mod tests {
     impl Grid for Ascii {
         fn occupancy(&self, x: i32, y: i32) -> Occupancy {
             match self.cell(x, y) {
-                b'#' => Occupancy::Solid,
+                b'#' | b'd' | b's' | b'o' | b'g' => Occupancy::Solid,
                 b'~' => Occupancy::Liquid,
                 b'-' => Occupancy::Platform,
                 _ => Occupancy::Empty,
@@ -233,6 +302,19 @@ mod tests {
     impl NavWorld for Ascii {
         fn backed(&self, x: i32, y: i32) -> bool {
             self.cell(x, y) == b'|'
+        }
+
+        /// `d` dirt (20), `s` stone (60), `o` obsidian (120), `g` glass
+        /// (30, nothing eats it); `#` bedrock.
+        fn solid_cell(&self, x: i32, y: i32) -> Option<(u8, bool)> {
+            match self.cell(x, y) {
+                b'd' => Some((20, false)),
+                b's' => Some((60, false)),
+                b'o' => Some((120, false)),
+                b'g' => Some((30, true)),
+                b'#' => Some((255, true)),
+                _ => None,
+            }
         }
     }
 
@@ -367,6 +449,65 @@ mod tests {
             let path = find(&mut nav.view(&block, p.size), &p, feet(start, 4), feet(110, 26), 0, 20000);
             assert!(path.whole, "from {start}: {:?}", kinds(&path));
         }
+    }
+
+    #[test]
+    fn a_digger_digs_in_slower_through_stone_and_not_through_obsidian_or_glass() {
+        // The cave spider: claws through dirt, acid through stone.
+        let dig = crate::profile::Digging { claws: 25, claw_rate: 40.0, acid: 90, acid_rate: 6.0 };
+        let spider = Profile::new((24.0, 18.0), &MovementStats { cling: true, jump_height: 30.0, run_speed: 120.0, ..MovementStats::default() }, 60.0).digging(dig);
+        // The player in a room walled in by a block 30 thick of `wall`.
+        let walled = |wall: u8| room(240, 120, move |x, y| ((100..170).contains(&x) && y < 60 && !((115..155).contains(&x) && (4..40).contains(&y))).then_some(wall));
+        let time = |wall: u8| {
+            let w = walled(wall);
+            let mut nav = Nav::default();
+            let path = find(&mut nav.view(&w, spider.size), &spider, feet(30, 4), feet(135, 4), 1, 50_000);
+            path.whole.then(|| path.steps.iter().map(|(_, m)| m.secs).sum::<f32>()).map(|_| {
+                // (Its cost with the digging: the search's own sum.)
+                let mut v = nav.view(&w, spider.size);
+                let mut at = feet(30, 4);
+                let mut total = 0.0;
+                for (n, m) in &path.steps {
+                    total += m.secs + crate::moves::cost(&mut v, &spider, at, m).unwrap_or(0.0);
+                    at = *n;
+                }
+                total
+            })
+        };
+        let dirt = time(b'd').expect("through dirt");
+        let stone = time(b's').expect("through stone");
+        assert!(stone > dirt * 2.0, "stone {stone:.1} s, dirt {dirt:.1} s");
+        assert!(time(b'o').is_none(), "obsidian stops it");
+        assert!(time(b'g').is_none(), "glass stops it");
+        // One that doesn't dig can't get in at all.
+        let plain = Profile::new((24.0, 18.0), &MovementStats { cling: true, jump_height: 30.0, ..MovementStats::default() }, 60.0);
+        let w = walled(b'd');
+        let mut nav = Nav::default();
+        assert!(!find(&mut nav.view(&w, plain.size), &plain, feet(30, 4), feet(135, 4), 1, 50_000).whole);
+    }
+
+    #[test]
+    fn a_search_put_down_and_taken_up_finds_the_same_way() {
+        let p = walker();
+        let w = room(300, 80, |x, y| ((100..112).contains(&x) && y < 20 || (180..200).contains(&x) && y < 10).then_some(b'#'));
+        let mut nav = Nav::default();
+        let whole = find(&mut nav.view(&w, p.size), &p, feet(20, 4), feet(260, 4), 1, 5000);
+        assert!(whole.whole);
+        // (A deadline already gone: a slice of nodes a time.)
+        let mut nav = Nav::default();
+        let mut v = nav.view(&w, p.size);
+        let mut s = Search::new(&mut v, &p, feet(20, 4), feet(260, 4), 1, 5000);
+        let mut slices = 0;
+        let sliced = loop {
+            slices += 1;
+            if let Some(path) = s.run(&mut v, &p, Some(std::time::Instant::now())) {
+                break path;
+            }
+        };
+        assert!(slices > 2, "it was put down: {slices} slices");
+        let nodes = |p: &Path| p.steps.iter().map(|(n, _)| *n).collect::<Vec<_>>();
+        assert_eq!(nodes(&sliced), nodes(&whole));
+        assert_eq!(sliced.looked, whole.looked);
     }
 
     #[test]

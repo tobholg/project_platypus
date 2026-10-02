@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use bevy::prelude::*;
-use platypus_nav::{Kind, Move, NODE, Nav, NodePos, Profile, find_until, node_feet, node_of};
+use platypus_nav::{Kind, Move, NODE, Nav, NodePos, Profile, Search, node_feet, node_of};
 
 use crate::creatures::def::{CreatureDef, Creatures};
 use crate::creatures::{Creature, Kinematics, WorldGrid};
@@ -42,7 +42,10 @@ pub struct WayPlugin;
 impl Plugin for WayPlugin {
     fn build(&self, app: &mut App) {
         assert_eq!(platypus_nav::NODE * platypus_nav::TILE, platypus_sim::CHUNK, "a nav tile is a chunk");
-        app.init_resource::<Ways>().add_systems(FixedUpdate, forget_changed.after(TickSet::Cells)).add_systems(Update, (draw, reread));
+        app.init_resource::<Ways>()
+            .add_systems(FixedUpdate, forget_changed.after(TickSet::Cells))
+            .add_systems(FixedUpdate, dig.in_set(TickSet::Bodies).before(crate::creatures::move_creatures))
+            .add_systems(Update, (draw, reread));
     }
 }
 
@@ -100,6 +103,11 @@ pub struct Way {
     /// The node it was last at, since when (headway).
     at: NodePos,
     since: u64,
+    /// Where it's digging (a node: its body's room there), if it is.
+    pub dig: Option<NodePos>,
+    /// A search under way (the tick's planning ran out before it was
+    /// done: it goes on next tick, the way it has followed meanwhile).
+    search: Option<Box<Search>>,
 }
 
 /// What following the way asks of the body this tick.
@@ -121,7 +129,11 @@ impl Ways {
             .or_insert_with(|| {
                 // (No fall damage: it'll drop a long way.)
                 let drop = def.fall_damage.map_or(150.0, |f| f.safe_height);
-                Arc::new(Profile::new(def.size, &tempo.apply(&def.movement, false), drop))
+                let p = Profile::new(def.size, &tempo.apply(&def.movement, false), drop);
+                Arc::new(match &def.dig {
+                    Some(d) => p.digging(d.digging()),
+                    None => p,
+                })
             })
             .clone()
     }
@@ -149,7 +161,9 @@ impl Ways {
             way.at = at;
             way.since = tick;
         }
-        let stuck = grounded && tick.saturating_sub(way.since) > STUCK && tick.saturating_sub(way.hold_until) > STUCK;
+        // (Digging, it stays a while where it is: that's headway too.)
+        let digging = way.dig.is_some();
+        let stuck = grounded && !digging && tick.saturating_sub(way.since) > STUCK && tick.saturating_sub(way.hold_until) > STUCK;
         // Where on the way it is: the nearest step from here on, reached
         // (within a node: a flyer cuts across them).
         let near = way.path.iter().enumerate().skip(way.i).min_by_key(|(_, (n, _))| (*n - at).abs().max_element());
@@ -171,37 +185,55 @@ impl Ways {
             self.spent = (tick, 0);
         }
         let room = self.spent.1 < TICK_BUDGET;
-        if !airborne && room && (moved || stale || off || stuck) {
+        // (One under way that's after somewhere it no longer is: dropped.)
+        if way.search.as_ref().is_some_and(|s| (s.to - to).abs().max_element() > MOVED) {
+            way.search = None;
+        }
+        let want = moved || stale || off || stuck;
+        if !airborne && room && (way.search.is_some() || want) {
             let started = std::time::Instant::now();
             let grid = WorldGrid(world);
             let mut v = self.nav.view(&grid, p.size);
             // (No more than what's left of the tick's planning.)
             let deadline = started + std::time::Duration::from_micros(TICK_BUDGET.saturating_sub(self.spent.1).max(200));
-            let path = find_until(&mut v, &p, at, to, 1, BUDGET, Some(deadline));
-            self.searches += 1;
-            self.looked += path.looked;
+            let mut search = way.search.take().unwrap_or_else(|| Box::new(Search::new(&mut v, &p, at, to, 1, BUDGET)));
+            let before = search.looked();
+            let done = search.run(&mut v, &p, Some(deadline));
             let took = started.elapsed().as_micros() as u64;
             if took > 3000 {
-                warn!("way: a {} search took {:.1} ms ({} nodes, {} tiles made so far)", c.kind, took as f32 / 1000.0, path.looked, self.nav.built);
+                warn!("way: a {} search took {:.1} ms ({} nodes)", c.kind, took as f32 / 1000.0, search.looked() - before);
             }
+            self.looked += search.looked() - before;
             self.micros += took;
             self.spent.1 += took;
-            if std::env::var("PLATYPUS_WAYLOG").is_ok() {
-                let steps: Vec<String> = path.steps.iter().map(|(n, m)| format!("{:?}>{n}", m.kind)).collect();
-                info!("way: {} {at} -> {to}: whole {}, looked {}, {}", c.kind, path.whole, path.looked, steps.join(" "));
+            match done {
+                None => way.search = Some(search),
+                Some(path) => {
+                    self.searches += 1;
+                    if waylog() {
+                        let steps: Vec<String> = path.steps.iter().map(|(n, m)| format!("{:?}>{n}", m.kind)).collect();
+                        info!("way: {} {} -> {to}: whole {}, looked {}, {}", c.kind, search.start, path.whole, path.looked, steps.join(" "));
+                    }
+                    // A way that doesn't get there goes no further than it
+                    // could come back from: not down into a pit it can't
+                    // jump out of (it waits at the edge, and looks again).
+                    let mut steps = path.steps;
+                    if !path.whole
+                        && let Some(cut) = steps.iter().position(|(_, m)| m.d.y < 0 && -m.d.y > p.back_up())
+                    {
+                        steps.truncate(cut);
+                    }
+                    // (Cut short with nowhere to go, it keeps the way it has.)
+                    if steps.is_empty() && !path.whole && way.path.len() > way.i {
+                        way.made = tick;
+                        way.goal = Some(to);
+                    } else {
+                        *way = Way { goal: Some(to), start: search.start, whole: path.whole, path: steps, i: 0, made: tick, hold_until: 0, flight: 0.0, at, since: if stuck { tick } else { way.since }, dig: None, search: None };
+                    }
+                }
             }
-            // A way that doesn't get there goes no further than it could
-            // come back from: not down into a pit it can't jump out of
-            // (it waits at the edge, and looks again).
-            let mut steps = path.steps;
-            if !path.whole
-                && let Some(cut) = steps.iter().position(|(_, m)| m.d.y < 0 && -m.d.y > p.back_up())
-            {
-                steps.truncate(cut);
-            }
-            let start = platypus_nav::search::settle(&mut self.nav.view(&grid, p.size), &p, at).unwrap_or(at);
-            *way = Way { goal: Some(to), start, whole: path.whole, path: steps, i: 0, made: tick, hold_until: 0, flight: 0.0, at, since: if stuck { tick } else { way.since } };
         }
+        way.dig = None;
         let (n, m) = *way.path.get(way.i)?;
         let aim = node_feet(n);
         let toward = |d: f32| if d.abs() < 1.0 { 0.0 } else { d.signum() };
@@ -218,7 +250,16 @@ impl Ways {
         // (A climber still on a wall, its next step a walk over the lip:
         // climbed, up and over.)
         let on_wall = p.climb && k.loco.clinging().is_some_and(|f| f.x != 0.0);
-        let kind = if on_wall && m.kind == Kind::Walk { Kind::Climb } else { m.kind };
+        // (Digging, it digs there (the dig system); a climber goes at it as
+        // it climbs, the rest as they walk.)
+        if m.kind == Kind::Dig {
+            way.dig = Some(n);
+        }
+        let kind = match m.kind {
+            Kind::Walk if on_wall => Kind::Climb,
+            Kind::Dig if p.climb => Kind::Climb,
+            k => k,
+        };
         match kind {
             Kind::Walk | Kind::Drop => s.move_x = toward(aim.x - feet.x),
             Kind::Jump(j) => {
@@ -238,7 +279,7 @@ impl Ways {
                     return Some(Steer::default());
                 }
                 if at == from && grounded && centred {
-                    if std::env::var("PLATYPUS_WAYLOG").is_ok() {
+                    if waylog() {
                         info!("way: jump from {from} to {} (arc to {:?}, hold {:.2}, run-up {}), feet {:?} vel {:?}", n, jump.to, jump.hold, jump.run_up, feet.round(), k.body.vel.round());
                     }
                     s.jump = true;
@@ -253,7 +294,7 @@ impl Ways {
             Kind::Climb => {
                 // (Toward the furthest of the next few climbing steps: one
                 // step's a node, too near to steer by.)
-                let ahead = way.path[way.i..].iter().take(4).take_while(|(_, m)| m.kind == Kind::Climb || on_wall).last().map_or(aim, |(n, _)| node_feet(*n));
+                let ahead = way.path[way.i..].iter().take(4).take_while(|(_, m)| matches!(m.kind, Kind::Climb | Kind::Dig) || on_wall).last().map_or(aim, |(n, _)| node_feet(*n));
                 let d = ahead + Vec2::Y * k.body.half.y - k.body.pos;
                 s.move_x = toward(d.x);
                 s.move_y = toward(d.y);
@@ -264,6 +305,10 @@ impl Ways {
                     && d.x.abs() < NODE as f32
                 {
                     s.move_x = f.x;
+                }
+                // (At a lip, the way on over the top: up a little first.)
+                if on_wall && s.move_y == 0.0 && m.kind == Kind::Walk {
+                    s.move_y = 1.0;
                 } else if d.x.abs() < NODE as f32 && d.y.abs() >= 1.0 {
                     let grid = WorldGrid(world);
                     use platypus_physics::Grid;
@@ -278,14 +323,18 @@ impl Ways {
                     }
                 }
             }
+            // Digging: at it (the dig system scrapes and spits), pressing
+            // into it.
+            Kind::Dig => {
+                let d = aim + Vec2::Y * k.body.half.y - k.body.pos;
+                s.move_x = toward(d.x);
+                s.move_y = toward(d.y);
+            }
             Kind::Fly | Kind::Swim => {
                 let d = (aim + Vec2::Y * k.body.half.y - k.body.pos).normalize_or_zero();
                 s.move_x = d.x;
                 s.move_y = d.y;
             }
-        }
-        if std::env::var("PLATYPUS_WAYLOG").is_ok() && tick.is_multiple_of(60) {
-            info!("way: {} at {at} step {:?}>{n} steer {s:?} clinging {:?} grounded {grounded} vel {:?}", c.kind, m.kind, k.loco.clinging(), k.body.vel.round());
         }
         Some(s)
     }
@@ -310,6 +359,124 @@ pub fn straight(world: &platypus_sim::World, from: Vec2, to: Vec2, half: Vec2, s
         gap = if ground { 0 } else { gap + 2 };
         clear && gap <= platypus_nav::NODE
     })
+}
+
+/// Plans and jumps logged (`PLATYPUS_WAYLOG`), for finding out why a
+/// creature went the way it did.
+fn waylog() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("PLATYPUS_WAYLOG").is_ok())
+}
+
+/// Cells a tick's digging (everyone's) may take, at most.
+const DIG_CAP: u32 = 400;
+
+/// What a digger has going (the digging owed it, seconds; its next spit,
+/// its next scratch).
+#[derive(Component, Default)]
+pub struct Digger {
+    owed: f32,
+    spit_at: f32,
+    sound_at: f32,
+}
+
+/// Diggers at it (DESIGN §14.4): the cells in their way where they're
+/// going (`Way::dig`), nearest first, each taking as long as the planner
+/// counted it (`Digging::secs`: claws where they can, harder slower; acid
+/// where they can't, and nothing inert). Claws throw a pinch of what they
+/// scrape out, as what it crumbles into, scratching; acid is spat at the
+/// face every so often, hissing (a few drops: the eating is the digger's,
+/// so a face eats as fast sideways as down).
+/// No more than `DIG_CAP` cells' worth of digging a tick.
+#[allow(clippy::too_many_arguments)]
+fn dig(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut sim: ResMut<SimWorld>,
+    creatures: Res<Creatures>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+    mut q: Query<(Entity, &Creature, &Kinematics, &Way, Option<&mut Digger>)>,
+) {
+    const DT: f32 = 1.0 / crate::world::TICK_HZ as f32;
+    let now = time.elapsed_secs();
+    let mut cap = DIG_CAP as f32;
+    for (e, c, k, way, digger) in &mut q {
+        let Some(n) = way.dig else { continue };
+        let Some(def) = creatures.get(&c.kind).and_then(|d| d.dig.clone()) else { continue };
+        let Some(mut dg) = digger else {
+            commands.entity(e).insert(Digger::default());
+            continue;
+        };
+        let digging = def.digging();
+        // Its room at the node: the cells in its way it can dig, nearest
+        // first, and how long each takes.
+        let (w, h) = (k.body.half.x * 2.0, k.body.half.y * 2.0);
+        let half = ((w.ceil() as i32) + 1) / 2;
+        let (xc, yb) = (n.x * NODE + NODE / 2, n.y * NODE);
+        let mats = sim.world.materials().clone();
+        let mut solid: Vec<(platypus_sim::CellPos, f32, platypus_sim::MaterialId, bool)> = Vec::new();
+        // (A cell round it to spare: a body doesn't sit to the cell where
+        // the node says.)
+        for x in xc - half - 1..xc + half + 1 {
+            for y in yb - 1..yb + h.ceil() as i32 + 1 {
+                let p = platypus_sim::CellPos::new(x, y);
+                if let Some(cell) = sim.world.get(p)
+                    && sim.world.is_solid(p)
+                {
+                    let ph = mats.phys(cell.material);
+                    if let Some(secs) = digging.secs(ph.hardness, ph.inert) {
+                        let clawed = digging.claws > 0 && ph.hardness <= digging.claws;
+                        solid.push((p, secs, cell.material, clawed));
+                    }
+                }
+            }
+        }
+        if solid.is_empty() || cap <= 0.0 {
+            dg.owed = 0.0;
+            continue;
+        }
+        let me = k.body.pos;
+        let mid = |p: &platypus_sim::CellPos| Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5);
+        solid.sort_by(|a, b| mid(&a.0).distance_squared(me).total_cmp(&mid(&b.0).distance_squared(me)));
+        // (Owed no more than a second, or the nearest cell's time.)
+        dg.owed = (dg.owed + DT).min(solid[0].1.max(1.0));
+        let (mut scraped, mut eaten) = (None, None);
+        for &(at, secs, m, clawed) in &solid {
+            if dg.owed < secs || cap < 1.0 {
+                break;
+            }
+            dg.owed -= secs;
+            cap -= 1.0;
+            sim.world.set(at, platypus_sim::Cell::AIR);
+            if clawed {
+                scraped = scraped.or(Some((at, m)));
+            } else {
+                eaten = eaten.or(Some(at));
+            }
+        }
+        if let Some((at, m)) = scraped
+            && now >= dg.sound_at
+        {
+            dg.sound_at = now + 0.3;
+            let from = mid(&at);
+            // (What it scrapes falls as what it crumbles into, a pinch.)
+            let ph = mats.phys(m);
+            if ph.crumbles_into != platypus_sim::MaterialId::AIR {
+                sim.world.splash([from.x, from.y], ph.crumbles_into, 2, 1.5);
+            }
+            let name = if ph.hardness >= 40 { "mine_stone" } else { "mine_dirt" };
+            sounds.write(crate::sound::PlaySound::at(name, from).volume(0.6));
+        }
+        if let (Some(at), Some(acid)) = (eaten, &def.acid)
+            && now >= dg.spit_at
+            && let Some(m) = mats.id(&acid.material)
+        {
+            dg.spit_at = now + acid.every;
+            let from = mid(&at);
+            sim.world.splash([from.x, from.y], m, 3, 1.0);
+            sounds.write(crate::sound::PlaySound::at("pour", from).volume(0.7));
+        }
+    }
 }
 
 /// Chunks whose cells changed: their tiles made again when next needed
@@ -350,6 +517,7 @@ fn draw(view: Res<crate::arena::ArenaView>, mut gizmos: Gizmos, q: Query<&Way>) 
                     Kind::Jump(_) => Color::srgb(1.0, 0.8, 0.2),
                     Kind::Drop => Color::srgb(0.4, 0.6, 1.0),
                     Kind::Climb => Color::srgb(0.4, 1.0, 0.5),
+                    Kind::Dig => Color::srgb(0.75, 0.5, 0.25),
                     Kind::Fly | Kind::Swim => Color::srgb(0.3, 0.9, 1.0),
                 };
                 let color = if i < w.i { color.with_alpha(0.25) } else { color };

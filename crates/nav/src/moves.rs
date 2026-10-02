@@ -6,7 +6,7 @@ use glam::IVec2;
 
 use crate::NavWorld;
 use crate::profile::Profile;
-use crate::tile::{NODE, NodePos, View, node_feet};
+use crate::tile::{NODE, NodePos, View};
 
 /// How a move is made.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -22,6 +22,8 @@ pub enum Kind {
     Climb,
     Fly,
     Swim,
+    /// Through what's in the way, dug (its cost the digging's).
+    Dig,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -72,16 +74,45 @@ pub fn all(p: &Profile) -> Vec<Move> {
         if p.fly > 0.0 {
             out.push(Move { kind: Kind::Fly, d, secs: diag(d, p.fly) });
         }
+        // Diggers dig every way (up only if it holds on: a climber).
+        if p.dig.is_some() && (d.y <= 0 || p.climb) {
+            out.push(Move { kind: Kind::Dig, d, secs: diag(d, p.run) });
+        }
         // Everyone swims; swimmers well, the rest slowly.
         out.push(Move { kind: Kind::Swim, d, secs: diag(d, if p.swim > 0.0 { p.swim } else { p.run * 0.3 }) });
     }
     out
 }
 
+/// What a move costs besides its own time, from `from`, here (None: it
+/// can't be made): digging, the time to dig what's in the way.
+pub fn cost<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, m: &Move) -> Option<f32> {
+    if m.kind != Kind::Dig {
+        return check(v, p, from, m).then_some(0.0);
+    }
+    p.dig?;
+    let to = from + m.d;
+    // From somewhere it can be, or a node it dug its way into (in its own
+    // tunnel); into somewhere it doesn't fit (it digs), or out of its
+    // tunnel into the open.
+    let tunnel = !v.fits(from);
+    if tunnel {
+        // (Somewhere it could have dug: all of it diggable.)
+        v.dig_secs(p, from, from + IVec2::new(0, 1 << 20))?;
+    } else if !(v.stand(from).is_some() || (p.climb && v.hold(from))) {
+        return None;
+    }
+    if v.fits(to) {
+        return tunnel.then_some(0.0);
+    }
+    v.dig_secs(p, to, from)
+}
+
 /// Whether a move can be made from `from`, here.
 pub fn check<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, m: &Move) -> bool {
     let to = from + m.d;
     match m.kind {
+        Kind::Dig => cost(v, p, from, m).is_some(),
         Kind::Walk => match (v.stand(from), v.stand(to)) {
             (Some(a), Some(b)) => (b - a).abs() <= p.step.max(NODE - 1) && (b <= a || p.step > 0),
             _ => false,
@@ -98,63 +129,11 @@ pub fn check<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, m: &Move)
                 v.fits(n) && v.stand(n).is_none()
             })
         }
-        Kind::Jump(i) => {
-            let Some(j) = p.jumps.get(i as usize) else { return false };
-            // A leap to catch hold: somewhere to hold, from ground or a hold.
-            let flip = if m.d.x < 0 { -1 } else { 1 };
-            if j.catch {
-                if !v.hold(to) || v.stand(to).is_some() || !(v.stand(from).is_some() || v.hold(from)) {
-                    return false;
-                }
-                let base = node_feet(from).as_ivec2() + IVec2::new(0, v.stand(from).map_or(0, |f| f - from.y * NODE));
-                let (mut x, mut last) = (base.x, 0);
-                for s in &j.arc {
-                    let next = x + (s.x - last) * flip;
-                    last = s.x;
-                    if v.fits_cell(next, base.y + s.y) {
-                        x = next;
-                    } else if !v.fits_cell(x, base.y + s.y) {
-                        return false;
-                    }
-                }
-                return x.div_euclid(NODE) == to.x;
-            }
-            // (Where it lands first: most nodes aren't ground.)
-            if v.stand(to).is_none() || v.stand(from).is_none() {
-                return false;
-            }
-            // Not onto an edge: ground goes on a node past where it comes
-            // down (it may come down a little further than the arc says).
-            let beyond = to + IVec2::new(flip, 0);
-            if [beyond, beyond + IVec2::Y, beyond - IVec2::Y].iter().all(|n| v.stand(*n).is_none()) {
-                return false;
-            }
-            // The arc played over the cells, a tick at a time, from where
-            // it takes off (the middle of its node, its floor): up and down
-            // as it was; across as it was unless something's in the way,
-            // when it stays put (and the way across it lost is lost: a body
-            // stopped by a wall goes on up it, not on through); no room even
-            // where it is: no jump. It must come down where it says (onto
-            // its floor, over its node).
-            let (Some(floor), Some(land)) = (v.stand(from), v.stand(to)) else { return false };
-            let base = IVec2::new(from.x * NODE + NODE / 2, floor);
-            let (mut x, mut last, mut top) = (base.x, 0, 0);
-            for s in &j.arc {
-                let y = base.y + s.y;
-                // Coming down onto the floor it's making for: there.
-                if s.y < top && y <= land {
-                    return x.div_euclid(NODE) == to.x && v.fits_cell(x, land);
-                }
-                top = top.max(s.y);
-                let next = x + (s.x - last) * flip;
-                last = s.x;
-                if v.fits_cell(next, y) {
-                    x = next;
-                } else if !v.fits_cell(x, y) {
-                    return false;
-                }
-            }
-            x.div_euclid(NODE) == to.x
+        Kind::Jump(_) => {
+            let Some(k) = p.moves.iter().position(|o| o == m) else { return false };
+            let mut out = Vec::new();
+            jumps(v, p, from, &mut out);
+            out.iter().any(|(i, _)| *i as usize == k)
         }
         Kind::Climb => {
             let ok = |v: &mut View<W>, n: NodePos| v.hold(n) || v.stand(n).is_some();
@@ -167,6 +146,79 @@ pub fn check<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, m: &Move)
             let (a, b) = (v.wet(from), v.wet(to));
             // In it, along it; or out of it onto something (and in from it).
             (a && b || a && v.stand(to).is_some() || b && v.stand(from).is_some()) && v.fits(to) && corners(v, from, m.d)
+        }
+    }
+}
+
+/// The jumps a body can make from a node (moves by index, nothing extra to
+/// pay), into `out`: each way of jumping's arc played over the cells once,
+/// each way, a tick at a time, from where it takes off (the middle of its
+/// node, its floor): up and down as it was; across as it was unless
+/// something's in the way, when it stays put (the way across it lost is
+/// lost: a body stopped by a wall goes on up it, not on through); no room
+/// even where it is: no further. Coming down onto ground, it's there (if
+/// the ground goes on a node past it: not onto an edge), and no further; a
+/// climber catches hold of what it passes (from ground or a hold).
+pub fn jumps<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, out: &mut Vec<(u16, f32)>) {
+    let floor = v.stand(from);
+    let holds = p.climb && v.hold(from);
+    if floor.is_none() && !holds {
+        return;
+    }
+    let base = IVec2::new(from.x * NODE + NODE / 2, floor.unwrap_or(from.y * NODE));
+    for a in &p.arcs {
+        let lands = floor.is_some() && !a.lands.is_empty();
+        if !lands && a.catches.is_empty() {
+            continue;
+        }
+        for (side, flip) in [(0, 1), (1, -1)] {
+            let push = |out: &mut Vec<(u16, f32)>, k: Option<&[u16; 2]>| {
+                if let Some(&k) = k.map(|k| &k[side])
+                    && k != u16::MAX
+                    && !out.iter().any(|(i, _)| *i == k)
+                {
+                    out.push((k, 0.0));
+                }
+            };
+            let (mut x, mut last, mut top, mut was) = (base.x, 0, 0, base.y);
+            for s in &a.arc {
+                let y = base.y + s.y;
+                // Coming down onto a floor between where it was and where
+                // it is (the first it meets): there.
+                if lands && s.y < top {
+                    let col = x.div_euclid(NODE);
+                    let met = (y.div_euclid(NODE)..=was.div_euclid(NODE)).rev().find_map(|ny| v.stand(IVec2::new(col, ny)).filter(|f| y <= *f && *f <= was).map(|f| (ny, f)));
+                    if let Some((ny, f)) = met {
+                        let to = IVec2::new(col, ny);
+                        let d = to - from;
+                        let beyond = to + IVec2::new(flip, 0);
+                        let on = [beyond, beyond + IVec2::Y, beyond - IVec2::Y].iter().any(|n| v.stand(*n).is_some());
+                        if on && v.fits_cell(x, f) {
+                            push(out, a.lands.get(&IVec2::new(d.x * flip, d.y)));
+                        }
+                        break;
+                    }
+                }
+                top = top.max(s.y);
+                let next = x + (s.x - last) * flip;
+                last = s.x;
+                if v.fits_cell(next, y) {
+                    x = next;
+                } else if !v.fits_cell(x, y) {
+                    break;
+                }
+                was = y;
+                if p.climb && !a.catches.is_empty() {
+                    let n = IVec2::new(x.div_euclid(NODE), y.div_euclid(NODE));
+                    let d = n - from;
+                    if let Some(k) = a.catches.get(&IVec2::new(d.x * flip, d.y))
+                        && v.hold(n)
+                        && v.stand(n).is_none()
+                    {
+                        push(out, Some(k));
+                    }
+                }
+            }
         }
     }
 }

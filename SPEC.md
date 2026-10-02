@@ -39,6 +39,7 @@ crates/
   worldgen/  platypus_worldgen seeded generators: WorldPlan, then fn(plan, ChunkPos) -> cells. NO Bevy.
   worldview/ platypus_worldview renders a generated world (or a region) to PNG.
   physics/   platypus_physics bodies vs a solid-grid trait, pixel masks, sweeps. NO Bevy.
+  nav/       platypus_nav     the path planner: a coarse grid, moves as data, searches. NO Bevy.
   game/      platypus         the Bevy app: plugins for rendering, input, actors, combat, UI.
   bench/     platypus_bench   headless scenarios with time budgets (exit != 0 on regression).
 assets/data/                  RON content: materials, creatures, weapons, items. Hot-reloaded.
@@ -1612,6 +1613,77 @@ DESIGN §13 item 6.
   `<id>_strip.png` (half size, four to a row, numbered in the markdown).
   Every creature (29) in about 2 minutes.
 
+### 5.7 Finding the way, and digging (`platypus_nav`; `creatures/brain/way.rs`; DESIGN §14.4)
+
+- **One planner for every creature**, its abilities as data
+  (`Profile`): its box, run speed, step, the furthest it'll drop (its
+  fall damage's safe height; 150 without), gravity, whether it climbs
+  (`cling`), flies, swims, digs; made from the creature's movement at
+  the game's tempo (again when the tempo or its file changes).
+- **The grid** (`tile.rs`): a node is 4 × 4 cells, a tile 16 × 16 nodes
+  (a chunk). For one size of body a tile says, per node, the floor's
+  height in it (to the cell), whether it fits in the open, is in liquid,
+  can hold on (a wall beside or a wall behind, `backed`), and per cell how
+  much room there is upward; all from one pass of column reads through
+  the same occupancy the bodies collide with. Tiles are made when a
+  search first needs them (about 65 µs) and forgotten when their chunk's
+  cells change (the sim's `nav_dirty`; at most every 15 ticks a chunk, all
+  at once).
+- **Moves** (`moves.rs`): offsets in nodes with a cost in seconds: walk
+  (up what it steps), drop (no further than is safe), jump, climb (round a
+  corner by its open side), fly, swim (everyone; non-swimmers slowly),
+  dig. **Jumps are the real physics**, run once per profile in an empty
+  room: standing and at a run, the key held three ways (to its
+  `jump_hold`, half, a tap); each way's whole arc kept (`Arc`), and on it
+  where it can come down (quickest and highest to each) and, for a
+  climber, what it can catch hold of. From a node each arc is played over
+  the cells once a way, a tick at a time: stopped across by a wall it goes
+  on up; the first floor it comes down onto is where it lands (not onto
+  an edge: the ground goes on a node past it); a climber catches what it
+  passes. A jump costs 0.2 s more than its time (0.5 at a run): walking
+  where it can. Each node's moves are worked out once and kept (by
+  profile), forgotten with the tiles round them; moves a node rules out
+  (no jumps from inside the ground or from the air) aren't tried.
+- **Searches** (`search.rs`): A* (`find`; `Search` can be put down at a
+  deadline and taken up next tick: the same way as in one go), with a
+  budget of nodes; out of it, the way to the nearest node it got to. A
+  `field` (reverse Dijkstra from a target) for many of one profile.
+- **Following** (`Ways::steer`, from the hunter's walk, range, hop and
+  crawl when the straight line won't do, swoopers when far or out of
+  sight): the next step turned into key presses: walk toward it; at a
+  jump's take-off (the node's middle; a standing jump stops first) jump,
+  the key held as the arc was; climbers press into their wall, steer by
+  the next few steps and go over a lip; flyers make for the nearest step.
+  Planned again when what it's after moves 3+ nodes, the way's off its
+  route, it's made no headway for 75 ticks (not while digging), or every
+  60 ticks if the way doesn't get there; a way that doesn't get there is
+  cut before a drop it couldn't come back up from. A tick spends no more
+  than 2 ms planning (everyone's); a search cut short goes on next tick,
+  the old way followed meanwhile. `PLATYPUS_NONAV=1`: no planning (as
+  before, to compare); `PLATYPUS_WAYLOG=1`: each way and jump logged; the
+  arena's overlays (Y) draw every way (walking white, jumps gold, drops
+  blue, climbing green, flying and swimming cyan).
+- **Digging** (a creature file's `dig`: `claws: (hardness, rate)`, `acid:
+  (hardness, rate, every, material)`): `Digging::secs` is one cell's time
+  (claws for what's no harder than they take, `hardness/20/rate` s; acid
+  for the rest no harder than it, nothing `inert`, `max(hardness,10)/20/
+  rate` s), the same for the planner and the digger. A dig move goes into
+  a node it doesn't fit, its cost the cells of its room there not already
+  dug from where it comes (a tunnel goes on a slice at a time: per-column
+  sums kept per tile); out of its tunnel into the open costs nothing. The
+  `dig` system: a creature whose next step is a dig takes the cells of
+  its room there (a cell to spare round it), nearest first, each as long
+  as `secs` says; claws throw a pinch of what they scrape (as what it
+  crumbles into) with a scratch (`mine_dirt`/`mine_stone`); acid spits a
+  few drops of its material at the face every `every` s, hissing
+  (`pour`). At most 400 cells a tick, everyone's. The cave spider: claws
+  (25, 30), acid (90, 40, every 1.6).
+- **The course** (`Layout::Course`, `PLATYPUS_ARENA=course`): left to
+  right a wall 27 high, a pit 40 deep, a step 22 high into a tunnel, a
+  tower with a passage under it and stairs down from it; the player on the
+  tower. The `course` scenario (`PLATYPUS_KIND`, default the orc):
+  an orc (24 s), a skeleton (26 s) and the cave spider (22 s, up the tower's face) get to the player, a vampire bat (9 s) and a star wisp (14 s) fly to it; a slime (its 32-cell step is past its 33-cell jump) and the troll (the 27-cell wall past its 24) can't and wait as near as they can; with `PLATYPUS_NONAV=1` the walkers stop at the first wall. The `dig` scenario: the player sealed in a shell (`PLATYPUS_WALL`, 34 cells thick at the sides) round a pocket, a cave spider 200 cells off: through dirt it's in at 29 s, through stone at 60 s (acid), never through obsidian (harder than its acid) or glass (inert).
+
 ## 6. Combat
 
 ### 6.2 Melee (`game::combat`, `assets/data/weapons.ron`)
@@ -2091,6 +2163,8 @@ on a mid-range machine, so the M2 Max budgets are set at roughly half of the fra
 | deep world with lava lakes, settled        | < 0.5 ms (and asleep) |
 | avalanche: ~100k moving cells             | < 6 ms          |
 | streaming a new column of chunks          | < 4 ms          |
+| `nav`: a search, its moves known          | < 0.3 ms        |
+| `nav_dig`: a tick's planning, diggers at work | < 2.5 ms    |
 
 ## 10. Working rules
 

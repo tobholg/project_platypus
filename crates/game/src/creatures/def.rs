@@ -23,6 +23,41 @@ use crate::data::{Watched, data_path, load_ron};
 
 pub struct CreaturePlugin;
 
+/// How a creature digs (DESIGN §14.4): its claws (`(hardness, rate)`: cells
+/// no harder, at `rate` cells a second of dirt), and acid (what its claws
+/// can't take, no harder than `hardness`, nothing inert, at `rate` cells
+/// a second of dirt; a few drops of `material` spat at the face every
+/// `every` s to show it). The planner counts digging as the diggers dig.
+#[derive(Deserialize, Clone, Debug, Default)]
+pub struct DigDef {
+    #[serde(default)]
+    pub claws: Option<(u8, f32)>,
+    #[serde(default)]
+    pub acid: Option<AcidDig>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct AcidDig {
+    #[serde(default = "acid")]
+    pub material: String,
+    pub hardness: u8,
+    pub rate: f32,
+    pub every: f32,
+}
+
+fn acid() -> String {
+    "acid".into()
+}
+
+impl DigDef {
+    /// As the planner counts it.
+    pub fn digging(&self) -> platypus_nav::Digging {
+        let (claws, claw_rate) = self.claws.unwrap_or((0, 0.0));
+        let (acid, acid_rate) = self.acid.as_ref().map_or((0, 0.0), |a| (a.hardness, a.rate));
+        platypus_nav::Digging { claws, claw_rate, acid, acid_rate }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct CreatureDef {
     pub name: String,
@@ -77,6 +112,9 @@ pub struct CreatureDef {
     /// Its own moves (moves.ron), in the order it tries them.
     #[serde(default)]
     pub moves: Vec<String>,
+    /// How it digs its way through (`brain/way.rs`): claws, acid.
+    #[serde(default)]
+    pub dig: Option<DigDef>,
     /// Draw order among creatures.
     #[serde(default = "default_z")]
     pub z: f32,

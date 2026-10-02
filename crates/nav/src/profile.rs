@@ -30,6 +30,54 @@ pub struct Jump {
     pub catch: bool,
 }
 
+/// One way of jumping (standing or at a run, the key held so long): its
+/// whole arc (feet each tick, cells from where it took off, facing right),
+/// and its jumps by where they come down or catch hold (node offset, facing
+/// right) and their moves (right, left). A jump's edges are found by
+/// playing its way's arc over the cells once: where it comes down first,
+/// what it passes it could catch hold of.
+#[derive(Clone, Debug, Default)]
+pub struct Arc {
+    pub arc: Vec<IVec2>,
+    pub hold: f32,
+    pub run_up: bool,
+    pub lands: rustc_hash::FxHashMap<IVec2, [u16; 2]>,
+    pub catches: rustc_hash::FxHashMap<IVec2, [u16; 2]>,
+}
+
+/// How a body digs (its file's `dig`): claws through what's no harder
+/// than `claws`, `claw_rate` cells a second of dirt (hardness 20; harder
+/// is slower); acid (spat) through what's no harder than `acid` and not
+/// inert, `acid_rate` cells a second of dirt.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Digging {
+    pub claws: u8,
+    pub claw_rate: f32,
+    pub acid: u8,
+    pub acid_rate: f32,
+}
+
+impl Digging {
+    /// Seconds to dig one cell of this hardness (None: it can't).
+    pub fn secs(&self, hardness: u8, inert: bool) -> Option<f32> {
+        if self.claws > 0 && hardness <= self.claws && self.claw_rate > 0.0 {
+            Some(hardness.max(4) as f32 / 20.0 / self.claw_rate)
+        } else if self.acid > 0 && hardness <= self.acid && !inert && self.acid_rate > 0.0 {
+            Some(hardness.max(10) as f32 / 20.0 / self.acid_rate)
+        } else {
+            None
+        }
+    }
+
+    /// What it is, as the grid's kept digging times know it.
+    pub fn key(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = rustc_hash::FxHasher::default();
+        (self.claws, self.acid, self.claw_rate.to_bits(), self.acid_rate.to_bits()).hash(&mut h);
+        h.finish()
+    }
+}
+
 /// One kind of body's ways of getting about.
 #[derive(Clone, Debug)]
 pub struct Profile {
@@ -47,7 +95,11 @@ pub struct Profile {
     pub fly: f32,
     /// Swims (cells/s in liquid; 0: as bodies do, slowly).
     pub swim: f32,
+    /// Digs (`digging`).
+    pub dig: Option<Digging>,
     pub jumps: Vec<Jump>,
+    /// Its ways of jumping, each with the jumps along it.
+    pub arcs: Vec<Arc>,
     /// Every move it has (both ways), its jumps' among them.
     pub moves: Vec<Move>,
     /// What it is, as the grid's cached edges know it (the same for two
@@ -79,21 +131,60 @@ impl Profile {
             climb: stats.cling,
             fly: stats.fly_speed,
             swim: stats.swim_speed,
-            jumps: if walks && stats.jump_height > 0.0 { jumps(size, stats, drop, stats.cling) } else { Vec::new() },
+            jumps: Vec::new(),
+            arcs: Vec::new(),
             moves: Vec::new(),
             key: 0,
+            dig: None,
         };
+        if walks && stats.jump_height > 0.0 {
+            (p.jumps, p.arcs) = jumps(size, stats, drop, stats.cling);
+        }
         p.moves = crate::moves::all(&p);
-        p.key = {
+        p.index_arcs();
+        p.key = p.make_key();
+        p
+    }
+
+    /// Each jump's moves, on its way's arc.
+    fn index_arcs(&mut self) {
+        for a in &mut self.arcs {
+            a.lands.clear();
+            a.catches.clear();
+        }
+        for (k, m) in self.moves.iter().enumerate() {
+            let Kind::Jump(i) = m.kind else { continue };
+            let j = &self.jumps[i as usize];
+            let Some(a) = self.arcs.iter_mut().find(|a| a.hold == j.hold && a.run_up == j.run_up) else { continue };
+            let side = if m.d.x > 0 { 0 } else { 1 };
+            let at = if j.catch { &mut a.catches } else { &mut a.lands };
+            at.entry(j.to).or_insert([u16::MAX; 2])[side] = k as u16;
+        }
+    }
+
+    /// The same body, digging as it says.
+    pub fn digging(mut self, d: Digging) -> Profile {
+        self.dig = Some(d);
+        self.moves = crate::moves::all(&self);
+        self.index_arcs();
+        self.key = self.make_key();
+        self
+    }
+
+    fn make_key(&self) -> u64 {
+        let p = self;
+        {
             use std::hash::{Hash, Hasher};
             let mut h = std::hash::DefaultHasher::new();
             (p.size, p.step, p.drop, p.climb, p.fly > 0.0, p.swim > 0.0).hash(&mut h);
             for j in &p.jumps {
                 (j.to, &j.arc).hash(&mut h);
             }
+            if let Some(d) = p.dig {
+                (d.claws, d.acid, d.claw_rate.to_bits(), d.acid_rate.to_bits()).hash(&mut h);
+            }
             h.finish()
-        };
-        p
+        }
     }
 
     /// Its fastest way of getting about (cells/s): what the searches'
@@ -117,7 +208,7 @@ impl Profile {
 /// Every arc its jump can make, run in the physics: held short, half and
 /// full, standing and at a run. Where each comes down on the way down (a
 /// node it passes falling), each way of jumping's arc to each.
-fn jumps(size: (u16, u16), stats: &MovementStats, drop: f32, catches: bool) -> Vec<Jump> {
+fn jumps(size: (u16, u16), stats: &MovementStats, drop: f32, catches: bool) -> (Vec<Jump>, Vec<Arc>) {
     let (w, h) = (size.0 as f32, size.1 as f32);
     let room = Room(size.0 as i32);
     // Standing on the floor, settled.
@@ -132,6 +223,7 @@ fn jumps(size: (u16, u16), stats: &MovementStats, drop: f32, catches: bool) -> V
     let start = Vec2::new(body.pos.x, body.pos.y - h / 2.0);
     let holds: Vec<f32> = if stats.jump_hold > 0.0 { vec![0.0, stats.jump_hold * 0.5, stats.jump_hold] } else { vec![0.0, 0.08, 0.2] };
     let mut best: Vec<Jump> = Vec::new();
+    let mut arcs: Vec<Arc> = Vec::new();
     for run_up in [false, true] {
         for &hold in &holds {
             let (mut b, mut l) = (body, loco);
@@ -171,6 +263,7 @@ fn jumps(size: (u16, u16), stats: &MovementStats, drop: f32, catches: bool) -> V
                     }
                 }
             }
+            arcs.push(Arc { arc, hold, run_up, ..Arc::default() });
         }
     }
     // To each landing, the quickest arc and the highest (a higher, slower
@@ -187,7 +280,7 @@ fn jumps(size: (u16, u16), stats: &MovementStats, drop: f32, catches: bool) -> V
             kept.push(j.clone());
         }
     }
-    kept
+    (kept, arcs)
 }
 
 fn default_intent() -> Intent {

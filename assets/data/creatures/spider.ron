@@ -48,4 +48,9 @@
     ),
     // Its own moves (moves.ron), tried in this order.
     moves: ["spider_sting", "spider_bite", "spider_spit"],
+    // It digs its way to you: claws through dirt and sand (hardness to 25,
+    // 30 cells a second of dirt), acid through what they can't take (stone,
+    // not obsidian or glass: 40 cells a second of dirt, stone a third of
+    // that), spitting a little at the face every 1.6 s.
+    dig: (claws: (25, 30), acid: (hardness: 90, rate: 40, every: 1.6)),
 )

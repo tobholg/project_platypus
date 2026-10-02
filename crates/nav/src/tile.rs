@@ -5,8 +5,12 @@ use platypus_physics::Occupancy;
 use rustc_hash::FxHashMap as HashMap;
 
 use crate::NavWorld;
-use crate::moves::check;
+use crate::moves::{Kind, cost};
 use crate::profile::Profile;
+
+/// A tile's columns (64, each 65 sums from its bottom up) as a way of
+/// digging sees them: the time to dig so far, and the cells it can't.
+type DigCols = Box<[(f32, u16)]>;
 
 /// Cells to a node, each way.
 pub const NODE: i32 = 4;
@@ -130,8 +134,9 @@ impl Tile {
     }
 }
 
-/// A tile's nodes' moves, for one profile (none: not worked out yet).
-type EdgeTile = Vec<Option<Box<[u16]>>>;
+/// A tile's nodes' moves, for one profile, with what each costs besides
+/// its own time (digging) (none: not worked out yet).
+type EdgeTile = Vec<Option<Box<[(u16, f32)]>>>;
 
 /// Every tile made so far, by tile and body size: kept in one list, found
 /// by an index (a search asks thousands of times a node; the view keeps the
@@ -144,6 +149,12 @@ pub struct Nav {
     /// Each node's moves that can be made from it, by profile and tile
     /// (worked out once; forgotten with the tiles round it).
     edges: HashMap<(u64, IVec2), EdgeTile>,
+    /// A digger's time to clear its room at a node, by profile.
+    dig: HashMap<(u64, NodePos, IVec2), Option<f32>>,
+    /// A tile's cells as a way of digging sees them, by its key and the
+    /// tile: each column's time to dig and what it can't, summed from the
+    /// tile's bottom up (a room's cost is a subtraction a column).
+    dig_cols: HashMap<(u64, IVec2), DigCols>,
     /// Tiles made (for readouts).
     pub built: u64,
 }
@@ -172,6 +183,8 @@ impl Nav {
         // (A move from a tile beside one may pass through it: a jump.)
         let near: rustc_hash::FxHashSet<IVec2> = gone.iter().flat_map(|t| (-1..=1).flat_map(move |dy| (-1..=1).map(move |dx| *t + IVec2::new(dx, dy)))).collect();
         self.edges.retain(|(_, t), _| !near.contains(t));
+        self.dig.retain(|(_, n, _), _| !near.contains(&tile_of(*n)));
+        self.dig_cols.retain(|(_, t), _| !gone.contains(t));
     }
 
     pub fn forget_all(&mut self) {
@@ -179,6 +192,8 @@ impl Nav {
         self.index.clear();
         self.free.clear();
         self.edges.clear();
+        self.dig.clear();
+        self.dig_cols.clear();
     }
 
     /// How many tiles it holds (all sizes).
@@ -233,13 +248,23 @@ impl<W: NavWorld> View<'_, W> {
         let (w, h) = (self.size.0 as i32, self.size.1 as i32);
         let cap = h.clamp(1, 255) as u8;
         let half = (w + 1) / 2;
-        (x - half..x + half).all(|cx| {
+        // (A tile at a time: its row's clearances, straight through.)
+        let (mut cx, end) = (x - half, x + half);
+        while cx < end {
+            let tx = cx.div_euclid(TILE_CELLS);
+            let stop = ((tx + 1) * TILE_CELLS).min(end);
             let n = IVec2::new(cx.div_euclid(NODE), y.div_euclid(NODE));
-            self.with(n, |t, _| {
-                let (lx, ly) = (cx.rem_euclid(TILE_CELLS), y.rem_euclid(TILE_CELLS));
-                t.open[(ly * TILE_CELLS + lx) as usize] >= cap
-            })
-        })
+            let ok = self.with(n, |t, _| {
+                let row = (y.rem_euclid(TILE_CELLS) * TILE_CELLS) as usize;
+                let (a, b) = (cx.rem_euclid(TILE_CELLS) as usize, (stop - tx * TILE_CELLS) as usize);
+                t.open[row + a..row + b].iter().all(|&o| o >= cap)
+            });
+            if !ok {
+                return false;
+            }
+            cx = stop;
+        }
+        true
     }
 
     #[inline]
@@ -282,25 +307,116 @@ impl<W: NavWorld> View<'_, W> {
         self.with(n, |t, l| Tile::bit(&t.hold, l))
     }
 
+    /// A solid cell's hardness and whether acid can't eat it (a digger's
+    /// cost), from the world itself.
+    pub fn world_cell(&self, x: i32, y: i32) -> Option<(u8, bool)> {
+        self.world.solid_cell(x, y)
+    }
+
+    /// Seconds for a digger to clear its body's room at a node, coming
+    /// from `from` (what's in its room there it's cleared already: a
+    /// tunnel goes on a slice at a time) (None: something there it can't
+    /// dig), worked out once and kept.
+    pub fn dig_secs(&mut self, p: &Profile, n: NodePos, from: NodePos) -> Option<f32> {
+        let dig = p.dig?;
+        if let Some(c) = self.nav.dig.get(&(p.key, n, from - n)) {
+            return *c;
+        }
+        let (w, h) = (p.size.0 as i32, p.size.1 as i32);
+        let half = (w + 1) / 2;
+        let (xc, yb) = (n.x * NODE + NODE / 2, n.y * NODE);
+        let (fx, fy) = (from.x * NODE + NODE / 2, from.y * NODE);
+        // Each column of its room, less what's cleared of it already (its
+        // room at `from`).
+        let (lo, hi) = (yb.max(fy), (yb + h).min(fy + h));
+        let (mut secs, mut blocked) = (0.0, 0);
+        for x in xc - half..xc + half {
+            let (s, b) = self.dig_span(&dig, x, yb, yb + h);
+            secs += s;
+            blocked += b;
+            if (fx - half..fx + half).contains(&x) && lo < hi {
+                let (s, b) = self.dig_span(&dig, x, lo, hi);
+                secs -= s;
+                blocked -= b;
+            }
+        }
+        let secs = (blocked <= 0).then_some(secs.max(0.0));
+        self.nav.dig.insert((p.key, n, from - n), secs);
+        secs
+    }
+
+    /// A column's time to dig from `y0` up to `y1` (cells), and how many
+    /// cells of it it can't.
+    fn dig_span(&mut self, dig: &crate::profile::Digging, x: i32, y0: i32, y1: i32) -> (f32, i32) {
+        let key = dig.key();
+        let (mut secs, mut blocked, mut y) = (0.0, 0, y0);
+        while y < y1 {
+            let t = IVec2::new(x.div_euclid(TILE_CELLS), y.div_euclid(TILE_CELLS));
+            let top = ((t.y + 1) * TILE_CELLS).min(y1);
+            let cols = self.nav.dig_cols.entry((key, t)).or_insert_with(|| {
+                let mut out = vec![(0.0, 0u16); (TILE_CELLS * (TILE_CELLS + 1)) as usize];
+                let mut column = vec![None; TILE_CELLS as usize];
+                for cx in 0..TILE_CELLS {
+                    self.world.solid_column(t.x * TILE_CELLS + cx, t.y * TILE_CELLS, &mut column);
+                    let row = (cx * (TILE_CELLS + 1)) as usize;
+                    for (i, c) in column.iter().enumerate() {
+                        let (s, b) = out[row + i];
+                        out[row + i + 1] = match c {
+                            Some((hard, inert)) => match dig.secs(*hard, *inert) {
+                                Some(d) => (s + d, b),
+                                None => (s, b + 1),
+                            },
+                            None => (s, b),
+                        };
+                    }
+                }
+                out.into()
+            });
+            let row = (x.rem_euclid(TILE_CELLS) * (TILE_CELLS + 1)) as usize;
+            let (a, b) = ((y - t.y * TILE_CELLS) as usize, (top - t.y * TILE_CELLS) as usize);
+            secs += cols[row + b].0 - cols[row + a].0;
+            blocked += cols[row + b].1 as i32 - cols[row + a].1 as i32;
+            y = top;
+        }
+        (secs, blocked)
+    }
+
     /// The moves a profile can make from a node (indices into its
-    /// `moves`), worked out the first time and kept.
-    pub fn edges(&mut self, p: &Profile, n: NodePos) -> Box<[u16]> {
+    /// `moves`, and what each costs besides its time), worked out the first
+    /// time and kept.
+    pub fn edges(&mut self, p: &Profile, n: NodePos) -> Box<[(u16, f32)]> {
         self.with_edges(p, n, |e| e.into())
     }
 
-    /// Whether a profile can make a move (by its index) from a node.
-    pub fn can(&mut self, p: &Profile, n: NodePos, m: u16) -> bool {
-        self.with_edges(p, n, |e| e.contains(&m))
+    /// What a move (by its index) from a node costs besides its time, if a
+    /// profile can make it.
+    pub fn can(&mut self, p: &Profile, n: NodePos, m: u16) -> Option<f32> {
+        self.with_edges(p, n, |e| e.iter().find(|(i, _)| *i == m).map(|(_, c)| *c))
     }
 
-    fn with_edges<T>(&mut self, p: &Profile, n: NodePos, f: impl FnOnce(&[u16]) -> T) -> T {
+    fn with_edges<T>(&mut self, p: &Profile, n: NodePos, f: impl FnOnce(&[(u16, f32)]) -> T) -> T {
         let t = tile_of(n);
         let l = n - t * TILE;
         let i = (l.y * TILE + l.x) as usize;
         if let Some(Some(e)) = self.nav.edges.get(&(p.key, t)).map(|v| &v[i]) {
             return f(e);
         }
-        let e: Box<[u16]> = p.moves.iter().enumerate().filter(|(_, m)| check(self, p, n, m)).map(|(k, _)| k as u16).collect();
+        // (What it can be doing here rules most moves out at once: none
+        // but digging from inside the ground, no jump from the air.)
+        let (stands, holds, fits) = (self.stand(n).is_some(), p.climb && self.hold(n), self.fits(n));
+        let may = |m: &crate::moves::Move| match m.kind {
+            Kind::Walk | Kind::Drop => stands,
+            // (Jumps all at once, below.)
+            Kind::Jump(_) => false,
+            Kind::Climb => stands || holds,
+            Kind::Fly | Kind::Swim => fits,
+            Kind::Dig => true,
+        };
+        let mut e: Vec<(u16, f32)> = p.moves.iter().enumerate().filter(|(_, m)| may(m)).filter_map(|(k, m)| cost(self, p, n, m).map(|c| (k as u16, c))).collect();
+        if stands || holds {
+            crate::moves::jumps(self, p, n, &mut e);
+        }
+        let e: Box<[(u16, f32)]> = e.into();
         let out = f(&e);
         self.nav.edges.entry((p.key, t)).or_insert_with(|| vec![None; (TILE * TILE) as usize])[i] = Some(e);
         out

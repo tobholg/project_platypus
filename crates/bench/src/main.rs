@@ -316,12 +316,91 @@ fn nav(m: &Arc<MaterialTable>) -> Outcome {
     }
 }
 
+/// Diggers at work: the cave spider's way (claws through soft ground, acid
+/// through stone) from the surface to places in the ground below, planned
+/// as the game does (a slice of 2 ms a tick, a search taken up next tick),
+/// its first few dug nodes cleared and their tiles forgotten after each,
+/// and planned again from there. avg/worst: a tick's planning.
+fn nav_dig(m: &Arc<MaterialTable>) -> Outcome {
+    use platypus_nav::{Digging, NODE, Nav, Profile, Search, tile_of};
+    let g = TerrainGen::new(1234, Preset::Medium, m);
+    let mut w = World::new(1234, m.clone());
+    let cx = 128;
+    let cy = g.surface_at(cx * CHUNK) / CHUNK - 4;
+    load_region(&mut w, &g, ChunkPos::new(cx - 6, cy), 12, 8);
+    let stats = platypus_physics::MovementStats { cling: true, jump_height: 30.0, run_speed: 120.0, ..Default::default() };
+    let p = Profile::new((24.0, 18.0), &stats, 60.0).digging(Digging { claws: 25, claw_rate: 30.0, acid: 90, acid_rate: 40.0 });
+    let mut nav = Nav::default();
+    let mut rng = platypus_sim::rng::Rng::seeded(&[11]);
+    let (mut ticks, mut total, mut worst, mut reached, mut dug, mut searches) = (0u32, Duration::ZERO, Duration::ZERO, 0, 0, 0);
+    // Where it can stand (the region's surface, its caves).
+    let mut stands = Vec::new();
+    {
+        let grid = platypus_nav::world::WorldGrid(&w);
+        let mut v = nav.view(&grid, p.size);
+        for ny in (cy * 16 + 4..(cy + 8) * 16 - 4).step_by(2) {
+            for nx in ((cx - 5) * 16..(cx + 5) * 16).step_by(3) {
+                let n = glam::IVec2::new(nx, ny);
+                if v.stand(n).is_some() {
+                    stands.push(n);
+                }
+            }
+        }
+    }
+    for _ in 0..12 {
+        // From somewhere it stands to 60–100 cells into the ground below.
+        let mut at = stands[rng.next_u32() as usize % stands.len()];
+        let to = at + glam::IVec2::new((rng.next_u32() % 20) as i32 - 10, -15 - (rng.next_u32() % 10) as i32);
+        for _ in 0..6 {
+            let grid = platypus_nav::world::WorldGrid(&w);
+            let mut v = nav.view(&grid, p.size);
+            let mut search = Search::new(&mut v, &p, at, to, 1, 2500);
+            searches += 1;
+            let path = loop {
+                let t = Instant::now();
+                let done = search.run(&mut v, &p, Some(t + Duration::from_millis(2)));
+                let e = t.elapsed();
+                (ticks, total, worst) = (ticks + 1, total + e, worst.max(e));
+                if let Some(path) = done {
+                    break path;
+                }
+            };
+            reached += path.whole as u32;
+            // Its first three steps' rooms dug out, as the diggers do.
+            let mut gone = Vec::new();
+            for (n, mv) in path.steps.iter().take(3) {
+                if mv.kind == platypus_nav::Kind::Dig {
+                    dug += 1;
+                    for x in n.x * NODE + NODE / 2 - 12..n.x * NODE + NODE / 2 + 12 {
+                        for y in n.y * NODE..n.y * NODE + 18 {
+                            w.set(CellPos::new(x, y), platypus_sim::Cell::AIR);
+                        }
+                    }
+                }
+                gone.push(tile_of(*n));
+                at = *n;
+            }
+            nav.forget_all_of(&gone);
+            if path.whole || path.steps.is_empty() {
+                break;
+            }
+        }
+    }
+    Outcome {
+        name: "nav_dig",
+        what: format!("{searches} searches by a digger ({reached} reached), {dug} nodes dug, {ticks} ticks of planning"),
+        avg: total / ticks.max(1),
+        worst,
+        budget: Duration::from_micros(2500),
+    }
+}
+
 fn main() {
     let only = std::env::args().nth(1);
     let m = materials();
     type Scenario = fn(&Arc<MaterialTable>) -> Outcome;
-    let scenarios: [(&str, Scenario); 7] =
-        [("settled", settled), ("deep", deep), ("avalanche", avalanche), ("streaming", streaming), ("stream_deep", streaming_deep), ("chaos", chaos), ("nav", nav)];
+    let scenarios: [(&str, Scenario); 8] =
+        [("settled", settled), ("deep", deep), ("avalanche", avalanche), ("streaming", streaming), ("stream_deep", streaming_deep), ("chaos", chaos), ("nav", nav), ("nav_dig", nav_dig)];
     println!("platypus_bench — {} worker threads\n", rayon::current_num_threads());
     println!("{:<11} {:>10} {:>10} {:>10}", "scenario", "avg", "worst", "budget");
     let mut failed = false;
