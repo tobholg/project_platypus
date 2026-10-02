@@ -10,3 +10,6 @@ glam.workspace = true
 platypus_physics.workspace = true
 platypus_sim.workspace = true
 rustc-hash.workspace = true
+
+[dev-dependencies]
+platypus_worldgen.workspace = true

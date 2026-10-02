@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use bevy::prelude::*;
-use platypus_nav::{Kind, Move, Nav, NodePos, Profile, find, node_feet, node_of};
+use platypus_nav::{Kind, Move, NODE, Nav, NodePos, Profile, find_until, node_feet, node_of};
 
 use crate::creatures::def::{CreatureDef, Creatures};
 use crate::creatures::{Creature, Kinematics, WorldGrid};
@@ -33,6 +33,9 @@ const BUDGET: usize = 2500;
 /// What it's going for, moved this many nodes off the way's end: planned
 /// again.
 const MOVED: i32 = 3;
+/// Planning a tick may spend (µs): past it, the rest plan next tick (a
+/// first search over new ground works out every node's moves: slower).
+const TICK_BUDGET: u64 = 2000;
 
 pub struct WayPlugin;
 
@@ -60,11 +63,13 @@ pub struct Ways {
     pub searches: u32,
     pub looked: usize,
     pub micros: u64,
+    /// This tick's planning so far (the tick, µs).
+    spent: (u64, u64),
 }
 
 impl Default for Ways {
     fn default() -> Self {
-        Ways { off: std::env::var("PLATYPUS_NONAV").is_ok_and(|v| !v.is_empty()), nav: Nav::default(), profiles: HashMap::new(), pace: 1.0, remade: HashMap::new(), searches: 0, looked: 0, micros: 0 }
+        Ways { off: std::env::var("PLATYPUS_NONAV").is_ok_and(|v| !v.is_empty()), nav: Nav::default(), profiles: HashMap::new(), pace: 1.0, remade: HashMap::new(), searches: 0, looked: 0, micros: 0, spent: (0, 0) }
     }
 }
 
@@ -145,9 +150,14 @@ impl Ways {
             way.since = tick;
         }
         let stuck = grounded && tick.saturating_sub(way.since) > STUCK && tick.saturating_sub(way.hold_until) > STUCK;
-        // Where on the way it is (a step reached, or one further on).
-        if let Some(j) = way.path.iter().skip(way.i).position(|(n, _)| *n == at) {
-            way.i += j + 1;
+        // Where on the way it is: the nearest step from here on, reached
+        // (within a node: a flyer cuts across them).
+        let near = way.path.iter().enumerate().skip(way.i).min_by_key(|(_, (n, _))| (*n - at).abs().max_element());
+        if let Some((j, (n, _))) = near
+            && (*n - at).abs().max_element() <= 1
+            && (*n == at || !grounded || p.fly > 0.0)
+        {
+            way.i = j + 1;
         }
         let off = grounded && way.i > 0 && way.i <= way.path.len() && {
             let prev = way.path[way.i - 1].0;
@@ -157,14 +167,25 @@ impl Ways {
         let moved = way.goal.is_none_or(|g| (g - to).abs().max_element() > MOVED);
         let stale = !way.whole && tick.saturating_sub(way.made) > REPLAN;
         let airborne = tick < way.hold_until || !grounded;
-        if !airborne && (moved || stale || off || stuck) {
+        if self.spent.0 != tick {
+            self.spent = (tick, 0);
+        }
+        let room = self.spent.1 < TICK_BUDGET;
+        if !airborne && room && (moved || stale || off || stuck) {
             let started = std::time::Instant::now();
             let grid = WorldGrid(world);
             let mut v = self.nav.view(&grid, p.size);
-            let path = find(&mut v, &p, at, to, 1, BUDGET);
+            // (No more than what's left of the tick's planning.)
+            let deadline = started + std::time::Duration::from_micros(TICK_BUDGET.saturating_sub(self.spent.1).max(200));
+            let path = find_until(&mut v, &p, at, to, 1, BUDGET, Some(deadline));
             self.searches += 1;
             self.looked += path.looked;
-            self.micros += started.elapsed().as_micros() as u64;
+            let took = started.elapsed().as_micros() as u64;
+            if took > 3000 {
+                warn!("way: a {} search took {:.1} ms ({} nodes, {} tiles made so far)", c.kind, took as f32 / 1000.0, path.looked, self.nav.built);
+            }
+            self.micros += took;
+            self.spent.1 += took;
             if std::env::var("PLATYPUS_WAYLOG").is_ok() {
                 let steps: Vec<String> = path.steps.iter().map(|(n, m)| format!("{:?}>{n}", m.kind)).collect();
                 info!("way: {} {at} -> {to}: whole {}, looked {}, {}", c.kind, path.whole, path.looked, steps.join(" "));
@@ -194,7 +215,11 @@ impl Ways {
             }
             return Some(s);
         }
-        match m.kind {
+        // (A climber still on a wall, its next step a walk over the lip:
+        // climbed, up and over.)
+        let on_wall = p.climb && k.loco.clinging().is_some_and(|f| f.x != 0.0);
+        let kind = if on_wall && m.kind == Kind::Walk { Kind::Climb } else { m.kind };
+        match kind {
             Kind::Walk | Kind::Drop => s.move_x = toward(aim.x - feet.x),
             Kind::Jump(j) => {
                 // At the take-off: jump, held as the recorded arc was.
@@ -226,15 +251,41 @@ impl Ways {
                 }
             }
             Kind::Climb => {
-                let d = aim + Vec2::Y * k.body.half.y - k.body.pos;
+                // (Toward the furthest of the next few climbing steps: one
+                // step's a node, too near to steer by.)
+                let ahead = way.path[way.i..].iter().take(4).take_while(|(_, m)| m.kind == Kind::Climb || on_wall).last().map_or(aim, |(n, _)| node_feet(*n));
+                let d = ahead + Vec2::Y * k.body.half.y - k.body.pos;
                 s.move_x = toward(d.x);
                 s.move_y = toward(d.y);
+                // Going up or down a wall: pressed into it (a climber holds
+                // on to what it pushes against), the one it holds if it does.
+                if let Some(f) = k.loco.clinging()
+                    && f.x != 0.0
+                    && d.x.abs() < NODE as f32
+                {
+                    s.move_x = f.x;
+                } else if d.x.abs() < NODE as f32 && d.y.abs() >= 1.0 {
+                    let grid = WorldGrid(world);
+                    use platypus_physics::Grid;
+                    let side = |dir: f32| {
+                        let x = (k.body.pos.x + dir * (k.body.half.x + 1.5)) as i32;
+                        [k.body.pos.y - k.body.half.y + 1.0, k.body.pos.y, k.body.pos.y + k.body.half.y - 1.0].iter().any(|y| grid.solid(x, *y as i32))
+                    };
+                    if side(1.0) {
+                        s.move_x = 1.0;
+                    } else if side(-1.0) {
+                        s.move_x = -1.0;
+                    }
+                }
             }
             Kind::Fly | Kind::Swim => {
                 let d = (aim + Vec2::Y * k.body.half.y - k.body.pos).normalize_or_zero();
                 s.move_x = d.x;
                 s.move_y = d.y;
             }
+        }
+        if std::env::var("PLATYPUS_WAYLOG").is_ok() && tick.is_multiple_of(60) {
+            info!("way: {} at {at} step {:?}>{n} steer {s:?} clinging {:?} grounded {grounded} vel {:?}", c.kind, m.kind, k.loco.clinging(), k.body.vel.round());
         }
         Some(s)
     }
@@ -266,6 +317,7 @@ pub fn straight(world: &platypus_sim::World, from: Vec2, to: Vec2, half: Vec2, s
 fn forget_changed(sim: Res<SimWorld>, mut ways: ResMut<Ways>) {
     let tick = sim.world.tick();
     let ways = &mut *ways;
+    let mut gone = Vec::new();
     for c in sim.world.chunks() {
         if !c.nav_dirty() {
             continue;
@@ -274,10 +326,12 @@ fn forget_changed(sim: Res<SimWorld>, mut ways: ResMut<Ways>) {
         if ways.remade.get(&t).is_some_and(|&at| tick < at + REMAKE) {
             continue;
         }
-        ways.nav.forget(t);
+        gone.push(t);
         ways.remade.insert(t, tick);
         c.clear_nav_dirty();
     }
+    // (All at once: one pass over what's kept.)
+    ways.nav.forget_all_of(&gone);
 }
 
 /// Every way, drawn with the arena's overlays (walking white, jumps gold,

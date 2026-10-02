@@ -62,6 +62,12 @@ pub fn settle<W: NavWorld>(v: &mut View<W>, p: &Profile, at: NodePos) -> Option<
 /// A* from `from` to within `near` nodes of `to`, looking at no more than
 /// `budget` nodes.
 pub fn find<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, to: NodePos, near: i32, budget: usize) -> Path {
+    find_until(v, p, from, to, near, budget, None)
+}
+
+/// The same, stopping at `deadline` too (the way as near as it got by
+/// then): a first search over new ground works out every node's moves.
+pub fn find_until<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, to: NodePos, near: i32, budget: usize, deadline: Option<std::time::Instant>) -> Path {
     let Some(start) = settle(v, p, from) else { return Path::default() };
     let speed = p.fastest() / NODE as f32;
     let guess = |n: NodePos| (n - to).as_vec2().length() / speed;
@@ -85,7 +91,7 @@ pub fn find<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, to: NodePo
             (best, whole) = (n, true);
             break;
         }
-        if looked >= budget {
+        if looked >= budget || (looked % 16 == 0 && deadline.is_some_and(|d| std::time::Instant::now() >= d)) {
             break;
         }
         for &mi in v.edges(p, n).iter() {

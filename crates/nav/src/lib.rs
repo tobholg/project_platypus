@@ -26,7 +26,7 @@ pub mod world;
 
 pub use moves::{Kind, Move};
 pub use profile::{Jump, Profile};
-pub use search::{Field, Path, find, field};
+pub use search::{Field, Path, field, find, find_until};
 pub use tile::{NODE, Nav, NodePos, TILE, View, node_feet, node_of, tile_of};
 
 use platypus_physics::Grid;

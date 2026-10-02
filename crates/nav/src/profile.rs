@@ -24,6 +24,10 @@ pub struct Jump {
     pub secs: f32,
     pub hold: f32,
     pub run_up: bool,
+    /// A climber's leap: it catches hold of something at `to` (a wall, a
+    /// ledge's edge, a ceiling), on the way up or down, rather than coming
+    /// down on ground.
+    pub catch: bool,
 }
 
 /// One kind of body's ways of getting about.
@@ -75,7 +79,7 @@ impl Profile {
             climb: stats.cling,
             fly: stats.fly_speed,
             swim: stats.swim_speed,
-            jumps: if walks && stats.jump_height > 0.0 { jumps(size, stats, drop) } else { Vec::new() },
+            jumps: if walks && stats.jump_height > 0.0 { jumps(size, stats, drop, stats.cling) } else { Vec::new() },
             moves: Vec::new(),
             key: 0,
         };
@@ -113,7 +117,7 @@ impl Profile {
 /// Every arc its jump can make, run in the physics: held short, half and
 /// full, standing and at a run. Where each comes down on the way down (a
 /// node it passes falling), each way of jumping's arc to each.
-fn jumps(size: (u16, u16), stats: &MovementStats, drop: f32) -> Vec<Jump> {
+fn jumps(size: (u16, u16), stats: &MovementStats, drop: f32, catches: bool) -> Vec<Jump> {
     let (w, h) = (size.0 as f32, size.1 as f32);
     let room = Room(size.0 as i32);
     // Standing on the floor, settled.
@@ -152,22 +156,38 @@ fn jumps(size: (u16, u16), stats: &MovementStats, drop: f32) -> Vec<Jump> {
                 if feet.y < -drop {
                     break;
                 }
-                // Coming down: it could land here.
-                if !rising && b.vel.y <= 0.0 && n.x >= 1 && !(n.x <= 1 && n.y == 0) && n != IVec2::ZERO {
+                // Coming down: it could land here. (A climber, anywhere on
+                // the way: it could catch hold here.)
+                let landing = !rising && b.vel.y <= 0.0;
+                for catch in [false, true] {
+                    if !(if catch { catches } else { landing }) || n.x < 1 || (n.x <= 1 && n.y == 0) || n == IVec2::ZERO {
+                        continue;
+                    }
                     let to = n;
-                    let path: Vec<IVec2> = arc.clone();
-                    // (Each way of jumping kept: a higher, slower arc gets
-                    // up a wall the quickest doesn't.)
-                    match best.iter_mut().find(|j| j.to == to && j.hold == hold && j.run_up == run_up) {
+                    match best.iter_mut().find(|j| j.to == to && j.hold == hold && j.run_up == run_up && j.catch == catch) {
                         Some(j) if j.secs <= t => {}
-                        Some(j) => *j = Jump { to, arc: path, secs: t, hold, run_up },
-                        None => best.push(Jump { to, arc: path, secs: t, hold, run_up }),
+                        Some(j) => *j = Jump { to, arc: arc.clone(), secs: t, hold, run_up, catch },
+                        None => best.push(Jump { to, arc: arc.clone(), secs: t, hold, run_up, catch }),
                     }
                 }
             }
         }
     }
-    best
+    // To each landing, the quickest arc and the highest (a higher, slower
+    // arc gets up a wall the quickest doesn't); to each hold caught, the
+    // quickest (holding on is forgiving).
+    let apex = |j: &Jump| j.arc.iter().map(|a| a.y).max().unwrap_or(0);
+    let mut kept: Vec<Jump> = Vec::new();
+    for j in &best {
+        let same: Vec<&Jump> = best.iter().filter(|k| k.to == j.to && k.catch == j.catch).collect();
+        let quickest = same.iter().min_by(|a, b| a.secs.total_cmp(&b.secs)).copied();
+        let highest = same.iter().max_by_key(|k| apex(k)).copied();
+        let keep = quickest.is_some_and(|q| std::ptr::eq(q, j)) || (!j.catch && highest.is_some_and(|h| std::ptr::eq(h, j)));
+        if keep && !kept.iter().any(|k| k.to == j.to && k.catch == j.catch && k.arc == j.arc) {
+            kept.push(j.clone());
+        }
+    }
+    kept
 }
 
 fn default_intent() -> Intent {
@@ -195,6 +215,8 @@ mod tests {
         assert!(Profile::new((24.0, 18.0), &MovementStats { cling: true, ..stats }, 60.0).climb);
     }
 }
+
+
 
 
 

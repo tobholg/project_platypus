@@ -6,7 +6,7 @@ use glam::IVec2;
 
 use crate::NavWorld;
 use crate::profile::Profile;
-use crate::tile::{NODE, NodePos, View};
+use crate::tile::{NODE, NodePos, View, node_feet};
 
 /// How a move is made.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -100,11 +100,29 @@ pub fn check<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, m: &Move)
         }
         Kind::Jump(i) => {
             let Some(j) = p.jumps.get(i as usize) else { return false };
+            // A leap to catch hold: somewhere to hold, from ground or a hold.
+            let flip = if m.d.x < 0 { -1 } else { 1 };
+            if j.catch {
+                if !v.hold(to) || v.stand(to).is_some() || !(v.stand(from).is_some() || v.hold(from)) {
+                    return false;
+                }
+                let base = node_feet(from).as_ivec2() + IVec2::new(0, v.stand(from).map_or(0, |f| f - from.y * NODE));
+                let (mut x, mut last) = (base.x, 0);
+                for s in &j.arc {
+                    let next = x + (s.x - last) * flip;
+                    last = s.x;
+                    if v.fits_cell(next, base.y + s.y) {
+                        x = next;
+                    } else if !v.fits_cell(x, base.y + s.y) {
+                        return false;
+                    }
+                }
+                return x.div_euclid(NODE) == to.x;
+            }
             // (Where it lands first: most nodes aren't ground.)
             if v.stand(to).is_none() || v.stand(from).is_none() {
                 return false;
             }
-            let flip = if m.d.x < 0 { -1 } else { 1 };
             // Not onto an edge: ground goes on a node past where it comes
             // down (it may come down a little further than the arc says).
             let beyond = to + IVec2::new(flip, 0);
@@ -140,7 +158,9 @@ pub fn check<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, m: &Move)
         }
         Kind::Climb => {
             let ok = |v: &mut View<W>, n: NodePos| v.hold(n) || v.stand(n).is_some();
-            ok(v, from) && ok(v, to) && corners(v, from, m.d)
+            // (Round a corner it goes by the open side: one is enough.)
+            let round = m.d.x == 0 || m.d.y == 0 || v.fits(from + IVec2::new(m.d.x, 0)) || v.fits(from + IVec2::new(0, m.d.y));
+            ok(v, from) && ok(v, to) && round
         }
         Kind::Fly => v.fits(from) && v.fits(to) && corners(v, from, m.d),
         Kind::Swim => {

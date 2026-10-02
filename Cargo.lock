@@ -4635,6 +4635,7 @@ dependencies = [
  "glam 0.32.1",
  "platypus_physics",
  "platypus_sim",
+ "platypus_worldgen",
  "rustc-hash 2.1.3",
 ]
 

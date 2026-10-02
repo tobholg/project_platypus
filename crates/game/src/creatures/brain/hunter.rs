@@ -49,6 +49,10 @@ impl Plugin for HunterPlugin {
 
 const TICKS: f32 = crate::world::TICK_HZ as f32;
 
+/// A swooper further than this from what it's after flies at it (nearer,
+/// it flits in its band and dives).
+const SWOOP_NEAR: f32 = 160.0;
+
 /// The settings (its file's `brain.params`).
 #[derive(Component, Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -293,11 +297,16 @@ fn hunt(
                 }
             }
             // Flying: a dive at it now and then, else hovering in its band.
-            (Close::Swoop { hover, dive_time, dive_every }, Some((t, _, th))) if !crate::creatures::moves::clear(&sim, pos, t) => {
-                // Out of sight behind something: the way round (flying).
-                steer = route(&mut ways, &mut way, t - Vec2::Y * th.y);
-                let s = steer.unwrap_or_default();
-                let _ = (hover, dive_time, dive_every);
+            // Far off, or out of sight behind something: there (the way
+            // round, flying, if it can't go straight).
+            (Close::Swoop { .. }, Some((t, _, th))) if pos.distance(t) > SWOOP_NEAR || !crate::creatures::moves::clear(&sim, pos, t) => {
+                let s = if crate::creatures::moves::clear(&sim, pos, t) {
+                    let d = (t - pos).normalize_or_zero();
+                    super::way::Steer { move_x: d.x, move_y: d.y, ..default() }
+                } else {
+                    steer = route(&mut ways, &mut way, t - Vec2::Y * th.y);
+                    steer.unwrap_or_default()
+                };
                 move_y = s.move_y;
                 s.move_x
             }
@@ -320,33 +329,47 @@ fn hunt(
                 let go = march(marching, pos.x);
                 if go != 0.0 { go } else { steer.x }
             }
-            // Hopping: down, it waits; a hop at it every so often.
+            // Hopping: down, it waits; a hop at it every so often. Not a
+            // straight way there: along the way as the way says.
             (Close::Hop { every }, target) => {
-                let mut mx = 0.0;
-                if grounded && tick >= m.next {
-                    let dir = match target {
-                        // (The way round, if it isn't straight there.)
-                        Some((t, _, th)) if !walkable(t, th) => route(&mut ways, &mut way, t - Vec2::Y * th.y).map_or((t.x - pos.x).signum(), |s| if s.move_x == 0.0 { (t.x - pos.x).signum() } else { s.move_x }),
-                        Some((t, ..)) => (t.x - pos.x).signum(),
-                        // (Idle: a hop now and then, either way.)
-                        None if unit(&sim, id, 4) < 0.3 => {
-                            if unit(&sim, id, 5) < 0.5 {
-                                -1.0
-                            } else {
-                                1.0
-                            }
-                        }
-                        None => 0.0,
-                    };
-                    if dir != 0.0 {
-                        jump = true;
-                        mx = dir;
-                    }
-                    let every = if target.is_some() { *every } else { every * 2.5 };
-                    m.next = tick + ticks(every * (0.7 + 0.6 * unit(&sim, id, 6)));
+                if let Some((t, _, th)) = target
+                    && !walkable(t, th)
+                {
+                    steer = route(&mut ways, &mut way, t - Vec2::Y * th.y);
                 }
-                // (Airborne, it keeps going the way it hopped.)
-                if grounded { mx } else { c.0.move_x }
+                match steer {
+                    // (Following a way it goes as the way says: a hop's
+                    // landing is too rough to line up a jump from.)
+                    Some(s) => {
+                        jump = s.jump;
+                        s.move_x
+                    }
+                    None => {
+                        let mut mx = 0.0;
+                        if grounded && tick >= m.next {
+                            let dir = match (target, steer) {
+                                (Some((t, ..)), _) => (t.x - pos.x).signum(),
+                                // (Idle: a hop now and then, either way.)
+                                (None, _) if unit(&sim, id, 4) < 0.3 => {
+                                    if unit(&sim, id, 5) < 0.5 {
+                                        -1.0
+                                    } else {
+                                        1.0
+                                    }
+                                }
+                                (None, _) => 0.0,
+                            };
+                            if dir != 0.0 {
+                                jump = true;
+                                mx = dir;
+                            }
+                            let every = if target.is_some() { *every } else { every * 2.5 };
+                            m.next = tick + ticks(every * (0.7 + 0.6 * unit(&sim, id, 6)));
+                        }
+                        // (Airborne, it keeps going the way it hopped.)
+                        if grounded { mx } else { c.0.move_x }
+                    }
+                }
             }
             // Crawling: up walls toward it, along ceilings; a pounce when
             // near, or dropping on it from above.

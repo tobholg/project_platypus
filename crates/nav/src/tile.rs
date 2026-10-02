@@ -113,7 +113,8 @@ impl Tile {
                 // Something to hold on to, within a node's reach: a wall at
                 // either side, the ceiling over it, the ground, or a wall
                 // behind.
-                let side = |x: i32| [yb, yb + h / 2, yb + h - 1].iter().any(|&y| solid[at(x, y)]);
+                // (Any row of it: a thin ledge's edge is something to hold.)
+                let side = |x: i32| (yb..yb + h).any(|y| solid[at(x, y)]);
                 let walled = (1..=NODE).any(|d| side(xc - half - d) || side(xc + half - 1 + d));
                 let roof = (0..NODE).any(|d| (xc - half..xc + half).any(|x| solid[at(x, yb + h + d)]));
                 if walled || roof || stood_on(xc, yb) || world.backed(xc, yb + h / 2) {
@@ -151,14 +152,26 @@ impl Nav {
     /// A tile's cells changed: its tiles (every size) made again when next
     /// needed.
     pub fn forget(&mut self, tile: IVec2) {
-        let gone: Vec<(IVec2, (u16, u16))> = self.index.keys().filter(|k| k.0 == tile).copied().collect();
-        for k in gone {
-            if let Some(i) = self.index.remove(&k) {
-                self.free.push(i);
-            }
+        self.forget_all_of(&[tile]);
+    }
+
+    /// Several tiles' cells changed (in one pass over what's kept).
+    pub fn forget_all_of(&mut self, tiles: &[IVec2]) {
+        if tiles.is_empty() {
+            return;
         }
-        // (A move from a tile beside it may pass through it: a jump.)
-        self.edges.retain(|(_, t), _| (t.x - tile.x).abs() > 1 || (t.y - tile.y).abs() > 1);
+        let gone: rustc_hash::FxHashSet<IVec2> = tiles.iter().copied().collect();
+        let free = &mut self.free;
+        self.index.retain(|k, i| {
+            let keep = !gone.contains(&k.0);
+            if !keep {
+                free.push(*i);
+            }
+            keep
+        });
+        // (A move from a tile beside one may pass through it: a jump.)
+        let near: rustc_hash::FxHashSet<IVec2> = gone.iter().flat_map(|t| (-1..=1).flat_map(move |dy| (-1..=1).map(move |dx| *t + IVec2::new(dx, dy)))).collect();
+        self.edges.retain(|(_, t), _| !near.contains(t));
     }
 
     pub fn forget_all(&mut self) {
