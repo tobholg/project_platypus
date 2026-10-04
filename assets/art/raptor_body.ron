@@ -1,0 +1,47 @@
+// A ridge raptor seen from the side, pointing right: a lean striped body
+// slung between its hips, a long tail held out level behind, a neck up to
+// a narrow head with a yellow eye and a row of teeth, small clawed arms.
+// Its two legs are its creature file's `legs` (they bend back at the
+// ankle, a bird's way); `grip` is its hip.
+(
+    size: (47, 19),
+    feet: (25, 17),
+    outline: (24, 20, 18),
+    palette: {
+        'G': (96, 112, 70),   // body
+        'g': (66, 78, 48),   // body, shade
+        'k': (52, 58, 40),   // stripes
+        'p': (180, 170, 130),   // belly
+        'e': (250, 210, 60),   // eye (it glows)
+        'm': (40, 30, 26),   // mouth
+        't': (230, 220, 200),   // teeth
+        'a': (80, 94, 58),   // arms
+    },
+    frames: {
+        "body": [
+            "...............................................",
+            "...............................................",
+            "......................................kkk......",
+            ".....................................kGGGgg....",
+            "....................................GGGGGeGgg..",
+            "...................................GGGGGGGGggt.",
+            "..................................GGGGgggggmm..",
+            "................................GGGGgg.mmmm....",
+            "...............................GGGGg...........",
+            "......................kkk.....GGGGg............",
+            "...................kGGGGGGGkGGGGGg.............",
+            "...........kkGGGGGGGGGGGGGGGGGGGGgg............",
+            ".gggGGGGGGGGGGGGGGGGGGGGGGGGGGGGGgg.a..........",
+            "...ggggggGGGGGGGGGGGGGGGGGGGGGGGgg..a..........",
+            "........gggggggggGGGGGGGGGGGGGGGggaa...........",
+            "................ggggpppppppppppgg..............",
+            "..................gggppppppppppg...............",
+            ".....................gggggggggg................",
+            "...............................................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (25, 16) } },
+)

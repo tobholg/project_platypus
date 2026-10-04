@@ -78,6 +78,22 @@ pub struct LegDef {
     /// On the far side: behind the body, darker.
     #[serde(default)]
     pub far: bool,
+    /// Which way its knee bends.
+    #[serde(default)]
+    pub knee: Knee,
+}
+
+/// Which way a side-view leg's knee bends.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+pub enum Knee {
+    /// Up and out from the body: a front leg's forward, a back one's back
+    /// (insects, crabs: the knee high).
+    #[default]
+    Out,
+    /// Forward, whichever leg (a person's).
+    Forward,
+    /// Back (a bird's or a raptor's: what bends is its ankle).
+    Back,
 }
 
 /// Legs, as a creature file writes them.
@@ -100,6 +116,13 @@ pub struct LegsDef {
     /// Side: the far legs' colour (else the near ones', darker).
     #[serde(default)]
     pub far: Option<(u8, u8, u8)>,
+    /// Side: how far the body rises while a foot's in the air (cells: a
+    /// two-legged walker bobs), and how far it leans nose down as it
+    /// goes (degrees at 100 cells/s: a runner).
+    #[serde(default)]
+    pub bob: f32,
+    #[serde(default)]
+    pub pitch: f32,
     #[serde(default = "eight")]
     pub count: usize,
     /// A leg's full length (cells); the thigh is `upper` of it.
@@ -211,6 +234,9 @@ pub struct Legs {
     facing: f32,
     tilt: f32,
     ride: Option<f32>,
+    /// Side: the ground's slope under its feet (radians, up ahead), as
+    /// last read.
+    slope: f32,
 }
 
 #[derive(Component)]
@@ -409,7 +435,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, slope: 0.0, def };
         let c = match legs.def.view {
             View::Above => k.body.pos,
             View::Side => Vec2::new(k.body.pos.x, k.body.pos.y - k.body.half.y + legs.def.ride),
@@ -451,20 +477,31 @@ fn walk(
             legs.facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
             let f = legs.facing;
             let base = middle.y - k.body.half.y;
-            let planted: Vec<(Vec2, f32)> = legs.feet.iter().zip(&legs.def.each).filter(|(foot, _)| foot.grips).map(|(foot, l)| (foot.to, l.lean)).collect();
-            let ground = if planted.is_empty() { base } else { planted.iter().map(|(p, _)| p.y).sum::<f32>() / planted.len() as f32 };
-            let want = (ground + legs.def.ride).clamp(base + legs.def.ride * 0.5, middle.y + k.body.half.y);
+            let planted: Vec<Vec2> = legs.feet.iter().filter(|foot| foot.grips).map(|foot| foot.to).collect();
+            let ground = if planted.is_empty() { base } else { planted.iter().map(|p| p.y).sum::<f32>() / planted.len() as f32 };
+            // (Up while a foot's in the air: a walker on two legs bobs.)
+            let up = legs.feet.iter().filter(|foot| foot.t < 1.0 && foot.grips).map(|foot| (std::f32::consts::PI * foot.t).sin()).fold(0.0, f32::max);
+            let want = (ground + legs.def.ride + legs.def.bob * up).clamp(base + legs.def.ride * 0.5, middle.y + k.body.half.y);
             let y = legs.ride.map_or(want, |y| y + (want - y) * (dt * 12.0).min(1.0));
             legs.ride = Some(y);
-            // Nose up as its front feet stand higher than its back ones.
-            let mean = |front: bool| {
-                let p: Vec<Vec2> = planted.iter().filter(|(_, lean)| (*lean > 0.0) == front && *lean != 0.0).map(|(p, _)| *p).collect();
-                (!p.is_empty()).then(|| p.iter().sum::<Vec2>() / p.len() as f32)
+            // Nose up as the ground its feet stand on rises ahead: the
+            // slope of the line through its planted feet (along the way it
+            // faces), once they're spread enough to say.
+            let want = {
+                let pts: Vec<Vec2> = planted.iter().map(|p| Vec2::new((p.x - middle.x) * f, p.y)).collect();
+                let n = pts.len() as f32;
+                let mean = pts.iter().sum::<Vec2>() / n.max(1.0);
+                let (sxy, sxx) = pts.iter().fold((0.0, 0.0), |(sxy, sxx), p| (sxy + (p.x - mean.x) * (p.y - mean.y), sxx + (p.x - mean.x).powi(2)));
+                if pts.len() >= 2 && sxx / n > 9.0 {
+                    legs.slope = (sxy / sxx).atan();
+                } else {
+                    // (Feet together, nothing to read: level, slowly.)
+                    legs.slope *= 1.0 - (dt * 2.0).min(1.0);
+                }
+                legs.slope
             };
-            let want = match (mean(true), mean(false)) {
-                (Some(a), Some(b)) if (a.x - b.x) * f > 1.0 => (a.y - b.y).atan2((a.x - b.x) * f),
-                _ => 0.0,
-            };
+            // (Nose down as it goes, a runner's lean.)
+            let want = want - (legs.def.pitch * (v.x.abs() / 100.0).min(1.5)).to_radians();
             let most = legs.def.tilt.to_radians();
             legs.tilt += (want.clamp(-most, most) - legs.tilt) * (dt * 8.0).min(1.0);
             (Vec2::new(middle.x, y) + Vec2::Y * rear.lift - Vec2::X * f * rear.back, Vec2::Y)
@@ -711,14 +748,19 @@ fn draw(
             let hip = legs.hip(i, c);
             // (Knees also splay out from the body a little: from the side,
             // a front leg's forward, a back one's back.)
-            let out = if side {
+            let bend = if side {
                 let l = &legs.def.each[i];
                 let ahead = if l.lean != 0.0 { l.lean } else { l.hip.0 };
-                Vec2::X * ahead.signum() * legs.facing
+                // (Forward or back: mostly that way, a little up.)
+                match l.knee {
+                    Knee::Out => (up + legs.turn(Vec2::X * ahead.signum()) * 0.6).normalize_or(up),
+                    Knee::Forward => (legs.turn(Vec2::X) + up * 0.3).normalize_or(up),
+                    Knee::Back => (legs.turn(-Vec2::X) + up * 0.3).normalize_or(up),
+                }
             } else {
-                Vec2::from_angle(legs.way(i))
+                (up + Vec2::from_angle(legs.way(i)) * 0.6).normalize_or(up)
             };
-            let (k, foot) = knee(hip, f.at, a, b, (up + out * 0.6).normalize_or(up), |p| solid(&sim, p));
+            let (k, foot) = knee(hip, f.at, a, b, bend, |p| solid(&sim, p));
             let far = side && legs.def.each[i].far;
             let (leg, joint) = if far {
                 let c = legs.def.far.unwrap_or(dark(legs.def.color));

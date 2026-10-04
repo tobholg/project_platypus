@@ -1,0 +1,39 @@
+// A ridge raptor: a lean striped hunter on two long legs that bend back at
+// the ankle, a bird's way; it runs at you nose down, its tail out level,
+// bobbing with each stride. A first version (BE `limbs`): it runs, and
+// its touch cuts; its bite and kick come with moves that drive limbs.
+(
+    name: "Ridge raptor",
+    size: (16, 40),
+    health: 60,
+    team: Enemy,
+    kind: "beast",
+    fall_damage: (safe_height: 120, per_cell: 0.5),
+    art: "raptor_body",
+    // Two legs from the side (legs.rs): the near one in front of its body,
+    // the far one behind, darker; one steps, then the other. Its body
+    // rides 24 cells over its feet, rises 3 with each stride and leans
+    // 10° nose down at 100 cells/s.
+    legs: (view: Side, reach: 40, upper: 0.46, step: 0.12, lift: 8, ride: 24, stride: 18, tilt: 25, bob: 3, pitch: 10,
+           color: (82, 92, 58), joint: (52, 58, 40), thick: 3, body: "raptor_body", eyes: (250, 210, 60),
+           each: [
+               (hip: (1, 0), gait: 0, knee: Back),
+               (hip: (3, 1), gait: 1, knee: Back, far: true),
+           ]),
+    movement: (
+        run_speed: 150,
+        ground_accel: 900,
+        ground_decel: 1100,
+        jump_height: 42,
+        air_jumps: 0,
+        step_height: 7,
+        dash_speed: 0,
+    ),
+    poise: 14,
+    heft: 1.0,
+    touch: (harm: slash, damage: 8, knock: 260, stun: 0.2),
+    brain: (
+        kind: "hunter",
+        params: (aggro: 450, close: Walk(keep: 8, jump_to_reach: 34), wander: (speed: 0.5, every: 2.0)),
+    ),
+)

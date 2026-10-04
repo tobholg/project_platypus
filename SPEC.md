@@ -1827,16 +1827,24 @@ parts, so another is a new file, not new code:
   `stride` cells behind or is stretched; legs of a gait group step
   together, never while another group's are stepping. The body rides
   `ride` cells over its planted feet (no lower than half that over its
-  box, no higher than the box's top) and tilts with them, up to `tilt`°
-  (front feet higher: nose up). Knees bend up and out (a front leg's
-  forward, a back one's back). The near legs are drawn in front of the
+  box, no higher than the box's top) and tilts with them, up to `tilt`°:
+  the slope of a line through its planted feet (along the way it faces;
+  feet together, nothing to read: it eases level). `bob`: it rises that
+  many cells while a foot's in the air (two legs); `pitch`: it leans
+  that many degrees nose down at 100 cells/s (a runner). A leg's `knee`:
+  `Out` (up and out: a front leg's forward, a back one's back; crabs,
+  insects), `Forward`, `Back` (a bird's: what bends is its ankle). The near legs are drawn in front of the
   body (z 10.06), the far ones behind, in `far` (else the near colour
   darker). Its box takes in its legs (the stilt stalker: 18 × 58). Dead,
   it lies on its belly (a box 14 high) on its legs folded under it. The
-  `legs` scenario (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=real`): a stilt
-  stalker led 600 cells west over the hills from seed 1's start; its tilt
-  went the ground's way at all 16 readings on slopes, 7° off on average
-  (28° at most); its feet never in rock.
+  `legs` scenario (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=real`): a walker
+  led 600 cells west over the hills from seed 1's start, its tilt against
+  the ground's slope: the stilt stalker (four legs, 18 × 58) 16 of 16
+  readings on slopes the ground's way, 6° off on average; the crag crab
+  (six from the front, a tripod gait, riding 10 low, it goes sideways)
+  17 of 18, 11° off; the ridge raptor (two legs bending back, bobbing,
+  leaning into its run at 150 cells/s) 8 of 8, 16° off; no foot of any
+  in rock.
 - **Webs snare:** a material can be `sticky` (cobweb): a body in any of
   its cells moves at 30 % (with chill, the slower of the two), unless its
   creature is a `web_walker` (spiders). Blades cut webs (plants). In the

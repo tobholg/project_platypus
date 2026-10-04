@@ -1,0 +1,46 @@
+// A crag crab seen from the front (it goes sideways, as crabs do): a wide
+// rocky shell flecked with stone, eyes up on stalks, small claws held low
+// at its sides. Its six legs are its creature file's `legs` (drawn by the
+// game); `grip` is the middle of its underside, where they're measured
+// from.
+(
+    size: (34, 16),
+    feet: (17, 14),
+    outline: (24, 20, 18),
+    palette: {
+        'b': (84, 70, 60),   // shell, shade
+        'B': (124, 102, 84),   // shell
+        'L': (162, 138, 110),   // shell, lit
+        'r': (112, 108, 102),   // stone in it
+        'u': (176, 150, 118),   // underside
+        'c': (156, 96, 72),   // claws
+        'C': (112, 66, 50),   // claws, shade
+        'e': (18, 14, 12),   // eyes
+        'E': (230, 226, 210),   // a glint
+        's': (96, 80, 66),   // stalks
+    },
+    frames: {
+        "body": [
+            "..................................",
+            "..................................",
+            "..........E............E..........",
+            "..........e............e..........",
+            "..........s............s..........",
+            "......bBBBBBBBBBBBBBBBBBBBBb......",
+            "....bBBLLLrLLLLLLLLLLLLrLLLBBb....",
+            "...bBBLLLLLLLLrLLLLrLLLLLLLLBBb...",
+            "..bBBBBLLLLLLLLLLLLLLLLLLLLBBBBb..",
+            "..bBBBBBBBBrBBBBBBBBBBrBBBBBBBBb..",
+            "...bbbBBBBBBBBBBBBBBBBBBBBBBbbb...",
+            ".cC.bbbbbbbbbbbbbbbbbbbbbbbbbb.Cc.",
+            ".ccC..uuuuuuuuuuuuuuuuuuuuuu..Ccc.",
+            ".cCc...uuuuuuuuuuuuuuuuuuuu...cCc.",
+            "..c.......uuuuuuuuuuuuuu.......c..",
+            "..................................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (17, 12) } },
+)

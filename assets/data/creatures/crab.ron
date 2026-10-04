@@ -1,0 +1,44 @@
+// A crag crab: a wide rocky shell on six legs, seen from the front, so it
+// scuttles sideways at you, low over the rock, its body tipping as its
+// feet find the ground. A first version (BE `limbs`): it walks, and its
+// touch nips; its claws come with moves that drive limbs (and its soft
+// back with weak points).
+(
+    name: "Crag crab",
+    // Its box takes in its legs: wide and low.
+    size: (30, 22),
+    health: 80,
+    team: Enemy,
+    kind: "beast",
+    blood: "ichor",
+    art: "crab_body",
+    // Six legs from the side (legs.rs), three each way, knees arched high;
+    // they step three at a time (an outer, the middle of the other side,
+    // an inner: a tripod), the middle ones behind its shell.
+    legs: (view: Side, reach: 22, upper: 0.5, step: 0.09, lift: 5, ride: 10, stride: 8, tilt: 22,
+           color: (140, 92, 68), joint: (96, 60, 44), thick: 2, body: "crab_body",
+           each: [
+               (hip: (-12, 2), lean: -14, gait: 0),
+               (hip: (-8, 1), lean: -12, gait: 1, far: true),
+               (hip: (-4, 1), lean: -10, gait: 0),
+               (hip: (12, 2), lean: 14, gait: 1),
+               (hip: (8, 1), lean: 12, gait: 0, far: true),
+               (hip: (4, 1), lean: 10, gait: 1),
+           ]),
+    movement: (
+        run_speed: 62,
+        ground_accel: 700,
+        ground_decel: 900,
+        jump_height: 26,
+        air_jumps: 0,
+        step_height: 9,
+        dash_speed: 0,
+    ),
+    poise: 26,
+    heft: 1.8,
+    touch: (harm: pierce, damage: 7, knock: 200, stun: 0.15),
+    brain: (
+        kind: "hunter",
+        params: (aggro: 300, close: Walk(keep: 8, jump_to_reach: 16), wander: (speed: 0.4, every: 2.5)),
+    ),
+)
