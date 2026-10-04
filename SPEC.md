@@ -1840,7 +1840,16 @@ parts, so another is a new file, not new code:
   at the knee; `toes`: a foot along the ground ahead and a claw behind
   (the raptor's thighs 8 to shanks 3, toes 7; the crab's armour 4.5 to a
   point; the stalker's stilts 3 to 1.2). Without `width`, lines `thick`
-  across (the spider's). The near legs are drawn in front of the
+  across (the spider's). `ankle`: a third bone (a bird's: from its ankle
+  down to its toes), held `heel`° up from the ground behind the foot, the
+  knee between hip and ankle (the raptor: thigh forward, shank back, foot
+  forward; `width` then four: hip, knee, ankle, foot). `Up`/`Down` bends
+  too. `arms`: limbs that don't walk (a crab's claws, a raptor's little
+  arms): a `shoulder` and where the `hand` rests (from the grip), two
+  `bones`, a `width`, an `elbow` bend, swaying `sway` cells at rest, a
+  `claw` sprite (pointing right, its grip at the wrist) turned to the
+  forearm; near ones in front, far ones behind. The crag crab is seen from
+  the side: eight legs, its pincers held out ahead. The near legs are drawn in front of the
   body (z 10.06), the far ones behind, in `far` (else the near colour
   darker). Its box takes in its legs (the stilt stalker: 18 × 58). Dead,
   it lies on its belly (a box 14 high) on its legs folded under it. The

@@ -1,46 +1,42 @@
-// A crag crab seen from the front (it goes sideways, as crabs do): a wide
-// rocky shell flecked with stone, eyes up on stalks, small claws held low
-// at its sides. Its six legs are its creature file's `legs` (drawn by the
-// game); `grip` is the middle of its underside, where they're measured
-// from.
+// A crag crab seen from the side, pointing right: a domed rocky shell
+// flecked with stone, eyes up on stalks at its front, its mouthparts below
+// them. Its eight legs and its two big claws are its creature file's
+// `legs` (the claws' pincers `crab_claw`); `grip` is the middle of its
+// underside.
 (
-    size: (34, 16),
-    feet: (17, 14),
-    outline: (24, 20, 18),
+    size: (34, 14),
+    feet: (18, 13),
+    outline: (22, 20, 16),
     palette: {
-        'b': (84, 70, 60),   // shell, shade
-        'B': (124, 102, 84),   // shell
-        'L': (162, 138, 110),   // shell, lit
-        'r': (112, 108, 102),   // stone in it
-        'u': (176, 150, 118),   // underside
-        'c': (156, 96, 72),   // claws
-        'C': (112, 66, 50),   // claws, shade
+        'b': (84, 58, 44),   // shell, shade
+        'B': (132, 86, 62),   // shell
+        'L': (170, 116, 82),   // shell, lit
+        'r': (116, 108, 100),   // stone in it
+        'u': (176, 140, 104),   // underside
         'e': (18, 14, 12),   // eyes
-        'E': (230, 226, 210),   // a glint
-        's': (96, 80, 66),   // stalks
+        's': (112, 74, 54),   // stalks
+        'm': (70, 44, 34),   // mouthparts
     },
     frames: {
         "body": [
             "..................................",
-            "..................................",
-            "..........E............E..........",
-            "..........e............e..........",
-            "..........s............s..........",
-            "......bBBBBBBBBBBBBBBBBBBBBb......",
-            "....bBBLLLrLLLLLLLLLLLLrLLLBBb....",
-            "...bBBLLLLLLLLrLLLLrLLLLLLLLBBb...",
-            "..bBBBBLLLLLLLLLLLLLLLLLLLLBBBBb..",
-            "..bBBBBBBBBrBBBBBBBBBBrBBBBBBBBb..",
-            "...bbbBBBBBBBBBBBBBBBBBBBBBBbbb...",
-            ".cC.bbbbbbbbbbbbbbbbbbbbbbbbbb.Cc.",
-            ".ccC..uuuuuuuuuuuuuuuuuuuuuu..Ccc.",
-            ".cCc...uuuuuuuuuuuuuuuuuuuu...cCc.",
-            "..c.......uuuuuuuuuuuuuu.......c..",
+            "...........................e..e...",
+            "...........................s..s...",
+            "................BBBBBBBBB..s..s...",
+            "............BBBLLLLLLLLLBBBBsBBs..",
+            ".........bBBLLLLLLrLLLLLLLLBBBBb..",
+            ".......bBBLLLLLLLLLLLLLLLLLLBBBb..",
+            "......bBBLLLLrLLLLLLLLLLrLLLLBBBb.",
+            ".....bBBBLLLLLLLLLLLLLLLLLLLBBBBb.",
+            ".....bBBBBBBBBBBBBBBBBBBBBBBBBBBb.",
+            "......bbbBBBBBBBBBBBBBBBBBBBBBbbm.",
+            "........bbbbbbbbbbbbbbbbbbbbbbbmm.",
+            "...........uuuuuuuuuuuuuuuuuuu....",
             "..................................",
         ],
     },
     clips: {
         "idle": (frames: ["body"], fps: 1),
     },
-    anchors: { "grip": { "body": (17, 12) } },
+    anchors: { "grip": { "body": (18, 12) } },
 )

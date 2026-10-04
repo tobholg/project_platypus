@@ -94,6 +94,43 @@ pub enum Knee {
     Forward,
     /// Back (a bird's or a raptor's: what bends is its ankle).
     Back,
+    /// Up, or down (an arm's elbow: a crab's claw held up from below).
+    Up,
+    Down,
+}
+
+/// An arm: a limb that doesn't walk, held out from the body (a crab's
+/// claws, a raptor's little arms), its hand resting where it says,
+/// swaying a little; a `claw` sprite at its end (pointing right, its
+/// `grip` at the wrist), turned to the forearm.
+#[derive(Clone, Debug, Deserialize)]
+pub struct ArmDef {
+    /// Its shoulder and where its hand rests, from the body's `grip`
+    /// (cells, facing right, y up).
+    pub shoulder: (f32, f32),
+    pub hand: (f32, f32),
+    /// Its upper arm and forearm (cells).
+    pub bones: (f32, f32),
+    /// How thick at the shoulder, the elbow and the wrist (cells).
+    #[serde(default)]
+    pub width: Vec<f32>,
+    #[serde(default = "elbow")]
+    pub elbow: Knee,
+    #[serde(default)]
+    pub claw: Option<String>,
+    /// On the far side: behind the body, darker.
+    #[serde(default)]
+    pub far: bool,
+    /// How far the hand sways at rest (cells).
+    #[serde(default = "sway")]
+    pub sway: f32,
+}
+
+fn elbow() -> Knee {
+    Knee::Down
+}
+fn sway() -> f32 {
+    1.0
 }
 
 /// Legs, as a creature file writes them.
@@ -123,12 +160,24 @@ pub struct LegsDef {
     pub bob: f32,
     #[serde(default)]
     pub pitch: f32,
-    /// How thick a leg is at its hip, its knee and its foot (cells): drawn
+    /// How thick a leg is at its hip, its knee and its foot (cells; with an
+    /// `ankle`, at its ankle too, before the foot): drawn
     /// tapered and outlined, a limb with some flesh to it (a raptor's
     /// thighs, a crab's armour). Without it, lines `thick` across (a
     /// spider's).
     #[serde(default)]
-    pub width: Option<(f32, f32, f32)>,
+    pub width: Vec<f32>,
+    /// Side: a third bone, the foot's (cells; a bird's, a raptor's: the
+    /// long bone from its ankle down to its toes), held `heel` degrees up
+    /// from the ground behind the foot. `width` then has four: the hip,
+    /// the knee, the ankle, the foot.
+    #[serde(default)]
+    pub ankle: f32,
+    #[serde(default = "heel")]
+    pub heel: f32,
+    /// Side: its arms.
+    #[serde(default)]
+    pub arms: Vec<ArmDef>,
     /// Toes (cells long): a foot along the ground ahead, a claw behind.
     #[serde(default)]
     pub toes: f32,
@@ -184,6 +233,9 @@ pub struct Rear {
 fn eight() -> usize {
     8
 }
+fn heel() -> f32 {
+    60.0
+}
 fn stride() -> f32 {
     10.0
 }
@@ -192,6 +244,11 @@ fn tilt() -> f32 {
 }
 
 impl LegsDef {
+    /// How far a leg reaches, hip to foot (its ankle's bone too).
+    pub fn full_reach(&self) -> f32 {
+        self.reach + self.ankle
+    }
+
     /// How many legs.
     pub fn legs(&self) -> usize {
         match self.view {
@@ -249,7 +306,19 @@ pub struct Legs {
     /// Side: the ground's slope under its feet (radians, up ahead), as
     /// last read.
     slope: f32,
+    /// Its arms as they are now (the world: shoulder, elbow, wrist), and
+    /// their claws' sprites.
+    arms: Vec<(Vec2, Vec2, Vec2)>,
+    claws: Vec<Option<Entity>>,
 }
+
+#[derive(Component)]
+struct LegClaw;
+
+/// Over a creature's body and its near legs (10.06); a far claw behind its
+/// far legs (9.5).
+const Z_NEAR_CLAW: f32 = 10.07;
+const Z_FAR_CLAW: f32 = 9.45;
 
 #[derive(Component)]
 struct LegBody;
@@ -294,6 +363,19 @@ impl Legs {
     /// Where its feet are (the world), and whether each holds something.
     pub fn feet(&self) -> impl Iterator<Item = (Vec2, bool)> + '_ {
         self.feet.iter().map(|f| (f.at, f.grips))
+    }
+
+    /// Which way a side-view joint bends (`ahead`: which way the limb's
+    /// out from the body, along it), as a direction in the world.
+    fn bend(&self, knee: Knee, ahead: f32) -> Vec2 {
+        let up = self.turn(Vec2::Y);
+        match knee {
+            Knee::Out => (up + self.turn(Vec2::X * ahead.signum()) * 0.6).normalize_or(up),
+            Knee::Forward => (self.turn(Vec2::X) + up * 0.3).normalize_or(up),
+            Knee::Back => (self.turn(-Vec2::X) + up * 0.3).normalize_or(up),
+            Knee::Up => up,
+            Knee::Down => -up,
+        }
     }
 
     /// A point on the body (cells from its grip, facing right, y up) as
@@ -447,7 +529,26 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, slope: 0.0, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, slope: 0.0, arms: Vec::new(), claws: Vec::new(), def };
+        // Its arms' claws: turned sprites at their wrists.
+        for arm in legs.def.arms.clone() {
+            let claw = arm.claw.and_then(|name| {
+                if !art.0.contains_key(&name) {
+                    match crate::combat::turned_art(&name, None, &mut images, &mut layouts) {
+                        Ok(t) => {
+                            art.0.insert(name.clone(), t);
+                        }
+                        Err(err) => warn!("legs: claw `{name}`: {err}"),
+                    }
+                }
+                let z = if arm.far { Z_FAR_CLAW } else { Z_NEAR_CLAW } - root_z;
+                art.0.get(&name).map(|t| commands.spawn((LegClaw, t.sprite(0.0), Transform::from_xyz(0.0, 0.0, z))).id())
+            });
+            if let Some(c) = claw {
+                commands.entity(e).add_child(c);
+            }
+            legs.claws.push(claw);
+        }
         let c = match legs.def.view {
             View::Above => k.body.pos,
             View::Side => Vec2::new(k.body.pos.x, k.body.pos.y - k.body.half.y + legs.def.ride),
@@ -456,9 +557,9 @@ fn grow_legs(
             let hip = legs.hip(i, c);
             let held = match legs.def.view {
                 View::Above => foothold(&sim, hip, legs.way(i), legs.def.reach, false),
-                View::Side => ground_under(&sim, hip, hip.x + legs.def.each[i].lean * facing, legs.def.reach),
+                View::Side => ground_under(&sim, hip, hip.x + legs.def.each[i].lean * facing, legs.def.full_reach()),
             };
-            let at = held.unwrap_or(hip + Vec2::from_angle(legs.way(i)) * legs.def.reach * 0.5);
+            let at = held.unwrap_or(hip + Vec2::from_angle(legs.way(i)) * legs.def.full_reach() * 0.5);
             legs.feet.push(Foot { at, from: at, to: at, t: 1.0, grips: true, retry: 0.0 });
         }
         commands.entity(e).insert(legs);
@@ -473,10 +574,12 @@ fn walk(
     sim: Res<SimWorld>,
     mut q: Query<(&mut Legs, &Kinematics, &GlobalTransform, &Children, Option<&Rear>)>,
     mut sprites: Query<(&mut Sprite, &mut Visibility), (With<CreatureSprite>, Without<LegBody>, Without<LegStinger>)>,
-    mut bodies: Query<(&mut Sprite, &mut Transform), (Or<(With<LegBody>, With<LegEyes>)>, Without<CreatureSprite>, Without<LegStinger>)>,
-    mut stingers: Query<(&mut Sprite, &mut Transform, &mut Visibility), (With<LegStinger>, Without<CreatureSprite>, Without<LegBody>, Without<LegEyes>)>,
+    mut bodies: Query<(&mut Sprite, &mut Transform), (Or<(With<LegBody>, With<LegEyes>)>, Without<CreatureSprite>, Without<LegStinger>, Without<LegClaw>)>,
+    mut stingers: Query<(&mut Sprite, &mut Transform, &mut Visibility), (With<LegStinger>, Without<CreatureSprite>, Without<LegBody>, Without<LegEyes>, Without<LegClaw>)>,
+    mut claws: Query<(&mut Sprite, &mut Transform), (With<LegClaw>, Without<CreatureSprite>, Without<LegBody>, Without<LegEyes>, Without<LegStinger>)>,
 ) {
     let dt = time.delta_secs().min(0.05);
+    let now = time.elapsed_secs();
     for (mut legs, k, tf, children, rear) in &mut q {
         let middle = tf.translation().truncate();
         let side = legs.def.view == View::Side;
@@ -577,7 +680,7 @@ fn walk(
             t.translation = at.extend(t.translation.z);
         }
         // Steps.
-        let (reach, n) = (legs.def.reach, legs.feet.len());
+        let (reach, n) = (legs.def.full_reach(), legs.feet.len());
         // (On the wall behind: its feet can hold on to it anywhere.)
         let back = k.loco.clinging() == Some(Vec2::ZERO);
         let stepping = legs.feet.iter().filter(|f| f.t < 1.0).count();
@@ -650,9 +753,31 @@ fn walk(
                 f.at = f.from.lerp(f.to, s) + away * lift * (std::f32::consts::PI * f.t).sin();
             }
         }
+        // Arms: each hand where it rests, swaying (each its own beat); the
+        // elbow as it bends; a claw at the wrist turned to the forearm.
+        let arms: Vec<ArmDef> = legs.def.arms.clone();
+        legs.arms.clear();
+        for (j, arm) in arms.iter().enumerate() {
+            let shoulder = c + legs.turn(Vec2::new(arm.shoulder.0, arm.shoulder.1));
+            let phase = now * (1.3 + j as f32 * 0.31) + j as f32 * 2.1;
+            let hand = c + legs.turn(Vec2::new(arm.hand.0, arm.hand.1) + Vec2::new(phase.sin(), (phase * 1.7).cos()) * arm.sway);
+            let (elbow, wrist) = knee(shoulder, hand, arm.bones.0, arm.bones.1, legs.bend(arm.elbow, 1.0), |p| solid(&sim, p));
+            legs.arms.push((shoulder, elbow, wrist));
+            if let Some(Ok((mut s, mut t))) = legs.claws.get(j).copied().flatten().map(|e| claws.get_mut(e)) {
+                let d = wrist - elbow;
+                let local = d.y.atan2(d.x * legs.facing);
+                if let Some(atlas) = s.texture_atlas.as_mut() {
+                    atlas.index = crate::combat::Turned::index(local.to_degrees());
+                }
+                s.flip_x = legs.facing < 0.0;
+                if let Some(t) = tint {
+                    s.color = t;
+                }
+                t.translation = (wrist - middle).extend(t.translation.z);
+            }
+        }
         // Legs holding nothing reach out from the body as it goes, and
         // twitch, each out of step.
-        let now = time.elapsed_secs();
         for i in 0..n {
             if legs.feet[i].grips || legs.feet[i].t < 1.0 {
                 continue;
@@ -784,17 +909,16 @@ fn draw(
             // a front leg's forward, a back one's back.)
             let bend = if side {
                 let l = &legs.def.each[i];
-                let ahead = if l.lean != 0.0 { l.lean } else { l.hip.0 };
-                // (Forward or back: mostly that way, a little up.)
-                match l.knee {
-                    Knee::Out => (up + legs.turn(Vec2::X * ahead.signum()) * 0.6).normalize_or(up),
-                    Knee::Forward => (legs.turn(Vec2::X) + up * 0.3).normalize_or(up),
-                    Knee::Back => (legs.turn(-Vec2::X) + up * 0.3).normalize_or(up),
-                }
+                legs.bend(l.knee, if l.lean != 0.0 { l.lean } else { l.hip.0 })
             } else {
                 (up + Vec2::from_angle(legs.way(i)) * 0.6).normalize_or(up)
             };
-            let (k, foot) = knee(hip, f.at, a, b, bend, |p| solid(&sim, p));
+            // (With an ankle's bone: from the foot back up to the ankle, at
+            // its heel's angle; the knee between the hip and the ankle.)
+            let ahead = Vec2::X * legs.facing;
+            let ankle = (legs.def.ankle > 0.0).then(|| f.at + (-ahead * legs.def.heel.to_radians().cos() + Vec2::Y * legs.def.heel.to_radians().sin()) * legs.def.ankle);
+            let (k, foot) = knee(hip, ankle.unwrap_or(f.at), a, b, bend, |p| solid(&sim, p));
+            let foot = if ankle.is_some() { f.at } else { foot };
             let far = side && legs.def.each[i].far;
             let (leg, joint) = if far {
                 let c = legs.def.far.unwrap_or(dark(legs.def.color));
@@ -803,21 +927,32 @@ fn draw(
                 (rgb(legs.def.color), rgb(legs.def.joint.unwrap_or(legs.def.color)))
             };
             let to = &mut quads[(side && !far) as usize];
-            if let Some((hip_w, knee_w, foot_w)) = legs.def.width {
+            if !legs.def.width.is_empty() {
                 // Tapered, outlined: the outline first (a cell wider all
                 // round), then the flesh over it; toes along the ground.
+                let w = |i: usize| legs.def.width.get(i).or(legs.def.width.last()).copied().unwrap_or(1.0);
                 let line = legs.def.outline.unwrap_or_else(|| dark(dark(legs.def.color)));
-                let ahead = Vec2::X * legs.facing;
                 let toes = legs.def.toes;
-                let bones = [(hip, k, hip_w, knee_w), (k, foot, knee_w, foot_w), (foot, foot + ahead * toes, foot_w, 1.0), (foot, foot - ahead * toes * 0.45 + Vec2::Y * 0.5, foot_w, 1.0)];
-                let n = if toes > 0.0 { 4 } else { 2 };
+                let mut bones = vec![(hip, k, w(0), w(1))];
+                match ankle {
+                    Some(at) => bones.extend([(k, at, w(1), w(2)), (at, foot, w(2), w(3))]),
+                    None => bones.push((k, foot, w(1), w(2))),
+                }
+                let fw = w(if ankle.is_some() { 3 } else { 2 });
+                if toes > 0.0 {
+                    bones.extend([(foot, foot + ahead * toes, fw, 1.0), (foot, foot - ahead * toes * 0.45 + Vec2::Y * 0.5, fw, 1.0)]);
+                }
                 for (pass, grow) in [(rgb(line), 1.0), (leg, 0.0)] {
-                    for &(a, b, wa, wb) in &bones[..n] {
+                    for &(a, b, wa, wb) in &bones {
                         stroke(a, b, wa * 0.5 + grow, wb * 0.5 + grow, pass, to);
                     }
                 }
-                // (A knuckle at the knee.)
-                stroke(k, k, knee_w * 0.5 - 0.3, knee_w * 0.5 - 0.3, joint, to);
+                // (Knuckles at the knee and the ankle.)
+                for (at, wk) in [(Some(k), w(1)), (ankle, w(2))] {
+                    if let Some(at) = at {
+                        stroke(at, at, wk * 0.5 - 0.3, wk * 0.5 - 0.3, joint, to);
+                    }
+                }
                 continue;
             }
             // Thick lines: the cells beside the line, across it.
@@ -835,6 +970,23 @@ fn draw(
             thick(hip, k, legs.def.thick, to);
             thick(k, foot, legs.def.thick.saturating_sub(1), to);
             to.push((IVec2::new(k.x.floor() as i32, k.y.floor() as i32), joint));
+        }
+        // Arms, as the legs are drawn (where they are now: `walk`).
+        for (arm, &(shoulder, elbow, wrist)) in legs.def.arms.iter().zip(&legs.arms) {
+            let w = |i: usize| arm.width.get(i).or(arm.width.last()).copied().unwrap_or(2.0);
+            let line = legs.def.outline.unwrap_or_else(|| dark(dark(legs.def.color)));
+            let (fill, knob) = if arm.far {
+                let c = legs.def.far.unwrap_or(dark(legs.def.color));
+                (rgb(c), rgb(legs.def.joint.map_or(c, dark)))
+            } else {
+                (rgb(legs.def.color), rgb(legs.def.joint.unwrap_or(legs.def.color)))
+            };
+            let to = &mut quads[(!arm.far) as usize];
+            for (pass, grow) in [(rgb(line), 1.0), (fill, 0.0)] {
+                stroke(shoulder, elbow, w(0) * 0.5 + grow, w(1) * 0.5 + grow, pass, to);
+                stroke(elbow, wrist, w(1) * 0.5 + grow, w(2) * 0.5 + grow, pass, to);
+            }
+            stroke(elbow, elbow, w(1) * 0.5 - 0.3, w(1) * 0.5 - 0.3, knob, to);
         }
     }
     let [back, front, stage_back, stage_front] = &mut canvas.0;

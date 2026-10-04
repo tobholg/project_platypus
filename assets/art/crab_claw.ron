@@ -1,0 +1,31 @@
+// A crag crab's pincer, pointing right: a heavy palm and two fingers with
+// a gap between (the upper one moves). `grip` is its wrist, where its arm
+// (the crab's `legs` `arms`) ends; the game turns it to the forearm.
+(
+    size: (16, 9),
+    feet: (1, 4),
+    outline: (22, 20, 16),
+    palette: {
+        'c': (84, 52, 38),   // claw, shade
+        'C': (140, 88, 62),   // claw
+        'L': (190, 128, 90),   // claw, lit
+        'w': (120, 76, 54),   // wrist
+    },
+    frames: {
+        "body": [
+            "................",
+            ".......cCCCCc...",
+            "....cCCCLLLLCCc.",
+            "..cCCLLLLLLCc...",
+            ".wCCLLLLLc......",
+            "..cCCLLLLCCCc...",
+            "....cCCCCCCCCc..",
+            ".......ccc......",
+            "................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (1, 4) } },
+)
