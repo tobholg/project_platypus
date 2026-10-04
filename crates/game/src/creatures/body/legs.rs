@@ -1,22 +1,37 @@
-//! Procedural legs (spiders): a body seen from above, turned to where it's
-//! going, and legs that reach out and grip the world, Noita-style.
+//! Procedural legs: legs that reach out and grip the world, Noita-style,
+//! and the body they carry. Two ways of seeing it (`view`):
 //!
-//! A creature file's `legs` gives it: `count` legs spread round its body
-//! (each with a way it prefers to reach, fanned front to back on both
-//! sides), `reach` (a leg's full length: thigh `upper` of it, the rest
-//! shin), how long a step takes and how high a foot lifts, colours, and
-//! the `body` sprite (from above, pointing right, a `grip` anchor where
-//! the legs meet), turned with RotSprite to where the body heads.
+//! - **Above** (spiders): a body seen from above, turned to where it's
+//!   going, its legs splayed all round it. A creature file's `legs` gives
+//!   it: `count` legs spread round its body
+//!   (each with a way it prefers to reach, fanned front to back on both
+//!   sides), `reach` (a leg's full length: thigh `upper` of it, the rest
+//!   shin), how long a step takes and how high a foot lifts, colours, and
+//!   the `body` sprite (from above, pointing right, a `grip` anchor where
+//!   the legs meet), turned with RotSprite to where the body heads.
 //!
-//! Each foot holds on to a real solid cell: found by casting from the hip
-//! along the leg's way, then swept round it (±90°) until something solid
-//! is met within reach. A foot stays put while the body moves; once it's
-//! stretched too far, crowded or twisted too far from its way it lifts and
-//! steps to a new hold (an arc away from what it holds), a few at a time,
-//! never two neighbours at once. With nothing in reach a leg hangs curled.
-//! The knees (two-bone IK) bend away from what the feet hold. Legs are
-//! drawn a cell at a time (Bresenham), so they stay pixel art, behind the
-//! body. Looks only: the body's movement is its own (`cling` to climb).
+//!   Each foot holds on to a real solid cell: found by casting from the hip
+//!   along the leg's way, then swept round it (±90°) until something solid
+//!   is met within reach. A foot stays put while the body moves; once it's
+//!   stretched too far, crowded or twisted too far from its way it lifts and
+//!   steps to a new hold (an arc away from what it holds), a few at a time,
+//!   never two neighbours at once. With nothing in reach a leg hangs curled.
+//!   The knees (two-bone IK) bend away from what the feet hold. Legs are
+//!   drawn a cell at a time (Bresenham), so they stay pixel art, behind the
+//!   body.
+//! - **Side** (walkers on legs: the stilt stalker, crabs): a body seen
+//!   from the side (`body`, pointing right, its `grip` where the hips are
+//!   measured from), each leg in `each` with its hip on it, where its foot
+//!   rests (`lean`: ahead of the hip, or behind), its gait (legs of one
+//!   group step together, never while another group's are stepping) and
+//!   whether it's the far side's (drawn behind the body, darker; the near
+//!   ones in front). A foot plants on the ground under where it rests,
+//!   a little ahead as it goes, and steps when it's left a `stride`
+//!   behind; the body rides `ride` cells over its planted feet and tilts
+//!   with them (front feet higher: nose up), so it follows the ground.
+//!
+//! Looks only: the body's movement is its own box's (`cling` to climb);
+//! its box takes in the legs.
 
 use std::collections::HashMap;
 
@@ -39,9 +54,52 @@ impl Plugin for LegsPlugin {
     }
 }
 
+/// Which way a legged body is seen.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+pub enum View {
+    /// From above (a spider): turned to where it's going.
+    #[default]
+    Above,
+    /// From the side: facing where it goes, tilted with the ground.
+    Side,
+}
+
+/// One leg of a body seen from the side.
+#[derive(Clone, Debug, Deserialize)]
+pub struct LegDef {
+    /// Its hip, from the body's `grip` (cells, facing right, y up).
+    pub hip: (f32, f32),
+    /// Where its foot rests, ahead of its hip (cells; behind: negative).
+    #[serde(default)]
+    pub lean: f32,
+    /// Its gait group: a group's legs step together.
+    #[serde(default)]
+    pub gait: u8,
+    /// On the far side: behind the body, darker.
+    #[serde(default)]
+    pub far: bool,
+}
+
 /// Legs, as a creature file writes them.
 #[derive(Clone, Debug, Deserialize)]
 pub struct LegsDef {
+    #[serde(default)]
+    pub view: View,
+    /// Side: each leg.
+    #[serde(default)]
+    pub each: Vec<LegDef>,
+    /// Side: how high the body's grip rides over its planted feet, how far
+    /// back a foot gets before it steps (cells), and how far the body
+    /// tilts at most (degrees).
+    #[serde(default)]
+    pub ride: f32,
+    #[serde(default = "stride")]
+    pub stride: f32,
+    #[serde(default = "tilt")]
+    pub tilt: f32,
+    /// Side: the far legs' colour (else the near ones', darker).
+    #[serde(default)]
+    pub far: Option<(u8, u8, u8)>,
     #[serde(default = "eight")]
     pub count: usize,
     /// A leg's full length (cells); the thigh is `upper` of it.
@@ -91,6 +149,22 @@ pub struct Rear {
 fn eight() -> usize {
     8
 }
+fn stride() -> f32 {
+    10.0
+}
+fn tilt() -> f32 {
+    30.0
+}
+
+impl LegsDef {
+    /// How many legs.
+    pub fn legs(&self) -> usize {
+        match self.view {
+            View::Above => self.count,
+            View::Side => self.each.len(),
+        }
+    }
+}
 fn thigh() -> f32 {
     0.55
 }
@@ -132,6 +206,11 @@ pub struct Legs {
     stinger: Option<Entity>,
     /// Where the body is drawn from its middle (rearing, crouching).
     offset: Vec2,
+    /// Side: which way it faces (1 right, -1 left), its tilt (radians,
+    /// nose up), and its grip's height (world y) as it rides its feet.
+    facing: f32,
+    tilt: f32,
+    ride: Option<f32>,
 }
 
 #[derive(Component)]
@@ -151,8 +230,13 @@ struct LegStinger;
 
 impl Legs {
     /// Leg `i`'s preferred way, from the heading (radians): fanned front to
-    /// back, alternating sides.
+    /// back, alternating sides. (Side: down to where its foot rests.)
     fn way(&self, i: usize) -> f32 {
+        if self.def.view == View::Side {
+            let l = &self.def.each[i];
+            let rest = self.turn(Vec2::new(l.lean, -self.def.ride));
+            return rest.y.atan2(rest.x);
+        }
         let n = self.def.count.max(2);
         let per_side = n.div_ceil(2);
         let k = i / 2;
@@ -162,8 +246,30 @@ impl Legs {
         self.heading + side * a.to_radians()
     }
 
+    /// How it's carried now (for readouts): its tilt (degrees, nose up),
+    /// how high its grip rides over the bottom of its box (cells), and
+    /// how many of its feet hold something.
+    pub fn pose(&self, bottom: f32) -> (f32, f32, usize) {
+        (self.tilt.to_degrees(), self.ride.map_or(0.0, |y| y - bottom), self.feet.iter().filter(|f| f.grips && f.t >= 1.0).count())
+    }
+
+    /// Where its feet are (the world), and whether each holds something.
+    pub fn feet(&self) -> impl Iterator<Item = (Vec2, bool)> + '_ {
+        self.feet.iter().map(|f| (f.at, f.grips))
+    }
+
+    /// A point on the body (cells from its grip, facing right, y up) as
+    /// it's turned now (Side: mirrored to its facing, tilted).
+    fn turn(&self, p: Vec2) -> Vec2 {
+        Vec2::from_angle(self.tilt * self.facing).rotate(Vec2::new(p.x * self.facing, p.y))
+    }
+
     /// Leg `i`'s hip, in the world, the body at `c`.
     fn hip(&self, i: usize, c: Vec2) -> Vec2 {
+        if self.def.view == View::Side {
+            let (x, y) = self.def.each[i].hip;
+            return c + self.turn(Vec2::new(x, y));
+        }
         let n = self.def.count.max(2);
         let per_side = n.div_ceil(2);
         let k = (i / 2) as f32 / (per_side - 1).max(1) as f32;
@@ -207,6 +313,35 @@ fn foothold(sim: &SimWorld, hip: Vec2, way: f32, reach: f32, back: bool) -> Opti
         }
     }
     best.map(|(_, p)| p).or(back)
+}
+
+/// Side: where a foot goes, wanting to be under `x`: the ground there if
+/// it's in reach, else nearer the hip (down a steep slope the ground ahead
+/// is past its reach; nearer, it isn't).
+fn ground_under(sim: &SimWorld, hip: Vec2, x: f32, reach: f32) -> Option<Vec2> {
+    (0..5).find_map(|k| ground_at(sim, hip, x + (hip.x - x) * k as f32 / 5.0, reach))
+}
+
+/// The ground under `x` within reach of the hip: down from the hip's
+/// height (up out of rock first, a little: a foot uphill) to the first
+/// solid cell; the foot on its top.
+fn ground_at(sim: &SimWorld, hip: Vec2, x: f32, reach: f32) -> Option<Vec2> {
+    let mut y = hip.y;
+    while solid(sim, Vec2::new(x, y)) {
+        y += 1.0;
+        if y > hip.y + reach * 0.3 {
+            return None;
+        }
+    }
+    let lowest = hip.y - reach * 1.05;
+    while y > lowest {
+        if solid(sim, Vec2::new(x, y - 1.0)) {
+            let foot = Vec2::new(x, y.floor());
+            return ((foot - hip).length() <= reach * 1.02).then_some(foot);
+        }
+        y -= 1.0;
+    }
+    None
 }
 
 /// From `a` toward `b`, as far as it's open (a free leg never reaches into
@@ -273,18 +408,27 @@ fn grow_legs(
         if let Some(s) = stinger {
             commands.entity(e).add_child(s);
         }
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, def };
-        let c = k.body.pos;
-        for i in 0..legs.def.count {
+        let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, def };
+        let c = match legs.def.view {
+            View::Above => k.body.pos,
+            View::Side => Vec2::new(k.body.pos.x, k.body.pos.y - k.body.half.y + legs.def.ride),
+        };
+        for i in 0..legs.def.legs() {
             let hip = legs.hip(i, c);
-            let at = foothold(&sim, hip, legs.way(i), legs.def.reach, false).unwrap_or(hip + Vec2::from_angle(legs.way(i)) * legs.def.reach * 0.5);
+            let held = match legs.def.view {
+                View::Above => foothold(&sim, hip, legs.way(i), legs.def.reach, false),
+                View::Side => ground_under(&sim, hip, hip.x + legs.def.each[i].lean * facing, legs.def.reach),
+            };
+            let at = held.unwrap_or(hip + Vec2::from_angle(legs.way(i)) * legs.def.reach * 0.5);
             legs.feet.push(Foot { at, from: at, to: at, t: 1.0, grips: true, retry: 0.0 });
         }
         commands.entity(e).insert(legs);
     }
 }
 
-/// Feet stay put, then step; the body turns to where it's going.
+/// Feet stay put, then step; the body turns to where it's going (from
+/// above) or rides its feet (from the side).
 #[allow(clippy::type_complexity)]
 fn walk(
     time: Res<Time>,
@@ -297,21 +441,50 @@ fn walk(
     let dt = time.delta_secs().min(0.05);
     for (mut legs, k, tf, children, rear) in &mut q {
         let middle = tf.translation().truncate();
-        // Raised off what it holds, drawn back from its heading (an attack).
+        let side = legs.def.view == View::Side;
         let rear = rear.copied().unwrap_or_default();
-        let up = {
-            let held: Vec<Vec2> = legs.feet.iter().filter(|f| f.grips).map(|f| f.at).collect();
-            if held.is_empty() { Vec2::Y } else { (middle - held.iter().sum::<Vec2>() / held.len() as f32).normalize_or(Vec2::Y) }
-        };
-        let fwd = Vec2::from_angle(legs.heading);
-        legs.offset = up * rear.lift - fwd * rear.back;
-        let c = middle + legs.offset;
-        // Heading: where it goes (or, still, where it aims), turning steadily.
         let v = k.body.vel;
-        let want = if v.length() > 9.0 { v.y.atan2(v.x) } else { legs.heading };
-        let mut d = (want - legs.heading + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
-        d = d.clamp(-8.0 * dt, 8.0 * dt);
-        legs.heading += d;
+        // Where the body is: from above, raised off what it holds and
+        // drawn back from its heading (an attack); from the side, riding
+        // its feet, tilted with them.
+        let (c, up) = if side {
+            legs.facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
+            let f = legs.facing;
+            let base = middle.y - k.body.half.y;
+            let planted: Vec<(Vec2, f32)> = legs.feet.iter().zip(&legs.def.each).filter(|(foot, _)| foot.grips).map(|(foot, l)| (foot.to, l.lean)).collect();
+            let ground = if planted.is_empty() { base } else { planted.iter().map(|(p, _)| p.y).sum::<f32>() / planted.len() as f32 };
+            let want = (ground + legs.def.ride).clamp(base + legs.def.ride * 0.5, middle.y + k.body.half.y);
+            let y = legs.ride.map_or(want, |y| y + (want - y) * (dt * 12.0).min(1.0));
+            legs.ride = Some(y);
+            // Nose up as its front feet stand higher than its back ones.
+            let mean = |front: bool| {
+                let p: Vec<Vec2> = planted.iter().filter(|(_, lean)| (*lean > 0.0) == front && *lean != 0.0).map(|(p, _)| *p).collect();
+                (!p.is_empty()).then(|| p.iter().sum::<Vec2>() / p.len() as f32)
+            };
+            let want = match (mean(true), mean(false)) {
+                (Some(a), Some(b)) if (a.x - b.x) * f > 1.0 => (a.y - b.y).atan2((a.x - b.x) * f),
+                _ => 0.0,
+            };
+            let most = legs.def.tilt.to_radians();
+            legs.tilt += (want.clamp(-most, most) - legs.tilt) * (dt * 8.0).min(1.0);
+            (Vec2::new(middle.x, y) + Vec2::Y * rear.lift - Vec2::X * f * rear.back, Vec2::Y)
+        } else {
+            let up = {
+                let held: Vec<Vec2> = legs.feet.iter().filter(|f| f.grips).map(|f| f.at).collect();
+                if held.is_empty() { Vec2::Y } else { (middle - held.iter().sum::<Vec2>() / held.len() as f32).normalize_or(Vec2::Y) }
+            };
+            let fwd = Vec2::from_angle(legs.heading);
+            (middle + up * rear.lift - fwd * rear.back, up)
+        };
+        legs.offset = c - middle;
+        let fwd = Vec2::from_angle(legs.heading);
+        if !side {
+            // Heading: where it goes (or, still, where it aims), turning steadily.
+            let want = if v.length() > 9.0 { v.y.atan2(v.x) } else { legs.heading };
+            let mut d = (want - legs.heading + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+            d = d.clamp(-8.0 * dt, 8.0 * dt);
+            legs.heading += d;
+        }
         // The drawn body: the creature's own sprite hidden (its colour
         // borrowed: hurt flashes, tints), the turned one shown.
         let mut tint = None;
@@ -321,12 +494,14 @@ fn walk(
                 *vis = Visibility::Hidden;
             }
         }
-        let index = crate::combat::Turned::index(legs.heading.to_degrees());
+        // (From the side: tilted, mirrored to face left.)
+        let (index, flip) = if side { (crate::combat::Turned::index(legs.tilt.to_degrees()), legs.facing < 0.0) } else { (crate::combat::Turned::index(legs.heading.to_degrees()), false) };
         let offset = legs.offset;
         if let Ok((mut s, mut t)) = bodies.get_mut(legs.body) {
             if let Some(atlas) = s.texture_atlas.as_mut() {
                 atlas.index = index;
             }
+            s.flip_x = flip;
             if let Some(t) = tint {
                 s.color = t;
             }
@@ -336,6 +511,7 @@ fn walk(
             if let Some(atlas) = s.texture_atlas.as_mut() {
                 atlas.index = index;
             }
+            s.flip_x = flip;
             t.translation = offset.extend(t.translation.z);
         }
         // The stinger: from over the abdomen, up over the back, down past
@@ -364,19 +540,36 @@ fn walk(
             if f.t < 1.0 {
                 continue;
             }
+            // Where it would put its foot now (from the side: under where it
+            // rests, ahead by as far as the body goes in a step and a half).
+            let rest = side.then(|| hip.x + legs.def.each[i].lean * legs.facing + v.x * step_time * 1.5);
             let off = f.at - hip;
-            let twisted = off.length() > 0.75 && Vec2::from_angle(way).dot(off.normalize()) < 0.2;
-            let stretched = off.length() > reach * 0.98;
-            let crowded = off.length() < reach * 0.25;
-            let dangling = !f.grips;
-            let neighbours = [(i + n - 2) % n, (i + 2) % n];
-            let busy = neighbours.iter().any(|&j| legs.feet[j].t < 1.0) || stepping >= n.div_ceil(3);
-            let due = if dangling { legs.feet[i].retry <= 0.0 } else { stretched || crowded || twisted };
+            let due = match rest {
+                Some(x) => !f.grips && f.retry <= 0.0 || f.grips && ((f.at.x - x).abs() > legs.def.stride || off.length() > reach * 0.98),
+                None => {
+                    let twisted = off.length() > 0.75 && Vec2::from_angle(way).dot(off.normalize()) < 0.2;
+                    let stretched = off.length() > reach * 0.98;
+                    let crowded = off.length() < reach * 0.25;
+                    if f.grips { stretched || crowded || twisted } else { f.retry <= 0.0 }
+                }
+            };
+            // (From above, not with a neighbour, nor more than a third at
+            // once; from the side, not while another gait group steps.)
+            let busy = if side {
+                let g = legs.def.each[i].gait;
+                legs.feet.iter().zip(&legs.def.each).any(|(o, l)| o.t < 1.0 && l.gait != g)
+            } else {
+                let neighbours = [(i + n - 2) % n, (i + 2) % n];
+                neighbours.iter().any(|&j| legs.feet[j].t < 1.0) || stepping >= n.div_ceil(3)
+            };
             legs.feet[i].retry -= dt;
             if !due || busy {
                 continue;
             }
-            let to = foothold(&sim, hip, way, reach, back);
+            let to = match rest {
+                Some(x) => ground_under(&sim, hip, x, reach),
+                None => foothold(&sim, hip, way, reach, back),
+            };
             let foot = &mut legs.feet[i];
             foot.from = foot.at;
             match to {
@@ -393,8 +586,10 @@ fn walk(
             }
             foot.t = 0.0;
         }
-        // Feet on their way: an arc off what they held.
-        let away = {
+        // Feet on their way: an arc off what they held (from the side: up).
+        let away = if side {
+            Vec2::Y
+        } else {
             let held: Vec<Vec2> = legs.feet.iter().filter(|f| f.grips).map(|f| f.at).collect();
             if held.is_empty() { Vec2::Y } else { (c - held.iter().sum::<Vec2>() / held.len() as f32).normalize_or(Vec2::Y) }
         };
@@ -466,19 +661,23 @@ fn cells(a: Vec2, b: Vec2, out: &mut Vec<IVec2>) {
     }
 }
 
-/// The legs' canvas (`canvas.rs`): every leg a cell at a time, under the
-/// bodies.
+/// The legs' canvases (`canvas.rs`): behind the bodies (from above, and the
+/// far legs from the side), and in front (the near legs from the side);
+/// each again for the bestiary's stage.
 #[derive(Resource)]
-struct LegCanvas(crate::canvas::Canvas, crate::canvas::Canvas);
+struct LegCanvas([crate::canvas::Canvas; 4]);
+
+/// In front of a creature's body (10.02), under its eyes.
+const Z_NEAR_LEGS: f32 = 10.06;
 
 impl Default for LegCanvas {
     fn default() -> Self {
-        // (And one for the bestiary's stage, when it's on.)
-        LegCanvas(crate::canvas::Canvas::new("Legs", 9.5), crate::canvas::Canvas::new("Legs on the stage", 9.5))
+        use crate::canvas::Canvas;
+        LegCanvas([Canvas::new("Legs", 9.5), Canvas::new("Near legs", Z_NEAR_LEGS), Canvas::new("Legs on the stage", 9.5), Canvas::new("Near legs on the stage", Z_NEAR_LEGS)])
     }
 }
 
-/// Every leg, a cell at a time, onto one canvas (under the bodies).
+/// Every leg, a cell at a time, onto the canvases.
 #[allow(clippy::too_many_arguments)]
 fn draw(
     mut commands: Commands,
@@ -490,48 +689,77 @@ fn draw(
     stage: Res<crate::canvas::StageView>,
     q: Query<(&Legs, &GlobalTransform)>,
 ) {
-    let mut quads: Vec<(IVec2, [u8; 4])> = Vec::new();
+    // (Behind, in front.)
+    let mut quads: [Vec<(IVec2, [u8; 4])>; 2] = [Vec::new(), Vec::new()];
     let mut line = Vec::new();
     for (legs, tf) in &q {
         // (The body where it's drawn: rearing lifts the hips.)
         let c = tf.translation().truncate() + legs.offset;
+        let side = legs.def.view == View::Side;
         let rgb = |(r, g, b): (u8, u8, u8)| [r, g, b, 255];
-        let (leg, joint) = (rgb(legs.def.color), rgb(legs.def.joint.unwrap_or(legs.def.color)));
+        let dark = |(r, g, b): (u8, u8, u8)| ((r as f32 * 0.6) as u8, (g as f32 * 0.6) as u8, (b as f32 * 0.6) as u8);
         let (a, b) = (legs.def.reach * legs.def.upper, legs.def.reach * (1.0 - legs.def.upper));
         let held: Vec<Vec2> = legs.feet.iter().filter(|f| f.grips).map(|f| f.at).collect();
-        let up = if held.is_empty() { Vec2::Y } else { (c - held.iter().sum::<Vec2>() / held.len() as f32).normalize_or(Vec2::Y) };
+        let up = if side {
+            legs.turn(Vec2::Y)
+        } else if held.is_empty() {
+            Vec2::Y
+        } else {
+            (c - held.iter().sum::<Vec2>() / held.len() as f32).normalize_or(Vec2::Y)
+        };
         for (i, f) in legs.feet.iter().enumerate() {
             let hip = legs.hip(i, c);
-            // (Knees also splay out from the body a little.)
-            let out = Vec2::from_angle(legs.way(i));
+            // (Knees also splay out from the body a little: from the side,
+            // a front leg's forward, a back one's back.)
+            let out = if side {
+                let l = &legs.def.each[i];
+                let ahead = if l.lean != 0.0 { l.lean } else { l.hip.0 };
+                Vec2::X * ahead.signum() * legs.facing
+            } else {
+                Vec2::from_angle(legs.way(i))
+            };
             let (k, foot) = knee(hip, f.at, a, b, (up + out * 0.6).normalize_or(up), |p| solid(&sim, p));
+            let far = side && legs.def.each[i].far;
+            let (leg, joint) = if far {
+                let c = legs.def.far.unwrap_or(dark(legs.def.color));
+                (rgb(c), rgb(legs.def.joint.map_or(c, dark)))
+            } else {
+                (rgb(legs.def.color), rgb(legs.def.joint.unwrap_or(legs.def.color)))
+            };
+            let to = &mut quads[(side && !far) as usize];
             // Thick lines: the cells beside the line, across it.
-            let mut thick = |a: Vec2, b: Vec2, t: u8, quads: &mut Vec<(IVec2, [u8; 4])>| {
+            let mut thick = |a: Vec2, b: Vec2, t: u8, to: &mut Vec<(IVec2, [u8; 4])>| {
                 line.clear();
                 cells(a, b, &mut line);
                 let d = b - a;
                 let across = if d.x.abs() > d.y.abs() { IVec2::new(0, 1) } else { IVec2::new(1, 0) };
                 for &p in &line {
                     for w in 0..t.max(1) as i32 {
-                        quads.push((p + across * (w - (t as i32 - 1) / 2), leg));
+                        to.push((p + across * (w - (t as i32 - 1) / 2), leg));
                     }
                 }
             };
-            thick(hip, k, legs.def.thick, &mut quads);
-            thick(k, foot, legs.def.thick.saturating_sub(1), &mut quads);
-            quads.push((IVec2::new(k.x.floor() as i32, k.y.floor() as i32), joint));
+            thick(hip, k, legs.def.thick, to);
+            thick(k, foot, legs.def.thick.saturating_sub(1), to);
+            to.push((IVec2::new(k.x.floor() as i32, k.y.floor() as i32), joint));
         }
     }
-    if let Some((centre, half)) = stage.0
-        && let Some(mut px) = canvas.1.frame(&mut commands, &mut images, &mut sprites, centre, half, !quads.is_empty())
-    {
-        for (p, c) in &quads {
-            px.put(p.x, p.y, *c);
+    let [back, front, stage_back, stage_front] = &mut canvas.0;
+    if let Some((centre, half)) = stage.0 {
+        for (canvas, quads) in [(stage_back, &quads[0]), (stage_front, &quads[1])] {
+            if let Some(mut px) = canvas.frame(&mut commands, &mut images, &mut sprites, centre, half, !quads.is_empty()) {
+                for (p, c) in quads {
+                    px.put(p.x, p.y, *c);
+                }
+            }
         }
     }
     let Ok((cam, loader)) = camera.single() else { return };
-    let Some(mut px) = canvas.0.frame(&mut commands, &mut images, &mut sprites, cam.translation().truncate(), loader.half_extent, !quads.is_empty()) else { return };
-    for (p, c) in &quads {
-        px.put(p.x, p.y, *c);
+    for (canvas, quads) in [(back, &quads[0]), (front, &quads[1])] {
+        if let Some(mut px) = canvas.frame(&mut commands, &mut images, &mut sprites, cam.translation().truncate(), loader.half_extent, !quads.is_empty()) {
+            for (p, c) in quads {
+                px.put(p.x, p.y, *c);
+            }
+        }
     }
 }

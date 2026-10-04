@@ -1817,6 +1817,26 @@ parts, so another is a new file, not new code:
   less) under the body; `eyes`: the body's pixels of that colour drawn
   again over the darkness (full bright in the dark). Looks only: the
   body's movement is its own (`cling`).
+  **From the side** (`view: Side`; BE `limbs`): a body seen from the side
+  (pointing right, mirrored to face left), each leg in `each` with its
+  `hip` (cells from the body's `grip`, y up), where its foot rests
+  (`lean`: ahead of the hip, behind if negative), its `gait` group and
+  whether it's `far`. A foot plants on the ground under where it rests,
+  ahead by a step and a half of the body's going (nearer the hip if
+  that's past its reach: down a steep slope), and steps when it's left
+  `stride` cells behind or is stretched; legs of a gait group step
+  together, never while another group's are stepping. The body rides
+  `ride` cells over its planted feet (no lower than half that over its
+  box, no higher than the box's top) and tilts with them, up to `tilt`°
+  (front feet higher: nose up). Knees bend up and out (a front leg's
+  forward, a back one's back). The near legs are drawn in front of the
+  body (z 10.06), the far ones behind, in `far` (else the near colour
+  darker). Its box takes in its legs (the stilt stalker: 18 × 58). Dead,
+  it lies on its belly (a box 14 high) on its legs folded under it. The
+  `legs` scenario (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=real`): a stilt
+  stalker led 600 cells west over the hills from seed 1's start; its tilt
+  went the ground's way at all 16 readings on slopes, 7° off on average
+  (28° at most); its feet never in rock.
 - **Webs snare:** a material can be `sticky` (cobweb): a body in any of
   its cells moves at 30 % (with chill, the slower of the two), unless its
   creature is a `web_walker` (spiders). Blades cut webs (plants). In the

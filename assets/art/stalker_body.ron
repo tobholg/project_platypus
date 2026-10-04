@@ -1,0 +1,44 @@
+// A stilt stalker seen from the side, pointing right: a small pale body
+// slung between four long legs (its creature file's `legs`, drawn by the
+// game), a ridged back, a little head low at the front with a cluster of
+// yellow eyes and hooked mandibles. `grip` is where its hips are measured
+// from: the middle of its underside.
+(
+    size: (30, 15),
+    feet: (14, 12),
+    outline: (30, 26, 24),
+    palette: {
+        'b': (96, 88, 78),     // body, underside
+        'B': (138, 128, 110),  // body
+        'L': (176, 166, 144),  // its back, lit
+        'h': (70, 62, 54),     // bristles
+        'x': (120, 46, 40),    // a scar
+        'c': (82, 72, 64),     // head
+        'C': (116, 104, 92),   // head, lit
+        'e': (240, 206, 92),   // eyes (they glow)
+        'm': (44, 36, 32),     // mandibles
+    },
+    frames: {
+        "body": [
+            "..............................",
+            "........hBBBBBBh..............",
+            "......BBLLLLLLBBBb............",
+            ".....BLLLLLLLLLBBBb...........",
+            "....BLLLLLLLLLBBBBBb..........",
+            "...BLLLLLLLLLBBBBBBbb..cCCc...",
+            "..hBLLLLLLLBBBBBBBBbbbcCCCCcc.",
+            "..BBBBLLLBBBBBBBBBbbbbcCCeeCc.",
+            ".BBBBBBBBBBBBBBBBbbbbbccCCeec.",
+            "..BBbBBBbBBBbBBBbbbbbbcccccmc.",
+            "..bbbbbbbbbbbbbbbbbbb..cc.m.m.",
+            "...bbbbbxxbbbbbbbbbb.....m..m.",
+            "....bbbbbbbbbbbbbbb.......m...",
+            "......bbbbbbbbbbb.............",
+            "..............................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (14, 10) } },
+)

@@ -78,13 +78,16 @@ fn belongings(died: &Died, items: &Items, chests: &Chests, world: &platypus_sim:
     inv
 }
 
+/// How tall a walker on legs lies dead (cells): its body, not its legs.
+const BELLY: f32 = 14.0;
+
 /// A dead spider's legs (from above, its body pointing right): each thigh
 /// out from its hip, shorter than in life, the shin hooked back in over the
 /// body, as dead spiders curl; a little crooked each (from
 /// `seed`). Returns the picture and where its middle sits from the body's.
 fn curled_legs(def: &crate::creatures::body::legs::LegsDef, seed: u64) -> (Image, Vec2) {
     let (leg, joint) = (def.color, def.joint.unwrap_or(def.color));
-    let per_side = (def.count / 2).max(1);
+    let per_side = (def.legs() / 2).max(1);
     let (thigh, shin) = (def.reach * def.upper * 0.5, def.reach * (1.0 - def.upper) * 0.55);
     let mut rng = Rng::seeded(&[seed, 0x1E65]);
     let mut jitter = |k: f32| (rng.next_u32() as f32 / u32::MAX as f32 * 2.0 - 1.0) * k;
@@ -117,6 +120,53 @@ fn curled_legs(def: &crate::creatures::body::legs::LegsDef, seed: u64) -> (Image
             px.push((IVec2::new(knee.x.floor() as i32, knee.y.floor() as i32), joint));
         }
     }
+    picture(px)
+}
+
+/// A dead walker's legs seen from the side (facing right): each thigh down
+/// and out from its hip, the shin folded back in under the body, as a dead
+/// insect's do; the far ones darker; a little crooked each (from `seed`).
+/// Returns the picture and where its middle sits from the body's.
+fn folded_legs(def: &crate::creatures::body::legs::LegsDef, seed: u64) -> (Image, Vec2) {
+    let dark = |(r, g, b): (u8, u8, u8)| ((r as f32 * 0.6) as u8, (g as f32 * 0.6) as u8, (b as f32 * 0.6) as u8);
+    let (thigh, shin) = (def.reach * def.upper * 0.45, def.reach * (1.0 - def.upper) * 0.4);
+    let mut rng = Rng::seeded(&[seed, 0xF01D]);
+    let mut jitter = |k: f32| (rng.next_u32() as f32 / u32::MAX as f32 * 2.0 - 1.0) * k;
+    let mut px: Vec<(IVec2, (u8, u8, u8))> = Vec::new();
+    // (The far legs first: the near ones over them.)
+    let mut legs: Vec<&crate::creatures::body::legs::LegDef> = def.each.iter().collect();
+    legs.sort_by_key(|l| !l.far);
+    for l in legs {
+        let (leg, joint) = if l.far { (def.far.unwrap_or(dark(def.color)), dark(def.joint.unwrap_or(def.color))) } else { (def.color, def.joint.unwrap_or(def.color)) };
+        let out = if l.lean != 0.0 { l.lean.signum() } else { l.hip.0.signum() };
+        let hip = Vec2::new(l.hip.0, l.hip.1);
+        let down = Vec2::from_angle((-55.0 + jitter(12.0)).to_radians());
+        let knee = hip + Vec2::new(down.x * out, down.y) * thigh;
+        let fold = Vec2::from_angle((150.0 + jitter(15.0)).to_radians());
+        let foot = knee + Vec2::new(fold.x * out, fold.y) * shin;
+        line_px(hip, knee, (def.thick as i32).max(1), leg, &mut px);
+        line_px(knee, foot, (def.thick as i32 - 1).max(1), leg, &mut px);
+        px.push((IVec2::new(knee.x.floor() as i32, knee.y.floor() as i32), joint));
+    }
+    picture(px)
+}
+
+/// A line of cells `thick` across.
+fn line_px(a: Vec2, b: Vec2, thick: i32, c: (u8, u8, u8), px: &mut Vec<(IVec2, (u8, u8, u8))>) {
+    let n = (b - a).abs().max_element().ceil().max(1.0) as i32;
+    let d = b - a;
+    let across = if d.x.abs() > d.y.abs() { IVec2::Y } else { IVec2::X };
+    for i in 0..=n {
+        let p = a + d * (i as f32 / n as f32);
+        let p = IVec2::new(p.x.floor() as i32, p.y.floor() as i32);
+        for w in 0..thick.max(1) {
+            px.push((p + across * (w - (thick - 1) / 2), c));
+        }
+    }
+}
+
+/// Cells as a picture, and where its middle is.
+fn picture(px: Vec<(IVec2, (u8, u8, u8))>) -> (Image, Vec2) {
     let lo = px.iter().fold(IVec2::MAX, |m, (p, _)| m.min(*p));
     let hi = px.iter().fold(IVec2::MIN, |m, (p, _)| m.max(*p));
     let (w, h) = ((hi.x - lo.x + 1) as u32, (hi.y - lo.y + 1) as u32);
@@ -168,11 +218,19 @@ fn lay_out(
         }
         let key = chests.stash(at, inv);
         // Laid on its back, head the way it faced from; a spider (drawn
-        // from above) as it was.
+        // from above) as it was; a walker on legs down on its belly, its
+        // box no more than its body (not its legs).
+        let side = d.def.legs.as_ref().is_some_and(|l| l.view == crate::creatures::body::legs::View::Side);
         let turn = if d.def.legs.is_some() { 0.0 } else { std::f32::consts::FRAC_PI_2 * d.facing };
         let rot = Quat::from_rotation_z(turn);
         let size = d.body.half * 2.0;
         let size = if turn == 0.0 { size } else { Vec2::new(size.y, size.x) };
+        let (at, size, lowered) = if side {
+            let h = BELLY.min(size.y);
+            (Vec2::new(at.x, at.y - d.body.half.y + h / 2.0), Vec2::new(size.x, h), d.body.half.y - h / 2.0)
+        } else {
+            (at, size, 0.0)
+        };
         let mut body = Body::new(at, size.max(Vec2::splat(3.0)));
         body.vel = d.body.vel * 0.5;
         let mut e = commands.spawn((
@@ -188,10 +246,12 @@ fn lay_out(
             let mut sprite = sprite.clone();
             sprite.color = Color::srgb(DIM, DIM, DIM);
             let flip = sprite.flip_x;
+            let offset = *offset + Vec3::Y * lowered;
             e.with_child((CorpseSprite, sprite, Transform::from_translation((rot * offset.with_z(0.0)).with_z(0.0)).with_rotation(rot)));
-            // Legs: kept, curled in over the body.
+            // Legs: kept, curled in over the body (folded under it, seen
+            // from the side).
             if let Some(legs) = &d.def.legs {
-                let (image, centre) = curled_legs(legs, at.x.to_bits() as u64 ^ *count);
+                let (image, centre) = if side { folded_legs(legs, at.x.to_bits() as u64 ^ *count) } else { curled_legs(legs, at.x.to_bits() as u64 ^ *count) };
                 let mut s = Sprite::from_image(images.add(image));
                 s.flip_x = flip;
                 s.color = Color::srgb(DIM, DIM, DIM);

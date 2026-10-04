@@ -289,7 +289,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script, record_script, course_script, dig_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script, record_script, course_script, dig_script, legs_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -5028,6 +5028,122 @@ fn course_script(
     if *step == 1 && t > s.duration - 1.2 {
         info!("course: the {kind} didn't get there; {:.0} away at the end", d);
         *step = 3;
+    }
+}
+
+/// `legs` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=real`: real ground): a
+/// legged walker (`PLATYPUS_KIND`, default the stilt stalker) put down 300
+/// cells off the player, after it; the player kept 80 cells ahead of it
+/// on the ground (the camera with it, so it's in view), leading it west
+/// (up the hills west of seed 1's start; `PLATYPUS_WAY=right`: east, into
+/// the village). Logs twice a
+/// second where it is, the ground's slope under it, its body's tilt and
+/// height over its feet, how many feet hold the ground and whether any
+/// foot is in rock; at the end, how its tilt followed the slope.
+/// `PLATYPUS_SHOTS=dir`: a picture every 2 s into it. `PLATYPUS_KILL=1`:
+/// it's struck dead 3 s from the end (to see its body); `PLATYPUS_FEETLOG=1`:
+/// each foot (from its box's bottom; `~`: holding nothing).
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn legs_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    offscreen: Option<Res<crate::camera::Offscreen>>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    foes: Query<(&crate::creatures::Creature, &Kinematics, Option<&crate::creatures::body::legs::Legs>), Without<LocalPlayer>>,
+    mut healths: Query<(&crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>,
+    mut state: Local<(u8, f32, String, Vec<(f32, f32)>, f32, f32)>,
+) {
+    if s.name != "legs" {
+        return;
+    }
+    let t = s.elapsed;
+    let Ok(mut pk) = player.single_mut() else { return };
+    let (step, next, kind, pairs, shot, dir) = &mut *state;
+    // The ground's top under x, near y.
+    let ground = |x: f32, y: f32| -> Option<f32> {
+        let x = x.floor() as i32;
+        let solid = |y: i32| sim.world.get(CellPos::new(x, y)).is_some_and(|c| matches!(sim.world.materials().phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder));
+        let top = y as i32 + 120;
+        (0..300).map(|d| top - d).find(|&y| solid(y) && !solid(y + 1)).map(|y| (y + 1) as f32)
+    };
+    if *step == 0 && t > 1.0 {
+        *kind = std::env::var("PLATYPUS_KIND").unwrap_or_else(|_| "stalker".into());
+        *dir = if std::env::var("PLATYPUS_WAY").is_ok_and(|w| w == "right") { 1.0 } else { -1.0 };
+        let x = pk.body.pos.x + 300.0 * *dir;
+        let Some(y) = ground(x, pk.body.pos.y) else { return error!("legs: no ground at {x}") };
+        crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x, y), |e| {
+            e.insert(crate::world::ChunkLoader { half_extent: Vec2::new(200.0, 200.0) });
+            if let Some(mut h) = e.get_mut::<crate::creatures::brain::hunter::Hunter>() {
+                h.aggro = 4000.0;
+            }
+        });
+        info!("legs: a {kind} put down at ({x:.0}, {y:.0}), the player at {:?}", pk.body.pos.round());
+        *step = 1;
+        *next = t + 1.0;
+        *shot = t + 2.0;
+        return;
+    }
+    if *step == 1 && t > s.duration - 3.0 && std::env::var("PLATYPUS_KILL").is_ok() {
+        for (c, mut h) in &mut healths {
+            if c.kind == *kind {
+                h.hp = 0.0;
+                info!("legs: the {kind} struck dead at t {t:.1}");
+            }
+        }
+        *step = 3;
+    }
+    let Some((_, fk, legs)) = foes.iter().find(|(c, _, _)| c.kind == *kind) else { return };
+    // The player kept ahead of it, on the ground.
+    let ahead = fk.body.pos.x + 80.0 * *dir;
+    if (pk.body.pos.x - ahead).abs() > 20.0
+        && let Some(y) = ground(ahead, fk.body.pos.y)
+    {
+        pk.body.pos = Vec2::new(ahead, y + pk.body.half.y + 0.5);
+        pk.body.vel = Vec2::ZERO;
+    }
+    if *step == 1 && t >= *next {
+        *next += 0.5;
+        let x = fk.body.pos.x;
+        let f = if fk.loco.facing < 0.0 { -1.0 } else { 1.0 };
+        let slope = match (ground(x + 16.0 * f, fk.body.pos.y), ground(x - 16.0 * f, fk.body.pos.y)) {
+            (Some(a), Some(b)) => (a - b).atan2(32.0).to_degrees(),
+            _ => 0.0,
+        };
+        match legs {
+            Some(legs) => {
+                let (tilt, ride, planted) = legs.pose(fk.body.pos.y - fk.body.half.y);
+                let solid = |p: Vec2| sim.world.get(CellPos::from_world(p.x, p.y + 0.5)).is_some_and(|c| sim.world.materials().phys(c.material).kind == platypus_sim::Kind::Static);
+                let sunk = legs.feet().filter(|(p, _)| solid(*p)).count();
+                pairs.push((slope, tilt));
+                if std::env::var("PLATYPUS_FEETLOG").is_ok() {
+                    let b = Vec2::new(fk.body.pos.x, fk.body.pos.y - fk.body.half.y);
+                    let fs: Vec<String> = legs.feet().map(|(p, g)| format!("{:?}{}", (p - b).round(), if g { "" } else { "~" })).collect();
+                    info!("legs: feet from its box's bottom: {}; vel {:?} grounded {}", fs.join(" "), fk.body.vel.round(), fk.loco.grounded());
+                }
+                info!("legs: t {t:.1}: at {:?} slope {slope:+.0}° tilt {tilt:+.0}° rides {ride:.0} over its box's bottom, {planted} feet planted, {sunk} in rock", fk.body.pos.round());
+            }
+            None => info!("legs: t {t:.1}: the {kind} has no legs"),
+        }
+    }
+    if let Ok(dir) = std::env::var("PLATYPUS_SHOTS")
+        && t >= *shot
+    {
+        *shot += 2.0;
+        let shot = match &offscreen {
+            Some(o) => Screenshot::image(o.0.clone()),
+            None => Screenshot::primary_window(),
+        };
+        commands.spawn(shot).observe(save_to_disk(format!("{dir}/legs_{:02}.png", t.round() as u32)));
+    }
+    if *step == 1 && t > s.duration - 1.2 {
+        *step = 2;
+        // How well its tilt followed the ground: the same way, and how far
+        // off on the slopes (|slope| over 5°).
+        let slopes: Vec<&(f32, f32)> = pairs.iter().filter(|(s, _)| s.abs() > 5.0).collect();
+        let same = slopes.iter().filter(|(s, t)| s.signum() == t.signum()).count();
+        let off = slopes.iter().map(|(s, t)| (s - t).abs()).sum::<f32>() / slopes.len().max(1) as f32;
+        info!("legs: over {} readings on slopes its tilt went the ground's way {} times, {off:.0}° off on average", slopes.len(), same);
     }
 }
 
