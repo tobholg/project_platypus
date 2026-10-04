@@ -806,7 +806,7 @@ fn draw(
             if let Some((hip_w, knee_w, foot_w)) = legs.def.width {
                 // Tapered, outlined: the outline first (a cell wider all
                 // round), then the flesh over it; toes along the ground.
-                let line = legs.def.outline.map_or_else(|| dark(dark(legs.def.color)), |c| c);
+                let line = legs.def.outline.unwrap_or_else(|| dark(dark(legs.def.color)));
                 let ahead = Vec2::X * legs.facing;
                 let toes = legs.def.toes;
                 let bones = [(hip, k, hip_w, knee_w), (k, foot, knee_w, foot_w), (foot, foot + ahead * toes, foot_w, 1.0), (foot, foot - ahead * toes * 0.45 + Vec2::Y * 0.5, foot_w, 1.0)];
