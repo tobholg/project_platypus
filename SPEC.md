@@ -1857,10 +1857,10 @@ parts, so another is a new file, not new code:
   led 600 cells west over the hills from seed 1's start, its tilt against
   the ground's slope: the stilt stalker (four legs, 18 × 58) 16 of 16
   readings on slopes the ground's way, 6° off on average; the crag crab
-  (six from the front, a tripod gait, riding 10 low, it goes sideways)
-  17 of 18, 11° off; the ridge raptor (two legs bending back, bobbing,
-  leaning into its run at 150 cells/s) 8 of 8, 16° off; no foot of any
-  in rock.
+  (as first drawn: six legs from the front) 17 of 18, 11° off; the ridge
+  raptor (two legs, bobbing, leaning into its run at 150 cells/s) 8 of 8,
+  16° off; no foot of any in rock. Both since redrawn (arms, ankles):
+  their looks judged on the arena's flat layout at 6 px a cell.
 - **Webs snare:** a material can be `sticky` (cobweb): a body in any of
   its cells moves at 30 % (with chill, the slower of the two), unless its
   creature is a `web_walker` (spiders). Blades cut webs (plants). In the
