@@ -310,6 +310,15 @@ pub struct Legs {
     /// their claws' sprites.
     arms: Vec<(Vec2, Vec2, Vec2)>,
     claws: Vec<Option<Entity>>,
+    /// Side: seconds its body's been off the ground; how far its furthest
+    /// foot is from its hip, against its reach (a readout).
+    air: f32,
+    strain: f32,
+    /// Where its body was last frame (a jump further than a leg reaches:
+    /// put down, through a portal: its feet are planted afresh).
+    last: Option<Vec2>,
+    /// Side: its gait's clock (0..1 a cycle: every leg has stepped once).
+    phase: f32,
 }
 
 #[derive(Component)]
@@ -358,6 +367,12 @@ impl Legs {
     /// how many of its feet hold something.
     pub fn pose(&self, bottom: f32) -> (f32, f32, usize) {
         (self.tilt.to_degrees(), self.ride.map_or(0.0, |y| y - bottom), self.feet.iter().filter(|f| f.grips && f.t >= 1.0).count())
+    }
+
+    /// How far its furthest foot is from its hip, against its reach (over
+    /// 1: further than the leg can reach; it's drawn at full length).
+    pub fn strain(&self) -> f32 {
+        self.strain
     }
 
     /// Where its feet are (the world), and whether each holds something.
@@ -464,6 +479,12 @@ fn ground_at(sim: &SimWorld, hip: Vec2, x: f32, reach: f32) -> Option<Vec2> {
     None
 }
 
+/// Straight down, most of a leg's reach (where a foot with nothing under
+/// it hangs).
+fn legs_turn_down(reach: f32) -> Vec2 {
+    Vec2::NEG_Y * reach * 0.7
+}
+
 /// From `a` toward `b`, as far as it's open (a free leg never reaches into
 /// rock).
 fn open_toward(sim: &SimWorld, a: Vec2, b: Vec2) -> Vec2 {
@@ -529,7 +550,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, slope: 0.0, arms: Vec::new(), claws: Vec::new(), def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -581,8 +602,21 @@ fn walk(
     let dt = time.delta_secs().min(0.05);
     let now = time.elapsed_secs();
     for (mut legs, k, tf, children, rear) in &mut q {
-        let middle = tf.translation().truncate();
+        // (Where it's drawn; its body's place if that's far off: on its
+        // first frame its transform hasn't caught up yet.)
+        let drawn = tf.translation().truncate();
+        let middle = if drawn.distance(k.body.pos) > legs.def.full_reach() { k.body.pos } else { drawn };
         let side = legs.def.view == View::Side;
+        // (Moved further than a leg reaches since last frame: put down, or
+        // through a portal. Its ride and tilt start afresh; its feet are
+        // planted afresh, below.)
+        let jumped = legs.last.is_none_or(|l| l.distance(middle) > legs.def.full_reach());
+        if jumped {
+            legs.ride = None;
+            legs.tilt = 0.0;
+            legs.slope = 0.0;
+        }
+        legs.last = Some(middle);
         let rear = rear.copied().unwrap_or_default();
         let v = k.body.vel;
         // Where the body is: from above, raised off what it holds and
@@ -630,6 +664,19 @@ fn walk(
         };
         legs.offset = c - middle;
         let fwd = Vec2::from_angle(legs.heading);
+        // (Jumped: every foot planted afresh, no steps across.)
+        if jumped {
+            for i in 0..legs.feet.len() {
+                let hip = legs.hip(i, c);
+                let way = legs.way(i);
+                let held = match legs.def.view {
+                    View::Above => foothold(&sim, hip, way, legs.def.full_reach(), false),
+                    View::Side => ground_under(&sim, hip, hip.x + legs.def.each[i].lean * legs.facing, legs.def.full_reach()),
+                };
+                let at = held.unwrap_or(hip + Vec2::from_angle(way) * legs.def.full_reach() * 0.5);
+                legs.feet[i] = Foot { at, from: at, to: at, t: 1.0, grips: held.is_some(), retry: 0.0 };
+            }
+        }
         if !side {
             // Heading: where it goes (or, still, where it aims), turning steadily.
             let want = if v.length() > 9.0 { v.y.atan2(v.x) } else { legs.heading };
@@ -685,7 +732,91 @@ fn walk(
         let back = k.loco.clinging() == Some(Vec2::ZERO);
         let stepping = legs.feet.iter().filter(|f| f.t < 1.0).count();
         let step_time = legs.def.step;
+        // (From the side, off the ground a moment: its feet let go, tucked
+        // up under it till it lands.)
+        let grounded = k.loco.grounded() || k.loco.clinging().is_some();
+        legs.air = if grounded { 0.0 } else { legs.air + dt };
+        let aloft = side && legs.air > 0.08;
+        legs.strain = (0..n).map(|i| (legs.feet[i].at - legs.hip(i, c)).length() / reach).fold(0.0, f32::max);
+        // From the side, on the ground: its gait's clock. It goes round as
+        // the body goes (a cycle every `stride` of ground a planted foot
+        // covers, over the share of the cycle it's planted), each gait group
+        // its share of a cycle on from the last; a foot is planted for the
+        // first part of its turn (more of it walking, less running: a runner
+        // has both feet off the ground a moment), then swings forward to
+        // the ground under where it'll be needed: ahead of where it rests
+        // by half a stride. Standing, the clock stops, unless a step's to
+        // finish or a foot's been left behind.
+        if side && !aloft {
+            let speed = v.x.abs();
+            let groups = legs.def.each.iter().map(|l| l.gait).max().unwrap_or(0) as f32 + 1.0;
+            let duty = 0.68 - 0.26 * (speed / 150.0).min(1.0);
+            let cycle = (legs.def.stride / duty).max(1.0);
+            let dir = if speed > 5.0 { v.x.signum() } else { legs.facing };
+            let target = |legs: &Legs, i: usize| {
+                let hip = legs.hip(i, c);
+                (hip, hip.x + legs.def.each[i].lean * legs.facing + dir * legs.def.stride * 0.5)
+            };
+            let behind = (0..n).any(|i| legs.feet[i].t >= 1.0 && (legs.feet[i].at.x - target(&legs, i).1).abs() > legs.def.stride * 0.9);
+            let swinging = legs.feet.iter().any(|f| f.t < 1.0);
+            let mut rate = speed / cycle;
+            if swinging || behind {
+                rate = rate.max((1.0 - duty) / step_time.max(0.01));
+            }
+            legs.phase = (legs.phase + rate * dt).fract();
+            let lift = legs.def.lift;
+            for i in 0..n {
+                let p = (legs.phase + legs.def.each[i].gait as f32 / groups).fract();
+                let (hip, x) = target(&legs, i);
+                let foot = &mut legs.feet[i];
+                if p < duty {
+                    // Planted (it comes down where its swing was going).
+                    if foot.t < 1.0 {
+                        foot.t = 1.0;
+                        foot.at = foot.to;
+                    }
+                    // (Left past its reach, a slip: put down again now.)
+                    if foot.grips
+                        && (foot.at - hip).length() > reach
+                        && let Some(p) = ground_under(&sim, hip, x, reach)
+                    {
+                        foot.at = p;
+                        foot.to = p;
+                    }
+                } else {
+                    // Swinging: from where it lifted to where it'll land,
+                    // that kept up to date as the body goes, an arc up.
+                    if foot.t >= 1.0 {
+                        foot.from = foot.at;
+                    }
+                    let s = (p - duty) / (1.0 - duty);
+                    match ground_under(&sim, hip, x, reach) {
+                        Some(to) => {
+                            foot.to = to;
+                            foot.grips = true;
+                        }
+                        None => {
+                            foot.to = open_toward(&sim, hip, hip + legs_turn_down(reach));
+                            foot.grips = false;
+                        }
+                    }
+                    foot.t = s.min(0.999);
+                    let e = s * s * (3.0 - 2.0 * s);
+                    foot.at = foot.from.lerp(foot.to, e) + Vec2::Y * lift * (std::f32::consts::PI * s).sin();
+                }
+            }
+        }
         for i in 0..n {
+            if side && !aloft {
+                break;
+            }
+            if aloft {
+                let foot = &mut legs.feet[i];
+                foot.grips = false;
+                foot.t = 1.0;
+                foot.retry = 0.0;
+                continue;
+            }
             let hip = legs.hip(i, c);
             let way = legs.way(i);
             let f = legs.feet[i];
@@ -693,8 +824,8 @@ fn walk(
                 continue;
             }
             // Where it would put its foot now (from the side: under where it
-            // rests, ahead by as far as the body goes in a step and a half).
-            let rest = side.then(|| hip.x + legs.def.each[i].lean * legs.facing + v.x * step_time * 1.5);
+            // rests, ahead by as far as the body goes in a step).
+            let rest = side.then(|| hip.x + legs.def.each[i].lean * legs.facing + v.x * step_time);
             let off = f.at - hip;
             let due = match rest {
                 Some(x) => !f.grips && f.retry <= 0.0 || f.grips && ((f.at.x - x).abs() > legs.def.stride || off.length() > reach * 0.98),
@@ -715,7 +846,9 @@ fn walk(
                 neighbours.iter().any(|&j| legs.feet[j].t < 1.0) || stepping >= n.div_ceil(3)
             };
             legs.feet[i].retry -= dt;
-            if !due || busy {
+            // (A foot pulled past its reach lets go now, its gait or not.)
+            let torn = side && f.grips && off.length() > reach;
+            if !due || busy && !torn {
                 continue;
             }
             let to = match rest {
@@ -747,7 +880,8 @@ fn walk(
         };
         let lift = legs.def.lift;
         for f in &mut legs.feet {
-            if f.t < 1.0 {
+            // (From the side, the gait's clock moves them.)
+            if f.t < 1.0 && !side {
                 f.t = (f.t + dt / step_time.max(0.01)).min(1.0);
                 let s = f.t * f.t * (3.0 - 2.0 * f.t);
                 f.at = f.from.lerp(f.to, s) + away * lift * (std::f32::consts::PI * f.t).sin();
@@ -784,10 +918,20 @@ fn walk(
             }
             let wiggle = (now * (2.3 + i as f32 * 0.37) + i as f32 * 1.7).sin() * 0.35;
             let hip = legs.hip(i, c);
-            let to = open_toward(&sim, hip, hip + Vec2::from_angle(legs.way(i) + wiggle) * reach * 0.7);
+            // (From the side: tucked up under it, a little ahead or behind.)
+            let reach_out = if side {
+                hip + legs.turn(Vec2::new(legs.def.each[i].lean * 0.3, -reach * 0.5))
+            } else {
+                hip + Vec2::from_angle(legs.way(i) + wiggle) * reach * 0.7
+            };
+            let to = open_toward(&sim, hip, reach_out);
             let f = &mut legs.feet[i];
             f.to = to;
             f.at = f.at.lerp(to, (dt * 8.0).min(1.0));
+            // (A free foot is never further than its leg reaches.)
+            if (f.at - hip).length() > reach {
+                f.at = hip + (f.at - hip).normalize_or(Vec2::NEG_Y) * reach;
+            }
         }
     }
 }
@@ -917,8 +1061,13 @@ fn draw(
             // its heel's angle; the knee between the hip and the ankle.)
             let ahead = Vec2::X * legs.facing;
             let ankle = (legs.def.ankle > 0.0).then(|| f.at + (-ahead * legs.def.heel.to_radians().cos() + Vec2::Y * legs.def.heel.to_radians().sin()) * legs.def.ankle);
-            let (k, foot) = knee(hip, ankle.unwrap_or(f.at), a, b, bend, |p| solid(&sim, p));
-            let foot = if ankle.is_some() { f.at } else { foot };
+            // (Drawn as solved: past its reach the leg is at full length
+            // and the foot comes with it, never stretched.)
+            let (k, end) = knee(hip, ankle.unwrap_or(f.at), a, b, bend, |p| solid(&sim, p));
+            let (ankle, foot) = match ankle {
+                Some(at) => (Some(end), f.at + (end - at)),
+                None => (None, end),
+            };
             let far = side && legs.def.each[i].far;
             let (leg, joint) = if far {
                 let c = legs.def.far.unwrap_or(dark(legs.def.color));

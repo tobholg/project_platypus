@@ -1821,11 +1821,21 @@ parts, so another is a new file, not new code:
   (pointing right, mirrored to face left), each leg in `each` with its
   `hip` (cells from the body's `grip`, y up), where its foot rests
   (`lean`: ahead of the hip, behind if negative), its `gait` group and
-  whether it's `far`. A foot plants on the ground under where it rests,
-  ahead by a step and a half of the body's going (nearer the hip if
-  that's past its reach: down a steep slope), and steps when it's left
-  `stride` cells behind or is stretched; legs of a gait group step
-  together, never while another group's are stepping. The body rides
+  whether it's `far`. Its feet go by a gait clock: a cycle as the body
+  covers `stride` cells over the share of the cycle a foot's planted
+  (68 % walking, down to 42 % at 150 cells/s: a runner has both feet up
+  a moment), each gait group its share of a cycle after the last; a foot
+  is planted for that share, then swings forward (an arc `lift` high) to
+  the ground under where it rests, half a stride ahead (nearer the hip
+  if that's past its reach: down a steep slope), kept up to date as the
+  body goes. Standing, the clock stops unless a step's to finish or a
+  foot's been left behind. A foot left past its reach is put down again
+  at once; off the ground a moment its feet let go and tuck under it; a
+  free foot is never further than its leg reaches; legs are drawn as
+  solved (past its reach, at full length, never stretched). Moved
+  further than a leg reaches in a frame (put down, a portal), its feet
+  are planted afresh and its ride starts over; its first frame reads its
+  body's place, not its transform (still at the origin then). The body rides
   `ride` cells over its planted feet (no lower than half that over its
   box, no higher than the box's top) and tilts with them, up to `tilt`°:
   the slope of a line through its planted feet (along the way it faces;
@@ -1860,7 +1870,12 @@ parts, so another is a new file, not new code:
   (as first drawn: six legs from the front) 17 of 18, 11° off; the ridge
   raptor (two legs, bobbing, leaning into its run at 150 cells/s) 8 of 8,
   16° off; no foot of any in rock. Both since redrawn (arms, ankles):
-  their looks judged on the arena's flat layout at 6 px a cell.
+  their looks judged on the arena's flat layout at 6 px a cell. With the
+  gait clock: stalker 16 of 16 (6° off), crab 16 of 17 (10°), raptor 7
+  of 8 (16°; its run's lean takes its nose down on gentle rises); a foot
+  at most 1.02 of its reach from its hip (the crab 1.40 on its first
+  frame), past it 0.6–1.7 % of frames (drawn at full length). Its run
+  looked at a frame every 0.05 s (`PLATYPUS_SHOT_EVERY`).
 - **Webs snare:** a material can be `sticky` (cobweb): a body in any of
   its cells moves at 30 % (with chill, the slower of the two), unless its
   creature is a `web_walker` (spiders). Blades cut webs (plants). In the

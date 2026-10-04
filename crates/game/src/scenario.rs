@@ -5040,7 +5040,8 @@ fn course_script(
 /// second where it is, the ground's slope under it, its body's tilt and
 /// height over its feet, how many feet hold the ground and whether any
 /// foot is in rock; at the end, how its tilt followed the slope.
-/// `PLATYPUS_SHOTS=dir`: a picture every 2 s into it. `PLATYPUS_KILL=1`:
+/// `PLATYPUS_SHOTS=dir`: a picture every 2 s into it (`PLATYPUS_SHOT_EVERY`
+/// s: another gap). `PLATYPUS_KILL=1`:
 /// it's struck dead 3 s from the end (to see its body); `PLATYPUS_FEETLOG=1`:
 /// each foot (from its box's bottom; `~`: holding nothing);
 /// `PLATYPUS_PRICK=1`: a 3-hp cut at 4 s (does it bleed to death?).
@@ -5055,7 +5056,7 @@ fn legs_script(
     mut healths: Query<(Entity, &crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>,
     mut took: MessageReader<crate::creatures::Took>,
     mut hits: MessageWriter<crate::combat::Hit>,
-    mut state: Local<(u8, f32, String, Vec<(f32, f32)>, f32, f32)>,
+    mut state: Local<(u8, f32, String, Vec<(f32, f32)>, f32, f32, (f32, u32, u32))>,
 ) {
     if s.name != "legs" {
         return;
@@ -5068,7 +5069,7 @@ fn legs_script(
     }
     let t = s.elapsed;
     let Ok(mut pk) = player.single_mut() else { return };
-    let (step, next, kind, pairs, shot, dir) = &mut *state;
+    let (step, next, kind, pairs, shot, dir, strain) = &mut *state;
     // The ground's top under x, near y.
     let ground = |x: f32, y: f32| -> Option<f32> {
         let x = x.floor() as i32;
@@ -5103,6 +5104,19 @@ fn legs_script(
         *step = 3;
     }
     let Some((_, fk, legs)) = foes.iter().find(|(c, _, _)| c.kind == *kind) else { return };
+    // (Its legs' strain, every frame: the most, and how often past reach.)
+    if *step == 1
+        && let Some(l) = legs
+    {
+        if l.strain() > 1.3 && std::env::var("PLATYPUS_FEETLOG").is_ok() {
+            let b = Vec2::new(fk.body.pos.x, fk.body.pos.y - fk.body.half.y);
+            let fs: Vec<String> = l.feet().map(|(p, g)| format!("{:?}{}", (p - b).round(), if g { "" } else { "~" })).collect();
+            info!("legs: t {t:.2}: strain {:.2} at {:?} vel {:?} grounded {}; feet from its box's bottom {}", l.strain(), fk.body.pos.round(), fk.body.vel.round(), fk.loco.grounded(), fs.join(" "));
+        }
+        strain.0 = strain.0.max(l.strain());
+        strain.1 += (l.strain() > 1.0) as u32;
+        strain.2 += 1;
+    }
     if *step == 1 && std::env::var("PLATYPUS_PRICK").is_ok() && (4.0..4.02).contains(&t)
         && let Some((target, _, _)) = healths.iter().find(|(_, c, _)| c.kind == *kind)
     {
@@ -5143,12 +5157,12 @@ fn legs_script(
     if let Ok(dir) = std::env::var("PLATYPUS_SHOTS")
         && t >= *shot
     {
-        *shot += 2.0;
+        *shot += std::env::var("PLATYPUS_SHOT_EVERY").ok().and_then(|v| v.parse().ok()).unwrap_or(2.0);
         let shot = match &offscreen {
             Some(o) => Screenshot::image(o.0.clone()),
             None => Screenshot::primary_window(),
         };
-        commands.spawn(shot).observe(save_to_disk(format!("{dir}/legs_{:02}.png", t.round() as u32)));
+        commands.spawn(shot).observe(save_to_disk(format!("{dir}/legs_{:05.0}.png", t * 100.0)));
     }
     if *step == 1 && t > s.duration - 1.2 {
         *step = 2;
@@ -5158,6 +5172,7 @@ fn legs_script(
         let same = slopes.iter().filter(|(s, t)| s.signum() == t.signum()).count();
         let off = slopes.iter().map(|(s, t)| (s - t).abs()).sum::<f32>() / slopes.len().max(1) as f32;
         info!("legs: over {} readings on slopes its tilt went the ground's way {} times, {off:.0}° off on average", slopes.len(), same);
+        info!("legs: a foot at most {:.2} of its reach from its hip; past its reach {:.1} % of frames", strain.0, strain.1 as f32 * 100.0 / strain.2.max(1) as f32);
     }
 }
 
