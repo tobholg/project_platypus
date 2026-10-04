@@ -10,7 +10,8 @@
     health: 90,
     team: Enemy,
     kind: "insect",
-    blood: "acid",
+    // It bleeds pale ichor.
+    blood: "ichor",
     art: "stalker_body",
     // Four legs seen from the side (legs.rs): the near ones in front of
     // its body, the far ones behind it, darker; front and back legs of

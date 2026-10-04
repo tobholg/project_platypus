@@ -5042,7 +5042,8 @@ fn course_script(
 /// foot is in rock; at the end, how its tilt followed the slope.
 /// `PLATYPUS_SHOTS=dir`: a picture every 2 s into it. `PLATYPUS_KILL=1`:
 /// it's struck dead 3 s from the end (to see its body); `PLATYPUS_FEETLOG=1`:
-/// each foot (from its box's bottom; `~`: holding nothing).
+/// each foot (from its box's bottom; `~`: holding nothing);
+/// `PLATYPUS_PRICK=1`: a 3-hp cut at 4 s (does it bleed to death?).
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn legs_script(
     mut commands: Commands,
@@ -5051,11 +5052,19 @@ fn legs_script(
     offscreen: Option<Res<crate::camera::Offscreen>>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
     foes: Query<(&crate::creatures::Creature, &Kinematics, Option<&crate::creatures::body::legs::Legs>), Without<LocalPlayer>>,
-    mut healths: Query<(&crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>,
+    mut healths: Query<(Entity, &crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>,
+    mut took: MessageReader<crate::creatures::Took>,
+    mut hits: MessageWriter<crate::combat::Hit>,
     mut state: Local<(u8, f32, String, Vec<(f32, f32)>, f32, f32)>,
 ) {
     if s.name != "legs" {
         return;
+    }
+    // What hurts it (it should be nothing, walking).
+    for tk in took.read() {
+        if healths.get(tk.target).is_ok_and(|(_, c, _)| c.kind == state.2) {
+            warn!("legs: t {:.1}: the {} took {:.1} {:?}{}", s.elapsed, state.2, tk.dealt, tk.harm, if tk.killed { ", and died" } else { "" });
+        }
     }
     let t = s.elapsed;
     let Ok(mut pk) = player.single_mut() else { return };
@@ -5085,7 +5094,7 @@ fn legs_script(
         return;
     }
     if *step == 1 && t > s.duration - 3.0 && std::env::var("PLATYPUS_KILL").is_ok() {
-        for (c, mut h) in &mut healths {
+        for (_, c, mut h) in &mut healths {
             if c.kind == *kind {
                 h.hp = 0.0;
                 info!("legs: the {kind} struck dead at t {t:.1}");
@@ -5094,6 +5103,11 @@ fn legs_script(
         *step = 3;
     }
     let Some((_, fk, legs)) = foes.iter().find(|(c, _, _)| c.kind == *kind) else { return };
+    if *step == 1 && std::env::var("PLATYPUS_PRICK").is_ok() && (4.0..4.02).contains(&t)
+        && let Some((target, _, _)) = healths.iter().find(|(_, c, _)| c.kind == *kind)
+    {
+        hits.write(crate::combat::Hit { target, damage: 3.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: fk.body.pos, dir: Vec2::X, weight: 0.2, crit: false });
+    }
     // The player kept ahead of it, on the ground.
     let ahead = fk.body.pos.x + 80.0 * *dir;
     if (pk.body.pos.x - ahead).abs() > 20.0

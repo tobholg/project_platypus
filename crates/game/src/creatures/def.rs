@@ -614,5 +614,12 @@ mod tests {
         assert!(of("star_wisp", Harm::Fire) < 0.0 && of("star_wisp", Harm::Frost) > 1.0);
         assert!(defs["troll"].regen.as_ref().is_some_and(|r| r.stopped_by.contains(&Harm::Fire)));
         assert_eq!(of("dummy", Harm::Slash), 1.0, "practice dummies take hits as anyone (readouts stay honest)");
+        // What bleeds acid isn't hurt by it: else a scratch bleeds onto
+        // it, the acid eats it, it bleeds more, and it melts away.
+        for (id, def) in &defs {
+            if def.blood == "acid" {
+                assert!(def.nature.of(Harm::Acid) <= 0.0, "{id} bleeds acid but acid hurts it");
+            }
+        }
     }
 }
