@@ -1833,7 +1833,14 @@ parts, so another is a new file, not new code:
   many cells while a foot's in the air (two legs); `pitch`: it leans
   that many degrees nose down at 100 cells/s (a runner). A leg's `knee`:
   `Out` (up and out: a front leg's forward, a back one's back; crabs,
-  insects), `Forward`, `Back` (a bird's: what bends is its ankle). The near legs are drawn in front of the
+  insects), `Forward`, `Back` (a bird's: what bends is its ankle).
+  `width: (hip, knee, foot)`: a leg drawn as a limb with some flesh to it,
+  tapered from its hip to its foot (discs stamped along each bone), a
+  cell of `outline` round it (else its colour much darker) and a knuckle
+  at the knee; `toes`: a foot along the ground ahead and a claw behind
+  (the raptor's thighs 8 to shanks 3, toes 7; the crab's armour 4.5 to a
+  point; the stalker's stilts 3 to 1.2). Without `width`, lines `thick`
+  across (the spider's). The near legs are drawn in front of the
   body (z 10.06), the far ones behind, in `far` (else the near colour
   darker). Its box takes in its legs (the stilt stalker: 18 × 58). Dead,
   it lies on its belly (a box 14 high) on its legs folded under it. The

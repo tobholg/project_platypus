@@ -10,12 +10,14 @@
     kind: "beast",
     fall_damage: (safe_height: 120, per_cell: 0.5),
     art: "raptor_body",
-    // Two legs from the side (legs.rs): the near one in front of its body,
+    // Two legs from the side (legs.rs), thick thighs tapering to scaly
+    // shanks and clawed toes: the near one in front of its body,
     // the far one behind, darker; one steps, then the other. Its body
     // rides 24 cells over its feet, rises 3 with each stride and leans
     // 10° nose down at 100 cells/s.
     legs: (view: Side, reach: 40, upper: 0.46, step: 0.12, lift: 8, ride: 24, stride: 18, tilt: 25, bob: 3, pitch: 10,
-           color: (82, 92, 58), joint: (52, 58, 40), thick: 3, body: "raptor_body", eyes: (250, 210, 60),
+           color: (90, 104, 64), joint: (60, 68, 44), outline: (30, 34, 22), width: (8, 4, 3), toes: 7,
+           body: "raptor_body", eyes: (250, 210, 60),
            each: [
                (hip: (1, 0), gait: 0, knee: Back),
                (hip: (3, 1), gait: 1, knee: Back, far: true),

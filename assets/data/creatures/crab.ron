@@ -12,18 +12,20 @@
     kind: "beast",
     blood: "ichor",
     art: "crab_body",
-    // Six legs from the side (legs.rs), three each way, knees arched high;
+    // Six armoured legs from the side (legs.rs), three each way, knees
+    // arched high, tapering to points;
     // they step three at a time (an outer, the middle of the other side,
-    // an inner: a tripod), the middle ones behind its shell.
+    // an inner: a tripod); the outer pair in front of its shell, the rest
+    // behind it.
     legs: (view: Side, reach: 22, upper: 0.5, step: 0.09, lift: 5, ride: 10, stride: 8, tilt: 22,
-           color: (140, 92, 68), joint: (96, 60, 44), thick: 2, body: "crab_body",
+           color: (146, 98, 72), joint: (104, 66, 48), outline: (40, 26, 20), width: (4.5, 3.5, 1.2), body: "crab_body",
            each: [
                (hip: (-12, 2), lean: -14, gait: 0),
                (hip: (-8, 1), lean: -12, gait: 1, far: true),
-               (hip: (-4, 1), lean: -10, gait: 0),
+               (hip: (-4, 1), lean: -10, gait: 0, far: true),
                (hip: (12, 2), lean: 14, gait: 1),
                (hip: (8, 1), lean: 12, gait: 0, far: true),
-               (hip: (4, 1), lean: 10, gait: 1),
+               (hip: (4, 1), lean: 10, gait: 1, far: true),
            ]),
     movement: (
         run_speed: 62,

@@ -123,6 +123,18 @@ pub struct LegsDef {
     pub bob: f32,
     #[serde(default)]
     pub pitch: f32,
+    /// How thick a leg is at its hip, its knee and its foot (cells): drawn
+    /// tapered and outlined, a limb with some flesh to it (a raptor's
+    /// thighs, a crab's armour). Without it, lines `thick` across (a
+    /// spider's).
+    #[serde(default)]
+    pub width: Option<(f32, f32, f32)>,
+    /// Toes (cells long): a foot along the ground ahead, a claw behind.
+    #[serde(default)]
+    pub toes: f32,
+    /// The outline's colour (else the leg's, much darker).
+    #[serde(default)]
+    pub outline: Option<(u8, u8, u8)>,
     #[serde(default = "eight")]
     pub count: usize,
     /// A leg's full length (cells); the thigh is `upper` of it.
@@ -674,6 +686,28 @@ fn knee(hip: Vec2, foot: Vec2, a: f32, b: f32, up: Vec2, rock: impl Fn(Vec2) -> 
     (k, foot)
 }
 
+/// A limb from `a` to `b`, `ra` cells round at `a` tapering to `rb` at `b`:
+/// discs stamped along it, each cell once per disc (later strokes over
+/// earlier ones).
+fn stroke(a: Vec2, b: Vec2, ra: f32, rb: f32, c: [u8; 4], out: &mut Vec<(IVec2, [u8; 4])>) {
+    let n = ((b - a).length() / 0.5).ceil().max(1.0) as i32;
+    for i in 0..=n {
+        let t = i as f32 / n as f32;
+        let p = a.lerp(b, t);
+        let r = (ra + (rb - ra) * t).max(0.5);
+        let ri = r.ceil() as i32;
+        let (cx, cy) = (p.x.floor() as i32, p.y.floor() as i32);
+        for dy in -ri..=ri {
+            for dx in -ri..=ri {
+                let q = Vec2::new((cx + dx) as f32 + 0.5, (cy + dy) as f32 + 0.5);
+                if q.distance_squared(p) <= r * r {
+                    out.push((IVec2::new(cx + dx, cy + dy), c));
+                }
+            }
+        }
+    }
+}
+
 /// A line of cells from `a` to `b` (Bresenham), each once.
 fn cells(a: Vec2, b: Vec2, out: &mut Vec<IVec2>) {
     let (mut x0, mut y0) = (a.x.floor() as i32, a.y.floor() as i32);
@@ -769,6 +803,23 @@ fn draw(
                 (rgb(legs.def.color), rgb(legs.def.joint.unwrap_or(legs.def.color)))
             };
             let to = &mut quads[(side && !far) as usize];
+            if let Some((hip_w, knee_w, foot_w)) = legs.def.width {
+                // Tapered, outlined: the outline first (a cell wider all
+                // round), then the flesh over it; toes along the ground.
+                let line = legs.def.outline.map_or_else(|| dark(dark(legs.def.color)), |c| c);
+                let ahead = Vec2::X * legs.facing;
+                let toes = legs.def.toes;
+                let bones = [(hip, k, hip_w, knee_w), (k, foot, knee_w, foot_w), (foot, foot + ahead * toes, foot_w, 1.0), (foot, foot - ahead * toes * 0.45 + Vec2::Y * 0.5, foot_w, 1.0)];
+                let n = if toes > 0.0 { 4 } else { 2 };
+                for (pass, grow) in [(rgb(line), 1.0), (leg, 0.0)] {
+                    for &(a, b, wa, wb) in &bones[..n] {
+                        stroke(a, b, wa * 0.5 + grow, wb * 0.5 + grow, pass, to);
+                    }
+                }
+                // (A knuckle at the knee.)
+                stroke(k, k, knee_w * 0.5 - 0.3, knee_w * 0.5 - 0.3, joint, to);
+                continue;
+            }
             // Thick lines: the cells beside the line, across it.
             let mut thick = |a: Vec2, b: Vec2, t: u8, to: &mut Vec<(IVec2, [u8; 4])>| {
                 line.clear();

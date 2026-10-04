@@ -17,7 +17,7 @@
     // its body, the far ones behind it, darker; front and back legs of
     // opposite sides step together. Its body rides 46 cells over its feet.
     legs: (view: Side, reach: 64, upper: 0.5, step: 0.16, lift: 9, ride: 46, stride: 22, tilt: 28,
-           color: (150, 140, 122), joint: (92, 84, 72), thick: 2, body: "stalker_body", eyes: (240, 206, 92),
+           color: (156, 146, 126), joint: (100, 92, 78), outline: (40, 36, 32), width: (3, 2, 1.2), body: "stalker_body", eyes: (240, 206, 92),
            each: [
                (hip: (6, 0), lean: 18, gait: 0),
                (hip: (-6, 0), lean: -16, gait: 1),
