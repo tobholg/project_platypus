@@ -119,7 +119,8 @@ fn cast(
     let wanted = bestiary.picked.clone().filter(|_| bestiary.open);
     if let Ok((mut c, tf)) = cams.get_mut(stage.camera) {
         c.is_active = wanted.is_some();
-        // (Canvases, the spider's legs, drawn for its view too.)
+        // (Canvases drawn for its view too: none now; a creature's limbs
+        // are its own sprites, seen by its camera as the rest of it is.)
         let half = Vec2::new(IMAGE.0 as f32, IMAGE.1 as f32) / 4.0;
         view.0 = wanted.is_some().then_some((tf.translation.truncate(), half));
     }

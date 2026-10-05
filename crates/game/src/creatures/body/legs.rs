@@ -47,8 +47,8 @@ pub struct LegsPlugin;
 
 impl Plugin for LegsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<LegCanvas>()
-            .init_resource::<Footfalls>()
+        app.init_resource::<Footfalls>()
+            // (The bestiary's stage view: canvases may draw for it.)
             .init_resource::<crate::canvas::StageView>()
             .init_resource::<BodyArt>()
             .add_systems(Update, (grow_legs, aims, walk, footfalls, draw).chain().after(crate::creatures::body::animation::animate).after(TransformSystems::Propagate));
@@ -1299,57 +1299,37 @@ impl Layer {
     }
 }
 
-/// The legs' canvases (`canvas.rs`): behind the bodies (from above, and the
-/// far legs from the side), and in front (the near legs from the side);
-/// each again for the bestiary's stage.
-#[derive(Resource)]
-struct LegCanvas([crate::canvas::Canvas; 4]);
-
 /// In front of a creature's body (10.02), under its eyes.
 const Z_NEAR_LEGS: f32 = 10.06;
 
-impl Default for LegCanvas {
-    fn default() -> Self {
-        use crate::canvas::Canvas;
-        LegCanvas([Canvas::new("Legs", 9.5), Canvas::new("Near legs", Z_NEAR_LEGS), Canvas::new("Legs on the stage", 9.5), Canvas::new("Near legs on the stage", Z_NEAR_LEGS)])
-    }
-}
 
 /// Every leg, a cell at a time, onto the canvases.
 #[allow(clippy::too_many_arguments)]
 fn draw(
     mut commands: Commands,
     sim: Res<SimWorld>,
-    mut canvas: ResMut<LegCanvas>,
     mut images: ResMut<Assets<Image>>,
-    camera: Query<(&GlobalTransform, &crate::world::ChunkLoader), With<crate::camera::MainCamera>>,
-    mut sprites: crate::canvas::CanvasSprites,
-    stage: Res<crate::canvas::StageView>,
     mut q: Query<(Entity, &Legs, &GlobalTransform, Option<&mut LimbImages>)>,
     mut layers: LayerSprites,
 ) {
     // (Behind, in front.)
-    let mut quads: [Vec<(IVec2, [u8; 4])>; 2] = [Vec::new(), Vec::new()];
     let mut own: [Vec<(IVec2, [u8; 4])>; 2] = [Vec::new(), Vec::new()];
     let mut line = Vec::new();
     for (e, legs, tf, mine) in &mut q {
-        // From the side, drawn in its own frame (`o`: where the creature's
-        // drawn), onto its own images that move with it: its limbs glide as
-        // its body does, not a cell at a time on the world's grid. (From
-        // above, onto the shared canvas.)
+        // Drawn in its own frame (`o`: where the creature's drawn), onto its
+        // own images that move with it: its limbs glide as its body does,
+        // not a cell at a time on the world's grid.
         let side = legs.def.view == View::Side;
-        let o = if side { tf.translation().truncate() } else { Vec2::ZERO };
-        if side {
-            own[0].clear();
-            own[1].clear();
-        }
-        let quads: &mut [Vec<(IVec2, [u8; 4])>; 2] = if side { &mut own } else { &mut quads };
+        let o = tf.translation().truncate();
+        own[0].clear();
+        own[1].clear();
+        let quads = &mut own;
         // (The body where it's drawn: rearing lifts the hips.)
         let c = tf.translation().truncate() + legs.offset - o;
         let rgb = |(r, g, b): (u8, u8, u8)| [r, g, b, 255];
         let dark = |(r, g, b): (u8, u8, u8)| ((r as f32 * 0.6) as u8, (g as f32 * 0.6) as u8, (b as f32 * 0.6) as u8);
         let (a, b) = (legs.def.reach * legs.def.upper, legs.def.reach * (1.0 - legs.def.upper));
-        let held: Vec<Vec2> = legs.feet.iter().filter(|f| f.grips).map(|f| f.at).collect();
+        let held: Vec<Vec2> = legs.feet.iter().filter(|f| f.grips).map(|f| f.at - o).collect();
         let up = if side {
             legs.turn(Vec2::Y)
         } else if held.is_empty() {
@@ -1507,7 +1487,7 @@ fn draw(
                 }
             }
         }
-        if side {
+        {
             let z = tf.translation().z;
             match mine {
                 Some(mut mine) => {
@@ -1518,24 +1498,6 @@ fn draw(
                 None => {
                     commands.entity(e).insert(LimbImages::default());
                 }
-            }
-        }
-    }
-    let [back, front, stage_back, stage_front] = &mut canvas.0;
-    if let Some((centre, half)) = stage.0 {
-        for (canvas, quads) in [(stage_back, &quads[0]), (stage_front, &quads[1])] {
-            if let Some(mut px) = canvas.frame(&mut commands, &mut images, &mut sprites, centre, half, !quads.is_empty()) {
-                for (p, c) in quads {
-                    px.put(p.x, p.y, *c);
-                }
-            }
-        }
-    }
-    let Ok((cam, loader)) = camera.single() else { return };
-    for (canvas, quads) in [(back, &quads[0]), (front, &quads[1])] {
-        if let Some(mut px) = canvas.frame(&mut commands, &mut images, &mut sprites, cam.translation().truncate(), loader.half_extent, !quads.is_empty()) {
-            for (p, c) in quads {
-                px.put(p.x, p.y, *c);
             }
         }
     }

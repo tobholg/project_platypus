@@ -1913,8 +1913,13 @@ parts, so another is a new file, not new code:
   stepped a cell at a time while the body glided, and shifted against
   it: the tail's "jitter", the tail itself smooth against its anchor;
   snapping the body to whole cells instead made the whole creature
-  judder as it walked.) Spiders, from above, still draw on the shared
-  canvas (the scorpion standing at the player: its tip still
+  judder as it walked.) Spiders' too (from above: all behind the body);
+  the shared leg canvas is gone. Struck in the `legs` scenario, the
+  player walks away from the walker for `PLATYPUS_RETREAT` s (1.4): it
+  walks after them again before each attack (the scorpion: ~190 cells,
+  a sting every ~4 s). Known: a running spider outruns its own steps
+  (its feet past its legs' reach on a fifth of frames or more, drawn at
+  full length), as it always has (the scorpion standing at the player: its tip still
   on most frames, at most 2.2 cells, its body's bob). The `legs` scenario
   leaves the player standing `PLATYPUS_AHEAD` cells beyond the walker
   (600) and the camera follows the walker (it used to jerk the player

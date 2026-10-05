@@ -5047,6 +5047,8 @@ fn course_script(
 /// each foot (from its box's bottom; `~`: holding nothing);
 /// `PLATYPUS_PRICK=1`: a 3-hp cut at 4 s (does it bleed to death?);
 /// `PLATYPUS_TAILLOG=1`: its first chain's tip each frame, whether it aims.
+/// Struck, the player walks away from it for `PLATYPUS_RETREAT` s (1.4),
+/// so it walks after the player again before each attack.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn legs_script(
     mut commands: Commands,
@@ -5058,6 +5060,8 @@ fn legs_script(
     mut healths: Query<(Entity, &crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>,
     mut took: MessageReader<crate::creatures::Took>,
     mut hits: MessageWriter<crate::combat::Hit>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut retreat: Local<f32>,
     mut state: Local<(u8, f32, String, Vec<(f32, f32)>, f32, f32, (f32, u32, u32))>,
 ) {
     if s.name != "legs" {
@@ -5069,8 +5073,15 @@ fn legs_script(
     for tk in took.read() {
         if healths.get(tk.target).is_ok_and(|(_, c, _)| c.kind == state.2) {
             warn!("legs: t {:.1}: the {} took {:.1} {:?}{}", s.elapsed, state.2, tk.dealt, tk.harm, if tk.killed { ", and died" } else { "" });
-        } else if Some(tk.target) == me_hurt && std::env::var("PLATYPUS_TAILLOG").is_ok() {
-            info!("legs: t {:.2}: the player took {:.1} {:?}", s.elapsed, tk.dealt, tk.harm);
+        } else if Some(tk.target) == me_hurt {
+            if std::env::var("PLATYPUS_TAILLOG").is_ok() {
+                info!("legs: t {:.2}: the player took {:.1} {:?}", s.elapsed, tk.dealt, tk.harm);
+            }
+            // Struck (not venom ticking): it backs off a while, so the
+            // walker walks after it again before the next.
+            if tk.dealt > 1.0 {
+                *retreat = s.elapsed + std::env::var("PLATYPUS_RETREAT").ok().and_then(|v| v.parse().ok()).unwrap_or(1.4);
+            }
         }
     }
     let t = s.elapsed;
@@ -5149,6 +5160,16 @@ fn legs_script(
         && let Some((target, _, _)) = healths.iter().find(|(_, c, _)| c.kind == *kind)
     {
         hits.write(crate::combat::Hit { target, damage: 3.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: fk.body.pos, dir: Vec2::X, weight: 0.2, crit: false });
+    }
+    // Backing off: walking away from it (not into the walls).
+    let away = if pk.body.pos.x < fk.body.pos.x { KeyCode::KeyA } else { KeyCode::KeyD };
+    let room = if away == KeyCode::KeyA { pk.body.pos.x > 90.0 } else { pk.body.pos.x < 1830.0 };
+    if *step == 1 && t < *retreat && room {
+        keys.release(if away == KeyCode::KeyA { KeyCode::KeyD } else { KeyCode::KeyA });
+        keys.press(away);
+    } else {
+        keys.release(KeyCode::KeyA);
+        keys.release(KeyCode::KeyD);
     }
     if *step == 1 && t >= *next {
         *next += 0.5;

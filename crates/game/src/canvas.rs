@@ -1,5 +1,5 @@
 //! Pixel canvases: an image over the camera's view that something draws a
-//! cell at a time each frame (particles, spider legs). A thing made of
+//! cell at a time each frame (particles, ropes, beams). A thing made of
 //! single cells is cheaper as pixels of one image than as quads of a mesh:
 //! a mesh of tens of thousands of quads rebuilt every frame was the
 //! costliest thing in a big fight; an image the size of the view costs the
