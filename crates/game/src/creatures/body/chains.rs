@@ -76,7 +76,13 @@ pub struct Chain {
     pub pts: Vec<Vec2>,
     prev: Vec<Vec2>,
     pub tip: Option<Entity>,
+    /// The arch it holds aiming (its way up, its curl: degrees), eased
+    /// toward the best one rather than jumping between them.
+    pose: Option<(f32, f32)>,
 }
+
+/// How fast an aiming chain's arch changes (degrees a second).
+const ARCH_RATE: f32 = 140.0;
 
 impl ChainDef {
     /// How far it reaches, base to tip.
@@ -113,7 +119,7 @@ impl Chain {
             let p = pts[i] + turn(Vec2::from_angle(a)) * def.length;
             pts.push(p);
         }
-        Chain { prev: pts.clone(), pts, tip: None }
+        Chain { prev: pts.clone(), pts, tip: None, pose: None }
     }
 
     /// A frame: the anchor where the body has it now; every joint carried
@@ -129,8 +135,18 @@ impl Chain {
         self.pts[0] = anchor;
         self.prev[0] = anchor;
         let (rest, curl) = match aim {
-            Some(goal) => aim_pose(def, anchor, &turn, goal),
-            None => (def.rest, def.curl),
+            Some(goal) => {
+                let now = self.pose.unwrap_or((def.rest, def.curl));
+                let best = aim_pose(def, anchor, &turn, goal, now);
+                let ease = |a: f32, b: f32| a + (b - a).clamp(-ARCH_RATE * dt, ARCH_RATE * dt);
+                let pose = (ease(now.0, best.0), ease(now.1, best.1));
+                self.pose = Some(pose);
+                pose
+            }
+            None => {
+                self.pose = None;
+                (def.rest, def.curl)
+            }
         };
         // (Aiming, it holds its pose harder: a sting poised.)
         let stiff = if aim.is_some() { def.stiff.max(0.8) } else { def.stiff };
@@ -155,8 +171,10 @@ impl Chain {
 /// (±40°) and curl (from straighter to half as tight again), the one whose
 /// last link points most nearly at the goal, its tip nearest it, keeping
 /// over its anchor as its rest pose is (a sting stays over the back), and
-/// least changed from rest. (A handful of links, 81 poses: cheap.)
-pub fn aim_pose(def: &ChainDef, anchor: Vec2, turn: impl Fn(Vec2) -> Vec2, goal: Vec2) -> (f32, f32) {
+/// least changed from rest; and from the arch it holds `now` (a better one
+/// must be better by more than the change: it doesn't flick between two
+/// nearly as good). (A handful of links, 81 poses: cheap.)
+pub fn aim_pose(def: &ChainDef, anchor: Vec2, turn: impl Fn(Vec2) -> Vec2, goal: Vec2, now: (f32, f32)) -> (f32, f32) {
     let rest_tip = Chain::rest(def, anchor, &turn).pts.last().copied().unwrap_or(anchor);
     let over = rest_tip.y > anchor.y;
     let mut best = (f32::MAX, def.rest, def.curl);
@@ -176,7 +194,8 @@ pub fn aim_pose(def: &ChainDef, anchor: Vec2, turn: impl Fn(Vec2) -> Vec2, goal:
             let point = 1.0 - last.dot((goal - p).normalize_or(last));
             let near = p.distance(goal) / def.reach().max(1.0);
             let change = ((rest - def.rest).abs() + (curl - def.curl).abs()) / 180.0;
-            let score = point * 2.0 + near + change * 0.3;
+            let moved = ((rest - now.0).abs() + (curl - now.1).abs()) / 180.0;
+            let score = point * 2.0 + near + change * 0.3 + moved * 0.8;
             if score < best.0 {
                 best = (score, rest, curl);
             }
@@ -231,5 +250,15 @@ mod tests {
         assert!(b.y > 0.0, "the tip over its anchor: {b:?}");
         let point = (b - a).normalize().dot((goal - b).normalize());
         assert!(point > 0.8, "pointing at it ({point:.2}): {:?}", c.pts);
+        // Its target edging about (someone shifting their feet): the sting
+        // holds steady, no flicking from one arch to another.
+        let mut most: f32 = 0.0;
+        for k in 0..120 {
+            let wobble = goal + Vec2::new((k as f32 * 0.7).sin() * 3.0, 0.0);
+            let before = c.pts[6];
+            c.step(&def, Vec2::ZERO, right, Some(wobble), 1.0 / 60.0);
+            most = most.max(c.pts[6].distance(before));
+        }
+        assert!(most < 1.0, "its tip moved at most {most:.2} a frame");
     }
 }

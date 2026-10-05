@@ -5033,26 +5033,27 @@ fn course_script(
 
 /// `legs` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=real`: real ground): a
 /// legged walker (`PLATYPUS_KIND`, default the stilt stalker) put down 300
-/// cells off the player, after it; the player kept 80 cells ahead of it
-/// on the ground (the camera with it, so it's in view), leading it west
-/// (up the hills west of seed 1's start; `PLATYPUS_WAY=right`: east, into
-/// the village). Logs twice a
+/// cells west of the player (over the hills west of seed 1's start;
+/// `PLATYPUS_WAY=right`: east, into the village), the player moved once to
+/// wait on the ground `PLATYPUS_AHEAD` cells beyond it (600; inside the
+/// walls), standing still; the walker goes after it all the way, the
+/// camera following the walker. Logs twice a
 /// second where it is, the ground's slope under it, its body's tilt and
 /// height over its feet, how many feet hold the ground and whether any
 /// foot is in rock; at the end, how its tilt followed the slope.
 /// `PLATYPUS_SHOTS=dir`: a picture every 2 s into it (`PLATYPUS_SHOT_EVERY`
 /// s: another gap). `PLATYPUS_KILL=1`:
 /// it's struck dead 3 s from the end (to see its body); `PLATYPUS_FEETLOG=1`:
-/// each foot (from its box's bottom; `~`: holding nothing); `PLATYPUS_AHEAD`:
-/// how far ahead of it the player's kept (80 cells);
-/// `PLATYPUS_PRICK=1`: a 3-hp cut at 4 s (does it bleed to death?).
+/// each foot (from its box's bottom; `~`: holding nothing);
+/// `PLATYPUS_PRICK=1`: a 3-hp cut at 4 s (does it bleed to death?);
+/// `PLATYPUS_TAILLOG=1`: its first chain's tip each frame, whether it aims.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn legs_script(
     mut commands: Commands,
     s: Res<Scenario>,
     sim: Res<SimWorld>,
     offscreen: Option<Res<crate::camera::Offscreen>>,
-    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut player: Query<(Entity, &mut Kinematics), With<LocalPlayer>>,
     foes: Query<(&crate::creatures::Creature, &Kinematics, Option<&crate::creatures::body::legs::Legs>), Without<LocalPlayer>>,
     mut healths: Query<(Entity, &crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>,
     mut took: MessageReader<crate::creatures::Took>,
@@ -5069,7 +5070,7 @@ fn legs_script(
         }
     }
     let t = s.elapsed;
-    let Ok(mut pk) = player.single_mut() else { return };
+    let Ok((me, mut pk)) = player.single_mut() else { return };
     let (step, next, kind, pairs, shot, dir, strain) = &mut *state;
     // The ground's top under x, near y.
     let ground = |x: f32, y: f32| -> Option<f32> {
@@ -5083,8 +5084,17 @@ fn legs_script(
         *dir = if std::env::var("PLATYPUS_WAY").is_ok_and(|w| w == "right") { 1.0 } else { -1.0 };
         let x = pk.body.pos.x + 300.0 * *dir;
         let Some(y) = ground(x, pk.body.pos.y) else { return error!("legs: no ground at {x}") };
+        // The player waits further on, standing still; the camera goes
+        // with the walker.
+        let gap = std::env::var("PLATYPUS_AHEAD").ok().and_then(|v| v.parse().ok()).unwrap_or(600.0);
+        let px = (x + gap * *dir).clamp(70.0, 1850.0);
+        if let Some(py) = ground(px, pk.body.pos.y) {
+            pk.body.pos = Vec2::new(px, py + pk.body.half.y + 0.5);
+            pk.body.vel = Vec2::ZERO;
+        }
+        commands.entity(me).remove::<crate::camera::CameraTarget>();
         crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x, y), |e| {
-            e.insert(crate::world::ChunkLoader { half_extent: Vec2::new(200.0, 200.0) });
+            e.insert((crate::world::ChunkLoader { half_extent: Vec2::new(200.0, 200.0) }, crate::camera::CameraTarget));
             if let Some(mut h) = e.get_mut::<crate::creatures::brain::hunter::Hunter>() {
                 h.aggro = 4000.0;
             }
@@ -5114,6 +5124,12 @@ fn legs_script(
             let fs: Vec<String> = l.feet().map(|(p, g)| format!("{:?}{}", (p - b).round(), if g { "" } else { "~" })).collect();
             info!("legs: t {t:.2}: strain {:.2} at {:?} vel {:?} grounded {}; feet from its box's bottom {}", l.strain(), fk.body.pos.round(), fk.body.vel.round(), fk.loco.grounded(), fs.join(" "));
         }
+        if std::env::var("PLATYPUS_TAILLOG").is_ok() {
+            let (tips, aiming, facing) = l.chain_state();
+            if let Some(tip) = tips.first() {
+                info!("taillog t {t:.3} tip {:?} from body {:?} aiming {aiming} facing {facing} vel {:?}", tip.round(), (*tip - fk.body.pos).round(), fk.body.vel.round());
+            }
+        }
         strain.0 = strain.0.max(l.strain());
         strain.1 += (l.strain() > 1.0) as u32;
         strain.2 += 1;
@@ -5122,15 +5138,6 @@ fn legs_script(
         && let Some((target, _, _)) = healths.iter().find(|(_, c, _)| c.kind == *kind)
     {
         hits.write(crate::combat::Hit { target, damage: 3.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: fk.body.pos, dir: Vec2::X, weight: 0.2, crit: false });
-    }
-    // The player kept ahead of it, on the ground.
-    let gap = std::env::var("PLATYPUS_AHEAD").ok().and_then(|v| v.parse().ok()).unwrap_or(80.0);
-    let ahead = fk.body.pos.x + gap * *dir;
-    if (pk.body.pos.x - ahead).abs() > 20.0
-        && let Some(y) = ground(ahead, fk.body.pos.y)
-    {
-        pk.body.pos = Vec2::new(ahead, y + pk.body.half.y + 0.5);
-        pk.body.vel = Vec2::ZERO;
     }
     if *step == 1 && t >= *next {
         *next += 0.5;

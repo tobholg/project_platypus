@@ -1891,9 +1891,14 @@ parts, so another is a new file, not new code:
   sting stays over the back). The raptor's tail and the tyrant's (cut from
   their sprites) are chains; the cave scorpion (scorpion.ron: eight legs,
   pincers, its tail up and back from its rear and arching forward over its
-  back, ringed, a sting) aims its sting at you within 70 cells.
-  `PLATYPUS_AHEAD`: how far ahead of the walker the `legs` scenario keeps
-  the player. The near legs are drawn in front of the
+  back, ringed, a sting) aims its sting at you within 70 cells. An aiming
+  chain holds its arch and eases it toward a better one (140°/s), and a
+  better one must beat it by more than the change: no flicking between
+  two nearly as good (the scorpion standing at the player: its tip still
+  on most frames, at most 2.2 cells, its body's bob). The `legs` scenario
+  leaves the player standing `PLATYPUS_AHEAD` cells beyond the walker
+  (600) and the camera follows the walker (it used to jerk the player
+  ahead of it, which jerked a sting's target too). The near legs are drawn in front of the
   body (z 10.06), the far ones behind, in `far` (else the near colour
   darker). Its box takes in its legs (the stilt stalker: 18 × 58). Dead,
   it lies on its belly (a box 14 high) on its legs folded under it. The

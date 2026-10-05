@@ -430,6 +430,11 @@ impl Legs {
         self.strain
     }
 
+    /// Its chains' tips (the world), whether it's aiming, which way it faces.
+    pub fn chain_state(&self) -> (Vec<Vec2>, bool, f32) {
+        (self.chains.iter().filter_map(|c| c.pts.last().copied()).collect(), self.aim.is_some(), self.facing)
+    }
+
     /// Where its feet are (the world), and whether each holds something.
     pub fn feet(&self) -> impl Iterator<Item = (Vec2, bool)> + '_ {
         self.feet.iter().map(|f| (f.at, f.grips))
