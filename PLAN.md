@@ -332,14 +332,43 @@ planning ≤ 2.3 ms. Not done: tunnel and blast digging, cracks as a tell,
 fields used by packs; a digger's search into deep stone rarely finishes
 inside its budget (it follows the part it found, and looks again).
 
-**5. `limbs`: general procedural limbs.**
-1. Side-view legs (2, 4, 6) whose planted feet carry the body (height and
-   tilt follow the ground); chains; segments; moves that drive limbs.
-2. Hit areas per part.
-3. Spiders onto the general system (their look kept).
+**5. `limbs`: general procedural limbs.** In stages:
+1. Side-view legs whose planted feet carry the body (height and tilt
+   follow the ground), arms, a gait clock, footfalls; spiders onto the
+   general system (their look kept). *Done 2026-10-05*: legs from above
+   and the side (2, 4, 8; two or three bones; flesh or metal plates),
+   arms with claws, footfalls (sound, dust, shake); test creatures: stilt
+   stalker, crag crab, ridge raptor, ridge tyrant (T-rex scale), iron
+   strider (a mech).
+2. Chains: tails, necks, a wraith's chains; hanging and swinging with
+   the body, held out (a tail's stiffness), aiming at a target (a
+   scorpion's sting over its back). Tails for the raptor and the tyrant.
+3. Segments: a centipede, a wyrm, following the head's path; side-view
+   bodies that climb walls and ceilings (the body and its legs turned to
+   the surface).
+4. Moves that drive limbs, hit areas per part, and the strider's arsenal:
+   - aimed limbs (turrets): an arm that tracks the target at a turn rate,
+     a barrel sprite, a muzzle shots leave from; moves name the limb that
+     acts (left turret, right, in turn); a stomp lifts a leg and slams it,
+     a claw snips, a jaw bites;
+   - tells as data, switched on by a move's phase: a sight line from the
+     muzzle to the target while it aims, a charge glow at the muzzle
+     before it fires, a lock-on mark over the target before missiles;
+   - heat in parts: each shot heats its barrel, which cools over time,
+     drawn dull red to orange to white with a glow; past a limit it
+     overheats and the move system forces a vent (steam, a hiss, a pause:
+     the player's opening) (the first per-part state: `wounds` builds per-
+     part health on it);
+   - missiles: spell runes `homing` (turns toward its target at a rate)
+     and a smoke trail; a phase can repeat an act (a salvo);
+   - hit areas per part, weak points (more damage there).
 Done when: a four-legged walker crosses the arena's real-terrain layout
 with its body following the ground; a chain aims; a segmented crawler
-climbs a wall and a ceiling.
+climbs a wall and a ceiling; the iron strider tracks the player with two
+laser turrets, shows a sight line and a charge glow before each shot,
+its barrels glow after a burst and vent when they overheat, and it fires
+a lock-on salvo of missiles that curve onto the player; the crab snips,
+the raptor bites, the tyrant stomps.
 
 **6. `creature-editor`: from a sketch of the whole to a creature.**
 Sketch (layers), slice, rig, pose and moves, test; editing a part in place

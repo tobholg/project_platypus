@@ -1017,6 +1017,12 @@ twin, so the model can make, render and check what a person can.
   4, 6) whose planted feet hold the body (its height and tilt follow the
   ground); chains (tails, necks, a wraith's chains); segments (worms,
   wyrms); moves can drive limbs (a stomp lifts a leg and slams it).
+- **Machines too** (the iron strider): legs drawn as metal plates; limbs
+  that aim (turrets tracking their target, muzzles shots leave from);
+  tells as data a move switches on (a sight line, a charge glow, a lock-
+  on mark: you see it coming); parts that heat with each shot, glowing
+  red to white, venting when overheated (an opening); missiles that
+  home, trailing smoke, in salvos.
 - **Every limb and part can have its own health** (a share of the
   creature's; some damage passes to the body), hit where it's drawn, and
   can be **severed**: it comes off as a piece of its own that falls and
