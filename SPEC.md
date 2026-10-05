@@ -1906,10 +1906,15 @@ parts, so another is a new file, not new code:
   where the tip lands, venom, snapped back in 0.18 s). Seen: it stands
   35–37 cells off (centre to centre), the tail whips over its back onto
   the player (11.5 pierce every 2.4 s), it holds off and raises its tail
-  again. A legged body is drawn on whole cells (its claws, its tips too),
-  as its legs and chains are: else they step a cell at a time while it
-  glides, and shift against it (the tail's "jitter": the tail itself is
-  smooth against its anchor, one change of way in six seconds) (the scorpion standing at the player: its tip still
+  again. A side-view creature's legs, arms and chains are drawn in its
+  own frame onto two images of its own (behind its body, in front),
+  children of it, sized to what's on them (in steps of 16): they glide
+  with its body. (On the shared canvas, fixed to the world's cells, they
+  stepped a cell at a time while the body glided, and shifted against
+  it: the tail's "jitter", the tail itself smooth against its anchor;
+  snapping the body to whole cells instead made the whole creature
+  judder as it walked.) Spiders, from above, still draw on the shared
+  canvas (the scorpion standing at the player: its tip still
   on most frames, at most 2.2 cells, its body's bob). The `legs` scenario
   leaves the player standing `PLATYPUS_AHEAD` cells beyond the walker
   (600) and the camera follows the walker (it used to jerk the player

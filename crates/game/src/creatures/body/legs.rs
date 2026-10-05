@@ -759,10 +759,6 @@ fn walk(
             let fwd = Vec2::from_angle(legs.heading);
             (middle + up * rear.lift - fwd * rear.back, up)
         };
-        // (On whole cells, as its legs and chains are drawn: else, as it
-        // goes, they step a cell at a time while its body glides, and shift
-        // against each other.)
-        let c = c.round();
         legs.offset = c - middle;
         let fwd = Vec2::from_angle(legs.heading);
         // (Jumped: every foot planted afresh, no steps across; its chains
@@ -1018,7 +1014,7 @@ fn walk(
                 if let Some(t) = tint {
                     s.color = t;
                 }
-                t.translation = (wrist.round() - middle).extend(t.translation.z);
+                t.translation = (wrist - middle).extend(t.translation.z);
             }
         }
         // Chains: each from its anchor, swinging after the body, reaching
@@ -1044,7 +1040,7 @@ fn walk(
                 if let Some(t) = tint {
                     s.color = t;
                 }
-                t.translation = (b.round() - middle).extend(t.translation.z);
+                t.translation = (*b - middle).extend(t.translation.z);
             }
         }
         // Legs holding nothing reach out from the body as it goes, and
@@ -1223,6 +1219,86 @@ fn cells(a: Vec2, b: Vec2, out: &mut Vec<IVec2>) {
     }
 }
 
+/// A side-view creature's own limb images (behind its body, in front),
+/// children of it: its legs, arms and chains drawn in its own frame, so
+/// they move with it smoothly.
+#[derive(Component, Default)]
+struct LimbImages([Layer; 2]);
+
+/// One of them: its sprite, its image, which of the creature's cells its
+/// bottom-left is, its size (cells).
+#[derive(Default)]
+struct Layer {
+    sprite: Option<Entity>,
+    image: Handle<Image>,
+    origin: IVec2,
+    size: UVec2,
+}
+
+#[derive(Component)]
+struct LimbLayer;
+
+/// The limb images' sprites.
+type LayerSprites<'w, 's> = Query<'w, 's, (&'static mut Sprite, &'static mut Transform), (With<LimbLayer>, Without<crate::canvas::CanvasSprite>)>;
+
+impl Layer {
+    /// This frame's cells (the creature's own: from where it's drawn) onto
+    /// the image: made bigger when they don't fit (a margin round them,
+    /// the size in steps of 16: not made again every frame), placed so its
+    /// cells sit where they're meant to.
+    #[allow(clippy::too_many_arguments)]
+    fn paint(&mut self, commands: &mut Commands, images: &mut Assets<Image>, sprites: &mut LayerSprites, parent: Entity, cells: &[(IVec2, [u8; 4])], z: f32) {
+        let lo = cells.iter().fold(IVec2::MAX, |m, (p, _)| m.min(*p));
+        let hi = cells.iter().fold(IVec2::MIN, |m, (p, _)| m.max(*p));
+        if !cells.is_empty() {
+            let need = (hi - lo + IVec2::ONE).as_uvec2();
+            let fits = self.sprite.is_some() && lo.cmpge(self.origin).all() && (hi - self.origin).as_uvec2().cmplt(self.size).all();
+            if !fits {
+                if need.cmpgt(self.size).any() || self.sprite.is_none() {
+                    self.size = ((need + UVec2::splat(8)) / 16 + UVec2::ONE) * 16;
+                    self.image = images.add(Image::new(
+                        bevy::render::render_resource::Extent3d { width: self.size.x, height: self.size.y, depth_or_array_layers: 1 },
+                        bevy::render::render_resource::TextureDimension::D2,
+                        vec![0; (self.size.x * self.size.y * 4) as usize],
+                        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+                        bevy::asset::RenderAssetUsages::MAIN_WORLD | bevy::asset::RenderAssetUsages::RENDER_WORLD,
+                    ));
+                }
+                // (Its cells in the middle of it.)
+                self.origin = (lo + hi) / 2 - (self.size / 2).as_ivec2();
+            }
+        }
+        let at = (self.origin.as_vec2() + self.size.as_vec2() / 2.0).extend(z);
+        match self.sprite.and_then(|s| sprites.get_mut(s).ok()) {
+            Some((mut s, mut t)) => {
+                if s.image != self.image {
+                    s.image = self.image.clone();
+                    s.custom_size = Some(self.size.as_vec2());
+                }
+                t.translation = at;
+            }
+            None if !cells.is_empty() => {
+                let s = commands.spawn((LimbLayer, Sprite { image: self.image.clone(), custom_size: Some(self.size.as_vec2()), ..default() }, Transform::from_translation(at))).id();
+                commands.entity(parent).add_child(s);
+                self.sprite = Some(s);
+            }
+            None => {}
+        }
+        let Some(mut img) = images.get_mut(&self.image) else { return };
+        let (w, h) = (self.size.x as i32, self.size.y as i32);
+        let Some(data) = img.data.as_mut() else { return };
+        data.fill(0);
+        for (p, c) in cells {
+            let (x, y) = (p.x - self.origin.x, p.y - self.origin.y);
+            if x < 0 || y < 0 || x >= w || y >= h {
+                continue;
+            }
+            let i = (((h - 1 - y) * w + x) * 4) as usize;
+            data[i..i + 4].copy_from_slice(c);
+        }
+    }
+}
+
 /// The legs' canvases (`canvas.rs`): behind the bodies (from above, and the
 /// far legs from the side), and in front (the near legs from the side);
 /// each again for the bestiary's stage.
@@ -1249,15 +1325,27 @@ fn draw(
     camera: Query<(&GlobalTransform, &crate::world::ChunkLoader), With<crate::camera::MainCamera>>,
     mut sprites: crate::canvas::CanvasSprites,
     stage: Res<crate::canvas::StageView>,
-    q: Query<(&Legs, &GlobalTransform)>,
+    mut q: Query<(Entity, &Legs, &GlobalTransform, Option<&mut LimbImages>)>,
+    mut layers: LayerSprites,
 ) {
     // (Behind, in front.)
     let mut quads: [Vec<(IVec2, [u8; 4])>; 2] = [Vec::new(), Vec::new()];
+    let mut own: [Vec<(IVec2, [u8; 4])>; 2] = [Vec::new(), Vec::new()];
     let mut line = Vec::new();
-    for (legs, tf) in &q {
-        // (The body where it's drawn: rearing lifts the hips.)
-        let c = tf.translation().truncate() + legs.offset;
+    for (e, legs, tf, mine) in &mut q {
+        // From the side, drawn in its own frame (`o`: where the creature's
+        // drawn), onto its own images that move with it: its limbs glide as
+        // its body does, not a cell at a time on the world's grid. (From
+        // above, onto the shared canvas.)
         let side = legs.def.view == View::Side;
+        let o = if side { tf.translation().truncate() } else { Vec2::ZERO };
+        if side {
+            own[0].clear();
+            own[1].clear();
+        }
+        let quads: &mut [Vec<(IVec2, [u8; 4])>; 2] = if side { &mut own } else { &mut quads };
+        // (The body where it's drawn: rearing lifts the hips.)
+        let c = tf.translation().truncate() + legs.offset - o;
         let rgb = |(r, g, b): (u8, u8, u8)| [r, g, b, 255];
         let dark = |(r, g, b): (u8, u8, u8)| ((r as f32 * 0.6) as u8, (g as f32 * 0.6) as u8, (b as f32 * 0.6) as u8);
         let (a, b) = (legs.def.reach * legs.def.upper, legs.def.reach * (1.0 - legs.def.upper));
@@ -1271,6 +1359,7 @@ fn draw(
         };
         for (i, f) in legs.feet.iter().enumerate() {
             let hip = legs.hip(i, c);
+            let f = Foot { at: f.at - o, ..*f };
             // (Knees also splay out from the body a little: from the side,
             // a front leg's forward, a back one's back.)
             let bend = if side {
@@ -1285,7 +1374,7 @@ fn draw(
             let ankle = (legs.def.ankle > 0.0).then(|| f.at + (-ahead * legs.def.heel.to_radians().cos() + Vec2::Y * legs.def.heel.to_radians().sin()) * legs.def.ankle);
             // (Drawn as solved: past its reach the leg is at full length
             // and the foot comes with it, never stretched.)
-            let (k, end) = knee(hip, ankle.unwrap_or(f.at), a, b, bend, |p| solid(&sim, p));
+            let (k, end) = knee(hip, ankle.unwrap_or(f.at), a, b, bend, |p| solid(&sim, p + o));
             let (ankle, foot) = match ankle {
                 Some(at) => (Some(end), f.at + (end - at)),
                 None => (None, end),
@@ -1377,6 +1466,7 @@ fn draw(
         }
         // Arms, as the legs are drawn (where they are now: `walk`).
         for (arm, &(shoulder, elbow, wrist)) in legs.def.arms.iter().zip(&legs.arms) {
+            let (shoulder, elbow, wrist) = (shoulder - o, elbow - o, wrist - o);
             let w = |i: usize| arm.width.get(i).or(arm.width.last()).copied().unwrap_or(2.0);
             let line = legs.def.outline.unwrap_or_else(|| dark(dark(legs.def.color)));
             let (fill, knob) = if arm.far {
@@ -1399,6 +1489,7 @@ fn draw(
             if n < 2 {
                 continue;
             }
+            let pts: Vec<Vec2> = ch.pts.iter().map(|p| *p - o).collect();
             let base = def.color.unwrap_or(legs.def.color);
             let fill = rgb(if def.far { dark(base) } else { base });
             let line = rgb(legs.def.outline.unwrap_or_else(|| dark(dark(base))));
@@ -1406,13 +1497,26 @@ fn draw(
             let w = |i: usize| def.width_at(i as f32 / (n - 1) as f32);
             for (pass, grow) in [(line, 1.0), (fill, 0.0)] {
                 for i in 1..n {
-                    stroke(ch.pts[i - 1], ch.pts[i], w(i - 1) * 0.5 + grow, w(i) * 0.5 + grow, pass, to);
+                    stroke(pts[i - 1], pts[i], w(i - 1) * 0.5 + grow, w(i) * 0.5 + grow, pass, to);
                 }
             }
             if def.rings {
                 for i in 1..n - 1 {
-                    let across = (ch.pts[i + 1] - ch.pts[i - 1]).perp().normalize_or(Vec2::Y) * (w(i) * 0.5);
-                    stroke(ch.pts[i] - across, ch.pts[i] + across, 0.5, 0.5, line, to);
+                    let across = (pts[i + 1] - pts[i - 1]).perp().normalize_or(Vec2::Y) * (w(i) * 0.5);
+                    stroke(pts[i] - across, pts[i] + across, 0.5, 0.5, line, to);
+                }
+            }
+        }
+        if side {
+            let z = tf.translation().z;
+            match mine {
+                Some(mut mine) => {
+                    for (layer, (cells, at)) in mine.0.iter_mut().zip([(&own[0], 9.5), (&own[1], Z_NEAR_LEGS)]) {
+                        layer.paint(&mut commands, &mut images, &mut layers, e, cells, at - z);
+                    }
+                }
+                None => {
+                    commands.entity(e).insert(LimbImages::default());
                 }
             }
         }
