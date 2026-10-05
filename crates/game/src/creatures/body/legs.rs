@@ -434,9 +434,10 @@ impl Legs {
         self.strain
     }
 
-    /// Its chains' tips (the world), whether it's aiming, which way it faces.
+    /// Its chains' tips from their anchors, whether it's aiming, which way
+    /// it faces.
     pub fn chain_state(&self) -> (Vec<Vec2>, bool, f32) {
-        (self.chains.iter().filter_map(|c| c.pts.last().copied()).collect(), self.aim.is_some(), self.facing)
+        (self.chains.iter().filter_map(|c| Some(*c.pts.last()? - *c.pts.first()?)).collect(), self.aim.is_some(), self.facing)
     }
 
     /// Where its feet are (the world), and whether each holds something.
@@ -758,6 +759,10 @@ fn walk(
             let fwd = Vec2::from_angle(legs.heading);
             (middle + up * rear.lift - fwd * rear.back, up)
         };
+        // (On whole cells, as its legs and chains are drawn: else, as it
+        // goes, they step a cell at a time while its body glides, and shift
+        // against each other.)
+        let c = c.round();
         legs.offset = c - middle;
         let fwd = Vec2::from_angle(legs.heading);
         // (Jumped: every foot planted afresh, no steps across; its chains
@@ -1013,7 +1018,7 @@ fn walk(
                 if let Some(t) = tint {
                     s.color = t;
                 }
-                t.translation = (wrist - middle).extend(t.translation.z);
+                t.translation = (wrist.round() - middle).extend(t.translation.z);
             }
         }
         // Chains: each from its anchor, swinging after the body, reaching
@@ -1039,7 +1044,7 @@ fn walk(
                 if let Some(t) = tint {
                     s.color = t;
                 }
-                t.translation = (*b - middle).extend(t.translation.z);
+                t.translation = (b.round() - middle).extend(t.translation.z);
             }
         }
         // Legs holding nothing reach out from the body as it goes, and

@@ -5063,10 +5063,14 @@ fn legs_script(
     if s.name != "legs" {
         return;
     }
-    // What hurts it (it should be nothing, walking).
+    // What hurts it (it should be nothing, walking); with
+    // PLATYPUS_TAILLOG, what hurts the player too.
+    let me_hurt = player.single().ok().map(|(e, _)| e);
     for tk in took.read() {
         if healths.get(tk.target).is_ok_and(|(_, c, _)| c.kind == state.2) {
             warn!("legs: t {:.1}: the {} took {:.1} {:?}{}", s.elapsed, state.2, tk.dealt, tk.harm, if tk.killed { ", and died" } else { "" });
+        } else if Some(tk.target) == me_hurt && std::env::var("PLATYPUS_TAILLOG").is_ok() {
+            info!("legs: t {:.2}: the player took {:.1} {:?}", s.elapsed, tk.dealt, tk.harm);
         }
     }
     let t = s.elapsed;
@@ -5133,7 +5137,8 @@ fn legs_script(
         if std::env::var("PLATYPUS_TAILLOG").is_ok() {
             let (tips, aiming, facing) = l.chain_state();
             if let Some(tip) = tips.first() {
-                info!("taillog t {t:.3} tip {:?} from body {:?} aiming {aiming} facing {facing} vel {:?}", tip.round(), (*tip - fk.body.pos).round(), fk.body.vel.round());
+                let r = *tip;
+                info!("taillog t {t:.3} tip {:?} from body Vec2({:.1}, {:.1}) aiming {aiming} facing {facing} vel {:?} gap {:.0}", tip.round(), r.x, r.y, fk.body.vel.round(), (pk.body.pos.x - fk.body.pos.x).abs());
             }
         }
         strain.0 = strain.0.max(l.strain());

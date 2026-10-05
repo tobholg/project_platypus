@@ -1,7 +1,8 @@
 // A cave scorpion: low and armoured on eight legs, its pincers held out
 // ahead, its segmented tail curled up over its back, the sting aimed at
-// you when you're near; close, it draws its tail back, coiled and
-// trembling, and stings: the tail thrown out straight at you (venom).
+// you when you're near. It keeps a tail's length off (30–38 cells, backing
+// away if you close in), draws its tail back, coiled and trembling, and
+// stings: the whole tail whipped over its back onto you (venom).
 (
     name: "Cave scorpion",
     size: (24, 16),
@@ -23,15 +24,15 @@
                (hip: (-3, 0), lean: -4, gait: 0, far: true),
            ],
            arms: [
-               (shoulder: (12, 1), hand: (22, 4), bones: (6, 6), width: [3, 3, 2.5], elbow: Down, claw: Some("scorpion_claw"), sway: 0.5),
-               (shoulder: (13, 2), hand: (24, 6), bones: (6, 6), width: [3, 3, 2.5], elbow: Down, claw: Some("scorpion_claw"), sway: 0.5, far: true),
+               (shoulder: (11, 1), hand: (16, 3), bones: (4.5, 4.5), width: [3, 3, 2.5], elbow: Down, claw: Some("scorpion_claw"), sway: 0.5),
+               (shoulder: (12, 2), hand: (17, 5), bones: (4.5, 4.5), width: [3, 3, 2.5], elbow: Down, claw: Some("scorpion_claw"), sway: 0.5, far: true),
            ],
            // Its tail: rising tall from its rear and curling forward over at
            // its end, the sting poised high over its back (its curl
            // tightening toward the tip: `grow`), ringed at every joint;
            // near enough, its end turns to point the sting at you.
            chains: [
-               (anchor: (-11, 4), links: 8, length: 5, rest: 105, curl: -5, grow: -6, jab: Some(5), stiff: 0.6, width: [5, 4, 3], color: Some((96, 62, 38)), rings: true,
+               (anchor: (-11, 4), links: 8, length: 5.5, rest: 105, curl: -5, grow: -6, jab: Some(5), stiff: 0.6, width: [5, 4, 3], color: Some((96, 62, 38)), rings: true,
                 tip: Some("scorpion_sting"), aims: Some(70), behind: true),
            ]),
     movement: (
@@ -50,6 +51,6 @@
     moves: ["scorpion_sting"],
     brain: (
         kind: "hunter",
-        params: (aggro: 350, close: Walk(keep: 18, jump_to_reach: 16), wander: (speed: 0.4, every: 2.5)),
+        params: (aggro: 350, close: Range(near: 30, far: 38), wander: (speed: 0.4, every: 2.5)),
     ),
 )

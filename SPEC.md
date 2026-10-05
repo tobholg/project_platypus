@@ -1898,14 +1898,18 @@ parts, so another is a new file, not new code:
   target, keeping over its anchor but for its end: a whip, not a
   stretched rope). The raptor's tail and the tyrant's (cut from their
   sprites) are chains; the cave scorpion (scorpion.ron: eight legs,
-  pincers, its tail 8 × 5 rising from its rear and curling over at its
-  end, ringed, a sting) points its sting at you within 70 cells and,
-  within 40, stings (`scorpion_sting`: coiled and trembling 0.48 s, the
-  tail whipped over in 0.07 s with a small lunge, the hit 20 ahead where
-  the tip lands, venom, snapped back in 0.18 s); it keeps 18 off. Seen at
-  50 frames a second: poised in a tall ?, the tail whips over its back,
-  the sting lands 25 cells ahead on the player (who flashes hurt), it
-  swings back up (the scorpion standing at the player: its tip still
+  pincers held close, its tail 8 × 5.5 rising from its rear and curling
+  over at its end, ringed, a sting) keeps a tail's length off (`Range`
+  30–38: a clear gap, backing away if you close in), points its sting at
+  you within 70 cells and, within 44, stings (`scorpion_sting`: coiled
+  and trembling 0.48 s, the tail whipped over in 0.07 s, the hit 29 ahead
+  where the tip lands, venom, snapped back in 0.18 s). Seen: it stands
+  35–37 cells off (centre to centre), the tail whips over its back onto
+  the player (11.5 pierce every 2.4 s), it holds off and raises its tail
+  again. A legged body is drawn on whole cells (its claws, its tips too),
+  as its legs and chains are: else they step a cell at a time while it
+  glides, and shift against it (the tail's "jitter": the tail itself is
+  smooth against its anchor, one change of way in six seconds) (the scorpion standing at the player: its tip still
   on most frames, at most 2.2 cells, its body's bob). The `legs` scenario
   leaves the player standing `PLATYPUS_AHEAD` cells beyond the walker
   (600) and the camera follows the walker (it used to jerk the player

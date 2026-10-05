@@ -68,12 +68,11 @@
         // trembling, then thrown out straight at you (the tip where it
         // hits), venom; snapped back. (Its tail's coil and reach:
         // chains.rs.)
-        (id: "scorpion_sting", every: 1.6, when: (range: (0, 40), footing: true), phases: [
+        (id: "scorpion_sting", every: 1.6, when: (range: (0, 44), footing: true), phases: [
             (name: "windup", secs: 0.3, pose: Some((coil: 1.0, lift: 2))),
             (name: "hold", secs: 0.18, ease: Snap, pose: Some((coil: 1.0, lift: 2)), tremble: 0.05),
             (name: "strike", secs: 0.07, ease: Linear, pose: Some((reach: 1.0, lift: 1)), acts: [
-                Lunge(speed: 70),
-                Strike((at: 20, reach: 10, damage: 12, harm: pierce, knock: 260, up: 0.3, stun: 0.3, from: 0.3, coat: Some("venom"))),
+                Strike((at: 29, reach: 9, damage: 12, harm: pierce, knock: 260, up: 0.3, stun: 0.3, from: 0.3, coat: Some("venom"))),
                 Sound("swing"),
             ]),
             (name: "hold out", secs: 0.04, ease: Snap, pose: Some((reach: 1.0))),
