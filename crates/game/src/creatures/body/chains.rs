@@ -188,8 +188,8 @@ impl Chain {
         let goal = anchor + (goal - anchor).clamp_length_max(def.reach() * STRIKE_REACH);
         let arc = arc_to(anchor, goal, def.links, def.length);
         let r = reach.clamp(0.0, 1.0);
-        for i in 1..n {
-            self.pts[i] = self.pts[i].lerp(arc[i], r);
+        for (p, a) in self.pts.iter_mut().zip(&arc).skip(1) {
+            *p = p.lerp(*a, r);
         }
         self.relink(def);
         // (Struck out, it doesn't swing back on its own: the move draws it.)
