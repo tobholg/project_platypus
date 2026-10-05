@@ -714,6 +714,10 @@ fn walk(
         // Where the body is: from above, raised off what it holds and
         // drawn back from its heading (an attack); from the side, riding
         // its feet, tilted with them.
+        // (From the side, turned round: its body flips at once, so its
+        // feet are planted afresh on the other side too.)
+        let turned = side && (k.loco.facing < 0.0) != (legs.facing < 0.0);
+        let jumped = jumped || turned;
         let (c, up) = if side {
             legs.facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
             let f = legs.facing;
