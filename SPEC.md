@@ -1915,7 +1915,14 @@ parts, so another is a new file, not new code:
   it: the tail's "jitter", the tail itself smooth against its anchor;
   snapping the body to whole cells instead made the whole creature
   judder as it walked.) Spiders' too (from above: all behind the body);
-  the shared leg canvas is gone. Struck in the `legs` scenario, the
+  the shared leg canvas is gone. Feet have weight: each is drawn following where its
+  steps put it as a damped spring (`FOOT_LAG` 0.06 s; `PLATYPUS_FOOTLAG=0`:
+  none, to compare), never faster than the body's speed plus 9 of its
+  reaches a second, so a step that jumps (replanted, slipped, a leg let
+  go) is a quick swing, not a snap; `put` down elsewhere it's drawn there
+  at once. The `legs` scenario reports feet moving faster than that
+  against the body, as stepped and as drawn: the scorpion on flat ground
+  23 % → 2 %, the spider 4.5 % → 3.8 %. Struck in the `legs` scenario, the
   player walks away from the walker for `PLATYPUS_RETREAT` s (1.4): it
   walks after them again before each attack (the scorpion: ~190 cells,
   a sting every ~4 s). A running spider's legs keep up: from above, the

@@ -5235,6 +5235,10 @@ fn legs_script(
         let off = slopes.iter().map(|(s, t)| (s - t).abs()).sum::<f32>() / slopes.len().max(1) as f32;
         info!("legs: over {} readings on slopes its tilt went the ground's way {} times, {off:.0}° off on average", slopes.len(), same);
         info!("legs: a foot at most {:.2} of its reach from its hip; past its reach {:.1} % of frames", strain.0, strain.1 as f32 * 100.0 / strain.2.max(1) as f32);
+        if let Some((_, _, Some(l))) = foes.iter().find(|(c, _, _)| c.kind == *kind) {
+            let (n, at, shown) = l.snaps();
+            info!("legs: feet snapping (faster than 9 reaches/s against the body): {:.2} % where the steps put them, {:.2} % as drawn", at as f32 * 100.0 / n.max(1) as f32, shown as f32 * 100.0 / n.max(1) as f32);
+        }
     }
 }
 

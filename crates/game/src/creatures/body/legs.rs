@@ -358,6 +358,50 @@ struct Foot {
     grips: bool,
     /// Seconds before a leg holding nothing looks again.
     retry: f32,
+    /// Where the foot is drawn, and how fast it's going there: it has
+    /// weight, so it follows `at` (where the steps put it) as a damped
+    /// spring, never faster than a leg can swing (`foot_speed`): no snap
+    /// from one place to another in a frame, however the steps jump.
+    shown: Vec2,
+    speed: Vec2,
+}
+
+impl Foot {
+    fn new(at: Vec2, grips: bool) -> Self {
+        Foot { at, from: at, to: at, t: 1.0, grips, retry: 0.0, shown: at, speed: Vec2::ZERO }
+    }
+}
+
+/// How long a drawn foot takes to catch up with where it should be
+/// (seconds, about), and how fast a leg can swing (cells/s, for each cell
+/// of its reach; on top of the body's own speed).
+const FOOT_LAG: f32 = 0.06;
+const FOOT_SPEED: f32 = 9.0;
+
+/// `FOOT_LAG`, or `PLATYPUS_FOOTLAG` (0: none, to compare).
+fn foot_lag() -> f32 {
+    static LAG: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+    *LAG.get_or_init(|| std::env::var("PLATYPUS_FOOTLAG").ok().and_then(|v| v.parse().ok()).unwrap_or(FOOT_LAG))
+}
+
+/// `from` toward `to` as a critically damped spring taking about `lag`
+/// seconds, no faster than `most` (Game Programming Gems 4's smooth damp:
+/// steady for any frame time).
+fn smooth_damp(from: Vec2, to: Vec2, speed: &mut Vec2, lag: f32, most: f32, dt: f32) -> Vec2 {
+    let omega = 2.0 / lag.max(1e-4);
+    let x = omega * dt;
+    let decay = 1.0 / (1.0 + x + 0.48 * x * x + 0.235 * x * x * x);
+    let change = (from - to).clamp_length_max(most * lag);
+    let target = from - change;
+    let temp = (*speed + omega * change) * dt;
+    *speed = (*speed - omega * temp) * decay;
+    let mut out = target + (change + temp) * decay;
+    // (Not past where it's going.)
+    if (to - from).dot(out - to) > 0.0 {
+        out = to;
+        *speed = Vec2::ZERO;
+    }
+    out
 }
 
 /// A creature's legs as they are now.
@@ -396,6 +440,13 @@ pub struct Legs {
     /// Its chains as they are now, and where an aiming one reaches for.
     chains: Vec<super::chains::Chain>,
     aim: Option<Vec2>,
+    /// A readout of snaps: foot-frames seen, and of those, a foot that
+    /// moved faster than a leg swings (`FOOT_SPEED` reaches a second,
+    /// against the body): where the steps put it, and where it's drawn.
+    /// (Last frame's of each, and of the body.)
+    snaps: (u32, u32, u32),
+    before: Vec<(Vec2, Vec2)>,
+    before_body: Option<Vec2>,
 }
 
 #[derive(Component)]
@@ -450,6 +501,12 @@ impl Legs {
     /// 1: further than the leg can reach; it's drawn at full length).
     pub fn strain(&self) -> f32 {
         self.strain
+    }
+
+    /// Foot-frames seen, and how many snapped (faster than a leg swings,
+    /// against the body): where the steps put them, where they're drawn.
+    pub fn snaps(&self) -> (u32, u32, u32) {
+        self.snaps
     }
 
     /// Its chains' tips from their anchors, whether it's aiming, which way
@@ -641,7 +698,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -691,7 +748,7 @@ fn grow_legs(
                 View::Side => ground_under(&sim, hip, hip.x + legs.def.each[i].lean * facing, legs.def.full_reach()),
             };
             let at = held.unwrap_or(hip + Vec2::from_angle(legs.way(i)) * legs.def.full_reach() * 0.5);
-            legs.feet.push(Foot { at, from: at, to: at, t: 1.0, grips: true, retry: 0.0 });
+            legs.feet.push(Foot::new(at, true));
         }
         commands.entity(e).insert(legs);
     }
@@ -736,6 +793,9 @@ fn walk(
         // (From the side, turned round: its body flips at once, so its
         // feet are planted afresh on the other side too.)
         let turned = side && (k.loco.facing < 0.0) != (legs.facing < 0.0);
+        // (Put down somewhere else: drawn there at once. Turned round:
+        // the feet planted afresh, but drawn swinging over.)
+        let put = jumped;
         let jumped = jumped || turned;
         let (c, up) = if side {
             legs.facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
@@ -793,7 +853,7 @@ fn walk(
                     View::Side => ground_under(&sim, hip, hip.x + legs.def.each[i].lean * legs.facing, legs.def.full_reach()),
                 };
                 let at = held.unwrap_or(hip + Vec2::from_angle(way) * legs.def.full_reach() * 0.5);
-                legs.feet[i] = Foot { at, from: at, to: at, t: 1.0, grips: held.is_some(), retry: 0.0 };
+                legs.feet[i] = Foot::new(at, held.is_some());
             }
         }
         if !side {
@@ -1118,6 +1178,35 @@ fn walk(
                 f.at = hip + (f.at - hip).normalize_or(Vec2::NEG_Y) * reach;
             }
         }
+        // The drawn feet after where the steps put them, with weight.
+        let most = v.length() + reach * FOOT_SPEED;
+        let lag = foot_lag();
+        for f in &mut legs.feet {
+            if put || lag <= 0.0 {
+                f.shown = f.at;
+                f.speed = Vec2::ZERO;
+            } else {
+                f.shown = smooth_damp(f.shown, f.at, &mut f.speed, lag, most, dt);
+            }
+        }
+        // (A readout: feet that went faster than a leg swings, against
+        // the body: 9 reaches a second.)
+        let moved = legs.before_body.map(|b| c - b);
+        if !put
+            && let Some(body) = moved
+            && legs.before.len() == n
+            && dt > 0.0
+        {
+            for i in 0..n {
+                let (a, b) = legs.before[i];
+                let most = reach * FOOT_SPEED * dt;
+                legs.snaps.0 += 1;
+                legs.snaps.1 += ((legs.feet[i].at - a - body).length() > most) as u32;
+                legs.snaps.2 += ((legs.feet[i].shown - b - body).length() > most) as u32;
+            }
+        }
+        legs.before = legs.feet.iter().map(|f| (f.at, f.shown)).collect();
+        legs.before_body = Some(c);
     }
 }
 
@@ -1381,7 +1470,7 @@ fn draw(
         let rgb = |(r, g, b): (u8, u8, u8)| [r, g, b, 255];
         let dark = |(r, g, b): (u8, u8, u8)| ((r as f32 * 0.6) as u8, (g as f32 * 0.6) as u8, (b as f32 * 0.6) as u8);
         let (a, b) = (legs.def.reach * legs.def.upper, legs.def.reach * (1.0 - legs.def.upper));
-        let held: Vec<Vec2> = legs.feet.iter().filter(|f| f.grips).map(|f| f.at - o).collect();
+        let held: Vec<Vec2> = legs.feet.iter().filter(|f| f.grips).map(|f| f.shown - o).collect();
         let up = if side {
             legs.turn(Vec2::Y)
         } else if held.is_empty() {
@@ -1391,7 +1480,7 @@ fn draw(
         };
         for (i, f) in legs.feet.iter().enumerate() {
             let hip = legs.hip(i, c);
-            let f = Foot { at: f.at - o, ..*f };
+            let f = Foot { at: f.shown - o, ..*f };
             // (Knees also splay out from the body a little: from the side,
             // a front leg's forward, a back one's back.)
             let bend = if side {
@@ -1552,5 +1641,31 @@ fn draw(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_drawn_foot_has_weight_it_follows_never_faster_than_a_leg_swings_and_never_past() {
+        // Its foot put 40 cells off in one go (a step jumping): drawn, it
+        // goes there over frames, never faster than it may, and stops there.
+        let (mut at, to, mut speed) = (Vec2::ZERO, Vec2::new(40.0, 0.0), Vec2::ZERO);
+        let dt = 1.0 / 60.0;
+        let most = 300.0;
+        let mut frames = 0;
+        while at.distance(to) > 0.05 && frames < 120 {
+            let next = smooth_damp(at, to, &mut speed, FOOT_LAG, most, dt);
+            assert!(next.distance(at) <= most * dt * 1.01, "{} cells in a frame", next.distance(at));
+            assert!(next.x <= to.x + 1e-3, "past where it goes: {next}");
+            at = next;
+            frames += 1;
+        }
+        assert!((8..60).contains(&frames), "caught up in {frames} frames");
+        // (Held still, it stays.)
+        let still = smooth_damp(to, to, &mut Vec2::ZERO, FOOT_LAG, most, dt);
+        assert_eq!(still, to);
     }
 }
