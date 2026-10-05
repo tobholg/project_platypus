@@ -91,6 +91,9 @@
         "step_wood": (make: Step(heel: 130, scuff: 700, q: 2.0, length: 0.07, muffle: 1500), variants: 5, pitch: 0.05, volume: 0.35),
         "step_water": (make: Step(scuff: 900, q: 1.2, grit: 0.3, length: 0.14, muffle: 2000), variants: 4, pitch: 0.08, volume: 0.3),
         "land": (make: Thud(pitch: 70, drop: 0.4, noise: 0.6, length: 0.14, bright: 1500), variants: 3, pitch: 0.05, volume: 0.55),
+        // A great foot coming down (a tyrant's), a metal one (a walker's).
+        "stomp": (make: Thud(pitch: 38, drop: 0.7, noise: 0.5, length: 0.45, bright: 700), variants: 3, pitch: 0.05, reverb: 0.2, volume: 0.85),
+        "clank": (make: Clang(pitch: 210, ring: 0.12, length: 0.22, grit: 0.6, muffle: 1800), variants: 4, pitch: 0.06, volume: 0.5),
         "jump": (make: Burst(cutoff: 1500, length: 0.05, q: 0.7), variants: 3, pitch: 0.1, volume: 0.2),
         "air_jump": (make: Whoosh(from: 1600, to: 400, length: 0.18, q: 0.8), variants: 2, pitch: 0.05, volume: 0.35),
         "dash": (make: Whoosh(from: 600, to: 3000, length: 0.14, q: 0.9), variants: 3, pitch: 0.06, volume: 0.4),

@@ -1859,7 +1859,17 @@ parts, so another is a new file, not new code:
   `bones`, a `width`, an `elbow` bend, swaying `sway` cells at rest, a
   `claw` sprite (pointing right, its grip at the wrist) turned to the
   forearm; near ones in front, far ones behind. The crag crab is seen from
-  the side: eight legs, its pincers held out ahead. The near legs are drawn in front of the
+  the side: eight legs, its pincers held out ahead. `footfall`: what a
+  foot does coming down (from the side): a `sound` of its own (`stomp`,
+  `clank`) and the ground's footstep (`ground`), a `dust` puff the
+  colour of the ground (`World::puff`: dust that fades as it flies,
+  nothing lands), screen shake (`shake` trauma at its foot, less further
+  from the camera, none past 400 cells). Knuckles a quarter of the limb.
+  The ridge tyrant (tyrant.ron): a T-rex at a T-rex's size (150 cells
+  nose to tail, hips 50 up: twice a person), its art made by a script
+  (`tools/tyrant_art.py`: shapes, shaded from above, written as text
+  art); legs 46 + a foot bone 14, thighs 20 thick; it walks at 56
+  cells/s, each foot down most of a slow stride; stomp, dust, shake. The near legs are drawn in front of the
   body (z 10.06), the far ones behind, in `far` (else the near colour
   darker). Its box takes in its legs (the stilt stalker: 18 × 58). Dead,
   it lies on its belly (a box 14 high) on its legs folded under it. The

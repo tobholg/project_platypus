@@ -48,9 +48,10 @@ pub struct LegsPlugin;
 impl Plugin for LegsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<LegCanvas>()
+            .init_resource::<Footfalls>()
             .init_resource::<crate::canvas::StageView>()
             .init_resource::<BodyArt>()
-            .add_systems(Update, (grow_legs, walk, draw).chain().after(crate::creatures::body::animation::animate).after(TransformSystems::Propagate));
+            .add_systems(Update, (grow_legs, walk, footfalls, draw).chain().after(crate::creatures::body::animation::animate).after(TransformSystems::Propagate));
     }
 }
 
@@ -98,6 +99,36 @@ pub enum Knee {
     Up,
     Down,
 }
+
+/// What a foot coming down does (a heavy one): a sound of its own (and
+/// the ground's footstep under it), a puff of dust the colour of the
+/// ground, the screen shaken (`shake`: trauma at its foot, less further
+/// off, none past 400 cells).
+#[derive(Clone, Debug, Deserialize)]
+pub struct Footfall {
+    #[serde(default)]
+    pub sound: Option<String>,
+    #[serde(default = "one_f")]
+    pub volume: f32,
+    #[serde(default = "yes")]
+    pub ground: bool,
+    #[serde(default)]
+    pub dust: u32,
+    #[serde(default)]
+    pub shake: f32,
+}
+
+fn one_f() -> f32 {
+    1.0
+}
+fn yes() -> bool {
+    true
+}
+
+/// Feet that came down this frame (`walk` notes them, `footfalls` sounds
+/// them: it changes the world).
+#[derive(Resource, Default)]
+struct Footfalls(Vec<(Vec2, Footfall)>);
 
 /// An arm: a limb that doesn't walk, held out from the body (a crab's
 /// claws, a raptor's little arms), its hand resting where it says,
@@ -178,6 +209,9 @@ pub struct LegsDef {
     /// Side: its arms.
     #[serde(default)]
     pub arms: Vec<ArmDef>,
+    /// Side: what its feet do coming down.
+    #[serde(default)]
+    pub footfall: Option<Footfall>,
     /// Toes (cells long): a foot along the ground ahead, a claw behind.
     #[serde(default)]
     pub toes: f32,
@@ -589,7 +623,7 @@ fn grow_legs(
 
 /// Feet stay put, then step; the body turns to where it's going (from
 /// above) or rides its feet (from the side).
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn walk(
     time: Res<Time>,
     sim: Res<SimWorld>,
@@ -598,6 +632,7 @@ fn walk(
     mut bodies: Query<(&mut Sprite, &mut Transform), (Or<(With<LegBody>, With<LegEyes>)>, Without<CreatureSprite>, Without<LegStinger>, Without<LegClaw>)>,
     mut stingers: Query<(&mut Sprite, &mut Transform, &mut Visibility), (With<LegStinger>, Without<CreatureSprite>, Without<LegBody>, Without<LegEyes>, Without<LegClaw>)>,
     mut claws: Query<(&mut Sprite, &mut Transform), (With<LegClaw>, Without<CreatureSprite>, Without<LegBody>, Without<LegEyes>, Without<LegStinger>)>,
+    mut falls: ResMut<Footfalls>,
 ) {
     let dt = time.delta_secs().min(0.05);
     let now = time.elapsed_secs();
@@ -765,6 +800,7 @@ fn walk(
             }
             legs.phase = (legs.phase + rate * dt).fract();
             let lift = legs.def.lift;
+            let footfall = legs.def.footfall.clone();
             for i in 0..n {
                 let p = (legs.phase + legs.def.each[i].gait as f32 / groups).fract();
                 let (hip, x) = target(&legs, i);
@@ -774,6 +810,11 @@ fn walk(
                     if foot.t < 1.0 {
                         foot.t = 1.0;
                         foot.at = foot.to;
+                        if foot.grips
+                            && let Some(ff) = &footfall
+                        {
+                            falls.0.push((foot.at, ff.clone()));
+                        }
                     }
                     // (Left past its reach, a slip: put down again now.)
                     if foot.grips
@@ -932,6 +973,43 @@ fn walk(
             if (f.at - hip).length() > reach {
                 f.at = hip + (f.at - hip).normalize_or(Vec2::NEG_Y) * reach;
             }
+        }
+    }
+}
+
+/// Feet that came down: their thud (and the ground's footstep), dust,
+/// a shake of the screen if near.
+fn footfalls(mut falls: ResMut<Footfalls>, mut sim: ResMut<SimWorld>, mut sounds: MessageWriter<crate::sound::PlaySound>, mut trauma: ResMut<crate::fx::Trauma>, camera: Query<&GlobalTransform, With<crate::camera::MainCamera>>) {
+    let eye = camera.single().map(|c| c.translation().truncate()).ok();
+    for (at, ff) in falls.0.drain(..) {
+        if let Some(name) = &ff.sound {
+            sounds.write(crate::sound::PlaySound::at(name.clone(), at).volume(ff.volume));
+        }
+        let under = CellPos::from_world(at.x, at.y - 0.5);
+        if ff.ground
+            && let Some(what) = crate::sound::hooks::underfoot(&sim.world, under)
+        {
+            let name = match what {
+                "stone" => "step_stone",
+                "dirt" => "step_dirt",
+                "sand" => "step_sand",
+                "wood" => "step_wood",
+                "snow" => "step_snow",
+                "water" => "step_water",
+                _ => "step_grass",
+            };
+            sounds.write(crate::sound::PlaySound::at(name, at).volume(ff.volume));
+        }
+        if ff.dust > 0
+            && let Some(cell) = sim.world.get(under).filter(|c| c.material != platypus_sim::MaterialId::AIR)
+        {
+            sim.world.puff([at.x, at.y + 0.5], cell, ff.dust as usize, 1.6);
+        }
+        if ff.shake > 0.0
+            && let Some(eye) = eye
+        {
+            let near = (1.0 - eye.distance(at) / 400.0).max(0.0);
+            trauma.0 = (trauma.0 + ff.shake * near).min(1.0);
         }
     }
 }
@@ -1099,7 +1177,7 @@ fn draw(
                 // (Knuckles at the knee and the ankle.)
                 for (at, wk) in [(Some(k), w(1)), (ankle, w(2))] {
                     if let Some(at) = at {
-                        stroke(at, at, wk * 0.5 - 0.3, wk * 0.5 - 0.3, joint, to);
+                        stroke(at, at, (wk * 0.25).max(0.8), (wk * 0.25).max(0.8), joint, to);
                     }
                 }
                 continue;
@@ -1135,7 +1213,7 @@ fn draw(
                 stroke(shoulder, elbow, w(0) * 0.5 + grow, w(1) * 0.5 + grow, pass, to);
                 stroke(elbow, wrist, w(1) * 0.5 + grow, w(2) * 0.5 + grow, pass, to);
             }
-            stroke(elbow, elbow, w(1) * 0.5 - 0.3, w(1) * 0.5 - 0.3, knob, to);
+            stroke(elbow, elbow, (w(1) * 0.25).max(0.8), (w(1) * 0.25).max(0.8), knob, to);
         }
     }
     let [back, front, stage_back, stage_front] = &mut canvas.0;

@@ -192,6 +192,21 @@ impl World {
         self.particles.push(p);
     }
 
+    /// A puff of dust the colour of `cell` kicked up at `at` (a heavy foot
+    /// coming down): it fades as it flies, nothing lands.
+    pub fn puff(&mut self, at: [f32; 2], cell: Cell, count: usize, speed: f32) {
+        let mut rng = self.rng_for(0xD057, CellPos::from_world(at[0], at[1]));
+        let mut cell = cell;
+        cell.flags = 0;
+        for _ in 0..count {
+            let a = rng.next_u32() as f32 / u32::MAX as f32 * std::f32::consts::PI;
+            let s = speed * (0.3 + 0.7 * rng.next_u32() as f32 / u32::MAX as f32);
+            let mut d = Particle::new(at, [a.cos() * s, a.sin() * s * 0.45], cell, 14 + rng.next_u8() as u16 / 12, Landing::Vanish);
+            d.gravity = 0.15;
+            self.particles.push(d);
+        }
+    }
+
     /// Burst of `material` flying out of `at` (blood from a wound, a splash).
     /// Lands as real cells.
     ///

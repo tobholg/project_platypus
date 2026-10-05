@@ -1,0 +1,47 @@
+// A ridge tyrant: a T-rex, as big as one. Its hips are twice a person's
+// height, nose to tail it's 150 cells; it comes on slowly, every step a
+// thud you feel. A first version (BE `limbs`): it walks, and its touch
+// crushes; its bite and its tail come with moves that drive limbs.
+(
+    name: "Ridge tyrant",
+    // Its box takes in its legs (its tail and head reach past it).
+    size: (44, 72),
+    health: 600,
+    team: Enemy,
+    kind: "beast",
+    art: "tyrant_body",
+    // Two great legs from the side (legs.rs), three bones each as the
+    // raptor's: a massive thigh forward to the knee, a shank back to the
+    // ankle, a long foot bone forward to its toes. Its hips 50 cells up;
+    // a long stride, slowly: each foot stays down most of the time. Every
+    // foot that comes down thuds, kicks up the ground's dust and shakes
+    // the screen if you're near. Tiny arms at its chest.
+    legs: (view: Side, reach: 46, upper: 0.52, ankle: 14, heel: 60, step: 0.4, lift: 9, ride: 50, stride: 36, tilt: 12, bob: 3, pitch: 3,
+           color: (90, 80, 58), joint: (64, 56, 40), outline: (24, 20, 16), width: [20, 11, 7, 6], toes: 12,
+           body: "tyrant_body", eyes: (246, 196, 60),
+           each: [
+               (hip: (0, 0), gait: 0, knee: Forward),
+               (hip: (4, 2), gait: 1, knee: Forward, far: true),
+           ],
+           arms: [
+               (shoulder: (40, -6), hand: (46, -12), bones: (5, 5), width: [4, 3, 2], elbow: Back, sway: 0.5),
+               (shoulder: (42, -5), hand: (48, -11), bones: (5, 5), width: [4, 3, 2], elbow: Back, sway: 0.5, far: true),
+           ],
+           footfall: (sound: Some("stomp"), dust: 16, shake: 0.22)),
+    movement: (
+        run_speed: 70,
+        ground_accel: 220,
+        ground_decel: 300,
+        jump_height: 24,
+        air_jumps: 0,
+        step_height: 20,
+        dash_speed: 0,
+    ),
+    poise: 120,
+    heft: 8,
+    touch: (harm: blunt, damage: 30, knock: 500, stun: 0.4),
+    brain: (
+        kind: "hunter",
+        params: (aggro: 600, close: Walk(keep: 30, jump_to_reach: 20), wander: (speed: 0.3, every: 4.0)),
+    ),
+)
