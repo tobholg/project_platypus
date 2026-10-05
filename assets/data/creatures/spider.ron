@@ -17,9 +17,27 @@
     profile: {acid: -0.25},
     // It bleeds acid (mind where you hit it), and acid doesn't hurt it.
     blood: "acid",
-    art: "spider_body",
-    legs: (count: 8, reach: 72, upper: 0.48, step: 0.1, lift: 12, hips: 6, spread: 11,
-           color: (24, 18, 22), joint: (74, 36, 40), thick: 5, body: "spider_body", eyes: (255, 52, 38)),
+    art: "spider_side",
+    // Seen from the side on the ground, walls and ceilings: its legs from
+    // under its head, the knees up high over its back, the feet spread
+    // far ahead and behind (four near, four far), stepping in two sets of
+    // four. On the wall behind, from above (`back`): its legs splayed all
+    // round it.
+    legs: (view: Side, reach: 62, upper: 0.5, step: 0.1, lift: 8, ride: 13, stride: 16, tilt: 25,
+           color: (52, 40, 46), joint: (96, 50, 54), far: (22, 16, 20), thick: 4, body: "spider_side", eyes: (255, 52, 38),
+           strikers: [0, 4],
+           each: [
+               (hip: (9, 0), lean: 36, gait: 0, knee: Up),
+               (hip: (7.5, 0), lean: 15, gait: 1, knee: Up),
+               (hip: (6, 0), lean: -22, gait: 0, knee: Up),
+               (hip: (4.5, 0), lean: -42, gait: 1, knee: Up),
+               (hip: (10, 1), lean: 29, gait: 1, knee: Up, far: true),
+               (hip: (8.5, 1), lean: 9, gait: 0, knee: Up, far: true),
+               (hip: (7, 1), lean: -15, gait: 1, knee: Up, far: true),
+               (hip: (5.5, 1), lean: -35, gait: 0, knee: Up, far: true),
+           ],
+           back: Some((count: 8, reach: 72, upper: 0.48, step: 0.1, lift: 12, hips: 6, spread: 11,
+               color: (24, 18, 22), joint: (74, 36, 40), thick: 5, body: "spider_body", eyes: (255, 52, 38)))),
     // (Its eyes are drawn over the dark: `legs`' `eyes`. The faintest red on
     // what's right beside it: no glow.)
     light: (color: (255, 40, 30), strength: 0.04),

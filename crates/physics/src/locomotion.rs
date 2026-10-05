@@ -33,6 +33,9 @@ pub struct Intent {
 
 /// How hard a climber presses into what it holds on to (cells/s).
 const CLING_PRESS: f32 = 45.0;
+/// How long a climber gone off the end of a wall or ceiling keeps going
+/// round its edge, looking for the face there (seconds).
+const WRAP_TIME: f32 = 0.3;
 
 /// On a rope, steering pushes at this share of gravity (a pendulum's own
 /// scale, whatever the air control), while it's going slower than this
@@ -259,6 +262,12 @@ pub struct Locomotion {
     /// Holding on to a wall or ceiling: which way its feet point (a climber;
     /// zero: on the wall behind).
     cling: Option<Vec2>,
+    /// Last tick's hold on a wall or ceiling (which way its feet pointed,
+    /// how it was going), and, gone off the end of one, going round its
+    /// edge: the way it held, the way its feet point now (onto the face
+    /// round the corner), seconds left to find it.
+    held: Option<(Vec2, Vec2)>,
+    wrap: Option<(Vec2, Vec2, f32)>,
     /// Seconds to the next swim stroke, while jump is held in water.
     stroke_left: f32,
     /// Rocket boots' fuel left (seconds).
@@ -304,6 +313,8 @@ impl Default for Locomotion {
             backed: false,
             dive: 0.0,
             cling: None,
+            held: None,
+            wrap: None,
             contacts: Contacts::default(),
         }
     }
@@ -445,6 +456,7 @@ impl Locomotion {
         // A climber on a wall or ceiling: it holds on (pressing into it, so
         // it stays touching) and goes along it; a jump lets go (a leap).
         self.cling = None;
+        let held = self.held.take();
         if s.cling && !jump_pressed && self.contacts.submerged < 0.5 {
             let c = self.contacts;
             let wall = if c.wall_left { -1.0 } else if c.wall_right { 1.0 } else { 0.0 };
@@ -455,14 +467,44 @@ impl Locomotion {
             if on_ceiling {
                 body.vel = Vec2::new(mx * s.run_speed, CLING_PRESS);
                 self.cling = Some(Vec2::Y);
+                self.held = Some((Vec2::Y, body.vel));
+                self.wrap = None;
             } else if on_wall {
                 body.vel = Vec2::new(wall * CLING_PRESS, my * s.run_speed);
                 self.cling = Some(Vec2::new(wall, 0.0));
+                self.held = Some((Vec2::new(wall, 0.0), body.vel));
+                self.wrap = None;
             } else if self.backed && (!grounded || my > 0.0) {
                 // On the wall behind: every way it steers (its feet point
                 // into the picture: no side).
                 body.vel = Vec2::new(mx, my).clamp_length_max(1.0) * s.run_speed;
                 self.cling = Some(Vec2::ZERO);
+                self.wrap = None;
+            } else if !grounded {
+                // Gone off the end of what it held (along a ceiling past
+                // its edge, up a wall past its top): round the edge, a
+                // moment, onto the face there: its feet pressed onto it
+                // (back the way it was going), going on the way the surface
+                // it left was (up round a ceiling's edge, over a wall's top),
+                // while it still steers on.
+                if let Some((prev, vel)) = held {
+                    let along = vel - prev * vel.dot(prev);
+                    if along.length() > 5.0 {
+                        self.wrap = Some((prev, -along.normalize(), WRAP_TIME));
+                    }
+                }
+                if let Some((prev, feet, left)) = self.wrap {
+                    let steer = Vec2::new(mx, my);
+                    if left > 0.0 && (steer.dot(prev) > 0.0 || steer.dot(-feet) > 0.0) {
+                        body.vel = feet * CLING_PRESS + prev * s.run_speed;
+                        self.wrap = Some((prev, feet, left - dt));
+                        self.cling = Some(feet);
+                    } else {
+                        self.wrap = None;
+                    }
+                }
+            } else {
+                self.wrap = None;
             }
             if self.cling.is_some() {
                 self.state = MoveState::Ground;

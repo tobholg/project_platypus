@@ -295,6 +295,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
+            .add_systems(Update, (overhang_script, shots_script))
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
             .add_systems(Update, (underlook_script, voidlook_script))
@@ -5119,7 +5120,9 @@ fn legs_script(
         // The player waits further on, standing still; the camera goes
         // with the walker.
         let gap = std::env::var("PLATYPUS_AHEAD").ok().and_then(|v| v.parse().ok()).unwrap_or(600.0);
-        let px = (x + gap * *dir).clamp(70.0, 1850.0);
+        // (Inside the arena's walls, there.)
+        let px = x + gap * *dir;
+        let px = if std::env::var("PLATYPUS_WORLD").is_ok_and(|w| w == "arena") { px.clamp(70.0, 1850.0) } else { px };
         // (Its chunks aren't loaded yet that far off: the ground as the
         // world was made there.)
         match ground(px, pk.body.pos.y).or_else(|| sim.generator.surface_hint(px as i32).map(|y| y as f32)) {
@@ -5181,7 +5184,8 @@ fn legs_script(
     }
     // Backing off: walking away from it (not into the walls).
     let away = if pk.body.pos.x < fk.body.pos.x { KeyCode::KeyA } else { KeyCode::KeyD };
-    let room = if away == KeyCode::KeyA { pk.body.pos.x > 90.0 } else { pk.body.pos.x < 1830.0 };
+    let arena = std::env::var("PLATYPUS_WORLD").is_ok_and(|w| w == "arena");
+    let room = !arena || if away == KeyCode::KeyA { pk.body.pos.x > 90.0 } else { pk.body.pos.x < 1830.0 };
     if *step == 1 && t < *retreat && room {
         keys.release(if away == KeyCode::KeyA { KeyCode::KeyD } else { KeyCode::KeyA });
         keys.press(away);
@@ -6213,6 +6217,109 @@ fn sounds_script(s: Res<Scenario>, bank: Res<crate::sound::SoundBank>, player: Q
     info!("sounds: {} ({} of {})", name, *next + 1, names.len());
     out.write(crate::sound::PlaySound::at(name, at + Vec2::new(30.0, 0.0)));
     *next += 1;
+}
+
+/// `PLATYPUS_SHOTS=dir` (any scenario but `legs`, which has its own): a
+/// picture every `PLATYPUS_SHOT_EVERY` s (2) into it, `<scenario>_<t in
+/// hundredths>.png`.
+fn shots_script(mut commands: Commands, s: Res<Scenario>, offscreen: Option<Res<crate::camera::Offscreen>>, mut next: Local<f32>) {
+    let Ok(dir) = std::env::var("PLATYPUS_SHOTS") else { return };
+    if s.name == "legs" || s.elapsed < *next {
+        return;
+    }
+    *next += std::env::var("PLATYPUS_SHOT_EVERY").ok().and_then(|v| v.parse().ok()).unwrap_or(2.0);
+    let image = match &offscreen {
+        Some(o) => Screenshot::image(o.0.clone()),
+        None => Screenshot::primary_window(),
+    };
+    commands.spawn(image).observe(save_to_disk(format!("{dir}/{}_{:05.0}.png", s.name, s.elapsed * 100.0)));
+}
+
+/// A climber over an overhang (BE `limbs` stage 3): a rock like a
+/// mushroom in the flat arena, a stem (x 1002..1032, 100 high) under a cap
+/// (x 942..1092, 12 thick), the player waiting on the cap; a creature
+/// (`PLATYPUS_KIND`, the spider) put down on the floor to the left. To get
+/// at the player it climbs the stem's face, goes along under the cap
+/// upside down, and over its edge onto it. Logs four times a second where
+/// it is, what it holds and the surface its legs are on; then when it
+/// first held a wall, the ceiling, and got on top.
+fn overhang_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(Entity, &mut Kinematics), With<LocalPlayer>>,
+    them: Query<(&crate::creatures::Creature, &Kinematics, Option<&crate::creatures::body::legs::Legs>), Without<LocalPlayer>>,
+    // (phase, next log, first on a wall, on the ceiling, on top, the kind)
+    mut state: Local<(u8, f32, f32, f32, f32, String)>,
+) {
+    if s.name != "overhang" {
+        return;
+    }
+
+    let Ok((me, mut k)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let fl = floor as f32;
+    let b = platypus_sim::edit::BLOCK;
+    if state.0 == 0 && t > 0.5 {
+        if let Some(stone) = sim.materials().id("stone") {
+            for bx in 1002 / b..1032 / b {
+                for by in floor / b..(floor + 100) / b {
+                    sim.queue(WorldEdit::PlaceBlock { block: CellPos::new(bx, by), material: stone, back: false });
+                }
+            }
+            for bx in 942 / b..1092 / b {
+                for by in (floor + 100) / b..(floor + 112) / b {
+                    sim.queue(WorldEdit::PlaceBlock { block: CellPos::new(bx, by), material: stone, back: false });
+                }
+            }
+        }
+        k.body.pos = Vec2::new(1070.0, fl + 128.0);
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+        let kind = std::env::var("PLATYPUS_KIND").unwrap_or_else(|_| "spider".into());
+        // (The camera on it.)
+        commands.entity(me).remove::<crate::camera::CameraTarget>();
+        crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(860.0, fl + 12.0), |e| {
+            e.insert(crate::camera::CameraTarget);
+        });
+        *state = (1, 1.0, -1.0, -1.0, -1.0, kind);
+        return;
+    }
+    if state.0 != 1 {
+        return;
+    }
+    let Some((_, ck, legs)) = them.iter().find(|(c, _, _)| c.kind == state.5) else { return };
+    let (x, y) = (ck.body.pos.x, ck.body.pos.y - fl);
+    let holds = ck.loco.clinging();
+    if state.2 < 0.0 && holds.is_some_and(|d| d.x != 0.0) {
+        state.2 = t;
+        info!("overhang: t {t:.2}: it holds the wall at ({x:.0}, {y:.0})");
+    }
+    if state.3 < 0.0 && holds == Some(Vec2::Y) {
+        state.3 = t;
+        info!("overhang: t {t:.2}: it holds the ceiling at ({x:.0}, {y:.0})");
+    }
+    if state.4 < 0.0 && y > 112.0 && ck.loco.grounded() {
+        state.4 = t;
+        info!("overhang: t {t:.2}: it's on top, at ({x:.0}, {y:.0})");
+    }
+    if t >= state.1 {
+        state.1 += 0.25;
+        let (surface, back) = legs.map_or((0.0, false), |l| l.surface());
+        let (tilt, _, planted) = legs.map_or((0.0, 0.0, 0), |l| l.pose(0.0));
+        info!(
+            "overhang: t {t:.2}: at ({x:.0}, {y:.0}) vel {:?} holds {holds:?} grounded {} surface {surface:.0}°{} tilt {tilt:.0}° feet planted {planted} strain {:.2}",
+            ck.body.vel.round(),
+            ck.loco.grounded(),
+            if back { " (from above, on the wall behind)" } else { "" },
+            legs.map_or(0.0, |l| l.strain())
+        );
+    }
+    if t > s.duration - 0.6 {
+        state.0 = 2;
+        info!("overhang: first on a wall at {:.1} s, the ceiling at {:.1} s, on top at {:.1} s (-1: never)", state.2, state.3, state.4);
+    }
 }
 
 /// Spiders on the wall behind: a wall of stone blocks put up in the

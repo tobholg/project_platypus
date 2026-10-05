@@ -422,6 +422,38 @@ fn hunt(
                 {
                     move_y = 1.0;
                 }
+                // (Holding a wall, its way on along the ceiling just over it
+                // (an overhang's corner), away from the wall: up into the
+                // corner first, so it touches the ceiling and takes hold.)
+                if move_y == 0.0
+                    && let Some(wall) = clinging
+                    && wall.x != 0.0
+                    && mx * wall.x < 0.0
+                {
+                    let top = pos.y + k.body.half.y;
+                    let near = (1..=6).any(|d| [-0.5, 0.0, 0.5].iter().any(|s| sim.world.is_solid(platypus_sim::CellPos::from_world(pos.x + s * k.body.half.x, top + d as f32))));
+                    if near {
+                        move_y = 1.0;
+                    }
+                }
+                // (On the ceiling, its way on up (round the ceiling's edge,
+                // onto the face over it): along to the edge first, the side
+                // that's open over it.)
+                let mut mx = mx;
+                if clinging == Some(Vec2::Y) && move_y > 0.0 && mx == 0.0 {
+                    let top = pos.y + k.body.half.y;
+                    let open = |x: f32| !(2..=8).any(|d| sim.world.is_solid(platypus_sim::CellPos::from_world(x, top + d as f32)));
+                    let (left, right) = (open(pos.x - k.body.half.x - 2.0), open(pos.x + k.body.half.x + 2.0));
+                    mx = match (left, right) {
+                        (true, false) => -1.0,
+                        (false, true) => 1.0,
+                        _ => 0.0,
+                    };
+                }
+                // (PLATYPUS_STEERLOG: how it steers, every 15 ticks.)
+                if std::env::var("PLATYPUS_STEERLOG").is_ok() && tick.is_multiple_of(15) {
+                    info!("steer: t {tick} at {:?} to {:?} clear {} steer {:?} clinging {:?} grounded {grounded} → x {mx} y {move_y}", pos.round(), t.round(), crate::creatures::moves::clear(&sim, pos, t), steer, clinging);
+                }
                 mx
             }
             (Close::Crawl { .. }, None) => {

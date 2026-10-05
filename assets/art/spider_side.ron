@@ -1,0 +1,59 @@
+// A cave spider seen from the side, pointing right: a big round abdomen
+// with a red mark and bristles, a narrow waist, a smaller head with its eyes
+// glowing at its front, fangs under its face. Made by tools/spider_side_art.py
+// (shapes, shaded from above), kept as text. Its legs are its creature
+// file's `legs` (from the side; spider_body.ron is it from above, on the
+// wall behind); `grip` is its waist, the middle of it.
+(
+    size: (47, 27),
+    feet: (28, 26),
+    outline: (14, 8, 12),
+    palette: {
+        'b': (36, 26, 32),   // abdomen
+        'B': (62, 46, 56),   // abdomen, lit
+        'L': (84, 64, 78),   // abdomen, the light on its back
+        'h': (96, 78, 86),   // bristles
+        'x': (150, 26, 26),   // its mark
+        'X': (110, 18, 22),   // its mark, deeper
+        'c': (44, 32, 40),   // head
+        'C': (70, 54, 64),   // head, lit
+        'e': (255, 52, 38),   // eyes (they glow: the creature's light)
+        'f': (208, 196, 172),   // fangs
+        'F': (150, 138, 120),   // fangs, shade
+    },
+    frames: {
+        "body": [
+            "...............................................",
+            "..............h................................",
+            "..........h..hLLL.h............................",
+            ".........hLLLxxXxhLLL.h........................",
+            "......hLLLXxxXxLLLLLLhL........................",
+            ".....hLLLLLLxxXLLLLLLLLL.......................",
+            "....LLLLLLLLXxxXxLLLLLLLL......................",
+            "..hLLLLLLBXxxBBBBBBBBLLLLh.....................",
+            "..LLLLLBBBBBBBBBBBBBBBBBLBL....................",
+            "..LLBBBBBBBBBBBBBBBBBBBBBBB....................",
+            ".hBBBBBBBBBBBBBBBBBBBBBBBBB....................",
+            ".LBBBBBBBBBBBBBBBBBBBBBBBbb...CCCCCCCCC........",
+            ".BBBBBBBBBBBBBBBBBBBBBBBBbb.CCCCCCCCCCeCC......",
+            ".BBBBBBBBBBBBBBBBBBBBBBBBCcCCCCCCCCCCCCCCC.....",
+            ".BBBBBBBBBBBBBBBBBBBBBBBBCCCCCCCCCCCCCCCCeC....",
+            ".bBBBBBBBBBBBBBBBBBBBBBbbcCCCCcCCCCCCCCCccCC...",
+            ".bbbbBBBBBBBBBBBBBBbbbbbbccccccccccccccccccC...",
+            ".bbbbbbbbbbBBbbbbbbbbbbbbcccccccccccccccccec...",
+            "..bbbbbbbbbbbbbbbbbbbbbbbccccccccccccccccccc...",
+            "...bbbbbbbbbbbbbbbbbbbbb...cccccccccccccccfc...",
+            "....bbbbbbbbbbbbbbbbbbb.....ccccccccccccccfff..",
+            ".....bbbbbbbbbbbbbbbb........cccccccccccccfff..",
+            ".......bbbbbbbbbbbb............ccccccccc.ffff..",
+            "...........bbbb...........................ffff.",
+            "...........................................FFF.",
+            "...........................................FF..",
+            "...............................................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (28, 18) } },
+)

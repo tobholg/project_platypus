@@ -1795,6 +1795,12 @@ parts, so another is a new file, not new code:
 - **`cling`** (movement): a climber touching a wall or ceiling holds on
   (pressing into it), goes along it where it steers, and lets go on a
   jump; the sprite is turned to the surface (upside down on a ceiling).
+  Gone off the end of what it held (along a ceiling past its edge, up a
+  wall past its top), it goes round the edge for up to 0.3 s while it
+  still steers on: its feet pressed onto the face round the corner (back
+  the way it was going), moving on the way the surface it left was (up
+  round a ceiling's edge, over a wall's top onto it); its feet point
+  that way meanwhile (`clinging`).
 - All fight with the `hunter` brain (§6.4), closing with `Crawl` (at you
   over any surface, stopping `keep` cells off, a pounce when near, a drop
   from a ceiling above you),
@@ -1915,7 +1921,23 @@ parts, so another is a new file, not new code:
   it: the tail's "jitter", the tail itself smooth against its anchor;
   snapping the body to whole cells instead made the whole creature
   judder as it walked.) Spiders' too (from above: all behind the body);
-  the shared leg canvas is gone. Feet have weight: each is drawn following where its
+  the shared leg canvas is gone. From the side, a body is in the frame
+  of the surface it's on (`surface`: the ground, the wall or ceiling it
+  holds, eased round at 10 rad/s as it goes over onto it): its ride and
+  tilt, its feet's footholds (cast down off the surface, on a cell's
+  face), its gait, its swing's arc, its sprite (turned by the surface and
+  its tilt) and its limbs' drawing are all in it, so a side-view walker
+  climbs walls and walks the ceiling upside down; it faces the way it
+  goes along a wall or ceiling. A body seen two ways (`back`: a spider
+  from the side on the ground, walls and ceilings, from above on the
+  wall behind) turns over after 0.12 s on the wall behind or off it (its
+  legs and their sprites grow again as the other). The `overhang`
+  scenario: a rock like a mushroom in the flat arena (a stem, 100 high,
+  under a cap 12 thick), the player on the cap, a spider on the floor:
+  it climbs the stem at 4.3 s, takes the cap's underside at 4.9, goes
+  round its edge and up its face, is on top at 6.8 and at the player
+  (four times a second where it is, what it holds, its surface).
+  `PLATYPUS_SHOTS` takes pictures in every scenario now. Feet have weight: each is drawn following where its
   steps put it as a damped spring (`FOOT_LAG` 0.06 s; `PLATYPUS_FOOTLAG=0`:
   none, to compare), never faster than the body's speed plus 9 of its
   reaches a second, so a step that jumps (replanted, slipped, a leg let
@@ -1968,8 +1990,12 @@ parts, so another is a new file, not new code:
   its own beat); their light is only the faintest red on what's right
   beside them (bats 0.03, no haze). `drops`: items that fall out when it
   dies.
-- The cave spider (24 × 18, 130 hp: a body from above with eight glowing
-  red eyes, legs 72 cells long, 5 thick; climbs; stops a leg's length off (`keep`
+- The cave spider (24 × 18, 130 hp: seen from the side, a big abdomen,
+  a narrow waist, a head with its red eyes glowing at its front and fangs
+  under it (`spider_side`, made by `tools/spider_side_art.py`), legs 62
+  long from under its head, knees up over its back, four near and four
+  far stepping in two sets; on the wall behind, from above, its eight
+  glowing eyes and legs 72 cells long, 5 thick, all round it; climbs; stops a leg's length off (`keep`
   34, no pounce: its bite leaps); stamps when you're close, bites from
   further, spits from afar: its moves, §6.4 (its sting is gone: it read
   as a stick poking out);
@@ -2038,7 +2064,10 @@ player has seen creatures do) and `fight.rs` (the arena's readouts).
   (cells), `close` (`Walk(keep, jump_to_reach)`, `Range(near, far)`,
   `Swoop(hover, dive_time, dive_every)`, `Hop(every)`,
   `Crawl(pounce_range, pounce_every, keep)` (`keep`: how near it comes,
-  across, 3 by default): holding a wall it's going into,
+  across, 3 by default): holding a wall, its way on along the ceiling
+  just over it, away from the wall, it goes up into the corner first (to
+  touch the ceiling and take hold); on the ceiling, its way on up, it
+  goes along to the edge whose side is open over it first; holding a wall it's going into,
   with the target level, it climbs it, over: a spider in its own acid's
   crater used to press on the crater's side for good), `attack` (`Touch`, `Swing(reach,
   every, combo)`, `Shoot(draw, every, wobble)`), `wander: (speed, every)`,

@@ -53,7 +53,7 @@ impl Plugin for LegsPlugin {
             // (The bestiary's stage view: canvases may draw for it.)
             .init_resource::<crate::canvas::StageView>()
             .init_resource::<BodyArt>()
-            .add_systems(Update, (grow_legs, aims, walk, footfalls, draw).chain().after(crate::creatures::body::animation::animate).after(TransformSystems::Propagate));
+            .add_systems(Update, (turn_over, grow_legs, aims, walk, footfalls, draw).chain().after(crate::creatures::body::animation::animate).after(TransformSystems::Propagate));
     }
 }
 
@@ -276,6 +276,11 @@ pub struct LegsDef {
     /// over the body while it stings (`Rear::curl`).
     #[serde(default)]
     pub stinger: Option<String>,
+    /// Another way to be seen, on the wall behind (a spider seen from the
+    /// side on the ground, walls and ceilings; from above on the wall
+    /// behind): it turns over to it when it holds on there, and back.
+    #[serde(default)]
+    pub back: Option<Box<LegsDef>>,
 }
 
 /// How a legged body is held (a move: `moves/`): raised `lift` cells
@@ -420,7 +425,12 @@ pub struct Legs {
     /// nose up), and its grip's height (world y) as it rides its feet.
     facing: f32,
     tilt: f32,
-    ride: Option<f32>,
+    ride: Option<Vec2>,
+    /// Side: the surface it's on, as a turn from the ground (radians: a
+    /// quarter turn, a wall on its right; a half, the ceiling), eased
+    /// round as it goes over onto it. Its body, legs and steps are all in
+    /// that frame: its ground is under it whichever way that is.
+    surface: f32,
     /// Side: the ground's slope under its feet (radians, up ahead), as
     /// last read.
     slope: f32,
@@ -447,6 +457,10 @@ pub struct Legs {
     snaps: (u32, u32, u32),
     before: Vec<(Vec2, Vec2)>,
     before_body: Option<Vec2>,
+    /// Seen as its def's `back` (on the wall behind), and how long it's
+    /// been where the other view belongs (it turns over after a moment).
+    on_back: bool,
+    other: f32,
 }
 
 #[derive(Component)]
@@ -494,13 +508,19 @@ impl Legs {
     /// how high its grip rides over the bottom of its box (cells), and
     /// how many of its feet hold something.
     pub fn pose(&self, bottom: f32) -> (f32, f32, usize) {
-        (self.tilt.to_degrees(), self.ride.map_or(0.0, |y| y - bottom), self.feet.iter().filter(|f| f.grips && f.t >= 1.0).count())
+        (self.tilt.to_degrees(), self.ride.map_or(0.0, |r| r.y - bottom), self.feet.iter().filter(|f| f.grips && f.t >= 1.0).count())
     }
 
     /// How far its furthest foot is from its hip, against its reach (over
     /// 1: further than the leg can reach; it's drawn at full length).
     pub fn strain(&self) -> f32 {
         self.strain
+    }
+
+    /// The surface it's on (degrees from the ground: 90 a wall on its
+    /// right, 180 the ceiling), and whether it's seen as its `back`.
+    pub fn surface(&self) -> (f32, bool) {
+        (self.surface.to_degrees(), self.on_back)
     }
 
     /// Foot-frames seen, and how many snapped (faster than a leg swings,
@@ -524,8 +544,8 @@ impl Legs {
     /// its chains are borrowed): from the side, mirrored to its facing and
     /// tilted; from above, turned to its heading.
     fn frame(&self) -> impl Fn(Vec2) -> Vec2 + use<> {
-        let (side, f, tilt, heading) = (self.def.view == View::Side, self.facing, self.tilt, self.heading);
-        move |v: Vec2| if side { Vec2::from_angle(tilt * f).rotate(Vec2::new(v.x * f, v.y)) } else { Vec2::from_angle(heading).rotate(v) }
+        let (side, f, tilt, heading, surface) = (self.def.view == View::Side, self.facing, self.tilt, self.heading, self.surface);
+        move |v: Vec2| if side { Vec2::from_angle(surface + tilt * f).rotate(Vec2::new(v.x * f, v.y)) } else { Vec2::from_angle(heading).rotate(v) }
     }
 
     /// Which way a side-view joint bends (`ahead`: which way the limb's
@@ -542,9 +562,25 @@ impl Legs {
     }
 
     /// A point on the body (cells from its grip, facing right, y up) as
-    /// it's turned now (Side: mirrored to its facing, tilted).
+    /// it's turned now (Side: mirrored to its facing, tilted, turned to
+    /// the surface it's on).
     fn turn(&self, p: Vec2) -> Vec2 {
-        Vec2::from_angle(self.tilt * self.facing).rotate(Vec2::new(p.x * self.facing, p.y))
+        Vec2::from_angle(self.surface + self.tilt * self.facing).rotate(Vec2::new(p.x * self.facing, p.y))
+    }
+
+    /// Side: the surface's frame (not the body's tilt): along it (the
+    /// world's right, on the ground) and up off it.
+    fn along(&self) -> Vec2 {
+        Vec2::from_angle(self.surface)
+    }
+    fn off(&self) -> Vec2 {
+        Vec2::from_angle(self.surface).perp()
+    }
+
+    /// Side: where leg `i`'s foot goes, wanting to be `ahead` cells along
+    /// the surface from its hip: the surface under there, in the frame.
+    fn ground_under(&self, sim: &SimWorld, i: usize, c: Vec2, ahead: f32, reach: f32) -> Option<Vec2> {
+        ground_under(sim, self.along(), self.hip(i, c), ahead, reach)
     }
 
     /// Leg `i`'s hip, in the world, the body at `c`.
@@ -598,40 +634,48 @@ fn foothold(sim: &SimWorld, hip: Vec2, way: f32, reach: f32, back: bool) -> Opti
     best.map(|(_, p)| p).or(back)
 }
 
-/// Side: where a foot goes, wanting to be under `x`: the ground there if
-/// it's in reach, else nearer the hip (down a steep slope the ground ahead
-/// is past its reach; nearer, it isn't).
-fn ground_under(sim: &SimWorld, hip: Vec2, x: f32, reach: f32) -> Option<Vec2> {
-    (0..5).find_map(|k| ground_at(sim, hip, x + (hip.x - x) * k as f32 / 5.0, reach))
+/// Side: where a foot goes, wanting to be `ahead` cells along the
+/// surface (`along`: its way, the world's right on the ground) from its
+/// hip: the surface there if it's in reach, else nearer the hip (down a
+/// steep slope the ground ahead is past its reach; nearer, it isn't).
+fn ground_under(sim: &SimWorld, along: Vec2, hip: Vec2, ahead: f32, reach: f32) -> Option<Vec2> {
+    (0..5).find_map(|k| ground_at(sim, along, hip, ahead * (1.0 - k as f32 / 5.0), reach))
 }
 
-/// The ground under `x` within reach of the hip: down from the hip's
-/// height (up out of rock first, a little: a foot uphill) to the first
-/// solid cell; the foot on its top.
-fn ground_at(sim: &SimWorld, hip: Vec2, x: f32, reach: f32) -> Option<Vec2> {
-    let mut y = hip.y;
-    while solid(sim, Vec2::new(x, y)) {
-        y += 1.0;
-        if y > hip.y + reach * 0.3 {
+/// The surface under the point `ahead` along it from the hip, within
+/// reach: down (off the surface's way: `along` turned back a quarter)
+/// from the hip's level (up out of rock first, a little: a foot uphill)
+/// to the first solid cell; the foot on its face (on a cell's edge, the
+/// surface square to the world's; else the last open point).
+fn ground_at(sim: &SimWorld, along: Vec2, hip: Vec2, ahead: f32, reach: f32) -> Option<Vec2> {
+    let down = -along.perp();
+    let mut p = hip + along * ahead;
+    let mut lifted = 0.0;
+    while solid(sim, p) {
+        p -= down;
+        lifted += 1.0;
+        if lifted > reach * 0.3 {
             return None;
         }
     }
-    let lowest = hip.y - reach * 1.05;
-    while y > lowest {
-        if solid(sim, Vec2::new(x, y - 1.0)) {
-            let foot = Vec2::new(x, y.floor());
+    let mut gone = 0.0;
+    while gone < reach * 1.05 + lifted {
+        if solid(sim, p + down) {
+            let foot = if down.y.abs() > 0.999 {
+                Vec2::new(p.x, if down.y < 0.0 { p.y.floor() } else { p.y.floor() + 1.0 })
+            } else if down.x.abs() > 0.999 {
+                Vec2::new(if down.x < 0.0 { p.x.floor() } else { p.x.floor() + 1.0 }, p.y)
+            } else {
+                p
+            };
             return ((foot - hip).length() <= reach * 1.02).then_some(foot);
         }
-        y -= 1.0;
+        p += down;
+        gone += 1.0;
     }
     None
 }
 
-/// Straight down, most of a leg's reach (where a foot with nothing under
-/// it hangs).
-fn legs_turn_down(reach: f32) -> Vec2 {
-    Vec2::NEG_Y * reach * 0.7
-}
 
 /// From `a` toward `b`, as far as it's open (a free leg never reaches into
 /// rock).
@@ -649,6 +693,31 @@ fn open_toward(sim: &SimWorld, a: Vec2, b: Vec2) -> Vec2 {
     b
 }
 
+/// A body seen two ways (`back`) turns over when it goes onto the wall
+/// behind or off it (after a moment there: not back and forth at an edge):
+/// its legs and their sprites go, and grow again as the other.
+fn turn_over(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Legs, &Kinematics, &Animator)>) {
+    for (e, mut legs, k, anim) in &mut q {
+        if anim.def.legs.as_ref().is_none_or(|d| d.back.is_none()) {
+            continue;
+        }
+        let back = k.loco.clinging() == Some(Vec2::ZERO);
+        if back == legs.on_back {
+            legs.other = 0.0;
+            continue;
+        }
+        legs.other += time.delta_secs();
+        if legs.other < 0.12 {
+            continue;
+        }
+        let parts = [Some(legs.body), legs.eyes, legs.stinger].into_iter().chain(legs.claws.iter().copied()).chain(legs.chains.iter().map(|c| c.tip));
+        for part in parts.flatten() {
+            commands.entity(part).despawn();
+        }
+        commands.entity(e).remove::<Legs>();
+    }
+}
+
 /// Give legged creatures their legs and their turned body.
 #[allow(clippy::too_many_arguments)]
 fn grow_legs(
@@ -661,6 +730,12 @@ fn grow_legs(
 ) {
     for (e, anim, k) in &new {
         let Some(def) = anim.def.legs.clone() else { continue };
+        // (On the wall behind: its view from there, if it has one.)
+        let on_back = def.back.is_some() && k.loco.clinging() == Some(Vec2::ZERO);
+        let def = match (on_back, def.back.clone()) {
+            (true, Some(back)) => *back,
+            _ => def,
+        };
         let eyes_key = def.eyes.map(|(r, g, b)| format!("{}#{r},{g},{b}", def.body));
         for (key, only) in [(Some(def.body.clone()), None), (eyes_key.clone(), def.eyes.map(|(r, g, b)| [r, g, b]))] {
             let Some(key) = key else { continue };
@@ -698,7 +773,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -745,7 +820,7 @@ fn grow_legs(
             let hip = legs.hip(i, c);
             let held = match legs.def.view {
                 View::Above => foothold(&sim, hip, legs.way(i), legs.def.reach, false),
-                View::Side => ground_under(&sim, hip, hip.x + legs.def.each[i].lean * facing, legs.def.full_reach()),
+                View::Side => legs.ground_under(&sim, i, c, legs.def.each[i].lean * facing, legs.def.full_reach()),
             };
             let at = held.unwrap_or(hip + Vec2::from_angle(legs.way(i)) * legs.def.full_reach() * 0.5);
             legs.feet.push(Foot::new(at, true));
@@ -792,27 +867,67 @@ fn walk(
         // its feet, tilted with them.
         // (From the side, turned round: its body flips at once, so its
         // feet are planted afresh on the other side too.)
-        let turned = side && (k.loco.facing < 0.0) != (legs.facing < 0.0);
+        // The surface it's on (from the side): the ground, or the wall or
+        // ceiling it holds, eased round to as it goes over onto it.
+        if side {
+            let want = match k.loco.clinging() {
+                Some(d) if d != Vec2::ZERO => d.y.atan2(d.x) + std::f32::consts::FRAC_PI_2,
+                _ => 0.0,
+            };
+            let d = (want - legs.surface + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+            legs.surface = if jumped { want } else { legs.surface + d.clamp(-10.0 * dt, 10.0 * dt) };
+        }
+        let (along, off) = (legs.along(), legs.off());
+        let going = v.dot(along);
+        // (Which way it faces: on the ground, its own; on a wall or the
+        // ceiling, the way it goes along it.)
+        let facing = if legs.surface.abs() < 0.3 {
+            if k.loco.facing < 0.0 { -1.0 } else { 1.0 }
+        } else if going.abs() > 5.0 {
+            going.signum()
+        } else {
+            legs.facing
+        };
+        let turned = side && (facing < 0.0) != (legs.facing < 0.0);
         // (Put down somewhere else: drawn there at once. Turned round:
         // the feet planted afresh, but drawn swinging over.)
         let put = jumped;
         let jumped = jumped || turned;
         let (c, up) = if side {
-            legs.facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-            let f = legs.facing;
-            let base = middle.y - k.body.half.y;
+            legs.facing = facing;
+            let f = facing;
+            // (All in the surface's frame: along it, and up off it, from
+            // its middle.)
+            let local = |p: Vec2| {
+                let d = p - middle;
+                Vec2::new(d.dot(along), d.dot(off))
+            };
+            let extent = off.x.abs() * k.body.half.x + off.y.abs() * k.body.half.y;
+            let base = -extent;
             let planted: Vec<Vec2> = legs.feet.iter().filter(|foot| foot.grips).map(|foot| foot.to).collect();
-            let ground = if planted.is_empty() { base } else { planted.iter().map(|p| p.y).sum::<f32>() / planted.len() as f32 };
+            let ground = if planted.is_empty() { base } else { planted.iter().map(|p| local(*p).y).sum::<f32>() / planted.len() as f32 };
             // (Up while a foot's in the air: a walker on two legs bobs.)
             let up = legs.feet.iter().filter(|foot| foot.t < 1.0 && foot.grips).map(|foot| (std::f32::consts::PI * foot.t).sin()).fold(0.0, f32::max);
-            let want = (ground + legs.def.ride + legs.def.bob * up).clamp(base + legs.def.ride * 0.5, middle.y + k.body.half.y);
-            let y = legs.ride.map_or(want, |y| y + (want - y) * (dt * 12.0).min(1.0));
-            legs.ride = Some(y);
+            let want = (ground + legs.def.ride + legs.def.bob * up).clamp(base + legs.def.ride * 0.5, extent);
+            // (Eased: where it rode stays where it was in the world as its
+            // box jolts.)
+            let y = legs.ride.map_or(want, |r| {
+                let y = local(r).y;
+                y + (want - y) * (dt * 12.0).min(1.0)
+            });
+            let at = middle + off * y;
+            legs.ride = Some(at);
             // Nose up as the ground its feet stand on rises ahead: the
             // slope of the line through its planted feet (along the way it
             // faces), once they're spread enough to say.
             let want = {
-                let pts: Vec<Vec2> = planted.iter().map(|p| Vec2::new((p.x - middle.x) * f, p.y)).collect();
+                let pts: Vec<Vec2> = planted
+                    .iter()
+                    .map(|p| {
+                        let l = local(*p);
+                        Vec2::new(l.x * f, l.y)
+                    })
+                    .collect();
                 let n = pts.len() as f32;
                 let mean = pts.iter().sum::<Vec2>() / n.max(1.0);
                 let (sxy, sxx) = pts.iter().fold((0.0, 0.0), |(sxy, sxx), p| (sxy + (p.x - mean.x) * (p.y - mean.y), sxx + (p.x - mean.x).powi(2)));
@@ -825,10 +940,10 @@ fn walk(
                 legs.slope
             };
             // (Nose down as it goes, a runner's lean.)
-            let want = want - (legs.def.pitch * (v.x.abs() / 100.0).min(1.5)).to_radians();
+            let want = want - (legs.def.pitch * (going.abs() / 100.0).min(1.5)).to_radians();
             let most = legs.def.tilt.to_radians();
             legs.tilt += (want.clamp(-most, most) - legs.tilt) * (dt * 8.0).min(1.0);
-            (Vec2::new(middle.x, y) + Vec2::Y * rear.lift - Vec2::X * f * rear.back, Vec2::Y)
+            (at + off * rear.lift - along * f * rear.back, off)
         } else {
             let up = {
                 let held: Vec<Vec2> = legs.feet.iter().filter(|f| f.grips).map(|f| f.at).collect();
@@ -850,7 +965,7 @@ fn walk(
                 let way = legs.way(i);
                 let held = match legs.def.view {
                     View::Above => foothold(&sim, hip, way, legs.def.full_reach(), false),
-                    View::Side => ground_under(&sim, hip, hip.x + legs.def.each[i].lean * legs.facing, legs.def.full_reach()),
+                    View::Side => legs.ground_under(&sim, i, c, legs.def.each[i].lean * legs.facing, legs.def.full_reach()),
                 };
                 let at = held.unwrap_or(hip + Vec2::from_angle(way) * legs.def.full_reach() * 0.5);
                 legs.feet[i] = Foot::new(at, held.is_some());
@@ -873,7 +988,7 @@ fn walk(
             }
         }
         // (From the side: tilted, mirrored to face left.)
-        let (index, flip) = if side { (crate::combat::Turned::index(legs.tilt.to_degrees()), legs.facing < 0.0) } else { (crate::combat::Turned::index(legs.heading.to_degrees()), false) };
+        let (index, flip) = if side { (crate::combat::Turned::index((legs.tilt + legs.facing * legs.surface).to_degrees()), legs.facing < 0.0) } else { (crate::combat::Turned::index(legs.heading.to_degrees()), false) };
         let offset = legs.offset;
         if let Ok((mut s, mut t)) = bodies.get_mut(legs.body) {
             if let Some(atlas) = s.texture_atlas.as_mut() {
@@ -931,16 +1046,20 @@ fn walk(
         // by half a stride. Standing, the clock stops, unless a step's to
         // finish or a foot's been left behind.
         if side && !aloft {
-            let speed = v.x.abs();
+            let speed = going.abs();
             let groups = legs.def.each.iter().map(|l| l.gait).max().unwrap_or(0) as f32 + 1.0;
             let duty = 0.68 - 0.26 * (speed / 150.0).min(1.0);
             let cycle = (legs.def.stride / duty).max(1.0);
-            let dir = if speed > 5.0 { v.x.signum() } else { legs.facing };
+            let dir = if speed > 5.0 { going.signum() } else { legs.facing };
+            // (Where along the surface from its hip each foot's wanted.)
             let target = |legs: &Legs, i: usize| {
                 let hip = legs.hip(i, c);
-                (hip, hip.x + legs.def.each[i].lean * legs.facing + dir * legs.def.stride * 0.5)
+                (hip, legs.def.each[i].lean * legs.facing + dir * legs.def.stride * 0.5)
             };
-            let behind = (0..n).any(|i| legs.feet[i].t >= 1.0 && (legs.feet[i].at.x - target(&legs, i).1).abs() > legs.def.stride * 0.9);
+            let behind = (0..n).any(|i| {
+                let (hip, ahead) = target(&legs, i);
+                legs.feet[i].t >= 1.0 && ((legs.feet[i].at - hip).dot(along) - ahead).abs() > legs.def.stride * 0.9
+            });
             let swinging = legs.feet.iter().any(|f| f.t < 1.0);
             let mut rate = speed / cycle;
             if swinging || behind {
@@ -967,7 +1086,7 @@ fn walk(
                     // (Left past its reach, a slip: put down again now.)
                     if foot.grips
                         && (foot.at - hip).length() > reach
-                        && let Some(p) = ground_under(&sim, hip, x, reach)
+                        && let Some(p) = ground_under(&sim, along, hip, x, reach)
                     {
                         foot.at = p;
                         foot.to = p;
@@ -979,19 +1098,19 @@ fn walk(
                         foot.from = foot.at;
                     }
                     let s = (p - duty) / (1.0 - duty);
-                    match ground_under(&sim, hip, x, reach) {
+                    match ground_under(&sim, along, hip, x, reach) {
                         Some(to) => {
                             foot.to = to;
                             foot.grips = true;
                         }
                         None => {
-                            foot.to = open_toward(&sim, hip, hip + legs_turn_down(reach));
+                            foot.to = open_toward(&sim, hip, hip - off * reach * 0.7);
                             foot.grips = false;
                         }
                     }
                     foot.t = s.min(0.999);
                     let e = s * s * (3.0 - 2.0 * s);
-                    foot.at = foot.from.lerp(foot.to, e) + Vec2::Y * lift * (std::f32::consts::PI * s).sin();
+                    foot.at = foot.from.lerp(foot.to, e) + off * lift * (std::f32::consts::PI * s).sin();
                 }
             }
         }
@@ -1014,10 +1133,10 @@ fn walk(
             }
             // Where it would put its foot now (from the side: under where it
             // rests, ahead by as far as the body goes in a step).
-            let rest = side.then(|| hip.x + legs.def.each[i].lean * legs.facing + v.x * step_time);
+            let rest = side.then(|| legs.def.each[i].lean * legs.facing + going * step_time);
             let off = f.at - hip;
             let due = match rest {
-                Some(x) => !f.grips && f.retry <= 0.0 || f.grips && ((f.at.x - x).abs() > legs.def.stride || off.length() > reach * 0.98),
+                Some(x) => !f.grips && f.retry <= 0.0 || f.grips && ((off.dot(along) - x).abs() > legs.def.stride || off.length() > reach * 0.98),
                 None => {
                     let twisted = off.length() > 0.75 && Vec2::from_angle(way).dot(off.normalize()) < 0.2;
                     let stretched = off.length() > reach * (0.98 - 0.35 * pace);
@@ -1046,7 +1165,7 @@ fn walk(
                 continue;
             }
             let to = match rest {
-                Some(x) => ground_under(&sim, hip, x, reach),
+                Some(x) => ground_under(&sim, along, hip, x, reach),
                 // (From where its hip will be when the foot comes down, and a
                 // little on: going, it plants ahead.)
                 None => foothold(&sim, hip + v * step_time * 1.8, way, reach, back),
@@ -1087,7 +1206,7 @@ fn walk(
         // as `paw` drops back they come down ahead, hard, onto the ground
         // there (they let go: the next step plants them again).
         if rear.paw > 0.01 {
-            let ahead = if side { Vec2::X * legs.facing } else { fwd };
+            let ahead = if side { along * legs.facing } else { fwd };
             for i in legs.def.strikers() {
                 if i >= n {
                     continue;
@@ -1306,14 +1425,15 @@ fn stroke(a: Vec2, b: Vec2, ra: f32, rb: f32, c: [u8; 4], out: &mut Vec<(IVec2, 
 }
 
 /// A plate from `a` to `b`, `r` cells to each side of the line (square
-/// ends); with `under`, only its underside's band in that colour (shaded).
-fn plate(a: Vec2, b: Vec2, r: f32, c: [u8; 4], under: Option<[u8; 4]>, out: &mut Vec<(IVec2, [u8; 4])>) {
+/// ends); with `under`, only its underside's band in that colour (shaded:
+/// the side away from `up`).
+#[allow(clippy::too_many_arguments)]
+fn plate(a: Vec2, b: Vec2, r: f32, c: [u8; 4], under: Option<[u8; 4]>, out: &mut Vec<(IVec2, [u8; 4])>, up: Vec2) {
     let d = b - a;
     let len = d.length().max(0.01);
     let dir = d / len;
     let n = dir.perp();
-    // (Under: the side away from up.)
-    let down = if n.y > 0.0 { -n } else { n };
+    let down = if n.dot(up) > 0.0 { -n } else { n };
     let lo = a.min(b) - Vec2::splat(r + 1.0);
     let hi = a.max(b) + Vec2::splat(r + 1.0);
     for y in lo.y.floor() as i32..=hi.y.ceil() as i32 {
@@ -1491,8 +1611,9 @@ fn draw(
             };
             // (With an ankle's bone: from the foot back up to the ankle, at
             // its heel's angle; the knee between the hip and the ankle.)
-            let ahead = Vec2::X * legs.facing;
-            let ankle = (legs.def.ankle > 0.0).then(|| f.at + (-ahead * legs.def.heel.to_radians().cos() + Vec2::Y * legs.def.heel.to_radians().sin()) * legs.def.ankle);
+            // (Along the surface it's on, and up off it.)
+            let (ahead, lift) = (legs.along() * legs.facing, legs.off());
+            let ankle = (legs.def.ankle > 0.0).then(|| f.at + (-ahead * legs.def.heel.to_radians().cos() + lift * legs.def.heel.to_radians().sin()) * legs.def.ankle);
             // (Drawn as solved: past its reach the leg is at full length
             // and the foot comes with it, never stretched.)
             let (k, end) = knee(hip, ankle.unwrap_or(f.at), a, b, bend, |p| solid(&sim, p + o));
@@ -1521,7 +1642,7 @@ fn draw(
                 }
                 let fw = w(if ankle.is_some() { 3 } else { 2 });
                 if toes > 0.0 {
-                    bones.extend([(foot, foot + ahead * toes, fw, 1.0), (foot, foot - ahead * toes * 0.45 + Vec2::Y * 0.5, fw, 1.0)]);
+                    bones.extend([(foot, foot + ahead * toes, fw, 1.0), (foot, foot - ahead * toes * 0.45 + lift * 0.5, fw, 1.0)]);
                 }
                 if legs.def.style == LegStyle::Plate {
                     // Metal: plates, shaded under; a piston; bolts; a flat
@@ -1530,11 +1651,11 @@ fn draw(
                     let n = if ankle.is_some() { 3 } else { 2 };
                     for (pass, grow) in [(rgb(line), 1.0), (leg, 0.0)] {
                         for &(a, b, wa, _) in &bones[..n] {
-                            plate(a, b, wa * 0.5 + grow, pass, None, to);
+                            plate(a, b, wa * 0.5 + grow, pass, None, to, lift);
                         }
                     }
                     for &(a, b, wa, _) in &bones[..n] {
-                        plate(a, b, wa * 0.5, leg, Some(shade), to);
+                        plate(a, b, wa * 0.5, leg, Some(shade), to, lift);
                     }
                     let up = legs.turn(Vec2::Y);
                     let (pa, pb) = (hip.lerp(k, 0.45), bones[1].0.lerp(bones[1].1, 0.55));
@@ -1544,8 +1665,8 @@ fn draw(
                     let toes = legs.def.toes;
                     if toes > 0.0 {
                         let (a, b) = (foot - ahead * toes * 0.45, foot + ahead * toes);
-                        plate(a + Vec2::Y * 0.8, b + Vec2::Y * 0.8, 1.6, rgb(line), None, to);
-                        plate(a + Vec2::Y * 0.8, b + Vec2::Y * 0.8, 1.0, leg, None, to);
+                        plate(a + lift * 0.8, b + lift * 0.8, 1.6, rgb(line), None, to, lift);
+                        plate(a + lift * 0.8, b + lift * 0.8, 1.0, leg, None, to, lift);
                     }
                     for (at, wk) in [(Some(hip), w(0)), (Some(k), w(1)), (ankle, w(2))] {
                         if let Some(at) = at {
@@ -1665,7 +1786,8 @@ mod tests {
         }
         assert!((8..60).contains(&frames), "caught up in {frames} frames");
         // (Held still, it stays.)
-        let still = smooth_damp(to, to, &mut Vec2::ZERO, FOOT_LAG, most, dt);
+        speed = Vec2::ZERO;
+        let still = smooth_damp(to, to, &mut speed, FOOT_LAG, most, dt);
         assert_eq!(still, to);
     }
 }
