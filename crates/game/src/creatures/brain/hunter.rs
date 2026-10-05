@@ -396,11 +396,22 @@ fn hunt(
                     jump = true;
                     m.next = tick + ticks(pounce_every * (0.7 + 0.6 * unit(&sim, id, 1)));
                 }
-                match steer {
+                let mx = match steer {
                     Some(s) => s.move_x,
                     None if d.x.abs() > 3.0 => d.x.signum(),
                     None => 0.0,
+                };
+                // (Holding a wall it's going into, with nowhere up or down to
+                // go: it climbs it, over (its own acid's crater, a step too
+                // high), not pressing on it for ever.)
+                if move_y == 0.0
+                    && let Some(wall) = clinging
+                    && wall.x != 0.0
+                    && mx * wall.x > 0.0
+                {
+                    move_y = 1.0;
                 }
+                mx
             }
             (Close::Crawl { .. }, None) => {
                 if tick >= m.wander_until {

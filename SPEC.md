@@ -2027,7 +2027,9 @@ player has seen creatures do) and `fight.rs` (the arena's readouts).
   survive). `hunter` (`brain/hunter.rs`) is every fighter: `aggro`
   (cells), `close` (`Walk(keep, jump_to_reach)`, `Range(near, far)`,
   `Swoop(hover, dive_time, dive_every)`, `Hop(every)`,
-  `Crawl(pounce_range, pounce_every)`), `attack` (`Touch`, `Swing(reach,
+  `Crawl(pounce_range, pounce_every)`: holding a wall it's going into,
+  with the target level, it climbs it, over: a spider in its own acid's
+  crater used to press on the crater's side for good), `attack` (`Touch`, `Swing(reach,
   every, combo)`, `Shoot(draw, every, wobble)`), `wander: (speed, every)`,
   `leash`. Also `critter`,
   `villager`, `idle` (the default), `keyboard` (the player).

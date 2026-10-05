@@ -5044,7 +5044,9 @@ fn course_script(
 /// `PLATYPUS_SHOTS=dir`: a picture every 2 s into it (`PLATYPUS_SHOT_EVERY`
 /// s: another gap). `PLATYPUS_KILL=1`:
 /// it's struck dead 3 s from the end (to see its body); `PLATYPUS_FEETLOG=1`:
-/// each foot (from its box's bottom; `~`: holding nothing);
+/// each foot (from its box's bottom; `~`: holding nothing), and every half
+/// second where the player is and the walker's speed, footing, grip and
+/// what it wants (its controls);
 /// `PLATYPUS_PRICK=1`: a 3-hp cut at 4 s (does it bleed to death?);
 /// `PLATYPUS_TAILLOG=1`: its first chain's tip each frame, whether it aims.
 /// Struck, the player walks away from it for `PLATYPUS_RETREAT` s (1.4),
@@ -5057,6 +5059,7 @@ fn legs_script(
     offscreen: Option<Res<crate::camera::Offscreen>>,
     mut player: Query<(Entity, &mut Kinematics), With<LocalPlayer>>,
     foes: Query<(&crate::creatures::Creature, &Kinematics, Option<&crate::creatures::body::legs::Legs>), Without<LocalPlayer>>,
+    intents: Query<(&crate::creatures::Creature, &crate::creatures::Controls)>,
     mut healths: Query<(Entity, &crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>,
     mut took: MessageReader<crate::creatures::Took>,
     mut hits: MessageWriter<crate::combat::Hit>,
@@ -5140,6 +5143,7 @@ fn legs_script(
         *step = 3;
     }
     let Some((_, fk, legs)) = foes.iter().find(|(c, _, _)| c.kind == *kind) else { return };
+    let wants = intents.iter().find(|(c, _)| c.kind == *kind).map(|(_, c)| (c.0.move_x, c.0.move_y));
     // (Its legs' strain, every frame: the most, and how often past reach.)
     if *step == 1
         && let Some(l) = legs
@@ -5195,7 +5199,7 @@ fn legs_script(
                     info!("legs: feet from its box's bottom: {}; vel {:?} grounded {}", fs.join(" "), fk.body.vel.round(), fk.loco.grounded());
                 }
                 if std::env::var("PLATYPUS_FEETLOG").is_ok() {
-                    info!("legs: t {t:.1}: the player at {:?}", pk.body.pos.round());
+                    info!("legs: t {t:.1}: the player at {:?}; it: vel {:?} grounded {} clinging {:?} wants x {:.1} y {:.1}", pk.body.pos.round(), fk.body.vel.round(), fk.loco.grounded(), fk.loco.clinging(), wants.map_or(0.0, |w| w.0), wants.map_or(0.0, |w| w.1));
                 }
                 info!("legs: t {t:.1}: at {:?} slope {slope:+.0}° tilt {tilt:+.0}° rides {ride:.0} over its box's bottom, {planted} feet planted, {sunk} in rock", fk.body.pos.round());
             }
