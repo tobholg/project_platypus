@@ -15,7 +15,9 @@
 //!   is met within reach. A foot stays put while the body moves; once it's
 //!   stretched too far, crowded or twisted too far from its way it lifts and
 //!   steps to a new hold (an arc away from what it holds), a few at a time,
-//!   never two neighbours at once. With nothing in reach a leg hangs curled.
+//!   never two neighbours at once; going, sooner (and when left behind),
+//!   quicker, up to half at once, planting ahead of where it's going. With
+//!   nothing in reach a leg hangs curled.
 //!   The knees (two-bone IK) bend away from what the feet hold. Legs are
 //!   drawn a cell at a time (Bresenham), so they stay pixel art, behind the
 //!   body.
@@ -832,7 +834,11 @@ fn walk(
         // (On the wall behind: its feet can hold on to it anywhere.)
         let back = k.loco.clinging() == Some(Vec2::ZERO);
         let stepping = legs.feet.iter().filter(|f| f.t < 1.0).count();
-        let step_time = legs.def.step;
+        // (From above, how fast it's going, 0–1 at 120 cells/s and on: the
+        // faster, the sooner a leg steps, the quicker, the more at once, the
+        // further ahead it plants: a running spider's legs keep up.)
+        let pace = if side { 0.0 } else { (v.length() / 120.0).min(1.0) };
+        let step_time = legs.def.step * (1.0 - 0.35 * pace);
         // (From the side, off the ground a moment: its feet let go, tucked
         // up under it till it lands.)
         let grounded = k.loco.grounded() || k.loco.clinging().is_some();
@@ -938,9 +944,11 @@ fn walk(
                 Some(x) => !f.grips && f.retry <= 0.0 || f.grips && ((f.at.x - x).abs() > legs.def.stride || off.length() > reach * 0.98),
                 None => {
                     let twisted = off.length() > 0.75 && Vec2::from_angle(way).dot(off.normalize()) < 0.2;
-                    let stretched = off.length() > reach * 0.98;
+                    let stretched = off.length() > reach * (0.98 - 0.35 * pace);
                     let crowded = off.length() < reach * 0.25;
-                    if f.grips { stretched || crowded || twisted } else { f.retry <= 0.0 }
+                    // (Going, a foot left well behind its hip steps on.)
+                    let behind = pace > 0.2 && off.dot(v.normalize_or_zero()) < -reach * 0.35;
+                    if f.grips { stretched || crowded || twisted || behind } else { f.retry <= 0.0 }
                 }
             };
             // (From above, not with a neighbour, nor more than a third at
@@ -950,17 +958,22 @@ fn walk(
                 legs.feet.iter().zip(&legs.def.each).any(|(o, l)| o.t < 1.0 && l.gait != g)
             } else {
                 let neighbours = [(i + n - 2) % n, (i + 2) % n];
-                neighbours.iter().any(|&j| legs.feet[j].t < 1.0) || stepping >= n.div_ceil(3)
+                let most = if pace > 0.3 { n / 2 } else { n.div_ceil(3) };
+                neighbours.iter().any(|&j| legs.feet[j].t < 1.0) || stepping >= most
             };
             legs.feet[i].retry -= dt;
-            // (A foot pulled past its reach lets go now, its gait or not.)
-            let torn = side && f.grips && off.length() > reach;
+            // (A foot pulled past its reach lets go now, its gait or its
+            // neighbours or not: else, from above, a leg whose neighbours
+            // keep taking the turns is dragged on and on.)
+            let torn = f.grips && off.length() > reach;
             if !due || busy && !torn {
                 continue;
             }
             let to = match rest {
                 Some(x) => ground_under(&sim, hip, x, reach),
-                None => foothold(&sim, hip, way, reach, back),
+                // (From where its hip will be when the foot comes down, and a
+                // little on: going, it plants ahead.)
+                None => foothold(&sim, hip + v * step_time * 1.8, way, reach, back),
             };
             let foot = &mut legs.feet[i];
             foot.from = foot.at;
