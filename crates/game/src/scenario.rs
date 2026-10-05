@@ -5043,7 +5043,8 @@ fn course_script(
 /// `PLATYPUS_SHOTS=dir`: a picture every 2 s into it (`PLATYPUS_SHOT_EVERY`
 /// s: another gap). `PLATYPUS_KILL=1`:
 /// it's struck dead 3 s from the end (to see its body); `PLATYPUS_FEETLOG=1`:
-/// each foot (from its box's bottom; `~`: holding nothing);
+/// each foot (from its box's bottom; `~`: holding nothing); `PLATYPUS_AHEAD`:
+/// how far ahead of it the player's kept (80 cells);
 /// `PLATYPUS_PRICK=1`: a 3-hp cut at 4 s (does it bleed to death?).
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn legs_script(
@@ -5123,7 +5124,8 @@ fn legs_script(
         hits.write(crate::combat::Hit { target, damage: 3.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: fk.body.pos, dir: Vec2::X, weight: 0.2, crit: false });
     }
     // The player kept ahead of it, on the ground.
-    let ahead = fk.body.pos.x + 80.0 * *dir;
+    let gap = std::env::var("PLATYPUS_AHEAD").ok().and_then(|v| v.parse().ok()).unwrap_or(80.0);
+    let ahead = fk.body.pos.x + gap * *dir;
     if (pk.body.pos.x - ahead).abs() > 20.0
         && let Some(y) = ground(ahead, fk.body.pos.y)
     {

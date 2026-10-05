@@ -1,0 +1,53 @@
+// A cave scorpion: low and armoured on eight legs, its pincers held out
+// ahead, its segmented tail curled up over its back, the sting reaching
+// for you when you're near. A first version (BE `limbs`): it walks, its
+// tail aims (chains.rs), its touch stings; its strike comes with moves
+// that drive limbs.
+(
+    name: "Cave scorpion",
+    size: (24, 16),
+    health: 70,
+    team: Enemy,
+    kind: "insect",
+    blood: "ichor",
+    art: "scorpion_body",
+    legs: (view: Side, reach: 14, upper: 0.5, step: 0.08, lift: 3, ride: 8, stride: 6, tilt: 20,
+           color: (64, 44, 30), joint: (120, 80, 46), outline: (22, 16, 12), width: [2.6, 2, 1], body: "scorpion_body", eyes: (236, 96, 40),
+           each: [
+               (hip: (7, -1), lean: 7, gait: 0),
+               (hip: (3, -1), lean: 3, gait: 1),
+               (hip: (-1, -1), lean: -2, gait: 0),
+               (hip: (-5, -1), lean: -6, gait: 1),
+               (hip: (9, 0), lean: 9, gait: 1, far: true),
+               (hip: (5, 0), lean: 5, gait: 0, far: true),
+               (hip: (1, 0), lean: -1, gait: 1, far: true),
+               (hip: (-3, 0), lean: -4, gait: 0, far: true),
+           ],
+           arms: [
+               (shoulder: (12, 1), hand: (22, 4), bones: (6, 6), width: [3, 3, 2.5], elbow: Down, claw: Some("scorpion_claw"), sway: 0.5),
+               (shoulder: (13, 2), hand: (24, 6), bones: (6, 6), width: [3, 3, 2.5], elbow: Down, claw: Some("scorpion_claw"), sway: 0.5, far: true),
+           ],
+           // Its tail: up and back from its rear, arching forward over its back, ringed
+           // at every joint, its sting at the end; near enough, the sting
+           // reaches for you.
+           chains: [
+               (anchor: (-12, 3), links: 7, length: 4, rest: 140, curl: -28, stiff: 0.6, width: [5, 4, 3], color: Some((96, 62, 38)), rings: true,
+                tip: Some("scorpion_sting"), aims: Some(70), behind: true),
+           ]),
+    movement: (
+        run_speed: 70,
+        ground_accel: 700,
+        ground_decel: 900,
+        jump_height: 20,
+        air_jumps: 0,
+        step_height: 6,
+        dash_speed: 0,
+    ),
+    poise: 22,
+    heft: 1.4,
+    touch: (harm: pierce, damage: 9, knock: 220, stun: 0.2),
+    brain: (
+        kind: "hunter",
+        params: (aggro: 350, close: Walk(keep: 14, jump_to_reach: 16), wander: (speed: 0.4, every: 2.5)),
+    ),
+)

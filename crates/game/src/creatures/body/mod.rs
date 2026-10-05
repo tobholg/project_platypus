@@ -1,8 +1,9 @@
 //! A creature's body: how it looks and animates (`animation`), procedural
-//! legs (`legs`), hurt's flash and blood (`hurt`), and what's on it:
+//! legs (`legs`) and chains (`chains`: tails, stings), hurt's flash and blood (`hurt`), and what's on it:
 //! burning, wet, chilled, coated (`elements`).
 
 pub mod animation;
+pub mod chains;
 pub mod elements;
 pub mod hurt;
 pub mod legs;

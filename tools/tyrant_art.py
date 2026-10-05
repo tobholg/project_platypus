@@ -20,8 +20,8 @@ def inside(x, y):
     if poly(x, y, JAW): return 'jaw'
     # deep chest and belly, hips higher behind
     if ell(80, 29, 30, 17) or ell(54, 35, 19, 14) or ell(66, 33, 22, 15): return 'body'
-    # tail: from the hips out behind, rising a little, tapering
-    if 2 <= x <= 52:
+    # (its tail is its creature file's chain: only its root here)
+    if 36 <= x <= 52:
         t = (52 - x) / 50
         cy = 37 + 5 * t
         half = 12.5 * (1 - t) ** 1.15 + 0.8
@@ -88,7 +88,7 @@ used = set(''.join(rows)) - {'.'}
 pal = {k: v for k, v in pal.items() if k in used}
 out = '''// A ridge tyrant seen from the side, pointing right: a T-rex as big as one
 // (about 150 cells nose to tail, its hips twice a person's height), a deep
-// body held level, a heavy tail out behind, a thick neck up to a great boxy
+// body held level (its heavy tail is its creature file's chain), a thick neck up to a great boxy
 // skull with a yellow eye and a mouthful of teeth, dark stripes over its
 // back, a pale belly. Made by a script (shapes, shaded from above), kept as
 // text. Its legs and tiny arms are its creature file's `legs`; `grip` is

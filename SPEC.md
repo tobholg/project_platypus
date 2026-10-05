@@ -1875,7 +1875,25 @@ parts, so another is a new file, not new code:
   to shank; a flat foot plate `toes` long, landing level). The iron
   strider (strider.ron, art by `tools/strider_art.py`): a hull on two
   plated legs bending back at the knee, its hull 40 over its feet with no
-  bob, high quick steps, each foot clanking down. The near legs are drawn in front of the
+  bob, high quick steps, each foot clanking down.
+- **Chains** (`creatures/body/chains.rs`, a creature file's `legs`'
+  `chains`; BE `limbs` stage 2): tails, necks, a sting. A run of `links`
+  `length` long from an `anchor` on the body; at rest each link turns
+  `curl`° from the last, the first `rest`° (facing right: 0 ahead, 90 up,
+  180 behind); it springs toward that pose by `stiff` (0 a rope, 1 rigid),
+  carries its swing (it lags and sways as the body goes), `sag`s; drawn
+  tapered (`width` base to tip) and outlined as the legs, `rings` across
+  its joints, a `tip` sprite turned to its last link; `far` (behind,
+  darker) or `behind` (behind, as it is: a tail from the body's back).
+  `aims`: within that range of the nearest thing it hunts, it takes the
+  arch most like its rest pose (its way up ±40°, its curl 0.2–1.5×) whose
+  last link points at it, keeping over its anchor if its rest pose does (a
+  sting stays over the back). The raptor's tail and the tyrant's (cut from
+  their sprites) are chains; the cave scorpion (scorpion.ron: eight legs,
+  pincers, its tail up and back from its rear and arching forward over its
+  back, ringed, a sting) aims its sting at you within 70 cells.
+  `PLATYPUS_AHEAD`: how far ahead of the walker the `legs` scenario keeps
+  the player. The near legs are drawn in front of the
   body (z 10.06), the far ones behind, in `far` (else the near colour
   darker). Its box takes in its legs (the stilt stalker: 18 × 58). Dead,
   it lies on its belly (a box 14 high) on its legs folded under it. The

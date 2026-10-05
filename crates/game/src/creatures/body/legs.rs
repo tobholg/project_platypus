@@ -51,7 +51,7 @@ impl Plugin for LegsPlugin {
             .init_resource::<Footfalls>()
             .init_resource::<crate::canvas::StageView>()
             .init_resource::<BodyArt>()
-            .add_systems(Update, (grow_legs, walk, footfalls, draw).chain().after(crate::creatures::body::animation::animate).after(TransformSystems::Propagate));
+            .add_systems(Update, (grow_legs, aims, walk, footfalls, draw).chain().after(crate::creatures::body::animation::animate).after(TransformSystems::Propagate));
     }
 }
 
@@ -227,6 +227,9 @@ pub struct LegsDef {
     /// How its legs are drawn.
     #[serde(default)]
     pub style: LegStyle,
+    /// Its chains (`chains.rs`: tails, necks, a sting).
+    #[serde(default)]
+    pub chains: Vec<super::chains::ChainDef>,
     /// Toes (cells long): a foot along the ground ahead, a claw behind.
     #[serde(default)]
     pub toes: f32,
@@ -368,6 +371,9 @@ pub struct Legs {
     last: Option<Vec2>,
     /// Side: its gait's clock (0..1 a cycle: every leg has stepped once).
     phase: f32,
+    /// Its chains as they are now, and where an aiming one reaches for.
+    chains: Vec<super::chains::Chain>,
+    aim: Option<Vec2>,
 }
 
 #[derive(Component)]
@@ -427,6 +433,14 @@ impl Legs {
     /// Where its feet are (the world), and whether each holds something.
     pub fn feet(&self) -> impl Iterator<Item = (Vec2, bool)> + '_ {
         self.feet.iter().map(|f| (f.at, f.grips))
+    }
+
+    /// The body's frame to the world's, as a function (to hand on while
+    /// its chains are borrowed): from the side, mirrored to its facing and
+    /// tilted; from above, turned to its heading.
+    fn frame(&self) -> impl Fn(Vec2) -> Vec2 + use<> {
+        let (side, f, tilt, heading) = (self.def.view == View::Side, self.facing, self.tilt, self.heading);
+        move |v: Vec2| if side { Vec2::from_angle(tilt * f).rotate(Vec2::new(v.x * f, v.y)) } else { Vec2::from_angle(heading).rotate(v) }
     }
 
     /// Which way a side-view joint bends (`ahead`: which way the limb's
@@ -599,7 +613,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -618,6 +632,25 @@ fn grow_legs(
                 commands.entity(e).add_child(c);
             }
             legs.claws.push(claw);
+        }
+        // Its chains' tips: turned sprites at their ends (a sting).
+        for chain in legs.def.chains.clone() {
+            let tip = chain.tip.and_then(|name| {
+                if !art.0.contains_key(&name) {
+                    match crate::combat::turned_art(&name, None, &mut images, &mut layouts) {
+                        Ok(t) => {
+                            art.0.insert(name.clone(), t);
+                        }
+                        Err(err) => warn!("legs: chain tip `{name}`: {err}"),
+                    }
+                }
+                let z = if chain.far { Z_FAR_CLAW } else { Z_NEAR_CLAW } - root_z;
+                art.0.get(&name).map(|t| commands.spawn((LegClaw, t.sprite(0.0), Transform::from_xyz(0.0, 0.0, z))).id())
+            });
+            if let Some(t) = tip {
+                commands.entity(e).add_child(t);
+            }
+            legs.chains.push(super::chains::Chain::with_tip(tip));
         }
         let c = match legs.def.view {
             View::Above => k.body.pos,
@@ -714,8 +747,12 @@ fn walk(
         };
         legs.offset = c - middle;
         let fwd = Vec2::from_angle(legs.heading);
-        // (Jumped: every foot planted afresh, no steps across.)
+        // (Jumped: every foot planted afresh, no steps across; its chains
+        // at rest.)
         if jumped {
+            for ch in &mut legs.chains {
+                ch.pts.clear();
+            }
             for i in 0..legs.feet.len() {
                 let hip = legs.hip(i, c);
                 let way = legs.way(i);
@@ -966,6 +1003,30 @@ fn walk(
                 t.translation = (wrist - middle).extend(t.translation.z);
             }
         }
+        // Chains: each from its anchor, swinging after the body, reaching
+        // for what it aims at; a sprite at its tip.
+        let turn = legs.frame();
+        let (aim, facing) = (legs.aim, legs.facing);
+        let defs = legs.def.chains.clone();
+        for (j, def) in defs.iter().enumerate() {
+            let anchor = c + turn(Vec2::new(def.anchor.0, def.anchor.1));
+            let Some(ch) = legs.chains.get_mut(j) else { continue };
+            ch.step(def, anchor, &turn, aim.filter(|_| def.aims.is_some()), dt);
+            if let (Some(tip), [.., a, b]) = (ch.tip, ch.pts.as_slice())
+                && let Ok((mut s, mut t)) = claws.get_mut(tip)
+            {
+                let d = *b - *a;
+                let local = if side { d.y.atan2(d.x * facing) } else { d.y.atan2(d.x) };
+                if let Some(atlas) = s.texture_atlas.as_mut() {
+                    atlas.index = crate::combat::Turned::index(local.to_degrees());
+                }
+                s.flip_x = side && facing < 0.0;
+                if let Some(t) = tint {
+                    s.color = t;
+                }
+                t.translation = (*b - middle).extend(t.translation.z);
+            }
+        }
         // Legs holding nothing reach out from the body as it goes, and
         // twitch, each out of step.
         for i in 0..n {
@@ -989,6 +1050,23 @@ fn walk(
                 f.at = hip + (f.at - hip).normalize_or(Vec2::NEG_Y) * reach;
             }
         }
+    }
+}
+
+/// Where a creature's aiming chains reach for: the nearest thing it
+/// hunts within the furthest of their ranges (its middle), or nothing.
+fn aims(mut legs: Query<(&mut Legs, &Kinematics)>, hunted: Query<(&Kinematics, &crate::creatures::Team)>) {
+    for (mut l, k) in &mut legs {
+        let Some(range) = l.def.chains.iter().filter_map(|c| c.aims).reduce(f32::max) else {
+            l.aim = None;
+            continue;
+        };
+        l.aim = hunted
+            .iter()
+            .filter(|(_, t)| t.hunted())
+            .map(|(hk, _)| hk.body.pos)
+            .filter(|p| p.distance(k.body.pos) <= range)
+            .min_by(|a, b| a.distance(k.body.pos).total_cmp(&b.distance(k.body.pos)));
     }
 }
 
@@ -1293,6 +1371,30 @@ fn draw(
                 stroke(elbow, wrist, w(1) * 0.5 + grow, w(2) * 0.5 + grow, pass, to);
             }
             stroke(elbow, elbow, (w(1) * 0.25).max(0.8), (w(1) * 0.25).max(0.8), knob, to);
+        }
+        // Chains: tapered and outlined as the legs, rings across their
+        // joints if they're segmented.
+        for (def, ch) in legs.def.chains.iter().zip(&legs.chains) {
+            let n = ch.pts.len();
+            if n < 2 {
+                continue;
+            }
+            let base = def.color.unwrap_or(legs.def.color);
+            let fill = rgb(if def.far { dark(base) } else { base });
+            let line = rgb(legs.def.outline.unwrap_or_else(|| dark(dark(base))));
+            let to = &mut quads[(!def.far && !def.behind && side) as usize];
+            let w = |i: usize| def.width_at(i as f32 / (n - 1) as f32);
+            for (pass, grow) in [(line, 1.0), (fill, 0.0)] {
+                for i in 1..n {
+                    stroke(ch.pts[i - 1], ch.pts[i], w(i - 1) * 0.5 + grow, w(i) * 0.5 + grow, pass, to);
+                }
+            }
+            if def.rings {
+                for i in 1..n - 1 {
+                    let across = (ch.pts[i + 1] - ch.pts[i - 1]).perp().normalize_or(Vec2::Y) * (w(i) * 0.5);
+                    stroke(ch.pts[i] - across, ch.pts[i] + across, 0.5, 0.5, line, to);
+                }
+            }
         }
     }
     let [back, front, stage_back, stage_front] = &mut canvas.0;

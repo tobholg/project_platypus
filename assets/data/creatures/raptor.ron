@@ -28,6 +28,11 @@
            arms: [
                (shoulder: (10, 3), hand: (15, -2), bones: (4.5, 5), width: [2.5, 2, 1.5], elbow: Back, sway: 0.6),
                (shoulder: (11, 4), hand: (17, -1), bones: (4.5, 5), width: [2.5, 2, 1.5], elbow: Back, sway: 0.6, far: true),
+           ],
+           // Its tail (chains.rs): held out stiff behind, level, swinging
+           // after its body as it runs and turns.
+           chains: [
+               (anchor: (-11, 3), links: 6, length: 4.2, rest: 182, stiff: 0.7, sag: 1, width: [5, 3, 1], color: Some((98, 114, 72)), behind: true),
            ]),
     movement: (
         run_speed: 150,

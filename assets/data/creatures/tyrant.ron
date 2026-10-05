@@ -27,7 +27,12 @@
                (shoulder: (40, -6), hand: (46, -12), bones: (5, 5), width: [4, 3, 2], elbow: Back, sway: 0.5),
                (shoulder: (42, -5), hand: (48, -11), bones: (5, 5), width: [4, 3, 2], elbow: Back, sway: 0.5, far: true),
            ],
-           footfall: (sound: Some("stomp"), dust: 16, shake: 0.22)),
+           footfall: (sound: Some("stomp"), dust: 16, shake: 0.22),
+           // Its tail (chains.rs): heavy, held out behind a little above
+           // level, sagging some, swaying after its body with every step.
+           chains: [
+               (anchor: (-17, 8), links: 8, length: 6, rest: 172, stiff: 0.55, sag: 3, width: [17, 10, 4, 1.5], color: Some((96, 86, 64)), behind: true),
+           ]),
     movement: (
         run_speed: 70,
         ground_accel: 220,

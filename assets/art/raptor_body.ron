@@ -1,12 +1,12 @@
 // A ridge raptor seen from the side, pointing right: a lean body held
-// level, its long tail out straight behind, a neck curving up to a long
+// level (its long tail is its creature file's chain), a neck curving up to a long
 // head (a yellow eye, a mouth of teeth), dark stripes down its back, a
 // pale belly. Its legs (three bones each: a thick thigh, a slender shank
 // back to the ankle, a long foot forward to its toes) and its little arms
 // are its creature file's `legs`; `grip` is its hip.
 (
-    size: (59, 19),
-    feet: (29, 17),
+    size: (43, 19),
+    feet: (13, 17),
     outline: (22, 20, 16),
     palette: {
         'G': (98, 114, 72),   // body
@@ -21,29 +21,29 @@
     },
     frames: {
         "body": [
-            "...........................................................",
-            "...............................................kkkk........",
-            ".............................................kGGGGGLL......",
-            "............................................GGGGGGGGLLL....",
-            "...........................................GGGeGGGGGGGGGL..",
-            "...........................................GGGGGGGGGGGGGGn.",
-            "..........................................gGGGGmmmmmmmmmm..",
-            ".........................................gGGGGtmtmtmtm.....",
-            "........................................gGGGggpppppp.......",
-            "...........................kkkLL......gGGGgg...............",
-            ".....................kkkLLLLGGGGGGGkkGGGGgg................",
-            "............kkkLLLLLLGGGGGGGGGGGGGGGGGGGGg.................",
-            "....LLLLLLLLGGGGGGGGGGGGGGGGGGGGGGGGGGGGGgg................",
-            ".gggggggGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGgg.................",
-            ".....gggggggggggGGGGGGGGGGGGGGGGGGGGGGGgg..................",
-            "...............ggggggpppppppppppppppppgg...................",
-            "....................ggppppppppppppppgg.....................",
-            ".......................gggggggggggg........................",
-            "...........................................................",
+            "...........................................",
+            "...............................kkkk........",
+            ".............................kGGGGGLL......",
+            "............................GGGGGGGGLLL....",
+            "...........................GGGeGGGGGGGGGL..",
+            "...........................GGGGGGGGGGGGGGn.",
+            "..........................gGGGGmmmmmmmmmm..",
+            ".........................gGGGGtmtmtmtm.....",
+            "........................gGGGggpppppp.......",
+            "...........kkkLL......gGGGgg...............",
+            ".....kkkLLLLGGGGGGGkkGGGGgg................",
+            ".LLLLGGGGGGGGGGGGGGGGGGGGg.................",
+            ".GGGGGGGGGGGGGGGGGGGGGGGGgg................",
+            ".GGGGGGGGGGGGGGGGGGGGGGGgg.................",
+            ".GGGGGGGGGGGGGGGGGGGGGGgg..................",
+            ".ggggpppppppppppppppppgg...................",
+            "....ggppppppppppppppgg.....................",
+            ".......gggggggggggg........................",
+            "...........................................",
         ],
     },
     clips: {
         "idle": (frames: ["body"], fps: 1),
     },
-    anchors: { "grip": { "body": (29, 15) } },
+    anchors: { "grip": { "body": (13, 15) } },
 )

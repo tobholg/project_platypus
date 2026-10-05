@@ -343,6 +343,9 @@ inside its budget (it follows the part it found, and looks again).
 2. Chains: tails, necks, a wraith's chains; hanging and swinging with
    the body, held out (a tail's stiffness), aiming at a target (a
    scorpion's sting over its back). Tails for the raptor and the tyrant.
+   *Done 2026-10-05*: chains (rest pose, stiffness, swing, sag, rings, a
+   tip sprite, aiming by reshaping the arch); the raptor's and tyrant's
+   tails; the cave scorpion, its sting aimed over its back.
 3. Segments: a centipede, a wyrm, following the head's path; side-view
    bodies that climb walls and ceilings (the body and its legs turned to
    the surface).

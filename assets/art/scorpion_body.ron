@@ -1,0 +1,35 @@
+// A cave scorpion seen from the side, pointing right: a low armoured body
+// in plates, its eyes at the front. Its eight legs, its pincers
+// (`scorpion_claw`) and its tail with its sting (`scorpion_sting`) are its
+// creature file's `legs`; `grip` is the middle of its underside.
+(
+    size: (30, 9),
+    feet: (14, 8),
+    outline: (22, 16, 12),
+    palette: {
+        'b': (52, 34, 24),   // shell, shade
+        'B': (96, 62, 38),   // shell
+        'L': (150, 100, 56),   // shell, lit
+        's': (40, 26, 18),   // plate seams
+        'e': (236, 96, 40),   // eyes (they glow)
+        'm': (60, 40, 28),   // mouthparts
+        'u': (128, 90, 58),   // underside
+    },
+    frames: {
+        "body": [
+            "..............................",
+            "........bbbbbbbbbbbbbbb.......",
+            ".....bbBBsBBBsBBBsBBBBBBbb....",
+            "...bbBBLLsLLLsLLLsLLLLBBBBe...",
+            "..bBBBBBBsBBBsBBBsBBBBBBBBBb..",
+            "..bbbBBBBsBBBsBBBsBBBBBBBBbm..",
+            "....bbbbbbbbbbbbbbbbbbbbbbmm..",
+            ".......uuuuuuuuuuuuuuuuuu.....",
+            "..............................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (14, 7) } },
+)
