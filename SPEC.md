@@ -1885,26 +1885,27 @@ parts, so another is a new file, not new code:
   tapered (`width` base to tip) and outlined as the legs, `rings` across
   its joints, a `tip` sprite turned to its last link; `far` (behind,
   darker) or `behind` (behind, as it is: a tail from the body's back).
-  `aims`: within that range of the nearest thing it hunts, it takes the
-  arch most like its rest pose (its way up ±40°, its curl 0.2–1.5×) whose
-  last link points at it, keeping over its anchor if its rest pose does (a
-  sting stays over the back). The raptor's tail and the tyrant's (cut from
-  their sprites) are chains; the cave scorpion (scorpion.ron: eight legs,
-  pincers, its tail up and back from its rear and arching forward over its
-  back, ringed, a sting) aims its sting at you within 70 cells. An aiming
-  chain holds its arch and eases it toward a better one (140°/s), and a
-  better one must beat it by more than the change: no flicking between
-  two nearly as good. Moves drive it (a move's pose: `coil`, `reach`;
-  the first of BE `limbs` stage 4): coiled, its arch stands 30° more
-  upright and curls half as tight again (drawn back); reaching, it's
-  thrown from its arch to its tip at the target, no further than 80 % of
-  its length, along an arc bulging up exactly its length (`arc_to`: over
-  its back, the sting coming down onto what it strikes). The scorpion's
-  `scorpion_sting` (moves.ron): coiled and trembling 0.55 s, thrown out
-  in 0.09 s (the hit 22 cells ahead, where its tip lands: venom), held,
-  drawn back; its tail 8 × 5 (a little longer than its body), it keeps
-  18 cells off. Seen: the tail coils, arcs over and down onto the
-  player, who flashes hurt (the scorpion standing at the player: its tip still
+  `aims`: within that range of the nearest thing it hunts, its end (its
+  `jab` links, else its last three quarters) turns to point at it, more
+  so toward the tip, the last link at it. `grow`: each link turns that
+  much more than the last (a curl tightening toward the tip: a scorpion's
+  tail rises nearly straight and curls over at its end, not a semicircle
+  over its body). Moves drive it (a move's pose: `coil`, `reach`; the
+  first of BE `limbs` stage 4): coiled, it leans back 25° and its end
+  curls twice as tight (drawn back); reaching, the whole tail swings
+  forward from its base, its curl let out some (of up to 100° forward and
+  its curl down to a tenth, the shape that brings its tip nearest the
+  target, keeping over its anchor but for its end: a whip, not a
+  stretched rope). The raptor's tail and the tyrant's (cut from their
+  sprites) are chains; the cave scorpion (scorpion.ron: eight legs,
+  pincers, its tail 8 × 5 rising from its rear and curling over at its
+  end, ringed, a sting) points its sting at you within 70 cells and,
+  within 40, stings (`scorpion_sting`: coiled and trembling 0.48 s, the
+  tail whipped over in 0.07 s with a small lunge, the hit 20 ahead where
+  the tip lands, venom, snapped back in 0.18 s); it keeps 18 off. Seen at
+  50 frames a second: poised in a tall ?, the tail whips over its back,
+  the sting lands 25 cells ahead on the player (who flashes hurt), it
+  swings back up (the scorpion standing at the player: its tip still
   on most frames, at most 2.2 cells, its body's bob). The `legs` scenario
   leaves the player standing `PLATYPUS_AHEAD` cells beyond the walker
   (600) and the camera follows the walker (it used to jerk the player

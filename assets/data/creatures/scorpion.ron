@@ -26,11 +26,12 @@
                (shoulder: (12, 1), hand: (22, 4), bones: (6, 6), width: [3, 3, 2.5], elbow: Down, claw: Some("scorpion_claw"), sway: 0.5),
                (shoulder: (13, 2), hand: (24, 6), bones: (6, 6), width: [3, 3, 2.5], elbow: Down, claw: Some("scorpion_claw"), sway: 0.5, far: true),
            ],
-           // Its tail: up and back from its rear, arching forward over its back, ringed
-           // at every joint, its sting at the end; near enough, the sting
-           // reaches for you.
+           // Its tail: rising tall from its rear and curling forward over at
+           // its end, the sting poised high over its back (its curl
+           // tightening toward the tip: `grow`), ringed at every joint;
+           // near enough, its end turns to point the sting at you.
            chains: [
-               (anchor: (-12, 3), links: 8, length: 5, rest: 140, curl: -24, stiff: 0.6, width: [5, 4, 3], color: Some((96, 62, 38)), rings: true,
+               (anchor: (-11, 4), links: 8, length: 5, rest: 105, curl: -5, grow: -6, jab: Some(5), stiff: 0.6, width: [5, 4, 3], color: Some((96, 62, 38)), rings: true,
                 tip: Some("scorpion_sting"), aims: Some(70), behind: true),
            ]),
     movement: (

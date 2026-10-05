@@ -1026,7 +1026,7 @@ fn walk(
             let Some(ch) = legs.chains.get_mut(j) else { continue };
             let aims = aim.filter(|_| def.aims.is_some());
             ch.step(def, anchor, &turn, aims, rear.coil, dt);
-            ch.strike(def, anchor, aims, rear.reach);
+            ch.strike(def, anchor, &turn, aims, rear.reach);
             if let (Some(tip), [.., a, b]) = (ch.tip, ch.pts.as_slice())
                 && let Ok((mut s, mut t)) = claws.get_mut(tip)
             {
