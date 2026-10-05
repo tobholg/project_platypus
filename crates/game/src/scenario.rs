@@ -5062,6 +5062,7 @@ fn legs_script(
     intents: Query<(&crate::creatures::Creature, &crate::creatures::Controls)>,
     mut healths: Query<(Entity, &crate::creatures::Creature, &mut crate::creatures::Health), Without<LocalPlayer>>,
     mut took: MessageReader<crate::creatures::Took>,
+    mut began: MessageReader<crate::creatures::moves::Began>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut retreat: Local<f32>,
@@ -5073,6 +5074,14 @@ fn legs_script(
     // What hurts it (it should be nothing, walking); with
     // PLATYPUS_TAILLOG, what hurts the player too.
     let me_hurt = player.single().ok().map(|(e, _)| e);
+    // With PLATYPUS_TAILLOG, each move it begins, and how far off.
+    for b in began.read() {
+        if std::env::var("PLATYPUS_TAILLOG").is_ok()
+            && let (Ok((_, fk, _)), Ok((_, pk))) = (foes.get(b.who), player.single())
+        {
+            info!("legs: t {:.2}: it began {} {:.0} across, {:.0} up", s.elapsed, b.id, (pk.body.pos.x - fk.body.pos.x).abs(), fk.body.pos.y - pk.body.pos.y);
+        }
+    }
     for tk in took.read() {
         if healths.get(tk.target).is_ok_and(|(_, c, _)| c.kind == state.2) {
             // (Real hurts only: not a spider drinking its own acid, 0.0 a
@@ -5081,7 +5090,8 @@ fn legs_script(
                 warn!("legs: t {:.1}: the {} took {:.1} {:?}{}", s.elapsed, state.2, tk.dealt, tk.harm, if tk.killed { ", and died" } else { "" });
             }
         } else if Some(tk.target) == me_hurt {
-            if std::env::var("PLATYPUS_TAILLOG").is_ok() {
+            // (Not venom's every tick.)
+            if std::env::var("PLATYPUS_TAILLOG").is_ok() && tk.dealt >= 1.0 {
                 info!("legs: t {:.2}: the player took {:.1} {:?}", s.elapsed, tk.dealt, tk.harm);
             }
             // Struck (not venom ticking): it backs off a while, so the

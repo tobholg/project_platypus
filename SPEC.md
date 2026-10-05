@@ -1796,7 +1796,8 @@ parts, so another is a new file, not new code:
   (pressing into it), goes along it where it steers, and lets go on a
   jump; the sprite is turned to the surface (upside down on a ceiling).
 - All fight with the `hunter` brain (§6.4), closing with `Crawl` (at you
-  over any surface, a pounce when near, a drop from a ceiling above you),
+  over any surface, stopping `keep` cells off, a pounce when near, a drop
+  from a ceiling above you),
   `Hop` (a hop at you every `every`), `Swoop` (flits in a band above the
   ground; dives at you for `dive_time`, back up every `dive_every`) or
   `Walk` with a `Swing` for anything that wields a weapon. The egg sac is
@@ -1961,8 +1962,10 @@ parts, so another is a new file, not new code:
   beside them (bats 0.03, no haze). `drops`: items that fall out when it
   dies.
 - The cave spider (24 × 18, 130 hp: a body from above with eight glowing
-  red eyes, legs 72 cells long, 5 thick; climbs, pounces; bites, spits
-  and stings: its moves, §6.4;
+  red eyes, legs 72 cells long, 5 thick; climbs; stops a leg's length off (`keep`
+  34, no pounce: its bite leaps); stamps when you're close, bites from
+  further, spits from afar: its moves, §6.4 (its sting is gone: it read
+  as a stick poking out);
   poise 60 and heft 4, a troll's weight: it shrugs off most blows;
   bleeds acid, and acid doesn't hurt it; its spit a big glob, 338 cells of
   acid (`acid_glob`): it drenches you; dead, its body keeps its legs curled in over it:
@@ -2027,7 +2030,8 @@ player has seen creatures do) and `fight.rs` (the arena's readouts).
   survive). `hunter` (`brain/hunter.rs`) is every fighter: `aggro`
   (cells), `close` (`Walk(keep, jump_to_reach)`, `Range(near, far)`,
   `Swoop(hover, dive_time, dive_every)`, `Hop(every)`,
-  `Crawl(pounce_range, pounce_every)`: holding a wall it's going into,
+  `Crawl(pounce_range, pounce_every, keep)` (`keep`: how near it comes,
+  across, 3 by default): holding a wall it's going into,
   with the target level, it climbs it, over: a spider in its own acid's
   crater used to press on the crater's side for good), `attack` (`Touch`, `Swing(reach,
   every, combo)`, `Shoot(draw, every, wobble)`), `wander: (speed, every)`,
@@ -2042,15 +2046,19 @@ player has seen creatures do) and `fight.rs` (the arena's readouts).
   exist is an error at start.
 - **Moves** (`moves/`, `assets/data/moves.ron`, hot-reloaded; DESIGN
   §14.1): what a creature does with its own body, as data. A creature
-  file names its moves (`moves: ["spider_sting", "spider_bite",
-  "spider_spit"]`, tried in that order; an unknown one is reported at
+  file names its moves (`moves: ["spider_stamp", "spider_bite",
+  "spider_spit"]`, tried in that order: nearest reach first; an unknown one is reported at
   start and fails a test). A move: `when` (`range: (near, far)` cells to
   its target, `footing`: standing or clinging, `line`: nothing solid
   between), `every` (seconds after it ends before it may come again; any
   move is followed by 0.4 s before the next), and `phases`, each named
   (windup, hold, strike, recover: the tell is what the windup shows),
   `secs` long, easing the body's pose (`legs::Rear`: `lift`, `back`,
-  `curl`; `ease` Smooth, Linear or Snap; `tremble`) and doing its `acts`
+  `curl`, a chain's `coil` and `reach`, and `paw`: its `strikers` legs
+  (its file's, or from above its front pair) lifted off the ground, out
+  ahead and up as much as `paw` (to 1.2), spread apart from above;
+  `ease` Smooth, Linear or Snap; `tremble`, on curl, coil (×4) and paw
+  (×3) only) and doing its `acts`
   as it starts: `Lunge(speed, up)`; `Strike((at, reach, damage, harm,
   knock, up, stun, from, coat))`, live through the phase from `from` (a
   share of it): what's within `reach` of the point `at` cells toward the
@@ -2080,7 +2088,11 @@ player has seen creatures do) and `fight.rs` (the arena's readouts).
   235 cells; a second grab broken by a staggering blow; a skeleton given
   `fire_ray` sets the player alight.
   The spider's are all moves: in the `spider` scenario the spit from 180
-  cells at 0.57 s, the sting's 30 at ~4.06 s with its venom, the bite's 16.
+  cells at 0.51 s; the bite from 51 (0.4 s drawing back 20 cells, low,
+  its front legs up; 0.3 s held, quivering; a leap at 300 cells/s,
+  jaws first, 18 pierce); the stamp from 28 (up on its back legs, its
+  front pair raised high, held, brought down: 22 blunt, knocked 380); in
+  turn after that.
 - **Seeing that it hurts** (`body/hurt.rs`, DESIGN §14.3; no health
   bars): every `Hit` as it lands is `combat::Felt` (what it meant, what it
   did, as a share of the target's health), shown as one of three

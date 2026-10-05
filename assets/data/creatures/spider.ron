@@ -1,10 +1,10 @@
 // A cave spider: big, eight red eyes glowing in the dark, eight long legs
 // that reach out and grip the rock (actors/legs.rs). It runs at you over
 // floors, walls and ceilings, drops on you from above. Up close it crouches
-// and lunges to bite (it throws you), or rises on its legs and curls its
-// stinger over its back to strike (venom); from further off it rears and
-// spits acid, a lot of it (actors/spider.rs). Dead, its legs curl up over
-// it. Lives in nests (lairs.ron) and deep caves.
+// low and draws back, trembling, then leaps at you to bite (it throws you),
+// or rears up on its back legs, its front pair raised high, and stamps them
+// down on you; from further off it rears and spits acid, a lot of it. Dead,
+// its legs curl up over it. Lives in nests (lairs.ron) and deep caves.
 (
     name: "Cave spider",
     // What it may have on it when it dies (loot.ron), besides what it wears.
@@ -19,8 +19,7 @@
     blood: "acid",
     art: "spider_body",
     legs: (count: 8, reach: 72, upper: 0.48, step: 0.1, lift: 12, hips: 6, spread: 11,
-           color: (24, 18, 22), joint: (74, 36, 40), thick: 5, body: "spider_body", eyes: (255, 52, 38),
-           stinger: "spider_stinger"),
+           color: (24, 18, 22), joint: (74, 36, 40), thick: 5, body: "spider_body", eyes: (255, 52, 38)),
     // (Its eyes are drawn over the dark: `legs`' `eyes`. The faintest red on
     // what's right beside it: no glow.)
     light: (color: (255, 40, 30), strength: 0.04),
@@ -44,10 +43,10 @@
     heft: 4,
     brain: (
         kind: "hunter",
-        params: (aggro: 255, close: Crawl(pounce_range: 51, pounce_every: 1.5), wander: (speed: 0.4)),
+        params: (aggro: 255, close: Crawl(pounce_range: 0, pounce_every: 1.5, keep: 34), wander: (speed: 0.4)),
     ),
     // Its own moves (moves.ron), tried in this order.
-    moves: ["spider_sting", "spider_bite", "spider_spit"],
+    moves: ["spider_stamp", "spider_bite", "spider_spit"],
     // It digs its way to you: claws through dirt and sand (hardness to 25,
     // 30 cells a second of dirt), acid through what they can't take (stone,
     // not obsidian or glass: 40 cells a second of dirt, stone a third of

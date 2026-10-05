@@ -606,7 +606,7 @@ mod tests {
                 assert!(moves.has(m), "{id}: no move `{m}` in moves.ron");
             }
         }
-        assert_eq!(defs["spider"].moves, ["spider_sting", "spider_bite", "spider_spit"]);
+        assert_eq!(defs["spider"].moves, ["spider_stamp", "spider_bite", "spider_spit"]);
         // Their natures as designed.
         let of = |id: &str, h: Harm| defs[id].nature.of(h);
         assert!(of("skeleton", Harm::Blunt) > 1.0 && of("skeleton", Harm::Pierce) < 1.0);

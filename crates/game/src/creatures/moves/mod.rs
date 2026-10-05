@@ -114,6 +114,9 @@ pub struct Pose {
     /// arch, 1: stretched straight at it).
     pub coil: f32,
     pub reach: f32,
+    /// Its striking legs (a spider's front pair) raised high ahead (0–1);
+    /// dropped back to 0 fast, they come down hard (a stamp).
+    pub paw: f32,
 }
 
 /// How a phase moves into its pose.
@@ -513,7 +516,7 @@ pub fn run(
             if let (Some(clip), Some(a)) = (&p.clip, anim.as_deref_mut()) {
                 a.play(clip);
             }
-            d.from = Pose { lift: rear.lift, back: rear.back, curl: rear.curl, coil: rear.coil, reach: rear.reach };
+            d.from = Pose { lift: rear.lift, back: rear.back, curl: rear.curl, coil: rear.coil, reach: rear.reach, paw: rear.paw };
             if let Some(pose) = p.pose
                 && (p.ease == Ease::Snap || p.secs == 0.0)
             {
@@ -573,6 +576,7 @@ pub fn run(
             rear.curl = d.from.curl + (to.curl - d.from.curl) * w + p.tremble * (d.t * 40.0).sin();
             rear.coil = d.from.coil + (to.coil - d.from.coil) * w + p.tremble * 4.0 * (d.t * 40.0).sin();
             rear.reach = d.from.reach + (to.reach - d.from.reach) * w;
+            rear.paw = d.from.paw + (to.paw - d.from.paw) * w + p.tremble * 3.0 * (d.t * 40.0).sin();
         }
         // A strike, live.
         for act in &p.acts {
@@ -648,6 +652,7 @@ fn set(rear: &mut Rear, pose: Pose) {
     rear.curl = pose.curl;
     rear.coil = pose.coil;
     rear.reach = pose.reach;
+    rear.paw = pose.paw;
 }
 
 /// What a phase does as it starts.

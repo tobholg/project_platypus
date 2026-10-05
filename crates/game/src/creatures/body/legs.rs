@@ -232,6 +232,10 @@ pub struct LegsDef {
     /// Its chains (`chains.rs`: tails, necks, a sting).
     #[serde(default)]
     pub chains: Vec<super::chains::ChainDef>,
+    /// Which legs strike (a move's `paw`: raised high ahead, then down
+    /// hard); else, from above, its front pair.
+    #[serde(default)]
+    pub strikers: Vec<usize>,
     /// Toes (cells long): a foot along the ground ahead, a claw behind.
     #[serde(default)]
     pub toes: f32,
@@ -286,6 +290,9 @@ pub struct Rear {
     /// target (0–1: a sting striking).
     pub coil: f32,
     pub reach: f32,
+    /// Its striking legs (`strikers`) raised ahead and up (0–1.2): a
+    /// stamp's, a bite's threat.
+    pub paw: f32,
 }
 
 fn eight() -> usize {
@@ -302,6 +309,15 @@ fn tilt() -> f32 {
 }
 
 impl LegsDef {
+    /// The legs that strike.
+    pub fn strikers(&self) -> Vec<usize> {
+        match (self.strikers.is_empty(), self.view) {
+            (false, _) => self.strikers.clone(),
+            (true, View::Above) => vec![0, 1],
+            (true, View::Side) => Vec::new(),
+        }
+    }
+
     /// How far a leg reaches, hip to foot (its ankle's bone too).
     pub fn full_reach(&self) -> f32 {
         self.reach + self.ankle
@@ -1005,6 +1021,29 @@ fn walk(
                 f.t = (f.t + dt / step_time.max(0.01)).min(1.0);
                 let s = f.t * f.t * (3.0 - 2.0 * f.t);
                 f.at = f.from.lerp(f.to, s) + away * lift * (std::f32::consts::PI * f.t).sin();
+            }
+        }
+        // Striking legs (a move's `paw`): raised high ahead, over its head;
+        // as `paw` drops back they come down ahead, hard, onto the ground
+        // there (they let go: the next step plants them again).
+        if rear.paw > 0.01 {
+            let ahead = if side { Vec2::X * legs.facing } else { fwd };
+            for i in legs.def.strikers() {
+                if i >= n {
+                    continue;
+                }
+                let hip = legs.hip(i, c);
+                let p = rear.paw.clamp(0.0, 1.2);
+                // (Within its reach, so its knee bends; from above, the pair
+                // spread apart, one to each side.)
+                let spread = if side { Vec2::ZERO } else { ahead.perp() * if i.is_multiple_of(2) { 1.0 } else { -1.0 } * reach * 0.22 * p };
+                let at = hip + ahead * reach * (0.55 - 0.1 * p) + up * reach * (0.5 * p - 0.2) + spread;
+                let foot = &mut legs.feet[i];
+                foot.at = open_toward(&sim, hip, at);
+                foot.to = foot.at;
+                foot.t = 1.0;
+                foot.grips = false;
+                foot.retry = 0.05;
             }
         }
         // Arms: each hand where it rests, swaying (each its own beat); the

@@ -55,14 +55,30 @@
             (name: "beam", secs: 1.6, acts: [Beam(spell: "fire_ray", at: 10, turn: 0.9)]),
             (name: "recover", secs: 0.5, pose: Some(())),
         ]),
-        // The big spider's. It crouches back, then leaps at you: its jaws.
-        (id: "spider_bite", every: 1.5, when: (range: (0, 36), footing: true), phases: [
-            (name: "windup", secs: 0.3, pose: Some((lift: 3, back: 4.5))),
-            (name: "strike", secs: 0.22, ease: Snap, pose: Some((lift: 1.5)), acts: [
-                Lunge(speed: 420, up: 90),
-                Strike((at: 15, reach: 6, damage: 16, harm: pierce, knock: 495, up: 0.4, stun: 0.35)),
+        // The big spider's bite. It crouches low and draws back, its front
+        // legs up and quivering (you see it coming), then leaps at you,
+        // jaws first, the legs coming down; a moment over you, then back.
+        (id: "spider_bite", every: 2.4, when: (range: (0, 54), footing: true), phases: [
+            (name: "windup", secs: 0.4, pose: Some((lift: -6, back: 20, paw: 0.9))),
+            (name: "hold", secs: 0.3, ease: Snap, pose: Some((lift: -6, back: 20, paw: 0.9)), tremble: 0.05, acts: [Sound("pour")]),
+            (name: "strike", secs: 0.2, ease: Snap, pose: Some((lift: 2, back: -8, paw: 0.0)), acts: [
+                Lunge(speed: 300, up: 60),
+                Strike((at: 16, reach: 8, damage: 18, harm: pierce, knock: 495, up: 0.4, stun: 0.35, from: 0.2)),
+                Sound("snap"),
             ]),
-            (name: "recover", secs: 0.45, ease: Snap, pose: Some(())),
+            (name: "recover", secs: 0.45, ease: Smooth, pose: Some(())),
+        ]),
+        // The big spider's stamp: up on its back legs, its front pair raised
+        // high over its head, held a moment trembling, then brought down
+        // hard on you.
+        (id: "spider_stamp", every: 3.0, when: (range: (0, 42), footing: true), phases: [
+            (name: "windup", secs: 0.4, pose: Some((lift: 10, back: 4, paw: 1.2))),
+            (name: "hold", secs: 0.25, ease: Snap, pose: Some((lift: 10, back: 4, paw: 1.2)), tremble: 0.04),
+            (name: "strike", secs: 0.08, ease: Linear, pose: Some((lift: 2, back: -4, paw: 0.0)), acts: [
+                Strike((at: 24, reach: 12, damage: 22, harm: blunt, knock: 380, up: 0.5, stun: 0.5, from: 0.6)),
+                Sound("slam"),
+            ]),
+            (name: "recover", secs: 0.4, ease: Smooth, pose: Some(())),
         ]),
         // A cave scorpion's sting: its tail drawn back and coiled tight,
         // trembling, then thrown out straight at you (the tip where it
@@ -83,16 +99,6 @@
             (name: "windup", secs: 0.45, pose: Some((lift: 6, back: 3))),
             (name: "strike", secs: 0, ease: Snap, pose: Some((lift: 6, back: -3)), acts: [Cast(spell: "spider_spit", at: 15, up: 4.5)]),
             (name: "recover", secs: 0.45, pose: Some(())),
-        ]),
-        // Close: up on its legs, its stinger curled over its back and held
-        // there trembling, then down past its head: a heavy blow, and venom.
-        (id: "spider_sting", every: 5.0, when: (range: (0, 42), footing: true), phases: [
-            (name: "windup", secs: 0.5, pose: Some((lift: 12, curl: 0.55))),
-            (name: "hold", secs: 0.35, ease: Snap, pose: Some((lift: 12, curl: 0.55)), tremble: 0.03),
-            (name: "strike", secs: 0.12, ease: Linear, pose: Some((lift: 6, curl: 1.0)), acts: [
-                Strike((at: 15, reach: 12, damage: 30, harm: pierce, knock: 330, up: 0.3, stun: 0.4, from: 0.5, coat: Some("venom"))),
-            ]),
-            (name: "recover", secs: 0.45, ease: Linear, pose: Some(())),
         ]),
     ],
 )

@@ -12,9 +12,9 @@
 //!   - `Swoop(hover, dive_time, dive_every)`: flying in a band (cells over
 //!     the ground) and diving at you now and then (bats, star wisps);
 //!   - `Hop(every)`: a hop at you every so often (slimes);
-//!   - `Crawl(pounce_range, pounce_every)`: over floors, walls and ceilings
-//!     (its movement's `cling`), pouncing when near or right above you
-//!     (spiders).
+//!   - `Crawl(pounce_range, pounce_every, keep)`: over floors, walls and
+//!     ceilings (its movement's `cling`), stopping `keep` cells off,
+//!     pouncing when near or right above you (spiders).
 //! - `attack`: `Touch` (what it touches it hurts: its file's `touch`, and
 //!   its own moves), `Swing(reach, every, combo)` (what it wields, `combo`
 //!   moves in a row when you're within `reach`, then a wait of `every` s),
@@ -82,13 +82,24 @@ pub enum Close {
     Range { near: f32, far: f32 },
     Swoop { hover: (f32, f32), dive_time: f32, dive_every: f32 },
     Hop { every: f32 },
-    Crawl { pounce_range: f32, pounce_every: f32 },
+    Crawl {
+        pounce_range: f32,
+        pounce_every: f32,
+        /// How near it comes, across (cells, middle to middle): a big
+        /// spider stays a leg's length off and strikes from there.
+        #[serde(default = "crawl_keep")]
+        keep: f32,
+    },
 }
 
 impl Default for Close {
     fn default() -> Self {
         Close::Walk { keep: keep(), jump_to_reach: jump_to_reach() }
     }
+}
+
+fn crawl_keep() -> f32 {
+    3.0
 }
 
 fn keep() -> f32 {
@@ -373,7 +384,7 @@ fn hunt(
             }
             // Crawling: up walls toward it, along ceilings; a pounce when
             // near, or dropping on it from above.
-            (Close::Crawl { pounce_range, pounce_every }, Some((t, _, th))) => {
+            (Close::Crawl { pounce_range, pounce_every, keep }, Some((t, _, th))) => {
                 let d = t - pos;
                 move_y = if d.y > 6.0 {
                     1.0
@@ -398,7 +409,7 @@ fn hunt(
                 }
                 let mx = match steer {
                     Some(s) => s.move_x,
-                    None if d.x.abs() > 3.0 => d.x.signum(),
+                    None if d.x.abs() > *keep => d.x.signum(),
                     None => 0.0,
                 };
                 // (Holding a wall it's going into, with nowhere up or down to
