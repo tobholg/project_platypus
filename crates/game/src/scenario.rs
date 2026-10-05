@@ -5088,9 +5088,15 @@ fn legs_script(
         // with the walker.
         let gap = std::env::var("PLATYPUS_AHEAD").ok().and_then(|v| v.parse().ok()).unwrap_or(600.0);
         let px = (x + gap * *dir).clamp(70.0, 1850.0);
-        if let Some(py) = ground(px, pk.body.pos.y) {
-            pk.body.pos = Vec2::new(px, py + pk.body.half.y + 0.5);
-            pk.body.vel = Vec2::ZERO;
+        // (Its chunks aren't loaded yet that far off: the ground as the
+        // world was made there.)
+        match ground(px, pk.body.pos.y).or_else(|| sim.generator.surface_hint(px as i32).map(|y| y as f32)) {
+            Some(py) => {
+                pk.body.pos = Vec2::new(px, py + pk.body.half.y + 0.5);
+                pk.body.vel = Vec2::ZERO;
+                info!("legs: the player moved to wait at {:?}", pk.body.pos.round());
+            }
+            None => warn!("legs: no ground at {px} for the player to wait on"),
         }
         commands.entity(me).remove::<crate::camera::CameraTarget>();
         crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x, y), |e| {
@@ -5157,6 +5163,9 @@ fn legs_script(
                     let b = Vec2::new(fk.body.pos.x, fk.body.pos.y - fk.body.half.y);
                     let fs: Vec<String> = legs.feet().map(|(p, g)| format!("{:?}{}", (p - b).round(), if g { "" } else { "~" })).collect();
                     info!("legs: feet from its box's bottom: {}; vel {:?} grounded {}", fs.join(" "), fk.body.vel.round(), fk.loco.grounded());
+                }
+                if std::env::var("PLATYPUS_FEETLOG").is_ok() {
+                    info!("legs: t {t:.1}: the player at {:?}", pk.body.pos.round());
                 }
                 info!("legs: t {t:.1}: at {:?} slope {slope:+.0}° tilt {tilt:+.0}° rides {ride:.0} over its box's bottom, {planted} feet planted, {sunk} in rock", fk.body.pos.round());
             }
