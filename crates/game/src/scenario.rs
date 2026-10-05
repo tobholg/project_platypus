@@ -5072,7 +5072,11 @@ fn legs_script(
     let me_hurt = player.single().ok().map(|(e, _)| e);
     for tk in took.read() {
         if healths.get(tk.target).is_ok_and(|(_, c, _)| c.kind == state.2) {
-            warn!("legs: t {:.1}: the {} took {:.1} {:?}{}", s.elapsed, state.2, tk.dealt, tk.harm, if tk.killed { ", and died" } else { "" });
+            // (Real hurts only: not a spider drinking its own acid, 0.0 a
+            // tick.)
+            if tk.dealt >= 0.5 || tk.killed {
+                warn!("legs: t {:.1}: the {} took {:.1} {:?}{}", s.elapsed, state.2, tk.dealt, tk.harm, if tk.killed { ", and died" } else { "" });
+            }
         } else if Some(tk.target) == me_hurt {
             if std::env::var("PLATYPUS_TAILLOG").is_ok() {
                 info!("legs: t {:.2}: the player took {:.1} {:?}", s.elapsed, tk.dealt, tk.harm);
