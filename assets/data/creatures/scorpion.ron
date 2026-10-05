@@ -1,8 +1,7 @@
 // A cave scorpion: low and armoured on eight legs, its pincers held out
-// ahead, its segmented tail curled up over its back, the sting reaching
-// for you when you're near. A first version (BE `limbs`): it walks, its
-// tail aims (chains.rs), its touch stings; its strike comes with moves
-// that drive limbs.
+// ahead, its segmented tail curled up over its back, the sting aimed at
+// you when you're near; close, it draws its tail back, coiled and
+// trembling, and stings: the tail thrown out straight at you (venom).
 (
     name: "Cave scorpion",
     size: (24, 16),
@@ -31,7 +30,7 @@
            // at every joint, its sting at the end; near enough, the sting
            // reaches for you.
            chains: [
-               (anchor: (-12, 3), links: 7, length: 4, rest: 140, curl: -28, stiff: 0.6, width: [5, 4, 3], color: Some((96, 62, 38)), rings: true,
+               (anchor: (-12, 3), links: 8, length: 5, rest: 140, curl: -24, stiff: 0.6, width: [5, 4, 3], color: Some((96, 62, 38)), rings: true,
                 tip: Some("scorpion_sting"), aims: Some(70), behind: true),
            ]),
     movement: (
@@ -45,9 +44,11 @@
     ),
     poise: 22,
     heft: 1.4,
-    touch: (harm: pierce, damage: 9, knock: 220, stun: 0.2),
+    touch: (harm: pierce, damage: 5, knock: 160, stun: 0.1),
+    // Its own moves (moves.ron).
+    moves: ["scorpion_sting"],
     brain: (
         kind: "hunter",
-        params: (aggro: 350, close: Walk(keep: 14, jump_to_reach: 16), wander: (speed: 0.4, every: 2.5)),
+        params: (aggro: 350, close: Walk(keep: 18, jump_to_reach: 16), wander: (speed: 0.4, every: 2.5)),
     ),
 )

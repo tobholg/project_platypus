@@ -1894,7 +1894,17 @@ parts, so another is a new file, not new code:
   back, ringed, a sting) aims its sting at you within 70 cells. An aiming
   chain holds its arch and eases it toward a better one (140°/s), and a
   better one must beat it by more than the change: no flicking between
-  two nearly as good (the scorpion standing at the player: its tip still
+  two nearly as good. Moves drive it (a move's pose: `coil`, `reach`;
+  the first of BE `limbs` stage 4): coiled, its arch stands 30° more
+  upright and curls half as tight again (drawn back); reaching, it's
+  thrown from its arch to its tip at the target, no further than 80 % of
+  its length, along an arc bulging up exactly its length (`arc_to`: over
+  its back, the sting coming down onto what it strikes). The scorpion's
+  `scorpion_sting` (moves.ron): coiled and trembling 0.55 s, thrown out
+  in 0.09 s (the hit 22 cells ahead, where its tip lands: venom), held,
+  drawn back; its tail 8 × 5 (a little longer than its body), it keeps
+  18 cells off. Seen: the tail coils, arcs over and down onto the
+  player, who flashes hurt (the scorpion standing at the player: its tip still
   on most frames, at most 2.2 cells, its body's bob). The `legs` scenario
   leaves the player standing `PLATYPUS_AHEAD` cells beyond the walker
   (600) and the camera follows the walker (it used to jerk the player

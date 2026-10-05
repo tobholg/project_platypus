@@ -81,6 +81,9 @@ pub struct Chain {
     pose: Option<(f32, f32)>,
 }
 
+/// How far of its length a striking chain throws its tip (the rest arcs).
+const STRIKE_REACH: f32 = 0.8;
+
 /// How fast an aiming chain's arch changes (degrees a second).
 const ARCH_RATE: f32 = 140.0;
 
@@ -127,7 +130,7 @@ impl Chain {
     /// (from the joint before it, as it is now), each link its length
     /// again. Its pose is its rest pose, or, reaching for `aim`, the arch
     /// most like it whose last link points at it (`aim_pose`).
-    pub fn step(&mut self, def: &ChainDef, anchor: Vec2, turn: impl Fn(Vec2) -> Vec2, aim: Option<Vec2>, dt: f32) {
+    pub fn step(&mut self, def: &ChainDef, anchor: Vec2, turn: impl Fn(Vec2) -> Vec2, aim: Option<Vec2>, coil: f32, dt: f32) {
         let n = def.links;
         if self.pts.len() != n + 1 {
             *self = Chain { tip: self.tip, ..Chain::rest(def, anchor, &turn) };
@@ -148,8 +151,13 @@ impl Chain {
                 (def.rest, def.curl)
             }
         };
+        // Coiled (a move drawing it back): its arch more upright and tighter.
+        let coil = if aim.is_some() { coil.clamp(0.0, 1.5) } else { 0.0 };
+        let toward_up = if (def.rest - 90.0).abs() < 1.0 { 0.0 } else { (90.0 - def.rest).signum() };
+        let (rest, curl) = (rest + toward_up * 30.0 * coil, curl * (1.0 + 0.5 * coil));
         // (Aiming, it holds its pose harder: a sting poised.)
         let stiff = if aim.is_some() { def.stiff.max(0.8) } else { def.stiff };
+        let stiff = if coil > 0.0 { 1.0 } else { stiff };
         let hold = (stiff * 22.0 * dt).min(1.0);
         for i in 1..=n {
             // Its swing (a little damped) and its sag.
@@ -165,6 +173,74 @@ impl Chain {
             self.pts[i] = self.pts[i - 1] + d.normalize_or(turn(Vec2::NEG_X)) * def.length;
         }
     }
+}
+
+impl Chain {
+    /// A move's say over an aiming chain, after its step: `reach` (0–1)
+    /// thrown out from its arch to its tip at `aim` (no further than 80 % of
+    /// its length), along an arc bulging up as long as it is (over its
+    /// back: a sting comes down onto what it strikes).
+    pub fn strike(&mut self, def: &ChainDef, anchor: Vec2, aim: Option<Vec2>, reach: f32) {
+        let n = self.pts.len();
+        let (Some(goal), true) = (aim, reach > 0.0 && n >= 2) else { return };
+        // (No further than most of its length: slack left to arc over; the
+        // tip comes down short of a target past it.)
+        let goal = anchor + (goal - anchor).clamp_length_max(def.reach() * STRIKE_REACH);
+        let arc = arc_to(anchor, goal, def.links, def.length);
+        let r = reach.clamp(0.0, 1.0);
+        for i in 1..n {
+            self.pts[i] = self.pts[i].lerp(arc[i], r);
+        }
+        self.relink(def);
+        // (Struck out, it doesn't swing back on its own: the move draws it.)
+        self.prev.clone_from(&self.pts);
+    }
+
+    /// Each link its length again, from the anchor out.
+    fn relink(&mut self, def: &ChainDef) {
+        for i in 1..self.pts.len() {
+            let d = self.pts[i] - self.pts[i - 1];
+            self.pts[i] = self.pts[i - 1] + d.normalize_or(Vec2::Y) * def.length;
+        }
+    }
+}
+
+/// `links` joints `length` apart from `from` to `to` along a circle's arc
+/// bulging up (the arc's length theirs): its chord `to - from`; if that's
+/// longer than they reach, straight at it as far as they go.
+pub fn arc_to(from: Vec2, to: Vec2, links: usize, length: f32) -> Vec<Vec2> {
+    let total = links as f32 * length;
+    let chord = to - from;
+    let d = chord.length();
+    if d >= total * 0.999 || d < 0.01 {
+        let dir = chord.normalize_or(Vec2::Y);
+        return (0..=links).map(|i| from + dir * length * i as f32).collect();
+    }
+    // The arc's angle: total / d = θ / (2 sin(θ/2)), by bisection on 0..2π.
+    let ratio = total / d;
+    let (mut lo, mut hi) = (1e-4f32, std::f32::consts::TAU - 1e-3);
+    for _ in 0..40 {
+        let mid = (lo + hi) * 0.5;
+        if mid / (2.0 * (mid * 0.5).sin()) < ratio { lo = mid } else { hi = mid }
+    }
+    let theta = (lo + hi) * 0.5;
+    let radius = total / theta;
+    // The centre: from the chord's middle, away from the bulge (up).
+    let mut n = chord.perp().normalize();
+    if n.y < 0.0 {
+        n = -n;
+    }
+    let centre = from + chord * 0.5 - n * radius * (theta * 0.5).cos();
+    let a0 = (from - centre).to_angle();
+    let a1 = (to - centre).to_angle();
+    // (The way round that passes the bulge: over the top.)
+    let mut sweep = (a1 - a0 + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+    let top = centre + n * radius;
+    let mid_angle = a0 + sweep * 0.5;
+    if (centre + Vec2::from_angle(mid_angle) * radius).distance(top) > radius * 0.5 {
+        sweep -= sweep.signum() * std::f32::consts::TAU;
+    }
+    (0..=links).map(|i| centre + Vec2::from_angle(a0 + sweep * i as f32 / links as f32) * radius).collect()
 }
 
 /// The arch a chain reaching for `goal` takes: of its rest pose's way up
@@ -223,11 +299,11 @@ mod tests {
         let mut at = Vec2::ZERO;
         for _ in 0..10 {
             at += Vec2::new(0.0, 3.0);
-            c.step(&def, at, right, None, 1.0 / 60.0);
+            c.step(&def, at, right, None, 0.0, 1.0 / 60.0);
         }
         assert!(c.pts[6].y < at.y - 2.0, "the tip lags: {:?} under {:?}", c.pts[6], at);
         for _ in 0..240 {
-            c.step(&def, at, right, None, 1.0 / 60.0);
+            c.step(&def, at, right, None, 0.0, 1.0 / 60.0);
         }
         assert!((c.pts[6].y - at.y).abs() < 1.0, "back out level: {:?}", c.pts[6]);
         for w in c.pts.windows(2) {
@@ -244,7 +320,7 @@ mod tests {
         // its last link pointing at it.
         let goal = Vec2::new(30.0, -4.0);
         for _ in 0..60 {
-            c.step(&def, Vec2::ZERO, right, Some(goal), 1.0 / 60.0);
+            c.step(&def, Vec2::ZERO, right, Some(goal), 0.0, 1.0 / 60.0);
         }
         let (a, b) = (c.pts[5], c.pts[6]);
         assert!(b.y > 0.0, "the tip over its anchor: {b:?}");
@@ -256,9 +332,18 @@ mod tests {
         for k in 0..120 {
             let wobble = goal + Vec2::new((k as f32 * 0.7).sin() * 3.0, 0.0);
             let before = c.pts[6];
-            c.step(&def, Vec2::ZERO, right, Some(wobble), 1.0 / 60.0);
+            c.step(&def, Vec2::ZERO, right, Some(wobble), 0.0, 1.0 / 60.0);
             most = most.max(c.pts[6].distance(before));
         }
         assert!(most < 1.0, "its tip moved at most {most:.2} a frame");
+        // Struck at something level with it and in reach: over the top in
+        // an arc, coming down onto it; each link its length.
+        let near = Vec2::new(20.0, 0.0);
+        c.strike(&def, Vec2::ZERO, Some(near), 1.0);
+        assert!(c.pts[6].distance(near) < 1.5, "struck home: {:?}", c.pts[6]);
+        assert!(c.pts[3].y > 6.0, "over the top: {:?}", c.pts);
+        for w in c.pts.windows(2) {
+            assert!(((w[1] - w[0]).length() - 5.0).abs() < 0.01);
+        }
     }
 }

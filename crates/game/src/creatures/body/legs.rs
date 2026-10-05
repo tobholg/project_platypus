@@ -280,6 +280,10 @@ pub struct Rear {
     pub lift: f32,
     pub back: f32,
     pub curl: f32,
+    /// Its aiming chains: drawn back, coiled (0–1), and thrown out at the
+    /// target (0–1: a sting striking).
+    pub coil: f32,
+    pub reach: f32,
 }
 
 fn eight() -> usize {
@@ -1016,7 +1020,9 @@ fn walk(
         for (j, def) in defs.iter().enumerate() {
             let anchor = c + turn(Vec2::new(def.anchor.0, def.anchor.1));
             let Some(ch) = legs.chains.get_mut(j) else { continue };
-            ch.step(def, anchor, &turn, aim.filter(|_| def.aims.is_some()), dt);
+            let aims = aim.filter(|_| def.aims.is_some());
+            ch.step(def, anchor, &turn, aims, rear.coil, dt);
+            ch.strike(def, anchor, aims, rear.reach);
             if let (Some(tip), [.., a, b]) = (ch.tip, ch.pts.as_slice())
                 && let Ok((mut s, mut t)) = claws.get_mut(tip)
             {

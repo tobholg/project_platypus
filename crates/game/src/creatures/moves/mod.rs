@@ -109,6 +109,11 @@ pub struct Pose {
     pub lift: f32,
     pub back: f32,
     pub curl: f32,
+    /// An aiming chain (a scorpion's tail): how far it's drawn back, coiled
+    /// tighter (0–1), and how far it's thrown out at the target (0: its
+    /// arch, 1: stretched straight at it).
+    pub coil: f32,
+    pub reach: f32,
 }
 
 /// How a phase moves into its pose.
@@ -508,7 +513,7 @@ pub fn run(
             if let (Some(clip), Some(a)) = (&p.clip, anim.as_deref_mut()) {
                 a.play(clip);
             }
-            d.from = Pose { lift: rear.lift, back: rear.back, curl: rear.curl };
+            d.from = Pose { lift: rear.lift, back: rear.back, curl: rear.curl, coil: rear.coil, reach: rear.reach };
             if let Some(pose) = p.pose
                 && (p.ease == Ease::Snap || p.secs == 0.0)
             {
@@ -566,6 +571,8 @@ pub fn run(
             rear.lift = d.from.lift + (to.lift - d.from.lift) * w;
             rear.back = d.from.back + (to.back - d.from.back) * w;
             rear.curl = d.from.curl + (to.curl - d.from.curl) * w + p.tremble * (d.t * 40.0).sin();
+            rear.coil = d.from.coil + (to.coil - d.from.coil) * w + p.tremble * 4.0 * (d.t * 40.0).sin();
+            rear.reach = d.from.reach + (to.reach - d.from.reach) * w;
         }
         // A strike, live.
         for act in &p.acts {
@@ -639,6 +646,8 @@ fn set(rear: &mut Rear, pose: Pose) {
     rear.lift = pose.lift;
     rear.back = pose.back;
     rear.curl = pose.curl;
+    rear.coil = pose.coil;
+    rear.reach = pose.reach;
 }
 
 /// What a phase does as it starts.
