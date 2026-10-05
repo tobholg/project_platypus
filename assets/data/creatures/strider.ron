@@ -1,0 +1,45 @@
+// An iron strider: a walking machine, an armoured hull on two plated legs
+// that bend back at the knee (a "chicken walker"). It comes on stiffly and
+// evenly, its hull held level, each flat foot clanking down. A first
+// version (BE `limbs`): it walks, and its touch hurts; its gun and its kick
+// come with moves that drive limbs.
+(
+    name: "Iron strider",
+    size: (28, 70),
+    health: 260,
+    team: Enemy,
+    // (A machine: no blood; it doesn't burn as flesh does.)
+    kind: "construct",
+    blood: "",
+    art: "strider_body",
+    // Two legs from the side (legs.rs), drawn as metal plates (`Plate`):
+    // a thigh forward to the knee, a shank back to the ankle, a short foot
+    // bone forward to a flat foot plate; bolts at the joints, a piston from
+    // thigh to shank. The near leg in front of the hull, the far behind.
+    // Its hull rides 40 over its feet and doesn't bob (no give in it); its
+    // steps are high and quick; each foot clanks down, a little dust.
+    legs: (view: Side, style: Plate, reach: 36, upper: 0.47, ankle: 9, heel: 72, step: 0.16, lift: 11, ride: 40, stride: 20, tilt: 8,
+           color: (116, 120, 126), joint: (196, 200, 206), outline: (26, 28, 32), width: [7, 6, 5, 4], toes: 9,
+           body: "strider_body", eyes: (120, 230, 255),
+           each: [
+               (hip: (6, 1), gait: 0, knee: Forward),
+               (hip: (9, 2), gait: 1, knee: Forward, far: true),
+           ],
+           footfall: (sound: Some("clank"), volume: 0.8, dust: 6, shake: 0.06)),
+    movement: (
+        run_speed: 80,
+        ground_accel: 600,
+        ground_decel: 800,
+        jump_height: 26,
+        air_jumps: 0,
+        step_height: 12,
+        dash_speed: 0,
+    ),
+    poise: 70,
+    heft: 4,
+    touch: (harm: blunt, damage: 14, knock: 320, stun: 0.25),
+    brain: (
+        kind: "hunter",
+        params: (aggro: 500, close: Walk(keep: 20, jump_to_reach: 22), wander: (speed: 0.35, every: 3.0)),
+    ),
+)

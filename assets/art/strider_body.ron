@@ -1,0 +1,65 @@
+// An iron strider's hull seen from the side, pointing right: an armoured
+// wedge with a glowing viewport slit, plate seams and rivets, a hazard
+// band, an aerial, a gun slung under its nose. Made by tools/strider_art.py
+// (shapes, shaded from above), kept as text. Its two plated legs are its
+// creature file's `legs`; `grip` is its hip joint.
+(
+    size: (58, 36),
+    feet: (19, 35),
+    outline: (26, 28, 32),
+    palette: {
+        'M': (118, 122, 128),   // hull
+        'L': (160, 166, 172),   // hull, lit
+        'd': (72, 74, 80),   // hull, shade
+        's': (84, 86, 92),   // plate seams
+        'v': (196, 200, 206),   // rivets
+        'y': (214, 170, 52),   // hazard band
+        'e': (120, 230, 255),   // viewport (it glows)
+        'g': (96, 98, 104),   // gun
+        'r': (230, 70, 60),   // aerial light
+    },
+    frames: {
+        "body": [
+            "..........................................................",
+            "............r.............................................",
+            "............d.............................................",
+            "............d.............................................",
+            "............d.............................................",
+            "............d.............................................",
+            "............d.............................................",
+            "............d.............................................",
+            "..........LLLLLLLLLLLLLLLLLLLLLL..........................",
+            ".........LLLLLLLLsLLLLLLLLLLLsLLLL........................",
+            ".......LLLLLLLLLLsLLLyyLLyyLLsLLLLLL......................",
+            "......LLLLLLLLLLLsLyLLyyLLyLLsLLLLLLLL....................",
+            ".....LLLLLLLLLLLLsLyyLLyyLLLLsLLLLLLLLL...................",
+            "....LLLLLLMMMMMMMsMMyyMMyyMMMsMMMMLLLLLL..................",
+            "....sssssvsssssvsssssvsssssvsssssvsssssvs.................",
+            "...LLLMMMMMMMMMMMsMMMMMMMMMMMsMMMMMMMMLLLL................",
+            "..LLMMMMMMMMMMMMMsMMMMMMMMMMMsMMMMMMMMMMLLL...............",
+            "..LLMMMMMMMMMMMMMsMMMMMMMMMMMsMMMMMMMMMMMLLL..............",
+            ".LMMMMMMMMMMMMMMMsMMMMMMMMMMMsMMMMMMMMMMMMMLL.............",
+            ".MMMMMMMMMMMMMMMMsMMMMMMMMMMMsMMMMMeeeeeeeeML.............",
+            ".dMMMMMMMMMMMMMMMsMMMMMMMMMMMsMMMMMeeeeeeeeeM.............",
+            "..MMMMMMMMMMMMMMMsMMMMMMMMMMMsMMMMMMMMMMMMMMML............",
+            "..MMMMMMMMMMMMMMMsMMMMMMMMMMMsMMMMMMMMMMMMMMMM............",
+            "..dMMMMMMMMMMMMMMsMMMMMMMMMMMsMMMMMMMMMMMMMMdd............",
+            "..ddsssssvsssssvsssssvsssssvsssssvsssssvsssdd.............",
+            "...dddddMddddddddsdddddddddddsdddddddddddddd..............",
+            "...ddddddddddddddsdddddddddddsddddddddddddd...............",
+            "....dddddddddddddsdddddddddddsdddddddddddd................",
+            ".....ddddddddddddsdddddddddddsddddddddddd.................",
+            ".......ddddddddddddddddddddddddddgggggggggggggggggggggggg.",
+            "........dddddddddMMMMMMMMMdgggggggggggggggggggggggggggggg.",
+            "............MMMMMMMMMMMMMM.ggggggdddddddddddddddddddddddd.",
+            "............MMMMMMMMMMMMMd.dddddddd.......................",
+            "............dddddddddddddd................................",
+            ".............dddddddddddd.................................",
+            "..........................................................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (19, 33) } },
+)

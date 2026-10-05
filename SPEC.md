@@ -1869,7 +1869,13 @@ parts, so another is a new file, not new code:
   nose to tail, hips 50 up: twice a person), its art made by a script
   (`tools/tyrant_art.py`: shapes, shaded from above, written as text
   art); legs 46 + a foot bone 14, thighs 20 thick; it walks at 56
-  cells/s, each foot down most of a slow stride; stomp, dust, shake. The near legs are drawn in front of the
+  cells/s, each foot down most of a slow stride; stomp, dust, shake.
+  `style: Plate`: metal legs (straight plates as wide as `width` at their
+  start, shaded under; bolts at hip, knee and ankle; a piston from thigh
+  to shank; a flat foot plate `toes` long, landing level). The iron
+  strider (strider.ron, art by `tools/strider_art.py`): a hull on two
+  plated legs bending back at the knee, its hull 40 over its feet with no
+  bob, high quick steps, each foot clanking down. The near legs are drawn in front of the
   body (z 10.06), the far ones behind, in `far` (else the near colour
   darker). Its box takes in its legs (the stilt stalker: 18 × 58). Dead,
   it lies on its belly (a box 14 high) on its legs folded under it. The

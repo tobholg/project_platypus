@@ -84,6 +84,18 @@ pub struct LegDef {
     pub knee: Knee,
 }
 
+/// How a leg is drawn.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+pub enum LegStyle {
+    /// Flesh: tapered, round (a raptor's, a tyrant's, a crab's).
+    #[default]
+    Flesh,
+    /// Metal: straight plates as wide as `width` says at their start,
+    /// shaded under, bolts at the joints, a piston from thigh to shank,
+    /// flat foot plates (`toes`: their length) (a walker's).
+    Plate,
+}
+
 /// Which way a side-view leg's knee bends.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 pub enum Knee {
@@ -212,6 +224,9 @@ pub struct LegsDef {
     /// Side: what its feet do coming down.
     #[serde(default)]
     pub footfall: Option<Footfall>,
+    /// How its legs are drawn.
+    #[serde(default)]
+    pub style: LegStyle,
     /// Toes (cells long): a foot along the ground ahead, a claw behind.
     #[serde(default)]
     pub toes: f32,
@@ -1055,6 +1070,37 @@ fn stroke(a: Vec2, b: Vec2, ra: f32, rb: f32, c: [u8; 4], out: &mut Vec<(IVec2, 
     }
 }
 
+/// A plate from `a` to `b`, `r` cells to each side of the line (square
+/// ends); with `under`, only its underside's band in that colour (shaded).
+fn plate(a: Vec2, b: Vec2, r: f32, c: [u8; 4], under: Option<[u8; 4]>, out: &mut Vec<(IVec2, [u8; 4])>) {
+    let d = b - a;
+    let len = d.length().max(0.01);
+    let dir = d / len;
+    let n = dir.perp();
+    // (Under: the side away from up.)
+    let down = if n.y > 0.0 { -n } else { n };
+    let lo = a.min(b) - Vec2::splat(r + 1.0);
+    let hi = a.max(b) + Vec2::splat(r + 1.0);
+    for y in lo.y.floor() as i32..=hi.y.ceil() as i32 {
+        for x in lo.x.floor() as i32..=hi.x.ceil() as i32 {
+            let q = Vec2::new(x as f32 + 0.5, y as f32 + 0.5) - a;
+            let along = q.dot(dir);
+            let across = q.dot(n);
+            if along < -0.5 || along > len + 0.5 || across.abs() > r {
+                continue;
+            }
+            match under {
+                Some(shade) => {
+                    if q.dot(down) > r - 1.2 {
+                        out.push((IVec2::new(x, y), shade));
+                    }
+                }
+                None => out.push((IVec2::new(x, y), c)),
+            }
+        }
+    }
+}
+
 /// A line of cells from `a` to `b` (Bresenham), each once.
 fn cells(a: Vec2, b: Vec2, out: &mut Vec<IVec2>) {
     let (mut x0, mut y0) = (a.x.floor() as i32, a.y.floor() as i32);
@@ -1168,6 +1214,39 @@ fn draw(
                 let fw = w(if ankle.is_some() { 3 } else { 2 });
                 if toes > 0.0 {
                     bones.extend([(foot, foot + ahead * toes, fw, 1.0), (foot, foot - ahead * toes * 0.45 + Vec2::Y * 0.5, fw, 1.0)]);
+                }
+                if legs.def.style == LegStyle::Plate {
+                    // Metal: plates, shaded under; a piston; bolts; a flat
+                    // foot plate.
+                    let shade = rgb(dark(if far { legs.def.far.unwrap_or(dark(legs.def.color)) } else { legs.def.color }));
+                    let n = if ankle.is_some() { 3 } else { 2 };
+                    for (pass, grow) in [(rgb(line), 1.0), (leg, 0.0)] {
+                        for &(a, b, wa, _) in &bones[..n] {
+                            plate(a, b, wa * 0.5 + grow, pass, None, to);
+                        }
+                    }
+                    for &(a, b, wa, _) in &bones[..n] {
+                        plate(a, b, wa * 0.5, leg, Some(shade), to);
+                    }
+                    let up = legs.turn(Vec2::Y);
+                    let (pa, pb) = (hip.lerp(k, 0.45), bones[1].0.lerp(bones[1].1, 0.55));
+                    let side = (pb - pa).perp().normalize_or(up) * (w(1) * 0.5 + 0.8);
+                    stroke(pa + side, pb + side, 0.9, 0.9, rgb(line), to);
+                    stroke(pa + side, pb + side, 0.5, 0.5, joint, to);
+                    let toes = legs.def.toes;
+                    if toes > 0.0 {
+                        let (a, b) = (foot - ahead * toes * 0.45, foot + ahead * toes);
+                        plate(a + Vec2::Y * 0.8, b + Vec2::Y * 0.8, 1.6, rgb(line), None, to);
+                        plate(a + Vec2::Y * 0.8, b + Vec2::Y * 0.8, 1.0, leg, None, to);
+                    }
+                    for (at, wk) in [(Some(hip), w(0)), (Some(k), w(1)), (ankle, w(2))] {
+                        if let Some(at) = at {
+                            let r = (wk * 0.3).max(1.0);
+                            stroke(at, at, r + 0.6, r + 0.6, rgb(line), to);
+                            stroke(at, at, r, r, joint, to);
+                        }
+                    }
+                    continue;
                 }
                 for (pass, grow) in [(rgb(line), 1.0), (leg, 0.0)] {
                     for &(a, b, wa, wb) in &bones {
