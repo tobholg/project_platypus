@@ -1800,7 +1800,14 @@ parts, so another is a new file, not new code:
   still steers on: its feet pressed onto the face round the corner (back
   the way it was going), moving on the way the surface it left was (up
   round a ceiling's edge, over a wall's top onto it); its feet point
-  that way meanwhile (`clinging`).
+  that way meanwhile (`clinging`). A climber on a wall (or the wall behind) jumps
+  off it as off the ground (the way finder plans leaps from holds): a
+  jump's speed up, pushed away from the wall if it steers away, and not
+  taking hold again for 0.15 s; off a ceiling a jump only lets go. (Not
+  so before: the jump only let go, and at the Terraria tempo, where the
+  way finder chose a leap up the stem, the spider fell off it again and
+  again.) The `overhang` scenario gets the spider on top at every tempo:
+  Terraria 6.2 s, Middle 6.8, Hollow Knight 4.5.
 - All fight with the `hunter` brain (§6.4), closing with `Crawl` (at you
   over any surface, stopping `keep` cells off, a pounce when near, a drop
   from a ceiling above you),

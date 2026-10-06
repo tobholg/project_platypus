@@ -268,6 +268,9 @@ pub struct Locomotion {
     /// round the corner), seconds left to find it.
     held: Option<(Vec2, Vec2)>,
     wrap: Option<(Vec2, Vec2, f32)>,
+    /// Leapt off a wall (seconds left): it doesn't take hold again till
+    /// it's away from it.
+    leap: f32,
     /// Seconds to the next swim stroke, while jump is held in water.
     stroke_left: f32,
     /// Rocket boots' fuel left (seconds).
@@ -315,6 +318,7 @@ impl Default for Locomotion {
             cling: None,
             held: None,
             wrap: None,
+            leap: 0.0,
             contacts: Contacts::default(),
         }
     }
@@ -394,7 +398,12 @@ impl Locomotion {
         self.prev_dash = intent.dash;
 
         let grounded = self.contacts.ground;
-        self.coyote = if grounded { s.coyote_time } else { (self.coyote - dt).max(0.0) };
+        // (A climber on a wall, or the wall behind, jumps off it as off the
+        // ground: a leap. Off a ceiling, a jump only lets go.)
+        let on_wall = s.cling && self.cling.is_some_and(|d| d.y == 0.0);
+        let wall_held = self.cling.map_or(0.0, |d| d.x);
+        self.leap = (self.leap - dt).max(0.0);
+        self.coyote = if grounded || on_wall { s.coyote_time } else { (self.coyote - dt).max(0.0) };
         self.buffer = if jump_pressed { s.jump_buffer } else { (self.buffer - dt).max(0.0) };
         self.dash_cooldown = (self.dash_cooldown - dt).max(0.0);
         self.wall_lock = (self.wall_lock - dt).max(0.0);
@@ -457,7 +466,7 @@ impl Locomotion {
         // it stays touching) and goes along it; a jump lets go (a leap).
         self.cling = None;
         let held = self.held.take();
-        if s.cling && !jump_pressed && self.contacts.submerged < 0.5 {
+        if s.cling && !jump_pressed && self.leap <= 0.0 && self.contacts.submerged < 0.5 {
             let c = self.contacts;
             let wall = if c.wall_left { -1.0 } else if c.wall_right { 1.0 } else { 0.0 };
             let (mx, my) = (intent.move_x.clamp(-1.0, 1.0), intent.move_y.clamp(-1.0, 1.0));
@@ -606,6 +615,14 @@ impl Locomotion {
             if grounded || self.coyote > 0.0 {
                 body.vel.y = v;
                 ev.jumped = true;
+                // (Off a wall: pushed away from it if it steers away, and
+                // not holding on again a moment.)
+                if wall_held != 0.0 && !grounded {
+                    if intent.move_x * wall_held < 0.0 {
+                        body.vel.x = -wall_held * s.run_speed;
+                    }
+                    self.leap = 0.15;
+                }
             } else if s.wall_jump && wall_dir != 0.0 {
                 body.vel = Vec2::new(-wall_dir * s.wall_jump_push, v);
                 self.facing = -wall_dir;
@@ -1178,6 +1195,51 @@ mod tests {
             tick(&g, &s, &mut l, &mut b, Intent::default());
         }
         assert!(b.pos.y < 5.0, "let go and fell: {:?}", b.pos);
+    }
+
+    /// A climber on a wall jumps off it as off the ground (the way finder
+    /// plans leaps from holds): up and away, not taking hold again at once;
+    /// and round the top of a wall it climbs past, onto it.
+    #[test]
+    fn a_climber_leaps_off_a_wall_and_goes_over_its_top() {
+        let mut rows = vec!["#                    #"; 30];
+        rows.insert(0, "######################");
+        rows.push("######################");
+        let g = Ascii::new(&rows);
+        let s = MovementStats { cling: true, run_speed: 40.0, jump_height: 8.0, ..Default::default() };
+        let (_, mut l, _) = player();
+        let mut b = Body::new(Vec2::new(10.0, 3.0), Vec2::new(4.0, 3.0));
+        for _ in 0..40 {
+            tick(&g, &s, &mut l, &mut b, Intent { move_x: 1.0, move_y: 1.0, ..Default::default() });
+        }
+        let on = b.pos;
+        assert_eq!(l.clinging(), Some(Vec2::X), "on the right wall: {on:?}");
+        tick(&g, &s, &mut l, &mut b, Intent { move_x: -1.0, jump: true, ..Default::default() });
+        let mut top = b.pos.y;
+        for _ in 0..12 {
+            tick(&g, &s, &mut l, &mut b, Intent { move_x: -1.0, jump: true, ..Default::default() });
+            top = top.max(b.pos.y);
+        }
+        assert!(top > on.y + 3.0 && b.pos.x < on.x - 3.0, "leapt up and away: from {on:?} to {:?} (top {top})", b.pos);
+        // A wall with a top: up it and over, onto it.
+        // (A block, x 20.., its top at 10, in the open.)
+        let open = format!("#{}#", " ".repeat(30));
+        let low = format!("#{}{}", " ".repeat(19), "#".repeat(12));
+        let mut rows: Vec<&str> = vec![open.as_str(); 12];
+        rows.extend(vec![low.as_str(); 10]);
+        let floor = "#".repeat(32);
+        rows.push(floor.as_str());
+        let g = Ascii::new(&rows);
+        let (_, mut l, _) = player();
+        let mut b = Body::new(Vec2::new(10.0, 3.0), Vec2::new(4.0, 3.0));
+        let mut onto = None;
+        for _ in 0..90 {
+            tick(&g, &s, &mut l, &mut b, Intent { move_x: 1.0, move_y: 1.0, ..Default::default() });
+            if onto.is_none() && l.contacts.ground && b.pos.x > 22.0 {
+                onto = Some(b.pos);
+            }
+        }
+        assert!(onto.is_some_and(|p| (10.0..15.0).contains(&p.y)), "over the top of the wall, onto it: {onto:?}");
     }
 
     /// A wall behind (the background): a climber crawls over it every way,
