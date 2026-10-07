@@ -41,6 +41,6 @@
     moves: ["centipede_bite"],
     brain: (
         kind: "hunter",
-        params: (aggro: 260, close: Crawl(pounce_range: 0, pounce_every: 2.5, keep: 16, dart: Some((0.6, 0.12))), wander: (speed: 0.5)),
+        params: (aggro: 260, close: Crawl(pounce_range: 0, pounce_every: 2.5, keep: 16, dart: Some((0.6, 0.12))), wander: (speed: 0.5), senses: (dark: 1.0, smell: 130)),
     ),
 )

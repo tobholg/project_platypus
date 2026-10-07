@@ -43,7 +43,7 @@ pub struct HunterPlugin;
 
 impl Plugin for HunterPlugin {
     fn build(&self, app: &mut App) {
-        app.register_brain::<Hunter>("hunter").add_systems(FixedUpdate, (crate::creatures::moves::start, hunt, crate::creatures::moves::run).chain().in_set(super::BrainSet));
+        app.register_brain::<Hunter>("hunter").add_systems(FixedUpdate, (super::senses::perceive, crate::creatures::moves::start, hunt, crate::creatures::moves::run).chain().in_set(super::BrainSet));
     }
 }
 
@@ -62,11 +62,14 @@ pub struct Hunter {
     pub attack: Attack,
     pub wander: Wander,
     pub leash: f32,
+    /// How it senses what it hunts (`senses.rs`: sight, in the dark,
+    /// hearing, smell, memory).
+    pub senses: super::senses::SensesDef,
 }
 
 impl Default for Hunter {
     fn default() -> Self {
-        Hunter { aggro: 300.0, close: Close::default(), attack: Attack::Touch, wander: Wander::default(), leash: 0.0 }
+        Hunter { aggro: 300.0, close: Close::default(), attack: Attack::Touch, wander: Wander::default(), leash: 0.0, senses: super::senses::SensesDef::default() }
     }
 }
 
@@ -162,7 +165,7 @@ pub struct HunterMind {
 type Hunted<'w, 's> = Query<'w, 's, (&'static Kinematics, &'static Team), Without<super::villager::Hiding>>;
 
 /// Its way (`way.rs`), and what it is (its profile's kind).
-type Finding<'a> = (&'a crate::creatures::Creature, Option<&'a mut super::way::Way>);
+type Finding<'a> = (&'a crate::creatures::Creature, Option<&'a mut super::way::Way>, Option<&'a super::senses::Alert>);
 
 type Hunting<'a> = (
     Entity,
@@ -207,7 +210,7 @@ fn hunt(
     (mut ways, creatures, tempo): (ResMut<super::way::Ways>, Res<crate::creatures::def::Creatures>, Res<crate::tempo::Tempo>),
 ) {
     let tick = sim.world.tick();
-    for (e, h, k, mut c, mind, marching, keeps, swinging, wielding, moves, (kind, way)) in &mut q {
+    for (e, h, k, mut c, mind, marching, keeps, swinging, wielding, moves, (kind, way, alert)) in &mut q {
         let (Some(mut m), Some(mut way)) = (mind, way) else {
             commands.entity(e).insert((HunterMind::default(), super::way::Way::default()));
             continue;
@@ -216,12 +219,26 @@ fn hunt(
         let pos = k.body.pos;
         // (On a leash: only what's near its place.)
         let home = keeps.filter(|_| h.leash > 0.0).map(|kp| Vec2::new(kp.0.0 as f32, kp.0.1 as f32));
-        let target = hunted
-            .iter()
-            .filter(|(_, t)| t.hunted())
-            .map(|(pk, _)| (pk.body.pos, pk.body.vel, pk.body.half))
-            .filter(|(p, ..)| p.distance(pos) < h.aggro && home.is_none_or(|hm| p.distance(hm) < h.leash))
-            .min_by(|a, b| a.0.distance_squared(pos).total_cmp(&b.0.distance_squared(pos)));
+        // What it goes for: what its senses tell it (`senses.rs`): its
+        // quarry where it is when it senses it, else where it last knew it
+        // to be (suspicious, searching); nothing, idle. (No senses yet: the
+        // nearest quarry in its aggro, as before.)
+        let target = match alert {
+            Some(a) => a.goal().map(|g| match a.target.filter(|_| a.engaged()).and_then(|t| hunted.get(t).ok()) {
+                Some((pk, _)) => (pk.body.pos, pk.body.vel, pk.body.half),
+                None => (g, Vec2::ZERO, Vec2::new(4.0, 8.0)),
+            }),
+            None => hunted
+                .iter()
+                .filter(|(_, t)| t.hunted())
+                .map(|(pk, _)| (pk.body.pos, pk.body.vel, pk.body.half))
+                .filter(|(p, ..)| p.distance(pos) < h.aggro && home.is_none_or(|hm| p.distance(hm) < h.leash))
+                .min_by(|a, b| a.0.distance_squared(pos).total_cmp(&b.0.distance_squared(pos))),
+        };
+        // (Only what it senses now does it strike at; looking, suspicious or
+        // searching, it goes slower.)
+        let blind = alert.is_some_and(|a| !a.engaged());
+        let looking = alert.is_some_and(|a| a.looking());
         // The way to it, where it can't be gone at straight (`way.rs`):
         // what to press, if a way's known.
         let feet = pos - Vec2::Y * k.body.half.y;
@@ -231,7 +248,7 @@ fn hunt(
         let contacts = k.loco.contacts;
         let grounded = k.loco.grounded();
         // (Stunned, or busy with a move of its own: no swing, no shot.)
-        let stunned = k.loco.state == platypus_physics::MoveState::Stunned || moves.is_some_and(|m| m.busy());
+        let stunned = k.loco.state == platypus_physics::MoveState::Stunned || moves.is_some_and(|m| m.busy()) || blind;
         c.0.aim = target.map_or(Vec2::ZERO, |t| t.0);
         let mut jump = false;
         let mut move_y = 0.0;
@@ -514,7 +531,7 @@ fn hunt(
         {
             jump |= s.jump;
         }
-        c.0.move_x = move_x;
+        c.0.move_x = if looking { move_x * 0.55 } else { move_x };
         c.0.move_y = move_y;
         // Brains hold buttons; release after a press so the next press
         // registers (a way's jump is held as its arc was).

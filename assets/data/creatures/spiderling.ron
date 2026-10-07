@@ -26,6 +26,6 @@
     touch: (damage: 3, knock: 75, every: 0.5),
     brain: (
         kind: "hunter",
-        params: (aggro: 210, close: Crawl(pounce_range: 30, pounce_every: 1.0), wander: (speed: 0.6)),
+        params: (aggro: 210, close: Crawl(pounce_range: 30, pounce_every: 1.0), wander: (speed: 0.6), senses: (dark: 1.0, smell: 90)),
     ),
 )

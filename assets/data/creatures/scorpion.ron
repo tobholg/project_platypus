@@ -51,6 +51,6 @@
     moves: ["scorpion_sting"],
     brain: (
         kind: "hunter",
-        params: (aggro: 350, close: Range(near: 30, far: 38), wander: (speed: 0.4, every: 2.5)),
+        params: (aggro: 350, close: Range(near: 30, far: 38), wander: (speed: 0.4, every: 2.5), senses: (dark: 0.8, smell: 60)),
     ),
 )

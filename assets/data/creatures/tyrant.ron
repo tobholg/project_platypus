@@ -48,6 +48,6 @@
     moves: ["tyrant_stomp"],
     brain: (
         kind: "hunter",
-        params: (aggro: 600, close: Walk(keep: 30, jump_to_reach: 20), wander: (speed: 0.3, every: 4.0)),
+        params: (aggro: 600, close: Walk(keep: 30, jump_to_reach: 20), wander: (speed: 0.3, every: 4.0), senses: (dark: 0.4, hearing: 1.4, smell: 320, memory: 8)),
     ),
 )

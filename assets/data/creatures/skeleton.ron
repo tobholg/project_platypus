@@ -26,6 +26,6 @@
     poise: 12,
     brain: (
         kind: "hunter",
-        params: (aggro: 300, close: Walk(keep: 15, jump_to_reach: 27), attack: Swing(reach: 23, every: 1.3, combo: 2), wander: (speed: 0.3, every: 3.0)),
+        params: (aggro: 300, close: Walk(keep: 15, jump_to_reach: 27), attack: Swing(reach: 23, every: 1.3, combo: 2), wander: (speed: 0.3, every: 3.0), senses: (dark: 0.7)),
     ),
 )

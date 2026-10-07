@@ -1447,6 +1447,36 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   `PLATYPUS_SAFARI_SECS` and logs what came: with rates ×60 over 20 s,
   plains: raptors, stalkers; desert: scorpions, stalkers, a strider;
   tundra: stalkers; jungle: raptors; deep forest: a tyrant.
+- Senses and alertness (BE `behaviour` stage 2; `brain/senses.rs`): a
+  hunter no longer knows where you are. Its brain's `senses`: `sight`
+  (cells in good light; 0: its `aggro`), `dark` (how well it sees in the
+  dark, 0–1: 0.25 unless set; spiders, centipedes, bats and the strider
+  1), `hearing` (a noise's reach times this), `smell` (cells; 0: none),
+  `memory` (s it goes on hunting what it no longer senses; 4). It sees
+  you within `sight × (0.25 + 0.75 × (dark + (1 − dark) × light))` along
+  a clear line from its eye, the light on you being daylight (the sky's,
+  moonlight 0.45) where there's no rock within 120 cells over you near
+  the surface, or a light source within 70 cells (a torch in your hand or
+  planted, anything glowing). It smells a quarry below ¾ health within
+  `smell`, through rock. It hears blows (260 cells), blasts (200 + 12 ×
+  radius), your landings (40 + 0.4 × the drop) and your feet when you
+  run (30 + 0.55 × speed), each times its `hearing`. Idle → suspicious
+  ("?" over its head: it glimpsed or heard something, and comes to look
+  at 0.55 of its speed, not attacking); a glimpse held (1.6 a second;
+  6 when it's close, within 0.45 of what it sees, or smelled) to 1, it's
+  hunting ("!", 0.9 s): it goes for you and only now attacks or starts a
+  move. Hunting, unsensed past its `memory`, it searches where it last
+  knew you were (5 s) and gives up; suspicious, it gives up after 4 s.
+  Struck, it hunts the nearest quarry within 1.5 × its sight. The marks
+  are drawn over the lighting (they read in the dark). Scenarios that
+  want a creature on the player, not finding them out, give it
+  `Alert::hunting` (told: it always knows). `PLATYPUS_ALERTLOG` logs every
+  change. The `stealth` scenario (arena), in a tunnel roofed over: an orc
+  230 cells off in the dark stays idle; the player lights a torch and it
+  hunts 0.64 s later; behind a wall across the tunnel, torch lit, an orc
+  120 cells off stays idle, then hears the player run at the wall and
+  comes to look (suspicious); a cave spider behind the wall stays idle
+  until the player is wounded, and hunts 0.16 s later (smell).
 - Pelting: a liquid hurts only above 375 cells/s (not 135), so a death's
   burst of blood doesn't hurt what's beside it (a burst egg sac hurt its
   own spiderlings).

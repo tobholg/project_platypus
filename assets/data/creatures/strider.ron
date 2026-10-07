@@ -54,6 +54,6 @@
     moves: ["strider_salvo", "strider_volley"],
     brain: (
         kind: "hunter",
-        params: (aggro: 500, close: Range(near: 90, far: 150), wander: (speed: 0.35, every: 3.0)),
+        params: (aggro: 500, close: Range(near: 90, far: 150), wander: (speed: 0.35, every: 3.0), senses: (dark: 1.0, hearing: 0.6, memory: 6)),
     ),
 )

@@ -432,7 +432,7 @@ struct Quarry {
 
 /// What may start a move: it, its moves, its body, whether it's mid-swing,
 /// its legs (a turret venting holds back what fires from it).
-type Starter<'a> = (Entity, &'a mut Moves, &'a Kinematics, Has<crate::combat::Swing>, Option<&'a crate::creatures::body::legs::Legs>);
+type Starter<'a> = (Entity, &'a mut Moves, &'a Kinematics, Has<crate::combat::Swing>, Option<&'a crate::creatures::body::legs::Legs>, Option<&'a crate::creatures::brain::senses::Alert>);
 
 /// Start a move when one's in reach and ready (before the brain, so it
 /// knows: its weapon waits, `Moves::busy`); not mid-swing of what it
@@ -446,8 +446,9 @@ pub fn start(
     prey: Query<Prey, Without<crate::creatures::brain::villager::Hiding>>,
 ) {
     let now = time.elapsed_secs();
-    for (e, mut moves, k, swinging, legs) in &mut movers {
-        if moves.doing.is_some() || swinging {
+    for (e, mut moves, k, swinging, legs, alert) in &mut movers {
+        // (Not at what it doesn't sense: no bite through rock.)
+        if moves.doing.is_some() || swinging || alert.is_some_and(|a| !a.engaged()) {
             continue;
         }
         let pos = k.body.pos;

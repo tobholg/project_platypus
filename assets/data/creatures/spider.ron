@@ -61,7 +61,7 @@
     heft: 4,
     brain: (
         kind: "hunter",
-        params: (aggro: 255, close: Crawl(pounce_range: 0, pounce_every: 1.5, keep: 34), wander: (speed: 0.4)),
+        params: (aggro: 255, close: Crawl(pounce_range: 0, pounce_every: 1.5, keep: 34), wander: (speed: 0.4), senses: (dark: 1.0, smell: 160)),
     ),
     // Its own moves (moves.ron), tried in this order.
     moves: ["spider_stamp", "spider_bite", "spider_spit"],

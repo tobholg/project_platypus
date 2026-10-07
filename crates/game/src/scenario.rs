@@ -296,6 +296,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
+            .add_systems(PreUpdate, stealth_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
             .add_systems(Update, (underlook_script, voidlook_script))
@@ -5005,8 +5006,9 @@ fn course_script(
     if *step == 0 && t > 1.0 {
         *kind = std::env::var("PLATYPUS_KIND").unwrap_or_else(|_| "orc".into());
         // (The ground kept loaded round it, and it knows where the player is.)
-        crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(150.0, platypus_worldgen::arena::FLOOR as f32), |e| {
-            e.insert(crate::world::ChunkLoader { half_extent: Vec2::new(200.0, 200.0) });
+        let aware = pk.body.pos;
+        crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(150.0, platypus_worldgen::arena::FLOOR as f32), move |e| {
+            e.insert((crate::world::ChunkLoader { half_extent: Vec2::new(200.0, 200.0) }, crate::creatures::brain::senses::Alert::hunting(aware)));
             if let Some(mut h) = e.get_mut::<crate::creatures::brain::hunter::Hunter>() {
                 h.aggro = 4000.0;
             }
@@ -5134,8 +5136,9 @@ fn legs_script(
             None => warn!("legs: no ground at {px} for the player to wait on"),
         }
         commands.entity(me).remove::<crate::camera::CameraTarget>();
-        crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x, y), |e| {
-            e.insert((crate::world::ChunkLoader { half_extent: Vec2::new(200.0, 200.0) }, crate::camera::CameraTarget));
+        let aware = pk.body.pos;
+        crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x, y), move |e| {
+            e.insert((crate::world::ChunkLoader { half_extent: Vec2::new(200.0, 200.0) }, crate::camera::CameraTarget, crate::creatures::brain::senses::Alert::hunting(aware)));
             if let Some(mut h) = e.get_mut::<crate::creatures::brain::hunter::Hunter>() {
                 h.aggro = 4000.0;
             }
@@ -5722,7 +5725,7 @@ fn spider_script(
     if t > state.1 + 1.0 {
         state.1 = t;
         for (sk, a) in &spiders {
-            info!("spider: t {t:.1} at {:.0} cells, vel ({:.0},{:.0}), grounded {} clinging {:?}, doing {:?}", sk.body.pos.distance(k.body.pos), sk.body.vel.x, sk.body.vel.y, sk.loco.grounded(), sk.loco.clinging(), a.doing(&book));
+            info!("spider: t {t:.1} at {:.0} cells ({:.0},{:.0} to the player's {:.0},{:.0}), vel ({:.0},{:.0}), grounded {} clinging {:?}, doing {:?}", sk.body.pos.distance(k.body.pos), sk.body.pos.x, sk.body.pos.y, k.body.pos.x, k.body.pos.y, sk.body.vel.x, sk.body.vel.y, sk.loco.grounded(), sk.loco.clinging(), a.doing(&book));
         }
         if coat.is_some_and(|c| c.share("venom") > 0.0) {
             info!("spider: t {t:.1} the player is envenomed");
@@ -6404,6 +6407,165 @@ fn shots_script(mut commands: Commands, s: Res<Scenario>, offscreen: Option<Res<
     commands.spawn(image).observe(save_to_disk(format!("{dir}/{}_{:05.0}.png", s.name, s.elapsed * 100.0)));
 }
 
+type Sensing<'a> = (Entity, &'a crate::creatures::Creature, &'a Kinematics, Option<&'a crate::creatures::brain::senses::Alert>);
+
+/// Senses (BE `behaviour` stage 2), in a tunnel roofed over in the flat
+/// arena (x 780..1320, its roof 44 up: no daylight in it), the player
+/// standing still in it, each in turn:
+/// - in the dark: an orc (`PLATYPUS_KIND`; not wandering) 230 cells off
+///   doesn't see the player (3 s): idle;
+/// - the player lights a torch: it sees, and hunts;
+/// - a wall across the tunnel, the torch still lit, an orc 120 cells off
+///   behind it: it doesn't see through it (2.5 s); then the player runs
+///   at the wall: it hears the footsteps and comes to look;
+/// - the torch out, a cave spider (it sees in the dark) behind the wall:
+///   idle; then the player is wounded: it smells the blood through the
+///   rock, and hunts.
+///
+/// Logs each part's outcome, and every change of how wary it is.
+#[allow(clippy::too_many_arguments)]
+fn stealth_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<Sensing, Without<LocalPlayer>>,
+    // (part, its foe's kind, the most wary it got, when it first hunted,
+    // what it was last)
+    mut state: Local<(u8, String, u8, f32, Option<crate::creatures::brain::senses::Wary>)>,
+) {
+    use crate::creatures::brain::senses::Wary;
+    if s.name != "stealth" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let orc = std::env::var("PLATYPUS_KIND").unwrap_or_else(|_| "orc".into());
+    let put = |k: &mut Kinematics, x: f32| {
+        k.body.pos = Vec2::new(x, fl + k.body.half.y);
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+    };
+    let foe = them.iter().find(|q| q.1.kind == state.1);
+    // Its wariness, as it changes.
+    if let Some((_, c, fk, Some(a))) = foe {
+        if state.4 != Some(a.wary) {
+            info!("stealth: t {t:.2} the {} is {:?} at {:.0} cells", c.kind, a.wary, fk.body.pos.distance(k.body.pos));
+            state.4 = Some(a.wary);
+        }
+        let rank = match a.wary {
+            Wary::Idle => 0,
+            Wary::Suspicious | Wary::Searching => 1,
+            Wary::Hunting => 2,
+        };
+        state.2 = state.2.max(rank);
+        if rank == 2 && state.3 < 0.0 {
+            state.3 = t;
+        }
+    }
+    let wary = |n: u8| ["idle", "suspicious", "hunting"][n as usize];
+    let next = |state: &mut (u8, String, u8, f32, Option<Wary>), kind: &str| {
+        state.0 += 1;
+        state.1 = kind.to_string();
+        state.2 = 0;
+        state.3 = -1.0;
+        state.4 = None;
+    };
+    let rid = |commands: &mut Commands| {
+        for (e, ..) in them.iter().filter(|q| q.1.kind != "dummy") {
+            commands.entity(e).despawn();
+        }
+    };
+    match state.0 {
+        0 if t > 0.5 => {
+            if let Some(stone) = sim.materials().id("stone") {
+                for x in (780..=1320).step_by(3) {
+                    for y in [floor + 47, floor + 52] {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 3, material: stone, overwrite: true });
+                    }
+                }
+            }
+            put(&mut k, 840.0);
+            toggles.carry = crate::light::Carry::Nothing;
+            next(&mut state, &orc);
+        }
+        1 if t > 1.0 => {
+            // (Standing its ground while idle: it doesn't wander out of a
+            // torch's reach.)
+            crate::creatures::def::spawn_creature(&mut commands, &orc, Vec2::new(1070.0, fl), |e| {
+                if let Some(mut h) = e.get_mut::<crate::creatures::brain::hunter::Hunter>() {
+                    h.wander.speed = 0.0;
+                }
+            });
+            state.0 = 2;
+        }
+        2 if t > 4.0 => {
+            info!("stealth: in the dark, the {orc} {:.0} cells off got {} (idle: unseen)", foe.map_or(0.0, |f| f.2.body.pos.distance(k.body.pos)), wary(state.2));
+            toggles.carry = crate::light::Carry::Torch;
+            state.3 = -1.0;
+            state.0 = 3;
+        }
+        3 if t > 6.5 => {
+            let at = if state.3 >= 0.0 { format!("{:.2} s after", state.3 - 4.0) } else { "never".into() };
+            info!("stealth: the torch lit at t 4.0: the {orc} hunted {at}");
+            rid(&mut commands);
+            if let Some(stone) = sim.materials().id("stone") {
+                for x in (997..=1003).step_by(3) {
+                    for y in (floor + 2..floor + 50).step_by(3) {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 3, material: stone, overwrite: true });
+                    }
+                }
+            }
+            put(&mut k, 930.0);
+            next(&mut state, &orc);
+        }
+        4 if t > 7.0 => {
+            crate::creatures::def::spawn_creature(&mut commands, &orc, Vec2::new(1050.0, fl), |_| {});
+            state.0 = 5;
+        }
+        5 if t > 9.5 => {
+            info!("stealth: a wall between, the torch lit, the {orc} {:.0} cells off got {} (idle: unseen)", foe.map_or(0.0, |f| f.2.body.pos.distance(k.body.pos)), wary(state.2));
+            keys.press(KeyCode::KeyD);
+            state.0 = 6;
+        }
+        6 if t > 10.0 => {
+            keys.release(KeyCode::KeyD);
+            state.0 = 7;
+        }
+        7 if t > 12.0 => {
+            let goal = foe.and_then(|f| f.3).and_then(|a| a.goal());
+            info!("stealth: after the player ran at the wall (now at x {:.0}), the {orc} got {}, going to look at {:?}", k.body.pos.x, wary(state.2), goal.map(|g| g.round()));
+            rid(&mut commands);
+            toggles.carry = crate::light::Carry::Nothing;
+            put(&mut k, 960.0);
+            next(&mut state, "spider");
+        }
+        8 if t > 12.5 => {
+            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(1060.0, fl), |_| {});
+            state.0 = 9;
+        }
+        9 if t > 14.5 => {
+            info!("stealth: a spider behind the wall, the player unhurt, got {} (idle: no sight through rock, nothing to smell)", wary(state.2));
+            h.hp = h.max * 0.5;
+            state.3 = -1.0;
+            state.0 = 10;
+        }
+        10 if t > 16.5 => {
+            let at = if state.3 >= 0.0 { format!("{:.2} s after", state.3 - 14.5) } else { "never".into() };
+            info!("stealth: the player wounded at t 14.5: the spider hunted {at} (smelled through the wall)");
+            state.0 = 11;
+        }
+        _ => {}
+    }
+    if state.0 < 9 {
+        h.hp = h.max;
+    }
+}
+
 /// A climber over an overhang (BE `limbs` stage 3): a rock like a
 /// mushroom in the flat arena, a stem (x 1002..1032, 100 high) under a cap
 /// (x 942..1092, 12 thick), the player waiting on the cap; a creature
@@ -6449,8 +6611,10 @@ fn overhang_script(
         let kind = std::env::var("PLATYPUS_KIND").unwrap_or_else(|_| "spider".into());
         // (The camera on it.)
         commands.entity(me).remove::<crate::camera::CameraTarget>();
-        crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(860.0, fl + 12.0), |e| {
-            e.insert(crate::camera::CameraTarget);
+        // (Already on to the player: it's told where, not left to find out.)
+        let aware = k.body.pos;
+        crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(860.0, fl + 12.0), move |e| {
+            e.insert((crate::camera::CameraTarget, crate::creatures::brain::senses::Alert::hunting(aware)));
         });
         *state = (1, 1.0, -1.0, -1.0, -1.0, kind);
         return;
@@ -6530,7 +6694,11 @@ fn backwall_script(
             k.body.pos = Vec2::new(960.0, fl + 198.0);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
-            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(870.0, fl + 9.0), |_| {});
+            // (It knows where the player is: this is its climbing, not its eyes.)
+            let aware = k.body.pos;
+            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(870.0, fl + 9.0), move |e| {
+                e.insert(crate::creatures::brain::senses::Alert::hunting(aware));
+            });
             *state = (1, 0.0, -1.0, f32::MAX);
         }
         1 => {
