@@ -36,6 +36,8 @@
            turrets: [
                (name: "gun near", at: (14, 27), barrel: "strider_gun", length: 14, turn: 110, heat: (shot: 0.34, cool: 0.12, vent: 2.0)),
                (name: "gun far", at: (5, 29), barrel: "strider_gun", length: 14, turn: 110, far: true, heat: (shot: 0.34, cool: 0.12, vent: 2.0)),
+               // A missile pod at its back: its salvos fan up and home in.
+               (name: "pod", at: (-6, 30), barrel: "strider_pod", length: 8, turn: 60, heat: (shot: 0.1, cool: 0.15, vent: 2.5)),
            ]),
     movement: (
         run_speed: 80,
@@ -49,7 +51,7 @@
     poise: 70,
     heft: 4,
     touch: (harm: blunt, damage: 14, knock: 320, stun: 0.25),
-    moves: ["strider_volley"],
+    moves: ["strider_salvo", "strider_volley"],
     brain: (
         kind: "hunter",
         params: (aggro: 500, close: Range(near: 90, far: 150), wander: (speed: 0.35, every: 3.0)),

@@ -130,6 +130,7 @@
         "zap": (make: Zap(pitch: 180, length: 0.35), variants: 3, volume: 0.55),
         // A strider's laser, and its gun venting steam when it overheats.
         "laser": (make: Zap(pitch: 760, length: 0.16), variants: 3, volume: 0.45),
+        "launch": (make: Whoosh(from: 500, to: 2200, length: 0.5, q: 1.2), variants: 2, pitch: 0.06, volume: 0.5),
         "vent": (make: Fizz(pop: 0.0, hiss: 1.0, length: 1.3, bubbles: 0), variants: 2, pitch: 0.05, reverb: 0.15, volume: 0.6),
         "cast": (make: Whoosh(from: 900, to: 3500, length: 0.22, q: 3.0), variants: 3, pitch: 0.08, reverb: 0.2, volume: 0.4),
         "spit": (make: Burst(cutoff: 1800, length: 0.15, q: 1.5, grit: 0.3), variants: 2, pitch: 0.1, volume: 0.45),

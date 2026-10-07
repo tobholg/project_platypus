@@ -751,6 +751,7 @@ fn fly(
     mut blasts: MessageWriter<crate::fx::Explosion>,
     mut acts: ResMut<void::Acts>,
     parts: Query<&crate::creatures::body::parts::Parts>,
+    teams: Query<&crate::creatures::Team>,
 ) {
     let mut booms = Vec::new();
     let mut landed = Vec::new();
@@ -771,6 +772,28 @@ fn fly(
                 continue;
             }
             s.age += DT;
+            // A homing one turns toward what it's after: the nearest body
+            // ahead of it not on its caster's side (a missile salvo onto
+            // the player).
+            if let Some(rate) = s.cast.homing() {
+                let side = teams.get(s.caster).ok().copied();
+                let ahead = s.vel.normalize_or(Vec2::X);
+                let quarry = bodies
+                    .iter()
+                    .filter(|(b, ..)| *b != s.caster && !teams.get(*b).ok().zip(side).is_some_and(|(t, me)| t.allied(me)))
+                    .map(|(_, k, ..)| k.body.pos)
+                    .filter(|p| p.distance(s.pos) < 320.0 && (*p - s.pos).normalize_or_zero().dot(ahead) > -0.2)
+                    .min_by(|a, b| a.distance(s.pos).total_cmp(&b.distance(s.pos)));
+                if let Some(q) = quarry {
+                    let want = (q - s.pos).to_angle();
+                    let now = s.vel.to_angle();
+                    let d = (want - now + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+                    // (Turning harder the longer it flies: up and wide off
+                    // the launch, then biting in, not circling.)
+                    let most = rate.to_radians() * (0.4 + 1.2 * s.age).min(2.5) * DT;
+                    s.vel = Vec2::from_angle(now + d.clamp(-most, most)) * s.vel.length();
+                }
+            }
             s.vel.y -= GRAVITY * s.fall * DT;
             let travel = s.vel * DT;
             let steps = travel.length().ceil().max(1.0) as i32;

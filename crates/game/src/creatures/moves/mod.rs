@@ -133,8 +133,28 @@ pub enum Act {
     /// A spell (spells.ref) cast from `at` cells toward the target and `up`
     /// above: aimed where they'll be, lobbed by as far as it falls. With
     /// `from` (a turret's name: `legs`), cast from its muzzle along where it
-    /// points (outrun its swing), heating it.
-    Cast { spell: String, #[serde(default)] at: f32, #[serde(default)] up: f32, #[serde(default)] from: Option<String> },
+    /// points (outrun its swing), heating it. `count` of it, `every`
+    /// seconds apart through the phase (a salvo); `launch`ed along that way
+    /// instead (facing right, y up: mirrored to its facing), `spread`
+    /// degrees either side shot by shot (missiles fanning up off its back,
+    /// then homing in).
+    Cast {
+        spell: String,
+        #[serde(default)]
+        at: f32,
+        #[serde(default)]
+        up: f32,
+        #[serde(default)]
+        from: Option<String>,
+        #[serde(default = "one_shot")]
+        count: u32,
+        #[serde(default = "salvo_every")]
+        every: f32,
+        #[serde(default)]
+        launch: Option<(f32, f32)>,
+        #[serde(default)]
+        spread: f32,
+    },
     /// What's within `radius` of its feet is hit.
     Slam(Slam),
     /// `count` of a creature, `spread` cells either side.
@@ -154,6 +174,13 @@ pub enum Act {
     /// tick from `at` cells toward the target, its aim swinging after them
     /// at most `turn` radians a second (outrun it, or get under it).
     Beam { spell: String, #[serde(default)] at: f32, #[serde(default = "beam_turn")] turn: f32 },
+}
+
+fn one_shot() -> u32 {
+    1
+}
+fn salvo_every() -> f32 {
+    0.12
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -313,6 +340,8 @@ struct Doing {
     start: f32,
     /// The pose the phase eases from.
     from: Pose,
+    /// Shots of the phase's casts fired so far (a salvo's go one by one).
+    fired: u32,
 }
 
 impl Moves {
@@ -331,7 +360,7 @@ impl Moves {
     pub fn force(&mut self, which: usize, target: Entity, dir: Vec2) {
         if which < self.ids.len() {
             let dir = dir.normalize_or(Vec2::X);
-            self.doing = Some(Doing { which, t: 0.0, phase: usize::MAX, start: 0.0, target, dir, struck: false, held: None, aim: dir, from: Pose::default() });
+            self.doing = Some(Doing { which, t: 0.0, phase: usize::MAX, start: 0.0, target, dir, struck: false, held: None, aim: dir, from: Pose::default(), fired: 0 });
         }
     }
 
@@ -435,7 +464,7 @@ pub fn start(
         if let Some(which) = start {
             // (`phase` past the end: the first phase's start is still to come.)
             let dir = to.normalize_or(Vec2::X);
-            moves.doing = Some(Doing { which, t: 0.0, phase: usize::MAX, start: 0.0, target: pe, dir, struck: false, held: None, aim: dir, from: Pose::default() });
+            moves.doing = Some(Doing { which, t: 0.0, phase: usize::MAX, start: 0.0, target: pe, dir, struck: false, held: None, aim: dir, from: Pose::default(), fired: 0 });
             began.write(Began { who: e, id: moves.ids[which].clone() });
         }
     }
@@ -518,6 +547,7 @@ pub fn run(
             };
             d.phase = next;
             d.struck = false;
+            d.fired = 0;
             if let (Some(clip), Some(a)) = (&p.clip, anim.as_deref_mut()) {
                 a.play(clip);
             }
@@ -528,19 +558,8 @@ pub fn run(
                 let target = rear.target;
                 *rear = Pose { target, ..pose.clone() };
             }
-            // (Fired from a turret: from its muzzle, along where it points;
-            // it heats.)
-            for act in &p.acts {
-                if let Act::Cast { spell, from: Some(name), .. } = act
-                    && let (Ok(mut legs), Some(i)) = (limbs.get_mut(e), spells.spells.iter().position(|s| &s.id == spell))
-                    && let Some((muzzle, aim)) = legs.muzzle(name)
-                {
-                    casts.write(crate::magic::CastRequest { caster: e, spell: i, from: muzzle, toward: muzzle + aim * 200.0, alt: false });
-                    legs.fired(name);
-                }
-            }
             let mut vel = k.body.vel;
-            begin(p, e, &k, dir, target.as_ref(), &spells, &mut vel, at, &mut casts, &mut sounds, &mut commands);
+            begin(p, &k, dir, &mut vel, &mut sounds, &mut commands);
             k.body.vel = vel;
             for act in &p.acts {
                 if let Act::Throw { speed, up, stun } = act
@@ -584,6 +603,46 @@ pub fn run(
         let f = if p.secs > 0.0 { ((d.t - start) / p.secs).clamp(0.0, 1.0) } else { 1.0 };
         // (What the phase shows, and how far into it.)
         rear.tells = p.tells.iter().map(|t| (t.clone(), f)).collect();
+        // Its casts, shot by shot: the first as the phase begins, a salvo's
+        // the rest `every` apart.
+        let into = d.t - start;
+        for act in &p.acts {
+            let Act::Cast { spell, at: along, up, from, count, every, launch, spread } = act else { continue };
+            let due = (1 + (into / every.max(0.001)) as u32).min(*count);
+            while d.fired < due {
+                let shot = d.fired;
+                d.fired += 1;
+                let Some(i) = spells.spells.iter().position(|s| &s.id == spell) else { continue };
+                let turret = from.as_deref().and_then(|name| limbs.get(e).ok().and_then(|l| l.muzzle(name)));
+                let origin = turret.map_or(at(*along) + Vec2::Y * *up, |(m, _)| m);
+                let toward = if let Some((x, y)) = launch {
+                    // (Fanned: shot by shot across the spread, a little
+                    // jitter.)
+                    let side = if dir.x < 0.0 { -1.0 } else { 1.0 };
+                    let fan = if *count > 1 { shot as f32 / (*count - 1) as f32 * 2.0 - 1.0 } else { 0.0 };
+                    let way = Vec2::new(x * side, *y).normalize_or(Vec2::Y).rotate(Vec2::from_angle((fan * spread).to_radians()));
+                    origin + way * 200.0
+                } else if let Some((m, aim)) = turret {
+                    m + aim * 200.0
+                } else if let Some(pk) = &target {
+                    // Where they'll be when it gets there, and above that
+                    // by as far as it falls on the way.
+                    match spells.flight(i) {
+                        Some((speed, fall)) => {
+                            let flight = origin.distance(pk.pos) / speed.max(1.0);
+                            pk.pos + pk.vel * flight + Vec2::Y * 0.5 * fall * flight * flight
+                        }
+                        None => pk.pos,
+                    }
+                } else {
+                    continue;
+                };
+                casts.write(crate::magic::CastRequest { caster: e, spell: i, from: origin, toward, alt: false });
+                if let (Some(name), Ok(mut legs)) = (from, limbs.get_mut(e)) {
+                    legs.fired(name);
+                }
+            }
+        }
         if let Some(to) = &p.pose {
             let w = match p.ease {
                 Ease::Snap => 1.0,
@@ -666,38 +725,12 @@ pub(crate) fn pin(mut commands: Commands, mut q: Query<(Entity, &Held, &mut Kine
 }
 
 /// What a phase does as it starts.
-#[allow(clippy::too_many_arguments)]
-fn begin(
-    p: &Phase,
-    e: Entity,
-    k: &Kinematics,
-    dir: Vec2,
-    target: Option<&Quarry>,
-    spells: &crate::magic::Spellbook,
-    vel: &mut Vec2,
-    at: impl Fn(f32) -> Vec2,
-    casts: &mut MessageWriter<crate::magic::CastRequest>,
-    sounds: &mut MessageWriter<crate::sound::PlaySound>,
-    commands: &mut Commands,
-) {
+fn begin(p: &Phase, k: &Kinematics, dir: Vec2, vel: &mut Vec2, sounds: &mut MessageWriter<crate::sound::PlaySound>, commands: &mut Commands) {
     for act in &p.acts {
         match act {
             Act::Lunge { speed, up } => *vel = dir * *speed + Vec2::Y * *up,
-            Act::Cast { from: Some(_), .. } => {}
-            Act::Cast { spell, at: along, up, from: None } => {
-                let (Some(pk), Some(i)) = (target, spells.spells.iter().position(|s| &s.id == spell)) else { continue };
-                let from = at(*along) + Vec2::Y * *up;
-                // Where they'll be when it gets there, and above that by as
-                // far as it falls on the way.
-                let toward = match spells.flight(i) {
-                    Some((speed, fall)) => {
-                        let flight = from.distance(pk.pos) / speed.max(1.0);
-                        pk.pos + pk.vel * flight + Vec2::Y * 0.5 * fall * flight * flight
-                    }
-                    None => pk.pos,
-                };
-                casts.write(crate::magic::CastRequest { caster: e, spell: i, from, toward, alt: false });
-            }
+            // (Casts go off shot by shot as the phase runs: `run`.)
+            Act::Cast { .. } => {}
             Act::Summon { kind, count, spread } => {
                 for n in 0..*count {
                     let dx = if *count > 1 { (n as f32 / (*count - 1) as f32 - 0.5) * 2.0 * spread } else { 0.0 };

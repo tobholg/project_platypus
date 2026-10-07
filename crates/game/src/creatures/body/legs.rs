@@ -714,8 +714,10 @@ pub struct Legs {
     dangle: f32,
     /// Where its body's grip was this frame (the world: `parts`).
     grip: Vec2,
-    /// Its turrets as they are now.
+    /// Its turrets as they are now, and its lock-on mark (a reticle over
+    /// its target while a move's phase shows `Tell::Lock`).
     turrets: Vec<Turret>,
+    lock: Option<Entity>,
 }
 
 #[derive(Component)]
@@ -1018,7 +1020,8 @@ fn turn_over(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut
             .into_iter()
             .chain(legs.claws.iter().copied())
             .chain(legs.chains.iter().map(|c| c.tip))
-            .chain(legs.turrets.iter().flat_map(|t| [t.barrel, t.glow, Some(t.sight), Some(t.charge)]));
+            .chain(legs.turrets.iter().flat_map(|t| [t.barrel, t.glow, Some(t.sight), Some(t.charge)]))
+            .chain([legs.lock]);
         for part in parts.flatten() {
             commands.entity(part).despawn();
         }
@@ -1081,7 +1084,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, grip: Vec2::ZERO, turrets: Vec::new(), def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, grip: Vec2::ZERO, turrets: Vec::new(), lock: None, def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -1125,6 +1128,12 @@ fn grow_legs(
                 commands.entity(e).add_child(part);
             }
             legs.turrets.push(Turret { aim: if facing < 0.0 { std::f32::consts::PI } else { 0.0 }, heat: 0.0, venting: 0.0, barrel, glow, sight, charge, pivot: k.body.pos, muzzle: k.body.pos, hiss: false });
+        }
+        // (With turrets, a lock-on mark too.)
+        if !legs.def.turrets.is_empty() {
+            let mark = commands.spawn((LegTell, Sprite::from_image(images.add(reticle())), Transform::from_xyz(0.0, 0.0, Z_EYES - root_z + 0.02), Visibility::Hidden)).id();
+            commands.entity(e).add_child(mark);
+            legs.lock = Some(mark);
         }
         // Its chains' tips: turned sprites at their ends (a sting).
         for chain in legs.def.chains.clone() {
@@ -2012,6 +2021,28 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Ve
     }
 }
 
+/// A lock-on mark: a ring with four ticks pointing in, white (tinted when
+/// drawn), 17 cells across.
+fn reticle() -> Image {
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    let n = 17u32;
+    let c = (n as f32 - 1.0) * 0.5;
+    let mut px = Vec::with_capacity((n * n * 4) as usize);
+    for y in 0..n {
+        for x in 0..n {
+            let (dx, dy) = (x as f32 - c, y as f32 - c);
+            let r = (dx * dx + dy * dy).sqrt();
+            // (The ring, broken at the four ticks; the ticks in toward the
+            // middle.)
+            let tick = (dx.abs() < 0.5 || dy.abs() < 0.5) && (3.5..7.5).contains(&r);
+            let ring = (6.5..7.6).contains(&r) && !(dx.abs() < 1.5 || dy.abs() < 1.5);
+            let a = if tick || ring { 255 } else { 0 };
+            px.extend([255, 255, 255, a]);
+        }
+    }
+    Image::new(Extent3d { width: n, height: n, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8UnormSrgb, bevy::asset::RenderAssetUsages::RENDER_WORLD)
+}
+
 /// How hot a turret looks: dull red, then orange, then white, more and
 /// more opaque (0 at rest, a glow as it heats).
 fn heat_color(h: f32) -> Color {
@@ -2110,6 +2141,24 @@ fn turrets(
                 }
             }
             let charge = rear.tells.iter().find(|(tell, _)| *tell == Tell::Charge(td.name.clone())).map(|(_, f)| *f);
+            if j == 0
+                && let Some(mark) = legs.lock
+                && let Ok((mut s, mut tr, mut vis)) = sprites.get_mut(mark)
+            {
+                // Its lock-on mark: over the target, closing in and turning
+                // as the lock completes, blinking.
+                match (rear.tells.iter().find(|(tell, _)| *tell == Tell::Lock), rear.target) {
+                    (Some((_, f)), Some(at)) => {
+                        let blink = if (now * 9.0).fract() < 0.6 { 1.0 } else { 0.35 };
+                        s.color = Color::srgba(1.0, 0.15, 0.1, 0.9 * blink);
+                        tr.translation = (at - middle).extend(tr.translation.z);
+                        tr.rotation = Quat::from_rotation_z(now * 2.5);
+                        tr.scale = Vec3::splat(1.8 - 0.8 * f.min(1.0));
+                        *vis = Visibility::Inherited;
+                    }
+                    _ => *vis = Visibility::Hidden,
+                }
+            }
             if let Ok((mut s, mut tr, mut vis)) = sprites.get_mut(t.charge) {
                 match charge {
                     Some(f) => {

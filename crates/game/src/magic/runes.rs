@@ -150,6 +150,10 @@ pub enum Modifier {
     Speed(f32),
     /// What's left of the wand is cast where this lands.
     Trigger,
+    /// Turns toward what it's after (the nearest body not on its caster's
+    /// side, ahead of it, within 320 cells) at most this many degrees a
+    /// second: a missile.
+    Homing(f32),
 }
 
 /// What a rune looks like (visual only: `vfx`): sparks it trails as it
@@ -277,6 +281,12 @@ pub struct Cast {
 impl Cast {
     pub fn gravity(&self) -> f32 {
         self.modifiers.iter().map(|m| if let Modifier::Gravity(g) = m { *g } else { 0.0 }).sum()
+    }
+
+    /// How fast it turns toward what it's after (degrees a second), if it
+    /// homes.
+    pub fn homing(&self) -> Option<f32> {
+        self.modifiers.iter().find_map(|m| if let Modifier::Homing(r) = m { Some(*r) } else { None })
     }
 
     pub fn speed_scale(&self) -> f32 {

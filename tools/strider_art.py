@@ -134,3 +134,43 @@ gout = '''// The iron strider's laser gun seen from the side, pointing right: a 
 ''' % (len(grows[0]), len(grows), len(grows) - 1, "\n".join("        '%s': %s,   // %s" % (k, v[0], v[1]) for k, v in gpal.items() if k in used), "\n".join('            "%s",' % r for r in grows))
 open('assets/art/strider_gun.ron', 'w').write(gout)
 print('gun', len(grows[0]), len(grows))
+
+# Its missile pod, seen from the side, pointing right (where it aims): a
+# box on a pivot with three launch tubes; missiles fan up out of it.
+P = [
+    ".MMMMMMMMMM.",
+    "MLLLLLLLLLLM",
+    "MLkLLkLLkLLM",
+    "MLLLLLLLLLLM",
+    "MddddddddddM",
+    ".MMMvMMMMMM.",
+]
+ppal = {
+ 'M': ((72, 74, 80), 'pod, shade'), 'L': ((150, 156, 162), 'pod, lit'), 'd': ((96, 98, 104), 'pod'),
+ 'k': ((30, 30, 34), 'launch tubes'), 'v': ((196, 200, 206), 'pivot bolt'),
+}
+prows = ['.' * (len(P[0]) + 2)] + ['.' + r + '.' for r in P] + ['.' * (len(P[0]) + 2)]
+used = set(''.join(prows)) - {'.'}
+pout = '''// The iron strider's missile pod seen from the side, pointing right: a
+// box on a pivot (`grip`) with three launch tubes. Made by
+// tools/strider_art.py. A turret of its creature file's `legs`.
+(
+    size: (%d, %d),
+    feet: (5, %d),
+    outline: (26, 28, 32),
+    palette: {
+%s
+    },
+    frames: {
+        "body": [
+%s
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (5, 6) } },
+)
+''' % (len(prows[0]), len(prows), len(prows) - 1, "\n".join("        '%s': %s,   // %s" % (k, v[0], v[1]) for k, v in ppal.items() if k in used), "\n".join('            "%s",' % r for r in prows))
+open('assets/art/strider_pod.ron', 'w').write(pout)
+print('pod', len(prows[0]), len(prows))

@@ -1,0 +1,31 @@
+// The iron strider's missile pod seen from the side, pointing right: a
+// box on a pivot (`grip`) with three launch tubes. Made by
+// tools/strider_art.py. A turret of its creature file's `legs`.
+(
+    size: (14, 8),
+    feet: (5, 7),
+    outline: (26, 28, 32),
+    palette: {
+        'M': (72, 74, 80),   // pod, shade
+        'L': (150, 156, 162),   // pod, lit
+        'd': (96, 98, 104),   // pod
+        'k': (30, 30, 34),   // launch tubes
+        'v': (196, 200, 206),   // pivot bolt
+    },
+    frames: {
+        "body": [
+            "..............",
+            "..MMMMMMMMMM..",
+            ".MLLLLLLLLLLM.",
+            ".MLkLLkLLkLLM.",
+            ".MLLLLLLLLLLM.",
+            ".MddddddddddM.",
+            "..MMMvMMMMMM..",
+            "..............",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (5, 6) } },
+)

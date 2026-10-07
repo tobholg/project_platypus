@@ -102,6 +102,14 @@
             ]),
             (name: "recover", secs: 0.5, ease: Smooth, pose: Some(())),
         ]),
+        // An iron strider's missile salvo: a lock-on mark over you a second
+        // (closing in as it locks), then four missiles fanned up out of its
+        // pod, curving round onto you, smoking; each bursts where it hits.
+        (id: "strider_salvo", every: 5.0, when: (range: (60, 320)), phases: [
+            (name: "lock", secs: 1.0, tells: [Lock]),
+            (name: "launch", secs: 0.7, acts: [Cast(spell: "strider_missile", from: Some("pod"), count: 4, every: 0.15, launch: Some((0.25, 1.0)), spread: 22), Sound("launch")], tells: [Lock]),
+            (name: "recover", secs: 0.5),
+        ]),
         // An iron strider's volley: both guns' sight lines on you, then
         // each in turn charges (a glow at its muzzle) and fires along where
         // it points, four shots; each heats its gun (it vents when it's too

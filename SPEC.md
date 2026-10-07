@@ -1906,7 +1906,19 @@ parts, so another is a new file, not new code:
   its pixels (lit over the dark: dull red, orange, white). **Tells** (a
   phase's `tells`): `Sight(turret)`, a thin flickering red line from its
   muzzle along where it points to what's in the way; `Charge(turret)`, a
-  glow at its muzzle growing through the phase; `Lock` (missiles: next).
+  glow at its muzzle growing through the phase; `Lock`, a red reticle
+  over the target, turning, blinking, closing in as the phase goes. A
+  move's `Cast` takes `count` and `every` (a salvo: shot by shot through
+  the phase), `launch: Some((x, y))` (fired that way, facing right, y up,
+  mirrored to its facing) and `spread` (degrees either side, fanned shot
+  by shot). **Homing** (a rune modifier, `Homing(rate)`): a bolt turns
+  toward the nearest body ahead of it not on its caster's side, within
+  320 cells, at most `rate` degrees a second, harder the longer it flies
+  (0.4× off the launch to 2.5× after 1.75 s: up and wide, then biting in,
+  not circling). The strider's pod (a third turret) fires `strider_salvo`
+  every 5 s: a 1 s lock-on, then four `strider_missile`s (runes `homing`,
+  `missile`: a slow bolt trailing grey smoke, `missile_blast`) fanned up
+  off its back 0.15 s apart, curving down onto the player.
   The strider keeps 90–150 cells off (`Range`) and fires `strider_volley`
   (0.7 s of both sight lines, then four shots in turn, each 0.28 s of
   charge first: `strider_laser`, a quick red bolt, 11 radiant; its runes
