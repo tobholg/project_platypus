@@ -464,7 +464,6 @@ fn hunt(
                 // (On the ceiling, its way on up (round the ceiling's edge,
                 // onto the face over it): along to the edge first, the side
                 // that's open over it.)
-                let mut mx = mx;
                 if clinging == Some(Vec2::Y) && move_y > 0.0 && mx == 0.0 {
                     let top = pos.y + k.body.half.y;
                     let open = |x: f32| !(2..=8).any(|d| sim.world.is_solid(platypus_sim::CellPos::from_world(x, top + d as f32)));

@@ -957,7 +957,9 @@ fn walk(
         // (Moved further than a leg reaches since last frame: put down, or
         // through a portal. Its ride and tilt start afresh; its feet are
         // planted afresh, below.)
-        let jumped = legs.last.is_none_or(|l| l.distance(middle) > legs.def.full_reach());
+        // (Further than a leg reaches and than it was going: a fast fall or
+        // lunge in a long frame isn't being put down somewhere.)
+        let jumped = legs.last.is_none_or(|l| l.distance(middle) > legs.def.full_reach() + k.body.vel.length() * dt * 2.0);
         if jumped {
             legs.ride = None;
             legs.tilt = 0.0;
@@ -1500,10 +1502,13 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Ve
         let ride = legs.def.ride;
         // (Behind the head; after a fall, on the side the body came down
         // on, not swung over the head to the other.)
+        // (Its body's side of it; above it (a column it dropped down), the
+        // side it came from: behind the way it was going.)
         let back = match &fell {
             Some(f) if !f.is_empty() => {
                 let x = (f.iter().sum::<Vec2>() / f.len() as f32 - c).dot(along);
-                along * if x.abs() > 1.0 { x.signum() } else { -facing }
+                let going = v.dot(along);
+                along * if x.abs() > 4.0 { x.signum() } else if going.abs() > 20.0 { -going.signum() } else { -facing }
             }
             _ => -along * facing,
         };
@@ -1580,13 +1585,25 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Ve
     // comes down, 220 cells/s, upright, till it's on something:
     // a body leapt off a ledge, or dropped from the ceiling, falls after
     // its head and doesn't hang in the air along the way it went.)
-    // (Held: rock within its ride and ten, any way round: round a corner
-    // it's going over, the rock's diagonal to it, further than its ride.)
-    let hold = legs.def.ride as i32 + 10;
-    let ways = [Vec2::NEG_Y, Vec2::Y, Vec2::X, Vec2::NEG_X, Vec2::new(0.7, 0.7), Vec2::new(-0.7, 0.7), Vec2::new(0.7, -0.7), Vec2::new(-0.7, -0.7)];
+    // (Held: rock beside it or over it within its ride and 14 (round a
+    // corner it's going over, the rock's diagonal to it, further than its
+    // ride); under it, within its ride and four, and it settles down onto
+    // that, to its ride, gently; else it falls.)
+    let ride = legs.def.ride;
+    let far = ride as i32 + 14;
+    let near = ride as i32 + 4;
+    let beside = [Vec2::Y, Vec2::X, Vec2::NEG_X, Vec2::new(0.7, 0.7), Vec2::new(-0.7, 0.7)];
+    let under = [Vec2::new(0.7, -0.7), Vec2::new(-0.7, -0.7)];
     for i in 1..legs.trail.len() {
-        let (p, _) = legs.trail[i];
-        if ways.iter().any(|d| (1..=hold).any(|k| solid(sim, p + *d * k as f32))) {
+        let (p, s0) = legs.trail[i];
+        if let Some(k) = (1..=near).find(|k| solid(sim, p - Vec2::Y * *k as f32)) {
+            let over = k as f32 - 1.0 - ride;
+            if over > 0.5 {
+                legs.trail[i] = (p - Vec2::Y * over.min(60.0 * dt), s0);
+            }
+            continue;
+        }
+        if beside.iter().any(|d| (1..=far).any(|k| solid(sim, p + *d * k as f32))) || under.iter().any(|d| (1..=near).any(|k| solid(sim, p + *d * k as f32))) {
             continue;
         }
         legs.trail[i] = (p - Vec2::Y * (220.0 * dt).min(2.0), 0.0);
