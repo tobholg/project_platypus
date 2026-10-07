@@ -2,14 +2,16 @@
 //! where you are from across the map, through rock, in the dark. It sees
 //! (a clear line from its eye to you, out to its sight, less in the dark
 //! unless it sees in the dark: daylight on you under open sky, a torch
-//! you carry or one near you gives you away), hears (a fight's blows, a
-//! blast, your footsteps when you run, your landings: each a noise with a
-//! reach), and smells (a wounded quarry, within its smell, through rock).
+//! you carry or one near you gives you away; less behind it), hears (a
+//! fight's blows, a blast, your footsteps when you run, your landings:
+//! each a noise with a reach; creeping, Ctrl held, is under what it
+//! hears), and smells (a wounded quarry, within its smell, through rock).
 //! Each hunter is `Idle` (wandering), `Suspicious` (it glimpsed or heard
 //! something: it turns and comes to look, slowly; a glimpse held long
 //! enough, or seen close, and it's hunting), `Hunting` (it knows where you
 //! are and goes for you: only now does it attack), or `Searching` (it lost
-//! you: where it last knew you were, a while, then it gives up). Struck,
+//! you: where it last knew you were, a while, then it gives up; a
+//! suspicious one, once it's been to look). Struck,
 //! it hunts whatever's near enough to have done it. A "?" over its head
 //! while it's suspicious or searching, a "!" as it starts hunting.
 
@@ -35,11 +37,14 @@ pub struct SensesDef {
     /// How long it goes on hunting what it no longer senses (s), before it
     /// searches.
     pub memory: f32,
+    /// How far it sees behind it, against ahead, while it isn't hunting
+    /// (hunting, it's turned to look).
+    pub behind: f32,
 }
 
 impl Default for SensesDef {
     fn default() -> Self {
-        SensesDef { sight: 0.0, dark: 0.25, hearing: 1.0, smell: 0.0, memory: 4.0 }
+        SensesDef { sight: 0.0, dark: 0.25, hearing: 1.0, smell: 0.0, memory: 4.0, behind: 0.4 }
     }
 }
 
@@ -108,11 +113,21 @@ impl Alert {
     }
 }
 
-/// A noise this tick: where, and how far it carries (cells).
+/// A noise this tick: where, how far it carries (cells), and how much
+/// it makes a listener sure something's there (a share of the way to
+/// hunting: a lump for a noise once, a second's worth for one going on).
 struct Noise {
     at: Vec2,
     reach: f32,
+    sure: f32,
 }
+
+/// How sure a noise makes it: a landing, once; running feet, each second
+/// it goes on (less what fades, 0.4 a second: under a second of running
+/// in its hearing and it hunts the sound). Blows and blasts only
+/// make it come and look (a lure).
+const SURE_LANDED: f32 = 0.3;
+const SURE_RUNNING: f32 = 1.6;
 
 /// How lit a spot is for seeing it (0 dark, 1 broad day): daylight under
 /// open sky near the surface (no rock over it), and light sources near it
@@ -152,17 +167,17 @@ pub fn perceive(
     let mut noises: Vec<Noise> = Vec::new();
     let mut struck: Vec<Entity> = Vec::new();
     for f in felt.read() {
-        noises.push(Noise { at: f.at, reach: NOISE_FIGHT });
+        noises.push(Noise { at: f.at, reach: NOISE_FIGHT, sure: 0.0 });
         struck.push(f.target);
     }
     for b in blasts.read() {
-        noises.push(Noise { at: b.at, reach: 200.0 + b.radius * 12.0 });
+        noises.push(Noise { at: b.at, reach: 200.0 + b.radius * 12.0, sure: 0.0 });
     }
     for l in landed.read() {
         if let Ok((_, k, t, _)) = quarry.get(l.entity)
             && t.hunted()
         {
-            noises.push(Noise { at: k.body.pos, reach: 40.0 + l.drop * 0.4 });
+            noises.push(Noise { at: k.body.pos, reach: 40.0 + l.drop * 0.4, sure: SURE_LANDED });
         }
     }
     let hunted: Vec<(Entity, Vec2, f32, Vec2)> = quarry
@@ -175,7 +190,7 @@ pub fn perceive(
     for (_, at, _, vel) in &hunted {
         let run = vel.x.abs();
         if run > 40.0 {
-            noises.push(Noise { at: *at, reach: 30.0 + run * 0.55 });
+            noises.push(Noise { at: *at, reach: 30.0 + run * 0.55, sure: SURE_RUNNING * dt });
         }
     }
     for (e, h, k, tf, alert, keeps) in &mut hunters {
@@ -196,7 +211,8 @@ pub fn perceive(
                 continue;
             }
             let d = at.distance(pos);
-            let see = sight * (0.25 + 0.75 * (s.dark + (1.0 - s.dark) * light));
+            let back = a.wary != Wary::Hunting && (at.x - pos.x) * k.loco.facing < 0.0;
+            let see = sight * (0.25 + 0.75 * (s.dark + (1.0 - s.dark) * light)) * if back { s.behind } else { 1.0 };
             let seen = a.told || d < see && crate::creatures::moves::clear(&sim, eye, at);
             let smelled = s.smell > 0.0 && d < s.smell && share < 0.75;
             if (seen || smelled) && best.is_none_or(|b| d < b.2) {
@@ -230,18 +246,25 @@ pub fn perceive(
                 match a.wary {
                     Wary::Hunting if a.unseen > s.memory => a.set(Wary::Searching),
                     Wary::Searching if a.since > 5.0 => a.set(Wary::Idle),
-                    Wary::Suspicious if a.since > 4.0 && a.glimpse <= 0.0 => a.set(Wary::Idle),
+                    // (Once it's had a look where it was: there, or long
+                    // on the way.)
+                    Wary::Suspicious if a.glimpse <= 0.0 && (a.since > 4.0 && a.last.distance(pos) < 40.0 || a.since > 10.0) => a.set(Wary::Idle),
                     _ => {}
                 }
             }
         }
-        // Heard: it comes to look (not when it's already on the hunt).
+        // Heard: it comes to look (not when it's already on the hunt);
+        // heard enough (feet running on), it hunts the sound.
         if matches!(a.wary, Wary::Idle | Wary::Suspicious | Wary::Searching)
             && !a.senses_it
             && let Some(n) = noises.iter().filter(|n| n.at.distance(pos) < n.reach * s.hearing).min_by(|x, y| x.at.distance(pos).total_cmp(&y.at.distance(pos)))
         {
             a.last = n.at;
-            if a.wary == Wary::Idle {
+            a.glimpse += n.sure;
+            if a.glimpse >= 1.0 {
+                a.unseen = 0.0;
+                a.set(Wary::Hunting);
+            } else if a.wary == Wary::Idle {
                 a.set(Wary::Suspicious);
             }
             a.since = 0.0;

@@ -270,7 +270,8 @@ fn frame_cams(time: Res<Time>, cam: Single<&Transform, With<MainCamera>>, player
 impl Plugin for ScenarioPlugin {
     fn build(&self, app: &mut App) {
         let Ok(name) = std::env::var("PLATYPUS_SCENARIO") else { return };
-        let duration = std::env::var("PLATYPUS_SCENARIO_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(20.0);
+        // (`sneak` is played: an hour.)
+        let duration = std::env::var("PLATYPUS_SCENARIO_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(if name == "sneak" { 3600.0 } else { 20.0 });
         app.insert_resource(Scenario { name, elapsed: 0.0, duration, next_report: 2.0, next_drop: 1.0, reports: Vec::new(), screenshot: std::env::var("PLATYPUS_SCREENSHOT").ok(), frames: None })
             .add_systems(Update, run)
             .add_systems(PostUpdate, frame_cams.after(crate::camera::follow))
@@ -297,6 +298,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
             .add_systems(PreUpdate, stealth_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, sneak_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
             .add_systems(Update, (underlook_script, voidlook_script))
@@ -6407,13 +6409,198 @@ fn shots_script(mut commands: Commands, s: Res<Scenario>, offscreen: Option<Res<
     commands.spawn(image).observe(save_to_disk(format!("{dir}/{}_{:05.0}.png", s.name, s.elapsed * 100.0)));
 }
 
+/// The sneak scenario's line of text at the top of the screen.
+#[derive(Component)]
+struct SneakHud;
+
+/// `sneak` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`; played, not
+/// watched: it runs an hour): get through a dark hall at night, roofed
+/// over from x 300 to 1680, to the open air past its far end, unseen.
+/// - The camp: two orcs by a fire (a torch) under a stone shelf, facing
+///   the way you come; a ramp up onto the shelf, its far end a jump over a
+///   gap behind them.
+/// - The patrol: a walkway on, an orc wandering the floor under it, a gap
+///   over its beat to jump (the jump is loud, a run's feet).
+/// - The sentry: an orc in its torch's light at the door, facing in; a
+///   step down off the walkway's end. A bomb (4) thrown back down the
+///   hall makes it go and look (the whole hall hears a blast).
+///
+/// Ctrl creeps (silent), L lights a torch (you see, and are seen). The
+/// line at the top counts the times something started hunting you.
+/// `PLATYPUS_SNEAK_BOT=creep|run|torch` walks the player in from the
+/// door along the walkway to x 1320, back from its end (Ctrl held but for
+/// the jumps' run-ups, or not, or with the torch lit), then sets off a
+/// bomb back down the hall and, the sentry gone past under it to look,
+/// goes down and out; it logs every
+/// change of every guard's wariness.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn sneak_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut day: ResMut<crate::light::Daylight>,
+    lights: Res<crate::light::LightSettings>,
+    torch_art: Option<Res<crate::light::TorchArt>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::brain::senses::Alert>), Without<LocalPlayer>>,
+    mut hud: Query<&mut Text, With<SneakHud>>,
+    tools: Res<ToolsConfig>,
+    // (step, times spotted, when out, each guard's last wariness, the bot's
+    // jump until, when it set off its bomb)
+    mut state: Local<(u8, u32, Option<f32>, std::collections::HashMap<Entity, crate::creatures::brain::senses::Wary>, f32, Option<f32>)>,
+) {
+    use crate::creatures::brain::senses::Wary;
+    if s.name != "sneak" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let fl = floor as f32;
+    let bot = std::env::var("PLATYPUS_SNEAK_BOT").ok();
+    if state.0 == 0 {
+        if t < 0.5 {
+            return;
+        }
+        // 23:00.
+        day.skipped = (23.0 - day.time * 24.0).rem_euclid(24.0);
+        let Some(stone) = sim.materials().id("stone") else { return };
+        let mut fill = |x0: i32, x1: i32, y0: i32, y1: i32| {
+            for x in (x0 + 2..=x1 - 2).step_by(3) {
+                for y in (y0 + 2..=y1 - 2).step_by(3) {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 2, material: stone, overwrite: true });
+                }
+            }
+        };
+        // The roof (head room over the shelf for a jump).
+        fill(300, 1680, floor + 140, floor + 152);
+        // The camp's shelf, its ramp up.
+        fill(560, 900, floor + 56, floor + 64);
+        for x in (500..560).step_by(3) {
+            fill(x, x + 4, floor - 2, floor + (x - 500) + 4);
+        }
+        // The walkway, a gap over the patrol; a step down off its end, high
+        // enough to walk under.
+        fill(940, 1190, floor + 56, floor + 62);
+        fill(1225, 1420, floor + 56, floor + 62);
+        fill(1436, 1460, floor + 30, floor + 35);
+        // The camp's fire, the sentry's torch.
+        if let Some(art) = torch_art.as_deref() {
+            for x in [750.0, 1590.0] {
+                crate::light::plant_torch(&mut commands, Vec2::new(x, fl), &lights, art);
+            }
+        }
+        // (No training dummies.)
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        // The guards: (where, facing, wandering).
+        for (x, facing, wander) in [(720.0, -1.0, 0.0), (780.0, -1.0, 0.0), (1110.0, 1.0, 0.3), (1600.0, -1.0, 0.0)] {
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(x, fl), move |e| {
+                if let Some(mut h) = e.get_mut::<crate::creatures::brain::hunter::Hunter>() {
+                    h.wander.speed = wander;
+                }
+                if let Some(mut k) = e.get_mut::<Kinematics>() {
+                    k.loco.facing = facing;
+                }
+            });
+        }
+        k.body.pos = Vec2::new(200.0, fl + k.body.half.y);
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+        toggles.carry = if bot.as_deref() == Some("torch") { crate::light::Carry::Torch } else { crate::light::Carry::Nothing };
+        commands.spawn((
+            SneakHud,
+            Text::new(""),
+            TextFont { font_size: bevy::text::FontSize::Px(15.0), ..default() },
+            TextColor(Color::srgb(0.95, 0.9, 0.75)),
+            bevy::ui::widget::TextShadow::default(),
+            Node { position_type: PositionType::Absolute, top: px(56), width: percent(100), justify_content: JustifyContent::Center, ..default() },
+            TextLayout::justify(Justify::Center),
+        ));
+        state.0 = 1;
+        return;
+    }
+    // Who's grown how wary.
+    for (e, c, gk, a) in &them {
+        let Some(a) = a else { continue };
+        let was = state.3.insert(e, a.wary);
+        if was.is_some_and(|w| w != a.wary) {
+            if a.wary == Wary::Hunting {
+                state.1 += 1;
+            }
+            info!("sneak: t {t:.2} the {} at x {:.0} is {:?} (the player at x {:.0}, {:.0} up)", c.kind, gk.body.pos.x, a.wary, k.body.pos.x, k.body.pos.y - fl - k.body.half.y);
+        }
+    }
+    if state.2.is_none() && k.body.pos.x > 1700.0 {
+        state.2 = Some(t);
+        info!("sneak: out at t {t:.1}, spotted {} times", state.1);
+    }
+    if let Ok(mut text) = hud.single_mut() {
+        text.0 = match state.2 {
+            Some(out) => format!("Out, {:.0} s, {}", out, if state.1 == 0 { "unseen. A ghost.".to_string() } else { format!("spotted {} times.", state.1) }),
+            None => format!("Get through the hall unseen.   Ctrl creep  ·  L torch  ·  4 bombs make noise.   Spotted: {}", state.1),
+        };
+    }
+    // The bot: in, right, to the walkway's end; a bomb; out.
+    if let Some(mode) = bot.as_deref() {
+        let x = k.body.pos.x;
+        let sentry = them.iter().filter(|q| q.1.kind == "orc").map(|q| q.2.body.pos.x).fold(f32::MIN, f32::max);
+        if x >= 1320.0 && state.5.is_none() {
+            state.5 = Some(t);
+        }
+        if state.0 == 1 && state.5.is_some_and(|b| t > b + 1.0) {
+            info!("sneak: t {t:.2} the bot's bomb, down the hall at x 1150 (the sentry at x {sentry:.0})");
+            crate::props::spawn_bomb(&mut commands, Vec2::new(1150.0, fl + 6.0), Vec2::ZERO, tools.bomb.clone());
+            state.0 = 2;
+        }
+        // (Out once the furthest orc is back past it, or never came.)
+        let going = x < 1320.0 || state.5.is_some_and(|b| t > b + 3.0 && sentry < 1300.0) || state.5.is_some_and(|b| t > b + 12.0);
+        if going {
+            keys.press(KeyCode::KeyD);
+        } else {
+            keys.release(KeyCode::KeyD);
+        }
+        // (Full pace for the jumps over the gaps, from a run-up.)
+        let edge = [(880.0, 900.0), (1170.0, 1190.0)].iter().any(|&(a, b)| x > a && x < b && k.loco.grounded());
+        let run_up = [(830.0, 900.0), (1120.0, 1190.0)].iter().any(|&(a, b)| x > a && x < b);
+        if edge {
+            state.4 = t + 0.35;
+            keys.press(KeyCode::Space);
+        } else if t > state.4 {
+            keys.release(KeyCode::Space);
+        }
+        if mode != "run" && going && t > state.4 && !run_up && k.loco.grounded() {
+            keys.press(KeyCode::ControlLeft);
+        } else {
+            keys.release(KeyCode::ControlLeft);
+        }
+    }
+}
+
+/// A creature put down for `stealth`: standing its ground while idle
+/// (it doesn't wander out of reach), facing the player to its left.
+fn stand_facing_left(e: &mut EntityWorldMut) {
+    if let Some(mut h) = e.get_mut::<crate::creatures::brain::hunter::Hunter>() {
+        h.wander.speed = 0.0;
+    }
+    if let Some(mut k) = e.get_mut::<Kinematics>() {
+        k.loco.facing = -1.0;
+    }
+}
+
 type Sensing<'a> = (Entity, &'a crate::creatures::Creature, &'a Kinematics, Option<&'a crate::creatures::brain::senses::Alert>);
 
 /// Senses (BE `behaviour` stage 2), in a tunnel roofed over in the flat
 /// arena (x 780..1320, its roof 44 up: no daylight in it), the player
 /// standing still in it, each in turn:
-/// - in the dark: an orc (`PLATYPUS_KIND`; not wandering) 230 cells off
-///   doesn't see the player (3 s): idle;
+/// - in the dark: an orc (`PLATYPUS_KIND`) 230 cells off doesn't see the
+///   player (3 s): idle (each creature here stands its ground, facing the
+///   player);
 /// - the player lights a torch: it sees, and hunts;
 /// - a wall across the tunnel, the torch still lit, an orc 120 cells off
 ///   behind it: it doesn't see through it (2.5 s); then the player runs
@@ -6494,13 +6681,7 @@ fn stealth_script(
             next(&mut state, &orc);
         }
         1 if t > 1.0 => {
-            // (Standing its ground while idle: it doesn't wander out of a
-            // torch's reach.)
-            crate::creatures::def::spawn_creature(&mut commands, &orc, Vec2::new(1070.0, fl), |e| {
-                if let Some(mut h) = e.get_mut::<crate::creatures::brain::hunter::Hunter>() {
-                    h.wander.speed = 0.0;
-                }
-            });
+            crate::creatures::def::spawn_creature(&mut commands, &orc, Vec2::new(1070.0, fl), stand_facing_left);
             state.0 = 2;
         }
         2 if t > 4.0 => {
@@ -6524,7 +6705,7 @@ fn stealth_script(
             next(&mut state, &orc);
         }
         4 if t > 7.0 => {
-            crate::creatures::def::spawn_creature(&mut commands, &orc, Vec2::new(1050.0, fl), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, &orc, Vec2::new(1050.0, fl), stand_facing_left);
             state.0 = 5;
         }
         5 if t > 9.5 => {
@@ -6545,7 +6726,7 @@ fn stealth_script(
             next(&mut state, "spider");
         }
         8 if t > 12.5 => {
-            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(1060.0, fl), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(1060.0, fl), stand_facing_left);
             state.0 = 9;
         }
         9 if t > 14.5 => {
