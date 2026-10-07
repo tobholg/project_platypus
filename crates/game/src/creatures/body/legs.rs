@@ -551,6 +551,8 @@ pub struct Legs {
     /// Seconds its head's held nothing (a fall: landing after one, its body
     /// is laid out behind it again).
     aloft: f32,
+    /// Seconds it's stood with its body dangling.
+    dangle: f32,
 }
 
 #[derive(Component)]
@@ -875,7 +877,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -1467,7 +1469,20 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Ve
     // again, along the ground, each segment easing there from where it
     // fell: a body flopping down after its head, not a heap where it
     // landed.)
-    let landed = holds && legs.aloft > 0.25 && legs.settled >= 0.3 && !legs.segs.is_empty();
+    // (Its body dangling: segments with no rock near them, any way round.)
+    let near_rock = |p: Vec2| {
+        let hold = legs.def.ride as i32 + 10;
+        [Vec2::NEG_Y, Vec2::Y, Vec2::X, Vec2::NEG_X, Vec2::new(0.7, 0.7), Vec2::new(-0.7, 0.7), Vec2::new(0.7, -0.7), Vec2::new(-0.7, -0.7)].iter().any(|d| (1..=hold).any(|k| solid(sim, p + *d * k as f32)))
+    };
+    let dangling = legs.segs.iter().filter(|s| !near_rock(s.at)).count();
+    // Down after a fall with some of its body dangling; or standing with
+    // much of it dangling a while (draped off a ledge it leapt from, a
+    // column it dropped down): laid out again.
+    legs.dangle = if holds && v.length() < 20.0 && dangling >= 4 { legs.dangle + dt } else { 0.0 };
+    let landed = holds && (legs.aloft > 0.1 && dangling >= 3 || legs.dangle > 0.5) && legs.settled >= 0.3 && !legs.segs.is_empty();
+    if landed {
+        legs.dangle = 0.0;
+    }
     legs.aloft = if holds { 0.0 } else { legs.aloft + dt };
     let fell: Option<Vec<Vec2>> = landed.then(|| legs.segs.iter().map(|s| s.at + s.ease).collect());
     let decay = (-dt / 0.12).exp();
@@ -1512,7 +1527,9 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Ve
     while legs.backing < 0.4 && legs.trail.len() > 2 {
         let (f0, f1) = (legs.trail[0].0, legs.trail[1].0);
         let fwd = (f0 - f1).normalize_or_zero();
-        if (c - f0).dot(fwd) >= 0.0 {
+        // (Back the way it came, not across it: going round a corner it's
+        // partly back toward the face, and that's no backing up.)
+        if (c - f0).dot(fwd) >= -0.5 * c.distance(f0) {
             break;
         }
         legs.trail.pop_front();
@@ -1524,7 +1541,7 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Ve
     }
     // (The way only grows on ahead: creeping back, it isn't laid behind
     // the head, unless it's turning.)
-    let ahead = legs.trail.len() < 2 || (c - legs.trail[0].0).dot(legs.trail[0].0 - legs.trail[1].0) >= 0.0;
+    let ahead = legs.trail.len() < 2 || (c - legs.trail[0].0).dot((legs.trail[0].0 - legs.trail[1].0).normalize_or_zero()) >= -0.5 * c.distance(legs.trail[0].0);
     if legs.trail.front().is_none_or(|(p, _)| p.distance(c) >= 1.0) && (ahead || legs.backing >= 0.4) {
         legs.trail.push_front((c, surface));
         if !backed {
@@ -1559,16 +1576,17 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Ve
         }
     }
     legs.trail.truncate(keep);
-    // (What of it hangs in the open falls: a point with nothing solid
-    // under it within its ride, nor where its surface was (a wall, the
-    // ceiling), comes down, 220 cells/s, upright, till it's on something:
+    // (What of it hangs in the open falls: a point with no rock near it
+    // comes down, 220 cells/s, upright, till it's on something:
     // a body leapt off a ledge, or dropped from the ceiling, falls after
     // its head and doesn't hang in the air along the way it went.)
-    let reach_down = legs.def.ride as i32 + 2;
+    // (Held: rock within its ride and ten, any way round: round a corner
+    // it's going over, the rock's diagonal to it, further than its ride.)
+    let hold = legs.def.ride as i32 + 10;
+    let ways = [Vec2::NEG_Y, Vec2::Y, Vec2::X, Vec2::NEG_X, Vec2::new(0.7, 0.7), Vec2::new(-0.7, 0.7), Vec2::new(0.7, -0.7), Vec2::new(-0.7, -0.7)];
     for i in 1..legs.trail.len() {
-        let (p, s) = legs.trail[i];
-        let near = |d: Vec2| (1..=reach_down).any(|k| solid(sim, p + d * k as f32));
-        if near(Vec2::NEG_Y) || near(-Vec2::from_angle(s).perp()) {
+        let (p, _) = legs.trail[i];
+        if ways.iter().any(|d| (1..=hold).any(|k| solid(sim, p + *d * k as f32))) {
             continue;
         }
         legs.trail[i] = (p - Vec2::Y * (220.0 * dt).min(2.0), 0.0);

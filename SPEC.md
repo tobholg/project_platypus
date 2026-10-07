@@ -1941,17 +1941,21 @@ parts, so another is a new file, not new code:
   bite's rearing back and thrusting on would draw a loop in it the body
   then piles up on); the pose is carried down the first four segments,
   less and less (its front draws back with it). Backing up onto its own
-  way (a lunge braked, knocked back), the way is taken back in at the
+  way (a lunge braked, knocked back: back the way it came, more than 120°
+  from it; going round a corner, partly back toward the face, isn't), the way is taken back in at the
   head and the body slides back after it, its tail going on straight the
   way it lay, the head facing on as it was; the way only grows ahead;
   backing on past 0.4 s it turns (the way doubles back: a U-turn). Near
   the head, a point the way turns back at by more than ~110° is dropped. What of the way
   hangs in the open falls (220 cells/s, upright, till it's on something:
-  nothing solid under it within its ride, nor where its surface was);
+  no rock within its ride + 10 cells any of eight ways: round a corner
+  the rock's diagonal to it, further than its ride);
   gaps in it over 2 cells are filled a cell at a time (so a point left on
   a ledge doesn't string the body out as a pole through the air); it's
   never shorter than the body (topped up along the surface behind the
-  head). Down after a fall of a quarter second or more, the body's laid
+  head). Down after a fall (0.1 s or more) with three or more segments
+  dangling (no rock near them), or standing with four or more dangling for
+  half a second (draped off a ledge it leapt from), the body's laid
   out again along the ground on the side it came down on, each segment
   easing there over ~0.12 s (`ease`): it flops down after its head, not
   left hanging in the air along the leap (what the user saw: the tail held
@@ -1961,7 +1965,9 @@ parts, so another is a new file, not new code:
   head's pose in the way it was 30–50 % of frames near the player (what
   the user saw: it curled up attacking), now 0 %. Feet have weight as a walker's do. Only the head can be
   hit (hit areas per part: stage 4). The cave centipede (centipede.ron,
-  60 hp, a box of 16 × 8, fast: 150 cells/s, 120 at the Middle tempo;
+  60 hp, a box of 16 × 8, it scurries: 240 cells/s (192 at the Middle
+  tempo), starting and stopping hard (3200/4000 cells/s²), in darts of
+  ~0.6 s with ~0.12 s freezes between (`Crawl`'s `dart`) till it's near;
   it stops 16 cells off and bites from there: a flat armoured head with long feelers, venom
   claws and a faint eye, `centipede_head` by `tools/centipede_art.py`; 14
   segments 7 apart; climbs, drops from ceilings, bites with venom,
@@ -2122,8 +2128,10 @@ player has seen creatures do) and `fight.rs` (the arena's readouts).
   survive). `hunter` (`brain/hunter.rs`) is every fighter: `aggro`
   (cells), `close` (`Walk(keep, jump_to_reach)`, `Range(near, far)`,
   `Swoop(hover, dive_time, dive_every)`, `Hop(every)`,
-  `Crawl(pounce_range, pounce_every, keep)` (`keep`: how near it comes,
-  across, 3 by default): holding a wall, its way on along the ceiling
+  `Crawl(pounce_range, pounce_every, keep, dart)` (`keep`: how near it
+  comes, across, 3 by default; `dart: Some((go, rest))`: scurrying, darts
+  of about `go` s and freezes of about `rest`, ±30 %, till within 1.5 ×
+  `keep`): holding a wall, its way on along the ceiling
   just over it, away from the wall, it goes up into the corner first (to
   touch the ceiling and take hold); on the ceiling, its way on up, it
   goes along to the edge whose side is open over it first; holding a wall it's going into,

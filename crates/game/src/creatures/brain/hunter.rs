@@ -89,6 +89,11 @@ pub enum Close {
         /// spider stays a leg's length off and strikes from there.
         #[serde(default = "crawl_keep")]
         keep: f32,
+        /// Scurrying (an insect's way of going): darts of about `dart.0`
+        /// seconds, each followed by a freeze of about `dart.1` (each ±30 %);
+        /// none: steady.
+        #[serde(default)]
+        dart: Option<(f32, f32)>,
     },
 }
 
@@ -148,6 +153,9 @@ pub struct HunterMind {
     attacking: bool,
     /// Drawing its bow since.
     drawing: Option<u64>,
+    /// Scurrying: frozen till, the next freeze from.
+    still_until: u64,
+    dart_until: u64,
 }
 
 /// What hunters go after (a villager hiding at home is let be).
@@ -384,7 +392,7 @@ fn hunt(
             }
             // Crawling: up walls toward it, along ceilings; a pounce when
             // near, or dropping on it from above.
-            (Close::Crawl { pounce_range, pounce_every, keep }, Some((t, _, th))) => {
+            (Close::Crawl { pounce_range, pounce_every, keep, dart }, Some((t, _, th))) => {
                 let d = t - pos;
                 move_y = if d.y > 6.0 {
                     1.0
@@ -412,6 +420,21 @@ fn hunt(
                     None if d.x.abs() > *keep => d.x.signum(),
                     None => 0.0,
                 };
+                // (Scurrying: a dart, a freeze, a dart. Not up close: there
+                // it strikes.)
+                let mut mx = mx;
+                if let Some((go, rest)) = *dart
+                    && d.length() > keep * 1.5
+                {
+                    if tick >= m.dart_until && tick >= m.still_until {
+                        m.still_until = tick + ticks(rest * (0.7 + 0.6 * unit(&sim, id, 7)));
+                        m.dart_until = m.still_until + ticks(go * (0.7 + 0.6 * unit(&sim, id, 8)));
+                    }
+                    if tick < m.still_until {
+                        mx = 0.0;
+                        move_y = 0.0;
+                    }
+                }
                 // (Holding a wall it's going into, with nowhere up or down to
                 // go: it climbs it, over (its own acid's crater, a step too
                 // high), not pressing on it for ever.)
