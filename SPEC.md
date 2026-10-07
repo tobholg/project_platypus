@@ -1945,7 +1945,17 @@ parts, so another is a new file, not new code:
   head and the body slides back after it, its tail going on straight the
   way it lay, the head facing on as it was; the way only grows ahead;
   backing on past 0.4 s it turns (the way doubles back: a U-turn). Near
-  the head, a point the way turns back at by more than ~110° is dropped.
+  the head, a point the way turns back at by more than ~110° is dropped. What of the way
+  hangs in the open falls (220 cells/s, upright, till it's on something:
+  nothing solid under it within its ride, nor where its surface was);
+  gaps in it over 2 cells are filled a cell at a time (so a point left on
+  a ledge doesn't string the body out as a pole through the air); it's
+  never shorter than the body (topped up along the surface behind the
+  head). Down after a fall of a quarter second or more, the body's laid
+  out again along the ground on the side it came down on, each segment
+  easing there over ~0.12 s (`ease`): it flops down after its head, not
+  left hanging in the air along the leap (what the user saw: the tail held
+  up at the cap's height for seconds) nor heaped where it landed.
   The `legs` scenario reports how often its body is piled on itself (two
   segments two or more apart nearer than 0.6 of their spacing): with the
   head's pose in the way it was 30–50 % of frames near the player (what

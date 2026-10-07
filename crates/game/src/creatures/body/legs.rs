@@ -336,6 +336,9 @@ fn full() -> f32 {
 #[derive(Clone, Copy, Debug)]
 struct Seg {
     at: Vec2,
+    /// Drawn this far from `at`, dying away (laid out afresh after a fall:
+    /// it eases there, not jumps).
+    ease: Vec2,
     dir: Vec2,
     surface: f32,
     facing: f32,
@@ -545,6 +548,9 @@ pub struct Legs {
     /// more apart nearer than 0.6 of their spacing: doubled back).
     backing: f32,
     piled: (u32, u32),
+    /// Seconds its head's held nothing (a fall: landing after one, its body
+    /// is laid out behind it again).
+    aloft: f32,
 }
 
 #[derive(Component)]
@@ -869,7 +875,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -1457,21 +1463,45 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Ve
     if put {
         legs.settled = 0.0;
     }
-    if legs.settled < 0.3 || legs.trail.is_empty() {
-        legs.settled = if holds { legs.settled + dt } else { 0.0 };
+    // (Down after a fall, a quarter second or more: laid out behind it
+    // again, along the ground, each segment easing there from where it
+    // fell: a body flopping down after its head, not a heap where it
+    // landed.)
+    let landed = holds && legs.aloft > 0.25 && legs.settled >= 0.3 && !legs.segs.is_empty();
+    legs.aloft = if holds { 0.0 } else { legs.aloft + dt };
+    let fell: Option<Vec<Vec2>> = landed.then(|| legs.segs.iter().map(|s| s.at + s.ease).collect());
+    let decay = (-dt / 0.12).exp();
+    for seg in &mut legs.segs {
+        seg.ease *= decay;
+    }
+    if legs.settled < 0.3 || legs.trail.is_empty() || landed {
+        if !landed {
+            legs.settled = if holds { legs.settled + dt } else { 0.0 };
+        }
         // (Laid along the surface under it, riding as high off it as the
         // head does: not in the air where it was put down.)
         legs.trail.clear();
         let off = along.perp();
         let ride = legs.def.ride;
+        // (Behind the head; after a fall, on the side the body came down
+        // on, not swung over the head to the other.)
+        let back = match &fell {
+            Some(f) if !f.is_empty() => {
+                let x = (f.iter().sum::<Vec2>() / f.len() as f32 - c).dot(along);
+                along * if x.abs() > 1.0 { x.signum() } else { -facing }
+            }
+            _ => -along * facing,
+        };
         let mut d = 1.0;
         while d <= total {
-            let p = c - along * facing * d;
+            let p = c + back * d;
             let p = ground_at(sim, along, p + off * ride, 0.0, ride * 2.0 + 40.0).map_or(p, |g| g + off * ride);
             legs.trail.push_back((p, surface));
             d += 1.0;
         }
-        legs.segs.clear();
+        if !landed {
+            legs.segs.clear();
+        }
     }
     // Backing up onto its own way (a lunge braked, a step back, knocked
     // back): the way taken back in at the head, the body sliding back after
@@ -1529,6 +1559,45 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Ve
         }
     }
     legs.trail.truncate(keep);
+    // (What of it hangs in the open falls: a point with nothing solid
+    // under it within its ride, nor where its surface was (a wall, the
+    // ceiling), comes down, 220 cells/s, upright, till it's on something:
+    // a body leapt off a ledge, or dropped from the ceiling, falls after
+    // its head and doesn't hang in the air along the way it went.)
+    let reach_down = legs.def.ride as i32 + 2;
+    for i in 1..legs.trail.len() {
+        let (p, s) = legs.trail[i];
+        let near = |d: Vec2| (1..=reach_down).any(|k| solid(sim, p + d * k as f32));
+        if near(Vec2::NEG_Y) || near(-Vec2::from_angle(s).perp()) {
+            continue;
+        }
+        legs.trail[i] = (p - Vec2::Y * (220.0 * dt).min(2.0), 0.0);
+    }
+    // (No long gaps in it: points a cell apart where it's stretched (a
+    // point left on a ledge, the rest fallen), so what's between falls too:
+    // the body drapes down off the ledge, not a pole through the air.)
+    let mut i = 0;
+    while i + 1 < legs.trail.len() && legs.trail.len() < 400 {
+        let ((a, sa), (b, _)) = (legs.trail[i], legs.trail[i + 1]);
+        if a.distance(b) > 2.0 {
+            legs.trail.insert(i + 1, (a + (b - a).normalize_or_zero(), sa));
+        }
+        i += 1;
+    }
+    // (Never shorter than the body: a fall bunches the way up; its tail end
+    // goes on along the surface behind the head, and falls in its turn.)
+    let needed = sd.spacing * (count as f32 + 1.0);
+    let mut len = legs.trail.front().map_or(0.0, |(p, _)| c.distance(*p)) + legs.trail.iter().zip(legs.trail.iter().skip(1)).map(|(a, b)| a.0.distance(b.0)).sum::<f32>();
+    while len < needed && legs.trail.len() >= 2 {
+        let n = legs.trail.len();
+        let ((e0, s0), (e1, _)) = (legs.trail[n - 1], legs.trail[n - 2]);
+        let _ = e1;
+        // (Along the surface behind the head, not on up a column it fell
+        // down: that would grow back as fast as it falls.)
+        let p = e0 - along * facing;
+        legs.trail.push_back((p, s0));
+        len += e0.distance(p);
+    }
     // A point `d` along the way back from the head, and the surface there.
     let pts: Vec<(Vec2, f32)> = std::iter::once((c, surface)).chain(legs.trail.iter().copied()).collect();
     let place = |d: f32| -> (Vec2, f32) {
@@ -1548,7 +1617,7 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Ve
     };
     let fresh = legs.segs.len() != count;
     if fresh {
-        legs.segs = (0..count).map(|_| Seg { at: c, dir: along * facing, surface, facing, feet: [Foot::new(c, false); 2] }).collect();
+        legs.segs = (0..count).map(|_| Seg { at: c, ease: Vec2::ZERO, dir: along * facing, surface, facing, feet: [Foot::new(c, false); 2] }).collect();
     }
     // (The head's pose, a bite's rearing back, carried down its first few
     // segments, less and less: its front draws back with it.)
@@ -1566,6 +1635,11 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Ve
             seg.facing = x.signum();
         }
         ahead = at;
+    }
+    if let Some(fell) = fell {
+        for (seg, was) in legs.segs.iter_mut().zip(fell) {
+            seg.ease = was - seg.at;
+        }
     }
     // (A readout: is it piled on itself?)
     let piled = (0..count).any(|a| (a + 2..count).any(|b| legs.segs[a].at.distance(legs.segs[b].at) < sd.spacing * 0.6));
@@ -2030,7 +2104,7 @@ fn draw(
             for (s, seg) in legs.segs.iter().enumerate().rev() {
                 let scale = sd.scale(s);
                 let (a, up) = (Vec2::from_angle(seg.surface), Vec2::from_angle(seg.surface).perp());
-                let at = seg.at - o;
+                let at = seg.at + seg.ease - o;
                 let hip = at - up * sd.size.1 * 0.3 * scale;
                 let leg = |k: usize, to: &mut Vec<(IVec2, [u8; 4])>| {
                     let foot = seg.feet[k].shown - o;
