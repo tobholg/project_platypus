@@ -6519,7 +6519,7 @@ fn sneak_script(
             TextFont { font_size: bevy::text::FontSize::Px(15.0), ..default() },
             TextColor(Color::srgb(0.95, 0.9, 0.75)),
             bevy::ui::widget::TextShadow::default(),
-            Node { position_type: PositionType::Absolute, top: px(56), width: percent(100), justify_content: JustifyContent::Center, ..default() },
+            Node { position_type: PositionType::Absolute, top: px(96), width: percent(100), justify_content: JustifyContent::Center, ..default() },
             TextLayout::justify(Justify::Center),
         ));
         state.0 = 1;
@@ -6543,7 +6543,7 @@ fn sneak_script(
     if let Ok(mut text) = hud.single_mut() {
         text.0 = match state.2 {
             Some(out) => format!("Out, {:.0} s, {}", out, if state.1 == 0 { "unseen. A ghost.".to_string() } else { format!("spotted {} times.", state.1) }),
-            None => format!("Get through the hall unseen.   Ctrl creep  ·  L torch  ·  4 bombs make noise.   Spotted: {}", state.1),
+            None => format!("Get through the hall unseen.    Ctrl: creep    L: torch    4: bombs make noise    Spotted: {}", state.1),
         };
     }
     // The bot: in, right, to the walkway's end; a bomb; out.
