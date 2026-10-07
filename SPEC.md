@@ -1879,7 +1879,22 @@ parts, so another is a new file, not new code:
   and back, head raised, then in nose down, a lunge, 14 slash, braked on
   you), the tyrant stomps (`tyrant_stomp`: its near leg, `stomper`,
   lifted 0.6 s and held, then brought down: struck under the foot, wide,
-  30 blunt; it lands ~1.05 s after it begins). The crag crab is seen from
+  30 blunt; it lands ~1.05 s after it begins). **Hit areas per part**
+  (`body/parts.rs`): a legged creature's parts as they are each frame
+  (`Parts`, filled in by `legs.rs` after it walks): each leg hip to knee
+  to foot, each arm, each segment, each chain's links (capsules), each
+  weak spot (a circle on its body); a swing, an arrow or a spell's bolt
+  that strikes a part lands (a blade across a centipede's tail, an arrow
+  through a spider's leg), and every `Hit`'s damage is scaled by what it
+  struck (`mult_at` its point: the file's `legs`' `parts`: legs 0.6, arms
+  0.8, segments 1, chains 0.8 of a blow to the body by default; `weak:
+  [(at, r, mult)]`). The iron strider's glowing viewport slit is its weak
+  spot (×2.5). The `parts` scenario: a centipede and a strider held still,
+  arrows at the strider's slit (30 of 12 meant), a leg (7.2) and at the
+  centipede's first and last segments (12 each, the last ~45 cells behind
+  its head's box). Not yet: a segment's own little legs aren't parts;
+  spells' damage (dealt in `magic`, not as a `Hit`) isn't scaled; beams and
+  blasts test the body's box only. The crag crab is seen from
   the side: eight legs, its pincers held out ahead. `footfall`: what a
   foot does coming down (from the side): a `sound` of its own (`stomp`,
   `clank`) and the ground's footstep (`ground`), a `dust` puff the

@@ -154,7 +154,7 @@ fn nock(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn spawn_arrow(commands: &mut Commands, weapons: &Weapons, at: Vec2, vel: Vec2, shooter: Entity, team: Option<Team>, (damage, crit): (f32, bool), knock: f32, stun: f32) {
+pub(crate) fn spawn_arrow(commands: &mut Commands, weapons: &Weapons, at: Vec2, vel: Vec2, shooter: Entity, team: Option<Team>, (damage, crit): (f32, bool), knock: f32, stun: f32) {
     let Some(turned) = weapons.arrow.as_ref() else { return };
     let angle = vel.y.atan2(vel.x).to_degrees();
     commands.spawn((
@@ -165,7 +165,7 @@ fn spawn_arrow(commands: &mut Commands, weapons: &Weapons, at: Vec2, vel: Vec2, 
     ));
 }
 
-type Target<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a Animator>, Has<Invulnerable>);
+type Target<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a Animator>, Has<Invulnerable>, Option<&'a crate::creatures::body::parts::Parts>);
 
 /// Arrows fly a cell at a time: fall, catch fire, wade, stick, strike.
 #[allow(clippy::too_many_arguments)]
@@ -235,7 +235,7 @@ fn fly(
                 commands.entity(e).despawn();
                 break 'flight;
             }
-            for (te, tk, tteam, anim, safe) in &targets {
+            for (te, tk, tteam, anim, safe, parts) in &targets {
                 if te == a.shooter || safe {
                     continue;
                 }
@@ -244,16 +244,19 @@ fn fly(
                 {
                     continue;
                 }
-                if (tip - tk.body.pos).abs().cmpgt(tk.body.half + 3.0).any() {
+                // (Its body, or one of its parts: a leg, a segment.)
+                let on_part = parts.is_some_and(|p| p.touch(tip, 0.0).is_some());
+                if !on_part && (tip - tk.body.pos).abs().cmpgt(tk.body.half + 3.0).any() {
                     continue;
                 }
-                let struck = match anim.and_then(|an| an.def.rig.as_ref().map(|r| (an, r))) {
-                    Some((an, rig)) => {
-                        let (px, py) = pixel_at(&an.def, tk, tip);
-                        rig.frames.get(an.shown).is_some_and(|f| f.opaque(px, py))
-                    }
-                    None => (tip - tk.body.pos).abs().cmple(tk.body.half).all(),
-                };
+                let struck = on_part
+                    || match anim.and_then(|an| an.def.rig.as_ref().map(|r| (an, r))) {
+                        Some((an, rig)) => {
+                            let (px, py) = pixel_at(&an.def, tk, tip);
+                            rig.frames.get(an.shown).is_some_and(|f| f.opaque(px, py))
+                        }
+                        None => (tip - tk.body.pos).abs().cmple(tk.body.half).all(),
+                    };
                 if !struck {
                     continue;
                 }

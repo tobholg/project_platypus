@@ -750,6 +750,7 @@ fn fly(
     mut sparks: ResMut<Sparks>,
     mut blasts: MessageWriter<crate::fx::Explosion>,
     mut acts: ResMut<void::Acts>,
+    parts: Query<&crate::creatures::body::parts::Parts>,
 ) {
     let mut booms = Vec::new();
     let mut landed = Vec::new();
@@ -840,8 +841,9 @@ fn fly(
                     sparks.trail(e, 1.0, s.pos, -s.vel, s.vel * 0.15);
                 }
                 let (caster, age) = (s.caster, s.age);
-                let inside = |k: &Kinematics| ((next - k.body.pos).abs() - k.body.half).max_element() < 1.5;
-                if let Some((hit, ..)) = bodies.iter().find(|(b, k, ..)| (*b != caster || age > SELF_SAFE) && inside(k)) {
+                // (Its body, or one of its parts: a leg, a segment.)
+                let inside = |b: Entity, k: &Kinematics| ((next - k.body.pos).abs() - k.body.half).max_element() < 1.5 || parts.get(b).is_ok_and(|p| p.touch(next, 1.0).is_some());
+                if let Some((hit, ..)) = bodies.iter().find(|(b, k, ..)| (*b != caster || age > SELF_SAFE) && inside(*b, k)) {
                     end = Some((Some(hit), Vec2::ZERO));
                     break;
                 }

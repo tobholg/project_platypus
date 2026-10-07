@@ -53,7 +53,7 @@ impl Plugin for LegsPlugin {
             // (The bestiary's stage view: canvases may draw for it.)
             .init_resource::<crate::canvas::StageView>()
             .init_resource::<BodyArt>()
-            .add_systems(Update, (turn_over, grow_legs, aims, walk, footfalls, draw).chain().after(crate::creatures::body::animation::animate).after(TransformSystems::Propagate));
+            .add_systems(Update, (turn_over, grow_legs, aims, walk, parts, footfalls, draw).chain().after(crate::creatures::body::animation::animate).after(TransformSystems::Propagate));
     }
 }
 
@@ -293,6 +293,10 @@ pub struct LegsDef {
     /// each a plate with a pair of legs stepping in a wave down it.
     #[serde(default)]
     pub segments: Option<SegmentsDef>,
+    /// How its parts take blows (`parts.rs`): legs, arms, segments,
+    /// chains, and weak spots on its body.
+    #[serde(default)]
+    pub parts: super::parts::PartsDef,
 }
 
 /// A body of segments (`segments`): drawn as plates (outlined, lit along
@@ -619,6 +623,8 @@ pub struct Legs {
     aloft: f32,
     /// Seconds it's stood with its body dangling.
     dangle: f32,
+    /// Where its body's grip was this frame (the world: `parts`).
+    grip: Vec2,
 }
 
 #[derive(Component)]
@@ -950,7 +956,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, grip: Vec2::ZERO, def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -1139,6 +1145,7 @@ fn walk(
             (middle + up * rear.lift - fwd * rear.back, up)
         };
         legs.offset = c - middle;
+        legs.grip = c;
         let fwd = Vec2::from_angle(legs.heading);
         // (Jumped: every foot planted afresh, no steps across; its chains
         // at rest.)
@@ -1850,6 +1857,65 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Ve
             // (A foot is never further than its leg reaches.)
             if (foot.at - hip).length() > reach {
                 foot.at = hip + (foot.at - hip).normalize_or(-o) * reach;
+            }
+        }
+    }
+}
+
+/// Its parts' hit areas as they are now (`parts.rs`): each leg hip to
+/// knee to foot, each arm, each segment, each chain's links, each weak
+/// spot; a share of a blow to its body each (its `parts`).
+fn parts(mut commands: Commands, mut q: Query<(Entity, &Legs, Option<&mut super::parts::Parts>)>) {
+    use super::parts::{Part, PartKind};
+    for (e, legs, mine) in &mut q {
+        let def = &legs.def;
+        let pd = &def.parts;
+        let c = legs.grip;
+        let side = def.view == View::Side;
+        let mut list = Vec::new();
+        let w = |i: usize| def.width.get(i).or(def.width.last()).copied().unwrap_or(def.thick as f32) * 0.5 + 0.5;
+        let (a, b) = (def.reach * def.upper, def.reach * (1.0 - def.upper));
+        for (i, f) in legs.feet.iter().enumerate() {
+            let hip = legs.hip(i, c);
+            let bend = if side {
+                let l = &def.each[i];
+                legs.bend(l.knee, if l.lean != 0.0 { l.lean } else { l.hip.0 })
+            } else {
+                Vec2::Y
+            };
+            let (k, foot) = knee(hip, f.at, a, b, bend, |_| false);
+            list.push(Part { a: hip, b: k, r: w(0), mult: pd.legs, kind: PartKind::Leg });
+            list.push(Part { a: k, b: foot, r: w(1), mult: pd.legs, kind: PartKind::Leg });
+        }
+        for (arm, &(shoulder, elbow, wrist)) in def.arms.iter().zip(&legs.arms) {
+            let r = arm.width.first().copied().unwrap_or(2.0) * 0.5 + 0.5;
+            list.push(Part { a: shoulder, b: elbow, r, mult: pd.arms, kind: PartKind::Arm });
+            list.push(Part { a: elbow, b: wrist, r, mult: pd.arms, kind: PartKind::Arm });
+        }
+        if let Some(sd) = &def.segments {
+            for (s, seg) in legs.segs.iter().enumerate() {
+                let scale = sd.scale(s);
+                let half = seg.dir * sd.size.0 * scale * 0.5;
+                list.push(Part { a: seg.at - half, b: seg.at + half, r: sd.size.1 * scale * 0.5 + 0.5, mult: pd.segments, kind: PartKind::Segment });
+            }
+        }
+        for (cd, ch) in def.chains.iter().zip(&legs.chains) {
+            let n = ch.pts.len();
+            for i in 1..n {
+                let r = cd.width_at(i as f32 / (n - 1).max(1) as f32) * 0.5 + 0.5;
+                list.push(Part { a: ch.pts[i - 1], b: ch.pts[i], r, mult: pd.chains, kind: PartKind::Chain });
+            }
+        }
+        for wd in &pd.weak {
+            let at = c + legs.turn(Vec2::new(wd.at.0, wd.at.1));
+            list.push(Part { a: at, b: at, r: wd.r, mult: wd.mult, kind: PartKind::Weak });
+        }
+        match mine {
+            Some(mut p) => p.set(list),
+            None => {
+                let mut p = super::parts::Parts::default();
+                p.set(list);
+                commands.entity(e).insert(p);
             }
         }
     }

@@ -25,7 +25,10 @@
                (hip: (6, 1), gait: 0, knee: Forward),
                (hip: (9, 2), gait: 1, knee: Forward, far: true),
            ],
-           footfall: (sound: Some("clank"), volume: 0.8, dust: 6, shake: 0.06)),
+           footfall: (sound: Some("clank"), volume: 0.8, dust: 6, shake: 0.06),
+           // Its glowing viewport slit is its weak spot: a blow there
+           // hurts two and a half times as much.
+           parts: (weak: [(at: (20.5, 14), r: 4, mult: 2.5)])),
     movement: (
         run_speed: 80,
         ground_accel: 600,

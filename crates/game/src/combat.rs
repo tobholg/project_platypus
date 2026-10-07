@@ -861,7 +861,7 @@ pub fn guard(mut commands: Commands, mut q: Query<(Entity, &mut Invulnerable, &m
 }
 
 type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>, Option<&'a crate::creatures::Controls>);
-type Target<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a Animator>, Has<Invulnerable>);
+type Target<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a Animator>, Has<Invulnerable>, Option<&'a crate::creatures::body::parts::Parts>);
 
 /// Swings move on a tick; while they sweep, they hit.
 #[allow(clippy::too_many_arguments)]
@@ -1019,7 +1019,7 @@ fn swing(
                 }
             }
             let (lo, hi) = cells.iter().fold((Vec2::MAX, Vec2::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
-            for (e, tk, tteam, anim, safe) in &targets {
+            for (e, tk, tteam, anim, safe, parts) in &targets {
                 if e == me || safe || s.hit.contains(&e) {
                     continue;
                 }
@@ -1029,16 +1029,24 @@ fn swing(
                 {
                     continue;
                 }
-                let (bmin, bmax) = (tk.body.pos - tk.body.half - 4.5, tk.body.pos + tk.body.half + 4.5);
+                // (Round its body, or round all its parts: a centipede's
+                // tail, a spider's legs.)
+                let (mut bmin, mut bmax) = (tk.body.pos - tk.body.half - 4.5, tk.body.pos + tk.body.half + 4.5);
+                if let Some(p) = parts.filter(|p| !p.list.is_empty()) {
+                    (bmin, bmax) = (bmin.min(p.lo - 1.0), bmax.max(p.hi + 1.0));
+                }
                 if hi.x < bmin.x || lo.x > bmax.x || hi.y < bmin.y || lo.y > bmax.y {
                     continue;
                 }
-                let touched = cells.iter().find(|&&c| match anim.and_then(|a| a.def.rig.as_ref().map(|r| (a, r))) {
-                    Some((a, rig)) => {
-                        let (px, py) = pixel_at(&a.def, tk, c);
-                        rig.frames.get(a.shown).is_some_and(|f| f.opaque(px, py))
-                    }
-                    None => (c - tk.body.pos).abs().cmple(tk.body.half).all(),
+                let touched = cells.iter().find(|&&c| {
+                    parts.is_some_and(|p| p.touch(c, 0.0).is_some())
+                        || match anim.and_then(|a| a.def.rig.as_ref().map(|r| (a, r))) {
+                            Some((a, rig)) => {
+                                let (px, py) = pixel_at(&a.def, tk, c);
+                                rig.frames.get(a.shown).is_some_and(|f| f.opaque(px, py))
+                            }
+                            None => (c - tk.body.pos).abs().cmple(tk.body.half).all(),
+                        }
                 });
                 let Some(&at) = touched else { continue };
                 s.hit.push(e);
@@ -1133,7 +1141,7 @@ fn slam(
         sparks.emit(dust, dust.count as usize, feet + Vec2::X * side * 3.0, Vec2::new(side, 0.4), Vec2::ZERO);
     }
     trauma.0 = (trauma.0 + 0.25).min(1.0);
-    for (e, tk, tteam, _, safe) in targets {
+    for (e, tk, tteam, _, safe, _) in targets {
         // (Along the ground: its nearest side within `slam`, its feet near
         // where the plunge came down.)
         let near = (tk.body.pos.x - feet.x).abs() - tk.body.half.x <= mv.slam;
@@ -1170,6 +1178,7 @@ fn apply_hits(
     tempo: Res<crate::tempo::Tempo>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut felt: MessageWriter<Felt>,
+    parts: Query<&crate::creatures::body::parts::Parts>,
 ) {
     let Some(weapons) = weapons else { return };
     for r in recoils.read() {
@@ -1194,9 +1203,11 @@ fn apply_hits(
         if safe || graced.contains(&h.target) {
             continue;
         }
-        let dealt = health.harm(h.damage, h.harm);
-        let reaction = crate::creatures::body::hurt::reaction(h.damage, dealt);
-        felt.write(Felt { target: h.target, meant: h.damage, dealt, share: dealt / health.max.max(1.0), harm: h.harm, at: h.at, dir: h.dir, weight: h.weight, crit: h.crit });
+        // (Scaled by what it struck: a leg takes less, a weak spot more.)
+        let damage = h.damage * parts.get(h.target).map_or(1.0, |p| p.mult_at(h.at));
+        let dealt = health.harm(damage, h.harm);
+        let reaction = crate::creatures::body::hurt::reaction(damage, dealt);
+        felt.write(Felt { target: h.target, meant: damage, dealt, share: dealt / health.max.max(1.0), harm: h.harm, at: h.at, dir: h.dir, weight: h.weight, crit: h.crit });
         let (mut knock, mut stun) = (h.knock, h.stun);
         if let Some(mut s) = sturdy {
             knock /= s.heft;

@@ -295,7 +295,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
-            .add_systems(Update, (overhang_script, shots_script))
+            .add_systems(Update, (overhang_script, shots_script, parts_script))
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
             .add_systems(Update, (underlook_script, voidlook_script))
@@ -6221,6 +6221,88 @@ fn sounds_script(s: Res<Scenario>, bank: Res<crate::sound::SoundBank>, player: Q
     info!("sounds: {} ({} of {})", name, *next + 1, names.len());
     out.write(crate::sound::PlaySound::at(name, at + Vec2::new(30.0, 0.0)));
     *next += 1;
+}
+
+/// Hit areas per part (BE `limbs` stage 4): a cave centipede and an iron
+/// strider put down in the flat arena with no brain (held still), then
+/// arrows shot at the centipede's first and last segments (well clear of
+/// its head's box) and at the strider's viewport slit (its weak spot), its
+/// plain hull and a leg. Logs what each arrow did: a part's hit lands,
+/// a leg takes less, the weak spot more.
+#[allow(clippy::too_many_arguments)]
+fn parts_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    weapons: Option<Res<crate::combat::Weapons>>,
+    player: Query<Entity, With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::body::parts::Parts>), Without<LocalPlayer>>,
+    mut felt: MessageReader<crate::combat::Felt>,
+    mut state: Local<(u8, Vec<(Vec2, String)>)>,
+) {
+    if s.name != "parts" {
+        return;
+    }
+    use crate::creatures::body::parts::PartKind;
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    if state.0 == 0 && t > 0.5 {
+        for (kind, x) in [("centipede", 900.0), ("strider", 1250.0)] {
+            crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x, fl + 30.0), |e| {
+                e.insert(crate::creatures::brain::Staged);
+            });
+        }
+        state.0 = 1;
+        return;
+    }
+    let (Some(weapons), Ok(me)) = (weapons, player.single()) else { return };
+    if state.0 == 1 && t > 2.5 {
+        // Where to shoot: each a point on a part, the arrow from up and to
+        // the left of it, a short way off.
+        let mut aims: Vec<(Vec2, String, Entity)> = Vec::new();
+        for (e, c, k, parts) in &them {
+            let Some(parts) = parts else { continue };
+            let mid = |kind: PartKind, last: bool| {
+                let mut it = parts.list.iter().filter(|p| p.kind == kind);
+                let p = if last { it.next_back() } else { it.next() };
+                p.map(|p| (p.a + p.b) * 0.5)
+            };
+            match c.kind.as_str() {
+                "centipede" => {
+                    if let Some(p) = mid(PartKind::Segment, true) {
+                        aims.push((p, "its last segment".into(), e));
+                    }
+                    if let Some(p) = mid(PartKind::Segment, false) {
+                        aims.push((p, "its first segment".into(), e));
+                    }
+                }
+                "strider" => {
+                    if let Some(p) = mid(PartKind::Weak, false) {
+                        aims.push((p, "its viewport (weak spot)".into(), e));
+                    }
+                    aims.push((k.body.pos + Vec2::new(-14.0, 12.0), "its hull".into(), e));
+                    if let Some(p) = parts.list.iter().filter(|p| p.kind == PartKind::Leg).nth(1).map(|p| p.a.lerp(p.b, 0.5)) {
+                        aims.push((p, "a leg".into(), e));
+                    }
+                }
+                _ => {}
+            }
+        }
+        for (i, (at, what, e)) in aims.into_iter().enumerate() {
+            let from = at + Vec2::new(-14.0, 10.0);
+            let vel = (at - from).normalize() * 420.0;
+            crate::archery::spawn_arrow(&mut commands, &weapons, from, vel, me, None, (12.0, false), 60.0, 0.0);
+            info!("parts: arrow {i} at {what}, {:?}", at.round());
+            let _ = e;
+            state.1.push((at, what));
+        }
+        state.0 = 2;
+    }
+    // (Each blow told apart by where it struck: the aim nearest it.)
+    for f in felt.read() {
+        let Some((at, what)) = state.1.iter().min_by(|a, b| a.0.distance(f.at).total_cmp(&b.0.distance(f.at))) else { continue };
+        let kind = them.get(f.target).map_or("?".to_string(), |(_, c, ..)| c.kind.clone());
+        info!("parts: t {t:.2}: the {kind}, struck at {:?} ({what}, {:.0} from the aim), meant {:.1}, took {:.1}", f.at.round(), at.distance(f.at), f.meant, f.dealt);
+    }
 }
 
 /// `PLATYPUS_SHOTS=dir` (any scenario but `legs`, which has its own): a
