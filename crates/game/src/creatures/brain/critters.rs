@@ -253,6 +253,19 @@ pub struct Haunt {
     /// A chance a second to spawn one when there are fewer.
     #[serde(default = "half")]
     pub rate: f32,
+    /// Only over these surface biomes (`plains`, `forest`, `desert`,
+    /// `tundra`, `jungle`, `swamp`, `deep forest`, `mountains`, `ocean`);
+    /// none: anywhere.
+    #[serde(default)]
+    pub biomes: Vec<String>,
+    /// Come as a group (a pack): between this many and that many at once,
+    /// side by side (still no more than `most` near).
+    #[serde(default)]
+    pub group: Option<(usize, usize)>,
+    /// Never within this many cells of where the world starts (the big
+    /// ones stay out of a new player's first days).
+    #[serde(default)]
+    pub away: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -329,6 +342,15 @@ const GONE: f32 = 1200.0;
 const OUT_OF_SIGHT: f32 = 390.0;
 /// Tries to find a spot of water or cave a spawn.
 const TRIES: usize = 16;
+/// Spawn rates scaled (`PLATYPUS_LIFE_RATE`: scenarios that look at what
+/// lives where, without waiting minutes).
+fn rate_scale() -> f32 {
+    static K: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+    *K.get_or_init(|| std::env::var("PLATYPUS_LIFE_RATE").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0))
+}
+
+/// A group's members this far apart (cells).
+const PACK_GAP: f32 = 24.0;
 
 /// Passing life: not the player, not a lair's keeper (they stay).
 type Passing = (Without<crate::creatures::player::LocalPlayer>, Without<crate::clock::Keeps>, Without<super::Staged>);
@@ -370,12 +392,17 @@ fn ambient(
     let world = &sim.world;
     let mats = world.materials();
     let kind_at = |x: i32, y: i32| world.get(CellPos::new(x, y)).map(|c| (c.is_air(), mats.phys(c.material)));
+    let start = sim.generator.spawn_point();
     for h in &life.haunts {
         if !h.when.now(day.time) {
             continue;
         }
         let near = critters.iter().filter(|(_, c, k)| c.kind == h.kind && k.body.pos.distance(p) < NEAR).count();
-        if near >= h.most || unit(&mut rng) > h.rate * 0.5 {
+        if near >= h.most || unit(&mut rng) > h.rate * 0.5 * rate_scale() {
+            continue;
+        }
+        // (Not near the start, for the big ones.)
+        if h.away > 0.0 && (p.x - start.x as f32).abs() < h.away {
             continue;
         }
         let spot = match h.place {
@@ -433,9 +460,26 @@ fn ambient(
         if h.place == Place::Cave && at.distance(p) < OUT_OF_SIGHT * 0.7 {
             continue;
         }
+        if !h.biomes.is_empty() && !sim.generator.biome_hint(at.x as i32).is_some_and(|b| h.biomes.iter().any(|w| w == b)) {
+            continue;
+        }
         if let Some((lo, hi)) = h.above {
             at.y += lo + unit(&mut rng) * (hi - lo);
         }
-        spawn_creature(&mut commands, &h.kind, at, |_| {});
+        // (A pack: several side by side, each on the ground there, no more
+        // than its room for more.)
+        let count = h.group.map_or(1, |(lo, hi)| lo + (unit(&mut rng) * (hi.saturating_sub(lo) + 1) as f32) as usize).clamp(1, (h.most - near).max(1));
+        for n in 0..count {
+            let mut here = at + Vec2::X * (n as f32 * PACK_GAP);
+            if n > 0 && matches!(h.place, Place::Surface | Place::Shore) {
+                let x = here.x as i32;
+                let top = here.y as i32 + 40;
+                let Some(y) = (top - 80..=top).rev().find(|&y| kind_at(x, y).is_some_and(|(air, ph)| !air && matches!(ph.kind, Kind::Static | Kind::Powder)) && kind_at(x, y + 1).is_some_and(|(air, ph)| air || ph.kind == Kind::Plant)) else {
+                    continue;
+                };
+                here.y = y as f32 + 1.0;
+            }
+            spawn_creature(&mut commands, &h.kind, here, |_| {});
+        }
     }
 }

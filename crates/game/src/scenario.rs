@@ -295,7 +295,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
-            .add_systems(Update, (overhang_script, shots_script, parts_script))
+            .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
             .add_systems(Update, (underlook_script, voidlook_script))
@@ -6224,6 +6224,86 @@ fn sounds_script(s: Res<Scenario>, bank: Res<crate::sound::SoundBank>, player: Q
     info!("sounds: {} ({} of {})", name, *next + 1, names.len());
     out.write(crate::sound::PlaySound::at(name, at + Vec2::new(30.0, 0.0)));
     *next += 1;
+}
+
+/// What lives where (BE `behaviour` stage 1): the player taken to each
+/// surface biome in turn (the first stretch of it well away from the
+/// start), kept alive, `PLATYPUS_SAFARI_SECS` seconds there (12; with
+/// `PLATYPUS_LIFE_RATE=20` to hurry life along), then what came round them
+/// (within 700 cells) is logged, kind by kind; then the next.
+#[allow(clippy::type_complexity)]
+fn safari_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    // (which biome, when it arrived there, where it is)
+    mut state: Local<(usize, f32, Option<Vec2>)>,
+) {
+    if s.name != "safari" {
+        return;
+    }
+    const BIOMES: [&str; 7] = ["plains", "forest", "desert", "tundra", "jungle", "deep forest", "mountains"];
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    h.hp = h.max;
+    let dwell = std::env::var("PLATYPUS_SAFARI_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(12.0);
+    if state.0 >= BIOMES.len() || t < 0.5 {
+        return;
+    }
+    let biome = BIOMES[state.0];
+    match state.2 {
+        None => {
+            // The first stretch of it 3500 cells or more from the start,
+            // either way.
+            let start = sim.generator.spawn_point().x;
+            let found = (0..2000).flat_map(|i| [start + 3500 + i * 40, start - 3500 - i * 40]).find(|&x| sim.generator.biome_hint(x) == Some(biome) && sim.generator.biome_hint(x + 300) == Some(biome));
+            // (Its middle: what spawns just off screen either side is in it
+            // too.)
+            let middle = found.map(|x| {
+                let (mut lo, mut hi) = (x, x);
+                while lo > x - 20000 && sim.generator.biome_hint(lo - 10) == Some(biome) {
+                    lo -= 10;
+                }
+                while hi < x + 20000 && sim.generator.biome_hint(hi + 10) == Some(biome) {
+                    hi += 10;
+                }
+                ((lo + hi) / 2, hi - lo)
+            });
+            match middle.and_then(|(x, w)| sim.generator.surface_hint(x).map(|y| (Vec2::new(x as f32, y as f32 + 14.0), w))) {
+                Some((at, wide)) => {
+                    k.body.pos = at;
+                    k.prev_pos = at;
+                    k.body.vel = Vec2::ZERO;
+                    *state = (state.0, t, Some(at));
+                    info!("safari: t {t:.1}: to the {biome}, at {:?} (the middle of {wide} cells of it)", at.round());
+                }
+                None => {
+                    warn!("safari: no {biome} found");
+                    state.0 += 1;
+                }
+            }
+        }
+        Some(at) => {
+            // (Kept there, not wandering off.)
+            if k.body.pos.distance(at) > 60.0 {
+                k.body.pos = at;
+                k.prev_pos = at;
+                k.body.vel = Vec2::ZERO;
+            }
+            if t - state.1 >= dwell {
+                let mut kinds: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+                for (c, ck) in &them {
+                    if ck.body.pos.distance(at) < 700.0 {
+                        *kinds.entry(c.kind.clone()).or_default() += 1;
+                    }
+                }
+                let list: Vec<String> = kinds.iter().map(|(k, n)| format!("{k} ×{n}")).collect();
+                info!("safari: the {biome} after {dwell:.0} s: {}", if list.is_empty() { "nothing".to_string() } else { list.join(", ") });
+                *state = (state.0 + 1, t, None);
+            }
+        }
+    }
 }
 
 /// Hit areas per part (BE `limbs` stage 4): a cave centipede and an iron

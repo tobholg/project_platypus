@@ -1431,6 +1431,22 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   slimes in the toxic grottos, spiders, skeletons and vampire bats deeper;
   a cave spawn is never nearer than ~270 cells (no popping in). Only kinds
   in life.ron are taken away when far.
+- Where the bestiary's walkers live (BE `behaviour` stage 1): a haunt's
+  `biomes` (only over those surface biomes, by `biome_hint` at the spot),
+  `group: (min, max)` (that many at once, side by side 24 cells apart, each
+  on the ground there: a pack), `away` (never within that many cells of
+  the world's start: the big ones stay out of the first days). Stilt
+  stalkers over plains, desert and tundra; crag crabs on shores; ridge
+  raptors in packs of 3–4 over plains, forest and jungle (1 200 from the
+  start); cave scorpions over desert; ridge tyrants over jungle and deep
+  forest (rare, 3 000 off); iron striders over desert, mountains and tundra
+  (rare, 2 500 off); cave centipedes in caves 150+ deep, and a `centipede
+  hole` lair (two keepers). `PLATYPUS_LIFE_RATE` scales every haunt's rate
+  (scenarios). The `safari` scenario takes the player (kept alive) to the
+  middle of each biome 3 500+ cells from the start for
+  `PLATYPUS_SAFARI_SECS` and logs what came: with rates ×60 over 20 s,
+  plains: raptors, stalkers; desert: scorpions, stalkers, a strider;
+  tundra: stalkers; jungle: raptors; deep forest: a tyrant.
 - Pelting: a liquid hurts only above 375 cells/s (not 135), so a death's
   burst of blood doesn't hurt what's beside it (a burst egg sac hurt its
   own spiderlings).

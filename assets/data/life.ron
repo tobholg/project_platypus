@@ -9,6 +9,10 @@
 //   zone: only in that underground biome (fungal, crystal, toxic, none)
 //   (Enemies too: what lives down there turns up as you go.)
 //   most: at most this many near the player; rate: a chance a second to add one
+//   biomes: only over those surface biomes (plains, forest, desert, tundra,
+//     jungle, swamp, deep forest, mountains, ocean); none: anywhere
+//   group: (min, max): come as a pack, side by side
+//   away: never within that many cells of the world's start (the big ones)
 // Hot-reloaded. Add a kind here and it lives in the world.
 [
     (kind: "rabbit", place: Surface, when: Day, most: 4, rate: 0.5),
@@ -22,4 +26,12 @@
     (kind: "skeleton", place: Cave, depth: (300, 150000), most: 2, rate: 0.25),
     (kind: "vampire_bat", place: Cave, depth: (450, 150000), most: 2, rate: 0.12),
     (kind: "spider", place: Cave, depth: (225, 150000), most: 1, rate: 0.06),
+    // The bestiary's walkers (BE limbs), where they belong.
+    (kind: "stalker", place: Surface, biomes: ["plains", "desert", "tundra"], most: 2, rate: 0.08),
+    (kind: "crab", place: Shore, most: 2, rate: 0.15),
+    (kind: "raptor", place: Surface, biomes: ["plains", "forest", "jungle"], group: (3, 4), most: 4, rate: 0.04, away: 1200),
+    (kind: "scorpion", place: Surface, biomes: ["desert"], most: 2, rate: 0.12),
+    (kind: "tyrant", place: Surface, biomes: ["jungle", "deep forest"], most: 1, rate: 0.01, away: 3000),
+    (kind: "strider", place: Surface, biomes: ["desert", "mountains", "tundra"], most: 1, rate: 0.015, away: 2500),
+    (kind: "centipede", place: Cave, depth: (150, 150000), most: 1, rate: 0.05),
 ]
