@@ -6425,11 +6425,12 @@ struct SneakHud;
 ///   step down off the walkway's end. A bomb (4) thrown back down the
 ///   hall makes it go and look (the whole hall hears a blast).
 ///
-/// Ctrl creeps (silent), L lights a torch (you see, and are seen). The
+/// Ctrl creeps (silent), L a light (two flashlights, then a torch: you
+/// see, and are seen). The
 /// line at the top counts the times something started hunting you.
-/// `PLATYPUS_SNEAK_BOT=creep|run|torch` walks the player in from the
+/// `PLATYPUS_SNEAK_BOT=creep|run|torch|lamp` walks the player in from the
 /// door along the walkway to x 1320, back from its end (Ctrl held but for
-/// the jumps' run-ups, or not, or with the torch lit), then sets off a
+/// the jumps' run-ups, or not, or with a torch or a flashlight), then sets off a
 /// bomb back down the hall and, the sentry gone past under it to look,
 /// goes down and out; it logs every
 /// change of every guard's wariness.
@@ -6512,7 +6513,11 @@ fn sneak_script(
         k.body.pos = Vec2::new(200.0, fl + k.body.half.y);
         k.body.vel = Vec2::ZERO;
         k.prev_pos = k.body.pos;
-        toggles.carry = if bot.as_deref() == Some("torch") { crate::light::Carry::Torch } else { crate::light::Carry::Nothing };
+        toggles.carry = match bot.as_deref() {
+            Some("torch") => crate::light::Carry::Torch,
+            Some("lamp") => crate::light::Carry::SmallBeam,
+            _ => crate::light::Carry::Nothing,
+        };
         commands.spawn((
             SneakHud,
             Text::new(""),
@@ -6543,7 +6548,7 @@ fn sneak_script(
     if let Ok(mut text) = hud.single_mut() {
         text.0 = match state.2 {
             Some(out) => format!("Out, {:.0} s, {}", out, if state.1 == 0 { "unseen. A ghost.".to_string() } else { format!("spotted {} times.", state.1) }),
-            None => format!("Get through the hall unseen.    Ctrl: creep    L: torch    4: bombs make noise    Spotted: {}", state.1),
+            None => format!("Get through the hall unseen.    Ctrl: creep    L: a light (flashlights, a torch)    4: bombs make noise    Spotted: {}", state.1),
         };
     }
     // The bot: in, right, to the walkway's end; a bomb; out.

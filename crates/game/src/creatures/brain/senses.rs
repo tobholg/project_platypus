@@ -2,7 +2,8 @@
 //! where you are from across the map, through rock, in the dark. It sees
 //! (a clear line from its eye to you, out to its sight, less in the dark
 //! unless it sees in the dark: daylight on you under open sky, a torch
-//! you carry or one near you gives you away; less behind it), hears (a
+//! or a flashlight you carry or a torch near you gives you away; less
+//! behind it), hears (a
 //! fight's blows, a blast, your footsteps when you run, your landings:
 //! each a noise with a reach; creeping, Ctrl held, is under what it
 //! hears), and smells (a wounded quarry, within its smell, through rock).
@@ -156,6 +157,8 @@ pub fn perceive(
     mut hunters: Query<(Entity, &super::hunter::Hunter, &Kinematics, &Transform, Option<&mut Alert>, Option<&crate::clock::Keeps>)>,
     quarry: Query<(Entity, &Kinematics, &Team, &Health), Without<super::villager::Hiding>>,
     lights: Query<(&GlobalTransform, &crate::light::LightSource)>,
+    toggles: Res<crate::light::LightToggles>,
+    me: Query<Entity, With<crate::creatures::player::LocalPlayer>>,
     mut felt: MessageReader<crate::combat::Felt>,
     mut blasts: MessageReader<crate::fx::Explosion>,
     mut landed: MessageReader<crate::creatures::Landed>,
@@ -185,8 +188,11 @@ pub fn perceive(
         .filter(|(_, _, t, _)| t.hunted())
         .map(|(e, k, _, h)| (e, k.body.pos, h.hp / h.max.max(1.0), k.body.vel))
         .collect();
-    // How lit each is (the same for every eye on it).
-    let light: Vec<f32> = hunted.iter().map(|(_, at, ..)| lit(&sim, &day, &lights, *at)).collect();
+    // How lit each is (the same for every eye on it): a flashlight in
+    // the player's hand as bright as a torch (it's a lamp, at you; a torch
+    // in the hand is a light source of its own).
+    let lamp = matches!(toggles.carry, crate::light::Carry::SmallBeam | crate::light::Carry::BigBeam);
+    let light: Vec<f32> = hunted.iter().map(|(q, at, ..)| if lamp && me.contains(*q) { 1.0 } else { lit(&sim, &day, &lights, *at) }).collect();
     for (_, at, _, vel) in &hunted {
         let run = vel.x.abs();
         if run > 40.0 {

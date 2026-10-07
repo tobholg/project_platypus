@@ -1459,7 +1459,8 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   a clear line from its eye, the light on you being daylight (the sky's,
   moonlight 0.45) where there's no rock within 120 cells over you near
   the surface, or a light source within 70 cells (a torch in your hand or
-  planted, anything glowing). It smells a quarry below ¾ health within
+  planted, anything glowing; a flashlight in the player's hand counts as
+  full light on them). It smells a quarry below ¾ health within
   `smell`, through rock. It hears blows (260 cells), blasts (200 + 12 ×
   radius), your landings (40 + 0.4 × the drop) and your feet when you
   run (30 + 0.55 × speed, over 40 cells/s: creeping, Ctrl held, a
