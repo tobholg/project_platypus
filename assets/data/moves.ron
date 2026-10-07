@@ -69,6 +69,18 @@
             ]),
             (name: "recover", secs: 0.35, ease: Smooth, pose: Some(()), acts: [Lunge(speed: 0, up: 0)]),
         ]),
+        // A cave centipede's bite: its head drawn up and back a moment, then
+        // thrown at you, the venom claws closing (venom on you); it stops on
+        // you.
+        (id: "centipede_bite", every: 1.4, when: (range: (0, 26), footing: true), phases: [
+            (name: "windup", secs: 0.22, pose: Some((lift: 2, back: 6))),
+            (name: "strike", secs: 0.1, ease: Snap, pose: Some((lift: 0, back: -6)), acts: [
+                Lunge(speed: 260, up: 20),
+                Strike((at: 10, reach: 7, damage: 9, harm: pierce, knock: 220, up: 0.2, stun: 0.2, from: 0.0, coat: Some("venom"))),
+                Sound("snap"),
+            ]),
+            (name: "recover", secs: 0.3, ease: Smooth, pose: Some(()), acts: [Lunge(speed: 0, up: 0)]),
+        ]),
         // The big spider's stamp: up on its back legs, its front pair raised
         // high over its head, held a moment trembling, then brought down
         // hard on you.

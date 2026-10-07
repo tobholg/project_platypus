@@ -349,6 +349,13 @@ inside its budget (it follows the part it found, and looks again).
 3. Segments: a centipede, a wyrm, following the head's path; side-view
    bodies that climb walls and ceilings (the body and its legs turned to
    the surface).
+   *Done 2026-10-07*: side-view bodies in the frame of the surface they're
+   on (walls, ceilings, round inside and outside corners; climbers leap
+   off walls); the spider seen from the side (from above on the wall
+   behind); feet with weight (a damped spring with a top speed); segments
+   trailing the head's way with legs stepping in a wave; the cave
+   centipede. Not yet: hits on segments (stage 4), the wyrm (burrowing,
+   with the sand wyrm in the roster), creatures spawned in the world.
 4. Moves that drive limbs, hit areas per part, and the strider's arsenal:
    - aimed limbs (turrets): an arm that tracks the target at a turn rate,
      a barrel sprite, a muzzle shots leave from; moves name the limb that

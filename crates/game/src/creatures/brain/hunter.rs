@@ -424,8 +424,10 @@ fn hunt(
                 }
                 // (Holding a wall, its way on along the ceiling just over it
                 // (an overhang's corner), away from the wall: up into the
-                // corner first, so it touches the ceiling and takes hold.)
-                if move_y == 0.0
+                // corner first, so it touches the ceiling and takes hold. The
+                // way finder's grid may have it a little under the ceiling,
+                // a little down: up all the same.)
+                if move_y <= 0.0
                     && let Some(wall) = clinging
                     && wall.x != 0.0
                     && mx * wall.x < 0.0

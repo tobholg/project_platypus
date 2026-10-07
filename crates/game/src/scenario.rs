@@ -6309,11 +6309,14 @@ fn overhang_script(
         let (surface, back) = legs.map_or((0.0, false), |l| l.surface());
         let (tilt, _, planted) = legs.map_or((0.0, 0.0, 0), |l| l.pose(0.0));
         info!(
-            "overhang: t {t:.2}: at ({x:.0}, {y:.0}) vel {:?} holds {holds:?} grounded {} surface {surface:.0}°{} tilt {tilt:.0}° feet planted {planted} strain {:.2}",
+            "overhang: t {t:.2}: at ({x:.0}, {y:.0}) vel {:?} holds {holds:?} grounded {} surface {surface:.0}°{} tilt {tilt:.0}° feet planted {planted} strain {:.2}{}",
             ck.body.vel.round(),
             ck.loco.grounded(),
             if back { " (from above, on the wall behind)" } else { "" },
-            legs.map_or(0.0, |l| l.strain())
+            legs.map_or(0.0, |l| l.strain()),
+            // (Segments: how many, how many of their feet hold, the last's
+            // place.)
+            legs.map(|l| l.segments()).filter(|(at, _)| !at.is_empty()).map_or(String::new(), |(at, held)| format!("; {} segments, {held} feet holding, the last at ({:.0}, {:.0})", at.len(), at[at.len() - 1].x, at[at.len() - 1].y - fl))
         );
     }
     if t > s.duration - 0.6 {

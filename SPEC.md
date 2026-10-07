@@ -1920,7 +1920,36 @@ parts, so another is a new file, not new code:
   where the tip lands, venom, snapped back in 0.18 s). Seen: it stands
   35–37 cells off (centre to centre), the tail whips over its back onto
   the player (11.5 pierce every 2.4 s), it holds off and raises its tail
-  again. A side-view creature's legs, arms and chains are drawn in its
+  again. **Segments** (`segments`, side view: a centipede): a body of
+  `count` segments trailing the head along the very way it came, up
+  walls, along ceilings, round corners as it went: the way kept (where
+  the head's body rode, a point a cell, with the surface it was on),
+  each segment `spacing` on from the last along it, turned to the one
+  ahead, on the surface the head was on there (`size` long and high,
+  the last three tapering to `taper`); each has a near and a far leg
+  (`reach`, the near foot resting `lean` ahead of its hip, the far half
+  as far behind) stepping on a clock that goes round as the body goes,
+  each segment a `wave` of a cycle (0.12) behind the one ahead, the near
+  and far legs half a cycle apart: a wave running down it; planted on its
+  surface, swinging in an arc off it; nothing in reach: hanging. Drawn
+  from the tail up into the creature's own images: the far leg behind,
+  the plate (rounded, outlined, `lit` along its back, its `belly` darker),
+  the near leg in front; the last one's feelers (`tail`). Put down
+  somewhere, the body's laid straight behind it along the surface under
+  it, and again each frame till its head's held on for 0.3 s (it doesn't
+  trail its fall). Feet have weight as a walker's do. Only the head can be
+  hit (hit areas per part: stage 4). The cave centipede (centipede.ron,
+  60 hp, a box of 16 × 8: a flat armoured head with long feelers, venom
+  claws and a faint eye, `centipede_head` by `tools/centipede_art.py`; 14
+  segments 7 apart; climbs, drops from ceilings, bites with venom,
+  `centipede_bite`: its head drawn back 0.22 s, thrown at you in 0.1 s,
+  9 pierce and venom, braked on you). In the `overhang` scenario
+  (`PLATYPUS_KIND=centipede`) it takes the stem at 2.4 s, the ceiling at
+  3.7, is on top at 4.8, its body after it all the way; in the `legs`
+  scenario its bite lands 0.3 s after it starts. Holding a wall, its way
+  on along the ceiling just over it, away from the wall, a crawler goes
+  up into the corner even when the way finder (whose grid has a small
+  body a little under the ceiling) says a little down. A side-view creature's legs, arms and chains are drawn in its
   own frame onto two images of its own (behind its body, in front),
   children of it, sized to what's on them (in steps of 16): they glide
   with its body. (On the shared canvas, fixed to the world's cells, they

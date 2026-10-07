@@ -281,6 +281,74 @@ pub struct LegsDef {
     /// behind): it turns over to it when it holds on there, and back.
     #[serde(default)]
     pub back: Option<Box<LegsDef>>,
+    /// Side: a body of segments trailing the head along the way it came
+    /// (a centipede: up walls, along ceilings, round corners as it went),
+    /// each a plate with a pair of legs stepping in a wave down it.
+    #[serde(default)]
+    pub segments: Option<SegmentsDef>,
+}
+
+/// A body of segments (`segments`): drawn as plates (outlined, lit along
+/// the back, a belly under), each with a near and a far leg.
+#[derive(Clone, Debug, Deserialize)]
+pub struct SegmentsDef {
+    pub count: usize,
+    /// Cells from one segment to the next along its way; a segment's
+    /// length and height.
+    pub spacing: f32,
+    pub size: (f32, f32),
+    /// Its plates' colour, lit along its back, and its belly.
+    pub color: (u8, u8, u8),
+    #[serde(default)]
+    pub lit: Option<(u8, u8, u8)>,
+    #[serde(default)]
+    pub belly: Option<(u8, u8, u8)>,
+    /// A leg's reach (cells), and where its foot rests ahead of its hip
+    /// (the near one's; the far one's half as far behind).
+    pub reach: f32,
+    #[serde(default = "seg_lean")]
+    pub lean: f32,
+    /// How far behind the segment ahead each one's legs step (a share of
+    /// a step's cycle): the wave running down it.
+    #[serde(default = "seg_wave")]
+    pub wave: f32,
+    /// The last segment's trailing feelers (cells long).
+    #[serde(default)]
+    pub tail: f32,
+    /// The last segments smaller, down to this share at the end.
+    #[serde(default = "full")]
+    pub taper: f32,
+}
+
+fn seg_lean() -> f32 {
+    3.0
+}
+fn seg_wave() -> f32 {
+    0.12
+}
+fn full() -> f32 {
+    1.0
+}
+
+/// A segment as it is now: where it is, which way the one ahead of it is
+/// (along its way), the surface it's on (as the head was there), which way
+/// it faces on it, its two feet (near, far).
+#[derive(Clone, Copy, Debug)]
+struct Seg {
+    at: Vec2,
+    dir: Vec2,
+    surface: f32,
+    facing: f32,
+    feet: [Foot; 2],
+}
+
+impl SegmentsDef {
+    /// Segment `s`'s size, against the first's (the end tapers).
+    fn scale(&self, s: usize) -> f32 {
+        let tail = 3.0f32.min(self.count as f32);
+        let from = self.count as f32 - tail;
+        if (s as f32) < from { 1.0 } else { 1.0 - (1.0 - self.taper) * ((s as f32 - from + 1.0) / tail) }
+    }
 }
 
 /// How a legged body is held (a move: `moves/`): raised `lift` cells
@@ -461,6 +529,16 @@ pub struct Legs {
     /// been where the other view belongs (it turns over after a moment).
     on_back: bool,
     other: f32,
+    /// Its segments (`segments`), the way its head came (where its body
+    /// rode, the surface it was on there; newest first), and their steps'
+    /// clock.
+    segs: Vec<Seg>,
+    trail: std::collections::VecDeque<(Vec2, f32)>,
+    seg_phase: f32,
+    /// Seconds its head has held something since it was put down (till
+    /// it's settled, 0.3 s, its body is laid out afresh each frame: it
+    /// doesn't trail its fall, or its body easing down onto its feet).
+    settled: f32,
 }
 
 #[derive(Component)]
@@ -515,6 +593,12 @@ impl Legs {
     /// 1: further than the leg can reach; it's drawn at full length).
     pub fn strain(&self) -> f32 {
         self.strain
+    }
+
+    /// Its segments' places (head first) and how many of their feet hold
+    /// something.
+    pub fn segments(&self) -> (Vec<Vec2>, usize) {
+        (self.segs.iter().map(|s| s.at).collect(), self.segs.iter().flat_map(|s| s.feet).filter(|f| f.grips && f.t >= 1.0).count())
     }
 
     /// The surface it's on (degrees from the ground: 90 a wall on its
@@ -773,7 +857,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -1297,10 +1381,15 @@ fn walk(
                 f.at = hip + (f.at - hip).normalize_or(Vec2::NEG_Y) * reach;
             }
         }
+        // Its segments (a centipede's body): along the way its head came.
+        if let Some(sd) = legs.def.segments.clone() {
+            segments(&mut legs, &sd, &sim, c, put, grounded, v, dt);
+        }
         // The drawn feet after where the steps put them, with weight.
         let most = v.length() + reach * FOOT_SPEED;
         let lag = foot_lag();
-        for f in &mut legs.feet {
+        let l = &mut *legs;
+        for f in l.feet.iter_mut().chain(l.segs.iter_mut().flat_map(|s| s.feet.iter_mut())) {
             if put || lag <= 0.0 {
                 f.shown = f.at;
                 f.speed = Vec2::ZERO;
@@ -1326,6 +1415,156 @@ fn walk(
         }
         legs.before = legs.feet.iter().map(|f| (f.at, f.shown)).collect();
         legs.before_body = Some(c);
+    }
+}
+
+/// A segmented body after its head: the way the head came kept (where its
+/// body rode, a point a cell, and the surface it was on), each segment
+/// `spacing` on from the last along it, turned to the one ahead, on the
+/// surface the head was on there (round a corner as it went round it);
+/// each segment's two legs step on a clock that goes round as the body
+/// goes, each segment's a `wave` of a cycle behind the one ahead (the
+/// near and far legs half a cycle apart), planted under where they rest
+/// on that surface, swinging there in an arc off it; with nothing in
+/// reach a foot hangs. Put down somewhere: laid out straight behind it.
+#[allow(clippy::too_many_arguments)]
+fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, put: bool, holds: bool, v: Vec2, dt: f32) {
+    let count = sd.count;
+    let total = sd.spacing * (count as f32 + 1.0) + 8.0;
+    let (along, surface, facing) = (legs.along(), legs.surface, legs.facing);
+    if put {
+        legs.settled = 0.0;
+    }
+    if legs.settled < 0.3 || legs.trail.is_empty() {
+        legs.settled = if holds { legs.settled + dt } else { 0.0 };
+        // (Laid along the surface under it, riding as high off it as the
+        // head does: not in the air where it was put down.)
+        legs.trail.clear();
+        let off = along.perp();
+        let ride = legs.def.ride;
+        let mut d = 1.0;
+        while d <= total {
+            let p = c - along * facing * d;
+            let p = ground_at(sim, along, p + off * ride, 0.0, ride * 2.0 + 40.0).map_or(p, |g| g + off * ride);
+            legs.trail.push_back((p, surface));
+            d += 1.0;
+        }
+        legs.segs.clear();
+    }
+    if legs.trail.front().is_none_or(|(p, _)| p.distance(c) >= 1.0) {
+        legs.trail.push_front((c, surface));
+    }
+    // (No more of the way than the body needs.)
+    let mut gone = c.distance(legs.trail[0].0);
+    let mut keep = legs.trail.len();
+    for i in 1..legs.trail.len() {
+        gone += legs.trail[i - 1].0.distance(legs.trail[i].0);
+        if gone > total {
+            keep = i + 1;
+            break;
+        }
+    }
+    legs.trail.truncate(keep);
+    // A point `d` along the way back from the head, and the surface there.
+    let pts: Vec<(Vec2, f32)> = std::iter::once((c, surface)).chain(legs.trail.iter().copied()).collect();
+    let place = |d: f32| -> (Vec2, f32) {
+        let mut left = d;
+        for w in pts.windows(2) {
+            let ((a, sa), (b, sb)) = (w[0], w[1]);
+            let len = a.distance(b);
+            if left <= len && len > 0.0 {
+                let t = left / len;
+                let turn = (sb - sa + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+                return (a.lerp(b, t), sa + turn * t);
+            }
+            left -= len;
+        }
+        let (end, s) = *pts.last().unwrap_or(&(c, surface));
+        (end - along * facing * left, s)
+    };
+    let fresh = legs.segs.len() != count;
+    if fresh {
+        legs.segs = (0..count).map(|_| Seg { at: c, dir: along * facing, surface, facing, feet: [Foot::new(c, false); 2] }).collect();
+    }
+    let mut ahead = c;
+    for s in 0..count {
+        let (at, surf) = place(sd.spacing * (s as f32 + 1.0));
+        let seg = &mut legs.segs[s];
+        seg.dir = (ahead - at).normalize_or(seg.dir);
+        seg.at = at;
+        seg.surface = surf;
+        // (Which way it faces on its surface: the way the one ahead is.)
+        let x = seg.dir.dot(Vec2::from_angle(surf));
+        if x.abs() > 0.2 {
+            seg.facing = x.signum();
+        }
+        ahead = at;
+    }
+    // Their steps: a clock going round as the body goes (a cycle every
+    // stride a planted foot covers, over the share it's planted).
+    let speed = v.length();
+    let going = speed > 5.0;
+    let duty = 0.68 - 0.26 * (speed / 150.0).min(1.0);
+    let stride = sd.spacing * 1.1;
+    legs.seg_phase = (legs.seg_phase + speed / (stride / duty).max(1.0) * dt).fract();
+    let (phase, reach, lift) = (legs.seg_phase, sd.reach, legs.def.lift.min(sd.reach * 0.4));
+    for s in 0..count {
+        let scale = sd.scale(s);
+        let seg = &mut legs.segs[s];
+        let (a, o, f) = (Vec2::from_angle(seg.surface), Vec2::from_angle(seg.surface).perp(), seg.facing);
+        let hip = seg.at - o * sd.size.1 * 0.3 * scale;
+        for k in 0..2 {
+            let lean = if k == 0 { sd.lean } else { -sd.lean * 0.5 } * f;
+            let want = lean + if going { f * stride * 0.5 } else { 0.0 };
+            let foot = &mut seg.feet[k];
+            if fresh {
+                let at = ground_under(sim, a, hip, lean, reach);
+                *foot = Foot::new(at.unwrap_or(hip - o * reach * 0.6), at.is_some());
+                continue;
+            }
+            let p = (phase + s as f32 * sd.wave + k as f32 * 0.5).fract();
+            if p < duty || !going {
+                // Planted (where its swing was going); slipped past its
+                // reach, or holding nothing: put down again.
+                if foot.t < 1.0 {
+                    foot.t = 1.0;
+                    foot.at = foot.to;
+                }
+                if !foot.grips || (foot.at - hip).length() > reach {
+                    match ground_under(sim, a, hip, lean, reach) {
+                        Some(to) => *foot = Foot { at: to, from: foot.at, to, t: 1.0, grips: true, ..*foot },
+                        None => {
+                            foot.grips = false;
+                            foot.to = open_toward(sim, hip, hip - o * reach * 0.6 + a * lean * 0.5);
+                            foot.at = foot.at.lerp(foot.to, (dt * 8.0).min(1.0));
+                        }
+                    }
+                }
+            } else {
+                // Swinging, an arc up off its surface to where it'll land.
+                if foot.t >= 1.0 {
+                    foot.from = foot.at;
+                }
+                let sw = (p - duty) / (1.0 - duty);
+                match ground_under(sim, a, hip, want, reach) {
+                    Some(to) => {
+                        foot.to = to;
+                        foot.grips = true;
+                    }
+                    None => {
+                        foot.to = open_toward(sim, hip, hip - o * reach * 0.6 + a * lean * 0.5);
+                        foot.grips = false;
+                    }
+                }
+                foot.t = sw.min(0.999);
+                let e = sw * sw * (3.0 - 2.0 * sw);
+                foot.at = foot.from.lerp(foot.to, e) + o * lift * (std::f32::consts::PI * sw).sin();
+            }
+            // (A foot is never further than its leg reaches.)
+            if (foot.at - hip).length() > reach {
+                foot.at = hip + (foot.at - hip).normalize_or(-o) * reach;
+            }
+        }
     }
 }
 
@@ -1705,6 +1944,49 @@ fn draw(
             thick(hip, k, legs.def.thick, to);
             thick(k, foot, legs.def.thick.saturating_sub(1), to);
             to.push((IVec2::new(k.x.floor() as i32, k.y.floor() as i32), joint));
+        }
+        // Segments, from the tail up (the nearer the head, the more on
+        // top): the far leg behind, the plate (rounded, outlined, lit along
+        // its back, its belly darker), the near leg in front; the last one's
+        // feelers trailing.
+        if let Some(sd) = &legs.def.segments {
+            let line = rgb(legs.def.outline.unwrap_or_else(|| dark(dark(sd.color))));
+            let (fill, lit, belly) = (rgb(sd.color), rgb(sd.lit.unwrap_or(sd.color)), rgb(sd.belly.unwrap_or_else(|| dark(sd.color))));
+            let (near, far) = (rgb(legs.def.color), rgb(legs.def.far.unwrap_or(dark(legs.def.color))));
+            let knob = rgb(legs.def.joint.unwrap_or(legs.def.color));
+            let bones = (sd.reach * 0.5, sd.reach * 0.5);
+            let [behind, front] = quads;
+            for (s, seg) in legs.segs.iter().enumerate().rev() {
+                let scale = sd.scale(s);
+                let (a, up) = (Vec2::from_angle(seg.surface), Vec2::from_angle(seg.surface).perp());
+                let at = seg.at - o;
+                let hip = at - up * sd.size.1 * 0.3 * scale;
+                let leg = |k: usize, to: &mut Vec<(IVec2, [u8; 4])>| {
+                    let foot = seg.feet[k].shown - o;
+                    let lean = if k == 0 { 1.0 } else { -1.0 } * seg.facing;
+                    let bend = (up + a * lean * 0.5).normalize_or(up);
+                    let (kn, end) = knee(hip, foot, bones.0, bones.1, bend, |p| solid(&sim, p + o));
+                    let c = if k == 0 { near } else { far };
+                    stroke(hip, kn, 0.8, 0.65, c, to);
+                    stroke(kn, end, 0.65, 0.45, c, to);
+                    to.push((IVec2::new(kn.x.floor() as i32, kn.y.floor() as i32), if k == 0 { knob } else { c }));
+                };
+                leg(1, behind);
+                let (len, r) = (sd.size.0 * scale, sd.size.1 * 0.5 * scale);
+                let (pa, pb) = (at - seg.dir * len * 0.5, at + seg.dir * len * 0.5);
+                stroke(pa, pb, r + 1.0, r + 1.0, line, behind);
+                stroke(pa, pb, r, r, fill, behind);
+                let inset = seg.dir * r * 0.6;
+                plate(pa + inset, pb - inset, r, fill, Some(belly), behind, up);
+                plate(pa + inset, pb - inset, r, fill, Some(lit), behind, -up);
+                if s + 1 == legs.segs.len() && sd.tail > 0.0 {
+                    for lift in [0.3, -0.1] {
+                        let tip = pa - seg.dir * sd.tail + up * sd.tail * lift;
+                        stroke(pa, tip, 0.7, 0.4, near, behind);
+                    }
+                }
+                leg(0, front);
+            }
         }
         // Arms, as the legs are drawn (where they are now: `walk`).
         for (arm, &(shoulder, elbow, wrist)) in legs.def.arms.iter().zip(&legs.arms) {

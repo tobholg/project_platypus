@@ -1,0 +1,46 @@
+// A cave centipede: a flat armoured head with long feelers and venom claws,
+// and a long body of fourteen plated segments trailing it along the very
+// way it came: up walls, along ceilings, round corners, each segment's legs
+// stepping a beat after the one ahead's, a wave running down it (`legs`'
+// `segments`; legs.rs). It runs at you over any surface, drops on you from
+// the ceiling, and bites with its venom claws. (Only its head can be hit
+// for now: hit areas per part come with BE `limbs` stage 4.)
+(
+    name: "Cave centipede",
+    size: (16, 8),
+    health: 60,
+    team: Enemy,
+    kind: "insect",
+    blood: "ichor",
+    art: "centipede_head",
+    legs: (view: Side, reach: 12, upper: 0.5, step: 0.08, lift: 3, ride: 8, stride: 6, tilt: 15,
+           color: (170, 92, 52), joint: (214, 140, 84), far: (82, 40, 24), outline: (30, 14, 10), thick: 2,
+           body: "centipede_head", eyes: (244, 208, 110),
+           each: [
+               (hip: (2, -1), lean: 6, gait: 0),
+               (hip: (3, 0), lean: 5, gait: 1, far: true),
+           ],
+           segments: (count: 14, spacing: 7, size: (8, 5), color: (140, 62, 32), lit: (188, 98, 50), belly: (78, 34, 20),
+                      reach: 13, lean: 5, wave: 0.12, tail: 10, taper: 0.6)),
+    // (Its eye: the faintest glow.)
+    light: (color: (244, 208, 110), strength: 0.02),
+    movement: (
+        run_speed: 92,
+        ground_accel: 900,
+        ground_decel: 1200,
+        air_accel: 500,
+        jump_height: 20,
+        air_jumps: 0,
+        step_height: 3,
+        cling: true,
+        dash_speed: 0,
+    ),
+    poise: 12,
+    heft: 1.2,
+    touch: (harm: pierce, damage: 4, knock: 120, stun: 0.05),
+    moves: ["centipede_bite"],
+    brain: (
+        kind: "hunter",
+        params: (aggro: 260, close: Crawl(pounce_range: 0, pounce_every: 2.5, keep: 10), wander: (speed: 0.5)),
+    ),
+)

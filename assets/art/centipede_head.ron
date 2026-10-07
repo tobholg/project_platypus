@@ -1,0 +1,47 @@
+// A cave centipede's head seen from the side, pointing right: a flat
+// armoured head, lit along its top, two long antennae swept forward, the
+// venom claws curled under its face, a small eye. Made by
+// tools/centipede_art.py, kept as text. Its body is its creature file's
+// `segments` (legs.rs draws them, a plate a segment); `grip` is the middle
+// of its head.
+(
+    size: (26, 19),
+    feet: (8, 18),
+    outline: (30, 14, 10),
+    palette: {
+        'H': (196, 104, 52),   // head, lit
+        'h': (150, 70, 36),   // head
+        'd': (92, 40, 22),   // head, shade
+        'a': (132, 76, 46),   // antennae
+        'c': (110, 48, 26),   // venom claws
+        'k': (34, 18, 12),   // their black tips
+        'e': (244, 208, 110),   // its eye (it glows a little)
+    },
+    frames: {
+        "body": [
+            "..........................",
+            "...................aa.....",
+            ".................aa.......",
+            "................a.........",
+            "...............a...aaaaaa.",
+            "..............aa.aa.......",
+            ".............aa.aa........",
+            ".............aaa..........",
+            "....HHdHHHHHaaa...........",
+            "..HHHHdHHHHHHH............",
+            ".HHHhhdhhhhheHH...........",
+            ".hhhhhdhhhhhhhh...........",
+            ".hhhhhdhhhhhhhh...........",
+            ".dddddddddddddd...........",
+            "..ddddddddddddc...........",
+            ".............ccck.........",
+            "...............ck.........",
+            "..............cckk........",
+            "..........................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (8, 13) } },
+)
