@@ -30,7 +30,7 @@ the 1.5× rescale (`scale`), `moves` and `bestiary` done 2026-10-01,
 | S1 | Sound (branch `sound-arc`, DESIGN §7e): bevy_seedling buses, ~37 effects and 6 ambience beds and 3 music moods all made from recipes in `sounds.ron`, world-driven ambience (fire, lava, water, rain, wind, caves, drips), positional effects hooked into combat, movement, mining, the hook, the bow, blasts, spells; the arena panel's sound board | first version, to tune by ear |
 | B1 | Backdrops (branch `backdrop-arc`, DESIGN §4.3b): Noita-like ranges by biome (`peaks.rs`: noita, alpine; running down behind the ground; 1–4 % parallax across, ~1 % up and down, pixel-snapped; behind the weather's clouds), drifting cloud heaps, a sky gradient, a blooming sun, a big moon in phases (8-night cycle) and twinkling stars over near-black nights; underground a tinted void with faint far twinkles | first version; next: big caverns without back walls in places |
 | L1 | The living world (DESIGN §13, agreed 2026-09-29): dev world reset (world only / everything) → an 8× world sized from its preset (4× wide, 2× deep; density tests) → fire moisture and storm rain → the world clock (regions, processes at their own pace with abstract and live faces; weather's fronts, regrowth, moisture, wildfires, lairs) → a flat start and a village → NPCs as data → gold (Noita's) → raids, caravans, falling stars, seasons. Proposed: metals (ore → molten → solid, §13.1), boulders (§13.2). Later: mine carts, teleport stations | done 2026-10-01: world-scale, world-clock (moisture, regrowth, wildfires, lairs), gold, matter, village, world-events (stars, raids and mending, quakes, the pedlar); seasons dropped for biomes; travel moved later (after the world editor) |
-| BE | The bestiary (DESIGN §14, agreed 2026-10-01): creatures as data with custom modules, ten damage types and resistance profiles, moves, damage feedback, the bestiary and arena v2, a path planner and digging, general limbs, the creature editor, wounds and severing, firearms and new materials, the roster, the bosses | `creatures`, `scale`, `moves`, `bestiary`, `navigation` done; next: `limbs` |
+| BE | The bestiary (DESIGN §14, agreed 2026-10-01): creatures as data with custom modules, ten damage types and resistance profiles, moves, damage feedback, the bestiary and arena v2, a path planner and digging, general limbs, behaviour in the world, the creature editor, wounds and severing, firearms and new materials, the roster, the bosses | `creatures`, `scale`, `moves`, `bestiary`, `navigation` done; `limbs` stages 1–3 done, stage 4 under way; then `behaviour` |
 | WE | The world editor and sites (DESIGN §14 "Where this sits"): authored places placed by the world plan, edit and play on the same world, then mechanisms, a map with rest points and travel, factions, a vertical slice; then progression | after BE |
 | 6 | Hollow Knight layer: ability unlocks, map, bosses, benches, set pieces | not started; the tempo (DESIGN D7) being tried: `tempo.ron` presets, `turn_accel` and `jump_hold` in movement, the arena panel's Tempo row, the `tempo` scenario; walking real terrain fixed (a 6-cell step up and walking down onto ground below, both eased on screen: full speed 12 % → 70–90 % of a walk; `walk` scenario) |
 | 7 | Pixel rigid bodies (falling terrain chunks) | optional |
@@ -380,7 +380,27 @@ its barrels glow after a burst and vent when they overheat, and it fires
 a lock-on salvo of missiles that curve onto the player; the crab snips,
 the raptor bites, the tyrant stomps.
 
-**6. `creature-editor`: from a sketch of the whole to a creature.**
+**6. `behaviour`: creatures that live in the world.** (Added 2026-10-07,
+user: everything moves and fights well but none of it lives in the world
+yet.) In stages:
+1. Where they live: spawn tables by biome, depth and zone for every
+   creature (the new ones too), population caps, despawning far off; dens
+   and lairs (spider nests, centipede holes, a raptor pack's ground).
+2. Senses and alertness: sight (line of sight, light: the dark hides you,
+   a torch gives you away), hearing (footsteps by what you walk on, a
+   fight's noise, blasts), smell (blood); idle, suspicious, hunting, lost
+   you (searching where it last saw you).
+3. Tactics as data: keep a distance, flank, ambush (wait on a ceiling,
+   drop), fall back when hurt, flee fire or light, call others; groups
+   (packs that surround you, swarms) and their leaders.
+4. Factions: who hunts whom (spiders take bats, orcs fight skeletons);
+   creatures fighting each other; setting them on each other.
+Done when: a walk through the world meets the new creatures where they
+belong; a centipede waits on a cave ceiling and drops on you; raptors
+flank you as a pack; a badly hurt creature flees; two factions fight with
+you watching; creeping past in the dark works and a torch gives you away.
+
+**7. `creature-editor`: from a sketch of the whole to a creature.**
 Sketch (layers), slice, rig, pose and moves, test; editing a part in place
 on the whole; big parts as palette PNGs, the rest text; every step also
 from the command line.
@@ -388,7 +408,7 @@ Done when: a new creature is sketched, sliced, rigged, given two moves and
 fought, without leaving the game; the model makes one the same way from
 scripts and renders it.
 
-**7. `wounds`: wounds you can see, limbs that break.**
+**8. `wounds`: wounds you can see, limbs that break.**
 1. Depth by kind (skin, flesh, bone; ichor; stone; ectoplasm); each damage
    type's mark; blood from the wound along the hit.
 2. Parts and limbs with their own health; severing (the piece falls, the
@@ -399,7 +419,7 @@ acid; a zombie loses an arm and a leg and crawls on; each damage type
 leaves its own mark; a fight with a dozen wounded creatures stays in
 budget.
 
-**8. `powder`: firearms and new materials.**
+**9. `powder`: firearms and new materials.**
 The flintlock pistol and the musket; gunpowder (charcoal and sulfur, a new
 mineral by the underworld's lava); iron and silver shot; muzzle flash,
 smoke, recoil, reload. Blight and ectoplasm.
@@ -407,7 +427,7 @@ Done when: a powder trail burns like a fuse and a barrel blows; a musket
 ball leaves a wound and a spray; silver shot hurts the undead more; blight
 withers grass and poisons; ectoplasm slows.
 
-**9. `roster`: the new creatures.**
+**10. `roster`: the new creatures.**
 Necromancer, risen skeletons, zombies, chain wraith, watcher, stilt
 stalker, crag crab, scorpion, cave centipede, the reworked cave spider,
 bloat toad, splitting slime, shield orc, orc sapper, mimic, bat swarm
@@ -416,7 +436,7 @@ bestiary, each with a scenario and a recorded fight.
 Done when: all of them are fought in arena v2 and in the world, and each
 tests what it was chosen to test.
 
-**10. `bosses`: one branch each.** The Broodmother, the Necromancer lord,
+**11. `bosses`: one branch each.** The Broodmother, the Necromancer lord,
 the Ruin colossus, the Sand wyrm, each to the puzzle pattern (DESIGN
 §14.8): a preparable weakness, an arena trick, an emergent route, a hint in
 the world; its scenario plays the intended solution once.
