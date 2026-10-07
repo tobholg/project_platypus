@@ -1324,7 +1324,10 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
 - Brains write **intent** (`move_x`, `jump`, `dash`, `attack`); one locomotion
   system turns intent + `MovementStats` into velocity. The player's brain is
   the input device; an orc's brain is AI. Dash, knockback and coyote time
-  therefore work for every creature.
+  therefore work for every creature. `crouch` (the player's Ctrl): on
+  the ground at `CROUCH_PACE` (0.25) of the run (in the air it steers as
+  ever, so a jump from a crouch still clears a gap); `Locomotion::crouching`
+  says so for animation (`crouch`, `crouch_walk`) and senses.
 - Particles (debris, blood, sparks) are plain arrays, not entities. When they
   come to rest they become cells, so blood pools and stains.
 - **Flyers** (`MovementStats::fly_speed` > 0): in the air, or steering up off
@@ -1353,7 +1356,9 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   blinking one), a torso, arms hanging, forward, back, lifted and reaching,
   legs standing, four run strides, tucked and dangling; poses for standing,
   breathing, blinking, four run steps (arms swinging against the legs, a
-  bob on the passing steps), rising, falling, dashing, wall-sliding, hurt.
+  bob on the passing steps), rising, falling, dashing, wall-sliding, hurt;
+  crouched (knees bent deep, the torso `torso_hip` turned 35° forward
+  about its hips, about a third lower) and a three-step creeping stride.
 - **Tags and fans:** a pose layer may carry a `tag` (the player's arms:
   `front_arm`, `back_arm`); its points are also the pose's `<tag>.<point>`
   anchors (`back_arm.hand`: where the off hand is). For a tag with a fan,
@@ -1463,8 +1468,10 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   full light on them). It smells a quarry below ¾ health within
   `smell`, through rock. It hears blows (260 cells), blasts (200 + 12 ×
   radius), your landings (40 + 0.4 × the drop) and your feet when you
-  run (30 + 0.55 × speed, over 40 cells/s: creeping, Ctrl held, a
-  quarter of the pace, is silent), each times its `hearing`. A landing
+  run (30 + 0.55 × speed, over 40 cells/s, feet on the ground: crouched,
+  Ctrl held, a quarter of the pace, is silent), each times its
+  `hearing`. Crouched, it's seen at its middle less 0.6 of its half
+  height (cover knee-high hides it; the body keeps its height). A landing
   makes it 0.3 surer, running feet 1.6 a second (less 0.4 a second
   fading: under a second of running in its hearing and it hunts the
   sound); blows and blasts only make it come and look. Idle → suspicious
@@ -1484,7 +1491,9 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   hunts 0.64 s later; behind a wall across the tunnel, torch lit, an orc
   120 cells off stays idle, then hears the player run at the wall and
   comes to look (suspicious); a cave spider behind the wall stays idle
-  until the player is wounded, and hunts 0.16 s later (smell). The
+  until the player is wounded, and hunts 0.16 s later (smell); crouched
+  behind a wall knee-high, torch lit, an orc 120 cells off stays idle,
+  and hunts 0.19 s after the player stands. The
   `sneak` scenario (`PLATYPUS_ARENA=flat`) is played (an hour): a dark
   hall at 23:00, roofed over from x 300 to 1680; two orcs camped by a
   torch under a stone shelf (a ramp up, a gap to jump off its end), an

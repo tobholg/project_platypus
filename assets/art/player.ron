@@ -64,6 +64,18 @@
             "TTTtttttLt.",
             "TTTTTttttT.",
         ]),
+        // The torso again, its pivot at the hips: turned, it leans (a crouch).
+        "torso_hip": (pivot: (5, 8), rows: [
+            "..TTtsstt..",
+            ".TTTtsttLt.",
+            "TTTTtttLLt.",
+            "TTTttttLtt.",
+            "TTTtttttLt.",
+            "TTTttttttt.",
+            "bbbbbbbyyb.",
+            "TTTtttttLt.",
+            "TTTTTttttT.",
+        ]),
         // Arms hang from the shoulder (pivot); the hand is where a weapon goes.
         "arm": (pivot: (0, 0), points: { "hand": (0, 8) }, rows: [
             "tLt",
@@ -305,6 +317,44 @@
             "..oooo.BBBB",
             ".......oooo",
         ]),
+        // Crouched (Ctrl): knees bent forward, about a third lower; and a
+        // creeping stride, near foot ahead, passing, far foot ahead.
+        "crouch": (points: { "foot_near": (12, 6), "foot_far": (3, 6) }, rows: [
+            "....pppppp....",
+            "..qqqqpppppppp",
+            ".qqqq.....pppp",
+            ".CCC......UUU.",
+            ".CCC......BBB.",
+            ".CCCC.....BBBB",
+            ".oooo.....oooo",
+        ]),
+        "crouch1": (points: { "foot_near": (13, 6), "foot_far": (1, 6) }, rows: [
+            "....pppppp.....",
+            "..qqqpppppppp..",
+            ".qqq.......ppp.",
+            "CCC........UUU.",
+            "CCC........BBB.",
+            "CCC........BBBB",
+            "ooo........oooo",
+        ]),
+        "crouch2": (points: { "foot_near": (12, 6), "foot_far": (6, 6) }, rows: [
+            "....pppppp.....",
+            "...qqqppppppp..",
+            "....qqq...pppp.",
+            ".....CCC..UUU..",
+            ".....CCC..BBB..",
+            ".....CCCC.BBBB.",
+            ".....oooo.oooo.",
+        ]),
+        "crouch3": (points: { "foot_near": (1, 6), "foot_far": (13, 6) }, rows: [
+            "....pppppp.....",
+            "..pppqqqqqqqq..",
+            ".ppp.......qqq.",
+            "UUU........CCC.",
+            "BBB........CCC.",
+            "BBB........CCCC",
+            "ooo........oooo",
+        ]),
         // A kick: the near knee drawn up (the far leg planted), then the leg
         // out straight at the hip, the boot's sole leading.
         "kick_knee": (points: { "foot_near": (10, 8), "foot_far": (4, 10) }, rows: [
@@ -434,6 +484,37 @@
             (part: "head", at: (9, 8)),
             (part: "arm_back", at: (15, 18), outline: true, tag: "front_arm"),
         ],
+        // Crouched: leaning in from the hips over bent knees, the head low
+        // and forward, the front arm out; creeping, the arms swinging a
+        // little against the stride.
+        "crouch_pose": [
+            (part: "arm", at: (19, 22), shade: 0.72, tag: "back_arm"),
+            (part: "crouch", at: (10, 31)),
+            (part: "torso_hip", at: (17, 30), turn: -35),
+            (part: "head", at: (17, 13)),
+            (part: "arm_fwd", at: (22, 25), outline: true, tag: "front_arm"),
+        ],
+        "crouch_a": [
+            (part: "arm_fwd", at: (19, 22), shade: 0.72, tag: "back_arm"),
+            (part: "crouch1", at: (10, 31)),
+            (part: "torso_hip", at: (17, 30), turn: -35),
+            (part: "head", at: (17, 13)),
+            (part: "arm", at: (22, 25), outline: true, tag: "front_arm"),
+        ],
+        "crouch_b": [
+            (part: "arm", at: (19, 22), shade: 0.72, tag: "back_arm"),
+            (part: "crouch2", at: (10, 31)),
+            (part: "torso_hip", at: (17, 30), turn: -35),
+            (part: "head", at: (17, 13)),
+            (part: "arm_fwd", at: (22, 25), outline: true, tag: "front_arm"),
+        ],
+        "crouch_c": [
+            (part: "arm", at: (19, 22), shade: 0.72, tag: "back_arm"),
+            (part: "crouch3", at: (10, 31)),
+            (part: "torso_hip", at: (17, 30), turn: -35),
+            (part: "head", at: (17, 13)),
+            (part: "arm_fwd", at: (22, 25), outline: true, tag: "front_arm"),
+        ],
         // Dashing: leaning in, arms back.
         "dash": [
             (part: "arm_back", at: (14, 20), shade: 0.72, tag: "back_arm"),
@@ -479,6 +560,8 @@
         "hurt": (frames: ["hurt"], fps: 5),
         "strike_down": (frames: ["strike_down"], fps: 5),
         "plunge": (frames: ["plunge_pose"], fps: 5),
+        "crouch": (frames: ["crouch_pose"], fps: 5),
+        "crouch_walk": (frames: ["crouch_a", "crouch_b", "crouch_c", "crouch_b"], fps: 6),
         // Once through (kick.rs plays it): up, out, held, back.
         "kick": (frames: ["kick_wind", "kick_out", "kick_out", "kick_wind"], fps: 16, looping: false),
     },

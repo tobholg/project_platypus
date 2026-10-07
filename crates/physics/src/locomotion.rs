@@ -29,7 +29,14 @@ pub struct Intent {
     /// Its grappling hook's button (held): a press throws it, holding reels
     /// in.
     pub hook: bool,
+    /// Crouching (the player's Ctrl): on the ground it creeps, at
+    /// `CROUCH_PACE` of its run; in the air it steers as ever (a jump from
+    /// a crouch still clears a gap).
+    pub crouch: bool,
 }
+
+/// A crouch's pace on the ground, of the run.
+pub const CROUCH_PACE: f32 = 0.25;
 
 /// How hard a climber presses into what it holds on to (cells/s).
 const CLING_PRESS: f32 = 45.0;
@@ -289,6 +296,8 @@ pub struct Locomotion {
     pub dive: f32,
     /// Last tick's contacts, so brains and animation can read them.
     pub contacts: Contacts,
+    /// Crouched on the ground this tick (animation, and what sees it).
+    pub crouching: bool,
 }
 
 impl Default for Locomotion {
@@ -320,6 +329,7 @@ impl Default for Locomotion {
             wrap: None,
             leap: 0.0,
             contacts: Contacts::default(),
+            crouching: false,
         }
     }
 }
@@ -398,6 +408,7 @@ impl Locomotion {
         self.prev_dash = intent.dash;
 
         let grounded = self.contacts.ground;
+        self.crouching = intent.crouch && grounded && self.state != MoveState::Dash;
         // (A climber on a wall, or the wall behind, jumps off it as off the
         // ground: a leap. Off a ceiling, a jump only lets go.)
         let on_wall = s.cling && self.cling.is_some_and(|d| d.y == 0.0);
@@ -548,7 +559,7 @@ impl Locomotion {
         }
 
         // Run.
-        let target = intent.move_x.clamp(-1.0, 1.0) * s.run_speed;
+        let target = intent.move_x.clamp(-1.0, 1.0) * s.run_speed * if self.crouching { CROUCH_PACE } else { 1.0 };
         // (On ice there's little grip to start, stop or turn with.)
         let turning = target * body.vel.x < 0.0 && s.turn_accel > 0.0;
         let accel = if grounded {

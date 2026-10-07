@@ -6612,7 +6612,9 @@ type Sensing<'a> = (Entity, &'a crate::creatures::Creature, &'a Kinematics, Opti
 ///   at the wall: it hears the footsteps and comes to look;
 /// - the torch out, a cave spider (it sees in the dark) behind the wall:
 ///   idle; then the player is wounded: it smells the blood through the
-///   rock, and hunts.
+///   rock, and hunts;
+/// - crouched behind a wall knee-high (x 807..813), the torch lit, an orc
+///   120 cells off: hidden (2.5 s); the player stands up: it hunts.
 ///
 /// Logs each part's outcome, and every change of how wary it is.
 #[allow(clippy::too_many_arguments)]
@@ -6743,11 +6745,40 @@ fn stealth_script(
         10 if t > 16.5 => {
             let at = if state.3 >= 0.0 { format!("{:.2} s after", state.3 - 14.5) } else { "never".into() };
             info!("stealth: the player wounded at t 14.5: the spider hunted {at} (smelled through the wall)");
+            rid(&mut commands);
+            h.hp = h.max;
+            // Behind a wall knee-high, crouched, the torch lit.
+            if let Some(stone) = sim.materials().id("stone") {
+                for x in (807..=813).step_by(3) {
+                    for y in (floor + 2..=floor + 7).step_by(2) {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 2, material: stone, overwrite: true });
+                    }
+                }
+            }
+            put(&mut k, 795.0);
+            keys.press(KeyCode::ControlLeft);
+            toggles.carry = crate::light::Carry::Torch;
+            next(&mut state, &orc);
             state.0 = 11;
+        }
+        11 if t > 17.0 => {
+            crate::creatures::def::spawn_creature(&mut commands, &orc, Vec2::new(915.0, fl), stand_facing_left);
+            state.0 = 12;
+        }
+        12 if t > 19.5 => {
+            info!("stealth: crouched behind a knee-high wall, the torch lit, the {orc} {:.0} cells off got {} (idle: hidden)", foe.map_or(0.0, |f| f.2.body.pos.distance(k.body.pos)), wary(state.2));
+            keys.release(KeyCode::ControlLeft);
+            state.3 = -1.0;
+            state.0 = 13;
+        }
+        13 if t > 21.5 => {
+            let at = if state.3 >= 0.0 { format!("{:.2} s after", state.3 - 19.5) } else { "never".into() };
+            info!("stealth: the player stood up at t 19.5: the {orc} hunted {at}");
+            state.0 = 14;
         }
         _ => {}
     }
-    if state.0 < 9 {
+    if !(9..11).contains(&state.0) {
         h.hp = h.max;
     }
 }

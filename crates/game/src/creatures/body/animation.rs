@@ -139,6 +139,8 @@ fn wanted(k: &Kinematics, anim: &mut Animator, dt: f32) -> &'static [&'static st
         MoveState::Stunned => &["hurt", "fall", "idle"],
         MoveState::Air if airborne && v.y > 0.0 => &["jump", "fall", "idle"],
         MoveState::Air if airborne => &["fall", "jump", "idle"],
+        _ if k.loco.crouching && anim.running => &["crouch_walk", "crouch", "run", "idle"],
+        _ if k.loco.crouching => &["crouch", "idle"],
         _ if anim.running => &["run", "idle"],
         _ => &["idle"],
     }

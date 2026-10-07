@@ -5,8 +5,8 @@
 //! or a flashlight you carry or a torch near you gives you away; less
 //! behind it), hears (a
 //! fight's blows, a blast, your footsteps when you run, your landings:
-//! each a noise with a reach; creeping, Ctrl held, is under what it
-//! hears), and smells (a wounded quarry, within its smell, through rock).
+//! each a noise with a reach; crouched and creeping, Ctrl held, is under
+//! what it hears, and lower to see over cover), and smells (a wounded quarry, within its smell, through rock).
 //! Each hunter is `Idle` (wandering), `Suspicious` (it glimpsed or heard
 //! something: it turns and comes to look, slowly; a glimpse held long
 //! enough, or seen close, and it's hunting), `Hunting` (it knows where you
@@ -142,6 +142,10 @@ fn lit(sim: &SimWorld, day: &crate::light::Daylight, lights: &[(Vec2, f32)], at:
 
 const NOISE_FIGHT: f32 = 260.0;
 
+/// Crouched, it's seen this share of its half height lower than its
+/// middle (a crouch is about a third lower).
+const CROUCH_LOW: f32 = 0.6;
+
 /// Where its mark sits in depth: over the lighting.
 const MARK_Z: f32 = 20.0;
 
@@ -183,19 +187,21 @@ pub fn perceive(
             noises.push(Noise { at: k.body.pos, reach: 40.0 + l.drop * 0.4, sure: SURE_LANDED });
         }
     }
-    let hunted: Vec<(Entity, Vec2, f32, Vec2)> = quarry
+    // (Each one seen at its middle; crouched, low, so cover a little under
+    // its height hides it.)
+    let hunted: Vec<(Entity, Vec2, f32, Vec2, bool)> = quarry
         .iter()
         .filter(|(_, _, t, _)| t.hunted())
-        .map(|(e, k, _, h)| (e, k.body.pos, h.hp / h.max.max(1.0), k.body.vel))
+        .map(|(e, k, _, h)| (e, k.body.pos - Vec2::Y * if k.loco.crouching { k.body.half.y * CROUCH_LOW } else { 0.0 }, h.hp / h.max.max(1.0), k.body.vel, k.loco.grounded()))
         .collect();
     // How lit each is (the same for every eye on it): a flashlight in
     // the player's hand as bright as a torch (it's a lamp, at you; a torch
     // in the hand is a light source of its own).
     let lamp = matches!(toggles.carry, crate::light::Carry::SmallBeam | crate::light::Carry::BigBeam);
     let light: Vec<f32> = hunted.iter().map(|(q, at, ..)| if lamp && me.contains(*q) { 1.0 } else { lit(&sim, &day, &lights, *at) }).collect();
-    for (_, at, _, vel) in &hunted {
+    for (_, at, _, vel, grounded) in &hunted {
         let run = vel.x.abs();
-        if run > 40.0 {
+        if *grounded && run > 40.0 {
             noises.push(Noise { at: *at, reach: 30.0 + run * 0.55, sure: SURE_RUNNING * dt });
         }
     }
@@ -212,7 +218,7 @@ pub fn perceive(
         // What it senses: seen (in sight, in the light or seeing in the
         // dark, nothing in the way) or smelled (wounded, near enough).
         let mut best: Option<(Entity, Vec2, f32, bool)> = None;
-        for (&(q, at, share, _), &light) in hunted.iter().zip(&light) {
+        for (&(q, at, share, ..), &light) in hunted.iter().zip(&light) {
             if home.is_some_and(|hm| at.distance(hm) > h.leash) {
                 continue;
             }

@@ -16,7 +16,7 @@ pub struct PlayerPlugin;
 #[derive(Component)]
 pub struct LocalPlayer;
 
-/// Reads the local keyboard. A/D or ←/→ move (Ctrl held: creep), Space jump, Shift dash, E
+/// Reads the local keyboard. A/D or ←/→ move (Ctrl held: crouch and creep), Space jump, Shift dash, E
 /// the grappling hook.
 /// (W stays free: it is the free-camera fly key and will be "up/look up".)
 #[derive(Component, Deserialize, Default)]
@@ -30,9 +30,6 @@ impl Plugin for PlayerPlugin {
             .add_systems(FixedUpdate, keyboard_brain.in_set(super::brain::BrainSet));
     }
 }
-
-/// Creeping (Ctrl held): this share of the pace.
-const CREEP: f32 = 0.25;
 
 /// Keys are sampled every frame and consumed every tick, so a tap between two
 /// ticks is never lost (frames and ticks run at different rates).
@@ -52,10 +49,10 @@ pub(crate) fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWor
     }
     let right = keys.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]) as i32 as f32;
     let left = keys.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]) as i32 as f32;
-    // Ctrl held: creeping, a quarter of the pace (quiet: under what a
-    // hunter hears as feet on the run).
-    let creep = if keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]) { CREEP } else { 1.0 };
-    held.intent.move_x = (right - left) * creep;
+    held.intent.move_x = right - left;
+    // Ctrl held: crouched, creeping (quiet: under what a hunter hears as
+    // feet on the run, and lower to be seen over cover).
+    held.intent.crouch = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
     held.intent.jump = keys.pressed(KeyCode::Space);
     held.intent.dash = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     held.intent.hook = keys.pressed(KeyCode::KeyE);
