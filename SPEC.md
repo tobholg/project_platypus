@@ -1937,15 +1937,28 @@ parts, so another is a new file, not new code:
   the near leg in front; the last one's feelers (`tail`). Put down
   somewhere, the body's laid straight behind it along the surface under
   it, and again each frame till its head's held on for 0.3 s (it doesn't
-  trail its fall). Feet have weight as a walker's do. Only the head can be
+  trail its fall). The way is where the head goes, not its pose (a
+  bite's rearing back and thrusting on would draw a loop in it the body
+  then piles up on); the pose is carried down the first four segments,
+  less and less (its front draws back with it). Backing up onto its own
+  way (a lunge braked, knocked back), the way is taken back in at the
+  head and the body slides back after it, its tail going on straight the
+  way it lay, the head facing on as it was; the way only grows ahead;
+  backing on past 0.4 s it turns (the way doubles back: a U-turn). Near
+  the head, a point the way turns back at by more than ~110° is dropped.
+  The `legs` scenario reports how often its body is piled on itself (two
+  segments two or more apart nearer than 0.6 of their spacing): with the
+  head's pose in the way it was 30–50 % of frames near the player (what
+  the user saw: it curled up attacking), now 0 %. Feet have weight as a walker's do. Only the head can be
   hit (hit areas per part: stage 4). The cave centipede (centipede.ron,
-  60 hp, a box of 16 × 8: a flat armoured head with long feelers, venom
+  60 hp, a box of 16 × 8, fast: 150 cells/s, 120 at the Middle tempo;
+  it stops 16 cells off and bites from there: a flat armoured head with long feelers, venom
   claws and a faint eye, `centipede_head` by `tools/centipede_art.py`; 14
   segments 7 apart; climbs, drops from ceilings, bites with venom,
   `centipede_bite`: its head drawn back 0.22 s, thrown at you in 0.1 s,
   9 pierce and venom, braked on you). In the `overhang` scenario
-  (`PLATYPUS_KIND=centipede`) it takes the stem at 2.4 s, the ceiling at
-  3.7, is on top at 4.8, its body after it all the way; in the `legs`
+  (`PLATYPUS_KIND=centipede`) it takes the stem at 1.8 s, the ceiling at
+  2.5, is on top at 3.3, its body after it all the way; in the `legs`
   scenario its bite lands 0.3 s after it starts. Holding a wall, its way
   on along the ceiling just over it, away from the wall, a crawler goes
   up into the corner even when the way finder (whose grid has a small

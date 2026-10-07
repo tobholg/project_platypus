@@ -539,6 +539,12 @@ pub struct Legs {
     /// it's settled, 0.3 s, its body is laid out afresh each frame: it
     /// doesn't trail its fall, or its body easing down onto its feet).
     settled: f32,
+    /// Seconds it's been backing up onto its own way (taken back in, not
+    /// doubled back on, till 0.4 s: then it turns), and a readout: frames
+    /// seen, and of those, its body piled on itself (two segments two or
+    /// more apart nearer than 0.6 of their spacing: doubled back).
+    backing: f32,
+    piled: (u32, u32),
 }
 
 #[derive(Component)]
@@ -597,6 +603,12 @@ impl Legs {
 
     /// Its segments' places (head first) and how many of their feet hold
     /// something.
+    /// Frames its segments were seen, and how many of them its body was
+    /// piled on itself.
+    pub fn piled(&self) -> (u32, u32) {
+        self.piled
+    }
+
     pub fn segments(&self) -> (Vec<Vec2>, usize) {
         (self.segs.iter().map(|s| s.at).collect(), self.segs.iter().flat_map(|s| s.feet).filter(|f| f.grips && f.t >= 1.0).count())
     }
@@ -857,7 +869,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -965,7 +977,12 @@ fn walk(
         let going = v.dot(along);
         // (Which way it faces: on the ground, its own; on a wall or the
         // ceiling, the way it goes along it.)
-        let facing = if legs.surface.abs() < 0.3 {
+        // (A body of segments backing up onto its own way faces on the
+        // way it was going, till it turns.)
+        let backs = legs.def.segments.is_some() && legs.backing < 0.4 && legs.trail.len() > 2 && v.dot(legs.trail[0].0 - legs.trail[1].0) < -5.0;
+        let facing = if backs {
+            legs.facing
+        } else if legs.surface.abs() < 0.3 {
             if k.loco.facing < 0.0 { -1.0 } else { 1.0 }
         } else if going.abs() > 5.0 {
             going.signum()
@@ -1383,7 +1400,10 @@ fn walk(
         }
         // Its segments (a centipede's body): along the way its head came.
         if let Some(sd) = legs.def.segments.clone() {
-            segments(&mut legs, &sd, &sim, c, put, grounded, v, dt);
+            // (After where the head goes, not its pose: a bite's rearing
+            // back and thrusting on isn't the way it came.)
+            let base = c - (up * rear.lift - along * legs.facing * rear.back);
+            segments(&mut legs, &sd, &sim, base, c - base, put, grounded, v, dt);
         }
         // The drawn feet after where the steps put them, with weight.
         let most = v.length() + reach * FOOT_SPEED;
@@ -1427,8 +1447,10 @@ fn walk(
 /// near and far legs half a cycle apart), planted under where they rest
 /// on that surface, swinging there in an arc off it; with nothing in
 /// reach a foot hangs. Put down somewhere: laid out straight behind it.
+/// (`c`: where the head goes, not posed; `pose`: how far a move's pose
+/// has it from there.)
 #[allow(clippy::too_many_arguments)]
-fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, put: bool, holds: bool, v: Vec2, dt: f32) {
+fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Vec2, put: bool, holds: bool, v: Vec2, dt: f32) {
     let count = sd.count;
     let total = sd.spacing * (count as f32 + 1.0) + 8.0;
     let (along, surface, facing) = (legs.along(), legs.surface, legs.facing);
@@ -1451,8 +1473,50 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, put: boo
         }
         legs.segs.clear();
     }
-    if legs.trail.front().is_none_or(|(p, _)| p.distance(c) >= 1.0) {
+    // Backing up onto its own way (a lunge braked, a step back, knocked
+    // back): the way taken back in at the head, the body sliding back after
+    // it and its tail going on straight the way it lay; not doubled back on
+    // (its body piled up on itself). Backing on past 0.4 s, it turns: the
+    // way doubles back.
+    let mut backed = false;
+    while legs.backing < 0.4 && legs.trail.len() > 2 {
+        let (f0, f1) = (legs.trail[0].0, legs.trail[1].0);
+        let fwd = (f0 - f1).normalize_or_zero();
+        if (c - f0).dot(fwd) >= 0.0 {
+            break;
+        }
+        legs.trail.pop_front();
+        let gone = f0.distance(legs.trail[0].0);
+        let n = legs.trail.len();
+        let ((e0, s0), (e1, _)) = (legs.trail[n - 1], legs.trail[n - 2]);
+        legs.trail.push_back((e0 + (e0 - e1).normalize_or(-fwd) * gone, s0));
+        backed = true;
+    }
+    // (The way only grows on ahead: creeping back, it isn't laid behind
+    // the head, unless it's turning.)
+    let ahead = legs.trail.len() < 2 || (c - legs.trail[0].0).dot(legs.trail[0].0 - legs.trail[1].0) >= 0.0;
+    if legs.trail.front().is_none_or(|(p, _)| p.distance(c) >= 1.0) && (ahead || legs.backing >= 0.4) {
         legs.trail.push_front((c, surface));
+        if !backed {
+            legs.backing = 0.0;
+        }
+    }
+    if backed || !ahead {
+        legs.backing += dt;
+    }
+    // (No hooks in it near the head: a point the way turns back at by more
+    // than ~110° dropped (a hop come down a little behind where it went up,
+    // a jolt back): a body following a hook piles on itself. Corners onto
+    // walls and ceilings, a quarter turn, stay.)
+    let mut i = 1;
+    while i + 1 < legs.trail.len().min(24) {
+        let (a, b, n) = (legs.trail[i - 1].0, legs.trail[i].0, legs.trail[i + 1].0);
+        if (a - b).normalize_or_zero().dot((b - n).normalize_or_zero()) < -0.35 {
+            legs.trail.remove(i);
+            i = i.saturating_sub(1).max(1);
+        } else {
+            i += 1;
+        }
     }
     // (No more of the way than the body needs.)
     let mut gone = c.distance(legs.trail[0].0);
@@ -1486,9 +1550,12 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, put: boo
     if fresh {
         legs.segs = (0..count).map(|_| Seg { at: c, dir: along * facing, surface, facing, feet: [Foot::new(c, false); 2] }).collect();
     }
-    let mut ahead = c;
+    // (The head's pose, a bite's rearing back, carried down its first few
+    // segments, less and less: its front draws back with it.)
+    let mut ahead = c + pose;
     for s in 0..count {
         let (at, surf) = place(sd.spacing * (s as f32 + 1.0));
+        let at = at + pose * (1.0 - s as f32 / 4.0).max(0.0);
         let seg = &mut legs.segs[s];
         seg.dir = (ahead - at).normalize_or(seg.dir);
         seg.at = at;
@@ -1500,6 +1567,10 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, put: boo
         }
         ahead = at;
     }
+    // (A readout: is it piled on itself?)
+    let piled = (0..count).any(|a| (a + 2..count).any(|b| legs.segs[a].at.distance(legs.segs[b].at) < sd.spacing * 0.6));
+    legs.piled.0 += 1;
+    legs.piled.1 += piled as u32;
     // Their steps: a clock going round as the body goes (a cycle every
     // stride a planted foot covers, over the share it's planted).
     let speed = v.length();

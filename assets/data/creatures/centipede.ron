@@ -13,7 +13,7 @@
     kind: "insect",
     blood: "ichor",
     art: "centipede_head",
-    legs: (view: Side, reach: 12, upper: 0.5, step: 0.08, lift: 3, ride: 8, stride: 6, tilt: 15,
+    legs: (view: Side, reach: 12, upper: 0.5, step: 0.07, lift: 3, ride: 8, stride: 8, tilt: 15,
            color: (170, 92, 52), joint: (214, 140, 84), far: (82, 40, 24), outline: (30, 14, 10), thick: 2,
            body: "centipede_head", eyes: (244, 208, 110),
            each: [
@@ -25,9 +25,9 @@
     // (Its eye: the faintest glow.)
     light: (color: (244, 208, 110), strength: 0.02),
     movement: (
-        run_speed: 92,
-        ground_accel: 900,
-        ground_decel: 1200,
+        run_speed: 150,
+        ground_accel: 1500,
+        ground_decel: 2000,
         air_accel: 500,
         jump_height: 20,
         air_jumps: 0,
@@ -41,6 +41,6 @@
     moves: ["centipede_bite"],
     brain: (
         kind: "hunter",
-        params: (aggro: 260, close: Crawl(pounce_range: 0, pounce_every: 2.5, keep: 10), wander: (speed: 0.5)),
+        params: (aggro: 260, close: Crawl(pounce_range: 0, pounce_every: 2.5, keep: 16), wander: (speed: 0.5)),
     ),
 )
