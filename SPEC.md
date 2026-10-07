@@ -1894,7 +1894,25 @@ parts, so another is a new file, not new code:
   centipede's first and last segments (12 each, the last ~45 cells behind
   its head's box). Not yet: a segment's own little legs aren't parts;
   spells' damage (dealt in `magic`, not as a `Hit`) isn't scaled; beams and
-  blasts test the body's box only. The crag crab is seen from
+  blasts test the body's box only. **Turrets** (`legs`' `turrets`,
+  side view: the iron strider's two laser guns): a `barrel` sprite
+  pivoting at `at` on the body, swinging toward the nearest thing it hunts
+  within `range` at `turn` degrees a second (resting, it points ahead),
+  its muzzle `length` along it; a move's `Cast` with `from` a turret's
+  name fires from its muzzle along where it points (not at the target:
+  outrun its swing) and heats it (`heat: (shot, cool, vent)`: at 1 it
+  vents `vent` seconds, steam off it and a hiss, cooling three times as
+  fast, and moves that fire from it wait); its heat drawn as a glow over
+  its pixels (lit over the dark: dull red, orange, white). **Tells** (a
+  phase's `tells`): `Sight(turret)`, a thin flickering red line from its
+  muzzle along where it points to what's in the way; `Charge(turret)`, a
+  glow at its muzzle growing through the phase; `Lock` (missiles: next).
+  The strider keeps 90–150 cells off (`Range`) and fires `strider_volley`
+  (0.7 s of both sight lines, then four shots in turn, each 0.28 s of
+  charge first: `strider_laser`, a quick red bolt, 11 radiant; its runes
+  `laser` and `laser_burn`): in the `legs` scenario every shot lands, the
+  guns' heat climbs volley by volley, at ~10 s both overheat and vent 2 s
+  (no volley), then it fires again. The crag crab is seen from
   the side: eight legs, its pincers held out ahead. `footfall`: what a
   foot does coming down (from the side): a `sound` of its own (`stomp`,
   `clank`) and the ground's footstep (`ground`), a `dust` puff the

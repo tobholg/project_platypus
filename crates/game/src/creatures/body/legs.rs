@@ -53,7 +53,7 @@ impl Plugin for LegsPlugin {
             // (The bestiary's stage view: canvases may draw for it.)
             .init_resource::<crate::canvas::StageView>()
             .init_resource::<BodyArt>()
-            .add_systems(Update, (turn_over, grow_legs, aims, walk, parts, footfalls, draw).chain().after(crate::creatures::body::animation::animate).after(TransformSystems::Propagate));
+            .add_systems(Update, (turn_over, grow_legs, aims, walk, turrets, parts, footfalls, draw).chain().after(crate::creatures::body::animation::animate).after(TransformSystems::Propagate));
     }
 }
 
@@ -145,7 +145,7 @@ fn yes() -> bool {
 /// Feet that came down this frame (`walk` notes them, `footfalls` sounds
 /// them: it changes the world).
 #[derive(Resource, Default)]
-struct Footfalls(Vec<(Vec2, Footfall)>);
+struct Footfalls(Vec<(Vec2, Footfall)>, Vec<(Vec2, bool)>);
 
 /// An arm: a limb that doesn't walk, held out from the body (a crab's
 /// claws, a raptor's little arms), its hand resting where it says,
@@ -297,7 +297,80 @@ pub struct LegsDef {
     /// chains, and weak spots on its body.
     #[serde(default)]
     pub parts: super::parts::PartsDef,
+    /// Side: its turrets (aimed limbs: a strider's guns).
+    #[serde(default)]
+    pub turrets: Vec<TurretDef>,
 }
+
+/// A turret: a `barrel` sprite (pointing right, its `grip` the pivot)
+/// pivoting at `at` on the body (cells from its grip, facing right, y up),
+/// swinging toward its target at `turn` degrees a second (within `range`
+/// cells; else it rests pointing ahead), its muzzle `length` along it; a
+/// move fires from it (a `Cast`'s `from`) along where it points, not
+/// straight at the target: outrun its swing. Each shot heats it (`heat`).
+#[derive(Clone, Debug, Deserialize)]
+pub struct TurretDef {
+    pub name: String,
+    pub at: (f32, f32),
+    pub barrel: String,
+    pub length: f32,
+    #[serde(default = "turret_turn")]
+    pub turn: f32,
+    #[serde(default = "turret_range")]
+    pub range: f32,
+    #[serde(default)]
+    pub far: bool,
+    #[serde(default)]
+    pub heat: HeatDef,
+}
+
+fn turret_turn() -> f32 {
+    120.0
+}
+fn turret_range() -> f32 {
+    320.0
+}
+
+/// How a turret heats: each shot adds `shot` (1: as hot as it goes), it
+/// cools `cool` a second; at 1 it overheats and vents for `vent` seconds
+/// (steam, a hiss; its fire moves wait: the player's opening), cooling
+/// faster meanwhile. Drawn dull red, then orange, then white, glowing.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct HeatDef {
+    pub shot: f32,
+    pub cool: f32,
+    pub vent: f32,
+}
+
+impl Default for HeatDef {
+    fn default() -> Self {
+        HeatDef { shot: 0.22, cool: 0.3, vent: 1.8 }
+    }
+}
+
+/// A turret as it is now: where it points (the world, radians), how hot,
+/// seconds of venting left, its sprites (barrel, its heat's glow, a sight
+/// line, a charge's glow at the muzzle), its pivot and muzzle.
+struct Turret {
+    aim: f32,
+    heat: f32,
+    venting: f32,
+    barrel: Option<Entity>,
+    glow: Option<Entity>,
+    sight: Entity,
+    charge: Entity,
+    pivot: Vec2,
+    muzzle: Vec2,
+    /// It's just overheated: a hiss to play.
+    hiss: bool,
+}
+
+#[derive(Component)]
+struct LegTurret;
+
+#[derive(Component)]
+struct LegTell;
 
 /// A body of segments (`segments`): drawn as plates (outlined, lit along
 /// the back, a belly under), each with a near and a far leg.
@@ -390,6 +463,21 @@ pub struct Rear {
     /// Where the move's target is (set as it runs): what arms reach for.
     #[serde(skip)]
     pub target: Option<Vec2>,
+    /// What the move's phase shows (set as it runs: `moves`' `tells`),
+    /// each how far into the phase (0–1).
+    #[serde(skip)]
+    pub tells: Vec<(Tell, f32)>,
+}
+
+/// A tell a move's phase shows (you see it coming): a turret's sight line
+/// (a thin red line from its muzzle along where it points), its charge (a
+/// glow at the muzzle, growing through the phase), a lock-on (a mark over
+/// the target).
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub enum Tell {
+    Sight(String),
+    Charge(String),
+    Lock,
 }
 
 /// A named limb as a move holds it: a leg `raise`d off the ground, ahead
@@ -432,6 +520,7 @@ impl Rear {
             pitch: mix(from.pitch, to.pitch),
             limbs,
             target: from.target,
+            tells: from.tells.clone(),
         }
     }
 
@@ -625,6 +714,8 @@ pub struct Legs {
     dangle: f32,
     /// Where its body's grip was this frame (the world: `parts`).
     grip: Vec2,
+    /// Its turrets as they are now.
+    turrets: Vec<Turret>,
 }
 
 #[derive(Component)]
@@ -683,6 +774,36 @@ impl Legs {
 
     /// Its segments' places (head first) and how many of their feet hold
     /// something.
+    /// Its named turret's muzzle and the way it points (the world).
+    pub fn muzzle(&self, name: &str) -> Option<(Vec2, Vec2)> {
+        let j = self.def.turrets.iter().position(|t| t.name == name)?;
+        self.turrets.get(j).map(|t| (t.muzzle, Vec2::from_angle(t.aim)))
+    }
+
+    /// Its named turret is venting (overheated: it can't fire).
+    pub fn venting(&self, name: &str) -> bool {
+        self.def.turrets.iter().position(|t| t.name == name).and_then(|j| self.turrets.get(j)).is_some_and(|t| t.venting > 0.0)
+    }
+
+    /// Its named turret fired: hotter; at its limit, it vents.
+    pub fn fired(&mut self, name: &str) {
+        let Some(j) = self.def.turrets.iter().position(|t| t.name == name) else { return };
+        let h = self.def.turrets[j].heat.clone();
+        if let Some(t) = self.turrets.get_mut(j) {
+            t.heat += h.shot;
+            if t.heat >= 1.0 && t.venting <= 0.0 {
+                t.venting = h.vent;
+                t.hiss = true;
+            }
+        }
+    }
+
+    /// Its turrets' heat (0–1 and on) and whether each is venting, in order
+    /// (a readout).
+    pub fn turret_heat(&self) -> Vec<(f32, bool)> {
+        self.turrets.iter().map(|t| (t.heat, t.venting > 0.0)).collect()
+    }
+
     /// Where its named limb ends (the world): a leg's foot, an arm's wrist.
     pub fn limb_end(&self, name: &str) -> Option<Vec2> {
         // (Where the foot is, not where it's drawn: that lags a fast slam.)
@@ -893,7 +1014,11 @@ fn turn_over(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut
         if legs.other < 0.12 {
             continue;
         }
-        let parts = [Some(legs.body), legs.eyes, legs.stinger].into_iter().chain(legs.claws.iter().copied()).chain(legs.chains.iter().map(|c| c.tip));
+        let parts = [Some(legs.body), legs.eyes, legs.stinger]
+            .into_iter()
+            .chain(legs.claws.iter().copied())
+            .chain(legs.chains.iter().map(|c| c.tip))
+            .chain(legs.turrets.iter().flat_map(|t| [t.barrel, t.glow, Some(t.sight), Some(t.charge)]));
         for part in parts.flatten() {
             commands.entity(part).despawn();
         }
@@ -956,7 +1081,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, grip: Vec2::ZERO, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, grip: Vec2::ZERO, turrets: Vec::new(), def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -975,6 +1100,31 @@ fn grow_legs(
                 commands.entity(e).add_child(c);
             }
             legs.claws.push(claw);
+        }
+        // Its turrets: a turned barrel each, its heat's glow over it (lit
+        // over the dark, as eyes are), a sight line, a charge's glow.
+        for td in legs.def.turrets.clone() {
+            if !art.0.contains_key(&td.barrel) {
+                match crate::combat::turned_art(&td.barrel, None, &mut images, &mut layouts) {
+                    Ok(t) => {
+                        art.0.insert(td.barrel.clone(), t);
+                    }
+                    Err(err) => warn!("legs: turret `{}`: {err}", td.barrel),
+                }
+            }
+            let z = if td.far { Z_FAR_CLAW } else { Z_NEAR_CLAW } - root_z;
+            let barrel = art.0.get(&td.barrel).map(|t| commands.spawn((LegTurret, t.sprite(0.0), Transform::from_xyz(0.0, 0.0, z))).id());
+            let glow = art.0.get(&td.barrel).map(|t| {
+                let mut s = t.sprite(0.0);
+                s.color = Color::NONE;
+                commands.spawn((LegTurret, s, Transform::from_xyz(0.0, 0.0, Z_EYES - root_z))).id()
+            });
+            let tell = |commands: &mut Commands, anchor: bevy::sprite::Anchor| commands.spawn((LegTell, Sprite::from_color(Color::NONE, Vec2::ONE), anchor, Transform::from_xyz(0.0, 0.0, Z_EYES - root_z + 0.01), Visibility::Hidden)).id();
+            let (sight, charge) = (tell(&mut commands, bevy::sprite::Anchor::CENTER_LEFT), tell(&mut commands, bevy::sprite::Anchor::CENTER));
+            for part in [barrel, glow, Some(sight), Some(charge)].into_iter().flatten() {
+                commands.entity(e).add_child(part);
+            }
+            legs.turrets.push(Turret { aim: if facing < 0.0 { std::f32::consts::PI } else { 0.0 }, heat: 0.0, venting: 0.0, barrel, glow, sight, charge, pivot: k.body.pos, muzzle: k.body.pos, hiss: false });
         }
         // Its chains' tips: turned sprites at their ends (a sting).
         for chain in legs.def.chains.clone() {
@@ -1862,6 +2012,121 @@ fn segments(legs: &mut Legs, sd: &SegmentsDef, sim: &SimWorld, c: Vec2, pose: Ve
     }
 }
 
+/// How hot a turret looks: dull red, then orange, then white, more and
+/// more opaque (0 at rest, a glow as it heats).
+fn heat_color(h: f32) -> Color {
+    let h = h.clamp(0.0, 1.2);
+    let (r, g, b) = if h < 0.4 {
+        (0.75, 0.12, 0.05)
+    } else if h < 0.75 {
+        (1.0, 0.45, 0.1)
+    } else {
+        (1.0, 0.92, 0.75)
+    };
+    Color::srgba(r, g, b, ((h - 0.05) * 1.1).clamp(0.0, 0.92))
+}
+
+/// Turrets: each swings toward its target at its turn rate (its rest, ahead,
+/// with none in range), cools (faster venting), steams while it vents;
+/// drawn: the barrel turned to where it points, its heat's glow over it,
+/// and what the move's phase shows (`Rear::tells`): a sight line from the
+/// muzzle along where it points to what's in the way, a glow growing at the
+/// muzzle as it charges.
+#[allow(clippy::type_complexity)]
+fn turrets(
+    time: Res<Time>,
+    sim: Res<SimWorld>,
+    mut q: Query<(&mut Legs, Option<&Rear>)>,
+    mut sprites: Query<(&mut Sprite, &mut Transform, &mut Visibility), Or<(With<LegTurret>, With<LegTell>)>>,
+    mut falls: ResMut<Footfalls>,
+) {
+    let dt = time.delta_secs().min(0.05);
+    let now = time.elapsed_secs();
+    for (mut legs, rear) in &mut q {
+        if legs.turrets.is_empty() {
+            continue;
+        }
+        let rear = rear.cloned().unwrap_or_default();
+        let (c, middle, facing) = (legs.grip, legs.grip - legs.offset, legs.facing);
+        let rest = legs.turn(Vec2::X).to_angle();
+        let (aim_at, defs) = (legs.aim, legs.def.turrets.clone());
+        for (j, td) in defs.iter().enumerate() {
+            let pivot = c + legs.turn(Vec2::new(td.at.0, td.at.1));
+            let want = match aim_at {
+                Some(t) if t.distance(pivot) <= td.range => (t - pivot).to_angle(),
+                _ => rest,
+            };
+            let t = &mut legs.turrets[j];
+            let d = (want - t.aim + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+            let most = td.turn.to_radians() * dt;
+            t.aim += d.clamp(-most, most);
+            t.pivot = pivot;
+            t.muzzle = pivot + Vec2::from_angle(t.aim) * td.length;
+            let cool = td.heat.cool * if t.venting > 0.0 { 3.0 } else { 1.0 };
+            t.heat = (t.heat - cool * dt).max(0.0);
+            if t.venting > 0.0 {
+                t.venting -= dt;
+                // (Steam off it, a puff every few frames.)
+                if (now * 30.0).fract() < 0.5 {
+                    falls.1.push((t.muzzle, false));
+                }
+            }
+            if std::mem::take(&mut t.hiss) {
+                falls.1.push((t.muzzle, true));
+            }
+        }
+        for (j, td) in defs.iter().enumerate() {
+            let t = &legs.turrets[j];
+            let dir = Vec2::from_angle(t.aim);
+            let local = dir.y.atan2(dir.x * facing);
+            let index = crate::combat::Turned::index(local.to_degrees());
+            let at = t.pivot - middle;
+            for (e, glow) in [(t.barrel, false), (t.glow, true)] {
+                if let Some(Ok((mut s, mut tr, _))) = e.map(|e| sprites.get_mut(e)) {
+                    if let Some(atlas) = s.texture_atlas.as_mut() {
+                        atlas.index = index;
+                    }
+                    s.flip_x = facing < 0.0;
+                    if glow {
+                        s.color = heat_color(t.heat);
+                    }
+                    tr.translation = at.extend(tr.translation.z);
+                }
+            }
+            // Its sight line: to the first solid on the way, or its range.
+            let sight = rear.tells.iter().find(|(tell, _)| *tell == Tell::Sight(td.name.clone()));
+            if let Ok((mut s, mut tr, mut vis)) = sprites.get_mut(t.sight) {
+                match sight {
+                    Some(_) => {
+                        let len = (1..td.range as i32).find(|k| solid(&sim, t.muzzle + dir * *k as f32)).map_or(td.range, |k| k as f32);
+                        let flicker = 0.5 + 0.5 * (now * 37.0).sin();
+                        s.custom_size = Some(Vec2::new(len, 0.6));
+                        s.color = Color::srgba(1.0, 0.12, 0.08, 0.3 + 0.25 * flicker);
+                        tr.translation = (t.muzzle - middle).extend(tr.translation.z);
+                        tr.rotation = Quat::from_rotation_z(t.aim);
+                        *vis = Visibility::Inherited;
+                    }
+                    None => *vis = Visibility::Hidden,
+                }
+            }
+            let charge = rear.tells.iter().find(|(tell, _)| *tell == Tell::Charge(td.name.clone())).map(|(_, f)| *f);
+            if let Ok((mut s, mut tr, mut vis)) = sprites.get_mut(t.charge) {
+                match charge {
+                    Some(f) => {
+                        let size = 1.0 + 3.5 * f + 0.5 * (now * 50.0).sin().abs();
+                        s.custom_size = Some(Vec2::splat(size));
+                        s.color = Color::srgba(1.0, 0.35 + 0.6 * f, 0.25 + 0.6 * f, 0.45 + 0.5 * f);
+                        tr.translation = (t.muzzle - middle).extend(tr.translation.z);
+                        tr.rotation = Quat::from_rotation_z(t.aim + now * 6.0);
+                        *vis = Visibility::Inherited;
+                    }
+                    None => *vis = Visibility::Hidden,
+                }
+            }
+        }
+    }
+}
+
 /// Its parts' hit areas as they are now (`parts.rs`): each leg hip to
 /// knee to foot, each arm, each segment, each chain's links, each weak
 /// spot; a share of a blow to its body each (its `parts`).
@@ -1921,11 +2186,12 @@ fn parts(mut commands: Commands, mut q: Query<(Entity, &Legs, Option<&mut super:
     }
 }
 
-/// Where a creature's aiming chains reach for: the nearest thing it
-/// hunts within the furthest of their ranges (its middle), or nothing.
+/// Where a creature's aiming chains and turrets reach for: the nearest
+/// thing it hunts within the furthest of their ranges (its middle), or
+/// nothing.
 fn aims(mut legs: Query<(&mut Legs, &Kinematics)>, hunted: Query<(&Kinematics, &crate::creatures::Team)>) {
     for (mut l, k) in &mut legs {
-        let Some(range) = l.def.chains.iter().filter_map(|c| c.aims).reduce(f32::max) else {
+        let Some(range) = l.def.chains.iter().filter_map(|c| c.aims).chain(l.def.turrets.iter().map(|t| t.range)).reduce(f32::max) else {
             l.aim = None;
             continue;
         };
@@ -1942,6 +2208,16 @@ fn aims(mut legs: Query<(&mut Legs, &Kinematics)>, hunted: Query<(&Kinematics, &
 /// a shake of the screen if near.
 fn footfalls(mut falls: ResMut<Footfalls>, mut sim: ResMut<SimWorld>, mut sounds: MessageWriter<crate::sound::PlaySound>, mut trauma: ResMut<crate::fx::Trauma>, camera: Query<&GlobalTransform, With<crate::camera::MainCamera>>) {
     let eye = camera.single().map(|c| c.translation().truncate()).ok();
+    // (A turret venting: steam off it; just overheated, a hiss.)
+    let steam = sim.world.materials().id("steam");
+    for (at, hiss) in std::mem::take(&mut falls.1) {
+        if hiss {
+            sounds.write(crate::sound::PlaySound::at("vent", at));
+        }
+        if let Some(steam) = steam {
+            sim.world.puff([at.x, at.y], platypus_sim::Cell::new(steam, 0), if hiss { 10 } else { 2 }, 26.0);
+        }
+    }
     for (at, ff) in falls.0.drain(..) {
         if let Some(name) = &ff.sound {
             sounds.write(crate::sound::PlaySound::at(name.clone(), at).volume(ff.volume));

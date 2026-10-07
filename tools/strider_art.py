@@ -90,3 +90,47 @@ out = '''// An iron strider's hull seen from the side, pointing right: an armour
 ''' % (w, h, gx, h - 1, "\n".join("        '%s': %s,   // %s" % (k, v[0], v[1]) for k, v in pal.items() if k in used), "\n".join('            "%s",' % r for r in rows), gx, gy)
 open('assets/art/strider_body.ron', 'w').write(out)
 print(w, h, 'grip', gx, gy)
+
+# The strider's laser gun, seen from the side, pointing right: a round
+# mount (its pivot, the `grip`), a ribbed barrel, an emitter lens at the
+# muzzle. Its heat's glow is drawn over these pixels (legs.rs).
+G = [
+    "..MMM.............",
+    ".MLLLM............",
+    "MLLLLLMMMMMMMMMM..",
+    "MLLvLLssssssssssre",
+    "MdddddddddddddddrE",
+    ".MdddM......dddd..",
+    "..MMM.............",
+]
+gpal = {
+ 'M': ((72, 74, 80), 'mount, shade'), 'L': ((160, 166, 172), 'mount, lit'), 'd': ((96, 98, 104), 'barrel'),
+ 's': ((132, 136, 142), 'barrel, lit'), 'v': ((196, 200, 206), 'pivot bolt'),
+ 'r': ((140, 30, 26), 'emitter ring'), 'e': ((255, 90, 70), 'emitter (it glows)'), 'E': ((210, 50, 40), 'emitter, lower'),
+}
+grows = ['.' * (len(G[0]) + 2)] + ['.' + r + '.' for r in G] + ['.' * (len(G[0]) + 2)]
+used = set(''.join(grows)) - {'.'}
+gout = '''// The iron strider's laser gun seen from the side, pointing right: a round
+// mount (`grip`: its pivot), a ribbed barrel, an emitter lens at the muzzle.
+// Made by tools/strider_art.py. A turret of its creature file's `legs`
+// (legs.rs turns it to where it aims and glows it with its heat).
+(
+    size: (%d, %d),
+    feet: (4, %d),
+    outline: (26, 28, 32),
+    palette: {
+%s
+    },
+    frames: {
+        "body": [
+%s
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (4, 4) } },
+)
+''' % (len(grows[0]), len(grows), len(grows) - 1, "\n".join("        '%s': %s,   // %s" % (k, v[0], v[1]) for k, v in gpal.items() if k in used), "\n".join('            "%s",' % r for r in grows))
+open('assets/art/strider_gun.ron', 'w').write(gout)
+print('gun', len(grows[0]), len(grows))

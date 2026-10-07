@@ -94,11 +94,14 @@ pub struct Phase {
     /// troll's `reach`), till another phase's or the move's end.
     pub clip: Option<String>,
     pub acts: Vec<Act>,
+    /// What it shows while it lasts (`legs::Tell`: a turret's sight line,
+    /// its charge, a lock-on): you see it coming.
+    pub tells: Vec<crate::creatures::body::legs::Tell>,
 }
 
 impl Default for Phase {
     fn default() -> Self {
-        Phase { name: String::new(), secs: 0.0, pose: None, ease: Ease::Smooth, tremble: 0.0, clip: None, acts: Vec::new() }
+        Phase { name: String::new(), secs: 0.0, pose: None, ease: Ease::Smooth, tremble: 0.0, clip: None, acts: Vec::new(), tells: Vec::new() }
     }
 }
 
@@ -128,8 +131,10 @@ pub enum Act {
     /// What's within `reach` of a point `at` cells toward the target is hit.
     Strike(Strike),
     /// A spell (spells.ref) cast from `at` cells toward the target and `up`
-    /// above: aimed where they'll be, lobbed by as far as it falls.
-    Cast { spell: String, #[serde(default)] at: f32, #[serde(default)] up: f32 },
+    /// above: aimed where they'll be, lobbed by as far as it falls. With
+    /// `from` (a turret's name: `legs`), cast from its muzzle along where it
+    /// points (outrun its swing), heating it.
+    Cast { spell: String, #[serde(default)] at: f32, #[serde(default)] up: f32, #[serde(default)] from: Option<String> },
     /// What's within `radius` of its feet is hit.
     Slam(Slam),
     /// `count` of a creature, `spread` cells either side.
@@ -396,6 +401,10 @@ struct Quarry {
     half: Vec2,
 }
 
+/// What may start a move: it, its moves, its body, whether it's mid-swing,
+/// its legs (a turret venting holds back what fires from it).
+type Starter<'a> = (Entity, &'a mut Moves, &'a Kinematics, Has<crate::combat::Swing>, Option<&'a crate::creatures::body::legs::Legs>);
+
 /// Start a move when one's in reach and ready (before the brain, so it
 /// knows: its weapon waits, `Moves::busy`); not mid-swing of what it
 /// wields.
@@ -404,11 +413,11 @@ pub fn start(
     sim: Res<SimWorld>,
     book: Res<MoveBook>,
     mut began: MessageWriter<Began>,
-    mut movers: Query<(Entity, &mut Moves, &Kinematics, Has<crate::combat::Swing>), Without<crate::creatures::brain::Staged>>,
+    mut movers: Query<Starter, Without<crate::creatures::brain::Staged>>,
     prey: Query<Prey, Without<crate::creatures::brain::villager::Hiding>>,
 ) {
     let now = time.elapsed_secs();
-    for (e, mut moves, k, swinging) in &mut movers {
+    for (e, mut moves, k, swinging, legs) in &mut movers {
         if moves.doing.is_some() || swinging {
             continue;
         }
@@ -419,7 +428,9 @@ pub fn start(
         let dist = to.length();
         let start = (0..moves.ids.len()).find(|&i| {
             let Some(m) = book.get(&moves.ids[i]) else { return false };
-            now >= moves.ready[i] && (m.when.range.0..m.when.range.1).contains(&dist) && (!m.when.footing || holds) && (!m.when.line || clear(&sim, pos, pk.body.pos))
+            // (Not one that fires from a turret that's venting.)
+            let venting = legs.is_some_and(|l| m.phases.iter().flat_map(|p| &p.acts).any(|a| matches!(a, Act::Cast { from: Some(name), .. } if l.venting(name))));
+            now >= moves.ready[i] && !venting && (m.when.range.0..m.when.range.1).contains(&dist) && (!m.when.footing || holds) && (!m.when.line || clear(&sim, pos, pk.body.pos))
         });
         if let Some(which) = start {
             // (`phase` past the end: the first phase's start is still to come.)
@@ -443,7 +454,7 @@ pub fn run(
     mut casts: MessageWriter<crate::magic::CastRequest>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut q: ParamSet<(Query<Mover>, Query<Prey, Without<crate::creatures::brain::villager::Hiding>>)>,
-    limbs: Query<&crate::creatures::body::legs::Legs>,
+    mut limbs: Query<&mut crate::creatures::body::legs::Legs>,
 ) {
     let now = time.elapsed_secs();
     // (What's hunted, as it stands before any of this tick's moves.)
@@ -517,6 +528,17 @@ pub fn run(
                 let target = rear.target;
                 *rear = Pose { target, ..pose.clone() };
             }
+            // (Fired from a turret: from its muzzle, along where it points;
+            // it heats.)
+            for act in &p.acts {
+                if let Act::Cast { spell, from: Some(name), .. } = act
+                    && let (Ok(mut legs), Some(i)) = (limbs.get_mut(e), spells.spells.iter().position(|s| &s.id == spell))
+                    && let Some((muzzle, aim)) = legs.muzzle(name)
+                {
+                    casts.write(crate::magic::CastRequest { caster: e, spell: i, from: muzzle, toward: muzzle + aim * 200.0, alt: false });
+                    legs.fired(name);
+                }
+            }
             let mut vel = k.body.vel;
             begin(p, e, &k, dir, target.as_ref(), &spells, &mut vel, at, &mut casts, &mut sounds, &mut commands);
             k.body.vel = vel;
@@ -560,6 +582,8 @@ pub fn run(
         let (i, start) = (d.phase, d.start);
         let p = &m.phases[i];
         let f = if p.secs > 0.0 { ((d.t - start) / p.secs).clamp(0.0, 1.0) } else { 1.0 };
+        // (What the phase shows, and how far into it.)
+        rear.tells = p.tells.iter().map(|t| (t.clone(), f)).collect();
         if let Some(to) = &p.pose {
             let w = match p.ease {
                 Ease::Snap => 1.0,
@@ -659,7 +683,8 @@ fn begin(
     for act in &p.acts {
         match act {
             Act::Lunge { speed, up } => *vel = dir * *speed + Vec2::Y * *up,
-            Act::Cast { spell, at: along, up } => {
+            Act::Cast { from: Some(_), .. } => {}
+            Act::Cast { spell, at: along, up, from: None } => {
                 let (Some(pk), Some(i)) = (target, spells.spells.iter().position(|s| &s.id == spell)) else { continue };
                 let from = at(*along) + Vec2::Y * *up;
                 // Where they'll be when it gets there, and above that by as

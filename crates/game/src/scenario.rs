@@ -5215,7 +5215,10 @@ fn legs_script(
                 if std::env::var("PLATYPUS_FEETLOG").is_ok() {
                     info!("legs: t {t:.1}: the player at {:?}; it: vel {:?} grounded {} clinging {:?} wants x {:.1} y {:.1}", pk.body.pos.round(), fk.body.vel.round(), fk.loco.grounded(), fk.loco.clinging(), wants.map_or(0.0, |w| w.0), wants.map_or(0.0, |w| w.1));
                 }
-                info!("legs: t {t:.1}: at {:?} slope {slope:+.0}° tilt {tilt:+.0}° rides {ride:.0} over its box's bottom, {planted} feet planted, {sunk} in rock", fk.body.pos.round());
+                // (Its turrets' heat, if it has any: venting marked.)
+                let heat: Vec<String> = legs.turret_heat().iter().map(|(h, v)| format!("{h:.2}{}", if *v { " venting" } else { "" })).collect();
+                let heat = if heat.is_empty() { String::new() } else { format!("; guns' heat {}", heat.join(", ")) };
+                info!("legs: t {t:.1}: at {:?} slope {slope:+.0}° tilt {tilt:+.0}° rides {ride:.0} over its box's bottom, {planted} feet planted, {sunk} in rock{heat}", fk.body.pos.round());
             }
             None => info!("legs: t {t:.1}: the {kind} has no legs"),
         }

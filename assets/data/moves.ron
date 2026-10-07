@@ -102,6 +102,22 @@
             ]),
             (name: "recover", secs: 0.5, ease: Smooth, pose: Some(())),
         ]),
+        // An iron strider's volley: both guns' sight lines on you, then
+        // each in turn charges (a glow at its muzzle) and fires along where
+        // it points, four shots; each heats its gun (it vents when it's too
+        // hot, and this waits).
+        (id: "strider_volley", every: 0.8, when: (range: (40, 300), line: true), phases: [
+            (name: "aim", secs: 0.7, tells: [Sight("gun near"), Sight("gun far")]),
+            (name: "charge", secs: 0.28, tells: [Sight("gun near"), Charge("gun near")]),
+            (name: "fire", secs: 0.1, acts: [Cast(spell: "strider_laser", from: Some("gun near")), Sound("laser")], tells: [Sight("gun far")]),
+            (name: "charge", secs: 0.28, tells: [Sight("gun far"), Charge("gun far")]),
+            (name: "fire", secs: 0.1, acts: [Cast(spell: "strider_laser", from: Some("gun far")), Sound("laser")], tells: [Sight("gun near")]),
+            (name: "charge", secs: 0.28, tells: [Sight("gun near"), Charge("gun near")]),
+            (name: "fire", secs: 0.1, acts: [Cast(spell: "strider_laser", from: Some("gun near")), Sound("laser")], tells: [Sight("gun far")]),
+            (name: "charge", secs: 0.28, tells: [Sight("gun far"), Charge("gun far")]),
+            (name: "fire", secs: 0.1, acts: [Cast(spell: "strider_laser", from: Some("gun far")), Sound("laser")], tells: [Sight("gun near")]),
+            (name: "recover", secs: 0.4),
+        ]),
         // A cave centipede's bite: its head drawn up and back a moment, then
         // thrown at you, the venom claws closing (venom on you); it stops on
         // you.

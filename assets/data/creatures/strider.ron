@@ -28,7 +28,15 @@
            footfall: (sound: Some("clank"), volume: 0.8, dust: 6, shake: 0.06),
            // Its glowing viewport slit is its weak spot: a blow there
            // hurts two and a half times as much.
-           parts: (weak: [(at: (20.5, 14), r: 4, mult: 2.5)])),
+           parts: (weak: [(at: (20.5, 14), r: 4, mult: 2.5)]),
+           // Two laser guns on its back, near and far side: each swings to
+           // you at 110°/s and fires along where it points; hot after a few
+           // shots (dull red, orange, white), it vents steam and can't fire
+           // a while: your opening.
+           turrets: [
+               (name: "gun near", at: (14, 27), barrel: "strider_gun", length: 14, turn: 110, heat: (shot: 0.34, cool: 0.12, vent: 2.0)),
+               (name: "gun far", at: (5, 29), barrel: "strider_gun", length: 14, turn: 110, far: true, heat: (shot: 0.34, cool: 0.12, vent: 2.0)),
+           ]),
     movement: (
         run_speed: 80,
         ground_accel: 600,
@@ -41,8 +49,9 @@
     poise: 70,
     heft: 4,
     touch: (harm: blunt, damage: 14, knock: 320, stun: 0.25),
+    moves: ["strider_volley"],
     brain: (
         kind: "hunter",
-        params: (aggro: 500, close: Walk(keep: 20, jump_to_reach: 22), wander: (speed: 0.35, every: 3.0)),
+        params: (aggro: 500, close: Range(near: 90, far: 150), wander: (speed: 0.35, every: 3.0)),
     ),
 )

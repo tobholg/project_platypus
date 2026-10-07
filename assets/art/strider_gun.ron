@@ -1,0 +1,36 @@
+// The iron strider's laser gun seen from the side, pointing right: a round
+// mount (`grip`: its pivot), a ribbed barrel, an emitter lens at the muzzle.
+// Made by tools/strider_art.py. A turret of its creature file's `legs`
+// (legs.rs turns it to where it aims and glows it with its heat).
+(
+    size: (20, 9),
+    feet: (4, 8),
+    outline: (26, 28, 32),
+    palette: {
+        'M': (72, 74, 80),   // mount, shade
+        'L': (160, 166, 172),   // mount, lit
+        'd': (96, 98, 104),   // barrel
+        's': (132, 136, 142),   // barrel, lit
+        'v': (196, 200, 206),   // pivot bolt
+        'r': (140, 30, 26),   // emitter ring
+        'e': (255, 90, 70),   // emitter (it glows)
+        'E': (210, 50, 40),   // emitter, lower
+    },
+    frames: {
+        "body": [
+            "....................",
+            "...MMM..............",
+            "..MLLLM.............",
+            ".MLLLLLMMMMMMMMMM...",
+            ".MLLvLLssssssssssre.",
+            ".MdddddddddddddddrE.",
+            "..MdddM......dddd...",
+            "...MMM..............",
+            "....................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (4, 4) } },
+)
