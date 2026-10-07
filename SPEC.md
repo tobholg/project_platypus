@@ -2131,9 +2131,11 @@ player has seen creatures do) and `fight.rs` (the arena's readouts).
   235 cells; a second grab broken by a staggering blow; a skeleton given
   `fire_ray` sets the player alight.
   The spider's are all moves: in the `spider` scenario the spit from 180
-  cells at 0.51 s; the bite from 51 (0.4 s drawing back 20 cells, low,
-  its front legs up; 0.3 s held, quivering; a leap at 300 cells/s,
-  jaws first, 18 pierce); the stamp from 28 (up on its back legs, its
+  cells at 0.51 s; the bite from ~50 (0.3 s pulling back 32 cells,
+  low, its front legs up; 0.16 s held, quivering; a 0.12 s snap at 400
+  cells/s, its body thrown 16 ahead, jaws first, 18 pierce, and it stops
+  on you: the recover's `Lunge(speed: 0)` brakes it, no sailing past;
+  struck ~0.53 s after it began); the stamp from 28 (up on its back legs, its
   front pair raised high, held, brought down: 22 blunt, knocked 380); in
   turn after that.
 - **Seeing that it hurts** (`body/hurt.rs`, DESIGN §14.3; no health

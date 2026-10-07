@@ -55,18 +55,19 @@
             (name: "beam", secs: 1.6, acts: [Beam(spell: "fire_ray", at: 10, turn: 0.9)]),
             (name: "recover", secs: 0.5, pose: Some(())),
         ]),
-        // The big spider's bite. It crouches low and draws back, its front
-        // legs up and quivering (you see it coming), then leaps at you,
-        // jaws first, the legs coming down; a moment over you, then back.
+        // The big spider's bite. It crouches low and pulls well back, its
+        // front legs up and quivering (a quick tell), then snaps forward at
+        // you, jaws first, the legs coming down, and stops on you (no
+        // sailing past).
         (id: "spider_bite", every: 2.4, when: (range: (0, 54), footing: true), phases: [
-            (name: "windup", secs: 0.4, pose: Some((lift: -6, back: 20, paw: 0.9))),
-            (name: "hold", secs: 0.3, ease: Snap, pose: Some((lift: -6, back: 20, paw: 0.9)), tremble: 0.05, acts: [Sound("pour")]),
-            (name: "strike", secs: 0.2, ease: Snap, pose: Some((lift: 2, back: -8, paw: 0.0)), acts: [
-                Lunge(speed: 300, up: 60),
-                Strike((at: 16, reach: 8, damage: 18, harm: pierce, knock: 495, up: 0.4, stun: 0.35, from: 0.2)),
+            (name: "windup", secs: 0.3, pose: Some((lift: -9, back: 32, paw: 1.0))),
+            (name: "hold", secs: 0.16, ease: Snap, pose: Some((lift: -9, back: 32, paw: 1.0)), tremble: 0.07, acts: [Sound("pour")]),
+            (name: "strike", secs: 0.12, ease: Snap, pose: Some((lift: 3, back: -16, paw: 0.0)), acts: [
+                Lunge(speed: 400, up: 45),
+                Strike((at: 20, reach: 10, damage: 18, harm: pierce, knock: 495, up: 0.4, stun: 0.35, from: 0.0)),
                 Sound("snap"),
             ]),
-            (name: "recover", secs: 0.45, ease: Smooth, pose: Some(())),
+            (name: "recover", secs: 0.35, ease: Smooth, pose: Some(()), acts: [Lunge(speed: 0, up: 0)]),
         ]),
         // The big spider's stamp: up on its back legs, its front pair raised
         // high over its head, held a moment trembling, then brought down
