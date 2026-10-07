@@ -84,6 +84,9 @@ pub struct LegDef {
     /// Which way its knee bends.
     #[serde(default)]
     pub knee: Knee,
+    /// Its name, for a move to drive it (`LimbPose`) or strike from it.
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 /// How a leg is drawn.
@@ -169,6 +172,10 @@ pub struct ArmDef {
     /// How far the hand sways at rest (cells).
     #[serde(default = "sway")]
     pub sway: f32,
+    /// Its name, for a move to drive it (`LimbPose`: reach, open) or strike
+    /// from it.
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 fn elbow() -> Knee {
@@ -354,10 +361,12 @@ impl SegmentsDef {
     }
 }
 
-/// How a legged body is held (a move: `moves/`): raised `lift` cells
-/// off what it holds, drawn `back` cells behind its heading (a crouch), its
-/// stinger curled `curl` of the way over its back and past its head.
-#[derive(Component, Clone, Copy, Debug, Default)]
+/// How a legged body is held: a move's pose (`moves/`, a phase's `pose`,
+/// eased into), the same thing: raised `lift` cells off what it holds,
+/// drawn `back` cells behind its heading (a crouch), its stinger curled
+/// `curl` of the way over its back and past its head.
+#[derive(Component, Clone, Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct Rear {
     pub lift: f32,
     pub back: f32,
@@ -369,6 +378,63 @@ pub struct Rear {
     /// Its striking legs (`strikers`) raised ahead and up (0–1.2): a
     /// stamp's, a bite's threat.
     pub paw: f32,
+    /// Side: its body tipped nose down (degrees; up: negative): a bite's
+    /// head dipping, a rearing back.
+    pub pitch: f32,
+    /// Its named limbs (a leg's, an arm's `name`), each as a move holds it.
+    pub limbs: Vec<LimbPose>,
+    /// Where the move's target is (set as it runs): what arms reach for.
+    #[serde(skip)]
+    pub target: Option<Vec2>,
+}
+
+/// A named limb as a move holds it: a leg `raise`d off the ground, ahead
+/// and up (0–1.2: a stomp's wind-up; dropped back fast, it slams down); an
+/// arm reached out at the target (0: at rest, 1: as far as it goes toward
+/// it); a claw `open` (0: shut, 1: wide).
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct LimbPose {
+    pub name: String,
+    pub raise: f32,
+    pub reach: f32,
+    pub open: f32,
+}
+
+impl Rear {
+    /// From one pose toward another, `w` of the way (0–1), trembling
+    /// `tremble` (at `t` seconds in: curl, coil ×4, paw ×3, a raised leg ×3
+    /// and a claw ×3 shiver; a held stance).
+    pub fn blend(from: &Rear, to: &Rear, w: f32, tremble: f32, t: f32) -> Rear {
+        let mix = |a: f32, b: f32| a + (b - a) * w;
+        let shake = tremble * (t * 40.0).sin();
+        let mut names: Vec<&str> = from.limbs.iter().chain(&to.limbs).map(|l| l.name.as_str()).collect();
+        names.sort_unstable();
+        names.dedup();
+        let limbs = names
+            .into_iter()
+            .map(|name| {
+                let (a, b) = (from.limb(name).cloned().unwrap_or_default(), to.limb(name).cloned().unwrap_or_default());
+                LimbPose { name: name.to_string(), raise: mix(a.raise, b.raise) + shake * 3.0, reach: mix(a.reach, b.reach), open: mix(a.open, b.open) + shake * 3.0 }
+            })
+            .collect();
+        Rear {
+            lift: mix(from.lift, to.lift),
+            back: mix(from.back, to.back),
+            curl: mix(from.curl, to.curl) + shake,
+            coil: mix(from.coil, to.coil) + shake * 4.0,
+            reach: mix(from.reach, to.reach),
+            paw: mix(from.paw, to.paw) + shake * 3.0,
+            pitch: mix(from.pitch, to.pitch),
+            limbs,
+            target: from.target,
+        }
+    }
+
+    /// Its named limb's pose, if the move holds it.
+    pub fn limb(&self, name: &str) -> Option<&LimbPose> {
+        self.limbs.iter().find(|l| l.name == name)
+    }
 }
 
 fn eight() -> usize {
@@ -611,6 +677,13 @@ impl Legs {
 
     /// Its segments' places (head first) and how many of their feet hold
     /// something.
+    /// Where its named limb ends (the world): a leg's foot, an arm's wrist.
+    pub fn limb_end(&self, name: &str) -> Option<Vec2> {
+        // (Where the foot is, not where it's drawn: that lags a fast slam.)
+        let leg = self.def.each.iter().position(|l| l.name.as_deref() == Some(name)).and_then(|i| self.feet.get(i)).map(|f| f.at);
+        leg.or_else(|| self.def.arms.iter().position(|a| a.name.as_deref() == Some(name)).and_then(|j| self.arms.get(j)).map(|a| a.2))
+    }
+
     /// Frames its segments were seen, and how many of them its body was
     /// piled on itself.
     pub fn piled(&self) -> (u32, u32) {
@@ -966,7 +1039,7 @@ fn walk(
             legs.slope = 0.0;
         }
         legs.last = Some(middle);
-        let rear = rear.copied().unwrap_or_default();
+        let rear = rear.cloned().unwrap_or_default();
         let v = k.body.vel;
         // Where the body is: from above, raised off what it holds and
         // drawn back from its heading (an attack); from the side, riding
@@ -1053,7 +1126,9 @@ fn walk(
             // (Nose down as it goes, a runner's lean.)
             let want = want - (legs.def.pitch * (going.abs() / 100.0).min(1.5)).to_radians();
             let most = legs.def.tilt.to_radians();
-            legs.tilt += (want.clamp(-most, most) - legs.tilt) * (dt * 8.0).min(1.0);
+            // (A move's pitch on top: a bite's head dipping, rearing back.)
+            let want = want.clamp(-most, most) - rear.pitch.to_radians();
+            legs.tilt += (want - legs.tilt) * (dt * 8.0).min(1.0);
             (at + off * rear.lift - along * f * rear.back, off)
         } else {
             let up = {
@@ -1316,18 +1391,39 @@ fn walk(
         // Striking legs (a move's `paw`): raised high ahead, over its head;
         // as `paw` drops back they come down ahead, hard, onto the ground
         // there (they let go: the next step plants them again).
-        if rear.paw > 0.01 {
+        // (And a named leg a move raises: a stomp's.)
+        let raised: Vec<(usize, f32)> = legs
+            .def
+            .strikers()
+            .into_iter()
+            .map(|i| (i, rear.paw))
+            .chain(legs.def.each.iter().enumerate().filter_map(|(i, l)| l.name.as_deref().and_then(|name| rear.limb(name)).map(|p| (i, p.raise))))
+            .filter(|&(i, p)| p > 0.01 && i < n)
+            .collect();
+        if !raised.is_empty() {
             let ahead = if side { along * legs.facing } else { fwd };
-            for i in legs.def.strikers() {
-                if i >= n {
-                    continue;
-                }
+            for (i, p) in raised {
                 let hip = legs.hip(i, c);
-                let p = rear.paw.clamp(0.0, 1.2);
+                let p = p.clamp(0.0, 1.2);
                 // (Within its reach, so its knee bends; from above, the pair
                 // spread apart, one to each side.)
                 let spread = if side { Vec2::ZERO } else { ahead.perp() * if i.is_multiple_of(2) { 1.0 } else { -1.0 } * reach * 0.22 * p };
-                let at = hip + ahead * reach * (0.55 - 0.1 * p) + up * reach * (0.5 * p - 0.2) + spread;
+                let high = hip + ahead * reach * (0.55 - 0.1 * p) + up * reach * (0.5 * p - 0.2) + spread;
+                // (From the side, coming down onto the ground ahead as it's
+                // let down: raised past 0.6, held high; under that, lower
+                // and lower to its spot there, so a stomp lands under it.)
+                let low = side.then(|| ground_under(&sim, along, hip, ahead.dot(along) * reach * 0.45, reach)).flatten();
+                // (From the side, lifted straight up off its spot ahead:
+                // three quarters of its hip's height, or a third of its
+                // reach for a long-legged low body (a spider's, up over
+                // its head); not kicked up past its hip.)
+                let at = match low {
+                    Some(g) => {
+                        let height = ((hip - g).dot(up) * 0.75).max(reach * 0.35);
+                        g + up * height * p + ahead * reach * 0.1 * p
+                    }
+                    None => high,
+                };
                 let foot = &mut legs.feet[i];
                 foot.at = open_toward(&sim, hip, at);
                 foot.to = foot.at;
@@ -1344,11 +1440,22 @@ fn walk(
             let shoulder = c + legs.turn(Vec2::new(arm.shoulder.0, arm.shoulder.1));
             let phase = now * (1.3 + j as f32 * 0.31) + j as f32 * 2.1;
             let hand = c + legs.turn(Vec2::new(arm.hand.0, arm.hand.1) + Vec2::new(phase.sin(), (phase * 1.7).cos()) * arm.sway);
+            // (A move reaching it out at its target: as far toward it as the
+            // arm goes; a claw opened, turned up off the forearm.)
+            let pose = arm.name.as_deref().and_then(|name| rear.limb(name));
+            let hand = match (pose, rear.target) {
+                (Some(p), Some(t)) if p.reach > 0.01 => {
+                    let most = shoulder + (t - shoulder).clamp_length_max(arm.bones.0 + arm.bones.1 - 0.5);
+                    hand.lerp(most, p.reach.clamp(0.0, 1.0))
+                }
+                _ => hand,
+            };
+            let open = pose.map_or(0.0, |p| p.open.clamp(-0.3, 1.3));
             let (elbow, wrist) = knee(shoulder, hand, arm.bones.0, arm.bones.1, legs.bend(arm.elbow, 1.0), |p| solid(&sim, p));
             legs.arms.push((shoulder, elbow, wrist));
             if let Some(Ok((mut s, mut t))) = legs.claws.get(j).copied().flatten().map(|e| claws.get_mut(e)) {
                 let d = wrist - elbow;
-                let local = d.y.atan2(d.x * legs.facing);
+                let local = d.y.atan2(d.x * legs.facing) + open * 35f32.to_radians();
                 if let Some(atlas) = s.texture_atlas.as_mut() {
                     atlas.index = crate::combat::Turned::index(local.to_degrees());
                 }

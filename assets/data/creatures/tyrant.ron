@@ -20,7 +20,7 @@
            color: (90, 80, 58), joint: (64, 56, 40), outline: (24, 20, 16), width: [20, 11, 7, 6], toes: 12,
            body: "tyrant_body", eyes: (246, 196, 60),
            each: [
-               (hip: (0, 0), gait: 0, knee: Forward),
+               (hip: (0, 0), gait: 0, knee: Forward, name: Some("stomper")),
                (hip: (4, 2), gait: 1, knee: Forward, far: true),
            ],
            arms: [
@@ -45,6 +45,7 @@
     poise: 120,
     heft: 8,
     touch: (harm: blunt, damage: 30, knock: 500, stun: 0.4),
+    moves: ["tyrant_stomp"],
     brain: (
         kind: "hunter",
         params: (aggro: 600, close: Walk(keep: 30, jump_to_reach: 20), wander: (speed: 0.3, every: 4.0)),

@@ -46,6 +46,7 @@
     poise: 14,
     heft: 1.0,
     touch: (harm: slash, damage: 8, knock: 260, stun: 0.2),
+    moves: ["raptor_bite"],
     brain: (
         kind: "hunter",
         params: (aggro: 450, close: Walk(keep: 8, jump_to_reach: 34), wander: (speed: 0.5, every: 2.0)),

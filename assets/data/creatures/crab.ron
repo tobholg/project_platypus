@@ -30,8 +30,8 @@
                (hip: (-6, 0), lean: -7, gait: 0, far: true),
            ],
            arms: [
-               (shoulder: (12, 2), hand: (25, 3), bones: (7.5, 7), width: [4, 4, 3.5], elbow: Down, claw: Some("crab_claw"), sway: 0.6),
-               (shoulder: (13, 3), hand: (27, 5), bones: (7.5, 7), width: [4, 4, 3.5], elbow: Down, claw: Some("crab_claw"), sway: 0.6, far: true),
+               (shoulder: (12, 2), hand: (25, 3), bones: (7.5, 7), width: [4, 4, 3.5], elbow: Down, claw: Some("crab_claw"), sway: 0.6, name: Some("claw")),
+               (shoulder: (13, 3), hand: (27, 5), bones: (7.5, 7), width: [4, 4, 3.5], elbow: Down, claw: Some("crab_claw"), sway: 0.6, far: true, name: Some("claw")),
            ]),
     movement: (
         run_speed: 62,
@@ -45,6 +45,7 @@
     poise: 26,
     heft: 1.8,
     touch: (harm: pierce, damage: 7, knock: 200, stun: 0.15),
+    moves: ["crab_snip"],
     brain: (
         kind: "hunter",
         params: (aggro: 300, close: Walk(keep: 8, jump_to_reach: 16), wander: (speed: 0.4, every: 2.5)),

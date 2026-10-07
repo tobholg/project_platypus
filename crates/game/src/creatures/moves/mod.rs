@@ -102,22 +102,9 @@ impl Default for Phase {
     }
 }
 
-/// How it's held (`legs::Rear`).
-#[derive(Clone, Copy, Debug, Deserialize, Default)]
-#[serde(default)]
-pub struct Pose {
-    pub lift: f32,
-    pub back: f32,
-    pub curl: f32,
-    /// An aiming chain (a scorpion's tail): how far it's drawn back, coiled
-    /// tighter (0–1), and how far it's thrown out at the target (0: its
-    /// arch, 1: stretched straight at it).
-    pub coil: f32,
-    pub reach: f32,
-    /// Its striking legs (a spider's front pair) raised high ahead (0–1);
-    /// dropped back to 0 fast, they come down hard (a stamp).
-    pub paw: f32,
-}
+/// How it's held: the legs' pose (`legs::Rear`: lift, back, curl, coil,
+/// reach, paw, pitch, its named limbs), eased into phase by phase.
+pub use crate::creatures::body::legs::Rear as Pose;
 
 /// How a phase moves into its pose.
 #[derive(Clone, Copy, Debug, Deserialize, Default, PartialEq)]
@@ -206,6 +193,10 @@ pub struct Strike {
     /// A coating left on what it hits (coatings.ron: venom).
     #[serde(default)]
     pub coat: Option<String>,
+    /// Struck from a named limb's end instead (`legs`: a leg's foot, an
+    /// arm's claw), and `at` cells on toward the target from there.
+    #[serde(default)]
+    pub limb: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -452,6 +443,7 @@ pub fn run(
     mut casts: MessageWriter<crate::magic::CastRequest>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut q: ParamSet<(Query<Mover>, Query<Prey, Without<crate::creatures::brain::villager::Hiding>>)>,
+    limbs: Query<&crate::creatures::body::legs::Legs>,
 ) {
     let now = time.elapsed_secs();
     // (What's hunted, as it stands before any of this tick's moves.)
@@ -480,6 +472,8 @@ pub fn run(
         if let Some(pk) = &target {
             c.0.aim = pk.pos;
         }
+        // (What its arms reach for.)
+        rear.target = target.map(|t| t.pos);
         let dir = d.dir;
         let at = |along: f32| pos + dir * along;
         // Holding something: it's where it's held, unless it's gone, or
@@ -516,11 +510,12 @@ pub fn run(
             if let (Some(clip), Some(a)) = (&p.clip, anim.as_deref_mut()) {
                 a.play(clip);
             }
-            d.from = Pose { lift: rear.lift, back: rear.back, curl: rear.curl, coil: rear.coil, reach: rear.reach, paw: rear.paw };
-            if let Some(pose) = p.pose
+            d.from = rear.clone();
+            if let Some(pose) = &p.pose
                 && (p.ease == Ease::Snap || p.secs == 0.0)
             {
-                set(&mut rear, pose);
+                let target = rear.target;
+                *rear = Pose { target, ..pose.clone() };
             }
             let mut vel = k.body.vel;
             begin(p, e, &k, dir, target.as_ref(), &spells, &mut vel, at, &mut casts, &mut sounds, &mut commands);
@@ -565,25 +560,25 @@ pub fn run(
         let (i, start) = (d.phase, d.start);
         let p = &m.phases[i];
         let f = if p.secs > 0.0 { ((d.t - start) / p.secs).clamp(0.0, 1.0) } else { 1.0 };
-        if let Some(to) = p.pose {
+        if let Some(to) = &p.pose {
             let w = match p.ease {
                 Ease::Snap => 1.0,
                 Ease::Linear => f,
                 Ease::Smooth => smooth(f),
             };
-            rear.lift = d.from.lift + (to.lift - d.from.lift) * w;
-            rear.back = d.from.back + (to.back - d.from.back) * w;
-            rear.curl = d.from.curl + (to.curl - d.from.curl) * w + p.tremble * (d.t * 40.0).sin();
-            rear.coil = d.from.coil + (to.coil - d.from.coil) * w + p.tremble * 4.0 * (d.t * 40.0).sin();
-            rear.reach = d.from.reach + (to.reach - d.from.reach) * w;
-            rear.paw = d.from.paw + (to.paw - d.from.paw) * w + p.tremble * 3.0 * (d.t * 40.0).sin();
+            let target = rear.target;
+            *rear = Pose { target, ..Pose::blend(&d.from, to, w, p.tremble, d.t) };
         }
         // A strike, live.
         for act in &p.acts {
             match act {
                 Act::Strike(s) if !d.struck && f >= s.from => {
                     if let Some(pk) = &target {
-                        let head = at(s.at);
+                        let head = match s.limb.as_deref().and_then(|name| limbs.get(e).ok().and_then(|l| l.limb_end(name))) {
+                            Some(end) => end + dir * s.at,
+                            None => at(s.at),
+                        };
+
                         if ((pk.pos - head).abs() - pk.half).max_element() <= s.reach {
                             d.struck = true;
                             hits.write(Hit { target: d.target, damage: s.damage, harm: s.harm, knock: (dir + Vec2::Y * s.up).normalize() * s.knock, stun: s.stun, at: head, dir, weight: s.damage / 12.0, crit: false });
@@ -644,15 +639,6 @@ pub(crate) fn pin(mut commands: Commands, mut q: Query<(Entity, &Held, &mut Kine
         k.body.pos = h.at;
         k.loco.knock(&mut k.body, Vec2::ZERO, 2.0 * DT);
     }
-}
-
-fn set(rear: &mut Rear, pose: Pose) {
-    rear.lift = pose.lift;
-    rear.back = pose.back;
-    rear.curl = pose.curl;
-    rear.coil = pose.coil;
-    rear.reach = pose.reach;
-    rear.paw = pose.paw;
 }
 
 /// What a phase does as it starts.

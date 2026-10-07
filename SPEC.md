@@ -1872,7 +1872,14 @@ parts, so another is a new file, not new code:
   arms): a `shoulder` and where the `hand` rests (from the grip), two
   `bones`, a `width`, an `elbow` bend, swaying `sway` cells at rest, a
   `claw` sprite (pointing right, its grip at the wrist) turned to the
-  forearm; near ones in front, far ones behind. The crag crab is seen from
+  forearm; near ones in front, far ones behind. Moves drive named limbs
+  (BE `limbs` stage 4): the crab snips (`crab_snip`: its claws drawn back
+  and opened 0.28 s, thrown out at you and snapped shut in 0.09 s, struck
+  where the claw shuts, 10 pierce), the raptor bites (`raptor_bite`: up
+  and back, head raised, then in nose down, a lunge, 14 slash, braked on
+  you), the tyrant stomps (`tyrant_stomp`: its near leg, `stomper`,
+  lifted 0.6 s and held, then brought down: struck under the foot, wide,
+  30 blunt; it lands ~1.05 s after it begins). The crag crab is seen from
   the side: eight legs, its pincers held out ahead. `footfall`: what a
   foot does coming down (from the side): a `sound` of its own (`stomp`,
   `clank`) and the ground's footstep (`ground`), a `dust` puff the
@@ -2160,14 +2167,24 @@ player has seen creatures do) and `fight.rs` (the arena's readouts).
   between), `every` (seconds after it ends before it may come again; any
   move is followed by 0.4 s before the next), and `phases`, each named
   (windup, hold, strike, recover: the tell is what the windup shows),
-  `secs` long, easing the body's pose (`legs::Rear`: `lift`, `back`,
-  `curl`, a chain's `coil` and `reach`, and `paw`: its `strikers` legs
-  (its file's, or from above its front pair) lifted off the ground, out
-  ahead and up as much as `paw` (to 1.2), spread apart from above;
+  `secs` long, easing the body's pose (`legs::Rear`, the move's `Pose`
+  the same type: `lift`, `back`, `curl`, a chain's `coil` and `reach`,
+  `pitch` (degrees nose down: a bite's head dipping, a rearing back), and
+  `paw`: its `strikers` legs (its file's, or from above its front pair)
+  lifted off the ground, out ahead and up as much as `paw` (to 1.2),
+  spread apart from above; `limbs`: named limbs (a leg's or arm's `name`)
+  as the move holds them, each `raise`d (a leg: from the side, lifted
+  straight up off its spot on the ground ahead, to three quarters of its
+  hip's height or a third of its reach, whichever's more, and let down
+  onto that spot again under 0.6: a stomp lands under the foot), `reach`ed
+  out at the target (an arm: that share of the way to as far toward it as
+  it goes) and `open` (a claw turned up off its forearm, 35° a unit);
   `ease` Smooth, Linear or Snap; `tremble`, on curl, coil (×4) and paw
   (×3) only) and doing its `acts`
   as it starts: `Lunge(speed, up)`; `Strike((at, reach, damage, harm,
-  knock, up, stun, from, coat))`, live through the phase from `from` (a
+  knock, up, stun, from, coat, limb))` (`limb`: struck from that named
+  limb's end, where its foot or claw is, not where it's drawn, then `at`
+  on toward the target), live through the phase from `from` (a
   share of it): what's within `reach` of the point `at` cells toward the
   target is hit, once, and the coating left on it; `Cast(spell, at, up)`,
   aimed where the target will be and lobbed by the spell's own fall
