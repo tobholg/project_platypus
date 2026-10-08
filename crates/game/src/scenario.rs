@@ -6420,7 +6420,9 @@ struct SneakHud;
 ///   the way you come; a ramp up onto the shelf, its far end a jump over a
 ///   gap behind them.
 /// - The patrol: a walkway on, an orc wandering the floor under it, a gap
-///   over its beat to jump (the jump is loud, a run's feet).
+///   over its beat to jump.
+/// (Each gap 28 wide, a faint glow at its edges, a step down in it: a
+/// missed jump lands there, and it's the way back up from the floor.)
 /// - The sentry: an orc in its torch's light at the door, facing in; a
 ///   step down off the walkway's end. A bomb (4) thrown back down the
 ///   hall makes it go and look (the whole hall hears a blast).
@@ -6467,12 +6469,18 @@ fn sneak_script(
         }
         // 23:00.
         day.skipped = (23.0 - day.time * 24.0).rem_euclid(24.0);
-        let Some(stone) = sim.materials().id("stone") else { return };
+        let (Some(stone), Some(bedrock)) = (sim.materials().id("stone"), sim.materials().id("bedrock")) else { return };
+        // Stone, a row of bedrock through its middle: a slab in the air
+        // stays up when a blast shakes it (stone joined to bedrock is
+        // ground; a slab on its own falls once anything near it breaks).
         let mut fill = |x0: i32, x1: i32, y0: i32, y1: i32| {
             for x in (x0 + 2..=x1 - 2).step_by(3) {
                 for y in (y0 + 2..=y1 - 2).step_by(3) {
                     sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 2, material: stone, overwrite: true });
                 }
+            }
+            for x in (x0 + 2..=x1 - 2).step_by(2) {
+                sim.queue(WorldEdit::Paint { center: CellPos::new(x, (y0 + y1) / 2), radius: 1, material: bedrock, overwrite: true });
             }
         };
         // The roof (head room over the shelf for a jump).
@@ -6484,9 +6492,18 @@ fn sneak_script(
         }
         // The walkway, a gap over the patrol; a step down off its end, high
         // enough to walk under.
-        fill(940, 1190, floor + 56, floor + 62);
-        fill(1225, 1420, floor + 56, floor + 62);
+        fill(928, 1190, floor + 56, floor + 62);
+        fill(1218, 1420, floor + 56, floor + 62);
         fill(1436, 1460, floor + 30, floor + 35);
+        // A step down in each gap (a missed jump lands on it, and the way
+        // back up from the floor), and a faint glow at each gap's edges:
+        // too dim to give you away, enough to see where to jump.
+        for (a, b) in [(900, 928), (1190, 1218)] {
+            fill(a + 2, b - 2, floor + 28, floor + 33);
+            for x in [a, b] {
+                commands.spawn((Name::new("Edge glow"), crate::light::LightSource { color: [0.05, 0.13, 0.2], flicker: 0.0 }, Transform::from_xyz(x as f32, fl + 66.0, 0.0)));
+            }
+        }
         // The camp's fire, the sentry's torch.
         if let Some(art) = torch_art.as_deref() {
             for x in [750.0, 1590.0] {

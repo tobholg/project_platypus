@@ -1498,11 +1498,15 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   hall at 23:00, roofed over from x 300 to 1680; two orcs camped by a
   torch under a stone shelf (a ramp up, a gap to jump off its end), an
   orc wandering under a walkway (a gap over it), a sentry orc by a torch
-  at the far door; a line at the top counts the times something started
+  at the far door (each gap 28 wide with a faint blue glow at its edges
+  and a step down in it, a missed jump's landing and the way back up; the
+  slabs stone with a bedrock row through them, so a bomb's blast doesn't
+  bring them down: a slab in the air on its own falls once anything near
+  it breaks); a line at the top counts the times something started
   hunting you. `PLATYPUS_SNEAK_BOT=creep|run|torch` plays it through
   (creeping but for the jumps' run-ups, waiting back on the walkway,
   a bomb down the hall to draw the sentry off): creeping, spotted 0
-  times; with the torch lit, 2; running, 4.
+  times; with a flashlight, 1; with the torch lit, 2; running, 4.
 - Pelting: a liquid hurts only above 375 cells/s (not 135), so a death's
   burst of blood doesn't hurt what's beside it (a burst egg sac hurt its
   own spiderlings).
