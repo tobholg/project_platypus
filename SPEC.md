@@ -1515,7 +1515,8 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   up whatever it touches to a ceiling and waits there still; what it hunts
   below it within 120 across it comes along the ceiling over and drops on;
   above it, it goes at as any crawler), `shun_light` (it won't come within
-  this of a quarry lit over 0.5, more than moonlight: back to 0.85 of it and waiting; moves
+  this of a quarry lit over 0.5, more than moonlight: back to 0.85 of
+  it and waiting; moves
   that reach from there it still makes, a spider's spit), `call` (as it
   starts hunting, by its own senses, others of its kind within this hunt
   too, coming to where it saw you), `flank` (in a pack, each takes a side
