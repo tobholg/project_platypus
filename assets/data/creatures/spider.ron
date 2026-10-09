@@ -12,6 +12,7 @@
     size: (24, 18),
     health: 130,
     team: Enemy,
+    faction: "spiders",
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "insect",
     profile: {acid: -0.25},

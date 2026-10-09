@@ -65,6 +65,10 @@ pub struct CreatureDef {
     pub size: (f32, f32),
     pub health: f32,
     pub team: Team,
+    /// Its faction (`factions.ron`: orcs, undead, spiders, ...): what it
+    /// hunts besides you, and what hunts it.
+    #[serde(default)]
+    pub faction: Option<String>,
     #[serde(default)]
     pub movement: MovementStats,
     #[serde(default)]
@@ -506,6 +510,13 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             ids.0 += 1;
             ids.0
         };
+        let faction = def.faction.as_deref().and_then(|n| {
+            let f = world.resource::<super::factions::Factions>().get(n);
+            if f.is_none() {
+                warn!("{kind}: no faction `{n}` in factions.ron");
+            }
+            f
+        });
         let mut e = world.spawn((
             Name::new(def.name.clone()),
             Creature { kind: kind.clone() },
@@ -520,6 +531,9 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             Visibility::default(),
         ));
         e.insert(super::Stable(number));
+        if let Some(f) = faction {
+            e.insert(f);
+        }
         if let Some(f) = def.fall_damage {
             e.insert((f, super::FallTrack::default()));
         }

@@ -7,6 +7,7 @@
     size: (16, 30),
     health: 60,
     team: Enemy,
+    faction: "raptors",
     kind: "beast",
     fall_damage: (safe_height: 120, per_cell: 0.5),
     art: "raptor_body",

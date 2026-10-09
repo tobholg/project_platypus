@@ -300,6 +300,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, stealth_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, sneak_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, tactics_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(Update, factions_script)
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
             .add_systems(Update, (underlook_script, voidlook_script))
@@ -6822,6 +6823,133 @@ fn tactics_script(
             }
             if t > 60.0 {
                 state.0 = 8;
+            }
+        }
+        _ => {}
+    }
+}
+
+/// `factions` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`; BE `behaviour`
+/// stage 4): the player at x 900, watching unhunted (`Hiding`, as a
+/// villager at home: nothing goes for it; kept whole), three fights in
+/// turn just off to its right:
+/// - war: three orcs and three skeletons, 280 cells apart, facing each
+///   other (orcs and the dead hunt each other);
+/// - prey, at night: a cave spider and two vampire bats (spiders take
+///   bats; struck, a bat fights back);
+/// - the hunt: a pack of three raptors and two orcs (raptors run down orcs;
+///   orcs fight back).
+///
+/// Logs every blow between them as it lands (who took it, how much), each
+/// death, and each fight's end: who's left, every two seconds who's alive.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn factions_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut day: ResMut<crate::light::Daylight>,
+    mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
+    mut felt: MessageReader<crate::combat::Felt>,
+    // (fight, when it ends, who was alive last time)
+    mut state: Local<(u8, f32, Vec<(Entity, String)>)>,
+    // (when to log who's alive next; deaths not told till, while a fight's
+    // cleared away)
+    mut times: Local<(f32, f32)>,
+) {
+    use crate::creatures::brain::tactics::Pack;
+    let (next_log, quiet) = &mut *times;
+    if s.name != "factions" {
+        return;
+    }
+    let Ok((me, mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    if state.0 == 0 {
+        commands.entity(me).insert(crate::creatures::brain::villager::Hiding);
+    }
+    for f in felt.read() {
+        if let Ok((_, c, ..)) = them.get(f.target)
+            && f.dealt > 0.0
+        {
+            info!("factions: t {t:.2} the {} took {:.0}", c.kind, f.dealt);
+        }
+    }
+    // Deaths: who was alive and isn't.
+    let alive: Vec<(Entity, String)> = them.iter().filter(|q| q.1.kind != "dummy" && q.1.kind != "sandbag" && q.3.hp > 0.0).map(|q| (q.0, q.1.kind.clone())).collect();
+    for (e, kind) in &state.2 {
+        if !alive.iter().any(|a| a.0 == *e) && t > *quiet {
+            info!("factions: t {t:.2} a {kind} is dead");
+        }
+    }
+    state.2 = alive.clone();
+    let count = |kind: &str| alive.iter().filter(|a| a.1 == kind).count();
+    let spawn = |commands: &mut Commands, kind: &str, x: f32, facing: f32, pack: Option<(u64, u32)>| {
+        crate::creatures::def::spawn_creature(commands, kind, Vec2::new(x, fl), move |e| {
+            if let Some(mut k) = e.get_mut::<Kinematics>() {
+                k.loco.facing = facing;
+            }
+            if let Some((id, rank)) = pack {
+                e.insert(Pack { id, rank });
+            }
+        });
+    };
+    let rid = |commands: &mut Commands| {
+        for (e, ..) in them.iter() {
+            commands.entity(e).despawn();
+        }
+    };
+    let tell = t >= *next_log;
+    if tell {
+        *next_log = t.floor() + 2.0;
+    }
+    // (Each fight: its kinds, and the time it may take.)
+    const FIGHTS: [(&[&str], f32); 3] = [(&["orc", "skeleton"], 40.0), (&["spider", "vampire_bat"], 25.0), (&["raptor", "orc"], 30.0)];
+    match state.0 {
+        0 | 2 | 4 if t > 0.5 && t > state.1 => {
+            rid(&mut commands);
+            *quiet = t + 0.2;
+            k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            match state.0 {
+                0 => {
+                    for i in 0..3 {
+                        spawn(&mut commands, "orc", 1200.0 + i as f32 * 30.0, 1.0, None);
+                        spawn(&mut commands, "skeleton", 1480.0 + i as f32 * 30.0, -1.0, None);
+                    }
+                }
+                2 => {
+                    // (At night: a cave spider keeps out of the day.)
+                    day.skipped = (23.0 - day.time * 24.0).rem_euclid(24.0);
+                    spawn(&mut commands, "spider", 1100.0, 1.0, None);
+                    spawn(&mut commands, "vampire_bat", 1250.0, -1.0, None);
+                    spawn(&mut commands, "vampire_bat", 1290.0, -1.0, None);
+                }
+                _ => {
+                    for i in 0..3 {
+                        spawn(&mut commands, "raptor", 1550.0 + i as f32 * 26.0, -1.0, Some((0xFAC7, i)));
+                    }
+                    spawn(&mut commands, "orc", 1250.0, 1.0, None);
+                    spawn(&mut commands, "orc", 1280.0, 1.0, None);
+                }
+            }
+            let (kinds, secs) = FIGHTS[state.0 as usize / 2];
+            info!("factions: t {t:.2} the fight begins: {}", kinds.join(" against "));
+            state.1 = t + secs;
+            state.0 += 1;
+        }
+        1 | 3 | 5 => {
+            let (kinds, _) = FIGHTS[state.0 as usize / 2];
+            let left: Vec<String> = kinds.iter().map(|k| format!("{} {}", count(k), k)).collect();
+            if tell {
+                info!("factions: t {t:.1} alive: {}", left.join(", "));
+            }
+            let over = kinds.iter().filter(|k| count(k) > 0).count() < 2;
+            if over || t > state.1 {
+                info!("factions: t {t:.2} the fight's over{}: {} left", if over { "" } else { " (time)" }, left.join(", "));
+                state.1 = t + 1.0;
+                state.0 += 1;
             }
         }
         _ => {}

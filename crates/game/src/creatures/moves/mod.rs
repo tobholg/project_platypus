@@ -453,7 +453,10 @@ pub fn start(
         }
         let pos = k.body.pos;
         let holds = k.loco.grounded() || k.loco.clinging().is_some();
-        let Some((pe, pk, _)) = prey.iter().filter(|(p, _, t)| *p != e && t.hunted()).min_by(|x, y| x.1.body.pos.distance(pos).total_cmp(&y.1.body.pos.distance(pos))) else { continue };
+        // (At what it's hunting, a foe as much as you; no senses: the
+        // nearest of the player and the villagers.)
+        let hunting = alert.and_then(|a| a.target).and_then(|t| prey.get(t).ok());
+        let Some((pe, pk, _)) = hunting.or_else(|| prey.iter().filter(|(p, _, t)| *p != e && t.hunted()).min_by(|x, y| x.1.body.pos.distance(pos).total_cmp(&y.1.body.pos.distance(pos)))) else { continue };
         let to = pk.body.pos - pos;
         let dist = to.length();
         let start = (0..moves.ids.len()).find(|&i| {
@@ -487,8 +490,9 @@ pub fn run(
     mut limbs: Query<&mut crate::creatures::body::legs::Legs>,
 ) {
     let now = time.elapsed_secs();
-    // (What's hunted, as it stands before any of this tick's moves.)
-    let prey: Vec<Quarry> = q.p1().iter().filter(|(_, _, t)| t.hunted()).map(|(e, k, _)| Quarry { e, pos: k.body.pos, vel: k.body.vel, half: k.body.half }).collect();
+    // (What a move may be at, as it stands before any of this tick's moves:
+    // anything with a side, a foe as much as you.)
+    let prey: Vec<Quarry> = q.p1().iter().map(|(e, k, _)| Quarry { e, pos: k.body.pos, vel: k.body.vel, half: k.body.half }).collect();
     let mut movers = q.p0();
     for (e, mut moves, mut k, mut c, rear, mut anim) in &mut movers {
         let Some(mut rear) = rear else {

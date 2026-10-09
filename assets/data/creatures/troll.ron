@@ -8,6 +8,7 @@
     size: (23, 51),
     health: 420,
     team: Enemy,
+    faction: "orcs",
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "beast",
     // A troll's wounds close (10 a second) unless fire or acid hurt it in

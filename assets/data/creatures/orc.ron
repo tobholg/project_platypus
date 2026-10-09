@@ -10,6 +10,7 @@
     size: (11, 24),
     health: 70,
     team: Enemy,
+    faction: "orcs",
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "humanoid",
     // Dropped from a height or flung into rock, it hurts.

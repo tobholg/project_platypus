@@ -9,6 +9,7 @@
     size: (9, 23),
     health: 55,
     team: Enemy,
+    faction: "undead",
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "undead",
     blood: "ash",

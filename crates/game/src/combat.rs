@@ -618,7 +618,7 @@ type Toucher<'a> = (Entity, &'a mut Touch, &'a Kinematics, Option<&'a Team>);
 type Touched<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Has<Invulnerable>);
 
 /// Things that hurt by touch hit what they touch.
-fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher>, bodies: Query<Touched, With<Health>>) {
+fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher>, bodies: Query<Touched, With<Health>>, factions: Query<&crate::creatures::factions::Faction>) {
     for (me, mut t, k, team) in &mut touchers {
         t.rest -= DT;
         if t.rest > 0.0 {
@@ -628,9 +628,11 @@ fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher>, bodies: Que
             if e == me || safe {
                 continue;
             }
-            // (Not its own side; and a critter can't hurt a critter.)
+            // (Not its own side, unless their factions are at war; and a
+            // critter can't hurt a critter.)
+            let war = crate::creatures::factions::hostile(factions.get(me).ok(), factions.get(e).ok());
             match (team, tteam) {
-                (Some(a), Some(b)) if a == b || a.allied(*b) => continue,
+                (Some(a), Some(b)) if (a == b || a.allied(*b)) && !war => continue,
                 (Some(Team::Neutral), _) => continue,
                 _ => {}
             }
@@ -903,6 +905,7 @@ fn swing(
     coatings: Res<crate::creatures::body::elements::Coatings>,
     spells: Query<(Entity, &crate::magic::Spell)>,
     (mut stop, mut trauma, mut sounds, ids): (ResMut<HitStop>, ResMut<crate::fx::Trauma>, MessageWriter<crate::sound::PlaySound>, Query<&crate::creatures::Stable>),
+    factions: Query<&crate::creatures::factions::Faction>,
 ) {
     let Some(weapons) = weapons else { return };
     let none = crate::gear::Stats::default();
@@ -1048,9 +1051,11 @@ fn swing(
                 if e == me || safe || s.hit.contains(&e) {
                     continue;
                 }
-                // (No hitting your own side; anyone can hit the neutral.)
+                // (No hitting your own side, unless your factions are at
+                // war; anyone can hit the neutral.)
                 if let (Some(a), Some(b)) = (team, tteam)
                     && a.allied(*b)
+                    && !crate::creatures::factions::hostile(factions.get(me).ok(), factions.get(e).ok())
                 {
                     continue;
                 }

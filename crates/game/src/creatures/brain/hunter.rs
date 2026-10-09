@@ -673,8 +673,9 @@ fn hunt(
     }
 }
 
-/// A quarry lit more than this keeps one that shuns the light off.
-const SHUN_LIT: f32 = 0.4;
+/// A quarry lit more than this keeps one that shuns the light off (more
+/// than moonlight, 0.45: a torch, a lamp, day).
+const SHUN_LIT: f32 = 0.5;
 
 /// A flanker's place: this far past `keep` on your far side (cells); it
 /// goes over you when it's within `VAULT` across on the wrong side.

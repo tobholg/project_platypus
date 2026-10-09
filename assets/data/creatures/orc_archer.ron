@@ -9,6 +9,7 @@
     size: (11, 24),
     health: 50,
     team: Enemy,
+    faction: "orcs",
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "humanoid",
     fall_damage: (safe_height: 105, per_cell: 0.53),

@@ -133,7 +133,7 @@ type Perceiver<'a> = (
     &'a Transform,
     Option<&'a mut Alert>,
     Option<&'a crate::clock::Keeps>,
-    (Option<&'a Health>, Option<&'a super::tactics::Pack>, Option<&'a crate::creatures::Creature>),
+    (Option<&'a Health>, Option<&'a super::tactics::Pack>, Option<&'a crate::creatures::Creature>, Option<&'a crate::creatures::factions::Faction>),
 );
 
 /// One starting to hunt, calling: from where, how far its kind hear it
@@ -197,7 +197,7 @@ pub fn perceive(
     sim: Res<SimWorld>,
     day: Res<crate::light::Daylight>,
     mut hunters: Query<Perceiver>,
-    quarry: Query<(Entity, &Kinematics, &Team, &Health), Without<super::villager::Hiding>>,
+    quarry: Query<(Entity, &Kinematics, &Team, &Health, Option<&crate::creatures::factions::Faction>), Without<super::villager::Hiding>>,
     lights: Query<(&GlobalTransform, &crate::light::LightSource)>,
     toggles: Res<crate::light::LightToggles>,
     me: Query<Entity, With<crate::creatures::player::LocalPlayer>>,
@@ -219,34 +219,35 @@ pub fn perceive(
         noises.push(Noise { at: b.at, reach: 200.0 + b.radius * 12.0, sure: 0.0 });
     }
     for l in landed.read() {
-        if let Ok((_, k, t, _)) = quarry.get(l.entity)
+        if let Ok((_, k, t, ..)) = quarry.get(l.entity)
             && t.hunted()
         {
             noises.push(Noise { at: k.body.pos, reach: 40.0 + l.drop * 0.4, sure: SURE_LANDED });
         }
     }
-    // (Each one seen at its middle; crouched, low, so cover a little under
-    // its height hides it.)
-    let hunted: Vec<(Entity, Vec2, f32, Vec2, bool)> = quarry
+    // What may be hunted: the player and the villagers (every hunter's),
+    // and what's in a faction (its foes'). Each seen at its middle;
+    // crouched, low, so cover a little under its height hides it.
+    let hunted: Vec<(Entity, Vec2, f32, Vec2, bool, bool, Option<crate::creatures::factions::Faction>)> = quarry
         .iter()
-        .filter(|(_, _, t, _)| t.hunted())
-        .map(|(e, k, _, h)| (e, k.body.pos - Vec2::Y * if k.loco.crouching { k.body.half.y * CROUCH_LOW } else { 0.0 }, h.hp / h.max.max(1.0), k.body.vel, k.loco.grounded()))
+        .filter(|(_, _, t, _, f)| t.hunted() || f.is_some())
+        .map(|(e, k, t, h, f)| (e, k.body.pos - Vec2::Y * if k.loco.crouching { k.body.half.y * CROUCH_LOW } else { 0.0 }, h.hp / h.max.max(1.0), k.body.vel, k.loco.grounded(), t.hunted(), f.copied()))
         .collect();
     // How lit each is (the same for every eye on it): a flashlight in
     // the player's hand as bright as a torch (it's a lamp, at you; a torch
     // in the hand is a light source of its own).
     let lamp = matches!(toggles.carry, crate::light::Carry::SmallBeam | crate::light::Carry::BigBeam);
     let light: Vec<f32> = hunted.iter().map(|(q, at, ..)| if lamp && me.contains(*q) { 1.0 } else { lit(&sim, &day, &lights, *at) }).collect();
-    for (_, at, _, vel, grounded) in &hunted {
+    for (_, at, _, vel, grounded, ours, _) in &hunted {
         let run = vel.x.abs();
-        if *grounded && run > 40.0 {
+        if *ours && *grounded && run > 40.0 {
             noises.push(Noise { at: *at, reach: 30.0 + run * 0.55, sure: SURE_RUNNING * dt });
         }
     }
     // Calls: one starting to hunt brings its pack, and its kind near
     // (its tactics' `call`).
     let mut calls: Vec<Call> = Vec::new();
-    for (e, h, k, tf, alert, keeps, (health, pack, kind)) in &mut hunters {
+    for (e, h, k, tf, alert, keeps, (health, pack, kind, faction)) in &mut hunters {
         let Some(mut a) = alert else {
             commands.entity(e).insert(Alert::default());
             continue;
@@ -259,14 +260,16 @@ pub fn perceive(
         // What it senses: seen (in sight, in the light or seeing in the
         // dark, nothing in the way) or smelled (wounded, near enough).
         let mut best: Option<(Entity, Vec2, f32, bool, f32)> = None;
-        for (&(q, at, share, ..), &light) in hunted.iter().zip(&light) {
-            if home.is_some_and(|hm| at.distance(hm) > h.leash) {
+        // (Its quarry: the player and the villagers; what its faction hunts.)
+        let quarry_of = |q: Entity, ours: bool, their: Option<crate::creatures::factions::Faction>| q != e && (ours || faction.zip(their).is_some_and(|(f, t)| f.hunts(&t)));
+        for (&(q, at, share, _, _, ours, their), &light) in hunted.iter().zip(&light) {
+            if !quarry_of(q, ours, their) || home.is_some_and(|hm| at.distance(hm) > h.leash) {
                 continue;
             }
             let d = at.distance(pos);
             let back = a.wary != Wary::Hunting && (at.x - pos.x) * k.loco.facing < 0.0;
             let see = sight * (0.25 + 0.75 * (s.dark + (1.0 - s.dark) * light)) * if back { s.behind } else { 1.0 };
-            let seen = a.told || d < see && crate::creatures::moves::clear(&sim, eye, at);
+            let seen = a.told && ours || d < see && crate::creatures::moves::clear(&sim, eye, at);
             let smelled = s.smell > 0.0 && d < s.smell && share < 0.75;
             if (seen || smelled) && best.is_none_or(|b| d < b.2) {
                 // (Close in its sight, or smelled: no doubt about it.)
@@ -325,7 +328,12 @@ pub fn perceive(
         }
         // Struck: it goes for whatever's near enough to have done it.
         if struck.contains(&e) {
-            if let Some(&(q, at, ..)) = hunted.iter().filter(|(_, at, ..)| at.distance(pos) < sight * 1.5).min_by(|x, y| x.1.distance(pos).total_cmp(&y.1.distance(pos))) {
+            // (What could have: the player, a villager, a foe.)
+            if let Some(&(q, at, ..)) = hunted
+                .iter()
+                .filter(|(q, at, _, _, _, ours, their)| *q != e && (*ours || crate::creatures::factions::hostile(faction, their.as_ref())) && at.distance(pos) < sight * 1.5)
+                .min_by(|x, y| x.1.distance(pos).total_cmp(&y.1.distance(pos)))
+            {
                 a.target = Some(q);
                 a.last = at;
                 a.senses_it = true;
@@ -398,7 +406,7 @@ pub fn perceive(
     if calls.is_empty() {
         return;
     }
-    for (e, _, k, _, alert, _, (_, pack, kind)) in &mut hunters {
+    for (e, _, k, _, alert, _, (_, pack, kind, _)) in &mut hunters {
         let Some(mut a) = alert else { continue };
         if a.wary == Wary::Hunting {
             continue;

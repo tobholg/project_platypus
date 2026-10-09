@@ -8,6 +8,7 @@
     size: (44, 72),
     health: 600,
     team: Enemy,
+    faction: "tyrants",
     kind: "beast",
     art: "tyrant_body",
     // Two great legs from the side (legs.rs), three bones each as the

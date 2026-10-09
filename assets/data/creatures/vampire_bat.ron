@@ -6,6 +6,7 @@
     size: (9, 6),
     health: 16,
     team: Enemy,
+    faction: "bats",
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "beast",
     profile: {radiant: 1.5},

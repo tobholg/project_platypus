@@ -176,6 +176,7 @@ fn fly(
     mut hits: MessageWriter<Hit>,
     mut arrows: Query<(Entity, &mut Arrow, &mut Transform)>,
     targets: Query<Target, With<Health>>,
+    factions: Query<&crate::creatures::factions::Faction>,
 ) {
     let Some(def) = weapons.as_ref().and_then(|w| w.arrow_def().cloned()) else { return };
     for (e, mut a, mut tf) in &mut arrows {
@@ -239,8 +240,10 @@ fn fly(
                 if te == a.shooter || safe {
                     continue;
                 }
+                // (Not its own side, unless their factions are at war.)
                 if let (Some(x), Some(y)) = (a.team, tteam)
                     && x.allied(*y)
+                    && !crate::creatures::factions::hostile(factions.get(a.shooter).ok(), factions.get(te).ok())
                 {
                     continue;
                 }

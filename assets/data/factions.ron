@@ -1,0 +1,18 @@
+// Who hunts whom among the monsters (BE `behaviour` stage 4; a creature
+// file's `faction`). A hunter hunts these as it hunts you; struck by any
+// foe (one it hunts or one hunting it) it fights back; blows between
+// foes land. Every monster still hunts the player and the villagers; a
+// creature with no faction is nobody's foe but yours.
+(
+    hunts: {
+        // The orcs and the dead are at war.
+        "orcs": ["undead"],
+        "undead": ["orcs"],
+        // Cave spiders take bats.
+        "spiders": ["bats"],
+        // Ridge raptors run down orcs; ridge tyrants anything their size.
+        "raptors": ["orcs"],
+        "tyrants": ["raptors", "orcs"],
+        "bats": [],
+    },
+)

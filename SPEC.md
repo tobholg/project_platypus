@@ -1515,7 +1515,7 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   up whatever it touches to a ceiling and waits there still; what it hunts
   below it within 120 across it comes along the ceiling over and drops on;
   above it, it goes at as any crawler), `shun_light` (it won't come within
-  this of a quarry lit over 0.4: back to 0.85 of it and waiting; moves
+  this of a quarry lit over 0.5, more than moonlight: back to 0.85 of it and waiting; moves
   that reach from there it still makes, a spider's spit), `call` (as it
   starts hunting, by its own senses, others of its kind within this hunt
   too, coming to where it saw you), `flank` (in a pack, each takes a side
@@ -1542,6 +1542,28 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   in, bites and goes back out; a pack's leader sees the player and
   its two out of sight come at its call; a cave spider keeps 72 off a
   torch-lit player and comes in and bites when the torch goes out.
+- Factions (BE `behaviour` stage 4; `creatures/factions.rs`,
+  `factions.ron`): a creature file's `faction` (orcs: orc, orc archer,
+  troll; undead: skeleton; spiders: cave spider, spiderling; bats: vampire
+  bat; raptors; tyrants) and what each hunts: orcs and the undead each
+  other, spiders bats, raptors orcs, tyrants raptors and orcs. A hunter
+  hunts what its faction hunts as it hunts the player (seen, heard,
+  smelled, called: the same senses; a scenario's told hunter is told only
+  of the player); its moves go at what it hunts. Struck, it turns on the
+  nearest of the player, a villager or a foe (what it hunts or what hunts
+  it). Blows between foes land though both are `Team::Enemy` (touch,
+  swings, arrows; spells hit anything but their caster as before). Each
+  carries its faction as bits (`Faction { bit, hunts, foes }`, at most 32
+  factions). The spawn groups never mix foes (raiders are orcs; the deep
+  packs and the cobweb lair skeletons with slimes and bats). A light that
+  keeps the cave kinds off is more than moonlight (0.5). The `factions`
+  scenario (`PLATYPUS_ARENA=flat`; the player at x 900 watching unhunted,
+  as a villager at home is): three orcs against three skeletons (either
+  side wins, run to run; a hurt orc runs and skeletons chase it), a cave
+  spider against two vampire bats at night (it kills both), a pack of
+  three raptors against two orcs (the raptors kill both). (A first try with
+  the player 1 000 cells off saw no fight at all: there the world isn't
+  loaded and counts as solid, so nothing saw anything.)
 - Pelting: a liquid hurts only above 375 cells/s (not 135), so a death's
   burst of blood doesn't hurt what's beside it (a burst egg sac hurt its
   own spiderlings).
