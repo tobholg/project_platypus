@@ -1475,8 +1475,9 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   (how far it sees behind it against ahead while it isn't hunting; 0.4).
   It sees
   you within `sight × (0.25 + 0.75 × (dark + (1 − dark) × light))` along
-  a clear line from its eye, the light on you being daylight (the sky's,
-  moonlight 0.45) where there's no rock within 120 cells over you near
+  a clear line from its eye, the light on you being daylight (the sky's
+  brightest colour: 1 by day, about 0.1 under the moon) where there's no
+  rock within 120 cells over you near
   the surface, or a light source within 70 cells (a torch in your hand or
   planted, anything glowing; a flashlight in the player's hand counts as
   full light on them). It smells a quarry below ¾ health within
@@ -1529,7 +1530,8 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   up whatever it touches to a ceiling and waits there still; what it hunts
   below it within 120 across it comes along the ceiling over and drops on;
   above it, it goes at as any crawler), `shun_light` (it won't come within
-  this of a quarry lit over 0.5, more than moonlight: back to 0.85 of
+  this of a quarry lit over 0.5 (a torch, a lamp, day; not the moon's
+  0.1): back to 0.85 of
   it and waiting; moves
   that reach from there it still makes, a spider's spit), `call` (as it
   starts hunting, by its own senses, others of its kind within this hunt
@@ -1570,8 +1572,7 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   swings, arrows; spells hit anything but their caster as before). Each
   carries its faction as bits (`Faction { bit, hunts, foes }`, at most 32
   factions). The spawn groups never mix foes (raiders are orcs; the deep
-  packs and the cobweb lair skeletons with slimes and bats). A light that
-  keeps the cave kinds off is more than moonlight (0.5). The `factions`
+  packs and the cobweb lair skeletons with slimes and bats). The `factions`
   scenario (`PLATYPUS_ARENA=flat`; the player at x 900 watching unhunted,
   as a villager at home is): three orcs against three skeletons (either
   side wins, run to run; a hurt orc runs and skeletons chase it), a cave
@@ -1824,12 +1825,53 @@ DESIGN §13 item 6.
   as `secs` says; claws throw a pinch of what they scrape (as what it
   crumbles into) with a scratch (`mine_dirt`/`mine_stone`); acid spits a
   few drops of its material at the face every `every` s, hissing
-  (`pour`). At most 400 cells a tick, everyone's. The cave spider: claws
-  (25, 30), acid (90, 40, every 1.6).
+  (`pour`). At most 400 cells a tick, everyone's; only at the face (its
+  body within its size and two nodes of the node it digs). A legged
+  digger digs with its legs (`DigFace`): the dig system gives its front
+  legs (its `strikers`, else its two front-most) the face, six points
+  spread over the cells its claws can take, nearest to furthest; they
+  strike at it in turn, 7 strokes a second each, half a stroke apart (up
+  and in, a few cells' lift at most; a strike into the face; raked back
+  under the body), every 2.3 s still for 0.35 s, claws in the face,
+  listening; each strike takes the clawable cells within 4.5 of where it
+  struck, as the digging owed allows; what claws can't take, acid eats
+  nearest first, and owed past 0.6 s the nearest goes anyway (it never
+  stalls on its legs). Scraped crumbs are tossed gently, and a digger at
+  its face isn't pelted by what it digs. Digging along on its feet it
+  stands to the face (down to the hole however little, up only where the
+  way digs up); holding on to a wall or ceiling, or digging up, it digs
+  as it climbs. No creature digs what's `fortified` (brick, ashlar, iron,
+  copper, silver: `MatPhys::dig_hardness` is past any claw or acid); the
+  player still can. The cave spider: claws (25, 120: about 5 cells of
+  headway a second in dirt, well under the player's 113), acid (90, 80,
+  every 1.6).
+- **Burrowing** (`hunter.rs`): a digger hunting (seeing what it hunts, or
+  having lost it a moment ago; not fleeing, not kept off by the light)
+  that's come no nearer by 6 cells in 1.5 s, and is further than 40, goes
+  its planner's way for 6 s whatever it sees: round if that's cheaper,
+  through if not (a crack too small for it, a tunnel the player dug, a
+  sealed room). The `burrow` scenario (`PLATYPUS_ARENA=flat`,
+  `PLATYPUS_WALL`): the player in a room inside a mound, seen through a
+  slit too thin for a cave spider: through dirt it digs in along the slit,
+  widening it, and is at the player (within its 34-cell keep) in about
+  19 s; through stone it goes over the top and eats in from the far side
+  with acid (about 52 s), and bites; brick it never digs. The `dig`
+  scenario (a sealed shell; told where the player is, since senses came
+  in it couldn't know): dirt 10.5 s, stone 35 s, obsidian and glass
+  never. A climbing ambusher not yet up goes to the nearer
+  wall (within 300 either way) to go up to a ceiling. Headway is getting
+  nearer by 6, or moving 12 (a climb up a face under what it hunts is
+  headway). A dig step counts as reached in its column a node up or down
+  (it doesn't climb the face for a node). A crawler on a ceiling within
+  its `keep` across (12 at least) of what's below lets go onto it. And a
+  climber on
+  its feet touching a ceiling too (a tunnel its own height) walks on
+  unless it wants up (it used to turn upside down onto it).
 - **The course** (`Layout::Course`, `PLATYPUS_ARENA=course`): left to
   right a wall 27 high, a pit 40 deep, a step 22 high into a tunnel, a
   tower with a passage under it and stairs down from it; the player on the
-  tower. The `course` scenario (`PLATYPUS_KIND`, default the orc):
+  tower. The `course` scenario (`PLATYPUS_KIND`, default the orc; at night,
+  so a cave spider doesn't keep off a daylit player):
   an orc (24 s), a skeleton (26 s) and the cave spider (22 s, up the tower's face) get to the player, a vampire bat (9 s) and a star wisp (14 s) fly to it; a slime (its 32-cell step is past its 33-cell jump) and the troll (the 27-cell wall past its 24) can't and wait as near as they can; with `PLATYPUS_NONAV=1` the walkers stop at the first wall. The `dig` scenario: the player sealed in a shell (`PLATYPUS_WALL`, 34 cells thick at the sides) round a pocket, a cave spider 200 cells off: through dirt it's in at 29 s, through stone at 60 s (acid), never through obsidian (harder than its acid) or glass (inert).
 
 ## 6. Combat

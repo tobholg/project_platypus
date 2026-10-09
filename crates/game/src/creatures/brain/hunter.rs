@@ -171,6 +171,13 @@ pub struct HunterMind {
     charge_since: u64,
     wait_until: u64,
     was_busy: bool,
+    /// Headway: the nearest it's come to what it hunts (cells), when, and
+    /// where it was then; burrowing (its way dug through if that's the
+    /// way) till when.
+    best: f32,
+    best_at: u64,
+    best_pos: Vec2,
+    burrow_until: u64,
 }
 
 /// What hunters go after (a villager hiding at home is let be).
@@ -271,6 +278,40 @@ fn hunt(
         let fleeing = alert.is_some_and(|a| a.fleeing);
         let shy = h.tactics.shun_light > 0.0 && alert.is_some_and(|a| a.quarry_lit > SHUN_LIT) && target.is_some_and(|t| t.0.distance(pos) < h.tactics.shun_light);
         let leader = pack.and_then(|p| leaders.get(&p.id).filter(|l| l.0 != p.rank)).map(|l| l.1);
+        // (Burrowing: a digger hunting what it can't get nearer to, for a
+        // while, goes the way its planner finds, digging where that's
+        // quicker than round: through what's in the way, a crack too small,
+        // a tunnel you dug. Hunting: what it sees, or lost a moment ago.)
+        let digger = creatures.get(&kind.kind).is_some_and(|d| d.dig.is_some());
+        let hunting = alert.is_some_and(|a| a.wary == super::senses::Wary::Hunting && !a.fleeing) && !shy;
+        let burrowing = match target {
+            Some((t, ..)) if digger && hunting => {
+                let d = t.distance(pos);
+                // (Headway: nearer, or on the move: climbing a face under
+                // what it hunts is getting there.)
+                if d < m.best - HEADWAY || m.best_at == 0 || pos.distance(m.best_pos) > MOVED_ON {
+                    m.best = if m.best_at == 0 { d } else { m.best.min(d) };
+                    m.best_at = tick.max(1);
+                    m.best_pos = pos;
+                }
+                if tick.saturating_sub(m.best_at) > ticks(NO_HEADWAY) && d > STUCK_NEAR && tick >= m.burrow_until {
+                    m.burrow_until = tick + ticks(BURROW);
+                    m.best = d;
+                    m.best_at = tick;
+                    m.best_pos = pos;
+                    if std::env::var("PLATYPUS_ALERTLOG").is_ok() {
+                        info!("burrow: {e:?} {} burrows ({d:.0} off, no nearer for {NO_HEADWAY} s)", kind.kind);
+                    }
+                }
+                tick < m.burrow_until
+            }
+            _ => {
+                m.best_at = 0;
+                m.burrow_until = 0;
+                false
+            }
+        };
+
         // The way to it, where it can't be gone at straight (`way.rs`):
         // what to press, if a way's known.
         let feet = pos - Vec2::Y * k.body.half.y;
@@ -292,7 +333,7 @@ fn hunt(
                 let d = t - pos;
                 // (Far across, or out of reach above or below, and not a
                 // straight walk: the way there.)
-                if (d.x.abs() > *keep || d.y.abs() > *jump_to_reach) && !walkable(t, th) {
+                if (d.x.abs() > *keep || d.y.abs() > *jump_to_reach) && (!walkable(t, th) || burrowing) {
                     steer = route(&mut ways, &mut way, t - Vec2::Y * th.y);
                 }
                 // (Up at you when you're above and near; following a way,
@@ -384,7 +425,7 @@ fn hunt(
             (Close::Range { near, far }, Some((t, tv, th))) => {
                 let d = t - pos;
                 // (Too far, and not straight there: the way round.)
-                if d.x.abs() > *far && !walkable(t, th) {
+                if d.x.abs() > *far && (!walkable(t, th) || burrowing) {
                     steer = route(&mut ways, &mut way, t - Vec2::Y * th.y);
                 }
                 let bow = match (&h.attack, &weapons) {
@@ -460,7 +501,7 @@ fn hunt(
             // straight way there: along the way as the way says.
             (Close::Hop { every }, target) => {
                 if let Some((t, _, th)) = target
-                    && !walkable(t, th)
+                    && (!walkable(t, th) || burrowing)
                 {
                     steer = route(&mut ways, &mut way, t - Vec2::Y * th.y);
                 }
@@ -509,15 +550,18 @@ fn hunt(
                 } else {
                     0.0
                 };
-                // Out of sight: the way round, over walls and ceilings.
-                if !crate::creatures::moves::clear(&sim, pos, t) {
+                // Out of sight, or burrowing: the way round, over walls and
+                // ceilings (and through, a digger).
+                if !crate::creatures::moves::clear(&sim, pos, t) || burrowing {
                     steer = route(&mut ways, &mut way, t - Vec2::Y * th.y);
                     if let Some(s) = steer {
                         move_y = s.move_y;
                     }
                 }
                 let clinging = k.loco.clinging();
-                let over_you = clinging == Some(Vec2::Y) && d.x.abs() < 12.0;
+                // (On a ceiling, near enough across that it would go no
+                // nearer (its `keep`): it lets go, down at you.)
+                let over_you = clinging == Some(Vec2::Y) && d.y < 0.0 && d.x.abs() < keep.max(12.0) + 4.0;
                 let near = d.length() < *pounce_range;
                 if tick >= m.next && (over_you || (near && (grounded || clinging.is_some()))) {
                     jump = true;
@@ -591,7 +635,7 @@ fn hunt(
                         move_y = 1.0;
                         mx = if blind || d.x.abs() > AMBUSH_REACH || d.x.abs() < 10.0 { 0.0 } else { d.x.signum() };
                     } else if blind {
-                        (mx, move_y) = lurk(&sim, id, tick, &mut m);
+                        (mx, move_y) = lurk(&sim, id, tick, &mut m, pos);
                     }
                 }
                 // (PLATYPUS_STEERLOG: how it steers, every 15 ticks.)
@@ -604,7 +648,7 @@ fn hunt(
             // there.)
             (Close::Crawl { .. }, None) if h.tactics.ambush => {
                 let mx;
-                (mx, move_y) = if k.loco.clinging() == Some(Vec2::Y) { (0.0, 1.0) } else { lurk(&sim, id, tick, &mut m) };
+                (mx, move_y) = if k.loco.clinging() == Some(Vec2::Y) { (0.0, 1.0) } else { lurk(&sim, id, tick, &mut m, pos) };
                 mx
             }
             (Close::Crawl { .. }, None) => {
@@ -673,8 +717,18 @@ fn hunt(
     }
 }
 
-/// A quarry lit more than this keeps one that shuns the light off (more
-/// than moonlight, 0.45: a torch, a lamp, day).
+/// Burrowing: a digger no nearer (by `HEADWAY` cells) to what it hunts in
+/// `NO_HEADWAY` s, and further than `STUCK_NEAR`, goes its planned way,
+/// digging, for `BURROW` s (then sees again).
+const HEADWAY: f32 = 6.0;
+/// Moved this far since it last made headway, it's making it (cells).
+const MOVED_ON: f32 = 12.0;
+const NO_HEADWAY: f32 = 1.5;
+const STUCK_NEAR: f32 = 40.0;
+const BURROW: f32 = 6.0;
+
+/// A quarry lit more than this keeps one that shuns the light off (a
+/// torch, a lamp, day; the moon's is about 0.1).
 const SHUN_LIT: f32 = 0.5;
 
 /// A flanker's place: this far past `keep` on your far side (cells); it
@@ -690,15 +744,26 @@ const CHARGE_MOST: f32 = 2.5;
 /// (cells); further, it waits.
 const AMBUSH_REACH: f32 = 120.0;
 
-/// Lurking (an ambusher not yet up): up whatever it touches, wandering
-/// along to find a wall to go up (its steering: across, up).
-fn lurk(sim: &SimWorld, id: u64, tick: u64, m: &mut HunterMind) -> (f32, f32) {
+/// Lurking (an ambusher not yet up): up whatever it touches, along to the
+/// nearer wall (within `LURK_LOOK` either way; neither, either way) to go
+/// up to a ceiling (its steering: across, up).
+fn lurk(sim: &SimWorld, id: u64, tick: u64, m: &mut HunterMind, pos: Vec2) -> (f32, f32) {
     if tick >= m.wander_until {
-        m.wander = Vec2::new(if unit(sim, id, 0x1A) < 0.5 { -1.0 } else { 1.0 }, 1.0);
+        let wall = |dir: f32| (1..LURK_LOOK / 4).map(|i| i as f32 * 4.0).find(|&d| sim.world.is_solid(platypus_sim::CellPos::from_world(pos.x + dir * d, pos.y)));
+        let dir = match (wall(-1.0), wall(1.0)) {
+            (Some(l), Some(r)) => if l < r { -1.0 } else { 1.0 },
+            (Some(_), None) => -1.0,
+            (None, Some(_)) => 1.0,
+            (None, None) => if unit(sim, id, 0x1A) < 0.5 { -1.0 } else { 1.0 },
+        };
+        m.wander = Vec2::new(dir, 1.0);
         m.wander_until = tick + ticks(2.0 + 2.0 * unit(sim, id, 0x1B));
     }
     (m.wander.x, 1.0)
 }
+
+/// How far either way a lurker looks for a wall to go up (cells).
+const LURK_LOOK: i32 = 300;
 
 /// Keeping between `near` and `far` across.
 fn range(d: Vec2, near: f32, far: f32) -> f32 {

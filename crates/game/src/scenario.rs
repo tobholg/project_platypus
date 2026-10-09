@@ -301,6 +301,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, sneak_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, tactics_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, factions_script)
+            .add_systems(Update, burrow_script)
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
             .add_systems(Update, (underlook_script, voidlook_script))
@@ -734,7 +735,7 @@ fn dark_script(
     // 23:00, or 18:15 for dusk (the day starts at the configured hour; skip
     // the difference).
     let hour = if s.name == "dusk" { 18.25 } else { 23.0 };
-    day.skipped = (hour - day.time * 24.0).rem_euclid(24.0);
+    day.skipped = (day.skipped + hour - day.time * 24.0).rem_euclid(24.0);
     if s.name == "cave" {
         // A chamber 150 below the surface, a lava pool on one side, acid on the
         // other; the player on its floor with the flashlight on.
@@ -1583,7 +1584,7 @@ fn airjump_script(
     }
     // PLATYPUS_NIGHT=1: at 23:00 (the cloud's glow in the dark).
     if std::env::var("PLATYPUS_NIGHT").is_ok_and(|v| !v.is_empty()) && state.0.is_none() {
-        day.skipped = (23.0 - day.time * 24.0).rem_euclid(24.0);
+        day.skipped = (day.skipped + 23.0 - day.time * 24.0).rem_euclid(24.0);
     }
     let Ok((mut k, h)) = player.single_mut() else { return };
     let t = s.elapsed;
@@ -4990,7 +4991,7 @@ fn record_script(
 /// `course` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=course`): the player on
 /// the course's tower, a creature (`PLATYPUS_KIND`, default the orc) put
 /// down at the far left; logs where it is each second and how near it
-/// is, and when it gets to the player (within 40 cells), or that it
+/// is, and when it gets to the player (within 40 cells; at night), or that it
 /// didn't in `PLATYPUS_SCENARIO_SECS`. `PLATYPUS_NONAV=1`: with no way
 /// found, to compare.
 fn course_script(
@@ -5000,11 +5001,17 @@ fn course_script(
     player: Query<(&Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
     foes: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
     mut state: Local<(u8, f32, String)>,
+    mut day: ResMut<crate::light::Daylight>,
 ) {
     if s.name != "course" {
         return;
     }
     let t = s.elapsed;
+    // (At night: a way's what's tested, and a cave spider keeps off a
+    // player in the day.)
+    if state.0 == 0 {
+        day.skipped = (day.skipped + 23.0 - day.time * 24.0).rem_euclid(24.0);
+    }
     let Ok((pk, _)) = player.single() else { return };
     let (step, next, kind) = &mut *state;
     if *step == 0 && t > 1.0 {
@@ -5283,10 +5290,11 @@ fn dig_script(mut commands: Commands, s: Res<Scenario>, mut sim: ResMut<SimWorld
                 }
             }
         }
-        crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(px as f32 - 200.0, floor as f32), |e| {
-            if let Some(mut h) = e.get_mut::<crate::creatures::brain::hunter::Hunter>() {
-                h.aggro = 1000.0;
-            }
+        // (Told where the player is: this is its digging, not its senses;
+        // sealed in, it couldn't see it.)
+        let at = Vec2::new(px as f32, floor as f32 + 12.0);
+        crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(px as f32 - 200.0, floor as f32), move |e| {
+            e.insert(crate::creatures::brain::senses::Alert::hunting(at));
         });
         info!("dig: the player sealed in {wall}; a spider 200 off");
         *step = 1;
@@ -6471,7 +6479,7 @@ fn sneak_script(
             return;
         }
         // 23:00.
-        day.skipped = (23.0 - day.time * 24.0).rem_euclid(24.0);
+        day.skipped = (day.skipped + 23.0 - day.time * 24.0).rem_euclid(24.0);
         let (Some(stone), Some(bedrock)) = (sim.materials().id("stone"), sim.materials().id("bedrock")) else { return };
         // Stone, a row of bedrock through its middle: a slab in the air
         // stays up when a blast shakes it (stone joined to bedrock is
@@ -6705,7 +6713,7 @@ fn tactics_script(
     }
     match state.0 {
         0 if t > 0.5 => {
-            day.skipped = (23.0 - day.time * 24.0).rem_euclid(24.0);
+            day.skipped = (day.skipped + 23.0 - day.time * 24.0).rem_euclid(24.0);
             if let (Some(stone), Some(bedrock)) = (sim.materials().id("stone"), sim.materials().id("bedrock")) {
                 for x in (300..=700).step_by(3) {
                     for y in [floor + 62, floor + 67] {
@@ -6921,7 +6929,7 @@ fn factions_script(
                 }
                 2 => {
                     // (At night: a cave spider keeps out of the day.)
-                    day.skipped = (23.0 - day.time * 24.0).rem_euclid(24.0);
+                    day.skipped = (day.skipped + 23.0 - day.time * 24.0).rem_euclid(24.0);
                     spawn(&mut commands, "spider", 1100.0, 1.0, None);
                     spawn(&mut commands, "vampire_bat", 1250.0, -1.0, None);
                     spawn(&mut commands, "vampire_bat", 1290.0, -1.0, None);
@@ -6950,6 +6958,109 @@ fn factions_script(
                 info!("factions: t {t:.2} the fight's over{}: {} left", if over { "" } else { " (time)" }, left.join(", "));
                 state.1 = t + 1.0;
                 state.0 += 1;
+            }
+        }
+        _ => {}
+    }
+}
+
+/// `burrow` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the player in a
+/// room inside a mound (x 1000..1240, 120 high; the room x 1120..1180, 30
+/// high), seen through a slit (6 high, out through the mound's left side:
+/// the player fits through nothing, a cave spider less); a cave spider put
+/// down outside at x 850, told where the player is. It can't get nearer:
+/// it burrows, its front legs at the face. The mound `PLATYPUS_WALL`: dirt
+/// (claws), stone (acid), brick (fortified: it doesn't dig). Logs where
+/// the spider is every second, how much of the mound's gone, and when (if)
+/// it reaches the player.
+#[allow(clippy::too_many_arguments)]
+fn burrow_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut state: Local<(u8, f32)>,
+    mut hits: MessageReader<crate::combat::Hit>,
+) {
+    if s.name != "burrow" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let struck = hits.read().filter(|hit| hit.damage > 0.0).count();
+    if struck > 0 && state.0 >= 2 {
+        info!("burrow: t {:.2} the player was struck", s.elapsed);
+    }
+    h.hp = h.max;
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let fl = floor as f32;
+    let wall = std::env::var("PLATYPUS_WALL").unwrap_or_else(|_| "dirt".into());
+    let (x0, x1, top) = (1000, 1240, floor + 120);
+    let mound = |sim: &SimWorld| {
+        let Some(m) = sim.materials().id(&wall) else { return 0 };
+        (x0..x1).flat_map(|x| (floor..top).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count()
+    };
+    match state.0 {
+        0 if t > 0.5 => {
+            let Some(m) = sim.materials().id(&wall) else {
+                warn!("burrow: no material `{wall}`");
+                state.0 = 9;
+                return;
+            };
+            for x in (x0..x1).step_by(3) {
+                for y in (floor..top).step_by(3) {
+                    let inside = (1120..1180).contains(&x) && (floor..floor + 30).contains(&y) || (x0..1120).contains(&x) && (floor + 18..floor + 24).contains(&y);
+                    if !inside {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x + 1, y + 1), radius: 2, material: m, overwrite: true });
+                    }
+                }
+            }
+            // (The room and the slit kept open: painting round them spills.)
+            for x in x0..1180 {
+                for y in floor..floor + 30 {
+                    let inside = (1120..1180).contains(&x) && y < floor + 30 || (floor + 18..floor + 24).contains(&y);
+                    if inside {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: platypus_sim::MaterialId::AIR, overwrite: true });
+                    }
+                }
+            }
+            // (No training dummies.)
+            for (e, c, _) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            k.body.pos = Vec2::new(1160.0, fl + k.body.half.y);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            *state = (1, t);
+        }
+        1 if t > 1.2 => {
+            info!("burrow: a {wall} mound of {} cells; the spider put down", mound(&sim));
+            let at = k.body.pos;
+            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(850.0, fl), move |e| {
+                e.insert(crate::creatures::brain::senses::Alert::hunting(at));
+            });
+            *state = (2, t);
+        }
+        2 => {
+            k.body.pos = Vec2::new(1160.0, fl + k.body.half.y);
+            k.body.vel = Vec2::ZERO;
+            let spider = them.iter().find(|q| q.1.kind == "spider").map(|q| q.2.body.pos);
+            if t >= state.1 + 1.0 {
+                state.1 = t.floor() + 1.0;
+                if let Some(p) = spider {
+                    info!("burrow: t {t:.0} the spider at ({:.0}, {:.0}), {:.0} from the player; the mound {} cells", p.x, p.y - fl, p.distance(k.body.pos), mound(&sim));
+                }
+            }
+            // (Reached: within a cave spider's `keep`, a leg's length, where
+            // it strikes from.)
+            if let Some(p) = spider
+                && p.distance(k.body.pos) <= 36.0
+            {
+                info!("burrow: t {t:.1} the spider reached the player");
+                state.0 = 3;
             }
         }
         _ => {}

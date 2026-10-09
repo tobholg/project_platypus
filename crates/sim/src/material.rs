@@ -243,6 +243,10 @@ pub struct MaterialDef {
     /// Nothing eats it (glass, gold): acid pools in it.
     #[serde(default)]
     pub inert: bool,
+    /// Built to keep things out (brick, cut stone, metal): no creature digs
+    /// it, claws or acid (`MatPhys::dig_hardness`); the player still can.
+    #[serde(default)]
+    pub fortified: bool,
     /// Carries electricity (water, acid, blood, metal ores): lightning into
     /// it charges everything of it that's connected.
     #[serde(default)]
@@ -388,9 +392,18 @@ pub struct MatPhys {
     pub interacts: bool,
     pub eats: Option<Eats>,
     pub inert: bool,
+    pub fortified: bool,
     pub charges: bool,
     /// Can ever change on its own; `false` lets the stepper skip the cell.
     pub active: bool,
+}
+
+impl MatPhys {
+    /// How hard it is to a creature digging: as hard as it is, or past any
+    /// claw or acid if it's fortified.
+    pub fn dig_hardness(&self) -> u8 {
+        if self.fortified { u8::MAX } else { self.hardness }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -596,6 +609,7 @@ impl MaterialTable {
                 interacts: d.hot || eats.is_some(),
                 eats,
                 inert: d.inert,
+                fortified: d.fortified,
                 charges: d.charges,
                 active: false,
             });

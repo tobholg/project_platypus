@@ -738,6 +738,13 @@ const Z_FAR_CLAW: f32 = 9.45;
 #[derive(Component)]
 struct LegBody;
 
+/// A digging leg's strokes a second (`DigFace`), and how high it lifts
+/// (cells, at most).
+const DIG_STROKES: f32 = 7.0;
+const DIG_LIFT: f32 = 7.0;
+/// Every `.0` s, `.1` s of stillness: its claws in the face, listening.
+const DIG_LISTEN: (f32, f32) = (2.3, 0.35);
+
 /// Turned body sprites by name (and their eyes alone, by name + colour).
 #[derive(Resource, Default)]
 struct BodyArt(HashMap<String, crate::combat::Turned>);
@@ -1190,7 +1197,7 @@ fn grow_legs(
 fn walk(
     time: Res<Time>,
     sim: Res<SimWorld>,
-    mut q: Query<(&mut Legs, &Kinematics, &GlobalTransform, &Children, Option<&Rear>)>,
+    mut q: Query<(&mut Legs, &Kinematics, &GlobalTransform, &Children, Option<&Rear>, Option<&mut crate::creatures::brain::way::DigFace>)>,
     mut sprites: Query<(&mut Sprite, &mut Visibility), (With<CreatureSprite>, Without<LegBody>, Without<LegStinger>)>,
     mut bodies: Query<(&mut Sprite, &mut Transform), (Or<(With<LegBody>, With<LegEyes>)>, Without<CreatureSprite>, Without<LegStinger>, Without<LegClaw>)>,
     mut stingers: Query<(&mut Sprite, &mut Transform, &mut Visibility), (With<LegStinger>, Without<CreatureSprite>, Without<LegBody>, Without<LegEyes>, Without<LegClaw>)>,
@@ -1200,7 +1207,7 @@ fn walk(
 ) {
     let dt = time.delta_secs().min(0.05);
     let now = time.elapsed_secs();
-    for (mut legs, k, tf, children, rear) in &mut q {
+    for (mut legs, k, tf, children, rear, mut dig) in &mut q {
         // (Where it's drawn; its body's place if that's far off: on its
         // first frame its transform hasn't caught up yet.)
         let drawn = tf.translation().truncate();
@@ -1624,6 +1631,55 @@ fn walk(
                     }
                     None => high,
                 };
+                let foot = &mut legs.feet[i];
+                foot.at = open_toward(&sim, hip, at);
+                foot.to = foot.at;
+                foot.t = 1.0;
+                foot.grips = false;
+                foot.retry = 0.05;
+            }
+        }
+        // Digging (`way.rs`'s `DigFace`): its front legs at the face in
+        // turn, fast, each stroke up and in, a strike into it (the cells
+        // round the claw's tip go: the dig takes them), then raking back
+        // under the body; the other legs braced.
+        if let Some(dig) = dig.as_deref_mut()
+            && !dig.face.is_empty()
+            && now < dig.until
+        {
+            let mut diggers = legs.def.strikers();
+            if diggers.is_empty() {
+                let mut order: Vec<usize> = (0..n).collect();
+                order.sort_by(|&a, &b| legs.def.each[b].hip.0.total_cmp(&legs.def.each[a].hip.0));
+                diggers = order.into_iter().take(2).collect();
+            }
+            // (Every so often it stops, claws in the face, still: listening.)
+            let still = (now % DIG_LISTEN.0) < DIG_LISTEN.1;
+            for (j, &i) in diggers.iter().enumerate().filter(|(j, i)| **i < n && *j < 4) {
+                let beat = if still { (now - now % DIG_LISTEN.0) * DIG_STROKES + j as f32 * 0.5 + 0.45 } else { now * DIG_STROKES + j as f32 * 0.5 };
+                let stroke = beat.floor() as i64;
+                let u = beat.fract();
+                let target = dig.face[(stroke as usize * 2 + j) % dig.face.len()];
+                let hip = legs.hip(i, c);
+                // (Within its reach of the hip; small strokes, however long
+                // its legs: lifted a few cells, raked back a few.)
+                let target = hip + (target - hip).clamp_length_max(reach * 0.9);
+                let lift = (reach * 0.3).min(DIG_LIFT);
+                let under = target.lerp(hip, 0.45) - up * lift * 0.5;
+                let over = target.lerp(hip, 0.3) + up * lift;
+                let at = if u < 0.4 {
+                    // (Up and in: a curve over to the face.)
+                    let t = u / 0.4;
+                    under.lerp(over, t).lerp(over.lerp(target, t), t)
+                } else if u < 0.55 {
+                    target
+                } else {
+                    target.lerp(under, (u - 0.55) / 0.45)
+                };
+                if u >= 0.4 && !still && dig.struck[j] != stroke {
+                    dig.struck[j] = stroke;
+                    dig.strikes.push(target);
+                }
                 let foot = &mut legs.feet[i];
                 foot.at = open_toward(&sim, hip, at);
                 foot.to = foot.at;

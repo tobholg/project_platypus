@@ -441,9 +441,10 @@ const PELT_SAFE_LIQUID: f32 = 375.0;
 const PELT: f32 = 0.8;
 
 /// Heavy things flying fast hurt what they hit: a ball of rock dropped
-/// from a well, blast debris, a flung stream of sand.
-fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Kinematics, &mut Health)>) {
-    let boxes: Vec<(Vec2, Vec2)> = q.iter().map(|(k, _)| (k.body.pos - k.body.half, k.body.pos + k.body.half)).collect();
+/// from a well, blast debris, a flung stream of sand (not a digger at its
+/// face: what it digs rains on it).
+fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Kinematics, &mut Health, Option<&brain::way::DigFace>)>) {
+    let boxes: Vec<(Vec2, Vec2)> = q.iter().map(|(k, ..)| (k.body.pos - k.body.half, k.body.pos + k.body.half)).collect();
     if boxes.is_empty() {
         return;
     }
@@ -468,8 +469,9 @@ fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Kinematics, &mut Health)
         shove[i] += v * weight * 0.02;
         p.vel = [p.vel[0] * 0.3, p.vel[1] * 0.3];
     }
-    for (i, (mut k, mut h)) in q.iter_mut().enumerate() {
-        if hurt[i] > 0.0 {
+    for (i, (mut k, mut h, dig)) in q.iter_mut().enumerate() {
+        // (A digger shrugs off the dirt it's digging.)
+        if hurt[i] > 0.0 && dig.is_none_or(|d| d.face.is_empty()) {
             h.harm(hurt[i], Harm::Blunt);
             k.body.vel += shove[i];
         }

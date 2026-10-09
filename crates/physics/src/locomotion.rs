@@ -481,7 +481,9 @@ impl Locomotion {
             let c = self.contacts;
             let wall = if c.wall_left { -1.0 } else if c.wall_right { 1.0 } else { 0.0 };
             let (mx, my) = (intent.move_x.clamp(-1.0, 1.0), intent.move_y.clamp(-1.0, 1.0));
-            let on_ceiling = c.ceiling && !(wall != 0.0 && my < 0.0);
+            // (On the ground, touching a ceiling too (a tunnel its own
+            // height), it walks on unless it wants up.)
+            let on_ceiling = c.ceiling && !(wall != 0.0 && my < 0.0) && (!grounded || my > 0.0);
             // (On the ground, walking into a wall, it only climbs if it wants up.)
             let on_wall = wall != 0.0 && (!grounded || my > 0.0);
             if on_ceiling {

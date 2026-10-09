@@ -70,7 +70,7 @@
         (name: "basalt",   kind: Static, density: 3000, hardness: 95, crumbles_into: "gravel", above: (1650, "lava"), colors: [(40, 36, 40), (52, 46, 50), (34, 30, 34), (60, 50, 50)]),
         // Laid, not grown: a pattern of shades anchored to the world grid (rows
         // from the top, hex 0 dark … f light), so bricks and planks tile.
-        (name: "brick",    kind: Static, density: 2400, hardness: 70, crumbles_into: "gravel", above: (1450, "lava"),
+        (name: "brick",    kind: Static, fortified: true, density: 2400, hardness: 70, crumbles_into: "gravel", above: (1450, "lava"),
             colors: [(52, 50, 54), (96, 94, 100), (132, 128, 134), (156, 152, 158)],
             pattern: ["333333333333", "3cccbcbaaa99", "3bcaab9a9a98", "3aaaa9999888", "39aa88887787", "389988877777", "333333333333", "aaaaa93cbbbb", "a999983bbbaa", "9989783abb9a", "8978873a9999", "788777389998"]),
         (name: "planks",   kind: Static, density: 650, hardness: 22, flammability: 7, ignites_at: 270, conductivity: 12, burn_time: 180, spread: 3, fizzles: 30, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal",
@@ -122,7 +122,7 @@
             colors: [(40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116)],
             pattern: ["111111111111", "bab99a988881", "aaa998888671", "a88888877761", "887877765651", "877766655551", "111111111111", "a99881bbbba9", "878671aa9989", "7767518a8888", "765551988776", "555551887667"]),
         // Castle stone: big pale ashlar blocks; harder than crypt stone.
-        (name: "ashlar", kind: Static, density: 2600, hardness: 100, crumbles_into: "gravel", above: (1450, "lava"),
+        (name: "ashlar", kind: Static, fortified: true, density: 2600, hardness: 100, crumbles_into: "gravel", above: (1450, "lava"),
             colors: [(62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152)],
             pattern: ["111111111111", "aababa9a9981", "aabaa9898891", "9a9889888881", "a99998778771", "998778777771", "111111111111", "a99981baaba9", "989881aabaa9", "888881baa998", "877771988989", "877771889877"]),
         (name: "cracked_ashlar", kind: Static, density: 2400, hardness: 4, crumbles_into: "gravel",
@@ -228,15 +228,15 @@
         // past its freezing point (latent 1 200: it sets with chance (d /
         // 1 200)² a tick, d degrees under), so it runs and fills a mould for a
         // few seconds before it sets, as metal does.
-        (name: "copper",   kind: Static, density: 8900, hardness: 45, object: true, charges: true, conductivity: 200, item: "copper_bar", above: (1085, "molten_copper"), latent: 150,
+        (name: "copper",   kind: Static, fortified: true, density: 8900, hardness: 45, object: true, charges: true, conductivity: 200, item: "copper_bar", above: (1085, "molten_copper"), latent: 150,
             colors: [(150, 82, 40), (196, 112, 58), (226, 146, 86), (240, 180, 120)]),
         (name: "molten_copper", kind: Liquid, density: 8000, dispersion: 3, viscosity: 70, hot: true, heat: 1300, charges: true, conductivity: 25, glow: (255, 120, 40), below: (1025, "copper"), latent: 1200,
             colors: [(255, 110, 30), (255, 150, 60), (255, 190, 110)]),
-        (name: "iron",     kind: Static, density: 7900, hardness: 70, object: true, charges: true, conductivity: 180, item: "iron_bar", above: (1538, "molten_iron"), latent: 150,
+        (name: "iron",     kind: Static, fortified: true, density: 7900, hardness: 70, object: true, charges: true, conductivity: 180, item: "iron_bar", above: (1538, "molten_iron"), latent: 150,
             colors: [(92, 94, 102), (128, 130, 140), (160, 162, 172), (196, 198, 206)]),
         (name: "molten_iron", kind: Liquid, density: 7000, dispersion: 3, viscosity: 90, hot: true, heat: 1750, charges: true, conductivity: 25, glow: (255, 170, 70), below: (1470, "iron"), latent: 1200,
             colors: [(255, 150, 50), (255, 200, 110), (255, 235, 180)]),
-        (name: "silver",   kind: Static, density: 10500, hardness: 55, object: true, charges: true, conductivity: 220, item: "silver_bar", above: (962, "molten_silver"), latent: 150,
+        (name: "silver",   kind: Static, fortified: true, density: 10500, hardness: 55, object: true, charges: true, conductivity: 220, item: "silver_bar", above: (962, "molten_silver"), latent: 150,
             colors: [(160, 164, 176), (196, 200, 212), (224, 228, 238), (250, 250, 255)]),
         (name: "molten_silver", kind: Liquid, density: 9300, dispersion: 3, viscosity: 60, hot: true, heat: 1180, charges: true, conductivity: 25, glow: (255, 150, 90), below: (900, "silver"), latent: 1200,
             colors: [(255, 180, 120), (255, 214, 170), (255, 240, 220)]),

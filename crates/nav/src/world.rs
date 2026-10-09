@@ -84,7 +84,7 @@ impl NavWorld for WorldGrid<'_> {
             None => Some((255, true)),
             Some(c) if self.class(c) == Occupancy::Solid => {
                 let p = self.0.materials().phys(c.material);
-                Some((p.hardness, p.inert))
+                Some((p.dig_hardness(), p.inert))
             }
             Some(_) => None,
         }

@@ -167,9 +167,11 @@ impl Ways {
         // Where on the way it is: the nearest step from here on, reached
         // (within a node: a flyer cuts across them).
         let near = way.path.iter().enumerate().skip(way.i).min_by_key(|(_, (n, _))| (*n - at).abs().max_element());
-        if let Some((j, (n, _))) = near
+        // (A dig step: in its column, a node up or down is there: the hole's
+        // dug, and a digger doesn't climb its face for a node.)
+        if let Some((j, (n, m))) = near
             && (*n - at).abs().max_element() <= 1
-            && (*n == at || !grounded || p.fly > 0.0)
+            && (*n == at || !grounded || p.fly > 0.0 || m.kind == Kind::Dig && n.x == at.x)
         {
             way.i = j + 1;
         }
@@ -257,7 +259,10 @@ impl Ways {
         }
         let kind = match m.kind {
             Kind::Walk if on_wall => Kind::Climb,
-            Kind::Dig if p.climb => Kind::Climb,
+            // (A climber digging up, or holding on to something (a wall, a
+            // ceiling), digs as it climbs; on its feet on the ground digging
+            // along, it stands to the face.)
+            Kind::Dig if p.climb && (m.d.y > 0 || !k.loco.grounded()) => Kind::Climb,
             k => k,
         };
         match kind {
@@ -328,7 +333,16 @@ impl Ways {
             Kind::Dig => {
                 let d = aim + Vec2::Y * k.body.half.y - k.body.pos;
                 s.move_x = toward(d.x);
-                s.move_y = toward(d.y);
+                // (Down to the hole it's digging, however little (off the
+                // face it's holding); up only when the way digs up, not up
+                // the face.)
+                s.move_y = if d.y < -1.0 {
+                    -1.0
+                } else if d.y > NODE as f32 {
+                    1.0
+                } else {
+                    0.0
+                };
             }
             Kind::Fly | Kind::Swim => {
                 let d = (aim + Vec2::Y * k.body.half.y - k.body.pos).normalize_or_zero();
@@ -371,6 +385,29 @@ fn waylog() -> bool {
 /// Cells a tick's digging (everyone's) may take, at most.
 const DIG_CAP: u32 = 400;
 
+/// A digger's face as its legs see it (a legged body, `legs.rs`): cells to
+/// strike at (spread over what's in its way, nearest first), till when
+/// it's digging; and where its claws struck since the last tick (the dig
+/// takes what's round each strike: the cells go where the claw goes).
+#[derive(Component, Default)]
+pub struct DigFace {
+    pub face: Vec<Vec2>,
+    pub until: f32,
+    pub strikes: Vec<Vec2>,
+    /// Each digging leg's last stroke struck (its count).
+    pub struck: [i64; 4],
+}
+
+/// What digs: its kind, body and way; what it has going; its face (for its
+/// legs, if it has them).
+type Digging<'a> = (Entity, &'a Creature, &'a Kinematics, &'a Way, Option<&'a mut Digger>, Option<&'a mut DigFace>, Has<crate::creatures::body::legs::Legs>);
+
+/// A claw's strike takes what's within this of its tip (cells).
+const STRIKE: f32 = 4.5;
+/// Digging owed past this (seconds) and the claws haven't struck it: the
+/// nearest goes anyway (a dig never stalls on its animation).
+const OWED_MOST: f32 = 0.6;
+
 /// What a digger has going (the digging owed it, seconds; its next spit,
 /// its next scratch).
 #[derive(Component, Default)]
@@ -395,87 +432,201 @@ fn dig(
     mut sim: ResMut<SimWorld>,
     creatures: Res<Creatures>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
-    mut q: Query<(Entity, &Creature, &Kinematics, &Way, Option<&mut Digger>)>,
+    mut q: Query<Digging>,
 ) {
     const DT: f32 = 1.0 / crate::world::TICK_HZ as f32;
     let now = time.elapsed_secs();
     let mut cap = DIG_CAP as f32;
-    for (e, c, k, way, digger) in &mut q {
-        let Some(n) = way.dig else { continue };
+    for (e, c, k, way, digger, face, legged) in &mut q {
+        let Some(n) = way.dig else {
+            if let Some(mut f) = face
+                && !f.face.is_empty()
+            {
+                f.face.clear();
+                f.strikes.clear();
+            }
+            continue;
+        };
         let Some(def) = creatures.get(&c.kind).and_then(|d| d.dig.clone()) else { continue };
         let Some(mut dg) = digger else {
             commands.entity(e).insert(Digger::default());
             continue;
         };
+        // (A legged body digs with its legs: its face, for them.)
+        let Some(mut face) = face.filter(|_| legged).or(None) else {
+            if legged {
+                commands.entity(e).insert(DigFace::default());
+                continue;
+            }
+            dig_by_reach(&mut sim, k, n, &def, &mut dg, &mut cap, now, &mut sounds);
+            continue;
+        };
+        // (Only at the face: its body by the node it's digging.)
+        if !at_face(k, n) {
+            continue;
+        }
         let digging = def.digging();
-        // Its room at the node: the cells in its way it can dig, nearest
-        // first, and how long each takes.
-        let (w, h) = (k.body.half.x * 2.0, k.body.half.y * 2.0);
-        let half = ((w.ceil() as i32) + 1) / 2;
-        let (xc, yb) = (n.x * NODE + NODE / 2, n.y * NODE);
+        let solid = dig_room(&sim, k, n, &digging);
+        if solid.is_empty() || cap <= 0.0 {
+            dg.owed = 0.0;
+            face.face.clear();
+            face.strikes.clear();
+            continue;
+        }
+        dg.owed = (dg.owed + DT).min(solid[0].1.max(1.0));
+        // Its face for its legs: what its claws can take, spread nearest to
+        // furthest (each stroke at the next).
+        let clawable: Vec<&Cut> = solid.iter().filter(|s| s.3).collect();
+        face.face = (0..FACE_POINTS.min(clawable.len())).map(|j| mid(&clawable[j * clawable.len() / FACE_POINTS.min(clawable.len()).max(1)].0)).collect();
+        face.until = now + 0.25;
         let mats = sim.world.materials().clone();
-        let mut solid: Vec<(platypus_sim::CellPos, f32, platypus_sim::MaterialId, bool)> = Vec::new();
-        // (A cell round it to spare: a body doesn't sit to the cell where
-        // the node says.)
-        for x in xc - half - 1..xc + half + 1 {
-            for y in yb - 1..yb + h.ceil() as i32 + 1 {
-                let p = platypus_sim::CellPos::new(x, y);
-                if let Some(cell) = sim.world.get(p)
-                    && sim.world.is_solid(p)
-                {
-                    let ph = mats.phys(cell.material);
-                    if let Some(secs) = digging.secs(ph.hardness, ph.inert) {
-                        let clawed = digging.claws > 0 && ph.hardness <= digging.claws;
-                        solid.push((p, secs, cell.material, clawed));
-                    }
+        let (mut scraped, mut eaten) = (None, None);
+        let take = |sim: &mut SimWorld, at: platypus_sim::CellPos, secs: f32, owed: &mut f32, cap: &mut f32| -> bool {
+            if *owed < secs || *cap < 1.0 || !sim.world.is_solid(at) {
+                return false;
+            }
+            *owed -= secs;
+            *cap -= 1.0;
+            sim.world.set(at, platypus_sim::Cell::AIR);
+            true
+        };
+        // Each strike takes what's round the claw's tip.
+        for strike in std::mem::take(&mut face.strikes) {
+            let mut near: Vec<&&Cut> = clawable.iter().filter(|s| mid(&s.0).distance(strike) <= STRIKE).collect();
+            near.sort_by(|a, b| mid(&a.0).distance_squared(strike).total_cmp(&mid(&b.0).distance_squared(strike)));
+            for &&&(at, secs, m, _) in &near {
+                if take(&mut sim, at, secs, &mut dg.owed, &mut cap) {
+                    scraped = scraped.or(Some((at, m)));
+                } else if dg.owed < secs {
+                    break;
                 }
             }
         }
-        if solid.is_empty() || cap <= 0.0 {
-            dg.owed = 0.0;
-            continue;
-        }
-        let me = k.body.pos;
-        let mid = |p: &platypus_sim::CellPos| Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5);
-        solid.sort_by(|a, b| mid(&a.0).distance_squared(me).total_cmp(&mid(&b.0).distance_squared(me)));
-        // (Owed no more than a second, or the nearest cell's time.)
-        dg.owed = (dg.owed + DT).min(solid[0].1.max(1.0));
-        let (mut scraped, mut eaten) = (None, None);
+        // What claws can't take, acid eats (nearest first); and owed piling
+        // up (strikes not keeping up), the nearest goes anyway.
         for &(at, secs, m, clawed) in &solid {
-            if dg.owed < secs || cap < 1.0 {
+            if clawed && dg.owed < OWED_MOST {
+                continue;
+            }
+            if take(&mut sim, at, secs, &mut dg.owed, &mut cap) {
+                if clawed {
+                    scraped = scraped.or(Some((at, m)));
+                } else {
+                    eaten = eaten.or(Some(at));
+                }
+            } else if dg.owed < secs || cap < 1.0 {
                 break;
             }
-            dg.owed -= secs;
-            cap -= 1.0;
-            sim.world.set(at, platypus_sim::Cell::AIR);
-            if clawed {
-                scraped = scraped.or(Some((at, m)));
-            } else {
-                eaten = eaten.or(Some(at));
+        }
+        dug(&mut sim, &mats, &def, &mut dg, now, scraped, eaten, &mut sounds);
+    }
+}
+
+/// Its body by the node it's digging (within its size and two nodes): a
+/// digger doesn't dig what's out of its reach.
+fn at_face(k: &Kinematics, n: NodePos) -> bool {
+    let node = Vec2::new((n.x * NODE + NODE / 2) as f32, (n.y * NODE) as f32 + k.body.half.y);
+    (node - k.body.pos).abs().cmple(k.body.half + Vec2::splat(NODE as f32 * 2.0)).all()
+}
+
+/// A cell in a digger's way: where, seconds to dig it, what it is, and
+/// whether claws take it (else acid).
+type Cut = (platypus_sim::CellPos, f32, platypus_sim::MaterialId, bool);
+
+/// How many points of its face a legged digger strikes at in turn.
+const FACE_POINTS: usize = 6;
+
+fn mid(p: &platypus_sim::CellPos) -> Vec2 {
+    Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5)
+}
+
+/// Its room at the node: the cells in its way it can dig, nearest first.
+fn dig_room(sim: &SimWorld, k: &Kinematics, n: NodePos, digging: &platypus_nav::Digging) -> Vec<Cut> {
+    let (w, h) = (k.body.half.x * 2.0, k.body.half.y * 2.0);
+    let half = ((w.ceil() as i32) + 1) / 2;
+    let (xc, yb) = (n.x * NODE + NODE / 2, n.y * NODE);
+    let mats = sim.world.materials();
+    let mut solid: Vec<Cut> = Vec::new();
+    // (A cell round it to spare: a body doesn't sit to the cell where the
+    // node says.)
+    for x in xc - half - 1..xc + half + 1 {
+        for y in yb - 1..yb + h.ceil() as i32 + 1 {
+            let p = platypus_sim::CellPos::new(x, y);
+            if let Some(cell) = sim.world.get(p)
+                && sim.world.is_solid(p)
+            {
+                let ph = mats.phys(cell.material);
+                if let Some(secs) = digging.secs(ph.dig_hardness(), ph.inert) {
+                    let clawed = digging.claws > 0 && ph.dig_hardness() <= digging.claws;
+                    solid.push((p, secs, cell.material, clawed));
+                }
             }
         }
-        if let Some((at, m)) = scraped
-            && now >= dg.sound_at
-        {
-            dg.sound_at = now + 0.3;
-            let from = mid(&at);
-            // (What it scrapes falls as what it crumbles into, a pinch.)
-            let ph = mats.phys(m);
-            if ph.crumbles_into != platypus_sim::MaterialId::AIR {
-                sim.world.splash([from.x, from.y], ph.crumbles_into, 2, 1.5);
-            }
-            let name = if ph.hardness >= 40 { "mine_stone" } else { "mine_dirt" };
-            sounds.write(crate::sound::PlaySound::at(name, from).volume(0.6));
+    }
+    let me = k.body.pos;
+    solid.sort_by(|a, b| mid(&a.0).distance_squared(me).total_cmp(&mid(&b.0).distance_squared(me)));
+    solid
+}
+
+/// A body without legs digs as it reaches: the nearest cells, each as its
+/// time comes.
+#[allow(clippy::too_many_arguments)]
+fn dig_by_reach(sim: &mut SimWorld, k: &Kinematics, n: NodePos, def: &crate::creatures::def::DigDef, dg: &mut Digger, cap: &mut f32, now: f32, sounds: &mut MessageWriter<crate::sound::PlaySound>) {
+    const DT: f32 = 1.0 / crate::world::TICK_HZ as f32;
+    if !at_face(k, n) {
+        return;
+    }
+    let solid = dig_room(sim, k, n, &def.digging());
+    if solid.is_empty() || *cap <= 0.0 {
+        dg.owed = 0.0;
+        return;
+    }
+    dg.owed = (dg.owed + DT).min(solid[0].1.max(1.0));
+    let (mut scraped, mut eaten) = (None, None);
+    for &(at, secs, m, clawed) in &solid {
+        if dg.owed < secs || *cap < 1.0 {
+            break;
         }
-        if let (Some(at), Some(acid)) = (eaten, &def.acid)
-            && now >= dg.spit_at
-            && let Some(m) = mats.id(&acid.material)
-        {
-            dg.spit_at = now + acid.every;
-            let from = mid(&at);
-            sim.world.splash([from.x, from.y], m, 3, 1.0);
-            sounds.write(crate::sound::PlaySound::at("pour", from).volume(0.7));
+        dg.owed -= secs;
+        *cap -= 1.0;
+        sim.world.set(at, platypus_sim::Cell::AIR);
+        if clawed {
+            scraped = scraped.or(Some((at, m)));
+        } else {
+            eaten = eaten.or(Some(at));
         }
+    }
+    let mats = sim.world.materials().clone();
+    dug(sim, &mats, def, dg, now, scraped, eaten, sounds);
+}
+
+/// What digging shows: claws throw a pinch of what they scrape out (as what
+/// it crumbles into), scratching; acid's spat at the face now and then,
+/// hissing.
+#[allow(clippy::too_many_arguments)]
+fn dug(sim: &mut SimWorld, mats: &platypus_sim::MaterialTable, def: &crate::creatures::def::DigDef, dg: &mut Digger, now: f32, scraped: Option<(platypus_sim::CellPos, platypus_sim::MaterialId)>, eaten: Option<platypus_sim::CellPos>, sounds: &mut MessageWriter<crate::sound::PlaySound>) {
+    if let Some((at, m)) = scraped
+        && now >= dg.sound_at
+    {
+        dg.sound_at = now + 0.3;
+        let from = mid(&at);
+        // (What it scrapes falls as what it crumbles into, a pinch, tossed
+        // gently: not hard enough to pelt the digger itself.)
+        let ph = mats.phys(m);
+        if ph.crumbles_into != platypus_sim::MaterialId::AIR {
+            sim.world.splash([from.x, from.y], ph.crumbles_into, 2, 0.8);
+        }
+        let name = if ph.hardness >= 40 { "mine_stone" } else { "mine_dirt" };
+        sounds.write(crate::sound::PlaySound::at(name, from).volume(0.6));
+    }
+    if let (Some(at), Some(acid)) = (eaten, &def.acid)
+        && now >= dg.spit_at
+        && let Some(m) = mats.id(&acid.material)
+    {
+        dg.spit_at = now + acid.every;
+        let from = mid(&at);
+        sim.world.splash([from.x, from.y], m, 3, 1.0);
+        sounds.write(crate::sound::PlaySound::at("pour", from).volume(0.7));
     }
 }
 
