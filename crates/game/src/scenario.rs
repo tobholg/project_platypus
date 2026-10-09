@@ -6613,8 +6613,9 @@ fn sneak_script(
 ///   the player follows it to the arena's wall: cornered, it fights;
 /// - ambush: a cave centipede in the room goes up to its ceiling and waits;
 ///   the player walks in at 24 s: it comes along the ceiling and drops;
-/// - flank: a pack of four raptors at the player standing: how many are
-///   each side of the player, twice a second;
+/// - flank and skirmish: a pack of four raptors at the player held still:
+///   where each is, twice a second (two each side, waiting 52 off, one at
+///   a time coming in to bite);
 /// - call: a raptor pack, its leader in sight of the player, the others
 ///   too far off to see: they come at its call;
 /// - shun the light: in the room, the player with a torch, a cave spider:
@@ -6679,8 +6680,13 @@ fn tactics_script(
             commands.entity(e).despawn();
         }
     };
+    // (Each put down facing the player, to its left: what it sees ahead of
+    // it, it sees.)
     let spawn = |commands: &mut Commands, kind: &str, x: f32, told: Option<Vec2>, pack: Option<(u64, u32)>| {
         crate::creatures::def::spawn_creature(commands, kind, Vec2::new(x, fl), move |e| {
+            if let Some(mut k) = e.get_mut::<Kinematics>() {
+                k.loco.facing = -1.0;
+            }
             if let Some(at) = told {
                 e.insert(crate::creatures::brain::senses::Alert::hunting(at));
             }
@@ -6780,13 +6786,8 @@ fn tactics_script(
             if t > 42.0 {
                 rid(&mut commands, &them);
                 put(&mut k, 960.0);
-                // (The leader facing the player: it sees it; the rest too far off.)
-                crate::creatures::def::spawn_creature(&mut commands, "raptor", Vec2::new(1220.0, fl), |e| {
-                    e.insert(Pack { id: 0xCA11, rank: 0 });
-                    if let Some(mut k) = e.get_mut::<Kinematics>() {
-                        k.loco.facing = -1.0;
-                    }
-                });
+                // (The leader sees the player; the rest are too far off.)
+                spawn(&mut commands, "raptor", 1220.0, None, Some((0xCA11, 0)));
                 spawn(&mut commands, "raptor", 1560.0, None, Some((0xCA11, 1)));
                 spawn(&mut commands, "raptor", 1590.0, None, Some((0xCA11, 2)));
                 state.0 = 6;

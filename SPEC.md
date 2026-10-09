@@ -1521,19 +1521,25 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   too, coming to where it saw you), `flank` (in a pack, each takes a side
   of you as the hunt begins and keeps it: the leader's and the even
   places' the side the pack came from, the odd places' the far side, going
-  over you within 45 across if they must, no move started till there).
+  over you within 45 across if they must, no move started till there),
+  `skirmish: Some((back, wait, together))` (it waits `back` off you on
+  its side, starting no move; when its turn comes, a pack's `together` at
+  a time, it comes in, makes its move and goes back out, waiting `wait` s
+  ±40 % before its next; in for 2.5 s at most).
   A pack (`Pack { id, rank }`): what spawned together as a `life.ron`
   `group`; with no one about the rest follow the leader (its lowest rank
   living) within 60; one starting to hunt calls the rest within 600.
-  Given: raptor (flank, flee 0.25), cave centipede (ambush), cave spider
+  Given: raptor (flank, skirmish 52 / 1.4 s / one at a time, flee 0.25), cave centipede (ambush), cave spider
   (shun_light 75), spiderling (shun_light 60, flee 0.3), vampire bat
   (shun_light 90), scorpion (flee 0.25), orc (flee 0.2, call 250), orc
   archer (flee 0.35, call 250); the undead and the big ones never flee.
-  The `tactics` scenario (`PLATYPUS_ARENA=flat`, at night) proves each: an
+  The `tactics` scenario (`PLATYPUS_ARENA=flat`, at night; each creature
+  put down facing the player) proves each: an
   orc cut to 15 % runs to the arena's wall and, cornered, fights; a cave
   centipede goes up to a room's ceiling in 0.8 s and, the player walking
   in, comes along it and drops; a pack of four raptors at a player held
-  still settles two each side (±16); a pack's leader sees the player and
+  still settles two each side, three waiting about 53 off while one comes
+  in, bites and goes back out; a pack's leader sees the player and
   its two out of sight come at its call; a cave spider keeps 72 off a
   torch-lit player and comes in and bites when the torch goes out.
 - Pelting: a liquid hurts only above 375 cells/s (not 135), so a death's

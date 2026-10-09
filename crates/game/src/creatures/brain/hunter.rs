@@ -165,6 +165,12 @@ pub struct HunterMind {
     /// In a pack that flanks: the side of you it fights from (−1 left, 1
     /// right; 0: not chosen yet), chosen once as the hunt begins.
     side: f32,
+    /// Skirmishing: coming in now (since), waiting out till, and whether
+    /// it was busy with a move last tick (a move done: back out).
+    charging: bool,
+    charge_since: u64,
+    wait_until: u64,
+    was_busy: bool,
 }
 
 /// What hunters go after (a villager hiding at home is let be).
@@ -215,8 +221,13 @@ fn hunt(
     ids: Query<&crate::creatures::Stable>,
     (mut ways, creatures, tempo): (ResMut<super::way::Ways>, Res<crate::creatures::def::Creatures>, Res<crate::tempo::Tempo>),
     packs: Query<(&super::tactics::Pack, &Kinematics)>,
+    // Skirmishers coming in, per pack: last tick's count, this tick's.
+    mut charging: Local<(std::collections::HashMap<u64, u32>, std::collections::HashMap<u64, u32>)>,
 ) {
     let tick = sim.world.tick();
+    let (charging_then, charging_now) = &mut *charging;
+    std::mem::swap(charging_then, charging_now);
+    charging_now.clear();
     // Each pack's leader: its first still living, and where it is.
     let mut leaders: std::collections::HashMap<u64, (u32, Vec2)> = std::collections::HashMap::new();
     for (p, pk) in &packs {
@@ -318,20 +329,55 @@ fn hunt(
                     m.side = if pack.is_some_and(|p| p.rank % 2 == 1) { -came } else { came };
                 }
                 let far = flanks.then_some(m.side);
-                match (steer, far) {
+                // (Skirmishing: waiting `back` off, coming in when its turn
+                // comes (a pack's `together` at a time), out again once its
+                // move is done.)
+                let hold = match &h.tactics.skirmish {
+                    Some(sk) if !blind => {
+                        let busy = moves.is_some_and(|mv| mv.busy());
+                        if m.charging && (m.was_busy && !busy || tick > m.charge_since + ticks(CHARGE_MOST)) {
+                            m.charging = false;
+                            m.wait_until = tick + ticks(sk.wait * (0.6 + 0.8 * unit(&sim, id, 0x5C1)));
+                        }
+                        m.was_busy = busy;
+                        // (Those in last tick, or gone in already this one.)
+                        let room = pack.is_none_or(|p| charging_then.get(&p.id).copied().unwrap_or(0).max(charging_now.get(&p.id).copied().unwrap_or(0)) < sk.together);
+                        if !m.charging && tick >= m.wait_until && room {
+                            m.charging = true;
+                            m.charge_since = tick;
+                        }
+                        if m.charging
+                            && let Some(p) = pack
+                        {
+                            *charging_now.entry(p.id).or_default() += 1;
+                        }
+                        (!m.charging).then_some(sk.back)
+                    }
+                    _ => {
+                        m.charging = false;
+                        None
+                    }
+                };
+                match (steer, far, hold) {
                     _ if swinging => 0.0,
-                    (Some(s), _) => s.move_x,
-                    (None, Some(f)) => {
-                        let gx = t.x + f * (keep + FLANK_PAST) - pos.x;
+                    (Some(s), ..) => s.move_x,
+                    (None, Some(f), _) => {
+                        let gx = t.x + f * hold.unwrap_or(keep + FLANK_PAST) - pos.x;
                         let wrong_side = (pos.x - t.x).signum() != f;
                         if wrong_side && d.x.abs() < VAULT && grounded {
                             jump = true;
                         }
-                        en_route = wrong_side || gx.abs() > keep * 0.5 + 4.0;
+                        en_route = wrong_side || hold.is_some() || gx.abs() > keep * 0.5 + 4.0;
                         if gx.abs() < 4.0 { 0.0 } else { gx.signum() }
                     }
-                    (None, None) if d.x.abs() <= *keep => 0.0,
-                    (None, None) => d.x.signum(),
+                    (None, None, Some(back)) => {
+                        let side = if pos.x >= t.x { 1.0 } else { -1.0 };
+                        let gx = t.x + side * back - pos.x;
+                        en_route = true;
+                        if gx.abs() < 6.0 { 0.0 } else { gx.signum() }
+                    }
+                    (None, None, None) if d.x.abs() <= *keep => 0.0,
+                    (None, None, None) => d.x.signum(),
                 }
             }
             // On foot, at a distance: back off, close in, draw and loose.
@@ -634,6 +680,10 @@ const SHUN_LIT: f32 = 0.4;
 /// goes over you when it's within `VAULT` across on the wrong side.
 const FLANK_PAST: f32 = 6.0;
 const VAULT: f32 = 45.0;
+
+/// A skirmisher coming in goes back out after this long, its move made or
+/// not (s).
+const CHARGE_MOST: f32 = 2.5;
 
 /// An ambusher on a ceiling comes along it for what's within this across
 /// (cells); further, it waits.
