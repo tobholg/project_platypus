@@ -103,8 +103,13 @@ pub struct Way {
     /// The node it was last at, since when (headway).
     at: NodePos,
     since: u64,
-    /// Where it's digging (a node: its body's room there), if it is.
+    /// Where it's digging (a node: its body's room there), if it is;
+    /// whether the way digs down there; and the feet its hole is dug round
+    /// (along: the node's column at its own feet' height, so it tunnels on
+    /// level and doesn't climb the face for a way a few cells up).
     pub dig: Option<NodePos>,
+    pub dig_down: bool,
+    pub dig_feet: Vec2,
     /// A search under way (the tick's planning ran out before it was
     /// done: it goes on next tick, the way it has followed meanwhile).
     search: Option<Box<Search>>,
@@ -167,11 +172,11 @@ impl Ways {
         // Where on the way it is: the nearest step from here on, reached
         // (within a node: a flyer cuts across them).
         let near = way.path.iter().enumerate().skip(way.i).min_by_key(|(_, (n, _))| (*n - at).abs().max_element());
-        // (A dig step: in its column, a node up or down is there: the hole's
-        // dug, and a digger doesn't climb its face for a node.)
+        // (A dig step: in its column, a few nodes up or down is there: it
+        // digs along at its own height, not up its face for a way a little
+        // higher.)
         if let Some((j, (n, m))) = near
-            && (*n - at).abs().max_element() <= 1
-            && (*n == at || !grounded || p.fly > 0.0 || m.kind == Kind::Dig && n.x == at.x)
+            && ((*n - at).abs().max_element() <= 1 && (*n == at || !grounded || p.fly > 0.0) || m.kind == Kind::Dig && n.x == at.x && (n.y - at.y).abs() <= ALONG_SLACK)
         {
             way.i = j + 1;
         }
@@ -230,7 +235,7 @@ impl Ways {
                         way.made = tick;
                         way.goal = Some(to);
                     } else {
-                        *way = Way { goal: Some(to), start: search.start, whole: path.whole, path: steps, i: 0, made: tick, hold_until: 0, flight: 0.0, at, since: if stuck { tick } else { way.since }, dig: None, search: None };
+                        *way = Way { goal: Some(to), start: search.start, whole: path.whole, path: steps, i: 0, made: tick, hold_until: 0, flight: 0.0, at, since: if stuck { tick } else { way.since }, dig: None, dig_down: false, dig_feet: Vec2::ZERO, search: None };
                     }
                 }
             }
@@ -256,6 +261,8 @@ impl Ways {
         // it climbs, the rest as they walk.)
         if m.kind == Kind::Dig {
             way.dig = Some(n);
+            way.dig_down = m.d.y < 0;
+            way.dig_feet = if m.d.y == 0 && (n.y - at.y).abs() <= ALONG_SLACK { Vec2::new(node_feet(n).x, feet.y) } else { node_feet(n) };
         }
         let kind = match m.kind {
             Kind::Walk if on_wall => Kind::Climb,
@@ -333,16 +340,9 @@ impl Ways {
             Kind::Dig => {
                 let d = aim + Vec2::Y * k.body.half.y - k.body.pos;
                 s.move_x = toward(d.x);
-                // (Down to the hole it's digging, however little (off the
-                // face it's holding); up only when the way digs up, not up
-                // the face.)
-                s.move_y = if d.y < -1.0 {
-                    -1.0
-                } else if d.y > NODE as f32 {
-                    1.0
-                } else {
-                    0.0
-                };
+                // (Digging along: level, at its own height. Down: down to
+                // the hole. Up is a climber's (`Kind::Climb`).)
+                s.move_y = if m.d.y < 0 && d.y < -1.0 { -1.0 } else { 0.0 };
             }
             Kind::Fly | Kind::Swim => {
                 let d = (aim + Vec2::Y * k.body.half.y - k.body.pos).normalize_or_zero();
@@ -398,6 +398,13 @@ pub struct DigFace {
     pub struck: [i64; 4],
 }
 
+/// Digging along, a way this many nodes up or down from its feet is dug at
+/// its own height (and its step counts as reached in its column).
+const ALONG_SLACK: i32 = 3;
+
+/// A dug hole's room past the digger's body, all round (cells).
+const ROOM_PAD: f32 = 5.0;
+
 /// What digs: its kind, body and way; what it has going; its face (for its
 /// legs, if it has them).
 type Digging<'a> = (Entity, &'a Creature, &'a Kinematics, &'a Way, Option<&'a mut Digger>, Option<&'a mut DigFace>, Has<crate::creatures::body::legs::Legs>);
@@ -438,7 +445,7 @@ fn dig(
     let now = time.elapsed_secs();
     let mut cap = DIG_CAP as f32;
     for (e, c, k, way, digger, face, legged) in &mut q {
-        let Some(n) = way.dig else {
+        let Some(_) = way.dig else {
             if let Some(mut f) = face
                 && !f.face.is_empty()
             {
@@ -458,15 +465,15 @@ fn dig(
                 commands.entity(e).insert(DigFace::default());
                 continue;
             }
-            dig_by_reach(&mut sim, k, n, &def, &mut dg, &mut cap, now, &mut sounds);
+            dig_by_reach(&mut sim, k, way.dig_feet, way.dig_down, &def, &mut dg, &mut cap, now, &mut sounds);
             continue;
         };
-        // (Only at the face: its body by the node it's digging.)
-        if !at_face(k, n) {
+        // (Only at the face: its body by the hole it's digging.)
+        if !at_face(k, way.dig_feet) {
             continue;
         }
         let digging = def.digging();
-        let solid = dig_room(&sim, k, n, &digging);
+        let solid = dig_room(&sim, k, way.dig_feet, &digging, way.dig_down);
         if solid.is_empty() || cap <= 0.0 {
             dg.owed = 0.0;
             face.face.clear();
@@ -522,11 +529,11 @@ fn dig(
     }
 }
 
-/// Its body by the node it's digging (within its size and two nodes): a
+/// Its body by the hole it's digging (within its size and two nodes): a
 /// digger doesn't dig what's out of its reach.
-fn at_face(k: &Kinematics, n: NodePos) -> bool {
-    let node = Vec2::new((n.x * NODE + NODE / 2) as f32, (n.y * NODE) as f32 + k.body.half.y);
-    (node - k.body.pos).abs().cmple(k.body.half + Vec2::splat(NODE as f32 * 2.0)).all()
+fn at_face(k: &Kinematics, feet: Vec2) -> bool {
+    let middle = feet + Vec2::Y * k.body.half.y;
+    (middle - k.body.pos).abs().cmple(k.body.half + Vec2::splat(NODE as f32 * 2.0)).all()
 }
 
 /// A cell in a digger's way: where, seconds to dig it, what it is, and
@@ -540,17 +547,23 @@ fn mid(p: &platypus_sim::CellPos) -> Vec2 {
     Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5)
 }
 
-/// Its room at the node: the cells in its way it can dig, nearest first.
-fn dig_room(sim: &SimWorld, k: &Kinematics, n: NodePos, digging: &platypus_nav::Digging) -> Vec<Cut> {
-    let (w, h) = (k.body.half.x * 2.0, k.body.half.y * 2.0);
-    let half = ((w.ceil() as i32) + 1) / 2;
-    let (xc, yb) = (n.x * NODE + NODE / 2, n.y * NODE);
+/// Its room at the node: the cells in its way it can dig, nearest first. A
+/// round hole a little bigger than it all round (`ROOM_PAD`), so it isn't
+/// wedged against the face, the roof and the floor at once; nothing below
+/// its feet unless the way goes down (not the floor it walks on).
+fn dig_room(sim: &SimWorld, k: &Kinematics, feet: Vec2, digging: &platypus_nav::Digging, down: bool) -> Vec<Cut> {
+    let (xc, yb) = (feet.x as i32, feet.y.round() as i32);
+    let (rx, ry) = (k.body.half.x + ROOM_PAD, k.body.half.y + ROOM_PAD);
+    let mid_y = yb as f32 + k.body.half.y;
+    let bottom = if down { (mid_y - ry).floor() as i32 } else { yb };
     let mats = sim.world.materials();
     let mut solid: Vec<Cut> = Vec::new();
-    // (A cell round it to spare: a body doesn't sit to the cell where the
-    // node says.)
-    for x in xc - half - 1..xc + half + 1 {
-        for y in yb - 1..yb + h.ceil() as i32 + 1 {
+    for x in (xc as f32 - rx).floor() as i32..=(xc as f32 + rx).ceil() as i32 {
+        for y in bottom..=(mid_y + ry).ceil() as i32 {
+            let (dx, dy) = ((x as f32 + 0.5 - xc as f32) / rx, (y as f32 + 0.5 - mid_y) / ry);
+            if dx * dx + dy * dy > 1.0 {
+                continue;
+            }
             let p = platypus_sim::CellPos::new(x, y);
             if let Some(cell) = sim.world.get(p)
                 && sim.world.is_solid(p)
@@ -571,12 +584,12 @@ fn dig_room(sim: &SimWorld, k: &Kinematics, n: NodePos, digging: &platypus_nav::
 /// A body without legs digs as it reaches: the nearest cells, each as its
 /// time comes.
 #[allow(clippy::too_many_arguments)]
-fn dig_by_reach(sim: &mut SimWorld, k: &Kinematics, n: NodePos, def: &crate::creatures::def::DigDef, dg: &mut Digger, cap: &mut f32, now: f32, sounds: &mut MessageWriter<crate::sound::PlaySound>) {
+fn dig_by_reach(sim: &mut SimWorld, k: &Kinematics, feet: Vec2, down: bool, def: &crate::creatures::def::DigDef, dg: &mut Digger, cap: &mut f32, now: f32, sounds: &mut MessageWriter<crate::sound::PlaySound>) {
     const DT: f32 = 1.0 / crate::world::TICK_HZ as f32;
-    if !at_face(k, n) {
+    if !at_face(k, feet) {
         return;
     }
-    let solid = dig_room(sim, k, n, &def.digging());
+    let solid = dig_room(sim, k, feet, &def.digging(), down);
     if solid.is_empty() || *cap <= 0.0 {
         dg.owed = 0.0;
         return;

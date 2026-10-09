@@ -1836,11 +1836,16 @@ DESIGN §13 item 6.
   listening; each strike takes the clawable cells within 4.5 of where it
   struck, as the digging owed allows; what claws can't take, acid eats
   nearest first, and owed past 0.6 s the nearest goes anyway (it never
-  stalls on its legs). Scraped crumbs are tossed gently, and a digger at
-  its face isn't pelted by what it digs. Digging along on its feet it
-  stands to the face (down to the hole however little, up only where the
-  way digs up); holding on to a wall or ceiling, or digging up, it digs
-  as it climbs. No creature digs what's `fortified` (brick, ashlar, iron,
+  stalls on its legs). The hole is round: an ellipse 5 cells bigger than
+  its body all round (not a box its size: wedged against face, roof and
+  floor at once it swapped what it held five times a second, flipping
+  upright and back), nothing below its feet unless the way goes down (not
+  the floor it walks on). Scraped crumbs are tossed gently, and a digger
+  at its face isn't pelted by what it digs. Digging along it tunnels level
+  at its own height (a way up to 3 nodes higher or lower is dug there,
+  its step reached in its column; it never steers up for it); down, down
+  to the hole; holding on to a wall or ceiling, or digging up, it digs as
+  it climbs. No creature digs what's `fortified` (brick, ashlar, iron,
   copper, silver: `MatPhys::dig_hardness` is past any claw or acid); the
   player still can. The cave spider: claws (25, 120: about 5 cells of
   headway a second in dirt, well under the player's 113), acid (90, 80,
@@ -1853,16 +1858,16 @@ DESIGN §13 item 6.
   sealed room). The `burrow` scenario (`PLATYPUS_ARENA=flat`,
   `PLATYPUS_WALL`): the player in a room inside a mound, seen through a
   slit too thin for a cave spider: through dirt it digs in along the slit,
-  widening it, and is at the player (within its 34-cell keep) in about
-  19 s; through stone it goes over the top and eats in from the far side
-  with acid (about 52 s), and bites; brick it never digs. The `dig`
+  in a round tunnel of its own at its height, and is at the player
+  (within its 34-cell keep) in about 33 s, lying level all the way;
+  through stone it goes over the top and eats in from the far side with
+  acid (about 57 s), and bites; brick it never digs. The `dig`
   scenario (a sealed shell; told where the player is, since senses came
   in it couldn't know): dirt 10.5 s, stone 35 s, obsidian and glass
   never. A climbing ambusher not yet up goes to the nearer
   wall (within 300 either way) to go up to a ceiling. Headway is getting
   nearer by 6, or moving 12 (a climb up a face under what it hunts is
-  headway). A dig step counts as reached in its column a node up or down
-  (it doesn't climb the face for a node). A crawler on a ceiling within
+  headway). A crawler on a ceiling within
   its `keep` across (12 at least) of what's below lets go onto it. And a
   climber on
   its feet touching a ceiling too (a tunnel its own height) walks on
