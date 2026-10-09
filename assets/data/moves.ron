@@ -79,11 +79,12 @@
             ]),
             (name: "recover", secs: 0.3, ease: Smooth, pose: Some(())),
         ]),
-        // A ridge raptor's bite: up and back, its head raised, then in at
-        // you nose down, jaws first; it stops on you.
+        // A ridge raptor's bite: up and back, its head raised, jaws agape
+        // (its body art's `jaws`), then in at you nose down and snapped
+        // shut (`snap`); it stops on you.
         (id: "raptor_bite", every: 1.6, when: (range: (0, 44), footing: true), phases: [
-            (name: "windup", secs: 0.26, pose: Some((lift: 3, back: 9, pitch: -18))),
-            (name: "strike", secs: 0.12, ease: Snap, pose: Some((lift: -1, back: -10, pitch: 24)), acts: [
+            (name: "windup", secs: 0.26, pose: Some((lift: 3, back: 9, pitch: -18, face: Some("jaws")))),
+            (name: "strike", secs: 0.12, ease: Snap, pose: Some((lift: -1, back: -10, pitch: 24, face: Some("snap"))), acts: [
                 Lunge(speed: 280, up: 25),
                 Strike((at: 16, reach: 8, damage: 14, harm: slash, knock: 300, up: 0.3, stun: 0.3)),
                 Sound("snap"),

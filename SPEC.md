@@ -2335,6 +2335,11 @@ player has seen creatures do) and `fight.rs` (the arena's readouts).
   onto that spot again under 0.6: a stomp lands under the foot), `reach`ed
   out at the target (an arm: that share of the way to as far toward it as
   it goes) and `open` (a claw turned up off its forearm, 35° a unit);
+  `face`: a frame of its body art by name, shown from a third of the way
+  into the phase (every frame of a legged body is turned at every angle
+  as it grows; a frame without its own `grip` uses the first's): the
+  ridge raptor's bite gapes on its wind-up (`jaws`: the snout up, teeth
+  bared, the jaw dropped) and snaps shut on the strike (`snap`);
   `ease` Smooth, Linear or Snap; `tremble`, on curl, coil (×4) and paw
   (×3) only) and doing its `acts`
   as it starts: `Lunge(speed, up)`; `Strike((at, reach, damage, harm,

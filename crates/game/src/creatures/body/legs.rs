@@ -460,6 +460,9 @@ pub struct Rear {
     pub pitch: f32,
     /// Its named limbs (a leg's, an arm's `name`), each as a move holds it.
     pub limbs: Vec<LimbPose>,
+    /// Its body's look: a frame of its body art by name (jaws agape, a
+    /// bite snapped shut); none: its first.
+    pub face: Option<String>,
     /// Where the move's target is (set as it runs): what arms reach for.
     #[serde(skip)]
     pub target: Option<Vec2>,
@@ -519,6 +522,8 @@ impl Rear {
             paw: mix(from.paw, to.paw) + shake * 3.0,
             pitch: mix(from.pitch, to.pitch),
             limbs,
+            // (Its look changes a third of the way in: no frame between.)
+            face: if w >= 0.35 { to.face.clone() } else { from.face.clone() },
             target: from.target,
             tells: from.tells.clone(),
         }
@@ -718,6 +723,8 @@ pub struct Legs {
     /// its target while a move's phase shows `Tell::Lock`).
     turrets: Vec<Turret>,
     lock: Option<Entity>,
+    /// The body art's frame it shows (none: its first).
+    face: Option<String>,
 }
 
 #[derive(Component)]
@@ -1053,9 +1060,15 @@ fn grow_legs(
             if art.0.contains_key(&key) {
                 continue;
             }
-            match crate::combat::turned_art(&def.body, only, &mut images, &mut layouts) {
-                Ok(t) => {
-                    art.0.insert(key, t);
+            // (Each of its frames as `key@frame`, the first also as `key`.)
+            match crate::combat::turned_frames(&def.body, only, &mut images, &mut layouts) {
+                Ok(frames) => {
+                    for (i, (name, t)) in frames.into_iter().enumerate() {
+                        if i == 0 {
+                            art.0.insert(key.clone(), t.clone());
+                        }
+                        art.0.insert(format!("{key}@{name}"), t);
+                    }
                 }
                 Err(err) => warn!("legs: body `{}`: {err}", def.body),
             }
@@ -1084,7 +1097,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, grip: Vec2::ZERO, turrets: Vec::new(), lock: None, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, grip: Vec2::ZERO, turrets: Vec::new(), lock: None, face: None, def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -1183,6 +1196,7 @@ fn walk(
     mut stingers: Query<(&mut Sprite, &mut Transform, &mut Visibility), (With<LegStinger>, Without<CreatureSprite>, Without<LegBody>, Without<LegEyes>, Without<LegClaw>)>,
     mut claws: Query<(&mut Sprite, &mut Transform), (With<LegClaw>, Without<CreatureSprite>, Without<LegBody>, Without<LegEyes>, Without<LegStinger>)>,
     mut falls: ResMut<Footfalls>,
+    art: Res<BodyArt>,
 ) {
     let dt = time.delta_secs().min(0.05);
     let now = time.elapsed_secs();
@@ -1342,6 +1356,26 @@ fn walk(
         // (From the side: tilted, mirrored to face left.)
         let (index, flip) = if side { (crate::combat::Turned::index((legs.tilt + legs.facing * legs.surface).to_degrees()), legs.facing < 0.0) } else { (crate::combat::Turned::index(legs.heading.to_degrees()), false) };
         let offset = legs.offset;
+        // Its look: the frame its move's pose shows (body and eyes).
+        if rear.face != legs.face {
+            let at = |key: String| match &rear.face {
+                Some(f) => art.0.get(&format!("{key}@{f}")),
+                None => art.0.get(&key),
+            };
+            let eyes_key = legs.def.eyes.map(|(r, g, b)| format!("{}#{r},{g},{b}", legs.def.body));
+            for (part, key) in [(Some(legs.body), Some(legs.def.body.clone())), (legs.eyes, eyes_key)] {
+                if let (Some(part), Some(turned)) = (part, key.and_then(at))
+                    && let Ok((mut s, _)) = bodies.get_mut(part)
+                {
+                    let (image, layout) = turned.atlas();
+                    s.image = image;
+                    if let Some(a) = s.texture_atlas.as_mut() {
+                        a.layout = layout;
+                    }
+                }
+            }
+            legs.face = rear.face.clone();
+        }
         if let Ok((mut s, mut t)) = bodies.get_mut(legs.body) {
             if let Some(atlas) = s.texture_atlas.as_mut() {
                 atlas.index = index;

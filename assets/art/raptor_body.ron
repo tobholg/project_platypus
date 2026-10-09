@@ -3,7 +3,9 @@
 // head (a yellow eye, a mouth of teeth), dark stripes down its back, a
 // pale belly. Its legs (three bones each: a thick thigh, a slender shank
 // back to the ankle, a long foot forward to its toes) and its little arms
-// are its creature file's `legs`; `grip` is its hip.
+// are its creature file's `legs`; `grip` is its hip. `jaws` and `snap`:
+// its mouth agape (teeth bared, the snout up, the jaw dropped) and bitten
+// shut, its head thrust on; its bite's poses show them.
 (
     size: (43, 19),
     feet: (13, 17),
@@ -41,9 +43,54 @@
             ".......gggggggggggg........................",
             "...........................................",
         ],
+        "jaws": [
+            "...........................................",
+            "...............................kkkk........",
+            ".............................kGGGGGLLLLL...",
+            "............................GGGGGGGGGGGGLn.",
+            "...........................GGGeGGGGGGtttt..",
+            "...........................GGGGGGGmmmmm....",
+            "..........................gGGGGGmmmmmmm....",
+            ".........................gGGGGGmmmmmmmm....",
+            "........................gGGGggptttttttt....",
+            "...........kkkLL......gGGGggpppppppppp.....",
+            ".....kkkLLLLGGGGGGGkkGGGGgg................",
+            ".LLLLGGGGGGGGGGGGGGGGGGGGg.................",
+            ".GGGGGGGGGGGGGGGGGGGGGGGGgg................",
+            ".GGGGGGGGGGGGGGGGGGGGGGGgg.................",
+            ".GGGGGGGGGGGGGGGGGGGGGGgg..................",
+            ".ggggpppppppppppppppppgg...................",
+            "....ggppppppppppppppgg.....................",
+            ".......gggggggggggg........................",
+            "...........................................",
+        ],
+        "snap": [
+            "...........................................",
+            "...............................kkkk........",
+            ".............................kGGGGGLL......",
+            "............................GGGGGGGGLLL....",
+            "............................GGGeGGGGGGGGGL.",
+            "............................GGGGGGGGGGGGGGn",
+            "...........................gGGGGttttttttt..",
+            ".........................gGGGGGppppppppp...",
+            "........................gGGGggppp..........",
+            "...........kkkLL......gGGGgg...............",
+            ".....kkkLLLLGGGGGGGkkGGGGgg................",
+            ".LLLLGGGGGGGGGGGGGGGGGGGGg.................",
+            ".GGGGGGGGGGGGGGGGGGGGGGGGgg................",
+            ".GGGGGGGGGGGGGGGGGGGGGGGgg.................",
+            ".GGGGGGGGGGGGGGGGGGGGGGgg..................",
+            ".ggggpppppppppppppppppgg...................",
+            "....ggppppppppppppppgg.....................",
+            ".......gggggggggggg........................",
+            "...........................................",
+        ],
     },
     clips: {
         "idle": (frames: ["body"], fps: 1),
+        // (Shown by its bite's pose: agape on the wind-up, snapped shut.)
+        "jaws": (frames: ["jaws"], fps: 1),
+        "snap": (frames: ["snap"], fps: 1),
     },
     anchors: { "grip": { "body": (13, 15) } },
 )

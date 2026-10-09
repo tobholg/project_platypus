@@ -222,6 +222,7 @@ impl MoveDef {
 
 /// A weapon's picture at every angle (squares with the grip in the middle
 /// pixel), and the atlas they're drawn from.
+#[derive(Clone)]
 pub(crate) struct Turned {
     frames: Vec<Pixels>,
     side: u32,
@@ -230,6 +231,11 @@ pub(crate) struct Turned {
 }
 
 impl Turned {
+    /// Its atlas: the picture, and how it's cut.
+    pub(crate) fn atlas(&self) -> (Handle<Image>, Handle<TextureAtlasLayout>) {
+        (self.image.clone(), self.layout.clone())
+    }
+
     pub(crate) fn index(angle: f32) -> usize {
         (((angle + 180.0) / STEP).round() as i64).rem_euclid(TURNS as i64) as usize
     }
@@ -268,7 +274,9 @@ fn turn_compiled(compiled: &platypus_art::Art, art: &str, frame: Option<&str>) -
         Some(name) => compiled.index(name).ok_or(format!("{art}: no frame `{name}`"))?,
         None => 0,
     };
-    let grip = compiled.anchors.get("grip").and_then(|m| m.get(&i)).copied().ok_or(format!("{art}: no `grip` anchor"))?;
+    // (A frame without its own `grip`: the first frame's.)
+    let grips = compiled.anchors.get("grip");
+    let grip = grips.and_then(|m| m.get(&i).or_else(|| m.get(&0))).copied().ok_or(format!("{art}: no `grip` anchor"))?;
     Ok((0..TURNS).map(|k| platypus_art::rotate::rotsprite(&compiled.frames[i], grip, -180.0 + k as f32 * STEP)).collect())
 }
 
@@ -311,6 +319,23 @@ pub(crate) fn turned_art(art: &str, only: Option<[u8; 3]>, images: &mut Assets<I
         }
     }
     Ok(Turned::build(turn_compiled(&compiled, art, None)?, images, layouts))
+}
+
+/// Every frame of a sprite turned to every angle about its `grip`, by
+/// name (a legged creature's body: a move's pose shows one, a jaw open);
+/// with `only`, just its pixels of that colour.
+pub(crate) fn turned_frames(art: &str, only: Option<[u8; 3]>, images: &mut Assets<Image>, layouts: &mut Assets<TextureAtlasLayout>) -> Result<Vec<(String, Turned)>, String> {
+    let mut compiled = compile_art(art, None)?;
+    if let Some(c) = only {
+        for f in &mut compiled.frames {
+            for px in f.rgba.chunks_mut(4) {
+                if px[..3] != c {
+                    px.copy_from_slice(&[0, 0, 0, 0]);
+                }
+            }
+        }
+    }
+    compiled.names.clone().into_iter().map(|name| Ok((name.clone(), Turned::build(turn_compiled(&compiled, art, Some(&name))?, images, layouts)))).collect()
 }
 
 /// A weapon's picture for its icon: a blade pointing up and to the right, a
