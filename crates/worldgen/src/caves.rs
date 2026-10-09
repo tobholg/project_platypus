@@ -9,7 +9,11 @@
 //!   nearest links, so they all connect, and some more for loops), each a
 //!   wandering line at least 1.5 player heights wide.
 //! - Crevices: a few extra links are cracks too thin for the player (throw a
-//!   glow stick in), never the only way through.
+//!   glow stick in), never the only way through; and dead-end fissures off
+//!   some chambers, going nowhere.
+//! - Room for the big ones: a steep tunnel is wide (48–60), and its ledges
+//!   leave `ROOM_PAST` beside them, so a cave spider climbs past where the
+//!   player jumps from ledge to ledge.
 //! - Mouths: tunnels down from the surface into the nearest chamber.
 //!
 //! Noise only roughens the walls. A chunk asks only the shapes binned to it.
@@ -31,6 +35,12 @@ use platypus_sim::rng::Rng;
 pub const MIN_TUNNEL: f32 = 33.0;
 /// Crevices: this wide at most.
 pub const MAX_CREVICE: f32 = 10.5;
+/// Beside a ledge in a steep tunnel, at least this much open (a cave
+/// spider is 24 wide).
+pub const ROOM_PAST: f32 = 27.0;
+/// A link this steep (its rise over its length) is a steep tunnel: wide.
+const STEEP: f32 = 0.55;
+const STEEP_WIDTH: (f32, f32) = (48.0, 60.0);
 
 /// What a chamber's bottom holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -260,7 +270,7 @@ impl Caves {
         let layer = |y: f32| {
             if y >= g.caverns_top as f32 {
                 // The underground (and inside the mountains): small, easy.
-                Layer { rx: (39.0, 90.0), ry: (27.0, 51.0), spacing: 300.0, width: (33.0, 45.0) }
+                Layer { rx: (39.0, 90.0), ry: (27.0, 51.0), spacing: 300.0, width: (36.0, 54.0) }
             } else if y >= g.deep_top as f32 {
                 Layer { rx: (67.5, 210.0), ry: (42.0, 120.0), spacing: 495.0, width: (36.0, 60.0) }
             } else {
@@ -395,9 +405,42 @@ impl Caves {
             let (a, b) = (&chambers[i], &chambers[j]);
             let l = layer(a.y.min(b.y));
             let width = if !tree && unit(&mut rng) < 0.2 { range(&mut rng, (4.5, MAX_CREVICE)) } else { range(&mut rng, l.width) };
+            // (Steep: wide, room past its ledges. In the underground, now
+            // and then a gallery. By rolls of their own, so the rest of the
+            // plan comes out as it did.)
+            let roll = |salt: u64| (platypus_sim::rng::hash(&[seed, salt, i as u64, j as u64]) % 10_000) as f32 / 10_000.0;
+            let width = if width <= MAX_CREVICE {
+                width
+            } else if (b.y - a.y).abs() / d.max(1.0) > STEEP {
+                width.max(STEEP_WIDTH.0 + (STEEP_WIDTH.1 - STEEP_WIDTH.0) * roll(0x57E3))
+            } else if a.y.min(b.y) >= g.caverns_top as f32 && roll(0x6A11) < 0.1 {
+                60.0 + 18.0 * roll(0x6A12)
+            } else {
+                width
+            };
             let mut t = wander((a.x, a.y), (b.x, b.y), width, d, &noise, n as f64);
             t.joins = Some((i as u32, j as u32));
             tunnels.push(t);
+        }
+
+        // Fissures: from about a third of the chambers, a crack going off
+        // into the rock and ending there (a glow stick's worth of mystery;
+        // never a way anywhere).
+        for (i, c) in chambers.iter().enumerate() {
+            let roll = |salt: u64| (platypus_sim::rng::hash(&[seed, salt, i as u64]) % 10_000) as f32 / 10_000.0;
+            if roll(0xF155) >= 0.35 || c.pool.is_some() {
+                continue;
+            }
+            let a = roll(0xF156) * std::f32::consts::TAU;
+            let (ux, uy) = (a.cos(), a.sin() * 0.6);
+            let from = (c.x + ux * c.rx * 0.8, c.y + uy * c.ry * 0.8);
+            let len = 80.0 + 140.0 * roll(0xF157);
+            let to = (from.0 + ux * len, from.1 + uy * len);
+            if to.0 < 60.0 || to.0 > g.width as f32 - 60.0 || to.1 < lo as f32 || to.1 > surface(to.0 as i32) as f32 - 60.0 {
+                continue;
+            }
+            let w = 3.0 + 5.0 * roll(0xF158);
+            tunnels.push(wander(from, to, w, len, &noise, 20_000.0 + i as f64));
         }
 
         // Mouths: down from the surface into the nearest chamber, on dry land
@@ -804,9 +847,10 @@ fn in_triangle(p: (f32, f32), a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> bo
 }
 
 /// Steep tunnels get ledges to climb back up: every `LEDGE_EVERY` cells a
-/// shelf of rock `LEDGE` thick out from one wall and then the other, halfway
-/// across (the player jumps 60 cells and is 9 wide: room to fall past, a
-/// ledge to jump to).
+/// shelf of rock `LEDGE` thick out from one wall and then the other, out to
+/// halfway across or to `ROOM_PAST` from the far wall, whichever's shorter
+/// (the player jumps 60 cells and is 9 wide: room to fall past, a ledge to
+/// jump to; a cave spider climbs past).
 const LEDGE_EVERY: i32 = 45;
 const LEDGE: i32 = 6;
 
@@ -825,7 +869,7 @@ fn ledge(p: (f32, f32), a: (f32, f32), b: (f32, f32), half: f32) -> Option<(i32,
     // tunnel's middle?
     let side = if y.div_euclid(LEDGE_EVERY) % 2 == 0 { 1.0 } else { -1.0 };
     let cross = (dx * (p.1 - a.1) - dy * (p.0 - a.0)) / len * dy.signum();
-    if cross * side <= 0.0 {
+    if cross * side <= (ROOM_PAST - half).max(0.0) {
         return None;
     }
     // (Straight across from p, past the wall.)
@@ -867,9 +911,20 @@ mod tests {
         let p = WorldPlan::new(1, Preset::Large);
         let c = &p.caves;
         assert!(c.chambers.len() > 500, "{} chambers", c.chambers.len());
-        let crevices = c.tunnels.iter().filter(|t| t.crevice()).count();
+        let links: Vec<&Tunnel> = c.tunnels.iter().filter(|t| t.joins.is_some()).collect();
+        let crevices = links.iter().filter(|t| t.crevice()).count();
         assert!(c.tunnels.iter().all(|t| t.crevice() || t.width >= MIN_TUNNEL), "every tunnel fits the player, or is clearly a crack");
-        assert!(crevices * 100 > c.tunnels.len() && crevices * 10 < c.tunnels.len(), "a few crevices: {crevices} of {}", c.tunnels.len());
+        assert!(crevices * 100 > links.len() && crevices * 10 < links.len(), "a few crevices among the links: {crevices} of {}", links.len());
+        let fissures = c.tunnels.iter().filter(|t| t.joins.is_none() && t.crevice()).count();
+        assert!(fissures * 10 > c.chambers.len(), "dead-end fissures off some chambers: {fissures} for {} chambers", c.chambers.len());
+        // Steep links are wide.
+        for t in links.iter().filter(|t| !t.crevice()) {
+            let (a, b) = (t.points[0], t.points[t.points.len() - 1]);
+            let d = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+            if (b.1 - a.1).abs() / d.max(1.0) > STEEP {
+                assert!(t.width >= STEEP_WIDTH.0, "a steep link {:.0} wide", t.width);
+            }
+        }
         // Joined by tunnels the player fits (crevices don't count): nearly
         // every chamber in one network.
         let mut parent: Vec<usize> = (0..c.chambers.len()).collect();
@@ -892,5 +947,21 @@ mod tests {
         }
         let biggest = sizes.values().max().copied().unwrap_or(0);
         assert!(biggest * 100 >= c.chambers.len() * 95, "one network holds {biggest} of {} chambers", c.chambers.len());
+    }
+
+    #[test]
+    fn ledges_leave_room_for_a_cave_spider_to_climb_past() {
+        // A straight shaft up, of each width a tunnel comes in: at a ledge's
+        // rows, the open span across is at least `ROOM_PAST`, and the ledge
+        // is something to stand on (at least 6 across).
+        for width in [MIN_TUNNEL, 45.0, STEEP_WIDTH.0, STEEP_WIDTH.1] {
+            let half = width / 2.0;
+            let (a, b) = ((0.0, 0.0), (0.0, 400.0));
+            for row in (0..400).filter(|y| y % LEDGE_EVERY < LEDGE) {
+                let shelf = (-(half as i32)..=half as i32).filter(|&x| ledge((x as f32, row as f32 + 0.5), a, b, half).is_some()).count() as f32;
+                assert!(width - shelf >= ROOM_PAST - 1.0, "{width} wide: {shelf} of it shelf at row {row}");
+                assert!(shelf >= 6.0, "{width} wide: a {shelf} shelf to stand on");
+            }
+        }
     }
 }

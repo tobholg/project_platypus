@@ -210,22 +210,36 @@ checksums.
     creatures): per chunk in the underground, caverns and deep, a try at a
     camp (60–80 %: a mine cart on a floor 39 wide with 23 of air over it;
     beside it on the nearest floor a TNT barrel and dynamite one way, a
-    lantern on its post the other) and one at a lone TNT barrel or bundle
-    of dynamite (21–25 %). A small world has ~20 camps and ~70 loose
+    lantern on its post the other; a cart with room beside it for none of
+    them isn't a camp) and one at a lone TNT barrel or bundle of dynamite
+    (21–25 %). A small world has ~20 camps and ~70 loose
     explosives. `camplook` scenario: to the nearest camp;
   - tunnels: each chamber to its nearest few, a spanning tree of those so
     every chamber connects (tested: 95 %+ in one network) plus more for
-    loops; wandering lines 33–66 cells wide (the player is 23 tall); steep
-    ones get alternating rock ledges every 45 cells to climb back up;
+    loops; wandering lines 36–66 cells wide (the player is 23 tall; the
+    underground's 36–54, a tenth of its tree links galleries 60–78); a
+    steep link (rising more than 0.55 of its length) 48–60 wide, with
+    alternating rock ledges every 45 cells to climb back up, each out from
+    its wall to halfway across or to 27 (`ROOM_PAST`) from the far wall,
+    whichever's shorter: a cave spider (24 wide) climbs past;
   - crevices: a fifth of the extra links (never the tree) are cracks 4.5–10.5
-    wide, too thin to pass: throw a glow stick in;
+    wide, too thin to pass: throw a glow stick in; and from about a third
+    of the chambers (dry ones) a dead-end fissure 3–8 wide, 80–220 long;
   - mouths: ~40 tunnels down from dry land (away from the spawn) into the
     nearest chamber;
   - noise only roughens the walls; a chunk asks only the shapes binned to it.
     In the caverns every cave below the water table is flooded, so where
     tunnels meet the flooded chambers the water is already level.
   - Tests: tunnels fit the player (a 9 × 23 box along 160 sampled tunnels,
-    ≤ 1 % blocked), the network connects without crevices, crevices are few.
+    ≤ 1 % blocked), the network connects without crevices, crevices are few
+    among the links, fissures are there, steep links are wide, a ledge
+    leaves 26+ open beside it and is 6+ to stand on. `platypus-worldview
+    --region … --clearance` colours the open space by what fits through
+    it (green a big spider, yellow only the player, red nothing) and says
+    how much of the spider's room is one piece: two 3 000 × 2 000
+    underground samples (seed 1, large) went from 19 % and 63 % in the
+    biggest piece to 72 % and 85 % with these (the ledges had cut every
+    steep tunnel into stacked pockets: a 16-cell gap beside each).
     Planned in ~70 ms with the rest of the plan (the medium world; the
     large ~650 ms).
 - Underground biomes (regions, two each in a large world, one in a small;

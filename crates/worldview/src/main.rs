@@ -9,6 +9,12 @@
 //!   --region X,Y,W,H      only this rectangle (world cells; y up), rasterised
 //!                         exactly as the game generates it (trees, shades)
 //!   --out FILE            PNG to write (default worldview.png)
+//!   --clearance           (with --region) open cells under ground coloured
+//!                         by what fits through them: green a big cave
+//!                         spider (a disc 22 across), yellow only the player
+//!                         (a disc 11 across), red nothing (a crack); prints
+//!                         each one's share of the open space, and how much
+//!                         of the spider's room is one connected piece
 //! ```
 //!
 //! The overview samples one cell per pixel. A strip down the left edge and
@@ -31,10 +37,11 @@ struct Args {
     scale: Option<i32>,
     region: Option<(i32, i32, i32, i32)>,
     out: PathBuf,
+    clearance: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut a = Args { seed: 1, preset: Preset::Large, scale: None, region: None, out: PathBuf::from("worldview.png") };
+    let mut a = Args { seed: 1, preset: Preset::Large, scale: None, region: None, out: PathBuf::from("worldview.png"), clearance: false };
     let mut it = std::env::args().skip(1);
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or(format!("{flag} needs a value"));
@@ -45,6 +52,7 @@ fn parse_args() -> Result<Args, String> {
                 a.preset = Preset::from_name(&v).ok_or(format!("--preset: {v}? (small, medium, large)"))?;
             }
             "--scale" => a.scale = Some(value()?.parse().map_err(|e| format!("--scale: {e}"))?),
+            "--clearance" => a.clearance = true,
             "--region" => {
                 let v: Vec<i32> = value()?.split(',').map(|s| s.trim().parse()).collect::<Result<_, _>>().map_err(|e| format!("--region: {e}"))?;
                 let [x, y, w, h] = v[..] else { return Err("--region X,Y,W,H".into()) };
@@ -65,7 +73,7 @@ fn main() {
             if !e.is_empty() {
                 eprintln!("{e}");
             }
-            eprintln!("usage: platypus-worldview [--seed N] [--preset small|medium|large] [--scale N] [--region X,Y,W,H] [--out FILE]");
+            eprintln!("usage: platypus-worldview [--seed N] [--preset small|medium|large] [--scale N] [--region X,Y,W,H [--clearance]] [--out FILE]");
             std::process::exit(2);
         }
     };
@@ -167,6 +175,15 @@ fn main() {
                 line[col * 3..col * 3 + 3].copy_from_slice(&px);
             }
         });
+        if args.clearance && scale == 1 {
+            clearance(&mut rgb, pw, ph, |x, y| {
+                let p = CellPos::new(x, y);
+                let (lx, ly) = p.local();
+                let solid = chunks.get(&p.chunk()).is_none_or(|c| matches!(mats.phys(c.get(lx, ly).material).kind, Kind::Static | Kind::Powder));
+                let under = y < plan.surface_at(x) - 30;
+                (solid, under)
+            }, x0, y0, h);
+        }
     } else {
         rgb.par_chunks_mut(pw * 3).enumerate().for_each(|(row, line)| {
             let y = y0 + h - 1 - (row as i32 * scale + scale / 2);
@@ -221,6 +238,105 @@ fn main() {
 
     write_png(&args.out, pw as u32, ph as u32, &rgb);
     println!("wrote {} ({pw}×{ph}, {scale} cells per pixel) in {:.2?}", args.out.display(), t.elapsed());
+}
+
+/// What fits through the open space under ground: each open cell is room
+/// for a disc of a size if some disc that size, all in the open, covers it.
+/// Tints the picture and prints the shares.
+#[allow(clippy::too_many_arguments)]
+fn clearance(rgb: &mut [u8], pw: usize, ph: usize, at: impl Fn(i32, i32) -> (bool, bool) + Sync, x0: i32, y0: i32, h: i32) {
+    // (Row 0 at the top, as the picture.)
+    let cells: Vec<(bool, bool)> = (0..ph).into_par_iter().flat_map_iter(|row| {
+        let y = y0 + h - 1 - row as i32;
+        let at = &at;
+        (0..pw).map(move |col| at(x0 + col as i32, y))
+    }).collect();
+    // Distance to the nearest solid (chamfer 3-4, in cells), from each cell;
+    // then distance to the nearest disc centre of a size.
+    let chamfer = |seed: &dyn Fn(usize) -> bool| -> Vec<f32> {
+        let big = f32::MAX / 4.0;
+        let mut d: Vec<f32> = (0..pw * ph).map(|i| if seed(i) { 0.0 } else { big }).collect();
+        let at = |x: isize, y: isize| -> Option<usize> { (x >= 0 && y >= 0 && (x as usize) < pw && (y as usize) < ph).then(|| y as usize * pw + x as usize) };
+        for y in 0..ph as isize {
+            for x in 0..pw as isize {
+                let i = y as usize * pw + x as usize;
+                for (dx, dy, w) in [(-1, 0, 1.0), (0, -1, 1.0), (-1, -1, 1.414), (1, -1, 1.414)] {
+                    if let Some(j) = at(x + dx, y + dy) {
+                        d[i] = d[i].min(d[j] + w);
+                    }
+                }
+            }
+        }
+        for y in (0..ph as isize).rev() {
+            for x in (0..pw as isize).rev() {
+                let i = y as usize * pw + x as usize;
+                for (dx, dy, w) in [(1, 0, 1.0), (0, 1, 1.0), (1, 1, 1.414), (-1, 1, 1.414)] {
+                    if let Some(j) = at(x + dx, y + dy) {
+                        d[i] = d[i].min(d[j] + w);
+                    }
+                }
+            }
+        }
+        d
+    };
+    let wall = chamfer(&|i| cells[i].0);
+    let room = |r: f32| -> Vec<bool> {
+        let to_centre = chamfer(&|i| !cells[i].0 && wall[i] >= r);
+        (0..pw * ph).map(|i| !cells[i].0 && to_centre[i] <= r).collect()
+    };
+    let (spider, player) = (room(11.0), room(5.5));
+    let (mut n, mut ns, mut np, mut nc) = (0usize, 0usize, 0usize, 0usize);
+    for i in 0..pw * ph {
+        let (solid, under) = cells[i];
+        if solid || !under {
+            continue;
+        }
+        n += 1;
+        let tint = if spider[i] {
+            ns += 1;
+            [60, 200, 90]
+        } else if player[i] {
+            np += 1;
+            [235, 205, 50]
+        } else {
+            nc += 1;
+            [225, 50, 40]
+        };
+        let px = &mut rgb[i * 3..i * 3 + 3];
+        for k in 0..3 {
+            px[k] = (px[k] as f32 * 0.35 + tint[k] as f32 * 0.65) as u8;
+        }
+    }
+    // The spider's room in connected pieces (4-neighbour flood).
+    let mut seen = vec![false; pw * ph];
+    let mut pieces: Vec<usize> = Vec::new();
+    for start in 0..pw * ph {
+        if !spider[start] || seen[start] || !cells[start].1 {
+            continue;
+        }
+        let (mut stack, mut size) = (vec![start], 0usize);
+        seen[start] = true;
+        while let Some(i) = stack.pop() {
+            size += 1;
+            let (x, y) = (i % pw, i / pw);
+            let mut push = |j: usize| {
+                if spider[j] && !seen[j] {
+                    seen[j] = true;
+                    stack.push(j);
+                }
+            };
+            if x > 0 { push(i - 1); }
+            if x + 1 < pw { push(i + 1); }
+            if y > 0 { push(i - pw); }
+            if y + 1 < ph { push(i + pw); }
+        }
+        pieces.push(size);
+    }
+    pieces.sort_unstable_by(|a, b| b.cmp(a));
+    let pct = |k: usize| 100.0 * k as f32 / n.max(1) as f32;
+    println!("clearance: {n} open cells under ground: a big spider fits {:.1}%, only the player {:.1}%, nothing (cracks) {:.1}%", pct(ns), pct(np), pct(nc));
+    let total: usize = pieces.iter().sum();
+    println!("clearance: the spider's room in {} pieces; the biggest {:.1}% of it, the five biggest {:.1}%", pieces.len(), 100.0 * pieces.first().copied().unwrap_or(0) as f32 / total.max(1) as f32, 100.0 * pieces.iter().take(5).sum::<usize>() as f32 / total.max(1) as f32);
 }
 
 /// Colour of a cell with the background behind it (dimmed as the game

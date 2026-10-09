@@ -1450,7 +1450,8 @@ impl TerrainGen {
             if let Some((x, y)) = lantern {
                 out.push((feet(x + 3, y), Spawn::Prop("mine_lantern")));
             }
-            return out;
+            // (A cart with no room beside it for anything isn't a camp.)
+            return if out.len() > 1 { out } else { Vec::new() };
         }
         if rng.chance(lone)
             && let Some((lx, ly)) = self.floor_spot(cells, 18, 21, rng)
