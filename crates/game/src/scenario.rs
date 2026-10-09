@@ -299,6 +299,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
             .add_systems(PreUpdate, stealth_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, sneak_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, tactics_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
             .add_systems(Update, (underlook_script, voidlook_script))
@@ -6421,6 +6422,7 @@ struct SneakHud;
 ///   gap behind them.
 /// - The patrol: a walkway on, an orc wandering the floor under it, a gap
 ///   over its beat to jump.
+///
 /// (Each gap 28 wide, a faint glow at its edges, a step down in it: a
 /// missed jump lands there, and it's the way back up from the floor.)
 /// - The sentry: an orc in its torch's light at the door, facing in; a
@@ -6601,6 +6603,227 @@ fn sneak_script(
         } else {
             keys.release(KeyCode::ControlLeft);
         }
+    }
+}
+
+/// `tactics` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`; BE `behaviour`
+/// stage 3): each tactic in turn, at night, a room roofed over at the left
+/// (x 300..700, its roof 60 up, walled at its right end):
+/// - flee: an orc on the player, cut to 15 % of its health at 2 s, runs;
+///   the player follows it to the arena's wall: cornered, it fights;
+/// - ambush: a cave centipede in the room goes up to its ceiling and waits;
+///   the player walks in at 24 s: it comes along the ceiling and drops;
+/// - flank: a pack of four raptors at the player standing: how many are
+///   each side of the player, twice a second;
+/// - call: a raptor pack, its leader in sight of the player, the others
+///   too far off to see: they come at its call;
+/// - shun the light: in the room, the player with a torch, a cave spider:
+///   it keeps off; the torch out at 53 s, it comes.
+///
+/// Logs each part's outcome and every change of how wary each is, of its
+/// running, of its hold on a ceiling.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn tactics_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut day: ResMut<crate::light::Daylight>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    mut them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::brain::senses::Alert>, &mut crate::creatures::Health), Without<LocalPlayer>>,
+    mut hits: MessageReader<crate::combat::Hit>,
+    // (part, when it began, what each was last: wary, running, on a ceiling)
+    mut state: Local<(u8, f32, std::collections::HashMap<Entity, (crate::creatures::brain::senses::Wary, bool, bool)>)>,
+    mut next_log: Local<f32>,
+) {
+    use crate::creatures::brain::tactics::Pack;
+    if s.name != "tactics" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let t = s.elapsed;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let fl = floor as f32;
+    let put = |k: &mut Kinematics, x: f32| {
+        k.body.pos = Vec2::new(x, fl + k.body.half.y);
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+    };
+    let me = k.body.pos;
+    for hit in hits.read() {
+        if them.get(hit.target).is_err() && hit.damage > 0.0 {
+            info!("tactics: t {t:.2} the player was struck ({:.0})", hit.damage);
+        }
+    }
+    // Each one's changes.
+    for (e, c, ck, a, _) in &them {
+        let Some(a) = a else { continue };
+        let now = (a.wary, a.fleeing, ck.loco.clinging() == Some(Vec2::Y));
+        if let Some(was) = state.2.insert(e, now)
+            && was != now
+        {
+            let what = if was.0 != now.0 {
+                format!("{:?}", now.0)
+            } else if was.1 != now.1 {
+                (if now.1 { "running" } else { "stops running" }).to_string()
+            } else {
+                (if now.2 { "on the ceiling" } else { "off the ceiling" }).to_string()
+            };
+            info!("tactics: t {t:.2} the {} at x {:.0} ({:.0} up): {what} (the player at x {:.0})", c.kind, ck.body.pos.x, ck.body.pos.y - fl - ck.body.half.y, me.x);
+        }
+    }
+    let rid = |commands: &mut Commands, them: &Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::brain::senses::Alert>, &mut crate::creatures::Health), Without<LocalPlayer>>| {
+        for (e, ..) in them.iter() {
+            commands.entity(e).despawn();
+        }
+    };
+    let spawn = |commands: &mut Commands, kind: &str, x: f32, told: Option<Vec2>, pack: Option<(u64, u32)>| {
+        crate::creatures::def::spawn_creature(commands, kind, Vec2::new(x, fl), move |e| {
+            if let Some(at) = told {
+                e.insert(crate::creatures::brain::senses::Alert::hunting(at));
+            }
+            if let Some((id, rank)) = pack {
+                e.insert(Pack { id, rank });
+            }
+        });
+    };
+    let first = |kind: &str| them.iter().find(|q| q.1.kind == kind).map(|q| (q.2.body.pos, q.2.body.half));
+    // (Once a second, or twice for the flank.)
+    let every = if state.0 == 5 { 0.5 } else { 1.0 };
+    let tell = t >= *next_log;
+    if tell {
+        *next_log = (t / every).floor() * every + every;
+    }
+    match state.0 {
+        0 if t > 0.5 => {
+            day.skipped = (23.0 - day.time * 24.0).rem_euclid(24.0);
+            if let (Some(stone), Some(bedrock)) = (sim.materials().id("stone"), sim.materials().id("bedrock")) {
+                for x in (300..=700).step_by(3) {
+                    for y in [floor + 62, floor + 67] {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 2, material: if y == floor + 62 { stone } else { bedrock }, overwrite: true });
+                    }
+                }
+                for y in (floor + 1..floor + 66).step_by(3) {
+                    for x in [701, 705] {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 2, material: stone, overwrite: true });
+                    }
+                }
+            }
+            rid(&mut commands, &them);
+            put(&mut k, 1200.0);
+            spawn(&mut commands, "orc", 1300.0, Some(Vec2::new(1200.0, fl + 12.0)), None);
+            *state = (1, t, default());
+        }
+        // Flee.
+        1 if t > 2.0 => {
+            for (_, c, _, _, mut ch) in &mut them {
+                if c.kind == "orc" {
+                    ch.hp = ch.max * 0.15;
+                }
+            }
+            info!("tactics: t {t:.2} the orc cut to 15 % of its health");
+            state.0 = 2;
+        }
+        2 | 3 => {
+            let orc = first("orc");
+            if state.0 == 2 && t > 6.0 {
+                state.0 = 3;
+            }
+            // (Following it, from 6 s, to 40 cells off.)
+            if state.0 == 3 && orc.is_some_and(|(o, _)| o.x - me.x > 40.0) {
+                keys.press(KeyCode::KeyD);
+            } else {
+                keys.release(KeyCode::KeyD);
+            }
+            if tell && let Some((o, _)) = orc {
+                info!("tactics: t {t:.1} flee: the orc at x {:.0}, {:.0} from the player", o.x, o.x - me.x);
+            }
+            if t > 16.0 {
+                keys.release(KeyCode::KeyD);
+                rid(&mut commands, &them);
+                put(&mut k, 150.0);
+                spawn(&mut commands, "centipede", 600.0, None, None);
+                state.0 = 4;
+                state.1 = t;
+            }
+        }
+        // Ambush: it goes up; the player walks in at 24 s.
+        4 => {
+            let walk = t > 24.0 && me.x < 640.0;
+            if walk {
+                keys.press(KeyCode::KeyD);
+            } else {
+                keys.release(KeyCode::KeyD);
+            }
+            if t > 32.0 {
+                keys.release(KeyCode::KeyD);
+                rid(&mut commands, &them);
+                put(&mut k, 960.0);
+                for r in 0..4 {
+                    spawn(&mut commands, "raptor", 1250.0 + r as f32 * 24.0, None, Some((0xF1A4, r)));
+                }
+                state.0 = 5;
+                state.1 = t;
+            }
+        }
+        // Flank: who's which side (the player held where it stands: its
+        // place, not how it's knocked about, is what's measured).
+        5 => {
+            put(&mut k, 960.0);
+            if tell {
+                let xs: Vec<f32> = them.iter().filter(|q| q.1.kind == "raptor").map(|q| q.2.body.pos.x - me.x).collect();
+                let (l, r) = (xs.iter().filter(|x| **x < 0.0).count(), xs.iter().filter(|x| **x > 0.0).count());
+                info!("tactics: t {t:.1} flank: {l} left of the player, {r} right ({:?}; the player at x {:.0})", xs.iter().map(|x| x.round() as i32).collect::<Vec<_>>(), me.x);
+            }
+            if t > 42.0 {
+                rid(&mut commands, &them);
+                put(&mut k, 960.0);
+                // (The leader facing the player: it sees it; the rest too far off.)
+                crate::creatures::def::spawn_creature(&mut commands, "raptor", Vec2::new(1220.0, fl), |e| {
+                    e.insert(Pack { id: 0xCA11, rank: 0 });
+                    if let Some(mut k) = e.get_mut::<Kinematics>() {
+                        k.loco.facing = -1.0;
+                    }
+                });
+                spawn(&mut commands, "raptor", 1560.0, None, Some((0xCA11, 1)));
+                spawn(&mut commands, "raptor", 1590.0, None, Some((0xCA11, 2)));
+                state.0 = 6;
+                state.1 = t;
+            }
+        }
+        // Call: the far two come.
+        6 => {
+            if tell {
+                let xs: Vec<i32> = them.iter().filter(|q| q.1.kind == "raptor").map(|q| (q.2.body.pos.x - me.x).round() as i32).collect();
+                info!("tactics: t {t:.1} call: the raptors from the player {xs:?} (the player at x {:.0})", me.x);
+            }
+            if t > 50.0 {
+                rid(&mut commands, &them);
+                put(&mut k, 400.0);
+                toggles.carry = crate::light::Carry::Torch;
+                spawn(&mut commands, "spider", 640.0, None, None);
+                state.0 = 7;
+                state.1 = t;
+            }
+        }
+        // Shun the light: the torch out at 55 s.
+        7 => {
+            if t > 55.0 && toggles.carry == crate::light::Carry::Torch {
+                toggles.carry = crate::light::Carry::Nothing;
+                info!("tactics: t {t:.2} the torch out");
+            }
+            if tell
+                && let Some((p, _)) = first("spider")
+            {
+                info!("tactics: t {t:.1} shun: the spider {:.0} from the player ({})", p.distance(me), if toggles.carry == crate::light::Carry::Torch { "torch lit" } else { "dark" });
+            }
+            if t > 60.0 {
+                state.0 = 8;
+            }
+        }
+        _ => {}
     }
 }
 

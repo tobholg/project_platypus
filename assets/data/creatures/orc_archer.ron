@@ -27,6 +27,6 @@
     brain: (
         kind: "hunter",
         // (It stands its ground with no one about.)
-        params: (aggro: 390, close: Range(near: 75, far: 210), attack: Shoot(draw: 0.85, every: 1.8, wobble: 5), wander: (speed: 0)),
+        params: (aggro: 390, close: Range(near: 75, far: 210), attack: Shoot(draw: 0.85, every: 1.8, wobble: 5), wander: (speed: 0), tactics: (flee: 0.35, call: 250)),
     ),
 )

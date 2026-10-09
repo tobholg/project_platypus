@@ -78,6 +78,16 @@ pub struct Alert {
     /// Told where its quarry is, always (a scenario's: as before senses,
     /// it knows).
     told: bool,
+    /// Running for it: badly hurt (its tactics' `flee`), not cornered.
+    pub fleeing: bool,
+    /// How lit its quarry was when it last sensed it (0..1).
+    pub quarry_lit: f32,
+    /// Cornered and turned to fight: at bay till what it fights is well
+    /// off again.
+    at_bay: bool,
+    /// On its way round to your far side (a flanker, `hunter.rs`): no move
+    /// till it's there.
+    pub flanking: bool,
 }
 
 impl Alert {
@@ -92,9 +102,10 @@ impl Alert {
         matches!(self.wary, Wary::Suspicious | Wary::Searching)
     }
 
-    /// It's hunting and senses its quarry now: it may attack.
+    /// It's hunting and senses its quarry now, and isn't running for it:
+    /// it may attack.
     pub fn engaged(&self) -> bool {
-        self.wary == Wary::Hunting && self.senses_it
+        self.wary == Wary::Hunting && self.senses_it && !self.fleeing
     }
 
     /// Where it's going, if anywhere: its quarry's last known place
@@ -113,6 +124,33 @@ impl Alert {
         }
     }
 }
+
+/// What `perceive` reads of each hunter.
+type Perceiver<'a> = (
+    Entity,
+    &'a super::hunter::Hunter,
+    &'a Kinematics,
+    &'a Transform,
+    Option<&'a mut Alert>,
+    Option<&'a crate::clock::Keeps>,
+    (Option<&'a Health>, Option<&'a super::tactics::Pack>, Option<&'a crate::creatures::Creature>),
+);
+
+/// One starting to hunt, calling: from where, how far its kind hear it
+/// (its `call`; its pack always do), its pack, its kind, what it's after
+/// and where.
+struct Call {
+    from: Entity,
+    at: Vec2,
+    reach: f32,
+    pack: Option<u64>,
+    kind: Option<String>,
+    target: Option<Entity>,
+    last: Vec2,
+}
+
+/// Cornered: a wall at its back and what it fights within this (cells).
+const CORNERED: f32 = 60.0;
 
 /// A noise this tick: where, how far it carries (cells), and how much
 /// it makes a listener sure something's there (a share of the way to
@@ -158,7 +196,7 @@ pub fn perceive(
     mut commands: Commands,
     sim: Res<SimWorld>,
     day: Res<crate::light::Daylight>,
-    mut hunters: Query<(Entity, &super::hunter::Hunter, &Kinematics, &Transform, Option<&mut Alert>, Option<&crate::clock::Keeps>)>,
+    mut hunters: Query<Perceiver>,
     quarry: Query<(Entity, &Kinematics, &Team, &Health), Without<super::villager::Hiding>>,
     lights: Query<(&GlobalTransform, &crate::light::LightSource)>,
     toggles: Res<crate::light::LightToggles>,
@@ -205,7 +243,10 @@ pub fn perceive(
             noises.push(Noise { at: *at, reach: 30.0 + run * 0.55, sure: SURE_RUNNING * dt });
         }
     }
-    for (e, h, k, tf, alert, keeps) in &mut hunters {
+    // Calls: one starting to hunt brings its pack, and its kind near
+    // (its tactics' `call`).
+    let mut calls: Vec<Call> = Vec::new();
+    for (e, h, k, tf, alert, keeps, (health, pack, kind)) in &mut hunters {
         let Some(mut a) = alert else {
             commands.entity(e).insert(Alert::default());
             continue;
@@ -217,7 +258,7 @@ pub fn perceive(
         let home = keeps.filter(|_| h.leash > 0.0).map(|kp| Vec2::new(kp.0.0 as f32, kp.0.1 as f32));
         // What it senses: seen (in sight, in the light or seeing in the
         // dark, nothing in the way) or smelled (wounded, near enough).
-        let mut best: Option<(Entity, Vec2, f32, bool)> = None;
+        let mut best: Option<(Entity, Vec2, f32, bool, f32)> = None;
         for (&(q, at, share, ..), &light) in hunted.iter().zip(&light) {
             if home.is_some_and(|hm| at.distance(hm) > h.leash) {
                 continue;
@@ -229,14 +270,15 @@ pub fn perceive(
             let smelled = s.smell > 0.0 && d < s.smell && share < 0.75;
             if (seen || smelled) && best.is_none_or(|b| d < b.2) {
                 // (Close in its sight, or smelled: no doubt about it.)
-                best = Some((q, at, d, smelled || d < see * 0.45));
+                best = Some((q, at, d, smelled || d < see * 0.45, light));
             }
         }
         let was = a.wary;
         a.since += dt;
         a.shout = (a.shout - dt).max(0.0);
         match best {
-            Some((q, at, _, sure)) => {
+            Some((q, at, _, sure, light)) => {
+                a.quarry_lit = light;
                 a.target = Some(q);
                 a.last = at;
                 a.unseen = 0.0;
@@ -292,6 +334,22 @@ pub fn perceive(
             }
             a.set(Wary::Hunting);
         }
+        // Badly hurt: it runs for it, unless it's cornered (a wall at its
+        // back, what it fights near).
+        let share = health.map_or(1.0, |hp| hp.hp / hp.max.max(1.0));
+        let away = (pos.x - a.last.x).signum();
+        let backed = if away < 0.0 { k.loco.contacts.wall_left } else { k.loco.contacts.wall_right };
+        let near = a.last.distance(pos);
+        a.at_bay = (a.at_bay || backed && near < CORNERED) && near < CORNERED * 1.5;
+        let cornered = a.at_bay;
+        let fleeing = h.tactics.flee > 0.0 && share < h.tactics.flee && a.wary == Wary::Hunting && !cornered;
+        if fleeing != a.fleeing && std::env::var("PLATYPUS_ALERTLOG").is_ok() {
+            info!("alert: {e:?} {} at {:.0}% health{}", if fleeing { "flees" } else { "stops fleeing" }, share * 100.0, if cornered { " (cornered)" } else { "" });
+        }
+        a.fleeing = fleeing;
+        if was != Wary::Hunting && a.wary == Wary::Hunting && !a.told && (pack.is_some() || h.tactics.call > 0.0) {
+            calls.push(Call { from: e, at: pos, reach: h.tactics.call, pack: pack.map(|p| p.id), kind: kind.map(|c| c.kind.clone()), target: a.target, last: a.last });
+        }
         if was != a.wary && std::env::var("PLATYPUS_ALERTLOG").is_ok() {
             info!("alert: {e:?} {was:?} → {:?} at {:?}", a.wary, a.last.round());
         }
@@ -332,6 +390,33 @@ pub fn perceive(
                 });
             }
             (None, None) => {}
+        }
+    }
+    // The called: each not yet hunting that hears a call (its pack's, or
+    // its kind's within the caller's `call`) hunts where the caller saw
+    // its quarry, though it doesn't see it yet itself.
+    if calls.is_empty() {
+        return;
+    }
+    for (e, _, k, _, alert, _, (_, pack, kind)) in &mut hunters {
+        let Some(mut a) = alert else { continue };
+        if a.wary == Wary::Hunting {
+            continue;
+        }
+        let heard = calls.iter().find(|c| {
+            c.from != e
+                && (pack.is_some_and(|p| c.pack == Some(p.id)) && c.at.distance(k.body.pos) < super::tactics::PACK_CALL
+                    || c.reach > 0.0 && c.kind.is_some() && kind.map(|k| &k.kind) == c.kind.as_ref() && c.at.distance(k.body.pos) < c.reach)
+        });
+        if let Some(c) = heard {
+            a.target = c.target;
+            a.last = c.last;
+            a.unseen = 0.0;
+            a.glimpse = 1.0;
+            a.set(Wary::Hunting);
+            if std::env::var("PLATYPUS_ALERTLOG").is_ok() {
+                info!("alert: {e:?} called by {:?}: hunting at {:?}", c.from, c.last.round());
+            }
         }
     }
 }

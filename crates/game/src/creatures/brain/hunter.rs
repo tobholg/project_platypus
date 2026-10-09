@@ -65,11 +65,14 @@ pub struct Hunter {
     /// How it senses what it hunts (`senses.rs`: sight, in the dark,
     /// hearing, smell, memory).
     pub senses: super::senses::SensesDef,
+    /// How it fights beyond going at you (`tactics.rs`: flee, ambush, shun
+    /// the light, call, flank).
+    pub tactics: super::tactics::TacticsDef,
 }
 
 impl Default for Hunter {
     fn default() -> Self {
-        Hunter { aggro: 300.0, close: Close::default(), attack: Attack::Touch, wander: Wander::default(), leash: 0.0, senses: super::senses::SensesDef::default() }
+        Hunter { aggro: 300.0, close: Close::default(), attack: Attack::Touch, wander: Wander::default(), leash: 0.0, senses: super::senses::SensesDef::default(), tactics: super::tactics::TacticsDef::default() }
     }
 }
 
@@ -159,13 +162,16 @@ pub struct HunterMind {
     /// Scurrying: frozen till, the next freeze from.
     still_until: u64,
     dart_until: u64,
+    /// In a pack that flanks: the side of you it fights from (−1 left, 1
+    /// right; 0: not chosen yet), chosen once as the hunt begins.
+    side: f32,
 }
 
 /// What hunters go after (a villager hiding at home is let be).
 type Hunted<'w, 's> = Query<'w, 's, (&'static Kinematics, &'static Team), Without<super::villager::Hiding>>;
 
-/// Its way (`way.rs`), and what it is (its profile's kind).
-type Finding<'a> = (&'a crate::creatures::Creature, Option<&'a mut super::way::Way>, Option<&'a super::senses::Alert>);
+/// Its way (`way.rs`), what it is (its profile's kind), how wary, its pack.
+type Finding<'a> = (&'a crate::creatures::Creature, Option<&'a mut super::way::Way>, Option<&'a mut super::senses::Alert>, Option<&'a super::tactics::Pack>);
 
 type Hunting<'a> = (
     Entity,
@@ -208,9 +214,19 @@ fn hunt(
     mut draws: MessageWriter<crate::archery::DrawBow>,
     ids: Query<&crate::creatures::Stable>,
     (mut ways, creatures, tempo): (ResMut<super::way::Ways>, Res<crate::creatures::def::Creatures>, Res<crate::tempo::Tempo>),
+    packs: Query<(&super::tactics::Pack, &Kinematics)>,
 ) {
     let tick = sim.world.tick();
-    for (e, h, k, mut c, mind, marching, keeps, swinging, wielding, moves, (kind, way, alert)) in &mut q {
+    // Each pack's leader: its first still living, and where it is.
+    let mut leaders: std::collections::HashMap<u64, (u32, Vec2)> = std::collections::HashMap::new();
+    for (p, pk) in &packs {
+        let l = leaders.entry(p.id).or_insert((p.rank, pk.body.pos));
+        if p.rank < l.0 {
+            *l = (p.rank, pk.body.pos);
+        }
+    }
+    for (e, h, k, mut c, mind, marching, keeps, swinging, wielding, moves, (kind, way, mut alert_mut, pack)) in &mut q {
+        let alert = alert_mut.as_deref();
         let (Some(mut m), Some(mut way)) = (mind, way) else {
             commands.entity(e).insert((HunterMind::default(), super::way::Way::default()));
             continue;
@@ -239,6 +255,11 @@ fn hunt(
         // searching, it goes slower.)
         let blind = alert.is_some_and(|a| !a.engaged());
         let looking = alert.is_some_and(|a| a.looking());
+        // Its tactics (`tactics.rs`): running for it; kept off by the light
+        // on its quarry; its pack's leader (not itself), to follow.
+        let fleeing = alert.is_some_and(|a| a.fleeing);
+        let shy = h.tactics.shun_light > 0.0 && alert.is_some_and(|a| a.quarry_lit > SHUN_LIT) && target.is_some_and(|t| t.0.distance(pos) < h.tactics.shun_light);
+        let leader = pack.and_then(|p| leaders.get(&p.id).filter(|l| l.0 != p.rank)).map(|l| l.1);
         // The way to it, where it can't be gone at straight (`way.rs`):
         // what to press, if a way's known.
         let feet = pos - Vec2::Y * k.body.half.y;
@@ -248,11 +269,13 @@ fn hunt(
         let contacts = k.loco.contacts;
         let grounded = k.loco.grounded();
         // (Stunned, or busy with a move of its own: no swing, no shot.)
-        let stunned = k.loco.state == platypus_physics::MoveState::Stunned || moves.is_some_and(|m| m.busy()) || blind;
+        let stunned = k.loco.state == platypus_physics::MoveState::Stunned || moves.is_some_and(|m| m.busy()) || blind || shy;
         c.0.aim = target.map_or(Vec2::ZERO, |t| t.0);
         let mut jump = false;
         let mut move_y = 0.0;
-        let move_x: f32 = match (&h.close, target) {
+        // (A flanker on its way round: no move started till it's there.)
+        let mut en_route = false;
+        let mut move_x: f32 = match (&h.close, target) {
             // On foot at it: up to `keep` off, its weapon's combo when near.
             (Close::Walk { keep, jump_to_reach }, Some((t, _, th))) => {
                 let d = t - pos;
@@ -282,11 +305,33 @@ fn hunt(
                         }
                     }
                 }
-                match steer {
+                // (Flanking: each of a pack takes a side of you as the hunt
+                // begins, and keeps it: the leader's and the even places' the
+                // side the pack came from, the odd places' the far side,
+                // gone round to over you if they must.)
+                let flanks = h.tactics.flank && pack.is_some() && !blind;
+                if !flanks {
+                    m.side = 0.0;
+                } else if m.side == 0.0 {
+                    let came = (leader.unwrap_or(pos).x - t.x).signum();
+                    let came = if came == 0.0 { 1.0 } else { came };
+                    m.side = if pack.is_some_and(|p| p.rank % 2 == 1) { -came } else { came };
+                }
+                let far = flanks.then_some(m.side);
+                match (steer, far) {
                     _ if swinging => 0.0,
-                    Some(s) => s.move_x,
-                    None if d.x.abs() <= *keep => 0.0,
-                    None => d.x.signum(),
+                    (Some(s), _) => s.move_x,
+                    (None, Some(f)) => {
+                        let gx = t.x + f * (keep + FLANK_PAST) - pos.x;
+                        let wrong_side = (pos.x - t.x).signum() != f;
+                        if wrong_side && d.x.abs() < VAULT && grounded {
+                            jump = true;
+                        }
+                        en_route = wrong_side || gx.abs() > keep * 0.5 + 4.0;
+                        if gx.abs() < 4.0 { 0.0 } else { gx.signum() }
+                    }
+                    (None, None) if d.x.abs() <= *keep => 0.0,
+                    (None, None) => d.x.signum(),
                 }
             }
             // On foot, at a distance: back off, close in, draw and loose.
@@ -491,10 +536,29 @@ fn hunt(
                         _ => 0.0,
                     };
                 }
+                // (An ambusher on a ceiling stays up there: still till what
+                // it's after comes near under it, then along the ceiling over
+                // it, and down on it. Not yet hunting: up to a ceiling. What
+                // it's after above it, it goes at as any crawler.)
+                if h.tactics.ambush && !jump && d.y < 0.0 {
+                    if clinging == Some(Vec2::Y) {
+                        move_y = 1.0;
+                        mx = if blind || d.x.abs() > AMBUSH_REACH || d.x.abs() < 10.0 { 0.0 } else { d.x.signum() };
+                    } else if blind {
+                        (mx, move_y) = lurk(&sim, id, tick, &mut m);
+                    }
+                }
                 // (PLATYPUS_STEERLOG: how it steers, every 15 ticks.)
                 if std::env::var("PLATYPUS_STEERLOG").is_ok() && tick.is_multiple_of(15) {
                     info!("steer: t {tick} at {:?} to {:?} clear {} steer {:?} clinging {:?} grounded {grounded} → x {mx} y {move_y}", pos.round(), t.round(), crate::creatures::moves::clear(&sim, pos, t), steer, clinging);
                 }
+                mx
+            }
+            // (An ambusher with no one about: up to a ceiling, and still
+            // there.)
+            (Close::Crawl { .. }, None) if h.tactics.ambush => {
+                let mx;
+                (mx, move_y) = if k.loco.clinging() == Some(Vec2::Y) { (0.0, 1.0) } else { lurk(&sim, id, tick, &mut m) };
                 mx
             }
             (Close::Crawl { .. }, None) => {
@@ -516,10 +580,29 @@ fn hunt(
                         m.wander.x = [-1.0, 0.0, 1.0][(rng.next_u32() % 3) as usize];
                         m.wander_until = tick + ticks(h.wander.every * (0.5 + (rng.next_u32() % 1000) as f32 / 1000.0));
                     }
-                    m.wander.x * h.wander.speed
+                    // (One of a pack strayed from its leader: back to it.)
+                    match leader {
+                        Some(l) if (l.x - pos.x).abs() > super::tactics::FOLLOW => (l.x - pos.x).signum() * h.wander.speed.max(0.5),
+                        _ => m.wander.x * h.wander.speed,
+                    }
                 }
             }
         };
+        // Running for it: away from what it fought (up and away, flying).
+        // Kept off by the light: back to the light's edge, and waiting.
+        if let Some((t, ..)) = target {
+            let away = (pos.x - t.x).signum();
+            if fleeing {
+                move_x = if away == 0.0 { 1.0 } else { away };
+                steer = None;
+                if matches!(h.close, Close::Swoop { .. }) {
+                    move_y = 0.6;
+                }
+            } else if shy {
+                move_x = if t.distance(pos) < h.tactics.shun_light * 0.85 { away } else { 0.0 };
+                steer = None;
+            }
+        }
         // On foot or hopping, a wall it's walking into: jump it (unless a
         // way's being followed: it knows when to).
         if steer.is_none() && matches!(h.close, Close::Walk { .. } | Close::Range { .. }) && ((move_x > 0.0 && contacts.wall_right) || (move_x < 0.0 && contacts.wall_left)) {
@@ -531,12 +614,39 @@ fn hunt(
         {
             jump |= s.jump;
         }
-        c.0.move_x = if looking { move_x * 0.55 } else { move_x };
+        c.0.move_x = if looking && !fleeing { move_x * 0.55 } else { move_x };
+        if let Some(a) = alert_mut.as_mut()
+            && a.flanking != en_route
+        {
+            a.flanking = en_route;
+        }
         c.0.move_y = move_y;
         // Brains hold buttons; release after a press so the next press
         // registers (a way's jump is held as its arc was).
         c.0.jump = if hold && c.0.jump { true } else { jump && !c.0.jump };
     }
+}
+
+/// A quarry lit more than this keeps one that shuns the light off.
+const SHUN_LIT: f32 = 0.4;
+
+/// A flanker's place: this far past `keep` on your far side (cells); it
+/// goes over you when it's within `VAULT` across on the wrong side.
+const FLANK_PAST: f32 = 6.0;
+const VAULT: f32 = 45.0;
+
+/// An ambusher on a ceiling comes along it for what's within this across
+/// (cells); further, it waits.
+const AMBUSH_REACH: f32 = 120.0;
+
+/// Lurking (an ambusher not yet up): up whatever it touches, wandering
+/// along to find a wall to go up (its steering: across, up).
+fn lurk(sim: &SimWorld, id: u64, tick: u64, m: &mut HunterMind) -> (f32, f32) {
+    if tick >= m.wander_until {
+        m.wander = Vec2::new(if unit(sim, id, 0x1A) < 0.5 { -1.0 } else { 1.0 }, 1.0);
+        m.wander_until = tick + ticks(2.0 + 2.0 * unit(sim, id, 0x1B));
+    }
+    (m.wander.x, 1.0)
 }
 
 /// Keeping between `near` and `far` across.

@@ -469,6 +469,8 @@ fn ambient(
         // (A pack: several side by side, each on the ground there, no more
         // than its room for more.)
         let count = h.group.map_or(1, |(lo, hi)| lo + (unit(&mut rng) * (hi.saturating_sub(lo) + 1) as f32) as usize).clamp(1, (h.most - near).max(1));
+        // (Together, a pack: the first its leader.)
+        let pack = (count > 1).then(|| ((rng.next_u32() as u64) << 32) | sim.world.tick() & 0xFFFF_FFFF);
         for n in 0..count {
             let mut here = at + Vec2::X * (n as f32 * PACK_GAP);
             if n > 0 && matches!(h.place, Place::Surface | Place::Shore) {
@@ -479,7 +481,11 @@ fn ambient(
                 };
                 here.y = y as f32 + 1.0;
             }
-            spawn_creature(&mut commands, &h.kind, here, |_| {});
+            spawn_creature(&mut commands, &h.kind, here, move |e| {
+                if let Some(id) = pack {
+                    e.insert(super::tactics::Pack { id, rank: n as u32 });
+                }
+            });
         }
     }
 }

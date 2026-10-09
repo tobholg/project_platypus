@@ -26,6 +26,6 @@
     touch: (damage: 6, knock: 120, stun: 0.1, every: 0.8),
     brain: (
         kind: "hunter",
-        params: (aggro: 240, close: Swoop(hover: (27, 68), dive_time: 1.2, dive_every: 2.2), senses: (dark: 1.0, hearing: 1.5)),
+        params: (aggro: 240, close: Swoop(hover: (27, 68), dive_time: 1.2, dive_every: 2.2), senses: (dark: 1.0, hearing: 1.5), tactics: (shun_light: 90)),
     ),
 )

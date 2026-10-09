@@ -49,6 +49,6 @@
     moves: ["raptor_bite"],
     brain: (
         kind: "hunter",
-        params: (aggro: 450, close: Walk(keep: 8, jump_to_reach: 34), wander: (speed: 0.5, every: 2.0), senses: (dark: 0.5, smell: 220, memory: 6)),
+        params: (aggro: 450, close: Walk(keep: 8, jump_to_reach: 34), wander: (speed: 0.5, every: 2.0), senses: (dark: 0.5, smell: 220, memory: 6), tactics: (flank: true, flee: 0.25)),
     ),
 )

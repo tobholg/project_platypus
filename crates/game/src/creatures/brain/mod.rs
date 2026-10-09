@@ -22,6 +22,7 @@ pub mod ai;
 pub mod critters;
 pub mod hunter;
 pub mod senses;
+pub mod tactics;
 pub mod villager;
 pub mod way;
 

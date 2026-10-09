@@ -1507,6 +1507,35 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   (creeping but for the jumps' run-ups, waiting back on the walkway,
   a bomb down the hall to draw the sentry off): creeping, spotted 0
   times; with a flashlight, 1; with the torch lit, 2; running, 4.
+- Tactics as data (BE `behaviour` stage 3; `brain/tactics.rs`): a
+  hunter's brain's `tactics`: `flee` (under this share of its health,
+  hunting, it runs from what it fights and starts no attack or move; a wall
+  at its back with you within 60 and it's at bay, fighting, till you're
+  90 off), `ambush` (a crawler with no one about, or only suspicious, goes
+  up whatever it touches to a ceiling and waits there still; what it hunts
+  below it within 120 across it comes along the ceiling over and drops on;
+  above it, it goes at as any crawler), `shun_light` (it won't come within
+  this of a quarry lit over 0.4: back to 0.85 of it and waiting; moves
+  that reach from there it still makes, a spider's spit), `call` (as it
+  starts hunting, by its own senses, others of its kind within this hunt
+  too, coming to where it saw you), `flank` (in a pack, each takes a side
+  of you as the hunt begins and keeps it: the leader's and the even
+  places' the side the pack came from, the odd places' the far side, going
+  over you within 45 across if they must, no move started till there).
+  A pack (`Pack { id, rank }`): what spawned together as a `life.ron`
+  `group`; with no one about the rest follow the leader (its lowest rank
+  living) within 60; one starting to hunt calls the rest within 600.
+  Given: raptor (flank, flee 0.25), cave centipede (ambush), cave spider
+  (shun_light 75), spiderling (shun_light 60, flee 0.3), vampire bat
+  (shun_light 90), scorpion (flee 0.25), orc (flee 0.2, call 250), orc
+  archer (flee 0.35, call 250); the undead and the big ones never flee.
+  The `tactics` scenario (`PLATYPUS_ARENA=flat`, at night) proves each: an
+  orc cut to 15 % runs to the arena's wall and, cornered, fights; a cave
+  centipede goes up to a room's ceiling in 0.8 s and, the player walking
+  in, comes along it and drops; a pack of four raptors at a player held
+  still settles two each side (±16); a pack's leader sees the player and
+  its two out of sight come at its call; a cave spider keeps 72 off a
+  torch-lit player and comes in and bites when the torch goes out.
 - Pelting: a liquid hurts only above 375 cells/s (not 135), so a death's
   burst of blood doesn't hurt what's beside it (a burst egg sac hurt its
   own spiderlings).

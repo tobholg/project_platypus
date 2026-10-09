@@ -448,7 +448,7 @@ pub fn start(
     let now = time.elapsed_secs();
     for (e, mut moves, k, swinging, legs, alert) in &mut movers {
         // (Not at what it doesn't sense: no bite through rock.)
-        if moves.doing.is_some() || swinging || alert.is_some_and(|a| !a.engaged()) {
+        if moves.doing.is_some() || swinging || alert.is_some_and(|a| !a.engaged() || a.flanking) {
             continue;
         }
         let pos = k.body.pos;
