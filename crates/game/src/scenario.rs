@@ -8700,6 +8700,7 @@ fn show_script(
 /// (drawn minus camera, in pixels at the zoom): a smooth fall draws the
 /// player still on screen and the camera's steps even for even frames.
 /// `PLATYPUS_LAMP=1`: at night, the big flashlight aimed ahead and down.
+#[allow(clippy::too_many_arguments)]
 fn plunge_script(
     s: Res<Scenario>,
     time: Res<Time>,

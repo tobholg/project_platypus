@@ -459,13 +459,13 @@ fn texel_for(zoom: u32) -> i32 {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 /// `PLATYPUS_EASE_BEAMS`: ease the beams' light too (the old trail).
 fn ease_beams() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var("PLATYPUS_EASE_BEAMS").is_ok())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compute_light(
     sim: Res<SimWorld>,
     settings: Res<LightSettings>,
