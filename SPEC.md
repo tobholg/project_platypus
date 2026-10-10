@@ -1318,6 +1318,12 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   on it lurched with every step. In the air it moves with the player from
   the first frame (a spring there sat still for frames as rocket boots took
   off), what it was behind closing in 0.05 s. Across it follows exactly.
+- The camera follows where the player is drawn this frame (its
+  `Transform`, after `creatures::interpolate`), not its `GlobalTransform`
+  (last frame's: the camera trailed a frame and the player bobbed on screen
+  by however far it moved that frame, 7-20 px falling at 450 cells/s, a
+  shake with every uneven frame; now within a pixel). The `plunge` scenario
+  drops the player from 500 up and logs each frame's offset on screen.
 - The camera snaps to whole screen pixels a quarter pixel off the halves: a
   body at rest stands half a cell up, a tie at 3 pixels a cell, and float
   noise flipped it (the world hopping a pixel against the sky).

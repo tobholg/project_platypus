@@ -54,7 +54,7 @@ impl Plugin for CameraPlugin {
             .add_systems(Startup, spawn_camera)
             .add_systems(Update, ((toggle_free, zoom, fly, apply_zoom).chain(), fit_mirror))
             .add_systems(PreUpdate, track_cursor)
-            .add_systems(PostUpdate, follow.before(TransformSystems::Propagate));
+            .add_systems(PostUpdate, follow.after(crate::creatures::interpolate).before(TransformSystems::Propagate));
     }
 }
 
@@ -221,8 +221,12 @@ fn rise(at: f32, speed: f32, to: f32, dt: f32) -> (f32, f32) {
     (next, speed)
 }
 
-/// What the camera follows: where it's drawn, and its body (on the ground?).
-type Target<'a> = (&'a GlobalTransform, Option<&'a crate::creatures::Kinematics>);
+/// What the camera follows: where it's drawn this frame (its own
+/// `Transform`, set by `creatures::interpolate` just before: its
+/// `GlobalTransform` was still last frame's, so the camera trailed the
+/// player a frame, and the player bobbed on screen by however far it moved
+/// that frame: a falling player shook), and its body (on the ground?).
+type Target<'a> = (&'a Transform, Option<&'a crate::creatures::Kinematics>);
 
 #[allow(clippy::too_many_arguments)]
 pub fn follow(
@@ -238,7 +242,7 @@ pub fn follow(
     // Undo last frame's shake, so a free camera doesn't drift.
     cam.translation -= shaken.extend(0.0);
     if let Some((t, k)) = target.iter().next().filter(|_| !free.0) {
-        let p = t.translation().truncate();
+        let p = t.translation.truncate();
         let grounded = k.is_none_or(|k| k.loco.grounded());
         // A jump across the world (a blink, a portal): glide there rather
         // than cut.

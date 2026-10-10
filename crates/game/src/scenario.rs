@@ -303,6 +303,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, factions_script)
             .add_systems(Update, burrow_script)
             .add_systems(Update, show_script)
+            .add_systems(PostUpdate, plunge_script.after(bevy::transform::TransformSystems::Propagate))
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
             .add_systems(Update, (underlook_script, voidlook_script))
@@ -8687,4 +8688,41 @@ fn show_script(
         seen.sort();
         info!("show: t {:.0} near: {}", s.elapsed, seen.join(", "));
     }
+}
+
+/// `plunge` (the real world): the player lifted 500 cells up at 2 s and let
+/// fall; every frame from then for 4 s: the frame's length, the fixed ticks
+/// run in it, the player as drawn, the camera, and the player on screen
+/// (drawn minus camera, in pixels at the zoom): a smooth fall draws the
+/// player still on screen and the camera's steps even for even frames.
+fn plunge_script(
+    s: Res<Scenario>,
+    time: Res<Time>,
+    fixed: Res<Time<Fixed>>,
+    zoom: Res<crate::camera::Zoom>,
+    mut player: Query<(&mut Kinematics, &GlobalTransform), With<LocalPlayer>>,
+    cam: Query<&Transform, With<crate::camera::MainCamera>>,
+    mut state: Local<(bool, f64, f32, f32)>,
+) {
+    if s.name != "plunge" {
+        return;
+    }
+    let Ok((mut k, tf)) = player.single_mut() else { return };
+    if !state.0 && s.elapsed > 2.0 {
+        state.0 = true;
+        k.body.pos.y += 500.0;
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+        return;
+    }
+    if !state.0 || s.elapsed > 6.0 {
+        return;
+    }
+    let Ok(c) = cam.single() else { return };
+    let ticks = ((fixed.elapsed_secs_f64() - state.1) * 60.0).round();
+    state.1 = fixed.elapsed_secs_f64();
+    let (py, cy) = (tf.translation().y, c.translation.y);
+    let px = zoom.0 as f32;
+    info!("plunge: t {:.3} dt {:.2} ms ticks {ticks} vy {:.0} player {py:.2} cam {cy:.2} (step {:.2}) on screen {:.1} px", s.elapsed, time.delta_secs() * 1000.0, k.body.vel.y, cy - state.2, (py - cy) * px);
+    state.2 = cy;
 }
