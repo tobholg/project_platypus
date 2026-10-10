@@ -1332,6 +1332,18 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   three of them, at x 104 350 in the desert east of the start. A low sun
   through one throws a faint patch of colours on the ground by it
   (`PLATYPUS_OPTICS=spire`, `PLATYPUS_SPIRE_X`, `PLATYPUS_OPTICS_HOUR`).
+  Phosphor: a pale crystal (`phosphor`, materials.ron: a material's
+  `phosphor` colour) in cave walls in clusters, as the gems are, in the
+  underground and the caverns. It drinks light and glows with it after:
+  the grid keeps each phosphor texel's charge (a quarter of the texel or
+  more is phosphor) from frame to frame, anchored to the world
+  (`Previous::charge`); it rises toward the light falling on it beyond its
+  own glow (last frame's light less what it gave itself, this frame's
+  beams and sky; ×1.6, at most 1) over 1.5 s, and in the dark fades over
+  20 s; it glows (`emit`) its colour as charged ×0.55, lighting what's
+  round it and hazing over the dark. Shine a light over a wall of it and
+  walk on: it glows behind you. `PLATYPUS_OPTICS=phosphor`: a block of it
+  under the flashlight, which goes out at 4 s.
 - The grid is drawn smoothly: a cubic B-spline over the texels (four
   bilinear taps), not bilinear, which left a texel's steps along a beam's
   edge. (At zoom 2 a texel stays 4 cells: 2 doubled the frame, and a texel

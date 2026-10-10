@@ -8747,7 +8747,8 @@ fn plunge_script(
 /// `optics` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): things light
 /// passes through, on the floor in a row: a glass prism (a triangle 60
 /// wide, 52 high), a column of ruby, emerald and amethyst, a pool of water
-/// (120 wide, 36 deep, dug into the floor), a block of ice. `PLATYPUS_OPTICS`
+/// (120 wide, 36 deep, dug into the floor), a block of ice, a block of
+/// phosphor. `PLATYPUS_OPTICS`
 /// picks the shot (or `spire`: the real world, by a crystal spire at
 /// `PLATYPUS_SPIRE_X`, `PLATYPUS_OPTICS_HOUR`): `prism`, `gems`, `water`, `ice`, `rainbow` (a slit in a
 /// stone wall before the prism: a pencil of light) (at night, the big
@@ -8792,7 +8793,7 @@ fn optics_script(
     match *state {
         0 if s.elapsed > 0.5 => {
             let id = |n: &str| sim.materials().id(n);
-            let (Some(glass), Some(ruby), Some(emerald), Some(amethyst), Some(water), Some(ice), Some(stone)) = (id("glass"), id("ruby"), id("emerald"), id("amethyst"), id("water"), id("ice"), id("stone")) else {
+            let (Some(glass), Some(ruby), Some(emerald), Some(amethyst), Some(water), Some(ice), Some(stone), Some(phosphor)) = (id("glass"), id("ruby"), id("emerald"), id("amethyst"), id("water"), id("ice"), id("stone"), id("phosphor")) else {
                 warn!("optics: a material's missing");
                 *state = 9;
                 return;
@@ -8825,6 +8826,12 @@ fn optics_script(
                     put(&mut sim, x, y, ice);
                 }
             }
+            // Phosphor, past the ice.
+            for x in 1420..1460 {
+                for y in floor..floor + 40 {
+                    put(&mut sim, x, y, phosphor);
+                }
+            }
             // (`rainbow`: a stone wall before the prism, a slit in it
             // two texels high: a pencil of light, split into its colours.)
             if shot == "rainbow" {
@@ -8848,6 +8855,7 @@ fn optics_script(
                 "ice" => Vec2::new(1320.0, fl + 15.0),
                 "day" => Vec2::new(1160.0, fl - 18.0),
                 "rainbow" => Vec2::new(930.0, fl + 24.0),
+                "phosphor" => Vec2::new(1440.0, fl + 20.0),
                 _ => Vec2::new(930.0, fl + 18.0),
             };
             if shot == "day" {
@@ -8862,6 +8870,7 @@ fn optics_script(
                 "water" => target.x - 150.0,
                 "rainbow" => 800.0,
                 "ice" => 1250.0,
+                "phosphor" => 1360.0,
                 _ => target.x - 130.0,
             };
             k.body.pos = Vec2::new(stand, fl + k.body.half.y);
@@ -8871,10 +8880,15 @@ fn optics_script(
             info!("optics: the {shot} shot, the player at x {stand:.0}, aimed at ({:.0}, {:.0})", target.x, target.y - fl);
             *state = 1;
         }
-        // (Held still and aimed only for a picture; played, the player
-        // walks and aims the light as ever.)
-        1 if std::env::var("PLATYPUS_SCREENSHOT").is_ok() => {
+        // (Held still and aimed only for pictures; played, the player
+        // walks and aims the light as ever. `phosphor`: the light out at
+        // 4 s, to watch it glow on.)
+        1 if std::env::var("PLATYPUS_SCREENSHOT").is_ok() || std::env::var("PLATYPUS_SHOTS").is_ok() => {
             k.body.vel.x = 0.0;
+            if shot == "phosphor" && s.elapsed > 4.0 && toggles.carry != crate::light::Carry::Nothing {
+                toggles.carry = crate::light::Carry::Nothing;
+                info!("optics: the light out at {:.1} s", s.elapsed);
+            }
         }
         1 => {
             cursor.0 = None;

@@ -253,6 +253,10 @@ pub struct MaterialDef {
     /// bent, split by colour, mirrored, tinted (`Optics`). Rendering only.
     #[serde(default)]
     pub optics: Option<Optics>,
+    /// It drinks light and glows with it after, in this colour, fading
+    /// (phosphor). Rendering only (the light grid).
+    #[serde(default)]
+    pub phosphor: Option<(u8, u8, u8)>,
 
     // ---- temperature (°C). See SPEC §3.6. --------------------------------
     /// Heat a fresh cell starts with, relative to ambient (lava 1200, ice -30).

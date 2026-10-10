@@ -678,6 +678,7 @@ fn compute_light(
         for (dir, color) in sky {
             g.seed_directional(dir, color, &open_top);
         }
+        g.charge_phosphor(previous.as_ref(), dt);
         g.solve(params);
         // (`PLATYPUS_EASE_BEAMS=1`: beams eased with the rest, as before:
         // a moving one trails; for comparing.)

@@ -78,7 +78,14 @@ pub fn rules(plan: &WorldPlan, mats: &MaterialTable) -> (Vec<Ore>, Vec<Gem>) {
         ore("mithril_ore", (span(Band::Deep).0, at(Band::Deep, 0.2)), (51.0, 15.0), 0.68, 69.4),
     ];
     let gem = |name: &str, band: Band, salt: f64| Gem { material: mats.expect_id(name), band, salt };
-    let gems = vec![gem("amethyst", Band::Underground, 81.7), gem("emerald", Band::Caverns, 93.1), gem("ruby", Band::Deep, 105.3)];
+    let gems = vec![
+        gem("amethyst", Band::Underground, 81.7),
+        gem("emerald", Band::Caverns, 93.1),
+        gem("ruby", Band::Deep, 105.3),
+        // (Phosphor: it glows with the light it's had: the optics arc.)
+        gem("phosphor", Band::Underground, 61.3),
+        gem("phosphor", Band::Caverns, 72.9),
+    ];
     (ores, gems)
 }
 

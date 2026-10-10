@@ -94,6 +94,10 @@
         // flecked with light, glowing a cold blue; an iron pick takes it.
         (name: "meteorite",   kind: Static, density: 3400, hardness: 95, crumbles_into: "gravel", glow: (22, 30, 58), shimmer: 200,
             colors: [(40, 40, 52), (58, 58, 74), (32, 32, 44), (170, 190, 255), (48, 48, 62)]),
+        // Phosphor: a pale crystal that drinks light and glows with it after,
+        // fading (the optics arc): in cave walls, in clusters.
+        (name: "phosphor",    kind: Static, density: 2600, hardness: 45, crumbles_into: "gravel", opacity: 30, optics: (ior: 1.5, tint: (210, 255, 225)), phosphor: (90, 255, 160),
+            colors: [(150, 172, 152), (182, 204, 178), (132, 152, 134), (202, 218, 192)]),
         (name: "amethyst",    kind: Static, density: 2650, hardness: 60, crumbles_into: "gravel", glow: (46, 18, 70), opacity: 14, optics: (ior: 1.54, disperse: 0.1, tint: (185, 95, 255)), shimmer: 255,
             colors: [(96, 44, 146), (150, 86, 212), (196, 146, 246), (120, 60, 180)]),
         (name: "emerald",     kind: Static, density: 2750, hardness: 80, crumbles_into: "gravel", glow: (4, 22, 10), opacity: 14, optics: (ior: 1.58, disperse: 0.1, tint: (80, 240, 120)), shimmer: 255,

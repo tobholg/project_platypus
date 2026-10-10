@@ -62,6 +62,10 @@ pub struct LightGrid {
     /// A cell in the texel that glints in light (a gem, crystal, glass, ice,
     /// water at its surface; one at random each frame), and its colour.
     pub glint: Vec<Option<(CellPos, Rgb)>>,
+    /// Phosphor in the texel (a quarter of it or more): the colour it glows,
+    /// and how charged it is (0 … 1, kept from frame to frame).
+    pub phosphor: Vec<Option<Rgb>>,
+    pub charge: Vec<f32>,
     /// Caustics: light bent, mirrored or split by something clear, where it
     /// lands on a face; added over the scene (the glow layer), so it shows
     /// in daylight too (light only darkens: a spire's colours on lit
@@ -92,6 +96,8 @@ impl LightGrid {
             optical: false,
             glint: vec![None; n],
             caustic: vec![[0.0; 3]; n],
+            phosphor: vec![None; n],
+            charge: vec![0.0; n],
         }
     }
 
@@ -133,13 +139,14 @@ impl LightGrid {
         // Per chunk, the texels it covers (each texel lies in one chunk).
         // (opacity, sky opacity, glow) per texel, and its clear cells: how
         // many, and their index, spread, mirroring and tint, summed.
-        type Texels = Vec<(f32, f32, Rgb, Clear, Option<(CellPos, Rgb, u64)>)>;
+        type Texels = Vec<(f32, f32, Rgb, Clear, Option<(CellPos, Rgb, u64)>, (f32, Rgb))>;
+        let glows: Vec<Option<Rgb>> = (0..mats.len()).map(|m| mats.def(platypus_sim::MaterialId(m as u16)).phosphor.map(|(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0])).collect();
         let tick = world.tick();
         let parts: Vec<(ChunkPos, Texels)> = chunks
             .par_iter()
             .filter_map(|&cp| {
                 let chunk = world.chunk(cp)?;
-                let mut out = vec![(0.0f32, 0.0f32, [0.0f32; 3], Clear::default(), None); per_chunk * per_chunk];
+                let mut out = vec![(0.0f32, 0.0f32, [0.0f32; 3], Clear::default(), None, (0.0f32, [0.0f32; 3])); per_chunk * per_chunk];
                 let (cells, bg) = (chunk.cells(), chunk.background());
                 let o = cp.origin();
                 for ly in 0..CHUNK {
@@ -152,6 +159,10 @@ impl LightGrid {
                         if !c.is_air() {
                             let ph = mats.phys(c.material);
                             op = ph.opacity as f32 / 255.0;
+                            if let Some(g) = glows[c.material.0 as usize] {
+                                slot.5.0 += 1.0;
+                                slot.5.1 = g;
+                            }
                             if let Some(opt) = optics[c.material.0 as usize] {
                                 slot.3.add(opt);
                                 // (A glint: a clear cell, a liquid only at its
@@ -225,8 +236,9 @@ impl LightGrid {
                 for tx in 0..per_chunk {
                     let p = CellPos::new(o.x + tx as i32 * t, o.y + ty as i32 * t);
                     if let Some(i) = self.index_of(p) {
-                        let (op, sky, e, clear, glint) = out[ty * per_chunk + tx];
+                        let (op, sky, e, clear, glint, phos) = out[ty * per_chunk + tx];
                         self.glint[i] = glint.map(|(p, c, _)| (p, c));
+                        self.phosphor[i] = (phos.0 >= area * 0.25).then_some(phos.1);
                         self.opacity[i] = op;
                         self.sky_opacity[i] = sky;
                         self.emit[i] = e.map(|v| v.min(1.5));
@@ -565,6 +577,43 @@ impl LightGrid {
         }
     }
 
+    /// Phosphor drinks light and glows with it after: each phosphor texel's
+    /// charge (carried from last frame's grid, world-anchored) rises toward
+    /// the light falling on it beyond its own glow (last frame's spread
+    /// light, this frame's beams and sky), in `PHOSPHOR_RISE` s, and in the
+    /// dark fades over `PHOSPHOR_FADE` s; it glows as charged, lighting what's
+    /// round it and hazing over the dark (`emit`). Before `solve`.
+    pub fn charge_phosphor(&mut self, prev: Option<&Previous>, dt: f32) {
+        let (w, h) = (self.w, self.h);
+        let (rise, fade) = (1.0 - (-dt / PHOSPHOR_RISE).exp(), (-dt / PHOSPHOR_FADE).exp());
+        let lit = |v: &Rgb| v.iter().copied().fold(0.0f32, f32::max);
+        for y in 0..h {
+            for x in 0..w {
+                let i = y * w + x;
+                let Some(color) = self.phosphor[i] else { continue };
+                // Last frame's charge and light here (none if it's new).
+                let (was, light) = prev
+                    .filter(|p| p.texel == self.texel)
+                    .and_then(|p| {
+                        let (px, py) = (x as i32 + (self.origin.x - p.origin.x) / self.texel, y as i32 + (self.origin.y - p.origin.y) / self.texel);
+                        (px >= 0 && py >= 0 && (px as usize) < p.w && (py as usize) < p.h).then(|| {
+                            let j = py as usize * p.w + px as usize;
+                            (p.charge[j], lit(&p.light[j]))
+                        })
+                    })
+                    .unwrap_or((0.0, 0.0));
+                let own = was * PHOSPHOR_GLOW * lit(&color);
+                let falling = (light - own).max(0.0).max(lit(&self.direct[i])).max(lit(&self.seed[i]));
+                let want = (falling * PHOSPHOR_GAIN).min(1.0);
+                let c = if want > was { was + (want - was) * rise } else { was * fade };
+                self.charge[i] = c;
+                if c > 0.01 {
+                    max_into(&mut self.emit[i], color.map(|v| v * c * PHOSPHOR_GLOW));
+                }
+            }
+        }
+    }
+
     /// Glints this frame: where a glinting cell catches direct light (a
     /// beam) or the sky's, by chance (`dt` seconds' worth: brighter, more
     /// often), a sparkle there in its colour, as bright as the light.
@@ -609,6 +658,8 @@ pub struct Previous {
     pub h: usize,
     pub light: Vec<Rgb>,
     pub glow: Vec<Rgb>,
+    /// Phosphor's charge per texel.
+    pub charge: Vec<f32>,
 }
 
 impl LightGrid {
@@ -646,9 +697,9 @@ impl LightGrid {
     }
 
     /// What to ease from next frame: `light` the spread light and `glow`
-    /// the glow before caustics (`add_direct`'s).
+    /// the glow before caustics (`add_direct`'s); and phosphor's charge.
     pub fn into_previous(self, (light, glow): (Vec<Rgb>, Vec<Rgb>)) -> Previous {
-        Previous { origin: self.origin, texel: self.texel, w: self.w, h: self.h, light, glow }
+        Previous { origin: self.origin, texel: self.texel, w: self.w, h: self.h, light, glow, charge: self.charge }
     }
 }
 
@@ -666,6 +717,13 @@ const BEAM_SCATTER: f32 = 0.35;
 const CAUSTIC_ON: f32 = 0.2;
 const CAUSTIC_SUN: f32 = 1.0;
 const CAUSTIC_BEAM: f32 = 1.0;
+
+/// Phosphor: seconds to charge (toward the light on it), seconds to fade in
+/// the dark, how much light makes a full charge (×), how bright it glows.
+const PHOSPHOR_RISE: f32 = 1.5;
+const PHOSPHOR_FADE: f32 = 20.0;
+const PHOSPHOR_GAIN: f32 = 1.6;
+const PHOSPHOR_GLOW: f32 = 0.55;
 
 /// Light (on a glinting cell) from which it glints, and how often then
 /// (per second, per unit of light over that).
