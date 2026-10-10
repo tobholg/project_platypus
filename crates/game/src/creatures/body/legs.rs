@@ -752,7 +752,7 @@ struct BodyArt(HashMap<String, crate::combat::Turned>);
 use crate::creatures::body::animation::Z_EYES;
 
 #[derive(Component)]
-struct LegEyes;
+pub(crate) struct LegEyes;
 
 #[derive(Component)]
 struct LegStinger;

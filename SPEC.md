@@ -1905,6 +1905,23 @@ DESIGN §13 item 6.
   They fire only on jump pressed again in the air and held: the jump's own
   press, held, never fires them (they never fire off the ground); any air
   jumps go first. Under water a held jump fires them as before.
+- **Eyes in the dark** (`creatures::body::sight`): glowing eyes are drawn
+  over the darkness, so they showed through rock (every spider in a cave
+  seen through the hill). Each creature keeps how much the player sees it
+  (`Sighted`): every sixth frame (spread over them), a line from the
+  player's eye to its eyes or its middle, nothing solid on it, within 900;
+  seen it comes up in 0.15 s, lost behind rock it fades over 0.7 s (a
+  glimpse round a corner lingers). Its eye sprites are drawn that bright.
+  Light from creatures isn't gated: the light grid stops it at rock
+  already. With the lighting off, everything's seen.
+- **The off hand's light** (`light::torch`): what L picks (a small or big
+  flashlight, a torch) is held in the off hand (the back arm's hand), in
+  front of the body, pointed at the cursor on the side the player faces
+  (straight up to straight down), crisply turned (`Turned`, as weapons).
+  A flashlight (`flashlight.ron`, bright steel so it shows on dark
+  clothes) sends its beam from its lens, not the chest; the torch burns
+  from its head wherever it points (its light, haze and flame on a child
+  there). The arm itself keeps its pose (aiming it needs arm frames).
 - **The show** (`show.rs`, to show someone the bestiary in the world as
   it is): P (not with the arena panel up) or the dev panel's "Show the
   next creature" brings on the next act of `show.ron` on the side of you

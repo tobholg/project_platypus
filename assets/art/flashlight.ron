@@ -1,0 +1,27 @@
+// A flashlight, held in the off hand and pointed where the cursor is
+// (light/torch.rs): a ridged grip, a bright steel head (it shows against
+// dark clothes), a lens. Pointing right;
+// gripped at `grip`, the beam leaves from `lens`.
+(
+    size: (10, 5),
+    feet: (5, 5),
+    outline: (18, 18, 22),
+    palette: {
+        'b': (92, 96, 108),     // the grip
+        'B': (122, 126, 138),   // the grip, ridged
+        'h': (168, 172, 182),   // the head
+        'H': (214, 218, 226),   // the head, lit
+        'L': (255, 238, 180),   // the lens
+    },
+    frames: {
+        "flashlight": [
+            "......hhH.",
+            "bBbBbbhhHL",
+            "bBbBbbhHHL",
+            "bBbBbbhhHL",
+            "......hhH.",
+        ],
+    },
+    clips: { "on": (frames: ["flashlight"], fps: 1) },
+    anchors: { "grip": { "flashlight": (2, 2) }, "lens": { "flashlight": (9, 2) } },
+)

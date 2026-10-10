@@ -259,6 +259,8 @@ impl Plugin for LightPlugin {
             .init_resource::<Pending>()
             .add_systems(Startup, (spawn_overlay, torch::load_art))
             .add_systems(Update, (reload_settings, keys, collect_flashes, glow, torch::hold.after(crate::creatures::body::animation::animate), torch::burn))
+            .init_resource::<torch::OffLight>()
+            .add_systems(Startup, torch::load_off_hand)
             .add_systems(
                 PostUpdate,
                 (update_daylight, compute_light).chain().after(crate::camera::follow).before(TransformSystems::Propagate),
@@ -466,7 +468,7 @@ fn compute_light(
     flashes: Res<Flashes>,
     zoom: Res<Zoom>,
     time: Res<Time>,
-    cursor: Res<CursorWorld>,
+    (cursor, off_light): (Res<CursorWorld>, Res<torch::OffLight>),
     mut overlay: ResMut<Overlay>,
     mut pending: ResMut<Pending>,
     mut metrics: ResMut<LightMetrics>,
@@ -566,8 +568,10 @@ fn compute_light(
             _ => None,
         };
         if let (Some(f), Some(aim)) = (beam, cursor.0) {
-            let dir = (aim - at).normalize_or(Vec2::X);
-            g.seed_beam([at.x, at.y], [dir.x, dir.y], f.angle.to_radians() / 2.0, f.range, c(f.color, f.strength));
+            // (From the flashlight's lens, in the off hand.)
+            let from = off_light.lens.map_or(at, |l| k.body.pos + l);
+            let dir = (aim - from).normalize_or(Vec2::X);
+            g.seed_beam([from.x, from.y], [dir.x, dir.y], f.angle.to_radians() / 2.0, f.range, c(f.color, f.strength));
         }
     }
     // Embers, sparks, burning debris.
