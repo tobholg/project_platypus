@@ -1289,6 +1289,29 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   as rays into a direct buffer (hard shadows) of which a third scatters off
   what it lands on: three rays a texel across the beam, fading over its
   outer 40 % (a soft rim, not a hard edge).
+- Optics (the `optics` arc, stage 1): light bends, mirrors, splits by
+  colour and tints in clear materials. A material's `optics` (materials.ron:
+  `ior` its refractive index, `disperse` how far that spreads from red to
+  violet as a share of `ior - 1`, `reflect` the least its faces mirror,
+  `tint` the colour light comes out after 24 cells) puts a texel in the
+  grid when at least half its cells are clear: its index, spread, mirror
+  share and tint averaged. Sun rays and beam rays are traced through it
+  (`LightGrid::trace`): where the index changes along a ray, white light
+  going into what splits it goes on as three rays, red, green and violet,
+  each bending its own way (rainbows: a wide beam through a prism comes
+  out white with coloured edges, a pencil of light fans into a spectrum);
+  a share mirrors back (Fresnel, more at a grazing angle, at least the
+  material's `reflect`), the rest bends (Snell; all of it mirrors back in
+  where it can't get out), the face's normal fitted to the index over the
+  5×5 texels round it (a 3×3 one sent rays off a sloping face in steps).
+  Inside, light takes the tint. At most 3 mirrorings and 4 000 steps a ray
+  and all it splits into; rays where nothing's clear go as before. Given:
+  water (1.33, tinted blue), ice (1.31), glass (1.5, spread 0.2), crystal
+  (1.55, spread 0.45: strong rainbows), amethyst, emerald, ruby (tinting
+  light their colours); their opacity lowered so light gets through (ice
+  and the gems were near opaque). The `optics` scenario (`PLATYPUS_OPTICS`
+  `prism`, `rainbow`, `gems`, `water`, `ice`, `day`) sets them out under a
+  flashlight or the morning sun for before/after pictures.
 - The grid is drawn smoothly: a cubic B-spline over the texels (four
   bilinear taps), not bilinear, which left a texel's steps along a beam's
   edge. (At zoom 2 a texel stays 4 cells: 2 doubled the frame, and a texel

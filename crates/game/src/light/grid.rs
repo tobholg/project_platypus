@@ -49,6 +49,16 @@ pub struct LightGrid {
     pub light: Vec<Rgb>,
     /// Light from glowing things only, for the haze drawn over the dark.
     pub glow: Vec<Rgb>,
+    /// What light meets in each texel (`Optics`): its refractive index (1:
+    /// air, or nothing clear), how that spreads by colour, how much of it
+    /// its faces mirror at least, and its tint (per `Optics::TINT_DEPTH`
+    /// cells).
+    pub ior: Vec<f32>,
+    pub disperse: Vec<f32>,
+    pub reflect: Vec<f32>,
+    pub tint: Vec<Rgb>,
+    /// Anything clear in the view at all (else rays go straight, as ever).
+    pub optical: bool,
 }
 
 impl LightGrid {
@@ -67,6 +77,11 @@ impl LightGrid {
             direct: vec![[0.0; 3]; n],
             light: vec![[0.0; 3]; n],
             glow: vec![[0.0; 3]; n],
+            ior: vec![1.0; n],
+            disperse: vec![0.0; n],
+            reflect: vec![0.0; n],
+            tint: vec![[1.0; 3]; n],
+            optical: false,
         }
     }
 
@@ -103,14 +118,17 @@ impl LightGrid {
         let mats = world.materials();
         let climate = world.climate();
         let area = (t * t) as f32;
+        // Each material's optics, at hand.
+        let optics: Vec<Option<platypus_sim::Optics>> = (0..mats.len()).map(|m| mats.def(platypus_sim::MaterialId(m as u16)).optics).collect();
         // Per chunk, the texels it covers (each texel lies in one chunk).
-        // (opacity, sky opacity, glow) per texel.
-        type Texels = Vec<(f32, f32, Rgb)>;
+        // (opacity, sky opacity, glow) per texel, and its clear cells: how
+        // many, and their index, spread, mirroring and tint, summed.
+        type Texels = Vec<(f32, f32, Rgb, Clear)>;
         let parts: Vec<(ChunkPos, Texels)> = chunks
             .par_iter()
             .filter_map(|&cp| {
                 let chunk = world.chunk(cp)?;
-                let mut out = vec![(0.0f32, 0.0f32, [0.0f32; 3]); per_chunk * per_chunk];
+                let mut out = vec![(0.0f32, 0.0f32, [0.0f32; 3], Clear::default()); per_chunk * per_chunk];
                 let (cells, bg) = (chunk.cells(), chunk.background());
                 let o = cp.origin();
                 for ly in 0..CHUNK {
@@ -123,6 +141,9 @@ impl LightGrid {
                         if !c.is_air() {
                             let ph = mats.phys(c.material);
                             op = ph.opacity as f32 / 255.0;
+                            if let Some(o) = optics[c.material.0 as usize] {
+                                slot.3.add(o);
+                            }
                             sky_op = op;
                             let mut e = [ph.glow[0] as f32 / 255.0, ph.glow[1] as f32 / 255.0, ph.glow[2] as f32 / 255.0];
                             if ph.glow != [0; 3] {
@@ -172,6 +193,7 @@ impl LightGrid {
                     for ch in &mut s.2 {
                         *ch /= area;
                     }
+                    s.3.settle(area);
                 }
                 Some((cp, out))
             })
@@ -182,10 +204,17 @@ impl LightGrid {
                 for tx in 0..per_chunk {
                     let p = CellPos::new(o.x + tx as i32 * t, o.y + ty as i32 * t);
                     if let Some(i) = self.index_of(p) {
-                        let (op, sky, e) = out[ty * per_chunk + tx];
+                        let (op, sky, e, clear) = out[ty * per_chunk + tx];
                         self.opacity[i] = op;
                         self.sky_opacity[i] = sky;
                         self.emit[i] = e.map(|v| v.min(1.5));
+                        if clear.n > 0.0 {
+                            self.ior[i] = clear.ior;
+                            self.disperse[i] = clear.disperse;
+                            self.reflect[i] = clear.reflect;
+                            self.tint[i] = clear.tint;
+                            self.optical = true;
+                        }
                     }
                 }
             }
@@ -247,22 +276,8 @@ impl LightGrid {
         {
             starts.extend((f..h).map(|y| start(edge, y)));
         }
-        for (mut x, mut y) in starts {
-            let mut v = color;
-            loop {
-                if x < 0.0 || y < 0.0 || x >= w as f32 || y >= h as f32 {
-                    break;
-                }
-                let i = y as usize * w + x as usize;
-                max_into(&mut self.seed[i], v);
-                let pass = lut[(self.sky_opacity[i].clamp(0.0, 1.0) * 255.0) as usize];
-                v = v.map(|c| c * pass);
-                if v[0] + v[1] + v[2] < 0.003 {
-                    break;
-                }
-                x += sx;
-                y += sy;
-            }
+        for (x, y) in starts {
+            self.trace(Ray { x, y, dx: sx, dy: sy, v: color, s: 0, steps: i32::MAX, n: 1.0, chan: None, bounces: 0, edge: 1.0 }, Lit::Sun, &lut);
         }
     }
 
@@ -290,35 +305,160 @@ impl LightGrid {
         // the end (no gaps for the steps to show through).
         let rays = ((2.0 * half_angle * range / t) * 3.0).ceil().max(3.0) as i32;
         let base = dir[1].atan2(dir[0]);
+        let steps = (range / (t * 0.5)) as i32;
+        let lut: Vec<f32> = (0..=255).map(|k| (1.0 - k as f32 / 255.0).powf(t * 0.5)).collect();
+        // (In texels from the grid's corner.)
+        let (fx, fy) = ((from[0] - self.origin.x as f32) / t, (from[1] - self.origin.y as f32) / t);
         for r in 0..=rays {
             let k = r as f32 / rays as f32 * 2.0 - 1.0; // -1 … 1 across the cone
             let a = base + k * half_angle;
-            let (dx, dy) = (a.cos() * t * 0.5, a.sin() * t * 0.5);
+            let (dx, dy) = (a.cos() * 0.5, a.sin() * 0.5);
             // Full in the middle, fading smoothly off over its outer 40 % (a
             // hard rim shows the grid's steps).
             let edge = {
                 let u = ((1.0 - k.abs()) / BEAM_RIM).min(1.0);
                 u * u * (3.0 - 2.0 * u)
             };
-            let mut pass = 1.0f32;
-            let steps = (range / (t * 0.5)) as i32;
-            let (mut x, mut y) = (from[0], from[1]);
-            for s in 0..steps {
-                x += dx;
-                y += dy;
-                let Some(i) = self.index_of(CellPos::from_world(x, y)) else { break };
-                let d = s as f32 / steps as f32;
-                let fall = (1.0 - d) * (1.0 - d);
-                let v = color.map(|c| c * pass * fall * edge);
-                max_into(&mut self.direct[i], v);
-                // It scatters off what it lands on, not off the air.
-                if self.opacity[i] > 0.05 {
-                    max_into(&mut self.seed[i], v.map(|c| c * BEAM_SCATTER * self.opacity[i].min(1.0)));
-                }
-                pass *= (1.0 - self.opacity[i]).max(0.0).powf(t * 0.5);
-                if pass < 0.01 {
+            // (In whatever the lamp is in: a lamp under water starts in it.)
+            let n = self.index_of(CellPos::from_world(from[0], from[1])).map_or(1.0, |i| self.ior[i]);
+            self.trace(Ray { x: fx + dx, y: fy + dy, dx, dy, v: color, s: 1, steps, n, chan: None, bounces: 0, edge }, Lit::Beam, &lut);
+        }
+    }
+
+    /// The index a ray carrying `chan` (or all colours) meets at texel `i`.
+    fn index_at(&self, i: usize, chan: Option<usize>) -> f32 {
+        let n = self.ior[i];
+        match chan {
+            Some(c) => n + (n - 1.0) * self.disperse[i] * [-1.0, 0.0, 1.0][c],
+            None => n,
+        }
+    }
+
+    /// The face's normal at texel (`x`, `y`), facing back along `d`: from how
+    /// the index changes over the 5×5 texels round it (a least-squares
+    /// slope: a 3×3 one flipped between flat, steep and diagonal on a
+    /// sloping face, and the rays leaving it went off in steps); none to
+    /// tell, head on.
+    fn normal_at(&self, x: usize, y: usize, d: (f32, f32)) -> (f32, f32) {
+        let (w, h) = (self.w as i32, self.h as i32);
+        let (mut gx, mut gy) = (0.0f32, 0.0f32);
+        for dy in -2..=2i32 {
+            for dx in -2..=2i32 {
+                let (px, py) = ((x as i32 + dx).clamp(0, w - 1), (y as i32 + dy).clamp(0, h - 1));
+                let n = self.ior[(py * w + px) as usize];
+                gx += n * dx as f32;
+                gy += n * dy as f32;
+            }
+        }
+        let len = (gx * gx + gy * gy).sqrt();
+        if len < 1e-4 {
+            return (-d.0, -d.1);
+        }
+        let (nx, ny) = (-gx / len, -gy / len);
+        if nx * d.0 + ny * d.1 > 0.0 { (-nx, -ny) } else { (nx, ny) }
+    }
+
+    /// A ray, and every ray its faces make of it (mirrored off them, split by
+    /// colour going into what splits light), marched to their ends: lighting
+    /// as they go (the sun seeds what's spread; a beam lights directly,
+    /// fading over its range, and scatters a share off what it lands on),
+    /// dimmed by what they pass (`pass`: kept per step by opacity, 256
+    /// levels), tinted by what's clear. At a face between two indices a ray
+    /// bends (Snell), a share mirroring back (Fresnel: more at a grazing
+    /// angle; at least what the material's `reflect` says), or all of it if
+    /// it can't get out (total internal reflection).
+    fn trace(&mut self, first: Ray, lit: Lit, pass: &[f32]) {
+        let (w, h, t) = (self.w, self.h, self.texel as f32);
+        let mut stack = vec![first];
+        let mut budget = RAY_STEPS_MOST;
+        while let Some(mut r) = stack.pop() {
+            let step = (r.dx * r.dx + r.dy * r.dy).sqrt();
+            let tint_k = step * t / platypus_sim::Optics::TINT_DEPTH;
+            loop {
+                if r.x < 0.0 || r.y < 0.0 || r.x >= w as f32 || r.y >= h as f32 || r.s >= r.steps {
                     break;
                 }
+                budget -= 1;
+                if budget == 0 {
+                    return;
+                }
+                let (xi, yi) = (r.x as usize, r.y as usize);
+                let i = yi * w + xi;
+                if self.optical {
+                    let n2 = self.index_at(i, r.chan);
+                    if (n2 - r.n).abs() > 1e-3 {
+                        // (Into what splits light, white: on as its colours,
+                        // each meeting this face its own way.)
+                        if r.chan.is_none() && n2 > r.n && self.disperse[i] > 0.0 {
+                            for c in 0..3 {
+                                if r.v[c] > 0.0 {
+                                    let mut v = [0.0; 3];
+                                    v[c] = r.v[c];
+                                    stack.push(Ray { v, chan: Some(c), ..r });
+                                }
+                            }
+                            break;
+                        }
+                        let d = (r.dx / step, r.dy / step);
+                        let nrm = self.normal_at(xi, yi, d);
+                        let cosi = -(d.0 * nrm.0 + d.1 * nrm.1);
+                        let eta = r.n / n2;
+                        let r0 = ((r.n - n2) / (r.n + n2)).powi(2);
+                        let back = (r.x - r.dx, r.y - r.dy);
+                        let was = (back.0.max(0.0) as usize).min(w - 1) + (back.1.max(0.0) as usize).min(h - 1) * w;
+                        let mirrored = (r0 + (1.0 - r0) * (1.0 - cosi).clamp(0.0, 1.0).powi(5)).max(self.reflect[i].max(self.reflect[was]));
+                        let m = (d.0 + 2.0 * cosi * nrm.0, d.1 + 2.0 * cosi * nrm.1);
+                        let k = 1.0 - eta * eta * (1.0 - cosi * cosi);
+                        if k < 0.0 {
+                            // (Can't get out: all of it back in.)
+                            r.bounces += 1;
+                            if r.bounces > BOUNCES_MOST {
+                                break;
+                            }
+                            (r.x, r.y, r.dx, r.dy) = (back.0, back.1, m.0 * step, m.1 * step);
+                            r.x += r.dx;
+                            r.y += r.dy;
+                            continue;
+                        }
+                        if r.bounces < BOUNCES_MOST && mirrored * r.v.iter().copied().fold(0.0, f32::max) > 0.01 {
+                            stack.push(Ray { x: back.0 + m.0 * step, y: back.1 + m.1 * step, dx: m.0 * step, dy: m.1 * step, v: r.v.map(|c| c * mirrored), bounces: r.bounces + 1, ..r });
+                        }
+                        r.v = r.v.map(|c| c * (1.0 - mirrored));
+                        let s = eta * cosi - k.sqrt();
+                        let (bx, by) = (eta * d.0 + s * nrm.0, eta * d.1 + s * nrm.1);
+                        let bl = (bx * bx + by * by).sqrt().max(1e-6);
+                        (r.dx, r.dy) = (bx / bl * step, by / bl * step);
+                        r.n = n2;
+                    }
+                }
+                match lit {
+                    Lit::Sun => max_into(&mut self.seed[i], r.v),
+                    Lit::Beam => {
+                        let d = r.s as f32 / r.steps as f32;
+                        let fall = (1.0 - d) * (1.0 - d);
+                        let v = r.v.map(|c| c * fall * r.edge);
+                        max_into(&mut self.direct[i], v);
+                        // It scatters off what it lands on, not off the air.
+                        if self.opacity[i] > 0.05 {
+                            max_into(&mut self.seed[i], v.map(|c| c * BEAM_SCATTER * self.opacity[i].min(1.0)));
+                        }
+                    }
+                }
+                let op = if lit == Lit::Sun { self.sky_opacity[i] } else { self.opacity[i] };
+                let keep = pass[(op.clamp(0.0, 1.0) * 255.0) as usize];
+                r.v = r.v.map(|c| c * keep);
+                if self.optical && self.ior[i] > 1.0 {
+                    let tint = self.tint[i];
+                    for (c, v) in r.v.iter_mut().enumerate() {
+                        *v *= tint[c].powf(tint_k);
+                    }
+                }
+                if r.v[0] + r.v[1] + r.v[2] < if lit == Lit::Sun { 0.003 } else { 0.01 } {
+                    break;
+                }
+                r.x += r.dx;
+                r.y += r.dy;
+                r.s += 1;
             }
         }
     }
@@ -458,6 +598,75 @@ const LATTICE: i32 = 64;
 /// A beam's rim, fading out: this share of its half width.
 const BEAM_RIM: f32 = 0.4;
 const BEAM_SCATTER: f32 = 0.35;
+
+/// Steps one traced ray and all it splits into may take, at most.
+const RAY_STEPS_MOST: u32 = 4_000;
+/// Faces a ray is mirrored off before it's let go.
+const BOUNCES_MOST: u8 = 3;
+
+/// A ray of light being traced (texels from the grid's corner; a step's
+/// worth of texels per step).
+#[derive(Clone, Copy)]
+struct Ray {
+    x: f32,
+    y: f32,
+    dx: f32,
+    dy: f32,
+    v: Rgb,
+    /// Steps taken, and the most (a beam fades over its range).
+    s: i32,
+    steps: i32,
+    /// The index of what it's in (1: air); the one colour it carries, once
+    /// split (red, green, violet); faces it's been mirrored off.
+    n: f32,
+    chan: Option<usize>,
+    bounces: u8,
+    /// A beam's fade at its rim (1 in its middle).
+    edge: f32,
+}
+
+/// Whose ray: the sky's (seeds the spread light) or a beam's (lights
+/// directly).
+#[derive(Clone, Copy, PartialEq)]
+enum Lit {
+    Sun,
+    Beam,
+}
+
+/// A texel's clear cells, summed, then averaged (`settle`): what light
+/// meets there if at least half the texel is clear.
+#[derive(Clone, Copy, Default)]
+struct Clear {
+    n: f32,
+    ior: f32,
+    disperse: f32,
+    reflect: f32,
+    tint: Rgb,
+}
+
+impl Clear {
+    fn add(&mut self, o: platypus_sim::Optics) {
+        self.n += 1.0;
+        self.ior += o.ior;
+        self.disperse += o.disperse;
+        self.reflect += o.reflect;
+        for (c, v) in self.tint.iter_mut().zip([o.tint.0, o.tint.1, o.tint.2]) {
+            *c += v as f32 / 255.0;
+        }
+    }
+
+    fn settle(&mut self, area: f32) {
+        if self.n < area * 0.5 {
+            *self = Clear::default();
+            return;
+        }
+        let k = 1.0 / self.n;
+        self.ior *= k;
+        self.disperse *= k;
+        self.reflect *= k;
+        self.tint = self.tint.map(|c| (c * k).max(0.001));
+    }
+}
 
 /// Spread one channel: sweeps up, down, then (on transposed copies) right
 /// and left. Each sweep takes, for every texel, the best of the three

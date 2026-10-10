@@ -25,7 +25,7 @@ pub use climate::Climate;
 pub use coords::{CHUNK, CHUNK_AREA, CellPos, ChunkPos, Rect};
 pub use edit::{BLOCK, EditReport, WorldEdit, block_cells, block_of};
 pub use hazard::Exposure;
-pub use material::{Kind, MaterialId, MaterialTable};
+pub use material::{Kind, MaterialId, MaterialTable, Optics};
 pub use particles::{Landing, Particle};
 pub use step::{PHASES, StepStats, Strike, Zap};
 pub use weather::Weather;

@@ -40,6 +40,41 @@ impl Kind {
     }
 }
 
+/// How light goes through a clear material (the light grid's rays: the sun,
+/// beams). Rendering only.
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub struct Optics {
+    /// Its refractive index: how much light bends going in or out (air 1,
+    /// water 1.33, glass 1.5, ruby 1.77).
+    #[serde(default = "Optics::air")]
+    pub ior: f32,
+    /// How far the index spreads by colour: red bends by `ior` less this
+    /// share of `ior - 1`, violet by that much more (rainbows; real glass is
+    /// about 0.02, a game's crystal much more).
+    #[serde(default)]
+    pub disperse: f32,
+    /// Light mirrored off its face, at least (on top of what the index
+    /// gives: more at a grazing angle).
+    #[serde(default)]
+    pub reflect: f32,
+    /// The colour light comes out after `TINT_DEPTH` cells of it.
+    #[serde(default = "Optics::clear")]
+    pub tint: (u8, u8, u8),
+}
+
+impl Optics {
+    /// Cells of a clear material that tint light to its `tint`.
+    pub const TINT_DEPTH: f32 = 24.0;
+
+    fn air() -> f32 {
+        1.0
+    }
+
+    fn clear() -> (u8, u8, u8) {
+        (255, 255, 255)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct MaterialDef {
     pub name: String,
@@ -214,6 +249,10 @@ pub struct MaterialDef {
     /// Glowing motes drift up off it (spores). Rendering only.
     #[serde(default)]
     pub motes: bool,
+    /// How light goes through it (water, ice, glass, crystal, gems):
+    /// bent, split by colour, mirrored, tinted (`Optics`). Rendering only.
+    #[serde(default)]
+    pub optics: Option<Optics>,
 
     // ---- temperature (°C). See SPEC §3.6. --------------------------------
     /// Heat a fresh cell starts with, relative to ambient (lava 1200, ice -30).

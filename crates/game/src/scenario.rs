@@ -303,6 +303,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, factions_script)
             .add_systems(Update, burrow_script)
             .add_systems(Update, show_script)
+            .add_systems(PreUpdate, optics_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PostUpdate, plunge_script.after(bevy::transform::TransformSystems::Propagate))
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
@@ -8728,4 +8729,119 @@ fn plunge_script(
     let px = zoom.0 as f32;
     info!("plunge: t {:.3} dt {:.2} ms ticks {ticks} vy {:.0} player {py:.2} cam {cy:.2} (step {:.2}) on screen {:.1} px", s.elapsed, time.delta_secs() * 1000.0, k.body.vel.y, cy - state.2, (py - cy) * px);
     state.2 = cy;
+}
+
+/// `optics` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): things light
+/// passes through, on the floor in a row: a glass prism (a triangle 60
+/// wide, 52 high), a column of ruby, emerald and amethyst, a pool of water
+/// (120 wide, 36 deep, dug into the floor), a block of ice. `PLATYPUS_OPTICS`
+/// picks the shot: `prism`, `gems`, `water`, `ice`, `rainbow` (a slit in a
+/// stone wall before the prism: a pencil of light) (at night, the big
+/// flashlight aimed at it from 130 cells off; `water` low across the
+/// pool's surface) or `day` (9 am, the sun low, nothing carried, by the
+/// pool). For
+/// before/after pictures (`PLATYPUS_SCREENSHOT`).
+fn optics_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    (mut day, mut toggles, mut cursor): (ResMut<crate::light::Daylight>, ResMut<crate::light::LightToggles>, ResMut<CursorOverride>),
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature), Without<LocalPlayer>>,
+    mut state: Local<u8>,
+) {
+    if s.name != "optics" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let floor = platypus_worldgen::arena::FLOOR;
+    let fl = floor as f32;
+    let shot = std::env::var("PLATYPUS_OPTICS").unwrap_or_else(|_| "prism".into());
+    match *state {
+        0 if s.elapsed > 0.5 => {
+            let id = |n: &str| sim.materials().id(n);
+            let (Some(glass), Some(ruby), Some(emerald), Some(amethyst), Some(water), Some(ice), Some(stone)) = (id("glass"), id("ruby"), id("emerald"), id("amethyst"), id("water"), id("ice"), id("stone")) else {
+                warn!("optics: a material's missing");
+                *state = 9;
+                return;
+            };
+            let put = |sim: &mut SimWorld, x: i32, y: i32, m: platypus_sim::MaterialId| sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: m, overwrite: true });
+            // The prism: a triangle on the floor.
+            for y in 0..52 {
+                let half = (30.0 * (1.0 - y as f32 / 52.0)) as i32;
+                for x in 930 - half..=930 + half {
+                    put(&mut sim, x, floor + y, glass);
+                }
+            }
+            // The gems, side by side.
+            for (x0, m) in [(1010, ruby), (1024, emerald), (1038, amethyst)] {
+                for x in x0..x0 + 14 {
+                    for y in floor..floor + 60 {
+                        put(&mut sim, x, y, m);
+                    }
+                }
+            }
+            // The pool, dug and filled.
+            for x in 1100..1220 {
+                for y in floor - 36..floor {
+                    put(&mut sim, x, y, water);
+                }
+            }
+            // The ice.
+            for x in 1300..1340 {
+                for y in floor..floor + 30 {
+                    put(&mut sim, x, y, ice);
+                }
+            }
+            // (`rainbow`: a stone wall before the prism, a slit in it
+            // two texels high: a pencil of light, split into its colours.)
+            if shot == "rainbow" {
+                for x in 860..872 {
+                    for y in floor..floor + 70 {
+                        if !(floor + 20..floor + 28).contains(&y) {
+                            put(&mut sim, x, y, stone);
+                        }
+                    }
+                }
+            }
+            for (e, c) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            let night = |day: &mut crate::light::Daylight, h: f32| day.skipped = (day.skipped + h - day.time * 24.0).rem_euclid(24.0);
+            let target = match shot.as_str() {
+                "gems" => Vec2::new(1031.0, fl + 30.0),
+                "water" => Vec2::new(1200.0, fl - 2.0),
+                "ice" => Vec2::new(1320.0, fl + 15.0),
+                "day" => Vec2::new(1160.0, fl - 18.0),
+                "rainbow" => Vec2::new(930.0, fl + 24.0),
+                _ => Vec2::new(930.0, fl + 18.0),
+            };
+            if shot == "day" {
+                // (Morning: the sun low, so what bends shows.)
+                night(&mut day, 9.0);
+                toggles.carry = crate::light::Carry::Nothing;
+            } else {
+                night(&mut day, 23.0);
+                toggles.carry = crate::light::Carry::BigBeam;
+            }
+            let stand = match shot.as_str() {
+                "water" => target.x - 150.0,
+                "rainbow" => 800.0,
+                "ice" => 1250.0,
+                _ => target.x - 130.0,
+            };
+            k.body.pos = Vec2::new(stand, fl + k.body.half.y);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            cursor.0 = Some(target);
+            info!("optics: the {shot} shot, the player at x {stand:.0}, aimed at ({:.0}, {:.0})", target.x, target.y - fl);
+            *state = 1;
+        }
+        1 => {
+            k.body.vel.x = 0.0;
+        }
+        _ => {}
+    }
 }

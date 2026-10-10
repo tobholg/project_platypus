@@ -94,11 +94,11 @@
         // flecked with light, glowing a cold blue; an iron pick takes it.
         (name: "meteorite",   kind: Static, density: 3400, hardness: 95, crumbles_into: "gravel", glow: (22, 30, 58), shimmer: 200,
             colors: [(40, 40, 52), (58, 58, 74), (32, 32, 44), (170, 190, 255), (48, 48, 62)]),
-        (name: "amethyst",    kind: Static, density: 2650, hardness: 60, crumbles_into: "gravel", glow: (46, 18, 70), opacity: 40, shimmer: 255,
+        (name: "amethyst",    kind: Static, density: 2650, hardness: 60, crumbles_into: "gravel", glow: (46, 18, 70), opacity: 14, optics: (ior: 1.54, disperse: 0.1, tint: (185, 95, 255)), shimmer: 255,
             colors: [(96, 44, 146), (150, 86, 212), (196, 146, 246), (120, 60, 180)]),
-        (name: "emerald",     kind: Static, density: 2750, hardness: 80, crumbles_into: "gravel", glow: (4, 22, 10), opacity: 40, shimmer: 255,
+        (name: "emerald",     kind: Static, density: 2750, hardness: 80, crumbles_into: "gravel", glow: (4, 22, 10), opacity: 14, optics: (ior: 1.58, disperse: 0.1, tint: (80, 240, 120)), shimmer: 255,
             colors: [(20, 112, 58), (46, 178, 96), (132, 236, 166), (30, 140, 72)]),
-        (name: "ruby",        kind: Static, density: 4000, hardness: 100, crumbles_into: "gravel", glow: (44, 5, 10), opacity: 40, shimmer: 255,
+        (name: "ruby",        kind: Static, density: 4000, hardness: 100, crumbles_into: "gravel", glow: (44, 5, 10), opacity: 14, optics: (ior: 1.77, disperse: 0.1, tint: (255, 60, 80)), shimmer: 255,
             colors: [(132, 14, 32), (206, 42, 62), (255, 118, 128), (160, 22, 44)]),
         // A one-way platform: creatures stand on it, jump up through it, and
         // drop through it holding down. To everything else it's wood.
@@ -156,7 +156,7 @@
         (name: "glow_vine",   kind: Plant, hangs: true, density: 150, hardness: 1, flammability: 8, ignites_at: 360, burn_time: 20, opacity: 25, glow: (6, 34, 36), pulse: 120,
             colors: [(20, 60, 60), (30, 100, 96), (60, 170, 160), (150, 250, 230)]),
         // Crystal caves: crystals grow into the chambers and stud the walls.
-        (name: "crystal",     kind: Static, density: 2650, hardness: 70, crumbles_into: "gravel", glow: (18, 30, 42), opacity: 40, shimmer: 255,
+        (name: "crystal",     kind: Static, density: 2650, hardness: 70, crumbles_into: "gravel", glow: (18, 30, 42), opacity: 10, optics: (ior: 1.55, disperse: 0.45, reflect: 0.05, tint: (230, 238, 255)), shimmer: 255,
             colors: [(140, 200, 240), (180, 230, 255), (225, 245, 255), (205, 185, 250)]),
         // Toxic grottos: a glowing crust over the rock (acid in the pools). What
         // the acid has already left: it eats no further (inert), so the pools stay.
@@ -168,8 +168,8 @@
         // Traps: touching them hurts.
         (name: "spikes", kind: Static, density: 7800, hardness: 70, corrosive: 40,
             colors: [(58, 58, 64), (104, 104, 114), (150, 150, 162), (190, 190, 200)]),
-        (name: "glass",    kind: Static, density: 2500, hardness: 30, inert: true,  above: (1500, "lava"), opacity: 25, colors: [(170, 200, 205), (196, 222, 226)]),
-        (name: "ice",      kind: Static, slippery: true, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), coats: "wet", opacity: 60, latent: 480, colors: [(170, 210, 240), (200, 230, 250)]),
+        (name: "glass",    kind: Static, density: 2500, hardness: 30, inert: true,  above: (1500, "lava"), opacity: 5, optics: (ior: 1.5, disperse: 0.2, reflect: 0.04, tint: (232, 250, 246)), colors: [(170, 200, 205), (196, 222, 226)]),
+        (name: "ice",      kind: Static, slippery: true, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), coats: "wet", opacity: 14, optics: (ior: 1.31, reflect: 0.04, tint: (205, 232, 255)), latent: 480, colors: [(170, 210, 240), (200, 230, 250)]),
         (name: "frozen_blood", kind: Static, slippery: true, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), coats: "bloody", latent: 480, colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),
 
         // ---- plants: don't block creatures, burn readily, sway in the wind ----
@@ -267,7 +267,7 @@
         (name: "coal",     kind: Powder, density: 1300, hardness: 10, flammability: 30, ignites_at: 350, burn_time: 200, burns_into: "ash", burns_into_chance: 90, colors: [(24, 24, 26), (40, 40, 44)]),
 
         // ---- liquids ------------------------------------------------------
-        (name: "water",    kind: Liquid, density: 1000, charges: true, dispersion: 9, above: (100, "steam"), below: (0, "ice"), coats: "wet", opacity: 10, latent: 250, colors: [(38, 92, 196), (48, 110, 214)]),
+        (name: "water",    kind: Liquid, density: 1000, charges: true, dispersion: 9, above: (100, "steam"), below: (0, "ice"), coats: "wet", opacity: 6, optics: (ior: 1.33, reflect: 0.02, tint: (150, 205, 245)), latent: 250, colors: [(38, 92, 196), (48, 110, 214)]),
         // Floats on water and burns on it (a burning liquid isn't put out by
         // what it floats on). A poor heat conductor, so a burning slick
         // doesn't boil away the lake under it.
