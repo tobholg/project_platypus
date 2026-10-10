@@ -16,16 +16,23 @@ pub struct Tumble {
     pub omega: f32,
 }
 
-/// Spin per cell/s of knock (radians/s), and the most.
-const SPIN_PER_KNOCK: f32 = 0.022;
-const SPIN_MOST: f32 = 22.0;
+/// Spin per cell/s of knock over the body's heft (radians/s), the most, and
+/// the knock (over heft) below which it doesn't spin at all. (Tuned down:
+/// a broadsword flipped a troll head over heels.)
+const SPIN_PER_KNOCK: f32 = 0.009;
+const SPIN_MOST: f32 = 11.0;
+const SPIN_FROM: f32 = 160.0;
 /// Down again, it rights itself this fast (per second).
 const RIGHTING: f32 = 14.0;
 
 /// The spin a knock gives a body of `heft`: over backwards, away from the
-/// blow.
+/// blow; a heavy body barely, a light knock not at all.
 pub fn spin_of(knock: Vec2, heft: f32) -> f32 {
-    (-knock.x.signum() * knock.length() * SPIN_PER_KNOCK / heft.max(1.0).sqrt()).clamp(-SPIN_MOST, SPIN_MOST)
+    let k = knock.length() / heft.max(1.0);
+    if k < SPIN_FROM {
+        return 0.0;
+    }
+    (-knock.x.signum() * (k - SPIN_FROM * 0.5) * SPIN_PER_KNOCK).clamp(-SPIN_MOST, SPIN_MOST)
 }
 
 /// Between -π and π.

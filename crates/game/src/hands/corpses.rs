@@ -279,8 +279,8 @@ pub struct Ragdoll {
     last_vy: f32,
 }
 
-const RAG_BOUNCE: f32 = 0.32;
-const RAG_SLIDE: f32 = 0.93;
+const RAG_BOUNCE: f32 = 0.2;
+const RAG_SLIDE: f32 = 0.88;
 /// Down, it rolls over to lie this fast (per second).
 const SETTLE: f32 = 7.0;
 /// Falling faster than this (cells/s) and stopped: a landing.

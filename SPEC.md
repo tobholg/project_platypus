@@ -1944,16 +1944,18 @@ DESIGN §13 item 6.
   and bleeds without its number.
 - **Thrown about** (`creatures::body::tumble`, `hands::corpses`): a blow
   or blast that knocks a creature off its feet (a stun) sets it spinning
-  (`Tumble`: 0.022 rad/s per cell/s of knock over the square root of its
-  heft, at most 22; away from the blow), drawn turned that much (a sprite
+  (`Tumble`: 0.009 rad/s per cell/s of knock over its heft past half of
+  160, at most 11, none under 160 over heft; away from the blow; tuned
+  down: a broadsword flipped a troll head over heels), drawn turned that much (a sprite
   rotated, a legged body's turned frame); down and not rising it rights
   itself (it rose the tick it was hit, still on its feet: righting then
   wiped the spin). Not the player. A killing blow throws the body: poise
-  doesn't shrug it off, its knock ×1.8 over the square root of the heft,
-  90 up and a third more, and half again the spin. The body it leaves
+  doesn't shrug it off, its knock ×1.25 and 45 up and an eighth more, all
+  over the heft (a dead troll slumps, a dead orc is thrown a little), and
+  a fifth more spin. The body it leaves
   keeps the whole velocity (it kept half) and the spin, starting from how
   the creature was turned (so one killed on its feet topples over): a
-  `Ragdoll` that bounces (0.32) and slides (0.93 of its speed kept a
+  `Ragdoll` that bounces (0.2) and slides (0.88 of its speed kept a
   tick, `Thrown::slide`; things dropped keep 0.75), spins as it flies, and
   down rolls over to lie as it lies; landing hard it thuds (`land`, louder
   the harder) and kicks up dust, and its slide turns it. The `ragdoll`

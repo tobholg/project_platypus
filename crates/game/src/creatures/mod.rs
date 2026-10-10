@@ -523,12 +523,12 @@ fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Kinematics, &mut Health,
 /// to 1.6 times its radius, up to 0.65 × its power in damage and 3 × in
 /// knockback (a bomb: 90 and 420).
 /// What a blast throws: its body, health, spin, and whether it's the player.
-type Blasted<'a> = (Entity, &'a mut Kinematics, &'a mut Health, Option<&'a mut body::tumble::Tumble>, Has<player::LocalPlayer>);
+type Blasted<'a> = (Entity, &'a mut Kinematics, &'a mut Health, Option<&'a mut body::tumble::Tumble>, Has<player::LocalPlayer>, Option<&'a crate::combat::Sturdy>);
 
 fn blasted(mut commands: Commands, mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<Blasted>) {
     for b in blasts.read() {
         let reach = b.radius * 1.6;
-        for (e, mut k, mut health, tumble, is_player) in &mut q {
+        for (e, mut k, mut health, tumble, is_player, sturdy) in &mut q {
             let d = k.body.pos - b.at;
             let dist = d.length();
             if dist > reach {
@@ -542,7 +542,7 @@ fn blasted(mut commands: Commands, mut blasts: MessageReader<crate::fx::Explosio
             k.loco.knock(&mut k.body, knock, 0.35);
             // (Thrown spinning: `tumble`; not the player.)
             if !is_player {
-                let spin = body::tumble::spin_of(knock, 1.0);
+                let spin = body::tumble::spin_of(knock, sturdy.map_or(1.0, |s| s.heft));
                 match tumble {
                     Some(mut t) => t.omega = (t.omega + spin).clamp(-30.0, 30.0),
                     None => {

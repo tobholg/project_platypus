@@ -1191,10 +1191,11 @@ fn slam(
     }
 }
 
-/// A killing blow's knock, times the blow's own (over the square root of
-/// the body's heft, poise or not), and the lift it adds (cells/s).
-const DEATH_KNOCK: f32 = 1.8;
-const DEATH_LIFT: f32 = 90.0;
+/// A killing blow's knock, times the blow's own (over the body's heft,
+/// poise or not), and the lift it adds (cells/s, a share of the knock's
+/// besides; over heft too). Tuned down: dead trolls sailed off.
+const DEATH_KNOCK: f32 = 1.25;
+const DEATH_LIFT: f32 = 45.0;
 
 type Struck<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a mut Sturdy>, &'a crate::creatures::MoveStats, Has<Invulnerable>, Has<crate::creatures::player::LocalPlayer>);
 
@@ -1267,7 +1268,7 @@ fn apply_hits(
             }
         }
         if lethal {
-            knock = h.knock * DEATH_KNOCK / heft.sqrt() + Vec2::Y * (DEATH_LIFT + h.knock.length() * 0.3);
+            knock = (h.knock * DEATH_KNOCK + Vec2::Y * (DEATH_LIFT + h.knock.length() * 0.12)) / heft.max(1.0);
             stun = stun.max(0.5);
         }
         let k = &mut *k;
@@ -1275,7 +1276,7 @@ fn apply_hits(
             k.loco.knock(&mut k.body, knock, stun);
             // Knocked off its feet: it spins (`tumble`; not the player).
             if !player {
-                let spin = crate::creatures::body::tumble::spin_of(knock, heft) * if lethal { 1.5 } else { 1.0 };
+                let spin = crate::creatures::body::tumble::spin_of(knock, heft) * if lethal { 1.2 } else { 1.0 };
                 match tumbles.get_mut(h.target) {
                     Ok(mut t) => t.omega = (t.omega + spin).clamp(-30.0, 30.0),
                     Err(_) => {
