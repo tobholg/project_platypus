@@ -8609,6 +8609,9 @@ fn craft_script(
 /// creature's kind, how far off and which side, standing or not, its
 /// health. The player can't die (it watches). With `PLATYPUS_SHOW=1` no
 /// acts: show mode, and every 5 s what life has come near (within 700).
+/// Frames counted, their seconds, the slowest (the `show` scenario).
+type FrameTally = (u32, f32, f32);
+
 #[allow(clippy::too_many_arguments)]
 fn show_script(
     s: Res<Scenario>,
@@ -8621,7 +8624,7 @@ fn show_script(
     mut hurt: Local<f32>,
     mut out: Local<bool>,
     sim: Res<SimWorld>,
-    (time, mut frames, mut spikes): (Res<Time>, Local<(u32, f32, f32)>, Local<Vec<(f32, f32)>>),
+    (time, mut frames, mut spikes): (Res<Time>, Local<FrameTally>, Local<Vec<(f32, f32)>>),
 ) {
     if s.name != "show" {
         return;
