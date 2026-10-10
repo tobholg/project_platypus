@@ -1575,7 +1575,10 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   `group`; with no one about the rest follow the leader (its lowest rank
   living) within 60; one starting to hunt calls the rest within 600.
   Given: raptor (flank, skirmish 52 / 1.4 s / one at a time, flee 0.25), cave centipede (ambush), cave spider
-  (no longer kept off by light: it made them too easy), spiderling (flee
+  (no longer kept off by light: it made them too easy; skirmish 80 / 2 s:
+  it hangs back spitting and darts in to bite or stamp, its moves made
+  while it waits; `skirmish` works for crawlers too, not off a wall or
+  ceiling; its spit every 2.5 s), spiderling (flee
   0.3), vampire bat
   (shun_light 90), scorpion (flee 0.25), orc (flee 0.2, call 250), orc
   archer (flee 0.35, call 250); the undead and the big ones never flee.

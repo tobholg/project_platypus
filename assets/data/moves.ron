@@ -166,7 +166,7 @@
             (name: "recover", secs: 0.14, ease: Linear, pose: Some(())),
         ]),
         // At range with a clear line: it rears and lobs a glob of acid.
-        (id: "spider_spit", every: 3.5, when: (range: (24, 255), line: true), phases: [
+        (id: "spider_spit", every: 2.5, when: (range: (24, 255), line: true), phases: [
             (name: "windup", secs: 0.45, pose: Some((lift: 6, back: 3))),
             (name: "strike", secs: 0, ease: Snap, pose: Some((lift: 6, back: -3)), acts: [Cast(spell: "spider_spit", at: 15, up: 4.5)]),
             (name: "recover", secs: 0.45, pose: Some(())),

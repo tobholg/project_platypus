@@ -60,9 +60,11 @@
     // a longsword slash sends it 24 cells/s, was 250).
     poise: 60,
     heft: 4,
+    // It hangs back about 80 off, spitting, and darts in for a bite or a
+    // stamp every 2 s or so, then back out (`skirmish`).
     brain: (
         kind: "hunter",
-        params: (aggro: 255, close: Crawl(pounce_range: 0, pounce_every: 1.5, keep: 34), wander: (speed: 0.4), senses: (dark: 1.0, smell: 160), tactics: ()),
+        params: (aggro: 255, close: Crawl(pounce_range: 0, pounce_every: 1.5, keep: 34), wander: (speed: 0.4), senses: (dark: 1.0, smell: 160), tactics: (skirmish: Some((back: 80, wait: 2.0, together: 1)))),
     ),
     // Its own moves (moves.ron), tried in this order.
     moves: ["spider_stamp", "spider_bite", "spider_spit"],

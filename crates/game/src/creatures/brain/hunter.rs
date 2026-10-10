@@ -348,6 +348,36 @@ fn hunt(
         let mut move_y = 0.0;
         // (A flanker on its way round: no move started till it's there.)
         let mut en_route = false;
+        // (Skirmishing: waiting `back` off, coming in when its turn
+        // comes (a pack's `together` at a time), out again once its
+        // move is done.)
+        let hold = match &h.tactics.skirmish {
+            _ if target.is_none() => None,
+            Some(sk) if !blind => {
+                let busy = moves.is_some_and(|mv| mv.busy());
+                if m.charging && (m.was_busy && !busy || tick > m.charge_since + ticks(CHARGE_MOST)) {
+                    m.charging = false;
+                    m.wait_until = tick + ticks(sk.wait * (0.6 + 0.8 * unit(&sim, id, 0x5C1)));
+                }
+                m.was_busy = busy;
+                // (Those in last tick, or gone in already this one.)
+                let room = pack.is_none_or(|p| charging_then.get(&p.id).copied().unwrap_or(0).max(charging_now.get(&p.id).copied().unwrap_or(0)) < sk.together);
+                if !m.charging && tick >= m.wait_until && room {
+                    m.charging = true;
+                    m.charge_since = tick;
+                }
+                if m.charging
+                    && let Some(p) = pack
+                {
+                    *charging_now.entry(p.id).or_default() += 1;
+                }
+                (!m.charging).then_some(sk.back)
+            }
+            _ => {
+                m.charging = false;
+                None
+            }
+        };
         let mut move_x: f32 = match (&h.close, target) {
             // On foot at it: up to `keep` off, its weapon's combo when near.
             (Close::Walk { keep, jump_to_reach }, Some((t, _, th))) => {
@@ -391,35 +421,6 @@ fn hunt(
                     m.side = if pack.is_some_and(|p| p.rank % 2 == 1) { -came } else { came };
                 }
                 let far = flanks.then_some(m.side);
-                // (Skirmishing: waiting `back` off, coming in when its turn
-                // comes (a pack's `together` at a time), out again once its
-                // move is done.)
-                let hold = match &h.tactics.skirmish {
-                    Some(sk) if !blind => {
-                        let busy = moves.is_some_and(|mv| mv.busy());
-                        if m.charging && (m.was_busy && !busy || tick > m.charge_since + ticks(CHARGE_MOST)) {
-                            m.charging = false;
-                            m.wait_until = tick + ticks(sk.wait * (0.6 + 0.8 * unit(&sim, id, 0x5C1)));
-                        }
-                        m.was_busy = busy;
-                        // (Those in last tick, or gone in already this one.)
-                        let room = pack.is_none_or(|p| charging_then.get(&p.id).copied().unwrap_or(0).max(charging_now.get(&p.id).copied().unwrap_or(0)) < sk.together);
-                        if !m.charging && tick >= m.wait_until && room {
-                            m.charging = true;
-                            m.charge_since = tick;
-                        }
-                        if m.charging
-                            && let Some(p) = pack
-                        {
-                            *charging_now.entry(p.id).or_default() += 1;
-                        }
-                        (!m.charging).then_some(sk.back)
-                    }
-                    _ => {
-                        m.charging = false;
-                        None
-                    }
-                };
                 match (steer, far, hold) {
                     _ if swinging => 0.0,
                     (Some(s), ..) => s.move_x,
@@ -588,10 +589,18 @@ fn hunt(
                     jump = true;
                     m.next = tick + ticks(pounce_every * (0.7 + 0.6 * unit(&sim, id, 1)));
                 }
-                let mx = match steer {
-                    Some(s) => s.move_x,
-                    None if d.x.abs() > *keep => d.x.signum(),
-                    None => 0.0,
+                let mx = match (steer, hold) {
+                    (Some(s), _) => s.move_x,
+                    // (Skirmishing, not its turn: waiting `back` off on its
+                    // side, its moves still made from there: a spider's
+                    // spit. Not off a wall or ceiling.)
+                    (None, Some(back)) if clinging.is_none() => {
+                        let side = if pos.x >= t.x { 1.0 } else { -1.0 };
+                        let gx = t.x + side * back - pos.x;
+                        if gx.abs() < 6.0 { 0.0 } else { gx.signum() }
+                    }
+                    (None, _) if d.x.abs() > *keep => d.x.signum(),
+                    (None, _) => 0.0,
                 };
                 // (Scurrying: a dart, a freeze, a dart. Not up close: there
                 // it strikes.)
