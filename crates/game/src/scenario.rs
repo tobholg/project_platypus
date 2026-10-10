@@ -8604,14 +8604,16 @@ fn craft_script(
     }
 }
 
+/// Frames counted, their seconds, the slowest, and those over 12.5 ms
+/// (when, how long): the `show` scenario's tally.
+#[derive(Default)]
+struct FrameTally(u32, f32, f32, Vec<(f32, f32)>);
+
 /// `show` (the real world): the show (`show.rs`) as it's shown. Every 6 s
 /// from 3 s "Show the next", and a second after, what's near: each
 /// creature's kind, how far off and which side, standing or not, its
 /// health. The player can't die (it watches). With `PLATYPUS_SHOW=1` no
 /// acts: show mode, and every 5 s what life has come near (within 700).
-/// Frames counted, their seconds, the slowest (the `show` scenario).
-type FrameTally = (u32, f32, f32);
-
 #[allow(clippy::too_many_arguments)]
 fn show_script(
     s: Res<Scenario>,
@@ -8624,7 +8626,7 @@ fn show_script(
     mut hurt: Local<f32>,
     mut out: Local<bool>,
     sim: Res<SimWorld>,
-    (time, mut frames, mut spikes): (Res<Time>, Local<FrameTally>, Local<Vec<(f32, f32)>>),
+    (time, mut frames): (Res<Time>, Local<FrameTally>),
 ) {
     if s.name != "show" {
         return;
@@ -8649,12 +8651,11 @@ fn show_script(
         frames.1 += time.delta_secs();
         frames.2 = frames.2.max(time.delta_secs());
         if time.delta_secs() > 0.0125 {
-            spikes.push((s.elapsed, time.delta_secs() * 1000.0));
+            frames.3.push((s.elapsed, time.delta_secs() * 1000.0));
         }
         if s.elapsed >= *look + 5.0 {
-            let list: Vec<String> = spikes.iter().map(|(t, ms)| format!("{t:.1}s {ms:.0}")).collect();
+            let list: Vec<String> = frames.3.iter().map(|(t, ms)| format!("{t:.1}s {ms:.0}")).collect();
             info!("show: spikes over 12.5 ms: {}", list.join(", "));
-            spikes.clear();
             *look = s.elapsed;
             let mut kinds: std::collections::BTreeMap<&str, usize> = Default::default();
             for (c, k, _) in &near {
@@ -8663,7 +8664,7 @@ fn show_script(
                 }
             }
             info!("show: t {:.0} frame {:.2} ms avg, {:.1} worst; {} creatures in all; near: {kinds:?}", s.elapsed, frames.1 * 1000.0 / frames.0.max(1) as f32, frames.2 * 1000.0, near.iter().count());
-            *frames = (0, 0.0, 0.0);
+            *frames = FrameTally::default();
         }
         return;
     }
