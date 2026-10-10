@@ -460,6 +460,12 @@ fn texel_for(zoom: u32) -> i32 {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// `PLATYPUS_EASE_BEAMS`: ease the beams' light too (the old trail).
+fn ease_beams() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("PLATYPUS_EASE_BEAMS").is_ok())
+}
+
 fn compute_light(
     sim: Res<SimWorld>,
     settings: Res<LightSettings>,
@@ -468,7 +474,7 @@ fn compute_light(
     flashes: Res<Flashes>,
     zoom: Res<Zoom>,
     time: Res<Time>,
-    (cursor, off_light): (Res<CursorWorld>, Res<torch::OffLight>),
+    (cursor, off_light, fixed): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>),
     mut overlay: ResMut<Overlay>,
     mut pending: ResMut<Pending>,
     mut metrics: ResMut<LightMetrics>,
@@ -559,7 +565,10 @@ fn compute_light(
 
     // What the player carries.
     if let Ok(k) = player.single() {
-        let at = k.body.pos + Vec2::new(0.0, k.body.half.y * 0.4);
+        // (Where it's drawn this frame, between ticks: from the tick's own
+        // place the light shook against it, moving fast.)
+        let drawn = k.prev_pos.lerp(k.body.pos, fixed.overstep_fraction());
+        let at = drawn + Vec2::new(0.0, k.body.half.y * 0.4);
         let c = |(r, g, b): (u8, u8, u8), s: f32| [r as f32 / 255.0 * s, g as f32 / 255.0 * s, b as f32 / 255.0 * s];
         g.seed_point([at.x, at.y], c(settings.lantern.color, settings.lantern.strength));
         let beam = match toggles.carry {
@@ -569,7 +578,7 @@ fn compute_light(
         };
         if let (Some(f), Some(aim)) = (beam, cursor.0) {
             // (From the flashlight's lens, in the off hand.)
-            let from = off_light.lens.map_or(at, |l| k.body.pos + l);
+            let from = off_light.lens.map_or(at, |l| drawn + l);
             let dir = (aim - from).normalize_or(Vec2::X);
             g.seed_beam([from.x, from.y], [dir.x, dir.y], f.angle.to_radians() / 2.0, f.range, c(f.color, f.strength));
         }
@@ -620,9 +629,16 @@ fn compute_light(
             g.seed_directional(dir, color, &open_top);
         }
         g.solve(params);
+        // (`PLATYPUS_EASE_BEAMS=1`: beams eased with the rest, as before:
+        // a moving one trails; for comparing.)
+        let legacy = ease_beams();
+        if legacy {
+            g.add_direct();
+        }
         if let Some(prev) = &previous {
             g.ease_from(prev, rise, fall);
         }
+        let spread = if legacy { g.light.clone() } else { g.add_direct() };
         // Upload format: sqrt for precision in the dark, row 0 at the top.
         let encode = |v: f32| (v.clamp(0.0, 1.0).sqrt() * 255.0 + 0.5) as u8;
         let mut light = vec![255u8; w * h * 4];
@@ -638,7 +654,7 @@ fn compute_light(
             }
         }
         let took = started.elapsed();
-        Solved { previous: g.into_previous(), light, glow, size: UVec2::new(w as u32, h as u32), center, extent: Vec2::new(gw, gh), took }
+        Solved { previous: g.into_previous(spread), light, glow, size: UVec2::new(w as u32, h as u32), center, extent: Vec2::new(gw, gh), took }
     }));
 }
 

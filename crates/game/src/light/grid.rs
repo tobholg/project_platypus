@@ -535,9 +535,18 @@ impl LightGrid {
                 o[ch] = v;
             }
         }
+    }
+
+    /// The beams' direct light over what's spread, once that's eased (a
+    /// beam is sharp: eased, a moving one left a fading trail behind it, a
+    /// falling player's flashlight smeared up the screen). Kept: the light
+    /// before it, for the next frame to ease from.
+    pub fn add_direct(&mut self) -> Vec<Rgb> {
+        let spread = self.light.clone();
         for (l, d) in self.light.iter_mut().zip(&self.direct) {
             max_into(l, *d);
         }
+        spread
     }
 }
 
@@ -585,8 +594,9 @@ impl LightGrid {
         }
     }
 
-    pub fn into_previous(self) -> Previous {
-        Previous { origin: self.origin, texel: self.texel, w: self.w, h: self.h, light: self.light, glow: self.glow }
+    /// What to ease from next frame: `light` the spread light (`add_direct`'s).
+    pub fn into_previous(self, light: Vec<Rgb>) -> Previous {
+        Previous { origin: self.origin, texel: self.texel, w: self.w, h: self.h, light, glow: self.glow }
     }
 }
 
@@ -795,6 +805,7 @@ mod tests {
         let mut g = grid(&[]);
         g.seed_point([30.5, 20.5], [1.0; 3]);
         g.solve(P);
+        g.add_direct();
         assert!((at(&g, 30, 20) - 1.0).abs() < 1e-5);
         assert!(at(&g, 40, 20) < at(&g, 35, 20) && at(&g, 35, 20) < 1.0, "falls off");
         // Round, not a diamond: 10 cells out diagonally ≈ 10 cells straight out.
@@ -807,6 +818,7 @@ mod tests {
         let mut g = grid(&[(35, 0, 38, 40)]);
         g.seed_point([30.5, 20.5], [1.0; 3]);
         g.solve(P);
+        g.add_direct();
         assert!(at(&g, 35, 20) > 0.6, "the wall's face is lit ({})", at(&g, 35, 20));
         assert!(at(&g, 40, 20) < 0.01, "behind it is dark ({})", at(&g, 40, 20));
     }
@@ -827,10 +839,12 @@ mod tests {
         let mut a = grid(&[]);
         a.seed_point([30.5, 20.5], [1.0; 3]);
         a.solve(P);
-        let prev = a.into_previous();
+        let a_spread = a.add_direct();
+        let prev = a.into_previous(a_spread);
         // Next frame: the light is out, and the view moved 3 texels right.
         let mut b = LightGrid::new(CellPos::new(3, 0), 60, 40, 1);
         b.solve(P);
+        b.add_direct();
         b.ease_from(&prev, 0.5, 0.25);
         // World cell (30, 20) is now texel (27, 20): it dims, not snaps off.
         let v = b.light[20 * 60 + 27][0];
@@ -845,6 +859,7 @@ mod tests {
             g.emit[18 * 60 + x] = [0.8, 0.4, 0.1];
         }
         g.solve(P);
+        g.add_direct();
         assert!(at(&g, 30, 24) > 0.4, "above it is lit ({})", at(&g, 30, 24));
         assert!(g.glow[24 * 60 + 30][0] > 0.4, "and it glows");
     }
@@ -854,6 +869,7 @@ mod tests {
         let mut g = grid(&[(0, 20, 30, 24)]);
         g.seed_directional([0.0, -1.0], [1.0; 3], &[true; 60]);
         g.solve(P);
+        g.add_direct();
         assert!(at(&g, 45, 5) > 0.95, "open ground is in daylight");
         // Daylight spills in under the edge and fades going deeper.
         let (edge, mid, deep) = (at(&g, 28, 10), at(&g, 20, 10), at(&g, 5, 10));
@@ -943,6 +959,7 @@ mod tests {
             let mut g = grid(walls);
             g.seed_beam([20.5, 20.5], [1.0, 0.0], 0.35, 50.0, [1.0; 3]);
             g.solve(Params { iterations: 1, ..P });
+            g.add_direct();
             g
         };
         let (open, g) = (beam(&[]), beam(&[(40, 18, 42, 22)]));

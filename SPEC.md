@@ -1320,6 +1320,11 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   pays only for reading the world (~1.5–2 ms at 2 px/cell).
 - Light eases between frames (in over ~20 ms, out over ~50 ms), so moving
   smoke, flames and embers make fire glow and flicker rather than strobe.
+  Beams' direct light isn't eased: it's added over the eased spread light
+  (`add_direct`), and the next frame eases from the spread light alone (a
+  moving beam left a fading trail, a falling player's flashlight smeared
+  up the screen; `PLATYPUS_EASE_BEAMS=1` puts it back, to compare). The
+  beam leaves the lens where the player's drawn this frame, between ticks.
 - Gases barely dim light (smoke and steam cast no real shadows); trees shade
   the ground only slightly (a forest by day is bright); walls behind rock
   block the sky.

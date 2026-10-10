@@ -8699,6 +8699,7 @@ fn show_script(
 /// run in it, the player as drawn, the camera, and the player on screen
 /// (drawn minus camera, in pixels at the zoom): a smooth fall draws the
 /// player still on screen and the camera's steps even for even frames.
+/// `PLATYPUS_LAMP=1`: at night, the big flashlight aimed ahead and down.
 fn plunge_script(
     s: Res<Scenario>,
     time: Res<Time>,
@@ -8707,13 +8708,23 @@ fn plunge_script(
     mut player: Query<(&mut Kinematics, &GlobalTransform), With<LocalPlayer>>,
     cam: Query<&Transform, With<crate::camera::MainCamera>>,
     mut state: Local<(bool, f64, f32, f32)>,
+    (mut day, mut toggles, mut cursor): (ResMut<crate::light::Daylight>, ResMut<crate::light::LightToggles>, ResMut<CursorOverride>),
 ) {
     if s.name != "plunge" {
         return;
     }
     let Ok((mut k, tf)) = player.single_mut() else { return };
+    // (`PLATYPUS_LAMP=1`: at night, the big flashlight aimed ahead and
+    // down as it falls: does its light keep up?)
+    if std::env::var("PLATYPUS_LAMP").is_ok() {
+        cursor.0 = Some(k.body.pos + Vec2::new(160.0, -80.0));
+    }
     if !state.0 && s.elapsed > 2.0 {
         state.0 = true;
+        if std::env::var("PLATYPUS_LAMP").is_ok() {
+            day.skipped = (day.skipped + 23.0 - day.time * 24.0).rem_euclid(24.0);
+            toggles.carry = crate::light::Carry::BigBeam;
+        }
         k.body.pos.y += 500.0;
         k.body.vel = Vec2::ZERO;
         k.prev_pos = k.body.pos;
