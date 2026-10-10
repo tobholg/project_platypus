@@ -445,7 +445,9 @@ pub(crate) fn update_daylight(
     clear.0 = Color::srgb(color[0], color[1], color[2]);
 }
 
-/// Cells per light texel at a zoom: about 6 screen pixels or more.
+/// Cells per light texel at a zoom: about 6 screen pixels or more (a power
+/// of two: texels tile a chunk). (Zoom 2 at 2 cells doubled the frame time:
+/// the overlay's smooth filter hides the steps instead.)
 fn texel_for(zoom: u32) -> i32 {
     match zoom {
         1 => 8,

@@ -178,6 +178,13 @@ pub struct HunterMind {
     best_at: u64,
     best_pos: Vec2,
     burrow_until: u64,
+    /// Cowering from the light: whether it is (it stays so till it's well
+    /// out of the light), its next hiss.
+    cowered: bool,
+    hiss_at: u64,
+    /// Burrowing and still getting nowhere: digging straight at what it
+    /// hunts till then, its way set aside (a smart cursor's dig).
+    straight_until: u64,
 }
 
 /// What hunters go after (a villager hiding at home is let be).
@@ -228,6 +235,7 @@ fn hunt(
     ids: Query<&crate::creatures::Stable>,
     (mut ways, creatures, tempo): (ResMut<super::way::Ways>, Res<crate::creatures::def::Creatures>, Res<crate::tempo::Tempo>),
     packs: Query<(&super::tactics::Pack, &Kinematics)>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
     // Skirmishers coming in, per pack: last tick's count, this tick's.
     mut charging: Local<(std::collections::HashMap<u64, u32>, std::collections::HashMap<u64, u32>)>,
 ) {
@@ -276,7 +284,11 @@ fn hunt(
         // Its tactics (`tactics.rs`): running for it; kept off by the light
         // on its quarry; its pack's leader (not itself), to follow.
         let fleeing = alert.is_some_and(|a| a.fleeing);
-        let shy = h.tactics.shun_light > 0.0 && alert.is_some_and(|a| a.quarry_lit > SHUN_LIT) && target.is_some_and(|t| t.0.distance(pos) < h.tactics.shun_light);
+        // (Once cowering, it stays so till it's well out of the light: not
+        // in and out at its edge.)
+        let reach = h.tactics.shun_light * if m.cowered { SHUN_LEAVE } else { 1.0 };
+        let shy = h.tactics.shun_light > 0.0 && alert.is_some_and(|a| a.quarry_lit > SHUN_LIT) && target.is_some_and(|t| t.0.distance(pos) < reach);
+        m.cowered = shy;
         let leader = pack.and_then(|p| leaders.get(&p.id).filter(|l| l.0 != p.rank)).map(|l| l.1);
         // (Burrowing: a digger hunting what it can't get nearer to, for a
         // while, goes the way its planner finds, digging where that's
@@ -301,6 +313,15 @@ fn hunt(
                     m.best_pos = pos;
                     if std::env::var("PLATYPUS_ALERTLOG").is_ok() {
                         info!("burrow: {e:?} {} burrows ({d:.0} off, no nearer for {NO_HEADWAY} s)", kind.kind);
+                    }
+                }
+                // (Burrowing and still nowhere: straight at it a while.)
+                if tick < m.burrow_until && tick.saturating_sub(m.best_at) > ticks(STRAIGHT_AFTER) && tick >= m.straight_until {
+                    m.straight_until = tick + ticks(STRAIGHT);
+                    m.best_at = tick;
+                    m.best_pos = pos;
+                    if std::env::var("PLATYPUS_ALERTLOG").is_ok() {
+                        info!("burrow: {e:?} {} digs straight at it ({d:.0} off)", kind.kind);
                     }
                 }
                 tick < m.burrow_until
@@ -587,10 +608,23 @@ fn hunt(
                         move_y = 0.0;
                     }
                 }
+                // (Digging, its way's next step: none of the climbing below;
+                // the face it digs into isn't a wall to go up.)
+                let digging = way.dig.is_some();
+                // (Unless what it holds is a lip, clear above a step over its
+                // feet: off the ground (its acid's pitted the floor) it
+                // can't step, and a dig takes nothing under its feet, so it
+                // hung there pressing on it.)
+                let lip = clinging.is_some_and(|w| {
+                    let x = pos.x + w.x * (k.body.half.x + 1.0);
+                    let feet = pos.y - k.body.half.y;
+                    w.x != 0.0 && (k.body.step_height + 1..(k.body.half.y * 2.0) as i32).all(|d| !sim.world.is_solid(platypus_sim::CellPos::from_world(x, feet + d as f32)))
+                });
                 // (Holding a wall it's going into, with nowhere up or down to
                 // go: it climbs it, over (its own acid's crater, a step too
                 // high), not pressing on it for ever.)
-                if move_y == 0.0
+                if (!digging || lip)
+                    && move_y == 0.0
                     && let Some(wall) = clinging
                     && wall.x != 0.0
                     && mx * wall.x > 0.0
@@ -602,7 +636,8 @@ fn hunt(
                 // corner first, so it touches the ceiling and takes hold. The
                 // way finder's grid may have it a little under the ceiling,
                 // a little down: up all the same.)
-                if move_y <= 0.0
+                if !digging
+                    && move_y <= 0.0
                     && let Some(wall) = clinging
                     && wall.x != 0.0
                     && mx * wall.x < 0.0
@@ -616,7 +651,7 @@ fn hunt(
                 // (On the ceiling, its way on up (round the ceiling's edge,
                 // onto the face over it): along to the edge first, the side
                 // that's open over it.)
-                if clinging == Some(Vec2::Y) && move_y > 0.0 && mx == 0.0 {
+                if !digging && clinging == Some(Vec2::Y) && move_y > 0.0 && mx == 0.0 {
                     let top = pos.y + k.body.half.y;
                     let open = |x: f32| !(2..=8).any(|d| sim.world.is_solid(platypus_sim::CellPos::from_world(x, top + d as f32)));
                     let (left, right) = (open(pos.x - k.body.half.x - 2.0), open(pos.x + k.body.half.x + 2.0));
@@ -639,7 +674,7 @@ fn hunt(
                     }
                 }
                 // (PLATYPUS_STEERLOG: how it steers, every 15 ticks.)
-                if std::env::var("PLATYPUS_STEERLOG").is_ok() && tick.is_multiple_of(15) {
+                if std::env::var("PLATYPUS_STEERLOG").is_ok_and(|v| v.parse::<u64>().is_ok_and(|from| tick >= from) || v == "1") && tick.is_multiple_of(15) {
                     info!("steer: t {tick} at {:?} to {:?} clear {} steer {:?} clinging {:?} grounded {grounded} → x {mx} y {move_y}", pos.round(), t.round(), crate::creatures::moves::clear(&sim, pos, t), steer, clinging);
                 }
                 mx
@@ -678,6 +713,23 @@ fn hunt(
                 }
             }
         };
+        // Digging straight at it (burrowing and getting nowhere): a round
+        // hole its way, at its own height (up or down if it's well above or
+        // under), whatever its way says.
+        if let Some((t, ..)) = target
+            && burrowing
+            && tick < m.straight_until
+            && !fleeing
+        {
+            let d = t - pos;
+            let dir = Vec2::new(d.x.signum(), if d.y.abs() > k.body.half.y * 2.0 { d.y.signum() } else { 0.0 });
+            steer = None;
+            move_x = dir.x;
+            move_y = dir.y.max(0.0);
+            way.dig = Some(platypus_nav::NodePos::new(((pos.x + dir.x * k.body.half.x * 1.5) / platypus_nav::NODE as f32).floor() as i32, ((pos.y - k.body.half.y) / platypus_nav::NODE as f32).floor() as i32));
+            way.dig_down = dir.y < 0.0;
+            way.dig_feet = pos - Vec2::Y * k.body.half.y + Vec2::new(dir.x * k.body.half.x * 1.5, dir.y * k.body.half.y);
+        }
         // Running for it: away from what it fought (up and away, flying).
         // Kept off by the light: back to the light's edge, and waiting.
         if let Some((t, ..)) = target {
@@ -689,8 +741,14 @@ fn hunt(
                     move_y = 0.6;
                 }
             } else if shy {
-                move_x = if t.distance(pos) < h.tactics.shun_light * 0.85 { away } else { 0.0 };
+                // (Out of the light, further than it reaches, and waiting
+                // there, rearing; a hiss now and then.)
+                move_x = if t.distance(pos) < h.tactics.shun_light * SHUN_BACK { away } else { 0.0 };
                 steer = None;
+                if tick >= m.hiss_at {
+                    m.hiss_at = tick + ticks(1.6 + 1.2 * unit(&sim, id, 0x815));
+                    sounds.write(crate::sound::PlaySound::at("spider_hiss", pos));
+                }
             }
         }
         // On foot or hopping, a wall it's walking into: jump it (unless a
@@ -705,10 +763,13 @@ fn hunt(
             jump |= s.jump;
         }
         c.0.move_x = if looking && !fleeing { move_x * 0.55 } else { move_x };
-        if let Some(a) = alert_mut.as_mut()
-            && a.flanking != en_route
-        {
-            a.flanking = en_route;
+        if let Some(a) = alert_mut.as_mut() {
+            if a.flanking != en_route {
+                a.flanking = en_route;
+            }
+            if a.cowering != shy {
+                a.cowering = shy;
+            }
         }
         c.0.move_y = move_y;
         // Brains hold buttons; release after a press so the next press
@@ -726,6 +787,16 @@ const MOVED_ON: f32 = 12.0;
 const NO_HEADWAY: f32 = 1.5;
 const STUCK_NEAR: f32 = 40.0;
 const BURROW: f32 = 6.0;
+/// Burrowing and still no nearer in `STRAIGHT_AFTER` s: it digs straight at
+/// what it hunts for `STRAIGHT` s.
+const STRAIGHT_AFTER: f32 = 3.0;
+const STRAIGHT: f32 = 2.5;
+
+/// Kept off by the light: it backs off to this share of its `shun_light`
+/// (out past the light's edge, so it's plainly keeping clear), and cowers
+/// till it's past `SHUN_LEAVE` of it.
+const SHUN_BACK: f32 = 1.2;
+const SHUN_LEAVE: f32 = 1.3;
 
 /// A quarry lit more than this keeps one that shuns the light off (a
 /// torch, a lamp, day; the moon's is about 0.1).

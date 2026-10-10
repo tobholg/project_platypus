@@ -174,9 +174,12 @@ impl Ways {
         let near = way.path.iter().enumerate().skip(way.i).min_by_key(|(_, (n, _))| (*n - at).abs().max_element());
         // (A dig step: in its column, a few nodes up or down is there: it
         // digs along at its own height, not up its face for a way a little
-        // higher.)
+        // higher. A climb step, for a climbing digger: a node off is there
+        // (on its feet on a pile of its own crumbs, it can't get to the
+        // node exactly; any other climber can, and skipping it a node off
+        // had a centipede miss its way round an overhang).)
         if let Some((j, (n, m))) = near
-            && ((*n - at).abs().max_element() <= 1 && (*n == at || !grounded || p.fly > 0.0) || m.kind == Kind::Dig && n.x == at.x && (n.y - at.y).abs() <= ALONG_SLACK)
+            && ((*n - at).abs().max_element() <= 1 && (*n == at || !grounded || p.fly > 0.0 || p.climb && p.dig.is_some() && m.kind == Kind::Climb) || m.kind == Kind::Dig && n.x == at.x && (n.y - at.y).abs() <= ALONG_SLACK)
         {
             way.i = j + 1;
         }

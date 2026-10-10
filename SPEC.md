@@ -1274,7 +1274,12 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   their face and pass almost nothing on; a separate rim pass shows lit rock a
   few cells deep without letting light through walls. The flashlight is traced
   as rays into a direct buffer (hard shadows) of which a third scatters off
-  what it lands on.
+  what it lands on: three rays a texel across the beam, fading over its
+  outer 40 % (a soft rim, not a hard edge).
+- The grid is drawn smoothly: a cubic B-spline over the texels (four
+  bilinear taps), not bilinear, which left a texel's steps along a beam's
+  edge. (At zoom 2 a texel stays 4 cells: 2 doubled the frame, and a texel
+  must tile the 64-cell chunks.)
 - The solve runs on the async pool and is shown the next frame; the frame
   pays only for reading the world (~1.5–2 ms at 2 px/cell).
 - Light eases between frames (in over ~20 ms, out over ~50 ms), so moving
@@ -1533,7 +1538,11 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   this of a quarry lit over 0.5 (a torch, a lamp, day; not the moon's
   0.1): back to 0.85 of
   it and waiting; moves
-  that reach from there it still makes, a spider's spit), `call` (as it
+  that reach from there it still makes, a spider's spit; and it cowers,
+  so you can see why it stopped: low, legs drawn in and shivering, front
+  raised, hissing now and then (`spider_hiss`), backing off to 1.2 of it if
+  nearer; once cowering it stays so till 1.2 off, not in and out at the
+  edge), `call` (as it
   starts hunting, by its own senses, others of its kind within this hunt
   too, coming to where it saw you), `flank` (in a pack, each takes a side
   of you as the hunt begins and keeps it: the leader's and the even
@@ -1847,24 +1856,36 @@ DESIGN §13 item 6.
   to the hole; holding on to a wall or ceiling, or digging up, it digs as
   it climbs. No creature digs what's `fortified` (brick, ashlar, iron,
   copper, silver: `MatPhys::dig_hardness` is past any claw or acid); the
-  player still can. The cave spider: claws (25, 120: about 5 cells of
-  headway a second in dirt, well under the player's 113), acid (90, 80,
-  every 1.6).
+  player still can. The cave spider: claws (25, 240: about 10 cells of
+  headway a second in dirt, still well under the player's 113), acid (90,
+  160, every 1.6).
 - **Burrowing** (`hunter.rs`): a digger hunting (seeing what it hunts, or
   having lost it a moment ago; not fleeing, not kept off by the light)
   that's come no nearer by 6 cells in 1.5 s, and is further than 40, goes
   its planner's way for 6 s whatever it sees: round if that's cheaper,
   through if not (a crack too small for it, a tunnel the player dug, a
-  sealed room). The `burrow` scenario (`PLATYPUS_ARENA=flat`,
+  sealed room). Burrowing and still no nearer in 3 s, it digs straight at
+  what it hunts for 2.5 s, a smart cursor (whatever the planner thinks).
+  The `burrow` scenario (`PLATYPUS_ARENA=flat`,
   `PLATYPUS_WALL`): the player in a room inside a mound, seen through a
   slit too thin for a cave spider: through dirt it digs in along the slit,
   in a round tunnel of its own at its height, and is at the player
-  (within its 34-cell keep) in about 33 s, lying level all the way;
+  (within its 34-cell keep) in about 20 s, lying level all the way;
   through stone it goes over the top and eats in from the far side with
-  acid (about 57 s), and bites; brick it never digs. The `dig`
+  acid (about 31 s), and bites; brick it never digs. (Its acid pits the
+  floor under it; off the ground it can't step, and it hung against the
+  one-cell lip of the player's floor, pressing on it: holding a wall that's
+  only a lip, clear above a step over its feet, it climbs it even digging.) `PLATYPUS_LAMP=1` gives the player
+  a beam down the slit: the spider cowers at about 94; with
+  `PLATYPUS_LAMP_OFF=26` it's off at 26 s and the spider is digging again
+  in under 2 s and at the player by about 33 s. (`PLATYPUS_BEAM=1`: the
+  beam alone, no spider, to look at its edge.) `PLATYPUS_FRAME_MS` paces
+  the frames (8.33 for a 120 Hz screen), to test a tempo headless. The `dig`
   scenario (a sealed shell; told where the player is, since senses came
-  in it couldn't know): dirt 10.5 s, stone 35 s, obsidian and glass
-  never. A climbing ambusher not yet up goes to the nearer
+  in it couldn't know): dirt 8 s, stone 16 s, obsidian and glass
+  never. A climb step a node off counts as reached for a climbing digger
+  only (on its own crumbs it can't get to the node; a centipede skipping
+  it missed its way round the overhang). A climbing ambusher not yet up goes to the nearer
   wall (within 300 either way) to go up to a ceiling. Headway is getting
   nearer by 6, or moving 12 (a climb up a face under what it hunts is
   headway). A crawler on a ceiling within

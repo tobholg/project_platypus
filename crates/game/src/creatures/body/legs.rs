@@ -1197,7 +1197,7 @@ fn grow_legs(
 fn walk(
     time: Res<Time>,
     sim: Res<SimWorld>,
-    mut q: Query<(&mut Legs, &Kinematics, &GlobalTransform, &Children, Option<&Rear>, Option<&mut crate::creatures::brain::way::DigFace>)>,
+    mut q: Query<(&mut Legs, &Kinematics, &GlobalTransform, &Children, Option<&Rear>, (Option<&mut crate::creatures::brain::way::DigFace>, Option<&crate::creatures::brain::senses::Alert>))>,
     mut sprites: Query<(&mut Sprite, &mut Visibility), (With<CreatureSprite>, Without<LegBody>, Without<LegStinger>)>,
     mut bodies: Query<(&mut Sprite, &mut Transform), (Or<(With<LegBody>, With<LegEyes>)>, Without<CreatureSprite>, Without<LegStinger>, Without<LegClaw>)>,
     mut stingers: Query<(&mut Sprite, &mut Transform, &mut Visibility), (With<LegStinger>, Without<CreatureSprite>, Without<LegBody>, Without<LegEyes>, Without<LegClaw>)>,
@@ -1207,7 +1207,7 @@ fn walk(
 ) {
     let dt = time.delta_secs().min(0.05);
     let now = time.elapsed_secs();
-    for (mut legs, k, tf, children, rear, mut dig) in &mut q {
+    for (mut legs, k, tf, children, rear, (mut dig, alert)) in &mut q {
         // (Where it's drawn; its body's place if that's far off: on its
         // first frame its transform hasn't caught up yet.)
         let drawn = tf.translation().truncate();
@@ -1225,7 +1225,15 @@ fn walk(
             legs.slope = 0.0;
         }
         legs.last = Some(middle);
-        let rear = rear.cloned().unwrap_or_default();
+        let mut rear = rear.cloned().unwrap_or_default();
+        // (Cowering from the light, `senses`: reared up, front legs raised,
+        // body tipped back: a threat, not a stall.)
+        if alert.is_some_and(|a| a.cowering) && !legs.def.strikers().is_empty() {
+            let shake = (now * 9.0).sin() * 0.06;
+            rear.paw = rear.paw.max(0.75 + shake);
+            rear.lift += 4.0;
+            rear.pitch -= 16.0;
+        }
         let v = k.body.vel;
         // Where the body is: from above, raised off what it holds and
         // drawn back from its heading (an attack); from the side, riding

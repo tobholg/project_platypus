@@ -158,11 +158,27 @@ fn main() {
         .add_plugins(backdrop::BackdropPlugin)
         .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed }))
         .add_plugins(spikes_plugin)
+        .add_systems(Last, pace_frames)
         .run();
     // (A replay run as a test says how it went: `replay.rs`.)
     if let AppExit::Error(code) = exit {
         std::process::exit(code.get() as i32);
     }
+}
+
+/// `PLATYPUS_FRAME_MS=8.33`: frames no quicker than that (a run offscreen
+/// paced as a player's screen paces it: timing-dependent behaviour shows
+/// as it would for them).
+fn pace_frames(mut last: Local<Option<std::time::Instant>>, mut ms: Local<Option<Option<f32>>>) {
+    let Some(ms) = *ms.get_or_insert_with(|| std::env::var("PLATYPUS_FRAME_MS").ok().and_then(|v| v.parse().ok())) else { return };
+    let frame = std::time::Duration::from_secs_f32(ms / 1000.0);
+    if let Some(at) = *last {
+        let spent = at.elapsed();
+        if spent < frame {
+            std::thread::sleep(frame - spent);
+        }
+    }
+    *last = Some(std::time::Instant::now());
 }
 
 /// The lairs in the caves (`assets/data/lairs.ron`).

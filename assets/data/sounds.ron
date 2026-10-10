@@ -113,6 +113,8 @@
         // smoother); not drunk (sick, or at full health).
         // Molten metal poured into a ladle at the furnace.
         "pour": (make: Fizz(pop: 0.2, hiss: 0.9, length: 0.5, bubbles: 40), variants: 2, pitch: 0.08, reverb: 0.2, volume: 0.5),
+        // A cave spider kept off by the light, rearing: a dry hiss.
+        "spider_hiss": (make: Fizz(pop: 0.0, hiss: 1.0, length: 0.55, bubbles: 0), variants: 3, pitch: 0.15, reverb: 0.25, volume: 0.6),
         "drink": (make: Fizz(pop: 0.8, hiss: 0.55, length: 0.65, bubbles: 70), variants: 3, pitch: 0.06, reverb: 0.15, volume: 0.6),
         "potion_no": (make: Blip(pitch: 420, to: 300, length: 0.08), volume: 0.3, every: 0.3),
         "pickup": (make: Blip(pitch: 700, to: 1400, length: 0.07), variants: 2, pitch: 0.05, volume: 0.25, every: 0.05),

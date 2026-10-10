@@ -286,15 +286,20 @@ impl LightGrid {
     /// what they pass through, so it throws hard shadows.
     pub fn seed_beam(&mut self, from: [f32; 2], dir: [f32; 2], half_angle: f32, range: f32, color: Rgb) {
         let t = self.texel as f32;
-        // Enough rays that neighbouring ones are under a texel apart at the end.
-        let rays = ((2.0 * half_angle * range / t) * 1.5).ceil().max(3.0) as i32;
+        // Enough rays that neighbouring ones are well under a texel apart at
+        // the end (no gaps for the steps to show through).
+        let rays = ((2.0 * half_angle * range / t) * 3.0).ceil().max(3.0) as i32;
         let base = dir[1].atan2(dir[0]);
         for r in 0..=rays {
             let k = r as f32 / rays as f32 * 2.0 - 1.0; // -1 … 1 across the cone
             let a = base + k * half_angle;
             let (dx, dy) = (a.cos() * t * 0.5, a.sin() * t * 0.5);
-            // Brightest in the middle, soft at the edges.
-            let edge = 1.0 - k * k * k * k;
+            // Full in the middle, fading smoothly off over its outer 40 % (a
+            // hard rim shows the grid's steps).
+            let edge = {
+                let u = ((1.0 - k.abs()) / BEAM_RIM).min(1.0);
+                u * u * (3.0 - 2.0 * u)
+            };
             let mut pass = 1.0f32;
             let steps = (range / (t * 0.5)) as i32;
             let (mut x, mut y) = (from[0], from[1]);
@@ -450,6 +455,8 @@ impl LightGrid {
 const LATTICE: i32 = 64;
 
 /// Share of a beam's light that scatters off what it hits into the room.
+/// A beam's rim, fading out: this share of its half width.
+const BEAM_RIM: f32 = 0.4;
 const BEAM_SCATTER: f32 = 0.35;
 
 /// Spread one channel: sweeps up, down, then (on transposed copies) right

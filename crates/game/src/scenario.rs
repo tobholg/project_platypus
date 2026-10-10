@@ -6972,12 +6972,17 @@ fn factions_script(
 /// it burrows, its front legs at the face. The mound `PLATYPUS_WALL`: dirt
 /// (claws), stone (acid), brick (fortified: it doesn't dig). Logs where
 /// the spider is every second, how much of the mound's gone, and when (if)
-/// it reaches the player.
+/// it reaches the player. `PLATYPUS_LAMP=1`: the player's small flashlight
+/// on, aimed out down the slit (the spider stops at its light, backs off and
+/// rears). `PLATYPUS_BEAM=1`: no spider; at night, the
+/// player outside the mound with its big flashlight aimed up across the
+/// mound's face (how the beam's edges look on it).
 #[allow(clippy::too_many_arguments)]
 fn burrow_script(
     mut commands: Commands,
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
+    (mut day, mut toggles, mut cursor): (ResMut<crate::light::Daylight>, ResMut<crate::light::LightToggles>, ResMut<CursorOverride>),
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
     mut state: Local<(u8, f32)>,
@@ -7034,6 +7039,23 @@ fn burrow_script(
             k.body.pos = Vec2::new(1160.0, fl + k.body.half.y);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
+            // (`PLATYPUS_BEAM=1`: no spider; at night, the big flashlight on,
+            // aimed up across the mound's face: how its edges look.)
+            if std::env::var("PLATYPUS_BEAM").is_ok() {
+                day.skipped = (day.skipped + 23.0 - day.time * 24.0).rem_euclid(24.0);
+                toggles.carry = crate::light::Carry::BigBeam;
+                k.body.pos = Vec2::new(880.0, fl + k.body.half.y);
+                k.prev_pos = k.body.pos;
+                cursor.0 = Some(Vec2::new(1100.0, fl + 80.0));
+                state.0 = 9;
+                return;
+            }
+            // (`PLATYPUS_LAMP=1`: the player's small flashlight on, aimed
+            // out down the slit: the spider keeps off its light.)
+            if std::env::var("PLATYPUS_LAMP").is_ok() {
+                toggles.carry = crate::light::Carry::SmallBeam;
+                cursor.0 = Some(Vec2::new(900.0, fl + 20.0));
+            }
             *state = (1, t);
         }
         1 if t > 1.2 => {
@@ -7047,6 +7069,14 @@ fn burrow_script(
         2 => {
             k.body.pos = Vec2::new(1160.0, fl + k.body.half.y);
             k.body.vel = Vec2::ZERO;
+            // (`PLATYPUS_LAMP_OFF=s`: the light out then.)
+            if let Some(off) = std::env::var("PLATYPUS_LAMP_OFF").ok().and_then(|v| v.parse::<f32>().ok())
+                && t >= off
+                && toggles.carry != crate::light::Carry::Nothing
+            {
+                toggles.carry = crate::light::Carry::Nothing;
+                info!("burrow: t {t:.1} the light out");
+            }
             let spider = them.iter().find(|q| q.1.kind == "spider").map(|q| q.2.body.pos);
             if t >= state.1 + 1.0 {
                 state.1 = t.floor() + 1.0;
@@ -7054,11 +7084,10 @@ fn burrow_script(
                     info!("burrow: t {t:.0} the spider at ({:.0}, {:.0}), {:.0} from the player; the mound {} cells", p.x, p.y - fl, p.distance(k.body.pos), mound(&sim));
                 }
             }
-            // (Reached: within a cave spider's `keep`, a leg's length, where
-            // it strikes from.)
-            if let Some(p) = spider
-                && p.distance(k.body.pos) <= 36.0
-            {
+            // (Reached: it's bitten the player, or it's within a cave
+            // spider's `keep` across, a leg's length, where it strikes from,
+            // allowing for a heap of its own dirt under it.)
+            if struck > 0 || spider.is_some_and(|p| p.distance(k.body.pos) <= 40.0) {
                 info!("burrow: t {t:.1} the spider reached the player");
                 state.0 = 3;
             }

@@ -88,6 +88,9 @@ pub struct Alert {
     /// On its way round to your far side (a flanker, `hunter.rs`): no move
     /// till it's there.
     pub flanking: bool,
+    /// Kept off by the light on its quarry (`tactics`' `shun_light`):
+    /// backing off out of it, rearing, hissing.
+    pub cowering: bool,
 }
 
 impl Alert {
