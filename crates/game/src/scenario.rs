@@ -8739,8 +8739,8 @@ fn plunge_script(
 /// stone wall before the prism: a pencil of light) (at night, the big
 /// flashlight aimed at it from 130 cells off; `water` low across the
 /// pool's surface) or `day` (9 am, the sun low, nothing carried, by the
-/// pool). For
-/// before/after pictures (`PLATYPUS_SCREENSHOT`).
+/// pool). For before/after pictures (`PLATYPUS_SCREENSHOT`: held still,
+/// the light aimed); without one, the player's free to walk and aim.
 fn optics_script(
     mut commands: Commands,
     s: Res<Scenario>,
@@ -8839,8 +8839,14 @@ fn optics_script(
             info!("optics: the {shot} shot, the player at x {stand:.0}, aimed at ({:.0}, {:.0})", target.x, target.y - fl);
             *state = 1;
         }
-        1 => {
+        // (Held still and aimed only for a picture; played, the player
+        // walks and aims the light as ever.)
+        1 if std::env::var("PLATYPUS_SCREENSHOT").is_ok() => {
             k.body.vel.x = 0.0;
+        }
+        1 => {
+            cursor.0 = None;
+            *state = 2;
         }
         _ => {}
     }
