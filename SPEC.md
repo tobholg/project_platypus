@@ -1312,6 +1312,13 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   and the gems were near opaque). The `optics` scenario (`PLATYPUS_OPTICS`
   `prism`, `rainbow`, `gems`, `water`, `ice`, `day`) sets them out under a
   flashlight or the morning sun for before/after pictures.
+  Glints (stage 2): a clear cell (a gem, crystal, glass, ice; water only
+  at its surface) caught by a beam's direct light or the sky's glints: the
+  grid keeps one such cell a texel (at random each frame), and where the
+  light on it passes 0.3 a sparkle flares there now and then (9 a second
+  per unit of light over that, at most half the frames), a point of its
+  colour as bright as the light, 0.12–0.3 s, over the dark (`glimmer`,
+  at most 220). In the dark, or behind rock, nothing glints.
 - The grid is drawn smoothly: a cubic B-spline over the texels (four
   bilinear taps), not bilinear, which left a texel's steps along a beam's
   edge. (At zoom 2 a texel stays 4 cells: 2 doubled the frame, and a texel

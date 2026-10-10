@@ -219,6 +219,8 @@ struct Overlay {
 struct Solved {
     /// The grid, for easing the next frame from.
     previous: grid::Previous,
+    /// Where gems and the like glint this frame, and in what colour.
+    glints: Vec<(CellPos, grid::Rgb)>,
     light: Vec<u8>,
     glow: Vec<u8>,
     size: UVec2,
@@ -260,6 +262,8 @@ impl Plugin for LightPlugin {
             .add_systems(Startup, (spawn_overlay, torch::load_art))
             .add_systems(Update, (reload_settings, keys, collect_flashes, glow, torch::hold.after(crate::creatures::body::animation::animate), torch::burn))
             .init_resource::<torch::OffLight>()
+            .init_resource::<Glints>()
+            .add_systems(Update, glimmer)
             .add_systems(Startup, torch::load_off_hand)
             .add_systems(
                 PostUpdate,
@@ -459,6 +463,49 @@ fn texel_for(zoom: u32) -> i32 {
     }
 }
 
+/// Sparkles to put out this frame (`glimmer`), from the last solve.
+#[derive(Resource, Default)]
+pub struct Glints(Vec<(CellPos, grid::Rgb)>);
+
+/// A glint: a point of light flaring and gone.
+#[derive(Component)]
+struct Glint {
+    age: f32,
+    life: f32,
+    rgb: grid::Rgb,
+}
+
+/// Glints over everything (they're light), at most so many at once, each
+/// so long (s).
+const Z_GLINT: f32 = 16.05;
+const GLINTS_MOST: usize = 220;
+const GLINT_LIFE: (f32, f32) = (0.12, 0.3);
+
+/// Gems, crystal, glass, ice and water's surface caught by a beam or the
+/// sun glint: a point flaring up and gone (from `LightGrid::glints`).
+fn glimmer(mut commands: Commands, time: Res<Time>, mut glints: ResMut<Glints>, mut live: Query<(Entity, &mut Glint, &mut Sprite)>) {
+    let dt = time.delta_secs();
+    let mut n = 0;
+    for (e, mut g, mut sprite) in &mut live {
+        g.age += dt;
+        if g.age >= g.life {
+            commands.entity(e).despawn();
+            continue;
+        }
+        n += 1;
+        let k = (std::f32::consts::PI * g.age / g.life).sin();
+        sprite.color = Color::srgba(g.rgb[0].min(1.0), g.rgb[1].min(1.0), g.rgb[2].min(1.0), k);
+    }
+    for (at, rgb) in glints.0.drain(..) {
+        if n >= GLINTS_MOST {
+            break;
+        }
+        let life = GLINT_LIFE.0 + (GLINT_LIFE.1 - GLINT_LIFE.0) * (platypus_sim::rng::hash(&[at.x as u64, at.y as u64, 0x611]) % 1000) as f32 / 1000.0;
+        commands.spawn((Glint { age: 0.0, life, rgb }, Sprite::from_color(Color::NONE, Vec2::ONE), Transform::from_translation(Vec3::new(at.x as f32 + 0.5, at.y as f32 + 0.5, Z_GLINT))));
+        n += 1;
+    }
+}
+
 /// `PLATYPUS_EASE_BEAMS`: ease the beams' light too (the old trail).
 fn ease_beams() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -474,7 +521,7 @@ fn compute_light(
     flashes: Res<Flashes>,
     zoom: Res<Zoom>,
     time: Res<Time>,
-    (cursor, off_light, fixed): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>),
+    (cursor, off_light, fixed, mut glints): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>),
     mut overlay: ResMut<Overlay>,
     mut pending: ResMut<Pending>,
     mut metrics: ResMut<LightMetrics>,
@@ -502,11 +549,13 @@ fn compute_light(
                 None => Err(task),
             }
         });
-        match solved {
-            // Not quite done: finish it (rare; the frame had ~a frame's time).
-            Err(task) => pending.1 = Some(show(block_on(task), &mut overlay, &mut metrics, &mut assets, &mut sprites)),
-            Ok(done) => pending.1 = Some(show(done, &mut overlay, &mut metrics, &mut assets, &mut sprites)),
-        }
+        // (Not quite done: finish it; rare, the frame had ~a frame's time.)
+        let mut done = match solved {
+            Err(task) => block_on(task),
+            Ok(done) => done,
+        };
+        glints.0.append(&mut done.glints);
+        pending.1 = Some(show(done, &mut overlay, &mut metrics, &mut assets, &mut sprites));
     }
     let world = &sim.world;
     let (tf, loader) = *cam;
@@ -623,6 +672,7 @@ fn compute_light(
     let dt = time.delta_secs().clamp(0.001, 0.1);
     let (rise, fall) = (1.0 - (-dt / 0.02).exp(), 1.0 - (-dt / 0.05).exp());
     let previous = pending.1.take();
+    let glint_seed = sim.world.tick() ^ (time.elapsed_secs_f64() * 1000.0) as u64;
     pending.0 = Some(AsyncComputeTaskPool::get().spawn(async move {
         let started = Instant::now();
         for (dir, color) in sky {
@@ -639,6 +689,7 @@ fn compute_light(
             g.ease_from(prev, rise, fall);
         }
         let spread = if legacy { g.light.clone() } else { g.add_direct() };
+        let glints = g.glints(dt, glint_seed);
         // Upload format: sqrt for precision in the dark, row 0 at the top.
         let encode = |v: f32| (v.clamp(0.0, 1.0).sqrt() * 255.0 + 0.5) as u8;
         let mut light = vec![255u8; w * h * 4];
@@ -654,7 +705,7 @@ fn compute_light(
             }
         }
         let took = started.elapsed();
-        Solved { previous: g.into_previous(spread), light, glow, size: UVec2::new(w as u32, h as u32), center, extent: Vec2::new(gw, gh), took }
+        Solved { previous: g.into_previous(spread), glints, light, glow, size: UVec2::new(w as u32, h as u32), center, extent: Vec2::new(gw, gh), took }
     }));
 }
 

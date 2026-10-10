@@ -59,6 +59,9 @@ pub struct LightGrid {
     pub tint: Vec<Rgb>,
     /// Anything clear in the view at all (else rays go straight, as ever).
     pub optical: bool,
+    /// A cell in the texel that glints in light (a gem, crystal, glass, ice,
+    /// water at its surface; one at random each frame), and its colour.
+    pub glint: Vec<Option<(CellPos, Rgb)>>,
 }
 
 impl LightGrid {
@@ -82,6 +85,7 @@ impl LightGrid {
             reflect: vec![0.0; n],
             tint: vec![[1.0; 3]; n],
             optical: false,
+            glint: vec![None; n],
         }
     }
 
@@ -123,12 +127,13 @@ impl LightGrid {
         // Per chunk, the texels it covers (each texel lies in one chunk).
         // (opacity, sky opacity, glow) per texel, and its clear cells: how
         // many, and their index, spread, mirroring and tint, summed.
-        type Texels = Vec<(f32, f32, Rgb, Clear)>;
+        type Texels = Vec<(f32, f32, Rgb, Clear, Option<(CellPos, Rgb, u64)>)>;
+        let tick = world.tick();
         let parts: Vec<(ChunkPos, Texels)> = chunks
             .par_iter()
             .filter_map(|&cp| {
                 let chunk = world.chunk(cp)?;
-                let mut out = vec![(0.0f32, 0.0f32, [0.0f32; 3], Clear::default()); per_chunk * per_chunk];
+                let mut out = vec![(0.0f32, 0.0f32, [0.0f32; 3], Clear::default(), None); per_chunk * per_chunk];
                 let (cells, bg) = (chunk.cells(), chunk.background());
                 let o = cp.origin();
                 for ly in 0..CHUNK {
@@ -141,8 +146,18 @@ impl LightGrid {
                         if !c.is_air() {
                             let ph = mats.phys(c.material);
                             op = ph.opacity as f32 / 255.0;
-                            if let Some(o) = optics[c.material.0 as usize] {
-                                slot.3.add(o);
+                            if let Some(opt) = optics[c.material.0 as usize] {
+                                slot.3.add(opt);
+                                // (A glint: a clear cell, a liquid only at its
+                                // surface; one at random, the highest roll.)
+                                let surface = ph.kind != Kind::Liquid || (ly + 1 < CHUNK && cells[((ly + 1) * CHUNK + lx) as usize].is_air());
+                                if surface {
+                                    let roll = platypus_sim::rng::hash(&[(o.x + lx) as u64, (o.y + ly) as u64, tick]);
+                                    if slot.4.is_none_or(|(_, _, r)| roll > r) {
+                                        let tint = [opt.tint.0, opt.tint.1, opt.tint.2].map(|v| 0.55 + 0.45 * v as f32 / 255.0);
+                                        slot.4 = Some((CellPos::new(o.x + lx, o.y + ly), tint, roll));
+                                    }
+                                }
                             }
                             sky_op = op;
                             let mut e = [ph.glow[0] as f32 / 255.0, ph.glow[1] as f32 / 255.0, ph.glow[2] as f32 / 255.0];
@@ -204,7 +219,8 @@ impl LightGrid {
                 for tx in 0..per_chunk {
                     let p = CellPos::new(o.x + tx as i32 * t, o.y + ty as i32 * t);
                     if let Some(i) = self.index_of(p) {
-                        let (op, sky, e, clear) = out[ty * per_chunk + tx];
+                        let (op, sky, e, clear, glint) = out[ty * per_chunk + tx];
+                        self.glint[i] = glint.map(|(p, c, _)| (p, c));
                         self.opacity[i] = op;
                         self.sky_opacity[i] = sky;
                         self.emit[i] = e.map(|v| v.min(1.5));
@@ -537,6 +553,27 @@ impl LightGrid {
         }
     }
 
+    /// Glints this frame: where a glinting cell catches direct light (a
+    /// beam) or the sky's, by chance (`dt` seconds' worth: brighter, more
+    /// often), a sparkle there in its colour, as bright as the light.
+    pub fn glints(&self, dt: f32, seed: u64) -> Vec<(CellPos, Rgb)> {
+        let mut out = Vec::new();
+        for (i, g) in self.glint.iter().enumerate() {
+            let Some((at, color)) = g else { continue };
+            let lit = |v: &Rgb| v.iter().copied().fold(0.0f32, f32::max);
+            let b = lit(&self.direct[i]).max(lit(&self.seed[i]));
+            if b < GLINT_FROM {
+                continue;
+            }
+            let chance = ((b - GLINT_FROM) * dt * GLINT_RATE).min(0.5);
+            let roll = platypus_sim::rng::hash(&[i as u64, seed]) as f64 / u64::MAX as f64;
+            if roll < chance as f64 {
+                out.push((*at, color.map(|c| c * b.min(1.6))));
+            }
+        }
+        out
+    }
+
     /// The beams' direct light over what's spread, once that's eased (a
     /// beam is sharp: eased, a moving one left a fading trail behind it, a
     /// falling player's flashlight smeared up the screen). Kept: the light
@@ -608,6 +645,11 @@ const LATTICE: i32 = 64;
 /// A beam's rim, fading out: this share of its half width.
 const BEAM_RIM: f32 = 0.4;
 const BEAM_SCATTER: f32 = 0.35;
+
+/// Light (on a glinting cell) from which it glints, and how often then
+/// (per second, per unit of light over that).
+const GLINT_FROM: f32 = 0.3;
+const GLINT_RATE: f32 = 9.0;
 
 /// Steps one traced ray and all it splits into may take, at most.
 const RAY_STEPS_MOST: u32 = 4_000;
