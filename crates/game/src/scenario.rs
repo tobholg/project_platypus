@@ -8621,7 +8621,7 @@ fn show_script(
     mut hurt: Local<f32>,
     mut out: Local<bool>,
     sim: Res<SimWorld>,
-    (time, mut frames): (Res<Time>, Local<(u32, f32, f32)>),
+    (time, mut frames, mut spikes): (Res<Time>, Local<(u32, f32, f32)>, Local<Vec<(f32, f32)>>),
 ) {
     if s.name != "show" {
         return;
@@ -8639,11 +8639,19 @@ fn show_script(
     *hurt += ph.max - ph.hp;
     ph.hp = ph.max;
     let p = pk.body.pos;
-    if mode.0 {
+    // (`PLATYPUS_NOACTS=1`: no acts, only what's near and the frames, show
+    // mode or not.)
+    if mode.0 || std::env::var("PLATYPUS_NOACTS").is_ok() {
         frames.0 += 1;
         frames.1 += time.delta_secs();
         frames.2 = frames.2.max(time.delta_secs());
+        if time.delta_secs() > 0.0125 {
+            spikes.push((s.elapsed, time.delta_secs() * 1000.0));
+        }
         if s.elapsed >= *look + 5.0 {
+            let list: Vec<String> = spikes.iter().map(|(t, ms)| format!("{t:.1}s {ms:.0}")).collect();
+            info!("show: spikes over 12.5 ms: {}", list.join(", "));
+            spikes.clear();
             *look = s.elapsed;
             let mut kinds: std::collections::BTreeMap<&str, usize> = Default::default();
             for (c, k, _) in &near {

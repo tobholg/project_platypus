@@ -96,6 +96,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<SimMetrics>()
             .init_resource::<FreshChunks>()
             .init_resource::<LoadedChunks>()
+            .init_resource::<Generating>()
             .configure_sets(FixedUpdate, (TickSet::Intent, TickSet::Bodies, TickSet::Cells).chain())
             .add_systems(FixedUpdate, step_cells.in_set(TickSet::Cells))
             .add_systems(PreUpdate, stream_chunks)
@@ -142,6 +143,28 @@ pub struct FreshChunks(pub Vec<(platypus_sim::CellPos, platypus_worldgen::Spawn)
 #[derive(Resource, Default)]
 pub struct LoadedChunks(pub Vec<(ChunkPos, bool)>, pub Vec<ChunkPos>);
 
+/// Chunks being generated off the frame, on the async pool
+/// (`stream_chunks`).
+#[derive(Resource, Default)]
+pub struct Generating {
+    tasks: std::collections::HashMap<ChunkPos, bevy::tasks::Task<Made>>,
+    /// Done, waiting their turn to go in (`INSERT_MOST` a frame).
+    ready: Vec<Made>,
+}
+
+type Made = (platypus_sim::Chunk, Vec<(platypus_sim::CellPos, platypus_worldgen::Spawn)>);
+
+/// The part of a loader's reach generated in the frame if it's missing (a
+/// start, a jump across the world): about what's on screen. The rest, out
+/// of sight, is generated off the frame and put in when it's done.
+const URGENT: f32 = 0.65;
+/// Chunks generating off the frame at once, at most.
+const GENERATING_MOST: usize = 96;
+/// Chunks generated off the frame put in the world a frame, at most: each
+/// new chunk is stepped whole once, and its light read, so a batch landing
+/// at once was a spike of its own.
+const INSERT_MOST: usize = 12;
+
 /// Cells of weather simulated beyond the loaded chunks, either side.
 const WEATHER_MARGIN: i32 = 2_304;
 
@@ -150,6 +173,7 @@ fn stream_chunks(
     mut metrics: ResMut<SimMetrics>,
     mut fresh: ResMut<FreshChunks>,
     mut loaded: ResMut<LoadedChunks>,
+    mut generating: ResMut<Generating>,
     loaders: Query<(&GlobalTransform, &ChunkLoader)>,
 ) {
     loaded.0.clear();
@@ -167,6 +191,14 @@ fn stream_chunks(
     if rects.is_empty() {
         return;
     }
+    let urgent: Vec<(IVec2, IVec2)> = loaders
+        .iter()
+        .map(|(tf, l)| {
+            let c = tf.translation().truncate();
+            (((c - l.half_extent * URGENT) / CHUNK as f32).floor().as_ivec2(), ((c + l.half_extent * URGENT) / CHUNK as f32).floor().as_ivec2())
+        })
+        .collect();
+    let in_sight = |p: ChunkPos| urgent.iter().any(|(lo, hi)| p.x >= lo.x && p.y >= lo.y && p.x <= hi.x && p.y <= hi.y);
     let wanted = |p: ChunkPos, pad: i32| {
         rects.iter().any(|(lo, hi)| p.x >= lo.x - pad && p.y >= lo.y - pad && p.x <= hi.x + pad && p.y <= hi.y + pad)
     };
@@ -196,7 +228,7 @@ fn stream_chunks(
         for y in lo.y..=hi.y {
             for x in lo.x..=hi.x {
                 let p = ChunkPos::new(x, y);
-                if sim.generator.in_bounds(p) && !sim.world.is_loaded(p) {
+                if sim.generator.in_bounds(p) && !sim.world.is_loaded(p) && !generating.tasks.contains_key(&p) && !generating.ready.iter().any(|(c, _)| c.pos == p) {
                     missing.push(((IVec2::new(x, y) - mid).length_squared(), p));
                 }
             }
@@ -210,11 +242,37 @@ fn stream_chunks(
     let sim = &mut *sim;
     let from_store: Vec<_> = missing.iter().filter_map(|(_, p)| sim.store.take(*p)).collect();
     let generator = sim.generator.clone();
-    let generated: Vec<_> = missing
-        .par_iter()
-        .filter(|(_, p)| !from_store.iter().any(|c| c.pos == *p))
-        .map(|(_, p)| generator.generate_with_spawns(*p))
-        .collect();
+    // What's on screen (or nearly) now; the rest off the frame (walking into
+    // new land, generating it in the frame took 20-40 ms a column: a
+    // stutter every second or two).
+    let (now, later): (Vec<ChunkPos>, Vec<ChunkPos>) = missing.iter().map(|(_, p)| *p).filter(|p| !from_store.iter().any(|c| c.pos == *p)).partition(|p| in_sight(*p));
+    let mut generated: Vec<_> = now.par_iter().map(|p| generator.generate_with_spawns(*p)).collect();
+    let pool = bevy::tasks::AsyncComputeTaskPool::get();
+    for p in later {
+        if generating.tasks.len() >= GENERATING_MOST {
+            break;
+        }
+        let generator = generator.clone();
+        generating.tasks.insert(p, pool.spawn(async move { generator.generate_with_spawns(p) }));
+    }
+    // Those done since: in line to go in, if still wanted (gone out of reach
+    // meanwhile: dropped; it's made again if it's wanted again); a few a
+    // frame, nearest a loader first.
+    let g8 = &mut *generating;
+    let done: Vec<ChunkPos> = g8.tasks.iter_mut().filter_map(|(p, task)| bevy::tasks::block_on(bevy::tasks::poll_once(task)).map(|g| { g8.ready.push(g); *p })).collect();
+    for p in done {
+        g8.tasks.remove(&p);
+    }
+    g8.ready.retain(|(c, _)| wanted(c.pos, UNLOAD_HYSTERESIS) && !sim.world.is_loaded(c.pos));
+    let near = |p: ChunkPos| rects.iter().map(|(lo, hi)| (IVec2::new(p.x, p.y) - (*lo + *hi) / 2).length_squared()).min().unwrap_or(0);
+    g8.ready.sort_by_key(|(c, _)| std::cmp::Reverse(near(c.pos)));
+    for _ in 0..INSERT_MOST {
+        match g8.ready.pop() {
+            Some(g) => generated.push(g),
+            None => break,
+        }
+    }
+    generated.retain(|(c, _)| !sim.world.is_loaded(c.pos));
     let (generated, spawns): (Vec<_>, Vec<_>) = generated.into_iter().unzip();
     fresh.0 = spawns.into_iter().flatten().collect();
     loaded.0 = from_store.iter().map(|c| (c.pos, true)).chain(generated.iter().map(|c| (c.pos, false))).collect();

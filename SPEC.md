@@ -1887,6 +1887,13 @@ DESIGN §13 item 6.
   goes. On a played world (500 creatures, show mode) frames went from
   10.7–14 ms to 6.3–8.7 ms. U (dev mode) or F2: to the start, on the
   ground by the village.
+  Chunks coming into reach out of sight (walking into new land) are
+  generated off the frame on the async pool, at most 96 at once, and put in
+  12 a frame, nearest first; only what's about on screen (a start, a jump
+  across the world: within 0.65 of a loader's reach) is made in the frame
+  (generated in the frame, a column of new land was a 20-40 ms frame every
+  second or two of walking). The `show` scenario with `PLATYPUS_NOACTS=1`
+  logs the frames and every frame over 12.5 ms.
   Rocket boots refill a moment after they stop firing, a second of thrust
   a second in the air and two on the ground (`ROCKET_GROUND_REFILL`).
 - **The show** (`show.rs`, to show someone the bestiary in the world as
