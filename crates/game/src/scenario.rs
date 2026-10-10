@@ -3115,7 +3115,9 @@ fn rocket_script(
         }
         _ => {}
     }
-    let hold = state.0 == 2;
+    // (A jump, let go, then held: the boots fire on a second press in the
+    // air.)
+    let hold = state.0 == 2 && !(1.15..1.25).contains(&t);
     match (hold, keys.pressed(KeyCode::Space)) {
         (true, false) => keys.press(KeyCode::Space),
         (false, true) => keys.release(KeyCode::Space),
@@ -8354,7 +8356,8 @@ fn fall_script(
         // Rocket up 1.2 s, fall; brake from 165 cells up until nearly still.
         1 | 3 => {
             let brake = state.0 == 1;
-            jump = dt < 1.2 || brake && dt > 1.5 && height < 165.0 && k.body.vel.y < -60.0;
+            // (A jump, let go, then held: the boots fire on a second press.)
+            jump = dt < 0.15 || (0.25..1.2).contains(&dt) || brake && dt > 1.5 && height < 165.0 && k.body.vel.y < -60.0;
             if dt > 1.6 && grounded {
                 info!("fall: rocket to {:.0} cells, fell at up to {:.0} cells/s, {}: landed with {:.0} of {:.0} hp (deaths so far {})", state.2, -state.3, if brake { "braked near the ground" } else { "no braking" }, hp.hp, hp.max, deaths.0);
                 let next = state.0 + 1;

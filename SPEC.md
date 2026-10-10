@@ -1902,6 +1902,9 @@ DESIGN §13 item 6.
   logs the frames and every frame over 12.5 ms.
   Rocket boots refill a moment after they stop firing, a second of thrust
   a second in the air and two on the ground (`ROCKET_GROUND_REFILL`).
+  They fire only on jump pressed again in the air and held: the jump's own
+  press, held, never fires them (they never fire off the ground); any air
+  jumps go first. Under water a held jump fires them as before.
 - **The show** (`show.rs`, to show someone the bestiary in the world as
   it is): P (not with the arena panel up) or the dev panel's "Show the
   next creature" brings on the next act of `show.ron` on the side of you

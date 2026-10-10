@@ -286,6 +286,9 @@ pub struct Locomotion {
     pub rocket_left: f32,
     /// Seconds since the rocket boots last fired (or were held on empty).
     rocket_rest: f32,
+    /// This hold of jump may fire the rocket boots: it was pressed in the
+    /// air, and the press wasn't a jump (off a wall, or an air jump).
+    rocket_hold: bool,
     /// On a rope (set before each `steer`): in the air it keeps its swing
     /// (air control pumps it, never brakes it).
     pub swinging: bool,
@@ -323,6 +326,7 @@ impl Default for Locomotion {
             stroke_left: 0.0,
             rocket_left: 0.0,
             rocket_rest: 0.0,
+            rocket_hold: false,
             swinging: false,
             backed: false,
             dive: 0.0,
@@ -657,6 +661,16 @@ impl Locomotion {
             }
         }
 
+        // (A press in the air that wasn't a jump may fire the boots, as long
+        // as it's held; a jump's own press never does: jump, then press
+        // again and hold.)
+        if jump_pressed && !grounded && !(ev.jumped || ev.wall_jumped || ev.air_jumped) {
+            self.rocket_hold = true;
+        }
+        if !intent.jump {
+            self.rocket_hold = false;
+        }
+
         // Releasing jump early cuts the rise: short hops.
         if self.rising_from_jump && !intent.jump && body.vel.y > 0.0 {
             body.vel.y *= s.jump_cut;
@@ -666,10 +680,11 @@ impl Locomotion {
             self.rising_from_jump = false;
         }
 
-        // Rocket boots: jump held in the air once the jump's rise has slowed
-        // (and any air jumps are spent: a press uses those first); under
-        // water too, held after a stroke, pushing through the water at
-        // about half the thrust and speed.
+        // Rocket boots: jump pressed again in the air and held (not the
+        // jump's own press: they never fire off the ground; any air jumps
+        // are spent first, a press uses those); under water too, held after
+        // a stroke, pushing through the water at about half the thrust and
+        // speed.
         self.rocket_left = self.rocket_left.min(s.rocket_time);
         let (thrust, top) = if swimming { (s.rocket_thrust * ROCKET_WATER.0, s.rocket_speed * ROCKET_WATER.1) } else { (s.rocket_thrust, s.rocket_speed) };
         if s.rocket_time > 0.0
@@ -677,7 +692,7 @@ impl Locomotion {
             && intent.jump
             && !jump_pressed
             && !grounded
-            && (swimming || (self.state == MoveState::Air && self.air_jumps_left == 0))
+            && (swimming || (self.state == MoveState::Air && self.air_jumps_left == 0 && self.rocket_hold))
             && body.vel.y < top
         {
             self.rocket_left -= dt;
@@ -793,9 +808,11 @@ mod tests {
         assert!(ice > stone * 3.0 + 10.0, "ice slides it on: {ice} (stone {stone})");
     }
 
-    /// Rocket boots: holding jump climbs far past a jump's height, for as
-    /// long as the fuel lasts; not firing (in the air too), it fills again
-    /// over as long as it fires (not at once on landing).
+    /// Rocket boots: a jump, then jump pressed again in the air and held,
+    /// climbs far past a jump's height, for as long as the fuel lasts (the
+    /// jump's own press, held, doesn't fire them); not firing (in the air
+    /// too), it fills again over as long as it fires (not at once on
+    /// landing).
     #[test]
     fn rocket_boots_climb_while_jump_is_held() {
         let mut rows = vec!["#                                                                                                  #"; 400];
@@ -803,12 +820,13 @@ mod tests {
         let g = Ascii::new(&rows);
         let (mut s, mut l, mut b) = player();
         s.air_jumps = 0;
+        // (A jump held 9 ticks, let go 2, then held again.)
         let apex = |s: &MovementStats, l: &mut Locomotion, b: &mut Body, frames: usize| {
             settle(&g, s, l, b);
             let floor = b.bottom();
             let mut top = floor;
-            for _ in 0..frames {
-                tick(&g, s, l, b, Intent { jump: true, ..default_intent() });
+            for i in 0..frames {
+                tick(&g, s, l, b, Intent { jump: !(9..11).contains(&i), ..default_intent() });
                 top = top.max(b.bottom());
             }
             top - floor
@@ -818,6 +836,14 @@ mod tests {
         let (mut l2, mut b2) = (Locomotion::default(), Body::new(Vec2::new(20.0, 10.0), Vec2::new(8.0, 16.0)));
         let rocket = apex(&s, &mut l2, &mut b2, 80);
         assert!(rocket > plain * 2.0, "rocket {rocket} vs a jump {plain}");
+        // The jump's own press held: no rocket (it never fires off the ground).
+        let (mut l3, mut b3) = (Locomotion::default(), Body::new(Vec2::new(60.0, 10.0), Vec2::new(8.0, 16.0)));
+        settle(&g, &s, &mut l3, &mut b3);
+        l3.rocket_left = 1.0;
+        for _ in 0..40 {
+            tick(&g, &s, &mut l3, &mut b3, Intent { jump: true, ..default_intent() });
+        }
+        assert!((l3.rocket_left - 1.0).abs() < 1e-3, "held from the ground: the boots didn't fire ({} left)", l3.rocket_left);
         assert!(l2.rocket_left <= 0.0, "the fuel ran out (80 ticks in, still up)");
         // Let go, still high up: after a moment it fills as it falls, over
         // as long as it fires (not at once).
