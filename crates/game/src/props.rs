@@ -19,6 +19,9 @@ const GRAVITY: f32 = 1350.0;
 #[derive(Component)]
 pub struct Thrown {
     pub bounce: f32,
+    /// Speed kept sliding along the ground, a tick (0.75: soon stopped; a
+    /// body thrown by a blow slides on).
+    pub slide: f32,
 }
 
 /// A thrown light: glows for `life` seconds, fading at the end.
@@ -47,7 +50,7 @@ pub fn spawn_bomb(commands: &mut Commands, at: Vec2, vel: Vec2, cfg: BombCfg) {
     body.vel = vel;
     commands.spawn((
         Name::new("Bomb"),
-        Thrown { bounce: cfg.bounce },
+        Thrown { bounce: cfg.bounce, slide: 0.75 },
         Bomb { fuse: cfg.fuse, cfg },
         Kinematics { body, loco: Locomotion::default(), prev_pos: at },
         Sprite::from_color(Color::srgb(0.12, 0.12, 0.14), Vec2::splat(6.0)),
@@ -61,7 +64,7 @@ pub fn spawn_glowstick(commands: &mut Commands, at: Vec2, vel: Vec2, color: [f32
     body.vel = vel;
     commands.spawn((
         Name::new("Glowstick"),
-        Thrown { bounce: 0.3 },
+        Thrown { bounce: 0.3, slide: 0.75 },
         Glowstick { age: 0.0, life, color },
         LightSource { color, flicker: 0.0 },
         crate::light::Haze(haze),
@@ -107,7 +110,7 @@ pub fn fly(sim: Res<SimWorld>, mut q: Query<(&mut Kinematics, &Thrown)>) {
         let e = thrown.bounce;
         if c.ground || c.ceiling {
             k.body.vel.y = if before.y.abs() > 60.0 { -before.y * e } else { 0.0 };
-            k.body.vel.x *= if c.ground { 0.75 } else { 1.0 };
+            k.body.vel.x *= if c.ground { thrown.slide } else { 1.0 };
         }
         if c.wall_left || c.wall_right {
             k.body.vel.x = -before.x * e;

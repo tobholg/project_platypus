@@ -1942,6 +1942,23 @@ DESIGN §13 item 6.
   marks ("?" suspicious or searching, "!" starting to hunt: they gave away
   where things were in the dark) and damage numbers. A hit still flashes
   and bleeds without its number.
+- **Thrown about** (`creatures::body::tumble`, `hands::corpses`): a blow
+  or blast that knocks a creature off its feet (a stun) sets it spinning
+  (`Tumble`: 0.022 rad/s per cell/s of knock over the square root of its
+  heft, at most 22; away from the blow), drawn turned that much (a sprite
+  rotated, a legged body's turned frame); down and not rising it rights
+  itself (it rose the tick it was hit, still on its feet: righting then
+  wiped the spin). Not the player. A killing blow throws the body: poise
+  doesn't shrug it off, its knock ×1.8 over the square root of the heft,
+  90 up and a third more, and half again the spin. The body it leaves
+  keeps the whole velocity (it kept half) and the spin, starting from how
+  the creature was turned (so one killed on its feet topples over): a
+  `Ragdoll` that bounces (0.32) and slides (0.93 of its speed kept a
+  tick, `Thrown::slide`; things dropped keep 0.75), spins as it flies, and
+  down rolls over to lie as it lies; landing hard it thuds (`land`, louder
+  the harder) and kicks up dust, and its slide turns it. The `ragdoll`
+  scenario: an orc, a skeleton, a raptor, a spider and a troll in a row,
+  a blast among them at 2 s.
 - **Eyes in the dark** (`creatures::body::sight`): glowing eyes are drawn
   over the darkness, so they showed through rock (every spider in a cave
   seen through the hill). Each creature keeps how much the player sees it

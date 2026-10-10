@@ -56,7 +56,8 @@ impl Plugin for CreaturesPlugin {
             .add_systems(FixedUpdate, (body::hurt::react, body::hurt::wounded).chain().after(crate::combat::Hits))
             .add_systems(FixedUpdate, (body::elements::struck, body::elements::zapped, blasted, pelted).after(TickSet::Cells))
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate))
-            .add_systems(PreUpdate, dormancy);
+            .add_systems(PreUpdate, dormancy)
+            .add_systems(Update, body::tumble::spin.before(body::animation::animate));
     }
 }
 
@@ -521,10 +522,13 @@ fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Kinematics, &mut Health,
 /// hurts and throws the creatures near it, less the farther they are: out
 /// to 1.6 times its radius, up to 0.65 × its power in damage and 3 × in
 /// knockback (a bomb: 90 and 420).
-fn blasted(mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<(&mut Kinematics, &mut Health)>) {
+/// What a blast throws: its body, health, spin, and whether it's the player.
+type Blasted<'a> = (Entity, &'a mut Kinematics, &'a mut Health, Option<&'a mut body::tumble::Tumble>, Has<player::LocalPlayer>);
+
+fn blasted(mut commands: Commands, mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<Blasted>) {
     for b in blasts.read() {
         let reach = b.radius * 1.6;
-        for (mut k, mut health) in &mut q {
+        for (e, mut k, mut health, tumble, is_player) in &mut q {
             let d = k.body.pos - b.at;
             let dist = d.length();
             if dist > reach {
@@ -534,7 +538,18 @@ fn blasted(mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<(&mut K
             health.harm(b.power * 0.65 * f, Harm::Blunt);
             let dir = (d.normalize_or(Vec2::Y) + Vec2::new(0.0, 0.6)).normalize();
             let k = &mut *k;
-            k.loco.knock(&mut k.body, dir * b.power * 4.5 * (0.4 + 0.6 * f), 0.35);
+            let knock = dir * b.power * 4.5 * (0.4 + 0.6 * f);
+            k.loco.knock(&mut k.body, knock, 0.35);
+            // (Thrown spinning: `tumble`; not the player.)
+            if !is_player {
+                let spin = body::tumble::spin_of(knock, 1.0);
+                match tumble {
+                    Some(mut t) => t.omega = (t.omega + spin).clamp(-30.0, 30.0),
+                    None => {
+                        commands.entity(e).insert(body::tumble::Tumble { angle: 0.0, omega: spin });
+                    }
+                }
+            }
         }
     }
 }
@@ -551,6 +566,8 @@ pub struct Died {
     /// Its picture as it fell, and where it sat on the body.
     pub sprite: Option<(Sprite, Vec3)>,
     pub worn: Vec<crate::hands::items::Stack>,
+    /// How it was turning as it died (`Tumble`): its body goes on so.
+    pub spin: body::tumble::Tumble,
 }
 
 /// What a body took in a tick, of one kind (`Health::took`, from every
@@ -601,6 +618,7 @@ pub(crate) fn deaths(
     mut died: MessageWriter<Died>,
     sprites: Query<(&Sprite, &Transform), With<body::animation::CreatureSprite>>,
     mut q: Query<Mortal>,
+    tumbles: Query<&body::tumble::Tumble>,
 ) {
     let spawn = sim.generator.spawn_point();
     for (entity, mut h, mut k, is_player, bleeds, anim, creature, eq, children) in &mut q {
@@ -611,7 +629,8 @@ pub(crate) fn deaths(
             let sprite = children.and_then(|ch| ch.iter().find_map(|e| sprites.get(e).ok())).map(|(s, tf)| (s.clone(), tf.translation));
             let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
             let kind = creature.map_or_else(String::new, |c| c.kind.clone());
-            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn });
+            let spin = tumbles.get(entity).copied().unwrap_or_default();
+            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin });
         }
         if let Some(&body::hurt::Bleeds(blood)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.

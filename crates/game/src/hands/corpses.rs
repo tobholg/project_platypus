@@ -54,7 +54,7 @@ pub struct CorpsesPlugin;
 
 impl Plugin for CorpsesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, (lay_out, (batter, rot).after(crate::props::fly)).in_set(TickSet::Bodies));
+        app.add_systems(FixedUpdate, (lay_out, (batter, rot).after(crate::props::fly)).in_set(TickSet::Bodies)).add_systems(Update, ragdoll);
     }
 }
 
@@ -232,14 +232,18 @@ fn lay_out(
             (at, size, 0.0)
         };
         let mut body = Body::new(at, size.max(Vec2::splat(3.0)));
-        body.vel = d.body.vel * 0.5;
+        // (Thrown on as it was going when it died: a ragdoll.)
+        body.vel = d.body.vel;
         let mut e = commands.spawn((
             Name::new(format!("Body of {}", d.def.name)),
             Corpse { key, empty: 0.0, born: { *count += 1; *count } },
             Container { key, name: format!("{} (dead)", d.def.name) },
-            Thrown { bounce: 0.05 },
+            Thrown { bounce: RAG_BOUNCE, slide: RAG_SLIDE },
+            // (Turned as it was as it died, from how it'll lie: it topples
+            // over, or spins on as it flew.)
+            Ragdoll { angle: crate::creatures::body::tumble::wrap(d.spin.angle - turn), omega: d.spin.omega, last_vy: d.body.vel.y },
             Kinematics { body, loco: Locomotion::default(), prev_pos: at },
-            Transform::from_translation(at.extend(Z)),
+            Transform::from_translation(at.extend(Z)).with_rotation(Quat::from_rotation_z(d.spin.angle - turn)),
             Visibility::default(),
         ));
         if let Some((sprite, offset)) = &d.sprite {
@@ -259,6 +263,64 @@ fn lay_out(
                 e.with_child((CorpseSprite, s, Transform::from_translation((offset.truncate() + centre).extend(0.01))));
             }
         }
+    }
+}
+
+/// A body thrown about as it died: it bounces (`RAG_BOUNCE`) and slides
+/// (`RAG_SLIDE`) further than a dropped thing, spins as it flies, and once
+/// down rolls over to lie as it lies (`SETTLE`); landing hard it thuds and
+/// kicks up dust, and its slide turns it.
+#[derive(Component)]
+pub struct Ragdoll {
+    /// Turned from how it'll lie (radians), and how fast it's turning.
+    angle: f32,
+    omega: f32,
+    /// Its fall last frame (cells/s), to tell a landing.
+    last_vy: f32,
+}
+
+const RAG_BOUNCE: f32 = 0.32;
+const RAG_SLIDE: f32 = 0.93;
+/// Down, it rolls over to lie this fast (per second).
+const SETTLE: f32 = 7.0;
+/// Falling faster than this (cells/s) and stopped: a landing.
+const THUD: f32 = 90.0;
+/// Spin a slide gives it (radians/s per cell/s).
+const ROLL: f32 = 0.02;
+
+fn ragdoll(time: Res<Time>, mut sim: ResMut<SimWorld>, mut sounds: MessageWriter<crate::sound::PlaySound>, mut q: Query<(&Kinematics, &mut Ragdoll, &mut Transform)>) {
+    let dt = time.delta_secs();
+    for (k, mut r, mut tf) in &mut q {
+        let vy = k.body.vel.y;
+        let resting = platypus_physics::resting(&crate::creatures::WorldGrid(&sim.world), &k.body);
+        if resting && r.angle == 0.0 && r.omega == 0.0 {
+            continue;
+        }
+        // Landed hard: a thud, dust, its spin knocked about.
+        if r.last_vy < -THUD && vy > r.last_vy * 0.5 {
+            let feet = [k.body.pos.x, k.body.pos.y - k.body.half.y];
+            if let Some(cell) = sim.world.get(platypus_sim::CellPos::from_world(feet[0], feet[1] - 1.0))
+                && !cell.is_air()
+            {
+                let n = ((-r.last_vy - THUD) / 40.0).clamp(3.0, 14.0) as usize;
+                sim.world.puff(feet, cell, n, 60.0);
+            }
+            let mut thud = crate::sound::PlaySound::at("land", k.body.pos);
+            thud.volume = ((-r.last_vy) / 400.0).clamp(0.3, 1.0);
+            sounds.write(thud);
+            r.omega = r.omega * 0.5 - k.body.vel.x * ROLL;
+        }
+        r.last_vy = vy;
+        if !resting && vy.abs() > 2.0 {
+            r.angle += r.omega * dt;
+        } else {
+            r.omega = 0.0;
+            r.angle = crate::creatures::body::tumble::wrap(r.angle) * (-dt * SETTLE).exp();
+            if r.angle.abs() < 0.005 {
+                r.angle = 0.0;
+            }
+        }
+        tf.rotation = Quat::from_rotation_z(r.angle);
     }
 }
 

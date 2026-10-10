@@ -152,7 +152,7 @@ impl Plugin for AnimationPlugin {
     }
 }
 
-type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>, Option<&'a mut Soles>);
+type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>, Option<&'a mut Soles>, Option<&'a super::tumble::Tumble>);
 type BodySprites = (With<CreatureSprite>, Without<ArmSprite>, Without<CreatureEyes>);
 type EyeSprites = (With<CreatureEyes>, Without<CreatureSprite>, Without<ArmSprite>);
 type Arms<'a> = (&'a mut Sprite, &'a mut Transform, &'a mut Visibility);
@@ -169,7 +169,7 @@ pub fn animate(
     mut arms: Query<Arms, With<ArmSprite>>,
     mut eyes: Query<(&mut Sprite, &mut Transform), EyeSprites>,
 ) {
-    for (k, mut anim, children, mut aiming, hand, soles) in &mut creatures {
+    for (k, mut anim, children, mut aiming, hand, soles, tumble) in &mut creatures {
         let anim = &mut *anim;
         let def = anim.def.clone();
         let dt = time.delta_secs();
@@ -299,7 +299,8 @@ pub fn animate(
             // on the wall behind, turned the way it crawls.
             let v = k.body.vel;
             let crawl = if v.length() > 7.5 { v.y.atan2(v.x.abs()) * facing } else { 0.0 };
-            let turn = k.loco.clinging().map_or(0.0, |d| if d == Vec2::ZERO { crawl } else { d.y.atan2(d.x) + std::f32::consts::FRAC_PI_2 });
+            // (Knocked about: spinning, `tumble`.)
+            let turn = k.loco.clinging().map_or(0.0, |d| if d == Vec2::ZERO { crawl } else { d.y.atan2(d.x) + std::f32::consts::FRAC_PI_2 }) + tumble.map_or(0.0, |t| t.angle);
             let rot = Quat::from_rotation_z(turn);
             sprite.flip_x = (facing < 0.0) != (turn.abs() > 3.0);
             tf.translation = rot * body_at;

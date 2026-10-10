@@ -303,6 +303,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, factions_script)
             .add_systems(Update, burrow_script)
             .add_systems(Update, show_script)
+            .add_systems(Update, ragdoll_script)
             .add_systems(PreUpdate, optics_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PostUpdate, plunge_script.after(bevy::transform::TransformSystems::Propagate))
             .add_systems(Update, sounds_script)
@@ -8859,6 +8860,55 @@ fn optics_script(
         1 => {
             cursor.0 = None;
             *state = 2;
+        }
+        _ => {}
+    }
+}
+
+/// `ragdoll` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): an orc, a
+/// skeleton, a raptor, a spider and a troll in a row, the player off to
+/// the side (it can't die); at 2 s a blast among them. Logs who died and
+/// where the bodies came to rest; for pictures of how they fly.
+fn ragdoll_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature), Without<LocalPlayer>>,
+    bodies: Query<&Kinematics, (With<crate::hands::corpses::Corpse>, Without<LocalPlayer>)>,
+    mut state: Local<u8>,
+
+) {
+    if s.name != "ragdoll" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    match *state {
+        0 if s.elapsed > 0.5 => {
+            for (e, c) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            k.body.pos = Vec2::new(820.0, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            for (i, kind) in ["orc", "skeleton", "raptor", "spider", "troll"].into_iter().enumerate() {
+                crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(1040.0 + i as f32 * 34.0, fl), |_| {});
+            }
+            *state = 1;
+        }
+        1 if s.elapsed > 2.0 => {
+            sim.queue(WorldEdit::Explode { center: CellPos::new(1100, platypus_worldgen::arena::FLOOR + 4), radius: 30, power: 150 });
+            info!("ragdoll: the blast");
+            *state = 2;
+        }
+        2 if s.elapsed > 5.5 => {
+            let alive: Vec<&str> = them.iter().filter(|(_, c)| c.kind != "dummy" && c.kind != "sandbag").map(|(_, c)| c.kind.as_str()).collect();
+            let rest: Vec<String> = bodies.iter().map(|b| format!("{:.0}", b.body.pos.x)).collect();
+            info!("ragdoll: alive {alive:?}; bodies at x {}", rest.join(", "));
+            *state = 3;
         }
         _ => {}
     }

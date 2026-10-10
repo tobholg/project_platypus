@@ -238,7 +238,7 @@ impl Chests {
             Name::new("Chest"),
             Chest { key, hp: TOUGHNESS },
             Container { key, name: "Chest".into() },
-            Thrown { bounce: 0.0 },
+            Thrown { bounce: 0.0, slide: 0.75 },
             Kinematics { body: Body::new(centre, size()), loco: Locomotion::default(), prev_pos: centre },
             Sprite::from_image(self.art.clone()),
             Transform::from_translation(centre.extend(Z)),

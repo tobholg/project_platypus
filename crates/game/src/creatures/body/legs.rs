@@ -1197,7 +1197,7 @@ fn grow_legs(
 fn walk(
     time: Res<Time>,
     sim: Res<SimWorld>,
-    mut q: Query<(&mut Legs, &Kinematics, &GlobalTransform, &Children, Option<&Rear>, (Option<&mut crate::creatures::brain::way::DigFace>, Option<&crate::creatures::brain::senses::Alert>)), Without<crate::creatures::Dormant>>,
+    mut q: Query<(&mut Legs, &Kinematics, &GlobalTransform, &Children, Option<&Rear>, (Option<&mut crate::creatures::brain::way::DigFace>, Option<&crate::creatures::brain::senses::Alert>, Option<&super::tumble::Tumble>)), Without<crate::creatures::Dormant>>,
     mut sprites: Query<(&mut Sprite, &mut Visibility), (With<CreatureSprite>, Without<LegBody>, Without<LegStinger>)>,
     mut bodies: Query<(&mut Sprite, &mut Transform), (Or<(With<LegBody>, With<LegEyes>)>, Without<CreatureSprite>, Without<LegStinger>, Without<LegClaw>)>,
     mut stingers: Query<(&mut Sprite, &mut Transform, &mut Visibility), (With<LegStinger>, Without<CreatureSprite>, Without<LegBody>, Without<LegEyes>, Without<LegClaw>)>,
@@ -1207,7 +1207,7 @@ fn walk(
 ) {
     let dt = time.delta_secs().min(0.05);
     let now = time.elapsed_secs();
-    for (mut legs, k, tf, children, rear, (mut dig, alert)) in &mut q {
+    for (mut legs, k, tf, children, rear, (mut dig, alert, tumble)) in &mut q {
         // (Where it's drawn; its body's place if that's far off: on its
         // first frame its transform hasn't caught up yet.)
         let drawn = tf.translation().truncate();
@@ -1369,7 +1369,9 @@ fn walk(
             }
         }
         // (From the side: tilted, mirrored to face left.)
-        let (index, flip) = if side { (crate::combat::Turned::index((legs.tilt + legs.facing * legs.surface).to_degrees()), legs.facing < 0.0) } else { (crate::combat::Turned::index(legs.heading.to_degrees()), false) };
+        // (Knocked about, spinning: `tumble`; mirrored facing left.)
+        let spun = tumble.map_or(0.0, |t| t.angle);
+        let (index, flip) = if side { (crate::combat::Turned::index((legs.tilt + legs.facing * legs.surface + spun * legs.facing).to_degrees()), legs.facing < 0.0) } else { (crate::combat::Turned::index((legs.heading + spun).to_degrees()), false) };
         let offset = legs.offset;
         // Its look: the frame its move's pose shows (body and eyes).
         if rear.face != legs.face {

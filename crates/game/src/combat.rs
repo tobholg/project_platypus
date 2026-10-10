@@ -1191,6 +1191,11 @@ fn slam(
     }
 }
 
+/// A killing blow's knock, times the blow's own (over the square root of
+/// the body's heft, poise or not), and the lift it adds (cells/s).
+const DEATH_KNOCK: f32 = 1.8;
+const DEATH_LIFT: f32 = 90.0;
+
 type Struck<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a mut Sturdy>, &'a crate::creatures::MoveStats, Has<Invulnerable>, Has<crate::creatures::player::LocalPlayer>);
 
 /// What a hit does: damage, knockback and stun, sparks where it struck, a
@@ -1209,6 +1214,7 @@ fn apply_hits(
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut felt: MessageWriter<Felt>,
     parts: Query<&crate::creatures::body::parts::Parts>,
+    mut tumbles: Query<&mut crate::creatures::body::tumble::Tumble>,
 ) {
     let Some(weapons) = weapons else { return };
     for r in recoils.read() {
@@ -1229,7 +1235,7 @@ fn apply_hits(
     // a swarm's bites all land at once.)
     let mut graced = std::collections::HashSet::new();
     for h in hits.read() {
-        let Ok((mut k, mut health, sturdy, _, safe, _)) = q.get_mut(h.target) else { continue };
+        let Ok((mut k, mut health, sturdy, _, safe, player)) = q.get_mut(h.target) else { continue };
         if safe || graced.contains(&h.target) {
             continue;
         }
@@ -1239,7 +1245,11 @@ fn apply_hits(
         let reaction = crate::creatures::body::hurt::reaction(damage, dealt);
         felt.write(Felt { target: h.target, meant: damage, dealt, share: dealt / health.max.max(1.0), harm: h.harm, at: h.at, dir: h.dir, weight: h.weight, crit: h.crit });
         let (mut knock, mut stun) = (h.knock, h.stun);
-        if let Some(mut s) = sturdy {
+        // (A killing blow throws the body: no shrugging it off, harder, a
+        // little up; it dies next tick, flying.)
+        let lethal = health.hp <= 0.0 && !player;
+        let heft = sturdy.as_ref().map_or(1.0, |s| s.heft);
+        if let Some(mut s) = sturdy.filter(|_| !lethal) {
             knock /= s.heft;
             s.since = 0.0;
             s.left -= h.damage;
@@ -1256,9 +1266,23 @@ fn apply_hits(
                 graced.insert(h.target);
             }
         }
+        if lethal {
+            knock = h.knock * DEATH_KNOCK / heft.sqrt() + Vec2::Y * (DEATH_LIFT + h.knock.length() * 0.3);
+            stun = stun.max(0.5);
+        }
         let k = &mut *k;
         if stun > 0.0 {
             k.loco.knock(&mut k.body, knock, stun);
+            // Knocked off its feet: it spins (`tumble`; not the player).
+            if !player {
+                let spin = crate::creatures::body::tumble::spin_of(knock, heft) * if lethal { 1.5 } else { 1.0 };
+                match tumbles.get_mut(h.target) {
+                    Ok(mut t) => t.omega = (t.omega + spin).clamp(-30.0, 30.0),
+                    Err(_) => {
+                        commands.entity(h.target).insert(crate::creatures::body::tumble::Tumble { angle: 0.0, omega: spin });
+                    }
+                }
+            }
         } else {
             k.body.vel += knock;
         }

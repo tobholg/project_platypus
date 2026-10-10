@@ -685,7 +685,7 @@ pub fn spawn_drop(commands: &mut Commands, items: &Items, at: Vec2, stack: Stack
     commands.spawn((
         Name::new("Dropped"),
         Dropped { stack, age: 0.0 },
-        Thrown { bounce: 0.2 },
+        Thrown { bounce: 0.2, slide: 0.75 },
         Kinematics { body, loco: Locomotion::default(), prev_pos: at },
         Sprite::from_color(Color::srgb_u8(r, g, b), Vec2::splat(4.5)),
         Transform::from_translation(at.extend(12.5)),

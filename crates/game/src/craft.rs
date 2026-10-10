@@ -121,7 +121,7 @@ impl Crafting {
         let mut e = commands.spawn((
             Name::new(def.name.clone()),
             Station { kind, hp: TOUGHNESS },
-            Thrown { bounce: 0.0 },
+            Thrown { bounce: 0.0, slide: 0.75 },
             Kinematics { body: Body::new(centre, size), loco: Locomotion::default(), prev_pos: centre },
             Sprite::from_image(self.art[kind].clone()),
             Transform::from_translation(centre.extend(Z)),
