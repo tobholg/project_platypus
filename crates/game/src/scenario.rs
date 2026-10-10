@@ -8748,7 +8748,8 @@ fn plunge_script(
 /// passes through, on the floor in a row: a glass prism (a triangle 60
 /// wide, 52 high), a column of ruby, emerald and amethyst, a pool of water
 /// (120 wide, 36 deep, dug into the floor), a block of ice. `PLATYPUS_OPTICS`
-/// picks the shot: `prism`, `gems`, `water`, `ice`, `rainbow` (a slit in a
+/// picks the shot (or `spire`: the real world, by a crystal spire at
+/// `PLATYPUS_SPIRE_X`, `PLATYPUS_OPTICS_HOUR`): `prism`, `gems`, `water`, `ice`, `rainbow` (a slit in a
 /// stone wall before the prism: a pencil of light) (at night, the big
 /// flashlight aimed at it from 130 cells off; `water` low across the
 /// pool's surface) or `day` (9 am, the sun low, nothing carried, by the
@@ -8770,6 +8771,24 @@ fn optics_script(
     let floor = platypus_worldgen::arena::FLOOR;
     let fl = floor as f32;
     let shot = std::env::var("PLATYPUS_OPTICS").unwrap_or_else(|_| "prism".into());
+    // (`spire`: in the real world, by a crystal spire (`PLATYPUS_SPIRE_X`),
+    // the sun low (`PLATYPUS_OPTICS_HOUR`, 7.5 by default).)
+    if shot == "spire" {
+        if *state == 0 && s.elapsed > 0.5 {
+            let x = std::env::var("PLATYPUS_SPIRE_X").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(104_350.0) - 70.0;
+            let hour = std::env::var("PLATYPUS_OPTICS_HOUR").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(7.5);
+            day.skipped = (day.skipped + hour - day.time * 24.0).rem_euclid(24.0);
+            toggles.carry = crate::light::Carry::Nothing;
+            if let Some(y) = sim.generator.surface_hint(x as i32) {
+                k.body.pos = Vec2::new(x, y as f32 + 60.0);
+                k.body.vel = Vec2::ZERO;
+                k.prev_pos = k.body.pos;
+            }
+            info!("optics: by the spire at {:.0}, {hour} h", x + 70.0);
+            *state = 9;
+        }
+        return;
+    }
     match *state {
         0 if s.elapsed > 0.5 => {
             let id = |n: &str| sim.materials().id(n);

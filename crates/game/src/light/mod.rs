@@ -688,7 +688,7 @@ fn compute_light(
         if let Some(prev) = &previous {
             g.ease_from(prev, rise, fall);
         }
-        let spread = if legacy { g.light.clone() } else { g.add_direct() };
+        let spread = if legacy { (g.light.clone(), g.glow.clone()) } else { g.add_direct() };
         let glints = g.glints(dt, glint_seed);
         // Upload format: sqrt for precision in the dark, row 0 at the top.
         let encode = |v: f32| (v.clamp(0.0, 1.0).sqrt() * 255.0 + 0.5) as u8;
@@ -696,11 +696,13 @@ fn compute_light(
         let mut glow = vec![255u8; w * h * 4];
         for y in 0..h {
             for x in 0..w {
-                let (l, gl) = (g.light[y * w + x], g.glow[y * w + x]);
+                let (l, gl, c) = (g.light[y * w + x], g.glow[y * w + x], g.caustic[y * w + x]);
                 let i = ((h - 1 - y) * w + x) * 4;
+                // (Caustics added whole, not hazed: bent light shows over
+                // daylight.)
                 for ch in 0..3 {
                     light[i + ch] = encode(l[ch].max(amb));
-                    glow[i + ch] = encode(gl[ch] * haze);
+                    glow[i + ch] = encode(gl[ch] * haze + c[ch]);
                 }
             }
         }

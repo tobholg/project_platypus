@@ -62,6 +62,11 @@ pub struct LightGrid {
     /// A cell in the texel that glints in light (a gem, crystal, glass, ice,
     /// water at its surface; one at random each frame), and its colour.
     pub glint: Vec<Option<(CellPos, Rgb)>>,
+    /// Caustics: light bent, mirrored or split by something clear, where it
+    /// lands on a face; added over the scene (the glow layer), so it shows
+    /// in daylight too (light only darkens: a spire's colours on lit
+    /// ground didn't show).
+    pub caustic: Vec<Rgb>,
 }
 
 impl LightGrid {
@@ -86,6 +91,7 @@ impl LightGrid {
             tint: vec![[1.0; 3]; n],
             optical: false,
             glint: vec![None; n],
+            caustic: vec![[0.0; 3]; n],
         }
     }
 
@@ -293,7 +299,7 @@ impl LightGrid {
             starts.extend((f..h).map(|y| start(edge, y)));
         }
         for (x, y) in starts {
-            self.trace(Ray { x, y, dx: sx, dy: sy, v: color, s: 0, steps: i32::MAX, n: 1.0, chan: None, bounces: 0, edge: 1.0 }, Lit::Sun, &lut);
+            self.trace(Ray { x, y, dx: sx, dy: sy, v: color, s: 0, steps: i32::MAX, n: 1.0, chan: None, bounces: 0, edge: 1.0, bent: false }, Lit::Sun, &lut);
         }
     }
 
@@ -337,7 +343,7 @@ impl LightGrid {
             };
             // (In whatever the lamp is in: a lamp under water starts in it.)
             let n = self.index_of(CellPos::from_world(from[0], from[1])).map_or(1.0, |i| self.ior[i]);
-            self.trace(Ray { x: fx + dx, y: fy + dy, dx, dy, v: color, s: 1, steps, n, chan: None, bounces: 0, edge }, Lit::Beam, &lut);
+            self.trace(Ray { x: fx + dx, y: fy + dy, dx, dy, v: color, s: 1, steps, n, chan: None, bounces: 0, edge, bent: false }, Lit::Beam, &lut);
         }
     }
 
@@ -410,7 +416,7 @@ impl LightGrid {
                                 if r.v[c] > 0.0 {
                                     let mut v = [0.0; 3];
                                     v[c] = r.v[c];
-                                    stack.push(Ray { v, chan: Some(c), ..r });
+                                    stack.push(Ray { v, chan: Some(c), bent: true, ..r });
                                 }
                             }
                             break;
@@ -437,7 +443,7 @@ impl LightGrid {
                             continue;
                         }
                         if r.bounces < BOUNCES_MOST && mirrored * r.v.iter().copied().fold(0.0, f32::max) > 0.01 {
-                            stack.push(Ray { x: back.0 + m.0 * step, y: back.1 + m.1 * step, dx: m.0 * step, dy: m.1 * step, v: r.v.map(|c| c * mirrored), bounces: r.bounces + 1, ..r });
+                            stack.push(Ray { x: back.0 + m.0 * step, y: back.1 + m.1 * step, dx: m.0 * step, dy: m.1 * step, v: r.v.map(|c| c * mirrored), bounces: r.bounces + 1, bent: true, ..r });
                         }
                         r.v = r.v.map(|c| c * (1.0 - mirrored));
                         let s = eta * cosi - k.sqrt();
@@ -445,6 +451,7 @@ impl LightGrid {
                         let bl = (bx * bx + by * by).sqrt().max(1e-6);
                         (r.dx, r.dy) = (bx / bl * step, by / bl * step);
                         r.n = n2;
+                        r.bent = true;
                     }
                 }
                 match lit {
@@ -461,6 +468,11 @@ impl LightGrid {
                     }
                 }
                 let op = if lit == Lit::Sun { self.sky_opacity[i] } else { self.opacity[i] };
+                // (Bent light landing on a face (not clear itself): a caustic.)
+                if r.bent && op > CAUSTIC_ON && self.ior[i] <= 1.0 {
+                    let k = if lit == Lit::Sun { CAUSTIC_SUN } else { CAUSTIC_BEAM * r.edge };
+                    max_into(&mut self.caustic[i], r.v.map(|c| c * k));
+                }
                 let keep = pass[(op.clamp(0.0, 1.0) * 255.0) as usize];
                 r.v = r.v.map(|c| c * keep);
                 if self.optical && self.ior[i] > 1.0 {
@@ -578,12 +590,14 @@ impl LightGrid {
     /// beam is sharp: eased, a moving one left a fading trail behind it, a
     /// falling player's flashlight smeared up the screen). Kept: the light
     /// before it, for the next frame to ease from.
-    pub fn add_direct(&mut self) -> Vec<Rgb> {
+    pub fn add_direct(&mut self) -> (Vec<Rgb>, Vec<Rgb>) {
         let spread = self.light.clone();
         for (l, d) in self.light.iter_mut().zip(&self.direct) {
             max_into(l, *d);
         }
-        spread
+        // (Caustics go over the glow as it's drawn, at full strength, not
+        // the haze's share: `compute_light`.)
+        (spread, self.glow.clone())
     }
 }
 
@@ -631,9 +645,10 @@ impl LightGrid {
         }
     }
 
-    /// What to ease from next frame: `light` the spread light (`add_direct`'s).
-    pub fn into_previous(self, light: Vec<Rgb>) -> Previous {
-        Previous { origin: self.origin, texel: self.texel, w: self.w, h: self.h, light, glow: self.glow }
+    /// What to ease from next frame: `light` the spread light and `glow`
+    /// the glow before caustics (`add_direct`'s).
+    pub fn into_previous(self, (light, glow): (Vec<Rgb>, Vec<Rgb>)) -> Previous {
+        Previous { origin: self.origin, texel: self.texel, w: self.w, h: self.h, light, glow }
     }
 }
 
@@ -645,6 +660,12 @@ const LATTICE: i32 = 64;
 /// A beam's rim, fading out: this share of its half width.
 const BEAM_RIM: f32 = 0.4;
 const BEAM_SCATTER: f32 = 0.35;
+
+/// Caustics: on a face at least this opaque, and this share of the sun's
+/// bent light (it adds over daylight) or a beam's.
+const CAUSTIC_ON: f32 = 0.2;
+const CAUSTIC_SUN: f32 = 1.0;
+const CAUSTIC_BEAM: f32 = 1.0;
 
 /// Light (on a glinting cell) from which it glints, and how often then
 /// (per second, per unit of light over that).
@@ -675,6 +696,9 @@ struct Ray {
     bounces: u8,
     /// A beam's fade at its rim (1 in its middle).
     edge: f32,
+    /// Bent, mirrored or split by something clear on its way (its light
+    /// where it lands is a caustic).
+    bent: bool,
 }
 
 /// Whose ray: the sky's (seeds the spread light) or a beam's (lights

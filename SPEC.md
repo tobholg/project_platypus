@@ -1319,6 +1319,19 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   per unit of light over that, at most half the frames), a point of its
   colour as bright as the light, 0.12–0.3 s, over the dark (`glimmer`,
   at most 220). In the dark, or behind rock, nothing glints.
+  Caustics: light bent, mirrored or split by something clear, where it
+  lands on a face (at least 0.2 opaque, not clear itself), is drawn over
+  the scene with the glow layer, whole (the glow's haze is a share of
+  it): the lighting only darkens, so a spire's colours on lit ground never
+  showed. Fresh each frame (not eased), as beams.
+  Crystal spires (`WorldPlan::spires`, `plan_spires`, their own random
+  stream): clusters of 1–4 every 700–1 500 cells across the mountains,
+  deserts and tundra (55 % of places; level enough, dry, not within 1 500
+  of the start), each a thin leaning triangle of crystal 45–120 high, 10–24
+  wide, sunk 6 into the ground. Seed 1's large world has 53; the nearest,
+  three of them, at x 104 350 in the desert east of the start. A low sun
+  through one throws a faint patch of colours on the ground by it
+  (`PLATYPUS_OPTICS=spire`, `PLATYPUS_SPIRE_X`, `PLATYPUS_OPTICS_HOUR`).
 - The grid is drawn smoothly: a cubic B-spline over the texels (four
   bilinear taps), not bilinear, which left a texel's steps along a beam's
   edge. (At zoom 2 a texel stays 4 cells: 2 doubled the frame, and a texel

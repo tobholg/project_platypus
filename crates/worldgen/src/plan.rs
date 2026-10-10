@@ -206,6 +206,8 @@ pub struct WorldPlan {
     /// 0 … 1: how mountainous a column is (overhangs, bare rock).
     rugged: Vec<f32>,
     pub islands: Vec<Island>,
+    /// Crystal spires standing on the land (by x).
+    pub spires: Vec<Spire>,
     /// Vertical shafts from the surface down into the deep.
     pub chasms: Vec<Chasm>,
     /// The water table in the caverns, per `WATER_TABLE_SPAN` columns:
@@ -517,6 +519,7 @@ impl WorldPlan {
         let plain = start_plain(&mut surface, mid, sw);
 
         let water = water_levels(&surface, &biomes, &rugged, &bowls, sea_level, ocean_w, sh, sw, seed);
+        let spires = plan_spires(seed, &surface, &biomes, &water, mid, ocean_w, sw, sh);
         for (r, &w) in rugged.iter_mut().zip(&water) {
             if w > 0 {
                 *r = 0.0; // no overhangs over a lake
@@ -637,7 +640,7 @@ impl WorldPlan {
             )
         };
 
-        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, water, rugged, islands, chasms, water_tables, climate, forest, island_forest, structures, caves }
+        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, water, rugged, islands, chasms, water_tables, climate, forest, island_forest, structures, caves, spires }
     }
 
     /// First air cell above the ground at a world column.
@@ -658,6 +661,13 @@ impl WorldPlan {
     /// 0 … 1: how mountainous a column is.
     pub fn rugged_at(&self, x: i32) -> f32 {
         self.rugged[x.clamp(0, self.width - 1) as usize]
+    }
+
+    /// Is a cell in a crystal spire?
+    pub fn spire_at(&self, x: i32, y: i32) -> bool {
+        let xf = x as f32 + 0.5;
+        let from = self.spires.partition_point(|s| s.x < xf - SPIRE_REACH);
+        self.spires[from..].iter().take_while(|s| s.x <= xf + SPIRE_REACH).any(|s| s.holds(xf, y as f32 + 0.5))
     }
 
     /// The sky island over a column, if any.
@@ -1033,6 +1043,67 @@ fn talus(h: &mut [f64], k: f64) {
     for i in (0..h.len().saturating_sub(1)).rev() {
         h[i] = h[i].min(h[i + 1] + k);
     }
+}
+
+/// A crystal spire (the optics arc): a tall thin triangle of crystal from
+/// its base, sunk a little into the ground, up to its tip, leaning. In the
+/// sun it bends light and splits it into its colours across the land.
+#[derive(Clone, Debug)]
+pub struct Spire {
+    pub x: f32,
+    pub base: f32,
+    pub height: f32,
+    pub half: f32,
+    /// Cells across per cell up.
+    pub lean: f32,
+}
+
+impl Spire {
+    fn holds(&self, x: f32, y: f32) -> bool {
+        let t = (y - self.base) / self.height;
+        (0.0..=1.0).contains(&t) && (x - (self.x + self.lean * self.height * t)).abs() <= self.half * (1.0 - t)
+    }
+}
+
+/// How far from its base's middle a spire reaches across, at most (cells).
+const SPIRE_REACH: f32 = 60.0;
+/// A spire cluster every so often across the mountains, deserts and tundra
+/// (cells, large world), this likely at each place, of 1–4 spires.
+const SPIRE_STEP: (f64, f64) = (700.0, 1_500.0);
+const SPIRE_CHANCE: f64 = 0.55;
+const SPIRE_HEIGHT: (f64, f64) = (45.0, 120.0);
+const SPIRE_HALF: (f64, f64) = (5.0, 12.0);
+
+/// Crystal spires on the mountains, deserts and tundra: in clusters on
+/// fairly level ground (not over water, not near the start), each sunk a
+/// little into the ground. Their own random stream, so the rest of the
+/// world is as it was.
+#[allow(clippy::too_many_arguments)]
+fn plan_spires(seed: u64, surface: &[i32], biomes: &[Biome], water: &[i32], mid: i32, ocean_w: i32, sw: f64, sh: f64) -> Vec<Spire> {
+    let mut rng = Rng::seeded(&[seed, 0x5917E]);
+    let width = surface.len() as i32;
+    let mut out = Vec::new();
+    let mut x = ocean_w + (range(&mut rng, SPIRE_STEP) * sw) as i32;
+    while x < width - ocean_w {
+        let at = |x: i32| x.clamp(0, width - 1) as usize;
+        let fits = matches!(biomes[at(x)], Biome::Mountains | Biome::Desert | Biome::Tundra)
+            && water[at(x)] <= 0
+            && (x - mid).abs() > (1_500.0 * sw) as i32
+            && (surface[at(x + 20)] - surface[at(x - 20)]).abs() < 45;
+        if fits && unit(&mut rng) < SPIRE_CHANCE {
+            for _ in 0..1 + rng.next_u32() % 4 {
+                let sx = x + (range(&mut rng, (-30.0, 30.0)) * sw) as i32;
+                let half = range(&mut rng, SPIRE_HALF) as f32;
+                let height = (range(&mut rng, SPIRE_HEIGHT) * sh) as f32;
+                let lean = range(&mut rng, (-0.3, 0.3)) as f32;
+                let lo = (sx - half as i32..=sx + half as i32).map(|c| surface[at(c)]).min().unwrap_or(surface[at(sx)]);
+                out.push(Spire { x: sx as f32 + 0.5, base: lo as f32 - 6.0, height, half, lean });
+            }
+        }
+        x += (range(&mut rng, SPIRE_STEP) * sw) as i32;
+    }
+    out.sort_by(|a, b| a.x.total_cmp(&b.x));
+    out
 }
 
 /// One massif into `mountains`: lopsided, a broad shoulder under a concave

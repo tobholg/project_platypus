@@ -827,6 +827,10 @@ impl TerrainGen {
         // The ground's own temperature: snow and ice where it's freezing.
         let cold = plan.climate.ambient(x, surface) <= 0;
         if depth <= 0 {
+            // A crystal spire standing on the land (the optics arc).
+            if plan.spire_at(x, y) {
+                return i.crystal;
+            }
             if let Some(w) = plan.water_at(x)
                 && y < w
                 && y >= surface

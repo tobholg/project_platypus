@@ -96,6 +96,8 @@ fn main() {
     }
     let regions: Vec<String> = plan.regions().iter().map(|(a, b, bi)| format!("{} {a}–{b}", bi.name())).collect();
     println!("biomes: {}", regions.join(", "));
+    let spires: Vec<String> = plan.spires.iter().filter(|s| std::env::var("SPIRES_NEAR").ok().and_then(|v| v.parse::<f32>().ok()).is_none_or(|n| (s.x - n).abs() < 12_000.0)).take(12).map(|s| format!("{:.0},{:.0} ({:.0} tall)", s.x, s.base, s.height)).collect();
+    println!("{} crystal spires: {}{}", plan.spires.len(), spires.join("; "), if plan.spires.len() > 12 { "; …" } else { "" });
     println!("{} sky islands, {} trees (+{} on islands)", plan.islands.len(), plan.forest.len(), plan.island_forest.len());
     // Lakes: runs of water over land (not the oceans at the ends).
     let mut lakes = Vec::new();
