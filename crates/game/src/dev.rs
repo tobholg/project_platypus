@@ -51,6 +51,9 @@ pub enum DevAction {
     /// The show's next act (`show.rs`), and show mode on or off.
     ShowNext,
     ShowMode,
+    /// Alert marks and damage numbers on or off (`display.rs`).
+    AlertMarks,
+    DamageNumbers,
 }
 
 /// A screen has the keyboard (the art editor): the player and the keys
@@ -145,9 +148,11 @@ fn buttons(clicks: Query<(&Interaction, &PanelButton), Changed<Interaction>>, mu
 }
 
 fn spawn_panel(mut commands: Commands) {
-    let entries: [(&str, DevAction); 21] = [
+    let entries: [(&str, DevAction); 23] = [
         ("Show the next creature   P", DevAction::ShowNext),
         ("Show mode: a lively world", DevAction::ShowMode),
+        ("Alert marks (? !) on/off", DevAction::AlertMarks),
+        ("Damage numbers on/off", DevAction::DamageNumbers),
         ("To the start   F2 / U", DevAction::Surface),
         ("Storm here   V", DevAction::Storm),
         ("Clear sky   B", DevAction::ClearSky),

@@ -577,17 +577,20 @@ impl Caves {
                             }
                         }
                     }
-                    // Bracket shelves up the walls, left and right in turn,
-                    // a jump apart: a way up.
+                    // Bracket shelves on the walls now and then (three
+                    // places in ten up the wall, either side: one every
+                    // jump, left and right in turn, was a staircase in every
+                    // fungal cavern).
                     let mut y = c.y - c.ry * 0.75;
-                    let mut side = if unit(&mut rng) < 0.5 { 1.0 } else { -1.0 };
                     while y < c.y + c.ry * 0.7 {
+                        let side = if unit(&mut rng) < 0.5 { 1.0 } else { -1.0 };
                         let h = (1.0 - ((y - c.y) / c.ry).powi(2)).max(0.0).sqrt();
                         let wall = c.x - side * c.rx * h;
                         let len = range(&mut rng, (15.0, 33.0)).min(c.rx * h);
-                        c.shelves.push(Shelf { x: wall, y, dir: side, len });
+                        if unit(&mut rng) < SHELF_CHANCE {
+                            c.shelves.push(Shelf { x: wall, y, dir: side, len });
+                        }
                         y += range(&mut rng, (30.0, 45.0));
-                        side = -side;
                     }
                 }
                 _ => {}
@@ -855,6 +858,8 @@ fn in_triangle(p: (f32, f32), a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> bo
 const LEDGE_EVERY: i32 = 45;
 const LEDGE: i32 = 6;
 const LEDGE_CHANCE: u64 = 30;
+/// A fungal cavern's bracket shelves: this share of the places up its walls.
+const SHELF_CHANCE: f32 = 0.3;
 
 /// If p is on a ledge, the cell in the wall it grows from.
 fn ledge(p: (f32, f32), a: (f32, f32), b: (f32, f32), half: f32) -> Option<(i32, i32)> {

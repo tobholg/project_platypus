@@ -207,6 +207,7 @@ pub fn perceive(
     mut felt: MessageReader<crate::combat::Felt>,
     mut blasts: MessageReader<crate::fx::Explosion>,
     mut landed: MessageReader<crate::creatures::Landed>,
+    display: Res<crate::display::Display>,
 ) {
     let dt = (1.0 / crate::world::TICK_HZ) as f32;
     let lights: Vec<(Vec2, f32)> = lights.iter().map(|(t, l)| (t.translation().truncate(), l.color.iter().copied().fold(0.0f32, f32::max))).filter(|(_, b)| *b > 0.05).collect();
@@ -365,7 +366,9 @@ pub fn perceive(
             info!("alert: {e:?} {was:?} → {:?} at {:?}", a.wary, a.last.round());
         }
         // Its mark: "?" suspicious or searching, "!" just begun hunting.
+        // (Only with the option on: `display.rs`.)
         let text = match a.wary {
+            _ if !display.alert_marks => None,
             Wary::Suspicious | Wary::Searching => Some("?"),
             Wary::Hunting if a.shout > 0.0 => Some("!"),
             _ => None,

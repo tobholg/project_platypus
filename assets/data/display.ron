@@ -1,0 +1,10 @@
+// What's drawn over the world besides the world (display.rs): read at the
+// start; the dev panel switches each on and off while playing (not saved
+// here: set it here to keep it).
+(
+    // A "?" over a creature that's suspicious or searching, a "!" as it
+    // starts hunting. Off: they gave away where things were in the dark.
+    alert_marks: false,
+    // The damage a hit does, floating up from what it hit.
+    damage_numbers: false,
+)

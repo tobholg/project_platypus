@@ -265,8 +265,9 @@ checksums.
     front): parasols (a wide flat spotted cap, glowing violet gills under
     it, strands hanging from its rim, a leaning stem with a ring) and
     clusters of lantern stalks (a glowing bulb on a thin stalk); bracket
-    fungi up the walls, left and right in turn a jump apart, are one-way
-    platforms: a way up. Mushrooms stand on the floor they grow from (their
+    fungi on the walls now and then (three places in ten up the wall,
+    either side; one every jump, left and right in turn, was a staircase
+    in every fungal cavern) are one-way platforms. Mushrooms stand on the floor they grow from (their
     feet found against the real, ragged floor; a lean that would take one
     into the wall stands it straight; parasols keep their caps apart), come
     down like trees when their stems are cut, take more heat than wood to
@@ -1905,6 +1906,11 @@ DESIGN §13 item 6.
   They fire only on jump pressed again in the air and held: the jump's own
   press, held, never fires them (they never fire off the ground); any air
   jumps go first. Under water a held jump fires them as before.
+- **What's drawn over the world** (`display.rs`, `assets/data/display.ron`,
+  both off by default; the dev panel switches each while playing): alert
+  marks ("?" suspicious or searching, "!" starting to hunt: they gave away
+  where things were in the dark) and damage numbers. A hit still flashes
+  and bleeds without its number.
 - **Eyes in the dark** (`creatures::body::sight`): glowing eyes are drawn
   over the darkness, so they showed through rock (every spider in a cave
   seen through the hill). Each creature keeps how much the player sees it

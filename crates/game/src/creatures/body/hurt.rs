@@ -134,6 +134,7 @@ pub fn notice(
     mut hurt: Query<Wounded>,
     mut numbers: Query<(&mut DamageNumber, &mut Text2d)>,
     mut shown: Local<u32>,
+    display: Res<crate::display::Display>,
 ) {
     for (health, k, mut h, player, bleeds) in &mut hurt {
         let lost = h.last - health.hp;
@@ -151,6 +152,10 @@ pub fn notice(
             if let Some(&Bleeds(blood)) = bleeds {
                 bleed(&mut sim, k, blood, share);
             }
+        }
+        // (Numbers only with the option on: `display.rs`.)
+        if !display.damage_numbers {
+            continue;
         }
         if let Some(e) = h.number
             && let Ok((mut n, mut text)) = numbers.get_mut(e)
