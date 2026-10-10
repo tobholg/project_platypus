@@ -85,6 +85,8 @@ const ROCKET_WATER: (f32, f32) = (0.5, 0.45);
 
 /// Seconds after rocket boots stop firing before they start to refill.
 const ROCKET_RECHARGE_DELAY: f32 = 0.25;
+/// On the ground they refill this many times as fast as in the air.
+const ROCKET_GROUND_REFILL: f32 = 2.0;
 
 /// Below this share of its body under water (its head out), a jump leaves
 /// the water as a jump does, at this share of a jump's speed.
@@ -686,13 +688,14 @@ impl Locomotion {
             ev.rocketed = true;
         } else if s.rocket_time > 0.0 {
             // Not firing (anywhere: the ground, the air, water) they fill
-            // back up over as long as they fire, a second's charge a second,
-            // a moment after they stop; not while jump is held on empty in
-            // the air (it'd sputter on for ever).
+            // back up, a second's charge a second (two on the ground), a
+            // moment after they stop; not while jump is held on empty in the
+            // air (it'd sputter on for ever).
             let holding_empty = intent.jump && !grounded && self.rocket_left <= 0.0;
             self.rocket_rest = if holding_empty { 0.0 } else { self.rocket_rest + dt };
             if self.rocket_rest > ROCKET_RECHARGE_DELAY {
-                self.rocket_left = (self.rocket_left + dt).min(s.rocket_time);
+                let rate = if grounded { ROCKET_GROUND_REFILL } else { 1.0 };
+                self.rocket_left = (self.rocket_left + dt * rate).min(s.rocket_time);
             }
         }
 

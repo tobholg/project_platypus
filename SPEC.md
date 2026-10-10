@@ -1887,6 +1887,8 @@ DESIGN §13 item 6.
   goes. On a played world (500 creatures, show mode) frames went from
   10.7–14 ms to 6.3–8.7 ms. U (dev mode) or F2: to the start, on the
   ground by the village.
+  Rocket boots refill a moment after they stop firing, a second of thrust
+  a second in the air and two on the ground (`ROCKET_GROUND_REFILL`).
 - **The show** (`show.rs`, to show someone the bestiary in the world as
   it is): P (not with the arena panel up) or the dev panel's "Show the
   next creature" brings on the next act of `show.ron` on the side of you
