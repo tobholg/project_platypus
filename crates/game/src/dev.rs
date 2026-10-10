@@ -8,7 +8,8 @@
 //! what you carry for light (nothing, a small beam, a big one, a torch in
 //! the off hand) · G plant a torch · O spawn a warband (a troll, orcs, archers:
 //! `packs.ron`; or what
-//! the arena panel picked) at the cursor.
+//! the arena panel picked) at the cursor · P the show's next act
+//! (`show.rs`; not with the arena panel up, where it pauses).
 
 use bevy::prelude::*;
 
@@ -47,6 +48,9 @@ pub enum DevAction {
     /// in it, or everything (you too).
     ResetWorld,
     ResetAll,
+    /// The show's next act (`show.rs`), and show mode on or off.
+    ShowNext,
+    ShowMode,
 }
 
 /// A screen has the keyboard (the art editor): the player and the keys
@@ -81,7 +85,7 @@ fn pointer_over_ui(ui: Query<&Interaction>, scripted: Res<crate::camera::CursorO
     over.0 = scripted.0.is_none() && ui.iter().any(|i| *i != Interaction::None);
 }
 
-fn keys(keys: Res<ButtonInput<KeyCode>>, dev: Res<DevTools>, cursor: Res<CursorWorld>, mut out: MessageWriter<DevAction>) {
+fn keys(keys: Res<ButtonInput<KeyCode>>, dev: Res<DevTools>, cursor: Res<CursorWorld>, arena: Res<crate::arena::ArenaView>, taken: Res<KeyboardTaken>, mut out: MessageWriter<DevAction>) {
     let at = cursor.0;
     let pressed = |k: KeyCode| keys.just_pressed(k);
     // F-keys always; the same things on letters in dev mode.
@@ -108,6 +112,9 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, dev: Res<DevTools>, cursor: Res<CursorW
         if pressed(k) {
             out.write(action);
         }
+    }
+    if pressed(KeyCode::KeyP) && !arena.open && !taken.0 {
+        out.write(DevAction::ShowNext);
     }
 }
 
@@ -145,7 +152,9 @@ fn buttons(clicks: Query<(&Interaction, &PanelButton), Changed<Interaction>>, mu
 }
 
 fn spawn_panel(mut commands: Commands) {
-    let entries: [(&str, DevAction); 19] = [
+    let entries: [(&str, DevAction); 21] = [
+        ("Show the next creature   P", DevAction::ShowNext),
+        ("Show mode: a lively world", DevAction::ShowMode),
         ("To the surface   F2", DevAction::Surface),
         ("Storm here   V", DevAction::Storm),
         ("Clear sky   B", DevAction::ClearSky),

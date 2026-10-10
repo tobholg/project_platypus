@@ -366,8 +366,12 @@ fn ambient(
     critters: Query<(Entity, &Creature, &Kinematics), Passing>,
     mut clock: Local<f32>,
     mut seed: Local<u64>,
+    show: Res<crate::show::ShowMode>,
 ) {
     let Ok(pk) = player.single() else { return };
+    // (Show mode, `show.rs`: life often, the big ones anywhere, what lives
+    // deep a quarter as deep.)
+    let show = show.0;
     if !sim.generator.wild() {
         return;
     }
@@ -398,11 +402,11 @@ fn ambient(
             continue;
         }
         let near = critters.iter().filter(|(_, c, k)| c.kind == h.kind && k.body.pos.distance(p) < NEAR).count();
-        if near >= h.most || unit(&mut rng) > h.rate * 0.5 * rate_scale() {
+        if near >= h.most || unit(&mut rng) > h.rate * 0.5 * rate_scale() * if show { crate::show::SHOW_RATE } else { 1.0 } {
             continue;
         }
         // (Not near the start, for the big ones.)
-        if h.away > 0.0 && (p.x - start.x as f32).abs() < h.away {
+        if h.away > 0.0 && !show && (p.x - start.x as f32).abs() < h.away {
             continue;
         }
         let spot = match h.place {
@@ -449,7 +453,7 @@ fn ambient(
         let Some(mut at) = spot else { continue };
         // Deep enough, in its biome, and out of sight (not popping in).
         let depth = sim.generator.surface_hint(at.x as i32).map_or(0.0, |s| s as f32 - at.y);
-        if h.depth.is_some_and(|(lo, hi)| !(lo..hi).contains(&depth)) {
+        if h.depth.is_some_and(|(lo, hi)| !((if show { lo / 4.0 } else { lo })..hi).contains(&depth)) {
             continue;
         }
         if let Some(z) = &h.zone
@@ -460,7 +464,7 @@ fn ambient(
         if h.place == Place::Cave && at.distance(p) < OUT_OF_SIGHT * 0.7 {
             continue;
         }
-        if !h.biomes.is_empty() && !sim.generator.biome_hint(at.x as i32).is_some_and(|b| h.biomes.iter().any(|w| w == b)) {
+        if !show && !h.biomes.is_empty() && !sim.generator.biome_hint(at.x as i32).is_some_and(|b| h.biomes.iter().any(|w| w == b)) {
             continue;
         }
         if let Some((lo, hi)) = h.above {

@@ -1859,6 +1859,22 @@ DESIGN §13 item 6.
   player still can. The cave spider: claws (25, 240: about 10 cells of
   headway a second in dirt, still well under the player's 113), acid (90,
   160, every 1.6).
+- **The show** (`show.rs`, to show someone the bestiary in the world as
+  it is): P (not with the arena panel up) or the dev panel's "Show the
+  next creature" brings on the next act of `show.ron` on the side of you
+  the mouse is on, facing you (behind it, it barely sees you: put down
+  facing away it wandered off), on ground near your height in plain sight
+  of you if any is within 120 of its place (on a hilltop it couldn't see
+  past the crest), with a toast of what to watch: the iron strider, the
+  ridge tyrant, a raptor pack, a cave spider, a centipede, the desert
+  walkers, orcs against skeletons, a tyrant against raptors. Show mode
+  (the dev panel, or `PLATYPUS_SHOW=1`): life ten times as often, the big
+  ones anywhere (not kept from the start, not only in their biomes), cave
+  life a quarter as deep; a minute by the start meets spiders, a
+  centipede, skeletons, scorpions, stalkers, raptors and a tyrant. The
+  `show` scenario plays every act out of the village (the player can't
+  die; what it took each act is logged), or with `PLATYPUS_SHOW=1` logs
+  what's near every 5 s.
 - **Burrowing** (`hunter.rs`): a digger hunting (seeing what it hunts, or
   having lost it a moment ago; not fleeing, not kept off by the light)
   that's come no nearer by 6 cells in 1.5 s, and is further than 40, goes

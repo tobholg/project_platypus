@@ -302,6 +302,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, tactics_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, factions_script)
             .add_systems(Update, burrow_script)
+            .add_systems(Update, show_script)
             .add_systems(Update, sounds_script)
             .add_systems(Update, backdrop_script)
             .add_systems(Update, (underlook_script, voidlook_script))
@@ -8600,5 +8601,73 @@ fn craft_script(
         mouse.press(MouseButton::Left);
     } else if !click && mouse.pressed(MouseButton::Left) {
         mouse.release(MouseButton::Left);
+    }
+}
+
+/// `show` (the real world): the show (`show.rs`) as it's shown. Every 6 s
+/// from 3 s "Show the next", and a second after, what's near: each
+/// creature's kind, how far off and which side, standing or not, its
+/// health. The player can't die (it watches). With `PLATYPUS_SHOW=1` no
+/// acts: show mode, and every 5 s what life has come near (within 700).
+#[allow(clippy::too_many_arguments)]
+fn show_script(
+    s: Res<Scenario>,
+    mode: Res<crate::show::ShowMode>,
+    mut dev: MessageWriter<crate::dev::DevAction>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    near: Query<(&crate::creatures::Creature, &Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
+    mut next: Local<f32>,
+    mut look: Local<f32>,
+    mut hurt: Local<f32>,
+    mut out: Local<bool>,
+    sim: Res<SimWorld>,
+) {
+    if s.name != "show" {
+        return;
+    }
+    let Ok((mut pk, mut ph)) = player.single_mut() else { return };
+    // (Out of the village first, west: open ground, nothing in the way.)
+    if !*out && s.elapsed > 1.0 {
+        *out = true;
+        let x = pk.body.pos.x - 600.0;
+        if let Some(y) = sim.generator.surface_hint(x as i32).and_then(|s| crate::creatures::spawn::find_ground(&sim.world, x as i32, s + 80, 300)) {
+            pk.body.pos = Vec2::new(x, y as f32 + pk.body.half.y);
+            pk.prev_pos = pk.body.pos;
+        }
+    }
+    *hurt += ph.max - ph.hp;
+    ph.hp = ph.max;
+    let p = pk.body.pos;
+    if mode.0 {
+        if s.elapsed >= *look + 5.0 {
+            *look = s.elapsed;
+            let mut kinds: std::collections::BTreeMap<&str, usize> = Default::default();
+            for (c, k, _) in &near {
+                if k.body.pos.distance(p) < 700.0 {
+                    *kinds.entry(c.kind.as_str()).or_default() += 1;
+                }
+            }
+            info!("show: t {:.0} near: {kinds:?}", s.elapsed);
+        }
+        return;
+    }
+    if s.elapsed >= 3.0 && s.elapsed >= *next {
+        if s.elapsed > 4.0 {
+            info!("show: t {:.0} the player took {:.0} since the last act", s.elapsed, *hurt);
+        }
+        *hurt = 0.0;
+        *next = s.elapsed + 6.0;
+        *look = s.elapsed + 1.0;
+        dev.write(crate::dev::DevAction::ShowNext);
+    }
+    if *look > 0.0 && s.elapsed >= *look {
+        *look = 0.0;
+        let mut seen: Vec<String> = near
+            .iter()
+            .filter(|(_, k, _)| k.body.pos.distance(p) < 500.0)
+            .map(|(c, k, h)| format!("{} {:+.0},{:+.0}{} {:.0}/{:.0}", c.kind, k.body.pos.x - p.x, k.body.pos.y - p.y, if k.loco.grounded() { "" } else { " (up)" }, h.hp, h.max))
+            .collect();
+        seen.sort();
+        info!("show: t {:.0} near: {}", s.elapsed, seen.join(", "));
     }
 }
