@@ -1197,7 +1197,7 @@ fn grow_legs(
 fn walk(
     time: Res<Time>,
     sim: Res<SimWorld>,
-    mut q: Query<(&mut Legs, &Kinematics, &GlobalTransform, &Children, Option<&Rear>, (Option<&mut crate::creatures::brain::way::DigFace>, Option<&crate::creatures::brain::senses::Alert>))>,
+    mut q: Query<(&mut Legs, &Kinematics, &GlobalTransform, &Children, Option<&Rear>, (Option<&mut crate::creatures::brain::way::DigFace>, Option<&crate::creatures::brain::senses::Alert>)), Without<crate::creatures::Dormant>>,
     mut sprites: Query<(&mut Sprite, &mut Visibility), (With<CreatureSprite>, Without<LegBody>, Without<LegStinger>)>,
     mut bodies: Query<(&mut Sprite, &mut Transform), (Or<(With<LegBody>, With<LegEyes>)>, Without<CreatureSprite>, Without<LegStinger>, Without<LegClaw>)>,
     mut stingers: Query<(&mut Sprite, &mut Transform, &mut Visibility), (With<LegStinger>, Without<CreatureSprite>, Without<LegBody>, Without<LegEyes>, Without<LegClaw>)>,
@@ -2585,7 +2585,7 @@ fn draw(
     mut commands: Commands,
     sim: Res<SimWorld>,
     mut images: ResMut<Assets<Image>>,
-    mut q: Query<(Entity, &Legs, &GlobalTransform, Option<&mut LimbImages>)>,
+    mut q: Query<(Entity, &Legs, &GlobalTransform, Option<&mut LimbImages>), Without<crate::creatures::Dormant>>,
     mut layers: LayerSprites,
 ) {
     // (Behind, in front.)

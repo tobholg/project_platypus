@@ -846,13 +846,15 @@ fn in_triangle(p: (f32, f32), a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> bo
     !(neg && pos)
 }
 
-/// Steep tunnels get ledges to climb back up: every `LEDGE_EVERY` cells a
-/// shelf of rock `LEDGE` thick out from one wall and then the other, out to
-/// halfway across or to `ROOM_PAST` from the far wall, whichever's shorter
-/// (the player jumps 60 cells and is 9 wide: room to fall past, a ledge to
-/// jump to; a cave spider climbs past).
+/// Steep tunnels get a ledge now and then: in each `LEDGE_EVERY` cells up
+/// one, a `LEDGE_CHANCE` in a hundred, somewhere in it, out from either
+/// wall, a shelf of rock `LEDGE` thick out to halfway across or to
+/// `ROOM_PAST` from the far wall, whichever's shorter (a cave spider climbs
+/// past). Not a ladder: a shelf every 45 cells, one wall then the other,
+/// made every shaft an easy climb.
 const LEDGE_EVERY: i32 = 45;
 const LEDGE: i32 = 6;
+const LEDGE_CHANCE: u64 = 30;
 
 /// If p is on a ledge, the cell in the wall it grows from.
 fn ledge(p: (f32, f32), a: (f32, f32), b: (f32, f32), half: f32) -> Option<(i32, i32)> {
@@ -862,12 +864,18 @@ fn ledge(p: (f32, f32), a: (f32, f32), b: (f32, f32), half: f32) -> Option<(i32,
         return None;
     }
     let y = p.1 as i32;
-    if y.rem_euclid(LEDGE_EVERY) >= LEDGE {
+    // This stretch of the shaft: a ledge or not, how far up it, which wall.
+    let slot = y.div_euclid(LEDGE_EVERY);
+    let h = platypus_sim::rng::hash(&[a.0 as i64 as u64, a.1 as i64 as u64, b.0 as i64 as u64, b.1 as i64 as u64, slot as i64 as u64, 0x1ED6E]);
+    if h % 100 >= LEDGE_CHANCE {
         return None;
     }
-    // Which wall this row's ledge grows from, and is p on that side of the
-    // tunnel's middle?
-    let side = if y.div_euclid(LEDGE_EVERY) % 2 == 0 { 1.0 } else { -1.0 };
+    let up = ((h >> 8) % (LEDGE_EVERY - LEDGE) as u64) as i32;
+    if !(up..up + LEDGE).contains(&y.rem_euclid(LEDGE_EVERY)) {
+        return None;
+    }
+    // Which wall it grows from, and is p on that side of the tunnel's middle?
+    let side = if (h >> 24) & 1 == 0 { 1.0 } else { -1.0 };
     let cross = (dx * (p.1 - a.1) - dy * (p.0 - a.0)) / len * dy.signum();
     if cross * side <= (ROOM_PAST - half).max(0.0) {
         return None;
@@ -953,15 +961,23 @@ mod tests {
     fn ledges_leave_room_for_a_cave_spider_to_climb_past() {
         // A straight shaft up, of each width a tunnel comes in: at a ledge's
         // rows, the open span across is at least `ROOM_PAST`, and the ledge
-        // is something to stand on (at least 6 across).
+        // is something to stand on (at least 6 across). And they're now and
+        // then, not a ladder: some stretches have one, most don't.
         for width in [MIN_TUNNEL, 45.0, STEEP_WIDTH.0, STEEP_WIDTH.1] {
             let half = width / 2.0;
-            let (a, b) = ((0.0, 0.0), (0.0, 400.0));
-            for row in (0..400).filter(|y| y % LEDGE_EVERY < LEDGE) {
+            let (a, b) = ((0.0, 0.0), (0.0, 4_500.0));
+            let mut stretches = std::collections::BTreeSet::new();
+            for row in 0..4_500 {
                 let shelf = (-(half as i32)..=half as i32).filter(|&x| ledge((x as f32, row as f32 + 0.5), a, b, half).is_some()).count() as f32;
+                if shelf == 0.0 {
+                    continue;
+                }
+                stretches.insert(row / LEDGE_EVERY);
                 assert!(width - shelf >= ROOM_PAST - 1.0, "{width} wide: {shelf} of it shelf at row {row}");
                 assert!(shelf >= 6.0, "{width} wide: a {shelf} shelf to stand on");
             }
+            let share = stretches.len() as f32 / (4_500 / LEDGE_EVERY) as f32;
+            assert!((0.15..0.45).contains(&share), "{width} wide: a ledge in {share:.2} of the stretches");
         }
     }
 }

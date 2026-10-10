@@ -8621,6 +8621,7 @@ fn show_script(
     mut hurt: Local<f32>,
     mut out: Local<bool>,
     sim: Res<SimWorld>,
+    (time, mut frames): (Res<Time>, Local<(u32, f32, f32)>),
 ) {
     if s.name != "show" {
         return;
@@ -8639,6 +8640,9 @@ fn show_script(
     ph.hp = ph.max;
     let p = pk.body.pos;
     if mode.0 {
+        frames.0 += 1;
+        frames.1 += time.delta_secs();
+        frames.2 = frames.2.max(time.delta_secs());
         if s.elapsed >= *look + 5.0 {
             *look = s.elapsed;
             let mut kinds: std::collections::BTreeMap<&str, usize> = Default::default();
@@ -8647,7 +8651,8 @@ fn show_script(
                     *kinds.entry(c.kind.as_str()).or_default() += 1;
                 }
             }
-            info!("show: t {:.0} near: {kinds:?}", s.elapsed);
+            info!("show: t {:.0} frame {:.2} ms avg, {:.1} worst; {} creatures in all; near: {kinds:?}", s.elapsed, frames.1 * 1000.0 / frames.0.max(1) as f32, frames.2 * 1000.0, near.iter().count());
+            *frames = (0, 0.0, 0.0);
         }
         return;
     }

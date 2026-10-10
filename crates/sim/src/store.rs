@@ -52,15 +52,16 @@ pub fn checksum(chunk: &Chunk) -> u64 {
     h
 }
 
-/// Modified chunks that are not currently loaded.
+/// Modified chunks that are not currently loaded. (Each shared, so a save
+/// takes them without copying: thousands of them.)
 #[derive(Default)]
 pub struct ChunkStore {
-    chunks: FxHashMap<ChunkPos, Vec<u8>>,
+    chunks: FxHashMap<ChunkPos, std::sync::Arc<[u8]>>,
 }
 
 impl ChunkStore {
     pub fn put(&mut self, chunk: &Chunk) {
-        self.chunks.insert(chunk.pos, encode(chunk));
+        self.chunks.insert(chunk.pos, encode(chunk).into());
     }
 
     pub fn take(&mut self, pos: ChunkPos) -> Option<Chunk> {
@@ -81,12 +82,12 @@ impl ChunkStore {
     }
 
     pub fn bytes(&self) -> usize {
-        self.chunks.values().map(Vec::len).sum()
+        self.chunks.values().map(|b| b.len()).sum()
     }
 
     /// Every chunk kept, encoded (a save writes these as they are).
-    pub fn iter(&self) -> impl Iterator<Item = (ChunkPos, &[u8])> {
-        self.chunks.iter().map(|(p, b)| (*p, b.as_slice()))
+    pub fn iter(&self) -> impl Iterator<Item = (ChunkPos, &std::sync::Arc<[u8]>)> {
+        self.chunks.iter().map(|(p, b)| (*p, b))
     }
 }
 

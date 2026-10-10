@@ -3,7 +3,7 @@
 //! shows in dev mode (the key left of 1, or F1), letters work on any layout,
 //! and F-keys (which on a Mac need fn) still do too.
 //!
-//! Dev mode: V storm · B clear sky · N lightning at the cursor · M +3 hours ·
+//! Dev mode: U (or F2) to the start · V storm · B clear sky · N lightning at the cursor · M +3 hours ·
 //! K lighting on/off · H performance HUD · J chunk overlay. Always: L
 //! what you carry for light (nothing, a small beam, a big one, a torch in
 //! the off hand) · G plant a torch · O spawn a warband (a troll, orcs, archers:
@@ -38,7 +38,7 @@ pub enum DevAction {
     Hands,
     /// The arena panel (time, overlays, spawning), anywhere.
     Arena,
-    /// Straight up to the surface (out of any cave).
+    /// To the start: the surface where the world began (the village).
     Surface,
     /// A day ahead (the world clock catches up: `clock.rs`).
     DayAhead,
@@ -118,29 +118,22 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, dev: Res<DevTools>, cursor: Res<CursorW
     }
 }
 
-/// F2: the player straight up to the ground's surface above them (as
-/// generated; up out of whatever's dug), standing on it.
+/// F2 (U in dev mode): the player to the start, the village, standing on
+/// the ground there (as the world first put it down: scanning down from
+/// over the spawn). Not loaded yet there: on the ground as generated, and
+/// the body climbs out of anything it's in once it loads.
 fn to_surface(mut acts: MessageReader<DevAction>, sim: Res<crate::world::SimWorld>, mut player: Query<&mut crate::creatures::Kinematics, With<crate::creatures::player::LocalPlayer>>) {
     if !acts.read().any(|a| *a == DevAction::Surface) {
         return;
     }
     let Ok(mut k) = player.single_mut() else { return };
-    let world = &sim.world;
-    let (x, half) = (k.body.pos.x, k.body.half);
-    let clear = |at: Vec2| {
-        let (lo, hi) = (at - half, at + half);
-        (lo.x.floor() as i32..=hi.x.floor() as i32).all(|cx| {
-            (lo.y.floor() as i32..=hi.y.floor() as i32).all(|cy| world.get(platypus_sim::CellPos::new(cx, cy)).is_none_or(|c| matches!(world.materials().phys(c.material).kind, platypus_sim::Kind::Empty | platypus_sim::Kind::Gas | platypus_sim::Kind::Plant)))
-        })
-    };
-    // From the ground as generated (or, with none, from here), up to where
-    // the body fits with open air over it.
-    let from = sim.generator.surface_hint(x as i32).map_or(k.body.pos.y, |s| (s as f32 + half.y + 1.0).max(k.body.pos.y));
-    let Some(y) = (0..3000).map(|up| from + up as f32).find(|&y| clear(Vec2::new(x, y)) && (1..60).all(|a| clear(Vec2::new(x, y + a as f32 * 2.0)))) else { return };
+    let s = sim.generator.spawn_point();
+    let ground = crate::creatures::spawn::find_ground(&sim.world, s.x, s.y + 180, 900).or_else(|| sim.generator.surface_hint(s.x).map(|y| y + 1)).unwrap_or(s.y);
+    let (x, y) = (s.x as f32 + 0.5, ground as f32 + k.body.half.y);
     k.body.pos = Vec2::new(x, y);
     k.body.vel = Vec2::ZERO;
     k.prev_pos = k.body.pos;
-    info!("dev: up to the surface at ({x:.0}, {y:.0})");
+    info!("dev: to the start at ({x:.0}, {y:.0})");
 }
 
 fn buttons(clicks: Query<(&Interaction, &PanelButton), Changed<Interaction>>, mut out: MessageWriter<DevAction>) {
@@ -155,7 +148,7 @@ fn spawn_panel(mut commands: Commands) {
     let entries: [(&str, DevAction); 21] = [
         ("Show the next creature   P", DevAction::ShowNext),
         ("Show mode: a lively world", DevAction::ShowMode),
-        ("To the surface   F2", DevAction::Surface),
+        ("To the start   F2 / U", DevAction::Surface),
         ("Storm here   V", DevAction::Storm),
         ("Clear sky   B", DevAction::ClearSky),
         ("Lightning   N", DevAction::Lightning(None)),

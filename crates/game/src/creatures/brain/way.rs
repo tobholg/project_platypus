@@ -498,6 +498,7 @@ fn dig(
             *owed -= secs;
             *cap -= 1.0;
             sim.world.set(at, platypus_sim::Cell::AIR);
+            sim.world.note_broken(at);
             true
         };
         // Each strike takes what's round the claw's tip.
@@ -606,6 +607,7 @@ fn dig_by_reach(sim: &mut SimWorld, k: &Kinematics, feet: Vec2, down: bool, def:
         dg.owed -= secs;
         *cap -= 1.0;
         sim.world.set(at, platypus_sim::Cell::AIR);
+        sim.world.note_broken(at);
         if clawed {
             scraped = scraped.or(Some((at, m)));
         } else {

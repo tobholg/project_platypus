@@ -71,6 +71,8 @@ pub struct SaveSlot {
     next: f32,
     /// A save to load, found at startup.
     load: bool,
+    /// The last save's files being written (on a thread of its own).
+    writing: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Plugin for SavePlugin {
@@ -81,7 +83,7 @@ impl Plugin for SavePlugin {
         let fresh = std::env::var("PLATYPUS_FRESH").is_ok_and(|v| !v.is_empty());
         let load = !fresh && dir.join("world.ron").exists();
         info!("save: {} ({})", dir.display(), if load { "loading it" } else { "a new one" });
-        app.insert_resource(SaveSlot { dir, kind: self.kind.clone(), seed: self.seed, next: AUTOSAVE, load })
+        app.insert_resource(SaveSlot { dir, kind: self.kind.clone(), seed: self.seed, next: AUTOSAVE, load, writing: None })
             .add_systems(PostStartup, load_world)
             .add_systems(Update, (keys, apply_player.after(crate::hands::give_start)))
             .add_systems(Update, settle_hp.after(crate::gear::apply))
@@ -222,7 +224,7 @@ fn read_ron<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, String> {
 }
 
 /// The changed chunks: count, then each chunk's position, length and bytes.
-fn write_chunks(path: &Path, chunks: &[(ChunkPos, Vec<u8>)]) -> Result<(), String> {
+fn write_chunks(path: &Path, chunks: &[(ChunkPos, std::sync::Arc<[u8]>)]) -> Result<(), String> {
     let mut out = Vec::with_capacity(12 + chunks.iter().map(|(_, b)| b.len() + 12).sum::<usize>());
     out.extend_from_slice(MAGIC);
     out.extend_from_slice(&VERSION.to_le_bytes());
@@ -324,8 +326,8 @@ fn save(
         skipped: day.skipped,
         clock: clock.save(),
     };
-    let mut chunks: Vec<(ChunkPos, Vec<u8>)> = world.chunks().filter(|c| c.is_modified()).map(|c| (c.pos, store::encode(c))).collect();
-    chunks.extend(sim.store.iter().map(|(p, b)| (p, b.to_vec())));
+    let mut chunks: Vec<(ChunkPos, std::sync::Arc<[u8]>)> = world.chunks().filter(|c| c.is_modified()).map(|c| (c.pos, store::encode(c).into())).collect();
+    chunks.extend(sim.store.iter().map(|(p, b)| (p, b.clone())));
     let me = PlayerFile {
         pos: (k.body.pos.x, k.body.pos.y),
         hp: health.hp,
@@ -354,18 +356,31 @@ fn save(
             things.drops.extend(inv.slots.iter().flatten().map(|s| ((k.body.pos.x, k.body.pos.y), stack_out(&items, s))));
         }
     }
-    let result = write_ron(&dir.join("world.ron"), &file)
-        .and_then(|_| write_chunks(&dir.join("chunks.bin"), &chunks))
-        .and_then(|_| write_ron(&dir.join("player.ron"), &me))
-        .and_then(|_| write_ron(&dir.join("things.ron"), &things));
-    match result {
-        Ok(()) => {
-            info!("save: saved {} chunks, {} chests, {} creatures in {:.1} ms", chunks.len(), things.chests.len(), things.creatures.len(), started.elapsed().as_secs_f32() * 1e3);
-            if asked {
-                toasts.write(crate::progress::Toast("Saved".into()));
-            }
+    // The files written on a thread of their own: the frame pays only for
+    // gathering what's saved (writing it all froze the game a tenth of a
+    // second or more every minute). The last save's writing finishes
+    // first; leaving, it's written before the game goes.
+    if let Some(last) = slot.writing.take() {
+        let _ = last.join();
+    }
+    let gathered = started.elapsed().as_secs_f32() * 1e3;
+    let write = move || {
+        let result = write_ron(&dir.join("world.ron"), &file)
+            .and_then(|_| write_chunks(&dir.join("chunks.bin"), &chunks))
+            .and_then(|_| write_ron(&dir.join("player.ron"), &me))
+            .and_then(|_| write_ron(&dir.join("things.ron"), &things));
+        match result {
+            Ok(()) => info!("save: saved {} chunks, {} chests, {} creatures in {:.1} ms ({gathered:.1} ms in the frame)", chunks.len(), things.chests.len(), things.creatures.len(), started.elapsed().as_secs_f32() * 1e3),
+            Err(e) => error!("save: {e}"),
         }
-        Err(e) => error!("save: {e}"),
+    };
+    if leaving {
+        write();
+    } else {
+        slot.writing = Some(std::thread::spawn(write));
+    }
+    if asked {
+        toasts.write(crate::progress::Toast("Saved".into()));
     }
 }
 

@@ -8,7 +8,7 @@
     (name: "Iron strider", note: "A mech: two laser turrets, a missile salvo. Its glowing slit is its weak spot", spawn: [("strider", 1)], at: 200),
     (name: "Ridge tyrant", note: "Its legs and tail follow the ground; mind the stomp", spawn: [("tyrant", 1)], at: 220),
     (name: "Raptor pack", note: "They spread out, take your sides and dart in to bite", spawn: [("raptor", 4)], at: 220),
-    (name: "Cave spider", note: "Hide behind dirt: it digs through to you. It keeps out of your light (L)", spawn: [("spider", 1)]),
+    (name: "Cave spider", note: "Hide behind dirt: it digs through to you. Your light won't stop it", spawn: [("spider", 1)]),
     (name: "Cave centipede", note: "Up walls, along ceilings; in a cave it waits overhead and drops on you", spawn: [("centipede", 1)]),
     (name: "Desert walkers", note: "A scorpion aims its sting over its back, a crab snips, a stalker on stilts", spawn: [("scorpion", 1), ("crab", 1), ("stalker", 1)]),
     (name: "Orcs against the dead", note: "Two factions at war: stand back and watch", spawn: [("orc", 3)], against: [("skeleton", 4)], at: 140),

@@ -618,7 +618,7 @@ type Toucher<'a> = (Entity, &'a mut Touch, &'a Kinematics, Option<&'a Team>);
 type Touched<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Has<Invulnerable>);
 
 /// Things that hurt by touch hit what they touch.
-fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher>, bodies: Query<Touched, With<Health>>, factions: Query<&crate::creatures::factions::Faction>) {
+fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, Without<crate::creatures::Dormant>>, bodies: Query<Touched, With<Health>>, factions: Query<&crate::creatures::factions::Faction>) {
     for (me, mut t, k, team) in &mut touchers {
         t.rest -= DT;
         if t.rest > 0.0 {

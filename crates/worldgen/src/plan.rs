@@ -160,11 +160,11 @@ const MOUNTAINS: f64 = 3.0;
 /// A mountain range: a peak every so often across the region, each a massif.
 const RANGE_STEP: (f64, f64) = (1_350.0, 2_100.0);
 const RANGE_HALF_WIDTH: (f64, f64) = (1_275.0, 2_100.0);
-const RANGE_PEAK: (f64, f64) = (2_100.0, 3_300.0);
+const RANGE_PEAK: (f64, f64) = (1_600.0, 2_600.0);
 /// The ridge a range's peaks stand on (large world).
 const RANGE_BODY: (f64, f64) = (1_050.0, 1_500.0);
 const MOUNTAIN_HALF_WIDTH: (f64, f64) = (2_100.0, 4_500.0);
-const MOUNTAIN_PEAK: (f64, f64) = (1_350.0, 3_600.0);
+const MOUNTAIN_PEAK: (f64, f64) = (1_200.0, 2_700.0);
 /// No mountain within this of the spawn (the start is a gentle forest).
 const SPAWN_CLEAR: f64 = 2_400.0;
 const LAKE_BOWLS: f64 = 3.0;
@@ -183,6 +183,9 @@ const CHASM_WIDTH: (f64, f64) = (165.0, 360.0);
 const WATER_TABLE_SPAN: i32 = 3_072;
 /// Height of a mountain's cliff bands (large world).
 const TERRACE: f64 = 105.0;
+/// The steepest the planned ground gets (cells up per cell across): no
+/// wall a peak's tip, a terrace's riser or a cliff band made is steeper.
+const TALUS: f64 = 2.5;
 
 pub struct WorldPlan {
     pub seed: u64,
@@ -444,7 +447,7 @@ impl WorldPlan {
         }
 
         // Mountain massifs: a few overlapping peaks each, jagged ridges.
-        let ridge = Fbm::<Perlin>::new(s(12)).set_octaves(4).set_frequency(1.0 / 630.0);
+        let ridge = Fbm::<Perlin>::new(s(12)).set_octaves(2).set_frequency(1.0 / 630.0);
         let mut mountains = vec![0.0f64; width as usize];
         let mut placed: Vec<(i32, i32)> = Vec::new();
         let terrace = TERRACE * sh;
@@ -506,7 +509,9 @@ impl WorldPlan {
         // so no peak is sliced flat.)
         let top = band_floors[0] as f64 - 225.0 * sh;
         let soft = |h: f64| if h > top { top + (h - top) * 225.0 * sh / (h - top + 225.0 * sh) } else { h };
-        let mut surface: Vec<i32> = surface.iter().zip(&mountains).map(|(&h, &m)| soft(h + m).max(band_floors[3] as f64) as i32).collect();
+        let mut surface: Vec<f64> = surface.iter().zip(&mountains).map(|(&h, &m)| soft(h + m).max(band_floors[3] as f64)).collect();
+        talus(&mut surface, TALUS);
+        let mut surface: Vec<i32> = surface.iter().map(|&h| h as i32).collect();
         // The start: a wide plain round the spawn (a twentieth of the land's
         // roll left, so it isn't a table), easing back into the land beyond.
         let plain = start_plain(&mut surface, mid, sw);
@@ -1019,17 +1024,28 @@ fn window_max(v: &[i32], r: usize, rightward: bool) -> Vec<i32> {
     out
 }
 
+/// No ground steeper than `k` cells up per cell across: walls cut back to
+/// that slope from the low side, both ways (only ever lowering).
+fn talus(h: &mut [f64], k: f64) {
+    for i in 1..h.len() {
+        h[i] = h[i].min(h[i - 1] + k);
+    }
+    for i in (0..h.len().saturating_sub(1)).rev() {
+        h[i] = h[i].min(h[i + 1] + k);
+    }
+}
+
 /// One massif into `mountains`: lopsided, a broad shoulder under a concave
 /// peak plus sub-peaks, a wandering ridge line, terraced cliff bands.
 fn massif(mountains: &mut [f64], rng: &mut Rng, ridge: &Fbm<Perlin>, warp: &Perlin, (cx, half, peak): (i32, i32, f64), terrace: f64, width: i32) {
     // Lopsided: one flank longer than the other.
-    let skew = range(rng, (0.65, 1.35));
+    let skew = range(rng, (0.85, 1.2));
     let (hl, hr) = (half as f64 * skew.min(1.0), half as f64 / skew.max(1.0));
     // Sub-peaks along the range, each a concave cone.
     let mut bumps = vec![(cx as f64, 1.0, peak)];
     for _ in 0..3 + rng.next_u32() % 4 {
         let off = (unit(rng) * 2.0 - 1.0) * 0.75;
-        bumps.push((cx as f64 + off * if off < 0.0 { hl } else { hr }, range(rng, (0.3, 0.6)), peak * range(rng, (0.3, 0.75))));
+        bumps.push((cx as f64 + off * if off < 0.0 { hl } else { hr }, range(rng, (0.5, 0.9)), peak * range(rng, (0.3, 0.55))));
     }
     for x in cx - hl as i32..=cx + hr as i32 {
         // A wandering ridge line, not a ruler-straight flank.
@@ -1040,14 +1056,16 @@ fn massif(mountains: &mut [f64], rng: &mut Rng, ridge: &Fbm<Perlin>, warp: &Perl
             // A broad shoulder under a concave peak.
             peak * (0.45 * (1.0 - u).powf(2.4) + 0.55 * (1.0 - u * u).max(0.0).powf(2.0))
         };
-        let mut m = bumps.iter().skip(1).map(|&(bx, bw, bp)| bp * (1.0 - ((xf - bx) / (bw * flank(bx))).abs()).max(0.0).powf(1.4)).fold(massif, f64::max);
-        // Sharp crests: a ridged profile, stronger the higher it is.
-        m += m * 0.07 * (1.0 - 2.0 * ridge.get([xf, 0.3]).abs());
-        // Terraces: cliff bands with ledges between.
+        // (Rounded tops: a pointed cone's tip was near a wall.)
+        let mut m = bumps.iter().skip(1).map(|&(bx, bw, bp)| bp * (1.0 - ((xf - bx) / (bw * flank(bx))).powi(2)).max(0.0).powi(2)).fold(massif, f64::max);
+        // Crests: a ridged profile, stronger the higher it is.
+        m += m * 0.03 * (1.0 - 2.0 * ridge.get([xf, 0.3]).abs());
+        // Terraces: bands with ledges between (gentle: steep risers were
+        // walls every band).
         if m > terrace {
             let f = m / terrace;
-            let stepped = (f.floor() + smoothstep(0.65, 1.0, f.fract())) * terrace;
-            m += (stepped - m) * 0.45;
+            let stepped = (f.floor() + smoothstep(0.3, 1.0, f.fract())) * terrace;
+            m += (stepped - m) * 0.2;
         }
         let i = x.clamp(0, width - 1) as usize;
         mountains[i] = mountains[i].max(m);

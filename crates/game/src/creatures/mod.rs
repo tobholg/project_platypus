@@ -55,7 +55,46 @@ impl Plugin for CreaturesPlugin {
             // Hits as they landed, shown (`hurt`); the badly hurt drip and falter.
             .add_systems(FixedUpdate, (body::hurt::react, body::hurt::wounded).chain().after(crate::combat::Hits))
             .add_systems(FixedUpdate, (body::elements::struck, body::elements::zapped, blasted, pelted).after(TickSet::Cells))
-            .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate));
+            .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate))
+            .add_systems(PreUpdate, dormancy);
+    }
+}
+
+/// Far from every player, or its ground not loaded: it rests. Its brain,
+/// senses, legs, exposure and touch skip it (they ran for every creature in
+/// the world, hundreds, most of them nowhere near: half the frame), as its
+/// movement already did off the loaded ground. Looked at four times a
+/// second; it wakes as a player comes within `DORMANT_FAR`.
+#[derive(Component)]
+pub struct Dormant;
+
+const DORMANT_FAR: f32 = 1_400.0;
+
+/// Creatures, not the player.
+type NotPlayer = (With<Creature>, Without<player::LocalPlayer>);
+
+fn dormancy(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut clock: Local<f32>,
+    sim: Res<SimWorld>,
+    players: Query<&Kinematics, With<player::LocalPlayer>>,
+    q: Query<(Entity, &Kinematics, Has<Dormant>), NotPlayer>,
+) {
+    *clock += time.delta_secs();
+    if *clock < 0.25 {
+        return;
+    }
+    *clock = 0.0;
+    let near: Vec<Vec2> = players.iter().map(|k| k.body.pos).collect();
+    for (e, k, dormant) in &q {
+        let p = k.body.pos;
+        let far = !sim.world.is_loaded(CellPos::from_world(p.x, p.y).chunk()) || near.iter().all(|n| n.distance(p) > DORMANT_FAR);
+        if far && !dormant {
+            commands.entity(e).insert(Dormant);
+        } else if !far && dormant {
+            commands.entity(e).remove::<Dormant>();
+        }
     }
 }
 
@@ -395,7 +434,7 @@ pub(crate) fn move_creatures(
 
 /// Bodies push liquid aside: whatever flowed into a creature's box moves up
 /// its column (the level rises around it), splashing if it arrived fast.
-fn displace_liquid(mut sim: ResMut<SimWorld>, q: Query<&Kinematics>) {
+fn displace_liquid(mut sim: ResMut<SimWorld>, q: Query<&Kinematics, Without<Dormant>>) {
     for k in &q {
         let (lo, hi) = k.body.cells_at(k.body.pos);
         let grid = WorldGrid(&sim.world);

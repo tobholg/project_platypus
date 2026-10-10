@@ -215,6 +215,12 @@ pub const CHEST_SIZE: (i32, i32) = (18, 15);
 /// How far mountain ground wanders from the planned surface (overhangs,
 /// arches, ledges), at full ruggedness.
 const OVERHANG: f64 = 51.0;
+/// The most it shifts the ground up or down (cells).
+const OVERHANG_RISE: f64 = 36.0;
+/// Specks (`sweep_specks`): floating pieces this big at most, followed this
+/// far into the chunks round.
+const SPECK_MOST: usize = 600;
+const SPECK_MARGIN: i32 = 32;
 
 struct Ids {
     air: MaterialId,
@@ -408,7 +414,7 @@ impl TerrainGen {
                 .collect(),
             leaf_edge: Perlin::new(s(7)),
             meadow: Perlin::new(s(8)),
-            overhang: Fbm::<Perlin>::new(s(9)).set_octaves(3).set_frequency(1.0 / 90.0),
+            overhang: Fbm::<Perlin>::new(s(9)).set_octaves(2).set_frequency(1.0 / 90.0),
             caverns: Fbm::<Perlin>::new(s(15)).set_octaves(3).set_frequency(1.0 / 900.0),
             drips: Perlin::new(s(16)),
             vault: Fbm::<Perlin>::new(s(17)).set_octaves(3).set_frequency(1.0 / 600.0),
@@ -811,8 +817,12 @@ impl TerrainGen {
         // while crests and gentle slopes (where trees stand) stay put.
         let rugged = plan.rugged_at(x) as f64;
         let slope = (plan.surface_at(x + 6) - plan.surface_at(x - 6)).abs() as f64 / 12.0;
-        let wander = OVERHANG * rugged * ((slope - 0.8) / 0.8).clamp(0.0, 1.0);
-        let ground = if wander > 0.5 { plan.surface_at(x + (self.overhang.get([xf, yf * 1.3]) * wander) as i32) } else { surface };
+        // (Never more than `OVERHANG_RISE` up or down, so a column goes from
+        // rock to air once or twice, not over and over: on a steep face the
+        // full wander shifted the ground hundreds of cells and left shreds
+        // and floating blobs.)
+        let wander = (OVERHANG * rugged * ((slope - 0.8) / 0.8).clamp(0.0, 1.0)).min(OVERHANG_RISE / slope.max(1.0));
+        let ground = if wander > 0.5 { plan.surface_at(x + (self.overhang.get([xf, yf * 0.8]) * wander) as i32) } else { surface };
         let depth = ground - y;
         // The ground's own temperature: snow and ice where it's freezing.
         let cold = plan.climate.ambient(x, surface) <= 0;
@@ -991,58 +1001,91 @@ impl TerrainGen {
         }
     }
 
-    /// Rock floating in open space (a stalactite a tunnel cut off, a
-    /// crystal whose wall another cave took): any solid piece lying wholly
-    /// inside this chunk, touching none of its edges, becomes what it floats
-    /// in. (Pieces reaching over an edge are left: this chunk can't see them
-    /// whole.) Structures keep theirs.
+    /// Specks: small solid pieces floating free (a sliver a cave left, a
+    /// crystal whose wall another cave took, a shred of a mountain's
+    /// overhang): any solid piece of at most `SPECK_MOST` cells, followed
+    /// into the chunks round as generated up to `SPECK_MARGIN` cells out,
+    /// that doesn't reach past that, becomes what it floats in (its cells in
+    /// this chunk; the chunks round judge it the same and take theirs).
+    /// Pieces reaching further are left (it can't see them whole), and
+    /// structures keep theirs. The chunks round are read only where a piece
+    /// goes, so a chunk of plain ground pays little.
     fn sweep_specks(&self, pos: ChunkPos, cells: &mut [Cell]) {
+        const M: i32 = SPECK_MARGIN;
+        const W: i32 = CHUNK + 2 * M;
+        // Per window cell: bit 0 known, bit 1 solid, bit 2 seen.
+        const KNOWN: u8 = 1;
+        const SOLID: u8 = 2;
+        const SEEN: u8 = 4;
         let mats_solid = |c: Cell| !c.is_air() && self.solid[c.material.0 as usize];
         let built = self.plan.structures.pieces_in(pos.x, pos.y).next().is_some();
         let o = pos.origin();
-        let n = CHUNK as usize;
-        let mut seen = vec![false; n * n];
-        let mut piece = Vec::new();
-        let mut stack = Vec::new();
-        for start in 0..n * n {
-            if seen[start] || !mats_solid(cells[start]) {
+        let inside = |x: i32, y: i32| (0..CHUNK).contains(&x) && (0..CHUNK).contains(&y);
+        let mut state = vec![0u8; (W * W) as usize];
+        let solid_at = |state: &mut [u8], cells: &[Cell], x: i32, y: i32| -> bool {
+            let w = ((y + M) * W + x + M) as usize;
+            if state[w] & KNOWN == 0 {
+                let s = if inside(x, y) { mats_solid(cells[(y * CHUNK + x) as usize]) } else { self.solid[self.material_at(o.x + x, o.y + y).0 as usize] };
+                state[w] |= KNOWN | if s { SOLID } else { 0 };
+            }
+            state[w] & SOLID != 0
+        };
+        let mut piece: Vec<(i32, i32)> = Vec::new();
+        let mut stack: Vec<(i32, i32)> = Vec::new();
+        for start in 0..(CHUNK * CHUNK) {
+            let (sx, sy) = (start % CHUNK, start / CHUNK);
+            let sw = ((sy + M) * W + sx + M) as usize;
+            if state[sw] & SEEN != 0 || !solid_at(&mut state, cells, sx, sy) {
                 continue;
             }
             piece.clear();
-            stack.push(start);
-            seen[start] = true;
-            let (mut edge, mut around) = (false, None);
-            while let Some(i) = stack.pop() {
-                piece.push(i);
-                let (x, y) = (i % n, i / n);
-                edge |= x == 0 || y == 0 || x == n - 1 || y == n - 1;
+            stack.push((sx, sy));
+            state[sw] |= SEEN;
+            // (Too big, or past the margin: kept. It's still followed, but
+            // only inside this chunk, so its cells here aren't started on
+            // again.)
+            let (mut keep, mut around) = (false, None);
+            while let Some((x, y)) = stack.pop() {
+                piece.push((x, y));
+                if piece.len() > SPECK_MOST {
+                    keep = true;
+                }
                 for (dx, dy) in [(1i32, 0i32), (-1, 0), (0, 1), (0, -1)] {
-                    let (qx, qy) = (x as i32 + dx, y as i32 + dy);
-                    if qx < 0 || qy < 0 || qx >= CHUNK || qy >= CHUNK {
+                    let (qx, qy) = (x + dx, y + dy);
+                    if qx < -M || qy < -M || qx >= CHUNK + M || qy >= CHUNK + M {
+                        keep = true;
                         continue;
                     }
-                    let q = qy as usize * n + qx as usize;
-                    if mats_solid(cells[q]) {
-                        if !seen[q] {
-                            seen[q] = true;
-                            stack.push(q);
+                    if keep && !inside(qx, qy) {
+                        continue;
+                    }
+                    if solid_at(&mut state, cells, qx, qy) {
+                        let q = ((qy + M) * W + qx + M) as usize;
+                        if state[q] & SEEN == 0 {
+                            state[q] |= SEEN;
+                            stack.push((qx, qy));
                         }
-                    } else if around.is_none() || cells[q].is_air() {
-                        around = Some(cells[q]);
+                    } else if inside(qx, qy) {
+                        let c = cells[(qy * CHUNK + qx) as usize];
+                        if around.is_none() || c.is_air() {
+                            around = Some(c);
+                        }
                     }
                 }
             }
-            if edge || piece.len() > 600 {
+            if keep {
                 continue;
             }
-            if built && piece.iter().any(|&i| self.plan.structures.glyph_at(o.x + (i % n) as i32, o.y + (i / n) as i32).is_some()) {
+            if built && piece.iter().any(|&(x, y)| self.plan.structures.glyph_at(o.x + x, o.y + y).is_some()) {
                 continue;
             }
             // What it floats in: a liquid if it's in one, else air (plants
             // on it go too, below, where they lose their hold).
             let fill = around.filter(|c| !self.solid[c.material.0 as usize] && !self.plant[c.material.0 as usize]).unwrap_or(Cell::AIR);
-            for &i in &piece {
-                cells[i] = fill;
+            for &(x, y) in &piece {
+                if inside(x, y) {
+                    cells[(y * CHUNK + x) as usize] = fill;
+                }
             }
         }
     }
@@ -2096,21 +2139,26 @@ mod tests {
         use platypus_sim::{World, WorldEdit};
         use std::sync::Arc;
         let m = Arc::new(mats());
-        // (The reference world: a rare mushroom elsewhere is held up by a
-        // shelf grown from the wall: PLAN, known issues.)
-        let g = TerrainGen::new(1, Preset::Medium, &m);
-        let parasols: Vec<caves::Mushroom> = g
-            .plan
+        // (The first of a few reference worlds with lone tall parasols: a
+        // rare mushroom elsewhere is held up by a shelf grown from the wall:
+        // PLAN, known issues. One world's caves alone change with every
+        // change to the land above.)
+        let pick = |g: &TerrainGen| -> Vec<caves::Mushroom> {
+            g.plan
             .caves
             .chambers
             .iter()
             .flat_map(|c| c.mushrooms.iter().copied())
             .filter(|s| s.species == caves::Species::Parasol && s.top - s.foot > 75.0 && s.lean.abs() < 9.0 && g.rooted((s.x as i32, s.foot as i32 + 14)))
+            // (On rock as generated: a tunnel under its foot isn't what this
+            // is about.)
+            .filter(|s| g.material_at(s.x as i32, s.foot as i32 + 14) != MaterialId::AIR)
             // (Alone: no other mushroom within reach of its stem.)
             .filter(|s| g.plan.caves.chambers.iter().flat_map(|c| &c.mushrooms).filter(|o| (o.x - s.x).abs() < 60.0 && (o.foot - s.foot).abs() < 120.0).count() == 1)
             .take(3)
-            .collect();
-        assert!(!parasols.is_empty(), "a parasol to fell");
+            .collect()
+        };
+        let (g, parasols) = (1..=6).map(|seed| TerrainGen::new(seed, Preset::Medium, &m)).map(|g| { let p = pick(&g); (g, p) }).find(|(_, p)| !p.is_empty()).expect("a parasol to fell");
         let stem = m.expect_id("mushroom_stem");
         for s in parasols {
             let (x, floor) = (s.x as i32, s.foot as i32 + 15);

@@ -25,7 +25,7 @@ const REACH: i32 = 36;
 const UP: i32 = 90;
 
 /// A creature on a wire or a plate springs what's above it.
-fn spring(mut sim: ResMut<SimWorld>, creatures: Query<(&Kinematics, Option<&crate::creatures::Creature>)>, mut sounds: MessageWriter<crate::sound::PlaySound>) {
+fn spring(mut sim: ResMut<SimWorld>, creatures: Query<(&Kinematics, Option<&crate::creatures::Creature>), Without<crate::creatures::Dormant>>, mut sounds: MessageWriter<crate::sound::PlaySound>) {
     let mats = sim.materials().clone();
     let (Some(wire), Some(plate), Some(rope)) = (mats.id("tripwire"), mats.id("pressure_plate"), mats.id("rope")) else { return };
     let mut sprung: Vec<(CellPos, String)> = Vec::new();

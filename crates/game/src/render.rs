@@ -102,6 +102,9 @@ struct Spring {
 const SPRING_COL_BITS: i32 = 1;
 const SPRING_ROW_BITS: i32 = 3;
 
+/// Bodies part the foliage within this of a player (cells).
+const FOLIAGE_NEAR: f32 = 700.0;
+
 impl FoliageSprings {
     fn disp(&self, x: i32, y: i32) -> f32 {
         self.springs.get(&(x >> SPRING_COL_BITS, y >> SPRING_ROW_BITS)).map_or(0.0, |s| s.disp)
@@ -472,10 +475,14 @@ fn sparkle(
     }
 }
 
-fn excite_foliage(time: Res<Time>, mut springs: ResMut<FoliageSprings>, bodies: Query<&Kinematics>) {
+fn excite_foliage(time: Res<Time>, mut springs: ResMut<FoliageSprings>, bodies: Query<&Kinematics, Without<crate::creatures::Dormant>>, players: Query<&Kinematics, With<crate::creatures::player::LocalPlayer>>) {
     let dt = time.delta_secs().min(0.05);
+    // (Only what could be on screen: it's for the eye.)
+    let near: Vec<Vec2> = players.iter().map(|k| k.body.pos).collect();
     for k in &bodies {
-        springs.push(&k.body, dt);
+        if near.iter().any(|p| p.distance(k.body.pos) < FOLIAGE_NEAR) {
+            springs.push(&k.body, dt);
+        }
     }
     springs.relax(dt);
 }

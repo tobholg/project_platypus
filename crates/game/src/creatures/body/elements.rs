@@ -373,7 +373,7 @@ type Exposed<'a> = (
 );
 
 /// Runs after movement, before deaths.
-pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<Coatings>, mut q: Query<Exposed>, ids: Query<&crate::creatures::Stable>) {
+pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<Coatings>, mut q: Query<Exposed, Without<crate::creatures::Dormant>>, ids: Query<&crate::creatures::Stable>) {
     let tick = sim.world.tick();
     let fire_mat = sim.materials().fire();
     let rules = &coatings.by_name;

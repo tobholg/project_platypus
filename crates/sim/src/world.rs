@@ -181,11 +181,27 @@ impl World {
         if w.rain_at(p.x) <= 0.0 {
             return false;
         }
+        // (A chunk at a time up the column, not a lookup a cell: every
+        // creature asks every tick while it rains, from the ground to the
+        // clouds.)
         let mats = &self.materials;
-        (p.y..w.y0).all(|y| {
-            self.get(CellPos::new(p.x, y))
-                .is_none_or(|c| c.is_air() || !matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder))
-        })
+        let mut y = p.y;
+        while y < w.y0 {
+            let at = CellPos::new(p.x, y);
+            let cp = at.chunk();
+            let top = ((cp.y + 1) * CHUNK).min(w.y0);
+            if let Some(ch) = self.chunks.get(&cp) {
+                let (lx, _) = at.local();
+                for yy in y..top {
+                    let c = ch.get(lx, (yy - cp.y * CHUNK) as usize);
+                    if !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder) {
+                        return false;
+                    }
+                }
+            }
+            y = top;
+        }
+        true
     }
 
     pub fn emit(&mut self, p: Particle) {
@@ -1915,6 +1931,13 @@ impl World {
         let reach = body.radius.ceil() as i32;
         let layer = if front { Layer::Front } else { Layer::Back };
         self.loosen_around(center, reach, &mut FxHashSet::default(), layer);
+    }
+
+    /// A solid taken out by hand (a creature digging cell by cell, not an
+    /// edit): what it held up is checked with the step's other losses, a
+    /// few tiles a tick (a digger's tunnel left floating crumbs before).
+    pub fn note_broken(&mut self, p: CellPos) {
+        self.pending_fragment_tiles.push(CellPos::new(p.x >> FRAGMENT_TILE_BITS, p.y >> FRAGMENT_TILE_BITS));
     }
 
     /// Fire, melting and acid destroy solids inside the step; afterwards,

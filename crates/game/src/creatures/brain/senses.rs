@@ -199,7 +199,7 @@ pub fn perceive(
     mut commands: Commands,
     sim: Res<SimWorld>,
     day: Res<crate::light::Daylight>,
-    mut hunters: Query<Perceiver>,
+    mut hunters: Query<Perceiver, Without<crate::creatures::Dormant>>,
     quarry: Query<(Entity, &Kinematics, &Team, &Health, Option<&crate::creatures::factions::Faction>), Without<super::villager::Hiding>>,
     lights: Query<(&GlobalTransform, &crate::light::LightSource)>,
     toggles: Res<crate::light::LightToggles>,

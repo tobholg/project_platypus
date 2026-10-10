@@ -173,10 +173,20 @@ checksums.
   chance.
 - Relief: rolling hills and cliff steps per biome; oceans shelve down from the
   beach to −570; about seven mountain massifs (large world), lopsided, each a
-  broad shoulder under a concave peak plus sub-peaks, a wandering ridge line
-  and 105-cell terraces, 1 350–3 600 cells high, joined into ranges where
-  they meet, none near the spawn. Steep faces wander sideways (overhangs, ledges);
-  crests and gentle slopes stay put. Soil thins with slope (bare rock on
+  broad shoulder under a concave peak plus rounded sub-peaks, a wandering
+  ridge line and gentle 105-cell terraces, 1 200–2 700 cells high (a range's
+  peaks 1 600–2 600), joined into ranges where they meet, none near the
+  spawn. No planned ground is steeper than 2.5 cells up per cell across
+  (`talus`: walls cut back from the low side; pointed sub-peaks, steep
+  terrace risers and sharp crests made walls and spires). Steep faces
+  wander sideways (overhangs, ledges), never more than 36 cells up or down
+  (on a steep face the full wander shifted the ground hundreds of cells and
+  shredded it into slivers and floating blobs); crests and gentle slopes
+  stay put. Specks: a solid piece of at most 600 cells floating free is
+  followed up to 32 cells into the chunks round (read as generated, only
+  where it goes) and becomes what it floats in, so pieces over a chunk's
+  edge go too. A creature digging cell by cell has what it leaves hanging
+  checked (`World::note_broken`, with fire's and acid's losses). Soil thins with slope (bare rock on
   cliffs); snow lies where the ground is below 0 °C and not steep (deeper the
   colder, measured across the slope so steep faces get a crust; very cold it
   clings to steeper faces: below −8 °C slopes to 3, below −15 °C to 5), so
@@ -218,10 +228,12 @@ checksums.
     every chamber connects (tested: 95 %+ in one network) plus more for
     loops; wandering lines 36–66 cells wide (the player is 23 tall; the
     underground's 36–54, a tenth of its tree links galleries 60–78); a
-    steep link (rising more than 0.55 of its length) 48–60 wide, with
-    alternating rock ledges every 45 cells to climb back up, each out from
-    its wall to halfway across or to 27 (`ROOM_PAST`) from the far wall,
-    whichever's shorter: a cave spider (24 wide) climbs past;
+    steep link (rising more than 0.55 of its length) 48–60 wide, with a rock
+    ledge now and then (in each 45 cells up, three times in ten, somewhere
+    in it, from either wall; a shelf every 45 cells, one wall then the
+    other, made every shaft an easy climb), each out from its wall to
+    halfway across or to 27 (`ROOM_PAST`) from the far wall, whichever's
+    shorter: a cave spider (24 wide) climbs past;
   - crevices: a fifth of the extra links (never the tree) are cracks 4.5–10.5
     wide, too thin to pass: throw a glow stick in; and from about a third
     of the chambers (dry ones) a dead-end fissure 3–8 wide, 80–220 long;
@@ -1556,7 +1568,8 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   `group`; with no one about the rest follow the leader (its lowest rank
   living) within 60; one starting to hunt calls the rest within 600.
   Given: raptor (flank, skirmish 52 / 1.4 s / one at a time, flee 0.25), cave centipede (ambush), cave spider
-  (shun_light 75), spiderling (shun_light 60, flee 0.3), vampire bat
+  (no longer kept off by light: it made them too easy), spiderling (flee
+  0.3), vampire bat
   (shun_light 90), scorpion (flee 0.25), orc (flee 0.2, call 250), orc
   archer (flee 0.35, call 250); the undead and the big ones never flee.
   The `tactics` scenario (`PLATYPUS_ARENA=flat`, at night; each creature
@@ -1859,6 +1872,21 @@ DESIGN §13 item 6.
   player still can. The cave spider: claws (25, 240: about 10 cells of
   headway a second in dirt, still well under the player's 113), acid (90,
   160, every 1.6).
+- **Dormant** (`creatures::Dormant`): a creature over 1 400 cells from
+  every player, or off the loaded ground, rests: its brain, senses, legs,
+  exposure, touch, the liquid it displaces and the springs and grass it
+  presses skip it (they ran for every creature in the world, five hundred
+  in a played world, most nowhere near: half the frame). Looked at four
+  times a second. Grass parts only for bodies within 700 of a player.
+  Rain on a creature is looked for a chunk at a time up its column (a cell
+  at a time it was a sixth of the frame in a storm).
+  The autosave (every minute) gathers what it saves in the frame (the
+  changed loaded chunks encoded; the stored ones shared, not copied) and
+  writes the files on a thread of its own: about 15 ms in the frame, not
+  the 130–230 ms freeze it was; quitting, it's written before the game
+  goes. On a played world (500 creatures, show mode) frames went from
+  10.7–14 ms to 6.3–8.7 ms. U (dev mode) or F2: to the start, on the
+  ground by the village.
 - **The show** (`show.rs`, to show someone the bestiary in the world as
   it is): P (not with the arena panel up) or the dev panel's "Show the
   next creature" brings on the next act of `show.ron` on the side of you
@@ -1892,9 +1920,9 @@ DESIGN §13 item 6.
   floor under it; off the ground it can't step, and it hung against the
   one-cell lip of the player's floor, pressing on it: holding a wall that's
   only a lip, clear above a step over its feet, it climbs it even digging.) `PLATYPUS_LAMP=1` gives the player
-  a beam down the slit: the spider cowers at about 94; with
-  `PLATYPUS_LAMP_OFF=26` it's off at 26 s and the spider is digging again
-  in under 2 s and at the player by about 33 s. (`PLATYPUS_BEAM=1`: the
+  a beam down the slit (`PLATYPUS_LAMP_OFF=26`: off at 26 s); since the
+  spider stopped minding light it digs on through it. (A creature that
+  shuns light cowers at its edge, the vampire bat.) (`PLATYPUS_BEAM=1`: the
   beam alone, no spider, to look at its edge.) `PLATYPUS_FRAME_MS` paces
   the frames (8.33 for a 120 Hz screen), to test a tempo headless. The `dig`
   scenario (a sealed shell; told where the player is, since senses came
@@ -2149,8 +2177,10 @@ parts, so another is a new file, not new code:
   (0.4× off the launch to 2.5× after 1.75 s: up and wide, then biting in,
   not circling). The strider's pod (a third turret) fires `strider_salvo`
   every 5 s: a 1 s lock-on, then four `strider_missile`s (runes `homing`,
-  `missile`: a slow bolt trailing grey smoke, `missile_blast`) fanned up
-  off its back 0.15 s apart, curving down onto the player.
+  `missile`: a slow bolt trailing grey smoke, `missile_blast`: a blast of
+  radius 30, power 130, a third of a bomb, through stone, brick and iron,
+  with a burst of sparks) fanned up off its back 0.15 s apart, curving down
+  onto the player.
   The strider keeps 90–150 cells off (`Range`) and fires `strider_volley`
   (0.7 s of both sight lines, then four shots in turn, each 0.28 s of
   charge first: `strider_laser`, a quick red bolt, 11 radiant; its runes
