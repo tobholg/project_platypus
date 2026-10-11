@@ -97,6 +97,8 @@ const SPLIT_FLING: f32 = 90.0;
 const MERGE_WAIT: f32 = 4.0;
 const MERGE_MOST: f32 = 3.0;
 const BOX_LEAST: f32 = 0.55;
+/// The lowest gap it squeezes through (cells).
+const SQUEEZE_LEAST: f32 = 7.0;
 const BOX_MOST: f32 = 1.5;
 /// Swallowing: a small creature is at most this big (cells across and up,
 /// times); digested at this (health a second: a creature, the player);
@@ -206,8 +208,20 @@ pub fn hold(
         let Some(kind_mat) = sim.world.materials().id(&def.material) else { continue };
         let full = anim.def.health.max(1.0);
         let size = mass.as_ref().map_or(1.0, |m| m.0);
-        // (Its box as big as it is.)
-        let half = Vec2::new(anim.def.size.0, anim.def.size.1) * 0.5 * size.sqrt().clamp(BOX_LEAST, BOX_MOST);
+        // (Its box as big as it is; flattened to squeeze through a gap
+        // lower than it, here or just ahead the way it's going.)
+        let mut half = Vec2::new(anim.def.size.0, anim.def.size.1) * 0.5 * size.sqrt().clamp(BOX_LEAST, BOX_MOST);
+        let room = {
+            let feet = k.body.pos.y - k.body.half.y;
+            let ahead = if k.body.vel.x.abs() > 1.0 { k.body.vel.x.signum() } else { k.loco.facing };
+            let grid = crate::creatures::WorldGrid(&sim.world);
+            let solid = |p: CellPos| platypus_physics::Grid::occupancy(&grid, p.x, p.y) == platypus_physics::Occupancy::Solid;
+            let column = |x: f32| (0..(half.y * 2.0) as i32 + 2).take_while(|&dy| !solid(CellPos::from_world(x, feet + 0.5 + dy as f32))).count() as f32;
+            [k.body.pos.x - half.x * 0.6, k.body.pos.x, k.body.pos.x + half.x * 0.6, k.body.pos.x + ahead * (half.x + 2.0)].iter().map(|&x| column(x)).fold(f32::MAX, f32::min)
+        };
+        if room < half.y * 2.0 && room >= SQUEEZE_LEAST {
+            half.y = (room - 1.0) * 0.5;
+        }
         if (half - k.body.half).abs().max_element() > 0.25 {
             let drop = k.body.half.y - half.y;
             k.body.half = half;

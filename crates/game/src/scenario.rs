@@ -9602,6 +9602,8 @@ fn sever_script(
 ///   engulf: let be: it lands on the player and swallows them; they mash
 ///     jump to get out.
 ///   eat: a rabbit, two torches and copper ore put in its goo (1.5 s).
+///   squeeze: a slab with a gap 10 high under it, between it and the
+///     player: it squeezes through.
 ///   glut (with PLATYPUS_SLIME_KIND=glutton): struck with fire (4 s),
 ///     frost (6.5 s: the two go off), lightning (9 s).
 ///   (anything else, `none`: let be: it hops at the player, spikes them.)
@@ -9620,6 +9622,7 @@ fn slime_script(
     gluttons: Query<(&crate::creatures::body::goo::Glutton, &crate::creatures::body::goo::Goo)>,
     (items, swallowed, mut keys): (Option<Res<crate::hands::items::Items>>, Query<(Entity, Has<crate::hands::Dropped>, Option<&crate::creatures::Creature>), With<crate::creatures::body::goo::Swallowed>>, ResMut<ButtonInput<KeyCode>>),
     drops: Query<&crate::hands::Dropped>,
+    mut drive: Query<&mut crate::creatures::Controls, Without<LocalPlayer>>,
 ) {
     if s.name != "slime" {
         return;
@@ -9661,6 +9664,20 @@ fn slime_script(
                 }
             }
         }
+        if mode == "squeeze" {
+            // (A slab with a gap 10 high under it, between it and the
+            // player: it squeezes through.)
+            if let Some(stone) = sim.materials().id("stone") {
+                let floor = platypus_worldgen::arena::FLOOR;
+                for x in 880..950 {
+                    for y in floor + 10..floor + 60 {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: stone, overwrite: true });
+                    }
+                }
+            }
+            k.body.pos = Vec2::new(850.0, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+        }
         if mode == "many" {
             // (Ten, spread out: what holding their goo costs.)
             for n in 0..10 {
@@ -9678,7 +9695,13 @@ fn slime_script(
                 });
             }
         } else {
-            crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(980.0, fl), |_| {});
+            let driven = mode == "squeeze";
+            crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(980.0, fl), move |c| {
+                // (Squeezing: no mind of its own, driven at the gap.)
+                if driven {
+                    c.remove::<crate::creatures::brain::hunter::Hunter>();
+                }
+            });
         }
         info!("slime: a {kind} hops at the player ({mode})");
         state.0 = 1;
@@ -9756,6 +9779,14 @@ fn slime_script(
         } else {
             keys.release(KeyCode::Space);
         }
+    }
+    if mode == "squeeze"
+        && let Ok(mut c) = drive.get_mut(e)
+    {
+        c.0.move_x = -1.0;
+    }
+    if t >= state.2 && mode == "squeeze" {
+        info!("slime: t {t:.1} at x {:.0}, {:.0} high (the gap: 880..950)", sk.body.pos.x, sk.body.half.y * 2.0);
     }
     if t >= state.2 && mode == "glut" {
         if let Ok((g, gg)) = gluttons.get(e) {
