@@ -1,5 +1,6 @@
-//! F3: performance HUD. F4: chunk borders and dirty rects (what the sim is
-//! actually updating). The overlay is the first tool to reach for when a
+//! F3 (H in dev mode): the performance HUD, brief (two lines: the frame
+//! rate, light and sim; the default), full (everything), off, in turn. F4:
+//! chunk borders and dirty rects (what the sim is actually updating). The overlay is the first tool to reach for when a
 //! region "won't go to sleep".
 
 use std::time::Duration;
@@ -14,9 +15,17 @@ use crate::world::{SimMetrics, SimWorld};
 
 pub struct DebugPlugin;
 
+/// How much of the performance HUD shows.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Hud {
+    Brief,
+    Full,
+    Off,
+}
+
 #[derive(Resource)]
 struct DebugView {
-    hud: bool,
+    hud: Hud,
     rects: bool,
     refresh: Timer,
 }
@@ -46,7 +55,7 @@ struct HudText;
 
 impl Plugin for DebugPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(DebugView { hud: true, rects: false, refresh: Timer::from_seconds(0.25, TimerMode::Repeating) })
+        app.insert_resource(DebugView { hud: Hud::Brief, rects: false, refresh: Timer::from_seconds(0.25, TimerMode::Repeating) })
             .init_resource::<FrameStats>()
             .add_systems(Startup, spawn_hud)
             .add_systems(Update, (toggle, record_frame, update_hud, draw_rects));
@@ -69,9 +78,13 @@ fn toggle(mut actions: MessageReader<crate::dev::DevAction>, mut view: ResMut<De
     for a in actions.read() {
         match a {
             crate::dev::DevAction::PerfHud => {
-                view.hud = !view.hud;
+                view.hud = match view.hud {
+                    Hud::Brief => Hud::Full,
+                    Hud::Full => Hud::Off,
+                    Hud::Off => Hud::Brief,
+                };
                 for mut v in &mut hud {
-                    *v = if view.hud { Visibility::Visible } else { Visibility::Hidden };
+                    *v = if view.hud == Hud::Off { Visibility::Hidden } else { Visibility::Visible };
                 }
             }
             crate::dev::DevAction::Chunks => view.rects = !view.rects,
@@ -106,8 +119,20 @@ fn update_hud(
         return;
     }
     stats.roll();
-    if !view.hud {
-        return;
+    match view.hud {
+        Hud::Off => return,
+        Hud::Brief => {
+            text.0 = format!(
+                "{:.0} fps | {:.1} ms avg, {:.1} worst\nlight {:.1} ms | sim {:.2} ms",
+                1000.0 / stats.avg_ms.max(0.001),
+                stats.avg_ms,
+                stats.worst_ms,
+                light.time.as_secs_f64() * 1e3,
+                metrics.tick_time_avg.as_secs_f64() * 1e3,
+            );
+            return;
+        }
+        Hud::Full => {}
     }
     let under = cursor.0.and_then(|p| material_at(&sim, p).map(|(_, n)| format!("({:.0},{:.0}) {n}", p.x.floor(), p.y.floor())));
     text.0 = format!(

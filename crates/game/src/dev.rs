@@ -164,7 +164,7 @@ fn spawn_panel(mut commands: Commands) {
         ("Light: beam, big, torch   L", DevAction::Flashlight),
         ("Plant a torch   G", DevAction::PlantTorch(None)),
         ("Spawn a warband   O", DevAction::Spawn(None)),
-        ("Performance HUD   H", DevAction::PerfHud),
+        ("Performance HUD: brief, full, off   H", DevAction::PerfHud),
         ("Chunk overlay   J", DevAction::Chunks),
         ("Radius -   wheel", DevAction::Radius(-1)),
         ("Radius +   wheel", DevAction::Radius(1)),

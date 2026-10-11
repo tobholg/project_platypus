@@ -16,7 +16,7 @@
     fall_damage: (safe_height: 105, per_cell: 0.53),
     movement: (
         run_speed: 87,
-        jump_height: 36,
+        jump_height: 48,
         air_jumps: 0,
         step_height: 5,
         dash_speed: 0,

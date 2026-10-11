@@ -305,6 +305,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, show_script)
             .add_systems(Update, ragdoll_script)
             .add_systems(Update, slope_script)
+            .add_systems(Update, ledge_script)
             .add_systems(PreUpdate, optics_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PostUpdate, plunge_script.after(bevy::transform::TransformSystems::Propagate))
             .add_systems(Update, sounds_script)
@@ -9016,6 +9017,67 @@ fn slope_script(
             }
             let rest: Vec<String> = bodies.iter().map(|b| format!("x {:.0} ({:.0} over the ramp, moving {:.0})", b.body.pos.x, b.body.pos.y - b.body.half.y - ramp(b.body.pos.x), b.body.vel.length())).collect();
             info!("slope: t {:.0} bodies: {}", s.elapsed, rest.join(", "));
+        }
+        _ => {}
+    }
+}
+
+/// `ledge` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the player on a
+/// stone ledge `PLATYPUS_LEDGE` cells up (30 by default), 40 wide, a
+/// `PLATYPUS_KIND` (a skeleton) put down below 70 cells off: does it get up
+/// to the player? Logs where it is each second, and when it's on the ledge.
+fn ledge_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "ledge" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let fl = floor as f32;
+    let high = std::env::var("PLATYPUS_LEDGE").ok().and_then(|v| v.parse::<i32>().ok()).unwrap_or(30);
+    let kind = std::env::var("PLATYPUS_KIND").unwrap_or_else(|_| "skeleton".into());
+    match state.0 {
+        0 if s.elapsed > 0.5 => {
+            let Some(stone) = sim.materials().id("stone") else { return };
+            for x in 1000..1040 {
+                for y in floor..floor + high {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: stone, overwrite: true });
+                }
+            }
+            for (e, c, _) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            *state = (1, s.elapsed);
+        }
+        1 if s.elapsed > 1.0 => {
+            k.body.pos = Vec2::new(1030.0, fl + high as f32 + k.body.half.y + 1.0);
+            k.body.vel = Vec2::ZERO;
+            k.prev_pos = k.body.pos;
+            crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(930.0, fl), |_| {});
+            info!("ledge: a ledge {high} up, a {kind} below");
+            *state = (2, s.elapsed);
+        }
+        2 => {
+            k.body.pos.x = 1030.0;
+            k.body.vel.x = 0.0;
+            let Some((_, _, c)) = them.iter().find(|(_, c, _)| c.kind == kind) else { return };
+            let feet = c.body.pos.y - c.body.half.y;
+            if feet >= fl + high as f32 - 1.0 && (1000.0..1040.0).contains(&c.body.pos.x) {
+                info!("ledge: t {:.1} the {kind} is up on the ledge ({high} up)", s.elapsed);
+                state.0 = 3;
+            } else if s.elapsed >= state.1 + 1.0 {
+                state.1 = s.elapsed;
+                info!("ledge: t {:.0} the {kind} at x {:.0}, {:.0} up, vel {:?}, grounded {}", s.elapsed, c.body.pos.x, feet - fl, c.body.vel.round(), c.loco.grounded());
+            }
         }
         _ => {}
     }

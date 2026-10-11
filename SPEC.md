@@ -1973,6 +1973,14 @@ DESIGN §13 item 6.
   the dev panel switches each while playing): alert
   marks ("?" suspicious or searching, "!" starting to hunt: they gave away
   where things were in the dark; off) and damage numbers (on).
+- A brain holds its jump while it's rising toward what it's after (above
+  its feet), not only a planned way's: let go at once, a jump up at a
+  ledge was cut to a hop. Skeletons and orcs jump 48 (were 36, against the
+  player's 60: a cavern ledge was out of their reach). The `ledge`
+  scenario: the player on a ledge `PLATYPUS_LEDGE` up, a `PLATYPUS_KIND`
+  below; a skeleton gets onto 34, 40 and 44 in 2–3 s.
+- The performance HUD (F3 / H) shows two lines by default (the frame rate,
+  light and sim), the full readout on the next press, nothing on the next.
 - **Thrown about** (`creatures::body::tumble`, `hands::corpses`): a blow
   or blast that knocks a creature off its feet (a stun) sets it spinning
   (`Tumble`: 0.009 rad/s per cell/s of knock over its heft past half of

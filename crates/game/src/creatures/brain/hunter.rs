@@ -782,8 +782,12 @@ fn hunt(
         }
         c.0.move_y = move_y;
         // Brains hold buttons; release after a press so the next press
-        // registers (a way's jump is held as its arc was).
-        c.0.jump = if hold && c.0.jump { true } else { jump && !c.0.jump };
+        // registers (a way's jump is held as its arc was; a jump up at what
+        // it's after is held as long as it's rising toward it: let go at
+        // once, a jump was cut to a hop, and a skeleton under a ledge it
+        // could jump onto never got up).
+        let reaching = target.is_some_and(|t| t.0.y > pos.y - k.body.half.y) && k.body.vel.y > 0.0 && !grounded;
+        c.0.jump = if (hold || reaching) && c.0.jump { true } else { jump && !c.0.jump };
     }
 }
 
