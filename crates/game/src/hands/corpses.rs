@@ -98,6 +98,12 @@ fn limp_of(d: &Died, items: &Items) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look
         return None;
     }
     let centre = d.body.pos + offset.truncate();
+    // Bones (what rises, and what's broken for good) fall apart: rubble.
+    if d.def.rises.is_some() {
+        let (limp, looks) = ragdoll::rubble(&cuts, d.def.sprite.frame, centre, d.facing, d.body.vel);
+        let looks = looks.into_iter().enumerate().map(|(i, l)| (l, i as f32 * 0.0005)).collect();
+        return Some((limp, looks));
+    }
     let limp = ragdoll::assemble(&cuts, d.def.sprite.frame, centre, d.facing, d.body.vel, d.spin.omega);
     // (Its parts in their pose's order, mirrored as it faced.)
     let looks = cuts

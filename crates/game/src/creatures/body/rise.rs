@@ -38,8 +38,13 @@ const PILE_SHARE: f32 = 0.4;
 const PILE_WEAK: f32 = 1.6;
 /// The light grows this long before it stands (seconds).
 const GLOW: f32 = 1.5;
-/// The bones fly together this long.
-const ASSEMBLE: f32 = 0.6;
+/// The bones fly together this long: each in `FLIGHT` of it, the feet's
+/// first, the skull's last.
+const ASSEMBLE: f32 = 1.8;
+const FLIGHT: f32 = 0.7;
+/// How high a bone arcs on its way, and how far round it swirls (cells).
+const ARC: f32 = 6.0;
+const SWIRL: f32 = 4.0;
 /// Standing where it can't (under a low roof), it tries again after this.
 const RETRY: f32 = 0.5;
 /// The light in the bones (cold, sickly), at its brightest.
@@ -89,6 +94,8 @@ pub struct Assembling {
     /// from its middle.
     pixels: Vec<(Vec2, Vec2, [f32; 4])>,
     eyes: [f32; 3],
+    /// Where its heap's bones lay (the world), to fly from.
+    from: Vec<Vec2>,
 }
 
 /// Its eyes just caught: a light that fades.
@@ -211,10 +218,10 @@ pub fn stand(
     items: Option<Res<Items>>,
     mut chests: ResMut<Chests>,
     mut sparks: ResMut<crate::vfx::Sparks>,
-    mut q: Query<(Entity, &mut Pile, &Kinematics, &Corpse, Option<&mut crate::light::LightSource>)>,
+    mut q: Query<(Entity, &mut Pile, &Kinematics, &Corpse, Option<&mut crate::light::LightSource>, Option<&super::ragdoll::Limp>)>,
 ) {
     let Some(items) = items else { return };
-    for (e, mut pile, k, corpse, light) in &mut q {
+    for (e, mut pile, k, corpse, light, limp) in &mut q {
         pile.left -= DT;
         let pos = k.body.pos;
         if pile.left < GLOW {
@@ -235,9 +242,19 @@ pub fn stand(
         if pile.left > 0.0 {
             continue;
         }
-        // Standing: its box, from the heap's ground, must be clear.
+        // Standing: its box, from the ground under the heap, must be clear.
         let (w, h) = pile.def.size;
-        let feet = Vec2::new(pos.x, pos.y - k.body.half.y);
+        let grid = WorldGrid(&sim.world);
+        let cell = CellPos::from_world(pos.x, pos.y);
+        // (Up out of the ground if the heap's middle is in it, then down to it.)
+        let mut y = cell.y;
+        while y < cell.y + 12 && platypus_physics::Grid::solid(&grid, cell.x, y) {
+            y += 1;
+        }
+        while y > cell.y - 40 && !platypus_physics::Grid::solid(&grid, cell.x, y - 1) {
+            y -= 1;
+        }
+        let feet = Vec2::new(pos.x, y as f32);
         let standing = platypus_physics::Body::new(feet + Vec2::new(0.0, h / 2.0 + 0.5), Vec2::new(w, h));
         let (lo, hi) = standing.cells_at(standing.pos);
         if overlaps_solid(&WorldGrid(&sim.world), lo, hi) {
@@ -269,6 +286,8 @@ pub fn stand(
             .or_else(|| pile.def.unarmed.clone());
         let (share, facing) = (pile.rise.health, pile.facing);
         let eyes = pile.def.eyes.map_or(LIGHT, |(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]);
+        // (Its bones fly up from where they lie.)
+        let from: Vec<Vec2> = limp.map(|l| l.world_pixels().into_iter().map(|(p, _)| p).collect()).unwrap_or_default();
         crate::creatures::def::spawn_creature(&mut commands, &pile.kind, feet, move |c| {
             if let Some(mut h) = c.get_mut::<Health>() {
                 h.hp = h.max * share;
@@ -276,7 +295,8 @@ pub fn stand(
             if let Some(mut k) = c.get_mut::<Kinematics>() {
                 k.loco.facing = facing;
             }
-            c.insert((eq, crate::combat::Wielding(wielding), Outfitted, Assembling { t: 0.0, pixels: Vec::new(), eyes }, Dormant, Visibility::Hidden));
+            let glow = crate::light::LightSource { color: LIGHT.map(|c| c * LIGHT_MOST), flicker: 0.0 };
+            c.insert((eq, crate::combat::Wielding(wielding), Outfitted, Assembling { t: 0.0, pixels: Vec::new(), eyes, from }, Dormant, Visibility::Hidden, glow));
         });
         commands.entity(e).despawn();
     }
@@ -323,19 +343,26 @@ pub fn assemble(
     let dt = time.delta_secs();
     for (e, mut a, k, anim, bleeds) in &mut q {
         if a.pixels.is_empty() {
-            a.pixels = pixels_of(anim, k);
+            let from = std::mem::take(&mut a.from);
+            a.pixels = pixels_of(anim, k, &from);
             sounds.write(crate::sound::PlaySound::at("clank", k.body.pos).pitch(0.55).volume(0.7));
         }
         a.t += dt;
         let (lo, hi) = a.pixels.iter().fold((f32::MAX, f32::MIN), |(lo, hi), p| (lo.min(p.1.y), hi.max(p.1.y)));
         let span = (hi - lo).max(1.0);
-        for &(from, to, rgba) in &a.pixels {
+        for (i, &(from, to, rgba)) in a.pixels.iter().enumerate() {
             // (Feet first: each starts later the higher it goes.)
-            let delay = (to.y - lo) / span * ASSEMBLE * 0.5;
-            let p = ((a.t - delay) / (ASSEMBLE * 0.5)).clamp(0.0, 1.0);
-            let ease = 1.0 - (1.0 - p).powi(3);
-            let lift = (ease * std::f32::consts::PI).sin() * 3.0;
-            sparks.draw_now(k.body.pos + from.lerp(to, ease) + Vec2::new(0.0, lift), 1.0, rgba);
+            let delay = (to.y - lo) / span * (ASSEMBLE - FLIGHT);
+            let p = ((a.t - delay) / FLIGHT).clamp(0.0, 1.0);
+            // (Slow to lift, quick in the middle, settling into place.)
+            let ease = p * p * (3.0 - 2.0 * p);
+            let hump = (ease * std::f32::consts::PI).sin();
+            let side = if i % 2 == 0 { 1.0 } else { -1.0 };
+            let swirl = Vec2::new(side * SWIRL * hump * (1.0 - ease), ARC * hump);
+            // (Still in the heap: dimmer; landing: lit by the glow.)
+            let glow = (hump * 0.6).min(1.0);
+            let c = [rgba[0] + (LIGHT[0] - rgba[0]) * glow * 0.5, rgba[1] + (LIGHT[1] - rgba[1]) * glow * 0.5, rgba[2] + (LIGHT[2] - rgba[2]) * glow * 0.5, rgba[3]];
+            sparks.draw_now(k.body.pos + from.lerp(to, ease) + swirl, 1.0, c);
         }
         if a.t < ASSEMBLE {
             continue;
@@ -364,8 +391,9 @@ pub fn assemble(
 }
 
 /// The pixels of its standing picture (its first idle frame), each with a
-/// place in the heap to fly from: offsets from its middle.
-fn pixels_of(anim: &super::animation::Animator, k: &Kinematics) -> Vec<(Vec2, Vec2, [f32; 4])> {
+/// place in the heap to fly from (one of its heap's bones, `from`, the
+/// lowest to its feet; or anywhere low by it): offsets from its middle.
+fn pixels_of(anim: &super::animation::Animator, k: &Kinematics, from: &[Vec2]) -> Vec<(Vec2, Vec2, [f32; 4])> {
     let def = &anim.def;
     let Some(rig) = def.rig.as_ref() else { return vec![(Vec2::ZERO, Vec2::ZERO, [0.0; 4])] };
     let idx = rig.clips.get("idle").and_then(|c| c.frames.first().copied()).unwrap_or(0);
@@ -386,6 +414,16 @@ fn pixels_of(anim: &super::animation::Animator, k: &Kinematics) -> Vec<(Vec2, Ve
             // (Lying in the heap: along the ground, low.)
             let from = Vec2::new((unit() - 0.5) * fh, -k.body.half.y + unit() * 4.0);
             out.push((from, to, [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 1.0]));
+        }
+    }
+    if !from.is_empty() {
+        // (Lowest bones to its feet, highest to its skull.)
+        let mut src: Vec<Vec2> = from.iter().map(|p| *p - k.body.pos).collect();
+        src.sort_by(|a, b| a.y.total_cmp(&b.y));
+        let mut order: Vec<usize> = (0..out.len()).collect();
+        order.sort_by(|&a, &b| out[a].1.y.total_cmp(&out[b].1.y));
+        for (n, &i) in order.iter().enumerate() {
+            out[i].0 = src[n * src.len() / order.len().max(1)];
         }
     }
     if out.is_empty() {

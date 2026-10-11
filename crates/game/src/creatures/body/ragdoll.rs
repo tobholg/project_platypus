@@ -67,6 +67,9 @@ pub struct Piece {
     /// Where its picture's middle is from its weight's (unturned).
     pub draw_offset: Vec2,
     pub name: String,
+    /// Its pixels, from its middle (unturned), each its colour: kept for
+    /// rubble (bones that fly back together: `rise`); else none.
+    pub pixels: Vec<(Vec2, [u8; 4])>,
 }
 
 /// Two pieces pinned together at a point (each's own, from its middle).
@@ -104,6 +107,7 @@ pub struct Cut {
     com: Vec2,
     centre: Vec2,
     pixels: Vec<IVec2>,
+    colors: Vec<[u8; 4]>,
     edge: Vec<IVec2>,
 }
 
@@ -172,7 +176,8 @@ pub fn cut(file: &platypus_art::ArtFile, frame: &str) -> Vec<Cut> {
         let edge: Vec<IVec2> = pixels.iter().copied().filter(|q| [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y].iter().any(|d| !set.contains(&(*q + *d)))).collect();
         let com = pixels.iter().fold(Vec2::ZERO, |s, q| s + q.as_vec2()) / pixels.len() as f32 + Vec2::splat(0.5);
         let centre = Vec2::new(lo.x as f32 + w as f32 / 2.0, lo.y as f32 + h as f32 / 2.0);
-        out.push(Cut { image, name: layer.part.clone(), com, centre, pixels, edge });
+        let colors = pixels.iter().map(|q| p.get(q.x, q.y)).collect();
+        out.push(Cut { image, name: layer.part.clone(), com, centre, pixels, colors, edge });
     }
     out
 }
@@ -212,7 +217,7 @@ pub fn assemble(cuts: &[Cut], frame: (u32, u32), centre: Vec2, facing: f32, vel:
         let (slump, twist) = if i == root { (Vec2::new(-facing * SLUMP_BACK, 0.0), -facing * SLUMP_TWIST * 0.4) } else { (Vec2::ZERO, unit * SLUMP_TWIST) };
         let v = (vel + slump + Vec2::new(-r.y, r.x) * omega) * DT / SUBSTEPS as f32;
         let w = (omega + twist) * DT / SUBSTEPS as f32;
-        pieces.push(Piece { pos, prev: pos - v, angle: 0.0, prev_angle: -w, tick_pos: pos, tick_angle: 0.0, inv_mass: 1.0 / mass, inv_inertia: 1.0 / inertia, samples, draw_offset: local(c.centre - c.com), name: c.name.clone() });
+        pieces.push(Piece { pos, prev: pos - v, angle: 0.0, prev_angle: -w, tick_pos: pos, tick_angle: 0.0, inv_mass: 1.0 / mass, inv_inertia: 1.0 / inertia, samples, draw_offset: local(c.centre - c.com), name: c.name.clone(), pixels: Vec::new() });
     }
     // Each piece pinned to the torso where it touches it.
     let mut joints = Vec::new();
@@ -259,6 +264,76 @@ const BEND_KNEE: f32 = 2.2;
 const BEND_HIP: f32 = 1.8;
 /// A walker's body piece: this share of its frame (sprites have margins).
 const BODY_SHARE: f32 = 0.34;
+
+/// Rubble: chunks this many pixels across.
+const CHUNK: i32 = 4;
+/// Fewest pixels a chunk keeps (smaller crumbs join the one beside).
+const CHUNK_LEAST: usize = 3;
+/// How the chunks scatter as it falls apart (cells a second, radians a second).
+const SCATTER: f32 = 34.0;
+const SCATTER_SPIN: f32 = 9.0;
+
+/// A body that falls apart (bones: what rises, and what's broken for good)
+/// as rubble: each part cut into small chunks, loose (no joints), flung a
+/// little apart and tumbling, to lie in a heap. Each chunk keeps its pixels
+/// (for flying back together: `rise`).
+pub fn rubble(cuts: &[Cut], frame: (u32, u32), centre: Vec2, facing: f32, vel: Vec2) -> (Limp, Vec<Look>) {
+    let (fw, fh) = (frame.0 as f32, frame.1 as f32);
+    let world = |p: Vec2| centre + Vec2::new((p.x - fw / 2.0) * facing, fh / 2.0 - p.y);
+    let local = |d: Vec2| Vec2::new(d.x * facing, -d.y);
+    let sub = DT / SUBSTEPS as f32;
+    let mut rng = platypus_sim::rng::Rng::seeded(&[centre.x.to_bits() as u64, centre.y.to_bits() as u64, 0x8B0E]);
+    let mut unit = move || rng.next_u32() as f32 / u32::MAX as f32 * 2.0 - 1.0;
+    let mut pieces = Vec::new();
+    let mut looks = Vec::new();
+    for (ci, c) in cuts.iter().enumerate() {
+        // (Each part's grid a little offset, so the breaks don't line up.)
+        let off = IVec2::new(ci as i32 * 3 % CHUNK, ci as i32 * 5 % CHUNK);
+        let mut chunks: std::collections::BTreeMap<(i32, i32), Vec<(IVec2, [u8; 4])>> = Default::default();
+        for (q, col) in c.pixels.iter().zip(&c.colors) {
+            let k = ((q.x + off.x).div_euclid(CHUNK), (q.y + off.y).div_euclid(CHUNK));
+            chunks.entry(k).or_default().push((*q, *col));
+        }
+        // (Crumbs join a neighbour.)
+        let keys: Vec<(i32, i32)> = chunks.keys().copied().collect();
+        for k in keys {
+            if chunks.get(&k).is_some_and(|v| v.len() < CHUNK_LEAST)
+                && let Some(n) = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().map(|d| (k.0 + d.0, k.1 + d.1)).find(|n| chunks.get(n).is_some_and(|v| v.len() >= CHUNK_LEAST))
+            {
+                let crumbs = chunks.remove(&k).unwrap_or_default();
+                chunks.entry(n).or_default().extend(crumbs);
+            }
+        }
+        for px in chunks.into_values() {
+            let com = px.iter().fold(Vec2::ZERO, |s, (q, _)| s + q.as_vec2()) / px.len() as f32 + Vec2::splat(0.5);
+            let drawn: Vec<(IVec2, [u8; 4])> = px.iter().map(|(q, col)| (IVec2::new(q.x, -q.y), *col)).collect();
+            let (image, middle) = picture(&drawn);
+            // (`picture` draws y up: its middle back in frame pixels, y down;
+            // a pixel's row `q` was drawn at `-q`, spanning up to `-q + 1`.)
+            let middle = Vec2::new(middle.x, 1.0 - middle.y);
+            let mass = px.len() as f32;
+            let inertia = px.iter().map(|(q, _)| (q.as_vec2() + Vec2::splat(0.5) - com).length_squared()).sum::<f32>().max(1.0);
+            let set: std::collections::HashSet<IVec2> = px.iter().map(|(q, _)| *q).collect();
+            let samples = px.iter().filter(|(q, _)| [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y].iter().any(|d| !set.contains(&(*q + *d)))).map(|(q, _)| local(q.as_vec2() + Vec2::splat(0.5) - com)).collect();
+            let pos = world(com);
+            let fling = vel * 0.4 + Vec2::new(unit() * SCATTER, unit().abs() * SCATTER * 0.6);
+            let spin = unit() * SCATTER_SPIN;
+            let pixels = px.iter().map(|(q, col)| (local(q.as_vec2() + Vec2::splat(0.5) - com), *col)).collect();
+            pieces.push(Piece { pos, prev: pos - fling * sub, angle: 0.0, prev_angle: -spin * sub, tick_pos: pos, tick_angle: 0.0, inv_mass: 1.0 / mass, inv_inertia: 1.0 / inertia, samples, draw_offset: local(middle - com), name: "bone".into(), pixels });
+            looks.push(Look::Image(image, facing < 0.0));
+        }
+    }
+    let root = pieces.iter().enumerate().max_by(|a, b| a.1.inv_mass.total_cmp(&b.1.inv_mass).reverse()).map_or(0, |(i, _)| i);
+    (Limp { pieces, joints: Vec::new(), root, still: 0, asleep: false }, looks)
+}
+
+impl Limp {
+    /// Every pixel of its pieces where it is now (rubble's: what flies back
+    /// together), each its colour.
+    pub fn world_pixels(&self) -> Vec<(Vec2, [u8; 4])> {
+        self.pieces.iter().flat_map(|p| p.pixels.iter().map(move |(l, c)| (p.pos + rot(*l, p.angle), *c))).collect()
+    }
+}
 
 /// Cells drawn (each a colour, later ones over earlier) as a picture, and
 /// where its middle is among them.
@@ -309,6 +384,7 @@ pub fn limbed(sprite: Sprite, offset: Vec2, frame: (u32, u32), body: Vec2, limbs
         samples,
         draw_offset: Vec2::ZERO,
         name: name.to_string(),
+        pixels: Vec::new(),
     };
     let body_mass = (half.x * half.y * 4.0).max(4.0);
     let mut pieces = vec![new(centre, 0.0, body_mass, body_mass * half.length_squared() / 3.0, edge(half), "body", vel, omega)];
@@ -586,7 +662,7 @@ mod tests {
 
     fn square(at: Vec2) -> Piece {
         let samples = vec![Vec2::new(-2.0, -2.0), Vec2::new(2.0, -2.0), Vec2::new(2.0, 2.0), Vec2::new(-2.0, 2.0)];
-        Piece { pos: at, prev: at, angle: 0.0, prev_angle: 0.0, tick_pos: at, tick_angle: 0.0, inv_mass: 1.0 / 16.0, inv_inertia: 1.0 / 40.0, samples, draw_offset: Vec2::ZERO, name: "torso".into() }
+        Piece { pos: at, prev: at, angle: 0.0, prev_angle: 0.0, tick_pos: at, tick_angle: 0.0, inv_mass: 1.0 / 16.0, inv_inertia: 1.0 / 40.0, samples, draw_offset: Vec2::ZERO, name: "torso".into(), pixels: Vec::new() }
     }
 
     #[test]

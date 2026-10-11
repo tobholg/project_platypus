@@ -22,10 +22,10 @@ use crate::hands::icons::Icons;
 use crate::hands::items::{Items, Stack};
 
 /// A line stays this long after its last pick-up (seconds).
-const KEEP: f32 = 4.5;
-/// It fades in this long, and out (going) this long.
-const FADE_IN: f32 = 0.22;
-const FADE_OUT: f32 = 0.45;
+const KEEP: f32 = 2.4;
+/// It fades in this long, and out (rising as it fades) this long.
+const FADE_IN: f32 = 0.2;
+const FADE_OUT: f32 = 0.3;
 /// Most lines at once (a new one pushes the oldest out).
 const LINES: usize = 3;
 /// A line's height, how far below its place it comes in from, how far up
@@ -313,23 +313,28 @@ fn age(mut commands: Commands, time: Res<Time>, mut lines: Query<Fading>, mut co
         if line.going.is_none() && line.age >= KEEP {
             line.going = Some((0.0, line.y));
         }
-        let (target, alpha) = match &mut line.going {
+        let alpha = match &mut line.going {
             Some((t, from)) => {
                 *t += dt;
                 if *t >= FADE_OUT {
                     commands.entity(e).despawn();
                     continue;
                 }
-                // (Out over the top of the lines, clear of those staying,
-                // in the order they were in.)
-                ((LINES as f32 - 1.0) * LINE_H + SLIDE_OUT + *from * 0.5, 1.0 - *t / FADE_OUT)
+                // (Up and out over the top of the lines, clear of those
+                // staying, in the order they were in: rising and fading
+                // together.)
+                let k = *t / FADE_OUT;
+                let to = (LINES as f32 - 1.0) * LINE_H + SLIDE_OUT + *from * 0.5;
+                let from = *from;
+                line.y = from + (to - from) * k * (2.0 - k);
+                1.0 - k
             }
             None => {
                 let slot = staying.iter().position(|s| s.1 == e).unwrap_or(0);
-                (slot as f32 * LINE_H, (line.shown / FADE_IN).min(1.0))
+                line.y += (slot as f32 * LINE_H - line.y) * glide;
+                (line.shown / FADE_IN).min(1.0)
             }
         };
-        line.y += (target - line.y) * glide;
         node.bottom = px(line.y);
         line.pop = (line.pop - POP_SETTLE * dt * line.pop.max(0.15)).max(0.0);
         tf.scale = Vec2::splat(1.0 + POP * line.pop);

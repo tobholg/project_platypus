@@ -484,7 +484,8 @@ const PELT: f32 = 0.8;
 /// Heavy things flying fast hurt what they hit: a ball of rock dropped
 /// from a well, blast debris, a flung stream of sand (not a digger at its
 /// face: what it digs rains on it).
-fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Kinematics, &mut Health, Option<&brain::way::DigFace>)>) {
+/// (Not a heap of bones: its own dust, flung as it fell, would wear it down.)
+fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Kinematics, &mut Health, Option<&brain::way::DigFace>), Without<body::rise::Pile>>) {
     let boxes: Vec<(Vec2, Vec2)> = q.iter().map(|(k, ..)| (k.body.pos - k.body.half, k.body.pos + k.body.half)).collect();
     if boxes.is_empty() {
         return;
