@@ -1,27 +1,29 @@
-// A zombie: the shambling dead, rotting, in the rags it was buried in.
-// Grey-green skin, a sunken eye with a dull light in it, its jaw hanging,
-// a torn shirt with the rot showing through. Its arms reach out ahead of
+// A zombie: the shambling dead, in the clothes it died in. Dead-pale skin
+// with a bruised purple in its shadows and veins showing, a milky eye, its
+// jaw hanging, blood round its mouth and down its torn shirt. Its arms reach out ahead of
 // it as it goes (standing and walking: both held forward). Its legs aren't
 // drawn here: they're its creature file's `legs` (legs.rs, `rig`: two legs
-// in ragged trousers from its hips, stepping on whatever's under them).
-// Its rig is the skeleton's (the same frame, places and arms' shapes).
+// in dark trousers from its hips, 14 cells up, stepping on whatever's
+// under them). Its rig is the skeleton's (the same places and arms'
+// shapes), in a shorter frame: a man's height, not the skeleton's.
 // Facing right; the game mirrors it.
 (
-    size: (36, 44),
-    feet: (17.5, 44),
-    outline: (24, 20, 18),
+    size: (36, 40),
+    feet: (17.5, 40),
+    outline: (24, 18, 20),
     palette: {
-        'g': (152, 170, 126),   // skin, lit
-        'G': (124, 142, 102),   // skin
-        'D': (92, 106, 76),     // skin, shade
-        'k': (30, 22, 22),      // sockets, mouth
-        'e': (214, 196, 112),   // its eye's dull light
-        'r': (112, 36, 38),     // rot, wounds
-        'h': (50, 42, 36),      // hair, lank
-        'c': (84, 80, 108),     // the shirt
-        'C': (60, 56, 82),      // the shirt, shade
-        'b': (58, 44, 34),      // a belt, rope
-        'p': (72, 64, 54),      // trousers, at the hips
+        'g': (204, 188, 168),   // skin, lit: dead pale, sallow
+        'G': (172, 156, 140),   // skin
+        'D': (128, 110, 110),   // skin, shade (a bruised purple in it)
+        'v': (132, 106, 126),   // veins
+        'k': (34, 24, 26),      // sockets, mouth
+        'e': (222, 224, 212),   // its eye, milky
+        'x': (118, 22, 24),     // blood (round its mouth, down its shirt)
+        'h': (44, 36, 32),      // hair, lank
+        'c': (104, 110, 118),   // the shirt, grubby
+        'C': (76, 80, 90),      // the shirt, shade
+        'b': (52, 40, 32),      // a belt
+        'p': (58, 56, 62),      // trousers, at the hips
     },
     parts: {
         // Its mouth (where it bites from, its arms gone).
@@ -29,40 +31,41 @@
             "..h.hhh...",
             ".hhhhhhhh.",
             "hhhGgggghh",
-            "hhGgggggg.",
+            "hhGggvggg.",
             "hGgggkkgg.",
             "GGggkekgg.",
-            "GGgggkggr.",
-            ".GGgggggg.",
+            "GGgggkggg.",
+            ".GGgggvgg.",
             "..GgkkkkG.",
-            "..Ggkrkg..",
-            "...GGgG...",
+            "..Gxkxkx..",
+            "...GxGx...",
         ]),
         "blink": (points: { "mouth": (6, 9) }, rows: [
             "..h.hhh...",
             ".hhhhhhhh.",
             "hhhGgggghh",
-            "hhGgggggg.",
+            "hhGggvggg.",
             "hGgggggggg",
             "GGggkkkgg.",
-            "GGgggggggr",
-            ".GGgggggg.",
+            "GGgggggggg",
+            ".GGgggvgg.",
             "..GgkkkkG.",
-            "..Ggkrkg..",
-            "...GGgG...",
+            "..Gxkxkx..",
+            "...GxGx...",
         ]),
-        // Hunched in a torn shirt, the rot showing through; a rope belt and
-        // its trousers' top (the legs hang from its two lower corners).
+        // Hunched in a torn shirt, blood down its front, its skin showing
+        // through the tears; a belt and its trousers' top (the legs hang
+        // from its two lower corners).
         "torso": (rows: [
             "...GgG...",
-            ".ccGgGcc.",
-            "cccccccCC",
-            "ccgcccCCC",
-            "cgrgcccCC",
-            "ccgccrcCC",
-            "cccccccCC",
+            ".ccxgxcc.",
+            "cccxxccCC",
+            "ccgcxcCCC",
+            "cgvgcxcCC",
+            "ccgccxcCC",
+            "cccccxcCC",
             ".cccgccC.",
-            ".ccgrgCC.",
+            ".ccgDgCC.",
             ".cccccCC.",
             ".bbbbbbb.",
             ".ppppppp.",

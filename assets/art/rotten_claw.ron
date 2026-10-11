@@ -1,4 +1,4 @@
-// A zombie's hand: grey-green fingers, long dead nails, pointing right,
+// A zombie's hand: dead-pale fingers, long dead nails, pointing right,
 // held at its wrist (`grip`). What a zombie rakes with (`unarmed` in its
 // creature file: it has no weapon).
 (
@@ -6,8 +6,8 @@
     feet: (3, 5),
     outline: (24, 20, 18),
     palette: {
-        'g': (140, 158, 116),   // skin
-        'D': (92, 106, 76),     // skin, shaded
+        'g': (172, 156, 140),   // skin
+        'D': (128, 110, 110),   // skin, shaded
         'n': (196, 186, 150),   // nails
     },
     frames: {
