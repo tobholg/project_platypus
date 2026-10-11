@@ -98,9 +98,13 @@ fn limp_of(d: &Died, items: &Items) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look
         return None;
     }
     let centre = d.body.pos + offset.truncate();
-    // Bones (what rises, and what's broken for good) fall apart: rubble.
+    // Bones (what rises, and what's broken for good) fall apart: rubble
+    // (with its legs, if they're drawn apart from its art: `legs::rig`).
     if d.def.rises.is_some() {
-        let (limp, looks) = ragdoll::rubble(&cuts, d.def.sprite.frame, centre, d.facing, d.body.vel);
+        let (mut limp, mut looks) = ragdoll::rubble(&cuts, d.def.sprite.frame, centre, d.facing, d.body.vel);
+        if let Some(legs) = d.def.legs.as_ref() {
+            ragdoll::loose_limbs(&mut limp, &mut looks, &d.limbs, limb_drawer(legs), d.body.vel);
+        }
         let looks = looks.into_iter().enumerate().map(|(i, l)| (l, i as f32 * 0.0005)).collect();
         return Some((limp, looks));
     }
@@ -114,25 +118,19 @@ fn limp_of(d: &Died, items: &Items) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look
     Some((limp, looks))
 }
 
-/// A walker (a body on procedural limbs) as a ragdoll: its body's sprite
-/// and each limb as it was. None without limbs.
-fn walker_of(d: &Died) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look, f32)>)> {
-    use crate::creatures::body::parts::PartKind;
-    let legs = d.def.legs.as_ref()?;
-    let (sprite, offset) = d.sprite.as_ref()?;
-    if d.limbs.is_empty() {
-        return None;
-    }
+/// How a walker's limbs are drawn, laid along x from their middle (a
+/// capsule `len` long), as they're drawn alive (`legs::draw`): outlined, a
+/// knuckle at the joint; a mech's legs as plates, shaded under.
+fn limb_drawer(legs: &crate::creatures::body::legs::LegsDef) -> impl Fn(&crate::creatures::body::parts::Part, f32) -> Vec<(IVec2, [u8; 4])> + '_ {
     use crate::creatures::body::legs::{LegStyle, plate, stroke};
+    use crate::creatures::body::parts::PartKind;
     let rgb = |(r, g, b): (u8, u8, u8)| [r, g, b, 255];
     let dark = |(r, g, b): (u8, u8, u8)| ((r as f32 * 0.6) as u8, (g as f32 * 0.6) as u8, (b as f32 * 0.6) as u8);
     let joint = legs.joint.unwrap_or(legs.color);
     let segment = legs.segments.as_ref().map(|s| s.color);
     let chain = legs.chains.iter().find_map(|c| c.color);
     let line = legs.outline.unwrap_or_else(|| dark(dark(legs.color)));
-    // Each limb as it's drawn alive (`legs::draw`): outlined, a knuckle at
-    // its joint; a mech's legs as plates, shaded under.
-    let draw = |p: &crate::creatures::body::parts::Part, len: f32| {
+    move |p: &crate::creatures::body::parts::Part, len: f32| {
         let (a, b) = (Vec2::new(-len / 2.0, 0.0), Vec2::new(len / 2.0, 0.0));
         let r = (p.r - 0.5).max(0.5);
         let color = match p.kind {
@@ -154,7 +152,18 @@ fn walker_of(d: &Died) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look, f32)>)> {
             stroke(a, a, k, k, rgb(joint), &mut out);
         }
         out
-    };
+    }
+}
+
+/// A walker (a body on procedural limbs) as a ragdoll: its body's sprite
+/// and each limb as it was. None without limbs.
+fn walker_of(d: &Died) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look, f32)>)> {
+    let legs = d.def.legs.as_ref()?;
+    let (sprite, offset) = d.sprite.as_ref()?;
+    if d.limbs.is_empty() {
+        return None;
+    }
+    let draw = limb_drawer(legs);
     let (limp, looks) = ragdoll::limbed(sprite.clone(), offset.truncate(), d.def.sprite.frame, d.body.pos, &d.limbs, draw, d.body.vel, d.spin.omega);
     // (The body over its limbs.)
     let looks = looks.into_iter().enumerate().map(|(i, l)| (l, if i == 0 { 0.05 } else { i as f32 * 0.0005 })).collect();

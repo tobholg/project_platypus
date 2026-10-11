@@ -275,6 +275,12 @@ pub struct LegsDef {
     pub thick: u8,
     /// The body's sprite (seen from above, pointing right).
     pub body: String,
+    /// Its own art draws its body, animated (a humanoid's rig: its arms,
+    /// what it holds, its swings and aims); the legs only add legs, from
+    /// hips placed from its box's middle (`each`'s `hip`), its body not
+    /// riding or tilting with them (a lanky skeleton).
+    #[serde(default)]
+    pub rig: bool,
     /// Its pixels of this colour glow (eyes): drawn over the dark, at full
     /// brightness however dark it is.
     #[serde(default)]
@@ -1061,8 +1067,8 @@ fn grow_legs(
             (true, Some(back)) => *back,
             _ => def,
         };
-        let eyes_key = def.eyes.map(|(r, g, b)| format!("{}#{r},{g},{b}", def.body));
-        for (key, only) in [(Some(def.body.clone()), None), (eyes_key.clone(), def.eyes.map(|(r, g, b)| [r, g, b]))] {
+        let eyes_key = def.eyes.filter(|_| !def.rig).map(|(r, g, b)| format!("{}#{r},{g},{b}", def.body));
+        for (key, only) in [(Some(def.body.clone()).filter(|_| !def.rig), None), (eyes_key.clone(), def.eyes.map(|(r, g, b)| [r, g, b]))] {
             let Some(key) = key else { continue };
             if art.0.contains_key(&key) {
                 continue;
@@ -1080,9 +1086,15 @@ fn grow_legs(
                 Err(err) => warn!("legs: body `{}`: {err}", def.body),
             }
         }
-        let Some(turned) = art.0.get(&def.body) else { continue };
-        let body = commands.spawn((LegBody, turned.sprite(0.0), Transform::from_xyz(0.0, 0.0, 0.02))).id();
-        commands.entity(e).add_child(body);
+        // (Drawn by its own art: no turned body of the legs'.)
+        let body = if def.rig {
+            Entity::PLACEHOLDER
+        } else {
+            let Some(turned) = art.0.get(&def.body) else { continue };
+            let body = commands.spawn((LegBody, turned.sprite(0.0), Transform::from_xyz(0.0, 0.0, 0.02))).id();
+            commands.entity(e).add_child(body);
+            body
+        };
         // The eyes: over the dark (a child of the root, lifted above the light).
         let root_z = anim.def.z;
         let eyes = eyes_key.and_then(|key| art.0.get(&key)).map(|t| commands.spawn((LegEyes, crate::creatures::body::animation::Blinks, t.sprite(0.0), Transform::from_xyz(0.0, 0.0, Z_EYES - root_z))).id());
@@ -1271,7 +1283,12 @@ fn walk(
         // the feet planted afresh, but drawn swinging over.)
         let put = jumped;
         let jumped = jumped || turned;
-        let (c, up) = if side {
+        let (c, up) = if legs.def.rig {
+            // (Its own art's body: where its box is, upright.)
+            legs.facing = facing;
+            legs.tilt = 0.0;
+            (middle, Vec2::Y)
+        } else if side {
             legs.facing = facing;
             let f = facing;
             // (All in the surface's frame: along it, and up off it, from
@@ -1360,9 +1377,10 @@ fn walk(
             legs.heading += d;
         }
         // The drawn body: the creature's own sprite hidden (its colour
-        // borrowed: hurt flashes, tints), the turned one shown.
+        // borrowed: hurt flashes, tints), the turned one shown. (Its own
+        // art drawing its body, `rig`: left as it is.)
         let mut tint = None;
-        for child in children.iter() {
+        for child in children.iter().filter(|_| !legs.def.rig) {
             if let Ok((s, mut vis)) = sprites.get_mut(child) {
                 tint = Some(s.color);
                 *vis = Visibility::Hidden;

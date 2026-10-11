@@ -327,6 +327,39 @@ pub fn rubble(cuts: &[Cut], frame: (u32, u32), centre: Vec2, facing: f32, vel: V
     (Limp { pieces, joints: Vec::new(), root, still: 0, asleep: false }, looks)
 }
 
+/// Limbs drawn apart from its art (a rig's legs: `legs::rig`) added to
+/// rubble, each a loose bone (no joint), flung with the rest, keeping its
+/// pixels.
+pub fn loose_limbs(limp: &mut Limp, looks: &mut Vec<Look>, limbs: &[super::parts::Part], draw: impl Fn(&super::parts::Part, f32) -> Vec<(IVec2, [u8; 4])>, vel: Vec2) {
+    let sub = DT / SUBSTEPS as f32;
+    let mut rng = platypus_sim::rng::Rng::seeded(&[limbs.len() as u64, vel.x.to_bits() as u64, 0x1005]);
+    let mut unit = move || rng.next_u32() as f32 / u32::MAX as f32 * 2.0 - 1.0;
+    for p in limbs {
+        let d = p.b - p.a;
+        let len = d.length().max(1.0);
+        let thick = (p.r * 2.0 - 1.0).max(1.0);
+        let drawn = draw(p, len);
+        if drawn.is_empty() {
+            continue;
+        }
+        let (image, middle) = picture(&drawn);
+        let mut samples = Vec::new();
+        let mut x = -len / 2.0;
+        while x <= len / 2.0 {
+            samples.extend([Vec2::new(x, thick / 2.0), Vec2::new(x, -thick / 2.0)]);
+            x += 2.0;
+        }
+        let mass = len * thick;
+        let pos = (p.a + p.b) / 2.0;
+        let angle = d.y.atan2(d.x);
+        let fling = vel * 0.4 + Vec2::new(unit() * SCATTER, unit().abs() * SCATTER * 0.6);
+        let spin = unit() * SCATTER_SPIN;
+        let pixels = drawn.iter().map(|(q, c)| (q.as_vec2() + Vec2::splat(0.5), *c)).collect();
+        limp.pieces.push(Piece { pos, prev: pos - fling * sub, angle, prev_angle: angle - spin * sub, tick_pos: pos, tick_angle: angle, inv_mass: 1.0 / mass, inv_inertia: 12.0 / (mass * (len * len + thick * thick)).max(1.0), samples, draw_offset: middle, name: "bone".into(), pixels });
+        looks.push(Look::Image(image, false));
+    }
+}
+
 impl Limp {
     /// Every pixel of its pieces where it is now (rubble's: what flies back
     /// together), each its colour.

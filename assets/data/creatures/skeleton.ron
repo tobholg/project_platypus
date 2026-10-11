@@ -11,7 +11,7 @@
     loot: "skeleton",
     // The armour it died in, rusted on.
     wears: [("iron_helm", 0.3), ("chainmail", 0.25), ("iron_greaves", 0.2), ("cloth_hood", 0.15)],
-    size: (9, 23),
+    size: (9, 26),
     health: 70,
     team: Enemy,
     faction: "undead",
@@ -31,6 +31,18 @@
         dash_speed: 0,
     ),
     art: "skeleton",
+    // Lanky: its upper body is its art (animated: its arms, its sword); its
+    // legs are two long bone legs (legs.rs, `rig`) from its pelvis's lower
+    // corners, 18 cells up: each a thigh and a shin, a knob at the knee, a
+    // small bony foot forward; they step on whatever's under them, one
+    // then the other, and can be cut off one at a time.
+    legs: (view: Side, rig: true, reach: 18.5, upper: 0.5, step: 0.12, lift: 3, stride: 9,
+           color: (194, 188, 172), joint: (232, 228, 212), outline: (26, 20, 20), width: [2.6, 2.2, 1.8], toes: 3,
+           body: "skeleton",
+           each: [
+               (hip: (2, 5), gait: 0, knee: Forward),
+               (hip: (-1, 5), gait: 1, knee: Forward, far: true),
+           ]),
     weapon: "rusty_sword",
     // (Its sword taken from its heap, it gets up and punches.)
     unarmed: "bony_fists",

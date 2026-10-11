@@ -2023,6 +2023,17 @@ DESIGN §13 item 6.
   carry): the light on you and your noise, as hunters sense them
   (`senses::Exposure`). Nothing about creatures (that waits for the
   bestiary). The `cursor` scenario shows each look a second.
+- **Lanky skeletons on legs** (`legs.rig`): a creature's `legs` with
+  `rig: true` only add legs to a body its own art draws, animated (a
+  humanoid's arms, what it holds, its swings and aims): no turned body of
+  the legs', its sprite not hidden, its hips placed from its box's middle,
+  not riding or tilting. The skeleton is drawn so: a skull on a long neck,
+  a narrow ribcage on a long spine, long thin arms in every pose and aim,
+  its upper body high in a 44-tall frame (box 9 × 26), its legs two bone
+  legs (thigh, shin, a knob at the knee, a small foot) from its pelvis 18
+  cells up, stepping on what's under them. Its rubble has its leg bones
+  too, and its bones fly back into legs first, standing straight, then the
+  rest. (Ledges of 34, 40 and 44 and the course as before.)
 - **Getting up again** (`creatures::body::rise`, a creature's `rises`): a
   skeleton killed is gone, and its bones lie where it fell: a body that
   holds only what it wore and held (its loot is rolled when it's dead for

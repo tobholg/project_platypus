@@ -416,6 +416,24 @@ fn pixels_of(anim: &super::animation::Animator, k: &Kinematics, from: &[Vec2]) -
             out.push((from, to, [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 1.0]));
         }
     }
+    // Legs drawn apart from its art (`legs::rig`): standing, straight down
+    // from its hips to the ground under it, as they're drawn.
+    if let Some(legs) = def.legs.as_ref().filter(|l| l.rig) {
+        let rgb = |(r, g, b): (u8, u8, u8)| [r, g, b, 255];
+        let line = legs.outline.unwrap_or((26, 20, 20));
+        let w = |i: usize| legs.width.get(i).or(legs.width.last()).copied().unwrap_or(2.0) * 0.5;
+        for l in &legs.each {
+            let hip = Vec2::new(l.hip.0 * facing, l.hip.1);
+            let foot = Vec2::new(hip.x, -k.body.half.y + 0.5);
+            let color = if l.far { legs.far.unwrap_or((116, 112, 103)) } else { legs.color };
+            let mut px = Vec::new();
+            super::legs::stroke(hip, foot, w(0) + 1.0, w(1) + 1.0, rgb(line), &mut px);
+            super::legs::stroke(hip, foot, w(0), w(1), rgb(color), &mut px);
+            for (p, c) in px {
+                out.push((Vec2::ZERO, p.as_vec2() + Vec2::splat(0.5), [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 1.0]));
+            }
+        }
+    }
     if !from.is_empty() {
         // (Lowest bones to its feet, highest to its skull.)
         let mut src: Vec<Vec2> = from.iter().map(|p| *p - k.body.pos).collect();
