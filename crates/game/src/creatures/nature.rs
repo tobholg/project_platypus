@@ -132,6 +132,13 @@ impl Nature {
         }
     }
 
+    /// The same, a kind of hurt's multiplier times `by` (a heap of bones'
+    /// weaknesses, worse than the skeleton's: `rise`).
+    pub fn weaker(mut self, kind: Harm, by: f32) -> Self {
+        self.by[kind as usize] *= by;
+        self
+    }
+
     /// A nature with these multipliers (tests).
     #[cfg(test)]
     pub fn with(mut self, kind: Harm, m: f32) -> Self {

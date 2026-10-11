@@ -5,7 +5,10 @@
 //! another (the line pops); gold too, so sweeping a heap counts it in. Gear
 //! is named by its roll, in its rarity's colour; the first of anything the
 //! player ever holds says so (`new`). Its pack full, a red "Inventory full"
-//! instead. Newest at the bottom, nearest the head; at most `LINES`.
+//! instead. Newest at the bottom, nearest the head; at most `LINES`. A line
+//! rises into place from below as it fades in, and when its time is up (or
+//! a new one comes with the lines full, pushing the oldest out) it rises on
+//! out of the top as it fades.
 //!
 //! `hands::collect` and `gold` say what was taken (`PickedUp`).
 
@@ -18,11 +21,19 @@ use crate::gear::GearRules;
 use crate::hands::icons::Icons;
 use crate::hands::items::{Items, Stack};
 
-/// A line stays this long after its last pick-up (seconds), fading at the end.
-const KEEP: f32 = 3.0;
-const FADE: f32 = 0.6;
-/// Most lines at once (the oldest goes).
-const LINES: usize = 5;
+/// A line stays this long after its last pick-up (seconds).
+const KEEP: f32 = 4.5;
+/// It fades in this long, and out (going) this long.
+const FADE_IN: f32 = 0.22;
+const FADE_OUT: f32 = 0.45;
+/// Most lines at once (a new one pushes the oldest out).
+const LINES: usize = 3;
+/// A line's height, how far below its place it comes in from, how far up
+/// it goes out (screen pixels), and how quickly it gets to where it's going.
+const LINE_H: f32 = 18.0;
+const SLIDE_IN: f32 = 10.0;
+const SLIDE_OUT: f32 = 14.0;
+const GLIDE: f32 = 14.0;
 /// The pop of a line counting up: how big, how fast it settles.
 const POP: f32 = 0.22;
 const POP_SETTLE: f32 = 7.0;
@@ -88,10 +99,16 @@ struct Line {
     what: What,
     /// How many (units: cells for blocks and gold).
     units: u32,
+    /// Since its last pick-up, and since it came.
     age: f32,
+    shown: f32,
     pop: f32,
     /// Its order (the oldest goes first).
     born: u32,
+    /// How high it is (screen pixels over the bottom of the box).
+    y: f32,
+    /// Going: how long it's been going, from how high.
+    going: Option<(f32, f32)>,
     text: Entity,
     icon: Entity,
 }
@@ -100,15 +117,7 @@ fn spawn_root(mut commands: Commands) {
     commands.spawn((
         Root,
         Name::new("Picked up"),
-        Node {
-            position_type: PositionType::Absolute,
-            width: px(WIDTH),
-            flex_direction: FlexDirection::Column,
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::FlexEnd,
-            row_gap: px(1.0),
-            ..default()
-        },
+        Node { position_type: PositionType::Absolute, width: px(WIDTH), height: px(LINE_H * (LINES as f32 + 1.0)), ..default() },
         Pickable::IGNORE,
         GlobalZIndex(5),
     ));
@@ -203,11 +212,9 @@ fn take_in(
             None => got.push((what, units, new)),
         }
     }
-    let mut gone: Vec<Entity> = Vec::new();
     let mut spawned = 0;
     for (what, units, new) in got {
-        // (A gone line still fading is counted onto: it comes back.)
-        if let Some((_, mut line)) = lines.iter_mut().find(|(e, l)| l.what.is(&what) && !gone.contains(e)) {
+        if let Some((_, mut line)) = lines.iter_mut().find(|(_, l)| l.what.is(&what) && l.going.is_none()) {
             line.units = line.units.saturating_add(units);
             line.age = 0.0;
             line.pop = if what == What::Full { line.pop } else { 1.0 };
@@ -218,12 +225,11 @@ fn take_in(
             }
             continue;
         }
-        // The oldest goes to make room.
-        if lines.iter().filter(|(e, _)| !gone.contains(e)).count() + spawned >= LINES
-            && let Some((e, _)) = lines.iter().filter(|(e, _)| !gone.contains(e)).min_by_key(|(_, l)| l.born)
+        // The lines full: the oldest is pushed out.
+        if lines.iter().filter(|(_, l)| l.going.is_none()).count() + spawned >= LINES
+            && let Some((_, mut oldest)) = lines.iter_mut().filter(|(_, l)| l.going.is_none()).min_by_key(|(_, l)| l.born)
         {
-            commands.entity(e).despawn();
-            gone.push(e);
+            oldest.going = Some((0.0, oldest.y));
         }
         let (w, c) = words(&what, units, &items, rules.as_deref());
         let image = match what {
@@ -250,8 +256,18 @@ fn take_in(
         let text = commands.spawn((Text::new(w), TextFont { font_size: FontSize::Px(FONT), ..default() }, TextColor(c), shadow())).id();
         let row = commands
             .spawn((
-                Line { what, units, age: 0.0, pop: 0.6, born: *born, text, icon },
-                Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(4.0), ..default() },
+                Line { what, units, age: 0.0, shown: 0.0, pop: 0.0, born: *born, y: -SLIDE_IN, going: None, text, icon },
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(0.0),
+                    width: percent(100.0),
+                    bottom: px(-SLIDE_IN),
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    column_gap: px(4.0),
+                    ..default()
+                },
                 UiTransform::IDENTITY,
             ))
             .add_children(&[icon, text])
@@ -266,31 +282,55 @@ fn take_in(
     }
 }
 
-type Fading<'a> = (Entity, &'a mut Line, &'a mut UiTransform, &'a Children);
+type Fading<'a> = (Entity, &'a mut Line, &'a mut Node, &'a mut UiTransform, &'a Children);
 
-/// Lines settle from their pop, fade at the end of their time, and go.
+/// Lines glide to their places (newest lowest), fade in as they come and
+/// settle from their pop; their time up, they go: up and out, fading.
 fn age(mut commands: Commands, time: Res<Time>, mut lines: Query<Fading>, mut colors: Query<&mut TextColor>, mut icons: Query<(&mut ImageNode, &mut BackgroundColor)>) {
     let dt = time.delta_secs();
-    for (e, mut line, mut tf, children) in &mut lines {
+    // (Places: the staying, newest first.)
+    let mut staying: Vec<(u32, Entity)> = lines.iter().filter(|l| l.1.going.is_none()).map(|l| (l.1.born, l.0)).collect();
+    staying.sort_unstable_by_key(|s| std::cmp::Reverse(s.0));
+    let glide = 1.0 - (-GLIDE * dt).exp();
+    for (e, mut line, mut node, mut tf, children) in &mut lines {
         line.age += dt;
-        if line.age >= KEEP {
-            commands.entity(e).despawn();
-            continue;
+        line.shown += dt;
+        if line.going.is_none() && line.age >= KEEP {
+            line.going = Some((0.0, line.y));
         }
+        let (target, alpha) = match &mut line.going {
+            Some((t, from)) => {
+                *t += dt;
+                if *t >= FADE_OUT {
+                    commands.entity(e).despawn();
+                    continue;
+                }
+                // (Out over the top of the lines, clear of those staying,
+                // in the order they were in.)
+                ((LINES as f32 - 1.0) * LINE_H + SLIDE_OUT + *from * 0.5, 1.0 - *t / FADE_OUT)
+            }
+            None => {
+                let slot = staying.iter().position(|s| s.1 == e).unwrap_or(0);
+                (slot as f32 * LINE_H, (line.shown / FADE_IN).min(1.0))
+            }
+        };
+        line.y += (target - line.y) * glide;
+        node.bottom = px(line.y);
         line.pop = (line.pop - POP_SETTLE * dt * line.pop.max(0.15)).max(0.0);
         tf.scale = Vec2::splat(1.0 + POP * line.pop);
-        let alpha = ((KEEP - line.age) / FADE).min(1.0);
         for &c in children {
             if let Ok(mut color) = colors.get_mut(c) {
                 color.0.set_alpha(alpha);
             }
         }
+        // (An icon or swatch that's there at all: never quite clear, so it
+        // stays told apart from one that isn't.)
         if let Ok((mut image, mut bg)) = icons.get_mut(line.icon) {
-            if image.color.alpha() > 0.0 {
-                image.color.set_alpha(alpha);
+            if image.color != Color::NONE {
+                image.color.set_alpha(alpha.max(0.001));
             }
-            if bg.0.alpha() > 0.0 {
-                bg.0.set_alpha(alpha);
+            if bg.0 != Color::NONE {
+                bg.0.set_alpha(alpha.max(0.001));
             }
         }
     }

@@ -44,7 +44,7 @@ impl Plugin for CreaturesPlugin {
             .add_message::<Rocketed>()
             .add_plugins((def::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, body::animation::AnimationPlugin, factions::FactionsPlugin))
             .add_plugins((player::PlayerPlugin, brain::ai::AiPlugin, brain::critters::CrittersPlugin, brain::hunter::HunterPlugin, body::legs::LegsPlugin, custom::CustomPlugin, brain::villager::VillagerPlugin, moves::MovesPlugin, brain::way::WayPlugin, body::sight::SightPlugin))
-            .add_systems(FixedUpdate, (move_creatures, fall_damage, body::elements::expose, crate::combat::guard, body::hurt::notice, nature::regenerate, tally, crate::observe::observe, body::rise::collapse, deaths, body::rise::stand).chain().in_set(TickSet::Bodies))
+            .add_systems(FixedUpdate, (move_creatures, fall_damage, body::elements::expose, crate::combat::guard, body::hurt::notice, nature::regenerate, tally, crate::observe::observe, body::rise::collapse, body::rise::shatter, deaths, body::rise::stand).chain().in_set(TickSet::Bodies))
             .insert_resource(body::elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
             .init_resource::<StableIds>()
@@ -55,7 +55,8 @@ impl Plugin for CreaturesPlugin {
             // Hits as they landed, shown (`hurt`); the badly hurt drip and falter.
             .add_systems(FixedUpdate, (body::hurt::react, body::hurt::wounded).chain().after(crate::combat::Hits))
             .add_systems(FixedUpdate, (body::elements::struck, body::elements::zapped, blasted, pelted).after(TickSet::Cells))
-            .add_systems(PostUpdate, (interpolate, body::rise::draw_heaps.after(interpolate)).before(TransformSystems::Propagate))
+            .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate))
+            .add_systems(Update, (body::rise::assemble, body::rise::tint_waking))
             .add_systems(PreUpdate, dormancy)
             .add_systems(Update, body::tumble::spin.before(body::animation::animate));
     }
@@ -568,6 +569,9 @@ pub struct Died {
     pub worn: Vec<crate::hands::items::Stack>,
     /// How it was turning as it died (`Tumble`): its body goes on so.
     pub spin: body::tumble::Tumble,
+    /// It'll get up again (`body::rise`): its body is a heap of bones, with
+    /// what it wore and held and no loot yet, and it isn't a kill.
+    pub rising: Option<body::rise::RiseDef>,
 }
 
 /// What a body took in a tick, of one kind (`Health::took`, from every
@@ -630,7 +634,7 @@ pub(crate) fn deaths(
             let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
             let kind = creature.map_or_else(String::new, |c| c.kind.clone());
             let spin = tumbles.get(entity).copied().unwrap_or_default();
-            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin });
+            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin, rising: None });
         }
         if let Some(&body::hurt::Bleeds(blood)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.

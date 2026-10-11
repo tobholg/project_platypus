@@ -320,7 +320,7 @@ pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures:
     }
 }
 
-type NewCreature = (Added<Creature>, Without<crate::creatures::player::LocalPlayer>);
+type NewCreature = (Added<Creature>, Without<crate::creatures::player::LocalPlayer>, Without<crate::creatures::body::rise::Outfitted>);
 
 /// A creature just come into the world is armed and dressed: the item of the
 /// weapon it holds (if there is one: it's held gear, and on its body when it

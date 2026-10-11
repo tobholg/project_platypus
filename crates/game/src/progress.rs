@@ -162,7 +162,7 @@ fn track(
     };
     let pos = k.body.pos;
     for d in died.read() {
-        if !d.kind.is_empty() && d.body.pos.distance(pos) <= WITNESS {
+        if !d.kind.is_empty() && d.rising.is_none() && d.body.pos.distance(pos) <= WITNESS {
             *p.bypass_change_detection().kills.entry(d.kind.clone()).or_default() += 1;
         }
     }

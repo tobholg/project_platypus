@@ -9170,34 +9170,58 @@ fn pickups_script(
 }
 
 /// `rise` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a skeleton by the
-/// player (who can't die). At 2 s a sword kills it: it should fall in a
-/// heap and stand again 5 s on, at half its health. At 9 s a sword kills it
-/// again, at 10 s a sword strikes the heap (it clatters off), at 11 s a
-/// hammer: broken, it dies for good (a body). Logs its state each half second.
+/// player (who can't die). At 2 s a sword kills it: its bones lie in a heap
+/// and it stands again 5 s on (7.6 s, bones flying together), at half its
+/// health. At 9 s it's killed again, at 9.5 s its sword is taken from the
+/// heap, at 10 s a sword chips the heap: it gets up without a sword. At
+/// 16 s killed again, at 16.5 s a hammer on the heap: broken, dead for good
+/// (a body). Logs, each half second, the skeleton, the heaps and the bodies.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn rise_script(
     mut commands: Commands,
     s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut chests: ResMut<crate::hands::chests::Chests>,
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
-    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Has<crate::creatures::body::rise::Collapsed>), Without<LocalPlayer>>,
-    bodies: Query<&Kinematics, (With<crate::hands::corpses::Corpse>, Without<LocalPlayer>)>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, &crate::combat::Wielding), Without<LocalPlayer>>,
+    piles: Query<(Entity, &crate::creatures::Health, &crate::hands::corpses::Corpse), (With<crate::creatures::body::rise::Pile>, Without<LocalPlayer>)>,
+    bodies: Query<&crate::hands::corpses::Corpse, Without<crate::creatures::body::rise::Pile>>,
     mut hits: MessageWriter<crate::combat::Hit>,
+    (mut hand, mut over, mut mouse): (ResMut<crate::hands::Hand>, ResMut<crate::camera::CursorOverride>, ResMut<ButtonInput<MouseButton>>),
     mut state: Local<(u8, f32)>,
     mut next: Local<f32>,
 ) {
     if s.name != "rise" {
         return;
     }
-    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    // `PLATYPUS_RISE_MELEE=1`: no struck blows: from 2 s the player swings
+    // its longsword at the skeleton (or its heap), as a player would.
+    let melee = std::env::var("PLATYPUS_RISE_MELEE").is_ok();
+    let (Some(items), Ok((mut k, mut h))) = (items, player.single_mut()) else { return };
     h.hp = h.max;
     let fl = platypus_worldgen::arena::FLOOR as f32;
-    let skeleton = them.iter().find(|t| t.1.kind == "skeleton");
-    let mut strike = |harm: crate::creatures::Harm, damage: f32| {
-        if let Some((e, _, sk, _, _)) = skeleton {
-            hits.write(crate::combat::Hit { target: e, damage, harm, knock: Vec2::new(60.0, 40.0), stun: 0.3, at: sk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+    let skeleton = them.iter().find(|t| t.1.kind == "skeleton").map(|t| (t.0, t.2.body.pos));
+    let pile = piles.iter().next().map(|p| (p.0, p.2.key));
+    let mut strike = |at: Option<(Entity, Vec2)>, harm: crate::creatures::Harm, damage: f32| {
+        if let Some((e, pos)) = at {
+            hits.write(crate::combat::Hit { target: e, damage, harm, knock: Vec2::new(60.0, 40.0), stun: 0.3, at: pos, dir: Vec2::X, weight: 1.0, crit: false });
         }
     };
+    let pile_at = pile.map(|(e, _)| (e, k.body.pos));
+    if melee && state.0 >= 1 {
+        hand.bar = 1;
+        hand.slot = 8;
+        let target = skeleton.map(|t| t.1).or(piles.iter().next().map(|_| k.body.pos + Vec2::new(30.0, 0.0)));
+        over.0 = target;
+        if s.elapsed > 2.0 && target.is_some_and(|t| t.distance(k.body.pos) < 40.0) {
+            mouse.press(MouseButton::Left);
+        } else {
+            mouse.release(MouseButton::Left);
+        }
+    }
     match state.0 {
+        _ if melee && state.0 >= 1 => {}
         0 if s.elapsed > 0.5 => {
             for (e, c, ..) in &them {
                 if c.kind == "dummy" || c.kind == "sandbag" {
@@ -9211,32 +9235,48 @@ fn rise_script(
         }
         1 if s.elapsed > 2.0 => {
             info!("rise: a sword kills it");
-            strike(crate::creatures::Harm::Slash, 999.0);
+            strike(skeleton, crate::creatures::Harm::Slash, 999.0);
             *state = (2, s.elapsed);
         }
         2 if s.elapsed > 9.0 => {
             info!("rise: a sword kills it again");
-            strike(crate::creatures::Harm::Slash, 999.0);
+            strike(skeleton, crate::creatures::Harm::Slash, 999.0);
             *state = (3, s.elapsed);
         }
-        3 if s.elapsed > 10.0 => {
-            info!("rise: a sword on the heap");
-            strike(crate::creatures::Harm::Slash, 40.0);
+        3 if s.elapsed > 9.5 => {
+            if let Some((_, key)) = pile {
+                let inv = chests.contents(key, &sim.world, &items);
+                for slot in inv.slots.iter_mut() {
+                    if slot.is_some_and(|st| matches!(items.def(st.item).use_, crate::hands::items::Use::Melee(_))) {
+                        info!("rise: its {} taken from the heap", items.def(slot.unwrap().item).name);
+                        *slot = None;
+                    }
+                }
+            }
             *state = (4, s.elapsed);
         }
-        4 if s.elapsed > 11.0 => {
-            info!("rise: a hammer on the heap");
-            strike(crate::creatures::Harm::Blunt, 10.0);
+        4 if s.elapsed > 10.0 => {
+            info!("rise: a sword chips the heap");
+            strike(pile_at, crate::creatures::Harm::Slash, 8.0);
             *state = (5, s.elapsed);
+        }
+        5 if s.elapsed > 16.0 => {
+            info!("rise: killed a third time");
+            strike(skeleton, crate::creatures::Harm::Slash, 999.0);
+            *state = (6, s.elapsed);
+        }
+        6 if s.elapsed > 16.5 => {
+            info!("rise: a hammer on the heap");
+            strike(pile_at, crate::creatures::Harm::Blunt, 12.0);
+            *state = (7, s.elapsed);
         }
         _ => {}
     }
     if state.0 >= 1 && s.elapsed >= *next {
         *next = s.elapsed + 0.5;
-        match skeleton {
-            Some((_, _, sk, sh, down)) => info!("rise: t {:.1} skeleton {} hp {:.0}/{:.0} at ({:.0}, {:.0}) box {:.1}x{:.1}", s.elapsed, if down { "DOWN" } else { "up" }, sh.hp, sh.max, sk.body.pos.x, sk.body.pos.y - fl, sk.body.half.x * 2.0, sk.body.half.y * 2.0),
-            None => info!("rise: t {:.1} no skeleton; bodies {}", s.elapsed, bodies.iter().count()),
-        }
+        let sk = them.iter().find(|t| t.1.kind == "skeleton").map(|t| format!("skeleton hp {:.0}/{:.0} wielding {:?}", t.3.hp, t.3.max, t.4.0)).unwrap_or("no skeleton".into());
+        let hp: Vec<String> = piles.iter().map(|p| format!("{:.0}/{:.0}", p.1.hp, p.1.max)).collect();
+        info!("rise: t {:.1} {sk}; heaps {:?}; bodies {}", s.elapsed, hp, bodies.iter().count());
     }
 }
 

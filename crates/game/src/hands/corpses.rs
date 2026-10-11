@@ -201,10 +201,20 @@ fn lay_out(
     let Some(items) = items else { return };
     let luck = player.single().map_or(0.0, |s| s.get(crate::gear::Stat::Luck));
     for d in died.read() {
-        let inv = belongings(d, &items, &chests, &sim.world, luck);
+        // (Bones that'll get up hold what it wore and held: its loot is for
+        // when it's dead for good.)
+        let inv = if d.rising.is_some() {
+            let mut inv = Inventory::new(SLOTS);
+            for s in &d.worn {
+                inv.add(&items, *s);
+            }
+            inv
+        } else {
+            belongings(d, &items, &chests, &sim.world, luck)
+        };
         let at = d.body.pos;
         // Its gold bursts out (not looted: `gold.rs`).
-        if let Some(table) = &d.def.loot {
+        if let Some(table) = d.def.loot.as_ref().filter(|_| d.rising.is_none()) {
             let mut rng = Rng::seeded(&[sim.world.seed(), sim.world.tick(), at.x.to_bits() as u64, at.y.to_bits() as u64, 0x601D]);
             let gold = chests.gold_of(table, &sim.world, at, &mut rng);
             if gold > 0 {
@@ -238,7 +248,7 @@ fn lay_out(
         let mut e = commands.spawn((
             Name::new(format!("Body of {}", d.def.name)),
             Corpse { key, empty: 0.0, born: { *count += 1; *count } },
-            Container { key, name: format!("{} (dead)", d.def.name) },
+            Container { key, name: if d.rising.is_some() { format!("{} (bones)", d.def.name) } else { format!("{} (dead)", d.def.name) } },
             Thrown { bounce: RAG_BOUNCE, slide: RAG_SLIDE },
             // (Turned as it was as it died, from how it'll lie: it topples
             // over, or spins on as it flew.)
@@ -247,6 +257,9 @@ fn lay_out(
             Transform::from_translation(at.extend(Z)).with_rotation(Quat::from_rotation_z(d.spin.angle - turn)),
             Visibility::default(),
         ));
+        if let Some(rise) = &d.rising {
+            crate::creatures::body::rise::make_pile(&mut e, d, rise, sim.world.materials().id(&d.def.blood));
+        }
         if let Some((sprite, offset)) = &d.sprite {
             let mut sprite = sprite.clone();
             sprite.color = Color::srgb(DIM, DIM, DIM);
