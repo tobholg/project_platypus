@@ -18,7 +18,7 @@
 //! runs).
 
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashSet};
+use std::collections::BinaryHeap;
 
 use bevy::prelude::*;
 use platypus_sim::cell::flags::HELD;
@@ -197,6 +197,8 @@ pub fn hold(
 ) {
     let dt = time.delta_secs();
     let now = time.elapsed_secs();
+    let started = std::time::Instant::now();
+    let slimes = q.iter().count();
     // (The blows that cut, this tick: which way, by whom.)
     let cut: std::collections::HashMap<Entity, Vec2> = felt.read().filter(|f| matches!(f.harm, crate::creatures::Harm::Slash | crate::creatures::Harm::Pierce)).map(|f| (f.target, f.dir)).collect();
     for (e, mut goo, mut k, mut health, anim, mass, creature) in &mut q {
@@ -414,6 +416,10 @@ pub fn hold(
         });
         goo.placed = spiked.into_iter().chain(places).collect();
     }
+    // (PLATYPUS_GOOTIME: how long holding every slime's goo takes.)
+    if slimes > 0 && std::env::var("PLATYPUS_GOOTIME").is_ok() && sim.world.tick().is_multiple_of(60) {
+        info!("goo: {slimes} slimes held in {:.2} ms", started.elapsed().as_secs_f64() * 1000.0);
+    }
 }
 
 /// The `n` open cells nearest `at` by steps (costs across, down, up):
@@ -429,16 +435,26 @@ fn lay_out_shivering(sim: &SimWorld, at: Vec2, n: usize, (across, down, up): (u3
     // (Searched through what isn't solid, loose goo too; laid only in the
     // open; never far: it isn't that big.)
     let through = |p: CellPos| sim.world.get(p).is_some_and(|c| c.is_air() || !matches!(sim.world.materials().phys(c.material).kind, Kind::Static | Kind::Powder));
-    let far = (n as f32).sqrt() as i32 * 3 + 6;
+    let far = ((n as f32).sqrt() * 1.6) as i32 + 8;
     let start = CellPos::from_world(at.x, at.y);
     let mut out = Vec::with_capacity(n);
-    let mut seen: HashSet<CellPos> = HashSet::with_capacity(n * 3);
-    let mut heap = BinaryHeap::new();
+    // (What's been reached: a little grid round its middle.)
+    let side = (far * 2 + 1) as usize;
+    let mut seen = vec![false; side * side];
+    let mut mark = |p: CellPos| {
+        let (dx, dy) = (p.x - start.x + far, p.y - start.y + far);
+        if dx < 0 || dy < 0 || dx as usize >= side || dy as usize >= side {
+            return false;
+        }
+        let i = dy as usize * side + dx as usize;
+        !std::mem::replace(&mut seen[i], true)
+    };
+    let mut heap = BinaryHeap::with_capacity(n * 2);
     heap.push(Reverse((0u32, start.x, start.y)));
-    seen.insert(start);
+    mark(start);
     while let Some(Reverse((cost, x, y))) = heap.pop() {
         let p = CellPos::new(x, y);
-        if !through(p) || (p.x - start.x).abs() > far || (p.y - start.y).abs() > far {
+        if !through(p) {
             continue;
         }
         if open(p) {
@@ -451,7 +467,7 @@ fn lay_out_shivering(sim: &SimWorld, at: Vec2, n: usize, (across, down, up): (u3
         let (dd, du) = ((across + down) * 7 / 10, (across + up) * 7 / 10);
         for (dx, dy, c) in [(1, 0, across), (-1, 0, across), (0, -1, down), (0, 1, up), (1, -1, dd), (-1, -1, dd), (1, 1, du), (-1, 1, du)] {
             let q = CellPos::new(x + dx, y + dy);
-            if seen.insert(q) {
+            if mark(q) {
                 let grain = shiver.map_or(0, |(dir, tick)| {
                     let toward = Vec2::new((q.x - start.x) as f32, (q.y - start.y) as f32).normalize_or_zero().dot(dir);
                     if toward > 0.3 { (platypus_sim::rng::hash(&[q.x as u64, q.y as u64, tick]) % (SHIVER + 1)) as u32 } else { 0 }

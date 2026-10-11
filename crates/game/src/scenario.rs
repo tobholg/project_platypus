@@ -9661,7 +9661,12 @@ fn slime_script(
                 }
             }
         }
-        if mode == "merge" {
+        if mode == "many" {
+            // (Ten, spread out: what holding their goo costs.)
+            for n in 0..10 {
+                crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(960.0 + n as f32 * 45.0, fl), |_| {});
+            }
+        } else if mode == "merge" {
             // (Two halves, side by side, hopping at the player.)
             for x in [960.0, 1000.0] {
                 crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(x, fl), |c| {
