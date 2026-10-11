@@ -1,5 +1,8 @@
 // A skeleton: the dead of crypts and deep caves, with a rusty sword; bones,
 // so it crumbles to dust. The humanoid rig (assets/art/skeleton.ron).
+// Killed, its bones fall in a heap that pulls itself back together and
+// stands again (`rises`), unless something breaks it: a hammer, holy light.
+// Bones: no flesh to burn, nothing in them a fall can burst.
 (
     name: "Skeleton",
     // What it may have on it when it dies (loot.ron), besides what it wears.
@@ -7,13 +10,17 @@
     // The armour it died in, rusted on.
     wears: [("iron_helm", 0.3), ("chainmail", 0.25), ("iron_greaves", 0.2), ("cloth_hood", 0.15)],
     size: (9, 23),
-    health: 55,
+    health: 70,
     team: Enemy,
     faction: "undead",
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "undead",
+    // (Bones don't burn: the undead's weakness to fire is dead flesh's.)
+    profile: {fire: 0.75},
+    cant: [burn],
+    rises: Some((after: 5.0, health: 0.5, by: [blunt, radiant])),
     blood: "ash",
-    fall_damage: (safe_height: 105, per_cell: 0.53),
+    fall_damage: (safe_height: 180, per_cell: 0.3),
     movement: (
         run_speed: 87,
         jump_height: 48,

@@ -43,7 +43,7 @@ pub struct HunterPlugin;
 
 impl Plugin for HunterPlugin {
     fn build(&self, app: &mut App) {
-        app.register_brain::<Hunter>("hunter").add_systems(FixedUpdate, (super::senses::perceive, crate::creatures::moves::start, hunt, crate::creatures::moves::run).chain().in_set(super::BrainSet));
+        app.register_brain::<Hunter>("hunter").init_resource::<super::senses::Exposure>().add_systems(FixedUpdate, (super::senses::perceive, crate::creatures::moves::start, hunt, crate::creatures::moves::run).chain().in_set(super::BrainSet));
     }
 }
 

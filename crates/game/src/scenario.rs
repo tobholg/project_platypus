@@ -306,6 +306,9 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, ragdoll_script)
             .add_systems(Update, slope_script)
             .add_systems(Update, ledge_script)
+            .add_systems(Update, rise_script)
+            .add_systems(Update, pickups_script)
+            .add_systems(PreUpdate, cursor_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, optics_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PostUpdate, plunge_script.after(bevy::transform::TransformSystems::Propagate))
             .add_systems(Update, sounds_script)
@@ -9019,6 +9022,221 @@ fn slope_script(
             info!("slope: t {:.0} bodies: {}", s.elapsed, rest.join(", "));
         }
         _ => {}
+    }
+}
+
+/// `cursor` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the cursor in
+/// each of its looks, a second each (pictures with `PLATYPUS_SHOTS`): the
+/// pickaxe over dirt (1 s), over obsidian, too hard (2 s); a bomb, its arc
+/// (3 s); over an orc's body, a hand (4 s); a fire wand just cast, its ring
+/// (5 s); crouched, the eye (6 s).
+#[allow(clippy::too_many_arguments)]
+fn cursor_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut over: ResMut<crate::camera::CursorOverride>,
+    mut hand: ResMut<crate::hands::Hand>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    bodies: Query<&Kinematics, (With<crate::hands::corpses::Corpse>, Without<LocalPlayer>)>,
+    mut state: Local<u8>,
+) {
+    use platypus_sim::BLOCK;
+    if s.name != "cursor" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let fl = floor as f32;
+    let t = s.elapsed;
+    // (A block of a material, `bx` blocks along, on the floor.)
+    let block = |bx: i32| Vec2::new((bx as f32 + 0.5) * BLOCK as f32, fl + BLOCK as f32 * 0.5);
+    let bx0 = 912 / BLOCK;
+    if *state == 0 && t > 0.5 {
+        for (e, c, _) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        for (bx, m) in [(bx0, "dirt"), (bx0 + 2, "obsidian")] {
+            let Some(m) = sim.materials().id(m) else { continue };
+            for y in floor..floor + BLOCK {
+                for x in bx * BLOCK..(bx + 1) * BLOCK {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: m, overwrite: true });
+                }
+            }
+        }
+        crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(860.0, fl), |e| {
+            e.remove::<crate::creatures::brain::hunter::Hunter>();
+        });
+        *state = 1;
+    }
+    if *state == 1 && t > 0.8 {
+        for (e, c, _) in &them {
+            if c.kind == "orc" {
+                commands.entity(e).queue(|mut ew: EntityWorldMut| {
+                    if let Some(mut h) = ew.get_mut::<crate::creatures::Health>() {
+                        h.hp = 0.0;
+                    }
+                });
+            }
+        }
+        *state = 2;
+    }
+    let body = bodies.iter().next().map(|b| b.body.pos);
+    let (slot, at) = match t {
+        t if t < 2.0 => (0, block(bx0)),
+        t if t < 3.0 => (0, block(bx0 + 2)),
+        t if t < 4.0 => (3, Vec2::new(880.0 - (t - 3.0) * 60.0, fl + 40.0)),
+        t if t < 5.0 => (0, body.unwrap_or(Vec2::new(860.0, fl + 4.0))),
+        _ => (6, Vec2::new(1010.0, fl + 20.0)),
+    };
+    hand.slot = slot;
+    hand.bar = 0;
+    over.0 = Some(at);
+    if (5.0..5.1).contains(&t) {
+        mouse.press(MouseButton::Left);
+    } else {
+        mouse.release(MouseButton::Left);
+    }
+    if t > 5.8 {
+        keys.press(KeyCode::ControlLeft);
+    }
+    if *state == 2 && t > 1.5 {
+        info!("cursor: pickaxe on dirt (1 s), obsidian (2 s), bomb (3 s), body (4 s), wand (5 s), crouched (6 s)");
+        *state = 3;
+    }
+}
+
+/// `pickups` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): things dropped
+/// on the player to see "Picked up" over its head: copper ore in two lots
+/// (one line, counting up), dirt blocks and a bite of a block, a torch, a
+/// rare helm, then a burst of gold. Logs the pack's copper and the gold.
+fn pickups_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut gold_queue: ResMut<crate::gold::GoldQueue>,
+    player: Query<(&Kinematics, &crate::hands::items::Inventory, &crate::gold::Gold), With<LocalPlayer>>,
+    mut state: Local<u8>,
+) {
+    use crate::hands::items::{BLOCK_CELLS, Roll, Stack};
+    if s.name != "pickups" {
+        return;
+    }
+    let (Some(items), Ok((k, inv, gold))) = (items, player.single()) else { return };
+    let at = k.body.pos + Vec2::new(0.0, 14.0);
+    let mut drop = |id: &str, n: u32, roll: Roll| {
+        if let Some(i) = items.id(id) {
+            crate::hands::spawn_drop(&mut commands, &items, at, Stack { roll, ..Stack::new(i, n * items.unit(i)) });
+        }
+    };
+    match *state {
+        0 if s.elapsed > 1.0 => {
+            for _ in 0..3 {
+                drop("block:copper_ore", 1, Roll::default());
+            }
+            *state = 1;
+        }
+        1 if s.elapsed > 1.6 => {
+            for _ in 0..4 {
+                drop("block:copper_ore", 2, Roll::default());
+            }
+            drop("block:dirt", 3, Roll::default());
+            if let Some(dirt) = items.id("block:dirt") {
+                crate::hands::spawn_drop(&mut commands, &items, at, Stack::new(dirt, BLOCK_CELLS / 2));
+            }
+            *state = 2;
+        }
+        2 if s.elapsed > 2.2 => {
+            drop("torch", 5, Roll::default());
+            drop("iron_helm", 1, Roll { rarity: 3, level: 12, seed: 4242 });
+            gold_queue.burst.push((at + Vec2::new(20.0, 0.0), 60));
+            *state = 3;
+        }
+        3 if s.elapsed > 3.4 => {
+            let copper = items.id("block:copper_ore").map_or(0, |i| inv.count(i));
+            info!("pickups: copper ore in the pack {} cells ({} blocks), gold {}", copper, copper / BLOCK_CELLS, gold.0);
+            *state = 4;
+        }
+        _ => {}
+    }
+}
+
+/// `rise` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a skeleton by the
+/// player (who can't die). At 2 s a sword kills it: it should fall in a
+/// heap and stand again 5 s on, at half its health. At 9 s a sword kills it
+/// again, at 10 s a sword strikes the heap (it clatters off), at 11 s a
+/// hammer: broken, it dies for good (a body). Logs its state each half second.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn rise_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Has<crate::creatures::body::rise::Collapsed>), Without<LocalPlayer>>,
+    bodies: Query<&Kinematics, (With<crate::hands::corpses::Corpse>, Without<LocalPlayer>)>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32)>,
+    mut next: Local<f32>,
+) {
+    if s.name != "rise" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let skeleton = them.iter().find(|t| t.1.kind == "skeleton");
+    let mut strike = |harm: crate::creatures::Harm, damage: f32| {
+        if let Some((e, _, sk, _, _)) = skeleton {
+            hits.write(crate::combat::Hit { target: e, damage, harm, knock: Vec2::new(60.0, 40.0), stun: 0.3, at: sk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        }
+    };
+    match state.0 {
+        0 if s.elapsed > 0.5 => {
+            for (e, c, ..) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            crate::creatures::def::spawn_creature(&mut commands, "skeleton", Vec2::new(990.0, fl), |_| {});
+            *state = (1, s.elapsed);
+        }
+        1 if s.elapsed > 2.0 => {
+            info!("rise: a sword kills it");
+            strike(crate::creatures::Harm::Slash, 999.0);
+            *state = (2, s.elapsed);
+        }
+        2 if s.elapsed > 9.0 => {
+            info!("rise: a sword kills it again");
+            strike(crate::creatures::Harm::Slash, 999.0);
+            *state = (3, s.elapsed);
+        }
+        3 if s.elapsed > 10.0 => {
+            info!("rise: a sword on the heap");
+            strike(crate::creatures::Harm::Slash, 40.0);
+            *state = (4, s.elapsed);
+        }
+        4 if s.elapsed > 11.0 => {
+            info!("rise: a hammer on the heap");
+            strike(crate::creatures::Harm::Blunt, 10.0);
+            *state = (5, s.elapsed);
+        }
+        _ => {}
+    }
+    if state.0 >= 1 && s.elapsed >= *next {
+        *next = s.elapsed + 0.5;
+        match skeleton {
+            Some((_, _, sk, sh, down)) => info!("rise: t {:.1} skeleton {} hp {:.0}/{:.0} at ({:.0}, {:.0}) box {:.1}x{:.1}", s.elapsed, if down { "DOWN" } else { "up" }, sh.hp, sh.max, sk.body.pos.x, sk.body.pos.y - fl, sk.body.half.x * 2.0, sk.body.half.y * 2.0),
+            None => info!("rise: t {:.1} no skeleton; bodies {}", s.elapsed, bodies.iter().count()),
+        }
     }
 }
 

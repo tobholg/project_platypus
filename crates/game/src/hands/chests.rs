@@ -35,7 +35,7 @@ use crate::world::SimWorld;
 /// Slots in a chest.
 pub const SLOTS: usize = 20;
 /// How far from the player a chest can be opened (cells).
-const REACH: f32 = 42.0;
+pub(crate) const REACH: f32 = 42.0;
 /// Hit points: two hits of a copper pickaxe, a bomb beside it, a few
 /// seconds in a fire.
 const TOUGHNESS: f32 = 60.0;

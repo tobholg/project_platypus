@@ -270,6 +270,20 @@ pub fn minable(world: &World, block: CellPos, back: bool, tier: u8) -> bool {
     })
 }
 
+/// What in a block is too hard for this pickaxe (its hardest), if nothing
+/// in it is soft enough to take.
+pub fn too_hard(world: &World, block: CellPos, tier: u8) -> Option<platypus_sim::MaterialId> {
+    if minable(world, block, false, tier) {
+        return None;
+    }
+    let mats = world.materials();
+    block_cells(block)
+        .filter_map(|p| world.get(p))
+        .filter(|c| !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder))
+        .max_by_key(|c| mats.phys(c.material).hardness)
+        .map(|c| c.material)
+}
+
 /// Can a block be built into: nothing solid in it, no creature in the way.
 fn free(world: &World, block: CellPos, bodies: &[Body]) -> bool {
     let mats = world.materials();
@@ -692,29 +706,62 @@ pub fn spawn_drop(commands: &mut Commands, items: &Items, at: Vec2, stack: Stack
     ));
 }
 
-/// Items on the ground drift to a nearby player with room, and are picked up.
+/// Pick-ups closer together than this (seconds) are a streak, each a step
+/// higher (`STREAK_STEP` of the pitch), up to `STREAK_MOST` steps.
+const STREAK_GAP: f32 = 0.6;
+const STREAK_STEP: f32 = 0.04;
+const STREAK_MOST: u32 = 12;
+/// "Inventory full" at most this often (seconds).
+const FULL_EVERY: f32 = 3.0;
+
+#[derive(Default)]
+struct Streak {
+    n: u32,
+    since: f32,
+    full: f32,
+}
+
+/// Items on the ground drift to a nearby player with room, and are picked
+/// up (said over its head: `pickups`).
 fn collect(
     mut commands: Commands,
     items: Option<Res<Items>>,
     mut drops: Query<(Entity, &mut Dropped, &mut Kinematics), Without<LocalPlayer>>,
-    mut players: Query<(&Kinematics, &mut Inventory), With<LocalPlayer>>,
+    mut players: Query<(&Kinematics, &mut Inventory, Option<&crate::progress::Progress>), With<LocalPlayer>>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
+    mut picked: MessageWriter<crate::pickups::PickedUp>,
+    mut streak: Local<Streak>,
 ) {
     let Some(items) = items else { return };
+    streak.since += DT;
+    streak.full += DT;
     for (e, mut d, mut k) in &mut drops {
         d.age += DT;
         if d.age < 0.4 {
             continue;
         }
-        for (pk, mut inv) in &mut players {
+        for (pk, mut inv, progress) in &mut players {
             let to = pk.body.pos - k.body.pos;
             let dist = to.length();
-            if dist > MAGNET || !inv.has_room(&items, &d.stack) {
+            if dist > MAGNET {
+                continue;
+            }
+            if !inv.has_room(&items, &d.stack) {
+                // (Said once in a while, while it stands by what won't fit.)
+                if dist < GRAB * 3.0 && streak.full >= FULL_EVERY {
+                    streak.full = 0.0;
+                    picked.write(crate::pickups::PickedUp::Full);
+                }
                 continue;
             }
             if dist < GRAB {
-                sounds.write(crate::sound::PlaySound::here("pickup"));
+                // Pick-ups in quick succession climb in pitch.
+                streak.n = if streak.since < STREAK_GAP { (streak.n + 1).min(STREAK_MOST) } else { 0 };
+                streak.since = 0.0;
+                sounds.write(crate::sound::PlaySound::here("pickup").pitch(1.0 + STREAK_STEP * streak.n as f32));
+                let new = progress.is_some_and(|p| !p.seen.contains(&items.def(d.stack.item).id));
                 let left = inv.add(&items, d.stack);
+                picked.write(crate::pickups::PickedUp::Item { stack: crate::hands::items::Stack { count: d.stack.count - left, ..d.stack }, new });
                 if left == 0 {
                     commands.entity(e).despawn();
                 } else {
@@ -737,11 +784,14 @@ struct Marked;
 
 /// Over the dark (the light overlay is at 15–15.5), under creatures' eyes.
 const Z_MARK: f32 = 16.1;
+/// A block too hard for the pickaxe in hand is lit this red.
+const HARD: (u8, u8, u8) = (255, 84, 70);
 
 /// The cells the mining tool in hand would take next, lit as Terraria's
 /// smart cursor lights them: a see-through warm yellow over them (a
 /// block, or area mode's bite), a little stronger at their edge, breathing
-/// gently; over the dark, so it shows in it.
+/// gently; over the dark, so it shows in it. Nothing it can take there, the
+/// block under the cursor too hard for it: that block, red.
 #[allow(clippy::too_many_arguments)]
 fn mark(
     mut commands: Commands,
@@ -755,6 +805,7 @@ fn mark(
     mut images: ResMut<Assets<Image>>,
     mut marked: Query<(&mut Sprite, &mut Transform, &mut Visibility), With<Marked>>,
     mut last: Local<Vec<CellPos>>,
+    mut was_hard: Local<bool>,
 ) {
     let cells = (|| {
         let (items, cursor, (k, inv)) = (items.as_ref()?, input.cursor?, player.single().ok()?);
@@ -766,11 +817,19 @@ fn mark(
         let slot = if input.auto { auto_slot(world, items, inv, hand.bar_slots(), &k.body, from, cursor).unwrap_or(hand.active()) } else { hand.active() };
         let &Use::Mine { back, tier, reach, area, .. } = &items.def(inv.slots[slot]?.item).use_ else { return None };
         if !back && hand.area && area > 0.0 {
-            return area_at(world, from, cursor, hand.smart, tier, reach, area).map(|(_, _, cells)| cells);
+            return area_at(world, from, cursor, hand.smart, tier, reach, area).map(|(_, _, cells)| (cells, false));
         }
-        mine_at(world, &k.body, from, cursor, hand.smart, (back, tier, reach)).map(|b| block_cells(b).collect())
+        if let Some(b) = mine_at(world, &k.body, from, cursor, hand.smart, (back, tier, reach)) {
+            return Some((block_cells(b).collect(), false));
+        }
+        // Nothing it can take: the block under the cursor, in reach, too
+        // hard for it, lit red (the cursor says what it needs: `cursor`).
+        let b = platypus_sim::block_of(CellPos::from_world(cursor.x, cursor.y));
+        let centre = Vec2::new((b.x as f32 + 0.5) * BLOCK as f32, (b.y as f32 + 0.5) * BLOCK as f32);
+        (!back && centre.distance(from) <= reach * BLOCK as f32 && too_hard(world, b, tier).is_some()).then(|| (block_cells(b).collect(), true))
     })()
     .unwrap_or_default();
+    let (cells, hard): (Vec<CellPos>, bool) = cells;
     let Ok((mut sprite, mut tf, mut vis)) = marked.single_mut() else {
         commands.spawn((Name::new("Mining mark"), Marked, Sprite::default(), Transform::from_xyz(0.0, 0.0, Z_MARK), Visibility::Hidden));
         return;
@@ -781,7 +840,8 @@ fn mark(
         return;
     }
     *vis = Visibility::Visible;
-    if *last != cells {
+    if *last != cells || *was_hard != hard {
+        *was_hard = hard;
         let lo = cells.iter().fold(IVec2::MAX, |m, p| m.min(IVec2::new(p.x, p.y)));
         let hi = cells.iter().fold(IVec2::MIN, |m, p| m.max(IVec2::new(p.x, p.y)));
         let (w, h) = ((hi.x - lo.x + 1) as u32, (hi.y - lo.y + 1) as u32);
@@ -790,7 +850,8 @@ fn mark(
         for p in &cells {
             let edge = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| !set.contains(&CellPos::new(p.x + dx, p.y + dy)));
             let i = (((hi.y - p.y) as u32 * w + (p.x - lo.x) as u32) * 4) as usize;
-            px[i..i + 4].copy_from_slice(&[255, 214, 90, if edge { 150 } else { 88 }]);
+            let (r, g, b) = if hard { HARD } else { (255, 214, 90) };
+            px[i..i + 4].copy_from_slice(&[r, g, b, if edge { 150 } else { 88 }]);
         }
         let mut image = Image::new(
             bevy::render::render_resource::Extent3d { width: w, height: h, depth_or_array_layers: 1 },

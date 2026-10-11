@@ -180,12 +180,21 @@ impl Spellbook {
 struct WandState {
     next: usize,
     wait: f32,
+    /// The wait it began with (how far through it is: `Wands::ready`).
+    of: f32,
     well: Option<Entity>,
 }
 
 /// Each caster's timing of each spell.
 #[derive(Resource, Default)]
-struct Wands(HashMap<(Entity, usize), WandState>);
+pub struct Wands(HashMap<(Entity, usize), WandState>);
+
+impl Wands {
+    /// How ready a caster's spell is to cast again, 0 (just cast) to 1.
+    pub fn ready(&self, caster: Entity, spell: usize) -> f32 {
+        self.0.get(&(caster, spell)).map_or(1.0, |w| if w.of > 0.0 { 1.0 - w.wait / w.of } else { 1.0 })
+    }
+}
 
 /// A cast going off this tick.
 struct Fire {
@@ -365,10 +374,12 @@ fn request(
         if channelled {
             w.well = well::spawn_field(&mut commands, cast.clone(), r.caster, r.from, r.toward, r.alt);
             w.wait = *recharge;
+            w.of = w.wait;
             continue;
         }
         w.next = (w.next + 1) % casts.len();
         w.wait = if w.next == 0 { *recharge } else { *delay };
+        w.of = w.wait;
         let aim = r.toward - r.from;
         firing.0.push(Fire { cast, caster: r.caster, from: r.from, dir: aim.normalize_or(Vec2::X), reach: aim.length() });
     }

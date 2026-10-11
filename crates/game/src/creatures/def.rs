@@ -86,6 +86,10 @@ pub struct CreatureDef {
     /// It heals over time, stopped a while by some kinds of hurt (a troll).
     #[serde(default)]
     pub regen: Option<crate::creatures::nature::RegenDef>,
+    /// Killed, it falls in a heap that gets up again, unless broken
+    /// (`body/rise.rs`: a skeleton).
+    #[serde(default)]
+    pub rises: Option<super::body::rise::RiseDef>,
     /// Its kind and its changes, put together (at load).
     #[serde(skip)]
     pub nature: crate::creatures::nature::Nature,
@@ -551,6 +555,9 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         }
         if let Some(r) = &def.regen {
             e.insert(crate::creatures::nature::Regenerates::new(r));
+        }
+        if let Some(r) = &def.rises {
+            e.insert(super::body::rise::Rises(r.clone()));
         }
         e.insert((crate::combat::Wielding(def.weapon.clone()), crate::gear::Equipment::default(), crate::gear::Stats::default()));
         if let Some(s) = def.stamina {

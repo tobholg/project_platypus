@@ -122,6 +122,7 @@ fn take(
     mut players: Query<(&Kinematics, &mut Gold), With<LocalPlayer>>,
     mut sparks: ResMut<crate::vfx::Sparks>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
+    mut picked: MessageWriter<crate::pickups::PickedUp>,
     mut ding: Local<f32>,
 ) {
     let Some(gold) = sim.world.materials().id("gold") else { return };
@@ -147,6 +148,7 @@ fn take(
             sim.world.set(p, Cell::AIR);
         }
         purse.0 = purse.0.saturating_add(got.len() as u32);
+        picked.write(crate::pickups::PickedUp::Gold(got.len() as u32));
         // A few specks streaming in from what was taken.
         let e = streak();
         for p in got.iter().step_by(4) {
@@ -177,11 +179,12 @@ fn streak() -> Emitter {
 }
 
 /// Gold dug with the hands is counted.
-fn count_dug(mut dug: MessageReader<Dug>, mut players: Query<&mut Gold, With<LocalPlayer>>) {
+fn count_dug(mut dug: MessageReader<Dug>, mut players: Query<&mut Gold, With<LocalPlayer>>, mut picked: MessageWriter<crate::pickups::PickedUp>) {
     let n: u32 = dug.read().map(|d| d.0).sum();
     if n > 0
         && let Ok(mut g) = players.single_mut()
     {
         g.0 = g.0.saturating_add(n);
+        picked.write(crate::pickups::PickedUp::Gold(n));
     }
 }

@@ -13,7 +13,7 @@ use crate::world::{SimWorld, TICK_HZ, TickSet};
 pub struct PropsPlugin;
 
 const DT: f32 = (1.0 / TICK_HZ) as f32;
-const GRAVITY: f32 = 1350.0;
+pub(crate) const GRAVITY: f32 = 1350.0;
 
 /// Flies ballistically and bounces (anything thrown).
 #[derive(Component)]

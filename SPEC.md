@@ -1666,8 +1666,8 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   factions). The spawn groups never mix foes (raiders are orcs; the deep
   packs and the cobweb lair skeletons with slimes and bats). The `factions`
   scenario (`PLATYPUS_ARENA=flat`; the player at x 900 watching unhunted,
-  as a villager at home is): three orcs against three skeletons (either
-  side wins, run to run; a hurt orc runs and skeletons chase it), a cave
+  as a villager at home is): three orcs against three skeletons (the
+  skeletons win now, getting back up; a hurt orc runs and skeletons chase it), a cave
   spider against two vampire bats at night (it kills both), a pack of
   three raptors against two orcs (the raptors kill both). (A first try with
   the player 1 000 cells off saw no fight at all: there the world isn't
@@ -1981,6 +1981,43 @@ DESIGN §13 item 6.
   below; a skeleton gets onto 34, 40 and 44 in 2–3 s.
 - The performance HUD (F3 / H) shows two lines by default (the frame rate,
   light and sim), the full readout on the next press, nothing on the next.
+- **Picked up** (`pickups.rs`): what the player takes shows over its head
+  a while, a line a thing: its icon, its name in its colour (gear: named
+  by its roll, in its rarity's colour; dark colours lifted to read on the
+  dark), how many ("Copper ore (11)": blocks in whole blocks, as the pack
+  shows them; less than one, "a bit"), and "new" the first time it's ever
+  held. More of the same within 3 s counts up on its line (it pops),
+  however many came at once; gold too ("60 gold", swept from a heap or
+  dug). At most 5 lines, newest nearest the head; its pack full, a red
+  "Inventory full" now and then. Pick-ups close together climb in pitch.
+  The `pickups` scenario drops a few lots on the player.
+- **The cursor** (`cursor.rs`): the game's own, in place of the system's.
+  An arrow by default (and over the pack and the dev tools); a crosshair
+  with a weapon, a bow, a focus or something to throw, a ring round it
+  filling as a bow draws or a focus's first spell comes back, red while
+  there isn't the mana; brackets with a mining tool, the material under it
+  named, and in red what a block too hard for it needs ("Obsidian: needs a
+  mithril pickaxe"; that block lit red when nothing it can take is there);
+  a hand over what a right-click opens near enough (a chest, a body, a
+  villager), with its name. Holding something to throw, where it will fly,
+  dotted, to where it first strikes. Out of the light or crouched, an eye
+  beside it: shut (dark, crouched, quiet), half, open (lit, or your feet
+  carry): the light on you and your noise, as hunters sense them
+  (`senses::Exposure`). Nothing about creatures (that waits for the
+  bestiary). The `cursor` scenario shows each look a second.
+- **Getting up again** (`creatures::body::rise`, a creature's `rises`): a
+  skeleton killed falls in a heap of bones (its box a heap's, its picture
+  laid down, its ash about it) and 5 s on the heap shakes, pulls itself
+  together and stands at half its health, unless broken: a blunt or radiant
+  blow on the heap, or as the killing blow (blows only: the knock into the
+  ground, a fall, burning don't). A heap does nothing, is no one's quarry,
+  and other blows clatter off it (no number). Broken, it dies as anything
+  dies: its body, its loot, the kill. Skeletons also have 70 health (were
+  55), fall from 180 cells unhurt (were 105, then 0.3 a cell), and their
+  bones neither burn nor take extra from fire (fire 0.75; the undead's
+  weakness to fire is dead flesh's). The `rise` scenario: killed by a
+  sword (a heap, up again at 7.6 s), again, a sword on the heap (nothing),
+  a hammer (dead).
 - **Thrown about** (`creatures::body::tumble`, `hands::corpses`): a blow
   or blast that knocks a creature off its feet (a stun) sets it spinning
   (`Tumble`: 0.009 rad/s per cell/s of knock over its heft past half of

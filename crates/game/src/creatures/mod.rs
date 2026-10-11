@@ -44,7 +44,7 @@ impl Plugin for CreaturesPlugin {
             .add_message::<Rocketed>()
             .add_plugins((def::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, body::animation::AnimationPlugin, factions::FactionsPlugin))
             .add_plugins((player::PlayerPlugin, brain::ai::AiPlugin, brain::critters::CrittersPlugin, brain::hunter::HunterPlugin, body::legs::LegsPlugin, custom::CustomPlugin, brain::villager::VillagerPlugin, moves::MovesPlugin, brain::way::WayPlugin, body::sight::SightPlugin))
-            .add_systems(FixedUpdate, (move_creatures, fall_damage, body::elements::expose, crate::combat::guard, body::hurt::notice, nature::regenerate, tally, crate::observe::observe, deaths).chain().in_set(TickSet::Bodies))
+            .add_systems(FixedUpdate, (move_creatures, fall_damage, body::elements::expose, crate::combat::guard, body::hurt::notice, nature::regenerate, tally, crate::observe::observe, body::rise::collapse, deaths, body::rise::stand).chain().in_set(TickSet::Bodies))
             .insert_resource(body::elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
             .init_resource::<StableIds>()
@@ -55,7 +55,7 @@ impl Plugin for CreaturesPlugin {
             // Hits as they landed, shown (`hurt`); the badly hurt drip and falter.
             .add_systems(FixedUpdate, (body::hurt::react, body::hurt::wounded).chain().after(crate::combat::Hits))
             .add_systems(FixedUpdate, (body::elements::struck, body::elements::zapped, blasted, pelted).after(TickSet::Cells))
-            .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate))
+            .add_systems(PostUpdate, (interpolate, body::rise::draw_heaps.after(interpolate)).before(TransformSystems::Propagate))
             .add_systems(PreUpdate, dormancy)
             .add_systems(Update, body::tumble::spin.before(body::animation::animate));
     }
@@ -80,7 +80,7 @@ fn dormancy(
     mut clock: Local<f32>,
     sim: Res<SimWorld>,
     players: Query<&Kinematics, With<player::LocalPlayer>>,
-    q: Query<(Entity, &Kinematics, Has<Dormant>), NotPlayer>,
+    q: Query<(Entity, &Kinematics, Has<Dormant>), (NotPlayer, body::rise::NotDown)>,
 ) {
     *clock += time.delta_secs();
     if *clock < 0.25 {

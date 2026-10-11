@@ -193,6 +193,16 @@ const MARK_Z: f32 = 20.0;
 /// How high over a spot rock still shades it from the sky (cells).
 const SKY_ROOF: f32 = 120.0;
 
+/// How exposed the player is to eyes and ears right now (the cursor's eye:
+/// `cursor`): the light on it (0 dark, 1 broad day or its own lamp), how far
+/// its feet carry (cells; 0 quiet), and whether it's crouched.
+#[derive(Resource, Default, Clone, Copy, Debug)]
+pub struct Exposure {
+    pub light: f32,
+    pub noise: f32,
+    pub crouched: bool,
+}
+
 /// Each hunter senses what's about it and grows more or less wary.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn perceive(
@@ -200,7 +210,7 @@ pub fn perceive(
     sim: Res<SimWorld>,
     day: Res<crate::light::Daylight>,
     mut hunters: Query<Perceiver, Without<crate::creatures::Dormant>>,
-    quarry: Query<(Entity, &Kinematics, &Team, &Health, Option<&crate::creatures::factions::Faction>), Without<super::villager::Hiding>>,
+    quarry: Query<(Entity, &Kinematics, &Team, &Health, Option<&crate::creatures::factions::Faction>), (Without<super::villager::Hiding>, Without<crate::creatures::body::rise::Collapsed>)>,
     lights: Query<(&GlobalTransform, &crate::light::LightSource)>,
     toggles: Res<crate::light::LightToggles>,
     me: Query<Entity, With<crate::creatures::player::LocalPlayer>>,
@@ -208,6 +218,7 @@ pub fn perceive(
     mut blasts: MessageReader<crate::fx::Explosion>,
     mut landed: MessageReader<crate::creatures::Landed>,
     display: Res<crate::display::Display>,
+    mut exposure: ResMut<Exposure>,
 ) {
     let dt = (1.0 / crate::world::TICK_HZ) as f32;
     let lights: Vec<(Vec2, f32)> = lights.iter().map(|(t, l)| (t.translation().truncate(), l.color.iter().copied().fold(0.0f32, f32::max))).filter(|(_, b)| *b > 0.05).collect();
@@ -242,12 +253,18 @@ pub fn perceive(
     // in the hand is a light source of its own).
     let lamp = matches!(toggles.carry, crate::light::Carry::SmallBeam | crate::light::Carry::BigBeam);
     let light: Vec<f32> = hunted.iter().map(|(q, at, ..)| if lamp && me.contains(*q) { 1.0 } else { lit(&sim, &day, &lights, *at) }).collect();
-    for (_, at, _, vel, grounded, ours, _) in &hunted {
+    let mut mine = Exposure::default();
+    for (&(q, at, _, vel, grounded, ours, _), &light) in hunted.iter().zip(&light) {
         let run = vel.x.abs();
-        if *ours && *grounded && run > 40.0 {
-            noises.push(Noise { at: *at, reach: 30.0 + run * 0.55, sure: SURE_RUNNING * dt });
+        let feet = if ours && grounded && run > 40.0 { 30.0 + run * 0.55 } else { 0.0 };
+        if feet > 0.0 {
+            noises.push(Noise { at, reach: feet, sure: SURE_RUNNING * dt });
+        }
+        if me.contains(q) {
+            mine = Exposure { light, noise: feet, crouched: quarry.get(q).is_ok_and(|(_, k, ..)| k.loco.crouching) };
         }
     }
+    *exposure = mine;
     // Calls: one starting to hunt brings its pack, and its kind near
     // (its tactics' `call`).
     let mut calls: Vec<Call> = Vec::new();

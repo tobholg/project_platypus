@@ -124,7 +124,7 @@ pub fn watch(mut commands: Commands, new: Query<(Entity, &Health), Without<Hurt>
     }
 }
 
-type Wounded<'a> = (&'a Health, &'a Kinematics, &'a mut Hurt, Has<LocalPlayer>, Option<&'a Bleeds>);
+type Wounded<'a> = (&'a Health, &'a Kinematics, &'a mut Hurt, Has<LocalPlayer>, Option<&'a Bleeds>, Has<super::rise::Collapsed>);
 
 /// Health that fell since last tick: flash, and a number (or more on the
 /// last one). Runs just before deaths, so a killing blow shows too.
@@ -136,9 +136,14 @@ pub fn notice(
     mut shown: Local<u32>,
     display: Res<crate::display::Display>,
 ) {
-    for (health, k, mut h, player, bleeds) in &mut hurt {
+    for (health, k, mut h, player, bleeds, down) in &mut hurt {
         let lost = h.last - health.hp;
         h.last = health.hp;
+        // (Blows a heap of bones shrugs off: no number, no flash.)
+        if down {
+            h.shown = 0.0;
+            continue;
+        }
         // (What hits took is shown already: `react`.)
         let unshown = lost - h.shown;
         h.shown = 0.0;
