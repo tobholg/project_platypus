@@ -1,25 +1,30 @@
 // A green slime: a core (a dark nucleus with eyes) holding a body of real
-// goo, cells of the world round it (`goo`: body/goo.rs). It hops at you;
+// goo, cells of the world round it (`goo`: body/goo.rs). It hops at you,
+// each hop its own height (`lift`);
 // its goo clings and clogs (slimy) and catches fire. Hurt, it lets go of
 // goo it can no longer hold (it runs and pools); burnt or eaten, the goo's
-// gone, and so is its health; dead, it all spills.
+// gone, and so is its health; dead, it all spills. Left alone it heals,
+// drawing its spilled goo back in.
 (
     name: "Slime",
     // What it may have on it when it dies (loot.ron), besides what it wears.
     loot: "slime",
-    size: (15, 11),
-    health: 30,
+    size: (21, 15),
+    health: 90,
     team: Enemy,
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "ooze",
     // (Its goo is its blood: hurt, it flings goo off; dead, it spills.)
     blood: "",
     art: "green_slime",
-    goo: Some((material: "green_goo", cells: 260)),
+    goo: Some((material: "green_goo", cells: 650)),
+    // Left alone a few seconds, it heals: its spilled goo drawn back in
+    // (then new grown).
+    regen: (per_sec: 6, pause: 3),
     movement: (
         run_speed: 83,
         air_accel: 600,
-        jump_height: 33,
+        jump_height: 64,
         air_jumps: 0,
         step_height: 2,
         dash_speed: 0,
@@ -27,6 +32,6 @@
     touch: (harm: blunt, damage: 7, knock: 180, stun: 0.15),
     brain: (
         kind: "hunter",
-        params: (aggro: 210, close: Hop(every: 1.3)),
+        params: (aggro: 230, close: Hop(every: 1.3, lift: 0.35)),
     ),
 )

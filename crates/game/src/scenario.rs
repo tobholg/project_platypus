@@ -9595,6 +9595,8 @@ fn sever_script(
 ///     goo it can't hold.
 ///   burn: a spark of fire on its goo at 3 s.
 ///   kill: struck till it dies (from 2 s): its goo spills.
+///   heal: two longsword blows (2 s, 2.6 s), then let be: it heals,
+///     drawing its spilled goo back in.
 /// Logs its health, the goo it holds and the goo loose near it.
 #[allow(clippy::type_complexity)]
 fn slime_script(
@@ -9653,6 +9655,16 @@ fn slime_script(
             strike(&mut hits, crate::creatures::Harm::Slash, 8.0);
             state.1 = t + 0.7;
         }
+        "heal" if state.0 == 1 && t > 2.0 => {
+            strike(&mut hits, crate::creatures::Harm::Slash, 24.0);
+            info!("slime: t {t:.1} a longsword's blow");
+            state.0 = 2;
+        }
+        "heal" if state.0 == 2 && t > 2.6 => {
+            strike(&mut hits, crate::creatures::Harm::Slash, 24.0);
+            info!("slime: t {t:.1} another");
+            state.0 = 3;
+        }
         "look" if state.0 >= 1 && t > state.1 && state.1 <= 6.0 => {
             strike(&mut hits, crate::creatures::Harm::Slash, 6.0);
             info!("slime: t {t:.1} struck");
@@ -9662,7 +9674,7 @@ fn slime_script(
     }
     if t >= state.2 {
         state.2 = t + 0.5;
-        info!("slime: t {t:.1} hp {:.0}/{:.0}, holds {} goo, loose near {}, at x {:.0}; the player's {:.0}% slimy; {:?}", sh.hp, sh.max, goo.map_or(0, |g| g.held()), loose(&sim, sk.body.pos, "green_goo"), sk.body.pos.x, slimy * 100.0, alert.map(|a| a.wary));
+        info!("slime: t {t:.1} hp {:.0}/{:.0}, holds {} goo, loose near {}, at x {:.0} ({:.0} up); the player's {:.0}% slimy; {:?}", sh.hp, sh.max, goo.map_or(0, |g| g.held()), loose(&sim, sk.body.pos, "green_goo"), sk.body.pos.x, sk.body.pos.y - sk.body.half.y - fl, slimy * 100.0, alert.map(|a| a.wary));
     }
 }
 

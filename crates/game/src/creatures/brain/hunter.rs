@@ -11,7 +11,8 @@
 //!     (archers);
 //!   - `Swoop(hover, dive_time, dive_every)`: flying in a band (cells over
 //!     the ground) and diving at you now and then (bats, star wisps);
-//!   - `Hop(every)`: a hop at you every so often (slimes);
+//!   - `Hop(every, lift)`: a hop at you every so often, each from `lift`
+//!     of a full jump to all of it (slimes);
 //!   - `Crawl(pounce_range, pounce_every, keep)`: over floors, walls and
 //!     ceilings (its movement's `cling`), stopping `keep` cells off,
 //!     pouncing when near or right above you (spiders).
@@ -87,7 +88,13 @@ pub enum Close {
     },
     Range { near: f32, far: f32 },
     Swoop { hover: (f32, f32), dive_time: f32, dive_every: f32 },
-    Hop { every: f32 },
+    Hop {
+        every: f32,
+        /// Each hop held for a share of a full jump from this to all of it
+        /// (1: every hop as high; a slime's are all different).
+        #[serde(default = "full")]
+        lift: f32,
+    },
     Crawl {
         pounce_range: f32,
         pounce_every: f32,
@@ -115,6 +122,10 @@ fn crawl_keep() -> f32 {
 
 fn keep() -> f32 {
     15.0
+}
+
+fn full() -> f32 {
+    1.0
 }
 
 fn jump_to_reach() -> f32 {
@@ -159,6 +170,8 @@ pub struct HunterMind {
     attacking: bool,
     /// Drawing its bow since.
     drawing: Option<u64>,
+    /// Hopping: its jump held till.
+    hop_until: u64,
     /// Scurrying: frozen till, the next freeze from.
     still_until: u64,
     dart_until: u64,
@@ -542,7 +555,7 @@ fn hunt(
             }
             // Hopping: down, it waits; a hop at it every so often. Not a
             // straight way there: along the way as the way says.
-            (Close::Hop { every }, target) => {
+            (Close::Hop { every, lift }, target) => {
                 if let Some((t, _, th)) = target
                     && (!walkable(t, th) || burrowing)
                 {
@@ -573,6 +586,8 @@ fn hunt(
                             if dir != 0.0 {
                                 jump = true;
                                 mx = dir;
+                                // (Held for a share of a full jump: each hop its own height.)
+                                m.hop_until = tick + ticks(HOP_HOLD * (*lift + (1.0 - *lift) * unit(&sim, id, 0x40B)));
                             }
                             let every = if target.is_some() { *every } else { every * 2.5 };
                             m.next = tick + ticks(every * (0.7 + 0.6 * unit(&sim, id, 6)));
@@ -808,6 +823,8 @@ fn hunt(
         // once, a jump was cut to a hop, and a skeleton under a ledge it
         // could jump onto never got up).
         let reaching = target.is_some_and(|t| t.0.y > pos.y - k.body.half.y) && k.body.vel.y > 0.0 && !grounded;
+        // (A hopper holds its hop as long as it means to: its own height.)
+        let reaching = if matches!(h.close, Close::Hop { .. }) { tick < m.hop_until } else { reaching };
         c.0.jump = if (hold || reaching) && c.0.jump { true } else { jump && !c.0.jump };
     }
 }
@@ -835,6 +852,9 @@ const SHUN_LEAVE: f32 = 1.3;
 /// A quarry lit more than this keeps one that shuns the light off (a
 /// torch, a lamp, day; the moon's is about 0.1).
 const SHUN_LIT: f32 = 0.5;
+
+/// A hop held this long is a full jump (s).
+const HOP_HOLD: f32 = 0.5;
 
 /// A flanker's place: this far past `keep` on your far side (cells); it
 /// goes over you when it's within `VAULT` across on the wrong side.

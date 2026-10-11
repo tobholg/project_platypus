@@ -43,6 +43,11 @@ const GRACE: u8 = 6;
 const ACROSS: u32 = 10;
 const DOWN: u32 = 9;
 const UP: u32 = 13;
+/// Healing: loose goo drawn back in at most this much a tick (from this
+/// far past its size), new goo grown this much a tick.
+const DRAW_IN: usize = 6;
+const REACH: i32 = 18;
+const GROW: usize = 2;
 /// Goo flung off (cells a tick).
 const FLUNG: f32 = 1.4;
 /// How long a landing's squash takes to spring back (s), and how hard a
@@ -110,6 +115,19 @@ pub fn hold(mut sim: ResMut<SimWorld>, time: Res<Time>, mut q: Query<(&mut Goo, 
                 sim.world.set(p, Cell::AIR);
             }
         }
+        // Healed (it regrows: `regen`), it takes back what it holds less of
+        // than it may: loose goo of its kind near it first (its puddles
+        // drawn back in), then new.
+        if kept.len() < want {
+            let need = (want - kept.len()).min(DRAW_IN);
+            let taken = draw_in(&mut sim, k.body.pos, mat, need, (def.cells as f32).sqrt() as i32 + REACH);
+            kept.extend(taken);
+            let grow = (want - kept.len()).min(GROW);
+            let mut rng = platypus_sim::rng::Rng::seeded(&[sim.world.tick(), k.body.pos.x.to_bits() as u64, 0x6A0]);
+            for _ in 0..grow {
+                kept.push(sim.world.materials().spawn(mat, &mut rng));
+            }
+        }
         // Hurt: what it can't hold it flings off (it runs and pools where
         // it lands: loose goo), out of its outermost.
         let hold = kept.len().min(want);
@@ -130,7 +148,7 @@ pub fn hold(mut sim: ResMut<SimWorld>, time: Res<Time>, mut q: Query<(&mut Goo, 
         goo.squash = (goo.squash - dt / SPRING).max(0.0);
         let flying = !k.loco.grounded();
         let (down, up) = if flying { (ACROSS, ACROSS) } else { (DOWN, UP + (goo.squash * 20.0) as u32) };
-        let across = if flying { ACROSS + 3 } else { ACROSS - (goo.squash * 4.0) as u32 };
+        let across = if flying { ACROSS } else { ACROSS - (goo.squash * 4.0) as u32 };
         let places = lay_out(&sim, k.body.pos, kept.len(), (across, down, up));
         for (cell, &p) in kept.iter().zip(&places) {
             let mut c = *cell;
@@ -191,4 +209,29 @@ impl Goo {
     pub fn held(&self) -> usize {
         self.placed.len()
     }
+}
+
+/// Up to `n` cells of loose goo (`mat`, not held) within `reach` of `at`,
+/// the nearest first: taken out of the world.
+fn draw_in(sim: &mut SimWorld, at: Vec2, mat: platypus_sim::MaterialId, n: usize, reach: i32) -> Vec<Cell> {
+    let c = CellPos::from_world(at.x, at.y);
+    let mut found: Vec<(i32, CellPos)> = Vec::new();
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let p = CellPos::new(c.x + dx, c.y + dy);
+            if sim.world.get(p).is_some_and(|cell| cell.material == mat && cell.flags & HELD == 0) {
+                found.push((dx * dx + dy * dy, p));
+            }
+        }
+    }
+    found.sort_unstable_by_key(|f| f.0);
+    found
+        .into_iter()
+        .take(n)
+        .filter_map(|(_, p)| {
+            let cell = sim.world.get(p)?;
+            sim.world.set(p, Cell::AIR);
+            Some(cell)
+        })
+        .collect()
 }
