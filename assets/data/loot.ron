@@ -160,6 +160,15 @@
             (item: "oak_wand", weight: 2, count: (1, 1)),
             (item: "frost_wand", weight: 1, count: (1, 1)),
         ]),
+        // What the dead were buried with: a few coins, rags, a trinket.
+        (name: "zombie", rolls: (0, 2), gold: (2, 10), entries: [
+            (item: "nothing", weight: 30, count: (1, 1)),
+            (item: "cloth_trousers", weight: 5, count: (1, 1)),
+            (item: "soft_boots", weight: 4, count: (1, 1)),
+            (item: "cloth_hood", weight: 3, count: (1, 1)),
+            (item: "storm_ring", weight: 1, count: (1, 1)),
+            (item: "frost_charm", weight: 1, count: (1, 1)),
+        ]),
         (name: "spider", rolls: (0, 1), gold: (2, 8), entries: [
             (item: "nothing", weight: 16, count: (1, 1)),
             (item: "silk_gloves", weight: 4, count: (1, 1)),

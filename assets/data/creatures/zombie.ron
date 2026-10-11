@@ -1,0 +1,49 @@
+// A zombie: the shambling dead, rotting, in the rags it was buried in.
+// The humanoid rig (assets/art/zombie.ron) on two legs that step (legs.rs,
+// `rig`): it goes slow, arms out ahead, raking with its dead nails.
+// Dead flesh: cut, it bleeds dark rot; its limbs come off. Legless, it
+// drags itself on; armless, it bites (`armless`); its head off, it's dead
+// for good (`headless: Dies`). Killed otherwise, its body lies a while,
+// then gets up again: once (`rises`, `times: 1`), with whatever it lost
+// still lost. Break the body before it does (anything hurts it).
+(
+    name: "Zombie",
+    loot: "zombie",
+    // The rags and odd bits of armour it was buried in.
+    wears: [("cloth_hood", 0.15), ("iron_helm", 0.08)],
+    size: (9, 24),
+    health: 85,
+    team: Enemy,
+    faction: "undead",
+    kind: "rotting",
+    rises: Some((after: 7.0, health: 0.6, remains: Body, times: Some(1), glow: (150, 170, 90))),
+    headless: Dies,
+    blood: "rot",
+    eyes: (214, 196, 112),
+    fall_damage: (safe_height: 120, per_cell: 0.5),
+    movement: (
+        run_speed: 36,
+        jump_height: 28,
+        air_jumps: 0,
+        step_height: 5,
+        dash_speed: 0,
+    ),
+    art: "zombie",
+    // Its legs: two legs in ragged trousers from its hips, 18 cells up,
+    // a shambling step (slow, short, the feet barely lifting).
+    legs: (view: Side, rig: true, reach: 18.5, upper: 0.5, step: 0.24, lift: 1.5, stride: 7,
+           color: (72, 64, 54), joint: (84, 76, 64), outline: (24, 20, 18), width: [3.2, 2.8, 2.2], toes: 3,
+           body: "zombie",
+           each: [
+               (hip: (2, 6), gait: 0, knee: Forward),
+               (hip: (-1, 6), gait: 1, knee: Forward, far: true),
+           ]),
+    unarmed: "rotten_claws",
+    armless: "zombie_bite",
+    stamina: 50,
+    poise: 22,
+    brain: (
+        kind: "hunter",
+        params: (aggro: 260, close: Walk(keep: 12, jump_to_reach: 22), attack: Swing(reach: 20, every: 1.5, combo: 1), wander: (speed: 0.25, every: 4.0), senses: (dark: 0.8)),
+    ),
+)

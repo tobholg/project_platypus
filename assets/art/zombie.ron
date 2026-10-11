@@ -1,0 +1,349 @@
+// A zombie: the shambling dead, rotting, in the rags it was buried in.
+// Grey-green skin, a sunken eye with a dull light in it, its jaw hanging,
+// a torn shirt with the rot showing through. Its arms reach out ahead of
+// it as it goes (standing and walking: both held forward). Its legs aren't
+// drawn here: they're its creature file's `legs` (legs.rs, `rig`: two legs
+// in ragged trousers from its hips, stepping on whatever's under them).
+// Its rig is the skeleton's (the same frame, places and arms' shapes).
+// Facing right; the game mirrors it.
+(
+    size: (36, 44),
+    feet: (17.5, 44),
+    outline: (24, 20, 18),
+    palette: {
+        'g': (152, 170, 126),   // skin, lit
+        'G': (124, 142, 102),   // skin
+        'D': (92, 106, 76),     // skin, shade
+        'k': (30, 22, 22),      // sockets, mouth
+        'e': (214, 196, 112),   // its eye's dull light
+        'r': (112, 36, 38),     // rot, wounds
+        'h': (50, 42, 36),      // hair, lank
+        'c': (84, 80, 108),     // the shirt
+        'C': (60, 56, 82),      // the shirt, shade
+        'b': (58, 44, 34),      // a belt, rope
+        'p': (72, 64, 54),      // trousers, at the hips
+    },
+    parts: {
+        // Its mouth (where it bites from, its arms gone).
+        "head": (points: { "mouth": (6, 9) }, rows: [
+            "..h.hhh...",
+            ".hhhhhhhh.",
+            "hhhGgggghh",
+            "hhGgggggg.",
+            "hGgggkkgg.",
+            "GGggkekgg.",
+            "GGgggkggr.",
+            ".GGgggggg.",
+            "..GgkkkkG.",
+            "..Ggkrkg..",
+            "...GGgG...",
+        ]),
+        "blink": (points: { "mouth": (6, 9) }, rows: [
+            "..h.hhh...",
+            ".hhhhhhhh.",
+            "hhhGgggghh",
+            "hhGgggggg.",
+            "hGgggggggg",
+            "GGggkkkgg.",
+            "GGgggggggr",
+            ".GGgggggg.",
+            "..GgkkkkG.",
+            "..Ggkrkg..",
+            "...GGgG...",
+        ]),
+        // Hunched in a torn shirt, the rot showing through; a rope belt and
+        // its trousers' top (the legs hang from its two lower corners).
+        "torso": (rows: [
+            "...GgG...",
+            ".ccGgGcc.",
+            "cccccccCC",
+            "ccgcccCCC",
+            "cgrgcccCC",
+            "ccgccrcCC",
+            "cccccccCC",
+            ".cccgccC.",
+            ".ccgrgCC.",
+            ".cccccCC.",
+            ".bbbbbbb.",
+            ".ppppppp.",
+            ".pp...pp.",
+        ]),
+        // Arms hang from the shoulder (pivot), long, grey-green and thin; the
+        // hand is where a claw goes.
+        "arm": (pivot: (0, 0), points: { "hand": (0, 12) }, rows: [
+            "GgG",
+            "Gg.",
+            "Gg.",
+            "Gg.",
+            "Gg.",
+            "GgG",
+            "DG.",
+            "DG.",
+            "DG.",
+            "DG.",
+            "DG.",
+            "DG.",
+            "GGG",
+            "G.G",
+        ]),
+        "arm_fwd": (pivot: (0, 0), points: { "hand": (6, 9) }, rows: [
+            "GgG.....",
+            ".Gg.....",
+            ".Gg.....",
+            "..Gg....",
+            "..GgG...",
+            "...DG...",
+            "....DG..",
+            "....DG..",
+            ".....DG.",
+            ".....GGG",
+            "......GG",
+        ]),
+        "arm_back": (pivot: (7, 0), points: { "hand": (1, 9) }, rows: [
+            ".....GgG",
+            ".....Gg.",
+            ".....Gg.",
+            "....Gg..",
+            "...GgG..",
+            "...DG...",
+            "..DG....",
+            "..DG....",
+            ".DG.....",
+            "GGG.....",
+            "G.G.....",
+        ]),
+        "arm_up": (pivot: (0, 14), points: { "hand": (5, 1) }, rows: [
+            "....G.G",
+            "....GGG",
+            "....DG.",
+            "....DG.",
+            "...DG..",
+            "...DG..",
+            "...DG..",
+            "...DG..",
+            "..GgG..",
+            "..Gg...",
+            ".Gg....",
+            ".Gg....",
+            "Gg.....",
+            "Gg.....",
+            "GgG....",
+        ]),
+        // Reaching up and forward (a jump; a hand on a wall).
+        "arm_reach": (pivot: (0, 10), points: { "hand": (9, 1) }, rows: [
+            "........G.G",
+            "........GGG",
+            ".......DGG.",
+            "......DG...",
+            ".....DG....",
+            "....DG.....",
+            "...GgG.....",
+            "..Gg.......",
+            ".Gg........",
+            ".Gg........",
+            "GgG........",
+        ]),
+        // Thrown forward and up (a jump).
+        "arm_lift": (pivot: (0, 6), points: { "hand": (10, 1) }, rows: [
+            ".........G.G",
+            "........GGGG",
+            ".......DG...",
+            "......DG....",
+            "....GgG.....",
+            "..GgGg......",
+            "GgGg........",
+        ]),
+        // The front arm pointing where it aims (swings, casting): at angles
+        // from straight down to straight up (the fan below).
+        "aimm90": (pivot: (2, 0), points: { "hand": (1, 12) }, rows: [
+            "GgG",
+            "Gg.",
+            "Gg.",
+            "Gg.",
+            "Gg.",
+            "GgG",
+            "DG.",
+            "DG.",
+            "DG.",
+            "DG.",
+            "DG.",
+            "GGG",
+            "DG.",
+            "G.G",
+        ]),
+        "aimm60": (pivot: (1, 0), points: { "hand": (5, 10) }, rows: [
+            "Gg.....",
+            ".Gg....",
+            ".Gg....",
+            ".Gg....",
+            "..GgG..",
+            "..DG...",
+            "...DG..",
+            "...DG..",
+            "...DG..",
+            "....DGG",
+            "....GGG",
+            "....G.G",
+        ]),
+        "aimm30": (pivot: (1, 0), points: { "hand": (11, 7) }, rows: [
+            ".gg...........",
+            "..Gg..........",
+            "...Gg.........",
+            "....Gg........",
+            "....GgGG......",
+            ".....DDGG.....",
+            ".......DDGG...",
+            ".........DGGG.",
+            "..........G.G.",
+        ]),
+        "aim0": (pivot: (0, 0), points: { "hand": (12, 1) }, rows: [
+            "GgggggG....G.G",
+            "GGGGGGGGGGGGG.",
+            ".......DDDDGGG",
+        ]),
+        "aim30": (pivot: (0, 6), points: { "hand": (10, 1) }, rows: [
+            ".........G.G",
+            "........GGG.",
+            ".......GDD..",
+            ".....GGD....",
+            "...ggGG.....",
+            ".GgGG.......",
+            "GgG.........",
+            "DD..........",
+        ]),
+        "aim60": (pivot: (0, 11), points: { "hand": (6, 1) }, rows: [
+            ".....G.G",
+            ".....GGG",
+            ".....DG.",
+            ".....DG.",
+            "....DG..",
+            "....DG..",
+            "...DG...",
+            "...GgG..",
+            "..Gg....",
+            "..Gg....",
+            ".Gg.....",
+            "Gg......",
+            "DG......",
+        ]),
+        "aim90": (pivot: (2, 13), points: { "hand": (1, 0) }, rows: [
+            "G.G",
+            "GGG",
+            ".DG",
+            ".DG",
+            ".DG",
+            ".DG",
+            ".DG",
+            ".DG",
+            "GgG",
+            ".Gg",
+            ".Gg",
+            ".Gg",
+            ".Gg",
+            "GgG",
+        ]),
+    },
+    poses: {
+        // Standing, both arms held out ahead (down a little); breathing in
+        // (the chest and head a pixel up); a blink.
+        "stand": [
+            (part: "aimm30", at: (14, 16), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (13, 14)),
+            (part: "head", at: (12, 4)),
+            (part: "aimm30", at: (20, 16), outline: true, tag: "front_arm"),
+        ],
+        "breathe": [
+            (part: "aimm30", at: (14, 15), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (13, 13)),
+            (part: "head", at: (12, 3)),
+            (part: "aimm30", at: (20, 15), outline: true, tag: "front_arm"),
+        ],
+        "blink": [
+            (part: "aimm30", at: (14, 16), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (13, 14)),
+            (part: "blink", at: (12, 4)),
+            (part: "aimm30", at: (20, 16), outline: true, tag: "front_arm"),
+        ],
+        // Shambling: the arms out ahead, one lifting as the other drops,
+        // against the legs' stride (the legs are its creature file's); a
+        // bob on the passing steps.
+        "run_a": [
+            (part: "aim0", at: (14, 16), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (13, 14)),
+            (part: "head", at: (12, 4)),
+            (part: "aimm30", at: (20, 16), outline: true, tag: "front_arm"),
+        ],
+        "run_b": [
+            (part: "aimm30", at: (14, 15), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (13, 13)),
+            (part: "head", at: (12, 3)),
+            (part: "aimm30", at: (20, 15), outline: true, tag: "front_arm"),
+        ],
+        "run_c": [
+            (part: "aimm30", at: (14, 16), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (13, 14)),
+            (part: "head", at: (12, 4)),
+            (part: "aim0", at: (20, 16), outline: true, tag: "front_arm"),
+        ],
+        "run_d": [
+            (part: "aimm30", at: (14, 15), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (13, 13)),
+            (part: "head", at: (12, 3)),
+            (part: "aimm30", at: (20, 15), outline: true, tag: "front_arm"),
+        ],
+        // Rising: an arm thrown up. Falling: arms out.
+        "rise": [
+            (part: "arm", at: (14, 15), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (13, 14)),
+            (part: "head", at: (12, 4)),
+            (part: "arm_lift", at: (20, 16), outline: true, tag: "front_arm"),
+        ],
+        "drop": [
+            (part: "arm_up", at: (14, 16), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (13, 14)),
+            (part: "head", at: (12, 4)),
+            (part: "arm_fwd", at: (20, 16), outline: true, tag: "front_arm"),
+        ],
+        // Dashing: leaning in, arms back.
+        "dash": [
+            (part: "arm_back", at: (16, 17), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (15, 15)),
+            (part: "head", at: (15, 6)),
+            (part: "arm_back", at: (22, 17), outline: true, tag: "front_arm"),
+        ],
+        // Sliding down a wall (on the right): a hand on it.
+        "wall": [
+            (part: "arm", at: (14, 16), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (13, 14)),
+            (part: "head", at: (12, 4)),
+            (part: "arm_reach", at: (20, 16), outline: true, tag: "front_arm"),
+        ],
+    },
+    // The front arm at angles: shown instead of the pose's own front arm
+    // (tagged `front_arm`) while aiming. (The back arm is tagged too: its
+    // hand, `back_arm.hand`, holds a torch.)
+    fans: {
+        "front_arm": [
+            (angle: -90, part: "aimm90"),
+            (angle: -60, part: "aimm60"),
+            (angle: -30, part: "aimm30"),
+            (angle: 0, part: "aim0"),
+            (angle: 30, part: "aim30"),
+            (angle: 60, part: "aim60"),
+            (angle: 90, part: "aim90"),
+        ],
+    },
+    derived: {
+        // Hit: knocked back a pixel.
+        "hurt": (from: "drop", shift: (-1, 0)),
+    },
+    clips: {
+        "idle": (frames: ["stand", "stand", "breathe", "breathe", "stand", "stand", "breathe", "breathe", "stand", "blink", "stand", "breathe", "breathe"], fps: 5),
+        "run": (frames: ["run_a", "run_b", "run_c", "run_d"], fps: 6),
+        "jump": (frames: ["rise"], fps: 5),
+        "fall": (frames: ["drop"], fps: 5),
+        "dash": (frames: ["dash"], fps: 5),
+        "wall": (frames: ["wall"], fps: 5),
+        "hurt": (frames: ["hurt"], fps: 5),
+    },
+)

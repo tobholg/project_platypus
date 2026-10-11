@@ -116,13 +116,20 @@ fn limp_of(d: &Died, items: &Items, blood: (u8, u8, u8)) -> Option<(ragdoll::Lim
         let looks = looks.into_iter().enumerate().map(|(i, l)| (l, i as f32 * 0.0005)).collect();
         return Some((limp, looks));
     }
-    let limp = ragdoll::assemble(&cuts, d.def.sprite.frame, centre, d.facing, d.body.vel, d.spin.omega);
+    let mut limp = ragdoll::assemble(&cuts, d.def.sprite.frame, centre, d.facing, d.body.vel, d.spin.omega);
     // (Its parts in their pose's order, mirrored as it faced.)
-    let looks = cuts
+    let mut looks: Vec<(ragdoll::Look, f32)> = cuts
         .into_iter()
         .enumerate()
         .map(|(i, c)| (ragdoll::Look::Image(c.image, d.facing < 0.0), i as f32 * 0.01))
         .collect();
+    // (Legs drawn apart from its art, `legs::rig`: pinned on at its hips,
+    // behind it.)
+    if let Some(legs) = d.def.legs.as_ref().filter(|l| l.rig && !d.limbs.is_empty()) {
+        let mut more = Vec::new();
+        ragdoll::attach(&mut limp, &mut more, &d.limbs, limb_drawer(legs), d.body.vel, d.spin.omega);
+        looks.extend(more.into_iter().enumerate().map(|(i, l)| (l, -0.02 + i as f32 * 0.001)));
+    }
     Some((limp, looks))
 }
 

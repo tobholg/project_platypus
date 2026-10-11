@@ -24,6 +24,9 @@
     (kind: "slime", place: Cave, depth: (60, 1350), zone: "none", most: 3, rate: 0.4),
     (kind: "acid_slime", place: Cave, zone: "toxic", most: 4, rate: 0.6),
     (kind: "skeleton", place: Cave, depth: (300, 150000), most: 2, rate: 0.25),
+    // (Till they climb out of the ground: zombies stage 2.)
+    (kind: "zombie", place: Surface, when: Night, most: 3, rate: 0.12),
+    (kind: "zombie", place: Cave, depth: (80, 150000), most: 2, rate: 0.08),
     (kind: "vampire_bat", place: Cave, depth: (450, 150000), most: 2, rate: 0.12),
     (kind: "spider", place: Cave, depth: (225, 150000), most: 1, rate: 0.06),
     // The bestiary's walkers (BE limbs), where they belong.

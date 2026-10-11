@@ -45,6 +45,8 @@ const FLIGHT: f32 = 0.7;
 /// How high a bone arcs on its way, and how far round it swirls (cells).
 const ARC: f32 = 6.0;
 const SWIRL: f32 = 4.0;
+/// A body getting up jerks this much as it heaves (of the way up).
+const JERK: f32 = 0.35;
 /// Loose bones this near a heap as it gets up fly back to it (cells).
 const GATHER: f32 = 48.0;
 /// Headless, it puts its skull back on this near it (cells).
@@ -94,6 +96,9 @@ pub struct RiseDef {
     /// glow on what flies back together).
     #[serde(default = "glow")]
     pub glow: (u8, u8, u8),
+    /// How many times it gets up (none: every time; a zombie: once).
+    #[serde(default)]
+    pub times: Option<u32>,
 }
 
 /// What one that rises leaves as it falls (`RiseDef::remains`).
@@ -131,6 +136,10 @@ pub struct Bone {
     pub limb: super::parts::Limb,
 }
 
+/// How many times it's got up (`RiseDef::times`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Risen(pub u32);
+
 /// Its skull: what holds it together (`RiseDef::anchor`).
 #[derive(Component)]
 pub struct Skull;
@@ -153,6 +162,8 @@ pub struct Pile {
     stuck: f32,
     facing: f32,
     sprite: Option<(Sprite, Vec3)>,
+    /// Times it's got up before.
+    risen: u32,
 }
 
 /// Bones flying together into a creature just stood up (it's hidden until
@@ -168,6 +179,12 @@ pub struct Assembling {
     light: [f32; 3],
     /// Where its heap's bones lay (the world), to fly from.
     from: Vec<Vec2>,
+    /// A body getting up whole (`Remains::Body`): its pixels go from where
+    /// they lie, its feet's end to its feet, along the line from there to
+    /// its head (the world); no arc, no swirl, no glow.
+    whole: Option<(Vec2, Vec2)>,
+    /// What it gets up without (not in the picture that forms).
+    lost: Vec<super::parts::Limb>,
 }
 
 /// Its eyes just caught: a light that fades.
@@ -193,20 +210,29 @@ type Falling<'a> = (
     (Option<&'a Lineage>, Option<&'a crate::creatures::Stable>),
     Option<&'a super::marks::Marks>,
     Option<&'a crate::creatures::Gibbed>,
+    (Option<&'a super::parts::Parts>, Option<&'a Risen>),
 );
 
 /// One that rises, killed, leaves its bones (a body that gets up:
 /// `make_pile`) and goes, with no death of its own. Just before deaths.
 pub fn collapse(mut commands: Commands, mut sim: ResMut<SimWorld>, mut died: MessageWriter<Died>, mut q: Query<Falling>, sprites: Query<(&Sprite, &Transform), With<super::animation::CreatureSprite>>) {
-    for (e, mut h, k, rises, creature, anim, eq, children, bleeds, spin, severed, (lineage, stable), marks, gib) in &mut q {
+    for (e, mut h, k, rises, creature, anim, eq, children, bleeds, spin, severed, (lineage, stable), marks, gib, (parts, risen)) in &mut q {
         if h.hp > 0.0 {
+            continue;
+        }
+        // (Not this time: its head off, if that kills it; a body blown
+        // apart; or got up as often as it does. It dies as anything does.)
+        let beheaded = anim.def.headless == super::wounds::Headless::Dies && severed.is_some_and(|s| s.has(super::parts::Limb::Head));
+        let blown = rises.0.remains == Remains::Body && gib.is_some();
+        if beheaded || blown || rises.0.times.is_some_and(|t| risen.map_or(0, |r| r.0) >= t) {
             continue;
         }
         // (Kept from deaths: it's gone now.)
         h.hp = 1.0;
         let sprite = children.and_then(|ch| ch.iter().find_map(|c| sprites.get(c).ok())).map(|(s, tf)| (s.clone(), tf.translation));
         let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
-        died.write(Died { kind: creature.kind.clone(), def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin: spin.copied().unwrap_or_default(), rising: Some(rises.0.clone()), limbs: Vec::new(), severed: severed.map(|s| s.0.clone()).unwrap_or_default(), lineage: crate::creatures::lineage_of(Some((lineage, stable))), marks: marks.map(|m| m.list.clone()).unwrap_or_default(), gib: gib.map(|g| g.0) });
+        let limbs = parts.map(|p| p.limbs().into_iter().filter(|l| l.limb.is_none_or(|x| !severed.is_some_and(|c| c.has(x)))).collect()).unwrap_or_default();
+        died.write(Died { kind: creature.kind.clone(), def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin: spin.copied().unwrap_or_default(), rising: Some(rises.0.clone()), risen: risen.map_or(0, |r| r.0), limbs, severed: severed.map(|s| s.0.clone()).unwrap_or_default(), lineage: crate::creatures::lineage_of(Some((lineage, stable))), marks: marks.map(|m| m.list.clone()).unwrap_or_default(), gib: gib.map(|g| g.0) });
         if let Some(&super::hurt::Bleeds(dust)) = bleeds {
             sim.world.splash([k.body.pos.x, k.body.pos.y], dust, 14, 2.4);
         }
@@ -217,11 +243,12 @@ pub fn collapse(mut commands: Commands, mut sim: ResMut<SimWorld>, mut died: Mes
 /// The body of one that will get up (`corpses::lay_out`, for a `rising`
 /// death): health of its own, its weaknesses worse, hit as a creature is.
 pub fn make_pile(e: &mut EntityCommands, d: &Died, rise: &RiseDef, dust: Option<platypus_sim::MaterialId>) {
-    // (Only what breaks bones hurts it, worse than it hurt the creature.)
-    let nature = crate::creatures::nature::Nature::only(&rise.breaks, |h| d.def.nature.of(h) * PILE_WEAK);
+    // (Only what breaks bones hurts it, worse than it hurt the creature;
+    // with nothing named, anything does, as it did: a body.)
+    let nature = if rise.breaks.is_empty() { d.def.nature } else { crate::creatures::nature::Nature::only(&rise.breaks, |h| d.def.nature.of(h) * PILE_WEAK) };
     let max = (d.def.health * PILE_SHARE).max(1.0);
     e.insert((
-        Pile { lineage: d.lineage, lost: d.severed.clone(), kind: d.kind.clone(), def: d.def.clone(), rise: rise.clone(), left: rise.after, stuck: 0.0, facing: d.facing, sprite: d.sprite.clone() },
+        Pile { lineage: d.lineage, lost: d.severed.clone(), kind: d.kind.clone(), def: d.def.clone(), rise: rise.clone(), left: rise.after, stuck: 0.0, facing: d.facing, sprite: d.sprite.clone(), risen: d.risen },
         Health { nature, ..Health::new(max) },
         crate::creatures::MoveStats(d.def.movement.clone()),
         d.def.team,
@@ -256,12 +283,16 @@ pub fn shatter(
         h.hp = 1.0;
         let worn: Vec<Stack> = chests.contents(corpse.key, &sim.world, &items).slots.iter().flatten().copied().collect();
         chests.forget(corpse.key);
-        died.write(Died { kind: pile.kind.clone(), def: pile.def.clone(), body: k.body, facing: pile.facing, sprite: pile.sprite.clone(), worn, spin: default(), rising: None, limbs: Vec::new(), severed: pile.lost.clone(), lineage: pile.lineage, marks: Vec::new(), gib: None });
-        let burst = bone_burst();
-        sparks.emit(&burst, burst.count as usize, k.body.pos, Vec2::Y, Vec2::ZERO);
-        sounds.write(crate::sound::PlaySound::at("break", k.body.pos).pitch(1.3));
+        died.write(Died { kind: pile.kind.clone(), def: pile.def.clone(), body: k.body, facing: pile.facing, sprite: pile.sprite.clone(), worn, spin: default(), rising: None, risen: pile.risen, limbs: Vec::new(), severed: pile.lost.clone(), lineage: pile.lineage, marks: Vec::new(), gib: None });
+        // (Bones burst apart; a body bursts in what it bleeds.)
+        let bones = pile.rise.remains == Remains::Rubble;
+        if bones {
+            let burst = bone_burst();
+            sparks.emit(&burst, burst.count as usize, k.body.pos, Vec2::Y, Vec2::ZERO);
+        }
+        sounds.write(if bones { crate::sound::PlaySound::at("break", k.body.pos).pitch(1.3) } else { crate::sound::PlaySound::at("snap", k.body.pos).pitch(0.6) });
         if let Some(&super::hurt::Bleeds(dust)) = bleeds {
-            sim.world.splash([k.body.pos.x, k.body.pos.y], dust, 18, 2.8);
+            sim.world.splash([k.body.pos.x, k.body.pos.y], dust, if bones { 18 } else { 32 }, 2.8);
         }
         commands.entity(e).despawn();
     }
@@ -449,15 +480,19 @@ pub fn stand(
                 _ => None,
             })
             .or_else(|| pile.def.unarmed.clone())
-            .filter(|_| !(armless && missing.contains(&super::parts::Limb::Arm(1))));
+            .filter(|_| !(armless && missing.contains(&super::parts::Limb::Arm(1))))
+            .or_else(|| pile.def.armless.clone().filter(|_| armless && missing.contains(&super::parts::Limb::Arm(1))));
         let (share, facing) = (pile.rise.health, pile.facing);
-        let (lineage, seek) = (pile.lineage, headless && skull_far);
+        let (lineage, seek, risen) = (pile.lineage, headless && skull_far, pile.risen + 1);
         let light = pile.rise.light();
         let eyes = pile.def.eyes.map_or(light, |(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]);
-        // (Its bones fly up from where they lie.)
+        // (Its bones fly up from where they lie; a body gets up from how
+        // it lies, its feet's end first.)
+        let whole = (pile.rise.remains == Remains::Body).then(|| lying(limp, pos)).flatten();
         let from: Vec<Vec2> = from.into_iter().map(|(p, _)| p).collect();
+        let missing_now = missing.clone();
         crate::creatures::def::spawn_creature(&mut commands, &pile.kind, feet, move |c| {
-            c.insert(Lineage(lineage));
+            c.insert((Lineage(lineage), Risen(risen)));
             if !missing.is_empty() {
                 c.insert(super::parts::Severed(missing));
             }
@@ -474,10 +509,28 @@ pub fn stand(
                 k.loco.facing = facing;
             }
             let glow = crate::light::LightSource { color: light.map(|c| c * LIGHT_MOST), flicker: 0.0 };
-            c.insert((eq, crate::combat::Wielding(wielding), Outfitted, Assembling { t: 0.0, pixels: Vec::new(), eyes, light, from }, Dormant, Visibility::Hidden, glow));
+            c.insert((eq, crate::combat::Wielding(wielding), Outfitted, Assembling { t: 0.0, pixels: Vec::new(), eyes, light, from, whole, lost: missing_now }, Dormant, Visibility::Hidden, glow));
         });
         commands.entity(e).despawn();
     }
+}
+
+/// How a body lies: its feet's end and the way to its head (the world),
+/// from its pieces (its head's, its legs'), or along it, its lower end.
+fn lying(limp: Option<&super::ragdoll::Limp>, at: Vec2) -> Option<(Vec2, Vec2)> {
+    let limp = limp?;
+    let head = limp.pieces.iter().find(|p| p.name.contains("head")).map(|p| p.pos);
+    let legs: Vec<Vec2> = limp.pieces.iter().filter(|p| p.name == "limb").map(|p| p.pos).collect();
+    let torso = limp.pieces[limp.root].pos;
+    let feet = if legs.is_empty() { None } else { Some(legs.iter().sum::<Vec2>() / legs.len() as f32) };
+    let (from, to) = match (feet, head) {
+        (Some(f), Some(h)) => (f, h),
+        (Some(f), None) => (f, torso),
+        (None, Some(h)) => (torso - (h - torso), h),
+        (None, None) => (at, at + Vec2::Y),
+    };
+    let axis = (to - from).normalize_or(Vec2::Y);
+    Some((from, axis))
 }
 
 /// The ground under `at` (out of the ground first, if `at` is in it): where
@@ -561,23 +614,40 @@ pub fn assemble(
     for (e, mut a, k, anim, bleeds) in &mut q {
         if a.pixels.is_empty() {
             let from = std::mem::take(&mut a.from);
-            a.pixels = pixels_of(anim, k, &from);
-            sounds.write(crate::sound::PlaySound::at("clank", k.body.pos).pitch(0.55).volume(0.7));
+            a.pixels = pixels_of(anim, k, &from, a.whole, &a.lost);
+            let sound = if a.whole.is_some() { crate::sound::PlaySound::at("snap", k.body.pos).pitch(0.5).volume(0.5) } else { crate::sound::PlaySound::at("clank", k.body.pos).pitch(0.55).volume(0.7) };
+            sounds.write(sound);
         }
+        // (A body: no arc, no swirl, unlit; all of it at once, nearly.)
+        let (arc, swirl, lit, stagger) = if a.whole.is_some() { (0.0, 0.0, 0.0, 0.25) } else { (ARC, SWIRL, 1.0, 1.0) };
         a.t += dt;
         let (lo, hi) = a.pixels.iter().fold((f32::MAX, f32::MIN), |(lo, hi), p| (lo.min(p.1.y), hi.max(p.1.y)));
         let span = (hi - lo).max(1.0);
-        for (i, &(from, to, rgba)) in a.pixels.iter().enumerate() {
+        // A body gets up whole: its standing picture, turned as it lay,
+        // swung up about its feet (from where they lay to under it), in a
+        // slow heave with a jerk or two in it.
+        if let Some((feet, axis)) = a.whole {
+            let p = (a.t / ASSEMBLE).clamp(0.0, 1.0);
+            let ease = p * p * (3.0 - 2.0 * p) + JERK * (p * 19.0).sin() * p * (1.0 - p);
+            let lay = -axis.x.atan2(axis.y);
+            let (s, c) = (lay * (1.0 - ease)).sin_cos();
+            let pivot = (feet - k.body.pos).lerp(Vec2::new(0.0, -k.body.half.y), ease);
+            for &(_, to, rgba) in &a.pixels {
+                let d = to - Vec2::new(0.0, -k.body.half.y);
+                sparks.draw_now(k.body.pos + pivot + Vec2::new(d.x * c - d.y * s, d.x * s + d.y * c), 1.4, rgba);
+            }
+        }
+        for (i, &(from, to, rgba)) in a.pixels.iter().enumerate().filter(|_| a.whole.is_none()) {
             // (Feet first: each starts later the higher it goes.)
-            let delay = (to.y - lo) / span * (ASSEMBLE - FLIGHT);
+            let delay = (to.y - lo) / span * (ASSEMBLE - FLIGHT) * stagger;
             let p = ((a.t - delay) / FLIGHT).clamp(0.0, 1.0);
             // (Slow to lift, quick in the middle, settling into place.)
             let ease = p * p * (3.0 - 2.0 * p);
             let hump = (ease * std::f32::consts::PI).sin();
             let side = if i % 2 == 0 { 1.0 } else { -1.0 };
-            let swirl = Vec2::new(side * SWIRL * hump * (1.0 - ease), ARC * hump);
+            let swirl = Vec2::new(side * swirl * hump * (1.0 - ease), arc * hump);
             // (Still in the heap: dimmer; landing: lit by the glow.)
-            let glow = (hump * 0.6).min(1.0);
+            let glow = (hump * 0.6).min(1.0) * lit;
             let l = a.light;
             let c = [rgba[0] + (l[0] - rgba[0]) * glow * 0.5, rgba[1] + (l[1] - rgba[1]) * glow * 0.5, rgba[2] + (l[2] - rgba[2]) * glow * 0.5, rgba[3]];
             sparks.draw_now(k.body.pos + from.lerp(to, ease) + swirl, 1.0, c);
@@ -611,7 +681,7 @@ pub fn assemble(
 /// The pixels of its standing picture (its first idle frame), each with a
 /// place in the heap to fly from (one of its heap's bones, `from`, the
 /// lowest to its feet; or anywhere low by it): offsets from its middle.
-fn pixels_of(anim: &super::animation::Animator, k: &Kinematics, from: &[Vec2]) -> Vec<(Vec2, Vec2, [f32; 4])> {
+fn pixels_of(anim: &super::animation::Animator, k: &Kinematics, from: &[Vec2], whole: Option<(Vec2, Vec2)>, lost: &[super::parts::Limb]) -> Vec<(Vec2, Vec2, [f32; 4])> {
     let def = &anim.def;
     let Some(rig) = def.rig.as_ref() else { return vec![(Vec2::ZERO, Vec2::ZERO, [0.0; 4])] };
     let idx = rig.clips.get("idle").and_then(|c| c.frames.first().copied()).unwrap_or(0);
@@ -621,10 +691,17 @@ fn pixels_of(anim: &super::animation::Animator, k: &Kinematics, from: &[Vec2]) -
     let facing = k.loco.facing;
     let mut rng = platypus_sim::rng::Rng::seeded(&[k.body.pos.x.to_bits() as u64, 0xB0E5]);
     let mut unit = || rng.next_u32() as f32 / u32::MAX as f32;
+    // (What it's lost isn't in it: the frontmost layer at a pixel a
+    // limb it's lost, that pixel's not drawn.)
+    let cuts = match (def.art_file.as_ref(), rig.names.get(idx)) {
+        (Some(file), Some(name)) if !lost.is_empty() => super::ragdoll::cut(file, name),
+        _ => Vec::new(),
+    };
+    let gone = |p: IVec2| cuts.iter().rev().find(|c| c.covers(p)).and_then(|c| c.limb()).is_some_and(|l| lost.contains(&l));
     let mut out = Vec::new();
     for py in 0..frame.h as i32 {
         for px in 0..frame.w as i32 {
-            if !frame.opaque(px, py) {
+            if !frame.opaque(px, py) || gone(IVec2::new(px, py)) {
                 continue;
             }
             let c = frame.get(px, py);
@@ -640,7 +717,10 @@ fn pixels_of(anim: &super::animation::Animator, k: &Kinematics, from: &[Vec2]) -
         let rgb = |(r, g, b): (u8, u8, u8)| [r, g, b, 255];
         let line = legs.outline.unwrap_or((26, 20, 20));
         let w = |i: usize| legs.width.get(i).or(legs.width.last()).copied().unwrap_or(2.0) * 0.5;
-        for l in &legs.each {
+        for (i, l) in legs.each.iter().enumerate() {
+            if lost.contains(&super::parts::Limb::Leg(i as u8)) {
+                continue;
+            }
             let hip = Vec2::new(l.hip.0 * facing, l.hip.1);
             let foot = Vec2::new(hip.x, -k.body.half.y + 0.5);
             let color = if l.far { legs.far.unwrap_or((116, 112, 103)) } else { legs.color };
@@ -653,9 +733,11 @@ fn pixels_of(anim: &super::animation::Animator, k: &Kinematics, from: &[Vec2]) -
         }
     }
     if !from.is_empty() {
-        // (Lowest bones to its feet, highest to its skull.)
+        // (Lowest bones to its feet, highest to its skull; a body's, from
+        // its feet's end along it to its head.)
+        let key = |p: &Vec2| whole.map_or(p.y, |(feet, axis)| (*p + k.body.pos - feet).dot(axis));
         let mut src: Vec<Vec2> = from.iter().map(|p| *p - k.body.pos).collect();
-        src.sort_by(|a, b| a.y.total_cmp(&b.y));
+        src.sort_by(|a, b| key(a).total_cmp(&key(b)));
         let mut order: Vec<usize> = (0..out.len()).collect();
         order.sort_by(|&a, &b| out[a].1.y.total_cmp(&out[b].1.y));
         for (n, &i) in order.iter().enumerate() {

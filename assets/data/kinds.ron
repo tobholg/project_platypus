@@ -19,6 +19,10 @@
     // Bones and dead flesh: points pass through, blows break them; light
     // and fire undo them; the void feeds them.
     "undead": (label: "the undead", profile: {pierce: 0.5, slash: 0.75, blunt: 1.5, fire: 1.25, radiant: 2.0, void: -0.5, poison: 0.0}, cant: [poison]),
+    // Dead flesh that walks: it feels nothing (no poison takes, it isn't
+    // staggered much), blades and blows bite it as anyone; fire and light
+    // undo it; the void feeds it.
+    "rotting": (label: "the undead", profile: {pierce: 0.75, fire: 1.5, radiant: 2.0, void: -0.5, poison: 0.0}, cant: [poison]),
     // Ghosts: steel and blows pass through; light burns them.
     "spirit": (label: "spirit", profile: {slash: 0.25, pierce: 0.25, blunt: 0.25, radiant: 2.0, void: 0.5, poison: 0.0}, cant: [poison, web, stagger]),
     // Slimes: blows sink in; fire boils them.

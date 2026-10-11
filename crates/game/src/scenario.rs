@@ -309,6 +309,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, rise_script)
             .add_systems(Update, limp_script)
             .add_systems(Update, sever_script)
+            .add_systems(Update, zombie_script)
             .add_systems(Update, skull_script)
             .add_systems(Update, knock_script)
             .add_systems(Update, marks_script)
@@ -9583,6 +9584,116 @@ fn sever_script(
             info!("sever: t {:.1} {kind} lost {:?}: {} at ({:.0}, {:.0}) speed {:.0} cling {}", s.elapsed, cut.map(|c| c.0.clone()).unwrap_or_default(), if tk.loco.clinging().is_some() { "holding on" } else { "not holding" }, tk.body.pos.x, tk.body.pos.y - fl, moves.0.run_speed, moves.0.cling);
             let _ = lost;
         }
+    }
+}
+
+/// `zombie` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a zombie walks
+/// at the player (who can't die). `PLATYPUS_ZOMBIE`:
+///   rise (default): killed at 3 s, its body gets up again; killed again
+///     at 15 s, it stays down (it gets up once).
+///   limbs: its arms off (2 s, 3 s: it bites), its legs (4 s, 5 s: it
+///     crawls on at the player), its head (10 s: dead for good).
+///   break: killed at 3 s, its body broken at 5 s: it never gets up.
+/// Logs what's there every half second.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn zombie_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::combat::Wielding, Option<&crate::creatures::body::parts::Severed>, Has<crate::creatures::body::wounds::Legless>, &crate::creatures::Health), Without<LocalPlayer>>,
+    piles: Query<(Entity, &Kinematics), (With<crate::creatures::body::rise::Pile>, Without<LocalPlayer>)>,
+    bodies: Query<&crate::hands::corpses::Corpse, Without<crate::creatures::body::rise::Pile>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut cuts: MessageWriter<crate::creatures::body::wounds::Cut>,
+    mut state: Local<(u8, f32)>,
+    mut took: Local<f32>,
+) {
+    use crate::creatures::body::parts::Limb;
+    if s.name != "zombie" {
+        return;
+    }
+    let mode = std::env::var("PLATYPUS_ZOMBIE").unwrap_or_else(|_| "rise".into());
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    // (What the player took, kept up: it can't die.)
+    *took += h.max - h.hp;
+    h.hp = h.max;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let zombie = them.iter().find(|t| t.1.kind == "zombie");
+    let kill = |hits: &mut MessageWriter<crate::combat::Hit>, e: Entity, at: Vec2| {
+        hits.write(crate::combat::Hit { target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::X, weight: 1.0, crit: false });
+    };
+    let t = s.elapsed;
+    match state.0 {
+        0 if t > 0.5 => {
+            for (e, c, ..) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            crate::creatures::def::spawn_creature(&mut commands, "zombie", Vec2::new(1000.0, fl), |_| {});
+            info!("zombie: one walks at the player ({mode})");
+            state.0 = 1;
+        }
+        1.. => {
+            let at = zombie.map(|z| (z.0, z.2.body.pos));
+            let cut = |cuts: &mut MessageWriter<crate::creatures::body::wounds::Cut>, limb: Limb| {
+                if let Some((e, _)) = at {
+                    cuts.write(crate::creatures::body::wounds::Cut { target: e, limb, dir: Vec2::new(1.0, 0.4) });
+                    info!("zombie: t {t:.1} cut off: {limb:?}");
+                }
+            };
+            let plan: &[(f32, &str)] = match mode.as_str() {
+                "limbs" => &[(2.0, "arm0"), (3.0, "arm1"), (4.0, "leg0"), (5.0, "leg1"), (10.0, "head")],
+                "break" => &[(3.0, "kill"), (5.0, "break")],
+                _ => &[(3.0, "kill"), (15.0, "kill")],
+            };
+            let i = state.0 as usize - 1;
+            if let Some(&(when, what)) = plan.get(i)
+                && t > when
+            {
+                match what {
+                    "arm0" => cut(&mut cuts, Limb::Arm(0)),
+                    "arm1" => cut(&mut cuts, Limb::Arm(1)),
+                    "leg0" => cut(&mut cuts, Limb::Leg(0)),
+                    "leg1" => cut(&mut cuts, Limb::Leg(1)),
+                    "head" => cut(&mut cuts, Limb::Head),
+                    "kill" => {
+                        if let Some((e, p)) = at {
+                            kill(&mut hits, e, p);
+                            info!("zombie: t {t:.1} killed");
+                        }
+                    }
+                    "break" => {
+                        if let Some((e, p)) = piles.iter().next() {
+                            kill(&mut hits, e, p.body.pos);
+                            info!("zombie: t {t:.1} its body struck hard");
+                        }
+                    }
+                    _ => {}
+                }
+                state.0 += 1;
+            }
+            if t >= state.1 {
+                state.1 = t + 0.5;
+                let what = match zombie {
+                    Some((_, _, zk, w, sev, legless, zh)) => format!(
+                        "up at x {:.0} ({:.0} up, {:.0} high), hp {:.0}, fights with {:?}, lost {:?}{}",
+                        zk.body.pos.x,
+                        zk.body.pos.y - zk.body.half.y - fl,
+                        zk.body.half.y * 2.0,
+                        zh.hp,
+                        w.0,
+                        sev.map(|s| s.0.clone()).unwrap_or_default(),
+                        if legless { ", legless" } else { "" }
+                    ),
+                    None => "none up".into(),
+                };
+                info!("zombie: t {t:.1} {what}; bodies getting up {}, bodies {}; the player's taken {:.0}", piles.iter().count(), bodies.iter().count(), *took);
+            }
+        }
+        _ => {}
     }
 }
 

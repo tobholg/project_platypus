@@ -447,6 +447,27 @@ crawls on; bodies flop and drape as ragdolls; each damage type
 leaves its own mark; a fight with a dozen wounded creatures stays in
 budget.
 
+**8b. `zombies`: the wounds showcase.** (Pulled forward from the roster,
+2026-10-11.) Stages, each shown before the next:
+1. The body: the humanoid rig on stepping legs (`legs` rig), rotting, arms
+   out ahead, slow; dead flesh (`rotting`: fire and light undo it); dark
+   `rot` blood; limbs come off (legless it drags itself on, armless it
+   bites from its mouth: `armless`); its head off, dead for good
+   (`headless: Dies`); killed otherwise, its body lies whole and gets up
+   once (`rises` with `remains: Body`, `times: 1`): swung up stiff about
+   its feet, what it lost still lost; anything breaks the body first.
+   (Built 2026-10-11 on `zombies`; `zombie` scenario: rise, limbs, break.)
+2. Rising from the ground: spawned under the ground out of sight, a hand
+   first, digging up (the spiders' dig); overworld at night, underground
+   any time, more near crypts; daylight burns them.
+3. The horde: noise draws them; they smell blood; the dead (villagers,
+   orcs) killed at night rise as zombies of their kind.
+4. Nasties: a cut-off arm crawls on; grab and hold; the bloated one
+   bursts into gas. (Pile-ups later.)
+Done when: a night on the surface brings them up out of the ground; a
+fight leaves arms crawling, torsos dragging themselves, and bodies that
+get up once.
+
 **9. `powder`: firearms and new materials.**
 The flintlock pistol and the musket; gunpowder (charcoal and sulfur, a new
 mineral by the underworld's lava); iron and silver shot; muzzle flash,

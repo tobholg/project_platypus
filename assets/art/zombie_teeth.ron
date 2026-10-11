@@ -1,0 +1,19 @@
+// A zombie's teeth: what one with no arms left bites with (`armless` in
+// its creature file). Held where its hand was, it's barely seen: a glint.
+(
+    size: (5, 3),
+    feet: (2, 3),
+    outline: (24, 20, 18),
+    palette: {
+        't': (208, 196, 160),   // teeth
+    },
+    frames: {
+        "zombie_teeth": [
+            "t.t.t",
+            "ttttt",
+            ".t.t.",
+        ],
+    },
+    clips: { "held": (frames: ["zombie_teeth"], fps: 1) },
+    anchors: { "grip": { "zombie_teeth": (0, 1) } },
+)

@@ -1,0 +1,24 @@
+// A zombie's hand: grey-green fingers, long dead nails, pointing right,
+// held at its wrist (`grip`). What a zombie rakes with (`unarmed` in its
+// creature file: it has no weapon).
+(
+    size: (7, 5),
+    feet: (3, 5),
+    outline: (24, 20, 18),
+    palette: {
+        'g': (140, 158, 116),   // skin
+        'D': (92, 106, 76),     // skin, shaded
+        'n': (196, 186, 150),   // nails
+    },
+    frames: {
+        "rotten_claw": [
+            "...gg.n",
+            ".gggggn",
+            "DDggggn",
+            ".DDDDDn",
+            "...DD..",
+        ],
+    },
+    clips: { "held": (frames: ["rotten_claw"], fps: 1) },
+    anchors: { "grip": { "rotten_claw": (1, 2) } },
+)

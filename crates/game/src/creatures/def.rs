@@ -139,6 +139,9 @@ pub struct CreatureDef {
     /// was taken from its heap: bony fists).
     #[serde(default)]
     pub unarmed: Option<String>,
+    /// What it fights with when it has no arms left (a zombie: its teeth).
+    #[serde(default)]
+    pub armless: Option<String>,
     /// Damage it shrugs off before a hit staggers it (it comes back after a
     /// pause); 0: every hit does.
     #[serde(default)]

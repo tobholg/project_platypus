@@ -474,7 +474,6 @@ pub fn limbed(sprite: Sprite, offset: Vec2, frame: (u32, u32), body: Vec2, limbs
     let sub = DT / SUBSTEPS as f32;
     let centre = body + offset;
     let half = Vec2::new(frame.0 as f32, frame.1 as f32) * BODY_SHARE;
-    let mut rng = platypus_sim::rng::Rng::seeded(&[centre.x.to_bits() as u64, centre.y.to_bits() as u64, 0x11B5]);
     let edge = |half: Vec2| {
         let mut s = Vec::new();
         let n = 5;
@@ -499,9 +498,21 @@ pub fn limbed(sprite: Sprite, offset: Vec2, frame: (u32, u32), body: Vec2, limbs
         pixels: Vec::new(),
     };
     let body_mass = (half.x * half.y * 4.0).max(4.0);
-    let mut pieces = vec![new(centre, 0.0, body_mass, body_mass * half.length_squared() / 3.0, edge(half), "body", vel, omega)];
+    let mut limp = Limp { pieces: vec![new(centre, 0.0, body_mass, body_mass * half.length_squared() / 3.0, edge(half), "body", vel, omega)], joints: Vec::new(), root: 0, still: 0, asleep: false };
     let mut looks = vec![Look::Sprite(sprite)];
-    let mut angles = vec![0.0f32];
+    attach(&mut limp, &mut looks, limbs, draw, vel, omega);
+    (limp, looks)
+}
+
+/// Limbs (capsules, as a walker's) added to a ragdoll: each pinned to the
+/// one before it it meets (a knee), or to its root (a hip), moving with it.
+/// (A rig's legs drawn apart from its art, `legs::rig`, on its cut body.)
+pub fn attach(limp: &mut Limp, looks: &mut Vec<Look>, limbs: &[super::parts::Part], draw: impl Fn(&super::parts::Part, f32) -> Vec<(IVec2, [u8; 4])>, vel: Vec2, omega: f32) {
+    let sub = DT / SUBSTEPS as f32;
+    let (root, centre) = (limp.root, limp.pieces[limp.root].pos);
+    let base = limp.pieces.len();
+    let mut rng = platypus_sim::rng::Rng::seeded(&[centre.x.to_bits() as u64, centre.y.to_bits() as u64, 0x11B5]);
+    let mut angles = Vec::new();
     for p in limbs {
         let d = p.b - p.a;
         let len = d.length().max(1.0);
@@ -516,40 +527,50 @@ pub fn limbed(sprite: Sprite, offset: Vec2, frame: (u32, u32), body: Vec2, limbs
             x += 2.0;
         }
         samples.extend([Vec2::new(-len / 2.0, 0.0), Vec2::new(len / 2.0, 0.0)]);
-        let mass = len * thick;
+        let mass = (len * thick).max(1.0);
         let twist = (rng.next_u32() as f32 / u32::MAX as f32 * 2.0 - 1.0) * SLUMP_TWIST;
         let pos = (p.a + p.b) / 2.0;
         let r = pos - centre;
-        let mut piece = new(pos, angle, mass, mass * (len * len + thick * thick) / 12.0, samples, "limb", vel + Vec2::new(-r.y, r.x) * omega, omega + twist);
-        piece.draw_offset = middle;
-        // (Its pixels kept: a bone that flies back together, `rise`.)
-        piece.pixels = drawn.iter().map(|(q, c)| (q.as_vec2() + Vec2::splat(0.5), *c)).collect();
-        pieces.push(piece);
+        let (v, w) = (vel + Vec2::new(-r.y, r.x) * omega, omega + twist);
+        limp.pieces.push(Piece {
+            pos,
+            prev: pos - v * sub,
+            angle,
+            prev_angle: angle - w * sub,
+            tick_pos: pos,
+            tick_angle: angle,
+            inv_mass: 1.0 / mass,
+            inv_inertia: 1.0 / (mass * (len * len + thick * thick) / 12.0).max(1.0),
+            samples,
+            draw_offset: middle,
+            name: "limb".into(),
+            // (Its pixels kept: a bone that flies back together, `rise`.)
+            pixels: drawn.iter().map(|(q, c)| (q.as_vec2() + Vec2::splat(0.5), *c)).collect(),
+        });
         looks.push(Look::Image(image, false));
         angles.push(angle);
     }
-    // Each limb pinned to the one before it it meets, or to the body.
-    let mut joints = Vec::new();
+    // Each limb pinned to the one before it it meets, or to the root.
+    let root_angle = limp.pieces[root].angle;
     for (i, p) in limbs.iter().enumerate() {
-        let me = i + 1;
+        let me = base + i;
         let tol = (p.r * 2.0).max(2.5).max(0.6 * p.a.distance(p.b));
         let mut best: Option<(usize, Vec2, f32)> = None;
         for (j, q) in limbs[..i].iter().enumerate() {
             for (x, y) in [(p.a, q.b), (p.a, q.a), (p.b, q.b), (p.b, q.a)] {
                 let dist = x.distance(y);
                 if dist < tol && best.is_none_or(|b| dist < b.2) {
-                    best = Some((j + 1, (x + y) / 2.0, dist));
+                    best = Some((j, (x + y) / 2.0, dist));
                 }
             }
         }
-        let (other, at, limit) = match best {
-            Some((j, at, _)) => (j, at, BEND_KNEE),
-            None => (0, if p.a.distance(centre) <= p.b.distance(centre) { p.a } else { p.b }, BEND_HIP),
+        let (other, at, limit, other_angle) = match best {
+            Some((j, at, _)) => (base + j, at, BEND_KNEE, angles[j]),
+            None => (root, if p.a.distance(centre) <= p.b.distance(centre) { p.a } else { p.b }, BEND_HIP, root_angle),
         };
-        let (pa, pb) = (&pieces[other], &pieces[me]);
-        joints.push(Joint { a: other, b: me, la: rot(at - pa.pos, -pa.angle), lb: rot(at - pb.pos, -pb.angle), rest: wrap(angles[me] - angles[other]), limit });
+        let (pa, pb) = (&limp.pieces[other], &limp.pieces[me]);
+        limp.joints.push(Joint { a: other, b: me, la: rot(at - pa.pos, -pa.angle), lb: rot(at - pb.pos, -pb.angle), rest: wrap(angles[i] - other_angle), limit });
     }
-    (Limp { pieces, joints, root: 0, still: 0, asleep: false }, looks)
 }
 
 /// A limb cut off (`wounds`): its capsules as `limbed`'s are, each pinned

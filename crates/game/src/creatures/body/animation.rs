@@ -152,7 +152,7 @@ impl Plugin for AnimationPlugin {
     }
 }
 
-type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>, Option<&'a mut Soles>, Option<&'a super::tumble::Tumble>);
+type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>, Option<&'a mut Soles>, Option<&'a super::tumble::Tumble>, Option<&'a super::parts::Severed>);
 type BodySprites = (With<CreatureSprite>, Without<ArmSprite>, Without<CreatureEyes>);
 type EyeSprites = (With<CreatureEyes>, Without<CreatureSprite>, Without<ArmSprite>);
 type Arms<'a> = (&'a mut Sprite, &'a mut Transform, &'a mut Visibility);
@@ -169,7 +169,7 @@ pub fn animate(
     mut arms: Query<Arms, With<ArmSprite>>,
     mut eyes: Query<(&mut Sprite, &mut Transform), EyeSprites>,
 ) {
-    for (k, mut anim, children, mut aiming, hand, soles, tumble) in &mut creatures {
+    for (k, mut anim, children, mut aiming, hand, soles, tumble, severed) in &mut creatures {
         let anim = &mut *anim;
         let def = anim.def.clone();
         let dt = time.delta_secs();
@@ -255,6 +255,13 @@ pub fn animate(
             && let Some(&(hx, hy)) = rig.anchors.get("hand").and_then(|m| m.get(&index))
         {
             hand_at = Some(local(hx as f32, hy as f32));
+        }
+        // Its weapon arm cut off: it strikes from its mouth, if it has one
+        // drawn (a zombie's bite).
+        if severed.is_some_and(|s| s.has(super::parts::Limb::Arm(0)))
+            && let Some(&(mx, my)) = def.rig.as_ref().and_then(|r| r.anchors.get("mouth")).and_then(|m| m.get(&index))
+        {
+            hand_at = Some(local(mx as f32, my as f32));
         }
         anim.shown = index;
         if let Some(mut s) = soles {

@@ -280,6 +280,8 @@
         (name: "oil",      kind: Liquid, density: 800,  dispersion: 6, flammability: 90, ignites_at: 220, burn_time: 25, conductivity: 6, coats: "oily", viscosity: 40, colors: [(56, 38, 24), (72, 52, 30)]),
         // Boils and freezes like water (a little below 0: what's dissolved in it).
         (name: "blood",    kind: Liquid, density: 1060, charges: true, dispersion: 5, above: (100, "blood_steam"), below: (-2, "frozen_blood"), coats: "bloody", latent: 250, viscosity: 70, colors: [(136, 10, 16), (164, 18, 24)]),
+        // What the walking dead bleed: old blood gone dark and thick.
+        (name: "rot",      kind: Liquid, density: 1080, dispersion: 3, above: (100, "blood_steam"), coats: "bloody", latent: 250, viscosity: 150, colors: [(58, 18, 20), (74, 26, 24), (46, 30, 22)]),
         // What spiders bleed, and slimes are full of (a slime glows a little).
         (name: "ichor",    kind: Liquid, density: 1040, dispersion: 5, viscosity: 110, above: (100, "steam"), colors: [(156, 172, 64), (128, 146, 46)]),
         (name: "slime",    kind: Liquid, density: 1100, dispersion: 2, viscosity: 220, above: (100, "steam"), glow: (6, 22, 8), opacity: 20, colors: [(96, 196, 96), (76, 170, 80), (110, 210, 110)]),

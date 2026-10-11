@@ -253,7 +253,7 @@ pub fn sever(
         if let Ok((mut health, eq, wielding, rises, (lineage, stable))) = losing.get_mut(c.target) {
             // (One that rises: the piece is one of its bones; its head, if
             // that's what holds it together, its skull.)
-            if let Some(r) = rises {
+            if let Some(r) = rises.filter(|r| r.0.remains == super::rise::Remains::Rubble) {
                 bone = Some((super::rise::Bone { lineage: crate::creatures::lineage_of(Some((lineage, stable))), limb: c.limb }, (r.0.anchor && c.limb == Limb::Head).then(|| r.0.breaks.clone())));
             }
             match c.limb {
@@ -266,12 +266,12 @@ pub fn sever(
                         crate::hands::spawn_drop(&mut commands, items, root, held);
                     }
                     if let Some(mut w) = wielding {
-                        w.0 = if lost.contains(&Limb::Arm(1)) { None } else { anim.def.unarmed.clone() };
+                        w.0 = if lost.contains(&Limb::Arm(1)) { anim.def.armless.clone() } else { anim.def.unarmed.clone() };
                     }
                 }
                 Limb::Arm(1) if lost.contains(&Limb::Arm(0)) => {
                     if let Some(mut w) = wielding {
-                        w.0 = None;
+                        w.0 = anim.def.armless.clone();
                     }
                 }
                 // Its head: dead; bones fight on blind.

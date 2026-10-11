@@ -92,6 +92,23 @@
                 (name: "cross", from: -5, to: 5, thrust: 6, windup: 0.1, active: 0.07, recovery: 0.24, stamina: 6, lunge: 90),
             ],
         ),
+        // A zombie's hands: dead nails, raking (it has no weapon).
+        (
+            id: "rotten_claws", art: "rotten_claw", harm: slash,
+            damage: 7, knock: 90, stun: 0.15, rest: -10,
+            moves: [
+                (name: "rake", from: 60, to: -40, windup: 0.35, active: 0.12, recovery: 0.4, stamina: 8, lunge: 40),
+                (name: "claw", from: -30, to: 40, windup: 0.3, active: 0.1, recovery: 0.45, stamina: 8, lunge: 30),
+            ],
+        ),
+        // A zombie with no arms left: its teeth (it lunges and bites).
+        (
+            id: "zombie_bite", art: "zombie_teeth", harm: pierce,
+            damage: 9, knock: 60, stun: 0.2, rest: 0,
+            moves: [
+                (name: "bite", from: 15, to: -15, thrust: 9, windup: 0.4, active: 0.14, recovery: 0.6, stamina: 10, lunge: 80),
+            ],
+        ),
         (
             id: "club", art: "club", harm: blunt,
             damage: 30, knock: 450, stun: 0.5, rest: -60,
