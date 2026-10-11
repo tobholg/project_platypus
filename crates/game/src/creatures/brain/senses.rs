@@ -219,6 +219,7 @@ pub fn perceive(
     mut landed: MessageReader<crate::creatures::Landed>,
     display: Res<crate::display::Display>,
     mut exposure: ResMut<Exposure>,
+    blind: Query<(), With<crate::creatures::body::wounds::Blind>>,
 ) {
     let dt = (1.0 / crate::world::TICK_HZ) as f32;
     let lights: Vec<(Vec2, f32)> = lights.iter().map(|(t, l)| (t.translation().truncate(), l.color.iter().copied().fold(0.0f32, f32::max))).filter(|(_, b)| *b > 0.05).collect();
@@ -276,7 +277,8 @@ pub fn perceive(
         let s = &h.senses;
         let pos = k.body.pos;
         let eye = pos + Vec2::Y * k.body.half.y * 0.6;
-        let sight = if s.sight > 0.0 { s.sight } else { h.aggro };
+        // (Headless, `wounds::Blind`: it sees nothing; it still hears.)
+        let sight = if blind.contains(e) { 0.0 } else if s.sight > 0.0 { s.sight } else { h.aggro };
         let home = keeps.filter(|_| h.leash > 0.0).map(|kp| Vec2::new(kp.0.0 as f32, kp.0.1 as f32));
         // What it senses: seen (in sight, in the light or seeing in the
         // dark, nothing in the way) or smelled (wounded, near enough).

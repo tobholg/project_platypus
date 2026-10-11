@@ -16,6 +16,7 @@ use super::{Equipment, Slot, WORN};
 use crate::creatures::Creature;
 use crate::creatures::body::animation::Animator;
 use crate::creatures::def::{CreatureDef, Creatures, set_art};
+use crate::creatures::body::parts::Limb;
 use crate::hands::items::Items;
 
 /// Outfits made so far: (creature kind, what's worn) → the creature drawn
@@ -64,40 +65,71 @@ pub fn skins_of<'a>(items: &'a Items, stacks: &[crate::hands::items::Stack]) -> 
     out
 }
 
-/// Draw a creature in skins (its art as written, dressed and compiled).
-fn dressed(base: &CreatureDef, kind: &str, skins: &[&Skin], name: &str) -> Result<CreatureDef, String> {
+/// Its art without the limbs it's lost (`wounds`): the layers of its
+/// weapon arm (`front_arm`, and its aim's fan), its other arm (`back_arm`),
+/// its head.
+fn without(file: &mut platypus_art::ArtFile, lost: &[Limb]) {
+    let gone = |l: &platypus_art::Layer| {
+        lost.iter().any(|x| match x {
+            Limb::Arm(0) => l.tag.as_deref() == Some("front_arm"),
+            Limb::Arm(1) => l.tag.as_deref() == Some("back_arm"),
+            Limb::Head => l.part.contains("head") || l.part == "blink",
+            _ => false,
+        })
+    };
+    for layers in file.poses.values_mut() {
+        layers.retain(|l| !gone(l));
+    }
+    if lost.contains(&Limb::Arm(0)) {
+        file.fans.remove("front_arm");
+    }
+}
+
+/// Draw a creature in skins (its art as written, dressed and compiled),
+/// without what it's lost.
+fn dressed(base: &CreatureDef, kind: &str, skins: &[&Skin], name: &str, lost: &[Limb]) -> Result<CreatureDef, String> {
     let file = base.art_file.as_ref().ok_or("not drawn as text")?;
-    let art = platypus_art::compile(&platypus_art::dress::dress(file, skins)?)?;
+    let mut file = platypus_art::dress::dress(file, skins)?;
+    without(&mut file, lost);
+    let art = platypus_art::compile(&file)?;
     let mut def = base.clone();
     set_art(&mut def, &format!("{kind}{name}"), art);
     Ok(def)
 }
 
-/// Whoever's outfit changed (or whose kind was reloaded) is drawn in it.
-pub fn dress(items: Option<Res<Items>>, creatures: Res<Creatures>, mut wardrobe: ResMut<Wardrobe>, mut q: Query<(&Creature, Ref<Equipment>, &mut Animator)>) {
+type Dressing<'a> = (&'a Creature, Ref<'a, Equipment>, &'a mut Animator, Option<Ref<'a, crate::creatures::body::parts::Severed>>);
+
+/// Whoever's outfit changed (or whose kind was reloaded) is drawn in it
+/// (without what it's lost).
+pub fn dress(items: Option<Res<Items>>, creatures: Res<Creatures>, mut wardrobe: ResMut<Wardrobe>, mut q: Query<Dressing>) {
     let Some(items) = items else { return };
     let all = creatures.is_changed();
     if all {
         wardrobe.0.clear();
     }
-    for (c, eq, mut anim) in &mut q {
-        if !(all || eq.is_changed()) {
+    for (c, eq, mut anim, severed) in &mut q {
+        if !(all || eq.is_changed() || severed.as_ref().is_some_and(|s| s.is_changed())) {
             continue;
         }
+        // (Only what's drawn in its art's layers: a humanoid's arms, head.)
+        let lost: Vec<Limb> = severed.map(|s| s.0.iter().copied().filter(|l| matches!(l, Limb::Arm(0) | Limb::Arm(1) | Limb::Head)).collect()).unwrap_or_default();
         let Some(base) = creatures.get(&c.kind) else {
             continue;
         };
         if base.art_file.is_none() {
             continue;
         }
-        let (skins, name) = outfit(&items, &eq);
-        let want = if skins.is_empty() {
+        let (skins, mut name) = outfit(&items, &eq);
+        for l in &lost {
+            name.push_str(&format!("-{l:?}"));
+        }
+        let want = if skins.is_empty() && lost.is_empty() {
             base.clone()
         } else {
             let key = format!("{}{name}", c.kind);
             match wardrobe.0.get(&key) {
                 Some(d) => d.clone(),
-                None => match dressed(base, &c.kind, &skins, &name) {
+                None => match dressed(base, &c.kind, &skins, &name, &lost) {
                     Ok(d) => {
                         let d = Arc::new(d);
                         wardrobe.0.insert(key, d.clone());

@@ -93,7 +93,8 @@ fn limp_of(d: &Died, items: &Items) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look
     let frame = rig.names.get(sprite.texture_atlas.as_ref()?.index)?;
     let skins = crate::gear::look::skins_of(items, &d.worn);
     let dressed = if skins.is_empty() { (**file).clone() } else { platypus_art::dress::dress(file, &skins).ok()? };
-    let cuts = ragdoll::cut(&dressed, frame);
+    // (What it had lost lies apart.)
+    let cuts: Vec<ragdoll::Cut> = ragdoll::cut(&dressed, frame).into_iter().filter(|c| c.limb().is_none_or(|l| !d.severed.contains(&l))).collect();
     if cuts.len() < 2 {
         return None;
     }

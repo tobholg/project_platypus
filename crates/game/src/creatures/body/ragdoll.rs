@@ -103,12 +103,41 @@ pub struct LimpPiece(pub usize);
 pub struct Cut {
     pub image: Image,
     pub name: String,
+    /// Its layer's tag (`front_arm`, `back_arm`), if it has one.
+    pub tag: Option<String>,
     /// Its pixels' middle, and its picture's middle, in the frame (pixels, y down).
     com: Vec2,
     centre: Vec2,
     pixels: Vec<IVec2>,
     colors: Vec<[u8; 4]>,
     edge: Vec<IVec2>,
+}
+
+impl Cut {
+    /// Does it cover this pixel of its frame?
+    pub fn covers(&self, p: IVec2) -> bool {
+        self.pixels.contains(&p)
+    }
+
+    /// The limb it is, if it's one that can be cut off: a humanoid's front
+    /// arm (`Arm(0)`, its weapon hand), back arm (`Arm(1)`), head.
+    pub fn limb(&self) -> Option<super::parts::Limb> {
+        use super::parts::Limb;
+        match self.tag.as_deref() {
+            Some("front_arm") => Some(Limb::Arm(0)),
+            Some("back_arm") => Some(Limb::Arm(1)),
+            _ if self.name.contains("head") || self.name == "blink" => Some(Limb::Head),
+            _ => None,
+        }
+    }
+
+    /// Where it meets what it was cut from (frame pixels): its pixels'
+    /// middle, toward the frame's middle.
+    pub fn joint(&self, frame: (u32, u32)) -> Vec2 {
+        let mid = Vec2::new(frame.0 as f32 / 2.0, frame.1 as f32 / 2.0);
+        let near = self.pixels.iter().min_by(|a, b| (a.as_vec2() - mid).length_squared().total_cmp(&(b.as_vec2() - mid).length_squared())).copied().unwrap_or(IVec2::ZERO);
+        near.as_vec2() + Vec2::splat(0.5)
+    }
 }
 
 /// The pose a shown frame was drawn from (a fan's bare pose is its pose; a
@@ -177,7 +206,7 @@ pub fn cut(file: &platypus_art::ArtFile, frame: &str) -> Vec<Cut> {
         let com = pixels.iter().fold(Vec2::ZERO, |s, q| s + q.as_vec2()) / pixels.len() as f32 + Vec2::splat(0.5);
         let centre = Vec2::new(lo.x as f32 + w as f32 / 2.0, lo.y as f32 + h as f32 / 2.0);
         let colors = pixels.iter().map(|q| p.get(q.x, q.y)).collect();
-        out.push(Cut { image, name: layer.part.clone(), com, centre, pixels, colors, edge });
+        out.push(Cut { image, name: layer.part.clone(), tag: layer.tag.clone(), com, centre, pixels, colors, edge });
     }
     out
 }

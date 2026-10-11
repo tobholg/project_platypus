@@ -9249,9 +9249,10 @@ fn pickups_script(
 /// spider on its underside; from 2 s an arrow into one of its legs every
 /// half second (each enough to cut it): it should hold on with five of its
 /// eight, and fall with three. `PLATYPUS_SEVER=skeleton`: a skeleton by
-/// the player, a blade through one leg at 2 s (it hops), the other at 5 s
-/// (it drags itself, on its pelvis). Logs, each half second, what it's lost, whether it
-/// holds on, where it is and how fast it can go.
+/// the player (its armour off), a blade through its sword arm at 2 s (the
+/// sword falls), its head at 3.5 s (it fights on blind), a leg at 5 s
+/// (dead: rubble without what it had lost). Logs, each half second, what
+/// it's lost, whether it holds on, where it is and how fast it can go.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn sever_script(
     mut commands: Commands,
@@ -9260,12 +9261,19 @@ fn sever_script(
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::body::parts::Parts>, Option<&crate::creatures::body::parts::Severed>, &crate::creatures::MoveStats), Without<LocalPlayer>>,
     mut controls: Query<&mut crate::creatures::Controls, Without<LocalPlayer>>,
+    mut eqs: Query<&mut crate::gear::Equipment, Without<LocalPlayer>>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut state: Local<(u8, f32, f32)>,
 ) {
     use crate::creatures::body::parts::Limb;
     if s.name != "sever" {
         return;
+    }
+    // (No armour on it: every blow the same, run to run.)
+    if (1.2..1.4).contains(&s.elapsed) {
+        for mut eq in &mut eqs {
+            eq.worn = Default::default();
+        }
     }
     // (The spider wants up: it holds on to the roof while it can.)
     for mut c in &mut controls {
@@ -9309,6 +9317,26 @@ fn sever_script(
             state.0 = 2;
             state.1 = 2.0;
         }
+        2 if !spider && s.elapsed > state.1 => {
+            // A skeleton: its sword arm (2 s), its head (3.5 s), a leg (5 s),
+            // each struck through where it's drawn.
+            let Some((e, _, tk, parts, _, _)) = them.iter().find(|t| t.1.kind == kind) else { return };
+            let f = tk.loco.facing;
+            let feet = tk.body.pos.y - tk.body.half.y;
+            let leg = parts.and_then(|p| p.list.iter().find(|p| matches!(p.limb, Some(Limb::Leg(_))))).map(|p| (p.a + p.b) / 2.0);
+            let (at, what) = match s.elapsed {
+                t if t < 3.0 => (Vec2::new(tk.body.pos.x + 3.0 * f, feet + 22.0), "its sword arm"),
+                t if t < 4.5 => (Vec2::new(tk.body.pos.x, feet + 34.0), "its head"),
+                _ => (leg.unwrap_or(Vec2::new(tk.body.pos.x, feet + 9.0)), "a leg"),
+            };
+            let damage = 42.0;
+            hits.write(crate::combat::Hit { target: e, damage, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::new(f, 0.3), weight: 1.0, crit: false });
+            info!("sever: t {:.1} a blade through {what}", s.elapsed);
+            state.1 = s.elapsed + 1.5;
+            if s.elapsed > 4.5 {
+                state.0 = 3;
+            }
+        }
         2 if s.elapsed > state.1 => {
             // The next leg it still has: struck through where it is.
             let Some((e, _, tk, Some(parts), cut, _)) = them.iter().find(|t| t.1.kind == kind) else { return };
@@ -9330,7 +9358,8 @@ fn sever_script(
         state.2 = s.elapsed + 0.5;
         if let Some((_, _, tk, _, cut, moves)) = them.iter().find(|t| t.1.kind == kind) {
             let lost = cut.map_or(0, |c| c.0.len());
-            info!("sever: t {:.1} {kind} lost {lost}: {} at ({:.0}, {:.0}) speed {:.0} cling {}", s.elapsed, if tk.loco.clinging().is_some() { "holding on" } else { "not holding" }, tk.body.pos.x, tk.body.pos.y - fl, moves.0.run_speed, moves.0.cling);
+            info!("sever: t {:.1} {kind} lost {:?}: {} at ({:.0}, {:.0}) speed {:.0} cling {}", s.elapsed, cut.map(|c| c.0.clone()).unwrap_or_default(), if tk.loco.clinging().is_some() { "holding on" } else { "not holding" }, tk.body.pos.x, tk.body.pos.y - fl, moves.0.run_speed, moves.0.cling);
+            let _ = lost;
         }
     }
 }

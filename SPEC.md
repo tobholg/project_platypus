@@ -2034,6 +2034,27 @@ DESIGN §13 item 6.
   cells up, stepping on what's under them. Its rubble has its leg bones
   too, and its bones fly back into legs first, standing straight, then the
   rest. (Ledges of 34, 40 and 44 and the course as before.)
+- **Cut off** (`creatures::body::wounds`, `wounds` stage 2): each limb a
+  blow lands on keeps what it's taken: a leg, an arm, a tail by its part
+  (`Parts`, each capsule its `Limb`), a humanoid's head and arms by the
+  layer of its frame the blow's pixel is in (each frame's layers cut once
+  and kept, `LayerMasks`). Past its share of the creature's health (legs
+  1.2 between them, each 0.12 to 0.25; an arm 0.3, a tail 0.35, a head
+  0.3) it comes off: its capsules (or its layer, in what it wears) fly off
+  along the blow as a ragdoll of their own (`ragdoll::cut_off`), bleeding
+  from the cut end, and lie 30 s before they fade; a spray at the cut, and
+  the stump bleeds, tapering, 3.5 s (its own blood doesn't pelt it). What's
+  lost (`Severed`) isn't struck, drawn or stepped on: a biped hops on one
+  leg (0.45 of its speed and jump) and on none drags itself (0.15; a rig
+  body sits down on its pelvis in a crawler's box, `Legless`); more legs,
+  slower by the share gone; a wall-walker lets go with fewer than half (a
+  spider shot leg by leg off a roof holds on with five, falls with three,
+  bleeding acid). Its weapon arm lost, what it held falls and it fights
+  with its other fist (both: nothing); its head lost, it dies, unless it's
+  bones (`rises`): then it fights on blind (it hears). A humanoid is drawn
+  without what it's lost (its look's layers stripped, the arm's aim fan
+  with it); its body and rubble leave it out. The `sever` scenario
+  (`PLATYPUS_SEVER=spider|skeleton`).
 - **Getting up again** (`creatures::body::rise`, a creature's `rises`): a
   skeleton killed is gone, and its bones lie where it fell: a body that
   holds only what it wore and held (its loot is rolled when it's dead for

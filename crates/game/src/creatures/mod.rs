@@ -56,6 +56,7 @@ impl Plugin for CreaturesPlugin {
             .add_systems(FixedUpdate, (body::hurt::react, body::hurt::wounded).chain().after(crate::combat::Hits))
             // Blows on limbs wear them down and cut them off (`wounds`).
             .add_message::<body::wounds::Cut>()
+            .init_resource::<body::wounds::LayerMasks>()
             .add_systems(FixedUpdate, (body::wounds::wound, body::wounds::sever, body::wounds::bleed).chain().after(crate::combat::Hits).before(TickSet::Cells))
             .add_systems(Update, (body::wounds::fade, body::wounds::sit.before(body::animation::animate)))
             .add_systems(FixedUpdate, (body::elements::struck, body::elements::zapped, blasted, pelted).after(TickSet::Cells))
@@ -587,6 +588,8 @@ pub struct Died {
     /// Its limbs as they were (a walker's legs, arms, segments, tail: its
     /// `Parts`, weak spots left out): its ragdoll's pieces (`ragdoll`).
     pub limbs: Vec<body::parts::Part>,
+    /// What it had lost (`wounds`): not drawn on its body.
+    pub severed: Vec<body::parts::Limb>,
 }
 
 /// What a body took in a tick, of one kind (`Health::took`, from every
@@ -654,7 +657,7 @@ pub(crate) fn deaths(
             // (Its limbs, but what's been cut off already lies apart.)
             let cut = severed.get(entity).ok();
             let limbs = parts.get(entity).map(|p| p.limbs().into_iter().filter(|l| l.limb.is_none_or(|x| !cut.is_some_and(|c| c.has(x)))).collect()).unwrap_or_default();
-            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin, rising: None, limbs });
+            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin, rising: None, limbs, severed: cut.map(|c| c.0.clone()).unwrap_or_default() });
         }
         if let Some(&body::hurt::Bleeds(blood)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.

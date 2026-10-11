@@ -25,7 +25,7 @@ const LEG_LEAST: f32 = 0.12;
 const LEG_MOST: f32 = 0.25;
 const ARM_SHARE: f32 = 0.3;
 const CHAIN_SHARE: f32 = 0.35;
-const HEAD_SHARE: f32 = 0.4;
+const HEAD_SHARE: f32 = 0.3;
 /// A cut piece flies off this fast (cells a second): away along the blow,
 /// and up.
 const THROW: f32 = 80.0;
@@ -105,16 +105,43 @@ fn limb_max(limb: Limb, health: f32, legs: Option<&super::legs::LegsDef>) -> f32
     health * share
 }
 
-type Struck<'a> = (&'a Health, &'a Parts, Option<&'a Severed>, Option<&'a mut Wounds>, &'a super::animation::Animator);
+/// Each drawn frame's layers (a humanoid rig's: its head, its arms), cut
+/// once and kept: which a blow on its picture lands on.
+#[derive(Resource, Default)]
+pub struct LayerMasks(std::collections::HashMap<(usize, String), std::sync::Arc<Vec<ragdoll::Cut>>>);
+
+impl LayerMasks {
+    fn of(&mut self, file: &std::sync::Arc<platypus_art::ArtFile>, frame: &str) -> std::sync::Arc<Vec<ragdoll::Cut>> {
+        let key = (std::sync::Arc::as_ptr(file) as usize, frame.to_string());
+        self.0.entry(key).or_insert_with(|| std::sync::Arc::new(ragdoll::cut(file, frame))).clone()
+    }
+}
+
+/// The limb of a body drawn in layers (a humanoid rig) a blow at `at`
+/// lands on: the frontmost layer there that's a limb (its head, an arm).
+fn rig_limb(anim: &super::animation::Animator, k: &Kinematics, at: Vec2, masks: &mut LayerMasks) -> Option<Limb> {
+    let file = anim.def.art_file.as_ref().filter(|f| !f.poses.is_empty())?;
+    let frame = anim.def.rig.as_ref()?.names.get(anim.shown)?.clone();
+    let cuts = masks.of(file, &frame);
+    let (x, y) = super::animation::pixel_at(&anim.def, k, at);
+    let p = IVec2::new(x, y);
+    // (Frontmost first; a pixel's slack round it: blades are thin.)
+    let near = |c: &ragdoll::Cut| (-1..=1).any(|dy| (-1..=1).any(|dx| c.covers(p + IVec2::new(dx, dy))));
+    cuts.iter().rev().find(|c| c.covers(p)).or_else(|| cuts.iter().rev().find(|c| near(c))).and_then(|c| c.limb())
+}
+
+type Struck<'a> = (&'a Health, &'a Kinematics, Option<&'a Parts>, Option<&'a Severed>, Option<&'a mut Wounds>, &'a super::animation::Animator);
 
 /// Blows that land on a limb wear it down; past its share, it's cut off.
-pub fn wound(mut commands: Commands, mut felt: MessageReader<crate::combat::Felt>, mut q: Query<Struck>, mut cuts: MessageWriter<Cut>) {
+/// (A limb of its parts, `Parts`: a leg, an arm, a tail; or of its drawn
+/// layers: a humanoid's head and arms.)
+pub fn wound(mut commands: Commands, mut felt: MessageReader<crate::combat::Felt>, mut q: Query<Struck>, mut cuts: MessageWriter<Cut>, mut masks: ResMut<LayerMasks>) {
     for f in felt.read() {
         if f.dealt <= 0.0 {
             continue;
         }
-        let Ok((health, parts, severed, wounds, anim)) = q.get_mut(f.target) else { continue };
-        let Some(limb) = parts.touch(f.at, 1.0).and_then(|p| p.limb) else { continue };
+        let Ok((health, k, parts, severed, wounds, anim)) = q.get_mut(f.target) else { continue };
+        let Some(limb) = parts.and_then(|p| p.touch(f.at, 1.0)).and_then(|p| p.limb).or_else(|| rig_limb(anim, k, f.at, &mut masks)) else { continue };
         if severed.is_some_and(|s| s.has(limb)) {
             continue;
         }
@@ -141,10 +168,16 @@ pub fn wound(mut commands: Commands, mut felt: MessageReader<crate::combat::Felt
     }
 }
 
-type Cutting<'a> = (&'a mut Kinematics, &'a Parts, &'a super::animation::Animator, Option<&'a mut Severed>, Option<&'a super::hurt::Bleeds>, &'a mut MoveStats, Option<&'a mut Bleeding>);
+/// Lost its head and lives on (bones): it sees nothing (it hears).
+#[derive(Component)]
+pub struct Blind;
+
+type Cutting<'a> = (&'a mut Kinematics, Option<&'a Parts>, &'a super::animation::Animator, Option<&'a mut Severed>, Option<&'a super::hurt::Bleeds>, &'a mut MoveStats, Option<&'a mut Bleeding>);
+type Losing<'a> = (&'a mut Health, Option<&'a mut crate::gear::Equipment>, Option<&'a mut crate::combat::Wielding>, Has<super::rise::Rises>);
 
 /// A limb comes off: the piece flies, bleeding; the stump bleeds; the
-/// creature has lost it.
+/// creature has lost it (legs: slower, maybe down on its pelvis; its
+/// weapon arm: its weapon; its head: its life, or for bones its sight).
 #[allow(clippy::too_many_arguments)]
 pub fn sever(
     mut commands: Commands,
@@ -152,41 +185,87 @@ pub fn sever(
     mut sim: ResMut<SimWorld>,
     mut images: ResMut<Assets<Image>>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
+    items: Option<Res<crate::hands::items::Items>>,
     mut q: Query<Cutting>,
+    mut losing: Query<Losing>,
 ) {
     for c in cuts.read() {
         let Ok((mut k, parts, anim, severed, bleeds, mut moves, bleeding)) = q.get_mut(c.target) else { continue };
         if severed.as_ref().is_some_and(|s| s.has(c.limb)) {
             continue;
         }
-        let limbs: Vec<Part> = parts.list.iter().filter(|p| p.limb == Some(c.limb)).cloned().collect();
-        let Some(legs) = anim.def.legs.as_ref() else { continue };
-        if limbs.is_empty() {
-            continue;
-        }
+        let limbs: Vec<Part> = parts.map(|p| p.list.iter().filter(|p| p.limb == Some(c.limb)).cloned().collect()).unwrap_or_default();
+        let facing = k.loco.facing;
+        // The piece: its capsules (a walker's), or its drawn layer (a
+        // humanoid's head or arm, in what it wears), and where it was cut.
+        let spin = if c.dir.x < 0.0 { THROW_SPIN } else { -THROW_SPIN };
+        let lift = if c.limb == Limb::Head { THROW_UP * 1.5 } else { THROW_UP };
+        let vel = k.body.vel + c.dir.normalize_or(Vec2::X) * THROW + Vec2::Y * lift;
+        let built = match (anim.def.legs.as_ref(), limbs.is_empty()) {
+            (Some(legs), false) => {
+                let root = limbs[0].a;
+                let (limp, looks) = ragdoll::cut_off(&limbs, crate::hands::corpses::limb_drawer(legs), vel, spin);
+                Some((limp, looks, root))
+            }
+            _ => {
+                let worn: Vec<crate::hands::items::Stack> = losing.get(c.target).ok().and_then(|l| l.1.map(|eq| eq.worn.iter().flatten().copied().collect())).unwrap_or_default();
+                rig_piece(anim, &k, c.limb, items.as_deref(), &worn, vel, spin)
+            }
+        };
+        let Some((limp, looks, root)) = built else { continue };
         // Lost.
         let mut lost = severed.map(|s| s.0.clone()).unwrap_or_default();
         lost.push(c.limb);
         commands.entity(c.target).insert(Severed(lost.clone()));
-        moves.0 = crippled(&anim.def.movement, legs, &lost);
-        // Its own art's body with no legs left: down on its pelvis, a
-        // crawler's box (its bottom where it was).
-        let total = if legs.view == super::legs::View::Side { legs.each.len() } else { legs.count };
-        if legs.rig && lost.iter().filter(|l| matches!(l, Limb::Leg(_))).count() >= total {
-            let hip = legs.each.iter().map(|l| l.hip.1).fold(f32::MIN, f32::max);
-            let sunk = anim.def.size.1 / 2.0 + hip;
-            let half = ((anim.def.size.1 - sunk).max(CRAWL_LEAST)) / 2.0;
-            let drop = k.body.half.y - half;
-            k.body.half.y = half;
-            k.body.pos.y -= drop;
-            k.prev_pos.y -= drop;
-            commands.entity(c.target).insert(Legless(sunk));
+        if let Some(legs) = anim.def.legs.as_ref() {
+            // (At once; and from what it wears too, as its gear is next
+            // worked out: `gear::apply`.)
+            moves.0 = crippled(&anim.def.movement, legs, &lost);
+            if let Ok((_, Some(mut eq), ..)) = losing.get_mut(c.target) {
+                eq.set_changed();
+            }
+            // Its own art's body with no legs left: down on its pelvis, a
+            // crawler's box (its bottom where it was).
+            let total = if legs.view == super::legs::View::Side { legs.each.len() } else { legs.count };
+            if legs.rig && matches!(c.limb, Limb::Leg(_)) && lost.iter().filter(|l| matches!(l, Limb::Leg(_))).count() >= total {
+                let hip = legs.each.iter().map(|l| l.hip.1).fold(f32::MIN, f32::max);
+                let sunk = anim.def.size.1 / 2.0 + hip;
+                let half = ((anim.def.size.1 - sunk).max(CRAWL_LEAST)) / 2.0;
+                let drop = k.body.half.y - half;
+                k.body.half.y = half;
+                k.body.pos.y -= drop;
+                k.prev_pos.y -= drop;
+                commands.entity(c.target).insert(Legless(sunk));
+            }
+        }
+        if let Ok((mut health, eq, wielding, rises)) = losing.get_mut(c.target) {
+            match c.limb {
+                // Its weapon hand: what it held falls; it fights with what
+                // it has left (the other fist, or nothing).
+                Limb::Arm(0) if anim.def.legs.as_ref().is_none_or(|l| l.rig) => {
+                    if let (Some(mut eq), Some(items)) = (eq, items.as_deref())
+                        && let Some(held) = eq.held.take()
+                    {
+                        crate::hands::spawn_drop(&mut commands, items, root, held);
+                    }
+                    if let Some(mut w) = wielding {
+                        w.0 = if lost.contains(&Limb::Arm(1)) { None } else { anim.def.unarmed.clone() };
+                    }
+                }
+                Limb::Arm(1) if lost.contains(&Limb::Arm(0)) => {
+                    if let Some(mut w) = wielding {
+                        w.0 = None;
+                    }
+                }
+                // Its head: dead; bones fight on blind.
+                Limb::Head if rises => {
+                    commands.entity(c.target).insert(Blind);
+                }
+                Limb::Head => health.hp = health.hp.min(0.0),
+                _ => {}
+            }
         }
         // The piece, flying off along the blow.
-        let root = limbs[0].a;
-        let spin = if c.dir.x < 0.0 { THROW_SPIN } else { -THROW_SPIN };
-        let vel = k.body.vel + c.dir.normalize_or(Vec2::X) * THROW + Vec2::Y * THROW_UP;
-        let (limp, looks) = ragdoll::cut_off(&limbs, crate::hands::corpses::limb_drawer(legs), vel, spin);
         let first = &limp.pieces[0];
         let (s, co) = (-first.angle).sin_cos();
         let d = root - first.pos;
@@ -207,7 +286,7 @@ pub fn sever(
             sim.world.splash([root.x, root.y], blood, CUT_SPRAY, 2.6);
             e.insert(Bleeding { blood, spots: vec![(Spot::Piece(0, cut_end), PIECE_BLEEDS, PIECE_BLEEDS)], clock: 0.0 });
             let off = root - k.body.pos;
-            let stump = (Spot::Body(Vec2::new(off.x * k.loco.facing, off.y)), STUMP_BLEEDS, STUMP_BLEEDS);
+            let stump = (Spot::Body(Vec2::new(off.x * facing, off.y)), STUMP_BLEEDS, STUMP_BLEEDS);
             match bleeding {
                 Some(mut b) => b.spots.push(stump),
                 None => {
@@ -215,8 +294,27 @@ pub fn sever(
                 }
             }
         }
-        sounds.write(crate::sound::PlaySound::at("snap", root).pitch(0.8));
+        sounds.write(crate::sound::PlaySound::at("snap", root).pitch(if c.limb == Limb::Head { 0.6 } else { 0.8 }));
     }
+}
+
+/// A humanoid's head or arm cut off: its layer of the frame it's in, drawn
+/// in what it wears, a piece of its own; and where it was cut (the world).
+fn rig_piece(anim: &super::animation::Animator, k: &Kinematics, limb: Limb, items: Option<&crate::hands::items::Items>, worn: &[crate::hands::items::Stack], vel: Vec2, spin: f32) -> Option<(Limp, Vec<ragdoll::Look>, Vec2)> {
+    let file = anim.def.art_file.as_ref().filter(|f| !f.poses.is_empty())?;
+    let frame = anim.def.rig.as_ref()?.names.get(anim.shown)?.clone();
+    let skins = items.map(|i| crate::gear::look::skins_of(i, worn)).unwrap_or_default();
+    let dressed = if skins.is_empty() { (**file).clone() } else { platypus_art::dress::dress(file, &skins).ok()? };
+    let mut cuts = ragdoll::cut(&dressed, &frame);
+    let i = cuts.iter().position(|c| c.limb() == Some(limb))?;
+    let piece = cuts.swap_remove(i);
+    let frame_size = anim.def.sprite.frame;
+    let centre = k.body.pos + super::animation::body_at(&anim.def, k);
+    let joint = piece.joint(frame_size);
+    let (fw, fh) = (frame_size.0 as f32, frame_size.1 as f32);
+    let root = centre + Vec2::new((joint.x - fw / 2.0) * k.loco.facing, fh / 2.0 - joint.y);
+    let limp = ragdoll::assemble(std::slice::from_ref(&piece), frame_size, centre, k.loco.facing, vel, spin);
+    Some((limp, vec![ragdoll::Look::Image(piece.image, k.loco.facing < 0.0)], root))
 }
 
 /// How it moves with what it's lost: its legs (a biped hops on one and

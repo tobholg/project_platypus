@@ -262,6 +262,7 @@ type Wearer<'a> = (
     Option<&'a mut Stamina>,
     Option<&'a mut Mana>,
     Option<&'a mut Sturdy>,
+    Option<&'a crate::creatures::body::parts::Severed>,
 );
 
 /// What a creature wears changed (or its kind did, or it just got mana):
@@ -269,7 +270,7 @@ type Wearer<'a> = (
 pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures: Res<Creatures>, mut q: Query<Wearer>) {
     let Some(items) = items else { return };
     let all = creatures.is_changed() || items.is_added();
-    for (c, eq, mut stats, mut health, mut moves, stamina, mana, sturdy) in &mut q {
+    for (c, eq, mut stats, mut health, mut moves, stamina, mana, sturdy, severed) in &mut q {
         let mana_new = mana.as_ref().is_some_and(|m| m.is_added());
         if !(all || eq.is_changed() || mana_new) {
             continue;
@@ -299,6 +300,10 @@ pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures:
             m.rocket_time = r.time;
             m.rocket_thrust = r.thrust;
             m.rocket_speed = r.speed;
+        }
+        // (And slower for what it's lost: `wounds`.)
+        if let (Some(legs), Some(lost)) = (def.legs.as_ref(), severed) {
+            m = crate::creatures::body::wounds::crippled(&m, legs, &lost.0);
         }
         moves.0 = m;
         if let (Some(mut st), Some(base)) = (stamina, def.stamina) {
