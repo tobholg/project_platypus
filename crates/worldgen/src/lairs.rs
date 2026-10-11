@@ -37,6 +37,21 @@ pub struct LairDef {
     /// Only chambers at least this wide (half width, cells).
     #[serde(default = "roomy")]
     pub min_size: f32,
+    /// One of the start valley's caverns' (and only those): on either side,
+    /// the dark wood's, or the light forest's.
+    #[serde(default)]
+    pub start: Option<Side>,
+    /// A chest on its floor.
+    #[serde(default)]
+    pub chest: bool,
+}
+
+/// Which side of the start valley a start lair is on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub enum Side {
+    Any,
+    Dark,
+    Light,
 }
 
 fn cobweb() -> String {
@@ -63,15 +78,33 @@ pub struct Lair {
     pub lining: MaterialId,
     pub density: f32,
     pub keepers: Vec<&'static str>,
+    pub chest: bool,
 }
 
-/// Which chamber each lair takes: `(chamber, lair)`, from the seed.
+/// Which chamber each lair takes: `(chamber, lair)`, from the seed. The
+/// start valley's caverns each take a start lair of their side (in turn
+/// along it, so they differ); the rest, the others, by chance.
 pub fn place(plan: &WorldPlan, caves: &Caves, defs: &[LairDef]) -> Vec<Option<u16>> {
+    let starts: Vec<usize> = (0..defs.len()).filter(|&k| defs[k].start.is_some()).collect();
+    let mid = plan.width / 2;
+    let mut turn = [0usize; 2];
     caves
         .chambers
         .iter()
         .enumerate()
         .map(|(i, c)| {
+            if c.start {
+                let dark = ((c.x as i32 - mid).signum()) == plan.start.dark_side();
+                let side = if dark { Side::Dark } else { Side::Light };
+                let fits: Vec<usize> = starts.iter().copied().filter(|&k| matches!(defs[k].start, Some(Side::Any)) || defs[k].start == Some(side)).collect();
+                if fits.is_empty() {
+                    return None;
+                }
+                let t = &mut turn[dark as usize];
+                let k = fits[(*t + (hash(&[plan.seed, 0x5A1E, dark as u64]) as usize % fits.len())) % fits.len()];
+                *t += 1;
+                return Some(k as u16);
+            }
             if c.pool.is_some() {
                 return None;
             }
@@ -85,6 +118,9 @@ pub fn place(plan: &WorldPlan, caves: &Caves, defs: &[LairDef]) -> Vec<Option<u1
             defs.iter()
                 .enumerate()
                 .find(|(k, d)| {
+                    if d.start.is_some() {
+                        return false;
+                    }
                     let roll = (hash(&[plan.seed, 0x1A12, i as u64, *k as u64]) % 10_000) as f32 / 10_000.0;
                     (d.depth.0..d.depth.1).contains(&depth)
                         && (d.zones.is_empty() || d.zones.iter().any(|z| z == zone))
@@ -103,6 +139,7 @@ pub fn ready(defs: &[LairDef], mats: &MaterialTable) -> Vec<Lair> {
             name: d.name.clone(),
             lining: mats.id(&d.lining).unwrap_or_else(|| mats.expect_id("cobweb")),
             density: d.density,
+            chest: d.chest,
             keepers: d
                 .keepers
                 .iter()

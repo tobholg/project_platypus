@@ -145,6 +145,14 @@ pub struct Shelf {
     pub len: f32,
 }
 
+/// The start valley's caverns (reference world): how many, how deep under
+/// the ground (cells, to their roofs), how big (half width, half height),
+/// and none this near the spawn.
+const START_CAVERNS: usize = 8;
+const START_DEPTH: (f32, f32) = (40.0, 240.0);
+const START_SIZE: ((f32, f32), (f32, f32)) = ((48.0, 84.0), (28.0, 42.0));
+const START_CLEAR: f32 = 450.0;
+
 #[derive(Clone, Debug)]
 pub struct Chamber {
     pub x: f32,
@@ -159,6 +167,8 @@ pub struct Chamber {
     pub spikes: Vec<Spike>,
     pub mushrooms: Vec<Mushroom>,
     pub shelves: Vec<Shelf>,
+    /// One of the start valley's caverns (something's: `lairs`).
+    pub start: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -258,6 +268,8 @@ pub struct Ground<'a> {
     pub deep_top: i32,
     /// Keep mouths away from here (the spawn).
     pub spawn_x: i32,
+    /// The start valley (from x, to x): its shallow caverns are put first.
+    pub start: (i32, i32),
     /// The world's size against the reference world's (sizes, counts).
     pub scale: crate::plan::Scale,
 }
@@ -315,6 +327,29 @@ impl Caves {
         let cell = 600.0;
         let mut grid: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
         let key = |x: f32, y: f32| ((x / cell).floor() as i32, (y / cell).floor() as i32);
+        // The start valley's caverns first: shallow, across it (none right
+        // under the spawn), dry, each something's (`lairs`).
+        let starts = ((START_CAVERNS as f64 * g.scale.size.0).round() as usize).max(3);
+        let (s0, s1) = (g.start.0 as f32 + 300.0, g.start.1 as f32 - 300.0);
+        let mut srng = Rng::seeded(&[seed, 0x57A2]);
+        for i in 0..starts {
+            for _try in 0..40 {
+                let x = s0 + (i as f32 + 0.2 + 0.6 * unit(&mut srng)) / starts as f32 * (s1 - s0);
+                if (x - g.spawn_x as f32).abs() < START_CLEAR || (x as i32 - 120..x as i32 + 120).step_by(15).any(wet) {
+                    continue;
+                }
+                let (rx, ry) = (range(&mut srng, START_SIZE.0), range(&mut srng, START_SIZE.1));
+                let top = ((x - rx) as i32..=(x + rx) as i32).step_by(12).map(surface).min().unwrap_or(0) as f32;
+                let y = top - range(&mut srng, START_DEPTH) - ry;
+                if y - ry < lo as f32 {
+                    continue;
+                }
+                let (kx, ky) = key(x, y);
+                grid.entry((kx, ky)).or_default().push(chambers.len());
+                chambers.push(Chamber { x, y, rx, ry, pool: None, zone: None, spikes: Vec::new(), mushrooms: Vec::new(), shelves: Vec::new(), start: true });
+                break;
+            }
+        }
         for _ in 0..tries {
             let x = unit(&mut rng) * g.width as f32;
             let y = lo as f32 + unit(&mut rng) * (hi - lo) as f32;
@@ -361,7 +396,7 @@ impl Caves {
                 p => p,
             };
             grid.entry((kx, ky)).or_default().push(chambers.len());
-            chambers.push(Chamber { x, y, rx, ry, pool, zone, spikes: Vec::new(), mushrooms: Vec::new(), shelves: Vec::new() });
+            chambers.push(Chamber { x, y, rx, ry, pool, zone, spikes: Vec::new(), mushrooms: Vec::new(), shelves: Vec::new(), start: false });
         }
 
         // Links: each chamber to its nearest few; a spanning tree of them
@@ -470,6 +505,19 @@ impl Caves {
             let w = range(&mut rng, (33.0, 42.0));
             tunnels.push(wander(top, (c.x, c.y), w, d, &noise, 10_000.0 + n as f64));
             made += 1;
+        }
+
+        // Half the start caverns open to the surface (a way in from the
+        // valley), from beside them.
+        for (i, c) in chambers.iter().enumerate().filter(|(_, c)| c.start) {
+            if !(platypus_sim::rng::hash(&[seed, 0x0B0C, i as u64]) % 100 < 55) {
+                continue;
+            }
+            let side = if platypus_sim::rng::hash(&[seed, 0x0B0D, i as u64]).is_multiple_of(2) { 1.0 } else { -1.0 };
+            let x = c.x + side * (c.rx + 70.0);
+            let top = (x, surface(x as i32) as f32 + 6.0);
+            let d = ((c.x - top.0).powi(2) + (c.y - top.1).powi(2)).sqrt();
+            tunnels.push(wander(top, (c.x, c.y), 34.0, d, &noise, 30_000.0 + i as f64));
         }
 
         // A pool stays below where any tunnel comes into its chamber, or it

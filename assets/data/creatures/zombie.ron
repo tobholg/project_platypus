@@ -23,6 +23,9 @@
     headless: Dies,
     // The dead burn in the sun (its body too, lying there).
     sunburns: true,
+    // Hunting you, now and then it breaks into a run at you: a snarl, then
+    // suddenly fast for a couple of seconds.
+    spurt: Some((speed: 2.6, secs: 2.0, every: (5.0, 10.0), range: (40.0, 160.0))),
     blood: "rot",
     eyes: (200, 204, 192),
     // A low groan now and then.
@@ -47,8 +50,8 @@
                (hip: (-1, 4), gait: 1, knee: Forward, far: true),
            ]),
     // Close in, it grabs and bites (dash through its reach, or shake it
-    // off); further off, it lurches a few fast steps at you.
-    moves: ["zombie_grab", "zombie_lurch"],
+    // off).
+    moves: ["zombie_grab"],
     unarmed: "rotten_claws",
     armless: "zombie_bite",
     stamina: 60,

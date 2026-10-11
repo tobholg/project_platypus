@@ -429,7 +429,9 @@ fn ambient(
                 let Some(y) = (top - 240..=top).rev().find(|&y| {
                     let here = world.get(CellPos::new(x, y));
                     let above = world.get(CellPos::new(x, y + 1));
-                    here.is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder)) && above.is_some_and(|c| c.is_air() || mats.phys(c.material).kind == Kind::Plant)
+                    // (The ground, not a tree's wood: through the woods to
+                    // the floor.)
+                    here.is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder) && !mats.phys(c.material).object) && above.is_some_and(|c| c.is_air() || mats.phys(c.material).kind == Kind::Plant)
                 }) else {
                     continue;
                 };
@@ -469,9 +471,13 @@ fn ambient(
             }),
         };
         let Some(mut at) = spot else { continue };
-        // (What comes up out of the ground: only through soft ground, and
-        // with room for its pit, not rock.)
-        if h.emerges && !(-8..=8).all(|dx| kind_at(at.x as i32 + dx, at.y as i32 - 1).is_some_and(|(air, ph)| !air && crate::creatures::body::emerge::soft(ph))) {
+        // (What comes up out of the ground: only through soft ground round
+        // it, where its pit goes, not rock; the ground there as it lies,
+        // up or down a little, on a slope or among roots.)
+        let soft_at = |x: i32| {
+            (at.y as i32 - 10..=at.y as i32 + 10).rev().find(|&y| kind_at(x, y).is_some_and(|(air, ph)| !air && matches!(ph.kind, Kind::Static | Kind::Powder))).is_some_and(|y| kind_at(x, y).is_some_and(|(_, ph)| crate::creatures::body::emerge::soft(ph)))
+        };
+        if h.emerges && (-12..=12).step_by(3).filter(|&dx| soft_at(at.x as i32 + dx)).count() < 7 {
             continue;
         }
         // Deep enough, in its biome, and out of sight (not popping in).

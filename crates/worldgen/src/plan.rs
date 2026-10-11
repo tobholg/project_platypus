@@ -165,8 +165,14 @@ const RANGE_PEAK: (f64, f64) = (1_600.0, 2_600.0);
 const RANGE_BODY: (f64, f64) = (1_050.0, 1_500.0);
 const MOUNTAIN_HALF_WIDTH: (f64, f64) = (2_100.0, 4_500.0);
 const MOUNTAIN_PEAK: (f64, f64) = (1_200.0, 2_700.0);
-/// No mountain within this of the spawn (the start is a gentle forest).
-const SPAWN_CLEAR: f64 = 2_400.0;
+/// No mountain within this of the spawn (the start valley's beyond it).
+const SPAWN_CLEAR: f64 = 8_000.0;
+/// The start valley (reference world, cells): the plain's half width, and
+/// each wood's width beyond it.
+const START_PLAIN: f64 = 3_000.0;
+const START_WOOD: f64 = 4_000.0;
+/// The village (structures.rs): not in the world for now.
+pub(crate) const VILLAGE: bool = false;
 const LAKE_BOWLS: f64 = 3.0;
 const ISLANDS: f64 = 12.0;
 /// How far either side a lake's rims are looked for (large world): wider
@@ -187,6 +193,30 @@ const TERRACE: f64 = 105.0;
 /// wall a peak's tip, a terrace's riser or a cliff band made is steeper.
 const TALUS: f64 = 2.5;
 
+/// The start (DESIGN §3.1): a wide flat plain round the spawn, a light
+/// forest of the start's trees one side of it, the dark wood the other: a
+/// deep forest, dense and dim under its canopy even at noon (the dead walk
+/// in it by day, spiders keep it), and shallow caverns under it all, each
+/// something's (`Caves`' start chambers, `lairs`).
+#[derive(Clone, Copy, Debug)]
+pub struct StartValley {
+    pub plain: (i32, i32),
+    pub light: (i32, i32),
+    pub dark: (i32, i32),
+}
+
+impl StartValley {
+    /// Its whole width (from, to).
+    pub fn span(&self) -> (i32, i32) {
+        (self.light.0.min(self.dark.0), self.light.1.max(self.dark.1))
+    }
+
+    /// Which side of the spawn the dark wood is on (-1 left, 1 right).
+    pub fn dark_side(&self) -> i32 {
+        if self.dark.0 < self.plain.0 { -1 } else { 1 }
+    }
+}
+
 pub struct WorldPlan {
     pub seed: u64,
     pub preset: Preset,
@@ -201,6 +231,9 @@ pub struct WorldPlan {
     surface: Vec<i32>,
     /// The plain round the spawn (`start_plain`): from x, to x, its level.
     pub plain: (i32, i32, i32),
+    /// The start valley: the plain, a light forest on one side, the dark
+    /// wood on the other (which side, from the seed).
+    pub start: StartValley,
     /// Water surface per column (first air above the water), or 0 for none.
     water: Vec<i32>,
     /// 0 … 1: how mountainous a column is (overhangs, bare rock).
@@ -265,7 +298,22 @@ impl WorldPlan {
         // somewhere between, temperate land (forest, plains, swamp) around
         // them, oceans at both ends.
         let ocean_w = (OCEAN_WIDTH * sw) as i32;
-        let mut cuts = vec![ocean_w];
+        // The start valley in the middle: the plain, a wood each side (the
+        // dark one's side from the seed); regions out from it to the seas.
+        let (ph, wood) = ((START_PLAIN * sw) as i32, (START_WOOD * sw) as i32);
+        let dark_left = rng.coin();
+        let (v0, v1) = ((mid - ph - wood).max(ocean_w + 1), (mid + ph + wood).min(width - ocean_w - 1));
+        let mut left_cuts = vec![v0];
+        while *left_cuts.last().unwrap() > ocean_w {
+            let mut x0 = (left_cuts.last().unwrap() - (range(&mut rng, REGION_WIDTH) * sw) as i32).max(ocean_w);
+            if x0 - ocean_w < (REGION_WIDTH.0 * sw * 0.5) as i32 {
+                x0 = ocean_w;
+            }
+            left_cuts.push(x0);
+        }
+        left_cuts.reverse();
+        let mut cuts = left_cuts;
+        cuts.extend([mid - ph, mid + ph, v1]);
         while *cuts.last().unwrap() < width - ocean_w {
             let mut x1 = (cuts.last().unwrap() + (range(&mut rng, REGION_WIDTH) * sw) as i32).min(width - ocean_w);
             if width - ocean_w - x1 < (REGION_WIDTH.0 * sw * 0.5) as i32 {
@@ -276,7 +324,11 @@ impl WorldPlan {
         let n = cuts.len() - 1;
         let spawn = (0..n).find(|&r| (cuts[r]..cuts[r + 1]).contains(&mid)).unwrap_or(n / 2);
         let mut kinds: Vec<Option<Biome>> = vec![None; n];
-        kinds[spawn] = Some(Biome::Forest);
+        kinds[spawn] = Some(Biome::Plains);
+        let (dark_r, light_r) = if dark_left { (spawn - 1, spawn + 1) } else { (spawn + 1, spawn - 1) };
+        kinds[dark_r] = Some(Biome::DeepForest);
+        kinds[light_r] = Some(Biome::Forest);
+        let start = StartValley { plain: (cuts[spawn], cuts[spawn + 1]), light: (cuts[light_r], cuts[light_r + 1]), dark: (cuts[dark_r], cuts[dark_r + 1]) };
         let cold_left = rng.coin();
         let pick = |rng: &mut Rng, lo: usize, hi: usize| if hi > lo { lo + (rng.next_u32() as usize) % (hi - lo) } else { lo };
         // The outer half of each side.
@@ -514,11 +566,11 @@ impl WorldPlan {
         let mut surface: Vec<f64> = surface.iter().zip(&mountains).map(|(&h, &m)| soft(h + m).max(band_floors[3] as f64)).collect();
         talus(&mut surface, TALUS);
         let mut surface: Vec<i32> = surface.iter().map(|&h| h as i32).collect();
-        // The start: a wide plain round the spawn (a twentieth of the land's
+        // The start: a wide plain round the spawn (a quarter of the land's
         // roll left, so it isn't a table), easing back into the land beyond.
         let plain = start_plain(&mut surface, mid, sw);
 
-        let water = water_levels(&surface, &biomes, &rugged, &bowls, sea_level, ocean_w, sh, sw, seed);
+        let water = water_levels(&surface, &biomes, &rugged, &bowls, sea_level, ocean_w, sh, sw, seed, (plain.0, plain.1));
         let spires = plan_spires(seed, &surface, &biomes, &water, mid, ocean_w, sw, sh);
         for (r, &w) in rugged.iter_mut().zip(&water) {
             if w > 0 {
@@ -577,12 +629,15 @@ impl WorldPlan {
                 caverns_top: band_floors[3],
                 deep_top: band_floors[4],
                 spawn_x: mid,
+                start: start.span(),
                 scale,
             },
         );
         let mut list = crypts(seed, &surface, &water, &biomes, &chasms, (width, ocean_w, mid), scale, band_floors);
         list.extend(castles(seed, &surface, &biomes, width, scale));
-        list.extend(structures::village(plain, mid, &|x| surface[x.clamp(0, width - 1) as usize]));
+        if VILLAGE {
+            list.extend(structures::village(plain, mid, &|x| surface[x.clamp(0, width - 1) as usize]));
+        }
         list.extend(sunken(&surface, &water, &biomes, sh));
         let structures = Structures::new(list);
 
@@ -640,7 +695,7 @@ impl WorldPlan {
             )
         };
 
-        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, water, rugged, islands, chasms, water_tables, climate, forest, island_forest, structures, caves, spires }
+        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, water_tables, climate, forest, island_forest, structures, caves, spires }
     }
 
     /// First air cell above the ground at a world column.
@@ -910,12 +965,14 @@ fn smoothstep(a: f64, b: f64, x: f64) -> f64 {
 /// inland, local basins (rims within `LAKE_REACH` either side) filled to the
 /// lower rim, levelled flat per lake and capped at the biome's lake depth;
 /// no lakes in rugged notches; puddles dropped.
-/// Half the plain's width round the spawn, and how far it eases back into
-/// the land beyond (cells, in the reference world: sized with it).
-const PLAIN: f64 = 450.0;
-const PLAIN_EASE: f64 = 225.0;
-/// How much of the land's roll the plain keeps (a twentieth).
-const PLAIN_ROLL: f64 = 0.05;
+/// Half the plain's width round the spawn (the start valley's), and how far
+/// it eases back into the land beyond (cells, in the reference world:
+/// sized with it).
+const PLAIN: f64 = START_PLAIN;
+const PLAIN_EASE: f64 = 450.0;
+/// How much of the land's roll the plain keeps (a quarter: gentle rises
+/// and dips, easy walking, not a table).
+const PLAIN_ROLL: f64 = 0.25;
 
 /// Flatten the ground round `mid` into a plain at its median height (a
 /// twentieth of the roll kept), easing back into the land over `PLAIN_EASE`.
@@ -938,7 +995,7 @@ fn start_plain(surface: &mut [i32], mid: i32, sw: f64) -> (i32, i32, i32) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn water_levels(surface: &[i32], biomes: &[Biome], rugged: &[f32], bowls: &[(i32, i32)], sea_level: i32, ocean_w: i32, sh: f64, sw: f64, seed: u64) -> Vec<i32> {
+fn water_levels(surface: &[i32], biomes: &[Biome], rugged: &[f32], bowls: &[(i32, i32)], sea_level: i32, ocean_w: i32, sh: f64, sw: f64, seed: u64, plain: (i32, i32)) -> Vec<i32> {
     let n = surface.len();
     let mut water = vec![0; n];
     // Oceans: from each edge until the beach.
@@ -967,6 +1024,9 @@ fn water_levels(surface: &[i32], biomes: &[Biome], rugged: &[f32], bowls: &[(i32
         let run = start..x;
         if run.clone().any(|i| rugged[i] > 0.2) {
             continue; // not in the notches between crags
+        }
+        if run.start <= plain.1 as usize && run.end >= plain.0 as usize {
+            continue; // the start's plain is dry
         }
         // The big bowls always hold a lake; other hollows only sometimes
         // (a swamp is mostly pools, a forest has the odd pond).

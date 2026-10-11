@@ -30,6 +30,11 @@
     // at a time; under it any time.
     (kind: "zombie", place: Surface, when: Night, most: 5, rate: 0.1, group: (1, 3), emerges: true),
     (kind: "zombie", place: Cave, depth: (80, 150000), most: 3, rate: 0.08, group: (1, 2), emerges: true),
+    // The dark wood (a deep forest, the start valley's beside it): the dead
+    // come up out of its floor by day too (its canopy shades them), and
+    // spiders keep it.
+    (kind: "zombie", place: Surface, biomes: ["deep forest"], when: Day, most: 3, rate: 0.08, group: (1, 2), emerges: true),
+    (kind: "spider", place: Surface, biomes: ["deep forest"], most: 1, rate: 0.04),
     (kind: "vampire_bat", place: Cave, depth: (450, 150000), most: 2, rate: 0.12),
     (kind: "spider", place: Cave, depth: (225, 150000), most: 1, rate: 0.06),
     // The bestiary's walkers (BE limbs), where they belong.

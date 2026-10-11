@@ -211,6 +211,8 @@ struct Trap {
 /// A chest's size in cells (the game draws it this size; the world makes
 /// room for it).
 pub const CHEST_SIZE: (i32, i32) = (18, 15);
+/// How far under a lair's chamber its chest may find a floor (cells).
+const CHEST_DROP: i32 = 180;
 
 /// How far mountain ground wanders from the planned surface (overhangs,
 /// arches, ledges), at full ruggedness.
@@ -484,6 +486,14 @@ impl TerrainGen {
             let Some(Some(k)) = self.lair_of.get(ci as usize) else { continue };
             let c = &self.plan.caves.chambers[ci as usize];
             let mid = CellPos::new(c.x as i32, c.y as i32);
+            // Its chest, on its floor off to a side (from the chunk the
+            // floor's in).
+            if self.lairs[*k as usize].chest
+                && let Some(at) = self.lair_chest(ci as usize)
+                && at.chunk() == pos
+            {
+                out.push((at, Spawn::Chest));
+            }
             if mid.chunk() != pos {
                 continue;
             }
@@ -495,6 +505,24 @@ impl TerrainGen {
             }
         }
         out
+    }
+
+    /// Where a lair's chest stands: on its chamber's floor, part way to a
+    /// side, where there's room for it (the first air over solid ground,
+    /// as the world's made there).
+    fn lair_chest(&self, ci: usize) -> Option<CellPos> {
+        let c = &self.plan.caves.chambers[ci];
+        let side = if hash(&[self.plan.seed, 0xC4E5, ci as u64]).is_multiple_of(2) { 1.0 } else { -1.0 };
+        let solid = |x: i32, y: i32| {
+            let m = self.material_at(x, y);
+            m != self.ids.air && m != self.ids.water && m != self.ids.lava && m != self.ids.oil && m != self.ids.acid
+        };
+        // (A little bump of floor under its corners is fine; a chamber a
+        // tunnel's cut through, its floor's further down.)
+        [0.45, 0.3, 0.15, 0.0, -0.15, -0.3, -0.45].iter().find_map(|f| {
+            let x = (c.x + side * c.rx * f) as i32;
+            (((c.y - c.ry) as i32 - CHEST_DROP)..c.y as i32).find(|&y| solid(x, y - 1) && (0..CHEST_SIZE.1).all(|dy| !solid(x, y + dy)) && (3..CHEST_SIZE.1).all(|dy| !solid(x - CHEST_SIZE.0 / 2, y + dy) && !solid(x + CHEST_SIZE.0 / 2, y + dy))).map(|y| CellPos::new(x, y))
+        })
     }
 
     pub fn plan(&self) -> &WorldPlan {
@@ -2031,8 +2059,8 @@ mod tests {
         let mut seen: HashMap<caves::Zone, Vec<MaterialId>> = HashMap::new();
         for a in &g.plan.caves.areas {
             let mut found = Vec::new();
-            for k in 0..60 {
-                let (x, y) = (a.x + a.rx * 0.8 * ((k * 37 % 60) as f32 / 30.0 - 1.0), a.y + a.ry * 0.8 * ((k * 17 % 60) as f32 / 30.0 - 1.0));
+            for k in 0..120 {
+                let (x, y) = (a.x + a.rx * 0.8 * ((k * 37 % 120) as f32 / 60.0 - 1.0), a.y + a.ry * 0.8 * ((k * 17 % 120) as f32 / 60.0 - 1.0));
                 let pos = CellPos::new(x as i32, y as i32).chunk();
                 let (c, _) = g.generate_with_spawns(pos);
                 found.extend(c.cells().iter().map(|c| c.material));
@@ -2384,7 +2412,8 @@ mod tests {
     }
 
     /// The start is a plain: round the spawn, at every size, the ground
-    /// barely rolls (a few cells either way of its level), and it's dry.
+    /// rolls gently (rises and dips, not a table; never steep over a
+    /// stretch: easy walking), and it's dry.
     #[test]
     fn the_start_is_a_plain() {
         let m = mats();
@@ -2394,9 +2423,14 @@ mod tests {
             let s = g.spawn_point();
             assert!((x0..=x1).contains(&s.x), "{preset:?}: the spawn ({}) on the plain ({x0}..{x1})", s.x);
             let worst = (x0..=x1).map(|x| (g.plan.surface_at(x) - level).abs()).max().unwrap();
-            assert!(worst <= 9, "{preset:?}: the plain rolls {worst} cells from its level");
+            let steep = (x0..x1 - 30).map(|x| (g.plan.surface_at(x + 30) - g.plan.surface_at(x)).abs()).max().unwrap();
+            eprintln!("{preset:?}: a plain {} wide at {level}, rolling at most {worst}, at most {steep} over 30 cells", x1 - x0);
+            assert!(worst <= 90, "{preset:?}: the plain rolls {worst} cells from its level");
+            assert!(steep <= 12, "{preset:?}: {steep} cells up or down over 30: too steep for a plain");
+            if preset != Preset::Small {
+                assert!(worst >= 8, "{preset:?}: the plain rolls only {worst}: a table");
+            }
             assert!((x0..=x1).all(|x| g.plan.water_at(x).is_none()), "{preset:?}: the plain is dry");
-            eprintln!("{preset:?}: a plain {} wide at {level}, rolling at most {worst}", x1 - x0);
         }
     }
 
@@ -2405,6 +2439,10 @@ mod tests {
     /// has room for a house or two).
     #[test]
     fn a_village_by_the_spawn() {
+        // (Not in the world for now.)
+        if !crate::plan::VILLAGE {
+            return;
+        }
         let m = mats();
         for preset in [Preset::Medium, Preset::Large] {
             let g = TerrainGen::new(1, preset, &m);
@@ -2434,12 +2472,12 @@ mod tests {
     }
 
     #[test]
-    fn spawn_is_dry_forest_ground() {
+    fn spawn_is_dry_plain_ground() {
         let m = mats();
         for preset in [Preset::Small, Preset::Large] {
             let g = TerrainGen::new(1, preset, &m);
             let s = g.spawn_point();
-            assert_eq!(g.plan().biome_at(s.x), Biome::Forest);
+            assert_eq!(g.plan().biome_at(s.x), Biome::Plains);
             assert!(g.plan().water_at(s.x).is_none());
             assert_eq!(g.material_at(s.x, s.y), MaterialId::AIR);
             assert_ne!(g.material_at(s.x, s.y - 3), MaterialId::AIR, "standing on ground");
@@ -2655,15 +2693,56 @@ mod tests {
         let _ = m;
     }
 
+    /// The start valley: a plain round the spawn, a forest of the start's
+    /// trees one side, a deep forest the other; shallow caverns under it,
+    /// each a start lair of its side (not all the same), each with a chest
+    /// on its floor.
+    #[test]
+    fn the_start_valley_has_its_woods_and_caverns() {
+        let m = mats();
+        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/data/lairs.ron")).expect("lairs.ron");
+        let defs = lairs::parse(&text).expect("lairs parse");
+        for seed in [1, 7] {
+            let g = TerrainGen::new(seed, Preset::Large, &m).with_lairs(&defs, &m);
+            let v = g.plan.start;
+            let middle = |(a, b): (i32, i32)| (a + b) / 2;
+            assert_eq!(g.plan.biome_at(middle(v.plain)), Biome::Plains);
+            assert_eq!(g.plan.biome_at(middle(v.dark)), Biome::DeepForest);
+            assert_eq!(g.plan.biome_at(middle(v.light)), Biome::Forest);
+            assert!(v.plain.0 <= g.spawn_point().x && g.spawn_point().x <= v.plain.1, "the spawn on the plain");
+            let starts: Vec<usize> = g.plan.caves.chambers.iter().enumerate().filter(|(_, c)| c.start).map(|(i, _)| i).collect();
+            assert!(starts.len() >= 6, "{} start caverns", starts.len());
+            let mut kinds = Vec::new();
+            for &i in &starts {
+                let c = &g.plan.caves.chambers[i];
+                let (span0, span1) = v.span();
+                assert!((span0..span1).contains(&(c.x as i32)), "cavern {i} under the valley");
+                let depth = g.plan.surface_at(c.x as i32) as f32 - (c.y + c.ry);
+                assert!((30.0..300.0).contains(&depth), "cavern {i} shallow ({depth:.0} under)");
+                let k = g.lair_of[i].expect("each start cavern is a lair's") as usize;
+                let side = defs[k].start.expect("a start lair");
+                let dark = ((c.x as i32 - g.plan.width / 2).signum()) == v.dark_side();
+                assert!(side == lairs::Side::Any || (side == lairs::Side::Dark) == dark, "{}: on the {} side", defs[k].name, if dark { "dark" } else { "light" });
+                assert!(g.lair_chest(i).is_some(), "{}'s chest has a floor", defs[k].name);
+                kinds.push(k);
+            }
+            kinds.sort();
+            kinds.dedup();
+            assert!(kinds.len() >= 4, "{} kinds of start lair", kinds.len());
+        }
+    }
+
     #[test]
     fn the_deep_forest_is_wide_and_grows_giants_at_its_heart() {
-        for preset in [Preset::Medium, Preset::Large] {
-            deep_forest_is_wide(&WorldPlan::new(1, preset));
+        // (The medium world gives the start valley its dark wood out of
+        // its land: its other deep forest may be one region.)
+        for (preset, wide) in [(Preset::Medium, 5_000), (Preset::Large, 7_500)] {
+            deep_forest_is_wide(&WorldPlan::new(1, preset), wide);
         }
     }
 
     /// Its widest deep forest (regions side by side are one forest).
-    fn deep_forest_is_wide(p: &WorldPlan) {
+    fn deep_forest_is_wide(p: &WorldPlan, wide: i32) {
         let mut forests: Vec<(i32, i32)> = Vec::new();
         for (a, b, _) in p.regions().into_iter().filter(|r| r.2 == Biome::DeepForest) {
             match forests.last_mut() {
@@ -2672,7 +2751,7 @@ mod tests {
             }
         }
         let (x0, x1) = forests.into_iter().max_by_key(|(a, b)| b - a).expect("a deep forest");
-        assert!(x1 - x0 >= 7_500, "wide enough to get lost in ({} cells)", x1 - x0);
+        assert!(x1 - x0 >= wide, "wide enough to get lost in ({} cells)", x1 - x0);
         let (w, mid) = ((x1 - x0) / 5, (x0 + x1) / 2);
         let heart = p.forest.near(mid - w / 2, mid + w / 2);
         let edge = p.forest.near(x0, x0 + w);
@@ -2846,6 +2925,8 @@ mod tests {
             density: 0.6,
             keepers: vec![("spider".into(), 1), ("egg_sac".into(), 2)],
             min_size: 21.0,
+            start: None,
+            chest: false,
         }];
         let g = TerrainGen::new(7, Preset::Small, &m).with_lairs(&defs, &m);
         let again = TerrainGen::new(7, Preset::Small, &m).with_lairs(&defs, &m);

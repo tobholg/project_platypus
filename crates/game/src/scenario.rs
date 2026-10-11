@@ -9594,15 +9594,27 @@ fn sever_script(
 #[allow(clippy::type_complexity)]
 fn night_script(
     s: Res<Scenario>,
-    mut player: Query<(&Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    sim: Res<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
     them: Query<(&crate::creatures::Creature, &Kinematics, Has<crate::creatures::body::emerge::Emerging>), Without<LocalPlayer>>,
     mut next: Local<f32>,
 ) {
     if s.name != "night" {
         return;
     }
-    let Ok((pk, mut h)) = player.single_mut() else { return };
+    let Ok((mut pk, mut h)) = player.single_mut() else { return };
     h.hp = h.max;
+    // (PLATYPUS_NIGHT_X: that far from the spawn instead, on the ground.)
+    if let Some(dx) = std::env::var("PLATYPUS_NIGHT_X").ok().and_then(|v| v.parse::<f32>().ok())
+        && s.elapsed < 1.0
+    {
+        let x = sim.generator.spawn_point().x as f32 + dx;
+        if let Some(top) = sim.generator.surface_hint(x as i32) {
+            pk.body.pos = Vec2::new(x, top as f32 + pk.body.half.y + 2.0);
+            pk.prev_pos = pk.body.pos;
+            pk.body.vel = Vec2::ZERO;
+        }
+    }
     if s.elapsed < *next {
         return;
     }
@@ -9610,7 +9622,8 @@ fn night_script(
     let near: Vec<_> = them.iter().filter(|(c, k, _)| c.kind.starts_with("zombie") && k.body.pos.distance(pk.body.pos) < 700.0).collect();
     let coming = near.iter().filter(|(_, _, e)| *e).count();
     let at: Vec<String> = near.iter().map(|(_, k, _)| format!("{:+.0}", k.body.pos.x - pk.body.pos.x)).collect();
-    info!("night: t {:.0} zombies near {} ({} coming up) at {}", s.elapsed, near.len(), coming, at.join(" "));
+    let biome = sim.generator.biome_hint(pk.body.pos.x as i32).unwrap_or("?");
+    info!("night: t {:.0} in {biome}: zombies near {} ({} coming up) at {}", s.elapsed, near.len(), coming, at.join(" "));
 }
 
 /// `zombie` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a zombie walks
@@ -9650,6 +9663,12 @@ fn zombie_script(
         if let Some((_, p)) = piles.iter().next() {
             over.0 = Some(p.body.pos);
         }
+    }
+    // `chase`: the player walks away, now and then, keeping ahead.
+    if mode == "chase" && state.0 >= 1 && s.elapsed > 1.0 && (s.elapsed * 1.6) as i32 % 2 == 0 {
+        keys.press(KeyCode::KeyA);
+    } else if mode == "chase" {
+        keys.release(KeyCode::KeyA);
     }
     // `touch`: the player walks into it, and keeps walking into it.
     if mode == "touch" && state.0 >= 1 {
@@ -9724,7 +9743,7 @@ fn zombie_script(
             let plan: &[(f32, &str)] = match mode.as_str() {
                 "limbs" => &[(2.0, "arm0"), (3.0, "arm1"), (4.0, "leg0"), (5.0, "leg1"), (10.0, "head")],
                 "break" => &[(3.0, "kill"), (5.0, "break")],
-                "grab" | "shake" | "emerge" | "sun" | "touch" => &[],
+                "grab" | "shake" | "emerge" | "sun" | "touch" | "chase" => &[],
                 "burn" => &[(3.0, "kill"), (5.0, "fire")],
                 "torch" => &[(3.0, "kill"), (4.0, "torch")],
                 _ => &[(3.0, "kill"), (15.0, "kill"), (27.0, "kill")],
@@ -9788,6 +9807,11 @@ fn zombie_script(
                     None => "none up".into(),
                 };
                 let kind = zombie.map_or("", |z| z.1.kind.as_str());
+                if mode == "chase"
+                    && let Some(z) = zombie
+                {
+                    info!("zombie: t {t:.1} chase: {:.0} behind the player, going {:.0}", z.2.body.pos.x - k.body.pos.x, z.2.body.vel.x.abs());
+                }
                 if mode == "touch" {
                     info!("zombie: t {t:.1} touch: the player at x {:.0}, has taken {:.0}", k.body.pos.x, *took);
                 }

@@ -17,6 +17,9 @@
     kind: "rotting",
     headless: Dies,
     sunburns: true,
+    // Hunting you, now and then it breaks into a run at you: a snarl, then
+    // suddenly fast for a couple of seconds.
+    spurt: Some((speed: 1.8, secs: 2.2, every: (3.0, 6.0), range: (40.0, 200.0))),
     blood: "rot",
     eyes: (255, 210, 160),
     // A snarl, often.
@@ -38,8 +41,8 @@
                (hip: (2, 4), gait: 0, knee: Forward),
                (hip: (-1, 4), gait: 1, knee: Forward, far: true),
            ]),
-    // Close in, it grabs sooner and harder; further off, it lurches.
-    moves: ["crimson_grab", "zombie_lurch"],
+    // Close in, it grabs sooner and harder.
+    moves: ["crimson_grab"],
     unarmed: "crimson_claws",
     armless: "zombie_bite",
     stamina: 60,

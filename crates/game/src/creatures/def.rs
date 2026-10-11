@@ -58,6 +58,17 @@ impl DigDef {
     }
 }
 
+/// A spurt (`CreatureDef::spurt`): its run speed times `speed` for `secs`,
+/// at a quarry from `range` cells off, from every so often (seconds, from
+/// .. to: each its own).
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub struct SpurtDef {
+    pub speed: f32,
+    pub secs: f32,
+    pub every: (f32, f32),
+    pub range: (f32, f32),
+}
+
 /// How a humanoid takes blows where they land (`CreatureDef::zones`).
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(default)]
@@ -213,6 +224,10 @@ pub struct CreatureDef {
     /// then. (Spiders' are their `legs`' `eyes`.)
     #[serde(default)]
     pub eyes: Option<(u8, u8, u8)>,
+    /// Now and then, hunting, it breaks into a run at its quarry (a
+    /// zombie's spurt: suddenly fast, for a couple of seconds).
+    #[serde(default)]
+    pub spurt: Option<SpurtDef>,
     /// It burns in the sun (by day under the open sky): the dead.
     #[serde(default)]
     pub sunburns: bool,

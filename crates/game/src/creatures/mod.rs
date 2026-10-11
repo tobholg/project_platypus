@@ -68,6 +68,7 @@ impl Plugin for CreaturesPlugin {
             .add_systems(PreUpdate, dormancy)
             .add_systems(Update, body::tumble::spin.before(body::animation::animate))
             .add_systems(FixedUpdate, voices.in_set(TickSet::Bodies))
+            .add_systems(FixedUpdate, spurts.after(brain::BrainSet).before(move_creatures))
             // The dead come up out of the ground, and burn in the sun.
             .add_systems(FixedUpdate, (body::emerge::emerge, body::emerge::sunburn.before(body::elements::expose)).in_set(TickSet::Bodies))
             .add_systems(Update, body::emerge::draw)
@@ -270,6 +271,60 @@ pub struct MoveStats(pub MovementStats);
 /// What the brain wants this tick. Brains write it in `TickSet::Intent`.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Controls(pub Intent);
+
+/// A spurt under way (its speed's times this, for so long), and when it
+/// may next (`CreatureDef::spurt`).
+#[derive(Component, Default)]
+pub struct Spurt {
+    left: f32,
+    times: f32,
+    next: f32,
+}
+
+/// Hunting, one that spurts breaks into a run at its quarry now and then:
+/// a snarl, suddenly fast for a couple of seconds, then as it was.
+#[allow(clippy::type_complexity)]
+fn spurts(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut q: Query<(Entity, &body::animation::Animator, &Kinematics, &mut MoveStats, Option<&mut Spurt>, Option<&brain::senses::Alert>, Option<&Stable>), Without<Dormant>>,
+    bodies: Query<&Kinematics>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+) {
+    let now = time.elapsed_secs();
+    let dt = time.delta_secs();
+    for (e, anim, k, mut moves, spurt, alert, stable) in &mut q {
+        let Some(def) = anim.def.spurt else { continue };
+        let n = stable.map_or(e.to_bits(), |s| s.0);
+        let roll = |salt: u64| ((n.wrapping_add(salt).wrapping_mul(0x9E37_79B9_7F4A_7C15)) >> 40) as f32 / (1u64 << 24) as f32;
+        let wait = |at: f32| at + def.every.0 + (def.every.1 - def.every.0) * roll((at * 10.0) as u64);
+        let Some(mut s) = spurt else {
+            // (Its first any time: no safe first seconds.)
+            commands.entity(e).insert(Spurt { left: 0.0, times: 1.0, next: now + def.every.1 * roll(7) });
+            continue;
+        };
+        if s.left > 0.0 {
+            s.left -= dt;
+            if s.left <= 0.0 {
+                moves.0.run_speed /= s.times;
+                s.times = 1.0;
+                s.next = wait(now);
+            }
+            continue;
+        }
+        // (At what it's hunting, near enough, not on top of it.)
+        let quarry = alert.filter(|a| a.engaged()).and_then(|a| a.target).and_then(|t| bodies.get(t).ok());
+        let Some(qk) = quarry else { continue };
+        let d = qk.body.pos.distance(k.body.pos);
+        if now < s.next || !(def.range.0..def.range.1).contains(&d) || !k.loco.grounded() {
+            continue;
+        }
+        s.left = def.secs;
+        s.times = def.speed;
+        moves.0.run_speed *= def.speed;
+        sounds.write(crate::sound::PlaySound::at("snarl", k.body.pos));
+    }
+}
 
 /// When it next makes its sound (`CreatureDef::voice`).
 #[derive(Component)]

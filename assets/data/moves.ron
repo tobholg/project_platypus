@@ -48,13 +48,6 @@
             (name: "throw", secs: 0.0, clip: Some("hurl"), acts: [Throw(speed: 520, up: 330), Sound("swing_heavy")]),
             (name: "recover", secs: 0.7, clip: Some("hurl")),
         ]),
-        // The zombie's lurch: shambling at you, it suddenly lunges a few
-        // fast steps closer (you can't judge how far off it is).
-        (id: "zombie_lurch", every: 3.5, when: (range: (26, 70), footing: true, line: true), phases: [
-            (name: "windup", secs: 0.12, clip: Some("lunge")),
-            (name: "lurch", secs: 0.35, clip: Some("lunge"), acts: [Lunge(speed: 200, up: 40)]),
-            (name: "recover", secs: 0.25, clip: Some("lunge")),
-        ]),
         // The zombie's grab: close in, its arms go up and out with a snarl
         // (dash through it then and it misses), it lunges and catches you,
         // and bites, and bites; mash jump, dash, and the keys to shake it

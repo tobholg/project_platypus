@@ -99,6 +99,10 @@ enum Pass {
 /// Worldgen stays inside it (`generated_leaves_are_near_wood`).
 pub const LEAF_REACH: u32 = 108;
 
+/// A canopy this opaque shades what's under it from the sun (the deep
+/// forest's dark leaves are 140; the forest's 70).
+pub const SHADE: u8 = 120;
+
 impl World {
     pub fn new(seed: u64, materials: Arc<MaterialTable>) -> Self {
         World {
@@ -176,8 +180,10 @@ impl World {
 
     /// Is rain falling on `p` from an open sky (nothing solid between it and
     /// the clouds)?
-    /// Nothing solid (rock, earth, sand) in the `up` cells over `p`: open
-    /// to the sky there (leaves and water don't count).
+    /// Nothing solid (rock, earth, sand) in the `up` cells over `p`, nor a
+    /// canopy thick enough to shade it (leaves as dark as the deep forest's,
+    /// `SHADE` opacity): open to the sky there (light leaves and water
+    /// don't count).
     pub fn under_sky(&self, p: CellPos, up: i32) -> bool {
         let mats = &self.materials;
         let mut y = p.y;
@@ -190,7 +196,7 @@ impl World {
                 let (lx, _) = at.local();
                 for yy in y..top {
                     let c = ch.get(lx, (yy - cp.y * CHUNK) as usize);
-                    if !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder) {
+                    if !c.is_air() && (matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder) || mats.phys(c.material).kind == Kind::Plant && mats.phys(c.material).opacity >= SHADE) {
                         return false;
                     }
                 }
