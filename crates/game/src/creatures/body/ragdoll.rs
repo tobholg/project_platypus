@@ -265,6 +265,9 @@ const BEND_HIP: f32 = 1.8;
 /// A walker's body piece: this share of its frame (sprites have margins).
 const BODY_SHARE: f32 = 0.34;
 
+/// A part's pixels by the chunk of rubble they fall in.
+type Chunks = std::collections::BTreeMap<(i32, i32), Vec<(IVec2, [u8; 4])>>;
+
 /// Rubble: chunks this many pixels across.
 const CHUNK: i32 = 4;
 /// Fewest pixels a chunk keeps (smaller crumbs join the one beside).
@@ -289,7 +292,7 @@ pub fn rubble(cuts: &[Cut], frame: (u32, u32), centre: Vec2, facing: f32, vel: V
     for (ci, c) in cuts.iter().enumerate() {
         // (Each part's grid a little offset, so the breaks don't line up.)
         let off = IVec2::new(ci as i32 * 3 % CHUNK, ci as i32 * 5 % CHUNK);
-        let mut chunks: std::collections::BTreeMap<(i32, i32), Vec<(IVec2, [u8; 4])>> = Default::default();
+        let mut chunks: Chunks = Default::default();
         for (q, col) in c.pixels.iter().zip(&c.colors) {
             let k = ((q.x + off.x).div_euclid(CHUNK), (q.y + off.y).div_euclid(CHUNK));
             chunks.entry(k).or_default().push((*q, *col));

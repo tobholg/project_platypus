@@ -1068,7 +1068,7 @@ fn grow_legs(
             _ => def,
         };
         let eyes_key = def.eyes.filter(|_| !def.rig).map(|(r, g, b)| format!("{}#{r},{g},{b}", def.body));
-        for (key, only) in [(Some(def.body.clone()).filter(|_| !def.rig), None), (eyes_key.clone(), def.eyes.map(|(r, g, b)| [r, g, b]))] {
+        for (key, only) in [((!def.rig).then(|| def.body.clone()), None), (eyes_key.clone(), def.eyes.map(|(r, g, b)| [r, g, b]))] {
             let Some(key) = key else { continue };
             if art.0.contains_key(&key) {
                 continue;

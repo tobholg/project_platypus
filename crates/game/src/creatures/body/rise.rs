@@ -208,6 +208,8 @@ fn streak() -> Emitter {
     Emitter { count: 1.0, life: (0.1, 0.2), colors: vec![(150, 145, 140), (120, 255, 200)], speed: 70.0, spread: 0.1, gravity: 0.0, drag: 0.0, size: 1.0, jitter: 0.0, glow: true }
 }
 
+type Waking<'a> = (Entity, &'a mut Pile, &'a Kinematics, &'a Corpse, Option<&'a mut crate::light::LightSource>, Option<&'a super::ragdoll::Limp>);
+
 /// A heap's time runs: the light grows in it the last `GLOW`, wisps rise,
 /// the ash about it is drawn in; then it stands (if there's room), a new
 /// one of its kind dressed in what's left in it, and the heap goes.
@@ -218,7 +220,7 @@ pub fn stand(
     items: Option<Res<Items>>,
     mut chests: ResMut<Chests>,
     mut sparks: ResMut<crate::vfx::Sparks>,
-    mut q: Query<(Entity, &mut Pile, &Kinematics, &Corpse, Option<&mut crate::light::LightSource>, Option<&super::ragdoll::Limp>)>,
+    mut q: Query<Waking>,
 ) {
     let Some(items) = items else { return };
     for (e, mut pile, k, corpse, light, limp) in &mut q {

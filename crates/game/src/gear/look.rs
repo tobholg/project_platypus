@@ -148,7 +148,9 @@ mod tests {
     use super::*;
     use crate::gear::GearFile;
 
-    /// Every piece's look goes on every humanoid, and changes something.
+    /// Every piece's look goes on every humanoid, and changes something
+    /// (what's worn on the legs and feet, where it has legs drawn: a lanky
+    /// skeleton's are its `legs`').
     #[test]
     fn every_look_dresses_every_humanoid() {
         let gear: GearFile = crate::data::parse_ron(include_str!("../../../../assets/data/gear.ron")).unwrap();
@@ -159,6 +161,9 @@ mod tests {
                 let Some(look) = item.gear.as_ref().and_then(|g| g.look.as_ref()) else {
                     continue;
                 };
+                if !file.parts.contains_key("legs") && item.gear.as_ref().is_some_and(|g| matches!(g.slot, Slot::Legs | Slot::Feet)) {
+                    continue;
+                }
                 let art = platypus_art::compile(&platypus_art::dress::dress(&file, &[look]).unwrap_or_else(|e| panic!("{}: {e}", item.id))).unwrap_or_else(|e| panic!("{}: {e}", item.id));
                 let f = art.index("stand").unwrap();
                 assert_ne!(art.frames[f].rgba, bare.frames[f].rgba, "{} changes nothing", item.id);
