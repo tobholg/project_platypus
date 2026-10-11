@@ -11,7 +11,7 @@
     loot: "skeleton",
     // The armour it died in, rusted on.
     wears: [("iron_helm", 0.3), ("chainmail", 0.25), ("iron_greaves", 0.2), ("cloth_hood", 0.15)],
-    size: (9, 26),
+    size: (9, 24),
     health: 70,
     team: Enemy,
     faction: "undead",
@@ -40,8 +40,8 @@
            color: (194, 188, 172), joint: (232, 228, 212), outline: (26, 20, 20), width: [2.6, 2.2, 1.8], toes: 3,
            body: "skeleton",
            each: [
-               (hip: (2, 5), gait: 0, knee: Forward),
-               (hip: (-1, 5), gait: 1, knee: Forward, far: true),
+               (hip: (2, 6), gait: 0, knee: Forward),
+               (hip: (-1, 6), gait: 1, knee: Forward, far: true),
            ]),
     weapon: "rusty_sword",
     // (Its sword taken from its heap, it gets up and punches.)

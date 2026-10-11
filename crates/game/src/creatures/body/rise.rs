@@ -45,8 +45,13 @@ const FLIGHT: f32 = 0.7;
 /// How high a bone arcs on its way, and how far round it swirls (cells).
 const ARC: f32 = 6.0;
 const SWIRL: f32 = 4.0;
-/// Standing where it can't (under a low roof), it tries again after this.
+/// Standing where it can't (under a low roof), it tries again after this;
+/// past `STUCK_MOST` of trying, it stands anyway. Room is looked for this
+/// far up (on its ash) and to each side (cells).
 const RETRY: f32 = 0.5;
+const STUCK_MOST: f32 = 3.0;
+const ROOM_UP: i32 = 8;
+const ROOM_ASIDE: [f32; 9] = [0.0, 3.0, -3.0, 6.0, -6.0, 10.0, -10.0, 15.0, -15.0];
 /// The light in the bones (cold, sickly), at its brightest.
 const LIGHT: [f32; 3] = [0.35, 1.0, 0.75];
 const LIGHT_MOST: f32 = 1.6;
@@ -81,6 +86,8 @@ pub struct Pile {
     def: std::sync::Arc<crate::creatures::def::CreatureDef>,
     rise: RiseDef,
     left: f32,
+    /// How long it's waited for room to stand.
+    stuck: f32,
     facing: f32,
     sprite: Option<(Sprite, Vec3)>,
 }
@@ -148,7 +155,7 @@ pub fn make_pile(e: &mut EntityCommands, d: &Died, rise: &RiseDef, dust: Option<
     }
     let max = (d.def.health * PILE_SHARE).max(1.0);
     e.insert((
-        Pile { kind: d.kind.clone(), def: d.def.clone(), rise: rise.clone(), left: rise.after, facing: d.facing, sprite: d.sprite.clone() },
+        Pile { kind: d.kind.clone(), def: d.def.clone(), rise: rise.clone(), left: rise.after, stuck: 0.0, facing: d.facing, sprite: d.sprite.clone() },
         Health { nature, ..Health::new(max) },
         crate::creatures::MoveStats(d.def.movement.clone()),
         d.def.team,
@@ -245,25 +252,14 @@ pub fn stand(
         if pile.left > 0.0 {
             continue;
         }
-        // Standing: its box, from the ground under the heap, must be clear.
-        let (w, h) = pile.def.size;
-        let grid = WorldGrid(&sim.world);
-        let cell = CellPos::from_world(pos.x, pos.y);
-        // (Up out of the ground if the heap's middle is in it, then down to it.)
-        let mut y = cell.y;
-        while y < cell.y + 12 && platypus_physics::Grid::solid(&grid, cell.x, y) {
-            y += 1;
-        }
-        while y > cell.y - 40 && !platypus_physics::Grid::solid(&grid, cell.x, y - 1) {
-            y -= 1;
-        }
-        let feet = Vec2::new(pos.x, y as f32);
-        let standing = platypus_physics::Body::new(feet + Vec2::new(0.0, h / 2.0 + 0.5), Vec2::new(w, h));
-        let (lo, hi) = standing.cells_at(standing.pos);
-        if overlaps_solid(&WorldGrid(&sim.world), lo, hi) {
+        // Standing: room for its box on the ground under the heap, or a
+        // little up (on its own ash) or to a side; none for long, it stands
+        // anyway (and is pushed out of what it's in).
+        let Some(feet) = room_to_stand(&sim, pos, pile.def.size).or_else(|| (pile.stuck >= STUCK_MOST).then(|| ground_under(&sim, pos))) else {
             pile.left = RETRY;
+            pile.stuck += RETRY;
             continue;
-        }
+        };
         // Dressed in what's left in it; the rest spills.
         let left: Vec<Stack> = chests.contents(corpse.key, &sim.world, &items).slots.iter().flatten().copied().collect();
         chests.forget(corpse.key);
@@ -303,6 +299,44 @@ pub fn stand(
         });
         commands.entity(e).despawn();
     }
+}
+
+/// The ground under `at` (out of the ground first, if `at` is in it): where
+/// feet would stand.
+fn ground_under(sim: &SimWorld, at: Vec2) -> Vec2 {
+    let grid = WorldGrid(&sim.world);
+    let cell = CellPos::from_world(at.x, at.y);
+    let mut y = cell.y;
+    while y < cell.y + 12 && platypus_physics::Grid::solid(&grid, cell.x, y) {
+        y += 1;
+    }
+    while y > cell.y - 40 && !platypus_physics::Grid::solid(&grid, cell.x, y - 1) {
+        y -= 1;
+    }
+    Vec2::new(at.x, y as f32)
+}
+
+/// Where a body this big could stand up from a heap at `at`: on the ground
+/// under it, or a little higher, or on the ground a little to a side;
+/// the nearest that's clear.
+fn room_to_stand(sim: &SimWorld, at: Vec2, (w, h): (f32, f32)) -> Option<Vec2> {
+    let grid = WorldGrid(&sim.world);
+    for dx in ROOM_ASIDE {
+        let ground = ground_under(sim, at + Vec2::new(dx, 0.0));
+        // (Not off a ledge: to the side only where the ground's near.)
+        if (ground.y - at.y).abs() > h {
+            continue;
+        }
+        for up in 0..=ROOM_UP {
+            let feet = ground + Vec2::new(0.0, up as f32);
+            let standing = platypus_physics::Body::new(feet + Vec2::new(0.0, h / 2.0 + 0.05), Vec2::new(w, h));
+            let (lo, hi) = standing.cells_at(standing.pos);
+            if !overlaps_solid(&grid, lo, hi) {
+                return Some(feet);
+            }
+        }
+    }
+    None
 }
 
 /// Ash near a waking heap drifts back into it, a grain or two a tick.

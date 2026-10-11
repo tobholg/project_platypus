@@ -9467,7 +9467,7 @@ fn limp_script(
 fn rise_script(
     mut commands: Commands,
     s: Res<Scenario>,
-    sim: Res<SimWorld>,
+    mut sim: ResMut<SimWorld>,
     items: Option<Res<crate::hands::items::Items>>,
     mut chests: ResMut<crate::hands::chests::Chests>,
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
@@ -9520,6 +9520,18 @@ fn rise_script(
             }
             k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
             k.prev_pos = k.body.pos;
+            // `PLATYPUS_RISE_ROOF=n`: a stone roof n cells over the floor (a
+            // cave's low tunnel).
+            if let Some(n) = std::env::var("PLATYPUS_RISE_ROOF").ok().and_then(|v| v.parse::<i32>().ok()) {
+                let floor = platypus_worldgen::arena::FLOOR;
+                if let Some(stone) = sim.materials().id("stone") {
+                    for x in 860..1120 {
+                        for y in floor + n..floor + n + 10 {
+                            sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: stone, overwrite: true });
+                        }
+                    }
+                }
+            }
             crate::creatures::def::spawn_creature(&mut commands, "skeleton", Vec2::new(990.0, fl), |_| {});
             *state = (1, s.elapsed);
         }
