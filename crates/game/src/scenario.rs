@@ -9597,6 +9597,8 @@ fn sever_script(
 ///   kill: struck till it dies (from 2 s): its goo spills.
 ///   heal: two longsword blows (2 s, 2.6 s), then let be: it heals,
 ///     drawing its spilled goo back in.
+///   split: a blade through it (3.5 s, 5 s): each cuts a slime off it.
+///   merge: two half slimes side by side: they merge into one.
 ///   (anything else, `none`: let be: it hops at the player, spikes them.)
 /// Logs its health, the goo it holds and the goo loose near it.
 #[allow(clippy::type_complexity)]
@@ -9638,7 +9640,20 @@ fn slime_script(
         }
         k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
         k.prev_pos = k.body.pos;
-        crate::creatures::def::spawn_creature(&mut commands, "slime", Vec2::new(980.0, fl), |_| {});
+        if mode == "merge" {
+            // (Two halves, side by side, hopping at the player.)
+            for x in [960.0, 1000.0] {
+                crate::creatures::def::spawn_creature(&mut commands, "slime", Vec2::new(x, fl), |c| {
+                    c.insert(crate::creatures::body::goo::Mass(0.5));
+                    if let Some(mut h) = c.get_mut::<crate::creatures::Health>() {
+                        h.max = 45.0;
+                        h.hp = 45.0;
+                    }
+                });
+            }
+        } else {
+            crate::creatures::def::spawn_creature(&mut commands, "slime", Vec2::new(980.0, fl), |_| {});
+        }
         info!("slime: one hops at the player ({mode})");
         state.0 = 1;
         state.1 = 2.0;
@@ -9667,6 +9682,11 @@ fn slime_script(
             strike(&mut hits, crate::creatures::Harm::Slash, 8.0);
             state.1 = t + 0.7;
         }
+        "split" if state.0 >= 1 && state.0 <= 2 && t > 2.0 + state.0 as f32 * 1.5 => {
+            strike(&mut hits, crate::creatures::Harm::Slash, 30.0);
+            info!("slime: t {t:.1} a blade through it");
+            state.0 += 1;
+        }
         "heal" if state.0 == 1 && t > 2.0 => {
             strike(&mut hits, crate::creatures::Harm::Slash, 24.0);
             info!("slime: t {t:.1} a longsword's blow");
@@ -9683,6 +9703,10 @@ fn slime_script(
             state.1 += 2.0;
         }
         _ => {}
+    }
+    if t >= state.2 && matches!(mode.as_str(), "split" | "merge") {
+        let all: Vec<String> = them.iter().filter(|x| x.1.kind == "slime").map(|x| format!("{:.0}/{:.0} holds {} at {:.0}", x.3.hp, x.3.max, x.4.map_or(0, |g| g.held()), x.2.body.pos.x)).collect();
+        info!("slime: t {t:.1} slimes: {}", all.join("; "));
     }
     if t >= state.2 {
         state.2 = t + 0.5;

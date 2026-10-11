@@ -88,6 +88,16 @@ const SPIKE_SHARE: f32 = 0.35;
 const SPIKE_LEAST: f32 = 0.25;
 const WAVE_STEP: f32 = 0.16;
 const SHIVER: u64 = 24;
+/// Cut off at once, at least this much goo is a slime of its own (if as
+/// much is left); flung off at this (cells/s). Split, neither merges
+/// again for `MERGE_WAIT` s; merged, never bigger than `MERGE_MOST` whole
+/// ones. Its box: from this share of its kind's to this.
+const SPLIT_LEAST: usize = 110;
+const SPLIT_FLING: f32 = 90.0;
+const MERGE_WAIT: f32 = 4.0;
+const MERGE_MOST: f32 = 3.0;
+const BOX_LEAST: f32 = 0.55;
+const BOX_MOST: f32 = 1.5;
 /// Goo flung off (cells a tick).
 const FLUNG: f32 = 1.4;
 /// How long a landing's squash takes to spring back (s), and how hard a
@@ -113,16 +123,43 @@ pub struct Goo {
     aim: Vec2,
     stung: f32,
     tips: Vec<(Vec2, Vec2)>,
+    /// It won't merge before this (just split, it'd only merge back).
+    merge_after: f32,
 }
+
+/// How big it is, against a whole one of its kind (its most health, and
+/// so its goo, and its box): split off, less; merged, more.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Mass(pub f32);
 
 /// Each slime puts its goo back round itself (and loses what the world
 /// took of it, lets go what it can't hold, spills it all as it dies).
 /// After it moves, before deaths and the cells' tick.
 #[allow(clippy::type_complexity)]
-pub fn hold(mut sim: ResMut<SimWorld>, time: Res<Time>, mut q: Query<(&mut Goo, &Kinematics, &mut Health, &super::animation::Animator)>) {
+#[allow(clippy::type_complexity)]
+pub fn hold(
+    mut commands: Commands,
+    mut sim: ResMut<SimWorld>,
+    time: Res<Time>,
+    mut felt: MessageReader<crate::combat::Felt>,
+    mut q: Query<(Entity, &mut Goo, &mut Kinematics, &mut Health, &super::animation::Animator, Option<&mut Mass>, &crate::creatures::Creature)>,
+) {
     let dt = time.delta_secs();
-    for (mut goo, k, mut health, anim) in &mut q {
+    let now = time.elapsed_secs();
+    // (The blows that cut, this tick: which way, by whom.)
+    let cut: std::collections::HashMap<Entity, Vec2> = felt.read().filter(|f| matches!(f.harm, crate::creatures::Harm::Slash | crate::creatures::Harm::Pierce)).map(|f| (f.target, f.dir)).collect();
+    for (e, mut goo, mut k, mut health, anim, mass, creature) in &mut q {
         let Some(def) = anim.def.goo.as_ref() else { continue };
+        let full = anim.def.health.max(1.0);
+        let size = mass.as_ref().map_or(1.0, |m| m.0);
+        // (Its box as big as it is.)
+        let half = Vec2::new(anim.def.size.0, anim.def.size.1) * 0.5 * size.sqrt().clamp(BOX_LEAST, BOX_MOST);
+        if (half - k.body.half).abs().max_element() > 0.25 {
+            let drop = k.body.half.y - half.y;
+            k.body.half = half;
+            k.body.pos.y -= drop;
+            k.prev_pos.y -= drop;
+        }
         let Some(mat) = sim.world.materials().id(&def.material) else { continue };
         // What's still its goo where it left it (the rest the world took).
         let mut kept: Vec<Cell> = Vec::with_capacity(goo.placed.len());
@@ -135,7 +172,7 @@ pub fn hold(mut sim: ResMut<SimWorld>, time: Res<Time>, mut q: Query<(&mut Goo, 
         }
         kept.append(&mut goo.reserve);
         if lost > 0 && health.hp > 0.0 {
-            health.hp -= lost as f32 / def.cells.max(1) as f32 * health.max;
+            health.hp -= lost as f32 / def.cells.max(1) as f32 * full;
         }
         // Dead: it all spills, where it is.
         if health.hp <= 0.0 {
@@ -152,7 +189,9 @@ pub fn hold(mut sim: ResMut<SimWorld>, time: Res<Time>, mut q: Query<(&mut Goo, 
             }
             continue;
         }
-        let want = ((health.hp / health.max.max(1.0)) * def.cells as f32).round().max(1.0) as usize;
+        // (As much goo as its health is of a whole one's: a small one,
+        // split off, holds little and heals only to its own size.)
+        let want = ((health.hp / full) * def.cells as f32).round().max(1.0) as usize;
         if !goo.made {
             goo.made = true;
             let mut rng = platypus_sim::rng::Rng::seeded(&[k.body.pos.x.to_bits() as u64, 0x600]);
@@ -177,9 +216,46 @@ pub fn hold(mut sim: ResMut<SimWorld>, time: Res<Time>, mut q: Query<(&mut Goo, 
                 kept.push(sim.world.materials().spawn(mat, &mut rng));
             }
         }
+        // Cut through, enough off at once (and enough left): what's cut off
+        // is a slime of its own, beside it, away from the blow; and it's
+        // that much smaller for good.
+        let hold = kept.len().min(want);
+        if let Some(&dir) = cut.get(&e)
+            && kept.len() - hold >= SPLIT_LEAST
+            && hold >= SPLIT_LEAST
+        {
+            let piece: Vec<Cell> = kept.drain(hold..).map(|mut c| {
+                c.flags &= !HELD;
+                c
+            }).collect();
+            let share = piece.len() as f32 / def.cells as f32;
+            let left = (size - share).max(share);
+            match mass {
+                Some(mut m) => m.0 = left,
+                None => {
+                    commands.entity(e).insert(Mass(left));
+                }
+            }
+            health.max = (full * left).max(1.0);
+            health.hp = health.hp.min(health.max);
+            goo.merge_after = now + MERGE_WAIT;
+            let side = if dir.x.abs() > 0.1 { dir.x.signum() } else { 1.0 };
+            let at = k.body.pos + Vec2::new(side * (k.body.half.x + 8.0), 4.0 - k.body.half.y);
+            let fling = Vec2::new(side * SPLIT_FLING, SPLIT_FLING * 0.8);
+            let wait = now + MERGE_WAIT;
+            crate::creatures::def::spawn_creature(&mut commands, &creature.kind, at, move |c| {
+                c.insert((Mass(share), Goo { reserve: piece, made: true, merge_after: wait, ..Default::default() }));
+                if let Some(mut h) = c.get_mut::<Health>() {
+                    h.max = (full * share).max(1.0);
+                    h.hp = h.max;
+                }
+                if let Some(mut k) = c.get_mut::<Kinematics>() {
+                    k.body.vel = fling;
+                }
+            });
+        }
         // Hurt: what it can't hold it flings off (it runs and pools where
         // it lands: loose goo), out of its outermost.
-        let hold = kept.len().min(want);
         for (i, c) in kept.drain(hold..).enumerate() {
             let from = goo.placed.get(goo.placed.len().saturating_sub(1 + i)).map_or(k.body.pos, |p| Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5));
             let out = (from - k.body.pos).normalize_or(Vec2::Y) + Vec2::Y * 0.6;
@@ -418,6 +494,63 @@ pub fn spike(
         if !matches!(goo.spiking, Spiking::Rest) {
             controls.0.move_x = 0.0;
             controls.0.jump = false;
+        }
+    }
+}
+
+/// Slimes of a kind whose goo touches merge: the bigger takes the smaller
+/// in (its size, its health; its goo let go, to be drawn in as the bigger
+/// heals up to its new size), never past `MERGE_MOST` whole ones.
+#[allow(clippy::type_complexity)]
+pub fn merge(
+    mut commands: Commands,
+    mut sim: ResMut<SimWorld>,
+    time: Res<Time>,
+    mut q: Query<(Entity, &mut Goo, &mut Health, &crate::creatures::Creature, &super::animation::Animator, Option<&mut Mass>), Without<crate::creatures::Dormant>>,
+) {
+    let now = time.elapsed_secs();
+    let all: Vec<(Entity, String, f32, (Vec2, Vec2), bool)> = q
+        .iter()
+        .filter_map(|(e, g, _, c, a, m)| {
+            let ok = now >= g.merge_after && matches!(g.spiking, Spiking::Rest) && a.def.goo.is_some();
+            Some((e, c.kind.clone(), m.map_or(1.0, |m| m.0), g.extent?, ok))
+        })
+        .collect();
+    let mut gone: Vec<Entity> = Vec::new();
+    for (i, a) in all.iter().enumerate() {
+        for b in &all[i + 1..] {
+            if !a.4 || !b.4 || a.1 != b.1 || gone.contains(&a.0) || gone.contains(&b.0) || a.2 + b.2 > MERGE_MOST {
+                continue;
+            }
+            let ((alo, ahi), (blo, bhi)) = (a.3, b.3);
+            if alo.x > bhi.x || blo.x > ahi.x || alo.y > bhi.y || blo.y > ahi.y {
+                continue;
+            }
+            let (big, small) = if a.2 >= b.2 { (a, b) } else { (b, a) };
+            let Ok([(_, mut bg, mut bh, _, banim, bm), (_, mut sg, sh, _, _, _)]) = q.get_many_mut([big.0, small.0]) else { continue };
+            let Some(mat) = banim.def.goo.as_ref().and_then(|d| sim.world.materials().id(&d.material)) else { continue };
+            let full = banim.def.health.max(1.0);
+            let size = big.2 + small.2;
+            match bm {
+                Some(mut m) => m.0 = size,
+                None => {
+                    commands.entity(big.0).insert(Mass(size));
+                }
+            }
+            bh.max = full * size;
+            bh.hp = (bh.hp + sh.hp).min(bh.max);
+            bg.merge_after = now + MERGE_WAIT * 0.5;
+            // (Its goo let go where it is: drawn in as the bigger heals.)
+            for &p in &sg.placed {
+                if let Some(mut c) = sim.world.get(p).filter(|c| c.material == mat && c.flags & HELD != 0) {
+                    c.flags &= !HELD;
+                    sim.world.set(p, c);
+                }
+            }
+            sg.placed.clear();
+            commands.entity(small.0).despawn();
+            gone.push(small.0);
+            break;
         }
     }
 }

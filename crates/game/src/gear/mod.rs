@@ -264,6 +264,7 @@ type Wearer<'a> = (
     Option<&'a mut Sturdy>,
     Option<&'a crate::creatures::body::parts::Severed>,
     Option<&'a crate::creatures::Pace>,
+    Option<&'a crate::creatures::body::goo::Mass>,
 );
 
 /// What a creature wears changed (or its kind did, or it just got mana):
@@ -271,14 +272,14 @@ type Wearer<'a> = (
 pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures: Res<Creatures>, mut q: Query<Wearer>) {
     let Some(items) = items else { return };
     let all = creatures.is_changed() || items.is_added();
-    for (c, eq, mut stats, mut health, mut moves, stamina, mana, sturdy, severed, pace) in &mut q {
+    for (c, eq, mut stats, mut health, mut moves, stamina, mana, sturdy, severed, pace, mass) in &mut q {
         let mana_new = mana.as_ref().is_some_and(|m| m.is_added());
         if !(all || eq.is_changed() || mana_new) {
             continue;
         }
         let Some(def) = creatures.get(&c.kind) else { continue };
         let total = eq.total(&items, &rules);
-        let max = (def.health + total.get(Stat::Health)).max(1.0);
+        let max = ((def.health + total.get(Stat::Health)) * mass.map_or(1.0, |m| m.0)).max(1.0);
         if max > health.max {
             health.hp += max - health.max;
         }
