@@ -407,7 +407,7 @@ fn take_anyway(
         return;
     }
     let (Some(items), Some(at), Ok((pk, f))) = (items, cursor.0, player.single()) else { return };
-    let Some((e, _)) = left_under(at, pk.body.pos, &items, f, drops.iter().map(|(e, d, k)| (e, d, k))) else { return };
+    let Some((e, _)) = left_under(at, pk.body.pos, &items, f, drops.iter()) else { return };
     if let Ok((_, mut d, _)) = drops.get_mut(e) {
         d.forced = true;
     }
