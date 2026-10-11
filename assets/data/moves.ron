@@ -68,6 +68,17 @@
             (name: "shove", secs: 0.0, clip: Some("lunge"), acts: [Throw(speed: 140, up: 80, stun: 0.3)]),
             (name: "recover", secs: 0.7, clip: Some("lunge")),
         ]),
+        // A crimson head's grab: quicker to come (a shorter tell), from
+        // further, and it bites harder.
+        (id: "crimson_grab", every: 3.0, when: (range: (0, 36), footing: true), phases: [
+            (name: "windup", secs: 0.32, clip: Some("tell"), acts: [Sound("snarl")]),
+            (name: "grab", secs: 0.28, clip: Some("lunge"), acts: [Lunge(speed: 260, up: 35), Grab((at: 9, reach: 9, from: 0.1))]),
+            (name: "bite", secs: 0.7, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 18, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
+            (name: "bite", secs: 0.7, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 18, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
+            (name: "bite", secs: 0.7, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 18, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
+            (name: "shove", secs: 0.0, clip: Some("lunge"), acts: [Throw(speed: 160, up: 90, stun: 0.3)]),
+            (name: "recover", secs: 0.5, clip: Some("lunge")),
+        ]),
         // A ray for something that burns (not on any creature yet: the
         // roster's). A long tell, then a sweep you can outrun.
         (id: "fire_ray", every: 6.0, when: (range: (40, 240), line: true), phases: [

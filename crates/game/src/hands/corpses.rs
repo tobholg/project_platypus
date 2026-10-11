@@ -34,6 +34,8 @@ const FADE: f32 = 3.0;
 const Z: f32 = 5.5;
 /// A body's colours, darkened.
 const DIM: f32 = 0.72;
+/// A body burnt away: char.
+pub const CHARRED: f32 = 0.2;
 /// Most bodies lying about at once.
 pub const MAX_BODIES: usize = 150;
 
@@ -45,6 +47,8 @@ pub struct Corpse {
     empty: f32,
     /// When it fell (a count: the oldest go first).
     born: u64,
+    /// How dark it's drawn (a body's dimmed; a burnt one's char).
+    pub shade: f32,
 }
 
 /// The picture of a body (its child).
@@ -78,6 +82,18 @@ fn belongings(died: &Died, items: &Items, chests: &Chests, world: &platypus_sim:
         chests.roll_table(table, &mut inv, items, chests.level_at(world, at), luck, &mut rng);
     }
     inv
+}
+
+/// What a body's called, opened: a heap of bones that'll get up, a body
+/// that'll get up (stirring), or just dead (burnt).
+fn label(d: &Died) -> String {
+    use crate::creatures::body::rise::Remains;
+    match d.rising.as_ref().map(|r| r.remains) {
+        Some(Remains::Rubble) => format!("{} (bones)", d.def.name),
+        Some(Remains::Body) => format!("{} (stirring)", d.def.name),
+        None if d.charred => format!("{} (burnt)", d.def.name),
+        None => format!("{} (dead)", d.def.name),
+    }
 }
 
 /// A body drawn in parts (its art's poses: a humanoid) as a ragdoll: the
@@ -391,8 +407,8 @@ fn lay_out(
             let body = Body::new(root_at, Vec2::new(d.body.half.y, d.body.half.x) * 2.0);
             let mut e = commands.spawn((
                 Name::new(format!("Body of {}", d.def.name)),
-                Corpse { key, empty: 0.0, born: { *count += 1; *count } },
-                Container { key, name: if d.rising.is_some() { format!("{} (bones)", d.def.name) } else { format!("{} (dead)", d.def.name) } },
+                Corpse { key, empty: 0.0, born: { *count += 1; *count }, shade: if d.charred { CHARRED } else { DIM } },
+                Container { key, name: label(d) },
                 Kinematics { body, loco: Locomotion::default(), prev_pos: root_at },
                 Transform::from_translation(root_at.extend(Z)),
                 Visibility::default(),
@@ -402,7 +418,8 @@ fn lay_out(
                     ragdoll::Look::Image(image, flip) => Sprite { flip_x: flip, ..Sprite::from_image(images.add(image)) },
                     ragdoll::Look::Sprite(s) => s,
                 };
-                s.color = Color::srgb(DIM, DIM, DIM);
+                let k = if d.charred { CHARRED } else { DIM };
+                s.color = Color::srgb(k, k * 0.92, k * 0.88);
                 e.with_child((CorpseSprite, ragdoll::LimpPiece(i), s, Transform::from_xyz(0.0, 0.0, z)));
             }
             e.insert(limp);
@@ -430,8 +447,8 @@ fn lay_out(
         body.vel = d.body.vel;
         let mut e = commands.spawn((
             Name::new(format!("Body of {}", d.def.name)),
-            Corpse { key, empty: 0.0, born: { *count += 1; *count } },
-            Container { key, name: if d.rising.is_some() { format!("{} (bones)", d.def.name) } else { format!("{} (dead)", d.def.name) } },
+            Corpse { key, empty: 0.0, born: { *count += 1; *count }, shade: if d.charred { CHARRED } else { DIM } },
+            Container { key, name: label(d) },
             Thrown { bounce: RAG_BOUNCE, slide: RAG_SLIDE },
             // (Turned as it was as it died, from how it'll lie: it topples
             // over, or spins on as it flew.)
@@ -620,7 +637,8 @@ fn rot(mut commands: Commands, mut chests: ResMut<Chests>, mut q: Query<(Entity,
         let fade = ((c.empty - LINGER) / FADE).clamp(0.0, 1.0);
         for child in children.into_iter().flat_map(|c| c.iter()) {
             if let Ok(mut s) = sprites.get_mut(child) {
-                s.color = Color::srgba(DIM, DIM, DIM, 1.0 - fade);
+                let k = c.shade;
+                s.color = Color::srgba(k, k, k, 1.0 - fade);
             }
         }
         if fade >= 1.0 {

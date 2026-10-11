@@ -136,6 +136,8 @@
         // reaches for you.
         "groan": (make: Groan(pitch: 68, length: 1.4, sag: 0.35, rasp: 0.55), variants: 4, volume: 0.6),
         "snarl": (make: Groan(pitch: 120, length: 0.45, sag: 0.5, rasp: 0.9), variants: 3, volume: 0.75),
+        // Something catching fire: a soft rush of flame.
+        "ignite": (make: Whoosh(from: 180, to: 900, length: 0.5, q: 0.7), variants: 2, volume: 0.6),
         // A strider's laser, and its gun venting steam when it overheats.
         "laser": (make: Zap(pitch: 760, length: 0.16), variants: 3, volume: 0.45),
         "launch": (make: Whoosh(from: 500, to: 2200, length: 0.5, q: 1.2), variants: 2, pitch: 0.06, volume: 0.5),

@@ -34,8 +34,10 @@ use crate::world::{SimWorld, TICK_HZ};
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// A heap's health, of the creature's.
 const PILE_SHARE: f32 = 0.4;
-/// How much worse a heap's weaknesses are than the creature's.
+/// How much worse a heap's weaknesses are than the creature's; a body's
+/// (that gets up whole) much less: it burns away instead.
 const PILE_WEAK: f32 = 1.6;
+const BODY_WEAK: f32 = 0.1;
 /// The light grows this long before it stands (seconds).
 const GLOW: f32 = 1.5;
 /// The bones fly together this long: each in `FLIGHT` of it, the feet's
@@ -96,9 +98,13 @@ pub struct RiseDef {
     /// glow on what flies back together).
     #[serde(default = "glow")]
     pub glow: (u8, u8, u8),
-    /// How many times it gets up (none: every time; a zombie: once).
+    /// How many times it gets up (none: every time; a zombie: twice).
     #[serde(default)]
     pub times: Option<u32>,
+    /// The last time it gets up, it's this kind instead (a zombie: a
+    /// crimson head, faster and worse).
+    #[serde(default)]
+    pub last: Option<String>,
 }
 
 /// What one that rises leaves as it falls (`RiseDef::remains`).
@@ -232,7 +238,7 @@ pub fn collapse(mut commands: Commands, mut sim: ResMut<SimWorld>, mut died: Mes
         let sprite = children.and_then(|ch| ch.iter().find_map(|c| sprites.get(c).ok())).map(|(s, tf)| (s.clone(), tf.translation));
         let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
         let limbs = parts.map(|p| p.limbs().into_iter().filter(|l| l.limb.is_none_or(|x| !severed.is_some_and(|c| c.has(x)))).collect()).unwrap_or_default();
-        died.write(Died { kind: creature.kind.clone(), def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin: spin.copied().unwrap_or_default(), rising: Some(rises.0.clone()), risen: risen.map_or(0, |r| r.0), limbs, severed: severed.map(|s| s.0.clone()).unwrap_or_default(), lineage: crate::creatures::lineage_of(Some((lineage, stable))), marks: marks.map(|m| m.list.clone()).unwrap_or_default(), gib: gib.map(|g| g.0) });
+        died.write(Died { kind: creature.kind.clone(), def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin: spin.copied().unwrap_or_default(), rising: Some(rises.0.clone()), risen: risen.map_or(0, |r| r.0), charred: false, limbs, severed: severed.map(|s| s.0.clone()).unwrap_or_default(), lineage: crate::creatures::lineage_of(Some((lineage, stable))), marks: marks.map(|m| m.list.clone()).unwrap_or_default(), gib: gib.map(|g| g.0) });
         if let Some(&super::hurt::Bleeds(dust)) = bleeds {
             sim.world.splash([k.body.pos.x, k.body.pos.y], dust, 14, 2.4);
         }
@@ -245,7 +251,10 @@ pub fn collapse(mut commands: Commands, mut sim: ResMut<SimWorld>, mut died: Mes
 pub fn make_pile(e: &mut EntityCommands, d: &Died, rise: &RiseDef, dust: Option<platypus_sim::MaterialId>) {
     // (Only what breaks bones hurts it, worse than it hurt the creature;
     // with nothing named, anything does, as it did: a body.)
-    let nature = if rise.breaks.is_empty() { d.def.nature } else { crate::creatures::nature::Nature::only(&rise.breaks, |h| d.def.nature.of(h) * PILE_WEAK) };
+    // (A body that gets up whole: what breaks it only sets it alight,
+    // barely hurting it; burning it does the rest, `pyre`.)
+    let weak = if rise.remains == Remains::Body { BODY_WEAK } else { PILE_WEAK };
+    let nature = if rise.breaks.is_empty() { d.def.nature } else { crate::creatures::nature::Nature::only(&rise.breaks, |h| d.def.nature.of(h) * weak) };
     let max = (d.def.health * PILE_SHARE).max(1.0);
     e.insert((
         Pile { lineage: d.lineage, lost: d.severed.clone(), kind: d.kind.clone(), def: d.def.clone(), rise: rise.clone(), left: rise.after, stuck: 0.0, facing: d.facing, sprite: d.sprite.clone(), risen: d.risen },
@@ -259,7 +268,7 @@ pub fn make_pile(e: &mut EntityCommands, d: &Died, rise: &RiseDef, dust: Option<
     }
 }
 
-type Breaking<'a> = (Entity, &'a mut Health, &'a Kinematics, &'a Pile, &'a Corpse, Option<&'a super::hurt::Bleeds>);
+type Breaking<'a> = (Entity, &'a mut Health, &'a Kinematics, &'a Pile, &'a Corpse, Option<&'a super::hurt::Bleeds>, Has<Ablaze>);
 
 /// A heap broken (its health gone): dead for good. Its body (with what's
 /// still in it, its loot, its gold) and the kill, as any death; a burst of
@@ -276,14 +285,14 @@ pub fn shatter(
     mut q: Query<Breaking>,
 ) {
     let Some(items) = items else { return };
-    for (e, mut h, k, pile, corpse, bleeds) in &mut q {
+    for (e, mut h, k, pile, corpse, bleeds, burnt) in &mut q {
         if h.hp > 0.0 {
             continue;
         }
         h.hp = 1.0;
         let worn: Vec<Stack> = chests.contents(corpse.key, &sim.world, &items).slots.iter().flatten().copied().collect();
         chests.forget(corpse.key);
-        died.write(Died { kind: pile.kind.clone(), def: pile.def.clone(), body: k.body, facing: pile.facing, sprite: pile.sprite.clone(), worn, spin: default(), rising: None, risen: pile.risen, limbs: Vec::new(), severed: pile.lost.clone(), lineage: pile.lineage, marks: Vec::new(), gib: None });
+        died.write(Died { kind: pile.kind.clone(), def: pile.def.clone(), body: k.body, facing: pile.facing, sprite: pile.sprite.clone(), worn, spin: default(), rising: None, risen: pile.risen, charred: burnt, limbs: Vec::new(), severed: pile.lost.clone(), lineage: pile.lineage, marks: Vec::new(), gib: None });
         // (Bones burst apart; a body bursts in what it bleeds.)
         let bones = pile.rise.remains == Remains::Rubble;
         if bones {
@@ -291,7 +300,9 @@ pub fn shatter(
             sparks.emit(&burst, burst.count as usize, k.body.pos, Vec2::Y, Vec2::ZERO);
         }
         sounds.write(if bones { crate::sound::PlaySound::at("break", k.body.pos).pitch(1.3) } else { crate::sound::PlaySound::at("snap", k.body.pos).pitch(0.6) });
-        if let Some(&super::hurt::Bleeds(dust)) = bleeds {
+        // (Burnt away: ash, not blood.)
+        let spill = if burnt { sim.world.materials().id("ash") } else { bleeds.map(|b| b.0) };
+        if let Some(dust) = spill {
             sim.world.splash([k.body.pos.x, k.body.pos.y], dust, if bones { 18 } else { 32 }, 2.8);
         }
         commands.entity(e).despawn();
@@ -403,6 +414,7 @@ pub fn stand(
     mut sparks: ResMut<crate::vfx::Sparks>,
     mut q: Query<Waking>,
     bones: Query<(Entity, &Bone, &super::ragdoll::Limp, Has<Skull>), Without<Pile>>,
+    creatures: Res<crate::creatures::def::Creatures>,
 ) {
     let Some(items) = items else { return };
     for (e, mut pile, k, corpse, light, limp) in &mut q {
@@ -472,6 +484,10 @@ pub fn stand(
                 crate::hands::spawn_drop(&mut commands, &items, pos, s);
             }
         }
+        // (The last time, it may get up something worse: `last`.)
+        let risen = pile.risen + 1;
+        let kind = pile.rise.last.as_ref().filter(|_| pile.rise.times.is_some_and(|t| risen >= t)).unwrap_or(&pile.kind).clone();
+        let def = creatures.get(&kind).cloned().unwrap_or_else(|| pile.def.clone());
         // (Nothing in its hand: what it fights with bare, its fists.)
         let wielding = eq
             .held
@@ -479,19 +495,19 @@ pub fn stand(
                 Use::Melee(id) | Use::Bow(id) => Some(id.clone()),
                 _ => None,
             })
-            .or_else(|| pile.def.unarmed.clone())
+            .or_else(|| def.unarmed.clone())
             .filter(|_| !(armless && missing.contains(&super::parts::Limb::Arm(1))))
-            .or_else(|| pile.def.armless.clone().filter(|_| armless && missing.contains(&super::parts::Limb::Arm(1))));
+            .or_else(|| def.armless.clone().filter(|_| armless && missing.contains(&super::parts::Limb::Arm(1))));
         let (share, facing) = (pile.rise.health, pile.facing);
-        let (lineage, seek, risen) = (pile.lineage, headless && skull_far, pile.risen + 1);
+        let (lineage, seek) = (pile.lineage, headless && skull_far);
         let light = pile.rise.light();
-        let eyes = pile.def.eyes.map_or(light, |(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]);
+        let eyes = def.eyes.map_or(light, |(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]);
         // (Its bones fly up from where they lie; a body gets up from how
         // it lies, its feet's end first.)
         let whole = (pile.rise.remains == Remains::Body).then(|| lying(limp, pos)).flatten();
         let from: Vec<Vec2> = from.into_iter().map(|(p, _)| p).collect();
         let missing_now = missing.clone();
-        crate::creatures::def::spawn_creature(&mut commands, &pile.kind, feet, move |c| {
+        crate::creatures::def::spawn_creature(&mut commands, &kind, feet, move |c| {
             c.insert((Lineage(lineage), Risen(risen)));
             if !missing.is_empty() {
                 c.insert(super::parts::Severed(missing));
@@ -763,6 +779,75 @@ pub fn tint_waking(piles: Query<(&Pile, &Children)>, mut sprites: Query<&mut Spr
             if let Ok(mut s) = sprites.get_mut(c) {
                 let l = pile.rise.light();
                 s.color = Color::srgb(DIM + (l[0] - DIM) * t, DIM + (l[1] - DIM) * t, DIM + (l[2] - DIM) * t);
+            }
+        }
+    }
+}
+
+/// A body that gets up whole, set alight (a blow of fire, the flames it
+/// lies in, a torch held to it): it burns `PYRE` s, every bit of it, and
+/// it's gone for good (its health burnt away: `shatter`).
+#[derive(Component)]
+pub struct Ablaze(f32);
+
+/// How long a body burns; how near a held torch's hand must come to it.
+const PYRE: f32 = 4.0;
+const TORCH_REACH: f32 = 6.0;
+
+/// Bodies that get up catch: from a blow of fire, from flames on them, or
+/// a torch held to them.
+#[allow(clippy::type_complexity)]
+pub fn kindle(
+    mut commands: Commands,
+    mut felt: MessageReader<crate::combat::Felt>,
+    weapons: Option<Res<crate::combat::Weapons>>,
+    piles: Query<(Entity, &Pile, &Kinematics, Option<&super::elements::Burning>), Without<Ablaze>>,
+    torches: Query<(&crate::combat::Wielding, &super::animation::HandPos)>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+) {
+    let struck: Vec<Entity> = felt.read().filter(|f| f.harm == Harm::Fire).map(|f| f.target).collect();
+    let held: Vec<Vec2> = match weapons {
+        Some(w) => torches
+            .iter()
+            .filter(|(wd, _)| wd.0.as_deref().and_then(|id| w.pointer_index(id)).is_some_and(|i| w.pointers[i].0.burns))
+            .filter_map(|(_, h)| h.at)
+            .collect(),
+        None => Vec::new(),
+    };
+    for (e, pile, k, burning) in &piles {
+        if pile.rise.remains != Remains::Body {
+            continue;
+        }
+        let near = |p: &Vec2| ((*p - k.body.pos).abs() - k.body.half).max_element() <= TORCH_REACH;
+        if struck.contains(&e) || burning.is_some_and(|b| b.share > 0.1) || held.iter().any(near) {
+            commands.entity(e).insert((Ablaze(PYRE), super::elements::Burning::new(1.0)));
+            sounds.write(crate::sound::PlaySound::at("ignite", k.body.pos));
+        }
+    }
+}
+
+/// A body ablaze burns, all of it, its health going with it; it doesn't
+/// get up meanwhile.
+#[allow(clippy::type_complexity)]
+pub fn pyre(mut commands: Commands, mut q: Query<(Entity, &mut Ablaze, &mut Pile, &mut Health, Option<&mut super::elements::Burning>, Option<&Children>)>, mut sprites: Query<&mut Sprite>) {
+    for (e, mut a, mut pile, mut h, burning, children) in &mut q {
+        a.0 -= DT;
+        // (All of it alight, whatever it lies in: its blood doesn't put it
+        // out, the fire burns it off.)
+        match burning {
+            Some(mut b) => b.share = 1.0,
+            None => {
+                commands.entity(e).insert(super::elements::Burning::new(1.0));
+            }
+        }
+        commands.entity(e).remove::<super::elements::Coated>();
+        pile.left = pile.left.max(GLOW + 1.0);
+        h.hp -= h.max / PYRE * DT;
+        // (Blackening as it goes.)
+        let k = DIM + (crate::hands::corpses::CHARRED - DIM) * (1.0 - a.0 / PYRE).clamp(0.0, 1.0);
+        for &c in children.into_iter().flatten() {
+            if let Ok(mut s) = sprites.get_mut(c) {
+                s.color = Color::srgb(k, k * 0.92, k * 0.88);
             }
         }
     }

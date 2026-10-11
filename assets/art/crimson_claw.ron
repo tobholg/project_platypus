@@ -1,0 +1,23 @@
+// A crimson head's hand: raw red fingers, nails grown long and hard,
+// pointing right, held at its wrist (`grip`).
+(
+    size: (8, 5),
+    feet: (3, 5),
+    outline: (24, 20, 18),
+    palette: {
+        'g': (160, 78, 68),     // skin
+        'D': (108, 44, 48),     // skin, shaded
+        'n': (40, 30, 28),      // nails, black
+    },
+    frames: {
+        "crimson_claw": [
+            "...gg.nn",
+            ".gggggnn",
+            "DDggggnn",
+            ".DDDDDnn",
+            "...DD...",
+        ],
+    },
+    clips: { "held": (frames: ["crimson_claw"], fps: 1) },
+    anchors: { "grip": { "crimson_claw": (1, 2) } },
+)

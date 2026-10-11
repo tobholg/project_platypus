@@ -1,0 +1,56 @@
+// A crimson head: a zombie left to get up a second time, worse. Its skin
+// flushed dark red, its nails grown long; it doesn't shamble, it runs at
+// you, and grabs sooner. The last of it: killed, it stays dead (no
+// `rises`), and so does a head-off.
+// The zombie's rig (assets/art/zombie_crimson.ron, its colours flushed),
+// on legs that run. Its limbs come off as a zombie's do: legless it drags
+// itself, armless it bites.
+(
+    name: "Crimson head",
+    loot: "zombie",
+    // What it had on when it died: now and then a hood or a helmet.
+    wears: [("cloth_hood", 0.15), ("iron_helm", 0.08)],
+    size: (9, 20),
+    health: 160,
+    team: Enemy,
+    faction: "undead",
+    kind: "rotting",
+    headless: Dies,
+    blood: "rot",
+    eyes: (255, 210, 160),
+    // A snarl, often.
+    voice: Some(("snarl", (2.0, 5.0))),
+    fall_damage: (safe_height: 120, per_cell: 0.5),
+    movement: (
+        run_speed: 78,
+        jump_height: 28,
+        air_jumps: 0,
+        step_height: 5,
+        dash_speed: 0,
+    ),
+    art: "zombie_crimson",
+    // Its legs: a zombie's, running: long quick strides.
+    legs: (view: Side, rig: true, reach: 14.5, upper: 0.5, step: 0.13, lift: 3, stride: 9,
+           color: (58, 56, 62), joint: (70, 68, 74), outline: (24, 18, 20), width: [3.2, 2.8, 2.2], toes: 3,
+           body: "zombie",
+           each: [
+               (hip: (2, 4), gait: 0, knee: Forward),
+               (hip: (-1, 4), gait: 1, knee: Forward, far: true),
+           ]),
+    // Close in, it grabs sooner and harder; further off, it lurches.
+    moves: ["crimson_grab", "zombie_lurch"],
+    unarmed: "crimson_claws",
+    armless: "zombie_bite",
+    stamina: 60,
+    // Harder to stop than a zombie.
+    poise: 55,
+    heft: 4,
+    // Its head's the place to hit; its body soaks it up.
+    zones: (head: 2.0, body: 0.6, arms: 0.8),
+    // Each its own pace.
+    pace: 0.15,
+    brain: (
+        kind: "hunter",
+        params: (aggro: 340, close: Walk(keep: 12, jump_to_reach: 22), attack: Swing(reach: 20, every: 0.9, combo: 2), wander: (speed: 0.25, every: 4.0), senses: (dark: 0.8)),
+    ),
+)

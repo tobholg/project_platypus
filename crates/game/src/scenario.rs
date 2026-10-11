@@ -9602,6 +9602,8 @@ fn zombie_script(
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, Has<crate::creatures::moves::Held>), With<LocalPlayer>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut began: MessageReader<crate::creatures::moves::Began>,
+    (mut hand, mut over): (ResMut<crate::hands::Hand>, ResMut<crate::camera::CursorOverride>),
+    alight: Query<&crate::creatures::Health, (With<crate::creatures::body::rise::Ablaze>, Without<LocalPlayer>)>,
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::combat::Wielding, Option<&crate::creatures::body::parts::Severed>, Has<crate::creatures::body::wounds::Legless>, &crate::creatures::Health), Without<LocalPlayer>>,
     piles: Query<(Entity, &Kinematics), (With<crate::creatures::body::rise::Pile>, Without<LocalPlayer>)>,
     bodies: Query<&crate::hands::corpses::Corpse, Without<crate::creatures::body::rise::Pile>>,
@@ -9617,6 +9619,11 @@ fn zombie_script(
     let mode = std::env::var("PLATYPUS_ZOMBIE").unwrap_or_else(|_| "rise".into());
     let Ok((mut k, mut h, held)) = player.single_mut() else { return };
     // `shake`: held, it mashes jump to break free.
+    if mode == "torch" && state.0 > 2 {
+        if let Some((_, p)) = piles.iter().next() {
+            over.0 = Some(p.body.pos);
+        }
+    }
     if mode == "shake" {
         if held && (s.elapsed * 7.0) as i32 % 2 == 0 {
             keys.press(KeyCode::Space);
@@ -9628,7 +9635,7 @@ fn zombie_script(
     *took += h.max - h.hp;
     h.hp = h.max;
     let fl = platypus_worldgen::arena::FLOOR as f32;
-    let zombie = them.iter().find(|t| t.1.kind == "zombie");
+    let zombie = them.iter().find(|t| t.1.kind.starts_with("zombie"));
     let kill = |hits: &mut MessageWriter<crate::combat::Hit>, e: Entity, at: Vec2| {
         hits.write(crate::combat::Hit { target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::X, weight: 1.0, crit: false });
     };
@@ -9661,7 +9668,9 @@ fn zombie_script(
                 "limbs" => &[(2.0, "arm0"), (3.0, "arm1"), (4.0, "leg0"), (5.0, "leg1"), (10.0, "head")],
                 "break" => &[(3.0, "kill"), (5.0, "break")],
                 "grab" | "shake" => &[],
-                _ => &[(3.0, "kill"), (15.0, "kill")],
+                "burn" => &[(3.0, "kill"), (5.0, "fire")],
+                "torch" => &[(3.0, "kill"), (4.0, "torch")],
+                _ => &[(3.0, "kill"), (15.0, "kill"), (27.0, "kill")],
             };
             let i = state.0 as usize - 1;
             if let Some(&(when, what)) = plan.get(i)
@@ -9677,6 +9686,23 @@ fn zombie_script(
                         if let Some((e, p)) = at {
                             kill(&mut hits, e, p);
                             info!("zombie: t {t:.1} killed");
+                        }
+                    }
+                    "fire" => {
+                        if let Some((e, p)) = piles.iter().next() {
+                            hits.write(crate::combat::Hit { target: e, damage: 4.0, harm: crate::creatures::Harm::Fire, knock: Vec2::ZERO, stun: 0.0, at: p.body.pos, dir: Vec2::X, weight: 0.2, crit: false });
+                            info!("zombie: t {t:.1} a spark of fire on its body");
+                        }
+                    }
+                    "torch" => {
+                        // (The player beside the body, a torch out, held to it.)
+                        if let Some((_, p)) = piles.iter().next() {
+                            k.body.pos = Vec2::new(p.body.pos.x - 12.0, fl + k.body.half.y);
+                            k.prev_pos = k.body.pos;
+                            hand.bar = 0;
+                            hand.slot = 2;
+                            over.0 = Some(p.body.pos);
+                            info!("zombie: t {t:.1} a torch held to its body");
                         }
                     }
                     "break" => {
@@ -9704,7 +9730,8 @@ fn zombie_script(
                     ),
                     None => "none up".into(),
                 };
-                info!("zombie: t {t:.1} {what}; bodies getting up {}, bodies {}; the player's taken {:.0}{}", piles.iter().count(), bodies.iter().count(), *took, if held { ", HELD" } else { "" });
+                let kind = zombie.map_or("", |z| z.1.kind.as_str());
+                info!("zombie: t {t:.1} {kind} {what}; bodies getting up {}{}, bodies {}; the player's taken {:.0}{}", piles.iter().count(), alight.iter().next().map_or(String::new(), |h| format!(" (alight, {:.0}/{:.0})", h.hp, h.max)), bodies.iter().count(), *took, if held { ", HELD" } else { "" });
             }
         }
         _ => {}
