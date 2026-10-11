@@ -388,8 +388,26 @@ fn hunt(
                     steer = route(&mut ways, &mut way, t - Vec2::Y * th.y);
                 }
                 // (Up at you when you're above and near; following a way,
-                // the way says when to jump.)
-                jump = steer.is_none() && grounded && d.y > *jump_to_reach && d.x.abs() < h.aggro * 0.25;
+                // the way says when to jump. Only where it's open over its
+                // head up to where you stand: under a roof (a way that
+                // can't get there ends under you), out from under it first,
+                // to the nearest open side, and up from there.)
+                // (A way that can't get there, with you just over it: no
+                // use following it to under you; up at you instead.)
+                if steer.is_some() && !way.whole && d.y > *jump_to_reach && d.x.abs() < OUT_FROM_UNDER as f32 {
+                    steer = None;
+                }
+                let reaching = steer.is_none() && d.y > *jump_to_reach && d.x.abs() < keep + JUMP_ACROSS;
+                let open = |x: f32| {
+                    let head = pos.y + k.body.half.y;
+                    let up = (t.y - th.y + k.body.half.y * 2.0 - head).max(2.0) as i32;
+                    !(1..=up).any(|dy| [-1.0, 0.0, 1.0].iter().any(|s| sim.world.is_solid(platypus_sim::CellPos::from_world(x + s * (k.body.half.x + 1.0), head + dy as f32))))
+                };
+                let mut out = None;
+                if reaching && !open(pos.x) {
+                    out = (1..=OUT_FROM_UNDER / 2).map(|i| i as f32 * 2.0).find_map(|dx| [d.x.signum(), -d.x.signum()].into_iter().find(|&side| side != 0.0 && open(pos.x + side * (dx + k.body.half.x))));
+                }
+                jump = reaching && grounded && out.is_none();
                 if let Attack::Swing { reach, every, combo } = h.attack {
                     let near = d.x.abs() < reach && d.y.abs() < reach;
                     if m.attacking && !swinging && m.swings_left == 0 {
@@ -439,6 +457,9 @@ fn hunt(
                         en_route = true;
                         if gx.abs() < 6.0 { 0.0 } else { gx.signum() }
                     }
+                    (None, None, None) if out.is_some() => out.unwrap_or(0.0),
+                    // (Jumping at you: toward you, to come down where you are.)
+                    (None, None, None) if reaching && !grounded => d.x.signum(),
                     (None, None, None) if d.x.abs() <= *keep => 0.0,
                     (None, None, None) => d.x.signum(),
                 }
@@ -819,6 +840,11 @@ const SHUN_LIT: f32 = 0.5;
 /// goes over you when it's within `VAULT` across on the wrong side.
 const FLANK_PAST: f32 = 6.0;
 const VAULT: f32 = 45.0;
+/// A hunter jumps up at you from no further across than this past `keep`.
+const JUMP_ACROSS: f32 = 12.0;
+/// How far aside (cells) a hunter under a roof looks for open sky to jump
+/// up at you from.
+const OUT_FROM_UNDER: i32 = 60;
 
 /// A skirmisher coming in goes back out after this long, its move made or
 /// not (s).

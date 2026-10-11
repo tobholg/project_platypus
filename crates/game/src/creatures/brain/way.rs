@@ -94,7 +94,7 @@ pub struct Way {
     goal: Option<NodePos>,
     start: NodePos,
     pub path: Vec<(NodePos, Move)>,
-    whole: bool,
+    pub whole: bool,
     i: usize,
     made: u64,
     /// The jump key held until (tick), and which way the jump goes.

@@ -9815,6 +9815,7 @@ fn ledge_script(
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
     mut state: Local<(u8, f32)>,
+    mut highest: Local<f32>,
 ) {
     if s.name != "ledge" {
         return;
@@ -9825,11 +9826,16 @@ fn ledge_script(
     let fl = floor as f32;
     let high = std::env::var("PLATYPUS_LEDGE").ok().and_then(|v| v.parse::<i32>().ok()).unwrap_or(30);
     let kind = std::env::var("PLATYPUS_KIND").unwrap_or_else(|_| "skeleton".into());
+    // (PLATYPUS_LEDGE_WIDE: how wide; a narrow one's a pillar, too high to climb.)
+    let wide = std::env::var("PLATYPUS_LEDGE_WIDE").ok().and_then(|v| v.parse::<i32>().ok()).unwrap_or(40);
+    let (x0, x1) = (1040 - wide, 1040);
+    // (PLATYPUS_LEDGE_THICK: a slab that thick at the top, open under.)
+    let thick = std::env::var("PLATYPUS_LEDGE_THICK").ok().and_then(|v| v.parse::<i32>().ok()).unwrap_or(high);
     match state.0 {
         0 if s.elapsed > 0.5 => {
             let Some(stone) = sim.materials().id("stone") else { return };
-            for x in 1000..1040 {
-                for y in floor..floor + high {
+            for x in x0..x1 {
+                for y in floor + high - thick..floor + high {
                     sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: stone, overwrite: true });
                 }
             }
@@ -9841,7 +9847,7 @@ fn ledge_script(
             *state = (1, s.elapsed);
         }
         1 if s.elapsed > 1.0 => {
-            k.body.pos = Vec2::new(1030.0, fl + high as f32 + k.body.half.y + 1.0);
+            k.body.pos = Vec2::new((x0 + x1) as f32 / 2.0, fl + high as f32 + k.body.half.y + 1.0);
             k.body.vel = Vec2::ZERO;
             k.prev_pos = k.body.pos;
             crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(930.0, fl), |_| {});
@@ -9849,11 +9855,15 @@ fn ledge_script(
             *state = (2, s.elapsed);
         }
         2 => {
-            k.body.pos.x = 1030.0;
+            k.body.pos.x = (x0 + x1) as f32 / 2.0;
             k.body.vel.x = 0.0;
             let Some((_, _, c)) = them.iter().find(|(_, c, _)| c.kind == kind) else { return };
             let feet = c.body.pos.y - c.body.half.y;
-            if feet >= fl + high as f32 - 1.0 && (1000.0..1040.0).contains(&c.body.pos.x) {
+            if feet - fl > *highest + 2.0 {
+                *highest = feet - fl;
+                info!("ledge: t {:.1} the {kind}'s feet as high as {:.0}", s.elapsed, *highest);
+            }
+            if feet >= fl + high as f32 - 1.0 && (x0 as f32..x1 as f32).contains(&c.body.pos.x) {
                 info!("ledge: t {:.1} the {kind} is up on the ledge ({high} up)", s.elapsed);
                 state.0 = 3;
             } else if s.elapsed >= state.1 + 1.0 {
