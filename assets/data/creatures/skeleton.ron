@@ -1,9 +1,11 @@
 // A skeleton: the dead of crypts and deep caves, with a rusty sword; bones,
 // so it crumbles to dust. The humanoid rig (assets/art/skeleton.ron).
 // Killed, its bones lie in a heap that pulls itself back together and
-// stands again (`rises`), unless it's broken first: blows and spells wear a
-// heap down, a hammer or holy light fastest (`weak`). Take its sword from
-// the heap and it gets up without one.
+// stands again (`rises`). Only blunt blows break its bones (`breaks`): a
+// blade never kills it for good. Its skull holds it together (`anchor`):
+// knocked off, it's found again as it gets up (or gone to, headless, if it's
+// far); smashed with something blunt, it never gets up again. Take its
+// sword from the heap and it gets up without one.
 // Bones: no flesh to burn, nothing in them a fall can burst.
 (
     name: "Skeleton",
@@ -20,7 +22,7 @@
     // (Bones don't burn: the undead's weakness to fire is dead flesh's.)
     profile: {fire: 0.75},
     cant: [burn],
-    rises: Some((after: 5.0, health: 0.5, weak: [blunt, radiant])),
+    rises: Some((after: 5.0, health: 0.5, breaks: [blunt], anchor: true)),
     blood: "ash",
     fall_damage: (safe_height: 180, per_cell: 0.3),
     movement: (

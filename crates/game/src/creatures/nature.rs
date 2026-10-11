@@ -132,11 +132,14 @@ impl Nature {
         }
     }
 
-    /// The same, a kind of hurt's multiplier times `by` (a heap of bones'
-    /// weaknesses, worse than the skeleton's: `rise`).
-    pub fn weaker(mut self, kind: Harm, by: f32) -> Self {
-        self.by[kind as usize] *= by;
-        self
+    /// Hurt by these kinds only (each its multiplier `of`), nothing else
+    /// (a heap of bones, a loose skull: `rise`).
+    pub fn only(kinds: &[Harm], of: impl Fn(Harm) -> f32) -> Self {
+        let mut n = Nature { by: [0.0; 11], cant: 0 };
+        for &k in kinds {
+            n.by[k as usize] = of(k);
+        }
+        n
     }
 
     /// A nature with these multipliers (tests).

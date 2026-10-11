@@ -2055,6 +2055,20 @@ DESIGN §13 item 6.
   without what it's lost (its look's layers stripped, the arm's aim fan
   with it); its body and rubble leave it out. The `sever` scenario
   (`PLATYPUS_SEVER=spider|skeleton`).
+- **The skull** (`rise`, a `rises`' `breaks` and `anchor`): only what
+  breaks its bones (a skeleton's: blunt) hurts a heap or a loose skull; a
+  blade never kills a skeleton for good. A creature that rises is one
+  `Lineage` through every fall; a limb cut off it is its `Bone`, lying till
+  gathered; its head (if `anchor`) its `Skull`, struck as a body (10
+  health, only what breaks bones). Getting up, the heap gathers its bones
+  within 48 cells (their pixels fly back with the rest); what's out of
+  reach it gets up without: headless and blind, it goes to its skull
+  (`Seeking`, its steering overruled) and puts it back on (its sight back,
+  its eyes catching light). A skull broken: walking headless, it falls for
+  good; a heap, it's broken; its loose bones fade. The `skull` scenario
+  (`PLATYPUS_SKULL=near|far|crush`). Getting up underground: room to stand
+  is looked for up to 8 cells up (on its ash) and 15 to each side, and
+  after 3 s it stands anyway; a skeleton's box is 9 × 24.
 - **Getting up again** (`creatures::body::rise`, a creature's `rises`): a
   skeleton killed is gone, and its bones lie where it fell: a body that
   holds only what it wore and held (its loot is rolled when it's dead for

@@ -45,6 +45,10 @@ const FLIGHT: f32 = 0.7;
 /// How high a bone arcs on its way, and how far round it swirls (cells).
 const ARC: f32 = 6.0;
 const SWIRL: f32 = 4.0;
+/// Loose bones this near a heap as it gets up fly back to it (cells).
+const GATHER: f32 = 48.0;
+/// Headless, it puts its skull back on this near it (cells).
+const REACH_SKULL: f32 = 8.0;
 /// Standing where it can't (under a low roof), it tries again after this;
 /// past `STUCK_MOST` of trying, it stands anyway. Room is looked for this
 /// far up (on its ash) and to each side (cells).
@@ -71,17 +75,47 @@ pub struct RiseDef {
     pub after: f32,
     /// Of its health it stands with.
     pub health: f32,
-    /// Kinds of hurt a heap is weaker still to.
+    /// The only kinds of hurt that break its bones (a heap, a loose skull):
+    /// anything else glances off (a skeleton: blunt; a blade never kills it
+    /// for good).
+    #[serde(default, alias = "weak")]
+    pub breaks: Vec<Harm>,
+    /// Its head is what holds it together: cut off, it's a skull of its
+    /// own, found again as it gets up (and put back on, gone to it if it's
+    /// out of reach); broken (only by `breaks`), it never gets up again.
     #[serde(default)]
-    pub weak: Vec<Harm>,
+    pub anchor: bool,
 }
 
 #[derive(Component, Clone)]
 pub struct Rises(pub RiseDef);
 
+/// Who a creature that rises is, through every time it falls and gets up
+/// (its first number): what its loose bones belong to.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Lineage(pub u64);
+
+/// A loose bone of one that rises (a limb cut off it): whose, and which.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Bone {
+    pub lineage: u64,
+    pub limb: super::parts::Limb,
+}
+
+/// Its skull: what holds it together (`RiseDef::anchor`).
+#[derive(Component)]
+pub struct Skull;
+
+/// Headless, it goes to its skull to put it back on.
+#[derive(Component)]
+pub struct Seeking;
+
 /// A heap of bones that will get up: what it was, how long it has left.
 #[derive(Component)]
 pub struct Pile {
+    lineage: u64,
+    /// What it had lost as it fell (found again as it gets up, if near).
+    lost: Vec<super::parts::Limb>,
     kind: String,
     def: std::sync::Arc<crate::creatures::def::CreatureDef>,
     rise: RiseDef,
@@ -125,12 +159,13 @@ type Falling<'a> = (
     Option<&'a super::hurt::Bleeds>,
     Option<&'a super::tumble::Tumble>,
     Option<&'a super::parts::Severed>,
+    (Option<&'a Lineage>, Option<&'a crate::creatures::Stable>),
 );
 
 /// One that rises, killed, leaves its bones (a body that gets up:
 /// `make_pile`) and goes, with no death of its own. Just before deaths.
 pub fn collapse(mut commands: Commands, mut sim: ResMut<SimWorld>, mut died: MessageWriter<Died>, mut q: Query<Falling>, sprites: Query<(&Sprite, &Transform), With<super::animation::CreatureSprite>>) {
-    for (e, mut h, k, rises, creature, anim, eq, children, bleeds, spin, severed) in &mut q {
+    for (e, mut h, k, rises, creature, anim, eq, children, bleeds, spin, severed, (lineage, stable)) in &mut q {
         if h.hp > 0.0 {
             continue;
         }
@@ -138,7 +173,7 @@ pub fn collapse(mut commands: Commands, mut sim: ResMut<SimWorld>, mut died: Mes
         h.hp = 1.0;
         let sprite = children.and_then(|ch| ch.iter().find_map(|c| sprites.get(c).ok())).map(|(s, tf)| (s.clone(), tf.translation));
         let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
-        died.write(Died { kind: creature.kind.clone(), def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin: spin.copied().unwrap_or_default(), rising: Some(rises.0.clone()), limbs: Vec::new(), severed: severed.map(|s| s.0.clone()).unwrap_or_default() });
+        died.write(Died { kind: creature.kind.clone(), def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin: spin.copied().unwrap_or_default(), rising: Some(rises.0.clone()), limbs: Vec::new(), severed: severed.map(|s| s.0.clone()).unwrap_or_default(), lineage: crate::creatures::lineage_of(Some((lineage, stable))) });
         if let Some(&super::hurt::Bleeds(dust)) = bleeds {
             sim.world.splash([k.body.pos.x, k.body.pos.y], dust, 14, 2.4);
         }
@@ -149,13 +184,11 @@ pub fn collapse(mut commands: Commands, mut sim: ResMut<SimWorld>, mut died: Mes
 /// The body of one that will get up (`corpses::lay_out`, for a `rising`
 /// death): health of its own, its weaknesses worse, hit as a creature is.
 pub fn make_pile(e: &mut EntityCommands, d: &Died, rise: &RiseDef, dust: Option<platypus_sim::MaterialId>) {
-    let mut nature = d.def.nature;
-    for &w in &rise.weak {
-        nature = nature.weaker(w, PILE_WEAK);
-    }
+    // (Only what breaks bones hurts it, worse than it hurt the creature.)
+    let nature = crate::creatures::nature::Nature::only(&rise.breaks, |h| d.def.nature.of(h) * PILE_WEAK);
     let max = (d.def.health * PILE_SHARE).max(1.0);
     e.insert((
-        Pile { kind: d.kind.clone(), def: d.def.clone(), rise: rise.clone(), left: rise.after, stuck: 0.0, facing: d.facing, sprite: d.sprite.clone() },
+        Pile { lineage: d.lineage, lost: d.severed.clone(), kind: d.kind.clone(), def: d.def.clone(), rise: rise.clone(), left: rise.after, stuck: 0.0, facing: d.facing, sprite: d.sprite.clone() },
         Health { nature, ..Health::new(max) },
         crate::creatures::MoveStats(d.def.movement.clone()),
         d.def.team,
@@ -190,7 +223,7 @@ pub fn shatter(
         h.hp = 1.0;
         let worn: Vec<Stack> = chests.contents(corpse.key, &sim.world, &items).slots.iter().flatten().copied().collect();
         chests.forget(corpse.key);
-        died.write(Died { kind: pile.kind.clone(), def: pile.def.clone(), body: k.body, facing: pile.facing, sprite: pile.sprite.clone(), worn, spin: default(), rising: None, limbs: Vec::new(), severed: Vec::new() });
+        died.write(Died { kind: pile.kind.clone(), def: pile.def.clone(), body: k.body, facing: pile.facing, sprite: pile.sprite.clone(), worn, spin: default(), rising: None, limbs: Vec::new(), severed: pile.lost.clone(), lineage: pile.lineage });
         let burst = bone_burst();
         sparks.emit(&burst, burst.count as usize, k.body.pos, Vec2::Y, Vec2::ZERO);
         sounds.write(crate::sound::PlaySound::at("break", k.body.pos).pitch(1.3));
@@ -218,6 +251,80 @@ fn streak() -> Emitter {
 
 type Waking<'a> = (Entity, &'a mut Pile, &'a Kinematics, &'a Corpse, Option<&'a mut crate::light::LightSource>, Option<&'a super::ragdoll::Limp>);
 
+type Crushed<'a> = (Entity, &'a Bone, &'a Health, &'a Kinematics);
+type Undone<'a> = (Entity, Option<&'a Lineage>, Option<&'a crate::creatures::Stable>, &'a mut Health);
+
+/// A skull broken (only what breaks its bones can): its owner never gets up
+/// again. Walking headless, it falls for good; a heap, it's broken; its
+/// other loose bones fade. Just before deaths.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub fn crush(
+    mut commands: Commands,
+    mut sparks: ResMut<crate::vfx::Sparks>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+    skulls: Query<Crushed, With<Skull>>,
+    mut owners: Query<Undone, (With<Rises>, Without<Pile>, Without<Skull>)>,
+    mut piles: Query<(&Pile, &mut Health), (Without<Rises>, Without<Skull>)>,
+    mut loose: Query<(&Bone, &mut super::wounds::CutPiece), Without<Skull>>,
+) {
+    for (e, bone, h, k) in &skulls {
+        if h.hp > 0.0 {
+            continue;
+        }
+        let burst = bone_burst();
+        sparks.emit(&burst, burst.count as usize, k.body.pos, Vec2::Y, Vec2::ZERO);
+        sounds.write(crate::sound::PlaySound::at("break", k.body.pos).pitch(1.5));
+        commands.entity(e).despawn();
+        for (o, l, s, mut oh) in &mut owners {
+            if crate::creatures::lineage_of(Some((l, s))) == bone.lineage {
+                commands.entity(o).remove::<Rises>();
+                oh.hp = oh.hp.min(0.0);
+            }
+        }
+        for (p, mut ph) in &mut piles {
+            if p.lineage == bone.lineage {
+                ph.hp = ph.hp.min(0.0);
+            }
+        }
+        for (b, mut c) in &mut loose {
+            if b.lineage == bone.lineage {
+                c.left = c.left.min(super::wounds::PIECE_FADE);
+            }
+        }
+    }
+}
+
+/// Headless, it goes to its skull and puts it back on: its head again, its
+/// sight, its eyes catching light.
+#[allow(clippy::type_complexity)]
+pub fn seek(
+    mut commands: Commands,
+    mut seekers: Query<(Entity, &Kinematics, &Lineage, &mut crate::creatures::Controls, Option<&super::parts::Severed>, &super::animation::Animator), With<Seeking>>,
+    skulls: Query<(Entity, &Bone, &super::ragdoll::Limp), With<Skull>>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+) {
+    for (e, k, lineage, mut controls, severed, anim) in &mut seekers {
+        let Some((s, _, limp)) = skulls.iter().find(|(_, b, _)| b.lineage == lineage.0) else {
+            commands.entity(e).remove::<Seeking>();
+            continue;
+        };
+        let at = limp.pieces[limp.root].pos;
+        let d = at - k.body.pos;
+        if d.length() <= REACH_SKULL + k.body.half.y {
+            // Put back on.
+            commands.entity(s).despawn();
+            let kept: Vec<super::parts::Limb> = severed.map(|sv| sv.0.iter().copied().filter(|l| *l != super::parts::Limb::Head).collect()).unwrap_or_default();
+            let eyes = anim.def.eyes.map_or(LIGHT, |(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]);
+            commands.entity(e).remove::<(Seeking, super::wounds::Blind)>().insert((super::parts::Severed(kept), EyesFlash(1.0), crate::light::LightSource { color: eyes.map(|c| c * EYES_FLASH), flicker: 0.0 }));
+            sounds.write(crate::sound::PlaySound::at("clank", k.body.pos).pitch(0.7));
+            continue;
+        }
+        // (Its brain's steering overruled: to the skull, a jump if it's up.)
+        controls.0.move_x = d.x.signum();
+        controls.0.jump = d.y > 12.0 && d.x.abs() < 30.0;
+    }
+}
+
 /// A heap's time runs: the light grows in it the last `GLOW`, wisps rise,
 /// the ash about it is drawn in; then it stands (if there's room), a new
 /// one of its kind dressed in what's left in it, and the heap goes.
@@ -229,6 +336,7 @@ pub fn stand(
     mut chests: ResMut<Chests>,
     mut sparks: ResMut<crate::vfx::Sparks>,
     mut q: Query<Waking>,
+    bones: Query<(Entity, &Bone, &super::ragdoll::Limp, Has<Skull>), Without<Pile>>,
 ) {
     let Some(items) = items else { return };
     for (e, mut pile, k, corpse, light, limp) in &mut q {
@@ -260,14 +368,36 @@ pub fn stand(
             pile.stuck += RETRY;
             continue;
         };
-        // Dressed in what's left in it; the rest spills.
+        // Its loose bones near enough fly back with the rest (its skull
+        // last: its pixels go to the top); what's out of reach it gets up
+        // without (headless, it goes to its skull).
+        let mut from: Vec<(Vec2, [u8; 4])> = limp.map(|l| l.world_pixels()).unwrap_or_default();
+        let mut found = Vec::new();
+        let mut skull_far = false;
+        for (b, bone, bl, skull) in &bones {
+            if bone.lineage != pile.lineage {
+                continue;
+            }
+            if bl.pieces[bl.root].pos.distance(pos) <= GATHER {
+                from.extend(bl.world_pixels());
+                found.push(bone.limb);
+                commands.entity(b).despawn();
+            } else if skull {
+                skull_far = true;
+            }
+        }
+        let missing: Vec<super::parts::Limb> = pile.lost.iter().copied().filter(|l| !found.contains(l)).collect();
+        let headless = missing.contains(&super::parts::Limb::Head);
+        // Dressed in what's left in it; the rest spills (and what its lost
+        // arm held).
         let left: Vec<Stack> = chests.contents(corpse.key, &sim.world, &items).slots.iter().flatten().copied().collect();
         chests.forget(corpse.key);
         let mut eq = crate::gear::Equipment::default();
+        let armless = missing.contains(&super::parts::Limb::Arm(0));
         for s in left {
             let def = items.def(s.item);
             let weapon = matches!(def.use_, Use::Melee(_) | Use::Bow(_)) && def.gear.is_some();
-            if weapon && eq.held.is_none() {
+            if weapon && eq.held.is_none() && !armless {
                 eq.held = Some(s);
             } else if let Some(i) = def.gear.as_ref().and(eq.slot_for(&items, &s)) {
                 eq.worn[i] = Some(s);
@@ -282,12 +412,24 @@ pub fn stand(
                 Use::Melee(id) | Use::Bow(id) => Some(id.clone()),
                 _ => None,
             })
-            .or_else(|| pile.def.unarmed.clone());
+            .or_else(|| pile.def.unarmed.clone())
+            .filter(|_| !(armless && missing.contains(&super::parts::Limb::Arm(1))));
         let (share, facing) = (pile.rise.health, pile.facing);
+        let (lineage, seek) = (pile.lineage, headless && skull_far);
         let eyes = pile.def.eyes.map_or(LIGHT, |(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]);
         // (Its bones fly up from where they lie.)
-        let from: Vec<Vec2> = limp.map(|l| l.world_pixels().into_iter().map(|(p, _)| p).collect()).unwrap_or_default();
+        let from: Vec<Vec2> = from.into_iter().map(|(p, _)| p).collect();
         crate::creatures::def::spawn_creature(&mut commands, &pile.kind, feet, move |c| {
+            c.insert(Lineage(lineage));
+            if !missing.is_empty() {
+                c.insert(super::parts::Severed(missing));
+            }
+            if headless {
+                c.insert(super::wounds::Blind);
+                if seek {
+                    c.insert(Seeking);
+                }
+            }
             if let Some(mut h) = c.get_mut::<Health>() {
                 h.hp = h.max * share;
             }

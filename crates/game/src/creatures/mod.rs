@@ -44,7 +44,7 @@ impl Plugin for CreaturesPlugin {
             .add_message::<Rocketed>()
             .add_plugins((def::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, body::animation::AnimationPlugin, factions::FactionsPlugin))
             .add_plugins((player::PlayerPlugin, brain::ai::AiPlugin, brain::critters::CrittersPlugin, brain::hunter::HunterPlugin, body::legs::LegsPlugin, custom::CustomPlugin, brain::villager::VillagerPlugin, moves::MovesPlugin, brain::way::WayPlugin, body::sight::SightPlugin))
-            .add_systems(FixedUpdate, (move_creatures, fall_damage, body::elements::expose, crate::combat::guard, body::hurt::notice, nature::regenerate, tally, crate::observe::observe, body::rise::collapse, body::rise::shatter, deaths, body::rise::stand).chain().in_set(TickSet::Bodies))
+            .add_systems(FixedUpdate, (move_creatures, fall_damage, body::elements::expose, crate::combat::guard, body::hurt::notice, nature::regenerate, tally, crate::observe::observe, body::rise::crush, body::rise::collapse, body::rise::shatter, deaths, body::rise::stand).chain().in_set(TickSet::Bodies))
             .insert_resource(body::elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
             .init_resource::<StableIds>()
@@ -59,6 +59,7 @@ impl Plugin for CreaturesPlugin {
             .init_resource::<body::wounds::LayerMasks>()
             .add_systems(FixedUpdate, (body::wounds::wound, body::wounds::sever, body::wounds::bleed).chain().after(crate::combat::Hits).before(TickSet::Cells))
             .add_systems(Update, (body::wounds::fade, body::wounds::sit.before(body::animation::animate)))
+            .add_systems(FixedUpdate, body::rise::seek.after(brain::BrainSet).before(move_creatures))
             .add_systems(FixedUpdate, (body::elements::struck, body::elements::zapped, blasted, pelted).after(TickSet::Cells))
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate))
             .add_systems(Update, (body::rise::assemble, body::rise::tint_waking))
@@ -115,6 +116,11 @@ pub struct Stable(pub u64);
 /// The next creature's number.
 #[derive(Resource, Default)]
 pub struct StableIds(pub u64);
+
+/// Who a creature is through its risings: its lineage, else its number.
+pub fn lineage_of(l: Option<(Option<&body::rise::Lineage>, Option<&Stable>)>) -> u64 {
+    l.and_then(|(l, s)| l.map(|l| l.0).or(s.map(|s| s.0))).unwrap_or(0)
+}
 
 /// A creature's number for its rolls (an entity's bits, if it has none).
 pub fn stable(ids: &Query<&Stable>, e: Entity) -> u64 {
@@ -491,9 +497,9 @@ type Pelted<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a brain::way::Di
 /// Heavy things flying fast hurt what they hit: a ball of rock dropped
 /// from a well, blast debris, a flung stream of sand (not a digger at its
 /// face: what it digs rains on it).
-/// (Not a heap of bones: its own dust, flung as it fell, would wear it down;
-/// nor its own blood, spurting from a wound.)
-fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<Pelted, Without<body::rise::Pile>>) {
+/// (Not a heap of bones or a loose skull: its own dust, flung as it fell,
+/// would wear it down; nor its own blood, spurting from a wound.)
+fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<Pelted, (Without<body::rise::Pile>, Without<body::rise::Skull>)>) {
     let boxes: Vec<(Vec2, Vec2)> = q.iter().map(|(k, ..)| (k.body.pos - k.body.half, k.body.pos + k.body.half)).collect();
     let bloods: Vec<Option<platypus_sim::MaterialId>> = q.iter().map(|(.., b)| b.map(|b| b.0)).collect();
     if boxes.is_empty() {
@@ -590,6 +596,8 @@ pub struct Died {
     pub limbs: Vec<body::parts::Part>,
     /// What it had lost (`wounds`): not drawn on its body.
     pub severed: Vec<body::parts::Limb>,
+    /// Who it was, through every time it fell and got up (`rise::Lineage`).
+    pub lineage: u64,
 }
 
 /// What a body took in a tick, of one kind (`Health::took`, from every
@@ -643,6 +651,7 @@ pub(crate) fn deaths(
     tumbles: Query<&body::tumble::Tumble>,
     parts: Query<&body::parts::Parts>,
     severed: Query<&body::parts::Severed>,
+    lineages: Query<(Option<&body::rise::Lineage>, Option<&Stable>)>,
 ) {
     let spawn = sim.generator.spawn_point();
     for (entity, mut h, mut k, is_player, bleeds, anim, creature, eq, children) in &mut q {
@@ -657,7 +666,7 @@ pub(crate) fn deaths(
             // (Its limbs, but what's been cut off already lies apart.)
             let cut = severed.get(entity).ok();
             let limbs = parts.get(entity).map(|p| p.limbs().into_iter().filter(|l| l.limb.is_none_or(|x| !cut.is_some_and(|c| c.has(x)))).collect()).unwrap_or_default();
-            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin, rising: None, limbs, severed: cut.map(|c| c.0.clone()).unwrap_or_default() });
+            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin, rising: None, limbs, severed: cut.map(|c| c.0.clone()).unwrap_or_default(), lineage: lineage_of(lineages.get(entity).ok()) });
         }
         if let Some(&body::hurt::Bleeds(blood)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.

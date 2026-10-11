@@ -309,6 +309,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, rise_script)
             .add_systems(Update, limp_script)
             .add_systems(Update, sever_script)
+            .add_systems(Update, skull_script)
             .add_systems(Update, pickups_script)
             .add_systems(PreUpdate, filter_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, cursor_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -9241,6 +9242,90 @@ fn pickups_script(
             *state = 4;
         }
         _ => {}
+    }
+}
+
+/// `skull` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a skeleton's skull
+/// is what holds it together. Its head off at 2 s (it fights on blind);
+/// then `PLATYPUS_SKULL=near` (the default): killed at 3 s, it gets up again
+/// whole, its skull flying back with its bones; `far`: its skull thrown 120
+/// cells off first, it gets up headless and goes to it, and puts it back on;
+/// `crush`: a hammer on its skull at 3 s, it falls for good. Logs each half
+/// second what it's lost, whether it sees, and the skulls and heaps there.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn skull_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Option<&crate::creatures::body::parts::Severed>, Has<crate::creatures::body::wounds::Blind>, Has<crate::creatures::body::rise::Seeking>), Without<LocalPlayer>>,
+    mut skulls: Query<(Entity, &mut crate::creatures::body::ragdoll::Limp, &crate::creatures::Health), (With<crate::creatures::body::rise::Skull>, Without<LocalPlayer>)>,
+    piles: Query<(), With<crate::creatures::body::rise::Pile>>,
+    mut eqs: Query<&mut crate::gear::Equipment, Without<LocalPlayer>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "skull" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let case = std::env::var("PLATYPUS_SKULL").unwrap_or_else(|_| "near".into());
+    if (1.2..1.4).contains(&s.elapsed) {
+        for mut eq in &mut eqs {
+            eq.worn = Default::default();
+        }
+    }
+    let skeleton = them.iter().find(|t| t.1.kind == "skeleton");
+    match state.0 {
+        0 if s.elapsed > 0.5 => {
+            for (e, c, ..) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            k.body.pos = Vec2::new(880.0, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            crate::creatures::def::spawn_creature(&mut commands, "skeleton", Vec2::new(960.0, fl), |e| {
+                e.remove::<crate::creatures::brain::hunter::Hunter>();
+            });
+            state.0 = 1;
+        }
+        1 if s.elapsed > 2.0 => {
+            if let Some((e, _, tk, ..)) = skeleton {
+                let at = Vec2::new(tk.body.pos.x, tk.body.pos.y - tk.body.half.y + 34.0);
+                hits.write(crate::combat::Hit { target: e, damage: 42.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::new(1.0, 0.3), weight: 1.0, crit: false });
+                info!("skull: t {:.1} its head off", s.elapsed);
+            }
+            state.0 = 2;
+        }
+        2 if s.elapsed > 2.6 && case == "far" => {
+            for (_, mut limp, _) in &mut skulls {
+                limp.shift(Vec2::new(120.0, 0.0));
+                info!("skull: t {:.1} its skull thrown off", s.elapsed);
+            }
+            state.0 = 3;
+        }
+        2 | 3 if s.elapsed > 3.0 => {
+            if case == "crush" {
+                for (e, limp, _) in &skulls {
+                    let at = limp.pieces[0].pos;
+                    hits.write(crate::combat::Hit { target: e, damage: 30.0, harm: crate::creatures::Harm::Blunt, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::NEG_Y, weight: 1.0, crit: false });
+                    info!("skull: t {:.1} a hammer on its skull", s.elapsed);
+                }
+            } else if let Some((e, _, tk, ..)) = skeleton {
+                hits.write(crate::combat::Hit { target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+                info!("skull: t {:.1} a sword kills it", s.elapsed);
+            }
+            state.0 = 4;
+        }
+        _ => {}
+    }
+    if state.0 >= 1 && s.elapsed >= state.1 {
+        state.1 = s.elapsed + 0.5;
+        let sk = skeleton.map(|(_, _, tk, th, sev, blind, seek)| format!("skeleton hp {:.0} at x {:.0} lost {:?}{}{}", th.hp, tk.body.pos.x, sev.map(|s| s.0.clone()).unwrap_or_default(), if blind { " blind" } else { "" }, if seek { " seeking" } else { "" })).unwrap_or("no skeleton".into());
+        let sks: Vec<String> = skulls.iter().map(|(_, l, h)| format!("at x {:.0} hp {:.0}", l.pieces[0].pos.x, h.hp)).collect();
+        info!("skull: t {:.1} {sk}; skulls {sks:?}; heaps {}", s.elapsed, piles.iter().count());
     }
 }
 

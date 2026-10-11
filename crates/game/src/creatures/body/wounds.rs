@@ -38,9 +38,11 @@ const CUT_SPRAY: usize = 14;
 const STUMP_BLEEDS: f32 = 3.5;
 const PIECE_BLEEDS: f32 = 2.5;
 const BLEED_RATE: f32 = 26.0;
+/// A loose skull's health (only what breaks its bones hurts it).
+const SKULL_HEALTH: f32 = 10.0;
 /// A cut piece lies this long, then fades over `PIECE_FADE`.
 const PIECE_LIFE: f32 = 30.0;
-const PIECE_FADE: f32 = 3.0;
+pub const PIECE_FADE: f32 = 3.0;
 /// A biped's speed on one leg and on none, and its jump; anything with
 /// more legs keeps this much at least, the rest by the share it has left.
 const ONE_LEG: f32 = 0.45;
@@ -72,7 +74,7 @@ pub struct Cut {
 /// A piece that came off: how long it has left.
 #[derive(Component)]
 pub struct CutPiece {
-    left: f32,
+    pub left: f32,
 }
 
 /// Where something bleeds: a point on one of its ragdoll's pieces (that
@@ -173,7 +175,7 @@ pub fn wound(mut commands: Commands, mut felt: MessageReader<crate::combat::Felt
 pub struct Blind;
 
 type Cutting<'a> = (&'a mut Kinematics, Option<&'a Parts>, &'a super::animation::Animator, Option<&'a mut Severed>, Option<&'a super::hurt::Bleeds>, &'a mut MoveStats, Option<&'a mut Bleeding>);
-type Losing<'a> = (&'a mut Health, Option<&'a mut crate::gear::Equipment>, Option<&'a mut crate::combat::Wielding>, Has<super::rise::Rises>);
+type Losing<'a> = (&'a mut Health, Option<&'a mut crate::gear::Equipment>, Option<&'a mut crate::combat::Wielding>, Option<&'a super::rise::Rises>, (Option<&'a super::rise::Lineage>, Option<&'a crate::creatures::Stable>));
 
 /// A limb comes off: the piece flies, bleeding; the stump bleeds; the
 /// creature has lost it (legs: slower, maybe down on its pelvis; its
@@ -238,7 +240,14 @@ pub fn sever(
                 commands.entity(c.target).insert(Legless(sunk));
             }
         }
-        if let Ok((mut health, eq, wielding, rises)) = losing.get_mut(c.target) {
+        let mut bone = None;
+        if let Ok((mut health, eq, wielding, rises, (lineage, stable))) = losing.get_mut(c.target) {
+            // (One that rises: the piece is one of its bones; its head, if
+            // that's what holds it together, its skull.)
+            if let Some(r) = rises {
+                bone = Some((super::rise::Bone { lineage: crate::creatures::lineage_of(Some((lineage, stable))), limb: c.limb }, (r.0.anchor && c.limb == Limb::Head).then(|| r.0.breaks.clone())));
+            }
+            let rises = rises.is_some();
             match c.limb {
                 // Its weapon hand: what it held falls; it fights with what
                 // it has left (the other fist, or nothing).
@@ -272,6 +281,23 @@ pub fn sever(
         let cut_end = Vec2::new(d.x * co - d.y * s, d.x * s + d.y * co);
         let at = limp.pieces[limp.root].pos;
         let mut e = commands.spawn((Name::new("Cut off"), CutPiece { left: PIECE_LIFE }, Kinematics { body: Body::new(at, Vec2::splat(3.0)), loco: Default::default(), prev_pos: at }, Transform::from_translation(at.extend(5.6)), Visibility::default()));
+        // A bone of one that rises lies till it's gathered up (or its owner's
+        // gone for good); a skull can be struck, and broken by what breaks
+        // its bones only.
+        if let Some((b, skull)) = bone {
+            e.insert((b, CutPiece { left: f32::INFINITY }));
+            if let Some(breaks) = skull {
+                // (Its box big enough to strike.)
+                e.insert((
+                    Kinematics { body: Body::new(at, Vec2::splat(6.0)), loco: Default::default(), prev_pos: at },
+                    Name::new("Skull"),
+                    super::rise::Skull,
+                    Health { nature: crate::creatures::nature::Nature::only(&breaks, |_| 1.0), ..Health::new(SKULL_HEALTH) },
+                    MoveStats(anim.def.movement.clone()),
+                    anim.def.team,
+                ));
+            }
+        }
         for (i, look) in looks.into_iter().enumerate() {
             let s = match look {
                 ragdoll::Look::Image(image, flip) => Sprite { flip_x: flip, ..Sprite::from_image(images.add(image)) },
@@ -313,7 +339,8 @@ fn rig_piece(anim: &super::animation::Animator, k: &Kinematics, limb: Limb, item
     let joint = piece.joint(frame_size);
     let (fw, fh) = (frame_size.0 as f32, frame_size.1 as f32);
     let root = centre + Vec2::new((joint.x - fw / 2.0) * k.loco.facing, fh / 2.0 - joint.y);
-    let limp = ragdoll::assemble(std::slice::from_ref(&piece), frame_size, centre, k.loco.facing, vel, spin);
+    let mut limp = ragdoll::assemble(std::slice::from_ref(&piece), frame_size, centre, k.loco.facing, vel, spin);
+    limp.pieces[0].pixels = piece.pixels_local(k.loco.facing);
     Some((limp, vec![ragdoll::Look::Image(piece.image, k.loco.facing < 0.0)], root))
 }
 

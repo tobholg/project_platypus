@@ -131,6 +131,15 @@ impl Cut {
         }
     }
 
+    /// Its pixels from its middle (unturned, the world's way up, mirrored as
+    /// it faces), each its colour: a piece's `pixels`.
+    pub fn pixels_local(&self, facing: f32) -> Vec<(Vec2, [u8; 4])> {
+        self.pixels.iter().zip(&self.colors).map(|(q, c)| {
+            let d = q.as_vec2() + Vec2::splat(0.5) - self.com;
+            (Vec2::new(d.x * facing, -d.y), *c)
+        }).collect()
+    }
+
     /// Where it meets what it was cut from (frame pixels): its pixels'
     /// middle, toward the frame's middle.
     pub fn joint(&self, frame: (u32, u32)) -> Vec2 {
@@ -475,6 +484,8 @@ pub fn limbed(sprite: Sprite, offset: Vec2, frame: (u32, u32), body: Vec2, limbs
         let r = pos - centre;
         let mut piece = new(pos, angle, mass, mass * (len * len + thick * thick) / 12.0, samples, "limb", vel + Vec2::new(-r.y, r.x) * omega, omega + twist);
         piece.draw_offset = middle;
+        // (Its pixels kept: a bone that flies back together, `rise`.)
+        piece.pixels = drawn.iter().map(|(q, c)| (q.as_vec2() + Vec2::splat(0.5), *c)).collect();
         pieces.push(piece);
         looks.push(Look::Image(image, false));
         angles.push(angle);
@@ -651,6 +662,17 @@ impl Limp {
         let pos = p.tick_pos.lerp(p.pos, t);
         let angle = p.tick_angle + wrap(p.angle - p.tick_angle) * t;
         (pos + rot(p.draw_offset, angle), angle)
+    }
+
+    /// Moved bodily (every piece, as it is), awake.
+    pub fn shift(&mut self, by: Vec2) {
+        for p in &mut self.pieces {
+            p.pos += by;
+            p.prev += by;
+            p.tick_pos += by;
+        }
+        self.asleep = false;
+        self.still = 0;
     }
 
     pub fn root_pos(&self) -> (Vec2, Vec2) {
