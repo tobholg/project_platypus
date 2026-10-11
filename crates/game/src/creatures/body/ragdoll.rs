@@ -474,6 +474,23 @@ pub fn limbed(sprite: Sprite, offset: Vec2, frame: (u32, u32), body: Vec2, limbs
     (Limp { pieces, joints, root: 0, still: 0, asleep: false }, looks)
 }
 
+/// A limb cut off (`wounds`): its capsules as `limbed`'s are, each pinned
+/// to the one it meets, with no body (thrown at `vel`, turning `omega`).
+pub fn cut_off(limbs: &[super::parts::Part], draw: impl Fn(&super::parts::Part, f32) -> Vec<(IVec2, [u8; 4])>, vel: Vec2, omega: f32) -> (Limp, Vec<Look>) {
+    let at = limbs.first().map_or(Vec2::ZERO, |p| p.a);
+    let (mut limp, mut looks) = limbed(Sprite::default(), Vec2::ZERO, (2, 2), at, limbs, draw, vel, omega);
+    // (Built on a body, then the body taken away.)
+    limp.pieces.remove(0);
+    looks.remove(0);
+    limp.joints.retain(|j| j.a != 0 && j.b != 0);
+    for j in &mut limp.joints {
+        j.a -= 1;
+        j.b -= 1;
+    }
+    limp.root = 0;
+    (limp, looks)
+}
+
 fn rot(v: Vec2, a: f32) -> Vec2 {
     let (s, c) = a.sin_cos();
     Vec2::new(v.x * c - v.y * s, v.x * s + v.y * c)

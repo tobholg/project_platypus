@@ -54,6 +54,10 @@ impl Plugin for CreaturesPlugin {
             .add_systems(Update, (body::elements::tint, body::elements::blaze, body::elements::reload_coatings, body::hurt::watch, body::hurt::float))
             // Hits as they landed, shown (`hurt`); the badly hurt drip and falter.
             .add_systems(FixedUpdate, (body::hurt::react, body::hurt::wounded).chain().after(crate::combat::Hits))
+            // Blows on limbs wear them down and cut them off (`wounds`).
+            .add_message::<body::wounds::Cut>()
+            .add_systems(FixedUpdate, (body::wounds::wound, body::wounds::sever, body::wounds::bleed).chain().after(crate::combat::Hits).before(TickSet::Cells))
+            .add_systems(Update, body::wounds::fade)
             .add_systems(FixedUpdate, (body::elements::struck, body::elements::zapped, blasted, pelted).after(TickSet::Cells))
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate))
             .add_systems(Update, (body::rise::assemble, body::rise::tint_waking))
@@ -628,6 +632,7 @@ pub(crate) fn deaths(
     mut q: Query<Mortal>,
     tumbles: Query<&body::tumble::Tumble>,
     parts: Query<&body::parts::Parts>,
+    severed: Query<&body::parts::Severed>,
 ) {
     let spawn = sim.generator.spawn_point();
     for (entity, mut h, mut k, is_player, bleeds, anim, creature, eq, children) in &mut q {
@@ -639,7 +644,9 @@ pub(crate) fn deaths(
             let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
             let kind = creature.map_or_else(String::new, |c| c.kind.clone());
             let spin = tumbles.get(entity).copied().unwrap_or_default();
-            let limbs = parts.get(entity).map(|p| p.limbs()).unwrap_or_default();
+            // (Its limbs, but what's been cut off already lies apart.)
+            let cut = severed.get(entity).ok();
+            let limbs = parts.get(entity).map(|p| p.limbs().into_iter().filter(|l| l.limb.is_none_or(|x| !cut.is_some_and(|c| c.has(x)))).collect()).unwrap_or_default();
             died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin, rising: None, limbs });
         }
         if let Some(&body::hurt::Bleeds(blood)) = bleeds {

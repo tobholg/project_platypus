@@ -15,3 +15,4 @@ pub mod ragdoll;
 pub mod rise;
 pub mod sight;
 pub mod tumble;
+pub mod wounds;

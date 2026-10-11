@@ -308,6 +308,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, ledge_script)
             .add_systems(Update, rise_script)
             .add_systems(Update, limp_script)
+            .add_systems(Update, sever_script)
             .add_systems(Update, pickups_script)
             .add_systems(PreUpdate, filter_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, cursor_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -9240,6 +9241,97 @@ fn pickups_script(
             *state = 4;
         }
         _ => {}
+    }
+}
+
+/// `sever` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): limbs cut off.
+/// `PLATYPUS_SEVER=spider` (the default): a stone roof 50 cells up, a cave
+/// spider on its underside; from 2 s an arrow into one of its legs every
+/// half second (each enough to cut it): it should hold on with five of its
+/// eight, and fall with three. `PLATYPUS_SEVER=skeleton`: a skeleton by
+/// the player, a blade through one leg at 2 s (it hops), the other at 4 s
+/// (it drags itself). Logs, each half second, what it's lost, whether it
+/// holds on, where it is and how fast it can go.
+#[allow(clippy::type_complexity)]
+fn sever_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::body::parts::Parts>, Option<&crate::creatures::body::parts::Severed>, &crate::creatures::MoveStats), Without<LocalPlayer>>,
+    mut controls: Query<&mut crate::creatures::Controls, Without<LocalPlayer>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, f32)>,
+) {
+    use crate::creatures::body::parts::Limb;
+    if s.name != "sever" {
+        return;
+    }
+    // (The spider wants up: it holds on to the roof while it can.)
+    for mut c in &mut controls {
+        c.0.move_y = 1.0;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let fl = floor as f32;
+    let spider = std::env::var("PLATYPUS_SEVER").map_or(true, |v| v != "skeleton");
+    let kind = if spider { "spider" } else { "skeleton" };
+    match state.0 {
+        0 if s.elapsed > 0.5 => {
+            for (e, c, ..) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            if spider {
+                let Some(stone) = sim.materials().id("stone") else { return };
+                for x in 920..1120 {
+                    for y in floor + 50..floor + 62 {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: stone, overwrite: true });
+                    }
+                }
+            }
+            k.body.pos = Vec2::new(if spider { 880.0 } else { 900.0 }, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            state.0 = 1;
+        }
+        1 if s.elapsed > 0.8 => {
+            // (The spider against the roof's underside.)
+            let at = if spider { Vec2::new(1020.0, fl + 50.0 - 18.0) } else { Vec2::new(960.0, fl) };
+            crate::creatures::def::spawn_creature(&mut commands, kind, at, move |e| {
+                e.remove::<crate::creatures::brain::hunter::Hunter>();
+                // (Up into the roof: it catches hold.)
+                if spider && let Some(mut k) = e.get_mut::<Kinematics>() {
+                    k.body.vel.y = 90.0;
+                }
+            });
+            state.0 = 2;
+            state.1 = 2.0;
+        }
+        2 if s.elapsed > state.1 => {
+            // The next leg it still has: struck through where it is.
+            let Some((e, _, tk, Some(parts), cut, _)) = them.iter().find(|t| t.1.kind == kind) else { return };
+            let next = parts.list.iter().find(|p| matches!(p.limb, Some(Limb::Leg(_))) && p.limb.is_none_or(|l| !cut.is_some_and(|c| c.has(l))));
+            if let Some(p) = next {
+                let at = (p.a + p.b) / 2.0;
+                let harm = if spider { crate::creatures::Harm::Pierce } else { crate::creatures::Harm::Slash };
+                hits.write(crate::combat::Hit { target: e, damage: 40.0, harm, knock: Vec2::ZERO, stun: 0.0, at, dir: (at - tk.body.pos).normalize_or(Vec2::X), weight: 1.0, crit: false });
+                info!("sever: t {:.1} a blow through its leg {:?}", s.elapsed, p.limb);
+            }
+            state.1 = s.elapsed + if spider { 0.5 } else { 2.0 };
+            if !spider && s.elapsed > 4.5 {
+                state.0 = 3;
+            }
+        }
+        _ => {}
+    }
+    if state.0 >= 2 && s.elapsed >= state.2 {
+        state.2 = s.elapsed + 0.5;
+        if let Some((_, _, tk, _, cut, moves)) = them.iter().find(|t| t.1.kind == kind) {
+            let lost = cut.map_or(0, |c| c.0.len());
+            info!("sever: t {:.1} {kind} lost {lost}: {} at ({:.0}, {:.0}) speed {:.0} cling {}", s.elapsed, if tk.loco.clinging().is_some() { "holding on" } else { "not holding" }, tk.body.pos.x, tk.body.pos.y - fl, moves.0.run_speed, moves.0.cling);
+        }
     }
 }
 

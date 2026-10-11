@@ -121,7 +121,7 @@ fn limp_of(d: &Died, items: &Items) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look
 /// How a walker's limbs are drawn, laid along x from their middle (a
 /// capsule `len` long), as they're drawn alive (`legs::draw`): outlined, a
 /// knuckle at the joint; a mech's legs as plates, shaded under.
-fn limb_drawer(legs: &crate::creatures::body::legs::LegsDef) -> impl Fn(&crate::creatures::body::parts::Part, f32) -> Vec<(IVec2, [u8; 4])> + '_ {
+pub(crate) fn limb_drawer(legs: &crate::creatures::body::legs::LegsDef) -> impl Fn(&crate::creatures::body::parts::Part, f32) -> Vec<(IVec2, [u8; 4])> + '_ {
     use crate::creatures::body::legs::{LegStyle, plate, stroke};
     use crate::creatures::body::parts::PartKind;
     let rgb = |(r, g, b): (u8, u8, u8)| [r, g, b, 255];

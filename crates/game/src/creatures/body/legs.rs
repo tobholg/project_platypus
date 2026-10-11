@@ -1209,7 +1209,7 @@ fn grow_legs(
 fn walk(
     time: Res<Time>,
     sim: Res<SimWorld>,
-    mut q: Query<(&mut Legs, &Kinematics, &GlobalTransform, &Children, Option<&Rear>, (Option<&mut crate::creatures::brain::way::DigFace>, Option<&crate::creatures::brain::senses::Alert>, Option<&super::tumble::Tumble>)), Without<crate::creatures::Dormant>>,
+    mut q: Query<(&mut Legs, &Kinematics, &GlobalTransform, &Children, Option<&Rear>, (Option<&mut crate::creatures::brain::way::DigFace>, Option<&crate::creatures::brain::senses::Alert>, Option<&super::tumble::Tumble>, Option<&super::parts::Severed>)), Without<crate::creatures::Dormant>>,
     mut sprites: Query<(&mut Sprite, &mut Visibility), (With<CreatureSprite>, Without<LegBody>, Without<LegStinger>)>,
     mut bodies: Query<(&mut Sprite, &mut Transform), (Or<(With<LegBody>, With<LegEyes>)>, Without<CreatureSprite>, Without<LegStinger>, Without<LegClaw>)>,
     mut stingers: Query<(&mut Sprite, &mut Transform, &mut Visibility), (With<LegStinger>, Without<CreatureSprite>, Without<LegBody>, Without<LegEyes>, Without<LegClaw>)>,
@@ -1219,11 +1219,22 @@ fn walk(
 ) {
     let dt = time.delta_secs().min(0.05);
     let now = time.elapsed_secs();
-    for (mut legs, k, tf, children, rear, (mut dig, alert, tumble)) in &mut q {
+    for (mut legs, k, tf, children, rear, (mut dig, alert, tumble, severed)) in &mut q {
         // (Where it's drawn; its body's place if that's far off: on its
         // first frame its transform hasn't caught up yet.)
         let drawn = tf.translation().truncate();
         let middle = if drawn.distance(k.body.pos) > legs.def.full_reach() { k.body.pos } else { drawn };
+        // A leg cut off holds nothing and doesn't step (nor is it drawn,
+        // nor struck: `draw`, `parts`).
+        if let Some(s) = severed {
+            for l in &s.0 {
+                if let super::parts::Limb::Leg(i) = *l
+                    && let Some(f) = legs.feet.get_mut(i as usize)
+                {
+                    *f = Foot { grips: false, t: 1.0, retry: f32::MAX, ..Foot::new(middle, false) };
+                }
+            }
+        }
         let side = legs.def.view == View::Side;
         // (Moved further than a leg reaches since last frame: put down, or
         // through a portal. Its ride and tilt start afresh; its feet are
@@ -2297,9 +2308,10 @@ fn turrets(
 /// Its parts' hit areas as they are now (`parts.rs`): each leg hip to
 /// knee to foot, each arm, each segment, each chain's links, each weak
 /// spot; a share of a blow to its body each (its `parts`).
-fn parts(mut commands: Commands, mut q: Query<(Entity, &Legs, Option<&mut super::parts::Parts>)>) {
-    use super::parts::{Part, PartKind};
-    for (e, legs, mine) in &mut q {
+fn parts(mut commands: Commands, mut q: Query<(Entity, &Legs, Option<&mut super::parts::Parts>, Option<&super::parts::Severed>)>) {
+    use super::parts::{Limb, Part, PartKind};
+    for (e, legs, mine, severed) in &mut q {
+        let gone = |l: Limb| severed.is_some_and(|s| s.has(l));
         let def = &legs.def;
         let pd = &def.parts;
         let c = legs.grip;
@@ -2308,6 +2320,9 @@ fn parts(mut commands: Commands, mut q: Query<(Entity, &Legs, Option<&mut super:
         let w = |i: usize| def.width.get(i).or(def.width.last()).copied().unwrap_or(def.thick as f32) * 0.5 + 0.5;
         let (a, b) = (def.reach * def.upper, def.reach * (1.0 - def.upper));
         for (i, f) in legs.feet.iter().enumerate() {
+            if gone(Limb::Leg(i as u8)) {
+                continue;
+            }
             let hip = legs.hip(i, c);
             let bend = if side {
                 let l = &def.each[i];
@@ -2316,31 +2331,37 @@ fn parts(mut commands: Commands, mut q: Query<(Entity, &Legs, Option<&mut super:
                 Vec2::Y
             };
             let (k, foot) = knee(hip, f.at, a, b, bend, |_| false);
-            list.push(Part { a: hip, b: k, r: w(0), mult: pd.legs, kind: PartKind::Leg });
-            list.push(Part { a: k, b: foot, r: w(1), mult: pd.legs, kind: PartKind::Leg });
+            list.push(Part { a: hip, b: k, r: w(0), mult: pd.legs, kind: PartKind::Leg, limb: Some(Limb::Leg(i as u8)) });
+            list.push(Part { a: k, b: foot, r: w(1), mult: pd.legs, kind: PartKind::Leg, limb: Some(Limb::Leg(i as u8)) });
         }
-        for (arm, &(shoulder, elbow, wrist)) in def.arms.iter().zip(&legs.arms) {
+        for (j, (arm, &(shoulder, elbow, wrist))) in def.arms.iter().zip(&legs.arms).enumerate() {
+            if gone(Limb::Arm(j as u8)) {
+                continue;
+            }
             let r = arm.width.first().copied().unwrap_or(2.0) * 0.5 + 0.5;
-            list.push(Part { a: shoulder, b: elbow, r, mult: pd.arms, kind: PartKind::Arm });
-            list.push(Part { a: elbow, b: wrist, r, mult: pd.arms, kind: PartKind::Arm });
+            list.push(Part { a: shoulder, b: elbow, r, mult: pd.arms, kind: PartKind::Arm, limb: Some(Limb::Arm(j as u8)) });
+            list.push(Part { a: elbow, b: wrist, r, mult: pd.arms, kind: PartKind::Arm, limb: Some(Limb::Arm(j as u8)) });
         }
         if let Some(sd) = &def.segments {
             for (s, seg) in legs.segs.iter().enumerate() {
                 let scale = sd.scale(s);
                 let half = seg.dir * sd.size.0 * scale * 0.5;
-                list.push(Part { a: seg.at - half, b: seg.at + half, r: sd.size.1 * scale * 0.5 + 0.5, mult: pd.segments, kind: PartKind::Segment });
+                list.push(Part { a: seg.at - half, b: seg.at + half, r: sd.size.1 * scale * 0.5 + 0.5, mult: pd.segments, kind: PartKind::Segment, limb: None });
             }
         }
-        for (cd, ch) in def.chains.iter().zip(&legs.chains) {
+        for (c, (cd, ch)) in def.chains.iter().zip(&legs.chains).enumerate() {
+            if gone(Limb::Chain(c as u8)) {
+                continue;
+            }
             let n = ch.pts.len();
             for i in 1..n {
                 let r = cd.width_at(i as f32 / (n - 1).max(1) as f32) * 0.5 + 0.5;
-                list.push(Part { a: ch.pts[i - 1], b: ch.pts[i], r, mult: pd.chains, kind: PartKind::Chain });
+                list.push(Part { a: ch.pts[i - 1], b: ch.pts[i], r, mult: pd.chains, kind: PartKind::Chain, limb: Some(Limb::Chain(c as u8)) });
             }
         }
         for wd in &pd.weak {
             let at = c + legs.turn(Vec2::new(wd.at.0, wd.at.1));
-            list.push(Part { a: at, b: at, r: wd.r, mult: wd.mult, kind: PartKind::Weak });
+            list.push(Part { a: at, b: at, r: wd.r, mult: wd.mult, kind: PartKind::Weak, limb: None });
         }
         match mine {
             Some(mut p) => p.set(list),
@@ -2605,13 +2626,14 @@ fn draw(
     mut commands: Commands,
     sim: Res<SimWorld>,
     mut images: ResMut<Assets<Image>>,
-    mut q: Query<(Entity, &Legs, &GlobalTransform, Option<&mut LimbImages>), Without<crate::creatures::Dormant>>,
+    mut q: Query<(Entity, &Legs, &GlobalTransform, Option<&mut LimbImages>, Option<&super::parts::Severed>), Without<crate::creatures::Dormant>>,
     mut layers: LayerSprites,
 ) {
     // (Behind, in front.)
     let mut own: [Vec<(IVec2, [u8; 4])>; 2] = [Vec::new(), Vec::new()];
     let mut line = Vec::new();
-    for (e, legs, tf, mine) in &mut q {
+    for (e, legs, tf, mine, severed) in &mut q {
+        let gone = |l: super::parts::Limb| severed.is_some_and(|s| s.has(l));
         // Drawn in its own frame (`o`: where the creature's drawn), onto its
         // own images that move with it: its limbs glide as its body does,
         // not a cell at a time on the world's grid.
@@ -2634,6 +2656,9 @@ fn draw(
             (c - held.iter().sum::<Vec2>() / held.len() as f32).normalize_or(Vec2::Y)
         };
         for (i, f) in legs.feet.iter().enumerate() {
+            if gone(super::parts::Limb::Leg(i as u8)) {
+                continue;
+            }
             let hip = legs.hip(i, c);
             let f = Foot { at: f.shown - o, ..*f };
             // (Knees also splay out from the body a little: from the side,
@@ -2785,7 +2810,10 @@ fn draw(
             }
         }
         // Arms, as the legs are drawn (where they are now: `walk`).
-        for (arm, &(shoulder, elbow, wrist)) in legs.def.arms.iter().zip(&legs.arms) {
+        for (j, (arm, &(shoulder, elbow, wrist))) in legs.def.arms.iter().zip(&legs.arms).enumerate() {
+            if gone(super::parts::Limb::Arm(j as u8)) {
+                continue;
+            }
             let (shoulder, elbow, wrist) = (shoulder - o, elbow - o, wrist - o);
             let w = |i: usize| arm.width.get(i).or(arm.width.last()).copied().unwrap_or(2.0);
             let line = legs.def.outline.unwrap_or_else(|| dark(dark(legs.def.color)));
@@ -2804,9 +2832,9 @@ fn draw(
         }
         // Chains: tapered and outlined as the legs, rings across their
         // joints if they're segmented.
-        for (def, ch) in legs.def.chains.iter().zip(&legs.chains) {
+        for (c, (def, ch)) in legs.def.chains.iter().zip(&legs.chains).enumerate() {
             let n = ch.pts.len();
-            if n < 2 {
+            if n < 2 || gone(super::parts::Limb::Chain(c as u8)) {
                 continue;
             }
             let pts: Vec<Vec2> = ch.pts.iter().map(|p| *p - o).collect();

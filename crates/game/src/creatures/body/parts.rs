@@ -21,8 +21,29 @@ pub enum PartKind {
     Weak,
 }
 
+/// A limb that can be cut off (`wounds`): a leg, an arm, a chain (a tail,
+/// a sting) by its place in its creature's `legs`, or a humanoid's head.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Limb {
+    Leg(u8),
+    Arm(u8),
+    Chain(u8),
+    Head,
+}
+
+/// The limbs a creature has lost.
+#[derive(Component, Clone, Debug, Default)]
+pub struct Severed(pub Vec<Limb>);
+
+impl Severed {
+    pub fn has(&self, l: Limb) -> bool {
+        self.0.contains(&l)
+    }
+}
+
 /// A part as it is now (the world): a capsule from `a` to `b`, `r` round,
-/// its hurt scaled by `mult`.
+/// its hurt scaled by `mult`; the limb it's of, if it's one that can be cut
+/// off.
 #[derive(Clone, Debug)]
 pub struct Part {
     pub a: Vec2,
@@ -30,6 +51,7 @@ pub struct Part {
     pub r: f32,
     pub mult: f32,
     pub kind: PartKind,
+    pub limb: Option<Limb>,
 }
 
 impl Part {
@@ -120,9 +142,9 @@ mod tests {
     fn a_blow_lands_on_the_part_it_strikes_a_weak_spot_first() {
         let mut parts = Parts::default();
         parts.set(vec![
-            Part { a: Vec2::new(0.0, 0.0), b: Vec2::new(40.0, 0.0), r: 3.0, mult: 1.0, kind: PartKind::Segment },
-            Part { a: Vec2::new(10.0, 0.0), b: Vec2::new(10.0, -12.0), r: 1.0, mult: 0.6, kind: PartKind::Leg },
-            Part { a: Vec2::new(35.0, 1.0), b: Vec2::new(35.0, 1.0), r: 2.0, mult: 2.5, kind: PartKind::Weak },
+            Part { a: Vec2::new(0.0, 0.0), b: Vec2::new(40.0, 0.0), r: 3.0, mult: 1.0, kind: PartKind::Segment, limb: None },
+            Part { a: Vec2::new(10.0, 0.0), b: Vec2::new(10.0, -12.0), r: 1.0, mult: 0.6, kind: PartKind::Leg, limb: Some(Limb::Leg(0)) },
+            Part { a: Vec2::new(35.0, 1.0), b: Vec2::new(35.0, 1.0), r: 2.0, mult: 2.5, kind: PartKind::Weak, limb: None },
         ]);
         assert_eq!(parts.touch(Vec2::new(20.0, 2.0), 0.0).map(|p| p.kind), Some(PartKind::Segment));
         assert_eq!(parts.touch(Vec2::new(10.0, -10.0), 0.0).map(|p| p.kind), Some(PartKind::Leg));
