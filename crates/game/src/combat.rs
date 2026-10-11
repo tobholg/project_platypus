@@ -49,6 +49,7 @@ impl Plugin for CombatPlugin {
             .add_systems(PreUpdate, hit_stop)
             .add_systems(FixedUpdate, (start_swings, dodge, stamina).chain().after(TickSet::Intent).before(TickSet::Bodies))
             .add_systems(FixedUpdate, (touch, swing, apply_hits).chain().in_set(Hits).after(TickSet::Bodies).before(TickSet::Cells))
+            .add_systems(Update, blink)
             .add_systems(Update, down_pose.before(crate::creatures::body::animation::animate))
             .add_systems(Update, (reload, draw).chain().after(crate::creatures::body::animation::animate));
     }
@@ -584,7 +585,10 @@ pub struct Recoil {
 }
 
 /// Contact damage: what it touches of another side (anyone can touch the
-/// neutral) is hit, then it rests `every` s.
+/// neutral) is hit, then it rests `every` s. Every foe has it (`of`: by
+/// its health and heft, unless its file says otherwise or `touchless`),
+/// as in Hollow Knight: a brush with one hurts a little and knocks you
+/// clear; then you're untouchable a moment (`after_hit`).
 #[derive(Component, Clone, Copy, Debug, Deserialize)]
 pub struct Touch {
     pub damage: f32,
@@ -614,14 +618,39 @@ fn touch_every() -> f32 {
     0.6
 }
 
-type Toucher<'a> = (Entity, &'a mut Touch, &'a Kinematics, Option<&'a Team>);
+/// A foe's touch by its build: a share of its health (`TOUCH_SHARE`, from
+/// `TOUCH_LEAST` to `TOUCH_MOST`), a blow, knocking clear harder the
+/// heavier it is.
+const TOUCH_SHARE: f32 = 0.04;
+const TOUCH_LEAST: f32 = 2.0;
+const TOUCH_MOST: f32 = 12.0;
+const TOUCH_KNOCK: f32 = 150.0;
+const TOUCH_KNOCK_HEFT: f32 = 40.0;
+
+impl Touch {
+    pub fn of(health: f32, heft: f32) -> Touch {
+        Touch {
+            damage: (health * TOUCH_SHARE).clamp(TOUCH_LEAST, TOUCH_MOST).round(),
+            harm: crate::creatures::Harm::Blunt,
+            knock: TOUCH_KNOCK + TOUCH_KNOCK_HEFT * heft.min(4.0),
+            stun: 0.12,
+            every: 1.0,
+            rest: 0.0,
+        }
+    }
+}
+
+type Toucher<'a> = (Entity, &'a mut Touch, &'a Kinematics, Option<&'a Team>, &'a Health, (Has<Swing>, Option<&'a crate::creatures::moves::Moves>));
 type Touched<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Has<Invulnerable>);
 
-/// Things that hurt by touch hit what they touch.
+/// Things that hurt by touch hit what they touch: not while it's stunned,
+/// dying, or busy with a swing or a move of its own (one blow for one
+/// move); not asleep or still coming up (dormant).
 fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, Without<crate::creatures::Dormant>>, bodies: Query<Touched, With<Health>>, factions: Query<&crate::creatures::factions::Faction>) {
-    for (me, mut t, k, team) in &mut touchers {
+    for (me, mut t, k, team, health, (swinging, moves)) in &mut touchers {
         t.rest -= DT;
-        if t.rest > 0.0 {
+        let stunned = k.loco.state == platypus_physics::MoveState::Stunned;
+        if t.rest > 0.0 || stunned || health.hp <= 0.0 || swinging || moves.is_some_and(|m| m.busy()) {
             continue;
         }
         for (e, tk, tteam, safe) in &bodies {
@@ -645,6 +674,26 @@ fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, Without<crat
             t.rest = t.every;
             break;
         }
+    }
+}
+
+/// Just hit, untouchable a while (`after_hit`: the player's grace): it
+/// blinks till it's over.
+#[derive(Component)]
+pub struct Graced(f32);
+
+/// How fast the grace blinks (seconds a blink).
+const BLINK: f32 = 0.09;
+
+fn blink(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Graced, &mut Visibility)>) {
+    for (e, mut g, mut vis) in &mut q {
+        g.0 -= time.delta_secs();
+        if g.0 <= 0.0 {
+            *vis = Visibility::Inherited;
+            commands.entity(e).remove::<Graced>();
+            continue;
+        }
+        *vis = if (g.0 / BLINK) as i32 % 2 == 0 { Visibility::Inherited } else { Visibility::Hidden };
     }
 }
 
@@ -1288,7 +1337,7 @@ fn apply_hits(
                 commands.entity(h.target).remove::<Swing>();
             }
             if s.after_hit > 0.0 {
-                commands.entity(h.target).insert(Invulnerable { left: s.after_hit, hp: health.hp });
+                commands.entity(h.target).insert((Invulnerable { left: s.after_hit, hp: health.hp }, Graced(s.after_hit)));
                 graced.insert(h.target);
             }
         }

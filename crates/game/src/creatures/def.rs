@@ -180,6 +180,10 @@ pub struct CreatureDef {
     /// damage, knockback (cells/s), stun, and a rest between touches.
     #[serde(default)]
     pub touch: Option<crate::combat::Touch>,
+    /// A foe that doesn't hurt by touch (else every foe does, by its
+    /// build: `Touch::of`).
+    #[serde(default)]
+    pub touchless: bool,
     /// Walks through webs freely (spiders); others are held back in them.
     #[serde(default)]
     pub web_walker: bool,
@@ -220,6 +224,13 @@ pub struct CreatureDef {
     /// hurt and bursts out when it dies (`hurt.rs`).
     #[serde(default = "red_blood")]
     pub blood: String,
+}
+
+impl CreatureDef {
+    /// How it hurts by touch: its file's, or (a foe) by its build.
+    pub fn touch_now(&self) -> Option<crate::combat::Touch> {
+        self.touch.or_else(|| (self.team == Team::Enemy && !self.touchless).then(|| crate::combat::Touch::of(self.health, self.heft)))
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -490,7 +501,7 @@ pub(crate) fn hot_reload_creatures(mut commands: Commands, mut creatures: ResMut
             None => ec.remove::<crate::creatures::nature::Regenerates>(),
         };
         ec.insert((crate::combat::Sturdy::new(def.poise, def.heft, def.after_hit), crate::combat::Wielding(def.weapon.clone())));
-        match def.touch {
+        match def.touch_now() {
             Some(t) => ec.insert(t),
             None => ec.remove::<crate::combat::Touch>(),
         };
@@ -608,7 +619,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             e.insert(crate::combat::Stamina::new(s));
         }
         e.insert(crate::combat::Sturdy::new(def.poise, def.heft, def.after_hit));
-        if let Some(t) = def.touch {
+        if let Some(t) = def.touch_now() {
             e.insert(t);
         }
         if def.web_walker {

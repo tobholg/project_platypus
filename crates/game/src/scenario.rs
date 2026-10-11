@@ -9651,6 +9651,10 @@ fn zombie_script(
             over.0 = Some(p.body.pos);
         }
     }
+    // `touch`: the player walks into it, and keeps walking into it.
+    if mode == "touch" && state.0 >= 1 {
+        keys.press(KeyCode::KeyD);
+    }
     if mode == "shake" {
         if held && (s.elapsed * 7.0) as i32 % 2 == 0 {
             keys.press(KeyCode::Space);
@@ -9680,7 +9684,13 @@ fn zombie_script(
             }
             k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
             k.prev_pos = k.body.pos;
-            if mode == "emerge" {
+            if mode == "touch" {
+                // (A skeleton standing there, its brain gone: it only
+                // touches.)
+                crate::creatures::def::spawn_creature(&mut commands, "skeleton", Vec2::new(960.0, fl), |e| {
+                    e.remove::<crate::creatures::brain::hunter::Hunter>();
+                });
+            } else if mode == "emerge" {
                 // (Earth under grass where they come up: they dig through
                 // soft ground only.)
                 let floor = platypus_worldgen::arena::FLOOR;
@@ -9714,7 +9724,7 @@ fn zombie_script(
             let plan: &[(f32, &str)] = match mode.as_str() {
                 "limbs" => &[(2.0, "arm0"), (3.0, "arm1"), (4.0, "leg0"), (5.0, "leg1"), (10.0, "head")],
                 "break" => &[(3.0, "kill"), (5.0, "break")],
-                "grab" | "shake" | "emerge" | "sun" => &[],
+                "grab" | "shake" | "emerge" | "sun" | "touch" => &[],
                 "burn" => &[(3.0, "kill"), (5.0, "fire")],
                 "torch" => &[(3.0, "kill"), (4.0, "torch")],
                 _ => &[(3.0, "kill"), (15.0, "kill"), (27.0, "kill")],
@@ -9778,6 +9788,9 @@ fn zombie_script(
                     None => "none up".into(),
                 };
                 let kind = zombie.map_or("", |z| z.1.kind.as_str());
+                if mode == "touch" {
+                    info!("zombie: t {t:.1} touch: the player at x {:.0}, has taken {:.0}", k.body.pos.x, *took);
+                }
                 info!("zombie: t {t:.1} ({up}) {kind} {what}; bodies getting up {}{}, bodies {}; the player's taken {:.0}{}", piles.iter().count(), alight.iter().next().map_or(String::new(), |h| format!(" (alight, {:.0}/{:.0})", h.hp, h.max)), bodies.iter().count(), *took, if held { ", HELD" } else { "" });
             }
         }

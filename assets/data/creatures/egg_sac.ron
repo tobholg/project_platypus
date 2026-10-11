@@ -7,6 +7,8 @@
     size: (11, 14),
     health: 20,
     team: Enemy,
+    // (It lies there: it doesn't hurt by touch.)
+    touchless: true,
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "insect",
     profile: {fire: 2.0},

@@ -38,7 +38,7 @@
     // Swings and dodges spend it (combat.rs).
     stamina: 100,
     // A moment nothing hurts you after a hit, so a crowd can't juggle you.
-    after_hit: 0.6,
+    after_hit: 1.0,
     brain: (kind: "keyboard"),
     z: 11,
 )
