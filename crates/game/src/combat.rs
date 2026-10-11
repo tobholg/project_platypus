@@ -730,9 +730,11 @@ pub struct Swing {
     down: bool,
     bounced: bool,
     rebound: f32,
-    /// A plunge: how long it's been diving, and whether it slammed.
+    /// A plunge: how long it's been diving, and whether it slammed (or
+    /// ran out); the height it's live from (where it began).
     dived: f32,
     slammed: bool,
+    from_y: Option<f32>,
 }
 
 impl Swing {
@@ -747,8 +749,13 @@ impl Swing {
 const DOWN_AIM: f32 = 0.34;
 /// A plunge can bounce again this long after a bounce (s).
 const REBOUND: f32 = 0.2;
-/// The longest a plunge dives before it gives up (s).
+/// The longest a plunge dives before it gives up (s), and the furthest it
+/// falls live (cells, from where it began: as Hollow Knight's, a strike
+/// for so far, not a dive that lasts all the way down); run out, it's
+/// over, falling on no faster than `PLUNGE_SPENT`.
 const PLUNGE_MAX: f32 = 4.0;
+const PLUNGE_FALL: f32 = 140.0;
+const PLUNGE_SPENT: f32 = 320.0;
 
 /// Between swings: which move of the combo comes next, and how long since
 /// the last ended.
@@ -890,6 +897,7 @@ fn start_swings(
             bounced: false,
             rebound: 0.0,
             dived: 0.0,
+            from_y: None,
             slammed: false,
         });
     }
@@ -936,7 +944,7 @@ pub fn guard(mut commands: Commands, mut q: Query<(Entity, &mut Invulnerable, &m
     }
 }
 
-type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>, Option<&'a crate::creatures::Controls>);
+type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>);
 type Target<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a Animator>, Has<Invulnerable>, Option<&'a crate::creatures::body::parts::Parts>);
 
 /// Swings move on a tick; while they sweep, they hit.
@@ -958,7 +966,7 @@ fn swing(
 ) {
     let Some(weapons) = weapons else { return };
     let none = crate::gear::Stats::default();
-    for (me, mut s, k, hand, team, mut stamina, stats, eq, controls) in &mut swingers {
+    for (me, mut s, k, hand, team, mut stamina, stats, eq) in &mut swingers {
         let stats = stats.unwrap_or(&none);
         // What the weapon leaves on what it hits (venom).
         let coat = eq.and_then(|eq| eq.held).and_then(|h| items.as_ref()?.def(h.item).gear.as_ref()?.on_hit.as_ref()).filter(|n| coatings.by_name.contains_key(*n)).cloned();
@@ -975,7 +983,16 @@ fn swing(
         let live_end = mv.windup + mv.active;
         if plunge && s.t >= mv.windup && !s.slammed {
             s.dived += DT;
-            if grounded || s.dived > PLUNGE_MAX {
+            let from = *s.from_y.get_or_insert(k.body.pos.y);
+            if !grounded && from - k.body.pos.y > PLUNGE_FALL {
+                // (Run out: over, no slam; falling on at an ordinary speed.)
+                s.slammed = true;
+                s.t = s.t.max(live_end);
+                let over = -k.body.vel.y - PLUNGE_SPENT;
+                if over > 0.0 {
+                    recoil.write(Recoil { who: me, add: Vec2::Y * over, pogo: None, dive: None });
+                }
+            } else if grounded || s.dived > PLUNGE_MAX {
                 s.slammed = true;
                 s.t = s.t.max(live_end);
                 if grounded && mv.slam > 0.0 {
@@ -989,16 +1006,10 @@ fn swing(
                 }
             }
         }
-        // A plunge that bounced goes on (bouncing again a moment later)
-        // while S is held; else it ends there.
+        // A plunge that bounced is over: another pogo is another strike.
         if plunge && s.bounced && !s.slammed {
-            if !controls.is_some_and(|c| c.0.move_y < 0.0 || c.0.down) {
-                s.slammed = true;
-                s.t = s.t.max(live_end);
-            } else if s.rebound <= 0.0 {
-                s.bounced = false;
-                s.hit.clear();
-            }
+            s.slammed = true;
+            s.t = s.t.max(live_end);
         }
         // Done: the next swing if it was asked for (and there's the stamina
         // for it), else rest. A down-strike isn't a step of the combo.
@@ -1026,6 +1037,7 @@ fn swing(
                 s.whooshed = false;
                 s.bounced = false;
                 s.dived = 0.0;
+                s.from_y = None;
                 s.slammed = false;
                 continue;
             }

@@ -22,8 +22,8 @@
 //   gives back your air jumps and dash: a creature, a hostile spell (cut
 //   out of the air), a hazard (lava, fire, acid, web). A slash bounces
 //   once; with `dive` it's a plunge: point down, falling at least `dive`
-//   cells/s, live until it lands (bouncing off all it meets on the way),
-//   and a landing slams what's within `slam` cells.
+//   cells/s, live till it lands, bounces off something, or has fallen 140
+//   cells (then it's over), and a landing slams what's within `slam` cells.
 //   None: the first move, turned down.
 (
     combo_gap: 0.35,
