@@ -559,6 +559,10 @@ fn blasted(mut commands: Commands, mut blasts: MessageReader<crate::fx::Explosio
             let dir = (d.normalize_or(Vec2::Y) + Vec2::new(0.0, 0.6)).normalize();
             let k = &mut *k;
             let knock = dir * b.power * 4.5 * (0.4 + 0.6 * f);
+            // (A creature takes a share of it, less the heavier it is, and no
+            // more than so much (a blast throws harder than a blade); the
+            // player all of it.)
+            let knock = if is_player { knock } else { (knock * crate::combat::KNOCK_TAKEN / sturdy.map_or(1.0, |s| s.heft).max(1.0)).clamp_length_max(crate::combat::KNOCK_MOST * 1.5) };
             k.loco.knock(&mut k.body, knock, 0.35);
             // (Thrown spinning: `tumble`; not the player.)
             if !is_player {

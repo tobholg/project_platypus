@@ -27,8 +27,11 @@ use crate::world::{SimWorld, TICK_HZ};
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 const SUBSTEPS: usize = 3;
 const ITERATIONS: usize = 4;
-/// Velocity kept a substep in the air (a little air drag), and in contact.
-const AIR: f32 = 0.999;
+/// Velocity kept a substep in the air (a little air drag), and in contact;
+/// the fastest a piece goes (cells/s: a body thrown hard flies, it doesn't
+/// cross the map).
+const AIR: f32 = 0.997;
+const FASTEST: f32 = 220.0;
 const GRIP: f32 = 0.55;
 /// Turning kept a substep (joints wobble, then settle).
 const SPIN_KEPT: f32 = 0.985;
@@ -43,6 +46,10 @@ const BEND_HEAD: f32 = 0.9;
 const BEND_ARM: f32 = 2.6;
 const BEND_LEGS: f32 = 1.3;
 const BEND_OTHER: f32 = 1.6;
+/// What a ragdoll takes of a push on its body (a blast: `corpses::batter`),
+/// and the most (cells/s).
+const THROWN_SHARE: f32 = 0.35;
+const THROWN_MOST: f32 = 260.0;
 /// Dead, it goes limp: the torso tips back (cells a second, away from where
 /// it faced), each limb a twist of its own (radians a second, either way),
 /// or a body balanced on its legs would stand.
@@ -571,7 +578,7 @@ impl Limp {
         let h = DT / SUBSTEPS as f32;
         for _ in 0..SUBSTEPS {
             for p in &mut self.pieces {
-                let v = (p.pos - p.prev) * AIR;
+                let v = ((p.pos - p.prev) * AIR).clamp_length_max(FASTEST * h);
                 let w = (p.angle - p.prev_angle) * SPIN_KEPT;
                 p.prev = p.pos;
                 p.prev_angle = p.angle;
@@ -723,7 +730,9 @@ pub fn step_all(sim: Res<SimWorld>, mut q: Query<(&mut Limp, &mut Kinematics)>) 
     let grid = WorldGrid(&sim.world);
     for (mut limp, mut k) in &mut q {
         if k.body.vel != Vec2::ZERO {
-            let v = k.body.vel;
+            // (A share of what threw its body, and no more than so much: a
+            // bomb's blast tumbles bodies about, not across the map.)
+            let v = (k.body.vel * THROWN_SHARE).clamp_length_max(THROWN_MOST);
             limp.throw(v);
             k.body.vel = Vec2::ZERO;
         }

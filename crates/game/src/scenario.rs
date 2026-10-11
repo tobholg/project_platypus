@@ -310,6 +310,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, limp_script)
             .add_systems(Update, sever_script)
             .add_systems(Update, skull_script)
+            .add_systems(Update, knock_script)
             .add_systems(Update, pickups_script)
             .add_systems(PreUpdate, filter_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, cursor_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -9240,6 +9241,64 @@ fn pickups_script(
             let copper = items.id("block:copper_ore").map_or(0, |i| inv.count(i));
             info!("pickups: copper ore in the pack {} cells ({} blocks), gold {}", copper, copper / BLOCK_CELLS, gold.0);
             *state = 4;
+        }
+        _ => {}
+    }
+}
+
+/// `knock` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): how far a blow
+/// throws a creature (`PLATYPUS_KIND`, a skeleton): at 2 s a longsword's
+/// cleave (24 slash, 375 knock, a little up), at 4 s another; logs how far
+/// it went from where it stood each time, and how high.
+fn knock_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, Vec2, f32, f32)>,
+) {
+    if s.name != "knock" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let kind = std::env::var("PLATYPUS_KIND").unwrap_or_else(|_| "skeleton".into());
+    let it = them.iter().find(|t| t.1.kind == kind);
+    match state.0 {
+        0 if s.elapsed > 0.5 => {
+            for (e, c, _) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            k.body.pos = Vec2::new(860.0, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(900.0, fl), |e| {
+                e.remove::<crate::creatures::brain::hunter::Hunter>();
+            });
+            state.0 = 1;
+        }
+        1 | 3 if s.elapsed > if state.0 == 1 { 2.0 } else { 4.0 } => {
+            if let Some((e, _, tk)) = it {
+                let push = Vec2::new(1.0, 0.45).normalize() * 375.0;
+                hits.write(crate::combat::Hit { target: e, damage: 24.0, harm: crate::creatures::Harm::Slash, knock: push, stun: 0.3, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+                state.1 = tk.body.pos;
+                state.2 = 0.0;
+                state.3 = 0.0;
+            }
+            state.0 += 1;
+        }
+        2 | 4 => {
+            if let Some((_, _, tk)) = it {
+                state.2 = state.2.max((tk.body.pos.x - state.1.x).abs());
+                state.3 = state.3.max(tk.body.pos.y - state.1.y);
+            }
+            if s.elapsed > if state.0 == 2 { 3.8 } else { 5.8 } {
+                info!("knock: the {kind} went {:.0} cells, {:.0} up", state.2, state.3);
+                state.0 += 1;
+            }
         }
         _ => {}
     }

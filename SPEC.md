@@ -2093,6 +2093,15 @@ DESIGN §13 item 6.
   chipped by a sword (up again without a sword), killed a third time, a
   hammer on the heap (dead, a body); with `PLATYPUS_RISE_MELEE=1` the
   player fights it with a longsword instead.
+- **Knockback on creatures** (`combat::KNOCK_TAKEN`): a creature (not the
+  player) takes 0.55 of a blow's knockback, at most 240 cells/s; killing
+  blows throw from that. A longsword's cleave (375) shoves a skeleton 22
+  cells back (it was 78), an orc 14 (55), a raptor 38 (130); the troll
+  (heft 4) not at all. A blast's the same, divided by its heft too, at most
+  360 (the player still takes all of either). Ragdolls take 0.35 of a push
+  on their body (at most 260) and no piece goes faster than 220 cells/s:
+  a bomb tumbles bodies about, it doesn't throw them across the map. The
+  `knock` scenario measures it (`PLATYPUS_KIND`).
 - **Ragdolls** (`creatures::body::ragdoll`, `wounds` stage 1): a body is
   its parts, pinned at their joints, each colliding with the cells. A
   humanoid's are cut from its own art as it fell: each layer of the pose it

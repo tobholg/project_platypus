@@ -1194,6 +1194,12 @@ fn slam(
 /// A killing blow's knock, times the blow's own (over the body's heft,
 /// poise or not), and the lift it adds (cells/s, a share of the knock's
 /// besides; over heft too). Tuned down: dead trolls sailed off.
+/// The share of a blow's knockback a creature (not the player) takes, and
+/// the most it takes (cells/s): a longsword's 375 throws a skeleton about
+/// 21 cells (it was 78), an orc 13 (55), a raptor 37 (130). Killing blows
+/// throw from that too.
+pub(crate) const KNOCK_TAKEN: f32 = 0.55;
+pub(crate) const KNOCK_MOST: f32 = 240.0;
 const DEATH_KNOCK: f32 = 1.25;
 const DEATH_LIFT: f32 = 45.0;
 
@@ -1245,7 +1251,10 @@ fn apply_hits(
         let dealt = health.harm(damage, h.harm);
         let reaction = crate::creatures::body::hurt::reaction(damage, dealt);
         felt.write(Felt { target: h.target, meant: damage, dealt, share: dealt / health.max.max(1.0), harm: h.harm, at: h.at, dir: h.dir, weight: h.weight, crit: h.crit });
-        let (mut knock, mut stun) = (h.knock, h.stun);
+        // (A creature takes a share of a blow's push, and no more than so
+        // much: a longsword's cleave shoves a skeleton back a few steps, not
+        // across the cave. The player takes it all.)
+        let (mut knock, mut stun) = (if player { h.knock } else { (h.knock * KNOCK_TAKEN).clamp_length_max(KNOCK_MOST) }, h.stun);
         // (A killing blow throws the body: no shrugging it off, harder, a
         // little up; it dies next tick, flying.)
         let lethal = health.hp <= 0.0 && !player;
@@ -1268,7 +1277,7 @@ fn apply_hits(
             }
         }
         if lethal {
-            knock = (h.knock * DEATH_KNOCK + Vec2::Y * (DEATH_LIFT + h.knock.length() * 0.12)) / heft.max(1.0);
+            knock = (knock * DEATH_KNOCK + Vec2::Y * (DEATH_LIFT + knock.length() * 0.12)) / heft.max(1.0);
             stun = stun.max(0.5);
         }
         let k = &mut *k;
