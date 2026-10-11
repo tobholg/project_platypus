@@ -4,7 +4,13 @@ Each phase ends with something playable or measurable. See SPEC.md for the desig
 
 **Next:** the bestiary arc (BE, DESIGN §14, agreed 2026-10-01): `creatures`,
 the 1.5× rescale (`scale`), `moves` and `bestiary` done 2026-10-01,
-`navigation` 2026-10-02; next branch `limbs`; then the world editor and sites (WE); then progression.
+`navigation` 2026-10-02, `limbs` and `behaviour` 2026-10-09, `caves`
+2026-10-10 (all on main). Detours since, unmerged: `optics` (light-bending
+crystals, steps 1–2 of 4) and `polish` on top of it (pickup lines and
+filters, the game's cursor, skeletons that rise). Agreed order from here
+(2026-10-11): `wounds` (the full body system), the liquid slimes (pulled
+forward from `roster`), then `creature-editor`, `powder`, the rest of
+`roster`, `bosses`; then the world editor and sites (WE); then progression.
 
 ## Status (2026-09-25)
 
