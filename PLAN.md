@@ -423,14 +423,25 @@ Done when: a new creature is sketched, sliced, rigged, given two moves and
 fought, without leaving the game; the model makes one the same way from
 scripts and renders it.
 
-**8. `wounds`: wounds you can see, limbs that break.**
-1. Depth by kind (skin, flesh, bone; ichor; stone; ectoplasm); each damage
-   type's mark; blood from the wound along the hit.
-2. Parts and limbs with their own health; severing (the piece falls, the
-   stump bleeds); the consequences (gait, climbing, lost attacks); bodies
-   keep their wounds.
+**8. `wounds`: wounds you can see, limbs that break.** (Widened 2026-10-11
+to the full body system: stages in order, each shown before the next.)
+1. Ragdolls: a body is its parts (a humanoid's head, torso, arms, legs, as
+   drawn and dressed; a walker's body and legs, thigh and shin; a tail's
+   segments), pinned at their joints, each colliding with the cells: they
+   flop, drape over ledges, lie along slopes, are thrown by blasts.
+2. Severing: parts with their own health; a heavy blow on one cuts it off
+   (the piece flies and lies as its own ragdoll, the stump and the piece
+   bleed real blood: ash, acid, oil and sparks for the mech); what it costs
+   the living (an arm: its weapon; a leg: a limp, then a crawl; legs off a
+   wall-walker: it falls; the head: dead, but a skeleton fights on blind
+   until its skull is crushed).
+3. Marks: depth by kind (skin, flesh, bone; ichor; stone; ectoplasm), each
+   damage type's mark on the body (cuts, holes, cracks, char, melt), blood
+   from the wound along the hit; bodies keep their wounds.
+4. Gibs: a blast breaks a body into pixel chunks that fly, bounce and pile.
 Done when: shooting a spider's legs off on a ceiling drops it, bleeding
-acid; a zombie loses an arm and a leg and crawls on; each damage type
+acid; a zombie (until zombies come: an orc) loses an arm and a leg and
+crawls on; bodies flop and drape as ragdolls; each damage type
 leaves its own mark; a fight with a dozen wounded creatures stays in
 budget.
 
