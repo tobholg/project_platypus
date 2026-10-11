@@ -22,7 +22,9 @@
     // (Bones don't burn: the undead's weakness to fire is dead flesh's.)
     profile: {fire: 0.75},
     cant: [burn],
-    rises: Some((after: 5.0, health: 0.5, breaks: [blunt], anchor: true)),
+    rises: Some((after: 5.0, health: 0.5, breaks: [blunt], anchor: true, remains: Rubble, glow: (90, 255, 190))),
+    // (Its head off, it fights on blind: it hears.)
+    headless: Blind,
     blood: "ash",
     fall_damage: (safe_height: 180, per_cell: 0.3),
     movement: (

@@ -101,7 +101,7 @@ fn limp_of(d: &Died, items: &Items) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look
     let centre = d.body.pos + offset.truncate();
     // Bones (what rises, and what's broken for good) fall apart: rubble
     // (with its legs, if they're drawn apart from its art: `legs::rig`).
-    if d.def.rises.is_some() {
+    if d.def.rises.as_ref().is_some_and(|r| r.remains == crate::creatures::body::rise::Remains::Rubble) {
         let (mut limp, mut looks) = ragdoll::rubble(&cuts, d.def.sprite.frame, centre, d.facing, d.body.vel);
         if let Some(legs) = d.def.legs.as_ref() {
             ragdoll::loose_limbs(&mut limp, &mut looks, &d.limbs, limb_drawer(legs), d.body.vel);

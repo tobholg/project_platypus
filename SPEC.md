@@ -2055,6 +2055,12 @@ DESIGN §13 item 6.
   without what it's lost (its look's layers stripped, the arm's aim fan
   with it); its body and rubble leave it out. The `sever` scenario
   (`PLATYPUS_SEVER=spider|skeleton`).
+- **What rises is data** (a creature file's `rises` and `headless`):
+  `remains` (`Rubble`: bones that come apart, a skeleton; `Body`: its
+  ragdoll, whole, gets up, every piece's pixels flying back into place),
+  `glow` (the waking light, its wisps, the glow on what flies together),
+  what it bleeds drawn back in as it wakes (a skeleton's ash), `breaks`,
+  `anchor`; `headless: Dies | Blind`.
 - **The skull** (`rise`, a `rises`' `breaks` and `anchor`): only what
   breaks its bones (a skeleton's: blunt) hurts a heap or a loose skull; a
   blade never kills a skeleton for good. A creature that rises is one

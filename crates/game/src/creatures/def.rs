@@ -90,6 +90,9 @@ pub struct CreatureDef {
     /// (`body/rise.rs`: a skeleton).
     #[serde(default)]
     pub rises: Option<super::body::rise::RiseDef>,
+    /// Its head cut off (`wounds`): it dies, or fights on blind (bones).
+    #[serde(default)]
+    pub headless: super::body::wounds::Headless,
     /// Its kind and its changes, put together (at load).
     #[serde(skip)]
     pub nature: crate::creatures::nature::Nature,

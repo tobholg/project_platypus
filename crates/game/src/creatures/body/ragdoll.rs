@@ -262,7 +262,9 @@ pub fn assemble(cuts: &[Cut], frame: (u32, u32), centre: Vec2, facing: f32, vel:
         let (slump, twist) = if i == root { (Vec2::new(-facing * SLUMP_BACK, 0.0), -facing * SLUMP_TWIST * 0.4) } else { (Vec2::ZERO, unit * SLUMP_TWIST) };
         let v = (vel + slump + Vec2::new(-r.y, r.x) * omega) * DT / SUBSTEPS as f32;
         let w = (omega + twist) * DT / SUBSTEPS as f32;
-        pieces.push(Piece { pos, prev: pos - v, angle: 0.0, prev_angle: -w, tick_pos: pos, tick_angle: 0.0, inv_mass: 1.0 / mass, inv_inertia: 1.0 / inertia, samples, draw_offset: local(c.centre - c.com), name: c.name.clone(), pixels: Vec::new() });
+        // (Its pixels kept: a body that gets up flies back together, `rise`.)
+        let pixels = c.pixels_local(facing);
+        pieces.push(Piece { pos, prev: pos - v, angle: 0.0, prev_angle: -w, tick_pos: pos, tick_angle: 0.0, inv_mass: 1.0 / mass, inv_inertia: 1.0 / inertia, samples, draw_offset: local(c.centre - c.com), name: c.name.clone(), pixels });
     }
     // Each piece pinned to the torso where it touches it.
     let mut joints = Vec::new();

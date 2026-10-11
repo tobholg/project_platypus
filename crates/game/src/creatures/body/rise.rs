@@ -56,9 +56,10 @@ const RETRY: f32 = 0.5;
 const STUCK_MOST: f32 = 3.0;
 const ROOM_UP: i32 = 8;
 const ROOM_ASIDE: [f32; 9] = [0.0, 3.0, -3.0, 6.0, -6.0, 10.0, -10.0, 15.0, -15.0];
-/// The light in the bones (cold, sickly), at its brightest.
-const LIGHT: [f32; 3] = [0.35, 1.0, 0.75];
+/// The waking light (`RiseDef::glow`) at its brightest, of its colour; the
+/// light when there's none to go by.
 const LIGHT_MOST: f32 = 1.6;
+const LIGHT: [f32; 3] = [0.35, 1.0, 0.75];
 /// A body's darkening (as `corpses` darkens one).
 const DIM: f32 = 0.72;
 /// Ash drawn back in: cells a tick at most, from this far.
@@ -85,6 +86,34 @@ pub struct RiseDef {
     /// out of reach); broken (only by `breaks`), it never gets up again.
     #[serde(default)]
     pub anchor: bool,
+    /// What it leaves as it falls: rubble (bones that come apart: a
+    /// skeleton) or its body, whole (that gets up again: a zombie).
+    #[serde(default)]
+    pub remains: Remains,
+    /// The light that grows in it as it wakes (and in its wisps, and the
+    /// glow on what flies back together).
+    #[serde(default = "glow")]
+    pub glow: (u8, u8, u8),
+}
+
+/// What one that rises leaves as it falls (`RiseDef::remains`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+pub enum Remains {
+    #[default]
+    Rubble,
+    Body,
+}
+
+fn glow() -> (u8, u8, u8) {
+    (90, 255, 190)
+}
+
+impl RiseDef {
+    /// Its waking light, as light (0..1 a channel).
+    pub fn light(&self) -> [f32; 3] {
+        let (r, g, b) = self.glow;
+        [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]
+    }
 }
 
 #[derive(Component, Clone)]
@@ -135,6 +164,8 @@ pub struct Assembling {
     /// from its middle.
     pixels: Vec<(Vec2, Vec2, [f32; 4])>,
     eyes: [f32; 3],
+    /// Its waking light (the glow on what flies together).
+    light: [f32; 3],
     /// Where its heap's bones lay (the world), to fly from.
     from: Vec<Vec2>,
 }
@@ -239,14 +270,16 @@ fn bone_burst() -> Emitter {
     Emitter { count: 26.0, life: (0.25, 0.6), colors: vec![(232, 226, 205), (190, 182, 160), (140, 134, 120)], speed: 110.0, spread: 1.4, gravity: 300.0, drag: 0.5, size: 1.0, jitter: 0.3, glow: false }
 }
 
-/// A wisp rising off waking bones.
-fn wisp() -> Emitter {
-    Emitter { count: 1.0, life: (0.4, 0.9), colors: vec![(120, 255, 200), (70, 200, 170)], speed: 22.0, spread: 0.5, gravity: -20.0, drag: 0.6, size: 1.0, jitter: 0.4, glow: true }
+/// A wisp rising off what's waking, in its light.
+fn wisp(light: [f32; 3]) -> Emitter {
+    let c = |k: f32| ((light[0] * 255.0 * k) as u8, (light[1] * 255.0 * k) as u8, (light[2] * 255.0 * k) as u8);
+    Emitter { count: 1.0, life: (0.4, 0.9), colors: vec![c(1.0), c(0.75)], speed: 22.0, spread: 0.5, gravity: -20.0, drag: 0.6, size: 1.0, jitter: 0.4, glow: true }
 }
 
-/// A grain of ash drawn in.
-fn streak() -> Emitter {
-    Emitter { count: 1.0, life: (0.1, 0.2), colors: vec![(150, 145, 140), (120, 255, 200)], speed: 70.0, spread: 0.1, gravity: 0.0, drag: 0.0, size: 1.0, jitter: 0.0, glow: true }
+/// A grain of what it bled drawn in, in its light.
+fn streak(light: [f32; 3]) -> Emitter {
+    let c = ((light[0] * 255.0) as u8, (light[1] * 255.0) as u8, (light[2] * 255.0) as u8);
+    Emitter { count: 1.0, life: (0.1, 0.2), colors: vec![(150, 145, 140), c], speed: 70.0, spread: 0.1, gravity: 0.0, drag: 0.0, size: 1.0, jitter: 0.0, glow: true }
 }
 
 type Waking<'a> = (Entity, &'a mut Pile, &'a Kinematics, &'a Corpse, Option<&'a mut crate::light::LightSource>, Option<&'a super::ragdoll::Limp>);
@@ -314,7 +347,7 @@ pub fn seek(
             // Put back on.
             commands.entity(s).despawn();
             let kept: Vec<super::parts::Limb> = severed.map(|sv| sv.0.iter().copied().filter(|l| *l != super::parts::Limb::Head).collect()).unwrap_or_default();
-            let eyes = anim.def.eyes.map_or(LIGHT, |(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]);
+            let eyes = anim.def.eyes.map(|(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]).or_else(|| anim.def.rises.as_ref().map(|r| r.light())).unwrap_or(LIGHT);
             commands.entity(e).remove::<(Seeking, super::wounds::Blind)>().insert((super::parts::Severed(kept), EyesFlash(1.0), crate::light::LightSource { color: eyes.map(|c| c * EYES_FLASH), flicker: 0.0 }));
             sounds.write(crate::sound::PlaySound::at("clank", k.body.pos).pitch(0.7));
             continue;
@@ -344,7 +377,7 @@ pub fn stand(
         let pos = k.body.pos;
         if pile.left < GLOW {
             let glow = (1.0 - pile.left.max(0.0) / GLOW).powf(1.5);
-            let color = LIGHT.map(|c| c * LIGHT_MOST * glow);
+            let color = pile.rise.light().map(|c| c * LIGHT_MOST * glow);
             match light {
                 Some(mut l) => l.color = color,
                 None => {
@@ -353,9 +386,10 @@ pub fn stand(
             }
             if sim.world.tick().is_multiple_of(3) {
                 let at = pos + Vec2::new((sim.world.tick() % 7) as f32 - 3.0, 0.0);
-                sparks.emit(&wisp(), 1, at, Vec2::Y, Vec2::ZERO);
+                sparks.emit(&wisp(pile.rise.light()), 1, at, Vec2::Y, Vec2::ZERO);
             }
-            draw_in_ash(&mut sim, &mut sparks, pos);
+            let blood = sim.world.materials().id(&pile.def.blood);
+            draw_in(&mut sim, &mut sparks, pos, blood, pile.rise.light());
         }
         if pile.left > 0.0 {
             continue;
@@ -416,7 +450,8 @@ pub fn stand(
             .filter(|_| !(armless && missing.contains(&super::parts::Limb::Arm(1))));
         let (share, facing) = (pile.rise.health, pile.facing);
         let (lineage, seek) = (pile.lineage, headless && skull_far);
-        let eyes = pile.def.eyes.map_or(LIGHT, |(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]);
+        let light = pile.rise.light();
+        let eyes = pile.def.eyes.map_or(light, |(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]);
         // (Its bones fly up from where they lie.)
         let from: Vec<Vec2> = from.into_iter().map(|(p, _)| p).collect();
         crate::creatures::def::spawn_creature(&mut commands, &pile.kind, feet, move |c| {
@@ -436,8 +471,8 @@ pub fn stand(
             if let Some(mut k) = c.get_mut::<Kinematics>() {
                 k.loco.facing = facing;
             }
-            let glow = crate::light::LightSource { color: LIGHT.map(|c| c * LIGHT_MOST), flicker: 0.0 };
-            c.insert((eq, crate::combat::Wielding(wielding), Outfitted, Assembling { t: 0.0, pixels: Vec::new(), eyes, from }, Dormant, Visibility::Hidden, glow));
+            let glow = crate::light::LightSource { color: light.map(|c| c * LIGHT_MOST), flicker: 0.0 };
+            c.insert((eq, crate::combat::Wielding(wielding), Outfitted, Assembling { t: 0.0, pixels: Vec::new(), eyes, light, from }, Dormant, Visibility::Hidden, glow));
         });
         commands.entity(e).despawn();
     }
@@ -481,9 +516,10 @@ fn room_to_stand(sim: &SimWorld, at: Vec2, (w, h): (f32, f32)) -> Option<Vec2> {
     None
 }
 
-/// Ash near a waking heap drifts back into it, a grain or two a tick.
-fn draw_in_ash(sim: &mut SimWorld, sparks: &mut crate::vfx::Sparks, at: Vec2) {
-    let Some(ash) = sim.world.materials().id("ash") else { return };
+/// What it bled (a skeleton's ash) near a waking heap drifts back into it,
+/// a grain or two a tick.
+fn draw_in(sim: &mut SimWorld, sparks: &mut crate::vfx::Sparks, at: Vec2, blood: Option<platypus_sim::MaterialId>, light: [f32; 3]) {
+    let Some(ash) = blood else { return };
     let c = CellPos::from_world(at.x, at.y);
     let turn = sim.world.tick() as f32 * 0.37;
     let mut taken = 0;
@@ -494,7 +530,7 @@ fn draw_in_ash(sim: &mut SimWorld, sparks: &mut crate::vfx::Sparks, at: Vec2) {
             if sim.world.get(p).is_some_and(|cell| cell.material == ash) {
                 sim.world.set(p, platypus_sim::Cell::AIR);
                 let from = Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5);
-                sparks.emit(&streak(), 1, from, at - from, Vec2::ZERO);
+                sparks.emit(&streak(light), 1, from, at - from, Vec2::ZERO);
                 taken += 1;
                 if taken >= ASH_PER_TICK {
                     break 'look;
@@ -540,7 +576,8 @@ pub fn assemble(
             let swirl = Vec2::new(side * SWIRL * hump * (1.0 - ease), ARC * hump);
             // (Still in the heap: dimmer; landing: lit by the glow.)
             let glow = (hump * 0.6).min(1.0);
-            let c = [rgba[0] + (LIGHT[0] - rgba[0]) * glow * 0.5, rgba[1] + (LIGHT[1] - rgba[1]) * glow * 0.5, rgba[2] + (LIGHT[2] - rgba[2]) * glow * 0.5, rgba[3]];
+            let l = a.light;
+            let c = [rgba[0] + (l[0] - rgba[0]) * glow * 0.5, rgba[1] + (l[1] - rgba[1]) * glow * 0.5, rgba[2] + (l[2] - rgba[2]) * glow * 0.5, rgba[3]];
             sparks.draw_now(k.body.pos + from.lerp(to, ease) + swirl, 1.0, c);
         }
         if a.t < ASSEMBLE {
@@ -548,7 +585,7 @@ pub fn assemble(
         }
         let eyes = a.eyes;
         commands.entity(e).remove::<(Assembling, Dormant)>().insert((Visibility::Inherited, EyesFlash(1.0), crate::light::LightSource { color: eyes.map(|c| c * EYES_FLASH), flicker: 0.0 }));
-        let mut burst = wisp();
+        let mut burst = wisp(a.light);
         burst.colors = vec![((eyes[0] * 255.0) as u8, (eyes[1] * 255.0) as u8, (eyes[2] * 255.0) as u8)];
         burst.speed = 60.0;
         burst.spread = 3.2;
@@ -640,7 +677,8 @@ pub fn tint_waking(piles: Query<(&Pile, &Children)>, mut sprites: Query<&mut Spr
         let t = k * (0.6 + 0.4 * pulse);
         for &c in children {
             if let Ok(mut s) = sprites.get_mut(c) {
-                s.color = Color::srgb(DIM + (LIGHT[0] - DIM) * t, DIM + (LIGHT[1] - DIM) * t, DIM + (LIGHT[2] - DIM) * t);
+                let l = pile.rise.light();
+                s.color = Color::srgb(DIM + (l[0] - DIM) * t, DIM + (l[1] - DIM) * t, DIM + (l[2] - DIM) * t);
             }
         }
     }

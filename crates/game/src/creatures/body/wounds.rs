@@ -170,6 +170,15 @@ pub fn wound(mut commands: Commands, mut felt: MessageReader<crate::combat::Felt
     }
 }
 
+/// What losing its head does (a creature file's `headless`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+pub enum Headless {
+    #[default]
+    Dies,
+    /// It fights on blind (it hears): bones.
+    Blind,
+}
+
 /// Lost its head and lives on (bones): it sees nothing (it hears).
 #[derive(Component)]
 pub struct Blind;
@@ -247,7 +256,6 @@ pub fn sever(
             if let Some(r) = rises {
                 bone = Some((super::rise::Bone { lineage: crate::creatures::lineage_of(Some((lineage, stable))), limb: c.limb }, (r.0.anchor && c.limb == Limb::Head).then(|| r.0.breaks.clone())));
             }
-            let rises = rises.is_some();
             match c.limb {
                 // Its weapon hand: what it held falls; it fights with what
                 // it has left (the other fist, or nothing).
@@ -267,7 +275,7 @@ pub fn sever(
                     }
                 }
                 // Its head: dead; bones fight on blind.
-                Limb::Head if rises => {
+                Limb::Head if anim.def.headless == Headless::Blind => {
                     commands.entity(c.target).insert(Blind);
                 }
                 Limb::Head => health.hp = health.hp.min(0.0),
