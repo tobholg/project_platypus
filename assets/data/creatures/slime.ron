@@ -1,5 +1,8 @@
-// A cave slime: hops at you, one hop at a time; soft, but it sticks to you
-// when it lands (touch). Full of slime.
+// A green slime: a core (a dark nucleus with eyes) holding a body of real
+// goo, cells of the world round it (`goo`: body/goo.rs). It hops at you;
+// its goo clings and clogs (slimy) and catches fire. Hurt, it lets go of
+// goo it can no longer hold (it runs and pools); burnt or eaten, the goo's
+// gone, and so is its health; dead, it all spills.
 (
     name: "Slime",
     // What it may have on it when it dies (loot.ron), besides what it wears.
@@ -9,8 +12,10 @@
     team: Enemy,
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "ooze",
-    blood: "slime",
-    art: "slime",
+    // (Its goo is its blood: hurt, it flings goo off; dead, it spills.)
+    blood: "",
+    art: "green_slime",
+    goo: Some((material: "green_goo", cells: 260)),
     movement: (
         run_speed: 83,
         air_accel: 600,

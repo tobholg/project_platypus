@@ -21,6 +21,7 @@
 // damage:      damage per second, all of it on (less as it wears off)
 // sticks:      only a washing fluid pushes it off (other fluids don't)
 // washes:      pushes even a sticky coating off
+// slow:        how much of your speed it takes, all of it on
 {
     "wet":    (label: "Wet",    secs: 6,  color: (80, 150, 235), fireproof: true, heat_resist: 0.5, washes: true),
     "oily":   (label: "Oily",   secs: 12, color: (120, 90, 40),  burn: 2.5, catches: true),
@@ -30,4 +31,7 @@
     "acid":   (label: "Acid",   secs: 8,  color: (130, 235, 50), damage: 6, soak: 5),
     // A spider's sting (and a fang's bite): it burns in; wash it off.
     "venom":  (label: "Venom",  secs: 7,  color: (150, 60, 200), damage: 7, harm: poison, sticks: true),
+    // A slime's goo: it clings and clogs (slower, the more of you it's on),
+    // and green goo catches fire.
+    "slimy":  (label: "Slimy",  secs: 6,  color: (110, 210, 90), slow: 0.55, sticks: true, burn: 1.5),
 }

@@ -1,0 +1,55 @@
+// A green slime's core: a dark nucleus with two eyes and a mouth, drawn in
+// the middle of its goo (its goo is cells of the world round it: the
+// creature's `goo`, body/goo.rs). It squats and stretches as it hops.
+(
+    size: (18, 14),
+    feet: (9, 14),
+    outline: (18, 52, 22),
+    palette: {
+        'n': (44, 110, 48),   // its nucleus
+        'N': (30, 82, 34),    // its nucleus, shaded
+        'k': (10, 28, 12),    // eyes
+        'w': (214, 250, 204), // the shine in the eyes
+        'm': (20, 54, 24),    // mouth
+    },
+    frames: {
+        "squat": [
+            "..................",
+            "..................",
+            "..................",
+            "..................",
+            "..................",
+            "......nnnnnn......",
+            ".....nnnnnnnn.....",
+            "....nnkwnnkwnn....",
+            "....nnknnnknnn....",
+            "....nnnnnnnnnn....",
+            ".....nnnmmnnn.....",
+            "......NNNNNN......",
+            "..................",
+            "..................",
+        ],
+        "tall": [
+            "..................",
+            "..................",
+            "..................",
+            ".......nnnn.......",
+            "......nnnnnn......",
+            ".....nnkwnkwn.....",
+            ".....nnknnknn.....",
+            ".....nnnnnnnn.....",
+            "......nnmmnn......",
+            "......nnnnnn......",
+            ".......NNNN.......",
+            "..................",
+            "..................",
+            "..................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["squat", "squat", "squat", "tall"], fps: 3),
+        "run": (frames: ["squat"], fps: 4),
+        "jump": (frames: ["tall"], fps: 5),
+        "fall": (frames: ["squat"], fps: 5),
+    },
+)

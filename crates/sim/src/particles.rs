@@ -323,7 +323,9 @@ fn settle(p: &Particle, here: CellPos, world: &mut impl ParticleWorld) {
             return;
         }
     }
-    let liquid = |c: Cell| world.mats().phys(c.material).kind == Kind::Liquid;
+    // (Something living's goo is held: nothing lands in it, nothing's
+    // pushed out of it.)
+    let liquid = |c: Cell| world.mats().phys(c.material).kind == Kind::Liquid && c.flags & flags::HELD == 0;
     let Some(displaced) = world.get(here).filter(|&c| liquid(c)) else { return };
     // The top of this column of liquid, or of one beside it (a whole splash
     // lands in one cell; one column fills up to a ceiling).

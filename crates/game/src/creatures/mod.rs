@@ -69,6 +69,8 @@ impl Plugin for CreaturesPlugin {
             .add_systems(Update, body::tumble::spin.before(body::animation::animate))
             .add_systems(FixedUpdate, voices.in_set(TickSet::Bodies))
             .add_systems(FixedUpdate, spurts.after(brain::BrainSet).before(move_creatures))
+            // A slime holds its goo round it.
+            .add_systems(FixedUpdate, body::goo::hold.after(move_creatures).before(deaths).in_set(TickSet::Bodies))
             // The dead come up out of the ground, and burn in the sun.
             .add_systems(FixedUpdate, (body::emerge::emerge, body::emerge::sunburn.before(body::elements::expose)).in_set(TickSet::Bodies))
             .add_systems(Update, body::emerge::draw)
@@ -457,7 +459,7 @@ pub use platypus_nav::world::{WorldGrid, backed};
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 
 /// One movement code path for every creature.
-type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, Option<&'a body::elements::Chilled>, Option<&'a mut FallTrack>, Has<WebWalker>, Option<&'a crate::gear::hook::Rope>, Has<player::LocalPlayer>, Option<&'a mut StepEase>, Has<body::hurt::Faltering>);
+type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, (Option<&'a body::elements::Chilled>, Option<&'a body::elements::Coated>), Option<&'a mut FallTrack>, Has<WebWalker>, Option<&'a crate::gear::hook::Rope>, Has<player::LocalPlayer>, Option<&'a mut StepEase>, Has<body::hurt::Faltering>);
 
 pub(crate) fn move_creatures(
     sim: Res<SimWorld>,
@@ -467,9 +469,10 @@ pub(crate) fn move_creatures(
     mut rockets: MessageWriter<Rocketed>,
     mut dashed: MessageWriter<crate::combat::Dashed>,
     tempo: Res<crate::tempo::Tempo>,
+    coatings: Res<body::elements::Coatings>,
 ) {
     let grid = WorldGrid(&sim.world);
-    for (entity, mut k, stats, controls, chilled, track, web_walker, rope, player, ease, faltering) in &mut q {
+    for (entity, mut k, stats, controls, (chilled, coated), track, web_walker, rope, player, ease, faltering) in &mut q {
         // Frozen until the ground under it is loaded.
         if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
             continue;
@@ -479,10 +482,12 @@ pub(crate) fn move_creatures(
         let slowed;
         // At the game's tempo (`tempo.rs`).
         let paced = tempo.apply(&stats.0, player);
-        // Chilled, wading through something sticky (cobweb), or hurt badly
+        // Chilled, wading through something sticky (cobweb), coated in
+        // something that clogs (a slime's goo), or hurt badly
         // (`hurt::Faltering`): slowed.
         let webbed = !web_walker && stuck_in(&sim.world, &k.body);
-        let speed = chilled.map_or(1.0, |c| c.speed()).min(if webbed { STUCK_SPEED } else { 1.0 }).min(if faltering { body::hurt::FALTER_SPEED } else { 1.0 });
+        let clogged = coated.map_or(1.0, |c| c.speed(&coatings.by_name));
+        let speed = chilled.map_or(1.0, |c| c.speed()).min(clogged).min(if webbed { STUCK_SPEED } else { 1.0 }).min(if faltering { body::hurt::FALTER_SPEED } else { 1.0 });
         let stats = if speed < 1.0 {
             slowed = paced.slowed(speed);
             &slowed

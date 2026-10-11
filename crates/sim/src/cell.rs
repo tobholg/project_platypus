@@ -31,6 +31,11 @@ pub mod flags {
     /// On fire: the cell keeps its material and place, glows, spreads fire,
     /// puts out flames and burns down over `MaterialDef::burn_time`.
     pub const BURNING: u8 = 1 << 6;
+    /// Held by something living (a slime's goo): it stays where it's put
+    /// (no falling, flowing or withering, and nothing pushes it aside),
+    /// burns, is eaten and dug as ever; what holds it puts it back each
+    /// tick (`creatures/body/goo.rs`). Bodies pass through it.
+    pub const HELD: u8 = 1 << 7;
 
     /// Liquids remember which way they were flowing, which stops left/right jitter.
     pub const FLOW_LEFT: u8 = 1 << 0;

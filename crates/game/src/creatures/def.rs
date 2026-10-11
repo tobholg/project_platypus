@@ -228,6 +228,10 @@ pub struct CreatureDef {
     /// zombie's spurt: suddenly fast, for a couple of seconds).
     #[serde(default)]
     pub spurt: Option<SpurtDef>,
+    /// Its body is goo, cells of the world held round it (a slime:
+    /// `body/goo.rs`).
+    #[serde(default)]
+    pub goo: Option<super::body::goo::GooDef>,
     /// It burns in the sun (by day under the open sky): the dead.
     #[serde(default)]
     pub sunburns: bool,
@@ -625,6 +629,9 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         }
         if let Some(r) = &def.regen {
             e.insert(crate::creatures::nature::Regenerates::new(r));
+        }
+        if def.goo.is_some() {
+            e.insert(super::body::goo::Goo::default());
         }
         if let Some(r) = &def.rises {
             e.insert(super::body::rise::Rises(r.clone()));

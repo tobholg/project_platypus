@@ -57,6 +57,19 @@ pub(crate) fn update_cell(h: &mut Hood, x: i32, y: i32, mut c: Cell) {
     if p.interacts && interact(h, x, y, c, &p) {
         return;
     }
+    // (Held by something living: it stays where it's put. Its `life` is
+    // how many ticks more it's held unless it's put back: what held it
+    // gone, it's let go, and runs.)
+    if c.flags & flags::HELD != 0 {
+        if c.life == 0 {
+            c.flags &= !flags::HELD;
+        } else {
+            c.life -= 1;
+        }
+        c.clock = h.clock;
+        h.set(x, y, c);
+        return;
+    }
     let kind = if p.kind == Kind::Static && c.flags & flags::LOOSE != 0 { Kind::Powder } else { p.kind };
     match kind {
         Kind::Powder => {
@@ -78,6 +91,8 @@ fn passable(h: &Hood, mover: &MatPhys, target: Option<Cell>) -> bool {
     match target {
         None => false,
         Some(t) if t.is_air() => true,
+        // (Held by something living: nothing pushes it aside.)
+        Some(t) if t.flags & flags::HELD != 0 => false,
         Some(t) => {
             let tp = h.mats.phys(t.material);
             // Plants are crushed by whatever falls or flows into them.

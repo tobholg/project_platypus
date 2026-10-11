@@ -972,7 +972,8 @@ impl World {
         let mats = self.materials.clone();
         let mut rng = self.rng_for(0xD15B, min);
         let speed = (vel[0] * vel[0] + vel[1] * vel[1]).sqrt();
-        let liquid = |c: Cell| !c.is_air() && mats.phys(c.material).kind == Kind::Liquid;
+        // (Not what's held by something living: a slime's goo stays.)
+        let liquid = |c: Cell| !c.is_air() && mats.phys(c.material).kind == Kind::Liquid && c.flags & crate::cell::flags::HELD == 0;
         let open = |c: Cell| c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas);
         // This tick's move in whole cells (a slow one now and then, by chance).
         let mut step = |v: f32| {

@@ -285,6 +285,10 @@
         // What spiders bleed, and slimes are full of (a slime glows a little).
         (name: "ichor",    kind: Liquid, density: 1040, dispersion: 5, viscosity: 110, above: (100, "steam"), colors: [(156, 172, 64), (128, 146, 46)]),
         (name: "slime",    kind: Liquid, density: 1100, dispersion: 2, viscosity: 220, above: (100, "steam"), glow: (6, 22, 8), opacity: 20, colors: [(96, 196, 96), (76, 170, 80), (110, 210, 110)]),
+        // A green slime's body: thick, clinging goo that clogs what it's on
+        // and catches fire; held, it's a slime (creatures/body/goo.rs), let
+        // go it runs and pools (collect it: torches).
+        (name: "green_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 250, flammability: 45, ignites_at: 240, burn_time: 60, burns_into: "smoke", burns_into_chance: 120, above: (110, "steam"), coats: "slimy", glow: (8, 30, 10), opacity: 25, colors: [(104, 204, 92), (84, 178, 78), (122, 220, 104), (94, 190, 86)]),
         (name: "lava",     kind: Liquid, density: 2500, dispersion: 3, hot: true, heat: 1200, heat_source: true, below: (950, "basalt"), conductivity: 60, glow: (255, 105, 30), viscosity: 200, colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
         // Eats anything up to stone-and-ore hard (not glass or gold), each cell
         // good for 6 bites; burns what it touches (corrosive, damage/s); carries

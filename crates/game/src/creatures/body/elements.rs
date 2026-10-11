@@ -100,6 +100,9 @@ pub struct Coating {
     /// the body in it.
     #[serde(default = "soak")]
     pub soak: f32,
+    /// How much of its speed it takes, all of it on (a slime's goo clogs).
+    #[serde(default)]
+    pub slow: f32,
 }
 
 fn soak() -> f32 {
@@ -262,6 +265,11 @@ impl Coated {
     /// How wet: the share covered in coatings that put fires out.
     pub fn wet(&self, rules: &HashMap<String, Coating>) -> f32 {
         self.sum(rules, |c| if c.fireproof { 1.0 } else { 0.0 })
+    }
+
+    /// The share of its speed it keeps, for what it's coated in (`slow`).
+    pub fn speed(&self, rules: &HashMap<String, Coating>) -> f32 {
+        (1.0 - self.sum(rules, |c| c.slow)).clamp(0.2, 1.0)
     }
 
     /// Too wet to burn.

@@ -42,6 +42,11 @@ impl Grid for WorldGrid<'_> {
 impl WorldGrid<'_> {
     #[inline]
     fn class(&self, c: platypus_sim::Cell) -> Occupancy {
+        // (What's held by something living, a slime's goo: bodies pass
+        // through it.)
+        if c.flags & platypus_sim::cell::flags::HELD != 0 {
+            return Occupancy::Empty;
+        }
         match self.0.materials().phys(c.material) {
             p if p.platform => Occupancy::Platform,
             p => match p.kind {

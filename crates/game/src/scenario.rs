@@ -311,6 +311,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, sever_script)
             .add_systems(Update, zombie_script)
             .add_systems(Update, night_script)
+            .add_systems(Update, slime_script)
             .add_systems(Update, skull_script)
             .add_systems(Update, knock_script)
             .add_systems(Update, marks_script)
@@ -9586,6 +9587,97 @@ fn sever_script(
             let _ = lost;
         }
     }
+}
+
+/// `slime` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a green slime
+/// hops at the player (who can't die). `PLATYPUS_SLIME`:
+///   look (default): struck now and then (2 s, 4 s, 6 s): it lets go of
+///     goo it can't hold.
+///   burn: a spark of fire on its goo at 3 s.
+///   kill: struck till it dies (from 2 s): its goo spills.
+/// Logs its health, the goo it holds and the goo loose near it.
+#[allow(clippy::type_complexity)]
+fn slime_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Option<&crate::creatures::body::goo::Goo>), Without<LocalPlayer>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, f32)>,
+) {
+    if s.name != "slime" {
+        return;
+    }
+    let mode = std::env::var("PLATYPUS_SLIME").unwrap_or_else(|_| "look".into());
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let t = s.elapsed;
+    let slime = them.iter().find(|x| x.1.kind == "slime");
+    if state.0 == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        crate::creatures::def::spawn_creature(&mut commands, "slime", Vec2::new(980.0, fl), |_| {});
+        info!("slime: one hops at the player ({mode})");
+        state.0 = 1;
+        state.1 = 2.0;
+        return;
+    }
+    let Some((e, _, sk, sh, goo)) = slime else {
+        if state.0 >= 1 && t >= state.2 {
+            state.2 = t + 0.5;
+            info!("slime: t {t:.1} gone; goo loose near: {}", loose(&sim, Vec2::new(950.0, fl), "green_goo"));
+        }
+        return;
+    };
+    let strike = |hits: &mut MessageWriter<crate::combat::Hit>, harm: crate::creatures::Harm, damage: f32| {
+        hits.write(crate::combat::Hit { target: e, damage, harm, knock: Vec2::new(40.0, 30.0), stun: 0.2, at: sk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+    };
+    match mode.as_str() {
+        "burn" if state.0 == 1 && t > 3.0 => {
+            // (Flames on its goo, as a torch's or burning grass's.)
+            if let Some(fire) = sim.materials().id("fire") {
+                sim.queue(WorldEdit::Paint { center: CellPos::from_world(sk.body.pos.x, sk.body.pos.y + 7.0), radius: 2, material: fire, overwrite: false });
+            }
+            info!("slime: t {t:.1} flames on its goo");
+            state.0 = 2;
+        }
+        "kill" if state.0 >= 1 && t > state.1 => {
+            strike(&mut hits, crate::creatures::Harm::Slash, 8.0);
+            state.1 = t + 0.7;
+        }
+        "look" if state.0 >= 1 && t > state.1 && state.1 <= 6.0 => {
+            strike(&mut hits, crate::creatures::Harm::Slash, 6.0);
+            info!("slime: t {t:.1} struck");
+            state.1 += 2.0;
+        }
+        _ => {}
+    }
+    if t >= state.2 {
+        state.2 = t + 0.5;
+        info!("slime: t {t:.1} hp {:.0}/{:.0}, holds {} goo, loose near {}, at x {:.0}", sh.hp, sh.max, goo.map_or(0, |g| g.held()), loose(&sim, sk.body.pos, "green_goo"), sk.body.pos.x);
+    }
+}
+
+/// Loose cells of a material (not held) near a point.
+fn loose(sim: &SimWorld, at: Vec2, name: &str) -> usize {
+    let Some(m) = sim.materials().id(name) else { return 0 };
+    let c = CellPos::from_world(at.x, at.y);
+    let mut n = 0;
+    for y in c.y - 40..c.y + 40 {
+        for x in c.x - 120..c.x + 120 {
+            if sim.world.get(CellPos::new(x, y)).is_some_and(|cell| cell.material == m && cell.flags & platypus_sim::cell::flags::HELD == 0) {
+                n += 1;
+            }
+        }
+    }
+    n
 }
 
 /// `night` (the world, with PLATYPUS_HOUR=22; PLATYPUS_LIFE_RATE to hurry
