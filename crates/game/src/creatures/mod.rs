@@ -459,7 +459,7 @@ pub use platypus_nav::world::{WorldGrid, backed};
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 
 /// One movement code path for every creature.
-type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, (Option<&'a body::elements::Chilled>, Option<&'a body::elements::Coated>), Option<&'a mut FallTrack>, Has<WebWalker>, Option<&'a crate::gear::hook::Rope>, Has<player::LocalPlayer>, Option<&'a mut StepEase>, Has<body::hurt::Faltering>);
+type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, (Option<&'a body::elements::Chilled>, Option<&'a body::elements::Coated>, Has<body::goo::Goo>), Option<&'a mut FallTrack>, Has<WebWalker>, Option<&'a crate::gear::hook::Rope>, Has<player::LocalPlayer>, Option<&'a mut StepEase>, Has<body::hurt::Faltering>);
 
 pub(crate) fn move_creatures(
     sim: Res<SimWorld>,
@@ -472,7 +472,7 @@ pub(crate) fn move_creatures(
     coatings: Res<body::elements::Coatings>,
 ) {
     let grid = WorldGrid(&sim.world);
-    for (entity, mut k, stats, controls, (chilled, coated), track, web_walker, rope, player, ease, faltering) in &mut q {
+    for (entity, mut k, stats, controls, (chilled, coated, gooey), track, web_walker, rope, player, ease, faltering) in &mut q {
         // Frozen until the ground under it is loaded.
         if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
             continue;
@@ -486,7 +486,8 @@ pub(crate) fn move_creatures(
         // something that clogs (a slime's goo), or hurt badly
         // (`hurt::Faltering`): slowed.
         let webbed = !web_walker && stuck_in(&sim.world, &k.body);
-        let clogged = coated.map_or(1.0, |c| c.speed(&coatings.by_name));
+        // (A body of goo isn't clogged by goo.)
+        let clogged = if gooey { 1.0 } else { coated.map_or(1.0, |c| c.speed(&coatings.by_name)) };
         let speed = chilled.map_or(1.0, |c| c.speed()).min(clogged).min(if webbed { STUCK_SPEED } else { 1.0 }).min(if faltering { body::hurt::FALTER_SPEED } else { 1.0 });
         let stats = if speed < 1.0 {
             slowed = paced.slowed(speed);

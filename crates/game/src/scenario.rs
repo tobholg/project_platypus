@@ -9601,8 +9601,8 @@ fn slime_script(
     mut commands: Commands,
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
-    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
-    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Option<&crate::creatures::body::goo::Goo>), Without<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Option<&crate::creatures::body::goo::Goo>, Option<&crate::creatures::brain::senses::Alert>), Without<LocalPlayer>>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut state: Local<(u8, f32, f32)>,
 ) {
@@ -9610,7 +9610,8 @@ fn slime_script(
         return;
     }
     let mode = std::env::var("PLATYPUS_SLIME").unwrap_or_else(|_| "look".into());
-    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let Ok((mut k, mut h, coated)) = player.single_mut() else { return };
+    let slimy = coated.map_or(0.0, |c| c.share("slimy"));
     h.hp = h.max;
     let fl = platypus_worldgen::arena::FLOOR as f32;
     let t = s.elapsed;
@@ -9629,7 +9630,7 @@ fn slime_script(
         state.1 = 2.0;
         return;
     }
-    let Some((e, _, sk, sh, goo)) = slime else {
+    let Some((e, _, sk, sh, goo, alert)) = slime else {
         if state.0 >= 1 && t >= state.2 {
             state.2 = t + 0.5;
             info!("slime: t {t:.1} gone; goo loose near: {}", loose(&sim, Vec2::new(950.0, fl), "green_goo"));
@@ -9661,7 +9662,7 @@ fn slime_script(
     }
     if t >= state.2 {
         state.2 = t + 0.5;
-        info!("slime: t {t:.1} hp {:.0}/{:.0}, holds {} goo, loose near {}, at x {:.0}", sh.hp, sh.max, goo.map_or(0, |g| g.held()), loose(&sim, sk.body.pos, "green_goo"), sk.body.pos.x);
+        info!("slime: t {t:.1} hp {:.0}/{:.0}, holds {} goo, loose near {}, at x {:.0}; the player's {:.0}% slimy; {:?}", sh.hp, sh.max, goo.map_or(0, |g| g.held()), loose(&sim, sk.body.pos, "green_goo"), sk.body.pos.x, slimy * 100.0, alert.map(|a| a.wary));
     }
 }
 
