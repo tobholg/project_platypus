@@ -757,7 +757,7 @@ const POISE_BACK: f32 = 1.5;
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Invulnerable {
     pub left: f32,
-    hp: f32,
+    pub(crate) hp: f32,
 }
 
 /// The world all but stops for a moment on a hit.
@@ -1222,6 +1222,7 @@ fn apply_hits(
     mut felt: MessageWriter<Felt>,
     parts: Query<&crate::creatures::body::parts::Parts>,
     mut tumbles: Query<&mut crate::creatures::body::tumble::Tumble>,
+    (bodies, mut masks): (Query<&Animator>, ResMut<crate::creatures::body::wounds::LayerMasks>),
 ) {
     let Some(weapons) = weapons else { return };
     for r in recoils.read() {
@@ -1246,8 +1247,21 @@ fn apply_hits(
         if safe || graced.contains(&h.target) {
             continue;
         }
-        // (Scaled by what it struck: a leg takes less, a weak spot more.)
-        let damage = h.damage * parts.get(h.target).map_or(1.0, |p| p.mult_at(h.at));
+        // (Scaled by what it struck: a leg takes less, a weak spot more; on
+        // a humanoid, where it landed: its head, its body, an arm.)
+        let part = parts.get(h.target).ok().and_then(|p| p.touch(h.at, 1.0)).map(|p| p.mult);
+        let zone = || {
+            let a = bodies.get(h.target).ok()?;
+            let z = a.def.zones;
+            a.def.rig.as_ref()?;
+            Some(match crate::creatures::body::wounds::rig_limb(a, &k, h.at, &mut masks) {
+                Some(crate::creatures::body::parts::Limb::Head) => z.head,
+                Some(crate::creatures::body::parts::Limb::Arm(_)) => z.arms,
+                _ => z.body,
+            })
+        };
+        let mult = part.or_else(zone).unwrap_or(1.0);
+        let damage = h.damage * mult;
         let dealt = health.harm(damage, h.harm);
         let reaction = crate::creatures::body::hurt::reaction(damage, dealt);
         felt.write(Felt { target: h.target, meant: damage, dealt, share: dealt / health.max.max(1.0), harm: h.harm, at: h.at, dir: h.dir, weight: h.weight, crit: h.crit });
@@ -1262,7 +1276,9 @@ fn apply_hits(
         if let Some(mut s) = sturdy.filter(|_| !lethal) {
             knock /= s.heft;
             s.since = 0.0;
-            s.left -= h.damage;
+            // (Worn down by the blow; one to a weak spot or the head
+            // staggers sooner.)
+            s.left -= h.damage * mult.max(1.0);
             if s.left > 0.0 {
                 // Shrugged off.
                 knock *= 0.25;

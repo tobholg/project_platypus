@@ -263,6 +263,7 @@ type Wearer<'a> = (
     Option<&'a mut Mana>,
     Option<&'a mut Sturdy>,
     Option<&'a crate::creatures::body::parts::Severed>,
+    Option<&'a crate::creatures::Pace>,
 );
 
 /// What a creature wears changed (or its kind did, or it just got mana):
@@ -270,7 +271,7 @@ type Wearer<'a> = (
 pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures: Res<Creatures>, mut q: Query<Wearer>) {
     let Some(items) = items else { return };
     let all = creatures.is_changed() || items.is_added();
-    for (c, eq, mut stats, mut health, mut moves, stamina, mana, sturdy, severed) in &mut q {
+    for (c, eq, mut stats, mut health, mut moves, stamina, mana, sturdy, severed, pace) in &mut q {
         let mana_new = mana.as_ref().is_some_and(|m| m.is_added());
         if !(all || eq.is_changed() || mana_new) {
             continue;
@@ -292,7 +293,7 @@ pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures:
             fall: total.share(Stat::FallResist, 0.9),
         };
         let mut m = def.movement.clone();
-        m.run_speed *= total.mult(Stat::MoveSpeed);
+        m.run_speed *= total.mult(Stat::MoveSpeed) * pace.map_or(1.0, |p| p.0);
         m.jump_height *= total.mult(Stat::JumpHeight);
         m.air_jumps = (m.air_jumps as f32 + total.get(Stat::AirJumps)).round().clamp(0.0, 9.0) as u8;
         // Rocket boots (the best worn).

@@ -12,7 +12,7 @@
     // What it had on when it died: now and then a hood or a helmet.
     wears: [("cloth_hood", 0.15), ("iron_helm", 0.08)],
     size: (9, 20),
-    health: 85,
+    health: 130,
     team: Enemy,
     faction: "undead",
     kind: "rotting",
@@ -20,6 +20,8 @@
     headless: Dies,
     blood: "rot",
     eyes: (200, 204, 192),
+    // A low groan now and then.
+    voice: Some(("groan", (3.0, 9.0))),
     fall_damage: (safe_height: 120, per_cell: 0.5),
     movement: (
         run_speed: 36,
@@ -39,10 +41,20 @@
                (hip: (2, 4), gait: 0, knee: Forward),
                (hip: (-1, 4), gait: 1, knee: Forward, far: true),
            ]),
+    // Close in, it grabs and bites (dash through its reach, or shake it
+    // off); further off, it lurches a few fast steps at you.
+    moves: ["zombie_grab", "zombie_lurch"],
     unarmed: "rotten_claws",
     armless: "zombie_bite",
-    stamina: 50,
-    poise: 22,
+    stamina: 60,
+    // Hard to stop: most blows don't stagger it (a blow to its head
+    // does, sooner: `zones`), and it barely gives ground.
+    poise: 40,
+    heft: 4,
+    // Its head's the place to hit; its body soaks it up.
+    zones: (head: 2.0, body: 0.6, arms: 0.8),
+    // Each its own pace: a pack closes in unevenly.
+    pace: 0.3,
     brain: (
         kind: "hunter",
         params: (aggro: 260, close: Walk(keep: 12, jump_to_reach: 22), attack: Swing(reach: 20, every: 1.5, combo: 1), wander: (speed: 0.25, every: 4.0), senses: (dark: 0.8)),

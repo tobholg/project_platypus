@@ -48,6 +48,26 @@
             (name: "throw", secs: 0.0, clip: Some("hurl"), acts: [Throw(speed: 520, up: 330), Sound("swing_heavy")]),
             (name: "recover", secs: 0.7, clip: Some("hurl")),
         ]),
+        // The zombie's lurch: shambling at you, it suddenly lunges a few
+        // fast steps closer (you can't judge how far off it is).
+        (id: "zombie_lurch", every: 3.5, when: (range: (26, 70), footing: true, line: true), phases: [
+            (name: "windup", secs: 0.12, clip: Some("lunge")),
+            (name: "lurch", secs: 0.35, clip: Some("lunge"), acts: [Lunge(speed: 200, up: 40)]),
+            (name: "recover", secs: 0.25, clip: Some("lunge")),
+        ]),
+        // The zombie's grab: close in, its arms go up and out with a snarl
+        // (dash through it then and it misses), it lunges and catches you,
+        // and bites, and bites; mash jump, dash, and the keys to shake it
+        // off (it reels), or strike it senseless.
+        (id: "zombie_grab", every: 4.0, when: (range: (0, 30), footing: true), phases: [
+            (name: "windup", secs: 0.5, clip: Some("tell"), acts: [Sound("snarl")]),
+            (name: "grab", secs: 0.28, clip: Some("lunge"), acts: [Lunge(speed: 220, up: 35), Grab((at: 9, reach: 9, from: 0.1))]),
+            (name: "bite", secs: 0.8, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 14, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
+            (name: "bite", secs: 0.8, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 14, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
+            (name: "bite", secs: 0.8, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 14, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
+            (name: "shove", secs: 0.0, clip: Some("lunge"), acts: [Throw(speed: 140, up: 80, stun: 0.3)]),
+            (name: "recover", secs: 0.7, clip: Some("lunge")),
+        ]),
         // A ray for something that burns (not on any creature yet: the
         // roster's). A long tell, then a sweep you can outrun.
         (id: "fire_ray", every: 6.0, when: (range: (40, 240), line: true), phases: [

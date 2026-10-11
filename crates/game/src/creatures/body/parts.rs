@@ -98,12 +98,6 @@ impl Parts {
         let first = hit.next()?;
         Some(std::iter::once(first).chain(hit).find(|q| q.kind == PartKind::Weak).unwrap_or(first))
     }
-
-    /// How much a blow at `p` hurts, against a blow to its body: a weak
-    /// spot's (or a limb's) share; 1 elsewhere.
-    pub fn mult_at(&self, p: Vec2) -> f32 {
-        self.touch(p, 1.0).map_or(1.0, |q| q.mult)
-    }
 }
 
 /// How its parts take blows (a creature file's `legs`' `parts`): legs,
@@ -148,8 +142,8 @@ mod tests {
         ]);
         assert_eq!(parts.touch(Vec2::new(20.0, 2.0), 0.0).map(|p| p.kind), Some(PartKind::Segment));
         assert_eq!(parts.touch(Vec2::new(10.0, -10.0), 0.0).map(|p| p.kind), Some(PartKind::Leg));
-        assert_eq!(parts.mult_at(Vec2::new(35.0, 0.5)), 2.5, "the weak spot, over the segment it's on");
+        assert_eq!(parts.touch(Vec2::new(35.0, 0.5), 1.0).map(|p| p.mult), Some(2.5), "the weak spot, over the segment it's on");
         assert!(parts.touch(Vec2::new(20.0, 10.0), 0.0).is_none(), "clear of it");
-        assert_eq!(parts.mult_at(Vec2::new(100.0, 0.0)), 1.0);
+        assert!(parts.touch(Vec2::new(100.0, 0.0), 1.0).is_none());
     }
 }

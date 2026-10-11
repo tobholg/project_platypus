@@ -428,6 +428,8 @@ struct Quarry {
     pos: Vec2,
     vel: Vec2,
     half: Vec2,
+    /// Untouchable this moment (dashing through): a grab misses it.
+    safe: bool,
 }
 
 /// What may start a move: it, its moves, its body, whether it's mid-swing,
@@ -488,11 +490,12 @@ pub fn run(
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut q: ParamSet<(Query<Mover>, Query<Prey, Without<crate::creatures::brain::villager::Hiding>>)>,
     mut limbs: Query<&mut crate::creatures::body::legs::Legs>,
+    dodging: Query<(), With<crate::combat::Invulnerable>>,
 ) {
     let now = time.elapsed_secs();
     // (What a move may be at, as it stands before any of this tick's moves:
     // anything with a side, a foe as much as you.)
-    let prey: Vec<Quarry> = q.p1().iter().map(|(e, k, _)| Quarry { e, pos: k.body.pos, vel: k.body.vel, half: k.body.half }).collect();
+    let prey: Vec<Quarry> = q.p1().iter().map(|(e, k, _)| Quarry { e, pos: k.body.pos, vel: k.body.vel, half: k.body.half, safe: dodging.contains(e) }).collect();
     let mut movers = q.p0();
     for (e, mut moves, mut k, mut c, rear, mut anim) in &mut movers {
         let Some(mut rear) = rear else {
@@ -524,18 +527,22 @@ pub fn run(
         // Holding something: it's where it's held, unless it's gone, or
         // the grabber's been struck senseless (it lets go).
         let stunned = k.loco.state == platypus_physics::MoveState::Stunned;
+        let mut let_go = false;
         if let Some((h, along)) = d.held {
             if stunned || target.is_none() {
+                // (Struck senseless, or shaken off: it lets go, and the
+                // move's over.)
                 commands.entity(h).try_remove::<Held>();
                 d.held = None;
+                let_go = true;
             } else {
                 commands.entity(h).try_insert(Held { by: e, at: at(along) });
             }
         }
         // Into each phase whose time has come (one of no length goes by at
         // once, its pose taken and what it does done).
-        let mut done = false;
-        loop {
+        let mut done = let_go;
+        while !done {
             let next = if d.phase == usize::MAX {
                 0
             } else if d.t >= d.start + m.phases[d.phase].secs {
@@ -679,7 +686,7 @@ pub fn run(
                     }
                 }
                 Act::Grab(g) if d.held.is_none() && f >= g.from => {
-                    if let Some(pk) = &target {
+                    if let Some(pk) = target.filter(|t| !t.safe).as_ref() {
                         let hand = at(g.at);
                         if ((pk.pos - hand).abs() - pk.half).max_element() <= g.reach {
                             d.held = Some((pk.e, g.at));
@@ -726,6 +733,58 @@ pub(crate) fn pin(mut commands: Commands, mut q: Query<(Entity, &Held, &mut Kine
         let k = &mut *k;
         k.body.pos = h.at;
         k.loco.knock(&mut k.body, Vec2::ZERO, 2.0 * DT);
+    }
+}
+
+/// Held, it struggles (the player: each press of jump or dash, each turn
+/// of the keys the other way, works it looser); `STRUGGLE` presses and
+/// it's free: its grabber's shoved off, senseless a moment (so it lets go
+/// and its move's over), and it's untouchable a moment more.
+#[derive(Component, Default)]
+pub struct Struggle {
+    pub loose: f32,
+    last: (bool, bool, f32),
+}
+
+/// Presses to break free; seconds the grabber's senseless after.
+const STRUGGLE: f32 = 8.0;
+const SHOVED: f32 = 0.7;
+const SHOVE: f32 = 110.0;
+const FREE_SAFE: f32 = 0.5;
+
+#[allow(clippy::type_complexity)]
+pub(crate) fn struggle(
+    mut commands: Commands,
+    mut held: Query<(Entity, &Held, &crate::creatures::Controls, &Kinematics, &crate::creatures::Health, Option<&mut Struggle>), With<crate::creatures::player::LocalPlayer>>,
+    mut grabbers: Query<&mut Kinematics, (With<Moves>, Without<crate::creatures::player::LocalPlayer>)>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+) {
+    for (e, h, c, k, health, s) in &mut held {
+        let Some(mut s) = s else {
+            commands.entity(e).insert(Struggle { loose: 0.0, last: (c.0.jump, c.0.dash, c.0.move_x.signum()) });
+            continue;
+        };
+        let x = if c.0.move_x.abs() > 0.3 { c.0.move_x.signum() } else { 0.0 };
+        let (jump, dash, was_x) = s.last;
+        let mut pressed = (c.0.jump && !jump) as u8 + (c.0.dash && !dash) as u8;
+        if x != 0.0 && x != was_x {
+            pressed += 1;
+        }
+        s.last = (c.0.jump, c.0.dash, if x != 0.0 { x } else { was_x });
+        s.loose += pressed as f32 / STRUGGLE;
+        if pressed > 0 {
+            sounds.write(crate::sound::PlaySound::at("step_dirt", k.body.pos).volume(0.5));
+        }
+        if s.loose < 1.0 {
+            continue;
+        }
+        commands.entity(e).remove::<(Held, Struggle)>().insert(crate::combat::Invulnerable { left: FREE_SAFE, hp: health.hp });
+        if let Ok(mut gk) = grabbers.get_mut(h.by) {
+            let away = Vec2::new((gk.body.pos.x - k.body.pos.x).signum(), 0.4);
+            let gk = &mut *gk;
+            gk.loco.knock(&mut gk.body, away * SHOVE, SHOVED);
+        }
+        sounds.write(crate::sound::PlaySound::at("hit", k.body.pos).pitch(0.7));
     }
 }
 

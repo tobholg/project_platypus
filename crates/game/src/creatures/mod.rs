@@ -51,6 +51,7 @@ impl Plugin for CreaturesPlugin {
             .add_systems(FixedUpdate, displace_liquid.after(move_creatures).in_set(TickSet::Bodies))
             // What a grab holds stays in its grip.
             .add_systems(FixedUpdate, moves::pin.after(move_creatures).before(deaths).in_set(TickSet::Bodies))
+            .add_systems(FixedUpdate, moves::struggle.before(moves::pin).after(move_creatures).in_set(TickSet::Bodies))
             .add_systems(Update, (body::elements::tint, body::elements::blaze, body::elements::reload_coatings, body::hurt::watch, body::hurt::float))
             // Hits as they landed, shown (`hurt`); the badly hurt drip and falter.
             .add_systems(FixedUpdate, (body::hurt::react, body::hurt::wounded).chain().after(crate::combat::Hits))
@@ -65,7 +66,8 @@ impl Plugin for CreaturesPlugin {
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate))
             .add_systems(Update, (body::rise::assemble, body::rise::tint_waking))
             .add_systems(PreUpdate, dormancy)
-            .add_systems(Update, body::tumble::spin.before(body::animation::animate));
+            .add_systems(Update, body::tumble::spin.before(body::animation::animate))
+            .add_systems(FixedUpdate, voices.in_set(TickSet::Bodies));
     }
 }
 
@@ -263,6 +265,50 @@ pub struct MoveStats(pub MovementStats);
 /// What the brain wants this tick. Brains write it in `TickSet::Intent`.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Controls(pub Intent);
+
+/// When it next makes its sound (`CreatureDef::voice`).
+#[derive(Component)]
+pub struct Voice(f32);
+
+/// Awake, each with a voice makes its sound now and then (a zombie's
+/// groan), at its own times.
+fn voices(mut commands: Commands, time: Res<Time>, q: Query<(Entity, &body::animation::Animator, &Kinematics, Option<&Voice>, Option<&Stable>), Without<Dormant>>, mut sounds: MessageWriter<crate::sound::PlaySound>) {
+    let now = time.elapsed_secs();
+    for (e, anim, k, voice, stable) in &q {
+        let Some((sound, (lo, hi))) = anim.def.voice.as_ref() else { continue };
+        // (Its own times: its number, and how often it's spoken.)
+        let n = stable.map_or(e.to_bits(), |s| s.0);
+        let u = |salt: u64| ((n.wrapping_add(salt).wrapping_mul(0x9E37_79B9_7F4A_7C15)) >> 40) as f32 / (1u64 << 24) as f32;
+        match voice {
+            None => {
+                commands.entity(e).insert(Voice(now + lo + (hi - lo) * u(1)));
+            }
+            Some(v) if now >= v.0 => {
+                sounds.write(crate::sound::PlaySound::at(sound.clone(), k.body.pos));
+                commands.entity(e).insert(Voice(now + lo + (hi - lo) * u((now * 10.0) as u64)));
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Its own pace (`CreatureDef::pace`): its run speed times this.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Pace(pub f32);
+
+impl Pace {
+    /// One of `spread` either way, picked by its number (the same each run).
+    pub fn of(spread: f32, number: u64) -> Pace {
+        let u = (number.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 40) as f32 / (1u64 << 24) as f32;
+        Pace(1.0 + spread * (2.0 * u - 1.0))
+    }
+
+    pub fn moved(self, m: &platypus_physics::MovementStats) -> platypus_physics::MovementStats {
+        let mut m = m.clone();
+        m.run_speed *= self.0;
+        m
+    }
+}
 
 /// Fall damage, by how far it fell (Terraria-style; speed saturates at
 /// max fall within ~50 cells, so it can't tell a double jump from a cliff):

@@ -58,6 +58,21 @@ impl DigDef {
     }
 }
 
+/// How a humanoid takes blows where they land (`CreatureDef::zones`).
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(default)]
+pub struct Zones {
+    pub head: f32,
+    pub body: f32,
+    pub arms: f32,
+}
+
+impl Default for Zones {
+    fn default() -> Self {
+        Zones { head: 1.0, body: 1.0, arms: 1.0 }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct CreatureDef {
     pub name: String,
@@ -149,6 +164,15 @@ pub struct CreatureDef {
     /// Knockback it takes is divided by this (a troll's 4).
     #[serde(default = "one_f")]
     pub heft: f32,
+    /// Each one its own pace: its run speed this much (a share) faster or
+    /// slower, at random (a pack of zombies closes in unevenly).
+    #[serde(default)]
+    pub pace: f32,
+    /// How a body drawn in layers (a humanoid rig) takes a blow where it
+    /// lands: on its head, its body, an arm (its legs are its `legs`'
+    /// parts'). Each 1 if not given.
+    #[serde(default)]
+    pub zones: Zones,
     /// Seconds nothing hurts it after a hit (the player's grace).
     #[serde(default)]
     pub after_hit: f32,
@@ -185,6 +209,10 @@ pub struct CreatureDef {
     /// then. (Spiders' are their `legs`' `eyes`.)
     #[serde(default)]
     pub eyes: Option<(u8, u8, u8)>,
+    /// A sound it makes now and then, awake (a zombie's groan): the
+    /// sound, and from how many to how many seconds apart.
+    #[serde(default)]
+    pub voice: Option<(String, (f32, f32))>,
     /// What it bleeds (a material; "" for nothing): it sprays when it's
     /// hurt and bursts out when it dies (`hurt.rs`).
     #[serde(default = "red_blood")]
@@ -549,7 +577,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             def.team,
             Health { nature: def.nature, ..Health::new(def.health) },
             Kinematics { body, loco: Locomotion::default(), prev_pos: center },
-            MoveStats(def.movement.clone()),
+            MoveStats(super::Pace::of(def.pace, number).moved(&def.movement)),
             super::StepEase::default(),
             Controls::default(),
             Animator::new(def.clone()),
@@ -557,6 +585,9 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             Visibility::default(),
         ));
         e.insert(super::Stable(number));
+        if def.pace > 0.0 {
+            e.insert(super::Pace::of(def.pace, number));
+        }
         if let Some(f) = faction {
             e.insert(f);
         }

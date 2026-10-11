@@ -294,6 +294,27 @@
             (part: "head", at: (12, 3)),
             (part: "aimm30", at: (20, 15), outline: true, tag: "front_arm"),
         ],
+        // Reaching for you (the grab's tell): both arms up and out, its
+        // head thrown back. Lunging: leaning in, arms straight out. Biting:
+        // its head down and in, at what it holds.
+        "tell": [
+            (part: "aim60", at: (14, 15), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (13, 14)),
+            (part: "head", at: (11, 3)),
+            (part: "aim60", at: (20, 15), outline: true, tag: "front_arm"),
+        ],
+        "lunge": [
+            (part: "aim0", at: (16, 17), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (15, 15)),
+            (part: "head", at: (15, 5)),
+            (part: "aim0", at: (22, 17), outline: true, tag: "front_arm"),
+        ],
+        "bite": [
+            (part: "aim0", at: (16, 17), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (15, 15)),
+            (part: "head", at: (17, 7)),
+            (part: "aim0", at: (22, 17), outline: true, tag: "front_arm"),
+        ],
         // Rising: an arm thrown up. Falling: arms out.
         "rise": [
             (part: "arm", at: (14, 15), shade: 0.72, tag: "back_arm"),
@@ -348,5 +369,8 @@
         "dash": (frames: ["dash"], fps: 5),
         "wall": (frames: ["wall"], fps: 5),
         "hurt": (frames: ["hurt"], fps: 5),
+        "tell": (frames: ["tell"], fps: 5),
+        "lunge": (frames: ["lunge"], fps: 5),
+        "bite": (frames: ["lunge", "bite", "bite", "lunge"], fps: 6),
     },
 )

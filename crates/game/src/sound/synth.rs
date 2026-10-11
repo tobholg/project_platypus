@@ -28,6 +28,10 @@ pub enum Make {
     Boom { length: f32, #[serde(default = "one")] sub: f32 },
     /// Electric: a buzz jumping in pitch, crackling.
     Zap { pitch: f32, length: f32 },
+    /// A throat: a low buzz (`pitch` Hz, sagging by `sag` of it over its
+    /// length, wavering) through two vowel bands, with a dry rattle in it
+    /// (`rasp`, 0..1): the dead's groan, or (high, short) its snarl.
+    Groan { pitch: f32, length: f32, #[serde(default = "half")] sag: f32, #[serde(default = "half")] rasp: f32 },
     /// Bell-like notes (semitones above `pitch`), one after another.
     Chime { pitch: f32, notes: Vec<f32>, length: f32 },
     /// A sweep between two pitches (UI, pickups).
@@ -290,6 +294,7 @@ pub fn render(make: &Make, sr: f32, seed: u64, loops: f32) -> Buf {
         Make::Drip { pitch, rise, length } => Buf::mono(drip(*pitch, *rise, *length, sr, rng)),
         Make::Boom { length, sub } => Buf::mono(boom(*length, *sub, sr, rng)),
         Make::Zap { pitch, length } => Buf::mono(zap(*pitch, *length, sr, rng)),
+        Make::Groan { pitch, length, sag, rasp } => Buf::mono(groan(*pitch, *length, *sag, *rasp, sr, rng)),
         Make::Chime { pitch, notes, length } => Buf::mono(chime(*pitch, notes, *length, sr, rng)),
         Make::Blip { pitch, to, length } => Buf::mono(blip(*pitch, *to, *length, sr)),
         Make::Step { heel, scuff, q, grit, length, muffle } => Buf::mono(step(*heel, *scuff, *q, *grit, *length, *muffle, sr, rng)),
@@ -505,6 +510,28 @@ fn zap(pitch: f32, length: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
             let saw = ph * 2.0 - 1.0;
             let crackle = if rng.unit() < 0.01 { rng.noise() * 3.0 } else { 0.0 };
             f.tick(saw + crackle + rng.noise() * 0.3, 2200.0) * env(t, 0.001, length) * 2.0
+        })
+        .collect()
+}
+
+fn groan(pitch: f32, length: f32, sag: f32, rasp: f32, sr: f32, rng: &mut Rng) -> Vec<f32> {
+    let n = frames(length, sr);
+    let (mut a, mut b) = (Filter::new(Pass::Band, 2.5, sr), Filter::new(Pass::Band, 3.0, sr));
+    let mut ph = 0.0f32;
+    let wobble = rng.range(4.0, 7.0);
+    let vowel = rng.range(0.85, 1.15);
+    (0..n)
+        .map(|i| {
+            let t = i as f32 / sr;
+            let u = t / length.max(1e-3);
+            let hz = pitch * (1.0 - sag * u) * (1.0 + 0.03 * (t * wobble * std::f32::consts::TAU).sin());
+            ph = (ph + hz / sr).fract();
+            // (A buzz, and the throat's rattle: the voice catching.)
+            let buzz = ph * 2.0 - 1.0;
+            let catch = 1.0 - rasp * 0.8 * (0.5 + 0.5 * (t * 34.0 * std::f32::consts::TAU).sin()).powi(3);
+            let src = buzz * catch + rng.noise() * rasp * 0.35;
+            let swell = (u * 4.0).min(1.0) * (1.0 - u).max(0.0).sqrt();
+            (a.tick(src, 520.0 * vowel) + 0.6 * b.tick(src, 980.0 * vowel)) * swell * 2.2
         })
         .collect()
 }
@@ -1067,6 +1094,7 @@ mod tests {
             Make::Drip { pitch: 1400.0, rise: 0.5, length: 0.12 },
             Make::Boom { length: 1.2, sub: 1.0 },
             Make::Zap { pitch: 200.0, length: 0.3 },
+            Make::Groan { pitch: 70.0, length: 1.2, sag: 0.3, rasp: 0.6 },
             Make::Chime { pitch: 800.0, notes: vec![0.0, 7.0, 12.0], length: 0.8 },
             Make::Blip { pitch: 600.0, to: 1200.0, length: 0.1 },
             Make::Step { heel: 80.0, scuff: 900.0, q: 0.8, grit: 0.3, length: 0.1, muffle: 1500.0 },
@@ -1085,7 +1113,7 @@ mod tests {
             Make::Pads { root: 110.0, chords: vec![vec![0.0, 7.0, 16.0], vec![5.0, 9.0, 12.0]], chord: 4.0, bright: 1200.0, plucks: 0.3, scale: vec![0.0, 2.0, 4.0, 7.0, 9.0] },
         ];
         for (i, m) in makes.iter().enumerate() {
-            let loops = if i >= 15 { 6.0 } else { 0.0 };
+            let loops = if i >= 16 { 6.0 } else { 0.0 };
             let mut b = render(m, sr, i as u64, loops);
             assert!(!b.is_empty(), "{m:?}: empty");
             assert!(b.l.iter().chain(&b.r).all(|x| x.is_finite()), "{m:?}: not finite");

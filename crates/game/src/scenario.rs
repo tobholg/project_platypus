@@ -9599,7 +9599,9 @@ fn sever_script(
 fn zombie_script(
     mut commands: Commands,
     s: Res<Scenario>,
-    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, Has<crate::creatures::moves::Held>), With<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut began: MessageReader<crate::creatures::moves::Began>,
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::combat::Wielding, Option<&crate::creatures::body::parts::Severed>, Has<crate::creatures::body::wounds::Legless>, &crate::creatures::Health), Without<LocalPlayer>>,
     piles: Query<(Entity, &Kinematics), (With<crate::creatures::body::rise::Pile>, Without<LocalPlayer>)>,
     bodies: Query<&crate::hands::corpses::Corpse, Without<crate::creatures::body::rise::Pile>>,
@@ -9613,7 +9615,15 @@ fn zombie_script(
         return;
     }
     let mode = std::env::var("PLATYPUS_ZOMBIE").unwrap_or_else(|_| "rise".into());
-    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let Ok((mut k, mut h, held)) = player.single_mut() else { return };
+    // `shake`: held, it mashes jump to break free.
+    if mode == "shake" {
+        if held && (s.elapsed * 7.0) as i32 % 2 == 0 {
+            keys.press(KeyCode::Space);
+        } else {
+            keys.release(KeyCode::Space);
+        }
+    }
     // (What the player took, kept up: it can't die.)
     *took += h.max - h.hp;
     h.hp = h.max;
@@ -9623,6 +9633,9 @@ fn zombie_script(
         hits.write(crate::combat::Hit { target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::X, weight: 1.0, crit: false });
     };
     let t = s.elapsed;
+    for b in began.read() {
+        info!("zombie: t {t:.1} a move: {}", b.id);
+    }
     match state.0 {
         0 if t > 0.5 => {
             for (e, c, ..) in &them {
@@ -9647,6 +9660,7 @@ fn zombie_script(
             let plan: &[(f32, &str)] = match mode.as_str() {
                 "limbs" => &[(2.0, "arm0"), (3.0, "arm1"), (4.0, "leg0"), (5.0, "leg1"), (10.0, "head")],
                 "break" => &[(3.0, "kill"), (5.0, "break")],
+                "grab" | "shake" => &[],
                 _ => &[(3.0, "kill"), (15.0, "kill")],
             };
             let i = state.0 as usize - 1;
@@ -9690,7 +9704,7 @@ fn zombie_script(
                     ),
                     None => "none up".into(),
                 };
-                info!("zombie: t {t:.1} {what}; bodies getting up {}, bodies {}; the player's taken {:.0}", piles.iter().count(), bodies.iter().count(), *took);
+                info!("zombie: t {t:.1} {what}; bodies getting up {}, bodies {}; the player's taken {:.0}{}", piles.iter().count(), bodies.iter().count(), *took, if held { ", HELD" } else { "" });
             }
         }
         _ => {}

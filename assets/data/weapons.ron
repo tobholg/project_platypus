@@ -95,7 +95,7 @@
         // A zombie's hands: dead nails, raking (it has no weapon).
         (
             id: "rotten_claws", art: "rotten_claw", harm: slash,
-            damage: 7, knock: 90, stun: 0.15, rest: -10,
+            damage: 10, knock: 90, stun: 0.15, rest: -10,
             moves: [
                 (name: "rake", from: 60, to: -40, windup: 0.35, active: 0.12, recovery: 0.4, stamina: 8, lunge: 40),
                 (name: "claw", from: -30, to: 40, windup: 0.3, active: 0.1, recovery: 0.45, stamina: 8, lunge: 30),

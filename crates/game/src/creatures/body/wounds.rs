@@ -121,7 +121,7 @@ impl LayerMasks {
 
 /// The limb of a body drawn in layers (a humanoid rig) a blow at `at`
 /// lands on: the frontmost layer there that's a limb (its head, an arm).
-fn rig_limb(anim: &super::animation::Animator, k: &Kinematics, at: Vec2, masks: &mut LayerMasks) -> Option<Limb> {
+pub(crate) fn rig_limb(anim: &super::animation::Animator, k: &Kinematics, at: Vec2, masks: &mut LayerMasks) -> Option<Limb> {
     let file = anim.def.art_file.as_ref().filter(|f| !f.poses.is_empty())?;
     let frame = anim.def.rig.as_ref()?.names.get(anim.shown)?.clone();
     let cuts = masks.cuts(file, &frame);
