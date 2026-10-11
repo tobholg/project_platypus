@@ -54,7 +54,8 @@ pub struct CorpsesPlugin;
 
 impl Plugin for CorpsesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, (lay_out, (batter, rot).after(crate::props::fly)).in_set(TickSet::Bodies)).add_systems(Update, ragdoll);
+        app.add_systems(FixedUpdate, (lay_out, (batter, rot, slump).after(crate::props::fly)).in_set(TickSet::Bodies))
+            .add_systems(PostUpdate, ragdoll.after(crate::creatures::interpolate).before(bevy::transform::TransformSystems::Propagate));
     }
 }
 
@@ -241,7 +242,7 @@ fn lay_out(
             Thrown { bounce: RAG_BOUNCE, slide: RAG_SLIDE },
             // (Turned as it was as it died, from how it'll lie: it topples
             // over, or spins on as it flew.)
-            Ragdoll { angle: crate::creatures::body::tumble::wrap(d.spin.angle - turn), omega: d.spin.omega, last_vy: d.body.vel.y },
+            Ragdoll { angle: crate::creatures::body::tumble::wrap(d.spin.angle - turn), omega: d.spin.omega, last_vy: d.body.vel.y, lie: 0.0, sink: 0.0 },
             Kinematics { body, loco: Locomotion::default(), prev_pos: at },
             Transform::from_translation(at.extend(Z)).with_rotation(Quat::from_rotation_z(d.spin.angle - turn)),
             Visibility::default(),
@@ -277,6 +278,11 @@ pub struct Ragdoll {
     omega: f32,
     /// Its fall last frame (cells/s), to tell a landing.
     last_vy: f32,
+    /// The ground it rests on: its slope's angle (it lies along it), and
+    /// how far its box stands off the slope's middle (drawn down onto it:
+    /// a box rests on its uphill corner).
+    lie: f32,
+    sink: f32,
 }
 
 const RAG_BOUNCE: f32 = 0.2;
@@ -288,12 +294,64 @@ const THUD: f32 = 90.0;
 /// Spin a slide gives it (radians/s per cell/s).
 const ROLL: f32 = 0.02;
 
+/// A body at rest on a slope: it lies along it, drawn down onto it, and
+/// on a steep one slides down (picking up speed to `SLIDE_MOST`, stopping
+/// where it levels out). The ground's height either side of it, as found
+/// within a few cells of its bottom.
+fn slump(sim: Res<SimWorld>, mut q: Query<(&mut Kinematics, &mut Ragdoll)>) {
+    let grid = crate::creatures::WorldGrid(&sim.world);
+    let world = &sim.world;
+    let ground = |x: f32, from: f32| -> Option<f32> {
+        let x = x.floor() as i32;
+        let top = from as i32 + SLOPE_LOOK;
+        (top - SLOPE_DOWN..=top).rev().find(|&y| world.is_solid(platypus_sim::CellPos::new(x, y)) && !world.is_solid(platypus_sim::CellPos::new(x, y + 1))).map(|y| y as f32 + 1.0)
+    };
+    for (mut k, mut r) in &mut q {
+        // (At rest, or sliding; falling, it's `props::fly`'s.)
+        let resting = platypus_physics::resting(&grid, &k.body);
+        if !resting && k.body.vel.y < -40.0 {
+            continue;
+        }
+        let (hx, bottom) = (k.body.half.x * 0.9, k.body.pos.y - k.body.half.y);
+        let (Some(left), Some(right)) = (ground(k.body.pos.x - hx, bottom), ground(k.body.pos.x + hx, bottom)) else { continue };
+        let slope = (right - left) / (2.0 * hx);
+        r.lie = slope.atan().clamp(-LIE_MOST, LIE_MOST);
+        r.sink = ((bottom - (left + right) / 2.0) * 0.8).max(0.0);
+        if slope.abs() > SLIDE_FROM {
+            let k = &mut *k;
+            let downhill = -slope.signum();
+            k.body.vel.x = (k.body.vel.x + downhill * SLIDE_ACCEL * DT).clamp(-SLIDE_MOST, SLIDE_MOST);
+            // (At rest `fly` leaves it be: moved here.)
+            if resting {
+                k.prev_pos = k.body.pos;
+                k.body.vel.y -= 900.0 * DT;
+                platypus_physics::move_and_collide(&grid, &mut k.body, DT);
+            }
+        } else if resting && k.body.vel.x != 0.0 {
+            k.body.vel.x = 0.0;
+        }
+    }
+}
+
+/// Slopes for a body at rest: the ground looked for this many cells over
+/// its bottom and so many under (a box perched on its uphill corner has
+/// the downhill ground far below it), lain along up to this angle, slid
+/// down past this slope, speeding up so much a second, to so fast.
+const SLOPE_LOOK: i32 = 6;
+const SLOPE_DOWN: i32 = 66;
+const LIE_MOST: f32 = 1.0;
+const SLIDE_FROM: f32 = 0.6;
+const SLIDE_ACCEL: f32 = 600.0;
+const SLIDE_MOST: f32 = 110.0;
+
 fn ragdoll(time: Res<Time>, mut sim: ResMut<SimWorld>, mut sounds: MessageWriter<crate::sound::PlaySound>, mut q: Query<(&Kinematics, &mut Ragdoll, &mut Transform)>) {
     let dt = time.delta_secs();
     for (k, mut r, mut tf) in &mut q {
         let vy = k.body.vel.y;
         let resting = platypus_physics::resting(&crate::creatures::WorldGrid(&sim.world), &k.body);
-        if resting && r.angle == 0.0 && r.omega == 0.0 {
+        if resting && r.angle == r.lie && r.omega == 0.0 {
+            tf.rotation = Quat::from_rotation_z(r.angle);
+            tf.translation.y -= r.sink;
             continue;
         }
         // Landed hard: a thud, dust, its spin knocked about.
@@ -314,13 +372,16 @@ fn ragdoll(time: Res<Time>, mut sim: ResMut<SimWorld>, mut sounds: MessageWriter
         if !resting && vy.abs() > 2.0 {
             r.angle += r.omega * dt;
         } else {
+            // (Down: rolling over to lie along the ground it's on.)
             r.omega = 0.0;
-            r.angle = crate::creatures::body::tumble::wrap(r.angle) * (-dt * SETTLE).exp();
-            if r.angle.abs() < 0.005 {
-                r.angle = 0.0;
+            let off = crate::creatures::body::tumble::wrap(r.angle - r.lie);
+            r.angle = r.lie + off * (-dt * SETTLE).exp();
+            if off.abs() < 0.005 {
+                r.angle = r.lie;
             }
         }
         tf.rotation = Quat::from_rotation_z(r.angle);
+        tf.translation.y -= r.sink;
     }
 }
 

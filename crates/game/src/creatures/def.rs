@@ -478,6 +478,11 @@ pub(crate) fn hot_reload_creatures(mut commands: Commands, mut creatures: ResMut
 
 /// Spawn a creature by id, standing with its feet at `feet`. Returns the entity
 /// through `then`, so callers can add their own components (e.g. `LocalPlayer`).
+/// A walker on legs wider than this (cells) stands on this share of its
+/// width (`Body::stance`).
+const STANCE_FROM: f32 = 14.0;
+const STANCE_SHARE: f32 = 0.4;
+
 pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: impl FnOnce(&mut EntityWorldMut) + Send + 'static) {
     let kind = kind.to_string();
     commands.queue(move |world: &mut World| {
@@ -488,6 +493,13 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         let center = feet + Vec2::new(0.0, h / 2.0);
         let mut body = Body::new(center, Vec2::new(w, h));
         body.step_height = def.movement.step_height;
+        // (A wide walker on legs seen from the side stands on its middle:
+        // its legs reach the ground either side; `Body::stance`.)
+        // (Not a climber: on a wall its box is what holds on, and its way's
+        // planned for its whole width.)
+        if w > STANCE_FROM && !def.movement.cling && def.legs.as_ref().is_some_and(|l| l.view == crate::creatures::body::legs::View::Side) {
+            body.stance = Some((w * STANCE_SHARE).max(STANCE_FROM) / 2.0);
+        }
 
         let (sprite, eyes) = world
             .resource_scope(|world, mut art: Mut<CreatureArt>| {

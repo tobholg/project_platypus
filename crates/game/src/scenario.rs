@@ -304,6 +304,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, burrow_script)
             .add_systems(Update, show_script)
             .add_systems(Update, ragdoll_script)
+            .add_systems(Update, slope_script)
             .add_systems(PreUpdate, optics_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PostUpdate, plunge_script.after(bevy::transform::TransformSystems::Propagate))
             .add_systems(Update, sounds_script)
@@ -8942,6 +8943,79 @@ fn ragdoll_script(
             let rest: Vec<String> = bodies.iter().map(|b| format!("{:.0}", b.body.pos.x)).collect();
             info!("ragdoll: alive {alive:?}; bodies at x {}", rest.join(", "));
             *state = 3;
+        }
+        _ => {}
+    }
+}
+
+/// `slope` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a steep stone ramp
+/// (rising 1.8 a cell), an iron strider set on it, a skeleton and an orc
+/// on it struck dead where they stand at 1.6 s. Logs, every second, how far
+/// the strider's feet are off the ramp, and where the bodies are (do they
+/// lie along it and slide down?).
+fn slope_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    bodies: Query<&Kinematics, (With<crate::hands::corpses::Corpse>, Without<LocalPlayer>)>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "slope" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let fl = floor as f32;
+    let ramp = |x: f32| fl + ((x - 1060.0) * 1.8).clamp(0.0, 200.0);
+    match state.0 {
+        0 if s.elapsed > 0.5 => {
+            let Some(stone) = sim.materials().id("stone") else { return };
+            for x in 1060..1180 {
+                for y in floor..ramp(x as f32) as i32 {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: stone, overwrite: true });
+                }
+            }
+            for (e, c, _) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            k.body.pos = Vec2::new(1000.0, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            *state = (1, s.elapsed);
+        }
+        1 if s.elapsed > 1.0 => {
+            for (kind, x) in [("strider", 1120.0), ("skeleton", 1095.0), ("orc", 1150.0)] {
+                crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x, ramp(x) + 2.0), |_| {});
+            }
+            *state = (2, s.elapsed);
+        }
+        2 if s.elapsed > 1.6 => {
+            // (Struck dead where they stand, on the ramp.)
+            for (e, c, _) in &them {
+                if c.kind == "skeleton" || c.kind == "orc" {
+                    commands.entity(e).queue(|mut ew: EntityWorldMut| {
+                        if let Some(mut h) = ew.get_mut::<crate::creatures::Health>() {
+                            h.hp = 0.0;
+                        }
+                    });
+                }
+            }
+            *state = (3, s.elapsed);
+        }
+        3 if s.elapsed >= state.1 + 1.0 => {
+            state.1 = s.elapsed;
+            for (_, c, kk) in &them {
+                if c.kind == "strider" {
+                    let feet = kk.body.pos.y - kk.body.half.y;
+                    info!("slope: t {:.0} the strider at x {:.0}: feet {:.0} over the ramp", s.elapsed, kk.body.pos.x, feet - ramp(kk.body.pos.x));
+                }
+            }
+            let rest: Vec<String> = bodies.iter().map(|b| format!("x {:.0} ({:.0} over the ramp, moving {:.0})", b.body.pos.x, b.body.pos.y - b.body.half.y - ramp(b.body.pos.x), b.body.vel.length())).collect();
+            info!("slope: t {:.0} bodies: {}", s.elapsed, rest.join(", "));
         }
         _ => {}
     }

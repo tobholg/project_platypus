@@ -6,5 +6,5 @@
     // starts hunting. Off: they gave away where things were in the dark.
     alert_marks: false,
     // The damage a hit does, floating up from what it hit.
-    damage_numbers: false,
+    damage_numbers: true,
 )

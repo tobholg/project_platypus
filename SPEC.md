@@ -1969,11 +1969,10 @@ DESIGN §13 item 6.
   They fire only on jump pressed again in the air and held: the jump's own
   press, held, never fires them (they never fire off the ground); any air
   jumps go first. Under water a held jump fires them as before.
-- **What's drawn over the world** (`display.rs`, `assets/data/display.ron`,
-  both off by default; the dev panel switches each while playing): alert
+- **What's drawn over the world** (`display.rs`, `assets/data/display.ron`;
+  the dev panel switches each while playing): alert
   marks ("?" suspicious or searching, "!" starting to hunt: they gave away
-  where things were in the dark) and damage numbers. A hit still flashes
-  and bleeds without its number.
+  where things were in the dark; off) and damage numbers (on).
 - **Thrown about** (`creatures::body::tumble`, `hands::corpses`): a blow
   or blast that knocks a creature off its feet (a stun) sets it spinning
   (`Tumble`: 0.009 rad/s per cell/s of knock over its heft past half of
@@ -1993,6 +1992,16 @@ DESIGN §13 item 6.
   the harder) and kicks up dust, and its slide turns it. The `ragdoll`
   scenario: an orc, a skeleton, a raptor, a spider and a troll in a row,
   a blast among them at 2 s.
+  On a slope a body at rest lies along it (up to 57°) and is drawn down
+  onto it (its box rests on its uphill corner); past a slope of 0.6 it
+  slides down, speeding up to 110 cells/s, stopping where the ground
+  levels (`slump`: the ground looked for 6 over its bottom to 66 under).
+  A wide walker on legs seen from the side (wider than 14, not a climber:
+  the iron strider, the ridge tyrant, the crab) stands on 0.4 of its width
+  (`Body::stance`, only in `move_and_collide`; what hits it is its whole
+  box): its box sat on its uphill corner on a steep slope, the rest hanging
+  past its legs' reach. The `slope` scenario: a ramp rising 1.8 a cell, an
+  iron strider on it, a skeleton and an orc struck dead on it.
 - **Eyes in the dark** (`creatures::body::sight`): glowing eyes are drawn
   over the darkness, so they showed through rock (every spider in a cave
   seen through the hill). Each creature keeps how much the player sees it

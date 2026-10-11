@@ -49,6 +49,12 @@ pub struct Body {
     pub step_height: i32,
     /// Dropping through platforms (holding down).
     pub drop: bool,
+    /// Moving and standing, its box is this narrow (half width), if set: a
+    /// walker on legs stands on the middle of itself (its legs reach the
+    /// ground either side), not its whole width, or on a steep slope the
+    /// box sat on its uphill corner and the rest hung in the air. Only
+    /// `move_and_collide`; what it's hit by is its whole box.
+    pub stance: Option<f32>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -72,7 +78,7 @@ pub struct Contacts {
 
 impl Body {
     pub fn new(pos: Vec2, size: Vec2) -> Self {
-        Body { pos, vel: Vec2::ZERO, half: size / 2.0, step_height: 0, drop: false }
+        Body { pos, vel: Vec2::ZERO, half: size / 2.0, step_height: 0, drop: false, stance: None }
     }
 
     /// Inclusive cell rectangle covered at `pos`.
@@ -130,6 +136,17 @@ fn grounded(grid: &impl Grid, body: &Body) -> bool {
 
 /// Move `body` by `vel * dt`, stopping at solids, stepping up small ledges.
 pub fn move_and_collide(grid: &impl Grid, body: &mut Body, dt: f32) -> Contacts {
+    // (On its stance: narrower than it is, if it has one.)
+    let full = body.half.x;
+    if let Some(s) = body.stance {
+        body.half.x = s.min(full);
+    }
+    let c = collide(grid, body, dt);
+    body.half.x = full;
+    c
+}
+
+fn collide(grid: &impl Grid, body: &mut Body, dt: f32) -> Contacts {
     let mut c = Contacts::default();
     // Sand fell on us, or a wall was placed inside us: climb out first.
     depenetrate(grid, body);
