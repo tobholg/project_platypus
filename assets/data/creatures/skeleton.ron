@@ -32,6 +32,8 @@
     ),
     art: "skeleton",
     weapon: "rusty_sword",
+    // (Its sword taken from its heap, it gets up and punches.)
+    unarmed: "bony_fists",
     stamina: 60,
     poise: 12,
     brain: (

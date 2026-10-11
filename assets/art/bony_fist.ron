@@ -1,0 +1,23 @@
+// A skeleton's bare fist: knuckle bones, pointing right, held at its wrist
+// (`grip`). What a skeleton punches with once its sword's been taken from
+// its heap (`unarmed` in its creature file).
+(
+    size: (7, 5),
+    feet: (3, 5),
+    outline: (40, 36, 32),
+    palette: {
+        'b': (226, 220, 198),   // bone
+        'B': (176, 168, 146),   // bone, shaded
+    },
+    frames: {
+        "bony_fist": [
+            "...bbb.",
+            ".bbbbbb",
+            "BBbBbBb",
+            ".BBBBBB",
+            "...BBB.",
+        ],
+    },
+    clips: { "held": (frames: ["bony_fist"], fps: 1) },
+    anchors: { "grip": { "bony_fist": (1, 2) } },
+)

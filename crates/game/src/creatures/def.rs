@@ -132,6 +132,10 @@ pub struct CreatureDef {
     /// A weapon it holds from the start (`assets/data/weapons.ron`).
     #[serde(default)]
     pub weapon: Option<String>,
+    /// What it fights with when it holds nothing (a skeleton whose sword
+    /// was taken from its heap: bony fists).
+    #[serde(default)]
+    pub unarmed: Option<String>,
     /// Damage it shrugs off before a hit staggers it (it comes back after a
     /// pause); 0: every hit does.
     #[serde(default)]
@@ -559,7 +563,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         if let Some(r) = &def.rises {
             e.insert(super::body::rise::Rises(r.clone()));
         }
-        e.insert((crate::combat::Wielding(def.weapon.clone()), crate::gear::Equipment::default(), crate::gear::Stats::default()));
+        e.insert((crate::combat::Wielding(def.weapon.clone().or_else(|| def.unarmed.clone())), crate::gear::Equipment::default(), crate::gear::Stats::default()));
         if let Some(s) = def.stamina {
             e.insert(crate::combat::Stamina::new(s));
         }

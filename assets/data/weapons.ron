@@ -83,6 +83,15 @@
             ],
             down: (name: "down slash", from: 50, to: -50, thrust: 6, windup: 0.02, active: 0.11, recovery: 0.06, stamina: 5),
         ),
+        // Bare bony fists: quick, weak jabs (a skeleton without its sword).
+        (
+            id: "bony_fists", art: "bony_fist", harm: blunt,
+            damage: 4, knock: 120, stun: 0.1, rest: -20,
+            moves: [
+                (name: "jab", from: 5, to: -5, thrust: 5, windup: 0.12, active: 0.07, recovery: 0.16, stamina: 6, lunge: 70),
+                (name: "cross", from: -5, to: 5, thrust: 6, windup: 0.1, active: 0.07, recovery: 0.24, stamina: 6, lunge: 90),
+            ],
+        ),
         (
             id: "club", art: "club", harm: blunt,
             damage: 30, knock: 450, stun: 0.5, rest: -60,

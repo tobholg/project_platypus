@@ -12,8 +12,9 @@
 //! light grows in the bones (a real light: a heap waking shows across a
 //! dark cave), wisps rise and the ash about it is drawn in; then it stands
 //! as a new creature of its kind, at `health` of its health, wearing and
-//! holding what's still in the heap (take its sword and it gets up
-//! without; give it a better one...), anything else in it spilled. Its
+//! holding what's still in the heap (take its sword and it gets up with
+//! its bare fists, `unarmed`; give it a better one...), anything else in it
+//! spilled. Its
 //! bones fly together from the heap, feet first (`ASSEMBLE`), and its eyes
 //! light last.
 
@@ -258,10 +259,14 @@ pub fn stand(
                 crate::hands::spawn_drop(&mut commands, &items, pos, s);
             }
         }
-        let wielding = eq.held.and_then(|s| match &items.def(s.item).use_ {
-            Use::Melee(id) | Use::Bow(id) => Some(id.clone()),
-            _ => None,
-        });
+        // (Nothing in its hand: what it fights with bare, its fists.)
+        let wielding = eq
+            .held
+            .and_then(|s| match &items.def(s.item).use_ {
+                Use::Melee(id) | Use::Bow(id) => Some(id.clone()),
+                _ => None,
+            })
+            .or_else(|| pile.def.unarmed.clone());
         let (share, facing) = (pile.rise.health, pile.facing);
         let eyes = pile.def.eyes.map_or(LIGHT, |(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]);
         crate::creatures::def::spawn_creature(&mut commands, &pile.kind, feet, move |c| {

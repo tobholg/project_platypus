@@ -9191,6 +9191,7 @@ fn rise_script(
     (mut hand, mut over, mut mouse): (ResMut<crate::hands::Hand>, ResMut<crate::camera::CursorOverride>, ResMut<ButtonInput<MouseButton>>),
     mut state: Local<(u8, f32)>,
     mut next: Local<f32>,
+    mut took: Local<f32>,
 ) {
     if s.name != "rise" {
         return;
@@ -9199,6 +9200,8 @@ fn rise_script(
     // its longsword at the skeleton (or its heap), as a player would.
     let melee = std::env::var("PLATYPUS_RISE_MELEE").is_ok();
     let (Some(items), Ok((mut k, mut h))) = (items, player.single_mut()) else { return };
+    // (What the player took, kept up: it can't die.)
+    *took += h.max - h.hp;
     h.hp = h.max;
     let fl = platypus_worldgen::arena::FLOOR as f32;
     let skeleton = them.iter().find(|t| t.1.kind == "skeleton").map(|t| (t.0, t.2.body.pos));
@@ -9276,7 +9279,7 @@ fn rise_script(
         *next = s.elapsed + 0.5;
         let sk = them.iter().find(|t| t.1.kind == "skeleton").map(|t| format!("skeleton hp {:.0}/{:.0} wielding {:?}", t.3.hp, t.3.max, t.4.0)).unwrap_or("no skeleton".into());
         let hp: Vec<String> = piles.iter().map(|p| format!("{:.0}/{:.0}", p.1.hp, p.1.max)).collect();
-        info!("rise: t {:.1} {sk}; heaps {:?}; bodies {}", s.elapsed, hp, bodies.iter().count());
+        info!("rise: t {:.1} {sk}; heaps {:?}; bodies {}; the player took {:.0}", s.elapsed, hp, bodies.iter().count(), *took);
     }
 }
 

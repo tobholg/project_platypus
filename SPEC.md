@@ -2019,7 +2019,9 @@ DESIGN §13 item 6.
   pulsing faster, wisps rise and nearby ash is drawn back in; then a new
   skeleton stands where it lay at half its health, wearing and holding
   what's still in the heap (take its sword and it gets up without one; what
-  it can't wear spills), its bones flying together from the heap feet
+  it can't wear spills; with nothing in its hand it fights with its
+  creature file's `unarmed`, a skeleton's bony fists: quick, weak blunt
+  jabs), its bones flying together from the heap feet
   first, the skull last (0.6 s), its eyes catching light last. A heap isn't
   a kill and isn't anyone's quarry. Skeletons also have 70 health (were
   55), fall from 180 cells unhurt (were 105, then 0.3 a cell), and their
