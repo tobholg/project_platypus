@@ -572,6 +572,9 @@ pub struct Died {
     /// It'll get up again (`body::rise`): its body is a heap of bones, with
     /// what it wore and held and no loot yet, and it isn't a kill.
     pub rising: Option<body::rise::RiseDef>,
+    /// Its limbs as they were (a walker's legs, arms, segments, tail: its
+    /// `Parts`, weak spots left out): its ragdoll's pieces (`ragdoll`).
+    pub limbs: Vec<body::parts::Part>,
 }
 
 /// What a body took in a tick, of one kind (`Health::took`, from every
@@ -623,6 +626,7 @@ pub(crate) fn deaths(
     sprites: Query<(&Sprite, &Transform), With<body::animation::CreatureSprite>>,
     mut q: Query<Mortal>,
     tumbles: Query<&body::tumble::Tumble>,
+    parts: Query<&body::parts::Parts>,
 ) {
     let spawn = sim.generator.spawn_point();
     for (entity, mut h, mut k, is_player, bleeds, anim, creature, eq, children) in &mut q {
@@ -634,7 +638,8 @@ pub(crate) fn deaths(
             let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
             let kind = creature.map_or_else(String::new, |c| c.kind.clone());
             let spin = tumbles.get(entity).copied().unwrap_or_default();
-            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin, rising: None });
+            let limbs = parts.get(entity).map(|p| p.limbs()).unwrap_or_default();
+            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin, rising: None, limbs });
         }
         if let Some(&body::hurt::Bleeds(blood)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.

@@ -2047,6 +2047,25 @@ DESIGN §13 item 6.
   chipped by a sword (up again without a sword), killed a third time, a
   hammer on the heap (dead, a body); with `PLATYPUS_RISE_MELEE=1` the
   player fights it with a longsword instead.
+- **Ragdolls** (`creatures::body::ragdoll`, `wounds` stage 1): a body is
+  its parts, pinned at their joints, each colliding with the cells. A
+  humanoid's are cut from its own art as it fell: each layer of the pose it
+  was in (head, torso, arms, legs) drawn alone in what it wore, a rigid
+  piece of its pixels (its weight, how it turns, its edge points); each
+  pinned to the torso where they touched in that pose, bending only so far
+  (a head nods, arms swing round, legs fold). A walker's are its body's
+  sprite and each limb as it was (thigh, shin, arm bone, segment, tail
+  link, from its `Parts`), drawn as alive (outlined, a knuckle at the joint;
+  a mech's as plates), each pinned to the one before it it meets or to the
+  body. Verlet with position-based joints, bend limits and edge points
+  pushed out of cells (with friction), three substeps a tick; dead it goes
+  limp (the torso tips back, each limb its own twist: nothing dies
+  standing); still a while it sleeps; a blast wakes and throws it (through
+  its body). The body (its contents, the cursor's hand) goes where its torso
+  is. Creatures drawn otherwise keep the old body (one picture, tumbling).
+  The `limp` scenario: three bodies by a ledge (one slumps over its edge),
+  then a blast; with `PLATYPUS_KINDS=raptor,spider,...` those in a row.
+  Twelve at once: ~6 ms a frame.
 - **Thrown about** (`creatures::body::tumble`, `hands::corpses`): a blow
   or blast that knocks a creature off its feet (a stun) sets it spinning
   (`Tumble`: 0.009 rad/s per cell/s of knock over its heft past half of

@@ -50,6 +50,11 @@ pub struct Parts {
 }
 
 impl Parts {
+    /// Its limbs (everything but its weak spots).
+    pub fn limbs(&self) -> Vec<Part> {
+        self.list.iter().filter(|p| p.kind != PartKind::Weak).cloned().collect()
+    }
+
     /// Laid out afresh: the parts and the box round them.
     pub fn set(&mut self, list: Vec<Part>) {
         let (lo, hi) = list.iter().fold((Vec2::MAX, Vec2::MIN), |(lo, hi), p| (lo.min(p.a.min(p.b) - p.r), hi.max(p.a.max(p.b) + p.r)));

@@ -246,6 +246,122 @@ pub fn assemble(cuts: &[Cut], frame: (u32, u32), centre: Vec2, facing: f32, vel:
     Limp { pieces, joints, root, still: 0, asleep: false }
 }
 
+/// How a piece looks: drawn for it (mirrored or not), or the body's own
+/// sprite.
+pub enum Look {
+    Image(Image, bool),
+    Sprite(Sprite),
+}
+
+/// How far a walker's limb bends at a joint with another limb (a knee, an
+/// elbow, a tail's link), and where it meets the body (a hip, a shoulder).
+const BEND_KNEE: f32 = 2.2;
+const BEND_HIP: f32 = 1.8;
+/// A walker's body piece: this share of its frame (sprites have margins).
+const BODY_SHARE: f32 = 0.34;
+
+/// Cells drawn (each a colour, later ones over earlier) as a picture, and
+/// where its middle is among them.
+fn picture(px: &[(IVec2, [u8; 4])]) -> (Image, Vec2) {
+    let lo = px.iter().fold(IVec2::MAX, |m, (p, _)| m.min(*p));
+    let hi = px.iter().fold(IVec2::MIN, |m, (p, _)| m.max(*p));
+    let (w, h) = ((hi.x - lo.x + 1) as u32, (hi.y - lo.y + 1) as u32);
+    let mut data = vec![0u8; (w * h * 4) as usize];
+    for (p, c) in px {
+        let i = (((hi.y - p.y) as u32 * w + (p.x - lo.x) as u32) * 4) as usize;
+        data[i..i + 4].copy_from_slice(c);
+    }
+    let mut image = Image::new(Extent3d { width: w, height: h, depth_or_array_layers: 1 }, TextureDimension::D2, data, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::RENDER_WORLD);
+    image.sampler = bevy::image::ImageSampler::nearest();
+    (image, (lo + hi + IVec2::ONE).as_vec2() / 2.0)
+}
+
+/// A walker (a body on procedural limbs) as a ragdoll: its body sprite one
+/// piece (`frame` its size, at the body's middle plus `offset`), each limb
+/// capsule (`limbs`: thigh, shin, arm bone, segment, tail link) another,
+/// drawn by `draw` as it's drawn alive, laid along x from its middle; each
+/// limb pinned to the one before it it meets (a shin to its thigh, a link
+/// to the last), or else to the body where it's nearest.
+#[allow(clippy::too_many_arguments)]
+pub fn limbed(sprite: Sprite, offset: Vec2, frame: (u32, u32), body: Vec2, limbs: &[super::parts::Part], draw: impl Fn(&super::parts::Part, f32) -> Vec<(IVec2, [u8; 4])>, vel: Vec2, omega: f32) -> (Limp, Vec<Look>) {
+    let sub = DT / SUBSTEPS as f32;
+    let centre = body + offset;
+    let half = Vec2::new(frame.0 as f32, frame.1 as f32) * BODY_SHARE;
+    let mut rng = platypus_sim::rng::Rng::seeded(&[centre.x.to_bits() as u64, centre.y.to_bits() as u64, 0x11B5]);
+    let edge = |half: Vec2| {
+        let mut s = Vec::new();
+        let n = 5;
+        for i in 0..=n {
+            let t = i as f32 / n as f32 * 2.0 - 1.0;
+            s.extend([Vec2::new(t * half.x, -half.y), Vec2::new(t * half.x, half.y), Vec2::new(-half.x, t * half.y), Vec2::new(half.x, t * half.y)]);
+        }
+        s
+    };
+    let new = |pos: Vec2, angle: f32, mass: f32, inertia: f32, samples: Vec<Vec2>, name: &str, v: Vec2, w: f32| Piece {
+        pos,
+        prev: pos - v * sub,
+        angle,
+        prev_angle: angle - w * sub,
+        tick_pos: pos,
+        tick_angle: angle,
+        inv_mass: 1.0 / mass.max(1.0),
+        inv_inertia: 1.0 / inertia.max(1.0),
+        samples,
+        draw_offset: Vec2::ZERO,
+        name: name.to_string(),
+    };
+    let body_mass = (half.x * half.y * 4.0).max(4.0);
+    let mut pieces = vec![new(centre, 0.0, body_mass, body_mass * half.length_squared() / 3.0, edge(half), "body", vel, omega)];
+    let mut looks = vec![Look::Sprite(sprite)];
+    let mut angles = vec![0.0f32];
+    for p in limbs {
+        let d = p.b - p.a;
+        let len = d.length().max(1.0);
+        let thick = (p.r * 2.0 - 1.0).max(1.0);
+        let angle = d.y.atan2(d.x);
+        let drawn = draw(p, len);
+        let (image, middle) = if drawn.is_empty() { picture(&[(IVec2::ZERO, [255, 0, 255, 255])]) } else { picture(&drawn) };
+        let mut samples = Vec::new();
+        let mut x = -len / 2.0;
+        while x <= len / 2.0 {
+            samples.extend([Vec2::new(x, thick / 2.0), Vec2::new(x, -thick / 2.0)]);
+            x += 2.0;
+        }
+        samples.extend([Vec2::new(-len / 2.0, 0.0), Vec2::new(len / 2.0, 0.0)]);
+        let mass = len * thick;
+        let twist = (rng.next_u32() as f32 / u32::MAX as f32 * 2.0 - 1.0) * SLUMP_TWIST;
+        let pos = (p.a + p.b) / 2.0;
+        let r = pos - centre;
+        let mut piece = new(pos, angle, mass, mass * (len * len + thick * thick) / 12.0, samples, "limb", vel + Vec2::new(-r.y, r.x) * omega, omega + twist);
+        piece.draw_offset = middle;
+        pieces.push(piece);
+        looks.push(Look::Image(image, false));
+        angles.push(angle);
+    }
+    // Each limb pinned to the one before it it meets, or to the body.
+    let mut joints = Vec::new();
+    for (i, p) in limbs.iter().enumerate() {
+        let me = i + 1;
+        let tol = (p.r * 2.0).max(2.5).max(0.6 * p.a.distance(p.b));
+        let mut best: Option<(usize, Vec2, f32)> = None;
+        for (j, q) in limbs[..i].iter().enumerate() {
+            for (x, y) in [(p.a, q.b), (p.a, q.a), (p.b, q.b), (p.b, q.a)] {
+                let dist = x.distance(y);
+                if dist < tol && best.is_none_or(|b| dist < b.2) {
+                    best = Some((j + 1, (x + y) / 2.0, dist));
+                }
+            }
+        }
+        let (other, at, limit) = match best {
+            Some((j, at, _)) => (j, at, BEND_KNEE),
+            None => (0, if p.a.distance(centre) <= p.b.distance(centre) { p.a } else { p.b }, BEND_HIP),
+        };
+        let (pa, pb) = (&pieces[other], &pieces[me]);
+        joints.push(Joint { a: other, b: me, la: rot(at - pa.pos, -pa.angle), lb: rot(at - pb.pos, -pb.angle), rest: wrap(angles[me] - angles[other]), limit });
+    }
+    (Limp { pieces, joints, root: 0, still: 0, asleep: false }, looks)
+}
+
 fn rot(v: Vec2, a: f32) -> Vec2 {
     let (s, c) = a.sin_cos();
     Vec2::new(v.x * c - v.y * s, v.x * s + v.y * c)

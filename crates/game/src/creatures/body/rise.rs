@@ -123,7 +123,7 @@ pub fn collapse(mut commands: Commands, mut sim: ResMut<SimWorld>, mut died: Mes
         h.hp = 1.0;
         let sprite = children.and_then(|ch| ch.iter().find_map(|c| sprites.get(c).ok())).map(|(s, tf)| (s.clone(), tf.translation));
         let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
-        died.write(Died { kind: creature.kind.clone(), def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin: spin.copied().unwrap_or_default(), rising: Some(rises.0.clone()) });
+        died.write(Died { kind: creature.kind.clone(), def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin: spin.copied().unwrap_or_default(), rising: Some(rises.0.clone()), limbs: Vec::new() });
         if let Some(&super::hurt::Bleeds(dust)) = bleeds {
             sim.world.splash([k.body.pos.x, k.body.pos.y], dust, 14, 2.4);
         }
@@ -175,7 +175,7 @@ pub fn shatter(
         h.hp = 1.0;
         let worn: Vec<Stack> = chests.contents(corpse.key, &sim.world, &items).slots.iter().flatten().copied().collect();
         chests.forget(corpse.key);
-        died.write(Died { kind: pile.kind.clone(), def: pile.def.clone(), body: k.body, facing: pile.facing, sprite: pile.sprite.clone(), worn, spin: default(), rising: None });
+        died.write(Died { kind: pile.kind.clone(), def: pile.def.clone(), body: k.body, facing: pile.facing, sprite: pile.sprite.clone(), worn, spin: default(), rising: None, limbs: Vec::new() });
         let burst = bone_burst();
         sparks.emit(&burst, burst.count as usize, k.body.pos, Vec2::Y, Vec2::ZERO);
         sounds.write(crate::sound::PlaySound::at("break", k.body.pos).pitch(1.3));

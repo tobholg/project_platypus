@@ -2422,7 +2422,7 @@ fn knee(hip: Vec2, foot: Vec2, a: f32, b: f32, up: Vec2, rock: impl Fn(Vec2) -> 
 /// A limb from `a` to `b`, `ra` cells round at `a` tapering to `rb` at `b`:
 /// discs stamped along it, each cell once per disc (later strokes over
 /// earlier ones).
-fn stroke(a: Vec2, b: Vec2, ra: f32, rb: f32, c: [u8; 4], out: &mut Vec<(IVec2, [u8; 4])>) {
+pub(crate) fn stroke(a: Vec2, b: Vec2, ra: f32, rb: f32, c: [u8; 4], out: &mut Vec<(IVec2, [u8; 4])>) {
     let n = ((b - a).length() / 0.5).ceil().max(1.0) as i32;
     for i in 0..=n {
         let t = i as f32 / n as f32;
@@ -2445,7 +2445,7 @@ fn stroke(a: Vec2, b: Vec2, ra: f32, rb: f32, c: [u8; 4], out: &mut Vec<(IVec2, 
 /// ends); with `under`, only its underside's band in that colour (shaded:
 /// the side away from `up`).
 #[allow(clippy::too_many_arguments)]
-fn plate(a: Vec2, b: Vec2, r: f32, c: [u8; 4], under: Option<[u8; 4]>, out: &mut Vec<(IVec2, [u8; 4])>, up: Vec2) {
+pub(crate) fn plate(a: Vec2, b: Vec2, r: f32, c: [u8; 4], under: Option<[u8; 4]>, out: &mut Vec<(IVec2, [u8; 4])>, up: Vec2) {
     let d = b - a;
     let len = d.length().max(0.01);
     let dir = d / len;

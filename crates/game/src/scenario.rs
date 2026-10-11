@@ -9287,10 +9287,29 @@ fn limp_script(
             let still = |e: &mut EntityWorldMut| {
                 e.remove::<crate::creatures::brain::hunter::Hunter>();
             };
+            // `PLATYPUS_KINDS=raptor,spider,...`: those in a row past the ledge
+            // instead, each struck dead where it stands.
+            if let Ok(kinds) = std::env::var("PLATYPUS_KINDS") {
+                for (i, kind) in kinds.split(',').enumerate() {
+                    crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(1015.0 + i as f32 * 45.0, fl), still);
+                }
+                *state = 2;
+                return;
+            }
             crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(963.0, fl + 24.0), still);
             crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(935.0, fl), still);
             crate::creatures::def::spawn_creature(&mut commands, "skeleton", Vec2::new(925.0, fl + 70.0), still);
             *state = 2;
+        }
+        2 if s.elapsed > 1.5 && std::env::var("PLATYPUS_KINDS").is_ok() => {
+            for (e, c, tk) in &them {
+                if c.kind != "dummy" {
+                    hits.write(crate::combat::Hit { target: e, damage: 9999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::new(30.0, 0.0), stun: 0.5, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+                }
+            }
+            k.body.pos = Vec2::new(975.0, fl + 24.0 + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            *state = 3;
         }
         2 if s.elapsed > 1.5 => {
             let mut all: Vec<(Entity, Vec2)> = them.iter().filter(|t| t.1.kind != "dummy").map(|t| (t.0, t.2.body.pos)).collect();

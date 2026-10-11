@@ -83,7 +83,7 @@ fn belongings(died: &Died, items: &Items, chests: &Chests, world: &platypus_sim:
 /// A body drawn in parts (its art's poses: a humanoid) as a ragdoll: the
 /// parts of the frame it fell in, dressed in what it wore, moving as it
 /// was. None for a body that isn't (a sprite, a walker on legs).
-fn limp_of(d: &Died, items: &Items) -> Option<(ragdoll::Limp, Vec<ragdoll::Cut>)> {
+fn limp_of(d: &Died, items: &Items) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look, f32)>)> {
     let file = d.def.art_file.as_ref()?;
     if file.poses.is_empty() {
         return None;
@@ -99,7 +99,60 @@ fn limp_of(d: &Died, items: &Items) -> Option<(ragdoll::Limp, Vec<ragdoll::Cut>)
     }
     let centre = d.body.pos + offset.truncate();
     let limp = ragdoll::assemble(&cuts, d.def.sprite.frame, centre, d.facing, d.body.vel, d.spin.omega);
-    Some((limp, cuts))
+    // (Its parts in their pose's order, mirrored as it faced.)
+    let looks = cuts
+        .into_iter()
+        .enumerate()
+        .map(|(i, c)| (ragdoll::Look::Image(c.image, d.facing < 0.0), i as f32 * 0.01))
+        .collect();
+    Some((limp, looks))
+}
+
+/// A walker (a body on procedural limbs) as a ragdoll: its body's sprite
+/// and each limb as it was. None without limbs.
+fn walker_of(d: &Died) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look, f32)>)> {
+    use crate::creatures::body::parts::PartKind;
+    let legs = d.def.legs.as_ref()?;
+    let (sprite, offset) = d.sprite.as_ref()?;
+    if d.limbs.is_empty() {
+        return None;
+    }
+    use crate::creatures::body::legs::{LegStyle, plate, stroke};
+    let rgb = |(r, g, b): (u8, u8, u8)| [r, g, b, 255];
+    let dark = |(r, g, b): (u8, u8, u8)| ((r as f32 * 0.6) as u8, (g as f32 * 0.6) as u8, (b as f32 * 0.6) as u8);
+    let joint = legs.joint.unwrap_or(legs.color);
+    let segment = legs.segments.as_ref().map(|s| s.color);
+    let chain = legs.chains.iter().find_map(|c| c.color);
+    let line = legs.outline.unwrap_or_else(|| dark(dark(legs.color)));
+    // Each limb as it's drawn alive (`legs::draw`): outlined, a knuckle at
+    // its joint; a mech's legs as plates, shaded under.
+    let draw = |p: &crate::creatures::body::parts::Part, len: f32| {
+        let (a, b) = (Vec2::new(-len / 2.0, 0.0), Vec2::new(len / 2.0, 0.0));
+        let r = (p.r - 0.5).max(0.5);
+        let color = match p.kind {
+            PartKind::Segment => segment.unwrap_or(legs.color),
+            PartKind::Chain => chain.unwrap_or(legs.color),
+            _ => legs.color,
+        };
+        let mut out = Vec::new();
+        if legs.style == LegStyle::Plate && p.kind == PartKind::Leg {
+            plate(a, b, r + 1.0, rgb(line), None, &mut out, Vec2::Y);
+            plate(a, b, r, rgb(color), None, &mut out, Vec2::Y);
+            plate(a, b, r, rgb(color), Some(rgb(dark(color))), &mut out, Vec2::Y);
+        } else {
+            stroke(a, b, r + 1.0, r + 1.0, rgb(line), &mut out);
+            stroke(a, b, r, r, rgb(color), &mut out);
+        }
+        if p.kind == PartKind::Leg || p.kind == PartKind::Arm {
+            let k = (r * 0.5).max(0.8);
+            stroke(a, a, k, k, rgb(joint), &mut out);
+        }
+        out
+    };
+    let (limp, looks) = ragdoll::limbed(sprite.clone(), offset.truncate(), d.def.sprite.frame, d.body.pos, &d.limbs, draw, d.body.vel, d.spin.omega);
+    // (The body over its limbs.)
+    let looks = looks.into_iter().enumerate().map(|(i, l)| (l, if i == 0 { 0.05 } else { i as f32 * 0.0005 })).collect();
+    Some((limp, looks))
 }
 
 /// How tall a walker on legs lies dead (cells): its body, not its legs.
@@ -251,8 +304,8 @@ fn lay_out(
             continue;
         }
         let key = chests.stash(at, inv);
-        // A body drawn in parts (a humanoid): its parts, a ragdoll.
-        if let Some((limp, cuts)) = limp_of(d, &items) {
+        // A body drawn in parts (a humanoid), or on limbs (a walker): a ragdoll.
+        if let Some((limp, looks)) = limp_of(d, &items).or_else(|| walker_of(d)) {
             let root_at = limp.pieces[limp.root].pos;
             // (Its box, for opening it: lying down.)
             let body = Body::new(root_at, Vec2::new(d.body.half.y, d.body.half.x) * 2.0);
@@ -264,11 +317,13 @@ fn lay_out(
                 Transform::from_translation(root_at.extend(Z)),
                 Visibility::default(),
             ));
-            for (i, c) in cuts.into_iter().enumerate() {
-                let mut s = Sprite::from_image(images.add(c.image));
-                s.flip_x = d.facing < 0.0;
+            for (i, (look, z)) in looks.into_iter().enumerate() {
+                let mut s = match look {
+                    ragdoll::Look::Image(image, flip) => Sprite { flip_x: flip, ..Sprite::from_image(images.add(image)) },
+                    ragdoll::Look::Sprite(s) => s,
+                };
                 s.color = Color::srgb(DIM, DIM, DIM);
-                e.with_child((CorpseSprite, ragdoll::LimpPiece(i), s, Transform::from_xyz(0.0, 0.0, i as f32 * 0.01)));
+                e.with_child((CorpseSprite, ragdoll::LimpPiece(i), s, Transform::from_xyz(0.0, 0.0, z)));
             }
             e.insert(limp);
             if let Some(rise) = &d.rising {
