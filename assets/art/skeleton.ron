@@ -11,8 +11,6 @@
     palette: {
         'j': (238, 234, 218),   // skull, lit
         'L': (232, 228, 212),   // bone, lit
-        'U': (144, 138, 122),   // ankles
-        'o': (86, 80, 72),      // the undersides of the feet
         'h': (218, 212, 194),   // skull
         'H': (172, 166, 150),   // skull, shade
         's': (214, 208, 190),   // bone
@@ -22,10 +20,6 @@
         'T': (156, 150, 136),   // ribs, shade
         'b': (62, 52, 50),      // the dark round the spine (under a belt)
         'y': (150, 144, 130),   // the pelvis
-        'p': (194, 188, 172),   // leg bones
-        'q': (150, 144, 130),   // leg bones, the far one
-        'B': (124, 118, 104),   // feet
-        'C': (100, 94, 84),     // feet, the far one
     },
     parts: {
         "head": (rows: [
