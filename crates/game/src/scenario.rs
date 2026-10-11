@@ -9599,6 +9599,9 @@ fn sever_script(
 ///     drawing its spilled goo back in.
 ///   split: a blade through it (3.5 s, 5 s): each cuts a slime off it.
 ///   merge: two half slimes side by side: they merge into one.
+///   engulf: let be: it lands on the player and swallows them; they mash
+///     jump to get out.
+///   eat: a rabbit, two torches and copper ore put in its goo (1.5 s).
 ///   (anything else, `none`: let be: it hops at the player, spikes them.)
 /// Logs its health, the goo it holds and the goo loose near it.
 #[allow(clippy::type_complexity)]
@@ -9606,18 +9609,20 @@ fn slime_script(
     mut commands: Commands,
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
-    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>, Has<crate::creatures::body::goo::Swallowed>), With<LocalPlayer>>,
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Option<&crate::creatures::body::goo::Goo>, Option<&crate::creatures::brain::senses::Alert>), Without<LocalPlayer>>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut state: Local<(u8, f32, f32)>,
     mut took: Local<f32>,
     mut felt: MessageReader<crate::combat::Felt>,
+    (items, swallowed, mut keys): (Option<Res<crate::hands::items::Items>>, Query<(Entity, Has<crate::hands::Dropped>, Option<&crate::creatures::Creature>), With<crate::creatures::body::goo::Swallowed>>, ResMut<ButtonInput<KeyCode>>),
+    drops: Query<&crate::hands::Dropped>,
 ) {
     if s.name != "slime" {
         return;
     }
     let mode = std::env::var("PLATYPUS_SLIME").unwrap_or_else(|_| "look".into());
-    let Ok((mut k, mut h, coated)) = player.single_mut() else { return };
+    let Ok((mut k, mut h, coated, inside)) = player.single_mut() else { return };
     let slimy = coated.map_or(0.0, |c| c.share("slimy"));
     if h.max - h.hp > 15.0 {
         info!("slime: t {:.2} the player lost {:.0} at once (hp {:.1}, max {:.1})", s.elapsed, h.max - h.hp, h.hp, h.max);
@@ -9682,6 +9687,19 @@ fn slime_script(
             strike(&mut hits, crate::creatures::Harm::Slash, 8.0);
             state.1 = t + 0.7;
         }
+        "eat" if state.0 == 1 && t > 1.5 => {
+            // (A rabbit and some things, in its goo.)
+            crate::creatures::def::spawn_creature(&mut commands, "rabbit", sk.body.pos + Vec2::new(4.0, 0.0), |_| {});
+            if let Some(items) = items.as_ref() {
+                for (name, dx) in [("torch", -6.0), ("copper_ore", 6.0), ("torch", 0.0)] {
+                    if let Some(id) = items.id(name) {
+                        crate::hands::spawn_drop(&mut commands, items, sk.body.pos + Vec2::new(dx, 2.0), crate::hands::items::Stack::new(id, 1));
+                    }
+                }
+            }
+            info!("slime: t {t:.1} a rabbit, two torches and copper ore in its goo");
+            state.0 = 2;
+        }
         "split" if state.0 >= 1 && state.0 <= 2 && t > 2.0 + state.0 as f32 * 1.5 => {
             strike(&mut hits, crate::creatures::Harm::Slash, 30.0);
             info!("slime: t {t:.1} a blade through it");
@@ -9703,6 +9721,18 @@ fn slime_script(
             state.1 += 2.0;
         }
         _ => {}
+    }
+    // `engulf`: swallowed, the player mashes jump to get out.
+    if mode == "engulf" {
+        if inside && (t * 8.0) as i32 % 2 == 0 {
+            keys.press(KeyCode::Space);
+        } else {
+            keys.release(KeyCode::Space);
+        }
+    }
+    if t >= state.2 && matches!(mode.as_str(), "eat" | "engulf") {
+        let held: Vec<String> = swallowed.iter().map(|(_, d, c)| if d { "an item".to_string() } else { c.map_or("?".to_string(), |c| c.kind.clone()) }).collect();
+        info!("slime: t {t:.1} in it: [{}]; items about: {}", held.join(", "), drops.iter().count());
     }
     if t >= state.2 && matches!(mode.as_str(), "split" | "merge") {
         let all: Vec<String> = them.iter().filter(|x| x.1.kind == "slime").map(|x| format!("{:.0}/{:.0} holds {} at {:.0}", x.3.hp, x.3.max, x.4.map_or(0, |g| g.held()), x.2.body.pos.x)).collect();
