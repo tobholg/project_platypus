@@ -9249,10 +9249,10 @@ fn pickups_script(
 /// spider on its underside; from 2 s an arrow into one of its legs every
 /// half second (each enough to cut it): it should hold on with five of its
 /// eight, and fall with three. `PLATYPUS_SEVER=skeleton`: a skeleton by
-/// the player, a blade through one leg at 2 s (it hops), the other at 4 s
-/// (it drags itself). Logs, each half second, what it's lost, whether it
+/// the player, a blade through one leg at 2 s (it hops), the other at 5 s
+/// (it drags itself, on its pelvis). Logs, each half second, what it's lost, whether it
 /// holds on, where it is and how fast it can go.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn sever_script(
     mut commands: Commands,
     s: Res<Scenario>,
@@ -9316,10 +9316,10 @@ fn sever_script(
             if let Some(p) = next {
                 let at = (p.a + p.b) / 2.0;
                 let harm = if spider { crate::creatures::Harm::Pierce } else { crate::creatures::Harm::Slash };
-                hits.write(crate::combat::Hit { target: e, damage: 40.0, harm, knock: Vec2::ZERO, stun: 0.0, at, dir: (at - tk.body.pos).normalize_or(Vec2::X), weight: 1.0, crit: false });
+                hits.write(crate::combat::Hit { target: e, damage: if spider { 40.0 } else { 60.0 }, harm, knock: Vec2::ZERO, stun: 0.0, at, dir: (at - tk.body.pos).normalize_or(Vec2::X), weight: 1.0, crit: false });
                 info!("sever: t {:.1} a blow through its leg {:?}", s.elapsed, p.limb);
             }
-            state.1 = s.elapsed + if spider { 0.5 } else { 2.0 };
+            state.1 = s.elapsed + if spider { 0.5 } else { 3.0 };
             if !spider && s.elapsed > 4.5 {
                 state.0 = 3;
             }

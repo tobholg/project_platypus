@@ -57,7 +57,7 @@ impl Plugin for CreaturesPlugin {
             // Blows on limbs wear them down and cut them off (`wounds`).
             .add_message::<body::wounds::Cut>()
             .add_systems(FixedUpdate, (body::wounds::wound, body::wounds::sever, body::wounds::bleed).chain().after(crate::combat::Hits).before(TickSet::Cells))
-            .add_systems(Update, body::wounds::fade)
+            .add_systems(Update, (body::wounds::fade, body::wounds::sit.before(body::animation::animate)))
             .add_systems(FixedUpdate, (body::elements::struck, body::elements::zapped, blasted, pelted).after(TickSet::Cells))
             .add_systems(PostUpdate, interpolate.before(TransformSystems::Propagate))
             .add_systems(Update, (body::rise::assemble, body::rise::tint_waking))
@@ -485,12 +485,16 @@ const PELT_SAFE_LIQUID: f32 = 375.0;
 /// times faster × this, and are mostly stopped by it, shoving it.
 const PELT: f32 = 0.8;
 
+type Pelted<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a brain::way::DigFace>, Option<&'a body::hurt::Bleeds>);
+
 /// Heavy things flying fast hurt what they hit: a ball of rock dropped
 /// from a well, blast debris, a flung stream of sand (not a digger at its
 /// face: what it digs rains on it).
-/// (Not a heap of bones: its own dust, flung as it fell, would wear it down.)
-fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Kinematics, &mut Health, Option<&brain::way::DigFace>), Without<body::rise::Pile>>) {
+/// (Not a heap of bones: its own dust, flung as it fell, would wear it down;
+/// nor its own blood, spurting from a wound.)
+fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<Pelted, Without<body::rise::Pile>>) {
     let boxes: Vec<(Vec2, Vec2)> = q.iter().map(|(k, ..)| (k.body.pos - k.body.half, k.body.pos + k.body.half)).collect();
+    let bloods: Vec<Option<platypus_sim::MaterialId>> = q.iter().map(|(.., b)| b.map(|b| b.0)).collect();
     if boxes.is_empty() {
         return;
     }
@@ -510,12 +514,15 @@ fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Kinematics, &mut Health,
         }
         let at = Vec2::new(p.pos[0], p.pos[1]);
         let Some(i) = boxes.iter().position(|(lo, hi)| at.cmpge(*lo).all() && at.cmple(*hi).all()) else { continue };
+        if bloods[i] == Some(p.cell.material) {
+            continue;
+        }
         let weight = (ph.density as f32 / 1000.0).clamp(0.2, 5.0) * if ph.kind == Kind::Liquid { 0.5 } else { 1.0 };
         hurt[i] += weight * (speed - safe) / safe * PELT;
         shove[i] += v * weight * 0.02;
         p.vel = [p.vel[0] * 0.3, p.vel[1] * 0.3];
     }
-    for (i, (mut k, mut h, dig)) in q.iter_mut().enumerate() {
+    for (i, (mut k, mut h, dig, _)) in q.iter_mut().enumerate() {
         // (A digger shrugs off the dirt it's digging.)
         if hurt[i] > 0.0 && dig.is_none_or(|d| d.face.is_empty()) {
             h.harm(hurt[i], Harm::Blunt);

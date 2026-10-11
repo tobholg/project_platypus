@@ -22,7 +22,7 @@ const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// their own share.
 const LEGS_SHARE: f32 = 1.2;
 const LEG_LEAST: f32 = 0.12;
-const LEG_MOST: f32 = 0.4;
+const LEG_MOST: f32 = 0.25;
 const ARM_SHARE: f32 = 0.3;
 const CHAIN_SHARE: f32 = 0.35;
 const HEAD_SHARE: f32 = 0.4;
@@ -47,6 +47,15 @@ const ONE_LEG: f32 = 0.45;
 const NO_LEGS: f32 = 0.15;
 const HOP: f32 = 0.45;
 const MANY_LEAST: f32 = 0.3;
+
+/// A body drawn by its own art on legs that only add legs (`legs::rig`),
+/// with no legs left: drawn this much lower (its pelvis on the ground),
+/// in a box a crawler's height.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Legless(pub f32);
+
+/// The least a legless body's box is (cells high).
+const CRAWL_LEAST: f32 = 8.0;
 
 /// What each limb's taken.
 #[derive(Component, Clone, Debug, Default)]
@@ -132,7 +141,7 @@ pub fn wound(mut commands: Commands, mut felt: MessageReader<crate::combat::Felt
     }
 }
 
-type Cutting<'a> = (&'a Kinematics, &'a Parts, &'a super::animation::Animator, Option<&'a mut Severed>, Option<&'a super::hurt::Bleeds>, &'a mut MoveStats, Option<&'a mut Bleeding>);
+type Cutting<'a> = (&'a mut Kinematics, &'a Parts, &'a super::animation::Animator, Option<&'a mut Severed>, Option<&'a super::hurt::Bleeds>, &'a mut MoveStats, Option<&'a mut Bleeding>);
 
 /// A limb comes off: the piece flies, bleeding; the stump bleeds; the
 /// creature has lost it.
@@ -146,7 +155,7 @@ pub fn sever(
     mut q: Query<Cutting>,
 ) {
     for c in cuts.read() {
-        let Ok((k, parts, anim, severed, bleeds, mut moves, bleeding)) = q.get_mut(c.target) else { continue };
+        let Ok((mut k, parts, anim, severed, bleeds, mut moves, bleeding)) = q.get_mut(c.target) else { continue };
         if severed.as_ref().is_some_and(|s| s.has(c.limb)) {
             continue;
         }
@@ -160,6 +169,19 @@ pub fn sever(
         lost.push(c.limb);
         commands.entity(c.target).insert(Severed(lost.clone()));
         moves.0 = crippled(&anim.def.movement, legs, &lost);
+        // Its own art's body with no legs left: down on its pelvis, a
+        // crawler's box (its bottom where it was).
+        let total = if legs.view == super::legs::View::Side { legs.each.len() } else { legs.count };
+        if legs.rig && lost.iter().filter(|l| matches!(l, Limb::Leg(_))).count() >= total {
+            let hip = legs.each.iter().map(|l| l.hip.1).fold(f32::MIN, f32::max);
+            let sunk = anim.def.size.1 / 2.0 + hip;
+            let half = ((anim.def.size.1 - sunk).max(CRAWL_LEAST)) / 2.0;
+            let drop = k.body.half.y - half;
+            k.body.half.y = half;
+            k.body.pos.y -= drop;
+            k.prev_pos.y -= drop;
+            commands.entity(c.target).insert(Legless(sunk));
+        }
         // The piece, flying off along the blow.
         let root = limbs[0].a;
         let spin = if c.dir.x < 0.0 { THROW_SPIN } else { -THROW_SPIN };
@@ -222,6 +244,21 @@ pub fn crippled(base: &platypus_physics::MovementStats, legs: &super::legs::Legs
     m.dash_speed *= speed;
     m.cling = base.cling && left * 2 >= total;
     m
+}
+
+/// A legless body is drawn down on its pelvis: its art's feet raised by
+/// what its legs held it up (kept so through a change of look).
+pub fn sit(mut q: Query<(&Legless, &mut super::animation::Animator)>) {
+    for (l, mut anim) in &mut q {
+        let base = anim.def.art_file.as_ref().map(|f| f.feet.1).unwrap_or(anim.def.sprite.feet.1);
+        let want = base - l.0;
+        if (anim.def.sprite.feet.1 - want).abs() > 0.01 {
+            let mut def = (*anim.def).clone();
+            def.sprite.feet.1 = want;
+            anim.def = std::sync::Arc::new(def);
+            anim.refresh();
+        }
+    }
 }
 
 /// Blood from each bleeding spot, less and less, till it stops.
@@ -287,7 +324,7 @@ mod tests {
         m.run_speed = 100.0;
         m.jump_height = 40.0;
         m.cling = cling;
-        let text = format!("(view: Top, count: {legs}, reach: 10, color: (1, 1, 1), body: \"x\")");
+        let text = format!("(view: Above, count: {legs}, reach: 10, color: (1, 1, 1), body: \"x\")");
         (m, crate::data::parse_ron(&text).unwrap())
     }
 

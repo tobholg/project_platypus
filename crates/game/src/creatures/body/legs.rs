@@ -2620,13 +2620,15 @@ impl Layer {
 const Z_NEAR_LEGS: f32 = 10.06;
 
 
+type Drawn<'a> = (Entity, &'a Legs, &'a GlobalTransform, Option<&'a mut LimbImages>, Option<&'a super::parts::Severed>);
+
 /// Every leg, a cell at a time, onto the canvases.
 #[allow(clippy::too_many_arguments)]
 fn draw(
     mut commands: Commands,
     sim: Res<SimWorld>,
     mut images: ResMut<Assets<Image>>,
-    mut q: Query<(Entity, &Legs, &GlobalTransform, Option<&mut LimbImages>, Option<&super::parts::Severed>), Without<crate::creatures::Dormant>>,
+    mut q: Query<Drawn, Without<crate::creatures::Dormant>>,
     mut layers: LayerSprites,
 ) {
     // (Behind, in front.)
