@@ -478,6 +478,31 @@ Done when: a night on the surface brings them up out of the ground; a
 fight leaves arms crawling, torsos dragging themselves, and bodies you
 must burn.
 
+**8c. `slimes`: real goo.** (Agreed 2026-10-11.) A slime is a core (a
+nucleus with eyes, its box) holding a body of goo, cells of the world
+(`body/goo.rs`; the sim's `HELD` cell flag: held goo stays put, nothing
+pushes it, bodies pass through, let go a few ticks after it's no longer
+put back). Its goo is its health: hurt, it flings goo off; dead, it spills.
+1. The body: laid out each tick round the core (a dome on the ground, a
+   ball in the air, squashed landing); fire burns it, acid eats it; sticky
+   (slimy: slows); heals when let be, drawing its spilled goo back in;
+   high hops, each its own height; it comes down on you, touching with its
+   goo. Spikes: near you, its face shivers, then a fan of goo spikes stabs
+   at you, pulsing in a wave, jittering.
+2. Split and merge: a cutting blow big enough cuts off a slime of its own
+   (smaller for good: Mass); slimes whose goo touches merge (up to 3x).
+3. Swallowed: items (ore, gems, gear kept; the rest dissolved), small
+   creatures (digested: it grows), and the player when it lands on them
+   (digested; struggle out, or spat out in 3 s; blows from inside x2).
+4. Kinds: green (burns), blue (bounces, won't burn), acid (eats what it's
+   against), the glutton (takes on fire, frost, lightning; fire on frost
+   goes off; drains).
+   (Stages 1-4 built 2026-10-11 on `slimes`; `slime` scenario: look, burn,
+   kill, heal, split, merge, engulf, eat, glut, many; PLATYPUS_SLIME_KIND.)
+5. Next: squeezing through cracks (the core shrinks to a gap), the slime
+   king (one that's eaten enough), goo as a material to collect and use
+   (torches from green goo and wood), bones out of what it digests.
+
 **9. `powder`: firearms and new materials.**
 The flintlock pistol and the musket; gunpowder (charcoal and sulfur, a new
 mineral by the underworld's lava); iron and silver shot; muzzle flash,

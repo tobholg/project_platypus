@@ -9825,6 +9825,10 @@ fn night_script(
     let near: Vec<_> = them.iter().filter(|(c, k, _)| c.kind.starts_with("zombie") && k.body.pos.distance(pk.body.pos) < 700.0).collect();
     let coming = near.iter().filter(|(_, _, e)| *e).count();
     let at: Vec<String> = near.iter().map(|(_, k, _)| format!("{:+.0}", k.body.pos.x - pk.body.pos.x)).collect();
+    let slimes: Vec<String> = them.iter().filter(|(c, k, _)| (c.kind.contains("slime") || c.kind == "glutton") && k.body.pos.distance(pk.body.pos) < 700.0).map(|(c, ..)| c.kind.clone()).collect();
+    if !slimes.is_empty() {
+        info!("night: t {:.0} slimes near: {}", s.elapsed, slimes.join(", "));
+    }
     let biome = sim.generator.biome_hint(pk.body.pos.x as i32).unwrap_or("?");
     info!("night: t {:.0} in {biome}: zombies near {} ({} coming up) at {}", s.elapsed, near.len(), coming, at.join(" "));
 }
