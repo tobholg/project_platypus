@@ -176,6 +176,30 @@ impl World {
 
     /// Is rain falling on `p` from an open sky (nothing solid between it and
     /// the clouds)?
+    /// Nothing solid (rock, earth, sand) in the `up` cells over `p`: open
+    /// to the sky there (leaves and water don't count).
+    pub fn under_sky(&self, p: CellPos, up: i32) -> bool {
+        let mats = &self.materials;
+        let mut y = p.y;
+        let end = p.y + up;
+        while y < end {
+            let at = CellPos::new(p.x, y);
+            let cp = at.chunk();
+            let top = ((cp.y + 1) * CHUNK).min(end);
+            if let Some(ch) = self.chunks.get(&cp) {
+                let (lx, _) = at.local();
+                for yy in y..top {
+                    let c = ch.get(lx, (yy - cp.y * CHUNK) as usize);
+                    if !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder) {
+                        return false;
+                    }
+                }
+            }
+            y = top;
+        }
+        true
+    }
+
     pub fn rained_on(&self, p: CellPos) -> bool {
         let Some(w) = &self.weather else { return false };
         if w.rain_at(p.x) <= 0.0 {

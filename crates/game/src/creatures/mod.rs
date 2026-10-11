@@ -68,6 +68,9 @@ impl Plugin for CreaturesPlugin {
             .add_systems(PreUpdate, dormancy)
             .add_systems(Update, body::tumble::spin.before(body::animation::animate))
             .add_systems(FixedUpdate, voices.in_set(TickSet::Bodies))
+            // The dead come up out of the ground, and burn in the sun.
+            .add_systems(FixedUpdate, (body::emerge::emerge, body::emerge::sunburn.before(body::elements::expose)).in_set(TickSet::Bodies))
+            .add_systems(Update, body::emerge::draw)
             // A body that gets up, set alight, burns away for good.
             .add_systems(FixedUpdate, (body::rise::kindle, body::rise::pyre).chain().after(body::elements::expose).before(body::rise::shatter).in_set(TickSet::Bodies));
     }

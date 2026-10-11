@@ -449,24 +449,34 @@ budget.
 
 **8b. `zombies`: the wounds showcase.** (Pulled forward from the roster,
 2026-10-11.) Stages, each shown before the next:
-1. The body: the humanoid rig on stepping legs (`legs` rig), rotting, arms
-   out ahead, slow; dead flesh (`rotting`: fire and light undo it); dark
-   `rot` blood; limbs come off (legless it drags itself on, armless it
-   bites from its mouth: `armless`); its head off, dead for good
-   (`headless: Dies`); killed otherwise, its body lies whole and gets up
-   once (`rises` with `remains: Body`, `times: 1`): swung up stiff about
-   its feet, what it lost still lost; anything breaks the body first.
-   (Built 2026-10-11 on `zombies`; `zombie` scenario: rise, limbs, break.)
-2. Rising from the ground: spawned under the ground out of sight, a hand
-   first, digging up (the spiders' dig); overworld at night, underground
-   any time, more near crypts; daylight burns them.
-3. The horde: noise draws them; they smell blood; the dead (villagers,
-   orcs) killed at night rise as zombies of their kind.
-4. Nasties: a cut-off arm crawls on; grab and hold; the bloated one
-   bursts into gas. (Pile-ups later.)
+1. The body: the humanoid rig on stepping legs (`legs` rig), dead-pale and
+   bloodied (RE2's dead, not green), a man's height, arms out ahead, slow;
+   dead flesh (`rotting`: fire and light undo it); dark `rot` blood; limbs
+   come off (legless it drags itself on, armless it bites from its mouth:
+   `armless`); its head off, dead for good (`headless: Dies`).
+2. Dangerous (agreed 2026-10-11): 130 health, heft 4, poise 40; zones (head
+   ×2, body ×0.6, a head blow staggers sooner); each its own pace; the
+   lurch (a few fast hopping steps at you); the grab (arms up with a snarl,
+   lunge, three bites; dash through it; held, mash to break free); a groan
+   now and then (`voice`).
+3. Burn the body or it comes back worse: it gets up twice (`times: 2`), the
+   second time as a crimson head (`last`: red, runs, grabs harder); only
+   fire destroys a body (a blow of fire, flames, a torch held to it): it
+   burns 4 s and lies charred.
+4. Up out of the ground: life.ron `emerges` (nearer, so it's seen: a hand,
+   the head, heaved up in jerks, the earth puffing); groups one after
+   another; the overworld at night, underground any time; the sun burns
+   them and their bodies (`sunburns`); they see in the dark, hear well,
+   smell the wounded.
+   (Stages 1–4 built 2026-10-11 on `zombies`; scenarios `zombie` (rise,
+   limbs, break, grab, shake, burn, torch, emerge, sun) and `night`.)
+5. Next: noise draws hordes; more near crypts; the dead (villagers, orcs)
+   killed at night rise as zombies of their kind (infection, and a bite's
+   lasting harm); a cut-off arm crawls on; chop a body's legs off before it
+   gets up; the bloated one bursts into gas; pile-ups; a struggle prompt.
 Done when: a night on the surface brings them up out of the ground; a
-fight leaves arms crawling, torsos dragging themselves, and bodies that
-get up once.
+fight leaves arms crawling, torsos dragging themselves, and bodies you
+must burn.
 
 **9. `powder`: firearms and new materials.**
 The flintlock pistol and the musket; gunpowder (charcoal and sulfur, a new

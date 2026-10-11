@@ -16,6 +16,7 @@
     faction: "undead",
     kind: "rotting",
     headless: Dies,
+    sunburns: true,
     blood: "rot",
     eyes: (255, 210, 160),
     // A snarl, often.
@@ -51,6 +52,6 @@
     pace: 0.15,
     brain: (
         kind: "hunter",
-        params: (aggro: 340, close: Walk(keep: 12, jump_to_reach: 22), attack: Swing(reach: 20, every: 0.9, combo: 2), wander: (speed: 0.25, every: 4.0), senses: (dark: 0.8)),
+        params: (aggro: 340, close: Walk(keep: 12, jump_to_reach: 22), attack: Swing(reach: 20, every: 0.9, combo: 2), wander: (speed: 0.25, every: 4.0), senses: (dark: 1.0, hearing: 1.4, smell: 160, memory: 10, behind: 0.6)),
     ),
 )

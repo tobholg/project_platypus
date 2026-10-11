@@ -8,6 +8,7 @@
 pub mod animation;
 pub mod chains;
 pub mod elements;
+pub mod emerge;
 pub mod hurt;
 pub mod legs;
 pub mod marks;

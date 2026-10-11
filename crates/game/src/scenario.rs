@@ -310,6 +310,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, limp_script)
             .add_systems(Update, sever_script)
             .add_systems(Update, zombie_script)
+            .add_systems(Update, night_script)
             .add_systems(Update, skull_script)
             .add_systems(Update, knock_script)
             .add_systems(Update, marks_script)
@@ -9587,6 +9588,31 @@ fn sever_script(
     }
 }
 
+/// `night` (the world, with PLATYPUS_HOUR=22; PLATYPUS_LIFE_RATE to hurry
+/// it): the player stands where they start (they can't die); every 2 s,
+/// the zombies near, and how many are still coming up out of the ground.
+#[allow(clippy::type_complexity)]
+fn night_script(
+    s: Res<Scenario>,
+    mut player: Query<(&Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(&crate::creatures::Creature, &Kinematics, Has<crate::creatures::body::emerge::Emerging>), Without<LocalPlayer>>,
+    mut next: Local<f32>,
+) {
+    if s.name != "night" {
+        return;
+    }
+    let Ok((pk, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    if s.elapsed < *next {
+        return;
+    }
+    *next = s.elapsed + 2.0;
+    let near: Vec<_> = them.iter().filter(|(c, k, _)| c.kind.starts_with("zombie") && k.body.pos.distance(pk.body.pos) < 700.0).collect();
+    let coming = near.iter().filter(|(_, _, e)| *e).count();
+    let at: Vec<String> = near.iter().map(|(_, k, _)| format!("{:+.0}", k.body.pos.x - pk.body.pos.x)).collect();
+    info!("night: t {:.0} zombies near {} ({} coming up) at {}", s.elapsed, near.len(), coming, at.join(" "));
+}
+
 /// `zombie` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a zombie walks
 /// at the player (who can't die). `PLATYPUS_ZOMBIE`:
 ///   rise (default): killed at 3 s, its body gets up again; killed again
@@ -9636,6 +9662,7 @@ fn zombie_script(
     h.hp = h.max;
     let fl = platypus_worldgen::arena::FLOOR as f32;
     let zombie = them.iter().find(|t| t.1.kind.starts_with("zombie"));
+    let up = them.iter().filter(|t| t.1.kind.starts_with("zombie")).count();
     let kill = |hits: &mut MessageWriter<crate::combat::Hit>, e: Entity, at: Vec2| {
         hits.write(crate::combat::Hit { target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::X, weight: 1.0, crit: false });
     };
@@ -9652,7 +9679,16 @@ fn zombie_script(
             }
             k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
             k.prev_pos = k.body.pos;
-            crate::creatures::def::spawn_creature(&mut commands, "zombie", Vec2::new(1000.0, fl), |_| {});
+            if mode == "emerge" {
+                // (Three coming up out of the ground, one after another.)
+                for n in 0..3 {
+                    crate::creatures::def::spawn_creature(&mut commands, "zombie", Vec2::new(960.0 + n as f32 * 26.0, fl), move |e| {
+                        e.insert((crate::creatures::body::emerge::Emerging::after(0.5 + n as f32 * 0.9), crate::creatures::Dormant, Visibility::Hidden));
+                    });
+                }
+            } else {
+                crate::creatures::def::spawn_creature(&mut commands, "zombie", Vec2::new(1000.0, fl), |_| {});
+            }
             info!("zombie: one walks at the player ({mode})");
             state.0 = 1;
         }
@@ -9667,7 +9703,7 @@ fn zombie_script(
             let plan: &[(f32, &str)] = match mode.as_str() {
                 "limbs" => &[(2.0, "arm0"), (3.0, "arm1"), (4.0, "leg0"), (5.0, "leg1"), (10.0, "head")],
                 "break" => &[(3.0, "kill"), (5.0, "break")],
-                "grab" | "shake" => &[],
+                "grab" | "shake" | "emerge" | "sun" => &[],
                 "burn" => &[(3.0, "kill"), (5.0, "fire")],
                 "torch" => &[(3.0, "kill"), (4.0, "torch")],
                 _ => &[(3.0, "kill"), (15.0, "kill"), (27.0, "kill")],
@@ -9731,7 +9767,7 @@ fn zombie_script(
                     None => "none up".into(),
                 };
                 let kind = zombie.map_or("", |z| z.1.kind.as_str());
-                info!("zombie: t {t:.1} {kind} {what}; bodies getting up {}{}, bodies {}; the player's taken {:.0}{}", piles.iter().count(), alight.iter().next().map_or(String::new(), |h| format!(" (alight, {:.0}/{:.0})", h.hp, h.max)), bodies.iter().count(), *took, if held { ", HELD" } else { "" });
+                info!("zombie: t {t:.1} ({up}) {kind} {what}; bodies getting up {}{}, bodies {}; the player's taken {:.0}{}", piles.iter().count(), alight.iter().next().map_or(String::new(), |h| format!(" (alight, {:.0}/{:.0})", h.hp, h.max)), bodies.iter().count(), *took, if held { ", HELD" } else { "" });
             }
         }
         _ => {}

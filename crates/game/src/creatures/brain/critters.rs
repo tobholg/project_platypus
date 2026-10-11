@@ -266,6 +266,11 @@ pub struct Haunt {
     /// ones stay out of a new player's first days).
     #[serde(default)]
     pub away: f32,
+    /// It comes up out of the ground (the dead: `emerge.rs`), on the
+    /// ground nearer than the rest (`EMERGE_NEAR`: so it's seen coming
+    /// up), a group one after another.
+    #[serde(default)]
+    pub emerges: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -351,6 +356,10 @@ fn rate_scale() -> f32 {
 
 /// A group's members this far apart (cells).
 const PACK_GAP: f32 = 24.0;
+/// What comes up out of the ground does it this near the player (cells,
+/// from..to), one after another this far apart (seconds).
+const EMERGE_NEAR: (f32, f32) = (150.0, 420.0);
+const EMERGE_APART: f32 = 0.9;
 
 /// Passing life: not the player, not a lair's keeper (they stay).
 type Passing = (Without<crate::creatures::player::LocalPlayer>, Without<crate::clock::Keeps>, Without<super::Staged>);
@@ -412,7 +421,8 @@ fn ambient(
         let spot = match h.place {
             Place::Surface | Place::Shore => {
                 let side = if unit(&mut rng) < 0.5 { -1.0 } else { 1.0 };
-                let x = (p.x + side * (495.0 + unit(&mut rng) * 165.0)) as i32;
+                let (near, far) = if h.emerges { EMERGE_NEAR } else { (495.0, 660.0) };
+                let x = (p.x + side * (near + unit(&mut rng) * (far - near))) as i32;
                 // The ground there: the first solid cell under open air, near
                 // the player's height (not in a cave far below).
                 let top = sim.generator.surface_hint(x).unwrap_or(p.y as i32) + 60;
@@ -447,7 +457,15 @@ fn ambient(
                 }
                 let open = |dx: i32, dy: i32| kind_at(x + dx, y + dy).is_some_and(|(air, _)| air);
                 let roofed = (6..60).any(|dy| kind_at(x, y + dy).is_some_and(|(_, ph)| matches!(ph.kind, Kind::Static)));
-                (open(0, 0) && open(-6, 0) && open(6, 0) && open(0, 6) && open(0, -6) && roofed).then(|| Vec2::new(x as f32 + 0.5, y as f32))
+                if !(open(0, 0) && open(-6, 0) && open(6, 0) && open(0, 6) && open(0, -6) && roofed) {
+                    return None;
+                }
+                // (Coming up out of the ground: on the floor under there.)
+                if h.emerges {
+                    let floor = (y - 80..y).rev().find(|&fy| kind_at(x, fy).is_some_and(|(air, ph)| !air && matches!(ph.kind, Kind::Static | Kind::Powder)))?;
+                    return Some(Vec2::new(x as f32 + 0.5, floor as f32 + 1.0));
+                }
+                Some(Vec2::new(x as f32 + 0.5, y as f32))
             }),
         };
         let Some(mut at) = spot else { continue };
@@ -461,7 +479,7 @@ fn ambient(
         {
             continue;
         }
-        if h.place == Place::Cave && at.distance(p) < OUT_OF_SIGHT * 0.7 {
+        if h.place == Place::Cave && at.distance(p) < if h.emerges { EMERGE_NEAR.0 } else { OUT_OF_SIGHT * 0.7 } {
             continue;
         }
         if !show && !h.biomes.is_empty() && !sim.generator.biome_hint(at.x as i32).is_some_and(|b| h.biomes.iter().any(|w| w == b)) {
@@ -485,9 +503,14 @@ fn ambient(
                 };
                 here.y = y as f32 + 1.0;
             }
+            let emerges = h.emerges;
             spawn_creature(&mut commands, &h.kind, here, move |e| {
                 if let Some(id) = pack {
                     e.insert(super::tactics::Pack { id, rank: n as u32 });
+                }
+                // (Up out of the ground, hidden and still till it's out.)
+                if emerges {
+                    e.insert((crate::creatures::body::emerge::Emerging::after(n as f32 * EMERGE_APART), crate::creatures::Dormant, Visibility::Hidden));
                 }
             });
         }

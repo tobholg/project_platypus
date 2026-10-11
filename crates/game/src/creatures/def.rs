@@ -209,6 +209,9 @@ pub struct CreatureDef {
     /// then. (Spiders' are their `legs`' `eyes`.)
     #[serde(default)]
     pub eyes: Option<(u8, u8, u8)>,
+    /// It burns in the sun (by day under the open sky): the dead.
+    #[serde(default)]
+    pub sunburns: bool,
     /// A sound it makes now and then, awake (a zombie's groan): the
     /// sound, and from how many to how many seconds apart.
     #[serde(default)]

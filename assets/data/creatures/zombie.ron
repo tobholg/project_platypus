@@ -21,6 +21,8 @@
     // it: a torch to it, oil and a spark, fire); its head off, it's done.
     rises: Some((after: 7.0, health: 0.6, breaks: [fire], remains: Body, times: Some(2), last: Some("zombie_crimson"), glow: (170, 120, 110))),
     headless: Dies,
+    // The dead burn in the sun (its body too, lying there).
+    sunburns: true,
     blood: "rot",
     eyes: (200, 204, 192),
     // A low groan now and then.
@@ -60,6 +62,6 @@
     pace: 0.3,
     brain: (
         kind: "hunter",
-        params: (aggro: 260, close: Walk(keep: 12, jump_to_reach: 22), attack: Swing(reach: 20, every: 1.5, combo: 1), wander: (speed: 0.25, every: 4.0), senses: (dark: 0.8)),
+        params: (aggro: 260, close: Walk(keep: 12, jump_to_reach: 22), attack: Swing(reach: 20, every: 1.5, combo: 1), wander: (speed: 0.25, every: 4.0), senses: (dark: 1.0, hearing: 1.4, smell: 160, memory: 10, behind: 0.6)),
     ),
 )

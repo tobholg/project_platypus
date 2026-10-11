@@ -698,56 +698,11 @@ pub fn assemble(
 /// place in the heap to fly from (one of its heap's bones, `from`, the
 /// lowest to its feet; or anywhere low by it): offsets from its middle.
 fn pixels_of(anim: &super::animation::Animator, k: &Kinematics, from: &[Vec2], whole: Option<(Vec2, Vec2)>, lost: &[super::parts::Limb]) -> Vec<(Vec2, Vec2, [f32; 4])> {
-    let def = &anim.def;
-    let Some(rig) = def.rig.as_ref() else { return vec![(Vec2::ZERO, Vec2::ZERO, [0.0; 4])] };
-    let idx = rig.clips.get("idle").and_then(|c| c.frames.first().copied()).unwrap_or(0);
-    let Some(frame) = rig.frames.get(idx) else { return vec![(Vec2::ZERO, Vec2::ZERO, [0.0; 4])] };
-    let (fw, fh) = (def.sprite.frame.0 as f32, def.sprite.frame.1 as f32);
-    let body = super::animation::body_at(def, k);
-    let facing = k.loco.facing;
+    let fh = anim.def.sprite.frame.1 as f32;
     let mut rng = platypus_sim::rng::Rng::seeded(&[k.body.pos.x.to_bits() as u64, 0xB0E5]);
     let mut unit = || rng.next_u32() as f32 / u32::MAX as f32;
-    // (What it's lost isn't in it: the frontmost layer at a pixel a
-    // limb it's lost, that pixel's not drawn.)
-    let cuts = match (def.art_file.as_ref(), rig.names.get(idx)) {
-        (Some(file), Some(name)) if !lost.is_empty() => super::ragdoll::cut(file, name),
-        _ => Vec::new(),
-    };
-    let gone = |p: IVec2| cuts.iter().rev().find(|c| c.covers(p)).and_then(|c| c.limb()).is_some_and(|l| lost.contains(&l));
-    let mut out = Vec::new();
-    for py in 0..frame.h as i32 {
-        for px in 0..frame.w as i32 {
-            if !frame.opaque(px, py) || gone(IVec2::new(px, py)) {
-                continue;
-            }
-            let c = frame.get(px, py);
-            let to = body + Vec2::new((px as f32 - fw / 2.0 + 0.5) * facing, fh / 2.0 - 0.5 - py as f32);
-            // (Lying in the heap: along the ground, low.)
-            let from = Vec2::new((unit() - 0.5) * fh, -k.body.half.y + unit() * 4.0);
-            out.push((from, to, [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 1.0]));
-        }
-    }
-    // Legs drawn apart from its art (`legs::rig`): standing, straight down
-    // from its hips to the ground under it, as they're drawn.
-    if let Some(legs) = def.legs.as_ref().filter(|l| l.rig) {
-        let rgb = |(r, g, b): (u8, u8, u8)| [r, g, b, 255];
-        let line = legs.outline.unwrap_or((26, 20, 20));
-        let w = |i: usize| legs.width.get(i).or(legs.width.last()).copied().unwrap_or(2.0) * 0.5;
-        for (i, l) in legs.each.iter().enumerate() {
-            if lost.contains(&super::parts::Limb::Leg(i as u8)) {
-                continue;
-            }
-            let hip = Vec2::new(l.hip.0 * facing, l.hip.1);
-            let foot = Vec2::new(hip.x, -k.body.half.y + 0.5);
-            let color = if l.far { legs.far.unwrap_or((116, 112, 103)) } else { legs.color };
-            let mut px = Vec::new();
-            super::legs::stroke(hip, foot, w(0) + 1.0, w(1) + 1.0, rgb(line), &mut px);
-            super::legs::stroke(hip, foot, w(0), w(1), rgb(color), &mut px);
-            for (p, c) in px {
-                out.push((Vec2::ZERO, p.as_vec2() + Vec2::splat(0.5), [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 1.0]));
-            }
-        }
-    }
+    // (Lying in the heap: along the ground, low.)
+    let mut out: Vec<(Vec2, Vec2, [f32; 4])> = picture(anim, k, "idle", lost).into_iter().map(|(to, c)| (Vec2::new((unit() - 0.5) * fh, -k.body.half.y + unit() * 4.0), to, c)).collect();
     if !from.is_empty() {
         // (Lowest bones to its feet, highest to its skull; a body's, from
         // its feet's end along it to its head.)
@@ -762,6 +717,57 @@ fn pixels_of(anim: &super::animation::Animator, k: &Kinematics, from: &[Vec2], w
     }
     if out.is_empty() {
         out.push((Vec2::ZERO, Vec2::ZERO, [0.0; 4]));
+    }
+    out
+}
+
+/// The pixels of a creature standing as the first frame of `clip` shows it
+/// (else its idle), and its legs if they're drawn apart from its art
+/// (`legs::rig`: straight down from its hips to the ground under it),
+/// without what it's lost: offsets from its middle, each its colour.
+pub(crate) fn picture(anim: &super::animation::Animator, k: &Kinematics, clip: &str, lost: &[super::parts::Limb]) -> Vec<(Vec2, [f32; 4])> {
+    let def = &anim.def;
+    let Some(rig) = def.rig.as_ref() else { return Vec::new() };
+    let first = |name: &str| rig.clips.get(name).and_then(|c| c.frames.first().copied());
+    let idx = first(clip).or_else(|| first("idle")).unwrap_or(0);
+    let Some(frame) = rig.frames.get(idx) else { return Vec::new() };
+    let (fw, fh) = (def.sprite.frame.0 as f32, def.sprite.frame.1 as f32);
+    let body = super::animation::body_at(def, k);
+    let facing = k.loco.facing;
+    let rgba = |c: [u8; 4]| [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 1.0];
+    // (What it's lost isn't in it: the frontmost layer at a pixel a
+    // limb it's lost, that pixel's not drawn.)
+    let cuts = match (def.art_file.as_ref(), rig.names.get(idx)) {
+        (Some(file), Some(name)) if !lost.is_empty() => super::ragdoll::cut(file, name),
+        _ => Vec::new(),
+    };
+    let gone = |p: IVec2| cuts.iter().rev().find(|c| c.covers(p)).and_then(|c| c.limb()).is_some_and(|l| lost.contains(&l));
+    let mut out = Vec::new();
+    for py in 0..frame.h as i32 {
+        for px in 0..frame.w as i32 {
+            if !frame.opaque(px, py) || gone(IVec2::new(px, py)) {
+                continue;
+            }
+            let to = body + Vec2::new((px as f32 - fw / 2.0 + 0.5) * facing, fh / 2.0 - 0.5 - py as f32);
+            out.push((to, rgba(frame.get(px, py))));
+        }
+    }
+    if let Some(legs) = def.legs.as_ref().filter(|l| l.rig) {
+        let rgb = |(r, g, b): (u8, u8, u8)| [r, g, b, 255];
+        let line = legs.outline.unwrap_or((26, 20, 20));
+        let w = |i: usize| legs.width.get(i).or(legs.width.last()).copied().unwrap_or(2.0) * 0.5;
+        for (i, l) in legs.each.iter().enumerate() {
+            if lost.contains(&super::parts::Limb::Leg(i as u8)) {
+                continue;
+            }
+            let hip = Vec2::new(l.hip.0 * facing, l.hip.1);
+            let foot = Vec2::new(hip.x, -k.body.half.y + 0.5);
+            let color = if l.far { legs.far.unwrap_or((116, 112, 103)) } else { legs.color };
+            let mut px = Vec::new();
+            super::legs::stroke(hip, foot, w(0) + 1.0, w(1) + 1.0, rgb(line), &mut px);
+            super::legs::stroke(hip, foot, w(0), w(1), rgb(color), &mut px);
+            out.extend(px.into_iter().map(|(p, c)| (p.as_vec2() + Vec2::splat(0.5), rgba(c))));
+        }
     }
     out
 }
@@ -794,8 +800,8 @@ pub struct Ablaze(f32);
 const PYRE: f32 = 4.0;
 const TORCH_REACH: f32 = 6.0;
 
-/// Bodies that get up catch: from a blow of fire, from flames on them, or
-/// a torch held to them.
+/// Bodies that get up catch: from a blow of fire, from flames on them, a
+/// torch held to them, or (the dead) the sun.
 #[allow(clippy::type_complexity)]
 pub fn kindle(
     mut commands: Commands,
@@ -804,6 +810,7 @@ pub fn kindle(
     piles: Query<(Entity, &Pile, &Kinematics, Option<&super::elements::Burning>), Without<Ablaze>>,
     torches: Query<(&crate::combat::Wielding, &super::animation::HandPos)>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
+    (sim, day): (Res<SimWorld>, Res<crate::light::Daylight>),
 ) {
     let struck: Vec<Entity> = felt.read().filter(|f| f.harm == Harm::Fire).map(|f| f.target).collect();
     let held: Vec<Vec2> = match weapons {
@@ -819,7 +826,9 @@ pub fn kindle(
             continue;
         }
         let near = |p: &Vec2| ((*p - k.body.pos).abs() - k.body.half).max_element() <= TORCH_REACH;
-        if struck.contains(&e) || burning.is_some_and(|b| b.share > 0.1) || held.iter().any(near) {
+        // (And one that burns in the sun, lying in it.)
+        let sun = pile.def.sunburns && sim.world.tick().is_multiple_of(15) && super::emerge::sunlit(&sim, &day, k.body.pos + Vec2::Y * k.body.half.y);
+        if struck.contains(&e) || burning.is_some_and(|b| b.share > 0.1) || held.iter().any(near) || sun {
             commands.entity(e).insert((Ablaze(PYRE), super::elements::Burning::new(1.0)));
             sounds.write(crate::sound::PlaySound::at("ignite", k.body.pos));
         }
@@ -853,5 +862,6 @@ pub fn pyre(mut commands: Commands, mut q: Query<(Entity, &mut Ablaze, &mut Pile
     }
 }
 
-/// Dormancy leaves one being put together alone (it wakes when it's whole).
-pub type NotDown = Without<Assembling>;
+/// Dormancy leaves one being put together alone (it wakes when it's
+/// whole), and one climbing out of the ground.
+pub type NotDown = (Without<Assembling>, Without<super::emerge::Emerging>);
