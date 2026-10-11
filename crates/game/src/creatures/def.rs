@@ -228,6 +228,14 @@ pub struct CreatureDef {
     /// zombie's spurt: suddenly fast, for a couple of seconds).
     #[serde(default)]
     pub spurt: Option<SpurtDef>,
+    /// It bounces when it lands: back up at this share of how hard it came
+    /// down (a blue slime).
+    #[serde(default)]
+    pub bounce: f32,
+    /// It takes on what it's struck with (fire, frost, lightning): the
+    /// glutton (`body/goo.rs`, Glutton).
+    #[serde(default)]
+    pub glutton: bool,
     /// Its body is goo, cells of the world held round it (a slime:
     /// `body/goo.rs`).
     #[serde(default)]
@@ -632,6 +640,9 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         }
         if def.goo.is_some() {
             e.insert(super::body::goo::Goo::default());
+        }
+        if def.glutton {
+            e.insert(super::body::goo::Glutton::default());
         }
         if let Some(r) = &def.rises {
             e.insert(super::body::rise::Rises(r.clone()));

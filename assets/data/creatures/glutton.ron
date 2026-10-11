@@ -1,0 +1,48 @@
+// The glutton: a pale slime that takes on what it's struck with (it drinks
+// fire, frost and lightning in, healed by them): fire and its goo's hot
+// and sets what it touches alight, frost and it's cold enough to chill,
+// lightning and it carries it; struck with what undoes what it holds
+// (fire on frost, frost on fire), the two go off together; what it took
+// on drains away in a while. A core (a dark nucleus with eyes) holding a body of real
+// goo, cells of the world round it (`goo`: body/goo.rs). It hops at you,
+// each hop its own height (`lift`);
+// its goo clings and clogs (slimy) and catches fire. Hurt, it lets go of
+// goo it can no longer hold (it runs and pools); burnt or eaten, the goo's
+// gone, and so is its health; dead, it all spills. Left alone it heals,
+// drawing its spilled goo back in.
+(
+    name: "Glutton",
+    // What it may have on it when it dies (loot.ron), besides what it wears.
+    loot: "slime",
+    size: (21, 15),
+    health: 90,
+    team: Enemy,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "ooze",
+    profile: {fire: -0.5, frost: -0.5, storm: -0.5},
+    // (Its goo is its blood: hurt, it flings goo off; dead, it spills.)
+    blood: "",
+    art: "glutton",
+    goo: Some((material: "prism_goo", cells: 650,
+        // Near you, its face toward you shivers, then a fan of goo spikes
+        // stabs out at you, pulsing in a wave, jittering.
+        spikes: Some((range: 36, tell: 0.55, secs: 2.2, every: 3.5, count: 7, cone: 38, reach: 28, pulse: 0.36, damage: 12)))),
+    // Left alone a few seconds, it heals: its spilled goo drawn back in
+    // (then new grown).
+    regen: (per_sec: 6, pause: 3),
+    // It takes on what it's struck with (body/goo.rs, Glutton).
+    glutton: true,
+    movement: (
+        run_speed: 83,
+        air_accel: 600,
+        jump_height: 64,
+        air_jumps: 0,
+        step_height: 2,
+        dash_speed: 0,
+    ),
+    touch: (harm: blunt, damage: 7, knock: 180, stun: 0.15),
+    brain: (
+        kind: "hunter",
+        params: (aggro: 230, close: Hop(every: 1.3, lift: 0.35)),
+    ),
+)

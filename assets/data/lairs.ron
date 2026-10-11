@@ -21,7 +21,7 @@
     (name: "zombie burrow", depth: (0, 400), chance: 1.0, start: Dark, chest: true,
      lining: "cobweb", density: 0.05, keepers: [("zombie", 3)]),
     (name: "slime pool", depth: (0, 400), chance: 1.0, start: Light, chest: true,
-     lining: "slime", density: 0.15, keepers: [("slime", 3)]),
+     lining: "slime", density: 0.15, keepers: [("slime", 2), ("blue_slime", 1)]),
     (name: "treasure grotto", depth: (0, 400), chance: 1.0, start: Light, chest: true,
      lining: "cobweb", density: 0.05, keepers: [("bat", 2)]),
     (name: "spider nest", depth: (180, 150000), zones: ["none", "fungal"], chance: 0.08,

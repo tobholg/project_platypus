@@ -24,6 +24,8 @@
     (kind: "fish", place: Water, most: 8, rate: 1.2),
     (kind: "bat", place: Cave, most: 3, rate: 0.35),
     (kind: "slime", place: Cave, depth: (60, 1350), zone: "none", most: 3, rate: 0.4),
+    (kind: "blue_slime", place: Cave, depth: (60, 1350), zone: "none", most: 2, rate: 0.2),
+    (kind: "glutton", place: Cave, depth: (400, 150000), most: 1, rate: 0.04),
     (kind: "acid_slime", place: Cave, zone: "toxic", most: 4, rate: 0.6),
     (kind: "skeleton", place: Cave, depth: (300, 150000), most: 2, rate: 0.25),
     // The dead come up out of the ground: on the surface by night, a few

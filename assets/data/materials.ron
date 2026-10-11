@@ -282,6 +282,19 @@
         (name: "blood",    kind: Liquid, density: 1060, charges: true, dispersion: 5, above: (100, "blood_steam"), below: (-2, "frozen_blood"), coats: "bloody", latent: 250, viscosity: 70, colors: [(136, 10, 16), (164, 18, 24)]),
         // What the walking dead bleed: old blood gone dark and thick.
         (name: "rot",      kind: Liquid, density: 1080, dispersion: 3, above: (100, "blood_steam"), coats: "bloody", latent: 250, viscosity: 150, colors: [(84, 14, 16), (102, 20, 20), (66, 18, 18)]),
+        // A blue slime's body: springy goo that won't burn.
+        (name: "blue_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, above: (110, "steam"), coats: "slimy", glow: (8, 16, 34), opacity: 25, colors: [(84, 150, 226), (68, 128, 208), (104, 170, 240), (76, 140, 218)]),
+        // An acid slime's body: goo that eats what it's against (slowly,
+        // used up doing it) and burns what's in it.
+        (name: "acid_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 200, corrosive: 8, charges: true,
+            eats: (hardness: 70, bites: 14, chance: 40, spent_into: "smoke"), above: (110, "acid_fumes"), coats: "acid", glow: (50, 150, 20), opacity: 30, colors: [(160, 214, 52), (138, 196, 40), (178, 226, 72)]),
+        // The glutton's body: pale, shifting goo that takes on what it's
+        // struck with: fire (hot goo that sets things alight), frost (goo
+        // cold enough to chill), lightning (goo that carries it).
+        (name: "prism_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, above: (110, "steam"), coats: "slimy", glow: (30, 26, 40), opacity: 25, colors: [(214, 196, 236), (196, 214, 236), (236, 210, 214), (206, 232, 214)]),
+        (name: "ember_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, hot: true, heat: 420, heat_source: true, above: (900, "smoke"), coats: "slimy", glow: (255, 120, 30), opacity: 25, colors: [(255, 150, 60), (240, 110, 40), (255, 190, 90)]),
+        (name: "frost_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 240, heat: -60, heat_source: true, coats: "slimy", glow: (60, 110, 160), opacity: 25, colors: [(190, 228, 255), (160, 210, 250), (214, 240, 255)]),
+        (name: "spark_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, charges: true, above: (110, "steam"), coats: "slimy", glow: (120, 200, 255), opacity: 25, colors: [(150, 220, 255), (210, 244, 255), (120, 200, 250)]),
         // What spiders bleed, and slimes are full of (a slime glows a little).
         (name: "ichor",    kind: Liquid, density: 1040, dispersion: 5, viscosity: 110, above: (100, "steam"), colors: [(156, 172, 64), (128, 146, 46)]),
         (name: "slime",    kind: Liquid, density: 1100, dispersion: 2, viscosity: 220, above: (100, "steam"), glow: (6, 22, 8), opacity: 20, colors: [(96, 196, 96), (76, 170, 80), (110, 210, 110)]),

@@ -9602,6 +9602,8 @@ fn sever_script(
 ///   engulf: let be: it lands on the player and swallows them; they mash
 ///     jump to get out.
 ///   eat: a rabbit, two torches and copper ore put in its goo (1.5 s).
+///   glut (with PLATYPUS_SLIME_KIND=glutton): struck with fire (4 s),
+///     frost (6.5 s: the two go off), lightning (9 s).
 ///   (anything else, `none`: let be: it hops at the player, spikes them.)
 /// Logs its health, the goo it holds and the goo loose near it.
 #[allow(clippy::type_complexity)]
@@ -9615,6 +9617,7 @@ fn slime_script(
     mut state: Local<(u8, f32, f32)>,
     mut took: Local<f32>,
     mut felt: MessageReader<crate::combat::Felt>,
+    gluttons: Query<(&crate::creatures::body::goo::Glutton, &crate::creatures::body::goo::Goo)>,
     (items, swallowed, mut keys): (Option<Res<crate::hands::items::Items>>, Query<(Entity, Has<crate::hands::Dropped>, Option<&crate::creatures::Creature>), With<crate::creatures::body::goo::Swallowed>>, ResMut<ButtonInput<KeyCode>>),
     drops: Query<&crate::hands::Dropped>,
 ) {
@@ -9622,6 +9625,8 @@ fn slime_script(
         return;
     }
     let mode = std::env::var("PLATYPUS_SLIME").unwrap_or_else(|_| "look".into());
+    // (PLATYPUS_SLIME_KIND: which slime: slime, blue_slime, acid_slime, glutton.)
+    let kind = std::env::var("PLATYPUS_SLIME_KIND").unwrap_or_else(|_| "slime".into());
     let Ok((mut k, mut h, coated, inside)) = player.single_mut() else { return };
     let slimy = coated.map_or(0.0, |c| c.share("slimy"));
     if h.max - h.hp > 15.0 {
@@ -9636,7 +9641,7 @@ fn slime_script(
             info!("slime: t {t:.2} a blow of {:.0} ({:?}) on {:?}", f.dealt, f.harm, f.target);
         }
     }
-    let slime = them.iter().find(|x| x.1.kind == "slime");
+    let slime = them.iter().find(|x| x.1.kind == kind);
     if state.0 == 0 && t > 0.5 {
         for (e, c, ..) in &them {
             if c.kind == "dummy" || c.kind == "sandbag" {
@@ -9645,10 +9650,21 @@ fn slime_script(
         }
         k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
         k.prev_pos = k.body.pos;
+        // (PLATYPUS_SLIME_DIRT: earth under it, to see acid eat it.)
+        if std::env::var("PLATYPUS_SLIME_DIRT").is_ok()
+            && let Some(dirt) = sim.materials().id("dirt")
+        {
+            let floor = platypus_worldgen::arena::FLOOR;
+            for x in 930..1060 {
+                for y in floor - 30..floor {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: dirt, overwrite: true });
+                }
+            }
+        }
         if mode == "merge" {
             // (Two halves, side by side, hopping at the player.)
             for x in [960.0, 1000.0] {
-                crate::creatures::def::spawn_creature(&mut commands, "slime", Vec2::new(x, fl), |c| {
+                crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(x, fl), |c| {
                     c.insert(crate::creatures::body::goo::Mass(0.5));
                     if let Some(mut h) = c.get_mut::<crate::creatures::Health>() {
                         h.max = 45.0;
@@ -9657,9 +9673,9 @@ fn slime_script(
                 });
             }
         } else {
-            crate::creatures::def::spawn_creature(&mut commands, "slime", Vec2::new(980.0, fl), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(980.0, fl), |_| {});
         }
-        info!("slime: one hops at the player ({mode})");
+        info!("slime: a {kind} hops at the player ({mode})");
         state.0 = 1;
         state.1 = 2.0;
         return;
@@ -9700,6 +9716,12 @@ fn slime_script(
             info!("slime: t {t:.1} a rabbit, two torches and copper ore in its goo");
             state.0 = 2;
         }
+        "glut" if state.0 >= 1 && state.0 <= 3 && t > 1.5 + state.0 as f32 * 2.5 => {
+            let harm = [crate::creatures::Harm::Fire, crate::creatures::Harm::Frost, crate::creatures::Harm::Storm][state.0 as usize - 1];
+            strike(&mut hits, harm, 6.0);
+            info!("slime: t {t:.1} struck with {harm:?}");
+            state.0 += 1;
+        }
         "split" if state.0 >= 1 && state.0 <= 2 && t > 2.0 + state.0 as f32 * 1.5 => {
             strike(&mut hits, crate::creatures::Harm::Slash, 30.0);
             info!("slime: t {t:.1} a blade through it");
@@ -9730,12 +9752,17 @@ fn slime_script(
             keys.release(KeyCode::Space);
         }
     }
+    if t >= state.2 && mode == "glut" {
+        if let Ok((g, gg)) = gluttons.get(e) {
+            info!("slime: t {t:.1} the glutton holds {:?}, its goo {}", g.took, gg.material.map_or("its own".to_string(), |m| sim.world.materials().def(m).name.clone()));
+        }
+    }
     if t >= state.2 && matches!(mode.as_str(), "eat" | "engulf") {
         let held: Vec<String> = swallowed.iter().map(|(_, d, c)| if d { "an item".to_string() } else { c.map_or("?".to_string(), |c| c.kind.clone()) }).collect();
         info!("slime: t {t:.1} in it: [{}]; items about: {}", held.join(", "), drops.iter().count());
     }
     if t >= state.2 && matches!(mode.as_str(), "split" | "merge") {
-        let all: Vec<String> = them.iter().filter(|x| x.1.kind == "slime").map(|x| format!("{:.0}/{:.0} holds {} at {:.0}", x.3.hp, x.3.max, x.4.map_or(0, |g| g.held()), x.2.body.pos.x)).collect();
+        let all: Vec<String> = them.iter().filter(|x| x.1.kind == kind).map(|x| format!("{:.0}/{:.0} holds {} at {:.0}", x.3.hp, x.3.max, x.4.map_or(0, |g| g.held()), x.2.body.pos.x)).collect();
         info!("slime: t {t:.1} slimes: {}", all.join("; "));
     }
     if t >= state.2 {

@@ -1,0 +1,68 @@
+// A blue slime's core: a dark nucleus with two eyes and a mouth, drawn in
+// the middle of its goo (its goo is cells of the world round it: the
+// creature's `goo`, body/goo.rs). It squats and stretches as it hops.
+(
+    size: (26, 20),
+    feet: (13, 20),
+    outline: (16, 28, 60),
+    palette: {
+        'n': (40, 76, 140),   // its nucleus
+        'N': (26, 52, 104),    // its nucleus, shaded
+        'h': (70, 110, 180),   // its nucleus, lit
+        'k': (8, 14, 34),    // eyes
+        'w': (214, 250, 204), // the shine in the eyes
+        'm': (20, 54, 24),    // mouth
+    },
+    frames: {
+        "squat": [
+            "..........................",
+            "..........................",
+            "..........................",
+            "..........................",
+            "..........................",
+            "..........................",
+            "..........hhhhhh..........",
+            "........hhnnnnnnnn........",
+            ".......hnnnnnnnnnnn.......",
+            "......hnnkkwnnnkkwnn......",
+            "......nnnkkknnnkkknn......",
+            "......nnnnkknnnnkknn......",
+            "......nnnnnnnnnnnnnn......",
+            ".......nnnnmmmmnnnn.......",
+            ".......NnnnnmmnnnnN.......",
+            "........NNnnnnnnNN........",
+            "..........NNNNNN..........",
+            "..........................",
+            "..........................",
+            "..........................",
+        ],
+        "tall": [
+            "..........................",
+            "..........................",
+            "..........................",
+            "...........hhhh...........",
+            ".........hhnnnnhh.........",
+            "........hnnnnnnnnn........",
+            "........nnkkwnkkwn........",
+            "........nnkkknkkkn........",
+            "........nnnkknnkkn........",
+            "........nnnnnnnnnn........",
+            "........nnnnmmnnnn........",
+            "........nnnnmmnnnn........",
+            "........Nnnnnnnnnn........",
+            ".........NnnnnnnN.........",
+            "..........NNNNNN..........",
+            "..........................",
+            "..........................",
+            "..........................",
+            "..........................",
+            "..........................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["squat", "squat", "squat", "tall"], fps: 3),
+        "run": (frames: ["squat"], fps: 4),
+        "jump": (frames: ["tall"], fps: 5),
+        "fall": (frames: ["squat"], fps: 5),
+    },
+)

@@ -143,6 +143,20 @@ pub struct Goo {
     /// tick (it swallows what it lands on).
     engulf_ready: f32,
     flew: bool,
+    /// What its goo is now, if not its kind's (the glutton's, as it takes
+    /// on what it's struck with), and what it was (its cells turned).
+    pub material: Option<platypus_sim::MaterialId>,
+    was: Option<platypus_sim::MaterialId>,
+}
+
+impl Goo {
+    /// Its goo turned to `m` (the glutton's).
+    pub fn turn(&mut self, m: platypus_sim::MaterialId) {
+        if self.material != Some(m) {
+            self.was = self.material.or(self.was);
+            self.material = Some(m);
+        }
+    }
 }
 
 /// Swallowed by a slime (an item, a small creature, the player): held in
@@ -187,6 +201,7 @@ pub fn hold(
     let cut: std::collections::HashMap<Entity, Vec2> = felt.read().filter(|f| matches!(f.harm, crate::creatures::Harm::Slash | crate::creatures::Harm::Pierce)).map(|f| (f.target, f.dir)).collect();
     for (e, mut goo, mut k, mut health, anim, mass, creature) in &mut q {
         let Some(def) = anim.def.goo.as_ref() else { continue };
+        let Some(kind_mat) = sim.world.materials().id(&def.material) else { continue };
         let full = anim.def.health.max(1.0);
         let size = mass.as_ref().map_or(1.0, |m| m.0);
         // (Its box as big as it is.)
@@ -197,14 +212,27 @@ pub fn hold(
             k.body.pos.y -= drop;
             k.prev_pos.y -= drop;
         }
-        let Some(mat) = sim.world.materials().id(&def.material) else { continue };
+        let mat = goo.material.unwrap_or(kind_mat);
+        // (Turned, its old goo's its still: turned as it's laid out.)
+        let old = goo.was.take().or(Some(kind_mat)).filter(|&o| o != mat);
         // What's still its goo where it left it (the rest the world took).
         let mut kept: Vec<Cell> = Vec::with_capacity(goo.placed.len());
         let mut lost = 0usize;
         for &p in &goo.placed {
             match sim.world.get(p) {
-                Some(c) if c.material == mat && c.flags & HELD != 0 => kept.push(c),
+                Some(c) if (c.material == mat || Some(c.material) == old) && c.flags & HELD != 0 => kept.push(c),
                 _ => lost += 1,
+            }
+        }
+        if old.is_some() {
+            let mut rng = platypus_sim::rng::Rng::seeded(&[sim.world.tick(), 0x7A2]);
+            for c in kept.iter_mut().filter(|c| c.material != mat) {
+                let flags = c.flags;
+                *c = sim.world.materials().spawn(mat, &mut rng);
+                c.flags = flags & !platypus_sim::cell::flags::BURNING;
+            }
+            for c in goo.reserve.iter_mut().filter(|c| c.material != mat) {
+                *c = sim.world.materials().spawn(mat, &mut rng);
             }
         }
         kept.append(&mut goo.reserve);
@@ -214,7 +242,7 @@ pub fn hold(
         // Dead: it all spills, where it is.
         if health.hp <= 0.0 {
             for &p in &goo.placed {
-                if let Some(mut c) = sim.world.get(p).filter(|c| c.material == mat && c.flags & HELD != 0) {
+                if let Some(mut c) = sim.world.get(p).filter(|c| c.flags & HELD != 0 && (c.material == mat || Some(c.material) == old)) {
                     c.flags &= !HELD;
                     sim.world.set(p, c);
                 }
@@ -236,7 +264,7 @@ pub fn hold(
         }
         // Lifted out of where it was...
         for &p in &goo.placed {
-            if sim.world.get(p).is_some_and(|c| c.material == mat && c.flags & HELD != 0) {
+            if sim.world.get(p).is_some_and(|c| (c.material == mat || Some(c.material) == old) && c.flags & HELD != 0) {
                 sim.world.set(p, Cell::AIR);
             }
         }
@@ -739,3 +767,100 @@ pub fn digest(
         }
     }
 }
+
+/// What the glutton's taken on (fire, frost, lightning), and how much of
+/// it's left (draining away).
+#[derive(Component, Default)]
+pub struct Glutton {
+    pub took: Option<crate::creatures::Harm>,
+    charge: f32,
+}
+
+/// What the glutton holds drains away in this long (s); fire on frost
+/// (or frost on fire) goes off this hard.
+const DRAIN: f32 = 10.0;
+const UNDONE: (f32, f32) = (34.0, 45.0);
+
+/// The glutton takes on what it's struck with: fire, frost or lightning,
+/// its goo turned (hot, cold, charged), its touch with it, a light of it;
+/// struck with what undoes what it holds, the two go off together; what it
+/// took on drains away.
+#[allow(clippy::type_complexity)]
+pub fn glut(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut sim: ResMut<SimWorld>,
+    mut felt: MessageReader<crate::combat::Felt>,
+    mut q: Query<(Entity, &mut Glutton, &mut Goo, &Kinematics, &super::animation::Animator, Option<&mut crate::combat::Touch>)>,
+    mut booms: MessageWriter<crate::fx::Explosion>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+) {
+    use crate::creatures::Harm;
+    let dt = time.delta_secs();
+    let struck: Vec<(Entity, Harm)> = felt.read().filter(|f| matches!(f.harm, Harm::Fire | Harm::Frost | Harm::Storm)).map(|f| (f.target, f.harm)).collect();
+    for (e, mut g, mut goo, k, anim, touch) in &mut q {
+        let before = g.took;
+        for &(t, harm) in struck.iter().filter(|(t, _)| *t == e) {
+            let _ = t;
+            let undoes = matches!((g.took, harm), (Some(Harm::Fire), Harm::Frost) | (Some(Harm::Frost), Harm::Fire));
+            if undoes {
+                // (Fire and frost together: they go off.)
+                g.took = None;
+                g.charge = 0.0;
+                booms.write(crate::fx::Explosion { at: k.body.pos, radius: UNDONE.0, power: UNDONE.1 });
+                sim.queue(platypus_sim::WorldEdit::Explode { center: CellPos::from_world(k.body.pos.x, k.body.pos.y), radius: 6, power: 30 });
+                sounds.write(crate::sound::PlaySound::at("boom", k.body.pos).volume(0.8));
+            } else {
+                g.took = Some(harm);
+                g.charge = 1.0;
+            }
+        }
+        if g.took.is_some() {
+            g.charge -= dt / DRAIN;
+            if g.charge <= 0.0 {
+                g.took = None;
+            }
+        }
+        if g.took == before {
+            continue;
+        }
+        // What it holds now: its goo, its touch, its light.
+        let (goo_name, harm, damage, light) = match g.took {
+            Some(Harm::Fire) => ("ember_goo", Harm::Fire, 11.0, Some([1.4, 0.7, 0.25])),
+            Some(Harm::Frost) => ("frost_goo", Harm::Frost, 9.0, Some([0.6, 0.9, 1.3])),
+            Some(Harm::Storm) => ("spark_goo", Harm::Storm, 12.0, Some([0.7, 1.1, 1.5])),
+            _ => (anim.def.goo.as_ref().map_or("prism_goo", |d| d.material.as_str()), Harm::Blunt, 7.0, None),
+        };
+        if let Some(m) = sim.world.materials().id(goo_name) {
+            goo.turn(m);
+        }
+        if let Some(mut t) = touch {
+            t.harm = harm;
+            t.damage = damage;
+        }
+        match light {
+            Some(color) => {
+                commands.entity(e).insert(crate::light::LightSource { color, flicker: 0.15 });
+            }
+            None => {
+                commands.entity(e).remove::<crate::light::LightSource>();
+            }
+        }
+        sounds.write(crate::sound::PlaySound::at("pour", k.body.pos).pitch(1.4));
+    }
+}
+
+/// What bounces (a blue slime) springs back up as it lands, at a share of
+/// how hard it came down.
+pub fn bounce(mut landed: MessageReader<crate::creatures::Landed>, mut q: Query<(&mut Kinematics, &super::animation::Animator)>) {
+    for l in landed.read() {
+        let Ok((mut k, anim)) = q.get_mut(l.entity) else { continue };
+        let b = anim.def.bounce;
+        if b > 0.0 && l.slam > BOUNCE_LEAST {
+            k.body.vel.y = l.slam * b;
+        }
+    }
+}
+
+/// Coming down slower than this (cells/s), it doesn't bounce.
+const BOUNCE_LEAST: f32 = 90.0;
