@@ -9597,6 +9597,7 @@ fn sever_script(
 ///   kill: struck till it dies (from 2 s): its goo spills.
 ///   heal: two longsword blows (2 s, 2.6 s), then let be: it heals,
 ///     drawing its spilled goo back in.
+///   (anything else, `none`: let be: it hops at the player, spikes them.)
 /// Logs its health, the goo it holds and the goo loose near it.
 #[allow(clippy::type_complexity)]
 fn slime_script(
@@ -9685,7 +9686,7 @@ fn slime_script(
     }
     if t >= state.2 {
         state.2 = t + 0.5;
-        info!("slime: t {t:.1} hp {:.0}/{:.0}, holds {} goo, loose near {}, at x {:.0} ({:.0} up); the player's {:.0}% slimy, has taken {:.0}; {:?}", sh.hp, sh.max, goo.map_or(0, |g| g.held()), loose(&sim, sk.body.pos, "green_goo"), sk.body.pos.x, sk.body.pos.y - sk.body.half.y - fl, slimy * 100.0, *took, alert.map(|a| a.wary));
+        info!("slime: t {t:.1} hp {:.0}/{:.0}, holds {} goo, loose near {}, at x {:.0} ({:.0} up); the player's {:.0}% slimy, has taken {:.0}; {:?}; spikes {:?}", sh.hp, sh.max, goo.map_or(0, |g| g.held()), loose(&sim, sk.body.pos, "green_goo"), sk.body.pos.x, sk.body.pos.y - sk.body.half.y - fl, slimy * 100.0, *took, alert.map(|a| a.wary), goo.map(|g| g.spiking));
     }
 }
 

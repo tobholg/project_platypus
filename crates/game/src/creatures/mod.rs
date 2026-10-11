@@ -71,6 +71,7 @@ impl Plugin for CreaturesPlugin {
             .add_systems(FixedUpdate, spurts.after(brain::BrainSet).before(move_creatures))
             // A slime holds its goo round it.
             .add_systems(FixedUpdate, body::goo::hold.after(move_creatures).before(deaths).in_set(TickSet::Bodies))
+            .add_systems(FixedUpdate, body::goo::spike.after(brain::BrainSet).before(move_creatures))
             // The dead come up out of the ground, and burn in the sun.
             .add_systems(FixedUpdate, (body::emerge::emerge, body::emerge::sunburn.before(body::elements::expose)).in_set(TickSet::Bodies))
             .add_systems(Update, body::emerge::draw)

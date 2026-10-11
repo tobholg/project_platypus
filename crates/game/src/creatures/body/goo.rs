@@ -29,11 +29,44 @@ use crate::creatures::{Health, Kinematics};
 use crate::world::SimWorld;
 
 /// A slime's goo, as written: what it's made of, and how many cells of it
-/// at full health.
+/// at full health; its spikes, if it has them.
 #[derive(Clone, Debug, Deserialize)]
 pub struct GooDef {
     pub material: String,
     pub cells: usize,
+    #[serde(default)]
+    pub spikes: Option<SpikesDef>,
+}
+
+/// A slime's spikes (like iron filings on a speaker over a magnet): near
+/// what it's after (`range` cells), on the ground and ready, its face
+/// toward it shivers (`tell` s); then a fan of spikes of its goo (`count`
+/// of them, in a cone `cone` degrees either side) stabs out at it, each
+/// as long as a wave running across the fan has it (out to `reach` cells
+/// at its crest, a pulse every `pulse` s), jittering; a tip that reaches
+/// it hurts (`damage`, once a pulse). It holds still while they're out
+/// (`secs`), then rests (`every`).
+#[derive(Clone, Debug, Deserialize)]
+pub struct SpikesDef {
+    pub range: f32,
+    pub tell: f32,
+    pub secs: f32,
+    pub every: f32,
+    pub count: usize,
+    pub cone: f32,
+    pub reach: f32,
+    pub pulse: f32,
+    pub damage: f32,
+}
+
+/// Where its spikes are at: shivering (since), out (since), and when it
+/// may next; which way they point, and when a tip last hurt.
+#[derive(Clone, Copy, Debug, Default)]
+pub enum Spiking {
+    #[default]
+    Rest,
+    Tell(f32),
+    Out(f32),
 }
 
 /// Ticks held goo stays held without being put back.
@@ -48,6 +81,13 @@ const UP: u32 = 13;
 const DRAW_IN: usize = 6;
 const REACH: i32 = 18;
 const GROW: usize = 2;
+/// Spikes: at most this share of its goo in them; each at least this
+/// share of its reach (between the wave's crests); the wave's lag from one
+/// spike to the next (of a pulse); how grainy a shivering face is (cost).
+const SPIKE_SHARE: f32 = 0.35;
+const SPIKE_LEAST: f32 = 0.25;
+const WAVE_STEP: f32 = 0.16;
+const SHIVER: u64 = 24;
 /// Goo flung off (cells a tick).
 const FLUNG: f32 = 1.4;
 /// How long a landing's squash takes to spring back (s), and how hard a
@@ -66,6 +106,13 @@ pub struct Goo {
     falling: f32,
     /// Where its goo reaches (lowest corner, highest), for what it touches.
     extent: Option<(Vec2, Vec2)>,
+    /// Its spikes: where they're at, when they may come again, which way
+    /// they point, when a tip last hurt; where its tips are now.
+    pub spiking: Spiking,
+    spikes_ready: f32,
+    aim: Vec2,
+    stung: f32,
+    tips: Vec<(Vec2, Vec2)>,
 }
 
 /// Each slime puts its goo back round itself (and loses what the world
@@ -151,7 +198,66 @@ pub fn hold(mut sim: ResMut<SimWorld>, time: Res<Time>, mut q: Query<(&mut Goo, 
         let flying = !k.loco.grounded();
         let (down, up) = if flying { (ACROSS, ACROSS) } else { (DOWN, UP + (goo.squash * 20.0) as u32) };
         let across = if flying { ACROSS } else { ACROSS - (goo.squash * 4.0) as u32 };
-        let places = lay_out(&sim, k.body.pos, kept.len(), (across, down, up));
+        // Its spikes out: a fan of them first, of its goo (at most a share
+        // of it), then the rest laid out round it as ever.
+        let mut spiked: Vec<CellPos> = Vec::new();
+        goo.tips.clear();
+        if let (Spiking::Out(t), Some(sd)) = (goo.spiking, def.spikes.as_ref()) {
+            let budget = (kept.len() as f32 * SPIKE_SHARE) as usize;
+            let r = (kept.len() as f32 / std::f32::consts::PI).sqrt();
+            let tick = sim.world.tick();
+            for i in 0..sd.count {
+                let f = if sd.count > 1 { i as f32 / (sd.count - 1) as f32 * 2.0 - 1.0 } else { 0.0 };
+                let dir = Vec2::from_angle(f * sd.cone.to_radians()).rotate(goo.aim);
+                // (A wave running across the fan, and a jitter of its own.)
+                let wave = ((t / sd.pulse - i as f32 * WAVE_STEP) * std::f32::consts::TAU).sin().max(0.0);
+                let jit = (platypus_sim::rng::hash(&[tick, i as u64, 0x5B1C]) % 5) as f32 - 2.0;
+                let len = (sd.reach * (SPIKE_LEAST + (1.0 - SPIKE_LEAST) * wave) + jit).max(2.0);
+                let from = k.body.pos + dir * (r * 0.7);
+                let mut tip = from;
+                let steps = (r * 0.3 + len) as i32;
+                for d in 0..steps {
+                    if spiked.len() >= budget {
+                        break;
+                    }
+                    let at = from + dir * d as f32;
+                    let p = CellPos::from_world(at.x, at.y);
+                    if !sim.world.get(p).is_some_and(|c| c.is_air()) {
+                        if sim.world.get(p).is_some_and(|c| c.material == mat) {
+                            continue;
+                        }
+                        break;
+                    }
+                    if !spiked.contains(&p) {
+                        spiked.push(p);
+                    }
+                    // (Three cells thick at its root, two most of the way,
+                    // one at its tip.)
+                    let along = d as f32 / steps as f32;
+                    let sides: &[f32] = if along < 0.4 { &[1.0, -1.0] } else if along < 0.8 { &[1.0] } else { &[] };
+                    for &w in sides {
+                        let side = CellPos::from_world(at.x - dir.y * w, at.y + dir.x * w);
+                        if !spiked.contains(&side) && sim.world.get(side).is_some_and(|c| c.is_air()) && spiked.len() < budget {
+                            spiked.push(side);
+                        }
+                    }
+                    tip = at;
+                }
+                goo.tips.push((tip, dir));
+            }
+            spiked.truncate(kept.len());
+            for (cell, &p) in kept.iter().zip(&spiked) {
+                let mut c = *cell;
+                c.flags |= HELD;
+                c.life = GRACE;
+                c.vy = 0;
+                sim.world.set(p, c);
+            }
+        }
+        let shiver = matches!(goo.spiking, Spiking::Tell(_)).then(|| (goo.aim, sim.world.tick()));
+        let body = kept.split_off(spiked.len().min(kept.len()));
+        let places = lay_out_shivering(&sim, k.body.pos, body.len(), (across, down, up), shiver);
+        let mut kept = body;
         for (cell, &p) in kept.iter().zip(&places) {
             let mut c = *cell;
             c.flags |= HELD;
@@ -165,14 +271,16 @@ pub fn hold(mut sim: ResMut<SimWorld>, time: Res<Time>, mut q: Query<(&mut Goo, 
             let (a, b) = (Vec2::new(p.x as f32, p.y as f32), Vec2::new(p.x as f32 + 1.0, p.y as f32 + 1.0));
             Some(e.map_or((a, b), |(lo, hi)| (lo.min(a), hi.max(b))))
         });
-        goo.placed = places;
+        goo.placed = spiked.into_iter().chain(places).collect();
     }
 }
 
 /// The `n` open cells nearest `at` by steps (costs across, down, up):
 /// filled out from there through air (and smoke), never through what's
 /// solid or wet; in the order they're reached (its middle first).
-fn lay_out(sim: &SimWorld, at: Vec2, n: usize, (across, down, up): (u32, u32, u32)) -> Vec<CellPos> {
+/// Shivering (`shiver`: toward, the tick), its face that way is grainy,
+/// a step's cost there a little off at random, new every tick.
+fn lay_out_shivering(sim: &SimWorld, at: Vec2, n: usize, (across, down, up): (u32, u32, u32), shiver: Option<(Vec2, u64)>) -> Vec<CellPos> {
     if n == 0 {
         return Vec::new();
     }
@@ -203,7 +311,11 @@ fn lay_out(sim: &SimWorld, at: Vec2, n: usize, (across, down, up): (u32, u32, u3
         for (dx, dy, c) in [(1, 0, across), (-1, 0, across), (0, -1, down), (0, 1, up), (1, -1, dd), (-1, -1, dd), (1, 1, du), (-1, 1, du)] {
             let q = CellPos::new(x + dx, y + dy);
             if seen.insert(q) {
-                heap.push(Reverse((cost + c, q.x, q.y)));
+                let grain = shiver.map_or(0, |(dir, tick)| {
+                    let toward = Vec2::new((q.x - start.x) as f32, (q.y - start.y) as f32).normalize_or_zero().dot(dir);
+                    if toward > 0.3 { (platypus_sim::rng::hash(&[q.x as u64, q.y as u64, tick]) % (SHIVER + 1)) as u32 } else { 0 }
+                });
+                heap.push(Reverse((cost + c + grain, q.x, q.y)));
             }
         }
     }
@@ -245,4 +357,67 @@ fn draw_in(sim: &mut SimWorld, at: Vec2, mat: platypus_sim::MaterialId, n: usize
             Some(cell)
         })
         .collect()
+}
+
+/// A slime's spikes: ready, near what it's after, on the ground: it
+/// shivers, then they're out, then it rests; out, a tip on what it's after
+/// hurts it (once a pulse). It holds still meanwhile. After the brain,
+/// before it moves (and before its goo's laid out).
+#[allow(clippy::type_complexity)]
+pub fn spike(
+    time: Res<Time>,
+    mut q: Query<(Entity, &mut Goo, &Kinematics, &super::animation::Animator, &mut crate::creatures::Controls, Option<&crate::creatures::brain::senses::Alert>)>,
+    bodies: Query<&Kinematics>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+) {
+    let now = time.elapsed_secs();
+    for (e, mut goo, k, anim, mut controls, alert) in &mut q {
+        let Some(sd) = anim.def.goo.as_ref().and_then(|g| g.spikes.as_ref()) else { continue };
+        let target = alert.filter(|a| a.engaged()).and_then(|a| a.target).filter(|&t| t != e);
+        let tk = target.and_then(|t| bodies.get(t).ok());
+        match goo.spiking {
+            Spiking::Rest => {
+                let Some(tk) = tk else { continue };
+                if now >= goo.spikes_ready && k.loco.grounded() && tk.body.pos.distance(k.body.pos) <= sd.range {
+                    goo.spiking = Spiking::Tell(now);
+                    goo.aim = (tk.body.pos - k.body.pos).normalize_or(Vec2::X);
+                    sounds.write(crate::sound::PlaySound::at("pour", k.body.pos).pitch(0.45).volume(0.8));
+                }
+            }
+            Spiking::Tell(since) => {
+                if let Some(tk) = tk {
+                    goo.aim = (tk.body.pos - k.body.pos).normalize_or(goo.aim);
+                }
+                if now - since >= sd.tell {
+                    goo.spiking = Spiking::Out(0.0);
+                    goo.stung = -1.0;
+                    sounds.write(crate::sound::PlaySound::at("spit", k.body.pos).pitch(0.6));
+                }
+            }
+            Spiking::Out(t) => {
+                let t = t + time.delta_secs();
+                goo.spiking = Spiking::Out(t);
+                if t >= sd.secs {
+                    goo.spiking = Spiking::Rest;
+                    goo.spikes_ready = now + sd.every;
+                } else if let (Some(tt), Some(tk)) = (target, tk) {
+                    // A tip on it hurts it, once a pulse.
+                    let (lo, hi) = (tk.body.pos - tk.body.half - 1.0, tk.body.pos + tk.body.half + 1.0);
+                    if t - goo.stung >= sd.pulse
+                        && let Some(&(tip, dir)) = goo.tips.iter().find(|(p, _)| p.cmpge(lo).all() && p.cmple(hi).all())
+                    {
+                        goo.stung = t;
+                        hits.write(crate::combat::Hit { target: tt, damage: sd.damage, harm: crate::creatures::Harm::Pierce, knock: dir * 160.0 + Vec2::Y * 40.0, stun: 0.15, at: tip, dir, weight: sd.damage / 12.0, crit: false });
+                        sounds.write(crate::sound::PlaySound::at("hit", tip).pitch(1.3).volume(0.7));
+                    }
+                }
+            }
+        }
+        // (Shivering or spiking, it holds still.)
+        if !matches!(goo.spiking, Spiking::Rest) {
+            controls.0.move_x = 0.0;
+            controls.0.jump = false;
+        }
+    }
 }

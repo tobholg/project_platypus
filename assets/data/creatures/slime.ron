@@ -17,7 +17,10 @@
     // (Its goo is its blood: hurt, it flings goo off; dead, it spills.)
     blood: "",
     art: "green_slime",
-    goo: Some((material: "green_goo", cells: 650)),
+    goo: Some((material: "green_goo", cells: 650,
+        // Near you, its face toward you shivers, then a fan of goo spikes
+        // stabs out at you, pulsing in a wave, jittering.
+        spikes: Some((range: 36, tell: 0.55, secs: 2.2, every: 3.5, count: 7, cone: 38, reach: 28, pulse: 0.36, damage: 12)))),
     // Left alone a few seconds, it heals: its spilled goo drawn back in
     // (then new grown).
     regen: (per_sec: 6, pause: 3),
