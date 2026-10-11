@@ -469,6 +469,11 @@ fn ambient(
             }),
         };
         let Some(mut at) = spot else { continue };
+        // (What comes up out of the ground: only through soft ground, and
+        // with room for its pit, not rock.)
+        if h.emerges && !(-8..=8).all(|dx| kind_at(at.x as i32 + dx, at.y as i32 - 1).is_some_and(|(air, ph)| !air && crate::creatures::body::emerge::soft(ph))) {
+            continue;
+        }
         // Deep enough, in its biome, and out of sight (not popping in).
         let depth = sim.generator.surface_hint(at.x as i32).map_or(0.0, |s| s as f32 - at.y);
         if h.depth.is_some_and(|(lo, hi)| !((if show { lo / 4.0 } else { lo })..hi).contains(&depth)) {

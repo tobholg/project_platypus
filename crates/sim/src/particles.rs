@@ -21,6 +21,9 @@ pub enum Landing {
     /// Becomes its cell where it stops (debris, drops of liquid, blood).
     /// Solids land `LOOSE`, so they pile as rubble.
     Settle,
+    /// As `Settle`, but nothing's hurt by it on the way: earth spilled, not
+    /// thrown (what the dead dig up).
+    Spill,
     /// Purely visual: dust, sparks.
     Vanish,
     /// A burning speck: sets what it lands on alight if that can burn.
@@ -98,7 +101,7 @@ fn wind_push(landing: Landing) -> f32 {
     match landing {
         Landing::Ember | Landing::Vanish | Landing::Snow => 0.052,
         Landing::Rain => 0.018,
-        Landing::Settle => 0.006,
+        Landing::Settle | Landing::Spill => 0.006,
     }
 }
 
@@ -297,7 +300,7 @@ fn land(p: &Particle, hit: CellPos, world: &mut impl ParticleWorld) {
                 world.ignite_at(hit);
             }
         }
-        Landing::Settle => settle(p, here, world),
+        Landing::Settle | Landing::Spill => settle(p, here, world),
     }
 }
 

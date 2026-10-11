@@ -283,6 +283,18 @@ impl World {
         }
     }
 
+    /// As `spray`, but harmless on the way (`Landing::Spill`): earth dug up.
+    pub fn spill(&mut self, at: [f32; 2], dir: [f32; 2], material: MaterialId, count: usize, speed: f32, spread: f32) {
+        let mut rng = self.rng_for(0x5B1A, CellPos::from_world(at[0], at[1]));
+        let base = dir[1].atan2(dir[0]);
+        for _ in 0..count {
+            let cell = self.materials.spawn(material, &mut rng);
+            let a = base + (rng.next_u32() as f32 / u32::MAX as f32 * 2.0 - 1.0) * spread;
+            let s = speed * (0.4 + 0.6 * rng.next_u32() as f32 / u32::MAX as f32);
+            self.particles.push(Particle::new(at, [a.cos() * s, a.sin() * s + 0.3], cell, 180, Landing::Spill));
+        }
+    }
+
     /// Absolute temperature (°C) of a cell.
     pub fn temperature(&self, p: CellPos) -> Option<i32> {
         self.get(p).map(|c| self.climate.ambient(p.x, p.y) + c.heat as i32)

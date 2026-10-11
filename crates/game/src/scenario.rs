@@ -9625,6 +9625,7 @@ fn night_script(
 fn zombie_script(
     mut commands: Commands,
     s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, Has<crate::creatures::moves::Held>), With<LocalPlayer>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut began: MessageReader<crate::creatures::moves::Began>,
@@ -9680,6 +9681,16 @@ fn zombie_script(
             k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
             k.prev_pos = k.body.pos;
             if mode == "emerge" {
+                // (Earth under grass where they come up: they dig through
+                // soft ground only.)
+                let floor = platypus_worldgen::arena::FLOOR;
+                if let (Some(dirt), Some(grass)) = (sim.materials().id("dirt"), sim.materials().id("grass")) {
+                    for x in 920..1060 {
+                        for y in floor - 24..floor {
+                            sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: if y == floor - 1 { grass } else { dirt }, overwrite: true });
+                        }
+                    }
+                }
                 // (Three coming up out of the ground, one after another.)
                 for n in 0..3 {
                     crate::creatures::def::spawn_creature(&mut commands, "zombie", Vec2::new(960.0 + n as f32 * 26.0, fl), move |e| {

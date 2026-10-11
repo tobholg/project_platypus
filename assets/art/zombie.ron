@@ -297,6 +297,14 @@
         // Reaching for you (the grab's tell): both arms up and out, its
         // head thrown back. Lunging: leaning in, arms straight out. Biting:
         // its head down and in, at what it holds.
+        // Coming up out of the ground: both arms straight up over its
+        // head, reaching (they break the surface first).
+        "climb": [
+            (part: "arm_up", at: (14, 17), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (13, 16)),
+            (part: "head", at: (12, 6)),
+            (part: "arm_up", at: (19, 17), outline: true, tag: "front_arm"),
+        ],
         "tell": [
             (part: "aim60", at: (14, 15), shade: 0.72, tag: "back_arm"),
             (part: "torso", at: (13, 14)),
@@ -370,6 +378,7 @@
         "wall": (frames: ["wall"], fps: 5),
         "hurt": (frames: ["hurt"], fps: 5),
         "tell": (frames: ["tell"], fps: 5),
+        "climb": (frames: ["climb"], fps: 5),
         "lunge": (frames: ["lunge"], fps: 5),
         "bite": (frames: ["lunge", "bite", "bite", "lunge"], fps: 6),
     },

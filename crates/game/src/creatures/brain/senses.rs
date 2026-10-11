@@ -174,7 +174,7 @@ const SURE_RUNNING: f32 = 1.6;
 /// How lit a spot is for seeing it (0 dark, 1 broad day): daylight under
 /// open sky near the surface (no rock over it), and light sources near it
 /// (a torch carried or planted, glowing things).
-pub(crate) fn lit(sim: &SimWorld, day: &crate::light::Daylight, lights: &[(Vec2, f32)], at: Vec2) -> f32 {
+fn lit(sim: &SimWorld, day: &crate::light::Daylight, lights: &[(Vec2, f32)], at: Vec2) -> f32 {
     let sky = day.sky.iter().copied().fold(0.0f32, f32::max).clamp(0.0, 1.0);
     let open = sim.generator.surface_hint(at.x as i32).is_none_or(|s| at.y > s as f32 - 20.0) && crate::creatures::moves::clear(sim, at, at + Vec2::Y * SKY_ROOF);
     let near = lights.iter().map(|(p, b)| b * (1.0 - p.distance(at) / 70.0).max(0.0)).fold(0.0f32, f32::max);
