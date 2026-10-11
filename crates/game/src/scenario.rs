@@ -307,6 +307,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, slope_script)
             .add_systems(Update, ledge_script)
             .add_systems(Update, rise_script)
+            .add_systems(Update, limp_script)
             .add_systems(Update, pickups_script)
             .add_systems(PreUpdate, filter_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, cursor_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -9239,6 +9240,79 @@ fn pickups_script(
             *state = 4;
         }
         _ => {}
+    }
+}
+
+/// `limp` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): ragdolls. A stone
+/// ledge 24 cells up beside the player; at 1.5 s an orc on its edge dies
+/// where it stands (it should slump over the edge), an orc below is knocked
+/// into the ledge's face, and an orc high in the air dies falling. At 4 s a
+/// blast among them throws the bodies. Logs where each body's pieces are.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn limp_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    limps: Query<&crate::creatures::body::ragdoll::Limp>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<u8>,
+) {
+    if s.name != "limp" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let fl = floor as f32;
+    match *state {
+        0 if s.elapsed > 0.5 => {
+            for (e, c, _) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            let Some(stone) = sim.materials().id("stone") else { return };
+            for x in 960..1000 {
+                for y in floor..floor + 24 {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: stone, overwrite: true });
+                }
+            }
+            k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            *state = 1;
+        }
+        1 if s.elapsed > 0.8 => {
+            let still = |e: &mut EntityWorldMut| {
+                e.remove::<crate::creatures::brain::hunter::Hunter>();
+            };
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(963.0, fl + 24.0), still);
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(935.0, fl), still);
+            crate::creatures::def::spawn_creature(&mut commands, "skeleton", Vec2::new(925.0, fl + 70.0), still);
+            *state = 2;
+        }
+        2 if s.elapsed > 1.5 => {
+            let mut all: Vec<(Entity, Vec2)> = them.iter().filter(|t| t.1.kind != "dummy").map(|t| (t.0, t.2.body.pos)).collect();
+            all.sort_by(|a, b| b.1.y.total_cmp(&a.1.y));
+            // (Highest first: the falling skeleton, the orc on the ledge, the orc below.)
+            let blows = [(crate::creatures::Harm::Blunt, Vec2::new(0.0, 0.0)), (crate::creatures::Harm::Slash, Vec2::new(-10.0, 0.0)), (crate::creatures::Harm::Blunt, Vec2::new(260.0, 120.0))];
+            for ((e, at), (harm, knock)) in all.into_iter().zip(blows) {
+                hits.write(crate::combat::Hit { target: e, damage: 999.0, harm, knock, stun: 0.5, at, dir: knock.normalize_or(Vec2::X), weight: 1.0, crit: false });
+            }
+            *state = 3;
+        }
+        3 if s.elapsed > 4.0 => {
+            sim.queue(WorldEdit::Explode { center: CellPos::new(950, floor + 4), radius: 14, power: 60 });
+            *state = 4;
+        }
+        _ => {}
+    }
+    if *state >= 3 && ((s.elapsed * 10.0) as i32) % 10 == 0 {
+        for l in &limps {
+            let at: Vec<String> = l.pieces.iter().map(|p| format!("{} ({:.0}, {:.0})", p.name, p.pos.x, p.pos.y - fl)).collect();
+            info!("limp: t {:.1} {}{}", s.elapsed, at.join(" "), if l.asleep { " asleep" } else { "" });
+        }
     }
 }
 

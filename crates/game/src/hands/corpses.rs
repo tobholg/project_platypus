@@ -20,6 +20,7 @@ use super::chests::{Chests, Container, SLOTS};
 use super::items::{Inventory, Items, Stack};
 use super::spawn_drop;
 use crate::creatures::player::LocalPlayer;
+use crate::creatures::body::ragdoll;
 use crate::creatures::{Died, Kinematics};
 use crate::fx::Explosion;
 use crate::props::Thrown;
@@ -54,8 +55,8 @@ pub struct CorpsesPlugin;
 
 impl Plugin for CorpsesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, (lay_out, (batter, rot, slump).after(crate::props::fly)).in_set(TickSet::Bodies))
-            .add_systems(PostUpdate, ragdoll.after(crate::creatures::interpolate).before(bevy::transform::TransformSystems::Propagate));
+        app.add_systems(FixedUpdate, (lay_out, (batter, rot, slump, ragdoll::step_all.after(batter)).after(crate::props::fly)).in_set(TickSet::Bodies))
+            .add_systems(PostUpdate, (ragdoll, ragdoll::draw).after(crate::creatures::interpolate).before(bevy::transform::TransformSystems::Propagate));
     }
 }
 
@@ -77,6 +78,28 @@ fn belongings(died: &Died, items: &Items, chests: &Chests, world: &platypus_sim:
         chests.roll_table(table, &mut inv, items, chests.level_at(world, at), luck, &mut rng);
     }
     inv
+}
+
+/// A body drawn in parts (its art's poses: a humanoid) as a ragdoll: the
+/// parts of the frame it fell in, dressed in what it wore, moving as it
+/// was. None for a body that isn't (a sprite, a walker on legs).
+fn limp_of(d: &Died, items: &Items) -> Option<(ragdoll::Limp, Vec<ragdoll::Cut>)> {
+    let file = d.def.art_file.as_ref()?;
+    if file.poses.is_empty() {
+        return None;
+    }
+    let rig = d.def.rig.as_ref()?;
+    let (sprite, offset) = d.sprite.as_ref()?;
+    let frame = rig.names.get(sprite.texture_atlas.as_ref()?.index)?;
+    let skins = crate::gear::look::skins_of(items, &d.worn);
+    let dressed = if skins.is_empty() { (**file).clone() } else { platypus_art::dress::dress(file, &skins).ok()? };
+    let cuts = ragdoll::cut(&dressed, frame);
+    if cuts.len() < 2 {
+        return None;
+    }
+    let centre = d.body.pos + offset.truncate();
+    let limp = ragdoll::assemble(&cuts, d.def.sprite.frame, centre, d.facing, d.body.vel, d.spin.omega);
+    Some((limp, cuts))
 }
 
 /// How tall a walker on legs lies dead (cells): its body, not its legs.
@@ -228,6 +251,31 @@ fn lay_out(
             continue;
         }
         let key = chests.stash(at, inv);
+        // A body drawn in parts (a humanoid): its parts, a ragdoll.
+        if let Some((limp, cuts)) = limp_of(d, &items) {
+            let root_at = limp.pieces[limp.root].pos;
+            // (Its box, for opening it: lying down.)
+            let body = Body::new(root_at, Vec2::new(d.body.half.y, d.body.half.x) * 2.0);
+            let mut e = commands.spawn((
+                Name::new(format!("Body of {}", d.def.name)),
+                Corpse { key, empty: 0.0, born: { *count += 1; *count } },
+                Container { key, name: if d.rising.is_some() { format!("{} (bones)", d.def.name) } else { format!("{} (dead)", d.def.name) } },
+                Kinematics { body, loco: Locomotion::default(), prev_pos: root_at },
+                Transform::from_translation(root_at.extend(Z)),
+                Visibility::default(),
+            ));
+            for (i, c) in cuts.into_iter().enumerate() {
+                let mut s = Sprite::from_image(images.add(c.image));
+                s.flip_x = d.facing < 0.0;
+                s.color = Color::srgb(DIM, DIM, DIM);
+                e.with_child((CorpseSprite, ragdoll::LimpPiece(i), s, Transform::from_xyz(0.0, 0.0, i as f32 * 0.01)));
+            }
+            e.insert(limp);
+            if let Some(rise) = &d.rising {
+                crate::creatures::body::rise::make_pile(&mut e, d, rise, sim.world.materials().id(&d.def.blood));
+            }
+            continue;
+        }
         // Laid on its back, head the way it faced from; a spider (drawn
         // from above) as it was; a walker on legs down on its belly, its
         // box no more than its body (not its legs).

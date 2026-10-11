@@ -47,6 +47,23 @@ fn outfit<'a>(items: &'a Items, eq: &Equipment) -> (Vec<&'a Skin>, String) {
     (skins, name)
 }
 
+/// The skins of these things (what a body wore), under to over, wherever
+/// each is worn (what's held has none).
+pub fn skins_of<'a>(items: &'a Items, stacks: &[crate::hands::items::Stack]) -> Vec<&'a Skin> {
+    let mut out = Vec::new();
+    for layer in LAYERS {
+        for s in stacks {
+            let def = items.def(s.item);
+            if let Some(g) = def.gear.as_ref().filter(|g| g.slot == layer)
+                && let Some(look) = g.look.as_ref()
+            {
+                out.push(look);
+            }
+        }
+    }
+    out
+}
+
 /// Draw a creature in skins (its art as written, dressed and compiled).
 fn dressed(base: &CreatureDef, kind: &str, skins: &[&Skin], name: &str) -> Result<CreatureDef, String> {
     let file = base.art_file.as_ref().ok_or("not drawn as text")?;

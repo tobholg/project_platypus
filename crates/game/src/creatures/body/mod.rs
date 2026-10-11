@@ -11,6 +11,7 @@ pub mod elements;
 pub mod hurt;
 pub mod legs;
 pub mod parts;
+pub mod ragdoll;
 pub mod rise;
 pub mod sight;
 pub mod tumble;
