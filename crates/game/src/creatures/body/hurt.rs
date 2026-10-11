@@ -191,6 +191,16 @@ fn bleed(sim: &mut SimWorld, k: &Kinematics, blood: platypus_sim::MaterialId, sh
     }
 }
 
+/// A blow's blood: out of the wound at `at`, sprayed along `dir` (the way
+/// the blow went), more and faster for a harder one.
+fn spray(sim: &mut SimWorld, at: Vec2, dir: Vec2, blood: platypus_sim::MaterialId, share: f32) {
+    let n = (share * BLEED_PER_SHARE).min(BLEED_MOST) as usize;
+    if n > 0 {
+        let d = dir.normalize_or(Vec2::X);
+        sim.world.spray([at.x, at.y], [d.x, d.y], blood, n, 2.0 + (share * 6.0).min(2.0), 0.55);
+    }
+}
+
 /// Each hit as it landed, shown on what it struck (`reaction`).
 pub fn react(mut felt: MessageReader<Felt>, mut sim: ResMut<SimWorld>, mut sparks: ResMut<Sparks>, mut reacted: MessageWriter<Reacted>, mut q: Query<(&Kinematics, &mut Hurt, Option<&Bleeds>)>) {
     for f in felt.read() {
@@ -200,7 +210,9 @@ pub fn react(mut felt: MessageReader<Felt>, mut sim: ResMut<SimWorld>, mut spark
             Reaction::Hurt => {
                 h.flash = h.flash.max((FLASH + f.share * FLASH_PER_SHARE).min(FLASH_MOST));
                 if let Some(&Bleeds(blood)) = bleeds {
-                    bleed(&mut sim, k, blood, f.share);
+                    // (A blow's blood: from where it struck, sprayed on the
+                    // way it was going.)
+                    spray(&mut sim, f.at, f.dir, blood, f.share);
                 }
             }
             Reaction::Resisted => sparks.emit(&DULL, DULL.count as usize, f.at, -f.dir, Vec2::ZERO),

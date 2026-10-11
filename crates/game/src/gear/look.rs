@@ -97,18 +97,26 @@ fn dressed(base: &CreatureDef, kind: &str, skins: &[&Skin], name: &str, lost: &[
     Ok(def)
 }
 
-type Dressing<'a> = (&'a Creature, Ref<'a, Equipment>, &'a mut Animator, Option<Ref<'a, crate::creatures::body::parts::Severed>>);
+type Dressing<'a> = (
+    &'a Creature,
+    Ref<'a, Equipment>,
+    &'a mut Animator,
+    Option<Ref<'a, crate::creatures::body::parts::Severed>>,
+    Option<Ref<'a, crate::creatures::body::marks::Marks>>,
+    Option<&'a crate::creatures::body::hurt::Bleeds>,
+);
 
 /// Whoever's outfit changed (or whose kind was reloaded) is drawn in it
 /// (without what it's lost).
-pub fn dress(items: Option<Res<Items>>, creatures: Res<Creatures>, mut wardrobe: ResMut<Wardrobe>, mut q: Query<Dressing>) {
+pub fn dress(items: Option<Res<Items>>, creatures: Res<Creatures>, sim: Res<crate::world::SimWorld>, mut wardrobe: ResMut<Wardrobe>, mut q: Query<Dressing>) {
+    use crate::creatures::body::marks;
     let Some(items) = items else { return };
     let all = creatures.is_changed();
     if all {
         wardrobe.0.clear();
     }
-    for (c, eq, mut anim, severed) in &mut q {
-        if !(all || eq.is_changed() || severed.as_ref().is_some_and(|s| s.is_changed())) {
+    for (c, eq, mut anim, severed, wounds, bleeds) in &mut q {
+        if !(all || eq.is_changed() || severed.as_ref().is_some_and(|s| s.is_changed()) || wounds.as_ref().is_some_and(|m| m.is_changed())) {
             continue;
         }
         // (Only what's drawn in its art's layers: a humanoid's arms, head.)
@@ -119,12 +127,25 @@ pub fn dress(items: Option<Res<Items>>, creatures: Res<Creatures>, mut wardrobe:
         if base.art_file.is_none() {
             continue;
         }
-        let (skins, mut name) = outfit(&items, &eq);
+        let (mut skins, mut name) = outfit(&items, &eq);
         for l in &lost {
             name.push_str(&format!("-{l:?}"));
         }
+        // Its wounds, over what it wears (each body's own: not kept).
+        let marked = wounds.as_ref().filter(|m| !m.list.is_empty()).map(|m| marks::skin(&m.list, marks::Tissue::of(base.kind.as_deref()), marks::blood_color(&sim, bleeds)));
+        if let Some(m) = &marked {
+            skins.push(m);
+        }
         let want = if skins.is_empty() && lost.is_empty() {
             base.clone()
+        } else if marked.is_some() {
+            match dressed(base, &c.kind, &skins, &format!("{name}+wounds"), &lost) {
+                Ok(d) => Arc::new(d),
+                Err(e) => {
+                    warn!("{} wounded: {e}", c.kind);
+                    anim.def.clone()
+                }
+            }
         } else {
             let key = format!("{}{name}", c.kind);
             match wardrobe.0.get(&key) {

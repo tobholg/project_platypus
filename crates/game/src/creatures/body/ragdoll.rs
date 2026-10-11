@@ -112,6 +112,11 @@ pub struct Cut {
     pub name: String,
     /// Its layer's tag (`front_arm`, `back_arm`), if it has one.
     pub tag: Option<String>,
+    /// Where its part's top-left is in the frame (pixels), and whether it's
+    /// drawn turned or mirrored (then a spot on it can't be told from one
+    /// on the frame simply).
+    pub origin: IVec2,
+    pub turned: bool,
     /// Its pixels' middle, and its picture's middle, in the frame (pixels, y down).
     com: Vec2,
     centre: Vec2,
@@ -222,7 +227,9 @@ pub fn cut(file: &platypus_art::ArtFile, frame: &str) -> Vec<Cut> {
         let com = pixels.iter().fold(Vec2::ZERO, |s, q| s + q.as_vec2()) / pixels.len() as f32 + Vec2::splat(0.5);
         let centre = Vec2::new(lo.x as f32 + w as f32 / 2.0, lo.y as f32 + h as f32 / 2.0);
         let colors = pixels.iter().map(|q| p.get(q.x, q.y)).collect();
-        out.push(Cut { image, name: layer.part.clone(), tag: layer.tag.clone(), com, centre, pixels, colors, edge });
+        let pivot = file.parts.get(&layer.part).map_or((0, 0), |p| p.pivot);
+        let origin = IVec2::new(layer.at.0 + shift.0 - pivot.0, layer.at.1 + shift.1 - pivot.1);
+        out.push(Cut { image, name: layer.part.clone(), tag: layer.tag.clone(), origin, turned: layer.turn != 0.0 || layer.flip, com, centre, pixels, colors, edge });
     }
     out
 }

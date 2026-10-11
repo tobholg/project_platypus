@@ -83,7 +83,7 @@ fn belongings(died: &Died, items: &Items, chests: &Chests, world: &platypus_sim:
 /// A body drawn in parts (its art's poses: a humanoid) as a ragdoll: the
 /// parts of the frame it fell in, dressed in what it wore, moving as it
 /// was. None for a body that isn't (a sprite, a walker on legs).
-fn limp_of(d: &Died, items: &Items) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look, f32)>)> {
+fn limp_of(d: &Died, items: &Items, blood: (u8, u8, u8)) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look, f32)>)> {
     let file = d.def.art_file.as_ref()?;
     if file.poses.is_empty() {
         return None;
@@ -91,7 +91,12 @@ fn limp_of(d: &Died, items: &Items) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look
     let rig = d.def.rig.as_ref()?;
     let (sprite, offset) = d.sprite.as_ref()?;
     let frame = rig.names.get(sprite.texture_atlas.as_ref()?.index)?;
-    let skins = crate::gear::look::skins_of(items, &d.worn);
+    let mut skins = crate::gear::look::skins_of(items, &d.worn);
+    // (Its wounds' marks on it still.)
+    let marked = (!d.marks.is_empty()).then(|| crate::creatures::body::marks::skin(&d.marks, crate::creatures::body::marks::Tissue::of(d.def.kind.as_deref()), blood));
+    if let Some(m) = &marked {
+        skins.push(m);
+    }
     let dressed = if skins.is_empty() { (**file).clone() } else { platypus_art::dress::dress(file, &skins).ok()? };
     // (What it had lost lies apart.)
     let cuts: Vec<ragdoll::Cut> = ragdoll::cut(&dressed, frame).into_iter().filter(|c| c.limb().is_none_or(|l| !d.severed.contains(&l))).collect();
@@ -321,7 +326,11 @@ fn lay_out(
         }
         let key = chests.stash(at, inv);
         // A body drawn in parts (a humanoid), or on limbs (a walker): a ragdoll.
-        if let Some((limp, looks)) = limp_of(d, &items).or_else(|| walker_of(d)) {
+        let blood = sim.world.materials().id(&d.def.blood).map_or((140, 24, 26), |m| {
+            let def = sim.world.materials().def(m);
+            def.colors[def.colors.len() / 2]
+        });
+        if let Some((limp, looks)) = limp_of(d, &items, blood).or_else(|| walker_of(d)) {
             let root_at = limp.pieces[limp.root].pos;
             // (Its box, for opening it: lying down.)
             let body = Body::new(root_at, Vec2::new(d.body.half.y, d.body.half.x) * 2.0);

@@ -10,6 +10,7 @@ pub mod chains;
 pub mod elements;
 pub mod hurt;
 pub mod legs;
+pub mod marks;
 pub mod parts;
 pub mod ragdoll;
 pub mod rise;

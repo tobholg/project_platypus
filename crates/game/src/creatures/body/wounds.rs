@@ -113,7 +113,7 @@ fn limb_max(limb: Limb, health: f32, legs: Option<&super::legs::LegsDef>) -> f32
 pub struct LayerMasks(std::collections::HashMap<(usize, String), std::sync::Arc<Vec<ragdoll::Cut>>>);
 
 impl LayerMasks {
-    fn of(&mut self, file: &std::sync::Arc<platypus_art::ArtFile>, frame: &str) -> std::sync::Arc<Vec<ragdoll::Cut>> {
+    pub fn cuts(&mut self, file: &std::sync::Arc<platypus_art::ArtFile>, frame: &str) -> std::sync::Arc<Vec<ragdoll::Cut>> {
         let key = (std::sync::Arc::as_ptr(file) as usize, frame.to_string());
         self.0.entry(key).or_insert_with(|| std::sync::Arc::new(ragdoll::cut(file, frame))).clone()
     }
@@ -124,7 +124,7 @@ impl LayerMasks {
 fn rig_limb(anim: &super::animation::Animator, k: &Kinematics, at: Vec2, masks: &mut LayerMasks) -> Option<Limb> {
     let file = anim.def.art_file.as_ref().filter(|f| !f.poses.is_empty())?;
     let frame = anim.def.rig.as_ref()?.names.get(anim.shown)?.clone();
-    let cuts = masks.of(file, &frame);
+    let cuts = masks.cuts(file, &frame);
     let (x, y) = super::animation::pixel_at(&anim.def, k, at);
     let p = IVec2::new(x, y);
     // (Frontmost first; a pixel's slack round it: blades are thin.)

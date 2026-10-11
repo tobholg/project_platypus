@@ -2055,6 +2055,19 @@ DESIGN §13 item 6.
   without what it's lost (its look's layers stripped, the arm's aim fan
   with it); its body and rubble leave it out. The `sever` scenario
   (`PLATYPUS_SEVER=spider|skeleton`).
+- **Wound marks** (`creatures::body::marks`, `wounds` stage 3): a blow of
+  4 % or more of a humanoid's health leaves its mark on the part its pixel
+  landed on (the layer of the frame: head, torso, an arm; not one drawn
+  turned), at that spot of the part: a slash's cut across the blow, a
+  point's hole, a blunt bruise (flesh) or crack (bone, metal, shell), fire's
+  char, acid's melt, frost's rime; in its tissue (`Tissue::of` its kind:
+  flesh in its own blood's colour, bone dark and dry, metal scratched
+  bright, a shell its ichor). Drawn into its look as what it wears is (an
+  overlay clipped to the part, over its gear: it moves with the part), at
+  most 10 (the oldest go), redrawn at most every 0.25 s; its body keeps
+  them (`Died::marks`). A blow's blood sprays from where it struck along
+  the way it went (`World::spray`). The `marks` scenario. (Walkers' bodies
+  and limbs aren't marked yet.)
 - **What rises is data** (a creature file's `rises` and `headless`):
   `remains` (`Rubble`: bones that come apart, a skeleton; `Body`: its
   ragdoll, whole, gets up, every piece's pixels flying back into place),

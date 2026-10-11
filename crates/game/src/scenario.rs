@@ -311,6 +311,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, sever_script)
             .add_systems(Update, skull_script)
             .add_systems(Update, knock_script)
+            .add_systems(Update, marks_script)
             .add_systems(Update, pickups_script)
             .add_systems(PreUpdate, filter_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, cursor_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -9243,6 +9244,83 @@ fn pickups_script(
             *state = 4;
         }
         _ => {}
+    }
+}
+
+/// `marks` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): wounds' marks. An
+/// orc (flesh) and a skeleton (bone), their armour off, struck every 0.3 s
+/// somewhere on them with each kind of hurt in turn (slash, pierce, blunt,
+/// fire, acid, frost; light blows), the orc killed at 6 s (its body keeps
+/// them). Logs how many marks each has.
+#[allow(clippy::type_complexity)]
+fn marks_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::body::marks::Marks>), Without<LocalPlayer>>,
+    mut eqs: Query<&mut crate::gear::Equipment, Without<LocalPlayer>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, u32)>,
+) {
+    use crate::creatures::Harm;
+    if s.name != "marks" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    if (1.2..1.4).contains(&s.elapsed) {
+        for mut eq in &mut eqs {
+            eq.worn = Default::default();
+        }
+    }
+    match state.0 {
+        0 if s.elapsed > 0.5 => {
+            for (e, c, ..) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            k.body.pos = Vec2::new(880.0, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            for (kind, x) in [("orc", 940.0), ("skeleton", 975.0)] {
+                crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x, fl), |e| {
+                    e.remove::<crate::creatures::brain::hunter::Hunter>();
+                });
+            }
+            state.0 = 1;
+            state.1 = 1.8;
+        }
+        1 if s.elapsed > state.1 => {
+            state.1 = s.elapsed + 0.3;
+            state.2 += 1;
+            let n = state.2;
+            let harm = [Harm::Slash, Harm::Pierce, Harm::Blunt, Harm::Fire, Harm::Acid, Harm::Frost][(n as usize / 2) % 6];
+            for (e, c, tk, _) in &them {
+                if c.kind != "orc" && c.kind != "skeleton" {
+                    continue;
+                }
+                // (Somewhere up and down it, a little either side.)
+                let h = platypus_sim::rng::hash(&[n as u64, e.to_bits()]);
+                let up = (h % 100) as f32 / 100.0;
+                let side = ((h / 100) % 100) as f32 / 100.0 - 0.5;
+                let at = Vec2::new(tk.body.pos.x + side * tk.body.half.x * 1.6, tk.body.pos.y - tk.body.half.y * 0.2 + up * tk.body.half.y * 1.5);
+                hits.write(crate::combat::Hit { target: e, damage: 6.0, harm, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::new(1.0, -0.2), weight: 0.5, crit: false });
+            }
+            if s.elapsed > 6.0 {
+                for (e, c, tk, _) in &them {
+                    if c.kind == "orc" {
+                        hits.write(crate::combat::Hit { target: e, damage: 999.0, harm: Harm::Slash, knock: Vec2::new(40.0, 20.0), stun: 0.3, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+                    }
+                }
+                state.0 = 2;
+            }
+        }
+        _ => {}
+    }
+    if state.0 == 1 && state.2.is_multiple_of(5) && state.2 > 0 {
+        let counts: Vec<String> = them.iter().filter(|t| t.1.kind == "orc" || t.1.kind == "skeleton").map(|t| format!("{} {}", t.1.kind, t.3.map_or(0, |m| m.list.len()))).collect();
+        info!("marks: {}", counts.join(", "));
     }
 }
 
