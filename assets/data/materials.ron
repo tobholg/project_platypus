@@ -33,6 +33,8 @@
 //               holding down)
 // pulse:        how much its glow breathes (0 steady … 255 full to nothing)
 // shimmer:      how deep its glow glimmers, patch by patch (gems, crystals)
+// loot:         what it is as loot, for the pick-up filters (Ore, Gem,
+//               Wood; a plain block if not said)
 // motes:        glowing motes drift up off it (spores)
 // eats:         (hardness, bites, chance, spent_into): eats solids, powders and
 //               plants up to `hardness` (softer faster, `chance`/256 a tick at
@@ -62,7 +64,7 @@
         (name: "snow",     kind: Static, density: 400,  hardness: 5,   heat: -10, above: (1, "water"), conductivity: 15, coats: "wet", latent: 300, colors: [(226, 232, 240), (246, 248, 252)]),
         // Hard to get going: a small fire on a trunk often fizzles (fizzles:
         // a lone flame goes out), a crown or a blaze takes it (SPEC §3.8).
-        (name: "wood",     kind: Static, object: true, living: true, grows: true, density: 700,  hardness: 25,  flammability: 6, ignites_at: 280, conductivity: 12, burn_time: 225, spread: 2, fizzles: 40, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal", colors: [(58, 36, 20), (88, 58, 30), (118, 80, 42), (138, 96, 54)]),
+        (name: "wood", loot: Wood,     kind: Static, object: true, living: true, grows: true, density: 700,  hardness: 25,  flammability: 6, ignites_at: 280, conductivity: 12, burn_time: 225, spread: 2, fizzles: 40, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal", colors: [(58, 36, 20), (88, 58, 30), (118, 80, 42), (138, 96, 54)]),
         (name: "obsidian", kind: Static, density: 2800, hardness: 120, crumbles_into: "gravel", above: (1600, "lava"), colors: [(34, 18, 52), (52, 30, 74)]),
         // The deep's rock: darker and harder than stone.
         (name: "slate",    kind: Static, density: 2800, hardness: 80, crumbles_into: "gravel", above: (1500, "lava"), colors: [(62, 64, 76), (74, 76, 90), (56, 58, 68), (68, 70, 82)]),
@@ -73,36 +75,36 @@
         (name: "brick",    kind: Static, fortified: true, density: 2400, hardness: 70, crumbles_into: "gravel", above: (1450, "lava"),
             colors: [(52, 50, 54), (96, 94, 100), (132, 128, 134), (156, 152, 158)],
             pattern: ["333333333333", "3cccbcbaaa99", "3bcaab9a9a98", "3aaaa9999888", "39aa88887787", "389988877777", "333333333333", "aaaaa93cbbbb", "a999983bbbaa", "9989783abb9a", "8978873a9999", "788777389998"]),
-        (name: "planks",   kind: Static, density: 650, hardness: 22, flammability: 7, ignites_at: 270, conductivity: 12, burn_time: 180, spread: 3, fizzles: 30, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal",
+        (name: "planks", loot: Wood,   kind: Static, density: 650, hardness: 22, flammability: 7, ignites_at: 270, conductivity: 12, burn_time: 180, spread: 3, fizzles: 30, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal",
             colors: [(60, 38, 22), (102, 68, 38), (136, 94, 54), (158, 112, 66)],
             pattern: ["bbbaaabab2bb", "aaaaaabbb2bb", "aaaa9a9992a9", "999aaa999299", "999888998288", "222222222222", "bba2bbbbbabb", "bbb2aabbbaa9", "9992aaabbaaa", "a9a2aa999999", "888299888989", "222222222222"]),
         // Ores and gems (DESIGN §3.2 step 6): harder the deeper they lie, so a
         // pickaxe's tier sets how deep you can profit (copper 70, iron 100,
         // gold 115, mithril 150). Ores are rock flecked with metal (the ramp
         // alternates), gems glow faintly where they break into a cave.
-        (name: "copper_ore",  kind: Static, charges: true, density: 2800, hardness: 50, crumbles_into: "gravel", above: (1285, "molten_copper"),
+        (name: "copper_ore", loot: Ore,  kind: Static, charges: true, density: 2800, hardness: 50, crumbles_into: "gravel", above: (1285, "molten_copper"),
             colors: [(98, 94, 98), (178, 96, 50), (112, 106, 108), (220, 134, 70), (96, 90, 92)]),
-        (name: "iron_ore",    kind: Static, charges: true, density: 3200, hardness: 65, crumbles_into: "gravel", above: (1738, "molten_iron"),
+        (name: "iron_ore", loot: Ore,    kind: Static, charges: true, density: 3200, hardness: 65, crumbles_into: "gravel", above: (1738, "molten_iron"),
             colors: [(100, 96, 100), (176, 100, 74), (118, 110, 112), (216, 148, 110), (92, 88, 92)]),
-        (name: "silver_ore",  kind: Static, charges: true, density: 3300, hardness: 75, crumbles_into: "gravel", above: (1160, "molten_silver"),
+        (name: "silver_ore", loot: Ore,  kind: Static, charges: true, density: 3300, hardness: 75, crumbles_into: "gravel", above: (1160, "molten_silver"),
             colors: [(84, 86, 96), (196, 202, 214), (100, 102, 112), (236, 240, 248), (80, 82, 92)]),
-        (name: "gold_ore",    kind: Static, density: 3600, hardness: 85, inert: true, charges: true, crumbles_into: "gravel", above: (1264, "molten_gold"),
+        (name: "gold_ore", loot: Ore,    kind: Static, density: 3600, hardness: 85, inert: true, charges: true, crumbles_into: "gravel", above: (1264, "molten_gold"),
             colors: [(78, 74, 76), (214, 170, 52), (92, 86, 84), (252, 214, 96), (74, 70, 72)]),
-        (name: "mithril_ore", kind: Static, charges: true, density: 3000, hardness: 110, crumbles_into: "gravel", above: (1950, "molten_mithril"), glow: (6, 24, 28), shimmer: 220,
+        (name: "mithril_ore", loot: Ore, kind: Static, charges: true, density: 3000, hardness: 110, crumbles_into: "gravel", above: (1950, "molten_mithril"), glow: (6, 24, 28), shimmer: 220,
             colors: [(58, 60, 74), (80, 186, 200), (68, 70, 86), (150, 240, 244), (54, 56, 70)]),
         // A fallen star's heart (world-events: events.rs): dark, glassy,
         // flecked with light, glowing a cold blue; an iron pick takes it.
-        (name: "meteorite",   kind: Static, density: 3400, hardness: 95, crumbles_into: "gravel", glow: (22, 30, 58), shimmer: 200,
+        (name: "meteorite", loot: Ore,   kind: Static, density: 3400, hardness: 95, crumbles_into: "gravel", glow: (22, 30, 58), shimmer: 200,
             colors: [(40, 40, 52), (58, 58, 74), (32, 32, 44), (170, 190, 255), (48, 48, 62)]),
         // Phosphor: a pale crystal that drinks light and glows with it after,
         // fading (the optics arc): in cave walls, in clusters.
-        (name: "phosphor",    kind: Static, density: 2600, hardness: 45, crumbles_into: "gravel", opacity: 30, optics: (ior: 1.5, tint: (210, 255, 225)), phosphor: (90, 255, 160),
+        (name: "phosphor", loot: Gem,    kind: Static, density: 2600, hardness: 45, crumbles_into: "gravel", opacity: 30, optics: (ior: 1.5, tint: (210, 255, 225)), phosphor: (90, 255, 160),
             colors: [(150, 172, 152), (182, 204, 178), (132, 152, 134), (202, 218, 192)]),
-        (name: "amethyst",    kind: Static, density: 2650, hardness: 60, crumbles_into: "gravel", glow: (46, 18, 70), opacity: 14, optics: (ior: 1.54, disperse: 0.1, tint: (185, 95, 255)), shimmer: 255,
+        (name: "amethyst", loot: Gem,    kind: Static, density: 2650, hardness: 60, crumbles_into: "gravel", glow: (46, 18, 70), opacity: 14, optics: (ior: 1.54, disperse: 0.1, tint: (185, 95, 255)), shimmer: 255,
             colors: [(96, 44, 146), (150, 86, 212), (196, 146, 246), (120, 60, 180)]),
-        (name: "emerald",     kind: Static, density: 2750, hardness: 80, crumbles_into: "gravel", glow: (4, 22, 10), opacity: 14, optics: (ior: 1.58, disperse: 0.1, tint: (80, 240, 120)), shimmer: 255,
+        (name: "emerald", loot: Gem,     kind: Static, density: 2750, hardness: 80, crumbles_into: "gravel", glow: (4, 22, 10), opacity: 14, optics: (ior: 1.58, disperse: 0.1, tint: (80, 240, 120)), shimmer: 255,
             colors: [(20, 112, 58), (46, 178, 96), (132, 236, 166), (30, 140, 72)]),
-        (name: "ruby",        kind: Static, density: 4000, hardness: 100, crumbles_into: "gravel", glow: (44, 5, 10), opacity: 14, optics: (ior: 1.77, disperse: 0.1, tint: (255, 60, 80)), shimmer: 255,
+        (name: "ruby", loot: Gem,        kind: Static, density: 4000, hardness: 100, crumbles_into: "gravel", glow: (44, 5, 10), opacity: 14, optics: (ior: 1.77, disperse: 0.1, tint: (255, 60, 80)), shimmer: 255,
             colors: [(132, 14, 32), (206, 42, 62), (255, 118, 128), (160, 22, 44)]),
         // A one-way platform: creatures stand on it, jump up through it, and
         // drop through it holding down. To everything else it's wood.
@@ -144,7 +146,7 @@
             colors: [(34, 26, 52), (48, 36, 70), (62, 48, 88), (44, 34, 60)]),
         (name: "glowcap",     kind: Plant, still: true, density: 150, hardness: 1, flammability: 6, ignites_at: 360, burn_time: 20, opacity: 30, glow: (10, 40, 44), pulse: 90, motes: true,
             colors: [(150, 140, 176), (176, 166, 200), (60, 210, 200), (170, 255, 240)]),
-        (name: "mushroom_stem", kind: Static, grows: true, density: 600, hardness: 20, flammability: 3, ignites_at: 420, above: (500, "ash"), burn_time: 120, burns_into: "ash", burns_into_chance: 60,
+        (name: "mushroom_stem", loot: Wood, kind: Static, grows: true, density: 600, hardness: 20, flammability: 3, ignites_at: 420, above: (500, "ash"), burn_time: 120, burns_into: "ash", burns_into_chance: 60,
             colors: [(128, 112, 150), (160, 146, 182), (190, 178, 210)]),
         (name: "mushroom_cap",  kind: Plant, still: true, density: 200, hardness: 2, flammability: 6, ignites_at: 380, above: (450, "ash"), burn_time: 40, opacity: 90, glow: (12, 44, 52), pulse: 110, motes: true,
             colors: [(16, 50, 70), (24, 96, 118), (40, 150, 160), (90, 210, 200), (200, 255, 240)]),
@@ -160,7 +162,7 @@
         (name: "glow_vine",   kind: Plant, hangs: true, density: 150, hardness: 1, flammability: 8, ignites_at: 360, burn_time: 20, opacity: 25, glow: (6, 34, 36), pulse: 120,
             colors: [(20, 60, 60), (30, 100, 96), (60, 170, 160), (150, 250, 230)]),
         // Crystal caves: crystals grow into the chambers and stud the walls.
-        (name: "crystal",     kind: Static, density: 2650, hardness: 70, crumbles_into: "gravel", glow: (18, 30, 42), opacity: 10, optics: (ior: 1.55, disperse: 0.45, reflect: 0.05, tint: (230, 238, 255)), shimmer: 255,
+        (name: "crystal", loot: Gem,     kind: Static, density: 2650, hardness: 70, crumbles_into: "gravel", glow: (18, 30, 42), opacity: 10, optics: (ior: 1.55, disperse: 0.45, reflect: 0.05, tint: (230, 238, 255)), shimmer: 255,
             colors: [(140, 200, 240), (180, 230, 255), (225, 245, 255), (205, 185, 250)]),
         // Toxic grottos: a glowing crust over the rock (acid in the pools). What
         // the acid has already left: it eats no further (inert), so the pools stay.
@@ -232,26 +234,26 @@
         // past its freezing point (latent 1 200: it sets with chance (d /
         // 1 200)² a tick, d degrees under), so it runs and fills a mould for a
         // few seconds before it sets, as metal does.
-        (name: "copper",   kind: Static, fortified: true, density: 8900, hardness: 45, object: true, charges: true, conductivity: 200, item: "copper_bar", above: (1085, "molten_copper"), latent: 150,
+        (name: "copper", loot: Ore,   kind: Static, fortified: true, density: 8900, hardness: 45, object: true, charges: true, conductivity: 200, item: "copper_bar", above: (1085, "molten_copper"), latent: 150,
             colors: [(150, 82, 40), (196, 112, 58), (226, 146, 86), (240, 180, 120)]),
         (name: "molten_copper", kind: Liquid, density: 8000, dispersion: 3, viscosity: 70, hot: true, heat: 1300, charges: true, conductivity: 25, glow: (255, 120, 40), below: (1025, "copper"), latent: 1200,
             colors: [(255, 110, 30), (255, 150, 60), (255, 190, 110)]),
-        (name: "iron",     kind: Static, fortified: true, density: 7900, hardness: 70, object: true, charges: true, conductivity: 180, item: "iron_bar", above: (1538, "molten_iron"), latent: 150,
+        (name: "iron", loot: Ore,     kind: Static, fortified: true, density: 7900, hardness: 70, object: true, charges: true, conductivity: 180, item: "iron_bar", above: (1538, "molten_iron"), latent: 150,
             colors: [(92, 94, 102), (128, 130, 140), (160, 162, 172), (196, 198, 206)]),
         (name: "molten_iron", kind: Liquid, density: 7000, dispersion: 3, viscosity: 90, hot: true, heat: 1750, charges: true, conductivity: 25, glow: (255, 170, 70), below: (1470, "iron"), latent: 1200,
             colors: [(255, 150, 50), (255, 200, 110), (255, 235, 180)]),
-        (name: "silver",   kind: Static, fortified: true, density: 10500, hardness: 55, object: true, charges: true, conductivity: 220, item: "silver_bar", above: (962, "molten_silver"), latent: 150,
+        (name: "silver", loot: Ore,   kind: Static, fortified: true, density: 10500, hardness: 55, object: true, charges: true, conductivity: 220, item: "silver_bar", above: (962, "molten_silver"), latent: 150,
             colors: [(160, 164, 176), (196, 200, 212), (224, 228, 238), (250, 250, 255)]),
         (name: "molten_silver", kind: Liquid, density: 9300, dispersion: 3, viscosity: 60, hot: true, heat: 1180, charges: true, conductivity: 25, glow: (255, 150, 90), below: (900, "silver"), latent: 1200,
             colors: [(255, 180, 120), (255, 214, 170), (255, 240, 220)]),
-        (name: "mithril",  kind: Static, density: 4500, hardness: 100, object: true, charges: true, conductivity: 200, item: "mithril_bar", above: (1750, "molten_mithril"), latent: 150, glow: (6, 24, 28), shimmer: 180,
+        (name: "mithril", loot: Ore,  kind: Static, density: 4500, hardness: 100, object: true, charges: true, conductivity: 200, item: "mithril_bar", above: (1750, "molten_mithril"), latent: 150, glow: (6, 24, 28), shimmer: 180,
             colors: [(70, 150, 160), (100, 196, 206), (140, 230, 236), (200, 250, 252)]),
         (name: "molten_mithril", kind: Liquid, density: 4000, dispersion: 3, viscosity: 80, hot: true, heat: 1950, charges: true, conductivity: 25, glow: (120, 240, 255), below: (1680, "mithril"), latent: 1200,
             colors: [(140, 240, 255), (190, 250, 255), (230, 255, 255)]),
         // Gold set solid (molten gold cooled: in a mould, on a lava pit's
         // floor). A thing like any metal, but gold is counted, never carried:
         // dug, it's coins (gold.rs); it melts back at gold dust's 900.
-        (name: "solid_gold", kind: Static, density: 19300, hardness: 35, object: true, inert: true, counted: true, charges: true, conductivity: 200, glow: (60, 42, 8), shimmer: 220,
+        (name: "solid_gold", loot: Ore, kind: Static, density: 19300, hardness: 35, object: true, inert: true, counted: true, charges: true, conductivity: 200, glow: (60, 42, 8), shimmer: 220,
             above: (900, "molten_gold"), latent: 200, colors: [(180, 124, 28), (226, 172, 48), (250, 208, 90), (255, 236, 160)]),
         // Heat-proof brick (furnace-made): holds molten iron and mithril.
         (name: "firebrick", kind: Static, density: 2300, hardness: 75, conductivity: 8, crumbles_into: "gravel", above: (2100, "lava"),
@@ -268,7 +270,7 @@
         // Blasts, lava, the heat gun or the igniter do. Burns long, down to
         // ash. Future smelting fuel.
         (name: "charcoal", kind: Powder, density: 450,  hardness: 12, flammability: 1, spread: 0, ignites_at: 700, conductivity: 20, burn_time: 250, burns_into: "ash", burns_into_chance: 200, chars_at: 1.0, colors: [(26, 24, 24), (38, 35, 34), (50, 46, 44), (20, 19, 19)]),
-        (name: "coal",     kind: Powder, density: 1300, hardness: 10, flammability: 30, ignites_at: 350, burn_time: 200, burns_into: "ash", burns_into_chance: 90, colors: [(24, 24, 26), (40, 40, 44)]),
+        (name: "coal", loot: Ore,     kind: Powder, density: 1300, hardness: 10, flammability: 30, ignites_at: 350, burn_time: 200, burns_into: "ash", burns_into_chance: 90, colors: [(24, 24, 26), (40, 40, 44)]),
 
         // ---- liquids ------------------------------------------------------
         (name: "water",    kind: Liquid, density: 1000, charges: true, dispersion: 9, above: (100, "steam"), below: (0, "ice"), coats: "wet", opacity: 6, optics: (ior: 1.33, reflect: 0.02, tint: (150, 205, 245)), latent: 250, colors: [(38, 92, 196), (48, 110, 214)]),

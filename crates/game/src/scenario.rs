@@ -308,6 +308,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, ledge_script)
             .add_systems(Update, rise_script)
             .add_systems(Update, pickups_script)
+            .add_systems(PreUpdate, filter_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, cursor_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, optics_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PostUpdate, plunge_script.after(bevy::transform::TransformSystems::Propagate))
@@ -9111,6 +9112,78 @@ fn cursor_script(
     if *state == 2 && t > 1.5 {
         info!("cursor: pickaxe on dirt (1 s), obsidian (2 s), bomb (3 s), body (4 s), wand (5 s), crouched (6 s)");
         *state = 3;
+    }
+}
+
+/// `filter` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the pick-up
+/// filter. Valuables chosen (V) at 0.5 s; dirt, copper ore, a torch, a
+/// common helm and a rare one dropped on the player at 1 s: the dirt and
+/// the common helm stay on the ground (faded). At 3 s the cursor over the
+/// dirt (a hand), right-clicked: it's taken. At 4.5 s the pack opened (the
+/// filter row under it). Logs what's in the pack and what's on the ground.
+#[allow(clippy::too_many_arguments)]
+fn filter_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut over: ResMut<crate::camera::CursorOverride>,
+    mut open: ResMut<crate::hands::InventoryOpen>,
+    player: Query<(&Kinematics, &crate::hands::items::Inventory, Option<&crate::hands::filter::PickupFilter>), With<LocalPlayer>>,
+    drops: Query<(&crate::hands::Dropped, &Kinematics)>,
+    mut state: Local<u8>,
+) {
+    use crate::hands::items::{Roll, Stack};
+    if s.name != "filter" {
+        return;
+    }
+    let (Some(items), Ok((k, inv, f))) = (items, player.single()) else { return };
+    let t = s.elapsed;
+    let count = |id: &str| items.id(id).map_or(0, |i| inv.count(i));
+    match *state {
+        0 if t > 0.5 => {
+            keys.press(KeyCode::KeyV);
+            *state = 1;
+        }
+        1 => {
+            keys.release(KeyCode::KeyV);
+            info!("filter: chosen {:?}", f);
+            *state = 2;
+        }
+        2 if t > 1.0 => {
+            let at = k.body.pos + Vec2::new(18.0, 10.0);
+            for (id, n, roll) in [("block:dirt", 4, Roll::default()), ("block:copper_ore", 3, Roll::default()), ("torch", 5, Roll::default()), ("iron_helm", 1, Roll { rarity: 0, level: 5, seed: 1 }), ("iron_helm", 1, Roll { rarity: 2, level: 5, seed: 2 })] {
+                if let Some(i) = items.id(id) {
+                    crate::hands::spawn_drop(&mut commands, &items, at, Stack { roll, ..Stack::new(i, n * items.unit(i)) });
+                }
+            }
+            *state = 3;
+        }
+        3 if t > 2.6 => {
+            let left: Vec<String> = drops.iter().map(|(d, _)| items.def(d.stack.item).name.clone()).collect();
+            info!("filter: pack dirt {} copper {} torch {}; left on the ground {:?}", count("block:dirt"), count("block:copper_ore"), count("torch"), left);
+            *state = 4;
+        }
+        4 if t > 3.0 => {
+            let dirt = drops.iter().find(|(d, _)| items.def(d.stack.item).id == "block:dirt").map(|(_, dk)| dk.body.pos);
+            over.0 = dirt;
+            if t > 3.3 {
+                mouse.press(MouseButton::Right);
+                *state = 5;
+            }
+        }
+        5 => {
+            mouse.release(MouseButton::Right);
+            *state = 6;
+        }
+        6 if t > 4.4 => {
+            let left: Vec<String> = drops.iter().map(|(d, _)| items.def(d.stack.item).name.clone()).collect();
+            info!("filter: after the right-click: pack dirt {}; left on the ground {:?}", count("block:dirt"), left);
+            open.0 = true;
+            *state = 7;
+        }
+        _ => {}
     }
 }
 

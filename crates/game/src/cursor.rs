@@ -9,7 +9,8 @@
 //!   red what it would take when it's too hard ("needs a gold pickaxe"; the
 //!   block is lit red: `hands::mark`).
 //! - A hand over what a right-click opens, near enough: a chest, a body,
-//!   one of the village folk (with its name, or the body's).
+//!   one of the village folk (with its name, or the body's), or something
+//!   on the ground the pick-up filter leaves ("right-click to take").
 //! - Something to throw: where it will fly, dotted, to where it lands.
 //! - An eye beside it, out of the light: how plain you are to see and hear
 //!   (shut: dark and quiet; half; open: lit or loud). Never anything about
@@ -243,7 +244,12 @@ fn point(
     exposure: Res<Exposure>,
     (wands, book, weapons): (Res<crate::magic::Wands>, Res<crate::magic::Spellbook>, Option<Res<crate::combat::Weapons>>),
     player: Query<(Entity, &Kinematics, &Inventory, Option<&crate::archery::Nocked>, Option<&crate::magic::Mana>), With<LocalPlayer>>,
-    (found, folk): (Query<(&crate::hands::chests::Container, &Kinematics), Without<LocalPlayer>>, Query<(&crate::creatures::brain::villager::Villager, &Kinematics), Without<LocalPlayer>>),
+    (found, folk, drops, filter): (
+        Query<(&crate::hands::chests::Container, &Kinematics), Without<LocalPlayer>>,
+        Query<(&crate::creatures::brain::villager::Villager, &Kinematics), Without<LocalPlayer>>,
+        Query<(Entity, &crate::hands::Dropped, &Kinematics), Without<LocalPlayer>>,
+        Query<&crate::hands::filter::PickupFilter, With<LocalPlayer>>,
+    ),
     (mut pointer, mut ring, mut eye, mut label): (
         Query<Placed, (With<Pointer>, Without<Ring>, Without<Eye>, Without<Label>)>,
         Query<Placed, (With<Ring>, Without<Pointer>, Without<Eye>, Without<Label>)>,
@@ -319,6 +325,11 @@ fn point(
             shape = Shape::Hand;
             fill = None;
             words = Some((shown_name(&v.role), Color::WHITE));
+        } else if let Some((_, s)) = filter.single().ok().and_then(|f| crate::hands::filter::left_under(at, k.body.pos, items, f, drops.iter())) {
+            // Something its filter leaves: it can be taken anyway.
+            shape = Shape::Hand;
+            fill = None;
+            words = Some((format!("{}: right-click to take", items.def(s.item).name), Color::srgba(1.0, 1.0, 1.0, 0.85)));
         }
         // The eye, out of the light (or crouched).
         if exposure.light < EYE_UNDER || exposure.crouched {

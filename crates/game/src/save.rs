@@ -176,6 +176,9 @@ pub struct PlayerFile {
     /// Its gold (`gold.rs`).
     #[serde(default)]
     gold: u32,
+    /// What it picks up (`hands::filter`).
+    #[serde(default)]
+    pickup: crate::hands::filter::PickupFilter,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -273,7 +276,7 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, mut now: MessageWriter<SaveNow>) {
     }
 }
 
-type SavedPlayer<'a> = (&'a Kinematics, &'a Health, Option<&'a Mana>, Option<&'a Inventory>, &'a Equipment, Option<&'a crate::progress::Progress>, Option<&'a crate::gold::Gold>);
+type SavedPlayer<'a> = (&'a Kinematics, &'a Health, Option<&'a Mana>, Option<&'a Inventory>, &'a Equipment, Option<&'a crate::progress::Progress>, Option<&'a crate::gold::Gold>, Option<&'a crate::hands::filter::PickupFilter>);
 /// (More for `save`, past Bevy's count of parameters.)
 type SavedAlso<'w, 's> = (Res<'w, crate::craft::Crafting>, Query<'w, 's, (&'static crate::craft::Station, &'static Kinematics)>, Res<'w, crate::light::Daylight>, Res<'w, crate::clock::WorldClock>);
 type SavedCreatures<'a> = (&'a Creature, &'a Kinematics, &'a Health, Option<&'a crate::clock::Keeps>);
@@ -307,7 +310,7 @@ fn save(
     slot.next = AUTOSAVE;
     let Some(items) = items else { return };
     // (Nothing to save until there's a player, loaded or new.)
-    let Ok((k, health, mana, pack, eq, progress, gold)) = player.single() else { return };
+    let Ok((k, health, mana, pack, eq, progress, gold, pickup)) = player.single() else { return };
     let started = std::time::Instant::now();
     let dir = slot.dir.clone();
     if let Err(e) = std::fs::create_dir_all(&dir) {
@@ -338,6 +341,7 @@ fn save(
         worn: slots_out(&items, &eq.worn),
         progress: progress.cloned().unwrap_or_default(),
         gold: gold.map_or(0, |g| g.0),
+        pickup: pickup.copied().unwrap_or_default(),
     };
     let mut things = ThingsFile {
         chests: boxes.iter().map(|(c, k)| (c.key, (k.body.pos.x, k.body.pos.y - k.body.half.y))).collect(),
@@ -514,7 +518,7 @@ fn apply_player(mut commands: Commands, pending: Option<Res<PendingPlayer>>, ite
     }
     hand.bar = p.bar;
     hand.slot = p.slot;
-    commands.entity(e).insert((PendingHp(p.hp), p.progress.clone(), crate::gold::Gold(p.gold)));
+    commands.entity(e).insert((PendingHp(p.hp), p.progress.clone(), crate::gold::Gold(p.gold), p.pickup));
     commands.remove_resource::<PendingPlayer>();
     info!("save: the player is back at ({:.0}, {:.0})", p.pos.0, p.pos.1);
 }

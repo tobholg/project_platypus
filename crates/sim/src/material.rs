@@ -75,6 +75,16 @@ impl Optics {
     }
 }
 
+/// What a material is as loot (`MaterialDef::loot`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+pub enum Loot {
+    #[default]
+    Block,
+    Ore,
+    Gem,
+    Wood,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct MaterialDef {
     pub name: String,
@@ -257,6 +267,10 @@ pub struct MaterialDef {
     /// (phosphor). Rendering only (the light grid).
     #[serde(default)]
     pub phosphor: Option<(u8, u8, u8)>,
+    /// What it is as loot, for what a player chooses to pick up (an ore, a
+    /// gem, wood; anything else a plain block). The game's only.
+    #[serde(default)]
+    pub loot: Loot,
 
     // ---- temperature (°C). See SPEC §3.6. --------------------------------
     /// Heat a fresh cell starts with, relative to ambient (lava 1200, ice -30).

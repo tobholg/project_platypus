@@ -51,7 +51,7 @@ const FULL: (u8, u8, u8) = (255, 90, 80);
 const LIGHTEST_DARK: f32 = 0.55;
 
 /// What the local player just took.
-#[derive(Message, Clone, Copy, Debug)]
+#[derive(Message, Clone, Debug)]
 pub enum PickedUp {
     /// An item; `new`: the first of it the player has ever held.
     Item { stack: Stack, new: bool },
@@ -59,6 +59,9 @@ pub enum PickedUp {
     Gold(u32),
     /// Something it walked up to didn't fit.
     Full,
+    /// A word of its own over the head ("Pick up: Valuables"): one at a
+    /// time, the next replacing it.
+    Note(String),
 }
 
 pub struct PickupsPlugin;
@@ -82,13 +85,14 @@ enum What {
     Item(Stack),
     Gold,
     Full,
+    Note,
 }
 
 impl What {
     fn is(&self, other: &What) -> bool {
         match (self, other) {
             (What::Item(a), What::Item(b)) => a.same(b),
-            (What::Gold, What::Gold) | (What::Full, What::Full) => true,
+            (What::Gold, What::Gold) | (What::Full, What::Full) | (What::Note, What::Note) => true,
             _ => false,
         }
     }
@@ -144,9 +148,10 @@ fn amount(units: u32, unit: u32) -> String {
     }
 }
 
-/// A line's words and colour.
+/// A line's words and colour (a note's are its own).
 fn words(what: &What, units: u32, items: &Items, rules: Option<&GearRules>) -> (String, Color) {
     match what {
+        What::Note => (String::new(), Color::srgb(0.85, 0.92, 1.0)),
         What::Gold => (format!("{units} gold"), readable(GOLD)),
         What::Full => ("Inventory full".into(), readable(FULL)),
         What::Item(s) => {
@@ -164,7 +169,7 @@ fn words(what: &What, units: u32, items: &Items, rules: Option<&GearRules>) -> (
 }
 
 /// Gold's nugget (`gold::ICON`) as an image.
-fn gold_icon(images: &mut Assets<Image>) -> Handle<Image> {
+pub(crate) fn gold_icon(images: &mut Assets<Image>) -> Handle<Image> {
     use bevy::asset::RenderAssetUsages;
     use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
     let (w, h) = (crate::gold::ICON[0].len(), crate::gold::ICON.len());
@@ -198,11 +203,16 @@ fn take_in(
     // (What came this frame put together first: three ores at once are one
     // line of three.)
     let mut got: Vec<(What, u32, bool)> = Vec::new();
+    let mut note: Option<String> = None;
     for p in picked.read() {
-        let (what, units, new) = match *p {
-            PickedUp::Item { stack, new } => (What::Item(stack), stack.count, new),
-            PickedUp::Gold(n) => (What::Gold, n, false),
+        let (what, units, new) = match p {
+            PickedUp::Item { stack, new } => (What::Item(*stack), stack.count, *new),
+            PickedUp::Gold(n) => (What::Gold, *n, false),
             PickedUp::Full => (What::Full, 0, false),
+            PickedUp::Note(s) => {
+                note = Some(s.clone());
+                (What::Note, 0, false)
+            }
         };
         match got.iter_mut().find(|g| g.0.is(&what)) {
             Some(g) => {
@@ -212,14 +222,19 @@ fn take_in(
             None => got.push((what, units, new)),
         }
     }
+    // (A note's words are its own: the last one said.)
+    let say = |what: &What, units: u32| {
+        let (w, c) = words(what, units, &items, rules.as_deref());
+        if *what == What::Note { (note.clone().unwrap_or_default(), c) } else { (w, c) }
+    };
     let mut spawned = 0;
     for (what, units, new) in got {
         if let Some((_, mut line)) = lines.iter_mut().find(|(_, l)| l.what.is(&what) && l.going.is_none()) {
             line.units = line.units.saturating_add(units);
             line.age = 0.0;
-            line.pop = if what == What::Full { line.pop } else { 1.0 };
+            line.pop = if matches!(what, What::Full | What::Note) { line.pop } else { 1.0 };
             if let Ok((mut text, mut color)) = texts.get_mut(line.text) {
-                let (w, c) = words(&line.what, line.units, &items, rules.as_deref());
+                let (w, c) = say(&line.what, line.units);
                 text.0 = w;
                 color.0 = c;
             }
@@ -231,11 +246,11 @@ fn take_in(
         {
             oldest.going = Some((0.0, oldest.y));
         }
-        let (w, c) = words(&what, units, &items, rules.as_deref());
+        let (w, c) = say(&what, units);
         let image = match what {
             What::Item(s) => icons.as_ref().and_then(|i| i.get(s.item).cloned()),
             What::Gold => Some(gold.get_or_insert_with(|| gold_icon(&mut images)).clone()),
-            What::Full => None,
+            What::Full | What::Note => None,
         };
         let swatch = match what {
             What::Item(s) if image.is_none() => {
@@ -245,7 +260,7 @@ fn take_in(
             _ => Color::NONE,
         };
         let size = if what == What::Gold { Vec2::new(10.0, 8.0) } else if image.is_some() { Vec2::splat(ICON_PX) } else { Vec2::splat(8.0) };
-        let shown = what != What::Full;
+        let shown = !matches!(what, What::Full | What::Note);
         let icon = commands
             .spawn((
                 ImageNode { image: image.unwrap_or_default(), color: if shown { Color::WHITE } else { Color::NONE }, ..default() },

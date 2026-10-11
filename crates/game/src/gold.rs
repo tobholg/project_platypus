@@ -119,7 +119,7 @@ fn spill_queued(mut queue: ResMut<GoldQueue>, mut chests: ResMut<crate::hands::c
 /// count goes up, specks stream in.
 fn take(
     mut sim: ResMut<SimWorld>,
-    mut players: Query<(&Kinematics, &mut Gold), With<LocalPlayer>>,
+    mut players: Query<(&Kinematics, &mut Gold, Option<&crate::hands::filter::PickupFilter>), With<LocalPlayer>>,
     mut sparks: ResMut<crate::vfx::Sparks>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut picked: MessageWriter<crate::pickups::PickedUp>,
@@ -127,7 +127,11 @@ fn take(
 ) {
     let Some(gold) = sim.world.materials().id("gold") else { return };
     *ding -= 1.0 / crate::world::TICK_HZ as f32;
-    for (k, mut purse) in &mut players {
+    for (k, mut purse, filter) in &mut players {
+        // (Gold left alone by its filter stays where it lies.)
+        if filter.is_some_and(|f| !f.gold) {
+            continue;
+        }
         let (lo, hi) = k.body.cells_at(k.body.pos);
         let mut got = Vec::new();
         'look: for y in lo.y - REACH..=hi.y + REACH {

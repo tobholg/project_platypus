@@ -1993,6 +1993,22 @@ DESIGN §13 item 6.
   new one with the lines full pushes the oldest out over the top. Its pack
   full, a red "Inventory full" now and then. Pick-ups close together climb in pitch.
   The `pickups` scenario drops a few lots on the player.
+- **What it picks up** (`hands/filter.rs`, `PickupFilter`, saved with the
+  player): seven groups, as a player thinks of loot: gold; gear (weapons,
+  armour, foci, tools) from a rarity up (all, Uncommon+, Rare+, Epic+,
+  none); supplies (the rest that's made: potions, arrows, bombs, torches);
+  and blocks by their material's `loot` (materials.ron): ores & bars, gems
+  & crystals, wood, plain blocks. A row under the pack (Esc): a preset
+  button (Everything, Valuables: no wood or plain blocks, gear Rare+;
+  Builder: gear Uncommon+; Custom when it's none), then a chip a group
+  (click on/off; the gear chip steps the rarities, right-click back, its
+  edge the rarity's colour; hover: what it is). V steps the presets while
+  playing ("Pick up: Valuables" over the head). What it won't pick up isn't
+  drawn to it and lies faded; right-click it near enough to take it anyway
+  (the cursor shows a hand, "Dirt: right-click to take"); a block it won't
+  pick up, dug, isn't dropped at all; gold it won't pick up stays in its
+  heap. The `filter` scenario: Valuables, five things dropped (the dirt and
+  a common helm stay), the dirt right-clicked (taken), the pack open.
 - **The cursor** (`cursor.rs`): the game's own, in place of the system's.
   An arrow by default (and over the pack and the dev tools); a crosshair
   with a weapon, a bow, a focus or something to throw, a ring round it

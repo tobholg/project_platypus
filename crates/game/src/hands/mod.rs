@@ -9,6 +9,7 @@
 
 pub mod chests;
 pub mod corpses;
+pub mod filter;
 pub mod icons;
 pub mod items;
 pub mod target;
@@ -115,6 +116,8 @@ struct HandInput {
 pub struct Dropped {
     pub stack: Stack,
     pub(crate) age: f32,
+    /// Taken anyway, though the player's filter leaves it (`filter`).
+    pub(crate) forced: bool,
 }
 
 impl Plugin for HandsPlugin {
@@ -131,7 +134,7 @@ impl Plugin for HandsPlugin {
             .add_systems(Update, (toggle_dev, select, wield, give_start, outline.run_if(play), mark, icons::make_icons, icons::reload_icons))
             .add_systems(FixedUpdate, use_hands.run_if(play).in_set(TickSet::Intent))
             .add_systems(FixedUpdate, collect.after(crate::props::fly).in_set(TickSet::Bodies))
-            .add_plugins((ui::UiPlugin, chests::ChestsPlugin, corpses::CorpsesPlugin));
+            .add_plugins((ui::UiPlugin, chests::ChestsPlugin, corpses::CorpsesPlugin, filter::FilterPlugin));
     }
 }
 
@@ -399,7 +402,7 @@ fn wield(
     }
 }
 
-type User<'a> = (Entity, &'a Kinematics, &'a mut Inventory, Option<&'a crate::creatures::body::animation::HandPos>);
+type User<'a> = (Entity, &'a Kinematics, &'a mut Inventory, Option<&'a crate::creatures::body::animation::HandPos>, Option<&'a filter::PickupFilter>);
 type StationHit<'a> = (Entity, &'a mut crate::craft::Station, &'a Kinematics);
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -423,7 +426,9 @@ fn use_hands(
     let clicked = std::mem::take(&mut input.clicked);
     hand.cooldown = (hand.cooldown - DT).max(0.0);
     let (Some(items), Some(cursor)) = (items, input.cursor) else { return };
-    let Ok((me, k, mut inv, hand_pos)) = player.single_mut() else { return };
+    let Ok((me, k, mut inv, hand_pos, filter)) = player.single_mut() else { return };
+    // (A block the player won't pick up, dug, crumbles rather than drop.)
+    let keeps = |s: &Stack| filter.is_none_or(|f| f.takes(&items, s));
     let from = hand_at(k);
     let slot = if input.auto { auto_slot(&sim.world, &items, &inv, hand.bar_slots(), &k.body, from, cursor).unwrap_or(hand.active()) } else { hand.active() };
     let Some(stack) = inv.slots[slot] else { return };
@@ -481,7 +486,9 @@ fn use_hands(
                 hand.cooldown = 1.0 / speed.max(0.1);
                 for &(material, n) in &report.removed {
                     if let Some(item) = items.block(material) {
-                        spawn_drop(&mut commands, &items, at, Stack::new(item, n));
+                        if keeps(&Stack::new(item, n)) {
+                            spawn_drop(&mut commands, &items, at, Stack::new(item, n));
+                        }
                     } else if sim.world.materials().def(material).counted {
                         dug.write(crate::gold::Dug(n));
                     }
@@ -508,7 +515,9 @@ fn use_hands(
             let centre = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32);
             for &(material, n) in &report.removed {
                 if let Some(item) = items.block(material) {
-                    spawn_drop(&mut commands, &items, centre, Stack::new(item, n));
+                    if keeps(&Stack::new(item, n)) {
+                        spawn_drop(&mut commands, &items, centre, Stack::new(item, n));
+                    }
                 } else if sim.world.materials().def(material).counted {
                     dug.write(crate::gold::Dug(n));
                 }
@@ -698,7 +707,7 @@ pub fn spawn_drop(commands: &mut Commands, items: &Items, at: Vec2, stack: Stack
     let (r, g, b) = items.def(stack.item).color;
     commands.spawn((
         Name::new("Dropped"),
-        Dropped { stack, age: 0.0 },
+        Dropped { stack, age: 0.0, forced: false },
         Thrown { bounce: 0.2, slide: 0.75 },
         Kinematics { body, loco: Locomotion::default(), prev_pos: at },
         Sprite::from_color(Color::srgb_u8(r, g, b), Vec2::splat(4.5)),
@@ -721,13 +730,15 @@ struct Streak {
     full: f32,
 }
 
+type Collector<'a> = (&'a Kinematics, &'a mut Inventory, Option<&'a crate::progress::Progress>, Option<&'a filter::PickupFilter>);
+
 /// Items on the ground drift to a nearby player with room, and are picked
 /// up (said over its head: `pickups`).
 fn collect(
     mut commands: Commands,
     items: Option<Res<Items>>,
     mut drops: Query<(Entity, &mut Dropped, &mut Kinematics), Without<LocalPlayer>>,
-    mut players: Query<(&Kinematics, &mut Inventory, Option<&crate::progress::Progress>), With<LocalPlayer>>,
+    mut players: Query<Collector, With<LocalPlayer>>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut picked: MessageWriter<crate::pickups::PickedUp>,
     mut streak: Local<Streak>,
@@ -740,10 +751,11 @@ fn collect(
         if d.age < 0.4 {
             continue;
         }
-        for (pk, mut inv, progress) in &mut players {
+        for (pk, mut inv, progress, filter) in &mut players {
             let to = pk.body.pos - k.body.pos;
             let dist = to.length();
-            if dist > MAGNET {
+            // (What it won't pick up stays where it is, unless it's asked for.)
+            if dist > MAGNET || (!d.forced && filter.is_some_and(|f| !f.takes(&items, &d.stack))) {
                 continue;
             }
             if !inv.has_room(&items, &d.stack) {

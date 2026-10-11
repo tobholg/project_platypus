@@ -115,6 +115,10 @@ pub struct ItemDef {
     /// embers), more while it's used.
     #[serde(default)]
     pub aura: Option<Aura>,
+    /// A block's (or bar's) material as loot: ore, gem, wood or a plain
+    /// block (from materials.ron: the pick-up filters).
+    #[serde(skip)]
+    pub loot: platypus_sim::Loot,
 }
 
 /// What a held thing gives off at its tip: light, and sparks (`count` of
@@ -192,6 +196,7 @@ impl Items {
             if let Some(bar) = &def.item {
                 let d = defs.iter_mut().find(|d| &d.id == bar).ok_or(format!("material `{}`: no item `{bar}`", def.name))?;
                 d.use_ = Use::Block(id);
+                d.loot = def.loot;
                 continue;
             }
             if matches!(def.kind, Kind::Static | Kind::Powder) && ph.hardness < u8::MAX && !def.counted {
@@ -200,7 +205,7 @@ impl Items {
                 if let Some(first) = name.get_mut(0..1) {
                     first.make_ascii_uppercase();
                 }
-                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id), about: None, gear: None, aura: None });
+                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id), about: None, gear: None, aura: None, loot: def.loot });
             }
         }
         let mut by_id = HashMap::new();
