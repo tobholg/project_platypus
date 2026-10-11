@@ -137,7 +137,9 @@ type Struck<'a> = (&'a Health, &'a Kinematics, Option<&'a Parts>, Option<&'a Sev
 /// Blows that land on a limb wear it down; past its share, it's cut off.
 /// (A limb of its parts, `Parts`: a leg, an arm, a tail; or of its drawn
 /// layers: a humanoid's head and arms.)
-pub fn wound(mut commands: Commands, mut felt: MessageReader<crate::combat::Felt>, mut q: Query<Struck>, mut cuts: MessageWriter<Cut>, mut masks: ResMut<LayerMasks>) {
+/// (Not the player's: your limbs don't come off, and your head off wasn't
+/// a death you could see coming.)
+pub fn wound(mut commands: Commands, mut felt: MessageReader<crate::combat::Felt>, mut q: Query<Struck, Without<crate::creatures::player::LocalPlayer>>, mut cuts: MessageWriter<Cut>, mut masks: ResMut<LayerMasks>) {
     for f in felt.read() {
         if f.dealt <= 0.0 {
             continue;

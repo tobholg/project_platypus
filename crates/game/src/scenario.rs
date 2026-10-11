@@ -9607,6 +9607,8 @@ fn slime_script(
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Option<&crate::creatures::body::goo::Goo>, Option<&crate::creatures::brain::senses::Alert>), Without<LocalPlayer>>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut state: Local<(u8, f32, f32)>,
+    mut took: Local<f32>,
+    mut felt: MessageReader<crate::combat::Felt>,
 ) {
     if s.name != "slime" {
         return;
@@ -9614,9 +9616,18 @@ fn slime_script(
     let mode = std::env::var("PLATYPUS_SLIME").unwrap_or_else(|_| "look".into());
     let Ok((mut k, mut h, coated)) = player.single_mut() else { return };
     let slimy = coated.map_or(0.0, |c| c.share("slimy"));
+    if h.max - h.hp > 15.0 {
+        info!("slime: t {:.2} the player lost {:.0} at once (hp {:.1}, max {:.1})", s.elapsed, h.max - h.hp, h.hp, h.max);
+    }
+    *took += h.max - h.hp;
     h.hp = h.max;
     let fl = platypus_worldgen::arena::FLOOR as f32;
     let t = s.elapsed;
+    for f in felt.read() {
+        if f.dealt > 15.0 {
+            info!("slime: t {t:.2} a blow of {:.0} ({:?}) on {:?}", f.dealt, f.harm, f.target);
+        }
+    }
     let slime = them.iter().find(|x| x.1.kind == "slime");
     if state.0 == 0 && t > 0.5 {
         for (e, c, ..) in &them {
@@ -9674,7 +9685,7 @@ fn slime_script(
     }
     if t >= state.2 {
         state.2 = t + 0.5;
-        info!("slime: t {t:.1} hp {:.0}/{:.0}, holds {} goo, loose near {}, at x {:.0} ({:.0} up); the player's {:.0}% slimy; {:?}", sh.hp, sh.max, goo.map_or(0, |g| g.held()), loose(&sim, sk.body.pos, "green_goo"), sk.body.pos.x, sk.body.pos.y - sk.body.half.y - fl, slimy * 100.0, alert.map(|a| a.wary));
+        info!("slime: t {t:.1} hp {:.0}/{:.0}, holds {} goo, loose near {}, at x {:.0} ({:.0} up); the player's {:.0}% slimy, has taken {:.0}; {:?}", sh.hp, sh.max, goo.map_or(0, |g| g.held()), loose(&sim, sk.body.pos, "green_goo"), sk.body.pos.x, sk.body.pos.y - sk.body.half.y - fl, slimy * 100.0, *took, alert.map(|a| a.wary));
     }
 }
 

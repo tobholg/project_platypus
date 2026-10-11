@@ -64,6 +64,8 @@ pub struct Goo {
     made: bool,
     squash: f32,
     falling: f32,
+    /// Where its goo reaches (lowest corner, highest), for what it touches.
+    extent: Option<(Vec2, Vec2)>,
 }
 
 /// Each slime puts its goo back round itself (and loses what the world
@@ -159,6 +161,10 @@ pub fn hold(mut sim: ResMut<SimWorld>, time: Res<Time>, mut q: Query<(&mut Goo, 
         }
         // (No room for the rest just now: it keeps it in it.)
         goo.reserve = kept.split_off(places.len().min(kept.len()));
+        goo.extent = places.iter().fold(None, |e: Option<(Vec2, Vec2)>, p| {
+            let (a, b) = (Vec2::new(p.x as f32, p.y as f32), Vec2::new(p.x as f32 + 1.0, p.y as f32 + 1.0));
+            Some(e.map_or((a, b), |(lo, hi)| (lo.min(a), hi.max(b))))
+        });
         goo.placed = places;
     }
 }
@@ -208,6 +214,11 @@ impl Goo {
     /// How many cells it holds now.
     pub fn held(&self) -> usize {
         self.placed.len()
+    }
+
+    /// Where its goo reaches (lowest corner, highest), if it holds any.
+    pub fn extent(&self) -> Option<(Vec2, Vec2)> {
+        self.extent
     }
 }
 

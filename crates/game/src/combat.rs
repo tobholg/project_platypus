@@ -640,14 +640,14 @@ impl Touch {
     }
 }
 
-type Toucher<'a> = (Entity, &'a mut Touch, &'a Kinematics, Option<&'a Team>, &'a Health, (Has<Swing>, Option<&'a crate::creatures::moves::Moves>));
+type Toucher<'a> = (Entity, &'a mut Touch, &'a Kinematics, Option<&'a Team>, &'a Health, (Has<Swing>, Option<&'a crate::creatures::moves::Moves>, Option<&'a crate::creatures::body::goo::Goo>));
 type Touched<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Has<Invulnerable>);
 
 /// Things that hurt by touch hit what they touch: not while it's stunned,
 /// dying, or busy with a swing or a move of its own (one blow for one
 /// move); not asleep or still coming up (dormant).
 fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, Without<crate::creatures::Dormant>>, bodies: Query<Touched, With<Health>>, factions: Query<&crate::creatures::factions::Faction>) {
-    for (me, mut t, k, team, health, (swinging, moves)) in &mut touchers {
+    for (me, mut t, k, team, health, (swinging, moves, goo)) in &mut touchers {
         t.rest -= DT;
         let stunned = k.loco.state == platypus_physics::MoveState::Stunned;
         if t.rest > 0.0 || stunned || health.hp <= 0.0 || swinging || moves.is_some_and(|m| m.busy()) {
@@ -666,7 +666,11 @@ fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, Without<crat
                 _ => {}
             }
             let d = tk.body.pos - k.body.pos;
-            if (d.abs() - (tk.body.half + k.body.half)).max_element() > 0.75 {
+            // (Its body, and a slime's goo too: what's in its goo it touches.)
+            let (lo, hi) = (k.body.pos - k.body.half, k.body.pos + k.body.half);
+            let (lo, hi) = goo.and_then(|g| g.extent()).map_or((lo, hi), |(a, b)| (lo.min(a), hi.max(b)));
+            let (tlo, thi) = (tk.body.pos - tk.body.half, tk.body.pos + tk.body.half);
+            if tlo.x > hi.x + 0.75 || thi.x < lo.x - 0.75 || tlo.y > hi.y + 0.75 || thi.y < lo.y - 0.75 {
                 continue;
             }
             let push = (Vec2::new(d.x, 0.0).normalize_or(Vec2::X * k.loco.facing) + Vec2::new(0.0, 0.4)).normalize() * t.knock;

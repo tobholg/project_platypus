@@ -592,8 +592,14 @@ fn hunt(
                             let every = if target.is_some() { *every } else { every * 2.5 };
                             m.next = tick + ticks(every * (0.7 + 0.6 * unit(&sim, id, 6)));
                         }
-                        // (Airborne, it keeps going the way it hopped.)
-                        if grounded { mx } else { c.0.move_x }
+                        // (Airborne, it steers at what it's after, to come
+                        // down on it; else it keeps going the way it hopped.)
+                        match target {
+                            _ if grounded => mx,
+                            Some((t, ..)) if (t.x - pos.x).abs() > 3.0 => (t.x - pos.x).signum(),
+                            Some(_) => 0.0,
+                            None => c.0.move_x,
+                        }
                     }
                 }
             }
