@@ -556,7 +556,8 @@ fn blasted(mut commands: Commands, mut blasts: MessageReader<crate::fx::Explosio
                 continue;
             }
             let f = 1.0 - dist / reach;
-            health.harm(b.power * 0.65 * f, Harm::Blunt);
+            let dealt = health.harm(b.power * 0.65 * f, Harm::Blunt);
+            let gibs = !is_player && (health.hp <= 0.0 || dealt >= health.max * GIB_SHARE);
             let dir = (d.normalize_or(Vec2::Y) + Vec2::new(0.0, 0.6)).normalize();
             let k = &mut *k;
             let knock = dir * b.power * 4.5 * (0.4 + 0.6 * f);
@@ -565,6 +566,9 @@ fn blasted(mut commands: Commands, mut blasts: MessageReader<crate::fx::Explosio
             // player all of it.)
             let knock = if is_player { knock } else { (knock * crate::combat::KNOCK_TAKEN / sturdy.map_or(1.0, |s| s.heft).max(1.0)).clamp_length_max(crate::combat::KNOCK_MOST * 1.5) };
             k.loco.knock(&mut k.body, knock, 0.35);
+            if gibs {
+                commands.entity(e).insert(Gibbed(dir * b.power * 1.2));
+            }
             // (Thrown spinning: `tumble`; not the player.)
             if !is_player {
                 let spin = body::tumble::spin_of(knock, sturdy.map_or(1.0, |s| s.heft));
@@ -605,7 +609,19 @@ pub struct Died {
     pub lineage: u64,
     /// Its wounds' marks (`marks`): its body keeps them.
     pub marks: Vec<body::marks::Mark>,
+    /// Blown apart (a blast that killed it, or hurt it badly): the blast's
+    /// push on its gibs (`corpses`).
+    pub gib: Option<Vec2>,
 }
+
+/// A blast hurt it badly or killed it: if it dies of it, it's blown apart
+/// (the push the blast gave it).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Gibbed(pub Vec2);
+
+/// A blast that does this much of a creature's health, or kills it, blows
+/// it apart if it dies.
+const GIB_SHARE: f32 = 0.35;
 
 /// What a body took in a tick, of one kind (`Health::took`, from every
 /// source: blows, spells, burning, falls): what was meant, what got through
@@ -660,6 +676,7 @@ pub(crate) fn deaths(
     severed: Query<&body::parts::Severed>,
     lineages: Query<(Option<&body::rise::Lineage>, Option<&Stable>)>,
     wounds: Query<&body::marks::Marks>,
+    gibbed: Query<&Gibbed>,
 ) {
     let spawn = sim.generator.spawn_point();
     for (entity, mut h, mut k, is_player, bleeds, anim, creature, eq, children) in &mut q {
@@ -674,7 +691,7 @@ pub(crate) fn deaths(
             // (Its limbs, but what's been cut off already lies apart.)
             let cut = severed.get(entity).ok();
             let limbs = parts.get(entity).map(|p| p.limbs().into_iter().filter(|l| l.limb.is_none_or(|x| !cut.is_some_and(|c| c.has(x)))).collect()).unwrap_or_default();
-            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin, rising: None, limbs, severed: cut.map(|c| c.0.clone()).unwrap_or_default(), lineage: lineage_of(lineages.get(entity).ok()), marks: wounds.get(entity).map(|m| m.list.clone()).unwrap_or_default() });
+            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin, rising: None, limbs, severed: cut.map(|c| c.0.clone()).unwrap_or_default(), lineage: lineage_of(lineages.get(entity).ok()), marks: wounds.get(entity).map(|m| m.list.clone()).unwrap_or_default(), gib: gibbed.get(entity).ok().map(|g| g.0) });
         }
         if let Some(&body::hurt::Bleeds(blood)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.

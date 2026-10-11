@@ -27,6 +27,9 @@ use crate::world::{SimWorld, TICK_HZ};
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 const SUBSTEPS: usize = 3;
 const ITERATIONS: usize = 4;
+const LOOSE_ITERATIONS: usize = 2;
+/// Most edge points a chunk of rubble tests (it's small).
+const CHUNK_SAMPLES: usize = 8;
 /// Velocity kept a substep in the air (a little air drag), and in contact;
 /// the fastest a piece goes (cells/s: a body thrown hard flies, it doesn't
 /// cross the map).
@@ -126,6 +129,21 @@ pub struct Cut {
 }
 
 impl Cut {
+    /// A cut of these pixels of a frame (each its colour): a body's sprite
+    /// to break up (`rubble`), not a layer of a pose.
+    pub fn of_pixels(name: &str, px: &[(IVec2, [u8; 4])]) -> Option<Cut> {
+        if px.is_empty() {
+            return None;
+        }
+        let pixels: Vec<IVec2> = px.iter().map(|(p, _)| *p).collect();
+        let colors = px.iter().map(|(_, c)| *c).collect();
+        let com = pixels.iter().fold(Vec2::ZERO, |s, q| s + q.as_vec2()) / pixels.len() as f32 + Vec2::splat(0.5);
+        let set: std::collections::HashSet<IVec2> = pixels.iter().copied().collect();
+        let edge = pixels.iter().copied().filter(|q| [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y].iter().any(|d| !set.contains(&(*q + *d)))).collect();
+        let (image, _) = picture(&px.iter().map(|(p, c)| (IVec2::new(p.x, -p.y), *c)).collect::<Vec<_>>());
+        Some(Cut { image, name: name.to_string(), tag: None, origin: IVec2::ZERO, turned: false, com, centre: com, pixels, colors, edge })
+    }
+
     /// Does it cover this pixel of its frame?
     pub fn covers(&self, p: IVec2) -> bool {
         self.pixels.contains(&p)
@@ -334,7 +352,7 @@ const SCATTER_SPIN: f32 = 9.0;
 /// as rubble: each part cut into small chunks, loose (no joints), flung a
 /// little apart and tumbling, to lie in a heap. Each chunk keeps its pixels
 /// (for flying back together: `rise`).
-pub fn rubble(cuts: &[Cut], frame: (u32, u32), centre: Vec2, facing: f32, vel: Vec2) -> (Limp, Vec<Look>) {
+pub fn rubble(cuts: &[Cut], frame: (u32, u32), centre: Vec2, facing: f32, vel: Vec2, scatter: f32) -> (Limp, Vec<Look>) {
     let (fw, fh) = (frame.0 as f32, frame.1 as f32);
     let world = |p: Vec2| centre + Vec2::new((p.x - fw / 2.0) * facing, fh / 2.0 - p.y);
     let local = |d: Vec2| Vec2::new(d.x * facing, -d.y);
@@ -371,10 +389,14 @@ pub fn rubble(cuts: &[Cut], frame: (u32, u32), centre: Vec2, facing: f32, vel: V
             let mass = px.len() as f32;
             let inertia = px.iter().map(|(q, _)| (q.as_vec2() + Vec2::splat(0.5) - com).length_squared()).sum::<f32>().max(1.0);
             let set: std::collections::HashSet<IVec2> = px.iter().map(|(q, _)| *q).collect();
-            let samples = px.iter().filter(|(q, _)| [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y].iter().any(|d| !set.contains(&(*q + *d)))).map(|(q, _)| local(q.as_vec2() + Vec2::splat(0.5) - com)).collect();
+            let edge: Vec<Vec2> = px.iter().filter(|(q, _)| [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y].iter().any(|d| !set.contains(&(*q + *d)))).map(|(q, _)| local(q.as_vec2() + Vec2::splat(0.5) - com)).collect();
+            let step = edge.len().div_ceil(CHUNK_SAMPLES).max(1);
+            let samples = edge.into_iter().step_by(step).collect();
             let pos = world(com);
-            let fling = vel * 0.4 + Vec2::new(unit() * SCATTER, unit().abs() * SCATTER * 0.6);
-            let spin = unit() * SCATTER_SPIN;
+            // (Flung out from its middle too, by `scatter`: a blast's gibs.)
+            let out = (world(com) - centre).normalize_or(Vec2::Y);
+            let fling = vel * 0.4 + Vec2::new(unit() * SCATTER, unit().abs() * SCATTER * 0.6) * scatter + out * SCATTER * (scatter - 1.0);
+            let spin = unit() * SCATTER_SPIN * scatter.sqrt();
             let pixels = px.iter().map(|(q, col)| (local(q.as_vec2() + Vec2::splat(0.5) - com), *col)).collect();
             pieces.push(Piece { pos, prev: pos - fling * sub, angle: 0.0, prev_angle: -spin * sub, tick_pos: pos, tick_angle: 0.0, inv_mass: 1.0 / mass, inv_inertia: 1.0 / inertia, samples, draw_offset: local(middle - com), name: "bone".into(), pixels });
             looks.push(Look::Image(image, facing < 0.0));
@@ -385,9 +407,9 @@ pub fn rubble(cuts: &[Cut], frame: (u32, u32), centre: Vec2, facing: f32, vel: V
 }
 
 /// Limbs drawn apart from its art (a rig's legs: `legs::rig`) added to
-/// rubble, each a loose bone (no joint), flung with the rest, keeping its
-/// pixels.
-pub fn loose_limbs(limp: &mut Limp, looks: &mut Vec<Look>, limbs: &[super::parts::Part], draw: impl Fn(&super::parts::Part, f32) -> Vec<(IVec2, [u8; 4])>, vel: Vec2) {
+/// rubble, each a loose bone (no joint), flung with the rest (`scatter`
+/// times as hard: a blast's), keeping its pixels.
+pub fn loose_limbs(limp: &mut Limp, looks: &mut Vec<Look>, limbs: &[super::parts::Part], draw: impl Fn(&super::parts::Part, f32) -> Vec<(IVec2, [u8; 4])>, vel: Vec2, scatter: f32) {
     let sub = DT / SUBSTEPS as f32;
     let mut rng = platypus_sim::rng::Rng::seeded(&[limbs.len() as u64, vel.x.to_bits() as u64, 0x1005]);
     let mut unit = move || rng.next_u32() as f32 / u32::MAX as f32 * 2.0 - 1.0;
@@ -409,8 +431,8 @@ pub fn loose_limbs(limp: &mut Limp, looks: &mut Vec<Look>, limbs: &[super::parts
         let mass = len * thick;
         let pos = (p.a + p.b) / 2.0;
         let angle = d.y.atan2(d.x);
-        let fling = vel * 0.4 + Vec2::new(unit() * SCATTER, unit().abs() * SCATTER * 0.6);
-        let spin = unit() * SCATTER_SPIN;
+        let fling = vel * 0.4 + Vec2::new(unit() * SCATTER, unit().abs() * SCATTER * 0.6) * scatter;
+        let spin = unit() * SCATTER_SPIN * scatter.sqrt();
         let pixels = drawn.iter().map(|(q, c)| (q.as_vec2() + Vec2::splat(0.5), *c)).collect();
         limp.pieces.push(Piece { pos, prev: pos - fling * sub, angle, prev_angle: angle - spin * sub, tick_pos: pos, tick_angle: angle, inv_mass: 1.0 / mass, inv_inertia: 12.0 / (mass * (len * len + thick * thick)).max(1.0), samples, draw_offset: middle, name: "bone".into(), pixels });
         looks.push(Look::Image(image, false));
@@ -595,7 +617,9 @@ impl Limp {
                 p.angle += w;
             }
             let mut touching = vec![false; self.pieces.len()];
-            for _ in 0..ITERATIONS {
+            // (Loose pieces, no joints to hold: fewer passes do.)
+            let passes = if self.joints.is_empty() { LOOSE_ITERATIONS } else { ITERATIONS };
+            for _ in 0..passes {
                 self.joints_together();
                 self.bends_held();
                 for (i, p) in self.pieces.iter_mut().enumerate() {
@@ -701,8 +725,8 @@ impl Limp {
 /// back the shortest way out (up first); true if any touched.
 fn out_of_cells(p: &mut Piece, grid: &impl Grid) -> bool {
     let mut touched = false;
-    for s in p.samples.clone() {
-        let r = rot(s, p.angle);
+    for i in 0..p.samples.len() {
+        let r = rot(p.samples[i], p.angle);
         let w = p.pos + r;
         let (x, y) = (w.x.floor() as i32, w.y.floor() as i32);
         if !grid.solid(x, y) {

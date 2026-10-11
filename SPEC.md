@@ -2068,6 +2068,16 @@ DESIGN §13 item 6.
   them (`Died::marks`). A blow's blood sprays from where it struck along
   the way it went (`World::spray`). The `marks` scenario. (Walkers' bodies
   and limbs aren't marked yet.)
+- **Gibs** (`wounds` stage 4): a blast that kills a creature, or takes 35 %
+  of its health, marks it (`Gibbed`, the blast's push); if it dies of it,
+  it's blown apart: a humanoid into chunks of its own parts (in what it
+  wore, its marks on them), a walker into chunks of its body's picture and
+  every limb loose, flung out from its middle three times as hard as
+  rubble falls apart, in a burst of its blood; its loot in what's left.
+  Loose pieces (rubble, gibs) are stepped with fewer passes and at most 8
+  edge points a chunk: a blast that gibs five bodies costs about what one
+  that doesn't (~7 ms a frame). Plain-lined legs (a spider's) lie as thin
+  as they're drawn alive.
 - **What rises is data** (a creature file's `rises` and `headless`):
   `remains` (`Rubble`: bones that come apart, a skeleton; `Body`: its
   ragdoll, whole, gets up, every piece's pixels flying back into place),

@@ -8936,7 +8936,7 @@ fn ragdoll_script(
                     commands.entity(e).despawn();
                 }
             }
-            k.body.pos = Vec2::new(820.0, fl + k.body.half.y);
+            k.body.pos = Vec2::new(960.0, fl + k.body.half.y);
             k.prev_pos = k.body.pos;
             for (i, kind) in ["orc", "skeleton", "raptor", "spider", "troll"].into_iter().enumerate() {
                 crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(1040.0 + i as f32 * 34.0, fl), |_| {});

@@ -192,12 +192,13 @@ type Falling<'a> = (
     Option<&'a super::parts::Severed>,
     (Option<&'a Lineage>, Option<&'a crate::creatures::Stable>),
     Option<&'a super::marks::Marks>,
+    Option<&'a crate::creatures::Gibbed>,
 );
 
 /// One that rises, killed, leaves its bones (a body that gets up:
 /// `make_pile`) and goes, with no death of its own. Just before deaths.
 pub fn collapse(mut commands: Commands, mut sim: ResMut<SimWorld>, mut died: MessageWriter<Died>, mut q: Query<Falling>, sprites: Query<(&Sprite, &Transform), With<super::animation::CreatureSprite>>) {
-    for (e, mut h, k, rises, creature, anim, eq, children, bleeds, spin, severed, (lineage, stable), marks) in &mut q {
+    for (e, mut h, k, rises, creature, anim, eq, children, bleeds, spin, severed, (lineage, stable), marks, gib) in &mut q {
         if h.hp > 0.0 {
             continue;
         }
@@ -205,7 +206,7 @@ pub fn collapse(mut commands: Commands, mut sim: ResMut<SimWorld>, mut died: Mes
         h.hp = 1.0;
         let sprite = children.and_then(|ch| ch.iter().find_map(|c| sprites.get(c).ok())).map(|(s, tf)| (s.clone(), tf.translation));
         let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
-        died.write(Died { kind: creature.kind.clone(), def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin: spin.copied().unwrap_or_default(), rising: Some(rises.0.clone()), limbs: Vec::new(), severed: severed.map(|s| s.0.clone()).unwrap_or_default(), lineage: crate::creatures::lineage_of(Some((lineage, stable))), marks: marks.map(|m| m.list.clone()).unwrap_or_default() });
+        died.write(Died { kind: creature.kind.clone(), def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin: spin.copied().unwrap_or_default(), rising: Some(rises.0.clone()), limbs: Vec::new(), severed: severed.map(|s| s.0.clone()).unwrap_or_default(), lineage: crate::creatures::lineage_of(Some((lineage, stable))), marks: marks.map(|m| m.list.clone()).unwrap_or_default(), gib: gib.map(|g| g.0) });
         if let Some(&super::hurt::Bleeds(dust)) = bleeds {
             sim.world.splash([k.body.pos.x, k.body.pos.y], dust, 14, 2.4);
         }
@@ -255,7 +256,7 @@ pub fn shatter(
         h.hp = 1.0;
         let worn: Vec<Stack> = chests.contents(corpse.key, &sim.world, &items).slots.iter().flatten().copied().collect();
         chests.forget(corpse.key);
-        died.write(Died { kind: pile.kind.clone(), def: pile.def.clone(), body: k.body, facing: pile.facing, sprite: pile.sprite.clone(), worn, spin: default(), rising: None, limbs: Vec::new(), severed: pile.lost.clone(), lineage: pile.lineage, marks: Vec::new() });
+        died.write(Died { kind: pile.kind.clone(), def: pile.def.clone(), body: k.body, facing: pile.facing, sprite: pile.sprite.clone(), worn, spin: default(), rising: None, limbs: Vec::new(), severed: pile.lost.clone(), lineage: pile.lineage, marks: Vec::new(), gib: None });
         let burst = bone_burst();
         sparks.emit(&burst, burst.count as usize, k.body.pos, Vec2::Y, Vec2::ZERO);
         sounds.write(crate::sound::PlaySound::at("break", k.body.pos).pitch(1.3));

@@ -106,10 +106,12 @@ fn limp_of(d: &Died, items: &Items, blood: (u8, u8, u8)) -> Option<(ragdoll::Lim
     let centre = d.body.pos + offset.truncate();
     // Bones (what rises, and what's broken for good) fall apart: rubble
     // (with its legs, if they're drawn apart from its art: `legs::rig`).
-    if d.def.rises.as_ref().is_some_and(|r| r.remains == crate::creatures::body::rise::Remains::Rubble) {
-        let (mut limp, mut looks) = ragdoll::rubble(&cuts, d.def.sprite.frame, centre, d.facing, d.body.vel);
+    // (Blown apart by a blast: gibs, the same, flung hard.)
+    if d.gib.is_some() || d.def.rises.as_ref().is_some_and(|r| r.remains == crate::creatures::body::rise::Remains::Rubble) {
+        let (vel, scatter) = d.gib.map_or((d.body.vel, 1.0), |g| (d.body.vel + g, GIB_SCATTER));
+        let (mut limp, mut looks) = ragdoll::rubble(&cuts, d.def.sprite.frame, centre, d.facing, vel, scatter);
         if let Some(legs) = d.def.legs.as_ref() {
-            ragdoll::loose_limbs(&mut limp, &mut looks, &d.limbs, limb_drawer(legs), d.body.vel);
+            ragdoll::loose_limbs(&mut limp, &mut looks, &d.limbs, limb_drawer(legs), vel, scatter);
         }
         let looks = looks.into_iter().enumerate().map(|(i, l)| (l, i as f32 * 0.0005)).collect();
         return Some((limp, looks));
@@ -145,7 +147,12 @@ pub(crate) fn limb_drawer(legs: &crate::creatures::body::legs::LegsDef) -> impl 
             _ => legs.color,
         };
         let mut out = Vec::new();
-        if legs.style == LegStyle::Plate && p.kind == PartKind::Leg {
+        // (Legs drawn alive as plain lines, no outline: a spider's.)
+        let plain = legs.width.is_empty() && matches!(p.kind, PartKind::Leg | PartKind::Arm);
+        if plain {
+            let t = (p.r - 0.5).max(0.5) * 0.5;
+            stroke(a, b, t, t, rgb(color), &mut out);
+        } else if legs.style == LegStyle::Plate && p.kind == PartKind::Leg {
             plate(a, b, r + 1.0, rgb(line), None, &mut out, Vec2::Y);
             plate(a, b, r, rgb(color), None, &mut out, Vec2::Y);
             plate(a, b, r, rgb(color), Some(rgb(dark(color))), &mut out, Vec2::Y);
@@ -161,6 +168,37 @@ pub(crate) fn limb_drawer(legs: &crate::creatures::body::legs::LegsDef) -> impl 
     }
 }
 
+/// A blast's gibs fly this many times as hard as rubble falls apart, in a
+/// burst of this much blood.
+const GIB_SCATTER: f32 = 3.0;
+const GORE: usize = 45;
+
+/// A walker blown apart: its body's picture in chunks, each limb loose,
+/// flung out by the blast.
+fn walker_gibs(d: &Died, push: Vec2) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look, f32)>)> {
+    let legs = d.def.legs.as_ref()?;
+    let (sprite, offset) = d.sprite.as_ref()?;
+    let atlas = d.def.atlas.as_ref()?;
+    let index = sprite.texture_atlas.as_ref()?.index;
+    let (fw, fh) = d.def.sprite.frame;
+    let cols = d.def.animations.values().next().map_or(1, |a| a.columns.max(1));
+    let (ox, oy) = ((index as u32 % cols) * fw, (index as u32 / cols) * fh);
+    let mut px = Vec::new();
+    for y in 0..fh as i32 {
+        for x in 0..fw as i32 {
+            if atlas.opaque(ox as i32 + x, oy as i32 + y) {
+                px.push((IVec2::new(x, y), atlas.get(ox as i32 + x, oy as i32 + y)));
+            }
+        }
+    }
+    let body = ragdoll::Cut::of_pixels("body", &px)?;
+    let vel = d.body.vel + push;
+    let (mut limp, mut looks) = ragdoll::rubble(std::slice::from_ref(&body), d.def.sprite.frame, d.body.pos + offset.truncate(), d.facing, vel, GIB_SCATTER);
+    ragdoll::loose_limbs(&mut limp, &mut looks, &d.limbs, limb_drawer(legs), vel, GIB_SCATTER);
+    let looks = looks.into_iter().enumerate().map(|(i, l)| (l, i as f32 * 0.0005)).collect();
+    Some((limp, looks))
+}
+
 /// A walker (a body on procedural limbs) as a ragdoll: its body's sprite
 /// and each limb as it was. None without limbs.
 fn walker_of(d: &Died) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look, f32)>)> {
@@ -168,6 +206,9 @@ fn walker_of(d: &Died) -> Option<(ragdoll::Limp, Vec<(ragdoll::Look, f32)>)> {
     let (sprite, offset) = d.sprite.as_ref()?;
     if d.limbs.is_empty() {
         return None;
+    }
+    if let Some(push) = d.gib {
+        return walker_gibs(d, push);
     }
     let draw = limb_drawer(legs);
     let (limp, looks) = ragdoll::limbed(sprite.clone(), offset.truncate(), d.def.sprite.frame, d.body.pos, &d.limbs, draw, d.body.vel, d.spin.omega);
@@ -289,7 +330,7 @@ fn lay_out(
     mut commands: Commands,
     mut died: MessageReader<Died>,
     items: Option<Res<Items>>,
-    sim: Res<SimWorld>,
+    mut sim: ResMut<SimWorld>,
     mut chests: ResMut<Chests>,
     player: Query<&crate::gear::Stats, With<LocalPlayer>>,
     mut images: ResMut<Assets<Image>>,
@@ -297,6 +338,7 @@ fn lay_out(
 ) {
     let Some(items) = items else { return };
     let luck = player.single().map_or(0.0, |s| s.get(crate::gear::Stat::Luck));
+    let mut gore = Vec::new();
     for d in died.read() {
         // (Bones that'll get up hold what it wore and held: its loot is for
         // when it's dead for good.)
@@ -330,6 +372,12 @@ fn lay_out(
             let def = sim.world.materials().def(m);
             def.colors[def.colors.len() / 2]
         });
+        // (Blown apart: a burst of its blood all round.)
+        if d.gib.is_some()
+            && let Some(m) = sim.world.materials().id(&d.def.blood)
+        {
+            gore.push((d.body.pos, m));
+        }
         if let Some((limp, looks)) = limp_of(d, &items, blood).or_else(|| walker_of(d)) {
             let root_at = limp.pieces[limp.root].pos;
             // (Its box, for opening it: lying down.)
@@ -405,6 +453,9 @@ fn lay_out(
                 e.with_child((CorpseSprite, s, Transform::from_translation((offset.truncate() + centre).extend(0.01))));
             }
         }
+    }
+    for (at, blood) in gore {
+        sim.world.splash([at.x, at.y], blood, GORE, 4.2);
     }
 }
 

@@ -439,6 +439,8 @@ to the full body system: stages in order, each shown before the next.)
    damage type's mark on the body (cuts, holes, cracks, char, melt), blood
    from the wound along the hit; bodies keep their wounds.
 4. Gibs: a blast breaks a body into pixel chunks that fly, bounce and pile.
+   (Stages 1–4 built 2026-10-11 on `wounds`; open: marks on walkers, gibs
+   that turn into cells, a skull to crush that's a puzzle in a fight.)
 Done when: shooting a spider's legs off on a ceiling drops it, bleeding
 acid; a zombie (until zombies come: an orc) loses an arm and a leg and
 crawls on; bodies flop and drape as ragdolls; each damage type
