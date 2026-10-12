@@ -650,7 +650,7 @@ type Touched<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a mut Inv
 /// grace after a hit keeps a move's blow and its touch from both landing):
 /// not while it's stunned or dying; not asleep or still coming up
 /// (dormant). A dash slips blows, not bodies: a touch breaks it.
-fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, Without<crate::creatures::Dormant>>, mut bodies: Query<Touched, With<Health>>, factions: Query<&crate::creatures::factions::Faction>) {
+fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, (Without<crate::creatures::Dormant>, Without<crate::creatures::Disguised>)>, mut bodies: Query<Touched, With<Health>>, factions: Query<&crate::creatures::factions::Faction>) {
     for (me, mut t, k, team, health, goo) in &mut touchers {
         t.rest -= DT;
         let stunned = k.loco.state == platypus_physics::MoveState::Stunned;

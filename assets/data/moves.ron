@@ -61,6 +61,23 @@
             (name: "shove", secs: 0.0, clip: Some("lunge"), acts: [Throw(speed: 140, up: 80, stun: 0.3)]),
             (name: "recover", secs: 0.7, clip: Some("lunge")),
         ]),
+        // A mimic's bite: it rattles a moment, springs, and snaps its lid
+        // on you.
+        (id: "mimic_chomp", every: 1.8, when: (range: (0, 40), footing: true), phases: [
+            (name: "windup", secs: 0.28, clip: Some("tell"), acts: [Sound("clank")]),
+            (name: "chomp", secs: 0.3, clip: Some("bite"), acts: [Lunge(speed: 270, up: 70), Strike((at: 9, reach: 10, damage: 17, harm: pierce, knock: 210, stun: 0.25, from: 0.4))]),
+            (name: "recover", secs: 0.4, clip: Some("lunge")),
+        ]),
+        // A mimic gets you in its mouth: it shuts on you and chews.
+        (id: "mimic_grab", every: 6.0, when: (range: (0, 26), footing: true), phases: [
+            (name: "windup", secs: 0.4, clip: Some("tell"), acts: [Sound("snarl")]),
+            (name: "grab", secs: 0.25, clip: Some("lunge"), acts: [Lunge(speed: 240, up: 60), Grab((at: 6, reach: 10, from: 0.1))]),
+            (name: "chew", secs: 0.6, clip: Some("bite"), acts: [Strike((at: 6, reach: 10, damage: 12, harm: pierce, knock: 0, stun: 0.2, from: 0.5))]),
+            (name: "chew", secs: 0.6, clip: Some("bite"), acts: [Strike((at: 6, reach: 10, damage: 12, harm: pierce, knock: 0, stun: 0.2, from: 0.5))]),
+            (name: "chew", secs: 0.6, clip: Some("bite"), acts: [Strike((at: 6, reach: 10, damage: 12, harm: pierce, knock: 0, stun: 0.2, from: 0.5))]),
+            (name: "spit", secs: 0.0, clip: Some("lunge"), acts: [Throw(speed: 180, up: 100, stun: 0.3)]),
+            (name: "recover", secs: 0.6, clip: Some("idle")),
+        ]),
         // A crimson head's grab: quicker to come (a shorter tell), from
         // further, and it bites harder.
         (id: "crimson_grab", every: 3.0, when: (range: (0, 36), footing: true), phases: [

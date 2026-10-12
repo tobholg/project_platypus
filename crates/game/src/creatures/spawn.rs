@@ -130,6 +130,21 @@ fn process_queue(mut commands: Commands, sim: Res<SimWorld>, saved: Option<Res<c
     });
 }
 
+/// A chest this deep or deeper (cells under the surface), or in a castle
+/// (within this of its middle), is a mimic one time in so many (by where
+/// it is: the same every time).
+const MIMIC_DEPTH: i32 = 150;
+const MIMIC_CASTLE: i32 = 400;
+const MIMIC_ONE_IN: u64 = 6;
+
+fn mimic_at(sim: &SimWorld, at: CellPos) -> bool {
+    if !platypus_sim::rng::hash(&[sim.world.seed(), 0x313C, at.x as u64, at.y as u64]).is_multiple_of(MIMIC_ONE_IN) {
+        return false;
+    }
+    let deep = sim.generator.surface_hint(at.x).is_some_and(|s| s - at.y >= MIMIC_DEPTH);
+    deep || sim.generator.landmarks().iter().any(|(p, n)| n == "castle" && (p.x - at.x).abs() < MIMIC_CASTLE && (p.y - at.y).abs() < MIMIC_CASTLE)
+}
+
 fn world_spawns(
     mut commands: Commands,
     fresh: Res<FreshChunks>,
@@ -137,6 +152,7 @@ fn world_spawns(
     mut chests: ResMut<crate::hands::chests::Chests>,
     mut clock: ResMut<crate::clock::WorldClock>,
     crafting: Res<crate::craft::Crafting>,
+    sim: Res<SimWorld>,
 ) {
     for &(at, what) in &fresh.0 {
         if !spawned.0.insert(at) {
@@ -144,6 +160,8 @@ fn world_spawns(
         }
         match what {
             Spawn::Creature(kind) | Spawn::Prop(kind) => spawn_creature(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), |_| {}),
+            // (Deep down, a chest is now and then a mimic.)
+            Spawn::Chest if mimic_at(&sim, at) => spawn_creature(&mut commands, "mimic", Vec2::new(at.x as f32, at.y as f32), |_| {}),
             Spawn::Chest => chests.spawn_found(&mut commands, at),
             // (A village's anvil, furnace, workbench.)
             Spawn::Station(id) => match crafting.station(id) {

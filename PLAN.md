@@ -517,7 +517,12 @@ Done when: a powder trail burns like a fuse and a barrel blows; a musket
 ball leaves a wound and a spray; silver shot hurts the undead more; blight
 withers grass and poisons; ectoplasm slows.
 
-**10. `roster`: the new creatures.**
+**10. `roster`: the new creatures.** (Brought forward 2026-10-12, with
+`bosses`, ahead of `creature-editor` and `powder`; built one at a time,
+the most fun first, each tried before the next: mimic, bloat toad,
+necromancer and risen skeletons, watcher, chain wraith, shield orc, orc
+sapper, bat swarm. Mimic built 2026-10-12 on `roster`: chests deep down
+and in castles one in six; `Disguised`; `mimic` scenario.)
 Necromancer, risen skeletons, zombies, chain wraith, watcher, stilt
 stalker, crag crab, scorpion, cave centipede, the reworked cave spider,
 bloat toad, splitting slime, shield orc, orc sapper, mimic, bat swarm

@@ -298,6 +298,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, leap_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, slimecheck_script)
             .add_systems(Update, structure_script)
+            .add_systems(PreUpdate, mimic_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
             .add_systems(PreUpdate, stealth_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7470,6 +7471,92 @@ fn backwall_script(
 
 type Pogoer<'a> = (&'a mut Kinematics, &'a crate::creatures::Health, Option<&'a crate::combat::Swing>);
 
+/// `mimic` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a chest at 980
+/// and a mimic at 1060 (it looks the same); the player (who can't die)
+/// walks right from 900 from 2 s, past the chest, to the mimic; it wakes
+/// and fights. `PLATYPUS_MIMIC=open`: the player stops short and right
+/// clicks it (to open it); `kill`: struck till it dies (it leaves a
+/// chest). Logs its state, the player's health lost.
+fn mimic_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Has<crate::creatures::Disguised>), Without<LocalPlayer>>,
+    chest_q: Query<&Kinematics, (With<crate::hands::chests::Chest>, Without<LocalPlayer>)>,
+    mut chests: ResMut<crate::hands::chests::Chests>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, f32)>,
+) {
+    if s.name != "mimic" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let mode = std::env::var("PLATYPUS_MIMIC").unwrap_or_default();
+    state.2 += h.max - h.hp;
+    h.hp = h.max;
+    let mimic = them.iter().find(|x| x.1.kind == "mimic");
+    match state.0 {
+        0 if t > 0.5 => {
+            for (e, c, ..) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            chests.spawn_found(&mut commands, CellPos::new(980, platypus_worldgen::arena::FLOOR));
+            crate::creatures::def::spawn_creature(&mut commands, "mimic", Vec2::new(1060.0, fl), |_| {});
+            info!("mimic: a chest at 980, a mimic at 1060");
+            state.0 = 1;
+        }
+        1 if t > 2.0 => {
+            let stop = if mode == "open" { 1030.0 } else { 1200.0 };
+            if k.body.pos.x < stop && mimic.is_some_and(|m| m.4) {
+                keys.press(KeyCode::KeyD);
+            } else {
+                keys.release(KeyCode::KeyD);
+                if mode == "open" && mimic.is_some_and(|m| m.4) {
+                    if let Some(m) = mimic {
+                        cursor.0 = Some(m.2.body.pos);
+                    }
+                    mouse.press(MouseButton::Right);
+                }
+            }
+            if mimic.is_some_and(|m| !m.4) {
+                keys.release(KeyCode::KeyD);
+                mouse.release(MouseButton::Right);
+                info!("mimic: t {t:.1} it woke, the player at {:.0}", k.body.pos.x);
+                state.0 = 2;
+                state.1 = t;
+            }
+            if t > 8.0 {
+                info!("mimic: it never woke (the player at {:.0})", k.body.pos.x);
+                state.0 = 9;
+            }
+        }
+        2 if mode == "kill" && t > state.1 + 0.5 => {
+            if let Some((e, _, mk, _, _)) = mimic {
+                hits.write(crate::combat::Hit { target: e, damage: 40.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: mk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+                state.1 = t;
+            } else {
+                info!("mimic: t {t:.1} dead; chests in the world: {}", chest_q.iter().count());
+                state.0 = 9;
+            }
+        }
+        _ => {}
+    }
+    if t > state.1 + 1.0 && state.0 >= 1 && state.0 < 9 && (t * 2.0).fract() < 0.02 {
+        if let Some((_, _, mk, mh, shut)) = mimic {
+            info!("mimic: t {t:.1} {} at {:.0} ({:.0} up), hp {:.0}; the player at {:.0}, lost {:.0}", if shut { "shut" } else { "awake" }, mk.body.pos.x, mk.body.pos.y - mk.body.half.y - fl, mh.hp, k.body.pos.x, state.2);
+        }
+    }
+}
+
 /// `structure` (the real world): the player dropped into the middle of
 /// the nearest `PLATYPUS_STRUCTURE` (castle, the default; crypt) to the
 /// spawn, kept alive (for a look: `PLATYPUS_ZOOM=1`, `PLATYPUS_SHOTS`).
@@ -7478,12 +7565,22 @@ fn structure_script(
     sim: Res<SimWorld>,
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
     mut done: Local<bool>,
+    mut told: Local<bool>,
+    near: Query<(&Kinematics, Option<&crate::creatures::Creature>, Has<crate::hands::chests::Chest>), Without<LocalPlayer>>,
 ) {
     if s.name != "structure" {
         return;
     }
     let Ok((mut pk, mut h)) = player.single_mut() else { return };
     h.hp = h.max;
+    // (A while after: the chests and mimics round it.)
+    if *done && !*told && s.elapsed > 5.0 {
+        *told = true;
+        let close = |k: &Kinematics| k.body.pos.distance(pk.body.pos) < 500.0;
+        let chests = near.iter().filter(|(k, _, c)| *c && close(k)).count();
+        let mimics = near.iter().filter(|(k, c, _)| c.is_some_and(|c| c.kind == "mimic") && close(k)).count();
+        info!("structure: within 500: {chests} chests, {mimics} mimics");
+    }
     if *done || s.elapsed < 0.5 {
         return;
     }

@@ -444,7 +444,7 @@ pub fn start(
     sim: Res<SimWorld>,
     book: Res<MoveBook>,
     mut began: MessageWriter<Began>,
-    mut movers: Query<Starter, Without<crate::creatures::brain::Staged>>,
+    mut movers: Query<Starter, (Without<crate::creatures::brain::Staged>, Without<crate::creatures::Disguised>)>,
     prey: Query<Prey, Without<crate::creatures::brain::villager::Hiding>>,
 ) {
     let now = time.elapsed_secs();

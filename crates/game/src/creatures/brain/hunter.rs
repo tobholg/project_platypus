@@ -242,7 +242,7 @@ fn hunt(
     sim: Res<SimWorld>,
     weapons: Option<Res<crate::combat::Weapons>>,
     hunted: Hunted,
-    mut q: Query<Hunting, Without<crate::creatures::Dormant>>,
+    mut q: Query<Hunting, (Without<crate::creatures::Dormant>, Without<crate::creatures::Disguised>)>,
     mut swings: MessageWriter<crate::combat::MeleeRequest>,
     mut draws: MessageWriter<crate::archery::DrawBow>,
     ids: Query<&crate::creatures::Stable>,

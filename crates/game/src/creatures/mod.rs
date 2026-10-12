@@ -93,6 +93,11 @@ pub struct Dormant;
 
 const DORMANT_FAR: f32 = 1_400.0;
 
+/// Passing for something it isn't (a mimic, a chest): no mind of its own
+/// (`hunter`), no touch; its own code says when it's itself.
+#[derive(Component)]
+pub struct Disguised;
+
 /// Creatures, not the player.
 type NotPlayer = (With<Creature>, Without<player::LocalPlayer>);
 

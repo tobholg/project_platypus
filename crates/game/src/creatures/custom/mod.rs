@@ -34,6 +34,7 @@
 pub mod dummy;
 pub mod explosive;
 pub mod hatchery;
+pub mod mimic;
 // (The template: compiled with the tests, so it stays right.)
 #[cfg(test)]
 mod _template;
@@ -58,7 +59,8 @@ impl Plugin for CustomPlugin {
             // One line each.
             .register_custom::<dummy::Dummy>()
             .register_custom::<explosive::Explosive>()
-            .register_custom::<hatchery::Hatchery>();
+            .register_custom::<hatchery::Hatchery>()
+            .register_custom::<mimic::Mimic>();
     }
 }
 

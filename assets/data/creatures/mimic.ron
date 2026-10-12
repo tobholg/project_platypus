@@ -1,0 +1,38 @@
+// A mimic: a chest, deep down, like any other (a crypt's, a castle's, a
+// cavern's) until you come right up to it, try to open it, or hit it.
+// Then the lid's a jaw: it rattles, springs, hops after you biting, and
+// now and then gets you in its mouth and chews (mash jump, dash and the
+// keys to get free). Killed, it's a chest again: open it.
+// (custom/mimic.rs; chests become mimics in creatures/spawn.rs.)
+(
+    name: "Mimic",
+    size: (18, 15),
+    health: 170,
+    team: Enemy,
+    // Wood, and what's in it.
+    kind: "beast",
+    profile: {fire: 1.5, pierce: 0.7},
+    blood: "blood",
+    // (No body: what's left is the chest it was.)
+    corpse: false,
+    art: "mimic",
+    heft: 2.5,
+    poise: 30,
+    movement: (
+        run_speed: 125,
+        ground_accel: 1800,
+        ground_decel: 2400,
+        air_accel: 900,
+        jump_height: 42,
+        air_jumps: 0,
+        step_height: 4,
+        dash_speed: 0,
+    ),
+    touch: (harm: pierce, damage: 9, knock: 200, stun: 0.15),
+    moves: ["mimic_chomp", "mimic_grab"],
+    brain: (
+        kind: "hunter",
+        params: (aggro: 260, close: Hop(every: 0.8, lift: 0.4)),
+    ),
+    custom: (name: "mimic", params: (wake: 14)),
+)
