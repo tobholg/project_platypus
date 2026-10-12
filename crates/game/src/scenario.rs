@@ -9606,6 +9606,9 @@ fn sever_script(
 ///     player: it squeezes through.
 ///   glut (with PLATYPUS_SLIME_KIND=glutton): struck with fire (4 s),
 ///     frost (6.5 s: the two go off), lightning (9 s).
+///   attack (glutton): struck with `PLATYPUS_GLUT_HARM` (fire, frost,
+///     storm: the default) at 2 s, then let be: it attacks with it till
+///     it's spent.
 ///   (anything else, `none`: let be: it hops at the player, spikes them.)
 /// Logs its health, the goo it holds and the goo loose near it.
 #[allow(clippy::type_complexity)]
@@ -9750,6 +9753,17 @@ fn slime_script(
             info!("slime: t {t:.1} struck with {harm:?}");
             state.0 += 1;
         }
+        "attack" if state.0 == 1 && t > 2.0 => {
+            let harm = match std::env::var("PLATYPUS_GLUT_HARM").as_deref() {
+                Ok("fire") => crate::creatures::Harm::Fire,
+                Ok("frost") => crate::creatures::Harm::Frost,
+                _ => crate::creatures::Harm::Storm,
+            };
+            strike(&mut hits, harm, 6.0);
+            info!("slime: t {t:.1} struck with {harm:?}");
+            *took = 0.0;
+            state.0 = 2;
+        }
         "split" if state.0 >= 1 && state.0 <= 2 && t > 2.0 + state.0 as f32 * 1.5 => {
             strike(&mut hits, crate::creatures::Harm::Slash, 30.0);
             info!("slime: t {t:.1} a blade through it");
@@ -9787,6 +9801,11 @@ fn slime_script(
     }
     if t >= state.2 && mode == "squeeze" {
         info!("slime: t {t:.1} at x {:.0}, {:.0} high (the gap: 880..950)", sk.body.pos.x, sk.body.half.y * 2.0);
+    }
+    if t >= state.2 && mode == "attack" {
+        if let Ok((g, _)) = gluttons.get(e) {
+            info!("slime: t {t:.1} the glutton holds {:?} ({:.2} left); the player {:.0} away, has lost {:.0} in all", g.took, g.charge(), sk.body.pos.distance(k.body.pos), *took);
+        }
     }
     if t >= state.2 && mode == "glut" {
         if let Ok((g, gg)) = gluttons.get(e) {

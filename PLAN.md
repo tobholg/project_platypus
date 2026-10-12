@@ -496,7 +496,9 @@ put back). Its goo is its health: hurt, it flings goo off; dead, it spills.
    (digested; struggle out, or spat out in 3 s; blows from inside x2).
 4. Kinds: green (burns), blue (bounces, won't burn), acid (eats what it's
    against), the glutton (takes on fire, frost, lightning; fire on frost
-   goes off; drains).
+   goes off; drains; charged, it attacks with it: lightning, ice shards,
+   a lava eruption, a third of its charge each; `attack` scenario mode,
+   PLATYPUS_GLUT_HARM).
    (Stages 1-4 built 2026-10-11 on `slimes`; `slime` scenario: look, burn,
    kill, heal, split, merge, engulf, eat, glut, many; PLATYPUS_SLIME_KIND.)
 5. Next: squeezing through cracks (the core shrinks to a gap), the slime

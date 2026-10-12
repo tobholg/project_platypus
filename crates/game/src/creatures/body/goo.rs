@@ -804,14 +804,28 @@ pub fn digest(
 pub struct Glutton {
     pub took: Option<crate::creatures::Harm>,
     charge: f32,
+    /// Its attack with what it holds: gathering it (since when), then
+    /// letting it go (shots fired); and when it may again.
+    striking: Option<(f32, u32)>,
+    ready: f32,
+    /// What it let go of just now, and till when it doesn't take that on
+    /// again (its own lightning through its goo, its lava round it).
+    own: Option<(crate::creatures::Harm, f32)>,
+}
+
+impl Glutton {
+    /// How much of what it holds is left (1 full, 0 spent).
+    pub fn charge(&self) -> f32 {
+        self.charge
+    }
 }
 
 /// What the glutton takes on: a strike of it at least this much (not the
 /// trickle of flames or cold it's in).
 const STRIKE: f32 = 2.0;
-/// What the glutton holds drains away in this long (s); fire on frost
-/// (or frost on fire) goes off this hard.
-const DRAIN: f32 = 10.0;
+/// What the glutton holds drains away in this long (s), left unused; fire
+/// on frost (or frost on fire) goes off this hard.
+const DRAIN: f32 = 20.0;
 const UNDONE: (f32, f32) = (34.0, 45.0);
 
 /// The glutton takes on what it's struck with: fire, frost or lightning,
@@ -836,7 +850,10 @@ pub fn glut(
         // (Not what it holds already: its own hot or cold goo would keep
         // it topped up, and it'd never drain.)
         // (A strike, not the trickle of the flames it stands in.)
-        let struck: Vec<Harm> = [Harm::Fire, Harm::Frost, Harm::Storm].into_iter().filter(|h| health.took[*h as usize].0 >= STRIKE && g.took != Some(*h)).collect();
+        // (Nor what it just let go of: its own lightning, its own lava.)
+        let now = time.elapsed_secs();
+        let own = g.own.filter(|o| now < o.1).map(|o| o.0);
+        let struck: Vec<Harm> = [Harm::Fire, Harm::Frost, Harm::Storm].into_iter().filter(|h| health.took[*h as usize].0 >= STRIKE && g.took != Some(*h) && own != Some(*h)).collect();
         for harm in struck {
             let undoes = matches!((g.took, harm), (Some(Harm::Fire), Harm::Frost) | (Some(Harm::Frost), Harm::Fire));
             if undoes {
@@ -862,9 +879,9 @@ pub fn glut(
         }
         // What it holds now: its goo, its touch, its light.
         let (goo_name, harm, damage, light) = match g.took {
-            Some(Harm::Fire) => ("ember_goo", Harm::Fire, 11.0, Some([1.4, 0.7, 0.25])),
-            Some(Harm::Frost) => ("frost_goo", Harm::Frost, 9.0, Some([0.6, 0.9, 1.3])),
-            Some(Harm::Storm) => ("spark_goo", Harm::Storm, 12.0, Some([0.7, 1.1, 1.5])),
+            Some(Harm::Fire) => ("ember_goo", Harm::Fire, 11.0, Some(glow_of(Harm::Fire))),
+            Some(Harm::Frost) => ("frost_goo", Harm::Frost, 9.0, Some(glow_of(Harm::Frost))),
+            Some(Harm::Storm) => ("spark_goo", Harm::Storm, 12.0, Some(glow_of(Harm::Storm))),
             _ => (anim.def.goo.as_ref().map_or("prism_goo", |d| d.material.as_str()), Harm::Blunt, 7.0, None),
         };
         if let Some(m) = sim.world.materials().id(goo_name) {
@@ -883,6 +900,222 @@ pub fn glut(
             }
         }
         sounds.write(crate::sound::PlaySound::at("pour", k.body.pos).pitch(1.4));
+    }
+}
+
+/// The light of what the glutton holds.
+fn glow_of(harm: crate::creatures::Harm) -> [f32; 3] {
+    match harm {
+        crate::creatures::Harm::Fire => [1.4, 0.7, 0.25],
+        crate::creatures::Harm::Frost => [0.6, 0.9, 1.3],
+        _ => [0.7, 1.1, 1.5],
+    }
+}
+
+/// The glutton's attacks, with what it holds: each spends this much of its
+/// charge (three, and it's spent); it gathers it this long first, glowing,
+/// holding still (to be read); between them, this long.
+const STRIKE_COST: f32 = 0.34;
+const STRIKE_TELL: f32 = 0.6;
+const STRIKE_EVERY: f32 = 2.6;
+/// How near it attacks from (cells): lightning and frost from afar, fire
+/// close (it erupts round itself).
+const STRIKE_RANGE: (f32, f32, f32) = (200.0, 190.0, 110.0);
+/// After an attack it doesn't take on what it let go of for so long (s).
+const OWN: f32 = 1.5;
+/// Frost: bolts fired this far apart (s); fire: how far its eruption
+/// reaches (cells), its hurt, lava and flame thrown up.
+const FROST_SHOTS: (u32, f32) = (3, 0.32);
+const FROST_FAN: f32 = 7.0;
+const ERUPTION: (f32, f32) = (40.0, 16.0);
+/// Lava lobbed at them, lava and flame thrown straight up.
+const ERUPTION_MATTER: (usize, usize, usize) = (55, 30, 90);
+/// What an eruption looks like: a fountain of flame and molten drops up
+/// out of it, embers thrown all round.
+fn eruption_fountain() -> crate::magic::runes::Emitter {
+    crate::magic::runes::Emitter {
+        count: 0.0,
+        life: (0.35, 1.1),
+        colors: vec![(255, 250, 210), (255, 200, 80), (255, 120, 30), (190, 50, 20), (70, 40, 35)],
+        speed: 330.0,
+        spread: 0.55,
+        gravity: 260.0,
+        drag: 1.2,
+        size: 1.8,
+        jitter: 0.0,
+        glow: true,
+    }
+}
+fn eruption_ring() -> crate::magic::runes::Emitter {
+    crate::magic::runes::Emitter { life: (0.2, 0.6), speed: 230.0, spread: std::f32::consts::PI, gravity: 120.0, drag: 3.0, size: 1.3, ..eruption_fountain() }
+}
+
+/// The glutton charged attacks with what it holds: lightning struck at
+/// you, frost bolts shot at you, or fire erupting out of it (lava and
+/// flame thrown up, what's near burnt and thrown back). Each spends a
+/// third of its charge; spent, it's itself again.
+#[allow(clippy::type_complexity)]
+pub fn glut_strike(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut sim: ResMut<SimWorld>,
+    book: Res<crate::magic::Spellbook>,
+    mut q: Query<(Entity, &mut Glutton, &Goo, &Kinematics, &mut crate::creatures::Controls, Option<&crate::creatures::brain::senses::Alert>, Has<Engulfing>)>,
+    bodies: Query<(Entity, &Kinematics, Option<&crate::creatures::Team>)>,
+    mut casts: MessageWriter<crate::magic::CastRequest>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+    (mut sparks, mut flares, mut trauma): (ResMut<crate::vfx::Sparks>, MessageWriter<crate::fx::Flare>, ResMut<crate::fx::Trauma>),
+) {
+    use crate::creatures::Harm;
+    let now = time.elapsed_secs();
+    let spell = |id: &str| book.spells.iter().position(|s| s.id == id);
+    for (e, mut g, goo, k, mut controls, alert, full) in &mut q {
+        let Some(harm) = g.took else {
+            g.striking = None;
+            continue;
+        };
+        let target = alert.filter(|a| a.engaged()).and_then(|a| a.target).filter(|&t| t != e);
+        let tk = target.and_then(|t| bodies.get(t).ok()).map(|(_, tk, _)| tk);
+        // (Its spells leave from just outside its goo, toward them: from
+        // inside, they'd strike its own goo.)
+        let reach = goo.extent.unwrap_or((k.body.pos - k.body.half, k.body.pos + k.body.half));
+        let top = tk.map_or(k.body.pos + Vec2::Y * k.body.half.y, |t| outside(reach, k.body.pos, (t.body.pos - k.body.pos).normalize_or(Vec2::Y) + Vec2::Y * 0.5));
+        match g.striking {
+            None => {
+                let Some(tk) = tk else { continue };
+                let range = match harm {
+                    Harm::Storm => STRIKE_RANGE.0,
+                    Harm::Frost => STRIKE_RANGE.1,
+                    _ => STRIKE_RANGE.2,
+                };
+                // (Not spiking, not with you in it, on its feet.)
+                if now >= g.ready && !full && matches!(goo.spiking, Spiking::Rest) && k.loco.grounded() && tk.body.pos.distance(k.body.pos) <= range {
+                    g.striking = Some((now, 0));
+                    sounds.write(crate::sound::PlaySound::at("pour", k.body.pos).pitch(match harm {
+                        Harm::Fire => 0.5,
+                        Harm::Frost => 1.8,
+                        _ => 2.2,
+                    }));
+                }
+            }
+            Some((since, shots)) => {
+                let into = now - since;
+                if into < STRIKE_TELL {
+                    // Gathering it: its light swelling, motes of it rising
+                    // off its goo.
+                    let swell = 1.0 + 2.0 * into / STRIKE_TELL;
+                    commands.entity(e).insert(crate::light::LightSource { color: glow_of(harm).map(|c| c * swell), flicker: 0.35 });
+                    let m = match harm {
+                        Harm::Fire => "fire",
+                        Harm::Frost => "frost_goo",
+                        _ => "spark_goo",
+                    };
+                    if let Some(m) = sim.world.materials().id(m) {
+                        let w = k.body.half.x * 0.8;
+                        let x = top.x + ((now * 37.0).sin() * w);
+                        sim.world.puff([x, top.y], Cell::new(m, 0), 3, 1.4);
+                    }
+                } else {
+                    let at = tk.map(|t| t.body.pos);
+                    let done = match harm {
+                        Harm::Storm => {
+                            if let (Some(i), Some(at)) = (spell("lightning"), at) {
+                                casts.write(crate::magic::CastRequest { caster: e, spell: i, from: top, toward: at, alt: false });
+                            }
+                            sounds.write(crate::sound::PlaySound::at("zap", top));
+                            true
+                        }
+                        Harm::Frost => {
+                            let due = 1 + ((into - STRIKE_TELL) / FROST_SHOTS.1) as u32;
+                            if shots < due.min(FROST_SHOTS.0) {
+                                g.striking = Some((since, shots + 1));
+                                // (Fanned a little: one at them, one either
+                                // side of them.)
+                                if let (Some(i), Some(at)) = (spell("glutton_ice"), at) {
+                                    let d = at - top;
+                                    let off = [0.0, 1.0, -1.0][shots as usize % 3] * FROST_FAN;
+                                    casts.write(crate::magic::CastRequest { caster: e, spell: i, from: top, toward: top + d.rotate(Vec2::from_angle(off.to_radians())), alt: false });
+                                }
+                            }
+                            shots + 1 >= FROST_SHOTS.0 && into - STRIKE_TELL >= FROST_SHOTS.1 * (FROST_SHOTS.0 - 1) as f32
+                        }
+                        _ => {
+                            erupt(&mut sim, k, reach, at, e, &bodies, &mut hits);
+                            // (Its look: a fountain of flame and molten
+                            // drops, embers all round, a flare, a jolt.)
+                            let mouth = Vec2::new(k.body.pos.x, reach.1.y);
+                            sparks.emit(&eruption_fountain(), 170, mouth, Vec2::Y, Vec2::ZERO);
+                            sparks.emit(&eruption_ring(), 90, k.body.pos, Vec2::Y, Vec2::ZERO);
+                            flares.write(crate::fx::Flare { at: mouth, color: [1.9, 1.0, 0.4], life: 0.6 });
+                            trauma.0 = (trauma.0 + 0.35).min(1.0);
+                            sounds.write(crate::sound::PlaySound::at("boom", k.body.pos).volume(0.7).pitch(0.8));
+                            true
+                        }
+                    };
+                    if done {
+                        commands.entity(e).insert(crate::light::LightSource { color: glow_of(harm), flicker: 0.15 });
+                        g.own = Some((harm, now + OWN));
+                        g.striking = None;
+                        g.ready = now + STRIKE_EVERY;
+                        // (Spent: it drains away the next moment, and it's
+                        // itself again: `glut`.)
+                        g.charge = if g.charge - STRIKE_COST <= 0.02 { 1e-5 } else { g.charge - STRIKE_COST };
+                    }
+                }
+                // (Gathering and letting go, it holds still.)
+                controls.0.move_x = 0.0;
+                controls.0.jump = false;
+            }
+        }
+    }
+}
+
+/// Where a ray from `from` going `dir` leaves the box `reach` (and a few
+/// cells past it).
+fn outside(reach: (Vec2, Vec2), from: Vec2, dir: Vec2) -> Vec2 {
+    let (lo, hi) = (reach.0 - 3.0, reach.1 + 3.0);
+    let dir = dir.normalize_or(Vec2::Y);
+    let t = |p: f32, d: f32, lo: f32, hi: f32| if d > 1e-4 { (hi - p) / d } else if d < -1e-4 { (lo - p) / d } else { f32::INFINITY };
+    let k = t(from.x, dir.x, lo.x, hi.x).min(t(from.y, dir.y, lo.y, hi.y)).max(0.0);
+    from + dir * k
+}
+
+/// Fire erupting out of the glutton: lava lobbed at them (`at`) and
+/// thrown up with flame, what's near (of another side) burnt and thrown
+/// up and back.
+fn erupt(sim: &mut SimWorld, k: &Kinematics, reach: (Vec2, Vec2), at: Option<Vec2>, me: Entity, bodies: &Query<(Entity, &Kinematics, Option<&crate::creatures::Team>)>, hits: &mut MessageWriter<crate::combat::Hit>) {
+    let top = Vec2::new(k.body.pos.x, reach.1.y + 2.0);
+    let mats = sim.world.materials().clone();
+    if let Some(lava) = mats.id("lava") {
+        // (Lobbed at 60°, hard enough to reach them; slower drops fall
+        // between: a rain of it, from here to there.)
+        let to = at.unwrap_or(top + Vec2::X * 40.0);
+        let side = if to.x < top.x { -1.0 } else { 1.0 };
+        let far = (to.x - top.x).abs().max(20.0) * 1.15;
+        let speed = (far * platypus_sim::particles::GRAVITY / (120f32).to_radians().sin()).sqrt();
+        let dir = Vec2::from_angle(60f32.to_radians());
+        sim.world.spray([top.x, top.y], [dir.x * side, dir.y], lava, ERUPTION_MATTER.0, speed, 0.3);
+        sim.world.spray([top.x, top.y], [0.0, 1.0], lava, ERUPTION_MATTER.1, 4.0, 0.6);
+    }
+    if let Some(fire) = mats.id("fire") {
+        sim.world.spray([top.x, top.y], [0.0, 1.0], fire, ERUPTION_MATTER.2, 4.6, 1.3);
+    }
+    sim.queue(platypus_sim::WorldEdit::Ignite { center: CellPos::from_world(k.body.pos.x, k.body.pos.y), radius: 12 });
+    let mine = bodies.get(me).ok().and_then(|(_, _, t)| t.copied());
+    for (e, bk, team) in bodies.iter() {
+        if e == me || (mine.is_some() && team.copied() == mine) {
+            continue;
+        }
+        // (How far from its goo.)
+        let near = (bk.body.pos.clamp(reach.0, reach.1) - bk.body.pos).abs() - bk.body.half;
+        let near = near.max(Vec2::ZERO).length();
+        if near > ERUPTION.0 {
+            continue;
+        }
+        let f = 1.0 - near / ERUPTION.0 * 0.5;
+        let dir = Vec2::new((bk.body.pos.x - k.body.pos.x).signum(), 1.2).normalize();
+        hits.write(crate::combat::Hit { target: e, damage: ERUPTION.1 * f, harm: crate::creatures::Harm::Fire, knock: dir * 300.0, stun: 0.2, at: bk.body.pos, dir, weight: 1.5, crit: false });
     }
 }
 

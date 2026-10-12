@@ -71,7 +71,7 @@ impl Plugin for CreaturesPlugin {
             .add_systems(FixedUpdate, spurts.after(brain::BrainSet).before(move_creatures))
             // A slime holds its goo round it.
             .add_systems(FixedUpdate, body::goo::hold.after(move_creatures).before(deaths).in_set(TickSet::Bodies))
-            .add_systems(FixedUpdate, body::goo::spike.after(brain::BrainSet).before(move_creatures))
+            .add_systems(FixedUpdate, (body::goo::spike, body::goo::glut_strike).chain().after(brain::BrainSet).before(move_creatures))
             .add_systems(FixedUpdate, body::goo::merge.after(body::goo::hold).before(deaths).in_set(TickSet::Bodies))
             .add_systems(FixedUpdate, (body::goo::engulf, body::goo::digest).chain().after(body::goo::hold).before(deaths).in_set(TickSet::Bodies))
             .add_systems(FixedUpdate, (body::goo::glut.after(body::elements::expose).before(nature::regenerate).before(body::goo::hold), body::goo::bounce.after(move_creatures)).in_set(TickSet::Bodies))

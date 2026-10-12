@@ -2,8 +2,11 @@
 // fire, frost and lightning in, healed by them): fire and its goo's hot
 // and sets what it touches alight, frost and it's cold enough to chill,
 // lightning and it carries it; struck with what undoes what it holds
-// (fire on frost, frost on fire), the two go off together; what it took
-// on drains away in a while. A core (a dark nucleus with eyes) holding a body of real
+// (fire on frost, frost on fire), the two go off together. Charged, it
+// attacks with it (glowing, holding still a moment first): lightning
+// struck at you, ice shards shot at you, or fire erupting out of it, lava
+// lobbed at you; each spends a third of it, and spent (or left unused a
+// while) it's itself again. A core (a dark nucleus with eyes) holding a body of real
 // goo, cells of the world round it (`goo`: body/goo.rs). It hops at you,
 // each hop its own height (`lift`);
 // its goo clings and clogs (slimy) and catches fire. Hurt, it lets go of

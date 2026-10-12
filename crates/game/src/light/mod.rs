@@ -329,7 +329,11 @@ fn collect_flashes(
     mut zaps: MessageReader<crate::fx::Zapped>,
     mut puffs: MessageReader<crate::creatures::AirJumped>,
     mut flashes: ResMut<Flashes>,
+    mut flares: MessageReader<crate::fx::Flare>,
 ) {
+    for f in flares.read() {
+        flashes.0.push(Flash { at: f.at, color: f.color, age: 0.0, life: f.life });
+    }
     // A double jump's cloud glows a moment (it shows in the dark).
     for j in puffs.read() {
         flashes.0.push(Flash { at: j.at, color: [0.5, 0.6, 0.85], age: 0.0, life: 0.45 });

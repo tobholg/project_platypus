@@ -17,6 +17,15 @@ pub struct Explosion {
     pub power: f32,
 }
 
+/// A flare of light, a moment (`light`: what lights up, no blast): a
+/// glutton's eruption.
+#[derive(Message, Clone, Debug)]
+pub struct Flare {
+    pub at: Vec2,
+    pub color: [f32; 3],
+    pub life: f32,
+}
+
 /// Wand lightning struck (from the sim's `StepStats::zaps`).
 #[derive(Message, Clone, Debug)]
 pub struct Zapped(pub platypus_sim::Zap);
@@ -66,6 +75,7 @@ const MAX_SHAKE_PX: f32 = 18.0;
 impl Plugin for FxPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<Explosion>()
+            .add_message::<Flare>()
             .add_message::<Lightning>()
             .add_message::<Zapped>()
             .init_resource::<SkyFlash>()

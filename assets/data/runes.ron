@@ -171,6 +171,10 @@
         (id: "venom_glob", name: "Venom", mana: 2, color: (150, 220, 70), kind: Payload(Damage(9)),
             look: (trail: (count: 0.8, life: (0.2, 0.45), colors: [(210, 255, 140), (120, 200, 50), (60, 110, 30)], speed: 8, gravity: 180, glow: true),
                    burst: (count: 18, life: (0.25, 0.6), colors: [(220, 255, 150), (110, 200, 40), (50, 110, 20)], speed: 105, spread: 1.4, gravity: 240, drag: 1))),
+        // A glutton's ice: a shard that stabs (and the cold of it).
+        (id: "ice_shard", name: "Ice shard", mana: 2, color: (200, 235, 255), kind: Payload(Damage(11)),
+            look: (trail: (count: 0.9, life: (0.15, 0.4), colors: [(255, 255, 255), (200, 235, 255), (120, 180, 235)], speed: 10, gravity: 60, glow: true),
+                   burst: (count: 22, life: (0.25, 0.7), colors: [(255, 255, 255), (190, 230, 255), (110, 170, 230)], speed: 130, spread: 1.5, gravity: 260, drag: 1))),
         (id: "acid_drops", name: "Acid drops", mana: 2, color: (120, 240, 60), kind: Payload(Matter(material: "acid", cells: 32))),
         // A spider's: a lot of acid, splashing over what it hits.
         (id: "acid_glob", name: "Acid glob", mana: 4, color: (120, 240, 60), kind: Payload(Matter(material: "acid", cells: 338))),
