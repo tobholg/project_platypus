@@ -49,6 +49,9 @@ const WRAP_TIME: f32 = 0.3;
 /// many times run speed that way.
 const SWING_PUMP: f32 = 0.33;
 const SWING_PUMP_MAX: f32 = 3.0;
+/// Left alone on a rope, the swing dies down: this share of its sideways
+/// speed lost a second.
+const SWING_DAMP: f32 = 0.3;
 
 /// Fastest a rope lets a body go (cells/s).
 const TETHER_MAX: f32 = 1350.0;
@@ -617,10 +620,12 @@ impl Locomotion {
         };
         if self.swinging && !grounded {
             // On a rope: steering pumps the swing (up to a few times run
-            // speed); nothing brakes it.
+            // speed); left alone, it dies down to hanging still.
             let push = intent.move_x.clamp(-1.0, 1.0);
             if push != 0.0 && body.vel.x * push < s.run_speed * SWING_PUMP_MAX {
                 body.vel.x += push * s.gravity * SWING_PUMP * dt;
+            } else if push == 0.0 {
+                body.vel.x *= 1.0 - SWING_DAMP * dt;
             }
         } else {
             // (Carried on from rocketing: not slowed while it steers on.)
@@ -762,7 +767,9 @@ impl Locomotion {
         // Gravity (none while a jump's rise is held).
         let holding = self.hold_left > 0.0 && intent.jump && body.vel.y > 0.0 && self.rising_from_jump;
         self.hold_left = if holding { self.hold_left - dt } else { 0.0 };
-        let g = s.gravity * if body.vel.y < 0.0 { s.fall_gravity } else { 1.0 } * gravity_scale;
+        // (On a rope, the same up as down: a heavier fall would pump the
+        // swing higher every time.)
+        let g = s.gravity * if body.vel.y < 0.0 && !self.swinging { s.fall_gravity } else { 1.0 } * gravity_scale;
         if !holding {
             body.vel.y -= g * dt;
         }
@@ -934,6 +941,33 @@ mod tests {
         assert!(crossed, "it swung through");
         assert!(far < 61.5, "held at the rope's length: {far}");
         assert!(top_right > at.y - 12.0, "it swung up the far side to {top_right} (from {})", at.y);
+    }
+
+    /// On a rope, left alone (a heavy fall, as the tempos have), the swing
+    /// dies down: it doesn't pump itself higher.
+    #[test]
+    fn a_rope_swing_left_alone_dies_down() {
+        let mut rows = vec!["#                                                                                                                                                                                                      #"; 200];
+        rows.push("########################################################################################################################################################################################################");
+        let g = Ascii::new(&rows);
+        let s = MovementStats { gravity: 1450.0, fall_gravity: 1.5, ..Default::default() };
+        let at = Vec2::new(100.0, 150.0);
+        let mut b = Body::new(at + Vec2::new(-50.0, -30.0), Vec2::new(8.0, 16.0));
+        let mut l = Locomotion { swinging: true, ..Default::default() };
+        let mut reach = [0.0f32; 2];
+        for n in 0..600 {
+            l.steer(&s, &Intent::default(), &mut b, DT);
+            tether(&mut b, at, 58.0, DT);
+            let c = move_and_collide(&g, &mut b, DT);
+            l.after_move(c);
+            let x = (b.pos.x - at.x).abs();
+            if n < 120 {
+                reach[0] = reach[0].max(x);
+            } else if n >= 480 {
+                reach[1] = reach[1].max(x);
+            }
+        }
+        assert!(reach[1] < reach[0] * 0.6, "it swung out {:.0} at first, {:.0} after 8 s", reach[0], reach[1]);
     }
 
     #[test]
