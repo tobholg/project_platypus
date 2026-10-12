@@ -9606,6 +9606,8 @@ fn sever_script(
 ///     player: it squeezes through.
 ///   glut (with PLATYPUS_SLIME_KIND=glutton): struck with fire (4 s),
 ///     frost (6.5 s: the two go off), lightning (9 s).
+///   dash (any kind, e.g. spider): the player runs at it and dashes
+///     through it (2.5 s, back at 4.5 s): its touch should land.
 ///   wand (glutton): the player casts `PLATYPUS_GLUT_SPELL` (frost_bolt)
 ///     at it every 1.5 s.
 ///   attack (glutton): struck with `PLATYPUS_GLUT_HARM` (fire, frost,
@@ -9797,6 +9799,23 @@ fn slime_script(
             state.1 += 2.0;
         }
         _ => {}
+    }
+    // `dash`: from 2.4 s the player runs at it and dashes (2.5 s), and
+    // again back (4.4 s, 4.5 s): through it.
+    if mode == "dash" {
+        let toward = if sk.body.pos.x > k.body.pos.x { KeyCode::KeyD } else { KeyCode::KeyA };
+        let away = if toward == KeyCode::KeyD { KeyCode::KeyA } else { KeyCode::KeyD };
+        let run = (2.4..3.0).contains(&t) || (4.4..5.0).contains(&t);
+        keys.release(away);
+        if run { keys.press(toward) } else { keys.release(toward) }
+        if (2.5..2.53).contains(&t) || (4.5..4.53).contains(&t) {
+            keys.press(KeyCode::ShiftLeft);
+        } else {
+            keys.release(KeyCode::ShiftLeft);
+        }
+        if run {
+            info!("slime: t {t:.2} dashing: the player at {:.0}, it at {:.0}; lost {:.0} in all", k.body.pos.x, sk.body.pos.x, *took);
+        }
     }
     // `engulf`: swallowed, the player mashes jump to get out.
     if mode == "engulf" {

@@ -801,7 +801,7 @@ pub fn digest(
         if sw.loose >= 1.0 || now - sw.since >= HELD_MOST {
             let hp = h.hp;
             release(&mut commands, k, 220.0);
-            commands.entity(e).insert(crate::combat::Invulnerable { left: 0.6, hp });
+            commands.entity(e).insert(crate::combat::Invulnerable { left: 0.6, hp, dodge: false });
             commands.entity(sw.by).remove::<Engulfing>();
             sounds.write(crate::sound::PlaySound::at("spit", k.body.pos).pitch(0.7));
         }

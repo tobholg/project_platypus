@@ -643,21 +643,22 @@ impl Touch {
     }
 }
 
-type Toucher<'a> = (Entity, &'a mut Touch, &'a Kinematics, Option<&'a Team>, &'a Health, (Has<Swing>, Option<&'a crate::creatures::moves::Moves>, Option<&'a crate::creatures::body::goo::Goo>));
-type Touched<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Has<Invulnerable>);
+type Toucher<'a> = (Entity, &'a mut Touch, &'a Kinematics, Option<&'a Team>, &'a Health, Option<&'a crate::creatures::body::goo::Goo>);
+type Touched<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a mut Invulnerable>);
 
-/// Things that hurt by touch hit what they touch: not while it's stunned,
-/// dying, or busy with a swing or a move of its own (one blow for one
-/// move); not asleep or still coming up (dormant).
-fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, Without<crate::creatures::Dormant>>, bodies: Query<Touched, With<Health>>, factions: Query<&crate::creatures::factions::Faction>) {
-    for (me, mut t, k, team, health, (swinging, moves, goo)) in &mut touchers {
+/// Things that hurt by touch hit what they touch, mid-move or not (the
+/// grace after a hit keeps a move's blow and its touch from both landing):
+/// not while it's stunned or dying; not asleep or still coming up
+/// (dormant). A dash slips blows, not bodies: a touch breaks it.
+fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, Without<crate::creatures::Dormant>>, mut bodies: Query<Touched, With<Health>>, factions: Query<&crate::creatures::factions::Faction>) {
+    for (me, mut t, k, team, health, goo) in &mut touchers {
         t.rest -= DT;
         let stunned = k.loco.state == platypus_physics::MoveState::Stunned;
-        if t.rest > 0.0 || stunned || health.hp <= 0.0 || swinging || moves.is_some_and(|m| m.busy()) {
+        if t.rest > 0.0 || stunned || health.hp <= 0.0 {
             continue;
         }
-        for (e, tk, tteam, safe) in &bodies {
-            if e == me || safe {
+        for (e, tk, tteam, mut inv) in &mut bodies {
+            if e == me || inv.as_ref().is_some_and(|i| i.left > 0.0 && !i.dodge) {
                 continue;
             }
             // (Not its own side, unless their factions are at war; and a
@@ -677,6 +678,9 @@ fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, Without<crat
                 continue;
             }
             let push = (Vec2::new(d.x, 0.0).normalize_or(Vec2::X * k.loco.facing) + Vec2::new(0.0, 0.4)).normalize() * t.knock;
+            if let Some(i) = inv.as_mut().filter(|i| i.dodge) {
+                i.left = 0.0;
+            }
             hits.write(Hit { target: e, damage: t.damage, harm: t.harm, knock: push, stun: t.stun, at: k.body.pos + d * 0.5, dir: d.normalize_or(Vec2::X), weight: t.damage / 12.0, crit: false });
             t.rest = t.every;
             break;
@@ -823,11 +827,14 @@ impl Sturdy {
 /// Seconds without a hit before poise is whole again.
 const POISE_BACK: f32 = 1.5;
 
-/// Nothing hurts it for `left` s (a dodge): what it loses is given back.
+/// Nothing hurts it for `left` s (a dodge, a grace): what it loses is
+/// given back. A dodge (`dodge`: a dash) slips blows, not bodies: a touch
+/// breaks it (`left` 0: over, nothing given back).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Invulnerable {
     pub left: f32,
     pub(crate) hp: f32,
+    pub(crate) dodge: bool,
 }
 
 /// The world all but stops for a moment on a hit.
@@ -921,13 +928,17 @@ fn start_swings(
 }
 
 /// A dash is a dodge: it costs stamina and nothing hurts you for a moment.
-fn dodge(mut commands: Commands, mut dashed: MessageReader<Dashed>, mut q: Query<(&Health, Option<&mut Stamina>)>) {
+fn dodge(mut commands: Commands, mut dashed: MessageReader<Dashed>, mut q: Query<(&Health, Option<&mut Stamina>, Option<&Invulnerable>)>) {
     for &Dashed(e) in dashed.read() {
-        let Ok((h, stamina)) = q.get_mut(e) else { continue };
+        let Ok((h, stamina, now)) = q.get_mut(e) else { continue };
         if let Some(mut s) = stamina {
             s.spend(DODGE_COST);
         }
-        commands.entity(e).insert(Invulnerable { left: DODGE_SAFE, hp: h.hp });
+        // (Not over a grace that's longer.)
+        if now.is_some_and(|i| !i.dodge && i.left >= DODGE_SAFE) {
+            continue;
+        }
+        commands.entity(e).insert(Invulnerable { left: DODGE_SAFE, hp: h.hp, dodge: true });
     }
 }
 
@@ -952,7 +963,10 @@ fn stamina(mut q: Query<&mut Stamina>, mut combos: Query<&mut Combo, Without<Swi
 /// Just before damage is noticed: what the untouchable lost comes back.
 pub fn guard(mut commands: Commands, mut q: Query<(Entity, &mut Invulnerable, &mut Health)>) {
     for (e, mut inv, mut h) in &mut q {
-        h.hp = h.hp.max(inv.hp);
+        // (A dodge broken by a touch gives nothing back.)
+        if inv.left > 0.0 {
+            h.hp = h.hp.max(inv.hp);
+        }
         inv.hp = h.hp;
         inv.left -= DT;
         if inv.left <= 0.0 {
@@ -1290,7 +1304,7 @@ pub(crate) const KNOCK_MOST: f32 = 240.0;
 const DEATH_KNOCK: f32 = 1.25;
 const DEATH_LIFT: f32 = 45.0;
 
-type Struck<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a mut Sturdy>, &'a crate::creatures::MoveStats, Has<Invulnerable>, Has<crate::creatures::player::LocalPlayer>);
+type Struck<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a mut Sturdy>, &'a crate::creatures::MoveStats, Option<&'a Invulnerable>, Has<crate::creatures::player::LocalPlayer>);
 
 /// What a hit does: damage, knockback and stun, sparks where it struck, a
 /// moment of hit-stop (longer, harder hits), a shake.
@@ -1330,8 +1344,8 @@ fn apply_hits(
     // a swarm's bites all land at once.)
     let mut graced = std::collections::HashSet::new();
     for h in hits.read() {
-        let Ok((mut k, mut health, sturdy, _, safe, player)) = q.get_mut(h.target) else { continue };
-        if safe || graced.contains(&h.target) {
+        let Ok((mut k, mut health, sturdy, _, inv, player)) = q.get_mut(h.target) else { continue };
+        if inv.is_some_and(|i| i.left > 0.0) || graced.contains(&h.target) {
             continue;
         }
         // (Scaled by what it struck: a leg takes less, a weak spot more; on
@@ -1377,7 +1391,7 @@ fn apply_hits(
                 commands.entity(h.target).remove::<Swing>();
             }
             if s.after_hit > 0.0 {
-                commands.entity(h.target).insert((Invulnerable { left: s.after_hit, hp: health.hp }, Graced(s.after_hit)));
+                commands.entity(h.target).insert((Invulnerable { left: s.after_hit, hp: health.hp, dodge: false }, Graced(s.after_hit)));
                 graced.insert(h.target);
             }
         }

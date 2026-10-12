@@ -778,7 +778,7 @@ pub(crate) fn struggle(
         if s.loose < 1.0 {
             continue;
         }
-        commands.entity(e).remove::<(Held, Struggle)>().insert(crate::combat::Invulnerable { left: FREE_SAFE, hp: health.hp });
+        commands.entity(e).remove::<(Held, Struggle)>().insert(crate::combat::Invulnerable { left: FREE_SAFE, hp: health.hp, dodge: false });
         if let Ok(mut gk) = grabbers.get_mut(h.by) {
             let away = Vec2::new((gk.body.pos.x - k.body.pos.x).signum(), 0.4);
             let gk = &mut *gk;
