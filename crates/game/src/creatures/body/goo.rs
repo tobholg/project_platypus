@@ -806,6 +806,9 @@ pub struct Glutton {
     charge: f32,
 }
 
+/// What the glutton takes on: a strike of it at least this much (not the
+/// trickle of flames or cold it's in).
+const STRIKE: f32 = 2.0;
 /// What the glutton holds drains away in this long (s); fire on frost
 /// (or frost on fire) goes off this hard.
 const DRAIN: f32 = 10.0;
@@ -820,18 +823,21 @@ pub fn glut(
     mut commands: Commands,
     time: Res<Time>,
     mut sim: ResMut<SimWorld>,
-    mut felt: MessageReader<crate::combat::Felt>,
-    mut q: Query<(Entity, &mut Glutton, &mut Goo, &Kinematics, &super::animation::Animator, Option<&mut crate::combat::Touch>)>,
+    mut q: Query<(Entity, &mut Glutton, &mut Goo, &Kinematics, &super::animation::Animator, Option<&mut crate::combat::Touch>, &Health)>,
     mut booms: MessageWriter<crate::fx::Explosion>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
 ) {
     use crate::creatures::Harm;
     let dt = time.delta_secs();
-    let struck: Vec<(Entity, Harm)> = felt.read().filter(|f| matches!(f.harm, Harm::Fire | Harm::Frost | Harm::Storm)).map(|f| (f.target, f.harm)).collect();
-    for (e, mut g, mut goo, k, anim, touch) in &mut q {
+    for (e, mut g, mut goo, k, anim, touch, health) in &mut q {
         let before = g.took;
-        for &(t, harm) in struck.iter().filter(|(t, _)| *t == e) {
-            let _ = t;
+        // (Whatever way it came: a blow, a spell's arc, lightning: what
+        // it's taken this tick.)
+        // (Not what it holds already: its own hot or cold goo would keep
+        // it topped up, and it'd never drain.)
+        // (A strike, not the trickle of the flames it stands in.)
+        let struck: Vec<Harm> = [Harm::Fire, Harm::Frost, Harm::Storm].into_iter().filter(|h| health.took[*h as usize].0 >= STRIKE && g.took != Some(*h)).collect();
+        for harm in struck {
             let undoes = matches!((g.took, harm), (Some(Harm::Fire), Harm::Frost) | (Some(Harm::Frost), Harm::Fire));
             if undoes {
                 // (Fire and frost together: they go off.)
