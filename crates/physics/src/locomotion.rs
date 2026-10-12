@@ -83,6 +83,8 @@ pub fn tether(body: &mut Body, at: Vec2, len: f32, dt: f32) -> bool {
 /// Rocket boots under water: shares of their thrust and top speed.
 const ROCKET_WATER: (f32, f32) = (0.5, 0.45);
 
+/// Rocket boots steer sideways this many times as hard as air control.
+const ROCKET_STEER: f32 = 1.5;
 /// Seconds after rocket boots stop firing before they start to refill.
 const ROCKET_RECHARGE_DELAY: f32 = 0.25;
 /// On the ground they refill this many times as fast as in the air.
@@ -166,6 +168,10 @@ pub struct MovementStats {
     /// `rocket_speed` rising.
     pub rocket_thrust: f32,
     pub rocket_speed: f32,
+    /// Sideways while it fires: up to this fast (0: run speed), steered
+    /// `ROCKET_STEER` times as hard; the speed's kept after, till it lands
+    /// or turns.
+    pub rocket_run: f32,
 }
 
 impl MovementStats {
@@ -222,6 +228,7 @@ impl Default for MovementStats {
             rocket_time: 0.0,
             rocket_thrust: 3900.0,
             rocket_speed: 345.0,
+            rocket_run: 0.0,
         }
     }
 }
@@ -295,6 +302,10 @@ pub struct Locomotion {
     /// This hold of jump may fire the rocket boots: it was pressed in the
     /// air, and the press wasn't a jump (off a wall, or an air jump).
     rocket_hold: bool,
+    /// The rocket fired last tick; its sideways speed's still carried (till
+    /// it lands or turns).
+    rocketing: bool,
+    rocket_carry: bool,
     /// On a rope (set before each `steer`): in the air it keeps its swing
     /// (air control pumps it, never brakes it).
     pub swinging: bool,
@@ -334,6 +345,8 @@ impl Default for Locomotion {
             rocket_left: 0.0,
             rocket_rest: 0.0,
             rocket_hold: false,
+            rocketing: false,
+            rocket_carry: false,
             swinging: false,
             backed: false,
             dive: 0.0,
@@ -581,14 +594,24 @@ impl Locomotion {
             return ev;
         }
 
-        // Run.
-        let target = intent.move_x.clamp(-1.0, 1.0) * s.run_speed * if self.crouching { CROUCH_PACE } else { 1.0 };
+        // Run (on rocket boots, faster: `rocket_run`).
+        if grounded {
+            self.rocket_carry = false;
+        }
+        let rocket_run = (self.rocketing || self.rocket_carry) && s.rocket_run > s.run_speed;
+        let top = if rocket_run { s.rocket_run } else { s.run_speed };
+        let target = intent.move_x.clamp(-1.0, 1.0) * top * if self.crouching { CROUCH_PACE } else { 1.0 };
+        if rocket_run && !self.rocketing && target * body.vel.x <= 0.0 {
+            self.rocket_carry = false;
+        }
         // (On ice there's little grip to start, stop or turn with.)
         let turning = target * body.vel.x < 0.0 && s.turn_accel > 0.0;
         let accel = if grounded {
             (if turning { s.turn_accel } else if target != 0.0 { s.ground_accel } else { s.ground_decel }) * self.contacts.grip
         } else if self.wall_lock > 0.0 {
             s.air_accel * 0.25
+        } else if self.rocketing && rocket_run {
+            s.air_accel * ROCKET_STEER
         } else {
             s.air_accel
         };
@@ -600,7 +623,11 @@ impl Locomotion {
                 body.vel.x += push * s.gravity * SWING_PUMP * dt;
             }
         } else {
-            body.vel.x = approach(body.vel.x, target, accel * dt);
+            // (Carried on from rocketing: not slowed while it steers on.)
+            let carried = self.rocket_carry && !self.rocketing && target * body.vel.x > 0.0 && body.vel.x.abs() > target.abs();
+            if !carried {
+                body.vel.x = approach(body.vel.x, target, accel * dt);
+            }
         }
 
         // Wall slide.
@@ -712,11 +739,14 @@ impl Locomotion {
         {
             self.rocket_left -= dt;
             self.rocket_rest = 0.0;
+            self.rocketing = true;
+            self.rocket_carry = s.rocket_run > s.run_speed;
             body.vel.y = (body.vel.y + thrust * dt).min(top);
             // (The rocket, not the jump, now: letting go doesn't cut it.)
             self.rising_from_jump = false;
             ev.rocketed = true;
         } else if s.rocket_time > 0.0 {
+            self.rocketing = false;
             // Not firing (anywhere: the ground, the air, water) they fill
             // back up, a second's charge a second (two on the ground), a
             // moment after they stop; not while jump is held on empty in the

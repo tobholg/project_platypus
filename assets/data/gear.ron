@@ -186,10 +186,11 @@
         // rocket: Terraria's rocket boots. Hold jump in the air (once the
         // jump's rise slows, any air jumps spent): thrust up for `time` s,
         // refilled on landing; `thrust` cells/s² against gravity up to
-        // `speed` rising; `fire`: the exhaust is flame (it scorches what's
-        // under it, and sets grass and wood alight).
+        // `speed` rising; sideways up to `run` while it fires (kept after,
+        // till you land or turn); `fire`: the exhaust is flame (it scorches
+        // what's under it, and sets grass and wood alight).
         (id: "rocket_boots", name: "Rocket boots", color: (200, 70, 40),
-            gear: (slot: Feet, stats: { Armor: 2, FireResist: 25 }, rocket: (time: 3.0, thrust: 3450, speed: 315, fire: true),
+            gear: (slot: Feet, stats: { Armor: 2, FireResist: 25 }, rocket: (time: 3.0, thrust: 4600, speed: 350, run: 240, fire: true),
             look: (recolor: [(colors: { 'B': (196, 64, 40), 'C': (140, 44, 30), 'U': (222, 92, 60), 'o': (64, 34, 28) })],
                 palette: { 'y': (236, 196, 80) }, over: [
                 // A gold band round each boot's top, part by part.

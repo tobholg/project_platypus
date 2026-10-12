@@ -110,8 +110,9 @@ pub struct GearDef {
 }
 
 /// Rocket boots: `time` s of thrust (refilled on landing), `thrust`
-/// cells/s² against gravity up to `speed` rising; `fire`: the exhaust is
-/// flame (it burns what's under it, and lights what it lands on).
+/// cells/s² against gravity up to `speed` rising, sideways up to `run`;
+/// `fire`: the exhaust is flame (it burns what's under it, and lights what
+/// it lands on).
 #[derive(Clone, Debug, Deserialize)]
 pub struct RocketDef {
     pub time: f32,
@@ -119,6 +120,9 @@ pub struct RocketDef {
     pub thrust: f32,
     #[serde(default = "rocket_speed")]
     pub speed: f32,
+    /// Sideways while it fires, up to this fast (0: run speed).
+    #[serde(default)]
+    pub run: f32,
     #[serde(default)]
     pub fire: bool,
 }
@@ -302,6 +306,7 @@ pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures:
             m.rocket_time = r.time;
             m.rocket_thrust = r.thrust;
             m.rocket_speed = r.speed;
+            m.rocket_run = r.run;
         }
         // (And slower for what it's lost: `wounds`.)
         if let (Some(legs), Some(lost)) = (def.legs.as_ref(), severed) {

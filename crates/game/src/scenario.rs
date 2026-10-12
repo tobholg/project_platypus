@@ -7473,7 +7473,8 @@ type Pogoer<'a> = (&'a mut Kinematics, &'a crate::creatures::Health, Option<&'a 
 /// (1 s: how high, how long in the air), a dash on the ground (3 s: how
 /// far), then a long fall from high up (lifted back up on the way) with a
 /// dash at once and another 0.9 s on (how many came: an air dash back in
-/// the air, or not).
+/// the air, or not); then on its rocket boots, jump held and steering
+/// right (how far, how fast sideways, and whether it's kept after).
 fn leap_script(
     s: Res<Scenario>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
@@ -7551,6 +7552,38 @@ fn leap_script(
         7 if t - state.2 > 1.3 => {
             info!("leap: falling, two dashes 0.9 s apart: {} came ({})", state.4, if k.loco.grounded() { "it had landed" } else { "still in the air" });
             state.0 = 8;
+        }
+        // On rocket boots (what it wears): from 120 up, after 0.2 s, jump pressed and
+        // held, steering right, 1.6 s; then let go of jump, still steering
+        // (its speed carried?).
+        8 if k.loco.grounded() && t - state.2 > 2.0 => {
+            k.body.pos = Vec2::new(300.0, fl + 120.0);
+            k.prev_pos = k.body.pos;
+            k.body.vel = Vec2::ZERO;
+            state.3 = 300.0;
+            state.1 = 0.0;
+            state.2 = t;
+            state.0 = 9;
+        }
+        9 => {
+            // (Pressed in the air and held: the boots.)
+            let d = t - state.2;
+            if d < 0.2 { keys.release(KeyCode::Space) } else { keys.press(KeyCode::Space) }
+            keys.press(KeyCode::KeyD);
+            state.1 = state.1.max(k.body.vel.x);
+            if t - state.2 > 1.8 {
+                keys.release(KeyCode::Space);
+                info!("leap: rocketing 1.6 s: {:.0} cells across, {:.0} up, at most {:.0} cells/s sideways", k.body.pos.x - state.3, feet - fl, state.1);
+                state.0 = 10;
+            }
+        }
+        10 => {
+            keys.press(KeyCode::KeyD);
+            if t - state.2 > 2.1 {
+                info!("leap: 0.3 s after, still steering: {:.0} cells/s sideways", k.body.vel.x);
+                keys.release(KeyCode::KeyD);
+                state.0 = 11;
+            }
         }
         _ => {}
     }

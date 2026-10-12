@@ -121,7 +121,7 @@ impl Tempo {
         if (k - 1.0).abs() < 1e-4 || k <= 0.0 {
             return m;
         }
-        for v in [&mut m.run_speed, &mut m.max_fall, &mut m.dash_speed, &mut m.fly_speed, &mut m.swim_speed, &mut m.wall_slide_speed, &mut m.wall_jump_push, &mut m.rocket_speed] {
+        for v in [&mut m.run_speed, &mut m.max_fall, &mut m.dash_speed, &mut m.fly_speed, &mut m.swim_speed, &mut m.wall_slide_speed, &mut m.wall_jump_push, &mut m.rocket_speed, &mut m.rocket_run] {
             *v *= k;
         }
         for v in [&mut m.ground_accel, &mut m.ground_decel, &mut m.turn_accel, &mut m.air_accel, &mut m.gravity, &mut m.fly_accel, &mut m.swim_accel, &mut m.rocket_thrust] {
