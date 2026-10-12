@@ -9681,7 +9681,7 @@ fn slime_script(
         if mode == "many" {
             // (Ten, spread out: what holding their goo costs.)
             for n in 0..10 {
-                crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(960.0 + n as f32 * 45.0, fl), |_| {});
+                crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(700.0 + n as f32 * 90.0, fl), |_| {});
             }
         } else if mode == "merge" {
             // (Two halves, side by side, hopping at the player.)
@@ -9797,7 +9797,7 @@ fn slime_script(
         let held: Vec<String> = swallowed.iter().map(|(_, d, c)| if d { "an item".to_string() } else { c.map_or("?".to_string(), |c| c.kind.clone()) }).collect();
         info!("slime: t {t:.1} in it: [{}]; items about: {}", held.join(", "), drops.iter().count());
     }
-    if t >= state.2 && matches!(mode.as_str(), "split" | "merge") {
+    if t >= state.2 && matches!(mode.as_str(), "split" | "merge" | "many") {
         let all: Vec<String> = them.iter().filter(|x| x.1.kind == kind).map(|x| format!("{:.0}/{:.0} holds {} at {:.0}", x.3.hp, x.3.max, x.4.map_or(0, |g| g.held()), x.2.body.pos.x)).collect();
         info!("slime: t {t:.1} slimes: {}", all.join("; "));
     }

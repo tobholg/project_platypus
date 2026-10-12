@@ -236,6 +236,10 @@ pub struct CreatureDef {
     /// glutton (`body/goo.rs`, Glutton).
     #[serde(default)]
     pub glutton: bool,
+    /// How big each one comes (against its kind: `body::goo::Mass`), from ..
+    /// to, most near the smaller (a slime: some much bigger).
+    #[serde(default)]
+    pub sizes: Option<(f32, f32)>,
     /// Its body is goo, cells of the world held round it (a slime:
     /// `body/goo.rs`).
     #[serde(default)]
@@ -566,6 +570,10 @@ pub(crate) fn hot_reload_creatures(mut commands: Commands, mut creatures: ResMut
 const STANCE_FROM: f32 = 14.0;
 const STANCE_SHARE: f32 = 0.4;
 
+/// How sizes lean toward the smaller end (`CreatureDef::sizes`): the
+/// share up the range is a roll to this power.
+const SIZE_SKEW: f32 = 3.5;
+
 pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: impl FnOnce(&mut EntityWorldMut) + Send + 'static) {
     let kind = kind.to_string();
     commands.queue(move |world: &mut World| {
@@ -640,6 +648,11 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         }
         if def.goo.is_some() {
             e.insert(super::body::goo::Goo::default());
+        }
+        // (Each its own size, picked by its number; most near the smaller.)
+        if let Some((lo, hi)) = def.sizes {
+            let u = (number.wrapping_mul(0xD1B5_4A32_D192_ED03) >> 40) as f32 / (1u64 << 24) as f32;
+            e.insert(super::body::goo::Mass(lo + (hi - lo) * u.powf(SIZE_SKEW)));
         }
         if def.glutton {
             e.insert(super::body::goo::Glutton::default());

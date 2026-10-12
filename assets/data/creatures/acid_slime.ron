@@ -20,6 +20,8 @@
     // (Its goo is its blood: hurt, it flings goo off; dead, it spills.)
     blood: "",
     art: "acid_slime_core",
+    // Each its own size: most about this big, some much bigger.
+    sizes: Some((1.0, 2.5)),
     goo: Some((material: "acid_goo", cells: 650,
         // Near you, its face toward you shivers, then a fan of goo spikes
         // stabs out at you, pulsing in a wave, jittering.
