@@ -5,7 +5,8 @@
 //!
 //! A preset sets the player's movement fields it names (over its creature file's; its run speed and jump height stay
 //! scaled by what it wears), and paces every other creature: speeds × pace,
-//! accelerations and gravity × pace², times ÷ pace (the same arcs, slower).
+//! accelerations and gravity × pace², times ÷ pace (the same arcs, slower);
+//! and may raise their jumps (`jump`) and lighten them (`gravity`).
 //!
 //! Applied where movement is read (`Tempo::apply`), so a switch is live.
 
@@ -37,6 +38,11 @@ pub struct Preset {
     /// Every other creature's pace (1: as its file says).
     #[serde(default = "one")]
     pub pace: f32,
+    /// Every other creature's jump height, and its gravity, × these.
+    #[serde(default = "one")]
+    pub jump: f32,
+    #[serde(default = "one")]
+    pub gravity: f32,
     /// The player's movement fields, by name.
     #[serde(default)]
     pub player: BTreeMap<String, f32>,
@@ -102,11 +108,15 @@ impl Tempo {
                     "wall_jump_push" => m.wall_jump_push = v,
                     "dash_speed" => m.dash_speed = v,
                     "dash_time" => m.dash_time = v,
+                    "dash_cooldown" => m.dash_cooldown = v,
+                    "air_dash_recharge" => m.air_dash_recharge = v,
                     _ => {}
                 }
             }
             return m;
         }
+        m.jump_height *= p.jump;
+        m.gravity *= p.gravity;
         let k = p.pace;
         if (k - 1.0).abs() < 1e-4 || k <= 0.0 {
             return m;
@@ -117,7 +127,7 @@ impl Tempo {
         for v in [&mut m.ground_accel, &mut m.ground_decel, &mut m.turn_accel, &mut m.air_accel, &mut m.gravity, &mut m.fly_accel, &mut m.swim_accel, &mut m.rocket_thrust] {
             *v *= k * k;
         }
-        for v in [&mut m.dash_time, &mut m.jump_hold] {
+        for v in [&mut m.dash_time, &mut m.jump_hold, &mut m.air_dash_recharge] {
             *v /= k;
         }
         m

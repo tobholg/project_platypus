@@ -10,8 +10,10 @@
 //   fall_gravity (× gravity coming down), max_fall, jump_height (a full
 //   jump's apex), jump_hold (s of steady rise while jump is held: Terraria's
 //   jump), jump_cut (rise kept on letting go early), dash_speed, dash_time,
-//   wall_slide_speed, wall_jump_push.
-// `pace`: every other creature's (speeds × pace, accelerations × pace²).
+//   dash_cooldown, air_dash_recharge (the air dash back this long after,
+//   even in the air; 0: once an airtime), wall_slide_speed, wall_jump_push.
+// `pace`: every other creature's (speeds × pace, accelerations × pace²);
+// `jump`, `gravity`: theirs × these (higher jumps, a lighter fall).
 //
 // In body heights (the player is 23 cells): Hollow Knight runs 6.3 a
 // second, jumps 2.7 high, 0.48 s in the air; Terraria 4.3, 2.5, 0.85 s.
@@ -20,6 +22,14 @@
     presets: [
         // What the player's file says: snappy, heavy, fast.
         (name: "Hollow Knight", pace: 1.0),
+        // Experimental: Hollow Knight's sharp run and stop, but higher
+        // jumps (everyone's), a little lighter, a longer, quicker dash that
+        // comes back in the air too.
+        (name: "Experimental", pace: 1.0, jump: 1.2, gravity: 0.88, player: {
+            "gravity": 1450, "fall_gravity": 1.5, "max_fall": 590,
+            "jump_height": 72,
+            "dash_speed": 440, "dash_time": 0.17, "dash_cooldown": 0.45, "air_dash_recharge": 0.8,
+        }),
         // Between: some run-up and skid, a short held rise, ~0.65 s in the
         // air, a softer fall.
         (name: "Middle", pace: 0.8, player: {

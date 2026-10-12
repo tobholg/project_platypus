@@ -295,6 +295,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, spider_script)
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, leap_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
             .add_systems(PreUpdate, stealth_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7466,6 +7467,98 @@ fn backwall_script(
 }
 
 type Pogoer<'a> = (&'a mut Kinematics, &'a crate::creatures::Health, Option<&'a crate::combat::Swing>);
+
+/// `leap` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`, with any
+/// `PLATYPUS_TEMPO`): how the player moves at this tempo. A full jump
+/// (1 s: how high, how long in the air), a dash on the ground (3 s: how
+/// far), then a long fall from high up (lifted back up on the way) with a
+/// dash at once and another 0.9 s on (how many came: an air dash back in
+/// the air, or not).
+fn leap_script(
+    s: Res<Scenario>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut dashed: MessageReader<crate::combat::Dashed>,
+    tempo: Res<crate::tempo::Tempo>,
+    // (phase, the highest, when it left the ground, x where it dashed, dashes)
+    mut state: Local<(u8, f32, f32, f32, u32)>,
+) {
+    if s.name != "leap" {
+        return;
+    }
+    let Ok(mut k) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let feet = k.body.pos.y - k.body.half.y;
+    let dashes = dashed.read().count() as u32;
+    keys.release(KeyCode::ShiftLeft);
+    let tap = |keys: &mut ButtonInput<KeyCode>| keys.press(KeyCode::ShiftLeft);
+    match state.0 {
+        0 if t > 0.8 => {
+            k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            k.body.vel = Vec2::ZERO;
+            info!("leap: tempo {}", tempo.name());
+            state.0 = 1;
+        }
+        1 if t > 1.0 => {
+            keys.press(KeyCode::Space);
+            state.1 = 0.0;
+            state.2 = t;
+            state.0 = 2;
+        }
+        2 => {
+            if t - state.2 > 0.6 {
+                keys.release(KeyCode::Space);
+            }
+            state.1 = state.1.max(feet - fl);
+            if t - state.2 > 0.1 && k.loco.grounded() {
+                info!("leap: a full jump rose {:.0} cells ({:.1} bodies), {:.2} s in the air", state.1, state.1 / 23.0, t - state.2);
+                state.0 = 3;
+            }
+        }
+        3 if t > 3.0 => {
+            tap(&mut keys);
+            state.3 = k.body.pos.x;
+            state.2 = t;
+            state.0 = 4;
+        }
+        4 if t - state.2 > 0.6 => {
+            info!("leap: a dash on the ground went {:.0} cells", k.body.pos.x - state.3);
+            k.body.pos = Vec2::new(900.0, fl + 380.0);
+            k.prev_pos = k.body.pos;
+            k.body.vel = Vec2::ZERO;
+            state.4 = 0;
+            state.2 = t;
+            state.0 = 5;
+        }
+        5 if t - state.2 > 0.1 => {
+            tap(&mut keys);
+            info!("leap: dash at {:.0} up", feet - fl);
+            state.0 = 6;
+        }
+        // (Lifted back up as it falls: still in the air, its air dash as
+        // it was.)
+        6 if t - state.2 > 0.6 && feet - fl < 250.0 && t - state.2 < 0.9 => {
+            k.body.pos.y += 200.0;
+            k.prev_pos = k.body.pos;
+        }
+        6 if t - state.2 > 1.0 => {
+            tap(&mut keys);
+            info!("leap: dash at {:.0} up ({} so far)", feet - fl, state.4);
+            state.0 = 7;
+        }
+        7 if t - state.2 > 1.3 => {
+            info!("leap: falling, two dashes 0.9 s apart: {} came ({})", state.4, if k.loco.grounded() { "it had landed" } else { "still in the air" });
+            state.0 = 8;
+        }
+        _ => {}
+    }
+    if state.0 >= 5 {
+        state.4 += dashes;
+    }
+}
+
 
 /// The down-strike (DESIGN §8): a shortsword's down slash chained across
 /// the three dummies with S held and the cursor off level ahead; the

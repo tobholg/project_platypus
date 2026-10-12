@@ -123,6 +123,9 @@ pub struct MovementStats {
     pub dash_speed: f32,
     pub dash_time: f32,
     pub dash_cooldown: f32,
+    /// The air dash comes back this long after it's used, even in the air
+    /// (0: once an airtime, back on landing, a wall, a pogo).
+    pub air_dash_recharge: f32,
     pub wall_jump: bool,
     pub wall_slide_speed: f32,
     /// Sideways speed given by a wall jump.
@@ -201,6 +204,7 @@ impl Default for MovementStats {
             dash_speed: 0.0,
             dash_time: 0.14,
             dash_cooldown: 0.45,
+            air_dash_recharge: 0.0,
             wall_jump: false,
             wall_slide_speed: 90.0,
             wall_jump_push: 180.0,
@@ -261,6 +265,8 @@ pub struct Locomotion {
     dash_cooldown: f32,
     dash_dir: f32,
     air_dash_used: bool,
+    /// Till the air dash is back (`air_dash_recharge`).
+    air_dash_wait: f32,
     rising_from_jump: bool,
     /// Seconds left of a jump's held rise (`jump_hold`).
     hold_left: f32,
@@ -317,6 +323,7 @@ impl Default for Locomotion {
             dash_cooldown: 0.0,
             dash_dir: 1.0,
             air_dash_used: false,
+            air_dash_wait: 0.0,
             rising_from_jump: false,
             hold_left: 0.0,
             wall_lock: 0.0,
@@ -424,6 +431,13 @@ impl Locomotion {
         self.buffer = if jump_pressed { s.jump_buffer } else { (self.buffer - dt).max(0.0) };
         self.dash_cooldown = (self.dash_cooldown - dt).max(0.0);
         self.wall_lock = (self.wall_lock - dt).max(0.0);
+        // (Recharging in the air.)
+        if self.air_dash_used && s.air_dash_recharge > 0.0 {
+            self.air_dash_wait -= dt;
+            if self.air_dash_wait <= 0.0 {
+                self.air_dash_used = false;
+            }
+        }
         if grounded {
             self.air_jumps_left = s.air_jumps;
             self.air_dash_used = false;
@@ -466,6 +480,7 @@ impl Locomotion {
             self.dash_dir = if intent.move_x != 0.0 { intent.move_x.signum() } else { self.facing };
             self.dash_cooldown = s.dash_cooldown;
             self.air_dash_used |= !grounded;
+            self.air_dash_wait = s.air_dash_recharge;
             self.rising_from_jump = false;
             ev.dashed = true;
         }
