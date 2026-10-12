@@ -182,6 +182,14 @@
             gear: (slot: Feet, weight: Heavy, stats: { Armor: 6, FallResist: 10 },
             look: (recolor: [(colors: { 'B': (130, 138, 156), 'C': (94, 102, 120), 'U': (160, 166, 182), 'o': (66, 70, 84) })]))),
 
+        // ---- capes (cloth.rs): worn on the back, they hang and swing ----
+        // cape: its outside and lining, points across and down and how far
+        // apart, where it's pinned (from the middle: across, + the way it
+        // faces, and up), how torn its hem, how heavy, how hard it falls
+        // away behind you.
+        (id: "travelers_cape", name: "Traveler's cape", color: (150, 38, 36),
+            gear: (slot: Back, stats: { Armor: 1 },
+            cape: (color: (150, 38, 36), lining: (92, 24, 28), cols: 5, rows: 10, gap: 2.5, pin: (-5.5, -1.5, 5.5), torn: 0.2, behind: 140))),
         // ---- boots with a trick ----
         // rocket: Terraria's rocket boots. Hold jump in the air (once the
         // jump's rise slows, any air jumps spent): thrust up for `time` s,

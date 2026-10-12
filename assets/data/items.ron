@@ -174,5 +174,5 @@
     ],
     // What a new player wears (while developing: rocket boots and a
     // grappling hook to try).
-    wear: ["rocket_boots", "grappling_hook"],
+    wear: ["rocket_boots", "grappling_hook", "travelers_cape"],
 )

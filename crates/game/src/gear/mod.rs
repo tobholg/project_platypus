@@ -45,6 +45,8 @@ pub enum Slot {
     Trinket,
     /// A grappling hook (`hook.rs`), on the belt.
     Hook,
+    /// A cape, a cloak (`cloth.rs`: it hangs and swings).
+    Back,
     /// In the hand (the hotbar slot in use): weapons, tools, foci.
     Held,
 }
@@ -59,13 +61,14 @@ impl Slot {
             Slot::Feet => "Feet",
             Slot::Trinket => "Trinket",
             Slot::Hook => "Hook",
+            Slot::Back => "Back",
             Slot::Held => "Held",
         }
     }
 }
 
 /// The worn slots, in order (what `Equipment::worn` holds).
-pub const WORN: [Slot; 8] = [Slot::Head, Slot::Body, Slot::Hands, Slot::Legs, Slot::Feet, Slot::Trinket, Slot::Trinket, Slot::Hook];
+pub const WORN: [Slot; 9] = [Slot::Head, Slot::Body, Slot::Hands, Slot::Legs, Slot::Feet, Slot::Trinket, Slot::Trinket, Slot::Hook, Slot::Back];
 
 /// How heavy a piece of armour is: what kind of fighter wears it. Its
 /// weight's stats (gear.ron `weights`) come with every piece.
@@ -104,6 +107,9 @@ pub struct GearDef {
     /// thrusts up (`boots.rs`).
     #[serde(default)]
     pub rocket: Option<RocketDef>,
+    /// Worn on the back: cloth that hangs and swings (`cloth.rs`).
+    #[serde(default)]
+    pub cape: Option<crate::cloth::ClothDef>,
     /// A grappling hook's rope (`hook.rs`).
     #[serde(default)]
     pub hook: Option<hook::HookDef>,
