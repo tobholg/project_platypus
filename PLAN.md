@@ -525,7 +525,11 @@ sapper, bat swarm. Mimic built 2026-10-12 on `roster`: chests deep down
 and in castles one in six; `Disguised`; `mimic` scenario. Chain wraith
 built 2026-10-12 (asked for next): `Phasing`, simulated chains on a canvas,
 spin/lash/pull/rake and whirl/sweep, water stops it, fades at dawn, night
-surface and deep caves; `wraith` scenario.)
+surface and deep caves; `wraith` scenario. Dread knight (asked for,
+2026-10-12): a Nazgul-like giant, cloth cloak and rags (cloth.rs, with
+the player's Back slot and Traveler's cape), chains, a simulated spiked
+flail: whirl and slam (crater), draw and sweep; drops a wearable Dread
+cloak; `dread` scenario.)
 Necromancer, risen skeletons, zombies, chain wraith, watcher, stilt
 stalker, crag crab, scorpion, cave centipede, the reworked cave spider,
 bloat toad, splitting slime, shield orc, orc sapper, mimic, bat swarm

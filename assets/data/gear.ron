@@ -190,6 +190,10 @@
         (id: "travelers_cape", name: "Traveler's cape", color: (150, 38, 36),
             gear: (slot: Back, stats: { Armor: 1 },
             cape: (color: (150, 38, 36), lining: (92, 24, 28), cols: 5, rows: 10, gap: 2.5, pin: (-5.5, -1.5, 5.5), torn: 0.2, behind: 140))),
+        // A dread knight's cloak: long, black, torn to rags at the hem.
+        (id: "dread_cloak", name: "Dread cloak", color: (34, 32, 42),
+            gear: (slot: Back, stats: { Armor: 4, FrostResist: 15 },
+            cape: (color: (28, 28, 36), lining: (62, 22, 28), cols: 6, rows: 12, gap: 2.4, pin: (-6.0, -1.0, 5.5), torn: 0.55, weight: 1.2, behind: 120))),
         // ---- boots with a trick ----
         // rocket: Terraria's rocket boots. Hold jump in the air (once the
         // jump's rise slows, any air jumps spent): thrust up for `time` s,

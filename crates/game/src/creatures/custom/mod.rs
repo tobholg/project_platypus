@@ -31,6 +31,7 @@
 //! Registered in `CustomPlugin` (one line each). A file naming a module
 //! (or a brain) that doesn't exist is reported at start, loudly.
 
+pub mod dread;
 pub mod dummy;
 pub mod explosive;
 pub mod hatchery;
@@ -62,7 +63,8 @@ impl Plugin for CustomPlugin {
             .register_custom::<explosive::Explosive>()
             .register_custom::<hatchery::Hatchery>()
             .register_custom::<mimic::Mimic>()
-            .register_custom::<wraith::Wraith>();
+            .register_custom::<wraith::Wraith>()
+            .register_custom::<dread::Dread>();
     }
 }
 

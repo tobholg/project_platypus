@@ -86,10 +86,6 @@ impl Drape {
         Drape { def, worn: false, pts: Vec::new(), prev: Vec::new(), tears, facing: 1.0 }
     }
 
-    /// Its points (for a creature's code: where its hem is).
-    pub fn points(&self) -> &[Vec2] {
-        &self.pts
-    }
 }
 
 /// What's hanging on something.
@@ -319,6 +315,74 @@ fn draw(mut commands: Commands, mut canvas: ResMut<ClothCanvas>, mut images: Res
                 let j = (rows - 1 - d.tears[i].min(rows - 2)).max(1);
                 line(&mut px, p(i, j), p(i + 1, j));
             }
+        }
+    }
+}
+
+/// A hanging chain of links (`n`, `gap` apart), held at its top: it falls,
+/// swings and trails what holds it. (Not cloth, but it hangs as cloth
+/// does; a creature's code draws it with `draw_links`.)
+#[derive(Clone, Debug, Default)]
+pub struct Links {
+    pts: Vec<Vec2>,
+    prev: Vec<Vec2>,
+    n: usize,
+    gap: f32,
+}
+
+impl Links {
+    pub fn new(n: usize, gap: f32) -> Links {
+        Links { pts: Vec::new(), prev: Vec::new(), n, gap }
+    }
+
+    pub fn points(&self) -> &[Vec2] {
+        &self.pts
+    }
+
+    /// A tick: held at `top`, falling `fall` cells/s².
+    pub fn swing(&mut self, top: Vec2, fall: f32) {
+        if self.pts.len() != self.n || self.pts[0].distance(top) > JUMP {
+            self.pts = (0..self.n).map(|i| top - Vec2::Y * self.gap * i as f32).collect();
+            self.prev = self.pts.clone();
+        }
+        for i in 1..self.n {
+            let v = (self.pts[i] - self.prev[i]) * 0.97;
+            self.prev[i] = self.pts[i];
+            self.pts[i] += v - Vec2::Y * fall * DT * DT;
+        }
+        for _ in 0..6 {
+            self.pts[0] = top;
+            for i in 1..self.n {
+                let d = self.pts[i] - self.pts[i - 1];
+                let len = d.length().max(1e-4);
+                let fix = d * (1.0 - self.gap / len);
+                if i == 1 {
+                    self.pts[i] -= fix;
+                } else {
+                    self.pts[i - 1] += fix * 0.5;
+                    self.pts[i] -= fix * 0.5;
+                }
+            }
+        }
+        self.pts[0] = top;
+    }
+}
+
+/// Links drawn through `pts`: light and dark by turns, two cells thick.
+pub fn draw_links(px: &mut crate::canvas::Pixels, pts: &[Vec2], light: [u8; 4], dark: [u8; 4]) {
+    let mut n = 0u32;
+    let mut last = IVec2::MAX;
+    for pair in pts.windows(2) {
+        let steps = (pair[0].distance(pair[1]) * 1.5).ceil().max(1.0) as i32;
+        for s in 0..=steps {
+            let p = pair[0].lerp(pair[1], s as f32 / steps as f32).floor().as_ivec2();
+            if p == last {
+                continue;
+            }
+            last = p;
+            n += 1;
+            px.put(p.x, p.y, if (n / 2).is_multiple_of(2) { light } else { dark });
+            px.put(p.x, p.y - 1, dark);
         }
     }
 }

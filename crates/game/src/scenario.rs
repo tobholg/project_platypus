@@ -300,6 +300,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, structure_script)
             .add_systems(PreUpdate, mimic_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, wraith_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(Update, dread_script)
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
             .add_systems(PreUpdate, stealth_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7471,6 +7472,64 @@ fn backwall_script(
 }
 
 type Pogoer<'a> = (&'a mut Kinematics, &'a crate::creatures::Health, Option<&'a crate::combat::Swing>);
+
+/// `dread` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a dread knight
+/// at 1120; the player (who can't die) stands at 900 (`PLATYPUS_DREAD=near`:
+/// at 1085, for the sweep; `kill`: it's struck with light till it dies, and
+/// leaves its cloak). Logs what it does, the player's health lost.
+fn dread_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Option<&crate::creatures::custom::dread::Dread>), Without<LocalPlayer>>,
+    drops: Query<&crate::hands::Dropped>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, f32, &'static str)>,
+) {
+    if s.name != "dread" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let mode = std::env::var("PLATYPUS_DREAD").unwrap_or_default();
+    state.2 += h.max - h.hp;
+    h.hp = h.max;
+    if state.0 == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        k.body.pos = Vec2::new(if mode == "near" { 1085.0 } else { 900.0 }, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        crate::creatures::def::spawn_creature(&mut commands, "dread_knight", Vec2::new(1120.0, fl), |_| {});
+        info!("dread: a dread knight at 1120 ({mode})");
+        state.0 = 1;
+        return;
+    }
+    let Some((e, _, dk, dh, d)) = them.iter().find(|x| x.1.kind == "dread_knight") else {
+        if state.0 == 1 && t > 2.0 {
+            state.0 = 2;
+            state.1 = t;
+        }
+        if state.0 == 2 && t > state.1 + 1.0 {
+            info!("dread: t {t:.1} dead; things dropped about: {}", drops.iter().count());
+            state.0 = 9;
+        }
+        return;
+    };
+    let doing = d.map_or("?", |d| d.doing());
+    if doing != state.3 {
+        info!("dread: t {t:.2} {doing} at {:.0}; the player at {:.0}, lost {:.0}", dk.body.pos.x, k.body.pos.x, state.2);
+        state.3 = doing;
+    }
+    if mode == "kill" && t > 2.0 && t > state.1 {
+        hits.write(crate::combat::Hit { target: e, damage: 60.0, harm: crate::creatures::Harm::Radiant, knock: Vec2::ZERO, stun: 0.0, at: dk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        state.1 = t + 0.4;
+    }
+    let _ = dh;
+}
 
 /// `wraith` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_HOUR=22`):
 /// a chain wraith at 1150, 60 up; the player (who can't die) stands at 900.
