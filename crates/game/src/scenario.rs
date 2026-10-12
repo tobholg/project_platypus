@@ -7514,13 +7514,13 @@ fn pogo_script(
     let next = |state: &mut (u8, f32, u32, f32, f32, u32)| *state = (state.0 + 1, t, 0, 0.0, 0.0, 0);
     let all = || [1050.0, 1140.0, 1230.0].iter().map(|&x| hits(x)).sum::<u32>();
     match state.0 {
-        // The shortsword (hotbar 2, slot 7).
+        // The shortsword (hotbar 2, slot 8).
         0 => {
             if (0.3..0.4).contains(&t) {
                 want.push(KeyCode::KeyX);
             }
             if (0.5..0.6).contains(&t) {
-                want.push(KeyCode::Digit7);
+                want.push(KeyCode::Digit8);
             }
             if t > 0.8 {
                 put(&mut k, Vec2::new(1041.0, fl + 90.0));
@@ -7552,10 +7552,10 @@ fn pogo_script(
                 next(&mut state);
             }
         }
-        // The longsword (slot 8); up over the middle dummy.
+        // The longsword (slot 9); up over the middle dummy.
         2 => {
             if dt < 0.1 {
-                want.push(KeyCode::Digit8);
+                want.push(KeyCode::Digit9);
             }
             if dt > 0.3 {
                 put(&mut k, Vec2::new(1140.0, fl + 165.0));
@@ -7601,7 +7601,7 @@ fn pogo_script(
         // The shortsword, over the lava: S, and strike above it.
         5 => {
             if dt < 0.1 {
-                want.push(KeyCode::Digit7);
+                want.push(KeyCode::Digit8);
             }
             if (0.1..0.15).contains(&dt) {
                 put(&mut k, Vec2::new(1395.0, fl + 45.0));
@@ -7622,7 +7622,7 @@ fn pogo_script(
         // The longsword: a plunge onto the floor beside the last dummy.
         6 => {
             if dt < 0.1 {
-                want.push(KeyCode::Digit8);
+                want.push(KeyCode::Digit9);
             }
             // (Once the last swing's done and the longsword's in hand.)
             if (0.5..0.55).contains(&dt) {
@@ -7641,7 +7641,7 @@ fn pogo_script(
         }
         _ => {}
     }
-    for key in [KeyCode::KeyX, KeyCode::Digit7, KeyCode::Digit8, KeyCode::KeyA, KeyCode::KeyD, KeyCode::KeyS] {
+    for key in [KeyCode::KeyX, KeyCode::Digit8, KeyCode::Digit9, KeyCode::KeyA, KeyCode::KeyD, KeyCode::KeyS] {
         match (want.contains(&key), keys.pressed(key)) {
             (true, false) => keys.press(key),
             (false, true) => keys.release(key),

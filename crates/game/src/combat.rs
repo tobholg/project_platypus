@@ -760,7 +760,9 @@ const REBOUND: f32 = 0.2;
 /// for so far, not a dive that lasts all the way down); run out, it's
 /// over, falling on no faster than `PLUNGE_SPENT`.
 const PLUNGE_MAX: f32 = 4.0;
-const PLUNGE_FALL: f32 = 140.0;
+const PLUNGE_FALL: f32 = 70.0;
+/// A down-strike (not a plunge) is live no longer than this (s).
+const DOWN_LIVE: f32 = 0.09;
 const PLUNGE_SPENT: f32 = 320.0;
 
 /// Between swings: which move of the combo comes next, and how long since
@@ -1061,7 +1063,10 @@ fn swing(
         // The arm follows the blade.
         let hand_at = hand.and_then(|h| h.at).unwrap_or(k.body.pos);
         commands.entity(me).insert(Aiming { at: hand_at + dir(angle) * 45.0, left: 0.1 });
-        if !mv.active_at(s.t) {
+        // (A down-strike, a plunge's aside, is live only a moment, however
+        // long its swing: a pogo's to be timed, as Hollow Knight's.)
+        let quick = s.down && !plunge && s.t >= mv.windup + DOWN_LIVE;
+        if !mv.active_at(s.t) || quick {
             s.prev = None;
             continue;
         }
