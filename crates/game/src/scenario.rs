@@ -9606,6 +9606,8 @@ fn sever_script(
 ///     player: it squeezes through.
 ///   glut (with PLATYPUS_SLIME_KIND=glutton): struck with fire (4 s),
 ///     frost (6.5 s: the two go off), lightning (9 s).
+///   wand (glutton): the player casts `PLATYPUS_GLUT_SPELL` (frost_bolt)
+///     at it every 1.5 s.
 ///   attack (glutton): struck with `PLATYPUS_GLUT_HARM` (fire, frost,
 ///     storm: the default) at 2 s, then let be: it attacks with it till
 ///     it's spent.
@@ -9626,6 +9628,7 @@ fn slime_script(
     (items, swallowed, mut keys): (Option<Res<crate::hands::items::Items>>, Query<(Entity, Has<crate::hands::Dropped>, Option<&crate::creatures::Creature>), With<crate::creatures::body::goo::Swallowed>>, ResMut<ButtonInput<KeyCode>>),
     drops: Query<&crate::hands::Dropped>,
     mut drive: Query<&mut crate::creatures::Controls, Without<LocalPlayer>>,
+    (book, mut casts, player_e): (Res<crate::magic::Spellbook>, MessageWriter<crate::magic::CastRequest>, Query<Entity, With<LocalPlayer>>),
 ) {
     if s.name != "slime" {
         return;
@@ -9753,6 +9756,15 @@ fn slime_script(
             info!("slime: t {t:.1} struck with {harm:?}");
             state.0 += 1;
         }
+        // `wand`: the player casts `PLATYPUS_GLUT_SPELL` at it every 1.5 s.
+        "wand" if state.0 >= 1 && t > 2.0 + (state.0 - 1) as f32 * 1.5 && state.0 <= 5 => {
+            let id = std::env::var("PLATYPUS_GLUT_SPELL").unwrap_or_else(|_| "frost_bolt".into());
+            if let (Some(spell), Ok(me)) = (book.spells.iter().position(|x| x.id == id), player_e.single()) {
+                casts.write(crate::magic::CastRequest { caster: me, spell, from: k.body.pos + Vec2::new(0.0, 9.0), toward: sk.body.pos, alt: false });
+            }
+            info!("slime: t {t:.1} {id} cast at it (hp {:.0})", sh.hp);
+            state.0 += 1;
+        }
         "attack" if state.0 == 1 && t > 2.0 => {
             let harm = match std::env::var("PLATYPUS_GLUT_HARM").as_deref() {
                 Ok("fire") => crate::creatures::Harm::Fire,
@@ -9801,6 +9813,11 @@ fn slime_script(
     }
     if t >= state.2 && mode == "squeeze" {
         info!("slime: t {t:.1} at x {:.0}, {:.0} high (the gap: 880..950)", sk.body.pos.x, sk.body.half.y * 2.0);
+    }
+    if t >= state.2 && mode == "wand" {
+        if let Ok((g, _)) = gluttons.get(e) {
+            info!("slime: t {t:.1} hp {:.0}/{:.0}, holds {:?} ({:.2})", sh.hp, sh.max, g.took, g.charge());
+        }
     }
     if t >= state.2 && mode == "attack" {
         if let Ok((g, _)) = gluttons.get(e) {

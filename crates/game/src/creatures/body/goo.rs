@@ -253,7 +253,17 @@ pub fn hold(
         }
         kept.append(&mut goo.reserve);
         if lost > 0 && health.hp > 0.0 {
-            health.hp -= lost as f32 / def.cells.max(1) as f32 * full;
+            if anim.def.glutton {
+                // (The glutton drinks what takes its goo (a blast, heat,
+                // lightning): it's made again, its health kept; blows hurt
+                // it.)
+                let mut rng = platypus_sim::rng::Rng::seeded(&[sim.world.tick(), 0x6107]);
+                for _ in 0..lost {
+                    kept.push(sim.world.materials().spawn(mat, &mut rng));
+                }
+            } else {
+                health.hp -= lost as f32 / def.cells.max(1) as f32 * full;
+            }
         }
         // Dead: it all spills, where it is.
         if health.hp <= 0.0 {
@@ -827,6 +837,12 @@ const STRIKE: f32 = 2.0;
 /// on frost (or frost on fire) goes off this hard.
 const DRAIN: f32 = 20.0;
 const UNDONE: (f32, f32) = (34.0, 45.0);
+/// What the glutton drinks.
+const DRUNK: [crate::creatures::Harm; 3] = [crate::creatures::Harm::Fire, crate::creatures::Harm::Frost, crate::creatures::Harm::Storm];
+/// A spell landing this near its goo (cells) is drunk.
+const DRINKS: f32 = 4.0;
+/// Taking an element on heals it this share of its health.
+const FEEDS: f32 = 0.15;
 
 /// The glutton takes on what it's struck with: fire, frost or lightning,
 /// its goo turned (hot, cold, charged), its touch with it, a light of it;
@@ -837,13 +853,34 @@ pub fn glut(
     mut commands: Commands,
     time: Res<Time>,
     mut sim: ResMut<SimWorld>,
-    mut q: Query<(Entity, &mut Glutton, &mut Goo, &Kinematics, &super::animation::Animator, Option<&mut crate::combat::Touch>, &Health)>,
+    mut q: Query<(Entity, &mut Glutton, &mut Goo, &Kinematics, &super::animation::Animator, Option<&mut crate::combat::Touch>, &mut Health)>,
     mut booms: MessageWriter<crate::fx::Explosion>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
+    mut took: MessageReader<crate::creatures::Took>,
+    mut landed: MessageReader<crate::magic::Landed>,
+    mut drinkers: ResMut<crate::magic::Drinkers>,
 ) {
     use crate::creatures::Harm;
     let dt = time.delta_secs();
-    for (e, mut g, mut goo, k, anim, touch, health) in &mut q {
+    let spells: Vec<crate::magic::Landed> = landed.read().copied().collect();
+    drinkers.0.clear();
+    // (What each took this tick, however it came: tallied, all of it.)
+    let mut taken: std::collections::HashMap<Entity, [f32; 11]> = std::collections::HashMap::new();
+    for t in took.read() {
+        if q.contains(t.target) {
+            taken.entry(t.target).or_insert([0.0; 11])[t.harm as usize] += t.meant;
+        }
+    }
+    for (e, mut g, mut goo, k, anim, touch, mut health) in &mut q {
+        let mut got = taken.get(&e).copied().unwrap_or([0.0; 11]);
+        // (A spell of it come down on its goo: drunk (`magic::land`).)
+        let (lo, hi) = goo.extent.unwrap_or((k.body.pos - k.body.half, k.body.pos + k.body.half));
+        for l in &spells {
+            if l.hit == Some(e) {
+                got[l.harm as usize] += STRIKE;
+            }
+        }
+        drinkers.0.push(crate::magic::Drinker { who: e, lo: lo - DRINKS, hi: hi + DRINKS, harms: &DRUNK });
         let before = g.took;
         // (Whatever way it came: a blow, a spell's arc, lightning: what
         // it's taken this tick.)
@@ -853,7 +890,7 @@ pub fn glut(
         // (Nor what it just let go of: its own lightning, its own lava.)
         let now = time.elapsed_secs();
         let own = g.own.filter(|o| now < o.1).map(|o| o.0);
-        let struck: Vec<Harm> = [Harm::Fire, Harm::Frost, Harm::Storm].into_iter().filter(|h| health.took[*h as usize].0 >= STRIKE && g.took != Some(*h) && own != Some(*h)).collect();
+        let struck: Vec<Harm> = DRUNK.into_iter().filter(|h| got[*h as usize] >= STRIKE && g.took != Some(*h) && own != Some(*h)).collect();
         for harm in struck {
             let undoes = matches!((g.took, harm), (Some(Harm::Fire), Harm::Frost) | (Some(Harm::Frost), Harm::Fire));
             if undoes {
@@ -866,6 +903,8 @@ pub fn glut(
             } else {
                 g.took = Some(harm);
                 g.charge = 1.0;
+                // (It feeds on it.)
+                health.hp = (health.hp + health.max * FEEDS).min(health.max);
             }
         }
         if g.took.is_some() {
@@ -927,9 +966,9 @@ const OWN: f32 = 1.5;
 /// reaches (cells), its hurt, lava and flame thrown up.
 const FROST_SHOTS: (u32, f32) = (3, 0.32);
 const FROST_FAN: f32 = 7.0;
-const ERUPTION: (f32, f32) = (40.0, 16.0);
+const ERUPTION: (f32, f32) = (58.0, 20.0);
 /// Lava lobbed at them, lava and flame thrown straight up.
-const ERUPTION_MATTER: (usize, usize, usize) = (55, 30, 90);
+const ERUPTION_MATTER: (usize, usize, usize) = (95, 55, 160);
 /// What an eruption looks like: a fountain of flame and molten drops up
 /// out of it, embers thrown all round.
 fn eruption_fountain() -> crate::magic::runes::Emitter {
@@ -937,8 +976,8 @@ fn eruption_fountain() -> crate::magic::runes::Emitter {
         count: 0.0,
         life: (0.35, 1.1),
         colors: vec![(255, 250, 210), (255, 200, 80), (255, 120, 30), (190, 50, 20), (70, 40, 35)],
-        speed: 330.0,
-        spread: 0.55,
+        speed: 440.0,
+        spread: 0.6,
         gravity: 260.0,
         drag: 1.2,
         size: 1.8,
@@ -1045,10 +1084,10 @@ pub fn glut_strike(
                             // (Its look: a fountain of flame and molten
                             // drops, embers all round, a flare, a jolt.)
                             let mouth = Vec2::new(k.body.pos.x, reach.1.y);
-                            sparks.emit(&eruption_fountain(), 170, mouth, Vec2::Y, Vec2::ZERO);
-                            sparks.emit(&eruption_ring(), 90, k.body.pos, Vec2::Y, Vec2::ZERO);
-                            flares.write(crate::fx::Flare { at: mouth, color: [1.9, 1.0, 0.4], life: 0.6 });
-                            trauma.0 = (trauma.0 + 0.35).min(1.0);
+                            sparks.emit(&eruption_fountain(), 340, mouth, Vec2::Y, Vec2::ZERO);
+                            sparks.emit(&eruption_ring(), 180, k.body.pos, Vec2::Y, Vec2::ZERO);
+                            flares.write(crate::fx::Flare { at: mouth, color: [2.6, 1.3, 0.5], life: 0.8 });
+                            trauma.0 = (trauma.0 + 0.55).min(1.0);
                             sounds.write(crate::sound::PlaySound::at("boom", k.body.pos).volume(0.7).pitch(0.8));
                             true
                         }
@@ -1096,12 +1135,12 @@ fn erupt(sim: &mut SimWorld, k: &Kinematics, reach: (Vec2, Vec2), at: Option<Vec
         let speed = (far * platypus_sim::particles::GRAVITY / (120f32).to_radians().sin()).sqrt();
         let dir = Vec2::from_angle(60f32.to_radians());
         sim.world.spray([top.x, top.y], [dir.x * side, dir.y], lava, ERUPTION_MATTER.0, speed, 0.3);
-        sim.world.spray([top.x, top.y], [0.0, 1.0], lava, ERUPTION_MATTER.1, 4.0, 0.6);
+        sim.world.spray([top.x, top.y], [0.0, 1.0], lava, ERUPTION_MATTER.1, 5.0, 0.6);
     }
     if let Some(fire) = mats.id("fire") {
-        sim.world.spray([top.x, top.y], [0.0, 1.0], fire, ERUPTION_MATTER.2, 4.6, 1.3);
+        sim.world.spray([top.x, top.y], [0.0, 1.0], fire, ERUPTION_MATTER.2, 5.6, 1.3);
     }
-    sim.queue(platypus_sim::WorldEdit::Ignite { center: CellPos::from_world(k.body.pos.x, k.body.pos.y), radius: 12 });
+    sim.queue(platypus_sim::WorldEdit::Ignite { center: CellPos::from_world(k.body.pos.x, k.body.pos.y), radius: 16 });
     let mine = bodies.get(me).ok().and_then(|(_, _, t)| t.copied());
     for (e, bk, team) in bodies.iter() {
         if e == me || (mine.is_some() && team.copied() == mine) {

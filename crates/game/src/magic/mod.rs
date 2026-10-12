@@ -67,6 +67,8 @@ const LIGHTNING_NEAR_AIM: f32 = 45.0;
 const TRIGGERED_REACH: f32 = 120.0;
 /// Seconds frost keeps what it hits chilled.
 const FROST_CHILL: f32 = 3.0;
+/// What frost bites (at its coldest) besides chilling.
+const FROST_BITE: f32 = 5.0;
 /// A stream sets alight what stands in it (a chance a cast, in 255ths)
 /// and scalds it this much.
 const STREAM_CATCH: u8 = 70;
@@ -112,6 +114,28 @@ pub struct CastRequest {
     pub toward: Vec2,
     /// Cast with the other button (force: pull). Other spells ignore it.
     pub alt: bool,
+}
+
+/// A spell came down (each tick, for a beam): on what body (if it struck
+/// one, or one drank it), its kind of hurt. (What drinks magic, drinks it: a
+/// glutton.)
+#[derive(Message, Clone, Copy, Debug)]
+pub struct Landed {
+    pub hit: Option<Entity>,
+    pub harm: crate::creatures::Harm,
+}
+
+/// What drinks magic where it is (a glutton: its goo, a little past it),
+/// and which kinds: a spell of one of them landing there is drunk (nothing
+/// else happens). Kept by `creatures::body::goo::glut`.
+#[derive(Resource, Default)]
+pub struct Drinkers(pub Vec<Drinker>);
+
+pub struct Drinker {
+    pub who: Entity,
+    pub lo: Vec2,
+    pub hi: Vec2,
+    pub harms: &'static [crate::creatures::Harm],
 }
 
 /// Every rune and spell (hot-reloaded), and each spell's runes read as
@@ -255,6 +279,8 @@ impl Plugin for MagicPlugin {
             .init_resource::<Wands>()
             .init_resource::<Firing>()
             .add_message::<CastRequest>()
+            .add_message::<Landed>()
+            .init_resource::<Drinkers>()
             .add_plugins(bevy::core_pipeline::fullscreen_material::FullscreenMaterialPlugin::<warp::Warp>::default())
             .init_resource::<beam::Beams>()
             .init_resource::<beam::BeamCanvas>()
@@ -396,6 +422,7 @@ fn fire(
     mut beams: ResMut<beam::Beams>,
     mut blasts: MessageWriter<crate::fx::Explosion>,
     mut bodies: Query<Hittable>,
+    drinkers: Res<Drinkers>,
 ) {
     let halo = halo.map(|h| h.0.clone());
     let mut booms = Vec::new();
@@ -463,7 +490,7 @@ fn fire(
                 for e in &cast.bursts {
                     sparks.emit(e, e.count as usize, at, Vec2::Y, Vec2::ZERO);
                 }
-                land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, f.dir, false, false, &mut booms);
+                land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, f.dir, false, false, &mut booms, &drinkers);
             }
             &Carrier::Call { range, height, speed, sky, lightning } => {
                 let target = f.from + f.dir * f.reach.min(range);
@@ -479,7 +506,7 @@ fn fire(
                     let x = target.x.floor() as i32;
                     sim.world.apply_edit(&WorldEdit::Weather { x, radius: STORM_RADIUS, storm: true });
                     sim.world.apply_edit(&WorldEdit::Lightning { x, from_y: above.y as i32 });
-                    land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, target, None, Vec2::NEG_Y, false, false, &mut booms);
+                    land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, target, None, Vec2::NEG_Y, false, false, &mut booms, &drinkers);
                 } else {
                     // Something falling (an orb that doesn't bounce), carrying the rest.
                     let falling = Arc::new(Cast { carrier: Carrier::Orb { speed, life: 6.0, bounces: 0 }, ..(*cast).clone() });
@@ -507,7 +534,7 @@ fn fire(
                     for e in &cast.bursts {
                         sparks.emit(e, e.count as usize, tip, -f.dir, Vec2::ZERO);
                     }
-                    land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, tip, hit, f.dir, false, true, &mut booms);
+                    land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, tip, hit, f.dir, false, true, &mut booms, &drinkers);
                 }
             }
             // (Its hurt is the sim's: `elements::zapped`.)
@@ -525,7 +552,7 @@ fn fire(
                     for e in &cast.bursts {
                         sparks.emit(e, e.count as usize, at, -dir, Vec2::ZERO);
                     }
-                    land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, dir, false, false, &mut booms);
+                    land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, dir, false, false, &mut booms, &drinkers);
                     if let Some(then) = &cast.then {
                         firing.0.push(Fire { cast: then.clone(), caster: f.caster, from: at - dir * 3.0, dir, reach: TRIGGERED_REACH });
                     }
@@ -635,10 +662,20 @@ fn lightning_targets(bodies: &Query<Hittable>, f: &Fire, range: f32, n: usize) -
 /// `beam`: a beam's tip, every tick it's held (it hurts without throwing).
 /// Blasts that leave the cells be (a nova) go in `booms`.
 #[allow(clippy::too_many_arguments)]
-fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies: &mut Query<Hittable>, cast: &Cast, at: Vec2, hit: Option<Entity>, dir: Vec2, doused: bool, beam: bool, booms: &mut Vec<crate::fx::Explosion>) {
+fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies: &mut Query<Hittable>, cast: &Cast, at: Vec2, hit: Option<Entity>, dir: Vec2, doused: bool, beam: bool, booms: &mut Vec<crate::fx::Explosion>, drinkers: &Drinkers) {
     let center = CellPos::from_world(at.x, at.y);
     let mats = world.materials().clone();
     let mut rng = Rng::seeded(&[world.tick(), center.x as u64, center.y as u64, 0x57EA]);
+    // (On what drinks it (a glutton, its kind of magic): drunk, nothing
+    // else; it takes it on.)
+    let drunk = drinkers.0.iter().find(|d| d.harms.contains(&cast.harm) && (hit == Some(d.who) || (at.cmpge(d.lo).all() && at.cmple(d.hi).all()))).map(|d| d.who);
+    let landed = Landed { hit: drunk.or(hit), harm: cast.harm };
+    commands.queue(move |w: &mut bevy::ecs::world::World| {
+        w.write_message(landed);
+    });
+    if drunk.is_some() {
+        return;
+    }
     for p in &cast.payloads {
         match p {
             &Payload::Damage(d) => {
@@ -694,13 +731,15 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
             &Payload::Heat { radius, amount } => {
                 world.apply_edit(&WorldEdit::Heat { center, radius, amount });
                 // Frost chills what it hits, and what's caught in it (not
-                // the ice it leaves: that's only slippery).
+                // the ice it leaves: that's only slippery), and bites a
+                // little (frost, as its kind takes it).
                 if amount < 0 {
                     let cold = (-amount as f32 / 150.0).clamp(0.3, 1.0);
-                    for (e, k, h, _) in bodies.iter() {
+                    for (e, k, mut h, _) in bodies.iter_mut() {
                         let near = (k.body.pos.distance(at) - k.body.half.max_element()).max(0.0) <= radius as f32;
                         if Some(e) == hit || near {
                             crate::creatures::body::elements::chill(commands, e, &h.nature, None, cold, FROST_CHILL);
+                            h.harm(FROST_BITE * cold, cast.harm);
                         }
                     }
                 }
@@ -763,6 +802,7 @@ fn fly(
     mut acts: ResMut<void::Acts>,
     parts: Query<&crate::creatures::body::parts::Parts>,
     teams: Query<&crate::creatures::Team>,
+    drinkers: Res<Drinkers>,
 ) {
     let mut booms = Vec::new();
     let mut landed = Vec::new();
@@ -945,7 +985,7 @@ fn fly(
                 sparks.emit(b, b.count as usize, at, off, Vec2::ZERO);
             }
         }
-        land(&mut commands, world, &coatings, &mut bodies, &cast, at, hit, dir, doused, false, &mut booms);
+        land(&mut commands, world, &coatings, &mut bodies, &cast, at, hit, dir, doused, false, &mut booms, &drinkers);
         // Void: carried out after (`void::act`).
         for p in &cast.payloads {
             match *p {
