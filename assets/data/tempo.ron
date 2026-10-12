@@ -18,7 +18,7 @@
 // In body heights (the player is 23 cells): Hollow Knight runs 6.3 a
 // second, jumps 2.7 high, 0.48 s in the air; Terraria 4.3, 2.5, 0.85 s.
 (
-    default: "Middle",
+    default: "Experimental",
     presets: [
         // What the player's file says: snappy, heavy, fast.
         (name: "Hollow Knight", pace: 1.0),
