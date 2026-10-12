@@ -570,6 +570,10 @@ pub(crate) fn hot_reload_creatures(mut commands: Commands, mut creatures: ResMut
 const STANCE_FROM: f32 = 14.0;
 const STANCE_SHARE: f32 = 0.4;
 
+/// A creature spawned in the rock is moved out to where it fits, up to
+/// this far (cells).
+const SPAWN_ROOM: i32 = 40;
+
 /// How sizes lean toward the smaller end (`CreatureDef::sizes`): the
 /// share up the range is a roll to this power.
 const SIZE_SKEW: f32 = 3.5;
@@ -581,7 +585,11 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             return error!("unknown creature `{kind}`");
         };
         let (w, h) = def.size;
-        let center = feet + Vec2::new(0.0, h / 2.0);
+        let mut center = feet + Vec2::new(0.0, h / 2.0);
+        // (Not in the rock: where its box fits, near, if not just there.)
+        if let Some(c) = super::free_spot(&world.resource::<crate::world::SimWorld>().world, center, Vec2::new(w, h) * 0.5, SPAWN_ROOM) {
+            center = c;
+        }
         let mut body = Body::new(center, Vec2::new(w, h));
         body.step_height = def.movement.step_height;
         // (A wide walker on legs seen from the side stands on its middle:

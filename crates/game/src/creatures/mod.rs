@@ -460,6 +460,38 @@ fn stuck_in(world: &World, body: &Body) -> bool {
 /// The cell world as bodies (and the planner) see it: `platypus_nav`.
 pub use platypus_nav::world::{WorldGrid, backed};
 
+/// Where a box of `half` round `center` sits clear of solid ground: there,
+/// or the nearest place within `reach` cells (up first, then aside, then
+/// down), if any.
+pub fn free_spot(world: &platypus_sim::World, center: Vec2, half: Vec2, reach: i32) -> Option<Vec2> {
+    let grid = WorldGrid(world);
+    let clear = |c: Vec2| {
+        let (lo, hi) = (c - half + 0.25, c + half - 0.25);
+        let mut y = lo.y;
+        loop {
+            let mut x = lo.x;
+            loop {
+                if platypus_physics::Grid::occupancy(&grid, x.floor() as i32, y.floor() as i32) == platypus_physics::Occupancy::Solid {
+                    return false;
+                }
+                if x >= hi.x {
+                    break;
+                }
+                x = (x + 2.0).min(hi.x);
+            }
+            if y >= hi.y {
+                break;
+            }
+            y = (y + 2.0).min(hi.y);
+        }
+        true
+    };
+    if clear(center) {
+        return Some(center);
+    }
+    (1..=reach / 2).map(|r| (r * 2) as f32).find_map(|r| [Vec2::new(0.0, r), Vec2::new(-r, 0.0), Vec2::new(r, 0.0), Vec2::new(-r, r), Vec2::new(r, r), Vec2::new(0.0, -r)].into_iter().map(|d| center + d).find(|&c| clear(c)))
+}
+
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 
 /// One movement code path for every creature.

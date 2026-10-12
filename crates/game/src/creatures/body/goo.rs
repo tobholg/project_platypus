@@ -103,6 +103,8 @@ const BOX_LEAST: f32 = 0.55;
 /// The lowest gap it squeezes through (cells).
 const SQUEEZE_LEAST: f32 = 7.0;
 const BOX_MOST: f32 = 1.5;
+/// Grown into the rock, it's moved out to where it fits, up to this far.
+const GROWN_ROOM: i32 = 30;
 /// Swallowing: a small creature is at most this big (cells across and up,
 /// times); digested at this (health a second: a creature, the player);
 /// an item dissolved after this (s); the player let out after this (s),
@@ -230,6 +232,12 @@ pub fn hold(
             k.body.half = half;
             k.body.pos.y -= drop;
             k.prev_pos.y -= drop;
+            // (Grown into the rock round it: out to where it fits.)
+            if let Some(c) = crate::creatures::free_spot(&sim.world, k.body.pos, half, GROWN_ROOM) {
+                let shift = c - k.body.pos;
+                k.prev_pos += shift;
+                k.body.pos = c;
+            }
         }
         let mat = goo.material.unwrap_or(kind_mat);
         // (Turned, its old goo's its still: turned as it's laid out.)

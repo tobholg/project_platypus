@@ -296,6 +296,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, leap_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(Update, slimecheck_script)
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
             .add_systems(PreUpdate, stealth_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7467,6 +7468,83 @@ fn backwall_script(
 }
 
 type Pogoer<'a> = (&'a mut Kinematics, &'a crate::creatures::Health, Option<&'a crate::combat::Swing>);
+
+/// `slimecheck` (the real world; `PLATYPUS_LIFE_RATE=8` for more): the
+/// player put in a cave `PLATYPUS_SLIMECHECK_DEPTH` (300) cells under the
+/// spawn (the nearest open spot), kept alive; every 3 s each slime near:
+/// how much of its box is in solid ground, the goo it holds, how far it's
+/// moved since the last look.
+fn slimecheck_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::body::goo::Goo>), Without<LocalPlayer>>,
+    mut state: Local<(bool, f32, std::collections::HashMap<Entity, Vec2>)>,
+) {
+    if s.name != "slimecheck" {
+        return;
+    }
+    let Ok((mut pk, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let world = &sim.world;
+    let mats = world.materials();
+    let solid = |x: i32, y: i32| world.get(CellPos::new(x, y)).is_some_and(|c| !c.is_air() && matches!(mats.phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder));
+    if !state.0 && s.elapsed > 1.0 {
+        let depth: i32 = std::env::var("PLATYPUS_SLIMECHECK_DEPTH").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
+        let sp = sim.generator.spawn_point();
+        let top = sim.generator.surface_hint(sp.x).unwrap_or(sp.y);
+        // (The nearest open spot round there, roomy enough to stand in.)
+        let spot = (0..400).step_by(4).flat_map(|r| [(r, 0), (-r, 0), (0, r), (0, -r), (r, r), (-r, -r), (r, -r), (-r, r)]).map(|(dx, dy)| (sp.x + dx, top - depth + dy)).find(|&(x, y)| (-6..=6).all(|dx| (0..30).all(|dy| !solid(x + dx, y + dy))) && solid(x, y - 1));
+        match spot {
+            Some((x, y)) => {
+                pk.body.pos = Vec2::new(x as f32 + 0.5, y as f32 + pk.body.half.y);
+                pk.prev_pos = pk.body.pos;
+                pk.body.vel = Vec2::ZERO;
+                info!("slimecheck: the player in a cave at ({x}, {y}), {} under the surface", top - y);
+            }
+            None => info!("slimecheck: no cave found {depth} under the spawn"),
+        }
+        state.0 = true;
+        state.1 = s.elapsed + 3.0;
+        return;
+    }
+    if !state.0 || s.elapsed < state.1 {
+        return;
+    }
+    state.1 = s.elapsed + 3.0;
+    let mut lines = Vec::new();
+    for (e, c, k, goo) in &them {
+        if !(c.kind.contains("slime") || c.kind == "glutton") || k.body.pos.distance(pk.body.pos) > 900.0 {
+            continue;
+        }
+        let (lo, hi) = (k.body.pos - k.body.half, k.body.pos + k.body.half);
+        let (mut n, mut inside) = (0, 0);
+        let mut y = lo.y.ceil() as i32;
+        while (y as f32) < hi.y {
+            let mut x = lo.x.ceil() as i32;
+            while (x as f32) < hi.x {
+                n += 1;
+                if solid(x, y) {
+                    inside += 1;
+                }
+                x += 2;
+            }
+            y += 2;
+        }
+        let was = state.2.insert(e, k.body.pos);
+        let moved = was.map_or(-1.0, |w| w.distance(k.body.pos));
+        // (PLATYPUS_SLIMECHECK_VISIT: the player beside the first that
+        // hasn't moved, to see it.)
+        if moved == 0.0 && std::env::var("PLATYPUS_SLIMECHECK_VISIT").is_ok() && !lines.iter().any(|l: &String| l.starts_with("visiting")) && s.elapsed > 12.0 && s.elapsed < 16.0 {
+            pk.body.pos = k.body.pos + Vec2::new(-70.0, 30.0);
+            pk.prev_pos = pk.body.pos;
+            pk.body.vel = Vec2::ZERO;
+            lines.push(format!("visiting the {} at ({:.0}, {:.0})", c.kind, k.body.pos.x, k.body.pos.y));
+        }
+        lines.push(format!("{} box {:.0}x{:.0} {}% in rock, goo {}, moved {:.0}, grounded {}", c.kind, k.body.half.x * 2.0, k.body.half.y * 2.0, inside * 100 / n.max(1), goo.map_or(0, |g| g.held()), moved, k.loco.grounded()));
+    }
+    info!("slimecheck: t {:.0}: {} slimes near{}", s.elapsed, lines.len(), lines.iter().map(|l| format!("\n  {l}")).collect::<String>());
+}
 
 /// `leap` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`, with any
 /// `PLATYPUS_TEMPO`): how the player moves at this tempo. A full jump
