@@ -9608,10 +9608,11 @@ fn sever_script(
 ///     frost (6.5 s: the two go off), lightning (9 s).
 ///   dash (any kind, e.g. spider): the player runs at it and dashes
 ///     through it (2.5 s, back at 4.5 s): its touch should land.
-///   wand (glutton): the player casts `PLATYPUS_GLUT_SPELL` (frost_bolt)
-///     at it every 1.5 s.
+///   wand (glutton): the player casts `PLATYPUS_GLUT_SPELL` (frost_bolt;
+///     a list, `a,b`, in turn) at it every 1.5 s.
+///   (PLATYPUS_GLUT_POOL=water|oil: a pit of it where it starts.)
 ///   attack (glutton): struck with `PLATYPUS_GLUT_HARM` (fire, frost,
-///     storm: the default) at 2 s, then let be: it attacks with it till
+///     acid, poison, radiant, void, storm: the default) at 2 s, then let be: it attacks with it till
 ///     it's spent.
 ///   (anything else, `none`: let be: it hops at the player, spikes them.)
 /// Logs its health, the goo it holds and the goo loose near it.
@@ -9669,6 +9670,17 @@ fn slime_script(
             for x in 930..1060 {
                 for y in floor - 30..floor {
                     sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: dirt, overwrite: true });
+                }
+            }
+        }
+        // (PLATYPUS_GLUT_POOL=water|oil: a pit of it where it starts.)
+        if let Ok(pool) = std::env::var("PLATYPUS_GLUT_POOL")
+            && let Some(m) = sim.materials().id(&pool)
+        {
+            let floor = platypus_worldgen::arena::FLOOR;
+            for x in 940..1060 {
+                for y in floor - 22..floor + 2 {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: m, overwrite: true });
                 }
             }
         }
@@ -9760,7 +9772,10 @@ fn slime_script(
         }
         // `wand`: the player casts `PLATYPUS_GLUT_SPELL` at it every 1.5 s.
         "wand" if state.0 >= 1 && t > 2.0 + (state.0 - 1) as f32 * 1.5 && state.0 <= 5 => {
-            let id = std::env::var("PLATYPUS_GLUT_SPELL").unwrap_or_else(|_| "frost_bolt".into());
+            // (A list, cast in turn: `spark_bolt,blink_bolt`.)
+            let ids = std::env::var("PLATYPUS_GLUT_SPELL").unwrap_or_else(|_| "frost_bolt".into());
+            let ids: Vec<&str> = ids.split(',').collect();
+            let id = ids[(state.0 as usize - 1) % ids.len()].to_string();
             if let (Some(spell), Ok(me)) = (book.spells.iter().position(|x| x.id == id), player_e.single()) {
                 casts.write(crate::magic::CastRequest { caster: me, spell, from: k.body.pos + Vec2::new(0.0, 9.0), toward: sk.body.pos, alt: false });
             }
@@ -9771,6 +9786,10 @@ fn slime_script(
             let harm = match std::env::var("PLATYPUS_GLUT_HARM").as_deref() {
                 Ok("fire") => crate::creatures::Harm::Fire,
                 Ok("frost") => crate::creatures::Harm::Frost,
+                Ok("acid") => crate::creatures::Harm::Acid,
+                Ok("poison") => crate::creatures::Harm::Poison,
+                Ok("radiant") => crate::creatures::Harm::Radiant,
+                Ok("void") => crate::creatures::Harm::Void,
                 _ => crate::creatures::Harm::Storm,
             };
             strike(&mut hits, harm, 6.0);
@@ -9835,7 +9854,7 @@ fn slime_script(
     }
     if t >= state.2 && mode == "wand" {
         if let Ok((g, _)) = gluttons.get(e) {
-            info!("slime: t {t:.1} hp {:.0}/{:.0}, holds {:?} ({:.2})", sh.hp, sh.max, g.took, g.charge());
+            info!("slime: t {t:.1} hp {:.0}/{:.0}, holds {:?} ({:.2}){}", sh.hp, sh.max, g.took, g.charge(), if g.oiled(t) { ", oiled" } else { "" });
         }
     }
     if t >= state.2 && mode == "attack" {

@@ -498,7 +498,11 @@ put back). Its goo is its health: hurt, it flings goo off; dead, it spills.
    against), the glutton (takes on fire, frost, lightning; fire on frost
    goes off; drains; charged, it attacks with it: lightning, ice shards,
    a lava eruption, a third of its charge each; `attack` scenario mode,
-   PLATYPUS_GLUT_HARM).
+   PLATYPUS_GLUT_HARM). Since 2026-10-12: drinks magic (immune; spells
+   landing on it are swallowed), seven elements (+ acid globs, miasma
+   belch, light ray, void blink), light+void implode, fire burns poison
+   off, water douses/dilutes/conducts/freezes, oil flares up; `wand`
+   mode (PLATYPUS_GLUT_SPELL list), PLATYPUS_GLUT_POOL=water|oil.
    (Stages 1-4 built 2026-10-11 on `slimes`; `slime` scenario: look, burn,
    kill, heal, split, merge, engulf, eat, glut, many; PLATYPUS_SLIME_KIND.)
 5. Next: squeezing through cracks (the core shrinks to a gap), the slime

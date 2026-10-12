@@ -295,6 +295,12 @@
         (name: "ember_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, hot: true, heat: 420, heat_source: true, above: (900, "smoke"), coats: "slimy", glow: (255, 120, 30), opacity: 25, colors: [(255, 150, 60), (240, 110, 40), (255, 190, 90)]),
         (name: "frost_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 240, heat: -60, heat_source: true, coats: "slimy", glow: (60, 110, 160), opacity: 25, colors: [(190, 228, 255), (160, 210, 250), (214, 240, 255)]),
         (name: "spark_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, charges: true, coats: "slimy", glow: (120, 200, 255), opacity: 25, colors: [(150, 220, 255), (210, 244, 255), (120, 200, 250)]),
+        // The glutton's goo, by what it's drunk (body/goo/glutton.rs): light
+        // (blinding, it lights the cave), the void (ink that drinks light),
+        // venom (it poisons what it coats).
+        (name: "radiant_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, coats: "slimy", glow: (255, 240, 200), opacity: 20, colors: [(255, 250, 225), (255, 238, 190), (250, 252, 255)]),
+        (name: "void_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, coats: "slimy", glow: (40, 10, 70), opacity: 70, colors: [(30, 12, 46), (44, 20, 70), (20, 6, 34)]),
+        (name: "venom_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, coats: "venom", glow: (60, 30, 70), opacity: 30, colors: [(150, 90, 170), (120, 160, 60), (136, 104, 150)]),
         // What spiders bleed, and slimes are full of (a slime glows a little).
         (name: "ichor",    kind: Liquid, density: 1040, dispersion: 5, viscosity: 110, above: (100, "steam"), colors: [(156, 172, 64), (128, 146, 46)]),
         (name: "slime",    kind: Liquid, density: 1100, dispersion: 2, viscosity: 220, above: (100, "steam"), glow: (6, 22, 8), opacity: 20, colors: [(96, 196, 96), (76, 170, 80), (110, 210, 110)]),

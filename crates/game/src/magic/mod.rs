@@ -662,19 +662,25 @@ fn lightning_targets(bodies: &Query<Hittable>, f: &Fire, range: f32, n: usize) -
 /// `beam`: a beam's tip, every tick it's held (it hurts without throwing).
 /// Blasts that leave the cells be (a nova) go in `booms`.
 #[allow(clippy::too_many_arguments)]
-fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies: &mut Query<Hittable>, cast: &Cast, at: Vec2, hit: Option<Entity>, dir: Vec2, doused: bool, beam: bool, booms: &mut Vec<crate::fx::Explosion>, drinkers: &Drinkers) {
+/// (True: it was drunk, and that's all it did.)
+fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies: &mut Query<Hittable>, cast: &Cast, at: Vec2, hit: Option<Entity>, dir: Vec2, doused: bool, beam: bool, booms: &mut Vec<crate::fx::Explosion>, drinkers: &Drinkers) -> bool {
     let center = CellPos::from_world(at.x, at.y);
     let mats = world.materials().clone();
     let mut rng = Rng::seeded(&[world.tick(), center.x as u64, center.y as u64, 0x57EA]);
     // (On what drinks it (a glutton, its kind of magic): drunk, nothing
     // else; it takes it on.)
-    let drunk = drinkers.0.iter().find(|d| d.harms.contains(&cast.harm) && (hit == Some(d.who) || (at.cmpge(d.lo).all() && at.cmple(d.hi).all()))).map(|d| d.who);
-    let landed = Landed { hit: drunk.or(hit), harm: cast.harm };
+    // (A cloud of miasma is poison, whatever its wand's element.)
+    let harm = match &cast.carrier {
+        Carrier::Cloud { material, .. } if material == "miasma" => crate::creatures::Harm::Poison,
+        _ => cast.harm,
+    };
+    let drunk = drinkers.0.iter().find(|d| d.harms.contains(&harm) && (hit == Some(d.who) || (at.cmpge(d.lo).all() && at.cmple(d.hi).all()))).map(|d| d.who);
+    let landed = Landed { hit: drunk.or(hit), harm };
     commands.queue(move |w: &mut bevy::ecs::world::World| {
         w.write_message(landed);
     });
     if drunk.is_some() {
-        return;
+        return true;
     }
     for p in &cast.payloads {
         match p {
@@ -784,6 +790,7 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
             }
         }
     }
+    false
 }
 
 /// Spells fly through open cells and liquids a cell at a time, and land on
@@ -985,7 +992,9 @@ fn fly(
                 sparks.emit(b, b.count as usize, at, off, Vec2::ZERO);
             }
         }
-        land(&mut commands, world, &coatings, &mut bodies, &cast, at, hit, dir, doused, false, &mut booms, &drinkers);
+        if land(&mut commands, world, &coatings, &mut bodies, &cast, at, hit, dir, doused, false, &mut booms, &drinkers) {
+            continue;
+        }
         // Void: carried out after (`void::act`).
         for p in &cast.payloads {
             match *p {

@@ -1,18 +1,19 @@
-// The glutton: a pale slime that takes on what it's struck with (it drinks
-// fire, frost and lightning in, healed by them): fire and its goo's hot
-// and sets what it touches alight, frost and it's cold enough to chill,
-// lightning and it carries it; struck with what undoes what it holds
-// (fire on frost, frost on fire), the two go off together. Charged, it
-// attacks with it (glowing, holding still a moment first): lightning
-// struck at you, ice shards shot at you, or fire erupting out of it, lava
-// lobbed at you; each spends a third of it, and spent (or left unused a
-// while) it's itself again. A core (a dark nucleus with eyes) holding a body of real
+// The glutton: a pale slime that drinks what it's struck with and takes
+// it on (body/goo/glutton.rs): fire, frost, lightning, acid, poison, light
+// and the void, from a spell landing on it, a blow, a bolt, or what it's
+// in (flames, lava, acid, miasma). What it drinks doesn't hurt it; it
+// feeds on it. Charged, it attacks with it (glowing, holding still a
+// moment first): lightning struck at you, ice shards, a lava eruption,
+// acid globs lobbed, a belch of miasma, a ray of light swept across you,
+// or it blinks beside you and springs. Each spends a third; spent (or
+// left unused a while) it's itself again. Opposites go off: fire and
+// frost explode, light and the void implode, fire burns poison off.
+// Water douses its fire, dilutes its acid, carries its lightning, freezes
+// under its frost; oil coats it, and fire on it then flares up.
+// A core (a dark nucleus with eyes) holding a body of real
 // goo, cells of the world round it (`goo`: body/goo.rs). It hops at you,
-// each hop its own height (`lift`);
-// its goo clings and clogs (slimy) and catches fire. Hurt, it lets go of
-// goo it can no longer hold (it runs and pools); burnt or eaten, the goo's
-// gone, and so is its health; dead, it all spills. Left alone it heals,
-// drawing its spilled goo back in.
+// each hop its own height (`lift`); hurt, it lets go of goo it can no
+// longer hold; left alone it heals, drawing its spilled goo back in.
 (
     name: "Glutton",
     // What it may have on it when it dies (loot.ron), besides what it wears.
@@ -23,7 +24,8 @@
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "ooze",
     // (What it drinks doesn't hurt it: it takes it on, and feeds on it.)
-    profile: {fire: 0.0, frost: 0.0, storm: 0.0},
+    profile: {fire: 0.0, frost: 0.0, storm: 0.0, acid: 0.0, poison: 0.0, radiant: 0.0, void: 0.0},
+    cant: [poison, burn],
     // (Its goo is its blood: hurt, it flings goo off; dead, it spills.)
     blood: "",
     art: "glutton",
