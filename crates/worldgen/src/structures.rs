@@ -17,13 +17,84 @@ use platypus_sim::rng::Rng;
 
 /// Cells per block (the mining grid, the sim's).
 pub use platypus_sim::BLOCK;
+/// A room slot as written in the `.rooms` files, in blocks.
+const SRC_W: usize = 16;
+const SRC_H: usize = 10;
+/// Built half as big again: each written column and row (from the bottom)
+/// is this many in the world. The edges stay one block (walls, floors,
+/// ceilings); doors, holes and the rooms between them grow. A copy keeps
+/// what's built (walls, windows, water) but not what's placed (a chest, a
+/// candle, a guard; a platform or spikes doubled upward).
+const COL_COPIES: [i32; SRC_W] = [1, 2, 1, 2, 1, 2, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1];
+const ROW_COPIES: [i32; SRC_H] = [1, 1, 2, 2, 1, 2, 1, 2, 2, 1];
 /// A room slot, in blocks.
-pub const SLOT_W: i32 = 16;
-pub const SLOT_H: i32 = 10;
-/// Side doors are these rows of a slot (from its bottom); holes in the top
-/// or bottom are these columns.
-const DOOR_ROWS: [i32; 5] = [1, 2, 3, 4, 5];
-const HOLE_COLS: [i32; 4] = [6, 7, 8, 9];
+pub const SLOT_W: i32 = sum(&COL_COPIES);
+pub const SLOT_H: i32 = sum(&ROW_COPIES);
+/// Side doors are these rows of a slot as written (from its bottom); holes
+/// in the top or bottom are these columns.
+const DOOR_SRC: std::ops::RangeInclusive<usize> = 1..=5;
+const HOLE_SRC: std::ops::RangeInclusive<usize> = 6..=9;
+
+const fn sum(v: &[i32]) -> i32 {
+    let mut i = 0;
+    let mut t = 0;
+    while i < v.len() {
+        t += v[i];
+        i += 1;
+    }
+    t
+}
+
+/// Where written rows (or columns) `src` are, built: every block of their
+/// copies.
+fn built(copies: &[i32], src: std::ops::RangeInclusive<usize>) -> Vec<i32> {
+    let from: i32 = copies[..*src.start()].iter().sum();
+    let n: i32 = copies[src].iter().sum();
+    (from..from + n).collect()
+}
+
+/// A side door's rows of a slot (from its bottom), built.
+pub fn door_rows() -> Vec<i32> {
+    built(&ROW_COPIES, DOOR_SRC)
+}
+
+/// A hole's columns in a slot's top or bottom, built.
+pub fn hole_cols() -> Vec<i32> {
+    built(&COL_COPIES, HOLE_SRC)
+}
+
+/// A room as written, built half as big again (`COL_COPIES`, `ROW_COPIES`):
+/// its rows (the top first) widened and the rows doubled.
+fn grow(rows: &[String]) -> Vec<String> {
+    let width = rows.iter().map(|r| r.chars().count()).max().unwrap_or(0).div_ceil(SRC_W) * SRC_W;
+    let h = rows.len();
+    let across = |copy: fn(char) -> char, row: &str| -> String {
+        let chars: Vec<char> = row.chars().chain(std::iter::repeat(' ')).take(width).collect();
+        chars.iter().enumerate().flat_map(|(x, &c)| std::iter::once(c).chain(std::iter::repeat(copy(c)).take(COL_COPIES[x % SRC_W] as usize - 1))).collect()
+    };
+    let mut out = Vec::new();
+    for (i, row) in rows.iter().enumerate() {
+        let by = h - 1 - i;
+        let wide = across(placed_across, row);
+        // (The copies above the row as written: what stands on the floor
+        // stays on it.)
+        for _ in 1..ROW_COPIES[by % SRC_H] {
+            out.push(wide.chars().map(placed_up).collect());
+        }
+        out.push(wide);
+    }
+    out
+}
+
+/// A copied column: what's placed isn't (a platform and spikes run on).
+fn placed_across(c: char) -> char {
+    if matches!(c, 'C' | 'T' | 'S' | 'B') { '.' } else { c }
+}
+
+/// A copied row: nor is a platform or spikes (not two, one over the other).
+fn placed_up(c: char) -> char {
+    if matches!(c, 'C' | 'T' | 'S' | 'B' | '-' | '^') { '.' } else { c }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Glyph {
@@ -155,10 +226,10 @@ impl Room {
     fn door(&self, s: Socket) -> Vec<(i32, i32)> {
         let (w, h) = self.size();
         match s.side {
-            Side::L => DOOR_ROWS.iter().map(|r| (0, s.slot * SLOT_H + r)).collect(),
-            Side::R => DOOR_ROWS.iter().map(|r| (w - 1, s.slot * SLOT_H + r)).collect(),
-            Side::B => HOLE_COLS.iter().map(|c| (s.slot * SLOT_W + c, 0)).collect(),
-            Side::T => HOLE_COLS.iter().map(|c| (s.slot * SLOT_W + c, h - 1)).collect(),
+            Side::L => door_rows().into_iter().map(|r| (0, s.slot * SLOT_H + r)).collect(),
+            Side::R => door_rows().into_iter().map(|r| (w - 1, s.slot * SLOT_H + r)).collect(),
+            Side::B => hole_cols().into_iter().map(|c| (s.slot * SLOT_W + c, 0)).collect(),
+            Side::T => hole_cols().into_iter().map(|c| (s.slot * SLOT_W + c, h - 1)).collect(),
         }
     }
 }
@@ -171,6 +242,10 @@ pub fn parse(src: &str) -> Result<Vec<Room>, String> {
         while rows.last().is_some_and(|r| r.trim().is_empty()) {
             rows.pop();
         }
+        if rows.is_empty() || rows.len() % SRC_H != 0 {
+            return Err(format!("room `{name}`: {} rows: not whole {SRC_W} × {SRC_H} slots", rows.len()));
+        }
+        let rows = grow(&rows);
         let width = rows.iter().map(|r| r.chars().count()).max().unwrap_or(0) as i32;
         let slots = ((width + SLOT_W - 1) / SLOT_W, rows.len() as i32 / SLOT_H);
         if slots.0 == 0 || rows.len() as i32 != slots.1 * SLOT_H || slots.1 == 0 {
@@ -683,8 +758,10 @@ pub fn castle(rooms: &[Room], rng: &mut Rng, site: (i32, i32), keep: (i32, i32),
         let under = height(d);
         if under > floor + 1 {
             // Through the mountain: floor, a door-high passage, roof.
-            let mut c = vec![(floor, Glyph::Wall), (floor + 6, Glyph::Wall)];
-            c.extend((1..=5).map(|r| (floor + r, Glyph::Open)));
+            let door = door_rows();
+            let roof = door.last().copied().unwrap_or(5) + 1;
+            let mut c = vec![(floor, Glyph::Wall), (floor + roof, Glyph::Wall)];
+            c.extend((1..roof).map(|r| (floor + r, Glyph::Open)));
             cols.push((column(d), c));
         } else if floor - d >= under {
             // A flight three blocks thick, on piers down into the ground
@@ -830,22 +907,27 @@ pub fn sunken(x: i32, bed: i32) -> Structure {
 /// back up and a candle now and then.
 fn shaft(rx: i32, bottom: i32, h: i32) -> Piece {
     let w = SLOT_W;
+    // (A block wider than the hole it drops through, each side.)
+    let hole = hole_cols();
+    let (l, r) = (hole[0] as usize - 1, *hole.last().expect("a hole") as usize + 1);
+    let ledge = (r - l - 1) / 3;
     let mut glyphs = vec![Glyph::Keep; (w * h) as usize];
     for y in 0..h {
         let row = &mut glyphs[(y * w) as usize..((y + 1) * w) as usize];
-        row[4] = Glyph::Wall;
-        row[11] = Glyph::Wall;
-        for g in &mut row[5..=10] {
+        row[l - 1] = Glyph::Wall;
+        row[r + 1] = Glyph::Wall;
+        for g in &mut row[l..=r] {
             *g = Glyph::Open;
         }
         // Ledges every 7 blocks, left and right in turn.
         if y % 7 == 4 {
-            let at = if (y / 7) % 2 == 0 { 5 } else { 9 };
-            row[at] = Glyph::Platform;
-            row[at + 1] = Glyph::Platform;
+            let from = if (y / 7) % 2 == 0 { l } else { r + 1 - ledge };
+            for g in &mut row[from..from + ledge] {
+                *g = Glyph::Platform;
+            }
         }
         if y % 14 == 10 {
-            row[if (y / 14) % 2 == 0 { 10 } else { 5 }] = Glyph::Candle;
+            row[if (y / 14) % 2 == 0 { r } else { l }] = Glyph::Candle;
         }
     }
     Piece::new(rx, bottom, w, h, glyphs)

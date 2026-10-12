@@ -1684,15 +1684,17 @@ impl ChunkGenerator for TerrainGen {
     }
 
     fn landmarks(&self) -> Vec<(CellPos, String)> {
-        self.lair_of
-            .iter()
-            .enumerate()
-            .filter_map(|(i, l)| l.map(|k| (i, k)))
-            .map(|(i, k)| {
-                let c = &self.plan.caves.chambers[i];
-                (CellPos::new(c.x as i32, c.y as i32), self.lairs[k as usize].name.clone())
-            })
-            .collect()
+        let lairs = self.lair_of.iter().enumerate().filter_map(|(i, l)| l.map(|k| (i, k))).map(|(i, k)| {
+            let c = &self.plan.caves.chambers[i];
+            (CellPos::new(c.x as i32, c.y as i32), self.lairs[k as usize].name.clone())
+        });
+        // (Castles and crypts: the middle of their rooms.)
+        let built = self.plan.structures.list.iter().filter(|s| matches!(s.kind, StructureKind::Castle | StructureKind::Crypt)).map(|s| {
+            let rooms = &s.pieces[..s.rooms.min(s.pieces.len())];
+            let (x0, y0, x1, y1) = rooms.iter().fold((i32::MAX, i32::MAX, i32::MIN, i32::MIN), |(x0, y0, x1, y1), p| (x0.min(p.x), y0.min(p.y), x1.max(p.x + p.w * BLOCK), y1.max(p.y + p.h * BLOCK)));
+            (CellPos::new((x0 + x1) / 2, (y0 + y1) / 2), s.kind.name().to_string())
+        });
+        lairs.chain(built).collect()
     }
 
     fn zone_at(&self, x: i32, y: i32) -> Option<&'static str> {

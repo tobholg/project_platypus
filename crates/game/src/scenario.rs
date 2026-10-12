@@ -297,6 +297,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, leap_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, slimecheck_script)
+            .add_systems(Update, structure_script)
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
             .add_systems(PreUpdate, stealth_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7468,6 +7469,38 @@ fn backwall_script(
 }
 
 type Pogoer<'a> = (&'a mut Kinematics, &'a crate::creatures::Health, Option<&'a crate::combat::Swing>);
+
+/// `structure` (the real world): the player dropped into the middle of
+/// the nearest `PLATYPUS_STRUCTURE` (castle, the default; crypt) to the
+/// spawn, kept alive (for a look: `PLATYPUS_ZOOM=1`, `PLATYPUS_SHOTS`).
+fn structure_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    mut done: Local<bool>,
+) {
+    if s.name != "structure" {
+        return;
+    }
+    let Ok((mut pk, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    if *done || s.elapsed < 0.5 {
+        return;
+    }
+    *done = true;
+    let want = std::env::var("PLATYPUS_STRUCTURE").unwrap_or_else(|_| "castle".into());
+    let home = sim.generator.spawn_point();
+    let all: Vec<(CellPos, String)> = sim.generator.landmarks().into_iter().filter(|(_, n)| *n == want).collect();
+    match all.iter().min_by_key(|(p, _)| (p.x - home.x).abs()) {
+        Some((p, _)) => {
+            pk.body.pos = Vec2::new(p.x as f32, p.y as f32);
+            pk.prev_pos = pk.body.pos;
+            pk.body.vel = Vec2::ZERO;
+            info!("structure: the player in the {want} at ({}, {}), {} from the spawn ({} of them)", p.x, p.y, p.x - home.x, all.len());
+        }
+        None => info!("structure: no {want} in this world"),
+    }
+}
 
 /// `slimecheck` (the real world; `PLATYPUS_LIFE_RATE=8` for more): the
 /// player put in a cave `PLATYPUS_SLIMECHECK_DEPTH` (300) cells under the
