@@ -522,7 +522,10 @@ withers grass and poisons; ectoplasm slows.
 the most fun first, each tried before the next: mimic, bloat toad,
 necromancer and risen skeletons, watcher, chain wraith, shield orc, orc
 sapper, bat swarm. Mimic built 2026-10-12 on `roster`: chests deep down
-and in castles one in six; `Disguised`; `mimic` scenario.)
+and in castles one in six; `Disguised`; `mimic` scenario. Chain wraith
+built 2026-10-12 (asked for next): `Phasing`, simulated chains on a canvas,
+spin/lash/pull/rake and whirl/sweep, water stops it, fades at dawn, night
+surface and deep caves; `wraith` scenario.)
 Necromancer, risen skeletons, zombies, chain wraith, watcher, stilt
 stalker, crag crab, scorpion, cave centipede, the reworked cave spider,
 bloat toad, splitting slime, shield orc, orc sapper, mimic, bat swarm

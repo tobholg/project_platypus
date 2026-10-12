@@ -98,6 +98,11 @@ const DORMANT_FAR: f32 = 1_400.0;
 #[derive(Component)]
 pub struct Disguised;
 
+/// Goes through rock and everything (a wraith): it moves as its velocity
+/// says, no gravity, nothing in the way (its own code steers it).
+#[derive(Component)]
+pub struct Phasing;
+
 /// Creatures, not the player.
 type NotPlayer = (With<Creature>, Without<player::LocalPlayer>);
 
@@ -500,7 +505,7 @@ pub fn free_spot(world: &platypus_sim::World, center: Vec2, half: Vec2, reach: i
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 
 /// One movement code path for every creature.
-type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, (Option<&'a body::elements::Chilled>, Option<&'a body::elements::Coated>, Has<body::goo::Goo>), Option<&'a mut FallTrack>, Has<WebWalker>, Option<&'a crate::gear::hook::Rope>, Has<player::LocalPlayer>, Option<&'a mut StepEase>, Has<body::hurt::Faltering>);
+type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, (Option<&'a body::elements::Chilled>, Option<&'a body::elements::Coated>, Has<body::goo::Goo>, Has<Phasing>), Option<&'a mut FallTrack>, Has<WebWalker>, Option<&'a crate::gear::hook::Rope>, Has<player::LocalPlayer>, Option<&'a mut StepEase>, Has<body::hurt::Faltering>);
 
 pub(crate) fn move_creatures(
     sim: Res<SimWorld>,
@@ -513,13 +518,18 @@ pub(crate) fn move_creatures(
     coatings: Res<body::elements::Coatings>,
 ) {
     let grid = WorldGrid(&sim.world);
-    for (entity, mut k, stats, controls, (chilled, coated, gooey), track, web_walker, rope, player, ease, faltering) in &mut q {
+    for (entity, mut k, stats, controls, (chilled, coated, gooey, phasing), track, web_walker, rope, player, ease, faltering) in &mut q {
         // Frozen until the ground under it is loaded.
         if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
             continue;
         }
         let k = &mut *k;
         k.prev_pos = k.body.pos;
+        // (Through everything, as it's steered.)
+        if phasing {
+            k.body.pos += k.body.vel * DT;
+            continue;
+        }
         let slowed;
         // At the game's tempo (`tempo.rs`).
         let paced = tempo.apply(&stats.0, player);

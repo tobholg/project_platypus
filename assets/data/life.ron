@@ -41,6 +41,10 @@
     // spiders keep it.
     (kind: "zombie", place: Surface, biomes: ["deep forest"], when: Day, most: 3, rate: 0.08, group: (1, 2), emerges: true),
     (kind: "spider", place: Surface, biomes: ["deep forest"], most: 1, rate: 0.04),
+    // Chain wraiths: out at night (fading at dawn), and in the deep dark
+    // any time; one at a time, never near the start.
+    (kind: "chain_wraith", place: Surface, when: Night, above: (40, 90), most: 1, rate: 0.02, away: 1500),
+    (kind: "chain_wraith", place: Cave, depth: (600, 150000), most: 1, rate: 0.015),
     (kind: "vampire_bat", place: Cave, depth: (450, 150000), most: 2, rate: 0.12),
     (kind: "spider", place: Cave, depth: (225, 150000), most: 1, rate: 0.06),
     // The bestiary's walkers (BE limbs), where they belong.

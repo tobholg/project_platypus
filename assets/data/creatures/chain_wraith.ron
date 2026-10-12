@@ -1,0 +1,25 @@
+// A chain wraith: a shade that comes out at night (and keeps to the deep
+// dark at any hour), drifting through rock, chains hanging from its
+// cuffs. It keeps a chain's length off; spins one (a rising rattle) and
+// lashes it at you: hooked, you're dragged in and raked with cold claws
+// (dash, or strike the chain, to get free). Near it, it whirls both chains
+// round itself (jump them, pogo off it). Water it can't cross: not in it,
+// not over it. Blades barely touch it; light burns it. In the rock it
+// can't be hurt. At dawn it fades. (custom/wraith.rs)
+(
+    name: "Chain wraith",
+    size: (14, 26),
+    health: 140,
+    team: Enemy,
+    kind: "spirit",
+    profile: {slash: 0.5, pierce: 0.5, blunt: 0.5, frost: 0.0},
+    blood: "",
+    corpse: false,
+    art: "chain_wraith",
+    light: (color: (90, 140, 200), strength: 0.5),
+    movement: (run_speed: 70, jump_height: 0, air_jumps: 0, step_height: 0, dash_speed: 0, fly_speed: 70),
+    touchless: true,
+    brain: (kind: "hunter", params: (aggro: 420, close: Range(near: 70, far: 100))),
+    custom: (name: "wraith", params: ()),
+    z: 10.5,
+)

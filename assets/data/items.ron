@@ -152,6 +152,9 @@
         (id: "flask",          name: "Flask",          color: (170, 220, 200), use: Vessel(holds: 36, acidproof: true),
             about: "Glass: carries a little of anything cool, acid too."),
         // A bar is its metal's block (materials.ron `item`): 36 cells of it.
+        // What a chain wraith leaves: its chains, cold to the touch.
+        (id: "wraith_chain",   name: "Wraith chain",   stack: 99, color: (120, 140, 176),
+            about: "A length of a chain wraith's chain, cold, faintly there."),
         (id: "copper_bar",     name: "Copper bar",     stack: 99, color: (205, 127, 50)),
         (id: "iron_bar",       name: "Iron bar",       stack: 99, color: (176, 178, 190)),
         (id: "silver_bar",     name: "Silver bar",     stack: 99, color: (214, 218, 230)),

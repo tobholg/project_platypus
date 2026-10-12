@@ -299,6 +299,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, slimecheck_script)
             .add_systems(Update, structure_script)
             .add_systems(PreUpdate, mimic_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, wraith_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
             .add_systems(PreUpdate, stealth_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7470,6 +7471,93 @@ fn backwall_script(
 }
 
 type Pogoer<'a> = (&'a mut Kinematics, &'a crate::creatures::Health, Option<&'a crate::combat::Swing>);
+
+/// `wraith` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_HOUR=22`):
+/// a chain wraith at 1150, 60 up; the player (who can't die) stands at 900.
+/// `PLATYPUS_WRAITH`: (none) let be: it comes, lashes, pulls, rakes;
+/// `water`: a pool from 960 to 1060 between them (it stops at it);
+/// `dash`: hooked, the player dashes (free); `kill`: struck till it dies
+/// (its chains drop); `rock`: a slab of stone at 1000..1060 it drifts
+/// through. Logs what it does, where, its health, the player's lost.
+fn wraith_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Option<&crate::creatures::custom::wraith::Wraith>), Without<LocalPlayer>>,
+    drops: Query<&crate::hands::Dropped>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, f32, &'static str)>,
+    (inv, items): (Query<&crate::hands::items::Inventory, With<LocalPlayer>>, Option<Res<crate::hands::items::Items>>),
+) {
+    if s.name != "wraith" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let floor = platypus_worldgen::arena::FLOOR;
+    let mode = std::env::var("PLATYPUS_WRAITH").unwrap_or_default();
+    state.2 += h.max - h.hp;
+    h.hp = h.max;
+    let wraith = them.iter().find(|x| x.1.kind == "chain_wraith");
+    if state.0 == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        let paint = |sim: &mut SimWorld, name: &str, x0: i32, x1: i32, y0: i32, y1: i32| {
+            if let Some(m) = sim.materials().id(name) {
+                for x in x0..x1 {
+                    for y in y0..y1 {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: m, overwrite: true });
+                    }
+                }
+            }
+        };
+        if mode == "water" {
+            paint(&mut sim, "water", 960, 1060, floor - 20, floor + 2);
+        }
+        if mode == "rock" {
+            paint(&mut sim, "stone", 1000, 1060, floor, floor + 120);
+        }
+        crate::creatures::def::spawn_creature(&mut commands, "chain_wraith", Vec2::new(1150.0, fl + 60.0), |_| {});
+        info!("wraith: a chain wraith at 1150 ({mode})");
+        state.0 = 1;
+        return;
+    }
+    let Some((e, _, wk, wh, w)) = wraith else {
+        if state.0 == 1 && t > 1.5 {
+            state.0 = 2;
+            state.1 = t;
+        }
+        if state.0 == 2 && t > state.1 + 1.0 {
+            let held = items.as_ref().and_then(|i| i.id("wraith_chain")).zip(inv.single().ok()).map_or(0, |(id, inv)| inv.count(id));
+            info!("wraith: t {t:.1} gone; things dropped about: {}, wraith chains carried: {held}", drops.iter().count());
+            state.0 = 9;
+        }
+        return;
+    };
+    let doing = w.map_or("?", |w| w.doing());
+    if doing != state.3 {
+        info!("wraith: t {t:.2} {} at ({:.0}, {:.0}); the player at {:.0}, lost {:.0}", doing, wk.body.pos.x, wk.body.pos.y - fl, k.body.pos.x, state.2);
+        state.3 = doing;
+    }
+    if mode == "dash" {
+        if doing == "pull" { keys.press(KeyCode::ShiftLeft) } else { keys.release(KeyCode::ShiftLeft) }
+    }
+    if mode == "kill" && t > 3.0 && t > state.1 {
+        hits.write(crate::combat::Hit { target: e, damage: 40.0, harm: crate::creatures::Harm::Radiant, knock: Vec2::ZERO, stun: 0.0, at: wk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        state.1 = t + 0.5;
+    }
+    if (t * 2.0).fract() < 0.02 && t > 1.0 {
+        info!("wraith: t {t:.1} {doing} at ({:.0}, {:.0}) hp {:.0}; the player lost {:.0}", wk.body.pos.x, wk.body.pos.y - fl, wh.hp, state.2);
+    }
+}
 
 /// `mimic` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a chest at 980
 /// and a mimic at 1060 (it looks the same); the player (who can't die)
