@@ -435,7 +435,7 @@ fn use_hands(
     match items.def(stack.item).use_.clone() {
         // (A pickaxe or axe swings while it's used: `combat`, by its id.)
         Use::Mine { back, power, tier, speed, reach, area } if input.primary && hand.cooldown == 0.0 => {
-            swings.write(crate::combat::MeleeRequest { attacker: me, at: cursor });
+            swings.write(crate::combat::MeleeRequest { attacker: me, at: cursor, fresh: clicked });
             // A chest at the cursor, within reach, takes the hit (the last
             // one breaks it, spilling what's in it, and the chest).
             if !back
@@ -619,7 +619,7 @@ fn use_hands(
             casts.write(crate::magic::CastRequest { caster: me, spell, from, toward: cursor, alt: !input.primary });
         }
         Use::Melee(_) if input.primary => {
-            swings.write(crate::combat::MeleeRequest { attacker: me, at: cursor });
+            swings.write(crate::combat::MeleeRequest { attacker: me, at: cursor, fresh: clicked });
         }
         // (Drawn while held, loosed on letting go: `archery::nock`.)
         Use::Bow(_) if input.primary && items.id("arrow").is_some_and(|a| inv.count(a) > 0) => {

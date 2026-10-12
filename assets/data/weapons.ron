@@ -24,8 +24,9 @@
 //   once; with `dive` it's a plunge: point down, falling at least `dive`
 //   cells/s, live till it lands, bounces off something, or has fallen 70
 //   cells (then it's over), and a landing slams what's within `slam` cells.
-//   Any other down-strike is live 0.09 s at most, however long its move:
-//   a pogo's to be timed.
+//   Any other down-strike is quick, however long its move: a windup of
+//   0.04 s at most, live 0.09 s (its whole sweep), back in 0.07 s; a pogo's
+//   to be timed. Only a fresh click strikes down: holding it doesn't.
 //   None: the first move, turned down.
 (
     combo_gap: 0.35,

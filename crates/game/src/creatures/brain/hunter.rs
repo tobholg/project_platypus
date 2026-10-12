@@ -432,7 +432,7 @@ fn hunt(
                         m.attacking = true;
                     }
                     if m.swings_left > 0 && !stunned {
-                        swings.write(crate::combat::MeleeRequest { attacker: e, at: t });
+                        swings.write(crate::combat::MeleeRequest { attacker: e, at: t, fresh: true });
                         // (A request during a swing queues the next move: one each.)
                         if !swinging || combo > 1 {
                             m.swings_left -= 1;

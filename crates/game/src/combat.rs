@@ -529,6 +529,9 @@ pub struct Wielding(pub Option<String>);
 pub struct MeleeRequest {
     pub attacker: Entity,
     pub at: Vec2,
+    /// A fresh press, not the button held: only that starts (or queues) a
+    /// down-strike, so holding it doesn't pogo on and on by itself.
+    pub fresh: bool,
 }
 
 /// When hits land (touch, swings, then `apply_hits`): after it, `Felt`
@@ -761,8 +764,11 @@ const REBOUND: f32 = 0.2;
 /// over, falling on no faster than `PLUNGE_SPENT`.
 const PLUNGE_MAX: f32 = 4.0;
 const PLUNGE_FALL: f32 = 70.0;
-/// A down-strike (not a plunge) is live no longer than this (s).
+/// A down-strike (not a plunge) is live no longer than this (s), after a
+/// windup no longer than `DOWN_WINDUP`, back in no longer than `DOWN_BACK`.
 const DOWN_LIVE: f32 = 0.09;
+const DOWN_WINDUP: f32 = 0.04;
+const DOWN_BACK: f32 = 0.07;
 const PLUNGE_SPENT: f32 = 320.0;
 
 /// Between swings: which move of the combo comes next, and how long since
@@ -872,6 +878,9 @@ fn start_swings(
         let down = !k.loco.grounded() && (held_down || d.normalize_or_zero().y < -DOWN_AIM);
         let facing = if d.x.abs() > 0.5 { d.x.signum() } else { k.loco.facing };
         let aim = if down { -90.0 } else { d.y.atan2(d.x.abs()).to_degrees() };
+        if down && !ask.fresh {
+            continue;
+        }
         if let Some(mut s) = swing {
             // During a swing, the next is queued.
             s.queued = Some((aim, facing, down));
@@ -979,10 +988,19 @@ fn swing(
         // What the weapon leaves on what it hits (venom).
         let coat = eq.and_then(|eq| eq.held).and_then(|h| items.as_ref()?.def(h.item).gear.as_ref()?.on_hit.as_ref()).filter(|n| coatings.by_name.contains_key(*n)).cloned();
         let def = weapons.def(s.weapon).clone();
-        let Some(mv) = def.move_of(s.mv, s.down).cloned() else {
+        let Some(mut mv) = def.move_of(s.mv, s.down).cloned() else {
             commands.entity(me).remove::<Swing>();
             continue;
         };
+        // (A down-strike, a plunge's aside, is live only a moment, however
+        // long its swing: a pogo's to be timed, as Hollow Knight's. Its
+        // sweep is that moment, and it's quickly back: what you see is
+        // when it strikes.)
+        if s.down && mv.dive <= 0.0 {
+            mv.windup = mv.windup.min(DOWN_WINDUP);
+            mv.active = mv.active.min(DOWN_LIVE);
+            mv.recovery = mv.recovery.min(DOWN_BACK);
+        }
         s.t += DT * stats.mult(crate::gear::Stat::AttackSpeed);
         s.rebound -= DT;
         let grounded = k.loco.grounded();
@@ -1063,10 +1081,7 @@ fn swing(
         // The arm follows the blade.
         let hand_at = hand.and_then(|h| h.at).unwrap_or(k.body.pos);
         commands.entity(me).insert(Aiming { at: hand_at + dir(angle) * 45.0, left: 0.1 });
-        // (A down-strike, a plunge's aside, is live only a moment, however
-        // long its swing: a pogo's to be timed, as Hollow Knight's.)
-        let quick = s.down && !plunge && s.t >= mv.windup + DOWN_LIVE;
-        if !mv.active_at(s.t) || quick {
+        if !mv.active_at(s.t) {
             s.prev = None;
             continue;
         }

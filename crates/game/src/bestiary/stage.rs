@@ -273,7 +273,7 @@ fn direct(
                 sk.body.pos.x = ak.body.pos.x + ak.body.half.x + 24.0;
             }
             if (t / 0.9).floor() > ((t - DT) / 0.9).floor() || first {
-                swings.write(crate::combat::MeleeRequest { attacker: actor, at: sk.body.pos });
+                swings.write(crate::combat::MeleeRequest { attacker: actor, at: sk.body.pos, fresh: true });
             }
             t >= 0.9 * n as f32 + 0.6
         }
