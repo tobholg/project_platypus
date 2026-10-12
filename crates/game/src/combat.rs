@@ -1453,7 +1453,10 @@ fn draw(
                 commands.entity(g).despawn();
             }
             if let (None, Some(_)) = (sprite, w) {
-                commands.entity(e).with_child((WeaponSprite, Sprite::default(), Transform::default(), Visibility::Hidden));
+                // (Not to one gone this frame: no child of nothing.)
+                commands.entity(e).queue_silenced(|mut ew: EntityWorldMut| {
+                    ew.with_child((WeaponSprite, Sprite::default(), Transform::default(), Visibility::Hidden));
+                });
             }
             if let Some(c) = sprite
                 && let Ok((_, _, mut v, flame)) = sprites.get_mut(c)
@@ -1528,7 +1531,9 @@ fn draw(
                         light.color = color;
                     }
                     None => {
-                        commands.entity(e).with_child((AuraGlow, crate::light::LightSource { color, flicker: 0.2 }, Transform::from_translation(at)));
+                        commands.entity(e).queue_silenced(move |mut ew: EntityWorldMut| {
+                            ew.with_child((AuraGlow, crate::light::LightSource { color, flicker: 0.2 }, Transform::from_translation(at)));
+                        });
                     }
                 }
                 // Its sparks, so many a second (more while it's used).

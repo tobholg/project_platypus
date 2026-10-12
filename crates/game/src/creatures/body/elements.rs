@@ -226,7 +226,10 @@ pub fn blaze(
                 }
             }
             None => {
-                commands.entity(e).with_child((Name::new("Blaze"), Blaze, crate::light::LightSource { color: glow, flicker: 1.0 }, Transform::default()));
+                // (Not to one gone this frame: no child of nothing.)
+                commands.entity(e).queue_silenced(move |mut ew: EntityWorldMut| {
+                    ew.with_child((Name::new("Blaze"), Blaze, crate::light::LightSource { color: glow, flicker: 1.0 }, Transform::default()));
+                });
             }
         }
     }
