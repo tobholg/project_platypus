@@ -22,11 +22,12 @@
     presets: [
         // What the player's file says: snappy, heavy, fast.
         (name: "Hollow Knight", pace: 1.0),
-        // Experimental: Hollow Knight's sharp run and stop, but higher
-        // jumps (everyone's), a little lighter, a longer, quicker dash that
-        // comes back in the air too.
-        (name: "Experimental", pace: 1.0, jump: 1.2, gravity: 0.88, player: {
-            "gravity": 1450, "fall_gravity": 1.5, "max_fall": 590,
+        // Experimental: a run and stop between Hollow Knight's and Middle's
+        // (a little run-up and slide), higher jumps (everyone's), lighter,
+        // a longer, quicker dash that comes back in the air too.
+        (name: "Experimental", pace: 1.0, jump: 1.2, gravity: 0.82, player: {
+            "run_speed": 128, "ground_accel": 950, "ground_decel": 1500, "turn_accel": 1500,
+            "air_accel": 950, "gravity": 1300, "fall_gravity": 1.45, "max_fall": 560,
             "jump_height": 72,
             "dash_speed": 440, "dash_time": 0.17, "dash_cooldown": 0.45, "air_dash_recharge": 0.8,
         }),
