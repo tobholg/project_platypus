@@ -11,7 +11,9 @@
 //   jump's apex), jump_hold (s of steady rise while jump is held: Terraria's
 //   jump), jump_cut (rise kept on letting go early), dash_speed, dash_time,
 //   dash_cooldown, air_dash_recharge (the air dash back this long after,
-//   even in the air; 0: once an airtime), wall_slide_speed, wall_jump_push.
+//   even in the air; 0: once an airtime), wall_slide_speed, wall_jump_push;
+//   rocket_power, rocket_across (shares of the rocket boots' thrust and
+//   rising speed, and of their speed sideways).
 // `pace`: every other creature's (speeds × pace, accelerations × pace²);
 // `jump`, `gravity`: theirs × these (higher jumps, a lighter fall).
 //
@@ -30,6 +32,7 @@
             "air_accel": 950, "gravity": 1300, "fall_gravity": 1.45, "max_fall": 560,
             "jump_height": 72,
             "dash_speed": 440, "dash_time": 0.17, "dash_cooldown": 0.45, "air_dash_recharge": 0.8,
+            "rocket_power": 0.88, "rocket_across": 0.88,
         }),
         // Between: some run-up and skid, a short held rise, ~0.65 s in the
         // air, a softer fall.
