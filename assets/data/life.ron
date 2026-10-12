@@ -23,6 +23,10 @@
     (kind: "firefly", place: Surface, when: Night, above: (9, 36), most: 14, rate: 3.0),
     (kind: "fish", place: Water, most: 8, rate: 1.2),
     (kind: "bat", place: Cave, most: 3, rate: 0.35),
+    // Slimes on the surface too: green ones in grass and woods, a blue
+    // one now and then.
+    (kind: "slime", place: Surface, biomes: ["plains", "forest", "jungle", "swamp"], most: 2, rate: 0.12),
+    (kind: "blue_slime", place: Surface, biomes: ["plains", "forest", "tundra"], most: 1, rate: 0.05),
     (kind: "slime", place: Cave, depth: (60, 1350), zone: "none", most: 3, rate: 0.4),
     (kind: "blue_slime", place: Cave, depth: (60, 1350), zone: "none", most: 2, rate: 0.2),
     (kind: "glutton", place: Cave, depth: (400, 150000), most: 1, rate: 0.04),
