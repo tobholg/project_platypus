@@ -186,6 +186,9 @@
         (id: "ice_shard", name: "Ice shard", mana: 2, color: (200, 235, 255), kind: Payload(Damage(11)),
             look: (trail: (count: 0.9, life: (0.15, 0.4), colors: [(255, 255, 255), (200, 235, 255), (120, 180, 235)], speed: 10, gravity: 60, glow: true),
                    burst: (count: 22, life: (0.25, 0.7), colors: [(255, 255, 255), (190, 230, 255), (110, 170, 230)], speed: 130, spread: 1.5, gravity: 260, drag: 1))),
+        // Jan Willy's finger: a little flame that burns.
+        (id: "finger_burn", name: "Finger burn", mana: 2, color: (255, 150, 60), kind: Payload(Damage(10)),
+            look: (burst: (count: 20, life: (0.15, 0.45), colors: [(255, 250, 200), (255, 170, 60), (200, 70, 20)], speed: 120, spread: 1.4, drag: 3, glow: true))),
         (id: "acid_drops", name: "Acid drops", mana: 2, color: (120, 240, 60), kind: Payload(Matter(material: "acid", cells: 32))),
         // A spider's: a lot of acid, splashing over what it hits.
         (id: "acid_glob", name: "Acid glob", mana: 4, color: (120, 240, 60), kind: Payload(Matter(material: "acid", cells: 338))),

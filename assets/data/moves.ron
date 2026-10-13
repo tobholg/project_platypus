@@ -17,7 +17,8 @@
 //       within `reach` of a point `at` cells toward the target is hit once
 //       (`from`: live from that share of the phase; `coat`: left on it)
 //     Cast(spell, at, up): a spell (spells.ron) from there, aimed where the
-//       target will be and lobbed by as far as it falls
+//       target will be and lobbed by as far as it falls (`a|b`: one of
+//       them, by chance, each shot)
 //     Slam((radius, damage, harm, knock, stun)): round its feet
 //     Summon(kind, count, spread): creatures beside it
 //     Sound(name): sounds.ron
@@ -77,6 +78,13 @@
             (name: "chew", secs: 0.6, clip: Some("bite"), acts: [Strike((at: 6, reach: 10, damage: 12, harm: pierce, knock: 0, stun: 0.2, from: 0.5))]),
             (name: "spit", secs: 0.0, clip: Some("lunge"), acts: [Throw(speed: 180, up: 100, stun: 0.3)]),
             (name: "recover", secs: 0.6, clip: Some("idle")),
+        ]),
+        // Jan Willy points: he crouches forward, finger out, the other hand
+        // swung back, and the finger shoots fire or acid (by chance).
+        (id: "willy_point", every: 2.4, when: (range: (30, 220), line: true), phases: [
+            (name: "aim", secs: 0.55, clip: Some("point"), acts: [Sound("pour")]),
+            (name: "shoot", secs: 0.3, clip: Some("shoot"), acts: [Cast(spell: "willy_fire|glutton_acid", at: 10, up: 1), Sound("cast")]),
+            (name: "recover", secs: 0.45, clip: Some("point")),
         ]),
         // A crimson head's grab: quicker to come (a shorter tell), from
         // further, and it bites harder.
