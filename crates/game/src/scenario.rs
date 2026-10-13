@@ -7477,7 +7477,8 @@ type Pogoer<'a> = (&'a mut Kinematics, &'a crate::creatures::Health, Option<&'a 
 /// at 1120; the player (who can't die) stands at 900 (`PLATYPUS_DREAD=near`:
 /// at 1085, for the sweep; `kill`: it's struck with light till it dies, and
 /// leaves its cloak; `dash`: drawn in by its void, the player dashes;
-/// `back`: while it pulls, the player walks away).
+/// `back`: while it pulls, the player walks away; `parry`: near it, the
+/// player swings and swings at it).
 /// Logs what it does, where the player is, the player's health lost.
 fn dread_script(
     mut commands: Commands,
@@ -7488,6 +7489,7 @@ fn dread_script(
     mut hits: MessageWriter<crate::combat::Hit>,
     mut state: Local<(u8, f32, f32, &'static str)>,
     (tugged, mut keys, player_e): (Query<(), (With<LocalPlayer>, With<crate::creatures::Tugged>)>, ResMut<ButtonInput<KeyCode>>, Query<Entity, With<LocalPlayer>>),
+    (mut mouse, mut cursor): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>),
 ) {
     if s.name != "dread" {
         return;
@@ -7504,7 +7506,7 @@ fn dread_script(
                 commands.entity(e).despawn();
             }
         }
-        k.body.pos = Vec2::new(if mode == "near" { 1085.0 } else { 900.0 }, fl + k.body.half.y);
+        k.body.pos = Vec2::new(if matches!(mode.as_str(), "near" | "parry") { 1075.0 } else if mode == "bat" { 600.0 } else { 900.0 }, fl + k.body.half.y);
         k.prev_pos = k.body.pos;
         crate::creatures::def::spawn_creature(&mut commands, "dread_knight", Vec2::new(1120.0, fl), |_| {});
         info!("dread: a dread knight at 1120 ({mode}); the player is {:?}", player_e.single().ok());
@@ -7526,6 +7528,27 @@ fn dread_script(
     if doing != state.3 {
         info!("dread: t {t:.2} {doing} at {:.0}; the player at {:.0}, lost {:.0}", dk.body.pos.x, k.body.pos.x, state.2);
         state.3 = doing;
+    }
+    // `bat`: the ball, struck where it lies, batted along.
+    if mode == "bat" {
+        if let Some(d) = d {
+            let b = d.ball();
+            cursor.0 = Some(b);
+            // (Put beside it, on the near side, once, at 2.5 s.)
+            if (2.5..2.52).contains(&t) {
+                k.body.pos.x = b.x - 22.0;
+                k.prev_pos = k.body.pos;
+            }
+            if t > 2.6 && (t * 6.0) as i32 % 2 == 0 && (b.x - k.body.pos.x).abs() < 30.0 { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+            if (t * 2.0).fract() < 0.02 {
+                info!("dread: t {t:.1} the ball at ({:.0}, {:.0}), the player at {:.0}", b.x, b.y - fl, k.body.pos.x);
+            }
+        }
+    }
+    // `parry`: the player (in its sweep's reach) swings and swings at it.
+    if mode == "parry" {
+        cursor.0 = Some(dk.body.pos - Vec2::Y * 20.0);
+        if (t * 6.0) as i32 % 2 == 0 { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     }
     // `back`: while it pulls, the player walks away from it.
     if mode == "back" {

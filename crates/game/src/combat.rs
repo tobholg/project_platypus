@@ -45,6 +45,7 @@ impl Plugin for CombatPlugin {
             .add_message::<Recoil>()
             .add_message::<Dashed>()
             .init_resource::<HitStop>()
+            .init_resource::<LiveBlades>()
             .add_systems(Startup, load)
             .add_systems(PreUpdate, hit_stop)
             .add_systems(FixedUpdate, (start_swings, dodge, stamina).chain().after(TickSet::Intent).before(TickSet::Bodies))
@@ -712,6 +713,18 @@ fn blink(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Gra
 #[derive(Message, Clone, Copy, Debug)]
 pub struct Dashed(pub Entity);
 
+/// A blade sweeping (a swing's live part), this tick: its cells in the
+/// world, how hard it pushes (knockback), whose. For what a blade can meet
+/// that isn't a body: a dread knight's flail (parried, batted along).
+pub struct LiveBlade {
+    pub who: Entity,
+    pub cells: Vec<Vec2>,
+    pub knock: f32,
+}
+
+#[derive(Resource, Default)]
+pub struct LiveBlades(pub Vec<LiveBlade>);
+
 /// A swing under way.
 #[derive(Component, Debug)]
 pub struct Swing {
@@ -994,7 +1007,9 @@ fn swing(
     spells: Query<(Entity, &crate::magic::Spell)>,
     (mut stop, mut trauma, mut sounds, ids): (ResMut<HitStop>, ResMut<crate::fx::Trauma>, MessageWriter<crate::sound::PlaySound>, Query<&crate::creatures::Stable>),
     factions: Query<&crate::creatures::factions::Faction>,
+    mut blades: ResMut<LiveBlades>,
 ) {
+    blades.0.clear();
     let Some(weapons) = weapons else { return };
     let none = crate::gear::Stats::default();
     for (me, mut s, k, hand, team, mut stamina, stats, eq) in &mut swingers {
@@ -1099,6 +1114,12 @@ fn swing(
             s.prev = None;
             continue;
         }
+        // (Live: where it is, for what else a blade can meet: `LiveBlades`.)
+        blades.0.push(LiveBlade {
+            who: me,
+            cells: weapons.turned[s.weapon].cells(angle, facing).map(|c| hand_at + dir(angle) * thrust + c).collect(),
+            knock: def.knock * mv.knock,
+        });
         // (The blade moving: a whoosh, deeper for a heavy blade.)
         if !s.whooshed {
             s.whooshed = true;

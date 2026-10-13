@@ -21,7 +21,12 @@
 //!   leaving void smoke, bursting where they strike.
 //!
 //! Between, the ball drags behind it, and hurts what it hits going fast.
-//! Dead, its cloak can be worn.
+//!
+//! A blade that meets the ball as it comes down or sweeps parries it: the
+//! ball's knocked back, the knight staggers (an opening). Struck lying on
+//! the ground, the ball's batted along, the harder the heavier the blow.
+//! A volley may come in up to three rounds, each re-charged (shorter) and
+//! re-aimed. Dead, its cloak can be worn.
 
 use std::sync::Arc;
 
@@ -67,6 +72,9 @@ pub struct Dread {
     chains: Vec<Links>,
     #[serde(skip)]
     started: bool,
+    /// When it may next be batted along.
+    #[serde(skip)]
+    batted: f32,
 }
 
 /// Its attacks' waits: slam, sweep, pull, volley.
@@ -95,8 +103,11 @@ enum Doing {
     /// Drawing whom it hunts toward it: in tugs (how many done), each a
     /// throb (its tell), a tug, a rest.
     Pull(f32, Entity, u32),
-    /// Three orbs swelling (the volley's tell).
-    Ready(f32),
+    /// The void swelling in its palm (the volley's tell): this round of
+    /// so many.
+    Ready(f32, u32, u32),
+    /// Parried: staggered, a moment.
+    Stagger(f32),
     /// Hauling the ball back in, then that.
     Haul(f32, Next),
 }
@@ -123,6 +134,11 @@ impl CustomCreature for Dread {
 }
 
 impl Dread {
+    /// Where its ball is (a scenario's log).
+    pub fn ball(&self) -> Vec2 {
+        self.ball
+    }
+
     /// What it's doing, in a word (a scenario's log).
     pub fn doing(&self) -> &'static str {
         match self.doing {
@@ -134,7 +150,8 @@ impl Dread {
             Doing::Sweep(_) => "sweep",
             Doing::Gather(_) => "gather",
             Doing::Pull(..) => "pull",
-            Doing::Ready(_) => "ready",
+            Doing::Ready(..) => "ready",
+            Doing::Stagger(_) => "stagger",
             Doing::Haul(..) => "haul",
         }
     }
@@ -190,6 +207,15 @@ const PULL_EVERY: f32 = 9.0;
 /// The volley: the void swells in its palm this long; three, this far apart (degrees);
 /// from this near to this far; then it waits.
 const READY: f32 = 1.1;
+/// Up to this many rounds a volley; each after the first charged this long.
+const VOLLEY_ROUNDS: u32 = 3;
+const READY_AGAIN: f32 = 0.7;
+/// Parried, it staggers this long; the ball knocked back this fast (and up).
+const STAGGER: f32 = 1.3;
+const PARRIED: (f32, f32) = (380.0, 200.0);
+/// Batted along the ground: a blow's knockback × this (cells/s), at most
+/// once in this long.
+const BAT: (f32, f32) = (0.38, 0.2);
 const FAN: f32 = 16.0;
 const VOLLEY_RANGE: (f32, f32) = (100.0, 320.0);
 const VOLLEY_EVERY: f32 = 6.0;
@@ -210,6 +236,48 @@ fn hands_at(pos: Vec2, facing: f32, doing: Doing) -> (Vec2, Vec2) {
     (pos + Vec2::new(o.x * facing, o.y), pos + Vec2::new(cast.x * facing, cast.y))
 }
 
+/// A blade (not its own) meeting the ball, going from `a` to `b` this
+/// tick: where, and how hard that blade pushes.
+fn parried(blades: &crate::combat::LiveBlades, a: Vec2, b: Vec2, me: Entity) -> Option<(Vec2, f32)> {
+    let ab = b - a;
+    let near = |p: Vec2| {
+        let k = if ab.length_squared() > 1e-6 { ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0) } else { 0.0 };
+        p.distance(a + ab * k)
+    };
+    blades.0.iter().filter(|bl| bl.who != me).find_map(|bl| bl.cells.iter().find(|c| near(**c) <= BALL + 1.5).map(|c| (*c, bl.knock)))
+}
+
+/// Sparks off iron struck.
+fn clang() -> crate::magic::runes::Emitter {
+    crate::magic::runes::Emitter {
+        count: 0.0,
+        life: (0.08, 0.25),
+        colors: vec![(255, 255, 240), (255, 220, 130), (200, 120, 60)],
+        speed: 240.0,
+        spread: 1.2,
+        gravity: 300.0,
+        drag: 4.0,
+        size: 1.0,
+        jitter: 0.0,
+        glow: true,
+    }
+}
+
+/// Parried: the ball knocked back off the blade (at `at`), it staggers.
+fn knocked_back(d: &mut Dread, at: Vec2, sounds: &mut MessageWriter<crate::sound::PlaySound>, sparks: &mut crate::vfx::Sparks, trauma: &mut crate::fx::Trauma, flares: &mut MessageWriter<crate::fx::Flare>) -> Doing {
+    let off = (d.ball - at).normalize_or(Vec2::Y);
+    let v = Vec2::new(off.x * PARRIED.0, off.y.max(0.0) * PARRIED.0 + PARRIED.1);
+    d.ball_prev = d.ball - v * DT;
+    sounds.write(crate::sound::PlaySound::at("clang", at).pitch(0.6).volume(1.0));
+    sounds.write(crate::sound::PlaySound::at("clank", at).pitch(0.5).volume(1.0));
+    sparks.emit(&clang(), 40, at, off, Vec2::ZERO);
+    flares.write(crate::fx::Flare { at, color: [1.6, 1.5, 1.2], life: 0.25 });
+    trauma.0 = (trauma.0 + 0.45).min(1.0);
+    d.ready[SLAM_I] = SLAM_EVERY;
+    d.ready[SWEEP_I] = SWEEP_EVERY;
+    Doing::Stagger(0.0)
+}
+
 /// That attack, its first moment (and its sound).
 fn start(d: &Dread, then: Next, sounds: &mut MessageWriter<crate::sound::PlaySound>) -> Doing {
     match then {
@@ -224,7 +292,9 @@ fn start(d: &Dread, then: Next, sounds: &mut MessageWriter<crate::sound::PlaySou
         }
         Next::Ready => {
             sounds.write(crate::sound::PlaySound::at("pour", d.cast).pitch(0.35).volume(0.9));
-            Doing::Ready(0.0)
+            // (One round, two or three: as it likes.)
+            let rounds = 1 + (d.ball.x.to_bits() ^ d.ball.y.to_bits()) % VOLLEY_ROUNDS;
+            Doing::Ready(0.0, 0, rounds)
         }
     }
 }
@@ -315,10 +385,12 @@ fn think(
     mut q: Query<(Entity, &mut Dread, &Kinematics, &mut Controls, &mut crate::creatures::body::animation::Animator)>,
     hunted: Query<(Entity, &Kinematics, &Team), Without<Dread>>,
     mut dashed: MessageReader<crate::combat::Dashed>,
+    (blades, time): (Res<crate::combat::LiveBlades>, Res<Time>),
     (mut hits, mut casts, mut sounds, mut recoils): (MessageWriter<crate::combat::Hit>, MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::sound::PlaySound>, MessageWriter<crate::combat::Recoil>),
     (mut sparks, mut trauma, mut flares): (ResMut<crate::vfx::Sparks>, ResMut<crate::fx::Trauma>, MessageWriter<crate::fx::Flare>),
 ) {
     let dashers: Vec<Entity> = dashed.read().map(|d| d.0).collect();
+    let now = time.elapsed_secs();
     let motes = void_motes();
     for (e, mut d, k, mut c, mut anim) in &mut q {
         let (pos, half, facing) = (k.body.pos, k.body.half, k.loco.facing);
@@ -392,7 +464,10 @@ fn think(
                 let u = ((t + DT) / SLAM.0).min(1.0).powf(1.6);
                 d.ball_prev = d.ball;
                 d.ball = from.lerp(to, u) + Vec2::Y * SLAM.1 * 4.0 * u * (1.0 - u);
-                next = if u >= 1.0 {
+                let parry = if u > 0.3 { parried(&blades, d.ball_prev, d.ball, e) } else { None };
+                next = if let Some((at, _)) = parry {
+                    knocked_back(&mut d, at, &mut sounds, &mut sparks, &mut trauma, &mut flares)
+                } else if u >= 1.0 {
                     // It comes down: the ground's broken, what's near thrown.
                     for (te, tk, t) in &hunted {
                         if !t.hunted() {
@@ -456,8 +531,14 @@ fn think(
                 let a = (SWEEP.1 + (SWEEP.2 - SWEEP.1) * u).to_radians();
                 let mut at = d.hand + Vec2::new(a.cos() * facing, a.sin()) * CHAIN * 0.9;
                 at.y = at.y.max(feet + BALL);
+                let was = d.ball;
                 d.ball_prev = d.ball;
                 d.ball = at;
+                if let Some((bat, _)) = parried(&blades, was, at, e) {
+                    next = knocked_back(&mut d, bat, &mut sounds, &mut sparks, &mut trauma, &mut flares);
+                    d.doing = next;
+                    continue;
+                }
                 for (te, tk, t) in &hunted {
                     if t.hunted() && !d.struck.contains(&te) && ((tk.body.pos - at).abs() - tk.body.half).max_element() <= BALL {
                         d.struck.push(te);
@@ -559,6 +640,11 @@ fn think(
                     next = if t + DT >= throb + tug + rest { Doing::Pull(0.0, who, done + 1) } else { Doing::Pull(t + DT, who, done) };
                 }
             }
+            Doing::Stagger(t) => {
+                anim.play("hurt");
+                hang_ball(&sim, &mut d);
+                next = if t + DT >= STAGGER { Doing::Carry } else { Doing::Stagger(t + DT) };
+            }
             Doing::Haul(t, then) => {
                 anim.play("sweep");
                 // In along its chain, faster and faster, off the ground.
@@ -568,15 +654,16 @@ fn think(
                 d.ball += to.normalize_or_zero() * (speed * DT).min(to.length());
                 next = if d.ball.distance(d.hand) <= HAUL.0 || t + DT >= HAUL.2 { start(&d, then, &mut sounds) } else { Doing::Haul(t + DT, then) };
             }
-            Doing::Ready(t) => {
+            Doing::Ready(t, round, rounds) => {
                 anim.play("reach");
+                let charge = if round == 0 { READY } else { READY_AGAIN };
                 hang_ball(&sim, &mut d);
                 if let Some((_, tp, _)) = target {
                     d.aim = (tp - d.cast).normalize_or(Vec2::X * facing);
                 }
                 // The void swelling in its palm: motes spiralling in, more and
                 // faster; its light throbbing.
-                let f = t / READY;
+                let f = t / charge;
                 for i in 0..(2 + (f * 8.0) as usize) {
                     let dir = Vec2::from_angle(t * (6.0 + f * 10.0) + i as f32 * 1.7);
                     sparks.emit(&motes, 1, d.cast + dir * (26.0 - f * 10.0), (-dir + dir.perp() * 0.6).normalize(), Vec2::ZERO);
@@ -587,7 +674,7 @@ fn think(
                 if ((t + DT) / 0.3) as u32 != (t / 0.3) as u32 {
                     sounds.write(crate::sound::PlaySound::at("cast", d.cast).pitch(0.5 + t * 0.5).volume(0.6));
                 }
-                next = if t + DT >= READY {
+                next = if t + DT >= charge {
                     // Three at once, fanned.
                     if let Some(i) = book.spells.iter().position(|s| s.id == "dread_void") {
                         for k in [-1.0f32, 0.0, 1.0] {
@@ -599,15 +686,33 @@ fn think(
                     sounds.write(crate::sound::PlaySound::at("cast", d.cast).pitch(0.4).volume(1.0));
                     sounds.write(crate::sound::PlaySound::at("boom", d.cast).pitch(0.6).volume(0.5));
                     flares.write(crate::fx::Flare { at: d.cast, color: [1.2, 0.5, 2.0], life: 0.35 });
-                    d.ready[VOLLEY_I] = VOLLEY_EVERY;
-                    Doing::Carry
+                    if round + 1 < rounds {
+                        Doing::Ready(0.0, round + 1, rounds)
+                    } else {
+                        d.ready[VOLLEY_I] = VOLLEY_EVERY;
+                        Doing::Carry
+                    }
                 } else {
-                    Doing::Ready(t + DT)
+                    Doing::Ready(t + DT, round, rounds)
                 };
             }
         }
+        // Struck where it lies (or hangs): batted along, the harder the
+        // heavier the blow.
+        if matches!(next, Doing::Carry | Doing::Gather(_) | Doing::Pull(..) | Doing::Ready(..) | Doing::Stagger(_)) && now >= d.batted {
+            if let Some((at, knock)) = parried(&blades, d.ball, d.ball, e) {
+                let from = blades.0.iter().find(|b| b.knock == knock).and_then(|b| hunted.get(b.who).ok()).map_or(at, |(_, wk, _)| wk.body.pos);
+                let mut dir = (d.ball - from).normalize_or(Vec2::X);
+                dir.y = dir.y.max(0.35);
+                let v = (d.ball - d.ball_prev) / DT + dir.normalize() * knock * BAT.0;
+                d.ball_prev = d.ball - v * DT;
+                d.batted = now + BAT.1;
+                sounds.write(crate::sound::PlaySound::at("clank", d.ball).pitch(0.8).volume(0.8));
+                sparks.emit(&clang(), 8, d.ball, -dir, Vec2::ZERO);
+            }
+        }
         // Swung fast (dragged, flung), it hurts what it hits.
-        if matches!(next, Doing::Carry | Doing::Gather(_) | Doing::Pull(..) | Doing::Ready(_)) {
+        if matches!(next, Doing::Carry | Doing::Gather(_) | Doing::Pull(..) | Doing::Ready(..)) {
             let speed = (d.ball - d.ball_prev).length() / DT;
             if speed > FAST.0 {
                 for (te, tk, t) in &hunted {
@@ -693,8 +798,8 @@ fn draw(mut commands: Commands, mut canvas: ResMut<FlailCanvas>, mut images: Res
         disc(&mut px, c + Vec2::new(-2.5, 3.0), BALL * 0.38, [124, 126, 140, 255], [96, 98, 110, 255]);
         // The void swelling in its palm: a dark sphere, a ring about it,
         // lightning crackling off it.
-        if let Doing::Ready(t) = d.doing {
-            let f = (t / READY).min(1.0);
+        if let Doing::Ready(t, round, _) = d.doing {
+            let f = (t / if round == 0 { READY } else { READY_AGAIN }).min(1.0);
             let r = 2.0 + f * 6.0;
             disc(&mut px, d.cast, r + 1.5, [120, 70, 210, 255], [200, 160, 255, 255]);
             disc(&mut px, d.cast, r, [14, 4, 26, 255], [60, 24, 110, 255]);
