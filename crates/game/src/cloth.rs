@@ -30,6 +30,7 @@ pub struct ClothPlugin;
 impl Plugin for ClothPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ClothCanvas>()
+            .init_resource::<ClothFront>()
             .add_systems(Update, (wear, draw))
             .add_systems(FixedUpdate, hang.in_set(TickSet::Bodies).after(crate::creatures::move_creatures));
     }
@@ -59,15 +60,15 @@ pub struct ClothDef {
     /// shoulders, not straight down its back).
     pub behind: f32,
     /// Where it may hang from where it's pinned (degrees: 0 straight down,
-    /// + behind its wearer, 90 straight out behind): from `arc.0` (a little
-    /// in front) to `arc.1` (a little up behind). Never over its head or
-    /// round its front, however it's flung.
+    /// + behind its wearer, 90 straight out behind, 180 straight up): from
+    /// `arc.0` (a little in front) to `arc.1` (up over its head, falling).
+    /// Never round its front, however it's flung: it can't wind round.
     pub arc: (f32, f32),
 }
 
 impl Default for ClothDef {
     fn default() -> Self {
-        ClothDef { color: (150, 38, 36), lining: (96, 26, 28), cols: 5, rows: 9, gap: 2.5, pin: (-4.0, 1.0, 5.0), torn: 0.0, weight: 1.0, front: false, behind: 0.0, arc: (-15.0, 100.0) }
+        ClothDef { color: (150, 38, 36), lining: (96, 26, 28), cols: 5, rows: 9, gap: 2.5, pin: (-4.0, 1.0, 5.0), torn: 0.0, weight: 1.0, front: false, behind: 0.0, arc: (-15.0, 165.0) }
     }
 }
 
@@ -140,6 +141,9 @@ const DT: f32 = (1.0 / crate::world::TICK_HZ) as f32;
 /// At the edge of its arc, each column (from the back) this much less far
 /// up than the one behind it (degrees).
 const FAN: f32 = 10.0;
+/// Flapping as its wearer rushes along: at this speed (cells/s) as hard
+/// as this (cells/s²), more going faster.
+const FLUTTER: (f32, f32) = (300.0, 2600.0);
 /// How hard cloth falls (× its weight), how much of its swing it keeps a
 /// tick, the breeze's push (cells/s²); ties pulled true this many times a
 /// tick; pinned further than this from where it was (a teleport): hung
@@ -163,6 +167,8 @@ fn hang(sim: Res<SimWorld>, time: Res<Time>, mut q: Query<(&mut Drapes, &Kinemat
     let solid = |p: Vec2| sim.world.get(CellPos::from_world(p.x, p.y)).is_some_and(|c| !c.is_air() && matches!(sim.world.materials().phys(c.material).kind, Kind::Static | Kind::Powder));
     for (mut drapes, k) in &mut q {
         let (pos, half, facing) = (k.body.pos, k.body.half, k.loco.facing);
+        // (Rushing through the air, it flaps: as hard as it goes.)
+        let rush = (k.body.vel.length() / FLUTTER.0).min(1.5);
         for d in drapes.0.iter_mut() {
             let def = d.def.clone();
             let (cols, rows, gap) = (def.cols, def.rows, def.gap);
@@ -181,7 +187,9 @@ fn hang(sim: Res<SimWorld>, time: Res<Time>, mut q: Query<(&mut Drapes, &Kinemat
                     let breeze = ((t * 1.7 + i as f32 * 0.6 + j as f32 * 0.35).sin() * 0.6 + (t * 0.53).sin() * 0.4) * BREEZE * (j as f32 / rows as f32);
                     d.prev[n] = d.pts[n];
                     let away = -facing * def.behind * (j as f32 / rows as f32);
-                    d.pts[n] += v + Vec2::new(breeze + away, -FALL * def.weight) * DT * DT;
+                    let up = (j as f32 / rows as f32) * rush * FLUTTER.1;
+                    let flap = Vec2::new((t * 19.0 + j as f32 * 1.3 + i as f32 * 0.7).sin(), (t * 23.0 + j as f32 * 0.9).cos() * 0.5) * up;
+                    d.pts[n] += v + (Vec2::new(breeze + away, -FALL * def.weight) + flap) * DT * DT;
                 }
             }
             // Ties pulled true; the top row held where it's pinned.
@@ -271,6 +279,16 @@ impl Default for ClothCanvas {
     }
 }
 
+/// Cloth drawn over its wearer (`front`): over the tallest creatures.
+#[derive(Resource)]
+pub struct ClothFront(Canvas);
+
+impl Default for ClothFront {
+    fn default() -> Self {
+        ClothFront(Canvas::new("Cloth over", 11.25))
+    }
+}
+
 fn shade((r, g, b): (u8, u8, u8), k: f32) -> [u8; 4] {
     [(r as f32 * k).min(255.0) as u8, (g as f32 * k).min(255.0) as u8, (b as f32 * k).min(255.0) as u8, 255]
 }
@@ -297,59 +315,76 @@ fn tri(px: &mut crate::canvas::Pixels, a: Vec2, b: Vec2, c: Vec2, col: [u8; 4]) 
 }
 
 /// Every drape, quad by quad: its outside or its lining, darker where it's
-/// bunched and further down, its hem and sides edged.
-fn draw(mut commands: Commands, mut canvas: ResMut<ClothCanvas>, mut images: ResMut<Assets<Image>>, camera: Query<(&GlobalTransform, &ChunkLoader), With<MainCamera>>, q: Query<&Drapes>, mut sprites: CanvasSprites) {
+/// bunched and further down, its hem and sides edged; behind its wearer
+/// (a cape) or in front (rags over a body).
+#[allow(clippy::too_many_arguments)]
+fn draw(
+    mut commands: Commands,
+    mut canvas: ResMut<ClothCanvas>,
+    mut front: ResMut<ClothFront>,
+    mut images: ResMut<Assets<Image>>,
+    camera: Query<(&GlobalTransform, &ChunkLoader), With<MainCamera>>,
+    q: Query<&Drapes>,
+    mut sprites: CanvasSprites,
+) {
     let Ok((cam, loader)) = camera.single() else { return };
-    let any = q.iter().any(|d| !d.0.is_empty());
-    let Some(mut px) = canvas.0.frame(&mut commands, &mut images, &mut sprites, cam.translation().truncate(), loader.half_extent, any) else { return };
-    for drapes in &q {
-        for d in &drapes.0 {
-            let def = &d.def;
-            let (cols, rows) = (def.cols, def.rows);
-            if d.pts.len() != cols * rows {
-                continue;
-            }
-            let p = |i: usize, j: usize| d.pts[j * cols + i];
-            let kept = |i: usize, j: usize| j + 1 < rows - d.tears[i].min(rows - 2);
-            for j in 0..rows - 1 {
-                for i in 0..cols - 1 {
-                    if !kept(i, j) {
-                        continue;
-                    }
-                    let (a, b, c, e) = (p(i, j), p(i + 1, j), p(i + 1, j + 1), p(i, j + 1));
-                    // (Bunched: narrower than it lies flat; turned: its
-                    // inside showing.)
-                    let wide = ((b.x - a.x).abs() + (c.x - e.x).abs()) * 0.5 / def.gap;
-                    let fold = 0.55 + 0.45 * wide.clamp(0.0, 1.0);
-                    let down = 1.0 - 0.18 * j as f32 / rows as f32;
-                    let inside = (b - a).perp_dot(e - a) * d.facing > 0.0;
-                    let col = shade(if inside { def.lining } else { def.color }, fold * down);
-                    tri(&mut px, a, b, c, col);
-                    tri(&mut px, a, c, e, col);
-                }
-            }
-            // Its edges: the sides, and the hem (each column's own).
-            let edge = shade(def.color, 0.45);
-            let line = |px: &mut crate::canvas::Pixels, a: Vec2, b: Vec2| {
-                let steps = (a.distance(b) * 1.5).ceil().max(1.0) as i32;
-                for s in 0..=steps {
-                    let q = a.lerp(b, s as f32 / steps as f32).floor().as_ivec2();
-                    px.put(q.x, q.y, edge);
-                }
-            };
-            for j in 0..rows - 1 {
-                if kept(0, j) {
-                    line(&mut px, p(0, j), p(0, j + 1));
-                }
-                if kept(cols - 2, j) {
-                    line(&mut px, p(cols - 1, j), p(cols - 1, j + 1));
-                }
-            }
-            for i in 0..cols - 1 {
-                let j = (rows - 1 - d.tears[i].min(rows - 2)).max(1);
-                line(&mut px, p(i, j), p(i + 1, j));
+    let (centre, half) = (cam.translation().truncate(), loader.half_extent);
+    for (canvas, in_front) in [(&mut canvas.0, false), (&mut front.0, true)] {
+        let any = q.iter().any(|d| d.0.iter().any(|x| x.def.front == in_front));
+        let Some(mut px) = canvas.frame(&mut commands, &mut images, &mut sprites, centre, half, any) else { continue };
+        for drapes in &q {
+            for d in drapes.0.iter().filter(|x| x.def.front == in_front) {
+                draw_drape(&mut px, d);
             }
         }
+    }
+}
+
+fn draw_drape(px: &mut crate::canvas::Pixels, d: &Drape) {
+    let def = &d.def;
+    let (cols, rows) = (def.cols, def.rows);
+    if d.pts.len() != cols * rows {
+        return;
+    }
+    let p = |i: usize, j: usize| d.pts[j * cols + i];
+    let kept = |i: usize, j: usize| j + 1 < rows - d.tears[i].min(rows - 2);
+    for j in 0..rows - 1 {
+        for i in 0..cols - 1 {
+            if !kept(i, j) {
+                continue;
+            }
+            let (a, b, c, e) = (p(i, j), p(i + 1, j), p(i + 1, j + 1), p(i, j + 1));
+            // (Bunched: narrower than it lies flat; turned: its inside
+            // showing.)
+            let wide = ((b.x - a.x).abs() + (c.x - e.x).abs()) * 0.5 / def.gap;
+            let fold = 0.55 + 0.45 * wide.clamp(0.0, 1.0);
+            let down = 1.0 - 0.18 * j as f32 / rows as f32;
+            let inside = (b - a).perp_dot(e - a) * d.facing > 0.0;
+            let col = shade(if inside { def.lining } else { def.color }, fold * down);
+            tri(px, a, b, c, col);
+            tri(px, a, c, e, col);
+        }
+    }
+    // Its edges: the sides, and the hem (each column's own).
+    let edge = shade(def.color, 0.45);
+    let line = |px: &mut crate::canvas::Pixels, a: Vec2, b: Vec2| {
+        let steps = (a.distance(b) * 1.5).ceil().max(1.0) as i32;
+        for s in 0..=steps {
+            let q = a.lerp(b, s as f32 / steps as f32).floor().as_ivec2();
+            px.put(q.x, q.y, edge);
+        }
+    };
+    for j in 0..rows - 1 {
+        if kept(0, j) {
+            line(px, p(0, j), p(0, j + 1));
+        }
+        if kept(cols - 2, j) {
+            line(px, p(cols - 1, j), p(cols - 1, j + 1));
+        }
+    }
+    for i in 0..cols - 1 {
+        let j = (rows - 1 - d.tears[i].min(rows - 2)).max(1);
+        line(px, p(i, j), p(i + 1, j));
     }
 }
 
