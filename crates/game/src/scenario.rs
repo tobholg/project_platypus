@@ -7476,7 +7476,8 @@ type Pogoer<'a> = (&'a mut Kinematics, &'a crate::creatures::Health, Option<&'a 
 /// `dread` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a dread knight
 /// at 1120; the player (who can't die) stands at 900 (`PLATYPUS_DREAD=near`:
 /// at 1085, for the sweep; `kill`: it's struck with light till it dies, and
-/// leaves its cloak). Logs what it does, the player's health lost.
+/// leaves its cloak; `dash`: drawn in by its void, the player dashes).
+/// Logs what it does, where the player is, the player's health lost.
 fn dread_script(
     mut commands: Commands,
     s: Res<Scenario>,
@@ -7485,6 +7486,7 @@ fn dread_script(
     drops: Query<&crate::hands::Dropped>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut state: Local<(u8, f32, f32, &'static str)>,
+    (tugged, mut keys, player_e): (Query<(), (With<LocalPlayer>, With<crate::creatures::Tugged>)>, ResMut<ButtonInput<KeyCode>>, Query<Entity, With<LocalPlayer>>),
 ) {
     if s.name != "dread" {
         return;
@@ -7504,7 +7506,7 @@ fn dread_script(
         k.body.pos = Vec2::new(if mode == "near" { 1085.0 } else { 900.0 }, fl + k.body.half.y);
         k.prev_pos = k.body.pos;
         crate::creatures::def::spawn_creature(&mut commands, "dread_knight", Vec2::new(1120.0, fl), |_| {});
-        info!("dread: a dread knight at 1120 ({mode})");
+        info!("dread: a dread knight at 1120 ({mode}); the player is {:?}", player_e.single().ok());
         state.0 = 1;
         return;
     }
@@ -7523,6 +7525,10 @@ fn dread_script(
     if doing != state.3 {
         info!("dread: t {t:.2} {doing} at {:.0}; the player at {:.0}, lost {:.0}", dk.body.pos.x, k.body.pos.x, state.2);
         state.3 = doing;
+    }
+    // `dash`: drawn in by its void, the player dashes (free).
+    if mode == "dash" {
+        if !tugged.is_empty() && (t * 10.0) as i32 % 3 == 0 { keys.press(KeyCode::ShiftLeft) } else { keys.release(KeyCode::ShiftLeft) }
     }
     if mode == "kill" && t > 2.0 && t > state.1 {
         hits.write(crate::combat::Hit { target: e, damage: 60.0, harm: crate::creatures::Harm::Radiant, knock: Vec2::ZERO, stun: 0.0, at: dk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });

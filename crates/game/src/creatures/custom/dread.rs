@@ -1,12 +1,22 @@
-//! Dread knights: tall as two of you, crowned and hooded, a long torn
-//! cloak and rags (cloth), chains at its belt and wrist, a great spiked
-//! ball on a chain in its fist (the flail: a weight on a chain, swung).
-//! It walks at you, never hurrying (its brain); shrieks when it first sees
-//! you. Far, it whirls the ball over its head (the tell) and brings it down
-//! where you stand: the ground cratered, what's near thrown. Near, it
-//! draws the ball back and sweeps it along the ground (jump it). Between,
-//! the ball drags behind it, and hurts what it hits going fast. Dead, its
-//! cloak can be worn.
+//! Dread knights: nearly three times your height, crowned and hooded, hung
+//! all over with rags (a great torn cloak behind, rags off its shoulders
+//! and arms, strips over its body: cloth), chains at its belt and wrist,
+//! and a great spiked ball on a long chain in its fist (the flail: a
+//! weight on a chain, swung). It walks at you, never hurrying (its brain),
+//! and shrieks when it first sees you.
+//!
+//! - In its chain's reach it whirls the ball over its head (the tell) and
+//!   brings it down where you stand: the ground cratered, what's near
+//!   thrown.
+//! - Near, it draws the ball back and sweeps it along the ground (jump it).
+//! - Further, it raises its free hand and the void gathers there (motes
+//!   drawn in, a low hum: the tell), then draws you toward it (run against
+//!   it, slower; dash to break it): into its flail's reach.
+//! - Or three dark orbs swell before its raised hand (the tell) and fly at
+//!   you, fanned (weave between them), leaving void smoke.
+//!
+//! Between, the ball drags behind it, and hurts what it hits going fast.
+//! Dead, its cloak can be worn.
 
 use std::sync::Arc;
 
@@ -18,7 +28,7 @@ use super::{CustomCreature, CustomSet};
 use crate::camera::MainCamera;
 use crate::canvas::{Canvas, CanvasSprites};
 use crate::cloth::{ClothDef, Drapes, Links, draw_links};
-use crate::creatures::{Controls, Died, Harm, Kinematics, Team};
+use crate::creatures::{Controls, Died, Harm, Kinematics, Team, Tugged};
 use crate::world::{ChunkLoader, SimWorld};
 
 /// What it's doing and what it carries.
@@ -27,7 +37,8 @@ use crate::world::{ChunkLoader, SimWorld};
 pub struct Dread {
     #[serde(skip)]
     doing: Doing,
-    /// The ball, where it was last tick; the hand that holds its chain.
+    /// The ball, where it was last tick; the hand that holds its chain; its
+    /// other hand (the void's).
     #[serde(skip)]
     ball: Vec2,
     #[serde(skip)]
@@ -35,9 +46,12 @@ pub struct Dread {
     #[serde(skip)]
     hand: Vec2,
     #[serde(skip)]
-    slam_ready: f32,
+    cast: Vec2,
+    /// Which way it aims its void.
     #[serde(skip)]
-    sweep_ready: f32,
+    aim: Vec2,
+    #[serde(skip)]
+    ready: [f32; 4],
     /// Whom the ball's struck this swing (once each).
     #[serde(skip)]
     struck: Vec<Entity>,
@@ -49,6 +63,12 @@ pub struct Dread {
     #[serde(skip)]
     started: bool,
 }
+
+/// Its attacks' waits: slam, sweep, pull, volley.
+const SLAM_I: usize = 0;
+const SWEEP_I: usize = 1;
+const PULL_I: usize = 2;
+const VOLLEY_I: usize = 3;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 enum Doing {
@@ -65,6 +85,12 @@ enum Doing {
     Draw(f32, Vec2),
     /// Sweeping it along the ground.
     Sweep(f32),
+    /// The void gathering in its hand (the pull's tell).
+    Gather(f32),
+    /// Drawing whom it hunts toward it.
+    Pull(f32, Entity),
+    /// Three orbs swelling (the volley's tell).
+    Ready(f32),
 }
 
 impl CustomCreature for Dread {
@@ -89,6 +115,9 @@ impl Dread {
             Doing::Rest(_) => "rest",
             Doing::Draw(..) => "draw",
             Doing::Sweep(_) => "sweep",
+            Doing::Gather(_) => "gather",
+            Doing::Pull(..) => "pull",
+            Doing::Ready(_) => "ready",
         }
     }
 }
@@ -96,58 +125,76 @@ impl Dread {
 const DT: f32 = (1.0 / crate::world::TICK_HZ) as f32;
 /// The flail: its chain's length, the ball's size, how hard it falls,
 /// links in its chain.
-const CHAIN: f32 = 46.0;
-const BALL: f32 = 5.5;
+const CHAIN: f32 = 72.0;
+const BALL: f32 = 8.5;
 const BALL_FALL: f32 = 1100.0;
-const CHAIN_LINKS: usize = 12;
+const CHAIN_LINKS: usize = 16;
 /// Hunting what's this near (cells).
-const AGGRO: f32 = 360.0;
-/// The slam: whirled this long, at most this far round its hand; down in
-/// this long, this high an arc; resting there; then it waits.
-const WHIRL: (f32, f32) = (0.9, 22.0);
-const SLAM: (f32, f32) = (0.32, 30.0);
-const REST: f32 = 0.7;
-const SLAM_EVERY: f32 = 3.5;
-/// It slams what's within its chain's reach and this (cells).
-const SLAM_FROM: f32 = 8.0;
+const AGGRO: f32 = 420.0;
+/// The slam: whirled this long, this far round its hand; down in this
+/// long, this high an arc; resting there; then it waits. It slams what's
+/// within its chain's reach and this.
+const WHIRL: (f32, f32) = (1.0, 34.0);
+const SLAM: (f32, f32) = (0.36, 44.0);
+const REST: f32 = 0.8;
+const SLAM_EVERY: f32 = 3.6;
+const SLAM_FROM: f32 = 10.0;
 /// What the slam does: how far (cells from where it lands), how much, how
 /// hard; the crater.
-const QUAKE: (f32, f32, f32) = (18.0, 28.0, 380.0);
-const CRATER: (i32, u8) = (4, 22);
+const QUAKE: (f32, f32, f32) = (26.0, 36.0, 440.0);
+const CRATER: (i32, u8) = (6, 30);
 /// The sweep: drawn back this long, swept round in this long (from, to:
-/// degrees the way it faces), how much, how hard; then it waits.
-const DRAW: f32 = 0.5;
-const SWEEP: (f32, f32, f32) = (0.55, 200.0, 345.0);
-const SWEEP_HIT: (f32, f32) = (22.0, 340.0);
-const SWEEP_EVERY: f32 = 3.0;
-/// Near enough to sweep (across, up or down).
-const SWEEP_NEAR: (f32, f32) = (36.0, 24.0);
+/// degrees the way it faces), how much, how hard; then it waits; near
+/// enough to sweep (across, up or down).
+const DRAW: f32 = 0.55;
+const SWEEP: (f32, f32, f32) = (0.6, 200.0, 345.0);
+const SWEEP_HIT: (f32, f32) = (28.0, 400.0);
+const SWEEP_EVERY: f32 = 3.2;
+const SWEEP_NEAR: (f32, f32) = (52.0, 30.0);
+/// The pull: the void gathers this long; it draws you in this long, this
+/// fast; from this near to this far; then it waits.
+const GATHER: f32 = 1.1;
+const PULL: (f32, f32) = (1.6, 105.0);
+const PULL_RANGE: (f32, f32) = (90.0, 240.0);
+const PULL_EVERY: f32 = 9.0;
+/// The volley: its orbs swell this long; three, this far apart (degrees);
+/// from this near to this far; then it waits.
+const READY: f32 = 0.9;
+const FAN: f32 = 16.0;
+const VOLLEY_RANGE: (f32, f32) = (100.0, 320.0);
+const VOLLEY_EVERY: f32 = 6.0;
 /// Swung fast, the ball hurts what it hits.
-const FAST: (f32, f32) = (300.0, 14.0);
+const FAST: (f32, f32) = (320.0, 18.0);
 
-/// Where its flail hand is (from its middle, the way it faces).
-fn hand_at(pos: Vec2, facing: f32, doing: Doing) -> Vec2 {
+/// Where its flail hand is, and its other hand (from its middle, the way
+/// it faces).
+fn hands_at(pos: Vec2, facing: f32, doing: Doing) -> (Vec2, Vec2) {
     let o = match doing {
-        Doing::Whirl(_) | Doing::Slam(..) => Vec2::new(9.5, 24.5),
-        Doing::Rest(_) => Vec2::new(10.0, -0.5),
-        Doing::Draw(..) | Doing::Sweep(_) => Vec2::new(5.5, -2.5),
-        Doing::Carry => Vec2::new(9.5, -4.5),
+        Doing::Whirl(_) | Doing::Slam(..) => Vec2::new(10.5, 36.0),
+        Doing::Rest(_) => Vec2::new(12.5, 4.5),
+        Doing::Draw(..) | Doing::Sweep(_) => Vec2::new(4.5, -4.0),
+        _ => Vec2::new(11.5, -8.0),
     };
-    pos + Vec2::new(o.x * facing, o.y)
+    let cast = Vec2::new(-12.5, 34.0);
+    (pos + Vec2::new(o.x * facing, o.y), pos + Vec2::new(cast.x * facing, cast.y))
 }
 
-/// Its cloak and rags, its chains: hung as it comes.
+/// Its cloak and rags, hung as it comes.
 fn on_spawn(add: On<Add, Dread>, mut commands: Commands) {
     let e = add.entity;
     let seed = e.to_bits();
     let mut drapes = Drapes::default();
-    // A long cloak off its shoulders, torn to rags at the hem.
-    // (Hung from the back of its shoulders and wider than it, so it streams
-    // out behind it: a train of black rags.)
-    drapes.own(Arc::new(ClothDef { color: (44, 44, 58), lining: (70, 26, 32), cols: 9, rows: 16, gap: 2.7, pin: (-17.0, -5.0, 12.0), torn: 0.6, weight: 1.2, front: false, behind: 230.0, arc: (-15.0, 150.0) }), seed);
-    // Rags off each arm, past the gauntlets.
-    for (n, x) in [(1u64, 10.0f32), (2, -11.0)] {
-        drapes.own(Arc::new(ClothDef { color: (52, 50, 62), lining: (60, 34, 40), cols: 2, rows: 12, gap: 2.2, pin: (x - 1.5, x + 1.5, 6.0), torn: 0.65, weight: 0.8, front: false, behind: 90.0, arc: (-25.0, 115.0) }), seed ^ n);
+    let rag = |color: (u8, u8, u8), cols, rows, pin, torn, front, behind| Arc::new(ClothDef { color, lining: (64, 30, 38), cols, rows, gap: 2.4, pin, torn, weight: 0.9, front, behind, arc: (-25.0, 150.0) });
+    // A great cloak off its shoulders, wider than it, torn to rags: it
+    // streams behind it.
+    drapes.own(Arc::new(ClothDef { color: (42, 42, 56), lining: (72, 26, 32), cols: 10, rows: 22, gap: 2.8, pin: (-20.0, -6.0, 17.0), torn: 0.6, weight: 1.2, front: false, behind: 220.0, arc: (-15.0, 150.0) }), seed);
+    // Rags off its shoulders and arms, long and torn.
+    for (n, (x0, x1, y, rows)) in [(-12.0, -9.0, 16.0, 17), (-14.0, -12.0, 4.0, 13), (9.0, 12.0, 16.0, 16), (11.5, 13.5, 2.0, 12)].into_iter().enumerate() {
+        drapes.own(rag((50, 48, 60), 2, rows, (x0, x1, y), 0.65, false, 70.0), seed ^ (n as u64 + 1));
+    }
+    // Strips over its body: from its chest and its belt.
+    for (n, (x0, x1, y, rows)) in [(-5.0, -2.0, 12.0, 14), (1.0, 4.0, 6.0, 12), (-2.0, 1.0, -3.0, 10)].into_iter().enumerate() {
+        drapes.own(rag((38, 36, 48), 2, rows, (x0, x1, y), 0.7, true, 25.0), seed ^ (n as u64 + 11));
     }
     commands.entity(e).insert(drapes);
 }
@@ -158,19 +205,18 @@ fn solid(sim: &SimWorld, p: Vec2) -> bool {
 
 /// The ball on its chain, a tick: it falls and swings, held at most the
 /// chain's length from the hand, rests and drags on the ground.
-fn hang_ball(sim: &SimWorld, d: &mut Dread, reach: f32) {
+fn hang_ball(sim: &SimWorld, d: &mut Dread) {
     let mut v = (d.ball - d.ball_prev) * 0.985;
-    let on_ground = solid(sim, d.ball - Vec2::Y * (BALL + 1.0));
-    if on_ground {
+    if solid(sim, d.ball - Vec2::Y * (BALL + 1.0)) {
         v.x *= 0.85;
     }
     d.ball_prev = d.ball;
     d.ball += v - Vec2::Y * BALL_FALL * DT * DT;
     let off = d.ball - d.hand;
-    if off.length() > reach {
-        d.ball = d.hand + off.normalize() * reach;
+    if off.length() > CHAIN {
+        d.ball = d.hand + off.normalize() * CHAIN;
     }
-    for _ in 0..8 {
+    for _ in 0..10 {
         if solid(sim, d.ball - Vec2::Y * BALL) {
             d.ball.y += 1.0;
         } else {
@@ -179,27 +225,48 @@ fn hang_ball(sim: &SimWorld, d: &mut Dread, reach: f32) {
     }
 }
 
+/// The void's motes: drawn in to its hand, or streaming from you to it.
+fn void_motes() -> crate::magic::runes::Emitter {
+    crate::magic::runes::Emitter {
+        count: 0.0,
+        life: (0.25, 0.45),
+        colors: vec![(230, 210, 255), (140, 80, 230), (60, 24, 110), (18, 6, 30)],
+        speed: 120.0,
+        spread: 0.2,
+        gravity: 0.0,
+        drag: 0.0,
+        size: 1.3,
+        jitter: 0.0,
+        glow: true,
+    }
+}
+
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn think(
+    mut commands: Commands,
     mut sim: ResMut<SimWorld>,
+    book: Res<crate::magic::Spellbook>,
     mut q: Query<(Entity, &mut Dread, &Kinematics, &mut Controls, &mut crate::creatures::body::animation::Animator)>,
     hunted: Query<(Entity, &Kinematics, &Team), Without<Dread>>,
-    mut hits: MessageWriter<crate::combat::Hit>,
-    mut sounds: MessageWriter<crate::sound::PlaySound>,
-    (mut sparks, mut trauma): (ResMut<crate::vfx::Sparks>, ResMut<crate::fx::Trauma>),
+    mut dashed: MessageReader<crate::combat::Dashed>,
+    (mut hits, mut casts, mut sounds): (MessageWriter<crate::combat::Hit>, MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::sound::PlaySound>),
+    (mut sparks, mut trauma, mut flares): (ResMut<crate::vfx::Sparks>, ResMut<crate::fx::Trauma>, MessageWriter<crate::fx::Flare>),
 ) {
-    for (_e, mut d, k, mut c, mut anim) in &mut q {
+    let dashers: Vec<Entity> = dashed.read().map(|d| d.0).collect();
+    let motes = void_motes();
+    for (e, mut d, k, mut c, mut anim) in &mut q {
         let (pos, half, facing) = (k.body.pos, k.body.half, k.loco.facing);
         let feet = pos.y - half.y;
-        d.hand = hand_at(pos, facing, d.doing);
+        (d.hand, d.cast) = hands_at(pos, facing, d.doing);
         if !d.started {
             d.started = true;
-            d.ball = d.hand + Vec2::new(-facing * 20.0, -20.0);
+            d.ball = d.hand + Vec2::new(-facing * 30.0, -10.0);
             d.ball_prev = d.ball;
-            d.chains = vec![Links::new(6, 2.6), Links::new(5, 2.6), Links::new(7, 2.6)];
+            d.chains = vec![Links::new(8, 2.6), Links::new(6, 2.6), Links::new(9, 2.6)];
         }
-        d.slam_ready -= DT;
-        d.sweep_ready -= DT;
+        for r in d.ready.iter_mut() {
+            *r -= DT;
+        }
         let target = hunted.iter().filter(|(_, _, t)| t.hunted()).map(|(e, tk, _)| (e, tk.body.pos, tk.body.half)).filter(|(_, p, _)| p.distance(pos) < AGGRO).min_by(|a, b| a.1.distance(pos).total_cmp(&b.1.distance(pos)));
         if target.is_some() && !d.shrieked {
             d.shrieked = true;
@@ -211,15 +278,21 @@ fn think(
         match doing {
             Doing::Carry => {
                 anim.force = None;
-                hang_ball(&sim, &mut d, CHAIN);
+                hang_ball(&sim, &mut d);
                 if let Some((_, tp, _)) = target {
                     let off = tp - pos;
-                    if off.x.abs() < SWEEP_NEAR.0 && off.y.abs() < SWEEP_NEAR.1 && d.sweep_ready <= 0.0 {
-                        let from = d.ball;
-                        next = Doing::Draw(0.0, from);
-                        sounds.write(crate::sound::PlaySound::at("clank", d.ball).pitch(0.5));
-                    } else if tp.distance(d.hand) < CHAIN + SLAM_FROM && d.slam_ready <= 0.0 && k.loco.grounded() {
+                    let dist = off.length();
+                    if off.x.abs() < SWEEP_NEAR.0 && off.y.abs() < SWEEP_NEAR.1 && d.ready[SWEEP_I] <= 0.0 {
+                        next = Doing::Draw(0.0, d.ball);
+                        sounds.write(crate::sound::PlaySound::at("clank", d.ball).pitch(0.45));
+                    } else if tp.distance(d.hand) < CHAIN + SLAM_FROM && d.ready[SLAM_I] <= 0.0 && k.loco.grounded() {
                         next = Doing::Whirl(0.0);
+                    } else if (VOLLEY_RANGE.0..VOLLEY_RANGE.1).contains(&dist) && d.ready[VOLLEY_I] <= 0.0 && d.ready[PULL_I] > 2.0 {
+                        next = Doing::Ready(0.0);
+                        sounds.write(crate::sound::PlaySound::at("pour", d.cast).pitch(0.35).volume(0.9));
+                    } else if (PULL_RANGE.0..PULL_RANGE.1).contains(&dist) && d.ready[PULL_I] <= 0.0 {
+                        next = Doing::Gather(0.0);
+                        sounds.write(crate::sound::PlaySound::at("pour", d.cast).pitch(0.22).volume(1.0));
                     }
                 }
             }
@@ -228,9 +301,8 @@ fn think(
                 let spin = t * (6.0 + 12.0 * t / WHIRL.0) * facing;
                 d.ball_prev = d.ball;
                 d.ball = d.hand + Vec2::from_angle(spin + std::f32::consts::FRAC_PI_2) * WHIRL.1 * (t / 0.25).min(1.0);
-                let ticks = (t / 0.2) as u32;
-                if ((t + DT) / 0.2) as u32 != ticks {
-                    sounds.write(crate::sound::PlaySound::at("swing_heavy", d.ball).pitch(0.5 + t * 0.3));
+                if ((t + DT) / 0.2) as u32 != (t / 0.2) as u32 {
+                    sounds.write(crate::sound::PlaySound::at("swing_heavy", d.ball).pitch(0.45 + t * 0.3));
                 }
                 next = if t + DT >= WHIRL.0 {
                     // Where it comes down: where they stand, no further than
@@ -239,7 +311,7 @@ fn think(
                     if to.distance(d.hand) > CHAIN {
                         to = d.hand + (to - d.hand).normalize() * CHAIN;
                     }
-                    if let Some(drop) = (0..60).map(|n| to - Vec2::Y * n as f32).find(|&p| solid(&sim, p - Vec2::Y * BALL)) {
+                    if let Some(drop) = (0..80).map(|n| to - Vec2::Y * n as f32).find(|&p| solid(&sim, p - Vec2::Y * BALL)) {
                         to = drop;
                     }
                     Doing::Slam(0.0, d.ball, to)
@@ -254,7 +326,7 @@ fn think(
                 d.ball = from.lerp(to, u) + Vec2::Y * SLAM.1 * 4.0 * u * (1.0 - u);
                 next = if u >= 1.0 {
                     // It comes down: the ground's broken, what's near thrown.
-                    for (e, tk, t) in &hunted {
+                    for (te, tk, t) in &hunted {
                         if !t.hunted() {
                             continue;
                         }
@@ -262,26 +334,26 @@ fn think(
                         if near <= QUAKE.0 {
                             let away = Vec2::new((tk.body.pos.x - to.x).signum(), 0.9).normalize();
                             let f = 1.0 - near / QUAKE.0 * 0.5;
-                            hits.write(crate::combat::Hit { target: e, damage: QUAKE.1 * f, harm: Harm::Blunt, knock: away * QUAKE.2, stun: 0.35, at: to, dir: away, weight: 2.2, crit: false });
+                            hits.write(crate::combat::Hit { target: te, damage: QUAKE.1 * f, harm: Harm::Blunt, knock: away * QUAKE.2, stun: 0.4, at: to, dir: away, weight: 2.6, crit: false });
                         }
                     }
                     sim.queue(platypus_sim::WorldEdit::Explode { center: CellPos::from_world(to.x, to.y - BALL), radius: CRATER.0, power: CRATER.1 });
                     let dust = crate::magic::runes::Emitter {
                         count: 0.0,
-                        life: (0.4, 1.1),
+                        life: (0.4, 1.2),
                         colors: vec![(170, 160, 140), (120, 112, 100), (80, 74, 68)],
-                        speed: 220.0,
-                        spread: 1.3,
+                        speed: 260.0,
+                        spread: 1.4,
                         gravity: 260.0,
                         drag: 2.0,
-                        size: 1.5,
+                        size: 1.7,
                         jitter: 0.0,
                         glow: false,
                     };
-                    sparks.emit(&dust, 120, to - Vec2::Y * BALL, Vec2::Y, Vec2::ZERO);
-                    trauma.0 = (trauma.0 + 0.6).min(1.0);
+                    sparks.emit(&dust, 200, to - Vec2::Y * BALL, Vec2::Y, Vec2::ZERO);
+                    trauma.0 = (trauma.0 + 0.75).min(1.0);
                     sounds.write(crate::sound::PlaySound::at("slam", to).volume(1.0));
-                    sounds.write(crate::sound::PlaySound::at("boom", to).pitch(0.55).volume(0.7));
+                    sounds.write(crate::sound::PlaySound::at("boom", to).pitch(0.5).volume(0.8));
                     Doing::Rest(0.0)
                 } else {
                     Doing::Slam(t + DT, from, to)
@@ -291,7 +363,7 @@ fn think(
                 anim.play("slam");
                 d.ball_prev = d.ball;
                 next = if t + DT >= REST {
-                    d.slam_ready = SLAM_EVERY;
+                    d.ready[SLAM_I] = SLAM_EVERY;
                     Doing::Carry
                 } else {
                     Doing::Rest(t + DT)
@@ -303,7 +375,7 @@ fn think(
                 d.ball_prev = d.ball;
                 d.ball = from.lerp(back, ((t + DT) / DRAW).min(1.0));
                 next = if t + DT >= DRAW {
-                    sounds.write(crate::sound::PlaySound::at("swing_heavy", d.hand).pitch(0.45));
+                    sounds.write(crate::sound::PlaySound::at("swing_heavy", d.hand).pitch(0.4));
                     d.struck.clear();
                     Doing::Sweep(0.0)
                 } else {
@@ -318,49 +390,125 @@ fn think(
                 at.y = at.y.max(feet + BALL);
                 d.ball_prev = d.ball;
                 d.ball = at;
-                for (e, tk, t) in &hunted {
-                    if t.hunted() && !d.struck.contains(&e) && ((tk.body.pos - at).abs() - tk.body.half).max_element() <= BALL {
-                        d.struck.push(e);
+                for (te, tk, t) in &hunted {
+                    if t.hunted() && !d.struck.contains(&te) && ((tk.body.pos - at).abs() - tk.body.half).max_element() <= BALL {
+                        d.struck.push(te);
                         let dir = Vec2::new(facing, 0.35).normalize();
-                        hits.write(crate::combat::Hit { target: e, damage: SWEEP_HIT.0, harm: Harm::Blunt, knock: dir * SWEEP_HIT.1, stun: 0.3, at, dir, weight: 1.8, crit: false });
-                        sounds.write(crate::sound::PlaySound::at("clank", at).pitch(0.6).volume(1.0));
+                        hits.write(crate::combat::Hit { target: te, damage: SWEEP_HIT.0, harm: Harm::Blunt, knock: dir * SWEEP_HIT.1, stun: 0.35, at, dir, weight: 2.0, crit: false });
+                        sounds.write(crate::sound::PlaySound::at("clank", at).pitch(0.55).volume(1.0));
                     }
                 }
                 next = if u >= 1.0 {
-                    d.sweep_ready = SWEEP_EVERY;
+                    d.ready[SWEEP_I] = SWEEP_EVERY;
                     Doing::Carry
                 } else {
                     Doing::Sweep(t + DT)
                 };
             }
+            Doing::Gather(t) => {
+                anim.play("cast");
+                hang_ball(&sim, &mut d);
+                // Motes drawn in to its hand, more as it gathers; a hum.
+                let n = 2 + (t / GATHER * 6.0) as usize;
+                for i in 0..n {
+                    let dir = Vec2::from_angle(t * 7.0 + i as f32 * 2.399);
+                    sparks.emit(&motes, 1, d.cast + dir * 34.0, -dir, Vec2::ZERO);
+                }
+                if ((t + DT) / 0.35) as u32 != (t / 0.35) as u32 {
+                    sounds.write(crate::sound::PlaySound::at("cast", d.cast).pitch(0.3 + t * 0.2).volume(0.7));
+                }
+                next = if t + DT >= GATHER {
+                    flares.write(crate::fx::Flare { at: d.cast, color: [0.7, 0.3, 1.4], life: 0.5 });
+                    sounds.write(crate::sound::PlaySound::at("boom", d.cast).pitch(0.35).volume(0.6));
+                    match target {
+                        Some((who, ..)) => Doing::Pull(0.0, who),
+                        None => {
+                            d.ready[PULL_I] = PULL_EVERY;
+                            Doing::Carry
+                        }
+                    }
+                } else {
+                    Doing::Gather(t + DT)
+                };
+            }
+            Doing::Pull(t, who) => {
+                anim.play("cast");
+                hang_ball(&sim, &mut d);
+                let near = hunted.get(who).ok().map(|(_, tk, _)| tk.body.pos);
+                let broke = dashers.contains(&who);
+                let close = near.is_some_and(|p| (p.x - pos.x).abs() < SWEEP_NEAR.0 * 0.8);
+                if broke || close || near.is_none() || t >= PULL.0 {
+                    if let Ok(mut ec) = commands.get_entity(who) {
+                        ec.remove::<Tugged>();
+                    }
+                    if broke {
+                        sounds.write(crate::sound::PlaySound::at("cast", d.cast).pitch(1.4));
+                    }
+                    d.ready[PULL_I] = PULL_EVERY;
+                    next = Doing::Carry;
+                } else if let Some(p) = near {
+                    commands.entity(who).insert(Tugged { to: d.cast, speed: PULL.1, left: 0.1 });
+                    // (Streaming from them to its hand.)
+                    let to = (d.cast - p).normalize_or_zero();
+                    sparks.emit(&motes, 2, p + to.perp() * ((t * 31.0).sin() * 6.0), to, Vec2::ZERO);
+                    let dir = Vec2::from_angle(t * 9.0);
+                    sparks.emit(&motes, 2, d.cast + dir * 14.0, -dir, Vec2::ZERO);
+                    next = Doing::Pull(t + DT, who);
+                }
+            }
+            Doing::Ready(t) => {
+                anim.play("cast");
+                hang_ball(&sim, &mut d);
+                if let Some((_, tp, _)) = target {
+                    d.aim = (tp - d.cast).normalize_or(Vec2::X * facing);
+                }
+                if ((t + DT) / 0.3) as u32 != (t / 0.3) as u32 {
+                    sounds.write(crate::sound::PlaySound::at("cast", d.cast).pitch(0.5 + t * 0.5).volume(0.6));
+                }
+                next = if t + DT >= READY {
+                    // Three at once, fanned.
+                    if let Some(i) = book.spells.iter().position(|s| s.id == "dread_void") {
+                        for k in [-1.0f32, 0.0, 1.0] {
+                            let way = d.aim.rotate(Vec2::from_angle((k * FAN).to_radians()));
+                            let from = d.cast + way * 12.0;
+                            casts.write(crate::magic::CastRequest { caster: e, spell: i, from, toward: from + way * 200.0, alt: false });
+                        }
+                    }
+                    sounds.write(crate::sound::PlaySound::at("cast", d.cast).pitch(0.4).volume(1.0));
+                    d.ready[VOLLEY_I] = VOLLEY_EVERY;
+                    Doing::Carry
+                } else {
+                    Doing::Ready(t + DT)
+                };
+            }
         }
         // Swung fast (dragged, flung), it hurts what it hits.
-        if matches!(next, Doing::Carry) {
+        if matches!(next, Doing::Carry | Doing::Gather(_) | Doing::Pull(..) | Doing::Ready(_)) {
             let speed = (d.ball - d.ball_prev).length() / DT;
             if speed > FAST.0 {
-                for (e, tk, t) in &hunted {
+                for (te, tk, t) in &hunted {
                     if t.hunted() && ((tk.body.pos - d.ball).abs() - tk.body.half).max_element() <= BALL {
                         let dir = (tk.body.pos - d.ball).normalize_or(Vec2::Y);
-                        hits.write(crate::combat::Hit { target: e, damage: FAST.1, harm: Harm::Blunt, knock: dir * 220.0, stun: 0.2, at: d.ball, dir, weight: 1.2, crit: false });
+                        hits.write(crate::combat::Hit { target: te, damage: FAST.1, harm: Harm::Blunt, knock: dir * 240.0, stun: 0.2, at: d.ball, dir, weight: 1.3, crit: false });
                     }
                 }
             }
         }
         d.doing = next;
-        // (Busy with the flail, it stands.)
+        // (Busy, it stands.)
         if !matches!(next, Doing::Carry) {
             c.0.move_x = 0.0;
             c.0.jump = false;
         }
         // Its chains: at its belt (two) and its other wrist.
-        let tops = [pos + Vec2::new(-4.0 * facing, -2.0), pos + Vec2::new(3.0 * facing, -2.0), pos + Vec2::new(-10.0 * facing, -7.0)];
+        let tops = [pos + Vec2::new(-4.0 * facing, -3.0), pos + Vec2::new(3.0 * facing, -3.0), pos + Vec2::new(-12.5 * facing, -9.0)];
         for (l, top) in d.chains.iter_mut().zip(tops) {
             l.swing(top, 300.0);
         }
     }
 }
 
-/// The flail and the chains, in front of the player, behind it.
+/// The flail, its chains and its void, in front of the player, behind it.
 #[derive(Resource)]
 pub struct FlailCanvas(Canvas);
 
@@ -370,8 +518,22 @@ impl Default for FlailCanvas {
     }
 }
 
-/// The ball (iron, a highlight, spikes), its chain from the hand (sagging
-/// when slack), the chains it wears.
+/// A filled disc of `col` (`r` cells) at `c`, darker at its rim.
+fn disc(px: &mut crate::canvas::Pixels, c: Vec2, r: f32, col: [u8; 4], rim: [u8; 4]) {
+    let n = r.ceil() as i32;
+    for y in -n..=n {
+        for x in -n..=n {
+            let o = Vec2::new(x as f32, y as f32);
+            if o.length() <= r {
+                let p = (c + o).floor().as_ivec2();
+                px.put(p.x, p.y, if o.length() > r - 1.0 { rim } else { col });
+            }
+        }
+    }
+}
+
+/// The ball (iron, lit from above, spikes), its chain from the hand
+/// (sagging when slack), the chains it wears; its orbs swelling.
 fn draw(mut commands: Commands, mut canvas: ResMut<FlailCanvas>, mut images: ResMut<Assets<Image>>, camera: Query<(&GlobalTransform, &ChunkLoader), With<MainCamera>>, q: Query<&Dread>, mut sprites: CanvasSprites) {
     let Ok((cam, loader)) = camera.single() else { return };
     let any = q.iter().any(|d| d.started);
@@ -386,32 +548,39 @@ fn draw(mut commands: Commands, mut canvas: ResMut<FlailCanvas>, mut images: Res
         }
         // The chain: sagging with the slack.
         let slack = (CHAIN - d.hand.distance(d.ball)).max(0.0);
-        let mid = (d.hand + d.ball) / 2.0 - Vec2::Y * (slack * 0.6).min(18.0);
-        let pts: Vec<Vec2> = (0..=CHAIN_LINKS).map(|i| {
-            let t = i as f32 / CHAIN_LINKS as f32;
-            d.hand.lerp(mid, t).lerp(mid.lerp(d.ball, t), t)
-        }).collect();
+        let mid = (d.hand + d.ball) / 2.0 - Vec2::Y * (slack * 0.6).min(26.0);
+        let pts: Vec<Vec2> = (0..=CHAIN_LINKS)
+            .map(|i| {
+                let t = i as f32 / CHAIN_LINKS as f32;
+                d.hand.lerp(mid, t).lerp(mid.lerp(d.ball, t), t)
+            })
+            .collect();
         draw_links(&mut px, &pts, light, dark);
         // The ball: spikes, then iron, lit from above.
         let c = d.ball;
-        for s in 0..10 {
-            let a = s as f32 / 10.0 * std::f32::consts::TAU + 0.3;
-            for r in 0..4 {
+        for s in 0..12 {
+            let a = s as f32 / 12.0 * std::f32::consts::TAU + 0.3;
+            for r in 0..5 {
                 let p = (c + Vec2::from_angle(a) * (BALL + r as f32)).floor().as_ivec2();
-                px.put(p.x, p.y, if r < 2 { [110, 112, 124, 255] } else { [180, 182, 196, 255] });
+                px.put(p.x, p.y, if r < 3 { [110, 112, 124, 255] } else { [184, 186, 200, 255] });
             }
         }
-        let r = BALL.ceil() as i32;
-        for y in -r..=r {
-            for x in -r..=r {
-                let o = Vec2::new(x as f32, y as f32);
-                if o.length() <= BALL {
-                    let lit = (o - Vec2::new(-1.5, 2.0)).length() < BALL * 0.45;
-                    let col = if lit { [120, 122, 136, 255] } else if o.length() > BALL - 1.0 { [30, 30, 36, 255] } else { [62, 64, 74, 255] };
-                    let p = (c + o).floor().as_ivec2();
-                    px.put(p.x, p.y, col);
-                }
+        disc(&mut px, c, BALL, [62, 64, 74, 255], [28, 28, 34, 255]);
+        disc(&mut px, c + Vec2::new(-2.5, 3.0), BALL * 0.38, [124, 126, 140, 255], [96, 98, 110, 255]);
+        // Its orbs, swelling before its hand.
+        if let Doing::Ready(t) = d.doing {
+            let f = (t / READY).min(1.0);
+            for k in [-1.0f32, 0.0, 1.0] {
+                let way = d.aim.rotate(Vec2::from_angle((k * FAN).to_radians()));
+                let at = d.cast + way * 12.0;
+                disc(&mut px, at, 1.0 + f * 4.0, [70, 30, 120, 255], [190, 150, 255, 255]);
+                disc(&mut px, at, (f * 2.0).max(0.6), [230, 210, 255, 255], [230, 210, 255, 255]);
             }
+        }
+        // The void in its hand, gathering or drawing.
+        if let Doing::Gather(t) | Doing::Pull(t, _) = d.doing {
+            let f = if matches!(d.doing, Doing::Gather(_)) { (t / GATHER).min(1.0) } else { 1.0 };
+            disc(&mut px, d.cast, 2.0 + f * 5.0, [16, 6, 28, 255], [150, 90, 240, 255]);
         }
     }
 }

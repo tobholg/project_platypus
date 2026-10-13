@@ -330,6 +330,8 @@
         // pits and down shafts; eats at what breathes it; flammable, and a
         // spark flashes it through with pops.
         (name: "miasma",   kind: Gas, heavy: true, density: 3, dispersion: 6, lifetime: (90, 200), decay_every: 4, corrosive: 12, flammability: 80, ignites_at: 260, explodes: (radius: 3, power: 20, chance: 3), glow: (18, 30, 4), opacity: 14, colors: [(150, 184, 80), (160, 128, 172), (128, 164, 64), (140, 112, 156)]),
+        // What a dread knight's void bolts leave: dark, faintly glowing smoke.
+        (name: "void_smoke", kind: Gas, density: 2, dispersion: 2, lifetime: (60, 150), decay_every: 2, glow: (40, 14, 70), opacity: 10, colors: [(34, 18, 52), (52, 28, 80), (22, 10, 36)]),
         (name: "smoke",    kind: Gas, density: 2, dispersion: 3, lifetime: (40, 120), decay_every: 2, opacity: 6, colors: [(56, 54, 54), (84, 80, 80)]),
 
         // ---- fire ---------------------------------------------------------

@@ -1,31 +1,33 @@
-// A dread knight: tall as two of you, crowned and hooded, a long torn
-// cloak and rags, chains at its belt, and a great spiked ball on a chain.
-// It walks at you, never hurrying; shrieks when it sees you. Far, it
-// whirls the ball over its head and brings it down where you stand (the
-// ground cratered); near, it draws the ball back and sweeps it along the
-// ground (jump it). Hard to stagger, hard to kill; light burns it. Its
+// A dread knight: nearly three times your height, crowned and hooded,
+// hung all over with rags, chains at its belt, a great spiked ball on a
+// long chain. It walks at you, never hurrying; shrieks when it sees you.
+// In reach, it whirls the ball over its head and brings it down where you
+// stand (the ground cratered); near, it draws the ball back and sweeps it
+// along the ground (jump it); further, it draws you in with the void (run
+// against it, dash to break it), or looses three slow void orbs, fanned
+// (weave between). Hard to stagger, hard to kill; light burns it. Its
 // cloak can be worn. (custom/dread.rs)
 (
     name: "Dread knight",
-    size: (16, 44),
-    health: 420,
+    size: (18, 62),
+    health: 560,
     team: Enemy,
     kind: "undead",
     blood: "",
     art: "dread_knight",
-    heft: 8,
-    poise: 90,
+    heft: 10,
+    poise: 120,
     movement: (
-        run_speed: 42,
+        run_speed: 44,
         ground_accel: 500,
         ground_decel: 900,
         air_accel: 300,
         jump_height: 24,
         air_jumps: 0,
-        step_height: 9,
+        step_height: 12,
         dash_speed: 0,
     ),
-    brain: (kind: "hunter", params: (aggro: 360, close: Walk(keep: 44))),
+    brain: (kind: "hunter", params: (aggro: 360, close: Walk(keep: 60))),
     custom: (name: "dread", params: ()),
     z: 11.2,
 )

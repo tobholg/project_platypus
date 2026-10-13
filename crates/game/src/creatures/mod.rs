@@ -103,6 +103,15 @@ pub struct Disguised;
 #[derive(Component)]
 pub struct Phasing;
 
+/// Drawn toward `to` at `speed` (cells/s) on top of how it moves (a dread
+/// knight's void): it can run against it, slower; for `left` s.
+#[derive(Component)]
+pub struct Tugged {
+    pub to: Vec2,
+    pub speed: f32,
+    pub left: f32,
+}
+
 /// Creatures, not the player.
 type NotPlayer = (With<Creature>, Without<player::LocalPlayer>);
 
@@ -505,7 +514,7 @@ pub fn free_spot(world: &platypus_sim::World, center: Vec2, half: Vec2, reach: i
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 
 /// One movement code path for every creature.
-type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, (Option<&'a body::elements::Chilled>, Option<&'a body::elements::Coated>, Has<body::goo::Goo>, Has<Phasing>), Option<&'a mut FallTrack>, Has<WebWalker>, Option<&'a crate::gear::hook::Rope>, Has<player::LocalPlayer>, Option<&'a mut StepEase>, Has<body::hurt::Faltering>);
+type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, (Option<&'a body::elements::Chilled>, Option<&'a body::elements::Coated>, Has<body::goo::Goo>, Has<Phasing>, Option<&'a mut Tugged>), Option<&'a mut FallTrack>, Has<WebWalker>, Option<&'a crate::gear::hook::Rope>, Has<player::LocalPlayer>, Option<&'a mut StepEase>, Has<body::hurt::Faltering>);
 
 pub(crate) fn move_creatures(
     sim: Res<SimWorld>,
@@ -518,7 +527,7 @@ pub(crate) fn move_creatures(
     coatings: Res<body::elements::Coatings>,
 ) {
     let grid = WorldGrid(&sim.world);
-    for (entity, mut k, stats, controls, (chilled, coated, gooey, phasing), track, web_walker, rope, player, ease, faltering) in &mut q {
+    for (entity, mut k, stats, controls, (chilled, coated, gooey, phasing, tug), track, web_walker, rope, player, ease, faltering) in &mut q {
         // Frozen until the ground under it is loaded.
         if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
             continue;
@@ -570,7 +579,16 @@ pub(crate) fn move_creatures(
         // (So does hanging from a hook.)
         let rejumped = ev.air_jumped || ev.wall_jumped || tether.is_some();
         let before = k.body.vel;
+        // (Tugged: drawn that way too, this tick only; how it steers isn't.)
+        let drift = tug.map_or(Vec2::ZERO, |mut t| {
+            t.left -= DT;
+            if t.left > 0.0 { (t.to - k.body.pos).normalize_or_zero() * t.speed } else { Vec2::ZERO }
+        });
+        k.body.vel += drift;
         let contacts = move_and_collide(&grid, &mut k.body, DT);
+        // (What a wall stopped is stopped; the rest goes back as it steers.)
+        let v = k.body.vel;
+        k.body.vel = Vec2::new(if v.x == 0.0 { 0.0 } else { v.x - drift.x }, if v.y == 0.0 { 0.0 } else { v.y - drift.y });
         if let Some(mut e) = ease {
             let most = 2.0 * stats.step_height as f32;
             e.0 = (e.0 - contacts.stepped as f32 + contacts.snapped).clamp(-most, most);
