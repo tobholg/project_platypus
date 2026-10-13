@@ -4,14 +4,11 @@
 // swung back), and it shoots fire or acid, as it likes.
 (
     name: "Jan Willy",
-    // (His picture drawn 3.5 times as big; his box as big as that.)
-    scale: 3.5,
-    size: (31, 62),
+    // (Drawn big, at full detail: three times your height.)
+    size: (24, 66),
     health: 300,
     heft: 7,
     poise: 80,
-    // (No body left: it'd be drawn the size of his picture.)
-    corpse: false,
     team: Enemy,
     kind: "humanoid",
     blood: "blood",

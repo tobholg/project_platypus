@@ -626,7 +626,10 @@ pub fn run(
                 d.fired += 1;
                 // (Several, `a|b`: one of them, by chance.)
                 let choice: Vec<&str> = spell.split('|').collect();
-                let pick = choice[(platypus_sim::rng::hash(&[e.to_bits(), d.t.to_bits() as u64, shot as u64, 0x5E11]) % choice.len() as u64) as usize];
+                let pick = choice[(platypus_sim::rng::hash(&[e.to_bits(), now.to_bits() as u64, shot as u64, 0x5E11]) % choice.len() as u64) as usize];
+                if choice.len() > 1 {
+                    debug!("{e:?} casts {pick} (of {spell})");
+                }
                 let Some(i) = spells.spells.iter().position(|s| s.id == pick) else { continue };
                 let turret = from.as_deref().and_then(|name| limbs.get(e).ok().and_then(|l| l.muzzle(name)));
                 let origin = turret.map_or(at(*along) + Vec2::Y * *up, |(m, _)| m);

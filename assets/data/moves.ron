@@ -79,11 +79,12 @@
             (name: "spit", secs: 0.0, clip: Some("lunge"), acts: [Throw(speed: 180, up: 100, stun: 0.3)]),
             (name: "recover", secs: 0.6, clip: Some("idle")),
         ]),
-        // Jan Willy points: he crouches forward, finger out, the other hand
-        // swung back, and the finger shoots fire or acid (by chance).
+        // Jan Willy points: he crouches forward, arm out, finger up, the
+        // other hand swung back, and his fingertip shoots fire or acid (by
+        // chance).
         (id: "willy_point", every: 2.4, when: (range: (60, 340), line: true), phases: [
             (name: "aim", secs: 0.55, clip: Some("point"), acts: [Sound("pour")]),
-            (name: "shoot", secs: 0.3, clip: Some("shoot"), acts: [Cast(spell: "willy_fire|glutton_acid", at: 34, up: 4), Sound("cast")]),
+            (name: "shoot", secs: 0.3, clip: Some("shoot"), acts: [Cast(spell: "willy_fire|glutton_acid", at: 21, up: 13), Sound("cast")]),
             (name: "recover", secs: 0.45, clip: Some("point")),
         ]),
         // A crimson head's grab: quicker to come (a shorter tell), from
