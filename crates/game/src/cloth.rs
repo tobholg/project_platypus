@@ -211,6 +211,11 @@ fn hang(sim: Res<SimWorld>, time: Res<Time>, mut q: Query<(&mut Drapes, &Kinemat
                 for i in 0..cols {
                     d.pts[idx(i, 0)] = pin_at(&def, pos, half, facing, i);
                 }
+                // (Out of rock as it's pulled true, too: what lies on the
+                // ground slides along it.)
+                for n in cols..cols * rows {
+                    lift_out(&solid, &mut d.pts[n], &mut d.prev[n]);
+                }
                 for j in 0..rows {
                     for i in 0..cols {
                         if i + 1 < cols {
@@ -255,19 +260,38 @@ fn hang(sim: Res<SimWorld>, time: Res<Time>, mut q: Query<(&mut Drapes, &Kinemat
                     }
                 }
             }
-            // Resting on rock: not into it.
+            // Resting on rock: lifted out onto it (not held where it was: it
+            // drags along the ground, not snags).
             for n in cols..cols * rows {
-                if solid(d.pts[n]) {
-                    let back = d.prev[n];
-                    d.pts[n] = if solid(Vec2::new(d.pts[n].x, back.y)) { Vec2::new(back.x, d.pts[n].y.max(back.y)) } else { Vec2::new(d.pts[n].x, back.y) };
-                    if solid(d.pts[n]) {
-                        d.pts[n] = back;
-                    }
-                }
+                lift_out(&solid, &mut d.pts[n], &mut d.prev[n]);
             }
         }
     }
 }
+
+/// A point in rock lifted up out of it (onto its surface, a few cells at
+/// most), its fall stopped, dragging a little along it.
+fn lift_out(solid: &impl Fn(Vec2) -> bool, p: &mut Vec2, prev: &mut Vec2) {
+    if !solid(*p) {
+        return;
+    }
+    let start = *p;
+    for _ in 0..LIFT {
+        p.y += 1.0;
+        if !solid(*p) {
+            p.y = p.y.floor();
+            // (Resting on it: no fall into it, a little friction along it.)
+            prev.y = p.y;
+            prev.x = prev.x + (p.x - prev.x) * 0.3;
+            return;
+        }
+    }
+    // (Deep in rock: left where it was going; it'll pull free.)
+    *p = start;
+}
+
+/// Lifted out of rock at most this many cells a pass.
+const LIFT: usize = 6;
 
 /// Cloth's canvas: just behind the player (z 11), in front of the rest.
 #[derive(Resource)]

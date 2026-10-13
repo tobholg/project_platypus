@@ -144,6 +144,10 @@ const DT: f32 = (1.0 / crate::world::TICK_HZ) as f32;
 /// The flail: its chain's length, the ball's size, how hard it falls,
 /// links in its chain.
 const CHAIN: f32 = 72.0;
+/// Thrown (the slam), it pays out this much chain; reeled back in after at
+/// up to this speed (cells/s).
+const THROW: f32 = 110.0;
+const REEL: f32 = 420.0;
 const BALL: f32 = 8.5;
 const BALL_FALL: f32 = 1100.0;
 const CHAIN_LINKS: usize = 16;
@@ -268,9 +272,15 @@ fn hang_ball(sim: &SimWorld, d: &mut Dread) {
     }
     d.ball_prev = d.ball;
     d.ball += v - Vec2::Y * BALL_FALL * DT * DT;
+    // (Paid out further than it drags: reeled back in, not snapped.)
     let off = d.ball - d.hand;
-    if off.length() > CHAIN {
-        d.ball = d.hand + off.normalize() * CHAIN;
+    let len = off.length();
+    if len > CHAIN {
+        let reach = (len - REEL * DT).max(CHAIN);
+        d.ball = d.hand + off.normalize() * reach;
+        if reach > CHAIN {
+            d.ball_prev = d.ball;
+        }
     }
     for _ in 0..10 {
         if solid(sim, d.ball - Vec2::Y * BALL) {
@@ -340,7 +350,7 @@ fn think(
                     let dist = off.length();
                     let want = if off.x.abs() < SWEEP_NEAR.0 && off.y.abs() < SWEEP_NEAR.1 && d.ready[SWEEP_I] <= 0.0 {
                         Some(Next::Draw)
-                    } else if tp.distance(d.hand) < CHAIN + SLAM_FROM && d.ready[SLAM_I] <= 0.0 && k.loco.grounded() {
+                    } else if tp.distance(d.hand) < THROW + SLAM_FROM && d.ready[SLAM_I] <= 0.0 && k.loco.grounded() {
                         Some(Next::Whirl)
                     } else if (VOLLEY_RANGE.0..VOLLEY_RANGE.1).contains(&dist) && d.ready[VOLLEY_I] <= 0.0 && d.ready[PULL_I] > 2.0 {
                         Some(Next::Ready)
@@ -366,8 +376,8 @@ fn think(
                     // Where it comes down: where they stand, no further than
                     // its chain reaches, on the ground there.
                     let mut to = target.map_or(d.hand + Vec2::new(facing * CHAIN, -CHAIN), |(_, tp, th)| tp - Vec2::Y * (th.y - BALL));
-                    if to.distance(d.hand) > CHAIN {
-                        to = d.hand + (to - d.hand).normalize() * CHAIN;
+                    if to.distance(d.hand) > THROW {
+                        to = d.hand + (to - d.hand).normalize() * THROW;
                     }
                     if let Some(drop) = (0..80).map(|n| to - Vec2::Y * n as f32).find(|&p| solid(&sim, p - Vec2::Y * BALL)) {
                         to = drop;
@@ -510,7 +520,7 @@ fn think(
                     // Pulled in: its flail, at once (near: swept; in reach:
                     // brought down on them; still out of reach: it comes on).
                     let swept = near.is_some_and(|p| (p.x - pos.x).abs() < SWEEP_NEAR.0);
-                    let reached = near.is_some_and(|p| p.distance(d.hand) < CHAIN + SLAM_FROM);
+                    let reached = near.is_some_and(|p| p.distance(d.hand) < THROW + SLAM_FROM);
                     next = if swept {
                         haul_then(&d, Next::Draw, &mut sounds)
                     } else if reached {
