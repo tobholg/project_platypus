@@ -9,11 +9,13 @@
 //!   brings it down where you stand: the ground cratered, what's near
 //!   thrown.
 //! - Near, it draws the ball back and sweeps it along the ground (jump it).
-//! - Further, it raises its free hand and the void gathers there (motes
-//!   drawn in, a low hum: the tell), then draws you toward it (run against
-//!   it, slower; dash to break it): into its flail's reach.
-//! - Or three dark orbs swell before its raised hand (the tell) and fly at
-//!   you, fanned (weave between them), leaving void smoke.
+//! - Further, it holds its free hand out at you and the void gathers there
+//!   (motes drawn in, a low hum: the tell), then draws you toward it in
+//!   three hard tugs, each warned by a throb in its hand (run against it;
+//!   dash to slip one): into its flail's reach.
+//! - Or a sphere of void swells in its outstretched palm, crackling (the
+//!   tell), and three orbs fly from it at you, fanned (weave between them),
+//!   leaving void smoke, bursting where they strike.
 //!
 //! Between, the ball drags behind it, and hurts what it hits going fast.
 //! Dead, its cloak can be worn.
@@ -87,8 +89,9 @@ enum Doing {
     Sweep(f32),
     /// The void gathering in its hand (the pull's tell).
     Gather(f32),
-    /// Drawing whom it hunts toward it.
-    Pull(f32, Entity),
+    /// Drawing whom it hunts toward it: in tugs (how many done), each a
+    /// throb (its tell), a tug, a rest.
+    Pull(f32, Entity, u32),
     /// Three orbs swelling (the volley's tell).
     Ready(f32),
 }
@@ -151,15 +154,17 @@ const SWEEP: (f32, f32, f32) = (0.6, 200.0, 345.0);
 const SWEEP_HIT: (f32, f32) = (28.0, 400.0);
 const SWEEP_EVERY: f32 = 3.2;
 const SWEEP_NEAR: (f32, f32) = (52.0, 30.0);
-/// The pull: the void gathers this long; it draws you in this long, this
-/// fast; from this near to this far; then it waits.
+/// The pull: the void gathers this long; then it draws you in so many
+/// tugs, each a throb (s), a tug (s, cells/s) and a rest (s); from this
+/// near to this far; then it waits.
 const GATHER: f32 = 1.1;
-const PULL: (f32, f32) = (1.6, 105.0);
+const TUGS: u32 = 3;
+const TUG: (f32, f32, f32, f32) = (0.3, 0.45, 230.0, 0.3);
 const PULL_RANGE: (f32, f32) = (90.0, 240.0);
 const PULL_EVERY: f32 = 9.0;
-/// The volley: its orbs swell this long; three, this far apart (degrees);
+/// The volley: the void swells in its palm this long; three, this far apart (degrees);
 /// from this near to this far; then it waits.
-const READY: f32 = 0.9;
+const READY: f32 = 1.1;
 const FAN: f32 = 16.0;
 const VOLLEY_RANGE: (f32, f32) = (100.0, 320.0);
 const VOLLEY_EVERY: f32 = 6.0;
@@ -175,7 +180,8 @@ fn hands_at(pos: Vec2, facing: f32, doing: Doing) -> (Vec2, Vec2) {
         Doing::Draw(..) | Doing::Sweep(_) => Vec2::new(4.5, -4.0),
         _ => Vec2::new(11.5, -8.0),
     };
-    let cast = Vec2::new(-12.5, 34.0);
+    // (Its free hand held out at you, palm open.)
+    let cast = Vec2::new(13.0, 15.5);
     (pos + Vec2::new(o.x * facing, o.y), pos + Vec2::new(cast.x * facing, cast.y))
 }
 
@@ -406,7 +412,7 @@ fn think(
                 };
             }
             Doing::Gather(t) => {
-                anim.play("cast");
+                anim.play("reach");
                 hang_ball(&sim, &mut d);
                 // Motes drawn in to its hand, more as it gathers; a hum.
                 let n = 2 + (t / GATHER * 6.0) as usize;
@@ -421,7 +427,7 @@ fn think(
                     flares.write(crate::fx::Flare { at: d.cast, color: [0.7, 0.3, 1.4], life: 0.5 });
                     sounds.write(crate::sound::PlaySound::at("boom", d.cast).pitch(0.35).volume(0.6));
                     match target {
-                        Some((who, ..)) => Doing::Pull(0.0, who),
+                        Some((who, ..)) => Doing::Pull(0.0, who, 0),
                         None => {
                             d.ready[PULL_I] = PULL_EVERY;
                             Doing::Carry
@@ -431,36 +437,65 @@ fn think(
                     Doing::Gather(t + DT)
                 };
             }
-            Doing::Pull(t, who) => {
-                anim.play("cast");
+            Doing::Pull(t, who, done) => {
+                anim.play("reach");
                 hang_ball(&sim, &mut d);
                 let near = hunted.get(who).ok().map(|(_, tk, _)| tk.body.pos);
-                let broke = dashers.contains(&who);
                 let close = near.is_some_and(|p| (p.x - pos.x).abs() < SWEEP_NEAR.0 * 0.8);
-                if broke || close || near.is_none() || t >= PULL.0 {
+                let (throb, tug, speed, rest) = TUG;
+                let tugging = t >= throb && t < throb + tug;
+                if dashers.contains(&who) && tugging && let Ok(mut ec) = commands.get_entity(who) {
+                    // (Slipped this one; the next will come.)
+                    ec.remove::<Tugged>();
+                    sounds.write(crate::sound::PlaySound::at("cast", d.cast).pitch(1.4));
+                }
+                if close || near.is_none() || done >= TUGS {
                     if let Ok(mut ec) = commands.get_entity(who) {
                         ec.remove::<Tugged>();
                     }
-                    if broke {
-                        sounds.write(crate::sound::PlaySound::at("cast", d.cast).pitch(1.4));
-                    }
                     d.ready[PULL_I] = PULL_EVERY;
                     next = Doing::Carry;
-                } else if let Some(p) = near {
-                    commands.entity(who).insert(Tugged { to: d.cast, speed: PULL.1, left: 0.1 });
-                    // (Streaming from them to its hand.)
-                    let to = (d.cast - p).normalize_or_zero();
-                    sparks.emit(&motes, 2, p + to.perp() * ((t * 31.0).sin() * 6.0), to, Vec2::ZERO);
-                    let dir = Vec2::from_angle(t * 9.0);
-                    sparks.emit(&motes, 2, d.cast + dir * 14.0, -dir, Vec2::ZERO);
-                    next = Doing::Pull(t + DT, who);
+                } else {
+                    let p = near.expect("near");
+                    // Its throb: the void in its hand swelling (the tell).
+                    if t < DT {
+                        flares.write(crate::fx::Flare { at: d.cast, color: [0.6, 0.25, 1.2], life: throb });
+                        sounds.write(crate::sound::PlaySound::at("cast", d.cast).pitch(0.35 + done as f32 * 0.1).volume(0.8));
+                    }
+                    if t < throb {
+                        let dir = Vec2::from_angle(t * 11.0 + done as f32);
+                        sparks.emit(&motes, 3, d.cast + dir * 20.0, -dir, Vec2::ZERO);
+                    }
+                    // The tug: hard, toward its hand.
+                    if tugging && !dashers.contains(&who) {
+                        if t - DT < throb {
+                            sounds.write(crate::sound::PlaySound::at("boom", d.cast).pitch(0.3).volume(0.7));
+                            trauma.0 = (trauma.0 + 0.25).min(1.0);
+                        }
+                        commands.entity(who).insert(Tugged { to: d.cast, speed, left: 0.1 });
+                        let to = (d.cast - p).normalize_or_zero();
+                        for _ in 0..2 {
+                            sparks.emit(&motes, 2, p + to.perp() * ((t * 31.0).sin() * 7.0), to, Vec2::ZERO);
+                        }
+                    }
+                    next = if t + DT >= throb + tug + rest { Doing::Pull(0.0, who, done + 1) } else { Doing::Pull(t + DT, who, done) };
                 }
             }
             Doing::Ready(t) => {
-                anim.play("cast");
+                anim.play("reach");
                 hang_ball(&sim, &mut d);
                 if let Some((_, tp, _)) = target {
                     d.aim = (tp - d.cast).normalize_or(Vec2::X * facing);
+                }
+                // The void swelling in its palm: motes spiralling in, more and
+                // faster; its light throbbing.
+                let f = t / READY;
+                for i in 0..(2 + (f * 8.0) as usize) {
+                    let dir = Vec2::from_angle(t * (6.0 + f * 10.0) + i as f32 * 1.7);
+                    sparks.emit(&motes, 1, d.cast + dir * (26.0 - f * 10.0), (-dir + dir.perp() * 0.6).normalize(), Vec2::ZERO);
+                }
+                if ((t + DT) / 0.15) as u32 != (t / 0.15) as u32 {
+                    flares.write(crate::fx::Flare { at: d.cast, color: [0.4 + f * 0.6, 0.15, 0.8 + f * 0.8], life: 0.2 });
                 }
                 if ((t + DT) / 0.3) as u32 != (t / 0.3) as u32 {
                     sounds.write(crate::sound::PlaySound::at("cast", d.cast).pitch(0.5 + t * 0.5).volume(0.6));
@@ -470,11 +505,13 @@ fn think(
                     if let Some(i) = book.spells.iter().position(|s| s.id == "dread_void") {
                         for k in [-1.0f32, 0.0, 1.0] {
                             let way = d.aim.rotate(Vec2::from_angle((k * FAN).to_radians()));
-                            let from = d.cast + way * 12.0;
+                            let from = d.cast + way * 5.0;
                             casts.write(crate::magic::CastRequest { caster: e, spell: i, from, toward: from + way * 200.0, alt: false });
                         }
                     }
                     sounds.write(crate::sound::PlaySound::at("cast", d.cast).pitch(0.4).volume(1.0));
+                    sounds.write(crate::sound::PlaySound::at("boom", d.cast).pitch(0.6).volume(0.5));
+                    flares.write(crate::fx::Flare { at: d.cast, color: [1.2, 0.5, 2.0], life: 0.35 });
                     d.ready[VOLLEY_I] = VOLLEY_EVERY;
                     Doing::Carry
                 } else {
@@ -567,19 +604,41 @@ fn draw(mut commands: Commands, mut canvas: ResMut<FlailCanvas>, mut images: Res
         }
         disc(&mut px, c, BALL, [62, 64, 74, 255], [28, 28, 34, 255]);
         disc(&mut px, c + Vec2::new(-2.5, 3.0), BALL * 0.38, [124, 126, 140, 255], [96, 98, 110, 255]);
-        // Its orbs, swelling before its hand.
+        // The void swelling in its palm: a dark sphere, a ring about it,
+        // lightning crackling off it.
         if let Doing::Ready(t) = d.doing {
             let f = (t / READY).min(1.0);
-            for k in [-1.0f32, 0.0, 1.0] {
-                let way = d.aim.rotate(Vec2::from_angle((k * FAN).to_radians()));
-                let at = d.cast + way * 12.0;
-                disc(&mut px, at, 1.0 + f * 4.0, [70, 30, 120, 255], [190, 150, 255, 255]);
-                disc(&mut px, at, (f * 2.0).max(0.6), [230, 210, 255, 255], [230, 210, 255, 255]);
+            let r = 2.0 + f * 6.0;
+            disc(&mut px, d.cast, r + 1.5, [120, 70, 210, 255], [200, 160, 255, 255]);
+            disc(&mut px, d.cast, r, [14, 4, 26, 255], [60, 24, 110, 255]);
+            let ring = r + 4.0 + (t * 14.0).sin() * 1.5;
+            for i in 0..24 {
+                let p = (d.cast + Vec2::from_angle(i as f32 / 24.0 * std::f32::consts::TAU + t * 3.0) * ring).floor().as_ivec2();
+                px.put(p.x, p.y, [180, 130, 255, 255]);
+            }
+            // (Crackling: jagged rays, new every few frames.)
+            let seed = (t * 20.0) as u32;
+            for k in 0..(2 + (f * 4.0) as u32) {
+                let mut a = (seed.wrapping_mul(2654435761).wrapping_add(k * 977) % 628) as f32 / 100.0;
+                let mut p = d.cast + Vec2::from_angle(a) * r;
+                for step in 0..(4 + (f * 5.0) as u32) {
+                    a += (((seed + k * 31 + step * 7) % 11) as f32 - 5.0) * 0.12;
+                    let q = p + Vec2::from_angle(a) * 2.5;
+                    for s in 0..=3 {
+                        let c = p.lerp(q, s as f32 / 3.0).floor().as_ivec2();
+                        px.put(c.x, c.y, [235, 220, 255, 255]);
+                    }
+                    p = q;
+                }
             }
         }
         // The void in its hand, gathering or drawing.
-        if let Doing::Gather(t) | Doing::Pull(t, _) = d.doing {
-            let f = if matches!(d.doing, Doing::Gather(_)) { (t / GATHER).min(1.0) } else { 1.0 };
+        if let Doing::Gather(t) | Doing::Pull(t, ..) = d.doing {
+            let f = match d.doing {
+                Doing::Gather(_) => (t / GATHER).min(1.0),
+                // (Each tug's throb: swelling, then spent.)
+                _ => 0.6 + 0.4 * (t / TUG.0).min(1.0),
+            };
             disc(&mut px, d.cast, 2.0 + f * 5.0, [16, 6, 28, 255], [150, 90, 240, 255]);
         }
     }
