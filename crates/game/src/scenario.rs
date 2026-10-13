@@ -301,6 +301,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, mimic_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, wraith_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, dread_script)
+            .add_systems(Update, olmer_script)
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
             .add_systems(PreUpdate, stealth_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7563,6 +7564,52 @@ fn dread_script(
         state.1 = t + 0.4;
     }
     let _ = dh;
+}
+
+/// `olmer` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): Olmer the Defiler
+/// at 1120; the player (who can't die) stands at 900 (`PLATYPUS_OLMER=near`:
+/// at 1075, for the slam; `parry`: near him, the player swings and swings).
+/// Logs what he does, where the player is, the player's health lost.
+fn olmer_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::custom::olmer::Olmer>), Without<LocalPlayer>>,
+    mut state: Local<(u8, f32, &'static str)>,
+    (mut mouse, mut cursor): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>),
+) {
+    if s.name != "olmer" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let mode = std::env::var("PLATYPUS_OLMER").unwrap_or_default();
+    state.1 += h.max - h.hp;
+    h.hp = h.max;
+    if state.0 == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        k.body.pos = Vec2::new(if mode.is_empty() { 900.0 } else { 1075.0 }, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        crate::creatures::def::spawn_creature(&mut commands, "olmer", Vec2::new(1120.0, fl), |_| {});
+        info!("olmer: Olmer at 1120 ({mode})");
+        state.0 = 1;
+        return;
+    }
+    let Some((_, _, ok, o)) = them.iter().find(|x| x.1.kind == "olmer") else { return };
+    let doing = o.map_or("?", |o| o.doing());
+    if doing != state.2 {
+        info!("olmer: t {t:.2} {doing} at {:.0}; the player at {:.0} ({:.0} up), lost {:.0}", ok.body.pos.x, k.body.pos.x, k.body.pos.y - k.body.half.y - fl, state.1);
+        state.2 = doing;
+    }
+    if mode == "parry" {
+        cursor.0 = Some(ok.body.pos + Vec2::Y * 10.0);
+        if (t * 6.0) as i32 % 2 == 0 { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    }
 }
 
 /// `wraith` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_HOUR=22`):

@@ -1,0 +1,32 @@
+// Olmer the Defiler: a giant musclehead, blond hair parted down the middle
+// (midtskille), glasses, a tank top, arms like hams, and a giant barbell,
+// three blue plates on each end. Three times your height. He walks at
+// you, the bar across his shoulders (standing about, he does his reps);
+// near, he presses it overhead (the tell) and slams it down flat in front
+// of him, both plates cratering the ground; a little further, he twirls it
+// in one fist like a staff, walking at you. A blade meeting a plate
+// mid-twirl staggers him. (custom/olmer.rs)
+(
+    name: "Olmer the Defiler",
+    size: (32, 76),
+    health: 520,
+    heft: 10,
+    poise: 140,
+    team: Enemy,
+    kind: "humanoid",
+    blood: "blood",
+    art: "olmer",
+    movement: (
+        run_speed: 52,
+        ground_accel: 500,
+        ground_decel: 900,
+        air_accel: 300,
+        jump_height: 30,
+        air_jumps: 0,
+        step_height: 14,
+        dash_speed: 0,
+    ),
+    brain: (kind: "hunter", params: (aggro: 400, close: Walk(keep: 40))),
+    custom: (name: "olmer", params: ()),
+    z: 11.1,
+)
