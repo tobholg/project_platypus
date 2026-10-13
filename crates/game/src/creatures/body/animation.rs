@@ -230,7 +230,8 @@ pub fn animate(
         let mut arm: Option<(usize, Vec3)> = None;
         let mut hand_at: Option<Vec3> = None;
         // (A frame pixel's place relative to the creature's centre.)
-        let local = |px: f32, py: f32| body_at + Vec3::new((px + 0.5 - fw / 2.0) * facing, -(py + 0.5 - fh / 2.0), 0.0);
+        let sc = def.scale;
+        let local = |px: f32, py: f32| body_at + Vec3::new((px + 0.5 - fw / 2.0) * facing, -(py + 0.5 - fh / 2.0), 0.0) * sc;
         if let (Some(a), Some(rig)) = (aiming.as_deref(), def.rig.as_ref())
             && a.left > 0.0
             && let Some(&bare) = rig.without.get(&(index, FRONT_ARM.to_string()))
@@ -288,6 +289,7 @@ pub fn animate(
                     }
                     sprite.flip_x = facing < 0.0;
                     tf.translation = at;
+                    tf.scale = Vec3::splat(sc);
                 }
                 continue;
             }
@@ -312,6 +314,7 @@ pub fn animate(
             sprite.flip_x = (facing < 0.0) != (turn.abs() > 3.0);
             tf.translation = rot * body_at;
             tf.rotation = rot;
+            tf.scale = Vec3::splat(sc);
             shown = Some((index, sprite.flip_x, tf.translation, rot));
         }
         // Its eyes: the body's frame, only their pixels, over the dark.
@@ -332,6 +335,7 @@ pub fn animate(
                 sprite.flip_x = flip;
                 tf.translation = at.truncate().extend(Z_EYES - def.z);
                 tf.rotation = rot;
+                tf.scale = Vec3::splat(def.scale);
             }
         }
     }
@@ -342,12 +346,13 @@ pub fn animate(
 pub fn body_at(def: &CreatureDef, k: &Kinematics) -> Vec2 {
     let (fw, fh) = (def.sprite.frame.0 as f32, def.sprite.frame.1 as f32);
     let (ax, ay) = def.sprite.feet;
-    Vec2::new((fw / 2.0 - ax) * k.loco.facing, -k.body.half.y + ay - fh / 2.0)
+    let s = def.scale;
+    Vec2::new((fw / 2.0 - ax) * k.loco.facing * s, -k.body.half.y + (ay - fh / 2.0) * s)
 }
 
 /// The pixel of its frame a world point falls on (it may be off the frame).
 pub fn pixel_at(def: &CreatureDef, k: &Kinematics, world: Vec2) -> (i32, i32) {
     let (fw, fh) = (def.sprite.frame.0 as f32, def.sprite.frame.1 as f32);
-    let d = world - k.body.pos - body_at(def, k);
+    let d = (world - k.body.pos - body_at(def, k)) / def.scale.max(0.01);
     (((d.x * k.loco.facing) + fw / 2.0 - 0.5).round() as i32, (fh / 2.0 - 0.5 - d.y).round() as i32)
 }

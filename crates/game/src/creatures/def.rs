@@ -155,6 +155,10 @@ pub struct CreatureDef {
     /// Draw order among creatures.
     #[serde(default = "default_z")]
     pub z: f32,
+    /// Drawn this many times its picture's size (anchored at its feet);
+    /// its `size` and its moves' reach are its own, written for it.
+    #[serde(default = "one_f")]
+    pub scale: f32,
     /// Stamina (swings and dodges spend it); none: it never tires.
     #[serde(default)]
     pub stamina: Option<f32>,

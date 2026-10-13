@@ -1,25 +1,31 @@
-// Jan Willy: a short, bald Norwegian, shirt tucked into blue olabukser.
-// He keeps his distance, and when he has you in his sights he crouches
-// forward, points his finger at you (the other hand swung back), and it
-// shoots fire or acid, as it likes.
+// Jan Willy: a bald Norwegian, shirt tucked into blue olabukser, and huge:
+// three times your height. He keeps his distance, and when he has you in
+// his sights he crouches forward, points his finger at you (the other hand
+// swung back), and it shoots fire or acid, as it likes.
 (
     name: "Jan Willy",
-    size: (9, 18),
-    health: 45,
+    // (His picture drawn 3.5 times as big; his box as big as that.)
+    scale: 3.5,
+    size: (31, 62),
+    health: 300,
+    heft: 7,
+    poise: 80,
+    // (No body left: it'd be drawn the size of his picture.)
+    corpse: false,
     team: Enemy,
     kind: "humanoid",
     blood: "blood",
     art: "jan_willy",
     movement: (
-        run_speed: 85,
-        ground_accel: 900,
-        ground_decel: 1200,
-        air_accel: 500,
-        jump_height: 26,
+        run_speed: 70,
+        ground_accel: 600,
+        ground_decel: 900,
+        air_accel: 300,
+        jump_height: 40,
         air_jumps: 0,
-        step_height: 5,
+        step_height: 14,
         dash_speed: 0,
     ),
     moves: ["willy_point"],
-    brain: (kind: "hunter", params: (aggro: 240, close: Range(near: 70, far: 150))),
+    brain: (kind: "hunter", params: (aggro: 380, close: Range(near: 130, far: 260))),
 )
