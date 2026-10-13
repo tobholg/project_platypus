@@ -58,11 +58,16 @@ pub struct ClothDef {
     /// How hard it falls away behind its wearer (cells/s²: a cape off the
     /// shoulders, not straight down its back).
     pub behind: f32,
+    /// Where it may hang from where it's pinned (degrees: 0 straight down,
+    /// + behind its wearer, 90 straight out behind): from `arc.0` (a little
+    /// in front) to `arc.1` (a little up behind). Never over its head or
+    /// round its front, however it's flung.
+    pub arc: (f32, f32),
 }
 
 impl Default for ClothDef {
     fn default() -> Self {
-        ClothDef { color: (150, 38, 36), lining: (96, 26, 28), cols: 5, rows: 9, gap: 2.5, pin: (-4.0, 1.0, 5.0), torn: 0.0, weight: 1.0, front: false, behind: 0.0 }
+        ClothDef { color: (150, 38, 36), lining: (96, 26, 28), cols: 5, rows: 9, gap: 2.5, pin: (-4.0, 1.0, 5.0), torn: 0.0, weight: 1.0, front: false, behind: 0.0, arc: (-15.0, 100.0) }
     }
 }
 
@@ -132,11 +137,14 @@ fn wear(mut commands: Commands, items: Option<Res<Items>>, mut q: Query<(Entity,
 }
 
 const DT: f32 = (1.0 / crate::world::TICK_HZ) as f32;
+/// At the edge of its arc, each column (from the back) this much less far
+/// up than the one behind it (degrees).
+const FAN: f32 = 10.0;
 /// How hard cloth falls (× its weight), how much of its swing it keeps a
 /// tick, the breeze's push (cells/s²); ties pulled true this many times a
 /// tick; pinned further than this from where it was (a teleport): hung
 /// again from scratch.
-const FALL: f32 = 420.0;
+const FALL: f32 = 700.0;
 const KEEP: f32 = 0.982;
 const BREEZE: f32 = 40.0;
 const PASSES: usize = 8;
@@ -210,6 +218,32 @@ fn hang(sim: Res<SimWorld>, time: Res<Time>, mut q: Query<(&mut Drapes, &Kinemat
                         if j + 2 < rows {
                             ties(idx(i, j), idx(i, j + 2), gap * 2.0, 0.3, &mut d.pts, cols);
                         }
+                    }
+                }
+            }
+            // Within its arc behind its wearer: a point swung past it (flung
+            // over its head, round its front) is put back on its edge, its
+            // swing that way gone.
+            // (Fanned: the rearmost column may go furthest up, the rest a
+            // little less each: at its edge it's still cloth, not a line.)
+            let lo = def.arc.0.to_radians();
+            for j in 1..rows {
+                for i in 0..cols {
+                    let hi = (def.arc.1 - (i as f32) * FAN).to_radians();
+                    let n = idx(i, j);
+                    let o = d.pts[idx(i, 0)];
+                    let v = d.pts[n] - o;
+                    let len = v.length();
+                    if len < 1e-3 {
+                        continue;
+                    }
+                    // (Its angle: from straight down toward behind.)
+                    let a = (-v.x * facing).atan2(-v.y);
+                    if a < lo || a > hi {
+                        let a = a.clamp(lo, hi);
+                        let p = o + Vec2::new(-a.sin() * facing, -a.cos()) * len;
+                        d.pts[n] = p;
+                        d.prev[n] = p;
                     }
                 }
             }

@@ -7928,7 +7928,7 @@ fn leap_script(
             state.1 = state.1.max(k.body.vel.x);
             if t - state.2 > 1.8 {
                 keys.release(KeyCode::Space);
-                info!("leap: rocketing 1.6 s: {:.0} cells across, {:.0} up, at most {:.0} cells/s sideways", k.body.pos.x - state.3, feet - fl, state.1);
+                info!("leap: t {t:.1} rocketing 1.6 s: {:.0} cells across, {:.0} up, at most {:.0} cells/s sideways", k.body.pos.x - state.3, feet - fl, state.1);
                 state.0 = 10;
             }
         }

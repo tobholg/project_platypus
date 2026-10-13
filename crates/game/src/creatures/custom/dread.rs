@@ -144,10 +144,10 @@ fn on_spawn(add: On<Add, Dread>, mut commands: Commands) {
     // A long cloak off its shoulders, torn to rags at the hem.
     // (Hung from the back of its shoulders and wider than it, so it streams
     // out behind it: a train of black rags.)
-    drapes.own(Arc::new(ClothDef { color: (44, 44, 58), lining: (70, 26, 32), cols: 9, rows: 16, gap: 2.7, pin: (-17.0, -5.0, 12.0), torn: 0.6, weight: 1.2, front: false, behind: 230.0 }), seed);
+    drapes.own(Arc::new(ClothDef { color: (44, 44, 58), lining: (70, 26, 32), cols: 9, rows: 16, gap: 2.7, pin: (-17.0, -5.0, 12.0), torn: 0.6, weight: 1.2, front: false, behind: 230.0, arc: (-15.0, 105.0) }), seed);
     // Rags off each arm, past the gauntlets.
     for (n, x) in [(1u64, 10.0f32), (2, -11.0)] {
-        drapes.own(Arc::new(ClothDef { color: (52, 50, 62), lining: (60, 34, 40), cols: 2, rows: 12, gap: 2.2, pin: (x - 1.5, x + 1.5, 6.0), torn: 0.65, weight: 0.8, front: false, behind: 90.0 }), seed ^ n);
+        drapes.own(Arc::new(ClothDef { color: (52, 50, 62), lining: (60, 34, 40), cols: 2, rows: 12, gap: 2.2, pin: (x - 1.5, x + 1.5, 6.0), torn: 0.65, weight: 0.8, front: false, behind: 90.0, arc: (-25.0, 115.0) }), seed ^ n);
     }
     commands.entity(e).insert(drapes);
 }
