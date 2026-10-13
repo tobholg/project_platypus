@@ -37,6 +37,7 @@ pub mod explosive;
 pub mod hatchery;
 pub mod mimic;
 pub mod olmer;
+pub mod templar;
 pub mod wraith;
 // (The template: compiled with the tests, so it stays right.)
 #[cfg(test)]
@@ -66,7 +67,8 @@ impl Plugin for CustomPlugin {
             .register_custom::<mimic::Mimic>()
             .register_custom::<wraith::Wraith>()
             .register_custom::<dread::Dread>()
-            .register_custom::<olmer::Olmer>();
+            .register_custom::<olmer::Olmer>()
+            .register_custom::<templar::Templar>();
     }
 }
 

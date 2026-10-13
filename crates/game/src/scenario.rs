@@ -302,6 +302,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, wraith_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, dread_script)
             .add_systems(Update, olmer_script)
+            .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
             .add_systems(PreUpdate, stealth_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7609,6 +7610,64 @@ fn olmer_script(
     if mode == "parry" {
         cursor.0 = Some(ok.body.pos + Vec2::Y * 10.0);
         if (t * 6.0) as i32 % 2 == 0 { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    }
+}
+
+/// `templar` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a Fallen Templar
+/// at 1120; the player (who can't die) stands at 900 (`PLATYPUS_TEMPLAR=`
+/// `near`: at 1095, for the shove and chop; `mid`: at 1050, the thrust and
+/// spin; `far`: at 990, the hook; `parry`: at 1050, swinging and swinging
+/// at it; `dash`: at 990, dashing when hauled). Logs what it does, where
+/// the player is, the player's health lost.
+fn templar_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::custom::templar::Templar>), Without<LocalPlayer>>,
+    mut state: Local<(u8, f32, &'static str)>,
+    (mut mouse, mut cursor, mut keys): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>, ResMut<ButtonInput<KeyCode>>),
+    tugged: Query<(), (With<LocalPlayer>, With<crate::creatures::Tugged>)>,
+) {
+    if s.name != "templar" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let mode = std::env::var("PLATYPUS_TEMPLAR").unwrap_or_default();
+    state.1 += h.max - h.hp;
+    h.hp = h.max;
+    if state.0 == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        let x = match mode.as_str() {
+            "near" => 1095.0,
+            "mid" | "parry" => 1050.0,
+            "far" | "dash" => 990.0,
+            _ => 900.0,
+        };
+        k.body.pos = Vec2::new(x, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        crate::creatures::def::spawn_creature(&mut commands, "fallen_templar", Vec2::new(1120.0, fl), |_| {});
+        info!("templar: a Fallen Templar at 1120 ({mode})");
+        state.0 = 1;
+        return;
+    }
+    let Some((_, _, tk, o)) = them.iter().find(|x| x.1.kind == "fallen_templar") else { return };
+    let doing = o.map_or("?", |o| o.doing());
+    if doing != state.2 {
+        info!("templar: t {t:.2} {doing} at {:.0}; the player at {:.0} ({:.0} up), lost {:.0}", tk.body.pos.x, k.body.pos.x, k.body.pos.y - k.body.half.y - fl, state.1);
+        state.2 = doing;
+    }
+    if mode == "parry" {
+        cursor.0 = Some(tk.body.pos + Vec2::new(-30.0, 10.0));
+        if (t * 6.0) as i32 % 2 == 0 { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    }
+    if mode == "dash" {
+        if !tugged.is_empty() && (t * 10.0) as i32 % 3 == 0 { keys.press(KeyCode::ShiftLeft) } else { keys.release(KeyCode::ShiftLeft) }
     }
 }
 

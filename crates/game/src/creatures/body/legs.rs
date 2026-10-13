@@ -679,6 +679,9 @@ pub struct Legs {
     /// their claws' sprites.
     arms: Vec<(Vec2, Vec2, Vec2)>,
     claws: Vec<Option<Entity>>,
+    /// Where its own code holds each arm's hand (from its middle, the
+    /// world's way round: a weapon's grip), if it does.
+    hold: Vec<Option<Vec2>>,
     /// Side: seconds its body's been off the ground; how far its furthest
     /// foot is from its hip, against its reach (a readout).
     air: f32,
@@ -890,6 +893,15 @@ impl Legs {
     /// A point on the body (cells from its grip, facing right, y up) as
     /// it's turned now (Side: mirrored to its facing, tilted, turned to
     /// the surface it's on).
+    /// Holds arm `arm`'s hand at `at` (from its middle, the world's way
+    /// round: where it grips what it swings), or lets it rest (`None`).
+    pub fn hold(&mut self, arm: usize, at: Option<Vec2>) {
+        if self.hold.len() <= arm {
+            self.hold.resize(arm + 1, None);
+        }
+        self.hold[arm] = at;
+    }
+
     fn turn(&self, p: Vec2) -> Vec2 {
         Vec2::from_angle(self.surface + self.tilt * self.facing).rotate(Vec2::new(p.x * self.facing, p.y))
     }
@@ -1116,7 +1128,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, grip: Vec2::ZERO, turrets: Vec::new(), lock: None, face: None, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), hold: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, grip: Vec2::ZERO, turrets: Vec::new(), lock: None, face: None, def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -1738,7 +1750,9 @@ fn walk(
             // (A move reaching it out at its target: as far toward it as the
             // arm goes; a claw opened, turned up off the forearm.)
             let pose = arm.name.as_deref().and_then(|name| rear.limb(name));
+            let held = legs.hold.get(j).copied().flatten();
             let hand = match (pose, rear.target) {
+                _ if held.is_some() => c + held.unwrap_or_default(),
                 (Some(p), Some(t)) if p.reach > 0.01 => {
                     let most = shoulder + (t - shoulder).clamp_length_max(arm.bones.0 + arm.bones.1 - 0.5);
                     hand.lerp(most, p.reach.clamp(0.0, 1.0))
@@ -2861,7 +2875,7 @@ fn draw(
             let z = tf.translation().z;
             match mine {
                 Some(mut mine) => {
-                    for (layer, (cells, at)) in mine.0.iter_mut().zip([(&own[0], 9.5), (&own[1], Z_NEAR_LEGS)]) {
+                    for (layer, (cells, at)) in mine.0.iter_mut().zip([(&own[0], 9.5), (&own[1], Z_NEAR_LEGS.max(z + 0.06))]) {
                         layer.paint(&mut commands, &mut images, &mut layers, e, cells, at - z);
                     }
                 }

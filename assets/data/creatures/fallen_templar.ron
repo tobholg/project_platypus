@@ -1,0 +1,48 @@
+// The Fallen Templar: a great knight of an order long gone, risen in its
+// armour, three times your height: a cracked great helm with a cold light
+// in its slit, a torn red tabard and a dark cape (cloth), and a halberd
+// longer than it is tall. It keeps you at the halberd's length: a lunging
+// thrust; a great chop from high behind its head that breaks the ground;
+// far off, a hook reached out over you and dragged back to haul you in for
+// the chop; the haft spun, walking at you; too close, a shove. A blade
+// meeting the halberd's head as it swings staggers it. It keeps the hearts
+// of crypts. (custom/templar.rs)
+(
+    name: "Fallen Templar",
+    size: (18, 78),
+    health: 620,
+    heft: 10,
+    poise: 150,
+    team: Enemy,
+    faction: "undead",
+    kind: "undead",
+    blood: "",
+    art: "fallen_templar",
+    eyes: (190, 230, 255),
+    movement: (
+        run_speed: 46,
+        ground_accel: 500,
+        ground_decel: 900,
+        air_accel: 300,
+        jump_height: 26,
+        air_jumps: 0,
+        step_height: 14,
+        dash_speed: 0,
+    ),
+    // Its legs and arms: two-bone IK on its own art's body (a rig). Its
+    // hands go where its halberd's grips are (custom/templar.rs).
+    legs: (view: Side, rig: true, reach: 33, upper: 0.5, step: 0.17, lift: 5, stride: 16,
+           color: (118, 122, 136), joint: (164, 168, 182), outline: (22, 20, 26), width: [7.0, 5.6, 4.6], toes: 6,
+           body: "fallen_templar",
+           each: [
+               (hip: (2.5, -7.5), gait: 0, knee: Forward),
+               (hip: (-2.5, -7.5), gait: 1, knee: Forward, far: true),
+           ],
+           arms: [
+               (shoulder: (1.5, 18.5), hand: (8, -2), bones: (15, 14), width: [5.6, 4.6, 4.0], elbow: Down, sway: 0.0),
+               (shoulder: (-6.5, 18.5), hand: (2, -4), bones: (15, 14), width: [5.0, 4.2, 3.6], elbow: Down, far: true, sway: 0.0),
+           ]),
+    brain: (kind: "hunter", params: (aggro: 420, close: Walk(keep: 60))),
+    custom: (name: "templar", params: ()),
+    z: 11.1,
+)

@@ -1236,8 +1236,13 @@ impl TerrainGen {
             for (x, y) in piece.blocks_of(Glyph::Spawn).map(|(x, y)| (x + BLOCK / 2, y)).filter(inside) {
                 out.push((CellPos::new(x, y), Spawn::Creature(guard)));
             }
-            // A boss is a pack, until there are bosses.
+            // A crypt's heart is kept by a Fallen Templar; a castle's, until
+            // there are bosses, by a pack.
             for (x, y) in piece.blocks_of(Glyph::Boss).filter(inside) {
+                if s.kind == StructureKind::Crypt {
+                    out.push((CellPos::new(x + 3, y), Spawn::Creature("fallen_templar")));
+                    continue;
+                }
                 for dx in [-15, 3, 21] {
                     out.push((CellPos::new(x + dx, y), Spawn::Creature(guard)));
                 }
@@ -1998,7 +2003,8 @@ mod tests {
             // (Cave chests can turn up in the crypt's chunks too.)
             let placed = chests_seen.iter().filter(|p| c.pieces.iter().any(|piece| piece.blocks_of(Glyph::Chest).any(|(x, y)| (x + BLOCK, y) == (p.x, p.y)))).count();
             assert_eq!(placed, chests, "each chest reported once");
-            let guards: usize = c.pieces.iter().map(|p| p.blocks_of(Glyph::Spawn).count() + 3 * p.blocks_of(Glyph::Boss).count()).sum();
+            // (Its heart's kept by one: a Fallen Templar.)
+            let guards: usize = c.pieces.iter().map(|p| p.blocks_of(Glyph::Spawn).count() + p.blocks_of(Glyph::Boss).count()).sum();
             assert_eq!(spawns.len(), guards, "each guard reported once");
             assert_eq!(spawns.iter().collect::<HashSet<_>>().len(), guards, "no guard twice");
         }
