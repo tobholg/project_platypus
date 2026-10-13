@@ -142,7 +142,58 @@ impl Plugin for ArenaPlugin {
             .add_systems(Startup, spawn_panel.after(crate::fight::make_timeline))
             .add_systems(PreUpdate, (keys, buttons, fold, scroll, act).chain().after(bevy::ui::UiSystems::Focus))
             .add_systems(PreUpdate, step.after(act))
-            .add_systems(Update, (show_panel, overlays));
+            .add_systems(Update, (show_panel, overlays, spawn_list));
+    }
+}
+
+/// `PLATYPUS_SPAWN=dread_knight` (or a list, `zombie*3,slime,mimic`): those
+/// creatures put down this long after the arena's up (s), on the ground to
+/// the player's right, this far off and this far apart (cells); for a
+/// quick fight. (Packs too, by name.)
+const SPAWN_AFTER: f32 = 1.5;
+const SPAWN_OFF: (f32, f32) = (110.0, 40.0);
+
+fn spawn_list(
+    mut commands: Commands,
+    time: Res<Time>,
+    sim: Res<SimWorld>,
+    creatures: Res<crate::creatures::def::Creatures>,
+    player: Query<&Kinematics, With<crate::creatures::player::LocalPlayer>>,
+    mut done: Local<bool>,
+) {
+    if *done || time.elapsed_secs() < SPAWN_AFTER {
+        return;
+    }
+    let Ok(list) = std::env::var("PLATYPUS_SPAWN") else {
+        *done = true;
+        return;
+    };
+    let Ok(pk) = player.single() else { return };
+    *done = true;
+    let packs = crate::creatures::spawn::packs();
+    let mut kinds: Vec<String> = Vec::new();
+    for word in list.split(',').map(str::trim).filter(|w| !w.is_empty()) {
+        let (name, n) = word.split_once('*').map_or((word, 1), |(a, b)| (a.trim(), b.trim().parse().unwrap_or(1)));
+        match (creatures.get(name).is_some(), packs.get(name)) {
+            (true, _) => kinds.extend(std::iter::repeat_n(name.to_string(), n)),
+            (false, Some(pack)) => {
+                for _ in 0..n {
+                    for (kind, count) in pack {
+                        kinds.extend(std::iter::repeat_n(kind.clone(), *count as usize));
+                    }
+                }
+            }
+            (false, None) => warn!("PLATYPUS_SPAWN: no creature or pack `{name}` (creatures: {})", creature_kinds().join(", ")),
+        }
+    }
+    let feet = pk.body.pos.y - pk.body.half.y;
+    for (i, kind) in kinds.iter().enumerate() {
+        let x = pk.body.pos.x + SPAWN_OFF.0 + i as f32 * SPAWN_OFF.1;
+        let y = crate::creatures::spawn::find_ground(&sim.world, x as i32, feet as i32 + 120, 400).map_or(feet, |y| y as f32);
+        crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x, y), |_| {});
+    }
+    if !kinds.is_empty() {
+        info!("arena: spawned {}", kinds.join(", "));
     }
 }
 
