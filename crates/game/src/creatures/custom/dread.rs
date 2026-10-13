@@ -10,9 +10,12 @@
 //!   thrown.
 //! - Near, it draws the ball back and sweeps it along the ground (jump it).
 //! - Further, it holds its free hand out at you and the void gathers there
-//!   (motes drawn in, a low hum: the tell), then draws you toward it in
-//!   three hard tugs, each warned by a throb in its hand (run against it;
-//!   dash to slip one): into its flail's reach.
+//!   (motes drawn in, a low hum: the tell), then yanks you toward it in
+//!   three hard tugs, each warned by a throb in its hand: thrown toward it
+//!   and up off your feet (walking back won't hold you; a dash slips one),
+//!   and then, at once, its flail.
+//! - Before any of these, if the ball's lying away from it, it hauls it
+//!   back in first, the chain taut.
 //! - Or a sphere of void swells in its outstretched palm, crackling (the
 //!   tell), and three orbs fly from it at you, fanned (weave between them),
 //!   leaving void smoke, bursting where they strike.
@@ -94,6 +97,17 @@ enum Doing {
     Pull(f32, Entity, u32),
     /// Three orbs swelling (the volley's tell).
     Ready(f32),
+    /// Hauling the ball back in, then that.
+    Haul(f32, Next),
+}
+
+/// What it hauls the ball in for.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Next {
+    Whirl,
+    Draw,
+    Gather,
+    Ready,
 }
 
 impl CustomCreature for Dread {
@@ -121,6 +135,7 @@ impl Dread {
             Doing::Gather(_) => "gather",
             Doing::Pull(..) => "pull",
             Doing::Ready(_) => "ready",
+            Doing::Haul(..) => "haul",
         }
     }
 }
@@ -157,9 +172,15 @@ const SWEEP_NEAR: (f32, f32) = (52.0, 30.0);
 /// The pull: the void gathers this long; then it draws you in so many
 /// tugs, each a throb (s), a tug (s, cells/s) and a rest (s); from this
 /// near to this far; then it waits.
-const GATHER: f32 = 1.1;
+const GATHER: f32 = 0.85;
 const TUGS: u32 = 3;
-const TUG: (f32, f32, f32, f32) = (0.3, 0.45, 230.0, 0.3);
+const TUG: (f32, f32, f32, f32) = (0.3, 0.45, 210.0, 0.3);
+/// Each tug's yank: toward its hand this fast, and up this fast (as it
+/// starts; then dragged at `TUG.2` through it).
+const YANK: (f32, f32) = (430.0, 300.0);
+/// It hauls the ball in when it's further than this from its hand (cells),
+/// at up to this speed, for at most this long.
+const HAUL: (f32, f32, f32) = (22.0, 520.0, 0.6);
 const PULL_RANGE: (f32, f32) = (90.0, 240.0);
 const PULL_EVERY: f32 = 9.0;
 /// The volley: the void swells in its palm this long; three, this far apart (degrees);
@@ -183,6 +204,35 @@ fn hands_at(pos: Vec2, facing: f32, doing: Doing) -> (Vec2, Vec2) {
     // (Its free hand held out at you, palm open.)
     let cast = Vec2::new(13.0, 15.5);
     (pos + Vec2::new(o.x * facing, o.y), pos + Vec2::new(cast.x * facing, cast.y))
+}
+
+/// That attack, its first moment (and its sound).
+fn start(d: &Dread, then: Next, sounds: &mut MessageWriter<crate::sound::PlaySound>) -> Doing {
+    match then {
+        Next::Whirl => Doing::Whirl(0.0),
+        Next::Draw => {
+            sounds.write(crate::sound::PlaySound::at("clank", d.ball).pitch(0.45));
+            Doing::Draw(0.0, d.ball)
+        }
+        Next::Gather => {
+            sounds.write(crate::sound::PlaySound::at("pour", d.cast).pitch(0.22).volume(1.0));
+            Doing::Gather(0.0)
+        }
+        Next::Ready => {
+            sounds.write(crate::sound::PlaySound::at("pour", d.cast).pitch(0.35).volume(0.9));
+            Doing::Ready(0.0)
+        }
+    }
+}
+
+/// That attack: the ball hauled in first, if it's lying away.
+fn haul_then(d: &Dread, then: Next, sounds: &mut MessageWriter<crate::sound::PlaySound>) -> Doing {
+    if d.ball.distance(d.hand) > HAUL.0 {
+        sounds.write(crate::sound::PlaySound::at("clank", d.ball).pitch(0.6).volume(0.8));
+        Doing::Haul(0.0, then)
+    } else {
+        start(d, then, sounds)
+    }
 }
 
 /// Its cloak and rags, hung as it comes.
@@ -255,7 +305,7 @@ fn think(
     mut q: Query<(Entity, &mut Dread, &Kinematics, &mut Controls, &mut crate::creatures::body::animation::Animator)>,
     hunted: Query<(Entity, &Kinematics, &Team), Without<Dread>>,
     mut dashed: MessageReader<crate::combat::Dashed>,
-    (mut hits, mut casts, mut sounds): (MessageWriter<crate::combat::Hit>, MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::sound::PlaySound>),
+    (mut hits, mut casts, mut sounds, mut recoils): (MessageWriter<crate::combat::Hit>, MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::sound::PlaySound>, MessageWriter<crate::combat::Recoil>),
     (mut sparks, mut trauma, mut flares): (ResMut<crate::vfx::Sparks>, ResMut<crate::fx::Trauma>, MessageWriter<crate::fx::Flare>),
 ) {
     let dashers: Vec<Entity> = dashed.read().map(|d| d.0).collect();
@@ -288,17 +338,19 @@ fn think(
                 if let Some((_, tp, _)) = target {
                     let off = tp - pos;
                     let dist = off.length();
-                    if off.x.abs() < SWEEP_NEAR.0 && off.y.abs() < SWEEP_NEAR.1 && d.ready[SWEEP_I] <= 0.0 {
-                        next = Doing::Draw(0.0, d.ball);
-                        sounds.write(crate::sound::PlaySound::at("clank", d.ball).pitch(0.45));
+                    let want = if off.x.abs() < SWEEP_NEAR.0 && off.y.abs() < SWEEP_NEAR.1 && d.ready[SWEEP_I] <= 0.0 {
+                        Some(Next::Draw)
                     } else if tp.distance(d.hand) < CHAIN + SLAM_FROM && d.ready[SLAM_I] <= 0.0 && k.loco.grounded() {
-                        next = Doing::Whirl(0.0);
+                        Some(Next::Whirl)
                     } else if (VOLLEY_RANGE.0..VOLLEY_RANGE.1).contains(&dist) && d.ready[VOLLEY_I] <= 0.0 && d.ready[PULL_I] > 2.0 {
-                        next = Doing::Ready(0.0);
-                        sounds.write(crate::sound::PlaySound::at("pour", d.cast).pitch(0.35).volume(0.9));
+                        Some(Next::Ready)
                     } else if (PULL_RANGE.0..PULL_RANGE.1).contains(&dist) && d.ready[PULL_I] <= 0.0 {
-                        next = Doing::Gather(0.0);
-                        sounds.write(crate::sound::PlaySound::at("pour", d.cast).pitch(0.22).volume(1.0));
+                        Some(Next::Gather)
+                    } else {
+                        None
+                    };
+                    if let Some(w) = want {
+                        next = haul_then(&d, w, &mut sounds);
                     }
                 }
             }
@@ -441,6 +493,7 @@ fn think(
                 anim.play("reach");
                 hang_ball(&sim, &mut d);
                 let near = hunted.get(who).ok().map(|(_, tk, _)| tk.body.pos);
+                let moving = hunted.get(who).ok().map_or(Vec2::ZERO, |(_, tk, _)| tk.body.vel);
                 let close = near.is_some_and(|p| (p.x - pos.x).abs() < SWEEP_NEAR.0 * 0.8);
                 let (throb, tug, speed, rest) = TUG;
                 let tugging = t >= throb && t < throb + tug;
@@ -454,7 +507,17 @@ fn think(
                         ec.remove::<Tugged>();
                     }
                     d.ready[PULL_I] = PULL_EVERY;
-                    next = Doing::Carry;
+                    // Pulled in: its flail, at once (near: swept; in reach:
+                    // brought down on them; still out of reach: it comes on).
+                    let swept = near.is_some_and(|p| (p.x - pos.x).abs() < SWEEP_NEAR.0);
+                    let reached = near.is_some_and(|p| p.distance(d.hand) < CHAIN + SLAM_FROM);
+                    next = if swept {
+                        haul_then(&d, Next::Draw, &mut sounds)
+                    } else if reached {
+                        haul_then(&d, Next::Whirl, &mut sounds)
+                    } else {
+                        Doing::Carry
+                    };
                 } else {
                     let p = near.expect("near");
                     // Its throb: the void in its hand swelling (the tell).
@@ -469,8 +532,13 @@ fn think(
                     // The tug: hard, toward its hand.
                     if tugging && !dashers.contains(&who) {
                         if t - DT < throb {
+                            // The yank: toward its hand and up off their feet,
+                            // whatever way they were going.
+                            let dir = (d.cast - p).normalize_or_zero();
+                            let want = Vec2::new(dir.x * YANK.0, (dir.y * YANK.0).max(0.0) + YANK.1);
+                            recoils.write(crate::combat::Recoil { who, add: want - moving, pogo: None, dive: None });
                             sounds.write(crate::sound::PlaySound::at("boom", d.cast).pitch(0.3).volume(0.7));
-                            trauma.0 = (trauma.0 + 0.25).min(1.0);
+                            trauma.0 = (trauma.0 + 0.3).min(1.0);
                         }
                         commands.entity(who).insert(Tugged { to: d.cast, speed, left: 0.1 });
                         let to = (d.cast - p).normalize_or_zero();
@@ -480,6 +548,15 @@ fn think(
                     }
                     next = if t + DT >= throb + tug + rest { Doing::Pull(0.0, who, done + 1) } else { Doing::Pull(t + DT, who, done) };
                 }
+            }
+            Doing::Haul(t, then) => {
+                anim.play("sweep");
+                // In along its chain, faster and faster, off the ground.
+                let to = d.hand - d.ball;
+                let speed = HAUL.1 * (0.4 + t / HAUL.2).min(1.0);
+                d.ball_prev = d.ball;
+                d.ball += to.normalize_or_zero() * (speed * DT).min(to.length());
+                next = if d.ball.distance(d.hand) <= HAUL.0 || t + DT >= HAUL.2 { start(&d, then, &mut sounds) } else { Doing::Haul(t + DT, then) };
             }
             Doing::Ready(t) => {
                 anim.play("reach");

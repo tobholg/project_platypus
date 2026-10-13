@@ -7476,7 +7476,8 @@ type Pogoer<'a> = (&'a mut Kinematics, &'a crate::creatures::Health, Option<&'a 
 /// `dread` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a dread knight
 /// at 1120; the player (who can't die) stands at 900 (`PLATYPUS_DREAD=near`:
 /// at 1085, for the sweep; `kill`: it's struck with light till it dies, and
-/// leaves its cloak; `dash`: drawn in by its void, the player dashes).
+/// leaves its cloak; `dash`: drawn in by its void, the player dashes;
+/// `back`: while it pulls, the player walks away).
 /// Logs what it does, where the player is, the player's health lost.
 fn dread_script(
     mut commands: Commands,
@@ -7525,6 +7526,10 @@ fn dread_script(
     if doing != state.3 {
         info!("dread: t {t:.2} {doing} at {:.0}; the player at {:.0}, lost {:.0}", dk.body.pos.x, k.body.pos.x, state.2);
         state.3 = doing;
+    }
+    // `back`: while it pulls, the player walks away from it.
+    if mode == "back" {
+        if doing == "pull" || doing == "gather" { keys.press(KeyCode::KeyA) } else { keys.release(KeyCode::KeyA) }
     }
     // `dash`: drawn in by its void, the player dashes (free).
     if mode == "dash" {
