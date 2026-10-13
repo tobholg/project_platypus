@@ -167,6 +167,8 @@ const THROW: f32 = 110.0;
 const REEL: f32 = 420.0;
 const BALL: f32 = 8.5;
 const BALL_FALL: f32 = 1100.0;
+/// On the ground, the ball keeps this much of its roll a tick.
+const GRIP: f32 = 0.93;
 const CHAIN_LINKS: usize = 16;
 /// Hunting what's this near (cells).
 const AGGRO: f32 = 420.0;
@@ -212,10 +214,10 @@ const VOLLEY_ROUNDS: u32 = 3;
 const READY_AGAIN: f32 = 0.7;
 /// Parried, it staggers this long; the ball knocked back this fast (and up).
 const STAGGER: f32 = 1.3;
-const PARRIED: (f32, f32) = (380.0, 200.0);
+const PARRIED: (f32, f32) = (520.0, 270.0);
 /// Batted along the ground: a blow's knockback × this (cells/s), at most
 /// once in this long.
-const BAT: (f32, f32) = (0.38, 0.2);
+const BAT: (f32, f32) = (0.65, 0.2);
 const FAN: f32 = 16.0;
 const VOLLEY_RANGE: (f32, f32) = (100.0, 320.0);
 const VOLLEY_EVERY: f32 = 6.0;
@@ -268,8 +270,8 @@ fn knocked_back(d: &mut Dread, at: Vec2, sounds: &mut MessageWriter<crate::sound
     let off = (d.ball - at).normalize_or(Vec2::Y);
     let v = Vec2::new(off.x * PARRIED.0, off.y.max(0.0) * PARRIED.0 + PARRIED.1);
     d.ball_prev = d.ball - v * DT;
-    sounds.write(crate::sound::PlaySound::at("clang", at).pitch(0.6).volume(1.0));
-    sounds.write(crate::sound::PlaySound::at("clank", at).pitch(0.5).volume(1.0));
+    sounds.write(crate::sound::PlaySound::at("parry", at).volume(1.0));
+    sounds.write(crate::sound::PlaySound::at("clang", at).pitch(0.7).volume(0.8));
     sparks.emit(&clang(), 40, at, off, Vec2::ZERO);
     flares.write(crate::fx::Flare { at, color: [1.6, 1.5, 1.2], life: 0.25 });
     trauma.0 = (trauma.0 + 0.45).min(1.0);
@@ -338,7 +340,7 @@ fn solid(sim: &SimWorld, p: Vec2) -> bool {
 fn hang_ball(sim: &SimWorld, d: &mut Dread) {
     let mut v = (d.ball - d.ball_prev) * 0.985;
     if solid(sim, d.ball - Vec2::Y * (BALL + 1.0)) {
-        v.x *= 0.85;
+        v.x *= GRIP;
     }
     d.ball_prev = d.ball;
     d.ball += v - Vec2::Y * BALL_FALL * DT * DT;
@@ -703,12 +705,13 @@ fn think(
             if let Some((at, knock)) = parried(&blades, d.ball, d.ball, e) {
                 let from = blades.0.iter().find(|b| b.knock == knock).and_then(|b| hunted.get(b.who).ok()).map_or(at, |(_, wk, _)| wk.body.pos);
                 let mut dir = (d.ball - from).normalize_or(Vec2::X);
-                dir.y = dir.y.max(0.35);
+                dir.y = dir.y.max(0.5);
                 let v = (d.ball - d.ball_prev) / DT + dir.normalize() * knock * BAT.0;
                 d.ball_prev = d.ball - v * DT;
                 d.batted = now + BAT.1;
-                sounds.write(crate::sound::PlaySound::at("clank", d.ball).pitch(0.8).volume(0.8));
-                sparks.emit(&clang(), 8, d.ball, -dir, Vec2::ZERO);
+                // (A clink, louder for a heavier blow.)
+                sounds.write(crate::sound::PlaySound::at("clink", d.ball).volume((0.5 + knock / 600.0).min(1.0)));
+                sparks.emit(&clang(), 12, d.ball, -dir, Vec2::ZERO);
             }
         }
         // Swung fast (dragged, flung), it hurts what it hits.
