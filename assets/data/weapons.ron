@@ -25,9 +25,19 @@
 //   cells/s, live till it lands, bounces off something, or has fallen 70
 //   cells (then it's over), and a landing slams what's within `slam` cells.
 //   Any other down-strike is quick, however long its move: a windup of
-//   0.04 s at most, live 0.09 s (its whole sweep), back in 0.07 s; a pogo's
-//   to be timed. Only a fresh click strikes down: holding it doesn't.
+//   0.04 s at most, live 0.15 s (its whole sweep), back in 0.07 s, reaching
+//   4 cells further down and striking what's within 2.5 cells of a body's
+//   box; while it's live over what it strikes, and a moment after a bounce,
+//   that can't hurt you by touch. A pogo's to be timed. Only a fresh click
+//   strikes down: holding it doesn't.
 //   None: the first move, turned down.
+// dash: the dash attack: struck during a dash or just after it, once a dash
+//   (it ends the dash slipping blows as its blade comes out). Its angles
+//   are from where it's aimed, as the combo's. hop: cells/s up as it
+//   sweeps; it lunges in the air too; launch: what it hits is thrown up
+//   this much more; slam: where it comes down (from its hop) it slams
+//   what's within this many cells. A rising slash (swords), a dash thrust
+//   (a dagger), a leaping smash (heavy blades and clubs).
 (
     combo_gap: 0.35,
     pogo: 1.0,
@@ -47,6 +57,7 @@
                 (name: "thrust", harm: pierce, from: 0, to: 0, thrust: 8, windup: 0.07, active: 0.08, recovery: 0.13, stamina: 11, lunge: 195, damage: 1.4, knock: 1.3),
             ],
             down: (name: "down slash", from: 55, to: -55, thrust: 6, windup: 0.02, active: 0.14, recovery: 0.08, stamina: 8),
+            dash: (name: "rising slash", from: -95, to: 115, windup: 0.04, active: 0.12, recovery: 0.22, stamina: 14, lunge: 110, hop: 230, damage: 1.35, knock: 1.2, launch: 0.9),
         ),
         (
             id: "longsword", art: "longsword",
@@ -57,6 +68,7 @@
                 (name: "drive", harm: pierce, from: 5, to: -5, thrust: 11, windup: 0.15, active: 0.1, recovery: 0.24, stamina: 22, lunge: 255, damage: 1.6, knock: 1.5),
             ],
             down: (name: "plunge", harm: pierce, from: 0, to: 0, thrust: 5, windup: 0.08, active: 4, recovery: 0.22, stamina: 14, dive: 780, slam: 21, damage: 1.2),
+            dash: (name: "leaping smash", from: 130, to: -70, windup: 0.1, active: 0.2, recovery: 0.3, stamina: 24, lunge: 90, hop: 260, damage: 1.5, knock: 1.4, slam: 16),
         ),
         // Enemies' weapons: slower, with windups to read.
         (
@@ -66,6 +78,7 @@
                 (name: "hack", from: 110, to: -70, windup: 0.26, active: 0.11, recovery: 0.2, stamina: 14, lunge: 90),
                 (name: "backhack", from: -70, to: 95, windup: 0.18, active: 0.11, recovery: 0.3, stamina: 14, lunge: 60),
             ],
+            dash: (name: "rising slash", from: -95, to: 115, windup: 0.04, active: 0.12, recovery: 0.22, stamina: 18, lunge: 110, hop: 230, damage: 1.35, knock: 1.2, launch: 0.9),
         ),
         (
             id: "rusty_sword", art: "rusty_sword",
@@ -74,6 +87,7 @@
                 (name: "hack", from: 105, to: -70, windup: 0.24, active: 0.1, recovery: 0.2, stamina: 12, lunge: 75),
                 (name: "backhack", from: -70, to: 95, windup: 0.18, active: 0.1, recovery: 0.3, stamina: 12, lunge: 45),
             ],
+            dash: (name: "rising slash", from: -95, to: 115, windup: 0.04, active: 0.12, recovery: 0.22, stamina: 16, lunge: 110, hop: 230, damage: 1.35, knock: 1.2, launch: 0.9),
         ),
         // A dagger: quick stabs, little reach.
         (
@@ -85,6 +99,7 @@
                 (name: "stab", from: -5, to: 5, thrust: 8, windup: 0.04, active: 0.06, recovery: 0.1, stamina: 7, lunge: 165, damage: 1.5),
             ],
             down: (name: "down slash", from: 50, to: -50, thrust: 6, windup: 0.02, active: 0.11, recovery: 0.06, stamina: 5),
+            dash: (name: "dash thrust", from: 0, to: 0, thrust: 12, windup: 0.03, active: 0.12, recovery: 0.2, stamina: 12, lunge: 340, damage: 1.6, knock: 1.4),
         ),
         // Bare bony fists: quick, weak jabs (a skeleton without its sword).
         (
@@ -128,6 +143,7 @@
                 (name: "smash", from: 120, to: -75, windup: 0.5, active: 0.16, recovery: 0.55, stamina: 40, lunge: 45),
                 (name: "sweep", from: -75, to: 70, windup: 0.4, active: 0.2, recovery: 0.5, stamina: 40, lunge: 30),
             ],
+            dash: (name: "leaping smash", from: 130, to: -70, windup: 0.1, active: 0.2, recovery: 0.3, stamina: 22, lunge: 90, hop: 260, damage: 1.5, knock: 1.4, slam: 16),
         ),
     ],    // Bows (archery.rs): hold to draw (fully in `draw` s), let go to loose;
     // the arrow's speed (cells/s), damage and knockback go from the first

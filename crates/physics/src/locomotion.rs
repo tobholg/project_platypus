@@ -408,6 +408,15 @@ impl Locomotion {
         self.state == MoveState::Dash
     }
 
+    /// The dash cut short (a dash attack: its own move takes over, keeping
+    /// the speed it had).
+    pub fn end_dash(&mut self) {
+        if self.state == MoveState::Dash {
+            self.dash_left = 0.0;
+            self.state = MoveState::Air;
+        }
+    }
+
     /// Is jump pressed this tick (held now, not last tick)?
     pub fn jump_pressed(&self, intent: &Intent) -> bool {
         intent.jump && !self.prev_jump

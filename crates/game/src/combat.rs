@@ -48,8 +48,8 @@ impl Plugin for CombatPlugin {
             .init_resource::<LiveBlades>()
             .add_systems(Startup, load)
             .add_systems(PreUpdate, hit_stop)
-            .add_systems(FixedUpdate, (start_swings, dodge, stamina).chain().after(TickSet::Intent).before(TickSet::Bodies))
-            .add_systems(FixedUpdate, (touch, swing, apply_hits).chain().in_set(Hits).after(TickSet::Bodies).before(TickSet::Cells))
+            .add_systems(FixedUpdate, (start_swings, dodge, stamina, windows).chain().after(TickSet::Intent).before(TickSet::Bodies))
+            .add_systems(FixedUpdate, (touch, swing, end_dashes, apply_hits).chain().in_set(Hits).after(TickSet::Bodies).before(TickSet::Cells))
             .add_systems(Update, blink)
             .add_systems(Update, down_pose.before(crate::creatures::body::animation::animate))
             .add_systems(Update, (reload, draw).chain().after(crate::creatures::body::animation::animate));
@@ -154,6 +154,11 @@ pub struct WeaponDef {
     /// angles from straight down. None: the first move, turned down.
     #[serde(default)]
     pub down: Option<MoveDef>,
+    /// The dash attack: struck during a dash or just after (`DASH_AFTER`),
+    /// once a dash; it ends the dash's slipping blows as its blade comes
+    /// out. None: a dash strikes as anything does.
+    #[serde(default)]
+    pub dash: Option<MoveDef>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -181,15 +186,31 @@ pub struct MoveDef {
     #[serde(default)]
     pub dive: f32,
     /// A plunge landing slams the ground: what's within this many cells is
-    /// struck (the move's damage and knock, halved).
+    /// struck (the move's damage and knock, halved). A dash attack's too (a
+    /// leaping smash, where it comes down).
     #[serde(default)]
     pub slam: f32,
+    /// A dash attack's hop as its sweep starts (cells/s up: a rising
+    /// slash, a leaping smash).
+    #[serde(default)]
+    pub hop: f32,
+    /// What it hits is thrown up this much more (a rising slash pops the
+    /// light up into the air).
+    #[serde(default)]
+    pub launch: f32,
 }
 
 impl WeaponDef {
-    /// The move a swing is making: its combo move, or its down-strike.
-    fn move_of(&self, mv: usize, down: bool) -> Option<&MoveDef> {
-        if down { self.down.as_ref().or(self.moves.first()) } else { self.moves.get(mv) }
+    /// The move a swing is making: its combo move, its down-strike, or its
+    /// dash attack.
+    fn move_of(&self, mv: usize, down: bool, dash: bool) -> Option<&MoveDef> {
+        if dash {
+            self.dash.as_ref()
+        } else if down {
+            self.down.as_ref().or(self.moves.first())
+        } else {
+            self.moves.get(mv)
+        }
     }
 }
 
@@ -452,7 +473,7 @@ impl Weapons {
             let frames = turn_compiled(&art, &look.shape, None)?;
             match &h.swing {
                 Some(sw) => {
-                    blades.push(WeaponDef { id: id.clone(), art: look.shape.clone(), damage: sw.damage, harm: sw.harm, knock: sw.knock, stun: sw.stun, rest: h.rest, moves: sw.moves.clone(), down: None });
+                    blades.push(WeaponDef { id: id.clone(), art: look.shape.clone(), damage: sw.damage, harm: sw.harm, knock: sw.knock, stun: sw.stun, rest: h.rest, moves: sw.moves.clone(), down: None, dash: None });
                     turned.push(Turned::build(frames, images, layouts));
                 }
                 None => {
@@ -651,7 +672,8 @@ type Touched<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a mut Inv
 /// grace after a hit keeps a move's blow and its touch from both landing):
 /// not while it's stunned or dying; not asleep or still coming up
 /// (dormant). A dash slips blows, not bodies: a touch breaks it.
-fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, (Without<crate::creatures::Dormant>, Without<crate::creatures::Disguised>)>, mut bodies: Query<Touched, With<Health>>, factions: Query<&crate::creatures::factions::Faction>) {
+fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, (Without<crate::creatures::Dormant>, Without<crate::creatures::Disguised>)>, mut bodies: Query<Touched, With<Health>>, factions: Query<&crate::creatures::factions::Faction>, pogo: (Query<&Swing>, Query<(), With<PogoGrace>>)) {
+    let (swings, graced) = pogo;
     for (me, mut t, k, team, health, goo) in &mut touchers {
         t.rest -= DT;
         let stunned = k.loco.state == platypus_physics::MoveState::Stunned;
@@ -660,6 +682,11 @@ fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, (Without<cra
         }
         for (e, tk, tteam, mut inv) in &mut bodies {
             if e == me || inv.as_ref().is_some_and(|i| i.left > 0.0 && !i.dodge) {
+                continue;
+            }
+            // (Its blade wins over a body: a down-strike live over what it
+            // strikes, or just bounced off something, and touch doesn't hurt.)
+            if graced.contains(e) || swings.get(e).is_ok_and(|sw| sw.down && sw.live && k.body.pos.y < tk.body.pos.y) {
                 continue;
             }
             // (Not its own side, unless their factions are at war; and a
@@ -759,6 +786,13 @@ pub struct Swing {
     dived: f32,
     slammed: bool,
     from_y: Option<f32>,
+    /// A dash attack; off the ground since it began (a leaping smash slams
+    /// where it comes down).
+    dash: bool,
+    aloft: bool,
+    /// Its blade live this tick (a down-strike live over what it strikes:
+    /// that can't hurt you by touch, `touch`).
+    pub(crate) live: bool,
 }
 
 impl Swing {
@@ -782,11 +816,43 @@ const REBOUND: f32 = 0.2;
 const PLUNGE_MAX: f32 = 4.0;
 const PLUNGE_FALL: f32 = 70.0;
 /// A down-strike (not a plunge) is live no longer than this (s), after a
-/// windup no longer than `DOWN_WINDUP`, back in no longer than `DOWN_BACK`.
-const DOWN_LIVE: f32 = 0.09;
+/// windup no longer than `DOWN_WINDUP`, back in no longer than `DOWN_BACK`;
+/// its blade reaches this much further down, and it strikes whatever's
+/// within this of a body's box, not only its picture (a pogo's to be timed,
+/// not threaded).
+const DOWN_LIVE: f32 = 0.15;
+const DOWN_REACH: f32 = 4.0;
+const DOWN_GRACE: f32 = 2.5;
+/// A pogo's bounce: this long after it, what it bounced off (anything)
+/// can't hurt you by touch (`PogoGrace`).
+const POGO_GRACE: f32 = 0.2;
+/// Struck this long after a dash ends (or during it): its dash attack.
+const DASH_AFTER: f32 = 0.12;
 const DOWN_WINDUP: f32 = 0.04;
 const DOWN_BACK: f32 = 0.07;
 const PLUNGE_SPENT: f32 = 320.0;
+
+/// Just bounced off something with a down-strike: no touch hurts it for a
+/// moment (`POGO_GRACE`).
+#[derive(Component)]
+pub struct PogoGrace(f32);
+
+/// Its dash cut short by its dash attack (`end_dashes`).
+#[derive(Component)]
+struct EndDash;
+
+/// Dashes cut short by their dash attacks.
+fn end_dashes(mut commands: Commands, mut q: Query<(Entity, &mut Kinematics), With<EndDash>>) {
+    for (e, mut k) in &mut q {
+        k.loco.end_dash();
+        commands.entity(e).remove::<EndDash>();
+    }
+}
+
+/// Dashed just now: a strike now is its weapon's dash attack (`DASH_AFTER`
+/// past the dash's end).
+#[derive(Component)]
+pub struct DashWindow(f32);
 
 /// Between swings: which move of the combo comes next, and how long since
 /// the last ended.
@@ -878,7 +944,7 @@ fn hit_stop(real: Res<Time<Real>>, mut stop: ResMut<HitStop>, mut virt: ResMut<T
 
 // ---- systems ----
 
-type Fighter<'a> = (&'a Kinematics, &'a Wielding, Option<&'a mut Swing>, Option<&'a mut Combo>, Option<&'a mut Stamina>, Option<&'a crate::creatures::Controls>);
+type Fighter<'a> = (&'a Kinematics, &'a Wielding, Option<&'a mut Swing>, Option<&'a mut Combo>, Option<&'a mut Stamina>, Option<&'a crate::creatures::Controls>, Option<&'a DashWindow>);
 type Holder<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Swing>, Option<&'a crate::archery::Nocked>, Option<&'a Aiming>, Option<&'a Children>);
 
 /// Swings begin (or queue the next) when asked for.
@@ -890,7 +956,7 @@ fn start_swings(
 ) {
     let Some(weapons) = weapons else { return };
     for ask in asks.read() {
-        let Ok((k, wielding, swing, combo, stamina, controls)) = q.get_mut(ask.attacker) else { continue };
+        let Ok((k, wielding, swing, combo, stamina, controls, dash_window)) = q.get_mut(ask.attacker) else { continue };
         let Some(w) = wielding.0.as_deref().and_then(|id| weapons.index(id)) else { continue };
         // In the air, S held or aimed well below: a down-strike.
         let d = ask.at - k.body.pos;
@@ -907,8 +973,13 @@ fn start_swings(
             continue;
         }
         let def = weapons.def(w);
+        // Dashing (or just dashed): its dash attack, once a dash.
+        let dash = !down && dash_window.is_some() && def.dash.is_some();
+        if dash {
+            commands.entity(ask.attacker).remove::<DashWindow>();
+        }
         let mv_i = combo.as_ref().map_or(0, |c| if c.idle <= weapons.file.combo_gap { c.next % def.moves.len().max(1) } else { 0 });
-        let Some(mv) = def.move_of(mv_i, down) else { continue };
+        let Some(mv) = def.move_of(mv_i, down, dash) else { continue };
         if let Some(mut s) = stamina {
             if s.cur <= 0.0 {
                 continue;
@@ -936,6 +1007,9 @@ fn start_swings(
             dived: 0.0,
             from_y: None,
             slammed: false,
+            dash,
+            aloft: false,
+            live: false,
         });
     }
 }
@@ -947,11 +1021,28 @@ fn dodge(mut commands: Commands, mut dashed: MessageReader<Dashed>, mut q: Query
         if let Some(mut s) = stamina {
             s.spend(DODGE_COST);
         }
+        commands.entity(e).insert(DashWindow(DODGE_SAFE.max(0.14) + DASH_AFTER));
         // (Not over a grace that's longer.)
         if now.is_some_and(|i| !i.dodge && i.left >= DODGE_SAFE) {
             continue;
         }
         commands.entity(e).insert(Invulnerable { left: DODGE_SAFE, hp: h.hp, dodge: true });
+    }
+}
+
+/// Dash windows and pogo graces run out.
+fn windows(mut commands: Commands, mut dashes: Query<(Entity, &mut DashWindow)>, mut graces: Query<(Entity, &mut PogoGrace)>) {
+    for (e, mut w) in &mut dashes {
+        w.0 -= DT;
+        if w.0 <= 0.0 {
+            commands.entity(e).remove::<DashWindow>();
+        }
+    }
+    for (e, mut g) in &mut graces {
+        g.0 -= DT;
+        if g.0 <= 0.0 {
+            commands.entity(e).remove::<PogoGrace>();
+        }
     }
 }
 
@@ -988,7 +1079,7 @@ pub fn guard(mut commands: Commands, mut q: Query<(Entity, &mut Invulnerable, &m
     }
 }
 
-type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>);
+type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>, Option<&'a Invulnerable>);
 type Target<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a Animator>, Has<Invulnerable>, Option<&'a crate::creatures::body::parts::Parts>);
 
 /// Swings move on a tick; while they sweep, they hit.
@@ -1012,12 +1103,13 @@ fn swing(
     blades.0.clear();
     let Some(weapons) = weapons else { return };
     let none = crate::gear::Stats::default();
-    for (me, mut s, k, hand, team, mut stamina, stats, eq) in &mut swingers {
+    for (me, mut s, k, hand, team, mut stamina, stats, eq, inv) in &mut swingers {
+        let dodging = inv.is_some_and(|i| i.dodge);
         let stats = stats.unwrap_or(&none);
         // What the weapon leaves on what it hits (venom).
         let coat = eq.and_then(|eq| eq.held).and_then(|h| items.as_ref()?.def(h.item).gear.as_ref()?.on_hit.as_ref()).filter(|n| coatings.by_name.contains_key(*n)).cloned();
         let def = weapons.def(s.weapon).clone();
-        let Some(mut mv) = def.move_of(s.mv, s.down).cloned() else {
+        let Some(mut mv) = def.move_of(s.mv, s.down, s.dash).cloned() else {
             commands.entity(me).remove::<Swing>();
             continue;
         };
@@ -1029,6 +1121,7 @@ fn swing(
             mv.windup = mv.windup.min(DOWN_WINDUP);
             mv.active = mv.active.min(DOWN_LIVE);
             mv.recovery = mv.recovery.min(DOWN_BACK);
+            mv.thrust += DOWN_REACH;
         }
         s.t += DT * stats.mult(crate::gear::Stat::AttackSpeed);
         s.rebound -= DT;
@@ -1069,13 +1162,13 @@ fn swing(
         // Done: the next swing if it was asked for (and there's the stamina
         // for it), else rest. A down-strike isn't a step of the combo.
         if s.t >= mv.length() {
-            let next = if s.down { s.mv } else { (s.mv + 1) % def.moves.len() };
+            let next = if s.dash { 0 } else if s.down { s.mv } else { (s.mv + 1) % def.moves.len() };
             let can = stamina.as_ref().is_none_or(|st| st.cur > 0.0);
             if let Some((aim, facing, down)) = s.queued.take()
                 && can
             {
                 let down = down && !grounded;
-                let Some(m) = def.move_of(next, down) else { continue };
+                let Some(m) = def.move_of(next, down, false) else { continue };
                 if let Some(st) = stamina.as_mut() {
                     st.spend(m.stamina);
                 }
@@ -1094,10 +1187,22 @@ fn swing(
                 s.dived = 0.0;
                 s.from_y = None;
                 s.slammed = false;
+                s.dash = false;
+                s.aloft = false;
                 continue;
             }
             commands.entity(me).remove::<Swing>().insert(Combo { next, idle: 0.0 });
             continue;
+        }
+        // A dash attack's smash: up off the ground, then slamming where it
+        // comes down (or where it is, if it never left it).
+        if s.dash && mv.slam > 0.0 && !s.slammed && s.t >= mv.windup {
+            s.aloft |= !grounded;
+            if grounded && (s.aloft || s.t >= mv.windup + mv.active) {
+                s.slammed = true;
+                slam(me, k, team, &def, &mv, stats, &targets, &mut hits, &mut sparks, &mut trauma, &weapons.file.clang);
+                sounds.write(crate::sound::PlaySound::at("slam", k.body.pos - Vec2::Y * k.body.half.y));
+            }
         }
         let (rel, thrust) = mv.pose(s.t, s.start);
         // (A plunge holds its thrust all the way down.)
@@ -1112,8 +1217,10 @@ fn swing(
         commands.entity(me).insert(Aiming { at: hand_at + dir(angle) * 45.0, left: 0.1 });
         if !mv.active_at(s.t) {
             s.prev = None;
+            s.live = false;
             continue;
         }
+        s.live = true;
         // (Live: where it is, for what else a blade can meet: `LiveBlades`.)
         blades.0.push(LiveBlade {
             who: me,
@@ -1126,9 +1233,18 @@ fn swing(
             let heavy = def.damage >= 20.0;
             sounds.write(crate::sound::PlaySound::at(if heavy { "swing_heavy" } else { "swing" }, hand_at).pitch(if s.down { 0.9 } else { 1.0 }));
         }
-        if !s.lunged && k.loco.grounded() && mv.lunge > 0.0 {
+        if !s.lunged && (k.loco.grounded() || s.dash) && (mv.lunge > 0.0 || mv.hop > 0.0) {
             s.lunged = true;
-            recoil.write(Recoil { who: me, add: Vec2::new(dir(s.aim).x.signum() * mv.lunge, 0.0), pogo: None, dive: None });
+            let up = (mv.hop - k.body.vel.y).max(0.0) * (mv.hop > 0.0) as u8 as f32;
+            recoil.write(Recoil { who: me, add: Vec2::new(dir(s.aim).x.signum() * mv.lunge, up), pogo: None, dive: None });
+        }
+        // (A dash attack's blade out: the dash slips blows no more, and it's
+        // over: the move's hop and lunge take it on.)
+        if s.dash && dodging {
+            commands.entity(me).remove::<Invulnerable>();
+        }
+        if s.dash && k.loco.is_dashing() {
+            commands.entity(me).insert(EndDash);
         }
         // From last tick's angle to this one, a turn at a time.
         let from = s.prev.unwrap_or(angle);
@@ -1191,7 +1307,8 @@ fn swing(
                     continue;
                 }
                 let touched = cells.iter().find(|&&c| {
-                    parts.is_some_and(|p| p.touch(c, 0.0).is_some())
+                    (s.down && (c - tk.body.pos).abs().cmple(tk.body.half + Vec2::splat(DOWN_GRACE)).all())
+                        || parts.is_some_and(|p| p.touch(c, 0.0).is_some())
                         || match anim.and_then(|a| a.def.rig.as_ref().map(|r| (a, r))) {
                             Some((a, rig)) => {
                                 let (px, py) = pixel_at(&a.def, tk, c);
@@ -1205,7 +1322,7 @@ fn swing(
                 let away = (tk.body.pos - k.body.pos).normalize_or(Vec2::X * facing);
                 let roll = (platypus_sim::rng::hash(&[sim.world.tick(), crate::creatures::stable(&ids, me), crate::creatures::stable(&ids, e)]) % 10_000) as f32 / 10_000.0;
                 let (damage, knock, crit) = stats.strike(def.damage * mv.damage, def.knock * mv.knock, roll);
-                let push = (Vec2::new(away.x, 0.0).normalize_or(Vec2::X * facing) + Vec2::new(0.0, 0.45)).normalize() * knock;
+                let push = (Vec2::new(away.x, 0.0).normalize_or(Vec2::X * facing) + Vec2::new(0.0, 0.45 + mv.launch)).normalize() * knock;
                 hits.write(Hit { target: e, damage, harm: mv.harm.unwrap_or(def.harm), knock: push, stun: def.stun, at, dir: dir(a), weight: damage / 12.0, crit });
                 if let Some(name) = &coat {
                     crate::creatures::body::elements::stain(&mut commands, e, name, 1.0, &coatings);
@@ -1214,6 +1331,7 @@ fn swing(
                     s.bounced = true;
                     s.rebound = REBOUND;
                     recoil.write(Recoil { who: me, add: Vec2::ZERO, pogo: Some(weapons.file.pogo), dive: None });
+                    commands.entity(me).insert(PogoGrace(POGO_GRACE));
                 }
             }
             // A down-strike cuts a hostile spell out of the air (a spit, a
@@ -1246,7 +1364,7 @@ fn down_pose(weapons: Option<Res<Weapons>>, mut q: Query<(Option<&Swing>, &mut A
     let Some(weapons) = weapons else { return };
     for (swing, mut anim) in &mut q {
         let want = swing.filter(|s| s.down).map(|s| {
-            let plunge = weapons.def(s.weapon).move_of(s.mv, true).is_some_and(|m| m.dive > 0.0);
+            let plunge = weapons.def(s.weapon).move_of(s.mv, true, false).is_some_and(|m| m.dive > 0.0);
             if plunge { "plunge" } else { "strike_down" }
         });
         let now = anim.force.as_deref().filter(|f| *f == "plunge" || *f == "strike_down");

@@ -305,6 +305,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, heatglow_script)
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
@@ -7895,6 +7896,122 @@ fn necro_script(
     if mode == "kill" && t > 9.0 && t > state.1 {
         hits.write(crate::combat::Hit { target: e, damage: 40.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: nk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
         state.1 = t + 0.3;
+    }
+}
+
+/// `strikes` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the pogo and the
+/// dash attacks against the arena's dummies. `PLATYPUS_STRIKE=pogo`: the
+/// shortsword; dropped from high over the middle dummy again and again,
+/// striking down (S held, a fresh click) when its feet are 40, 32, 26, 20,
+/// 14, 9, 5 cells over the dummy's top: which bounce. `PLATYPUS_STRIKE=`
+/// `dash` (`PLATYPUS_WEAPON`: shortsword, longsword, fang, club): from
+/// 70 cells off the first dummy, dash at it and strike as the dash goes;
+/// three times. Logs the dummy's hurt, how high the player rose.
+#[allow(clippy::too_many_arguments)]
+fn strikes_script(
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, &crate::hands::items::Inventory), With<LocalPlayer>>,
+    dummies: Query<(&Kinematics, &crate::creatures::custom::dummy::Tally), (With<crate::creatures::custom::dummy::Dummy>, Without<LocalPlayer>)>,
+    (mut hand, items): (ResMut<crate::hands::Hand>, Option<Res<crate::hands::items::Items>>),
+    (mut mouse, mut cursor, mut keys): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>, ResMut<ButtonInput<KeyCode>>),
+    mut state: Local<(u32, f32, f32, f32, bool, f32)>,
+) {
+    if s.name != "strikes" {
+        return;
+    }
+    let Ok((mut k, mut h, inv)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let mode = std::env::var("PLATYPUS_STRIKE").unwrap_or_else(|_| "pogo".into());
+    let weapon = std::env::var("PLATYPUS_WEAPON").unwrap_or_else(|_| "shortsword".into());
+    if t < 0.5 {
+        return;
+    }
+    take_up(&mut hand, inv, items.as_deref(), if mode == "pogo" { "shortsword" } else { &weapon });
+    let hurt = |x: f32| dummies.iter().find(|(dk, _)| (dk.body.pos.x - x).abs() < 20.0).map_or(0.0, |(_, tl)| tl.total);
+    let put = |k: &mut Kinematics, at: Vec2| {
+        k.body.pos = at;
+        k.prev_pos = at;
+        k.body.vel = Vec2::ZERO;
+    };
+    // (state: attempt, its start, the dummy's hurt then, highest the player
+    // rose, struck yet, lowest it fell.)
+    if mode == "pogo" {
+        const AT: [f32; 7] = [40.0, 32.0, 26.0, 20.0, 14.0, 9.0, 5.0];
+        let n = state.0 as usize;
+        if n >= AT.len() {
+            return;
+        }
+        let (dx, dtop) = dummies.iter().find(|(dk, _)| (dk.body.pos.x - 1140.0).abs() < 20.0).map_or((1140.0, fl + 20.0), |(dk, _)| (dk.body.pos.x, dk.body.pos.y + dk.body.half.y));
+        if state.1 == 0.0 {
+            let hy = k.body.half.y;
+            put(&mut k, Vec2::new(dx, dtop + 70.0 + hy));
+            state.1 = t;
+            state.3 = f32::MIN;
+            state.4 = false;
+            return;
+        }
+        keys.press(KeyCode::KeyS);
+        cursor.0 = Some(k.body.pos - Vec2::Y * 30.0);
+        let feet = k.body.pos.y - k.body.half.y - dtop;
+        let falling = k.body.vel.y < 0.0;
+        if !state.4 && falling && feet <= AT[n] {
+            state.4 = true;
+            state.5 = t;
+        }
+        // (A click held a moment: a frame alone can fall between ticks.)
+        if state.4 && t < state.5 + 0.05 {
+            mouse.press(MouseButton::Left);
+        } else {
+            mouse.release(MouseButton::Left);
+        }
+        if state.4 && k.body.vel.y > 0.0 {
+            state.3 = state.3.max(k.body.vel.y);
+        }
+        if state.4 && t > state.5 + 0.6 {
+            info!("strikes: pogo struck at {:>2.0} over the dummy: {}", AT[n], if state.3 > 50.0 { "BOUNCED" } else { "missed" });
+            state.0 += 1;
+            state.1 = 0.0;
+            keys.release(KeyCode::KeyS);
+        }
+        return;
+    }
+    // Dash attacks.
+    let n = state.0;
+    if n >= 3 {
+        return;
+    }
+    if state.1 == 0.0 {
+        let hy = k.body.half.y;
+        put(&mut k, Vec2::new(980.0, fl + hy));
+        state.1 = t;
+        state.2 = hurt(1050.0);
+        state.3 = 0.0;
+        return;
+    }
+    let dt = t - state.1;
+    cursor.0 = Some(Vec2::new(1060.0, fl + 14.0));
+    if (0.3..0.45).contains(&dt) {
+        keys.press(KeyCode::KeyD);
+    } else {
+        keys.release(KeyCode::KeyD);
+    }
+    if (0.32..0.36).contains(&dt) {
+        keys.press(KeyCode::ShiftLeft);
+    } else {
+        keys.release(KeyCode::ShiftLeft);
+    }
+    if (0.38..0.42).contains(&dt) {
+        mouse.press(MouseButton::Left);
+    } else {
+        mouse.release(MouseButton::Left);
+    }
+    state.3 = state.3.max(k.body.pos.y - k.body.half.y - fl);
+    if dt > 1.6 {
+        info!("strikes: {weapon} dash attack {}: the dummy took {:.0}, the player rose {:.0}", n + 1, hurt(1050.0) - state.2, state.3);
+        state.0 += 1;
+        state.1 = 0.0;
     }
 }
 
