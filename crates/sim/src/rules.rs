@@ -36,19 +36,22 @@ const NEIGHBOURS8: [(i32, i32); 8] = [(0, 1), (0, -1), (-1, 0), (1, 0), (-1, 1),
 /// scaled by the lower conductivity of the pair (0..255).
 const CONDUCTION_DIV: i32 = 1024;
 /// Cooling toward ambient per tick, /1024 of the excess: a cell open to the
-/// air (or one that burns); one buried in solid (rock deep in rock keeps its
-/// heat, so heat soaks through it instead of vanishing where it is). Within
-/// `RELAX_FLOOR` of ambient it sheds at least 1 °C a tick, so a region's last
-/// warmth goes and it sleeps.
+/// air (or one that burns). Within `RELAX_FLOOR` of ambient it sheds at
+/// least 1 °C a tick, so a region's last warmth goes and it sleeps.
 const RELAX: i32 = 6;
-const RELAX_BURIED: i32 = 1;
 const RELAX_FLOOR: i32 = 24;
-/// A cell held warm by a neighbour stops updating once its change is this
-/// small: 1 °C, and a degree more for each 1 024 °C it's held over ambient (a
-/// hot cell beside lava sleeps; a cool front, creeping out, keeps going).
-const EQUILIBRIUM_BAND: i32 = 1;
-const EQUILIBRIUM_PER: i32 = 1024;
-/// (What burns: its old band.)
+/// Solids and molten matter (that don't burn) are reckoned finer, /`FINE`
+/// of a degree. Buried in solid (rock in rock, magma under its crust) they
+/// cool this much (/`FINE` of its excess a tick: rock deep in rock
+/// barely loses its heat, but to the rock round it, so heat held on rock
+/// soaks on out through it, and the glow spreads, as long as it's held).
+const FINE: i32 = 8192;
+const RELAX_BURIED: i32 = 2;
+/// A cell held warm by a neighbour stops updating once it changes slower
+/// than this (/`FINE` of a degree a tick: 15 °C a second): a hot cell beside
+/// lava settles and sleeps; a front creeping out keeps going.
+const SETTLED: i32 = 2048;
+/// (What burns: its old band, in whole degrees a tick.)
 const EQUILIBRIUM_BAND_BURNS: i32 = 2;
 /// Beyond this, heat is clamped.
 const HEAT_MIN: i16 = -300;
@@ -564,11 +567,13 @@ fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
         c.heat = p.heat;
     }
     let mut delta = 0i32;
-    // (What burns, flames and hot gases keep heat's old rules: each
-    // neighbour's share rounded down, cooling at least a degree a tick. Wood
-    // barely carries heat, and fire's balance (a lone flame fizzles, a blaze
-    // takes) rests on it.)
-    let burns = p.flammability > 0 || matches!(p.kind, Kind::Fire | Kind::Gas) || c.flags & flags::BURNING != 0;
+    // (Heat soaks through solids and molten matter: rock, sand, ore, metal,
+    // magma. Everything else keeps heat's old rules: each neighbour's share
+    // rounded down, cooling at least a degree a tick; what burns above all:
+    // wood barely carries heat, and fire's balance (a lone flame fizzles, a
+    // blaze takes) rests on it.)
+    let soaks = matches!(p.kind, Kind::Static | Kind::Powder) || p.kind == Kind::Liquid && p.hot;
+    let burns = !soaks || p.flammability > 0 || c.flags & flags::BURNING != 0;
     let mut shares = 0i32;
     let mut inflow = false;
     let mut open = false;
@@ -610,10 +615,13 @@ fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
     // (Summed, then divided, the remainder rounded at random: a small
     // difference still moves heat now and then, where rounding each
     // neighbour's share down stalled the front a few cells out.)
+    // (Its change unrounded, in /`FINE` of a degree, for whether it's settled.)
+    let mut fine = delta * (FINE / CONDUCTION_DIV);
     delta = if burns { shares } else { round_div(h, delta, CONDUCTION_DIV) };
     let excess = c.heat as i32;
-    let rate = if open || burns { RELAX } else { RELAX_BURIED };
-    let mut relax = if burns { (excess.abs() * rate) >> 10 } else { round_div(h, excess.abs() * rate, CONDUCTION_DIV) };
+    let rate = if open || burns { RELAX * (FINE / CONDUCTION_DIV) } else { RELAX_BURIED };
+    fine -= excess.signum() * excess.abs() * rate;
+    let mut relax = if burns { (excess.abs() * RELAX) >> 10 } else { round_div(h, excess.abs() * rate, FINE) };
     if burns || excess.abs() < RELAX_FLOOR {
         relax = relax.max(1);
     }
@@ -621,8 +629,11 @@ fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
     delta -= excess.signum() * relax;
     // Held up by a neighbour and barely moving: call it equilibrium. (Cells
     // update one after another, so near balance they wobble by a degree or two.)
-    let band = if burns { EQUILIBRIUM_BAND_BURNS } else { EQUILIBRIUM_BAND + excess.abs() / EQUILIBRIUM_PER };
-    let held = inflow && delta.abs() <= band;
+    // (Near ambient, a trickle in smaller than the degree a tick it sheds
+    // there is balance too: or it would warm, cool to nothing, be warmed
+    // again by its neighbour, round and round, and never sleep.)
+    let settled = if excess.abs() < RELAX_FLOOR { FINE } else { SETTLED };
+    let held = inflow && if burns { delta.abs() <= EQUILIBRIUM_BAND_BURNS } else { fine.abs() <= settled };
     if held {
         delta = 0;
     }

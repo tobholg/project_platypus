@@ -7674,7 +7674,7 @@ fn templar_script(
 
 /// `heatglow` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a heat gun's
 /// worth of heat (radius 8, 60 °C a tick) held on the floor 70 right of the
-/// player for 3 s; logs every 2 s how far out the rock glows (480 °C+), the
+/// player for 3 s (`PLATYPUS_HEAT_SECS`); logs every 2 s how far out the rock glows (480 °C+), the
 /// hottest cell, and the magma and basalt there, till the rock's cold.
 fn heatglow_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut at: Local<Option<CellPos>>, mut next: Local<f32>) {
     if s.name != "heatglow" {
@@ -7691,7 +7691,8 @@ fn heatglow_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&K
         *next = 1.0;
     }
     let c = at.expect("set");
-    if t < 4.0 {
+    let held: f32 = std::env::var("PLATYPUS_HEAT_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(3.0);
+    if t < 1.0 + held {
         sim.queue(WorldEdit::Heat { center: c, radius: 8, amount: 60 });
     }
     if t >= *next {

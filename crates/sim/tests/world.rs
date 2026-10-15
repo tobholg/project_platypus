@@ -190,7 +190,8 @@ fn lava_crusts_under_hard_cold() {
 
 /// Wood left of a 40×5 slab lit at one end with a fire of `radius`, per seed.
 fn slab_fire(radius: i32) -> Vec<usize> {
-    let mut left: Vec<usize> = (100..120)
+    // (Forty: a fire takes or it doesn't, so twenty swing on a whim.)
+    let mut left: Vec<usize> = (100..140)
         .map(|seed| {
             let mut w = boxed_world(1, 1, seed);
             let m = w.materials().clone();
@@ -220,10 +221,10 @@ fn slab_fire(radius: i32) -> Vec<usize> {
 fn a_spark_on_wood_often_fizzles_a_proper_fire_takes() {
     let spark = slab_fire(1);
     let fire = slab_fire(3);
-    assert!(spark.iter().filter(|&&l| l > 150).count() >= 3, "sparks sometimes fizzle: {spark:?} of 200 left");
-    assert!(spark.iter().filter(|&&l| l < 60).count() >= 3, "and sometimes take: {spark:?}");
-    // (By its mean: a fire takes or it doesn't, so the middle one of twenty
-    // flips between the two on a whim.)
+    assert!(spark.iter().filter(|&&l| l > 150).count() >= 6, "sparks sometimes fizzle: {spark:?} of 200 left");
+    assert!(spark.iter().filter(|&&l| l < 60).count() >= 6, "and sometimes take: {spark:?}");
+    // (By its mean: a fire takes or it doesn't, so the middle one flips
+    // between the two on a whim.)
     assert!(fire.iter().sum::<usize>() / fire.len() < 110, "a proper fire burns most of it: {fire:?}");
 }
 
@@ -741,6 +742,28 @@ fn heat_soaks_through_rock_and_its_glow_spreads() {
     assert!(furthest_glow >= 12, "the glow spread out through the rock, to {furthest_glow} (the gun reached 8)");
     let warm = w.chunks().flat_map(|c| c.cells()).filter(|c| c.heat != 0).count();
     assert_eq!(warm, 0, "all of it cooled back to ambient");
+}
+
+/// A heat gun held on rock: once what's under it is as hot as it gets, its
+/// heat goes on soaking out through the rock round it, the glow spreading
+/// further the longer it's held; let go, it all cools and sleeps.
+#[test]
+fn heat_held_on_rock_keeps_spreading() {
+    let mut w = boxed_world(3, 2, 32);
+    fill(&mut w, "stone", 1, 191, 1, 100);
+    let c = CellPos::new(96, 60);
+    let glow = |w: &World| (0..90).rev().find(|d| w.temperature(c.offset(*d, 0)).is_some_and(|t| t >= 480)).unwrap_or(0);
+    let mut at = Vec::new();
+    for t in 1..=2400 {
+        w.apply_edit(&WorldEdit::Heat { center: c, radius: 8, amount: 60 });
+        w.step();
+        if t % 600 == 0 {
+            at.push(glow(&w));
+        }
+    }
+    assert!(at.windows(2).all(|p| p[1] > p[0]) && at[3] >= 22, "held 10, 20, 30, 40 s, it glowed out to {at:?}");
+    run_until_asleep(&mut w, 30_000);
+    assert_eq!(w.chunks().flat_map(|ch| ch.cells()).filter(|x| x.heat != 0).count(), 0, "let go, it all cooled");
 }
 
 /// Rock melted is magma: it gives up its heat and crusts into basalt. The
@@ -2345,5 +2368,6 @@ fn a_pool_deeper_than_a_chunk_settles() {
     }
     assert!(count(&w, w.materials().expect_id("water")) > 5_000, "the water's still there");
 }
+
 
 
