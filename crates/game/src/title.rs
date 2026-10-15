@@ -79,7 +79,8 @@ pub fn relaunch_to_title() {
     relaunch(["PLATYPUS_WORLD", "PLATYPUS_SEED", "PLATYPUS_SAVE", "PLATYPUS_MODE", "PLATYPUS_FRESH", "PLATYPUS_TITLE"].into_iter().map(|k| (k, None)).collect());
 }
 
-/// After the app: start the game again, if it's been asked for.
+/// After the app: start the game again, if it's been asked for, and wait
+/// for it.
 pub fn relaunch_if_asked() {
     let Some(env) = RELAUNCH.lock().ok().and_then(|mut r| r.take()) else { return };
     let Ok(exe) = std::env::current_exe() else { return eprintln!("title: where's the game?") };
@@ -90,8 +91,11 @@ pub fn relaunch_if_asked() {
             None => cmd.env_remove(k),
         };
     }
-    if let Err(e) = cmd.spawn() {
-        eprintln!("title: {e}");
+    // (Waited for, so the terminal it was started from keeps it: its logs,
+    // Ctrl+C, and its exit code passed on.)
+    match cmd.status() {
+        Ok(status) => std::process::exit(status.code().unwrap_or(0)),
+        Err(e) => eprintln!("title: {e}"),
     }
 }
 
