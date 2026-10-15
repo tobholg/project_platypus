@@ -303,6 +303,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, dread_script)
             .add_systems(Update, olmer_script)
             .add_systems(Update, heatglow_script)
+            .add_systems(PreUpdate, play_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7675,6 +7676,49 @@ fn templar_script(
     }
     if mode == "dash" {
         if !tugged.is_empty() && (t * 10.0) as i32 % 3 == 0 { keys.press(KeyCode::ShiftLeft) } else { keys.release(KeyCode::ShiftLeft) }
+    }
+}
+
+/// `play` (`PLATYPUS_WORLD=arena PLATYPUS_MODE=play`): what a new game
+/// starts with (logs the pack and what's worn), that the key left of 1
+/// doesn't bring up the dev tools, and dying: the player, 120 cells off,
+/// killed at 2 s, wakes at the start (logs where).
+#[allow(clippy::type_complexity)]
+fn play_script(
+    s: Res<Scenario>,
+    mode: Res<crate::mode::Mode>,
+    dev: Res<crate::hands::DevTools>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, Option<&crate::hands::items::Inventory>, &crate::gear::Equipment), With<LocalPlayer>>,
+    mut respawned: MessageReader<crate::respawn::Respawned>,
+    mut step: Local<u8>,
+) {
+    if s.name != "play" {
+        return;
+    }
+    let t = s.elapsed;
+    let Ok((mut k, mut h, inv, eq)) = player.single_mut() else { return };
+    let Some(items) = items else { return };
+    if *step == 0 && t > 1.0 {
+        *step = 1;
+        let carried: Vec<String> = inv.map(|i| i.slots.iter().flatten().map(|st| format!("{}x{}", items.def(st.item).id, st.count / items.unit(st.item))).collect()).unwrap_or_default();
+        let worn = eq.worn.iter().flatten().count();
+        info!("play: mode {}; carries {}; wears {worn}", mode.name(), carried.join(", "));
+        keys.press(KeyCode::Backquote);
+    } else if *step == 1 && t > 1.2 {
+        *step = 2;
+        keys.release(KeyCode::Backquote);
+        info!("play: the key left of 1 pressed: dev tools {}", if dev.0 { "ON (wrong)" } else { "off" });
+        k.body.pos.x += 120.0;
+        k.prev_pos = k.body.pos;
+    } else if *step == 2 && t > 2.0 {
+        *step = 3;
+        info!("play: killed at ({:.0}, {:.0})", k.body.pos.x, k.body.pos.y);
+        h.hp = 0.0;
+    } else if *step == 3 && respawned.read().count() > 0 {
+        *step = 4;
+        info!("play: woke at ({:.0}, {:.0}), life {:.0}/{:.0}", k.body.pos.x, k.body.pos.y, h.hp, h.max);
     }
 }
 

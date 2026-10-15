@@ -88,9 +88,16 @@ fn pointer_over_ui(ui: Query<&Interaction>, scripted: Res<crate::camera::CursorO
     over.0 = scripted.0.is_none() && ui.iter().any(|i| *i != Interaction::None);
 }
 
-fn keys(keys: Res<ButtonInput<KeyCode>>, dev: Res<DevTools>, cursor: Res<CursorWorld>, arena: Res<crate::arena::ArenaView>, taken: Res<KeyboardTaken>, mut out: MessageWriter<DevAction>) {
+fn keys(keys: Res<ButtonInput<KeyCode>>, mode: Res<crate::mode::Mode>, dev: Res<DevTools>, cursor: Res<CursorWorld>, arena: Res<crate::arena::ArenaView>, taken: Res<KeyboardTaken>, mut out: MessageWriter<DevAction>) {
     let at = cursor.0;
     let pressed = |k: KeyCode| keys.just_pressed(k);
+    // (Playing: only the performance HUD.)
+    if !mode.dev() {
+        if pressed(KeyCode::F3) {
+            out.write(DevAction::PerfHud);
+        }
+        return;
+    }
     // F-keys always; the same things on letters in dev mode.
     let pairs = [
         (KeyCode::F5, KeyCode::KeyV, DevAction::Storm),

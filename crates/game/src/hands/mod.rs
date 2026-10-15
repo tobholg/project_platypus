@@ -150,25 +150,30 @@ fn build_items(mut commands: Commands, mut pending: ResMut<PendingItems>, sim: R
 
 type NewPlayer = (With<LocalPlayer>, Without<Inventory>);
 
-pub(crate) fn give_start(mut commands: Commands, items: Option<Res<Items>>, mut new: Query<(Entity, &mut crate::gear::Equipment), NewPlayer>) {
+pub(crate) fn give_start(mut commands: Commands, items: Option<Res<Items>>, mode: Res<crate::mode::Mode>, mut new: Query<(Entity, &mut crate::gear::Equipment), NewPlayer>) {
     let Some(items) = items else { return };
     for (e, mut eq) in &mut new {
         let mut inv = Inventory::new(PACK);
-        for &(item, n) in &items.start {
-            inv.add(&items, Stack::new(item, n * items.unit(item)));
-        }
-        // What it starts wearing.
-        for &item in &items.wear {
-            let s = Stack::new(item, 1);
-            if let Some(i) = eq.slot_for(&items, &s) {
-                eq.worn[i] = Some(s);
-            }
-        }
+        put_on(&items, items.kit(mode.kit()), &mut inv, &mut eq);
         commands.entity(e).insert(inv);
     }
 }
 
-fn toggle_dev(keys: Res<ButtonInput<KeyCode>>, mut actions: MessageReader<crate::dev::DevAction>, mut dev: ResMut<DevTools>, mut hand: ResMut<Hand>) {
+/// A kit into a pack (what doesn't fit is left out) and onto a body (over
+/// what was worn there).
+pub fn put_on(items: &Items, kit: &items::Kit, inv: &mut Inventory, eq: &mut crate::gear::Equipment) {
+    for &(item, n) in &kit.carry {
+        inv.add(items, Stack::new(item, n * items.unit(item)));
+    }
+    for &item in &kit.wear {
+        let s = Stack::new(item, 1);
+        if let Some(i) = eq.slot_for(items, &s) {
+            eq.worn[i] = Some(s);
+        }
+    }
+}
+
+fn toggle_dev(keys: Res<ButtonInput<KeyCode>>, mode: Res<crate::mode::Mode>, mut actions: MessageReader<crate::dev::DevAction>, mut dev: ResMut<DevTools>, mut hand: ResMut<Hand>) {
     if actions.read().any(|a| *a == crate::dev::DevAction::Hands) {
         dev.0 = false;
     }
@@ -178,7 +183,7 @@ fn toggle_dev(keys: Res<ButtonInput<KeyCode>>, mut actions: MessageReader<crate:
     // (F1 needs fn on a Mac keyboard. The key left of 1 is Backquote on a US
     // layout and IntlBackslash on an ISO Mac, like a Norwegian one's §,
     // whose < key by Z then reads as Backquote.)
-    if keys.any_just_pressed([KeyCode::F1, KeyCode::Backquote, KeyCode::IntlBackslash]) {
+    if keys.any_just_pressed([KeyCode::F1, KeyCode::Backquote, KeyCode::IntlBackslash]) && mode.dev() {
         dev.0 = !dev.0;
         info!("{}", if dev.0 { "dev tools (key left of 1: hands)" } else { "hands (key left of 1: dev tools)" });
     }

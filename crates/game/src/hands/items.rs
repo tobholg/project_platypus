@@ -157,12 +157,32 @@ fn no_use() -> Use {
 #[derive(Clone, Debug, Deserialize)]
 pub struct ItemsFile {
     pub items: Vec<ItemDef>,
-    /// What a new player carries: (item id, count).
+    /// What a new player starts with: `play` in a new game, `dev` in dev
+    /// mode (`mode.rs`); the rest are for the dev menu to hand out.
     #[serde(default)]
-    pub start: Vec<(String, u32)>,
-    /// What a new player wears (gear ids).
+    pub kits: Vec<KitFile>,
+}
+
+/// A kit as written: its name, what's carried (item id, count) and what's
+/// worn (gear ids).
+#[derive(Clone, Debug, Deserialize)]
+pub struct KitFile {
+    pub name: String,
+    #[serde(default)]
+    pub about: String,
+    #[serde(default)]
+    pub carry: Vec<(String, u32)>,
     #[serde(default)]
     pub wear: Vec<String>,
+}
+
+/// A kit: what's carried (item, whole items) and worn.
+#[derive(Clone, Debug, Default)]
+pub struct Kit {
+    pub name: String,
+    pub about: String,
+    pub carry: Vec<(ItemId, u32)>,
+    pub wear: Vec<ItemId>,
 }
 
 /// Every item there is.
@@ -174,8 +194,8 @@ pub struct Items {
     names: HashMap<MaterialId, String>,
     by_id: HashMap<String, ItemId>,
     blocks: HashMap<MaterialId, ItemId>,
-    pub start: Vec<(ItemId, u32)>,
-    pub wear: Vec<ItemId>,
+    /// The kits, in order (`play` and `dev` among them).
+    pub kits: Vec<Kit>,
 }
 
 /// Blocks count in cells (so a half-mined block isn't lost): this many make a
@@ -218,15 +238,26 @@ impl Items {
                 blocks.insert(m, ItemId(i as u16));
             }
         }
-        let start = file
-            .start
-            .iter()
-            .map(|(id, n)| by_id.get(id).map(|&i| (i, *n)).ok_or(format!("start: no item `{id}`")))
-            .collect::<Result<_, _>>()?;
-        let wear = file.wear.iter().map(|id| by_id.get(id).copied().ok_or(format!("wear: no item `{id}`"))).collect::<Result<_, _>>()?;
+        let mut kits = Vec::new();
+        for k in &file.kits {
+            let find = |id: &String| by_id.get(id).copied().ok_or(format!("kit `{}`: no item `{id}`", k.name));
+            let carry = k.carry.iter().map(|(id, n)| find(id).map(|i| (i, *n))).collect::<Result<_, _>>()?;
+            let wear = k.wear.iter().map(find).collect::<Result<_, _>>()?;
+            kits.push(Kit { name: k.name.clone(), about: k.about.clone(), carry, wear });
+        }
+        for need in ["play", "dev"] {
+            if !kits.iter().any(|k| k.name == need) {
+                return Err(format!("no `{need}` kit"));
+            }
+        }
         let materials: HashMap<String, MaterialId> = mats.iter().map(|(id, d)| (d.name.clone(), id)).collect();
         let names = materials.iter().map(|(n, &id)| (id, n.clone())).collect();
-        Ok(Items { defs, materials, names, by_id, blocks, start, wear })
+        Ok(Items { defs, materials, names, by_id, blocks, kits })
+    }
+
+    /// A kit by name (`play` and `dev` are always there).
+    pub fn kit(&self, name: &str) -> &Kit {
+        self.kits.iter().find(|k| k.name == name).unwrap_or(&self.kits[0])
     }
 
     /// How many items there are (ids are 0..len).
@@ -399,7 +430,8 @@ mod tests {
         assert_eq!(it.unit(stone), 36);
         assert!(it.id("block:bedrock").is_none(), "no unbreakable blocks");
         assert!(it.id("block:water").is_none(), "no liquid blocks");
-        assert!(!it.start.is_empty(), "a new player carries something");
+        assert!(!it.kit("play").carry.is_empty(), "a new player carries something");
+        assert!(it.kit("dev").carry.len() > it.kit("play").carry.len(), "the dev kit is the bigger");
     }
 
     /// Each pickaxe opens the next ores: copper mines copper and iron, iron

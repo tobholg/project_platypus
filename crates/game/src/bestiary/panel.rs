@@ -88,8 +88,8 @@ fn caption(stage: Option<Res<super::stage::Stage>>, mut q: Query<&mut Text, With
 
 /// While it's open: F12 or Esc (search cleared first, then a card, then
 /// the panel) and typing are its; nothing else hears the keyboard.
-fn capture(mut b: ResMut<Bestiary>, mut keys: ResMut<ButtonInput<KeyCode>>, mut typed: MessageReader<KeyboardInput>, mut taken: ResMut<KeyboardTaken>) {
-    if keys.just_pressed(KeyCode::F12) {
+fn capture(mode: Res<crate::mode::Mode>, mut b: ResMut<Bestiary>, mut keys: ResMut<ButtonInput<KeyCode>>, mut typed: MessageReader<KeyboardInput>, mut taken: ResMut<KeyboardTaken>) {
+    if keys.just_pressed(KeyCode::F12) && mode.dev() {
         b.open = !b.open;
     }
     if !b.open {

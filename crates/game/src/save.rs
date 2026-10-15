@@ -56,6 +56,8 @@ pub struct SavePlugin {
     /// The world it's of (as `PLATYPUS_WORLD` names it) and its seed.
     pub kind: String,
     pub seed: u64,
+    /// Play or dev (kept in the save).
+    pub mode: crate::mode::Mode,
 }
 
 /// Save now (Ctrl+S, a scenario).
@@ -68,6 +70,7 @@ pub struct SaveSlot {
     pub dir: PathBuf,
     kind: String,
     seed: u64,
+    mode: crate::mode::Mode,
     next: f32,
     /// A save to load, found at startup.
     load: bool,
@@ -83,7 +86,7 @@ impl Plugin for SavePlugin {
         let fresh = std::env::var("PLATYPUS_FRESH").is_ok_and(|v| !v.is_empty());
         let load = !fresh && dir.join("world.ron").exists();
         info!("save: {} ({})", dir.display(), if load { "loading it" } else { "a new one" });
-        app.insert_resource(SaveSlot { dir, kind: self.kind.clone(), seed: self.seed, next: AUTOSAVE, load, writing: None })
+        app.insert_resource(SaveSlot { dir, kind: self.kind.clone(), seed: self.seed, mode: self.mode, next: AUTOSAVE, load, writing: None })
             .add_systems(PostStartup, load_world)
             .add_systems(Update, (keys, apply_player.after(crate::hands::give_start)))
             .add_systems(Update, settle_hp.after(crate::gear::apply))
@@ -158,6 +161,42 @@ struct WorldFile {
     /// The world clock (`clock.rs`).
     #[serde(default)]
     clock: crate::clock::ClockFile,
+    /// Play or dev (`mode.rs`; saves from before it are dev).
+    #[serde(default = "dev_mode_name")]
+    mode: String,
+}
+
+fn dev_mode_name() -> String {
+    "dev".into()
+}
+
+/// A save as the title screen lists it.
+#[derive(Clone, Debug)]
+pub struct SlotInfo {
+    pub name: String,
+    pub kind: String,
+    pub seed: u64,
+    pub mode: crate::mode::Mode,
+    pub tick: u64,
+    /// When it was last saved.
+    pub saved: std::time::SystemTime,
+}
+
+/// What a save is (its `world.ron`), if it's there and of this version.
+pub fn peek(name: &str) -> Option<SlotInfo> {
+    let path = saves_dir().join(name).join("world.ron");
+    let file: WorldFile = read_ron(&path).ok()?;
+    let saved = std::fs::metadata(&path).and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+    (file.version == VERSION).then(|| SlotInfo { name: name.to_string(), kind: file.kind, seed: file.seed, mode: crate::mode::Mode::parse(&file.mode).unwrap_or_default(), tick: file.tick, saved })
+}
+
+/// Every save there is, the last saved first.
+pub fn slots() -> Vec<SlotInfo> {
+    let mut v: Vec<SlotInfo> = std::fs::read_dir(saves_dir())
+        .map(|d| d.filter_map(|e| e.ok()).filter(|e| e.path().is_dir()).filter_map(|e| peek(&e.file_name().to_string_lossy())).collect())
+        .unwrap_or_default();
+    v.sort_by(|a, b| b.saved.cmp(&a.saved));
+    v
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -179,6 +218,9 @@ pub struct PlayerFile {
     /// What it picks up (`hands::filter`).
     #[serde(default)]
     pickup: crate::hands::filter::PickupFilter,
+    /// Where it wakes after dying (`respawn.rs`; none: the start).
+    #[serde(default)]
+    checkpoint: Option<(f32, f32)>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -278,7 +320,7 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, mut now: MessageWriter<SaveNow>) {
 
 type SavedPlayer<'a> = (&'a Kinematics, &'a Health, Option<&'a Mana>, Option<&'a Inventory>, &'a Equipment, Option<&'a crate::progress::Progress>, Option<&'a crate::gold::Gold>, Option<&'a crate::hands::filter::PickupFilter>);
 /// (More for `save`, past Bevy's count of parameters.)
-type SavedAlso<'w, 's> = (Res<'w, crate::craft::Crafting>, Query<'w, 's, (&'static crate::craft::Station, &'static Kinematics)>, Res<'w, crate::light::Daylight>, Res<'w, crate::clock::WorldClock>);
+type SavedAlso<'w, 's> = (Res<'w, crate::craft::Crafting>, Query<'w, 's, (&'static crate::craft::Station, &'static Kinematics)>, Res<'w, crate::light::Daylight>, Res<'w, crate::clock::WorldClock>, Res<'w, crate::respawn::Checkpoint>);
 type SavedCreatures<'a> = (&'a Creature, &'a Kinematics, &'a Health, Option<&'a crate::clock::Keeps>);
 
 /// Save, when it's time, when asked, and on the way out.
@@ -298,7 +340,7 @@ fn save(
     drops: Query<(&Dropped, &Kinematics)>,
     bodies: Query<(&Corpse, &Kinematics)>,
     creatures: Query<SavedCreatures, Without<LocalPlayer>>,
-    (crafting, stations, day, clock): SavedAlso,
+    (crafting, stations, day, clock, checkpoint): SavedAlso,
     mut toasts: MessageWriter<crate::progress::Toast>,
 ) {
     slot.next -= time.delta_secs();
@@ -328,6 +370,7 @@ fn save(
         keys: chests.placed(),
         skipped: day.skipped,
         clock: clock.save(),
+        mode: slot.mode.name().into(),
     };
     let mut chunks: Vec<(ChunkPos, std::sync::Arc<[u8]>)> = world.chunks().filter(|c| c.is_modified()).map(|c| (c.pos, store::encode(c).into())).collect();
     chunks.extend(sim.store.iter().map(|(p, b)| (p, b.clone())));
@@ -342,6 +385,7 @@ fn save(
         progress: progress.cloned().unwrap_or_default(),
         gold: gold.map_or(0, |g| g.0),
         pickup: pickup.copied().unwrap_or_default(),
+        checkpoint: checkpoint.0.map(|p| (p.x, p.y)),
     };
     let mut things = ThingsFile {
         chests: boxes.iter().map(|(c, k)| (c.key, (k.body.pos.x, k.body.pos.y - k.body.half.y))).collect(),
@@ -518,6 +562,7 @@ fn apply_player(mut commands: Commands, pending: Option<Res<PendingPlayer>>, ite
     }
     hand.bar = p.bar;
     hand.slot = p.slot;
+    commands.insert_resource(crate::respawn::Checkpoint(p.checkpoint.map(|(x, y)| Vec2::new(x, y))));
     commands.entity(e).insert((PendingHp(p.hp), p.progress.clone(), crate::gold::Gold(p.gold), p.pickup));
     commands.remove_resource::<PendingPlayer>();
     info!("save: the player is back at ({:.0}, {:.0})", p.pos.0, p.pos.1);

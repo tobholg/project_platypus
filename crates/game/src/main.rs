@@ -11,6 +11,8 @@
 //!   `off`: none; scenarios and the arena and flat sandboxes save only when
 //!   it's given), `PLATYPUS_FRESH=1`
 //!   to start it over: see `save.rs`
+//! - `PLATYPUS_MODE`      `play` (a new game's kit, no dev tools) or `dev`
+//!   (the default; a save keeps its own): see `mode.rs`
 
 mod archery;
 mod arena;
@@ -40,6 +42,7 @@ mod hud;
 mod kick;
 mod light;
 mod magic;
+mod mode;
 mod particles;
 mod potion;
 mod observe;
@@ -48,6 +51,7 @@ mod props;
 mod render;
 mod replay;
 mod reset;
+mod respawn;
 mod rigid;
 mod save;
 mod scenario;
@@ -93,6 +97,8 @@ fn main() {
         None if std::env::var("PLATYPUS_SCENARIO").is_ok() || matches!(kind.as_str(), "arena" | "flat") => None,
         None => Some(format!("{kind}-{seed}")),
     };
+    // Play or dev: as asked, else as the save was, else dev (`mode.rs`).
+    let mode = mode::Mode::from_env().or_else(|| save.as_deref().and_then(save::peek).map(|s| s.mode)).unwrap_or_default();
     let generator: Arc<dyn ChunkGenerator> = match std::env::var("PLATYPUS_WORLD").as_deref() {
         // PLATYPUS_WORLD=arena: a sandbox for weapons, spells and creatures
         // (dummies, time controls, overlays, the art editor: `arena.rs`).
@@ -161,7 +167,9 @@ fn main() {
         .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin, cloth::ClothPlugin))
         .add_plugins(sound::SoundPlugin)
         .add_plugins(backdrop::BackdropPlugin)
-        .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed }))
+        .insert_resource(mode)
+        .add_plugins(respawn::RespawnPlugin)
+        .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed, mode }))
         .add_plugins(spikes_plugin)
         .add_systems(Last, pace_frames)
         .run();
