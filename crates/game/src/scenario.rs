@@ -7794,14 +7794,14 @@ fn toad_script(
 /// `soft`: the floor between them earth, so its skeletons claw up out of
 /// it; `body`: an orc killed by it first, to be raised; `near`: the player
 /// walks up to it (it blinks away); `kill`: struck till it dies at 9 s (what
-/// it raised falls apart)). Logs what it does, its skeletons, where the
+/// it raised falls apart)). Logs what it does, its zombies, where the
 /// player is, the health lost.
 #[allow(clippy::too_many_arguments)]
 fn necro_script(
     mut commands: Commands,
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
-    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, Has<crate::creatures::moves::Held>), With<LocalPlayer>>,
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::custom::necro::Necro>), Without<LocalPlayer>>,
     raised: Query<(), With<crate::creatures::custom::necro::RaisedBy>>,
     bodies: Query<(), With<crate::hands::corpses::Corpse>>,
@@ -7812,7 +7812,7 @@ fn necro_script(
     if s.name != "necro" {
         return;
     }
-    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let Ok((mut k, mut h, held)) = player.single_mut() else { return };
     let t = s.elapsed;
     let fl = platypus_worldgen::arena::FLOOR;
     let mode = std::env::var("PLATYPUS_NECRO").unwrap_or_default();
@@ -7852,27 +7852,27 @@ fn necro_script(
         }
         state.0 = 2;
     }
-    let skeletons = them.iter().filter(|x| x.1.kind == "skeleton").count();
+    let skeletons = them.iter().filter(|x| x.1.kind == "zombie").count();
     let up = raised.iter().count();
     if up != state.4 {
-        info!("necro: t {t:.2} raised now {up} (skeletons {skeletons}, bodies lying {})", bodies.iter().count());
+        info!("necro: t {t:.2} raised now {up} (zombies {skeletons}, bodies lying {})", bodies.iter().count());
         state.4 = up;
     }
     let Some((e, _, nk, o)) = them.iter().find(|x| x.1.kind == "necromancer") else {
         if state.0 < 9 && t > 2.0 {
-            info!("necro: t {t:.1} the necromancer's dead; skeletons {skeletons}, raised {up}");
+            info!("necro: t {t:.1} the necromancer's dead; zombies {skeletons}, raised {up}");
             state.0 = 9;
             state.1 = t;
         }
         if state.0 == 9 && t > state.1 + 2.0 {
-            info!("necro: t {t:.1} 2 s on: skeletons standing {skeletons}, raised {up}");
+            info!("necro: t {t:.1} 2 s on: zombies standing {skeletons}, raised {up}");
             state.0 = 10;
         }
         return;
     };
     let doing = o.map_or("?", |o| o.doing());
     if doing != state.3 {
-        info!("necro: t {t:.2} {doing} at {:.0}; the player at {:.0}, lost {:.0}", nk.body.pos.x, k.body.pos.x, state.2);
+        info!("necro: t {t:.2} {doing} at ({:.0}, {:.0} up); skulls {}; the player at {:.0}{}, lost {:.0}", nk.body.pos.x, nk.body.pos.y - nk.body.half.y - fl as f32, o.map_or(0, |o| o.skulls()), k.body.pos.x, if held { " HELD" } else { "" }, state.2);
         state.3 = doing;
     }
     if mode == "near" {

@@ -4,7 +4,8 @@
 //! holding only what it wore and held (its loot is rolled when it's dead
 //! for good), with health of its own (`PILE_SHARE` of the creature's) and
 //! its kind's weaknesses, made worse (`weak`: blunt and radiant, times
-//! `PILE_WEAK`): a hammer breaks a heap in a blow or two, a sword in a few.
+//! `PILE_WEAK`; any weapon chips a heap of bones): a hammer breaks a heap
+//! in a blow or two, a sword in a few.
 //! Broken, it dies as anything dies: a body with its loot, its gold, the
 //! kill counted.
 //!
@@ -34,6 +35,8 @@ use crate::world::{SimWorld, TICK_HZ};
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// A heap's health, of the creature's.
 const PILE_SHARE: f32 = 0.4;
+/// A heap of bones' share: a sword breaks it in about three blows.
+const BONES_SHARE: f32 = 0.3;
 /// How much worse a heap's weaknesses are than the creature's; a body's
 /// (that gets up whole) much less: it burns away instead.
 const PILE_WEAK: f32 = 1.6;
@@ -253,9 +256,17 @@ pub fn make_pile(e: &mut EntityCommands, d: &Died, rise: &RiseDef, dust: Option<
     // with nothing named, anything does, as it did: a body.)
     // (A body that gets up whole: what breaks it only sets it alight,
     // barely hurting it; burning it does the rest, `pyre`.)
+    // (A heap of bones: any weapon chips it, a sword in a few blows, what
+    // breaks bones worse: a hammer in one or two.)
     let weak = if rise.remains == Remains::Body { BODY_WEAK } else { PILE_WEAK };
-    let nature = if rise.breaks.is_empty() { d.def.nature } else { crate::creatures::nature::Nature::only(&rise.breaks, |h| d.def.nature.of(h) * weak) };
-    let max = (d.def.health * PILE_SHARE).max(1.0);
+    let nature = if rise.breaks.is_empty() {
+        d.def.nature
+    } else if rise.remains == Remains::Rubble {
+        d.def.nature.worse(&rise.breaks, weak)
+    } else {
+        crate::creatures::nature::Nature::only(&rise.breaks, |h| d.def.nature.of(h) * weak)
+    };
+    let max = (d.def.health * if rise.remains == Remains::Rubble { BONES_SHARE } else { PILE_SHARE }).max(1.0);
     e.insert((
         Pile { lineage: d.lineage, lost: d.severed.clone(), kind: d.kind.clone(), def: d.def.clone(), rise: rise.clone(), left: rise.after, stuck: 0.0, facing: d.facing, sprite: d.sprite.clone(), risen: d.risen },
         Health { nature, ..Health::new(max) },

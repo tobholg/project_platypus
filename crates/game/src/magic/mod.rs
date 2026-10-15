@@ -922,9 +922,13 @@ fn fly(
                     sparks.trail(e, 1.0, s.pos, -s.vel, s.vel * 0.15);
                 }
                 let (caster, age) = (s.caster, s.age);
-                // (Its body, or one of its parts: a leg, a segment.)
+                // (Its body, or one of its parts: a leg, a segment. Its
+                // caster's side it passes through: a necromancer's skulls
+                // go by its zombies, the player's bolts by villagers.)
+                let side = teams.get(caster).ok().copied();
                 let inside = |b: Entity, k: &Kinematics| ((next - k.body.pos).abs() - k.body.half).max_element() < 1.5 || parts.get(b).is_ok_and(|p| p.touch(next, 1.0).is_some());
-                if let Some((hit, ..)) = bodies.iter().find(|(b, k, ..)| (*b != caster || age > SELF_SAFE) && inside(*b, k)) {
+                let ours = |b: Entity| b != caster && teams.get(b).ok().zip(side).is_some_and(|(t, me)| t.allied(me));
+                if let Some((hit, ..)) = bodies.iter().find(|(b, k, ..)| (*b != caster || age > SELF_SAFE) && !ours(*b) && inside(*b, k)) {
                     end = Some((Some(hit), Vec2::ZERO));
                     break;
                 }

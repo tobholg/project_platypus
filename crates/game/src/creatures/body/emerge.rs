@@ -334,6 +334,11 @@ pub fn sunlit(sim: &SimWorld, day: &crate::light::Daylight, at: Vec2) -> bool {
     sun_up(day) && sim.world.under_sky(CellPos::from_world(at.x, at.y), SKY)
 }
 
+/// Held from the sun, though it sunburns (the dead a necromancer raised:
+/// its power holds them together).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct SunProof;
+
 /// In the sun, what sunburns burns (rain or water puts it out, as any
 /// fire); a fresh fire on it at least `SUN_FIRE`.
 #[allow(clippy::type_complexity)]
@@ -342,7 +347,7 @@ pub fn sunburn(
     sim: Res<SimWorld>,
     day: Res<crate::light::Daylight>,
     mut clock: Local<f32>,
-    mut q: Query<(Entity, &Kinematics, &super::animation::Animator, Option<&mut super::elements::Burning>), (Without<Dormant>, Without<Emerging>)>,
+    mut q: Query<(Entity, &Kinematics, &super::animation::Animator, Option<&mut super::elements::Burning>), (Without<Dormant>, Without<Emerging>, Without<SunProof>)>,
 ) {
     *clock += DT;
     if *clock < 0.25 || !sun_up(&day) {

@@ -142,6 +142,16 @@ impl Nature {
         n
     }
 
+    /// This nature, those kinds worse by `weak` (a skeleton's heap: any
+    /// weapon chips it, what breaks bones does it more).
+    pub fn worse(&self, kinds: &[Harm], weak: f32) -> Self {
+        let mut n = *self;
+        for &k in kinds {
+            n.by[k as usize] *= weak;
+        }
+        n
+    }
+
     /// A nature with these multipliers (tests).
     #[cfg(test)]
     pub fn with(mut self, kind: Harm, m: f32) -> Self {

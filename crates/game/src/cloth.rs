@@ -103,6 +103,15 @@ impl Drapes {
     pub fn own(&mut self, def: Arc<ClothDef>, seed: u64) {
         self.0.push(Drape::new(def, seed));
     }
+
+    /// Moved all at once, with what wears it (a blink): not dragged there.
+    pub fn shift(&mut self, by: Vec2) {
+        for d in &mut self.0 {
+            for p in d.pts.iter_mut().chain(d.prev.iter_mut()) {
+                *p += by;
+            }
+        }
+    }
 }
 
 /// Its gear changed: what it wears on its back hung on it (and what it

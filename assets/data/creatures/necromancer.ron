@@ -1,34 +1,38 @@
-// A necromancer: hunched in a robe gone to rags, a deep hood with nothing
-// in it but two green eyes, a horned skull on its staff. It keeps away from
-// you and works from there: three grave bolts at a time (its palm glows
-// first); the dead raised (its arms go up, motes rise where they'll stand):
-// bodies lying near get up as skeletons, others claw out of the earth or
-// pull themselves together out of the rock, three at most; come too close
-// and it blinks away in a puff of grave-smoke. Kill it, and what it raised
-// falls apart for good. It's found among crypts' guards and in the deep.
+// A necromancer: twice your height, gaunt, floating, a long hood over a grey
+// skull-jawed face with its eyes alight, bare bony arms, a cape and rags of
+// cloth trailing under it, charms swinging off its skull-crook. It keeps
+// away and works from there: wailing skulls that steer for you (a blade
+// bursts them); a ring of green under your feet, then rotting hands up out
+// of the ground to hold you (struggle free); a tether that drains you and
+// mends it while it can see you; zombies raised, bodies near first (they
+// stay down when killed, and are gone when it is); come too close and it
+// blinks away in grave-smoke. Found among crypts' guards and in the deep.
 // (custom/necro.rs)
 (
     name: "Necromancer",
-    size: (12, 42),
-    health: 95,
+    size: (12, 50),
+    health: 140,
     heft: 2,
-    poise: 20,
+    poise: 25,
     team: Enemy,
     faction: "undead",
-    kind: "humanoid",
-    blood: "blood",
+    kind: "undead",
+    blood: "ash",
     art: "necromancer",
-    eyes: (140, 255, 150),
+    eyes: (150, 255, 160),
     movement: (
-        run_speed: 62,
-        ground_accel: 700,
-        ground_decel: 900,
+        run_speed: 60,
+        ground_accel: 600,
+        ground_decel: 800,
         air_accel: 300,
-        jump_height: 26,
+        jump_height: 20,
         air_jumps: 0,
         step_height: 8,
         dash_speed: 0,
+        fly_speed: 70,
+        fly_accel: 260,
     ),
-    brain: (kind: "hunter", params: (aggro: 340, close: Range(near: 120, far: 220))),
+    brain: (kind: "hunter", params: (aggro: 360, close: Range(near: 130, far: 230))),
     custom: (name: "necro", params: ()),
+    z: 11.2,
 )
