@@ -8434,9 +8434,12 @@ fn leap_script(
 
 /// The down-strike (DESIGN §8): a shortsword's down slash chained across
 /// the three dummies with S held and the cursor off level ahead; the
-/// longsword's plunge onto a dummy (the dive, the bounce, bouncing again
-/// while S is held), then off a spider's spit thrown up at it; a bounce
-/// off the lava; a plunge onto the floor beside a dummy (the slam).
+/// longsword's plunges onto a dummy (the dive, the bounce, another plunge
+/// on the way down again: a click each), then off a spider's spit thrown up
+/// at it; a bounce off the lava (the sandbox's pit; a pool is made there in
+/// a layout without it); a plunge onto the floor beside a dummy (the slam).
+/// (A plunge is live for only so far of its fall, `PLUNGE_FALL`: each is
+/// begun within that of what it's to strike.)
 #[allow(clippy::too_many_arguments)]
 fn pogo_script(
     s: Res<Scenario>,
@@ -8448,6 +8451,7 @@ fn pogo_script(
     mut cursor: ResMut<CursorOverride>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut sim: ResMut<SimWorld>,
     // (phase, its start, bounces, the fastest fall, last vel.y, hits then)
     mut state: Local<(u8, f32, u32, f32, f32, u32)>,
 ) {
@@ -8463,10 +8467,13 @@ fn pogo_script(
     // beside one shoves it.)
     let hits = |x: f32| dummies.iter().find(|(_, c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 30.0).map_or(0, |d| d.3.hits);
     let dummy_at = |x: f32| dummies.iter().find(|(_, c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 30.0).map(|d| d.2.body.pos);
+    let dummy_top = |x: f32| dummies.iter().find(|(_, c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - x).abs() < 30.0).map(|d| d.2.body.pos.y + d.2.body.half.y);
     // A bounce: rising fast just after falling.
     if k.body.vel.y > 225.0 && state.4 < 90.0 {
         state.2 += 1;
     }
+    // (Diving now, and not a moment ago.)
+    let dove = k.body.vel.y < -700.0 && state.3 >= -700.0;
     state.3 = state.3.min(k.body.vel.y);
     state.4 = k.body.vel.y;
     let mut want: Vec<KeyCode> = Vec::new();
@@ -8528,26 +8535,34 @@ fn pogo_script(
                 state.5 = all();
             }
         }
-        // A plunge: S and one click; S held 2 s (bouncing on), then let go.
+        // Plunges: dropped from 165 up, S held; a click as it falls within
+        // reach of the dummy's top (its windup's fall and then 45 cells:
+        // the plunge, live for 70, meets it), and again each time it falls
+        // back after a bounce. At 2 s S let go and no more clicks: down.
         3 => {
             cursor.0 = Some(p + Vec2::new(0.0, -45.0));
             if dt < 2.0 {
                 want.push(KeyCode::KeyS);
+                if let Some(top) = dummy_top(1140.0) {
+                    // (The windup, 0.08 s, falls on at this speed.)
+                    let gap = p.y - k.body.half.y - top + k.body.vel.y * 0.08;
+                    click = !k.loco.grounded() && k.body.vel.y < 0.0 && gap < 45.0;
+                }
             }
-            click = (0.05..0.12).contains(&dt);
-            if (0.4..0.42).contains(&dt) {
-                info!("pogo: plunging: a down-strike {}, falling at {:.0} cells/s", swing.is_some_and(|s| s.downward()), -state.3);
+            if dove {
+                info!("pogo: plunging: a down-strike {}, falling at {:.0} cells/s, {:.0} above the floor", swing.is_some_and(|s| s.downward()), -k.body.vel.y, p.y - k.body.half.y - fl);
             }
             if dt > 3.0 {
-                info!("pogo: longsword plunge from 165 up: fastest fall {:.0} cells/s, {} bounces (S held 2 s, then let go), the dummy struck {} times", -state.3, state.2, all() - state.5);
+                info!("pogo: longsword plunges, dropped from 165 up: fastest fall {:.0} cells/s, {} bounces (a click each, S held 2 s, then let go), the dummy struck {} times", -state.3, state.2, all() - state.5);
                 next(&mut state);
             }
         }
         // Off a spider's spit: thrown up at the player as it plunges, off
-        // to the side of the dummies.
+        // to the side of the dummies (low enough that they meet while the
+        // plunge is live).
         4 => {
             if dt < 0.05 {
-                put(&mut k, Vec2::new(930.0, fl + 180.0));
+                put(&mut k, Vec2::new(930.0, fl + 115.0));
             }
             cursor.0 = Some(p + Vec2::new(0.0, -45.0));
             want.push(KeyCode::KeyS);
@@ -8563,10 +8578,19 @@ fn pogo_script(
                 next(&mut state);
             }
         }
-        // The shortsword, over the lava: S, and strike above it.
+        // The shortsword, over the lava: S, and strike above it. (A layout
+        // without the pit, `flat`: a pool of lava sunk into the floor there.)
         5 => {
             if dt < 0.1 {
                 want.push(KeyCode::Digit8);
+                let lava = sim.materials().id("lava");
+                let at = CellPos::new(1395, fl as i32 - 12);
+                if let Some(lava) = lava
+                    && sim.world.get(at).is_some_and(|c| c.material != lava)
+                {
+                    sim.queue(WorldEdit::Dig { center: CellPos::new(1395, fl as i32 - 9), radius: 15, max_hardness: u8::MAX });
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(1395, fl as i32 - 15), radius: 15, material: lava, overwrite: false });
+                }
             }
             if (0.1..0.15).contains(&dt) {
                 put(&mut k, Vec2::new(1395.0, fl + 45.0));
@@ -8589,9 +8613,10 @@ fn pogo_script(
             if dt < 0.1 {
                 want.push(KeyCode::Digit9);
             }
-            // (Once the last swing's done and the longsword's in hand.)
+            // (Once the last swing's done and the longsword's in hand; low
+            // enough to land within the plunge's live fall.)
             if (0.5..0.55).contains(&dt) {
-                put(&mut k, Vec2::new(1209.0, fl + 105.0));
+                put(&mut k, Vec2::new(1209.0, fl + 70.0));
                 state.5 = hits(1230.0);
             }
             if dt > 0.55 {

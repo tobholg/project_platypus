@@ -291,7 +291,11 @@ impl Plugin for MagicPlugin {
             .init_resource::<void::Pairs>()
             .init_resource::<void::Recent>()
             .init_resource::<void::VoidCanvas>()
-            .add_systems(FixedUpdate, (recharge, request, fire, void::stasis, fly, void::act, well::channel, conjure::hold).chain().in_set(TickSet::Bodies).before(crate::creatures::body::hurt::notice))
+            // (Spells fly before bodies move: what they hit is where it was,
+            // and a blade swung this tick meets what's on its way in first:
+            // `combat::swing` cuts a spit out of the air a plunge closes on.
+            // Unordered, the plunge sometimes moved onto it and was struck.)
+            .add_systems(FixedUpdate, (recharge, request, fire, void::stasis, fly.before(crate::creatures::move_creatures), void::act, well::channel, conjure::hold).chain().in_set(TickSet::Bodies).before(crate::creatures::body::hurt::notice))
             .add_systems(
                 FixedUpdate,
                 (void::pin, void::through, void::age).chain().in_set(TickSet::Bodies).after(void::act).after(crate::creatures::move_creatures).after(crate::props::fly),
