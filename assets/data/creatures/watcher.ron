@@ -1,0 +1,36 @@
+// A watcher: a floating eye the size of you, nerves trailing under it,
+// hanging high in the dark, keeping its distance, its iris following you.
+// It squints and spits blight (glowing purple sludge: it poisons, withers
+// what grows, gives off a toxic mist); its iris kindles and a thin line
+// reaches out from it, following you slowly, then holding still: then the
+// beam, along it, burning what it meets, scorching where it ends. A lamp
+// near makes it squint and back off (no beam); a flash or a radiant blow
+// blinds it, a while: it reels, open to you. Dead, it bursts into blight.
+// Found in the deep dark. (custom/watcher.rs)
+(
+    name: "Watcher",
+    size: (26, 26),
+    health: 75,
+    heft: 2,
+    poise: 20,
+    team: Enemy,
+    // (An eye: it hurts by its spit and its beam, not by bumping.)
+    touchless: true,
+    kind: "beast",
+    blood: "blood",
+    art: "watcher",
+    movement: (
+        run_speed: 60,
+        ground_accel: 600,
+        ground_decel: 800,
+        air_accel: 300,
+        jump_height: 20,
+        air_jumps: 0,
+        step_height: 6,
+        dash_speed: 0,
+        fly_speed: 85,
+        fly_accel: 300,
+    ),
+    brain: (kind: "hunter", params: (aggro: 330, close: Range(near: 140, far: 240))),
+    custom: (name: "watcher", params: ()),
+)

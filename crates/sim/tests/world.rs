@@ -2453,3 +2453,26 @@ fn drifting_gas_hangs_where_it_was_let_out() {
     assert!((20..=40).contains(&drifts) && left > 200, "swamp gas hung about where it was let out (mean height {drifts}, {left} cells)");
     assert!(rises > 100, "methane rose ({rises})");
 }
+
+/// Blight (a watcher's spit) withers the grass it lies on and, a liquid that
+/// doesn't last, gives itself up as a toxic mist that hangs about.
+#[test]
+fn blight_withers_grass_and_gives_off_mist() {
+    let mut w = boxed_world(1, 1, 60);
+    let m = w.materials().clone();
+    fill(&mut w, "dirt", 1, 63, 1, 8);
+    fill(&mut w, "grass", 1, 63, 8, 9);
+    fill(&mut w, "blight", 20, 40, 9, 12);
+    let (grass, blight, mist) = (m.expect_id("grass"), m.expect_id("blight"), m.expect_id("blight_mist"));
+    let grass0 = count(&w, grass);
+    let blight0 = count(&w, blight);
+    let mut most_mist = 0;
+    for _ in 0..6_000 {
+        w.step();
+        most_mist = most_mist.max(count(&w, mist));
+    }
+    assert!(count(&w, grass) < grass0, "it withered the grass under it ({} of {grass0} left)", count(&w, grass));
+    assert!(count(&w, blight) < blight0 / 2, "most of it went ({} of {blight0} left)", count(&w, blight));
+    assert!(most_mist > 10, "as a mist ({most_mist} at most)");
+}
+

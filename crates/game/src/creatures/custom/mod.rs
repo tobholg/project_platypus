@@ -39,6 +39,7 @@ pub mod mimic;
 pub mod necro;
 pub mod olmer;
 pub mod toad;
+pub mod watcher;
 pub mod templar;
 pub mod wraith;
 // (The template: compiled with the tests, so it stays right.)
@@ -72,7 +73,8 @@ impl Plugin for CustomPlugin {
             .register_custom::<olmer::Olmer>()
             .register_custom::<templar::Templar>()
             .register_custom::<toad::Toad>()
-            .register_custom::<necro::Necro>();
+            .register_custom::<necro::Necro>()
+            .register_custom::<watcher::Watcher>();
     }
 }
 

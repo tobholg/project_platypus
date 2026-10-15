@@ -306,6 +306,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(Update, watcher_script)
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
@@ -8012,6 +8013,84 @@ fn strikes_script(
         info!("strikes: {weapon} dash attack {}: the dummy took {:.0}, the player rose {:.0}", n + 1, hurt(1050.0) - state.2, state.3);
         state.0 += 1;
         state.1 = 0.0;
+    }
+}
+
+/// `watcher` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a watcher at
+/// 1150; the player (who can't die) stands at 950 (`PLATYPUS_WATCHER=`:
+/// `flash`: a bright flash beside it at 5 s; `radiant`: a radiant blow at
+/// 5 s (both blind it); `kill`: struck till it dies at 8 s (it bursts);
+/// `lamp`: a light put beside it at 3 s (it squints, backs off, won't beam)).
+/// Logs what it does, the player's health lost, the blight and its mist.
+fn watcher_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::custom::watcher::Watcher>), Without<LocalPlayer>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut flares: MessageWriter<crate::fx::Flare>,
+    mut state: Local<(u8, f32, f32, &'static str)>,
+) {
+    if s.name != "watcher" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let mode = std::env::var("PLATYPUS_WATCHER").unwrap_or_default();
+    state.2 += h.max - h.hp;
+    h.hp = h.max;
+    let count = |name: &str| sim.materials().id(name).map_or(0, |m| (850..1300).flat_map(|x| (fl as i32 - 5..fl as i32 + 120).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
+    if state.0 == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        k.body.pos = Vec2::new(950.0, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        crate::creatures::def::spawn_creature(&mut commands, "watcher", Vec2::new(1150.0, fl), |_| {});
+        info!("watcher: a watcher at 1150 ({mode})");
+        state.0 = 1;
+        return;
+    }
+    let Some((e, _, wk, o)) = them.iter().find(|x| x.1.kind == "watcher") else {
+        if state.0 == 1 && t > 1.0 {
+            state.0 = 2;
+            state.1 = t;
+        }
+        if state.0 == 2 && t > state.1 + 1.5 {
+            info!("watcher: t {t:.1} dead: blight {} cells, its mist {}", count("blight"), count("blight_mist"));
+            state.0 = 3;
+        }
+        return;
+    };
+    let doing = o.map_or("?", |o| o.doing());
+    if doing != state.3 {
+        info!("watcher: t {t:.2} {doing} at ({:.0}, {:.0} up); the player lost {:.0}; blight {}, mist {}", wk.body.pos.x, wk.body.pos.y - wk.body.half.y - fl, state.2, count("blight"), count("blight_mist"));
+        state.3 = doing;
+    }
+    // `lamp`: a light put beside it at 3 s (it squints and backs off).
+    if mode == "lamp" && state.0 == 1 && t > 3.0 {
+        commands.spawn((Transform::from_translation((wk.body.pos + Vec2::new(-25.0, 0.0)).extend(0.0)), GlobalTransform::default(), crate::light::LightSource { color: [1.0, 0.85, 0.6], flicker: 0.0 }));
+        info!("watcher: t {t:.1} a lamp beside it");
+        state.0 = 4;
+    }
+    if (5.0..5.02).contains(&t) {
+        match mode.as_str() {
+            "flash" => {
+                flares.write(crate::fx::Flare { at: wk.body.pos + Vec2::new(-20.0, 0.0), color: [2.0, 2.0, 1.8], life: 0.3 });
+            }
+            "radiant" => {
+                hits.write(crate::combat::Hit { target: e, damage: 6.0, harm: crate::creatures::Harm::Radiant, knock: Vec2::ZERO, stun: 0.0, at: wk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+            }
+            _ => {}
+        }
+    }
+    if mode == "kill" && t > 8.0 && t > state.1 {
+        hits.write(crate::combat::Hit { target: e, damage: 30.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: wk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        state.1 = t + 0.3;
     }
 }
 

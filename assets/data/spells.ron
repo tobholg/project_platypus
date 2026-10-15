@@ -73,6 +73,8 @@
             about: "A belch of miasma from a poisoned glutton."),
         (id: "glutton_ray", name: "Glutton ray", runes: ["ray", "ray_sear"], delay: 0.0, recharge: 0.0, element: Radiant, beast: true,
             about: "Light focused through a glutton's prism body: a searing ray it sweeps across you."),
+        (id: "blight_spit", name: "Blight spit", runes: ["gravity", "arrow", "blight_bite", "blight_glob"], delay: 0.1, recharge: 0.1, element: Acid, beast: true,
+            about: "A watcher's spit: a glob of blight, lobbed: it poisons, withers, and gives off a toxic mist."),
         (id: "spider_spit", name: "Spider spit", runes: ["gravity", "arrow", "venom_glob", "acid_glob"], delay: 0.1, recharge: 0.1, element: Acid, beast: true,
             about: "A big glob of acid, lobbed: it splashes over what it hits."),
     ],

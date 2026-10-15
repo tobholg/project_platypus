@@ -314,6 +314,10 @@
         // so it gives its heat to the rock round it and the air over it, and
         // crusts into basalt (lingering a while past the point: latent). The
         // world's lava lakes stay lava.
+        // A watcher's spit: glowing purple sludge. It doesn't eat stone; it
+        // poisons what it touches (venom), withers grass and leaves, and
+        // slowly gives itself up as a toxic mist (a minute or so).
+        (name: "blight",   kind: Liquid, density: 1150, dispersion: 3, viscosity: 140, coats: "venom", lifetime: (180, 255), decay_every: 14, decays_into: "blight_mist", decays_into_chance: 255, glow: (130, 40, 190), opacity: 30, colors: [(150, 50, 200), (120, 30, 170), (180, 80, 230)]),
         (name: "magma",    kind: Liquid, density: 2500, dispersion: 3, hot: true, heat: 1200, below: (1000, "basalt"), latent: 500, conductivity: 60, glow: (255, 105, 30), viscosity: 200, colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
         // Eats anything up to stone-and-ore hard (not glass or gold), each cell
         // good for 6 bites; burns what it touches (corrosive, damage/s); carries
@@ -335,6 +339,9 @@
         // nor sinking, so it hangs where it was let out a while, thinning,
         // before it's gone. Lit, it goes up.
         (name: "swamp_gas", kind: Gas, drifts: true, density: 2, dispersion: 3, lifetime: (120, 200), decay_every: 4, flammability: 255, ignites_at: 400, explodes: (radius: 9, power: 50, chance: 60), opacity: 8, colors: [(150, 170, 90), (166, 184, 104), (136, 158, 80)]),
+        // Blight's mist: a purple haze that hangs about (drifts) and hurts
+        // what breathes it, thinning away.
+        (name: "blight_mist", kind: Gas, drifts: true, density: 2, dispersion: 3, lifetime: (60, 140), decay_every: 4, corrosive: 5, glow: (40, 12, 60), opacity: 10, colors: [(120, 60, 150), (100, 40, 130), (140, 80, 170)]),
         (name: "methane",  kind: Gas, density: 1, dispersion: 2, flammability: 255, ignites_at: 500, explodes: (radius: 15, power: 70, chance: 40), colors: [(120, 150, 110), (134, 164, 120)]),
         // A toxic cloud's (the acid staff): heavy, so it sinks and pools in
         // pits and down shafts; eats at what breathes it; flammable, and a
@@ -358,6 +365,10 @@
         (a: "lava",  b: "ice",    a_into: "obsidian", b_into: "water", chance: 128),
         (a: "lava",  b: "snow",   a_into: "lava",     b_into: "water", chance: 64),
         (a: "magma", b: "water",  a_into: "obsidian", b_into: "steam", chance: 255),
+        // Blight withers what grows.
+        (a: "blight", b: "grass",      a_into: "blight", b_into: "soil", chance: 30),
+        (a: "blight", b: "tall_grass", a_into: "blight", b_into: "air",  chance: 60),
+        (a: "blight", b: "leaves",     a_into: "blight", b_into: "air",  chance: 40),
         (a: "magma", b: "ice",    a_into: "obsidian", b_into: "water", chance: 128),
         (a: "magma", b: "snow",   a_into: "magma",    b_into: "water", chance: 64),
         (a: "fire",  b: "water",  a_into: "steam",    b_into: "water", chance: 220),

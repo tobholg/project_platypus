@@ -191,6 +191,11 @@
             look: (burst: (count: 20, life: (0.15, 0.45), colors: [(255, 250, 200), (255, 170, 60), (200, 70, 20)], speed: 120, spread: 1.4, drag: 3, glow: true))),
         (id: "acid_drops", name: "Acid drops", mana: 2, color: (120, 240, 60), kind: Payload(Matter(material: "acid", cells: 32))),
         // A spider's: a lot of acid, splashing over what it hits.
+        // A watcher's spit: purple, splashing blight where it lands.
+        (id: "blight_bite", name: "Blight", mana: 2, color: (170, 70, 220), kind: Payload(Damage(7)),
+            look: (trail: (count: 0.9, life: (0.2, 0.5), colors: [(230, 170, 255), (150, 50, 200), (70, 20, 100)], speed: 8, gravity: 180, glow: true),
+                   burst: (count: 22, life: (0.25, 0.6), colors: [(230, 180, 255), (150, 50, 200), (60, 20, 90)], speed: 110, spread: 1.4, gravity: 240, drag: 1, glow: true))),
+        (id: "blight_glob", name: "Blight glob", mana: 4, color: (150, 50, 200), kind: Payload(Matter(material: "blight", cells: 70))),
         (id: "acid_glob", name: "Acid glob", mana: 4, color: (120, 240, 60), kind: Payload(Matter(material: "acid", cells: 338))),
         (id: "gravity", name: "Heavy", mana: 0, kind: Modifier(Gravity(0.5))),
         (id: "trail_fire", name: "Fire trail", mana: 3, color: (255, 140, 40), kind: Modifier(Trail(material: "fire", burning: false)),

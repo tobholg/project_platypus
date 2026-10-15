@@ -60,6 +60,8 @@
     (kind: "bloat_toad", place: Shore, most: 1, rate: 0.02),
     // Necromancers: in the deep (and among crypts' guards: worldgen).
     (kind: "necromancer", place: Cave, depth: (700, 150000), most: 1, rate: 0.004),
+    // Watchers: floating eyes in the deep dark.
+    (kind: "watcher", place: Cave, depth: (450, 150000), most: 1, rate: 0.01),
     (kind: "vampire_bat", place: Cave, depth: (450, 150000), most: 2, rate: 0.12),
     (kind: "spider", place: Cave, depth: (225, 150000), most: 1, rate: 0.06),
     // The bestiary's walkers (BE limbs), where they belong.

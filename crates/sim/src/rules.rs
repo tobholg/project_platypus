@@ -92,6 +92,18 @@ pub(crate) fn update_cell(h: &mut Hood, x: i32, y: i32, mut c: Cell) {
             let _ = fall(h, x, y, c, &p) || slide(h, x, y, c, &p) || settle(h, x, y, c);
         }
         Kind::Liquid => {
+            // (A liquid that doesn't last ages as a gas does, still or
+            // running, and stays awake while it does: blight goes to mist.)
+            if p.life_max != 0 {
+                let was = c.life;
+                if !age(h, x, y, &mut c, &p) {
+                    return;
+                }
+                if c.life != was {
+                    h.set(x, y, c);
+                }
+                h.wake(x, y);
+            }
             let _ = fall(h, x, y, c, &p) || slide(h, x, y, c, &p) || flow(h, x, y, c, &p) || settle(h, x, y, c);
         }
         Kind::Gas => gas(h, x, y, c, &p),
