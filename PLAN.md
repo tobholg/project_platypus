@@ -2,45 +2,104 @@
 
 Each phase ends with something playable or measurable. See SPEC.md for the design.
 
-**Next:** the bestiary arc (BE, DESIGN §14, agreed 2026-10-01): `creatures`,
-the 1.5× rescale (`scale`), `moves` and `bestiary` done 2026-10-01,
-`navigation` 2026-10-02, `limbs` and `behaviour` 2026-10-09, `caves`
-2026-10-10 (all on main). Detours since, unmerged: `optics` (light-bending
-crystals, steps 1–2 of 4) and `polish` on top of it (pickup lines and
-filters, the game's cursor, skeletons that rise). Agreed order from here
-(2026-10-11): `wounds` (the full body system), the liquid slimes (pulled
-forward from `roster`), then `creature-editor`, `powder`, the rest of
-`roster`, `bosses`; then the world editor and sites (WE); then progression.
+**Next:** the prologue (PR, agreed 2026-10-15, below): a real start to
+play the game from, not the dev world: play mode and a structured dev
+mode, authored sites in the generated world, interactables, story state
+and scripting, dialogue, waterfalls and drowning, the escape from the
+dungeons under a wizard's tower through the sewers to the start valley,
+and the first nights' survival loop. The bestiary arc (BE) is paused with
+`roster` mostly done (mimic, chain wraith, dread knight, bloat toad,
+necromancer, watcher; extras Jan Willy, Olmer the Defiler, the Fallen
+Templar; zombies and slimes earlier) and `bosses`, `creature-editor` and
+`powder` (blight done, with the watcher) still ahead; it resumes after the
+prologue. On `main` as of 2026-10-15 (d88b38b): everything through the
+necromancer, the heat model (soaking, magma, heat as energy), the easier
+pogo and dash attacks. The watcher is on `roster-3`.
 
-## Status (2026-09-25)
+## The prologue: implementation plan (PR, agreed 2026-10-15)
 
-| Phase | What | State |
-|---|---|---|
-| 0 | Workspace, pinned toolchain, SPEC, fixed timestep, seeds, bench harness | done |
-| 1 | Cell world: chunks, dirty rects, materials as data, powder/liquid/gas/fire, reactions, parallel checkerboard, chunk textures, streaming, store | done |
-| 2 | Bodies + shared movement (HK controller), creatures as data, brains, player + orc | core done; particles and body↔cell interaction open |
-| — | Dev tools: pickaxe (hardness-based), bombs, spawner, igniter, eraser, heat/freeze, free camera | done |
-| W1 | Temperature: heat, conduction, climate, melt/boil/freeze/ignite, glow, methane chain explosions, loose fragments | done |
-| W1b | Fire burns in place; fragments fall after any destruction (fire, melt, acid) | done |
-| W2 | Particles: blast debris + sparks, mining dust, embers, blood splashes | done |
-| W3 | Background layer, plants, forests + tall grass, wind, foliage sway + creature rustle | done |
-| W4 | Rigid bodies: felled trees topple, shed their crown, land as logs, hurt what they hit | done |
-| W5 | Elements on creatures (heat, cold, corrosion, burning, wet), acid fumes, oil fires, weather: clouds, rain, snow | done |
-| W6 | Lighting (glow/opacity data, light grid, lantern, flashlight, rim, haze) and day/night | done |
-| 3 | Worldgen v2: world plan (legacy mountains, sky islands, walker caves), biomes, save/load | done (world-arc, then L1 `world-scale`) |
-| C1 | Magic casting core: runes + wands as data, bolts/orbs/streams/wand lightning through the cell sim, mana, explosion damage for every blast (branch `magic-arc`) | done |
-| A1–A3 | Art pipeline: sprites as text + `platypus-art` CLI (sheet/render/check/describe/get/set/paint/import), critters, the humanoid rig and player, casting arm; the arena (dummies, pause/step/slow motion, overlays, spawning) and the in-game art editor (branch `combat-arc`) | done |
-| 4 | Combat: weapon swings, pixel masks, swept hits, hit-stop, knockback, stamina, dodge (SPEC 6.2); enemy attacks come with the orcs' redesign (arc A stage 6); the down-strike (S + attack in the air: a slash or a plunge per weapon, bouncing off creatures, hostile spells and hazards, a plunge's dive and slam; DESIGN §7, on `progression-arc`) | core done |
-| G1 | Gear: stats from what's worn and held, armour and resistances on every hurt, equipment slots and panel, cloth/leather/iron sets and trinkets; gear drawn on every humanoid (skins: recolours + overlays) and icons from it; rarity (common → legendary) and rolled, named bonuses by item level, found in chests; bodies to loot (what the dead wore and carried + their loot table), chests and bodies both containers; wands and staffs hold their spells (a wand one, a staff two; found ones roll theirs) and glow with element auras; enemies wear and wield rolled gear and drop it; uniques (Troll's Club, Broodmother's Fang with venom on hit); trinket icons; rocket boots (fire exhaust) and cloud boots; spiders bite (lunge, knockback), spit acid globs, sting (rear up, stinger over the back, venom), crawl over any wall behind them (cave walls, built walls, trunks; legs gripping it), fewer spiders and bats; the grappling hook (Hook slot, E: Terraria's reel on a real rope: S pays out, W climbs, A/D pump a swing, wall kick, wraps round corners, slips round a stuck corner, mantles onto a ledge, jump off it; pulls small things to you; tears loose when its cell goes; three hooks in loot) (branch `gear-arc`, the rope on `progression-arc`, DESIGN §7c) ; magic batch 1: the beam carrier (fire ray, frost ray: ice bridges, lava to basalt), radiant (spark bolt, star bomb, vaporiser), storm's shock bolt; wall + cloud carriers (ice wall, fire wall, toxic cloud of heavy miasma), gases drawn as haze; call carrier (call lightning, meteor; open sky only); void (blink, portal pairs for bodies/spells/liquids, stasis) | done (first magic batch complete) |
-| 5 | Terraria layer: items, inventory, mining yields, building, crafting, lighting | items, inventory, mining, building, lighting done (torches and glow sticks brighter, with a haze over the dark, 2026-09-27); P1 (branch `progression-arc`, DESIGN §3.5, §7d): saving (changed chunks, player, chests, stations, creatures; by name; autosave + Ctrl+S + on quit), crafting (stations as furniture, recipes as data, the crafting panel), progression (progress record, milestones with rewards and unlocks, recipe discovery, toasts): first versions with example content, done |
-| S1 | Sound (branch `sound-arc`, DESIGN §7e): bevy_seedling buses, ~37 effects and 6 ambience beds and 3 music moods all made from recipes in `sounds.ron`, world-driven ambience (fire, lava, water, rain, wind, caves, drips), positional effects hooked into combat, movement, mining, the hook, the bow, blasts, spells; the arena panel's sound board | first version, to tune by ear |
-| B1 | Backdrops (branch `backdrop-arc`, DESIGN §4.3b): Noita-like ranges by biome (`peaks.rs`: noita, alpine; running down behind the ground; 1–4 % parallax across, ~1 % up and down, pixel-snapped; behind the weather's clouds), drifting cloud heaps, a sky gradient, a blooming sun, a big moon in phases (8-night cycle) and twinkling stars over near-black nights; underground a tinted void with faint far twinkles | first version; next: big caverns without back walls in places |
-| L1 | The living world (DESIGN §13, agreed 2026-09-29): dev world reset (world only / everything) → an 8× world sized from its preset (4× wide, 2× deep; density tests) → fire moisture and storm rain → the world clock (regions, processes at their own pace with abstract and live faces; weather's fronts, regrowth, moisture, wildfires, lairs) → a flat start and a village → NPCs as data → gold (Noita's) → raids, caravans, falling stars, seasons. Proposed: metals (ore → molten → solid, §13.1), boulders (§13.2). Later: mine carts, teleport stations | done 2026-10-01: world-scale, world-clock (moisture, regrowth, wildfires, lairs), gold, matter, village, world-events (stars, raids and mending, quakes, the pedlar); seasons dropped for biomes; travel moved later (after the world editor) |
-| BE | The bestiary (DESIGN §14, agreed 2026-10-01): creatures as data with custom modules, ten damage types and resistance profiles, moves, damage feedback, the bestiary and arena v2, a path planner and digging, general limbs, behaviour in the world, the creature editor, wounds and severing, firearms and new materials, the roster, the bosses | `creatures`, `scale`, `moves`, `bestiary`, `navigation`, `limbs` done; `behaviour` done (merged 2026-10-09); next `creature-editor` |
-| WE | The world editor and sites (DESIGN §14 "Where this sits"): authored places placed by the world plan, edit and play on the same world, then mechanisms, a map with rest points and travel, factions, a vertical slice; then progression | after BE |
-| 6 | Hollow Knight layer: ability unlocks, map, bosses, benches, set pieces | not started; the tempo (DESIGN D7) being tried: `tempo.ron` presets, `turn_accel` and `jump_hold` in movement, the arena panel's Tempo row, the `tempo` scenario; walking real terrain fixed (a 6-cell step up and walking down onto ground below, both eased on screen: full speed 12 % → 70–90 % of a walk; `walk` scenario) |
-| 7 | Pixel rigid bodies (falling terrain chunks) | optional |
-| — | Co-op networking (host-authoritative, checksum + chunk resync) | seams in place, not built |
+The first hour, playable from a new game: you wake in a cell in the
+dungeons under a giant wizard's tower (other cells about, some with people
+in them you can talk to); something goes wrong in the tower above and you
+escape with nothing but rags, into the sewers (a maze with dead ends that
+hold something worth the detour), where you find a first weapon and a
+pickaxe and fight rats and skeletons, and come out of a cave behind a
+waterfall into the start valley in sunlight; then a Terraria start: a first
+shelter before the first night (nights are dangerous), gear and ore, the
+underground. The scaffold for playing and testing the game as a player.
+
+Decided (2026-10-15): the tower stands at the edge of the start valley,
+seen from it (you come out under its waterfall nearby; it's the looming
+goal to come back for); the intro route is hand-authored (fixed pacing)
+and placed into the generated world (procedural sewers maybe later, for
+replays); the dialogue is drafted by Claude in a plain text format and
+edited by Tobias; a fellow prisoner escapes too and is found camping in
+the valley, the first NPC there (guide, goals). The intro shows the
+simulation off: the tower's experiment goes wrong above (a quake, dust and
+sand through the cracks, the ceiling falling in pieces, a cistern bursting
+and the cell block flooding as you climb out, straw alight, steam where
+the fire meets the flood); a swamp-gas pocket in the sewers lit from afar
+blasts a way through (or kills you if you bring a torch to it); an oil
+slick burning on the water; the dark, lit by a stolen torch; sunlight
+through the falling water at the end. A rope hook (a lesser grappling hook:
+thrown in an arc, short, catches only on ledges and corners, climbed, no
+reel or swing) found in a side passage gets you up a ledge on the main way
+that's too high to jump; the real hook later makes such ledges trivial.
+
+Branches in order; each merges to `main` when it holds.
+
+**1. `play-mode`: playing as a player, and a dev mode worth having.**
+A title screen (the working title, New game, Continue, the dev world, the
+arena), save slots, a new game in a humble kit (rags and a little), dev
+tools off; real death and respawn, checkpoints. The dev mode refactored
+whole: one structured, hierarchical menu (player cheats, items by category
+and search straight into the pack, creatures to place, the world: time,
+weather, events, resets; the dev tools and their settings; overlays; the
+arena's time controls; the editors), replacing the dev panel, the arena
+panel and the dev hotbar's scattered keys.
+
+**2. `sites`: authored places in the generated world.** The world plan
+places hand-authored sites (constraints, reserved space, blended into the
+terrain); sites drawn as pixel images (a palette: a cell's material a
+pixel, marker colours for spawns, people, chests, triggers), editable with
+the art tools; what's opened, broken or taken stays so (saved). Then the
+route in greybox: the tower, the cell block, the sewers, the waterfall
+cave, walkable end to end.
+
+**3. `interact`: interactables and mechanisms.** Doors (open, shut, locked,
+keys), levers and valves, grates, a talk prompt, notes and signs, pickups
+placed by sites.
+
+**4. `story`: world state and scripting.** Flags and quest state (saved);
+triggers (entering a place, picking up, a conversation ended, a flag);
+scripted sequences (camera shake, world edits, spawns, doors, starting a
+conversation). It runs the escape, what dialogue choices do, the guide's
+goals.
+
+**5. `dialogue`: talking.** Conversations as plain text (lines, speakers,
+choices, conditions, effects); a panel sliding in from the right (the one
+you're talking to large, from its art; the text typing out; choices by
+mouse or number); villagers and prisoners spoken to.
+
+**6. `water`: waterfalls and breath.** A spring and a drain (a waterfall
+that runs forever and doesn't flood the world; walking through it wets
+you); drowning and breath; iron bars, straw, wooden supports.
+
+**7. `prologue`: the intro itself.** The cells and their people, the
+escape set piece, the sewers (rats: a new swarming critter; skeletons; the
+first weapon and the pickaxe; the rope hook; the gas pocket, the oil, the
+dead ends), the waterfall cave, the valley arrival, the escaped prisoner.
+
+**8. `survival`: the first nights.** Doors and beds in crafting (a bed sets
+where you wake), a shelter check (an enclosed room, back wall, door, light:
+nights are dangerous outside, safe in), night pressure, a death penalty.
+
+**9. Onboarding.** Prompts as they're needed ("E to talk", climbing), a
+pause menu, key bindings. Then play it, and tune.
+
+Done when (the arc): a new game plays from the cell to the first night in
+a shelter in the valley without the dev tools, saving and resuming on the
+way.
 
 ## The living world: implementation plan (L1, agreed 2026-09-29, DESIGN §13)
 
@@ -521,7 +580,12 @@ withers grass and poisons; ectoplasm slows.
 `bosses`, ahead of `creature-editor` and `powder`; built one at a time,
 the most fun first, each tried before the next: mimic, bloat toad,
 necromancer and risen skeletons, watcher, chain wraith, shield orc, orc
-sapper, bat swarm. Mimic built 2026-10-12 on `roster`: chests deep down
+sapper, bat swarm. (2026-10-15: paused for the prologue with mimic, chain
+wraith, dread knight, Jan Willy, Olmer the Defiler, the Fallen Templar
+(IK arms holding a posed halberd), bloat toad, necromancer (reworked:
+floating, cloth, skulls, grave hands, drain, zombie packs) and watcher
+(blight) built; shield orc, orc sapper and bat swarm left.) Mimic built
+2026-10-12 on `roster`: chests deep down
 and in castles one in six; `Disguised`; `mimic` scenario. Chain wraith
 built 2026-10-12 (asked for next): `Phasing`, simulated chains on a canvas,
 spin/lash/pull/rake and whirl/sweep, water stops it, fades at dawn, night
