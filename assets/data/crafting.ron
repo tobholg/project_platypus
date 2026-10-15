@@ -142,6 +142,7 @@
         // ---- at the workbench ----
         (makes: "chest", needs: [("block:planks", 8)], at: "workbench"),
         (makes: "block:platform", count: 4, needs: [("block:planks", 1)], at: "workbench"),
+        (makes: "block:wood_wall", count: 4, needs: [("block:planks", 1)], at: "workbench"),
         (makes: "furnace", needs: [("block:stone", 12), ("block:planks", 4), ("torch", 3)], at: "workbench"),
         (makes: "anvil", needs: [("iron_bar", 5)], at: "workbench"),
         (makes: "bow", needs: [("block:planks", 6)], at: "workbench"),

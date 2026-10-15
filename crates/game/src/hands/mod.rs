@@ -28,7 +28,7 @@ use crate::light::{LightSettings, plant_torch};
 use crate::props::{Thrown, spawn_bomb, spawn_glowstick};
 use crate::tools::ToolsConfig;
 use crate::world::{SimWorld, TICK_HZ, TickSet};
-use items::{BARS, BLOCK_CELLS, HOTBAR, Inventory, Items, ItemsFile, Stack, Throwable, Use};
+use items::{BARS, HOTBAR, Inventory, Items, ItemsFile, Stack, Throwable, Use};
 
 pub use ui::InventoryOpen;
 
@@ -261,13 +261,16 @@ pub fn minable(world: &World, block: CellPos, back: bool, tier: u8) -> bool {
     let mats = world.materials();
     block_cells(block).any(|p| {
         let Some(front) = world.get(p) else { return false };
-        let c = if back {
-            if !front.is_air() {
-                return false;
-            }
+        // (An axe: wood wherever it is, a felled log in front, a standing
+        // tree or a wall behind, through tall grass: as `mine_block` takes it.)
+        let c = if !back {
+            front
+        } else if !front.is_air() && mats.def(front.material).loot == platypus_sim::Loot::Wood && mats.phys(front.material).kind == Kind::Static {
+            front
+        } else if front.is_air() || mats.phys(front.material).kind == Kind::Plant {
             world.get_bg(p).unwrap_or(front)
         } else {
-            front
+            return false;
         };
         let ph = mats.phys(c.material);
         // A pickaxe goes through tall grass; an axe takes leaves too.
@@ -290,13 +293,47 @@ pub fn too_hard(world: &World, block: CellPos, tier: u8) -> Option<platypus_sim:
         .map(|c| c.material)
 }
 
-/// Can a block be built into: nothing solid in it, no creature in the way.
-fn free(world: &World, block: CellPos, bodies: &[Body]) -> bool {
+/// Can a block be built into with this material: room in it, nothing else
+/// solid there (but a part-built block of the same: the rest fills it), no
+/// creature in the way.
+fn free(world: &World, block: CellPos, bodies: &[Body], material: platypus_sim::MaterialId) -> bool {
     let mats = world.materials();
-    let solid = block_cells(block).any(|p| world.get(p).is_none_or(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder)));
+    let mut room = false;
+    for p in block_cells(block) {
+        let Some(c) = world.get(p) else { return false };
+        match mats.phys(c.material).kind {
+            Kind::Static | Kind::Powder if c.material != material => return false,
+            Kind::Static | Kind::Powder => {}
+            _ => room |= c.is_air() || matches!(mats.phys(c.material).kind, Kind::Plant | Kind::Gas | Kind::Fire),
+        }
+    }
     let (lo, hi) = (Vec2::new((block.x * BLOCK) as f32, (block.y * BLOCK) as f32), Vec2::new(((block.x + 1) * BLOCK) as f32, ((block.y + 1) * BLOCK) as f32));
     let blocked = bodies.iter().any(|b| b.pos.x + b.half.x > lo.x && b.pos.x - b.half.x < hi.x && b.pos.y + b.half.y > lo.y && b.pos.y - b.half.y < hi.y);
-    !solid && !blocked
+    room && !blocked
+}
+
+/// Where a block of this material would go (a wall: behind; air: a torch's
+/// spot, an empty block).
+fn place_spot(world: &World, from: Vec2, cursor: Vec2, bodies: &[Body], material: platypus_sim::MaterialId) -> Option<CellPos> {
+    let reach = 6.0 * BLOCK as f32;
+    if world.materials().def(material).wall {
+        target::place_target(from, cursor, reach, |b| free_back(world, b), |b| supported_back(world, b))
+    } else {
+        target::place_target(from, cursor, reach, |b| free(world, b, bodies, material), |b| supported(world, b))
+    }
+}
+
+/// Can a wall go here: room in the background (bodies don't matter).
+fn free_back(world: &World, block: CellPos) -> bool {
+    block_cells(block).any(|p| world.get_bg(p).is_some_and(|c| c.is_air()))
+}
+
+/// Is there something for a wall to join: a wall or a solid in or next to
+/// its block.
+fn supported_back(world: &World, block: CellPos) -> bool {
+    let mats = world.materials();
+    let any = |b: CellPos| block_cells(b).any(|p| world.get_bg(p).is_some_and(|c| !c.is_air()) || world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder)));
+    [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| any(CellPos::new(block.x + dx, block.y + dy)))
 }
 
 /// Is there something for a block to rest on: a solid next to it, or a wall
@@ -582,11 +619,13 @@ fn use_hands(
             }
             inv.slots[slot] = Some(st);
         }
-        Use::Block(material) if input.primary && hand.cooldown == 0.0 && stack.count >= BLOCK_CELLS => {
+        // (A part of a block's worth is placed too: it fills what it can,
+        // from the bottom, and the next fills the rest. A wall goes behind.)
+        Use::Block(material) if input.primary && hand.cooldown == 0.0 && stack.count > 0 => {
             let bodies: Vec<Body> = creatures.iter().map(|k| k.body).collect();
-            let world = &sim.world;
-            let Some(block) = target::place_target(from, cursor, 6.0 * BLOCK as f32, |b| free(world, b, &bodies), |b| supported(world, b)) else { return };
-            let report = sim.world.apply_edit(&WorldEdit::PlaceBlock { block, material, back: false });
+            let wall = sim.world.materials().def(material).wall;
+            let Some(block) = place_spot(&sim.world, from, cursor, &bodies, material) else { return };
+            let report = sim.world.apply_edit(&WorldEdit::PlaceBlock { block, material, back: wall, most: stack.count });
             if report.placed > 0 {
                 sounds.write(crate::sound::PlaySound::at("place", Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32)));
             }
@@ -650,9 +689,7 @@ fn use_hands(
             inv.take(slot, 1);
         }
         Use::Torch if clicked => {
-            let bodies: Vec<Body> = Vec::new();
-            let world = &sim.world;
-            let Some(block) = target::place_target(from, cursor, 6.0 * BLOCK as f32, |b| free(world, b, &bodies), |b| supported(world, b)) else { return };
+            let Some(block) = place_spot(&sim.world, from, cursor, &[], platypus_sim::MaterialId::AIR) else { return };
             let Some(art) = torch_art.as_deref() else { return };
             let at = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, block.y as f32 * BLOCK as f32);
             commands.entity(me).insert(crate::creatures::body::animation::Aiming { at, left: AIM_HOLD });
@@ -923,10 +960,11 @@ fn outline(
             }
             (None, Color::NONE)
         }
-        Use::Block(_) | Use::Torch => {
+        Use::Block(m) => {
             let bodies: Vec<Body> = creatures.iter().map(|k| k.body).collect();
-            (target::place_target(from, cursor, 6.0 * BLOCK as f32, |b| free(world, b, &bodies), |b| supported(world, b)), Color::srgba(0.4, 0.9, 1.0, 0.9))
+            (place_spot(world, from, cursor, &bodies, *m), Color::srgba(0.4, 0.9, 1.0, 0.9))
         }
+        Use::Torch => (place_spot(world, from, cursor, &[], platypus_sim::MaterialId::AIR), Color::srgba(0.4, 0.9, 1.0, 0.9)),
         _ => (None, Color::NONE),
     };
     if let Some(b) = block {

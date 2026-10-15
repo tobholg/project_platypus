@@ -107,7 +107,9 @@ pub fn cursor_target(hand: Vec2, cursor: Vec2, reach: f32, minable: impl Fn(Cell
 
 /// The block a placement fills: under the cursor if it's `free` and
 /// `supported` (and within reach), else, if the line toward the cursor runs
-/// into something, the last free, supported block before it.
+/// into something, the last free, supported block before it, else (the
+/// cursor in open air beside something) the free, supported block next to
+/// the cursor's nearest it.
 pub fn place_target(hand: Vec2, cursor: Vec2, reach: f32, free: impl Fn(CellPos) -> bool, supported: impl Fn(CellPos) -> bool) -> Option<CellPos> {
     let under = CellPos::new((cursor.x / BLOCK as f32).floor() as i32, (cursor.y / BLOCK as f32).floor() as i32);
     let centre = |b: CellPos| Vec2::new((b.x as f32 + 0.5) * BLOCK as f32, (b.y as f32 + 0.5) * BLOCK as f32);
@@ -119,13 +121,20 @@ pub fn place_target(hand: Vec2, cursor: Vec2, reach: f32, free: impl Fn(CellPos)
     let mut last = None;
     for b in reach_line(hand, cursor, reach) {
         if !free(b) {
-            return last;
+            if last.is_some() {
+                return last;
+            }
+            break;
         }
         if supported(b) {
             last = Some(b);
         }
     }
-    None
+    let ok = |b: CellPos| centre(b).distance(hand) <= reach && free(b) && supported(b);
+    (-1..=1)
+        .flat_map(|dy| (-1..=1).map(move |dx| CellPos::new(under.x + dx, under.y + dy)))
+        .filter(|&b| b != under && ok(b))
+        .min_by(|a, b| centre(*a).distance_squared(cursor).total_cmp(&centre(*b).distance_squared(cursor)))
 }
 
 #[cfg(test)]
@@ -215,5 +224,8 @@ mod tests {
         assert_eq!(place_target(hand, at(39.0, 9.0), 36.0, free, supported), Some(CellPos::new(5, 1)));
         // Mid-air with nothing near: nothing to hold it.
         assert_eq!(place_target(hand, at(21.0, 27.0), 36.0, free, supported), None);
+        // In the air just beside the wall's top: the spot beside it nearest
+        // the cursor.
+        assert_eq!(place_target(hand, at(27.0, 33.0), 36.0, free, supported), Some(CellPos::new(5, 4)));
     }
 }

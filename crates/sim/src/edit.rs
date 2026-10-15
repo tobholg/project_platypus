@@ -30,8 +30,10 @@ pub enum WorldEdit {
     MineReach { center: CellPos, radius: i32, from: CellPos, bite: i32, power: u8, max_hardness: u8 },
     /// Fill the empty cells of a block (air, or tall grass, smoke, flames:
     /// what building pushes aside) with a material (its pattern, if it has
-    /// one, gives the shades). `EditReport::placed` says how many.
-    PlaceBlock { block: CellPos, material: MaterialId, back: bool },
+    /// one, gives the shades), at most `most` cells of it (from the bottom
+    /// row up: what's left of a stack fills what it can, and the next fills
+    /// the rest). `EditReport::placed` says how many.
+    PlaceBlock { block: CellPos, material: MaterialId, back: bool, most: u32 },
     /// Fill the empty cells (as `PlaceBlock`) of a `w` × `h` box with a material, shaded by its pattern
     /// anchored at the box's corner (furniture: a chest's picture sits on it
     /// wherever it stands). `EditReport::placed` says how many cells.

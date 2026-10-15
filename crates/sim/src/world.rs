@@ -8,7 +8,7 @@ use crate::chunk::Chunk;
 use crate::climate::Climate;
 use crate::coords::{CHUNK, CellPos, ChunkPos, Rect};
 use crate::edit::{BLOCK, EditReport, WorldEdit, block_cells, disc};
-use crate::material::{ExplosionDef, Kind, MatPhys, MaterialId, MaterialTable};
+use crate::material::{ExplosionDef, Kind, Loot, MatPhys, MaterialId, MaterialTable};
 use crate::particles::{self, Landing, Particle, ParticleWorld};
 use crate::rng::{Rng, hash};
 use crate::step::{StepStats, Strike, Zap, step_chunks};
@@ -69,6 +69,11 @@ pub struct World {
     /// Pieces that broke off whole and fly as rigid bodies.
     bodies: Vec<Body>,
     next_body: u32,
+    /// While an axe's cut is checked: the cut tree's share of the wood (x
+    /// from..to, halfway to the trunks either side), so a tree whose
+    /// branches touch its neighbours' still falls, and, cut through as far
+    /// as an axe reaches, the height it snaps at (`tree_share`, `severed`).
+    felling: Option<(i32, i32, Option<i32>)>,
     /// Clouds, rain and snow (SPEC §3.13); `None` in tests and sandboxes.
     weather: Option<Weather>,
     /// Lightning since the last step reported it.
@@ -120,6 +125,7 @@ impl World {
             particles: Vec::new(),
             bodies: Vec::new(),
             next_body: 0,
+            felling: None,
             weather: None,
             strikes: Vec::new(),
             grounds: FxHashMap::default(),
@@ -484,9 +490,13 @@ impl World {
             WorldEdit::MineBlock { block, power, max_hardness, back } => {
                 self.mine_block(block, power, max_hardness, back, &mut report);
                 let c = block_cells(block).next().expect("a block has cells");
-                self.loosen_if_removed(c.offset(BLOCK / 2, BLOCK / 2), BLOCK, &report);
+                let centre = c.offset(BLOCK / 2, BLOCK / 2);
+                // (An axe in a trunk: only this tree's wood holds it up.)
+                self.felling = if back { self.tree_share(centre).map(|(lo, hi, trunk)| (lo, hi, self.severed(block, lo, hi, trunk))) } else { None };
+                self.loosen_if_removed(centre, BLOCK, &report);
+                self.felling = None;
             }
-            WorldEdit::PlaceBlock { block, material, back } => self.place_block(block, material, back, &mut report),
+            WorldEdit::PlaceBlock { block, material, back, most } => self.place_block(block, material, back, most, &mut report),
             WorldEdit::Stamp { corner, w, h, material } => {
                 let mats = self.materials.clone();
                 for dy in 0..h {
@@ -673,34 +683,41 @@ impl World {
 
     fn mine_block(&mut self, block: CellPos, power: u8, max_hardness: u8, back: bool, report: &mut EditReport) {
         let mats = self.materials.clone();
-        // The block's minable cells.
-        let cells: Vec<(CellPos, Cell)> = block_cells(block)
+        // The block's minable cells (and whether each is the background's).
+        // An axe takes wood wherever it is: a felled log, a plank wall in
+        // front; and the background (a standing tree, a wall) where nothing
+        // but tall grass stands in front.
+        let cells: Vec<(CellPos, Cell, bool)> = block_cells(block)
             .filter_map(|p| {
                 let front = self.get(p)?;
-                // An axe reaches the background only where nothing stands in front.
-                if back && !front.is_air() {
+                let (c, behind) = if !back {
+                    (front, false)
+                } else if !front.is_air() && mats.def(front.material).loot == Loot::Wood && mats.phys(front.material).kind == Kind::Static {
+                    (front, false)
+                } else if front.is_air() || mats.phys(front.material).kind == Kind::Plant {
+                    (self.get_bg(p)?, true)
+                } else {
                     return None;
-                }
-                let c = if back { self.get_bg(p)? } else { front };
+                };
                 let ph = mats.phys(c.material);
                 let minable = !c.is_air() && matches!(ph.kind, Kind::Static | Kind::Powder | Kind::Plant) && ph.hardness <= max_hardness && ph.hardness < u8::MAX;
-                minable.then_some((p, c))
+                minable.then_some((p, c, behind))
             })
             .collect();
         if cells.is_empty() {
             return;
         }
-        let hardest = cells.iter().map(|(_, c)| mats.phys(c.material).hardness.max(1) as u32).max().unwrap_or(1);
+        let hardest = cells.iter().map(|(_, c, _)| mats.phys(c.material).hardness.max(1) as u32).max().unwrap_or(1);
         // The hardest cell carries the block's damage so far (softer ones are
         // capped just below breaking, so the block goes all at once).
-        let done = cells.iter().map(|(_, c)| c.life as u32).max().unwrap_or(0);
+        let done = cells.iter().map(|(_, c, _)| c.life as u32).max().unwrap_or(0);
         let total = done + power as u32;
         let mut rng = self.rng_for(0xB10C, block);
         let centre = block_cells(block).next().expect("a block has cells").offset(BLOCK / 2, BLOCK / 2);
-        for (p, mut c) in cells {
+        for (p, mut c, behind) in cells {
             if total >= hardest {
                 report.add_removed(c.material);
-                if back { self.set_bg(p, Cell::AIR) } else { self.set(p, Cell::AIR) };
+                if behind { self.set_bg(p, Cell::AIR) } else { self.set(p, Cell::AIR) };
                 if rng.chance(DUST_CHANCE * 2) {
                     let mut dust = c;
                     dust.flags = 0;
@@ -711,7 +728,7 @@ impl World {
                 }
             } else {
                 c.life = total.min(mats.phys(c.material).hardness.max(1) as u32 - 1) as u8;
-                if back { self.set_bg(p, c) } else { self.set(p, c) };
+                if behind { self.set_bg(p, c) } else { self.set(p, c) };
             }
         }
     }
@@ -722,10 +739,13 @@ impl World {
         c.is_air() || matches!(mats.phys(c.material).kind, Kind::Plant | Kind::Gas | Kind::Fire)
     }
 
-    fn place_block(&mut self, block: CellPos, material: MaterialId, back: bool, report: &mut EditReport) {
+    fn place_block(&mut self, block: CellPos, material: MaterialId, back: bool, most: u32, report: &mut EditReport) {
         let mats = self.materials.clone();
         let mut rng = self.rng_for(0x9A1C, block);
         for p in block_cells(block) {
+            if report.placed >= most {
+                break;
+            }
             let here = if back { self.get_bg(p) } else { self.get(p) };
             // A platform is the top half of its block.
             if !here.is_some_and(|c| Self::room(&mats, c)) || (mats.phys(material).platform && p.y.rem_euclid(BLOCK) < BLOCK / 2) {
@@ -1068,7 +1088,14 @@ impl World {
         match layer {
             Layer::Front => self.loosen_pass(center, reach, anchored, Pass::Front, &[]).0,
             Layer::Back => {
-                let (n, removed) = self.loosen_pass(center, reach, anchored, Pass::Wood, &[]);
+                let (mut n, mut removed) = self.loosen_pass(center, reach, anchored, Pass::Wood, &[]);
+                // A tree felled within its share: what it left past the
+                // halfway marks (its branches' ends) drops if nothing holds it.
+                if self.felling.take().is_some() && !removed.is_empty() {
+                    let (k, more) = self.loosen_pass(center, reach, &mut FxHashSet::default(), Pass::Wood, &removed);
+                    n += k;
+                    removed.extend(more);
+                }
                 // Leaves left without wood, near the cut or around what fell.
                 let (m, _) = self.loosen_pass(center, reach, &mut FxHashSet::default(), Pass::Leaves, &removed);
                 n + m
@@ -1113,8 +1140,15 @@ impl World {
             },
             Pass::Wood | Pass::Leaves => match (w.get_bg(p), w.get(p)) {
                 (None, _) | (_, None) => Probe::Anchor,
+                // Felling: past the halfway mark to the next trunk it's that
+                // tree's wood (a branch touching ours doesn't hold ours up).
+                // (And cut through, nothing under the cut holds it up.)
+                _ if pass == Pass::Wood && w.felling.is_some_and(|(lo, hi, floor)| p.x < lo || p.x > hi || floor.is_some_and(|f| p.y < f)) => Probe::Open,
                 (Some(b), _) if b.is_air() => Probe::Open,
                 (Some(b), _) if mats.phys(b.material).hardness == u8::MAX => Probe::Anchor,
+                // (Cut through: the buried side of the trunk above the cut
+                // isn't rooted, it comes away with the rest.)
+                (Some(b), Some(f)) if pass == Pass::Wood && front_solid(f) && w.felling.is_some_and(|(_, _, floor)| floor.is_some()) && mats.phys(b.material).grows && !plant(b) => Probe::Solid,
                 (Some(_), Some(f)) if front_solid(f) => Probe::Anchor,
                 // Charred wood carries nothing (it hangs on until it burns away).
                 (Some(b), _) if pass == Pass::Wood && !mats.bears_load(b) => Probe::Open,
@@ -1296,6 +1330,62 @@ impl World {
             }
         }
         (taken, orphans)
+    }
+
+    /// The cut tree's share of the wood about `cut`: from halfway to the
+    /// next trunk on the left to halfway to the next on the right (trunks:
+    /// growths rooted in the ground, behind solid playfield, below and about
+    /// the cut). `None`: no trunk near (not a tree).
+    fn tree_share(&self, cut: CellPos) -> Option<(i32, i32, (i32, i32))> {
+        const LOOK: i32 = 240;
+        let mats = &self.materials;
+        let rooted = |x: i32| {
+            (cut.y - 120..=cut.y + 10).any(|y| {
+                let p = CellPos::new(x, y);
+                self.get_bg(p).is_some_and(|b| mats.phys(b.material).grows && mats.phys(b.material).kind != Kind::Plant)
+                    && self.get(p).is_some_and(|f| matches!(mats.phys(f.material).kind, Kind::Static | Kind::Powder))
+            })
+        };
+        // Trunks: runs of rooted columns (from, to).
+        let mut trunks: Vec<(i32, i32)> = Vec::new();
+        let mut run: Option<i32> = None;
+        for x in cut.x - LOOK..=cut.x + LOOK + 1 {
+            match (rooted(x) && x <= cut.x + LOOK, run) {
+                (true, None) => run = Some(x),
+                (false, Some(from)) => {
+                    trunks.push((from, x - 1));
+                    run = None;
+                }
+                _ => {}
+            }
+        }
+        let mid = |t: &(i32, i32)| (t.0 + t.1) / 2;
+        let ours = *trunks.iter().min_by_key(|t| (mid(t) - cut.x).abs())?;
+        let m = mid(&ours);
+        let left = trunks.iter().map(mid).filter(|&t| t < m).max().map_or(i32::MIN, |t| (t + m) / 2);
+        let right = trunks.iter().map(mid).filter(|&t| t > m).min().map_or(i32::MAX, |t| (t + m) / 2);
+        Some((left, right, ours))
+    }
+
+    /// Is the trunk cut through at this block's height (a block in the
+    /// trunk: over its stump), as far as an axe reaches: wood above it, and none left in its rows (within the tree's
+    /// share, near the cut) but what's behind solid ground (a trunk on a
+    /// slope, buried on its high side)? Then the bottom of the cut (it
+    /// snaps there).
+    fn severed(&self, block: CellPos, lo: i32, hi: i32, trunk: (i32, i32)) -> Option<i32> {
+        const NEAR: i32 = 40;
+        // (In the trunk, its stump's width: not a branch out in the crown.)
+        if block.x * BLOCK + BLOCK < trunk.0 - BLOCK || block.x * BLOCK > trunk.1 + BLOCK {
+            return None;
+        }
+        let mats = &self.materials;
+        let tree = |p: CellPos| self.get_bg(p).is_some_and(|b| mats.phys(b.material).grows && mats.phys(b.material).kind != Kind::Plant);
+        let open = |p: CellPos| self.get(p).is_some_and(|f| f.is_air() || mats.phys(f.material).kind == Kind::Plant);
+        let (x0, y0) = (block.x * BLOCK, block.y * BLOCK);
+        let xs = (x0 - NEAR).max(lo)..=(x0 + BLOCK + NEAR).min(hi);
+        let above = xs.clone().any(|x| (y0 + BLOCK..y0 + BLOCK * 3).any(|y| tree(CellPos::new(x, y))));
+        let reachable_left = xs.clone().any(|x| (y0..y0 + BLOCK).any(|y| tree(CellPos::new(x, y)) && open(CellPos::new(x, y))));
+        (above && !reachable_left).then_some(y0)
     }
 
     /// A background piece that lost its hold falls. A big one (a felled tree,

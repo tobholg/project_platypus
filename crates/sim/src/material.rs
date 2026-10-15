@@ -219,6 +219,10 @@ pub struct MaterialDef {
     /// sides, and open underfoot to one that wants to drop.
     #[serde(default)]
     pub platform: bool,
+    /// A wall: built into the background (behind you), never the playfield
+    /// (a house's back wall: the game's business).
+    #[serde(default)]
+    pub wall: bool,
     /// Creatures wading through it are held back (cobweb); some walk it
     /// freely (a spider: its creature file's `web_walker`).
     #[serde(default)]

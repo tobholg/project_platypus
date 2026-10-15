@@ -57,11 +57,10 @@ pub struct SpawnQueue(pub Vec<PendingSpawn>);
 #[derive(Resource, Default)]
 pub struct Spawned(pub std::collections::HashSet<CellPos>);
 
-/// How many enemies to scatter around the start (tunable later via RON).
-/// (Beyond the plain and out of sight of its village, whose far end is
-/// ~300 cells out: an orc sees 330. The start is safe ground.)
-const START_ENEMIES: [(&str, i32); 8] =
-    [("orc", -1875), ("orc", -1650), ("orc", -1425), ("orc", -1200), ("orc", 1200), ("orc", 1425), ("orc", 1650), ("orc", 1875)];
+/// The orcs about the start: two camps out past the start valley's plain
+/// (3000 cells either side of the start), one each way, so the valley's
+/// own trouble is slimes by day and the dead by night (`life.ron`).
+const START_ENEMIES: [(&str, i32); 6] = [("orc", -3500), ("orc_archer", -3440), ("orc", -3380), ("orc", 3380), ("orc_archer", 3440), ("orc", 3500)];
 
 impl Plugin for SpawnPlugin {
     fn build(&self, app: &mut App) {

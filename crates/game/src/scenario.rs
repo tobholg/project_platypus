@@ -305,6 +305,8 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, heatglow_script)
             .add_systems(PreUpdate, play_script.after(InputSystems).before(crate::camera::track_cursor).before(crate::pause::key))
             .add_systems(PreUpdate, title_script.after(InputSystems).before(crate::title::capture))
+            .add_systems(PreUpdate, chop_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(Update, starter_script)
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7360,12 +7362,12 @@ fn overhang_script(
         if let Some(stone) = sim.materials().id("stone") {
             for bx in 1002 / b..1032 / b {
                 for by in floor / b..(floor + 100) / b {
-                    sim.queue(WorldEdit::PlaceBlock { block: CellPos::new(bx, by), material: stone, back: false });
+                    sim.queue(WorldEdit::PlaceBlock { block: CellPos::new(bx, by), material: stone, back: false, most: u32::MAX });
                 }
             }
             for bx in 942 / b..1092 / b {
                 for by in (floor + 100) / b..(floor + 112) / b {
-                    sim.queue(WorldEdit::PlaceBlock { block: CellPos::new(bx, by), material: stone, back: false });
+                    sim.queue(WorldEdit::PlaceBlock { block: CellPos::new(bx, by), material: stone, back: false, most: u32::MAX });
                 }
             }
         }
@@ -7447,7 +7449,7 @@ fn backwall_script(
                 let b = platypus_sim::edit::BLOCK;
                 for bx in 840 / b..990 / b {
                     for by in floor / b..(floor + 180) / b {
-                        sim.queue(WorldEdit::PlaceBlock { block: CellPos::new(bx, by), material: stone, back: true });
+                        sim.queue(WorldEdit::PlaceBlock { block: CellPos::new(bx, by), material: stone, back: true, most: u32::MAX });
                     }
                 }
                 // A ledge at the top for the player.
@@ -7730,6 +7732,178 @@ fn play_script(
         *step += 1;
         keys.release(KeyCode::Escape);
         info!("play: Esc: game menu {}, time {}", if menu.open { "up" } else { "shut" }, if virt.is_paused() { "paused" } else { "running" });
+    }
+}
+
+/// `starter` (`PLATYPUS_WORLD=small PLATYPUS_SAVE=off PLATYPUS_LIFE_RATE=20`,
+/// `PLATYPUS_HOUR=22` for the night): what's about the start: every 5 s,
+/// the creatures within 1500 cells by kind (the player kept alive).
+fn starter_script(s: Res<Scenario>, sim: Res<SimWorld>, mut player: Query<(&Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>, them: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>, mut next: Local<f32>) {
+    if s.name != "starter" {
+        return;
+    }
+    let Ok((pk, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    if s.elapsed < *next {
+        return;
+    }
+    *next = s.elapsed + 5.0;
+    let (mut up, mut down): (std::collections::BTreeMap<String, u32>, std::collections::BTreeMap<String, u32>) = Default::default();
+    for (c, k) in &them {
+        if (k.body.pos.x - pk.body.pos.x).abs() < 1500.0 && (k.body.pos.y - pk.body.pos.y).abs() < 1500.0 {
+            let ground = sim.generator.surface_hint(k.body.pos.x as i32).unwrap_or(0) as f32;
+            let (map, dx) = if k.body.pos.y > ground - 40.0 { (&mut up, (k.body.pos.x - pk.body.pos.x) as i32) } else { (&mut down, (k.body.pos.x - pk.body.pos.x) as i32) };
+            *map.entry(format!("{}@{}", c.kind, dx / 100 * 100)).or_default() += 1;
+        }
+    }
+    info!("starter: t {:.0}: SURFACE {up:?}", s.elapsed);
+    info!("starter: t {:.0}: UNDER {down:?}", s.elapsed);
+}
+
+/// `chop` (`PLATYPUS_WORLD=small PLATYPUS_SAVE=off`, play mode or dev):
+/// the nearest tree to the start, cut a little above its foot (clear of the
+/// ground, all its width in the open) with the copper axe until
+/// it falls, then the log lying there bucked (the player put beside what's
+/// left of it, the axe at its nearest wood); then a wall built of the wood:
+/// four blocks up from the ground beside you, the cursor in the open air
+/// above the top one each time. Logs each second: the wood carried (blocks),
+/// the tree's wood standing (background) and lying (playfield) near it.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn chop_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut hand: ResMut<crate::hands::Hand>,
+    mut player: Query<(&mut Kinematics, &crate::hands::items::Inventory), With<LocalPlayer>>,
+    (mut mouse, mut cursor): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>),
+    mut st: Local<(u8, f32, Option<CellPos>, f32, i32)>,
+) {
+    if s.name != "chop" {
+        return;
+    }
+    let Ok((mut k, inv)) = player.single_mut() else { return };
+    let Some(items) = items else { return };
+    let t = s.elapsed;
+    let w = &sim.world;
+    let wood = w.materials().expect_id("wood");
+    let carried = items.id("block:wood").map_or(0.0, |i| inv.count(i) as f32 / 36.0);
+    let near = |c: CellPos, bg: bool| (-160..=160).flat_map(|dx| (-40..=200).map(move |dy| c.offset(dx, dy))).filter(|p| if bg { w.get_bg(*p) } else { w.get(*p) }.is_some_and(|x| x.material == wood)).count();
+    match st.0 {
+        // The nearest trunk: wood behind open air, low, near the start.
+        0 if t > 3.0 => {
+            let p = CellPos::from_world(k.body.pos.x, k.body.pos.y);
+            let foot = (0..600).flat_map(|d| [d, -d]).find_map(|dx| {
+                let x = p.x + dx;
+                (p.y - 120..p.y + 120).find(|&y| {
+                    let c = CellPos::new(x, y);
+                    w.get_bg(c).is_some_and(|b| b.material == wood) && w.get(c).is_some_and(|f| f.is_air()) && w.get_bg(c.offset(0, 30)).is_some_and(|b| b.material == wood)
+                }).map(|y| CellPos::new(x, y + 14))
+            });
+            let Some(foot) = foot else {
+                // (None here: on along the surface, and look again when it's loaded.)
+                st.4 += 1;
+                if st.4 > 10 {
+                    st.0 = 9;
+                    return info!("chop: no tree found");
+                }
+                let x = k.body.pos.x + 700.0;
+                let y = sim.generator.surface_hint(x as i32).unwrap_or(p.y) as f32 + 40.0;
+                k.body.pos = Vec2::new(x, y);
+                k.prev_pos = k.body.pos;
+                st.0 = 8;
+                st.1 = t;
+                return;
+            };
+            st.2 = Some(foot);
+            st.0 = 1;
+            k.body.pos = Vec2::new(foot.x as f32 - 14.0, foot.y as f32 + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            take_up(&mut hand, inv, Some(&items), "copper_axe");
+            info!("chop: a tree at ({}, {}): standing {} cells", foot.x, foot.y, near(foot, true));
+        }
+        1 | 2 => {
+            let foot = st.2.expect("found");
+            // Cut at its foot; once it's down, at the log's nearest wood.
+            if st.0 == 1 && near(foot, false) > 200 {
+                st.0 = 2;
+                info!("chop: t {t:.1}: it's down: lying {} cells, standing {}", near(foot, false), near(foot, true));
+            }
+            let at = if st.0 == 1 {
+                // (The trunk's nearest wood at its foot: deeper as it's cut.)
+                (0..40).find_map(|dx| (0..6).map(|dy| CellPos::new(foot.x - 3 + dx, foot.y + dy)).find(|c| w.get_bg(*c).is_some_and(|b| b.material == wood) && w.get(*c).is_some_and(|f| f.is_air()))).map(|c| Vec2::new(c.x as f32 + 0.5, c.y as f32 + 0.5))
+            } else {
+                let me = CellPos::from_world(k.body.pos.x, k.body.pos.y);
+                (0..200).find_map(|r| (-r..=r).flat_map(|dx| [CellPos::new(me.x + dx, me.y - r), CellPos::new(me.x + dx, me.y + r)]).chain((-r..=r).flat_map(|dy| [CellPos::new(me.x - r, me.y + dy), CellPos::new(me.x + r, me.y + dy)])).find(|c| w.get(*c).is_some_and(|x| x.material == wood))).map(|c| Vec2::new(c.x as f32 + 0.5, c.y as f32 + 0.5))
+            };
+            match at {
+                Some(at) => {
+                    // (Within the axe's reach: walk the body up to it.)
+                    if at.distance(k.body.pos) > 30.0 {
+                        let to = at - Vec2::new(at.x.signum() * 0.0 + if at.x > k.body.pos.x { 18.0 } else { -18.0 }, 0.0);
+                        k.body.pos = Vec2::new(to.x, k.body.pos.y.max(at.y));
+                        k.prev_pos = k.body.pos;
+                    }
+                    cursor.0 = Some(at);
+                    mouse.press(MouseButton::Left);
+                }
+                None if st.0 == 2 => {
+                    st.0 = 3;
+                    st.1 = t;
+                }
+                // (Cut through: it's falling, a body in the air; then it lies.)
+                None => {
+                    mouse.release(MouseButton::Left);
+                    if st.1 == 0.0 {
+                        st.1 = t;
+                        info!("chop: t {t:.1}: cut through; standing {}", near(foot, true));
+                    } else if t - st.1 > 12.0 {
+                        info!("chop: t {t:.1}: it never came down");
+                        st.0 = 3;
+                    }
+                }
+            }
+            if t >= st.3 {
+                st.3 = t + 1.0;
+                info!("chop: t {t:.0}: carrying {carried:.1} blocks of wood; standing {}, lying {}", near(foot, true), near(foot, false));
+            }
+            if t > 40.0 && st.0 != 3 {
+                st.0 = 3;
+                st.1 = t;
+            }
+        }
+        // Build: a wall four blocks up beside you, aiming into the air above.
+        3 => {
+            mouse.release(MouseButton::Left);
+            take_up(&mut hand, inv, Some(&items), "block:wood");
+            st.0 = 4;
+            st.1 = t;
+            st.4 = 0;
+            info!("chop: building with {carried:.1} blocks of wood");
+        }
+        4 => {
+            let feet = k.body.pos.y - k.body.half.y;
+            let col = ((k.body.pos.x + 16.0) / 6.0).floor() as i32;
+            let ground = (feet / 6.0).floor() as i32;
+            let woody = |r: i32| w.get(CellPos::new(col * 6 + 3, r * 6 + 3)).is_some_and(|c| c.material == wood);
+            let n = (ground - 2..ground + 12).filter(|&r| woody(r)).count() as i32;
+            let top = (ground - 2..ground + 12).filter(|&r| woody(r)).max().unwrap_or(ground);
+            if t - st.1 > 0.15 {
+                st.1 = t;
+                // (The air above the top: a block over it.)
+                cursor.0 = Some(Vec2::new(col as f32 * 6.0 + 3.0, (top + 1) as f32 * 6.0 + 9.5));
+                mouse.press(MouseButton::Left);
+                st.4 += 1;
+            } else {
+                mouse.release(MouseButton::Left);
+            }
+            if n >= 4 || st.4 > 30 {
+                st.0 = 5;
+                info!("chop: the wall stands {n} blocks high (wood left {carried:.1} blocks)");
+                mouse.release(MouseButton::Left);
+            }
+        }
+        8 if t > st.1 + 2.0 => st.0 = 0,
+        _ => {}
     }
 }
 

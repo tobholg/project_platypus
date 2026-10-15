@@ -12,16 +12,16 @@
 //   chest: a chest on its floor
 [
     // The start valley's caverns.
-    (name: "orc den", depth: (0, 400), chance: 1.0, start: Any, chest: true,
-     lining: "cobweb", density: 0.0, keepers: [("orc", 2), ("orc_archer", 1)]),
+    (name: "orc den", depth: (0, 400), chance: 1.0, start: Dark, chest: true,
+     lining: "cobweb", density: 0.0, keepers: [("orc", 1), ("orc_archer", 1)]),
     (name: "bone crypt", depth: (0, 400), chance: 1.0, start: Any, chest: true,
      lining: "cobweb", density: 0.15, keepers: [("skeleton", 2)]),
     (name: "spider lair", depth: (0, 400), chance: 1.0, start: Dark, chest: true,
      lining: "cobweb", density: 0.5, keepers: [("spider", 1), ("egg_sac", 2), ("cocoon", 2)]),
     (name: "zombie burrow", depth: (0, 400), chance: 1.0, start: Dark, chest: true,
      lining: "cobweb", density: 0.05, keepers: [("zombie", 3)]),
-    (name: "slime pool", depth: (0, 400), chance: 1.0, start: Light, chest: true,
-     lining: "slime", density: 0.15, keepers: [("slime", 2), ("blue_slime", 1)]),
+    (name: "bat roost", depth: (0, 400), chance: 1.0, start: Light, chest: true,
+     lining: "cobweb", density: 0.05, keepers: [("bat", 3)]),
     (name: "treasure grotto", depth: (0, 400), chance: 1.0, start: Light, chest: true,
      lining: "cobweb", density: 0.05, keepers: [("bat", 2)]),
     (name: "spider nest", depth: (180, 150000), zones: ["none", "fungal"], chance: 0.08,

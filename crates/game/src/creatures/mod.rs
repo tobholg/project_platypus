@@ -887,10 +887,11 @@ pub(crate) fn deaths(
             // (Back at the checkpoint, `respawn.rs`; a scenario or a
             // replay, where it stands, so the run goes on as written.)
             if !crate::respawn::heals_in_place() {
+                let died_at = k.body.pos;
                 k.body.pos = crate::respawn::respawn_at(&sim, &checkpoint, k.body.half);
                 k.body.vel = Vec2::ZERO;
                 k.prev_pos = k.body.pos;
-                respawned.write(crate::respawn::Respawned);
+                respawned.write(crate::respawn::Respawned { died_at });
             }
         } else {
             commands.entity(entity).despawn();

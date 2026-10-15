@@ -1164,6 +1164,38 @@ fn a_felled_tree_topples_as_one_piece_and_lies_on_the_ground_as_a_log() {
 }
 
 #[test]
+fn an_axe_fells_a_tree_whose_branches_touch_its_neighbours() {
+    let mut w = boxed_world(3, 2, 57);
+    fill(&mut w, "stone", 1, 191, 1, 10);
+    let wood = w.materials().expect_id("wood");
+    // Two trunks, a branch of the left one reaching into the right one's.
+    fill_bg(&mut w, "wood", 60, 66, 1, 70);
+    fill_bg(&mut w, "wood", 120, 126, 1, 70);
+    fill_bg(&mut w, "wood", 66, 120, 50, 53);
+    // An axe through the left trunk, block by block (cells 60..66, 12..18).
+    for bx in [10, 11] {
+        w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(bx, 2), power: 50, max_hardness: 100, back: true });
+    }
+    assert_eq!(w.bodies().len(), 1, "it came away");
+    assert_eq!(w.get_bg(CellPos::new(123, 40)).map(|c| c.material), Some(wood), "the neighbour stands");
+    assert_eq!(w.get_bg(CellPos::new(115, 51)).map(|c| c.material), Some(wood), "with its share of the branch");
+}
+
+#[test]
+fn an_axe_fells_a_trunk_buried_on_its_high_side() {
+    let mut w = boxed_world(3, 2, 57);
+    fill(&mut w, "stone", 1, 191, 1, 10);
+    // The ground rises on the trunk's right: its right half buried to 20.
+    fill(&mut w, "dirt", 63, 191, 10, 20);
+    fill_bg(&mut w, "wood", 54, 72, 1, 80);
+    // Everything an axe can reach at 12..18 (the left half, in the open).
+    for bx in [9, 10] {
+        w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(bx, 2), power: 50, max_hardness: 100, back: true });
+    }
+    assert_eq!(w.bodies().len(), 1, "cut as far as it reaches, it snaps");
+}
+
+#[test]
 fn a_felled_tree_is_not_held_up_by_its_neighbours_crown() {
     let mut w = boxed_world(3, 2, 57);
     fill(&mut w, "stone", 1, 191, 1, 10);
@@ -2185,7 +2217,7 @@ fn placing_a_block_fills_its_empty_cells_with_the_pattern() {
     let brick = w.materials().expect_id("brick");
     let block = CellPos::new(5, 2); // cells 30..36 × 12..18, on the floor
     w.set(CellPos::new(31, 13), Cell::new(w.materials().expect_id("dirt"), 0));
-    let r = w.apply_edit(&WorldEdit::PlaceBlock { block, material: brick, back: false });
+    let r = w.apply_edit(&WorldEdit::PlaceBlock { block, material: brick, back: false, most: u32::MAX });
     assert_eq!(r.placed, 35, "all but the one taken");
     for p in block_cells(block).filter(|&p| p != CellPos::new(31, 13)) {
         let c = w.get(p).unwrap();
@@ -2194,7 +2226,7 @@ fn placing_a_block_fills_its_empty_cells_with_the_pattern() {
     }
     // The pattern is anchored to the world: the same cell of the next block
     // over (12 cells on, one pattern width) has the same shade.
-    w.apply_edit(&WorldEdit::PlaceBlock { block: CellPos::new(7, 2), material: brick, back: false });
+    w.apply_edit(&WorldEdit::PlaceBlock { block: CellPos::new(7, 2), material: brick, back: false, most: u32::MAX });
     assert_eq!(w.get(CellPos::new(30, 14)).unwrap().shade, w.get(CellPos::new(42, 14)).unwrap().shade);
 }
 
@@ -2209,6 +2241,39 @@ fn an_axe_block_takes_the_background_only_where_the_front_is_open() {
     assert_eq!(r.removed, vec![(wood, 36)]);
     let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(6, 2), power: 50, max_hardness: 100, back: true });
     assert!(r.removed.is_empty(), "behind the stone it can't reach");
+}
+
+#[test]
+fn an_axe_takes_a_felled_log_lying_in_front_and_a_tree_behind_tall_grass() {
+    let mut w = boxed_world(1, 1, 63);
+    // A log lying in the playfield (as a felled tree settles).
+    fill(&mut w, "wood", 30, 36, 12, 18);
+    let wood = w.materials().expect_id("wood");
+    let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(5, 2), power: 50, max_hardness: 100, back: true });
+    assert_eq!(r.removed, vec![(wood, 36)], "the axe bucks the log");
+    // A stump behind tall grass.
+    fill_bg(&mut w, "wood", 42, 48, 12, 18);
+    fill(&mut w, "tall_grass", 42, 48, 12, 18);
+    let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(7, 2), power: 50, max_hardness: 100, back: true });
+    assert_eq!(r.removed, vec![(wood, 36)], "through the grass to the stump");
+    // Not other things in front: stone stays stone to an axe.
+    fill(&mut w, "stone", 54, 60, 12, 18);
+    let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(9, 2), power: 50, max_hardness: 100, back: true });
+    assert!(r.removed.is_empty());
+}
+
+#[test]
+fn part_of_a_block_fills_from_the_bottom_and_the_next_fills_the_rest() {
+    let mut w = boxed_world(1, 1, 62);
+    fill(&mut w, "stone", 1, 63, 1, 12);
+    let planks = w.materials().expect_id("planks");
+    let block = CellPos::new(5, 2); // cells 30..36 × 12..18
+    let r = w.apply_edit(&WorldEdit::PlaceBlock { block, material: planks, back: false, most: 14 });
+    assert_eq!(r.placed, 14);
+    assert_eq!(w.get(CellPos::new(30, 12)).unwrap().material, planks, "the bottom row first");
+    assert!(w.get(CellPos::new(30, 17)).unwrap().is_air(), "the top still open");
+    let r = w.apply_edit(&WorldEdit::PlaceBlock { block, material: planks, back: false, most: 100 });
+    assert_eq!(r.placed, 22, "the rest of it");
 }
 
 #[test]

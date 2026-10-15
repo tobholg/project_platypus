@@ -266,6 +266,10 @@ pub struct Haunt {
     /// ones stay out of a new player's first days).
     #[serde(default)]
     pub away: f32,
+    /// Only within this many cells of the world's start (0: anywhere): with
+    /// `away`, a ring round it (the start valley's: home, then its edges).
+    #[serde(default)]
+    pub within: f32,
     /// It comes up out of the ground (the dead: `emerge.rs`), on the
     /// ground nearer than the rest (`EMERGE_NEAR`: so it's seen coming
     /// up), a group one after another.
@@ -389,7 +393,9 @@ fn ambient(
     for (e, c, k) in &critters {
         let d = k.body.pos.distance(p);
         let haunts = life.haunts.iter().any(|h| h.kind == c.kind);
-        let off_hours = life.haunts.iter().any(|h| h.kind == c.kind && !h.when.now(day.time));
+        // (Off its hours only when none of its kind's haunts are in theirs:
+        // a zombie of the night, by day, is still the dark wood's.)
+        let off_hours = life.haunts.iter().filter(|h| h.kind == c.kind).all(|h| !h.when.now(day.time));
         if haunts && (d > GONE || (off_hours && d > OUT_OF_SIGHT)) {
             commands.entity(e).despawn();
         }
@@ -415,7 +421,8 @@ fn ambient(
             continue;
         }
         // (Not near the start, for the big ones.)
-        if h.away > 0.0 && !show && (p.x - start.x as f32).abs() < h.away {
+        let from_start = (p.x - start.x as f32).abs();
+        if !show && ((h.away > 0.0 && from_start < h.away) || (h.within > 0.0 && from_start > h.within)) {
             continue;
         }
         let spot = match h.place {

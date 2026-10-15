@@ -1,6 +1,8 @@
 //! Dying: the screen goes dark, "You died", and you wake at your checkpoint
 //! (where the world began, until something sets another: a bed, the story)
-//! with your health back; in play and in dev mode alike (dev mode has god
+//! with your health back, and everything you carry (softcore, for now:
+//! half your gold is left where you fell, to go back for); in play and in
+//! dev mode alike (dev mode has god
 //! mode while the dev menu's open: `devmenu.rs`). A scenario or a replay
 //! gets its health back where it stands, so it runs on as written
 //! (`PLATYPUS_RESPAWN=1`: it wakes at the checkpoint too). The checkpoint
@@ -17,9 +19,11 @@ pub struct RespawnPlugin;
 #[derive(Resource, Default, Clone, Copy, Debug)]
 pub struct Checkpoint(pub Option<Vec2>);
 
-/// The player died (and has been put back).
+/// The player died where it says (and has been put back).
 #[derive(Message, Clone, Copy, Debug)]
-pub struct Respawned;
+pub struct Respawned {
+    pub died_at: Vec2,
+}
 
 /// The dark and the words, while they last (seconds left).
 #[derive(Resource, Default)]
@@ -41,7 +45,7 @@ impl Plugin for RespawnPlugin {
             .init_resource::<Dark>()
             .add_message::<Respawned>()
             .add_systems(Startup, spawn_veil)
-            .add_systems(Update, veil);
+            .add_systems(Update, (veil, drop_gold));
     }
 }
 
@@ -62,6 +66,22 @@ pub fn respawn_at(sim: &SimWorld, checkpoint: &Checkpoint, half: Vec2) -> Vec2 {
     let s = sim.generator.spawn_point();
     let ground = find_ground(&sim.world, s.x, s.y + 180, 900).or_else(|| sim.generator.surface_hint(s.x).map(|y| y + 1)).unwrap_or(s.y);
     Vec2::new(s.x as f32 + 0.5, ground as f32 + half.y)
+}
+
+/// Half your gold, left where you fell (gold is a material: it bursts out
+/// and lies there as specks, to be walked over and taken back).
+fn drop_gold(mut died: MessageReader<Respawned>, mut gold: Query<&mut crate::gold::Gold, With<crate::creatures::player::LocalPlayer>>, mut queue: ResMut<crate::gold::GoldQueue>, mut toasts: MessageWriter<crate::progress::Toast>) {
+    for r in died.read() {
+        let Ok(mut g) = gold.single_mut() else { continue };
+        let half = g.0 / 2;
+        if half == 0 {
+            continue;
+        }
+        g.0 -= half;
+        queue.burst.push((r.died_at, half));
+        toasts.write(crate::progress::Toast(format!("{half} gold left where you fell")));
+        info!("respawn: {half} gold left at ({:.0}, {:.0})", r.died_at.x, r.died_at.y);
+    }
 }
 
 fn spawn_veil(mut commands: Commands) {

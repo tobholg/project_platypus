@@ -78,6 +78,10 @@
         (name: "planks", loot: Wood,   kind: Static, density: 650, hardness: 22, flammability: 7, ignites_at: 270, conductivity: 12, burn_time: 180, spread: 3, fizzles: 30, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal",
             colors: [(60, 38, 22), (102, 68, 38), (136, 94, 54), (158, 112, 66)],
             pattern: ["bbbaaabab2bb", "aaaaaabbb2bb", "aaaa9a9992a9", "999aaa999299", "999888998288", "222222222222", "bba2bbbbbabb", "bbb2aabbbaa9", "9992aaabbaaa", "a9a2aa999999", "888299888989", "222222222222"]),
+        // A plank wall: built behind you (a house's back wall), from planks.
+        (name: "wood_wall", loot: Wood, kind: Static, wall: true, density: 650, hardness: 22, flammability: 7, ignites_at: 270, conductivity: 12, burn_time: 180, spread: 3, fizzles: 30, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal",
+            colors: [(40, 26, 16), (66, 44, 26), (84, 58, 34), (98, 70, 42)],
+            pattern: ["bbbaaabab2bb", "aaaaaabbb2bb", "aaaa9a9992a9", "999aaa999299", "999888998288", "222222222222", "bba2bbbbbabb", "bbb2aabbbaa9", "9992aaabbaaa", "a9a2aa999999", "888299888989", "222222222222"]),
         // Ores and gems (DESIGN §3.2 step 6): harder the deeper they lie, so a
         // pickaxe's tier sets how deep you can profit (copper 70, iron 100,
         // gold 115, mithril 150). Ores are rock flecked with metal (the ramp
