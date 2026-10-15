@@ -2433,3 +2433,23 @@ fn boiling_water_holds_at_its_point_and_cools_what_it_is_on() {
     assert!(count(&w, m.expect_id("steam")) > 0, "it boiled");
     assert!(held + 150 < bare, "under the water the plate stayed cooler: {held} °C, dry {bare} °C");
 }
+
+/// A gas that drifts (a bloat toad's swamp gas) hangs where it was let out,
+/// spreading and thinning, till it's gone; methane rises to the ceiling.
+#[test]
+fn drifting_gas_hangs_where_it_was_let_out() {
+    let mean_height = |gas: &str| {
+        let mut w = boxed_world(2, 2, 50);
+        let id = w.materials().expect_id(gas);
+        w.apply_edit(&WorldEdit::Paint { center: CellPos::new(64, 30), radius: 10, material: id, overwrite: false });
+        for _ in 0..240 {
+            w.step();
+        }
+        let ys: Vec<i32> = (1..127).flat_map(|x| (1..127).map(move |y| CellPos::new(x, y))).filter(|p| w.get(*p).is_some_and(|c| c.material == id)).map(|p| p.y).collect();
+        (ys.iter().sum::<i32>() / ys.len().max(1) as i32, ys.len())
+    };
+    let (drifts, left) = mean_height("swamp_gas");
+    let (rises, _) = mean_height("methane");
+    assert!((20..=40).contains(&drifts) && left > 200, "swamp gas hung about where it was let out (mean height {drifts}, {left} cells)");
+    assert!(rises > 100, "methane rose ({rises})");
+}

@@ -1,0 +1,34 @@
+// A bloat toad: the size of a pony, swollen and warty, venting gas. It hops
+// after you, landing heavily, and swells as it's hurt. Its throat swells
+// and its mouth gapes, then its tongue flies at you (dash to slip it, cut
+// it with a blade): stuck, you're reeled in, chomped and spat out. Now and
+// then it belches swamp gas at you. Dead, it bursts into a cloud of it:
+// lit beside a crowd, it's a bomb. (custom/toad.rs)
+(
+    name: "Bloat toad",
+    size: (34, 26),
+    health: 110,
+    heft: 4,
+    poise: 30,
+    team: Enemy,
+    // (Its tongue and its jaws hurt, not its bulk: bumping into it, reeled
+    // in, doesn't, or its touch's grace would swallow its chomp.)
+    touchless: true,
+    kind: "beast",
+    blood: "blood",
+    // (It bursts: nothing's left of it but its gas and its blood.)
+    corpse: false,
+    art: "bloat_toad",
+    movement: (
+        run_speed: 95,
+        ground_accel: 2400,
+        ground_decel: 2400,
+        air_accel: 500,
+        jump_height: 46,
+        air_jumps: 0,
+        step_height: 6,
+        dash_speed: 0,
+    ),
+    brain: (kind: "hunter", params: (aggro: 320, close: Hop(every: 1.7, lift: 0.6))),
+    custom: (name: "toad", params: ()),
+)

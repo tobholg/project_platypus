@@ -37,6 +37,7 @@ pub mod explosive;
 pub mod hatchery;
 pub mod mimic;
 pub mod olmer;
+pub mod toad;
 pub mod templar;
 pub mod wraith;
 // (The template: compiled with the tests, so it stays right.)
@@ -68,8 +69,23 @@ impl Plugin for CustomPlugin {
             .register_custom::<wraith::Wraith>()
             .register_custom::<dread::Dread>()
             .register_custom::<olmer::Olmer>()
-            .register_custom::<templar::Templar>();
+            .register_custom::<templar::Templar>()
+            .register_custom::<toad::Toad>();
     }
+}
+
+/// Where a frame's anchor (`name`, in its picture) is in the world: the
+/// frame shown now (`frame` empty) or that frame (by name). Shared by those
+/// whose own code holds something at a point of their picture (Olmer's bar,
+/// a toad's tongue).
+pub fn frame_anchor(anim: &super::body::animation::Animator, k: &super::Kinematics, name: &str, frame: &str) -> Option<Vec2> {
+    let def = &anim.def;
+    let rig = def.rig.as_ref()?;
+    let index = if frame.is_empty() { anim.shown } else { rig.index(frame)? };
+    let &(px, py) = rig.anchors.get(name)?.get(&index)?;
+    let (fw, fh) = (def.sprite.frame.0 as f32, def.sprite.frame.1 as f32);
+    let local = Vec2::new((px as f32 + 0.5 - fw / 2.0) * k.loco.facing, -(py as f32 + 0.5 - fh / 2.0)) * def.scale;
+    Some(k.body.pos + super::body::animation::body_at(def, k) + local)
 }
 
 /// When creatures' own code runs.

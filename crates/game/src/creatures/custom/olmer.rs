@@ -21,7 +21,8 @@ use serde::Deserialize;
 use super::{CustomCreature, CustomSet};
 use crate::camera::MainCamera;
 use crate::canvas::{Canvas, CanvasSprites};
-use crate::creatures::body::animation::{Animator, body_at};
+use super::frame_anchor as anchor;
+use crate::creatures::body::animation::Animator;
 use crate::creatures::{Controls, Harm, Kinematics, Team};
 use crate::world::{ChunkLoader, SimWorld};
 
@@ -137,17 +138,6 @@ const TWIRL_EVERY: f32 = 4.0;
 const TWIRL_NEAR: (f32, f32) = (150.0, 60.0);
 /// Parried: he staggers this long.
 const STAGGER: f32 = 1.2;
-
-/// Where a frame's anchor (`name`, in its picture) is in the world.
-fn anchor(anim: &Animator, k: &Kinematics, name: &str, frame: &str) -> Option<Vec2> {
-    let def = &anim.def;
-    let rig = def.rig.as_ref()?;
-    let index = if frame.is_empty() { anim.shown } else { rig.index(frame)? };
-    let &(px, py) = rig.anchors.get(name)?.get(&index)?;
-    let (fw, fh) = (def.sprite.frame.0 as f32, def.sprite.frame.1 as f32);
-    let local = Vec2::new((px as f32 + 0.5 - fw / 2.0) * k.loco.facing, -(py as f32 + 0.5 - fh / 2.0)) * def.scale;
-    Some(k.body.pos + body_at(def, k) + local)
-}
 
 /// Points along the bar (and how near each must come to hit: a plate's
 /// half, or the bar's), at its angle now and at three angles between it and

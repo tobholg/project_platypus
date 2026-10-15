@@ -188,6 +188,10 @@ pub struct MaterialDef {
     /// instead of rising.
     #[serde(default)]
     pub heavy: bool,
+    /// Gases: neither rises nor sinks, but wanders and spreads where it was
+    /// let out, thinning (a bloat toad's swamp gas hangs about it).
+    #[serde(default)]
+    pub drifts: bool,
     /// What a charred cell becomes when its fire is put out (wood: charcoal).
     /// Default: it just stops burning.
     #[serde(default)]
@@ -441,6 +445,8 @@ pub struct MatPhys {
     pub opacity: u8,
     pub vapour: bool,
     pub heavy: bool,
+    /// See `MaterialDef::drifts`.
+    pub drifts: bool,
     /// `AIR` when the material doesn't crumble.
     pub crumbles_into: MaterialId,
     pub heat: i16,
@@ -667,6 +673,7 @@ impl MaterialTable {
                 }),
                 vapour: d.vapour,
                 heavy: d.heavy,
+                drifts: d.drifts,
                 crumbles_into,
                 heat: d.heat,
                 heat_source: d.heat_source,

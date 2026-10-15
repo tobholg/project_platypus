@@ -55,6 +55,9 @@
     (kind: "olmer", place: Surface, biomes: ["plains", "desert", "mountains"], when: Day, most: 1, rate: 0.006, away: 1500),
     // A Fallen Templar, wandering the deep dark (they keep the crypts).
     (kind: "fallen_templar", place: Cave, depth: (1200, 150000), most: 1, rate: 0.003),
+    // Bloat toads: in the swamps and jungles, and by water.
+    (kind: "bloat_toad", place: Surface, biomes: ["swamp", "jungle"], most: 2, rate: 0.03),
+    (kind: "bloat_toad", place: Shore, most: 1, rate: 0.02),
     (kind: "vampire_bat", place: Cave, depth: (450, 150000), most: 2, rate: 0.12),
     (kind: "spider", place: Cave, depth: (225, 150000), most: 1, rate: 0.06),
     // The bestiary's walkers (BE limbs), where they belong.

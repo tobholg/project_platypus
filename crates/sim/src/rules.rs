@@ -994,6 +994,19 @@ fn gas(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) {
         return;
     }
     let free = |h: &Hood, tx: i32, ty: i32| h.get(tx, ty).is_some_and(|t| t.is_air());
+    // (A gas that drifts neither rises nor sinks: now and then a step any
+    // way that's open, so a cloud spreads and thins where it was let out.
+    // Awake either way: it ages.)
+    if p.drifts {
+        let roll = h.rng.next_u32();
+        let (dx, dy) = NEIGHBOURS8[(roll >> 3) as usize % 8];
+        if roll & 3 == 0 && free(h, x + dx, y + dy) {
+            return swap_to(h, x, y, x + dx, y + dy, c);
+        }
+        c.clock = h.clock;
+        h.set(x, y, c);
+        return;
+    }
     let d = downwind_sign(h);
     // (A heavy gas does all this the other way up: it sinks.)
     let up = if p.heavy { -1 } else { 1 };

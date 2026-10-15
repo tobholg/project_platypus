@@ -303,6 +303,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, dread_script)
             .add_systems(Update, olmer_script)
             .add_systems(Update, heatglow_script)
+            .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
@@ -7705,6 +7706,85 @@ fn heatglow_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&K
         let near = |name: &str| m.id(name).map_or(0, |id| (-30..=30).flat_map(|dx| (-30..=10).map(move |dy| c.offset(dx, dy))).filter(|p| w.get(*p).is_some_and(|cell| cell.material == id)).count());
         let hottest = (-30..=30).flat_map(|dx| (-30..=10).map(move |dy| c.offset(dx, dy))).filter_map(|p| w.temperature(p)).max().unwrap_or(0);
         info!("heatglow: t {t:.0}: glows {glow} out (6 down); hottest {hottest} °C; magma {}, basalt {}", near("magma"), near("basalt"));
+    }
+}
+
+/// `toad` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a bloat toad at
+/// 1120; the player (who can't die) stands at 1020 (`PLATYPUS_TOAD=`: `dash`:
+/// dashes when the tongue sticks; `cut`: swings at the tongue; `kill`: it's
+/// struck till it dies (its methane), and at 2 s after, a torch thrown in:
+/// the gas goes up). Logs what it does, where the player is, the health lost.
+#[allow(clippy::too_many_arguments)]
+fn toad_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::custom::toad::Toad>), Without<LocalPlayer>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, f32, &'static str, Option<Vec2>)>,
+    (mut mouse, mut cursor, mut keys): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>, ResMut<ButtonInput<KeyCode>>),
+    tugged: Query<(), (With<LocalPlayer>, With<crate::creatures::Tugged>)>,
+) {
+    if s.name != "toad" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let mode = std::env::var("PLATYPUS_TOAD").unwrap_or_default();
+    state.2 += h.max - h.hp;
+    h.hp = h.max;
+    if state.0 == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        k.body.pos = Vec2::new(1020.0, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        crate::creatures::def::spawn_creature(&mut commands, "bloat_toad", Vec2::new(1120.0, fl), |_| {});
+        info!("toad: a bloat toad at 1120 ({mode})");
+        state.0 = 1;
+        return;
+    }
+    let methane = |sim: &SimWorld| sim.materials().id("swamp_gas").map_or(0, |m| (950..1250).flat_map(|x| (fl as i32 - 5..fl as i32 + 60).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
+    let Some((e, _, tk, o)) = them.iter().find(|x| x.1.kind == "bloat_toad") else {
+        // Dead: its gas; a torch thrown into it 2 s on.
+        if state.0 == 1 && t > 1.0 {
+            state.0 = 2;
+            state.1 = t;
+            info!("toad: t {t:.1} dead; swamp gas {} cells about", methane(&sim));
+        }
+        if state.0 == 2 && t > state.1 + 2.0 {
+            if let Some(at) = state.4 {
+                sim.queue(WorldEdit::Ignite { center: CellPos::from_world(at.x, at.y), radius: 3 });
+            }
+            state.0 = 3;
+            state.1 = t;
+        }
+        if state.0 == 3 && t > state.1 + 1.0 {
+            info!("toad: t {t:.1} a torch in the gas: swamp gas {} cells left; the player lost {:.0}", methane(&sim), state.2);
+            state.0 = 4;
+        }
+        return;
+    };
+    state.4 = Some(tk.body.pos);
+    let doing = o.map_or("?", |o| o.doing());
+    if doing != state.3 {
+        info!("toad: t {t:.2} {doing} at {:.0}; the player at {:.0} ({:.0} up), lost {:.0}", tk.body.pos.x, k.body.pos.x, k.body.pos.y - k.body.half.y - fl, state.2);
+        state.3 = doing;
+    }
+    if mode == "dash" {
+        if !tugged.is_empty() && (t * 10.0) as i32 % 3 == 0 { keys.press(KeyCode::ShiftLeft) } else { keys.release(KeyCode::ShiftLeft) }
+    }
+    if mode == "cut" {
+        cursor.0 = Some(Vec2::new(tk.body.pos.x - 50.0, k.body.pos.y));
+        if (t * 6.0) as i32 % 2 == 0 { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    }
+    if mode == "kill" && t > 2.0 && t > state.1 {
+        hits.write(crate::combat::Hit { target: e, damage: 25.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        state.1 = t + 0.5;
     }
 }
 
