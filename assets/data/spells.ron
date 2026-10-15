@@ -65,6 +65,8 @@
             about: "A shard of ice shot from a frozen glutton: it stabs, and chills."),
         (id: "dread_void", name: "Dread void", runes: ["void_haze", "dread_orb", "void_bite", "void_burst"], delay: 0.0, recharge: 0.0, element: Void, beast: true,
             about: "A dread knight's void, three at a time: slow orbs that leave dark smoke."),
+        (id: "grave_bolt", name: "Grave bolt", runes: ["grave_bolt", "grave_bite"], delay: 0.0, recharge: 0.0, element: Void, beast: true,
+            about: "A necromancer's bolt: grave-green, three in a row."),
         (id: "willy_fire", name: "Finger fire", runes: ["trail_fire", "bolt", "finger_burn", "ignite"], delay: 0.1, recharge: 0.1, element: Fire, beast: true,
             about: "A little fire bolt from Jan Willy's finger."),
         (id: "glutton_acid", name: "Glutton acid", runes: ["gravity", "arrow", "venom_glob", "acid_drops"], delay: 0.1, recharge: 0.1, element: Acid, beast: true,

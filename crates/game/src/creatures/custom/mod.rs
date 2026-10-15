@@ -36,6 +36,7 @@ pub mod dummy;
 pub mod explosive;
 pub mod hatchery;
 pub mod mimic;
+pub mod necro;
 pub mod olmer;
 pub mod toad;
 pub mod templar;
@@ -70,7 +71,8 @@ impl Plugin for CustomPlugin {
             .register_custom::<dread::Dread>()
             .register_custom::<olmer::Olmer>()
             .register_custom::<templar::Templar>()
-            .register_custom::<toad::Toad>();
+            .register_custom::<toad::Toad>()
+            .register_custom::<necro::Necro>();
     }
 }
 

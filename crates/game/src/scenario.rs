@@ -304,6 +304,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, olmer_script)
             .add_systems(Update, heatglow_script)
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
@@ -7785,6 +7786,106 @@ fn toad_script(
     if mode == "kill" && t > 2.0 && t > state.1 {
         hits.write(crate::combat::Hit { target: e, damage: 25.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
         state.1 = t + 0.5;
+    }
+}
+
+/// `necro` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a necromancer at
+/// 1150; the player (who can't die) stands at 950 (`PLATYPUS_NECRO=`:
+/// `soft`: the floor between them earth, so its skeletons claw up out of
+/// it; `body`: an orc killed by it first, to be raised; `near`: the player
+/// walks up to it (it blinks away); `kill`: struck till it dies at 9 s (what
+/// it raised falls apart)). Logs what it does, its skeletons, where the
+/// player is, the health lost.
+#[allow(clippy::too_many_arguments)]
+fn necro_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::custom::necro::Necro>), Without<LocalPlayer>>,
+    raised: Query<(), With<crate::creatures::custom::necro::RaisedBy>>,
+    bodies: Query<(), With<crate::hands::corpses::Corpse>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, f32, &'static str, usize)>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+) {
+    if s.name != "necro" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR;
+    let mode = std::env::var("PLATYPUS_NECRO").unwrap_or_default();
+    state.2 += h.max - h.hp;
+    h.hp = h.max;
+    if state.0 == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        if mode == "soft"
+            && let (Some(dirt), Some(grass)) = (sim.materials().id("dirt"), sim.materials().id("grass"))
+        {
+            for x in 960..1150 {
+                for y in fl - 24..fl {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: if y == fl - 1 { grass } else { dirt }, overwrite: true });
+                }
+            }
+        }
+        k.body.pos = Vec2::new(950.0, fl as f32 + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        crate::creatures::def::spawn_creature(&mut commands, "necromancer", Vec2::new(1150.0, fl as f32), |_| {});
+        if mode == "body" {
+            crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(1110.0, fl as f32), |_| {});
+        }
+        info!("necro: a necromancer at 1150 ({mode})");
+        state.0 = 1;
+        return;
+    }
+    // `body`: the orc killed where it stands, at 1 s.
+    if mode == "body" && state.0 == 1 && t > 1.0 {
+        for (e, c, ok, _) in &them {
+            if c.kind == "orc" {
+                hits.write(crate::combat::Hit { target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: ok.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+            }
+        }
+        state.0 = 2;
+    }
+    let skeletons = them.iter().filter(|x| x.1.kind == "skeleton").count();
+    let up = raised.iter().count();
+    if up != state.4 {
+        info!("necro: t {t:.2} raised now {up} (skeletons {skeletons}, bodies lying {})", bodies.iter().count());
+        state.4 = up;
+    }
+    let Some((e, _, nk, o)) = them.iter().find(|x| x.1.kind == "necromancer") else {
+        if state.0 < 9 && t > 2.0 {
+            info!("necro: t {t:.1} the necromancer's dead; skeletons {skeletons}, raised {up}");
+            state.0 = 9;
+            state.1 = t;
+        }
+        if state.0 == 9 && t > state.1 + 2.0 {
+            info!("necro: t {t:.1} 2 s on: skeletons standing {skeletons}, raised {up}");
+            state.0 = 10;
+        }
+        return;
+    };
+    let doing = o.map_or("?", |o| o.doing());
+    if doing != state.3 {
+        info!("necro: t {t:.2} {doing} at {:.0}; the player at {:.0}, lost {:.0}", nk.body.pos.x, k.body.pos.x, state.2);
+        state.3 = doing;
+    }
+    if mode == "near" {
+        let toward = if nk.body.pos.x > k.body.pos.x { KeyCode::KeyD } else { KeyCode::KeyA };
+        keys.release(KeyCode::KeyA);
+        keys.release(KeyCode::KeyD);
+        if t > 1.0 {
+            keys.press(toward);
+        }
+    }
+    if mode == "kill" && t > 9.0 && t > state.1 {
+        hits.write(crate::combat::Hit { target: e, damage: 40.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: nk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        state.1 = t + 0.3;
     }
 }
 

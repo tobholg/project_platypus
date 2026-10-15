@@ -1,0 +1,34 @@
+// A necromancer: hunched in a robe gone to rags, a deep hood with nothing
+// in it but two green eyes, a horned skull on its staff. It keeps away from
+// you and works from there: three grave bolts at a time (its palm glows
+// first); the dead raised (its arms go up, motes rise where they'll stand):
+// bodies lying near get up as skeletons, others claw out of the earth or
+// pull themselves together out of the rock, three at most; come too close
+// and it blinks away in a puff of grave-smoke. Kill it, and what it raised
+// falls apart for good. It's found among crypts' guards and in the deep.
+// (custom/necro.rs)
+(
+    name: "Necromancer",
+    size: (12, 42),
+    health: 95,
+    heft: 2,
+    poise: 20,
+    team: Enemy,
+    faction: "undead",
+    kind: "humanoid",
+    blood: "blood",
+    art: "necromancer",
+    eyes: (140, 255, 150),
+    movement: (
+        run_speed: 62,
+        ground_accel: 700,
+        ground_decel: 900,
+        air_accel: 300,
+        jump_height: 26,
+        air_jumps: 0,
+        step_height: 8,
+        dash_speed: 0,
+    ),
+    brain: (kind: "hunter", params: (aggro: 340, close: Range(near: 120, far: 220))),
+    custom: (name: "necro", params: ()),
+)

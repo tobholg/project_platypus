@@ -1234,7 +1234,10 @@ impl TerrainGen {
                 out.push((CellPos::new(x, y), Spawn::Chest));
             }
             for (x, y) in piece.blocks_of(Glyph::Spawn).map(|(x, y)| (x + BLOCK / 2, y)).filter(inside) {
-                out.push((CellPos::new(x, y), Spawn::Creature(guard)));
+                // (One crypt guard in five is a necromancer: where it stands
+                // decides it, so a chunk made again brings the same.)
+                let necro = s.kind == StructureKind::Crypt && (x as i64 * 73_856_093 ^ y as i64 * 19_349_663).rem_euclid(5) == 0;
+                out.push((CellPos::new(x, y), Spawn::Creature(if necro { "necromancer" } else { guard })));
             }
             // A crypt's heart is kept by a Fallen Templar; a castle's, until
             // there are bosses, by a pack.
