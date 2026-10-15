@@ -2849,6 +2849,7 @@ fn ice_script(
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut state: Local<(u8, f32, f32)>,
+    (inv, items): (Query<&crate::hands::items::Inventory, With<LocalPlayer>>, Option<Res<crate::hands::items::Items>>),
 ) {
     if s.name != "ice" {
         return;
@@ -2867,8 +2868,9 @@ fn ice_script(
         k.body.pos = Vec2::new(444.0, floor as f32 + 12.0);
         k.body.vel = Vec2::ZERO;
         k.prev_pos = k.body.pos;
-        hand.bar = 1;
-        hand.slot = 5;
+        if let Ok(inv) = inv.single() {
+            take_up(&mut hand, inv, items.as_deref(), "frost_wand");
+        }
     }
     if (0.5..3.5).contains(&t) {
         let x = 474.0 + ((t - 0.5) / 3.0) * 150.0;
@@ -8488,6 +8490,17 @@ fn hook_script(
 
 type BeamTarget<'a> = (&'a Kinematics, Option<&'a crate::creatures::custom::dummy::Tally>, Has<crate::creatures::body::elements::Burning>);
 
+/// Takes up the item `id` from wherever it is in the pack: its hotbar, its
+/// slot. (By id, not by slot: the pack's start changes, and a slot's item
+/// with it: scenarios that held a slot drifted onto boots and rings.)
+fn take_up(hand: &mut crate::hands::Hand, inv: &crate::hands::items::Inventory, items: Option<&crate::hands::items::Items>, id: &str) {
+    let Some(item) = items.and_then(|i| i.id(id)) else { return };
+    if let Some(i) = inv.slots.iter().position(|st| st.is_some_and(|st| st.item == item)) {
+        hand.bar = i / crate::hands::items::HOTBAR;
+        hand.slot = i % crate::hands::items::HOTBAR;
+    }
+}
+
 /// Beams and light: the frost ray swept over the pool (ice) and the lava
 /// pit (stone), the fire ray on a dummy, the vaporiser into the floor and
 /// at the sandbag, a star bomb into the floor. Logs what each did.
@@ -8501,6 +8514,7 @@ fn beams_script(
     mut cursor: ResMut<CursorOverride>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     mut state: Local<(u8, f32)>,
+    (inv, items): (Query<&crate::hands::items::Inventory, With<LocalPlayer>>, Option<Res<crate::hands::items::Items>>),
 ) {
     if s.name != "beams" {
         return;
@@ -8521,8 +8535,11 @@ fn beams_script(
         }
     };
     let (mut left, mut right) = (false, false);
-    // (Hotbar 3: the radiant, frost and blaze staffs.)
-    hand.bar = 2;
+    let mut hold = |id: &str| {
+        if let Ok(inv) = inv.single() {
+            take_up(&mut hand, inv, items.as_deref(), id);
+        }
+    };
     let sweep = |a: f32, b: f32, from: f32, secs: f32| a + (b - a) * ((t - from) / secs).clamp(0.0, 1.0);
     match state.0 {
         0 if t > 0.5 => {
@@ -8531,7 +8548,7 @@ fn beams_script(
         }
         // The frost ray, along the pool from its left bank.
         1 => {
-            hand.slot = 8;
+            hold("frost_staff");
             stand(438.0);
             cursor.0 = Some(Vec2::new(sweep(472.0, 622.0, 0.6, 2.4), floor as f32 - 1.5));
             left = t > 0.6;
@@ -8542,7 +8559,7 @@ fn beams_script(
         }
         // ... over the lava pit.
         2 => {
-            hand.slot = 8;
+            hold("frost_staff");
             stand(1326.0);
             cursor.0 = Some(Vec2::new(sweep(1356.0, 1434.0, 3.2, 2.0), floor as f32 - 7.5));
             left = t > 3.2;
@@ -8553,7 +8570,7 @@ fn beams_script(
         }
         // The fire ray on the first dummy.
         3 => {
-            hand.slot = 9;
+            hold("blaze_staff");
             stand(960.0);
             cursor.0 = Some(Vec2::new(1050.0, floor as f32 + 15.0));
             left = t > 5.6;
@@ -8566,7 +8583,7 @@ fn beams_script(
         }
         // The vaporiser into the floor ahead, then at the sandbag.
         4 => {
-            hand.slot = 7;
+            hold("radiant_staff");
             stand(960.0);
             cursor.0 = Some(Vec2::new(sweep(990.0, 1012.0, 7.2, 1.6), floor as f32 - 45.0));
             left = t > 7.2;
@@ -8576,7 +8593,7 @@ fn beams_script(
             }
         }
         5 => {
-            hand.slot = 7;
+            hold("radiant_staff");
             stand(1269.0);
             cursor.0 = Some(Vec2::new(1305.0, floor as f32 + 15.0));
             left = t > 9.0;
@@ -8589,7 +8606,7 @@ fn beams_script(
         }
         // A star bomb into the floor.
         6 => {
-            hand.slot = 7;
+            hold("radiant_staff");
             stand(780.0);
             cursor.0 = Some(Vec2::new(855.0, floor as f32 - 7.5));
             right = (10.8..11.2).contains(&t);
@@ -8631,27 +8648,22 @@ fn conjure_script(
     if s.name != "conjure" {
         return;
     }
-    let Ok((mut k, mut inv, mut hp)) = player.single_mut() else { return };
+    let Ok((mut k, inv, mut hp)) = player.single_mut() else { return };
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR;
     let count = |name: &str, xs: std::ops::Range<i32>, ys: std::ops::Range<i32>| {
         let Some(m) = sim.materials().id(name) else { return 0 };
         xs.flat_map(|x| ys.clone().map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count()
     };
-    // (The player isn't what's being tested: kept standing and whole.)
-    k.body.pos.x = 900.0;
+    // (The player isn't what's being tested: kept standing and whole; past
+    // the ice wall for the cloud and the fire ray, the orc behind it in the
+    // cloud's reach, 225.)
+    k.body.pos.x = if state.0 >= 4 { 1020.0 } else { 900.0 };
     hp.hp = hp.max;
-    hand.bar = 2;
     let orc = |e: Option<Entity>| e.and_then(|e| orcs.get(e).ok()).map(|(_, k, h, b)| (k.body.pos.x, h.hp, b));
     let (mut left, mut right) = (false, false);
     match state.0 {
         0 if t > 0.5 => {
-            // The acid staff out of the pack, onto hotbar 3.
-            if let Some(items) = &items
-                && let Some(i) = inv.slots.iter().position(|s| s.is_some_and(|s| items.def(s.item).id == "acid_staff"))
-            {
-                inv.slots.swap(i, 25);
-            }
             k.body.pos = Vec2::new(900.0, floor as f32 + 12.0);
             k.prev_pos = k.body.pos;
             crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(1170.0, floor as f32 + 15.0), |_| {});
@@ -8665,7 +8677,7 @@ fn conjure_script(
         }
         // An ice wall in the right-hand orc's way.
         2 => {
-            hand.slot = 8;
+            take_up(&mut hand, &inv, items.as_deref(), "frost_staff");
             cursor.0 = Some(Vec2::new(975.0, floor as f32 + 30.0));
             right = (0.8..0.9).contains(&t);
             if t > 3.0 {
@@ -8675,7 +8687,7 @@ fn conjure_script(
         }
         // A fire wall the left-hand orc walks into.
         3 => {
-            hand.slot = 9;
+            take_up(&mut hand, &inv, items.as_deref(), "blaze_staff");
             cursor.0 = Some(Vec2::new(810.0, floor as f32 + 30.0));
             right = (3.1..3.2).contains(&t);
             // Another orc, from the left, once the wall is up.
@@ -8694,7 +8706,7 @@ fn conjure_script(
         }
         // A toxic cloud on the orc behind the ice.
         4 => {
-            hand.slot = 5;
+            take_up(&mut hand, &inv, items.as_deref(), "acid_staff");
             let at = orc(state.1).map_or(1050.0, |o| o.0);
             cursor.0 = Some(Vec2::new(at, floor as f32 + 18.0));
             left = (6.1..6.2).contains(&t);
@@ -8705,7 +8717,7 @@ fn conjure_script(
         }
         // Lit with the fire ray.
         5 => {
-            hand.slot = 9;
+            take_up(&mut hand, &inv, items.as_deref(), "blaze_staff");
             let at = orc(state.1).map_or(1050.0, |o| o.0);
             cursor.0 = Some(Vec2::new(at, floor as f32 + 9.0));
             left = (9.1..9.6).contains(&t);
