@@ -303,7 +303,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, dread_script)
             .add_systems(Update, olmer_script)
             .add_systems(Update, heatglow_script)
-            .add_systems(PreUpdate, play_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, play_script.after(InputSystems).before(crate::camera::track_cursor).before(crate::pause::key))
             .add_systems(PreUpdate, title_script.after(InputSystems).before(crate::title::capture))
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7681,10 +7681,11 @@ fn templar_script(
     }
 }
 
-/// `play` (`PLATYPUS_WORLD=arena PLATYPUS_MODE=play`): what a new game
-/// starts with (logs the pack and what's worn), that the key left of 1
-/// doesn't bring up the dev tools, and dying: the player, 120 cells off,
-/// killed at 2 s, wakes at the start (logs where).
+/// `play` (`PLATYPUS_WORLD=arena PLATYPUS_MODE=play PLATYPUS_RESPAWN=1`):
+/// what a new game starts with (logs the pack and what's worn), that the
+/// key left of 1 doesn't bring up the dev tools, dying (the player, 120
+/// cells off, killed at 2 s, wakes at the start: logs where), and the game
+/// menu (Esc at 3 s and 3.5 s: logs it up and time paused, then not).
 #[allow(clippy::type_complexity)]
 fn play_script(
     s: Res<Scenario>,
@@ -7694,6 +7695,7 @@ fn play_script(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, Option<&crate::hands::items::Inventory>, &crate::gear::Equipment), With<LocalPlayer>>,
     mut respawned: MessageReader<crate::respawn::Respawned>,
+    (menu, virt): (Res<crate::pause::GameMenu>, Res<Time<Virtual>>),
     mut step: Local<u8>,
 ) {
     if s.name != "play" {
@@ -7721,6 +7723,13 @@ fn play_script(
     } else if *step == 3 && respawned.read().count() > 0 {
         *step = 4;
         info!("play: woke at ({:.0}, {:.0}), life {:.0}/{:.0}", k.body.pos.x, k.body.pos.y, h.hp, h.max);
+    } else if (*step == 4 && t > 3.0) || (*step == 6 && t > 3.5) {
+        *step += 1;
+        keys.press(KeyCode::Escape);
+    } else if *step == 5 || *step == 7 {
+        *step += 1;
+        keys.release(KeyCode::Escape);
+        info!("play: Esc: game menu {}, time {}", if menu.open { "up" } else { "shut" }, if virt.is_paused() { "paused" } else { "running" });
     }
 }
 

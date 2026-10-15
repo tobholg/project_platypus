@@ -1,7 +1,7 @@
 //! The dev menu (dev mode only: `mode.rs`). The key left of 1 (or F1) opens
 //! it, again (or Esc) shuts it. One panel on the left, tabs along its top:
 //!
-//! - **Player**: god mode, endless mana and stamina, heal, die, to the
+//! - **Player**: god mode (always, while the menu's open), endless mana and stamina, heal, die, to the
 //!   start, teleport (to where you next click in the world), the light
 //!   carried, a torch, the checkpoint (`respawn.rs`).
 //! - **Items**: the kits (`items.ron`), and every item by kind or by name
@@ -403,6 +403,7 @@ pub(crate) fn clicks(
             }
             Act::Die => {
                 cheats.god = false;
+                menu.open = false;
                 if let Some((h, ..)) = me.as_mut() {
                     h.hp = 0.0;
                 }
@@ -466,8 +467,10 @@ fn scroll(wheel: Res<AccumulatedMouseScroll>, menu: Res<DevMenu>, panel: Query<&
     }
 }
 
-fn god(cheats: Res<Cheats>, mut q: Query<&mut Health, With<LocalPlayer>>) {
-    if cheats.god {
+/// God mode: on with the button, and always while the menu's open (no dying
+/// while you pick things).
+fn god(cheats: Res<Cheats>, menu: Res<DevMenu>, mut q: Query<&mut Health, With<LocalPlayer>>) {
+    if cheats.god || menu.open {
         for mut h in &mut q {
             h.hp = h.max;
         }
@@ -561,7 +564,7 @@ fn spawn_panel(
                 tab(p, Tab::Player, &|p| {
                     heading(p, "Cheats");
                     row(p, |r| {
-                        button(r, "God mode", Act::God);
+                        button(r, "God mode (on while this is open)", Act::God);
                         button(r, "Endless mana & stamina", Act::Endless);
                         button(r, "Heal", Act::Heal);
                         button(r, "Die", Act::Die);

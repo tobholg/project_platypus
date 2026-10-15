@@ -1,4 +1,4 @@
-//! The hotbar (always, in play mode), the inventory screen (Esc or I: the
+//! The hotbar (always, in play mode), the inventory screen (I opens it, Esc or I shuts it: the
 //! three hotbars and the pack) and an open chest, Terraria-style:
 //!
 //! - drag a stack to another slot, or click it to pick it up and click
@@ -374,7 +374,9 @@ fn toggle(
     for mut v in &mut hotbar {
         *v = if dev.0 { Visibility::Hidden } else { Visibility::Visible };
     }
-    let want = if keys.any_just_pressed([KeyCode::KeyI, KeyCode::Escape]) { !open.0 } else { open.0 };
+    // (I opens and shuts it; Esc only shuts it: otherwise it's the game
+    // menu's, `pause.rs`.)
+    let want = if keys.just_pressed(KeyCode::KeyI) { !open.0 } else if keys.just_pressed(KeyCode::Escape) { false } else { open.0 };
     if want == open.0 && pack.iter().next().is_some_and(|v| (*v == Visibility::Visible) == open.0) {
         return;
     }
@@ -424,7 +426,7 @@ fn hints(hand: Res<Hand>, game: Res<crate::mode::Mode>, items: Option<Res<Items>
     let pick = items.as_ref().zip(player.single().ok()).and_then(|(items, inv)| inv.slots[hand.active()].map(|s| items.def(s.item).use_.clone())).is_some_and(|u| matches!(u, Use::Mine { back: false, area, .. } if area > 0.0));
     let mode = if pick { format!("   |   {} [C]", if hand.area { "area" } else { "precise" }) } else { String::new() };
     let dev = if game.dev() { "   |   dev menu: key left of 1" } else { "" };
-    let want = format!("hotbar {} of {BARS} [X]   |   {smart} [Alt]{mode}   |   inventory [Esc]   |   potion [H]{dev}", hand.bar + 1);
+    let want = format!("hotbar {} of {BARS} [X]   |   {smart} [Alt]{mode}   |   inventory [I]   |   potion [H]   |   menu [Esc]{dev}", hand.bar + 1);
     if text.0 != want {
         text.0 = want;
     }

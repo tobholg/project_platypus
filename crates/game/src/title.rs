@@ -51,20 +51,47 @@ pub struct Launch {
 }
 
 impl Launch {
-    /// The game again with this world (and this one ended).
+    /// The game again with this world, once this one's ended (and saved,
+    /// if it saves).
     fn start(&self) {
-        let Ok(exe) = std::env::current_exe() else { return error!("title: where's the game?") };
-        let mut cmd = std::process::Command::new(exe);
-        cmd.env("PLATYPUS_WORLD", &self.kind).env("PLATYPUS_SEED", self.seed.to_string()).env("PLATYPUS_MODE", self.mode.name()).env_remove("PLATYPUS_TITLE").env_remove("PLATYPUS_FRESH");
-        cmd.env("PLATYPUS_SAVE", self.save.as_deref().unwrap_or("off"));
-        match cmd.spawn() {
-            Ok(_) => info!("title: starting {} (seed {}, save {:?}, {})", self.kind, self.seed, self.save, self.mode.name()),
-            Err(e) => error!("title: {e}"),
-        }
+        let save = self.save.clone().unwrap_or_else(|| "off".into());
+        relaunch(vec![("PLATYPUS_WORLD", Some(self.kind.clone())), ("PLATYPUS_SEED", Some(self.seed.to_string())), ("PLATYPUS_MODE", Some(self.mode.name().into())), ("PLATYPUS_SAVE", Some(save)), ("PLATYPUS_TITLE", None), ("PLATYPUS_FRESH", None)]);
+        info!("title: next, {} (seed {}, save {:?}, {})", self.kind, self.seed, self.save, self.mode.name());
     }
 
     fn of(slot: &SlotInfo) -> Launch {
         Launch { kind: slot.kind.clone(), seed: slot.seed, save: Some(slot.name.clone()), mode: slot.mode }
+    }
+}
+
+/// What the game is started again with when this one ends: env set (or,
+/// `None`, unset). `main` starts it, after the app's done (and saved).
+static RELAUNCH: std::sync::Mutex<Option<Vec<(&'static str, Option<String>)>>> = std::sync::Mutex::new(None);
+
+pub fn relaunch(env: Vec<(&'static str, Option<String>)>) {
+    if let Ok(mut r) = RELAUNCH.lock() {
+        *r = Some(env);
+    }
+}
+
+/// The title screen again, over the save just left (a plain start).
+pub fn relaunch_to_title() {
+    relaunch(["PLATYPUS_WORLD", "PLATYPUS_SEED", "PLATYPUS_SAVE", "PLATYPUS_MODE", "PLATYPUS_FRESH", "PLATYPUS_TITLE"].into_iter().map(|k| (k, None)).collect());
+}
+
+/// After the app: start the game again, if it's been asked for.
+pub fn relaunch_if_asked() {
+    let Some(env) = RELAUNCH.lock().ok().and_then(|mut r| r.take()) else { return };
+    let Ok(exe) = std::env::current_exe() else { return eprintln!("title: where's the game?") };
+    let mut cmd = std::process::Command::new(exe);
+    for (k, v) in env {
+        match v {
+            Some(v) => cmd.env(k, v),
+            None => cmd.env_remove(k),
+        };
+    }
+    if let Err(e) = cmd.spawn() {
+        eprintln!("title: {e}");
     }
 }
 

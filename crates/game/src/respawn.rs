@@ -1,8 +1,10 @@
-//! Dying, playing (`mode.rs`): the screen goes dark, "You died", and you
-//! wake at your checkpoint (where the world began, until something sets
-//! another: a bed, the story) with your health back. In dev mode you get
-//! your health back where you stand (`PLATYPUS_RESPAWN=1`: at the
-//! checkpoint too). The checkpoint is kept in the save.
+//! Dying: the screen goes dark, "You died", and you wake at your checkpoint
+//! (where the world began, until something sets another: a bed, the story)
+//! with your health back; in play and in dev mode alike (dev mode has god
+//! mode while the dev menu's open: `devmenu.rs`). A scenario or a replay
+//! gets its health back where it stands, so it runs on as written
+//! (`PLATYPUS_RESPAWN=1`: it wakes at the checkpoint too). The checkpoint
+//! is kept in the save.
 
 use bevy::prelude::*;
 
@@ -41,6 +43,13 @@ impl Plugin for RespawnPlugin {
             .add_systems(Startup, spawn_veil)
             .add_systems(Update, veil);
     }
+}
+
+/// A scripted run (a scenario, a replay): dying, the player's health comes
+/// back where it stands.
+pub fn heals_in_place() -> bool {
+    let set = |k: &str| std::env::var(k).is_ok();
+    (set("PLATYPUS_SCENARIO") || set("PLATYPUS_REPLAY")) && !set("PLATYPUS_RESPAWN")
 }
 
 /// Where a body this tall stands at the checkpoint (its centre): on the

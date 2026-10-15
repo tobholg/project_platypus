@@ -662,8 +662,7 @@ fn fall_damage(mut landed: MessageReader<Landed>, mut q: Query<(&FallDamage, &mu
 pub struct PlayerDeaths(pub u32);
 
 /// Dead creatures burst into blood particles that land as real cells (they
-/// run and pool). The player, playing, wakes at its checkpoint; developing,
-/// it just gets its health back where it stands (`respawn.rs`).
+/// run and pool). The player wakes at its checkpoint (`respawn.rs`).
 /// Particles of solid, powder or liquid (not rain, dust or embers) faster
 /// than this (cells/s) hurt what they fly through...
 const PELT_SAFE: f32 = 135.0;
@@ -852,7 +851,7 @@ type Mortal<'a> = (
 pub(crate) fn deaths(
     mut commands: Commands,
     mut sim: ResMut<SimWorld>,
-    (mut deaths, mode, checkpoint, mut respawned): (ResMut<PlayerDeaths>, Res<crate::mode::Mode>, Res<crate::respawn::Checkpoint>, MessageWriter<crate::respawn::Respawned>),
+    (mut deaths, checkpoint, mut respawned): (ResMut<PlayerDeaths>, Res<crate::respawn::Checkpoint>, MessageWriter<crate::respawn::Respawned>),
     mut died: MessageWriter<Died>,
     sprites: Query<(&Sprite, &Transform), With<body::animation::CreatureSprite>>,
     mut q: Query<Mortal>,
@@ -885,9 +884,9 @@ pub(crate) fn deaths(
             deaths.0 += 1;
             commands.entity(entity).remove::<(body::elements::Burning, body::elements::Coated, body::elements::Chilled)>();
             h.hp = h.max;
-            // (Playing: back at the checkpoint, `respawn.rs`; developing,
-            // where it stands.)
-            if !mode.dev() || std::env::var("PLATYPUS_RESPAWN").is_ok() {
+            // (Back at the checkpoint, `respawn.rs`; a scenario or a
+            // replay, where it stands, so the run goes on as written.)
+            if !crate::respawn::heals_in_place() {
                 k.body.pos = crate::respawn::respawn_at(&sim, &checkpoint, k.body.half);
                 k.body.vel = Vec2::ZERO;
                 k.prev_pos = k.body.pos;

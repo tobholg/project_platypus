@@ -47,6 +47,7 @@ mod light;
 mod magic;
 mod mode;
 mod particles;
+mod pause;
 mod potion;
 mod observe;
 mod progress;
@@ -191,11 +192,13 @@ fn main() {
         .add_plugins(sound::SoundPlugin)
         .add_plugins(backdrop::BackdropPlugin)
         .insert_resource(mode)
-        .add_plugins((respawn::RespawnPlugin, devmenu::DevMenuPlugin, title::TitlePlugin { show: show_title, behind: launch, fresh }))
+        .add_plugins((respawn::RespawnPlugin, devmenu::DevMenuPlugin, pause::PausePlugin, title::TitlePlugin { show: show_title, behind: launch, fresh }))
         .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed, mode }))
         .add_plugins(spikes_plugin)
         .add_systems(Last, pace_frames)
         .run();
+    // (The title or the game menu asked for another world: `title.rs`.)
+    title::relaunch_if_asked();
     // (A replay run as a test says how it went: `replay.rs`.)
     if let AppExit::Error(code) = exit {
         std::process::exit(code.get() as i32);
