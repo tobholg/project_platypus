@@ -7794,7 +7794,8 @@ fn toad_script(
 /// `soft`: the floor between them earth, so its skeletons claw up out of
 /// it; `body`: an orc killed by it first, to be raised; `near`: the player
 /// walks up to it (it blinks away); `kill`: struck till it dies at 9 s (what
-/// it raised falls apart)). Logs what it does, its zombies, where the
+/// it raised falls apart); `pack`: its zombies struck down at 7 s (it rests
+/// before raising another pack)). Logs what it does, its zombies, where the
 /// player is, the health lost.
 #[allow(clippy::too_many_arguments)]
 fn necro_script(
@@ -7881,6 +7882,14 @@ fn necro_script(
         keys.release(KeyCode::KeyD);
         if t > 1.0 {
             keys.press(toward);
+        }
+    }
+    // `pack`: its zombies struck down at 7 s (it rests before raising again).
+    if mode == "pack" && (7.0..7.1).contains(&t) {
+        for (ze, c, zk, _) in &them {
+            if c.kind == "zombie" {
+                hits.write(crate::combat::Hit { target: ze, damage: 999.0, harm: crate::creatures::Harm::Fire, knock: Vec2::ZERO, stun: 0.0, at: zk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+            }
         }
     }
     if mode == "kill" && t > 9.0 && t > state.1 {

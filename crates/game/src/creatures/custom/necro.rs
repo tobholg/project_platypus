@@ -5,19 +5,23 @@
 //! (its brain: `Range`; it floats: `fly`) and works from there:
 //!
 //! - **Wailing skulls**: the green gathers in its outstretched hand (the
-//!   tell), then four spectral skulls fly out and steer for you, slow at
-//!   first, curving round what's in the way; a blade bursts one.
+//!   tell), then four spectral skulls fly out and bend toward you, slow at
+//!   first, turning off rock ahead; once one's gone past you it flies on (it
+//!   doesn't come round again). A blade bursts one.
 //! - **Grave hands**: its hand turns down and a ring of green spreads on the
-//!   ground under you (the tell); then rotting hands burst up there and
-//!   grab whoever's in it (struggle free, or don't be there).
-//! - **Soul drain**: its hand claws at you (the tell) and a tether crackles
-//!   out to you, draining you and mending it, while it can see you and
-//!   you're neither too near nor too far.
+//!   ground under you (the tell, a second); then rotting hands burst up
+//!   there and fling whoever's still in it.
+//! - **Soul drain**: it stops, focuses, and your life is drawn out of you
+//!   and into it, streaming between you, mending it, while it can see you
+//!   and you're neither too near nor too far; hurt it enough and it loses
+//!   its hold.
 //! - **Raise**: its arms go up and motes rise where the dead will stand,
-//!   then zombies: bodies lying near get up (what they had spills), others
-//!   claw up out of the earth (soft ground) or heave up out of cracked rock.
-//!   At most `MINIONS`; what it raised doesn't burn in the sun, stays down
-//!   when killed, and is gone the moment it dies.
+//!   then a pack of zombies: bodies lying near get up (what they had
+//!   spills), others claw up out of the earth (soft ground) or heave up out
+//!   of cracked rock. One pack at a time: only when the last of it's down,
+//!   and a while after (`PACK_REST`: your chance at it). What it raised
+//!   doesn't burn in the sun, stays down when killed, and is gone the moment
+//!   it dies.
 //! - **Blink**: come too close and it folds into a column of grave-smoke,
 //!   a ring snapping out, a streak of souls to where it's back; its shade
 //!   lingers a moment where it was.
@@ -50,12 +54,18 @@ pub struct Necro {
     /// Its skulls in flight.
     #[serde(skip)]
     skulls: Vec<Skull>,
-    /// Its grave hands: where, how long since, whom they hold.
+    /// Its grave hands: where, how long since.
     #[serde(skip)]
-    hands: Option<(Vec2, f32, Option<Entity>)>,
-    /// Its tether's far end (while it drains).
+    hands: Option<(Vec2, f32)>,
+    /// Whose life it draws (their middle, while it drains); how much it's
+    /// been hurt the while, and its health last tick.
     #[serde(skip)]
     tether: Option<Vec2>,
+    #[serde(skip)]
+    focus: (f32, f32),
+    /// Its pack up last tick (when the last goes down, it rests).
+    #[serde(skip)]
+    pack: usize,
     /// Rings spreading (where, how old, how far they go); a streak of souls
     /// (from, to, how old).
     #[serde(skip)]
@@ -78,6 +88,8 @@ struct Skull {
     pos: Vec2,
     vel: Vec2,
     age: f32,
+    /// Still bending toward you (once you're behind it, it flies on).
+    seeking: bool,
 }
 
 /// Raised by that necromancer: held up by it.
@@ -151,37 +163,40 @@ const BREATHER: f32 = 0.7;
 const WAIL: f32 = 0.5;
 const SKULLS: (u32, f32) = (4, 0.16);
 const SKULL_SPEED: (f32, f32) = (70.0, 165.0);
-const SKULL_TURN: f32 = 2.6;
+const SKULL_TURN: f32 = 1.7;
 const SKULL_LIFE: f32 = 4.5;
 const SKULL_HIT: f32 = 9.0;
-const SKULL_NEAR: f32 = 3.5;
+const SKULL_NEAR: f32 = 5.0;
 const WAIL_RANGE: f32 = 320.0;
 const WAIL_EVERY: f32 = 3.8;
 /// The hands: its tell this long; the ring (cells across) spreading this
-/// long before they burst up; they hold whom they catch this long; what
-/// they do catching; it calls them at what's this near; then it waits.
+/// long before they burst up; up this long; what they do to whom they
+/// catch (how much, how hard up, how hard out); it calls them at what's
+/// this near; then it waits.
 const BECKON: f32 = 0.4;
 const RING: f32 = 15.0;
-const RISE: f32 = 0.75;
-const GRASP: f32 = 1.7;
-const GRASP_HIT: f32 = 10.0;
+const RISE: f32 = 1.0;
+const GRASP: f32 = 0.6;
+const GRASP_HIT: (f32, f32, f32) = (14.0, 320.0, 120.0);
 const HANDS_RANGE: f32 = 280.0;
 const HANDS_EVERY: f32 = 6.5;
-/// The drain: its tell this long; at most this long, every so often this
-/// much taken (and mended); from this near to this far; then it waits.
-const CLAW: f32 = 0.45;
-const DRAIN: (f32, f32, f32) = (3.0, 0.25, 2.2);
+/// The drain: its focus gathering this long; at most this long, every so
+/// often this much taken (and mended); hurt this much the while, it loses
+/// its hold; from this near to this far; then it waits.
+const CLAW: f32 = 0.55;
+const DRAIN: (f32, f32, f32) = (3.0, 0.25, 2.5);
+const FOCUS: f32 = 18.0;
 const DRAIN_RANGE: (f32, f32) = (34.0, 250.0);
 const DRAIN_EVERY: f32 = 10.0;
-/// Raising: the tell this long; at most this many up at once; bodies this
-/// near get up; the rest stand this far toward you from it (cells, each a
-/// little apart), coming up this long apart; then it waits.
+/// Raising: the tell this long; a pack this many; bodies this near get up;
+/// the rest stand this far toward you from it (cells, each a little apart),
+/// coming up this long apart; the last of a pack down, it rests this long.
 const RAISE: f32 = 1.1;
 const MINIONS: usize = 3;
 const BODIES_NEAR: f32 = 160.0;
 const STAND: f32 = 45.0;
 const APART: f32 = 0.45;
-const RAISE_EVERY: f32 = 14.0;
+const PACK_REST: f32 = 14.0;
 /// Blinking: when you're this near; back this far from you (cells, on its
 /// side of you if it can, else past you); then it waits.
 const BLINK_NEAR: f32 = 52.0;
@@ -217,6 +232,22 @@ fn motes() -> crate::magic::runes::Emitter {
     }
 }
 
+/// Life drawn out of one: red motes.
+fn life() -> crate::magic::runes::Emitter {
+    crate::magic::runes::Emitter {
+        count: 0.0,
+        life: (0.3, 0.6),
+        colors: vec![(255, 120, 110), (220, 40, 50), (140, 20, 30)],
+        speed: 70.0,
+        spread: 0.7,
+        gravity: 0.0,
+        drag: 1.0,
+        size: 1.4,
+        jitter: 0.0,
+        glow: true,
+    }
+}
+
 fn smoke() -> crate::magic::runes::Emitter {
     crate::magic::runes::Emitter {
         count: 0.0,
@@ -232,8 +263,7 @@ fn smoke() -> crate::magic::runes::Emitter {
     }
 }
 
-/// Its cape, its hood's tail, the rags off its waist; its charms; it can
-/// grab (`Moves`: its hands' hold).
+/// Its cape, its hood's tail, the rags off its waist.
 fn on_spawn(add: On<Add, Necro>, mut commands: Commands) {
     let e = add.entity;
     let seed = e.to_bits();
@@ -247,14 +277,13 @@ fn on_spawn(add: On<Add, Necro>, mut commands: Commands) {
     for (n, (x0, x1, rows, front)) in [(-5.0, -1.0, 15, false), (-1.0, 3.0, 17, true), (2.0, 5.0, 13, true), (-4.0, 0.0, 12, true)].into_iter().enumerate() {
         drapes.own(rag((38, 32, 46), 2, rows, (x0, x1, 4.0), 0.7, front, 20.0, (-25.0, 140.0)), seed ^ (n as u64 + 7));
     }
-    commands.entity(e).insert((drapes, crate::creatures::moves::Moves::new(Vec::new())));
+    commands.entity(e).insert(drapes);
 }
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn think(
     mut commands: Commands,
     sim: Res<SimWorld>,
-    time: Res<Time>,
     mut q: Query<(Entity, &mut Necro, &mut Kinematics, &mut Controls, &mut Animator, &mut Health, Option<&mut Drapes>, Option<&Children>)>,
     hunted: Query<(Entity, &Kinematics, &Team), Without<Necro>>,
     raised: Query<&RaisedBy>,
@@ -265,7 +294,6 @@ fn think(
     (mut sparks, mut flares): (ResMut<crate::vfx::Sparks>, MessageWriter<crate::fx::Flare>),
 ) {
     let mote = motes();
-    let now = time.elapsed_secs();
     for (e, mut o, mut k, mut c, mut anim, mut health, drapes, children) in &mut q {
         let (pos, half, facing) = (k.body.pos, k.body.half, k.loco.facing);
         if !o.started {
@@ -285,6 +313,13 @@ fn think(
         for (i, l) in o.charms.iter_mut().enumerate() {
             l.swing(skull + Vec2::new((i as f32 * 2.0 - 1.0) * 2.0, -1.0), 260.0);
         }
+        // Its pack: the last of it down, it rests a while before raising
+        // another (a chance at it).
+        let up = raised.iter().filter(|r| r.0 == e).count();
+        if o.pack > 0 && up == 0 {
+            o.ready[RAISE_I] = PACK_REST;
+        }
+        o.pack = up;
         let doing = o.doing;
         let mut next = doing;
         match doing {
@@ -292,11 +327,10 @@ fn think(
                 anim.force = None;
                 if let Some((who, tp, _, grounded)) = target {
                     let dist = tp.distance(pos);
-                    let up = raised.iter().filter(|r| r.0 == e).count();
                     if dist < BLINK_NEAR && o.ready[BLINK_I] <= 0.0 {
                         blink(&mut o, &mut k, drapes, children, &sprites, &mut commands, &sim, tp, &mut sparks, &mut flares, &mut sounds);
-                    } else if o.ready[RAISE_I] <= 0.0 && up < MINIONS {
-                        let room = MINIONS - up;
+                    } else if o.ready[RAISE_I] <= 0.0 && up == 0 {
+                        let room = MINIONS;
                         let mut spots: Vec<(Vec2, Option<Entity>)> = bodies.iter().filter(|(_, _, bk)| bk.body.pos.distance(pos) < BODIES_NEAR).take(room).map(|(be, _, bk)| (bk.body.pos, Some(be))).collect();
                         let toward = (tp.x - pos.x).signum();
                         for n in 0..room.saturating_sub(spots.len()) {
@@ -313,7 +347,8 @@ fn think(
                             next = Doing::Raise(0.0);
                         }
                     } else if o.ready[DRAIN_I] <= 0.0 && (DRAIN_RANGE.0..DRAIN_RANGE.1).contains(&dist) && clear(&sim, palm, tp) {
-                        sounds.write(crate::sound::PlaySound::at("zap", palm).pitch(0.4).volume(0.6));
+                        sounds.write(crate::sound::PlaySound::at("groan", palm).pitch(0.6).volume(0.8));
+                        o.focus = (0.0, health.hp);
                         next = Doing::Drain(0.0, who);
                     } else if o.ready[HANDS_I] <= 0.0 && o.hands.is_none() && grounded && dist < HANDS_RANGE {
                         sounds.write(crate::sound::PlaySound::at("groan", pos).pitch(0.7).volume(0.8));
@@ -336,8 +371,9 @@ fn think(
                 } else if t >= WAIL + n as f32 * SKULLS.1 {
                     // One more: up and out, fanned, to curve round to you.
                     let spread = (n as f32 - (SKULLS.0 - 1) as f32 / 2.0) * 0.45;
-                    let up = Vec2::from_angle(55f32.to_radians() + spread);
-                    o.skulls.push(Skull { pos: palm, vel: Vec2::new(up.x * facing.signum(), up.y) * SKULL_SPEED.0, age: 0.0 });
+                    let up = Vec2::from_angle(50f32.to_radians() + spread);
+                    let side = target.map_or(facing.signum(), |(_, tp, ..)| if tp.x < pos.x { -1.0 } else { 1.0 });
+                    o.skulls.push(Skull { pos: palm, vel: Vec2::new(up.x * side, up.y) * SKULL_SPEED.0, age: 0.0, seeking: true });
                     sounds.write(crate::sound::PlaySound::at("groan", palm).pitch(2.2 - n as f32 * 0.15).volume(0.6));
                     next = if n + 1 >= SKULLS.0 {
                         o.ready[WAIL_I] = WAIL_EVERY;
@@ -357,7 +393,7 @@ fn think(
                     // The ring, under their feet.
                     let feet = tp - Vec2::Y * th.y;
                     let at = ground(&sim, feet + Vec2::Y * 4.0, 40).unwrap_or(feet);
-                    o.hands = Some((at, 0.0, None));
+                    o.hands = Some((at, 0.0));
                     sounds.write(crate::sound::PlaySound::at("pour", at).pitch(0.3).volume(0.8));
                 }
                 next = if t + DT >= BECKON {
@@ -369,6 +405,8 @@ fn think(
             }
             Doing::Drain(t, who) => {
                 anim.play("drain");
+                // (Hurt while it focuses: too much, and it loses its hold.)
+                o.focus.0 += (o.focus.1 - health.hp).max(0.0);
                 let theirs = hunted.get(who).ok().map(|h| h.1.body.pos);
                 let holds = theirs.is_some_and(|tp| {
                     let d = tp.distance(palm);
@@ -382,10 +420,10 @@ fn think(
                     if !holds {
                         o.ready[DRAIN_I] = DRAIN_EVERY * 0.4;
                     }
-                } else if !holds || t >= CLAW + DRAIN.0 {
+                } else if !holds || t >= CLAW + DRAIN.0 || o.focus.0 >= FOCUS {
                     o.tether = None;
                     o.ready[DRAIN_I] = DRAIN_EVERY;
-                    sounds.write(crate::sound::PlaySound::at("zap", palm).pitch(1.4).volume(0.5));
+                    sounds.write(crate::sound::PlaySound::at("groan", palm).pitch(if o.focus.0 >= FOCUS { 1.6 } else { 0.9 }).volume(0.7));
                     next = Doing::Float;
                 } else {
                     let tp = theirs.unwrap_or(palm);
@@ -395,11 +433,11 @@ fn think(
                     if beat {
                         hits.write(crate::combat::Hit { target: who, damage: DRAIN.2, harm: Harm::Void, knock: Vec2::ZERO, stun: 0.0, at: tp, dir: (palm - tp).normalize_or(Vec2::Y), weight: 0.2, crit: false });
                         health.hp = (health.hp + DRAIN.2).min(health.max);
-                        sounds.write(crate::sound::PlaySound::at("zap", tp).pitch(0.5).volume(0.35));
+                        flares.write(crate::fx::Flare { at: tp, color: [1.2, 0.2, 0.2], life: 0.2 });
+                        flares.write(crate::fx::Flare { at: palm, color: [0.4, 1.4, 0.5], life: 0.2 });
                     }
-                    // Souls streaming from them to it.
-                    let along = (palm - tp).normalize_or(Vec2::Y);
-                    sparks.emit(&mote, 2, tp + along.perp() * ((now * 31.0).sin() * 3.0), along * 4.0, Vec2::ZERO);
+                    // Their life drawn out of them: red motes off them.
+                    sparks.emit(&life(), 2, tp, (palm - tp).normalize_or(Vec2::Y), Vec2::ZERO);
                     next = Doing::Drain(t + DT, who);
                 }
             }
@@ -447,12 +485,21 @@ fn think(
                         }
                     }
                     sounds.write(crate::sound::PlaySound::at("groan", pos).pitch(0.4).volume(1.0));
-                    o.ready[RAISE_I] = RAISE_EVERY;
+                    // (No more till this pack's down: `pack`.)
+                    o.ready[RAISE_I] = 1.0;
                     Doing::Float
                 } else {
                     Doing::Raise(t + DT)
                 };
             }
+        }
+        o.focus.1 = health.hp;
+        // Starting a work, it turns to face you (backing off, it faced away).
+        if doing == Doing::Float
+            && next != Doing::Float
+            && let Some((_, tp, ..)) = target
+        {
+            k.loco.facing = if tp.x < pos.x { -1.0 } else { 1.0 };
         }
         // A work done: a breather before the next.
         if next == Doing::Float && doing != Doing::Float {
@@ -478,7 +525,18 @@ fn think(
         for (i, s) in o.skulls.iter_mut().enumerate() {
             s.age += DT;
             let speed = SKULL_SPEED.0 + (SKULL_SPEED.1 - SKULL_SPEED.0) * (s.age / 1.5).min(1.0);
-            let mut want = aim.map_or(s.vel, |a| (a - s.pos).normalize_or(s.vel.normalize_or(Vec2::X)) * speed);
+            // (Bending toward you while you're ahead of it; past you, it flies
+            // on: it doesn't come round again.)
+            if let Some(a) = aim
+                && s.age > 0.4
+                && (a - s.pos).normalize_or_zero().dot(s.vel.normalize_or(Vec2::X)) < 0.2
+            {
+                s.seeking = false;
+            }
+            let mut want = match aim {
+                Some(a) if s.seeking => (a - s.pos).normalize_or(s.vel.normalize_or(Vec2::X)) * speed,
+                _ => s.vel.normalize_or(Vec2::X) * speed,
+            };
             // (Something in the way ahead: turn off it, the open way.)
             let ahead = s.pos + s.vel.normalize_or(Vec2::X) * 8.0;
             if solid(&sim, ahead) {
@@ -508,41 +566,29 @@ fn think(
             sounds.write(crate::sound::PlaySound::at("groan", s.pos).pitch(2.6).volume(0.4));
         }
 
-        // Its hands: the ring spreading, then up out of the ground, holding
-        // whoever's in it.
-        if let Some((at, t, held)) = o.hands {
+        // Its hands: the ring spreading, then up out of the ground, flinging
+        // whoever's still in it.
+        if let Some((at, t)) = o.hands {
             let t = t + DT;
             if t < RISE {
                 if (t * 20.0) as u32 % 2 == 0 {
                     let x = (t * 53.0).sin() * RING;
                     sparks.emit(&mote, 1, at + Vec2::new(x, 1.0), Vec2::Y, Vec2::ZERO);
                 }
-                o.hands = Some((at, t, held));
             } else if t - DT < RISE {
-                // Up: whoever's feet are in the ring, grabbed.
                 sounds.write(crate::sound::PlaySound::at("groan", at).pitch(0.6).volume(1.0));
                 sounds.write(crate::sound::PlaySound::at("break", at).pitch(0.6).volume(0.8));
                 sparks.emit(&smoke(), 16, at, Vec2::Y, Vec2::ZERO);
-                let caught = hunted.iter().filter(|(_, _, tm)| tm.hunted()).find(|(_, tk, _)| {
+                for (who, tk, _) in hunted.iter().filter(|(_, _, tm)| tm.hunted()) {
                     let feet = tk.body.pos - Vec2::Y * tk.body.half.y;
-                    (feet.x - at.x).abs() <= RING + tk.body.half.x && (feet.y - at.y).abs() <= 8.0
-                });
-                let held = caught.map(|(who, tk, _)| {
-                    commands.entity(who).insert(crate::creatures::moves::Held { by: e, at: tk.body.pos });
-                    hits.write(crate::combat::Hit { target: who, damage: GRASP_HIT, harm: Harm::Pierce, knock: Vec2::ZERO, stun: 0.2, at: tk.body.pos, dir: Vec2::Y, weight: 0.6, crit: false });
-                    who
-                });
-                o.hands = Some((at, t, held));
-            } else if t >= RISE + GRASP {
-                if let Some(who) = held
-                    && let Ok(mut ec) = commands.get_entity(who)
-                {
-                    ec.remove::<crate::creatures::moves::Held>();
+                    if (feet.x - at.x).abs() <= RING + tk.body.half.x && (feet.y - at.y).abs() <= 8.0 {
+                        let out = (tk.body.pos.x - at.x).signum();
+                        let knock = Vec2::new(out * GRASP_HIT.2, GRASP_HIT.1);
+                        hits.write(crate::combat::Hit { target: who, damage: GRASP_HIT.0, harm: Harm::Pierce, knock, stun: 0.25, at: feet, dir: knock.normalize(), weight: 1.0, crit: false });
+                    }
                 }
-                o.hands = None;
-            } else {
-                o.hands = Some((at, t, held));
             }
+            o.hands = (t < RISE + GRASP).then_some((at, t));
         }
 
         // Rings spreading, its streak of souls fading.
@@ -660,8 +706,21 @@ impl Default for NecroCanvas {
     }
 }
 
-/// A skull's look (5 × 5, from its middle, facing right): bone, sockets.
-const SKULL_PX: [&str; 5] = [".bbb.", "bBBBb", "bkBkb", "bBBBb", ".b.b."];
+/// A skull's look (13 × 11, from its middle, facing right): an outline, a
+/// rounded crown, a brow, sockets alight, a nose, a jaw of teeth.
+const SKULL_PX: [&str; 11] = [
+    "....ooooo....",
+    "..oobbbbboo..",
+    ".obbBBBBBbbo.",
+    "obbBBBBBBBbbo",
+    "obeeeBBBeeebo",
+    "obeeeBBBeeebo",
+    "obBeeBkBeeBbo",
+    ".obBBkkkBBbo.",
+    "..obBBBBBbo..",
+    "..obobobobo..",
+    "...oo.o.oo...",
+];
 
 #[allow(clippy::too_many_arguments)]
 fn draw(mut commands: Commands, mut canvas: ResMut<NecroCanvas>, mut images: ResMut<Assets<Image>>, camera: Query<(&GlobalTransform, &ChunkLoader), With<MainCamera>>, q: Query<&Necro>, time: Res<Time>, mut sprites: CanvasSprites) {
@@ -675,29 +734,44 @@ fn draw(mut commands: Commands, mut canvas: ResMut<NecroCanvas>, mut images: Res
         for l in &o.charms {
             draw_links(&mut px, l.points(), [214, 206, 178, 255], [120, 112, 96, 255]);
         }
-        // The skulls: a green haze, bone, dark sockets.
+        // The skulls: a green haze about each, a flame of it behind, the
+        // skull in it: bone, its sockets alight, its jaw.
         for s in &o.skulls {
             let c = s.pos.floor().as_ivec2();
+            let back = -s.vel.normalize_or(Vec2::X);
+            for i in 0..14 {
+                let f = i as f32 / 14.0;
+                let p = (s.pos + back * (6.0 + i as f32 * 1.4) + back.perp() * ((now * 18.0 + i as f32 * 0.9).sin() * (1.0 + f * 2.5))).floor().as_ivec2();
+                px.put(p.x, p.y, if f < 0.4 { glow } else { dim });
+                if f < 0.5 {
+                    px.put(p.x, p.y + 1, dim);
+                }
+            }
+            for i in 0..24 {
+                let a = i as f32 / 24.0 * std::f32::consts::TAU + now * 3.0;
+                let p = (s.pos + Vec2::from_angle(a) * (8.5 + (now * 9.0 + i as f32).sin() * 0.6)).floor().as_ivec2();
+                if i % 2 == 0 {
+                    px.put(p.x, p.y, dim);
+                }
+            }
             let flip = s.vel.x < 0.0;
             for (dy, row) in SKULL_PX.iter().enumerate() {
                 for (dx, ch) in row.chars().enumerate() {
-                    let x = if flip { 2 - dx as i32 } else { dx as i32 - 2 };
+                    let x = if flip { 6 - dx as i32 } else { dx as i32 - 6 };
                     let col = match ch {
-                        'b' => [200, 230, 205, 255],
+                        'o' => [24, 64, 34, 255],
+                        'b' => [196, 226, 202, 255],
                         'B' => [236, 255, 240, 255],
-                        'k' => [20, 60, 30, 255],
+                        'e' => [150, 255, 165, 255],
+                        'k' => [30, 70, 40, 255],
                         _ => continue,
                     };
-                    px.put(c.x + x, c.y + 2 - dy as i32, col);
+                    px.put(c.x + x, c.y + 5 - dy as i32, col);
                 }
-            }
-            for i in 0..6 {
-                let p = (s.pos - s.vel.normalize_or(Vec2::X) * (3.0 + i as f32 * 1.5) + Vec2::new(0.0, ((now * 20.0 + i as f32).sin()) * 0.8)).floor().as_ivec2();
-                px.put(p.x, p.y, if i < 3 { glow } else { dim });
             }
         }
         // The hands: a ring of green on the ground, spreading; then up.
-        if let Some((at, t, _)) = o.hands {
+        if let Some((at, t)) = o.hands {
             if t < RISE {
                 let r = RING * (t / RISE).min(1.0);
                 for i in 0..48 {
@@ -726,24 +800,31 @@ fn draw(mut commands: Commands, mut canvas: ResMut<NecroCanvas>, mut images: Res
                 }
             }
         }
-        // The tether: a crackling line, new every few frames.
+        // Its drain: their life drawn out of them, streaming to it along a
+        // sagging arc, red leaving them, green reaching it; a red glow about
+        // them, pulsing.
         if let Some(tp) = o.tether {
-            let (a, b) = (o.palm, tp);
-            let seed = (now * 24.0) as u32;
-            let n = (a.distance(b) / 4.0).ceil().max(2.0) as u32;
-            let side = (b - a).perp().normalize_or(Vec2::Y);
-            let mut last = a;
-            for i in 1..=n {
-                let f = i as f32 / n as f32;
-                let jag = if i == n { 0.0 } else { (((seed.wrapping_mul(2654435761).wrapping_add(i * 977)) % 7) as f32 - 3.0) * 1.2 };
-                let p = a.lerp(b, f) + side * jag;
-                let m = (p.distance(last) * 1.5).ceil() as i32;
-                for s in 0..=m {
-                    let q = last.lerp(p, s as f32 / m.max(1) as f32).floor().as_ivec2();
-                    px.put(q.x, q.y, glow);
-                    px.put(q.x, q.y + 1, dim);
+            let (a, b) = (tp, o.palm);
+            let mid = (a + b) / 2.0 + Vec2::Y * (a.distance(b) * 0.18);
+            let at = |f: f32| a.lerp(mid, f).lerp(mid.lerp(b, f), f);
+            for strand in 0..3 {
+                for i in 0..10 {
+                    let f = (now * 0.8 + i as f32 / 10.0 + strand as f32 * 0.033).fract();
+                    let wob = Vec2::new(0.0, ((now * 7.0 + i as f32 + strand as f32 * 2.0).sin()) * (2.0 - f * 1.5));
+                    let p = (at(f) + wob + Vec2::Y * (strand as f32 - 1.0) * 1.5).floor().as_ivec2();
+                    let red = [255, 90, 80, 255];
+                    let col = if f < 0.45 { red } else if f < 0.7 { [230, 200, 120, 255] } else { glow };
+                    px.put(p.x, p.y, col);
+                    px.put(p.x + 1, p.y, col);
+                    px.put(p.x, p.y + 1, col);
                 }
-                last = p;
+            }
+            let pulse = 7.0 + (now * 8.0).sin() * 1.5;
+            for i in 0..32 {
+                let p = (a + Vec2::from_angle(i as f32 / 32.0 * std::f32::consts::TAU + now) * pulse).floor().as_ivec2();
+                if i % 2 == 0 {
+                    px.put(p.x, p.y, [220, 60, 60, 255]);
+                }
             }
         }
         // Rings snapping out (a blink, a raising).
