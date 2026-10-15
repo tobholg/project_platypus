@@ -304,6 +304,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, olmer_script)
             .add_systems(Update, heatglow_script)
             .add_systems(PreUpdate, play_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, title_script.after(InputSystems).before(crate::title::capture))
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7720,6 +7721,51 @@ fn play_script(
     } else if *step == 3 && respawned.read().count() > 0 {
         *step = 4;
         info!("play: woke at ({:.0}, {:.0}), life {:.0}/{:.0}", k.body.pos.x, k.body.pos.y, h.hp, h.max);
+    }
+}
+
+/// `title` (`PLATYPUS_TITLE=1`, best with `PLATYPUS_SAVE_DIR` a scratch
+/// folder): the title over the world behind it; at 4 s Enter (Continue, or
+/// for a new game's world, New game); logs whether the title's up, time
+/// paused and whether there's a save, before and after (Ctrl+S at 6 s).
+/// `PLATYPUS_TITLE_PICK=arena`: the Arena picked instead (the game starts
+/// again with it: offscreen too, as this one is).
+#[allow(clippy::too_many_arguments)]
+fn title_script(s: Res<Scenario>, title: Res<crate::title::Title>, virt: Res<Time<Virtual>>, slot: Option<Res<crate::save::SaveSlot>>, mut keys: ResMut<ButtonInput<KeyCode>>, mut saves: MessageWriter<crate::save::SaveNow>, mut picks: MessageWriter<crate::title::Picked>, mut step: Local<u8>) {
+    if s.name != "title" {
+        return;
+    }
+    let t = s.elapsed;
+    let saved = || slot.as_ref().is_some_and(|sl| sl.dir.join("world.ron").exists());
+    let state = |w: &str| info!("title: {w}: up {}, paused {}, saved {}", title.up, virt.is_paused(), saved());
+    match *step {
+        0 if t > 3.5 => {
+            *step = 1;
+            state("before");
+            saves.write(crate::save::SaveNow);
+        }
+        1 if t > 4.0 => {
+            *step = 2;
+            info!("title: a save asked for at the title: saved {}", saved());
+            if std::env::var("PLATYPUS_TITLE_PICK").is_ok_and(|v| v == "arena") {
+                picks.write(crate::title::Picked(crate::title::Choice::Arena));
+            } else {
+                keys.press(KeyCode::Enter);
+            }
+        }
+        2 if t > 4.1 => {
+            *step = 3;
+            keys.release(KeyCode::Enter);
+        }
+        3 if t > 6.0 => {
+            *step = 4;
+            saves.write(crate::save::SaveNow);
+        }
+        4 if t > 7.0 => {
+            *step = 5;
+            state("after");
+        }
+        _ => {}
     }
 }
 

@@ -76,6 +76,8 @@ pub struct SaveSlot {
     load: bool,
     /// The last save's files being written (on a thread of its own).
     writing: Option<std::thread::JoinHandle<()>>,
+    /// Not saving for now (the title's up: `title.rs`).
+    pub hold: bool,
 }
 
 impl Plugin for SavePlugin {
@@ -86,7 +88,7 @@ impl Plugin for SavePlugin {
         let fresh = std::env::var("PLATYPUS_FRESH").is_ok_and(|v| !v.is_empty());
         let load = !fresh && dir.join("world.ron").exists();
         info!("save: {} ({})", dir.display(), if load { "loading it" } else { "a new one" });
-        app.insert_resource(SaveSlot { dir, kind: self.kind.clone(), seed: self.seed, mode: self.mode, next: AUTOSAVE, load, writing: None })
+        app.insert_resource(SaveSlot { dir, kind: self.kind.clone(), seed: self.seed, mode: self.mode, next: AUTOSAVE, load, writing: None, hold: false })
             .add_systems(PostStartup, load_world)
             .add_systems(Update, (keys, apply_player.after(crate::hands::give_start)))
             .add_systems(Update, settle_hp.after(crate::gear::apply))
@@ -177,7 +179,6 @@ pub struct SlotInfo {
     pub kind: String,
     pub seed: u64,
     pub mode: crate::mode::Mode,
-    pub tick: u64,
     /// When it was last saved.
     pub saved: std::time::SystemTime,
 }
@@ -187,7 +188,7 @@ pub fn peek(name: &str) -> Option<SlotInfo> {
     let path = saves_dir().join(name).join("world.ron");
     let file: WorldFile = read_ron(&path).ok()?;
     let saved = std::fs::metadata(&path).and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
-    (file.version == VERSION).then(|| SlotInfo { name: name.to_string(), kind: file.kind, seed: file.seed, mode: crate::mode::Mode::parse(&file.mode).unwrap_or_default(), tick: file.tick, saved })
+    (file.version == VERSION).then(|| SlotInfo { name: name.to_string(), kind: file.kind, seed: file.seed, mode: crate::mode::Mode::parse(&file.mode).unwrap_or_default(), saved })
 }
 
 /// Every save there is, the last saved first.
@@ -350,6 +351,9 @@ fn save(
         return;
     }
     slot.next = AUTOSAVE;
+    if slot.hold {
+        return;
+    }
     let Some(items) = items else { return };
     // (Nothing to save until there's a player, loaded or new.)
     let Ok((k, health, mana, pack, eq, progress, gold, pickup)) = player.single() else { return };

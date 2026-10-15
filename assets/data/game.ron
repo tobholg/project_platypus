@@ -1,0 +1,2 @@
+// The game's name (the title screen, the window: `title.rs`).
+(title: "Undertower", tagline: "working title")

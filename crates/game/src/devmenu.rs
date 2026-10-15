@@ -224,7 +224,7 @@ impl Plugin for DevMenuPlugin {
             .add_systems(Startup, spawn_panel.after(crate::fight::make_timeline))
             // (Before the UI reads the mouse: a teleport's click is the menu's.)
             .add_systems(PreUpdate, teleport.after(bevy::input::InputSystems).before(bevy::ui::UiSystems::Focus))
-            .add_systems(PreUpdate, (toggle, typing).chain().after(bevy::input::InputSystems).after(crate::editor::capture).after(crate::bestiary::panel::capture))
+            .add_systems(PreUpdate, (toggle, typing).chain().after(bevy::input::InputSystems).after(crate::editor::capture).after(crate::bestiary::panel::capture).after(crate::title::capture))
             .add_systems(PreUpdate, (clicks, hold, scroll).chain().after(bevy::ui::UiSystems::Focus))
             .add_systems(Update, (rebuild, show, caption))
             .add_systems(Update, endless)

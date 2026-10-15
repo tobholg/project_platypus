@@ -11,6 +11,8 @@
 //!   `off`: none; scenarios and the arena and flat sandboxes save only when
 //!   it's given), `PLATYPUS_FRESH=1`
 //!   to start it over: see `save.rs`
+//! - none of these: the title screen (`title.rs`; `PLATYPUS_TITLE=1` shows
+//!   it anyway, `0` never)
 //! - `PLATYPUS_MODE`      `play` (a new game's kit, no dev tools) or `dev`
 //!   (the default; a save keeps its own): see `mode.rs`
 
@@ -62,6 +64,7 @@ mod show;
 mod spikes;
 mod talk;
 mod tempo;
+mod title;
 mod sky;
 mod sound;
 mod tools;
@@ -83,14 +86,32 @@ fn main() {
     let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
     let sim_threads = std::env::var("PLATYPUS_SIM_THREADS").ok().and_then(|v| v.parse().ok()).unwrap_or((cores * 2 / 3).max(2));
     let _ = rayon::ThreadPoolBuilder::new().num_threads(sim_threads).build_global();
-    let seed: u64 = std::env::var("PLATYPUS_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
     let materials_path = data::data_path("materials.ron");
     let src = std::fs::read_to_string(&materials_path)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", materials_path.display()));
     let materials = Arc::new(MaterialTable::from_ron(&src).unwrap_or_else(|e| panic!("{e}")));
 
-    let kind = std::env::var("PLATYPUS_WORLD").unwrap_or_else(|_| "large".into());
-    let save = match std::env::var("PLATYPUS_SAVE").ok().as_deref() {
+    // Started plainly (no world, scenario or save named): the title screen,
+    // over the last save there is or a new game's world (`title.rs`).
+    let named = |k: &str| std::env::var(k).is_ok();
+    // (A scenario with PLATYPUS_TITLE=1 sees the title as a plain start would.)
+    let forced = std::env::var("PLATYPUS_TITLE").is_ok_and(|v| v == "1");
+    let plain = !named("PLATYPUS_WORLD") && (!named("PLATYPUS_SCENARIO") || forced) && !named("PLATYPUS_SAVE");
+    let show_title = match std::env::var("PLATYPUS_TITLE").ok().as_deref() {
+        Some("0" | "off") => false,
+        Some(_) => true,
+        None => plain && !camera::headless(),
+    };
+    let behind = (show_title && plain).then(title::behind_the_title);
+    let seed: u64 = match &behind {
+        Some((l, _)) => l.seed,
+        None => std::env::var("PLATYPUS_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1),
+    };
+    let kind = match &behind {
+        Some((l, _)) => l.kind.clone(),
+        None => std::env::var("PLATYPUS_WORLD").unwrap_or_else(|_| "large".into()),
+    };
+    let save = match behind.as_ref().map_or_else(|| std::env::var("PLATYPUS_SAVE").ok(), |(l, _)| Some(l.save.clone().unwrap_or_else(|| "off".into()))).as_deref() {
         Some("off" | "") => None,
         Some(name) => Some(name.to_string()),
         // (A scenario doesn't touch your save unless told to; the sandboxes
@@ -99,17 +120,18 @@ fn main() {
         None => Some(format!("{kind}-{seed}")),
     };
     // Play or dev: as asked, else as the save was, else dev (`mode.rs`).
-    let mode = mode::Mode::from_env().or_else(|| save.as_deref().and_then(save::peek).map(|s| s.mode)).unwrap_or_default();
-    let generator: Arc<dyn ChunkGenerator> = match std::env::var("PLATYPUS_WORLD").as_deref() {
+    let mode = behind.as_ref().map(|(l, _)| l.mode).or_else(mode::Mode::from_env).or_else(|| save.as_deref().and_then(save::peek).map(|s| s.mode)).unwrap_or_default();
+    let (launch, fresh) = behind.unwrap_or_else(|| (title::Launch { kind: kind.clone(), seed, save: save.clone(), mode }, false));
+    let generator: Arc<dyn ChunkGenerator> = match kind.as_str() {
         // PLATYPUS_WORLD=arena: a sandbox for weapons, spells and creatures
         // (dummies, time controls, overlays, the art editor: `arena.rs`).
         // PLATYPUS_ARENA: its layout (`flat`, `cave`, `slopes`, `stairs`,
         // `real`, `real:SEED:X:Y`; the sandbox by default).
-        Ok("arena") => Arc::new(ArenaGen::with_layout(&materials, platypus_worldgen::arena::Layout::parse(&std::env::var("PLATYPUS_ARENA").unwrap_or_default()))),
-        Ok("flat") => Arc::new(FlatGen { width_chunks: 96, height_chunks: 36, floor: 300, stone: materials.expect_id("stone") }),
+        "arena" => Arc::new(ArenaGen::with_layout(&materials, platypus_worldgen::arena::Layout::parse(&std::env::var("PLATYPUS_ARENA").unwrap_or_default()))),
+        "flat" => Arc::new(FlatGen { width_chunks: 96, height_chunks: 36, floor: 300, stone: materials.expect_id("stone") }),
         // PLATYPUS_WORLD=small: the small preset (quicker to look around).
-        Ok("small") => Arc::new(TerrainGen::new(seed, Preset::Small, &materials).with_lairs(&lairs(), &materials)),
-        Ok("medium") => Arc::new(TerrainGen::new(seed, Preset::Medium, &materials).with_lairs(&lairs(), &materials)),
+        "small" => Arc::new(TerrainGen::new(seed, Preset::Small, &materials).with_lairs(&lairs(), &materials)),
+        "medium" => Arc::new(TerrainGen::new(seed, Preset::Medium, &materials).with_lairs(&lairs(), &materials)),
         _ => Arc::new(TerrainGen::new(seed, Preset::Large, &materials).with_lairs(&lairs(), &materials)),
     };
     let spawn = generator.spawn_point();
@@ -134,7 +156,7 @@ fn main() {
                 .set(ImagePlugin::default_nearest())
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: "Project Platypus".into(),
+                        title: title::GameInfo::load().title,
                         resolution: (1920, 1080).into(),
                         // Uncapped while measuring, so numbers aren't hidden behind vsync.
                         present_mode: if benchmarking { PresentMode::AutoNoVsync } else { PresentMode::AutoVsync },
@@ -169,7 +191,7 @@ fn main() {
         .add_plugins(sound::SoundPlugin)
         .add_plugins(backdrop::BackdropPlugin)
         .insert_resource(mode)
-        .add_plugins((respawn::RespawnPlugin, devmenu::DevMenuPlugin))
+        .add_plugins((respawn::RespawnPlugin, devmenu::DevMenuPlugin, title::TitlePlugin { show: show_title, behind: launch, fresh }))
         .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed, mode }))
         .add_plugins(spikes_plugin)
         .add_systems(Last, pace_frames)
