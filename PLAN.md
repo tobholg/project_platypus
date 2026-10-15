@@ -14,7 +14,9 @@ Templar; zombies and slimes earlier) and `bosses`, `creature-editor` and
 `powder` (blight done, with the watcher) still ahead; it resumes after the
 prologue. On `main` as of 2026-10-15 (d88b38b): everything through the
 necromancer, the heat model (soaking, magma, heat as energy), the easier
-pogo and dash attacks. The watcher is on `roster-3`.
+pogo and dash attacks. The watcher is on `roster-3`; `play-mode` (on top
+of it, unmerged) has the play/dev modes, the kits, death and checkpoints,
+the dev menu and the title screen.
 
 ## The prologue: implementation plan (PR, agreed 2026-10-15)
 
@@ -57,6 +59,14 @@ and search straight into the pack, creatures to place, the world: time,
 weather, events, resets; the dev tools and their settings; overlays; the
 arena's time controls; the editors), replacing the dev panel, the arena
 panel and the dev hotbar's scattered keys.
+*Built (2026-10-15, `play-mode`):* `mode.rs` (play or dev, kept in the
+save), kits in `items.ron` (play, dev, miner, fighter, mage, smith),
+`respawn.rs` (dying in play: "You died", waking at the checkpoint, kept in
+the save), `devmenu.rs` (tabs: Player, Items, Creatures, World, Tools,
+View, Time, Sounds; replaces the dev and arena panels), `title.rs` (the
+title over the last save, paused; Continue, New game, Load, Dev world,
+Arena; the name in `game.ron`). Rags are the prologue's to give; until
+then a new game starts in the valley with the play kit.
 
 **2. `sites`: authored places in the generated world.** The world plan
 places hand-authored sites (constraints, reserved space, blended into the
