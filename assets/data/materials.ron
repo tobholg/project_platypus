@@ -61,7 +61,7 @@
         (name: "stone",    kind: Static, density: 2600, hardness: 60,  crumbles_into: "gravel", above: (1400, "magma"), colors: [(92, 92, 100), (122, 120, 128), (104, 104, 112)]),
         (name: "dirt",     kind: Static, density: 1500, hardness: 20,  crumbles_into: "soil", colors: [(96, 62, 36), (118, 78, 44), (104, 68, 40)]),
         (name: "grass",    kind: Static, living: true, density: 1400, hardness: 10,  flammability: 2, ignites_at: 250, burn_time: 10, burns_into: "soil", crumbles_into: "soil", chars_at: 1.0, colors: [(58, 140, 44), (82, 170, 56)]),
-        (name: "snow",     kind: Static, density: 400,  hardness: 5,   heat: -10, above: (1, "water"), conductivity: 15, coats: "wet", latent: 300, colors: [(226, 232, 240), (246, 248, 252)]),
+        (name: "snow",     kind: Static, density: 400,  hardness: 5,   heat: -10, above: (1, "water"), conductivity: 15, coats: "wet", latent: 40, colors: [(226, 232, 240), (246, 248, 252)]),
         // Hard to get going: a small fire on a trunk often fizzles (fizzles:
         // a lone flame goes out), a crown or a blaze takes it (SPEC §3.8).
         (name: "wood", loot: Wood,     kind: Static, object: true, living: true, grows: true, density: 700,  hardness: 25,  flammability: 6, ignites_at: 280, conductivity: 12, burn_time: 225, spread: 2, fizzles: 40, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal", colors: [(58, 36, 20), (88, 58, 30), (118, 80, 42), (138, 96, 54)]),
@@ -175,8 +175,8 @@
         (name: "spikes", kind: Static, density: 7800, hardness: 70, corrosive: 40,
             colors: [(58, 58, 64), (104, 104, 114), (150, 150, 162), (190, 190, 200)]),
         (name: "glass",    kind: Static, density: 2500, hardness: 30, inert: true,  above: (1500, "magma"), opacity: 5, optics: (ior: 1.5, disperse: 0.2, reflect: 0.04, tint: (232, 250, 246)), colors: [(170, 200, 205), (196, 222, 226)]),
-        (name: "ice",      kind: Static, slippery: true, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), coats: "wet", opacity: 14, optics: (ior: 1.31, reflect: 0.04, tint: (205, 232, 255)), latent: 480, colors: [(170, 210, 240), (200, 230, 250)]),
-        (name: "frozen_blood", kind: Static, slippery: true, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), coats: "bloody", latent: 480, colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),
+        (name: "ice",      kind: Static, slippery: true, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), coats: "wet", opacity: 14, optics: (ior: 1.31, reflect: 0.04, tint: (205, 232, 255)), latent: 60, colors: [(170, 210, 240), (200, 230, 250)]),
+        (name: "frozen_blood", kind: Static, slippery: true, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), coats: "bloody", latent: 60, colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),
 
         // ---- plants: don't block creatures, burn readily, sway in the wind ----
         (name: "leaves",     kind: Plant, living: true, density: 200, hardness: 2, flammability: 18, ignites_at: 260, burn_time: 40, chars_at: 1.0, opacity: 70, colors: [(24, 64, 26), (36, 92, 34), (52, 122, 42), (76, 150, 54)]),
@@ -230,25 +230,25 @@
         // what it touches, and sets again where it cools. Its ore melts into
         // it a little hotter (a furnace's heat; lava only melts silver's).
         // Stone gives way at 1 400: iron and mithril want firebrick moulds.
-        // Molten, it gives up its heat slowly (conductivity 25) and lingers
-        // past its freezing point (latent 1 200: it sets with chance (d /
-        // 1 200)² a tick, d degrees under), so it runs and fills a mould for a
-        // few seconds before it sets, as metal does.
-        (name: "copper", loot: Ore,   kind: Static, fortified: true, density: 8900, hardness: 45, object: true, charges: true, conductivity: 200, item: "copper_bar", above: (1085, "molten_copper"), latent: 150,
+        // Molten, it gives up its heat slowly (conductivity 25) and, held at
+        // its freezing point, gives up its latent heat (500: what melting it
+        // took) before it sets, so it runs and fills a mould for a few seconds
+        // first, as metal does; water poured on quenches it.
+        (name: "copper", loot: Ore,   kind: Static, fortified: true, density: 8900, hardness: 45, object: true, charges: true, conductivity: 200, item: "copper_bar", above: (1085, "molten_copper"), latent: 500,
             colors: [(150, 82, 40), (196, 112, 58), (226, 146, 86), (240, 180, 120)]),
-        (name: "molten_copper", kind: Liquid, density: 8000, dispersion: 3, viscosity: 70, hot: true, heat: 1300, charges: true, conductivity: 25, glow: (255, 120, 40), below: (1025, "copper"), latent: 1200,
+        (name: "molten_copper", kind: Liquid, density: 8000, dispersion: 3, viscosity: 70, hot: true, heat: 1300, charges: true, conductivity: 25, glow: (255, 120, 40), below: (1025, "copper"), latent: 500,
             colors: [(255, 110, 30), (255, 150, 60), (255, 190, 110)]),
-        (name: "iron", loot: Ore,     kind: Static, fortified: true, density: 7900, hardness: 70, object: true, charges: true, conductivity: 180, item: "iron_bar", above: (1538, "molten_iron"), latent: 150,
+        (name: "iron", loot: Ore,     kind: Static, fortified: true, density: 7900, hardness: 70, object: true, charges: true, conductivity: 180, item: "iron_bar", above: (1538, "molten_iron"), latent: 500,
             colors: [(92, 94, 102), (128, 130, 140), (160, 162, 172), (196, 198, 206)]),
-        (name: "molten_iron", kind: Liquid, density: 7000, dispersion: 3, viscosity: 90, hot: true, heat: 1750, charges: true, conductivity: 25, glow: (255, 170, 70), below: (1470, "iron"), latent: 1200,
+        (name: "molten_iron", kind: Liquid, density: 7000, dispersion: 3, viscosity: 90, hot: true, heat: 1750, charges: true, conductivity: 25, glow: (255, 170, 70), below: (1470, "iron"), latent: 500,
             colors: [(255, 150, 50), (255, 200, 110), (255, 235, 180)]),
-        (name: "silver", loot: Ore,   kind: Static, fortified: true, density: 10500, hardness: 55, object: true, charges: true, conductivity: 220, item: "silver_bar", above: (962, "molten_silver"), latent: 150,
+        (name: "silver", loot: Ore,   kind: Static, fortified: true, density: 10500, hardness: 55, object: true, charges: true, conductivity: 220, item: "silver_bar", above: (962, "molten_silver"), latent: 500,
             colors: [(160, 164, 176), (196, 200, 212), (224, 228, 238), (250, 250, 255)]),
-        (name: "molten_silver", kind: Liquid, density: 9300, dispersion: 3, viscosity: 60, hot: true, heat: 1180, charges: true, conductivity: 25, glow: (255, 150, 90), below: (900, "silver"), latent: 1200,
+        (name: "molten_silver", kind: Liquid, density: 9300, dispersion: 3, viscosity: 60, hot: true, heat: 1180, charges: true, conductivity: 25, glow: (255, 150, 90), below: (900, "silver"), latent: 500,
             colors: [(255, 180, 120), (255, 214, 170), (255, 240, 220)]),
-        (name: "mithril", loot: Ore,  kind: Static, density: 4500, hardness: 100, object: true, charges: true, conductivity: 200, item: "mithril_bar", above: (1750, "molten_mithril"), latent: 150, glow: (6, 24, 28), shimmer: 180,
+        (name: "mithril", loot: Ore,  kind: Static, density: 4500, hardness: 100, object: true, charges: true, conductivity: 200, item: "mithril_bar", above: (1750, "molten_mithril"), latent: 500, glow: (6, 24, 28), shimmer: 180,
             colors: [(70, 150, 160), (100, 196, 206), (140, 230, 236), (200, 250, 252)]),
-        (name: "molten_mithril", kind: Liquid, density: 4000, dispersion: 3, viscosity: 80, hot: true, heat: 1950, charges: true, conductivity: 25, glow: (120, 240, 255), below: (1680, "mithril"), latent: 1200,
+        (name: "molten_mithril", kind: Liquid, density: 4000, dispersion: 3, viscosity: 80, hot: true, heat: 1950, charges: true, conductivity: 25, glow: (120, 240, 255), below: (1680, "mithril"), latent: 500,
             colors: [(140, 240, 255), (190, 250, 255), (230, 255, 255)]),
         // Gold set solid (molten gold cooled: in a mould, on a lava pit's
         // floor). A thing like any metal, but gold is counted, never carried:
@@ -273,15 +273,15 @@
         (name: "coal", loot: Ore,     kind: Powder, density: 1300, hardness: 10, flammability: 30, ignites_at: 350, burn_time: 200, burns_into: "ash", burns_into_chance: 90, colors: [(24, 24, 26), (40, 40, 44)]),
 
         // ---- liquids ------------------------------------------------------
-        (name: "water",    kind: Liquid, density: 1000, charges: true, dispersion: 9, above: (100, "steam"), below: (0, "ice"), coats: "wet", opacity: 6, optics: (ior: 1.33, reflect: 0.02, tint: (150, 205, 245)), latent: 250, colors: [(38, 92, 196), (48, 110, 214)]),
+        (name: "water",    kind: Liquid, density: 1000, charges: true, dispersion: 9, above: (100, "steam"), below: (0, "ice"), coats: "wet", opacity: 6, optics: (ior: 1.33, reflect: 0.02, tint: (150, 205, 245)), latent: 300, latent_below: 60, capacity: 2.0, colors: [(38, 92, 196), (48, 110, 214)]),
         // Floats on water and burns on it (a burning liquid isn't put out by
         // what it floats on). A poor heat conductor, so a burning slick
         // doesn't boil away the lake under it.
         (name: "oil",      kind: Liquid, density: 800,  dispersion: 6, flammability: 90, ignites_at: 220, burn_time: 25, conductivity: 6, coats: "oily", viscosity: 40, colors: [(56, 38, 24), (72, 52, 30)]),
         // Boils and freezes like water (a little below 0: what's dissolved in it).
-        (name: "blood",    kind: Liquid, density: 1060, charges: true, dispersion: 5, above: (100, "blood_steam"), below: (-2, "frozen_blood"), coats: "bloody", latent: 250, viscosity: 70, colors: [(136, 10, 16), (164, 18, 24)]),
+        (name: "blood",    kind: Liquid, density: 1060, charges: true, dispersion: 5, above: (100, "blood_steam"), below: (-2, "frozen_blood"), coats: "bloody", latent: 300, latent_below: 60, capacity: 2.0, viscosity: 70, colors: [(136, 10, 16), (164, 18, 24)]),
         // What the walking dead bleed: old blood gone dark and thick.
-        (name: "rot",      kind: Liquid, density: 1080, dispersion: 3, above: (100, "blood_steam"), coats: "bloody", latent: 250, viscosity: 150, colors: [(84, 14, 16), (102, 20, 20), (66, 18, 18)]),
+        (name: "rot",      kind: Liquid, density: 1080, dispersion: 3, above: (100, "blood_steam"), coats: "bloody", latent: 300, latent_below: 60, capacity: 2.0, viscosity: 150, colors: [(84, 14, 16), (102, 20, 20), (66, 18, 18)]),
         // A blue slime's body: springy goo that won't burn.
         (name: "blue_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, above: (110, "steam"), coats: "slimy", glow: (8, 16, 34), opacity: 25, colors: [(84, 150, 226), (68, 128, 208), (104, 170, 240), (76, 140, 218)]),
         // An acid slime's body: goo that eats what it's against (slowly,
@@ -344,7 +344,8 @@
         (name: "fire",     kind: Fire, hot: true, heat: 800, heat_source: true, lifetime: (12, 40), decays_into: "smoke", glow: (255, 170, 70), colors: [(255, 220, 90), (255, 140, 30), (230, 70, 20)]),
     ],
 
-    // (latent: how long freezing, melting and boiling take; see material.rs.)
+    // (latent: the heat freezing, melting and boiling take, held at the point
+    // meanwhile; capacity: heat a degree holds; see material.rs.)
 
     // Pairwise, while touching. Checked in both directions. chance: /256 a tick
     // (chance_4096 instead, for slow ones).

@@ -907,6 +907,9 @@ impl World {
         if let Some(mut c) = self.get(p)
             && !c.is_air()
         {
+            // (Heat, not degrees: what holds more for a degree warms less.)
+            let cap = self.materials.phys(c.material).capacity.max(1) as i32;
+            let amount = (amount as i32 * 16 / cap) as i16;
             c.heat = c.heat.saturating_add(amount).clamp(-300, 4000);
             self.set(p, c);
         }

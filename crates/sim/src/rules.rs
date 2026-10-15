@@ -62,7 +62,9 @@ pub(crate) fn update_cell(h: &mut Hood, x: i32, y: i32, mut c: Cell) {
     if (c.heat != 0 || p.climate_sensitive) && transition(h, x, y, c, &p) {
         return;
     }
-    if c.heat != 0 || p.heat_source {
+    // (At ambient but past its point there, as water in a freezing land is:
+    // it still gives up its latent heat to the cold, held at its point.)
+    if c.heat != 0 || p.heat_source || p.climate_sensitive && effective(c.heat, &p, h.ambient(x, y)) != 0 {
         conduct(h, x, y, &mut c, &p);
     }
     if c.flags & flags::BURNING != 0 && burn(h, x, y, &mut c, &p) {
@@ -162,27 +164,25 @@ fn transition(h: &mut Hood, x: i32, y: i32, c: Cell, p: &MatPhys) -> bool {
         }
         h.wake(x, y);
     }
-    let (into, past) = if t >= p.above_at as i32 {
-        (p.above_into, t - p.above_at as i32)
+    let (into, past, latent, up) = if t >= p.above_at as i32 {
+        (p.above_into, t - p.above_at as i32, p.latent as i32, true)
     } else if t <= p.below_at as i32 {
-        (p.below_into, p.below_at as i32 - t)
+        (p.below_into, p.below_at as i32 - t, p.latent_below as i32, false)
     } else {
         return false;
     };
-    // Latent heat: the further past, the sooner (and it waits awake).
-    if p.latent > 0 {
-        let d = (past as u64 + 1).min(1 << 16);
-        let l = p.latent as u64;
-        let chance = (d * d * 4096 / (l * l)).min(4096) as u32;
-        if !h.rng.chance4096(chance) {
-            h.wake(x, y);
-            return false;
-        }
+    // Latent heat: held at the point (`effective`), it takes in (or gives
+    // up) that much heat before it changes; till then it waits, awake.
+    if past < latent {
+        h.wake(x, y);
+        return false;
     }
     let mut n = spawn(h, into);
-    // Keep the heat (molten stone is hot), unless the new material pins its own.
+    // Keep the heat (molten stone is hot), less what the change took (or
+    // plus what it gave), unless the new material pins its own.
     if !h.mats.phys(into).heat_source {
-        n.heat = c.heat;
+        let spent = if up { -latent } else { latent };
+        n.heat = (c.heat as i32 + spent).clamp(HEAT_MIN as i32, HEAT_MAX as i32) as i16;
     }
     h.set(x, y, n);
     note_if_solid_lost(h, x, y, p, into);
@@ -560,20 +560,27 @@ fn burn(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) -> bool {
 /// Heat flow. Each warm cell *pulls* toward its neighbours' temperatures and
 /// cools toward ambient, writing only itself, so a region at equilibrium stops
 /// writing and sleeps. A neighbour still at ambient is seeded once so it
-/// starts taking part.
+/// starts taking part. Each pair moves the same heat both ways (each by its
+/// own `capacity`), so what one cell gives the other takes: water on molten
+/// metal soaks its heat up, held at 100 °C while it boils (`effective`), and
+/// carries it off as steam.
 fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
     let before = c.heat;
     if p.heat_source {
         c.heat = p.heat;
     }
+    let amb = h.ambient(x, y);
     let mut delta = 0i32;
-    // (Heat soaks through solids and molten matter: rock, sand, ore, metal,
-    // magma. Everything else keeps heat's old rules: each neighbour's share
-    // rounded down, cooling at least a degree a tick; what burns above all:
-    // wood barely carries heat, and fire's balance (a lone flame fizzles, a
-    // blaze takes) rests on it.)
+    // (Heat holds and moves as energy in what doesn't burn: rock, sand, ore,
+    // metal, magma, water. What burns, flames and gases keep heat's old
+    // rules: each neighbour's share rounded down, cooling at least a degree
+    // a tick; wood barely carries heat, and fire's balance (a lone flame
+    // fizzles, a blaze takes) rests on it.)
+    let burns = p.flammability > 0 || matches!(p.kind, Kind::Fire | Kind::Gas) || c.flags & flags::BURNING != 0;
+    // (Solids and molten matter buried in solid barely lose heat but to what
+    // they touch.)
     let soaks = matches!(p.kind, Kind::Static | Kind::Powder) || p.kind == Kind::Liquid && p.hot;
-    let burns = !soaks || p.flammability > 0 || c.flags & flags::BURNING != 0;
+    let me = effective(c.heat, p, amb);
     let mut shares = 0i32;
     let mut inflow = false;
     let mut open = false;
@@ -592,7 +599,7 @@ fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
         if n.heat == 0 && !np.heat_source {
             // Seed only if the neighbour will then keep pulling enough to stay
             // warm; a seed of 1 would cool straight back to 0 and be re-seeded forever.
-            let seed = (c.heat as i32 * k / CONDUCTION_DIV) as i16;
+            let seed = (me * k / CONDUCTION_DIV) as i16;
             if seed.abs() >= 2 {
                 n.heat = seed;
                 h.set(nx, ny, n);
@@ -600,9 +607,9 @@ fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
             continue;
         }
         // A source always reads as its fixed temperature, whatever it stores.
-        let nh = if np.heat_source { np.heat } else { n.heat };
-        let d = (nh as i32 - c.heat as i32) * k;
-        inflow |= d > 0 && c.heat >= 0 || d < 0 && c.heat < 0;
+        let nh = if np.heat_source { np.heat as i32 } else { effective(n.heat, np, amb) };
+        let d = (nh - me) * k;
+        inflow |= d > 0 && me >= 0 || d < 0 && me < 0;
         delta += d;
         shares += d / CONDUCTION_DIV;
     }
@@ -612,17 +619,23 @@ fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
         }
         return;
     }
-    // (Summed, then divided, the remainder rounded at random: a small
-    // difference still moves heat now and then, where rounding each
-    // neighbour's share down stalled the front a few cells out.)
-    // (Its change unrounded, in /`FINE` of a degree, for whether it's settled.)
-    let mut fine = delta * (FINE / CONDUCTION_DIV);
-    delta = if burns { shares } else { round_div(h, delta, CONDUCTION_DIV) };
-    let excess = c.heat as i32;
-    let rate = if open || burns { RELAX * (FINE / CONDUCTION_DIV) } else { RELAX_BURIED };
-    fine -= excess.signum() * excess.abs() * rate;
-    let mut relax = if burns { (excess.abs() * RELAX) >> 10 } else { round_div(h, excess.abs() * rate, FINE) };
-    if burns || excess.abs() < RELAX_FLOOR {
+    // (Summed, then divided by how much heat a degree of it holds, the
+    // remainder rounded at random: a small difference still moves heat now
+    // and then, where rounding each neighbour's share down stalled the front
+    // a few cells out. Its change unrounded, in /`FINE` of a degree, for
+    // whether it's settled.)
+    let cap = p.capacity as i32;
+    let mut fine = delta * (FINE / CONDUCTION_DIV) * 16 / cap;
+    delta = if burns { shares } else { round_div(h, delta * 16, CONDUCTION_DIV * cap) };
+    // (Cooling toward ambient goes by its temperature; what it loses comes
+    // out of its heat, so a cell holding latent heat at its point gives it
+    // up there, freezing, or takes it in, melting in a warm room.)
+    let excess = me;
+    let storing = me != c.heat as i32;
+    let rate = if open || burns || !soaks { RELAX * (FINE / CONDUCTION_DIV) } else { RELAX_BURIED };
+    fine -= excess.signum() * excess.abs() * rate * 16 / cap;
+    let mut relax = if burns { (excess.abs() * RELAX) >> 10 } else { round_div(h, excess.abs() * rate * 16, FINE * cap) };
+    if burns || excess.abs() < RELAX_FLOOR && !storing {
         relax = relax.max(1);
     }
     let relax = relax.min(excess.abs());
@@ -638,7 +651,7 @@ fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
         delta = 0;
     }
     let mut heat = (c.heat as i32 + delta).clamp(HEAT_MIN as i32, HEAT_MAX as i32);
-    if heat.signum() != excess.signum() && relax > 0 && !inflow {
+    if !storing && heat.signum() != excess.signum() && relax > 0 && !inflow {
         heat = 0; // don't overshoot ambient
     }
     c.heat = heat as i16;
@@ -649,6 +662,22 @@ fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
         // so its region stays awake, or its heat would be stranded there.)
         h.wake(x, y);
     }
+}
+
+/// A cell's temperature (over ambient `amb`) as it touches others: held at
+/// its melting or boiling point (or freezing point) while it takes in (or
+/// gives up) its latent heat; the heat it stores past the point waits to
+/// change it (`transition`).
+#[inline]
+fn effective(heat: i16, p: &MatPhys, amb: i32) -> i32 {
+    let mut t = heat as i32;
+    if p.latent > 0 && p.above_at != i16::MAX {
+        t = t.min(p.above_at as i32 - amb);
+    }
+    if p.latent_below > 0 && p.below_at != i16::MIN {
+        t = t.max(p.below_at as i32 - amb);
+    }
+    t
 }
 
 /// `v / d`, its remainder rounded up with the chance it's of `d` (d > 0).

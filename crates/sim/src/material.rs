@@ -141,11 +141,21 @@ pub struct MaterialDef {
     /// (lava mounds) where water goes flat.
     #[serde(default)]
     pub viscosity: u8,
-    /// Latent heat, as a temperature scale (°C): past `above`/`below` by d
-    /// degrees, it changes with chance (d / latent)² a tick, so ice in a warm
-    /// room melts over seconds and a blowtorch melts it at once. 0: instant.
+    /// Latent heat (°C of heat, as this material warms: it takes this much
+    /// to change at `above`, held at that temperature meanwhile, so boiling
+    /// water stays at 100 °C soaking up heat until it's steam, and what it
+    /// touches is cooled the while). Given back setting or freezing at
+    /// `below` (`latent_below`, if that differs: water boils at 300, freezes
+    /// at 60). 0: it changes at once.
     #[serde(default)]
     pub latent: u16,
+    #[serde(default)]
+    pub latent_below: Option<u16>,
+    /// How much heat it holds for a degree, by volume (1: rock; water 2: it
+    /// warms half as fast for the same heat, and cools what it's on twice as
+    /// well). Things that burn, flames and gases keep heat's old rules.
+    #[serde(default)]
+    pub capacity: Option<f32>,
     /// Light it gives off (SPEC §4.1), as a colour: its brightness is the
     /// strength (lava (255, 110, 40), fire, glowing acid). Hot cells also glow
     /// by temperature, whatever this says.
@@ -417,8 +427,11 @@ pub struct MatPhys {
     pub sticky: bool,
     /// See `MaterialDef::slippery`.
     pub slippery: bool,
-    /// See `MaterialDef::latent`.
+    /// See `MaterialDef::latent`: at `above`, and at `below`.
     pub latent: u16,
+    pub latent_below: u16,
+    /// See `MaterialDef::capacity`, in sixteenths (16: rock's).
+    pub capacity: u16,
     pub viscosity: u8,
     /// Sloshes allowed before a still liquid rests (fewer when viscous).
     pub rest_limit: u8,
@@ -638,6 +651,8 @@ impl MaterialTable {
                 sticky: d.sticky,
                 slippery: d.slippery,
                 latent: d.latent,
+                latent_below: d.latent_below.unwrap_or(d.latent),
+                capacity: ((d.capacity.unwrap_or(1.0) * 16.0).round() as u16).max(1),
                 viscosity: d.viscosity,
                 rest_limit: ((crate::cell::flags::REST_LIMIT as u32 * (256 - d.viscosity as u32)) / 256).max(1) as u8,
                 glow: d.glow.map_or([0; 3], |(r, g, b)| [r, g, b]),

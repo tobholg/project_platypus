@@ -794,10 +794,11 @@ fn water_boils_and_freezes() {
     let m = w.materials().clone();
     fill(&mut w, "water", 10, 20, 1, 6);
     fill(&mut w, "water", 40, 50, 1, 6);
-    w.apply_edit(&WorldEdit::Heat { center: CellPos::new(15, 3), radius: 6, amount: 300 });
-    w.apply_edit(&WorldEdit::Heat { center: CellPos::new(45, 3), radius: 6, amount: -120 });
-    // Well past the thresholds: a second or so.
+    // A heat gun held on one, the freeze on the other, a second: the heat it
+    // takes to boil (and to freeze) gone in, it boils (and freezes).
     for _ in 0..60 {
+        w.apply_edit(&WorldEdit::Heat { center: CellPos::new(15, 3), radius: 6, amount: 60 });
+        w.apply_edit(&WorldEdit::Heat { center: CellPos::new(45, 3), radius: 6, amount: -30 });
         w.step();
     }
     assert!(count(&w, m.expect_id("steam")) > 10, "boiled");
@@ -816,10 +817,11 @@ fn blood_boils_and_freezes_like_water() {
     let m = w.materials().clone();
     fill(&mut w, "blood", 10, 20, 1, 6);
     fill(&mut w, "blood", 40, 50, 1, 6);
-    w.apply_edit(&WorldEdit::Heat { center: CellPos::new(15, 3), radius: 6, amount: 300 });
-    w.apply_edit(&WorldEdit::Heat { center: CellPos::new(45, 3), radius: 6, amount: -120 });
-    // Well past the thresholds: a second or so.
+    // A heat gun held on one, the freeze on the other, a second: the heat it
+    // takes to boil (and to freeze) gone in, it boils (and freezes).
     for _ in 0..60 {
+        w.apply_edit(&WorldEdit::Heat { center: CellPos::new(15, 3), radius: 6, amount: 60 });
+        w.apply_edit(&WorldEdit::Heat { center: CellPos::new(45, 3), radius: 6, amount: -30 });
         w.step();
     }
     assert!(count(&w, m.expect_id("blood_steam")) > 10, "boiled");
@@ -2371,3 +2373,63 @@ fn a_pool_deeper_than_a_chunk_settles() {
 
 
 
+
+/// The time a pool of molten iron (40 × 8, in a stone mould) takes to set,
+/// in ticks, with a bucket of water poured over it a second in or not.
+fn molten_iron_sets(water: bool) -> usize {
+    let mut w = boxed_world(2, 1, 40);
+    let m = w.materials().clone();
+    fill(&mut w, "stone", 1, 127, 1, 20);
+    for x in 44..84 {
+        for y in 10..20 {
+            w.set(CellPos::new(x, y), Cell::AIR);
+        }
+    }
+    fill(&mut w, "molten_iron", 44, 84, 10, 18);
+    let molten = m.expect_id("molten_iron");
+    for t in 0..20_000 {
+        if water && (30..90).contains(&t) {
+            w.apply_edit(&WorldEdit::Paint { center: CellPos::new(64, 26), radius: 3, material: m.expect_id("water"), overwrite: false });
+        }
+        w.step();
+        if count(&w, molten) == 0 {
+            return t;
+        }
+    }
+    panic!("it never set (water: {water})");
+}
+
+/// Water on molten metal quenches it: nothing says so but heat. The water
+/// takes the metal's heat, held at 100 °C while it boils, and carries it
+/// off as steam; the metal sets far sooner than it would in the air.
+#[test]
+fn water_quenches_molten_metal() {
+    let (air, quenched) = (molten_iron_sets(false), molten_iron_sets(true));
+    assert!(quenched * 10 < air * 7, "quenched it set in {quenched} ticks, in the air {air}");
+}
+
+/// Boiling takes heat: water on a hot plate stays at 100 °C, soaking it up,
+/// until it's boiled away, and the plate under it is held cool the while.
+#[test]
+fn boiling_water_holds_at_its_point_and_cools_what_it_is_on() {
+    let mut w = boxed_world(1, 1, 41);
+    let m = w.materials().clone();
+    fill(&mut w, "iron", 10, 50, 1, 4);
+    fill(&mut w, "water", 10, 50, 4, 8);
+    let plate = CellPos::new(30, 2);
+    for _ in 0..240 {
+        w.apply_edit(&WorldEdit::Heat { center: CellPos::new(30, 1), radius: 4, amount: 40 });
+        w.step();
+    }
+    let held = w.temperature(plate).unwrap();
+    // The same plate, dry.
+    let mut dry = boxed_world(1, 1, 41);
+    fill(&mut dry, "iron", 10, 50, 1, 4);
+    for _ in 0..240 {
+        dry.apply_edit(&WorldEdit::Heat { center: CellPos::new(30, 1), radius: 4, amount: 40 });
+        dry.step();
+    }
+    let bare = dry.temperature(plate).unwrap();
+    assert!(count(&w, m.expect_id("steam")) > 0, "it boiled");
+    assert!(held + 150 < bare, "under the water the plate stayed cooler: {held} °C, dry {bare} °C");
+}
