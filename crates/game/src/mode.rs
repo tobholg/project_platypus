@@ -49,8 +49,3 @@ impl Mode {
         self.name()
     }
 }
-
-/// A run condition: dev mode.
-pub fn dev_mode(mode: Res<Mode>) -> bool {
-    mode.dev()
-}

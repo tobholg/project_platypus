@@ -418,12 +418,13 @@ fn slot_mut<'a>(inv: &'a mut Inventory, chest: Option<&'a mut Inventory>, eq: &'
 }
 
 /// The keys' line: which hotbar, the cursor, the inventory, dev tools.
-fn hints(hand: Res<Hand>, items: Option<Res<Items>>, player: Query<&Inventory, With<LocalPlayer>>, mut text: Single<&mut Text, With<HintLabel>>) {
+fn hints(hand: Res<Hand>, game: Res<crate::mode::Mode>, items: Option<Res<Items>>, player: Query<&Inventory, With<LocalPlayer>>, mut text: Single<&mut Text, With<HintLabel>>) {
     let smart = if hand.smart { "smart cursor" } else { "plain cursor" };
     // (A pickaxe in hand: its mode.)
     let pick = items.as_ref().zip(player.single().ok()).and_then(|(items, inv)| inv.slots[hand.active()].map(|s| items.def(s.item).use_.clone())).is_some_and(|u| matches!(u, Use::Mine { back: false, area, .. } if area > 0.0));
     let mode = if pick { format!("   |   {} [C]", if hand.area { "area" } else { "precise" }) } else { String::new() };
-    let want = format!("hotbar {} of {BARS} [X]   |   {smart} [Alt]{mode}   |   inventory [Esc]   |   potion [H]   |   dev tools: key left of 1", hand.bar + 1);
+    let dev = if game.dev() { "   |   dev menu: key left of 1" } else { "" };
+    let want = format!("hotbar {} of {BARS} [X]   |   {smart} [Alt]{mode}   |   inventory [Esc]   |   potion [H]{dev}", hand.bar + 1);
     if text.0 != want {
         text.0 = want;
     }

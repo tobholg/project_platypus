@@ -143,7 +143,7 @@ fn update_hud(
          tool {} r{} | cursor {}\n\
          light {:.2} ms (+{:.2} ms bg), {} texels | {}\n\
          world clock: day {:.2} | the land under the cursor {}\n\
-         dev panel: key left of 1 | + - zoom",
+         dev menu: key left of 1 | + - zoom",
         stats.avg_ms,
         stats.worst_ms,
         1000.0 / stats.avg_ms.max(0.001),

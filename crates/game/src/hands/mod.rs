@@ -53,7 +53,7 @@ const MAGNET: f32 = 72.0;
 /// ... and are picked up within this many.
 const GRAB: f32 = 9.0;
 
-/// Dev tools on (F1): the old toolbelt instead of the hands.
+/// The dev toolbelt in hand instead of the hands (the dev menu's Tools tab).
 #[derive(Resource, Default)]
 pub struct DevTools(pub bool);
 
@@ -180,12 +180,10 @@ fn toggle_dev(keys: Res<ButtonInput<KeyCode>>, mode: Res<crate::mode::Mode>, mut
     if keys.just_pressed(KeyCode::AltLeft) && !dev.0 {
         hand.smart = !hand.smart;
     }
-    // (F1 needs fn on a Mac keyboard. The key left of 1 is Backquote on a US
-    // layout and IntlBackslash on an ISO Mac, like a Norwegian one's §,
-    // whose < key by Z then reads as Backquote.)
-    if keys.any_just_pressed([KeyCode::F1, KeyCode::Backquote, KeyCode::IntlBackslash]) && mode.dev() {
-        dev.0 = !dev.0;
-        info!("{}", if dev.0 { "dev tools (key left of 1: hands)" } else { "hands (key left of 1: dev tools)" });
+    // (The dev toolbelt is picked in the dev menu: `devmenu.rs`. Never
+    // while playing.)
+    if !mode.dev() {
+        dev.0 = false;
     }
 }
 

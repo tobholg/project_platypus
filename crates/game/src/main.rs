@@ -28,6 +28,7 @@ mod creatures;
 mod data;
 mod debug;
 mod dev;
+mod devmenu;
 mod display;
 mod editor;
 mod events;
@@ -168,7 +169,7 @@ fn main() {
         .add_plugins(sound::SoundPlugin)
         .add_plugins(backdrop::BackdropPlugin)
         .insert_resource(mode)
-        .add_plugins(respawn::RespawnPlugin)
+        .add_plugins((respawn::RespawnPlugin, devmenu::DevMenuPlugin))
         .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed, mode }))
         .add_plugins(spikes_plugin)
         .add_systems(Last, pace_frames)

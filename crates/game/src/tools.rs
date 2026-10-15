@@ -375,7 +375,7 @@ fn update_hotbar(belt: Res<Toolbelt>, sim: Res<SimWorld>, dev: Res<DevTools>, mu
         .collect();
     let mined: Vec<String> = belt.mined.iter().map(|(k, v)| format!("{k} {v}")).collect();
     text.0 = format!(
-        "DEV TOOLS (key left of 1, or F1: back to the hands)   {}   radius {}\nLMB use | RMB erase | Q/E material | Shift: overwrite / freeze | wheel radius | + - zoom | Tab free camera | panel on the right\nmined: {}",
+        "DEV TOOLS (the dev menu's Tools tab: back to the hands)   {}   radius {}\nLMB use | RMB erase | Q/E material | Shift: overwrite / freeze | wheel radius | + - zoom | Tab free camera\nmined: {}",
         slots.join(" "),
         belt.radius(),
         if mined.is_empty() { "-".into() } else { mined.join(", ") }

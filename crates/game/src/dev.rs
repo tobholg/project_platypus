@@ -1,15 +1,15 @@
 //! Dev actions (weather, time, lighting, overlays, spawning) from keys or the
-//! dev panel's buttons, so nothing depends on the keyboard layout: the panel
-//! shows in dev mode (the key left of 1, or F1), letters work on any layout,
-//! and F-keys (which on a Mac need fn) still do too.
+//! dev menu's buttons (`devmenu.rs`), so nothing depends on the keyboard
+//! layout. Only in dev mode (`mode.rs`; playing, only F3 the performance
+//! HUD).
 //!
-//! Dev mode: U (or F2) to the start · V storm · B clear sky · N lightning at the cursor · M +3 hours ·
-//! K lighting on/off · H performance HUD · J chunk overlay. Always: L
+//! With the dev toolbelt in hand: U (or F2) to the start · V storm · B clear
+//! sky · N lightning at the cursor · M +3 hours · K lighting on/off · H
+//! performance HUD · J chunk overlay; the F-keys (F2-F9) always. And: L
 //! what you carry for light (nothing, a small beam, a big one, a torch in
-//! the off hand) · G plant a torch · O spawn a warband (a troll, orcs, archers:
-//! `packs.ron`; or what
-//! the arena panel picked) at the cursor · P the show's next act
-//! (`show.rs`; not with the arena panel up, where it pauses).
+//! the off hand) · G plant a torch · O spawn what the dev menu picked (a
+//! warband: `packs.ron`) at the cursor · P the show's next act (`show.rs`;
+//! not with the arena's keys live, where it pauses).
 
 use bevy::prelude::*;
 
@@ -36,7 +36,7 @@ pub enum DevAction {
     Chunks,
     Radius(i32),
     Hands,
-    /// The arena panel (time, overlays, spawning), anywhere.
+    /// The dev menu at its Time tab (`devmenu.rs`).
     Arena,
     /// To the start: the surface where the world began (the village).
     Surface,
@@ -65,20 +65,13 @@ pub struct KeyboardTaken(pub bool);
 #[derive(Resource, Default)]
 pub struct PointerOverUi(pub bool);
 
-#[derive(Component)]
-struct Panel;
-
-#[derive(Component)]
-struct PanelButton(DevAction);
-
 impl Plugin for DevPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<DevAction>()
             .init_resource::<PointerOverUi>()
             .init_resource::<KeyboardTaken>()
-            .add_systems(Startup, spawn_panel)
             .add_systems(PreUpdate, pointer_over_ui.after(bevy::ui::UiSystems::Focus))
-            .add_systems(Update, (keys, buttons, show_panel, to_surface));
+            .add_systems(Update, (keys, to_surface));
     }
 }
 
@@ -144,97 +137,4 @@ fn to_surface(mut acts: MessageReader<DevAction>, sim: Res<crate::world::SimWorl
     k.body.vel = Vec2::ZERO;
     k.prev_pos = k.body.pos;
     info!("dev: to the start at ({x:.0}, {y:.0})");
-}
-
-fn buttons(clicks: Query<(&Interaction, &PanelButton), Changed<Interaction>>, mut out: MessageWriter<DevAction>) {
-    for (i, b) in &clicks {
-        if *i == Interaction::Pressed {
-            out.write(b.0);
-        }
-    }
-}
-
-fn spawn_panel(mut commands: Commands) {
-    let entries: [(&str, DevAction); 23] = [
-        ("Show the next creature   P", DevAction::ShowNext),
-        ("Show mode: a lively world", DevAction::ShowMode),
-        ("Alert marks (? !) on/off", DevAction::AlertMarks),
-        ("Damage numbers on/off", DevAction::DamageNumbers),
-        ("To the start   F2 / U", DevAction::Surface),
-        ("Storm here   V", DevAction::Storm),
-        ("Clear sky   B", DevAction::ClearSky),
-        ("Lightning   N", DevAction::Lightning(None)),
-        ("+3 hours   M", DevAction::Later),
-        ("A day ahead", DevAction::DayAhead),
-        ("An event (star, raid, quake, pedlar)", DevAction::Event),
-        ("Lighting on/off   K", DevAction::Lighting),
-        ("Light: beam, big, torch   L", DevAction::Flashlight),
-        ("Plant a torch   G", DevAction::PlantTorch(None)),
-        ("Spawn a warband   O", DevAction::Spawn(None)),
-        ("Performance HUD: brief, full, off   H", DevAction::PerfHud),
-        ("Chunk overlay   J", DevAction::Chunks),
-        ("Radius -   wheel", DevAction::Radius(-1)),
-        ("Radius +   wheel", DevAction::Radius(1)),
-        ("Arena tools", DevAction::Arena),
-        ("Back to hands   key left of 1", DevAction::Hands),
-        ("Reset the world (twice)", DevAction::ResetWorld),
-        ("Reset everything (twice)", DevAction::ResetAll),
-    ];
-    commands
-        .spawn((
-            Panel,
-            Visibility::Hidden,
-            Node {
-                // (Under the player's hearts, stars and bolts: `hud.rs`.)
-                position_type: PositionType::Absolute,
-                top: px(170),
-                right: px(8),
-                flex_direction: FlexDirection::Column,
-                row_gap: px(3),
-                padding: UiRect::all(px(6)),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
-        ))
-        .with_children(|p| {
-            p.spawn((Text::new("DEV"), TextFont { font_size: FontSize::Px(13.0), ..default() }, TextColor(Color::srgb(1.0, 0.85, 0.3))));
-            for (label, action) in entries {
-                p.spawn((
-                    Button,
-                    PanelButton(action),
-                    Node { padding: UiRect::axes(px(8), px(3)), ..default() },
-                    BackgroundColor(Color::srgba(0.25, 0.25, 0.3, 0.8)),
-                ))
-                .with_children(|b| {
-                    let mut t = b.spawn((Text::new(label), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::WHITE)));
-                    // (The resets ask to be sure: `reset.rs` relabels them.)
-                    match action {
-                        DevAction::ResetWorld => {
-                            t.insert(crate::reset::ResetLabel(crate::reset::Reset::World));
-                        }
-                        DevAction::ResetAll => {
-                            t.insert(crate::reset::ResetLabel(crate::reset::Reset::Everything));
-                        }
-                        _ => {}
-                    }
-                });
-            }
-        });
-}
-
-fn show_panel(
-    dev: Res<DevTools>,
-    mut panel: Query<&mut Visibility, With<Panel>>,
-    mut buttons: Query<(&Interaction, &mut BackgroundColor), With<PanelButton>>,
-) {
-    for mut v in &mut panel {
-        *v = if dev.0 { Visibility::Visible } else { Visibility::Hidden };
-    }
-    for (i, mut bg) in &mut buttons {
-        bg.0 = match i {
-            Interaction::Pressed => Color::srgba(0.6, 0.5, 0.2, 0.9),
-            Interaction::Hovered => Color::srgba(0.35, 0.35, 0.42, 0.9),
-            Interaction::None => Color::srgba(0.25, 0.25, 0.3, 0.8),
-        };
-    }
 }

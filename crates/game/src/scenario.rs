@@ -304,6 +304,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, olmer_script)
             .add_systems(Update, heatglow_script)
             .add_systems(PreUpdate, play_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7719,6 +7720,57 @@ fn play_script(
     } else if *step == 3 && respawned.read().count() > 0 {
         *step = 4;
         info!("play: woke at ({:.0}, {:.0}), life {:.0}/{:.0}", k.body.pos.x, k.body.pos.y, h.hp, h.max);
+    }
+}
+
+/// `devmenu` (`PLATYPUS_WORLD=arena`, with `PLATYPUS_SHOTS` and
+/// `PLATYPUS_SHOT_EVERY=1.5` to see it): the dev menu open at each tab in
+/// turn (1.5 s each: Player, Items, Items searched for "sword", Creatures,
+/// World, Tools, View, Time, Sounds); on the way, a longsword and the
+/// `miner` kit are clicked, and what the pack holds is logged before and after.
+#[allow(clippy::type_complexity)]
+fn devmenu_script(
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut buttons: Query<(&mut Interaction, Option<&crate::devmenu::ItemButton>, Option<&crate::devmenu::Act>)>,
+    player: Query<&crate::hands::items::Inventory, With<LocalPlayer>>,
+    mut step: Local<usize>,
+) {
+    use crate::devmenu::Tab;
+    if s.name != "devmenu" {
+        return;
+    }
+    let Some(items) = items else { return };
+    let tabs = [Tab::Player, Tab::Items, Tab::Items, Tab::Creatures, Tab::World, Tab::Tools, Tab::View, Tab::Time, Tab::Sounds];
+    let i = ((s.elapsed - 0.75) / 1.5).floor();
+    if i < 0.0 || i as usize >= tabs.len() {
+        return;
+    }
+    let i = i as usize;
+    menu.open = true;
+    menu.tab = tabs[i];
+    menu.set_search(if i == 2 { "sword" } else { "" });
+    let count = |id: &str| player.single().ok().map_or(0, |inv| items.id(id).map_or(0, |it| inv.count(it) / items.unit(it)));
+    if *step == 0 && i == 1 && s.elapsed > 2.6 {
+        *step = 1;
+        info!("devmenu: before: longsword {}, gold_pickaxe {}, torch {}", count("longsword"), count("gold_pickaxe"), count("torch"));
+        let sword = items.id("longsword");
+        for (mut int, b, _) in &mut buttons {
+            if b.is_some_and(|b| Some(b.0) == sword) {
+                *int = Interaction::Pressed;
+            }
+        }
+    } else if *step == 1 && s.elapsed > 2.8 {
+        *step = 2;
+        for (mut int, _, act) in &mut buttons {
+            if act.is_some_and(|a| *a == crate::devmenu::Act::Kit("miner".into())) {
+                *int = Interaction::Pressed;
+            }
+        }
+    } else if *step == 2 && s.elapsed > 3.0 {
+        *step = 3;
+        info!("devmenu: after: longsword {}, gold_pickaxe {}, torch {}", count("longsword"), count("gold_pickaxe"), count("torch"));
     }
 }
 
