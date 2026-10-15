@@ -58,21 +58,21 @@
 
         // ---- solids -------------------------------------------------------
         (name: "bedrock",  kind: Static, density: 9999, hardness: 255, colors: [(28, 26, 32), (44, 40, 50)]),
-        (name: "stone",    kind: Static, density: 2600, hardness: 60,  crumbles_into: "gravel", above: (1400, "lava"), colors: [(92, 92, 100), (122, 120, 128), (104, 104, 112)]),
+        (name: "stone",    kind: Static, density: 2600, hardness: 60,  crumbles_into: "gravel", above: (1400, "magma"), colors: [(92, 92, 100), (122, 120, 128), (104, 104, 112)]),
         (name: "dirt",     kind: Static, density: 1500, hardness: 20,  crumbles_into: "soil", colors: [(96, 62, 36), (118, 78, 44), (104, 68, 40)]),
         (name: "grass",    kind: Static, living: true, density: 1400, hardness: 10,  flammability: 2, ignites_at: 250, burn_time: 10, burns_into: "soil", crumbles_into: "soil", chars_at: 1.0, colors: [(58, 140, 44), (82, 170, 56)]),
         (name: "snow",     kind: Static, density: 400,  hardness: 5,   heat: -10, above: (1, "water"), conductivity: 15, coats: "wet", latent: 300, colors: [(226, 232, 240), (246, 248, 252)]),
         // Hard to get going: a small fire on a trunk often fizzles (fizzles:
         // a lone flame goes out), a crown or a blaze takes it (SPEC §3.8).
         (name: "wood", loot: Wood,     kind: Static, object: true, living: true, grows: true, density: 700,  hardness: 25,  flammability: 6, ignites_at: 280, conductivity: 12, burn_time: 225, spread: 2, fizzles: 40, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal", colors: [(58, 36, 20), (88, 58, 30), (118, 80, 42), (138, 96, 54)]),
-        (name: "obsidian", kind: Static, density: 2800, hardness: 120, crumbles_into: "gravel", above: (1600, "lava"), colors: [(34, 18, 52), (52, 30, 74)]),
+        (name: "obsidian", kind: Static, density: 2800, hardness: 120, crumbles_into: "gravel", above: (1600, "magma"), colors: [(34, 18, 52), (52, 30, 74)]),
         // The deep's rock: darker and harder than stone.
-        (name: "slate",    kind: Static, density: 2800, hardness: 80, crumbles_into: "gravel", above: (1500, "lava"), colors: [(62, 64, 76), (74, 76, 90), (56, 58, 68), (68, 70, 82)]),
+        (name: "slate",    kind: Static, density: 2800, hardness: 80, crumbles_into: "gravel", above: (1500, "magma"), colors: [(62, 64, 76), (74, 76, 90), (56, 58, 68), (68, 70, 82)]),
         // The underworld's rock: cooled lava.
-        (name: "basalt",   kind: Static, density: 3000, hardness: 95, crumbles_into: "gravel", above: (1650, "lava"), colors: [(40, 36, 40), (52, 46, 50), (34, 30, 34), (60, 50, 50)]),
+        (name: "basalt",   kind: Static, density: 3000, hardness: 95, crumbles_into: "gravel", above: (1650, "magma"), colors: [(40, 36, 40), (52, 46, 50), (34, 30, 34), (60, 50, 50)]),
         // Laid, not grown: a pattern of shades anchored to the world grid (rows
         // from the top, hex 0 dark … f light), so bricks and planks tile.
-        (name: "brick",    kind: Static, fortified: true, density: 2400, hardness: 70, crumbles_into: "gravel", above: (1450, "lava"),
+        (name: "brick",    kind: Static, fortified: true, density: 2400, hardness: 70, crumbles_into: "gravel", above: (1450, "magma"),
             colors: [(52, 50, 54), (96, 94, 100), (132, 128, 134), (156, 152, 158)],
             pattern: ["333333333333", "3cccbcbaaa99", "3bcaab9a9a98", "3aaaa9999888", "39aa88887787", "389988877777", "333333333333", "aaaaa93cbbbb", "a999983bbbaa", "9989783abb9a", "8978873a9999", "788777389998"]),
         (name: "planks", loot: Wood,   kind: Static, density: 650, hardness: 22, flammability: 7, ignites_at: 270, conductivity: 12, burn_time: 180, spread: 3, fizzles: 30, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal",
@@ -114,7 +114,7 @@
         // Built: what structures are made of (worldgen/src/structures.rs).
         // Crypt stone: big dark blocks in offset courses, hard enough that a
         // copper pickaxe won't dig a way round the rooms.
-        (name: "crypt_stone", kind: Static, density: 2600, hardness: 90, crumbles_into: "gravel", above: (1400, "lava"),
+        (name: "crypt_stone", kind: Static, density: 2600, hardness: 90, crumbles_into: "gravel", above: (1400, "magma"),
             colors: [(40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116)],
             pattern: ["111111111111", "bab99a988881", "aaa998888671", "a88888877761", "887877765651", "877766655551", "111111111111", "a99881bbbba9", "878671aa9989", "7767518a8888", "765551988776", "555551887667"]),
         // A weak wall: crypt stone, cracked (a sharp eye sees the cracks); one
@@ -128,7 +128,7 @@
             colors: [(40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116)],
             pattern: ["111111111111", "bab99a988881", "aaa998888671", "a88888877761", "887877765651", "877766655551", "111111111111", "a99881bbbba9", "878671aa9989", "7767518a8888", "765551988776", "555551887667"]),
         // Castle stone: big pale ashlar blocks; harder than crypt stone.
-        (name: "ashlar", kind: Static, fortified: true, density: 2600, hardness: 100, crumbles_into: "gravel", above: (1450, "lava"),
+        (name: "ashlar", kind: Static, fortified: true, density: 2600, hardness: 100, crumbles_into: "gravel", above: (1450, "magma"),
             colors: [(62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152)],
             pattern: ["111111111111", "aababa9a9981", "aabaa9898891", "9a9889888881", "a99998778771", "998778777771", "111111111111", "a99981baaba9", "989881aabaa9", "888881baa998", "877771988989", "877771889877"]),
         (name: "cracked_ashlar", kind: Static, density: 2400, hardness: 4, crumbles_into: "gravel",
@@ -174,7 +174,7 @@
         // Traps: touching them hurts.
         (name: "spikes", kind: Static, density: 7800, hardness: 70, corrosive: 40,
             colors: [(58, 58, 64), (104, 104, 114), (150, 150, 162), (190, 190, 200)]),
-        (name: "glass",    kind: Static, density: 2500, hardness: 30, inert: true,  above: (1500, "lava"), opacity: 5, optics: (ior: 1.5, disperse: 0.2, reflect: 0.04, tint: (232, 250, 246)), colors: [(170, 200, 205), (196, 222, 226)]),
+        (name: "glass",    kind: Static, density: 2500, hardness: 30, inert: true,  above: (1500, "magma"), opacity: 5, optics: (ior: 1.5, disperse: 0.2, reflect: 0.04, tint: (232, 250, 246)), colors: [(170, 200, 205), (196, 222, 226)]),
         (name: "ice",      kind: Static, slippery: true, density: 900,  hardness: 30,  heat: -30, above: (1, "water"), coats: "wet", opacity: 14, optics: (ior: 1.31, reflect: 0.04, tint: (205, 232, 255)), latent: 480, colors: [(170, 210, 240), (200, 230, 250)]),
         (name: "frozen_blood", kind: Static, slippery: true, density: 950, hardness: 28, heat: -30, above: (-1, "blood"), coats: "bloody", latent: 480, colors: [(112, 22, 30), (138, 40, 48), (96, 16, 24)]),
 
@@ -212,7 +212,7 @@
         // A boulder (rock in one piece: a thing): it rolls (round ones), and
         // it's brittle: a fall of ~27 cells, a blast, a hard knock breaks it
         // into pieces and rubble.
-        (name: "boulder",  kind: Static, density: 2700, hardness: 60, object: true, brittle: true, crumbles_into: "gravel", above: (1400, "lava"),
+        (name: "boulder",  kind: Static, density: 2700, hardness: 60, object: true, brittle: true, crumbles_into: "gravel", above: (1400, "magma"),
             colors: [(96, 90, 86), (118, 110, 104), (140, 132, 124), (160, 150, 140)]),
         // Traps (worldgen: game/src/traps.rs springs them): a boulder hangs
         // from a tunnel's ceiling on a rope (it bears the load; cut it, burn
@@ -256,12 +256,12 @@
         (name: "solid_gold", loot: Ore, kind: Static, density: 19300, hardness: 35, object: true, inert: true, counted: true, charges: true, conductivity: 200, glow: (60, 42, 8), shimmer: 220,
             above: (900, "molten_gold"), latent: 200, colors: [(180, 124, 28), (226, 172, 48), (250, 208, 90), (255, 236, 160)]),
         // Heat-proof brick (furnace-made): holds molten iron and mithril.
-        (name: "firebrick", kind: Static, density: 2300, hardness: 75, conductivity: 8, crumbles_into: "gravel", above: (2100, "lava"),
+        (name: "firebrick", kind: Static, density: 2300, hardness: 75, conductivity: 8, crumbles_into: "gravel", above: (2100, "magma"),
             colors: [(196, 170, 120), (214, 190, 140), (180, 152, 104)]),
         (name: "sand",     kind: Powder, density: 1600, hardness: 5,  above: (1100, "glass"), colors: [(206, 176, 110), (226, 198, 132), (196, 164, 100)]),
         // Under desert sand: sand pressed into rock.
         (name: "sandstone", kind: Static, density: 2200, hardness: 35, crumbles_into: "sand", colors: [(178, 142, 90), (192, 156, 100), (166, 132, 84), (184, 150, 96)]),
-        (name: "gravel",   kind: Powder, density: 1900, hardness: 15, above: (1400, "lava"), colors: [(96, 94, 90), (130, 126, 120), (80, 78, 76)]),
+        (name: "gravel",   kind: Powder, density: 1900, hardness: 15, above: (1400, "magma"), colors: [(96, 94, 90), (130, 126, 120), (80, 78, 76)]),
         (name: "soil",     kind: Powder, density: 1400, hardness: 8,  colors: [(92, 60, 34), (112, 74, 42)]),
         (name: "ash",      kind: Powder, density: 300,  hardness: 1,  colors: [(70, 68, 66), (98, 96, 94)]),
         // What burnt wood leaves (and charred wood that was put out). Flames
@@ -309,6 +309,12 @@
         // go it runs and pools (collect it: torches).
         (name: "green_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 250, flammability: 45, ignites_at: 240, burn_time: 60, burns_into: "smoke", burns_into_chance: 120, above: (110, "steam"), coats: "slimy", glow: (8, 30, 10), opacity: 25, colors: [(104, 204, 92), (84, 178, 78), (122, 220, 104), (94, 190, 86)]),
         (name: "lava",     kind: Liquid, density: 2500, dispersion: 3, hot: true, heat: 1200, heat_source: true, below: (950, "basalt"), conductivity: 60, glow: (255, 105, 30), viscosity: 200, colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
+        // Rock melted (stone, brick, glass under a heat gun or a furnace's
+        // worth of fire): lava to look at and to touch, but nothing feeds it,
+        // so it gives its heat to the rock round it and the air over it, and
+        // crusts into basalt (lingering a while past the point: latent). The
+        // world's lava lakes stay lava.
+        (name: "magma",    kind: Liquid, density: 2500, dispersion: 3, hot: true, heat: 1200, below: (1000, "basalt"), latent: 500, conductivity: 60, glow: (255, 105, 30), viscosity: 200, colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
         // Eats anything up to stone-and-ore hard (not glass or gold), each cell
         // good for 6 bites; burns what it touches (corrosive, damage/s); carries
         // lightning. Boils into acid fumes.
@@ -346,6 +352,9 @@
         (a: "lava",  b: "water",  a_into: "obsidian", b_into: "steam", chance: 255),
         (a: "lava",  b: "ice",    a_into: "obsidian", b_into: "water", chance: 128),
         (a: "lava",  b: "snow",   a_into: "lava",     b_into: "water", chance: 64),
+        (a: "magma", b: "water",  a_into: "obsidian", b_into: "steam", chance: 255),
+        (a: "magma", b: "ice",    a_into: "obsidian", b_into: "water", chance: 128),
+        (a: "magma", b: "snow",   a_into: "magma",    b_into: "water", chance: 64),
         (a: "fire",  b: "water",  a_into: "steam",    b_into: "water", chance: 220),
         (a: "fire",  b: "ice",    a_into: "steam",    b_into: "water", chance: 40),
         (a: "fire",  b: "snow",   a_into: "steam",    b_into: "water", chance: 60),

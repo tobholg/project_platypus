@@ -222,7 +222,9 @@ fn a_spark_on_wood_often_fizzles_a_proper_fire_takes() {
     let fire = slab_fire(3);
     assert!(spark.iter().filter(|&&l| l > 150).count() >= 3, "sparks sometimes fizzle: {spark:?} of 200 left");
     assert!(spark.iter().filter(|&&l| l < 60).count() >= 3, "and sometimes take: {spark:?}");
-    assert!(fire[fire.len() / 2] < 110, "a proper fire burns most of it: {fire:?}");
+    // (By its mean: a fire takes or it doesn't, so the middle one of twenty
+    // flips between the two on a whim.)
+    assert!(fire.iter().sum::<usize>() / fire.len() < 110, "a proper fire burns most of it: {fire:?}");
 }
 
 #[test]
@@ -235,9 +237,10 @@ fn painted_flames_light_wood() {
             w.set(CellPos::new(x, y), Cell::new(wood, 0));
         }
     }
-    // A bonfire's worth of flames on top of it.
+    // A bonfire's worth of flames on top of it. (The stone under it holds the
+    // heat, so it burns on a while: give it two and a half minutes.)
     w.apply_edit(&WorldEdit::Paint { center: CellPos::new(14, 7), radius: 4, material: m.expect_id("fire"), overwrite: true });
-    for _ in 0..6_000 {
+    for _ in 0..9_000 {
         w.step();
     }
     assert!(count(&w, wood) < 150, "the flames lit the wood, {} left", count(&w, wood));
@@ -679,14 +682,14 @@ fn fill(w: &mut World, name: &str, x0: i32, x1: i32, y0: i32, y1: i32) {
 }
 
 #[test]
-fn enough_heat_melts_stone_into_lava() {
+fn enough_heat_melts_stone_into_magma() {
     let mut w = boxed_world(1, 1, 20);
     fill(&mut w, "stone", 1, 63, 1, 30);
     w.apply_edit(&WorldEdit::Heat { center: CellPos::new(32, 20), radius: 5, amount: 2500 });
     for _ in 0..30 {
         w.step();
     }
-    assert!(count(&w, w.materials().expect_id("lava")) > 20, "stone melted");
+    assert!(count(&w, w.materials().expect_id("magma")) > 20, "stone melted");
 }
 
 #[test]
@@ -714,6 +717,52 @@ fn hot_rock_cools_back_to_ambient_and_sleeps() {
     run_until_asleep(&mut w, 6_000);
     let hot = w.chunks().flat_map(|c| c.cells()).filter(|c| c.heat != 0).count();
     assert_eq!(hot, 0, "all heat dissipated");
+}
+
+/// A heat gun held on rock two seconds: the rock under it melts, and the
+/// heat soaks out through the rock round it (rock in rock keeps its heat),
+/// so the glow spreads well past where the gun reached; then it all cools
+/// back to ambient and sleeps.
+#[test]
+fn heat_soaks_through_rock_and_its_glow_spreads() {
+    let mut w = boxed_world(2, 1, 30);
+    fill(&mut w, "stone", 1, 127, 1, 60);
+    let mut furthest_glow = 0;
+    for t in 0..12_000 {
+        if t < 120 {
+            w.apply_edit(&WorldEdit::Heat { center: CellPos::new(64, 30), radius: 8, amount: 60 });
+        }
+        w.step();
+        if t < 900 {
+            let glowing = (0..30).rev().find(|d| w.temperature(CellPos::new(64 + d, 30)).unwrap() >= 480).unwrap_or(0);
+            furthest_glow = furthest_glow.max(glowing);
+        }
+    }
+    assert!(furthest_glow >= 12, "the glow spread out through the rock, to {furthest_glow} (the gun reached 8)");
+    let warm = w.chunks().flat_map(|c| c.cells()).filter(|c| c.heat != 0).count();
+    assert_eq!(warm, 0, "all of it cooled back to ambient");
+}
+
+/// Rock melted is magma: it gives up its heat and crusts into basalt. The
+/// world's lava is fed: it stays lava.
+#[test]
+fn melted_rock_crusts_into_basalt_and_lava_stays_lava() {
+    let mut w = boxed_world(1, 1, 31);
+    let m = w.materials().clone();
+    fill(&mut w, "stone", 1, 63, 1, 30);
+    fill(&mut w, "lava", 50, 60, 20, 30);
+    w.apply_edit(&WorldEdit::Heat { center: CellPos::new(20, 15), radius: 5, amount: 2500 });
+    for _ in 0..30 {
+        w.step();
+    }
+    let melted = count(&w, m.expect_id("magma"));
+    assert!(melted > 20, "the rock melted into magma ({melted})");
+    for _ in 0..3_000 {
+        w.step();
+    }
+    assert_eq!(count(&w, m.expect_id("magma")), 0, "the magma crusted over");
+    assert!(count(&w, m.expect_id("basalt")) >= melted / 2, "into basalt");
+    assert!(count(&w, m.expect_id("lava")) >= 90, "the lava's still lava");
 }
 
 #[test]
@@ -2296,3 +2345,5 @@ fn a_pool_deeper_than_a_chunk_settles() {
     }
     assert!(count(&w, w.materials().expect_id("water")) > 5_000, "the water's still there");
 }
+
+

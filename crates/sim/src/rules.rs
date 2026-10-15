@@ -35,10 +35,21 @@ const NEIGHBOURS8: [(i32, i32); 8] = [(0, 1), (0, -1), (-1, 0), (1, 0), (-1, 1),
 /// Heat moves this fraction (/1024) of a temperature difference per tick,
 /// scaled by the lower conductivity of the pair (0..255).
 const CONDUCTION_DIV: i32 = 1024;
-/// Cooling toward ambient per tick, /1024 of the excess (at least 1 °C).
+/// Cooling toward ambient per tick, /1024 of the excess: a cell open to the
+/// air (or one that burns); one buried in solid (rock deep in rock keeps its
+/// heat, so heat soaks through it instead of vanishing where it is). Within
+/// `RELAX_FLOOR` of ambient it sheds at least 1 °C a tick, so a region's last
+/// warmth goes and it sleeps.
 const RELAX: i32 = 6;
-/// A cell held warm by a neighbour stops updating once its change is this small.
-const EQUILIBRIUM_BAND: i32 = 2;
+const RELAX_BURIED: i32 = 1;
+const RELAX_FLOOR: i32 = 24;
+/// A cell held warm by a neighbour stops updating once its change is this
+/// small: 1 °C, and a degree more for each 1 024 °C it's held over ambient (a
+/// hot cell beside lava sleeps; a cool front, creeping out, keeps going).
+const EQUILIBRIUM_BAND: i32 = 1;
+const EQUILIBRIUM_PER: i32 = 1024;
+/// (What burns: its old band.)
+const EQUILIBRIUM_BAND_BURNS: i32 = 2;
 /// Beyond this, heat is clamped.
 const HEAT_MIN: i16 = -300;
 const HEAT_MAX: i16 = 4000;
@@ -553,11 +564,19 @@ fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
         c.heat = p.heat;
     }
     let mut delta = 0i32;
+    // (What burns, flames and hot gases keep heat's old rules: each
+    // neighbour's share rounded down, cooling at least a degree a tick. Wood
+    // barely carries heat, and fire's balance (a lone flame fizzles, a blaze
+    // takes) rests on it.)
+    let burns = p.flammability > 0 || matches!(p.kind, Kind::Fire | Kind::Gas) || c.flags & flags::BURNING != 0;
+    let mut shares = 0i32;
     let mut inflow = false;
+    let mut open = false;
     for (dx, dy) in NEIGHBOURS {
         let (nx, ny) = (x + dx, y + dy);
         let Some(mut n) = h.get(nx, ny) else { continue };
         if n.is_air() {
+            open = true;
             continue; // air holds no heat; hot gases and fire carry it instead
         }
         let np = h.mats.phys(n.material);
@@ -577,9 +596,10 @@ fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
         }
         // A source always reads as its fixed temperature, whatever it stores.
         let nh = if np.heat_source { np.heat } else { n.heat };
-        let d = (nh as i32 - c.heat as i32) * k / CONDUCTION_DIV;
+        let d = (nh as i32 - c.heat as i32) * k;
         inflow |= d > 0 && c.heat >= 0 || d < 0 && c.heat < 0;
         delta += d;
+        shares += d / CONDUCTION_DIV;
     }
     if p.heat_source {
         if c.heat != before {
@@ -587,12 +607,23 @@ fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
         }
         return;
     }
+    // (Summed, then divided, the remainder rounded at random: a small
+    // difference still moves heat now and then, where rounding each
+    // neighbour's share down stalled the front a few cells out.)
+    delta = if burns { shares } else { round_div(h, delta, CONDUCTION_DIV) };
     let excess = c.heat as i32;
-    let relax = ((excess.abs() * RELAX) >> 10).max(1).min(excess.abs());
+    let rate = if open || burns { RELAX } else { RELAX_BURIED };
+    let mut relax = if burns { (excess.abs() * rate) >> 10 } else { round_div(h, excess.abs() * rate, CONDUCTION_DIV) };
+    if burns || excess.abs() < RELAX_FLOOR {
+        relax = relax.max(1);
+    }
+    let relax = relax.min(excess.abs());
     delta -= excess.signum() * relax;
     // Held up by a neighbour and barely moving: call it equilibrium. (Cells
     // update one after another, so near balance they wobble by a degree or two.)
-    if inflow && delta.abs() <= EQUILIBRIUM_BAND {
+    let band = if burns { EQUILIBRIUM_BAND_BURNS } else { EQUILIBRIUM_BAND + excess.abs() / EQUILIBRIUM_PER };
+    let held = inflow && delta.abs() <= band;
+    if held {
         delta = 0;
     }
     let mut heat = (c.heat as i32 + delta).clamp(HEAT_MIN as i32, HEAT_MAX as i32);
@@ -602,7 +633,17 @@ fn conduct(h: &mut Hood, x: i32, y: i32, c: &mut Cell, p: &MatPhys) {
     c.heat = heat as i16;
     if c.heat != before {
         h.set(x, y, *c);
+    } else if c.heat != 0 && !held && !burns {
+        // (Still warm, its change rounded away this tick: it isn't settled,
+        // so its region stays awake, or its heat would be stranded there.)
+        h.wake(x, y);
     }
+}
+
+/// `v / d`, its remainder rounded up with the chance it's of `d` (d > 0).
+#[inline]
+fn round_div(h: &mut Hood, v: i32, d: i32) -> i32 {
+    v.div_euclid(d) + ((h.rng.next_u32() % d as u32) < v.rem_euclid(d) as u32) as i32
 }
 
 /// Reactions and contact ignition. Returns true if this cell was transformed.

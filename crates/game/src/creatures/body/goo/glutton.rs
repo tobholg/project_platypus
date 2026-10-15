@@ -691,7 +691,7 @@ fn outside(reach: (Vec2, Vec2), from: Vec2, dir: Vec2) -> Vec2 {
 fn erupt(sim: &mut SimWorld, k: &Kinematics, reach: (Vec2, Vec2), at: Option<Vec2>, bodies: &Query<(Entity, &Kinematics, Option<&crate::creatures::Team>), Without<Glutton>>, hits: &mut MessageWriter<crate::combat::Hit>) {
     let top = Vec2::new(k.body.pos.x, reach.1.y + 2.0);
     let mats = sim.world.materials().clone();
-    if let Some(lava) = mats.id("lava") {
+    if let Some(lava) = mats.id("magma") {
         // (Lobbed at 60°, hard enough to reach them; slower drops fall
         // between: a rain of it, from here to there.)
         let to = at.unwrap_or(top + Vec2::X * 40.0);

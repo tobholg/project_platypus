@@ -104,7 +104,7 @@
             look: (trail: (count: 3, life: (0.3, 0.9), colors: [(255, 250, 210), (255, 180, 60), (220, 70, 20), (90, 60, 50)], speed: 30, drag: 1.5, size: 2, gravity: -45, glow: true))),
         (id: "impact", name: "Impact", mana: 24, color: (255, 150, 60), kind: Payload(Blast(radius: 33, power: 150)),
             look: (burst: (count: 120, life: (0.3, 1.0), colors: [(255, 255, 230), (255, 210, 90), (255, 120, 30), (150, 50, 20), (60, 50, 50)], speed: 330, drag: 3, gravity: 90, size: 2, glow: true))),
-        (id: "molten", name: "Molten", mana: 8, color: (255, 110, 30), kind: Payload(Matter(material: "lava", cells: 135))),
+        (id: "molten", name: "Molten", mana: 8, color: (255, 110, 30), kind: Payload(Matter(material: "magma", cells: 135))),
         // Void.
         (id: "void_bolt", name: "Void bolt", mana: 6, color: (180, 130, 255), kind: Carrier(Bolt(speed: 840, life: 0.6)),
             look: (trail: (count: 1.0, life: (0.15, 0.4), colors: [(240, 220, 255), (160, 110, 255), (60, 30, 130)], speed: 15, drag: 3, glow: true))),

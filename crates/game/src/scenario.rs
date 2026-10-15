@@ -302,6 +302,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, wraith_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, dread_script)
             .add_systems(Update, olmer_script)
+            .add_systems(Update, heatglow_script)
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
@@ -7671,6 +7672,39 @@ fn templar_script(
     }
 }
 
+/// `heatglow` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a heat gun's
+/// worth of heat (radius 8, 60 °C a tick) held on the floor 70 right of the
+/// player for 3 s; logs every 2 s how far out the rock glows (480 °C+), the
+/// hottest cell, and the magma and basalt there, till the rock's cold.
+fn heatglow_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut at: Local<Option<CellPos>>, mut next: Local<f32>) {
+    if s.name != "heatglow" {
+        return;
+    }
+    let t = s.elapsed;
+    if at.is_none() {
+        let Ok(k) = player.single() else { return };
+        if t < 1.0 {
+            return;
+        }
+        let fl = platypus_worldgen::arena::FLOOR;
+        *at = Some(CellPos::new(k.body.pos.x as i32 + 70, fl - 4));
+        *next = 1.0;
+    }
+    let c = at.expect("set");
+    if t < 4.0 {
+        sim.queue(WorldEdit::Heat { center: c, radius: 8, amount: 60 });
+    }
+    if t >= *next {
+        *next += 2.0;
+        let w = &sim.world;
+        let m = w.materials().clone();
+        let glow = (0..40).rev().find(|d| w.temperature(c.offset(*d, -6)).is_some_and(|tc| tc >= 480)).unwrap_or(0);
+        let near = |name: &str| m.id(name).map_or(0, |id| (-30..=30).flat_map(|dx| (-30..=10).map(move |dy| c.offset(dx, dy))).filter(|p| w.get(*p).is_some_and(|cell| cell.material == id)).count());
+        let hottest = (-30..=30).flat_map(|dx| (-30..=10).map(move |dy| c.offset(dx, dy))).filter_map(|p| w.temperature(p)).max().unwrap_or(0);
+        info!("heatglow: t {t:.0}: glows {glow} out (6 down); hottest {hottest} °C; magma {}, basalt {}", near("magma"), near("basalt"));
+    }
+}
+
 /// `wraith` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_HOUR=22`):
 /// a chain wraith at 1150, 60 up; the player (who can't die) stands at 900.
 /// `PLATYPUS_WRAITH`: (none) let be: it comes, lashes, pulls, rakes;
@@ -8773,7 +8807,7 @@ fn call_script(
             }
             if t > 6.5 {
                 let solid = (1140..1260).flat_map(|x| (floor - 60..floor).map(move |y| (x, y))).filter(|&(x, y)| sim.world.is_solid(CellPos::new(x, y))).count();
-                let lava = sim.materials().id("lava").map_or(0, |m| (1050..1350).flat_map(|x| (floor - 60..floor + 60).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
+                let lava = sim.materials().id("magma").map_or(0, |m| (1050..1350).flat_map(|x| (floor - 60..floor + 60).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
                 info!("call: a meteor on the orc at 1200: orcs (x, hp) {:?}; a crater of {} cells, {} of lava about", hps(), state.1 as usize - solid, lava);
                 state.0 = 4;
             }
