@@ -201,6 +201,10 @@ pub struct RegenDef {
     /// acid, then any blow, finishes it).
     #[serde(default)]
     pub undying: bool,
+    /// Any hurt at all stops it a while (`pause`), not only `stopped_by`'s:
+    /// healing that comes back out of danger (the player's).
+    #[serde(default)]
+    pub rests: bool,
 }
 
 fn five() -> f32 {
@@ -221,7 +225,8 @@ pub struct Regenerates {
 
 impl Regenerates {
     pub fn new(def: &RegenDef) -> Self {
-        Regenerates { per_sec: def.per_sec, stopped_by: def.stopped_by.iter().fold(0, |m, h| m | h.bit()), pause: def.pause, waiting: 0.0, undying: def.undying }
+        let stopped_by = if def.rests { u16::MAX } else { def.stopped_by.iter().fold(0, |m, h| m | h.bit()) };
+        Regenerates { per_sec: def.per_sec, stopped_by, pause: def.pause, waiting: 0.0, undying: def.undying }
     }
 }
 

@@ -369,6 +369,9 @@ type Me<'a> = (&'a mut Health, Option<&'a mut Inventory>, &'a mut crate::gear::E
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn clicks(
+    mut commands: Commands,
+    mut toasts: MessageWriter<crate::progress::Toast>,
+    mut said: MessageWriter<crate::pickups::PickedUp>,
     q: Query<(&Interaction, &Act), Changed<Interaction>>,
     items_q: Query<(&Interaction, &ItemButton), Changed<Interaction>>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -382,6 +385,8 @@ pub(crate) fn clicks(
 ) {
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     let mut me = player.single_mut().ok();
+    // What the pack had no room for: at your feet, to pick up as room comes.
+    let mut over: Vec<Stack> = Vec::new();
     for (i, act) in &q {
         if *i != Interaction::Pressed {
             continue;
@@ -455,7 +460,7 @@ pub(crate) fn clicks(
             }
             Act::Kit(name) => {
                 if let (Some(items), Some((_, Some(inv), eq, _))) = (items.as_deref(), me.as_mut()) {
-                    crate::hands::put_on(items, items.kit(name), &mut *inv, &mut *eq);
+                    over.extend(crate::hands::put_on(items, items.kit(name), &mut *inv, &mut *eq));
                 }
             }
             Act::Empty => {
@@ -474,9 +479,30 @@ pub(crate) fn clicks(
         menu.typing = false;
         if let Some((_, Some(inv), ..)) = me.as_mut() {
             let n = if shift { items.stack_units(b.0) } else { items.unit(b.0) };
-            inv.add(&items, Stack::new(b.0, n));
+            let left = inv.add(&items, Stack::new(b.0, n));
+            if left > 0 {
+                over.push(Stack::new(b.0, left));
+            }
+            // (Said over your head, as anything picked up is.)
+            if left < n {
+                said.write(crate::pickups::PickedUp::Item { stack: Stack::new(b.0, n - left), new: false });
+            }
         }
     }
+    drop_over(&mut commands, &mut toasts, &items, me.as_ref().map(|(.., k)| k.body.pos), over);
+}
+
+/// What didn't fit in the pack, dropped at your feet (the pack takes it as
+/// room comes; the magnet holds off while it's full).
+fn drop_over(commands: &mut Commands, toasts: &mut MessageWriter<crate::progress::Toast>, items: &Items, at: Option<Vec2>, over: Vec<Stack>) {
+    let Some(at) = at else { return };
+    if over.is_empty() {
+        return;
+    }
+    for st in over {
+        crate::hands::spawn_drop(commands, items, at, st);
+    }
+    toasts.write(crate::progress::Toast("Pack full: dropped at your feet".into()));
 }
 
 /// Right-click an item: it goes in the hand (the hotbar slot in use; what

@@ -7803,14 +7803,14 @@ fn chop_script(
     sim: Res<SimWorld>,
     items: Option<Res<crate::hands::items::Items>>,
     mut hand: ResMut<crate::hands::Hand>,
-    mut player: Query<(&mut Kinematics, &crate::hands::items::Inventory), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
     (mut mouse, mut cursor): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>),
     mut st: Local<(u8, f32, Option<CellPos>, f32, i32)>,
 ) {
     if s.name != "chop" {
         return;
     }
-    let Ok((mut k, inv)) = player.single_mut() else { return };
+    let Ok((mut k, mut inv)) = player.single_mut() else { return };
     let Some(items) = items else { return };
     let t = s.elapsed;
     let w = &sim.world;
@@ -7847,8 +7847,37 @@ fn chop_script(
             st.0 = 1;
             k.body.pos = Vec2::new(foot.x as f32 - 14.0, foot.y as f32 + k.body.half.y);
             k.prev_pos = k.body.pos;
-            take_up(&mut hand, inv, Some(&items), "copper_axe");
+            take_up(&mut hand, &inv, Some(&items), "copper_axe");
             info!("chop: a tree at ({}, {}): standing {} cells", foot.x, foot.y, near(foot, true));
+            // (PLATYPUS_CHOP=fire: the blaze staff's ray on its trunk instead.)
+            if std::env::var("PLATYPUS_CHOP").is_ok_and(|v| v == "fire") {
+                st.0 = 20;
+                st.1 = t;
+                k.body.pos.x -= 40.0;
+                k.prev_pos = k.body.pos;
+            }
+        }
+        20 => {
+            let foot = st.2.expect("found");
+            if let Some(blaze) = items.id("blaze_staff") {
+                let to = hand.active();
+                if let Some(i) = inv.slots.iter().position(|s| s.is_some_and(|s| s.item == blaze))
+                    && i != to
+                {
+                    inv.slots.swap(i, to);
+                }
+            }
+            cursor.0 = Some(Vec2::new(foot.x as f32 + 4.0, foot.y as f32 + 20.0));
+            if t - st.1 < 3.0 {
+                mouse.press(MouseButton::Left);
+            } else {
+                mouse.release(MouseButton::Left);
+            }
+            if t >= st.3 {
+                st.3 = t + 2.0;
+                let burning = (-80..=80).flat_map(|dx| (-20..=160).map(move |dy| foot.offset(dx, dy))).filter(|p| w.get(*p).is_some_and(|c| c.material == w.materials().expect_id("fire"))).count();
+                info!("chop: fire: t {t:.0}: standing {}, flames about it {burning}", near(foot, true));
+            }
         }
         1 | 2 => {
             let foot = st.2.expect("found");
@@ -7903,7 +7932,7 @@ fn chop_script(
         // Build: a wall four blocks up beside you, aiming into the air above.
         3 => {
             mouse.release(MouseButton::Left);
-            take_up(&mut hand, inv, Some(&items), "block:wood");
+            take_up(&mut hand, &inv, Some(&items), "block:wood");
             st.0 = 4;
             st.1 = t;
             st.4 = 0;

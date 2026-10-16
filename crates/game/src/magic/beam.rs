@@ -1,9 +1,10 @@
 //! Beams (`Carrier::Beam`): an instant line from the hand, held. Each tick
 //! it's held it reaches from the hand to the first thing in its way (a
-//! solid, a liquid, a plant: anything but air, gas and flame; or a body),
-//! and what it carries goes off there: a fire ray heats and lights, a frost
-//! ray freezes (water to an ice bridge, lava to stone), the vaporiser eats
-//! the cells it plays on, hardest last.
+//! solid, a liquid: anything but air, gas, flame and tall grass; or a body,
+//! its box or any part of it: a leg, a segment), and what it carries goes
+//! off there: a fire ray heats and lights (and lights the trees it passes
+//! in front of), a frost ray freezes (water to an ice bridge, lava to
+//! stone), the vaporiser eats the cells it plays on, hardest last.
 //!
 //! Drawn a cell at a time on a canvas above the light overlay (a beam is
 //! light: it doesn't darken in the dark), with a light where it ends.
@@ -20,25 +21,31 @@ use crate::world::{ChunkLoader, SimWorld};
 /// Above the light overlay (15), below glowing eyes.
 const Z_BEAMS: f32 = 15.8;
 
+/// How far past its box a body's parts (legs, segments) may reach: bodies
+/// this near the line are looked at.
+const PARTS_REACH: f32 = 24.0;
+
 /// Where a beam from `from` along `dir` stops, out to `range`: at the
-/// first cell in its way, or the first body (not `caster`'s) it meets.
-/// The tip, and the body there.
-pub fn trace(world: &World, bodies: impl Iterator<Item = (Entity, Vec2, Vec2)>, caster: Entity, from: Vec2, dir: Vec2, range: f32) -> (Vec2, Option<Entity>) {
+/// first cell in its way, or the first body (not `caster`'s) it meets, its
+/// box or one of its parts (`touch`). The tip, and the body there.
+pub fn trace(world: &World, bodies: impl Iterator<Item = (Entity, Vec2, Vec2)>, caster: Entity, from: Vec2, dir: Vec2, range: f32, touch: impl Fn(Entity, Vec2) -> bool) -> (Vec2, Option<Entity>) {
     let mats = world.materials();
-    // Only bodies near the line are worth looking at, each step.
+    // Only bodies near the line are worth looking at, each step (its box's
+    // corner and its parts can be further from its middle than its side).
     let near: Vec<(Entity, Vec2, Vec2)> = bodies
         .filter(|&(e, pos, half)| {
             let t = (pos - from).dot(dir).clamp(0.0, range);
-            e != caster && (from + dir * t).distance(pos) <= half.max_element() + 1.5
+            e != caster && (from + dir * t).distance(pos) <= half.length() + PARTS_REACH
         })
         .collect();
     let steps = (range * 2.0) as i32;
     for i in 1..=steps {
         let p = from + dir * (i as f32 * 0.5);
-        if let Some(&(e, ..)) = near.iter().find(|(_, pos, half)| ((p - *pos).abs() - *half).max_element() < 0.5) {
+        if let Some(&(e, ..)) = near.iter().find(|(e, pos, half)| ((p - *pos).abs() - *half).max_element() < 0.5 || touch(*e, p)) {
             return (p, Some(e));
         }
-        let open = world.get(CellPos::from_world(p.x, p.y)).is_some_and(|c| c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas | Kind::Fire | Kind::Empty));
+        // (Through tall grass, as a bolt goes: it plays on what's behind.)
+        let open = world.get(CellPos::from_world(p.x, p.y)).is_some_and(|c| c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas | Kind::Fire | Kind::Empty | Kind::Plant));
         if !open {
             return (p, None);
         }

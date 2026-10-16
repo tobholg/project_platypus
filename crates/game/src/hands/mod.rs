@@ -159,11 +159,15 @@ pub(crate) fn give_start(mut commands: Commands, items: Option<Res<Items>>, mode
     }
 }
 
-/// A kit into a pack (what doesn't fit is left out) and onto a body (over
-/// what was worn there).
-pub fn put_on(items: &Items, kit: &items::Kit, inv: &mut Inventory, eq: &mut crate::gear::Equipment) {
+/// A kit into a pack and onto a body (over what was worn there). What the
+/// pack had no room for comes back.
+pub fn put_on(items: &Items, kit: &items::Kit, inv: &mut Inventory, eq: &mut crate::gear::Equipment) -> Vec<Stack> {
+    let mut over = Vec::new();
     for &(item, n) in &kit.carry {
-        inv.add(items, Stack::new(item, n * items.unit(item)));
+        let left = inv.add(items, Stack::new(item, n * items.unit(item)));
+        if left > 0 {
+            over.push(Stack::new(item, left));
+        }
     }
     for &item in &kit.wear {
         let s = Stack::new(item, 1);
@@ -171,6 +175,7 @@ pub fn put_on(items: &Items, kit: &items::Kit, inv: &mut Inventory, eq: &mut cra
             eq.worn[i] = Some(s);
         }
     }
+    over
 }
 
 fn toggle_dev(keys: Res<ButtonInput<KeyCode>>, mode: Res<crate::mode::Mode>, mut actions: MessageReader<crate::dev::DevAction>, mut dev: ResMut<DevTools>, mut hand: ResMut<Hand>) {

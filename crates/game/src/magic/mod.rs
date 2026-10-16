@@ -415,6 +415,29 @@ fn request(
     }
 }
 
+/// Fire along a line lights what burns behind it, in the background (a
+/// tree's trunk, its leaves) where nothing stands in front: a few spots a
+/// tick, wandering along it, so a tree held in a ray or a jet catches.
+fn ignite_behind(world: &mut platypus_sim::World, from: Vec2, dir: Vec2, len: f32) {
+    const SPOTS: u64 = 3;
+    const GAP: f32 = 5.0;
+    let mats = world.materials().clone();
+    let n = (len / GAP) as u64;
+    if n == 0 {
+        return;
+    }
+    let tick = world.tick();
+    for k in 0..SPOTS {
+        let t = ((tick * SPOTS + k) * 7 % n) as f32 * GAP + GAP;
+        let c = CellPos::from_world(from.x + dir.x * t, from.y + dir.y * t);
+        let behind = world.get_bg(c).is_some_and(|b| !b.is_air() && mats.phys(b.material).flammability > 0);
+        let open = world.get(c).is_some_and(|f| f.is_air() || matches!(mats.phys(f.material).kind, Kind::Gas | Kind::Fire | Kind::Plant));
+        if behind && open {
+            world.apply_edit(&WorldEdit::Ignite { center: c, radius: 1 });
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn fire(
     mut commands: Commands,
@@ -427,6 +450,7 @@ fn fire(
     mut blasts: MessageWriter<crate::fx::Explosion>,
     mut bodies: Query<Hittable>,
     drinkers: Res<Drinkers>,
+    (parts, teams): (Query<&crate::creatures::body::parts::Parts>, Query<&crate::creatures::Team>),
 ) {
     let halo = halo.map(|h| h.0.clone());
     let mut booms = Vec::new();
@@ -449,6 +473,8 @@ fn fire(
                     let mats = world.materials();
                     let open = |p: Vec2| world.get(CellPos::from_world(p.x, p.y)).is_some_and(|c| c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas | Kind::Fire | Kind::Plant));
                     let tip = (STREAM_AHEAD as i32..reach as i32).map(|t| f.from + f.dir * t as f32).find(|&p| !open(p));
+                    // (And what grows behind it, where it passes: a tree catches.)
+                    ignite_behind(&mut sim.world, f.from, f.dir, tip.map_or(reach, |t| t.distance(f.from)));
                     if let Some(tip) = tip {
                         sim.world.apply_edit(&WorldEdit::Heat { center: CellPos::from_world(tip.x, tip.y), radius: 5, amount: STREAM_HEAT });
                     }
@@ -471,7 +497,7 @@ fn fire(
             Carrier::Well { .. } | Carrier::Force { .. } => {}
             Carrier::Wall { material, width, height, range, hold } => {
                 let boxes: Vec<(Vec2, Vec2)> = bodies.iter().map(|(_, k, ..)| (k.body.pos, k.body.half)).collect();
-                let (tip, _) = beam::trace(&sim.world, std::iter::empty(), f.caster, f.from, f.dir, f.reach.min(*range));
+                let (tip, _) = beam::trace(&sim.world, std::iter::empty(), f.caster, f.from, f.dir, f.reach.min(*range), |_, _| false);
                 if let Some((min, max)) = conjure::wall(&mut sim.world, material, tip, *width, *height, &boxes) {
                     for e in &cast.bursts {
                         for i in 0..4 {
@@ -485,7 +511,7 @@ fn fire(
                 }
             }
             Carrier::Cloud { material, radius, range } => {
-                let (tip, hit) = beam::trace(&sim.world, std::iter::empty(), f.caster, f.from, f.dir, f.reach.min(*range));
+                let (tip, hit) = beam::trace(&sim.world, std::iter::empty(), f.caster, f.from, f.dir, f.reach.min(*range), |_, _| false);
                 // (Just short of what stopped it.)
                 let at = if tip.distance(f.from) < f.reach.min(*range) - 0.5 { tip - f.dir * (*radius as f32 * 0.5) } else { tip };
                 if let Some(m) = sim.world.materials().id(material) {
@@ -519,8 +545,16 @@ fn fire(
                 }
             }
             &Carrier::Beam { range, width } => {
-                let (tip, hit) = beam::trace(&sim.world, bodies.iter().map(|(e, k, ..)| (e, k.body.pos, k.body.half)), f.caster, f.from, f.dir, range);
+                // (Not through its caster's side: the player's rays pass villagers.)
+                let side = teams.get(f.caster).ok().copied();
+                let ours = |e: Entity| teams.get(e).ok().zip(side).is_some_and(|(t, me)| t.allied(me));
+                let touch = |e: Entity, p: Vec2| parts.get(e).is_ok_and(|pp| pp.touch(p, 1.0).is_some());
+                let (tip, hit) = beam::trace(&sim.world, bodies.iter().filter(|(e, ..)| !ours(*e)).map(|(e, k, ..)| (e, k.body.pos, k.body.half)), f.caster, f.from, f.dir, range, touch);
                 beams.add(&cast, f.from, tip, width, sim.world.tick());
+                // A fire ray lights the trees it passes in front of.
+                if cast.payloads.iter().any(|p| matches!(p, Payload::Ignite { .. })) {
+                    ignite_behind(&mut sim.world, f.from, f.dir, tip.distance(f.from));
+                }
                 // Sparks along it, and where it plays on something.
                 let len = tip.distance(f.from);
                 let mut rng = Rng::seeded(&[sim.world.tick(), f.caster.to_bits(), 0xBEA3]);
