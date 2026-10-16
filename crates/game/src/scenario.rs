@@ -309,6 +309,8 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, starter_script)
             .add_systems(Update, close_window)
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
+            .add_systems(PreUpdate, devmenu_place_script.after(InputSystems).before(crate::devmenu::place))
+            .add_systems(PreUpdate, devmenu_pick_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -8015,6 +8017,65 @@ fn devmenu_script(
     } else if *step == 2 && s.elapsed > 3.0 {
         *step = 3;
         info!("devmenu: after: longsword {}, gold_pickaxe {}, torch {}", count("longsword"), count("gold_pickaxe"), count("torch"));
+    }
+}
+
+/// `devmenu`, placing: the zombie's button pressed at 15 s.
+fn devmenu_pick_script(s: Res<Scenario>, mut buttons: Query<(&mut Interaction, &crate::devmenu::Act)>, mut done: Local<bool>) {
+    if s.name != "devmenu" || *done || s.elapsed < 15.0 {
+        return;
+    }
+    for (mut i, a) in &mut buttons {
+        if *a == crate::devmenu::Act::Arena(crate::arena::ArenaAction::Pick("zombie".into())) {
+            *i = Interaction::Pressed;
+            *done = true;
+        }
+    }
+}
+
+/// `devmenu`, placing: at 15 s the zombie picked in the Creatures tab, at
+/// 15.5 s and 16 s a click in the world 80 and 120 cells to the right; logs
+/// the zombies there before and after (`PLATYPUS_SCENARIO_SECS=18`).
+#[allow(clippy::type_complexity)]
+fn devmenu_place_script(
+    s: Res<Scenario>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    (mut mouse, mut cursor): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>),
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    them: Query<&crate::creatures::Creature>,
+    mut step: Local<u8>,
+) {
+    if s.name != "devmenu" {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    let zombies = || them.iter().filter(|c| c.kind == "zombie").count();
+    let t = s.elapsed;
+    match *step {
+        0 if t > 14.5 => {
+            *step = 1;
+            menu.open = true;
+            menu.tab = crate::devmenu::Tab::Creatures;
+        }
+        // (The pick itself: `devmenu_pick_script`, after the UI's focus.)
+        1 if t > 15.0 => {
+            *step = 2;
+            info!("devmenu: placing: zombies before {}", zombies());
+        }
+        2 | 4 if t > 15.0 + 0.5 * (*step / 2) as f32 => {
+            cursor.0 = Some(k.body.pos + Vec2::new(if *step == 2 { 80.0 } else { 120.0 }, 0.0));
+            mouse.press(MouseButton::Left);
+            *step += 1;
+        }
+        3 | 5 => {
+            mouse.release(MouseButton::Left);
+            *step += 1;
+        }
+        6 if t > 17.0 => {
+            *step = 7;
+            info!("devmenu: placing: zombies after {}", zombies());
+        }
+        _ => {}
     }
 }
 

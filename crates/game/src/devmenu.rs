@@ -7,8 +7,9 @@
 //! - **Items**: the kits (`items.ron`), and every item by kind or by name
 //!   (click the search, type): click one into the pack, Shift-click for a
 //!   stack, right-click to hold it (the hotbar slot in hand).
-//! - **Creatures**: what O spawns at the cursor (packs, then kinds, or by
-//!   name), one in front of you, clearing the floor, the bestiary, the show.
+//! - **Creatures**: packs, then kinds, or by name: pick one and each click in
+//!   the world places it (right-click stops; O spawns it at the cursor too),
+//!   one in front of you, clearing the floor, the bestiary, the show.
 //! - **World**: the time of day, weather, events, the arena's floors, resets.
 //! - **Tools**: the dev toolbelt in place of the hands (`tools.rs`), its
 //!   radius, and what the spawner pours.
@@ -134,6 +135,9 @@ pub struct DevMenu {
     typing: bool,
     /// The next click in the world teleports you there.
     teleport: bool,
+    /// Placing what's picked in the Creatures tab: each click in the world
+    /// puts one there (right-click stops).
+    placing: bool,
     /// What the lists were last built from (rebuilt when it changes).
     built: String,
 }
@@ -213,7 +217,7 @@ impl Default for DevMenu {
     fn default() -> Self {
         let saved = std::fs::read_to_string(tab_path()).unwrap_or_default();
         let tab = Tab::ALL.into_iter().find(|t| t.name() == saved.trim()).unwrap_or(Tab::Player);
-        DevMenu { open: false, tab, cat: None, search: String::new(), typing: false, teleport: false, built: String::new() }
+        DevMenu { open: false, tab, cat: None, search: String::new(), typing: false, teleport: false, placing: false, built: String::new() }
     }
 }
 
@@ -223,7 +227,7 @@ impl Plugin for DevMenuPlugin {
             .init_resource::<Cheats>()
             .add_systems(Startup, spawn_panel.after(crate::fight::make_timeline))
             // (Before the UI reads the mouse: a teleport's click is the menu's.)
-            .add_systems(PreUpdate, teleport.after(bevy::input::InputSystems).before(bevy::ui::UiSystems::Focus))
+            .add_systems(PreUpdate, (teleport, place).after(bevy::input::InputSystems).before(bevy::ui::UiSystems::Focus))
             .add_systems(PreUpdate, (toggle, typing).chain().after(bevy::input::InputSystems).after(crate::editor::capture).after(crate::bestiary::panel::capture).after(crate::title::capture))
             .add_systems(PreUpdate, (clicks, hold, scroll).chain().after(bevy::ui::UiSystems::Focus))
             .add_systems(Update, (rebuild, show, caption))
@@ -333,6 +337,34 @@ fn teleport(
     info!("dev: teleported to ({:.0}, {:.0})", at.x, at.y);
 }
 
+/// Placing: a click in the world (not on a panel) puts the picked creature
+/// (or pack) there; a right-click, or shutting the menu, stops it.
+pub(crate) fn place(mut menu: ResMut<DevMenu>, mut mouse: ResMut<ButtonInput<MouseButton>>, over: Res<PointerOverUi>, cursor: Res<CursorWorld>, kind: Res<SpawnKind>, mut out: MessageWriter<DevAction>) {
+    if !menu.placing {
+        return;
+    }
+    if !menu.open {
+        menu.placing = false;
+        return;
+    }
+    if over.0 {
+        return;
+    }
+    if mouse.just_pressed(MouseButton::Right) {
+        menu.placing = false;
+        mouse.reset(MouseButton::Right);
+        return;
+    }
+    if mouse.just_pressed(MouseButton::Left)
+        && let Some(at) = cursor.0
+    {
+        out.write(DevAction::Spawn(Some(at)));
+        // (The click was the placing's, not the hands'.)
+        mouse.reset(MouseButton::Left);
+        info!("dev: placed {} at ({:.0}, {:.0})", kind.0, at.x, at.y);
+    }
+}
+
 type Me<'a> = (&'a mut Health, Option<&'a mut Inventory>, &'a mut crate::gear::Equipment, &'a Kinematics);
 
 #[allow(clippy::too_many_arguments)]
@@ -343,7 +375,7 @@ pub(crate) fn clicks(
     items: Option<Res<Items>>,
     mut menu: ResMut<DevMenu>,
     mut cheats: ResMut<Cheats>,
-    (mut dev_tools, mut belt, mut checkpoint, mut day): (ResMut<DevTools>, ResMut<Toolbelt>, ResMut<crate::respawn::Checkpoint>, ResMut<crate::light::Daylight>),
+    (mut dev_tools, mut belt, mut checkpoint, mut day, picked): (ResMut<DevTools>, ResMut<Toolbelt>, ResMut<crate::respawn::Checkpoint>, ResMut<crate::light::Daylight>, Res<SpawnKind>),
     mut dev: MessageWriter<DevAction>,
     mut arena: MessageWriter<ArenaAction>,
     mut player: Query<Me, With<LocalPlayer>>,
@@ -362,6 +394,12 @@ pub(crate) fn clicks(
                 dev.write(*a);
             }
             Act::Arena(a) => {
+                // (A creature picked: placing it, until a right-click; the
+                // same one again stops.)
+                if let ArenaAction::Pick(k) = a {
+                    menu.placing = !(menu.placing && *k == picked.0);
+                    menu.teleport = false;
+                }
                 arena.write(a.clone());
             }
             Act::Tab(t) => {
@@ -374,7 +412,10 @@ pub(crate) fn clicks(
             Act::Search => menu.typing = !menu.typing,
             Act::God => cheats.god = !cheats.god,
             Act::Endless => cheats.endless = !cheats.endless,
-            Act::Teleport => menu.teleport = !menu.teleport,
+            Act::Teleport => {
+                menu.teleport = !menu.teleport;
+                menu.placing = false;
+            }
             Act::Hands => dev_tools.0 = false,
             Act::Tool(t) => {
                 belt.tool = *t;
@@ -611,7 +652,7 @@ fn spawn_panel(
                         button(r, "Show the next  P", Act::Dev(DevAction::ShowNext));
                         button(r, "Show mode", Act::Dev(DevAction::ShowMode));
                     });
-                    heading(p, "What spawns (pick one)");
+                    heading(p, "Pick one, then click the world to place it (right-click stops)");
                     search(p);
                     p.spawn((CreatureList, Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(3), row_gap: px(3), max_width: px(WIDE), ..default() }));
                 });
@@ -899,7 +940,13 @@ fn show(
     let speed = virt.relative_speed();
     let time = if virt.is_paused() { "  paused".to_string() } else if speed < 1.0 { format!("  x{speed}") } else { String::new() };
     let hand = if dev_tools.0 { format!("  | {}", belt.tool.label()) } else { String::new() };
-    let teleport = if menu.teleport { "  | click to teleport" } else { "" };
+    let teleport = if menu.teleport {
+        "  | click to teleport".to_string()
+    } else if menu.placing {
+        format!("  | placing {}: click the world, right-click stops", kind.0)
+    } else {
+        String::new()
+    };
     for mut t in &mut title {
         let want = format!("DEV  {}{time}{hand}{teleport}", tempo.name());
         if t.0 != want {
