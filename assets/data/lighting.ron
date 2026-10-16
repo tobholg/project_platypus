@@ -21,12 +21,20 @@
     moonlight: 0.45,
 
     // What the player carries: a lantern always (faint: underground it shows
-    // you and the rock at your side, little more; bring a light); L steps through nothing, a
-    // small flashlight, the big one (a cone toward the cursor, `angle`
-    // degrees wide, `range` cells) and a torch in the off hand.
+    // you and the rock at your side, little more; bring a light), and what
+    // it wears for light (light/torch.rs): in the off hand a pocket
+    // flashlight (`flashlight_small`), a flashlight (a cone toward the
+    // cursor, `angle` degrees wide, `range` cells), a torch or a lantern
+    // (`lamp`, steady all round); on the head a mining helmet's lamp.
     lantern: (color: (255, 196, 130), strength: 0.08),
     flashlight: (color: (230, 238, 255), strength: 1.8, range: 360, angle: 46),
     flashlight_small: (color: (240, 236, 220), strength: 1.1, range: 195, angle: 30),
+    headlamp: (color: (250, 240, 210), strength: 0.9, range: 170, angle: 22),
+    // A beam's spill: a dim wide cone round the hot spot (share of its
+    // light, degrees, cells), and a glow at the lamp all round (share): so
+    // what's right by you shows, whichever side.
+    spill: (share: 0.1, angle: 110, range: 75, glow: 0.12),
+    lamp: (color: (255, 214, 160), strength: 1.7, haze: 0.12),
     // A torch (held, planted with G or the torch item): its light, and its
     // fire, a look only (counts are a second's worth; see runes.ron for the
     // fields): flames rising and shrinking from white to red, a wisp of

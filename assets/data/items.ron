@@ -42,7 +42,15 @@
         (id: "gold_pickaxe",   name: "Gold pickaxe",   color: (236, 196, 72), use: Mine(back: false, power: 75, tier: 115, speed: 7.5, reach: 7.0, area: 12.0)),
         (id: "mithril_pickaxe", name: "Mithril pickaxe", color: (110, 220, 228), use: Mine(back: false, power: 100, tier: 150, speed: 9.0, reach: 7.5, area: 13.5)),
         (id: "copper_axe",     name: "Copper axe",     color: (190, 110, 45), use: Mine(back: true, power: 30, tier: 60, speed: 5.0, reach: 6.0)),
-        (id: "torch",          name: "Torch",          stack: 99, color: (255, 190, 90), use: Torch),
+        // Lights: a torch is planted (from the hotbar) or held in the off
+        // hand (the off-hand slot: worn, as gear is); the rest only held.
+        (id: "torch",          name: "Torch",          stack: 99, color: (255, 190, 90), use: Torch, light: Torch),
+        (id: "pocket_flashlight", name: "Pocket flashlight", color: (200, 200, 190), light: Pocket,
+            about: "A small beam where you point it. Wear it in the off hand."),
+        (id: "flashlight",     name: "Flashlight",     color: (214, 218, 226), light: Flashlight,
+            about: "A long, bright beam where you point it. Wear it in the off hand."),
+        (id: "lantern",        name: "Lantern",        color: (255, 214, 140), light: Lantern,
+            about: "A steady glow all round you. Wear it in the off hand."),
         (id: "bomb",           name: "Bomb",           stack: 30, color: (40, 40, 46), use: Throw(Bomb)),
         (id: "glowstick",      name: "Glow stick",     stack: 30, color: (90, 255, 150), use: Throw(Glowstick)),
         // Potions: click to drink (or H, the first healing one carried).
@@ -167,7 +175,7 @@
     kits: [
         (name: "play", about: "A new game: a copper pick and axe, a short sword, a few torches",
             carry: [("copper_pickaxe", 1), ("copper_axe", 1), ("shortsword", 1), ("torch", 8), ("small_health_potion", 2)]),
-        (name: "dev", about: "Everything worth trying",
+        (name: "dev", about: "Everything worth trying (a flashlight in the off hand, a mining helmet in the pack)",
             carry: [
                 ("copper_pickaxe", 1), ("copper_axe", 1), ("torch", 12), ("bomb", 5), ("block:platform", 40),
                 ("radiant_wand", 1), ("fire_wand", 1), ("acid_wand", 1), ("fire_staff", 1), ("storm_staff", 1),
@@ -177,12 +185,13 @@
                 ("cloud_boots", 1), ("radiant_staff", 1), ("frost_staff", 1), ("blaze_staff", 1),
                 ("storm_wand", 1), ("acid_staff", 1), ("void_wand", 1), ("void_staff", 1),
                 ("ladle", 1), ("bucket", 1), ("flask", 1), ("copper_bar", 12), ("iron_bar", 12), ("block:firebrick", 30),
+                ("lantern", 1), ("pocket_flashlight", 1), ("mining_helmet", 1),
             ],
-            // (Rocket boots and a grappling hook to try.)
-            wear: ["rocket_boots", "grappling_hook", "travelers_cape"]),
-        (name: "miner", about: "A gold pick, bombs, light and a way back up",
+            // (Rocket boots and a grappling hook to try, a flashlight in hand.)
+            wear: ["rocket_boots", "grappling_hook", "travelers_cape", "flashlight"]),
+        (name: "miner", about: "A gold pick, bombs, a mining helmet and a lantern, and a way back up",
             carry: [("gold_pickaxe", 1), ("bomb", 20), ("torch", 60), ("glowstick", 20), ("block:platform", 200), ("small_health_potion", 5)],
-            wear: ["rocket_boots", "grappling_hook"]),
+            wear: ["rocket_boots", "grappling_hook", "mining_helmet", "lantern"]),
         (name: "fighter", about: "Swords, a bow, iron armour, potions",
             carry: [("longsword", 1), ("shortsword", 1), ("cleaver", 1), ("club", 1), ("bow", 1), ("arrow", 200), ("small_health_potion", 10)],
             wear: ["iron_helm", "chainmail", "iron_gauntlets", "iron_greaves", "iron_boots", "ring_of_vigour"]),

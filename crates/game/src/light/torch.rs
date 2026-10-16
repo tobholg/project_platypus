@@ -66,8 +66,11 @@ pub struct HeldFlame;
 pub struct OffHandArt {
     torch: crate::combat::Turned,
     flashlight: crate::combat::Turned,
+    lantern: crate::combat::Turned,
     flame: Vec2,
     lens: Vec2,
+    /// A lantern's flame, inside its glass.
+    glow: Vec2,
 }
 
 /// A held flashlight's lens, from the player's middle (cells): the beam
@@ -93,7 +96,8 @@ pub fn load_off_hand(mut commands: Commands, mut images: ResMut<Assets<Image>>, 
     let turned = |art: &str, images: &mut Assets<Image>, layouts: &mut Assets<TextureAtlasLayout>| crate::combat::turned_art(art, None, images, layouts).unwrap_or_else(|e| panic!("{art}: {e}"));
     let torch = turned("torch", &mut images, &mut layouts);
     let flashlight = turned("flashlight", &mut images, &mut layouts);
-    commands.insert_resource(OffHandArt { torch, flashlight, flame: from_grip("torch", "flame"), lens: from_grip("flashlight", "lens") });
+    let lantern = turned("lantern", &mut images, &mut layouts);
+    commands.insert_resource(OffHandArt { torch, flashlight, lantern, flame: from_grip("torch", "flame"), lens: from_grip("flashlight", "lens"), glow: from_grip("lantern", "flame") });
 }
 
 pub fn load_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
@@ -153,11 +157,12 @@ pub fn burn(time: Res<Time>, settings: Res<LightSettings>, mut sparks: ResMut<Sp
 
 type HeldOnly = (With<HeldTorch>, Without<LocalPlayer>, Without<HeldFlame>);
 
-/// What L picked, in the off hand: the torch or a flashlight, gripped at
-/// the back arm's hand, in front of the body so it shows, pointed at the
-/// cursor (the side the player faces, up to straight up or down; the torch
-/// burns from its head wherever it points, a flashlight's beam leaves its
-/// lens).
+/// What's worn in the off hand (`LightToggles::carry`): a torch, a
+/// flashlight or a lantern, gripped at the back arm's hand, in front of the
+/// body so it shows; a torch or a flashlight pointed at the cursor (the side
+/// the player faces, up to straight up or down; the torch burns from its
+/// head wherever it points, a flashlight's beam leaves its lens), a lantern
+/// hanging upright, glowing from inside, steady.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn hold(
     mut commands: Commands,
@@ -183,10 +188,14 @@ pub fn hold(
         let turned = match carry {
             Carry::Torch => &art.torch,
             Carry::SmallBeam | Carry::BigBeam => &art.flashlight,
+            Carry::Lantern => &art.lantern,
             Carry::Nothing => return,
         };
         let (image, layout) = turned.atlas();
         let mut e = commands.spawn((Name::new("Held light"), HeldTorch, Sprite::from_atlas_image(image, TextureAtlas { layout, index: 0 }), Transform::default(), ChildOf(me)));
+        if carry == Carry::Lantern {
+            e.with_child((Name::new("Held lantern's light"), HeldFlame, LightSource { color: rgb(settings.lamp.color, settings.lamp.strength), flicker: 0.0 }, super::Haze(settings.lamp.haze), Transform::default(), Visibility::default()));
+        }
         if carry == Carry::Torch {
             e.with_child((
                 Name::new("Held torch's fire"),
@@ -207,7 +216,12 @@ pub fn hold(
     let d = cursor.0.map_or(Vec2::X, |c| c - (k.body.pos + hand_at.truncate()));
     let aim = d.y.atan2(d.x.abs()).to_degrees().clamp(-90.0, 90.0);
     // (The torch is drawn upright: turned a quarter less.)
-    let (angle, tip) = if carry == Carry::Torch { (aim - 90.0, art.flame) } else { (aim, art.lens) };
+    let (angle, tip) = match carry {
+        Carry::Torch => (aim - 90.0, art.flame),
+        // (A lantern hangs: upright, whichever way you look.)
+        Carry::Lantern => (0.0, art.glow),
+        _ => (aim, art.lens),
+    };
     if let Some(atlas) = sprite.texture_atlas.as_mut() {
         atlas.index = crate::combat::Turned::index(angle);
     }
@@ -215,10 +229,11 @@ pub fn hold(
     tf.translation = hand_at + Vec3::new(0.0, 0.0, 0.02);
     let r = Vec2::from_angle(angle.to_radians()).rotate(tip);
     let tip_at = Vec2::new(r.x * facing, r.y);
-    if carry == Carry::Torch {
+    if matches!(carry, Carry::Torch | Carry::Lantern) {
+        let lamp = if carry == Carry::Torch { settings.torch } else { settings.lamp };
         for (mut ftf, mut light) in &mut flames {
             ftf.translation = tip_at.extend(0.0);
-            light.color = rgb(settings.torch.color, settings.torch.strength);
+            light.color = rgb(lamp.color, lamp.strength);
         }
     } else {
         off.lens = Some(hand_at.truncate() + tip_at);

@@ -49,6 +49,8 @@ pub enum Slot {
     Back,
     /// In the hand (the hotbar slot in use): weapons, tools, foci.
     Held,
+    /// The other hand: a light (a torch, a flashlight, a lantern).
+    OffHand,
 }
 
 impl Slot {
@@ -63,12 +65,17 @@ impl Slot {
             Slot::Hook => "Hook",
             Slot::Back => "Back",
             Slot::Held => "Held",
+            Slot::OffHand => "Off hand",
         }
     }
 }
 
 /// The worn slots, in order (what `Equipment::worn` holds).
-pub const WORN: [Slot; 9] = [Slot::Head, Slot::Body, Slot::Hands, Slot::Legs, Slot::Feet, Slot::Trinket, Slot::Trinket, Slot::Hook, Slot::Back];
+/// (New slots go at the end: a save keeps them by place.)
+pub const WORN: [Slot; 10] = [Slot::Head, Slot::Body, Slot::Hands, Slot::Legs, Slot::Feet, Slot::Trinket, Slot::Trinket, Slot::Hook, Slot::Back, Slot::OffHand];
+
+/// The off hand's place in `WORN`.
+pub const OFF_HAND: usize = 9;
 
 /// How heavy a piece of armour is: what kind of fighter wears it. Its
 /// weight's stats (gear.ron `weights`) come with every piece.
@@ -196,7 +203,9 @@ pub struct Equipment {
 impl Equipment {
     /// Does this item go in worn slot `i`?
     pub fn fits(items: &Items, i: usize, stack: &Stack) -> bool {
-        items.def(stack.item).gear.as_ref().is_some_and(|g| WORN.get(i) == Some(&g.slot))
+        let def = items.def(stack.item);
+        // (A light to hold goes in the off hand, gear or not: a torch.)
+        def.gear.as_ref().is_some_and(|g| WORN.get(i) == Some(&g.slot)) || (i == OFF_HAND && def.light.is_some_and(|l| l.held()))
     }
 
     /// The worn slot an item would go in: an empty one of its kind first.

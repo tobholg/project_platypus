@@ -308,6 +308,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, chop_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, starter_script)
             .add_systems(Update, close_window)
+            .add_systems(PreUpdate, lights_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, goldsmash_script.after(InputSystems).before(crate::magic::well::twist_input).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, devmenu_place_script.after(InputSystems).before(crate::devmenu::place))
@@ -7748,6 +7749,64 @@ fn play_script(
         *step += 1;
         keys.release(KeyCode::Escape);
         info!("play: Esc: game menu {}, time {}", if menu.open { "up" } else { "shut" }, if virt.is_paused() { "paused" } else { "running" });
+    }
+}
+
+/// `lights` (`PLATYPUS_WORLD=arena PLATYPUS_HOUR=23`, with `PLATYPUS_SHOTS`
+/// and `PLATYPUS_SHOT_EVERY=2`): what's worn for light, in the dark: a
+/// spider right by the player, a zombie 150 out in front, the cursor on the
+/// zombie. 0-3 s the flashlight (the dev kit's), 3-5 the lantern, 5-7 a
+/// torch, 7-9 nothing held but a mining helmet. Logs what's carried and how
+/// the two's eyes shine.
+#[allow(clippy::type_complexity)]
+fn lights_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    toggles: Res<crate::light::LightToggles>,
+    mut player: Query<(&Kinematics, &mut crate::gear::Equipment), With<LocalPlayer>>,
+    them: Query<(&crate::creatures::Creature, &Kinematics, Option<&crate::light::Shine>), Without<LocalPlayer>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut st: Local<(u8, f32, bool)>,
+) {
+    if s.name != "lights" {
+        return;
+    }
+    let Ok((pk, mut eq)) = player.single_mut() else { return };
+    let Some(items) = items else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    if !st.2 && t > 0.5 {
+        st.2 = true;
+        crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(pk.body.pos.x + 22.0, fl), |_| {});
+        crate::creatures::def::spawn_creature(&mut commands, "zombie", Vec2::new(pk.body.pos.x + 150.0, fl), |_| {});
+    }
+    if let Some((_, zk, _)) = them.iter().find(|(c, ..)| c.kind == "zombie") {
+        cursor.0 = Some(zk.body.pos + Vec2::Y * zk.body.half.y * 0.5);
+    }
+    let wear = |eq: &mut crate::gear::Equipment, i: usize, id: Option<&str>| eq.worn[i] = id.and_then(|id| items.id(id)).map(|it| crate::hands::items::Stack::new(it, 1));
+    let step = match t {
+        t if t < 3.0 => 1,
+        t if t < 5.0 => 2,
+        t if t < 7.0 => 3,
+        _ => 4,
+    };
+    if step > st.0 {
+        st.0 = step;
+        match step {
+            2 => wear(&mut eq, crate::gear::OFF_HAND, Some("lantern")),
+            3 => wear(&mut eq, crate::gear::OFF_HAND, Some("torch")),
+            4 => {
+                wear(&mut eq, crate::gear::OFF_HAND, None);
+                wear(&mut eq, 0, Some("mining_helmet"));
+            }
+            _ => {}
+        }
+    }
+    if t >= st.1 {
+        st.1 = t.floor() + 1.0;
+        let shine = |kind: &str| them.iter().find(|(c, ..)| c.kind == kind).and_then(|(.., sh)| sh.map(|s| s.0)).unwrap_or(-1.0);
+        info!("lights: t {t:.0}: carrying {:?}, headlamp {}; eye-shine: spider {:.2}, zombie {:.2}", toggles.carry, toggles.headlamp, shine("spider"), shine("zombie"));
     }
 }
 

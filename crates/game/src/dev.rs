@@ -5,9 +5,8 @@
 //!
 //! With the dev toolbelt in hand: U (or F2) to the start · V storm · B clear
 //! sky · N lightning at the cursor · M +3 hours · K lighting on/off · H
-//! performance HUD · J chunk overlay; the F-keys (F2-F9) always. And: L
-//! what you carry for light (nothing, a small beam, a big one, a torch in
-//! the off hand) · G plant a torch · O spawn what the dev menu picked (a
+//! performance HUD · J chunk overlay; the F-keys (F2-F9) always. And: G
+//! plant a torch · O spawn what the dev menu picked (a
 //! warband: `packs.ron`) at the cursor · P the show's next act (`show.rs`;
 //! not with the arena's keys live, where it pauses).
 
@@ -27,8 +26,6 @@ pub enum DevAction {
     Lightning(Option<Vec2>),
     Later,
     Lighting,
-    /// What the player carries for light: none, a small beam, a big one, a torch.
-    Flashlight,
     PlantTorch(Option<Vec2>),
     /// The kind picked to spawn (an orc unless the arena picked another).
     Spawn(Option<Vec2>),
@@ -108,7 +105,6 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, mode: Res<crate::mode::Mode>, dev: Res<
         }
     }
     for (k, action) in [
-        (KeyCode::KeyL, DevAction::Flashlight),
         (KeyCode::KeyG, DevAction::PlantTorch(at)),
         (KeyCode::KeyO, DevAction::Spawn(at)),
     ] {

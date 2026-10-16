@@ -2,8 +2,8 @@
 //! it, again (or Esc) shuts it. One panel on the left, tabs along its top:
 //!
 //! - **Player**: god mode (always, while the menu's open), endless mana and stamina, heal, die, to the
-//!   start, teleport (to where you next click in the world), the light
-//!   carried, a torch, the checkpoint (`respawn.rs`).
+//!   start, teleport (to where you next click in the world), a torch, the
+//!   checkpoint (`respawn.rs`). (Lights to carry are items: the Items tab.)
 //! - **Items**: the kits (`items.ron`), and every item by kind or by name
 //!   (click the search, type): click one into the pack, Shift-click for a
 //!   stack, right-click to hold it (the hotbar slot in hand).
@@ -648,7 +648,6 @@ fn spawn_panel(
                     });
                     heading(p, "Light");
                     row(p, |r| {
-                        button(r, "Carried: beam, big, torch  L", Act::Dev(DevAction::Flashlight));
                         button(r, "Plant a torch  G", Act::Dev(DevAction::PlantTorch(None)));
                     });
                 });

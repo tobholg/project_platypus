@@ -5,9 +5,12 @@
 //! dark) and added (a haze around what glows). Rendering only: the sim never
 //! reads it, so it costs co-op nothing.
 //!
-//! Keys: L what you carry for light (none, a small beam, a big one, a torch
-//! in the off hand), F8 +3 hours, F9 lighting on/off. `PLATYPUS_HOUR=19`
-//! starts at that hour.
+//! What the player carries for light is what it wears: in the off hand a
+//! torch, a pocket flashlight, a flashlight or a lantern; on its head a
+//! mining helmet's lamp (`LightKind`, items.ron). A beam has a dim, wide
+//! spill about its hot spot and a glow at its lens (what's right by you
+//! shows), and creatures' eyes shine back in it (`shine`). Keys: F8 +3
+//! hours, F9 lighting on/off. `PLATYPUS_HOUR=19` starts at that hour.
 
 pub mod grid;
 pub mod torch;
@@ -82,6 +85,11 @@ pub struct LightSettings {
     pub flashlight: BeamCfg,
     pub flashlight_small: BeamCfg,
     pub torch: LampCfg,
+    /// A lantern held: steady, all round.
+    pub lamp: LampCfg,
+    /// A mining helmet's lamp.
+    pub headlamp: BeamCfg,
+    pub spill: SpillCfg,
     pub glowstick: StickCfg,
     pub fire: torch::FireLook,
 }
@@ -170,11 +178,14 @@ impl Daylight {
 #[derive(Resource)]
 pub struct LightToggles {
     pub enabled: bool,
-    /// What the player carries for light (besides its lantern).
+    /// What the player holds for light in its off hand (besides its faint
+    /// lantern): what it wears there (`from_gear`), or what a scenario set.
     pub carry: Carry,
+    /// A mining helmet's lamp on its head.
+    pub headlamp: bool,
 }
 
-/// L steps through these.
+/// What's held in the off hand, for light.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Carry {
     #[default]
@@ -182,18 +193,107 @@ pub enum Carry {
     SmallBeam,
     BigBeam,
     Torch,
+    Lantern,
 }
 
-impl Carry {
-    fn next(self) -> Self {
+/// A light an item gives, worn (items.ron `light`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+pub enum LightKind {
+    /// In the off hand: fire, all round.
+    Torch,
+    /// In the off hand: a short beam.
+    Pocket,
+    /// In the off hand: a long bright beam.
+    Flashlight,
+    /// In the off hand: a steady glow all round.
+    Lantern,
+    /// On the head (a mining helmet): a narrow beam where you look.
+    Headlamp,
+}
+
+impl LightKind {
+    /// Held in the off hand (not worn on the head).
+    pub fn held(self) -> bool {
+        self != LightKind::Headlamp
+    }
+
+    pub fn carry(self) -> Carry {
         match self {
-            Carry::Nothing => Carry::SmallBeam,
-            Carry::SmallBeam => Carry::BigBeam,
-            Carry::BigBeam => Carry::Torch,
-            Carry::Torch => Carry::Nothing,
+            LightKind::Torch => Carry::Torch,
+            LightKind::Pocket => Carry::SmallBeam,
+            LightKind::Flashlight => Carry::BigBeam,
+            LightKind::Lantern => Carry::Lantern,
+            LightKind::Headlamp => Carry::Nothing,
         }
     }
 }
+
+/// What the player wears, for light: its off hand's, its head's (when what
+/// it wears changes: a scenario's own choice stands till then).
+fn from_gear(items: Option<Res<crate::hands::items::Items>>, mut toggles: ResMut<LightToggles>, worn: Query<&crate::gear::Equipment, (With<LocalPlayer>, Changed<crate::gear::Equipment>)>) {
+    let (Some(items), Ok(eq)) = (items, worn.single()) else { return };
+    let light = |i: usize| eq.worn[i].and_then(|s| items.def(s.item).light);
+    let carry = light(crate::gear::OFF_HAND).filter(|l| l.held()).map_or(Carry::Nothing, LightKind::carry);
+    let headlamp = light(0) == Some(LightKind::Headlamp);
+    if toggles.carry != carry || toggles.headlamp != headlamp {
+        toggles.carry = carry;
+        toggles.headlamp = headlamp;
+    }
+}
+
+/// A beam's spill: a dim, wide cone about its hot spot (real flashlights
+/// have one), this share of its light, this wide (degrees) and far (cells).
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub struct SpillCfg {
+    pub share: f32,
+    pub angle: f32,
+    pub range: f32,
+    /// The lamp itself, a glow all round it (the hand, the lens's rim):
+    /// this share of the beam's light.
+    pub glow: f32,
+}
+
+/// Eye-shine: how much a creature's eyes catch the player's beams (0..1,
+/// eased): in one, nearer brighter (`sight::eyes` draws its eyes so).
+#[derive(Component, Default)]
+pub struct Shine(pub f32);
+
+/// Seconds for eyes to flare as a beam finds them, and to fade once it's off.
+const SHINE_RISE: f32 = 0.06;
+const SHINE_FADE: f32 = 0.3;
+
+fn shine(mut commands: Commands, time: Res<Time>, cones: Res<Cones>, mut q: Query<(Entity, &Kinematics, Option<&mut Shine>), (With<crate::creatures::Creature>, Without<LocalPlayer>)>) {
+    let dt = time.delta_secs();
+    for (e, k, shine) in &mut q {
+        let eye = k.body.pos + Vec2::Y * k.body.half.y * 0.5;
+        // (Its eyes in a cone: nearer, brighter; its edge, a little less.)
+        let target = cones
+            .0
+            .iter()
+            .map(|&(from, dir, half, range, _)| {
+                let d = eye - from;
+                let dist = d.length();
+                if dist > range || dist < 1.0 {
+                    return 0.0;
+                }
+                let off = d.normalize().dot(dir).clamp(-1.0, 1.0).acos();
+                let edge = (1.0 - (off - half * 0.5).max(0.0) / (half * 0.75)).clamp(0.0, 1.0);
+                edge * (1.0 - dist / range).sqrt()
+            })
+            .fold(0.0f32, f32::max);
+        let Some(mut s) = shine else {
+            commands.entity(e).insert(Shine(target));
+            continue;
+        };
+        let rate = if target > s.0 { dt / SHINE_RISE } else { dt / SHINE_FADE };
+        s.0 = if target > s.0 { (s.0 + rate).min(target) } else { (s.0 - rate).max(target) };
+    }
+}
+
+/// Where the player's beams play this frame (from, dir, half angle,
+/// range, colour): what eyes shine back in.
+#[derive(Resource, Default)]
+pub struct Cones(pub Vec<(Vec2, Vec2, f32, f32, Rgb)>);
 
 /// A brief light: a blast, a lightning strike.
 struct Flash {
@@ -254,7 +354,9 @@ impl Plugin for LightPlugin {
             .insert_resource(settings)
             .insert_resource(SettingsWatch(Watched::new(path)))
             // PLATYPUS_NOLIGHT=1 starts with lighting off (F9 toggles).
-            .insert_resource(LightToggles { enabled: std::env::var("PLATYPUS_NOLIGHT").is_err(), carry: Carry::Nothing })
+            .insert_resource(LightToggles { enabled: std::env::var("PLATYPUS_NOLIGHT").is_err(), carry: Carry::Nothing, headlamp: false })
+            .init_resource::<Cones>()
+            .add_systems(Update, (from_gear, shine))
             .insert_resource(Daylight { skipped: skip, ..default() })
             .init_resource::<Flashes>()
             .init_resource::<LightMetrics>()
@@ -297,10 +399,6 @@ fn keys(
     use crate::dev::DevAction;
     for a in actions.read() {
         match *a {
-            DevAction::Flashlight => {
-                toggles.carry = toggles.carry.next();
-                info!("carrying: {:?}", toggles.carry);
-            }
             DevAction::Lighting => toggles.enabled = !toggles.enabled,
             DevAction::Later => day.skipped += 3.0,
             DevAction::DayAhead => day.skipped += 24.0,
@@ -525,7 +623,7 @@ fn compute_light(
     flashes: Res<Flashes>,
     zoom: Res<Zoom>,
     time: Res<Time>,
-    (cursor, off_light, fixed, mut glints): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>),
+    (cursor, off_light, fixed, mut glints, mut cones): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>, ResMut<Cones>),
     mut overlay: ResMut<Overlay>,
     mut pending: ResMut<Pending>,
     mut metrics: ResMut<LightMetrics>,
@@ -624,16 +722,33 @@ fn compute_light(
         let at = drawn + Vec2::new(0.0, k.body.half.y * 0.4);
         let c = |(r, g, b): (u8, u8, u8), s: f32| [r as f32 / 255.0 * s, g as f32 / 255.0 * s, b as f32 / 255.0 * s];
         g.seed_point([at.x, at.y], c(settings.lantern.color, settings.lantern.strength));
+        cones.0.clear();
         let beam = match toggles.carry {
             Carry::SmallBeam => Some(settings.flashlight_small),
             Carry::BigBeam => Some(settings.flashlight),
             _ => None,
         };
+        // A beam: its hot spot, the dim wide spill about it, and a glow at
+        // the lamp itself (what's right by you shows, whichever way).
+        let mut lamp = |g: &mut grid::LightGrid, from: Vec2, dir: Vec2, f: BeamCfg| {
+            let sp = settings.spill;
+            let col = c(f.color, f.strength);
+            g.seed_beam([from.x, from.y], [dir.x, dir.y], f.angle.to_radians() / 2.0, f.range, col);
+            g.seed_beam([from.x, from.y], [dir.x, dir.y], sp.angle.to_radians() / 2.0, sp.range, col.map(|v| v * sp.share));
+            g.seed_point([from.x, from.y], col.map(|v| v * sp.glow));
+            cones.0.push((from, dir, f.angle.to_radians() / 2.0, f.range, col));
+        };
         if let (Some(f), Some(aim)) = (beam, cursor.0) {
             // (From the flashlight's lens, in the off hand.)
             let from = off_light.lens.map_or(at, |l| drawn + l);
             let dir = (aim - from).normalize_or(Vec2::X);
-            g.seed_beam([from.x, from.y], [dir.x, dir.y], f.angle.to_radians() / 2.0, f.range, c(f.color, f.strength));
+            lamp(&mut g, from, dir, f);
+        }
+        // A mining helmet's lamp, from the brow.
+        if let (true, Some(aim)) = (toggles.headlamp, cursor.0) {
+            let from = drawn + Vec2::new(k.loco.facing * k.body.half.x * 0.6, k.body.half.y * 0.8);
+            let dir = (aim - from).normalize_or(Vec2::X);
+            lamp(&mut g, from, dir, settings.headlamp);
         }
     }
     // Embers, sparks, burning debris.

@@ -115,6 +115,10 @@ pub struct ItemDef {
     /// embers), more while it's used.
     #[serde(default)]
     pub aura: Option<Aura>,
+    /// A light to carry: worn in the off hand (a torch, a flashlight, a
+    /// lantern) or on the head (a mining helmet's lamp): `light/torch.rs`.
+    #[serde(default)]
+    pub light: Option<crate::light::LightKind>,
     /// A block's (or bar's) material as loot: ore, gem, wood or a plain
     /// block (from materials.ron: the pick-up filters).
     #[serde(skip)]
@@ -225,7 +229,7 @@ impl Items {
                 if let Some(first) = name.get_mut(0..1) {
                     first.make_ascii_uppercase();
                 }
-                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id), about: None, gear: None, aura: None, loot: def.loot });
+                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id), about: None, gear: None, aura: None, light: None, loot: def.loot });
             }
         }
         let mut by_id = HashMap::new();

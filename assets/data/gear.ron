@@ -143,6 +143,20 @@
             gear: (slot: Feet, weight: Medium, stats: { Armor: 3, MoveSpeed: 5 },
             look: (recolor: [(colors: { 'B': (92, 64, 40), 'C': (70, 48, 30), 'U': (114, 84, 56), 'o': (46, 32, 22) })]))),
 
+        // A miner's hard hat with a lamp on its brow: a narrow beam from your
+        // head where you point, your off hand free (light/torch.rs).
+        (id: "mining_helmet", name: "Mining helmet", color: (214, 176, 60), light: Headlamp,
+            about: "A hard hat with a lamp: a narrow beam where you look.",
+            gear: (slot: Head, weight: Medium, stats: { Armor: 4 },
+            look: (palette: { 'y': (214, 176, 60), 'Y': (164, 128, 40), 'h': (244, 214, 110), 'g': (90, 92, 100), 'L': (255, 246, 200) }, over: [(parts: ["head", "blink"], at: (-1, -2), rows: [
+                ".....yyyyy.....",
+                "...yyhhhyyyggL.",
+                "..yyhyyyyyyggL.",
+                ".Yyyyyyyyyyyy..",
+                "YYyyyyyyyyyyyyy",
+                "YYYYYYYYYYYYYYY",
+            ])]))),
+
         // ---- iron (Heavy): warriors ----
         (id: "iron_helm", name: "Iron helm", color: (168, 176, 194),
             gear: (slot: Head, weight: Heavy, stats: { Armor: 8, Poise: 5 },

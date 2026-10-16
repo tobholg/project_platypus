@@ -157,6 +157,11 @@
         (makes: "mithril_bar", needs: [("block:mithril_ore", 5)], at: "furnace"),
         // Vessels: the ladle for molten metal, a bucket, a glass flask.
         (makes: "ladle", needs: [("iron_bar", 4)], at: "anvil"),
+        // Lights to carry: a lantern, flashlights, a miner's helmet.
+        (makes: "lantern", needs: [("iron_bar", 3), ("block:glass", 2), ("torch", 1)], at: "anvil"),
+        (makes: "pocket_flashlight", needs: [("copper_bar", 4), ("block:glass", 1), ("torch", 1)], at: "anvil"),
+        (makes: "flashlight", needs: [("iron_bar", 4), ("block:glass", 2), ("gold_bar", 1)], at: "anvil"),
+        (makes: "mining_helmet", needs: [("copper_bar", 6), ("torch", 2)], at: "anvil"),
         (makes: "bucket", needs: [("iron_bar", 3)], at: "anvil"),
         (makes: "flask", needs: [("block:glass", 1)], at: "furnace"),
         // Heat-proof: a mould that holds molten iron.

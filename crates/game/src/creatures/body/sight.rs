@@ -68,13 +68,18 @@ fn sight(
     }
 }
 
-/// Its eyes drawn as bright as it's seen.
+/// In the dark, unlit, its eyes show this bright (a beam on them: full,
+/// eye-shine: `light::Shine`).
+const EYES_UNLIT: f32 = 0.45;
+
+/// Its eyes drawn as bright as it's seen, and as a beam lights them.
 #[allow(clippy::type_complexity)]
-fn eyes(creatures: Query<(&Sighted, &Children)>, mut sprites: Query<&mut Sprite, Or<(With<super::animation::CreatureEyes>, With<super::legs::LegEyes>)>>) {
-    for (s, children) in &creatures {
+fn eyes(creatures: Query<(&Sighted, &Children, Option<&crate::light::Shine>)>, mut sprites: Query<&mut Sprite, Or<(With<super::animation::CreatureEyes>, With<super::legs::LegEyes>)>>) {
+    for (s, children, shine) in &creatures {
+        let lit = EYES_UNLIT + (1.0 - EYES_UNLIT) * shine.map_or(0.0, |s| s.0);
         for c in children.iter() {
             if let Ok(mut sprite) = sprites.get_mut(c) {
-                sprite.color.set_alpha(s.seen);
+                sprite.color.set_alpha(s.seen * lit);
             }
         }
     }

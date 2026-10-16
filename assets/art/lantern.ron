@@ -1,0 +1,32 @@
+// A lantern, held in the off hand (light/torch.rs): an iron cage on a
+// bail, a glass body, a flame inside. Hangs upright from `grip` (its
+// bail); its light comes from `flame`.
+(
+    size: (7, 11),
+    feet: (3, 11),
+    outline: (18, 18, 22),
+    palette: {
+        'i': (70, 66, 64),      // iron
+        'I': (108, 102, 96),    // iron, lit
+        'g': (226, 196, 120),   // glass, lit from inside
+        'G': (255, 236, 170),   // glass, brightest
+        'f': (255, 250, 220),   // the flame
+    },
+    frames: {
+        "lantern": [
+            "..iII..",
+            ".i...i.",
+            "..iIi..",
+            ".IiiIi.",
+            ".gGGGg.",
+            ".gGfGg.",
+            ".gGfGg.",
+            ".ggGgg.",
+            ".IiiIi.",
+            "..iIi..",
+            ".......",
+        ],
+    },
+    clips: { "on": (frames: ["lantern"], fps: 1) },
+    anchors: { "grip": { "lantern": (3, 1) }, "flame": { "lantern": (3, 6) } },
+)
