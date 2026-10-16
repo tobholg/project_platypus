@@ -102,7 +102,7 @@
         (id: "blaze_staff",    name: "Blaze staff",    color: (255, 110, 40), use: Focus(tier: 2, element: Fire, spells: ["fire_ray", "fire_wall"]),
             gear: (slot: Held, stats: { FirePower: 50, SpellPower: 10, Mana: 20 }),
             aura: (light: (255, 140, 50), strength: 0.8, sparks: (count: 16, life: (0.3, 0.7), colors: [(255, 240, 180), (255, 160, 50), (200, 60, 20)], speed: 27, spread: 0.6, gravity: -60, drag: 2, glow: true))),
-        (id: "acid_staff",     name: "Acid staff",     color: (120, 230, 60), use: Focus(tier: 2, element: Acid, spells: ["toxic_cloud", "acid_arrow"]),
+        (id: "acid_staff",     name: "Acid staff",     color: (120, 230, 60), use: Focus(tier: 2, element: Acid, spells: ["acid_jet", "toxic_cloud"]),
             gear: (slot: Held, stats: { AcidPower: 50, SpellPower: 10, Mana: 20 }),
             aura: (light: (130, 240, 70), strength: 0.6, sparks: (count: 6, life: (0.4, 0.9), colors: [(200, 255, 120), (140, 110, 160), (90, 200, 40)], speed: 5, spread: 0.4, gravity: 180, glow: true))),
         (id: "void_wand",      name: "Void wand",      color: (150, 110, 240), use: Focus(tier: 1, element: Void, spells: ["blink_bolt"]),

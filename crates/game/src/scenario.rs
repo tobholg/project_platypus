@@ -2816,22 +2816,34 @@ fn fang_script(
     }
 }
 
-/// A focus held, to see its aura.
+/// A focus held, to see its aura (`PLATYPUS_FOCUS=acid_staff`: that one,
+/// wherever it is in the pack, swapped into the slot).
+#[allow(clippy::too_many_arguments)]
 fn foci_script(
     mut commands: Commands,
     s: Res<Scenario>,
     mut hand: ResMut<crate::hands::Hand>,
-    player: Query<(Entity, &Kinematics), With<LocalPlayer>>,
+    mut player: Query<(Entity, &Kinematics, Option<&mut crate::hands::items::Inventory>), With<LocalPlayer>>,
+    items: Option<Res<crate::hands::items::Items>>,
     mut cursor: ResMut<CursorOverride>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
 ) {
     if s.name != "foci" {
         return;
     }
-    let Ok((me, k)) = player.single() else { return };
+    let Ok((me, k, inv)) = player.single_mut() else { return };
     let slot: usize = std::env::var("PLATYPUS_SLOT").ok().and_then(|v| v.parse().ok()).unwrap_or(7);
     hand.bar = (slot - 1) / 10;
     hand.slot = (slot - 1) % 10;
+    if let (Ok(id), Some(mut inv), Some(items)) = (std::env::var("PLATYPUS_FOCUS"), inv, items.as_deref())
+        && let Some(item) = items.id(&id)
+        && let Some(i) = inv.slots.iter().position(|st| st.is_some_and(|st| st.item == item))
+    {
+        let to = hand.active();
+        if i != to {
+            inv.slots.swap(i, to);
+        }
+    }
     let at = k.body.pos + Vec2::new(45.0, 21.0);
     cursor.0 = Some(at);
     if s.elapsed > 1.5 {

@@ -28,6 +28,8 @@
             about: "Hold left: push everything away from the cursor. Hold right: pull it in."),
         (id: "flame_jet", name: "Flame jet", runes: ["flame_stream"], delay: 0.03, recharge: 0.03, tier: 2, element: Fire,
             about: "A stream of burning oil."),
+        (id: "acid_jet", name: "Acid jet", runes: ["acid_stream"], delay: 0.03, recharge: 0.03, tier: 2, element: Acid,
+            about: "A spray of acid: it eats what it hits, flesh and stone."),
         (id: "lightning", name: "Lightning", runes: ["lightning"], delay: 0.7, recharge: 0.7, tier: 2, element: Storm,
             about: "The sky's lightning, from your hand, to what's near where you aim."),
         (id: "great_well", name: "Great gravity well", runes: ["gravity_well_ii"], delay: 0.2, recharge: 0.4, tier: 2, element: Gravity,
