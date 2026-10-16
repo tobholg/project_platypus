@@ -307,6 +307,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, title_script.after(InputSystems).before(crate::title::capture))
             .add_systems(PreUpdate, chop_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, starter_script)
+            .add_systems(Update, close_window)
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -7732,6 +7733,20 @@ fn play_script(
         *step += 1;
         keys.release(KeyCode::Escape);
         info!("play: Esc: game menu {}, time {}", if menu.open { "up" } else { "shut" }, if virt.is_paused() { "paused" } else { "running" });
+    }
+}
+
+/// `PLATYPUS_CLOSE_AT=3` (any scenario): the window closed then, as a
+/// player closing it does (what's done on the way out: saving).
+fn close_window(mut commands: Commands, s: Res<Scenario>, windows: Query<Entity, With<bevy::window::PrimaryWindow>>, mut done: Local<bool>) {
+    let Some(at) = std::env::var("PLATYPUS_CLOSE_AT").ok().and_then(|v| v.parse::<f32>().ok()) else { return };
+    if *done || s.elapsed < at {
+        return;
+    }
+    *done = true;
+    for w in &windows {
+        info!("scenario: closing the window");
+        commands.entity(w).despawn();
     }
 }
 

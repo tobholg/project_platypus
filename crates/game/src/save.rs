@@ -92,7 +92,9 @@ impl Plugin for SavePlugin {
             .add_systems(PostStartup, load_world)
             .add_systems(Update, (keys, apply_player.after(crate::hands::give_start)))
             .add_systems(Update, settle_hp.after(crate::gear::apply))
-            .add_systems(Last, save);
+            // (After the window's closing is noticed, the same frame: closing
+            // it is quitting, and quitting saves.)
+            .add_systems(Last, save.after(bevy::window::ExitSystems));
     }
 }
 
