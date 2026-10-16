@@ -212,8 +212,10 @@ pub struct Health {
 
 pub use nature::{Harm, Nature};
 
-/// Armour and resistances (shares 0..1 of each kind stopped).
-#[derive(Clone, Copy, Debug, Default)]
+/// Armour and resistances (shares 0..1 of each kind stopped), and the
+/// share of what gets through that's taken at all (the player's difficulty:
+/// `difficulty.rs`).
+#[derive(Clone, Copy, Debug)]
 pub struct Ward {
     pub armor: f32,
     pub fire: f32,
@@ -221,6 +223,13 @@ pub struct Ward {
     pub storm: f32,
     pub acid: f32,
     pub fall: f32,
+    pub taken: f32,
+}
+
+impl Default for Ward {
+    fn default() -> Self {
+        Ward { armor: 0.0, fire: 0.0, frost: 0.0, storm: 0.0, acid: 0.0, fall: 0.0, taken: 1.0 }
+    }
 }
 
 /// Armour stops `armor / (armor + ARMOR_HALF)` of a physical hurt: half at
@@ -239,7 +248,7 @@ impl Ward {
             Harm::Fall => self.fall,
             Harm::Poison | Harm::Radiant | Harm::Void => 0.0,
         };
-        1.0 - stopped.clamp(0.0, 0.9)
+        (1.0 - stopped.clamp(0.0, 0.9)) * self.taken
     }
 }
 

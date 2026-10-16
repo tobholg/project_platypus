@@ -7,8 +7,13 @@ use crate::coords::CellPos;
 use crate::material::{Kind, MaterialId};
 use crate::world::World;
 
-/// Above this (°C), heat hurts.
+/// Above this (°C), heat hurts: what the body is in (scalding water,
+/// steam, a hot cloud)...
 pub const HARMFUL_HEAT: i32 = 60;
+/// ... and what it only touches (the floor under its feet, a wall beside
+/// it) above this: boots and gloves keep off warm rock (the deep's, or what
+/// heat soaked into round lava), not rock hot enough to burn.
+pub const HARMFUL_CONTACT: i32 = 220;
 /// Damage per second per °C above `HARMFUL_HEAT`: lava (1 200 °C) ≈ 114/s,
 /// scalding steam (~150 °C) ≈ 9/s.
 const HEAT_DAMAGE: f32 = 0.1;
@@ -81,7 +86,8 @@ impl World {
                     flames += if inside { 1.0 } else { TOUCH_SHARE };
                 } else {
                     let t = self.climate().ambient(x, y) + c.heat as i32;
-                    e.heat = e.heat.max((t - HARMFUL_HEAT).max(0) as f32 * HEAT_DAMAGE);
+                    let harmful = if inside { HARMFUL_HEAT } else { HARMFUL_CONTACT };
+                    e.heat = e.heat.max((t - harmful).max(0) as f32 * HEAT_DAMAGE);
                     // Cold only from what it's in (freezing water, a frost
                     // cloud): ice or snow underfoot doesn't chill.
                     if inside {

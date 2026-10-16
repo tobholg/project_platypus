@@ -173,6 +173,7 @@ pub enum Act {
     Material(MaterialId),
     Radius(i32),
     Hour(f32),
+    Difficulty(crate::difficulty::Difficulty),
 }
 
 /// An item in the Items tab's grid.
@@ -378,7 +379,7 @@ pub(crate) fn clicks(
     items: Option<Res<Items>>,
     mut menu: ResMut<DevMenu>,
     mut cheats: ResMut<Cheats>,
-    (mut dev_tools, mut belt, mut checkpoint, mut day, picked): (ResMut<DevTools>, ResMut<Toolbelt>, ResMut<crate::respawn::Checkpoint>, ResMut<crate::light::Daylight>, Res<SpawnKind>),
+    (mut dev_tools, mut belt, mut checkpoint, mut day, picked, mut difficulty): (ResMut<DevTools>, ResMut<Toolbelt>, ResMut<crate::respawn::Checkpoint>, ResMut<crate::light::Daylight>, Res<SpawnKind>, ResMut<crate::difficulty::Difficulty>),
     mut dev: MessageWriter<DevAction>,
     mut arena: MessageWriter<ArenaAction>,
     mut player: Query<Me, With<LocalPlayer>>,
@@ -437,6 +438,10 @@ pub(crate) fn clicks(
                 belt.radius[i] = (r + d * (1 + r / 8)).clamp(0, 72);
             }
             // (Ahead to that hour: the world clock catches up, as it does.)
+            Act::Difficulty(d) => {
+                *difficulty = *d;
+                info!("dev: difficulty {}", d.name());
+            }
             Act::Hour(h) => day.skipped += ((h / 24.0) - day.time).rem_euclid(1.0) * 24.0,
             Act::SpawnHere => {
                 let at = me.as_ref().map(|(.., k)| k.body.pos + Vec2::new(k.loco.facing * 40.0, 0.0));
@@ -635,6 +640,12 @@ fn spawn_panel(
                         button(r, "Endless mana & stamina", Act::Endless);
                         button(r, "Heal", Act::Heal);
                         button(r, "Die", Act::Die);
+                    });
+                    heading(p, "How hard it hits (this save)");
+                    row(p, |r| {
+                        for d in crate::difficulty::Difficulty::ALL {
+                            button(r, d.name(), Act::Difficulty(d));
+                        }
                     });
                     heading(p, "Go");
                     row(p, |r| {
@@ -935,7 +946,7 @@ fn show(
     view: Res<ArenaView>,
     cheats: Res<Cheats>,
     (virt, kind, tempo, layout): (Res<Time<Virtual>>, Res<SpawnKind>, Res<crate::tempo::Tempo>, Res<CurrentLayout>),
-    (dev_tools, belt, toggles): (Res<DevTools>, Res<Toolbelt>, Res<crate::light::LightToggles>),
+    (dev_tools, belt, toggles, difficulty): (Res<DevTools>, Res<Toolbelt>, Res<crate::light::LightToggles>, Res<crate::difficulty::Difficulty>),
     windows: Query<&Window>,
     inventory: Res<crate::hands::ui::InventoryOpen>,
     mut panel: Query<(&mut Visibility, &mut Node), With<Panel>>,
@@ -996,6 +1007,7 @@ fn show(
             Act::Tool(t) => dev_tools.0 && *t == belt.tool,
             Act::Material(m) => *m == belt.material,
             Act::Dev(DevAction::Lighting) => toggles.enabled,
+            Act::Difficulty(d) => *d == *difficulty,
             Act::Arena(ArenaAction::Speed(s)) => (s - speed).abs() < 1e-3,
             Act::Arena(ArenaAction::Pause) => virt.is_paused(),
             Act::Arena(ArenaAction::Overlays) => view.overlays,

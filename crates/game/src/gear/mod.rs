@@ -311,6 +311,7 @@ pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures:
             storm: total.share(Stat::StormResist, 0.9),
             acid: total.share(Stat::AcidResist, 0.9),
             fall: total.share(Stat::FallResist, 0.9),
+            taken: health.ward.taken,
         };
         let mut m = def.movement.clone();
         m.run_speed *= total.mult(Stat::MoveSpeed) * pace.map_or(1.0, |p| p.0);

@@ -31,6 +31,7 @@ mod data;
 mod debug;
 mod dev;
 mod devmenu;
+mod difficulty;
 mod display;
 mod editor;
 mod events;
@@ -122,7 +123,9 @@ fn main() {
     };
     // Play or dev: as asked, else as the save was, else dev (`mode.rs`).
     let mode = behind.as_ref().map(|(l, _)| l.mode).or_else(mode::Mode::from_env).or_else(|| save.as_deref().and_then(save::peek).map(|s| s.mode)).unwrap_or_default();
-    let (launch, fresh) = behind.unwrap_or_else(|| (title::Launch { kind: kind.clone(), seed, save: save.clone(), mode }, false));
+    // How hard it hits: as asked, else as the save was, else Wayfarer.
+    let difficulty = behind.as_ref().and_then(|(l, _)| l.difficulty).or_else(difficulty::Difficulty::from_env).or_else(|| save.as_deref().and_then(save::peek).map(|s| s.difficulty)).unwrap_or_default();
+    let (launch, fresh) = behind.unwrap_or_else(|| (title::Launch { kind: kind.clone(), seed, save: save.clone(), mode, difficulty: None }, false));
     let generator: Arc<dyn ChunkGenerator> = match kind.as_str() {
         // PLATYPUS_WORLD=arena: a sandbox for weapons, spells and creatures
         // (dummies, time controls, overlays, the art editor: `arena.rs`).
@@ -192,6 +195,8 @@ fn main() {
         .add_plugins(sound::SoundPlugin)
         .add_plugins(backdrop::BackdropPlugin)
         .insert_resource(mode)
+        .insert_resource(difficulty)
+        .add_plugins(difficulty::DifficultyPlugin)
         .add_plugins((respawn::RespawnPlugin, devmenu::DevMenuPlugin, pause::PausePlugin, title::TitlePlugin { show: show_title, behind: launch, fresh }))
         .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed, mode }))
         .add_plugins(spikes_plugin)

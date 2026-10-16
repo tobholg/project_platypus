@@ -311,6 +311,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, lights_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, throw_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, specks_script)
+            .add_systems(Update, hurt_script)
             .add_systems(PreUpdate, goldsmash_script.after(InputSystems).before(crate::magic::well::twist_input).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, devmenu_place_script.after(InputSystems).before(crate::devmenu::place))
@@ -7754,6 +7755,19 @@ fn play_script(
     }
 }
 
+/// `hurt` (`PLATYPUS_WORLD=arena`, `PLATYPUS_DIFFICULTY=` each): at 1 s a
+/// 20-point sword blow to the player; logs what it took.
+fn hurt_script(s: Res<Scenario>, difficulty: Res<crate::difficulty::Difficulty>, mut player: Query<&mut crate::creatures::Health, With<LocalPlayer>>, mut done: Local<bool>) {
+    if s.name != "hurt" || *done || s.elapsed < 1.0 {
+        return;
+    }
+    let Ok(mut h) = player.single_mut() else { return };
+    *done = true;
+    let before = h.hp;
+    h.harm(20.0, crate::creatures::Harm::Slash);
+    info!("hurt: {}: a 20 blow took {:.1} (armour stopping {:.0}%)", difficulty.name(), before - h.hp, (1.0 - h.ward.through(crate::creatures::Harm::Slash) / h.ward.taken) * 100.0);
+}
+
 /// `specks` (any world: `PLATYPUS_SAVE=` a copy of one played): at 4 s,
 /// every lone solid near the player (a static cell, playfield or
 /// background, with no solid next to it, up, down or across: a speck that
@@ -7792,6 +7806,24 @@ fn specks_script(s: Res<Scenario>, sim: Res<SimWorld>, player: Query<&Kinematics
         }
     }
     info!("specks: {} kinds of lone solid near the player", found.len());
+    // (And how warm the rock is: over 60 °C hurt to touch, before; over 220, now.)
+    let (mut warm, mut hot, mut deepest) = (0u32, 0u32, (0i32, 0i32, 0i32));
+    for dx in (-700..700).step_by(2) {
+        for dy in (-500..500).step_by(2) {
+            let p = me.offset(dx, dy);
+            let Some(c) = w.get(p) else { continue };
+            if c.is_air() || mats.phys(c.material).kind != platypus_sim::Kind::Static {
+                continue;
+            }
+            let t = w.climate().ambient(p.x, p.y) + c.heat as i32;
+            warm += (t > 60) as u32;
+            hot += (t > 220) as u32;
+            if t > deepest.0 {
+                deepest = (t, dx, dy);
+            }
+        }
+    }
+    info!("specks: rock over 60 °C: {warm} (of every other cell), over 220: {hot}; hottest {} °C at {:?}", deepest.0, (deepest.1, deepest.2));
     for ((m, layer), (n, at)) in &found {
         info!("specks: {n} {m} ({layer}), e.g. at {at:?} from the player");
         if let Some(&(dx, dy)) = at.first() {

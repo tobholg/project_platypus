@@ -1164,6 +1164,35 @@ fn a_felled_tree_topples_as_one_piece_and_lies_on_the_ground_as_a_log() {
 }
 
 #[test]
+fn warm_rock_underfoot_is_harmless_but_hot_water_scalds() {
+    let mut w = boxed_world(1, 1, 62);
+    fill(&mut w, "stone", 1, 63, 1, 10);
+    // Rock heated to ~150 °C under where the body stands (as rock round
+    // lava soaks heat): touched, not hot enough to burn through boots.
+    for x in 20..40 {
+        for y in 1..10 {
+            let p = CellPos::new(x, y);
+            let mut c = w.get(p).unwrap();
+            c.heat = 130;
+            w.set(p, c);
+        }
+    }
+    let (lo, hi) = (CellPos::new(28, 10), CellPos::new(32, 20));
+    assert_eq!(w.exposure(lo, hi).heat, 0.0, "warm rock underfoot");
+    // Standing in water as hot: it scalds.
+    fill(&mut w, "water", 26, 34, 10, 14);
+    for x in 26..34 {
+        for y in 10..14 {
+            let p = CellPos::new(x, y);
+            let mut c = w.get(p).unwrap();
+            c.heat = 80;
+            w.set(p, c);
+        }
+    }
+    assert!(w.exposure(lo, hi).heat > 0.0, "hot water you're in");
+}
+
+#[test]
 fn a_lone_speck_hanging_in_the_air_is_swept_and_falls() {
     let mut w = boxed_world(1, 1, 62);
     fill(&mut w, "stone", 1, 63, 1, 10);

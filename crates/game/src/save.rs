@@ -168,6 +168,13 @@ struct WorldFile {
     /// Play or dev (`mode.rs`; saves from before it are dev).
     #[serde(default = "dev_mode_name")]
     mode: String,
+    /// How hard it hits (`difficulty.rs`; saves from before it: Wayfarer).
+    #[serde(default = "wayfarer")]
+    difficulty: String,
+}
+
+fn wayfarer() -> String {
+    "Wayfarer".into()
 }
 
 fn dev_mode_name() -> String {
@@ -181,6 +188,7 @@ pub struct SlotInfo {
     pub kind: String,
     pub seed: u64,
     pub mode: crate::mode::Mode,
+    pub difficulty: crate::difficulty::Difficulty,
     /// When it was last saved.
     pub saved: std::time::SystemTime,
 }
@@ -190,7 +198,7 @@ pub fn peek(name: &str) -> Option<SlotInfo> {
     let path = saves_dir().join(name).join("world.ron");
     let file: WorldFile = read_ron(&path).ok()?;
     let saved = std::fs::metadata(&path).and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
-    (file.version == VERSION).then(|| SlotInfo { name: name.to_string(), kind: file.kind, seed: file.seed, mode: crate::mode::Mode::parse(&file.mode).unwrap_or_default(), saved })
+    (file.version == VERSION).then(|| SlotInfo { name: name.to_string(), kind: file.kind, seed: file.seed, mode: crate::mode::Mode::parse(&file.mode).unwrap_or_default(), difficulty: crate::difficulty::Difficulty::parse(&file.difficulty).unwrap_or_default(), saved })
 }
 
 /// Every save there is, the last saved first.
@@ -323,7 +331,7 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, mut now: MessageWriter<SaveNow>) {
 
 type SavedPlayer<'a> = (&'a Kinematics, &'a Health, Option<&'a Mana>, Option<&'a Inventory>, &'a Equipment, Option<&'a crate::progress::Progress>, Option<&'a crate::gold::Gold>, Option<&'a crate::hands::filter::PickupFilter>);
 /// (More for `save`, past Bevy's count of parameters.)
-type SavedAlso<'w, 's> = (Res<'w, crate::craft::Crafting>, Query<'w, 's, (&'static crate::craft::Station, &'static Kinematics)>, Res<'w, crate::light::Daylight>, Res<'w, crate::clock::WorldClock>, Res<'w, crate::respawn::Checkpoint>);
+type SavedAlso<'w, 's> = (Res<'w, crate::craft::Crafting>, Query<'w, 's, (&'static crate::craft::Station, &'static Kinematics)>, Res<'w, crate::light::Daylight>, Res<'w, crate::clock::WorldClock>, Res<'w, crate::respawn::Checkpoint>, Res<'w, crate::difficulty::Difficulty>);
 type SavedCreatures<'a> = (&'a Creature, &'a Kinematics, &'a Health, Option<&'a crate::clock::Keeps>);
 
 /// Save, when it's time, when asked, and on the way out.
@@ -343,7 +351,7 @@ fn save(
     drops: Query<(&Dropped, &Kinematics)>,
     bodies: Query<(&Corpse, &Kinematics)>,
     creatures: Query<SavedCreatures, Without<LocalPlayer>>,
-    (crafting, stations, day, clock, checkpoint): SavedAlso,
+    (crafting, stations, day, clock, checkpoint, difficulty): SavedAlso,
     mut toasts: MessageWriter<crate::progress::Toast>,
 ) {
     slot.next -= time.delta_secs();
@@ -377,6 +385,7 @@ fn save(
         skipped: day.skipped,
         clock: clock.save(),
         mode: slot.mode.name().into(),
+        difficulty: difficulty.name().into(),
     };
     let mut chunks: Vec<(ChunkPos, std::sync::Arc<[u8]>)> = world.chunks().filter(|c| c.is_modified()).map(|c| (c.pos, store::encode(c).into())).collect();
     chunks.extend(sim.store.iter().map(|(p, b)| (p, b.clone())));

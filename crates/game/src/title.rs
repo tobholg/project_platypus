@@ -21,6 +21,7 @@ use bevy::prelude::*;
 use serde::Deserialize;
 
 use crate::dev::KeyboardTaken;
+use crate::difficulty::Difficulty;
 use crate::mode::Mode;
 use crate::save::SlotInfo;
 
@@ -41,13 +42,15 @@ impl GameInfo {
     }
 }
 
-/// A world to start: its kind, seed, save and mode.
+/// A world to start: its kind, seed, save and mode (and, a new game, how
+/// hard it hits: a save keeps its own).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Launch {
     pub kind: String,
     pub seed: u64,
     pub save: Option<String>,
     pub mode: Mode,
+    pub difficulty: Option<Difficulty>,
 }
 
 impl Launch {
@@ -55,12 +58,20 @@ impl Launch {
     /// if it saves).
     fn start(&self) {
         let save = self.save.clone().unwrap_or_else(|| "off".into());
-        relaunch(vec![("PLATYPUS_WORLD", Some(self.kind.clone())), ("PLATYPUS_SEED", Some(self.seed.to_string())), ("PLATYPUS_MODE", Some(self.mode.name().into())), ("PLATYPUS_SAVE", Some(save)), ("PLATYPUS_TITLE", None), ("PLATYPUS_FRESH", None)]);
+        relaunch(vec![
+            ("PLATYPUS_WORLD", Some(self.kind.clone())),
+            ("PLATYPUS_SEED", Some(self.seed.to_string())),
+            ("PLATYPUS_MODE", Some(self.mode.name().into())),
+            ("PLATYPUS_SAVE", Some(save)),
+            ("PLATYPUS_DIFFICULTY", self.difficulty.map(|d| d.name().into())),
+            ("PLATYPUS_TITLE", None),
+            ("PLATYPUS_FRESH", None),
+        ]);
         info!("title: next, {} (seed {}, save {:?}, {})", self.kind, self.seed, self.save, self.mode.name());
     }
 
     fn of(slot: &SlotInfo) -> Launch {
-        Launch { kind: slot.kind.clone(), seed: slot.seed, save: Some(slot.name.clone()), mode: slot.mode }
+        Launch { kind: slot.kind.clone(), seed: slot.seed, save: Some(slot.name.clone()), mode: slot.mode, difficulty: None }
     }
 }
 
@@ -104,15 +115,15 @@ pub fn relaunch_if_asked() {
 pub fn behind_the_title() -> (Launch, bool) {
     match crate::save::slots().first() {
         Some(last) => (Launch::of(last), false),
-        None => (new_game(), true),
+        None => (new_game(Difficulty::default()), true),
     }
 }
 
 /// A new game: a new seed, the large world, the first free play save.
-fn new_game() -> Launch {
+pub fn new_game(difficulty: Difficulty) -> Launch {
     let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(7, |d| d.as_nanos() as u64 % 1_000_000_007);
     let name = (1..).map(|n| format!("play-{n}")).find(|n| !crate::save::saves_dir().join(n).exists()).expect("a free name");
-    Launch { kind: "large".into(), seed, save: Some(name), mode: Mode::Play }
+    Launch { kind: "large".into(), seed, save: Some(name), mode: Mode::Play, difficulty: Some(difficulty) }
 }
 
 pub struct TitlePlugin {
@@ -131,12 +142,16 @@ pub struct Title {
     fresh: bool,
     /// The saves, listed (Load).
     listing: bool,
+    /// How hard a new game hits, asked (New game).
+    asking: bool,
 }
 
 #[derive(Component, Clone, Debug, PartialEq)]
 pub(crate) enum Choice {
     Continue,
     NewGame,
+    /// A new game, this hard.
+    Hard(Difficulty),
     Load,
     Slot(usize),
     Dev,
@@ -148,6 +163,8 @@ pub(crate) enum Choice {
 struct Root;
 #[derive(Component)]
 struct SlotList;
+#[derive(Component)]
+struct HardList;
 
 /// The saves when the title came up.
 #[derive(Resource)]
@@ -157,7 +174,7 @@ impl Plugin for TitlePlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<Picked>()
             .insert_resource(GameInfo::load())
-            .insert_resource(Title { up: self.show, behind: self.behind.clone(), fresh: self.fresh, listing: false })
+            .insert_resource(Title { up: self.show, behind: self.behind.clone(), fresh: self.fresh, listing: false, asking: false })
             .insert_resource(Slots(if self.show { crate::save::slots() } else { Vec::new() }))
             .add_systems(Startup, spawn)
             .add_systems(PreUpdate, capture.after(bevy::input::InputSystems).after(crate::editor::capture))
@@ -178,10 +195,11 @@ pub(crate) fn capture(mut title: ResMut<Title>, mut keys: ResMut<ButtonInput<Key
     }
     taken.0 = true;
     if keys.just_pressed(KeyCode::Enter) {
-        picks.write(Picked(if title.fresh { Choice::NewGame } else { Choice::Continue }));
+        picks.write(Picked(if title.fresh { Choice::Hard(Difficulty::default()) } else { Choice::Continue }));
     }
     if keys.just_pressed(KeyCode::Escape) {
         title.listing = false;
+        title.asking = false;
     }
     keys.reset_all();
 }
@@ -201,7 +219,7 @@ fn ago(t: std::time::SystemTime) -> String {
 }
 
 fn label(slot: &SlotInfo) -> String {
-    format!("{}   {} {}, seed {}, {}", slot.name, slot.mode.name(), slot.kind, slot.seed, ago(slot.saved))
+    format!("{}   {} {}, {}, seed {}, {}", slot.name, slot.mode.name(), slot.kind, slot.difficulty.name(), slot.seed, ago(slot.saved))
 }
 
 const IDLE: Color = Color::srgba(0.1, 0.09, 0.12, 0.0);
@@ -244,6 +262,15 @@ fn spawn(mut commands: Commands, title: Res<Title>, info: Res<GameInfo>, slots: 
                     b.spawn((Text::new(text), TextFont { font_size: FontSize::Px(26.0), ..default() }, TextColor(Color::srgb(0.93, 0.91, 0.86))));
                 });
             }
+            p.spawn((HardList, Node { flex_direction: FlexDirection::Column, row_gap: px(2), margin: UiRect::top(px(16)), display: Display::None, ..default() })).with_children(|l| {
+                l.spawn((Text::new("How hard should the world hit?"), TextFont { font_size: FontSize::Px(15.0), ..default() }, TextColor(Color::srgba(0.85, 0.82, 0.75, 0.7)), Node { margin: UiRect { left: px(14), bottom: px(4), ..default() }, ..default() }));
+                for d in Difficulty::ALL {
+                    let tag = if d == Difficulty::default() { "   (default)" } else { "" };
+                    l.spawn((Button, Choice::Hard(d), Node { padding: UiRect::axes(px(14), px(4)), width: px(560), ..default() }, BackgroundColor(IDLE))).with_children(|b| {
+                        b.spawn((Text::new(format!("{}{tag}   {}", d.name(), d.about())), TextFont { font_size: FontSize::Px(17.0), ..default() }, TextColor(Color::srgb(0.9, 0.88, 0.82))));
+                    });
+                }
+            });
             p.spawn((SlotList, Node { flex_direction: FlexDirection::Column, row_gap: px(2), margin: UiRect::top(px(16)), display: Display::None, ..default() })).with_children(|l| {
                 for (i, s) in slots.0.iter().enumerate() {
                     if Some(&s.name) == title.behind.save.as_ref() {
@@ -267,6 +294,7 @@ fn choose(
     slots: Res<Slots>,
     mut virt: ResMut<Time<Virtual>>,
     mut save: Option<ResMut<crate::save::SaveSlot>>,
+    mut difficulty: ResMut<Difficulty>,
     root: Query<Entity, With<Root>>,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -281,14 +309,24 @@ fn choose(
     let mut chosen: Vec<Choice> = clicks.iter().filter(|(i, _)| **i == Interaction::Pressed).map(|(_, c)| c.clone()).collect();
     chosen.extend(picked.read().map(|p| p.0.clone()));
     let Some(choice) = chosen.into_iter().next() else { return };
-    let dev = Launch { kind: "large".into(), seed: 1, save: Some("large-1".into()), mode: Mode::Dev };
-    let arena = Launch { kind: "arena".into(), seed: 1, save: None, mode: Mode::Dev };
+    let dev = Launch { kind: "large".into(), seed: 1, save: Some("large-1".into()), mode: Mode::Dev, difficulty: None };
+    let arena = Launch { kind: "arena".into(), seed: 1, save: None, mode: Mode::Dev, difficulty: None };
     let go = match choice {
         Choice::Continue => None,
-        Choice::NewGame if title.fresh => None,
-        Choice::NewGame => Some(new_game()),
+        Choice::NewGame => {
+            title.asking = !title.asking;
+            title.listing = false;
+            return;
+        }
+        // (A new game's world behind the title: this one, this hard.)
+        Choice::Hard(d) if title.fresh => {
+            *difficulty = d;
+            None
+        }
+        Choice::Hard(d) => Some(new_game(d)),
         Choice::Load => {
             title.listing = !title.listing;
+            title.asking = false;
             return;
         }
         Choice::Slot(i) => slots.0.get(i).map(Launch::of),
@@ -320,7 +358,7 @@ fn choose(
     }
 }
 
-fn look(title: Res<Title>, mut buttons: Query<(&Interaction, &mut BackgroundColor), With<Choice>>, mut list: Query<&mut Node, With<SlotList>>) {
+fn look(title: Res<Title>, mut buttons: Query<(&Interaction, &mut BackgroundColor), With<Choice>>, mut list: Query<&mut Node, (With<SlotList>, Without<HardList>)>, mut hard: Query<&mut Node, With<HardList>>) {
     if !title.up {
         return;
     }
@@ -332,6 +370,12 @@ fn look(title: Res<Title>, mut buttons: Query<(&Interaction, &mut BackgroundColo
     }
     for mut n in &mut list {
         let want = if title.listing { Display::Flex } else { Display::None };
+        if n.display != want {
+            n.display = want;
+        }
+    }
+    for mut n in &mut hard {
+        let want = if title.asking { Display::Flex } else { Display::None };
         if n.display != want {
             n.display = want;
         }
