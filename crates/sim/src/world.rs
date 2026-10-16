@@ -28,6 +28,10 @@ const FRACTURE_MIN: f32 = 27.0;
 const FRACTURE_PART: f32 = 0.52;
 const KICK_SPEED: f32 = 1.3;
 const ANCHOR_BUDGET: usize = 6_750;
+/// A thing afloat is looked at again this often (ticks), at most this many
+/// at once.
+const AFLOAT_EVERY: u64 = 30;
+const MAX_AFLOAT: usize = 256;
 /// The same for the background, where a whole tree with its crown must fit
 /// (a giant is ~45k cells): anything bigger isn't a tree and counts as held.
 const ANCHOR_BUDGET_BG: usize = 90_000;
@@ -63,6 +67,10 @@ pub struct World {
     zaps: Vec<Zap>,
     /// Tiles where the simulation destroyed solids, awaiting a fragment check.
     pending_fragment_tiles: Vec<CellPos>,
+    /// Things left floating on a liquid (a log on water), looked at again
+    /// now and then (tick due, a cell of it): if the liquid drains from under
+    /// one, it falls.
+    afloat: Vec<(u64, CellPos)>,
     /// Same, for the background layer.
     pending_bg_tiles: Vec<CellPos>,
     particles: Vec<Particle>,
@@ -121,6 +129,7 @@ impl World {
             blasts: Vec::new(),
             zaps: Vec::new(),
             pending_fragment_tiles: Vec::new(),
+            afloat: Vec::new(),
             pending_bg_tiles: Vec::new(),
             particles: Vec::new(),
             bodies: Vec::new(),
@@ -1227,22 +1236,40 @@ impl World {
                     removed.extend(self.drop_background(&piece));
                 }
                 // A thing (a log, a casting: with anything stuck to it) falls
-                // whole; lying on sand or in water it stays (it rests there:
-                // lifted, it would only land and settle again).
+                // whole; lying on sand or rock it stays (it rests there:
+                // lifted, it would only land and settle again). On a liquid
+                // it sinks if it's heavier (gold in magma, stone in water:
+                // a body passes through liquid to the bottom, pushing it
+                // aside), else it floats, and is looked at again now and
+                // then in case the liquid drains away from under it.
                 if pass == Pass::Front
                     && piece.len() >= OBJECT_MIN_CELLS
                     && piece.len() <= OBJECT_MAX
                     && piece.iter().any(|&p| self.get(p).is_some_and(|c| mats.phys(c.material).object))
                 {
                     let inside: FxHashSet<CellPos> = piece.iter().copied().collect();
+                    let heaviest = piece.iter().filter_map(|&p| self.get(p)).filter(|c| mats.phys(c.material).object).map(|c| mats.phys(c.material).density).max().unwrap_or(0);
+                    let mut on_liquid = false;
                     let resting = piece.iter().any(|p| {
                         let q = p.offset(0, -1);
                         // (Not on rubble: that's falling itself.)
-                        !inside.contains(&q) && self.get(q).is_some_and(|c| !c.is_air() && c.flags & flags::LOOSE == 0 && matches!(mats.phys(c.material).kind, Kind::Powder | Kind::Liquid | Kind::Static))
+                        let Some(c) = self.get(q).filter(|c| !inside.contains(&q) && !c.is_air() && c.flags & flags::LOOSE == 0) else { return false };
+                        let ph = mats.phys(c.material);
+                        match ph.kind {
+                            Kind::Powder | Kind::Static => true,
+                            // (Afloat if it's no heavier than the liquid.)
+                            Kind::Liquid if heaviest <= ph.density => {
+                                on_liquid = true;
+                                true
+                            }
+                            _ => false,
+                        }
                     });
                     if !resting {
                         let cells = std::mem::take(&mut piece);
                         self.lift_cells(cells);
+                    } else if on_liquid && self.afloat.len() < MAX_AFLOAT {
+                        self.afloat.push((self.tick + AFLOAT_EVERY, piece[0]));
                     }
                     continue;
                 }
@@ -2092,6 +2119,13 @@ impl World {
     /// Fire, melting and acid destroy solids inside the step; afterwards,
     /// loosen whatever those losses left hanging (same rule as for edits).
     fn check_broken(&mut self, broken: &[CellPos], layer: Layer) {
+        // (What floats, due a look again: as if what's under it had broken.)
+        if layer == Layer::Front && !self.afloat.is_empty() {
+            let now = self.tick;
+            let (due, wait): (Vec<_>, Vec<_>) = std::mem::take(&mut self.afloat).into_iter().partition(|&(at, _)| at <= now);
+            self.afloat = wait;
+            self.pending_fragment_tiles.extend(due.into_iter().map(|(_, p)| CellPos::new(p.x >> FRAGMENT_TILE_BITS, p.y >> FRAGMENT_TILE_BITS)));
+        }
         let tiles = broken.iter().map(|p| CellPos::new(p.x >> FRAGMENT_TILE_BITS, p.y >> FRAGMENT_TILE_BITS));
         let pending = match layer {
             Layer::Front => &mut self.pending_fragment_tiles,

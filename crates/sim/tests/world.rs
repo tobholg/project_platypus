@@ -1163,6 +1163,61 @@ fn a_felled_tree_topples_as_one_piece_and_lies_on_the_ground_as_a_log() {
     assert!(w.get_bg(CellPos::new(96, 5)).unwrap().material == wood, "the stump stays");
 }
 
+/// The lowest cell of a material (or none).
+fn lowest(w: &World, id: MaterialId, x0: i32, x1: i32, y1: i32) -> Option<i32> {
+    (0..y1).find(|&y| (x0..x1).any(|x| w.get(CellPos::new(x, y)).is_some_and(|c| c.material == id)))
+}
+
+#[test]
+fn a_gold_casting_sinks_when_the_rock_under_it_melts_into_a_pool() {
+    let mut w = boxed_world(3, 2, 61);
+    fill(&mut w, "stone", 1, 191, 1, 10);
+    let gold = w.materials().expect_id("solid_gold");
+    // A pool of water in a basin, a casting held over it on a stone shelf
+    // that is then taken away (as if melted): the casting sits on water.
+    fill(&mut w, "stone", 60, 62, 10, 40);
+    fill(&mut w, "stone", 98, 100, 10, 40);
+    fill(&mut w, "water", 62, 98, 10, 30);
+    fill(&mut w, "solid_gold", 74, 86, 30, 36);
+    w.apply_edit(&WorldEdit::Dig { center: CellPos::new(80, 31), radius: 0, max_hardness: 0 });
+    // (The casting resting on the water now: the check its support had.)
+    w.loosen_fragments(CellPos::new(80, 30), 12);
+    run_until_bodies_settle(&mut w, 900);
+    for _ in 0..120 {
+        w.step();
+    }
+    let bottom = lowest(&w, gold, 62, 98, 60).expect("the gold is still there");
+    assert!(bottom <= 12, "it sank to the bottom of the pool (lowest at {bottom})");
+}
+
+#[test]
+fn a_log_afloat_falls_when_the_water_drains_from_under_it() {
+    let mut w = boxed_world(3, 2, 61);
+    fill(&mut w, "stone", 1, 191, 1, 10);
+    let wood = w.materials().expect_id("wood");
+    fill(&mut w, "stone", 60, 62, 10, 50);
+    fill(&mut w, "stone", 98, 100, 10, 50);
+    fill(&mut w, "water", 62, 98, 10, 30);
+    fill(&mut w, "wood", 70, 90, 30, 34);
+    w.loosen_fragments(CellPos::new(80, 30), 12);
+    for _ in 0..60 {
+        w.step();
+    }
+    assert!(lowest(&w, wood, 62, 98, 60).is_some_and(|y| y >= 28), "it floats");
+    // Drained (the water gone: let out below).
+    for x in 62..98 {
+        for y in 10..30 {
+            w.set(CellPos::new(x, y), platypus_sim::Cell::AIR);
+        }
+    }
+    run_until_bodies_settle(&mut w, 900);
+    for _ in 0..120 {
+        w.step();
+    }
+    let bottom = lowest(&w, wood, 62, 98, 60).expect("the log is still there");
+    assert!(bottom <= 12, "it fell to the basin's floor (lowest at {bottom})");
+}
+
 #[test]
 fn an_axe_fells_a_tree_whose_branches_touch_its_neighbours() {
     let mut w = boxed_world(3, 2, 57);
