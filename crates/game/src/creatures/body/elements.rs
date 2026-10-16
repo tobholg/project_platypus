@@ -956,9 +956,10 @@ mod tests {
         let e = creature(&mut app, IN, Nature::default());
         tick(&mut app, 1);
         assert_eq!(coat(&app, e).as_deref(), Some("oily"));
-        // Out of the oil, onto hot stone: an oily creature catches from heat alone.
+        // Out of the oil, onto hot stone: an oily creature catches from heat
+        // alone (stone hot enough to burn, as oil lights: ~300 °C).
         let mut hot = app_with("stone");
-        hot.world_mut().resource_mut::<SimWorld>().world.apply_edit(&WorldEdit::Heat { center: CellPos::new(13, 15), radius: 8, amount: 200 });
+        hot.world_mut().resource_mut::<SimWorld>().world.apply_edit(&WorldEdit::Heat { center: CellPos::new(13, 15), radius: 8, amount: 320 });
         let e = creature(&mut hot, Vec2::new(13.0, 24.0), Nature::default());
         hot.world_mut().entity_mut(e).insert(Coated::with("oily", 1.0));
         tick(&mut hot, 1);
