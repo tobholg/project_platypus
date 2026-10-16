@@ -309,6 +309,8 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, starter_script)
             .add_systems(Update, close_window)
             .add_systems(PreUpdate, lights_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, throw_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(Update, specks_script)
             .add_systems(PreUpdate, goldsmash_script.after(InputSystems).before(crate::magic::well::twist_input).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, devmenu_place_script.after(InputSystems).before(crate::devmenu::place))
@@ -7749,6 +7751,89 @@ fn play_script(
         *step += 1;
         keys.release(KeyCode::Escape);
         info!("play: Esc: game menu {}, time {}", if menu.open { "up" } else { "shut" }, if virt.is_paused() { "paused" } else { "running" });
+    }
+}
+
+/// `specks` (any world: `PLATYPUS_SAVE=` a copy of one played): at 4 s,
+/// every lone solid near the player (a static cell, playfield or
+/// background, with no solid next to it, up, down or across: a speck that
+/// hangs), counted by material and layer, with a few places each.
+fn specks_script(s: Res<Scenario>, sim: Res<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut done: Local<bool>) {
+    if s.name != "specks" || *done || s.elapsed < 4.0 {
+        return;
+    }
+    let Ok(pk) = player.single() else { return };
+    *done = true;
+    let w = &sim.world;
+    let mats = w.materials();
+    let solid = |c: Option<platypus_sim::Cell>| c.is_some_and(|c| !c.is_air() && matches!(mats.phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder));
+    let mut found: std::collections::BTreeMap<(String, &str), (u32, Vec<(i32, i32)>)> = Default::default();
+    let me = CellPos::from_world(pk.body.pos.x, pk.body.pos.y);
+    for dx in -700..700 {
+        for dy in -500..500 {
+            let p = me.offset(dx, dy);
+            for (layer, get) in [("front", 0), ("back", 1)] {
+                let at = |q: CellPos| if get == 0 { w.get(q) } else { w.get_bg(q) };
+                let c = at(p);
+                // (Loose is falling already: rubble.)
+                if !c.is_some_and(|c| !c.is_air() && mats.phys(c.material).kind == platypus_sim::Kind::Static && c.flags & platypus_sim::cell::flags::LOOSE == 0) {
+                    continue;
+                }
+                let lone = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().all(|&(ox, oy)| !solid(at(p.offset(ox, oy))));
+                // (Background behind solid playfield is held: a wall.)
+                if lone && !(get == 1 && solid(w.get(p))) {
+                    let e = found.entry((mats.def(c.unwrap().material).name.clone(), layer)).or_default();
+                    e.0 += 1;
+                    if e.1.len() < 4 {
+                        e.1.push((dx, dy));
+                    }
+                }
+            }
+        }
+    }
+    info!("specks: {} kinds of lone solid near the player", found.len());
+    for ((m, layer), (n, at)) in &found {
+        info!("specks: {n} {m} ({layer}), e.g. at {at:?} from the player");
+        if let Some(&(dx, dy)) = at.first() {
+            let p = me.offset(dx, dy);
+            let c = w.get(p).unwrap_or(platypus_sim::Cell::AIR);
+            let round: Vec<String> = [(-1, 1), (0, 1), (1, 1), (-1, 0), (1, 0), (-1, -1), (0, -1), (1, -1)].iter().map(|&(ox, oy)| w.get(p.offset(ox, oy)).map_or("?".into(), |n| if n.is_air() { ".".into() } else { mats.def(n.material).name.clone() })).collect();
+            info!("specks:   flags {:#x} life {} bears {} vy {}; round it {round:?}; behind {:?}", c.flags, c.life, mats.bears_load(c), c.vy, w.get_bg(p).map(|b| mats.def(b.material).name.clone()));
+        }
+    }
+}
+
+/// `throw` (`PLATYPUS_WORLD=arena`): a bomb thrown (the dev kit's, hotbar
+/// slot 4) at 1 s toward a point 120 right and 60 up; logs where every bomb
+/// is, ten times a second.
+fn throw_script(
+    s: Res<Scenario>,
+    mut hand: ResMut<crate::hands::Hand>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    bombs: Query<(&Kinematics, &Sprite, &Transform, &Visibility), With<crate::props::Bomb>>,
+    (mut mouse, mut cursor): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>),
+    mut st: Local<(u8, f32)>,
+) {
+    if s.name != "throw" {
+        return;
+    }
+    let Ok(pk) = player.single() else { return };
+    let t = s.elapsed;
+    hand.bar = 0;
+    hand.slot = 3;
+    cursor.0 = Some(pk.body.pos + Vec2::new(120.0, 60.0));
+    if st.0 == 0 && t > 1.0 {
+        st.0 = 1;
+        mouse.press(MouseButton::Left);
+    } else if st.0 == 1 {
+        st.0 = 2;
+        mouse.release(MouseButton::Left);
+    }
+    if t >= st.1 {
+        st.1 = t + 0.1;
+        for (k, sprite, tf, vis) in &bombs {
+            info!("throw: t {t:.1}: bomb at ({:+.0}, {:+.0}) vel ({:.0}, {:.0}) drawn at ({:+.0}, {:+.0}) z {:.1} {:?} size {:?}", k.body.pos.x - pk.body.pos.x, k.body.pos.y - pk.body.pos.y, k.body.vel.x, k.body.vel.y, tf.translation.x - pk.body.pos.x, tf.translation.y - pk.body.pos.y, tf.translation.z, vis, sprite.custom_size);
+        }
     }
 }
 

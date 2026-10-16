@@ -1163,6 +1163,24 @@ fn a_felled_tree_topples_as_one_piece_and_lies_on_the_ground_as_a_log() {
     assert!(w.get_bg(CellPos::new(96, 5)).unwrap().material == wood, "the stump stays");
 }
 
+#[test]
+fn a_lone_speck_hanging_in_the_air_is_swept_and_falls() {
+    let mut w = boxed_world(1, 1, 62);
+    fill(&mut w, "stone", 1, 63, 1, 10);
+    let basalt = w.materials().expect_id("basalt");
+    // A drop that crusted in the air, and two alone together.
+    w.set(CellPos::new(20, 40), platypus_sim::Cell::new(basalt, 0));
+    w.set(CellPos::new(40, 44), platypus_sim::Cell::new(basalt, 0));
+    w.set(CellPos::new(41, 44), platypus_sim::Cell::new(basalt, 0));
+    for _ in 0..240 {
+        w.sweep_specks(CellPos::new(32, 32), (32, 32));
+        w.step();
+    }
+    let hanging = (11..63).flat_map(|y| (1..63).map(move |x| CellPos::new(x, y))).filter(|&p| w.get(p).is_some_and(|c| c.material == basalt) && w.get(p.offset(0, -1)).is_some_and(|c| c.is_air())).count();
+    assert_eq!(hanging, 0, "they fell");
+    assert_eq!(lowest(&w, basalt, 1, 63, 63), Some(10), "onto the floor");
+}
+
 /// The lowest cell of a material (or none).
 fn lowest(w: &World, id: MaterialId, x0: i32, x1: i32, y1: i32) -> Option<i32> {
     (0..y1).find(|&y| (x0..x1).any(|x| w.get(CellPos::new(x, y)).is_some_and(|c| c.material == id)))

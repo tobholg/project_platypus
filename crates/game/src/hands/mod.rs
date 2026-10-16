@@ -131,7 +131,7 @@ impl Plugin for HandsPlugin {
             .init_resource::<HandInput>()
             .add_systems(Startup, build_items)
             .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor).after(bevy::ui::UiSystems::Focus))
-            .add_systems(Update, (toggle_dev, select, wield, give_start, outline.run_if(play), mark, icons::make_icons, icons::reload_icons))
+            .add_systems(Update, (toggle_dev, select, wield, give_start, outline.run_if(play), mark, icons::make_icons, icons::reload_icons, dress_bombs))
             .add_systems(FixedUpdate, use_hands.run_if(play).in_set(TickSet::Intent))
             .add_systems(FixedUpdate, collect.after(crate::props::fly).in_set(TickSet::Bodies))
             .add_plugins((ui::UiPlugin, chests::ChestsPlugin, corpses::CorpsesPlugin, filter::FilterPlugin));
@@ -350,6 +350,29 @@ fn supported(world: &World, block: CellPos) -> bool {
     let solid = |b: CellPos| block_cells(b).any(|p| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder)));
     let wall = block_cells(block).any(|p| world.get_bg(p).is_some_and(|c| !c.is_air()));
     wall || [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| solid(CellPos::new(block.x + dx, block.y + dy)))
+}
+
+/// A bomb in flight looks as one in hand does: its item's picture.
+fn dress_bombs(items: Option<Res<Items>>, icons: Option<Res<icons::Icons>>, mut new: Query<&mut Sprite, Added<crate::props::Bomb>>) {
+    let (Some(items), Some(icons)) = (items, icons) else { return };
+    let Some(picture) = items.id("bomb").and_then(|b| icons.get(b)) else { return };
+    for mut sprite in &mut new {
+        sprite.image = picture.clone();
+        sprite.color = Color::WHITE;
+    }
+}
+
+/// A throw that lands where it's aimed: the arc to `to` (gravity's, a
+/// longer one further off), as far as an arm throws (`strength`, cells/s:
+/// beyond, it falls short along the same line).
+pub fn lob(from: Vec2, to: Vec2, strength: f32) -> Vec2 {
+    let d = to - from;
+    let g = crate::props::GRAVITY;
+    // (In the air longer the further it goes: a lob, not a line.)
+    let t = (d.length() / (strength * 0.8)).clamp(0.28, 1.0);
+    let v = Vec2::new(d.x / t, d.y / t + 0.5 * g * t);
+    let most = strength * 1.6;
+    if v.length() > most { v.normalize() * most } else { v }
 }
 
 /// The block a mining tool would hit: with the smart cursor a tunnel the body
@@ -641,9 +664,7 @@ fn use_hands(
         }
         Use::Throw(what) if clicked => {
             commands.entity(me).insert(crate::creatures::body::animation::Aiming { at: cursor, left: AIM_HOLD });
-            let dir = (cursor - from).normalize_or(Vec2::X);
-            let speed = tools.bomb.throw_speed * ((cursor - from).length() / 180.0).clamp(0.35, 1.0);
-            let vel = dir * speed + k.body.vel * 0.5;
+            let vel = lob(from, cursor, tools.bomb.throw_speed) + k.body.vel * 0.5;
             match what {
                 Throwable::Bomb => spawn_bomb(&mut commands, from, vel, tools.bomb.clone()),
                 Throwable::Glowstick => {

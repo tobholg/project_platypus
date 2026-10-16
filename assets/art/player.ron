@@ -27,7 +27,8 @@
         'C': (54, 38, 30),      // boots, the far foot
     },
     parts: {
-        "head": (rows: [
+        // (`brow`: a mining helmet's lamp, where its beam leaves: light/mod.rs.)
+        "head": (points: { "brow": (12, 0) }, rows: [
             "...hhhhhh...",
             ".hhjjjhhhh..",
             "hhjjhhhhhhh.",
@@ -40,7 +41,7 @@
             "..HSSsssrr..",
             "...SSSss....",
         ]),
-        "blink": (rows: [
+        "blink": (points: { "brow": (12, 0) }, rows: [
             "...hhhhhh...",
             ".hhjjjhhhh..",
             "hhjjhhhhhhh.",

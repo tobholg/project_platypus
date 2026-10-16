@@ -629,7 +629,7 @@ fn compute_light(
     mut metrics: ResMut<LightMetrics>,
     mut assets: OverlayAssets,
     cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>,
-    player: Query<&Kinematics, With<LocalPlayer>>,
+    player: Query<(&Kinematics, Option<&crate::creatures::body::animation::HandPos>), With<LocalPlayer>>,
     sources: Query<(&GlobalTransform, &LightSource, Has<Glow>, Option<&Haze>)>,
     mut sprites: Query<(&mut Transform, &mut Visibility), Without<MainCamera>>,
 ) {
@@ -715,7 +715,7 @@ fn compute_light(
     let sky = sky_lights(day.time, day.sky);
 
     // What the player carries.
-    if let Ok(k) = player.single() {
+    if let Ok((k, hand)) = player.single() {
         // (Where it's drawn this frame, between ticks: from the tick's own
         // place the light shook against it, moving fast.)
         let drawn = k.prev_pos.lerp(k.body.pos, fixed.overstep_fraction());
@@ -746,7 +746,9 @@ fn compute_light(
         }
         // A mining helmet's lamp, from the brow.
         if let (true, Some(aim)) = (toggles.headlamp, cursor.0) {
-            let from = drawn + Vec2::new(k.loco.facing * k.body.half.x * 0.6, k.body.half.y * 0.8);
+            // (Its brow as drawn, where the helmet's lamp is; the head's top
+            // with none.)
+            let from = drawn + hand.and_then(|h| h.brow).map_or(Vec2::new(k.loco.facing * k.body.half.x * 0.6, k.body.half.y * 0.8), |b| b.truncate());
             let dir = (aim - from).normalize_or(Vec2::X);
             lamp(&mut g, from, dir, settings.headlamp);
         }

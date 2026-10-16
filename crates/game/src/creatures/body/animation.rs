@@ -67,6 +67,9 @@ pub struct HandPos {
     pub local: Option<Vec3>,
     /// The off (back) hand, from its centre as drawn: a torch sits there.
     pub off: Option<Vec3>,
+    /// Its brow, from its centre as drawn (the head's `brow` point): a
+    /// mining helmet's lamp shines from there.
+    pub brow: Option<Vec3>,
 }
 
 /// Where its feet are as drawn, from its centre: the pose's `foot_near` and
@@ -271,8 +274,10 @@ pub fn animate(
             s.far = foot("foot_far");
         }
         let off = def.rig.as_ref().and_then(|r| r.anchors.get("back_arm.hand")).and_then(|m| m.get(&index)).map(|&(x, y)| local(x as f32, y as f32));
+        let brow = def.rig.as_ref().and_then(|r| r.anchors.get("brow")).and_then(|m| m.get(&index)).map(|&(x, y)| local(x as f32, y as f32));
         if let Some(mut h) = hand {
             h.off = off;
+            h.brow = brow;
             h.at = hand_at.map(|l| k.body.pos + l.truncate());
             h.local = hand_at;
         }

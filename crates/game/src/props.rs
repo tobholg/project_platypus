@@ -53,10 +53,16 @@ pub fn spawn_bomb(commands: &mut Commands, at: Vec2, vel: Vec2, cfg: BombCfg) {
         Thrown { bounce: cfg.bounce, slide: 0.75 },
         Bomb { fuse: cfg.fuse, cfg },
         Kinematics { body, loco: Locomotion::default(), prev_pos: at },
-        Sprite::from_color(Color::srgb(0.12, 0.12, 0.14), Vec2::splat(6.0)),
+        // (Drawn as the bomb in hand is, its item's picture: `hands::dress_bombs`.)
+        Sprite::from_color(Color::srgb(0.12, 0.12, 0.14), Vec2::splat(9.0)),
+        // Its fuse: a spark you can follow in the dark.
+        LightSource { color: FUSE, flicker: 1.0 },
         Transform::from_translation(at.extend(12.0)),
     ));
 }
+
+/// A lit fuse's light.
+const FUSE: [f32; 3] = [0.9, 0.42, 0.1];
 
 /// Throw a glow stick (green or blue) that lights its surroundings.
 pub fn spawn_glowstick(commands: &mut Commands, at: Vec2, vel: Vec2, color: [f32; 3], life: f32, haze: f32) {
@@ -156,10 +162,19 @@ fn explode_bombs(
 }
 
 /// Blink faster as the fuse runs down.
-fn blink(mut q: Query<(&Bomb, &mut Sprite)>) {
-    for (bomb, mut sprite) in &mut q {
+/// A bomb about to go blinks red (faster at the end), its fuse flaring.
+fn blink(mut q: Query<(&Bomb, &mut Sprite, &mut LightSource)>) {
+    for (bomb, mut sprite, mut light) in &mut q {
         let rate = if bomb.fuse < 0.5 { 16.0 } else { 5.0 };
         let on = (bomb.fuse * rate).fract() < 0.5;
-        sprite.color = if on { Color::srgb(1.0, 0.2, 0.1) } else { Color::srgb(0.12, 0.12, 0.14) };
+        // (Its picture tinted; a plain square, coloured.)
+        let pictured = sprite.image != Handle::default();
+        sprite.color = match (on, pictured) {
+            (true, true) => Color::srgb(1.0, 0.45, 0.35),
+            (false, true) => Color::WHITE,
+            (true, false) => Color::srgb(1.0, 0.2, 0.1),
+            (false, false) => Color::srgb(0.12, 0.12, 0.14),
+        };
+        light.color = FUSE.map(|c| c * if on { 1.6 } else { 0.8 });
     }
 }

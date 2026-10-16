@@ -201,10 +201,13 @@ fn transition(h: &mut Hood, x: i32, y: i32, c: Cell, p: &MatPhys) -> bool {
     true
 }
 
-/// A solid turned into something that isn't: whatever it held up may now hang free.
+/// A solid turned into something that isn't: whatever it held up may now hang
+/// free. Or something turned solid (a drop of magma crusting to basalt in
+/// the air, molten gold setting): it's looked at the same way, so what set
+/// with nothing under it falls.
 #[inline]
 fn note_if_solid_lost(h: &mut Hood, x: i32, y: i32, was: &MatPhys, now: MaterialId) {
-    if was.kind == Kind::Static && h.mats.phys(now).kind != Kind::Static {
+    if (was.kind == Kind::Static) != (h.mats.phys(now).kind == Kind::Static) {
         h.note_broken(x, y);
     }
 }

@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
 use platypus_sim::store::ChunkStore;
-use platypus_sim::{CHUNK, ChunkPos, MaterialTable, StepStats, Weather, World, WorldEdit};
+use platypus_sim::{CHUNK, CellPos, ChunkPos, MaterialTable, StepStats, Weather, World, WorldEdit};
 use platypus_worldgen::ChunkGenerator;
 use rayon::prelude::*;
 
@@ -98,7 +98,7 @@ impl Plugin for WorldPlugin {
             .init_resource::<LoadedChunks>()
             .init_resource::<Generating>()
             .configure_sets(FixedUpdate, (TickSet::Intent, TickSet::Bodies, TickSet::Cells).chain())
-            .add_systems(FixedUpdate, step_cells.in_set(TickSet::Cells))
+            .add_systems(FixedUpdate, (sweep_specks, step_cells).chain().in_set(TickSet::Cells))
             .add_systems(PreUpdate, stream_chunks)
             .add_systems(Update, hot_reload_materials);
     }
@@ -167,6 +167,13 @@ const INSERT_MOST: usize = 12;
 
 /// Cells of weather simulated beyond the loaded chunks, either side.
 const WEATHER_MARGIN: i32 = 2_304;
+
+/// Specks about the player looked at, a few tiles a tick (`World::sweep_specks`):
+/// a lone solid hanging in the air falls.
+fn sweep_specks(mut sim: ResMut<SimWorld>, player: Query<&crate::creatures::Kinematics, With<crate::creatures::player::LocalPlayer>>) {
+    let Ok(k) = player.single() else { return };
+    sim.world.sweep_specks(CellPos::from_world(k.body.pos.x, k.body.pos.y), (720, 420));
+}
 
 fn stream_chunks(
     mut sim: ResMut<SimWorld>,

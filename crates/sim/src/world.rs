@@ -71,6 +71,8 @@ pub struct World {
     /// now and then (tick due, a cell of it): if the liquid drains from under
     /// one, it falls.
     afloat: Vec<(u64, CellPos)>,
+    /// Where `sweep_specks` is in its round.
+    speck_sweep: u64,
     /// Same, for the background layer.
     pending_bg_tiles: Vec<CellPos>,
     particles: Vec<Particle>,
@@ -130,6 +132,7 @@ impl World {
             zaps: Vec::new(),
             pending_fragment_tiles: Vec::new(),
             afloat: Vec::new(),
+            speck_sweep: 0,
             pending_bg_tiles: Vec::new(),
             particles: Vec::new(),
             bodies: Vec::new(),
@@ -2107,6 +2110,56 @@ impl World {
         let reach = body.radius.ceil() as i32;
         let layer = if front { Layer::Front } else { Layer::Back };
         self.loosen_around(center, reach, &mut FxHashSet::default(), layer);
+    }
+
+    /// Specks: a few tiles a call about `center` (cycling through the
+    /// `half`-sized area round it, so all of it is looked at every few
+    /// seconds), and any lone solid in them (no solid next to it, or two on
+    /// their own) is checked as if what held it had broken: it falls. What
+    /// left it is the world's business (a drop crusting in the air, a
+    /// broken stalk); this catches whatever did.
+    pub fn sweep_specks(&mut self, center: CellPos, half: (i32, i32)) {
+        const TILES_A_CALL: usize = 32;
+        let t = 1 << FRAGMENT_TILE_BITS;
+        let (tw, th) = ((half.0 * 2) / t + 1, (half.1 * 2) / t + 1);
+        let n = (tw * th).max(1) as u64;
+        let mats = self.materials.clone();
+        let solid = |w: &World, p: CellPos| w.get(p).is_some_and(|c| !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder));
+        let neighbours = |w: &World, p: CellPos| [(1, 0), (-1, 0), (0, 1), (0, -1)].into_iter().filter(|&(dx, dy)| solid(w, p.offset(dx, dy))).count();
+        for k in 0..TILES_A_CALL as u64 {
+            let i = (self.speck_sweep + k) % n;
+            let (tx, ty) = ((i % tw as u64) as i32, (i / tw as u64) as i32);
+            let x0 = (center.x - half.0).div_euclid(t) * t + tx * t;
+            let y0 = (center.y - half.1).div_euclid(t) * t + ty * t;
+            // (Charred wood, carrying nothing, hangs till it burns away; a
+            // fire out, a lone char would hang for ever: it drops now.)
+            let chars: Vec<CellPos> = (0..t)
+                .flat_map(|dy| (0..t).map(move |dx| CellPos::new(x0 + dx, y0 + dy)))
+                .filter(|&p| self.get(p).is_some_and(|c| !c.is_air() && mats.phys(c.material).kind == Kind::Static && c.flags & flags::LOOSE == 0 && !mats.bears_load(c)) && neighbours(self, p) == 0)
+                .collect();
+            for p in chars {
+                if let Some(mut c) = self.get(p) {
+                    c.flags |= flags::LOOSE;
+                    self.set(p, c);
+                }
+            }
+            let lone = (0..t).flat_map(|dy| (0..t).map(move |dx| CellPos::new(x0 + dx, y0 + dy))).any(|p| {
+                let Some(c) = self.get(p) else { return false };
+                if c.is_air() || mats.phys(c.material).kind != Kind::Static || c.flags & flags::LOOSE != 0 {
+                    return false;
+                }
+                match neighbours(self, p) {
+                    0 => true,
+                    // (Two alone: its one neighbour has only it.)
+                    1 => [(1, 0), (-1, 0), (0, 1), (0, -1)].into_iter().map(|(dx, dy)| p.offset(dx, dy)).find(|&q| solid(self, q)).is_some_and(|q| neighbours(self, q) == 1),
+                    _ => false,
+                }
+            });
+            if lone {
+                self.pending_fragment_tiles.push(CellPos::new(x0 >> FRAGMENT_TILE_BITS, y0 >> FRAGMENT_TILE_BITS));
+            }
+        }
+        self.speck_sweep = self.speck_sweep.wrapping_add(TILES_A_CALL as u64);
     }
 
     /// A solid taken out by hand (a creature digging cell by cell, not an
