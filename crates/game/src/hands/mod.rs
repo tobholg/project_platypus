@@ -237,9 +237,6 @@ fn select(keys: Res<ButtonInput<KeyCode>>, scroll: Res<AccumulatedMouseScroll>, 
             hand.slot = i;
         }
     }
-    if keys.just_pressed(KeyCode::KeyX) {
-        hand.bar = (hand.bar + 1) % BARS;
-    }
     if keys.just_pressed(KeyCode::KeyC) {
         hand.area = !hand.area;
     }

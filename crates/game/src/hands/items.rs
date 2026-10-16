@@ -335,8 +335,8 @@ pub struct Roll {
     pub seed: u32,
 }
 
-/// Slots of stacks: a creature's pack, a chest. A player's first `BARS`
-/// rows of `HOTBAR` are its hotbars (X switches between them).
+/// Slots of stacks: a creature's pack, a chest. A player's first `HOTBAR`
+/// slots are its hotbar (one, as Terraria's: `BARS`), the rest its pack.
 #[derive(Component, Clone, Debug)]
 pub struct Inventory {
     pub slots: Vec<Option<Stack>>,
@@ -344,7 +344,7 @@ pub struct Inventory {
 
 pub const HOTBAR: usize = 10;
 /// Hotbars a player has.
-pub const BARS: usize = 3;
+pub const BARS: usize = 1;
 
 impl Inventory {
     pub fn new(slots: usize) -> Inventory {
@@ -373,10 +373,9 @@ impl Inventory {
     }
 
     /// A player's pack: what it gains goes onto stacks of the same first,
-    /// then into the pack (the slots after the hotbars, `bars` of them),
-    /// and only then into an empty hotbar slot (Terraria fills its one
-    /// hotbar first; with three, two of them out of sight, what's new
-    /// would vanish into a bar you can't see). What's left over comes back.
+    /// then into the pack (the slots after the hotbar's `bars`), and only
+    /// then into an empty hotbar slot: what you pick up doesn't push into
+    /// what you've laid out in hand. What's left over comes back.
     pub fn add_to_pack(&mut self, items: &Items, stack: Stack, bars: usize) -> u32 {
         let max = items.stack_units(stack.item);
         let mut left = stack.count;

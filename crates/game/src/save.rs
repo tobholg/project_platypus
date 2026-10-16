@@ -569,13 +569,27 @@ fn apply_player(mut commands: Commands, pending: Option<Res<PendingPlayer>>, ite
     if let Some(m) = p.mana {
         mana.cur = m.min(mana.max);
     }
-    let slots = slots_in(&items, &p.pack);
-    pack.slots = (0..pack.slots.len().max(slots.len())).map(|i| slots.get(i).copied().flatten()).collect();
+    let saved = slots_in(&items, &p.pack);
+    let size = pack.slots.len();
+    pack.slots = (0..size).map(|i| saved.get(i).copied().flatten()).collect();
+    // (A save from when there were three hotbars, 80 slots: the hotbar kept,
+    // the rest packed into the pack in order, what doesn't fit dropped by you.)
+    if saved.len() > size {
+        let hotbar = crate::hands::items::HOTBAR;
+        let mut rest = saved[hotbar..].iter().flatten().copied();
+        for slot in &mut pack.slots[hotbar..] {
+            *slot = rest.next();
+        }
+        for s in rest {
+            spawn_drop(&mut commands, &items, k.body.pos, s);
+        }
+    }
     let worn = slots_in(&items, &p.worn);
     for (i, w) in eq.worn.iter_mut().enumerate() {
         *w = worn.get(i).copied().flatten();
     }
-    hand.bar = p.bar;
+    // (One hotbar now: a save's from when there were three is the first.)
+    hand.bar = p.bar.min(crate::hands::items::BARS - 1);
     hand.slot = p.slot;
     commands.insert_resource(crate::respawn::Checkpoint(p.checkpoint.map(|(x, y)| Vec2::new(x, y))));
     commands.entity(e).insert((PendingHp(p.hp), p.progress.clone(), crate::gold::Gold(p.gold), p.pickup));

@@ -1,14 +1,13 @@
 //! The hotbar (always, in play mode), the inventory screen (I opens it, Esc or I shuts it: the
-//! three hotbars and the pack) and an open chest, Terraria-style:
+//! pack under the hotbar) and an open chest, Terraria-style:
 //!
 //! - drag a stack to another slot, or click it to pick it up and click
 //!   where it goes (swapping, or merging the same item); right-click takes
 //!   half a stack;
-//! - Shift-click moves a stack between the hotbars and the pack, or with a
+//! - Shift-click moves a stack between the hotbar and the pack, or with a
 //!   chest open between the chest and the pack;
 //! - click outside the panels holding a stack to throw it out;
 //! - hover a slot for what's in it (a tooltip);
-//! - X switches hotbar (also: click a hotbar's number);
 //! - gear goes in the equipment slots beside the pack (drag it there, or
 //!   Shift-click it: on, and off again; while it's held, the slots it goes
 //!   in light up); what it all adds up to is listed beside them.
@@ -426,7 +425,7 @@ fn hints(hand: Res<Hand>, game: Res<crate::mode::Mode>, items: Option<Res<Items>
     let pick = items.as_ref().zip(player.single().ok()).and_then(|(items, inv)| inv.slots[hand.active()].map(|s| items.def(s.item).use_.clone())).is_some_and(|u| matches!(u, Use::Mine { back: false, area, .. } if area > 0.0));
     let mode = if pick { format!("   |   {} [C]", if hand.area { "area" } else { "precise" }) } else { String::new() };
     let dev = if game.dev() { "   |   dev menu: key left of 1" } else { "" };
-    let want = format!("hotbar {} of {BARS} [X]   |   {smart} [Alt]{mode}   |   inventory [I]   |   potion [H]   |   menu [Esc]{dev}", hand.bar + 1);
+    let want = format!("{smart} [Alt]{mode}   |   inventory [I]   |   potion [H]   |   menu [Esc]{dev}");
     if text.0 != want {
         text.0 = want;
     }
