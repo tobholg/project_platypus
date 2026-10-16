@@ -154,17 +154,20 @@ pub(crate) fn give_start(mut commands: Commands, items: Option<Res<Items>>, mode
     let Some(items) = items else { return };
     for (e, mut eq) in &mut new {
         let mut inv = Inventory::new(PACK);
-        put_on(&items, items.kit(mode.kit()), &mut inv, &mut eq);
+        put_on(&items, items.kit(mode.kit()), &mut inv, &mut eq, false);
         commands.entity(e).insert(inv);
     }
 }
 
-/// A kit into a pack and onto a body (over what was worn there). What the
-/// pack had no room for comes back.
-pub fn put_on(items: &Items, kit: &items::Kit, inv: &mut Inventory, eq: &mut crate::gear::Equipment) -> Vec<Stack> {
+/// A kit into a pack and onto a body (over what was worn there): a new
+/// player's into its hotbar first (its first ten in hand), one handed out
+/// later into the pack first (`Inventory::add_to_pack`). What the pack had
+/// no room for comes back.
+pub fn put_on(items: &Items, kit: &items::Kit, inv: &mut Inventory, eq: &mut crate::gear::Equipment, pack_first: bool) -> Vec<Stack> {
     let mut over = Vec::new();
     for &(item, n) in &kit.carry {
-        let left = inv.add(items, Stack::new(item, n * items.unit(item)));
+        let stack = Stack::new(item, n * items.unit(item));
+        let left = if pack_first { inv.add_to_pack(items, stack, HOTBAR * BARS) } else { inv.add(items, stack) };
         if left > 0 {
             over.push(Stack::new(item, left));
         }
@@ -840,7 +843,7 @@ fn collect(
                 streak.since = 0.0;
                 sounds.write(crate::sound::PlaySound::here("pickup").pitch(1.0 + STREAK_STEP * streak.n as f32));
                 let new = progress.is_some_and(|p| !p.seen.contains(&items.def(d.stack.item).id));
-                let left = inv.add(&items, d.stack);
+                let left = inv.add_to_pack(&items, d.stack, crate::hands::items::HOTBAR * crate::hands::items::BARS);
                 picked.write(crate::pickups::PickedUp::Item { stack: crate::hands::items::Stack { count: d.stack.count - left, ..d.stack }, new });
                 if left == 0 {
                     commands.entity(e).despawn();

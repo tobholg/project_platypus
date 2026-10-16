@@ -398,7 +398,7 @@ fn craft(
             continue;
         }
         let Some(made) = make(r, &items, &mut inv) else { continue };
-        let left = inv.add(&items, made);
+        let left = inv.add_to_pack(&items, made, crate::hands::items::HOTBAR * crate::hands::items::BARS);
         if left > 0 {
             crate::hands::spawn_drop(&mut commands, &items, k.body.pos, Stack { count: left, ..made });
             toasts.write(Toast("No room: it's at your feet".into()));

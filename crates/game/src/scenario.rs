@@ -8225,7 +8225,8 @@ fn title_script(s: Res<Scenario>, title: Res<crate::title::Title>, virt: Res<Tim
 /// `devmenu` (`PLATYPUS_WORLD=arena`, with `PLATYPUS_SHOTS` and
 /// `PLATYPUS_SHOT_EVERY=1.5` to see it): the dev menu open at each tab in
 /// turn (1.5 s each: Player, Items, Items searched for "sword", Creatures,
-/// World, Tools, View, Time, Sounds); on the way, a longsword and the
+/// World, Tools, View, Time, Sounds; `PLATYPUS_SEARCH` another search);
+/// on the way, a longsword and the
 /// `miner` kit are clicked, and what the pack holds is logged before and after.
 #[allow(clippy::type_complexity)]
 fn devmenu_script(
@@ -8249,7 +8250,8 @@ fn devmenu_script(
     let i = i as usize;
     menu.open = true;
     menu.tab = tabs[i];
-    menu.set_search(if i == 2 { "sword" } else { "" });
+    let search = std::env::var("PLATYPUS_SEARCH").unwrap_or_else(|_| "sword".into());
+    menu.set_search(if i == 2 { &search } else { "" });
     let count = |id: &str| player.single().ok().map_or(0, |inv| items.id(id).map_or(0, |it| inv.count(it) / items.unit(it)));
     if *step == 0 && i == 1 && s.elapsed > 2.6 {
         *step = 1;

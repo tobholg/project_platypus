@@ -460,7 +460,7 @@ pub(crate) fn clicks(
             }
             Act::Kit(name) => {
                 if let (Some(items), Some((_, Some(inv), eq, _))) = (items.as_deref(), me.as_mut()) {
-                    over.extend(crate::hands::put_on(items, items.kit(name), &mut *inv, &mut *eq));
+                    over.extend(crate::hands::put_on(items, items.kit(name), &mut *inv, &mut *eq, true));
                 }
             }
             Act::Empty => {
@@ -479,7 +479,7 @@ pub(crate) fn clicks(
         menu.typing = false;
         if let Some((_, Some(inv), ..)) = me.as_mut() {
             let n = if shift { items.stack_units(b.0) } else { items.unit(b.0) };
-            let left = inv.add(&items, Stack::new(b.0, n));
+            let left = inv.add_to_pack(&items, Stack::new(b.0, n), crate::hands::items::HOTBAR * crate::hands::items::BARS);
             if left > 0 {
                 over.push(Stack::new(b.0, left));
             }
@@ -516,7 +516,7 @@ fn hold(mouse: Res<ButtonInput<MouseButton>>, items: Option<Res<Items>>, hand: R
     let slot = hand.active();
     let was = inv.slots.get_mut(slot).and_then(|s| s.replace(Stack::new(b.0, items.stack_units(b.0))));
     if let Some(was) = was {
-        inv.add(&items, was);
+        inv.add_to_pack(&items, was, crate::hands::items::HOTBAR * crate::hands::items::BARS);
     }
 }
 

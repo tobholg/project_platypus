@@ -446,7 +446,7 @@ fn take_all(keys: Res<ButtonInput<KeyCode>>, items: Option<Res<Items>>, sim: Res
     let chest = chests.contents(key, &sim.world, &items);
     for slot in chest.slots.iter_mut() {
         if let Some(s) = *slot {
-            let left = inv.add(&items, s);
+            let left = inv.add_to_pack(&items, s, crate::hands::items::HOTBAR * crate::hands::items::BARS);
             *slot = (left > 0).then_some(Stack { count: left, ..s });
         }
     }

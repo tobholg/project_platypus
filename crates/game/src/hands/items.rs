@@ -372,6 +372,34 @@ impl Inventory {
         left
     }
 
+    /// A player's pack: what it gains goes onto stacks of the same first,
+    /// then into the pack (the slots after the hotbars, `bars` of them),
+    /// and only then into an empty hotbar slot (Terraria fills its one
+    /// hotbar first; with three, two of them out of sight, what's new
+    /// would vanish into a bar you can't see). What's left over comes back.
+    pub fn add_to_pack(&mut self, items: &Items, stack: Stack, bars: usize) -> u32 {
+        let max = items.stack_units(stack.item);
+        let mut left = stack.count;
+        for s in self.slots.iter_mut().flatten().filter(|s| s.same(&stack)) {
+            let n = left.min(max.saturating_sub(s.count));
+            s.count += n;
+            left -= n;
+        }
+        let bars = bars.min(self.slots.len());
+        let order = (bars..self.slots.len()).chain(0..bars);
+        for i in order {
+            if left == 0 {
+                break;
+            }
+            if self.slots[i].is_none() {
+                let n = left.min(max);
+                self.slots[i] = Some(Stack { count: n, ..stack });
+                left -= n;
+            }
+        }
+        left
+    }
+
     /// Would any of it fit?
     pub fn has_room(&self, items: &Items, stack: &Stack) -> bool {
         let max = items.stack_units(stack.item);
@@ -478,5 +506,24 @@ mod tests {
         assert!(!inv.has_room(&it, &Stack::new(torch, 1)));
         assert_eq!(inv.take(0, 10), 10);
         assert_eq!(inv.count(torch), 297 - 10);
+    }
+
+    /// What a player gains goes onto its stacks, then into the pack, and
+    /// only then into the hotbars.
+    #[test]
+    fn gains_go_to_the_pack_before_the_hotbars() {
+        let it = items();
+        let (torch, sword) = (it.id("torch").unwrap(), it.id("shortsword").unwrap());
+        let mut inv = Inventory::new(6);
+        inv.slots[0] = Some(Stack::new(torch, 3));
+        assert_eq!(inv.add_to_pack(&it, Stack::new(torch, 2), 3), 0);
+        assert_eq!(inv.slots[0].map(|s| s.count), Some(5), "onto the stack in the hotbar");
+        inv.add_to_pack(&it, Stack::new(sword, 1), 3);
+        assert_eq!(inv.slots[3].map(|s| s.item), Some(sword), "into the pack, past the hotbars' empty slots");
+        for _ in 0..2 {
+            inv.add_to_pack(&it, Stack::new(sword, 1), 3);
+        }
+        assert_eq!(inv.add_to_pack(&it, Stack::new(sword, 1), 3), 0);
+        assert_eq!(inv.slots[1].map(|s| s.item), Some(sword), "the pack full: a hotbar's empty slot");
     }
 }

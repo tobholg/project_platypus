@@ -419,7 +419,7 @@ fn trade(
                         continue;
                     }
                     let unit = items.unit(item);
-                    let left = inv.add(&items, Stack::new(item, n * unit));
+                    let left = inv.add_to_pack(&items, Stack::new(item, n * unit), crate::hands::items::HOTBAR * crate::hands::items::BARS);
                     let got = n - left.div_ceil(unit);
                     if got == 0 {
                         shop.note = "No room in your pack".into();

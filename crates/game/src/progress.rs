@@ -215,7 +215,7 @@ fn reach(
                 continue;
             };
             let stack = Stack::new(item, n * items.unit(item));
-            let left = inv.as_mut().map_or(stack.count, |i| i.add(&items, stack));
+            let left = inv.as_mut().map_or(stack.count, |i| i.add_to_pack(&items, stack, crate::hands::items::HOTBAR * crate::hands::items::BARS));
             if left > 0 {
                 crate::hands::spawn_drop(&mut commands, &items, k.body.pos, Stack { count: left, ..stack });
             }
