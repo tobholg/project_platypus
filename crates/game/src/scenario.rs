@@ -308,6 +308,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, chop_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, starter_script)
             .add_systems(Update, close_window)
+            .add_systems(PreUpdate, goldsmash_script.after(InputSystems).before(crate::magic::well::twist_input).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, devmenu_place_script.after(InputSystems).before(crate::devmenu::place))
             .add_systems(PreUpdate, devmenu_pick_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
@@ -7747,6 +7748,73 @@ fn play_script(
         *step += 1;
         keys.release(KeyCode::Escape);
         info!("play: Esc: game menu {}, time {}", if menu.open { "up" } else { "shut" }, if virt.is_paused() { "paused" } else { "running" });
+    }
+}
+
+/// `goldsmash` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a lump of
+/// solid gold (14 × 10 cells, with gold dust about it) on the floor 60 cells
+/// right, a spider at 150; the gravity staff swapped into hand. From 1 s the
+/// well holds the lump up over it; at 2.5 s three notches of the wheel turn
+/// it; at 4 s the well swings fast onto the spider. Logs the bodies flying,
+/// the held one's turn, the spider's health, and the mana.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn goldsmash_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    items: Option<Res<crate::hands::items::Items>>,
+    hand: Res<crate::hands::Hand>,
+    mut player: Query<(&Kinematics, &mut crate::hands::items::Inventory, Option<&crate::magic::Mana>), With<LocalPlayer>>,
+    them: Query<(&crate::creatures::Creature, &crate::creatures::Health, &Kinematics), Without<LocalPlayer>>,
+    (mut mouse, mut cursor, mut scroll): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>, ResMut<bevy::input::mouse::AccumulatedMouseScroll>),
+    mut st: Local<(u8, f32, Vec2, Vec2)>,
+) {
+    if s.name != "goldsmash" {
+        return;
+    }
+    let Ok((pk, mut inv, mana)) = player.single_mut() else { return };
+    let Some(items) = items else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR;
+    if st.0 == 0 && t > 0.5 {
+        st.0 = 1;
+        let x0 = pk.body.pos.x as i32 + 54;
+        let gold = sim.world.materials().expect_id("solid_gold");
+        let dust = sim.world.materials().expect_id("gold");
+        for dx in 0..14 {
+            for dy in 0..10 {
+                sim.world.set(CellPos::new(x0 + dx, fl + dy), platypus_sim::Cell::new(gold, 0));
+            }
+        }
+        for dx in -8..22 {
+            sim.world.set(CellPos::new(x0 + dx, fl + 10 + (dx.rem_euclid(3) == 0) as i32), platypus_sim::Cell::new(dust, 0));
+        }
+        st.2 = Vec2::new(x0 as f32 + 7.0, fl as f32 + 5.0);
+        crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(pk.body.pos.x + 150.0, fl as f32), |_| {});
+        if let Some(staff) = items.id("gravity_staff")
+            && let Some(i) = inv.slots.iter().position(|st| st.is_some_and(|st| st.item == staff))
+        {
+            let to = hand.active();
+            inv.slots.swap(i, to);
+        }
+    }
+    let spider = them.iter().find(|(c, ..)| c.kind == "spider");
+    let flying = sim.world.bodies().len();
+    let turn = sim.world.bodies().first().map_or(0.0, |b| b.rot[1].atan2(b.rot[0]).to_degrees());
+    if t > 1.0 {
+        // Hold it up over where it lay; then swing down onto the spider.
+        let at = if t < 4.0 { st.2 + Vec2::new(0.0, 30.0) } else { spider.map_or(st.2, |(_, _, k)| k.body.pos) + Vec2::new(0.0, (5.0 - t).max(0.0) * 40.0) };
+        cursor.0 = Some(at);
+        mouse.press(MouseButton::Left);
+    }
+    if st.0 == 1 && t > 2.5 {
+        st.0 = 2;
+        scroll.delta.y = 3.0;
+        scroll.unit = bevy::input::mouse::MouseScrollUnit::Line;
+    }
+    if t >= st.1 {
+        st.1 = (t * 2.0).floor() / 2.0 + 0.5;
+        info!("goldsmash: t {t:.1}: bodies flying {flying}, turned {turn:.0}°, spider {}, mana {:.0}", spider.map_or("gone".into(), |(_, h, _)| format!("{:.0}/{:.0}", h.hp, h.max)), mana.map_or(0.0, |m| m.cur));
     }
 }
 

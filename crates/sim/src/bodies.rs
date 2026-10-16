@@ -327,6 +327,13 @@ impl Body {
     }
 
     /// Its mass (cells; leaves count less).
+    /// Held up by something (a gravity well): it doesn't come to rest or
+    /// time out into cells while it's held.
+    pub fn hold(&mut self) {
+        self.age = 0;
+        self.still = 0;
+    }
+
     pub fn mass(&self) -> f32 {
         1.0 / self.inv_mass.max(1e-6)
     }

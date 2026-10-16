@@ -80,10 +80,10 @@
 
         // Levels: bigger, lifts more, tears out harder rock.
         (id: "gravity_well", name: "Gravity well I", mana: 6, color: (150, 110, 255),
-            kind: Carrier(Well(radius: 27, strength: 60, lift: 1013, pull: 90, grip: 7500, drain: 22)),
+            kind: Carrier(Well(radius: 27, strength: 60, lift: 1013, pull: 90, grip: 7500, drain: 9)),
             look: (trail: (count: 3, life: (0.3, 0.8), colors: [(220, 205, 255), (140, 100, 240), (50, 30, 100)], speed: 90, drag: 1, glow: true))),
         (id: "gravity_well_ii", name: "Gravity well II", mana: 10, color: (150, 110, 255),
-            kind: Carrier(Well(radius: 39, strength: 85, lift: 3600, pull: 158, grip: 10500, drain: 30)),
+            kind: Carrier(Well(radius: 39, strength: 85, lift: 3600, pull: 158, grip: 10500, drain: 12)),
             look: (trail: (count: 5, life: (0.3, 0.9), colors: [(230, 215, 255), (150, 105, 250), (50, 30, 100)], speed: 105, drag: 1, glow: true))),
         (id: "force", name: "Force I", mana: 4, color: (140, 200, 255),
             kind: Carrier(Force(radius: 60, power: 450, strength: 30, pull: 105, drain: 18)),

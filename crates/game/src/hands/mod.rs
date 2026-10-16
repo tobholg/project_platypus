@@ -224,7 +224,8 @@ const SLOT_KEYS: [KeyCode; HOTBAR] = [
 
 /// Number keys pick a hotbar slot; the wheel steps through them (a notch a
 /// slot; a trackpad's scroll is counted in lines' worth of pixels).
-fn select(keys: Res<ButtonInput<KeyCode>>, scroll: Res<AccumulatedMouseScroll>, dev: Res<DevTools>, open: Res<InventoryOpen>, over_ui: Res<crate::dev::PointerOverUi>, mut hand: ResMut<Hand>, mut wheel: Local<f32>) {
+#[allow(clippy::too_many_arguments)]
+fn select(keys: Res<ButtonInput<KeyCode>>, scroll: Res<AccumulatedMouseScroll>, dev: Res<DevTools>, open: Res<InventoryOpen>, over_ui: Res<crate::dev::PointerOverUi>, twisting: Res<crate::magic::well::WheelTaken>, mut hand: ResMut<Hand>, mut wheel: Local<f32>) {
     if dev.0 {
         return;
     }
@@ -244,8 +245,9 @@ fn select(keys: Res<ButtonInput<KeyCode>>, scroll: Res<AccumulatedMouseScroll>, 
         MouseScrollUnit::Line => scroll.delta.y,
         MouseScrollUnit::Pixel => scroll.delta.y / PIXELS_A_NOTCH,
     };
-    // (Over a panel the wheel scrolls it, not the hotbar.)
-    if open.0 || over_ui.0 {
+    // (Over a panel the wheel scrolls it, not the hotbar; holding with a
+    // well, it turns what's held: `magic::well::twist_input`.)
+    if open.0 || over_ui.0 || twisting.0 {
         *wheel = 0.0;
     }
     while wheel.abs() >= 1.0 {

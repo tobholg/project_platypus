@@ -10,6 +10,9 @@
     kind: "humanoid",
     // (Safe past a triple jump's height: ~158 cells in cloud boots.)
     fall_damage: (safe_height: 180, per_cell: 0.4),
+    // Its wounds close slowly once it's out of danger: nothing at all for
+    // 8 s after any hurt, then a little at a time (empty to full in ~70 s).
+    regen: (per_sec: 1.4, pause: 8, rests: true),
     movement: (
         run_speed: 143,
         ground_accel: 2100,

@@ -258,8 +258,68 @@ fn fall_of(stats: Option<&MoveStats>) -> f32 {
     stats.map_or(GRAVITY, |s| s.0.gravity * s.0.fall_gravity)
 }
 
+/// Turning what a well holds: the wheel while it's held (a notch a
+/// `TWIST_NOTCH`), paid out a little a tick so it swings round smoothly.
+#[derive(Resource, Default)]
+pub struct Twist {
+    /// Radians still to turn (counter-clockwise +), and whose well.
+    pub left: f32,
+    pub by: Option<Entity>,
+}
+
+/// A notch of the wheel turns what's held this far (radians), at most this
+/// far a tick.
+pub const TWIST_NOTCH: f32 = std::f32::consts::PI / 12.0;
+const TWIST_RATE: f32 = 0.06;
+
+impl Twist {
+    /// This tick's turn for `caster`'s well (radians a tick).
+    fn take(&mut self, caster: Entity) -> f32 {
+        if self.by != Some(caster) || self.left == 0.0 {
+            return 0.0;
+        }
+        let step = self.left.clamp(-TWIST_RATE, TWIST_RATE);
+        self.left -= step;
+        step
+    }
+}
+
+/// The wheel is turning what the player's well holds (not stepping the
+/// hotbar: `hands::select`).
+#[derive(Resource, Default)]
+pub struct WheelTaken(pub bool);
+
+/// The wheel, while the player's well is open and holding: a notch turns
+/// what's held `TWIST_NOTCH` (up: counter-clockwise).
+pub fn twist_input(
+    scroll: Res<bevy::input::mouse::AccumulatedMouseScroll>,
+    wells: Query<&Well>,
+    me: Query<Entity, With<crate::creatures::player::LocalPlayer>>,
+    mut twist: ResMut<Twist>,
+    mut taken: ResMut<WheelTaken>,
+    mut wheel: Local<f32>,
+) {
+    let Ok(me) = me.single() else { return };
+    taken.0 = wells.iter().any(|w| w.caster == me && w.mode == Mode::Hold);
+    if !taken.0 {
+        *wheel = 0.0;
+        return;
+    }
+    const PIXELS_A_NOTCH: f32 = 40.0;
+    *wheel += match scroll.unit {
+        bevy::input::mouse::MouseScrollUnit::Line => scroll.delta.y,
+        bevy::input::mouse::MouseScrollUnit::Pixel => scroll.delta.y / PIXELS_A_NOTCH,
+    };
+    let notches = wheel.trunc();
+    if notches != 0.0 {
+        *wheel -= notches;
+        twist.by = Some(me);
+        twist.left += notches * TWIST_NOTCH;
+    }
+}
+
 /// Fields pull, hold, spin, spill, fling and drop.
-pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Query<(Entity, &mut Well)>, mut bodies: Bodies, mut sparks: ResMut<Sparks>) {
+pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Query<(Entity, &mut Well)>, mut bodies: Bodies, mut sparks: ResMut<Sparks>, mut twist: ResMut<Twist>) {
     for (e, mut well) in &mut wells {
         let well = &mut *well;
         let world = &mut sim.world;
@@ -301,16 +361,17 @@ pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Que
         // Pull in what it can reach and lift: particles in flight first,
         // then cells, nearer and softer first.
         let mut tore = false;
-        let room = ((well.lift - well.carried).max(0.0) as usize).min(well.pull as usize);
+        // (Things, bodies, first: a casting in reach isn't crowded out by
+        // the dust about it.)
+        let things: f32 = world.bodies().iter().filter(|b| Vec2::from(b.pos).distance(center) <= reach * 1.2).map(|b| b.mass() * BODY_DENSITY).sum();
+        let full = |carried: f32| carried + things >= well.lift;
+        let room = ((well.lift - well.carried - things).max(0.0) as usize).min(well.pull as usize);
         for p in world.take_particles([center.x, center.y], reach, room / 2) {
             well.carried += weight_of(&mats, p.cell);
             let (depth, spin) = (unit(&mut well.rng), SPIN * (0.7 + 0.6 * unit(&mut well.rng)));
             well.held.push(Floating { cell: p.cell, pos: Vec2::new(p.pos[0], p.pos[1]), vel: Vec2::new(p.vel[0], p.vel[1]) * TICK_HZ as f32, depth, spin });
         }
         for _ in 0..well.pull {
-            if well.carried >= well.lift {
-                break;
-            }
             let rng = &mut well.rng;
             let (a, d) = (unit(rng) * std::f32::consts::TAU, unit(rng).sqrt() * reach);
             let at = center + Vec2::from_angle(a) * d;
@@ -326,7 +387,8 @@ pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Que
                 world.lift(p);
                 continue;
             }
-            if unit(rng) >= odds(ph, well.strength, 1.0 - d / reach) {
+            // (Full: only things still come.)
+            if full(well.carried) || unit(rng) >= odds(ph, well.strength, 1.0 - d / reach) {
                 continue;
             }
             let Some(mut cell) = world.pluck(p) else { continue };
@@ -342,7 +404,10 @@ pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Que
         // Bodies within reach (things it lifted, things flying by): drawn to
         // its heart on a spring, as far as what's left of its lift allows
         // (a body weighs as its cells would: wood a little under water's).
-        let mut room = (well.lift - well.carried).max(0.0);
+        // (The whole lift is theirs first; the loose cells fill what's left.)
+        let mut room = well.lift;
+        // Turned with the wheel while held (`Twist`: radians to go).
+        let turn = twist.take(well.caster);
         for b in world.bodies_mut() {
             let at = Vec2::from(b.pos);
             if at.distance(center) > reach * 1.2 {
@@ -356,7 +421,14 @@ pub fn channel(mut commands: Commands, mut sim: ResMut<SimWorld>, mut wells: Que
             let nv = v + (want - v) * share * BODY_GRIP;
             let at = b.pos;
             b.impulse([(nv.x - v.x) * b.mass(), (nv.y - v.y + BODY_HOLD * share) * b.mass()], at);
-            b.omega *= 0.95;
+            if share > 0.0 {
+                // (Held: it doesn't settle into cells in mid-air, and it turns
+                // as the wheel turns it, else it's held still.)
+                b.hold();
+                b.omega = turn;
+            } else {
+                b.omega *= 0.95;
+            }
         }
 
         // Hold: each cell toward its place in the spinning ball, as far as
