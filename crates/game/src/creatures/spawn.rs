@@ -68,7 +68,7 @@ impl Plugin for SpawnPlugin {
             .init_resource::<Spawned>()
             .init_resource::<SpawnKind>()
             .add_systems(Startup, queue_start)
-            .add_systems(Update, (process_queue, debug_spawn, world_spawns));
+            .add_systems(Update, (process_queue, debug_spawn, world_spawns, old_candles));
     }
 }
 
@@ -175,6 +175,55 @@ fn world_spawns(
                 let seen = clock.now;
                 clock.keepers.insert((at.x, at.y), crate::clock::Keeper { kind: kind.to_string(), seen });
             }
+        }
+    }
+}
+
+/// Candles were cells once (a castle's, a crypt's: solid, barely glowing,
+/// in the way); now they're things (`candle` props, spawned with the
+/// world). A chunk from an older save, as it loads: its candle cells
+/// taken away, a lit candle put where each stood. (Looked at once a chunk,
+/// each time it's loaded: none left after, it costs a glance.)
+fn old_candles(mut commands: Commands, mut sim: ResMut<SimWorld>, mut seen: Local<std::collections::HashSet<platypus_sim::ChunkPos>>, mut frame: Local<u32>) {
+    *frame = frame.wrapping_add(1);
+    if !frame.is_multiple_of(10) {
+        return;
+    }
+    let Some(candle) = sim.materials().id("candle") else { return };
+    let loaded: std::collections::HashSet<platypus_sim::ChunkPos> = sim.world.chunks().map(|c| c.pos).collect();
+    let new: Vec<platypus_sim::ChunkPos> = loaded.iter().filter(|p| !seen.contains(p)).copied().collect();
+    *seen = loaded;
+    let chunk = platypus_sim::CHUNK;
+    for pos in new {
+        let (x0, y0) = (pos.x * chunk, pos.y * chunk);
+        let is = |w: &World, x: i32, y: i32| w.get(CellPos::new(x, y)).is_some_and(|c| c.material == candle);
+        // (A candle standing on the chunk below, not loaded yet: its foot's
+        // there; this chunk waits for it, looked at again next time.)
+        if (x0..x0 + chunk).any(|x| is(&sim.world, x, y0) && sim.world.get(CellPos::new(x, y0 - 1)).is_none()) {
+            seen.remove(&pos);
+            continue;
+        }
+        let mut feet: Vec<(i32, i32)> = Vec::new();
+        for y in y0..y0 + chunk {
+            for x in x0..x0 + chunk {
+                // (A candle's bottom left: candle here, none under it or left of it.)
+                if is(&sim.world, x, y) && !is(&sim.world, x, y - 1) && !is(&sim.world, x - 1, y) {
+                    feet.push((x, y));
+                }
+            }
+        }
+        if !feet.is_empty() {
+            info!("candles: {} in chunk {pos:?} made things (from an older save's cells)", feet.len());
+        }
+        for (x, y) in feet {
+            for dy in 0..6 {
+                for dx in 0..2 {
+                    if is(&sim.world, x + dx, y + dy) {
+                        sim.world.set(CellPos::new(x + dx, y + dy), platypus_sim::Cell::AIR);
+                    }
+                }
+            }
+            spawn_creature(&mut commands, "candle", Vec2::new(x as f32 + 1.0, y as f32), |_| {});
         }
     }
 }

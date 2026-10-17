@@ -312,6 +312,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, throw_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, specks_script)
             .add_systems(Update, hurt_script)
+            .add_systems(Update, castle_script)
             .add_systems(PreUpdate, ropejump_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, goldsmash_script.after(InputSystems).before(crate::magic::well::twist_input).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
@@ -7849,6 +7850,40 @@ fn ropejump_script(
             }
         }
         _ => {}
+    }
+}
+
+/// `castle` (any world with castles): the player put by the nearest
+/// castle (its landmark), kept alive; at 6 s, the candles about it (props,
+/// lit) and any candle cells left (logs both).
+fn castle_script(s: Res<Scenario>, sim: Res<SimWorld>, mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>, them: Query<(&crate::creatures::Creature, &Kinematics, Option<&crate::light::LightSource>), Without<LocalPlayer>>, mut st: Local<(u8, Vec2)>) {
+    if s.name != "castle" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    if st.0 == 0 && s.elapsed > 1.0 {
+        let me = k.body.pos;
+        let Some((at, _)) = sim.generator.landmarks().into_iter().filter(|(_, n)| n == "castle").min_by_key(|(p, _)| (p.x as f32 - me.x).abs() as i64) else {
+            st.0 = 9;
+            return info!("castle: no castle in this world");
+        };
+        k.body.pos = Vec2::new(at.x as f32, at.y as f32 + 30.0);
+        k.prev_pos = k.body.pos;
+        st.0 = 1;
+        st.1 = k.body.pos;
+        info!("castle: to the castle at ({}, {})", at.x, at.y);
+    }
+    if st.0 == 1 && s.elapsed > 6.0 {
+        st.0 = 2;
+        let near = |p: Vec2| p.distance(st.1) < 600.0;
+        let candles: Vec<_> = them.iter().filter(|(c, k, _)| c.kind == "candle" && near(k.body.pos)).collect();
+        let lit = candles.iter().filter(|(.., l)| l.is_some()).count();
+        let w = &sim.world;
+        let cid = w.materials().expect_id("candle");
+        let c = CellPos::from_world(st.1.x, st.1.y);
+        let cells = (-600..600).flat_map(|dx| (-400..400).map(move |dy| c.offset(dx, dy))).filter(|p| w.get(*p).is_some_and(|x| x.material == cid)).count();
+        info!("castle: {} candles about it ({lit} lit); candle cells left: {cells}", candles.len());
     }
 }
 

@@ -1019,10 +1019,7 @@ impl TerrainGen {
             Glyph::Rubble => i.gravel,
             Glyph::Water => i.water,
             Glyph::Lava => i.lava,
-            // A candle in the middle of its block, two cells wide: three of
-            // wax, the flame over them tapering to a point (`generate`
-            // shades the flame).
-            Glyph::Candle if (2..=3).contains(&bx) && (by <= 3 || by == 4 && bx == 2) => i.candle,
+            // (A candle is a thing, not cells: `spawns`, a `candle` prop.)
             // A tooth a block, pointing up, with a gap between teeth:
             //   ..#...
             //   .###..
@@ -1238,6 +1235,10 @@ impl TerrainGen {
                 // decides it, so a chunk made again brings the same.)
                 let necro = s.kind == StructureKind::Crypt && (x as i64 * 73_856_093 ^ y as i64 * 19_349_663).rem_euclid(5) == 0;
                 out.push((CellPos::new(x, y), Spawn::Creature(if necro { "necromancer" } else { guard })));
+            }
+            // Candles: lit, on the floor of their block, its middle.
+            for (x, y) in piece.blocks_of(Glyph::Candle).map(|(x, y)| (x + BLOCK / 2, y)).filter(inside) {
+                out.push((CellPos::new(x, y), Spawn::Prop("candle")));
             }
             // A crypt's heart is kept by a Fallen Templar; a castle's, until
             // there are bosses, by a pack.

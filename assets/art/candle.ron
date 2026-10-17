@@ -1,0 +1,32 @@
+// A candle on an iron dish, lit (a castle's, a crypt's): wax, a wick, a
+// small flame; its light flickers and motes rise from it (creatures/
+// candle.ron: `light`'s `flame`).
+(
+    size: (6, 10),
+    feet: (3, 10),
+    outline: (28, 22, 20),
+    palette: {
+        'f': (255, 168, 60),    // flame, its edge
+        'F': (255, 238, 170),   // flame, its heart
+        'k': (60, 46, 36),      // wick
+        'w': (214, 204, 172),   // wax
+        'W': (240, 232, 204),   // wax, lit
+        'd': (88, 80, 74),      // dish
+        'D': (128, 118, 108),   // dish, lit
+    },
+    frames: {
+        "stand": [
+            "..f...",
+            "..Ff..",
+            ".fFFf.",
+            "..k...",
+            ".wWWw.",
+            ".wWWw.",
+            ".wWWw.",
+            ".wWww.",
+            "dDDDDd",
+            ".dddd.",
+        ],
+    },
+    clips: { "idle": (frames: ["stand"], fps: 1) },
+)

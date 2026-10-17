@@ -42,12 +42,19 @@ pub struct Flame {
     pub at: Vec2,
     /// Motes owed (flame, smoke, embers).
     owed: [f32; 3],
+    /// A smaller fire than a torch's (a candle's): this share of its motes.
+    pub share: Option<f32>,
 }
 
 impl Flame {
     /// Fire rising from `at` (from the entity, cells).
     pub fn at(at: Vec2) -> Self {
-        Flame { at, owed: [0.0; 3] }
+        Flame { at, owed: [0.0; 3], share: None }
+    }
+
+    /// A smaller fire at `at`: `share` of a torch's motes.
+    pub fn small(at: Vec2, share: f32) -> Self {
+        Flame { at, owed: [0.0; 3], share: Some(share) }
     }
 }
 
@@ -144,8 +151,9 @@ pub fn burn(time: Res<Time>, settings: Res<LightSettings>, mut sparks: ResMut<Sp
     let look = &settings.fire;
     for (tf, mut f) in &mut flames {
         let at = tf.translation().truncate() + f.at;
+        let share = f.share.unwrap_or(1.0);
         for (i, e) in [&look.flame, &look.smoke, &look.embers].into_iter().enumerate() {
-            f.owed[i] += e.count * dt;
+            f.owed[i] += e.count * share * dt;
             let n = f.owed[i].floor();
             f.owed[i] -= n;
             if n > 0.0 {

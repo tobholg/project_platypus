@@ -277,6 +277,13 @@ pub struct CreatureLight {
     /// It glows as glowing cells do (a haze over the dark): eyes in a cave.
     #[serde(default)]
     pub haze: bool,
+    /// It wavers like fire, 0..1 (a candle's flame).
+    #[serde(default)]
+    pub flicker: f32,
+    /// A flame burns at this point (from its middle, cells, facing right),
+    /// giving off this share of a torch's motes: a candle.
+    #[serde(default)]
+    pub flame: Option<(f32, f32, f32)>,
 }
 
 fn one_f() -> f32 {
@@ -685,7 +692,10 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         }
         if let Some(l) = def.light {
             let color = crate::light::rgb(l.color, l.strength);
-            e.insert(crate::light::LightSource { color, flicker: 0.0 });
+            e.insert(crate::light::LightSource { color, flicker: l.flicker });
+            if let Some((x, y, share)) = l.flame {
+                e.insert(crate::light::torch::Flame::small(Vec2::new(x, y), share));
+            }
             if l.pulse > 0.0 || l.haze {
                 // (Each its own moment in the cycle.)
                 let phase = (platypus_sim::rng::hash(&[feet.x.to_bits() as u64, feet.y.to_bits() as u64]) % 628) as f32 / 100.0;
