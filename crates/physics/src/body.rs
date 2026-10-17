@@ -38,6 +38,23 @@ pub trait Grid {
 /// Keeps a box that ends exactly on a cell boundary from claiming the next cell.
 const EPS: f32 = 1e-3;
 
+/// The margin that does `EPS`'s job at `e`: far from the origin an f32
+/// can't hold 1e-3 (past 32 768 its steps are ~0.004, and a fixed margin
+/// rounded away: a box flush against a ceiling or a right wall claimed the
+/// cell past it, and got stuck), so it grows with the coordinate, a few of
+/// its steps.
+#[inline]
+fn margin(e: f32) -> f32 {
+    EPS.max(e.abs() * 3.0 * f32::EPSILON)
+}
+
+/// The last cell an upper (or right) edge at `e` reaches: one ending
+/// exactly on a boundary doesn't claim the cell past it.
+#[inline]
+fn last_cell(e: f32) -> f32 {
+    (e - margin(e)).floor()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Body {
     /// Centre of the box, in cells.
@@ -85,7 +102,8 @@ impl Body {
     #[inline]
     pub fn cells_at(&self, pos: Vec2) -> (IVec2, IVec2) {
         let min = (pos - self.half).floor().as_ivec2();
-        let max = (pos + self.half - Vec2::splat(EPS)).floor().as_ivec2();
+        let hi = pos + self.half;
+        let max = IVec2::new(last_cell(hi.x) as i32, last_cell(hi.y) as i32);
         (min, max)
     }
 
@@ -112,7 +130,7 @@ fn caught(grid: &impl Grid, body: &Body, from: Vec2, to: Vec2) -> bool {
     }
     let (min, max) = body.cells_at(to);
     let row = min.y;
-    from.y - body.half.y >= row as f32 + 1.0 - EPS && (min.x..=max.x).any(|x| grid.occupancy(x, row) == Occupancy::Platform)
+    from.y - body.half.y >= row as f32 + 1.0 - margin(from.y) && (min.x..=max.x).any(|x| grid.occupancy(x, row) == Occupancy::Platform)
 }
 
 /// Still, and on something solid or a platform, out of any liquid: a body
@@ -130,7 +148,7 @@ pub fn resting(grid: &impl Grid, body: &Body) -> bool {
 
 /// Standing on something (solid, or a platform it isn't dropping through)?
 fn grounded(grid: &impl Grid, body: &Body) -> bool {
-    let probe = body.pos - Vec2::new(0.0, 2.0 * EPS);
+    let probe = body.pos - Vec2::new(0.0, 2.0 * margin(body.pos.y));
     blocked(grid, body, probe) || caught(grid, body, body.pos, probe)
 }
 
@@ -187,7 +205,7 @@ fn collide(grid: &impl Grid, body: &mut Body, dt: f32) -> Contacts {
 
 /// The least grip of the cells under a body's feet (solid ones).
 fn grip_under(grid: &impl Grid, body: &Body) -> f32 {
-    let (min, max) = body.cells_at(body.pos - Vec2::new(0.0, 2.0 * EPS));
+    let (min, max) = body.cells_at(body.pos - Vec2::new(0.0, 2.0 * margin(body.pos.y)));
     let (lo, _) = body.cells_at(body.pos);
     let row = if min.y < lo.y { min.y } else { lo.y - 1 };
     (min.x..=max.x).filter(|&x| grid.occupancy(x, row) != Occupancy::Empty).map(|x| grid.grip(x, row)).fold(1.0, f32::min)
@@ -216,7 +234,7 @@ fn move_x(grid: &impl Grid, body: &mut Body, dx: f32, may_step: bool, c: &mut Co
         }
         // Flush against the blocking column.
         if dir > 0.0 {
-            let col = (next.x + body.half.x - EPS).floor();
+            let col = last_cell(next.x + body.half.x);
             body.pos.x = col - body.half.x;
             c.wall_right = true;
         } else {
@@ -246,7 +264,7 @@ fn move_y(grid: &impl Grid, body: &mut Body, dy: f32, c: &mut Contacts) {
             c.ground = true;
             c.impact = -body.vel.y;
         } else {
-            let row = (next.y + body.half.y - EPS).floor();
+            let row = last_cell(next.y + body.half.y);
             body.pos.y = row - body.half.y;
             c.ceiling = true;
         }
@@ -256,7 +274,9 @@ fn move_y(grid: &impl Grid, body: &mut Body, dy: f32, c: &mut Contacts) {
 }
 
 /// If the body overlaps solids, move it to the nearest free spot:
-/// up first (buried by sand), then sideways.
+/// up first (buried by sand), then sideways, then down; and failing those
+/// (wedged in a corner: up and sideways both into rock), anywhere about,
+/// nearest first.
 pub fn depenetrate(grid: &impl Grid, body: &mut Body) -> bool {
     if !blocked(grid, body, body.pos) {
         return false;
@@ -267,6 +287,17 @@ pub fn depenetrate(grid: &impl Grid, body: &mut Body) -> bool {
         .chain((1..=reach / 2).flat_map(|d| [Vec2::new(-(d as f32), 0.0), Vec2::new(d as f32, 0.0)]))
         .chain((1..=reach / 2).map(|d| Vec2::new(0.0, -(d as f32))));
     for off in candidates {
+        if !blocked(grid, body, body.pos + off) {
+            body.pos += off;
+            return true;
+        }
+    }
+    let r = reach / 2;
+    let mut around: Vec<IVec2> = (-r..=r).flat_map(|dy| (-r..=r).map(move |dx| IVec2::new(dx, dy))).filter(|d| d.x != 0 && d.y != 0).collect();
+    // (Nearest first; of the same, up before down.)
+    around.sort_by_key(|d| (d.x * d.x + d.y * d.y, -d.y));
+    for d in around {
+        let off = d.as_vec2();
         if !blocked(grid, body, body.pos + off) {
             body.pos += off;
             return true;
@@ -318,6 +349,81 @@ pub(crate) mod tests {
         fn grip(&self, x: i32, y: i32) -> f32 {
             if self.0.get(y as usize).and_then(|r| r.get(x as usize)) == Some(&b'=') { 0.1 } else { 1.0 }
         }
+    }
+
+    /// A grid far from the origin (as a castle on a summit in the large
+    /// world is): `inner` shifted by `at`.
+    struct Far<G> {
+        inner: G,
+        at: IVec2,
+    }
+
+    impl<G: Grid> Grid for Far<G> {
+        fn occupancy(&self, x: i32, y: i32) -> Occupancy {
+            self.inner.occupancy(x - self.at.x, y - self.at.y)
+        }
+        fn grip(&self, x: i32, y: i32) -> f32 {
+            self.inner.grip(x - self.at.x, y - self.at.y)
+        }
+    }
+
+    /// Far out (x and y past 32 768, where an f32's steps are wider than
+    /// the old fixed margin), a body rocketing up into a room's top right
+    /// corner comes away from it: not wedged, not standing on the wall.
+    #[test]
+    fn far_from_the_origin_a_corner_doesnt_trap_a_body() {
+        let room = Ascii::new(&[
+            "####################",
+            "#..................#",
+            "#..................#",
+            "#..................#",
+            "#..................#",
+            "#..................#",
+            "#..................#",
+            "#..................#",
+            "#..................#",
+            "#..................#",
+            "####################",
+        ]);
+        let at = IVec2::new(98_304, 40_000);
+        let grid = Far { inner: room, at };
+        let mut b = Body::new(at.as_vec2() + Vec2::new(10.0, 5.0), Vec2::new(3.0, 5.0));
+        // Up and right, hard, for a while: pressed into the corner.
+        for _ in 0..60 {
+            b.vel = Vec2::new(240.0, 350.0);
+            move_and_collide(&grid, &mut b, 1.0 / 60.0);
+        }
+        assert!(!blocked(&grid, &b, b.pos), "not inside the masonry");
+        let flush_right = b.pos.x + b.half.x;
+        assert_eq!(flush_right, (at.x + 19) as f32, "flush with the wall");
+        assert!(!grounded(&grid, &b), "against a wall in the air isn't standing");
+        // Let go: it falls.
+        let top = b.pos.y;
+        for _ in 0..30 {
+            b.vel = Vec2::new(0.0, b.vel.y - 1650.0 / 60.0);
+            move_and_collide(&grid, &mut b, 1.0 / 60.0);
+        }
+        assert!(b.pos.y < top - 3.0, "it fell away from the ceiling ({} from {top})", b.pos.y);
+    }
+
+    /// Wedged in a corner (up and sideways both into rock), it's freed
+    /// diagonally.
+    #[test]
+    fn a_body_wedged_in_a_corner_is_freed_diagonally() {
+        let grid = Ascii::new(&[
+            "##########",
+            "##########",
+            "##......##",
+            "##......##",
+            "##......##",
+            "##......##",
+            "##########",
+        ]);
+        // Overlapping the ceiling and the right wall by a cell each.
+        let mut b = Body::new(Vec2::new(7.5, 5.5), Vec2::new(2.0, 2.0));
+        assert!(blocked(&grid, &b, b.pos));
+        assert!(depenetrate(&grid, &mut b));
+        assert!(!blocked(&grid, &b, b.pos), "out of it: {:?}", b.pos);
     }
 
     fn open_room() -> Ascii {
