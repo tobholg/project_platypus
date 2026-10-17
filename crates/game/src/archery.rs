@@ -35,7 +35,9 @@ impl Plugin for ArcheryPlugin {
         app.add_message::<DrawBow>()
             .add_systems(FixedUpdate, nock.after(TickSet::Intent).before(TickSet::Bodies))
             .add_systems(FixedUpdate, fly.after(TickSet::Bodies).before(TickSet::Cells))
-            .add_systems(Update, (take_back, show, lodged).after(crate::creatures::body::animation::animate));
+            .add_systems(Update, (take_back, show).after(crate::creatures::body::animation::animate))
+            // (Where the body's drawn this frame, not last: fast, they trailed.)
+            .add_systems(PostUpdate, lodged.after(crate::creatures::interpolate).before(bevy::transform::TransformSystems::Propagate));
     }
 }
 
@@ -97,6 +99,10 @@ const DEPTH: f32 = 1.0;
 /// From its turning point to where its shaft ends (`stuck`'s `entry`).
 const SHAFT_AHEAD: f32 = 4.5;
 const MOST_IN: usize = 10;
+/// Arrows in the player fade away after this long (seconds), over the last
+/// `FADE` of it. (In anything else they stay: yours come back when it dies.)
+const IN_PLAYER: f32 = 15.0;
+const FADE: f32 = 1.5;
 const QUIVER: (f32, f32, f32) = (14.0, 46.0, 7.0);
 
 /// An arrow: flying (`stuck` none) or stuck in something for `stuck` s.
@@ -351,20 +357,21 @@ fn take_back(
 /// Arrows in bodies go where they go, turned as they turn, quivering a
 /// moment as they strike; too many in one, the oldest go; the body gone,
 /// they fall out (arrows again, falling, to be picked up where they land).
+/// In the player, they fade away in time.
 #[allow(clippy::type_complexity)]
 fn lodged(
     mut commands: Commands,
     time: Res<Time>,
     weapons: Option<Res<Weapons>>,
     mut arrows: Query<(Entity, &mut Lodged, &mut Transform, &mut Sprite), Without<Kinematics>>,
-    bodies: Query<(&Kinematics, &GlobalTransform)>,
+    bodies: Query<(&Kinematics, &Transform, Has<crate::creatures::player::LocalPlayer>)>,
 ) {
     let Some(weapons) = weapons else { return };
     let dt = time.delta_secs();
     let mut count: std::collections::HashMap<Entity, Vec<(f32, Entity)>> = Default::default();
     for (e, mut l, mut tf, mut sp) in &mut arrows {
         l.age += dt;
-        let Ok((k, gt)) = bodies.get(l.target) else {
+        let Ok((k, body, player)) = bodies.get(l.target) else {
             // Its body's gone: it falls out.
             let angle = tf_angle(&sp);
             // (Its head again: it's out.)
@@ -374,13 +381,20 @@ fn lodged(
             commands.entity(e).remove::<Lodged>().insert(Arrow { vel: Vec2::ZERO, shooter: l.shooter, team: l.team, damage: 0.0, crit: false, knock: 0.0, stun: 0.0, burning: 0.0, age: FLIGHT - 3.0, stuck: None, angle });
             continue;
         };
+        if player {
+            if l.age >= IN_PLAYER {
+                commands.entity(e).despawn();
+                continue;
+            }
+            sp.color = sp.color.with_alpha(((IN_PLAYER - l.age) / FADE).min(1.0));
+        }
         count.entry(l.target).or_default().push((l.age, e));
         let facing = k.loco.facing;
-        let at = gt.translation().truncate() + Vec2::new(l.offset.x * facing, l.offset.y);
+        let at = body.translation.truncate() + Vec2::new(l.offset.x * facing, l.offset.y);
         let (amp, rate, die) = QUIVER;
         let quiver = amp * (l.age * rate).sin() * (-l.age * die).exp();
         let angle = if facing < 0.0 { 180.0 - l.angle } else { l.angle } + quiver;
-        tf.translation = at.extend(gt.translation().z + 0.05);
+        tf.translation = at.extend(body.translation.z + 0.05);
         if weapons.arrow.is_some()
             && let Some(atlas) = sp.texture_atlas.as_mut()
         {
