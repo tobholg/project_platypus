@@ -11,8 +11,9 @@
 //! puts it out and slows it.
 //!
 //! An arrow that strikes a body stays in it (`Lodged`): its tip buried
-//! where it struck, at the angle it came in, quivering a moment; it goes
-//! where the body goes, turned as it turns. When the body's gone (dead, a
+//! where it struck (drawn without its head, the shaft standing out of the
+//! wound), at the angle it came in, quivering a
+//! moment; it goes where the body goes, turned as it turns. When the body's gone (dead, a
 //! corpse of its own), it falls out, to be picked up as any stuck arrow.
 
 use bevy::prelude::*;
@@ -90,8 +91,11 @@ pub struct Lodged {
 
 /// How deep a tip goes in (cells), how many arrows a body holds at most,
 /// and the quiver of one striking home (degrees, how fast, how soon it
-/// dies away).
-const DEPTH: f32 = 3.0;
+/// dies away). (Its head out of sight: drawn without it, `arrow.ron`'s
+/// `stuck`, the shaft ending where it went in, a cell further in.)
+const DEPTH: f32 = 1.0;
+/// From its turning point to where its shaft ends (`stuck`'s `entry`).
+const SHAFT_AHEAD: f32 = 4.5;
 const MOST_IN: usize = 10;
 const QUIVER: (f32, f32, f32) = (14.0, 46.0, 7.0);
 
@@ -294,11 +298,16 @@ fn fly(
                 if a.burning > 0.0 {
                     sim.world.apply_edit(&WorldEdit::Ignite { center: p, radius: 1 });
                 }
-                // It stays in it: its tip a little way in where it struck.
+                // It stays in it: its head in where it struck (out of sight),
+                // the shaft standing out of the wound.
                 let facing = tk.loco.facing;
-                let middle = tip + dir * DEPTH - dir * 6.0 - tk.body.pos;
+                let middle = tip + dir * DEPTH - dir * SHAFT_AHEAD - tk.body.pos;
                 let angle = if facing < 0.0 { 180.0 - a.angle } else { a.angle };
-                commands.entity(e).remove::<(Arrow, Flame, LightSource)>().insert(Lodged { target: te, offset: Vec2::new(middle.x * facing, middle.y), angle, age: 0.0, shooter: a.shooter, team: a.team });
+                let mut lodge = commands.entity(e);
+                lodge.remove::<(Arrow, Flame, LightSource)>().insert(Lodged { target: te, offset: Vec2::new(middle.x * facing, middle.y), angle, age: 0.0, shooter: a.shooter, team: a.team });
+                if let Some(stuck) = weapons.as_ref().and_then(|w| w.arrow_stuck.as_ref()) {
+                    lodge.insert(stuck.sprite(a.angle));
+                }
                 break 'flight;
             }
         }
@@ -358,6 +367,10 @@ fn lodged(
         let Ok((k, gt)) = bodies.get(l.target) else {
             // Its body's gone: it falls out.
             let angle = tf_angle(&sp);
+            // (Its head again: it's out.)
+            if let Some(whole) = weapons.arrow.as_ref() {
+                commands.entity(e).insert(whole.sprite(angle));
+            }
             commands.entity(e).remove::<Lodged>().insert(Arrow { vel: Vec2::ZERO, shooter: l.shooter, team: l.team, damage: 0.0, crit: false, knock: 0.0, stun: 0.0, burning: 0.0, age: FLIGHT - 3.0, stuck: None, angle });
             continue;
         };

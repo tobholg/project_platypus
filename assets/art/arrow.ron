@@ -1,5 +1,7 @@
 // An arrow in flight, pointing right; turned to where it flies. `tip` is
-// what strikes, `grip` (its middle) where it turns about.
+// what strikes, `grip` (its middle) where it turns about. `stuck`: one in
+// a body, its head in it out of sight (the shaft ends at `entry`, where
+// it went in).
 (
     size: (17, 5),
     feet: (8, 5),
@@ -19,7 +21,14 @@
             ".fFf.........hh..",
             "fff..............",
         ],
+        "stuck": [
+            "fff..............",
+            ".fFf.............",
+            "aaaaaaaaaaaa.....",
+            ".fFf.............",
+            "fff..............",
+        ],
     },
     clips: { "flying": (frames: ["arrow"], fps: 1) },
-    anchors: { "grip": { "arrow": (8, 2) }, "tip": { "arrow": (16, 2) } },
+    anchors: { "grip": { "arrow": (8, 2), "stuck": (8, 2) }, "tip": { "arrow": (16, 2) }, "entry": { "stuck": (12, 2) } },
 )

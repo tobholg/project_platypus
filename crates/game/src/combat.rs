@@ -415,6 +415,7 @@ struct Built {
     turned: Vec<Turned>,
     bows: Vec<[Turned; 2]>,
     arrow: Option<Turned>,
+    arrow_stuck: Option<Turned>,
 }
 
 #[derive(Resource)]
@@ -426,6 +427,8 @@ pub struct Weapons {
     turned: Vec<Turned>,
     pub(crate) bows: Vec<[Turned; 2]>,
     pub(crate) arrow: Option<Turned>,
+    /// An arrow in a body: its head out of sight (`arrow.ron`'s `stuck`).
+    pub(crate) arrow_stuck: Option<Turned>,
     watch: Watched,
     art_watch: Watched,
 }
@@ -495,10 +498,14 @@ impl Weapons {
             bows.push([Turned::build(pose("rest")?, images, layouts), Turned::build(pose("drawn")?, images, layouts)]);
         }
         let arrow = match &file.arrow {
-            Some(a) => Some(Turned::build(turn_art(&a.art, None)?, images, layouts)),
+            Some(a) => Some(Turned::build(turn_art(&a.art, Some("arrow"))?, images, layouts)),
             None => None,
         };
-        Ok(Built { blades, pointers, turned, bows, arrow })
+        let arrow_stuck = match &file.arrow {
+            Some(a) => turn_art(&a.art, Some("stuck")).ok().map(|f| Turned::build(f, images, layouts)),
+            None => None,
+        };
+        Ok(Built { blades, pointers, turned, bows, arrow, arrow_stuck })
     }
 }
 
@@ -513,6 +520,7 @@ fn load(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut layouts: 
         turned: b.turned,
         bows: b.bows,
         arrow: b.arrow,
+        arrow_stuck: b.arrow_stuck,
         watch: Watched::new(path),
         art_watch: Watched::new(assets_dir().join("art")),
     });
@@ -538,6 +546,7 @@ fn reload(weapons: Option<ResMut<Weapons>>, mut images: ResMut<Assets<Image>>, m
             w.turned = b.turned;
             w.bows = b.bows;
             w.arrow = b.arrow;
+            w.arrow_stuck = b.arrow_stuck;
             info!("weapons reloaded");
         }
         Err(e) => warn!("weapons not reloaded: {e}"),
