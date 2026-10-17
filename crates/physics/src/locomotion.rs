@@ -422,16 +422,17 @@ impl Locomotion {
         intent.jump && !self.prev_jump
     }
 
-    /// Jump off something that isn't the ground (letting go of a rope): at
-    /// least `share` of a jump's speed up, whatever it had kept; the press
-    /// is spent (no air jump from it too), and letting go of the button
-    /// doesn't cut the rise (it's momentum, not a jump).
-    pub fn leap(&mut self, s: &MovementStats, intent: &Intent, body: &mut Body, share: f32) {
-        body.vel.y = body.vel.y.max(s.jump_speed() * share);
+    /// A real jump off something that isn't the ground (letting go of a
+    /// rope): a jump's speed, held as a ground jump is (held, its full
+    /// height; let go early, a hop), plus `carry` of whatever it was rising
+    /// at (a swing's momentum on top). The press is spent.
+    pub fn jump_off(&mut self, s: &MovementStats, intent: &Intent, body: &mut Body, carry: f32) {
+        body.vel.y = s.jump_speed() + body.vel.y.max(0.0) * carry;
         self.prev_jump = intent.jump;
         self.buffer = 0.0;
-        self.rising_from_jump = false;
-        self.hold_left = 0.0;
+        self.coyote = 0.0;
+        self.rising_from_jump = true;
+        self.hold_left = s.jump_hold;
         self.state = MoveState::Air;
     }
 
@@ -867,6 +868,55 @@ mod tests {
         let (stone, ice) = (slide("#"), slide("="));
         assert!(stone < 6.0, "stone stops it: {stone}");
         assert!(ice > stone * 3.0 + 10.0, "ice slides it on: {ice} (stone {stone})");
+    }
+
+    /// A jump off a rope (`jump_off`), held, rises as high as one off the
+    /// ground (with Terraria's held rise, `jump_hold`: before, letting go of
+    /// a rope gave only the jump's first push, less than half its height);
+    /// let go early, a hop.
+    #[test]
+    fn a_jump_off_a_rope_rises_as_a_ground_jump_does() {
+        let g = room();
+        let (mut s, mut l, mut b) = player();
+        s.jump_hold = 0.12;
+        s.jump_height = 63.0;
+        s.air_jumps = 0;
+        settle(&g, &s, &mut l, &mut b);
+        let rise = |l: &mut Locomotion, b: &mut Body, hold: usize| {
+            let from = b.bottom();
+            let mut top = from;
+            for i in 0..90 {
+                tick(&g, &s, l, b, Intent { jump: i < hold, ..default_intent() });
+                top = top.max(b.bottom());
+            }
+            top - from
+        };
+        let ground = rise(&mut l, &mut b, 40);
+        // Hanging in the air, still: let go with a jump, held.
+        settle(&g, &s, &mut l, &mut b);
+        b.pos.y += 30.0;
+        b.vel = Vec2::ZERO;
+        l.jump_off(&s, &Intent { jump: true, ..default_intent() }, &mut b, 0.5);
+        let from = b.bottom();
+        let mut top = from;
+        for _ in 0..90 {
+            tick(&g, &s, &mut l, &mut b, Intent { jump: true, ..default_intent() });
+            top = top.max(b.bottom());
+        }
+        let off_rope = top - from;
+        assert!((off_rope - ground).abs() < 4.0, "off a rope {off_rope:.1}, off the ground {ground:.1}");
+        // Tapped: a hop.
+        settle(&g, &s, &mut l, &mut b);
+        b.pos.y += 30.0;
+        b.vel = Vec2::ZERO;
+        l.jump_off(&s, &Intent { jump: true, ..default_intent() }, &mut b, 0.5);
+        let from = b.bottom();
+        let mut top = from;
+        for _ in 0..90 {
+            tick(&g, &s, &mut l, &mut b, Intent::default());
+            top = top.max(b.bottom());
+        }
+        assert!(top - from < ground * 0.6, "a tap's a hop: {:.1}", top - from);
     }
 
     /// Rocket boots: a jump, then jump pressed again in the air and held,

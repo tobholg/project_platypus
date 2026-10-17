@@ -77,8 +77,8 @@ const SMALLER: f32 = 0.75;
 const STRAIN: f32 = 36.0;
 /// The rope's line to a body blocked this long: it lets go.
 const BLOCKED: f32 = 0.25;
-/// Letting go with a jump: half a jump on top of how you were moving up,
-/// and at least a whole one.
+/// Letting go with a jump: a whole jump (held as one on the ground is, to
+/// its full height), with this share of how you were rising on top.
 const LEAP_ON_TOP: f32 = 0.5;
 /// How fast the hook comes back when it misses (× its speed).
 const RETURN: f32 = 1.6;
@@ -446,11 +446,15 @@ pub fn rope(
                 }
                 let Ok((_, mut k, ..)) = things.get_mut(e) else { continue };
                 let k = &mut *k;
-                // Jump: let go, with a jump on top of the swing.
+                // Jump: let go, with a real jump (held, its full height) on
+                // top of the swing; against a wall, a wall jump, away from it.
                 if k.loco.jump_pressed(&intent) {
-                    let up = (k.body.vel.y + stats.jump_speed() * LEAP_ON_TOP).max(stats.jump_speed());
-                    k.body.vel.y = up;
-                    k.loco.leap(&stats, &intent, &mut k.body, 0.0);
+                    k.loco.jump_off(&stats, &intent, &mut k.body, LEAP_ON_TOP);
+                    let wall = if contacts.wall_left { -1.0 } else if contacts.wall_right { 1.0 } else { 0.0 };
+                    if wall != 0.0 {
+                        k.body.vel.x = -wall * KICK;
+                        k.loco.facing = -wall;
+                    }
                     rope.line = Line::Back { tip: point };
                     continue;
                 }

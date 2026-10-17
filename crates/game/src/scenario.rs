@@ -312,6 +312,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, throw_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, specks_script)
             .add_systems(Update, hurt_script)
+            .add_systems(PreUpdate, ropejump_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, goldsmash_script.after(InputSystems).before(crate::magic::well::twist_input).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, devmenu_place_script.after(InputSystems).before(crate::devmenu::place))
@@ -7752,6 +7753,102 @@ fn play_script(
         *step += 1;
         keys.release(KeyCode::Escape);
         info!("play: Esc: game menu {}, time {}", if menu.open { "up" } else { "shut" }, if virt.is_paused() { "paused" } else { "running" });
+    }
+}
+
+/// `ropejump` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a jump from the
+/// floor, held (logs how high it rose); then the hook thrown up at a stone
+/// beam 160 overhead, hung from it, and a jump off it, held (logs how high
+/// that rose over where it let go). Then the same off a wall: a column the
+/// rope hangs against (logs how far out and up it went).
+#[allow(clippy::too_many_arguments)]
+fn ropejump_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(&mut Kinematics, Option<&crate::gear::hook::Rope>), With<LocalPlayer>>,
+    mut st: Local<(u8, f32, f32, f32, f32)>,
+) {
+    if s.name != "ropejump" {
+        return;
+    }
+    let Ok((mut k, rope)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let feet = k.body.pos.y - k.body.half.y;
+    let (what, _) = rope.map_or(("none", 0), |r| r.state());
+    let release = |keys: &mut ButtonInput<KeyCode>| {
+        keys.release(KeyCode::Space);
+        keys.release(KeyCode::KeyE);
+    };
+    match st.0 {
+        0 if t > 0.5 => {
+            if let Some(stone) = sim.materials().id("stone") {
+                for x in (900..=1100).step_by(6) {
+                    sim.queue(WorldEdit::Paint { center: CellPos::new(x, fl as i32 + 165), radius: 4, material: stone, overwrite: true });
+                }
+            }
+            k.body.pos = Vec2::new(1000.0, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            st.0 = 1;
+            st.1 = t;
+        }
+        // A ground jump, held.
+        1 if t > st.1 + 0.6 => {
+            keys.press(KeyCode::Space);
+            st.0 = 2;
+            st.1 = t;
+            st.2 = feet;
+            st.3 = feet;
+        }
+        2 => {
+            st.3 = st.3.max(feet);
+            if t > st.1 + 0.9 {
+                release(&mut keys);
+                info!("ropejump: a ground jump, held, rose {:.0}", st.3 - st.2);
+                st.0 = 3;
+                st.1 = t;
+            }
+        }
+        // The hook up at the beam; hang.
+        3 if t > st.1 + 0.4 => {
+            cursor.0 = Some(Vec2::new(k.body.pos.x, fl + 165.0));
+            keys.press(KeyCode::KeyE);
+            st.0 = 4;
+            st.1 = t;
+        }
+        4 if t > st.1 + 0.1 => {
+            keys.release(KeyCode::KeyE);
+            if what == "hang" || t > st.1 + 2.5 {
+                // (Rope let out: room under the beam to jump.)
+                keys.press(KeyCode::KeyS);
+                st.0 = 40;
+                st.1 = t;
+            }
+        }
+        40 if t > st.1 + 0.7 => {
+            keys.release(KeyCode::KeyS);
+            st.0 = 41;
+            st.1 = t;
+        }
+        41 if t > st.1 + 0.5 => {
+            info!("ropejump: hanging ({what}) at {:.0} over the floor", feet - fl);
+            keys.press(KeyCode::Space);
+            st.0 = 5;
+            st.1 = t;
+            st.2 = feet;
+            st.3 = feet;
+        }
+        5 => {
+            st.3 = st.3.max(feet);
+            if t > st.1 + 0.9 {
+                release(&mut keys);
+                info!("ropejump: a jump off the rope, held, rose {:.0} over where it let go", st.3 - st.2);
+                st.0 = 6;
+            }
+        }
+        _ => {}
     }
 }
 
