@@ -193,6 +193,12 @@ pub const SNAG_UNTIL: f32 = 0.3;
 /// Boulder traps (`TerrainGen::trap_at`): a spot of this grid (cells)
 /// each, a few in `TRAP_CHANCE`/256 of them; the boulder's radius, the room
 /// under it (the tunnel's height at least) and the stretch it's in.
+/// Tall grass: never this tall or taller (a lush meadow's tall stand comes
+/// near it); clumps this many columns across, and this share of them stands
+/// far above the rest.
+const GRASS_MOST: i32 = 40;
+const GRASS_CLUMP: i32 = 9;
+const GRASS_TALL: f64 = 0.08;
 const TRAP_GRID: i32 = 60;
 const TRAP_CHANCE: u32 = 60;
 const TRAP_R: i32 = 6;
@@ -811,21 +817,33 @@ impl TerrainGen {
         (wall, None)
     }
 
-    /// Tall grass growing out of grassy ground.
+    /// Tall grass growing out of grassy ground: in meadows with bare patches
+    /// between them (natural firebreaks), each blade its own height, rising
+    /// and falling in clumps (`GRASS_CLUMP` columns), and now and then a
+    /// stand far above the rest.
     fn grass_at(&self, x: i32, y: i32) -> bool {
         let surface = self.surface_at(x);
         let above = y - surface; // 0 = first cell above the grass
-        if !(0..=18).contains(&above) {
+        if !(0..GRASS_MOST).contains(&above) {
             return false;
         }
         let ground = self.material_at(x, surface - 1);
         if ground != self.ids.grass {
             return false;
         }
-        // Meadows with bare patches between them (natural firebreaks).
         let m = self.meadow.get([x as f64 / 105.0, 3.3]);
         let blade = (hash(&[self.plan.seed, 0x6A55, x as u64]) % 100) as f64 / 100.0;
-        let height = ((m + 0.2) * 19.5 * (0.45 + 0.55 * blade)) as i32;
+        // (A clump's height, eased into the next one's across it: most
+        // between 0.65 and 1.25 of the meadow's, one in twelve a tall stand
+        // at 1.6–2.1.)
+        let clump = |i: i32| {
+            let c = (hash(&[self.plan.seed, 0x6A56, i as u64]) % 1000) as f64 / 1000.0;
+            if c < GRASS_TALL { 1.6 + c / GRASS_TALL * 0.5 } else { 0.65 + (c - GRASS_TALL) / (1.0 - GRASS_TALL) * 0.6 }
+        };
+        let (i, f) = (x.div_euclid(GRASS_CLUMP), x.rem_euclid(GRASS_CLUMP) as f64 / GRASS_CLUMP as f64);
+        let f = f * f * (3.0 - 2.0 * f);
+        let tuft = clump(i) * (1.0 - f) + clump(i + 1) * f;
+        let height = ((m + 0.2) * 19.5 * (0.3 + 0.7 * blade) * tuft) as i32;
         above < height
     }
 
