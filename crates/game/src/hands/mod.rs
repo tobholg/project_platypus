@@ -240,6 +240,11 @@ fn select(keys: Res<ButtonInput<KeyCode>>, scroll: Res<AccumulatedMouseScroll>, 
     if keys.just_pressed(KeyCode::KeyC) {
         hand.area = !hand.area;
     }
+    // (A scenario written for three hotbars reaches the pack's first two
+    // rows with X, as it did those bars: they're the same slots.)
+    if keys.just_pressed(KeyCode::KeyX) && std::env::var("PLATYPUS_SCENARIO").is_ok() {
+        hand.bar = (hand.bar + 1) % 3;
+    }
     const PIXELS_A_NOTCH: f32 = 40.0;
     *wheel += match scroll.unit {
         MouseScrollUnit::Line => scroll.delta.y,

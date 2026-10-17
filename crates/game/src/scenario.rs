@@ -2127,22 +2127,21 @@ fn archery_script(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     mut state: Local<(u8, f32, u32)>,
+    mut hand: ResMut<crate::hands::Hand>,
 ) {
     if s.name != "archery" {
         return;
     }
     let (Ok((k, h, inv)), Some(items)) = (player.single(), items) else { return };
+    // (The bow, wherever the kit put it.)
+    if t_before(&s, 0.6) {
+        take_up(&mut hand, inv, Some(&items), "bow");
+    }
     let p = k.body.pos;
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR as f32;
     let quiver = items.id("arrow").map_or(0, |a| inv.count(a));
     let mut want = std::collections::HashSet::new();
-    if (0.3..0.4).contains(&t) {
-        want.insert(KeyCode::KeyX);
-    }
-    if (0.5..0.6).contains(&t) {
-        want.insert(KeyCode::Digit9);
-    }
     let dummy = dummies.iter().find(|(c, dk, _)| c.kind == "dummy" && (dk.body.pos.x - 1050.0).abs() < 12.0);
     let mut aim = None;
     if (1.0..1.8).contains(&t) {
@@ -9724,6 +9723,10 @@ type BeamTarget<'a> = (&'a Kinematics, Option<&'a crate::creatures::custom::dumm
 /// Takes up the item `id` from wherever it is in the pack: its hotbar, its
 /// slot. (By id, not by slot: the pack's start changes, and a slot's item
 /// with it: scenarios that held a slot drifted onto boots and rings.)
+fn t_before(s: &Scenario, t: f32) -> bool {
+    s.elapsed < t
+}
+
 fn take_up(hand: &mut crate::hands::Hand, inv: &crate::hands::items::Inventory, items: Option<&crate::hands::items::Items>, id: &str) {
     let Some(item) = items.and_then(|i| i.id(id)) else { return };
     if let Some(i) = inv.slots.iter().position(|st| st.is_some_and(|st| st.item == item)) {

@@ -9,6 +9,11 @@
 //! until you walk near and take them back. Through fire or lava one catches
 //! and burns (it lights its way and sets alight what it strikes); water
 //! puts it out and slows it.
+//!
+//! An arrow that strikes a body stays in it (`Lodged`): its tip buried
+//! where it struck, at the angle it came in, quivering a moment; it goes
+//! where the body goes, turned as it turns. When the body's gone (dead, a
+//! corpse of its own), it falls out, to be picked up as any stuck arrow.
 
 use bevy::prelude::*;
 use platypus_sim::{CellPos, Kind, WorldEdit};
@@ -29,7 +34,7 @@ impl Plugin for ArcheryPlugin {
         app.add_message::<DrawBow>()
             .add_systems(FixedUpdate, nock.after(TickSet::Intent).before(TickSet::Bodies))
             .add_systems(FixedUpdate, fly.after(TickSet::Bodies).before(TickSet::Cells))
-            .add_systems(Update, (take_back, show).after(crate::creatures::body::animation::animate));
+            .add_systems(Update, (take_back, show, lodged).after(crate::creatures::body::animation::animate));
     }
 }
 
@@ -69,6 +74,26 @@ impl Nocked {
         (self.t / weapons.bow(self.bow).draw.max(0.01)).min(1.0)
     }
 }
+
+/// An arrow struck into a body: where on it (from its middle, as it faces
+/// right) and at what angle (likewise), how long since, which one it was
+/// of those in it (the oldest go when there are too many).
+#[derive(Component, Debug)]
+pub struct Lodged {
+    target: Entity,
+    offset: Vec2,
+    angle: f32,
+    age: f32,
+    shooter: Entity,
+    team: Option<Team>,
+}
+
+/// How deep a tip goes in (cells), how many arrows a body holds at most,
+/// and the quiver of one striking home (degrees, how fast, how soon it
+/// dies away).
+const DEPTH: f32 = 3.0;
+const MOST_IN: usize = 10;
+const QUIVER: (f32, f32, f32) = (14.0, 46.0, 7.0);
 
 /// An arrow: flying (`stuck` none) or stuck in something for `stuck` s.
 #[derive(Component, Debug)]
@@ -237,7 +262,8 @@ fn fly(
                 break 'flight;
             }
             for (te, tk, tteam, anim, safe, parts) in &targets {
-                if te == a.shooter || safe {
+                // (One fallen out of a body strikes nothing on its way down.)
+                if te == a.shooter || safe || a.damage <= 0.0 {
                     continue;
                 }
                 // (Not its own side, unless their factions are at war.)
@@ -268,7 +294,11 @@ fn fly(
                 if a.burning > 0.0 {
                     sim.world.apply_edit(&WorldEdit::Ignite { center: p, radius: 1 });
                 }
-                commands.entity(e).despawn();
+                // It stays in it: its tip a little way in where it struck.
+                let facing = tk.loco.facing;
+                let middle = tip + dir * DEPTH - dir * 6.0 - tk.body.pos;
+                let angle = if facing < 0.0 { 180.0 - a.angle } else { a.angle };
+                commands.entity(e).remove::<(Arrow, Flame, LightSource)>().insert(Lodged { target: te, offset: Vec2::new(middle.x * facing, middle.y), angle, age: 0.0, shooter: a.shooter, team: a.team });
                 break 'flight;
             }
         }
@@ -307,6 +337,56 @@ fn take_back(
             crate::hands::spawn_drop(&mut commands, &items, at, crate::hands::items::Stack::new(item, 1));
         }
     }
+}
+
+/// Arrows in bodies go where they go, turned as they turn, quivering a
+/// moment as they strike; too many in one, the oldest go; the body gone,
+/// they fall out (arrows again, falling, to be picked up where they land).
+#[allow(clippy::type_complexity)]
+fn lodged(
+    mut commands: Commands,
+    time: Res<Time>,
+    weapons: Option<Res<Weapons>>,
+    mut arrows: Query<(Entity, &mut Lodged, &mut Transform, &mut Sprite), Without<Kinematics>>,
+    bodies: Query<(&Kinematics, &GlobalTransform)>,
+) {
+    let Some(weapons) = weapons else { return };
+    let dt = time.delta_secs();
+    let mut count: std::collections::HashMap<Entity, Vec<(f32, Entity)>> = Default::default();
+    for (e, mut l, mut tf, mut sp) in &mut arrows {
+        l.age += dt;
+        let Ok((k, gt)) = bodies.get(l.target) else {
+            // Its body's gone: it falls out.
+            let angle = tf_angle(&sp);
+            commands.entity(e).remove::<Lodged>().insert(Arrow { vel: Vec2::ZERO, shooter: l.shooter, team: l.team, damage: 0.0, crit: false, knock: 0.0, stun: 0.0, burning: 0.0, age: FLIGHT - 3.0, stuck: None, angle });
+            continue;
+        };
+        count.entry(l.target).or_default().push((l.age, e));
+        let facing = k.loco.facing;
+        let at = gt.translation().truncate() + Vec2::new(l.offset.x * facing, l.offset.y);
+        let (amp, rate, die) = QUIVER;
+        let quiver = amp * (l.age * rate).sin() * (-l.age * die).exp();
+        let angle = if facing < 0.0 { 180.0 - l.angle } else { l.angle } + quiver;
+        tf.translation = at.extend(gt.translation().z + 0.05);
+        if weapons.arrow.is_some()
+            && let Some(atlas) = sp.texture_atlas.as_mut()
+        {
+            atlas.index = Turned::index(angle);
+        }
+    }
+    for (_, mut v) in count {
+        if v.len() > MOST_IN {
+            v.sort_by(|a, b| b.0.total_cmp(&a.0));
+            for (_, e) in v.drain(..v.len() - MOST_IN) {
+                commands.entity(e).despawn();
+            }
+        }
+    }
+}
+
+/// What angle a turned sprite shows (an arrow falling out keeps it).
+fn tf_angle(sp: &Sprite) -> f32 {
+    sp.texture_atlas.as_ref().map_or(0.0, |a| Turned::angle_of(a.index))
 }
 
 /// Arrows turned to where they point.

@@ -263,6 +263,11 @@ impl Turned {
         (((angle + 180.0) / STEP).round() as i64).rem_euclid(TURNS as i64) as usize
     }
 
+    /// The angle a frame shows (`index`'s other way).
+    pub(crate) fn angle_of(index: usize) -> f32 {
+        index as f32 * STEP - 180.0
+    }
+
     /// The blade's pixels at `angle` (from level, facing right), as offsets
     /// from the grip in cells (y up; mirrored facing left).
     pub(crate) fn cells(&self, angle: f32, facing: f32) -> impl Iterator<Item = Vec2> + '_ {

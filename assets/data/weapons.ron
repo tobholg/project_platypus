@@ -149,13 +149,13 @@
     // the arrow's speed (cells/s), damage and knockback go from the first
     // to the second by how far it was drawn. (It shows only while drawn.)
     bows: [
-        (id: "bow", art: "bow", draw: 0.65, speed: (255, 660), damage: (5, 20), knock: (60, 255), stun: 0.15, stamina: 6),
+        (id: "bow", art: "bow", draw: 0.65, speed: (300, 820), damage: (5, 20), knock: (60, 255), stun: 0.15, stamina: 6),
     ],
     // Arrows fly and fall (`gravity` cells/s²), stick where they strike
     // stone or earth for `stuck` s, come back to you within `pickup`
     // cells; through fire or lava they catch and burn for `burn` s,
     // setting alight what they strike (water puts them out).
-    arrow: (art: "arrow", gravity: 540, stuck: 60, pickup: 18, burn: 6),
+    arrow: (art: "arrow", gravity: 470, stuck: 60, pickup: 18, burn: 6),
     // Everything else you hold, by its icon's shape (icons.ron): drawn from
     // the sprite of that name (assets/art/<shape>.ron: pointing right, a
     // `grip`), in the item's icon colours with `recolor` (one pickaxe
