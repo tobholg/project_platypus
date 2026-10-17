@@ -78,6 +78,10 @@
         "hurt": (make: Impact(body: 95, crack: 0.15, flesh: 500, ring: 0.2, length: 0.22, muffle: 1600), variants: 3, pitch: 0.05, reverb: 0.12, room: 0.8, volume: 0.8, every: 0.25),
         "death": (make: Thud(pitch: 55, drop: 1.0, noise: 0.8, length: 0.6, bright: 1400), variants: 2, reverb: 0.3, volume: 0.8),
         "swing": (make: Swish(low: 250, high: 1800, length: 0.22, q: 1.8, whistle: 0.4), variants: 5, pitch: 0.08, volume: 0.5),
+        // A blade through grass (a crisp, airy shear) and through water or
+        // goo (a slap and spray).
+        "grass_cut": (make: Swish(low: 1400, high: 5200, length: 0.1, q: 1.1, whistle: 0.0), variants: 4, pitch: 0.12, volume: 0.22, every: 0.06),
+        "splash": (make: Step(scuff: 700, q: 1.0, grit: 0.5, length: 0.28, muffle: 2600), variants: 4, pitch: 0.1, volume: 0.45, every: 0.08),
         "swing_heavy": (make: Swish(low: 120, high: 800, length: 0.34, q: 1.2, whistle: 0.15), variants: 4, pitch: 0.06, volume: 0.6),
         "clang": (make: Clang(pitch: 750, ring: 0.05, length: 0.16, grit: 1.0, muffle: 3500), variants: 5, pitch: 0.08, volume: 0.55),
         "bounce": (make: Clang(pitch: 1100, ring: 0.06, length: 0.15, grit: 0.4, muffle: 5000), variants: 3, pitch: 0.05, volume: 0.45),

@@ -25,7 +25,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use platypus_art::Pixels;
-use platypus_sim::{CellPos, Kind, WorldEdit};
+use platypus_sim::{CellPos, Kind};
 use serde::Deserialize;
 
 use crate::creatures::body::animation::{Aiming, Animator, HandPos, pixel_at};
@@ -816,6 +816,14 @@ impl Swing {
     }
 }
 
+/// A blade through grass flings the clippings this fast (cells/tick), the
+/// way it swept.
+const BLADE_FLING: f32 = 1.2;
+/// A blade through a liquid throws up to this many of its cells a tick, at
+/// up to this speed (cells/tick: ~10 cells high).
+const SPLASH_CELLS: usize = 10;
+const SPLASH_SPEED: f32 = 2.7;
+
 /// Aimed at least this far below level (the sine), a swing in the air is a
 /// down-strike (S held: always).
 const DOWN_AIM: f32 = 0.34;
@@ -958,7 +966,7 @@ fn hit_stop(real: Res<Time<Real>>, mut stop: ResMut<HitStop>, mut virt: ResMut<T
 
 // ---- systems ----
 
-type Fighter<'a> = (&'a Kinematics, &'a Wielding, Option<&'a mut Swing>, Option<&'a mut Combo>, Option<&'a mut Stamina>, Option<&'a crate::creatures::Controls>, Option<&'a DashWindow>);
+type Fighter<'a> = (&'a Kinematics, &'a Wielding, Option<&'a mut Swing>, Option<&'a mut Combo>, Option<&'a mut Stamina>, Option<&'a crate::creatures::Controls>, Option<&'a DashWindow>, Option<&'a crate::gear::hook::Rope>);
 type Holder<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Swing>, Option<&'a crate::archery::Nocked>, Option<&'a Aiming>, Option<&'a Children>);
 
 /// Swings begin (or queue the next) when asked for.
@@ -970,12 +978,14 @@ fn start_swings(
 ) {
     let Some(weapons) = weapons else { return };
     for ask in asks.read() {
-        let Ok((k, wielding, swing, combo, stamina, controls, dash_window)) = q.get_mut(ask.attacker) else { continue };
+        let Ok((k, wielding, swing, combo, stamina, controls, dash_window, rope)) = q.get_mut(ask.attacker) else { continue };
         let Some(w) = wielding.0.as_deref().and_then(|id| weapons.index(id)) else { continue };
-        // In the air, S held or aimed well below: a down-strike.
+        // In the air, S held or aimed well below: a down-strike (never
+        // hanging on a rope: no pogo off a grapple).
         let d = ask.at - k.body.pos;
         let held_down = controls.is_some_and(|c| c.0.move_y < 0.0 || c.0.down);
-        let down = !k.loco.grounded() && (held_down || d.normalize_or_zero().y < -DOWN_AIM);
+        let roped = rope.is_some_and(|r| r.roped());
+        let down = !k.loco.grounded() && !roped && (held_down || d.normalize_or_zero().y < -DOWN_AIM);
         let facing = if d.x.abs() > 0.5 { d.x.signum() } else { k.loco.facing };
         let aim = if down { -90.0 } else { d.y.atan2(d.x.abs()).to_degrees() };
         if down && !ask.fresh {
@@ -1093,7 +1103,7 @@ pub fn guard(mut commands: Commands, mut q: Query<(Entity, &mut Invulnerable, &m
     }
 }
 
-type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>, Option<&'a Invulnerable>);
+type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>, Option<&'a Invulnerable>, Option<&'a crate::gear::hook::Rope>);
 type Target<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a Animator>, Has<Invulnerable>, Option<&'a crate::creatures::body::parts::Parts>);
 
 /// Swings move on a tick; while they sweep, they hit.
@@ -1117,7 +1127,12 @@ fn swing(
     blades.0.clear();
     let Some(weapons) = weapons else { return };
     let none = crate::gear::Stats::default();
-    for (me, mut s, k, hand, team, mut stamina, stats, eq, inv) in &mut swingers {
+    for (me, mut s, k, hand, team, mut stamina, stats, eq, inv, rope) in &mut swingers {
+        // (Grappled mid-swing: a down-strike doesn't bounce, a plunge stops.)
+        let roped = rope.is_some_and(|r| r.roped());
+        if roped && s.down {
+            s.bounced = true;
+        }
         let dodging = inv.is_some_and(|i| i.dodge);
         let stats = stats.unwrap_or(&none);
         // What the weapon leaves on what it hits (venom).
@@ -1181,7 +1196,7 @@ fn swing(
             if let Some((aim, facing, down)) = s.queued.take()
                 && can
             {
-                let down = down && !grounded;
+                let down = down && !grounded && !roped;
                 let Some(m) = def.move_of(next, down, false) else { continue };
                 if let Some(st) = stamina.as_mut() {
                     st.spend(m.stamina);
@@ -1266,6 +1281,10 @@ fn swing(
         let steps = ((angle - from).abs() / STEP).ceil().max(1.0) as usize;
         let turned = &weapons.turned[s.weapon];
         let feet = k.body.pos.y - k.body.half.y;
+        // (Which way the blade's sweeping: what it cuts and splashes goes
+        // that way.)
+        let sweep = (dir(angle) - dir(from)).normalize_or(dir(angle));
+        let (mut wet, mut mown) = (None, None);
         for i in 0..=steps {
             let a = from + (angle - from) * i as f32 / steps as f32;
             let reach = dir(a) * thrust;
@@ -1291,7 +1310,12 @@ fn swing(
                     stop.hit(STOP * 0.6);
                 }
                 if ph.kind == Kind::Plant && ph.hardness <= 2 {
-                    sim.world.apply_edit(&WorldEdit::Dig { center: p, radius: 0, max_hardness: 2 });
+                    // (Sliced: the stalk above the blade flies off.)
+                    if sim.world.cut_plant(p, [sweep.x * BLADE_FLING, sweep.y * BLADE_FLING], 2) > 0 {
+                        mown.get_or_insert(c);
+                    }
+                } else if ph.kind == Kind::Liquid {
+                    wet.get_or_insert(c);
                 } else if ph.kind == Kind::Static && ph.hardness >= 20 && c.y > feet + 1.5 && !s.clanged {
                     s.clanged = true;
                     sparks.emit(&weapons.file.clang, weapons.file.clang.count as usize, c, -dir(a), Vec2::ZERO);
@@ -1366,6 +1390,18 @@ fn swing(
                     stop.hit(STOP * 0.6);
                     commands.entity(e).despawn();
                 }
+            }
+        }
+        if let Some(c) = mown {
+            sounds.write(crate::sound::PlaySound::at("grass_cut", c));
+        }
+        // Through a liquid (water, lava, a slime's goo): a splash of it,
+        // up and the way the blade swept, harder for a heavier blade.
+        if let Some(c) = wet {
+            let up = Vec2::new(sweep.x, sweep.y.abs() * 0.4 + 0.9).normalize();
+            let speed = SPLASH_SPEED * (1.0 + def.damage / 40.0).min(1.6);
+            if sim.world.slosh([c.x, c.y], [up.x, up.y], SPLASH_CELLS, speed, 0.6) > 0 {
+                sounds.write(crate::sound::PlaySound::at("splash", c));
             }
         }
     }

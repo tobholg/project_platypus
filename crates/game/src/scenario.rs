@@ -315,6 +315,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, castle_script)
             .add_systems(PreUpdate, shield_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ropejump_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, blade_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, goldsmash_script.after(InputSystems).before(crate::magic::well::twist_input).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, devmenu_place_script.after(InputSystems).before(crate::devmenu::place))
@@ -7848,6 +7849,125 @@ fn ropejump_script(
                 info!("ropejump: a jump off the rope, held, rose {:.0} over where it let go", st.3 - st.2);
                 st.0 = 6;
             }
+        }
+        _ => {}
+    }
+}
+
+/// `blade` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`, `PLATYPUS_WEAPON`:
+/// longsword): what a blade does to the world. `PLATYPUS_BLADE=grass`: a
+/// meadow of tall grass (20 high) to the right, slashed through at 1 s:
+/// logs the grass before and after, the clippings flying. `water` /
+/// `blue_goo`: a pit of it to the right, slashed into at 1 s: logs what flew
+/// and that none's lost. `rope`: hung from a stone beam 120 up, S held and
+/// a click aimed below: logs whether it struck down (it mustn't).
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn blade_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    (mut hand, items): (ResMut<crate::hands::Hand>, Option<Res<crate::hands::items::Items>>),
+    (mut mouse, mut cursor, mut keys): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>, ResMut<ButtonInput<KeyCode>>),
+    mut player: Query<(&mut Kinematics, &crate::hands::items::Inventory, Option<&crate::gear::hook::Rope>, Option<&crate::combat::Swing>), With<LocalPlayer>>,
+    mut st: Local<(u8, f32, usize)>,
+) {
+    if s.name != "blade" {
+        return;
+    }
+    let Ok((mut k, inv, rope, swing)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR;
+    let mode = std::env::var("PLATYPUS_BLADE").unwrap_or_else(|_| "grass".into());
+    let weapon = std::env::var("PLATYPUS_WEAPON").unwrap_or_else(|_| "longsword".into());
+    if t < 0.5 {
+        return;
+    }
+    take_up(&mut hand, inv, items.as_deref(), &weapon);
+    let (liquid, grass) = (sim.materials().id(if mode == "grass" || mode == "rope" { "water" } else { &mode }), sim.materials().id("tall_grass"));
+    let count = |sim: &SimWorld, m: Option<platypus_sim::MaterialId>, xs: std::ops::Range<i32>, ys: std::ops::Range<i32>| xs.flat_map(|x| ys.clone().map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| Some(c.material) == m)).count();
+    let flying = |sim: &SimWorld, m: Option<platypus_sim::MaterialId>| sim.world.particles().iter().filter(|p| Some(p.cell.material) == m).count();
+    match st.0 {
+        0 => {
+            match mode.as_str() {
+                "grass" => {
+                    for x in 1010..1070 {
+                        for y in fl..fl + 20 {
+                            sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: grass.unwrap(), overwrite: true });
+                        }
+                    }
+                }
+                "rope" => {
+                    if let Some(stone) = sim.materials().id("stone") {
+                        for x in (940..=1060).step_by(6) {
+                            sim.queue(WorldEdit::Paint { center: CellPos::new(x, fl + 125), radius: 4, material: stone, overwrite: true });
+                        }
+                    }
+                }
+                _ => {
+                    for x in 1008..1043 {
+                        for y in fl - 10..fl {
+                            sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: liquid.unwrap(), overwrite: true });
+                        }
+                    }
+                }
+            }
+            k.body.pos = Vec2::new(1000.0, fl as f32 + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            st.0 = 1;
+        }
+        1 if t > 1.0 => {
+            match mode.as_str() {
+                "grass" => {
+                    st.2 = count(&sim, grass, 1005..1075, fl..fl + 22);
+                    cursor.0 = Some(Vec2::new(1060.0, fl as f32 + 9.0));
+                }
+                "rope" => {
+                    cursor.0 = Some(Vec2::new(k.body.pos.x, fl as f32 + 125.0));
+                    keys.press(KeyCode::KeyE);
+                }
+                _ => {
+                    st.2 = count(&sim, liquid, 1005..1046, fl - 12..fl + 4);
+                    cursor.0 = Some(Vec2::new(1028.0, fl as f32 - 4.0));
+                }
+            }
+            if mode != "rope" {
+                mouse.press(MouseButton::Left);
+            }
+            st.0 = 2;
+            st.1 = t;
+        }
+        2 if mode == "rope" => {
+            keys.release(KeyCode::KeyE);
+            let (what, _) = rope.map_or(("none", 0), |r| r.state());
+            if what == "hang" || t > st.1 + 2.5 {
+                keys.press(KeyCode::KeyS);
+                cursor.0 = Some(k.body.pos - Vec2::new(0.0, 40.0));
+                mouse.press(MouseButton::Left);
+                st.0 = 3;
+                st.1 = t;
+            }
+        }
+        2 if t > st.1 + 0.25 => {
+            mouse.release(MouseButton::Left);
+            match mode.as_str() {
+                "grass" => info!("blade: grass: {} clippings flying", flying(&sim, grass)),
+                _ => info!("blade: {mode}: {} of {} cells of it in the air", flying(&sim, liquid), st.2),
+            }
+            st.0 = 3;
+            st.1 = t;
+        }
+        3 if mode == "rope" && t > st.1 + 0.1 => {
+            mouse.release(MouseButton::Left);
+            keys.release(KeyCode::KeyS);
+            let (what, _) = rope.map_or(("none", 0), |r| r.state());
+            info!("blade: rope: hanging ({what}), S held, aimed below: swing {}, down-strike {}", swing.is_some(), swing.is_some_and(|s| s.downward()));
+            st.0 = 4;
+        }
+        3 if mode != "rope" && t > st.1 + 2.5 => {
+            match mode.as_str() {
+                "grass" => info!("blade: grass: {} cells of it before the slash, {} after", st.2, count(&sim, grass, 1005..1075, fl..fl + 22)),
+                _ => info!("blade: {mode}: {} cells before, {} landed and settled ({} still flying)", st.2, count(&sim, liquid, 960..1090, fl - 12..fl + 40), flying(&sim, liquid)),
+            }
+            st.0 = 4;
         }
         _ => {}
     }

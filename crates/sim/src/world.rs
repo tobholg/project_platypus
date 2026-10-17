@@ -307,6 +307,66 @@ impl World {
         }
     }
 
+    /// A blade through a plant at `at`: the stalk cut there, and all of it
+    /// above (the same plant, up the column) flies off along `dir`
+    /// (cells/tick) as clippings that flutter down and vanish. Plants no
+    /// harder than `max_hardness`; how many cells were cut.
+    pub fn cut_plant(&mut self, at: CellPos, dir: [f32; 2], max_hardness: u8) -> usize {
+        let Some(first) = self.get(at) else { return 0 };
+        let ph = self.materials.phys(first.material);
+        if ph.kind != Kind::Plant || ph.hardness > max_hardness {
+            return 0;
+        }
+        let mut rng = self.rng_for(0xC17, at);
+        let unit = |rng: &mut Rng| rng.next_u32() as f32 / u32::MAX as f32;
+        let mut cut = 0;
+        let mut p = at;
+        while let Some(c) = self.get(p).filter(|c| c.material == first.material) {
+            self.set(p, Cell::AIR);
+            let mut leaf = c;
+            leaf.flags = 0;
+            let s = 0.4 + unit(&mut rng) * 0.9;
+            let vel = [dir[0] * s + (unit(&mut rng) - 0.5) * 0.5, dir[1] * s * 0.5 + 0.2 + unit(&mut rng) * 0.5];
+            let mut clip = Particle::new([p.x as f32 + 0.5, p.y as f32 + 0.5], vel, leaf, 40 + (unit(&mut rng) * 50.0) as u16, Landing::Vanish);
+            clip.gravity = 0.18;
+            self.particles.push(clip);
+            cut += 1;
+            p = p.offset(0, 1);
+        }
+        cut
+    }
+
+    /// A blow into a liquid by `at`: up to `most` of its cells, the surface's
+    /// (the top three of each column within `SLOSH_REACH`, nearest first),
+    /// thrown out along `dir` (± `spread` radians) at up to `speed`
+    /// cells/tick, landing back as themselves. Nothing's made or lost; deep
+    /// under the surface, nothing happens. How many flew.
+    pub fn slosh(&mut self, at: [f32; 2], dir: [f32; 2], most: usize, speed: f32, spread: f32) -> usize {
+        let center = CellPos::from_world(at[0], at[1]);
+        let liquid = |w: &Self, p: CellPos| w.get(p).is_some_and(|c| w.materials.phys(c.material).kind == Kind::Liquid);
+        let mut surface = Vec::new();
+        for dx in -SLOSH_REACH..=SLOSH_REACH {
+            // (The column's top: liquid with none above it, near the blow.)
+            let top = (-SLOSH_REACH..=SLOSH_REACH).rev().map(|dy| center.offset(dx, dy)).find(|&p| liquid(self, p) && !liquid(self, p.offset(0, 1)));
+            if let Some(top) = top {
+                surface.extend([top, top.offset(0, -1), top.offset(0, -2)].into_iter().filter(|&p| liquid(self, p)));
+            }
+        }
+        surface.sort_by_key(|p| (p.x - center.x).abs() + (p.y - center.y).abs());
+        let mut rng = self.rng_for(0x5105, center);
+        let base = dir[1].atan2(dir[0]);
+        let mut flew = 0;
+        for p in surface.into_iter().take(most) {
+            let Some(cell) = self.get(p) else { continue };
+            self.set(p, Cell::AIR);
+            let a = base + (rng.next_u32() as f32 / u32::MAX as f32 * 2.0 - 1.0) * spread;
+            let s = speed * (0.35 + 0.65 * rng.next_u32() as f32 / u32::MAX as f32);
+            self.particles.push(Particle::new([p.x as f32 + 0.5, p.y as f32 + 0.5], [a.cos() * s, a.sin() * s], cell, 180, Landing::Settle));
+            flew += 1;
+        }
+        flew
+    }
+
     /// As `spray`, but harmless on the way (`Landing::Spill`): earth dug up.
     pub fn spill(&mut self, at: [f32; 2], dir: [f32; 2], material: MaterialId, count: usize, speed: f32, spread: f32) {
         let mut rng = self.rng_for(0x5B1A, CellPos::from_world(at[0], at[1]));
@@ -2254,6 +2314,8 @@ const ZAP_HEAT: i16 = 600;
 const ZAP_BLAST: u8 = 14;
 /// How far up a splash from inside a liquid looks for its surface.
 const SPLASH_SURFACE: i32 = 96;
+/// A blow into a liquid reaches this many cells round it (`slosh`).
+const SLOSH_REACH: i32 = 3;
 /// A zap doesn't flare air this close to the wand.
 const ZAP_CLEAR: usize = 12;
 /// Most cells one zap charges (a big lake conducts only this far).

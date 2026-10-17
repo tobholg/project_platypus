@@ -2643,3 +2643,44 @@ fn blight_withers_grass_and_gives_off_mist() {
     assert!(most_mist > 10, "as a mist ({most_mist} at most)");
 }
 
+
+/// A blade through tall grass: the stalk above the cut flies off as
+/// clippings (that vanish), the stubble below stays, its neighbour's whole.
+#[test]
+fn a_cut_plant_loses_what_was_above_the_blade() {
+    let mut w = boxed_world(1, 1, 3);
+    let (grass, tall) = (w.materials().expect_id("grass"), w.materials().expect_id("tall_grass"));
+    for x in 20..24 {
+        w.set(CellPos::new(x, 1), Cell::new(grass, 0));
+        for y in 2..14 {
+            w.set(CellPos::new(x, y), Cell::new(tall, 0));
+        }
+    }
+    let cut = w.cut_plant(CellPos::new(21, 6), [1.0, 0.0], 2);
+    assert_eq!(cut, 8, "6..14 cut");
+    assert!((2..6).all(|y| w.get(CellPos::new(21, y)).unwrap().material == tall), "stubble stays");
+    assert!((6..14).all(|y| w.get(CellPos::new(21, y)).unwrap().is_air()));
+    assert_eq!(count(&w, tall), 4 * 12 - 8, "its neighbours untouched");
+    assert_eq!(w.particles().iter().filter(|p| p.landing == Landing::Vanish).count(), 8);
+    // (Not stone: nothing to cut.)
+    assert_eq!(w.cut_plant(CellPos::new(0, 5), [1.0, 0.0], 2), 0);
+}
+
+/// A blow into a pool throws its surface up; it all comes back down,
+/// nothing made or lost.
+#[test]
+fn a_slosh_throws_the_surface_and_loses_nothing() {
+    let mut w = boxed_world(1, 1, 4);
+    let water = w.materials().expect_id("water");
+    w.apply_edit(&WorldEdit::Paint { center: CellPos::new(32, 6), radius: 5, material: water, overwrite: false });
+    run_until_asleep(&mut w, 2_000);
+    let before = count(&w, water);
+    let top = (1..CHUNK).rev().find(|&y| w.get(CellPos::new(32, y)).unwrap().material == water).unwrap();
+    let flew = w.slosh([32.5, top as f32 - 0.5], [0.3, 1.0], 10, 2.5, 0.5);
+    assert_eq!(flew, 10);
+    assert_eq!(count(&w, water) + w.particles().len(), before, "in the air or in the pool");
+    run_until_asleep(&mut w, 3_000);
+    assert_eq!(count(&w, water), before, "all of it back");
+    // (Deep under nothing: no surface near, nothing flies.)
+    assert_eq!(w.slosh([32.5, 50.0], [0.0, 1.0], 10, 2.5, 0.5), 0);
+}

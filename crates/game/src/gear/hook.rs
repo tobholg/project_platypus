@@ -168,6 +168,11 @@ impl Rope {
         self.tether
     }
 
+    /// Hanging on it: hooked to something (no down-strikes, no pogo).
+    pub fn roped(&self) -> bool {
+        matches!(self.line, Line::Held(_))
+    }
+
     /// What the rope's doing: "stowed", "out", "back", "reel" (pulling you
     /// in), "hang" (up at it), "swing" (on the rope), "leash" (pulling a
     /// thing to you); and how many corners it's wrapped round.
