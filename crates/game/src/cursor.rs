@@ -44,17 +44,23 @@ const LABEL_AT: Vec2 = Vec2::new(16.0, 14.0);
 const EYE_AT: Vec2 = Vec2::new(-26.0, 10.0);
 /// The eye shows below this much light, or crouched.
 const EYE_UNDER: f32 = 0.85;
-/// The throw's flight, followed this long at most (seconds), a dot every
-/// `DOT_EVERY` ticks.
+/// The throw's flight, followed this long at most (seconds).
 const ARC_SECS: f32 = 2.0;
-const DOT_EVERY: usize = 3;
-const DOTS: usize = 40;
-/// A dot's size (cells), its dark edge a cell round it.
-const DOT: f32 = 3.0;
+/// Its dots: one every `DOT_GAP` seconds of the flight, drifting out along
+/// it at `DOT_FLOW` of its pace; fading in over the first `FADE_IN` gaps
+/// from the hand, out over the last `FADE_OUT` before it lands.
+const DOT_GAP: f32 = 0.05;
+const DOT_FLOW: f32 = 0.25;
+const FADE_IN: f32 = 2.0;
+const FADE_OUT: f32 = 5.0;
+const DOTS: usize = (ARC_SECS / DOT_GAP) as usize + 1;
+/// A dot's size (cells); where it lands, a warm mark this big.
+const DOT: f32 = 2.0;
+const LANDING: f32 = 3.0;
 
-/// A throw arc dot's dark edge.
+/// Where the throw lands.
 #[derive(Component)]
-struct ArcEdge;
+struct ArcLanding;
 /// Over the dark, the mining mark and eyes.
 const Z_ARC: f32 = 16.3;
 const DT: f32 = (1.0 / TICK_HZ) as f32;
@@ -204,10 +210,11 @@ fn spawn(mut commands: Commands, art: Res<Art>) {
         GlobalZIndex(999),
         Pickable::IGNORE,
     ));
-    // (Each dot a bright core on a dark edge.)
     for i in 0..DOTS {
-        commands.spawn((Name::new("Throw arc"), ArcDot(i), Sprite { image: art.dot.clone(), custom_size: Some(Vec2::splat(DOT)), ..default() }, Transform::from_xyz(0.0, 0.0, Z_ARC), Visibility::Hidden, children![(ArcEdge, Sprite { image: art.dot.clone(), color: Color::srgba(0.05, 0.04, 0.03, 0.7), custom_size: Some(Vec2::splat(DOT + 2.0)), ..default() }, Transform::from_xyz(0.0, 0.0, -0.01))]));
+        commands.spawn((Name::new("Throw arc"), ArcDot(i), Sprite { image: art.dot.clone(), custom_size: Some(Vec2::splat(DOT)), ..default() }, Transform::from_xyz(0.0, 0.0, Z_ARC), Visibility::Hidden));
     }
+    let landing = Sprite { image: art.dot.clone(), color: Color::srgba(1.0, 0.85, 0.4, 0.95), custom_size: Some(Vec2::splat(LANDING)), ..default() };
+    commands.spawn((Name::new("Throw landing"), ArcLanding, landing, Transform::from_xyz(0.0, 0.0, Z_ARC), Visibility::Hidden));
 }
 
 /// The system's cursor goes (ours is drawn in its place).
@@ -402,9 +409,10 @@ fn point(
     }
 }
 
-/// Holding something to throw: where it would fly, a dot every few ticks of
-/// its flight, to where it first strikes something (a bigger dot).
-#[allow(clippy::too_many_arguments)]
+/// While a throw's readied, where it'll go: white dots flowing out along
+/// its flight from the hand (fading in), thinning away before it comes down
+/// (fading out), and a warm mark where it lands.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn throw_arc(
     time: Res<Time>,
     cursor: Res<CursorWorld>,
@@ -415,10 +423,11 @@ fn throw_arc(
     tools: Res<crate::tools::ToolsConfig>,
     sim: Res<SimWorld>,
     player: Query<(&Kinematics, &Inventory), With<LocalPlayer>>,
-    mut dots: Query<(&ArcDot, &mut Transform, &mut Sprite, &mut Visibility, &Children)>,
-    mut edges: Query<&mut Sprite, (With<ArcEdge>, Without<ArcDot>)>,
+    mut dots: Query<(&ArcDot, &mut Transform, &mut Sprite, &mut Visibility)>,
+    mut landing: Query<(&mut Transform, &mut Visibility), (With<ArcLanding>, Without<ArcDot>)>,
 ) {
-    let path = (|| {
+    // (The flight, a point a tick from the hand on, and whether it lands.)
+    let (path, landed) = (|| {
         let (items, at, (k, inv)) = (items.as_ref()?, cursor.0?, player.single().ok()?);
         if open.0 || dev.0 {
             return None;
@@ -434,46 +443,54 @@ fn throw_arc(
         let mut body = Body::new(from, Vec2::splat(4.5));
         body.vel = crate::hands::lob(from, at, tools.bomb.throw_speed) + k.body.vel * 0.5;
         let grid = crate::creatures::WorldGrid(&sim.world);
-        let mut out = Vec::new();
-        for t in 0..(ARC_SECS / DT) as usize {
+        let mut out = vec![body.pos];
+        for _ in 0..(ARC_SECS / DT) as usize {
             body.vel.y -= crate::props::GRAVITY * DT;
             let c = platypus_physics::move_and_collide(&grid, &mut body, DT);
+            out.push(body.pos);
             if c.ground || c.ceiling || c.wall_left || c.wall_right {
-                out.push((body.pos, true));
-                break;
-            }
-            if t % DOT_EVERY == DOT_EVERY - 1 {
-                out.push((body.pos, false));
-            }
-            if out.len() >= DOTS {
-                break;
+                return Some((out, true));
             }
         }
-        Some(out)
+        Some((out, false))
     })()
     .unwrap_or_default();
-    // (The dots drift along it, gently, so it reads as a path.)
-    let pulse = time.elapsed_secs() * 2.0;
-    let n = path.len();
-    for (d, mut tf, mut sprite, mut vis, children) in &mut dots {
-        let Some(&(at, end)) = path.get(d.0) else {
+    let flight = path.len().saturating_sub(1) as f32 * DT;
+    let at = |t: f32| {
+        let i = t / DT;
+        let (a, b) = (path[(i as usize).min(path.len() - 1)], path[(i as usize + 1).min(path.len() - 1)]);
+        a.lerp(b, i.fract())
+    };
+    // (Drifting: each dot moves on a gap, and the next one comes out of the
+    // hand behind it. The fades shorten on a short throw.)
+    let drift = (time.elapsed_secs() * DOT_FLOW / DOT_GAP).fract();
+    let (fade_in, fade_out) = ((FADE_IN * DOT_GAP).min(flight * 0.3), (FADE_OUT * DOT_GAP).min(flight * 0.5));
+    let ease = |x: f32| {
+        let x = x.clamp(0.0, 1.0);
+        x * x * (3.0 - 2.0 * x)
+    };
+    for (d, mut tf, mut sprite, mut vis) in &mut dots {
+        let t = (d.0 as f32 + drift) * DOT_GAP;
+        if path.len() < 2 || t > flight {
             *vis = Visibility::Hidden;
             continue;
-        };
-        tf.translation.x = at.x;
-        tf.translation.y = at.y;
-        let fade = 1.0 - d.0 as f32 / n.max(1) as f32 * 0.4;
-        let wave = 0.7 + 0.3 * ((d.0 as f32 * 0.6 - pulse * 3.0).sin() * 0.5 + 0.5);
-        // (Where it lands: a bigger mark, hot orange.)
-        let size = if end { DOT * 2.0 } else { DOT };
-        sprite.custom_size = Some(Vec2::splat(size));
-        sprite.color = if end { Color::srgba(1.0, 0.45, 0.15, 1.0) } else { Color::srgba(1.0, 0.86, 0.35, fade * wave) };
-        for c in children.iter() {
-            if let Ok(mut e) = edges.get_mut(c) {
-                e.custom_size = Some(Vec2::splat(size + 2.0));
-            }
         }
+        let p = at(t);
+        tf.translation.x = p.x;
+        tf.translation.y = p.y;
+        let alpha = ease(t / fade_in.max(1e-3)) * ease((flight - t) / fade_out.max(1e-3));
+        sprite.color = Color::srgba(1.0, 1.0, 1.0, 0.9 * alpha);
         *vis = Visibility::Visible;
+    }
+    for (mut tf, mut vis) in &mut landing {
+        match path.last().filter(|_| landed) {
+            Some(p) => {
+                tf.translation.x = p.x;
+                tf.translation.y = p.y;
+                *vis = Visibility::Visible;
+            }
+            None => *vis = Visibility::Hidden,
+        }
     }
 }
 
