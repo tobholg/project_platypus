@@ -316,6 +316,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, shield_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ropejump_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, blade_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(Update, ridge_script)
             .add_systems(PreUpdate, goldsmash_script.after(InputSystems).before(crate::magic::well::twist_input).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, devmenu_place_script.after(InputSystems).before(crate::devmenu::place))
@@ -5765,8 +5766,9 @@ fn rocketswim_script(
 fn spider_script(
     mut commands: Commands,
     s: Res<Scenario>,
+    sim: Res<SimWorld>,
     mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>), With<LocalPlayer>>,
-    spiders: Query<(&Kinematics, &crate::creatures::moves::Moves), Without<LocalPlayer>>,
+    spiders: Query<(&Kinematics, &crate::creatures::moves::Moves, Option<&crate::creatures::brain::senses::Alert>), Without<LocalPlayer>>,
     book: Res<crate::creatures::moves::MoveBook>,
     mut hits: MessageReader<crate::combat::Hit>,
     mut state: Local<(u8, f32, Option<String>)>,
@@ -5776,12 +5778,34 @@ fn spider_script(
     }
     let Ok((me, mut k, mut h, coat)) = player.single_mut() else { return };
     let t = s.elapsed;
-    // On open floor, the spider 180 cells off.
+    // On open floor, the spider 180 cells off. (In a generated world, on
+    // the ground where the player is, the spider 140 cells on, facing it.)
     if state.0 == 0 && t > 0.5 {
-        let floor = platypus_worldgen::arena::FLOOR as f32;
-        k.body.pos = Vec2::new(840.0, floor + 12.0);
-        k.prev_pos = k.body.pos;
-        crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(1020.0, floor), |_| {});
+        if std::env::var("PLATYPUS_WORLD").is_ok_and(|w| w == "arena") {
+            let floor = platypus_worldgen::arena::FLOOR as f32;
+            k.body.pos = Vec2::new(840.0, floor + 12.0);
+            k.prev_pos = k.body.pos;
+            // (Facing the player: facing away, it sees a share as far, and
+            // whether it ever turned round was up to its wander.)
+            crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(1020.0, floor), |e| {
+                if let Some(mut kk) = e.get_mut::<Kinematics>() {
+                    kk.loco.facing = -1.0;
+                }
+            });
+        } else {
+            let y0 = k.body.pos.y;
+            let top = |x: f32| (0..400).map(|d| y0 as i32 + 200 - d).find(|&y| sim.world.is_solid(CellPos::new(x as i32, y))).map_or(y0, |y| y as f32 + 1.0);
+            let (px, sx) = (k.body.pos.x, k.body.pos.x + 140.0);
+            let (py, sy) = (top(px), top(sx));
+            k.body.pos = Vec2::new(px, py + k.body.half.y + 0.5);
+            k.prev_pos = k.body.pos;
+            let feet = Vec2::new(sx, sy + 1.0);
+            crate::creatures::def::spawn_creature(&mut commands, "spider", feet, |e| {
+                if let Some(mut kk) = e.get_mut::<Kinematics>() {
+                    kk.loco.facing = -1.0;
+                }
+            });
+        }
         state.0 = 1;
     }
     for hit in hits.read() {
@@ -5789,7 +5813,9 @@ fn spider_script(
             info!("spider: t {t:.2} the player took {:.0} (knocked {:.0} cells/s)", hit.damage, hit.knock.length());
         }
     }
-    for (sk, a) in &spiders {
+    // (The one nearest the player: the world has spiders of its own.)
+    let nearest = spiders.iter().min_by(|x, y| x.0.body.pos.distance(k.body.pos).total_cmp(&y.0.body.pos.distance(k.body.pos)));
+    if let Some((sk, a, _)) = nearest {
         let now = a.doing(&book).map(|d| d.0.to_string());
         if now != state.2 {
             if let Some(what) = &now {
@@ -5800,8 +5826,9 @@ fn spider_script(
     }
     if t > state.1 + 1.0 {
         state.1 = t;
-        for (sk, a) in &spiders {
-            info!("spider: t {t:.1} at {:.0} cells ({:.0},{:.0} to the player's {:.0},{:.0}), vel ({:.0},{:.0}), grounded {} clinging {:?}, doing {:?}", sk.body.pos.distance(k.body.pos), sk.body.pos.x, sk.body.pos.y, k.body.pos.x, k.body.pos.y, sk.body.vel.x, sk.body.vel.y, sk.loco.grounded(), sk.loco.clinging(), a.doing(&book));
+        if let Some((sk, a, al)) = nearest {
+            let al = al.map_or("no alert".to_string(), |a| format!("{:?} senses {} engaged {} flanking {} cowering {} lit {:.2}", a.wary, a.senses_it, a.engaged(), a.flanking, a.cowering, a.quarry_lit));
+            info!("spider: t {t:.1} at {:.0} cells ({:.0},{:.0} to the player's {:.0},{:.0}), vel ({:.0},{:.0}), grounded {} clinging {:?}, doing {:?}; {al}", sk.body.pos.distance(k.body.pos), sk.body.pos.x, sk.body.pos.y, k.body.pos.x, k.body.pos.y, sk.body.vel.x, sk.body.vel.y, sk.loco.grounded(), sk.loco.clinging(), a.doing(&book));
         }
         if coat.is_some_and(|c| c.share("venom") > 0.0) {
             info!("spider: t {t:.1} the player is envenomed");
@@ -5810,6 +5837,129 @@ fn spider_script(
             info!("spider: t {t:.1} the player lost {:.0} hp this second", h.max - h.hp);
         }
         h.hp = h.max;
+    }
+}
+
+/// `ridge` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a stone mountain
+/// (a peak 110 up, `PLATYPUS_RIDGE_HIGH`; each slope's run 140,
+/// `PLATYPUS_RIDGE_WIDE`: about 38°), the player held still halfway up
+/// its left side (healed each second), a cave spider put down at the foot
+/// of its right; a dent in the right slope between them, below the peak
+/// (`PLATYPUS_DENT=w,h`: its width along the slope and depth into it;
+/// 14,10; `0,0`: none; `PLATYPUS_DENT_KIND=cave`: a hole into the slope
+/// sideways, `w` high, `h` in, rock over it). Logs twice a second where the spider is and how
+/// it holds on, each move it starts, and its alertness (it's after the
+/// player from the start, told where it is; `PLATYPUS_UNTOLD=1`: as one
+/// that's just seen it, its own senses on it from there); at the end how
+/// long it took to come within 40 cells, if it did.
+#[allow(clippy::type_complexity)]
+fn ridge_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    spiders: Query<(&Kinematics, &crate::creatures::moves::Moves, Option<&crate::creatures::brain::senses::Alert>), Without<LocalPlayer>>,
+    book: Res<crate::creatures::moves::MoveBook>,
+    mut state: Local<(u8, f32, Option<String>, Option<f32>, u32, Vec2)>,
+) {
+    if s.name != "ridge" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR;
+    // (`PLATYPUS_RIDGE_HIGH`: the peak's height, 110; `PLATYPUS_RIDGE_WIDE`:
+    // each slope's run, 140: about 38° at 110 high.)
+    let env = |name: &str, or: i32| std::env::var(name).ok().and_then(|v| v.parse::<i32>().ok()).unwrap_or(or);
+    let (high, wide) = (env("PLATYPUS_RIDGE_HIGH", 110), env("PLATYPUS_RIDGE_WIDE", 140));
+    let peak = (1000, high);
+    let ground = |x: i32| fl + (peak.1 - (x - peak.0).abs() * peak.1 / wide).max(0);
+    if state.0 == 0 && t > 0.3 {
+        let stone = sim.materials().id("stone").unwrap();
+        for x in peak.0 - 150..peak.0 + 150 {
+            for y in fl..ground(x) {
+                sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: stone, overwrite: true });
+            }
+        }
+        // (The dent: a pocket into the right slope, two thirds of the way up.)
+        let (w, d) = std::env::var("PLATYPUS_DENT").ok().and_then(|v| v.split_once(',').and_then(|(a, b)| Some((a.parse::<i32>().ok()?, b.parse::<i32>().ok()?)))).unwrap_or((14, 10));
+        let at = peak.0 + wide * 5 / 14;
+        // (`PLATYPUS_DENT_KIND=cave`: a hole into the slope sideways instead,
+        // `w` high and `h` in, rock over it: past it, a climber goes in, up
+        // its back and along its roof upside down, and out over its lip.)
+        let cave = std::env::var("PLATYPUS_DENT_KIND").is_ok_and(|v| v == "cave");
+        let air = |x: i32, y: i32| WorldEdit::Paint { center: CellPos::new(x, y), radius: 0, material: platypus_sim::MaterialId::AIR, overwrite: true };
+        if cave {
+            let mouth = ground(at);
+            for x in at - d..=at + w {
+                for y in mouth - w..mouth {
+                    sim.queue(air(x, y));
+                }
+            }
+        } else {
+            for x in at - w / 2..at + w / 2 {
+                for y in ground(x) - d..ground(x) {
+                    sim.queue(air(x, y));
+                }
+            }
+        }
+        state.0 = 1;
+        return;
+    }
+    if state.0 == 1 && t > 0.6 {
+        let px = peak.0 - wide / 2;
+        k.body.pos = Vec2::new(px as f32, ground(px) as f32 + k.body.half.y + 1.0);
+        k.prev_pos = k.body.pos;
+        state.5 = k.body.pos;
+        // (Already after the player: told where it is all along;
+        // `PLATYPUS_UNTOLD=1`: as one that's just seen it, its own senses
+        // keeping it on it from there.)
+        let at = k.body.pos;
+        let told = std::env::var("PLATYPUS_UNTOLD").is_err();
+        crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new((peak.0 + wide + 25) as f32, fl as f32), move |e| {
+            e.insert(if told { crate::creatures::brain::senses::Alert::hunting(at) } else { crate::creatures::brain::senses::Alert::spotted(at) });
+        });
+        state.0 = 2;
+        state.1 = t;
+    }
+    if state.0 < 2 {
+        return;
+    }
+    // (The player held where it stands: knocked about, it slid off down the
+    // far side.)
+    k.body.pos = state.5;
+    k.prev_pos = state.5;
+    k.body.vel = Vec2::ZERO;
+    // (The one nearest the player: the world has spiders of its own.)
+    let nearest = spiders.iter().min_by(|x, y| x.0.body.pos.distance(k.body.pos).total_cmp(&y.0.body.pos.distance(k.body.pos)));
+    if let Some((sk, a, _)) = nearest {
+        let now = a.doing(&book).map(|d| d.0.to_string());
+        if now != state.2 {
+            if let Some(what) = &now {
+                info!("ridge: t {t:.2} {what} from {:.0} cells", sk.body.pos.distance(k.body.pos));
+                state.4 += (what == "spider_spit") as u32;
+            }
+            state.2 = now;
+        }
+        if state.3.is_none() && sk.body.pos.distance(k.body.pos) < 40.0 {
+            state.3 = Some(t);
+            info!("ridge: t {t:.1} the spider's within 40 cells");
+        }
+    }
+    if t > state.1 + 0.5 {
+        state.1 = t;
+        for (sk, _, alert) in &spiders {
+            let al = alert.map_or("no alert".to_string(), |a| format!("{:?} senses {} engaged {} flanking {}", a.wary, a.senses_it, a.engaged(), a.flanking));
+            info!("ridge: t {t:.1} at ({:.0},{:.0}) {:.0} off, vel ({:.0},{:.0}), grounded {} clinging {:?}; {al}", sk.body.pos.x, sk.body.pos.y, sk.body.pos.distance(k.body.pos), sk.body.vel.x, sk.body.vel.y, sk.loco.grounded(), sk.loco.clinging());
+        }
+        h.hp = h.max;
+    }
+    if t > s.duration - 0.05 && state.0 == 2 {
+        state.0 = 3;
+        match state.3 {
+            Some(at) => info!("ridge: came within 40 cells at t {at:.1}; {} spits", state.4),
+            None => info!("ridge: never came within 40 cells; {} spits", state.4),
+        }
     }
 }
 

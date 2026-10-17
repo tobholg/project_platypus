@@ -198,6 +198,9 @@ pub struct HunterMind {
     /// Burrowing and still getting nowhere: digging straight at what it
     /// hunts till then, its way set aside (a smart cursor's dig).
     straight_until: u64,
+    /// A crawler on the ground wanting up with nothing to climb: since
+    /// when (a tick; 0: it isn't).
+    up_since: u64,
 }
 
 /// What hunters go after (a villager hiding at home is let be).
@@ -615,8 +618,12 @@ fn hunt(
                     0.0
                 };
                 // Out of sight, or burrowing: the way round, over walls and
-                // ceilings (and through, a digger).
-                if !crate::creatures::moves::clear(&sim, pos, t) || burrowing {
+                // ceilings (and through, a digger). In sight but not a
+                // straight walk (a gap, a pit, a cleft between): the way too,
+                // down one side and up the other; straight at it, it paced
+                // the near edge for ever.
+                let across = d.length() > keep.max(12.0) + 4.0 && !walkable(t, th);
+                if !crate::creatures::moves::clear(&sim, pos, t) || burrowing || across {
                     steer = route(&mut ways, &mut way, t - Vec2::Y * th.y);
                     if let Some(s) = steer {
                         move_y = s.move_y;
@@ -711,6 +718,21 @@ fn hunt(
                         (false, true) => 1.0,
                         _ => 0.0,
                     };
+                }
+                // (On the ground, its way straight up, nothing beside it to
+                // climb (a ledge over a hole's mouth, its lip out of reach):
+                // a moment pressing at nothing, then a leap, up and toward
+                // what it's after. It stood there pressing up for ever.)
+                let pressing = grounded && clinging.is_none() && move_y > 0.0 && mx == 0.0 && k.body.vel.length() < 10.0 && !digging;
+                if !pressing {
+                    m.up_since = 0;
+                } else if m.up_since == 0 {
+                    m.up_since = tick;
+                } else if tick >= m.up_since + ticks(UP_LEAP_AFTER) && tick >= m.next {
+                    jump = true;
+                    mx = if d.x.abs() > 2.0 { d.x.signum() } else { 0.0 };
+                    m.up_since = 0;
+                    m.next = tick + ticks(0.6);
                 }
                 // (An ambusher on a ceiling stays up there: still till what
                 // it's after comes near under it, then along the ceiling over
@@ -834,6 +856,9 @@ fn hunt(
         c.0.jump = if (hold || reaching) && c.0.jump { true } else { jump && !c.0.jump };
     }
 }
+
+/// A crawler pressing up at nothing this long (seconds) leaps.
+const UP_LEAP_AFTER: f32 = 0.35;
 
 /// Burrowing: a digger no nearer (by `HEADWAY` cells) to what it hunts in
 /// `NO_HEADWAY` s, and further than `STUCK_NEAR`, goes its planned way,

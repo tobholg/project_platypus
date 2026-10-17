@@ -100,6 +100,12 @@ impl Alert {
         Alert { wary: Wary::Hunting, last: at, senses_it: true, told: true, ..default() }
     }
 
+    /// Hunting what's at `at`, as one that's just seen it: from here on, its
+    /// own senses keep it on it (or don't).
+    pub fn spotted(at: Vec2) -> Alert {
+        Alert { wary: Wary::Hunting, last: at, senses_it: true, glimpse: 1.0, ..default() }
+    }
+
     /// Looking, not chasing: suspicious or searching (it goes slower).
     pub fn looking(&self) -> bool {
         matches!(self.wary, Wary::Suspicious | Wary::Searching)
