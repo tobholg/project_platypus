@@ -80,11 +80,17 @@ pub struct Hand {
     cooldown: f32,
     /// Glow sticks thrown (they alternate colours).
     thrown: u32,
+    /// A throw readied: the left button held with something to throw (its
+    /// arc shown, held up overhead); let go, it flies.
+    pub readying: bool,
+    /// A readied throw called off (the right button): nothing till the left
+    /// is let go.
+    called_off: bool,
 }
 
 impl Default for Hand {
     fn default() -> Self {
-        Hand { slot: 0, bar: 0, smart: true, area: false, cooldown: 0.0, thrown: 0 }
+        Hand { slot: 0, bar: 0, smart: true, area: false, cooldown: 0.0, thrown: 0, readying: false, called_off: false }
     }
 }
 
@@ -506,7 +512,14 @@ fn use_hands(
     let keeps = |s: &Stack| filter.is_none_or(|f| f.takes(&items, s));
     let from = hand_at(k);
     let slot = if input.auto { auto_slot(&sim.world, &items, &inv, hand.bar_slots(), &k.body, from, cursor).unwrap_or(hand.active()) } else { hand.active() };
-    let Some(stack) = inv.slots[slot] else { return };
+    let Some(stack) = inv.slots[slot] else {
+        hand.readying = false;
+        return;
+    };
+    // (Something else in hand: no throw readied.)
+    if !matches!(items.def(stack.item).use_, Use::Throw(_)) {
+        hand.readying = false;
+    }
     match items.def(stack.item).use_.clone() {
         // (A pickaxe or axe swings while it's used: `combat`, by its id.)
         Use::Mine { back, power, tier, speed, reach, area } if input.primary && hand.cooldown == 0.0 => {
@@ -667,7 +680,22 @@ fn use_hands(
             inv.take(slot, report.placed);
             hand.cooldown = 1.0 / PLACE_RATE;
         }
-        Use::Throw(what) if clicked => {
+        // Held, a throw readied: held up overhead, its arc shown (the
+        // right button calls it off); let go, it flies, the arm after it.
+        Use::Throw(_) if input.primary => {
+            if input.secondary && hand.readying {
+                hand.readying = false;
+                hand.called_off = true;
+            }
+            if !hand.called_off {
+                hand.readying = true;
+                let overhead = from + Vec2::new(k.loco.facing * 20.0, 24.0);
+                commands.entity(me).insert(crate::creatures::body::animation::Aiming { at: overhead, left: 0.15 });
+            }
+        }
+        Use::Throw(_) if !hand.readying => hand.called_off = false,
+        Use::Throw(what) => {
+            hand.readying = false;
             commands.entity(me).insert(crate::creatures::body::animation::Aiming { at: cursor, left: AIM_HOLD });
             let vel = lob(from, cursor, tools.bomb.throw_speed) + k.body.vel * 0.5;
             match what {

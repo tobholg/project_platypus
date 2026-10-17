@@ -11,7 +11,9 @@
 //! - A hand over what a right-click opens, near enough: a chest, a body,
 //!   one of the village folk (with its name, or the body's), or something
 //!   on the ground the pick-up filter leaves ("right-click to take").
-//! - Something to throw: where it will fly, dotted, to where it lands.
+//! - Something to throw, readied (the left button held): where it will fly,
+//!   dotted (bright, edged dark: they show on snow and in caves), and a
+//!   mark where it lands.
 //! - An eye beside it, out of the light: how plain you are to see and hear
 //!   (shut: dark and quiet; half; open: lit or loud). Never anything about
 //!   creatures: that waits for the bestiary.
@@ -47,6 +49,12 @@ const EYE_UNDER: f32 = 0.85;
 const ARC_SECS: f32 = 2.0;
 const DOT_EVERY: usize = 3;
 const DOTS: usize = 40;
+/// A dot's size (cells), its dark edge a cell round it.
+const DOT: f32 = 3.0;
+
+/// A throw arc dot's dark edge.
+#[derive(Component)]
+struct ArcEdge;
 /// Over the dark and the mining mark.
 const Z_ARC: f32 = 16.2;
 const DT: f32 = (1.0 / TICK_HZ) as f32;
@@ -192,8 +200,9 @@ fn spawn(mut commands: Commands, art: Res<Art>) {
         GlobalZIndex(999),
         Pickable::IGNORE,
     ));
+    // (Each dot a bright core on a dark edge.)
     for i in 0..DOTS {
-        commands.spawn((Name::new("Throw arc"), ArcDot(i), Sprite::from_color(Color::WHITE, Vec2::splat(3.0)), Transform::from_xyz(0.0, 0.0, Z_ARC), Visibility::Hidden));
+        commands.spawn((Name::new("Throw arc"), ArcDot(i), Sprite::from_color(Color::WHITE, Vec2::splat(DOT)), Transform::from_xyz(0.0, 0.0, Z_ARC), Visibility::Hidden, children![(ArcEdge, Sprite::from_color(Color::srgba(0.05, 0.04, 0.03, 0.7), Vec2::splat(DOT + 2.0)), Transform::from_xyz(0.0, 0.0, -0.01))]));
     }
 }
 
@@ -402,7 +411,8 @@ fn throw_arc(
     tools: Res<crate::tools::ToolsConfig>,
     sim: Res<SimWorld>,
     player: Query<(&Kinematics, &Inventory), With<LocalPlayer>>,
-    mut dots: Query<(&ArcDot, &mut Transform, &mut Sprite, &mut Visibility)>,
+    mut dots: Query<(&ArcDot, &mut Transform, &mut Sprite, &mut Visibility, &Children)>,
+    mut edges: Query<&mut Sprite, (With<ArcEdge>, Without<ArcDot>)>,
 ) {
     let path = (|| {
         let (items, at, (k, inv)) = (items.as_ref()?, cursor.0?, player.single().ok()?);
@@ -411,6 +421,10 @@ fn throw_arc(
         }
         let held = inv.slots.get(hand.active()).copied().flatten()?;
         let Use::Throw(_) = items.def(held.item).use_ else { return None };
+        // (Only readied: the left button held.)
+        if !hand.readying {
+            return None;
+        }
         // (As the hands throw it: `use_hands`.)
         let from = crate::hands::hand_at(k);
         let mut body = Body::new(from, Vec2::splat(4.5));
@@ -437,17 +451,24 @@ fn throw_arc(
     // (The dots drift along it, gently, so it reads as a path.)
     let pulse = time.elapsed_secs() * 2.0;
     let n = path.len();
-    for (d, mut tf, mut sprite, mut vis) in &mut dots {
+    for (d, mut tf, mut sprite, mut vis, children) in &mut dots {
         let Some(&(at, end)) = path.get(d.0) else {
             *vis = Visibility::Hidden;
             continue;
         };
         tf.translation.x = at.x;
         tf.translation.y = at.y;
-        let fade = 1.0 - d.0 as f32 / n.max(1) as f32 * 0.5;
-        let wave = 0.6 + 0.4 * ((d.0 as f32 * 0.6 - pulse * 3.0).sin() * 0.5 + 0.5);
-        sprite.custom_size = Some(Vec2::splat(if end { 3.5 } else { 2.0 }));
-        sprite.color = if end { Color::srgba(1.0, 0.85, 0.4, 0.95) } else { Color::srgba(1.0, 1.0, 1.0, 0.85 * fade * wave) };
+        let fade = 1.0 - d.0 as f32 / n.max(1) as f32 * 0.4;
+        let wave = 0.7 + 0.3 * ((d.0 as f32 * 0.6 - pulse * 3.0).sin() * 0.5 + 0.5);
+        // (Where it lands: a bigger mark, hot orange.)
+        let size = if end { DOT * 2.0 } else { DOT };
+        sprite.custom_size = Some(Vec2::splat(size));
+        sprite.color = if end { Color::srgba(1.0, 0.45, 0.15, 1.0) } else { Color::srgba(1.0, 0.86, 0.35, fade * wave) };
+        for c in children.iter() {
+            if let Ok(mut e) = edges.get_mut(c) {
+                e.custom_size = Some(Vec2::splat(size + 2.0));
+            }
+        }
         *vis = Visibility::Visible;
     }
 }

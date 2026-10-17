@@ -8032,9 +8032,10 @@ fn specks_script(s: Res<Scenario>, sim: Res<SimWorld>, player: Query<&Kinematics
     }
 }
 
-/// `throw` (`PLATYPUS_WORLD=arena`): a bomb thrown (the dev kit's, hotbar
-/// slot 4) at 1 s toward a point 120 right and 60 up; logs where every bomb
-/// is, ten times a second.
+/// `throw` (`PLATYPUS_WORLD=arena`): a bomb (the dev kit's, hotbar slot 4)
+/// readied at 1 s (the left button held: held up, its arc shown), let go at
+/// 1.6 s toward a point 120 right and 60 up; logs where every bomb is, ten
+/// times a second.
 fn throw_script(
     s: Res<Scenario>,
     mut hand: ResMut<crate::hands::Hand>,
@@ -8051,12 +8052,14 @@ fn throw_script(
     hand.bar = 0;
     hand.slot = 3;
     cursor.0 = Some(pk.body.pos + Vec2::new(120.0, 60.0));
+    // (Readied from 1 s, held up, let go at 1.6 s.)
     if st.0 == 0 && t > 1.0 {
         st.0 = 1;
         mouse.press(MouseButton::Left);
-    } else if st.0 == 1 {
+    } else if st.0 == 1 && t > 1.6 {
         st.0 = 2;
         mouse.release(MouseButton::Left);
+        info!("throw: let go at 1.6 s");
     }
     if t >= st.1 {
         st.1 = t + 0.1;
