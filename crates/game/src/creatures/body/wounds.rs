@@ -40,6 +40,8 @@ const PIECE_BLEEDS: f32 = 2.5;
 const BLEED_RATE: f32 = 26.0;
 /// A loose skull's health (only what breaks its bones hurts it).
 const SKULL_HEALTH: f32 = 10.0;
+/// What breaks a skull's bones does this much more to it than to its kind.
+const SKULL_WEAK: f32 = 1.6;
 /// A cut piece lies this long, then fades over `PIECE_FADE`.
 const PIECE_LIFE: f32 = 30.0;
 pub const PIECE_FADE: f32 = 3.0;
@@ -292,8 +294,8 @@ pub fn sever(
         let at = limp.pieces[limp.root].pos;
         let mut e = commands.spawn((Name::new("Cut off"), CutPiece { left: PIECE_LIFE }, Kinematics { body: Body::new(at, Vec2::splat(3.0)), loco: Default::default(), prev_pos: at }, Transform::from_translation(at.extend(5.6)), Visibility::default()));
         // A bone of one that rises lies till it's gathered up (or its owner's
-        // gone for good); a skull can be struck, and broken by what breaks
-        // its bones only.
+        // gone for good); a skull can be struck: anything hurts it as it
+        // hurts its kind (fire, light, a blade), what breaks its bones more.
         if let Some((b, skull)) = bone {
             e.insert((b, CutPiece { left: f32::INFINITY }));
             if let Some(breaks) = skull {
@@ -302,7 +304,7 @@ pub fn sever(
                     Kinematics { body: Body::new(at, Vec2::splat(6.0)), loco: Default::default(), prev_pos: at },
                     Name::new("Skull"),
                     super::rise::Skull,
-                    Health { nature: crate::creatures::nature::Nature::only(&breaks, |_| 1.0), ..Health::new(SKULL_HEALTH) },
+                    Health { nature: anim.def.nature.worse(&breaks, SKULL_WEAK), ..Health::new(SKULL_HEALTH) },
                     MoveStats(anim.def.movement.clone()),
                     anim.def.team,
                 ));

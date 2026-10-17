@@ -193,7 +193,7 @@ fn spawn(mut commands: Commands, art: Res<Art>) {
         Pickable::IGNORE,
     ));
     for i in 0..DOTS {
-        commands.spawn((Name::new("Throw arc"), ArcDot(i), Sprite::from_color(Color::WHITE, Vec2::splat(2.0)), Transform::from_xyz(0.0, 0.0, Z_ARC), Visibility::Hidden));
+        commands.spawn((Name::new("Throw arc"), ArcDot(i), Sprite::from_color(Color::WHITE, Vec2::splat(3.0)), Transform::from_xyz(0.0, 0.0, Z_ARC), Visibility::Hidden));
     }
 }
 
@@ -413,10 +413,8 @@ fn throw_arc(
         let Use::Throw(_) = items.def(held.item).use_ else { return None };
         // (As the hands throw it: `use_hands`.)
         let from = crate::hands::hand_at(k);
-        let dir = (at - from).normalize_or(Vec2::X);
-        let speed = tools.bomb.throw_speed * ((at - from).length() / 180.0).clamp(0.35, 1.0);
         let mut body = Body::new(from, Vec2::splat(4.5));
-        body.vel = dir * speed + k.body.vel * 0.5;
+        body.vel = crate::hands::lob(from, at, tools.bomb.throw_speed) + k.body.vel * 0.5;
         let grid = crate::creatures::WorldGrid(&sim.world);
         let mut out = Vec::new();
         for t in 0..(ARC_SECS / DT) as usize {
