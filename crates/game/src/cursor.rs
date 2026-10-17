@@ -55,8 +55,8 @@ const DOT: f32 = 3.0;
 /// A throw arc dot's dark edge.
 #[derive(Component)]
 struct ArcEdge;
-/// Over the dark and the mining mark.
-const Z_ARC: f32 = 16.2;
+/// Over the dark, the mining mark and eyes.
+const Z_ARC: f32 = 16.3;
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 
 const OUTLINE: [u8; 4] = [16, 16, 20, 255];
@@ -104,6 +104,7 @@ struct Art {
     shapes: [(Handle<Image>, Vec2); 4],
     rings: Vec<Handle<Image>>,
     eyes: [(Handle<Image>, Vec2); 3],
+    dot: Handle<Image>,
 }
 
 #[derive(Component)]
@@ -178,7 +179,10 @@ fn make_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let shapes = [draw(ARROW, &mut images), draw(CROSS, &mut images), draw(BRACKETS, &mut images), draw(HAND, &mut images)];
     let rings = (0..=RING_STEPS).map(|i| images.add(ring(i as f32 / RING_STEPS as f32))).collect();
     let eyes = [draw(EYE_SHUT, &mut images), draw(EYE_HALF, &mut images), draw(EYE_OPEN, &mut images)];
-    commands.insert_resource(Art { shapes, rings, eyes });
+    // (The throw arc's own white: on the shared default image the dots
+    // went undrawn with a spiderling in view.)
+    let dot = images.add(image(1, 1, vec![255; 4]));
+    commands.insert_resource(Art { shapes, rings, eyes, dot });
 }
 
 fn spawn(mut commands: Commands, art: Res<Art>) {
@@ -202,7 +206,7 @@ fn spawn(mut commands: Commands, art: Res<Art>) {
     ));
     // (Each dot a bright core on a dark edge.)
     for i in 0..DOTS {
-        commands.spawn((Name::new("Throw arc"), ArcDot(i), Sprite::from_color(Color::WHITE, Vec2::splat(DOT)), Transform::from_xyz(0.0, 0.0, Z_ARC), Visibility::Hidden, children![(ArcEdge, Sprite::from_color(Color::srgba(0.05, 0.04, 0.03, 0.7), Vec2::splat(DOT + 2.0)), Transform::from_xyz(0.0, 0.0, -0.01))]));
+        commands.spawn((Name::new("Throw arc"), ArcDot(i), Sprite { image: art.dot.clone(), custom_size: Some(Vec2::splat(DOT)), ..default() }, Transform::from_xyz(0.0, 0.0, Z_ARC), Visibility::Hidden, children![(ArcEdge, Sprite { image: art.dot.clone(), color: Color::srgba(0.05, 0.04, 0.03, 0.7), custom_size: Some(Vec2::splat(DOT + 2.0)), ..default() }, Transform::from_xyz(0.0, 0.0, -0.01))]));
     }
 }
 

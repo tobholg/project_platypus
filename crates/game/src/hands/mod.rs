@@ -374,17 +374,31 @@ fn dress_bombs(items: Option<Res<Items>>, icons: Option<Res<icons::Icons>>, mut 
 }
 
 /// A throw that lands where it's aimed: the arc to `to` (gravity's, a
-/// longer one further off), as far as an arm throws (`strength`, cells/s:
-/// beyond, it falls short along the same line).
+/// longer one further off), as hard as an arm throws (`strength` ×
+/// `THROW_REACH`, cells/s). Too far for that arc, the one needing least
+/// (45° on the flat); beyond even that, as far as it goes toward it.
 pub fn lob(from: Vec2, to: Vec2, strength: f32) -> Vec2 {
     let d = to - from;
     let g = crate::props::GRAVITY;
+    let most = strength * THROW_REACH;
     // (In the air longer the further it goes: a lob, not a line.)
     let t = (d.length() / (strength * 0.8)).clamp(0.28, 1.0);
     let v = Vec2::new(d.x / t, d.y / t + 0.5 * g * t);
-    let most = strength * 1.6;
-    if v.length() > most { v.normalize() * most } else { v }
+    if v.length() <= most {
+        return v;
+    }
+    // (Launched halfway between the line to it and straight up: the
+    // gentlest throw that gets there, v² = g x² / (2 cos²θ (x tanθ − y)).)
+    let x = d.x.abs().max(1e-3);
+    let up = std::f32::consts::FRAC_PI_4 + d.y.atan2(x) / 2.0;
+    let under = 2.0 * up.cos().powi(2) * (x * up.tan() - d.y);
+    let speed = if under > 0.0 { (g * x * x / under).sqrt().min(most) } else { most };
+    Vec2::new(d.x.signum() * up.cos(), up.sin()) * speed
 }
+
+/// The hardest an arm throws: this many times a throw's `strength` (the
+/// farthest on the flat, ~310 cells for a bomb).
+const THROW_REACH: f32 = 1.8;
 
 /// The block a mining tool would hit: with the smart cursor a tunnel the body
 /// fits (a pickaxe) or the line toward the cursor (an axe, at trees);
@@ -1031,5 +1045,33 @@ fn outline(
     if let Some(b) = block {
         let c = Vec2::new((b.x as f32 + 0.5) * BLOCK as f32, (b.y as f32 + 0.5) * BLOCK as f32);
         gizmos.rect_2d(bevy::math::Isometry2d::from_translation(c), Vec2::splat(BLOCK as f32), color);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Where a throw from the origin comes back down to its own height.
+    fn lands(v: Vec2) -> f32 {
+        v.x * 2.0 * v.y / crate::props::GRAVITY
+    }
+
+    /// On the flat it lands where it's aimed, out to ~300 cells (both
+    /// ways); aimed further, it goes as far as an arm throws, never less.
+    #[test]
+    fn a_throw_lands_where_aimed_out_to_its_reach() {
+        for x in [20.0, 80.0, 160.0, 240.0, 300.0] {
+            for side in [1.0, -1.0] {
+                let at = lob(Vec2::ZERO, Vec2::new(side * x, 0.0), 360.0);
+                assert!((lands(at) - side * x).abs() < 1.0, "{x} {side}: {}", lands(at));
+            }
+        }
+        let far = lands(lob(Vec2::ZERO, Vec2::new(600.0, 0.0), 360.0));
+        assert!(far > 300.0 && far < 320.0, "{far}");
+        // (Up a slope too: the gentlest arc reaches a ledge it can.)
+        let v = lob(Vec2::ZERO, Vec2::new(180.0, 80.0), 360.0);
+        let t = 180.0 / v.x;
+        assert!((v.y * t - 0.5 * crate::props::GRAVITY * t * t - 80.0).abs() < 1.0, "{v}");
     }
 }
