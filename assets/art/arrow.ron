@@ -29,6 +29,6 @@
             "fff..............",
         ],
     },
-    clips: { "flying": (frames: ["arrow"], fps: 1) },
+    clips: { "flying": (frames: ["arrow"], fps: 1), "stuck": (frames: ["stuck"], fps: 1) },
     anchors: { "grip": { "arrow": (8, 2), "stuck": (8, 2) }, "tip": { "arrow": (16, 2) }, "entry": { "stuck": (12, 2) } },
 )
