@@ -862,7 +862,7 @@ pub(crate) fn deaths(
     mut sim: ResMut<SimWorld>,
     (mut deaths, checkpoint, mut respawned): (ResMut<PlayerDeaths>, Res<crate::respawn::Checkpoint>, MessageWriter<crate::respawn::Respawned>),
     mut died: MessageWriter<Died>,
-    sprites: Query<(&Sprite, &Transform), With<body::animation::CreatureSprite>>,
+    sprites: Query<(&Sprite, &Transform, Has<body::legs::LegBody>), Or<(With<body::animation::CreatureSprite>, With<body::legs::LegBody>)>>,
     mut q: Query<Mortal>,
     tumbles: Query<&body::tumble::Tumble>,
     parts: Query<&body::parts::Parts>,
@@ -876,7 +876,17 @@ pub(crate) fn deaths(
             continue;
         }
         if let (Some(anim), true, false) = (anim, creature.is_some(), is_player) {
-            let sprite = children.and_then(|ch| ch.iter().find_map(|e| sprites.get(e).ok())).map(|(s, tf)| (s.clone(), tf.translation));
+            // (A walker's body as its legs carried it, where they carried it,
+            // level: its own sprite's hidden, somewhere else. Its tail and
+            // legs are pinned on where they were.)
+            let shown: Vec<_> = children.into_iter().flat_map(|ch| ch.iter()).filter_map(|e| sprites.get(e).ok()).collect();
+            let sprite = shown.iter().find(|(.., legged)| *legged).or(shown.first()).map(|&(s, tf, legged)| {
+                let mut s = s.clone();
+                if let (true, Some(atlas)) = (legged, s.texture_atlas.as_mut()) {
+                    atlas.index = crate::combat::Turned::index(0.0);
+                }
+                (s, tf.translation)
+            });
             let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
             let kind = creature.map_or_else(String::new, |c| c.kind.clone());
             let spin = tumbles.get(entity).copied().unwrap_or_default();

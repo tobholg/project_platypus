@@ -734,6 +734,8 @@ pub struct Legs {
     lock: Option<Entity>,
     /// The body art's frame it shows (none: its first).
     face: Option<String>,
+    /// The body's frame shown and whether it's mirrored (`parts`: what's hit).
+    drawn: Option<(usize, bool)>,
 }
 
 #[derive(Component)]
@@ -744,8 +746,10 @@ struct LegClaw;
 const Z_NEAR_CLAW: f32 = 10.07;
 const Z_FAR_CLAW: f32 = 9.45;
 
+/// The body a walker's legs carry, as drawn (turned to its tilt): what
+/// it's hit on (`parts`), what it leaves dead (`deaths`).
 #[derive(Component)]
-struct LegBody;
+pub(crate) struct LegBody;
 
 /// A digging leg's strokes a second (`DigFace`), and how high it lifts
 /// (cells, at most).
@@ -1128,7 +1132,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), hold: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, grip: Vec2::ZERO, turrets: Vec::new(), lock: None, face: None, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), hold: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, grip: Vec2::ZERO, turrets: Vec::new(), lock: None, face: None, drawn: None, def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -1414,6 +1418,7 @@ fn walk(
         let spun = tumble.map_or(0.0, |t| t.angle);
         let (index, flip) = if side { (crate::combat::Turned::index((legs.tilt + legs.facing * legs.surface + spun * legs.facing).to_degrees()), legs.facing < 0.0) } else { (crate::combat::Turned::index((legs.heading + spun).to_degrees()), false) };
         let offset = legs.offset;
+        legs.drawn = Some((index, flip));
         // Its look: the frame its move's pose shows (body and eyes).
         if rear.face != legs.face {
             let at = |key: String| match &rear.face {
@@ -2322,8 +2327,8 @@ fn turrets(
 /// Its parts' hit areas as they are now (`parts.rs`): each leg hip to
 /// knee to foot, each arm, each segment, each chain's links, each weak
 /// spot; a share of a blow to its body each (its `parts`).
-fn parts(mut commands: Commands, mut q: Query<(Entity, &Legs, Option<&mut super::parts::Parts>, Option<&super::parts::Severed>)>) {
-    use super::parts::{Limb, Part, PartKind};
+fn parts(mut commands: Commands, art: Res<BodyArt>, mut q: Query<(Entity, &Legs, Option<&mut super::parts::Parts>, Option<&super::parts::Severed>)>) {
+    use super::parts::{BodyShape, Limb, Part, PartKind};
     for (e, legs, mine, severed) in &mut q {
         let gone = |l: Limb| severed.is_some_and(|s| s.has(l));
         let def = &legs.def;
@@ -2377,11 +2382,17 @@ fn parts(mut commands: Commands, mut q: Query<(Entity, &Legs, Option<&mut super:
             let at = c + legs.turn(Vec2::new(wd.at.0, wd.at.1));
             list.push(Part { a: at, b: at, r: wd.r, mult: wd.mult, kind: PartKind::Weak, limb: None });
         }
+        // Its body as drawn (a head far out past its box takes blows).
+        let body = legs.drawn.filter(|_| !def.rig).and_then(|(index, flip)| {
+            let shown = legs.face.as_ref().and_then(|f| art.0.get(&format!("{}@{f}", def.body)));
+            let turned = shown.or_else(|| art.0.get(&def.body))?;
+            Some(BodyShape { turned: turned.clone(), index, flip, grip: c })
+        });
         match mine {
-            Some(mut p) => p.set(list),
+            Some(mut p) => p.set_with_body(list, body),
             None => {
                 let mut p = super::parts::Parts::default();
-                p.set(list);
+                p.set_with_body(list, body);
                 commands.entity(e).insert(p);
             }
         }

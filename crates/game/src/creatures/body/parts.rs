@@ -2,7 +2,8 @@
 //! its box. Each legged creature keeps its parts' shapes as they are this
 //! frame (`legs.rs` fills them in after it walks): its legs, arms,
 //! segments and chains, each a capsule (a line with a radius), and its
-//! weak spots (circles on its body). What tests a blow against a creature
+//! weak spots (circles on its body); and its body as drawn (its picture's
+//! pixels: a tyrant's head, far out past its box). What tests a blow against a creature
 //! (a swing, an arrow, a spell) takes a part as a hit too, so a blade across
 //! a centipede's tail or a spider's leg lands; and every hit's damage is
 //! scaled by what it struck (`mult_at`: legs and arms take less, a weak
@@ -19,6 +20,8 @@ pub enum PartKind {
     Segment,
     Chain,
     Weak,
+    /// Its body as drawn (`Parts::body`): the capsule's only its reach.
+    Body,
 }
 
 /// A limb that can be cut off (`wounds`): a leg, an arm, a chain (a tail,
@@ -64,17 +67,59 @@ impl Part {
 }
 
 /// A creature's parts this frame, and the box round them all.
-#[derive(Component, Clone, Debug, Default)]
+#[derive(Component, Clone, Default)]
 pub struct Parts {
     pub list: Vec<Part>,
     pub lo: Vec2,
     pub hi: Vec2,
+    /// Its body's picture as drawn this frame, if its legs carry one.
+    pub body: Option<BodyShape>,
+}
+
+/// A walker's body as drawn: its turned picture, the frame shown, mirrored
+/// or not, and where its grip is.
+#[derive(Clone)]
+pub struct BodyShape {
+    pub(crate) turned: crate::combat::Turned,
+    pub index: usize,
+    pub flip: bool,
+    pub grip: Vec2,
+}
+
+impl BodyShape {
+    /// Is its picture at `p` (or within `pad` of it)?
+    pub fn covers(&self, p: Vec2, pad: f32) -> bool {
+        let d = p - self.grip;
+        if pad <= 0.0 {
+            return self.turned.opaque_at(self.index, self.flip, d);
+        }
+        // (Within `pad`: the pixel there or any round it.)
+        let n = pad.ceil() as i32;
+        (-n..=n).any(|dy| (-n..=n).any(|dx| self.turned.opaque_at(self.index, self.flip, d + Vec2::new(dx as f32, dy as f32))))
+    }
+}
+
+impl std::fmt::Debug for Parts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Parts").field("list", &self.list).field("lo", &self.lo).field("hi", &self.hi).field("body", &self.body.is_some()).finish()
+    }
 }
 
 impl Parts {
-    /// Its limbs (everything but its weak spots).
+    /// Its limbs (everything but its weak spots and its body).
     pub fn limbs(&self) -> Vec<Part> {
-        self.list.iter().filter(|p| p.kind != PartKind::Weak).cloned().collect()
+        self.list.iter().filter(|p| !matches!(p.kind, PartKind::Weak | PartKind::Body)).cloned().collect()
+    }
+
+    /// Laid out afresh: the parts and the box round them; with its body as
+    /// drawn, a part for that too (its reach round its grip, blows taken
+    /// whole).
+    pub fn set_with_body(&mut self, mut list: Vec<Part>, body: Option<BodyShape>) {
+        if let Some(b) = &body {
+            list.push(Part { a: b.grip, b: b.grip, r: b.turned.reach(), mult: 1.0, kind: PartKind::Body, limb: None });
+        }
+        self.set(list);
+        self.body = body;
     }
 
     /// Laid out afresh: the parts and the box round them.
@@ -94,9 +139,9 @@ impl Parts {
         if !self.near(p, pad) {
             return None;
         }
-        let mut hit = self.list.iter().filter(|q| q.gap(p) <= pad);
-        let first = hit.next()?;
-        Some(std::iter::once(first).chain(hit).find(|q| q.kind == PartKind::Weak).unwrap_or(first))
+        // (A weak spot first, then a limb, then the body's picture.)
+        let hit: Vec<&Part> = self.list.iter().filter(|q| q.gap(p) <= pad && (q.kind != PartKind::Body || self.body.as_ref().is_some_and(|b| b.covers(p, pad)))).collect();
+        hit.iter().find(|q| q.kind == PartKind::Weak).or_else(|| hit.iter().find(|q| q.kind != PartKind::Body)).or(hit.first()).copied()
     }
 }
 

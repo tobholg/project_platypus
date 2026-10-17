@@ -326,7 +326,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, watcher_script)
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
-            .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script))
+            .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
             .add_systems(PreUpdate, stealth_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, sneak_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, tactics_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -5232,6 +5232,17 @@ fn legs_script(
         }
         *step = 3;
     }
+    // (Pictures on after it's dead: its body.)
+    if let Ok(dir) = std::env::var("PLATYPUS_SHOTS")
+        && t >= *shot
+    {
+        *shot += std::env::var("PLATYPUS_SHOT_EVERY").ok().and_then(|v| v.parse().ok()).unwrap_or(2.0);
+        let shot = match &offscreen {
+            Some(o) => Screenshot::image(o.0.clone()),
+            None => Screenshot::primary_window(),
+        };
+        commands.spawn(shot).observe(save_to_disk(format!("{dir}/legs_{:05.0}.png", t * 100.0)));
+    }
     let Some((_, fk, legs)) = foes.iter().find(|(c, _, _)| c.kind == *kind) else { return };
     let wants = intents.iter().find(|(c, _)| c.kind == *kind).map(|(_, c)| (c.0.move_x, c.0.move_y));
     // (Its legs' strain, every frame: the most, and how often past reach.)
@@ -5299,16 +5310,6 @@ fn legs_script(
             }
             None => info!("legs: t {t:.1}: the {kind} has no legs"),
         }
-    }
-    if let Ok(dir) = std::env::var("PLATYPUS_SHOTS")
-        && t >= *shot
-    {
-        *shot += std::env::var("PLATYPUS_SHOT_EVERY").ok().and_then(|v| v.parse().ok()).unwrap_or(2.0);
-        let shot = match &offscreen {
-            Some(o) => Screenshot::image(o.0.clone()),
-            None => Screenshot::primary_window(),
-        };
-        commands.spawn(shot).observe(save_to_disk(format!("{dir}/legs_{:05.0}.png", t * 100.0)));
     }
     if *step == 1 && t > s.duration - 1.2 {
         *step = 2;
@@ -6407,7 +6408,7 @@ fn parts_script(
     let t = s.elapsed;
     let fl = platypus_worldgen::arena::FLOOR as f32;
     if state.0 == 0 && t > 0.5 {
-        for (kind, x) in [("centipede", 900.0), ("strider", 1250.0)] {
+        for (kind, x) in [("centipede", 900.0), ("strider", 1250.0), ("tyrant", 1600.0)] {
             crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x, fl + 30.0), |e| {
                 e.insert(crate::creatures::brain::Staged);
             });
@@ -6445,10 +6446,27 @@ fn parts_script(
                         aims.push((p, "a leg".into(), e));
                     }
                 }
+                "tyrant" => {
+                    // (Its head: its picture's furthest out the way it
+                    // faces, a little back; far past its box.)
+                    if let Some(b) = &parts.body {
+                        let f = if b.flip { -1.0 } else { 1.0 };
+                        let snout = (0..120).rev().map(|i| i as f32).find(|&x| (-40..40).any(|y| b.covers(b.grip + Vec2::new(x * f, y as f32), 0.0)));
+                        if let Some(x) = snout {
+                            let y = (-40..40).map(|y| y as f32).filter(|&y| b.covers(b.grip + Vec2::new((x - 8.0) * f, y), 0.0)).sum::<f32>() / (-40..40).filter(|&y| b.covers(b.grip + Vec2::new((x - 8.0) * f, y as f32), 0.0)).count().max(1) as f32;
+                            aims.push((b.grip + Vec2::new((x - 8.0) * f, y), "its head".into(), e));
+                        }
+                    }
+                    if let Some(p) = mid(PartKind::Chain, false) {
+                        aims.push((p, "its tail".into(), e));
+                    }
+                }
                 _ => {}
             }
         }
         for (i, (at, what, e)) in aims.into_iter().enumerate() {
+            let inside = them.get(e).is_ok_and(|(_, _, k, _)| ((at - k.body.pos).abs() - k.body.half).max_element() <= 0.0);
+            let what = if inside { what } else { format!("{what} (outside its box)") };
             let from = at + Vec2::new(-14.0, 10.0);
             let vel = (at - from).normalize() * 420.0;
             crate::archery::spawn_arrow(&mut commands, &weapons, from, vel, me, None, (12.0, false), 60.0, 0.0);
@@ -6463,6 +6481,57 @@ fn parts_script(
         let Some((at, what)) = state.1.iter().min_by(|a, b| a.0.distance(f.at).total_cmp(&b.0.distance(f.at))) else { continue };
         let kind = them.get(f.target).map_or("?".to_string(), |(_, c, ..)| c.kind.clone());
         info!("parts: t {t:.2}: the {kind}, struck at {:?} ({what}, {:.0} from the aim), meant {:.1}, took {:.1}", f.at.round(), at.distance(f.at), f.meant, f.dealt);
+    }
+}
+
+/// `reach` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): every creature
+/// that walks on legs (`legs.rs`) put down in a row, held still; at 3 s,
+/// for each, how much of its body as drawn lies outside its box and every
+/// limb: what no blow could land on before its picture was struck too.
+fn reach_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    them: Query<(&crate::creatures::Creature, &Kinematics, Option<&crate::creatures::body::parts::Parts>), Without<LocalPlayer>>,
+    mut state: Local<u8>,
+) {
+    if s.name != "reach" {
+        return;
+    }
+    use crate::creatures::body::parts::PartKind;
+    const KINDS: [&str; 13] = ["centipede", "crab", "fallen_templar", "skeleton", "scorpion", "raptor", "spiderling", "spider", "tyrant", "strider", "zombie_crimson", "stalker", "zombie"];
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    if *state == 0 && s.elapsed > 0.5 {
+        for (i, kind) in KINDS.iter().enumerate() {
+            crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(260.0 + i as f32 * 130.0, fl + 2.0), |e| {
+                e.insert(crate::creatures::brain::Staged);
+            });
+        }
+        *state = 1;
+    }
+    if *state == 1 && s.elapsed > 3.0 {
+        *state = 2;
+        for (c, k, parts) in &them {
+            let Some(parts) = parts else { continue };
+            let Some(b) = &parts.body else {
+                info!("reach: {}: no body of its legs' (drawn by its own art)", c.kind);
+                continue;
+            };
+            let (mut all, mut out) = (0, 0);
+            let r = b.turned.reach() as i32;
+            for y in -r..=r {
+                for x in -r..=r {
+                    let p = b.grip + Vec2::new(x as f32, y as f32);
+                    if !b.covers(p, 0.0) {
+                        continue;
+                    }
+                    all += 1;
+                    let in_box = ((p - k.body.pos).abs() - k.body.half).max_element() <= 0.0;
+                    let on_limb = parts.list.iter().any(|q| q.kind != PartKind::Body && q.gap(p) <= 0.0);
+                    out += (!in_box && !on_limb) as u32;
+                }
+            }
+            info!("reach: {}: {out} of its body's {all} pixels outside its box and limbs ({:.0}%)", c.kind, out as f32 * 100.0 / all.max(1) as f32);
+        }
     }
 }
 

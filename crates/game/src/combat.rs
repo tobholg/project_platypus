@@ -247,7 +247,7 @@ impl MoveDef {
 /// pixel), and the atlas they're drawn from.
 #[derive(Clone)]
 pub(crate) struct Turned {
-    frames: Vec<Pixels>,
+    frames: std::sync::Arc<Vec<Pixels>>,
     side: u32,
     image: Handle<Image>,
     layout: Handle<TextureAtlasLayout>,
@@ -266,6 +266,21 @@ impl Turned {
     /// The angle a frame shows (`index`'s other way).
     pub(crate) fn angle_of(index: usize) -> f32 {
         index as f32 * STEP - 180.0
+    }
+
+    /// Is its picture there in frame `index` (mirrored if `flip`), `d` cells
+    /// from its grip (y up)?
+    pub(crate) fn opaque_at(&self, index: usize, flip: bool, d: Vec2) -> bool {
+        let half = (self.side / 2) as i32;
+        // (As `cells`: the grip's the middle pixel.)
+        let x = (if flip { -d.x } else { d.x }).round() as i32 + half;
+        let y = half - d.y.round() as i32;
+        self.frames.get(index).is_some_and(|f| f.opaque(x, y))
+    }
+
+    /// How far its square reaches from its grip (cells).
+    pub(crate) fn reach(&self) -> f32 {
+        self.side as f32 / 2.0
     }
 
     /// The blade's pixels at `angle` (from level, facing right), as offsets
@@ -399,7 +414,7 @@ impl Turned {
             RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
         ));
         let layout = layouts.add(TextureAtlasLayout::from_grid(UVec2::splat(side), cols, rows, None, None));
-        Turned { frames, side, image, layout }
+        Turned { frames: std::sync::Arc::new(frames), side, image, layout }
     }
 
     /// The sprite (atlas frame) pointing at `angle`.
