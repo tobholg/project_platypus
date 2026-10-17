@@ -18,6 +18,7 @@ pub mod boots;
 pub mod hook;
 pub mod look;
 pub mod roll;
+pub mod shield;
 pub mod stats;
 
 use std::collections::BTreeMap;
@@ -120,6 +121,9 @@ pub struct GearDef {
     /// A grappling hook's rope (`hook.rs`).
     #[serde(default)]
     pub hook: Option<hook::HookDef>,
+    /// A shield, in the off hand (`shield.rs`).
+    #[serde(default)]
+    pub shield: Option<shield::ShieldDef>,
 }
 
 /// Rocket boots: `time` s of thrust (refilled on landing), `thrust`
@@ -264,6 +268,7 @@ impl Plugin for GearPlugin {
             .init_resource::<look::Wardrobe>()
             .add_systems(Update, (outfit, apply, look::dress).chain().after(crate::creatures::def::hot_reload_creatures))
             .init_resource::<hook::RopeCanvas>()
+            .add_systems(Update, (shield::raise, shield::draw).chain())
             .add_systems(FixedUpdate, (boots::exhaust.in_set(crate::world::TickSet::Bodies), hook::rope.in_set(crate::world::TickSet::Bodies).before(crate::creatures::move_creatures)))
             .add_systems(PostUpdate, hook::draw.after(crate::creatures::interpolate).before(bevy::transform::TransformSystems::Propagate));
     }

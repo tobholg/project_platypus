@@ -66,7 +66,7 @@ pub(crate) fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWor
     }
 }
 
-fn keyboard_brain(mut held: ResMut<HeldKeys>, free: Res<FreeCamera>, mut q: Query<(&mut Controls, Option<&crate::combat::Stamina>), With<KeyboardBrain>>) {
+fn keyboard_brain(mut held: ResMut<HeldKeys>, free: Res<FreeCamera>, mut q: Query<(&mut Controls, Option<&crate::combat::Stamina>, Option<&crate::gear::shield::Guard>), With<KeyboardBrain>>) {
     let mut intent = if free.0 { Intent { aim: held.intent.aim, ..default() } } else { held.intent };
     // A press released before this tick still counts as a press this tick.
     if !free.0 {
@@ -77,11 +77,15 @@ fn keyboard_brain(mut held: ResMut<HeldKeys>, free: Res<FreeCamera>, mut q: Quer
     held.jump_tapped = false;
     held.dash_tapped = false;
     held.hook_tapped = false;
-    for (mut c, stamina) in &mut q {
+    for (mut c, stamina, guard) in &mut q {
         c.0 = intent;
         // (A dash is a dodge: too tired, no dodge.)
         if stamina.is_some_and(|s| s.cur < 1.0) {
             c.0.dash = false;
+        }
+        // (A shield up: walking, not running.)
+        if guard.is_some_and(|g| g.raised) {
+            c.0.move_x *= crate::gear::shield::GUARD_PACE;
         }
     }
 }

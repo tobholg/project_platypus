@@ -313,6 +313,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, specks_script)
             .add_systems(Update, hurt_script)
             .add_systems(Update, castle_script)
+            .add_systems(PreUpdate, shield_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ropejump_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, goldsmash_script.after(InputSystems).before(crate::magic::well::twist_input).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
@@ -7849,6 +7850,71 @@ fn ropejump_script(
             }
         }
         _ => {}
+    }
+}
+
+/// `shield` (`PLATYPUS_WORLD=arena`): the wooden shield worn, raised (the
+/// right button held, the cursor to the right); from 1 s a 20-point blow
+/// from in front every 0.4 s till the guard breaks; then, lowered and
+/// raised again, one from behind. Logs health, stamina and the guard.
+#[allow(clippy::type_complexity)]
+fn shield_script(
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut player: Query<(Entity, &Kinematics, &crate::creatures::Health, &mut crate::gear::Equipment, Option<&crate::combat::Stamina>, Option<&crate::gear::shield::Guard>), With<LocalPlayer>>,
+    (mut mouse, mut cursor): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>),
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut st: Local<(u8, f32)>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+) {
+    if s.name != "shield" {
+        return;
+    }
+    // (The dev menu shut: no god mode.)
+    menu.open = false;
+    let Ok((me, k, h, mut eq, stamina, guard)) = player.single_mut() else { return };
+    let Some(items) = items else { return };
+    let t = s.elapsed;
+    // (After the kit's on: it wears a flashlight there.)
+    if st.0 == 0 && t > 0.5 {
+        eq.worn[crate::gear::OFF_HAND] = items.id("wooden_shield").map(|i| crate::hands::items::Stack::new(i, 1));
+        st.0 = 1;
+        st.1 = 1.0;
+    }
+    if st.0 == 0 {
+        return;
+    }
+    cursor.0 = Some(k.body.pos + Vec2::new(80.0, 0.0));
+    if !mouse.pressed(MouseButton::Right) && st.0 != 3 {
+        mouse.press(MouseButton::Right);
+    }
+    let sta = stamina.map_or(0.0, |s| s.cur);
+    let (raised, broken) = guard.map_or((false, 0.0), |g| (g.raised, g.broken));
+    let blow = |side: f32| crate::combat::Hit { target: me, damage: 20.0, harm: crate::creatures::Harm::Slash, knock: Vec2::new(-side * 200.0, 60.0), stun: 0.2, at: k.body.pos + Vec2::new(side * 5.0, 2.0), dir: Vec2::new(-side, 0.0), weight: 1.0, crit: false };
+    if t >= st.1 {
+        match st.0 {
+            1 => {
+                info!("shield: before a blow: life {:.0}, stamina {sta:.0}, raised {raised}", h.hp);
+                hits.write(blow(1.0));
+                st.1 = t + 0.4;
+                if broken > 0.0 {
+                    info!("shield: the guard broke (down {broken:.1} s)");
+                    st.0 = 2;
+                    st.1 = t + 2.5;
+                }
+            }
+            2 => {
+                info!("shield: up again: life {:.0}, stamina {sta:.0}, raised {raised}; a blow from behind", h.hp);
+                hits.write(blow(-1.0));
+                st.0 = 4;
+                st.1 = t + 0.3;
+            }
+            4 => {
+                info!("shield: after the blow from behind: life {:.0}, stamina {sta:.0}", h.hp);
+                st.0 = 5;
+            }
+            _ => {}
+        }
     }
 }
 

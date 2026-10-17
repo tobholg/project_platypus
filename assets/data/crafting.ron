@@ -143,6 +143,7 @@
         (makes: "chest", needs: [("block:planks", 8)], at: "workbench"),
         (makes: "block:platform", count: 4, needs: [("block:planks", 1)], at: "workbench"),
         (makes: "block:wood_wall", count: 4, needs: [("block:planks", 1)], at: "workbench"),
+        (makes: "wooden_shield", needs: [("block:planks", 8), ("copper_bar", 1)], at: "workbench"),
         (makes: "furnace", needs: [("block:stone", 12), ("block:planks", 4), ("torch", 3)], at: "workbench"),
         (makes: "anvil", needs: [("iron_bar", 5)], at: "workbench"),
         (makes: "bow", needs: [("block:planks", 6)], at: "workbench"),
@@ -162,6 +163,7 @@
         (makes: "pocket_flashlight", needs: [("copper_bar", 4), ("block:glass", 1), ("torch", 1)], at: "anvil"),
         (makes: "flashlight", needs: [("iron_bar", 4), ("block:glass", 2), ("gold_bar", 1)], at: "anvil"),
         (makes: "mining_helmet", needs: [("copper_bar", 6), ("torch", 2)], at: "anvil"),
+        (makes: "iron_shield", needs: [("iron_bar", 8)], at: "anvil"),
         (makes: "bucket", needs: [("iron_bar", 3)], at: "anvil"),
         (makes: "flask", needs: [("block:glass", 1)], at: "furnace"),
         // Heat-proof: a mould that holds molten iron.

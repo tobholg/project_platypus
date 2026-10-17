@@ -157,6 +157,16 @@
                 "YYYYYYYYYYYYYYY",
             ])]))),
 
+        // ---- shields (the off hand: raised with the right button, gear/shield.rs) ----
+        // guard: the share of a caught blow it stops; stability: stamina a
+        // caught blow costs per point of damage; drain: stamina a second up.
+        (id: "wooden_shield", name: "Wooden shield", color: (150, 104, 60),
+            about: "Planks and a boss. Hold the right button to raise it.",
+            gear: (slot: OffHand, stats: { Armor: 2 }, shield: (guard: 0.8, stability: 1.3, drain: 5))),
+        (id: "iron_shield", name: "Iron shield", color: (160, 166, 180),
+            about: "Heavy, steady: a blow costs little to catch. Hold the right button to raise it.",
+            gear: (slot: OffHand, stats: { Armor: 5, Poise: 5 }, shield: (guard: 1.0, stability: 0.8, drain: 7))),
+
         // ---- iron (Heavy): warriors ----
         (id: "iron_helm", name: "Iron helm", color: (168, 176, 194),
             gear: (slot: Head, weight: Heavy, stats: { Armor: 8, Poise: 5 },

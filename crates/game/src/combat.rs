@@ -1468,6 +1468,7 @@ fn apply_hits(
     parts: Query<&crate::creatures::body::parts::Parts>,
     mut tumbles: Query<&mut crate::creatures::body::tumble::Tumble>,
     (bodies, mut masks, engulfing): (Query<&Animator>, ResMut<crate::creatures::body::wounds::LayerMasks>, Query<(), With<crate::creatures::body::goo::Engulfing>>),
+    (mut guards, items): (Query<(&mut crate::gear::shield::Guard, &mut Stamina, &crate::gear::Equipment)>, Option<Res<crate::hands::items::Items>>),
 ) {
     let Some(weapons) = weapons else { return };
     for r in recoils.read() {
@@ -1508,7 +1509,27 @@ fn apply_hits(
         // (A slime with you in it: your blows from inside hurt it more.)
         let inside = if engulfing.contains(h.target) { INSIDE } else { 1.0 };
         let mult = part.or_else(zone).unwrap_or(1.0) * inside;
-        let damage = h.damage * mult;
+        let mut damage = h.damage * mult;
+        // A shield raised against it, from the side it faces: caught (a
+        // little through, stamina paid), or the guard broken (through in
+        // proportion to what stamina couldn't pay).
+        let mut guarded: Option<bool> = None;
+        if let (Ok((mut g, mut st, eq)), Some(items)) = (guards.get_mut(h.target), items.as_deref())
+            && g.raised
+            && let Some(shield) = crate::gear::shield::worn(items, eq)
+            && (h.at.x - k.body.pos.x) * k.loco.facing >= -1.0
+        {
+            let (through, cost, broke) = crate::gear::shield::catch(shield, st.cur, damage);
+            st.spend(cost);
+            damage = through;
+            if broke {
+                crate::gear::shield::break_guard(&mut g);
+            }
+            guarded = Some(broke);
+            let at = k.body.pos + Vec2::new(k.loco.facing * k.body.half.x, 0.0);
+            sounds.write(crate::sound::PlaySound::at(if broke { "parry" } else { "clang" }, at));
+            sparks.emit(&weapons.file.hit, weapons.file.hit.count as usize, at, -h.dir, Vec2::ZERO);
+        }
         let dealt = health.harm(damage, h.harm);
         let reaction = crate::creatures::body::hurt::reaction(damage, dealt);
         felt.write(Felt { target: h.target, meant: damage, dealt, share: dealt / health.max.max(1.0), harm: h.harm, at: h.at, dir: h.dir, weight: h.weight, crit: h.crit });
@@ -1525,7 +1546,8 @@ fn apply_hits(
             s.since = 0.0;
             // (Worn down by the blow; one to a weak spot or the head
             // staggers sooner.)
-            s.left -= h.damage * mult.max(1.0);
+            // (Caught on a shield, only what got through.)
+            s.left -= if guarded.is_some() { damage } else { h.damage * mult.max(1.0) };
             if s.left > 0.0 {
                 // Shrugged off.
                 knock *= 0.25;
@@ -1542,6 +1564,15 @@ fn apply_hits(
         if lethal {
             knock = (knock * DEATH_KNOCK + Vec2::Y * (DEATH_LIFT + knock.length() * 0.12)) / heft.max(1.0);
             stun = stun.max(0.5);
+        }
+        // (Caught on a shield: a shove, no stun; the guard broken: a stagger.)
+        match guarded {
+            Some(false) => {
+                knock *= 0.3;
+                stun = 0.0;
+            }
+            Some(true) => stun = stun.max(crate::gear::shield::BROKEN_STAGGER),
+            None => {}
         }
         let k = &mut *k;
         if stun > 0.0 {
