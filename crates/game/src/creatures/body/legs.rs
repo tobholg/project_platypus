@@ -622,6 +622,19 @@ impl Foot {
     }
 }
 
+/// A walker turned round keeps facing so at least this long (s), unless
+/// it's going this fast (cells/s) the other way; on a wall or the ceiling
+/// it turns to the way it goes along it only going faster than this.
+const TURN_HOLD: f32 = 0.25;
+const TURN_RUSH: f32 = 60.0;
+
+/// `TURN_HOLD`, or `PLATYPUS_TURN_HOLD` (0: as it was, to compare).
+fn turn_hold() -> f32 {
+    static K: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+    *K.get_or_init(|| std::env::var("PLATYPUS_TURN_HOLD").ok().and_then(|v| v.parse().ok()).unwrap_or(TURN_HOLD))
+}
+const TURN_GOING: f32 = 15.0;
+
 /// How long a drawn foot takes to catch up with where it should be
 /// (seconds, about), and how fast a leg can swing (cells/s, for each cell
 /// of its reach; on top of the body's own speed).
@@ -669,6 +682,8 @@ pub struct Legs {
     /// Side: which way it faces (1 right, -1 left), its tilt (radians,
     /// nose up), and its grip's height (world y) as it rides its feet.
     facing: f32,
+    /// Seconds before it may turn round again (`TURN_HOLD`).
+    turn_wait: f32,
     tilt: f32,
     ride: Option<Vec2>,
     /// Side: the surface it's on, as a turn from the ground (radians: a
@@ -775,6 +790,11 @@ pub(crate) struct LegEyes;
 struct LegStinger;
 
 impl Legs {
+    /// Which way it's drawn facing (side: 1 right, -1 left).
+    pub fn facing(&self) -> f32 {
+        self.facing
+    }
+
     /// Leg `i`'s preferred way, from the heading (radians): fanned front to
     /// back, alternating sides. (Side: down to where its foot rests.)
     fn way(&self, i: usize) -> f32 {
@@ -1140,7 +1160,7 @@ fn grow_legs(
             commands.entity(e).add_child(s);
         }
         let facing = if k.loco.facing < 0.0 { -1.0 } else { 1.0 };
-        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), hold: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, grip: Vec2::ZERO, turrets: Vec::new(), lock: None, face: None, drawn: None, def };
+        let mut legs = Legs { feet: Vec::new(), heading: 0.0, body, eyes, stinger, offset: Vec2::ZERO, facing, turn_wait: 0.0, tilt: 0.0, ride: None, surface: 0.0, slope: 0.0, arms: Vec::new(), claws: Vec::new(), hold: Vec::new(), air: 0.0, strain: 0.0, last: None, phase: 0.0, chains: Vec::new(), aim: None, snaps: (0, 0, 0), before: Vec::new(), before_body: None, on_back, other: 0.0, segs: Vec::new(), trail: std::collections::VecDeque::new(), seg_phase: 0.0, settled: 0.0, backing: 0.0, piled: (0, 0), aloft: 0.0, dangle: 0.0, grip: Vec2::ZERO, turrets: Vec::new(), lock: None, face: None, drawn: None, def };
         // Its arms' claws: turned sprites at their wrists.
         for arm in legs.def.arms.clone() {
             let claw = arm.claw.and_then(|name| {
@@ -1308,11 +1328,23 @@ fn walk(
             legs.facing
         } else if legs.surface.abs() < 0.3 {
             if k.loco.facing < 0.0 { -1.0 } else { 1.0 }
-        } else if going.abs() > 5.0 {
+        } else if going.abs() > TURN_GOING {
             going.signum()
         } else {
             legs.facing
         };
+        // (Turned, it holds a while, unless it's going fast the other way:
+        // on a wall in a tight cave its way along it jittered round zero,
+        // and it flipped round every tick.)
+        legs.turn_wait = (legs.turn_wait - dt).max(0.0);
+        let facing = if (facing < 0.0) != (legs.facing < 0.0) && legs.turn_wait > 0.0 && going * facing < TURN_RUSH {
+            legs.facing
+        } else {
+            facing
+        };
+        if (facing < 0.0) != (legs.facing < 0.0) {
+            legs.turn_wait = turn_hold();
+        }
         let turned = side && (facing < 0.0) != (legs.facing < 0.0);
         // (Put down somewhere else: drawn there at once. Turned round:
         // the feet planted afresh, but drawn swinging over.)

@@ -98,6 +98,14 @@ const ROCKET_GROUND_REFILL: f32 = 2.0;
 const BREACH: f32 = 0.85;
 const BREACH_SPEED: f32 = 1.0;
 
+/// A creature turned round keeps facing so this long (s) by default
+/// (`MovementStats::turn_hold`); aiming, it turns only for what's this far
+/// to one side (cells); going this share of its run speed the other way, it
+/// turns at once.
+const TURN_HOLD: f32 = 0.25;
+const AIM_DEAD: f32 = 4.0;
+const TURN_RUSH: f32 = 0.5;
+
 /// Per-creature movement tuning, loaded from creature RON files.
 /// Units: cells and seconds.
 #[derive(Clone, Debug, Deserialize)]
@@ -175,6 +183,11 @@ pub struct MovementStats {
     /// `ROCKET_STEER` times as hard; the speed's kept after, till it lands
     /// or turns.
     pub rocket_run: f32,
+    /// Turned round, it keeps facing that way at least this long (s), unless
+    /// it's moving fast the other way: a creature steering back and forth
+    /// in a tight cave flipped round every tick. 0: it turns at once (the
+    /// player).
+    pub turn_hold: f32,
 }
 
 impl MovementStats {
@@ -196,6 +209,7 @@ impl MovementStats {
 impl Default for MovementStats {
     fn default() -> Self {
         MovementStats {
+            turn_hold: TURN_HOLD,
             run_speed: 142.0,
             ground_accel: 2100.0,
             ground_decel: 2700.0,
@@ -268,6 +282,8 @@ pub struct Locomotion {
     pub state: MoveState,
     /// +1 right, -1 left.
     pub facing: f32,
+    /// Seconds before it may turn round again (`turn_hold`).
+    turn_wait: f32,
     coyote: f32,
     buffer: f32,
     air_jumps_left: u8,
@@ -330,6 +346,7 @@ impl Default for Locomotion {
         Locomotion {
             state: MoveState::Air,
             facing: 1.0,
+            turn_wait: 0.0,
             coyote: 0.0,
             buffer: 0.0,
             air_jumps_left: 0,
@@ -487,16 +504,26 @@ impl Locomotion {
             return ev;
         }
 
-        if intent.move_x != 0.0 {
-            self.facing = intent.move_x.signum();
-        }
-        // Aiming at something (the player at the cursor): it faces that,
-        // whichever way it moves.
+        // Which way it would face: where it steers, or what it aims at (the
+        // player at the cursor) whichever way it moves; a creature only
+        // once it's well to one side (one passing over or under it doesn't
+        // flip it). Turned, it holds a while (`turn_hold`), unless it's
+        // going fast the other way already.
+        let mut want = (intent.move_x != 0.0).then(|| intent.move_x.signum());
         if intent.aim != Vec2::ZERO {
             let d = intent.aim.x - body.pos.x;
-            if d.abs() > 0.75 {
-                self.facing = d.signum();
+            let dead = if s.turn_hold > 0.0 { AIM_DEAD } else { 0.75 };
+            if d.abs() > dead {
+                want = Some(d.signum());
             }
+        }
+        self.turn_wait = (self.turn_wait - dt).max(0.0);
+        if let Some(w) = want
+            && w != self.facing
+            && (self.turn_wait <= 0.0 || body.vel.x * w > s.run_speed * TURN_RUSH)
+        {
+            self.facing = w;
+            self.turn_wait = s.turn_hold;
         }
 
         // Dash: fixed speed, no gravity, can't be steered.

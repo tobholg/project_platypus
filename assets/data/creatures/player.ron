@@ -14,6 +14,9 @@
     // 8 s after any hurt, then a little at a time (empty to full in ~70 s).
     regen: (per_sec: 1.4, pause: 8, rests: true),
     movement: (
+        // (It turns the moment you do: the creatures' hold, against their
+        // flipping round in tight places, isn't for you.)
+        turn_hold: 0,
         run_speed: 143,
         ground_accel: 2100,
         ground_decel: 2700,

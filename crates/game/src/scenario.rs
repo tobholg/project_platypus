@@ -5821,7 +5821,7 @@ struct WebWatch {
 fn spider_script(
     mut commands: Commands,
     s: Res<Scenario>,
-    sim: Res<SimWorld>,
+    mut sim: ResMut<SimWorld>,
     mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>, Has<crate::combat::Invulnerable>), With<LocalPlayer>>,
     spiders: Query<(&Kinematics, &crate::creatures::moves::Moves, Option<&crate::creatures::brain::senses::Alert>, &crate::creatures::Creature, Entity), Without<LocalPlayer>>,
     book: Res<crate::creatures::moves::MoveBook>,
@@ -5829,9 +5829,25 @@ fn spider_script(
     mut state: Local<(u8, f32, Option<String>)>,
     (mut web, strands, offscreen): (Local<WebWatch>, Query<&crate::creatures::moves::web::Strand>, Option<Res<crate::camera::Offscreen>>),
     (mut keys, mut mouse, mut cursor): (ResMut<ButtonInput<KeyCode>>, ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>),
+    // (The nearest spider's facing last frame, and its turns: logged a
+    // second at a time, to see it doesn't flip round and round.)
+    (mut turns, rigs): (Local<(f32, u32, u32)>, Query<&crate::creatures::body::legs::Legs>),
 ) {
     if s.name != "spider" {
         return;
+    }
+    if let Some((_, .., e)) = spiders.iter().filter(|x| x.3.kind == "spider").min_by(|x, y| x.0.body.pos.distance_squared(player.single().map_or(Vec2::ZERO, |p| p.1.body.pos)).total_cmp(&y.0.body.pos.distance_squared(player.single().map_or(Vec2::ZERO, |p| p.1.body.pos))))
+        && let Ok(l) = rigs.get(e)
+    {
+        if turns.0 != 0.0 && l.facing() != turns.0 {
+            turns.1 += 1;
+            turns.2 += 1;
+        }
+        turns.0 = l.facing();
+    }
+    if (s.elapsed + 1e-3).fract() < 0.02 && turns.1 > 0 {
+        info!("spider: t {:.0} turned round {} times this second ({} in all)", s.elapsed, turns.1, turns.2);
+        turns.1 = 0;
     }
     let Ok((me, mut k, mut h, coat, untouchable)) = player.single_mut() else { return };
     let t = s.elapsed;
@@ -5860,6 +5876,22 @@ fn spider_script(
             let floor = platypus_worldgen::arena::FLOOR as f32;
             k.body.pos = Vec2::new(840.0, floor + 12.0);
             k.prev_pos = k.body.pos;
+            // (`PLATYPUS_SPIDER_TUNNEL=1`: a winding tunnel of stone between
+            // them, 34 high, its floor rising and falling: a tight cave, to
+            // see the spider doesn't flip round and round in it.)
+            if std::env::var("PLATYPUS_SPIDER_TUNNEL").is_ok()
+                && let Some(stone) = sim.materials().id("stone")
+            {
+                let f = floor as i32;
+                for x in 780..1080 {
+                    let wave = ((x as f32 - 780.0) / 300.0 * std::f32::consts::TAU * 1.5).sin() * 14.0;
+                    let (lo, hi) = (f + wave as i32, f + wave as i32 + 34);
+                    for y in f..f + 90 {
+                        let c = if y >= lo && y < hi { platypus_sim::Cell::AIR } else { platypus_sim::Cell::new(stone, (x * 13 + y * 7) as u8) };
+                        sim.world.set(CellPos::new(x, y), c);
+                    }
+                }
+            }
             // (Facing the player: facing away, it sees a share as far, and
             // whether it ever turned round was up to its wander.)
             crate::creatures::def::spawn_creature(&mut commands, "spider", Vec2::new(1020.0, floor), |e| {
