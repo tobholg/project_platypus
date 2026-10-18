@@ -65,15 +65,17 @@ fn draw(
             Landing::Rain => {
                 // Fading in as it leaves the cloud (rain drops live 900 ticks).
                 let age = 900u16.saturating_sub(p.life);
-                rgba = [96, 142, 222, (190 * age.min(10) / 10) as u8];
+                rgba = [168, 184, 212, (130 * age.min(10) / 10) as u8];
                 tall = (1.0 + p.vel[1].abs()).min(6.0) as i32;
             }
             Landing::Snow => rgba = [244, 246, 250, 230],
             _ => {}
         }
         let (x, y) = (p.pos[0].floor() as i32, p.pos[1].floor() as i32);
+        // (A streak trails back up the way it came: slanted with it.)
+        let slope = if p.vel[1].abs() > 0.01 { -p.vel[0] / p.vel[1].abs() } else { 0.0 };
         for dy in 0..tall {
-            px.put(x, y + dy, rgba);
+            px.put(x + (slope * dy as f32).round() as i32, y + dy, rgba);
         }
     }
 }

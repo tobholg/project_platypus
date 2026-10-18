@@ -357,6 +357,7 @@ impl Plugin for LightPlugin {
             .insert_resource(LightToggles { enabled: std::env::var("PLATYPUS_NOLIGHT").is_err(), carry: Carry::Nothing, headlamp: false })
             .init_resource::<Cones>()
             .add_systems(Update, (from_gear, shine))
+            .init_resource::<Gloom>()
             .insert_resource(Daylight { skipped: skip, ..default() })
             .init_resource::<Flashes>()
             .init_resource::<LightMetrics>()
@@ -518,12 +519,24 @@ fn sky_lights(time: f32, light: Rgb) -> [([f32; 2], Rgb); 3] {
     [(sun_dir(time), light), ([s, -c], diffuse), ([-s, -c], diffuse)]
 }
 
+/// How heavy the weather is round the view (0..1 each), eased: how
+/// overcast, how hard it rains. The light dims and cools with it, the sky
+/// darkens, the far ranges haze over (`backdrop`).
+#[derive(Resource, Default, Clone, Copy)]
+pub struct Gloom {
+    pub cover: f32,
+    pub rain: f32,
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn update_daylight(
     sim: Res<SimWorld>,
     settings: Res<LightSettings>,
     flash: Res<SkyFlash>,
     toggles: Res<LightToggles>,
+    time: Res<Time>,
     mut day: ResMut<Daylight>,
+    mut gloom: ResMut<Gloom>,
     mut clear: ResMut<ClearColor>,
     cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>,
 ) {
@@ -532,16 +545,29 @@ pub(crate) fn update_daylight(
     day.days = (hours / 24.0) as f64 + sim.world.tick() as f64 / day_ticks;
     day.time = day.days.fract() as f32;
     let (mut light, mut color) = sky_at(day.time, settings.moonlight);
-    // Clouds overhead: dimmer and greyer.
+    // Weather overhead: as it clouds over and rains, the light comes in
+    // dimmer, flatter and cooler, the sky a heavy blue-grey, darker in a
+    // downpour; easing in and out over seconds, as a front comes over.
     if let Some(w) = sim.world.weather() {
         let (tf, loader) = *cam;
         let x = tf.translation.x as i32;
         let hw = loader.half_extent.x as i32;
-        let k = ((w.overcast(x - hw, x + hw) - 0.15) / 0.45).clamp(0.0, 1.0);
+        let cover = ((w.overcast(x - hw, x + hw) - 0.15) / 0.45).clamp(0.0, 1.0);
+        let n = 9;
+        let rain = (0..n).map(|i| w.rain_at(x - hw + i * hw * 2 / (n - 1))).sum::<f32>() / n as f32;
+        let rain = (rain / platypus_sim::weather::STORM_RAIN).clamp(0.0, 1.0);
+        let k = (time.delta_secs() / GLOOM_EASE).min(1.0);
+        gloom.cover += (cover - gloom.cover) * k;
+        gloom.rain += (rain - gloom.rain) * k;
+        let (cover, rain) = (gloom.cover, gloom.rain);
         let grey = (light[0] + light[1] + light[2]) / 3.0;
-        light = lerp3(light, [grey * 0.6; 3], k * 0.6);
-        let cgrey = [0.46, 0.52, 0.6];
-        color = lerp3(color, cgrey.map(|c| c * (0.4 + 0.6 * grey.min(1.0))), k);
+        // (An overcast sky is a pale, bright grey, a downpour's a slate
+        // one; the land under it flatter, cooler and a little dim.)
+        let cool = [grey * 0.84, grey * 0.88, grey * 0.97];
+        let dim = 1.0 - 0.1 * cover - 0.16 * rain;
+        light = lerp3(light, cool, (cover * 0.7).min(1.0)).map(|v| v * dim);
+        let heavy = lerp3([0.7, 0.73, 0.78], [0.47, 0.51, 0.57], rain).map(|c| c * (0.45 + 0.55 * grey.min(1.0)));
+        color = lerp3(color, heavy, (cover * 0.9).min(1.0));
     }
     // Lightning lights the whole sky.
     light = light.map(|c| c.max(flash.0 * 1.2));
@@ -552,6 +578,9 @@ pub(crate) fn update_daylight(
     let _ = toggles;
     clear.0 = Color::srgb(color[0], color[1], color[2]);
 }
+
+/// The weather's gloom follows it over this many seconds.
+const GLOOM_EASE: f32 = 4.0;
 
 /// Cells per light texel at a zoom: about 6 screen pixels or more (a power
 /// of two: texels tile a chunk). (Zoom 2 at 2 cells doubled the frame time:

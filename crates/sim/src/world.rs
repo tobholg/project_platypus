@@ -1599,17 +1599,19 @@ impl World {
             weather.feed(x, VAPOUR_MOISTURE);
         }
         let out = weather.step(self.tick, wind);
+        let top = weather.y1();
         if out.is_empty() {
             return;
         }
         let (water, snow) = (self.materials.id("water"), self.materials.id("snow"));
         let mut rng = self.rng_for(0x5A1F, CellPos::new(0, 0));
-        // Clouds are often above the loaded area (zoomed in): drops start at
-        // the top of what's loaded below them.
+        // Rain and snow come in from above, not out of a cloud in the world
+        // (its band could sit inside a mountain): drops start at the top of
+        // what's loaded in their column, under the sky's band.
         let out: Vec<_> = out
             .into_iter()
             .filter_map(|mut p| {
-                p.y = self.top_loaded(p.x, p.y)?;
+                p.y = self.top_loaded_far(p.x, top)?;
                 Some(p)
             })
             .collect();
@@ -1643,16 +1645,24 @@ impl World {
             let frozen = self.climate.ambient(p.x, ground) <= 0;
             let Some(id) = (if frozen { snow } else { water }) else { continue };
             let n = stochastic_round(p.amount * DROPS_PER_MOISTURE * share, &mut rng);
+            // (It comes in at a slant: with the wind, a little even in a
+            // still one, more in a storm.)
+            let storm = (p.amount / weather::STORM_RAIN).min(1.5);
+            let lean = (if wind.abs() < 0.05 { RAIN_LEAN } else { RAIN_LEAN * wind.signum() } + wind * 1.1) * (1.0 + 0.6 * storm);
             for _ in 0..n {
-                // Anywhere in the lower cloud, so drops don't all start on one line.
                 let x = p.x as f32 + rng.next_u8() as f32 / 256.0 * weather::TEXEL as f32;
-                let y = p.y as f32 + rng.next_u8() as f32 / 256.0 * 24.0;
+                let y = p.y as f32 - rng.next_u8() as f32 / 256.0 * 24.0;
+                // (Not out of the rock: the top of what's loaded is under
+                // the ground when you're deep down.)
+                if self.get(CellPos::from_world(x, y)).is_none_or(|c| !c.is_air()) {
+                    continue;
+                }
                 let cell = self.materials.spawn(id, &mut rng);
                 let particle = if frozen {
                     let drift = (rng.next_u8() as f32 / 255.0 - 0.5) * 0.45;
-                    Particle { gravity: 0.03, ..Particle::new([x, y], [drift + wind * 0.3, -0.45], cell, 1_500, Landing::Snow) }
+                    Particle { gravity: 0.03, ..Particle::new([x, y], [drift + lean * 0.35, -0.45], cell, 1_500, Landing::Snow) }
                 } else {
-                    Particle { gravity: RAIN_GRAVITY, ..Particle::new([x, y], [wind * 0.9, -2.25], cell, 900, Landing::Rain) }
+                    Particle { gravity: RAIN_GRAVITY, ..Particle::new([x, y], [lean, -2.25], cell, 900, Landing::Rain) }
                 };
                 self.particles.push(particle);
             }
@@ -1783,9 +1793,9 @@ impl World {
     /// background (a tree) below the cloud base (or `from_y`), sets it alight
     /// and scorches it.
     fn lightning(&mut self, x: i32, from_y: i32) {
-        // Out of the cloud's base (it may be above what's loaded; the bolt
-        // is drawn from there, the strike traced from what's loaded).
-        let top = self.weather.as_ref().and_then(|w| w.cloud_base(x)).map_or(from_y, |b| b.min(from_y));
+        // From above (the sky's, not a cloud's in the world): the bolt is
+        // drawn from `from_y`, the strike traced from what's loaded.
+        let top = from_y;
         let Some(start) = self.top_loaded(x, top) else { return };
         let mats = self.materials.clone();
         let mut y = start;
@@ -1879,6 +1889,21 @@ impl World {
                     .is_some_and(|c| !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder | Kind::Liquid))
             })
             .unwrap_or(y - 450)
+    }
+
+    /// The highest loaded cell at or below `y` in column `x`, searching as
+    /// far down as it takes (rain and snow start there: the sky's band may
+    /// be far above what's loaded).
+    fn top_loaded_far(&self, x: i32, y: i32) -> Option<i32> {
+        let mut p = CellPos::new(x, y);
+        for _ in 0..FAR_DOWN {
+            if self.is_loaded(p.chunk()) {
+                return Some(p.y);
+            }
+            let origin = p.chunk().origin();
+            p = CellPos::new(x, origin.y - 1);
+        }
+        None
     }
 
     /// The highest loaded cell at or below `y` in column `x` (searching a
@@ -2290,6 +2315,10 @@ impl World {
 
 /// Raindrops fall at this share of gravity: with air drag, ~2 cells a tick.
 const RAIN_GRAVITY: f32 = 0.12;
+/// Rain's slant in a still wind (cells a tick across, against 2.25 down).
+const RAIN_LEAN: f32 = 0.35;
+/// How far down (chunks) rain looks for what's loaded under the sky.
+const FAR_DOWN: usize = 400;
 /// A body faster than this (cells/tick) splashes liquid out instead of
 /// pushing it up.
 const SPLASH_SPEED: f32 = 3.75;

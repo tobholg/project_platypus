@@ -316,7 +316,7 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
 
 /// Each tile where its layer puts it for the camera now, as strong as its
 /// look's share; the surface's faded out underground, the cave's in.
-fn place(bd: Res<Backdrops>, zoom: Res<crate::camera::Zoom>, cam: Single<&Transform, (With<MainCamera>, Without<Sprite>)>, mut sprites: Query<(&mut Transform, &mut Sprite), Without<MainCamera>>) {
+fn place(bd: Res<Backdrops>, zoom: Res<crate::camera::Zoom>, gloom: Res<crate::light::Gloom>, cam: Single<&Transform, (With<MainCamera>, Without<Sprite>)>, mut sprites: Query<(&mut Transform, &mut Sprite), Without<MainCamera>>) {
     let c = cam.translation.truncate();
     // (The ranges snapped to whole screen pixels from the camera: crisp,
     // and gliding a pixel at a time; snapped to whole cells they hopped 2
@@ -326,7 +326,14 @@ fn place(bd: Res<Backdrops>, zoom: Res<crate::camera::Zoom>, cam: Single<&Transf
     for (key, tile) in &bd.tiles {
         let exact = bd.centre(*key, c);
         let at = if key.part == Part::Clouds { exact } else { c + ((exact - c) * px).round() / px };
-        let alpha = bd.shown * bd.weights[key.v];
+        // (In heavy weather the ranges haze over into the sky, the far ones
+        // most; the far clouds thin into the overcast.)
+        let haze = gloom.rain * 0.55 + gloom.cover * 0.25;
+        let far = match key.part {
+            Part::Land => (1.0 - key.k as f32 * 0.18).max(0.3),
+            Part::Clouds => 0.8,
+        };
+        let alpha = bd.shown * bd.weights[key.v] * (1.0 - haze * far).max(0.0);
         let skirt = tile.skirt.map(|s| (s, at.y - HEIGHT as f32 / 2.0 - SKIRT / 2.0));
         for (e, y) in std::iter::once((tile.entity, at.y)).chain(skirt) {
             if let Ok((mut tf, mut sprite)) = sprites.get_mut(e) {

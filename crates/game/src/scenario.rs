@@ -699,9 +699,10 @@ fn rain_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
             }
             *step = 1;
         }
-        // What F5 does.
+        // What F5 does (`PLATYPUS_RAIN_CLEAR=1`: F6's clear sky instead,
+        // to compare).
         1 if s.elapsed > 3.0 => {
-            sim.queue(WorldEdit::Weather { x, radius: 600, storm: true });
+            sim.queue(WorldEdit::Weather { x, radius: 600, storm: std::env::var("PLATYPUS_RAIN_CLEAR").is_err() });
             *step = 2;
         }
         // What F7 does, onto a spot left of the player.

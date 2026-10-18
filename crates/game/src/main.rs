@@ -67,7 +67,6 @@ mod spikes;
 mod talk;
 mod tempo;
 mod title;
-mod sky;
 mod sound;
 mod tools;
 mod traps;
@@ -180,7 +179,6 @@ fn main() {
             props::PropsPlugin,
             rigid::RigidPlugin,
             particles::ParticlesPlugin,
-            sky::SkyPlugin,
             creatures::CreaturesPlugin,
             debug::DebugPlugin,
             fx::FxPlugin,

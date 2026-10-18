@@ -105,6 +105,10 @@ fn wind_push(landing: Landing) -> f32 {
     }
 }
 
+/// Snow's flutter: a sway this hard (cells/tick²), a beat this long (ticks).
+const FLUTTER: f32 = 0.012;
+const FLUTTER_TICKS: u32 = 90;
+
 /// Can a particle fly through this cell?
 fn open(mats: &MaterialTable, c: Cell) -> bool {
     c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas | Kind::Fire | Kind::Plant)
@@ -206,9 +210,22 @@ fn fly_one(p: &mut Particle, world: &impl ParticleView) -> Flight {
         return dead(None, None);
     }
     p.vel[1] -= GRAVITY * p.gravity;
+    // (Rain keeps the slant it came in at, the wind's when it started: it
+    // fell nearly straight once drag took its lean.)
+    let lean = p.vel[0];
     p.vel[0] += world.wind() * wind_push(p.landing);
+    // Snow flutters as it falls, each flake to its own beat (a triangle
+    // wave over its life: no trig in the sim, for co-op's sake).
+    if p.landing == Landing::Snow {
+        let beat = ((p.life as u32 + p.cell.shade as u32 * 7) % FLUTTER_TICKS) as f32 / FLUTTER_TICKS as f32;
+        let tri = if beat < 0.5 { beat * 4.0 - 1.0 } else { 3.0 - beat * 4.0 };
+        p.vel[0] += tri * FLUTTER;
+    }
     p.vel[0] *= DRAG;
     p.vel[1] *= DRAG;
+    if p.landing == Landing::Rain {
+        p.vel[0] = lean;
+    }
     let speed = p.vel[0].abs().max(p.vel[1].abs());
     if speed > MAX_SPEED {
         p.vel[0] *= MAX_SPEED / speed;
