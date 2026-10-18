@@ -781,6 +781,19 @@ pub struct LiveBlade {
 #[derive(Resource, Default)]
 pub struct LiveBlades(pub Vec<LiveBlade>);
 
+impl LiveBlades {
+    /// Where a blade (not `me`'s) meets the line from `a` to `b` (a toad's
+    /// tongue, a spider's silk), if one does.
+    pub fn across(&self, a: Vec2, b: Vec2, me: Entity) -> Option<Vec2> {
+        let ab = b - a;
+        let near = |p: Vec2| {
+            let k = if ab.length_squared() > 1e-6 { ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0) } else { 0.0 };
+            p.distance(a + ab * k)
+        };
+        self.0.iter().filter(|bl| bl.who != me).find_map(|bl| bl.cells.iter().find(|c| near(**c) <= 2.5).copied())
+    }
+}
+
 /// A swing under way.
 #[derive(Component, Debug)]
 pub struct Swing {

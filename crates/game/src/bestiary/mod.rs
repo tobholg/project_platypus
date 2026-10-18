@@ -235,6 +235,7 @@ fn move_line(m: &MoveDef) -> MoveLine {
             Act::Grab(_) => Some("grab".into()),
             Act::Throw { .. } => Some("throw".into()),
             Act::Beam { spell, .. } => Some(format!("beam {spell}")),
+            Act::Web(w) => Some(format!("web out to {:.0}, reeled in", w.reach)),
             Act::Sound(_) => None,
         })
         .collect::<Vec<_>>()
