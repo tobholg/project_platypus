@@ -123,6 +123,59 @@ pub struct ItemDef {
     /// block (from materials.ron: the pick-up filters).
     #[serde(skip)]
     pub loot: platypus_sim::Loot,
+    /// What sort of thing it is, where what it does doesn't say (`Items::category`).
+    #[serde(default)]
+    pub category: Option<Category>,
+}
+
+/// What sort of thing an item is: the crafting panel's tabs and the order
+/// quick sort lays the pack out in. Worked out from what it does (`Items::category`),
+/// unless items.ron says (`category:`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize)]
+pub enum Category {
+    Tools,
+    Weapons,
+    Armour,
+    Accessories,
+    Lights,
+    Magic,
+    Potions,
+    Furniture,
+    Building,
+    Materials,
+    Other,
+}
+
+impl Category {
+    pub const ALL: [Category; 11] = [
+        Category::Tools,
+        Category::Weapons,
+        Category::Armour,
+        Category::Accessories,
+        Category::Lights,
+        Category::Magic,
+        Category::Potions,
+        Category::Furniture,
+        Category::Building,
+        Category::Materials,
+        Category::Other,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Category::Tools => "Tools",
+            Category::Weapons => "Weapons",
+            Category::Armour => "Armour",
+            Category::Accessories => "Accessories",
+            Category::Lights => "Lights",
+            Category::Magic => "Magic",
+            Category::Potions => "Potions",
+            Category::Furniture => "Furniture",
+            Category::Building => "Building",
+            Category::Materials => "Materials",
+            Category::Other => "Other",
+        }
+    }
 }
 
 /// What a held thing gives off at its tip: light, and sparks (`count` of
@@ -229,7 +282,7 @@ impl Items {
                 if let Some(first) = name.get_mut(0..1) {
                     first.make_ascii_uppercase();
                 }
-                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id), about: None, gear: None, aura: None, light: None, loot: def.loot });
+                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id), about: None, gear: None, aura: None, light: None, loot: def.loot, category: None });
             }
         }
         let mut by_id = HashMap::new();
@@ -299,6 +352,42 @@ impl Items {
     /// Most units in one slot.
     pub fn stack_units(&self, id: ItemId) -> u32 {
         self.def(id).stack * self.unit(id)
+    }
+
+    /// What sort of thing an item is: what it does (a pickaxe's a tool, a
+    /// focus magic), where it's worn (a helmet's armour, a ring an
+    /// accessory), what its material is as loot (ore and gems are
+    /// materials, the rest of the blocks building); items.ron's word first.
+    pub fn category(&self, id: ItemId) -> Category {
+        use crate::gear::Slot;
+        let d = self.def(id);
+        if let Some(c) = d.category {
+            return c;
+        }
+        match &d.use_ {
+            Use::Mine { .. } | Use::Vessel { .. } => Category::Tools,
+            Use::Melee(_) | Use::Bow(_) | Use::Throw(Throwable::Bomb) => Category::Weapons,
+            Use::Focus { .. } => Category::Magic,
+            Use::Potion { .. } => Category::Potions,
+            Use::Station(_) | Use::Chest => Category::Furniture,
+            Use::Torch | Use::Throw(Throwable::Glowstick) => Category::Lights,
+            Use::Block(_) => match d.loot {
+                platypus_sim::Loot::Ore | platypus_sim::Loot::Gem => Category::Materials,
+                _ => Category::Building,
+            },
+            // (Worn: by where; a light to hold, in the off hand.)
+            Use::None => match &d.gear {
+                Some(g) => match g.slot {
+                    Slot::Head | Slot::Body | Slot::Hands | Slot::Legs | Slot::Feet => Category::Armour,
+                    Slot::Trinket | Slot::Hook | Slot::Back => Category::Accessories,
+                    Slot::Held => Category::Weapons,
+                    Slot::OffHand if d.light.is_some() => Category::Lights,
+                    Slot::OffHand => Category::Armour,
+                },
+                None if d.light.is_some() => Category::Lights,
+                None => Category::Materials,
+            },
+        }
     }
 }
 
@@ -434,6 +523,20 @@ impl Inventory {
     pub fn count(&self, item: ItemId) -> u32 {
         self.slots.iter().flatten().filter(|s| s.item == item).map(|s| s.count).sum()
     }
+
+    /// Quick sort (the pack's button): the stacks in `range` merged where
+    /// they're the same, then laid out from its start by category, then
+    /// name (the finest gear of a kind first, then the fullest stack).
+    pub fn sort(&mut self, items: &Items, range: std::ops::Range<usize>) {
+        let mut all: Vec<Stack> = self.slots[range.clone()].iter_mut().filter_map(Option::take).collect();
+        all.sort_by_key(|s| (items.category(s.item), items.def(s.item).name.to_lowercase(), s.item, std::cmp::Reverse((s.roll.rarity, s.roll.level)), s.roll.seed, std::cmp::Reverse(s.count)));
+        // (In order, each tops up the one before it if it's the same.)
+        let mut laid = Inventory::new(range.len());
+        for s in all {
+            laid.add(items, s);
+        }
+        self.slots[range].copy_from_slice(&laid.slots);
+    }
 }
 
 /// Every item as written (items.ron and gear.ron), for tests.
@@ -505,6 +608,33 @@ mod tests {
         assert!(!inv.has_room(&it, &Stack::new(torch, 1)));
         assert_eq!(inv.take(0, 10), 10);
         assert_eq!(inv.count(torch), 297 - 10);
+    }
+
+    /// Quick sort merges what's the same and lays the rest out by
+    /// category, then name, in its range only.
+    #[test]
+    fn quick_sort_merges_then_orders_by_category_and_name() {
+        let it = items();
+        let id = |s: &str| it.id(s).unwrap();
+        let mut inv = Inventory::new(8);
+        inv.slots[0] = Some(Stack::new(id("bomb"), 1));
+        inv.slots[2] = Some(Stack::new(id("torch"), 40));
+        inv.slots[3] = Some(Stack::new(id("block:stone"), 5 * 36));
+        inv.slots[4] = Some(Stack::new(id("torch"), 70));
+        inv.slots[6] = Some(Stack::new(id("copper_pickaxe"), 1));
+        inv.slots[7] = Some(Stack::new(id("torch"), 5));
+        inv.sort(&it, 2..8);
+        assert_eq!(inv.slots[0], Some(Stack::new(id("bomb"), 1)), "outside the range: left alone");
+        let laid: Vec<Option<(String, u32)>> = inv.slots[2..].iter().map(|s| s.map(|s| (it.def(s.item).id.clone(), s.count))).collect();
+        let want = |id: &str, n: u32| Some((id.to_string(), n));
+        assert_eq!(laid, vec![want("copper_pickaxe", 1), want("torch", 99), want("torch", 16), want("block:stone", 180), None, None]);
+        assert_eq!(it.category(id("copper_pickaxe")), Category::Tools);
+        assert_eq!(it.category(id("iron_helm")), Category::Armour);
+        assert_eq!(it.category(id("ring_of_vigour")), Category::Accessories);
+        assert_eq!(it.category(id("lantern")), Category::Lights);
+        assert_eq!(it.category(id("copper_bar")), Category::Materials);
+        assert_eq!(it.category(id("block:planks")), Category::Building);
+        assert_eq!(it.category(id("arrow")), Category::Weapons, "items.ron's word");
     }
 
     /// What a player gains goes onto its stacks, then into the pack, and
