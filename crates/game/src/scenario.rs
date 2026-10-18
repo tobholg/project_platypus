@@ -5768,7 +5768,7 @@ fn spider_script(
     s: Res<Scenario>,
     sim: Res<SimWorld>,
     mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>), With<LocalPlayer>>,
-    spiders: Query<(&Kinematics, &crate::creatures::moves::Moves, Option<&crate::creatures::brain::senses::Alert>), Without<LocalPlayer>>,
+    spiders: Query<(&Kinematics, &crate::creatures::moves::Moves, Option<&crate::creatures::brain::senses::Alert>, &crate::creatures::Creature), Without<LocalPlayer>>,
     book: Res<crate::creatures::moves::MoveBook>,
     mut hits: MessageReader<crate::combat::Hit>,
     mut state: Local<(u8, f32, Option<String>)>,
@@ -5781,6 +5781,24 @@ fn spider_script(
     // On open floor, the spider 180 cells off. (In a generated world, on
     // the ground where the player is, the spider 140 cells on, facing it.)
     if state.0 == 0 && t > 0.5 {
+        // (`PLATYPUS_SPIDER_LAIR=1`, a generated world: the player put on
+        // the floor of the nearest spider lair's cave, `PLATYPUS_SPIDER_DX`
+        // cells off its middle, its own spider there: a fight as the world
+        // has it.)
+        if std::env::var("PLATYPUS_SPIDER_LAIR").is_ok() {
+            let home = sim.generator.spawn_point();
+            let lair = sim.generator.landmarks().into_iter().filter(|(_, n)| n == "spider lair").min_by_key(|(p, _)| (p.x - home.x).abs());
+            if let Some((p, _)) = lair {
+                let dx: i32 = std::env::var("PLATYPUS_SPIDER_DX").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+                let x = p.x + dx;
+                let floor = (0..300).map(|d| p.y - d).find(|&y| sim.world.is_solid(CellPos::new(x, y)) && !sim.world.is_solid(CellPos::new(x, y + 1)));
+                k.body.pos = Vec2::new(x as f32, floor.unwrap_or(p.y) as f32 + 1.0 + k.body.half.y);
+                k.prev_pos = k.body.pos;
+                info!("spider: the player put by the spider lair at ({}, {})", p.x, p.y);
+            }
+            state.0 = 1;
+            return;
+        }
         if std::env::var("PLATYPUS_WORLD").is_ok_and(|w| w == "arena") {
             let floor = platypus_worldgen::arena::FLOOR as f32;
             k.body.pos = Vec2::new(840.0, floor + 12.0);
@@ -5814,8 +5832,8 @@ fn spider_script(
         }
     }
     // (The one nearest the player: the world has spiders of its own.)
-    let nearest = spiders.iter().min_by(|x, y| x.0.body.pos.distance(k.body.pos).total_cmp(&y.0.body.pos.distance(k.body.pos)));
-    if let Some((sk, a, _)) = nearest {
+    let nearest = spiders.iter().filter(|x| x.3.kind == "spider").min_by(|x, y| x.0.body.pos.distance(k.body.pos).total_cmp(&y.0.body.pos.distance(k.body.pos)));
+    if let Some((sk, a, _, _)) = nearest {
         let now = a.doing(&book).map(|d| d.0.to_string());
         if now != state.2 {
             if let Some(what) = &now {
@@ -5826,9 +5844,9 @@ fn spider_script(
     }
     if t > state.1 + 1.0 {
         state.1 = t;
-        if let Some((sk, a, al)) = nearest {
+        if let Some((sk, a, al, _)) = nearest {
             let al = al.map_or("no alert".to_string(), |a| format!("{:?} senses {} engaged {} flanking {} cowering {} lit {:.2}", a.wary, a.senses_it, a.engaged(), a.flanking, a.cowering, a.quarry_lit));
-            info!("spider: t {t:.1} at {:.0} cells ({:.0},{:.0} to the player's {:.0},{:.0}), vel ({:.0},{:.0}), grounded {} clinging {:?}, doing {:?}; {al}", sk.body.pos.distance(k.body.pos), sk.body.pos.x, sk.body.pos.y, k.body.pos.x, k.body.pos.y, sk.body.vel.x, sk.body.vel.y, sk.loco.grounded(), sk.loco.clinging(), a.doing(&book));
+            info!("spider: t {t:.1} at {:.0} cells ({:.0},{:.0} to the player's {:.0},{:.0}), vel ({:.0},{:.0}), grounded {} clinging {:?}, doing {:?}, line {}; {al}", sk.body.pos.distance(k.body.pos), sk.body.pos.x, sk.body.pos.y, k.body.pos.x, k.body.pos.y, sk.body.vel.x, sk.body.vel.y, sk.loco.grounded(), sk.loco.clinging(), a.doing(&book), crate::creatures::moves::clear(&sim, sk.body.pos, k.body.pos));
         }
         if coat.is_some_and(|c| c.share("venom") > 0.0) {
             info!("spider: t {t:.1} the player is envenomed");

@@ -632,7 +632,10 @@ pub fn run(
                 }
                 let Some(i) = spells.spells.iter().position(|s| s.id == pick) else { continue };
                 let turret = from.as_deref().and_then(|name| limbs.get(e).ok().and_then(|l| l.muzzle(name)));
-                let origin = turret.map_or(at(*along) + Vec2::Y * *up, |(m, _)| m);
+                // (Close in, from no further out than halfway to them: a
+                // glob let go past them flew back at them.)
+                let along = target.as_ref().map_or(*along, |pk| along.min(pk.pos.distance(pos) * 0.5));
+                let origin = turret.map_or(at(along) + Vec2::Y * *up, |(m, _)| m);
                 let toward = if let Some((x, y)) = launch {
                     // (Fanned: shot by shot across the spread, a little
                     // jitter.)
