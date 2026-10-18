@@ -459,6 +459,8 @@ pub struct Rocketed {
 #[derive(Message, Clone, Copy, Debug)]
 pub struct AirJumped {
     pub at: Vec2,
+    /// Who jumped (their boots may do more: `gear::storm`).
+    pub who: Entity,
 }
 
 /// A body landed after falling `drop` cells, or slammed into a wall or
@@ -581,7 +583,7 @@ pub(crate) fn move_creatures(
             rockets.write(Rocketed { entity, at: k.body.pos - Vec2::new(0.0, k.body.half.y), vel: k.body.vel });
         }
         if ev.air_jumped {
-            air.write(AirJumped { at: k.body.pos - Vec2::new(0.0, k.body.half.y) });
+            air.write(AirJumped { at: k.body.pos - Vec2::new(0.0, k.body.half.y), who: entity });
         }
         // A jump off air or a wall starts the fall over (a double jump just
         // before landing saves you, as in Terraria).

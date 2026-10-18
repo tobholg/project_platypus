@@ -224,6 +224,18 @@ fn charge_image(cells: &[platypus_sim::CellPos]) -> Option<(Image, i32, i32)> {
 /// Wand lightning: the cells the sim's bolt went through (`Zap::path`, its
 /// forks too), one cell wide with a glow either side. Returns the image and
 /// its bottom-left cell.
+/// A zap's bolt shown (and what it charged crackling), as a wand's is:
+/// for other sparks of lightning (storm boots').
+pub(crate) fn spawn_bolt(commands: &mut Commands, images: &mut Assets<Image>, z: &platypus_sim::Zap) {
+    let (image, x0, y0) = zap_image(z);
+    let size = Vec2::new(image.width() as f32, image.height() as f32);
+    commands.spawn((Bolt { age: 0.0 }, Sprite { image: images.add(image), custom_size: Some(size), ..default() }, Transform::from_xyz(x0 as f32 + size.x / 2.0, y0 as f32 + size.y / 2.0, 16.0)));
+    if let Some((image, x0, y0)) = charge_image(&z.charged) {
+        let size = Vec2::new(image.width() as f32, image.height() as f32);
+        commands.spawn((Bolt { age: 0.0 }, Sprite { image: images.add(image), custom_size: Some(size), ..default() }, Transform::from_xyz(x0 as f32 + size.x / 2.0, y0 as f32 + size.y / 2.0, 15.9)));
+    }
+}
+
 fn zap_image(z: &platypus_sim::Zap) -> (Image, i32, i32) {
     use bevy::asset::RenderAssetUsages;
     use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};

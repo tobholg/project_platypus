@@ -337,7 +337,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -10279,7 +10279,7 @@ fn jumps_script(
     items: Option<Res<crate::hands::items::Items>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut player: Query<(&mut Kinematics, &mut crate::gear::Equipment, &crate::creatures::MoveStats), With<LocalPlayer>>,
-    mut state: Local<(usize, f32, f32, bool)>,
+    mut state: Local<(usize, f32, f32, f32)>,
 ) {
     if s.name != "jumps" {
         return;
@@ -10305,19 +10305,102 @@ fn jumps_script(
     state.2 = state.2.max(height);
     // Jump held from 0.6 s; let go at the top of each rise, pressed again
     // the next frame (an air jump).
+    // (Let go a few frames: a tick must see it, or the next press isn't one.)
     let rising = k.body.vel.y > 0.0;
     if (0.6..3.0).contains(&dt) {
         if !keys.pressed(KeyCode::Space) {
-            keys.press(KeyCode::Space);
+            if t > state.3 {
+                keys.press(KeyCode::Space);
+            }
         } else if !rising && dt > 0.75 {
             keys.release(KeyCode::Space);
+            state.3 = t + 0.06;
         }
     } else if keys.pressed(KeyCode::Space) {
         keys.release(KeyCode::Space);
     }
     if dt > 3.4 {
         info!("jumps: {}: highest {:.0} cells (jump height {:.0}, air jumps {})", boots[i].unwrap_or("no boots"), state.2, stats.0.jump_height, stats.0.air_jumps);
-        *state = (i + 1, t, 0.0, false);
+        *state = (i + 1, t, 0.0, 0.0);
+    }
+}
+
+/// `stormboots` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`, by night):
+/// storm boots worn; three zombies on the floor at 1000..1060 (held
+/// still), the player at 960: at 1 s they jump, and at the top, a double
+/// jump (its storm). `PLATYPUS_STORMBOOTS=empty`: no zombies (the bolts
+/// go to ground). Logs the zombies' health after; then, landed, a dash
+/// (its dust).
+fn stormboots_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(&mut Kinematics, &mut crate::gear::Equipment, &crate::creatures::MoveStats), With<LocalPlayer>>,
+    mut them: Query<(Entity, &crate::creatures::Creature, &mut Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
+    mut state: Local<(u8, bool, f32)>,
+) {
+    if s.name != "stormboots" {
+        return;
+    }
+    let (Some(items), Ok((mut k, mut eq, stats))) = (items, player.single_mut()) else { return };
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let t = s.elapsed;
+    let empty = std::env::var("PLATYPUS_STORMBOOTS").as_deref() == Ok("empty");
+    if state.0 == 0 && t > 0.3 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        let feet = crate::gear::WORN.iter().position(|w| *w == crate::gear::Slot::Feet).expect("feet");
+        eq.worn[feet] = items.id("storm_boots").map(|id| crate::hands::items::Stack::new(id, 1));
+        k.body.pos = Vec2::new(960.0, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        if !empty {
+            for x in [1000.0, 1030.0, 1060.0] {
+                crate::creatures::def::spawn_creature(&mut commands, "zombie", Vec2::new(x, fl), |_| {});
+            }
+        }
+        state.0 = 1;
+    }
+    // (Held still.)
+    for (_, c, mut zk, _) in &mut them {
+        if c.kind == "zombie" {
+            zk.body.vel.x = 0.0;
+        }
+    }
+    // Jump at 1 s; at the top, let go (a few frames: a tick must see it)
+    // and jump again (the double jump).
+    if state.0 == 1 && t > 1.0 {
+        let rising = k.body.vel.y > 0.0;
+        if t < 1.2 || (rising && !state.1) {
+            keys.press(KeyCode::Space);
+        } else if !state.1 {
+            keys.release(KeyCode::Space);
+            state.1 = true;
+            state.2 = t;
+        } else if t > state.2 + 0.06 && !keys.pressed(KeyCode::Space) {
+            keys.press(KeyCode::Space);
+            state.0 = 2;
+            info!("stormboots: t {t:.2} the double jump, {:.0} up (jump height {:.0}, air jumps {})", k.body.pos.y - k.body.half.y - fl, stats.0.jump_height, stats.0.air_jumps);
+        }
+    }
+    // (Landed: a dash to the right, its dust thrown back.)
+    if state.0 == 3 && (3.6..3.9).contains(&t) {
+        keys.press(KeyCode::KeyD);
+        if t > 3.65 {
+            keys.press(KeyCode::ShiftLeft);
+        }
+    } else if state.0 == 3 && t > 3.9 {
+        keys.release(KeyCode::KeyD);
+        keys.release(KeyCode::ShiftLeft);
+    }
+    if state.0 == 2 && t > 3.2 {
+        keys.release(KeyCode::Space);
+        let hp: Vec<String> = them.iter().filter(|x| x.1.kind == "zombie").map(|x| format!("{:.0}/{:.0} at {:.0}", x.3.hp, x.3.max, x.2.body.pos.x)).collect();
+        info!("stormboots: the zombies after: {}", if hp.is_empty() { "none".into() } else { hp.join(", ") });
+        state.0 = 3;
     }
 }
 

@@ -1750,6 +1750,51 @@ impl World {
         end
     }
 
+    /// A spark: a zap's jagged, forking path from `from` toward `to`
+    /// through open air (stopping at what it meets), and what it charges
+    /// where it ends (a pool it lands in, all of it connected); but none of
+    /// a zap's fire, heat or burst, and nothing changed. What's hurt is the
+    /// caller's to say (storm boots: not their wearer).
+    pub fn spark(&self, from: CellPos, to: CellPos) -> Zap {
+        let mats = &self.materials;
+        let mut rng = self.rng_for(0x59A2, to);
+        let (dx, dy) = ((to.x - from.x) as f32, (to.y - from.y) as f32);
+        let len = (dx * dx + dy * dy).sqrt().max(1.0);
+        let (ux, uy) = (dx / len, dy / len);
+        let open = |c: Cell| c.is_air() || matches!(mats.phys(c.material).kind, Kind::Gas | Kind::Fire);
+        let (mut channel, mut t, mut off, mut end) = (Vec::new(), 0.0f32, 0.0f32, from);
+        while t < len {
+            t += 1.0;
+            off += (rng.next_u8() as f32 / 255.0 - 0.5) * 2.6 - off * 0.14;
+            let side = off * (t / 6.0).min(1.0) * ((len - t) / 10.0).clamp(0.0, 1.0);
+            let p = CellPos::new((from.x as f32 + ux * t - uy * side).round() as i32, (from.y as f32 + uy * t + ux * side).round() as i32);
+            let Some(c) = self.get(p) else { break };
+            end = p;
+            if !open(c) {
+                break;
+            }
+            channel.push(p);
+        }
+        let mut path = channel.clone();
+        path.push(end);
+        // (A fork off it, through open air only.)
+        if let Some(&start) = channel.get(channel.len() / 3 + rng.next_u32() as usize % (channel.len() / 2).max(1)) {
+            let a = (rng.next_u8() as f32 / 255.0 - 0.5) * 1.8;
+            let (fx, fy) = (ux * a.cos() - uy * a.sin(), ux * a.sin() + uy * a.cos());
+            let mut off = 0.0f32;
+            for k in 1..(len / 4.0) as i32 + 2 {
+                off += (rng.next_u8() as f32 / 255.0 - 0.5) * 3.0 - off * 0.1;
+                let p = CellPos::new((start.x as f32 + fx * k as f32 - fy * off).round() as i32, (start.y as f32 + fy * k as f32 + fx * off).round() as i32);
+                if !self.get(p).is_some_and(open) {
+                    break;
+                }
+                path.push(p);
+            }
+        }
+        let charged = self.charge(end);
+        Zap { from, to: end, path, charged }
+    }
+
     /// The cells a charge at `at` spreads through: everything that carries
     /// electricity (`charges`) connected to it or to a cell within 2 of it, up to
     /// `MAX_CHARGED` cells (a lake conducts as far as that reaches).

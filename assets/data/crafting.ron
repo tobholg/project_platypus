@@ -186,6 +186,8 @@
         (makes: "iron_greaves", needs: [("iron_bar", 12)], at: "anvil"),
         (makes: "iron_boots", needs: [("iron_bar", 8)], at: "anvil"),
         (makes: "rope_hook", needs: [("copper_bar", 2), ("block:planks", 2)], at: "workbench"),
+        // Storm boots: feather boots and a storm ring.
+        (makes: "storm_boots", needs: [("feather_boots", 1), ("storm_ring", 1), ("silver_bar", 4)], at: "anvil"),
         // Zephyr treads: feather boots, made better.
         (makes: "cloud_boots", needs: [("feather_boots", 1), ("silver_bar", 6), ("gold_bar", 2)], at: "anvil"),
         (makes: "grappling_hook", needs: [("iron_bar", 3), ("block:planks", 2)], at: "anvil"),

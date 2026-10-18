@@ -20,6 +20,7 @@ pub mod look;
 pub mod roll;
 pub mod shield;
 pub mod stats;
+pub mod storm;
 
 use std::collections::BTreeMap;
 
@@ -115,6 +116,9 @@ pub struct GearDef {
     /// thrusts up (`boots.rs`).
     #[serde(default)]
     pub rocket: Option<RocketDef>,
+    /// Boots whose double jump looses a storm (`storm.rs`).
+    #[serde(default)]
+    pub storm: Option<storm::StormDef>,
     /// Worn on the back: cloth that hangs and swings (`cloth.rs`).
     #[serde(default)]
     pub cape: Option<crate::cloth::ClothDef>,
@@ -263,6 +267,7 @@ pub struct GearPlugin;
 
 impl Plugin for GearPlugin {
     fn build(&self, app: &mut App) {
+        storm::build(app);
         let file = load();
         app.insert_resource(GearRules { weights: file.weights, rarities: file.rarities, bonuses: file.bonuses })
             .init_resource::<look::Wardrobe>()

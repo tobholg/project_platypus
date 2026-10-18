@@ -123,7 +123,7 @@ impl Plugin for VfxPlugin {
         app.init_resource::<Sparks>()
             .init_resource::<SparkMeshes>()
             .add_systems(Startup, make_halo)
-            .add_systems(Update, (step_sparks, air_puffs))
+            .add_systems(Update, (step_sparks, air_puffs, dash_puffs))
             .add_systems(PostUpdate, draw_sparks);
     }
 }
@@ -247,13 +247,67 @@ fn fill(mesh: &mut Mesh, quads: &[([f32; 2], f32, [f32; 4])]) {
 
 /// A double jump's cloud: a soft puff spreading out and down under the
 /// feet, and a ring of glowing motes (it lights the dark a moment, `light`).
-fn air_puffs(mut jumps: MessageReader<crate::creatures::AirJumped>, mut sparks: ResMut<Sparks>) {
+/// In storm boots a thundercloud: dark, slate and violet, a ring of
+/// electric motes; its bolts leap out of it (`gear::storm`).
+fn air_puffs(mut jumps: MessageReader<crate::creatures::AirJumped>, mut sparks: ResMut<Sparks>, items: Option<Res<crate::hands::items::Items>>, worn: Query<&crate::gear::Equipment>) {
     for j in jumps.read() {
-        sparks.emit(&PUFF, PUFF.count as usize, j.at, Vec2::NEG_Y, Vec2::ZERO);
-        sparks.emit(&PUFF_RING, PUFF_RING.count as usize, j.at, Vec2::X, Vec2::ZERO);
-        sparks.emit(&PUFF_RING, PUFF_RING.count as usize, j.at, Vec2::NEG_X, Vec2::ZERO);
+        let storm = items.as_ref().is_some_and(|items| worn.get(j.who).is_ok_and(|eq| crate::gear::storm::storm_of(eq, items).is_some()));
+        let (puff, ring) = if storm { (&*STORM_PUFF, &*STORM_RING) } else { (&*PUFF, &*PUFF_RING) };
+        sparks.emit(puff, puff.count as usize, j.at, Vec2::NEG_Y, Vec2::ZERO);
+        sparks.emit(ring, ring.count as usize, j.at, Vec2::X, Vec2::ZERO);
+        sparks.emit(ring, ring.count as usize, j.at, Vec2::NEG_X, Vec2::ZERO);
     }
 }
+
+/// A dash kicks up a cloud: dust thrown back the way you came, low.
+fn dash_puffs(mut dashes: MessageReader<crate::combat::Dashed>, bodies: Query<&crate::creatures::Kinematics>, mut sparks: ResMut<Sparks>) {
+    for crate::combat::Dashed(e) in dashes.read() {
+        let Ok(k) = bodies.get(*e) else { continue };
+        let way = if k.body.vel.x.abs() > 1.0 { k.body.vel.x.signum() } else { k.loco.facing };
+        let feet = k.body.pos - Vec2::new(way * k.body.half.x, k.body.half.y - 1.5);
+        sparks.emit(&DASH_DUST, DASH_DUST.count as usize, feet, Vec2::new(-way, 0.12), Vec2::ZERO);
+        sparks.emit(&DASH_DUST, (DASH_DUST.count * 0.5) as usize, feet + Vec2::Y * 3.0, Vec2::new(-way, 0.4), Vec2::ZERO);
+    }
+}
+
+static DASH_DUST: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter {
+    count: 36.0,
+    life: (0.3, 0.75),
+    colors: vec![(236, 236, 240), (206, 210, 222), (170, 176, 192)],
+    speed: 230.0,
+    spread: 0.4,
+    gravity: 30.0,
+    drag: 4.5,
+    size: 1.7,
+    jitter: 4.0,
+    glow: false,
+});
+
+static STORM_PUFF: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter {
+    count: 64.0,
+    life: (0.45, 1.05),
+    colors: vec![(150, 148, 186), (118, 116, 158), (178, 172, 216), (96, 94, 136)],
+    speed: 120.0,
+    spread: 1.5,
+    gravity: -18.0,
+    drag: 5.0,
+    size: 2.0,
+    jitter: 8.0,
+    glow: false,
+});
+
+static STORM_RING: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter {
+    count: 14.0,
+    life: (0.3, 0.6),
+    colors: vec![(240, 236, 255), (190, 170, 255), (140, 120, 255)],
+    speed: 165.0,
+    spread: 0.35,
+    gravity: -10.0,
+    drag: 6.0,
+    size: 1.4,
+    jitter: 0.0,
+    glow: true,
+});
 
 static PUFF: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter {
     count: 44.0,

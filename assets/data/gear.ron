@@ -243,6 +243,15 @@
                 (parts: ["kick_leg"], clip: true, at: (0, 1), rows: [".............y....", ".............y....", ".............y....", "..................", "..................", "..................", "..yyy............."]),
             ])),
             about: "Hold jump in the air: fly. Mind what's under you."),
+        // Storm boots: a double jump that kicks off a storm: a thundercloud,
+        // and out of it bolts at what's near (or into the ground), twice, a
+        // breath apart (gear/storm.rs). `storm`: bolts in its first volley
+        // (the second, half), their reach (cells), damage and stun (s).
+        (id: "storm_boots", name: "Storm boots", color: (110, 104, 190),
+            gear: (slot: Feet, weight: Light, stats: { AirJumps: 1, JumpHeight: 6, StormResist: 25, FallResist: 20 },
+            storm: (bolts: 4, reach: 95, damage: 10, stun: 0.25),
+            look: (recolor: [(colors: { 'B': (70, 66, 120), 'C': (48, 44, 88), 'U': (150, 140, 240), 'o': (30, 28, 56) })])),
+            about: "A double jump kicks off a storm: bolts leap out of the cloud at what's near, and into the water it's in."),
         // The better double-jump boots: two jumps off thin air, higher.
         (id: "cloud_boots", name: "Zephyr treads", color: (200, 230, 255),
             gear: (slot: Feet, weight: Light, stats: { AirJumps: 2, JumpHeight: 12, FallResist: 40 },

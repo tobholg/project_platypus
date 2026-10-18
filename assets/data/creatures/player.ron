@@ -24,16 +24,18 @@
         gravity: 1650,
         fall_gravity: 1.6,
         max_fall: 630,
-        // (75: a quarter higher than it was; double jumps, a share of it,
-        // likewise.)
-        jump_height: 75,
+        // (92: twice raised, a quarter then a fifth, from 60; double jumps,
+        // a share of it, likewise.)
+        jump_height: 92,
         jump_cut: 0.45,
         coyote_time: 0.09,
         jump_buffer: 0.12,
         // None of its own: boots give them (cloud boots: a triple jump).
         air_jumps: 0,
-        dash_speed: 390,
-        dash_time: 0.14,
+        // (Harder and a little longer than it was, 390 for 0.14 s: ~70
+        // cells, was ~55.)
+        dash_speed: 470,
+        dash_time: 0.15,
         dash_cooldown: 0.45,
         wall_jump: true,
         wall_slide_speed: 90,
