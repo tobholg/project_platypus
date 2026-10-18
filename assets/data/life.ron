@@ -88,4 +88,6 @@
     (kind: "tyrant", place: Surface, biomes: ["jungle", "deep forest"], most: 1, rate: 0.01, away: 3000),
     (kind: "strider", place: Surface, biomes: ["desert", "mountains", "tundra"], most: 1, rate: 0.015, away: 2500),
     (kind: "centipede", place: Cave, depth: (150, 150000), most: 1, rate: 0.05),
+    // Rats: packs in the caves, scavenging.
+    (kind: "rat", place: Cave, depth: (40, 150000), group: (3, 6), most: 8, rate: 0.1),
 ]

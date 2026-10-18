@@ -14,5 +14,7 @@
         "raptors": ["orcs"],
         "tyrants": ["raptors", "orcs"],
         "bats": [],
+        // Rats are everyone's prey and no one's hunter but yours.
+        "rats": [],
     },
 )

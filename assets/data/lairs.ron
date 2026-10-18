@@ -34,6 +34,9 @@
     // the roof, guano heaped under them.
     (name: "bat colony", depth: (100, 2500), zones: ["none", "fungal", "crystal"], chance: 0.14, min_size: 16,
      lining: "cobweb", density: 0.0, litter: "guano", litter_density: 0.6, keepers: [("cave_bat", 8)]),
+    // A rat nest: a pack's home in the upper caves.
+    (name: "rat nest", depth: (40, 1500), zones: ["none", "fungal"], chance: 0.07, min_size: 14,
+     lining: "cobweb", density: 0.02, keepers: [("rat", 7)]),
     (name: "slime pit", depth: (90, 150000), zones: ["toxic"], chance: 0.3,
      lining: "slime", density: 0.25, keepers: [("acid_slime", 3)]),
     (name: "centipede hole", depth: (120, 150000), zones: ["none", "fungal"], chance: 0.06,

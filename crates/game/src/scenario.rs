@@ -336,7 +336,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -9901,6 +9901,94 @@ fn keepsake_script(
     info!("keepsake: t {:.0} at ({:.0}, {:.0}), hp {:.0}, gold {}, hand slot {} bar {}; cursor {}, discard {}", s.elapsed, k.body.pos.x, k.body.pos.y, h.hp, gold.map_or(0, |g| g.0), hand.slot, hand.bar, name(&cursor), name(&trash));
     info!("keepsake:   pack {}", pack.join(" "));
     info!("keepsake:   worn {}", worn.join(" "));
+}
+
+/// `rats` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): rats at 1100; the
+/// player (who can't die) at 950. `PLATYPUS_RATS=`: (none) a pack of five
+/// (brave: they come at you), and from 7 s one struck dead a second (two
+/// left, they scatter); `alone`: two (they scatter from you); `body`: a
+/// zombie killed at 1100, four rats at 1250, the player far off at 700
+/// (they go to the body and gnaw it till it's gone, what it had left
+/// lying). Logs, a second at a time, what the rats are doing, the bodies
+/// and what's lying about, and what the player's lost.
+#[allow(clippy::type_complexity)]
+fn rats_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::custom::rat::Rat>), Without<LocalPlayer>>,
+    bodies: Query<(), With<crate::hands::corpses::Corpse>>,
+    drops: Query<(), With<crate::hands::Dropped>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, u32, f32)>,
+) {
+    if s.name != "rats" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let mode = std::env::var("PLATYPUS_RATS").unwrap_or_default();
+    state.1 += h.max - h.hp;
+    h.hp = h.max;
+    if state.0 == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        let x = if mode == "body" { 700.0 } else { 950.0 };
+        k.body.pos = Vec2::new(x, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        let (n, at) = match mode.as_str() {
+            "alone" => (2, 1100.0),
+            "body" => (4, 1250.0),
+            _ => (5, 1100.0),
+        };
+        for i in 0..n {
+            crate::creatures::def::spawn_creature(&mut commands, "rat", Vec2::new(at + i as f32 * 12.0, fl), |_| {});
+        }
+        if mode == "body" {
+            crate::creatures::def::spawn_creature(&mut commands, "zombie", Vec2::new(1100.0, fl), |_| {});
+        }
+        info!("rats: {n} rats at {at} ({mode})");
+        state.0 = 1;
+        return;
+    }
+    if state.0 < 1 {
+        return;
+    }
+    // `body`: the zombie struck dead.
+    if mode == "body" && state.0 == 1 && t > 1.0 {
+        if let Some((e, _, zk, _)) = them.iter().find(|x| x.1.kind == "zombie") {
+            hits.write(crate::combat::Hit { target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: zk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+            info!("rats: t {t:.1} the zombie struck dead");
+            state.0 = 2;
+        }
+    }
+    // (none): from 7 s, a rat struck dead a second, down to two.
+    if mode.is_empty() && t > 7.0 && t > state.3 {
+        let rats: Vec<_> = them.iter().filter(|x| x.1.kind == "rat").collect();
+        if rats.len() > 2 {
+            let (e, _, rk, _) = rats[0];
+            hits.write(crate::combat::Hit { target: e, damage: 99.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: rk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+            state.3 = t + 1.0;
+            info!("rats: t {t:.1} a rat struck dead ({} left)", rats.len() - 1);
+        }
+    }
+    if t as u32 != state.2 {
+        state.2 = t as u32;
+        let mut tally: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+        let mut far = 0.0f32;
+        for (_, c, rk, o) in &them {
+            if c.kind == "rat" {
+                *tally.entry(o.map_or("?", |o| o.doing())).or_default() += 1;
+                far = far.max((rk.body.pos.x - k.body.pos.x).abs());
+            }
+        }
+        let list: Vec<String> = tally.iter().map(|(k, n)| format!("{k} {n}")).collect();
+        info!("rats: t {t:.0} {} (furthest {far:.0} off); bodies {}, lying {}; the player lost {:.0}", list.join(", "), bodies.iter().count(), drops.iter().count(), state.1);
+    }
 }
 
 /// `wraith` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_HOUR=22`):

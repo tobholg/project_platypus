@@ -1,0 +1,68 @@
+// A rat: grey-brown fur, a pink tail curling behind, pink ears, a red
+// glint of an eye. It scurries (two frames of feet), nibbles (its head
+// down, `nibble`). Facing right; the game mirrors it.
+(
+    size: (18, 8),
+    feet: (9, 8),
+    outline: (24, 18, 16),
+    palette: {
+        'f': (92, 78, 70),      // fur
+        'F': (118, 102, 92),    // fur, lit (its back)
+        'd': (64, 54, 48),      // fur, shade (its belly)
+        't': (178, 134, 128),   // tail
+        'e': (170, 112, 112),   // ears
+        'n': (206, 146, 146),   // nose
+        'k': (230, 40, 40),     // eye
+        'p': (150, 112, 102),   // feet
+    },
+    frames: {
+        "stand": [
+            "..................",
+            "............ee....",
+            "..........fFFFe...",
+            "......ffffFFFFkf..",
+            "..ttfffFFFFFFfffn.",
+            ".t...dffffffffdd..",
+            "t....ddfdddddfd...",
+            "......p.p...p.p...",
+        ],
+        "run1": [
+            "..................",
+            "............ee....",
+            "..........fFFFe...",
+            "......ffffFFFFkf..",
+            "..ttfffFFFFFFfffn.",
+            ".t...dffffffffdd..",
+            "t....ddfdddddfd...",
+            ".....p...p..p...p.",
+        ],
+        "run2": [
+            "..................",
+            "..................",
+            "............ee....",
+            "..........fFFFe...",
+            "..tttffffFFFFFkf..",
+            ".t...ffFFFFFFfffn.",
+            "t....ddfdddddddd..",
+            ".......pp....pp...",
+        ],
+        "nibble": [
+            "..................",
+            "..................",
+            "..................",
+            "......fffFFFe.....",
+            "..ttfffFFFFFFFe...",
+            ".t...dffffffFFkf..",
+            "t....ddfdddddffn..",
+            "......p.p...p.p...",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["stand"], fps: 1),
+        "run": (frames: ["run1", "run2"], fps: 14),
+        "jump": (frames: ["run2"], fps: 1),
+        "fall": (frames: ["run1"], fps: 1),
+        "hurt": (frames: ["run2"], fps: 1),
+        "nibble": (frames: ["nibble", "stand"], fps: 6),
+    },
+)
