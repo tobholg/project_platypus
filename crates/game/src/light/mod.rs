@@ -499,15 +499,16 @@ pub fn sky_at(time: f32, moonlight: f32) -> (Rgb, Rgb) {
 }
 
 /// Where the sun (or, at night, the moon) is: a direction light travels in
-/// (unit, downward), rising in the east (right), setting in the west, never
-/// lower than ~12° so it still reaches in.
+/// (unit, downward), as its disc crosses the sky (`backdrop`: rising on the
+/// left, overhead at noon, setting on the right; shadows fell the wrong way
+/// for it), never lower than ~12° so it still reaches in.
 pub fn sun_dir(time: f32) -> [f32; 2] {
     // The sun's half of the day is 06:00–18:00, the moon's the other half.
     let phase = ((time - 0.25).rem_euclid(0.5)) / 0.5; // 0 rising … 1 setting
     let a = phase * std::f32::consts::PI;
     let (x, y) = (a.cos(), a.sin().max(0.2));
     let n = (x * x + y * y).sqrt();
-    [-x / n, -y / n]
+    [x / n, -y / n]
 }
 
 /// The sky's light as directions: the sun (or moon) carrying all of it, and
@@ -544,7 +545,9 @@ pub(crate) fn update_daylight(
     let hours = settings.start_hour + day.skipped;
     day.days = (hours / 24.0) as f64 + sim.world.tick() as f64 / day_ticks;
     day.time = day.days.fract() as f32;
-    let (mut light, mut color) = sky_at(day.time, settings.moonlight);
+    // (Moonlight as full as the moon is: a new moon's night is dark.)
+    let lit = 0.5 - 0.5 * (std::f32::consts::TAU * day.moon_phase()).cos();
+    let (mut light, mut color) = sky_at(day.time, settings.moonlight * (0.3 + 0.7 * lit));
     // Weather overhead: as it clouds over and rains, the light comes in
     // dimmer, flatter and cooler, the sky a heavy blue-grey, darker in a
     // downpour; easing in and out over seconds, as a front comes over.
@@ -1084,12 +1087,12 @@ mod tests {
     }
 
     #[test]
-    fn the_sun_rises_east_crosses_overhead_and_sets_west() {
+    fn the_sun_rises_left_crosses_overhead_and_sets_right() {
         use super::sun_dir;
         let (morning, noon, evening) = (sun_dir(0.3), sun_dir(0.5), sun_dir(0.7));
-        assert!(morning[0] < -0.5, "morning light travels west (from the east): {morning:?}");
+        assert!(morning[0] > 0.5, "morning light travels right (from the disc low on the left): {morning:?}");
         assert!(noon[0].abs() < 0.01 && noon[1] < -0.99, "noon: straight down {noon:?}");
-        assert!(evening[0] > 0.5, "evening light travels east: {evening:?}");
+        assert!(evening[0] < -0.5, "evening light travels left: {evening:?}");
         assert!(sun_dir(0.26)[1] < -0.15, "never flat: {:?}", sun_dir(0.26));
     }
 }
