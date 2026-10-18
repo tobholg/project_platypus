@@ -1,33 +1,34 @@
-// A rat: the caves' scavengers. They come in packs, run along walls and
+// A cave rat, big as a dog (a skeever): the caves' scavengers. They come in packs, run along walls and
 // roofs, and gather at bodies to gnaw them (a body gnawed through is gone,
 // what it had left lying). Brave in numbers: three or more near together
 // and they come at you, pounce and bite; fewer, and they scatter from you,
 // unless you corner one. (custom/rat.rs)
 (
     name: "Rat",
-    size: (10, 5),
-    health: 7,
+    size: (24, 12),
+    health: 16,
+    heft: 0.7,
     team: Enemy,
     faction: "rats",
     kind: "beast",
     blood: "blood",
-    bleeds: 0.4,
+    bleeds: 0.8,
     art: "rat",
     // A red glint of an eye in the dark.
     eyes: (230, 40, 40),
     movement: (
-        run_speed: 120,
-        ground_accel: 1600,
-        jump_height: 16,
+        run_speed: 112,
+        ground_accel: 1400,
+        jump_height: 22,
         air_jumps: 0,
-        step_height: 2,
+        step_height: 3,
         cling: true,
         dash_speed: 0,
     ),
-    touch: (damage: 3, knock: 70, every: 0.6),
+    touch: (damage: 6, knock: 140, every: 0.7),
     brain: (
         kind: "hunter",
-        params: (aggro: 200, close: Crawl(pounce_range: 26, pounce_every: 1.1), wander: (speed: 0.5), senses: (dark: 1.0, smell: 120, hearing: 1.2), tactics: (call: 160, flank: true)),
+        params: (aggro: 200, close: Crawl(pounce_range: 40, pounce_every: 1.3), wander: (speed: 0.5), senses: (dark: 1.0, smell: 120, hearing: 1.2), tactics: (call: 160, flank: true)),
     ),
     custom: (name: "rat", params: ()),
 )
