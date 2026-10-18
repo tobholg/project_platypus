@@ -337,7 +337,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -10095,6 +10095,148 @@ fn worldmap_script(
         for (what, to) in [("300 down, in rock", k.body.pos - Vec2::new(0.0, 300.0)), ("200 up, in the sky", k.body.pos + Vec2::new(0.0, 200.0)), ("200 along", k.body.pos + Vec2::new(200.0, 0.0))] {
             let room = crate::map::standing_room(&sim, to, k.body.half, 400);
             info!("worldmap: a click {what} ({:.0}, {:.0}) takes you to {:?}", to.x, to.y, room.map(|r| (r.x.round(), r.y.round(), (r - to).length().round())));
+        }
+    }
+}
+
+/// `ropehook` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the rope hook
+/// worn. A stone ledge from 600 to 900, its top 200 up; a stone knob at
+/// (1080, 100 up). The player on the ledge by its lip: hooks the lip,
+/// walks off, rappels down (S) to the floor; climbs back up (W); then, on
+/// the floor at 1000, tosses it at the knob (an arc that should land on
+/// it), and straight up at 320 (out of reach: it rises, falls back).
+/// Logs height a quarter second at a time, the rope's state, where the
+/// tosses landed.
+#[allow(clippy::too_many_arguments)]
+fn ropehook_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(&mut Kinematics, &mut crate::gear::Equipment, Option<&crate::gear::hook::Rope>, &mut crate::creatures::Health), With<LocalPlayer>>,
+    mut state: Local<(u8, f32, u32, Vec2)>,
+) {
+    if s.name != "ropehook" {
+        return;
+    }
+    let Ok((mut k, mut eq, rope, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let (what, _) = rope.map_or(("none", 0), |r| r.state());
+    let height = k.body.pos.y - k.body.half.y - fl;
+    let dt = t - state.1;
+    let mut held: Vec<KeyCode> = Vec::new();
+    let put = |k: &mut Kinematics, at: Vec2| {
+        k.body.pos = at + Vec2::Y * k.body.half.y;
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = k.body.pos;
+    };
+    let quarter = (dt * 4.0) as u32;
+    let x = k.body.pos.x;
+    let log = |label: &str, state: &mut (u8, f32, u32, Vec2)| {
+        if quarter != state.2 {
+            state.2 = quarter;
+            info!("ropehook: {label} t {dt:.2}: {height:.0} up at {x:.0}, the rope {what}");
+        }
+    };
+    match state.0 {
+        0 if t > 0.5 => {
+            if let Some(stone) = sim.materials().id("stone") {
+                for x in (600..=896).step_by(4) {
+                    for y in [fl as i32 + 190, fl as i32 + 196] {
+                        sim.queue(WorldEdit::Paint { center: CellPos::new(x, y), radius: 4, material: stone, overwrite: true });
+                    }
+                }
+                sim.queue(WorldEdit::Paint { center: CellPos::new(1080, fl as i32 + 100), radius: 4, material: stone, overwrite: true });
+            }
+            if let (Some(items), Some(slot)) = (items.as_ref(), crate::gear::WORN.iter().position(|w| *w == crate::gear::Slot::Hook))
+                && let Some(id) = items.id("rope_hook")
+            {
+                eq.worn[slot] = Some(crate::hands::items::Stack::new(id, 1));
+            }
+            *state = (1, t, 0, Vec2::ZERO);
+        }
+        // On the ledge by its lip; hook the lip below the feet.
+        1 if dt > 0.4 => {
+            if dt < 0.5 {
+                put(&mut k, Vec2::new(880.0, fl + 201.0));
+            }
+            cursor.0 = Some(Vec2::new(898.0, fl + 198.0));
+            if (0.7..0.8).contains(&dt) {
+                held.push(KeyCode::KeyE);
+            }
+            if dt > 1.4 {
+                info!("ropehook: hooked the lip: the rope {what}, {height:.0} up");
+                *state = (2, t, 0, Vec2::ZERO);
+            }
+        }
+        // Off the edge, then S: rappel down.
+        2 => {
+            if dt < 0.35 {
+                held.push(KeyCode::KeyD);
+            }
+            if dt > 0.6 {
+                held.push(KeyCode::KeyS);
+            }
+            log("rappel", &mut state);
+            if dt > 3.4 {
+                *state = (3, t, 0, Vec2::ZERO);
+            }
+        }
+        // W: climb back up.
+        3 => {
+            held.push(KeyCode::KeyW);
+            log("climb", &mut state);
+            if dt > 3.4 {
+                *state = (4, t, 0, Vec2::ZERO);
+            }
+        }
+        // Let go (jump), on the floor at 1000; toss at the knob.
+        4 => {
+            if dt < 0.05 {
+                held.push(KeyCode::Space);
+            }
+            if (0.3..0.35).contains(&dt) {
+                put(&mut k, Vec2::new(1000.0, fl + 1.0));
+            }
+            cursor.0 = Some(Vec2::new(1080.0, fl + 100.0));
+            if (0.8..0.9).contains(&dt) {
+                held.push(KeyCode::KeyE);
+            }
+            if dt > 2.2 {
+                let held = rope.and_then(|r| r.tether()).map(|(at, _)| (at.x.round(), (at.y - fl).round()));
+                info!("ropehook: tossed at the knob (1080, 100 up) from (1000, the floor): the rope {what}, holding at {held:?}");
+                *state = (5, t, 0, Vec2::ZERO);
+            }
+        }
+        // Straight up at 320: out of reach.
+        5 => {
+            if dt < 0.05 {
+                held.push(KeyCode::Space);
+            }
+            if (0.3..0.35).contains(&dt) {
+                put(&mut k, Vec2::new(1500.0, fl + 1.0));
+            }
+            cursor.0 = Some(Vec2::new(1500.0, fl + 320.0));
+            if (0.8..0.9).contains(&dt) {
+                held.push(KeyCode::KeyE);
+            }
+            log("up", &mut state);
+            if dt > 2.6 {
+                let held = rope.and_then(|r| r.tether()).map(|(at, _)| (at.x.round(), (at.y - fl).round()));
+                info!("ropehook: tossed straight up at 320: the rope {what}, holding at {held:?}");
+                *state = (6, t, 0, Vec2::ZERO);
+            }
+        }
+        _ => {}
+    }
+    for key in [KeyCode::KeyE, KeyCode::KeyD, KeyCode::KeyS, KeyCode::KeyW, KeyCode::Space] {
+        match (held.contains(&key), keys.pressed(key)) {
+            (true, false) => keys.press(key),
+            (false, true) => keys.release(key),
+            _ => {}
         }
     }
 }

@@ -47,6 +47,13 @@ const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// own (and pulls what it holds in) and flies out (cells/s), what the hook
 /// does to a creature it bites into, and how it looks (its colour;
 /// `links`: a chain, drawn link by link).
+///
+/// A rope hook (the first, `rope_hook`): `gravity` makes its throw a toss,
+/// an arc (aimed to land where you point, if it reaches; else thrown as
+/// far as it goes); `throw` is how much rope flies out with it, short of
+/// the rope's `length` (it throws short and pays out long: rappelling);
+/// `pull: false` it doesn't reel you in when it bites (it holds, you
+/// climb); `climb` and `pay`: W's and S's rope (cells/s).
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct HookDef {
@@ -56,11 +63,45 @@ pub struct HookDef {
     pub damage: f32,
     pub rope: (u8, u8, u8),
     pub links: bool,
+    pub gravity: f32,
+    pub throw: f32,
+    pub pull: bool,
+    pub climb: f32,
+    pub pay: f32,
 }
 
 impl Default for HookDef {
     fn default() -> Self {
-        HookDef { length: 180.0, reel: 360.0, speed: 1200.0, damage: 4.0, rope: (176, 140, 90), links: false }
+        HookDef { length: 180.0, reel: 360.0, speed: 1200.0, damage: 4.0, rope: (176, 140, 90), links: false, gravity: 0.0, throw: 0.0, pull: true, climb: CLIMB, pay: CLIMB }
+    }
+}
+
+impl HookDef {
+    /// How much rope flies out with a throw.
+    fn thrown(&self) -> f32 {
+        if self.throw > 0.0 { self.throw.min(self.length) } else { self.length }
+    }
+
+    /// A throw's velocity at `to` from `from`: straight at it; tossed (with
+    /// `gravity`), the lower arc that lands there, or with none (out of
+    /// reach), the arc that goes furthest its way.
+    fn launch(&self, from: Vec2, to: Vec2) -> Vec2 {
+        let d = to - from;
+        if self.gravity <= 0.0 {
+            return d.normalize_or(Vec2::X) * self.speed;
+        }
+        let (v, g) = (self.speed, self.gravity);
+        let (x, y) = (d.x.abs().max(0.01), d.y);
+        let side = if d.x < 0.0 { -1.0 } else { 1.0 };
+        let under = v.powi(4) - g * (g * x * x + 2.0 * y * v * v);
+        let angle = if under >= 0.0 {
+            ((v * v - under.sqrt()) / (g * x)).atan()
+        } else {
+            // (Out of reach: toward it, at least the furthest arc's 45° up;
+            // straight up at what's straight up.)
+            y.atan2(x).max(std::f32::consts::FRAC_PI_4)
+        };
+        Vec2::new(angle.cos() * side, angle.sin()) * v
     }
 }
 
@@ -94,8 +135,10 @@ const KICK_AGAIN: f32 = 0.35;
 /// Rock this near the point the rope is held at doesn't count as in its way
 /// (the rock it's hooked on, a corner it's wrapped round).
 const HELD_CLEAR: f32 = 3.0;
-/// Within this much of hanging, you can mantle onto the ledge you hang from.
+/// Within this much of hanging, you can mantle onto the ledge you hang from;
+/// a corner the rope bends over this near the hook is that ledge's lip.
 const MANTLE_NEAR: f32 = 4.5;
+const LIP: f32 = 24.0;
 
 /// What the hook has hold of.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -328,8 +371,9 @@ pub fn rope(
         let hand = pos + Vec2::new(facing * 3.0, half.y * 0.3);
         if pressed {
             let aim = if intent.aim != Vec2::ZERO { intent.aim } else { hand + Vec2::new(facing, 1.0) };
-            let dir = (aim - hand).normalize_or(Vec2::new(facing, 0.0));
-            rope.line = Line::Out { tip: hand, vel: dir * def.speed, paid: 0.0 };
+            let vel = def.launch(hand, aim);
+            let dir = vel.normalize_or(Vec2::new(facing, 0.0));
+            rope.line = Line::Out { tip: hand, vel, paid: 0.0 };
             rope.prev_tip = hand;
             rope.last = None;
             sparks.emit(&THROW, THROW.count as usize, hand, dir, Vec2::ZERO);
@@ -339,6 +383,8 @@ pub fn rope(
             Line::Stowed => {}
             Line::Out { tip, vel, paid } => {
                 rope.prev_tip = tip;
+                // (Tossed: falling as it flies.)
+                let vel = vel - Vec2::Y * def.gravity * DT;
                 let go = vel.length() * DT;
                 let steps = go.ceil().max(1.0) as i32;
                 let step = vel * DT / steps as f32;
@@ -377,7 +423,9 @@ pub fn rope(
                             Anchor::Body { entity, off } => things.get(entity).map_or(at, |(_, k, ..)| k.body.pos + off),
                         };
                         let leash = body.is_some_and(|(l, _)| l);
-                        rope.line = Line::Held(Hold { anchor, pivots: Vec::new(), length: pos.distance(point), reeling: true, leash, blocked: 0.0, stalled: 0.0 });
+                        // (A rope hook doesn't reel you in: it holds, the
+                        // rope as it lies, and you climb.)
+                        rope.line = Line::Held(Hold { anchor, pivots: Vec::new(), length: pos.distance(point), reeling: def.pull || leash, leash, blocked: 0.0, stalled: 0.0 });
                         rope.prev_tip = point;
                         sparks.emit(&CLINK, CLINK.count as usize, point, -vel.normalize_or(Vec2::Y), Vec2::ZERO);
                         sounds.write(crate::sound::PlaySound::at("hook_bite", point));
@@ -390,7 +438,7 @@ pub fn rope(
                             k.loco.refresh_air(&stats);
                         }
                     }
-                    None if paid >= def.length || at == tip => rope.line = Line::Back { tip: at },
+                    None if paid >= def.thrown() || at == tip => rope.line = Line::Back { tip: at },
                     None => rope.line = Line::Out { tip: at, vel, paid },
                 }
             }
@@ -522,10 +570,10 @@ pub fn rope(
                 // more than a couple of ticks' reeling short of where you
                 // are: caught on something, the rope doesn't wind up, to
                 // fling you when you come free.)
-                let speed = if intent.move_y > 0.0 { CLIMB.max(if h.reeling { def.reel } else { 0.0 }) } else if h.reeling { def.reel } else { 0.0 };
+                let speed = if intent.move_y > 0.0 { def.climb.max(if h.reeling { def.reel } else { 0.0 }) } else if h.reeling { def.reel } else { 0.0 };
                 if intent.move_y < 0.0 {
                     h.reeling = false;
-                    h.length += CLIMB * DT;
+                    h.length += def.pay * DT;
                 } else if speed > 0.0 {
                     h.length = (taut - speed * DT).max(chain + dist - 2.0 * speed * DT);
                 }
@@ -541,7 +589,7 @@ pub fn rope(
                 // (Or reeled up to a corner the rope's wrapped round: round it,
                 // so it unwraps and the pull goes on.)
                 let touching = contacts.wall_left || contacts.wall_right || contacts.ceiling || contacts.ground;
-                let nearer = rope.last.is_some_and(|was| was.distance(from) - dist > CLIMB.min(def.reel) * DT * 0.3);
+                let nearer = rope.last.is_some_and(|was| was.distance(from) - dist > def.climb.min(def.reel) * DT * 0.3);
                 let at_corner = !h.pivots.is_empty() && dist <= stop + 2.25;
                 h.stalled = if pulling && ((touching && !nearer && dist > stop + 1.5) || at_corner) { h.stalled + DT } else { 0.0 };
                 if h.stalled > STALL {
@@ -563,14 +611,25 @@ pub fn rope(
                     h.stalled = 0.0;
                 }
                 // Hanging from a ledge's lip: W, or pressing toward the ledge,
-                // climbs up onto it.
-                let side = if (point.x - pos.x).abs() > 0.75 { (point.x - pos.x).signum() } else { facing };
+                // climbs up onto it. (Hanging: off the ground. Standing by a
+                // hook just thrown, walking toward it isn't a mantle: it took
+                // you up onto where you stood and let the rope go.)
+                // (The lip: the hook's point, or a corner the rope bends over
+                // just by it: hooked on a ledge's top, climbed up its face,
+                // you hang from the lip, not the hook.)
+                let lip = match h.pivots.as_slice() {
+                    [] => Some(point),
+                    [p] if p.at.distance(point) < LIP => Some(p.at),
+                    _ => None,
+                };
+                let side = lip.map_or(facing, |l| if (l.x - pos.x).abs() > 0.75 { (l.x - pos.x).signum() } else { facing });
                 let toward = intent.move_x != 0.0 && intent.move_x.signum() == side;
                 if hanging
-                    && h.pivots.is_empty()
+                    && !contacts.ground
+                    && let Some(lip) = lip
                     && matches!(h.anchor, Anchor::Cell { .. })
                     && (intent.move_y > 0.0 || toward)
-                    && let Some(spot) = mantle_spot(&grid, point, side, pos, half).filter(|s| s.y > pos.y)
+                    && let Some(spot) = mantle_spot(&grid, lip, side, pos, half).filter(|s| s.y > pos.y)
                 {
                     k.body.pos = spot;
                     k.prev_pos = spot;

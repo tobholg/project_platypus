@@ -185,6 +185,7 @@
         (makes: "chainmail", needs: [("iron_bar", 16)], at: "anvil"),
         (makes: "iron_greaves", needs: [("iron_bar", 12)], at: "anvil"),
         (makes: "iron_boots", needs: [("iron_bar", 8)], at: "anvil"),
+        (makes: "rope_hook", needs: [("copper_bar", 2), ("block:planks", 2)], at: "workbench"),
         (makes: "grappling_hook", needs: [("iron_bar", 3), ("block:planks", 2)], at: "anvil"),
         (makes: "chain_hook", needs: [("iron_bar", 6), ("silver_bar", 4)], at: "anvil"),
         (makes: "silk_line", needs: [("silver_bar", 6), ("gold_bar", 2)], at: "anvil", locked: true),

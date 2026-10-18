@@ -177,8 +177,9 @@
     // dev mode: `mode.rs`), and more for the dev menu to hand out. Carried
     // first-come into the hotbar (ten slots), then the pack; worn on the body.
     kits: [
-        (name: "play", about: "A new game: a copper pick and axe, a short sword, a few torches",
-            carry: [("copper_pickaxe", 1), ("copper_axe", 1), ("shortsword", 1), ("torch", 8), ("small_health_potion", 2)]),
+        (name: "play", about: "A new game: a copper pick and axe, a short sword, a few torches, a rope hook",
+            carry: [("copper_pickaxe", 1), ("copper_axe", 1), ("shortsword", 1), ("torch", 8), ("small_health_potion", 2)],
+            wear: ["rope_hook"]),
         (name: "dev", about: "Everything worth trying (a flashlight in the off hand, a mining helmet in the pack)",
             carry: [
                 ("copper_pickaxe", 1), ("copper_axe", 1), ("torch", 12), ("bomb", 5), ("block:platform", 40),
