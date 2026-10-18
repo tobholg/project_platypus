@@ -214,7 +214,15 @@
 //!   refills it
 //! - `spider`     (`PLATYPUS_WORLD=arena`) a cave spider put 180 cells from the
 //!   player (standing still, healed each second): logs each attack it
-//!   starts (spit, bite, sting), each hit the player takes, and venom
+//!   starts (spit, bite, sting, web), each hit the player takes, and venom;
+//!   its web, phase by phase and its strand's way (shot, caught, reeled
+//!   in, missed, broken free of). `PLATYPUS_SPIDER_DODGE`: the player
+//!   slips the strand (`dash`: through it as it comes, `jump`: over it as
+//!   it's shot, `run`: away from the tell on) or breaks free of it caught
+//!   (`breakdash`, `strike`: a longsword at the spider; `wall`: stone put
+//!   up between them cuts it);
+//!   `PLATYPUS_SPIDER_SHOTS=dir`: pictures of each web's tell, its flight,
+//!   the player reeled in, the bite, a miss
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end
@@ -295,7 +303,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
             .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script, record_script, course_script, dig_script, legs_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, spider_script)
+            .add_systems(PreUpdate, spider_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, hook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pogo_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, leap_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -5784,22 +5792,48 @@ fn rocketswim_script(
     }
 }
 
+/// What the spider scenario keeps of its web: how many it's begun, the
+/// move's phase and the strand's way last seen (each since when), when
+/// the tell, the shot and the catch were, the dodge pressed for (the shot
+/// or catch it was for), the shot it slipped, where (and when) a miss
+/// landed, the pictures taken, a tally (shot, caught, reeled in, missed,
+/// broken free), and whether it's been summed up.
+#[derive(Default)]
+struct WebWatch {
+    webs: u32,
+    phase: Option<String>,
+    phased: f32,
+    hold: Option<&'static str>,
+    since: f32,
+    tell: f32,
+    shot: f32,
+    caught: f32,
+    dodge: (f32, f32),
+    slipped: f32,
+    landed: Option<(Vec2, f32)>,
+    pictures: std::collections::HashSet<(&'static str, u32)>,
+    tally: [u32; 5],
+    summed: bool,
+}
+
 /// A spider's attacks against a player standing still.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn spider_script(
     mut commands: Commands,
     s: Res<Scenario>,
     sim: Res<SimWorld>,
-    mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>), With<LocalPlayer>>,
-    spiders: Query<(&Kinematics, &crate::creatures::moves::Moves, Option<&crate::creatures::brain::senses::Alert>, &crate::creatures::Creature), Without<LocalPlayer>>,
+    mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>, Has<crate::combat::Invulnerable>), With<LocalPlayer>>,
+    spiders: Query<(&Kinematics, &crate::creatures::moves::Moves, Option<&crate::creatures::brain::senses::Alert>, &crate::creatures::Creature, Entity), Without<LocalPlayer>>,
     book: Res<crate::creatures::moves::MoveBook>,
     mut hits: MessageReader<crate::combat::Hit>,
     mut state: Local<(u8, f32, Option<String>)>,
+    (mut web, strands, offscreen): (Local<WebWatch>, Query<&crate::creatures::moves::web::Strand>, Option<Res<crate::camera::Offscreen>>),
+    (mut keys, mut mouse, mut cursor): (ResMut<ButtonInput<KeyCode>>, ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>),
 ) {
     if s.name != "spider" {
         return;
     }
-    let Ok((me, mut k, mut h, coat)) = player.single_mut() else { return };
+    let Ok((me, mut k, mut h, coat, untouchable)) = player.single_mut() else { return };
     let t = s.elapsed;
     // On open floor, the spider 180 cells off. (In a generated world, on
     // the ground where the player is, the spider 140 cells on, facing it.)
@@ -5856,7 +5890,7 @@ fn spider_script(
     }
     // (The one nearest the player: the world has spiders of its own.)
     let nearest = spiders.iter().filter(|x| x.3.kind == "spider").min_by(|x, y| x.0.body.pos.distance(k.body.pos).total_cmp(&y.0.body.pos.distance(k.body.pos)));
-    if let Some((sk, a, _, _)) = nearest {
+    if let Some((sk, a, _, _, _)) = nearest {
         let now = a.doing(&book).map(|d| d.0.to_string());
         if now != state.2 {
             if let Some(what) = &now {
@@ -5865,9 +5899,190 @@ fn spider_script(
             state.2 = now;
         }
     }
+    // Its web: the move phase by phase, its strand's way; the dodge
+    // (`PLATYPUS_SPIDER_DODGE`), the pictures (`PLATYPUS_SPIDER_SHOTS`).
+    let dodge = std::env::var("PLATYPUS_SPIDER_DODGE").unwrap_or_default();
+    let mut want = std::collections::HashSet::new();
+    let mut swing = None;
+    // (`strike`: the longsword in hand, hotbar 2's slot 9.)
+    if dodge == "strike" {
+        if (0.3..0.4).contains(&t) {
+            want.insert(KeyCode::KeyX);
+        }
+        if (0.5..0.6).contains(&t) {
+            want.insert(KeyCode::Digit9);
+        }
+    }
+    let mut picture = None;
+    if let Some((sk, a, _, _, se)) = nearest {
+        let off = sk.body.pos.distance(k.body.pos);
+        let toward = if sk.body.pos.x > k.body.pos.x { KeyCode::KeyD } else { KeyCode::KeyA };
+        let away = if toward == KeyCode::KeyD { KeyCode::KeyA } else { KeyCode::KeyD };
+        let phase = a.doing(&book).filter(|d| d.0 == "spider_web").map(|d| d.2.to_string());
+        if phase != web.phase {
+            if let Some(p) = &phase {
+                info!("spider: t {t:.2} web: {p} ({off:.0} cells off)");
+                web.webs += (p == "windup") as u32;
+                if p == "hold" {
+                    web.tell = t;
+                }
+            }
+            web.phase = phase.clone();
+            web.phased = t;
+        }
+        use crate::creatures::moves::web::Hold;
+        let strand = strands.iter().find(|st| st.by() == se);
+        let hold = strand.map(|st| match st.hold {
+            Hold::Out => "out",
+            Hold::Caught(_) => "caught",
+            Hold::Reeled(_) => "reeled in",
+            Hold::Spent { missed: true } => "missed",
+            Hold::Spent { missed: false } => "let go",
+        });
+        if hold != web.hold
+            && let (Some(now), Some(st)) = (hold, strand)
+        {
+            let tip = st.tip.distance(k.body.pos);
+            match now {
+                "out" => {
+                    web.tally[0] += 1;
+                    web.shot = t;
+                    info!("spider: t {t:.2} web: shot at the player {off:.0} cells off ({:.2} s after the tell began)", t - web.tell);
+                }
+                "caught" => {
+                    web.tally[1] += 1;
+                    web.caught = t;
+                    info!("spider: t {t:.2} web: the player caught {:.0} cells from the spider, {:.2} s after the shot", st.root.distance(k.body.pos), t - web.shot);
+                }
+                "reeled in" => {
+                    web.tally[2] += 1;
+                    info!("spider: t {t:.2} web: the player reeled in to its jaws in {:.2} s ({off:.0} cells off)", t - web.caught);
+                }
+                "missed" => {
+                    web.tally[3] += 1;
+                    info!("spider: t {t:.2} web: missed: the strand's tip {tip:.0} cells from the player, {:.0} from the spider", st.tip.distance(sk.body.pos));
+                    web.landed = Some((st.tip, t));
+                }
+                _ if web.hold == Some("caught") => {
+                    web.tally[4] += 1;
+                    info!("spider: t {t:.2} web: broken free ({}) after {:.2} s, {off:.0} cells off", st.freed.unwrap_or("out of time"), t - web.caught);
+                }
+                _ => info!("spider: t {t:.2} web: the strand let go"),
+            }
+            web.hold = Some(now);
+            web.since = t;
+        } else if hold.is_none() {
+            web.hold = None;
+        }
+        // (Its tip by the player, the player untouchable: slipped.)
+        if let Some(st) = strand.filter(|st| st.hold == Hold::Out && untouchable && ((st.tip - k.body.pos).abs() - k.body.half).max_element() < 4.0)
+            && web.slipped != web.shot
+        {
+            web.slipped = web.shot;
+            info!("spider: t {t:.2} web: the strand's tip passed the player while untouchable (dashing), {:.0} cells from the spider", st.tip.distance(sk.body.pos));
+        }
+        // (Where a miss landed, a moment on: the cobweb it left.)
+        if let Some((at, when)) = web.landed
+            && t - when > 0.3
+        {
+            web.landed = None;
+            let webbed = sim.materials().id("cobweb").map_or(0, |cobweb| {
+                let c = CellPos::from_world(at.x, at.y);
+                (-5..=5).flat_map(|dx| (-5..=5).map(move |dy| c.offset(dx, dy))).filter(|p| sim.world.get(*p).is_some_and(|cell| cell.material == cobweb)).count()
+            });
+            info!("spider: t {t:.2} web: {webbed} cells of cobweb where it landed");
+        }
+        // The dodge, once a shot (or a catch): `dash` through the strand
+        // as it comes (toward the spider), `jump` as it's shot, `run` away
+        // from the tell on; caught, `breakdash` or `strike` at the spider,
+        // or (`wall`) a stone wall put up between them.
+        let fresh = |w: &WebWatch, of: f32| w.dodge.1 != of;
+        match (dodge.as_str(), hold) {
+            ("wall", Some("caught")) if t - web.caught > 0.1 && fresh(&web, web.caught) => {
+                web.dodge = (t, web.caught);
+                let mid = strand.map_or(k.body.pos, |st| (st.root + k.body.pos) / 2.0);
+                let at = CellPos::from_world(mid.x, mid.y);
+                commands.queue(move |world: &mut World| {
+                    let mut sim = world.resource_mut::<SimWorld>();
+                    if let Some(stone) = sim.materials().id("stone") {
+                        sim.queue(WorldEdit::Paint { center: at, radius: 7, material: stone, overwrite: false });
+                    }
+                });
+                info!("spider: t {t:.2} web: a stone wall put up between them");
+            }
+            ("dash", Some("out")) if strand.is_some_and(|st| st.tip.distance(k.body.pos) < 40.0) && fresh(&web, web.shot) => web.dodge = (t + 0.12, web.shot),
+            ("jump", Some("out")) if fresh(&web, web.shot) => web.dodge = (t + 0.3, web.shot),
+            ("run", _) if web.phase.as_deref() == Some("hold") && fresh(&web, web.tell) => web.dodge = (t + 1.2, web.tell),
+            ("breakdash", Some("caught")) if t - web.caught > 0.15 && fresh(&web, web.caught) => web.dodge = (t + 0.1, web.caught),
+            ("strike", Some("caught")) => swing = Some(sk.body.pos),
+            _ => {}
+        }
+        if t < web.dodge.0 {
+            if web.dodge.1 == web.shot && dodge == "dash" {
+                want.insert(KeyCode::ShiftLeft);
+                want.insert(toward);
+            }
+            match dodge.as_str() {
+                "jump" => {
+                    want.insert(KeyCode::Space);
+                }
+                "run" => {
+                    want.insert(away);
+                }
+                "breakdash" => {
+                    want.insert(KeyCode::ShiftLeft);
+                }
+                _ => {}
+            }
+        }
+        // The pictures: the tell, the strand halfway, the player reeled in,
+        // a miss, the bite (each web's first of each).
+        let halfway = strand.is_some_and(|st| st.hold == Hold::Out && st.tip.distance(k.body.pos) < st.root.distance(k.body.pos) * 0.55);
+        picture = match (web.phase.as_deref(), hold) {
+            (Some("hold"), _) if t - web.tell > 0.25 => Some("tell"),
+            (_, Some("out")) if halfway => Some("flight"),
+            (_, Some("caught")) if t - web.caught > 0.2 => Some("reeled"),
+            (_, Some("missed")) if t - web.since > 0.08 => Some("missed"),
+            (Some("bite"), _) if t - web.phased > 0.06 => Some("bite"),
+            _ => None,
+        };
+    }
+    let nth = web.webs;
+    if let (Some(what), Ok(dir)) = (picture, std::env::var("PLATYPUS_SPIDER_SHOTS"))
+        && web.pictures.insert((what, nth))
+    {
+        let image = match &offscreen {
+            Some(o) => Screenshot::image(o.0.clone()),
+            None => Screenshot::primary_window(),
+        };
+        info!("spider: t {t:.2} web: a picture ({what})");
+        commands.spawn(image).observe(save_to_disk(format!("{dir}/web{nth}_{what}.png")));
+    }
+    if !dodge.is_empty() {
+        for key in [KeyCode::KeyX, KeyCode::Digit9, KeyCode::KeyA, KeyCode::KeyD, KeyCode::Space, KeyCode::ShiftLeft] {
+            match (want.contains(&key), keys.pressed(key)) {
+                (true, false) => keys.press(key),
+                (false, true) => keys.release(key),
+                _ => {}
+            }
+        }
+    }
+    if dodge == "strike" {
+        cursor.0 = swing.or(Some(k.body.pos + Vec2::new(45.0, 0.0)));
+        match (swing.is_some(), mouse.pressed(MouseButton::Left)) {
+            (true, false) => mouse.press(MouseButton::Left),
+            (false, true) => mouse.release(MouseButton::Left),
+            _ => {}
+        }
+    }
+    if t > s.duration - 0.2 && !web.summed {
+        web.summed = true;
+        let [shot, caught, reeled, missed, broke] = web.tally;
+        info!("spider: web: {shot} shot, {caught} caught, {reeled} reeled in, {missed} missed, {broke} broken free");
+    }
     if t > state.1 + 1.0 {
         state.1 = t;
-        if let Some((sk, a, al, _)) = nearest {
+        if let Some((sk, a, al, _, _)) = nearest {
             let al = al.map_or("no alert".to_string(), |a| format!("{:?} senses {} engaged {} flanking {} cowering {} lit {:.2}", a.wary, a.senses_it, a.engaged(), a.flanking, a.cowering, a.quarry_lit));
             info!("spider: t {t:.1} at {:.0} cells ({:.0},{:.0} to the player's {:.0},{:.0}), vel ({:.0},{:.0}), grounded {} clinging {:?}, doing {:?}, line {}; {al}", sk.body.pos.distance(k.body.pos), sk.body.pos.x, sk.body.pos.y, k.body.pos.x, k.body.pos.y, sk.body.vel.x, sk.body.vel.y, sk.loco.grounded(), sk.loco.clinging(), a.doing(&book), crate::creatures::moves::clear(&sim, sk.body.pos, k.body.pos));
         }

@@ -469,6 +469,8 @@ pub struct Rear {
     /// Its body's look: a frame of its body art by name (jaws agape, a
     /// bite snapped shut); none: its first.
     pub face: Option<String>,
+    /// Turned round, its back to the target (a spider's spinnerets at you).
+    pub away: bool,
     /// Where the move's target is (set as it runs): what arms reach for.
     #[serde(skip)]
     pub target: Option<Vec2>,
@@ -528,8 +530,10 @@ impl Rear {
             paw: mix(from.paw, to.paw) + shake * 3.0,
             pitch: mix(from.pitch, to.pitch),
             limbs,
-            // (Its look changes a third of the way in: no frame between.)
+            // (Its look changes, and it turns round, a third of the way in:
+            // no frame between.)
             face: if w >= 0.35 { to.face.clone() } else { from.face.clone() },
+            away: if w >= 0.35 { to.away } else { from.away },
             target: from.target,
             tells: from.tells.clone(),
         }
@@ -896,7 +900,11 @@ impl Legs {
 
     /// A point on the body (cells from its grip, facing right, y up) as
     /// it's turned now (Side: mirrored to its facing, tilted, turned to
-    /// the surface it's on).
+    /// the surface it's on), in the world (a spider's spinnerets).
+    pub fn on_body(&self, p: Vec2) -> Vec2 {
+        self.grip + self.turn(p)
+    }
+
     /// Holds arm `arm`'s hand at `at` (from its middle, the world's way
     /// round: where it grips what it swings), or lets it rest (`None`).
     pub fn hold(&mut self, arm: usize, at: Option<Vec2>) {

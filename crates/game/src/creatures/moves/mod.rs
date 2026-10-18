@@ -7,7 +7,8 @@
 //! rears, how far it crouches back, how its tail curls) toward its own and
 //! doing what it says: a lunge, a strike (what's within reach of a point
 //! ahead of it is hit, once a move), a spell cast (aimed to lead a moving
-//! target, lobbed if it falls), a slam round its feet, a summons. A move
+//! target, lobbed if it falls), a slam round its feet, a summons, a
+//! strand of silk that reels its catch in to be bitten (`web`). A move
 //! starts when its target is in `range`, it's ready (`every` seconds after
 //! the last), and its needs are met (`footing`: standing or clinging;
 //! `line`: nothing solid between). While a move is under way the creature
@@ -30,6 +31,8 @@ use crate::creatures::{Controls, Harm, Kinematics, Team};
 use crate::data::{Watched, data_path, load_ron};
 use crate::world::{SimWorld, TICK_HZ};
 
+pub mod web;
+
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// After any move, this long before the next (a breath between).
 const BREATH: f32 = 0.4;
@@ -38,7 +41,14 @@ pub struct MovesPlugin;
 
 impl Plugin for MovesPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(MoveBook::load()).add_message::<Began>().add_systems(Update, reload);
+        app.insert_resource(MoveBook::load())
+            .init_resource::<web::SilkCanvas>()
+            .add_message::<Began>()
+            .add_systems(Update, reload)
+            // (Its strands fly after the moves that shoot them, before the
+            // bodies move: what's caught is tugged this tick.)
+            .add_systems(FixedUpdate, web::fly.after(run).in_set(crate::creatures::brain::BrainSet))
+            .add_systems(Update, web::draw);
     }
 }
 
@@ -106,7 +116,8 @@ impl Default for Phase {
 }
 
 /// How it's held: the legs' pose (`legs::Rear`: lift, back, curl, coil,
-/// reach, paw, pitch, its named limbs), eased into phase by phase.
+/// reach, paw, pitch, its named limbs, its face, turned away), eased into
+/// phase by phase.
 pub use crate::creatures::body::legs::Rear as Pose;
 
 /// How a phase moves into its pose.
@@ -174,6 +185,12 @@ pub enum Act {
     /// tick from `at` cells toward the target, its aim swinging after them
     /// at most `turn` radians a second (outrun it, or get under it).
     Beam { spell: String, #[serde(default)] at: f32, #[serde(default = "beam_turn")] turn: f32 },
+    /// Live through the phase: a strand of silk shot from its spinnerets
+    /// (`web::Web`) at where the target will be. Caught, they're reeled in
+    /// to its jaws and the phase ends there (on to the next: its bite);
+    /// missed or broken free of, or the phase run out first, straight to
+    /// the move's last phase.
+    Web(web::Web),
 }
 
 fn one_shot() -> u32 {
@@ -342,6 +359,10 @@ struct Doing {
     from: Pose,
     /// Shots of the phase's casts fired so far (a salvo's go one by one).
     fired: u32,
+    /// Its strand of silk out (`web`), and the phase it's in cut short by
+    /// it (reeled in: on to the next; spent: to the last).
+    strand: Option<Entity>,
+    cut: Option<bool>,
 }
 
 impl Moves {
@@ -360,7 +381,7 @@ impl Moves {
     pub fn force(&mut self, which: usize, target: Entity, dir: Vec2) {
         if which < self.ids.len() {
             let dir = dir.normalize_or(Vec2::X);
-            self.doing = Some(Doing { which, t: 0.0, phase: usize::MAX, start: 0.0, target, dir, struck: false, held: None, aim: dir, from: Pose::default(), fired: 0 });
+            self.doing = Some(Doing { which, t: 0.0, phase: usize::MAX, start: 0.0, target, dir, struck: false, held: None, aim: dir, from: Pose::default(), fired: 0, strand: None, cut: None });
         }
     }
 
@@ -470,7 +491,7 @@ pub fn start(
         if let Some(which) = start {
             // (`phase` past the end: the first phase's start is still to come.)
             let dir = to.normalize_or(Vec2::X);
-            moves.doing = Some(Doing { which, t: 0.0, phase: usize::MAX, start: 0.0, target: pe, dir, struck: false, held: None, aim: dir, from: Pose::default(), fired: 0 });
+            moves.doing = Some(Doing { which, t: 0.0, phase: usize::MAX, start: 0.0, target: pe, dir, struck: false, held: None, aim: dir, from: Pose::default(), fired: 0, strand: None, cut: None });
             began.write(Began { who: e, id: moves.ids[which].clone() });
         }
     }
@@ -491,6 +512,7 @@ pub fn run(
     mut q: ParamSet<(Query<Mover>, Query<Prey, Without<crate::creatures::brain::villager::Hiding>>)>,
     mut limbs: Query<&mut crate::creatures::body::legs::Legs>,
     dodging: Query<(), With<crate::combat::Invulnerable>>,
+    mut strands: Query<&mut web::Strand>,
 ) {
     let now = time.elapsed_secs();
     // (What a move may be at, as it stands before any of this tick's moves:
@@ -518,7 +540,8 @@ pub fn run(
         let d = moves.doing.as_mut().expect("a move under way");
         let target = prey.iter().find(|p| p.e == d.target).copied();
         if let Some(pk) = &target {
-            c.0.aim = pk.pos;
+            // (Its back to them, if its pose says: it faces away.)
+            c.0.aim = if rear.away { pos * 2.0 - pk.pos } else { pk.pos };
         }
         // (What its arms reach for.)
         rear.target = target.map(|t| t.pos);
@@ -545,10 +568,18 @@ pub fn run(
         while !done {
             let next = if d.phase == usize::MAX {
                 0
-            } else if d.t >= d.start + m.phases[d.phase].secs {
-                d.start += m.phases[d.phase].secs;
-                // (A grab that caught nothing: straight to the last phase.)
-                let missed = d.held.is_none() && m.phases[d.phase].acts.iter().any(|a| matches!(a, Act::Grab(_)));
+            } else if d.t >= d.start + m.phases[d.phase].secs || d.cut.is_some() {
+                // (Cut short by its strand: on from now.)
+                d.start = if d.cut.is_some() { d.t } else { d.start + m.phases[d.phase].secs };
+                // (A grab that caught nothing, a strand that didn't reel
+                // them in: straight to the last phase. Its strand's let go
+                // either way: what it reeled in, it bites.)
+                let acts = &m.phases[d.phase].acts;
+                let missed = (d.held.is_none() && acts.iter().any(|a| matches!(a, Act::Grab(_)))) || (acts.iter().any(|a| matches!(a, Act::Web(_))) && d.cut != Some(true));
+                d.cut = None;
+                if let Some(mut s) = d.strand.take().and_then(|s| strands.get_mut(s).ok()) {
+                    s.let_go();
+                }
                 if missed { (d.phase + 1).max(m.phases.len() - 1) } else { d.phase + 1 }
             } else {
                 break;
@@ -586,15 +617,27 @@ pub fn run(
                         }
                     });
                 }
+                // (Its strand shot at them.)
+                if let Act::Web(w) = act
+                    && let Some(pk) = &target
+                {
+                    let s = web::shoot(w, e, &k, limbs.get(e).ok(), pk);
+                    sounds.write(crate::sound::PlaySound::at("silk", s.root));
+                    d.strand = Some(commands.spawn(s).id());
+                }
             }
         }
-        if stunned && d.held.is_none() && m.phases.get(d.phase).is_some_and(|p| p.acts.iter().any(|a| matches!(a, Act::Grab(_) | Act::Beam { .. }))) {
-            // (Struck senseless mid-grab or mid-beam: the move's off.)
+        if stunned && d.held.is_none() && m.phases.get(d.phase).is_some_and(|p| p.acts.iter().any(|a| matches!(a, Act::Grab(_) | Act::Beam { .. } | Act::Web(_)))) {
+            // (Struck senseless mid-grab, mid-beam or mid-web: the move's
+            // off.)
             done = true;
         }
         if done {
             if let Some((h, _)) = d.held.take() {
                 commands.entity(h).try_remove::<Held>();
+            }
+            if let Some(mut s) = d.strand.take().and_then(|s| strands.get_mut(s).ok()) {
+                s.let_go();
             }
             if let Some(a) = anim.as_deref_mut()
                 && m.phases.iter().any(|p| p.clip.is_some())
@@ -714,6 +757,14 @@ pub fn run(
                         casts.write(crate::magic::CastRequest { caster: e, spell: i, from, toward: from + d.aim * 60.0, alt: false });
                     }
                 }
+                // Its strand: reeled in, on to the bite; spent (missed,
+                // broken free of), or never shot (no one to shoot at), to
+                // the last phase. (Not out yet the tick it's shot.)
+                Act::Web(_) => match (d.strand, d.strand.and_then(|s| strands.get(s).ok()).map(|s| s.hold)) {
+                    (_, Some(web::Hold::Reeled(_))) => d.cut = Some(true),
+                    (_, Some(web::Hold::Spent { .. })) | (None, _) => d.cut = Some(false),
+                    _ => {}
+                },
                 Act::Slam(s) if !d.struck && f >= 0.0 => {
                     d.struck = true;
                     let feet = pos - Vec2::Y * k.body.half.y;
@@ -813,7 +864,7 @@ fn begin(p: &Phase, k: &Kinematics, dir: Vec2, vel: &mut Vec2, sounds: &mut Mess
             Act::Sound(name) => {
                 sounds.write(crate::sound::PlaySound::at(name.clone(), k.body.pos));
             }
-            Act::Strike(_) | Act::Slam(_) | Act::Grab(_) | Act::Throw { .. } | Act::Beam { .. } => {}
+            Act::Strike(_) | Act::Slam(_) | Act::Grab(_) | Act::Throw { .. } | Act::Beam { .. } | Act::Web(_) => {}
         }
     }
 }

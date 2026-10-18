@@ -3,8 +3,11 @@
 // floors, walls and ceilings, drops on you from above. Up close it crouches
 // low and draws back, trembling, then leaps at you to bite (it throws you),
 // or rears up on its back legs, its front pair raised high, and stamps them
-// down on you; from further off it rears and spits acid, a lot of it. Dead,
-// its legs curl up over it. Lives in nests (lairs.ron) and deep caves.
+// down on you; from further off it rears and spits acid, a lot of it, or
+// turns its back on you, rears its abdomen at you and shoots a strand of
+// silk: caught, you're reeled in and bitten (dash or strike to break
+// free). Dead, its legs curl up over it. Lives in nests (lairs.ron) and
+// deep caves.
 (
     name: "Cave spider",
     // What it may have on it when it dies (loot.ron), besides what it wears.
@@ -69,7 +72,7 @@
         params: (aggro: 255, close: Crawl(pounce_range: 0, pounce_every: 1.5, keep: 34), wander: (speed: 0.4), senses: (dark: 1.0, smell: 160), tactics: (skirmish: Some((back: 80, wait: 2.0, together: 1)))),
     ),
     // Its own moves (moves.ron), tried in this order.
-    moves: ["spider_stamp", "spider_bite", "spider_spit"],
+    moves: ["spider_stamp", "spider_bite", "spider_web", "spider_spit"],
     // It digs its way to you: claws through dirt and sand (hardness to 25,
     // 240 cells a second of dirt: some 9 cells of headway a second, its
     // round hole's room), acid through what they can't take (stone, not

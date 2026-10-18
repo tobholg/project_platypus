@@ -9,7 +9,8 @@
 // phases: in order, each `secs` long (0: a moment), named for readouts
 //   and the bestiary (windup, strike, recover):
 //   pose: (lift, back, curl) how the body is held (`legs::Rear`: raised,
-//     crouched back, tail curled over), eased to over the phase:
+//     crouched back, tail curled over; away: its back to the target),
+//     eased to over the phase:
 //     ease: Smooth (default), Linear, Snap; tremble: the curl shaking
 //   acts: done as the phase starts, but a strike, live through it:
 //     Lunge(speed, up): off at the target (cells/s)
@@ -30,6 +31,14 @@
 //     Beam(spell, at, turn): live through the phase: a ray (spells.ron)
 //       cast every tick, its aim swinging after the target at most `turn`
 //       radians a second
+//     Web((from, speed, reach, at, reel, near)): live through the phase: a
+//       strand of silk shot from `from` on its body (cells from its grip,
+//       facing right, y up: its spinnerets) at where the target will be,
+//       `speed` cells/s, out to `reach`; it sticks to the target only (a
+//       dash slips it), reeling them in to `at` cells toward them (its
+//       jaws) in about `reel` s, till they're within `near`: then on to the
+//       next phase (its bite). Missed, broken (a dash, a blade, rock
+//       between), or the phase run out: straight to the last phase
 //   clip: an animation clip of its art played through the phase (a rig's
 //     pose: the troll's reach)
 (
@@ -214,6 +223,26 @@
             ]),
             (name: "hold out", secs: 0.04, ease: Snap, pose: Some((reach: 1.0))),
             (name: "recover", secs: 0.14, ease: Linear, pose: Some(())),
+        ]),
+        // The big spider's web, from further off than it bites, with a
+        // clear line: it turns its back on you and rears its abdomen up at
+        // you, its spinnerets aimed, held there trembling (a dry hiss),
+        // then shoots a strand of silk at where you're going. Caught,
+        // you're reeled in, and it whirls round and bites (venom) and lets
+        // go: dash, or strike the strand or the spider, to break free; rock
+        // between you cuts it. Missed, the strand lands (a little cobweb
+        // where it sticks) and it gathers itself.
+        (id: "spider_web", every: 5.5, when: (range: (60, 180), footing: true, line: true), phases: [
+            (name: "windup", secs: 0.2, pose: Some((away: true, lift: 8, pitch: 28, paw: 0.3))),
+            (name: "hold", secs: 0.4, ease: Snap, pose: Some((away: true, lift: 8, pitch: 28, paw: 0.3)), tremble: 0.06, acts: [Sound("spider_hiss")]),
+            (name: "shoot", secs: 1.6, ease: Snap, pose: Some((away: true, lift: 4, pitch: 14)), acts: [
+                Web((from: (-24, -1), speed: 300, reach: 190, at: 18, reel: 0.55, near: 6)),
+            ]),
+            (name: "bite", secs: 0.14, ease: Snap, pose: Some((lift: 3, back: -12, paw: 0.0)), acts: [
+                Strike((at: 18, reach: 10, damage: 18, harm: pierce, knock: 420, up: 0.4, stun: 0.35, from: 0.3, coat: Some("venom"))),
+                Sound("snap"),
+            ]),
+            (name: "recover", secs: 0.45, ease: Smooth, pose: Some(())),
         ]),
         // With a clear line, from all but right on top of you (in a cave
         // it fights close: at 24 and up it never spat there): it rears and

@@ -140,16 +140,6 @@ fn clear(sim: &SimWorld, a: Vec2, b: Vec2) -> bool {
     (1..n).all(|i| !solid(sim, a.lerp(b, i as f32 / n as f32)))
 }
 
-/// A blade (not its own) meeting the tongue, from `a` to `b`.
-fn cut(blades: &crate::combat::LiveBlades, a: Vec2, b: Vec2, me: Entity) -> Option<Vec2> {
-    let ab = b - a;
-    let near = |p: Vec2| {
-        let k = if ab.length_squared() > 1e-6 { ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0) } else { 0.0 };
-        p.distance(a + ab * k)
-    };
-    blades.0.iter().filter(|bl| bl.who != me).find_map(|bl| bl.cells.iter().find(|c| near(**c) <= 2.5).copied())
-}
-
 fn gore() -> crate::magic::runes::Emitter {
     crate::magic::runes::Emitter {
         count: 0.0,
@@ -259,7 +249,7 @@ fn think(
                 let was = o.tip;
                 let reach = ((t + DT) * FLY).min(TONGUE.1);
                 o.tip = mouth + o.aim * reach;
-                next = if let Some(at) = cut(&blades, mouth, o.tip, e) {
+                next = if let Some(at) = blades.across(mouth, o.tip, e) {
                     cut_off(&mut o, at, &mut sounds, &mut sparks)
                 } else if let Some((who, _, _)) = hunted.iter().filter(|(_, _, t)| t.hunted()).find(|(_, tk, _)| {
                     // (Swept from where its tip was: it flies fast.)
@@ -286,7 +276,7 @@ fn think(
                 if let Some(tp) = theirs {
                     o.tip = tp;
                 }
-                next = if let Some(at) = cut(&blades, mouth, o.tip, e) {
+                next = if let Some(at) = blades.across(mouth, o.tip, e) {
                     cut_off(&mut o, at, &mut sounds, &mut sparks)
                 } else if dashers.contains(&who) || theirs.is_none() || t + DT >= REEL.1 {
                     Doing::Reel
