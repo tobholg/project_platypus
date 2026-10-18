@@ -322,7 +322,7 @@ fn place(bd: Res<Backdrops>, zoom: Res<crate::camera::Zoom>, gloom: Res<crate::l
     // and gliding a pixel at a time; snapped to whole cells they hopped 2
     // pixels at once. The clouds, drifting slowly on their own, aren't:
     // they're drawn smooth, `CLOUD_UP`.)
-    let px = zoom.0.max(1) as f32;
+    let px = zoom.0.max(1.0);
     for (key, tile) in &bd.tiles {
         let exact = bd.centre(*key, c);
         let at = if key.part == Part::Clouds { exact } else { c + ((exact - c) * px).round() / px };

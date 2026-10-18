@@ -114,7 +114,7 @@ fn on_explosion(
 
 fn shake(time: Res<Time>, mut trauma: ResMut<Trauma>, mut offset: ResMut<ShakeOffset>, zoom: Res<crate::camera::Zoom>) {
     let t = time.elapsed_secs();
-    let amp = trauma.0 * trauma.0 * MAX_SHAKE_PX / zoom.0 as f32;
+    let amp = trauma.0 * trauma.0 * MAX_SHAKE_PX / zoom.0;
     // Sums of incommensurate sines: noisy enough, and smooth frame to frame.
     let n = |a: f32, b: f32| ((t * a).sin() + 0.6 * (t * b).sin()) / 1.6;
     offset.0 = Vec2::new(n(47.0, 71.0), n(53.0, 83.0)) * amp;

@@ -651,12 +651,17 @@ const GLOOM_EASE: f32 = 4.0;
 /// Cells per light texel at a zoom: about 6 screen pixels or more (a power
 /// of two: texels tile a chunk). (Zoom 2 at 2 cells doubled the frame time:
 /// the overlay's smooth filter hides the steps instead.)
-fn texel_for(zoom: u32) -> i32 {
-    match zoom {
-        1 => 8,
-        2 => 4,
-        3..=5 => 2,
-        _ => 1,
+fn texel_for(zoom: f32) -> i32 {
+    // (1.5 as far out as 1: finer, the grid cost nearly twice the
+    // solve of 2's.)
+    if zoom < 2.0 {
+        8
+    } else if zoom < 3.0 {
+        4
+    } else if zoom < 6.0 {
+        2
+    } else {
+        1
     }
 }
 

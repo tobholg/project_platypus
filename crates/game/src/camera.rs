@@ -1,6 +1,7 @@
 //! Camera: follows a `CameraTarget` if there is one, otherwise flies freely
 //! (WASD / arrows, Shift for speed). Tab detaches it from the player.
-//! The keys that type `+` and `-` zoom in whole screen-pixels per cell,
+//! The keys that type `+` and `-` zoom in screen-pixels per cell (whole
+//! numbers but for 1.5),
 //! whatever the keyboard layout (`=` too, and the keypad's).
 
 use bevy::input::keyboard::Key;
@@ -32,11 +33,13 @@ pub struct CursorOverride(pub Option<Vec2>);
 #[derive(Resource, Default)]
 pub struct FreeCamera(pub bool);
 
-/// Screen pixels per cell. Integer so cells stay crisp.
+/// Screen pixels per cell. Whole numbers so cells stay crisp, but for one
+/// step between the furthest out two (1.5: a cell's one or two pixels, by
+/// turns).
 #[derive(Resource)]
-pub struct Zoom(pub u32);
+pub struct Zoom(pub f32);
 
-const ZOOM_LEVELS: [u32; 6] = [1, 2, 3, 4, 6, 8];
+const ZOOM_LEVELS: [f32; 7] = [1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0];
 const FLY_SPEED_PX: f32 = 900.0;
 
 #[derive(Resource)]
@@ -45,7 +48,7 @@ struct StartAt(Vec2);
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         // PLATYPUS_ZOOM=6 starts closer in (screenshots, detail work).
-        let start_zoom = std::env::var("PLATYPUS_ZOOM").ok().and_then(|z| z.parse().ok()).filter(|z| ZOOM_LEVELS.contains(z)).unwrap_or(2);
+        let start_zoom = std::env::var("PLATYPUS_ZOOM").ok().and_then(|z| z.parse().ok()).filter(|z| ZOOM_LEVELS.contains(z)).unwrap_or(2.0);
         app.insert_resource(Zoom(start_zoom))
             .init_resource::<CursorWorld>()
             .init_resource::<CursorOverride>()
@@ -136,9 +139,9 @@ fn apply_zoom(
 ) {
     let (projection, loader) = &mut *cam;
     if let Projection::Orthographic(o) = &mut **projection {
-        o.scale = 1.0 / zoom.0 as f32;
+        o.scale = 1.0 / zoom.0;
     }
-    loader.half_extent = Vec2::new(window.width(), window.height()) / (2.0 * zoom.0 as f32);
+    loader.half_extent = Vec2::new(window.width(), window.height()) / (2.0 * zoom.0);
 }
 
 fn toggle_free(keys: Res<ButtonInput<KeyCode>>, mut free: ResMut<FreeCamera>) {
@@ -166,7 +169,7 @@ fn fly(
         axis([KeyCode::KeyS, KeyCode::ArrowDown], [KeyCode::KeyW, KeyCode::ArrowUp]),
     );
     let boost = if keys.pressed(KeyCode::ShiftLeft) { 4.0 } else { 1.0 };
-    let speed = FLY_SPEED_PX / zoom.0 as f32 * boost;
+    let speed = FLY_SPEED_PX / zoom.0 * boost;
     cam.translation += (dir * speed * time.delta_secs()).extend(0.0);
 }
 
@@ -284,7 +287,7 @@ pub fn follow(
     // (A quarter pixel off the halves: a body at rest stands half a cell
     // up, which at 3 pixels a cell is a tie, and float noise flipped it,
     // the whole world hopping a pixel up and down against the sky.)
-    let ppc = zoom.0 as f32;
+    let ppc = zoom.0;
     let snap = |v: f32| (v * ppc + SNAP_BIAS).round() / ppc;
     cam.translation.x = snap(cam.translation.x);
     cam.translation.y = snap(cam.translation.y);

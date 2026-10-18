@@ -11974,7 +11974,7 @@ fn plunge_script(
     let ticks = ((fixed.elapsed_secs_f64() - state.1) * 60.0).round();
     state.1 = fixed.elapsed_secs_f64();
     let (py, cy) = (tf.translation().y, c.translation.y);
-    let px = zoom.0 as f32;
+    let px = zoom.0;
     info!("plunge: t {:.3} dt {:.2} ms ticks {ticks} vy {:.0} player {py:.2} cam {cy:.2} (step {:.2}) on screen {:.1} px", s.elapsed, time.delta_secs() * 1000.0, k.body.vel.y, cy - state.2, (py - cy) * px);
     state.2 = cy;
 }
