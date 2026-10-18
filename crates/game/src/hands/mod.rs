@@ -9,6 +9,7 @@
 
 pub mod chests;
 pub mod corpses;
+pub(crate) mod crafting;
 pub mod filter;
 pub mod icons;
 pub mod items;

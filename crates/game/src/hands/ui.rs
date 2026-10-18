@@ -1,5 +1,6 @@
-//! The hotbar (always, in play mode), the inventory screen (I opens it, Esc or I shuts it: the
-//! pack under the hotbar) and an open chest, Terraria-style:
+//! The hotbar (always, in play mode), the inventory screen (Esc or I opens
+//! and shuts it: the pack under the hotbar) and an open chest,
+//! Terraria-style:
 //!
 //! - drag a stack to another slot, or click it to pick it up and click
 //!   where it goes (swapping, or merging the same item); right-click takes
@@ -8,9 +9,14 @@
 //!   chest open between the chest and the pack;
 //! - click outside the panels holding a stack to throw it out;
 //! - hover a slot for what's in it (a tooltip);
-//! - gear goes in the equipment slots beside the pack (drag it there, or
-//!   Shift-click it: on, and off again; while it's held, the slots it goes
-//!   in light up); what it all adds up to is listed beside them.
+//! - gear goes in the equipment slots, a column down the right of the
+//!   screen (drag it there, or Shift-click it: on, and off again; while
+//!   it's held, the slots it goes in light up); what it all adds up to is
+//!   listed beside them;
+//! - under the pack, Crafting (the crafting panel, `crafting.rs`) and Quick
+//!   sort (the pack's stacks merged and laid out by category, then name:
+//!   the hotbar's left alone); bottom right, Settings (the game menu,
+//!   `pause.rs`).
 
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
@@ -19,6 +25,7 @@ use bevy::window::PrimaryWindow;
 use super::chests::{Chests, SLOTS};
 use super::icons::Icons;
 use super::items::{BARS, HOTBAR, Inventory, ItemDef, Items, Stack, Use};
+use super::crafting::CraftingPanel;
 use super::{DevTools, Hand, PACK, PACK_ROWS, spawn_drop};
 use crate::creatures::Kinematics;
 use crate::creatures::player::LocalPlayer;
@@ -75,8 +82,18 @@ struct ChestRoot;
 #[derive(Component)]
 struct HotbarRoot;
 
+/// The inventory screen's parts (the pack, the gear column, Settings):
+/// shown while it's open.
 #[derive(Component)]
 struct PackRoot;
+
+/// A button of the inventory screen's.
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum PackButton {
+    Crafting,
+    Sort,
+    Settings,
+}
 
 #[derive(Component)]
 struct ItemLabel;
@@ -107,15 +124,15 @@ struct StatsText;
 struct ChestTitle;
 
 /// A slot's size, and the hotbar's chosen one (bigger, gold: Terraria's).
-const SLOT: f32 = 44.0;
+pub(crate) const SLOT: f32 = 44.0;
 const SLOT_BIG: f32 = 52.0;
-const ICON_PX: f32 = 32.0;
+pub(crate) const ICON_PX: f32 = 32.0;
 /// Slots: rounded, deep blue, a darker edge.
-const EMPTY: Color = Color::srgba(0.16, 0.2, 0.42, 0.78);
-const EDGE: Color = Color::srgba(0.07, 0.08, 0.2, 0.9);
-const CHOSEN: Color = Color::srgb(1.0, 0.88, 0.35);
+pub(crate) const EMPTY: Color = Color::srgba(0.16, 0.2, 0.42, 0.78);
+pub(crate) const EDGE: Color = Color::srgba(0.07, 0.08, 0.2, 0.9);
+pub(crate) const CHOSEN: Color = Color::srgb(1.0, 0.88, 0.35);
 const CHOSEN_BG: Color = Color::srgba(0.95, 0.76, 0.2, 0.92);
-const ROUND: f32 = 7.0;
+pub(crate) const ROUND: f32 = 7.0;
 /// An equipment slot the gear in the mouse's grip would go in (white: no
 /// rarity has it).
 const FITS: Color = Color::WHITE;
@@ -125,7 +142,8 @@ impl Plugin for UiPlugin {
         app.init_resource::<InventoryOpen>()
             .init_resource::<Held>()
             .add_systems(Startup, spawn)
-            .add_systems(Update, (toggle, press, release, show, show_gear, title, tooltip, hints).chain());
+            .add_plugins(super::crafting::CraftingPlugin)
+            .add_systems(Update, (buttons, toggle, press, release, show, show_gear, title, tooltip, hints).chain());
     }
 }
 
@@ -181,9 +199,22 @@ fn grid() -> Node {
     Node { display: Display::Grid, grid_template_columns: RepeatedGridTrack::px(HOTBAR as u16, SLOT), column_gap: px(4), row_gap: px(4), ..default() }
 }
 
+/// A button of the inventory screen's: rounded, the slots' blue.
+fn button(parent: &mut ChildSpawnerCommands, which: PackButton, label: &str) {
+    parent
+        .spawn((
+            Button,
+            which,
+            Node { padding: UiRect::axes(px(16), px(6)), border: UiRect::all(px(2)), border_radius: BorderRadius::all(px(ROUND)), justify_content: JustifyContent::Center, ..default() },
+            BorderColor::all(EDGE),
+            BackgroundColor(BUTTON),
+        ))
+        .with_child((Text::new(label), TextFont { font_size: FontSize::Px(15.0), ..default() }, TextColor(Color::srgb(0.95, 0.94, 0.9)), shadow()));
+}
+
 /// A tight dark shadow under text over the world (readable on sky or
 /// rock).
-fn shadow() -> TextShadow {
+pub(crate) fn shadow() -> TextShadow {
     TextShadow { offset: Vec2::new(1.0, 1.0), color: Color::srgba(0.0, 0.0, 0.0, 0.85) }
 }
 
@@ -191,12 +222,24 @@ fn shadow() -> TextShadow {
 const LABEL_CHARS: usize = 34;
 
 /// Where the inventory starts: under the hotbar.
-const PACK_TOP: f32 = 86.0;
-/// The pick-up filter's row under the pack (`filter`): its room.
+pub(crate) const PACK_TOP: f32 = 86.0;
+/// The buttons' row under the pack (Crafting, Quick sort): its room.
+const BUTTON_ROW: f32 = 40.0;
+/// The pick-up filter's row under that (`filter`): its room.
 pub(crate) const FILTER_ROW: f32 = 44.0;
 /// Where a panel under the pack starts (an open chest, a villager's), past
 /// the pick-up filter's row.
-pub(crate) const UNDER_PACK: f32 = PACK_TOP + (SLOT + 3.0) * PACK_ROWS as f32 + 50.0 + FILTER_ROW;
+pub(crate) const UNDER_PACK: f32 = PACK_TOP + (SLOT + 3.0) * PACK_ROWS as f32 + 50.0 + BUTTON_ROW + FILTER_ROW;
+/// Past the pack's right edge (and its discard slot): where the crafting
+/// panel starts.
+pub(crate) const PACK_RIGHT: f32 = 10.0 + (SLOT + 4.0) * HOTBAR as f32 + 60.0;
+/// The gear column's top: under the life, mana, gold and status timers,
+/// top right.
+const GEAR_TOP: f32 = 200.0;
+/// The buttons: the slots' blue, lighter under the mouse; a gold edge on
+/// one that's on.
+pub(crate) const BUTTON: Color = Color::srgba(0.16, 0.2, 0.42, 0.85);
+pub(crate) const BUTTON_HOVER: Color = Color::srgba(0.26, 0.32, 0.6, 0.95);
 
 fn spawn(mut commands: Commands) {
     let small = |s: &str| (Text::new(s), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::srgb(0.85, 0.85, 0.9)));
@@ -253,7 +296,6 @@ fn spawn(mut commands: Commands) {
                 top: px(PACK_TOP),
                 left: px(10),
                 align_items: AlignItems::Start,
-                column_gap: px(6),
                 ..default()
             },
         ))
@@ -275,11 +317,24 @@ fn spawn(mut commands: Commands) {
                         slot(c, Holder::Trash, 0);
                     });
                 });
+                panel.spawn(Node { column_gap: px(8), ..default() }).with_children(|row| {
+                    button(row, PackButton::Crafting, "Crafting");
+                    button(row, PackButton::Sort, "Quick sort");
+                });
             });
-            // The gear worn, and what it adds up to, right of the pack.
+        });
+    // The gear worn, a column down the right of the screen (Terraria's),
+    // and what it adds up to beside it.
+    commands
+        .spawn((
+            PackRoot,
+            Visibility::Hidden,
+            Node { position_type: PositionType::Absolute, top: px(GEAR_TOP), right: px(12), align_items: AlignItems::Start, column_gap: px(6), ..default() },
+        ))
+        .with_children(|root| {
             root.spawn((
                 Interaction::None,
-                Node { flex_direction: FlexDirection::Column, row_gap: px(4), padding: UiRect::all(px(8)), width: px(200), ..default() },
+                Node { flex_direction: FlexDirection::Column, row_gap: px(4), padding: UiRect::all(px(8)), width: px(210), border_radius: BorderRadius::all(px(ROUND)), ..default() },
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.62)),
             ))
             .with_children(|panel| {
@@ -288,7 +343,7 @@ fn spawn(mut commands: Commands) {
             });
             root.spawn((
                 Interaction::None,
-                Node { flex_direction: FlexDirection::Column, row_gap: px(3), padding: UiRect::all(px(8)), align_items: AlignItems::Center, ..default() },
+                Node { flex_direction: FlexDirection::Column, row_gap: px(3), padding: UiRect::all(px(8)), align_items: AlignItems::Center, border_radius: BorderRadius::all(px(ROUND)), ..default() },
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.62)),
             ))
             .with_children(|panel| {
@@ -298,6 +353,10 @@ fn spawn(mut commands: Commands) {
                 }
             });
         });
+    // Settings, bottom right: the game menu.
+    commands
+        .spawn((PackRoot, Visibility::Hidden, Node { position_type: PositionType::Absolute, bottom: px(12), right: px(14), ..default() }))
+        .with_children(|root| button(root, PackButton::Settings, "Settings"));
     // An open chest, above the inventory.
     commands
         .spawn((
@@ -365,6 +424,8 @@ fn toggle(
     mut chest_panel: Query<&mut Visibility, (With<ChestRoot>, Without<HotbarRoot>)>,
     mut hotbar: Query<&mut Visibility, With<HotbarRoot>>,
     dev: Res<DevTools>,
+    taken: Res<crate::dev::KeyboardTaken>,
+    mut crafting: ResMut<CraftingPanel>,
 ) {
     for mut v in &mut chest_panel {
         *v = if chests.open.is_some() { Visibility::Visible } else { Visibility::Hidden };
@@ -373,15 +434,17 @@ fn toggle(
     for mut v in &mut hotbar {
         *v = if dev.0 { Visibility::Hidden } else { Visibility::Visible };
     }
-    // (I opens and shuts it; Esc only shuts it: otherwise it's the game
-    // menu's, `pause.rs`.)
-    let want = if keys.just_pressed(KeyCode::KeyI) { !open.0 } else if keys.just_pressed(KeyCode::Escape) { false } else { open.0 };
+    // (I opens and shuts it; so does Esc, which `pause.rs` hears first, as
+    // it's the other panels' too.)
+    let want = if keys.just_pressed(KeyCode::KeyI) && !taken.0 { !open.0 } else { open.0 };
     if want == open.0 && pack.iter().next().is_some_and(|v| (*v == Visibility::Visible) == open.0) {
         return;
     }
     open.0 = want;
+    // (Shut, it shuts the chest, and the crafting panel's shut next time.)
     if !open.0 {
         chests.open = None;
+        crafting.open = false;
     }
     // Closing with something in hand puts it back.
     if !open.0
@@ -391,6 +454,48 @@ fn toggle(
     }
     for mut v in &mut pack {
         *v = if open.0 { Visibility::Visible } else { Visibility::Hidden };
+    }
+}
+
+/// The inventory screen's buttons: Crafting (the panel on or off), Quick
+/// sort (the pack), Settings (the game menu: the inventory shuts under
+/// it). How each looks: lighter under the mouse, a gold edge on Crafting
+/// while its panel's up.
+#[allow(clippy::too_many_arguments)]
+fn buttons(
+    items: Option<Res<Items>>,
+    mut open: ResMut<InventoryOpen>,
+    mut crafting: ResMut<CraftingPanel>,
+    mut menu: ResMut<crate::pause::GameMenu>,
+    mut virt: ResMut<Time<Virtual>>,
+    mut inv: Query<&mut Inventory, With<LocalPlayer>>,
+    clicks: Query<(&Interaction, &PackButton), Changed<Interaction>>,
+    mut looks: Query<(&Interaction, &PackButton, &mut BackgroundColor, &mut BorderColor)>,
+) {
+    for (i, b) in &clicks {
+        if *i != Interaction::Pressed || !open.0 {
+            continue;
+        }
+        match b {
+            PackButton::Crafting => crafting.open = !crafting.open,
+            PackButton::Sort => {
+                if let (Some(items), Ok(mut inv)) = (items.as_ref(), inv.single_mut()) {
+                    inv.sort(items, BARS * HOTBAR..PACK);
+                }
+            }
+            PackButton::Settings => {
+                open.0 = false;
+                crate::pause::open(&mut menu, &mut virt);
+            }
+        }
+    }
+    for (i, b, mut bg, mut edge) in &mut looks {
+        let want = if *i == Interaction::None { BUTTON } else { BUTTON_HOVER };
+        if bg.0 != want {
+            bg.0 = want;
+        }
+        let rim = if *b == PackButton::Crafting && crafting.open { CHOSEN } else { EDGE };
+        *edge = BorderColor::all(rim);
     }
 }
 
@@ -425,7 +530,7 @@ fn hints(hand: Res<Hand>, game: Res<crate::mode::Mode>, items: Option<Res<Items>
     let pick = items.as_ref().zip(player.single().ok()).and_then(|(items, inv)| inv.slots[hand.active()].map(|s| items.def(s.item).use_.clone())).is_some_and(|u| matches!(u, Use::Mine { back: false, area, .. } if area > 0.0));
     let mode = if pick { format!("   |   {} [C]", if hand.area { "area" } else { "precise" }) } else { String::new() };
     let dev = if game.dev() { "   |   dev menu: key left of 1" } else { "" };
-    let want = format!("{smart} [Alt]{mode}   |   inventory [I]   |   potion [H]   |   menu [Esc]{dev}");
+    let want = format!("{smart} [Alt]{mode}   |   inventory [Esc or I]   |   potion [H]{dev}");
     if text.0 != want {
         text.0 = want;
     }
@@ -848,7 +953,7 @@ fn tooltip(
 }
 
 /// A stack, in words: its name and count, what it does, its note.
-fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<&crate::combat::Weapons>, gear: Option<(&GearRules, Option<&Equipment>)>, s: &Stack) -> String {
+pub(crate) fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<&crate::combat::Weapons>, gear: Option<(&GearRules, Option<&Equipment>)>, s: &Stack) -> String {
     let def: &ItemDef = items.def(s.item);
     let n = whole(items, s);
     let name = gear.map_or(def.name.clone(), |(rules, _)| rules.name(items, s));

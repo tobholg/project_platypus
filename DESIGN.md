@@ -268,7 +268,11 @@ A material can have a `pattern`: a small tile of shade indices anchored to the w
   (the hotbar is its top row; X for the next hotbar): five rows of pack,
   no box behind them, a discard slot (Terraria's trash: a stack dropped in,
   or Ctrl-clicked from a slot, is kept there to take back until the next
-  goes in), the gear worn and the stats to the right, an open chest below.
+  goes in), Crafting and Quick sort under it (quick sort merges the pack's
+  stacks and lays them out by category, then name; the hotbar's left
+  alone), the gear worn in a column down the right of the screen with the
+  stats beside it, Settings bottom right (the game menu: Resume, Save, Main
+  menu, Quit; time stops), an open chest below.
   The keys' line bottom centre; the debug text bottom left; the arena
   panel under the hotbar (away while the inventory's open).
 - **Loot tables** (RON) by context, such as `crypt_deep` or `troll`: weighted entries, counts, rarity by depth.
@@ -521,10 +525,13 @@ Systems first, with example content to iterate on.
   (like a chest); a pickaxe knocks it back into its item. A furnace glows.
 - **Recipes** (`crafting.ron`): makes × count from needs (counted in the
   items' own units: blocks as blocks), by hand or at a station within
-  reach. The inventory screen has a crafting panel: what you can make now
-  first, what you're short of dimmed, each with what goes in and where;
-  click to make one (a `CraftRequest`, so scripts and later co-op/AI can
-  craft too).
+  reach. The inventory screen's Crafting button opens the crafting panel
+  beside the pack: tabs by what's made (tools, weapons, armour, lights,
+  materials..., from the item: `Items::category`), a slot a recipe (what
+  you can make now first and bright, what you're short of dimmed), and the
+  one pointed at in full (what goes in, what you have of each, where it's
+  made); click one, or Craft, to make one (a `CraftRequest`, so scripts
+  and later co-op/AI can craft too). Esc shuts it before the inventory.
 - **Discovery**: a recipe shows once you've held anything that goes into
   it or comes out of it (Terraria's), and a `locked` one only once a
   milestone unlocks it.

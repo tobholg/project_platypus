@@ -23,6 +23,10 @@
 //   a second; casting: times as many while it's used): what it gives off
 //   at its tip while held
 // about: a line for its tooltip
+// category: what sort of thing it is (Tools, Weapons, Armour, Accessories,
+//   Lights, Magic, Potions, Furniture, Building, Materials, Other), for the
+//   crafting panel's tabs and quick sort; only where what it does doesn't
+//   say (an arrow: Weapons)
 //   Bow(bow): a bow (weapons.ron): hold the left button to draw, let go to
 //     loose an arrow (one of your `arrow` items) at the cursor.
 //   Melee(weapon): a weapon (weapons.ron): the left button swings it at the
@@ -139,7 +143,7 @@
             about: "Torn from the mother of a nest. Its venom still burns what it cuts."),
         (id: "bow",            name: "Bow",            color: (150, 104, 58), use: Bow("bow"), gear: (slot: Held),
             about: "Hold to draw, let go to loose an arrow: the longer drawn, the harder and further. Arrows stick where they land; walk near to pick them up. Loose one through fire and it burns."),
-        (id: "arrow",          name: "Arrow",          stack: 99, color: (176, 136, 84)),
+        (id: "arrow",          name: "Arrow",          stack: 99, color: (176, 136, 84), category: Weapons),
         (id: "chest",          name: "Chest",          stack: 20, color: (150, 104, 58), use: Chest),
         // Crafting (crafting.ron): stations to set down, and bars smelted
         // from ore.
