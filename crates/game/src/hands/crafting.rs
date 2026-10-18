@@ -38,6 +38,9 @@ pub struct CraftingPanel {
     pub picked: Option<usize>,
     pub(crate) list: Vec<(usize, bool)>,
     near: Vec<usize>,
+    /// The mouse is over it (up): the slots it covers don't take clicks
+    /// or show tips (on a narrow window it lies over the gear column).
+    pub covers: bool,
 }
 
 impl CraftingPanel {
@@ -126,6 +129,7 @@ fn spawn(mut commands: Commands) {
         .spawn((
             PanelRoot,
             Interaction::None,
+            bevy::ui::RelativeCursorPosition::default(),
             Visibility::Hidden,
             GlobalZIndex(5),
             Node {
@@ -252,13 +256,18 @@ fn list(
     mut panel: ResMut<CraftingPanel>,
     player: Query<(&Kinematics, &Inventory, &Progress), With<LocalPlayer>>,
     stations: Query<(&Station, &Kinematics)>,
-    mut root: Single<&mut Visibility, With<PanelRoot>>,
+    mut root: Single<(&mut Visibility, &bevy::ui::RelativeCursorPosition), With<PanelRoot>>,
     mut near_text: Single<&mut Text, With<NearText>>,
 ) {
     let up = open.0 && panel.open;
     let want = if up { Visibility::Visible } else { Visibility::Hidden };
-    if **root != want {
-        **root = want;
+    let (vis, over) = &mut *root;
+    if **vis != want {
+        **vis = want;
+    }
+    let covers = up && over.cursor_over();
+    if panel.covers != covers {
+        panel.covers = covers;
     }
     let (Some(items), Ok((k, inv, progress)), true) = (items, player.single(), up) else { return };
     let near = crate::craft::near(&crafting, k.body.pos, &stations);

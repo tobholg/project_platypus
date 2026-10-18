@@ -119,6 +119,11 @@ struct SlotName(usize);
 #[derive(Component)]
 struct StatsText;
 
+/// The stats beside the gear column: put away while the crafting panel's
+/// up (on a narrow window it lay under it).
+#[derive(Component)]
+struct StatsPanel;
+
 /// What the open chest (or body) is called.
 #[derive(Component)]
 struct ChestTitle;
@@ -143,7 +148,7 @@ impl Plugin for UiPlugin {
             .init_resource::<Held>()
             .add_systems(Startup, spawn)
             .add_plugins(super::crafting::CraftingPlugin)
-            .add_systems(Update, (buttons, toggle, press, release, show, show_gear, title, tooltip, hints).chain());
+            .add_systems(Update, (buttons, toggle, press, release, show, show_gear, title, tooltip, hints, stats_panel).chain());
     }
 }
 
@@ -333,6 +338,7 @@ fn spawn(mut commands: Commands) {
         ))
         .with_children(|root| {
             root.spawn((
+                StatsPanel,
                 Interaction::None,
                 Node { flex_direction: FlexDirection::Column, row_gap: px(4), padding: UiRect::all(px(8)), width: px(210), border_radius: BorderRadius::all(px(ROUND)), ..default() },
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.62)),
@@ -501,9 +507,13 @@ fn buttons(
 
 type SlotQuery<'a> = (&'a RelativeCursorPosition, &'a SlotUi, &'a InheritedVisibility);
 
-/// The slot under the mouse (shown ones only). (Not `Interaction`: while
-/// a drag's button is down, the slot it started on stays `Pressed`.)
-fn under(slots: &Query<SlotQuery>) -> Option<(Holder, usize)> {
+/// The slot under the mouse (shown ones only; none under the crafting
+/// panel). (Not `Interaction`: while a drag's button is down, the slot it
+/// started on stays `Pressed`.)
+fn under(slots: &Query<SlotQuery>, crafting: &super::crafting::CraftingPanel) -> Option<(Holder, usize)> {
+    if crafting.covers {
+        return None;
+    }
     slots.iter().find(|(c, _, v)| c.cursor_over() && v.get()).map(|(_, s, _)| (s.0, s.1))
 }
 
@@ -556,13 +566,14 @@ fn press(
     mut held: ResMut<Held>,
     slots: Query<SlotQuery>,
     mut player: Query<(&Kinematics, &mut Inventory, &mut Equipment), With<LocalPlayer>>,
+    crafting: Res<super::crafting::CraftingPanel>,
 ) {
     let (Some(items), Ok((k, mut inv, mut eq))) = (items, player.single_mut()) else { return };
     let (left, right) = (mouse.just_pressed(MouseButton::Left), mouse.just_pressed(MouseButton::Right));
     if !left && !right {
         return;
     }
-    let Some((which, i)) = under(&slots) else {
+    let Some((which, i)) = under(&slots, &crafting) else {
         // Holding something, clicking outside the panels: throw it out.
         if left
             && open.0
@@ -702,13 +713,14 @@ fn release(
     mut held: ResMut<Held>,
     slots: Query<SlotQuery>,
     mut player: Query<(&mut Inventory, &mut Equipment), With<LocalPlayer>>,
+    crafting: Res<super::crafting::CraftingPanel>,
 ) {
     if !mouse.just_released(MouseButton::Left) || !open.0 {
         return;
     }
     let Some(from) = held.from.take() else { return };
     let (Some(items), Ok((mut inv, mut eq))) = (items, player.single_mut()) else { return };
-    let Some((which, i)) = under(&slots) else { return };
+    let Some((which, i)) = under(&slots, &crafting) else { return };
     if (which, i) == from || !allowed(&items, which, i, held.stack.as_ref()) {
         return;
     }
@@ -922,6 +934,7 @@ fn tooltip(
     inv: Query<(&Inventory, &Equipment), With<LocalPlayer>>,
     mut tip: Single<(&mut Text, &mut TextColor, &mut BorderColor, &mut Node, &mut Visibility), With<Tooltip>>,
     mut body: Single<&mut TextSpan, With<TooltipBody>>,
+    crafting: Res<super::crafting::CraftingPanel>,
 ) {
     let (text, color, border, node, vis) = &mut *tip;
     **vis = Visibility::Hidden;
@@ -929,7 +942,7 @@ fn tooltip(
     if held.stack.is_some() {
         return;
     }
-    let Some((which, i)) = under(&slots) else { return };
+    let Some((which, i)) = under(&slots, &crafting) else { return };
     let stack = match which {
         Holder::Chest => chests.open.and_then(|c| chests.contents(c, &sim.world, &items).slots[i]),
         Holder::Equip => eq.worn[i],
@@ -1054,4 +1067,12 @@ pub(crate) fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<
         lines.push(about.clone());
     }
     lines.join("\n")
+}
+
+/// The stats put away while the crafting panel's up, back after.
+fn stats_panel(crafting: Res<super::crafting::CraftingPanel>, mut node: Single<&mut Node, With<StatsPanel>>) {
+    let want = if crafting.open { Display::None } else { Display::Flex };
+    if node.display != want {
+        node.display = want;
+    }
 }
