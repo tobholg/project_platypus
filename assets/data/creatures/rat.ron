@@ -1,5 +1,6 @@
-// A cave rat, big as a dog (a skeever): the caves' scavengers. They come in packs, run along walls and
-// roofs, and gather at bodies to gnaw them (a body gnawed through is gone,
+// A cave rat, big as a dog (a skeever): the caves' scavengers. They come
+// in packs, on the ground (no climbing walls and roofs: a spider's), and
+// gather at bodies to gnaw them (a body gnawed through is gone,
 // what it had left lying). Brave in numbers: three or more near together
 // and they come at you, pounce and bite; fewer, and they scatter from you,
 // unless you corner one. (custom/rat.rs)
@@ -22,7 +23,6 @@
         jump_height: 22,
         air_jumps: 0,
         step_height: 3,
-        cling: true,
         dash_speed: 0,
     ),
     touch: (damage: 6, knock: 140, every: 0.7),

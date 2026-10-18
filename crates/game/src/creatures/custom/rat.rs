@@ -1,6 +1,6 @@
-//! Rats: the caves' scavengers, in packs. Their body and their hunt are
-//! data (a climber, a crawler's pounce, a bite on touch, a pack's call and
-//! flank); what's theirs:
+//! Rats: the caves' scavengers, in packs, big as dogs. Their body and
+//! their hunt are data (on the ground, a crawler's pounce, a bite on touch,
+//! a pack's call and flank); what's theirs:
 //!
 //! - **Brave in numbers**: with fewer than three of them near together, a
 //!   rat won't come at you: near, it scatters from you (squealing); further
