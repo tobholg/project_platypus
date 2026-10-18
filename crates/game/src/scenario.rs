@@ -298,6 +298,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, leap_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, slimecheck_script)
             .add_systems(Update, structure_script)
+            .add_systems(Update, ores_script)
             .add_systems(PreUpdate, mimic_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, wraith_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, dread_script)
@@ -12740,6 +12741,127 @@ fn ledge_script(
                 state.1 = s.elapsed;
                 info!("ledge: t {:.0} the {kind} at x {:.0}, {:.0} up, vel {:?}, grounded {}", s.elapsed, c.body.pos.x, feet - fl, c.body.vel.round(), c.loco.grounded());
             }
+        }
+        _ => {}
+    }
+}
+
+/// `ores` (a generated world): a chamber 200 under the surface, its right
+/// wall laid with a band of each ore and gem from the floor up (copper,
+/// iron, silver, gold, mithril, meteorite, amethyst, emerald, ruby), each
+/// 14 high, open to the chamber; the same again buried 12 cells into the
+/// rock behind it. The player at its left, facing it. Pictures into
+/// `PLATYPUS_ORES` (a dir): `ores_dark.png` (only its faint lantern),
+/// `ores_torch.png` (a torch), `ores_beam.png` (a flashlight on the wall).
+/// What's buried should never show; what's open, only in the light.
+#[allow(clippy::type_complexity)]
+fn ores_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    offscreen: Option<Res<crate::camera::Offscreen>>,
+    mut day: ResMut<crate::light::Daylight>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    mut cursor: ResMut<CursorOverride>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    mut state: Local<(u8, Vec2)>,
+) {
+    if s.name != "ores" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let t = s.elapsed;
+    let shot = |commands: &mut Commands, name: &str| {
+        if let Ok(dir) = std::env::var("PLATYPUS_ORES") {
+            let image = match &offscreen {
+                Some(o) => Screenshot::image(o.0.clone()),
+                None => Screenshot::primary_window(),
+            };
+            commands.spawn(image).observe(save_to_disk(format!("{dir}/ores_{name}.png")));
+        }
+    };
+    if state.0 == 0 && t > 0.5 {
+        day.skipped = (day.skipped + 23.0 - day.time * 24.0).rem_euclid(24.0);
+        let x = k.body.pos.x as i32;
+        let top = sim.generator.surface_hint(x).unwrap_or(k.body.pos.y as i32);
+        let floor = top - 200;
+        let mats = sim.materials().clone();
+        let Some(stone) = mats.id("stone") else { return };
+        // The rock round it all stone, the chamber dug out of it.
+        let (x0, x1) = (x - 160, x + 160);
+        for y in floor - 30..floor + 170 {
+            for xx in x0..=x1 {
+                let p = CellPos::new(xx, y);
+                let inside = xx > x0 + 20 && xx < x1 - 40 && y >= floor && y < floor + 130;
+                let cell = if inside { platypus_sim::Cell::AIR } else { platypus_sim::Cell::new(stone, (xx * 31 + y * 17) as u8) };
+                sim.world.set(p, cell);
+            }
+        }
+        let wall = x1 - 40;
+        let names = ["copper_ore", "iron_ore", "silver_ore", "gold_ore", "mithril_ore", "meteorite", "amethyst", "emerald", "ruby"];
+        for (i, name) in names.iter().enumerate() {
+            let Some(m) = mats.id(name) else { continue };
+            let y0 = floor + i as i32 * 14;
+            for y in y0..y0 + 13 {
+                // Open to the chamber: 8 deep into its wall.
+                for xx in wall..wall + 8 {
+                    let mut c = mats.spawn(m, &mut platypus_sim::rng::Rng::seeded(&[xx as u64, y as u64]));
+                    c.shade = mats.natural_shade(m, xx, y, c.shade);
+                    sim.world.set(CellPos::new(xx, y), c);
+                }
+                // Buried: 12 further in, 8 wide.
+                for xx in wall + 20..wall + 28 {
+                    let mut c = mats.spawn(m, &mut platypus_sim::rng::Rng::seeded(&[xx as u64, y as u64]));
+                    c.shade = mats.natural_shade(m, xx, y, c.shade);
+                    sim.world.set(CellPos::new(xx, y), c);
+                }
+            }
+        }
+        let at = Vec2::new((x0 + 60) as f32, floor as f32 + 1.0 + k.body.half.y);
+        k.body.pos = at;
+        k.prev_pos = at;
+        k.body.vel = Vec2::ZERO;
+        k.loco.facing = 1.0;
+        toggles.enabled = true;
+        toggles.carry = crate::light::Carry::Nothing;
+        *state = (1, Vec2::new(wall as f32, floor as f32 + 60.0));
+        info!("ores: the chamber's wall at x {wall}, floor {floor}");
+    }
+    let (wall, mid) = (state.1.x, state.1.y);
+    // Kept where it was put (it would wander off).
+    if state.0 >= 1 {
+        let p = k.body.pos;
+        k.body.vel.x = 0.0;
+        k.prev_pos = p;
+    }
+    match state.0 {
+        1 if t > 3.5 => {
+            shot(&mut commands, "dark");
+            state.0 = 2;
+        }
+        2 if t > 4.0 => {
+            toggles.carry = crate::light::Carry::Torch;
+            // (Walked up to the wall with it.)
+            k.body.pos.x = wall - 40.0;
+            k.prev_pos = k.body.pos;
+            cursor.0 = Some(Vec2::new(wall, mid));
+            state.0 = 3;
+        }
+        3 if t > 6.5 => {
+            shot(&mut commands, "torch");
+            state.0 = 4;
+        }
+        4 if t > 7.0 => {
+            toggles.carry = crate::light::Carry::BigBeam;
+            k.body.pos.x = wall - 140.0;
+            k.prev_pos = k.body.pos;
+            cursor.0 = Some(Vec2::new(wall, mid));
+            state.0 = 5;
+        }
+        5 if t > 9.5 => {
+            shot(&mut commands, "beam");
+            state.0 = 6;
         }
         _ => {}
     }

@@ -36,6 +36,11 @@
 // loot:         what it is as loot, for the pick-up filters (Ore, Gem,
 //               Wood; a plain block if not said)
 // motes:        glowing motes drift up off it (spores)
+// luster:       (r, g, b): shines in this colour as light falls on it, as
+//               bright as the light; nothing in the dark (gems, precious ore)
+// sparkle:      its faces open to the air glint in any light (ore, gems)
+// nuggets:      (spacing, size, fill): laid in clumps of metal with a dark
+//               rim, rock between (ore); colors: rim, rock, rock, metal, metal
 // eats:         (hardness, bites, chance, spent_into): eats solids, powders and
 //               plants up to `hardness` (softer faster, `chance`/256 a tick at
 //               the softest); each cell of it takes `bites` before it's spent
@@ -84,31 +89,49 @@
             pattern: ["bbbaaabab2bb", "aaaaaabbb2bb", "aaaa9a9992a9", "999aaa999299", "999888998288", "222222222222", "bba2bbbbbabb", "bbb2aabbbaa9", "9992aaabbaaa", "a9a2aa999999", "888299888989", "222222222222"]),
         // Ores and gems (DESIGN §3.2 step 6): harder the deeper they lie, so a
         // pickaxe's tier sets how deep you can profit (copper 70, iron 100,
-        // gold 115, mithril 150). Ores are rock flecked with metal (the ramp
-        // alternates), gems glow faintly where they break into a cave.
+        // gold 115, mithril 150). Ores are rock with nuggets of metal in it
+        // (`nuggets`: clumps of a few cells, a dark rim round each), each
+        // metal its own colour; their faces open to a cave glint in any light
+        // (`sparkle`), the precious ones shine in it too (`luster`). In the
+        // dark none of them shows: you find them with a light, not through
+        // the rock. (colors: the rim's, the rock's two, the metal's two.)
+        // Copper: orange metal, the rock a little green (verdigris).
         (name: "copper_ore", loot: Ore,  kind: Static, charges: true, density: 2800, hardness: 50, crumbles_into: "gravel", above: (1285, "molten_copper"),
-            colors: [(98, 94, 98), (178, 96, 50), (112, 106, 108), (220, 134, 70), (96, 90, 92)]),
+            nuggets: (spacing: 5, size: 3.4, fill: 0.85), sparkle: true,
+            colors: [(38, 32, 30), (96, 92, 96), (88, 124, 110), (204, 108, 52), (244, 160, 92)]),
+        // Iron: rust-red round pale grey metal.
         (name: "iron_ore", loot: Ore,    kind: Static, charges: true, density: 3200, hardness: 65, crumbles_into: "gravel", above: (1738, "molten_iron"),
-            colors: [(100, 96, 100), (176, 100, 74), (118, 110, 112), (216, 148, 110), (92, 88, 92)]),
+            nuggets: (spacing: 5, size: 3.4, fill: 0.85), sparkle: true,
+            colors: [(34, 24, 22), (100, 90, 90), (118, 98, 92), (156, 68, 48), (214, 206, 200)]),
+        // Silver: cold blue-white.
         (name: "silver_ore", loot: Ore,  kind: Static, charges: true, density: 3300, hardness: 75, crumbles_into: "gravel", above: (1160, "molten_silver"),
-            colors: [(84, 86, 96), (196, 202, 214), (100, 102, 112), (236, 240, 248), (80, 82, 92)]),
+            nuggets: (spacing: 5, size: 3.2, fill: 0.85), sparkle: true, luster: (70, 76, 92),
+            colors: [(28, 30, 40), (84, 86, 96), (100, 102, 114), (186, 198, 222), (246, 250, 255)]),
+        // Gold: warm saturated yellow, shining in your light.
         (name: "gold_ore", loot: Ore,    kind: Static, density: 3600, hardness: 85, inert: true, charges: true, crumbles_into: "gravel", above: (1264, "molten_gold"),
-            colors: [(78, 74, 76), (214, 170, 52), (92, 86, 84), (252, 214, 96), (74, 70, 72)]),
-        (name: "mithril_ore", loot: Ore, kind: Static, charges: true, density: 3000, hardness: 110, crumbles_into: "gravel", above: (1950, "molten_mithril"), glow: (6, 24, 28), shimmer: 220,
-            colors: [(58, 60, 74), (80, 186, 200), (68, 70, 86), (150, 240, 244), (54, 56, 70)]),
+            nuggets: (spacing: 5, size: 3.2, fill: 0.8), sparkle: true, luster: (120, 86, 18),
+            colors: [(40, 30, 18), (78, 74, 76), (96, 90, 86), (230, 170, 36), (255, 228, 112)]),
+        // Mithril: teal, shining in your light. (It glowed of itself once:
+        // seen through the dark of the rock.)
+        (name: "mithril_ore", loot: Ore, kind: Static, charges: true, density: 3000, hardness: 110, crumbles_into: "gravel", above: (1950, "molten_mithril"),
+            nuggets: (spacing: 5, size: 3.2, fill: 0.85), sparkle: true, luster: (24, 110, 120),
+            colors: [(18, 24, 32), (58, 60, 74), (70, 72, 88), (64, 186, 200), (172, 250, 250)]),
         // A fallen star's heart (world-events: events.rs): dark, glassy,
-        // flecked with light, glowing a cold blue; an iron pick takes it.
-        (name: "meteorite", loot: Ore,   kind: Static, density: 3400, hardness: 95, crumbles_into: "gravel", glow: (22, 30, 58), shimmer: 200,
+        // flecked with light, shining a cold blue in yours; an iron pick
+        // takes it.
+        (name: "meteorite", loot: Ore,   kind: Static, density: 3400, hardness: 95, crumbles_into: "gravel", sparkle: true, luster: (60, 84, 170),
             colors: [(40, 40, 52), (58, 58, 74), (32, 32, 44), (170, 190, 255), (48, 48, 62)]),
         // Phosphor: a pale crystal that drinks light and glows with it after,
         // fading (the optics arc): in cave walls, in clusters.
         (name: "phosphor", loot: Gem,    kind: Static, density: 2600, hardness: 45, crumbles_into: "gravel", opacity: 30, optics: (ior: 1.5, tint: (210, 255, 225)), phosphor: (90, 255, 160),
             colors: [(150, 172, 152), (182, 204, 178), (132, 152, 134), (202, 218, 192)]),
-        (name: "amethyst", loot: Gem,    kind: Static, density: 2650, hardness: 60, crumbles_into: "gravel", glow: (46, 18, 70), opacity: 14, optics: (ior: 1.54, disperse: 0.1, tint: (185, 95, 255)), shimmer: 255,
+        // Gems: dark in the dark; in your light they shine in their colour
+        // and glint (they glowed of themselves once, seen from afar).
+        (name: "amethyst", loot: Gem,    kind: Static, density: 2650, hardness: 60, crumbles_into: "gravel", opacity: 14, optics: (ior: 1.54, disperse: 0.1, tint: (185, 95, 255)), sparkle: true, luster: (150, 70, 230),
             colors: [(96, 44, 146), (150, 86, 212), (196, 146, 246), (120, 60, 180)]),
-        (name: "emerald", loot: Gem,     kind: Static, density: 2750, hardness: 80, crumbles_into: "gravel", glow: (4, 22, 10), opacity: 14, optics: (ior: 1.58, disperse: 0.1, tint: (80, 240, 120)), shimmer: 255,
+        (name: "emerald", loot: Gem,     kind: Static, density: 2750, hardness: 80, crumbles_into: "gravel", opacity: 14, optics: (ior: 1.58, disperse: 0.1, tint: (80, 240, 120)), sparkle: true, luster: (40, 200, 100),
             colors: [(20, 112, 58), (46, 178, 96), (132, 236, 166), (30, 140, 72)]),
-        (name: "ruby", loot: Gem,        kind: Static, density: 4000, hardness: 100, crumbles_into: "gravel", glow: (44, 5, 10), opacity: 14, optics: (ior: 1.77, disperse: 0.1, tint: (255, 60, 80)), shimmer: 255,
+        (name: "ruby", loot: Gem,        kind: Static, density: 4000, hardness: 100, crumbles_into: "gravel", opacity: 14, optics: (ior: 1.77, disperse: 0.1, tint: (255, 60, 80)), sparkle: true, luster: (230, 40, 60),
             colors: [(132, 14, 32), (206, 42, 62), (255, 118, 128), (160, 22, 44)]),
         // A one-way platform: creatures stand on it, jump up through it, and
         // drop through it holding down. To everything else it's wood.

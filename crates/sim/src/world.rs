@@ -632,7 +632,8 @@ impl World {
             if !old.is_air() {
                 report.add_removed(old.material);
             }
-            let cell = mats.spawn(material, &mut rng);
+            let mut cell = mats.spawn(material, &mut rng);
+            cell.shade = mats.natural_shade(material, p.x, p.y, cell.shade);
             self.set(p, cell);
             report.placed += 1;
         }
@@ -824,9 +825,7 @@ impl World {
                 continue;
             }
             let mut c = mats.spawn(material, &mut rng);
-            if let Some(shade) = mats.pattern_shade(material, p.x, p.y) {
-                c.shade = shade;
-            }
+            c.shade = mats.natural_shade(material, p.x, p.y, c.shade);
             if back { self.set_bg(p, c) } else { self.set(p, c) };
             report.placed += 1;
         }

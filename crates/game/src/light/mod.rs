@@ -800,6 +800,7 @@ fn compute_light(
             g.seed_directional(dir, color, &open_top);
         }
         g.charge_phosphor(previous.as_ref(), dt);
+        g.shine(previous.as_ref());
         g.solve(params);
         // (`PLATYPUS_EASE_BEAMS=1`: beams eased with the rest, as before:
         // a moving one trails; for comparing.)

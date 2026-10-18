@@ -327,6 +327,8 @@ pub struct TerrainGen {
     /// Materials laid in a pattern (crypt stone, planks): their shades over
     /// a chunk-sized tile, by material id.
     patterns: Vec<Option<Vec<u8>>>,
+    /// By material id: laid in nuggets (ore), how.
+    nuggets: Vec<Option<platypus_sim::Nuggets>>,
     /// By material id: solid (static or powder), a plant.
     solid: Vec<bool>,
     /// By material id: a powder (it falls if what holds it is cut away).
@@ -413,6 +415,7 @@ impl TerrainGen {
             ores,
             gems,
             minerals: Perlin::new(s(18)),
+            nuggets: mats.iter().map(|(id, _)| mats.def(id).nuggets).collect(),
             solid: mats.iter().map(|(id, _)| matches!(mats.phys(id).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder)).collect(),
             powder: mats.iter().map(|(id, _)| mats.phys(id).kind == platypus_sim::Kind::Powder).collect(),
             plant: mats.iter().map(|(id, _)| mats.phys(id).kind == platypus_sim::Kind::Plant).collect(),
@@ -1808,10 +1811,11 @@ impl ChunkGenerator for TerrainGen {
                 return Cell::AIR;
             }
             // Laid in a pattern, or a candle's wax and flame, or random.
-            let shade = match &self.patterns[m.0 as usize] {
-                Some(tile) => tile[(ly * CHUNK + lx) as usize],
-                None if m == self.ids.candle => if (origin.y + ly).rem_euclid(BLOCK) >= 3 { 230 } else { 40 + rng.next_u8() / 4 },
-                None => rng.next_u8(),
+            let shade = match (&self.patterns[m.0 as usize], self.nuggets[m.0 as usize]) {
+                (Some(tile), _) => tile[(ly * CHUNK + lx) as usize],
+                (None, Some(n)) => n.shade(m, origin.x + lx, origin.y + ly, rng.next_u8()),
+                (None, None) if m == self.ids.candle => if (origin.y + ly).rem_euclid(BLOCK) >= 3 { 230 } else { 40 + rng.next_u8() / 4 },
+                (None, None) => rng.next_u8(),
             };
             Cell { heat: self.heat[m.0 as usize], ..Cell::new(m, shade) }
         };

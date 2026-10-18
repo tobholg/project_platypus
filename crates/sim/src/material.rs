@@ -285,6 +285,22 @@ pub struct MaterialDef {
     /// (phosphor). Rendering only (the light grid).
     #[serde(default)]
     pub phosphor: Option<(u8, u8, u8)>,
+    /// It shines in this colour as light falls on it, as bright as the
+    /// light, and not at all in the dark (gems, precious ore: easy to spot
+    /// in a lamp's light, never through the black of the rock). Rendering
+    /// only (the light grid).
+    #[serde(default)]
+    pub luster: Option<(u8, u8, u8)>,
+    /// Its faces open to the air glint in any light (metal in an ore's
+    /// rock, a gem): a sparkle, now and then, where it's lit. Rendering only.
+    #[serde(default)]
+    pub sparkle: bool,
+    /// Laid in nuggets (ore): metal in clumps about `size` cells across,
+    /// one every `spacing` or so, a dark rim round each, rock between (its
+    /// `colors`: the rim's, the rock's two, the metal's two). Anchored to
+    /// the world grid like `pattern`.
+    #[serde(default)]
+    pub nuggets: Option<Nuggets>,
     /// What it is as loot, for what a player chooses to pick up (an ore, a
     /// gem, wood; anything else a plain block). The game's only.
     #[serde(default)]
@@ -738,6 +754,18 @@ impl MaterialTable {
         Some(digit * 16 + 8)
     }
 
+    /// The shade a nuggety material (`nuggets`: ore) has at a world cell:
+    /// the metal's (bright) in a nugget, its rim's (darkest) round one, the
+    /// rock's between, `roll` (a random byte) to vary it. `None` if it isn't.
+    pub fn nugget_shade(&self, id: MaterialId, x: i32, y: i32, roll: u8) -> Option<u8> {
+        self.defs[id.0 as usize].nuggets.map(|n| n.shade(id, x, y, roll))
+    }
+
+    /// A natural cell's shade: laid in a pattern, in nuggets, or `roll`.
+    pub fn natural_shade(&self, id: MaterialId, x: i32, y: i32, roll: u8) -> u8 {
+        self.pattern_shade(id, x, y).or_else(|| self.nugget_shade(id, x, y, roll)).unwrap_or(roll)
+    }
+
     /// Burned far enough that it no longer carries weight (SPEC §3.7).
     #[inline]
     pub fn is_charred(&self, c: Cell) -> bool {
@@ -808,6 +836,50 @@ impl MaterialTable {
             c.life = rng.range_u8(p.life_min, p.life_max);
         }
         c
+    }
+}
+
+/// An ore's nuggets (`MaterialDef::nuggets`).
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct Nuggets {
+    pub spacing: u8,
+    pub size: f32,
+    /// The share of places that hold a nugget (0..1).
+    #[serde(default = "most_nuggets")]
+    pub fill: f32,
+}
+
+fn most_nuggets() -> f32 {
+    0.8
+}
+
+impl Nuggets {
+    /// The shade at a world cell (`MaterialTable::nugget_shade`).
+    pub fn shade(&self, id: MaterialId, x: i32, y: i32, roll: u8) -> u8 {
+        let s = self.spacing.max(2) as i32;
+        let (gx, gy) = (x.div_euclid(s), y.div_euclid(s));
+        let mut best = f32::MAX;
+        for cy in gy - 1..=gy + 1 {
+            for cx in gx - 1..=gx + 1 {
+                let h = crate::rng::hash(&[0x9066E7, cx as u64, cy as u64, id.0 as u64]);
+                if (h % 1000) as f32 >= self.fill * 1000.0 {
+                    continue;
+                }
+                let px = (cx * s) as f32 + ((h >> 12) % 1000) as f32 / 1000.0 * s as f32;
+                let py = (cy * s) as f32 + ((h >> 24) % 1000) as f32 / 1000.0 * s as f32;
+                let (dx, dy) = (x as f32 + 0.5 - px, y as f32 + 0.5 - py);
+                best = best.min((dx * dx + dy * dy).sqrt());
+            }
+        }
+        let r = self.size * 0.5;
+        if best <= r {
+            // (The metal: brightest toward its middle.)
+            0xc8 + ((1.0 - best / r.max(0.01)) * 40.0) as u8 + roll % 8
+        } else if best <= r + 0.9 {
+            roll % 12
+        } else {
+            0x48 + roll % 0x38
+        }
     }
 }
 
