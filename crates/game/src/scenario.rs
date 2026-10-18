@@ -21,6 +21,9 @@
 //!   a torch planted, two glow sticks thrown (`PLATYPUS_NOBEAM=1`: no flashlight)
 //! - `chest`      places a chest with real input, opens it (RMB), puts bombs in, closes it,
 //!   mines it: the bombs and the chest come back
+//! - `pack`       (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_MODE=play`) the
+//!   inventory screen: Esc, Quick sort, the crafting panel's tabs, a recipe made, Settings
+//!   (the game menu); `PLATYPUS_SHOTS=dir`: a picture of each step
 //! - `hands`      the hands through real input: digs down and sideways with the pickaxe,
 //!   builds a wall with what it dug, chops at a tree with auto tool (Ctrl),
 //!   plants a torch; logs the inventory
@@ -366,6 +369,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -6722,12 +6726,12 @@ fn reach_script(
     }
 }
 
-/// `PLATYPUS_SHOTS=dir` (any scenario but `legs`, which has its own): a
+/// `PLATYPUS_SHOTS=dir` (any scenario but `legs` and `pack`, which have their own): a
 /// picture every `PLATYPUS_SHOT_EVERY` s (2) into it, `<scenario>_<t in
 /// hundredths>.png`.
 fn shots_script(mut commands: Commands, s: Res<Scenario>, offscreen: Option<Res<crate::camera::Offscreen>>, mut next: Local<f32>) {
     let Ok(dir) = std::env::var("PLATYPUS_SHOTS") else { return };
-    if s.name == "legs" || s.elapsed < *next {
+    if s.name == "legs" || s.name == "pack" || s.elapsed < *next {
         return;
     }
     *next += std::env::var("PLATYPUS_SHOT_EVERY").ok().and_then(|v| v.parse().ok()).unwrap_or(2.0);
@@ -7965,8 +7969,9 @@ fn templar_script(
 /// `play` (`PLATYPUS_WORLD=arena PLATYPUS_MODE=play PLATYPUS_RESPAWN=1`):
 /// what a new game starts with (logs the pack and what's worn), that the
 /// key left of 1 doesn't bring up the dev tools, dying (the player, 120
-/// cells off, killed at 2 s, wakes at the start: logs where), and the game
-/// menu (Esc at 3 s and 3.5 s: logs it up and time paused, then not).
+/// cells off, killed at 2 s, wakes at the start: logs where), and Esc (at
+/// 3 s and 3.5 s: logs the inventory open, then shut; the game menu's
+/// `pack`'s).
 #[allow(clippy::type_complexity)]
 fn play_script(
     s: Res<Scenario>,
@@ -7976,7 +7981,7 @@ fn play_script(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, Option<&crate::hands::items::Inventory>, &crate::gear::Equipment), With<LocalPlayer>>,
     mut respawned: MessageReader<crate::respawn::Respawned>,
-    (menu, virt): (Res<crate::pause::GameMenu>, Res<Time<Virtual>>),
+    (menu, virt, open): (Res<crate::pause::GameMenu>, Res<Time<Virtual>>, Res<crate::hands::InventoryOpen>),
     mut step: Local<u8>,
 ) {
     if s.name != "play" {
@@ -8010,7 +8015,7 @@ fn play_script(
     } else if *step == 5 || *step == 7 {
         *step += 1;
         keys.release(KeyCode::Escape);
-        info!("play: Esc: game menu {}, time {}", if menu.open { "up" } else { "shut" }, if virt.is_paused() { "paused" } else { "running" });
+        info!("play: Esc: inventory {}, game menu {}, time {}", if open.0 { "open" } else { "shut" }, if menu.open { "up" } else { "shut" }, if virt.is_paused() { "paused" } else { "running" });
     }
 }
 
@@ -10838,6 +10843,205 @@ fn save_script(
             day.clock(),
             progress.map_or(0, |p| p.seen.len()),
         );
+    }
+}
+
+/// `pack` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_MODE=play`;
+/// `PLATYPUS_SHOTS=dir` for a picture of each step): the inventory screen,
+/// Terraria's way. A messy pack (stacks split, gaps, ore, bars, a helm) and
+/// a workbench, furnace and anvil beside the player; then, a step every
+/// half second or so: Esc (the inventory opens), Quick sort (logs the pack
+/// before and after), Crafting (the panel), an iron pickaxe pointed at, the
+/// Tools tab, a copper pickaxe made (logs how many before and after), the
+/// Materials tab and an iron bar pointed at, Esc (the panel shuts, the
+/// inventory stays), Settings (the game menu up, time stopped), Esc (back
+/// to play), Esc and I (open, shut). The buttons are pressed as the UI
+/// would (no cursor offscreen). Logs each step.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn pack_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    crafting: Res<crate::craft::Crafting>,
+    (open, panel): (Res<crate::hands::InventoryOpen>, Res<crate::hands::crafting::CraftingPanel>),
+    (menu, virt): (Res<crate::pause::GameMenu>, Res<Time<Virtual>>),
+    offscreen: Option<Res<crate::camera::Offscreen>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(&Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    mut ui: Query<(&mut Interaction, Option<&crate::hands::ui::PackButton>, Option<&crate::hands::crafting::Tab>, Option<&crate::hands::crafting::RecipeSlot>)>,
+    mut state: Local<(u8, f32)>,
+) {
+    use crate::hands::crafting::Tab;
+    use crate::hands::items::{Category, Stack};
+    use crate::hands::ui::PackButton;
+    if s.name != "pack" {
+        return;
+    }
+    let (Some(items), Ok((k, mut inv))) = (items, player.single_mut()) else { return };
+    let t = s.elapsed;
+    keys.release(KeyCode::Escape);
+    keys.release(KeyCode::KeyI);
+    let pack = |inv: &crate::hands::items::Inventory| -> String {
+        inv.slots[10..].iter().map(|s| s.map_or("-".to_string(), |s| format!("{}x{}", items.def(s.item).id, s.count / items.unit(s.item)))).collect::<Vec<_>>().join(" ")
+    };
+    let have = |inv: &crate::hands::items::Inventory, id: &str| items.id(id).map_or(0, |i| inv.count(i) / items.unit(i));
+    let says = || format!("inventory {}, crafting {}, game menu {}, time {}", if open.0 { "open" } else { "shut" }, if panel.open && open.0 { "up" } else { "shut" }, if menu.open { "up" } else { "shut" }, if virt.is_paused() { "paused" } else { "running" });
+    // A click on a button, as the UI makes one (and a recipe pointed at).
+    let mut press = |which: &dyn Fn(Option<&PackButton>, Option<&Tab>, Option<usize>) -> bool, how: Interaction| {
+        for (mut i, b, tab, r) in &mut ui {
+            if which(b, tab, r.map(|r| r.0)) {
+                *i = how;
+            }
+        }
+    };
+    let recipe = |makes: &str| crafting.recipe(makes);
+    let mut shot = |name: &str| {
+        let Ok(dir) = std::env::var("PLATYPUS_SHOTS") else { return };
+        let image = match &offscreen {
+            Some(o) => Screenshot::image(o.0.clone()),
+            None => Screenshot::primary_window(),
+        };
+        commands.spawn(image).observe(save_to_disk(format!("{dir}/pack_{name}.png")));
+    };
+    if t < state.1 {
+        return;
+    }
+    let next = |state: &mut (u8, f32), wait: f32| *state = (state.0 + 1, t + wait);
+    match state.0 {
+        0 if t > 1.0 => {
+            let messy: [(usize, &str, u32); 16] = [
+                (12, "torch", 20),
+                (15, "block:stone", 30),
+                (17, "iron_bar", 7),
+                (21, "torch", 35),
+                (23, "block:wood", 10),
+                (26, "iron_helm", 1),
+                (30, "block:copper_ore", 9),
+                (33, "copper_bar", 4),
+                (34, "iron_bar", 9),
+                (38, "block:planks", 12),
+                (41, "bomb", 3),
+                (44, "small_health_potion", 1),
+                (47, "block:stone", 40),
+                (52, "block:coal", 5),
+                (55, "copper_bar", 4),
+                (58, "block:amethyst", 3),
+            ];
+            for (slot, id, n) in messy {
+                if let Some(item) = items.id(id) {
+                    inv.slots[slot] = Some(Stack::new(item, n * items.unit(item)));
+                }
+            }
+            let floor = platypus_worldgen::arena::FLOOR as f32;
+            for (id, dx) in [("workbench", 24.0), ("furnace", 46.0), ("anvil", -26.0)] {
+                if let Some(kind) = crafting.station(id) {
+                    crafting.spawn(&mut commands, kind, Vec2::new(k.body.pos.x + dx, floor));
+                }
+            }
+            next(&mut state, 0.5);
+        }
+        1 => {
+            keys.press(KeyCode::Escape);
+            next(&mut state, 0.4);
+        }
+        2 => {
+            info!("pack: Esc: {}", says());
+            info!("pack: before quick sort: {}", pack(&inv));
+            shot("1_open");
+            next(&mut state, 0.3);
+        }
+        3 => {
+            press(&|b, _, _| b == Some(&PackButton::Sort), Interaction::Pressed);
+            next(&mut state, 0.3);
+        }
+        4 => {
+            info!("pack: after quick sort: {}", pack(&inv));
+            shot("2_sorted");
+            next(&mut state, 0.3);
+        }
+        5 => {
+            press(&|b, _, _| b == Some(&PackButton::Crafting), Interaction::Pressed);
+            next(&mut state, 0.3);
+        }
+        6 => {
+            let r = recipe("iron_pickaxe");
+            press(&|_, _, slot| slot.is_some() && slot == r, Interaction::Hovered);
+            next(&mut state, 0.3);
+        }
+        7 => {
+            info!("pack: Crafting: {}; {} recipes listed, {} can be made; picked {:?}", says(), panel.list.len(), panel.list.iter().filter(|(_, c)| *c).count(), panel.picked.map(|i| &crafting.recipes[i].makes));
+            shot("3_crafting");
+            next(&mut state, 0.3);
+        }
+        8 => {
+            press(&|_, tab, _| tab == Some(&Tab(Some(Category::Tools))), Interaction::Pressed);
+            next(&mut state, 0.3);
+        }
+        9 => {
+            let tools: Vec<&str> = panel.in_tab(&crafting, &items).iter().map(|(i, _)| crafting.recipes[*i].makes.as_str()).collect();
+            info!("pack: the Tools tab: {}", tools.join(", "));
+            shot("4_tools");
+            next(&mut state, 0.3);
+        }
+        10 => {
+            info!("pack: copper pickaxes before: {}", have(&inv, "copper_pickaxe"));
+            let r = recipe("copper_pickaxe");
+            press(&|_, _, slot| slot.is_some() && slot == r, Interaction::Pressed);
+            next(&mut state, 0.3);
+        }
+        11 => {
+            info!("pack: copper pickaxes after: {}; copper bars {}", have(&inv, "copper_pickaxe"), have(&inv, "copper_bar"));
+            shot("5_made");
+            next(&mut state, 0.3);
+        }
+        12 => {
+            press(&|_, tab, _| tab == Some(&Tab(Some(Category::Materials))), Interaction::Pressed);
+            next(&mut state, 0.2);
+        }
+        13 => {
+            let r = recipe("iron_bar");
+            press(&|_, _, slot| slot.is_some() && slot == r, Interaction::Hovered);
+            next(&mut state, 0.3);
+        }
+        14 => {
+            let shown: Vec<&str> = panel.in_tab(&crafting, &items).iter().map(|(i, _)| crafting.recipes[*i].makes.as_str()).collect();
+            info!("pack: the Materials tab: {}", shown.join(", "));
+            shot("6_materials");
+            next(&mut state, 0.3);
+        }
+        15 => {
+            keys.press(KeyCode::Escape);
+            next(&mut state, 0.3);
+        }
+        16 => {
+            info!("pack: Esc with the panel up: {}", says());
+            press(&|b, _, _| b == Some(&PackButton::Settings), Interaction::Pressed);
+            next(&mut state, 0.4);
+        }
+        17 => {
+            info!("pack: Settings: {}", says());
+            shot("7_menu");
+            next(&mut state, 0.3);
+        }
+        18 => {
+            keys.press(KeyCode::Escape);
+            next(&mut state, 0.3);
+        }
+        19 => {
+            info!("pack: Esc with the game menu up: {}", says());
+            keys.press(KeyCode::Escape);
+            next(&mut state, 0.3);
+        }
+        20 => {
+            info!("pack: Esc again: {}", says());
+            keys.press(KeyCode::KeyI);
+            next(&mut state, 0.3);
+        }
+        21 => {
+            info!("pack: I: {}", says());
+            next(&mut state, 0.3);
+        }
+        _ => {}
     }
 }
 
