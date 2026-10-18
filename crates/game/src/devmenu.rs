@@ -465,7 +465,11 @@ pub(crate) fn clicks(
             }
             Act::Kit(name) => {
                 if let (Some(items), Some((_, Some(inv), eq, _))) = (items.as_deref(), me.as_mut()) {
-                    over.extend(crate::hands::put_on(items, items.kit(name), &mut *inv, &mut *eq, true));
+                    let kit = items.kit(name);
+                    if kit.loadout {
+                        info!("dev: the {name} loadout");
+                    }
+                    over.extend(crate::hands::hand_out(items, kit, &mut *inv, &mut *eq));
                 }
             }
             Act::Empty => {
@@ -663,8 +667,10 @@ fn spawn_panel(
                     });
                 });
                 tab(p, Tab::Items, &|p| {
+                    heading(p, "Loadouts (items.ron): all you have, swapped for one");
+                    p.spawn((Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(3), row_gap: px(3), max_width: px(WIDE), ..default() }, KitRow(true)));
                     heading(p, "Kits (items.ron): into the pack, onto you");
-                    p.spawn((Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(3), row_gap: px(3), max_width: px(WIDE), ..default() }, KitRow));
+                    p.spawn((Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(3), row_gap: px(3), max_width: px(WIDE), ..default() }, KitRow(false)));
                     heading(p, "Click: one | Shift: a stack | right-click: in hand");
                     row(p, |r| {
                         button(r, "all", Act::Cat(None));
@@ -822,9 +828,10 @@ fn spawn_panel(
         });
 }
 
-/// The kits' row (filled once the items are read).
+/// The kits' rows (filled once the items are read): loadouts, or the
+/// rest.
 #[derive(Component)]
-struct KitRow;
+struct KitRow(bool);
 
 fn search(p: &mut ChildSpawnerCommands) {
     p.spawn((Button, Act::Search, Node { padding: UiRect::axes(px(7), px(3)), width: px(WIDE), ..default() }, BackgroundColor(Color::srgba(0.12, 0.12, 0.16, 0.9)))).with_children(|b| {
@@ -842,7 +849,7 @@ fn rebuild(
     icons: Option<Res<Icons>>,
     grid: Query<Entity, With<ItemGrid>>,
     list: Query<Entity, With<CreatureList>>,
-    kits: Query<Entity, With<KitRow>>,
+    kits: Query<(Entity, &KitRow)>,
 ) {
     let (Some(items), Some(icons)) = (items, icons) else { return };
     let shape = format!("{:?}|{}|{}", menu.cat, menu.search, menu.tab.name());
@@ -854,9 +861,9 @@ fn rebuild(
     let words: Vec<&str> = menu.search.split_whitespace().collect();
     let matches = |s: &str| words.iter().all(|w| s.to_lowercase().contains(w));
     if first {
-        for e in &kits {
+        for (e, row) in &kits {
             commands.entity(e).with_children(|r| {
-                for k in &items.kits {
+                for k in items.kits.iter().filter(|k| k.loadout == row.0) {
                     button(r, &k.name, Act::Kit(k.name.clone()));
                 }
             });

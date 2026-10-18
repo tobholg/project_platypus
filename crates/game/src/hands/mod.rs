@@ -166,6 +166,17 @@ pub(crate) fn give_start(mut commands: Commands, items: Option<Res<Items>>, mode
     }
 }
 
+/// A kit handed out (the dev menu's): a loadout in place of all you have
+/// (the pack emptied, what's worn taken off; its first ten in the hotbar),
+/// any other into the pack. What there was no room for comes back.
+pub fn hand_out(items: &Items, kit: &items::Kit, inv: &mut Inventory, eq: &mut crate::gear::Equipment) -> Vec<Stack> {
+    if kit.loadout {
+        inv.slots.iter_mut().for_each(|s| *s = None);
+        eq.worn.iter_mut().for_each(|w| *w = None);
+    }
+    put_on(items, kit, inv, eq, !kit.loadout)
+}
+
 /// A kit into a pack and onto a body (over what was worn there): a new
 /// player's into its hotbar first (its first ten in hand), one handed out
 /// later into the pack first (`Inventory::add_to_pack`). What the pack had

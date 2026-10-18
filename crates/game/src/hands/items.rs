@@ -231,15 +231,20 @@ pub struct KitFile {
     pub carry: Vec<(String, u32)>,
     #[serde(default)]
     pub wear: Vec<String>,
+    #[serde(default)]
+    pub loadout: bool,
 }
 
-/// A kit: what's carried (item, whole items) and worn.
+/// A kit: what's carried (item, whole items) and worn. A `loadout` (dev):
+/// put on in place of all you have (to try a stage of the game as it
+/// would be played), not added to it.
 #[derive(Clone, Debug, Default)]
 pub struct Kit {
     pub name: String,
     pub about: String,
     pub carry: Vec<(ItemId, u32)>,
     pub wear: Vec<ItemId>,
+    pub loadout: bool,
 }
 
 /// Every item there is.
@@ -300,7 +305,7 @@ impl Items {
             let find = |id: &String| by_id.get(id).copied().ok_or(format!("kit `{}`: no item `{id}`", k.name));
             let carry = k.carry.iter().map(|(id, n)| find(id).map(|i| (i, *n))).collect::<Result<_, _>>()?;
             let wear = k.wear.iter().map(find).collect::<Result<_, _>>()?;
-            kits.push(Kit { name: k.name.clone(), about: k.about.clone(), carry, wear });
+            kits.push(Kit { name: k.name.clone(), about: k.about.clone(), carry, wear, loadout: k.loadout });
         }
         for need in ["play", "dev"] {
             if !kits.iter().any(|k| k.name == need) {

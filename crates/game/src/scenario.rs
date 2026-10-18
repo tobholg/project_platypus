@@ -337,7 +337,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -10239,6 +10239,35 @@ fn ropehook_script(
             _ => {}
         }
     }
+}
+
+/// `loadouts` (any world): each loadout handed out in turn, a second
+/// apart, as the dev menu does; logs the hotbar, the rest of the pack and
+/// what's worn after each, and what there wasn't room for.
+fn loadouts_script(
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut player: Query<(&mut crate::hands::items::Inventory, &mut crate::gear::Equipment), With<LocalPlayer>>,
+    mut next: Local<usize>,
+) {
+    if s.name != "loadouts" {
+        return;
+    }
+    let (Some(items), Ok((mut inv, mut eq))) = (items, player.single_mut()) else { return };
+    let loadouts: Vec<String> = items.kits.iter().filter(|k| k.loadout).map(|k| k.name.clone()).collect();
+    if *next >= loadouts.len() || s.elapsed < 1.0 + *next as f32 {
+        return;
+    }
+    let name = &loadouts[*next];
+    *next += 1;
+    let over = crate::hands::hand_out(&items, items.kit(name), &mut inv, &mut eq);
+    let show = |st: &Option<crate::hands::items::Stack>| st.map(|st| format!("{}×{}", items.def(st.item).id, st.count));
+    let bar: Vec<String> = inv.slots[..crate::hands::items::HOTBAR].iter().map(|st| show(st).unwrap_or("-".into())).collect();
+    let pack: Vec<String> = inv.slots[crate::hands::items::HOTBAR..].iter().filter_map(show).collect();
+    let worn: Vec<String> = eq.worn.iter().filter_map(show).collect();
+    info!("loadouts: {name}: hotbar {}", bar.join(" "));
+    info!("loadouts: {name}: pack {}", pack.join(" "));
+    info!("loadouts: {name}: worn {}; no room for {}", worn.join(" "), over.len());
 }
 
 /// `wraith` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_HOUR=22`):

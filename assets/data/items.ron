@@ -180,7 +180,24 @@
         (name: "play", about: "A new game: a copper pick and axe, a short sword, a few torches, a rope hook",
             carry: [("copper_pickaxe", 1), ("copper_axe", 1), ("shortsword", 1), ("torch", 8), ("small_health_potion", 2)],
             wear: ["rope_hook"]),
-        (name: "dev", about: "Everything worth trying (a flashlight in the off hand, a mining helmet in the pack)",
+        // Loadouts (dev): in place of all you have, a stage of the game as
+        // it would be played (the first ten carried go in the hotbar).
+        (name: "beginner", loadout: true, about: "First steps down: copper tools, a short sword, a rope hook, a little leather",
+            carry: [("copper_pickaxe", 1), ("copper_axe", 1), ("shortsword", 1), ("torch", 20), ("bomb", 3), ("small_health_potion", 3), ("block:platform", 20)],
+            wear: ["rope_hook", "leather_cap", "leather_jerkin"]),
+        (name: "explorer", loadout: true, about: "Early to mid: an iron pick, swords and a bow, weak wands, feather boots, a grappling hook, leather",
+            carry: [
+                ("iron_pickaxe", 1), ("copper_axe", 1), ("shortsword", 1), ("longsword", 1), ("bow", 1), ("radiant_wand", 1), ("fire_wand", 1), ("torch", 40), ("bomb", 8), ("small_health_potion", 6),
+                ("frost_wand", 1), ("arrow", 150), ("glowstick", 10), ("block:platform", 60), ("pocket_flashlight", 1),
+            ],
+            wear: ["feather_boots", "grappling_hook", "leather_cap", "leather_jerkin", "leather_gloves", "leather_trousers", "wooden_shield", "ring_of_vigour"]),
+        (name: "delver", loadout: true, about: "Mid game: a gold pick, staffs, rocket boots, a chain hook, iron and a mining helmet",
+            carry: [
+                ("gold_pickaxe", 1), ("longsword", 1), ("cleaver", 1), ("bow", 1), ("fire_staff", 1), ("frost_staff", 1), ("storm_staff", 1), ("torch", 60), ("bomb", 20), ("small_health_potion", 12),
+                ("acid_staff", 1), ("radiant_staff", 1), ("copper_axe", 1), ("arrow", 300), ("glowstick", 20), ("block:platform", 150),
+            ],
+            wear: ["rocket_boots", "chain_hook", "mining_helmet", "chainmail", "iron_gauntlets", "iron_greaves", "iron_shield", "travelers_cape", "ember_amulet", "ring_of_vigour"]),
+        (name: "dev", loadout: true, about: "Everything worth trying (a flashlight in the off hand, a mining helmet in the pack)",
             carry: [
                 ("copper_pickaxe", 1), ("copper_axe", 1), ("torch", 12), ("bomb", 5), ("block:platform", 40),
                 ("radiant_wand", 1), ("fire_wand", 1), ("acid_wand", 1), ("fire_staff", 1), ("storm_staff", 1),
