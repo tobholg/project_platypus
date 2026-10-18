@@ -7,7 +7,7 @@
 //! - `chunks.bin`: every chunk that's been changed (the sim's own bytes,
 //!   lz4), loaded or not; the rest regenerate;
 //! - `player.ron`: where you are, health and mana, the pack, what you wear,
-//!   the hotbar in hand;
+//!   the hotbar in hand, the stack on the cursor and the discard slot's;
 //! - `things.ron`: chests (and what's in every chest known, opened or not),
 //!   crafting stations, items lying about, creatures; a body's belongings are kept as items
 //!   lying where it lay.
@@ -232,6 +232,12 @@ pub struct PlayerFile {
     /// Where it wakes after dying (`respawn.rs`; none: the start).
     #[serde(default)]
     checkpoint: Option<(f32, f32)>,
+    /// The stack on the cursor (picked up in the pack, the game left before
+    /// it was put down: back into the pack), and the discard slot's.
+    #[serde(default)]
+    cursor: Option<SavedStack>,
+    #[serde(default)]
+    trash: Option<SavedStack>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -345,7 +351,7 @@ fn save(
     items: Option<Res<Items>>,
     chests: Res<Chests>,
     spawned: Res<Spawned>,
-    hand: Res<Hand>,
+    (hand, held): (Res<Hand>, Res<crate::hands::ui::Held>),
     player: Query<SavedPlayer, With<LocalPlayer>>,
     boxes: Query<(&Chest, &Kinematics)>,
     drops: Query<(&Dropped, &Kinematics)>,
@@ -401,6 +407,8 @@ fn save(
         gold: gold.map_or(0, |g| g.0),
         pickup: pickup.copied().unwrap_or_default(),
         checkpoint: checkpoint.0.map(|p| (p.x, p.y)),
+        cursor: held.kept().0.map(|s| stack_out(&items, &s)),
+        trash: held.kept().1.map(|s| stack_out(&items, &s)),
     };
     let mut things = ThingsFile {
         chests: boxes.iter().map(|(c, k)| (c.key, (k.body.pos.x, k.body.pos.y - k.body.half.y))).collect(),
@@ -558,7 +566,7 @@ fn load_world(
 /// Put the saved player back, once it's there with its pack and mana.
 type Restored<'a> = (Entity, &'a mut Kinematics, Option<&'a mut Mana>, Option<&'a mut Inventory>, &'a mut Equipment);
 
-fn apply_player(mut commands: Commands, pending: Option<Res<PendingPlayer>>, items: Option<Res<Items>>, mut hand: ResMut<Hand>, mut player: Query<Restored, With<LocalPlayer>>) {
+fn apply_player(mut commands: Commands, pending: Option<Res<PendingPlayer>>, items: Option<Res<Items>>, (mut hand, mut held): (ResMut<Hand>, ResMut<crate::hands::ui::Held>), mut player: Query<Restored, With<LocalPlayer>>) {
     let (Some(pending), Some(items)) = (pending, items) else { return };
     let Ok((e, mut k, mana, pack, mut eq)) = player.single_mut() else { return };
     let (Some(mut mana), Some(mut pack)) = (mana, pack) else { return };
@@ -584,6 +592,14 @@ fn apply_player(mut commands: Commands, pending: Option<Res<PendingPlayer>>, ite
             spawn_drop(&mut commands, &items, k.body.pos, s);
         }
     }
+    // (What was on the cursor: into the pack; with no room, at its feet.)
+    if let Some(s) = p.cursor.as_ref().and_then(|s| stack_in(&items, s)) {
+        let left = pack.add(&items, s);
+        if left > 0 {
+            spawn_drop(&mut commands, &items, k.body.pos, Stack { count: left, ..s });
+        }
+    }
+    held.set_trash(p.trash.as_ref().and_then(|s| stack_in(&items, s)));
     let worn = slots_in(&items, &p.worn);
     for (i, w) in eq.worn.iter_mut().enumerate() {
         *w = worn.get(i).copied().flatten();

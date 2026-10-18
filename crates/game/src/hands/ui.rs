@@ -50,6 +50,18 @@ pub(crate) struct Held {
     trash: Option<Stack>,
 }
 
+impl Held {
+    /// What a save keeps of it: the stack on the cursor, the discard slot's.
+    pub(crate) fn kept(&self) -> (Option<Stack>, Option<Stack>) {
+        (self.stack, self.trash)
+    }
+
+    /// The discard slot's stack, as a save had it.
+    pub(crate) fn set_trash(&mut self, trash: Option<Stack>) {
+        self.trash = trash;
+    }
+}
+
 /// Whose slot: the hotbar in use (bottom of the screen, by position), the
 /// player's inventory (by slot), the open chest, or what the player wears
 /// (by `gear::WORN` slot), or the discard slot.

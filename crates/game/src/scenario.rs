@@ -336,7 +336,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -9854,6 +9854,53 @@ fn headshot_script(
         casts.write(crate::magic::CastRequest { caster: me, spell: i, from: Vec2::new(930.0, aim.y), toward: Vec2::new(1100.0, aim.y), alt: false });
         info!("headshot: t {t:.0} a bolt at {:.0} up ({:.1} over its box); it's lost {:.0} so far", aim.y - fl, aim.y - top, state.1 - th.hp);
     }
+}
+
+/// `keepsake` (a save: `PLATYPUS_SAVE=...`): what the player has on them,
+/// logged at 1, 3 and 6 s: the hotbar in hand, the first slots of the
+/// pack, what's worn, gold, health, the discard slot. To see a save's
+/// player come back as it was saved. `PLATYPUS_KEEPSAKE=hold`: at 2 s the
+/// pack's first stack is picked up onto the cursor and its second thrown
+/// in the discard slot, the hotbar's third slot taken in hand, and it's
+/// saved (then run it again without, to see them come back).
+#[allow(clippy::type_complexity)]
+fn keepsake_script(
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    (mut hand, mut held): (ResMut<crate::hands::Hand>, ResMut<crate::hands::ui::Held>),
+    mut player: Query<(&Kinematics, &crate::creatures::Health, Option<&mut crate::hands::items::Inventory>, &crate::gear::Equipment, Option<&crate::gold::Gold>), With<LocalPlayer>>,
+    mut saves: MessageWriter<crate::save::SaveNow>,
+    mut next: Local<u8>,
+    mut done: Local<bool>,
+) {
+    if s.name != "keepsake" {
+        return;
+    }
+    if std::env::var("PLATYPUS_KEEPSAKE").as_deref() == Ok("hold")
+        && s.elapsed > 2.0
+        && !*done
+        && let Ok((_, _, Some(mut pack), ..)) = player.single_mut()
+    {
+        *done = true;
+        held.stack = pack.slots[0].take();
+        held.set_trash(pack.slots[1].take());
+        hand.slot = 2;
+        saves.write(crate::save::SaveNow);
+        info!("keepsake: t 2 picked up the first stack, threw the second away, the third slot in hand; saved");
+    }
+    let at = [1.0, 3.0, 6.0];
+    if *next as usize >= at.len() || s.elapsed < at[*next as usize] {
+        return;
+    }
+    *next += 1;
+    let (Some(items), Ok((k, h, pack, eq, gold))) = (items, player.single()) else { return };
+    let name = |st: &Option<crate::hands::items::Stack>| st.map_or("-".to_string(), |st| format!("{}×{}", items.def(st.item).id, st.count));
+    let pack: Vec<String> = pack.map_or(vec![], |p| p.slots.iter().take(20).map(name).collect());
+    let worn: Vec<String> = eq.worn.iter().map(name).collect();
+    let (cursor, trash) = held.kept();
+    info!("keepsake: t {:.0} at ({:.0}, {:.0}), hp {:.0}, gold {}, hand slot {} bar {}; cursor {}, discard {}", s.elapsed, k.body.pos.x, k.body.pos.y, h.hp, gold.map_or(0, |g| g.0), hand.slot, hand.bar, name(&cursor), name(&trash));
+    info!("keepsake:   pack {}", pack.join(" "));
+    info!("keepsake:   worn {}", worn.join(" "));
 }
 
 /// `wraith` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_HOUR=22`):
