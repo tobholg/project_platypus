@@ -101,7 +101,7 @@ const PANEL: Color = Color::srgb(0.05, 0.06, 0.13);
 const RIM: Color = Color::srgb(0.3, 0.35, 0.62);
 const SIDE: Color = Color::srgb(0.1, 0.12, 0.24);
 /// A recipe you can't make yet: a darker slot, its icon faded.
-const SHORT: Color = Color::srgb(0.11, 0.12, 0.24);
+const SHORT: Color = Color::srgb(0.14, 0.16, 0.32);
 const FADED: f32 = 0.32;
 /// A recipe you can make: a green rim.
 const READY: Color = Color::srgb(0.45, 0.82, 0.45);
