@@ -454,7 +454,9 @@ impl TerrainGen {
     }
 
     /// Lairs dress their chambers: the lining on the walls (where rock is
-    /// within three cells), threads of it from the roof.
+    /// within three cells), threads of it from the roof, the litter heaped
+    /// on the floor (a roost's guano: in heaps, a few cells high, where its
+    /// colony hangs over).
     fn dress_lairs(&self, pos: ChunkPos, cells: &mut [Cell]) {
         let o = pos.origin();
         for &ci in self.plan.caves.chambers_in(pos.x, pos.y) {
@@ -463,6 +465,7 @@ impl TerrainGen {
             let at = |lx: i32, ly: i32| (0..CHUNK).contains(&lx) && (0..CHUNK).contains(&ly);
             let solid = |cells: &[Cell], lx: i32, ly: i32| at(lx, ly) && self.solid[cells[(ly * CHUNK + lx) as usize].material.0 as usize];
             let mut lining = Vec::new();
+            let mut heaped = Vec::new();
             for ly in 0..CHUNK {
                 for lx in 0..CHUNK {
                     let (x, y) = (o.x + lx, o.y + ly);
@@ -475,6 +478,23 @@ impl TerrainGen {
                     let clumps = hash(&[self.plan.seed, 0x3EC, x.div_euclid(6) as u64, y.div_euclid(6) as u64]) % 1000;
                     if wall && (clumps as f32) < lair.density * 1000.0 && !h.is_multiple_of(3) {
                         lining.push((lx, ly));
+                    }
+                    // Litter heaped on the floor: heaps a few columns
+                    // wide, rounded, up to four cells high.
+                    if let Some((litter, much)) = lair.litter
+                        && solid(cells, lx, ly - 1)
+                        && dx * dx < 0.8
+                    {
+                        let heap = hash(&[self.plan.seed, 0x3EE, x.div_euclid(7) as u64]) % 1000;
+                        if (heap as f32) < much * 1000.0 {
+                            let across = (x.rem_euclid(7) as f32 - 3.0).abs() / 3.5;
+                            let tall = ((1.0 - across * across) * (2.0 + (heap % 3) as f32)).round() as i32;
+                            for d in 0..tall.max(1) {
+                                if at(lx, ly + d) && cells[((ly + d) * CHUNK + lx) as usize].is_air() {
+                                    heaped.push((lx, ly + d, litter));
+                                }
+                            }
+                        }
                     }
                     // A thread from the roof.
                     if solid(cells, lx, ly + 1) && h.is_multiple_of(17) {
@@ -490,6 +510,9 @@ impl TerrainGen {
             }
             for (lx, ly) in lining {
                 cells[(ly * CHUNK + lx) as usize] = Cell::new(lair.lining, (hash(&[lx as u64, ly as u64, 0x3ED]) & 255) as u8);
+            }
+            for (lx, ly, m) in heaped {
+                cells[(ly * CHUNK + lx) as usize] = Cell::new(m, (hash(&[lx as u64, ly as u64, 0x3EF]) & 255) as u8);
             }
         }
     }
@@ -2968,6 +2991,8 @@ mod tests {
             chance: 0.2,
             lining: "cobweb".into(),
             density: 0.6,
+            litter: None,
+            litter_density: 0.0,
             keepers: vec![("spider".into(), 1), ("egg_sac".into(), 2)],
             min_size: 21.0,
             start: None,
@@ -2990,5 +3015,56 @@ mod tests {
             (0..CHUNK).flat_map(|y| (0..CHUNK).map(move |x| (x, y))).filter(|&(x, y)| ch.get(x as usize, y as usize).material == web).count() as i32
         }).sum();
         assert!(near > 20, "webs line it: {near} cells");
+    }
+
+    /// A roost's litter (guano) lies heaped on its chamber's floor: on
+    /// solid ground, in heaps, never hanging in the air.
+    #[test]
+    fn a_roost_heaps_guano_on_its_floor() {
+        let m = mats();
+        let defs = vec![lairs::LairDef {
+            name: "bat colony".into(),
+            depth: (100.0, 100_000.0),
+            zones: vec![],
+            chance: 0.3,
+            lining: "cobweb".into(),
+            density: 0.0,
+            litter: Some("guano".into()),
+            litter_density: 0.6,
+            keepers: vec![("cave_bat".into(), 8)],
+            min_size: 16.0,
+            start: None,
+            chest: false,
+        }];
+        let g = TerrainGen::new(7, Preset::Small, &m).with_lairs(&defs, &m);
+        let guano = m.expect_id("guano");
+        let taken: Vec<usize> = g.lair_of.iter().enumerate().filter(|(_, l)| l.is_some()).map(|(i, _)| i).collect();
+        assert!(taken.len() >= 3, "some chambers are roosts: {}", taken.len());
+        let (mut heaped, mut floating) = (0, 0);
+        for &ci in taken.iter().take(4) {
+            let c = &g.plan.caves.chambers[ci];
+            let mid = CellPos::new(c.x as i32, c.y as i32).chunk();
+            for (dx, dy) in (-1..=1).flat_map(|dy| (-1..=1).map(move |dx| (dx, dy))) {
+                let at = ChunkPos::new(mid.x + dx, mid.y + dy);
+                let ch = g.generate(at);
+                for y in 0..CHUNK as usize {
+                    for x in 0..CHUNK as usize {
+                        if ch.get(x, y).material != guano {
+                            continue;
+                        }
+                        heaped += 1;
+                        // (What's under it: solid, or more guano; at the
+                        // chunk's bottom, the ground as made next door.)
+                        let o = at.origin();
+                        let under = if y > 0 { ch.get(x, y - 1).material } else { g.material_at(o.x + x as i32, o.y - 1) };
+                        if under == g.ids.air {
+                            floating += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(heaped > 30, "guano heaped on the floors: {heaped} cells");
+        assert!(floating * 20 <= heaped, "guano on something, not in the air: {floating} of {heaped}");
     }
 }

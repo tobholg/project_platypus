@@ -1,0 +1,90 @@
+// A cave bat: the bat's drawing, darker, a colder grey; red eyes. Asleep it
+// hangs from the roof upside down, its wings wrapped round it, its eyes
+// shut (no eyes to see in the dark: `hang`); stirring, they open (`stir`).
+// It flits, swarms and dives at you. (custom/cave_bat.rs)
+(
+    size: (23, 12),
+    feet: (11.5, 12),
+    outline: (14, 12, 16),
+    palette: {
+        'b': (46, 44, 50),   // body
+        'B': (62, 58, 66),   // body, lit (the crown, the chest)
+        'd': (34, 32, 38),   // body, shade (the belly, the legs)
+        'e': (64, 60, 68),   // ears
+        'f': (222, 212, 196),   // fangs
+        'k': (255, 70, 60),   // eye
+        'w': (70, 66, 76),   // wing, the skin
+        'v': (88, 84, 96),   // wing, the skin lit
+        'W': (52, 48, 56),   // wing, the bones
+    },
+    frames: {
+        "up": [
+            ".......................",
+            ".W.......e...e.......W.",
+            ".WW......ee.ee......WW.",
+            ".WvW.....bBBBb.....WvW.",
+            ".WvvW...bbkbkbb...WvvW.",
+            ".WwvvW.wbbbBbbbw.WvvwW.",
+            ".WwwvvWwwdfdfdwwWvvwwW.",
+            ".WW.wwwwwbbBbbwwwww.WW.",
+            "..W...wwwdbbbdwww...W..",
+            ".........dbbbd.........",
+            "..........d.d..........",
+            ".......................",
+        ],
+        "down": [
+            ".......................",
+            ".........e...e.........",
+            ".........ee.ee.........",
+            ".........bBBBb.........",
+            "......vvbbkbkbbvv......",
+            "....WWvvwbbBbbwvvWW....",
+            "..WWvwwwwdfdfdwwwwvWW..",
+            ".WvwwWwwwbbBbbwwwWwwvW.",
+            ".WwwW.wWwdbbbdwWw.WwwW.",
+            ".Ww..W..W.dbd.W..W..wW.",
+            ".W........d.d........W.",
+            ".......................",
+        ],
+            // Hanging from the roof (the top of its box), wrapped in its wings.
+        "hang": [
+            ".......................",
+            ".......................",
+            ".......................",
+            ".......................",
+            ".......................",
+            "..........d.d..........",
+            "........WdbbbdW........",
+            ".......WwbbBbbwW.......",
+            ".......WvbbbbbvW.......",
+            "........WwbBbwW........",
+            ".........bbbbb.........",
+            ".........e...e.........",
+        ],
+        "stir": [
+            ".......................",
+            ".......................",
+            ".......................",
+            ".......................",
+            ".......................",
+            "..........d.d..........",
+            "........WdbbbdW........",
+            ".......WwbbBbbwW.......",
+            ".......WvbbbbbvW.......",
+            "........WwbBbwW........",
+            ".........bkbkb.........",
+            ".........e...e.........",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["up", "down"], fps: 14),
+        "run": (frames: ["up", "down"], fps: 14),
+        "jump": (frames: ["up", "down"], fps: 14),
+        "fall": (frames: ["up", "down"], fps: 14),
+        "fly": (frames: ["up", "down"], fps: 14),
+        // Diving: wings beating hard.
+        "dive": (frames: ["up", "down"], fps: 22),
+        "hang": (frames: ["hang"], fps: 1),
+        "stir": (frames: ["stir"], fps: 1),
+    },
+)

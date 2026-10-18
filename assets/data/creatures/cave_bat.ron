@@ -1,0 +1,34 @@
+// A cave bat: the upper caves' commonest foe. Colonies sleep upside down
+// on cave roofs, guano heaped under them, their eyes shut. Mining near, a
+// fight, a blast, a lamp, walking right under them (crouch to pass), a
+// blow or a flash wakes one; it screeches and the screech wakes the rest.
+// Awake, they circle you as a swarm and dive, one or two at a time, each
+// dive screeched first, its eyes flaring: step aside, swing. One blow
+// kills one. A flash drops them senseless. (custom/cave_bat.rs)
+(
+    name: "Cave bat",
+    size: (8, 6),
+    health: 5,
+    team: Enemy,
+    faction: "bats",
+    kind: "beast",
+    profile: {radiant: 1.5},
+    blood: "blood",
+    art: "cave_bat",
+    // Its eyes, crisp in the dark (shut asleep). No light of its own: a
+    // colony lit the cave red, and a roost's to be found by a lamp.
+    eyes: (255, 70, 60),
+    // (It hurts by its dives' bites, not by bumping.)
+    touchless: true,
+    movement: (
+        run_speed: 30,
+        fly_speed: 150,
+        fly_accel: 1100,
+        air_jumps: 0,
+        step_height: 0,
+        dash_speed: 0,
+    ),
+    // (Its own code flies it; the brain's only a fallback.)
+    brain: (kind: "critter", params: (flee_range: 0, calm_after: 1.0, flies: true, hovers: (8, 60), wander_every: 0.35, rest: 0.0, wander_speed: 0.0)),
+    custom: (name: "cave_bat", params: ()),
+)

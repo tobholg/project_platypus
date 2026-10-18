@@ -30,7 +30,11 @@
     (kind: "frog", place: Shore, most: 4, rate: 0.6),
     (kind: "firefly", place: Surface, when: Night, above: (9, 36), most: 14, rate: 3.0),
     (kind: "fish", place: Water, most: 8, rate: 1.2),
-    (kind: "bat", place: Cave, most: 3, rate: 0.35),
+    // Bats: harmless ones flitting in the shallow caves; below, cave bat
+    // colonies asleep on the roofs (a handful, flying up to roost; the big
+    // colonies are lairs: lairs.ron).
+    (kind: "bat", place: Cave, depth: (0, 150), most: 3, rate: 0.35),
+    (kind: "cave_bat", place: Cave, depth: (120, 150000), group: (4, 7), most: 9, rate: 0.06),
     // Slimes live on the surface, by day: the day's trouble in grass and
     // woods (a few at a time), a blue one now and then. (Underground only
     // the odd ones: the glutton deep down, acid slimes in the toxic caves.)

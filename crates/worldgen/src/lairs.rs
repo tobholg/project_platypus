@@ -4,7 +4,8 @@
 //! decided from the seed with the rest of the plan, so every peer agrees.
 //!
 //! A lair lines its chamber: `lining` (cobweb) on the walls, `density` of
-//! the wall's cells; threads of it hang from the roof. Its `keepers` stand
+//! the wall's cells; threads of it hang from the roof; `litter` (guano)
+//! lies heaped on its floor, `litter_density` of it. Its `keepers` stand
 //! across its middle (they fall to its floor), reported by the chunk the
 //! chamber's middle is in.
 
@@ -32,6 +33,12 @@ pub struct LairDef {
     pub lining: String,
     #[serde(default = "half")]
     pub density: f32,
+    /// What lies heaped on its floor (guano, under a roost), and how much
+    /// of the floor (0..1).
+    #[serde(default)]
+    pub litter: Option<String>,
+    #[serde(default)]
+    pub litter_density: f32,
     /// Who lives there: (creature, how many).
     pub keepers: Vec<(String, u32)>,
     /// Only chambers at least this wide (half width, cells).
@@ -77,6 +84,7 @@ pub struct Lair {
     pub name: String,
     pub lining: MaterialId,
     pub density: f32,
+    pub litter: Option<(MaterialId, f32)>,
     pub keepers: Vec<&'static str>,
     pub chest: bool,
 }
@@ -139,6 +147,7 @@ pub fn ready(defs: &[LairDef], mats: &MaterialTable) -> Vec<Lair> {
             name: d.name.clone(),
             lining: mats.id(&d.lining).unwrap_or_else(|| mats.expect_id("cobweb")),
             density: d.density,
+            litter: d.litter.as_deref().and_then(|m| mats.id(m)).map(|m| (m, d.litter_density)),
             chest: d.chest,
             keepers: d
                 .keepers

@@ -31,6 +31,7 @@
 //! Registered in `CustomPlugin` (one line each). A file naming a module
 //! (or a brain) that doesn't exist is reported at start, loudly.
 
+pub mod cave_bat;
 pub mod dread;
 pub mod dummy;
 pub mod explosive;
@@ -76,7 +77,8 @@ impl Plugin for CustomPlugin {
             .register_custom::<toad::Toad>()
             .register_custom::<necro::Necro>()
             .register_custom::<watcher::Watcher>()
-            .register_custom::<gnasher::Gnasher>();
+            .register_custom::<gnasher::Gnasher>()
+            .register_custom::<cave_bat::CaveBat>();
     }
 }
 

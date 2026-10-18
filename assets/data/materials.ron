@@ -290,6 +290,9 @@
         (name: "sandstone", kind: Static, density: 2200, hardness: 35, crumbles_into: "sand", colors: [(178, 142, 90), (192, 156, 100), (166, 132, 84), (184, 150, 96)]),
         (name: "gravel",   kind: Powder, density: 1900, hardness: 15, above: (1400, "magma"), colors: [(96, 94, 90), (130, 126, 120), (80, 78, 76)]),
         (name: "soil",     kind: Powder, density: 1400, hardness: 8,  colors: [(92, 60, 34), (112, 74, 42)]),
+        // Bat droppings, heaped under a roost: you see the heaps before you
+        // look up.
+        (name: "guano",    kind: Powder, density: 900, hardness: 3, colors: [(150, 136, 108), (176, 162, 132), (124, 110, 86), (196, 186, 160)]),
         (name: "ash",      kind: Powder, density: 300,  hardness: 1,  colors: [(70, 68, 66), (98, 96, 94)]),
         // What burnt wood leaves (and charred wood that was put out). Flames
         // don't spread onto it (spread 0) and heat lights it only above 700 °C,

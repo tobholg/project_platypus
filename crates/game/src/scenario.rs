@@ -336,7 +336,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -9711,6 +9711,88 @@ fn gnasher_script(
     if mode == "kill" && t > 8.0 && t > state.1 {
         hits.write(crate::combat::Hit { target: e, damage: 30.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: gk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
         state.1 = t + 0.3;
+    }
+}
+
+/// `bats` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a stone roof over
+/// the floor from 850 to 1350, 76 up; seven cave bats put under it at
+/// 1080..1200 (they fly up and roost); the player (who can't die) at 800,
+/// out of their hearing. `PLATYPUS_BATS=`: (none) at 6 s the player walks
+/// in under them (someone near wakes one; its screech the rest);
+/// `mine`: the player stands at 1030 (near, not near enough) and at 5 s a
+/// pick strikes stone there; `still`: nothing (they should sleep on);
+/// `flash`: as (none), and at 12 s a flash among the swarm (they drop).
+/// Logs, a second at a time, what the bats are doing and what the player's
+/// lost.
+fn bats_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::custom::cave_bat::CaveBat>), Without<LocalPlayer>>,
+    (mut sounds, mut flares): (MessageWriter<crate::sound::PlaySound>, MessageWriter<crate::fx::Flare>),
+    mut state: Local<(u8, f32, u32)>,
+) {
+    if s.name != "bats" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let mode = std::env::var("PLATYPUS_BATS").unwrap_or_default();
+    state.1 += h.max - h.hp;
+    h.hp = h.max;
+    if state.0 == 0 && t > 0.3 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        let stone = sim.materials().expect_id("stone");
+        for x in (850..=1350).step_by(5) {
+            sim.queue(platypus_sim::WorldEdit::Paint { center: CellPos::new(x, fl as i32 + 80), radius: 6, material: stone, overwrite: true });
+        }
+        state.0 = 1;
+        return;
+    }
+    if state.0 == 1 && t > 0.6 {
+        let x = if mode == "mine" { 1030.0 } else { 800.0 };
+        k.body.pos = Vec2::new(x, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        for n in 0..7 {
+            crate::creatures::def::spawn_creature(&mut commands, "cave_bat", Vec2::new(1080.0 + n as f32 * 20.0, fl + 45.0), |_| {});
+        }
+        info!("bats: seven cave bats under the roof ({mode})");
+        state.0 = 2;
+        return;
+    }
+    if state.0 < 2 {
+        return;
+    }
+    // (The player walks in under them, a little at a time.)
+    if (mode.is_empty() || mode == "flash") && t > 6.0 && k.body.pos.x < 1120.0 {
+        k.body.pos.x += 1.2;
+    }
+    if mode == "mine" && (5.0..5.02).contains(&t) {
+        sounds.write(crate::sound::PlaySound::at("mine_stone", k.body.pos + Vec2::new(8.0, 0.0)));
+        info!("bats: t {t:.2} a pick strikes stone at {:.0}", k.body.pos.x);
+    }
+    let bats: Vec<_> = them.iter().filter(|x| x.1.kind == "cave_bat").collect();
+    if mode == "flash" && (12.0..12.02).contains(&t) {
+        let mid = bats.iter().map(|x| x.2.body.pos).sum::<Vec2>() / bats.len().max(1) as f32;
+        flares.write(crate::fx::Flare { at: mid, color: [2.0, 2.0, 1.8], life: 0.3 });
+        info!("bats: t {t:.2} a flash at ({:.0}, {:.0} up)", mid.x, mid.y - fl);
+    }
+    if t as u32 != state.2 {
+        state.2 = t as u32;
+        let mut tally: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+        for (_, _, bk, o) in &bats {
+            let what = if bk.loco.state == platypus_physics::MoveState::Stunned { "senseless" } else { o.map_or("?", |o| o.doing()) };
+            *tally.entry(what).or_default() += 1;
+        }
+        let list: Vec<String> = tally.iter().map(|(k, n)| format!("{k} {n}")).collect();
+        let high = bats.iter().map(|x| x.2.body.pos.y - fl).fold(0.0f32, f32::max);
+        info!("bats: t {t:.0} {} (highest {high:.0} up); the player at {:.0}, lost {:.0}", list.join(", "), k.body.pos.x, state.1);
     }
 }
 
