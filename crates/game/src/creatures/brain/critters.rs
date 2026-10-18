@@ -353,6 +353,10 @@ const OUT_OF_SIGHT: f32 = 390.0;
 const TRIES: usize = 16;
 /// Spawn rates scaled (`PLATYPUS_LIFE_RATE`: scenarios that look at what
 /// lives where, without waiting minutes).
+/// What lives in the caves turns up at this share of its `rate` (the
+/// underground was too busy: halved).
+const CAVE_RATE: f32 = 0.5;
+
 fn rate_scale() -> f32 {
     static K: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
     *K.get_or_init(|| std::env::var("PLATYPUS_LIFE_RATE").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0))
@@ -417,7 +421,8 @@ fn ambient(
             continue;
         }
         let near = critters.iter().filter(|(_, c, k)| c.kind == h.kind && k.body.pos.distance(p) < NEAR).count();
-        if near >= h.most || unit(&mut rng) > h.rate * 0.5 * rate_scale() * if show { crate::show::SHOW_RATE } else { 1.0 } {
+        let below = if h.place == Place::Cave { CAVE_RATE } else { 1.0 };
+        if near >= h.most || unit(&mut rng) > h.rate * 0.5 * below * rate_scale() * if show { crate::show::SHOW_RATE } else { 1.0 } {
             continue;
         }
         // (Not near the start, for the big ones.)
