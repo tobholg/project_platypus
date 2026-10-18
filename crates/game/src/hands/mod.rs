@@ -575,7 +575,11 @@ fn use_hands(
                 let at = Vec2::new(centre.x as f32 + 0.5, centre.y as f32 + 0.5);
                 let what = crate::sound::hooks::underfoot(&sim.world, centre);
                 let power = ((power as f32 * AREA_POWER).round() as u8).max(1);
+                let ore = ore_in(&sim.world, centre.offset(-radius, -radius), centre.offset(radius, radius));
                 let report = sim.world.apply_edit(&WorldEdit::MineReach { center: centre, radius, from: CellPos::from_world(from.x, from.y), bite: radius, power, max_hardness: tier });
+                if ore {
+                    sounds.write(crate::sound::PlaySound::at("mine_ore", at));
+                }
                 let hit = match what {
                     Some("stone") => "mine_stone",
                     Some("sand") | Some("snow") => "mine_sand",
@@ -601,7 +605,12 @@ fn use_hands(
             // (What it sounds like: what's there, before the blow.)
             let centre = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32);
             let what = if back { Some("wood") } else { crate::sound::hooks::underfoot(&sim.world, CellPos::from_world(centre.x, centre.y)) };
+            let corner = CellPos::new(block.x * BLOCK, block.y * BLOCK);
+            let ore = !back && ore_in(&sim.world, corner, corner.offset(BLOCK - 1, BLOCK - 1));
             let report = sim.world.apply_edit(&WorldEdit::MineBlock { block, power, max_hardness: tier, back });
+            if ore {
+                sounds.write(crate::sound::PlaySound::at("mine_ore", centre));
+            }
             let hit = match what {
                 Some("stone") => "mine_stone",
                 Some("sand") | Some("snow") => "mine_sand",
@@ -1074,4 +1083,11 @@ mod tests {
         let t = 180.0 / v.x;
         assert!((v.y * t - 0.5 * crate::props::GRAVITY * t * t - 80.0).abs() < 1.0, "{v}");
     }
+}
+
+/// Ore or a gem anywhere from `lo` to `hi` (cells, inclusive): what a pick
+/// struck rings for (`mine_ore`).
+fn ore_in(world: &platypus_sim::World, lo: CellPos, hi: CellPos) -> bool {
+    let mats = world.materials();
+    (lo.y..=hi.y).any(|y| (lo.x..=hi.x).any(|x| world.get(CellPos::new(x, y)).is_some_and(|c| !c.is_air() && matches!(mats.def(c.material).loot, platypus_sim::Loot::Ore | platypus_sim::Loot::Gem))))
 }

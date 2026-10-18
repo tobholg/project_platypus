@@ -112,6 +112,9 @@
 
         // ---- hands ----
         "mine_stone": (make: Clang(pitch: 1000, ring: 0.03, length: 0.1, grit: 0.9, muffle: 3000), variants: 5, pitch: 0.08, volume: 0.3),
+        // Ore or a gem in what the pick struck: a bright ringing tink over
+        // the rock's knock (Terraria's), so you hear you've found something.
+        "mine_ore": (make: Clang(pitch: 2300, ring: 0.14, length: 0.3, grit: 0.12, muffle: 14000), variants: 4, pitch: 0.05, volume: 0.42),
         "mine_dirt": (make: Burst(cutoff: 800, length: 0.08, q: 0.7, body: 80, grit: 0.4), variants: 5, pitch: 0.08, volume: 0.35),
         "mine_sand": (make: Burst(cutoff: 3500, length: 0.1, q: 0.6, grit: 0.6), variants: 4, pitch: 0.08, volume: 0.3),
         "mine_wood": (make: Burst(cutoff: 600, length: 0.08, q: 2.5, body: 140), variants: 4, pitch: 0.06, volume: 0.4),
