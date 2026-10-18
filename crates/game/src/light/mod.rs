@@ -436,7 +436,7 @@ fn collect_flashes(
     }
     // A double jump's cloud glows a moment (it shows in the dark).
     for j in puffs.read() {
-        flashes.0.push(Flash { at: j.at, color: [0.5, 0.6, 0.85], age: 0.0, life: 0.45 });
+        flashes.0.push(Flash { at: j.at, color: [0.85, 1.0, 1.4], age: 0.0, life: 0.6 });
     }
     for e in blasts.read() {
         let k = (e.radius / 30.0).min(2.0);

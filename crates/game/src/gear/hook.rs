@@ -4,7 +4,8 @@
 //!
 //! - E throws it at the cursor, out to the rope's length; it takes hold of
 //!   what it meets: rock (anything solid, or a platform), a chest or a body,
-//!   a creature.
+//!   a creature. A tossed hook (the rope hook) is thrown as a bomb is: hold
+//!   E and its arc shows (`cursor::throw_arc`), let go and it flies.
 //! - Held by something that stays put (a cell, a creature bigger than you),
 //!   it's a rope: you can't be further from it than its length, and you
 //!   swing on it. When it bites, the rope reels itself in fast (Terraria's
@@ -202,6 +203,8 @@ pub struct Rope {
     doing: &'static str,
     /// The hook it threw (how its rope looks).
     look: HookDef,
+    /// A tossed hook readied (E held: its arc shown; let go, thrown).
+    aiming: bool,
 }
 
 impl Rope {
@@ -227,6 +230,40 @@ impl Rope {
             Line::Held(h) => (self.doing, h.pivots.len()),
         }
     }
+}
+
+/// Where a rope's thrown from: the hand.
+fn hand_of(k: &Kinematics) -> Vec2 {
+    k.body.pos + Vec2::new(k.loco.facing * 3.0, k.body.half.y * 0.3)
+}
+
+/// A tossed hook readied: where it'll fly, a point a tick from the hand
+/// (as `rope` flies it), and whether it takes hold (else it comes back).
+pub fn toss_path(rope: &Rope, eq: &Equipment, items: &Items, k: &Kinematics, to: Vec2, world: &platypus_sim::World) -> Option<(Vec<Vec2>, bool)> {
+    if !rope.aiming {
+        return None;
+    }
+    let def = worn_hook(eq, items)?;
+    let grid = WorldGrid(world);
+    let mut tip = hand_of(k);
+    let mut vel = def.launch(tip, to);
+    let (mut paid, mut out) = (0.0, vec![tip]);
+    while paid < def.thrown() && out.len() < 400 {
+        vel -= Vec2::Y * def.gravity * DT;
+        let go = vel.length() * DT;
+        let steps = go.ceil().max(1.0) as i32;
+        for _ in 0..steps {
+            let next = tip + vel * DT / steps as f32;
+            if grips(&grid, CellPos::from_world(next.x, next.y)) {
+                out.push(tip);
+                return Some((out, true));
+            }
+            tip = next;
+        }
+        paid += go;
+        out.push(tip);
+    }
+    Some((out, false))
 }
 
 /// The best hook it wears (the longest rope).
@@ -361,15 +398,23 @@ pub fn rope(
         rope.kick = (rope.kick - DT).max(0.0);
         let intent = controls.0;
         let pressed = intent.hook && !rope.held;
+        let released = !intent.hook && rope.held;
         rope.held = intent.hook;
+        // (Tossed, as a bomb is: readied while E's held, thrown when it's
+        // let go. Shot: thrown as it's pressed.)
+        let tossed = def.gravity > 0.0;
+        if tossed && pressed {
+            rope.aiming = true;
+        }
+        let throw = if tossed { released && std::mem::take(&mut rope.aiming) } else { pressed };
         let prev_x = std::mem::replace(&mut rope.prev_x, intent.move_x);
         let Ok((_, me, my_stats, ..)) = things.get(e) else { continue };
         let (pos, half, facing, contacts) = (me.body.pos, me.body.half, me.loco.facing, me.loco.contacts);
         let my_size = half.x * half.y;
         // (At the game's tempo: hooks are the players'.)
         let stats = tempo.apply(&my_stats.map(|s| s.0.clone()).unwrap_or_default(), true);
-        let hand = pos + Vec2::new(facing * 3.0, half.y * 0.3);
-        if pressed {
+        let hand = hand_of(me);
+        if throw {
             let aim = if intent.aim != Vec2::ZERO { intent.aim } else { hand + Vec2::new(facing, 1.0) };
             let vel = def.launch(hand, aim);
             let dir = vel.normalize_or(Vec2::new(facing, 0.0));

@@ -337,7 +337,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -10202,10 +10202,11 @@ fn ropehook_script(
                 put(&mut k, Vec2::new(1000.0, fl + 1.0));
             }
             cursor.0 = Some(Vec2::new(1080.0, fl + 100.0));
-            if (0.8..0.9).contains(&dt) {
+            // (Held a while, its arc shown, before it's let go.)
+            if (0.8..1.6).contains(&dt) {
                 held.push(KeyCode::KeyE);
             }
-            if dt > 2.2 {
+            if dt > 2.8 {
                 let held = rope.and_then(|r| r.tether()).map(|(at, _)| (at.x.round(), (at.y - fl).round()));
                 info!("ropehook: tossed at the knob (1080, 100 up) from (1000, the floor): the rope {what}, holding at {held:?}");
                 *state = (5, t, 0, Vec2::ZERO);
@@ -10268,6 +10269,56 @@ fn loadouts_script(
     info!("loadouts: {name}: hotbar {}", bar.join(" "));
     info!("loadouts: {name}: pack {}", pack.join(" "));
     info!("loadouts: {name}: worn {}; no room for {}", worn.join(" "), over.len());
+}
+
+/// `jumps` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a full jump (jump
+/// held), with no boots, feather boots, then Zephyr treads, each air jump
+/// at the top of the rise before; logs the highest each reached.
+fn jumps_script(
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(&mut Kinematics, &mut crate::gear::Equipment, &crate::creatures::MoveStats), With<LocalPlayer>>,
+    mut state: Local<(usize, f32, f32, bool)>,
+) {
+    if s.name != "jumps" {
+        return;
+    }
+    let (Some(items), Ok((mut k, mut eq, stats))) = (items, player.single_mut()) else { return };
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let t = s.elapsed;
+    let boots = [None, Some("feather_boots"), Some("cloud_boots")];
+    let feet = crate::gear::WORN.iter().position(|w| *w == crate::gear::Slot::Feet).expect("feet");
+    let (i, start) = (state.0, state.1);
+    if i >= boots.len() || t < 0.5 {
+        return;
+    }
+    let dt = t - start;
+    if dt < 0.05 {
+        eq.worn[feet] = boots[i].and_then(|b| items.id(b)).map(|id| crate::hands::items::Stack::new(id, 1));
+        k.body.pos = Vec2::new(900.0 + i as f32 * 150.0, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        k.body.vel = Vec2::ZERO;
+        state.2 = 0.0;
+    }
+    let height = k.body.pos.y - k.body.half.y - fl;
+    state.2 = state.2.max(height);
+    // Jump held from 0.6 s; let go at the top of each rise, pressed again
+    // the next frame (an air jump).
+    let rising = k.body.vel.y > 0.0;
+    if (0.6..3.0).contains(&dt) {
+        if !keys.pressed(KeyCode::Space) {
+            keys.press(KeyCode::Space);
+        } else if !rising && dt > 0.75 {
+            keys.release(KeyCode::Space);
+        }
+    } else if keys.pressed(KeyCode::Space) {
+        keys.release(KeyCode::Space);
+    }
+    if dt > 3.4 {
+        info!("jumps: {}: highest {:.0} cells (jump height {:.0}, air jumps {})", boots[i].unwrap_or("no boots"), state.2, stats.0.jump_height, stats.0.air_jumps);
+        *state = (i + 1, t, 0.0, false);
+    }
 }
 
 /// `wraith` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_HOUR=22`):

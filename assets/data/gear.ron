@@ -243,10 +243,11 @@
                 (parts: ["kick_leg"], clip: true, at: (0, 1), rows: [".............y....", ".............y....", ".............y....", "..................", "..................", "..................", "..yyy............."]),
             ])),
             about: "Hold jump in the air: fly. Mind what's under you."),
-        (id: "cloud_boots", name: "Cloud boots", color: (200, 230, 255),
-            gear: (slot: Feet, weight: Light, stats: { AirJumps: 2, FallResist: 20 },
+        // The better double-jump boots: two jumps off thin air, higher.
+        (id: "cloud_boots", name: "Zephyr treads", color: (200, 230, 255),
+            gear: (slot: Feet, weight: Light, stats: { AirJumps: 2, JumpHeight: 12, FallResist: 40 },
             look: (recolor: [(colors: { 'B': (214, 234, 255), 'C': (170, 196, 230), 'U': (236, 246, 255), 'o': (128, 150, 186) })])),
-            about: "Two jumps off thin air (a triple jump)."),
+            about: "Woven from a west wind: two jumps off thin air (a triple jump), higher, and a soft landing."),
         (id: "feather_boots", name: "Feather boots", color: (236, 236, 246),
             gear: (slot: Feet, weight: Light, stats: { AirJumps: 1, JumpHeight: 10, FallResist: 30 },
             look: (recolor: [(colors: { 'B': (236, 236, 246), 'C': (190, 190, 206), 'U': (250, 250, 255), 'o': (150, 150, 168) })])),
@@ -262,7 +263,7 @@
         // and you climb (W), slower.
         (id: "rope_hook", name: "Rope hook", color: (150, 118, 74),
             gear: (slot: Hook, hook: (length: 450, throw: 170, speed: 560, gravity: 1100, pull: false, climb: 90, pay: 160, reel: 150, damage: 0, rope: (150, 118, 74))),
-            about: "E: toss it (it arcs). It holds; W: climb, S: rappel down (a long rope). A/D: swing. Jump to let go."),
+            about: "Hold E: its arc shows; let go: tossed. It holds; W: climb, S: rappel down (a long rope). A/D: swing. Jump to let go."),
         (id: "grappling_hook", name: "Grappling hook", color: (176, 140, 90),
             gear: (slot: Hook, hook: (length: 180, reel: 360, speed: 1200, rope: (176, 140, 90))),
             about: "E: throw it; it reels you to what it grabs. S: pay out, W: climb, A/D: swing. Jump to let go."),

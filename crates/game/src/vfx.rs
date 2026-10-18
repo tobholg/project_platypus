@@ -256,10 +256,10 @@ fn air_puffs(mut jumps: MessageReader<crate::creatures::AirJumped>, mut sparks: 
 }
 
 static PUFF: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter {
-    count: 30.0,
-    life: (0.3, 0.75),
+    count: 44.0,
+    life: (0.35, 0.85),
     colors: vec![(255, 255, 255), (220, 232, 255), (160, 180, 225)],
-    speed: 95.0,
+    speed: 115.0,
     spread: 1.45,
     gravity: -30.0,
     drag: 5.0,
@@ -269,14 +269,14 @@ static PUFF: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter 
 });
 
 static PUFF_RING: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter {
-    count: 8.0,
-    life: (0.25, 0.5),
-    colors: vec![(235, 245, 255), (150, 190, 255)],
-    speed: 130.0,
-    spread: 0.3,
+    count: 14.0,
+    life: (0.3, 0.65),
+    colors: vec![(245, 250, 255), (170, 205, 255), (120, 170, 255)],
+    speed: 165.0,
+    spread: 0.35,
     gravity: -10.0,
     drag: 6.0,
-    size: 1.0,
+    size: 1.4,
     jitter: 0.0,
     glow: true,
 });

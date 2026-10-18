@@ -24,7 +24,9 @@
         gravity: 1650,
         fall_gravity: 1.6,
         max_fall: 630,
-        jump_height: 60,
+        // (75: a quarter higher than it was; double jumps, a share of it,
+        // likewise.)
+        jump_height: 75,
         jump_cut: 0.45,
         coyote_time: 0.09,
         jump_buffer: 0.12,

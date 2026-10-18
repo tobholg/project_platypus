@@ -409,9 +409,10 @@ fn point(
     }
 }
 
-/// While a throw's readied, where it'll go: white dots flowing out along
-/// its flight from the hand (fading in), thinning away before it comes down
-/// (fading out), and a warm mark where it lands.
+/// While a throw's readied (a bomb's, or a rope hook's: E held), where
+/// it'll go: white dots flowing out along its flight from the hand (fading
+/// in), thinning away before it comes down (fading out), and a warm mark
+/// where it lands (a rope hook's: where it takes hold).
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn throw_arc(
     time: Res<Time>,
@@ -422,15 +423,19 @@ fn throw_arc(
     open: Res<InventoryOpen>,
     tools: Res<crate::tools::ToolsConfig>,
     sim: Res<SimWorld>,
-    player: Query<(&Kinematics, &Inventory), With<LocalPlayer>>,
+    player: Query<(&Kinematics, &Inventory, Option<&crate::gear::hook::Rope>, &crate::gear::Equipment), With<LocalPlayer>>,
     mut dots: Query<(&ArcDot, &mut Transform, &mut Sprite, &mut Visibility)>,
     mut landing: Query<(&mut Transform, &mut Visibility), (With<ArcLanding>, Without<ArcDot>)>,
 ) {
     // (The flight, a point a tick from the hand on, and whether it lands.)
     let (path, landed) = (|| {
-        let (items, at, (k, inv)) = (items.as_ref()?, cursor.0?, player.single().ok()?);
+        let (items, at, (k, inv, rope, eq)) = (items.as_ref()?, cursor.0?, player.single().ok()?);
         if open.0 || dev.0 {
             return None;
+        }
+        // (A rope hook readied, E held: its toss, as a bomb's.)
+        if let Some(toss) = rope.and_then(|r| crate::gear::hook::toss_path(r, eq, items, k, at, &sim.world)) {
+            return Some(toss);
         }
         let held = inv.slots.get(hand.active()).copied().flatten()?;
         let Use::Throw(_) = items.def(held.item).use_ else { return None };
