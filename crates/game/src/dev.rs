@@ -93,7 +93,8 @@ fn keys(keys: Res<ButtonInput<KeyCode>>, mode: Res<crate::mode::Mode>, dev: Res<
         (KeyCode::F5, KeyCode::KeyV, DevAction::Storm),
         (KeyCode::F6, KeyCode::KeyB, DevAction::ClearSky),
         (KeyCode::F7, KeyCode::KeyN, DevAction::Lightning(at)),
-        (KeyCode::F8, KeyCode::KeyM, DevAction::Later),
+        // (Later: F8 only; M is the world map's.)
+        (KeyCode::F8, KeyCode::F8, DevAction::Later),
         (KeyCode::F9, KeyCode::KeyK, DevAction::Lighting),
         (KeyCode::F3, KeyCode::KeyH, DevAction::PerfHud),
         (KeyCode::F4, KeyCode::KeyJ, DevAction::Chunks),

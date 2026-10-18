@@ -18,6 +18,8 @@ bevy.workspace = true
 rayon.workspace = true
 serde.workspace = true
 ron.workspace = true
+# The world map's saved tiles, packed (map/).
+lz4_flex.workspace = true
 # Sound (sound/): Firewheel's audio graph for Bevy, and fundsp to make the
 # sounds themselves.
 bevy_seedling = { version = "0.8", features = ["effects"] }

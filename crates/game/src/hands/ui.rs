@@ -552,7 +552,7 @@ fn hints(hand: Res<Hand>, game: Res<crate::mode::Mode>, items: Option<Res<Items>
     let pick = items.as_ref().zip(player.single().ok()).and_then(|(items, inv)| inv.slots[hand.active()].map(|s| items.def(s.item).use_.clone())).is_some_and(|u| matches!(u, Use::Mine { back: false, area, .. } if area > 0.0));
     let mode = if pick { format!("   |   {} [C]", if hand.area { "area" } else { "precise" }) } else { String::new() };
     let dev = if game.dev() { "   |   dev menu: key left of 1" } else { "" };
-    let want = format!("{smart} [Alt]{mode}   |   inventory [Esc or I]   |   potion [H]{dev}");
+    let want = format!("{smart} [Alt]{mode}   |   inventory [Esc or I]   |   map [M]   |   potion [H]{dev}");
     if text.0 != want {
         text.0 = want;
     }

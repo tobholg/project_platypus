@@ -366,6 +366,7 @@ impl Plugin for LightPlugin {
             .add_systems(Update, (reload_settings, keys, collect_flashes, glow, torch::hold.after(crate::creatures::body::animation::animate), torch::burn))
             .init_resource::<torch::OffLight>()
             .init_resource::<Glints>()
+            .init_resource::<Lit>()
             .add_systems(Update, glimmer)
             .add_systems(Startup, torch::load_off_hand)
             .add_systems(
@@ -665,6 +666,32 @@ fn texel_for(zoom: f32) -> i32 {
     }
 }
 
+/// What's lit, as the last solve had it: a copy made when asked (`want`;
+/// the world map charts what's lit, a few times a second).
+#[derive(Resource, Default)]
+pub struct Lit {
+    pub want: bool,
+    pub view: Option<LitView>,
+}
+
+/// A solved grid's light, its brightest channel per texel.
+pub struct LitView {
+    pub origin: CellPos,
+    pub texel: i32,
+    pub w: usize,
+    pub h: usize,
+    light: Vec<f32>,
+}
+
+impl LitView {
+    /// How lit a cell is (0 dark; 1 daylight, lamps more), or None off the
+    /// grid.
+    pub fn at(&self, x: i32, y: i32) -> Option<f32> {
+        let (tx, ty) = ((x - self.origin.x).div_euclid(self.texel), (y - self.origin.y).div_euclid(self.texel));
+        (tx >= 0 && ty >= 0 && (tx as usize) < self.w && (ty as usize) < self.h).then(|| self.light[ty as usize * self.w + tx as usize])
+    }
+}
+
 /// Sparkles to put out this frame (`glimmer`), from the last solve.
 #[derive(Resource, Default)]
 pub struct Glints(Vec<(CellPos, grid::Rgb)>);
@@ -723,7 +750,7 @@ fn compute_light(
     flashes: Res<Flashes>,
     zoom: Res<Zoom>,
     time: Res<Time>,
-    (cursor, off_light, fixed, mut glints, mut cones, gloom): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>, ResMut<Cones>, Res<Gloom>),
+    (cursor, off_light, fixed, mut glints, mut cones, gloom, mut lit): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>, ResMut<Cones>, Res<Gloom>, ResMut<Lit>),
     mut overlay: ResMut<Overlay>,
     mut pending: ResMut<Pending>,
     mut metrics: ResMut<LightMetrics>,
@@ -758,6 +785,12 @@ fn compute_light(
         };
         glints.0.append(&mut done.glints);
         pending.1 = Some(show(done, &mut overlay, &mut metrics, &mut assets, &mut sprites));
+        if lit.want
+            && let Some(p) = &pending.1
+        {
+            lit.want = false;
+            lit.view = Some(LitView { origin: p.origin, texel: p.texel, w: p.w, h: p.h, light: p.light.iter().map(|c| c[0].max(c[1]).max(c[2])).collect() });
+        }
     }
     let world = &sim.world;
     let (tf, loader) = *cam;

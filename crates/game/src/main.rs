@@ -48,6 +48,7 @@ mod light;
 mod magic;
 mod mode;
 mod particles;
+mod map;
 mod pause;
 mod potion;
 mod observe;
@@ -196,7 +197,7 @@ fn main() {
         .insert_resource(mode)
         .insert_resource(difficulty)
         .add_plugins(difficulty::DifficultyPlugin)
-        .add_plugins((respawn::RespawnPlugin, devmenu::DevMenuPlugin, pause::PausePlugin, title::TitlePlugin { show: show_title, behind: launch, fresh }))
+        .add_plugins((respawn::RespawnPlugin, devmenu::DevMenuPlugin, pause::PausePlugin, map::MapPlugin, title::TitlePlugin { show: show_title, behind: launch, fresh }))
         .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed, mode }))
         .add_plugins(spikes_plugin)
         .add_systems(Last, pace_frames)

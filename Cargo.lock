@@ -4587,6 +4587,7 @@ dependencies = [
  "bevy",
  "bevy_seedling",
  "fundsp",
+ "lz4_flex",
  "platypus_art",
  "platypus_backdrop",
  "platypus_nav",

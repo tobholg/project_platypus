@@ -55,6 +55,14 @@ pub trait ChunkGenerator: Send + Sync {
         None
     }
 
+    /// What the seed puts at a cell, as its ground's made (rock, ore, a
+    /// cave's air, water; not what a lair or a structure lays over it, nor
+    /// what's been dug since): for drawing the world never seen (the
+    /// world map's dev view). None: no such hint.
+    fn material_hint(&self, _x: i32, _y: i32) -> Option<MaterialId> {
+        None
+    }
+
     /// The water surface over column x of the lakes and oceans the seed
     /// made (not puddles, ponds the rain filled, nor water underground),
     /// if there's one there: where water life lives.
@@ -1786,6 +1794,10 @@ impl ChunkGenerator for TerrainGen {
         xs.sort_unstable();
         xs.dedup();
         xs
+    }
+
+    fn material_hint(&self, x: i32, y: i32) -> Option<MaterialId> {
+        ((0..self.plan.width).contains(&x) && (0..self.plan.height).contains(&y)).then(|| self.material_at(x, y))
     }
 
     fn water_hint(&self, x: i32) -> Option<i32> {

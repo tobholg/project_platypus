@@ -337,7 +337,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -10029,6 +10029,72 @@ fn volume_script(
                     *i = Interaction::Pressed;
                 }
             }
+        }
+    }
+}
+
+/// `worldmap` (a generated world, by day): the player carried along the
+/// surface from the start, 300 cells at a time, to chart it; then the map
+/// opened on them: at 0.5 (7 s), 2 (8 s), 0.125 (9 s); the fog off (dev
+/// view) from 10 s, at 0.125, then at 0.5 a little down (15 s), then at 2
+/// (16 s). `PLATYPUS_SHOTS` with `PLATYPUS_SHOT_EVERY=0.5` to see each
+/// (the half seconds: its labels come a frame after it opens). Logs the
+/// tiles charted.
+fn worldmap_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    mut screen: ResMut<crate::map::MapScreen>,
+    map: Res<crate::map::WorldMap>,
+    mut state: Local<(u32, Option<Vec2>)>,
+) {
+    if s.name != "worldmap" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let t = s.elapsed;
+    let start = *state.1.get_or_insert(k.body.pos);
+    // Along the surface, a step every 0.6 s.
+    let step = ((t - 0.5) / 0.6).floor() as i32;
+    if (0..10).contains(&step) && step as u32 >= state.0 {
+        state.0 = step as u32 + 1;
+        let x = start.x + (step - 3) as f32 * 300.0;
+        let y = sim.generator.surface_hint(x as i32).unwrap_or(start.y as i32) as f32 + 30.0;
+        k.body.pos = Vec2::new(x, y);
+        k.prev_pos = k.body.pos;
+        k.body.vel = Vec2::ZERO;
+    }
+    let at = |t0: f32| (t0..t0 + 0.02).contains(&t);
+    if at(7.0) {
+        screen.show(k.body.pos, 0.5);
+        info!("worldmap: t 7 open at 0.5; {} tiles charted", map.tiles.len());
+    }
+    if at(8.0) {
+        screen.show(k.body.pos, 2.0);
+        info!("worldmap: t 8 at 2");
+    }
+    if at(9.0) {
+        screen.show(k.body.pos, 0.125);
+        info!("worldmap: t 9 at 0.125");
+    }
+    if at(10.0) {
+        screen.fog_off = true;
+        screen.show(k.body.pos, 0.125);
+        info!("worldmap: t 10 the fog off");
+    }
+    if at(15.0) {
+        screen.show(k.body.pos - Vec2::new(0.0, 300.0), 0.5);
+        info!("worldmap: t 15 at 0.5, a little down");
+    }
+    if at(16.0) {
+        screen.show(k.body.pos - Vec2::new(0.0, 300.0), 2.0);
+        info!("worldmap: t 16 at 2");
+        // Where a click would take you: in the rock 300 down, in the sky
+        // 200 up, and out over the world's far edge.
+        for (what, to) in [("300 down, in rock", k.body.pos - Vec2::new(0.0, 300.0)), ("200 up, in the sky", k.body.pos + Vec2::new(0.0, 200.0)), ("200 along", k.body.pos + Vec2::new(200.0, 0.0))] {
+            let room = crate::map::standing_room(&sim, to, k.body.half, 400);
+            info!("worldmap: a click {what} ({:.0}, {:.0}) takes you to {:?}", to.x, to.y, room.map(|r| (r.x.round(), r.y.round(), (r - to).length().round())));
         }
     }
 }
