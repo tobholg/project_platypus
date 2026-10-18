@@ -140,11 +140,11 @@ const GLARE: (f32, f32) = (46.0, 0.3);
 const FLASH: (f32, f32, f32) = (90.0, 1.0, 2.6);
 const RADIANT_BLIND: f32 = 3.2;
 
-fn solid(sim: &SimWorld, p: Vec2) -> bool {
+pub(super) fn solid(sim: &SimWorld, p: Vec2) -> bool {
     sim.world.get(CellPos::from_world(p.x, p.y)).is_some_and(|c| !c.is_air() && matches!(sim.world.materials().phys(c.material).kind, Kind::Static | Kind::Powder))
 }
 
-fn clear(sim: &SimWorld, a: Vec2, b: Vec2) -> bool {
+pub(super) fn clear(sim: &SimWorld, a: Vec2, b: Vec2) -> bool {
     let n = (a.distance(b) / 2.0).ceil() as i32;
     (1..n).all(|i| !solid(sim, a.lerp(b, i as f32 / n as f32)))
 }
@@ -162,7 +162,7 @@ fn trace(sim: &SimWorld, from: Vec2, dir: Vec2, reach: f32) -> Vec2 {
     from + dir * reach
 }
 
-fn ground(sim: &SimWorld, at: Vec2, reach: i32) -> Option<f32> {
+pub(super) fn ground(sim: &SimWorld, at: Vec2, reach: i32) -> Option<f32> {
     (0..reach).map(|n| at - Vec2::Y * n as f32).find(|&p| solid(sim, p - Vec2::Y)).map(|p| p.y.floor())
 }
 

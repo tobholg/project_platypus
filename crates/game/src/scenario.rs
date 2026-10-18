@@ -336,7 +336,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, watcher_script)
+            .add_systems(Update, (watcher_script, gnasher_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -9609,6 +9609,76 @@ fn watcher_script(
     }
     if mode == "kill" && t > 8.0 && t > state.1 {
         hits.write(crate::combat::Hit { target: e, damage: 30.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: wk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        state.1 = t + 0.3;
+    }
+}
+
+/// `gnasher` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a gnasher at
+/// 1150; the player (who can't die) stands at 950 (`PLATYPUS_GNASHER=`:
+/// `dodge`: they run back out of its line as its lunge locks; `near`: they
+/// go at it (into snapping reach); `kill`: struck till it dies at 8 s). Logs what it does,
+/// where, and the player's health lost.
+fn gnasher_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::custom::gnasher::Gnasher>), Without<LocalPlayer>>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, f32, &'static str, f32)>,
+) {
+    if s.name != "gnasher" {
+        return;
+    }
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let mode = std::env::var("PLATYPUS_GNASHER").unwrap_or_default();
+    let lost = h.max - h.hp;
+    if lost > 0.0 {
+        info!("gnasher: t {t:.2} bitten: {lost:.0}");
+    }
+    state.2 += lost;
+    h.hp = h.max;
+    if state.0 == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        let x = if mode == "near" { 1110.0 } else { 950.0 };
+        k.body.pos = Vec2::new(x, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        crate::creatures::def::spawn_creature(&mut commands, "gnasher", Vec2::new(1150.0, fl), |_| {});
+        info!("gnasher: a gnasher at 1150 ({mode})");
+        state.0 = 1;
+        return;
+    }
+    let Some((e, _, gk, o)) = them.iter().find(|x| x.1.kind == "gnasher") else {
+        if state.0 == 1 && t > 1.0 {
+            info!("gnasher: t {t:.1} dead; the player lost {:.0}", state.2);
+            state.0 = 3;
+        }
+        return;
+    };
+    let doing = o.map_or("?", |o| o.doing());
+    if doing != state.3 {
+        info!("gnasher: t {t:.2} {doing} at ({:.0}, {:.0} up); the player at {:.0}, lost {:.0}", gk.body.pos.x, gk.body.pos.y - gk.body.half.y - fl, k.body.pos.x, state.2);
+        if doing == "draw" {
+            state.4 = t;
+        }
+        state.3 = doing;
+    }
+    // `dodge`: as its lunge locks, they run back, out of its line (it
+    // slants down into the ground where they stood).
+    if mode == "dodge" && doing == "draw" && t > state.4 + 0.7 && t < state.4 + 1.1 {
+        k.body.pos.x -= 2.5;
+    }
+    // `near`: they go at it (into its snapping reach).
+    if mode == "near" && doing == "hover" && (gk.body.pos.x - k.body.pos.x).abs() > 26.0 {
+        k.body.pos.x += 1.6 * (gk.body.pos.x - k.body.pos.x).signum();
+    }
+    if mode == "kill" && t > 8.0 && t > state.1 {
+        hits.write(crate::combat::Hit { target: e, damage: 30.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: gk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
         state.1 = t + 0.3;
     }
 }

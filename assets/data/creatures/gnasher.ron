@@ -1,0 +1,39 @@
+// A gnasher: a floating mouth from the deep sea's dark, a watcher's cousin
+// that bites instead of burning. A bloated black orb that's mostly jaw,
+// tendrils trailing under it, a milky eye, a lure
+// glowing on a stalk over its crown (you see the light first), and a jaw of
+// needle teeth that stick out of it even shut. It keeps its distance;
+// near, it snaps; further off, it draws back gaping, chattering, turns
+// after you, holds still, and lunges along that line (step out of it).
+// Spent after, it drifts: hit it then. Out at night, and in the deep dark.
+// (custom/gnasher.rs)
+(
+    name: "Gnasher",
+    size: (26, 24),
+    health: 60,
+    heft: 1.5,
+    poise: 14,
+    team: Enemy,
+    // (A mouth: it hurts by its bites, not by bumping.)
+    touchless: true,
+    kind: "beast",
+    blood: "blood",
+    art: "gnasher",
+    // Its lure's bulb: crisp in the dark, a faint sea-green light round it.
+    eyes: (130, 255, 228),
+    light: (color: (90, 230, 200), strength: 0.25),
+    movement: (
+        run_speed: 70,
+        ground_accel: 600,
+        ground_decel: 800,
+        air_accel: 300,
+        jump_height: 20,
+        air_jumps: 0,
+        step_height: 6,
+        dash_speed: 0,
+        fly_speed: 95,
+        fly_accel: 340,
+    ),
+    brain: (kind: "hunter", params: (aggro: 340, close: Range(near: 65, far: 130))),
+    custom: (name: "gnasher", params: ()),
+)

@@ -34,6 +34,7 @@
 pub mod dread;
 pub mod dummy;
 pub mod explosive;
+pub mod gnasher;
 pub mod hatchery;
 pub mod mimic;
 pub mod necro;
@@ -74,7 +75,8 @@ impl Plugin for CustomPlugin {
             .register_custom::<templar::Templar>()
             .register_custom::<toad::Toad>()
             .register_custom::<necro::Necro>()
-            .register_custom::<watcher::Watcher>();
+            .register_custom::<watcher::Watcher>()
+            .register_custom::<gnasher::Gnasher>();
     }
 }
 

@@ -134,6 +134,10 @@
         "potion_no": (make: Blip(pitch: 420, to: 300, length: 0.08), volume: 0.3, every: 0.3),
         "pickup": (make: Blip(pitch: 700, to: 1400, length: 0.07), variants: 2, pitch: 0.05, volume: 0.25, every: 0.05),
         // A trap sprung: the rope snaps.
+        // A gnasher's: its jaws shutting on you (meat, crunch); its teeth
+        // chattering (its tell).
+        "chomp": (make: Cut(low: 300, high: 1900, length: 0.05, tail: 0.09, tear: 140, snap: 1.0, meat: 0.8, crunch: 1.5, knock: 0.6), variants: 4, pitch: 0.08, volume: 0.85),
+        "chatter": (make: Clang(pitch: 3400, ring: 0.025, length: 0.06, grit: 0.35, muffle: 9000), variants: 4, pitch: 0.1, volume: 0.35),
         "snap": (make: Whoosh(from: 2600, to: 600, length: 0.1, q: 3.0), variants: 2, pitch: 0.06, volume: 0.5),
         // A kick: into something (a solid knock), into nothing (a swish).
         "kick": (make: Thud(pitch: 90, drop: 0.5, noise: 0.7, length: 0.16, bright: 1800), variants: 3, pitch: 0.06, volume: 0.6),
