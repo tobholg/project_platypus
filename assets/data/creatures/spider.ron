@@ -18,6 +18,8 @@
     profile: {acid: -0.25},
     // It bleeds acid (mind where you hit it), and acid doesn't hurt it.
     blood: "acid",
+    // A lot of it: 40% more than most.
+    bleeds: 1.4,
     art: "spider_side",
     // Seen from the side on the ground, walls and ceilings: its legs from
     // under its head, the knees up high over its back, the feet spread

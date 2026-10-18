@@ -320,8 +320,8 @@ pub fn sever(
         e.insert(limp);
         // Blood: a spray at the cut; the piece bleeds from its cut end, the
         // stump from where it was.
-        if let Some(&super::hurt::Bleeds(blood)) = bleeds {
-            sim.world.splash([root.x, root.y], blood, CUT_SPRAY, 2.6);
+        if let Some(&super::hurt::Bleeds(blood, much)) = bleeds {
+            sim.world.splash([root.x, root.y], blood, (CUT_SPRAY as f32 * much) as usize, 2.6);
             e.insert(Bleeding { blood, spots: vec![(Spot::Piece(0, cut_end), PIECE_BLEEDS, PIECE_BLEEDS)], clock: 0.0 });
             let off = root - k.body.pos;
             let stump = (Spot::Body(Vec2::new(off.x * facing, off.y)), STUMP_BLEEDS, STUMP_BLEEDS);

@@ -56,9 +56,10 @@ pub struct Reacted {
     pub share: f32,
 }
 
-/// What a creature bleeds (from its RON `blood`).
+/// What a creature bleeds (from its RON `blood`), and how much of it
+/// (`bleeds`: 1 as anything).
 #[derive(Component, Clone, Copy)]
-pub struct Bleeds(pub MaterialId);
+pub struct Bleeds(pub MaterialId, pub f32);
 
 /// Cells of blood a hit sprays for each share of its health it takes (a
 /// tenth: 30; a bit much: it's more fun, and blood boils, freezes, conducts
@@ -149,8 +150,8 @@ pub fn notice(
         if unshown >= FLASH_AT {
             let share = unshown / health.max.max(1.0);
             h.flash = h.flash.max((FLASH + share * FLASH_PER_SHARE).min(FLASH_MOST));
-            if let Some(&Bleeds(blood)) = bleeds {
-                bleed(&mut sim, k, blood, share);
+            if let Some(&Bleeds(blood, much)) = bleeds {
+                bleed(&mut sim, k, blood, share, much);
             }
         }
         // (Numbers only with the option on: `display.rs`.)
@@ -184,8 +185,8 @@ pub fn notice(
 }
 
 /// A spray of its blood for a hit of `share` of its health.
-fn bleed(sim: &mut SimWorld, k: &Kinematics, blood: platypus_sim::MaterialId, share: f32) {
-    let n = (share * BLEED_PER_SHARE).min(BLEED_MOST) as usize;
+fn bleed(sim: &mut SimWorld, k: &Kinematics, blood: platypus_sim::MaterialId, share: f32, much: f32) {
+    let n = ((share * BLEED_PER_SHARE).min(BLEED_MOST) * much) as usize;
     if n > 0 {
         sim.world.splash([k.body.pos.x, k.body.pos.y + k.body.half.y * 0.3], blood, n, 1.8 + (share * 6.0).min(1.8));
     }
@@ -193,8 +194,8 @@ fn bleed(sim: &mut SimWorld, k: &Kinematics, blood: platypus_sim::MaterialId, sh
 
 /// A blow's blood: out of the wound at `at`, sprayed along `dir` (the way
 /// the blow went), more and faster for a harder one.
-fn spray(sim: &mut SimWorld, at: Vec2, dir: Vec2, blood: platypus_sim::MaterialId, share: f32) {
-    let n = (share * BLEED_PER_SHARE).min(BLEED_MOST) as usize;
+fn spray(sim: &mut SimWorld, at: Vec2, dir: Vec2, blood: platypus_sim::MaterialId, share: f32, much: f32) {
+    let n = ((share * BLEED_PER_SHARE).min(BLEED_MOST) * much) as usize;
     if n > 0 {
         let d = dir.normalize_or(Vec2::X);
         sim.world.spray([at.x, at.y], [d.x, d.y], blood, n, 2.0 + (share * 6.0).min(2.0), 0.55);
@@ -209,10 +210,10 @@ pub fn react(mut felt: MessageReader<Felt>, mut sim: ResMut<SimWorld>, mut spark
         match reaction {
             Reaction::Hurt => {
                 h.flash = h.flash.max((FLASH + f.share * FLASH_PER_SHARE).min(FLASH_MOST));
-                if let Some(&Bleeds(blood)) = bleeds {
+                if let Some(&Bleeds(blood, much)) = bleeds {
                     // (A blow's blood: from where it struck, sprayed on the
                     // way it was going.)
-                    spray(&mut sim, f.at, f.dir, blood, f.share);
+                    spray(&mut sim, f.at, f.dir, blood, f.share, much);
                 }
             }
             Reaction::Resisted => sparks.emit(&DULL, DULL.count as usize, f.at, -f.dir, Vec2::ZERO),
@@ -276,7 +277,7 @@ pub fn wounded(mut commands: Commands, time: Res<Time<Fixed>>, mut sim: ResMut<S
         let x = k.body.pos.x + (((sim.world.tick() * 7919) % 100) as f32 / 100.0 - 0.5) * k.body.half.x;
         let at = Vec2::new(x, k.body.pos.y - k.body.half.y * 0.2);
         match bleeds {
-            Some(&Bleeds(blood)) => sim.world.splash([at.x, at.y], blood, 2, 0.3),
+            Some(&Bleeds(blood, much)) => sim.world.splash([at.x, at.y], blood, (2.0 * much).round().max(1.0) as usize, 0.3),
             None => sparks.emit(&DUST, DUST.count as usize, at, Vec2::NEG_Y, Vec2::ZERO),
         }
     }

@@ -895,9 +895,9 @@ pub(crate) fn deaths(
             let limbs = parts.get(entity).map(|p| p.limbs().into_iter().filter(|l| l.limb.is_none_or(|x| !cut.is_some_and(|c| c.has(x)))).collect()).unwrap_or_default();
             died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin, rising: None, risen: 0, charred: false, limbs, severed: cut.map(|c| c.0.clone()).unwrap_or_default(), lineage: lineage_of(lineages.get(entity).ok()), marks: wounds.get(entity).map(|m| m.list.clone()).unwrap_or_default(), gib: gibbed.get(entity).ok().map(|g| g.0) });
         }
-        if let Some(&body::hurt::Bleeds(blood)) = bleeds {
+        if let Some(&body::hurt::Bleeds(blood, much)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.
-            sim.world.splash([k.body.pos.x, k.body.pos.y], blood, body::hurt::DEATH_BLOOD, 3.9);
+            sim.world.splash([k.body.pos.x, k.body.pos.y], blood, (body::hurt::DEATH_BLOOD as f32 * much) as usize, 3.9);
         }
         if is_player {
             deaths.0 += 1;

@@ -242,7 +242,7 @@ pub fn collapse(mut commands: Commands, mut sim: ResMut<SimWorld>, mut died: Mes
         let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
         let limbs = parts.map(|p| p.limbs().into_iter().filter(|l| l.limb.is_none_or(|x| !severed.is_some_and(|c| c.has(x)))).collect()).unwrap_or_default();
         died.write(Died { kind: creature.kind.clone(), def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin: spin.copied().unwrap_or_default(), rising: Some(rises.0.clone()), risen: risen.map_or(0, |r| r.0), charred: false, limbs, severed: severed.map(|s| s.0.clone()).unwrap_or_default(), lineage: crate::creatures::lineage_of(Some((lineage, stable))), marks: marks.map(|m| m.list.clone()).unwrap_or_default(), gib: gib.map(|g| g.0) });
-        if let Some(&super::hurt::Bleeds(dust)) = bleeds {
+        if let Some(&super::hurt::Bleeds(dust, _)) = bleeds {
             sim.world.splash([k.body.pos.x, k.body.pos.y], dust, 14, 2.4);
         }
         commands.entity(e).despawn();
@@ -275,7 +275,7 @@ pub fn make_pile(e: &mut EntityCommands, d: &Died, rise: &RiseDef, dust: Option<
         Name::new(format!("Bones of {}", d.def.name)),
     ));
     if let Some(m) = dust {
-        e.insert(super::hurt::Bleeds(m));
+        e.insert(super::hurt::Bleeds(m, 1.0));
     }
 }
 
@@ -690,7 +690,7 @@ pub fn assemble(
         burst.spread = 3.2;
         sparks.emit(&burst, 12, k.body.pos + Vec2::new(0.0, k.body.half.y * 0.85), Vec2::Y, Vec2::ZERO);
         sounds.write(crate::sound::PlaySound::at("clank", k.body.pos).pitch(0.8));
-        if let Some(&super::hurt::Bleeds(dust)) = bleeds {
+        if let Some(&super::hurt::Bleeds(dust, _)) = bleeds {
             sim.world.splash([k.body.pos.x, k.body.pos.y - k.body.half.y * 0.6], dust, 10, 1.6);
         }
     }

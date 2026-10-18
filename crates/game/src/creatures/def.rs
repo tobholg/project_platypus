@@ -259,6 +259,10 @@ pub struct CreatureDef {
     /// hurt and bursts out when it dies (`hurt.rs`).
     #[serde(default = "red_blood")]
     pub blood: String,
+    /// How much of it (1: as much as anything; a spider 1.4, a spiderling
+    /// half): every spray, drip, burst and stump scaled so.
+    #[serde(default = "whole")]
+    pub bleeds: f32,
 }
 
 impl CreatureDef {
@@ -296,6 +300,10 @@ fn default_z() -> f32 {
 
 fn idle() -> BrainDef {
     BrainDef { kind: "idle".into(), params: None }
+}
+
+fn whole() -> f32 {
+    1.0
 }
 
 fn red_blood() -> String {
@@ -703,7 +711,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             }
         }
         if let Some(m) = blood {
-            e.insert(super::body::hurt::Bleeds(m));
+            e.insert(super::body::hurt::Bleeds(m, def.bleeds));
         }
         if def.rig.as_ref().is_some_and(|r| r.anchors.contains_key("foot_near")) {
             e.insert(super::body::animation::Soles::default());

@@ -399,7 +399,7 @@ fn lay_out(
         if d.gib.is_some()
             && let Some(m) = sim.world.materials().id(&d.def.blood)
         {
-            gore.push((d.body.pos, m));
+            gore.push((d.body.pos, m, d.def.bleeds));
         }
         if let Some((limp, looks)) = limp_of(d, &items, blood).or_else(|| walker_of(d)) {
             let root_at = limp.pieces[limp.root].pos;
@@ -478,8 +478,8 @@ fn lay_out(
             }
         }
     }
-    for (at, blood) in gore {
-        sim.world.splash([at.x, at.y], blood, GORE, 4.2);
+    for (at, blood, much) in gore {
+        sim.world.splash([at.x, at.y], blood, (GORE as f32 * much) as usize, 4.2);
     }
 }
 
