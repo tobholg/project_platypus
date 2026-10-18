@@ -228,8 +228,9 @@ fn listen(mut commands: Commands, cam: Query<Entity, With<MainCamera>>) {
 
 type Buses<'a> = (&'a mut VolumeNode, Has<MainBus>, Has<SfxBus>, Has<AmbienceBus>, Has<MusicBus>);
 
-/// The buses' volumes (sounds.ron), muted or not (F11).
-fn volumes(bank: Res<SoundBank>, keys: Res<ButtonInput<KeyCode>>, mut muted: ResMut<Muted>, mut nodes: Query<Buses>) {
+/// The buses' volumes (sounds.ron), the player's volume over all of them
+/// (the game menu: `settings.rs`), muted or not (F11).
+fn volumes(bank: Res<SoundBank>, settings: Res<crate::settings::Settings>, keys: Res<ButtonInput<KeyCode>>, mut muted: ResMut<Muted>, mut nodes: Query<Buses>) {
     if keys.just_pressed(KeyCode::F11) {
         muted.0 = !muted.0;
         info!("sound {}", if muted.0 { "muted" } else { "on" });
@@ -237,7 +238,7 @@ fn volumes(bank: Res<SoundBank>, keys: Res<ButtonInput<KeyCode>>, mut muted: Res
     let v = &bank.volumes;
     for (mut node, main, sfx, amb, music) in &mut nodes {
         let want = if main {
-            if muted.0 { 0.0 } else { v.master }
+            if muted.0 { 0.0 } else { v.master * settings.volume() }
         } else if sfx {
             v.sfx
         } else if amb {

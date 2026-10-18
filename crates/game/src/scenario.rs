@@ -331,6 +331,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, ridge_script)
             .add_systems(PreUpdate, goldsmash_script.after(InputSystems).before(crate::magic::well::twist_input).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, devmenu_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
+            .add_systems(PreUpdate, volume_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::slide))
             .add_systems(PreUpdate, devmenu_place_script.after(InputSystems).before(crate::devmenu::place))
             .add_systems(PreUpdate, devmenu_pick_script.after(bevy::ui::UiSystems::Focus).before(crate::devmenu::clicks))
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -9988,6 +9989,47 @@ fn rats_script(
         }
         let list: Vec<String> = tally.iter().map(|(k, n)| format!("{k} {n}")).collect();
         info!("rats: t {t:.0} {} (furthest {far:.0} off); bodies {}, lying {}; the player lost {:.0}", list.join(", "), bodies.iter().count(), drops.iter().count(), state.1);
+    }
+}
+
+/// `volume` (`PLATYPUS_WORLD=arena`): the game menu opened, then its volume
+/// slider pressed as a hand would: the sixth step (60%), − (50%), + twice
+/// (70%). Logs the setting, the main bus's volume, what settings.ron says.
+fn volume_script(
+    s: Res<Scenario>,
+    mut menu: ResMut<crate::pause::GameMenu>,
+    mut virt: ResMut<Time<Virtual>>,
+    mut buttons: Query<(&mut Interaction, &crate::pause::Volume)>,
+    settings: Res<crate::settings::Settings>,
+    mut done: Local<u8>,
+) {
+    if s.name != "volume" {
+        return;
+    }
+    let t = s.elapsed;
+    let steps = [(1.0, None), (1.5, Some(crate::pause::Volume::Step(6))), (2.0, Some(crate::pause::Volume::Less)), (2.5, Some(crate::pause::Volume::More)), (3.0, Some(crate::pause::Volume::More)), (3.5, None)];
+    let Some(&(at, press)) = steps.get(*done as usize) else { return };
+    if t < at {
+        return;
+    }
+    *done += 1;
+    match press {
+        None if *done == 1 => {
+            crate::pause::open(&mut menu, &mut virt);
+            info!("volume: the menu open; volume {}%", settings.volume as u32 * 10);
+        }
+        None => {
+            let file = std::fs::read_to_string(crate::save::saves_dir().join("settings.ron")).unwrap_or_default();
+            info!("volume: at the end {}%; settings.ron: {}", settings.volume as u32 * 10, file.replace('\n', " "));
+        }
+        Some(which) => {
+            info!("volume: {:?}% before pressing", settings.volume as u32 * 10);
+            for (mut i, v) in &mut buttons {
+                if *v == which {
+                    *i = Interaction::Pressed;
+                }
+            }
+        }
     }
 }
 

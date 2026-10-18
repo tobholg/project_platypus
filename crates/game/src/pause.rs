@@ -31,6 +31,18 @@ enum Choice {
 #[derive(Component)]
 struct Root;
 
+/// The volume slider (`settings.rs`): its ten steps (1..=10, a tenth
+/// each), the step down and up, the reading.
+#[derive(Component, Clone, Copy, PartialEq)]
+pub(crate) enum Volume {
+    Step(u8),
+    Less,
+    More,
+}
+
+#[derive(Component)]
+struct VolumeReading;
+
 impl Plugin for PausePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<GameMenu>()
@@ -38,8 +50,8 @@ impl Plugin for PausePlugin {
             // (First of whatever hears Esc: it's the menu's only when
             // nothing else is open to shut.)
             .add_systems(PreUpdate, key.after(bevy::input::InputSystems).before(crate::editor::capture).before(crate::bestiary::panel::capture).before(crate::title::capture))
-            .add_systems(PreUpdate, choose.after(bevy::ui::UiSystems::Focus))
-            .add_systems(Update, look);
+            .add_systems(PreUpdate, (choose, slide).after(bevy::ui::UiSystems::Focus))
+            .add_systems(Update, (look, show_volume));
     }
 }
 
@@ -128,6 +140,52 @@ fn choose(
 
 const IDLE: Color = Color::srgba(0.18, 0.17, 0.22, 0.9);
 const HOVER: Color = Color::srgba(0.42, 0.36, 0.2, 0.95);
+/// A volume step on, off.
+const ON: Color = Color::srgb(0.98, 0.86, 0.55);
+const OFF: Color = Color::srgba(0.25, 0.24, 0.3, 0.9);
+
+/// The volume slider: a step clicked (or dragged over with the button
+/// down) sets it there; − and + a tenth down and up.
+pub(crate) fn slide(menu: Res<GameMenu>, mouse: Res<ButtonInput<MouseButton>>, q: Query<(Ref<Interaction>, &Volume)>, mut settings: ResMut<crate::settings::Settings>) {
+    if !menu.open {
+        return;
+    }
+    for (i, v) in &q {
+        let pressed = *i == Interaction::Pressed;
+        // (− and +: once a press, as it goes down.)
+        let pressing = pressed && i.is_changed();
+        let want = match *v {
+            Volume::Step(n) if pressed || (*i == Interaction::Hovered && mouse.pressed(MouseButton::Left)) => n,
+            Volume::Less if pressing => settings.volume.saturating_sub(1),
+            Volume::More if pressing => (settings.volume + 1).min(10),
+            _ => continue,
+        };
+        if settings.volume != want {
+            settings.volume = want;
+        }
+    }
+}
+
+/// The slider showing the volume: its steps lit up to it, the reading.
+fn show_volume(settings: Res<crate::settings::Settings>, mut steps: Query<(&Volume, &Interaction, &mut BackgroundColor)>, mut reading: Query<&mut Text, With<VolumeReading>>) {
+    for (v, i, mut bg) in &mut steps {
+        let want = match *v {
+            Volume::Step(n) if n <= settings.volume => ON,
+            Volume::Step(_) => OFF,
+            _ if *i == Interaction::None => IDLE,
+            _ => HOVER,
+        };
+        if bg.0 != want {
+            bg.0 = want;
+        }
+    }
+    for mut t in &mut reading {
+        let want = format!("{}%", settings.volume as u32 * 10);
+        if t.0 != want {
+            t.0 = want;
+        }
+    }
+}
 
 fn spawn(mut commands: Commands, info: Res<crate::title::GameInfo>, slot: Option<Res<crate::save::SaveSlot>>) {
     let saves = slot.is_some();
@@ -154,6 +212,24 @@ fn spawn(mut commands: Commands, info: Res<crate::title::GameInfo>, slot: Option
                         b.spawn((Text::new(label), TextFont { font_size: FontSize::Px(20.0), ..default() }, TextColor(Color::srgb(0.93, 0.91, 0.86))));
                     });
                 }
+                // Volume: a step down, ten steps (click or drag along them),
+                // a step up, the reading.
+                p.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), margin: UiRect::top(px(10)), ..default() }).with_children(|r| {
+                    r.spawn((Text::new("Volume"), TextFont { font_size: FontSize::Px(18.0), ..default() }, TextColor(Color::srgb(0.93, 0.91, 0.86)), Node { width: px(72), ..default() }));
+                    let small = |r: &mut ChildSpawnerCommands, label: &str, v: Volume| {
+                        r.spawn((Button, v, Node { width: px(24), height: px(24), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() }, BackgroundColor(IDLE))).with_children(|b| {
+                            b.spawn((Text::new(label), TextFont { font_size: FontSize::Px(18.0), ..default() }, TextColor(Color::srgb(0.93, 0.91, 0.86))));
+                        });
+                    };
+                    small(r, "-", Volume::Less);
+                    r.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(2), ..default() }).with_children(|bar| {
+                        for i in 1..=10u8 {
+                            bar.spawn((Button, Volume::Step(i), Node { width: px(12), height: px(20), ..default() }, BackgroundColor(OFF)));
+                        }
+                    });
+                    small(r, "+", Volume::More);
+                    r.spawn((VolumeReading, Text::new("100%"), TextFont { font_size: FontSize::Px(18.0), ..default() }, TextColor(Color::srgb(0.93, 0.91, 0.86)), Node { width: px(52), ..default() }));
+                });
             });
         });
 }

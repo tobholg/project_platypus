@@ -67,6 +67,7 @@ mod spikes;
 mod talk;
 mod tempo;
 mod title;
+mod settings;
 mod sound;
 mod tools;
 mod traps;
@@ -190,7 +191,7 @@ fn main() {
         .add_plugins((replay::ReplayPlugin, fight::FightPlugin, bestiary::panel::BestiaryPlugin, bestiary::stage::StagePlugin, bestiary::cli::CliPlugin))
         .add_plugins((reset::ResetPlugin, clock::ClockPlugin, gold::GoldPlugin, kick::KickPlugin, traps::TrapsPlugin, talk::TalkPlugin, events::EventsPlugin, show::ShowPlugin, display::DisplayPlugin, pickups::PickupsPlugin, cursor::CursorPlugin))
         .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin, cloth::ClothPlugin))
-        .add_plugins(sound::SoundPlugin)
+        .add_plugins((settings::SettingsPlugin, sound::SoundPlugin))
         .add_plugins(backdrop::BackdropPlugin)
         .insert_resource(mode)
         .insert_resource(difficulty)
