@@ -568,7 +568,10 @@ pub fn run(
         while !done {
             let next = if d.phase == usize::MAX {
                 0
-            } else if d.t >= d.start + m.phases[d.phase].secs || d.cut.is_some() {
+            } else if (d.t >= d.start + m.phases[d.phase].secs && !(d.fired == 0 && m.phases[d.phase].acts.iter().any(|a| matches!(a, Act::Cast { .. })))) || d.cut.is_some() {
+                // (Not before its first cast's gone off: a phase of no length
+                // that casts, a spider's spit, went by at once, its glob
+                // never thrown.)
                 // (Cut short by its strand: on from now.)
                 d.start = if d.cut.is_some() { d.t } else { d.start + m.phases[d.phase].secs };
                 // (A grab that caught nothing, a strand that didn't reel
@@ -663,7 +666,8 @@ pub fn run(
         let into = d.t - start;
         for act in &p.acts {
             let Act::Cast { spell, at: along, up, from, count, every, launch, spread } = act else { continue };
-            let due = (1 + (into / every.max(0.001)) as u32).min(*count);
+            // (A phase of no length: its whole salvo at once.)
+            let due = if p.secs > 0.0 { (1 + (into / every.max(0.001)) as u32).min(*count) } else { *count };
             while d.fired < due {
                 let shot = d.fired;
                 d.fired += 1;
