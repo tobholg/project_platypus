@@ -157,6 +157,9 @@ impl LightGrid {
                 def.sparkle.then(|| def.colors.iter().copied().max_by_key(|&(r, g, b)| r as u32 + g as u32 + b as u32).map_or([1.0; 3], |c| rgb(c).map(|v| 0.5 + 0.5 * v)))
             })
             .collect();
+        // (Whether a material is any of those: most cells are plain rock,
+        // soil or water, and one look settles it.)
+        let special: Vec<bool> = (0..mats.len()).map(|m| glows[m].is_some() || lusters[m].is_some() || sparkles[m].is_some() || optics[m].is_some()).collect();
         let tick = world.tick();
         let parts: Vec<(ChunkPos, Texels)> = chunks
             .par_iter()
@@ -175,41 +178,43 @@ impl LightGrid {
                         if !c.is_air() {
                             let ph = mats.phys(c.material);
                             op = ph.opacity as f32 / 255.0;
-                            if let Some(g) = glows[c.material.0 as usize] {
-                                slot.5.0 += 1.0;
-                                slot.5.1 = g;
-                            }
-                            if let Some(l) = lusters[c.material.0 as usize] {
-                                slot.6.0 += 1.0;
-                                slot.6.1 = l;
-                            }
-                            // (A face of it open to the air glints in any
-                            // light: metal in ore, a gem. Buried, never.)
-                            if let Some(col) = sparkles[c.material.0 as usize] {
-                                let open = |dx: i32, dy: i32| {
-                                    let (x, y) = (lx + dx, ly + dy);
-                                    (0..CHUNK).contains(&x) && (0..CHUNK).contains(&y) && {
-                                        let n = cells[(y * CHUNK + x) as usize];
-                                        n.is_air() || !matches!(mats.phys(n.material).kind, Kind::Static | Kind::Powder)
-                                    }
-                                };
-                                if open(1, 0) || open(-1, 0) || open(0, 1) || open(0, -1) {
-                                    let roll = platypus_sim::rng::hash(&[(o.x + lx) as u64, (o.y + ly) as u64, tick, 0x5BA4]);
-                                    if slot.4.is_none_or(|(_, _, r, _)| roll > r) {
-                                        slot.4 = Some((CellPos::new(o.x + lx, o.y + ly), col, roll, true));
+                            if special[c.material.0 as usize] {
+                                if let Some(g) = glows[c.material.0 as usize] {
+                                    slot.5.0 += 1.0;
+                                    slot.5.1 = g;
+                                }
+                                if let Some(l) = lusters[c.material.0 as usize] {
+                                    slot.6.0 += 1.0;
+                                    slot.6.1 = l;
+                                }
+                                // (A face of it open to the air glints in any
+                                // light: metal in ore, a gem. Buried, never.)
+                                if let Some(col) = sparkles[c.material.0 as usize] {
+                                    let open = |dx: i32, dy: i32| {
+                                        let (x, y) = (lx + dx, ly + dy);
+                                        (0..CHUNK).contains(&x) && (0..CHUNK).contains(&y) && {
+                                            let n = cells[(y * CHUNK + x) as usize];
+                                            n.is_air() || !matches!(mats.phys(n.material).kind, Kind::Static | Kind::Powder)
+                                        }
+                                    };
+                                    if open(1, 0) || open(-1, 0) || open(0, 1) || open(0, -1) {
+                                        let roll = platypus_sim::rng::hash(&[(o.x + lx) as u64, (o.y + ly) as u64, tick, 0x5BA4]);
+                                        if slot.4.is_none_or(|(_, _, r, _)| roll > r) {
+                                            slot.4 = Some((CellPos::new(o.x + lx, o.y + ly), col, roll, true));
+                                        }
                                     }
                                 }
-                            }
-                            if let Some(opt) = optics[c.material.0 as usize] {
-                                slot.3.add(opt);
-                                // (A glint: a clear cell, a liquid only at its
-                                // surface; one at random, the highest roll.)
-                                let surface = ph.kind != Kind::Liquid || (ly + 1 < CHUNK && cells[((ly + 1) * CHUNK + lx) as usize].is_air());
-                                if surface {
-                                    let roll = platypus_sim::rng::hash(&[(o.x + lx) as u64, (o.y + ly) as u64, tick]);
-                                    if slot.4.is_none_or(|(_, _, r, _)| roll > r) {
-                                        let tint = [opt.tint.0, opt.tint.1, opt.tint.2].map(|v| 0.55 + 0.45 * v as f32 / 255.0);
-                                        slot.4 = Some((CellPos::new(o.x + lx, o.y + ly), tint, roll, false));
+                                if let Some(opt) = optics[c.material.0 as usize] {
+                                    slot.3.add(opt);
+                                    // (A glint: a clear cell, a liquid only at its
+                                    // surface; one at random, the highest roll.)
+                                    let surface = ph.kind != Kind::Liquid || (ly + 1 < CHUNK && cells[((ly + 1) * CHUNK + lx) as usize].is_air());
+                                    if surface {
+                                        let roll = platypus_sim::rng::hash(&[(o.x + lx) as u64, (o.y + ly) as u64, tick]);
+                                        if slot.4.is_none_or(|(_, _, r, _)| roll > r) {
+                                            let tint = [opt.tint.0, opt.tint.1, opt.tint.2].map(|v| 0.55 + 0.45 * v as f32 / 255.0);
+                                            slot.4 = Some((CellPos::new(o.x + lx, o.y + ly), tint, roll, false));
+                                        }
                                     }
                                 }
                             }

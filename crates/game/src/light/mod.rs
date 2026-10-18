@@ -586,32 +586,57 @@ pub(crate) fn update_daylight(
 /// most: `compute_light`).
 const SHAFTS: f32 = 1.0;
 
-/// How far round (texels) a shaft must stand out from to show.
+/// How far round (texels) a shaft must stand out from to show; how far
+/// round it's softened; how bright the sun must be for any (not at night).
 const SHAFT_AROUND: usize = 6;
+const SHAFT_SOFT: usize = 2;
+const SHAFTS_FROM: f32 = 0.08;
 
-/// A box blur of `v` (`w`×`h`), `r` texels each way, across then down.
+/// A box blur of `v` (`w`×`h`), `r` texels each way, across then down:
+/// a running sum along each line (its cost doesn't grow with `r`), the
+/// lines in parallel.
 fn blur(v: &[Rgb], w: usize, h: usize, r: usize) -> Vec<Rgb> {
-    let pass = |src: &[Rgb], across: bool| -> Vec<Rgb> {
-        let (len, lines) = if across { (w, h) } else { (h, w) };
-        let at = |line: usize, i: usize| if across { line * w + i } else { i * w + line };
-        let mut out = vec![[0.0; 3]; w * h];
-        for line in 0..lines {
-            for i in 0..len {
-                let (lo, hi) = (i.saturating_sub(r), (i + r).min(len - 1));
-                let mut sum = [0.0f32; 3];
-                for j in lo..=hi {
-                    let p = src[at(line, j)];
-                    for ch in 0..3 {
-                        sum[ch] += p[ch];
-                    }
-                }
-                let n = (hi - lo + 1) as f32;
-                out[at(line, i)] = sum.map(|s| s / n);
+    use rayon::prelude::*;
+    let line = |src: &[Rgb], len: usize, at: &dyn Fn(usize) -> usize, out: &mut dyn FnMut(usize, Rgb)| {
+        let mut sum = [0.0f32; 3];
+        let add = |sum: &mut [f32; 3], p: Rgb, k: f32| {
+            for ch in 0..3 {
+                sum[ch] += p[ch] * k;
+            }
+        };
+        for j in 0..=r.min(len - 1) {
+            add(&mut sum, src[at(j)], 1.0);
+        }
+        for i in 0..len {
+            let (lo, hi) = (i.saturating_sub(r), (i + r).min(len - 1));
+            out(i, sum.map(|s| s / (hi - lo + 1) as f32));
+            if i + r + 1 < len {
+                add(&mut sum, src[at(i + r + 1)], 1.0);
+            }
+            if i >= r {
+                add(&mut sum, src[at(i - r)], -1.0);
             }
         }
-        out
     };
-    pass(&pass(v, true), false)
+    // Across: rows, each its own slice.
+    let mut across = vec![[0.0; 3]; w * h];
+    across.par_chunks_mut(w).enumerate().for_each(|(y, row)| line(v, w, &|x| y * w + x, &mut |x, p| row[x] = p));
+    // Down: columns, gathered then put back.
+    let cols: Vec<Vec<Rgb>> = (0..w)
+        .into_par_iter()
+        .map(|x| {
+            let mut col = vec![[0.0; 3]; h];
+            line(&across, h, &|y| y * w + x, &mut |y, p| col[y] = p);
+            col
+        })
+        .collect();
+    let mut out = vec![[0.0; 3]; w * h];
+    for (x, col) in cols.into_iter().enumerate() {
+        for (y, p) in col.into_iter().enumerate() {
+            out[y * w + x] = p;
+        }
+    }
+    out
 }
 
 /// `SHAFTS`, or `PLATYPUS_SHAFTS` (to look at them).
@@ -873,15 +898,19 @@ fn compute_light(
         // (The sun's share of the seeds kept apart: the shafts.)
         let mut sun = None;
         for (i, (dir, color)) in sky.into_iter().enumerate() {
-            if i == 0 && shafts > 0.0 {
+            // (Not at night, nor with no sky in view: nothing to shine.)
+            if i == 0 && shafts > 0.0 && color.iter().any(|&c| c > SHAFTS_FROM) && open_top.iter().any(|&o| o) {
                 let before = g.seed.clone();
                 g.seed_directional(dir, color, &open_top);
                 // (Only what stands out from its surroundings: lit air beside
                 // shaded air, a shaft. Open sky, evenly lit, adds nothing: as
-                // haze all over it was a glare washing the overworld out.)
+                // haze all over it was a glare washing the overworld out.
+                // Then softened a texel round: on the ground its steps, a
+                // texel each, showed.)
                 let rays: Vec<Rgb> = g.seed.iter().zip(&before).zip(&g.opacity).map(|((a, b), &o)| if o < 0.05 { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] } else { [0.0; 3] }).collect();
                 let around = blur(&rays, w, h, SHAFT_AROUND);
-                sun = Some(rays.iter().zip(&around).map(|(r, a)| [0, 1, 2].map(|ch| (r[ch] - a[ch]).max(0.0))).collect::<Vec<_>>());
+                let stands: Vec<Rgb> = rays.iter().zip(&around).map(|(r, a)| [0, 1, 2].map(|ch| (r[ch] - a[ch]).max(0.0))).collect();
+                sun = Some(blur(&stands, w, h, SHAFT_SOFT));
             } else {
                 g.seed_directional(dir, color, &open_top);
             }
