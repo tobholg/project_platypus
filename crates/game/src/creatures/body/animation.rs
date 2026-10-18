@@ -355,6 +355,29 @@ pub fn body_at(def: &CreatureDef, k: &Kinematics) -> Vec2 {
     Vec2::new((fw / 2.0 - ax) * k.loco.facing * s, -k.body.half.y + (ay - fh / 2.0) * s)
 }
 
+/// Whether a world point falls on its picture as it shows now: an opaque
+/// pixel of its frame (a head drawn above its box, an arm reaching out of
+/// it). What strikes a creature (a blade, an arrow, a spell) asks this as
+/// well as its box: its box is where it stands, not all of what's drawn.
+pub fn on_picture(anim: &Animator, k: &Kinematics, at: Vec2) -> bool {
+    let Some(rig) = anim.def.rig.as_ref() else { return false };
+    let (lo, hi) = picture_bounds(anim, k);
+    if at.cmplt(lo).any() || at.cmpgt(hi).any() {
+        return false;
+    }
+    let (px, py) = pixel_at(&anim.def, k, at);
+    rig.frames.get(anim.shown).is_some_and(|f| f.opaque(px, py))
+}
+
+/// The world box its picture covers (its frame, wherever it's drawn):
+/// within it, `on_picture` may be so.
+pub fn picture_bounds(anim: &Animator, k: &Kinematics) -> (Vec2, Vec2) {
+    let def = &anim.def;
+    let mid = k.body.pos + body_at(def, k);
+    let half = Vec2::new(def.sprite.frame.0 as f32, def.sprite.frame.1 as f32) * def.scale / 2.0;
+    (mid - half, mid + half)
+}
+
 /// The pixel of its frame a world point falls on (it may be off the frame).
 pub fn pixel_at(def: &CreatureDef, k: &Kinematics, world: Vec2) -> (i32, i32) {
     let (fw, fh) = (def.sprite.frame.0 as f32, def.sprite.frame.1 as f32);

@@ -851,6 +851,7 @@ fn fly(
     parts: Query<&crate::creatures::body::parts::Parts>,
     teams: Query<&crate::creatures::Team>,
     drinkers: Res<Drinkers>,
+    pictures: Query<&crate::creatures::body::animation::Animator>,
 ) {
     let mut booms = Vec::new();
     let mut landed = Vec::new();
@@ -963,11 +964,15 @@ fn fly(
                     sparks.trail(e, 1.0, s.pos, -s.vel, s.vel * 0.15);
                 }
                 let (caster, age) = (s.caster, s.age);
-                // (Its body, or one of its parts: a leg, a segment. Its
-                // caster's side it passes through: a necromancer's skulls
-                // go by its zombies, the player's bolts by villagers.)
+                // (Its body, one of its parts (a leg, a segment), or its
+                // picture (a head drawn above its box: a bolt through a
+                // zombie's head flew by it). Its caster's side it passes
+                // through: a necromancer's skulls go by its zombies, the
+                // player's bolts by villagers.)
                 let side = teams.get(caster).ok().copied();
-                let inside = |b: Entity, k: &Kinematics| ((next - k.body.pos).abs() - k.body.half).max_element() < 1.5 || parts.get(b).is_ok_and(|p| p.touch(next, 1.0).is_some());
+                let inside = |b: Entity, k: &Kinematics| {
+                    ((next - k.body.pos).abs() - k.body.half).max_element() < 1.5 || parts.get(b).is_ok_and(|p| p.touch(next, 1.0).is_some()) || pictures.get(b).is_ok_and(|a| crate::creatures::body::animation::on_picture(a, k, next))
+                };
                 let ours = |b: Entity| b != caster && teams.get(b).ok().zip(side).is_some_and(|(t, me)| t.allied(me));
                 if let Some((hit, ..)) = bodies.iter().find(|(b, k, ..)| (*b != caster || age > SELF_SAFE) && !ours(*b) && inside(*b, k)) {
                     end = Some((Some(hit), Vec2::ZERO));

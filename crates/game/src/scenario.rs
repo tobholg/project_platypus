@@ -336,7 +336,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -9793,6 +9793,66 @@ fn bats_script(
         let list: Vec<String> = tally.iter().map(|(k, n)| format!("{k} {n}")).collect();
         let high = bats.iter().map(|x| x.2.body.pos.y - fl).fold(0.0f32, f32::max);
         info!("bats: t {t:.0} {} (highest {high:.0} up); the player at {:.0}, lost {:.0}", list.join(", "), k.body.pos.x, state.1);
+    }
+}
+
+/// `headshot` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a zombie, then
+/// an orc (`PLATYPUS_HEADSHOT=orc`), put at 1000, held still; the player at
+/// 880 casts a spark bolt every second, level, at the part of its head
+/// drawn above its box (where only its picture is). Logs where it aimed,
+/// how far above the box, and the health it lost.
+fn headshot_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    book: Res<crate::magic::Spellbook>,
+    mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    mut them: Query<(Entity, &crate::creatures::Creature, &mut Kinematics, &crate::creatures::Health, Option<&crate::creatures::body::animation::Animator>), Without<LocalPlayer>>,
+    mut casts: MessageWriter<crate::magic::CastRequest>,
+    mut state: Local<(u8, f32, f32)>,
+) {
+    if s.name != "headshot" {
+        return;
+    }
+    let Ok((me, mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let kind = std::env::var("PLATYPUS_HEADSHOT").unwrap_or_else(|_| "zombie".into());
+    h.hp = h.max;
+    if state.0 == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        k.body.pos = Vec2::new(880.0, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(1000.0, fl), |_| {});
+        info!("headshot: a {kind} at 1000");
+        state.0 = 1;
+        return;
+    }
+    let Some((_, _, mut tk, th, anim)) = them.iter_mut().find(|x| x.1.kind == kind) else { return };
+    // (Held still where it stands.)
+    tk.body.pos.x = 1000.0;
+    tk.body.vel = Vec2::ZERO;
+    if state.0 == 1 {
+        state.1 = th.hp;
+        state.0 = 2;
+    }
+    if t > 2.0 && t > state.2 {
+        state.2 = t + 1.0;
+        let top = tk.body.pos.y + tk.body.half.y;
+        // The highest point of its picture over its middle column, above
+        // its box.
+        let head = anim.and_then(|a| (1..30).rev().map(|dy| Vec2::new(tk.body.pos.x, top + dy as f32)).find(|&p| crate::creatures::body::animation::on_picture(a, &tk, p)));
+        let Some(head) = head else {
+            info!("headshot: t {t:.0} nothing of its picture above its box");
+            return;
+        };
+        let aim = head - Vec2::Y * 1.0;
+        let Some(i) = book.spells.iter().position(|s| s.id == "spark_bolt") else { return };
+        casts.write(crate::magic::CastRequest { caster: me, spell: i, from: Vec2::new(930.0, aim.y), toward: Vec2::new(1100.0, aim.y), alt: false });
+        info!("headshot: t {t:.0} a bolt at {:.0} up ({:.1} over its box); it's lost {:.0} so far", aim.y - fl, aim.y - top, state.1 - th.hp);
     }
 }
 

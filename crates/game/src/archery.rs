@@ -285,7 +285,14 @@ fn fly(
                 }
                 // (Its body, or one of its parts: a leg, a segment.)
                 let on_part = parts.is_some_and(|p| p.touch(tip, 0.0).is_some());
-                if !on_part && (tip - tk.body.pos).abs().cmpgt(tk.body.half + 3.0).any() {
+                // (Off its box, it may still be on its picture: a head drawn
+                // above it.)
+                let near_box = (tip - tk.body.pos).abs().cmple(tk.body.half + 3.0).all();
+                let in_frame = anim.is_some_and(|an| {
+                    let (lo, hi) = crate::creatures::body::animation::picture_bounds(an, tk);
+                    tip.cmpge(lo).all() && tip.cmple(hi).all()
+                });
+                if !on_part && !near_box && !in_frame {
                     continue;
                 }
                 let struck = on_part

@@ -1367,6 +1367,11 @@ fn swing(
                 if let Some(p) = parts.filter(|p| !p.list.is_empty()) {
                     (bmin, bmax) = (bmin.min(p.lo - 1.0), bmax.max(p.hi + 1.0));
                 }
+                // (And round its picture: a head drawn above its box.)
+                if let Some(a) = anim {
+                    let (lo, hi) = crate::creatures::body::animation::picture_bounds(a, tk);
+                    (bmin, bmax) = (bmin.min(lo), bmax.max(hi));
+                }
                 if hi.x < bmin.x || lo.x > bmax.x || hi.y < bmin.y || lo.y > bmax.y {
                     continue;
                 }
