@@ -6,10 +6,11 @@
 //!   ground, knocked back into its item with a pickaxe.
 //! - A recipe makes an item from others (counted in their own units: blocks
 //!   as blocks), by hand or at a station within reach.
-//! - With the inventory open, the crafting panel lists what you can make
-//!   (and, dimmed, what you're short of): a recipe shows once you've held
-//!   anything that goes into it or comes out of it, and a `locked` one only
-//!   once a milestone has unlocked it (`progress.rs`). Click one to make it.
+//! - The crafting panel (the inventory's Crafting button: `hands/crafting.rs`)
+//!   lists what you can make (and, dimmed, what you're short of): a recipe
+//!   shows once you've held anything that goes into it or comes out of it,
+//!   and a `locked` one only once a milestone has unlocked it
+//!   (`progress.rs`). Click one to make it.
 //!
 //! The recipes and stations written so far are a starting ladder to build
 //! on: wood to planks to a workbench, stone and planks to a furnace, ore to
@@ -34,8 +35,6 @@ use crate::props::Thrown;
 const Z: f32 = 5.9;
 /// Hit points: a few blows of a pickaxe.
 const TOUGHNESS: f32 = 80.0;
-/// Most recipes the panel lists.
-const SHOWN: usize = 16;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct StationDef {
@@ -201,9 +200,9 @@ impl Plugin for CraftPlugin {
         let path = data_path("crafting.ron");
         let file: CraftingFile = load_ron(&path).unwrap_or_else(|e| panic!("{e}"));
         app.insert_resource(Crafting { reach: file.reach, stations: file.stations, recipes: file.recipes, art: Vec::new(), watch: Watched::new(path) })
-            .add_systems(Startup, (make_art, spawn_panel))
+            .add_systems(Startup, make_art)
             .add_message::<CraftRequest>()
-            .add_systems(Update, (reload, show_panel, (click, craft).chain()));
+            .add_systems(Update, (reload, craft));
     }
 }
 
@@ -252,109 +251,9 @@ pub fn station_at<'a>(at: Vec2, mut stations: impl Iterator<Item = (Entity, &'a 
     stations.find(|(_, _, k)| ((k.body.pos - at).abs() - k.body.half).max_element() <= 2.0).map(|(e, s, k)| (e, s.kind, k.body.pos))
 }
 
-#[derive(Component)]
-struct CraftRoot;
-
-#[derive(Component)]
-struct CraftList;
-
-/// A recipe's row in the panel.
-#[derive(Component)]
-struct CraftRow(usize);
-
-fn spawn_panel(mut commands: Commands) {
-    commands
-        .spawn((
-            CraftRoot,
-            Interaction::None,
-            Visibility::Hidden,
-            Node {
-                position_type: PositionType::Absolute,
-                // (Under the status timers, top right.)
-                top: px(180),
-                right: px(8),
-                width: px(300),
-                flex_direction: FlexDirection::Column,
-                row_gap: px(3),
-                padding: UiRect::all(px(8)),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.62)),
-        ))
-        .with_children(|p| {
-            p.spawn((Text::new("Crafting  |  click: make one"), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::srgb(0.85, 0.85, 0.9))));
-            p.spawn((CraftList, Node { flex_direction: FlexDirection::Column, row_gap: px(3), ..default() }));
-        });
-}
-
 /// The stations within reach of the player.
-fn near(crafting: &Crafting, at: Vec2, stations: &Query<(&Station, &Kinematics)>) -> Vec<usize> {
+pub fn near(crafting: &Crafting, at: Vec2, stations: &Query<(&Station, &Kinematics)>) -> Vec<usize> {
     stations.iter().filter(|(_, k)| k.body.pos.distance(at) <= crafting.reach).map(|(s, _)| s.kind).collect()
-}
-
-/// While the inventory is open: the recipes, rebuilt when what's listed
-/// (or what can be made) changes.
-#[allow(clippy::too_many_arguments)]
-fn show_panel(
-    mut commands: Commands,
-    open: Res<crate::hands::ui::InventoryOpen>,
-    crafting: Res<Crafting>,
-    items: Option<Res<Items>>,
-    icons: Option<Res<crate::hands::icons::Icons>>,
-    player: Query<(&Kinematics, &Inventory, &Progress), With<LocalPlayer>>,
-    stations: Query<(&Station, &Kinematics)>,
-    mut root: Single<&mut Visibility, With<CraftRoot>>,
-    list: Single<Entity, With<CraftList>>,
-    mut last: Local<Vec<(usize, bool)>>,
-) {
-    let (Some(items), Ok((k, inv, progress))) = (items, player.single()) else { return };
-    **root = if open.0 { Visibility::Visible } else { Visibility::Hidden };
-    if !open.0 {
-        return;
-    }
-    let near = near(&crafting, k.body.pos, &stations);
-    let mut shown = crafting.listed(&items, inv, progress, &near);
-    shown.truncate(SHOWN);
-    if *last == shown && !crafting.is_changed() {
-        return;
-    }
-    *last = shown.clone();
-    commands.entity(*list).despawn_related::<Children>();
-    commands.entity(*list).with_children(|l| {
-        if shown.is_empty() {
-            l.spawn((Text::new("(nothing yet: find wood, stone, ore)"), TextFont { font_size: FontSize::Px(12.0), ..default() }, TextColor(Color::srgb(0.6, 0.6, 0.65))));
-        }
-        for &(i, can) in &shown {
-            let r = &crafting.recipes[i];
-            let Some(item) = items.id(&r.makes) else { continue };
-            let name = if r.count > 1 { format!("{} x{}", items.def(item).name, r.count) } else { items.def(item).name.clone() };
-            let needs: Vec<String> = r
-                .needs
-                .iter()
-                .map(|(id, n)| {
-                    let label = items.id(id).map_or(id.clone(), |it| items.def(it).name.clone());
-                    format!("{n} {label}")
-                })
-                .collect();
-            let at = r.at.as_ref().and_then(|a| crafting.station(a)).map(|s| format!("  at {}", crafting.stations[s].name)).unwrap_or_default();
-            let (fg, bg) = if can { (Color::WHITE, Color::srgba(0.2, 0.3, 0.2, 0.7)) } else { (Color::srgb(0.55, 0.55, 0.6), Color::srgba(0.12, 0.12, 0.14, 0.7)) };
-            l.spawn((Button, CraftRow(i), Node { column_gap: px(6), align_items: AlignItems::Center, padding: UiRect::all(px(3)), ..default() }, BackgroundColor(bg)))
-                .with_children(|row| {
-                    let icon = icons.as_ref().and_then(|ic| ic.get(item).cloned());
-                    match icon {
-                        Some(h) => row.spawn((ImageNode::new(h), Node { width: px(24), height: px(24), ..default() })),
-                        None => {
-                            let (r, g, b) = items.def(item).color;
-                            row.spawn((Node { width: px(24), height: px(24), ..default() }, BackgroundColor(Color::srgb_u8(r, g, b))))
-                        }
-                    };
-                    row.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).with_children(|t| {
-                        t.spawn((Text::new(name), TextFont { font_size: FontSize::Px(13.0), ..default() }, TextColor(fg)));
-                        t.spawn((Text::new(format!("{}{at}", needs.join(", "))), TextFont { font_size: FontSize::Px(10.0), ..default() }, TextColor(fg.with_alpha(0.75))));
-                    });
-                });
-        }
-    });
 }
 
 /// Make a recipe (by its index), for the player: the panel's click, or a
@@ -366,15 +265,6 @@ impl Crafting {
     /// The first recipe that makes an item.
     pub fn recipe(&self, makes: &str) -> Option<usize> {
         self.recipes.iter().position(|r| r.makes == makes)
-    }
-}
-
-/// Click a recipe: ask to make it.
-fn click(rows: Query<(&Interaction, &CraftRow), Changed<Interaction>>, mut asks: MessageWriter<CraftRequest>) {
-    for (i, row) in &rows {
-        if *i == Interaction::Pressed {
-            asks.write(CraftRequest(row.0));
-        }
     }
 }
 
@@ -406,10 +296,6 @@ fn craft(
         *progress.crafted.entry(r.makes.clone()).or_default() += 1;
         info!("crafted {} x{}", r.makes, r.count);
     }
-}
-
-fn px(v: i32) -> Val {
-    Val::Px(v as f32)
 }
 
 #[cfg(test)]

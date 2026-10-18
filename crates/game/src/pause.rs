@@ -1,7 +1,11 @@
-//! The game menu: Esc, with nothing else open (the inventory, the dev menu,
-//! the bestiary, the art editor shut first: Esc shuts them). Time stands
-//! still while it's up. Resume (or Esc again) · Save · Main menu (saved,
-//! then the title screen over this save: `title.rs`) · Quit (saved).
+//! Esc, and the game menu. Esc opens the inventory (Terraria's), and shuts
+//! it again (the crafting panel first, if it's up); the panels that have
+//! the keyboard (the art editor, the bestiary, the title screen, the dev
+//! menu) shut first: Esc is theirs. The game menu's opened from the
+//! inventory's Settings button (`hands::ui`), and time stands still while
+//! it's up. Resume (or Esc) · Save · Main menu (saved, then the title
+//! screen over this save: `title.rs`) · Quit (saved). Resumed, it's back
+//! to play.
 
 use bevy::prelude::*;
 
@@ -45,7 +49,8 @@ pub(crate) fn key(
     mut menu: ResMut<GameMenu>,
     mut taken: ResMut<KeyboardTaken>,
     mut virt: ResMut<Time<Virtual>>,
-    inventory: Res<crate::hands::ui::InventoryOpen>,
+    mut inventory: ResMut<crate::hands::ui::InventoryOpen>,
+    mut crafting: ResMut<crate::hands::crafting::CraftingPanel>,
     dev: Res<crate::devmenu::DevMenu>,
     bestiary: Res<crate::bestiary::panel::Bestiary>,
     editor: Res<crate::editor::Editor>,
@@ -60,13 +65,28 @@ pub(crate) fn key(
         keys.reset_all();
         return;
     }
-    let busy = inventory.0 || dev.open || bestiary.open || editor.open || title.up;
-    if esc && !busy {
-        menu.open = true;
-        menu.paused = !virt.is_paused();
-        virt.pause();
-        keys.reset_all();
+    // (Theirs: they have the keyboard, and shut on Esc themselves.)
+    if !esc || editor.open || bestiary.open || title.up || taken.0 {
+        return;
     }
+    if inventory.0 && crafting.open {
+        crafting.open = false;
+    } else if inventory.0 {
+        inventory.0 = false;
+    } else if dev.open {
+        // (The dev menu's own: `devmenu.rs`.)
+        return;
+    } else {
+        inventory.0 = true;
+    }
+    keys.reset(KeyCode::Escape);
+}
+
+/// Up, and time stopped (the inventory's Settings button).
+pub fn open(menu: &mut GameMenu, virt: &mut Time<Virtual>) {
+    menu.open = true;
+    menu.paused = !virt.is_paused();
+    virt.pause();
 }
 
 fn close(menu: &mut GameMenu, virt: &mut Time<Virtual>) {
