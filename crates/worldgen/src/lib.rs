@@ -55,6 +55,13 @@ pub trait ChunkGenerator: Send + Sync {
         None
     }
 
+    /// The water surface over column x of the lakes and oceans the seed
+    /// made (not puddles, ponds the rain filled, nor water underground),
+    /// if there's one there: where water life lives.
+    fn water_hint(&self, _x: i32) -> Option<i32> {
+        None
+    }
+
     /// The biome at column x, by name (plains, forest, deep forest,
     /// desert, tundra, jungle, swamp, mountains, ocean), if the world has
     /// biomes (the backdrops paint it).
@@ -1756,6 +1763,10 @@ impl ChunkGenerator for TerrainGen {
         xs.sort_unstable();
         xs.dedup();
         xs
+    }
+
+    fn water_hint(&self, x: i32) -> Option<i32> {
+        (0..self.plan.width).contains(&x).then(|| self.plan.water_at(x)).flatten()
     }
 
     fn biome_hint(&self, x: i32) -> Option<&'static str> {

@@ -6760,7 +6760,7 @@ fn safari_script(
     if s.name != "safari" {
         return;
     }
-    const BIOMES: [&str; 7] = ["plains", "forest", "desert", "tundra", "jungle", "deep forest", "mountains"];
+    const BIOMES: [&str; 9] = ["plains", "forest", "desert", "tundra", "jungle", "swamp", "deep forest", "mountains", "ocean"];
     let Ok((mut k, mut h)) = player.single_mut() else { return };
     let t = s.elapsed;
     h.hp = h.max;
@@ -6777,7 +6777,10 @@ fn safari_script(
             let found = (0..2000).flat_map(|i| [start + 3500 + i * 40, start - 3500 - i * 40]).find(|&x| sim.generator.biome_hint(x) == Some(biome) && sim.generator.biome_hint(x + 300) == Some(biome));
             // (Its middle: what spawns just off screen either side is in it
             // too.)
-            let middle = found.map(|x| {
+            // (The ocean's at the world's ends: inland of its shore, where
+            // what spawns just off screen is on the beach; not its "middle"
+            // off the edge.)
+            let middle = if biome == "ocean" { found.map(|x| (x + if x > start { -560 } else { 560 }, 600)) } else { None }.or_else(|| found.map(|x| {
                 let (mut lo, mut hi) = (x, x);
                 while lo > x - 20000 && sim.generator.biome_hint(lo - 10) == Some(biome) {
                     lo -= 10;
@@ -6786,7 +6789,7 @@ fn safari_script(
                     hi += 10;
                 }
                 ((lo + hi) / 2, hi - lo)
-            });
+            }));
             match middle.and_then(|(x, w)| sim.generator.surface_hint(x).map(|y| (Vec2::new(x as f32, y as f32 + 14.0), w))) {
                 Some((at, wide)) => {
                     k.body.pos = at;
@@ -6817,6 +6820,24 @@ fn safari_script(
                 }
                 let list: Vec<String> = kinds.iter().map(|(k, n)| format!("{k} ×{n}")).collect();
                 info!("safari: the {biome} after {dwell:.0} s: {}", if list.is_empty() { "nothing".to_string() } else { list.join(", ") });
+                // (Water life: in or by the seed's lakes and oceans, never
+                // elsewhere.)
+                let lake = |x: i32| sim.generator.water_hint(x);
+                let (mut good, mut bad) = (0, Vec::new());
+                for (c, ck) in them.iter().filter(|(_, ck)| ck.body.pos.distance(at) < 700.0) {
+                    let (x, y) = (ck.body.pos.x as i32, ck.body.pos.y as i32);
+                    let ok = match c.kind.as_str() {
+                        "fish" => lake(x).is_some_and(|l| y < l + 4),
+                        "crab" => (-60..=60).step_by(3).any(|dx| lake(x + dx).is_some_and(|l| (l - y).abs() < 50)),
+                        _ => continue,
+                    };
+                    if ok {
+                        good += 1;
+                    } else {
+                        bad.push(format!("{} at ({x}, {y})", c.kind));
+                    }
+                }
+                info!("safari: the {biome}: water life at lakes and seas {good}, elsewhere {}: {bad:?}", bad.len());
                 *state = (state.0 + 1, t, None);
             }
         }

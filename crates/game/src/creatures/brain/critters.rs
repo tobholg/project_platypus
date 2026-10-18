@@ -362,6 +362,11 @@ fn rate_scale() -> f32 {
     *K.get_or_init(|| std::env::var("PLATYPUS_LIFE_RATE").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0))
 }
 
+/// Water life: one of a kind for this many columns of a lake's breadth,
+/// looked for this far either side.
+const WATER_PER: i32 = 60;
+const WATER_SPAN: i32 = 1200;
+
 /// A group's members this far apart (cells).
 const PACK_GAP: f32 = 24.0;
 /// What comes up out of the ground does it this near the player (cells,
@@ -450,17 +455,32 @@ fn ambient(
                 if (y as f32 - p.y).abs() > 300.0 {
                     continue;
                 }
-                let shore = (-45..=45).any(|dx| world.get(CellPos::new(x + dx, y)).is_some_and(|c| mats.phys(c.material).kind == Kind::Liquid));
+                // (A shore: by one of the seed's lakes or oceans, at its
+                // level, with water still in it. Not a puddle, a pond the
+                // rain filled, a pool of blood or acid.)
+                let lake = (-45..=45).step_by(3).any(|dx| sim.generator.water_hint(x + dx).is_some_and(|level| (level - y).abs() <= 30));
+                let shore = lake && (-45..=45).any(|dx| world.get(CellPos::new(x + dx, y)).is_some_and(|c| mats.phys(c.material).kind == Kind::Liquid && !mats.phys(c.material).hot));
                 if (h.place == Place::Shore) != shore {
                     continue;
                 }
                 Some(Vec2::new(x as f32 + 0.5, y as f32 + 1.0))
             }
-            // Somewhere near in cool liquid, with room round it.
+            // Somewhere near in one of the seed's lakes or oceans (not a
+            // pond the rain filled, nor water underground), in cool liquid
+            // with room round it; no more of its kind there than the water's
+            // breadth holds (a small lake, one or two).
             Place::Water => (0..TRIES).find_map(|_| {
                 let (x, y) = ((p.x + (unit(&mut rng) - 0.5) * 1140.0) as i32, (p.y + (unit(&mut rng) - 0.5) * 600.0) as i32);
+                let level = sim.generator.water_hint(x).filter(|&level| y < level - 2)?;
                 let wet = |dx: i32, dy: i32| kind_at(x + dx, y + dy).is_some_and(|(_, ph)| ph.kind == Kind::Liquid && !ph.hot);
-                (wet(0, 0) && wet(-6, 0) && wet(6, 0) && wet(0, 5) && wet(0, -5)).then(|| Vec2::new(x as f32 + 0.5, y as f32 - 1.0))
+                if !(wet(0, 0) && wet(-6, 0) && wet(6, 0) && wet(0, 5) && wet(0, -5)) {
+                    return None;
+                }
+                let reach = |dir: i32| (1..=WATER_SPAN / 4).take_while(|&n| sim.generator.water_hint(x + dir * n * 4).is_some()).count() as i32 * 4;
+                let (lo, hi) = (x - reach(-1), x + reach(1));
+                let room = ((hi - lo) / WATER_PER).max(1) as usize;
+                let there = critters.iter().filter(|(_, c, k)| c.kind == h.kind && (lo as f32..=hi as f32).contains(&k.body.pos.x) && k.body.pos.y < level as f32 + 5.0).count();
+                (there < room).then(|| Vec2::new(x as f32 + 0.5, y as f32 - 1.0))
             }),
             // In the air of a cave: open round it, a roof above, well under
             // the surface.
