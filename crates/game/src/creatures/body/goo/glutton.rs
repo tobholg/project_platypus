@@ -15,7 +15,7 @@ use bevy::prelude::*;
 use platypus_sim::cell::flags::HELD;
 use platypus_sim::{Cell, CellPos, Kind};
 
-use super::{Engulfing, Goo, Spiking};
+use super::{Goo, Spiking};
 use crate::creatures::{Harm, Health, Kinematics};
 use crate::world::SimWorld;
 
@@ -498,7 +498,7 @@ pub fn glut_strike(
     time: Res<Time>,
     mut sim: ResMut<SimWorld>,
     book: Res<crate::magic::Spellbook>,
-    mut q: Query<(Entity, &mut Glutton, &Goo, &mut Kinematics, &mut crate::creatures::Controls, Option<&crate::creatures::brain::senses::Alert>, Has<Engulfing>)>,
+    mut q: Query<(Entity, &mut Glutton, &Goo, &mut Kinematics, &mut crate::creatures::Controls, Option<&crate::creatures::brain::senses::Alert>)>,
     bodies: Query<(Entity, &Kinematics, Option<&crate::creatures::Team>), Without<Glutton>>,
     mut casts: MessageWriter<crate::magic::CastRequest>,
     mut hits: MessageWriter<crate::combat::Hit>,
@@ -507,7 +507,7 @@ pub fn glut_strike(
 ) {
     let now = time.elapsed_secs();
     let spell = |id: &str| book.spells.iter().position(|s| s.id == id);
-    for (e, mut g, goo, mut k, mut controls, alert, full) in &mut q {
+    for (e, mut g, goo, mut k, mut controls, alert) in &mut q {
         let Some(harm) = g.took else {
             g.striking = None;
             continue;
@@ -522,7 +522,7 @@ pub fn glut_strike(
             None => {
                 let Some(tk) = tk else { continue };
                 // (Not spiking, not with you in it, on its feet.)
-                if now >= g.ready && !full && matches!(goo.spiking, Spiking::Rest) && k.loco.grounded() && tk.body.pos.distance(k.body.pos) <= range_of(harm) {
+                if now >= g.ready && matches!(goo.spiking, Spiking::Rest) && k.loco.grounded() && tk.body.pos.distance(k.body.pos) <= range_of(harm) {
                     g.striking = Some((now, 0));
                     let pitch = match harm {
                         Harm::Fire => 0.5,

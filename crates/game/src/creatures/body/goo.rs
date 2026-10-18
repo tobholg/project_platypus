@@ -91,12 +91,9 @@ const SPIKE_SHARE: f32 = 0.35;
 const SPIKE_LEAST: f32 = 0.25;
 const WAVE_STEP: f32 = 0.16;
 const SHIVER: u64 = 24;
-/// Cut off at once, at least this much goo is a slime of its own (if as
-/// much is left); flung off at this (cells/s). Split, neither merges
-/// again for `MERGE_WAIT` s; merged, never bigger than `MERGE_MOST` whole
-/// ones. Its box: from this share of its kind's to this.
-const SPLIT_LEAST: usize = 110;
-const SPLIT_FLING: f32 = 90.0;
+/// Merged, never bigger than `MERGE_MOST` whole ones. Its box: from this
+/// share of its kind's to this. (Slimes don't split when struck: cut
+/// off, goo just runs.)
 const MERGE_WAIT: f32 = 4.0;
 const MERGE_MOST: f32 = 3.0;
 const BOX_LEAST: f32 = 0.55;
@@ -105,19 +102,13 @@ const SQUEEZE_LEAST: f32 = 7.0;
 const BOX_MOST: f32 = 1.5;
 /// Grown into the rock, it's moved out to where it fits, up to this far.
 const GROWN_ROOM: i32 = 30;
-/// Swallowing: a small creature is at most this big (cells across and up,
-/// times); digested at this (health a second: a creature, the player);
-/// an item dissolved after this (s); the player let out after this (s),
-/// or worked loose by `STRUGGLE` presses; swallowed again no sooner than
-/// `ENGULF_WAIT` s; a slime grows by this share of a whole one for each
-/// small creature it digests.
+/// Swallowing (items and small creatures; never the player): a small
+/// creature is at most this big (cells across and up, times); digested at
+/// this (health a second); an item dissolved after this (s); a slime grows
+/// by this share of a whole one for each small creature it digests.
 const SMALL: f32 = 160.0;
 const DIGEST: f32 = 9.0;
-const DIGEST_PLAYER: f32 = 7.0;
 const DISSOLVE: f32 = 12.0;
-const HELD_MOST: f32 = 3.0;
-const STRUGGLE: f32 = 6.0;
-const ENGULF_WAIT: f32 = 5.0;
 const GROWS: f32 = 0.06;
 /// Goo flung off (cells a tick).
 const FLUNG: f32 = 1.4;
@@ -144,12 +135,8 @@ pub struct Goo {
     aim: Vec2,
     stung: f32,
     tips: Vec<(Vec2, Vec2)>,
-    /// It won't merge before this (just split, it'd only merge back).
+    /// It won't merge before this.
     merge_after: f32,
-    /// It may swallow the player again from this; it was in the air last
-    /// tick (it swallows what it lands on).
-    engulf_ready: f32,
-    flew: bool,
     /// What its goo is now, if not its kind's (the glutton's, as it takes
     /// on what it's struck with), and what it was (its cells turned).
     pub material: Option<platypus_sim::MaterialId>,
@@ -166,24 +153,16 @@ impl Goo {
     }
 }
 
-/// Swallowed by a slime (an item, a small creature, the player): held in
-/// its goo where it went in (sinking to its middle), going round with it;
-/// a creature digested as it's held, an item dissolved (not ore, gems or
+/// Swallowed by a slime (an item, a small creature): held in its goo
+/// where it went in (sinking to its middle), going round with it; a
+/// creature digested as it's held, an item dissolved (not ore, gems or
 /// gear: they stay in it, and fall out of it as it dies).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Swallowed {
     pub by: Entity,
     offset: Vec2,
     since: f32,
-    /// The player's struggle: how loose they've worked it, and what they
-    /// pressed last tick.
-    loose: f32,
-    last: (bool, bool, f32),
 }
-
-/// A slime with the player in it (their blows from inside hurt it more).
-#[derive(Component)]
-pub struct Engulfing;
 
 /// How big it is, against a whole one of its kind (its most health, and
 /// so its goo, and its box): split off, less; merged, more.
@@ -194,21 +173,15 @@ pub struct Mass(pub f32);
 /// took of it, lets go what it can't hold, spills it all as it dies).
 /// After it moves, before deaths and the cells' tick.
 #[allow(clippy::type_complexity)]
-#[allow(clippy::type_complexity)]
 pub fn hold(
-    mut commands: Commands,
     mut sim: ResMut<SimWorld>,
     time: Res<Time>,
-    mut felt: MessageReader<crate::combat::Felt>,
-    mut q: Query<(Entity, &mut Goo, &mut Kinematics, &mut Health, &super::animation::Animator, Option<&mut Mass>, &crate::creatures::Creature)>,
+    mut q: Query<(&mut Goo, &mut Kinematics, &mut Health, &super::animation::Animator, Option<&mut Mass>)>,
 ) {
     let dt = time.delta_secs();
-    let now = time.elapsed_secs();
     let started = std::time::Instant::now();
     let slimes = q.iter().count();
-    // (The blows that cut, this tick: which way, by whom.)
-    let cut: std::collections::HashMap<Entity, Vec2> = felt.read().filter(|f| matches!(f.harm, crate::creatures::Harm::Slash | crate::creatures::Harm::Pierce)).map(|f| (f.target, f.dir)).collect();
-    for (e, mut goo, mut k, mut health, anim, mass, creature) in &mut q {
+    for (mut goo, mut k, mut health, anim, mass) in &mut q {
         let Some(def) = anim.def.goo.as_ref() else { continue };
         let Some(kind_mat) = sim.world.materials().id(&def.material) else { continue };
         let full = anim.def.health.max(1.0);
@@ -318,44 +291,7 @@ pub fn hold(
                 kept.push(sim.world.materials().spawn(mat, &mut rng));
             }
         }
-        // Cut through, enough off at once (and enough left): what's cut off
-        // is a slime of its own, beside it, away from the blow; and it's
-        // that much smaller for good.
         let hold = kept.len().min(want);
-        if let Some(&dir) = cut.get(&e)
-            && kept.len() - hold >= SPLIT_LEAST
-            && hold >= SPLIT_LEAST
-        {
-            let piece: Vec<Cell> = kept.drain(hold..).map(|mut c| {
-                c.flags &= !HELD;
-                c
-            }).collect();
-            let share = piece.len() as f32 / def.cells as f32;
-            let left = (size - share).max(share);
-            match mass {
-                Some(mut m) => m.0 = left,
-                None => {
-                    commands.entity(e).insert(Mass(left));
-                }
-            }
-            health.max = (full * left).max(1.0);
-            health.hp = health.hp.min(health.max);
-            goo.merge_after = now + MERGE_WAIT;
-            let side = if dir.x.abs() > 0.1 { dir.x.signum() } else { 1.0 };
-            let at = k.body.pos + Vec2::new(side * (k.body.half.x + 8.0), 4.0 - k.body.half.y);
-            let fling = Vec2::new(side * SPLIT_FLING, SPLIT_FLING * 0.8);
-            let wait = now + MERGE_WAIT;
-            crate::creatures::def::spawn_creature(&mut commands, &creature.kind, at, move |c| {
-                c.insert((Mass(share), Goo { reserve: piece, made: true, merge_after: wait, ..Default::default() }));
-                if let Some(mut h) = c.get_mut::<Health>() {
-                    h.max = (full * share).max(1.0);
-                    h.hp = h.max;
-                }
-                if let Some(mut k) = c.get_mut::<Kinematics>() {
-                    k.body.vel = fling;
-                }
-            });
-        }
         // Hurt: what it can't hold it flings off (it runs and pools where
         // it lands: loose goo), out of its outermost.
         for (i, c) in kept.drain(hold..).enumerate() {
@@ -558,21 +494,20 @@ fn draw_in(sim: &mut SimWorld, at: Vec2, mat: platypus_sim::MaterialId, n: usize
 #[allow(clippy::type_complexity)]
 pub fn spike(
     time: Res<Time>,
-    mut q: Query<(Entity, &mut Goo, &Kinematics, &super::animation::Animator, &mut crate::creatures::Controls, Option<&crate::creatures::brain::senses::Alert>, Has<Engulfing>)>,
+    mut q: Query<(Entity, &mut Goo, &Kinematics, &super::animation::Animator, &mut crate::creatures::Controls, Option<&crate::creatures::brain::senses::Alert>)>,
     bodies: Query<&Kinematics>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
 ) {
     let now = time.elapsed_secs();
-    for (e, mut goo, k, anim, mut controls, alert, full) in &mut q {
+    for (e, mut goo, k, anim, mut controls, alert) in &mut q {
         let Some(sd) = anim.def.goo.as_ref().and_then(|g| g.spikes.as_ref()) else { continue };
         let target = alert.filter(|a| a.engaged()).and_then(|a| a.target).filter(|&t| t != e);
         let tk = target.and_then(|t| bodies.get(t).ok());
         match goo.spiking {
             Spiking::Rest => {
                 let Some(tk) = tk else { continue };
-                // (Not with you in it already.)
-                if !full && now >= goo.spikes_ready && k.loco.grounded() && tk.body.pos.distance(k.body.pos) <= sd.range {
+                if now >= goo.spikes_ready && k.loco.grounded() && tk.body.pos.distance(k.body.pos) <= sd.range {
                     goo.spiking = Spiking::Tell(now);
                     goo.aim = (tk.body.pos - k.body.pos).normalize_or(Vec2::X);
                     sounds.write(crate::sound::PlaySound::at("pour", k.body.pos).pitch(0.45).volume(0.8));
@@ -673,8 +608,8 @@ pub fn merge(
 }
 
 /// What a slime's goo closes round, it swallows: an item lying in it, a
-/// small creature in it, and the player when it lands on them. After its
-/// goo's laid out.
+/// small creature in it (not the player: trapped in one was only
+/// annoying). After its goo's laid out.
 #[allow(clippy::type_complexity)]
 pub fn engulf(
     mut commands: Commands,
@@ -682,16 +617,15 @@ pub fn engulf(
     mut slimes: Query<(Entity, &mut Goo, &Kinematics), Without<Swallowed>>,
     items: Query<(Entity, &Kinematics), (With<crate::hands::Dropped>, Without<Swallowed>, Without<Goo>)>,
     small: Query<(Entity, &Kinematics), (With<crate::creatures::brain::critters::Critter>, Without<Swallowed>, Without<Goo>)>,
-    players: Query<(Entity, &Kinematics), (With<crate::creatures::player::LocalPlayer>, Without<Swallowed>, Without<Goo>)>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
 ) {
     let now = time.elapsed_secs();
-    for (s, mut goo, k) in &mut slimes {
+    for (s, goo, k) in &mut slimes {
         let Some((lo, hi)) = goo.extent else { continue };
         let inside = |p: Vec2| p.cmpge(lo + 2.0).all() && p.cmple(hi - 2.0).all();
         let swallow = |commands: &mut Commands, e: Entity, at: Vec2| {
             let offset = (at - k.body.pos).clamp_length_max(k.body.half.min_element());
-            commands.entity(e).insert(Swallowed { by: s, offset, since: now, loose: 0.0, last: (false, false, 0.0) });
+            commands.entity(e).insert(Swallowed { by: s, offset, since: now });
         };
         for (e, ik) in &items {
             if inside(ik.body.pos) {
@@ -705,40 +639,24 @@ pub fn engulf(
                 sounds.write(crate::sound::PlaySound::at("pour", ck.body.pos).pitch(0.6));
             }
         }
-        // (The player: when it lands on them.)
-        let landed = goo.flew && k.loco.grounded();
-        goo.flew = !k.loco.grounded();
-        if landed && now >= goo.engulf_ready && matches!(goo.spiking, Spiking::Rest) {
-            for (e, pk) in &players {
-                if inside(pk.body.pos) {
-                    swallow(&mut commands, e, pk.body.pos);
-                    commands.entity(s).insert(Engulfing);
-                    goo.engulf_ready = now + ENGULF_WAIT;
-                    sounds.write(crate::sound::PlaySound::at("pour", pk.body.pos).pitch(0.5).volume(1.0));
-                }
-            }
-        }
     }
 }
 
 /// What's swallowed goes round in its slime, sinking to its middle: a
-/// creature held helpless and digested (a small one digested, the slime's
-/// the bigger for it), an item dissolved (not ore, gems or gear); the
-/// player struggles (`STRUGGLE` presses) and is let out (or after
-/// `HELD_MOST` s, spat out). Its slime gone, it's let go. After creatures
-/// move.
+/// creature held helpless and digested (the slime's the bigger for it), an
+/// item dissolved (not ore, gems or gear). Its slime gone, it's let go.
+/// After creatures move.
 #[allow(clippy::type_complexity)]
 pub fn digest(
     mut commands: Commands,
     time: Res<Time>,
     items: Option<Res<crate::hands::items::Items>>,
-    mut held: Query<(Entity, &mut Swallowed, &mut Kinematics, Option<&mut Health>, Option<&crate::hands::Dropped>, Option<&crate::creatures::Controls>, Has<crate::creatures::player::LocalPlayer>), Without<Goo>>,
+    mut held: Query<(Entity, &mut Swallowed, &mut Kinematics, Option<&mut Health>, Option<&crate::hands::Dropped>), Without<Goo>>,
     mut slimes: Query<(&Kinematics, &mut Health, Option<&mut Mass>, &super::animation::Animator), With<Goo>>,
-    mut sounds: MessageWriter<crate::sound::PlaySound>,
 ) {
     let dt = time.delta_secs();
     let now = time.elapsed_secs();
-    for (e, mut sw, mut k, health, dropped, controls, player) in &mut held {
+    for (e, mut sw, mut k, health, dropped) in &mut held {
         let Ok((sk, mut sh, mass, anim)) = slimes.get_mut(sw.by) else {
             // (Its slime's gone: let go, out it falls.)
             commands.entity(e).remove::<Swallowed>();
@@ -758,9 +676,6 @@ pub fn digest(
         };
         if slime_dead {
             release(&mut commands, k, 160.0);
-            if player {
-                commands.entity(sw.by).remove::<Engulfing>();
-            }
             continue;
         }
         if let Some(d) = dropped {
@@ -778,43 +693,21 @@ pub fn digest(
         // Held helpless, digested.
         k.loco.knock(&mut k.body, Vec2::ZERO, 2.0 * dt);
         k.body.pos = sk.body.pos + sw.offset;
-        h.harm((if player { DIGEST_PLAYER } else { DIGEST }) * dt, crate::creatures::Harm::Acid);
-        if !player {
-            if h.hp <= 0.0 {
-                // (A small creature digested: the slime's the bigger for it.)
-                let full = anim.def.health.max(1.0);
-                let size = mass.as_ref().map_or(1.0, |m| m.0) + GROWS;
-                if size <= MERGE_MOST {
-                    match mass {
-                        Some(mut m) => m.0 = size,
-                        None => {
-                            commands.entity(sw.by).insert(Mass(size));
-                        }
+        h.harm(DIGEST * dt, crate::creatures::Harm::Acid);
+        if h.hp <= 0.0 {
+            // (A small creature digested: the slime's the bigger for it.)
+            let full = anim.def.health.max(1.0);
+            let size = mass.as_ref().map_or(1.0, |m| m.0) + GROWS;
+            if size <= MERGE_MOST {
+                match mass {
+                    Some(mut m) => m.0 = size,
+                    None => {
+                        commands.entity(sw.by).insert(Mass(size));
                     }
-                    sh.max = full * size;
-                    sh.hp = (sh.hp + full * GROWS).min(sh.max);
                 }
+                sh.max = full * size;
+                sh.hp = (sh.hp + full * GROWS).min(sh.max);
             }
-            continue;
-        }
-        // The player struggles: each press of jump or dash, each turn of
-        // the keys the other way, works it looser; or it spits them out.
-        if let Some(c) = controls {
-            let x = if c.0.move_x.abs() > 0.3 { c.0.move_x.signum() } else { 0.0 };
-            let (jump, dash, was_x) = sw.last;
-            let mut pressed = (c.0.jump && !jump) as u8 + (c.0.dash && !dash) as u8;
-            if x != 0.0 && x != was_x {
-                pressed += 1;
-            }
-            sw.last = (c.0.jump, c.0.dash, if x != 0.0 { x } else { was_x });
-            sw.loose += pressed as f32 / STRUGGLE;
-        }
-        if sw.loose >= 1.0 || now - sw.since >= HELD_MOST {
-            let hp = h.hp;
-            release(&mut commands, k, 220.0);
-            commands.entity(e).insert(crate::combat::Invulnerable { left: 0.6, hp, dodge: false });
-            commands.entity(sw.by).remove::<Engulfing>();
-            sounds.write(crate::sound::PlaySound::at("spit", k.body.pos).pitch(0.7));
         }
     }
 }

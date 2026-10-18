@@ -842,8 +842,6 @@ const SPLASH_SPEED: f32 = 2.7;
 /// Aimed at least this far below level (the sine), a swing in the air is a
 /// down-strike (S held: always).
 const DOWN_AIM: f32 = 0.34;
-/// Blows on a slime from inside it (it's swallowed you) hurt this much more.
-const INSIDE: f32 = 2.0;
 /// A plunge can bounce again this long after a bounce (s).
 const REBOUND: f32 = 0.2;
 /// The longest a plunge dives before it gives up (s), and the furthest it
@@ -1527,7 +1525,7 @@ fn apply_hits(
     mut felt: MessageWriter<Felt>,
     parts: Query<&crate::creatures::body::parts::Parts>,
     mut tumbles: Query<&mut crate::creatures::body::tumble::Tumble>,
-    (bodies, mut masks, engulfing): (Query<&Animator>, ResMut<crate::creatures::body::wounds::LayerMasks>, Query<(), With<crate::creatures::body::goo::Engulfing>>),
+    (bodies, mut masks): (Query<&Animator>, ResMut<crate::creatures::body::wounds::LayerMasks>),
     (mut guards, items): (Query<(&mut crate::gear::shield::Guard, &mut Stamina, &crate::gear::Equipment)>, Option<Res<crate::hands::items::Items>>),
 ) {
     let Some(weapons) = weapons else { return };
@@ -1566,9 +1564,7 @@ fn apply_hits(
                 _ => z.body,
             })
         };
-        // (A slime with you in it: your blows from inside hurt it more.)
-        let inside = if engulfing.contains(h.target) { INSIDE } else { 1.0 };
-        let mult = part.or_else(zone).unwrap_or(1.0) * inside;
+        let mult = part.or_else(zone).unwrap_or(1.0);
         let mut damage = h.damage * mult;
         // A shield raised against it, from the side it faces: caught (a
         // little through, stamina paid), or the guard broken (through in

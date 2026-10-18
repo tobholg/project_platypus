@@ -11910,10 +11910,9 @@ fn sever_script(
 ///   kill: struck till it dies (from 2 s): its goo spills.
 ///   heal: two longsword blows (2 s, 2.6 s), then let be: it heals,
 ///     drawing its spilled goo back in.
-///   split: a blade through it (3.5 s, 5 s): each cuts a slime off it.
+///   split: a blade through it (3.5 s, 5 s): it loses goo, and no slime
+///     is cut off it (slimes don't split).
 ///   merge: two half slimes side by side: they merge into one.
-///   engulf: let be: it lands on the player and swallows them; they mash
-///     jump to get out.
 ///   eat: a rabbit, two torches and copper ore put in its goo (1.5 s).
 ///   squeeze: a slab with a gap 10 high under it, between it and the
 ///     player: it squeezes through.
@@ -11934,7 +11933,7 @@ fn slime_script(
     mut commands: Commands,
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
-    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>, Has<crate::creatures::body::goo::Swallowed>), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>), With<LocalPlayer>>,
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Option<&crate::creatures::body::goo::Goo>, Option<&crate::creatures::brain::senses::Alert>), Without<LocalPlayer>>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut state: Local<(u8, f32, f32)>,
@@ -11952,7 +11951,7 @@ fn slime_script(
     let mode = std::env::var("PLATYPUS_SLIME").unwrap_or_else(|_| "look".into());
     // (PLATYPUS_SLIME_KIND: which slime: slime, blue_slime, acid_slime, glutton.)
     let kind = std::env::var("PLATYPUS_SLIME_KIND").unwrap_or_else(|_| "slime".into());
-    let Ok((mut k, mut h, coated, inside)) = player.single_mut() else { return };
+    let Ok((mut k, mut h, coated)) = player.single_mut() else { return };
     let slimy = coated.map_or(0.0, |c| c.share("slimy"));
     if h.max - h.hp > 15.0 {
         info!("slime: t {:.2} the player lost {:.0} at once (hp {:.1}, max {:.1})", s.elapsed, h.max - h.hp, h.hp, h.max);
@@ -12149,14 +12148,6 @@ fn slime_script(
             info!("slime: t {t:.2} dashing: the player at {:.0}, it at {:.0}; lost {:.0} in all", k.body.pos.x, sk.body.pos.x, *took);
         }
     }
-    // `engulf`: swallowed, the player mashes jump to get out.
-    if mode == "engulf" {
-        if inside && (t * 8.0) as i32 % 2 == 0 {
-            keys.press(KeyCode::Space);
-        } else {
-            keys.release(KeyCode::Space);
-        }
-    }
     if mode == "squeeze"
         && let Ok(mut c) = drive.get_mut(e)
     {
@@ -12180,7 +12171,7 @@ fn slime_script(
             info!("slime: t {t:.1} the glutton holds {:?}, its goo {}", g.took, gg.material.map_or("its own".to_string(), |m| sim.world.materials().def(m).name.clone()));
         }
     }
-    if t >= state.2 && matches!(mode.as_str(), "eat" | "engulf") {
+    if t >= state.2 && mode == "eat" {
         let held: Vec<String> = swallowed.iter().map(|(_, d, c)| if d { "an item".to_string() } else { c.map_or("?".to_string(), |c| c.kind.clone()) }).collect();
         info!("slime: t {t:.1} in it: [{}]; items about: {}", held.join(", "), drops.iter().count());
     }
