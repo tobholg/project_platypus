@@ -17,7 +17,7 @@
 use bevy::prelude::*;
 use serde::Deserialize;
 
-use super::watcher::{clear, ground};
+use super::watcher::{FLOAT_BESIDE, clear, float_height, float_seed, ground};
 use super::{CustomCreature, CustomSet, frame_anchor};
 use crate::camera::MainCamera;
 use crate::canvas::{Canvas, CanvasSprites};
@@ -89,8 +89,8 @@ const SNAP_I: usize = 0;
 const LUNGE_I: usize = 1;
 /// Hunting what's this near (cells).
 const AGGRO: f32 = 340.0;
-/// Hovering this high over the ground (its feet, cells), bobbing this much.
-const HOVER: (f32, f32) = (30.0, 4.0);
+/// Bobbing this much as it floats (cells; `watcher::float_height`).
+const BOB: f32 = 4.0;
 /// The snap: at what's this near; its tell; darting this fast this long;
 /// its bite (damage, knock); then it waits.
 const SNAP_RANGE: f32 = 48.0;
@@ -128,7 +128,7 @@ fn think(
     hunted: Query<(Entity, &Kinematics, &Team), Without<Gnasher>>,
     (mut hits, mut sounds, mut trauma): (MessageWriter<crate::combat::Hit>, MessageWriter<crate::sound::PlaySound>, ResMut<crate::fx::Trauma>),
 ) {
-    for (_e, mut o, mut k, mut c, mut anim) in &mut q {
+    for (e, mut o, mut k, mut c, mut anim) in &mut q {
         let (pos, half) = (k.body.pos, k.body.half);
         if !o.started {
             o.started = true;
@@ -254,14 +254,22 @@ fn think(
         // after; its tells and its lunge steered here.
         let feet = pos.y - half.y;
         let over = ground(&sim, Vec2::new(pos.x, feet + 2.0), 120).map(|g| feet - g);
-        let height = HOVER.0 + (o.clock * 1.1).sin() * HOVER.1;
+        // (Mostly up out of reach, now and then down beside you: Terraria's
+        // eyes. It lunges down from up there.)
+        let (float, down) = float_height(o.clock, float_seed(e));
+        let height = float + (o.clock * 1.1).sin() * BOB;
         c.0.move_y = over.map_or(-0.5, |h| ((height - h) * 0.08).clamp(-1.0, 1.0));
         c.0.jump = false;
         match next {
-            // (Facing its prey, backing off or not: its mouth to them.)
+            // (Facing its prey, backing off or not: its mouth to them; down,
+            // beside them.)
             Doing::Hover => {
                 if let Some(tp) = tp {
                     c.0.aim = tp;
+                    if down {
+                        let to = tp.x + FLOAT_BESIDE * (pos.x - tp.x).signum() - pos.x;
+                        c.0.move_x = (to * 0.05).clamp(-1.0, 1.0);
+                    }
                 }
             }
             Doing::Gape(_) | Doing::Draw(_) => {

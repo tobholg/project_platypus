@@ -109,8 +109,8 @@ const SPIT_I: usize = 0;
 const BEAM_I: usize = 1;
 /// Hunting what's this near (cells).
 const AGGRO: f32 = 330.0;
-/// Hovering this high over the ground (its feet, cells), bobbing this much.
-const HOVER: (f32, f32) = (36.0, 3.0);
+/// Bobbing this much as it floats (cells; `float_height`).
+const BOB: f32 = 3.0;
 /// Its eye's white (cells across, half), its iris and pupil.
 const WHITE: f32 = 14.5;
 const IRIS: f32 = 6.0;
@@ -160,6 +160,36 @@ fn trace(sim: &SimWorld, from: Vec2, dir: Vec2, reach: f32) -> Vec2 {
         d += 1.0;
     }
     from + dir * reach
+}
+
+/// Floating as a Terraria eye does: mostly high, out of reach (it shoots
+/// from up there), and now and then sweeping down within it, beside you,
+/// a while (to bite; to be hit), then up again. Its height over the ground
+/// now (cells) and whether it's coming down or down (to close in on you
+/// sideways). `seed` (0..1) staggers one from another.
+pub(super) fn float_height(clock: f32, seed: f32) -> (f32, bool) {
+    let period = FLOAT_PERIOD + FLOAT_PERIOD * 0.35 * seed;
+    let t = (clock + seed * 31.0).rem_euclid(period);
+    // (Down for the last stretch of its round, eased in and out.)
+    let into = t - (period - FLOAT_DOWN);
+    let ease = |x: f32| x.clamp(0.0, 1.0) * x.clamp(0.0, 1.0) * (3.0 - 2.0 * x.clamp(0.0, 1.0));
+    let down = ease(into / FLOAT_EASE).min(ease((FLOAT_DOWN - into) / FLOAT_EASE));
+    (FLOAT_HIGH + (FLOAT_LOW - FLOAT_HIGH) * down, into > 0.0 && into < FLOAT_DOWN - FLOAT_EASE)
+}
+
+/// Its float (`float_height`): up this high, down this low (cells over the
+/// ground), round every so often (s, and up to a third longer), down this
+/// long of it, easing this long each way; down, this far to your side.
+const FLOAT_HIGH: f32 = 74.0;
+const FLOAT_LOW: f32 = 14.0;
+const FLOAT_PERIOD: f32 = 9.0;
+const FLOAT_DOWN: f32 = 4.2;
+const FLOAT_EASE: f32 = 0.9;
+pub(super) const FLOAT_BESIDE: f32 = 24.0;
+
+/// A creature's stagger for its float, from its entity.
+pub(super) fn float_seed(e: Entity) -> f32 {
+    (e.to_bits() % 97) as f32 / 97.0
 }
 
 pub(super) fn ground(sim: &SimWorld, at: Vec2, reach: i32) -> Option<f32> {
@@ -338,7 +368,10 @@ fn think(
         // and reels; at a lamp, it backs off from it; busy, it holds still.
         let feet = pos.y - half.y;
         let over = ground(&sim, Vec2::new(pos.x, feet + 2.0), 120).map(|g| feet - g);
-        let height = if o.blind > 0.0 { HOVER.0 * 0.5 } else { HOVER.0 } + (o.clock * 1.3).sin() * HOVER.1;
+        // (Mostly up out of reach, now and then down beside you: Terraria's
+        // eyes. Blinded, it sinks low, reeling.)
+        let (float, down) = float_height(o.clock, float_seed(e));
+        let height = if o.blind > 0.0 { FLOAT_LOW } else { float } + (o.clock * 1.3).sin() * BOB;
         c.0.move_y = over.map_or(-0.5, |h| ((height - h) * 0.08).clamp(-1.0, 1.0));
         c.0.jump = false;
         if o.blind > 0.0 {
@@ -347,6 +380,9 @@ fn think(
             c.0.move_x = if at.x < pos.x { 1.0 } else { -1.0 };
         } else if !matches!(next, Doing::Hover) {
             c.0.move_x = 0.0;
+        } else if let (true, Some((_, tp))) = (down, target) {
+            let to = tp.x + FLOAT_BESIDE * (pos.x - tp.x).signum() - pos.x;
+            c.0.move_x = (to * 0.03).clamp(-1.0, 1.0);
         }
         // Its nerves trailing under it.
         for (i, l) in o.nerves.iter_mut().enumerate() {

@@ -1,5 +1,7 @@
 // A watcher: a floating eye the size of you, nerves trailing under it,
-// hanging high in the dark, keeping its distance, its iris following you.
+// hanging high in the dark, out of reach, keeping its distance, its iris
+// following you; now and then it comes down beside you a while (as
+// Terraria's eyes do), then up again.
 // It squints and spits blight (glowing purple sludge: it poisons, withers
 // what grows, gives off a toxic mist); its iris kindles and a thin line
 // reaches out from it, following you slowly, then holding still: then the
@@ -31,6 +33,6 @@
         fly_speed: 85,
         fly_accel: 300,
     ),
-    brain: (kind: "hunter", params: (aggro: 330, close: Range(near: 140, far: 240))),
+    brain: (kind: "hunter", params: (aggro: 330, close: Range(near: 70, far: 150))),
     custom: (name: "watcher", params: ()),
 )

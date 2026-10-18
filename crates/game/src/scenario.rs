@@ -9571,6 +9571,7 @@ fn watcher_script(
     mut hits: MessageWriter<crate::combat::Hit>,
     mut flares: MessageWriter<crate::fx::Flare>,
     mut state: Local<(u8, f32, f32, &'static str)>,
+    mut second: Local<u32>,
 ) {
     if s.name != "watcher" {
         return;
@@ -9607,6 +9608,10 @@ fn watcher_script(
         return;
     };
     let doing = o.map_or("?", |o| o.doing());
+    if t as u32 != *second {
+        *second = t as u32;
+        info!("watcher: t {t:.0} {:.0} up, {:.0} off", wk.body.pos.y - wk.body.half.y - fl, (wk.body.pos.x - k.body.pos.x).abs());
+    }
     if doing != state.3 {
         info!("watcher: t {t:.2} {doing} at ({:.0}, {:.0} up); the player lost {:.0}; blight {}, mist {}", wk.body.pos.x, wk.body.pos.y - wk.body.half.y - fl, state.2, count("blight"), count("blight_mist"));
         state.3 = doing;
@@ -9645,7 +9650,7 @@ fn gnasher_script(
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::custom::gnasher::Gnasher>), Without<LocalPlayer>>,
     mut hits: MessageWriter<crate::combat::Hit>,
-    mut state: Local<(u8, f32, f32, &'static str, f32)>,
+    mut state: Local<(u8, f32, f32, &'static str, f32, u32)>,
 ) {
     if s.name != "gnasher" {
         return;
@@ -9682,6 +9687,11 @@ fn gnasher_script(
         return;
     };
     let doing = o.map_or("?", |o| o.doing());
+    // (Its height, a second at a time: up out of reach, down now and then.)
+    if t as u32 != state.5 {
+        state.5 = t as u32;
+        info!("gnasher: t {t:.0} {:.0} up, {:.0} off", gk.body.pos.y - gk.body.half.y - fl, (gk.body.pos.x - k.body.pos.x).abs());
+    }
     if doing != state.3 {
         info!("gnasher: t {t:.2} {doing} at ({:.0}, {:.0} up); the player at {:.0}, lost {:.0}", gk.body.pos.x, gk.body.pos.y - gk.body.half.y - fl, k.body.pos.x, state.2);
         if doing == "draw" {
