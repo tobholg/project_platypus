@@ -693,8 +693,25 @@ fn rain_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
     let Ok(p) = player.single() else { return };
     let x = p.body.pos.x as i32;
     match *step {
+        // (`PLATYPUS_RAIN_ROOF=1`: a stone slab overhead with gaps in it,
+        // to shade the sun: god rays through them.)
+        0 if s.elapsed > 1.0 && std::env::var("PLATYPUS_RAIN_ROOF").is_ok() && s.elapsed < 1.1 => {
+            if let Some(stone) = sim.materials().id("stone") {
+                let y = p.body.pos.y as i32 + 110;
+                for xx in (x - 260..x + 260).step_by(1) {
+                    if (xx - x).rem_euclid(70) < 12 {
+                        continue;
+                    }
+                    for dy in 0..10 {
+                        sim.world.set(CellPos::new(xx, y + dy), platypus_sim::Cell::new(stone, 120));
+                    }
+                }
+            }
+        }
         0 if s.elapsed > 2.0 => {
-            if let Some(ground) = find_ground(&sim.world, x + 120, p.body.pos.y as i32 + 90, 450) {
+            if let Some(ground) = find_ground(&sim.world, x + 120, p.body.pos.y as i32 + 90, 450)
+                && std::env::var("PLATYPUS_RAIN_ROOF").is_err()
+            {
                 sim.queue(WorldEdit::Ignite { center: CellPos::new(x + 120, ground + 3), radius: 9 });
             }
             *step = 1;

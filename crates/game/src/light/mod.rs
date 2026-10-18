@@ -579,6 +579,16 @@ pub(crate) fn update_daylight(
     clear.0 = Color::srgb(color[0], color[1], color[2]);
 }
 
+/// God rays: the sun's light in open air shown as haze at this share (at
+/// most: `compute_light`).
+const SHAFTS: f32 = 0.3;
+
+/// `SHAFTS`, or `PLATYPUS_SHAFTS` (to look at them).
+fn shafts_scale() -> f32 {
+    static K: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+    *K.get_or_init(|| std::env::var("PLATYPUS_SHAFTS").ok().and_then(|v| v.parse().ok()).unwrap_or(SHAFTS))
+}
+
 /// The weather's gloom follows it over this many seconds.
 const GLOOM_EASE: f32 = 4.0;
 
@@ -652,7 +662,7 @@ fn compute_light(
     flashes: Res<Flashes>,
     zoom: Res<Zoom>,
     time: Res<Time>,
-    (cursor, off_light, fixed, mut glints, mut cones): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>, ResMut<Cones>),
+    (cursor, off_light, fixed, mut glints, mut cones, gloom): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>, ResMut<Cones>, Res<Gloom>),
     mut overlay: ResMut<Overlay>,
     mut pending: ResMut<Pending>,
     mut metrics: ResMut<LightMetrics>,
@@ -742,6 +752,10 @@ fn compute_light(
     };
     let open_top: Vec<bool> = (0..w).map(open).collect();
     let sky = sky_lights(day.time, day.sky);
+    // God rays: the sun's light in the open air, a faint haze along it
+    // (shafts where something shades it: under a crown, past a cliff, in a
+    // cave's mouth); most as a sky breaks (clouding over, not pouring).
+    let shafts = shafts_scale() * (0.3 + 0.7 * gloom.cover * (1.0 - 0.75 * gloom.rain));
 
     // What the player carries.
     if let Ok((k, hand)) = player.single() {
@@ -825,8 +839,16 @@ fn compute_light(
     let glint_seed = sim.world.tick() ^ (time.elapsed_secs_f64() * 1000.0) as u64;
     pending.0 = Some(AsyncComputeTaskPool::get().spawn(async move {
         let started = Instant::now();
-        for (dir, color) in sky {
-            g.seed_directional(dir, color, &open_top);
+        // (The sun's share of the seeds kept apart: the shafts.)
+        let mut sun = None;
+        for (i, (dir, color)) in sky.into_iter().enumerate() {
+            if i == 0 && shafts > 0.0 {
+                let before = g.seed.clone();
+                g.seed_directional(dir, color, &open_top);
+                sun = Some(g.seed.iter().zip(&before).zip(&g.opacity).map(|((a, b), &o)| if o < 0.05 { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] } else { [0.0; 3] }).collect::<Vec<_>>());
+            } else {
+                g.seed_directional(dir, color, &open_top);
+            }
         }
         g.charge_phosphor(previous.as_ref(), dt);
         g.shine(previous.as_ref());
@@ -849,12 +871,13 @@ fn compute_light(
         for y in 0..h {
             for x in 0..w {
                 let (l, gl, c) = (g.light[y * w + x], g.glow[y * w + x], g.caustic[y * w + x]);
+                let ray = sun.as_ref().map_or([0.0; 3], |s| s[y * w + x]);
                 let i = ((h - 1 - y) * w + x) * 4;
                 // (Caustics added whole, not hazed: bent light shows over
-                // daylight.)
+                // daylight; the sun's shafts faintly.)
                 for ch in 0..3 {
                     light[i + ch] = encode(l[ch].max(amb));
-                    glow[i + ch] = encode(gl[ch] * haze + c[ch]);
+                    glow[i + ch] = encode(gl[ch] * haze + c[ch] + ray[ch] * shafts);
                 }
             }
         }
