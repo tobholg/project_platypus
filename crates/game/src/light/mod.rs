@@ -579,9 +579,37 @@ pub(crate) fn update_daylight(
     clear.0 = Color::srgb(color[0], color[1], color[2]);
 }
 
-/// God rays: the sun's light in open air shown as haze at this share (at
+/// God rays: the sun's light in open air, where it stands out from what's round it, shown as haze at this share (at
 /// most: `compute_light`).
-const SHAFTS: f32 = 0.3;
+const SHAFTS: f32 = 1.0;
+
+/// How far round (texels) a shaft must stand out from to show.
+const SHAFT_AROUND: usize = 6;
+
+/// A box blur of `v` (`w`×`h`), `r` texels each way, across then down.
+fn blur(v: &[Rgb], w: usize, h: usize, r: usize) -> Vec<Rgb> {
+    let pass = |src: &[Rgb], across: bool| -> Vec<Rgb> {
+        let (len, lines) = if across { (w, h) } else { (h, w) };
+        let at = |line: usize, i: usize| if across { line * w + i } else { i * w + line };
+        let mut out = vec![[0.0; 3]; w * h];
+        for line in 0..lines {
+            for i in 0..len {
+                let (lo, hi) = (i.saturating_sub(r), (i + r).min(len - 1));
+                let mut sum = [0.0f32; 3];
+                for j in lo..=hi {
+                    let p = src[at(line, j)];
+                    for ch in 0..3 {
+                        sum[ch] += p[ch];
+                    }
+                }
+                let n = (hi - lo + 1) as f32;
+                out[at(line, i)] = sum.map(|s| s / n);
+            }
+        }
+        out
+    };
+    pass(&pass(v, true), false)
+}
 
 /// `SHAFTS`, or `PLATYPUS_SHAFTS` (to look at them).
 fn shafts_scale() -> f32 {
@@ -845,7 +873,12 @@ fn compute_light(
             if i == 0 && shafts > 0.0 {
                 let before = g.seed.clone();
                 g.seed_directional(dir, color, &open_top);
-                sun = Some(g.seed.iter().zip(&before).zip(&g.opacity).map(|((a, b), &o)| if o < 0.05 { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] } else { [0.0; 3] }).collect::<Vec<_>>());
+                // (Only what stands out from its surroundings: lit air beside
+                // shaded air, a shaft. Open sky, evenly lit, adds nothing: as
+                // haze all over it was a glare washing the overworld out.)
+                let rays: Vec<Rgb> = g.seed.iter().zip(&before).zip(&g.opacity).map(|((a, b), &o)| if o < 0.05 { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] } else { [0.0; 3] }).collect();
+                let around = blur(&rays, w, h, SHAFT_AROUND);
+                sun = Some(rays.iter().zip(&around).map(|(r, a)| [0, 1, 2].map(|ch| (r[ch] - a[ch]).max(0.0))).collect::<Vec<_>>());
             } else {
                 g.seed_directional(dir, color, &open_top);
             }
