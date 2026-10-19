@@ -26,6 +26,10 @@ pub struct LairDef {
     /// `none` for plain rock); empty: any.
     #[serde(default)]
     pub zones: Vec<String>,
+    /// Depth bands it's found in (`underground`, `caverns`, `deep`...: as
+    /// deep as each is in this world's size); empty: any.
+    #[serde(default)]
+    pub bands: Vec<String>,
     /// Share of the chambers it could take that it does.
     pub chance: f32,
     /// What lines its walls, and how thickly (0..1).
@@ -132,6 +136,7 @@ pub fn place(plan: &WorldPlan, caves: &Caves, defs: &[LairDef]) -> Vec<Option<u1
                     let roll = (hash(&[plan.seed, 0x1A12, i as u64, *k as u64]) % 10_000) as f32 / 10_000.0;
                     (d.depth.0..d.depth.1).contains(&depth)
                         && (d.zones.is_empty() || d.zones.iter().any(|z| z == zone))
+                        && (d.bands.is_empty() || d.bands.iter().any(|b| b == plan.band_at(c.y as i32).name()))
                         && c.rx >= d.min_size
                         && roll < d.chance
                 })

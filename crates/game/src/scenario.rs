@@ -337,7 +337,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -10415,6 +10415,76 @@ fn stormboots_script(
         let hp: Vec<String> = them.iter().filter(|x| x.1.kind == "zombie").map(|x| format!("{:.0}/{:.0} at {:.0}", x.3.hp, x.3.max, x.2.body.pos.x)).collect();
         info!("stormboots: the zombies after: {}", if hp.is_empty() { "none".into() } else { hp.join(", ") });
         state.0 = 3;
+    }
+}
+
+/// `layers` (a generated world; `PLATYPUS_LIFE_RATE=30` to hurry life):
+/// the player (who can't die) put in a cave in the middle of each depth
+/// band below the ground in turn (`PLATYPUS_LAYER_SECS`, 10, in each);
+/// logs what came round them in each (within 700 cells).
+#[allow(clippy::type_complexity)]
+fn layers_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut state: Local<(usize, f32, Option<Vec2>)>,
+) {
+    if s.name != "layers" {
+        return;
+    }
+    const BANDS: [&str; 4] = ["underground", "caverns", "deep", "underworld"];
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let t = s.elapsed;
+    let dwell = std::env::var("PLATYPUS_LAYER_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(10.0);
+    if state.0 >= BANDS.len() || t < 0.5 {
+        return;
+    }
+    let band = BANDS[state.0];
+    match state.2 {
+        None => {
+            // Its middle (by the bands' names, down a column by the start),
+            // then a cave's air there with room.
+            let x = sim.generator.spawn_point().x + 400;
+            let ys: Vec<i32> = (0..30000).step_by(8).map(|d| sim.generator.spawn_point().y - d).filter(|&y| sim.generator.band_hint(y) == Some(band)).collect();
+            let Some(&mid) = ys.get(ys.len() / 2) else {
+                warn!("layers: no {band}");
+                *state = (state.0 + 1, t, None);
+                return;
+            };
+            let air = |x: i32, y: i32| sim.generator.material_hint(x, y).is_some_and(|m| m == platypus_sim::MaterialId::AIR);
+            let spot = (0..400).flat_map(|r| [(r * 7) as i32, -(r * 7) as i32]).flat_map(|dx| (-300..300).step_by(10).map(move |dy| (x + dx, mid + dy))).find(|&(x, y)| air(x, y) && air(x, y + 20) && air(x - 8, y) && air(x + 8, y));
+            let Some((x, y)) = spot else {
+                warn!("layers: no cave in the {band}");
+                *state = (state.0 + 1, t, None);
+                return;
+            };
+            let at = Vec2::new(x as f32, y as f32);
+            k.body.pos = at;
+            k.prev_pos = at;
+            k.body.vel = Vec2::ZERO;
+            *state = (state.0, t, Some(at));
+            info!("layers: t {t:.1}: into the {band}, at ({x}, {y})");
+        }
+        Some(at) => {
+            if k.body.pos.distance(at) > 80.0 {
+                k.body.pos = at;
+                k.prev_pos = at;
+                k.body.vel = Vec2::ZERO;
+            }
+            if t - state.1 >= dwell {
+                let mut kinds: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+                for (c, ck) in &them {
+                    if ck.body.pos.distance(at) < 700.0 {
+                        *kinds.entry(c.kind.clone()).or_default() += 1;
+                    }
+                }
+                let list: Vec<String> = kinds.iter().map(|(k, n)| format!("{k} ×{n}")).collect();
+                info!("layers: the {band} after {dwell:.0} s: {}", if list.is_empty() { "nothing".into() } else { list.join(", ") });
+                *state = (state.0 + 1, t, None);
+            }
+        }
     }
 }
 

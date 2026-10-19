@@ -9,6 +9,8 @@
 //   above: (low, high): put that high above the spot (fliers in the air)
 //   depth: (from, to): only that deep under the surface (cells)
 //   zone: only in that underground biome (fungal, crystal, toxic, none)
+//   bands: only in those depth bands (surface, underground, caverns, deep,
+//     underworld: each as deep as it is in this world's size)
 //   (Enemies too: what lives down there turns up as you go.)
 //   most: at most this many near the player; rate: a chance a second to add one
 //   biomes: only over those surface biomes (plains, forest, desert, tundra,
@@ -30,23 +32,14 @@
     (kind: "frog", place: Shore, most: 4, rate: 0.6),
     (kind: "firefly", place: Surface, when: Night, above: (9, 36), most: 14, rate: 3.0),
     (kind: "fish", place: Water, most: 8, rate: 1.2),
-    // Bats: harmless ones flitting in the shallow caves; below, cave bat
-    // colonies asleep on the roofs (a handful, flying up to roost; the big
-    // colonies are lairs: lairs.ron).
-    (kind: "bat", place: Cave, depth: (0, 150), most: 3, rate: 0.35),
-    (kind: "cave_bat", place: Cave, depth: (120, 150000), group: (4, 7), most: 9, rate: 0.06),
     // Slimes live on the surface, by day: the day's trouble in grass and
     // woods (a few at a time), a blue one now and then. (Underground only
     // the odd ones: the glutton deep down, acid slimes in the toxic caves.)
     (kind: "slime", place: Surface, when: Day, biomes: ["plains", "forest", "jungle", "swamp"], most: 3, rate: 0.1),
     (kind: "blue_slime", place: Surface, when: Day, biomes: ["plains", "forest", "tundra"], most: 1, rate: 0.04),
-    (kind: "glutton", place: Cave, depth: (400, 150000), most: 1, rate: 0.04),
-    (kind: "acid_slime", place: Cave, zone: "toxic", most: 4, rate: 0.6),
-    (kind: "skeleton", place: Cave, depth: (300, 150000), most: 2, rate: 0.25),
     // The dead come up out of the ground: on the surface by night, a few
     // at a time; under it any time.
     (kind: "zombie", place: Surface, when: Night, most: 5, rate: 0.1, group: (1, 3), emerges: true),
-    (kind: "zombie", place: Cave, depth: (80, 150000), most: 3, rate: 0.08, group: (1, 2), emerges: true),
     // The dark wood (a deep forest, the start valley's beside it): the dead
     // come up out of its floor by day too (its canopy shades them), and
     // spiders keep it.
@@ -55,10 +48,8 @@
     // Chain wraiths: out at night (fading at dawn), and in the deep dark
     // any time; one at a time, never near the start.
     (kind: "chain_wraith", place: Surface, when: Night, above: (40, 90), most: 1, rate: 0.02, away: 1500),
-    (kind: "chain_wraith", place: Cave, depth: (600, 150000), most: 1, rate: 0.015),
     // Dread knights: rare, deep down, or out on the high cold ground at
     // night, far from the start.
-    (kind: "dread_knight", place: Cave, depth: (900, 150000), most: 1, rate: 0.006),
     (kind: "dread_knight", place: Surface, biomes: ["mountains", "tundra"], when: Night, most: 1, rate: 0.004, away: 3000),
     // Jan Willy, out for a walk on the plains and in the woods, now and then.
     // (Not for now: the user, 2026-10-18.)
@@ -67,21 +58,15 @@
     // (Not for now: the user, 2026-10-18.)
     // (kind: "olmer", place: Surface, biomes: ["plains", "desert", "mountains"], when: Day, most: 1, rate: 0.006, away: 1500),
     // A Fallen Templar, wandering the deep dark (they keep the crypts).
-    (kind: "fallen_templar", place: Cave, depth: (1200, 150000), most: 1, rate: 0.003),
     // Bloat toads: in the swamps and jungles, and by their water.
     (kind: "bloat_toad", place: Surface, biomes: ["swamp", "jungle"], most: 2, rate: 0.03),
     (kind: "bloat_toad", place: Shore, biomes: ["swamp", "jungle"], most: 1, rate: 0.02),
     // Necromancers: in the deep (and among crypts' guards: worldgen).
-    (kind: "necromancer", place: Cave, depth: (700, 150000), most: 1, rate: 0.004),
     // Watchers: floating eyes in the deep dark, and out in the night air
     // (never near the start). Gnashers, their biting cousins (flying
     // mouths, a lure glowing over their brows), likewise.
-    (kind: "watcher", place: Cave, depth: (450, 150000), most: 1, rate: 0.01),
     (kind: "watcher", place: Surface, when: Night, above: (30, 60), most: 1, rate: 0.04, away: 1500),
     (kind: "gnasher", place: Surface, when: Night, above: (30, 60), most: 2, rate: 0.05, away: 1500),
-    (kind: "gnasher", place: Cave, depth: (450, 150000), most: 1, rate: 0.01),
-    (kind: "vampire_bat", place: Cave, depth: (450, 150000), most: 2, rate: 0.12),
-    (kind: "spider", place: Cave, depth: (225, 150000), most: 1, rate: 0.06),
     // The bestiary's walkers (BE limbs), where they belong.
     (kind: "stalker", place: Surface, biomes: ["plains", "desert", "tundra"], most: 2, rate: 0.08, away: 3000),
     (kind: "crab", place: Shore, most: 2, rate: 0.15),
@@ -91,7 +76,29 @@
     // (Not for now: the user, 2026-10-18.)
     // (kind: "tyrant", place: Surface, biomes: ["jungle", "deep forest"], most: 1, rate: 0.01, away: 3000),
     (kind: "strider", place: Surface, biomes: ["desert", "mountains", "tundra"], most: 1, rate: 0.015, away: 2500),
-    (kind: "centipede", place: Cave, depth: (150, 150000), most: 1, rate: 0.05),
-    // Rats: packs in the caves, scavenging.
-    (kind: "rat", place: Cave, depth: (40, 150000), group: (3, 6), most: 8, rate: 0.1),
+
+    // ---- Under the ground, layer by layer (the depth bands: lairs.ron's
+    // lairs likewise). The Burrows (the shallow caves and the underground
+    // band): the first trips down, fair for copper and leather. The
+    // Caverns: spiders and what was too much up above. The Deep: the
+    // worst of them, and their stronger kin.
+    // The Burrows.
+    (kind: "bat", place: Cave, depth: (0, 150), most: 3, rate: 0.35),
+    (kind: "rat", place: Cave, depth: (40, 150000), bands: ["surface", "underground"], group: (2, 4), most: 6, rate: 0.1),
+    (kind: "zombie", place: Cave, depth: (80, 150000), bands: ["surface", "underground", "caverns"], most: 2, rate: 0.08, emerges: true),
+    (kind: "centipede", place: Cave, depth: (150, 150000), bands: ["surface", "underground", "caverns"], most: 1, rate: 0.05),
+    (kind: "cave_bat", place: Cave, depth: (250, 150000), bands: ["underground", "caverns"], group: (3, 5), most: 6, rate: 0.06),
+    (kind: "skeleton", place: Cave, depth: (500, 150000), bands: ["underground", "caverns"], most: 2, rate: 0.2),
+    (kind: "acid_slime", place: Cave, zone: "toxic", most: 4, rate: 0.6),
+    // The Caverns.
+    (kind: "spider", place: Cave, bands: ["caverns"], most: 1, rate: 0.06),
+    (kind: "glutton", place: Cave, bands: ["caverns", "deep"], most: 1, rate: 0.04),
+    (kind: "vampire_bat", place: Cave, bands: ["caverns", "deep"], most: 2, rate: 0.12),
+    (kind: "watcher", place: Cave, bands: ["caverns", "deep"], most: 1, rate: 0.012),
+    (kind: "gnasher", place: Cave, bands: ["caverns", "deep"], most: 1, rate: 0.012),
+    (kind: "chain_wraith", place: Cave, bands: ["caverns", "deep"], most: 1, rate: 0.015),
+    // The Deep.
+    (kind: "necromancer", place: Cave, bands: ["deep", "underworld"], most: 1, rate: 0.006),
+    (kind: "dread_knight", place: Cave, bands: ["deep", "underworld"], most: 1, rate: 0.006),
+    (kind: "fallen_templar", place: Cave, bands: ["deep", "underworld"], most: 1, rate: 0.004),
 ]

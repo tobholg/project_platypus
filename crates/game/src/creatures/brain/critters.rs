@@ -248,6 +248,11 @@ pub struct Haunt {
     /// `none` for plain rock).
     #[serde(default)]
     pub zone: Option<String>,
+    /// Only in these depth bands (`surface`, `underground`, `caverns`,
+    /// `deep`, `underworld`: as deep as each is in this world's size); none:
+    /// any.
+    #[serde(default)]
+    pub bands: Vec<String>,
     /// At most this many of it round the player.
     pub most: usize,
     /// A chance a second to spawn one when there are fewer.
@@ -520,6 +525,9 @@ fn ambient(
         if let Some(z) = &h.zone
             && sim.generator.zone_at(at.x as i32, at.y as i32).unwrap_or("none") != z
         {
+            continue;
+        }
+        if !h.bands.is_empty() && !sim.generator.band_hint(at.y as i32).is_some_and(|b| h.bands.iter().any(|w| w == b)) {
             continue;
         }
         if h.place == Place::Cave && at.distance(p) < if h.emerges { EMERGE_NEAR.0 } else { OUT_OF_SIGHT * 0.7 } {
