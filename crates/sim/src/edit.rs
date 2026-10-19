@@ -94,7 +94,7 @@ impl EditReport {
 
 /// Blocks: what hands mine and build in (DESIGN D2), `BLOCK` × `BLOCK`
 /// cells on a fixed grid. The world stays cells.
-pub const BLOCK: i32 = 6;
+pub const BLOCK: i32 = 8;
 
 /// The block a cell is in.
 pub fn block_of(p: CellPos) -> CellPos {

@@ -20,13 +20,14 @@ pub use platypus_sim::BLOCK;
 /// A room slot as written in the `.rooms` files, in blocks.
 const SRC_W: usize = 16;
 const SRC_H: usize = 10;
-/// Built half as big again: each written column and row (from the bottom)
-/// is this many in the world. The edges stay one block (walls, floors,
-/// ceilings); doors, holes and the rooms between them grow. A copy keeps
+/// Built a little bigger: each written column and row (from the bottom)
+/// is this many in the world (on 8-cell blocks a slot is 144 x 88 cells, as
+/// it was on 6-cell blocks built half as big again). The edges stay one
+/// block (walls, floors, ceilings); doors and holes grow. A copy keeps
 /// what's built (walls, windows, water) but not what's placed (a chest, a
 /// candle, a guard; a platform or spikes doubled upward).
-const COL_COPIES: [i32; SRC_W] = [1, 2, 1, 2, 1, 2, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1];
-const ROW_COPIES: [i32; SRC_H] = [1, 1, 2, 2, 1, 2, 1, 2, 2, 1];
+const COL_COPIES: [i32; SRC_W] = [1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 1, 1];
+const ROW_COPIES: [i32; SRC_H] = [1, 1, 1, 2, 1, 1, 1, 1, 1, 1];
 /// A room slot, in blocks.
 pub const SLOT_W: i32 = sum(&COL_COPIES);
 pub const SLOT_H: i32 = sum(&ROW_COPIES);

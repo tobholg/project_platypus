@@ -149,9 +149,14 @@ mod tests {
         s
     }
 
+    /// A point, written in sixths of a block (cells, when blocks were six):
+    /// the tests read the same at any block size.
     fn at(x: f32, y: f32) -> Vec2 {
-        Vec2::new(x, y)
+        Vec2::new(x, y) * (BLOCK as f32 / 6.0)
     }
+
+    /// Reach: six blocks.
+    const REACH: f32 = 6.0 * BLOCK as f32;
 
     #[test]
     fn the_line_visits_every_block_it_crosses_once() {
@@ -170,12 +175,12 @@ mod tests {
         // Standing at x 2 blocks, hand at 1.5 blocks up; cursor deep in the
         // wall beyond reach of its face: the face is hit.
         let hand = at(15.0, 9.0);
-        let t = mine_target(hand, at(60.0, 15.0), 36.0, minable);
+        let t = mine_target(hand, at(60.0, 15.0), REACH, minable);
         assert_eq!(t, Some(CellPos::new(6, 1)), "the wall's face");
         // Pointing down: the floor under you.
-        assert_eq!(mine_target(hand, at(15.0, -9.0), 36.0, minable), Some(CellPos::new(2, 0)));
+        assert_eq!(mine_target(hand, at(15.0, -9.0), REACH, minable), Some(CellPos::new(2, 0)));
         // Out of reach: nothing.
-        assert_eq!(mine_target(hand, at(15.0, 90.0), 36.0, minable), None);
+        assert_eq!(mine_target(hand, at(15.0, 90.0), REACH, minable), None);
     }
 
     /// Solid ground everywhere below block row 0.
@@ -185,13 +190,13 @@ mod tests {
 
     #[test]
     fn holding_down_digs_a_shaft_the_body_fits_row_by_row() {
-        // A body 9 wide standing on the ground at y 0, from x 9 to 18:
-        // across blocks 1, 2 (cells 6–17).
+        // A body a block and a half wide standing on the ground at y 0, from
+        // x 1.5 blocks to 3: across blocks 1, 2.
         let mut dug = HashSet::new();
         let mut order = Vec::new();
         for _ in 0..6 {
             let (lo, hi) = (at(9.0, 0.0), at(18.0, 22.5));
-            let t = tunnel_target(lo, hi, at(13.5, 15.0), at(15.0, -45.0), 36.0, ground(&dug)).expect("something to dig");
+            let t = tunnel_target(lo, hi, at(13.5, 15.0), at(15.0, -45.0), REACH, ground(&dug)).expect("something to dig");
             dug.insert((t.x, t.y));
             order.push((t.x, t.y));
         }
@@ -202,14 +207,14 @@ mod tests {
     #[test]
     fn aiming_sideways_digs_a_face_as_tall_as_the_body() {
         let dug = HashSet::new();
-        // A wall of solid blocks from x 4 (cell 24) on.
+        // A wall of solid blocks from block 4 on.
         let wall = |b: CellPos| b.x >= 4 && b.y >= 0;
         let (lo, hi) = (at(9.0, 0.0), at(18.0, 22.5));
-        let t = tunnel_target(lo, hi, at(13.5, 15.0), at(60.0, 12.0), 36.0, wall).unwrap();
+        let t = tunnel_target(lo, hi, at(13.5, 15.0), at(60.0, 12.0), REACH, wall).unwrap();
         assert_eq!(t.x, 4, "the column just in front");
         assert!((0..=3).contains(&t.y), "within the body's height");
         // Diagonally it's the line toward the cursor, like before.
-        assert_eq!(tunnel_target(lo, hi, at(13.5, 15.0), at(30.0, -3.0), 36.0, ground(&dug)), mine_target(at(13.5, 15.0), at(30.0, -3.0), 36.0, ground(&dug)));
+        assert_eq!(tunnel_target(lo, hi, at(13.5, 15.0), at(30.0, -3.0), REACH, ground(&dug)), mine_target(at(13.5, 15.0), at(30.0, -3.0), REACH, ground(&dug)));
     }
 
     #[test]
@@ -219,13 +224,13 @@ mod tests {
         let supported = |b: CellPos| [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dy)| solid.contains(&(b.x + dx, b.y + dy)));
         let hand = at(15.0, 9.0);
         // On the floor, under the cursor.
-        assert_eq!(place_target(hand, at(27.75, 7.5), 36.0, free, supported), Some(CellPos::new(4, 1)));
+        assert_eq!(place_target(hand, at(27.75, 7.5), REACH, free, supported), Some(CellPos::new(4, 1)));
         // Cursor inside the wall: against the wall's face.
-        assert_eq!(place_target(hand, at(39.0, 9.0), 36.0, free, supported), Some(CellPos::new(5, 1)));
+        assert_eq!(place_target(hand, at(39.0, 9.0), REACH, free, supported), Some(CellPos::new(5, 1)));
         // Mid-air with nothing near: nothing to hold it.
-        assert_eq!(place_target(hand, at(21.0, 27.0), 36.0, free, supported), None);
+        assert_eq!(place_target(hand, at(21.0, 27.0), REACH, free, supported), None);
         // In the air just beside the wall's top: the spot beside it nearest
         // the cursor.
-        assert_eq!(place_target(hand, at(27.0, 33.0), 36.0, free, supported), Some(CellPos::new(5, 4)));
+        assert_eq!(place_target(hand, at(27.0, 33.0), REACH, free, supported), Some(CellPos::new(5, 4)));
     }
 }

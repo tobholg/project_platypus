@@ -1274,9 +1274,11 @@ fn an_axe_fells_a_tree_whose_branches_touch_its_neighbours() {
     fill_bg(&mut w, "wood", 60, 66, 1, 70);
     fill_bg(&mut w, "wood", 120, 126, 1, 70);
     fill_bg(&mut w, "wood", 66, 120, 50, 53);
-    // An axe through the left trunk, block by block (cells 60..66, 12..18).
-    for bx in [10, 11] {
-        w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(bx, 2), power: 50, max_hardness: 100, back: true });
+    // An axe through the left trunk, block by block (the blocks over
+    // cells 60..66, a block up off the ground).
+    use platypus_sim::BLOCK;
+    for bx in 60 / BLOCK..=65 / BLOCK {
+        w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(bx, 12 / BLOCK + 1), power: 50, max_hardness: 100, back: true });
     }
     assert_eq!(w.bodies().len(), 1, "it came away");
     assert_eq!(w.get_bg(CellPos::new(123, 40)).map(|c| c.material), Some(wood), "the neighbour stands");
@@ -1290,9 +1292,12 @@ fn an_axe_fells_a_trunk_buried_on_its_high_side() {
     // The ground rises on the trunk's right: its right half buried to 20.
     fill(&mut w, "dirt", 63, 191, 10, 20);
     fill_bg(&mut w, "wood", 54, 72, 1, 80);
-    // Everything an axe can reach at 12..18 (the left half, in the open).
-    for bx in [9, 10] {
-        w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(bx, 2), power: 50, max_hardness: 100, back: true });
+    // Everything an axe can reach in the block row over the ground, below
+    // where the dirt reaches (the left half, in the open).
+    use platypus_sim::BLOCK;
+    assert!(2 * BLOCK <= 20, "the row's under the dirt's top");
+    for bx in 54 / BLOCK..=62 / BLOCK {
+        w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(bx, 1), power: 50, max_hardness: 100, back: true });
     }
     assert_eq!(w.bodies().len(), 1, "cut as far as it reaches, it snaps");
 }
@@ -2254,7 +2259,7 @@ fn a_block_breaks_all_at_once_after_enough_hits() {
     let mut w = boxed_world(1, 1, 60);
     fill(&mut w, "stone", 1, 63, 1, 30);
     let stone = w.materials().expect_id("stone");
-    let block = CellPos::new(5, 3); // cells 30..36 × 18..24
+    let block = CellPos::new(5, 2); // inside the stone, clear of its edges
     let before = count(&w, stone);
     // Stone is 60 hard: a power-35 pick takes two hits, and the first
     // removes nothing.
@@ -2262,11 +2267,11 @@ fn a_block_breaks_all_at_once_after_enough_hits() {
     assert!(w.apply_edit(&hit).removed.is_empty(), "one hit only cracks it");
     assert_eq!(count(&w, stone), before);
     let r = w.apply_edit(&hit);
-    assert_eq!(r.removed, vec![(stone, (BLOCK * BLOCK) as u32)], "the second takes all 36 cells");
+    assert_eq!(r.removed, vec![(stone, (BLOCK * BLOCK) as u32)], "the second takes all its cells");
     assert!(block_cells(block).all(|p| w.get(p).unwrap().is_air()));
     // Just the block: its neighbours are whole.
-    assert_eq!(count(&w, stone), before - 36);
-    assert_ne!(w.get(CellPos::new(29, 19)).unwrap().material, MaterialId::AIR);
+    assert_eq!(count(&w, stone), before - (BLOCK * BLOCK) as usize);
+    assert_ne!(w.get(CellPos::new(5 * BLOCK - 1, 2 * BLOCK + 1)).unwrap().material, MaterialId::AIR);
 }
 
 #[test]
@@ -2302,80 +2307,90 @@ fn ore_beyond_a_tools_tier_stays_in_the_block() {
     fill(&mut w, "stone", 1, 63, 1, 30);
     let (stone, obsidian) = (w.materials().expect_id("stone"), w.materials().expect_id("obsidian"));
     // Two cells of the block are too hard for this pick.
-    w.set(CellPos::new(31, 19), Cell::new(obsidian, 0));
-    w.set(CellPos::new(32, 19), Cell::new(obsidian, 0));
-    let hit = WorldEdit::MineBlock { block: CellPos::new(5, 3), power: 35, max_hardness: 100, back: false };
+    use platypus_sim::BLOCK;
+    let (a, b) = (CellPos::new(5 * BLOCK + 1, 2 * BLOCK + 1), CellPos::new(5 * BLOCK + 2, 2 * BLOCK + 1));
+    w.set(a, Cell::new(obsidian, 0));
+    w.set(b, Cell::new(obsidian, 0));
+    let hit = WorldEdit::MineBlock { block: CellPos::new(5, 2), power: 35, max_hardness: 100, back: false };
     w.apply_edit(&hit);
     let r = w.apply_edit(&hit);
-    assert_eq!(r.removed, vec![(stone, 34)]);
-    assert_eq!(w.get(CellPos::new(31, 19)).unwrap().material, obsidian, "the hard bit stays");
+    assert_eq!(r.removed, vec![(stone, (BLOCK * BLOCK) as u32 - 2)]);
+    assert_eq!(w.get(a).unwrap().material, obsidian, "the hard bit stays");
 }
 
 #[test]
 fn placing_a_block_fills_its_empty_cells_with_the_pattern() {
-    use platypus_sim::block_cells;
+    use platypus_sim::{BLOCK, block_cells};
     let mut w = boxed_world(1, 1, 62);
-    fill(&mut w, "stone", 1, 63, 1, 12);
+    fill(&mut w, "stone", 1, 63, 1, 2 * BLOCK);
     let brick = w.materials().expect_id("brick");
-    let block = CellPos::new(5, 2); // cells 30..36 × 12..18, on the floor
-    w.set(CellPos::new(31, 13), Cell::new(w.materials().expect_id("dirt"), 0));
+    let block = CellPos::new(5, 2); // on the floor
+    let taken = CellPos::new(5 * BLOCK + 1, 2 * BLOCK + 1);
+    w.set(taken, Cell::new(w.materials().expect_id("dirt"), 0));
     let r = w.apply_edit(&WorldEdit::PlaceBlock { block, material: brick, back: false, most: u32::MAX });
-    assert_eq!(r.placed, 35, "all but the one taken");
-    for p in block_cells(block).filter(|&p| p != CellPos::new(31, 13)) {
+    assert_eq!(r.placed, (BLOCK * BLOCK) as u32 - 1, "all but the one taken");
+    for p in block_cells(block).filter(|&p| p != taken) {
         let c = w.get(p).unwrap();
         assert_eq!(c.material, brick);
         assert_eq!(Some(c.shade), w.materials().pattern_shade(brick, p.x, p.y), "shaded by the pattern at {p:?}");
     }
-    // The pattern is anchored to the world: the same cell of the next block
-    // over (12 cells on, one pattern width) has the same shade.
-    w.apply_edit(&WorldEdit::PlaceBlock { block: CellPos::new(7, 2), material: brick, back: false, most: u32::MAX });
-    assert_eq!(w.get(CellPos::new(30, 14)).unwrap().shade, w.get(CellPos::new(42, 14)).unwrap().shade);
+    // The pattern is anchored to the world: the same cell of a block 24
+    // cells off (whole blocks, and two pattern widths) has the same shade.
+    let other = CellPos::new(5 - 24 / BLOCK, 2);
+    w.apply_edit(&WorldEdit::PlaceBlock { block: other, material: brick, back: false, most: u32::MAX });
+    let y = 2 * BLOCK + 2;
+    assert_eq!(w.get(CellPos::new(5 * BLOCK, y)).unwrap().shade, w.get(CellPos::new(5 * BLOCK - 24, y)).unwrap().shade);
 }
 
 #[test]
 fn an_axe_block_takes_the_background_only_where_the_front_is_open() {
+    use platypus_sim::BLOCK;
     let mut w = boxed_world(1, 1, 63);
-    fill_bg(&mut w, "wood", 30, 42, 12, 18);
+    fill_bg(&mut w, "wood", 5 * BLOCK, 7 * BLOCK, 2 * BLOCK, 3 * BLOCK);
     // Something standing in front of half of it.
-    fill(&mut w, "stone", 36, 42, 12, 18);
+    fill(&mut w, "stone", 6 * BLOCK, 7 * BLOCK, 2 * BLOCK, 3 * BLOCK);
     let wood = w.materials().expect_id("wood");
     let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(5, 2), power: 50, max_hardness: 100, back: true });
-    assert_eq!(r.removed, vec![(wood, 36)]);
+    assert_eq!(r.removed, vec![(wood, (BLOCK * BLOCK) as u32)]);
     let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(6, 2), power: 50, max_hardness: 100, back: true });
     assert!(r.removed.is_empty(), "behind the stone it can't reach");
 }
 
 #[test]
 fn an_axe_takes_a_felled_log_lying_in_front_and_a_tree_behind_tall_grass() {
+    use platypus_sim::BLOCK;
+    let n = (BLOCK * BLOCK) as u32;
+    let rows = (2 * BLOCK, 3 * BLOCK);
     let mut w = boxed_world(1, 1, 63);
     // A log lying in the playfield (as a felled tree settles).
-    fill(&mut w, "wood", 30, 36, 12, 18);
+    fill(&mut w, "wood", 2 * BLOCK, 3 * BLOCK, rows.0, rows.1);
     let wood = w.materials().expect_id("wood");
-    let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(5, 2), power: 50, max_hardness: 100, back: true });
-    assert_eq!(r.removed, vec![(wood, 36)], "the axe bucks the log");
+    let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(2, 2), power: 50, max_hardness: 100, back: true });
+    assert_eq!(r.removed, vec![(wood, n)], "the axe bucks the log");
     // A stump behind tall grass.
-    fill_bg(&mut w, "wood", 42, 48, 12, 18);
-    fill(&mut w, "tall_grass", 42, 48, 12, 18);
-    let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(7, 2), power: 50, max_hardness: 100, back: true });
-    assert_eq!(r.removed, vec![(wood, 36)], "through the grass to the stump");
+    fill_bg(&mut w, "wood", 4 * BLOCK, 5 * BLOCK, rows.0, rows.1);
+    fill(&mut w, "tall_grass", 4 * BLOCK, 5 * BLOCK, rows.0, rows.1);
+    let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(4, 2), power: 50, max_hardness: 100, back: true });
+    assert_eq!(r.removed, vec![(wood, n)], "through the grass to the stump");
     // Not other things in front: stone stays stone to an axe.
-    fill(&mut w, "stone", 54, 60, 12, 18);
-    let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(9, 2), power: 50, max_hardness: 100, back: true });
+    fill(&mut w, "stone", 6 * BLOCK, 7 * BLOCK, rows.0, rows.1);
+    let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(6, 2), power: 50, max_hardness: 100, back: true });
     assert!(r.removed.is_empty());
 }
 
 #[test]
 fn part_of_a_block_fills_from_the_bottom_and_the_next_fills_the_rest() {
+    use platypus_sim::BLOCK;
     let mut w = boxed_world(1, 1, 62);
-    fill(&mut w, "stone", 1, 63, 1, 12);
+    fill(&mut w, "stone", 1, 63, 1, 2 * BLOCK);
     let planks = w.materials().expect_id("planks");
-    let block = CellPos::new(5, 2); // cells 30..36 × 12..18
+    let block = CellPos::new(5, 2); // on the floor
     let r = w.apply_edit(&WorldEdit::PlaceBlock { block, material: planks, back: false, most: 14 });
     assert_eq!(r.placed, 14);
-    assert_eq!(w.get(CellPos::new(30, 12)).unwrap().material, planks, "the bottom row first");
-    assert!(w.get(CellPos::new(30, 17)).unwrap().is_air(), "the top still open");
+    assert_eq!(w.get(CellPos::new(5 * BLOCK, 2 * BLOCK)).unwrap().material, planks, "the bottom row first");
+    assert!(w.get(CellPos::new(5 * BLOCK, 3 * BLOCK - 1)).unwrap().is_air(), "the top still open");
     let r = w.apply_edit(&WorldEdit::PlaceBlock { block, material: planks, back: false, most: 100 });
-    assert_eq!(r.placed, 22, "the rest of it");
+    assert_eq!(r.placed, (BLOCK * BLOCK) as u32 - 14, "the rest of it");
 }
 
 #[test]

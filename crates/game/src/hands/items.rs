@@ -566,7 +566,7 @@ mod tests {
     fn every_solid_has_a_block_item_counted_in_cells() {
         let it = items();
         let stone = it.id("block:stone").expect("stone blocks");
-        assert_eq!(it.unit(stone), 36);
+        assert_eq!(it.unit(stone), BLOCK_CELLS);
         assert!(it.id("block:bedrock").is_none(), "no unbreakable blocks");
         assert!(it.id("block:water").is_none(), "no liquid blocks");
         assert!(!it.kit("play").carry.is_empty(), "a new player carries something");
@@ -624,7 +624,7 @@ mod tests {
         let mut inv = Inventory::new(8);
         inv.slots[0] = Some(Stack::new(id("bomb"), 1));
         inv.slots[2] = Some(Stack::new(id("torch"), 40));
-        inv.slots[3] = Some(Stack::new(id("block:stone"), 5 * 36));
+        inv.slots[3] = Some(Stack::new(id("block:stone"), 5 * BLOCK_CELLS));
         inv.slots[4] = Some(Stack::new(id("torch"), 70));
         inv.slots[6] = Some(Stack::new(id("copper_pickaxe"), 1));
         inv.slots[7] = Some(Stack::new(id("torch"), 5));
@@ -632,7 +632,7 @@ mod tests {
         assert_eq!(inv.slots[0], Some(Stack::new(id("bomb"), 1)), "outside the range: left alone");
         let laid: Vec<Option<(String, u32)>> = inv.slots[2..].iter().map(|s| s.map(|s| (it.def(s.item).id.clone(), s.count))).collect();
         let want = |id: &str, n: u32| Some((id.to_string(), n));
-        assert_eq!(laid, vec![want("copper_pickaxe", 1), want("torch", 99), want("torch", 16), want("block:stone", 180), None, None]);
+        assert_eq!(laid, vec![want("copper_pickaxe", 1), want("torch", 99), want("torch", 16), want("block:stone", 5 * BLOCK_CELLS), None, None]);
         assert_eq!(it.category(id("copper_pickaxe")), Category::Tools);
         assert_eq!(it.category(id("iron_helm")), Category::Armour);
         assert_eq!(it.category(id("ring_of_vigour")), Category::Accessories);
