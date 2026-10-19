@@ -9,7 +9,7 @@
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "humanoid",
     // (Safe past a triple jump's height: ~158 cells in cloud boots.)
-    // (Safe from 300: a triple jump's top, ~290 at the Middle tempo, is no
+    // (Safe from 300: a triple jump's top, ~250 at the Middle tempo, is no
     // fall to be hurt by.)
     fall_damage: (safe_height: 300, per_cell: 0.4),
     // Its wounds close slowly once it's out of danger: nothing at all for
@@ -26,9 +26,9 @@
         gravity: 1650,
         fall_gravity: 1.6,
         max_fall: 630,
-        // (92: twice raised, a quarter then a fifth, from 60; double jumps,
-        // a share of it, likewise.)
-        jump_height: 92,
+        // (78: raised from 60 (92 was too much); double jumps, a share of
+        // it, likewise.)
+        jump_height: 78,
         jump_cut: 0.45,
         coyote_time: 0.09,
         jump_buffer: 0.12,
