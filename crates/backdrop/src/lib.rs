@@ -9,6 +9,7 @@
 pub mod depths;
 pub mod peaks;
 pub mod skies;
+pub mod terrain;
 pub mod tile;
 pub mod underdark;
 pub mod vista;

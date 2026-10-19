@@ -24,7 +24,10 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
-use platypus_backdrop::peaks::{Look, cloud_tile, for_biome, layer_tile, looks};
+use bevy::render::render_resource::{AsBindGroup, ShaderType};
+use bevy::shader::ShaderRef;
+use bevy::sprite_render::{AlphaMode2d, Material2d, Material2dPlugin};
+use platypus_backdrop::peaks::{Look, albedo, cloud_tile, for_biome, layer_data, looks};
 use platypus_sim::{CellPos, Kind};
 
 use crate::camera::MainCamera;
@@ -35,7 +38,8 @@ pub struct BackdropPlugin;
 
 impl Plugin for BackdropPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Backdrops::new())
+        app.add_plugins(Material2dPlugin::<RangeMaterial>::default())
+            .insert_resource(Backdrops::new())
             .add_systems(Startup, (sky_setup, gradient_setup, void_setup))
             .add_systems(PostUpdate, (tiles, place, gradient, void, sky).chain().after(crate::camera::follow).before(bevy::transform::TransformSystems::Propagate));
     }
@@ -107,6 +111,50 @@ struct Tile {
     skirt: Option<Entity>,
     /// Its alpha (the stars hide behind it).
     alpha: Vec<u8>,
+    /// A land tile's material (lit by the hour, `RangeMaterial`).
+    material: Option<Handle<RangeMaterial>>,
+}
+
+/// A range's tile, lit by the hour (`shaders/backdrop.wgsl`): its texels
+/// say what each pixel is (`platypus_backdrop::terrain`), the light what
+/// colour it is now.
+#[derive(Asset, TypePath, AsBindGroup, Clone)]
+pub struct RangeMaterial {
+    #[uniform(0)]
+    params: RangeParams,
+    #[texture(1)]
+    #[sampler(2)]
+    texture: Handle<Image>,
+}
+
+/// As `backdrop.wgsl`'s `Range` says.
+#[derive(Clone, Copy, Default, ShaderType, Debug)]
+struct RangeParams {
+    to: Vec4,
+    color: Vec4,
+    ambient: Vec4,
+    haze: Vec4,
+    rock: Vec4,
+    snow: Vec4,
+    scrub: Vec4,
+}
+
+impl RangeParams {
+    /// Close enough to `o` that the difference wouldn't show.
+    fn near(&self, o: &RangeParams) -> bool {
+        let pairs = [(self.to, o.to), (self.color, o.color), (self.ambient, o.ambient), (self.haze, o.haze), (self.rock, o.rock), (self.snow, o.snow), (self.scrub, o.scrub)];
+        pairs.iter().all(|(a, b)| (*a - *b).abs().max_element() < 0.003)
+    }
+}
+
+impl Material2d for RangeMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/backdrop.wgsl".into()
+    }
+
+    fn alpha_mode(&self) -> AlphaMode2d {
+        AlphaMode2d::Blend
+    }
 }
 
 #[derive(Resource)]
@@ -123,13 +171,15 @@ pub struct Backdrops {
     shown: f32,
     /// How far the clouds have drifted (cells).
     drift: f32,
+    /// A range tile's quad and its skirt's (all the same size).
+    meshes: Option<(Handle<Mesh>, Handle<Mesh>)>,
 }
 
 impl Backdrops {
     fn new() -> Self {
         let looks = Arc::new(looks());
         let weights = looks.iter().map(|v| if v.name == "noita" { 1.0 } else { 0.0 }).collect();
-        Backdrops { looks, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0 }
+        Backdrops { looks, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0, meshes: None }
     }
 
     /// A tile's size in cells.
@@ -221,7 +271,17 @@ fn targets(bd: &Backdrops, sim: &SimWorld, x: f32) -> Vec<f32> {
 
 /// Tiles in view made, far ones dropped; the surface's (the looks
 /// showing) or the cave's by depth.
-fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, time: Res<Time>, cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>, mut images: ResMut<Assets<Image>>) {
+#[allow(clippy::too_many_arguments)]
+fn tiles(
+    mut commands: Commands,
+    mut bd: ResMut<Backdrops>,
+    sim: Res<SimWorld>,
+    time: Res<Time>,
+    cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>,
+    mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut ranges: ResMut<Assets<RangeMaterial>>,
+) {
     let (tf, loader) = *cam;
     let c = tf.translation.truncate();
     let half = loader.half_extent;
@@ -265,7 +325,7 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
         let (w, h) = Backdrops::size(key.part);
         let looks = bd.looks.clone();
         let task = match key.part {
-            Part::Land => pool.spawn(async move { layer_tile(&looks[key.v], key.k, key.tx * w as i64, w, h, DETAIL, seed) }),
+            Part::Land => pool.spawn(async move { layer_data(&looks[key.v], key.k, key.tx * w as i64, w, h, DETAIL, seed) }),
             Part::Clouds => pool.spawn(async move { cloud_tile(&looks[key.v], key.tx * w as i64, w, h, DETAIL, seed) }),
         };
         bd.making.insert(key, task);
@@ -287,37 +347,59 @@ fn tiles(mut commands: Commands, mut bd: ResMut<Backdrops>, sim: Res<SimWorld>, 
         let (w, h) = Backdrops::size(key.part);
         let alpha: Vec<u8> = px.chunks(4).map(|p| p[3]).collect();
         let clouds = key.part == Part::Clouds;
-        let (px, up) = if clouds { (upscale(px, w, h, CLOUD_UP), CLOUD_UP) } else { (px, 1) };
-        let mut image = Image::new(Extent3d { width: (w * up) as u32, height: (h * up) as u32, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::RENDER_WORLD);
-        if clouds {
-            image.sampler = bevy::image::ImageSampler::linear();
-        }
-        let handle = images.add(image);
         // The farthest range, the clouds, the nearer ranges.
         let z = Z + key.v as f32 * 0.002
             + match key.part {
                 Part::Land => key.k as f32 * 0.03,
                 Part::Clouds => 0.015,
             };
-        let sprite = Sprite { image: handle.clone(), custom_size: Some(Vec2::new(w as f32, h as f32)), ..default() };
-        let entity = commands.spawn((Name::new("Backdrop tile"), sprite, Transform::from_xyz(0.0, 0.0, z))).id();
-        let skirt = (key.part == Part::Land).then(|| {
-            commands
-                .spawn((
-                    Name::new("Backdrop skirt"),
-                    Sprite { image: handle, rect: Some(Rect::new(0.0, h as f32 - 1.0, w as f32, h as f32)), custom_size: Some(Vec2::new(w as f32, SKIRT)), ..default() },
-                    Transform::from_xyz(0.0, 0.0, z),
-                ))
-                .id()
-        });
-        bd.tiles.insert(key, Tile { entity, skirt, alpha });
+        if clouds {
+            let px = upscale(px, w, h, CLOUD_UP);
+            let mut image = Image::new(Extent3d { width: (w * CLOUD_UP) as u32, height: (h * CLOUD_UP) as u32, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::RENDER_WORLD);
+            image.sampler = bevy::image::ImageSampler::linear();
+            let sprite = Sprite { image: images.add(image), custom_size: Some(Vec2::new(w as f32, h as f32)), ..default() };
+            let entity = commands.spawn((Name::new("Backdrop clouds"), sprite, Transform::from_xyz(0.0, 0.0, z))).id();
+            bd.tiles.insert(key, Tile { entity, skirt: None, alpha, material: None });
+            continue;
+        }
+        // A range: its texels (not colours: `Rgba8Unorm`, read exactly),
+        // lit by its material; its bottom row stretched down below it.
+        let image = Image::new(Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8Unorm, RenderAssetUsages::RENDER_WORLD);
+        let material = ranges.add(RangeMaterial { params: RangeParams::default(), texture: images.add(image) });
+        let (quad, skirt_mesh) = bd.meshes.get_or_insert_with(|| {
+            let quad = meshes.add(Rectangle::new(w as f32, h as f32));
+            let mut skirt = Mesh::from(Rectangle::new(w as f32, SKIRT));
+            // (Every row of the skirt: the tile's last.)
+            let v = (h as f32 - 0.5) / h as f32;
+            skirt.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[1.0, v], [0.0, v], [0.0, v], [1.0, v]]);
+            (quad, meshes.add(skirt))
+        }).clone();
+        let entity = commands.spawn((Name::new("Backdrop range"), Mesh2d(quad), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z))).id();
+        let skirt = commands.spawn((Name::new("Backdrop skirt"), Mesh2d(skirt_mesh), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z))).id();
+        bd.tiles.insert(key, Tile { entity, skirt: Some(skirt), alpha, material: Some(material) });
     }
 }
 
 /// Each tile where its layer puts it for the camera now, as strong as its
-/// look's share; the surface's faded out underground, the cave's in.
-fn place(bd: Res<Backdrops>, zoom: Res<crate::camera::Zoom>, gloom: Res<crate::light::Gloom>, cam: Single<&Transform, (With<MainCamera>, Without<Sprite>)>, mut sprites: Query<(&mut Transform, &mut Sprite), Without<MainCamera>>) {
+/// look's share; the surface's faded out underground, the cave's in. The
+/// ranges lit by the hour: toward the sun by day, the moon by night, the
+/// sky's colour to fade into (`terrain::hour`).
+#[allow(clippy::too_many_arguments)]
+fn place(
+    bd: Res<Backdrops>,
+    zoom: Res<crate::camera::Zoom>,
+    gloom: Res<crate::light::Gloom>,
+    day: Option<Res<crate::light::Daylight>>,
+    clear: Res<ClearColor>,
+    cam: Single<&Transform, (With<MainCamera>, Without<Sprite>)>,
+    mut places: Query<&mut Transform, Without<MainCamera>>,
+    mut sprites: Query<&mut Sprite>,
+    mut ranges: ResMut<Assets<RangeMaterial>>,
+) {
     let c = cam.translation.truncate();
+    let sky = clear.0.to_srgba();
+    let light = platypus_backdrop::terrain::hour(day.as_ref().map_or(0.5, |d| d.time), [sky.red, sky.green, sky.blue]);
+    let v4 = |rgb: [f32; 3], w: f32| Vec4::new(rgb[0], rgb[1], rgb[2], w);
     // (The ranges snapped to whole screen pixels from the camera: crisp,
     // and gliding a pixel at a time; snapped to whole cells they hopped 2
     // pixels at once. The clouds, drifting slowly on their own, aren't:
@@ -336,10 +418,36 @@ fn place(bd: Res<Backdrops>, zoom: Res<crate::camera::Zoom>, gloom: Res<crate::l
         let alpha = bd.shown * bd.weights[key.v] * (1.0 - haze * far).max(0.0);
         let skirt = tile.skirt.map(|s| (s, at.y - HEIGHT as f32 / 2.0 - SKIRT / 2.0));
         for (e, y) in std::iter::once((tile.entity, at.y)).chain(skirt) {
-            if let Ok((mut tf, mut sprite)) = sprites.get_mut(e) {
+            if let Ok(mut tf) = places.get_mut(e) {
                 tf.translation.x = at.x;
                 tf.translation.y = y;
-                sprite.color = Color::srgba(1.0, 1.0, 1.0, alpha);
+            }
+        }
+        match &tile.material {
+            Some(m) => {
+                let look = &bd.looks[key.v];
+                let a = albedo(look, key.k);
+                let params = RangeParams {
+                    to: v4(light.to, light.rim),
+                    color: v4(light.color, alpha),
+                    ambient: v4(light.ambient, a.haze),
+                    haze: v4(light.haze, a.mist),
+                    rock: v4(a.rock, look.layers[key.k].base),
+                    snow: v4(a.snow, 0.0),
+                    scrub: v4(a.scrub, (key.tx * TILE as i64).rem_euclid(4) as f32),
+                };
+                // (Only when the light's moved on enough to see: the hour
+                // creeps every tick, and a changed material is re-sent.)
+                if ranges.get(m).is_some_and(|mat| !mat.params.near(&params))
+                    && let Some(mut mat) = ranges.get_mut(m)
+                {
+                    mat.params = params;
+                }
+            }
+            None => {
+                if let Ok(mut sprite) = sprites.get_mut(tile.entity) {
+                    sprite.color = Color::srgba(1.0, 1.0, 1.0, alpha);
+                }
             }
         }
     }

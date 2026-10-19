@@ -1,18 +1,21 @@
-//! The surface's backdrop, Noita-like: tall sharp peaks cut into flat
-//! faces (lit from the left, shade on the right, snow on the tops), range
-//! behind range fading into the sky, big billowing clouds rising behind
-//! them, a dark lowland at their feet. A look is a sky, clouds and layers
-//! far to near; each layer is drawn a tile at a time from absolute
-//! coordinates (tiles side by side join up), in daylight colours (the
-//! game's lighting grades them).
+//! The surface's backdrop: ranges of mountains, range behind range fading
+//! into the sky, big billowing clouds rising behind them, a dark lowland
+//! at their feet. A look is a sky, clouds and layers far to near; each
+//! layer is terrain (`terrain`: a heightfield seen from the front, spurs
+//! and gullies, snow up high), drawn a tile at a time from absolute
+//! coordinates (tiles side by side join up) as what each pixel is, for the
+//! light of the hour to colour (`layer_data`; the game's `backdrop.wgsl`);
+//! `layer_tile` shades it at noon (stills).
 
-use crate::{Rgb, hash, mix, noise1, noise2, rgb};
+use crate::terrain::{self, Albedo, Light, Shape};
+use crate::{Rgb, bayer, hash, mix, noise1, rgb};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Kind {
-    /// Peaks: one every `every` cells (most slots), `size` their heights
-    /// (shares of the strip), `slope` how wide they spread a row down
-    /// (cells; sides differ).
+    /// Peaks: summits about `every` units apart, `size` their heights where
+    /// the range sinks and where it rises highest (shares of the strip),
+    /// `slope` how broad they spread (the shapes' scale across: wider,
+    /// gentler).
     Peaks { every: f32, size: (f32, f32), slope: (f32, f32) },
 }
 
@@ -49,139 +52,71 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// A peak: apex (x, row), height, spread each side, how it sits in front
-/// of the others, its seed.
-#[derive(Clone, Copy)]
-struct Peak {
-    x: f32,
-    y: f32,
-    tall: f32,
-    left: f32,
-    right: f32,
-    front: f32,
-    seed: u64,
-}
-
-impl Peak {
-    /// Its edges at row `y` (jagged), or `None` above its apex.
-    fn span(&self, y: f32) -> Option<(f32, f32)> {
-        let d = y - self.y;
-        if d < 0.0 {
-            return None;
-        }
-        // Concave flanks (steep near the summit, flaring down to the
-        // feet, then steepening again: the range runs on down), rough
-        // edges: a wander that grows downhill, shoulders, a small crag.
-        let spread = if d < self.tall { self.tall * (d / self.tall).powf(1.35) } else { self.tall + (d - self.tall) * 0.6 };
-        // (The wander stops growing past the feet: shoulders run straight
-        // on down.)
-        let g = d.min(self.tall * 1.1);
-        let jag = |side: u64| {
-            (noise1(d * 0.04, self.seed ^ side) - 0.5) * g * 0.16 + (noise1(d * 0.13, self.seed ^ side ^ 0x33) - 0.5) * g * 0.1 + (noise1(d * 0.4, self.seed ^ side ^ 0x55) - 0.5) * 1.5
-        };
-        Some((self.x - spread * self.left + jag(1), self.x + spread * self.right + jag(2)))
-    }
-}
-
-/// The peaks of layer `l` whose spread may reach columns `x0 .. x1`.
-fn peaks(l: &Layer, k: usize, x0: f32, x1: f32, h: f32, seed: u64) -> Vec<Peak> {
-    let Kind::Peaks { every, size, slope } = l.kind;
-    let s = seed.wrapping_add(k as u64 * 9173 + 5);
-    let reach = (size.1 * h + (1.0 - l.base) * h * 0.6) * slope.1 * 1.3 + every;
-    let mut out = Vec::new();
-    for slot in ((x0 - reach) / every).floor() as i64..=((x1 + reach) / every).floor() as i64 {
-        // A main peak most slots, a lower shoulder beside it now and then,
-        // and low broad foothills in front (the valleys between hold small
-        // mountains, not a floor).
-        for (part, chance, scale_h, wide) in [(0i64, 0.85, 1.0, 1.0), (1, 0.55, 0.55, 1.0), (2, 0.8, 0.28, 1.7)] {
-            let q = slot * 3 + part;
-            if hash(q, 1, s) > chance {
-                continue;
-            }
-            let tall = (size.0 + (size.1 - size.0) * hash(q, 2, s).powf(1.4)) * h * scale_h;
-            let x = (slot as f32 + 0.1 + 0.8 * hash(q, 3, s)) * every + if part > 0 { (hash(q, 7, s) - 0.5) * every } else { 0.0 };
-            let (a, b) = (slope.0 + (slope.1 - slope.0) * hash(q, 4, s), slope.0 + (slope.1 - slope.0) * hash(q, 5, s));
-            out.push(Peak { x, y: l.base * h - tall, tall, left: a * wide, right: b * wide, front: hash(q, 6, s) + part as f32, seed: s ^ (q as u64).wrapping_mul(0x9E37_79B9) });
-        }
-    }
-    out
-}
-
-/// Layer `k` of `look`, strip columns `x0 .. x0 + w`, `h` rows, RGBA (clear
-/// above the skyline). `detail`: pixels per unit of the shapes (`every`,
-/// the jags, the clouds' sizes are in units): 1.5 draws the same ranges
-/// 1.5× as fine, as many pixels again each way.
-pub fn layer_tile(look: &Look, k: usize, x0: i64, w: usize, h: usize, detail: f32, seed: u64) -> Vec<u8> {
+/// Layer `k`'s terrain, for a strip `hf` units tall.
+pub fn shape(look: &Look, k: usize, hf: f32, seed: u64) -> Shape {
     let l = &look.layers[k];
+    let Kind::Peaks { every, size, slope } = l.kind;
+    let (deep, tilt) = (every * 1.3, 0.06);
+    // (Never past the strip's top: its tallest and its back's rise within
+    // the room over its feet.)
+    let amp = (size.1 * hf * 1.1).min(l.base * hf * 0.9 - deep * tilt);
+    Shape {
+        scale: every * (slope.0 + slope.1) * 0.5 * 1.1,
+        amp,
+        low: (size.0 / size.1.max(1e-3)).clamp(0.05, 1.0),
+        deep,
+        tilt,
+        snow: l.snow,
+        seed: seed.wrapping_add(k as u64 * 9173 + 5),
+    }
+}
+
+/// What layer `k` is made of: rock a little darker than its lit colour
+/// (lit full on, it shows as that), snow, scrub as its shade; its haze.
+pub fn albedo(look: &Look, k: usize) -> Albedo {
+    let l = &look.layers[k];
+    Albedo { rock: l.lit.map(|v| v * 0.85), snow: [0.8, 0.82, 0.86], scrub: l.shade.map(|v| v * 0.9), haze: l.haze, mist: l.mist }
+}
+
+/// How far into its feet' mist a row is (`y` rows from the strip's top).
+pub fn mist(look: &Look, k: usize, y: f32, h: f32) -> f32 {
+    let foot = look.layers[k].base * h;
+    smoothstep(foot - h * 0.15, foot + h * 0.1, y)
+}
+
+/// Layer `k` of `look`, strip columns `x0 .. x0 + w`, `h` rows: texels
+/// (`terrain::encode`; clear above the skyline). `detail`: pixels per unit
+/// of the shapes: 1.5 draws the same ranges 1.5x as fine.
+pub fn layer_data(look: &Look, k: usize, x0: i64, w: usize, h: usize, detail: f32, seed: u64) -> Vec<u8> {
     let hf = h as f32 / detail;
-    let foot = l.base * hf;
-    let haze = look.sky.1;
-    let fade = |p: Rgb, y: f32| {
-        let mist = l.mist * smoothstep(foot - hf * 0.15, foot + hf * 0.1, y);
-        mix(p, haze, l.haze + (1.0 - l.haze) * mist * 0.7)
-    };
-    // The range's body (between its shoulders, and at the very bottom,
-    // which the game stretches down).
-    let body = |y: f32| fade(mix(l.shade, l.lit, 0.3), y);
-    let last = h.saturating_sub(2) as f32 / detail;
-    let l_seed = seed.wrapping_add(k as u64 * 9173 + 5);
+    terrain::strip(&shape(look, k, hf, seed), x0, w, h, look.layers[k].base * hf, detail)
+}
+
+/// Layer `k` lit by `light`, RGBA (as the game shades it, before its
+/// overlay grades it).
+pub fn layer_lit(look: &Look, k: usize, x0: i64, w: usize, h: usize, detail: f32, seed: u64, light: &Light) -> Vec<u8> {
+    let data = layer_data(look, k, x0, w, h, detail, seed);
+    let a = albedo(look, k);
     let mut out = vec![0u8; w * h * 4];
-    let all = peaks(l, k, x0 as f32 / detail, (x0 + w as i64) as f32 / detail, hf, seed);
-    for xi in 0..w {
-        let xa = x0 + xi as i64;
-        let xf = (xa as f32 + 0.5) / detail;
-        // The peaks this column may cross (as wide as they get at the
-        // strip's bottom), frontmost first.
-        let widest = |p: &Peak| (p.tall + (hf - p.y - p.tall).max(0.0) * 0.6) * 1.3 + 4.0;
-        let mut here: Vec<&Peak> = all.iter().filter(|p| xf > p.x - widest(p) * p.left && xf < p.x + widest(p) * p.right).collect();
-        here.sort_by(|a, b| b.front.total_cmp(&a.front));
-        // The body's rolling edge a little above the feet, and its slope.
-        let roll = |x: f32| foot - hf * 0.06 * (0.15 + 0.6 * noise1(x / 60.0, l_seed ^ 0x70) + 0.3 * noise1(x / 17.0, l_seed ^ 0x71));
-        let rolling = roll(xf);
-        let slope_r = roll(xf + 2.0) - roll(xf - 2.0);
-        for y in 0..h {
-            let yf = (y as f32 + 0.5) / detail;
-            let p = if yf >= last {
-                body(foot + hf)
-            } else if let Some((pk, (a, b))) = here.iter().find_map(|pk| pk.span(yf).filter(|(a, b)| xf >= *a && xf < *b).map(|sp| (*pk, sp))) {
-                let d = yf - pk.y;
-                // Faces: wedges from the apex. Where across the peak this
-                // is (-1 left edge .. 1 right edge), the main ridge
-                // wandering a little from the apex down.
-                let ridge = pk.x + (noise1(d * 0.02, pk.seed ^ 3) - 0.5) * d * 0.2;
-                let u = if xf < ridge { -(ridge - xf) / (ridge - a).max(1.0) } else { (xf - ridge) / (b - ridge).max(1.0) };
-                let facets = 3.0;
-                let wobble = (noise1(d * 0.025, pk.seed ^ 9) - 0.5) * 0.14;
-                let f = ((u + wobble) * facets).floor();
-                // Lit on the left (brighter nearer the ridge), shaded on
-                // the right, each face a touch different.
-                let jitter = (hash(f as i64, 11, pk.seed) - 0.5) * 0.16;
-                let amount = if u < 0.0 { 0.95 - 0.12 * (-f - 1.0) + jitter } else { 0.28 - 0.1 * f + jitter };
-                let mut c = mix(l.shade, l.lit, amount.clamp(0.0, 1.0));
-                // Snow on the top, ragged, reaching further down the
-                // gullies (the faces' edges).
-                if l.snow > 0.0 {
-                    let edge = 1.0 - ((u + wobble) * facets).fract().min(1.0 - ((u + wobble) * facets).fract()) * 2.0;
-                    let line = pk.tall * l.snow * (0.65 + 0.35 * noise1(xf * 0.12, pk.seed ^ 5) + 0.4 * edge + 0.15 * (noise2(xf * 0.15, yf * 0.1, pk.seed ^ 6) - 0.5));
-                    if d < line {
-                        let white = if u < 0.0 { rgb(240, 246, 252) } else { rgb(170, 190, 222) };
-                        c = mix(c, white, 0.85);
-                    }
-                }
-                fade(c, yf)
-            } else if yf > rolling {
-                // Below the feet, between the shoulders: the body, under a
-                // rolling edge (no straight line across the valleys), its
-                // faces towards the light a little brighter near the top.
-                let lit = if slope_r > 0.15 && yf - rolling < 10.0 { 0.12 } else { 0.0 };
-                fade(mix(mix(l.shade, l.lit, 0.3), l.lit, lit), yf)
-            } else {
-                continue;
-            };
-            write(&mut out, xi, y, w, xa, p);
+    for y in 0..h {
+        let m = mist(look, k, y as f32, h as f32);
+        for x in 0..w {
+            let i = (y * w + x) * 4;
+            let Some(t) = terrain::decode(&data[i..i + 4]) else { continue };
+            let d = bayer((x0 + x as i64).rem_euclid(4) as usize, y);
+            let c = terrain::shade(&t, &a, light, d, m);
+            for (j, v) in c.iter().enumerate() {
+                out[i + j] = (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+            }
+            out[i + 3] = 255;
         }
     }
     out
+}
+
+/// Layer `k` of `look` at noon, RGBA (stills).
+pub fn layer_tile(look: &Look, k: usize, x0: i64, w: usize, h: usize, detail: f32, seed: u64) -> Vec<u8> {
+    layer_lit(look, k, x0, w, h, detail, seed, &terrain::noon(look.sky.1))
 }
 
 /// Clouds, strip columns `x0 .. x0 + w`, `h` rows, RGBA: big billowing
@@ -373,6 +308,13 @@ pub fn still(look: &Look, x: i64, w: usize, h: usize, seed: u64) -> Vec<u8> {
 /// `still`, and which of its pixels are open sky (where the sun, moon and
 /// stars would show).
 pub fn still_masked(look: &Look, x: i64, w: usize, h: usize, seed: u64) -> (Vec<u8>, Vec<bool>) {
+    still_lit(look, x, w, h, seed, None)
+}
+
+/// `still_masked` in `light` (noon if none).
+pub fn still_lit(look: &Look, x: i64, w: usize, h: usize, seed: u64, light: Option<&Light>) -> (Vec<u8>, Vec<bool>) {
+    let noon = terrain::noon(look.sky.1);
+    let light = light.unwrap_or(&noon);
     let mut out: Vec<u8> = Vec::with_capacity(w * h * 4);
     for y in 0..h {
         let p = mix(look.sky.0, look.sky.1, smoothstep(0.0, 0.7, y as f32 / h as f32));
@@ -406,7 +348,7 @@ pub fn still_masked(look: &Look, x: i64, w: usize, h: usize, seed: u64) -> (Vec<
         // the game stacks them.)
         let foot = ground - (n - 1 - k) as f32 * 12.0;
         let oy = (foot - look.layers[k].base * lh as f32) as i64;
-        over(&mut out, &layer_tile(look, k, x, w, lh, 1.0, seed), oy, lh);
+        over(&mut out, &layer_lit(look, k, x, w, lh, 1.0, seed, light), oy, lh);
         if k == 0 {
             let ch = (h as f32 * 0.6) as usize;
             over(&mut out, &cloud_tile(look, x, w, ch, 1.0, seed), (ground - h as f32 * 0.12) as i64 - ch as i64, ch);

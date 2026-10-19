@@ -8,6 +8,23 @@ use platypus_backdrop::{Style, Time, render, scenes};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    // `platypus-backdrop lit <out dir>`: the surface's looks lit at dawn,
+    // noon, dusk and night (`lit-<look>.png`, four up), and dusk alone, 3x.
+    // `platypus-backdrop bench`: how long a range's tile takes, each layer
+    // of the first look, at the game's size.
+    if args.get(1).map(String::as_str) == Some("bench") {
+        let look = &platypus_backdrop::peaks::looks()[0];
+        for k in 0..look.layers.len() {
+            let t = std::time::Instant::now();
+            let px = platypus_backdrop::peaks::layer_data(look, k, 0, 384, 570, 1.5, 11);
+            println!("layer {k}: {:.0} ms ({} texels)", t.elapsed().as_secs_f64() * 1000.0, px.len() / 4);
+        }
+        return;
+    }
+    if args.get(1).map(String::as_str) == Some("lit") {
+        lit(std::path::Path::new(args.get(2).map_or("backdrops", |s| s.as_str())));
+        return;
+    }
     let out = std::path::PathBuf::from(args.get(1).map_or("backdrops", |s| s.as_str()));
     let w: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(400);
     let h: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(225);
@@ -230,4 +247,54 @@ fn tiles(out: &std::path::Path) {
         over(&mut px, &layer);
     }
     platypus_art::write_png(&platypus_art::Pixels { w: w as u32, h: h as u32, rgba: px }, &out.join("tiles-cave.png")).expect("png");
+}
+
+/// The looks lit through the day: dawn, noon, dusk, night (each graded as
+/// the game's overlay roughly would: by the sky's light of the hour; the
+/// haze the sky's colour of the hour).
+fn lit(out: &std::path::Path) {
+    use platypus_backdrop::peaks::{grade, looks, still_lit};
+    use platypus_backdrop::terrain::hour;
+    std::fs::create_dir_all(out).expect("out dir");
+    let (w, h) = (504usize, 284usize);
+    // (time, the sky's light, the sky's colour)
+    let hours: [(f32, [f32; 3], [f32; 3]); 4] = [
+        (0.27, [1.0, 0.7, 0.5], [0.93, 0.66, 0.6]),
+        (0.5, [1.0, 0.97, 0.92], [0.6, 0.76, 0.93]),
+        (0.73, [1.0, 0.62, 0.45], [0.95, 0.6, 0.55]),
+        (0.0, [0.16, 0.2, 0.34], [0.07, 0.09, 0.2]),
+    ];
+    for look in looks() {
+        let mut sheet = [20u8, 20, 24, 255].repeat((w * 2 + 8) * (h * 2 + 8));
+        let sw = w * 2 + 8;
+        for (n, &(time, sky, color)) in hours.iter().enumerate() {
+            let light = hour(time, color);
+            let (mut px, open) = still_lit(&look, 0, w, h, 11, Some(&light));
+            // The sky behind: its colour of the hour.
+            for (p, o) in px.chunks_mut(4).zip(&open) {
+                if *o {
+                    let t = 0.6;
+                    for c in 0..3 {
+                        p[c] = ((p[c] as f32 / 255.0 * (1.0 - t) + color[c] * t) * 255.0) as u8;
+                    }
+                }
+            }
+            grade(&mut px, sky);
+            if n == 2 {
+                let mut big = Vec::with_capacity(w * h * 9 * 4);
+                for y in 0..h * 3 {
+                    for x in 0..w * 3 {
+                        big.extend_from_slice(&px[((y / 3) * w + x / 3) * 4..][..4]);
+                    }
+                }
+                platypus_art::write_png(&platypus_art::Pixels { w: 3 * w as u32, h: 3 * h as u32, rgba: big }, &out.join(format!("lit-{}-dusk.png", look.name))).expect("png");
+            }
+            let (ox, oy) = ((n % 2) * (w + 8), (n / 2) * (h + 8));
+            for y in 0..h {
+                sheet[((oy + y) * sw + ox) * 4..][..w * 4].copy_from_slice(&px[y * w * 4..][..w * 4]);
+            }
+        }
+        platypus_art::write_png(&platypus_art::Pixels { w: sw as u32, h: (h * 2 + 8) as u32, rgba: sheet }, &out.join(format!("lit-{}.png", look.name))).expect("png");
+        println!("{}", look.name);
+    }
 }
