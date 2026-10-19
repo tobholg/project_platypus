@@ -10271,6 +10271,17 @@ fn loadouts_script(
     info!("loadouts: {name}: worn {}; no room for {}", worn.join(" "), over.len());
 }
 
+/// The jump test's start: its clock set on its first look (from 0.5 s).
+fn i_first(state: &mut (usize, f32, f32, f32), t: f32) -> bool {
+    if t < 0.5 {
+        return true;
+    }
+    if state.1 == 0.0 {
+        state.1 = t;
+    }
+    false
+}
+
 /// `jumps` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a full jump (jump
 /// held), with no boots, feather boots, then Zephyr treads, each air jump
 /// at the top of the rise before; logs the highest each reached.
@@ -10289,8 +10300,11 @@ fn jumps_script(
     let t = s.elapsed;
     let boots = [None, Some("feather_boots"), Some("cloud_boots")];
     let feet = crate::gear::WORN.iter().position(|w| *w == crate::gear::Slot::Feet).expect("feet");
+    if i_first(&mut state, t) {
+        return;
+    }
     let (i, start) = (state.0, state.1);
-    if i >= boots.len() || t < 0.5 {
+    if i >= boots.len() {
         return;
     }
     let dt = t - start;

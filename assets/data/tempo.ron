@@ -30,8 +30,10 @@
         (name: "Experimental", pace: 1.0, jump: 1.2, gravity: 0.82, player: {
             "run_speed": 128, "ground_accel": 950, "ground_decel": 1500, "turn_accel": 1500,
             "air_accel": 950, "gravity": 1300, "fall_gravity": 1.45, "max_fall": 560,
-            "jump_height": 72,
-            "dash_speed": 440, "dash_time": 0.17, "dash_cooldown": 0.45, "air_dash_recharge": 0.8,
+            // (Jumps raised twice, a quarter and a fifth: 110, was 72; the
+            // dash harder: 530 for 0.18 s, was 440 for 0.17.)
+            "jump_height": 110,
+            "dash_speed": 530, "dash_time": 0.18, "dash_cooldown": 0.45, "air_dash_recharge": 0.8,
             "rocket_power": 0.88, "rocket_across": 0.88,
         }),
         // Between: some run-up and skid, a short held rise, ~0.65 s in the
@@ -39,7 +41,8 @@
         (name: "Middle", pace: 0.8, player: {
             "run_speed": 113, "ground_accel": 390, "ground_decel": 780, "turn_accel": 1050,
             "air_accel": 630, "gravity": 1200, "fall_gravity": 1.25, "max_fall": 450,
-            "jump_height": 63, "jump_hold": 0.12, "jump_cut": 0.6,
+            // (Jumps raised twice, a quarter and a fifth: 96, was 63.)
+            "jump_height": 96, "jump_hold": 0.12, "jump_cut": 0.6,
         }),
         // Terraria's own numbers, scaled to our size (its player is 42 px
         // tall, ours 23 cells: 0.548 cells a pixel; 60 ticks a second):

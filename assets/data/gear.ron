@@ -249,7 +249,8 @@
         // (the second, half), their reach (cells), damage and stun (s).
         (id: "storm_boots", name: "Storm boots", color: (110, 104, 190),
             gear: (slot: Feet, weight: Light, stats: { AirJumps: 1, JumpHeight: 6, StormResist: 25, FallResist: 20 },
-            storm: (bolts: 4, reach: 95, damage: 10, stun: 0.25),
+            // (22 a bolt: a jump over a foe's head is a risk, worth it.)
+            storm: (bolts: 4, reach: 95, damage: 22, stun: 0.35),
             look: (recolor: [(colors: { 'B': (70, 66, 120), 'C': (48, 44, 88), 'U': (150, 140, 240), 'o': (30, 28, 56) })])),
             about: "A double jump kicks off a storm: bolts leap out of the cloud at what's near, and into the water it's in."),
         // The better double-jump boots: two jumps off thin air, higher.

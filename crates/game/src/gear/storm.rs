@@ -32,7 +32,7 @@ pub struct StormDef {
 
 impl Default for StormDef {
     fn default() -> Self {
-        StormDef { bolts: 4, reach: 95.0, damage: 10.0, stun: 0.25 }
+        StormDef { bolts: 4, reach: 95.0, damage: 22.0, stun: 0.35 }
     }
 }
 
