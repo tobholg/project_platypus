@@ -1,0 +1,18 @@
+// A phase spider from above (on the wall behind): the cave spider's, in
+// indigo and violet, its mark and eyes glowing.
+(
+    base: "spider_body",
+    palette: {
+        'b': (30, 22, 58),     // abdomen: the deep's indigo
+        'B': (58, 40, 104),    // abdomen, lit
+        'L': (96, 70, 160),    // abdomen, the light on its back
+        'h': (150, 120, 220),  // bristles, glimmering
+        'x': (120, 240, 255),  // its mark: it glows
+        'X': (70, 170, 230),   // its mark, deeper
+        'c': (40, 30, 74),     // head
+        'C': (74, 56, 128),    // head, lit
+        'e': (150, 245, 255),  // eyes (they glow: the creature's light)
+        'f': (220, 210, 250),  // fangs
+        'F': (160, 150, 200),  // fangs, shade
+    },
+)

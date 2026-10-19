@@ -272,6 +272,13 @@
             ]),
             (name: "recover", secs: 0.45, ease: Smooth, pose: Some(())),
         ]),
+        // A phase spider's net: it rears, its abdomen at you, and flings a
+        // wad of web that sticks you where you stand (and that it climbs).
+        (id: "phase_net", every: 4.0, when: (range: (40, 200), line: true), phases: [
+            (name: "windup", secs: 0.35, pose: Some((away: true, lift: 8, pitch: 24)), tremble: 0.05, acts: [Sound("spider_hiss")]),
+            (name: "fling", secs: 0, ease: Snap, pose: Some((away: true, lift: 4, pitch: 12)), acts: [Cast(spell: "web_net", at: -10, up: 6), Sound("silk")]),
+            (name: "recover", secs: 0.35, pose: Some(())),
+        ]),
         // With a clear line, from all but right on top of you (in a cave
         // it fights close: at 24 and up it never spat there): it rears and
         // lobs a glob of acid.

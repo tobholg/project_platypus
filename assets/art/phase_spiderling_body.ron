@@ -1,0 +1,13 @@
+// A phase spiderling from above: the spiderling's, in indigo, glowing.
+(
+    base: "spiderling_body",
+    palette: {
+        'b': (30, 22, 58),
+        'B': (58, 40, 104),
+        'L': (96, 70, 160),
+        'x': (120, 240, 255),
+        'c': (40, 30, 74),
+        'C': (74, 56, 128),
+        'e': (150, 245, 255),
+    },
+)

@@ -1,0 +1,12 @@
+// A phase egg sac: the egg sac's web gone violet, the brood inside it
+// glowing cyan.
+(
+    base: "egg_sac",
+    palette: {
+        'w': (190, 180, 230),
+        'W': (150, 136, 200),
+        's': (100, 88, 150),
+        'e': (90, 200, 230),
+        'E': (170, 250, 255),
+    },
+)

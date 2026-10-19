@@ -81,6 +81,8 @@
             about: "Hold: a frost wraith's breath, a cone of ice that comes out tight and flares. It bites and chills what's in it, and freezes the water it lands in. Up close it's fierce; at reach it thins."),
         (id: "crimson_vomit", name: "Crimson vomit", runes: ["gravity", "arrow", "plague_bite", "plague_glob"], delay: 0.05, recharge: 0.05, beast: true,
             about: "A crimson head's vomit: poisoned blood, sprayed. It poisons, and gives off a miasma."),
+        (id: "web_net", name: "Web net", runes: ["gravity", "arrow", "web_glob"], delay: 0.1, recharge: 0.1, beast: true,
+            about: "A phase spider's net: a wad of web lobbed at you, sticking you where you stand."),
         (id: "spider_spit", name: "Spider spit", runes: ["gravity", "arrow", "venom_glob", "acid_glob"], delay: 0.1, recharge: 0.1, element: Acid, beast: true,
             about: "A big glob of acid, lobbed: it splashes over what it hits."),
     ],

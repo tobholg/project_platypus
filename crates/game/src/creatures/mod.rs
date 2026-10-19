@@ -570,8 +570,9 @@ pub(crate) fn move_creatures(
         // (reeling in pulls it up: `gear::hook`).
         let tether = rope.and_then(|r| r.tether());
         k.loco.swinging = tether.is_some();
-        // (A climber can hold on to the wall behind it.)
-        k.loco.backed = stats.cling && backed(&sim.world, k.body.pos);
+        // (A climber can hold on to the wall behind it; a spider to its
+        // web, anywhere in it.)
+        k.loco.backed = stats.cling && (backed(&sim.world, k.body.pos) || (web_walker && stuck_in(&sim.world, &k.body)));
         let ev = k.loco.steer(stats, &controls.0, &mut k.body, DT);
         if let Some((at, len)) = tether {
             platypus_physics::tether(&mut k.body, at, len, DT);

@@ -40,6 +40,7 @@ pub mod hatchery;
 pub mod mimic;
 pub mod necro;
 pub mod olmer;
+pub mod phase;
 pub mod rat;
 pub mod toad;
 pub mod watcher;
@@ -80,7 +81,8 @@ impl Plugin for CustomPlugin {
             .register_custom::<watcher::Watcher>()
             .register_custom::<gnasher::Gnasher>()
             .register_custom::<cave_bat::CaveBat>()
-            .register_custom::<rat::Rat>();
+            .register_custom::<rat::Rat>()
+            .register_custom::<phase::Phase>();
     }
 }
 

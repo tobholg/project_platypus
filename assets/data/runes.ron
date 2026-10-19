@@ -183,6 +183,11 @@
         // ---- modifiers ----
         // A spider's spit: the glob itself (it stings), and a few drops of
         // acid where it lands (not a pool: it pits, it doesn't dig).
+        // A net of web, flung: it sticks where it lands (and on whoever's
+        // there), and a spider can climb it.
+        (id: "web_glob", name: "Web net", mana: 4, color: (220, 215, 240), kind: Payload(Matter(material: "cobweb", cells: 110)),
+            look: (trail: (count: 1.2, life: (0.2, 0.5), colors: [(240, 240, 250), (200, 195, 225)], speed: 6, gravity: 120),
+                   burst: (count: 22, life: (0.3, 0.7), colors: [(245, 245, 255), (200, 190, 230)], speed: 80, spread: 1.6, gravity: 120, drag: 2))),
         (id: "venom_glob", name: "Venom", mana: 2, color: (150, 220, 70), kind: Payload(Damage(9)),
             look: (trail: (count: 0.8, life: (0.2, 0.45), colors: [(210, 255, 140), (120, 200, 50), (60, 110, 30)], speed: 8, gravity: 180, glow: true),
                    burst: (count: 18, life: (0.25, 0.6), colors: [(220, 255, 150), (110, 200, 40), (50, 110, 20)], speed: 105, spread: 1.4, gravity: 240, drag: 1))),

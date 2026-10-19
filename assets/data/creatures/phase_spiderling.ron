@@ -1,0 +1,38 @@
+// A phase spiderling: the phase spider's brood (from phase egg sacs):
+// small, fast, many, and it blinks a short way through the rock at you;
+// caught in a flashlight's beam or a flash, it bursts (custom/phase.rs).
+(
+    name: "Phase spiderling",
+    size: (8, 6),
+    health: 10,
+    team: Enemy,
+    faction: "spiders",
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "insect",
+    profile: {acid: -0.25},
+    // Glowing ichor in its veins, like its mother's.
+    blood: "phase_ichor",
+    // Little: half as much as most.
+    bleeds: 0.5,
+    art: "phase_spiderling_body",
+    legs: (count: 8, reach: 14, upper: 0.5, step: 0.07, lift: 3, hips: 0, spread: 3,
+           color: (34, 24, 66), body: "phase_spiderling_body", eyes: (150, 245, 255)),
+    light: (color: (170, 130, 255), strength: 0.12),
+    movement: (
+        run_speed: 132,
+        ground_accel: 1800,
+        jump_height: 18,
+        air_jumps: 0,
+        step_height: 2,
+        cling: true,
+        dash_speed: 0,
+    ),
+    web_walker: true,
+    touch: (damage: 4, knock: 75, every: 0.5),
+    brain: (
+        kind: "hunter",
+        params: (aggro: 210, close: Crawl(pounce_range: 30, pounce_every: 1.0), wander: (speed: 0.6), senses: (dark: 1.0, smell: 90), tactics: (flee: 0.3)),
+    ),
+    // Short blinks, often, through thin walls; it bursts in strong light.
+    custom: (name: "phase", params: (every: (1.8, 3.5), near: (10.0, 18.0), speed: 220, dodge: 0.0, pops: true, color: (170, 230, 255))),
+)

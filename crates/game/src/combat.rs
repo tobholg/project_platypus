@@ -305,7 +305,10 @@ fn turn_art(art: &str, frame: Option<&str>) -> Result<Vec<Pixels>, String> {
 fn compile_art(art: &str, colors: Option<&HashMap<char, (u8, u8, u8)>>) -> Result<platypus_art::Art, String> {
     let path = assets_dir().join("art").join(format!("{art}.ron"));
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut file = platypus_art::parse(&text)?;
+    // (A recolour of another sprite, `base`: read that too.)
+    let dir = path.parent().expect("assets/art").to_path_buf();
+    let read = |base: &str| std::fs::read_to_string(dir.join(format!("{base}.ron"))).map_err(|e| format!("{base}.ron: {e}"));
+    let mut file = platypus_art::parse_based(&text, &read)?;
     for (c, &(r, g, b)) in colors.into_iter().flatten() {
         if let Some(slot) = file.palette.get_mut(c) {
             *slot = platypus_art::Color::Rgb(r, g, b);

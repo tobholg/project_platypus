@@ -337,7 +337,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script, sprint_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script, sprint_script, phase_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -10590,6 +10590,77 @@ fn sprint_script(
     if tenth != state.1 {
         state.1 = tenth;
         info!("sprint: t {t:.2} speed {:.0}, sprinting {}, stamina {:.0}, clip {}", k.body.vel.x, k.loco.sprinting, stamina.cur, anim.clip_name());
+    }
+}
+
+/// `phase` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a phase spider
+/// (`PLATYPUS_FOE`: another) 190 cells off; logs when it fades, goes
+/// through and comes out (where), the moves it starts, what the player's
+/// lost. `PLATYPUS_FLASH=1`: a flash on it whenever it's fading or through
+/// (light snaps it out; a spiderling bursts).
+#[allow(clippy::type_complexity)]
+fn phase_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature), Without<LocalPlayer>>,
+    spiders: Query<(&crate::creatures::custom::phase::Phase, &Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
+    mut began: MessageReader<crate::creatures::moves::Began>,
+    mut flares: MessageWriter<crate::fx::Flare>,
+    mut state: Local<(u8, f32, &'static str, u32)>,
+    sim: Res<SimWorld>,
+) {
+    if s.name != "phase" {
+        return;
+    }
+    menu.open = false;
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    state.1 += h.max - h.hp;
+    h.hp = h.max;
+    if state.0 == 0 && t > 0.4 {
+        for (e, c) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        k.body.pos = Vec2::new(1010.0, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        let foe = std::env::var("PLATYPUS_FOE").unwrap_or_else(|_| "phase_spider".into());
+        crate::creatures::def::spawn_creature(&mut commands, &foe, Vec2::new(1200.0, fl + 10.0), |_| {});
+        state.0 = 1;
+    }
+    for b in began.read() {
+        info!("phase: t {t:.2} began {}", b.id);
+    }
+    if state.0 != 1 {
+        return;
+    }
+    let me = k.body.pos;
+    match spiders.iter().next() {
+        Some((p, sk, sh)) => {
+            if p.doing() != state.2 {
+                state.2 = p.doing();
+                info!("phase: t {t:.2} {} at ({:.0}, {:.0}), {:.0} from the player (who's lost {:.0}); it has {:.0} hp", p.doing(), sk.body.pos.x, sk.body.pos.y, sk.body.pos.distance(me), state.1, sh.hp);
+            }
+            if std::env::var("PLATYPUS_FLASH").is_ok() && p.doing() != "here" {
+                flares.write(crate::fx::Flare { at: sk.body.pos + Vec2::Y * 10.0, color: [1.4, 1.4, 1.4], life: 0.2 });
+            }
+        }
+        // (Once it's been seen: not the tick it's spawned.)
+        None if !state.2.is_empty() => {
+            info!("phase: t {t:.2} it's gone (dead); the player lost {:.0}", state.1);
+            state.0 = 2;
+        }
+        None => {}
+    }
+    if t as u32 != state.3 {
+        state.3 = t as u32;
+        let far = spiders.iter().next().map_or(-1.0, |(_, sk, _)| sk.body.pos.distance(me));
+        let web = sim.materials().id("cobweb").map_or(0, |m| (me.x as i32 - 60..me.x as i32 + 60).flat_map(|x| (fl as i32 - 2..fl as i32 + 50).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
+        info!("phase: t {t:.0} the player has lost {:.0}; it's {far:.0} off; cobweb by them {web}", state.1);
     }
 }
 

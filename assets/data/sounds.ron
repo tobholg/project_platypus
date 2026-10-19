@@ -110,6 +110,9 @@
         "hook_throw": (make: Whoosh(from: 1200, to: 500, length: 0.2, q: 1.5), variants: 2, pitch: 0.05, volume: 0.35),
         "hook_bite": (make: Clang(pitch: 800, ring: 0.04, length: 0.12, grit: 0.6, muffle: 4000), variants: 3, pitch: 0.06, volume: 0.4),
         // A spider's strand of silk shot out: a thin, quick thwip.
+        // A phase spider slipping out of the world, and back in.
+        "phase_out": (make: Whoosh(from: 2600, to: 300, length: 0.35, q: 6.0), variants: 2, pitch: 0.06, reverb: 0.4, volume: 0.4),
+        "phase_in": (make: Whoosh(from: 300, to: 3200, length: 0.22, q: 5.0), variants: 2, pitch: 0.06, reverb: 0.4, volume: 0.45),
         "silk": (make: Whoosh(from: 3400, to: 1500, length: 0.11, q: 4.0), variants: 2, pitch: 0.08, volume: 0.45),
 
         // ---- hands ----

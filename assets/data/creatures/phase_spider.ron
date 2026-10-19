@@ -1,0 +1,75 @@
+// A phase spider: the cave spider's deep kin, indigo and glowing. It
+// slips out of the world: shimmers, is gone, ripples through the rock at
+// you (a trail of motes shows where) and comes out beside or behind you,
+// biting as it lands; struck, it may slip away. It throws nets of web
+// that stick you where you stand (and that it climbs), and reels you in
+// as its kin do. Light is what it fears: a flashlight's beam, a flash, a
+// bright lamp snaps it out of phase, senseless a moment
+// (custom/phase.rs). It bleeds glowing ichor. Deep, and in phase nests.
+(
+    name: "Phase spider",
+    // What it may have on it when it dies (loot.ron), besides what it wears.
+    loot: "spider",
+    size: (24, 18),
+    health: 240,
+    team: Enemy,
+    faction: "spiders",
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "insect",
+    profile: {acid: -0.25},
+    // It bleeds a glowing ichor; acid doesn't hurt it.
+    blood: "phase_ichor",
+    // A lot of it: 40% more than most.
+    bleeds: 1.4,
+    art: "phase_spider_side",
+    // Seen from the side on the ground, walls and ceilings: its legs from
+    // under its head, the knees up high over its back, the feet spread
+    // far ahead and behind (four near, four far), stepping in two sets of
+    // four. On the wall behind, from above (`back`): its legs splayed all
+    // round it.
+    legs: (view: Side, reach: 62, upper: 0.5, step: 0.1, lift: 8, ride: 13, stride: 16, tilt: 25,
+           color: (44, 32, 84), joint: (110, 80, 190), far: (20, 14, 40), thick: 4, body: "phase_spider_side", eyes: (150, 245, 255),
+           strikers: [0, 4],
+           each: [
+               (hip: (9, 0), lean: 36, gait: 0, knee: Up),
+               (hip: (7.5, 0), lean: 15, gait: 1, knee: Up),
+               (hip: (6, 0), lean: -22, gait: 0, knee: Up),
+               (hip: (4.5, 0), lean: -42, gait: 1, knee: Up),
+               (hip: (10, 1), lean: 29, gait: 1, knee: Up, far: true),
+               (hip: (8.5, 1), lean: 9, gait: 0, knee: Up, far: true),
+               (hip: (7, 1), lean: -15, gait: 1, knee: Up, far: true),
+               (hip: (5.5, 1), lean: -35, gait: 0, knee: Up, far: true),
+           ],
+           back: Some((count: 8, reach: 72, upper: 0.48, step: 0.1, lift: 12, hips: 6, spread: 11,
+               color: (22, 16, 44), joint: (90, 66, 160), thick: 5, body: "phase_spider_body", eyes: (150, 245, 255)))),
+    // (It glows: a violet light about it, its mark and eyes cyan.)
+    light: (color: (170, 130, 255), strength: 0.35),
+    movement: (
+        run_speed: 135,
+        ground_accel: 1350,
+        ground_decel: 1800,
+        air_accel: 750,
+        jump_height: 33,
+        air_jumps: 0,
+        step_height: 3,
+        cling: true,
+        dash_speed: 0,
+    ),
+    web_walker: true,
+    // Heavy and planted on eight legs: it shrugs off most blows (poise:
+    // 5 shortsword slashes, 3 longsword ones, 2 of its drive, in a row
+    // before one staggers it) and barely moves when hit (knockback / heft:
+    // a longsword slash sends it 24 cells/s, was 250).
+    poise: 60,
+    heft: 4,
+    // It hangs back about 80 off, spitting, and darts in for a bite or a
+    // stamp every 2 s or so, then back out (`skirmish`).
+    brain: (
+        kind: "hunter",
+        params: (aggro: 360, close: Crawl(pounce_range: 0, pounce_every: 1.5, keep: 34), wander: (speed: 0.4), senses: (dark: 1.0, smell: 160), tactics: (skirmish: Some((back: 80, wait: 2.0, together: 1)))),
+    ),
+    // Its own moves (moves.ron), tried in this order.
+    moves: ["spider_stamp", "spider_bite", "phase_net", "spider_web"],
+    // It slips through the world (custom/phase.rs), biting as it comes out.
+    custom: (name: "phase", params: (every: (3.5, 6.5), near: (24.0, 38.0), speed: 280, ambush: "spider_bite", dodge: 0.3, dazed: 1.4, color: (190, 140, 255))),
+)

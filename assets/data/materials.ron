@@ -333,6 +333,8 @@
         (name: "venom_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, coats: "venom", glow: (60, 30, 70), opacity: 30, colors: [(150, 90, 170), (120, 160, 60), (136, 104, 150)]),
         // What spiders bleed, and slimes are full of (a slime glows a little).
         (name: "ichor",    kind: Liquid, density: 1040, dispersion: 5, viscosity: 110, above: (100, "steam"), colors: [(156, 172, 64), (128, 146, 46)]),
+        // A phase spider's blood: a violet ichor that glows, breathing.
+        (name: "phase_ichor", kind: Liquid, density: 1040, dispersion: 5, viscosity: 120, above: (100, "steam"), glow: (60, 30, 120), pulse: 110, opacity: 20, colors: [(150, 100, 230), (120, 80, 200), (170, 130, 250)]),
         (name: "slime",    kind: Liquid, density: 1100, dispersion: 2, viscosity: 220, above: (100, "steam"), glow: (6, 22, 8), opacity: 20, colors: [(96, 196, 96), (76, 170, 80), (110, 210, 110)]),
         // A green slime's body: thick, clinging goo that clogs what it's on
         // and catches fire; held, it's a slime (creatures/body/goo.rs), let

@@ -1,0 +1,23 @@
+// A phase egg sac, in a phase nest: come near (or hit it) and it bursts
+// into phase spiderlings.
+(
+    name: "Phase egg sac",
+    // Leaves no body: what it had spills out.
+    corpse: false,
+    size: (11, 14),
+    health: 20,
+    team: Enemy,
+    // (It lies there: it doesn't hurt by touch.)
+    touchless: true,
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "insect",
+    profile: {fire: 2.0},
+    blood: "phase_ichor",
+    art: "phase_egg_sac",
+    light: (color: (120, 220, 255), strength: 0.15),
+    movement: (run_speed: 0, jump_height: 0, air_jumps: 0, step_height: 0, dash_speed: 0),
+    custom: (
+        name: "hatchery",
+        params: (brood: "phase_spiderling", count: 4, range: 51),
+    ),
+)

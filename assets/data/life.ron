@@ -109,6 +109,8 @@
     (kind: "plague_rat", place: Cave, bands: ["deep"], group: (2, 4), most: 6, rate: 0.08),
     (kind: "venom_centipede", place: Cave, bands: ["deep"], most: 1, rate: 0.04),
     (kind: "frost_wraith", place: Cave, bands: ["deep"], most: 1, rate: 0.012),
+    // Phase spiders: they come to you through the rock.
+    (kind: "phase_spider", place: Cave, bands: ["deep"], most: 1, rate: 0.03),
     // The underworld: ember bats, for now.
     (kind: "ember_bat", place: Cave, bands: ["underworld"], group: (2, 4), most: 6, rate: 0.12),
 ]

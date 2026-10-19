@@ -32,6 +32,9 @@
      lining: "cobweb", density: 0.05, keepers: [("bat", 2)]),
     (name: "spider nest", depth: (180, 150000), bands: ["caverns"], zones: ["none", "fungal"], chance: 0.1,
      lining: "cobweb", density: 0.55, keepers: [("spider", 1), ("egg_sac", 2), ("spiderling", 1), ("cocoon", 3)]),
+    // A phase nest: the deep's spider nest, its eggs glowing.
+    (name: "phase nest", depth: (180, 150000), bands: ["deep"], zones: ["none", "fungal", "crystal"], chance: 0.1,
+     lining: "cobweb", density: 0.5, keepers: [("phase_spider", 1), ("phase_egg_sac", 3), ("phase_spiderling", 2), ("cocoon", 2)]),
     // Bat colonies: the upper caves' commonest lair; eight or so asleep on
     // the roof, guano heaped under them.
     // (Smaller in the Burrows, full size below.)
