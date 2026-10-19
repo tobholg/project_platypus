@@ -107,6 +107,23 @@
             (name: "shove", secs: 0.0, clip: Some("lunge"), acts: [Throw(speed: 160, up: 90, stun: 0.3)]),
             (name: "recover", secs: 0.5, clip: Some("lunge")),
         ]),
+        // A frost wraith's breath: it lifts its arms, frost gathering in
+        // its palms (a rising chime), thrusts them at you, and breathes a
+        // cone of ice out of them that leaves tight and flares
+        // (`frost_breath`: the rimebreath staff's spell).
+        (id: "frost_breath", every: 4.5, when: (range: (20, 120), line: true), phases: [
+            (name: "gather", secs: 0.6, clip: Some("gather"), acts: [Sound("cast")]),
+            (name: "breathe", secs: 0.6, clip: Some("breathe"), acts: [Cast(spell: "frost_breath", at: 14, up: 7, count: 6, every: 0.1)]),
+            (name: "recover", secs: 0.45, clip: Some("breathe")),
+        ]),
+        // A crimson head's vomit: its head blooms open (the Plaga in it:
+        // four flaps peeling back from a red maw, tendrils), shudders, and
+        // sprays poisoned blood at you in a fan.
+        (id: "crimson_vomit", every: 5.5, when: (range: (20, 130), line: true), phases: [
+            (name: "windup", secs: 0.65, clip: Some("bloom"), acts: [Sound("snarl")]),
+            (name: "spew", secs: 0.5, clip: Some("spew"), acts: [Cast(spell: "crimson_vomit", at: 8, up: 15, count: 7, every: 0.06, launch: Some((1.0, 0.32)), spread: 16), Sound("pour")]),
+            (name: "recover", secs: 0.6, clip: Some("bloom")),
+        ]),
         // A ray for something that burns (not on any creature yet: the
         // roster's). A long tell, then a sweep you can outrun.
         (id: "fire_ray", every: 6.0, when: (range: (40, 240), line: true), phases: [
@@ -197,6 +214,17 @@
                 Sound("snap"),
             ]),
             (name: "recover", secs: 0.3, ease: Smooth, pose: Some(()), acts: [Lunge(speed: 0, up: 0)]),
+        ]),
+        // A venom centipede's bite: the cave centipede's, harder, its venom
+        // thicker (it stays in you longer: two coats).
+        (id: "venom_centipede_bite", every: 1.3, when: (range: (0, 28), footing: true), phases: [
+            (name: "windup", secs: 0.2, pose: Some((lift: 2, back: 6))),
+            (name: "strike", secs: 0.1, ease: Snap, pose: Some((lift: 0, back: -6)), acts: [
+                Lunge(speed: 280, up: 20),
+                Strike((at: 10, reach: 8, damage: 15, harm: pierce, knock: 240, up: 0.2, stun: 0.25, from: 0.0, coat: Some("venom"))),
+                Sound("snap"),
+            ]),
+            (name: "recover", secs: 0.28, ease: Smooth, pose: Some(()), acts: [Lunge(speed: 0, up: 0)]),
         ]),
         // The big spider's stamp: up on its back legs, its front pair raised
         // high over its head, held a moment trembling, then brought down

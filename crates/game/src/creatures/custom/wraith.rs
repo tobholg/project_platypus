@@ -27,6 +27,16 @@ pub struct Wraith {
     pub reach: f32,
     pub keep: f32,
     pub sweep: f32,
+    /// Its rake: what it does (damage), how cold it leaves you (0..1 of a
+    /// chill) and how long (a frost wraith: colder, longer).
+    pub rake: f32,
+    pub cold: f32,
+    pub cold_secs: f32,
+    /// A cold round it this far (cells; 0: none): it cools what's near
+    /// (water freezes where it drifts over), and chills what comes near.
+    pub aura: f32,
+    #[serde(skip)]
+    aura_tick: f32,
     #[serde(skip)]
     doing: Doing,
     #[serde(skip)]
@@ -61,7 +71,7 @@ impl Wraith {
 
 impl Default for Wraith {
     fn default() -> Self {
-        Wraith { reach: 120.0, keep: 85.0, sweep: 40.0, doing: Doing::Drift, chains: Default::default(), whip_ready: 0.0, sweep_ready: 0.0, alpha: 0.0, deep: None }
+        Wraith { reach: 120.0, keep: 85.0, sweep: 40.0, rake: RAKE_HIT, cold: 0.6, cold_secs: 2.0, aura: 0.0, aura_tick: 0.0, doing: Doing::Drift, chains: Default::default(), whip_ready: 0.0, sweep_ready: 0.0, alpha: 0.0, deep: None }
     }
 }
 
@@ -126,6 +136,40 @@ const SWEEP: (f32, f32, f32) = (0.9, 2.0, 40.0);
 const SWEEP_EVERY: f32 = 4.0;
 /// Its blows: the rake (frost), the sweep.
 const RAKE_HIT: f32 = 18.0;
+/// Its cold (`aura`), every so often (s): the cells round it cooled this
+/// much (°C), what's near chilled this much, this long.
+const AURA_EVERY: f32 = 0.25;
+const AURA_COLD: i16 = -45;
+const AURA_CHILL: (f32, f32) = (0.35, 0.6);
+
+/// Frost motes drifting off a frost wraith.
+static RIME: std::sync::LazyLock<crate::magic::runes::Emitter> = std::sync::LazyLock::new(|| crate::magic::runes::Emitter {
+    count: 5.0,
+    life: (0.4, 1.0),
+    colors: vec![(235, 245, 255), (190, 225, 255), (150, 200, 240)],
+    speed: 30.0,
+    spread: 3.1,
+    gravity: 30.0,
+    drag: 2.0,
+    size: 1.0,
+    jitter: 10.0,
+    glow: true,
+});
+/// Frost in its palms (its breath, gathered and breathed).
+static PALM: std::sync::LazyLock<crate::magic::runes::Emitter> = std::sync::LazyLock::new(|| crate::magic::runes::Emitter {
+    count: 1.0,
+    life: (0.2, 0.45),
+    colors: vec![(255, 255, 255), (205, 238, 255), (140, 200, 250)],
+    speed: 18.0,
+    spread: 0.9,
+    gravity: -20.0,
+    drag: 3.0,
+    size: 1.0,
+    jitter: 0.0,
+    glow: true,
+});
+/// The clips it plays itself (a move's it leaves be).
+const OWN_CLIPS: [&str; 4] = ["raise", "lash", "claw", "whirl"];
 const SWEEP_HIT: f32 = 12.0;
 /// Fading at dawn this long (s); deeper than this (cells under the
 /// surface) it's in the deep dark and doesn't.
@@ -226,18 +270,20 @@ fn lay(c: &mut Chain, at: impl Fn(usize) -> Vec2) {
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn think(
     mut commands: Commands,
-    sim: Res<SimWorld>,
+    mut sim: ResMut<SimWorld>,
     day: Res<crate::light::Daylight>,
-    mut wraiths: Query<(Entity, &mut Wraith, &mut crate::creatures::body::animation::Animator, &Health)>,
+    mut sparks: ResMut<crate::vfx::Sparks>,
+    mut wraiths: Query<(Entity, &mut Wraith, &mut crate::creatures::body::animation::Animator, &Health, Option<&crate::creatures::moves::Moves>)>,
     mut bodies: Query<(Entity, &mut Kinematics, Option<&Team>, Option<&Controls>, Has<Wraith>)>,
     natures: Query<&Health, Without<Wraith>>,
     mut swings: MessageReader<crate::combat::MeleeRequest>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
+    mut flares: MessageWriter<crate::fx::Flare>,
 ) {
     let struck_at: Vec<Entity> = swings.read().map(|s| s.attacker).collect();
     let night = !(0.22..0.8).contains(&day.time);
-    for (e, mut w, mut anim, health) in &mut wraiths {
+    for (e, mut w, mut anim, health, moves) in &mut wraiths {
         let Ok((_, k, ..)) = bodies.get(e) else { continue };
         let (pos, half, facing) = (k.body.pos, k.body.half, k.loco.facing);
         let deep = *w.deep.get_or_insert_with(|| sim.generator.surface_hint(pos.x as i32).is_some_and(|s| s - pos.y as i32 > DEEP));
@@ -249,6 +295,41 @@ fn think(
             .map(|(o, ok, ..)| (o, ok.body.pos, ok.body.half))
             .filter(|(_, p, _)| p.distance(pos) < AGGRO)
             .min_by(|a, b| a.1.distance(pos).total_cmp(&b.1.distance(pos)));
+        // Its cold (a frost wraith's): the cells round it cooled (water
+        // freezes), what's near chilled, frost motes drifting off it.
+        w.aura_tick -= DT;
+        if w.aura > 0.0 && w.aura_tick <= 0.0 && !in_rock {
+            w.aura_tick = AURA_EVERY;
+            sim.queue(platypus_sim::WorldEdit::Heat { center: platypus_sim::CellPos::from_world(pos.x, pos.y), radius: w.aura as i32, amount: AURA_COLD });
+            let near: Vec<Entity> = bodies.iter().filter(|(o, ok, t, _, wraith)| *o != e && !wraith && t.is_some_and(|t| t.hunted()) && ok.body.pos.distance(pos) < w.aura).map(|(o, ..)| o).collect();
+            for who in near {
+                if let Ok(h) = natures.get(who) {
+                    crate::creatures::body::elements::chill(&mut commands, who, &h.nature, None, AURA_CHILL.0, AURA_CHILL.1);
+                }
+            }
+            sparks.emit(&RIME, RIME.count as usize, pos, Vec2::NEG_Y, Vec2::ZERO);
+        }
+        // Its breath (a frost wraith's: `frost_breath`): frost gathering in
+        // its raised palms, then blazing out of them as it breathes, a cold
+        // light on what's near.
+        let breath = match anim.force.as_deref() {
+            Some("gather") => Some(false),
+            Some("breathe") => Some(true),
+            _ => None,
+        };
+        if let Some(blazing) = breath {
+            let f = if facing < 0.0 { -1.0 } else { 1.0 };
+            let palms = if blazing { [Vec2::new(13.0 * f, 8.5), Vec2::new(13.0 * f, 5.5)] } else { [Vec2::new(-11.5 * f, 18.5), Vec2::new(11.5 * f, 18.5)] };
+            let way = if blazing { Vec2::X * f } else { Vec2::Y };
+            for (i, p) in palms.into_iter().enumerate() {
+                // (Every other tick or so, each.)
+                if platypus_sim::rng::hash(&[e.to_bits(), (day.time * 1.0e7) as u64, i as u64]) & 1 == 0 {
+                    sparks.emit(&PALM, 1, pos + p, way, Vec2::ZERO);
+                }
+            }
+            let color = if blazing { [0.75, 1.05, 1.6] } else { [0.3, 0.5, 0.85] };
+            flares.write(crate::fx::Flare { at: pos + (palms[0] + palms[1]) / 2.0, color, life: 0.06 });
+        }
         // Dawn, out of the deep dark: it fades.
         if !deep && !night && !matches!(w.doing, Doing::Fade(_)) {
             w.doing = Doing::Fade(0.0);
@@ -268,7 +349,10 @@ fn think(
         let mut next = doing;
         match doing {
             Doing::Drift => {
-                anim.force = None;
+                // (Its own clips let go; a move's, its breath, held.)
+                if anim.force.as_deref().is_some_and(|c| OWN_CLIPS.contains(&c)) {
+                    anim.force = None;
+                }
                 match target {
                     Some((_, tp, _)) => {
                         // A chain's length off, on its side of them, over them.
@@ -277,7 +361,9 @@ fn think(
                         let d = want - pos;
                         vel = d.normalize_or_zero() * DRIFT * (d.length() / 20.0).min(1.0);
                         let dist = tp.distance(pos);
-                        if !in_rock && dist <= w.sweep && w.sweep_ready <= 0.0 {
+                        // (Not mid-move, its breath: its arms are busy.)
+                        if moves.is_some_and(|m| m.busy()) {
+                        } else if !in_rock && dist <= w.sweep && w.sweep_ready <= 0.0 {
                             next = Doing::Whirl(0.0);
                             sounds.write(crate::sound::PlaySound::at("clank", pos).pitch(0.55));
                         } else if !in_rock && dist <= w.reach && w.whip_ready <= 0.0 {
@@ -349,9 +435,9 @@ fn think(
                     now = true;
                     if let Ok((_, tk, ..)) = bodies.get(who) {
                         let away = Vec2::new((tk.body.pos.x - pos.x).signum(), 0.5).normalize();
-                        hits.write(crate::combat::Hit { target: who, damage: RAKE_HIT, harm: Harm::Frost, knock: away * 240.0, stun: 0.25, at: tk.body.pos, dir: away, weight: 1.2, crit: false });
+                        hits.write(crate::combat::Hit { target: who, damage: w.rake, harm: Harm::Frost, knock: away * 240.0, stun: 0.25, at: tk.body.pos, dir: away, weight: 1.2, crit: false });
                         if let Ok(h) = natures.get(who) {
-                            crate::creatures::body::elements::chill(&mut commands, who, &h.nature, None, 0.6, 2.0);
+                            crate::creatures::body::elements::chill(&mut commands, who, &h.nature, None, w.cold, w.cold_secs);
                         }
                         sounds.write(crate::sound::PlaySound::at("hit", tk.body.pos).pitch(0.7));
                     }
@@ -399,6 +485,14 @@ fn think(
                     continue;
                 }
                 next = Doing::Fade(t + DT);
+            }
+        }
+        // (Its own attacks hold its moves off: one thing at a time.)
+        if matches!(next, Doing::Drift) != matches!(doing, Doing::Drift) {
+            if matches!(next, Doing::Drift) {
+                commands.entity(e).try_remove::<crate::creatures::moves::Occupied>();
+            } else {
+                commands.entity(e).try_insert(crate::creatures::moves::Occupied);
             }
         }
         w.doing = next;

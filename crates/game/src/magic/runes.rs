@@ -154,6 +154,17 @@ pub enum Modifier {
     /// side, ahead of it, within 320 cells) at most this many degrees a
     /// second: a missile.
     Homing(f32),
+    /// Thrown as a spray: `count` of it at once, each anywhere `spread`
+    /// degrees either side of the aim, at `pace` (slowest, fastest) of its
+    /// speed: a cone that comes out tight and flares.
+    Spray { count: u32, spread: f32, #[serde(default = "full_pace")] pace: (f32, f32) },
+    /// Slows in the air: this share of its speed lost a second (a breath's
+    /// shards, billowing out and dying).
+    Drag(f32),
+}
+
+fn full_pace() -> (f32, f32) {
+    (1.0, 1.0)
 }
 
 /// What a rune looks like (visual only: `vfx`): sparks it trails as it
@@ -287,6 +298,17 @@ impl Cast {
     /// homes.
     pub fn homing(&self) -> Option<f32> {
         self.modifiers.iter().find_map(|m| if let Modifier::Homing(r) = m { Some(*r) } else { None })
+    }
+
+    /// How it sprays, if it does: how many, how wide (degrees either
+    /// side), at what share of its speed (slowest, fastest).
+    pub fn spray(&self) -> Option<(u32, f32, (f32, f32))> {
+        self.modifiers.iter().find_map(|m| if let Modifier::Spray { count, spread, pace } = m { Some((*count, *spread, *pace)) } else { None })
+    }
+
+    /// The share of its speed it loses a second.
+    pub fn drag(&self) -> f32 {
+        self.modifiers.iter().map(|m| if let Modifier::Drag(d) = m { *d } else { 0.0 }).sum()
     }
 
     pub fn speed_scale(&self) -> f32 {

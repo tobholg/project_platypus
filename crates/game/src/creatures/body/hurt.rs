@@ -58,6 +58,10 @@ pub struct Reacted {
 
 /// What a creature bleeds (from its RON `blood`), and how much of it
 /// (`bleeds`: 1 as anything).
+/// Dead, it bursts into this gas, this far round (cells).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct DeathGas(pub platypus_sim::MaterialId, pub i32);
+
 #[derive(Component, Clone, Copy)]
 pub struct Bleeds(pub MaterialId, pub f32);
 

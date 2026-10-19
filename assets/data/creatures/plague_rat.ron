@@ -1,0 +1,35 @@
+// A plague rat: the cave rat gone sick, in the deep. Its bite poisons;
+// dead, it bursts into a toxic cloud (miasma: it eats at what breathes it,
+// and burns if lit). Brave in numbers and a scavenger, as a rat is.
+// (custom/rat.rs)
+(
+    name: "Plague rat",
+    size: (24, 12),
+    health: 22,
+    heft: 0.7,
+    team: Enemy,
+    faction: "rats",
+    kind: "beast",
+    blood: "blood",
+    bleeds: 0.8,
+    art: "plague_rat",
+    // A red glint of an eye in the dark.
+    eyes: (150, 255, 90),
+    light: (color: (110, 210, 80), strength: 0.03),
+    // Dead, it bursts into a toxic cloud.
+    death_gas: Some(("miasma", 5)),
+    movement: (
+        run_speed: 112,
+        ground_accel: 1400,
+        jump_height: 22,
+        air_jumps: 0,
+        step_height: 3,
+        dash_speed: 0,
+    ),
+    touch: (damage: 7, knock: 140, every: 0.7, coat: "venom"),
+    brain: (
+        kind: "hunter",
+        params: (aggro: 200, close: Crawl(pounce_range: 40, pounce_every: 1.3), wander: (speed: 0.5), senses: (dark: 1.0, smell: 120, hearing: 1.2), tactics: (call: 160, flank: true)),
+    ),
+    custom: (name: "rat", params: ()),
+)

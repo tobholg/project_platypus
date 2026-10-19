@@ -656,8 +656,27 @@ pub struct Touch {
     pub stun: f32,
     #[serde(default = "touch_every")]
     pub every: f32,
+    /// A coating it leaves on what it touches (coatings.ron: a plague
+    /// rat's bite, venom).
+    #[serde(default)]
+    pub coat: Option<LastingName>,
+    /// It sets what it touches alight (an ember bat).
+    #[serde(default)]
+    pub ignites: bool,
     #[serde(skip)]
     rest: f32,
+}
+
+/// A name read once and kept for good (a handful: coatings'), so what
+/// holds it can be copied.
+#[derive(Clone, Copy, Debug)]
+pub struct LastingName(pub &'static str);
+
+impl<'de> Deserialize<'de> for LastingName {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let name = String::deserialize(d)?;
+        Ok(LastingName(Box::leak(name.into_boxed_str())))
+    }
 }
 
 fn slash() -> crate::creatures::Harm {
@@ -689,19 +708,30 @@ impl Touch {
             knock: TOUCH_KNOCK + TOUCH_KNOCK_HEFT * heft.min(4.0),
             stun: 0.12,
             every: 1.0,
+            coat: None,
+            ignites: false,
             rest: 0.0,
         }
     }
 }
 
 type Toucher<'a> = (Entity, &'a mut Touch, &'a Kinematics, Option<&'a Team>, &'a Health, Option<&'a crate::creatures::body::goo::Goo>);
-type Touched<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a mut Invulnerable>);
+type Touched<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a mut Invulnerable>, &'a Health, Option<&'a crate::creatures::body::elements::Coated>);
 
 /// Things that hurt by touch hit what they touch, mid-move or not (the
 /// grace after a hit keeps a move's blow and its touch from both landing):
 /// not while it's stunned or dying; not asleep or still coming up
 /// (dormant). A dash slips blows, not bodies: a touch breaks it.
-fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, (Without<crate::creatures::Dormant>, Without<crate::creatures::Disguised>)>, mut bodies: Query<Touched, With<Health>>, factions: Query<&crate::creatures::factions::Faction>, pogo: (Query<&Swing>, Query<(), With<PogoGrace>>)) {
+#[allow(clippy::too_many_arguments)]
+fn touch(
+    mut commands: Commands,
+    coatings: Res<crate::creatures::body::elements::Coatings>,
+    mut hits: MessageWriter<Hit>,
+    mut touchers: Query<Toucher, (Without<crate::creatures::Dormant>, Without<crate::creatures::Disguised>)>,
+    mut bodies: Query<Touched, With<Health>>,
+    factions: Query<&crate::creatures::factions::Faction>,
+    pogo: (Query<&Swing>, Query<(), With<PogoGrace>>),
+) {
     let (swings, graced) = pogo;
     for (me, mut t, k, team, health, goo) in &mut touchers {
         t.rest -= DT;
@@ -709,7 +739,7 @@ fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, (Without<cra
         if t.rest > 0.0 || stunned || health.hp <= 0.0 {
             continue;
         }
-        for (e, tk, tteam, mut inv) in &mut bodies {
+        for (e, tk, tteam, mut inv, th, tcoat) in &mut bodies {
             if e == me || inv.as_ref().is_some_and(|i| i.left > 0.0 && !i.dodge) {
                 continue;
             }
@@ -739,6 +769,12 @@ fn touch(mut hits: MessageWriter<Hit>, mut touchers: Query<Toucher, (Without<cra
                 i.left = 0.0;
             }
             hits.write(Hit { target: e, damage: t.damage, harm: t.harm, knock: push, stun: t.stun, at: k.body.pos + d * 0.5, dir: d.normalize_or(Vec2::X), weight: t.damage / 12.0, crit: false });
+            if let Some(LastingName(name)) = t.coat.filter(|n| coatings.by_name.contains_key(n.0)) {
+                crate::creatures::body::elements::stain(&mut commands, e, name, 0.5, &coatings);
+            }
+            if t.ignites {
+                crate::creatures::body::elements::catch_fire(&mut commands, e, &th.nature, tcoat, &coatings, 0.35);
+            }
             t.rest = t.every;
             break;
         }

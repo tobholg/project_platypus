@@ -1,0 +1,54 @@
+// An ember bat: the vampire bat's drawing, smouldering: soot-black and
+// ember-orange wings, eyes like coals.
+(
+    size: (23, 12),
+    feet: (11.5, 12),
+    outline: (18, 14, 16),
+    palette: {
+        'b': (92, 40, 20),   // body
+        'B': (132, 62, 24),   // body, lit (the crown, the chest)
+        'd': (62, 24, 14),   // body, shade (the belly, the legs)
+        'e': (112, 50, 24),   // ears
+        'f': (230, 214, 200),   // fangs
+        'k': (255, 220, 120),   // eye
+        'w': (204, 92, 30),   // wing, the skin
+        'v': (242, 142, 50),   // wing, the skin lit
+        'W': (142, 56, 20),   // wing, the bones
+    },
+    frames: {
+        "up": [
+            ".......................",
+            ".W.......e...e.......W.",
+            ".WW......ee.ee......WW.",
+            ".WvW.....bBBBb.....WvW.",
+            ".WvvW...bbkbkbb...WvvW.",
+            ".WwvvW.wbbbBbbbw.WvvwW.",
+            ".WwwvvWwwdfdfdwwWvvwwW.",
+            ".WW.wwwwwbbBbbwwwww.WW.",
+            "..W...wwwdbbbdwww...W..",
+            ".........dbbbd.........",
+            "..........d.d..........",
+            ".......................",
+        ],
+        "down": [
+            ".......................",
+            ".........e...e.........",
+            ".........ee.ee.........",
+            ".........bBBBb.........",
+            "......vvbbkbkbbvv......",
+            "....WWvvwbbBbbwvvWW....",
+            "..WWvwwwwdfdfdwwwwvWW..",
+            ".WvwwWwwwbbBbbwwwWwwvW.",
+            ".WwwW.wWwdbbbdwWw.WwwW.",
+            ".Ww..W..W.dbd.W..W..wW.",
+            ".W........d.d........W.",
+            ".......................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["up", "down"], fps: 12),
+        "run": (frames: ["up", "down"], fps: 12),
+        "jump": (frames: ["up", "down"], fps: 12),
+        "fall": (frames: ["up", "down"], fps: 12),
+    },
+)

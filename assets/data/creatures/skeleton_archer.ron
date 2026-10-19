@@ -1,0 +1,52 @@
+// A skeleton archer: the dead with a bow, in the caverns. It keeps off
+// and shoots; it comes back together as a skeleton does, unless crushed.
+(
+    name: "Skeleton archer",
+    // What it may have on it when it dies (loot.ron), besides what it wears.
+    loot: "skeleton",
+    // The armour it died in, rusted on.
+    wears: [("iron_helm", 0.3), ("chainmail", 0.25), ("iron_greaves", 0.2), ("cloth_hood", 0.15)],
+    size: (9, 24),
+    health: 60,
+    team: Enemy,
+    faction: "undead",
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "undead",
+    // (Bones don't burn: the undead's weakness to fire is dead flesh's.)
+    profile: {fire: 0.75},
+    cant: [burn],
+    rises: Some((after: 5.0, health: 0.5, breaks: [blunt], anchor: true, remains: Rubble, glow: (90, 255, 190))),
+    // (Its head off, it fights on blind: it hears.)
+    headless: Blind,
+    blood: "ash",
+    fall_damage: (safe_height: 180, per_cell: 0.3),
+    movement: (
+        run_speed: 87,
+        jump_height: 48,
+        air_jumps: 0,
+        step_height: 5,
+        dash_speed: 0,
+    ),
+    art: "skeleton",
+    // Lanky: its upper body is its art (animated: its arms, its sword); its
+    // legs are two long bone legs (legs.rs, `rig`) from its pelvis's lower
+    // corners, 18 cells up: each a thigh and a shin, a knob at the knee, a
+    // small bony foot forward; they step on whatever's under them, one
+    // then the other, and can be cut off one at a time.
+    legs: (view: Side, rig: true, reach: 18.5, upper: 0.5, step: 0.12, lift: 3, stride: 9,
+           color: (194, 188, 172), joint: (232, 228, 212), outline: (26, 20, 20), width: [2.6, 2.2, 1.8], toes: 3,
+           body: "skeleton",
+           each: [
+               (hip: (2, 6), gait: 0, knee: Forward),
+               (hip: (-1, 6), gait: 1, knee: Forward, far: true),
+           ]),
+    weapon: "bow",
+    // (Its sword taken from its heap, it gets up and punches.)
+    unarmed: "bony_fists",
+    stamina: 60,
+    poise: 12,
+    brain: (
+        kind: "hunter",
+        params: (aggro: 360, close: Range(near: 80, far: 200), attack: Shoot(draw: 0.9, every: 2.0, wobble: 6), wander: (speed: 0.3, every: 3.0), senses: (dark: 0.7)),
+    ),
+)

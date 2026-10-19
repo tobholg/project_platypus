@@ -263,6 +263,10 @@ pub struct CreatureDef {
     /// half): every spray, drip, burst and stump scaled so.
     #[serde(default = "whole")]
     pub bleeds: f32,
+    /// Dead, it bursts into this gas, this far round (cells): a plague
+    /// rat's miasma.
+    #[serde(default)]
+    pub death_gas: Option<(String, i32)>,
 }
 
 impl CreatureDef {
@@ -635,6 +639,7 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
             .unwrap_or((None, None));
 
         let blood = world.resource::<crate::world::SimWorld>().materials().id(&def.blood);
+        let gas_id = def.death_gas.as_ref().and_then(|(g, _)| world.resource::<crate::world::SimWorld>().materials().id(g));
         let number = {
             let mut ids = world.resource_mut::<super::StableIds>();
             ids.0 += 1;
@@ -712,6 +717,12 @@ pub fn spawn_creature(commands: &mut Commands, kind: &str, feet: Vec2, then: imp
         }
         if let Some(m) = blood {
             e.insert(super::body::hurt::Bleeds(m, def.bleeds));
+        }
+        if let Some((gas, r)) = &def.death_gas
+            && let Some(m) = gas_id
+        {
+            e.insert(super::body::hurt::DeathGas(m, *r));
+            let _ = gas;
         }
         if def.rig.as_ref().is_some_and(|r| r.anchors.contains_key("foot_near")) {
             e.insert(super::body::animation::Soles::default());

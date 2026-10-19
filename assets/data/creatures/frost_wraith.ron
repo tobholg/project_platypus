@@ -1,0 +1,27 @@
+// A frost wraith: the chain wraith's deep kin, in rime. It lashes, drags
+// and rakes as a chain wraith does, but its claws leave you frozen half
+// still for long seconds; it breathes a cone of ice out of its palms (the
+// rimebreath staff's spell, and the staff, sometimes, in what it leaves);
+// and the cold round it
+// chills you near it and freezes the water it drifts over. Fire burns
+// it. (custom/wraith.rs)
+(
+    name: "Frost wraith",
+    size: (14, 26),
+    health: 180,
+    team: Enemy,
+    kind: "spirit",
+    profile: {slash: 0.5, pierce: 0.5, blunt: 0.5, frost: 0.0, fire: 1.6},
+    blood: "",
+    corpse: false,
+    loot: "frost_wraith",
+    art: "frost_wraith",
+    light: (color: (170, 220, 255), strength: 0.6),
+    movement: (run_speed: 70, jump_height: 0, air_jumps: 0, step_height: 0, dash_speed: 0, fly_speed: 70),
+    touchless: true,
+    brain: (kind: "hunter", params: (aggro: 420, close: Range(near: 70, far: 100))),
+    // Its breath: a cone of ice out of its palms (moves.ron).
+    moves: ["frost_breath"],
+    custom: (name: "wraith", params: (rake: 24, cold: 0.9, cold_secs: 4.0, aura: 28)),
+    z: 10.5,
+)

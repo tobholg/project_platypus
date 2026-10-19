@@ -228,6 +228,8 @@ struct Fire {
     dir: Vec2,
     /// How far the aim is (lightning goes there when nothing's near it).
     reach: f32,
+    /// The share of its speed it goes at (a spray's shards: each its own).
+    pace: f32,
 }
 
 /// Casts to go off (set off by a wand, or by a spell landing: next tick).
@@ -357,6 +359,7 @@ fn request(
     mut firing: ResMut<Firing>,
     mut mana: Query<&mut Mana>,
     stats: Query<&crate::gear::Stats>,
+    mut sprays: Local<u64>,
 ) {
     let none = crate::gear::Stats::default();
     for r in requests.read() {
@@ -414,7 +417,21 @@ fn request(
         w.wait = if w.next == 0 { *recharge } else { *delay };
         w.of = w.wait;
         let aim = r.toward - r.from;
-        firing.0.push(Fire { cast, caster: r.caster, from: r.from, dir: aim.normalize_or(Vec2::X), reach: aim.length() });
+        let dir = aim.normalize_or(Vec2::X);
+        // A spray: so many at once, each its own way in the cone and its
+        // own pace (a shard here, a laggard there: it flares, not a fan).
+        if let Some((count, spread, (slow, fast))) = cast.spray() {
+            for i in 0..count {
+                *sprays += 1;
+                let roll = |salt: u64| platypus_sim::rng::hash(&[r.caster.to_bits(), *sprays, i as u64, salt]) as f32 / u64::MAX as f32;
+                // (Bunched toward the middle: two rolls averaged.)
+                let off = (roll(1) + roll(2) - 1.0) * spread;
+                let pace = slow + (fast - slow) * roll(3);
+                firing.0.push(Fire { cast: cast.clone(), caster: r.caster, from: r.from, dir: Vec2::from_angle(off.to_radians()).rotate(dir), reach: aim.length(), pace });
+            }
+            continue;
+        }
+        firing.0.push(Fire { cast, caster: r.caster, from: r.from, dir, reach: aim.length(), pace: 1.0 });
     }
 }
 
@@ -543,7 +560,7 @@ fn fire(
                 } else {
                     // Something falling (an orb that doesn't bounce), carrying the rest.
                     let falling = Arc::new(Cast { carrier: Carrier::Orb { speed, life: 6.0, bounces: 0 }, ..(*cast).clone() });
-                    let fall = Fire { cast: falling, caster: f.caster, from: above, dir: (target - above).normalize_or(Vec2::NEG_Y), reach: height };
+                    let fall = Fire { cast: falling, caster: f.caster, from: above, dir: (target - above).normalize_or(Vec2::NEG_Y), reach: height, pace: 1.0 };
                     spawn_spell(&mut commands, &fall, speed, 6.0, 0, ORB_FALL, halo.clone());
                 }
             }
@@ -595,7 +612,7 @@ fn fire(
                     }
                     land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, dir, false, false, &mut booms, &drinkers);
                     if let Some(then) = &cast.then {
-                        firing.0.push(Fire { cast: then.clone(), caster: f.caster, from: at - dir * 3.0, dir, reach: TRIGGERED_REACH });
+                        firing.0.push(Fire { cast: then.clone(), caster: f.caster, from: at - dir * 3.0, dir, reach: TRIGGERED_REACH, pace: 1.0 });
                     }
                 }
             }
@@ -607,7 +624,7 @@ fn fire(
 
 fn spawn_spell(commands: &mut Commands, f: &Fire, speed: f32, life: f32, bounces: u8, fall: f32, halo: Option<Handle<Image>>) {
     let c = &f.cast;
-    let vel = f.dir * speed * c.speed_scale();
+    let vel = f.dir * speed * c.speed_scale() * f.pace;
     let (r, g, b) = c.color;
     let color = [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0];
     let (size, glow) = if matches!(c.carrier, Carrier::Orb { .. }) { (Vec2::splat(7.5), 2.4) } else { (Vec2::new(6.0, 2.25), 1.4) };
@@ -894,6 +911,11 @@ fn fly(
                     s.vel = Vec2::from_angle(now + d.clamp(-most, most)) * s.vel.length();
                 }
             }
+            // (A breath's shards slow as they go, and billow.)
+            let drag = s.cast.drag();
+            if drag > 0.0 {
+                s.vel *= (1.0 - drag * DT).max(0.0);
+            }
             s.vel.y -= GRAVITY * s.fall * DT;
             let travel = s.vel * DT;
             let steps = travel.length().ceil().max(1.0) as i32;
@@ -1056,7 +1078,7 @@ fn fly(
         }
         if let Some(then) = &cast.then {
             let dir = if n == Vec2::ZERO { dir } else { dir - 2.0 * dir.dot(n) * n };
-            firing.0.push(Fire { cast: then.clone(), caster, from: at, dir, reach: TRIGGERED_REACH });
+            firing.0.push(Fire { cast: then.clone(), caster, from: at, dir, reach: TRIGGERED_REACH, pace: 1.0 });
         }
     }
     blasts.write_batch(booms);

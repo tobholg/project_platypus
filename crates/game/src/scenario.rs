@@ -337,7 +337,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -10483,6 +10483,123 @@ fn layers_script(
                 let list: Vec<String> = kinds.iter().map(|(k, n)| format!("{k} ×{n}")).collect();
                 info!("layers: the {band} after {dwell:.0} s: {}", if list.is_empty() { "nothing".into() } else { list.join(", ") });
                 *state = (state.0 + 1, t, None);
+            }
+        }
+    }
+}
+
+/// `crimson` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`, by night): a
+/// crimson head at 1100, the player (who can't die) at 1010; logs the
+/// moves it starts, the player's health lost and coats, and the plague
+/// blood (and miasma) on the floor, a second at a time. `PLATYPUS_FOE`:
+/// another kind in its place (to see what it does to you).
+fn crimson_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health, Option<&crate::creatures::body::elements::Coated>), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature), Without<LocalPlayer>>,
+    mut began: MessageReader<crate::creatures::moves::Began>,
+    mut state: Local<(u8, f32, u32)>,
+    mut edits: ResMut<SimWorld>,
+    chilled: Query<(), (With<LocalPlayer>, With<crate::creatures::body::elements::Chilled>)>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+) {
+    if s.name != "crimson" {
+        return;
+    }
+    // (The dev menu shut: no god mode.)
+    menu.open = false;
+    let mut pool: Vec<(platypus_sim::MaterialId, Vec2)> = Vec::new();
+    let Ok((mut k, mut h, coat)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    state.1 += h.max - h.hp;
+    h.hp = h.max;
+    if state.0 == 0 && t > 0.4 {
+        for (e, c) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        k.body.pos = Vec2::new(1010.0, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        let foe = std::env::var("PLATYPUS_FOE").unwrap_or_else(|_| "zombie_crimson".into());
+        crate::creatures::def::spawn_creature(&mut commands, &foe, Vec2::new(1100.0, fl), |_| {});
+        // (`PLATYPUS_POOL=1`: a pool of water between them.)
+        if std::env::var("PLATYPUS_POOL").is_ok()
+            && let Some(water) = edits.materials().id("water")
+        {
+            pool.push((water, Vec2::new(1060.0, fl + 4.0)));
+        }
+        state.0 = 1;
+    }
+    // (Kept where it stands, out of its grab's reach.)
+    if state.0 == 1 {
+        k.body.pos.x = 1010.0;
+    }
+    for b in began.read() {
+        info!("crimson: t {t:.2} began {}", b.id);
+    }
+    if t as u32 != state.2 {
+        state.2 = t as u32;
+        let sim = &*edits;
+        let count = |name: &str| sim.materials().id(name).map_or(0, |m| (900..1300).flat_map(|x| (fl as i32 - 4..fl as i32 + 60).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
+        let coats: Vec<String> = coat.map_or(vec![], |c| c.coats.iter().map(|(n, a)| format!("{n} {a:.2}")).collect());
+        info!("crimson: t {t:.0} the player lost {:.0}; coats [{}]{}; plague blood {}, miasma {}, water {}, ice {}", state.1, coats.join(", "), if chilled.is_empty() { "" } else { ", chilled" }, count("plague_blood"), count("miasma"), count("water"), count("ice"));
+    }
+    for (m, at) in pool {
+        for dx in (-20..=20).step_by(4) {
+            edits.queue(platypus_sim::WorldEdit::Paint { center: CellPos::new(at.x as i32 + dx, at.y as i32), radius: 4, material: m, overwrite: false });
+        }
+    }
+}
+
+/// `lineup` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): creatures put in a
+/// row 70 cells apart from 1000, held where they stand (`PLATYPUS_LINEUP`,
+/// comma-separated kinds; the deeper kin by default); logs each, its
+/// health and how it takes slash, blunt, fire and frost.
+fn lineup_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut them: Query<(Entity, &crate::creatures::Creature, &mut Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
+    mut state: Local<u8>,
+) {
+    if s.name != "lineup" {
+        return;
+    }
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let kinds: Vec<String> = std::env::var("PLATYPUS_LINEUP").unwrap_or_else(|_| "plague_rat,venom_centipede,zombie_crimson,skeleton_archer,armored_skeleton,frost_wraith,ember_bat".into()).split(',').map(|k| k.trim().to_string()).collect();
+    if *state == 0 && t > 0.4 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        for (i, kind) in kinds.iter().enumerate() {
+            crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(1000.0 + i as f32 * 70.0, fl + 2.0), |_| {});
+        }
+        *state = 1;
+    }
+    // (The player held up over the middle of the row, out of reach, the
+    // camera on them; each held where it was put.)
+    if let Ok(mut k) = player.single_mut() {
+        k.body.pos = Vec2::new(1000.0 + (kinds.len() as f32 - 1.0) * 35.0, fl + 70.0);
+        k.body.vel = Vec2::ZERO;
+    }
+    for (_, c, mut k, _) in &mut them {
+        if let Some(i) = kinds.iter().position(|x| *x == c.kind) {
+            k.body.pos.x = 1000.0 + i as f32 * 70.0;
+            k.body.vel.x = 0.0;
+        }
+    }
+    if *state == 1 && t > 1.5 {
+        *state = 2;
+        for (_, c, _, h) in &them {
+            if kinds.contains(&c.kind) {
+                use crate::creatures::Harm;
+                info!("lineup: {}: {:.0} health; slash ×{:.2}, blunt ×{:.2}, fire ×{:.2}, frost ×{:.2}", c.kind, h.max, h.nature.of(Harm::Slash), h.nature.of(Harm::Blunt), h.nature.of(Harm::Fire), h.nature.of(Harm::Frost));
             }
         }
     }

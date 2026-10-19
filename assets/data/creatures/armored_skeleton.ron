@@ -1,0 +1,52 @@
+// An armoured skeleton: the dead in a soldier's iron, in the caverns.
+// Blades and points glance off it; a club or a hammer cracks it.
+(
+    name: "Armoured skeleton",
+    // What it may have on it when it dies (loot.ron), besides what it wears.
+    loot: "skeleton",
+    // The armour it died in, rusted on.
+    wears: [("iron_helm", 1.0), ("chainmail", 1.0), ("iron_greaves", 1.0), ("iron_gauntlets", 1.0), ("iron_shield", 0.6)],
+    size: (9, 24),
+    health: 110,
+    team: Enemy,
+    faction: "undead",
+    // Its kind (kinds.ron): how it takes each kind of hurt.
+    kind: "undead",
+    // (Bones don't burn: the undead's weakness to fire is dead flesh's.)
+    profile: {fire: 0.75, slash: 0.5, pierce: 0.5, blunt: 1.6},
+    cant: [burn],
+    rises: Some((after: 5.0, health: 0.5, breaks: [blunt], anchor: true, remains: Rubble, glow: (90, 255, 190))),
+    // (Its head off, it fights on blind: it hears.)
+    headless: Blind,
+    blood: "ash",
+    fall_damage: (safe_height: 180, per_cell: 0.3),
+    movement: (
+        run_speed: 87,
+        jump_height: 48,
+        air_jumps: 0,
+        step_height: 5,
+        dash_speed: 0,
+    ),
+    art: "skeleton",
+    // Lanky: its upper body is its art (animated: its arms, its sword); its
+    // legs are two long bone legs (legs.rs, `rig`) from its pelvis's lower
+    // corners, 18 cells up: each a thigh and a shin, a knob at the knee, a
+    // small bony foot forward; they step on whatever's under them, one
+    // then the other, and can be cut off one at a time.
+    legs: (view: Side, rig: true, reach: 18.5, upper: 0.5, step: 0.12, lift: 3, stride: 9,
+           color: (194, 188, 172), joint: (232, 228, 212), outline: (26, 20, 20), width: [2.6, 2.2, 1.8], toes: 3,
+           body: "skeleton",
+           each: [
+               (hip: (2, 6), gait: 0, knee: Forward),
+               (hip: (-1, 6), gait: 1, knee: Forward, far: true),
+           ]),
+    weapon: "longsword",
+    // (Its sword taken from its heap, it gets up and punches.)
+    unarmed: "bony_fists",
+    stamina: 60,
+    poise: 30,
+    brain: (
+        kind: "hunter",
+        params: (aggro: 300, close: Walk(keep: 15, jump_to_reach: 27), attack: Swing(reach: 23, every: 1.3, combo: 2), wander: (speed: 0.3, every: 3.0), senses: (dark: 0.7)),
+    ),
+)

@@ -199,6 +199,27 @@
         (id: "blight_bite", name: "Blight", mana: 2, color: (170, 70, 220), kind: Payload(Damage(7)),
             look: (trail: (count: 0.9, life: (0.2, 0.5), colors: [(230, 170, 255), (150, 50, 200), (70, 20, 100)], speed: 8, gravity: 180, glow: true),
                    burst: (count: 22, life: (0.25, 0.6), colors: [(230, 180, 255), (150, 50, 200), (60, 20, 90)], speed: 110, spread: 1.4, gravity: 240, drag: 1, glow: true))),
+        // A frost wraith's spray: a shard of ice that bites.
+        // A breath of frost, shard by shard (`frost_breath`: a wraith's,
+        // and the rimebreath staff's): each a mote of ice that bites and
+        // chills, slow and short-lived, mist smearing off it.
+        (id: "frost_bite", name: "Frost bite", mana: 1, color: (190, 230, 255), kind: Payload(Damage(3)),
+            look: (burst: (count: 5, life: (0.2, 0.5), colors: [(240, 250, 255), (190, 225, 255)], speed: 40, spread: 1.6, drag: 3, glow: true))),
+        (id: "rime_shard", name: "Rime shard", mana: 1, color: (200, 235, 255), kind: Carrier(Bolt(speed: 400, life: 0.6)),
+            look: (trail: (count: 0.9, life: (0.3, 0.9), colors: [(255, 255, 255), (215, 238, 255), (165, 210, 245), (120, 175, 230)], speed: 38, spread: 1.2, drag: 3.5, gravity: -14, size: 2.0, glow: true))),
+        // Its cold, a little at a time: enough, shard on shard, to freeze
+        // the water it lands in.
+        (id: "rime", name: "Rime", mana: 0.3, color: (170, 220, 255), kind: Payload(Heat(radius: 5, amount: -70))),
+        // Out as a spray: a fistful at once, flung wide, each at its own
+        // pace (it leaves tight and flares).
+        (id: "breath", name: "Breath", mana: 1.5, kind: Modifier(Spray(count: 5, spread: 15, pace: (0.55, 1.15)))),
+        // Slowing in the air: it billows out and dies.
+        (id: "billow", name: "Billow", mana: 0.2, kind: Modifier(Drag(2.4))),
+        // A crimson head's vomit: a gob of plague blood, splashing.
+        (id: "plague_bite", name: "Plague", mana: 2, color: (130, 40, 40), kind: Payload(Damage(6)),
+            look: (trail: (count: 0.8, life: (0.15, 0.4), colors: [(160, 50, 50), (110, 30, 30), (90, 60, 30)], speed: 8, gravity: 200),
+                   burst: (count: 14, life: (0.2, 0.5), colors: [(150, 40, 40), (100, 26, 26), (110, 70, 34)], speed: 90, spread: 1.4, gravity: 260, drag: 1))),
+        (id: "plague_glob", name: "Plague glob", mana: 4, color: (110, 30, 32), kind: Payload(Matter(material: "plague_blood", cells: 28))),
         (id: "blight_glob", name: "Blight glob", mana: 4, color: (150, 50, 200), kind: Payload(Matter(material: "blight", cells: 70))),
         (id: "acid_glob", name: "Acid glob", mana: 4, color: (120, 240, 60), kind: Payload(Matter(material: "acid", cells: 338))),
         (id: "gravity", name: "Heavy", mana: 0, kind: Modifier(Gravity(0.5))),

@@ -97,8 +97,18 @@
     (kind: "watcher", place: Cave, bands: ["caverns", "deep"], most: 1, rate: 0.012),
     (kind: "gnasher", place: Cave, bands: ["caverns", "deep"], most: 1, rate: 0.012),
     (kind: "chain_wraith", place: Cave, bands: ["caverns", "deep"], most: 1, rate: 0.015),
+    (kind: "armored_skeleton", place: Cave, bands: ["caverns", "deep"], most: 1, rate: 0.05),
+    (kind: "skeleton_archer", place: Cave, bands: ["caverns", "deep"], most: 2, rate: 0.06),
     // The Deep.
     (kind: "necromancer", place: Cave, bands: ["deep", "underworld"], most: 1, rate: 0.006),
     (kind: "dread_knight", place: Cave, bands: ["deep", "underworld"], most: 1, rate: 0.006),
     (kind: "fallen_templar", place: Cave, bands: ["deep", "underworld"], most: 1, rate: 0.004),
+    // The deep kin of what's above: crimson heads (they vomit), plague
+    // rats, venom centipedes, frost wraiths.
+    (kind: "zombie_crimson", place: Cave, bands: ["deep"], most: 2, rate: 0.05, emerges: true),
+    (kind: "plague_rat", place: Cave, bands: ["deep"], group: (2, 4), most: 6, rate: 0.08),
+    (kind: "venom_centipede", place: Cave, bands: ["deep"], most: 1, rate: 0.04),
+    (kind: "frost_wraith", place: Cave, bands: ["deep"], most: 1, rate: 0.012),
+    // The underworld: ember bats, for now.
+    (kind: "ember_bat", place: Cave, bands: ["underworld"], group: (2, 4), most: 6, rate: 0.12),
 ]

@@ -339,6 +339,11 @@ pub struct Moves {
     doing: Option<Doing>,
 }
 
+/// Busy with an attack of its own (a custom creature's: a wraith's chain
+/// lash): no move starts till it's off.
+#[derive(Component, Debug)]
+pub struct Occupied;
+
 #[derive(Debug)]
 struct Doing {
     /// Which of its moves, how far in (s), and the phase it's in.
@@ -465,7 +470,7 @@ pub fn start(
     sim: Res<SimWorld>,
     book: Res<MoveBook>,
     mut began: MessageWriter<Began>,
-    mut movers: Query<Starter, (Without<crate::creatures::brain::Staged>, Without<crate::creatures::Disguised>)>,
+    mut movers: Query<Starter, (Without<crate::creatures::brain::Staged>, Without<crate::creatures::Disguised>, Without<Occupied>)>,
     prey: Query<Prey, Without<crate::creatures::brain::villager::Hiding>>,
 ) {
     let now = time.elapsed_secs();

@@ -872,6 +872,7 @@ pub(crate) fn deaths(
     lineages: Query<(Option<&body::rise::Lineage>, Option<&Stable>)>,
     wounds: Query<&body::marks::Marks>,
     gibbed: Query<&Gibbed>,
+    gases: Query<&body::hurt::DeathGas>,
 ) {
     for (entity, mut h, mut k, is_player, bleeds, anim, creature, eq, children) in &mut q {
         if h.hp > 0.0 {
@@ -900,6 +901,10 @@ pub(crate) fn deaths(
         if let Some(&body::hurt::Bleeds(blood, much)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.
             sim.world.splash([k.body.pos.x, k.body.pos.y], blood, (body::hurt::DEATH_BLOOD as f32 * much) as usize, 3.9);
+        }
+        // (A plague rat's miasma, bursting from it.)
+        if let Ok(body::hurt::DeathGas(gas, r)) = gases.get(entity) {
+            sim.world.apply_edit(&platypus_sim::WorldEdit::Paint { center: platypus_sim::CellPos::from_world(k.body.pos.x, k.body.pos.y), radius: *r, material: *gas, overwrite: false });
         }
         if is_player {
             deaths.0 += 1;

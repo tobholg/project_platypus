@@ -205,6 +205,7 @@
         (makes: "void_wand", needs: [("block:obsidian", 6), ("block:amethyst", 3)], at: "arcane_altar", locked: true),
         (makes: "fire_staff", needs: [("fire_wand", 1), ("gold_bar", 6), ("block:ruby", 3)], at: "arcane_altar"),
         (makes: "frost_staff", needs: [("frost_wand", 1), ("silver_bar", 6), ("block:amethyst", 3)], at: "arcane_altar"),
+        (makes: "rimebreath_staff", needs: [("frost_staff", 1), ("gold_bar", 6), ("block:amethyst", 4)], at: "arcane_altar"),
         (makes: "radiant_staff", needs: [("radiant_wand", 1), ("gold_bar", 8), ("block:crystal", 4)], at: "arcane_altar"),
         (makes: "void_staff", needs: [("void_wand", 1), ("mithril_bar", 6), ("block:obsidian", 8)], at: "arcane_altar", locked: true),
     ],

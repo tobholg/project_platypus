@@ -42,7 +42,7 @@
                (hip: (-1, 4), gait: 1, knee: Forward, far: true),
            ]),
     // Close in, it grabs sooner and harder.
-    moves: ["crimson_grab"],
+    moves: ["crimson_grab", "crimson_vomit"],
     unarmed: "crimson_claws",
     armless: "zombie_bite",
     stamina: 60,

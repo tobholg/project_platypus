@@ -1,6 +1,9 @@
 // A crimson head: the zombie's rig and drawing (assets/art/zombie.ron),
-// its skin flushed dark raw red, veins swollen, its eye burning. Facing
-// right; the game mirrors it.
+// its skin flushed dark raw red, veins swollen, its eye burning, and its
+// head split down the middle, something's tendrils showing through the
+// seam (a Plaga). To vomit, its head blooms open: four flaps of skull and
+// scalp peeling back from a red maw ringed with teeth, the tendrils
+// thrashing (`bloom`, `spew`). Facing right; the game mirrors it.
 (
     size: (36, 40),
     feet: (17.5, 40),
@@ -18,34 +21,58 @@
         'C': (62, 60, 70),      // the shirt, shade
         'b': (48, 34, 28),      // a belt
         'p': (52, 48, 54),      // trousers, at the hips
+        'r': (176, 34, 44),     // the maw, wet red
+        'R': (92, 12, 20),      // the maw, deep
+        'w': (234, 222, 186),   // teeth
+        't': (214, 150, 140),   // tendrils
     },
     parts: {
         // Its mouth (where it bites from, its arms gone).
+        // Split down the middle: a seam of raw red, tendril tips curling
+        // out of its crown.
         "head": (points: { "mouth": (6, 9) }, rows: [
-            "..h.hhh...",
-            ".hhhhhhhh.",
-            "hhhGgggghh",
-            "hhGggvggg.",
-            "hGgggkkgg.",
-            "GGggkekgg.",
-            "GGgggkggg.",
-            ".GGgggvgg.",
-            "..GgkkkkG.",
+            ".t...t....",
+            "..ththt...",
+            "hhhGkrkghh",
+            "hhGgkrvgg.",
+            "hGggkrkgg.",
+            "GGgekrkgg.",
+            "GGggkrkgg.",
+            ".GGgkrvgg.",
+            "..GgkrkkG.",
             "..Gxkxkx..",
             "...GxGx...",
         ]),
         "blink": (points: { "mouth": (6, 9) }, rows: [
-            "..h.hhh...",
-            ".hhhhhhhh.",
-            "hhhGgggghh",
-            "hhGggvggg.",
-            "hGgggggggg",
-            "GGggkkkgg.",
-            "GGgggggggg",
-            ".GGgggvgg.",
-            "..GgkkkkG.",
+            ".t...t....",
+            "..ththt...",
+            "hhhGkrkghh",
+            "hhGgkrvgg.",
+            "hGggkrkgg.",
+            "GGggkrkgg.",
+            "GGggkrkgg.",
+            ".GGgkrvgg.",
+            "..GgkrkkG.",
             "..Gxkxkx..",
             "...GxGx...",
+        ]),
+        // Bloomed open: four flaps of skull peeled back, a red maw ringed
+        // with teeth, tendrils thrashing.
+        "bloom": (points: { "mouth": (11, 7) }, rows: [
+            "t......hh....t..",
+            ".t..hhGgg.hh.t..",
+            "..tGggg...ggGt..",
+            "GG.Ggg.rr.gG..GG",
+            ".GgGgrRRRRrgGgG.",
+            "..GgrRwRRwRrgG..",
+            "...grRRRRRRrg...",
+            "..GgrRwRRwRrgG..",
+            ".GgGgrRRRRrgGgG.",
+            "GG.GggrrrrggG.GG",
+            "..t.GgggxggG.t..",
+            "....GGgxxgGG....",
+            ".....GxkxkG.....",
+            "......GxGx......",
         ]),
         // Hunched in a torn shirt, blood down its front, its skin showing
         // through the tears; a belt and its trousers' top (the legs hang
@@ -305,6 +332,20 @@
             (part: "head", at: (11, 3)),
             (part: "aim60", at: (20, 15), outline: true, tag: "front_arm"),
         ],
+        // Its head bloomed open (the vomit's tell): arms dropped, the
+        // head thrown up. Spewing: leaning in at you, arms back.
+        "bloom": [
+            (part: "aimm30", at: (14, 16), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (13, 14)),
+            (part: "bloom", at: (9, 1)),
+            (part: "aimm30", at: (20, 16), outline: true, tag: "front_arm"),
+        ],
+        "spew": [
+            (part: "aimm30", at: (15, 17), shade: 0.72, tag: "back_arm"),
+            (part: "torso", at: (14, 15)),
+            (part: "bloom", at: (12, 3)),
+            (part: "aimm30", at: (21, 17), outline: true, tag: "front_arm"),
+        ],
         "lunge": [
             (part: "aim0", at: (16, 17), shade: 0.72, tag: "back_arm"),
             (part: "torso", at: (15, 15)),
@@ -375,5 +416,7 @@
         "climb": (frames: ["climb"], fps: 5),
         "lunge": (frames: ["lunge"], fps: 5),
         "bite": (frames: ["lunge", "bite", "bite", "lunge"], fps: 6),
+        "bloom": (frames: ["bloom", "bloom", "tell", "bloom"], fps: 8),
+        "spew": (frames: ["spew"], fps: 5),
     },
 )

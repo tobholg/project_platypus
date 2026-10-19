@@ -348,6 +348,9 @@
         // poisons what it touches (venom), withers grass and leaves, and
         // slowly gives itself up as a toxic mist (a minute or so).
         (name: "blight",   kind: Liquid, density: 1150, dispersion: 3, viscosity: 140, coats: "venom", lifetime: (180, 255), decay_every: 14, decays_into: "blight_mist", decays_into_chance: 255, glow: (130, 40, 190), opacity: 30, colors: [(150, 50, 200), (120, 30, 170), (180, 80, 230)]),
+        // A crimson head's vomit: dark blood gone bad. It poisons what it
+        // touches (venom), and as it fades gives off a toxic miasma.
+        (name: "plague_blood", kind: Liquid, density: 1100, dispersion: 3, viscosity: 120, coats: "venom", lifetime: (200, 255), decay_every: 18, decays_into: "miasma", decays_into_chance: 90, colors: [(96, 22, 26), (120, 30, 34), (82, 44, 28), (108, 56, 30)]),
         (name: "magma",    kind: Liquid, density: 2500, dispersion: 3, hot: true, heat: 1200, below: (1000, "basalt"), latent: 500, conductivity: 60, glow: (255, 105, 30), viscosity: 200, colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
         // Eats anything up to stone-and-ore hard (not glass or gold), each cell
         // good for 6 bites; burns what it touches (corrosive, damage/s); carries

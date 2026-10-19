@@ -1,0 +1,41 @@
+// A venom centipede: the cave centipede's deep kin, longer (twenty
+// segments), violet-black, its claws dripping a venom that stays in you.
+(
+    name: "Venom centipede",
+    size: (16, 8),
+    health: 95,
+    team: Enemy,
+    kind: "insect",
+    blood: "ichor",
+    art: "venom_centipede_head",
+    legs: (view: Side, reach: 12, upper: 0.5, step: 0.05, lift: 3, ride: 8, stride: 9, tilt: 15,
+           color: (110, 64, 150), joint: (160, 110, 200), far: (50, 28, 70), outline: (30, 14, 10), thick: 2,
+           body: "venom_centipede_head", eyes: (190, 255, 120),
+           each: [
+               (hip: (2, -1), lean: 6, gait: 0),
+               (hip: (3, 0), lean: 5, gait: 1, far: true),
+           ],
+           segments: (count: 20, spacing: 7, size: (8, 5), color: (100, 54, 140), lit: (150, 96, 190), belly: (50, 26, 70),
+                      reach: 13, lean: 5, wave: 0.12, tail: 10, taper: 0.6)),
+    // (Its eye: the faintest glow.)
+    light: (color: (170, 255, 110), strength: 0.04),
+    movement: (
+        run_speed: 240,
+        ground_accel: 3200,
+        ground_decel: 4000,
+        air_accel: 500,
+        jump_height: 20,
+        air_jumps: 0,
+        step_height: 3,
+        cling: true,
+        dash_speed: 0,
+    ),
+    poise: 12,
+    heft: 1.2,
+    touch: (harm: pierce, damage: 6, knock: 120, stun: 0.05, coat: "venom"),
+    moves: ["venom_centipede_bite"],
+    brain: (
+        kind: "hunter",
+        params: (aggro: 260, close: Crawl(pounce_range: 0, pounce_every: 2.5, keep: 16, dart: Some((0.6, 0.12))), wander: (speed: 0.5), senses: (dark: 1.0, smell: 130), tactics: (ambush: true)),
+    ),
+)

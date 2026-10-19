@@ -1,0 +1,43 @@
+// A venom centipede's head: the cave centipede's, violet-black, its venom
+// claws green and wet, its eye a sick green glow.
+(
+    size: (26, 19),
+    feet: (8, 18),
+    outline: (30, 14, 10),
+    palette: {
+        'H': (150, 96, 190),   // head, lit
+        'h': (110, 64, 150),   // head
+        'd': (60, 34, 86),   // head, shade
+        'a': (130, 90, 160),   // antennae
+        'c': (120, 220, 90),   // venom claws
+        'k': (34, 18, 12),   // their black tips
+        'e': (190, 255, 120),   // its eye (it glows a little)
+    },
+    frames: {
+        "body": [
+            "..........................",
+            "...................aa.....",
+            ".................aa.......",
+            "................a.........",
+            "...............a...aaaaaa.",
+            "..............aa.aa.......",
+            ".............aa.aa........",
+            ".............aaa..........",
+            "....HHdHHHHHaaa...........",
+            "..HHHHdHHHHHHH............",
+            ".HHHhhdhhhhheHH...........",
+            ".hhhhhdhhhhhhhh...........",
+            ".hhhhhdhhhhhhhh...........",
+            ".dddddddddddddd...........",
+            "..ddddddddddddc...........",
+            ".............ccck.........",
+            "...............ck.........",
+            "..............cckk........",
+            "..........................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["body"], fps: 1),
+    },
+    anchors: { "grip": { "body": (8, 13) } },
+)
