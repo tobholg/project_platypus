@@ -78,14 +78,14 @@
         // Laid, not grown: a pattern of shades anchored to the world grid (rows
         // from the top, hex 0 dark … f light), so bricks and planks tile.
         (name: "brick",    kind: Static, fortified: true, density: 2400, hardness: 70, crumbles_into: "gravel", above: (1450, "magma"),
-            colors: [(52, 50, 54), (96, 94, 100), (132, 128, 134), (156, 152, 158)],
+            colors: [(20, 20, 28), (46, 46, 58), (78, 78, 92), (110, 108, 122), (140, 138, 150), (176, 174, 184)], tile: (art: Bricks(course: 4, length: (6, 10))),
             pattern: ["333333333333", "3cccbcbaaa99", "3bcaab9a9a98", "3aaaa9999888", "39aa88887787", "389988877777", "333333333333", "aaaaa93cbbbb", "a999983bbbaa", "9989783abb9a", "8978873a9999", "788777389998"]),
         (name: "planks", loot: Wood,   kind: Static, density: 650, hardness: 22, flammability: 7, ignites_at: 270, conductivity: 12, burn_time: 180, spread: 3, fizzles: 30, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal",
-            colors: [(60, 38, 22), (102, 68, 38), (136, 94, 54), (158, 112, 66)],
+            colors: [(34, 18, 10), (58, 34, 20), (98, 60, 32), (138, 88, 48), (170, 116, 64), (200, 146, 88)], tile: (art: Boards(board: 4, length: 16)),
             pattern: ["bbbaaabab2bb", "aaaaaabbb2bb", "aaaa9a9992a9", "999aaa999299", "999888998288", "222222222222", "bba2bbbbbabb", "bbb2aabbbaa9", "9992aaabbaaa", "a9a2aa999999", "888299888989", "222222222222"]),
         // A plank wall: built behind you (a house's back wall), from planks.
         (name: "wood_wall", loot: Wood, kind: Static, wall: true, density: 650, hardness: 22, flammability: 7, ignites_at: 270, conductivity: 12, burn_time: 180, spread: 3, fizzles: 30, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal",
-            colors: [(40, 26, 16), (66, 44, 26), (84, 58, 34), (98, 70, 42)],
+            colors: [(22, 14, 8), (40, 26, 16), (66, 44, 26), (84, 58, 34), (98, 70, 42), (114, 84, 52)], tile: (art: Slats(width: 5), round: 0, outline: false),
             pattern: ["bbbaaabab2bb", "aaaaaabbb2bb", "aaaa9a9992a9", "999aaa999299", "999888998288", "222222222222", "bba2bbbbbabb", "bbb2aabbbaa9", "9992aaabbaaa", "a9a2aa999999", "888299888989", "222222222222"]),
         // Ores and gems (DESIGN §3.2 step 6): harder the deeper they lie, so a
         // pickaxe's tier sets how deep you can profit (copper 70, iron 100,
@@ -142,27 +142,27 @@
         // Crypt stone: big dark blocks in offset courses, hard enough that a
         // copper pickaxe won't dig a way round the rooms.
         (name: "crypt_stone", kind: Static, density: 2600, hardness: 90, crumbles_into: "gravel", above: (1400, "magma"),
-            colors: [(40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116)],
+            colors: [(14, 16, 14), (40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116), (150, 156, 140)], tile: (art: Bricks(course: 4, length: (5, 9))),
             pattern: ["111111111111", "bab99a988881", "aaa998888671", "a88888877761", "887877765651", "877766655551", "111111111111", "a99881bbbba9", "878671aa9989", "7767518a8888", "765551988776", "555551887667"]),
         // A weak wall: crypt stone, cracked (a sharp eye sees the cracks); one
         // hit breaks it.
         (name: "cracked_stone", kind: Static, density: 2400, hardness: 4, crumbles_into: "gravel",
-            colors: [(40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116)],
+            colors: [(14, 16, 14), (40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116), (150, 156, 140)], tile: (art: Bricks(course: 4, length: (5, 9)), cracked: true),
             pattern: ["111111111111", "bab93a988881", "aaa938888671", "a88883877761", "887877365651", "877766355551", "111111111111", "a99881bbbba9", "873671aa9989", "7763518a8888", "765351988776", "555531887667"]),
         // An illusory wall: looks like crypt stone, but it's a (still) plant,
         // so creatures walk straight through it.
         (name: "false_wall", kind: Plant, still: true, density: 200, hardness: 4, opacity: 220,
-            colors: [(40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116)],
+            colors: [(14, 16, 14), (40, 42, 40), (70, 76, 68), (98, 104, 92), (124, 130, 116), (150, 156, 140)], tile: (art: Bricks(course: 4, length: (5, 9))),
             pattern: ["111111111111", "bab99a988881", "aaa998888671", "a88888877761", "887877765651", "877766655551", "111111111111", "a99881bbbba9", "878671aa9989", "7767518a8888", "765551988776", "555551887667"]),
         // Castle stone: big pale ashlar blocks; harder than crypt stone.
         (name: "ashlar", kind: Static, fortified: true, density: 2600, hardness: 100, crumbles_into: "gravel", above: (1450, "magma"),
-            colors: [(62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152)],
+            colors: [(30, 28, 26), (62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152), (204, 196, 180)], tile: (art: Bricks(course: 8, length: (10, 16))),
             pattern: ["111111111111", "aababa9a9981", "aabaa9898891", "9a9889888881", "a99998778771", "998778777771", "111111111111", "a99981baaba9", "989881aabaa9", "888881baa998", "877771988989", "877771889877"]),
         (name: "cracked_ashlar", kind: Static, density: 2400, hardness: 4, crumbles_into: "gravel",
-            colors: [(62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152)],
+            colors: [(30, 28, 26), (62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152), (204, 196, 180)], tile: (art: Bricks(course: 8, length: (10, 16)), cracked: true),
             pattern: ["111111111111", "aab3ba9a9981", "aaba39898891", "9a9839888881", "a99993778771", "998778777771", "111111111111", "a99981ba3ba9", "989881aa3aa9", "888881baa398", "877771988389", "877771889877"]),
         (name: "false_ashlar", kind: Plant, still: true, density: 200, hardness: 4, opacity: 220,
-            colors: [(62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152)],
+            colors: [(30, 28, 26), (62, 58, 54), (116, 110, 100), (148, 140, 126), (176, 168, 152), (204, 196, 180)], tile: (art: Bricks(course: 8, length: (10, 16))),
             pattern: ["111111111111", "aababa9a9981", "aabaa9898891", "9a9889888881", "a99998778771", "998778777771", "111111111111", "a99981baaba9", "989881aabaa9", "888881baa998", "877771988989", "877771889877"]),
         // Underground biomes (worldgen/src/caves.rs). Fungi are wet: they
         // take more heat than wood to catch (and shrivel to ash when very
@@ -284,7 +284,22 @@
             above: (900, "molten_gold"), latent: 200, colors: [(180, 124, 28), (226, 172, 48), (250, 208, 90), (255, 236, 160)]),
         // Heat-proof brick (furnace-made): holds molten iron and mithril.
         (name: "firebrick", kind: Static, density: 2300, hardness: 75, conductivity: 8, crumbles_into: "gravel", above: (2100, "magma"),
-            colors: [(196, 170, 120), (214, 190, 140), (180, 152, 104)]),
+            colors: [(60, 30, 20), (110, 60, 40), (160, 96, 64), (196, 130, 90), (214, 160, 116), (232, 190, 146)], tile: (art: Bricks(course: 4, length: (6, 9)))),
+                // ---- building (DESIGN: the blocks arc): what a player builds with.
+        // Each block draws itself by what's round it (`tile`: an outline
+        // where it's open, rounded corners, its stones or boards laid by
+        // world position). `colors` darkest (the outline) to the highlight.
+        (name: "cobblestone", kind: Static, fortified: true, density: 2400, hardness: 65, crumbles_into: "gravel", above: (1400, "magma"),
+            colors: [(22, 20, 26), (52, 50, 56), (88, 84, 88), (118, 112, 112), (150, 144, 140), (180, 174, 166)], tile: (art: Cobble(size: 6))),
+        (name: "timber", loot: Wood, kind: Static, density: 700, hardness: 26, flammability: 6, ignites_at: 280, conductivity: 12, burn_time: 225, spread: 2, fizzles: 40, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal",
+            colors: [(16, 9, 6), (30, 18, 12), (52, 32, 18), (76, 48, 26), (100, 66, 36), (124, 86, 48)], tile: (art: Grain)),
+        (name: "roof_tiles", kind: Static, density: 1900, hardness: 40, crumbles_into: "gravel",
+            colors: [(40, 10, 12), (70, 20, 22), (112, 34, 30), (152, 52, 40), (188, 78, 52), (216, 116, 78)], tile: (art: Shingles(row: 4, width: 5))),
+        // Walls (behind you): no outline, square, only darkened where open.
+        (name: "stone_wall", kind: Static, wall: true, density: 2400, hardness: 60, crumbles_into: "gravel",
+            colors: [(14, 14, 20), (30, 30, 38), (50, 50, 60), (70, 70, 82), (88, 88, 100), (108, 108, 120)], tile: (art: Bricks(course: 4, length: (6, 10)), round: 0, outline: false)),
+        (name: "plaster", kind: Static, wall: true, density: 1700, hardness: 30, crumbles_into: "sand",
+            colors: [(26, 16, 10), (46, 30, 18), (70, 46, 26), (150, 132, 102), (196, 180, 144), (226, 214, 184)], tile: (art: Framed(panel: 3), round: 0, outline: false)),
         (name: "sand",     kind: Powder, density: 1600, hardness: 5,  above: (1100, "glass"), colors: [(206, 176, 110), (226, 198, 132), (196, 164, 100)]),
         // Under desert sand: sand pressed into rock.
         (name: "sandstone", kind: Static, density: 2200, hardness: 35, crumbles_into: "sand", colors: [(178, 142, 90), (192, 156, 100), (166, 132, 84), (184, 150, 96)]),

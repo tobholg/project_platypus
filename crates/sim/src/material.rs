@@ -207,6 +207,11 @@ pub struct MaterialDef {
     /// a random shade per cell.
     #[serde(default)]
     pub pattern: Option<Vec<String>>,
+    /// A building material: each block draws itself by what's round it
+    /// (an outline where it's open, rounded corners, its art laid by world
+    /// position: `look`). Takes over from `pattern` where it's built.
+    #[serde(default)]
+    pub tile: Option<crate::look::Tile>,
     /// A plant that doesn't sway in the wind (an illusory wall: creatures
     /// walk through it, but it should look like masonry).
     #[serde(default)]
@@ -741,6 +746,11 @@ impl MaterialTable {
         }
 
         Ok(MaterialTable { fire: fire.unwrap_or(MaterialId::AIR), defs, phys, reactions, palette, by_name })
+    }
+
+    /// How a building material draws itself, block by block (`tile`).
+    pub fn tile(&self, id: MaterialId) -> Option<&crate::look::Tile> {
+        self.defs[id.0 as usize].tile.as_ref()
     }
 
     /// The shade a patterned material has at a world cell (`pattern`), or

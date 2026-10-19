@@ -804,6 +804,11 @@ impl World {
                 if behind { self.set_bg(p, c) } else { self.set(p, c) };
             }
         }
+        // Gone: what's round it redrawn (its neighbours' edges, corners).
+        if total >= hardest {
+            self.stamp_round(block, false);
+            self.stamp_round(block, true);
+        }
     }
 
     /// Room to build into: air, or what building just pushes aside (tall
@@ -828,6 +833,96 @@ impl World {
             c.shade = mats.natural_shade(material, p.x, p.y, c.shade);
             if back { self.set_bg(p, c) } else { self.set(p, c) };
             report.placed += 1;
+        }
+        // A building material draws itself by what's round it, and what's
+        // round it by it (`look`): what its own rounding cuts isn't spent.
+        if mats.tile(material).is_some() {
+            let cut = self.stamp_block(block, back);
+            report.placed = report.placed.saturating_sub(cut.max(0) as u32);
+            self.stamp_round(block, back);
+        }
+    }
+
+    /// Whether a block holds something solid (half its cells or more), and
+    /// what most of it is.
+    fn block_solid(&self, block: CellPos, back: bool) -> Option<MaterialId> {
+        let mats = &self.materials;
+        let mut counts: Vec<(MaterialId, u32)> = Vec::new();
+        let mut solid = 0;
+        for p in block_cells(block) {
+            let c = if back { self.get_bg(p) } else { self.get(p) };
+            let Some(c) = c else { return Some(MaterialId::AIR) };
+            // (An illusory wall, a plant drawn as masonry, counts: its
+            // neighbours mustn't give it away.)
+            let is = if back { !c.is_air() } else { !c.is_air() && (matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder) || mats.tile(c.material).is_some()) };
+            if is {
+                solid += 1;
+                match counts.iter_mut().find(|(m, _)| *m == c.material) {
+                    Some(e) => e.1 += 1,
+                    None => counts.push((c.material, 1)),
+                }
+            }
+        }
+        (solid * 2 >= BLOCK * BLOCK).then(|| counts.iter().max_by_key(|e| e.1).map(|e| e.0).unwrap_or(MaterialId::AIR))
+    }
+
+    /// What's round a block of `material` (`look::Around`).
+    fn around_block(&self, block: CellPos, back: bool, material: MaterialId) -> crate::look::Around {
+        let at = |dx: i32, dy: i32| self.block_solid(block.offset(dx, dy), back);
+        let open = |dx: i32, dy: i32| at(dx, dy).is_none();
+        let other = |dx: i32, dy: i32| at(dx, dy).is_some_and(|m| m != material && m != MaterialId::AIR);
+        crate::look::Around {
+            n: open(0, 1),
+            s: open(0, -1),
+            w: open(-1, 0),
+            e: open(1, 0),
+            nw: open(-1, 1),
+            ne: open(1, 1),
+            sw: open(-1, -1),
+            se: open(1, -1),
+            other: [other(0, 1), other(0, -1), other(-1, 0), other(1, 0)],
+        }
+    }
+
+    /// Draw a block of a building material as what's round it says
+    /// (`look`): shade its cells, cut its open corners, fill back corners
+    /// that were cut and aren't now. Its cells of the material removed (+)
+    /// or added (−).
+    pub fn stamp_block(&mut self, block: CellPos, back: bool) -> i32 {
+        let mats = self.materials.clone();
+        let Some(material) = self.block_solid(block, back).filter(|&m| m != MaterialId::AIR) else { return 0 };
+        let Some(tile) = mats.tile(material).cloned() else { return 0 };
+        let around = self.around_block(block, back, material);
+        let mut rng = self.rng_for(0x57A3, block);
+        let corner = |v: i32| (v as f32) < tile.round || (v as f32) >= BLOCK as f32 - tile.round;
+        let mut cut = 0;
+        for p in block_cells(block) {
+            let Some(c) = (if back { self.get_bg(p) } else { self.get(p) }) else { continue };
+            match crate::look::shade(&tile, p.x, p.y, around) {
+                Some(shade) if c.material == material => {
+                    let c = Cell { shade, ..c };
+                    if back { self.set_bg(p, c) } else { self.set(p, c) };
+                }
+                Some(shade) if (if back { c.is_air() } else { Self::room(&mats, c) }) && corner(p.x.rem_euclid(BLOCK)) && corner(p.y.rem_euclid(BLOCK)) => {
+                    let c = Cell { shade, ..mats.spawn(material, &mut rng) };
+                    if back { self.set_bg(p, c) } else { self.set(p, c) };
+                    cut -= 1;
+                }
+                None if c.material == material => {
+                    if back { self.set_bg(p, Cell::AIR) } else { self.set(p, Cell::AIR) };
+                    cut += 1;
+                }
+                _ => {}
+            }
+        }
+        cut
+    }
+
+    /// Redraw the blocks round one (a block placed or taken: their edges,
+    /// their corners).
+    pub fn stamp_round(&mut self, block: CellPos, back: bool) {
+        for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)] {
+            self.stamp_block(block.offset(dx, dy), back);
         }
     }
 

@@ -9,6 +9,7 @@ pub mod climate;
 pub mod coords;
 pub mod edit;
 pub mod hazard;
+pub mod look;
 pub mod material;
 pub mod particles;
 pub mod rng;

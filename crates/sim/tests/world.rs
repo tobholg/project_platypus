@@ -2319,27 +2319,36 @@ fn ore_beyond_a_tools_tier_stays_in_the_block() {
 }
 
 #[test]
-fn placing_a_block_fills_its_empty_cells_with_the_pattern() {
+fn placing_a_block_draws_it_by_what_is_round_it() {
+    use platypus_sim::look::{self, Around};
     use platypus_sim::{BLOCK, block_cells};
     let mut w = boxed_world(1, 1, 62);
     fill(&mut w, "stone", 1, 63, 1, 2 * BLOCK);
     let brick = w.materials().expect_id("brick");
-    let block = CellPos::new(5, 2); // on the floor
-    let taken = CellPos::new(5 * BLOCK + 1, 2 * BLOCK + 1);
+    let tile = w.materials().tile(brick).expect("brick is a building material").clone();
+    let block = CellPos::new(5, 2); // on the floor, open above and both sides
+    let taken = CellPos::new(5 * BLOCK + 3, 2 * BLOCK + 3);
     w.set(taken, Cell::new(w.materials().expect_id("dirt"), 0));
     let r = w.apply_edit(&WorldEdit::PlaceBlock { block, material: brick, back: false, most: u32::MAX });
-    assert_eq!(r.placed, (BLOCK * BLOCK) as u32 - 1, "all but the one taken");
-    for p in block_cells(block).filter(|&p| p != taken) {
-        let c = w.get(p).unwrap();
-        assert_eq!(c.material, brick);
-        assert_eq!(Some(c.shade), w.materials().pattern_shade(brick, p.x, p.y), "shaded by the pattern at {p:?}");
+    let laid = block_cells(block).filter(|&p| w.get(p).unwrap().material == brick).count() as u32;
+    assert_eq!(r.placed, laid, "what's placed is what's there (its rounding not spent)");
+    // Its top corners rounded off; its bottom ones whole (it stands on the
+    // floor).
+    let (x0, y0) = (5 * BLOCK, 2 * BLOCK);
+    assert!(w.get(CellPos::new(x0, y0 + BLOCK - 1)).unwrap().is_air(), "the top-left corner's rounded off");
+    assert!(w.get(CellPos::new(x0 + BLOCK - 1, y0 + BLOCK - 1)).unwrap().is_air(), "and the top-right");
+    assert_eq!(w.get(CellPos::new(x0, y0)).unwrap().material, brick, "the bottom corners stay");
+    // Drawn as the look says: open on top and the sides, the stone floor
+    // another material under it.
+    let around = Around { n: true, s: false, w: true, e: true, nw: true, ne: true, sw: false, se: false, other: [false, true, false, false] };
+    for p in block_cells(block).filter(|&p| p != taken && w.get(p).unwrap().material == brick) {
+        assert_eq!(Some(w.get(p).unwrap().shade), look::shade(&tile, p.x, p.y, around), "shaded by the look at {p:?}");
     }
-    // The pattern is anchored to the world: the same cell of a block 24
-    // cells off (whole blocks, and two pattern widths) has the same shade.
-    let other = CellPos::new(5 - 24 / BLOCK, 2);
-    w.apply_edit(&WorldEdit::PlaceBlock { block: other, material: brick, back: false, most: u32::MAX });
-    let y = 2 * BLOCK + 2;
-    assert_eq!(w.get(CellPos::new(5 * BLOCK, y)).unwrap().shade, w.get(CellPos::new(5 * BLOCK - 24, y)).unwrap().shade);
+    // Another beside it: the edge between them goes, the corners fill.
+    w.apply_edit(&WorldEdit::PlaceBlock { block: CellPos::new(6, 2), material: brick, back: false, most: u32::MAX });
+    assert_eq!(w.get(CellPos::new(x0 + BLOCK - 1, y0 + BLOCK - 1)).unwrap().material, brick, "its top-right corner's back");
+    let edge = look::shade(&tile, x0 + BLOCK - 1, y0 + BLOCK / 2, around).unwrap();
+    assert_ne!(w.get(CellPos::new(x0 + BLOCK - 1, y0 + BLOCK / 2)).unwrap().shade, edge, "no outline toward its neighbour now");
 }
 
 #[test]
@@ -2390,7 +2399,10 @@ fn part_of_a_block_fills_from_the_bottom_and_the_next_fills_the_rest() {
     assert_eq!(w.get(CellPos::new(5 * BLOCK, 2 * BLOCK)).unwrap().material, planks, "the bottom row first");
     assert!(w.get(CellPos::new(5 * BLOCK, 3 * BLOCK - 1)).unwrap().is_air(), "the top still open");
     let r = w.apply_edit(&WorldEdit::PlaceBlock { block, material: planks, back: false, most: 100 });
-    assert_eq!(r.placed, (BLOCK * BLOCK) as u32 - 14, "the rest of it");
+    // (The rest of it, less what its rounding cuts off its open top corners.)
+    let laid = platypus_sim::block_cells(block).filter(|&p| w.get(p).unwrap().material == planks).count() as u32;
+    assert_eq!(r.placed + 14, laid, "the rest of it");
+    assert!(laid < (BLOCK * BLOCK) as u32 && laid >= (BLOCK * BLOCK) as u32 - 8, "whole but for its rounded corners: {laid}");
 }
 
 #[test]

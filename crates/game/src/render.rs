@@ -204,11 +204,72 @@ pub(crate) fn cell_rgba(mats: &MaterialTable, c: Cell, ambient: i32, dim: f32, l
     rgba
 }
 
-/// Background brightness: trees and plants close behind, walls further back.
+/// Background brightness: trees, plants and built walls close behind,
+/// rock further back.
 fn bg_dim(mats: &MaterialTable, c: Cell) -> f32 {
     let ph = mats.phys(c.material);
-    if ph.kind == Kind::Plant || ph.flammability > 0 { 0.8 } else { 0.55 }
+    if ph.kind == Kind::Plant || ph.flammability > 0 || mats.tile(c.material).is_some() { 0.8 } else { 0.55 }
 }
+
+/// A wall shaded by what's in front of it (ambient occlusion): darker
+/// within `SHADE_REACH` cells of a solid in front, darker still in the
+/// shadow under one (a floor, a ceiling, a beam). The share of light each
+/// background cell keeps, for a chunk's front cells.
+fn occlusion(front: &[Cell], mats: &MaterialTable) -> Vec<f32> {
+    let solid = |i: usize| {
+        let c = front[i];
+        !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder)
+    };
+    // Distance to the nearest solid (a chamfer, in tenths: 10 across, 14
+    // diagonally), two passes.
+    const FAR: u16 = 255;
+    let mut d = vec![FAR; N * N];
+    for i in 0..N * N {
+        if solid(i) {
+            d[i] = 0;
+        }
+    }
+    let at = |x: isize, y: isize| -> Option<usize> { (x >= 0 && y >= 0 && (x as usize) < N && (y as usize) < N).then(|| y as usize * N + x as usize) };
+    for y in 0..N as isize {
+        for x in 0..N as isize {
+            let i = y as usize * N + x as usize;
+            for (dx, dy, w) in [(-1, 0, 10), (0, -1, 10), (-1, -1, 14), (1, -1, 14)] {
+                if let Some(j) = at(x + dx, y + dy) {
+                    d[i] = d[i].min(d[j].saturating_add(w));
+                }
+            }
+        }
+    }
+    for y in (0..N as isize).rev() {
+        for x in (0..N as isize).rev() {
+            let i = y as usize * N + x as usize;
+            for (dx, dy, w) in [(1, 0, 10), (0, 1, 10), (1, 1, 14), (-1, 1, 14)] {
+                if let Some(j) = at(x + dx, y + dy) {
+                    d[i] = d[i].min(d[j].saturating_add(w));
+                }
+            }
+        }
+    }
+    // The shadow under: cells since the last solid above, down each column
+    // (y up: from the top row down).
+    let mut out = vec![1.0f32; N * N];
+    for x in 0..N {
+        let mut since = u16::MAX;
+        for y in (0..N).rev() {
+            let i = y * N + x;
+            since = if solid(i) { 0 } else { since.saturating_add(1) };
+            let near = (d[i] as f32 / 10.0 / SHADE_REACH).min(1.0);
+            let under = (since as f32 / SHADOW_REACH).min(1.0);
+            out[i] = (0.38 + 0.62 * near.powf(0.7)) * (0.6 + 0.4 * under);
+        }
+    }
+    out
+}
+
+/// How far a solid in front shades the wall behind it, and how far down its
+/// shadow falls (cells).
+const SHADE_REACH: f32 = 6.0;
+const SHADOW_REACH: f32 = 9.0;
 
 /// Incandescence: dull red from ~450 °C through orange to yellow-white.
 fn glow(rgba: &mut [u8; 4], celsius: i32) {
@@ -255,8 +316,10 @@ fn backdrop(x: i32, y: i32, depth: i32) -> [u8; 4] {
 /// Rebuild a layer's base image and plant list from its cells. `ground`: the
 /// generated surface height of each of the chunk's columns (background layers
 /// of generated worlds), for the backdrop.
-fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: CellPos, climate: &Climate, back: bool, ground: Option<&[i32]>) {
+fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: CellPos, climate: &Climate, back: bool, ground: Option<&[i32]>, front: Option<&[Cell]>) {
     layer.base.fill(0);
+    // (A background, shaded by what's in front of it.)
+    let shade = front.map(|f| occlusion(f, mats));
     layer.plants.clear();
     layer.glints.clear();
     for ly in 0..N {
@@ -276,7 +339,7 @@ fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: Cell
                 }
                 continue;
             }
-            let dim = if back { bg_dim(mats, c) } else { 1.0 };
+            let dim = if back { bg_dim(mats, c) * shade.as_ref().map_or(1.0, |s| s[ly * N + lx]) } else { 1.0 };
             let rgba = cell_rgba(mats, c, ambient, dim, lx, ly);
             let def = mats.def(c.material);
             if def.motes {
@@ -398,11 +461,12 @@ fn sync_chunks(
         let bg_dirty = chunk.take_bg_render_dirty() || fresh;
         let o = chunk.pos.origin();
         if dirty {
-            rebuild(&mut g.front, chunk.cells(), mats, o, &climate, false, None);
+            rebuild(&mut g.front, chunk.cells(), mats, o, &climate, false, None, None);
         }
-        if bg_dirty {
+        // (The background's shaded by the front: redrawn when either changes.)
+        if bg_dirty || dirty {
             let ground: Option<Vec<i32>> = (0..N as i32).map(|lx| sim.generator.surface_hint(o.x + lx)).collect();
-            rebuild(&mut g.back, chunk.background(), mats, o, &climate, true, ground.as_deref());
+            rebuild(&mut g.back, chunk.background(), mats, o, &climate, true, ground.as_deref(), Some(chunk.cells()));
         }
         let visible = view.is_none_or(|(lo, hi)| {
             let (x, y) = (o.x as f32, o.y as f32);

@@ -337,7 +337,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script, sprint_script, phase_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script, sprint_script, phase_script, build_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -10671,6 +10671,106 @@ fn phase_script(
         let web = sim.materials().id("cobweb").map_or(0, |m| (me.x as i32 - 60..me.x as i32 + 60).flat_map(|x| (fl as i32 - 2..fl as i32 + 50).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
         info!("phase: t {t:.0} the player has lost {:.0}; it's {far:.0} off; cobweb by them {web}", state.1);
     }
+}
+
+/// `build` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a small house put up
+/// block by block as a player would (`PlaceBlock`), from 1000 on the
+/// floor: a cobble footing, stone-brick walls with a stone wall behind
+/// downstairs, plank floors, timber posts with plaster behind upstairs, a
+/// stepped tile roof, a door's gap; the player stood off to its left.
+/// Screenshots show how blocks draw themselves (`platypus_sim::look`).
+fn build_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature), Without<LocalPlayer>>,
+    mut done: Local<u8>,
+) {
+    if s.name != "build" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    if *done != 0 || t < 0.4 {
+        return;
+    }
+    *done = 1;
+    for (e, c) in &them {
+        if c.kind == "dummy" || c.kind == "sandbag" {
+            commands.entity(e).despawn();
+        }
+    }
+    let b = platypus_sim::BLOCK;
+    let fl = platypus_worldgen::arena::FLOOR;
+    let g = fl.div_euclid(b);          // the first block row above the floor
+    let x0 = 1000 / b;
+    let id = |n: &str| sim.materials().expect_id(n);
+    let (cobble, brick, planks, timber, roof, stone_wall, plaster, wood_wall) =
+        (id("cobblestone"), id("brick"), id("planks"), id("timber"), id("roof_tiles"), id("stone_wall"), id("plaster"), id("wood_wall"));
+    let mut fg: Vec<(i32, i32, platypus_sim::MaterialId)> = Vec::new();
+    let mut bg: Vec<(i32, i32, platypus_sim::MaterialId)> = Vec::new();
+    let (l, r) = (x0, x0 + 18);
+    for x in l - 1..=r + 1 {
+        fg.push((x, g, cobble));
+    }
+    // Ground floor: walls of stone brick, 4 blocks of room; a door's gap
+    // on the left.
+    for y in g + 1..g + 5 {
+        if y > g + 3 {
+            fg.push((l, y, brick));
+        }
+        fg.push((r, y, brick));
+        for x in l + 1..r {
+            bg.push((x, y, stone_wall));
+        }
+    }
+    for x in l - 1..=r + 1 {
+        fg.push((x, g + 5, planks));
+    }
+    // Upstairs: timber posts, plaster behind (behind the posts too).
+    for y in g + 6..g + 10 {
+        fg.push((l - 1, y, timber));
+        fg.push((r + 1, y, timber));
+        for x in l - 1..=r + 1 {
+            bg.push((x, y, plaster));
+        }
+    }
+    for x in l - 1..=r + 1 {
+        fg.push((x, g + 10, planks));
+    }
+    // A roof of tiles, stepped, two thick, a plank wall behind.
+    let (mut lo, mut hi, mut y) = (l - 3, r + 3, g + 11);
+    while lo <= hi {
+        for x in lo..=hi {
+            let edge = x - lo < 2 || hi - x < 2 || y == g + 11;
+            if edge {
+                fg.push((x, y, roof));
+            }
+            // (A wall behind the roof too: a player's would have one.)
+            bg.push((x, y, wood_wall));
+        }
+        lo += 1;
+        hi -= 1;
+        y += 1;
+    }
+    for (x, y, m) in bg {
+        sim.queue(platypus_sim::WorldEdit::PlaceBlock { block: CellPos::new(x, y), material: m, back: true, most: u32::MAX });
+    }
+    for (x, y, m) in fg {
+        sim.queue(platypus_sim::WorldEdit::PlaceBlock { block: CellPos::new(x, y), material: m, back: false, most: u32::MAX });
+    }
+    if let Ok(mut k) = player.single_mut() {
+        k.body.pos = Vec2::new(((l - 6) * b) as f32, fl as f32 + k.body.half.y);
+        k.prev_pos = k.body.pos;
+    }
+    // A lamp a floor (and one in the roof): rooms are dark without light.
+    for (bx, by) in [(l + 6, g + 4), (l + 12, g + 9), (l + 9, g + 13)] {
+        let at = Vec2::new(((bx * b) + b / 2) as f32, (by * b) as f32);
+        commands.spawn((Transform::from_translation(at.extend(0.0)), GlobalTransform::default(), crate::light::LightSource { color: [1.0, 0.78, 0.5], flicker: 0.1 }));
+    }
+    info!("build: a house queued from block {l} to {r}");
 }
 
 /// `lineup` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): creatures put in a

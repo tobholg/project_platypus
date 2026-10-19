@@ -143,6 +143,10 @@
         (makes: "chest", needs: [("block:planks", 8)], at: "workbench"),
         (makes: "block:platform", count: 4, needs: [("block:planks", 1)], at: "workbench"),
         (makes: "block:wood_wall", count: 4, needs: [("block:planks", 1)], at: "workbench"),
+        // Building blocks (the blocks arc): cut stone, beams, walls.
+        (makes: "block:cobblestone", needs: [("block:stone", 1)], at: "workbench"),
+        (makes: "block:stone_wall", count: 4, needs: [("block:stone", 1)], at: "workbench"),
+        (makes: "block:timber", needs: [("block:wood", 1)], at: "workbench"),
         (makes: "wooden_shield", needs: [("block:planks", 8), ("copper_bar", 1)], at: "workbench"),
         (makes: "furnace", needs: [("block:stone", 12), ("block:planks", 4), ("torch", 3)], at: "workbench"),
         (makes: "anvil", needs: [("iron_bar", 5)], at: "workbench"),
@@ -169,6 +173,9 @@
         // Heat-proof: a mould that holds molten iron.
         (makes: "block:firebrick", needs: [("block:brick", 1), ("block:sand", 1)], at: "furnace"),
         (makes: "block:glass", count: 2, needs: [("block:sand", 2)], at: "furnace"),
+        (makes: "block:brick", needs: [("block:stone", 2)], at: "furnace"),
+        (makes: "block:roof_tiles", count: 2, needs: [("block:dirt", 1), ("block:sand", 1)], at: "furnace"),
+        (makes: "block:plaster", count: 4, needs: [("block:sand", 1), ("block:stone", 1)], at: "furnace"),
         (makes: "glowstick", count: 3, needs: [("block:glass", 1), ("block:emerald", 1)], at: "furnace"),
         // (A placeholder: an alchemy table, herbs, later.)
         (makes: "small_health_potion", count: 2, needs: [("block:glass", 1), ("block:mushroom_stem", 1)], at: "workbench"),
