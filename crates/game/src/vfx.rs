@@ -123,7 +123,7 @@ impl Plugin for VfxPlugin {
         app.init_resource::<Sparks>()
             .init_resource::<SparkMeshes>()
             .add_systems(Startup, make_halo)
-            .add_systems(Update, (step_sparks, air_puffs, dash_puffs))
+            .add_systems(Update, (step_sparks, air_puffs, dash_puffs, sprint_dust))
             .add_systems(PostUpdate, draw_sparks);
     }
 }
@@ -269,6 +269,27 @@ fn dash_puffs(mut dashes: MessageReader<crate::combat::Dashed>, bodies: Query<&c
         sparks.emit(&DASH_DUST, (DASH_DUST.count * 0.5) as usize, feet + Vec2::Y * 3.0, Vec2::new(-way, 0.4), Vec2::ZERO);
     }
 }
+
+/// Sprinting on the ground: a little dust kicked back off the heels, step
+/// by step.
+fn sprint_dust(time: Res<Time>, bodies: Query<&crate::creatures::Kinematics>, mut sparks: ResMut<Sparks>, mut wait: Local<f32>) {
+    *wait -= time.delta_secs();
+    if *wait > 0.0 {
+        return;
+    }
+    *wait = SPRINT_STEP;
+    for k in &bodies {
+        if !k.loco.sprinting || !k.loco.grounded() {
+            continue;
+        }
+        let way = k.loco.facing;
+        let heels = k.body.pos - Vec2::new(way * k.body.half.x * 0.5, k.body.half.y - 1.0);
+        sparks.emit(&DASH_DUST, 5, heels, Vec2::new(-way, 0.35), Vec2::ZERO);
+    }
+}
+
+/// Seconds between a sprint's puffs of dust (about a footfall).
+const SPRINT_STEP: f32 = 0.17;
 
 static DASH_DUST: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter {
     count: 36.0,

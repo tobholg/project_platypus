@@ -62,6 +62,8 @@ const TURNS: usize = 64;
 const STEP: f32 = 360.0 / TURNS as f32;
 /// A dodge's cost and how long it keeps you untouchable (s).
 pub const DODGE_COST: f32 = 18.0;
+/// Stamina a second of sprinting costs (`Locomotion::sprinting`).
+pub const SPRINT_DRAIN: f32 = 14.0;
 const DODGE_SAFE: f32 = 0.25;
 /// Hit-stop: seconds the world all but stops on a hit (heavier: longer).
 const STOP: f32 = 0.055;
@@ -1132,14 +1134,18 @@ fn windows(mut commands: Commands, mut dashes: Query<(Entity, &mut DashWindow)>,
     }
 }
 
-fn stamina(mut q: Query<&mut Stamina>, mut combos: Query<&mut Combo, Without<Swing>>, mut sturdy: Query<&mut Sturdy>) {
+fn stamina(mut q: Query<(&mut Stamina, Option<&Kinematics>)>, mut combos: Query<&mut Combo, Without<Swing>>, mut sturdy: Query<&mut Sturdy>) {
     for mut s in &mut sturdy {
         s.since += DT;
         if s.since >= POISE_BACK {
             s.left = s.poise;
         }
     }
-    for mut s in &mut q {
+    for (mut s, k) in &mut q {
+        // (A sprint tires you: out of breath, it ends.)
+        if k.is_some_and(|k| k.loco.sprinting) {
+            s.spend(SPRINT_DRAIN * DT);
+        }
         s.since += DT;
         if s.since >= s.wait {
             s.cur = (s.cur + s.regen * DT).min(s.max);

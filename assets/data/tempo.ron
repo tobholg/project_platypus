@@ -11,7 +11,8 @@
 //   jump's apex), jump_hold (s of steady rise while jump is held: Terraria's
 //   jump), jump_cut (rise kept on letting go early), dash_speed, dash_time,
 //   dash_cooldown, air_dash_recharge (the air dash back this long after,
-//   even in the air; 0: once an airtime), wall_slide_speed, wall_jump_push;
+//   even in the air; 0: once an airtime), sprint (× run speed, dash held
+//   past a dash), wall_slide_speed, wall_jump_push;
 //   rocket_power, rocket_across (shares of the rocket boots' thrust and
 //   rising speed, and of their speed sideways).
 // `pace`: every other creature's (speeds × pace, accelerations × pace²);

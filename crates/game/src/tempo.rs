@@ -110,6 +110,7 @@ impl Tempo {
                     "dash_time" => m.dash_time = v,
                     "dash_cooldown" => m.dash_cooldown = v,
                     "air_dash_recharge" => m.air_dash_recharge = v,
+                    "sprint" => m.sprint = v,
                     // (Shares of what the boots it wears give.)
                     "rocket_power" => {
                         m.rocket_thrust = s.rocket_thrust * v;

@@ -39,6 +39,9 @@
         dash_speed: 470,
         dash_time: 0.15,
         dash_cooldown: 0.45,
+        // Dash held on past its end: a sprint, half again its run (stamina
+        // drains while it lasts: combat.rs `SPRINT_DRAIN`).
+        sprint: 1.5,
         wall_jump: true,
         wall_slide_speed: 90,
         wall_jump_push: 180,

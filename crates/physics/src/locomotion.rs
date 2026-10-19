@@ -139,6 +139,10 @@ pub struct MovementStats {
     /// The air dash comes back this long after it's used, even in the air
     /// (0: once an airtime, back on landing, a wall, a pogo).
     pub air_dash_recharge: f32,
+    /// Sprinting: dash still held as a dash ends, it runs on at this many
+    /// times its run speed (in the air too: a sprinting jump carries)
+    /// till it lets go, stops, turns back or crouches. 0 or 1: it can't.
+    pub sprint: f32,
     pub wall_jump: bool,
     pub wall_slide_speed: f32,
     /// Sideways speed given by a wall jump.
@@ -228,6 +232,7 @@ impl Default for MovementStats {
             dash_time: 0.14,
             dash_cooldown: 0.45,
             air_dash_recharge: 0.0,
+            sprint: 0.0,
             wall_jump: false,
             wall_slide_speed: 90.0,
             wall_jump_push: 180.0,
@@ -339,6 +344,9 @@ pub struct Locomotion {
     pub contacts: Contacts,
     /// Crouched on the ground this tick (animation, and what sees it).
     pub crouching: bool,
+    /// Sprinting (`MovementStats::sprint`): on from a dash held past its
+    /// end, the way it dashed.
+    pub sprinting: bool,
 }
 
 impl Default for Locomotion {
@@ -370,6 +378,7 @@ impl Default for Locomotion {
             swinging: false,
             backed: false,
             dive: 0.0,
+            sprinting: false,
             cling: None,
             held: None,
             wrap: None,
@@ -404,6 +413,7 @@ impl Locomotion {
         self.stun = self.stun.max(secs);
         self.state = MoveState::Stunned;
         self.dash_left = 0.0;
+        self.sprinting = false;
         self.rising_from_jump = false;
         self.hold_left = 0.0;
     }
@@ -543,8 +553,15 @@ impl Locomotion {
             if self.dash_left > 0.0 {
                 return ev;
             }
-            body.vel.x = self.dash_dir * s.run_speed;
+            // (Dash still held, going on the way it dashed: a sprint.)
+            self.sprinting = s.sprint > 1.0 && intent.dash && intent.move_x * self.dash_dir > 0.0;
+            body.vel.x = self.dash_dir * s.run_speed * if self.sprinting { s.sprint } else { 1.0 };
             self.state = if grounded { MoveState::Ground } else { MoveState::Air };
+        }
+        // A sprint lasts while dash is held and it steers on the way it
+        // dashed, upright, out of the water.
+        if self.sprinting && !(intent.dash && intent.move_x * self.dash_dir > 0.0 && !self.crouching && self.contacts.submerged < 0.3) {
+            self.sprinting = false;
         }
 
         // A climber on a wall or ceiling: it holds on (pressing into it, so
@@ -639,7 +656,13 @@ impl Locomotion {
             self.rocket_carry = false;
         }
         let rocket_run = (self.rocketing || self.rocket_carry) && s.rocket_run > s.run_speed;
-        let top = if rocket_run { s.rocket_run } else { s.run_speed };
+        let top = if rocket_run {
+            s.rocket_run
+        } else if self.sprinting {
+            s.run_speed * s.sprint
+        } else {
+            s.run_speed
+        };
         let target = intent.move_x.clamp(-1.0, 1.0) * top * if self.crouching { CROUCH_PACE } else { 1.0 };
         if rocket_run && !self.rocketing && target * body.vel.x <= 0.0 {
             self.rocket_carry = false;
@@ -895,6 +918,40 @@ mod tests {
         let (stone, ice) = (slide("#"), slide("="));
         assert!(stone < 6.0, "stone stops it: {stone}");
         assert!(ice > stone * 3.0 + 10.0, "ice slides it on: {ice} (stone {stone})");
+    }
+
+    /// Dash held on past its end: a sprint, faster than the run, kept while
+    /// it's held and steered on; let go, back to a run. A dash let go is
+    /// no sprint.
+    #[test]
+    fn a_held_dash_runs_on_as_a_sprint() {
+        let wide = "#".to_string() + &" ".repeat(600) + "#";
+        let mut rows = vec![wide.as_str(); 60];
+        let floor = "#".repeat(602);
+        rows.push(&floor);
+        let g = Ascii::new(&rows);
+        let (mut s, mut l, mut b) = player();
+        s.sprint = 1.5;
+        settle(&g, &s, &mut l, &mut b);
+        let go = |dash| Intent { move_x: 1.0, dash, ..default_intent() };
+        for _ in 0..20 {
+            tick(&g, &s, &mut l, &mut b, go(false));
+        }
+        for _ in 0..30 {
+            tick(&g, &s, &mut l, &mut b, go(true));
+        }
+        assert!(l.sprinting, "sprinting after the dash");
+        assert!((b.vel.x - s.run_speed * 1.5).abs() < 1.0, "at a sprint: {}", b.vel.x);
+        for _ in 0..30 {
+            tick(&g, &s, &mut l, &mut b, go(false));
+        }
+        assert!(!l.sprinting && (b.vel.x - s.run_speed).abs() < 1.0, "let go, a run: {}", b.vel.x);
+        // (A dash tapped: no sprint after it.)
+        tick(&g, &s, &mut l, &mut b, go(true));
+        for _ in 0..30 {
+            tick(&g, &s, &mut l, &mut b, go(false));
+        }
+        assert!(!l.sprinting);
     }
 
     /// A jump off a rope (`jump_off`), held, rises as high as one off the

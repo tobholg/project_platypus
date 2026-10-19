@@ -337,7 +337,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script, sprint_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -10551,6 +10551,45 @@ fn crimson_script(
         for dx in (-20..=20).step_by(4) {
             edits.queue(platypus_sim::WorldEdit::Paint { center: CellPos::new(at.x as i32 + dx, at.y as i32), radius: 4, material: m, overwrite: false });
         }
+    }
+}
+
+/// `sprint` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): running right,
+/// a dash at 1 s with Shift held on to 4 s, then let go, still running;
+/// logs its speed, whether it sprints, its stamina and the clip shown.
+fn sprint_script(
+    s: Res<Scenario>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut player: Query<(&mut Kinematics, &crate::combat::Stamina, &crate::creatures::body::animation::Animator), With<LocalPlayer>>,
+    mut state: Local<(bool, u32)>,
+) {
+    if s.name != "sprint" {
+        return;
+    }
+    menu.open = false;
+    let Ok((mut k, stamina, anim)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    if !state.0 && t > 0.3 {
+        state.0 = true;
+        let fl = platypus_worldgen::arena::FLOOR as f32;
+        k.body.pos = Vec2::new(300.0, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+    }
+    if t > 0.5 && !keys.pressed(KeyCode::KeyD) {
+        keys.press(KeyCode::KeyD);
+    }
+    if (1.0..4.0).contains(&t) {
+        if !keys.pressed(KeyCode::ShiftLeft) {
+            keys.press(KeyCode::ShiftLeft);
+        }
+    } else if keys.pressed(KeyCode::ShiftLeft) {
+        keys.release(KeyCode::ShiftLeft);
+    }
+    let tenth = (t * 4.0) as u32;
+    if tenth != state.1 {
+        state.1 = tenth;
+        info!("sprint: t {t:.2} speed {:.0}, sprinting {}, stamina {:.0}, clip {}", k.body.vel.x, k.loco.sprinting, stamina.cur, anim.clip_name());
     }
 }
 

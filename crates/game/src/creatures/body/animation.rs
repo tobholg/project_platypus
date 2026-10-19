@@ -116,6 +116,11 @@ impl Animator {
         self.clip.clear();
     }
 
+    /// The clip playing (empty before the first frame's drawn).
+    pub fn clip_name(&self) -> &str {
+        &self.clip
+    }
+
     /// The clip playing doesn't loop and has reached its end.
     pub fn finished(&self) -> bool {
         self.done
@@ -144,6 +149,7 @@ fn wanted(k: &Kinematics, anim: &mut Animator, dt: f32) -> &'static [&'static st
         MoveState::Air if airborne => &["fall", "jump", "idle"],
         _ if k.loco.crouching && anim.running => &["crouch_walk", "crouch", "run", "idle"],
         _ if k.loco.crouching => &["crouch", "idle"],
+        _ if k.loco.sprinting && anim.running => &["sprint", "run", "idle"],
         _ if anim.running => &["run", "idle"],
         _ => &["idle"],
     }
