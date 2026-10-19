@@ -9573,10 +9573,14 @@ fn watcher_script(
     mut flares: MessageWriter<crate::fx::Flare>,
     mut state: Local<(u8, f32, f32, &'static str)>,
     mut second: Local<u32>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
 ) {
     if s.name != "watcher" {
         return;
     }
+    // (The dev menu shut: no god mode. `PLATYPUS_KIND`: an elder.)
+    menu.open = false;
+    let kind = std::env::var("PLATYPUS_KIND").unwrap_or_else(|_| "watcher".into());
     let Ok((mut k, mut h)) = player.single_mut() else { return };
     let t = s.elapsed;
     let fl = platypus_worldgen::arena::FLOOR as f32;
@@ -9592,12 +9596,12 @@ fn watcher_script(
         }
         k.body.pos = Vec2::new(950.0, fl + k.body.half.y);
         k.prev_pos = k.body.pos;
-        crate::creatures::def::spawn_creature(&mut commands, "watcher", Vec2::new(1150.0, fl), |_| {});
-        info!("watcher: a watcher at 1150 ({mode})");
+        crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(1150.0, fl), |_| {});
+        info!("watcher: a {kind} at 1150 ({mode})");
         state.0 = 1;
         return;
     }
-    let Some((e, _, wk, o)) = them.iter().find(|x| x.1.kind == "watcher") else {
+    let Some((e, _, wk, o)) = them.iter().find(|x| x.1.kind == kind) else {
         if state.0 == 1 && t > 1.0 {
             state.0 = 2;
             state.1 = t;
@@ -9614,7 +9618,7 @@ fn watcher_script(
         info!("watcher: t {t:.0} {:.0} up, {:.0} off", wk.body.pos.y - wk.body.half.y - fl, (wk.body.pos.x - k.body.pos.x).abs());
     }
     if doing != state.3 {
-        info!("watcher: t {t:.2} {doing} at ({:.0}, {:.0} up); the player lost {:.0}; blight {}, mist {}", wk.body.pos.x, wk.body.pos.y - wk.body.half.y - fl, state.2, count("blight"), count("blight_mist"));
+        info!("watcher: t {t:.2} {doing} at ({:.0}, {:.0} up); the player lost {:.0}; blight {}, mist {}, fog {}", wk.body.pos.x, wk.body.pos.y - wk.body.half.y - fl, state.2, count("blight"), count("blight_mist"), count("blight_fog"));
         state.3 = doing;
     }
     // `lamp`: a light put beside it at 3 s (it squints and backs off).
@@ -9652,10 +9656,15 @@ fn gnasher_script(
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::custom::gnasher::Gnasher>), Without<LocalPlayer>>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut state: Local<(u8, f32, f32, &'static str, f32, u32)>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    tugged: Query<(), (With<LocalPlayer>, With<crate::creatures::Tugged>)>,
 ) {
     if s.name != "gnasher" {
         return;
     }
+    // (The dev menu shut: no god mode. `PLATYPUS_KIND`: an abyssal one.)
+    menu.open = false;
+    let kind = std::env::var("PLATYPUS_KIND").unwrap_or_else(|_| "gnasher".into());
     let Ok((mut k, mut h)) = player.single_mut() else { return };
     let t = s.elapsed;
     let fl = platypus_worldgen::arena::FLOOR as f32;
@@ -9675,12 +9684,12 @@ fn gnasher_script(
         let x = if mode == "near" { 1110.0 } else { 950.0 };
         k.body.pos = Vec2::new(x, fl + k.body.half.y);
         k.prev_pos = k.body.pos;
-        crate::creatures::def::spawn_creature(&mut commands, "gnasher", Vec2::new(1150.0, fl), |_| {});
-        info!("gnasher: a gnasher at 1150 ({mode})");
+        crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(1150.0, fl), |_| {});
+        info!("gnasher: a {kind} at 1150 ({mode})");
         state.0 = 1;
         return;
     }
-    let Some((e, _, gk, o)) = them.iter().find(|x| x.1.kind == "gnasher") else {
+    let Some((e, _, gk, o)) = them.iter().find(|x| x.1.kind == kind) else {
         if state.0 == 1 && t > 1.0 {
             info!("gnasher: t {t:.1} dead; the player lost {:.0}", state.2);
             state.0 = 3;
@@ -9691,7 +9700,7 @@ fn gnasher_script(
     // (Its height, a second at a time: up out of reach, down now and then.)
     if t as u32 != state.5 {
         state.5 = t as u32;
-        info!("gnasher: t {t:.0} {:.0} up, {:.0} off", gk.body.pos.y - gk.body.half.y - fl, (gk.body.pos.x - k.body.pos.x).abs());
+        info!("gnasher: t {t:.0} {:.0} up, {:.0} off; the player at {:.0}{}", gk.body.pos.y - gk.body.half.y - fl, (gk.body.pos.x - k.body.pos.x).abs(), k.body.pos.x, if tugged.is_empty() { "" } else { ", drawn in" });
     }
     if doing != state.3 {
         info!("gnasher: t {t:.2} {doing} at ({:.0}, {:.0} up); the player at {:.0}, lost {:.0}", gk.body.pos.x, gk.body.pos.y - gk.body.half.y - fl, k.body.pos.x, state.2);

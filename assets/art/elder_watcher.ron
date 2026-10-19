@@ -1,0 +1,18 @@
+// An elder watcher: the watcher's drawing grown old in the deep: its rim
+// gone a bruised violet-black, its white yellowed, veined in violet. (Its
+// crimson iris is its code's: `iris`.)
+(
+    base: "watcher",
+    palette: {
+        'f': (56, 30, 62),
+        'F': (40, 20, 46),
+        'W': (236, 226, 190),
+        'w': (212, 198, 160),
+        's': (170, 152, 120),
+        'v': (150, 70, 170),
+        'V': (190, 60, 210),
+        'L': (90, 54, 100),
+        'l': (74, 42, 84),
+        'k': (24, 10, 30),
+    },
+)

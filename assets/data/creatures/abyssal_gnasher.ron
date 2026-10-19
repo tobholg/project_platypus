@@ -1,0 +1,35 @@
+// An abyssal gnasher: the gnasher's kin from deeper still, a third bigger,
+// blacker, its lure glowing blood-red. Its lure flares and pulses, and
+// what sees it is drawn in toward its jaws (break the line, or run against
+// it); near, it snaps. It lunges twice before it tires, the second a
+// short tell after the first; its bite is harder. The deep dark.
+// (custom/gnasher.rs)
+(
+    name: "Abyssal gnasher",
+    size: (32, 30),
+    scale: 1.3,
+    health: 170,
+    heft: 2.5,
+    poise: 30,
+    team: Enemy,
+    touchless: true,
+    kind: "beast",
+    blood: "blood",
+    art: "abyssal_gnasher",
+    eyes: (255, 110, 140),
+    light: (color: (240, 60, 90), strength: 0.3),
+    movement: (
+        run_speed: 75,
+        ground_accel: 600,
+        ground_decel: 800,
+        air_accel: 320,
+        jump_height: 20,
+        air_jumps: 0,
+        step_height: 6,
+        dash_speed: 0,
+        fly_speed: 105,
+        fly_accel: 360,
+    ),
+    brain: (kind: "hunter", params: (aggro: 380, close: Range(near: 70, far: 150))),
+    custom: (name: "gnasher", params: (lunges: 2, lure: 110, lure_range: (50, 220), bite: 1.4, glow: (255, 90, 120))),
+)

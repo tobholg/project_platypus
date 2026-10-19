@@ -100,6 +100,9 @@
             look: (burst: (count: 40, life: (0.4, 1.0), colors: [(255, 255, 255), (200, 235, 255), (130, 190, 240)], speed: 75, spread: 1.4, gravity: 45, drag: 2, glow: true))),
         (id: "fire_wall", name: "Fire wall", mana: 26, color: (255, 130, 40), kind: Carrier(Wall(material: "fire", width: 6, height: 45, range: 210, hold: 5)),
             look: (burst: (count: 40, life: (0.3, 0.8), colors: [(255, 250, 210), (255, 180, 60), (220, 70, 20)], speed: 105, spread: 1.4, gravity: -90, drag: 2, glow: true))),
+        // An elder watcher's: a cloud of blight where it lands, lingering.
+        (id: "blight_cloud", name: "Blight cloud", mana: 10, color: (150, 60, 200), kind: Carrier(Cloud(material: "blight_fog", radius: 13, range: 300)),
+            look: (burst: (count: 34, life: (0.5, 1.2), colors: [(220, 160, 255), (150, 60, 200), (80, 30, 110)], speed: 60, gravity: 10, drag: 2, glow: true))),
         (id: "toxic_cloud", name: "Toxic cloud", mana: 18, color: (150, 190, 70), kind: Carrier(Cloud(material: "miasma", radius: 15, range: 225)),
             look: (burst: (count: 30, life: (0.5, 1.2), colors: [(190, 220, 110), (140, 110, 160), (90, 120, 40)], speed: 60, gravity: 15, drag: 2))),
         // Called down from above.

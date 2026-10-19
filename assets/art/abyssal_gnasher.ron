@@ -1,0 +1,18 @@
+// An abyssal gnasher: the gnasher's drawing from deeper still: blacker,
+// its gums a deep red, its lure glowing blood-red on its stalk.
+(
+    base: "gnasher",
+    palette: {
+        'b': (26, 18, 30),
+        'B': (14, 10, 18),
+        'h': (52, 34, 56),
+        'F': (74, 46, 80),
+        'g': (160, 30, 46),
+        'm': (90, 8, 20),
+        'M': (40, 2, 8),
+        'e': (230, 200, 200),
+        's': (60, 40, 66),
+        'L': (255, 90, 120),
+        'x': (170, 50, 70),
+    },
+)

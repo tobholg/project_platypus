@@ -27,11 +27,39 @@ use crate::creatures::body::animation::Animator;
 use crate::creatures::{Controls, Died, Harm, Kinematics, Team};
 use crate::world::{ChunkLoader, SimWorld};
 
-#[derive(Component, Deserialize, Clone, Debug, Default)]
+#[derive(Component, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct Watcher {
+    /// Its beams a volley (one after another, a short charge between) and
+    /// how far each sweeps across you as it burns (degrees; by turns one
+    /// way, then back); what each does, every tenth of a second, to what's
+    /// in it. An elder's: three, sweeping.
+    pub beams: u32,
+    pub sweep: f32,
+    pub beam_hit: f32,
+    /// Every this many spits, instead a cloud (a spell: `cloud`) lobbed at
+    /// you, that lingers (0: none).
+    pub cloud_every: u32,
+    pub cloud: String,
+    /// Its iris, at its pupil (darker out to its rim).
+    pub iris: (u8, u8, u8),
     #[serde(skip)]
     doing: Doing,
+    /// Drawn this many times its picture's size (its creature file's
+    /// `scale`): its iris, its pupil, its nerves with it.
+    #[serde(skip)]
+    scale: f32,
+    /// Beams left in this volley; the way the one now sweeps, and where
+    /// it's centred.
+    #[serde(skip)]
+    left: u32,
+    #[serde(skip)]
+    turn: f32,
+    #[serde(skip)]
+    base: Vec2,
+    /// Spits since its last cloud.
+    #[serde(skip)]
+    spits: u32,
     /// Its waits: spit, beam.
     #[serde(skip)]
     ready: [f32; 2],
@@ -62,6 +90,37 @@ pub struct Watcher {
     clock: f32,
     #[serde(skip)]
     started: bool,
+}
+
+impl Default for Watcher {
+    fn default() -> Self {
+        Watcher {
+            beams: 1,
+            sweep: 0.0,
+            beam_hit: BEAM_HIT.0,
+            cloud_every: 0,
+            cloud: String::new(),
+            iris: (210, 150, 40),
+            doing: Doing::Hover,
+            scale: 1.0,
+            left: 0,
+            turn: 1.0,
+            base: Vec2::NEG_Y,
+            spits: 0,
+            ready: [0.0; 2],
+            eye: Vec2::ZERO,
+            look: Vec2::ZERO,
+            lids: 0.0,
+            aim: Vec2::ZERO,
+            end: Vec2::ZERO,
+            blind: 0.0,
+            glare: None,
+            blink: (0.0, 0.0),
+            nerves: Vec::new(),
+            clock: 0.0,
+            started: false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -125,6 +184,8 @@ const SPIT_EVERY: f32 = 2.8;
 /// where it ends (°C a tick, cells across); at what's from this near to
 /// this far; then it waits.
 const CHARGE: f32 = 1.4;
+/// A volley's later beams charge only this long (the line's already out).
+const RECHARGE: f32 = 0.6;
 const FOLLOW: f32 = 1.0;
 const LOCK: f32 = 0.4;
 const BEAM: (f32, f32) = (0.9, 340.0);
@@ -228,13 +289,16 @@ fn think(
         let eye = o.eye;
         if !o.started {
             o.started = true;
+            o.scale = anim.def.scale;
             o.ready = [1.5, 3.0];
-            o.nerves = vec![Links::new(6, 2.6), Links::new(8, 2.6), Links::new(6, 2.6)];
+            let link = 2.6 * o.scale;
+            o.nerves = vec![Links::new(6, link), Links::new(8, link), Links::new(6, link)];
             o.blink = (3.0, 0.0);
             o.lids = 1.0;
             o.aim = Vec2::NEG_Y;
         }
         o.clock += DT;
+        let (white, iris) = (WHITE * o.scale, IRIS * o.scale);
         for r in o.ready.iter_mut() {
             *r -= DT;
         }
@@ -248,8 +312,8 @@ fn think(
         let target = hunted.iter().filter(|(_, _, t)| t.hunted()).map(|(e, tk, _)| (e, tk.body.pos)).filter(|(_, p)| p.distance(pos) < AGGRO).min_by(|a, b| a.1.distance(pos).total_cmp(&b.1.distance(pos)));
         // Its iris follows you (or wanders, with no one to watch).
         let want = match target {
-            Some((_, tp)) if o.blind <= 0.0 => (tp - eye).normalize_or_zero() * (WHITE - IRIS - 1.5),
-            _ => Vec2::new((o.clock * 0.7).sin(), (o.clock * 0.53).cos() * 0.6) * (WHITE - IRIS - 3.0),
+            Some((_, tp)) if o.blind <= 0.0 => (tp - eye).normalize_or_zero() * (white - iris - 1.5),
+            _ => Vec2::new((o.clock * 0.7).sin(), (o.clock * 0.53).cos() * 0.6) * (white - iris - 3.0),
         };
         o.look = o.look.lerp(want, 1.0 - (-DT * 9.0f32).exp());
         // Blinking now and then.
@@ -270,6 +334,7 @@ fn think(
                         let seen = clear(&sim, eye, tp);
                         if o.glare.is_none() && o.ready[BEAM_I] <= 0.0 && seen && (BEAM_RANGE.0..BEAM_RANGE.1).contains(&dist) {
                             o.aim = (tp - eye).normalize_or(Vec2::NEG_Y);
+                            o.left = o.beams.max(1);
                             sounds.write(crate::sound::PlaySound::at("cast", eye).pitch(0.35).volume(0.9));
                             next = Doing::Charge(0.0);
                         } else if o.ready[SPIT_I] <= 0.0 && seen && dist < SPIT_RANGE {
@@ -280,11 +345,19 @@ fn think(
                 }
                 Doing::Spit(t) => {
                     next = if t + DT >= SPIT {
-                        // Lobbed: aimed above them by how far they are.
-                        if let (Some((_, tp)), Some(i)) = (target, book.spells.iter().position(|s| s.id == "blight_spit")) {
-                            let to = tp + Vec2::Y * (tp.distance(eye) * 0.22);
-                            casts.write(crate::magic::CastRequest { caster: e, spell: i, from: eye + (to - eye).normalize_or(Vec2::NEG_Y) * (WHITE + 2.0), toward: to, alt: false });
-                            sounds.write(crate::sound::PlaySound::at("spit", eye).pitch(0.6).volume(1.0));
+                        // Lobbed: aimed above them by how far they are;
+                        // every so often a cloud instead (an elder's), on
+                        // them.
+                        o.spits += 1;
+                        let clouds = o.cloud_every > 0 && o.spits >= o.cloud_every;
+                        let (spell, lob) = if clouds { (o.cloud.clone(), 0.0) } else { ("blight_spit".to_string(), 0.22) };
+                        if clouds {
+                            o.spits = 0;
+                        }
+                        if let (Some((_, tp)), Some(i)) = (target, book.spells.iter().position(|s| s.id == spell)) {
+                            let to = tp + Vec2::Y * (tp.distance(eye) * lob);
+                            casts.write(crate::magic::CastRequest { caster: e, spell: i, from: eye + (to - eye).normalize_or(Vec2::NEG_Y) * (white + 2.0), toward: to, alt: false });
+                            sounds.write(crate::sound::PlaySound::at("spit", eye).pitch(if clouds { 0.4 } else { 0.6 }).volume(1.0));
                         }
                         o.ready[SPIT_I] = SPIT_EVERY;
                         Doing::Hover
@@ -309,14 +382,22 @@ fn think(
                     next = if t + DT >= CHARGE {
                         sounds.write(crate::sound::PlaySound::at("laser", eye).pitch(0.6).volume(1.0));
                         trauma.0 = (trauma.0 + 0.25).min(1.0);
+                        // (Sweeping: from one side of where it locked to
+                        // the other, the other way each beam.)
+                        o.base = o.aim;
+                        o.turn = -o.turn;
                         Doing::Beam(0.0)
                     } else {
                         Doing::Charge(t + DT)
                     };
                 }
                 Doing::Beam(t) => {
+                    if o.sweep != 0.0 {
+                        let across = (t / BEAM.0 - 0.5) * o.sweep.to_radians() * o.turn;
+                        o.aim = Vec2::from_angle(across).rotate(o.base);
+                    }
                     o.end = trace(&sim, eye, o.aim, BEAM.1);
-                    let (a, b) = (eye + o.aim * (WHITE + 1.0), o.end);
+                    let (a, b) = (eye + o.aim * (white + 1.0), o.end);
                     // What's in it, every so often: burnt.
                     if (t / BEAM_HIT.1) as u32 != ((t + DT) / BEAM_HIT.1) as u32 {
                         for (who, tk, tt) in &hunted {
@@ -327,7 +408,7 @@ fn think(
                             let s = ((tk.body.pos - a).dot(ab) / ab.length_squared().max(1e-6)).clamp(0.0, 1.0);
                             let near = a + ab * s;
                             if ((tk.body.pos - near).abs() - tk.body.half).max(Vec2::ZERO).length() <= 2.5 {
-                                hits.write(crate::combat::Hit { target: who, damage: BEAM_HIT.0, harm: Harm::Fire, knock: o.aim * 60.0, stun: 0.05, at: near, dir: o.aim, weight: 0.4, crit: false });
+                                hits.write(crate::combat::Hit { target: who, damage: o.beam_hit, harm: Harm::Fire, knock: o.aim * 60.0, stun: 0.05, at: near, dir: o.aim, weight: 0.4, crit: false });
                             }
                         }
                     }
@@ -337,7 +418,16 @@ fn think(
                     if ((t + DT) / 0.1) as u32 != (t / 0.1) as u32 {
                         flares.write(crate::fx::Flare { at: b, color: [1.2, 0.5, 1.6], life: 0.12 });
                     }
-                    next = if t + DT >= BEAM.0 {
+                    next = if t + DT >= BEAM.0 && o.left > 1 && o.glare.is_none() {
+                        // The volley's next: its line out again at once,
+                        // after them (a short charge).
+                        o.left -= 1;
+                        if let Some((_, tp)) = target {
+                            o.aim = (tp - eye).normalize_or(o.aim);
+                        }
+                        sounds.write(crate::sound::PlaySound::at("cast", eye).pitch(0.5).volume(0.8));
+                        Doing::Charge(CHARGE - RECHARGE)
+                    } else if t + DT >= BEAM.0 {
                         o.ready[BEAM_I] = BEAM_EVERY;
                         o.ready[SPIT_I] = o.ready[SPIT_I].max(1.0);
                         Doing::Hover
@@ -385,9 +475,10 @@ fn think(
             c.0.move_x = (to * 0.03).clamp(-1.0, 1.0);
         }
         // Its nerves trailing under it.
+        let scale = o.scale;
         for (i, l) in o.nerves.iter_mut().enumerate() {
-            let x = (i as f32 - 1.0) * 6.0;
-            l.swing(eye + Vec2::new(x, -WHITE + 1.5 + (i == 1) as u8 as f32 * -0.5), 300.0);
+            let x = (i as f32 - 1.0) * 6.0 * scale;
+            l.swing(eye + Vec2::new(x, -white + 1.5 + (i == 1) as u8 as f32 * -0.5), 300.0);
         }
     }
 }
@@ -423,7 +514,9 @@ fn burst(mut died: MessageReader<Died>, mut sim: ResMut<SimWorld>, mut sounds: M
             continue;
         }
         if let Some(blight) = sim.materials().id("blight") {
-            sim.queue(platypus_sim::WorldEdit::Paint { center: CellPos::from_world(d.body.pos.x, d.body.pos.y), radius: 4, material: blight, overwrite: false });
+            // (An elder, more.)
+            let radius = (4.0 * d.def.scale).round() as i32;
+            sim.queue(platypus_sim::WorldEdit::Paint { center: CellPos::from_world(d.body.pos.x, d.body.pos.y), radius, material: blight, overwrite: false });
         }
         sparks.emit(&sparkle(), 40, d.body.pos, Vec2::Y, Vec2::ZERO);
         sounds.write(crate::sound::PlaySound::at("spit", d.body.pos).pitch(0.4).volume(1.0));
@@ -469,23 +562,26 @@ fn draw(mut commands: Commands, mut canvas: ResMut<WatcherCanvas>, mut images: R
             Doing::Beam(_) => 1.0,
             _ => 0.0,
         };
+        let (white, iris_r) = (WHITE * o.scale, IRIS * o.scale);
         if o.lids > 0.0 {
             let c = o.eye + o.look;
-            let n = IRIS.ceil() as i32 + 1;
-            let pupil = PUPIL * (1.0 - charge * 0.55);
+            let n = iris_r.ceil() as i32 + 1;
+            let pupil = PUPIL * o.scale * (1.0 - charge * 0.55);
+            let (ir, ig, ib) = o.iris;
+            let (inner, outer) = (Vec3::new(ir as f32, ig as f32, ib as f32), Vec3::new(ir as f32 * 0.7, ig as f32 * 0.6, ib as f32 * 0.5));
             for y in -n..=n {
                 for x in -n..=n {
                     let d = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
-                    if d.length() > IRIS {
+                    if d.length() > iris_r {
                         continue;
                     }
                     let p = (c + d).floor().as_ivec2();
                     // (Inside its white, and its lids' almond.)
                     let e = Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5) - o.eye;
-                    if e.length() > WHITE - 0.5 {
+                    if e.length() > white - 0.5 {
                         continue;
                     }
-                    let band = if o.lids >= 0.9 { WHITE } else { o.lids * WHITE * (1.0 - (e.x / (WHITE + 0.5)).powi(2)).max(0.0).sqrt() };
+                    let band = if o.lids >= 0.9 { white } else { o.lids * white * (1.0 - (e.x / (white + 0.5)).powi(2)).max(0.0).sqrt() };
                     if e.y.abs() > band {
                         continue;
                     }
@@ -493,13 +589,13 @@ fn draw(mut commands: Commands, mut canvas: ResMut<WatcherCanvas>, mut images: R
                     let mix = |a: Vec3, b: Vec3, f: f32| a.lerp(b, f.clamp(0.0, 1.0));
                     let col = if r <= pupil {
                         [10, 6, 8, 255]
-                    } else if r > IRIS - 1.0 {
+                    } else if r > iris_r - 1.0 {
                         [60, 30, 16, 255]
                     } else {
                         // (Amber, darker out to its rim, in streaks; kindling
                         // violet-white as it charges.)
                         let streak = ((r * 2.3 + (d.y.atan2(d.x) * 3.0).sin()) as i32 % 2) as f32 * 0.12;
-                        let c = mix(mix(Vec3::new(210.0, 150.0, 40.0), Vec3::new(150.0, 90.0, 20.0), r / IRIS * 0.7 + streak), Vec3::new(240.0, 200.0, 255.0), charge);
+                        let c = mix(mix(inner, outer, r / iris_r * 0.7 + streak), Vec3::new(240.0, 200.0, 255.0), charge);
                         [c.x as u8, c.y as u8, c.z as u8, 255]
                     };
                     px.put(p.x, p.y, col);
@@ -513,7 +609,7 @@ fn draw(mut commands: Commands, mut canvas: ResMut<WatcherCanvas>, mut images: R
         // and bright as it locks.
         if let Doing::Charge(t) = o.doing {
             let locked = t >= CHARGE - LOCK;
-            let (a, b) = (o.eye + o.aim * (WHITE + 1.0), o.end);
+            let (a, b) = (o.eye + o.aim * (white + 1.0), o.end);
             let n = a.distance(b) as i32;
             for i in 0..n {
                 if !locked && ((i as f32 * 0.7 + now * 30.0).sin() < 0.2) {
@@ -525,7 +621,7 @@ fn draw(mut commands: Commands, mut canvas: ResMut<WatcherCanvas>, mut images: R
         }
         // The beam: a white core in a violet glow, flickering.
         if let Doing::Beam(_) = o.doing {
-            let (a, b) = (o.eye + o.aim * (WHITE - 1.0), o.end);
+            let (a, b) = (o.eye + o.aim * (white - 1.0), o.end);
             let side = o.aim.perp();
             let n = (a.distance(b) * 1.5) as i32;
             let swell = 1.0 + (now * 40.0).sin() * 0.4;

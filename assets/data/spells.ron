@@ -77,6 +77,8 @@
             about: "Light focused through a glutton's prism body: a searing ray it sweeps across you."),
         (id: "blight_spit", name: "Blight spit", runes: ["gravity", "arrow", "blight_bite", "blight_glob"], delay: 0.1, recharge: 0.1, element: Acid, beast: true,
             about: "A watcher's spit: a glob of blight, lobbed: it poisons, withers, and gives off a toxic mist."),
+        (id: "blight_cloud", name: "Blight cloud", runes: ["blight_cloud"], delay: 0.5, recharge: 0.5, element: Acid, beast: true,
+            about: "An elder watcher's: a cloud of blight on you that sinks, pools and lingers."),
         (id: "frost_breath", name: "Frost breath", runes: ["breath", "billow", "rime_shard", "frost_bite", "rime"], delay: 0.1, recharge: 0.1, tier: 2, element: Frost,
             about: "Hold: a frost wraith's breath, a cone of ice that comes out tight and flares. It bites and chills what's in it, and freezes the water it lands in. Up close it's fierce; at reach it thins."),
         (id: "crimson_vomit", name: "Crimson vomit", runes: ["gravity", "arrow", "plague_bite", "plague_glob"], delay: 0.05, recharge: 0.05, beast: true,

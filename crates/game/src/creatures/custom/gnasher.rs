@@ -12,6 +12,11 @@
 //!   that line and snaps shut on what's in it. After, it drifts a while,
 //!   spent: open to you.
 //!
+//! - **Lure** (an abyssal gnasher's, `lure`): its lure flares and pulses,
+//!   and what sees it is drawn in toward its jaws while it lasts (break the
+//!   line, or run against it); near enough, it snaps.
+//! - An abyssal gnasher lunges again before it tires (`lunges`).
+//!
 //! Its hurt is all teeth: pierce.
 
 use bevy::prelude::*;
@@ -26,14 +31,29 @@ use crate::creatures::body::animation::Animator;
 use crate::creatures::{Controls, Harm, Kinematics, Team};
 use crate::world::{ChunkLoader, SimWorld};
 
-#[derive(Component, Deserialize, Clone, Debug, Default)]
+#[derive(Component, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct Gnasher {
+    /// Lunges before it's spent (each after the first a short tell).
+    pub lunges: u32,
+    /// Its lure's pull (cells/s; 0: none), at what's from this near to this
+    /// far; its bites this many times as hard.
+    pub lure: f32,
+    pub lure_range: (f32, f32),
+    pub bite: f32,
+    /// Its lure's light as it flares.
+    pub glow: (u8, u8, u8),
     #[serde(skip)]
     doing: Doing,
-    /// Its waits: snap, lunge.
+    /// Lunges left before it's spent.
     #[serde(skip)]
-    ready: [f32; 2],
+    left: u32,
+    /// Drawn this many times its picture's size: its tendrils with it.
+    #[serde(skip)]
+    scale: f32,
+    /// Its waits: snap, lunge, lure.
+    #[serde(skip)]
+    ready: [f32; 3],
     /// The way it lunges.
     #[serde(skip)]
     aim: Vec2,
@@ -44,6 +64,26 @@ pub struct Gnasher {
     clock: f32,
     #[serde(skip)]
     started: bool,
+}
+
+impl Default for Gnasher {
+    fn default() -> Self {
+        Gnasher {
+            lunges: 1,
+            lure: 0.0,
+            lure_range: (50.0, 200.0),
+            bite: 1.0,
+            glow: (130, 255, 228),
+            doing: Doing::Hover,
+            left: 0,
+            scale: 1.0,
+            ready: [0.0; 3],
+            aim: Vec2::ZERO,
+            tendrils: Vec::new(),
+            clock: 0.0,
+            started: false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -60,6 +100,8 @@ enum Doing {
     Lunge(f32, bool),
     /// Spent: drifting.
     Spent(f32),
+    /// Its lure flaring, drawing in what sees it.
+    Lure(f32),
 }
 
 impl CustomCreature for Gnasher {
@@ -80,6 +122,7 @@ impl Gnasher {
             Doing::Draw(_) => "draw",
             Doing::Lunge(..) => "lunge",
             Doing::Spent(_) => "spent",
+            Doing::Lure(_) => "lure",
         }
     }
 }
@@ -111,6 +154,12 @@ const LUNGE: (f32, f32) = (470.0, 0.5);
 const LUNGE_BITE: (f32, f32, f32) = (24.0, 480.0, 0.35);
 const SPENT: f32 = 0.85;
 const LUNGE_EVERY: f32 = 3.5;
+/// A lunge after the first: its tell this long (it's already gaping).
+const REDRAW: f32 = 0.4;
+const LURE_I: usize = 2;
+/// The lure: drawing in this long; then it waits this long.
+const LURE: f32 = 1.8;
+const LURE_EVERY: f32 = 7.0;
 
 /// Where it goes for: their chest (so its body, hung under its maw, clears
 /// the ground on the way).
@@ -123,18 +172,22 @@ fn on(maw: Vec2, k: &Kinematics) -> bool {
 
 #[allow(clippy::type_complexity)]
 fn think(
+    mut commands: Commands,
     sim: Res<SimWorld>,
     mut q: Query<(Entity, &mut Gnasher, &mut Kinematics, &mut Controls, &mut Animator)>,
     hunted: Query<(Entity, &Kinematics, &Team), Without<Gnasher>>,
     (mut hits, mut sounds, mut trauma): (MessageWriter<crate::combat::Hit>, MessageWriter<crate::sound::PlaySound>, ResMut<crate::fx::Trauma>),
+    (mut flares, mut sparks): (MessageWriter<crate::fx::Flare>, ResMut<crate::vfx::Sparks>),
 ) {
     for (e, mut o, mut k, mut c, mut anim) in &mut q {
         let (pos, half) = (k.body.pos, k.body.half);
         if !o.started {
             o.started = true;
-            o.ready = [1.0, 2.5];
+            o.scale = anim.def.scale;
+            o.ready = [1.0, 2.5, 4.0];
             o.aim = Vec2::X;
-            o.tendrils = vec![Links::new(8, 2.6), Links::new(10, 2.6), Links::new(7, 2.6)];
+            let link = 2.6 * o.scale;
+            o.tendrils = vec![Links::new(8, link), Links::new(10, link), Links::new(7, link)];
         }
         o.clock += DT;
         for r in o.ready.iter_mut() {
@@ -144,7 +197,9 @@ fn think(
         let target = hunted.iter().filter(|(_, _, t)| t.hunted()).filter(|(_, tk, _)| tk.body.pos.distance(pos) < AGGRO).min_by(|a, b| a.1.body.pos.distance(pos).total_cmp(&b.1.body.pos.distance(pos)));
         let tp = target.map(|(_, tk, _)| tk.body.pos + Vec2::Y * CHEST);
         // Bites what its maw's on (once a dart, once a lunge).
+        let hard = o.bite;
         let mut bite = |o_aim: Vec2, (damage, knock, stun): (f32, f32, f32)| -> bool {
+            let damage = damage * hard;
             let Some((who, tk, _)) = target.filter(|(_, tk, _)| on(maw, tk)) else { return false };
             hits.write(crate::combat::Hit { target: who, damage, harm: Harm::Pierce, knock: (o_aim + Vec2::Y * 0.3).normalize_or_zero() * knock, stun, at: maw.lerp(tk.body.pos, 0.5), dir: o_aim, weight: 0.8, crit: false });
             sounds.write(crate::sound::PlaySound::at("chomp", maw).volume(1.0));
@@ -160,8 +215,12 @@ fn think(
                     if o.ready[SNAP_I] <= 0.0 && seen && dist < SNAP_RANGE {
                         sounds.write(crate::sound::PlaySound::at("chatter", maw).pitch(1.0).volume(0.7));
                         next = Doing::Gape(0.0);
+                    } else if o.lure > 0.0 && o.ready[LURE_I] <= 0.0 && seen && (o.lure_range.0..o.lure_range.1).contains(&dist) {
+                        sounds.write(crate::sound::PlaySound::at("cast", maw).pitch(0.3).volume(0.8));
+                        next = Doing::Lure(0.0);
                     } else if o.ready[LUNGE_I] <= 0.0 && seen && (LUNGE_RANGE.0..LUNGE_RANGE.1).contains(&dist) {
                         o.aim = (tp - maw).normalize_or(Vec2::X);
+                        o.left = o.lunges.max(1);
                         sounds.write(crate::sound::PlaySound::at("groan", maw).pitch(1.6).volume(0.8));
                         next = Doing::Draw(0.0);
                     }
@@ -222,10 +281,52 @@ fn think(
                     if !bit {
                         sounds.write(crate::sound::PlaySound::at("chomp", maw).volume(0.6).pitch(0.8));
                     }
-                    Doing::Spent(0.0)
+                    // Another (an abyssal gnasher's): after them again, a
+                    // short tell, before it's spent.
+                    if o.left > 1 && tp.is_some() {
+                        o.left -= 1;
+                        if let Some(tp) = tp {
+                            o.aim = (tp - maw).normalize_or(o.aim);
+                        }
+                        sounds.write(crate::sound::PlaySound::at("chatter", maw).pitch(1.3).volume(0.7));
+                        Doing::Draw(DRAW - REDRAW)
+                    } else {
+                        Doing::Spent(0.0)
+                    }
                 } else {
                     Doing::Lunge(t + DT, bit)
                 };
+            }
+            Doing::Lure(t) => {
+                // Its lure flaring, pulsing; what sees it drawn in toward
+                // its jaws (the line broken, let go); near, it snaps.
+                let pulse = ((t * 9.0).sin() * 0.5 + 0.5) * 0.6 + 0.4;
+                if ((t + DT) / 0.1) as u32 != (t / 0.1) as u32 {
+                    if let Some(bulb) = frame_anchor(&anim, &k, "lure", "") {
+                        let (r, g, b) = o.glow;
+                        flares.write(crate::fx::Flare { at: bulb, color: [r as f32 / 270.0 * pulse, g as f32 / 270.0 * pulse, b as f32 / 270.0 * pulse], life: 0.14 });
+                        sparks.emit(&lure_motes(o.glow), 3, bulb, Vec2::Y, Vec2::ZERO);
+                    }
+                }
+                if let Some((who, tk, _)) = target
+                    && clear(&sim, maw, tk.body.pos)
+                {
+                    commands.entity(who).try_insert(crate::creatures::Tugged { to: maw, speed: o.lure, left: 0.1 });
+                    // (Drawn in near: it snaps.)
+                    if tk.body.pos.distance(maw) < SNAP_RANGE * 0.7 {
+                        o.ready[LURE_I] = LURE_EVERY;
+                        o.ready[SNAP_I] = 0.0;
+                        next = Doing::Gape(0.0);
+                    }
+                }
+                if next == doing {
+                    next = if t + DT >= LURE {
+                        o.ready[LURE_I] = LURE_EVERY;
+                        Doing::Hover
+                    } else {
+                        Doing::Lure(t + DT)
+                    };
+                }
             }
             Doing::Spent(t) => {
                 next = if t + DT >= SPENT {
@@ -245,6 +346,7 @@ fn think(
             Doing::Dart(_, false) | Doing::Lunge(_, false) => "gape",
             Doing::Dart(_, true) | Doing::Lunge(_, true) => "snap",
             Doing::Spent(_) => "ajar",
+            Doing::Lure(_) => "ajar",
             Doing::Hover => "idle",
         };
         if anim.force.as_deref() != Some(clip) {
@@ -270,6 +372,15 @@ fn think(
                         let to = tp.x + FLOAT_BESIDE * (pos.x - tp.x).signum() - pos.x;
                         c.0.move_x = (to * 0.05).clamp(-1.0, 1.0);
                     }
+                }
+            }
+            Doing::Lure(_) => {
+                // Still, its maw to them, its lure up.
+                k.body.vel *= 0.85;
+                c.0.move_x = 0.0;
+                c.0.move_y = 0.0;
+                if let Some(tp) = tp {
+                    c.0.aim = tp;
                 }
             }
             Doing::Gape(_) | Doing::Draw(_) => {
@@ -310,6 +421,23 @@ fn think(
                 l.swing(top, 260.0);
             }
         }
+    }
+}
+
+/// Motes off its lure as it flares (its glow, drifting up).
+fn lure_motes((r, g, b): (u8, u8, u8)) -> crate::magic::runes::Emitter {
+    let pale = |c: u8| c.saturating_add(90);
+    crate::magic::runes::Emitter {
+        count: 1.0,
+        life: (0.4, 0.9),
+        colors: vec![(pale(r), pale(g), pale(b)), (r, g, b), (r / 2, g / 2, b / 2)],
+        speed: 18.0,
+        spread: 1.2,
+        gravity: -15.0,
+        drag: 2.0,
+        size: 1.0,
+        jitter: 4.0,
+        glow: true,
     }
 }
 

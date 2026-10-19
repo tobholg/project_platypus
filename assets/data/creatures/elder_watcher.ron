@@ -1,0 +1,35 @@
+// An elder watcher: the watcher's deep kin, half again its size, old,
+// its iris crimson. It looses its beam in volleys of three, each sweeping
+// across you as it burns (one way, then back: jump it, duck it, or get
+// behind something), and now and then lobs not a glob but a cloud of
+// blight on you that lingers, pooling in the low places. A lamp near
+// still makes it squint and back off; a flash still blinds it. Dead, it
+// bursts into a lot of blight. The deep dark. (custom/watcher.rs)
+(
+    name: "Elder watcher",
+    size: (36, 36),
+    scale: 1.4,
+    health: 220,
+    heft: 3,
+    poise: 40,
+    team: Enemy,
+    touchless: true,
+    kind: "beast",
+    blood: "blood",
+    art: "elder_watcher",
+    light: (color: (200, 60, 120), strength: 0.12),
+    movement: (
+        run_speed: 55,
+        ground_accel: 600,
+        ground_decel: 800,
+        air_accel: 300,
+        jump_height: 20,
+        air_jumps: 0,
+        step_height: 6,
+        dash_speed: 0,
+        fly_speed: 75,
+        fly_accel: 280,
+    ),
+    brain: (kind: "hunter", params: (aggro: 380, close: Range(near: 90, far: 180))),
+    custom: (name: "watcher", params: (beams: 3, sweep: 40, beam_hit: 14, cloud_every: 2, cloud: "blight_cloud", iris: (230, 40, 60))),
+)

@@ -377,6 +377,9 @@
         // Blight's mist: a purple haze that hangs about (drifts) and hurts
         // what breathes it, thinning away.
         (name: "blight_mist", kind: Gas, drifts: true, density: 2, dispersion: 3, lifetime: (60, 140), decay_every: 4, corrosive: 5, glow: (40, 12, 60), opacity: 10, colors: [(120, 60, 150), (100, 40, 130), (140, 80, 170)]),
+        // An elder watcher's cloud: heavy blight that sinks and pools and
+        // lingers, eating at what breathes it.
+        (name: "blight_fog", kind: Gas, heavy: true, density: 3, dispersion: 4, lifetime: (200, 255), decay_every: 12, corrosive: 9, glow: (60, 18, 90), opacity: 18, colors: [(130, 60, 160), (104, 44, 136), (150, 84, 180)]),
         (name: "methane",  kind: Gas, density: 1, dispersion: 2, flammability: 255, ignites_at: 500, explodes: (radius: 15, power: 70, chance: 40), colors: [(120, 150, 110), (134, 164, 120)]),
         // A toxic cloud's (the acid staff): heavy, so it sinks and pools in
         // pits and down shafts; eats at what breathes it; flammable, and a
