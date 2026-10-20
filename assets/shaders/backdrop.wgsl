@@ -18,6 +18,7 @@ struct Range {
     haze: vec4<f32>,
     // rgb rock; w the feet's row (a share of the strip from its top).
     rock: vec4<f32>,
+    // rgb snow; w how wide the dither where one tone meets the next.
     snow: vec4<f32>,
     // rgb scrub; w the tile's first column, mod 4 (the dither's phase).
     scrub: vec4<f32>,
@@ -86,7 +87,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(to_linear(clamp(w, vec3<f32>(0.0), vec3<f32>(1.0))), r.color.w);
     }
     let facing = max(dot(n, r.to.xyz), 0.0);
-    let lam = min(floor(facing * 5.0 + 0.25 + 0.5 * d) / 5.0, 1.0);
+    let lam = min(floor(facing * 5.0 + 0.5 + 0.5 * r.snow.w * (d - 0.5)) / 5.0, 1.0);
     var albedo = r.rock.rgb;
     if (mat == 1u) {
         albedo = r.snow.rgb;
