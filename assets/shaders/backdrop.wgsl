@@ -21,6 +21,10 @@ struct Range {
     snow: vec4<f32>,
     // rgb scrub; w the tile's first column, mod 4 (the dither's phase).
     scrub: vec4<f32>,
+    // rgb the sun's (or moon's) glow; w its strength.
+    glow: vec4<f32>,
+    // xy the disc's world position; z how far its glow reaches.
+    sun: vec4<f32>,
 };
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> r: Range;
@@ -58,6 +62,29 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // The light on the face, stepped into a few flat tones, dithered only
     // where one meets the next.
     let d = bayer(u32(tc.x) + u32(r.scrub.w), u32(tc.y));
+    let h = size.y;
+    let foot = r.rock.w * h;
+    let mist = smoothstep(foot - h * 0.15, foot + h * 0.1, f32(tc.y));
+    // A decoration (crest and stroke both: a flower, a mushroom's cap or
+    // stem): its own colour, lit a little.
+    if (crest && stroke) {
+        var deco = array<vec3<f32>, 5>(vec3<f32>(0.95, 0.96, 0.92), vec3<f32>(0.98, 0.86, 0.36), vec3<f32>(0.78, 0.22, 0.16), vec3<f32>(0.95, 0.45, 0.32), vec3<f32>(0.9, 0.84, 0.72));
+        let k = min(u32(round(up * 15.0)), 4u);
+        var dc = deco[k] * (r.ambient.rgb * 0.7 + r.color.rgb * 0.55);
+        dc = mix(dc, r.haze.rgb, r.ambient.w);
+        return vec4<f32>(to_linear(clamp(dc, vec3<f32>(0.0), vec3<f32>(1.0))), r.color.w);
+    }
+    // Water: the sky's colour, a little deeper; a faint line every few rows.
+    if (mat == 3u) {
+        var w = mix(r.haze.rgb * 0.92, vec3<f32>(0.2, 0.32, 0.42), 0.22);
+        if ((tc.y % 5) == 0 && d > 0.4) {
+            w = mix(w, r.haze.rgb, 0.35);
+        }
+        w = mix(w, r.haze.rgb, r.ambient.w + (1.0 - r.ambient.w) * r.haze.w * mist * 0.7);
+        let far = length(in.world_position.xy - r.sun.xy) / max(r.sun.z, 1.0);
+        w = mix(w, r.glow.rgb, exp(-far * far * 2.0) * r.glow.w * 0.5);
+        return vec4<f32>(to_linear(clamp(w, vec3<f32>(0.0), vec3<f32>(1.0))), r.color.w);
+    }
     let facing = max(dot(n, r.to.xyz), 0.0);
     let lam = min(floor(facing * 5.0 + 0.25 + 0.5 * d) / 5.0, 1.0);
     var albedo = r.rock.rgb;
@@ -75,9 +102,10 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     if (stroke) {
         c = c * 0.55;
     }
-    let h = size.y;
-    let foot = r.rock.w * h;
-    let mist = smoothstep(foot - h * 0.15, foot + h * 0.1, f32(tc.y));
     c = mix(c, r.haze.rgb, r.ambient.w + (1.0 - r.ambient.w) * r.haze.w * mist * 0.7);
+    // Near the sun, its glow over the ranges (in steps, as the sky's).
+    let far = length(in.world_position.xy - r.sun.xy) / max(r.sun.z, 1.0);
+    let g = exp(-far * far * 2.0) * r.glow.w * 0.35;
+    c = mix(c, r.glow.rgb, floor(g * 6.0 + 0.25 + 0.5 * d) / 6.0);
     return vec4<f32>(to_linear(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0))), r.color.w);
 }

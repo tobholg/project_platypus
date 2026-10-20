@@ -6658,6 +6658,23 @@ fn backdrop_script(s: Res<Scenario>, sim: Res<SimWorld>, mut player: Query<&mut 
     if !*done && s.elapsed > 0.5 {
         *done = true;
         let x0 = k.body.pos.x as i32;
+        // `PLATYPUS_LAKE=1`: on the shore of the nearest lake (its water
+        // mirroring the sky).
+        if std::env::var("PLATYPUS_LAKE").is_ok() {
+            let found = (0..4000).flat_map(|i| [x0 + i * 40, x0 - i * 40]).find(|&x| (0..5).all(|d| sim.generator.water_hint(x + d * 30).is_some()));
+            match found {
+                Some(x) => {
+                    // (Back from its edge, on the land.)
+                    let shore = (1..400).map(|d| x - d * 4).find(|&sx| sim.generator.water_hint(sx).is_none()).unwrap_or(x) - 30;
+                    let y = sim.generator.surface_hint(shore).unwrap_or(0) as f32 + k.body.half.y + 3.0;
+                    k.body.pos = Vec2::new(shore as f32, y);
+                    k.body.vel = Vec2::ZERO;
+                    k.prev_pos = k.body.pos;
+                    info!("backdrop: a lake at x {x}, standing at {shore}");
+                }
+                None => info!("backdrop: no lake found"),
+            }
+        }
         if let Ok(want) = std::env::var("PLATYPUS_BIOME") {
             // The nearest column with 900 cells of it either side.
             let found = (0..200).flat_map(|i| [x0 + i * 300, x0 - i * 300]).find(|&x| (-3..=3).all(|d| sim.generator.biome_hint(x + d * 300) == Some(want.as_str())));
@@ -6673,8 +6690,9 @@ fn backdrop_script(s: Res<Scenario>, sim: Res<SimWorld>, mut player: Query<&mut 
             }
         }
     }
-    // (A walk right from 4 s: the layers slide at their own speeds.)
-    if s.elapsed > 4.0 && !keys.pressed(KeyCode::KeyD) {
+    // (A walk right from 4 s: the layers slide at their own speeds. Not by
+    // a lake: it'd walk in.)
+    if s.elapsed > 4.0 && std::env::var("PLATYPUS_LAKE").is_err() && !keys.pressed(KeyCode::KeyD) {
         keys.press(KeyCode::KeyD);
     }
 }

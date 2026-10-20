@@ -27,7 +27,7 @@ use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
 use bevy::sprite_render::{AlphaMode2d, Material2d, Material2dPlugin};
-use platypus_backdrop::peaks::{Look, albedo, cloud_tile, for_biome, layer_data, looks};
+use platypus_backdrop::peaks::{Look, Looks, albedo, cloud_data, layer_data};
 use platypus_sim::{CellPos, Kind};
 
 use crate::camera::MainCamera;
@@ -38,10 +38,10 @@ pub struct BackdropPlugin;
 
 impl Plugin for BackdropPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(Material2dPlugin::<RangeMaterial>::default())
+        app.add_plugins((Material2dPlugin::<RangeMaterial>::default(), Material2dPlugin::<CloudMaterial>::default(), Material2dPlugin::<SkyMaterial>::default(), Material2dPlugin::<ReflectMaterial>::default()))
             .insert_resource(Backdrops::new())
-            .add_systems(Startup, (sky_setup, gradient_setup, void_setup))
-            .add_systems(PostUpdate, (tiles, place, gradient, void, sky).chain().after(crate::camera::follow).before(bevy::transform::TransformSystems::Propagate));
+            .add_systems(Startup, (sky_setup, gradient_setup, void_setup, picture_setup))
+            .add_systems(PostUpdate, (tiles, place, gradient, void, sky, picture).chain().after(crate::camera::follow).before(bevy::transform::TransformSystems::Propagate));
     }
 }
 
@@ -62,12 +62,10 @@ fn layer_at(k: usize, n: usize) -> (f32, f32, f32) {
     (lerp(PARALLAX), lerp(PARALLAX_Y), (n - 1 - k.min(n - 1)) as f32 * FEET_STEP)
 }
 /// The far clouds: their share of the camera's motion, how fast they
-/// drift (cells a second), where their strip's bottom sits above the
-/// ground.
+/// drift (cells a second). (How high: their look's `clouds.foot`.)
 const CLOUD_PARALLAX: f32 = 0.008;
 const CLOUD_PARALLAX_Y: f32 = 0.004;
 const CLOUD_DRIFT: f32 = 1.8;
-const CLOUD_FOOT: f32 = 18.0;
 /// The surface's strips: columns a tile, rows (layers, clouds).
 const TILE: usize = 384;
 /// The looks' shapes are drawn this fine: a cell a pixel, the ranges 1.5×
@@ -75,10 +73,6 @@ const TILE: usize = 384;
 const DETAIL: f32 = 1.5;
 const HEIGHT: usize = 570;
 const CLOUD_HEIGHT: usize = 255;
-/// Cloud tiles are scaled up this many times (each texel a block) and
-/// sampled smoothly, so they glide by fractions of a pixel as they drift:
-/// the blocks' edges blend a pixel wide, the rest stays crisp.
-const CLOUD_UP: usize = 3;
 /// How far below a surface tile its bottom row is stretched (valleys).
 const SKIRT: f32 = 450.0;
 /// Behind the weather's clouds (-2) and the world's back walls (-1); the
@@ -87,6 +81,17 @@ const Z: f32 = -2.6;
 const Z_GRADIENT: f32 = -3.0;
 /// Over the light overlay (15), under the glow haze (15.5).
 const Z_SKY: f32 = 15.2;
+/// The backdrop's picture behind everything (under the void's dark); the
+/// water's reflection over the world's cells, under what's in the water.
+const Z_PICTURE: f32 = -3.2;
+const Z_REFLECT: f32 = 0.05;
+/// The render layer the backdrop's drawn on (by its own camera, into a
+/// picture: the view shows it; open water mirrors it).
+const BACKDROP_LAYER: usize = 29;
+
+fn backdrop_layer() -> bevy::camera::visibility::RenderLayers {
+    bevy::camera::visibility::RenderLayers::layer(BACKDROP_LAYER)
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum Part {
@@ -111,8 +116,14 @@ struct Tile {
     skirt: Option<Entity>,
     /// Its alpha (the stars hide behind it).
     alpha: Vec<u8>,
-    /// A land tile's material (lit by the hour, `RangeMaterial`).
-    material: Option<Handle<RangeMaterial>>,
+    /// Its material (lit by the hour).
+    material: Lit,
+}
+
+/// How a tile's lit: a range's material or a cloud's.
+enum Lit {
+    Range(Handle<RangeMaterial>),
+    Cloud(Handle<CloudMaterial>),
 }
 
 /// A range's tile, lit by the hour (`shaders/backdrop.wgsl`): its texels
@@ -137,14 +148,96 @@ struct RangeParams {
     rock: Vec4,
     snow: Vec4,
     scrub: Vec4,
+    glow: Vec4,
+    sun: Vec4,
 }
 
 impl RangeParams {
     /// Close enough to `o` that the difference wouldn't show.
     fn near(&self, o: &RangeParams) -> bool {
-        let pairs = [(self.to, o.to), (self.color, o.color), (self.ambient, o.ambient), (self.haze, o.haze), (self.rock, o.rock), (self.snow, o.snow), (self.scrub, o.scrub)];
-        pairs.iter().all(|(a, b)| (*a - *b).abs().max_element() < 0.003)
+        let pairs = [(self.to, o.to), (self.color, o.color), (self.ambient, o.ambient), (self.haze, o.haze), (self.rock, o.rock), (self.snow, o.snow), (self.scrub, o.scrub), (self.glow, o.glow)];
+        // (The sun's place by the cell; its reach as it is.)
+        pairs.iter().all(|(a, b)| (*a - *b).abs().max_element() < 0.003) && (self.sun - o.sun).abs().max_element() < 1.0
     }
+}
+
+/// The far clouds, lit by the hour (`shaders/cloud.wgsl`; their texels:
+/// `peaks::cloud_data`).
+#[derive(Asset, TypePath, AsBindGroup, Clone)]
+pub struct CloudMaterial {
+    #[uniform(0)]
+    params: CloudParams,
+    #[texture(1)]
+    #[sampler(2)]
+    texture: Handle<Image>,
+}
+
+/// As `cloud.wgsl`'s `Cloud` says.
+#[derive(Clone, Copy, Default, ShaderType, Debug, PartialEq)]
+struct CloudParams {
+    to: Vec4,
+    color: Vec4,
+    ambient: Vec4,
+    haze: Vec4,
+    lit: Vec4,
+    shade: Vec4,
+}
+
+impl CloudParams {
+    fn near(&self, o: &CloudParams) -> bool {
+        [(self.to, o.to), (self.color, o.color), (self.ambient, o.ambient), (self.haze, o.haze), (self.lit, o.lit), (self.shade, o.shade)].iter().all(|(a, b)| (*a - *b).abs().max_element() < 0.003)
+    }
+}
+
+impl Material2d for CloudMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/cloud.wgsl".into()
+    }
+
+    fn alpha_mode(&self) -> AlphaMode2d {
+        AlphaMode2d::Blend
+    }
+}
+
+/// The sky behind everything (`shaders/sky.wgsl`).
+#[derive(Asset, TypePath, AsBindGroup, Clone)]
+pub struct SkyMaterial {
+    #[uniform(0)]
+    params: SkyParams,
+}
+
+/// As `sky.wgsl`'s `Sky` says.
+#[derive(Clone, Copy, Default, ShaderType, Debug)]
+struct SkyParams {
+    zenith: Vec4,
+    horizon: Vec4,
+    glow: Vec4,
+    belt: Vec4,
+    warm: Vec4,
+    sun: Vec4,
+    view: Vec4,
+}
+
+impl Material2d for SkyMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/sky.wgsl".into()
+    }
+
+    fn alpha_mode(&self) -> AlphaMode2d {
+        AlphaMode2d::Blend
+    }
+}
+
+/// Where the sun (by day) or the moon (by night) is in the view: from its
+/// bottom left (cells), the view's half size `half`; and whether it's the
+/// sun. Rising on the left, high at noon (or midnight), setting on the
+/// right. (The sky draws it there; its glow, the clouds' and the ranges'
+/// light know it.)
+fn disc_at(time: f32, half: Vec2) -> (Vec2, bool) {
+    let is_sun = (0.25..0.75).contains(&time);
+    let phase = if is_sun { (time - 0.25) * 2.0 } else { (time - 0.75).rem_euclid(1.0) * 2.0 };
+    let arc = (std::f32::consts::PI * phase).sin();
+    (Vec2::new(half.x * 2.0 * (0.12 + 0.76 * phase), half.y * 2.0 * (0.6 + 0.34 * arc)), is_sun)
 }
 
 impl Material2d for RangeMaterial {
@@ -160,6 +253,8 @@ impl Material2d for RangeMaterial {
 #[derive(Resource)]
 pub struct Backdrops {
     looks: Arc<Vec<Look>>,
+    /// Which biome shows which look (the backdrops file's).
+    biomes: Arc<Looks>,
     /// Each look's share of the view now (eased towards the biomes'
     /// around the camera).
     weights: Vec<f32>,
@@ -171,15 +266,23 @@ pub struct Backdrops {
     shown: f32,
     /// How far the clouds have drifted (cells).
     drift: f32,
-    /// A range tile's quad and its skirt's (all the same size).
+    /// A range tile's quad and its skirt's (all the same size); a cloud
+    /// tile's.
     meshes: Option<(Handle<Mesh>, Handle<Mesh>)>,
+    cloud_mesh: Option<Handle<Mesh>>,
 }
 
 impl Backdrops {
     fn new() -> Self {
-        let looks = Arc::new(looks());
-        let weights = looks.iter().map(|v| if v.name == "noita" { 1.0 } else { 0.0 }).collect();
-        Backdrops { looks, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0, meshes: None }
+        // (The backdrops file as it is now; as shipped if it won't read.)
+        let all = std::fs::read_to_string(crate::data::data_path("backdrops.ron")).map_err(|e| e.to_string()).and_then(|t| platypus_backdrop::peaks::parse(&t)).unwrap_or_else(|e| {
+            warn!("backdrops: {e}; as shipped");
+            platypus_backdrop::peaks::shipped()
+        });
+        let looks = Arc::new(all.looks.clone());
+        let weights = looks.iter().map(|v| if v.name == all.default { 1.0 } else { 0.0 }).collect();
+        let biomes = Arc::new(all);
+        Backdrops { looks, biomes, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0, meshes: None, cloud_mesh: None }
     }
 
     /// A tile's size in cells.
@@ -213,7 +316,7 @@ impl Backdrops {
                 let foot = ground + feet + (cam.y - ground) * (1.0 - py);
                 foot + self.looks[key.v].layers[key.k].base * h - h / 2.0
             }
-            Part::Clouds => ground + CLOUD_FOOT + (cam.y - ground) * (1.0 - CLOUD_PARALLAX_Y) + h / 2.0,
+            Part::Clouds => ground + self.looks[key.v].clouds.foot + (cam.y - ground) * (1.0 - CLOUD_PARALLAX_Y) + h / 2.0,
         };
         Vec2::new(x, y)
     }
@@ -259,7 +362,7 @@ impl Cover<'_> {
 fn targets(bd: &Backdrops, sim: &SimWorld, x: f32) -> Vec<f32> {
     let mut out = vec![0.0; bd.looks.len()];
     for (d, w) in [(-3.0, 0.05), (-2.0, 0.1), (-1.0, 0.2), (0.0, 0.3), (1.0, 0.2), (2.0, 0.1), (3.0, 0.05)] {
-        let name = for_biome(sim.generator.biome_hint((x + d * 225.0) as i32).unwrap_or("forest"));
+        let name = bd.biomes.for_biome(sim.generator.biome_hint((x + d * 225.0) as i32).unwrap_or("forest"));
         if let Some(i) = bd.looks.iter().position(|v| v.name == name) {
             out[i] += w;
         }
@@ -281,6 +384,7 @@ fn tiles(
     mut images: ResMut<Assets<Image>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut ranges: ResMut<Assets<RangeMaterial>>,
+    mut cloud_mats: ResMut<Assets<CloudMaterial>>,
 ) {
     let (tf, loader) = *cam;
     let c = tf.translation.truncate();
@@ -326,7 +430,7 @@ fn tiles(
         let looks = bd.looks.clone();
         let task = match key.part {
             Part::Land => pool.spawn(async move { layer_data(&looks[key.v], key.k, key.tx * w as i64, w, h, DETAIL, seed) }),
-            Part::Clouds => pool.spawn(async move { cloud_tile(&looks[key.v], key.tx * w as i64, w, h, DETAIL, seed) }),
+            Part::Clouds => pool.spawn(async move { cloud_data(&looks[key.v], key.tx * w as i64, w, h, DETAIL, seed) }),
         };
         bd.making.insert(key, task);
     }
@@ -354,12 +458,13 @@ fn tiles(
                 Part::Clouds => 0.015,
             };
         if clouds {
-            let px = upscale(px, w, h, CLOUD_UP);
-            let mut image = Image::new(Extent3d { width: (w * CLOUD_UP) as u32, height: (h * CLOUD_UP) as u32, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::RENDER_WORLD);
-            image.sampler = bevy::image::ImageSampler::linear();
-            let sprite = Sprite { image: images.add(image), custom_size: Some(Vec2::new(w as f32, h as f32)), ..default() };
-            let entity = commands.spawn((Name::new("Backdrop clouds"), sprite, Transform::from_xyz(0.0, 0.0, z))).id();
-            bd.tiles.insert(key, Tile { entity, skirt: None, alpha, material: None });
+            // Their texels (read exactly; the shader blends them after
+            // lighting each, so they drift smoothly).
+            let image = Image::new(Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8Unorm, RenderAssetUsages::RENDER_WORLD);
+            let material = cloud_mats.add(CloudMaterial { params: CloudParams::default(), texture: images.add(image) });
+            let quad = bd.cloud_mesh.get_or_insert_with(|| meshes.add(Rectangle::new(w as f32, h as f32))).clone();
+            let entity = commands.spawn((Name::new("Backdrop clouds"), Mesh2d(quad), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z), backdrop_layer())).id();
+            bd.tiles.insert(key, Tile { entity, skirt: None, alpha, material: Lit::Cloud(material) });
             continue;
         }
         // A range: its texels (not colours: `Rgba8Unorm`, read exactly),
@@ -374,16 +479,17 @@ fn tiles(
             skirt.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[1.0, v], [0.0, v], [0.0, v], [1.0, v]]);
             (quad, meshes.add(skirt))
         }).clone();
-        let entity = commands.spawn((Name::new("Backdrop range"), Mesh2d(quad), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z))).id();
-        let skirt = commands.spawn((Name::new("Backdrop skirt"), Mesh2d(skirt_mesh), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z))).id();
-        bd.tiles.insert(key, Tile { entity, skirt: Some(skirt), alpha, material: Some(material) });
+        let entity = commands.spawn((Name::new("Backdrop range"), Mesh2d(quad), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z), backdrop_layer())).id();
+        let skirt = commands.spawn((Name::new("Backdrop skirt"), Mesh2d(skirt_mesh), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z), backdrop_layer())).id();
+        bd.tiles.insert(key, Tile { entity, skirt: Some(skirt), alpha, material: Lit::Range(material) });
     }
 }
 
 /// Each tile where its layer puts it for the camera now, as strong as its
 /// look's share; the surface's faded out underground, the cave's in. The
-/// ranges lit by the hour: toward the sun by day, the moon by night, the
-/// sky's colour to fade into (`terrain::hour`).
+/// ranges and the clouds lit by the hour: toward the sun by day, the moon
+/// by night, fading into the sky's colour (`terrain::hour`), the disc's
+/// glow over the ranges near it.
 #[allow(clippy::too_many_arguments)]
 fn place(
     bd: Res<Backdrops>,
@@ -391,19 +497,25 @@ fn place(
     gloom: Res<crate::light::Gloom>,
     day: Option<Res<crate::light::Daylight>>,
     clear: Res<ClearColor>,
-    cam: Single<&Transform, (With<MainCamera>, Without<Sprite>)>,
+    cam: Single<(&Transform, &ChunkLoader), (With<MainCamera>, Without<Sprite>)>,
     mut places: Query<&mut Transform, Without<MainCamera>>,
-    mut sprites: Query<&mut Sprite>,
     mut ranges: ResMut<Assets<RangeMaterial>>,
+    mut cloud_mats: ResMut<Assets<CloudMaterial>>,
 ) {
-    let c = cam.translation.truncate();
+    let (tf, loader) = *cam;
+    let c = tf.translation.truncate();
+    let half = loader.half_extent;
+    let time = day.as_ref().map_or(0.5, |d| d.time);
     let sky = clear.0.to_srgba();
-    let light = platypus_backdrop::terrain::hour(day.as_ref().map_or(0.5, |d| d.time), [sky.red, sky.green, sky.blue]);
+    let base = [sky.red, sky.green, sky.blue];
+    let light = platypus_backdrop::terrain::hour(time, base);
+    let heavens = platypus_backdrop::terrain::sky(time, base);
+    let sun = c - half + disc_at(time, half).0;
     let v4 = |rgb: [f32; 3], w: f32| Vec4::new(rgb[0], rgb[1], rgb[2], w);
     // (The ranges snapped to whole screen pixels from the camera: crisp,
     // and gliding a pixel at a time; snapped to whole cells they hopped 2
     // pixels at once. The clouds, drifting slowly on their own, aren't:
-    // they're drawn smooth, `CLOUD_UP`.)
+    // their shader blends their texels.)
     let px = zoom.0.max(1.0);
     for (key, tile) in &bd.tiles {
         let exact = bd.centre(*key, c);
@@ -423,9 +535,11 @@ fn place(
                 tf.translation.y = y;
             }
         }
+        let look = &bd.looks[key.v];
+        // (A material's re-sent only when its light's moved on enough to
+        // see: the hour creeps every tick.)
         match &tile.material {
-            Some(m) => {
-                let look = &bd.looks[key.v];
+            Lit::Range(m) => {
                 let a = albedo(look, key.k);
                 let params = RangeParams {
                     to: v4(light.to, light.rim),
@@ -435,49 +549,181 @@ fn place(
                     rock: v4(a.rock, look.layers[key.k].base),
                     snow: v4(a.snow, 0.0),
                     scrub: v4(a.scrub, (key.tx * TILE as i64).rem_euclid(4) as f32),
+                    // (Over the ranges mostly when it's low and golden; at
+                    // noon it bleached them.)
+                    glow: v4(heavens.glow, heavens.glow_strength * (0.2 + 0.8 * light.golden)),
+                    sun: Vec4::new(sun.x, sun.y, half.y * 1.2, 0.0),
                 };
-                // (Only when the light's moved on enough to see: the hour
-                // creeps every tick, and a changed material is re-sent.)
                 if ranges.get(m).is_some_and(|mat| !mat.params.near(&params))
                     && let Some(mut mat) = ranges.get_mut(m)
                 {
                     mat.params = params;
                 }
             }
-            None => {
-                if let Ok(mut sprite) = sprites.get_mut(tile.entity) {
-                    sprite.color = Color::srgba(1.0, 1.0, 1.0, alpha);
+            Lit::Cloud(m) => {
+                let (lit, shade) = (look.clouds.lit, look.clouds.shade);
+                let params = CloudParams {
+                    to: v4(light.to, light.golden),
+                    color: v4(light.color, alpha),
+                    ambient: v4(light.ambient, 0.0),
+                    haze: v4(light.haze, 0.0),
+                    lit: v4(lit, 0.0),
+                    shade: v4(shade, 0.0),
+                };
+                if cloud_mats.get(m).is_some_and(|mat| !mat.params.near(&params))
+                    && let Some(mut mat) = cloud_mats.get_mut(m)
+                {
+                    mat.params = params;
                 }
             }
         }
     }
 }
 
-/// A tile's pixels scaled up `n` times, each a block; see-through ones take
-/// their colour from a neighbour that isn't (sampled smoothly, the edges
-/// blend towards it, not towards black).
-fn upscale(px: Vec<u8>, w: usize, h: usize, n: usize) -> Vec<u8> {
-    let mut src = px.clone();
-    for y in 0..h {
-        for x in 0..w {
-            let i = (y * w + x) * 4;
-            if px[i + 3] > 0 {
-                continue;
-            }
-            let near = [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)].into_iter().filter(|&(nx, ny)| nx < w && ny < h).map(|(nx, ny)| (ny * w + nx) * 4).find(|&j| px[j + 3] > 0);
-            if let Some(j) = near {
-                src[i..i + 3].copy_from_slice(&px[j..j + 3]);
-            }
-        }
+// ---- the backdrop's picture, and water mirroring it ----
+
+/// The backdrop drawn into a picture by its own camera (seeing only its
+/// layer, as the view sees): shown behind everything, and mirrored by open
+/// water (`ReflectMaterial`).
+#[derive(Resource)]
+struct Picture {
+    camera: Entity,
+    sprite: Entity,
+    image: Handle<Image>,
+    size: UVec2,
+    reflect: Entity,
+    material: Handle<ReflectMaterial>,
+}
+
+/// The backdrop's camera.
+#[derive(Component)]
+struct BackdropCamera;
+
+/// Open water mirroring the backdrop (`shaders/reflect.wgsl`).
+#[derive(Asset, TypePath, AsBindGroup, Clone)]
+pub struct ReflectMaterial {
+    #[uniform(0)]
+    params: ReflectParams,
+    #[texture(1)]
+    #[sampler(2)]
+    mask: Handle<Image>,
+    #[texture(3)]
+    #[sampler(4)]
+    backdrop: Handle<Image>,
+}
+
+/// As `reflect.wgsl`'s `Reflect` says.
+#[derive(Clone, Copy, Default, ShaderType, Debug)]
+struct ReflectParams {
+    grid: Vec4,
+    size: Vec4,
+    view: Vec4,
+    strength: Vec4,
+}
+
+impl Material2d for ReflectMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/reflect.wgsl".into()
     }
-    let mut out = vec![0u8; w * h * n * n * 4];
-    for y in 0..h * n {
-        for x in 0..w * n {
-            let (i, o) = (((y / n) * w + x / n) * 4, (y * w * n + x) * 4);
-            out[o..o + 4].copy_from_slice(&src[i..i + 4]);
-        }
+
+    fn alpha_mode(&self) -> AlphaMode2d {
+        AlphaMode2d::Blend
     }
-    out
+}
+
+/// How strongly open water mirrors the sky.
+const MIRROR: f32 = 0.55;
+
+fn picture_target(images: &mut Assets<Image>, size: UVec2) -> Handle<Image> {
+    images.add(Image::new_target_texture(size.x.max(1), size.y.max(1), TextureFormat::Rgba8UnormSrgb, None))
+}
+
+fn picture_setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut meshes: ResMut<Assets<Mesh>>, mut reflects: ResMut<Assets<ReflectMaterial>>) {
+    let size = UVec2::new(16, 16);
+    let image = picture_target(&mut images, size);
+    let camera = commands
+        .spawn((
+            Name::new("Backdrop camera"),
+            BackdropCamera,
+            Camera2d,
+            Camera { order: -1, clear_color: ClearColorConfig::Custom(Color::NONE), ..default() },
+            bevy::camera::RenderTarget::Image(image.clone().into()),
+            backdrop_layer(),
+        ))
+        .id();
+    let sprite = commands.spawn((Name::new("Backdrop picture"), Sprite { image: image.clone(), ..default() }, Transform::from_xyz(0.0, 0.0, Z_PICTURE))).id();
+    let mask = images.add(Image::new_fill(Extent3d { width: 1, height: 1, depth_or_array_layers: 1 }, TextureDimension::D2, &[0, 0, 0, 0], TextureFormat::Rgba8Unorm, RenderAssetUsages::RENDER_WORLD));
+    let material = reflects.add(ReflectMaterial { params: ReflectParams::default(), mask, backdrop: image.clone() });
+    let reflect = commands.spawn((Name::new("Water's reflection"), Mesh2d(meshes.add(Rectangle::new(1.0, 1.0))), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, Z_REFLECT), Visibility::Hidden)).id();
+    commands.insert_resource(Picture { camera, sprite, image, size, reflect, material });
+}
+
+/// The backdrop's camera sees as the view does (where, how far zoomed, as
+/// many pixels); its picture fills the view; the water's reflection over
+/// the light grid's open water.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn picture(
+    mut commands: Commands,
+    mut pic: ResMut<Picture>,
+    bd: Res<Backdrops>,
+    time: Res<Time>,
+    water: Res<crate::light::WaterMask>,
+    main: Single<(&Transform, &Projection, &Camera), (With<MainCamera>, Without<BackdropCamera>)>,
+    mut cams: Query<(&mut Transform, &mut Projection), (With<BackdropCamera>, Without<MainCamera>)>,
+    mut places: Query<(&mut Transform, &mut Visibility), (Without<MainCamera>, Without<BackdropCamera>)>,
+    mut sprites: Query<&mut Sprite>,
+    mut images: ResMut<Assets<Image>>,
+    mut reflects: ResMut<Assets<ReflectMaterial>>,
+) {
+    let (mtf, mproj, mcam) = *main;
+    let Some(px) = mcam.physical_viewport_size() else { return };
+    // As many pixels as the view: a new picture if that's changed.
+    if px != pic.size {
+        let image = picture_target(&mut images, px);
+        commands.entity(pic.camera).insert(bevy::camera::RenderTarget::Image(image.clone().into()));
+        if let Ok(mut s) = sprites.get_mut(pic.sprite) {
+            s.image = image.clone();
+        }
+        if let Some(mut m) = reflects.get_mut(&pic.material) {
+            m.backdrop = image.clone();
+        }
+        pic.image = image;
+        pic.size = px;
+    }
+    if let Ok((mut tf, mut proj)) = cams.get_mut(pic.camera) {
+        *tf = *mtf;
+        *proj = mproj.clone();
+    }
+    let scale = match mproj {
+        Projection::Orthographic(o) => o.scale,
+        _ => 1.0,
+    };
+    let view = px.as_vec2() * scale;
+    let c = mtf.translation.truncate();
+    if let Ok((mut tf, _)) = places.get_mut(pic.sprite) {
+        tf.translation = c.extend(Z_PICTURE);
+    }
+    if let Ok(mut s) = sprites.get_mut(pic.sprite) {
+        s.custom_size = Some(view);
+    }
+    // Open water mirroring it.
+    let shown = water.any && bd.shown > 0.01 && water.image.is_some();
+    if let Ok((mut tf, mut vis)) = places.get_mut(pic.reflect) {
+        *vis = if shown { Visibility::Inherited } else { Visibility::Hidden };
+        *tf = Transform::from_translation(water.center.extend(Z_REFLECT)).with_scale(water.extent.extend(1.0));
+    }
+    if shown
+        && let (Some(mask), Some(mut m)) = (water.image.clone(), reflects.get_mut(&pic.material))
+    {
+        let corner = water.center - water.extent / 2.0;
+        m.mask = mask;
+        m.params = ReflectParams {
+            grid: Vec4::new(corner.x, corner.y, water.extent.x, water.extent.y),
+            size: Vec4::new(water.size.x as f32, water.size.y as f32, water.extent.x / water.size.x.max(1) as f32, time.elapsed_secs()),
+            view: Vec4::new(c.x - view.x / 2.0, c.y - view.y / 2.0, view.x, view.y),
+            strength: Vec4::new(MIRROR * bd.shown, 0.0, 0.0, 0.0),
+        };
+    }
 }
 
 // ---- the underground's void ----
@@ -529,40 +775,61 @@ fn void(time: Res<Time>, bd: Res<Backdrops>, sim: Res<SimWorld>, mut v: ResMut<V
 
 // ---- the sky's gradient ----
 
-/// The sky darkening upward (behind everything): the sky's colour (the
-/// clear colour, by the hour) at the horizon, deeper overhead.
+/// The sky behind everything: its colour at the horizon (the clear
+/// colour, by the hour) up to a deeper one overhead, in bands; the glow
+/// round the sun or moon; low, a warm horizon on the sun's side, a violet
+/// belt across the far side (`shaders/sky.wgsl`).
 #[derive(Resource)]
-struct Gradient(Entity);
-
-fn gradient_setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
-    let h = 64u32;
-    // (Top row first: 0.62 overhead .. 1 at the horizon and below.)
-    let px: Vec<u8> = (0..h).flat_map(|y| {
-        let t = y as f32 / (h - 1) as f32;
-        let v = (0.62 + 0.38 * (t * t * (3.0 - 2.0 * t))) * 255.0;
-        [v as u8, v as u8, (v * 0.5 + 127.5) as u8, 255]
-    }).collect();
-    let image = images.add(Image::new(Extent3d { width: 1, height: h, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::RENDER_WORLD));
-    let e = commands.spawn((Name::new("Sky gradient"), Sprite::from_image(image), Transform::from_xyz(0.0, 0.0, Z_GRADIENT))).id();
-    commands.insert_resource(Gradient(e));
+struct Gradient {
+    entity: Entity,
+    material: Handle<SkyMaterial>,
 }
 
-/// Over the view, tinted the sky's colour; its horizon at the ground (as
-/// far off as the layers), faded out underground.
-fn gradient(g: Res<Gradient>, bd: Res<Backdrops>, clear: Res<ClearColor>, cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>, mut sprites: Query<(&mut Transform, &mut Sprite), Without<MainCamera>>) {
+fn gradient_setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut skies: ResMut<Assets<SkyMaterial>>) {
+    let material = skies.add(SkyMaterial { params: SkyParams::default() });
+    let entity = commands.spawn((Name::new("Sky gradient"), Mesh2d(meshes.add(Rectangle::new(1.0, 1.0))), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, Z_GRADIENT), backdrop_layer())).id();
+    commands.insert_resource(Gradient { entity, material });
+}
+
+/// Over the view; its horizon at the ground (as far off as the layers),
+/// faded out underground.
+#[allow(clippy::too_many_arguments)]
+fn gradient(
+    g: Res<Gradient>,
+    bd: Res<Backdrops>,
+    clear: Res<ClearColor>,
+    day: Option<Res<crate::light::Daylight>>,
+    cam: Single<(&Transform, &ChunkLoader), With<MainCamera>>,
+    mut places: Query<&mut Transform, Without<MainCamera>>,
+    mut skies: ResMut<Assets<SkyMaterial>>,
+) {
     let (tf, loader) = *cam;
     let c = tf.translation.truncate();
-    let Ok((mut stf, mut s)) = sprites.get_mut(g.0) else { return };
     let half = loader.half_extent;
     // From the ground (a little above it: the horizon) up to 1.5 views
     // over it, hardly moving as you climb.
     let horizon = bd.ground.unwrap_or(c.y) + 45.0 + (c.y - bd.ground.unwrap_or(c.y)) * 0.995;
-    let (bottom, top) = (horizon - half.y * 2.0, horizon + half.y * 1.6);
-    stf.translation = Vec3::new(c.x, (bottom + top) / 2.0, Z_GRADIENT);
-    s.custom_size = Some(Vec2::new(half.x * 2.0 + 4.0, top - bottom));
+    let (bottom, top) = (horizon - half.y * 2.0, (horizon + half.y * 1.6).max(c.y + half.y + 2.0));
+    if let Ok(mut stf) = places.get_mut(g.entity) {
+        stf.translation = Vec3::new(c.x, (bottom + top) / 2.0, Z_GRADIENT);
+        stf.scale = Vec3::new(half.x * 2.0 + 4.0, top - bottom, 1.0);
+    }
+    let time = day.as_ref().map_or(0.5, |d| d.time);
     let k = clear.0.to_srgba();
-    // (Lifted a little: the horizon a touch paler than the clear colour.)
-    s.color = Color::srgba((k.red * 1.12).min(1.0), (k.green * 1.1).min(1.0), (k.blue * 1.04).min(1.0), bd.shown);
+    let heavens = platypus_backdrop::terrain::sky(time, [k.red, k.green, k.blue]);
+    let sun = c - half + disc_at(time, half).0;
+    let v4 = |rgb: [f32; 3], w: f32| Vec4::new(rgb[0], rgb[1], rgb[2], w);
+    if let Some(mut m) = skies.get_mut(&g.material) {
+        m.params = SkyParams {
+            zenith: v4(heavens.zenith, bd.shown),
+            horizon: v4(heavens.horizon, horizon),
+            glow: v4(heavens.glow, heavens.glow_strength),
+            belt: v4(heavens.belt, heavens.golden),
+            warm: v4(heavens.warm, 0.0),
+            sun: Vec4::new(sun.x, sun.y, 0.0, 0.0),
+            view: Vec4::new(c.x - half.x, c.y - half.y, half.x, half.y),
+        };
+    }
 }
 
 // ---- the sky, and the cave's own lights ----
@@ -686,10 +953,10 @@ fn sky(
         let cover = bd.cover(c);
         let sky_open = |p: Vec2| open(p) && !cover.covers(p);
         // A disc crossing the sky, the sun by day, the moon by night.
-        let is_sun = (0.25..0.75).contains(&d.time);
+        let (at, is_sun) = disc_at(d.time, half);
+        let (dx, dy) = (at.x, at.y);
         let phase = if is_sun { (d.time - 0.25) * 2.0 } else { (d.time - 0.75).rem_euclid(1.0) * 2.0 };
         let arc = (std::f32::consts::PI * phase).sin();
-        let (dx, dy) = (vw * (0.12 + 0.76 * phase), vh * (0.6 + 0.34 * arc));
         // (An image pixel's size on each axis: not square unless the window
         // is 16:9.)
         let (pw, ph) = (vw / size.x as f32, vh / size.y as f32);

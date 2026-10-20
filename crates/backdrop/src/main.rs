@@ -21,6 +21,14 @@ fn main() {
         }
         return;
     }
+    // `platypus-backdrop layer <look> <k> <out.png> [x0]`: one layer of a
+    // look at noon as the game draws it (its detail, its strip), 3×, on
+    // its sky, cropped to what shows: to look at one closely.
+    if args.get(1).map(String::as_str) == Some("layer") {
+        let (name, k, out) = (&args[2], args[3].parse().expect("layer"), std::path::Path::new(&args[4]));
+        layer(name, k, out, args.get(5).and_then(|s| s.parse().ok()).unwrap_or(0));
+        return;
+    }
     if args.get(1).map(String::as_str) == Some("lit") {
         lit(std::path::Path::new(args.get(2).map_or("backdrops", |s| s.as_str())));
         return;
@@ -247,6 +255,25 @@ fn tiles(out: &std::path::Path) {
         over(&mut px, &layer);
     }
     platypus_art::write_png(&platypus_art::Pixels { w: w as u32, h: h as u32, rgba: px }, &out.join("tiles-cave.png")).expect("png");
+}
+
+/// One layer of a look at noon, as the game draws it (`layer` above).
+fn layer(name: &str, k: usize, out: &std::path::Path, x0: i64) {
+    use platypus_backdrop::peaks::{layer_tile, looks};
+    let look = looks().into_iter().find(|l| l.name == name).expect("no such look");
+    let (w, h) = (640usize, 570usize);
+    let px = layer_tile(&look, k, x0, w, h, 1.5, 11);
+    let rows: Vec<usize> = (0..h).filter(|&y| (0..w).any(|x| px[(y * w + x) * 4 + 3] > 0)).collect();
+    let (y0, y1) = (rows.first().copied().unwrap_or(0), rows.last().map_or(0, |y| y + 1));
+    let s = 3;
+    let mut big = Vec::with_capacity(w * (y1 - y0) * s * s * 4);
+    for y in y0 * s..y1 * s {
+        for x in 0..w * s {
+            let p = &px[((y / s) * w + x / s) * 4..][..4];
+            big.extend_from_slice(&if p[3] > 0 { [p[0], p[1], p[2], 255] } else { look.sky.1.map(|c| (c * 255.0) as u8).into_iter().chain([255]).collect::<Vec<_>>().try_into().unwrap() });
+        }
+    }
+    platypus_art::write_png(&platypus_art::Pixels { w: (w * s) as u32, h: ((y1 - y0) * s) as u32, rgba: big }, out).expect("png");
 }
 
 /// The looks lit through the day: dawn, noon, dusk, night (each graded as
