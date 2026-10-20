@@ -831,10 +831,16 @@ fn door_spot(world: &World, from: Vec2, cursor: Vec2) -> Option<CellPos> {
     (0..DOOR_TALL).map(|d| at.offset(0, -d)).find(|&b| solid(b.offset(0, -1)) && (0..DOOR_TALL).all(|k| room(b.offset(0, k))))
 }
 
-/// Right-click a door within reach: open it, or shut it (not on someone
-/// standing in it).
+/// Right-click a door within reach, or Q (`chests::INTERACT`): open it,
+/// or shut it (not on someone standing in it). Q with no door under the
+/// cursor takes the nearest within reach (unless a chest is nearer: that
+/// opens instead).
+#[allow(clippy::too_many_arguments)]
 pub fn doors(
     mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    dev: Res<crate::hands::DevTools>,
+    containers: Query<&Kinematics, With<chests::Container>>,
     cursor: Res<crate::camera::CursorWorld>,
     over_ui: Res<crate::dev::PointerOverUi>,
     mut sim: ResMut<SimWorld>,
@@ -842,14 +848,36 @@ pub fn doors(
     bodies: Query<&Kinematics, With<Creature>>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
 ) {
-    if !mouse.just_pressed(MouseButton::Right) || over_ui.0 {
+    let key = keys.just_pressed(chests::INTERACT) && !dev.0;
+    if !(mouse.just_pressed(MouseButton::Right) || key) || over_ui.0 {
         return;
     }
     let (Some(at), Ok(k)) = (cursor.0, player.single()) else { return };
-    if at.distance(k.body.pos) > 6.0 * BLOCK as f32 {
-        return;
-    }
-    let cell = CellPos::from_world(at.x, at.y);
+    let reach = 6.0 * BLOCK as f32;
+    let under = (at.distance(k.body.pos) <= reach).then(|| CellPos::from_world(at.x, at.y)).filter(|&c| sim.world.door_at(c).is_some());
+    // (Q, nothing under the cursor: the nearest door in reach, by its
+    // blocks' middles; not if a chest's nearer.)
+    let nearest = || {
+        let me = CellPos::from_world(k.body.pos.x, k.body.pos.y);
+        let (bx, by) = (me.x.div_euclid(BLOCK), me.y.div_euclid(BLOCK));
+        (-6..=6)
+            .flat_map(|dx| (-4..=4).map(move |dy| CellPos::new((bx + dx) * BLOCK + BLOCK / 2, (by + dy) * BLOCK + BLOCK / 2)))
+            .filter(|&c| sim.world.door_at(c).is_some())
+            .map(|c| (c, Vec2::new(c.x as f32, c.y as f32).distance(k.body.pos)))
+            .filter(|&(_, d)| d <= reach)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+    };
+    let cell = match under {
+        Some(c) => c,
+        None if key => {
+            let Some((c, d)) = nearest() else { return };
+            if containers.iter().any(|ck| ck.body.pos.distance(k.body.pos) < d.min(chests::REACH)) {
+                return;
+            }
+            c
+        }
+        None => return,
+    };
     let Some((blocks, shut)) = sim.world.door_at(cell) else { return };
     let (lo, hi) = (blocks[0], blocks[blocks.len() - 1]);
     let (min, max) = (Vec2::new((lo.x * BLOCK) as f32, (lo.y * BLOCK) as f32), Vec2::new(((hi.x + 1) * BLOCK) as f32, ((hi.y + 1) * BLOCK) as f32));

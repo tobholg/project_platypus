@@ -36,6 +36,10 @@ use crate::world::SimWorld;
 pub const SLOTS: usize = 20;
 /// How far from the player a chest can be opened (cells).
 pub(crate) const REACH: f32 = 42.0;
+
+/// The key that opens what's under the cursor or near (a chest, a door):
+/// right-click's twin, for a touchpad.
+pub const INTERACT: KeyCode = KeyCode::KeyQ;
 /// Hit points: two hits of a copper pickaxe, a bomb beside it, a few
 /// seconds in a fire.
 const TOUGHNESS: f32 = 60.0;
@@ -407,10 +411,13 @@ impl Chest {
     }
 }
 
-/// Right-click a chest within reach: open it (with the pack).
+/// Right-click a chest within reach, or Q (a touchpad's right-click is
+/// awkward): open it (with the pack). Q with no chest under the cursor
+/// opens the nearest within reach.
 #[allow(clippy::too_many_arguments)]
 fn open_chest(
     mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
     dev: Res<DevTools>,
     cursor: Res<CursorWorld>,
     items: Option<Res<Items>>,
@@ -420,12 +427,16 @@ fn open_chest(
     player: Query<(&Kinematics, Option<&crate::gear::Stats>), With<LocalPlayer>>,
     found: Query<(&Container, &Kinematics)>,
 ) {
-    if dev.0 || !mouse.just_pressed(MouseButton::Right) {
+    let key = keys.just_pressed(INTERACT);
+    if dev.0 || !(mouse.just_pressed(MouseButton::Right) || key) {
         return;
     }
     let (Some(at), Some(items), Ok((k, stats))) = (cursor.0, items, player.single()) else { return };
-    // (A little forgiving: bodies are thin.)
-    let Some((c, ck)) = found.iter().filter(|(_, ck)| ((ck.body.pos - at).abs() - ck.body.half).max_element() <= 4.5).min_by(|a, b| a.1.body.pos.distance(at).total_cmp(&b.1.body.pos.distance(at))) else { return };
+    // (A little forgiving: bodies are thin. Q: under the cursor, else the
+    // nearest in reach.)
+    let under = found.iter().filter(|(_, ck)| ((ck.body.pos - at).abs() - ck.body.half).max_element() <= 4.5).min_by(|a, b| a.1.body.pos.distance(at).total_cmp(&b.1.body.pos.distance(at)));
+    let near = || found.iter().filter(|(_, ck)| ck.body.pos.distance(k.body.pos) <= REACH).min_by(|a, b| a.1.body.pos.distance(k.body.pos).total_cmp(&b.1.body.pos.distance(k.body.pos)));
+    let Some((c, ck)) = under.or_else(|| if key { near() } else { None }) else { return };
     let (key, pos) = (c.key, ck.body.pos);
     if pos.distance(k.body.pos) > REACH {
         return;

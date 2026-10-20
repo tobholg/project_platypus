@@ -10727,16 +10727,19 @@ fn build_script(
         put("crate", at(l + 16, f1));
         put("hearth", at(r - 4, f1));
         put("painting", at(l + 11, f1 + 4));
-        put("bookcase", at(l + 2, f2) + half);
-        // (Banners hung from just under the ceiling.)
+        // Upstairs, mirrored about the middle: a bookcase, a banner, a
+        // window, the chandelier over the platform, a window, a banner, the
+        // bed. (A station's feet are its middle.)
+        let mid = |bx: f32, id: &str| Vec2::new((l as f32 + bx) * b as f32, (f2 * b) as f32) + Vec2::new(0.0, 0.0 * size(id).0 as f32);
+        put("bookcase", mid(1.9, "bookcase"));
         let banner = size("banner_red").1 as f32;
-        let hang = |bx: f32| Vec2::new(bx * b as f32, (ceil * b) as f32 - 2.0 - banner);
-        put("banner_red", hang((l as f32) + 9.6));
-        put("banner_green", hang((l as f32) + 16.4));
-        put("bed", at(r - 6, f2));
+        let hang = |bx: f32| Vec2::new((l as f32 + bx) * b as f32, (ceil * b) as f32 - 2.0 - banner);
+        put("banner_red", hang(5.4));
+        put("banner_green", hang(19.6));
+        put("bed", mid(21.9, "bed"));
         // Hung from the ceilings (their feet their height under it).
         let (ch, la) = (size("chandelier").1 as f32, size("hanging_lantern").1 as f32);
-        put("chandelier", at(l + 13, ceil) - Vec2::new(0.0, ch));
+        put("chandelier", Vec2::new((l as f32 + 12.5) * b as f32, (ceil * b) as f32 - ch));
         put("hanging_lantern", at(l + 5, up) - Vec2::new(0.0, la));
         put("hanging_lantern", at(r - 8, up) - Vec2::new(0.0, la));
         return;
@@ -10772,8 +10775,15 @@ fn build_script(
             bg.push((x, y, stone_wall));
         }
     }
+    // The upper floor, a platform in its middle to jump up through (and
+    // drop down).
+    let platform = id("platform");
     for x in l - 1..=r + 1 {
-        fg.push((x, up, planks));
+        fg.push((x, up, if (l + 11..l + 14).contains(&x) { platform } else { planks }));
+    }
+    // (A wall behind the platform: under its half block shows the room.)
+    for x in l + 11..l + 14 {
+        bg.push((x, up, stone_wall));
     }
     // Upstairs: timber posts, plaster behind (behind the posts too).
     for y in up + 1..ceil {
@@ -10809,8 +10819,9 @@ fn build_script(
         let rose_x = rose_x.div_euclid(4) * 4;
         for e in bg.iter_mut() {
             let (x, y) = (e.0, e.1);
-            let downstairs = (g + 3..g + 6).contains(&y) && ((l + 5..l + 8).contains(&x) || (r - 8..r - 5).contains(&x));
-            let upstairs = (up + 2..up + 5).contains(&y) && ((l + 5..l + 8).contains(&x) || (l + 18..l + 21).contains(&x));
+            // (Both floors' mirrored about the house's middle, l + 12.5.)
+            let downstairs = (g + 3..g + 6).contains(&y) && ((l + 5..l + 8).contains(&x) || (l + 17..l + 20).contains(&x));
+            let upstairs = (up + 2..up + 5).contains(&y) && ((l + 7..l + 10).contains(&x) || (l + 15..l + 18).contains(&x));
             if downstairs {
                 e.2 = leaded;
             }
