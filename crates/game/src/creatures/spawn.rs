@@ -164,7 +164,7 @@ fn world_spawns(
             Spawn::Chest => chests.spawn_found(&mut commands, at),
             // (A village's anvil, furnace, workbench.)
             Spawn::Station(id) => match crafting.station(id) {
-                Some(kind) => crafting.spawn(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32)),
+                Some(kind) => crafting.spawn(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), false),
                 None => warn!("no crafting station `{id}`"),
             },
             // (The world clock refills its lair: see `clock::lairs`.)

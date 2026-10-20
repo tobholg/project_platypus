@@ -138,7 +138,7 @@ impl Plugin for HandsPlugin {
             .init_resource::<HandInput>()
             .add_systems(Startup, build_items)
             .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor).after(bevy::ui::UiSystems::Focus))
-            .add_systems(Update, (toggle_dev, select, wield, give_start, outline.run_if(play), mark, icons::make_icons, icons::reload_icons, dress_bombs, doors))
+            .add_systems(Update, (toggle_dev, select, wield, give_start, outline.run_if(play), mark, icons::make_icons, icons::reload_icons, dress_bombs, doors, beds))
             .add_systems(FixedUpdate, use_hands.run_if(play).in_set(TickSet::Intent))
             .add_systems(FixedUpdate, collect.after(crate::props::fly).in_set(TickSet::Bodies))
             .add_plugins((ui::UiPlugin, chests::ChestsPlugin, corpses::CorpsesPlugin, filter::FilterPlugin));
@@ -781,7 +781,8 @@ fn use_hands(
             if feet.distance(from) > 6.0 * BLOCK as f32 {
                 return;
             }
-            crafting.spawn(&mut commands, kind, feet);
+            // (Facing you: the pictures face right.)
+            crafting.spawn(&mut commands, kind, feet, from.x < feet.x);
             inv.take(slot, 1);
         }
         Use::Door if clicked => {
@@ -846,6 +847,8 @@ pub fn doors(
     mut sim: ResMut<SimWorld>,
     player: Query<&Kinematics, With<LocalPlayer>>,
     bodies: Query<&Kinematics, With<Creature>>,
+    crafting: Res<crate::craft::Crafting>,
+    stations: Query<(&crate::craft::Station, &Kinematics)>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
 ) {
     let key = keys.just_pressed(chests::INTERACT) && !dev.0;
@@ -855,23 +858,15 @@ pub fn doors(
     let (Some(at), Ok(k)) = (cursor.0, player.single()) else { return };
     let reach = 6.0 * BLOCK as f32;
     let under = (at.distance(k.body.pos) <= reach).then(|| CellPos::from_world(at.x, at.y)).filter(|&c| sim.world.door_at(c).is_some());
-    // (Q, nothing under the cursor: the nearest door in reach, by its
-    // blocks' middles; not if a chest's nearer.)
-    let nearest = || {
-        let me = CellPos::from_world(k.body.pos.x, k.body.pos.y);
-        let (bx, by) = (me.x.div_euclid(BLOCK), me.y.div_euclid(BLOCK));
-        (-6..=6)
-            .flat_map(|dx| (-4..=4).map(move |dy| CellPos::new((bx + dx) * BLOCK + BLOCK / 2, (by + dy) * BLOCK + BLOCK / 2)))
-            .filter(|&c| sim.world.door_at(c).is_some())
-            .map(|c| (c, Vec2::new(c.x as f32, c.y as f32).distance(k.body.pos)))
-            .filter(|&(_, d)| d <= reach)
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-    };
+    // (Q, nothing under the cursor: the nearest door in reach; not if a
+    // chest's nearer, or a bed.)
     let cell = match under {
         Some(c) => c,
         None if key => {
-            let Some((c, d)) = nearest() else { return };
-            if containers.iter().any(|ck| ck.body.pos.distance(k.body.pos) < d.min(chests::REACH)) {
+            let Some((c, d)) = nearest_door(&sim.world, k.body.pos, reach) else { return };
+            if containers.iter().any(|ck| ck.body.pos.distance(k.body.pos) < d.min(chests::REACH))
+                || nearest_bed(&crafting, &stations, k.body.pos, reach).is_some_and(|(_, b)| b < d)
+            {
                 return;
             }
             c
@@ -891,6 +886,79 @@ pub fn doors(
     sim.world.apply_edit(&WorldEdit::ToggleDoor { cell });
     let mid = (min + max) / 2.0;
     sounds.write(crate::sound::PlaySound::at("place", mid).pitch(if shut { 0.8 } else { 0.65 }));
+}
+
+/// The nearest door within `reach` of `pos`, by its blocks' middles, and
+/// how far.
+fn nearest_door(world: &World, pos: Vec2, reach: f32) -> Option<(CellPos, f32)> {
+    let me = CellPos::from_world(pos.x, pos.y);
+    let (bx, by) = (me.x.div_euclid(BLOCK), me.y.div_euclid(BLOCK));
+    (-6..=6)
+        .flat_map(|dx| (-4..=4).map(move |dy| CellPos::new((bx + dx) * BLOCK + BLOCK / 2, (by + dy) * BLOCK + BLOCK / 2)))
+        .filter(|&c| world.door_at(c).is_some())
+        .map(|c| (c, Vec2::new(c.x as f32, c.y as f32).distance(pos)))
+        .filter(|&(_, d)| d <= reach)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+}
+
+/// The nearest bed within `reach` of `pos` (where its feet are), and how far.
+fn nearest_bed(crafting: &crate::craft::Crafting, stations: &Query<(&crate::craft::Station, &Kinematics)>, pos: Vec2, reach: f32) -> Option<(Vec2, f32)> {
+    stations
+        .iter()
+        .filter(|(s, _)| crafting.stations.get(s.kind).is_some_and(|d| d.bed))
+        .map(|(_, k)| (k.body.pos - Vec2::Y * k.body.half.y, k.body.pos.distance(pos)))
+        .filter(|&(_, d)| d <= reach)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+}
+
+/// Right-click a bed (or Q, nothing nearer to open): you'll wake there
+/// after dying (`respawn::Checkpoint`, kept in the save).
+#[allow(clippy::too_many_arguments)]
+pub fn beds(
+    mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    dev: Res<crate::hands::DevTools>,
+    cursor: Res<crate::camera::CursorWorld>,
+    over_ui: Res<crate::dev::PointerOverUi>,
+    sim: Res<SimWorld>,
+    crafting: Res<crate::craft::Crafting>,
+    stations: Query<(&crate::craft::Station, &Kinematics)>,
+    containers: Query<&Kinematics, With<chests::Container>>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    mut checkpoint: ResMut<crate::respawn::Checkpoint>,
+    mut toasts: MessageWriter<crate::progress::Toast>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+) {
+    let key = keys.just_pressed(chests::INTERACT) && !dev.0;
+    if !(mouse.just_pressed(MouseButton::Right) || key) || over_ui.0 {
+        return;
+    }
+    let (Some(at), Ok(k)) = (cursor.0, player.single()) else { return };
+    let reach = 6.0 * BLOCK as f32;
+    let under = stations
+        .iter()
+        .filter(|(s, _)| crafting.stations.get(s.kind).is_some_and(|d| d.bed))
+        .find(|(_, b)| ((b.body.pos - at).abs() - b.body.half).max_element() <= 2.0)
+        .map(|(_, b)| (b.body.pos - Vec2::Y * b.body.half.y, b.body.pos.distance(k.body.pos)));
+    let feet = match under {
+        Some((feet, d)) if d <= reach => feet,
+        Some(_) => return,
+        // (Q: the nearest bed, unless a chest or a door's nearer: Q opens those.)
+        None if key => {
+            let Some((feet, d)) = nearest_bed(&crafting, &stations, k.body.pos, reach) else { return };
+            if containers.iter().any(|c| c.body.pos.distance(k.body.pos) < d.min(chests::REACH))
+                || nearest_door(&sim.world, k.body.pos, reach).is_some_and(|(_, door)| door <= d)
+            {
+                return;
+            }
+            feet
+        }
+        None => return,
+    };
+    checkpoint.0 = Some(feet);
+    toasts.write(crate::progress::Toast("You'll wake here".into()));
+    sounds.write(crate::sound::PlaySound::at("place", feet).pitch(0.5));
+    info!("bed: checkpoint ({:.0}, {:.0})", feet.x, feet.y);
 }
 
 /// What a hammer would shape: the block under the cursor, within `reach`

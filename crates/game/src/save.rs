@@ -263,6 +263,9 @@ struct ThingsFile {
     /// Crafting stations (by id), where their feet are.
     #[serde(default)]
     stations: Vec<(String, (f32, f32))>,
+    /// Which of them face left (mirrored), by their place in `stations`.
+    #[serde(default)]
+    stations_flipped: Vec<bool>,
     stashes: Vec<SavedStash>,
     drops: Vec<((f32, f32), SavedStack)>,
     creatures: Vec<SavedCreature>,
@@ -410,9 +413,12 @@ fn save(
         cursor: held.kept().0.map(|s| stack_out(&items, &s)),
         trash: held.kept().1.map(|s| stack_out(&items, &s)),
     };
+    let placed: Vec<(&String, (f32, f32), bool)> =
+        stations.iter().filter_map(|(s, k)| Some((&crafting.stations.get(s.kind)?.id, (k.body.pos.x, k.body.pos.y - k.body.half.y), s.flip))).collect();
     let mut things = ThingsFile {
         chests: boxes.iter().map(|(c, k)| (c.key, (k.body.pos.x, k.body.pos.y - k.body.half.y))).collect(),
-        stations: stations.iter().filter_map(|(s, k)| Some((crafting.stations.get(s.kind)?.id.clone(), (k.body.pos.x, k.body.pos.y - k.body.half.y)))).collect(),
+        stations: placed.iter().map(|&(id, feet, _)| (id.clone(), feet)).collect(),
+        stations_flipped: placed.iter().map(|&(_, _, flip)| flip).collect(),
         stashes: chests
             .stashes()
             // (A body's belongings are kept as items where it lies.)
@@ -534,9 +540,9 @@ fn load_world(
     for &(key, (x, y)) in &things.chests {
         chests.respawn(&mut commands, key, Vec2::new(x, y));
     }
-    for (id, (x, y)) in &things.stations {
+    for (i, (id, (x, y))) in things.stations.iter().enumerate() {
         match crafting.station(id) {
-            Some(kind) => crafting.spawn(&mut commands, kind, Vec2::new(*x, *y)),
+            Some(kind) => crafting.spawn(&mut commands, kind, Vec2::new(*x, *y), things.stations_flipped.get(i).copied().unwrap_or(false)),
             None => warn!("save: no station `{id}` any more"),
         }
     }

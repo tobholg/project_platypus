@@ -166,7 +166,8 @@
         (id: "table", name: "Table", stack: 20, color: (140, 96, 52), use: Station("table")),
         (id: "chair", name: "Chair", stack: 20, color: (140, 96, 52), use: Station("chair")),
         (id: "bookcase", name: "Bookcase", stack: 20, color: (104, 68, 38), use: Station("bookcase")),
-        (id: "bed", name: "Bed", stack: 20, color: (150, 38, 44), use: Station("bed")),
+        (id: "bed", name: "Bed", stack: 20, color: (150, 38, 44), use: Station("bed"),
+            about: "Set it down; right-click it (or Q) and you wake there after dying."),
         (id: "barrel", name: "Barrel", stack: 20, color: (140, 96, 52), use: Station("barrel")),
         (id: "crate", name: "Crate", stack: 20, color: (140, 96, 52), use: Station("crate")),
         (id: "potted_plant", name: "Potted plant", stack: 20, color: (80, 168, 70), use: Station("potted_plant")),
@@ -182,6 +183,10 @@
             about: "Set it down; smelts ore into bars."),
         (id: "anvil",          name: "Anvil",          stack: 10, color: (170, 174, 186), use: Station("anvil"),
             about: "Set it down; bars become tools, arms, armour and hooks here."),
+        (id: "mason_bench",    name: "Mason's bench",  stack: 10, color: (150, 148, 156), use: Station("mason_bench"),
+            about: "Set it down; stone is cut and dressed here: cobbles, bricks, walls, plaster, a hearth."),
+        (id: "sawmill",        name: "Sawmill",        stack: 10, color: (176, 124, 70), use: Station("sawmill"),
+            about: "Set it down; timber and fine furniture are made here: beds, bookcases, shelves, banners."),
         (id: "arcane_altar",   name: "Arcane altar",   stack: 10, color: (170, 120, 240), use: Station("arcane_altar"),
             about: "Set it down; wands and staffs are made here."),
         // Vessels (casting, carrying): RMB fills (scoops at the cursor; at a
@@ -252,6 +257,6 @@
             carry: [("fire_staff", 1), ("frost_staff", 1), ("rimebreath_staff", 1), ("storm_staff", 1), ("acid_staff", 1), ("radiant_staff", 1), ("void_staff", 1), ("blaze_staff", 1), ("gravity_staff", 1), ("force_staff", 1), ("arcane_staff", 1)],
             wear: ["cloth_hood", "apprentice_robe", "cloth_trousers", "soft_boots", "ember_amulet"]),
         (name: "smith", about: "Furnace, anvil, vessels and bars to cast",
-            carry: [("workbench", 1), ("furnace", 1), ("anvil", 1), ("ladle", 1), ("bucket", 1), ("flask", 1), ("copper_bar", 50), ("iron_bar", 50), ("silver_bar", 30), ("gold_bar", 30), ("mithril_bar", 20), ("block:firebrick", 60)]),
+            carry: [("workbench", 1), ("furnace", 1), ("anvil", 1), ("mason_bench", 1), ("sawmill", 1), ("ladle", 1), ("bucket", 1), ("flask", 1), ("copper_bar", 50), ("iron_bar", 50), ("silver_bar", 30), ("gold_bar", 30), ("mithril_bar", 20), ("block:firebrick", 60)]),
     ],
 )

@@ -53,6 +53,9 @@ pub struct StationDef {
     /// about), hung from a ceiling, or on the wall behind (neither falls).
     #[serde(default)]
     pub mount: Mount,
+    /// A bed: right-click it (or Q) and you wake there after dying.
+    #[serde(default)]
+    pub bed: bool,
 }
 
 /// Where a station or a piece of furniture goes (`StationDef::mount`).
@@ -115,6 +118,8 @@ pub struct Crafting {
 #[derive(Component)]
 pub struct Station {
     pub kind: usize,
+    /// Drawn mirrored (it was set down facing left: the pictures face right).
+    pub flip: bool,
     hp: f32,
 }
 
@@ -131,17 +136,18 @@ impl Crafting {
         self.stations.iter().position(|s| s.id == id)
     }
 
-    /// A station set down with its feet at `feet`.
-    pub fn spawn(&self, commands: &mut Commands, kind: usize, feet: Vec2) {
+    /// A station set down with its feet at `feet` (`flip`: mirrored,
+    /// facing left).
+    pub fn spawn(&self, commands: &mut Commands, kind: usize, feet: Vec2, flip: bool) {
         let def = &self.stations[kind];
         let (w, h) = def.size();
         let size = Vec2::new(w as f32, h as f32);
         let centre = feet + Vec2::new(0.0, size.y / 2.0);
         let mut e = commands.spawn((
             Name::new(def.name.clone()),
-            Station { kind, hp: TOUGHNESS },
+            Station { kind, flip, hp: TOUGHNESS },
             Kinematics { body: Body::new(centre, size), loco: Locomotion::default(), prev_pos: centre },
-            Sprite::from_image(self.art[kind].clone()),
+            Sprite { flip_x: flip, ..Sprite::from_image(self.art[kind].clone()) },
             Transform::from_translation(centre.extend(if def.mount == Mount::Wall { Z - 0.4 } else { Z })),
         ));
         // (Hung or on a wall: it stays where it's put.)

@@ -299,6 +299,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, fang_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, sleep_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
             .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script, record_script, course_script, dig_script, legs_script).after(InputSystems).before(crate::camera::track_cursor))
@@ -3996,7 +3997,7 @@ fn cast_script(
                 sim.world.set(p, platypus_sim::Cell::new(stone, 0));
             }
             if let Some(kind) = crafting.station("furnace") {
-                crafting.spawn(&mut commands, kind, Vec2::new(900.0, floor as f32));
+                crafting.spawn(&mut commands, kind, Vec2::new(900.0, floor as f32), false);
             }
             k.body.pos = Vec2::new(930.0, floor as f32 + k.body.half.y);
             k.prev_pos = k.body.pos;
@@ -10707,12 +10708,75 @@ fn phase_script(
     }
 }
 
+/// `build` with `PLATYPUS_SLEEP=1`: once it's furnished, upstairs, a
+/// right-click on the bed; the checkpoint's there after.
+fn sleep_script(
+    s: Res<Scenario>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    checkpoint: Res<crate::respawn::Checkpoint>,
+    mut health: Query<&mut crate::creatures::Health, With<LocalPlayer>>,
+    mut step: Local<u8>,
+) {
+    if s.name != "build" || std::env::var("PLATYPUS_SLEEP").is_err() {
+        return;
+    }
+    let t = s.elapsed;
+    let b = platypus_sim::BLOCK;
+    let g = platypus_worldgen::arena::FLOOR.div_euclid(b);
+    // (As `build_script` lays it out: the bed upstairs, on the right.)
+    let (l, up) = (1000 / b, g + 8);
+    let floor = ((up + 1) * b) as f32;
+    let bed = Vec2::new((l as f32 + 21.9) * b as f32, floor + 6.0);
+    match *step {
+        0 if t > 2.0 => {
+            if let Ok(mut k) = player.single_mut() {
+                k.body.pos = Vec2::new((l + 17) as f32 * b as f32, floor + k.body.half.y + 0.5);
+                k.prev_pos = k.body.pos;
+            }
+            info!("sleep: before the bed, checkpoint {:?}", checkpoint.0);
+            *step = 1;
+        }
+        1 if t > 2.6 => {
+            cursor.0 = Some(bed);
+            mouse.press(MouseButton::Right);
+            *step = 2;
+        }
+        2 if t > 2.8 => {
+            mouse.release(MouseButton::Right);
+            info!("sleep: after the bed, checkpoint {:?} (the bed at x {:.0}, its floor y {floor})", checkpoint.0, bed.x);
+            *step = 3;
+        }
+        // Then, sent away and struck dead (`PLATYPUS_RESPAWN=1` to wake at
+        // the checkpoint): back at the bed.
+        3 if t > 3.0 => {
+            if let (Ok(mut k), Ok(mut h)) = (player.single_mut(), health.single_mut()) {
+                k.body.pos.x -= 120.0;
+                k.prev_pos = k.body.pos;
+                h.hp = 0.0;
+            }
+            *step = 4;
+        }
+        4 if t > 6.5 => {
+            if let Ok(k) = player.single_mut() {
+                info!("sleep: woke at {:?} (feet y {:.0})", k.body.pos.round(), k.body.pos.y - k.body.half.y);
+            }
+            *step = 5;
+        }
+        _ => {}
+    }
+}
+
 /// `build` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a small house put up
 /// block by block as a player would (`PlaceBlock`), from 1000 on the
 /// floor: a cobble footing, stone-brick walls with a stone wall behind
 /// downstairs, plank floors, timber posts with plaster behind upstairs, a
 /// stepped tile roof, a door's gap; the player stood off to its left.
 /// Screenshots show how blocks draw themselves (`platypus_sim::look`).
+/// Then furnished (chairs facing the table), a mason's bench and a sawmill
+/// outside (`PLATYPUS_TRADES=1`: the player taken over to them);
+/// `PLATYPUS_SLEEP=1`: `sleep_script`.
 fn build_script(
     mut commands: Commands,
     s: Res<Scenario>,
@@ -10745,38 +10809,50 @@ fn build_script(
         }
         let at = |bx: i32, by: i32| Vec2::new((bx * b) as f32, (by * b) as f32);
         let size = |id: &str| crafting.station(id).map_or((8, 8), |k| crafting.stations[k].size());
-        let mut put = |id: &str, feet: Vec2| {
+        // (`flip`: facing left.)
+        let mut put = |id: &str, feet: Vec2, flip: bool| {
             if let Some(kind) = crafting.station(id) {
-                crafting.spawn(&mut commands, kind, feet);
+                crafting.spawn(&mut commands, kind, feet, flip);
             }
         };
         let (f1, f2) = (g + 1, up + 1);
         let half = Vec2::new(b as f32 / 2.0, 0.0);
-        put("potted_plant", at(l + 2, f1));
-        put("barrel", at(l + 4, f1));
-        put("wall_shelf", at(l + 3, f1 + 3) + half);
-        put("table", at(l + 11, f1));
-        put("chair", at(l + 8, f1));
-        put("chair", at(l + 14, f1) + half);
-        put("crate", at(l + 16, f1));
-        put("hearth", at(r - 4, f1));
-        put("painting", at(l + 11, f1 + 4));
+        put("potted_plant", at(l + 2, f1), false);
+        put("barrel", at(l + 4, f1), false);
+        put("wall_shelf", at(l + 3, f1 + 3) + half, false);
+        put("table", at(l + 11, f1), false);
+        put("chair", at(l + 8, f1), false);
+        put("chair", at(l + 14, f1) + half, true);
+        put("crate", at(l + 16, f1), false);
+        put("hearth", at(r - 4, f1), false);
+        put("painting", at(l + 11, f1 + 4), false);
         // Upstairs, mirrored about the middle: a bookcase, a banner, a
         // window, the chandelier over the platform, a window, a banner, the
         // bed. (A station's feet are its middle.)
         let mid = |bx: f32, id: &str| Vec2::new((l as f32 + bx) * b as f32, (f2 * b) as f32) + Vec2::new(0.0, 0.0 * size(id).0 as f32);
-        put("bookcase", mid(1.9, "bookcase"));
+        put("bookcase", mid(1.9, "bookcase"), false);
         let banner = size("banner_red").1 as f32;
         let hang = |bx: f32| Vec2::new((l as f32 + bx) * b as f32, (ceil * b) as f32 - 2.0 - banner);
-        put("banner_red", hang(5.4));
-        put("banner_green", hang(19.6));
-        put("bed", mid(21.9, "bed"));
+        put("banner_red", hang(5.4), false);
+        put("banner_green", hang(19.6), false);
+        put("bed", mid(21.9, "bed"), true);
         // Hung from the ceilings (their feet their height under it).
         let (ch, la) = (size("chandelier").1 as f32, size("hanging_lantern").1 as f32);
-        put("chandelier", Vec2::new((l as f32 + 12.5) * b as f32, (ceil * b) as f32 - ch));
-        put("hanging_lantern", at(l + 5, up) - Vec2::new(0.0, la));
-        put("hanging_lantern", at(r - 8, up) - Vec2::new(0.0, la));
+        put("chandelier", Vec2::new((l as f32 + 12.5) * b as f32, (ceil * b) as f32 - ch), false);
+        put("hanging_lantern", at(l + 5, up) - Vec2::new(0.0, la), false);
+        put("hanging_lantern", at(r - 8, up) - Vec2::new(0.0, la), false);
+        // Outside, the trades: a mason's bench, a sawmill.
+        put("mason_bench", at(r + 5, f1), false);
+        put("sawmill", at(r + 12, f1), true);
         return;
+    }
+    // `PLATYPUS_TRADES=1`: then over to them, to look.
+    if *done == 2 && t > 1.6 && std::env::var("PLATYPUS_TRADES").is_ok() {
+        *done = 3;
+        if let Ok(mut k) = player.single_mut() {
+            k.body.pos = Vec2::new(((r + 8) * b) as f32, ((g + 1) * b) as f32 + k.body.half.y + 0.5);
+            k.prev_pos = k.body.pos;
+        }
     }
     if *done != 0 || t < 0.4 {
         return;
@@ -12406,7 +12482,7 @@ fn save_script(
             chests.contents(key, world, &items).add(&items, crate::hands::items::Stack::new(iron, 3));
         }
         if let Some(bench) = crafting.station("workbench") {
-            crafting.spawn(&mut commands, bench, Vec2::new(960.0, floor as f32));
+            crafting.spawn(&mut commands, bench, Vec2::new(960.0, floor as f32), false);
         }
         if let (Some(inv), Some(gold)) = (inv.as_mut(), items.id("gold_bar")) {
             inv.add(&items, crate::hands::items::Stack::new(gold, 7));
@@ -12533,7 +12609,7 @@ fn pack_script(
             let floor = platypus_worldgen::arena::FLOOR as f32;
             for (id, dx) in [("workbench", 24.0), ("furnace", 46.0), ("anvil", -26.0)] {
                 if let Some(kind) = crafting.station(id) {
-                    crafting.spawn(&mut commands, kind, Vec2::new(k.body.pos.x + dx, floor));
+                    crafting.spawn(&mut commands, kind, Vec2::new(k.body.pos.x + dx, floor), false);
                 }
             }
             next(&mut state, 0.5);
