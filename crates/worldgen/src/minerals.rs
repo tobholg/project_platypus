@@ -68,8 +68,9 @@ pub fn rules(plan: &WorldPlan, mats: &MaterialTable) -> (Vec<Ore>, Vec<Gem>) {
         ore("coal", (at(Band::Caverns, 0.5), top), (51.0, 19.5), 0.56, 11.9),
         // Copper: common veins from the mountains down through the underground.
         ore("copper_ore", (at(Band::Underground, 1.0), top), (66.0, 24.0), 0.5, 21.3),
-        // Iron: veins from mid-underground to the upper caverns.
-        ore("iron_ore", (at(Band::Caverns, 0.4), at(Band::Underground, 0.35)), (60.0, 22.5), 0.52, 33.7),
+        // Iron: veins from just under the soil to the upper caverns (the
+        // first rung after the furnace: an anvil's worth in the first dig).
+        ore("iron_ore", (at(Band::Caverns, 0.4), at(Band::Underground, 0.04)), (60.0, 22.5), 0.52, 33.7),
         // Silver: blobs through the caverns.
         ore("silver_ore", (at(Band::Caverns, 1.0), at(Band::Caverns, 0.1)), (30.0, 24.0), 0.55, 45.1),
         // Gold: smaller blobs, lower caverns and the upper deep.

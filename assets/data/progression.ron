@@ -31,10 +31,14 @@
             unlocks: ["arcane_altar"]),
         (id: "deep", name: "The deep", about: "Mithril and void answer now",
             when: Depth(10500), unlocks: ["mithril_pickaxe", "void_wand", "void_staff"]),
+        // (Not bars: five orcs are near the start, and an anvil's worth of
+        // iron would skip the first dig.)
         (id: "orc_hunter", name: "Orc hunter",
-            when: Killed("orc", 5), gives: [("iron_bar", 5)]),
-        (id: "troll_slayer", name: "Troll slayer",
-            when: Killed("troll", 1), gives: [("gold_bar", 5)]),
+            when: Killed("orc", 5), gives: [("small_health_potion", 3), ("bomb", 3)]),
+        // (Trolls come only in packs the dev menu sends; a crypt's heart is
+        // there to be won in play.)
+        (id: "templar_slayer", name: "Templar's bane", about: "A crypt's heart, broken",
+            when: Killed("fallen_templar", 1), gives: [("gold_bar", 5)]),
         (id: "spider_slayer", name: "Nest breaker", about: "Silk can be spun into a line",
             when: Killed("spider", 1), unlocks: ["silk_line"]),
     ],

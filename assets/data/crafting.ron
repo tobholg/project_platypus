@@ -7,7 +7,7 @@
 //   a glow (r, g, b).
 // recipes: makes (an item id) × count, from needs [(item, count)], at a
 //   station (none: by hand). Counts are in the item's own units: blocks as
-//   blocks (a block is 6 × 6 cells). locked: shown only once a milestone
+//   blocks (a block is 8 × 8 cells). locked: shown only once a milestone
 //   (progression.ron) unlocks it. A recipe shows once you've held anything
 //   that goes into it or comes out of it.
 //
@@ -696,7 +696,7 @@
         // Building blocks (the blocks arc): cut stone, beams, walls.
         (makes: "hammer", needs: [("block:planks", 4), ("block:stone", 3)], at: "workbench"),
         // Furniture.
-        (makes: "door", needs: [("block:planks", 6), ("copper_bar", 1)], at: "workbench"),
+        (makes: "door", needs: [("block:planks", 6)], at: "workbench"),
         (makes: "table", needs: [("block:planks", 8)], at: "workbench"),
         (makes: "chair", needs: [("block:planks", 4)], at: "workbench"),
         (makes: "bookcase", needs: [("block:planks", 12)], at: "sawmill"),
@@ -719,7 +719,7 @@
         (makes: "furnace", needs: [("block:stone", 12), ("block:planks", 4), ("torch", 3)], at: "workbench"),
         (makes: "anvil", needs: [("iron_bar", 5)], at: "workbench"),
         (makes: "mason_bench", needs: [("block:stone", 20), ("block:planks", 6), ("copper_bar", 2)], at: "workbench"),
-        (makes: "sawmill", needs: [("block:planks", 10), ("block:wood", 6), ("iron_bar", 2)], at: "workbench"),
+        (makes: "sawmill", needs: [("block:planks", 10), ("block:wood", 6), ("copper_bar", 2)], at: "workbench"),
         (makes: "bow", needs: [("block:planks", 6)], at: "workbench"),
         (makes: "arrow", count: 10, needs: [("block:planks", 1), ("block:stone", 1)], at: "workbench"),
         (makes: "oak_wand", needs: [("block:planks", 3), ("block:amethyst", 1)], at: "workbench"),
@@ -765,6 +765,7 @@
         (makes: "chainmail", needs: [("iron_bar", 16)], at: "anvil"),
         (makes: "iron_greaves", needs: [("iron_bar", 12)], at: "anvil"),
         (makes: "iron_boots", needs: [("iron_bar", 8)], at: "anvil"),
+        (makes: "iron_gauntlets", needs: [("iron_bar", 6)], at: "anvil"),
         (makes: "rope_hook", needs: [("copper_bar", 2), ("block:planks", 2)], at: "workbench"),
         // Storm boots: feather boots and a storm ring.
         (makes: "storm_boots", needs: [("feather_boots", 1), ("storm_ring", 1), ("silver_bar", 4)], at: "anvil"),

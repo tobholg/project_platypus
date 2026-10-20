@@ -38,7 +38,8 @@ const TOAST_SECS: f32 = 4.0;
 pub struct Progress {
     /// Every item it has held (by id).
     pub seen: BTreeSet<String>,
-    /// The deepest it has been (cells below sea level).
+    /// The deepest it has been (cells below sea level, as the reference
+    /// world measures them: `WorldPlan::reference_depth`).
     pub deepest: i32,
     /// Creatures killed near it, by kind.
     pub kills: BTreeMap<String, u32>,
@@ -166,7 +167,10 @@ fn track(
             *p.bypass_change_detection().kills.entry(d.kind.clone()).or_default() += 1;
         }
     }
-    let depth = sim.world.climate().sea_level - pos.y as i32;
+    // (As the reference world measures it, as milestones are written: on a
+    // big world, the caverns' top is as deep as the reference's.)
+    let raw = sim.world.climate().sea_level - pos.y as i32;
+    let depth = sim.generator.reference_depth(pos.y as i32).map_or(raw, |d| d as i32);
     if depth > p.deepest {
         p.bypass_change_detection().deepest = depth;
     }

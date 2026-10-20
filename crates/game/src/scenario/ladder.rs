@@ -490,8 +490,8 @@ fn wants_camp(inv: &Inventory, items: &Items, made: &dyn Fn(&str) -> u32) -> boo
     (made("furnace") == 0 && n("block:stone") >= 12 && n("workbench") > 0)
         || (made("furnace") > 0 && made("anvil") == 0 && iron >= 5)
         || (made("anvil") > 0 && made("iron_pickaxe") == 0 && iron >= 8)
-        || (made("anvil") > 0 && made("mason_bench") == 0 && copper >= 2 && n("block:stone") >= 20)
-        || (made("iron_pickaxe") > 0 && made("sawmill") == 0 && iron >= 2)
+        || (made("furnace") > 0 && made("mason_bench") == 0 && copper >= 2 && n("block:stone") >= 20)
+        || (made("furnace") > 0 && made("sawmill") == 0 && copper >= 2)
         || (made("sawmill") > 0 && made("bed") == 0)
 }
 
