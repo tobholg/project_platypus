@@ -6675,6 +6675,22 @@ fn backdrop_script(s: Res<Scenario>, sim: Res<SimWorld>, mut player: Query<&mut 
                 None => info!("backdrop: no lake found"),
             }
         }
+        // `PLATYPUS_BORDER=1`: a little before the nearest border between
+        // biomes on the right (the walk crosses it: the looks change over).
+        if std::env::var("PLATYPUS_BORDER").is_ok() {
+            let here = sim.generator.biome_hint(x0);
+            match (1..4000).map(|i| x0 + i * 10).find(|&x| sim.generator.biome_hint(x) != here) {
+                Some(x) => {
+                    let at = x - 40;
+                    let y = sim.generator.surface_hint(at).unwrap_or(0) as f32 + k.body.half.y + 3.0;
+                    k.body.pos = Vec2::new(at as f32, y);
+                    k.body.vel = Vec2::ZERO;
+                    k.prev_pos = k.body.pos;
+                    info!("backdrop: border {:?} -> {:?} at x {x}", here, sim.generator.biome_hint(x));
+                }
+                None => info!("backdrop: no border found"),
+            }
+        }
         if let Ok(want) = std::env::var("PLATYPUS_BIOME") {
             // The nearest column with 900 cells of it either side.
             let found = (0..200).flat_map(|i| [x0 + i * 300, x0 - i * 300]).find(|&x| (-3..=3).all(|d| sim.generator.biome_hint(x + d * 300) == Some(want.as_str())));
