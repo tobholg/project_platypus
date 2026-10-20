@@ -357,19 +357,13 @@ impl Cover<'_> {
     }
 }
 
-/// The looks' shares: the biomes along the ground around the camera,
-/// nearer ones counting more.
+/// The looks' shares: the look of the biome the camera is in, whole (as
+/// Terraria: crossing into a biome, its look fades in over a moment, not
+/// spread along the ground as you walk).
 fn targets(bd: &Backdrops, sim: &SimWorld, x: f32) -> Vec<f32> {
-    let mut out = vec![0.0; bd.looks.len()];
-    for (d, w) in [(-3.0, 0.05), (-2.0, 0.1), (-1.0, 0.2), (0.0, 0.3), (1.0, 0.2), (2.0, 0.1), (3.0, 0.05)] {
-        let name = bd.biomes.for_biome(sim.generator.biome_hint((x + d * 225.0) as i32).unwrap_or("forest"));
-        if let Some(i) = bd.looks.iter().position(|v| v.name == name) {
-            out[i] += w;
-        }
-    }
-    // (A trace of a look isn't worth its tiles: the rest share it.)
-    let kept: f32 = out.iter().filter(|&&w| w >= 0.15).sum();
-    out.iter().map(|&w| if w >= 0.15 { w / kept } else { 0.0 }).collect()
+    let name = bd.biomes.for_biome(sim.generator.biome_hint(x as i32).unwrap_or("forest"));
+    let i = bd.looks.iter().position(|v| v.name == name).unwrap_or(0);
+    (0..bd.looks.len()).map(|v| if v == i { 1.0 } else { 0.0 }).collect()
 }
 
 /// Tiles in view made, far ones dropped; the surface's (the looks
@@ -397,7 +391,7 @@ fn tiles(
     bd.drift += time.delta_secs() * CLOUD_DRIFT;
     // The looks' shares, eased (about a second to change over).
     let target = targets(&bd, &sim, c.x);
-    let ease = 1.0 - (-time.delta_secs() / 0.8).exp();
+    let ease = 1.0 - (-time.delta_secs() / 0.35).exp();
     for (w, t) in bd.weights.iter_mut().zip(&target) {
         *w += (t - *w) * ease;
         if *w < 0.01 && *t == 0.0 {
