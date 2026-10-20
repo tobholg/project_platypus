@@ -4615,6 +4615,8 @@ name = "platypus_backdrop"
 version = "0.1.0"
 dependencies = [
  "platypus_art",
+ "ron",
+ "serde",
 ]
 
 [[package]]

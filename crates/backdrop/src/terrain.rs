@@ -10,7 +10,7 @@
 //! viewer, follows); bits: material (2), crest (1), stroke (1), height up
 //! the range (4); alpha 255 where there's land, 0 sky.
 
-use crate::{Rgb, mix, noise1, noise2};
+use crate::{Rgb, hash, mix, noise1, noise2};
 
 /// A range's shape (all in the strip's units).
 #[derive(Clone, Copy, Debug)]
@@ -28,12 +28,27 @@ pub struct Shape {
     pub tilt: f32,
     /// Snow from this share of its height down (0: none).
     pub snow: f32,
+    /// 0 smooth rolling hills .. 1 sharp eroded ridges.
+    pub rough: f32,
+    /// Below this share of its height, a lake (flat, showing the sky).
+    pub water: f32,
+    /// How much of it is forest (0..1): clumps of growth on its slopes.
+    pub trees: f32,
+    /// A treeline: tree crowns about this big (units; 0 none), domes
+    /// standing close all over the band (as many as `trees` says), their
+    /// tops a bumpy canopy, each lit as a ball of leaves.
+    pub crowns: f32,
+    /// Flowers and small mushrooms scattered over its grass (0 none .. 1).
+    pub decor: f32,
     pub seed: u64,
 }
 
+/// What a texel is: its layer's ground (rock, grass), snow, growth (scrub,
+/// forest), water.
 pub const ROCK: u8 = 0;
 pub const SNOW: u8 = 1;
 pub const SCRUB: u8 = 2;
+pub const WATER: u8 = 3;
 
 /// A texel, read back.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -47,6 +62,26 @@ pub struct Texel {
     pub stroke: bool,
     /// How high up the range (0 its feet .. 1 its tallest).
     pub up: f32,
+}
+
+/// A decoration's colour (`decor`): a flower white or yellow, a mushroom's
+/// cap (red, its lit top), its stem.
+pub const FLOWER: u8 = 0;
+pub const BLOSSOM: u8 = 1;
+pub const CAP: u8 = 2;
+pub const CAP_LIT: u8 = 3;
+pub const STEM: u8 = 4;
+pub const DECOR: [Rgb; 5] = [[0.95, 0.96, 0.92], [0.98, 0.86, 0.36], [0.78, 0.22, 0.16], [0.95, 0.45, 0.32], [0.9, 0.84, 0.72]];
+
+/// A decoration's texel (both crest and stroke: nothing else is both; its
+/// colour in `up`).
+pub fn decor(i: u8) -> Texel {
+    Texel { n: [0.0, 0.7, -0.714], mat: ROCK, crest: true, stroke: true, up: i as f32 / 15.0 }
+}
+
+/// Which decoration a texel is, if it is one.
+pub fn decor_of(t: &Texel) -> Option<u8> {
+    (t.crest && t.stroke).then(|| (t.up * 15.0).round() as u8)
 }
 
 pub fn encode(t: &Texel) -> [u8; 4] {
@@ -68,6 +103,20 @@ pub fn decode(p: &[u8]) -> Option<Texel> {
 fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
     let t = ((x - a) / (b - a)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
+}
+
+/// Smooth rolling hills: a few octaves, gentle, rounded on top. About 0..1.
+fn rolling(x: f32, z: f32, seed: u64) -> f32 {
+    let (mut total, mut freq, mut amp, mut norm) = (0.0, 1.0, 1.0, 0.0);
+    for o in 0..4 {
+        total += noise2(x * freq + o as f32 * 17.3, z * freq + o as f32 * 53.1, seed.wrapping_add(o as u64 * 104_729) ^ 0x5300) * amp;
+        norm += amp;
+        freq *= 2.1;
+        amp *= 0.42;
+    }
+    let v = total / norm;
+    // (Rounded: the tops swell, the valleys broaden.)
+    smoothstep(0.2, 0.85, v)
 }
 
 /// Ridged multifractal (Musgrave): sharp crests, each octave weighted by
@@ -94,11 +143,69 @@ impl Shape {
         // way: a massif here, a saddle there; rising toward the back.)
         let wx = x + 0.35 * s * (noise2(x / (s * 2.0), z / (s * 2.0), self.seed ^ 0xa1) - 0.5);
         let wz = z + 0.35 * s * (noise2(x / (s * 2.0) + 7.3, z / (s * 2.0), self.seed ^ 0xa2) - 0.5);
-        let r = ridged(wx / s, wz / s, 6, self.seed);
+        // (Sharp ridges, or smooth rolling hills, or between.)
+        let r = if self.rough >= 1.0 {
+            ridged(wx / s, wz / s, 6, self.seed)
+        } else {
+            let smooth = rolling(wx / s, wz / s, self.seed);
+            if self.rough <= 0.0 { smooth } else { smooth + (ridged(wx / s, wz / s, 6, self.seed) - smooth) * self.rough }
+        };
         let e = noise1(x / (s * 3.2), self.seed ^ 0xa3);
         let env = self.low + (1.0 - self.low) * e * e * (3.0 - 2.0 * e);
-        let back = 0.25 + 0.75 * smoothstep(0.0, 1.0, z / self.deep);
-        self.amp * env * r * back
+        // (Rising toward its back: a range shows its far summits. Smooth
+        // hills less: their near ones show too.)
+        let front = 0.75 - 0.5 * self.rough.clamp(0.0, 1.0);
+        let back = front + (1.0 - front) * smoothstep(0.0, 1.0, z / self.deep);
+        self.amp * env * r * back + self.canopy(x, z)
+    }
+
+    /// The tree crowns' height over the ground at (x, z) (0 where there's
+    /// none): domes on a jittered grid, each its own size, lifted on its
+    /// trunk.
+    fn canopy(&self, x: f32, z: f32) -> f32 {
+        let (crowns, floor) = self.crowns_at(x, z);
+        crowns.max(floor)
+    }
+
+    /// The crowns' height at (x, z), and the canopy's floor under them.
+    /// Each crown a dome and a few bunches of leaves on its top (a bumpy
+    /// outline, light and shade within it).
+    fn crowns_at(&self, x: f32, z: f32) -> (f32, f32) {
+        let r = self.crowns;
+        if r <= 0.0 {
+            return (0.0, 0.0);
+        }
+        let cell = r * 1.15;
+        let (cx, cz) = ((x / cell).floor() as i64, (z / cell).floor() as i64);
+        let mut best = 0.0f32;
+        for i in -1..=1 {
+            for j in -1..=1 {
+                let (gx, gz) = (cx + i, cz + j);
+                let s = self.seed ^ 0x7ee;
+                if hash(gx, gz, s) > self.trees {
+                    continue;
+                }
+                let px = (gx as f32 + 0.15 + 0.7 * hash(gx, gz, s ^ 1)) * cell;
+                let pz = (gz as f32 + 0.15 + 0.7 * hash(gx, gz, s ^ 2)) * cell;
+                let ri = r * (0.6 + 0.8 * hash(gx, gz, s ^ 3));
+                let d2 = (x - px).powi(2) + (z - pz).powi(2);
+                if d2 < ri * ri {
+                    best = best.max((ri * ri - d2).sqrt() * 1.2 + ri * 0.8);
+                }
+                // Its bunches of leaves, round its top.
+                for b in 0..4u64 {
+                    let a = (hash(gx, gz, s ^ (10 + b)) + b as f32 * 0.25) * std::f32::consts::TAU;
+                    let (bx, bz) = (px + a.cos() * ri * 0.55, pz + a.sin() * ri * 0.45);
+                    let rb = ri * (0.38 + 0.2 * hash(gx, gz, s ^ (20 + b)));
+                    let db = (x - bx).powi(2) + (z - bz).powi(2);
+                    if db < rb * rb {
+                        best = best.max((rb * rb - db).sqrt() * 1.2 + ri * 1.25);
+                    }
+                }
+            }
+        }
+        // (Under the crowns, a canopy's floor: no gaps through the wood.)
+        (best, r * 0.9 * self.trees)
     }
 
     /// What the land is at (x, z), its height `t` there.
@@ -115,9 +222,18 @@ impl Shape {
         // steep to hold it bare.)
         let line = 1.0 - self.snow + 0.18 * (noise2(x / 26.0, z / 18.0, self.seed ^ 0xb1) - 0.5);
         let snowy = self.snow > 0.0 && up > line && steep < 0.68;
+        // Forest in clumps, on what isn't too steep, thinning up high.
+        // (Laid out where they show, across and up the view: into the band
+        // they were streaks, by height columns.)
+        let row = t + z * self.tilt;
+        let clump = noise2(x / 18.0, row / 5.0, self.seed ^ 0xc1) * 0.82 + noise2(x / 5.0, row / 2.0, self.seed ^ 0xc2) * 0.18;
+        let wooded = self.trees > 0.0 && steep < 0.55 && clump > 1.0 - self.trees * (1.1 - up * 0.6);
+        // (A crown's leaves; under them, the wood's dark floor: its ground.)
+        let (crowns, floor) = self.crowns_at(x, z);
+        let crown = self.crowns > 0.0 && crowns > floor + 0.3;
         let mat = if snowy {
             SNOW
-        } else if up < 0.12 && z < self.deep * 0.35 {
+        } else if crown || wooded || (up < 0.12 && z < self.deep * 0.35) {
             SCRUB
         } else {
             ROCK
@@ -127,8 +243,9 @@ impl Shape {
         let crest = t - around > 0.011 * self.amp;
         // (Strokes along the slope's height, not into the band: they
         // cluster across a face, not in columns.)
-        let stroke = !snowy && steep > 0.3 && noise2(x / 2.4, t / 3.2, self.seed ^ 0xb2) > 0.74 && noise2(x / 30.0, t / 24.0, self.seed ^ 0xb3) > 0.45;
-        Texel { n, mat, crest, stroke, up }
+        let stroke = self.rough > 0.5 && !snowy && steep > 0.3 && noise2(x / 2.4, t / 3.2, self.seed ^ 0xb2) > 0.74 && noise2(x / 30.0, t / 24.0, self.seed ^ 0xb3) > 0.45;
+        // (Never both a crest and a stroke: that's a decoration's mark.)
+        Texel { n, mat, crest, stroke: stroke && !crest, up }
     }
 }
 
@@ -149,23 +266,65 @@ pub fn strip(shape: &Shape, x0: i64, w: usize, h: usize, foot: f32, detail: f32)
         let mut top = h;
         let mut z = 0.0;
         while z <= shape.deep && top > 0 {
-            let t = shape.height(xf, z);
+            // (Under its water line, a lake: flat, its surface.)
+            let land = shape.height(xf, z);
+            let level = shape.water * shape.amp;
+            let wet = shape.water > 0.0 && land < level;
+            let t = if wet { level } else { land };
             let row = foot - (t + z * shape.tilt);
             let py = (row * detail).ceil().max(0.0) as usize;
             if py < top {
-                let mut texel = shape.texel(xf, z, t);
+                let mut texel = if wet { Texel { n: [0.0, 1.0, 0.0], mat: WATER, crest: false, stroke: false, up: shape.water } } else { shape.texel(xf, z, t) };
                 for y in py..top {
                     // (Its top pixel stands against what's behind: an edge.
                     // The front's rows below its feet: the range's body, one
                     // even face toward you, not a column's face pulled down.)
                     let below = top == h && (y as f32) > (foot - t) * detail + 2.0;
-                    let edge = if below { BODY } else { Texel { crest: texel.crest || y == py, ..texel } };
+                    // (The body's what its front is: a lake runs on as lake;
+                    // smooth hills as their ground; a range as its scrub.)
+                    let body = if wet {
+                        texel
+                    } else if shape.rough < 0.5 {
+                        Texel { mat: ROCK, ..BODY }
+                    } else {
+                        BODY
+                    };
+                    let edge = if below { body } else if texel.crest || y == py { Texel { crest: true, stroke: false, ..texel } } else { texel };
                     out[(y * w + xi) * 4..][..4].copy_from_slice(&encode(&edge));
                 }
                 texel.crest = false;
                 top = py;
             }
             z += dz;
+        }
+        // Flowers and mushrooms over its grass, sparse (each where its
+        // place says: tiles join).
+        if shape.decor > 0.0 {
+            let xa = x0 + xi as i64;
+            for y in 0..h {
+                let i = (y * w + xi) * 4;
+                let Some(t) = decode(&out[i..i + 4]) else { continue };
+                if t.mat == WATER || t.mat == SNOW || decor_of(&t).is_some() {
+                    continue;
+                }
+                let yy = y as i64;
+                // A mushroom: its cap a row over its stem (two tall), its
+                // stem's foot at (ax, ay).
+                let s = shape.seed ^ 0x3005;
+                let mut put = None;
+                for (dx, dy, what) in [(0, 0, STEM), (0, 1, STEM), (-1, 2, CAP), (0, 2, CAP_LIT), (1, 2, CAP)] {
+                    let (ax, ay) = (xa - dx, yy + dy);
+                    if hash(ax, ay, s) < 0.0011 * shape.decor {
+                        put = Some(what);
+                    }
+                }
+                if put.is_none() && hash(xa, yy, shape.seed ^ 0xf10) < 0.006 * shape.decor {
+                    put = Some(if hash(xa, yy, shape.seed ^ 0xf11) < 0.7 { FLOWER } else { BLOSSOM });
+                }
+                if let Some(what) = put {
+                    out[i..i + 4].copy_from_slice(&encode(&decor(what)));
+                }
+            }
         }
     }
     out
@@ -210,6 +369,16 @@ pub fn lambert(t: &Texel, l: &Light, dither: f32) -> f32 {
 /// A texel's colour in this light (`mist`: how far into its feet' mist,
 /// 0..1). As `backdrop.wgsl` does it.
 pub fn shade(t: &Texel, a: &Albedo, l: &Light, dither: f32, mist: f32) -> Rgb {
+    // Water: the sky's colour, a little deeper, a faint line or two.
+    if t.mat == WATER {
+        let c = mix(l.haze.map(|v| v * 0.92), [0.2, 0.32, 0.42], 0.22);
+        return mix(c, l.haze, a.haze + (1.0 - a.haze) * a.mist * mist * 0.7);
+    }
+    if let Some(d) = decor_of(t) {
+        let c = DECOR[(d as usize).min(DECOR.len() - 1)];
+        let lit = [0, 1, 2].map(|k| c[k] * (l.ambient[k] * 0.7 + l.color[k] * 0.55));
+        return mix(lit, l.haze, a.haze);
+    }
     let lam = lambert(t, l, dither);
     let albedo = match t.mat {
         SNOW => a.snow,
@@ -313,7 +482,7 @@ mod tests {
     use super::*;
 
     fn shape() -> Shape {
-        Shape { scale: 110.0, amp: 120.0, low: 0.35, deep: 150.0, tilt: 0.2, snow: 0.4, seed: 5 }
+        Shape { scale: 110.0, amp: 120.0, low: 0.35, deep: 150.0, tilt: 0.2, snow: 0.4, rough: 1.0, water: 0.0, trees: 0.0, crowns: 0.0, decor: 0.0, seed: 5 }
     }
 
     #[test]

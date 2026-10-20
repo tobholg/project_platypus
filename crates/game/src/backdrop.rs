@@ -27,7 +27,7 @@ use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
 use bevy::sprite_render::{AlphaMode2d, Material2d, Material2dPlugin};
-use platypus_backdrop::peaks::{Look, albedo, cloud_data, for_biome, layer_data, looks};
+use platypus_backdrop::peaks::{Look, Looks, albedo, cloud_data, layer_data};
 use platypus_sim::{CellPos, Kind};
 
 use crate::camera::MainCamera;
@@ -62,12 +62,10 @@ fn layer_at(k: usize, n: usize) -> (f32, f32, f32) {
     (lerp(PARALLAX), lerp(PARALLAX_Y), (n - 1 - k.min(n - 1)) as f32 * FEET_STEP)
 }
 /// The far clouds: their share of the camera's motion, how fast they
-/// drift (cells a second), where their strip's bottom sits above the
-/// ground.
+/// drift (cells a second). (How high: their look's `clouds.foot`.)
 const CLOUD_PARALLAX: f32 = 0.008;
 const CLOUD_PARALLAX_Y: f32 = 0.004;
 const CLOUD_DRIFT: f32 = 1.8;
-const CLOUD_FOOT: f32 = 18.0;
 /// The surface's strips: columns a tile, rows (layers, clouds).
 const TILE: usize = 384;
 /// The looks' shapes are drawn this fine: a cell a pixel, the ranges 1.5×
@@ -255,6 +253,8 @@ impl Material2d for RangeMaterial {
 #[derive(Resource)]
 pub struct Backdrops {
     looks: Arc<Vec<Look>>,
+    /// Which biome shows which look (the backdrops file's).
+    biomes: Arc<Looks>,
     /// Each look's share of the view now (eased towards the biomes'
     /// around the camera).
     weights: Vec<f32>,
@@ -274,9 +274,15 @@ pub struct Backdrops {
 
 impl Backdrops {
     fn new() -> Self {
-        let looks = Arc::new(looks());
-        let weights = looks.iter().map(|v| if v.name == "noita" { 1.0 } else { 0.0 }).collect();
-        Backdrops { looks, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0, meshes: None, cloud_mesh: None }
+        // (The backdrops file as it is now; as shipped if it won't read.)
+        let all = std::fs::read_to_string(crate::data::data_path("backdrops.ron")).map_err(|e| e.to_string()).and_then(|t| platypus_backdrop::peaks::parse(&t)).unwrap_or_else(|e| {
+            warn!("backdrops: {e}; as shipped");
+            platypus_backdrop::peaks::shipped()
+        });
+        let looks = Arc::new(all.looks.clone());
+        let weights = looks.iter().map(|v| if v.name == all.default { 1.0 } else { 0.0 }).collect();
+        let biomes = Arc::new(all);
+        Backdrops { looks, biomes, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0, meshes: None, cloud_mesh: None }
     }
 
     /// A tile's size in cells.
@@ -310,7 +316,7 @@ impl Backdrops {
                 let foot = ground + feet + (cam.y - ground) * (1.0 - py);
                 foot + self.looks[key.v].layers[key.k].base * h - h / 2.0
             }
-            Part::Clouds => ground + CLOUD_FOOT + (cam.y - ground) * (1.0 - CLOUD_PARALLAX_Y) + h / 2.0,
+            Part::Clouds => ground + self.looks[key.v].clouds.foot + (cam.y - ground) * (1.0 - CLOUD_PARALLAX_Y) + h / 2.0,
         };
         Vec2::new(x, y)
     }
@@ -356,7 +362,7 @@ impl Cover<'_> {
 fn targets(bd: &Backdrops, sim: &SimWorld, x: f32) -> Vec<f32> {
     let mut out = vec![0.0; bd.looks.len()];
     for (d, w) in [(-3.0, 0.05), (-2.0, 0.1), (-1.0, 0.2), (0.0, 0.3), (1.0, 0.2), (2.0, 0.1), (3.0, 0.05)] {
-        let name = for_biome(sim.generator.biome_hint((x + d * 225.0) as i32).unwrap_or("forest"));
+        let name = bd.biomes.for_biome(sim.generator.biome_hint((x + d * 225.0) as i32).unwrap_or("forest"));
         if let Some(i) = bd.looks.iter().position(|v| v.name == name) {
             out[i] += w;
         }
@@ -555,7 +561,7 @@ fn place(
                 }
             }
             Lit::Cloud(m) => {
-                let (_, _, lit, shade) = look.clouds;
+                let (lit, shade) = (look.clouds.lit, look.clouds.shade);
                 let params = CloudParams {
                     to: v4(light.to, light.golden),
                     color: v4(light.color, alpha),

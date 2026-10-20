@@ -7,6 +7,8 @@ description = "Parallax backgrounds, generated: skies, ridges, hills, treelines,
 
 [dependencies]
 platypus_art = { path = "../art" }
+serde.workspace = true
+ron.workspace = true
 
 [[bin]]
 name = "platypus-backdrop"

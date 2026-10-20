@@ -9,42 +9,95 @@
 
 use crate::terrain::{self, Albedo, Light, Shape};
 use crate::{Rgb, bayer, hash, mix, noise1, rgb};
+use serde::Deserialize;
 
-#[derive(Clone, Copy, Debug)]
-pub enum Kind {
-    /// Peaks: summits about `every` units apart, `size` their heights where
-    /// the range sinks and where it rises highest (shares of the strip),
-    /// `slope` how broad they spread (the shapes' scale across: wider,
-    /// gentler).
-    Peaks { every: f32, size: (f32, f32), slope: (f32, f32) },
-}
-
-#[derive(Clone, Copy, Debug)]
+/// A layer of land: terrain, a band of it seen from the front
+/// (`assets/data/backdrops.ron` says what each field means).
+#[derive(Clone, Copy, Debug, Deserialize)]
 pub struct Layer {
-    pub kind: Kind,
-    /// The feet (the base row, a share of the strip from its top). Below
-    /// them the range runs on down to the strip's bottom: its flanks
-    /// steepen into shoulders, the gaps between filled with its body.
+    pub every: f32,
+    pub size: (f32, f32),
+    pub slope: (f32, f32),
+    pub rough: f32,
     pub base: f32,
-    /// Faces towards the light, and away.
-    pub lit: Rgb,
-    pub shade: Rgb,
-    /// Snow on the tops: how far down (a share of each peak's height; 0
-    /// none).
-    pub snow: f32,
-    /// How much the sky's haze fades it; mist rising at its feet.
+    #[serde(deserialize_with = "rgb8")]
+    pub ground: Rgb,
+    #[serde(deserialize_with = "rgb8")]
+    pub growth: Rgb,
+    #[serde(deserialize_with = "rgb8")]
+    pub snow: Rgb,
+    pub snow_line: f32,
+    pub water: f32,
+    pub trees: f32,
+    #[serde(default)]
+    pub crowns: f32,
+    #[serde(default)]
+    pub decor: f32,
     pub haze: f32,
     pub mist: f32,
 }
 
-#[derive(Clone, Debug)]
+/// A look's clouds: how many, how big, lit and shaded, how far above the
+/// ground their bottoms sit (cells).
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub struct Clouds {
+    pub many: f32,
+    pub big: f32,
+    #[serde(deserialize_with = "rgb8")]
+    pub lit: Rgb,
+    #[serde(deserialize_with = "rgb8")]
+    pub shade: Rgb,
+    pub foot: f32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct Look {
-    pub name: &'static str,
-    /// The sky, overhead and at the horizon.
+    pub name: String,
+    /// The sky, overhead and at the horizon (noon's).
+    #[serde(deserialize_with = "rgb8_pair")]
     pub sky: (Rgb, Rgb),
-    /// Clouds: how many, how big, lit and shaded.
-    pub clouds: (f32, f32, Rgb, Rgb),
+    pub clouds: Clouds,
     pub layers: Vec<Layer>,
+}
+
+/// The looks, and which biome shows which (`assets/data/backdrops.ron`).
+#[derive(Clone, Debug, Deserialize)]
+pub struct Looks {
+    pub biomes: std::collections::HashMap<String, String>,
+    pub default: String,
+    pub looks: Vec<Look>,
+}
+
+impl Looks {
+    /// Which look a biome (the world plan's name) shows behind it.
+    pub fn for_biome(&self, biome: &str) -> &str {
+        self.biomes.get(biome).unwrap_or(&self.default)
+    }
+}
+
+/// The looks from a backdrops file's text.
+pub fn parse(text: &str) -> Result<Looks, String> {
+    ron::from_str(text).map_err(|e| format!("backdrops: {e}"))
+}
+
+/// The looks as the game ships them (the file, built in).
+pub fn shipped() -> Looks {
+    parse(include_str!("../../../assets/data/backdrops.ron")).expect("assets/data/backdrops.ron")
+}
+
+/// The looks to choose from (as shipped).
+pub fn looks() -> Vec<Look> {
+    shipped().looks
+}
+
+fn rgb8<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Rgb, D::Error> {
+    let (r, g, b): (u8, u8, u8) = Deserialize::deserialize(d)?;
+    Ok(rgb(r, g, b))
+}
+
+fn rgb8_pair<'de, D: serde::Deserializer<'de>>(d: D) -> Result<(Rgb, Rgb), D::Error> {
+    let ((r, g, b), (r2, g2, b2)): ((u8, u8, u8), (u8, u8, u8)) = Deserialize::deserialize(d)?;
+    Ok((rgb(r, g, b), rgb(r2, g2, b2)))
 }
 
 fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
@@ -55,7 +108,7 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
 /// Layer `k`'s terrain, for a strip `hf` units tall.
 pub fn shape(look: &Look, k: usize, hf: f32, seed: u64) -> Shape {
     let l = &look.layers[k];
-    let Kind::Peaks { every, size, slope } = l.kind;
+    let (every, size, slope) = (l.every, l.size, l.slope);
     let (deep, tilt) = (every * 1.3, 0.06);
     // (Never past the strip's top: its tallest and its back's rise within
     // the room over its feet.)
@@ -66,16 +119,20 @@ pub fn shape(look: &Look, k: usize, hf: f32, seed: u64) -> Shape {
         low: (size.0 / size.1.max(1e-3)).clamp(0.05, 1.0),
         deep,
         tilt,
-        snow: l.snow,
+        snow: l.snow_line,
+        rough: l.rough,
+        water: l.water,
+        trees: l.trees,
+        crowns: l.crowns,
+        decor: l.decor,
         seed: seed.wrapping_add(k as u64 * 9173 + 5),
     }
 }
 
-/// What layer `k` is made of: rock a little darker than its lit colour
-/// (lit full on, it shows as that), snow, scrub as its shade; its haze.
+/// What layer `k` is made of: its ground, its snow, its growth; its haze.
 pub fn albedo(look: &Look, k: usize) -> Albedo {
     let l = &look.layers[k];
-    Albedo { rock: l.lit.map(|v| v * 0.85), snow: [0.8, 0.82, 0.86], scrub: l.shade.map(|v| v * 0.9), haze: l.haze, mist: l.mist }
+    Albedo { rock: l.ground, snow: l.snow, scrub: l.growth, haze: l.haze, mist: l.mist }
 }
 
 /// How far into its feet' mist a row is (`y` rows from the strip's top).
@@ -124,8 +181,8 @@ pub fn layer_tile(look: &Look, k: usize, x0: i64, w: usize, h: usize, detail: f3
 /// to rise from behind a range. (`detail` as `layer_tile`'s.)
 pub fn cloud_tile(look: &Look, x0: i64, w: usize, h: usize, detail: f32, seed: u64) -> Vec<u8> {
     let s = seed ^ 0xc10d5;
-    let (many, big, lit, shade) = look.clouds;
-    let every = 150.0 / many.max(0.05);
+    let Clouds { many, big, lit, shade, .. } = look.clouds;
+    let every = if many > 0.0 { 150.0 / many } else { f32::INFINITY };
     let hf = h as f32 / detail;
     let (xs, xe) = (x0 as f32 / detail, (x0 + w as i64) as f32 / detail);
     let blobs = heaps(s, every, big, hf, xs, xe);
@@ -177,8 +234,8 @@ pub fn cloud_tile(look: &Look, x0: i64, w: usize, h: usize, detail: f32, seed: u
 /// outline (a bit), how solid (alpha: the bottom thins into the air).
 pub fn cloud_data(look: &Look, x0: i64, w: usize, h: usize, detail: f32, seed: u64) -> Vec<u8> {
     let s = seed ^ 0xc10d5;
-    let (many, big, _, _) = look.clouds;
-    let every = 150.0 / many.max(0.05);
+    let (many, big) = (look.clouds.many, look.clouds.big);
+    let every = if many > 0.0 { 150.0 / many } else { f32::INFINITY };
     let hf = h as f32 / detail;
     let (xs, xe) = (x0 as f32 / detail, (x0 + w as i64) as f32 / detail);
     let blobs = heaps(s, every, big, hf, xs, xe);
@@ -207,11 +264,14 @@ pub fn cloud_data(look: &Look, x0: i64, w: usize, h: usize, detail: f32, seed: u
             // The puff's face: a sphere's (y up), flattened a little so a
             // heap reads as one mass.
             let (dx, dy) = ((xf - b.0) / b.2, (yf - b.1) / b.2);
-            let (nx, ny) = (dx * 0.85, -dy * 0.85);
+            // (Mostly the heap's: its puffs only round it a little.)
+            let (nx, ny) = (dx * 0.45, 0.35 - dy * 0.45);
             // On the heap's outline: a step out is in no puff.
             let e = 1.6 / detail;
             let edge = [(e, 0.0), (-e, 0.0), (0.0, -e)].iter().any(|&(ox, oy)| !col.iter().any(|c| inside(c, xf + ox, yf + oy)));
-            let a = smoothstep(b.4, b.4 - 10.0, yf);
+            // (Its flat bottom thins into the air over a few rows: high up,
+            // with no range in front of it, a hard line showed.)
+            let a = smoothstep(b.4, b.4 - 24.0, yf);
             let i = (y * w + xi) * 4;
             let enc = |v: f32| ((v.clamp(-1.0, 1.0) * 0.5 + 0.5) * 255.0).round() as u8;
             out[i] = enc(nx);
@@ -227,6 +287,10 @@ pub fn cloud_data(look: &Look, x0: i64, w: usize, h: usize, detail: f32, seed: u
 /// xe` (units): a broad bottom row, smaller ones stacked on top towards
 /// the middle.
 fn heaps(s: u64, every: f32, big: f32, hf: f32, xs: f32, xe: f32) -> Vec<(f32, f32, f32, u64, f32)> {
+    // (A look with no clouds: `many` 0.)
+    if !every.is_finite() {
+        return Vec::new();
+    }
     let reach = 140.0 * big;
     let mut blobs: Vec<(f32, f32, f32, u64, f32)> = Vec::new();
     for k in ((xs - reach) / every).floor() as i64..=((xe + reach) / every).floor() as i64 {
@@ -268,13 +332,14 @@ pub fn cloud_shade(px: &[u8], look: &Look, light: &Light, dither: f32) -> Option
     let n = [nx, ny, -(1.0 - nx * nx - ny * ny).max(0.0).sqrt()];
     let depth = (px[2] & 63) as f32 / 63.0;
     let edge = px[2] & 64 != 0;
-    let (_, _, lit, shade) = look.clouds;
+    let (lit, shade) = (look.clouds.lit, look.clouds.shade);
     let facing = (n[0] * light.to[0] + n[1] * light.to[1] + n[2] * light.to[2]).max(0.0);
     let lam = ((facing * 4.0 + 0.25 + 0.5 * dither).floor() / 4.0).min(1.0);
     // Lit puffs the sun's colour on white; the shade the sky's; deeper in
     // the heap darker, unless the sun's low: then its underside glows.
     let lit_c = [0, 1, 2].map(|k| lit[k] * (light.ambient[k] * 0.5 + light.color[k] * 0.75));
-    let shade_c = [0, 1, 2].map(|k| shade[k] * light.ambient[k] * 1.1);
+    // (A cloud's shade is bright still: light scatters through it.)
+    let shade_c = [0, 1, 2].map(|k| shade[k] * (light.ambient[k] * 0.6 + 0.45));
     let mut c = mix(shade_c, lit_c, lam);
     c = c.map(|v| v * (1.0 - 0.3 * depth * (1.0 - golden)));
     c = mix(c, [1.0, 0.6, 0.45].map(|v| v * light.color[0]), golden * depth * 0.45);
@@ -295,93 +360,6 @@ fn write(out: &mut [u8], x: usize, y: usize, w: usize, xa: i64, p: Rgb) {
         out[i + c] = (((v.clamp(0.0, 1.0) * levels + d).round() / levels).clamp(0.0, 1.0) * 255.0) as u8;
     }
     out[i + 3] = 255;
-}
-
-/// The looks to choose from.
-pub fn looks() -> Vec<Look> {
-    let sky = (rgb(70, 118, 206), rgb(150, 188, 232));
-    let clouds = (1.0, 1.0, rgb(246, 248, 255), rgb(150, 172, 214));
-    let l = |kind, base, lit, shade, snow, haze, mist| Layer { kind, base, lit, shade, snow, haze, mist };
-    let peaks = |every, lo, hi, s0, s1| Kind::Peaks { every, size: (lo, hi), slope: (s0, s1) };
-    vec![
-        // As the screenshot: pale snowy ranges, a deep blue-violet one in
-        // front.
-        Look {
-            name: "noita",
-            sky,
-            clouds,
-            layers: vec![
-                l(peaks(90.0, 0.070, 0.150, 0.9, 1.6), 0.5, rgb(196, 212, 236), rgb(128, 150, 200), 0.35, 0.45, 0.6),
-                l(peaks(130.0, 0.095, 0.220, 0.8, 1.5), 0.5, rgb(206, 220, 242), rgb(104, 126, 190), 0.3, 0.12, 0.5),
-                l(peaks(220.0, 0.085, 0.235, 0.9, 1.7), 0.5, rgb(116, 128, 196), rgb(58, 66, 136), 0.0, 0.0, 0.25),
-            ],
-        },
-        // Whiter, snowier, a paler sky.
-        Look {
-            name: "alpine",
-            sky: (rgb(84, 140, 220), rgb(178, 208, 240)),
-            clouds: (0.8, 1.1, rgb(250, 252, 255), rgb(166, 186, 222)),
-            layers: vec![
-                l(peaks(80.0, 0.085, 0.165, 0.8, 1.4), 0.5, rgb(214, 226, 244), rgb(146, 166, 210), 0.55, 0.45, 0.6),
-                l(peaks(120.0, 0.110, 0.235, 0.7, 1.3), 0.5, rgb(226, 234, 248), rgb(120, 142, 198), 0.5, 0.12, 0.5),
-                l(peaks(200.0, 0.070, 0.165, 1.0, 1.8), 0.5, rgb(112, 136, 170), rgb(64, 82, 118), 0.25, 0.0, 0.3),
-            ],
-        },
-        // Layer on layer fading into mist: four ranges, low contrast.
-        Look {
-            name: "misty",
-            sky: (rgb(92, 128, 196), rgb(176, 196, 226)),
-            clouds: (1.2, 0.9, rgb(236, 240, 250), rgb(162, 178, 212)),
-            layers: vec![
-                l(peaks(70.0, 0.070, 0.140, 0.9, 1.5), 0.5, rgb(178, 196, 226), rgb(146, 164, 208), 0.25, 0.55, 0.9),
-                l(peaks(90.0, 0.070, 0.150, 0.9, 1.5), 0.5, rgb(160, 180, 220), rgb(122, 142, 196), 0.2, 0.4, 0.9),
-                l(peaks(120.0, 0.085, 0.180, 0.8, 1.5), 0.5, rgb(140, 160, 212), rgb(98, 116, 180), 0.15, 0.22, 0.9),
-                l(peaks(170.0, 0.085, 0.195, 0.9, 1.6), 0.5, rgb(108, 124, 186), rgb(70, 82, 146), 0.0, 0.05, 0.8),
-            ],
-        },
-        // Warmer: violet and rose ranges (a stranger place).
-        Look {
-            name: "violet",
-            sky: (rgb(86, 104, 196), rgb(196, 176, 222)),
-            clouds: (1.0, 1.0, rgb(252, 240, 248), rgb(180, 150, 200)),
-            layers: vec![
-                l(peaks(90.0, 0.070, 0.150, 0.9, 1.6), 0.5, rgb(222, 196, 226), rgb(160, 132, 196), 0.3, 0.45, 0.6),
-                l(peaks(130.0, 0.095, 0.220, 0.8, 1.5), 0.5, rgb(226, 204, 232), rgb(128, 102, 176), 0.25, 0.12, 0.5),
-                l(peaks(220.0, 0.085, 0.235, 0.9, 1.7), 0.5, rgb(140, 102, 176), rgb(76, 52, 120), 0.0, 0.0, 0.25),
-            ],
-        },
-        // Needles: narrow, steep, crowded.
-        Look {
-            name: "needles",
-            sky,
-            clouds,
-            layers: vec![
-                l(peaks(45.0, 0.085, 0.165, 0.35, 0.7), 0.5, rgb(196, 212, 236), rgb(128, 150, 200), 0.3, 0.45, 0.6),
-                l(peaks(70.0, 0.110, 0.235, 0.3, 0.65), 0.5, rgb(206, 220, 242), rgb(104, 126, 190), 0.25, 0.12, 0.5),
-                l(peaks(120.0, 0.095, 0.250, 0.35, 0.8), 0.5, rgb(116, 128, 196), rgb(58, 66, 136), 0.0, 0.0, 0.25),
-            ],
-        },
-        // Low and broad: old worn ranges, big skies, more cloud.
-        Look {
-            name: "broad",
-            sky: (rgb(64, 112, 204), rgb(150, 190, 236)),
-            clouds: (1.4, 1.2, rgb(246, 248, 255), rgb(150, 172, 214)),
-            layers: vec![
-                l(peaks(120.0, 0.040, 0.095, 1.6, 2.8), 0.5, rgb(188, 206, 234), rgb(130, 152, 204), 0.3, 0.45, 0.6),
-                l(peaks(170.0, 0.055, 0.125, 1.4, 2.6), 0.5, rgb(176, 196, 232), rgb(100, 122, 186), 0.2, 0.15, 0.5),
-                l(peaks(260.0, 0.040, 0.110, 1.8, 3.0), 0.5, rgb(96, 118, 170), rgb(56, 70, 124), 0.0, 0.0, 0.3),
-            ],
-        },
-    ]
-}
-
-/// Which look a biome (the world plan's name) shows behind it. (`violet`,
-/// `misty`, `needles` and `broad` wait for places of their own.)
-pub fn for_biome(biome: &str) -> &'static str {
-    match biome {
-        "mountains" | "tundra" => "alpine",
-        _ => "noita",
-    }
 }
 
 /// A look as the game would show it at `x`: sky, the far layers, the
@@ -483,6 +461,16 @@ pub fn grade(px: &mut [u8], light: Rgb) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_shipped_backdrops_name_looks_that_are_there() {
+        let all = shipped();
+        let has = |n: &str| all.looks.iter().any(|l| l.name == n);
+        assert!(has(&all.default), "the default, {}", all.default);
+        for (biome, look) in &all.biomes {
+            assert!(has(look), "{biome}'s look {look}");
+        }
+    }
 
     #[test]
     fn peak_tiles_join_without_a_seam() {

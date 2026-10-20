@@ -53,7 +53,8 @@ fn shade(t: vec2<i32>) -> vec4<f32> {
     let facing = max(dot(n, c.to.xyz), 0.0);
     let lam = min(floor(facing * 4.0 + 0.25 + 0.5 * bayer(u32(q.x), u32(q.y))) / 4.0, 1.0);
     let lit_c = c.lit.rgb * (c.ambient.rgb * 0.5 + c.color.rgb * 0.75);
-    let shade_c = c.shade.rgb * c.ambient.rgb * 1.1;
+    // (A cloud's shade is bright still: light scatters through it.)
+    let shade_c = c.shade.rgb * (c.ambient.rgb * 0.6 + vec3<f32>(0.45));
     var v = mix(shade_c, lit_c, lam);
     v = v * (1.0 - 0.3 * depth * (1.0 - golden));
     v = mix(v, vec3<f32>(1.0, 0.6, 0.45) * c.color.r, golden * depth * 0.45);
