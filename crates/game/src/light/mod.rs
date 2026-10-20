@@ -930,6 +930,7 @@ fn compute_light(
         let started = Instant::now();
         // (The sun's share of the seeds kept apart: the shafts.)
         let mut sun = None;
+        let sky_now = sky.clone();
         for (i, (dir, color)) in sky.into_iter().enumerate() {
             // (Not at night, nor with no sky in view: nothing to shine.)
             if i == 0 && shafts > 0.0 && color.iter().any(|&c| c > SHAFTS_FROM) && open_top.iter().any(|&o| o) {
@@ -948,6 +949,9 @@ fn compute_light(
                 g.seed_directional(dir, color, &open_top);
             }
         }
+        // Daylight through windows (glass in the walls behind), coloured.
+        let daylight = sky_now.iter().fold([0.0f32; 3], |a, (_, c)| [a[0] + c[0], a[1] + c[1], a[2] + c[2]]);
+        g.seed_windows(daylight);
         g.charge_phosphor(previous.as_ref(), dt);
         g.shine(previous.as_ref());
         g.solve(params);

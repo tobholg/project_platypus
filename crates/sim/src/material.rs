@@ -212,6 +212,11 @@ pub struct MaterialDef {
     /// position: `look`). Takes over from `pattern` where it's built.
     #[serde(default)]
     pub tile: Option<crate::look::Tile>,
+    /// A window (glass in a wall behind): daylight comes in through it from
+    /// behind, coloured as its cells are (stained glass lights a room in
+    /// its colours).
+    #[serde(default)]
+    pub window: bool,
     /// A plant that doesn't sway in the wind (an illusory wall: creatures
     /// walk through it, but it should look like masonry).
     #[serde(default)]

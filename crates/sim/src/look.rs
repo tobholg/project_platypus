@@ -66,6 +66,35 @@ pub enum Art {
     Framed { panel: i32 },
     /// Mottled, nothing laid (plain stone, a wall of earth).
     Plain,
+    /// Clear glass in a lattice of lead (diamonds `size` cells across), a
+    /// streak of sky on each pane.
+    Leaded { size: i32 },
+    /// Stained glass: diamond panes `size` across in lead, each a colour of
+    /// the material's (its `colors` read as an index: lead first, then a
+    /// dark and a light of each hue: `hues` of them), lit toward its top.
+    Mosaic { size: i32, hues: i32 },
+    /// A round window (a rose): rings and spokes of lead about the middle
+    /// of every `span` blocks, each piece a colour as `Mosaic`'s.
+    Rose { span: i32, hues: i32 },
+}
+
+impl Art {
+    /// Drawn in exact colours off its `colors` (glass: no bevel, no seam,
+    /// nothing shading it but its lead).
+    fn indexed(&self) -> bool {
+        matches!(self, Art::Mosaic { .. } | Art::Rose { .. })
+    }
+}
+
+/// An exact entry of a material's 16 colours (`Art::indexed`).
+fn index(i: i32) -> f32 {
+    i.clamp(0, 15) as f32 / 15.0
+}
+
+/// A piece of stained glass's colour: lead is 0..=2; hue `h` (of `hues`)
+/// dark at `3 + 2h`, light at `4 + 2h`.
+fn hue(h: i32, light: bool) -> f32 {
+    index(3 + 2 * h + light as i32)
 }
 
 /// What's round a block: which of its sides (and corners, for the notch in
@@ -252,6 +281,14 @@ pub fn shade_shaped(tile: &Tile, x: i32, y: i32, a: Around, shape: Shape) -> Opt
     // An inside corner (two solid sides round an open diagonal): a dark
     // notch where they meet.
     let notch = (!n && !w && a.nw && top == 0 && cx == 0) || (!n && !e && a.ne && top == 0 && cx == b - 1) || (!s && !w && a.sw && top == b - 1 && cx == 0) || (!s && !e && a.se && top == b - 1 && cx == b - 1);
+    // Glass: its frame of lead where it meets anything else, else its art,
+    // exact.
+    if tile.art.indexed() {
+        let [on, os, ow, oe] = a.other;
+        let frame = edge || (on && top == 0) || (os && top == b - 1) || (ow && cx == 0) || (oe && cx == b - 1);
+        let t = if frame { index(0) } else { art(tile, x, y, a) };
+        return Some(((t * 15.0).round() as u8) * 16 + 8);
+    }
     let mut t = if edge || notch {
         if tile.outline { OUTLINE } else { art(tile, x, y, a) - 0.3 }
     } else {
@@ -445,6 +482,51 @@ fn art(tile: &Tile, x: i32, y: i32, a: Around) -> f32 {
             t
         }
         Art::Plain => 0.5 + roll(&[(x / 2) as i64, (y / 2) as i64, 62]) * 0.25 + jitter,
+        Art::Leaded { size } => {
+            let (u, v) = ((x + y).rem_euclid(size), (x - y).rem_euclid(size));
+            if u == 0 || v == 0 {
+                return GAP;
+            }
+            let pane = ((x + y).div_euclid(size), (x - y).div_euclid(size));
+            // (A streak of sky across each pane, and the pane's own tint.)
+            let streak = (x - 2 * y).rem_euclid(size * 2) < 2;
+            0.62 + roll(&[pane.0 as i64, pane.1 as i64, 63]) * 0.14 + if streak { 0.22 } else { 0.0 }
+        }
+        Art::Mosaic { size, hues } => {
+            let (u, v) = ((x + y).rem_euclid(size), (x - y).rem_euclid(size));
+            if u == 0 || v == 0 {
+                return index(1);
+            }
+            let pane = ((x + y).div_euclid(size), (x - y).div_euclid(size));
+            let h = (roll(&[pane.0 as i64, pane.1 as i64, 64]) * hues as f32) as i32;
+            // Lit toward its top corner (y up: the larger u and v together).
+            hue(h, u + v > size)
+        }
+        Art::Rose { span, hues } => {
+            let s = span * BLOCK;
+            let (mx, my) = (x.div_euclid(s) * s + s / 2, y.div_euclid(s) * s + s / 2);
+            let (dx, dy) = ((x - mx) as f32 + 0.5, (y - my) as f32 + 0.5);
+            let r = (dx * dx + dy * dy).sqrt();
+            let ang = dy.atan2(dx);
+            let rings = [s as f32 * 0.14, s as f32 * 0.3, s as f32 * 0.46];
+            if rings.iter().any(|&q| (r - q).abs() < 0.6) {
+                return index(0);
+            }
+            let ring = rings.iter().filter(|&&q| r > q).count() as i32;
+            // Spokes: more the further out.
+            let spokes = [1.0f32, 8.0, 12.0, 16.0][ring as usize];
+            let seg = ((ang + std::f32::consts::PI) / std::f32::consts::TAU * spokes).floor() as i32;
+            let along = ((ang + std::f32::consts::PI) / std::f32::consts::TAU * spokes).fract();
+            if ring > 0 && (along < 0.06 || along > 0.94) && r > 1.5 {
+                return index(1);
+            }
+            if ring == 3 {
+                // Outside the rose: plain leaded panes, pale.
+                return if (x + y).rem_euclid(8) == 0 || (x - y).rem_euclid(8) == 0 { index(1) } else { index(15) };
+            }
+            let h = (roll(&[mx as i64, my as i64, ring as i64, (seg.rem_euclid(spokes as i32) % if ring == 0 { 1 } else { 2 }) as i64, 65]) * hues as f32) as i32;
+            hue(h, r < rings[ring.min(2) as usize] - 2.0 || ring == 0)
+        }
     }
 }
 

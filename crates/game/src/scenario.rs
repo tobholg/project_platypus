@@ -10755,6 +10755,26 @@ fn build_script(
         hi -= 1;
         y += 1;
     }
+    // Windows in the walls (`PLATYPUS_PLAIN=1`: none): leaded glass
+    // downstairs, stained glass upstairs, a rose in the gable (on its own
+    // four-block grid).
+    if std::env::var("PLATYPUS_PLAIN").is_err() {
+        let (leaded, stained, rose) = (id("leaded_glass"), id("stained_glass"), id("rose_glass"));
+        let rose_x = (l + 9).div_euclid(4) * 4;
+        let rose_y = (g + 13).div_euclid(4) * 4;
+        for e in bg.iter_mut() {
+            let (x, y) = (e.0, e.1);
+            if (l + 4..l + 6).contains(&x) && (g + 2..g + 4).contains(&y) || (r - 6..r - 4).contains(&x) && (g + 2..g + 4).contains(&y) {
+                e.2 = leaded;
+            }
+            if ((l + 3..l + 5).contains(&x) || (r - 5..r - 3).contains(&x)) && (g + 7..g + 9).contains(&y) {
+                e.2 = stained;
+            }
+            if (rose_x..rose_x + 4).contains(&x) && (rose_y..rose_y + 4).contains(&y) {
+                e.2 = rose;
+            }
+        }
+    }
     for (x, y, m) in bg {
         sim.queue(platypus_sim::WorldEdit::PlaceBlock { block: CellPos::new(x, y), material: m, back: true, most: u32::MAX });
     }
@@ -10792,7 +10812,9 @@ fn build_script(
         k.prev_pos = k.body.pos;
     }
     // A lamp a floor (and one in the roof): rooms are dark without light.
-    for (bx, by) in [(l + 6, g + 4), (l + 12, g + 9), (l + 9, g + 13)] {
+    // (`PLATYPUS_NOLAMPS=1`: none, to see the windows' light alone.)
+    let lamps = if std::env::var("PLATYPUS_NOLAMPS").is_ok() { vec![] } else { vec![(l + 6, g + 4), (l + 12, g + 9), (l + 9, g + 13)] };
+    for (bx, by) in lamps {
         let at = Vec2::new(((bx * b) + b / 2) as f32, (by * b) as f32);
         commands.spawn((Transform::from_translation(at.extend(0.0)), GlobalTransform::default(), crate::light::LightSource { color: [1.0, 0.78, 0.5], flicker: 0.1 }));
     }

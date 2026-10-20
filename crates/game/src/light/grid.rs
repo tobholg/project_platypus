@@ -76,7 +76,15 @@ pub struct LightGrid {
     /// in daylight too (light only darkens: a spire's colours on lit
     /// ground didn't show).
     pub caustic: Vec<Rgb>,
+    /// Windows in the texel (glass in the wall behind, nothing in front):
+    /// the colour daylight comes in at through them, by the share of the
+    /// texel they fill (`seed_windows`).
+    pub window: Vec<Rgb>,
 }
+
+/// Daylight through a window, for its glass's colour (glass is drawn
+/// darker than the light it lets through).
+const WINDOW_GAIN: f32 = 1.7;
 
 impl LightGrid {
     /// A grid of `w`×`h` texels of `texel` cells from `origin`, all clear.
@@ -104,6 +112,7 @@ impl LightGrid {
             caustic: vec![[0.0; 3]; n],
             phosphor: vec![None; n],
             charge: vec![0.0; n],
+            window: vec![[0.0; 3]; n],
         }
     }
 
@@ -146,7 +155,8 @@ impl LightGrid {
         // (opacity, sky opacity, glow) per texel, and its clear cells: how
         // many, and their index, spread, mirroring and tint, summed.
         // (Luster: how many of its cells shine when lit, and their colour.)
-        type Texels = Vec<(f32, f32, Rgb, Clear, Option<(CellPos, Rgb, u64, bool)>, (f32, Rgb), (f32, Rgb))>;
+        type Texels = Vec<(f32, f32, Rgb, Clear, Option<(CellPos, Rgb, u64, bool)>, (f32, Rgb), (f32, Rgb), Rgb)>;
+        let windows: Vec<bool> = (0..mats.len()).map(|m| mats.def(platypus_sim::MaterialId(m as u16)).window).collect();
         let rgb = |(r, g, b): (u8, u8, u8)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0];
         let glows: Vec<Option<Rgb>> = (0..mats.len()).map(|m| mats.def(platypus_sim::MaterialId(m as u16)).phosphor.map(rgb)).collect();
         let lusters: Vec<Option<Rgb>> = (0..mats.len()).map(|m| mats.def(platypus_sim::MaterialId(m as u16)).luster.map(rgb)).collect();
@@ -165,7 +175,7 @@ impl LightGrid {
             .par_iter()
             .filter_map(|&cp| {
                 let chunk = world.chunk(cp)?;
-                let mut out = vec![(0.0f32, 0.0f32, [0.0f32; 3], Clear::default(), None, (0.0f32, [0.0f32; 3]), (0.0f32, [0.0f32; 3])); per_chunk * per_chunk];
+                let mut out = vec![(0.0f32, 0.0f32, [0.0f32; 3], Clear::default(), None, (0.0f32, [0.0f32; 3]), (0.0f32, [0.0f32; 3]), [0.0f32; 3]); per_chunk * per_chunk];
                 let (cells, bg) = (chunk.cells(), chunk.background());
                 let o = cp.origin();
                 for ly in 0..CHUNK {
@@ -250,6 +260,11 @@ impl LightGrid {
                                 let f = flicker(o.x + lx, o.y + ly);
                                 add3(&mut slot.2, [0.6 * f, 0.33 * f, 0.1 * f]);
                             }
+                            // A window: daylight through it, in its colours.
+                            if c.is_air() && windows[b.material.0 as usize] {
+                                let col = mats.color(b);
+                                add3(&mut slot.7, [col[0] as f32 / 255.0, col[1] as f32 / 255.0, col[2] as f32 / 255.0]);
+                            }
                             // Glowing things behind glow too (a giant
                             // mushroom's cap), where nothing's in front.
                             if c.is_air() && bp.glow != [0; 3] {
@@ -267,6 +282,9 @@ impl LightGrid {
                     for ch in &mut s.2 {
                         *ch /= area;
                     }
+                    for ch in &mut s.7 {
+                        *ch /= area;
+                    }
                     s.3.settle(area);
                 }
                 Some((cp, out))
@@ -278,7 +296,8 @@ impl LightGrid {
                 for tx in 0..per_chunk {
                     let p = CellPos::new(o.x + tx as i32 * t, o.y + ty as i32 * t);
                     if let Some(i) = self.index_of(p) {
-                        let (op, sky, e, clear, glint, phos, lus) = out[ty * per_chunk + tx];
+                        let (op, sky, e, clear, glint, phos, lus, win) = out[ty * per_chunk + tx];
+                        self.window[i] = win;
                         self.glint[i] = glint.map(|(p, c, _, any)| (p, c, any));
                         self.phosphor[i] = (phos.0 >= area * 0.25).then_some(phos.1);
                         self.luster[i] = (lus.0 > 0.0).then_some((lus.1, lus.0 / area));
@@ -359,6 +378,22 @@ impl LightGrid {
     }
 
     /// A point light at `at` (cells).
+    /// Daylight (`sky`: the sky's light now) coming in through windows from
+    /// behind, in their colours: a seed where each is (spreading into the
+    /// room as any light).
+    pub fn seed_windows(&mut self, sky: Rgb) {
+        if sky.iter().all(|&c| c <= 0.0) {
+            return;
+        }
+        for (s, w) in self.seed.iter_mut().zip(&self.window) {
+            if w.iter().any(|&c| c > 0.0) {
+                for ch in 0..3 {
+                    s[ch] = s[ch].max(w[ch] * sky[ch] * WINDOW_GAIN);
+                }
+            }
+        }
+    }
+
     pub fn seed_point(&mut self, at: [f32; 2], color: Rgb) {
         if let Some(i) = self.index_of(CellPos::from_world(at[0], at[1])) {
             max_into(&mut self.seed[i], color);

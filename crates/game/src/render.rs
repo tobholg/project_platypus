@@ -226,7 +226,14 @@ fn bg_dim(mats: &MaterialTable, c: Cell) -> f32 {
     let ph = mats.phys(c.material);
     // (A wall made to stand behind: brighter than a structure's own stone
     // shown behind its rooms, which keeps the dark of rock.)
-    if ph.kind == Kind::Plant || ph.flammability > 0 || (mats.def(c.material).wall && mats.tile(c.material).is_some()) { 0.8 } else { 0.55 }
+    // (A window shows its glass whole: daylight's behind it.)
+    if mats.def(c.material).window {
+        1.0
+    } else if ph.kind == Kind::Plant || ph.flammability > 0 || (mats.def(c.material).wall && mats.tile(c.material).is_some()) {
+        0.8
+    } else {
+        0.55
+    }
 }
 
 /// A wall shaded by what's in front of it (ambient occlusion): darker
