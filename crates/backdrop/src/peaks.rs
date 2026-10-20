@@ -128,36 +128,7 @@ pub fn cloud_tile(look: &Look, x0: i64, w: usize, h: usize, detail: f32, seed: u
     let every = 150.0 / many.max(0.05);
     let hf = h as f32 / detail;
     let (xs, xe) = (x0 as f32 / detail, (x0 + w as i64) as f32 / detail);
-    // Blobs (x, y, r), heaped: a broad bottom row, smaller ones stacked
-    // on top towards the middle.
-    let reach = 140.0 * big;
-    let mut blobs: Vec<(f32, f32, f32, u64, f32)> = Vec::new();
-    for k in ((xs - reach) / every).floor() as i64..=((xe + reach) / every).floor() as i64 {
-        if hash(k, 1, s) > 0.8 {
-            continue;
-        }
-        let size = big * (0.6 + 0.8 * hash(k, 2, s));
-        let cx = (k as f32 + 0.2 + 0.6 * hash(k, 3, s)) * every;
-        let bottom = hf * (0.98 - 0.08 * hash(k, 4, s));
-        let wide = size * (70.0 + 60.0 * hash(k, 5, s));
-        let n = 5 + (hash(k, 6, s) * 6.0) as i64;
-        for j in 0..n {
-            let u = (j as f32 + 0.5) / n as f32;
-            let r = size * (16.0 + 10.0 * hash(k * 37 + j, 7, s));
-            blobs.push((cx + (u - 0.5) * wide, bottom - r * 0.45 + (hash(k * 41 + j, 12, s) - 0.5) * r * 0.3, r, (k * 37 + j) as u64, bottom));
-        }
-        // The heap: rows narrowing upward.
-        for row in 1..=2 {
-            let m = (n - row * 2).max(1);
-            for j in 0..m {
-                let u = (j as f32 + 0.5) / m as f32;
-                let q = k * 101 + row * 13 + j;
-                let r = size * (14.0 + 12.0 * hash(q, 8, s)) * (1.0 - 0.12 * row as f32);
-                let x = cx + (u - 0.5) * wide * (1.0 - 0.28 * row as f32) + (hash(q, 9, s) - 0.5) * 12.0 * size;
-                blobs.push((x, bottom - r * 0.6 - row as f32 * size * 13.0 * (0.8 + 0.3 * hash(q, 10, s)), r, q as u64, bottom));
-            }
-        }
-    }
+    let blobs = heaps(s, every, big, hf, xs, xe);
     let mut out = vec![0u8; w * h * 4];
     for xi in 0..w {
         let xa = x0 + xi as i64;
@@ -197,6 +168,121 @@ pub fn cloud_tile(look: &Look, x0: i64, w: usize, h: usize, detail: f32, seed: u
         }
     }
     out
+}
+
+/// Clouds, strip columns `x0 .. x0 + w`, `h` rows, as texels for the light
+/// to colour (`cloud.wgsl`; `cloud_shade` here): the puff's face (its
+/// normal's x and y; z toward the viewer follows), how deep into the heap
+/// (0 its top .. 1 its flat bottom; 6 bits) and whether it's on the heap's
+/// outline (a bit), how solid (alpha: the bottom thins into the air).
+pub fn cloud_data(look: &Look, x0: i64, w: usize, h: usize, detail: f32, seed: u64) -> Vec<u8> {
+    let s = seed ^ 0xc10d5;
+    let (many, big, _, _) = look.clouds;
+    let every = 150.0 / many.max(0.05);
+    let hf = h as f32 / detail;
+    let (xs, xe) = (x0 as f32 / detail, (x0 + w as i64) as f32 / detail);
+    let blobs = heaps(s, every, big, hf, xs, xe);
+    let mut out = vec![0u8; w * h * 4];
+    let inside = |b: &(f32, f32, f32, u64, f32), xf: f32, yf: f32| {
+        let (dx, dy) = (xf - b.0, yf - b.1);
+        if yf > b.4 {
+            return false;
+        }
+        let a = dy.atan2(dx);
+        let r = b.2 * (1.0 + 0.1 * (noise1(a * 2.5 + b.3 as f32, s ^ 4) - 0.5));
+        dx * dx + dy * dy < r * r
+    };
+    for xi in 0..w {
+        let xa = x0 + xi as i64;
+        let xf = (xa as f32 + 0.5) / detail;
+        let col: Vec<&(f32, f32, f32, u64, f32)> = blobs.iter().filter(|b| (xf - b.0).abs() < b.2 * 1.15 + 2.0).collect();
+        if col.is_empty() {
+            continue;
+        }
+        for y in 0..h {
+            let yf = (y as f32 + 0.5) / detail;
+            let Some(b) = col.iter().filter(|b| inside(b, xf, yf)).max_by(|a, b| a.1.total_cmp(&b.1)) else { continue };
+            let top = col.iter().filter(|c| c.4 == b.4).map(|c| c.1 - (c.2 * c.2 - (xf - c.0).powi(2)).max(0.0).sqrt()).fold(f32::MAX, f32::min);
+            let depth = smoothstep(0.0, (b.4 - top).max(8.0) * 0.9, yf - top);
+            // The puff's face: a sphere's (y up), flattened a little so a
+            // heap reads as one mass.
+            let (dx, dy) = ((xf - b.0) / b.2, (yf - b.1) / b.2);
+            let (nx, ny) = (dx * 0.85, -dy * 0.85);
+            // On the heap's outline: a step out is in no puff.
+            let e = 1.6 / detail;
+            let edge = [(e, 0.0), (-e, 0.0), (0.0, -e)].iter().any(|&(ox, oy)| !col.iter().any(|c| inside(c, xf + ox, yf + oy)));
+            let a = smoothstep(b.4, b.4 - 10.0, yf);
+            let i = (y * w + xi) * 4;
+            let enc = |v: f32| ((v.clamp(-1.0, 1.0) * 0.5 + 0.5) * 255.0).round() as u8;
+            out[i] = enc(nx);
+            out[i + 1] = enc(ny);
+            out[i + 2] = (depth.clamp(0.0, 1.0) * 63.0).round() as u8 | (edge as u8) << 6;
+            out[i + 3] = (a * 255.0) as u8;
+        }
+    }
+    out
+}
+
+/// The heaps' blobs (x, y, r, seed, the heap's bottom) for columns `xs ..
+/// xe` (units): a broad bottom row, smaller ones stacked on top towards
+/// the middle.
+fn heaps(s: u64, every: f32, big: f32, hf: f32, xs: f32, xe: f32) -> Vec<(f32, f32, f32, u64, f32)> {
+    let reach = 140.0 * big;
+    let mut blobs: Vec<(f32, f32, f32, u64, f32)> = Vec::new();
+    for k in ((xs - reach) / every).floor() as i64..=((xe + reach) / every).floor() as i64 {
+        if hash(k, 1, s) > 0.8 {
+            continue;
+        }
+        let size = big * (0.6 + 0.8 * hash(k, 2, s));
+        let cx = (k as f32 + 0.2 + 0.6 * hash(k, 3, s)) * every;
+        let bottom = hf * (0.98 - 0.08 * hash(k, 4, s));
+        let wide = size * (70.0 + 60.0 * hash(k, 5, s));
+        let n = 5 + (hash(k, 6, s) * 6.0) as i64;
+        for j in 0..n {
+            let u = (j as f32 + 0.5) / n as f32;
+            let r = size * (16.0 + 10.0 * hash(k * 37 + j, 7, s));
+            blobs.push((cx + (u - 0.5) * wide, bottom - r * 0.45 + (hash(k * 41 + j, 12, s) - 0.5) * r * 0.3, r, (k * 37 + j) as u64, bottom));
+        }
+        for row in 1..=2 {
+            let m = (n - row * 2).max(1);
+            for j in 0..m {
+                let u = (j as f32 + 0.5) / m as f32;
+                let q = k * 101 + row * 13 + j;
+                let r = size * (14.0 + 12.0 * hash(q, 8, s)) * (1.0 - 0.12 * row as f32);
+                let x = cx + (u - 0.5) * wide * (1.0 - 0.28 * row as f32) + (hash(q, 9, s) - 0.5) * 12.0 * size;
+                blobs.push((x, bottom - r * 0.6 - row as f32 * size * 13.0 * (0.8 + 0.3 * hash(q, 10, s)), r, q as u64, bottom));
+            }
+        }
+    }
+    blobs
+}
+
+/// A cloud texel's colour in `light`, RGBA: as `cloud.wgsl` does it.
+pub fn cloud_shade(px: &[u8], look: &Look, light: &Light, dither: f32) -> Option<[f32; 4]> {
+    let golden = light.golden;
+    if px[3] == 0 {
+        return None;
+    }
+    let f = |v: u8| v as f32 / 255.0 * 2.0 - 1.0;
+    let (nx, ny) = (f(px[0]), f(px[1]));
+    let n = [nx, ny, -(1.0 - nx * nx - ny * ny).max(0.0).sqrt()];
+    let depth = (px[2] & 63) as f32 / 63.0;
+    let edge = px[2] & 64 != 0;
+    let (_, _, lit, shade) = look.clouds;
+    let facing = (n[0] * light.to[0] + n[1] * light.to[1] + n[2] * light.to[2]).max(0.0);
+    let lam = ((facing * 4.0 + 0.25 + 0.5 * dither).floor() / 4.0).min(1.0);
+    // Lit puffs the sun's colour on white; the shade the sky's; deeper in
+    // the heap darker, unless the sun's low: then its underside glows.
+    let lit_c = [0, 1, 2].map(|k| lit[k] * (light.ambient[k] * 0.5 + light.color[k] * 0.75));
+    let shade_c = [0, 1, 2].map(|k| shade[k] * light.ambient[k] * 1.1);
+    let mut c = mix(shade_c, lit_c, lam);
+    c = c.map(|v| v * (1.0 - 0.3 * depth * (1.0 - golden)));
+    c = mix(c, [1.0, 0.6, 0.45].map(|v| v * light.color[0]), golden * depth * 0.45);
+    if edge && facing > 0.2 {
+        c = [0, 1, 2].map(|k| c[k] * 0.5 + light.color[k] * 0.62 + 0.12);
+    }
+    let c = mix(c, light.haze, 0.12);
+    Some([c[0], c[1], c[2], px[3] as f32 / 255.0])
 }
 
 /// One pixel, flat shapes in fine steps, lightly dithered (by its
@@ -350,8 +436,21 @@ pub fn still_lit(look: &Look, x: i64, w: usize, h: usize, seed: u64, light: Opti
         let oy = (foot - look.layers[k].base * lh as f32) as i64;
         over(&mut out, &layer_lit(look, k, x, w, lh, 1.0, seed, light), oy, lh);
         if k == 0 {
+            // The clouds, lit as the game lights them (`cloud_shade`).
             let ch = (h as f32 * 0.6) as usize;
-            over(&mut out, &cloud_tile(look, x, w, ch, 1.0, seed), (ground - h as f32 * 0.12) as i64 - ch as i64, ch);
+            let data = cloud_data(look, x, w, ch, 1.0, seed);
+            let mut lit = vec![0u8; data.len()];
+            for (i, p) in data.chunks(4).enumerate() {
+                if let Some(c) = cloud_shade(p, look, light, bayer(i % w, i / w)) {
+                    let q = i * 4;
+                    let (bg, a) = (look.sky.1, c[3]);
+                    for k in 0..3 {
+                        lit[q + k] = ((c[k] * a + bg[k] * (1.0 - a)).clamp(0.0, 1.0) * 255.0) as u8;
+                    }
+                    lit[q + 3] = if a > 0.05 { 255 } else { 0 };
+                }
+            }
+            over(&mut out, &lit, (ground - h as f32 * 0.12) as i64 - ch as i64, ch);
         }
     }
     for xi in 0..w {
@@ -398,11 +497,13 @@ mod tests {
                 }
             }
         }
-        let whole = cloud_tile(look, 0, 2 * w, h, 1.5, 3);
-        let right = cloud_tile(look, w as i64, w, h, 1.5, 3);
-        for y in 0..h {
-            for x in 0..w {
-                assert_eq!(&whole[(y * 2 * w + w + x) * 4..][..4], &right[(y * w + x) * 4..][..4], "clouds: ({x}, {y})");
+        for (name, f) in [("clouds", cloud_tile as fn(&Look, i64, usize, usize, f32, u64) -> Vec<u8>), ("cloud data", cloud_data)] {
+            let whole = f(look, 0, 2 * w, h, 1.5, 3);
+            let right = f(look, w as i64, w, h, 1.5, 3);
+            for y in 0..h {
+                for x in 0..w {
+                    assert_eq!(&whole[(y * 2 * w + w + x) * 4..][..4], &right[(y * w + x) * 4..][..4], "{name}: ({x}, {y})");
+                }
             }
         }
     }

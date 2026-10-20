@@ -21,6 +21,10 @@ struct Range {
     snow: vec4<f32>,
     // rgb scrub; w the tile's first column, mod 4 (the dither's phase).
     scrub: vec4<f32>,
+    // rgb the sun's (or moon's) glow; w its strength.
+    glow: vec4<f32>,
+    // xy the disc's world position; z how far its glow reaches.
+    sun: vec4<f32>,
 };
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> r: Range;
@@ -79,5 +83,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let foot = r.rock.w * h;
     let mist = smoothstep(foot - h * 0.15, foot + h * 0.1, f32(tc.y));
     c = mix(c, r.haze.rgb, r.ambient.w + (1.0 - r.ambient.w) * r.haze.w * mist * 0.7);
+    // Near the sun, its glow over the ranges (in steps, as the sky's).
+    let far = length(in.world_position.xy - r.sun.xy) / max(r.sun.z, 1.0);
+    let g = exp(-far * far * 2.0) * r.glow.w * 0.35;
+    c = mix(c, r.glow.rgb, floor(g * 6.0 + 0.25 + 0.5 * d) / 6.0);
     return vec4<f32>(to_linear(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0))), r.color.w);
 }

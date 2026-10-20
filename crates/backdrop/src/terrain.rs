@@ -184,6 +184,9 @@ pub struct Light {
     pub rim: f32,
     /// What distance fades into: the sky's colour.
     pub haze: Rgb,
+    /// How low and golden the sun is (`golden_night`): clouds' undersides
+    /// glow.
+    pub golden: f32,
 }
 
 /// What a layer is made of, and how it fades.
@@ -250,15 +253,54 @@ pub fn hour(time: f32, haze: Rgb) -> Light {
     let golden = (1.0 - ((sun - 0.02).abs() / 0.3).min(1.0)).powi(2);
     let night = smoothstep(0.05, -0.25, sun);
     let d = sun_dir(time);
-    let ambient = mix(mix([0.58, 0.62, 0.74], [0.5, 0.44, 0.74], golden), [0.42, 0.48, 0.76], night);
-    let color = mix(mix([0.72, 0.72, 0.72], [1.08, 0.86, 0.76], golden), [0.82, 0.92, 1.15], night);
+    let ambient = mix(mix([0.44, 0.48, 0.62], [0.5, 0.44, 0.74], golden), [0.42, 0.48, 0.76], night);
+    let color = mix(mix([0.86, 0.86, 0.84], [1.08, 0.86, 0.76], golden), [0.82, 0.92, 1.15], night);
     let rim = 0.35 + 0.65 * golden.max(night * 0.6);
-    Light { to: normalize([-d[0], (-d[1]).max(0.12), -0.45]), color, ambient, rim, haze }
+    // (From the left a little always, as a painter would, the more the
+    // higher it is: overhead at noon every face got the same.)
+    let day = 1.0 - golden.max(night);
+    // (And less from your side by day: lit from where you stand, every face
+    // turned to you got the same.)
+    Light { to: normalize([-d[0] - 0.3 - 0.6 * day, (-d[1]).max(0.12), -0.45 + 0.3 * day]), color, ambient, rim, haze, golden }
+}
+
+/// How golden the hour is (0 noon or night .. 1 the sun on the horizon)
+/// and how far into night (0 by day .. 1).
+pub fn golden_night(time: f32) -> (f32, f32) {
+    let sun = -(time * std::f32::consts::TAU).cos();
+    ((1.0 - ((sun - 0.02).abs() / 0.3).min(1.0)).powi(2), smoothstep(0.05, -0.25, sun))
+}
+
+/// The sky's colours at an hour, from its colour at the horizon (`base`:
+/// the game's sky colour by the hour): overhead, at the horizon, the glow
+/// round the sun or moon (and how strong), the far horizon's (the belt
+/// opposite the sun near dawn and dusk), the sun side's.
+#[derive(Clone, Copy, Debug)]
+pub struct SkyLight {
+    pub zenith: Rgb,
+    pub horizon: Rgb,
+    pub glow: Rgb,
+    pub glow_strength: f32,
+    pub belt: Rgb,
+    pub warm: Rgb,
+    pub golden: f32,
+}
+
+pub fn sky(time: f32, base: Rgb) -> SkyLight {
+    let (golden, night) = golden_night(time);
+    let horizon = base.map(|v| (v * 1.12).min(1.0));
+    let zenith = [base[0] * 0.6, base[1] * 0.64, base[2] * 0.82];
+    // (The sun's glow white by day, warm low; the moon's cold and faint.)
+    let glow = mix(mix([1.0, 0.97, 0.88], [1.0, 0.7, 0.45], golden), [0.62, 0.7, 0.95], night);
+    let glow_strength = 0.24 + 0.54 * golden - 0.1 * night;
+    let belt = [0.62, 0.48, 0.72];
+    let warm = [1.0, 0.62, 0.42];
+    SkyLight { zenith, horizon, glow, glow_strength, belt, warm, golden }
 }
 
 /// The noon light (stills, the old tiles' look).
 pub fn noon(haze: Rgb) -> Light {
-    Light { to: normalize([-0.35, 0.85, -0.4]), color: [0.72, 0.72, 0.72], ambient: [0.58, 0.62, 0.74], rim: 0.35, haze }
+    Light { to: normalize([-0.35, 0.85, -0.4]), color: [0.72, 0.72, 0.72], ambient: [0.58, 0.62, 0.74], rim: 0.35, haze, golden: 0.0 }
 }
 
 pub fn normalize(v: [f32; 3]) -> [f32; 3] {
