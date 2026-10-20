@@ -313,7 +313,7 @@ impl Backdrops {
             // hardly moves as you climb.
             Part::Land => {
                 let (_, py, feet) = layer_at(key.k, self.looks[key.v].layers.len());
-                let foot = ground + feet + (cam.y - ground) * (1.0 - py);
+                let foot = ground + feet - self.looks[key.v].layers[key.k].drop + (cam.y - ground) * (1.0 - py);
                 foot + self.looks[key.v].layers[key.k].base * h - h / 2.0
             }
             Part::Clouds => ground + self.looks[key.v].clouds.foot + (cam.y - ground) * (1.0 - CLOUD_PARALLAX_Y) + h / 2.0,
@@ -547,7 +547,7 @@ fn place(
                     ambient: v4(light.ambient, a.haze),
                     haze: v4(light.haze, a.mist),
                     rock: v4(a.rock, look.layers[key.k].base),
-                    snow: v4(a.snow, 0.0),
+                    snow: v4(a.snow, a.dither),
                     scrub: v4(a.scrub, (key.tx * TILE as i64).rem_euclid(4) as f32),
                     // (Over the ranges mostly when it's low and golden; at
                     // noon it bleached them.)

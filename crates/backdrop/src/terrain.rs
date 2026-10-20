@@ -452,11 +452,13 @@ pub fn strip(shape: &Shape, x0: i64, w: usize, h: usize, foot: f32, detail: f32)
                 let mut put = None;
                 for (dx, dy, what) in [(0, 0, STEM), (0, 1, STEM), (-1, 2, CAP), (0, 2, CAP_LIT), (1, 2, CAP)] {
                     let (ax, ay) = (xa - dx, yy + dy);
-                    if hash(ax, ay, s) < 0.0011 * shape.decor {
+                    if hash(ax, ay, s) < 0.0004 * shape.decor {
                         put = Some(what);
                     }
                 }
-                if put.is_none() && hash(xa, yy, shape.seed ^ 0xf10) < 0.006 * shape.decor {
+                // (Flowers in drifts, none between.)
+                let drift = smoothstep(0.55, 0.85, noise2(xa as f32 / 40.0, yy as f32 / 10.0, shape.seed ^ 0xf12));
+                if put.is_none() && hash(xa, yy, shape.seed ^ 0xf10) < 0.008 * shape.decor * drift {
                     put = Some(if hash(xa, yy, shape.seed ^ 0xf11) < 0.7 { FLOWER } else { BLOSSOM });
                 }
                 if let Some(what) = put {
@@ -495,13 +497,16 @@ pub struct Albedo {
     /// Its share of the sky's haze, and the mist at its feet.
     pub haze: f32,
     pub mist: f32,
+    /// How wide the dither where one tone meets the next (0..1): narrow on
+    /// smooth hills, whose gentle faces spread it wide.
+    pub dither: f32,
 }
 
 /// The light on a face, stepped (a few flat tones, dithered only where
 /// one meets the next: `dither` 0..1, the texel's ordered threshold).
-pub fn lambert(t: &Texel, l: &Light, dither: f32) -> f32 {
+pub fn lambert(t: &Texel, l: &Light, dither: f32, width: f32) -> f32 {
     let lam = (t.n[0] * l.to[0] + t.n[1] * l.to[1] + t.n[2] * l.to[2]).max(0.0);
-    ((lam * 5.0 + 0.25 + 0.5 * dither).floor() / 5.0).min(1.0)
+    ((lam * 5.0 + 0.5 + 0.5 * width * (dither - 0.5)).floor() / 5.0).min(1.0)
 }
 
 /// A texel's colour in this light (`mist`: how far into its feet' mist,
@@ -517,7 +522,7 @@ pub fn shade(t: &Texel, a: &Albedo, l: &Light, dither: f32, mist: f32) -> Rgb {
         let lit = [0, 1, 2].map(|k| c[k] * (l.ambient[k] * 0.7 + l.color[k] * 0.55));
         return mix(lit, l.haze, a.haze);
     }
-    let lam = lambert(t, l, dither);
+    let lam = lambert(t, l, dither, a.dither);
     let albedo = match t.mat {
         SNOW => a.snow,
         SCRUB => a.scrub,

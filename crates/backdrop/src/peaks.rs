@@ -33,6 +33,10 @@ pub struct Layer {
     pub crowns: f32,
     #[serde(default)]
     pub decor: f32,
+    /// How far its feet sit below where the stack puts them (cells): a
+    /// low layer, showing more of what's behind.
+    #[serde(default)]
+    pub drop: f32,
     pub haze: f32,
     pub mist: f32,
 }
@@ -132,7 +136,7 @@ pub fn shape(look: &Look, k: usize, hf: f32, seed: u64) -> Shape {
 /// What layer `k` is made of: its ground, its snow, its growth; its haze.
 pub fn albedo(look: &Look, k: usize) -> Albedo {
     let l = &look.layers[k];
-    Albedo { rock: l.ground, snow: l.snow, scrub: l.growth, haze: l.haze, mist: l.mist }
+    Albedo { rock: l.ground, snow: l.snow, scrub: l.growth, haze: l.haze, mist: l.mist, dither: 0.25 + 0.75 * l.rough.clamp(0.0, 1.0) }
 }
 
 /// How far into its feet' mist a row is (`y` rows from the strip's top).
@@ -410,7 +414,7 @@ pub fn still_lit(look: &Look, x: i64, w: usize, h: usize, seed: u64, light: Opti
     for k in 0..n {
         // (Feet from a little above the ground, far, down to it, near, as
         // the game stacks them.)
-        let foot = ground - (n - 1 - k) as f32 * 12.0;
+        let foot = ground - (n - 1 - k) as f32 * 12.0 + look.layers[k].drop;
         let oy = (foot - look.layers[k].base * lh as f32) as i64;
         over(&mut out, &layer_lit(look, k, x, w, lh, 1.0, seed, light), oy, lh);
         if k == 0 {
