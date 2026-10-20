@@ -76,13 +76,18 @@ pub enum Art {
     /// A round window (a rose): rings and spokes of lead about the middle
     /// of every `span` blocks, each piece a colour as `Mosaic`'s.
     Rose { span: i32, hues: i32 },
+    /// A door, a block of it (its top, middle or bottom by what's above and
+    /// below): two boards, iron bands at its top and bottom, a ring on its
+    /// middle. Its `colors` exact: outline, gap, five woods dark to light,
+    /// three irons, two brasses.
+    Door,
 }
 
 impl Art {
     /// Drawn in exact colours off its `colors` (glass: no bevel, no seam,
     /// nothing shading it but its lead).
     fn indexed(&self) -> bool {
-        matches!(self, Art::Mosaic { .. } | Art::Rose { .. })
+        matches!(self, Art::Mosaic { .. } | Art::Rose { .. } | Art::Door)
     }
 }
 
@@ -482,6 +487,27 @@ fn art(tile: &Tile, x: i32, y: i32, a: Around) -> f32 {
             t
         }
         Art::Plain => 0.5 + roll(&[(x / 2) as i64, (y / 2) as i64, 62]) * 0.25 + jitter,
+        Art::Door => {
+            let b = BLOCK;
+            let (cx, cy) = (x.rem_euclid(b), y.rem_euclid(b));
+            // Which part of the door: what's above it and below it isn't
+            // door.
+            let top = a.n || a.other[0];
+            let bottom = a.s || a.other[1];
+            if (top && cy == b - 2) || (bottom && cy == 1) {
+                return index(if cx == 0 || cx == b - 1 { 7 } else if cy == b - 2 { 9 } else { 8 });
+            }
+            if !top && !bottom && (5..=6).contains(&cx) && (3..=4).contains(&cy) {
+                return index(if cy == 4 && cx == 5 { 11 } else { 10 });
+            }
+            if cx == 4 {
+                return index(1);
+            }
+            let board = (cx >= 4) as i64;
+            let tone = 3 + (roll(&[x.div_euclid(b) as i64, board, 66]) * 2.0) as i32;
+            let grain = ((y as f32 * 0.7 + cx as f32 * 1.3).sin() > 0.6) as i32;
+            index(tone + if cx == 1 || cx == 5 { 1 } else { 0 } - grain)
+        }
         Art::Leaded { size } => {
             let (u, v) = ((x + y).rem_euclid(size), (x - y).rem_euclid(size));
             if u == 0 || v == 0 {

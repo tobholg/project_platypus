@@ -298,6 +298,13 @@
         // Walls (behind you): no outline, square, only darkened where open.
         (name: "stone_wall", kind: Static, wall: true, density: 2400, hardness: 60, crumbles_into: "gravel",
             colors: [(14, 14, 20), (30, 30, 38), (50, 50, 60), (70, 70, 82), (88, 88, 100), (108, 108, 120)], tile: (art: Bricks(course: 4, length: (6, 10)), round: 0, outline: false)),
+        // A door: shut, it's solid (right-click opens it); open, only its
+        // edge along its hinge (`door_open`: a body passes). Its `colors`
+        // exact (look Door): outline, gap, woods, irons, brasses.
+        (name: "door", loot: Wood, kind: Static, density: 650, hardness: 22, flammability: 7, ignites_at: 270, conductivity: 12, burn_time: 180, spread: 3, fizzles: 30, burns_into: "charcoal", burns_into_chance: 64, chars_into: "charcoal",
+            colors: [(24, 14, 8), (40, 24, 14), (70, 44, 24), (96, 62, 34), (120, 80, 44), (146, 100, 56), (172, 122, 70), (50, 50, 58), (90, 90, 100), (140, 140, 150), (200, 160, 60), (240, 210, 110), (240, 210, 110), (240, 210, 110), (240, 210, 110), (240, 210, 110)], tile: (art: Door, round: 0)),
+        (name: "door_open", kind: Plant, still: true, density: 300, hardness: 22, flammability: 7, ignites_at: 270, burn_time: 120, opacity: 200,
+            colors: [(40, 24, 14), (70, 44, 24), (96, 62, 34), (120, 80, 44)]),
         // Windows (walls behind you that daylight comes in through, in
         // their colours): clear glass in lead, stained glass in diamond
         // panes, a rose of rings and spokes. A stained window's `colors`

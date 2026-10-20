@@ -132,7 +132,31 @@ fn image(data: Vec<u8>) -> Image {
     )
 }
 
+/// A station's picture as an icon: shrunk (every other cell, or every
+/// third) to fit, centred.
+fn station_icon(st: &crate::craft::StationDef) -> Vec<u8> {
+    let (w, h) = st.size();
+    let k = ((w.max(h) as f32 / ICON as f32).ceil() as i32).max(1);
+    let (sw, sh) = ((w + k - 1) / k, (h + k - 1) / k);
+    let (ox, oy) = ((ICON as i32 - sw) / 2, (ICON as i32 - sh) / 2);
+    let rows: Vec<Vec<char>> = st.art.iter().map(|r| r.chars().collect()).collect();
+    let mut data = vec![0u8; ICON * ICON * 4];
+    for y in 0..sh {
+        for x in 0..sw {
+            let c = rows.get((y * k) as usize).and_then(|r| r.get((x * k) as usize)).copied().unwrap_or('.');
+            let Some(&(r, g, b)) = st.palette.get(&c) else { continue };
+            let (px, py) = (ox + x, oy + y);
+            if (0..ICON as i32).contains(&px) && (0..ICON as i32).contains(&py) {
+                let i = (py as usize * ICON + px as usize) * 4;
+                data[i..i + 4].copy_from_slice(&[r, g, b, 255]);
+            }
+        }
+    }
+    data
+}
+
 fn build(file: &IconsFile, items: &Items, mats: &MaterialTable, mannequin: Option<&platypus_art::ArtFile>, images: &mut Assets<Image>) -> Vec<Option<Handle<Image>>> {
+    let stations: Vec<crate::craft::StationDef> = load_ron::<crate::craft::CraftingFile>(&data_path("crafting.ron")).map(|f| f.stations).unwrap_or_default();
     (0..items.len())
         .map(|i| {
             let id = ItemId(i as u16);
@@ -151,6 +175,14 @@ fn build(file: &IconsFile, items: &Items, mats: &MaterialTable, mannequin: Optio
                 && let Some(p) = crate::gear::look::icon(m, look)
             {
                 return Some(images.add(image(fit(&p))));
+            }
+            // Furniture (a station) with no icon of its own: its picture,
+            // shrunk to fit.
+            if !file.icons.contains_key(&def.id)
+                && let Use::Station(kind) = &def.use_
+                && let Some(st) = stations.iter().find(|s| &s.id == kind)
+            {
+                return Some(images.add(image(station_icon(st))));
             }
             let icon = file.icons.get(&def.id)?;
             match draw(file, &def.id, icon) {

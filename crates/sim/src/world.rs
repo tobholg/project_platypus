@@ -570,6 +570,7 @@ impl World {
             }
             WorldEdit::PlaceBlock { block, material, back, most } => self.place_block(block, material, back, most, &mut report),
             WorldEdit::ShapeBlock { block, back } => self.shape_block(block, back),
+            WorldEdit::ToggleDoor { cell } => self.toggle_door(cell),
             WorldEdit::Stamp { corner, w, h, material } => {
                 let mats = self.materials.clone();
                 for dy in 0..h {
@@ -894,6 +895,57 @@ impl World {
             let p = CellPos::new(x0 + cx, y0 + cy);
             (if back { self.get_bg(p) } else { self.get(p) }).is_some_and(|c| c.material == material)
         })
+    }
+
+    /// A door's blocks (its column, the cell's block and those of door
+    /// above and below), and whether it's shut now.
+    pub fn door_at(&self, cell: CellPos) -> Option<(Vec<CellPos>, bool)> {
+        let mats = &self.materials;
+        let (shut, open) = (mats.id("door")?, mats.id("door_open")?);
+        let of = |b: CellPos| block_cells(b).filter_map(|p| self.get(p)).fold((0, 0), |(s, o), c| (s + (c.material == shut) as i32, o + (c.material == open) as i32));
+        let here = crate::edit::block_of(cell);
+        let (s, o) = of(here);
+        if s + o == 0 {
+            return None;
+        }
+        let mut blocks = vec![here];
+        for dir in [1, -1] {
+            let mut b = here.offset(0, dir);
+            while blocks.len() < 8 && { let (s, o) = of(b); s + o > 0 } {
+                blocks.push(b);
+                b = b.offset(0, dir);
+            }
+        }
+        blocks.sort_by_key(|b| b.y);
+        let closed = blocks.iter().any(|&b| of(b).0 > 0);
+        Some((blocks, closed))
+    }
+
+    /// Open a shut door (its hinge's edge stays, the rest cleared), or shut
+    /// an open one.
+    fn toggle_door(&mut self, cell: CellPos) {
+        let mats = self.materials.clone();
+        let (Some(shut), Some(open)) = (mats.id("door"), mats.id("door_open")) else { return };
+        let Some((blocks, closed)) = self.door_at(cell) else { return };
+        let mut rng = self.rng_for(0xD008, cell);
+        for &b in &blocks {
+            for p in block_cells(b) {
+                let Some(c) = self.get(p) else { continue };
+                let hinge = p.x.rem_euclid(BLOCK) < 2;
+                if closed {
+                    if c.material == shut {
+                        self.set(p, if hinge { mats.spawn(open, &mut rng) } else { Cell::AIR });
+                    }
+                } else if c.material == open || Self::room(&mats, c) {
+                    self.set(p, mats.spawn(shut, &mut rng));
+                }
+            }
+        }
+        if !closed {
+            for &b in &blocks {
+                self.stamp_block(b, false);
+            }
+        }
     }
 
     /// A hammer's blow: the block its next shape (`look::Shape`).

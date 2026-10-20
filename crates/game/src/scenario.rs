@@ -10686,6 +10686,7 @@ fn build_script(
     mut menu: ResMut<crate::devmenu::DevMenu>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
     them: Query<(Entity, &crate::creatures::Creature), Without<LocalPlayer>>,
+    crafting: Res<crate::craft::Crafting>,
     mut done: Local<u8>,
 ) {
     if s.name != "build" {
@@ -10693,6 +10694,47 @@ fn build_script(
     }
     menu.open = false;
     let t = s.elapsed;
+    let b = platypus_sim::BLOCK;
+    let fl = platypus_worldgen::arena::FLOOR;
+    let g = fl.div_euclid(b);
+    let x0 = 1000 / b;
+    let (l, r) = (x0, x0 + 18);
+    // Then the furniture, once the blocks are in (`PLATYPUS_BARE=1`: none).
+    if *done == 1 && t > 1.0 {
+        *done = 2;
+        if std::env::var("PLATYPUS_BARE").is_ok() {
+            return;
+        }
+        let at = |bx: i32, by: i32| Vec2::new((bx * b) as f32, (by * b) as f32);
+        let mut put = |id: &str, feet: Vec2| {
+            if let Some(kind) = crafting.station(id) {
+                crafting.spawn(&mut commands, kind, feet);
+            }
+        };
+        let floor1 = g + 1;
+        let floor2 = g + 6;
+        put("table", at(l + 6, floor1));
+        put("chair", at(l + 4, floor1) + Vec2::new(4.0, 0.0));
+        put("chair", at(l + 9, floor1) + Vec2::new(4.0, 0.0));
+        put("hearth", at(r - 3, floor1));
+        put("barrel", at(l + 2, floor1) + Vec2::new(2.0, 0.0));
+        put("crate", at(l + 13, floor1));
+        put("painting", at(l + 10, floor1 + 2) + Vec2::new(0.0, 2.0));
+        put("bookcase", at(l + 2, floor2) + Vec2::new(2.0, 0.0));
+        put("bed", at(r - 4, floor2));
+        put("potted_plant", at(l + 7, floor2));
+        put("banner_red", at(l + 9, floor2 + 1) + Vec2::new(4.0, 2.0));
+        put("banner_green", at(l + 11, floor2 + 1) + Vec2::new(4.0, 2.0));
+        put("wall_shelf", at(r - 9, floor2 + 2));
+        // Hung from the ceilings (their feet a chain's length under it).
+        let chandelier = crafting.station("chandelier").map_or(18, |k| crafting.stations[k].size().1);
+        let lantern = crafting.station("hanging_lantern").map_or(16, |k| crafting.stations[k].size().1);
+        put("chandelier", at(l + 9, g + 10) - Vec2::new(0.0, chandelier as f32));
+        put("hanging_lantern", at(l + 4, g + 5) - Vec2::new(0.0, lantern as f32));
+        put("hanging_lantern", at(r - 6, g + 5) - Vec2::new(0.0, lantern as f32));
+        put("hanging_lantern", at(l + 9, g + 15) - Vec2::new(0.0, lantern as f32));
+        return;
+    }
     if *done != 0 || t < 0.4 {
         return;
     }
@@ -10702,16 +10744,11 @@ fn build_script(
             commands.entity(e).despawn();
         }
     }
-    let b = platypus_sim::BLOCK;
-    let fl = platypus_worldgen::arena::FLOOR;
-    let g = fl.div_euclid(b);          // the first block row above the floor
-    let x0 = 1000 / b;
     let id = |n: &str| sim.materials().expect_id(n);
     let (cobble, brick, planks, timber, roof, stone_wall, plaster, wood_wall) =
         (id("cobblestone"), id("brick"), id("planks"), id("timber"), id("roof_tiles"), id("stone_wall"), id("plaster"), id("wood_wall"));
     let mut fg: Vec<(i32, i32, platypus_sim::MaterialId)> = Vec::new();
     let mut bg: Vec<(i32, i32, platypus_sim::MaterialId)> = Vec::new();
-    let (l, r) = (x0, x0 + 18);
     for x in l - 1..=r + 1 {
         fg.push((x, g, cobble));
     }
@@ -10724,6 +10761,13 @@ fn build_script(
         fg.push((r, y, brick));
         for x in l + 1..r {
             bg.push((x, y, stone_wall));
+        }
+    }
+    // A door in the doorway (`PLATYPUS_BARE=1`: a gap).
+    if std::env::var("PLATYPUS_BARE").is_err() {
+        let door = id("door");
+        for y in g + 1..g + 4 {
+            fg.push((l, y, door));
         }
     }
     for x in l - 1..=r + 1 {
@@ -10813,7 +10857,7 @@ fn build_script(
     }
     // A lamp a floor (and one in the roof): rooms are dark without light.
     // (`PLATYPUS_NOLAMPS=1`: none, to see the windows' light alone.)
-    let lamps = if std::env::var("PLATYPUS_NOLAMPS").is_ok() { vec![] } else { vec![(l + 6, g + 4), (l + 12, g + 9), (l + 9, g + 13)] };
+    let lamps = if std::env::var("PLATYPUS_NOLAMPS").is_ok() || std::env::var("PLATYPUS_BARE").is_err() { vec![] } else { vec![(l + 6, g + 4), (l + 12, g + 9), (l + 9, g + 13)] };
     for (bx, by) in lamps {
         let at = Vec2::new(((bx * b) + b / 2) as f32, (by * b) as f32);
         commands.spawn((Transform::from_translation(at.extend(0.0)), GlobalTransform::default(), crate::light::LightSource { color: [1.0, 0.78, 0.5], flicker: 0.1 }));

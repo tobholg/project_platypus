@@ -38,6 +38,10 @@ pub enum WorldEdit {
     /// (whole, half, the four ramps: `look::Shape`), what it leaves out
     /// taken away, what it takes in filled.
     ShapeBlock { block: CellPos, back: bool },
+    /// A door opened or shut (the column of door blocks the cell is in):
+    /// shut, its cells `door`; open, `door_open` along its hinge, the rest
+    /// cleared (a body passes).
+    ToggleDoor { cell: CellPos },
     /// Fill the empty cells (as `PlaceBlock`) of a `w` × `h` box with a material, shaded by its pattern
     /// anchored at the box's corner (furniture: a chest's picture sits on it
     /// wherever it stands). `EditReport::placed` says how many cells.

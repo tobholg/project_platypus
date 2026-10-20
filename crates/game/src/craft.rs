@@ -46,6 +46,26 @@ pub struct StationDef {
     /// A glow (a furnace's).
     #[serde(default)]
     pub light: Option<[f32; 3]>,
+    /// How much its glow flickers (a fire's a lot; a lamp's a little).
+    #[serde(default = "flicker")]
+    pub flicker: f32,
+    /// Where it goes: standing on the ground (it falls, it's knocked
+    /// about), hung from a ceiling, or on the wall behind (neither falls).
+    #[serde(default)]
+    pub mount: Mount,
+}
+
+/// Where a station or a piece of furniture goes (`StationDef::mount`).
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+pub enum Mount {
+    #[default]
+    Floor,
+    Hang,
+    Wall,
+}
+
+fn flicker() -> f32 {
+    0.2
 }
 
 impl StationDef {
@@ -120,13 +140,49 @@ impl Crafting {
         let mut e = commands.spawn((
             Name::new(def.name.clone()),
             Station { kind, hp: TOUGHNESS },
-            Thrown { bounce: 0.0, slide: 0.75 },
             Kinematics { body: Body::new(centre, size), loco: Locomotion::default(), prev_pos: centre },
             Sprite::from_image(self.art[kind].clone()),
-            Transform::from_translation(centre.extend(Z)),
+            Transform::from_translation(centre.extend(if def.mount == Mount::Wall { Z - 0.4 } else { Z })),
         ));
+        // (Hung or on a wall: it stays where it's put.)
+        if def.mount == Mount::Floor {
+            e.insert(Thrown { bounce: 0.0, slide: 0.75 });
+        }
         if let Some(c) = def.light {
-            e.insert(crate::light::LightSource { color: c, flicker: 0.2 });
+            e.insert(crate::light::LightSource { color: c, flicker: def.flicker });
+        }
+    }
+
+    /// Where a station would go for the cursor (its feet), if it can: on
+    /// the ground under it, hung from the ceiling over it (empty below), or
+    /// on a wall behind it (a wall all the way behind, nothing in front).
+    pub fn place_spot(&self, world: &platypus_sim::World, cursor: Vec2, kind: usize) -> Option<Vec2> {
+        let def = &self.stations[kind];
+        let (w, h) = def.size();
+        let mats = world.materials();
+        let room = |c: platypus_sim::Cell| c.is_air() || matches!(mats.phys(c.material).kind, platypus_sim::Kind::Plant | platypus_sim::Kind::Gas | platypus_sim::Kind::Fire);
+        let solid = |p: platypus_sim::CellPos| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder));
+        let x0 = cursor.x.floor() as i32 - w / 2;
+        match def.mount {
+            Mount::Floor => crate::hands::chests::place_spot_sized(world, cursor, (w, h)),
+            Mount::Hang => {
+                // The ceiling over the cursor's column: the first solid going up.
+                let cx = cursor.x.floor() as i32;
+                let ceiling = (0..48).map(|d| cursor.y.floor() as i32 + d).find(|&y| solid(platypus_sim::CellPos::new(cx, y)))?;
+                let feet = ceiling - h;
+                let empty = (feet..ceiling).all(|y| (x0..x0 + w).all(|x| world.get(platypus_sim::CellPos::new(x, y)).is_some_and(room)));
+                empty.then_some(Vec2::new((x0 + w / 2) as f32, feet as f32))
+            }
+            Mount::Wall => {
+                let feet = cursor.y.floor() as i32 - h / 2;
+                let ok = (feet..feet + h).all(|y| {
+                    (x0..x0 + w).all(|x| {
+                        let p = platypus_sim::CellPos::new(x, y);
+                        world.get(p).is_some_and(room) && world.get_bg(p).is_some_and(|c| !c.is_air())
+                    })
+                });
+                ok.then_some(Vec2::new((x0 + w / 2) as f32, feet as f32))
+            }
         }
     }
 

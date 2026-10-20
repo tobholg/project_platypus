@@ -2711,3 +2711,28 @@ fn a_slosh_throws_the_surface_and_loses_nothing() {
     // (Deep under nothing: no surface near, nothing flies.)
     assert_eq!(w.slosh([32.5, 50.0], [0.0, 1.0], 10, 2.5, 0.5), 0);
 }
+
+/// A door, three blocks on a floor: opened, a body passes (only its edge
+/// along its hinge stays, passable); shut again, it's whole and solid.
+#[test]
+fn a_door_opens_and_shuts() {
+    use platypus_sim::BLOCK;
+    let mut w = boxed_world(1, 1, 64);
+    fill(&mut w, "stone", 1, 63, 1, 2 * BLOCK);
+    let (door, open) = (w.materials().expect_id("door"), w.materials().expect_id("door_open"));
+    for dy in 0..3 {
+        w.apply_edit(&WorldEdit::PlaceBlock { block: CellPos::new(4, 2 + dy), material: door, back: false, most: u32::MAX });
+    }
+    let mid = CellPos::new(4 * BLOCK + 4, 3 * BLOCK + 4);
+    let (blocks, shut) = w.door_at(mid).expect("a door there");
+    assert_eq!(blocks.len(), 3, "its three blocks");
+    assert!(shut);
+    w.apply_edit(&WorldEdit::ToggleDoor { cell: mid });
+    assert!(w.get(mid).unwrap().is_air(), "open: its middle is clear");
+    assert_eq!(w.get(CellPos::new(4 * BLOCK, 3 * BLOCK + 4)).unwrap().material, open, "its edge along the hinge stays");
+    assert!(!w.door_at(mid).unwrap().1, "it's open");
+    w.apply_edit(&WorldEdit::ToggleDoor { cell: CellPos::new(4 * BLOCK, 3 * BLOCK + 4) });
+    assert_eq!(w.get(mid).unwrap().material, door, "shut again");
+    let n = (2 * BLOCK..5 * BLOCK).flat_map(|y| (4 * BLOCK..5 * BLOCK).map(move |x| (x, y))).filter(|&(x, y)| w.get(CellPos::new(x, y)).unwrap().material == door).count();
+    assert_eq!(n as i32, 3 * BLOCK * BLOCK, "whole");
+}

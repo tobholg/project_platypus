@@ -138,7 +138,7 @@ impl Plugin for HandsPlugin {
             .init_resource::<HandInput>()
             .add_systems(Startup, build_items)
             .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor).after(bevy::ui::UiSystems::Focus))
-            .add_systems(Update, (toggle_dev, select, wield, give_start, outline.run_if(play), mark, icons::make_icons, icons::reload_icons, dress_bombs))
+            .add_systems(Update, (toggle_dev, select, wield, give_start, outline.run_if(play), mark, icons::make_icons, icons::reload_icons, dress_bombs, doors))
             .add_systems(FixedUpdate, use_hands.run_if(play).in_set(TickSet::Intent))
             .add_systems(FixedUpdate, collect.after(crate::props::fly).in_set(TickSet::Bodies))
             .add_plugins((ui::UiPlugin, chests::ChestsPlugin, corpses::CorpsesPlugin, filter::FilterPlugin));
@@ -777,11 +777,21 @@ fn use_hands(
         }
         Use::Station(ref id) if clicked => {
             let Some(kind) = crafting.station(id) else { return warn!("crafting.ron: no station `{id}`") };
-            let Some(feet) = chests::place_spot_sized(&sim.world, cursor, crafting.stations[kind].size()) else { return };
+            let Some(feet) = crafting.place_spot(&sim.world, cursor, kind) else { return };
             if feet.distance(from) > 6.0 * BLOCK as f32 {
                 return;
             }
             crafting.spawn(&mut commands, kind, feet);
+            inv.take(slot, 1);
+        }
+        Use::Door if clicked => {
+            let Some(bottom) = door_spot(&sim.world, from, cursor) else { return };
+            let Some(door) = sim.world.materials().id("door") else { return };
+            for dy in 0..DOOR_TALL {
+                sim.world.apply_edit(&WorldEdit::PlaceBlock { block: bottom.offset(0, dy), material: door, back: false, most: u32::MAX });
+            }
+            let at = Vec2::new((bottom.x as f32 + 0.5) * BLOCK as f32, (bottom.y as f32 + 1.5) * BLOCK as f32);
+            sounds.write(crate::sound::PlaySound::at("place", at));
             inv.take(slot, 1);
         }
         Use::Hammer { reach } if clicked => {
@@ -801,6 +811,58 @@ fn use_hands(
         }
         _ => {}
     }
+}
+
+/// A door's height, in blocks.
+const DOOR_TALL: i32 = 3;
+
+/// Where a door would go for the cursor: its bottom block, on something
+/// solid, the column of three above it free (the cursor's block or one of
+/// the two under it), within six blocks.
+fn door_spot(world: &World, from: Vec2, cursor: Vec2) -> Option<CellPos> {
+    let mats = world.materials();
+    let room = |b: CellPos| block_cells(b).all(|p| world.get(p).is_some_and(|c| c.is_air() || matches!(mats.phys(c.material).kind, Kind::Plant | Kind::Gas | Kind::Fire)));
+    let solid = |b: CellPos| block_cells(b).filter(|&p| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder))).count() as i32 * 2 >= BLOCK * BLOCK;
+    let at = CellPos::new((cursor.x / BLOCK as f32).floor() as i32, (cursor.y / BLOCK as f32).floor() as i32);
+    let centre = Vec2::new((at.x as f32 + 0.5) * BLOCK as f32, (at.y as f32 + 0.5) * BLOCK as f32);
+    if centre.distance(from) > 6.0 * BLOCK as f32 {
+        return None;
+    }
+    (0..DOOR_TALL).map(|d| at.offset(0, -d)).find(|&b| solid(b.offset(0, -1)) && (0..DOOR_TALL).all(|k| room(b.offset(0, k))))
+}
+
+/// Right-click a door within reach: open it, or shut it (not on someone
+/// standing in it).
+pub fn doors(
+    mouse: Res<ButtonInput<MouseButton>>,
+    cursor: Res<crate::camera::CursorWorld>,
+    over_ui: Res<crate::dev::PointerOverUi>,
+    mut sim: ResMut<SimWorld>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    bodies: Query<&Kinematics, With<Creature>>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+) {
+    if !mouse.just_pressed(MouseButton::Right) || over_ui.0 {
+        return;
+    }
+    let (Some(at), Ok(k)) = (cursor.0, player.single()) else { return };
+    if at.distance(k.body.pos) > 6.0 * BLOCK as f32 {
+        return;
+    }
+    let cell = CellPos::from_world(at.x, at.y);
+    let Some((blocks, shut)) = sim.world.door_at(cell) else { return };
+    let (lo, hi) = (blocks[0], blocks[blocks.len() - 1]);
+    let (min, max) = (Vec2::new((lo.x * BLOCK) as f32, (lo.y * BLOCK) as f32), Vec2::new(((hi.x + 1) * BLOCK) as f32, ((hi.y + 1) * BLOCK) as f32));
+    // (Not shut on anyone in the doorway.)
+    if !shut && bodies.iter().any(|b| {
+        let (bl, bh) = (b.body.pos - b.body.half, b.body.pos + b.body.half);
+        bl.x < max.x && bh.x > min.x && bl.y < max.y && bh.y > min.y
+    }) {
+        return;
+    }
+    sim.world.apply_edit(&WorldEdit::ToggleDoor { cell });
+    let mid = (min + max) / 2.0;
+    sounds.write(crate::sound::PlaySound::at("place", mid).pitch(if shut { 0.8 } else { 0.65 }));
 }
 
 /// What a hammer would shape: the block under the cursor, within `reach`
@@ -1068,7 +1130,7 @@ fn outline(
         Use::Station(id) => {
             if let Some(kind) = crafting.station(id) {
                 let (w, h) = crafting.stations[kind].size();
-                if let Some(feet) = chests::place_spot_sized(world, cursor, (w, h)) {
+                if let Some(feet) = crafting.place_spot(world, cursor, kind) {
                     let size = Vec2::new(w as f32, h as f32);
                     gizmos.rect_2d(bevy::math::Isometry2d::from_translation(feet + Vec2::new(0.0, size.y / 2.0)), size, Color::srgba(0.4, 0.9, 1.0, 0.9));
                 }
@@ -1089,6 +1151,14 @@ fn outline(
         }
         Use::Torch => (place_spot(world, from, cursor, &[], platypus_sim::MaterialId::AIR), Color::srgba(0.4, 0.9, 1.0, 0.9)),
         Use::Hammer { reach } => (hammer_at(world, from, cursor, *reach).map(|(b, _)| b), Color::srgba(1.0, 0.85, 0.3, 0.9)),
+        Use::Door => {
+            if let Some(b) = door_spot(world, from, cursor) {
+                let size = Vec2::new(BLOCK as f32, (BLOCK * DOOR_TALL) as f32);
+                let c = Vec2::new((b.x as f32 + 0.5) * BLOCK as f32, b.y as f32 * BLOCK as f32 + size.y / 2.0);
+                gizmos.rect_2d(bevy::math::Isometry2d::from_translation(c), size, Color::srgba(0.4, 0.9, 1.0, 0.9));
+            }
+            (None, Color::NONE)
+        }
         _ => (None, Color::NONE),
     };
     if let Some(b) = block {

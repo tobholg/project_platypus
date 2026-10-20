@@ -45,6 +45,9 @@ pub enum Use {
     /// Place a chest (the `chest` material's cells; the game keeps what's in
     /// it).
     Chest,
+    /// A door: three blocks of `door` set in a gap on a floor (right-click
+    /// one to open or shut it).
+    Door,
     /// Place a crafting station (`crafting.ron`, by id): furniture that
     /// recipes are made at.
     Station(String),
@@ -386,7 +389,7 @@ impl Items {
             Use::Melee(_) | Use::Bow(_) | Use::Throw(Throwable::Bomb) => Category::Weapons,
             Use::Focus { .. } => Category::Magic,
             Use::Potion { .. } => Category::Potions,
-            Use::Station(_) | Use::Chest => Category::Furniture,
+            Use::Station(_) | Use::Chest | Use::Door => Category::Furniture,
             Use::Torch | Use::Throw(Throwable::Glowstick) => Category::Lights,
             Use::Block(_) => match d.loot {
                 platypus_sim::Loot::Ore | platypus_sim::Loot::Gem => Category::Materials,
