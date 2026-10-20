@@ -76,6 +76,8 @@ pub struct LightGrid {
     /// in daylight too (light only darkens: a spire's colours on lit
     /// ground didn't show).
     pub caustic: Vec<Rgb>,
+    /// The share of it that's clear liquid (water): what mirrors the sky.
+    pub water: Vec<f32>,
 }
 
 impl LightGrid {
@@ -104,6 +106,7 @@ impl LightGrid {
             caustic: vec![[0.0; 3]; n],
             phosphor: vec![None; n],
             charge: vec![0.0; n],
+            water: vec![0.0; n],
         }
     }
 
@@ -206,6 +209,9 @@ impl LightGrid {
                                 }
                                 if let Some(opt) = optics[c.material.0 as usize] {
                                     slot.3.add(opt);
+                                    if ph.kind == Kind::Liquid {
+                                        slot.3.liquid += 1.0;
+                                    }
                                     // (A glint: a clear cell, a liquid only at its
                                     // surface; one at random, the highest roll.)
                                     let surface = ph.kind != Kind::Liquid || (ly + 1 < CHUNK && cells[((ly + 1) * CHUNK + lx) as usize].is_air());
@@ -285,6 +291,7 @@ impl LightGrid {
                         self.opacity[i] = op;
                         self.sky_opacity[i] = sky;
                         self.emit[i] = e.map(|v| v.min(1.5));
+                        self.water[i] = clear.liquid;
                         if clear.n > 0.0 {
                             self.ior[i] = clear.ior;
                             self.disperse[i] = clear.disperse;
@@ -847,6 +854,8 @@ enum Lit {
 #[derive(Clone, Copy, Default)]
 struct Clear {
     n: f32,
+    /// Of them, liquid (water: it mirrors the sky).
+    liquid: f32,
     ior: f32,
     disperse: f32,
     reflect: f32,
@@ -869,6 +878,7 @@ impl Clear {
             *self = Clear::default();
             return;
         }
+        self.liquid /= area;
         let k = 1.0 / self.n;
         self.ior *= k;
         self.disperse *= k;

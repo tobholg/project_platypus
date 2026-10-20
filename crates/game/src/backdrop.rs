@@ -38,10 +38,10 @@ pub struct BackdropPlugin;
 
 impl Plugin for BackdropPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((Material2dPlugin::<RangeMaterial>::default(), Material2dPlugin::<CloudMaterial>::default(), Material2dPlugin::<SkyMaterial>::default()))
+        app.add_plugins((Material2dPlugin::<RangeMaterial>::default(), Material2dPlugin::<CloudMaterial>::default(), Material2dPlugin::<SkyMaterial>::default(), Material2dPlugin::<ReflectMaterial>::default()))
             .insert_resource(Backdrops::new())
-            .add_systems(Startup, (sky_setup, gradient_setup, void_setup))
-            .add_systems(PostUpdate, (tiles, place, gradient, void, sky).chain().after(crate::camera::follow).before(bevy::transform::TransformSystems::Propagate));
+            .add_systems(Startup, (sky_setup, gradient_setup, void_setup, picture_setup))
+            .add_systems(PostUpdate, (tiles, place, gradient, void, sky, picture).chain().after(crate::camera::follow).before(bevy::transform::TransformSystems::Propagate));
     }
 }
 
@@ -83,6 +83,17 @@ const Z: f32 = -2.6;
 const Z_GRADIENT: f32 = -3.0;
 /// Over the light overlay (15), under the glow haze (15.5).
 const Z_SKY: f32 = 15.2;
+/// The backdrop's picture behind everything (under the void's dark); the
+/// water's reflection over the world's cells, under what's in the water.
+const Z_PICTURE: f32 = -3.2;
+const Z_REFLECT: f32 = 0.05;
+/// The render layer the backdrop's drawn on (by its own camera, into a
+/// picture: the view shows it; open water mirrors it).
+const BACKDROP_LAYER: usize = 29;
+
+fn backdrop_layer() -> bevy::camera::visibility::RenderLayers {
+    bevy::camera::visibility::RenderLayers::layer(BACKDROP_LAYER)
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum Part {
@@ -446,7 +457,7 @@ fn tiles(
             let image = Image::new(Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8Unorm, RenderAssetUsages::RENDER_WORLD);
             let material = cloud_mats.add(CloudMaterial { params: CloudParams::default(), texture: images.add(image) });
             let quad = bd.cloud_mesh.get_or_insert_with(|| meshes.add(Rectangle::new(w as f32, h as f32))).clone();
-            let entity = commands.spawn((Name::new("Backdrop clouds"), Mesh2d(quad), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z))).id();
+            let entity = commands.spawn((Name::new("Backdrop clouds"), Mesh2d(quad), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z), backdrop_layer())).id();
             bd.tiles.insert(key, Tile { entity, skirt: None, alpha, material: Lit::Cloud(material) });
             continue;
         }
@@ -462,8 +473,8 @@ fn tiles(
             skirt.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[1.0, v], [0.0, v], [0.0, v], [1.0, v]]);
             (quad, meshes.add(skirt))
         }).clone();
-        let entity = commands.spawn((Name::new("Backdrop range"), Mesh2d(quad), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z))).id();
-        let skirt = commands.spawn((Name::new("Backdrop skirt"), Mesh2d(skirt_mesh), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z))).id();
+        let entity = commands.spawn((Name::new("Backdrop range"), Mesh2d(quad), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z), backdrop_layer())).id();
+        let skirt = commands.spawn((Name::new("Backdrop skirt"), Mesh2d(skirt_mesh), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z), backdrop_layer())).id();
         bd.tiles.insert(key, Tile { entity, skirt: Some(skirt), alpha, material: Lit::Range(material) });
     }
 }
@@ -563,6 +574,152 @@ fn place(
     }
 }
 
+// ---- the backdrop's picture, and water mirroring it ----
+
+/// The backdrop drawn into a picture by its own camera (seeing only its
+/// layer, as the view sees): shown behind everything, and mirrored by open
+/// water (`ReflectMaterial`).
+#[derive(Resource)]
+struct Picture {
+    camera: Entity,
+    sprite: Entity,
+    image: Handle<Image>,
+    size: UVec2,
+    reflect: Entity,
+    material: Handle<ReflectMaterial>,
+}
+
+/// The backdrop's camera.
+#[derive(Component)]
+struct BackdropCamera;
+
+/// Open water mirroring the backdrop (`shaders/reflect.wgsl`).
+#[derive(Asset, TypePath, AsBindGroup, Clone)]
+pub struct ReflectMaterial {
+    #[uniform(0)]
+    params: ReflectParams,
+    #[texture(1)]
+    #[sampler(2)]
+    mask: Handle<Image>,
+    #[texture(3)]
+    #[sampler(4)]
+    backdrop: Handle<Image>,
+}
+
+/// As `reflect.wgsl`'s `Reflect` says.
+#[derive(Clone, Copy, Default, ShaderType, Debug)]
+struct ReflectParams {
+    grid: Vec4,
+    size: Vec4,
+    view: Vec4,
+    strength: Vec4,
+}
+
+impl Material2d for ReflectMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/reflect.wgsl".into()
+    }
+
+    fn alpha_mode(&self) -> AlphaMode2d {
+        AlphaMode2d::Blend
+    }
+}
+
+/// How strongly open water mirrors the sky.
+const MIRROR: f32 = 0.55;
+
+fn picture_target(images: &mut Assets<Image>, size: UVec2) -> Handle<Image> {
+    images.add(Image::new_target_texture(size.x.max(1), size.y.max(1), TextureFormat::Rgba8UnormSrgb, None))
+}
+
+fn picture_setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut meshes: ResMut<Assets<Mesh>>, mut reflects: ResMut<Assets<ReflectMaterial>>) {
+    let size = UVec2::new(16, 16);
+    let image = picture_target(&mut images, size);
+    let camera = commands
+        .spawn((
+            Name::new("Backdrop camera"),
+            BackdropCamera,
+            Camera2d,
+            Camera { order: -1, clear_color: ClearColorConfig::Custom(Color::NONE), ..default() },
+            bevy::camera::RenderTarget::Image(image.clone().into()),
+            backdrop_layer(),
+        ))
+        .id();
+    let sprite = commands.spawn((Name::new("Backdrop picture"), Sprite { image: image.clone(), ..default() }, Transform::from_xyz(0.0, 0.0, Z_PICTURE))).id();
+    let mask = images.add(Image::new_fill(Extent3d { width: 1, height: 1, depth_or_array_layers: 1 }, TextureDimension::D2, &[0, 0, 0, 0], TextureFormat::Rgba8Unorm, RenderAssetUsages::RENDER_WORLD));
+    let material = reflects.add(ReflectMaterial { params: ReflectParams::default(), mask, backdrop: image.clone() });
+    let reflect = commands.spawn((Name::new("Water's reflection"), Mesh2d(meshes.add(Rectangle::new(1.0, 1.0))), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, Z_REFLECT), Visibility::Hidden)).id();
+    commands.insert_resource(Picture { camera, sprite, image, size, reflect, material });
+}
+
+/// The backdrop's camera sees as the view does (where, how far zoomed, as
+/// many pixels); its picture fills the view; the water's reflection over
+/// the light grid's open water.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn picture(
+    mut commands: Commands,
+    mut pic: ResMut<Picture>,
+    bd: Res<Backdrops>,
+    time: Res<Time>,
+    water: Res<crate::light::WaterMask>,
+    main: Single<(&Transform, &Projection, &Camera), (With<MainCamera>, Without<BackdropCamera>)>,
+    mut cams: Query<(&mut Transform, &mut Projection), (With<BackdropCamera>, Without<MainCamera>)>,
+    mut places: Query<(&mut Transform, &mut Visibility), (Without<MainCamera>, Without<BackdropCamera>)>,
+    mut sprites: Query<&mut Sprite>,
+    mut images: ResMut<Assets<Image>>,
+    mut reflects: ResMut<Assets<ReflectMaterial>>,
+) {
+    let (mtf, mproj, mcam) = *main;
+    let Some(px) = mcam.physical_viewport_size() else { return };
+    // As many pixels as the view: a new picture if that's changed.
+    if px != pic.size {
+        let image = picture_target(&mut images, px);
+        commands.entity(pic.camera).insert(bevy::camera::RenderTarget::Image(image.clone().into()));
+        if let Ok(mut s) = sprites.get_mut(pic.sprite) {
+            s.image = image.clone();
+        }
+        if let Some(mut m) = reflects.get_mut(&pic.material) {
+            m.backdrop = image.clone();
+        }
+        pic.image = image;
+        pic.size = px;
+    }
+    if let Ok((mut tf, mut proj)) = cams.get_mut(pic.camera) {
+        *tf = *mtf;
+        *proj = mproj.clone();
+    }
+    let scale = match mproj {
+        Projection::Orthographic(o) => o.scale,
+        _ => 1.0,
+    };
+    let view = px.as_vec2() * scale;
+    let c = mtf.translation.truncate();
+    if let Ok((mut tf, _)) = places.get_mut(pic.sprite) {
+        tf.translation = c.extend(Z_PICTURE);
+    }
+    if let Ok(mut s) = sprites.get_mut(pic.sprite) {
+        s.custom_size = Some(view);
+    }
+    // Open water mirroring it.
+    let shown = water.any && bd.shown > 0.01 && water.image.is_some();
+    if let Ok((mut tf, mut vis)) = places.get_mut(pic.reflect) {
+        *vis = if shown { Visibility::Inherited } else { Visibility::Hidden };
+        *tf = Transform::from_translation(water.center.extend(Z_REFLECT)).with_scale(water.extent.extend(1.0));
+    }
+    if shown
+        && let (Some(mask), Some(mut m)) = (water.image.clone(), reflects.get_mut(&pic.material))
+    {
+        let corner = water.center - water.extent / 2.0;
+        m.mask = mask;
+        m.params = ReflectParams {
+            grid: Vec4::new(corner.x, corner.y, water.extent.x, water.extent.y),
+            size: Vec4::new(water.size.x as f32, water.size.y as f32, water.extent.x / water.size.x.max(1) as f32, time.elapsed_secs()),
+            view: Vec4::new(c.x - view.x / 2.0, c.y - view.y / 2.0, view.x, view.y),
+            strength: Vec4::new(MIRROR * bd.shown, 0.0, 0.0, 0.0),
+        };
+    }
+}
+
 // ---- the underground's void ----
 
 /// Behind the back walls underground: a flat dark, tinted by the band and
@@ -624,7 +781,7 @@ struct Gradient {
 
 fn gradient_setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut skies: ResMut<Assets<SkyMaterial>>) {
     let material = skies.add(SkyMaterial { params: SkyParams::default() });
-    let entity = commands.spawn((Name::new("Sky gradient"), Mesh2d(meshes.add(Rectangle::new(1.0, 1.0))), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, Z_GRADIENT))).id();
+    let entity = commands.spawn((Name::new("Sky gradient"), Mesh2d(meshes.add(Rectangle::new(1.0, 1.0))), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, Z_GRADIENT), backdrop_layer())).id();
     commands.insert_resource(Gradient { entity, material });
 }
 

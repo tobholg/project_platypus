@@ -323,10 +323,27 @@ struct Solved {
     glints: Vec<(CellPos, grid::Rgb)>,
     light: Vec<u8>,
     glow: Vec<u8>,
+    /// Open water (`WaterMask`).
+    water: Vec<u8>,
     size: UVec2,
     center: Vec2,
     extent: Vec2,
     took: Duration,
+}
+
+/// Where there's water open to the sky over the light grid, for its
+/// surface to mirror the sky (`backdrop`'s reflection): per texel (row 0
+/// at the top), R 255 water, G how many texels below its surface (255:
+/// under something, not open to the sky). Over the grid as the light is
+/// (`center`, `extent`), `texel` cells a texel.
+#[derive(Resource, Default)]
+pub struct WaterMask {
+    pub image: Option<Handle<Image>>,
+    pub size: UVec2,
+    pub center: Vec2,
+    pub extent: Vec2,
+    /// Any open water in it this frame.
+    pub any: bool,
 }
 
 /// The solve runs on the async pool while the frame renders; its result is
@@ -367,6 +384,7 @@ impl Plugin for LightPlugin {
             .init_resource::<torch::OffLight>()
             .init_resource::<Glints>()
             .init_resource::<Lit>()
+            .init_resource::<WaterMask>()
             .add_systems(Update, glimmer)
             .add_systems(Startup, torch::load_off_hand)
             .add_systems(
@@ -745,7 +763,7 @@ fn compute_light(
     flashes: Res<Flashes>,
     zoom: Res<Zoom>,
     time: Res<Time>,
-    (cursor, off_light, fixed, mut glints, mut cones, gloom, mut lit): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>, ResMut<Cones>, Res<Gloom>, ResMut<Lit>),
+    (cursor, off_light, fixed, mut glints, mut cones, gloom, mut lit, mut water_mask): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>, ResMut<Cones>, Res<Gloom>, ResMut<Lit>, ResMut<WaterMask>),
     mut overlay: ResMut<Overlay>,
     mut pending: ResMut<Pending>,
     mut metrics: ResMut<LightMetrics>,
@@ -779,7 +797,7 @@ fn compute_light(
             Ok(done) => done,
         };
         glints.0.append(&mut done.glints);
-        pending.1 = Some(show(done, &mut overlay, &mut metrics, &mut assets, &mut sprites));
+        pending.1 = Some(show(done, &mut overlay, &mut metrics, &mut assets, &mut sprites, &mut water_mask));
         if lit.want
             && let Some(p) = &pending.1
         {
@@ -979,8 +997,29 @@ fn compute_light(
                 }
             }
         }
+        // Open water: down each column from the top, water under nothing
+        // but air (and water), how far below its surface.
+        let mut water = vec![0u8; w * h * 4];
+        for x in 0..w {
+            let (mut open, mut surface) = (true, None);
+            for y in (0..h).rev() {
+                let i = y * w + x;
+                if g.water[i] > 0.5 {
+                    let top = *surface.get_or_insert(y);
+                    let o = ((h - 1 - y) * w + x) * 4;
+                    water[o] = 255;
+                    water[o + 1] = if open { (top - y).min(254) as u8 } else { 255 };
+                    water[o + 3] = 255;
+                } else {
+                    surface = None;
+                    if g.opacity[i] > 0.5 {
+                        open = false;
+                    }
+                }
+            }
+        }
         let took = started.elapsed();
-        Solved { previous: g.into_previous(spread), glints, light, glow, size: UVec2::new(w as u32, h as u32), center, extent: Vec2::new(gw, gh), took }
+        Solved { previous: g.into_previous(spread), glints, light, glow, water, size: UVec2::new(w as u32, h as u32), center, extent: Vec2::new(gw, gh), took }
     }));
 }
 
@@ -998,8 +1037,22 @@ fn show(
     metrics: &mut LightMetrics,
     assets: &mut OverlayAssets,
     sprites: &mut Query<(&mut Transform, &mut Visibility), Without<MainCamera>>,
+    water_mask: &mut WaterMask,
 ) -> grid::Previous {
     metrics.solve = s.took;
+    // The open water's mask, for the reflection.
+    water_mask.any = s.water.chunks(4).any(|p| p[0] > 0 && p[1] < 255);
+    if water_mask.size != s.size || water_mask.image.is_none() {
+        let mut img = Image::new_fill(Extent3d { width: s.size.x, height: s.size.y, depth_or_array_layers: 1 }, TextureDimension::D2, &[0, 0, 0, 0], TextureFormat::Rgba8Unorm, RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD);
+        img.sampler = ImageSampler::nearest();
+        water_mask.image = Some(assets.images.add(img));
+        water_mask.size = s.size;
+    }
+    if let Some(mut img) = water_mask.image.as_ref().and_then(|h| assets.images.get_mut(h)) {
+        img.data = Some(s.water);
+    }
+    water_mask.center = s.center;
+    water_mask.extent = s.extent;
     let OverlayAssets { images, light_mats, glow_mats } = assets;
     let (light_img, glow_img) = if overlay.size != s.size {
         let l = images.add(light_image(s.size));
