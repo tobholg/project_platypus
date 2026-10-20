@@ -813,12 +813,12 @@ fn use_hands(
     }
 }
 
-/// A door's height, in blocks.
-const DOOR_TALL: i32 = 3;
+/// A door's height, in blocks (a head and more over the player's).
+const DOOR_TALL: i32 = 5;
 
 /// Where a door would go for the cursor: its bottom block, on something
-/// solid, the column of three above it free (the cursor's block or one of
-/// the two under it), within six blocks.
+/// solid, the column of `DOOR_TALL` above it free (the cursor's block or
+/// one under it), within six blocks.
 fn door_spot(world: &World, from: Vec2, cursor: Vec2) -> Option<CellPos> {
     let mats = world.materials();
     let room = |b: CellPos| block_cells(b).all(|p| world.get(p).is_some_and(|c| c.is_air() || matches!(mats.phys(c.material).kind, Kind::Plant | Kind::Gas | Kind::Fire)));

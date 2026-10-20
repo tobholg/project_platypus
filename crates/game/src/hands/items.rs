@@ -45,7 +45,7 @@ pub enum Use {
     /// Place a chest (the `chest` material's cells; the game keeps what's in
     /// it).
     Chest,
-    /// A door: three blocks of `door` set in a gap on a floor (right-click
+    /// A door: five blocks of `door` set in a gap on a floor (right-click
     /// one to open or shut it).
     Door,
     /// Place a crafting station (`crafting.ron`, by id): furniture that

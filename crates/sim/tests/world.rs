@@ -2340,7 +2340,7 @@ fn placing_a_block_draws_it_by_what_is_round_it() {
     assert_eq!(w.get(CellPos::new(x0, y0)).unwrap().material, brick, "the bottom corners stay");
     // Drawn as the look says: open on top and the sides, the stone floor
     // another material under it.
-    let around = Around { n: true, s: false, w: true, e: true, nw: true, ne: true, sw: false, se: false, other: [false, true, false, false] };
+    let around = Around { n: true, s: false, w: true, e: true, nw: true, ne: true, sw: false, se: false, other: [false, true, false, false], below: 0, above: 0 };
     for p in block_cells(block).filter(|&p| p != taken && w.get(p).unwrap().material == brick) {
         assert_eq!(Some(w.get(p).unwrap().shade), look::shade(&tile, p.x, p.y, around), "shaded by the look at {p:?}");
     }

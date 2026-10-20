@@ -117,11 +117,15 @@ pub struct Around {
     pub se: bool,
     /// North, south, west, east: another solid material there.
     pub other: [bool; 4],
+    /// Blocks of its own straight below it and above it (counted to 8: a
+    /// door's, so it knows where its ring goes).
+    pub below: u8,
+    pub above: u8,
 }
 
 impl Around {
     /// Shut in on every side (the art alone: a block in the middle of a wall).
-    pub const SHUT: Around = Around { n: false, s: false, w: false, e: false, nw: false, ne: false, sw: false, se: false, other: [false; 4] };
+    pub const SHUT: Around = Around { n: false, s: false, w: false, e: false, nw: false, ne: false, sw: false, se: false, other: [false; 4], below: 0, above: 0 };
 }
 
 /// A block's shape (a hammer's: Terraria's): whole, its bottom half, or
@@ -497,7 +501,10 @@ fn art(tile: &Tile, x: i32, y: i32, a: Around) -> f32 {
             if (top && cy == b - 2) || (bottom && cy == 1) {
                 return index(if cx == 0 || cx == b - 1 { 7 } else if cy == b - 2 { 9 } else { 8 });
             }
-            if !top && !bottom && (5..=6).contains(&cx) && (3..=4).contains(&cy) {
+            // (Its ring at a hand's height: the block above its bottom one;
+            // a door of two, its top.)
+            let ring = a.below == 1 || (a.below == 0 && a.above == 0 && !bottom);
+            if ring && (5..=6).contains(&cx) && (3..=4).contains(&cy) {
                 return index(if cy == 4 && cx == 5 { 11 } else { 10 });
             }
             if cx == 4 {
@@ -569,7 +576,7 @@ mod tests {
     #[test]
     fn a_lone_block_is_outlined_and_rounded_a_shut_in_one_is_whole() {
         let t = bricks();
-        let alone = Around { n: true, s: true, w: true, e: true, nw: true, ne: true, sw: true, se: true, other: [false; 4] };
+        let alone = Around { n: true, s: true, w: true, e: true, nw: true, ne: true, sw: true, se: true, other: [false; 4], below: 0, above: 0 };
         let b = BLOCK;
         // The corner cell (top-left: y at the block's top) is cut.
         assert_eq!(shade(&t, 0, b - 1, alone), None, "the corner's rounded off");
@@ -590,7 +597,7 @@ mod tests {
     fn a_ramp_is_drawn_on_its_diagonal_and_read_back_from_its_cells() {
         let t = bricks();
         let b = BLOCK;
-        let alone = Around { n: true, s: false, w: true, e: true, nw: true, ne: true, sw: false, se: false, other: [false; 4] };
+        let alone = Around { n: true, s: false, w: true, e: true, nw: true, ne: true, sw: false, se: false, other: [false; 4], below: 0, above: 0 };
         // ◢: open above-left.
         assert_eq!(shade_shaped(&t, 0, b - 1, alone, Shape::RiseRight), None, "above-left's left out");
         assert_eq!(shade_shaped(&t, 3, 3, alone, Shape::RiseRight), Some(8), "the diagonal's the edge");
@@ -612,7 +619,7 @@ mod tests {
     fn a_block_beside_its_own_runs_on() {
         let t = bricks();
         let b = BLOCK;
-        let left = Around { n: true, s: true, w: true, e: false, nw: true, ne: true, sw: true, se: true, other: [false; 4] };
+        let left = Around { n: true, s: true, w: true, e: false, nw: true, ne: true, sw: true, se: true, other: [false; 4], below: 0, above: 0 };
         // Its east column isn't outlined, its top-right corner isn't cut.
         assert!(shade(&t, b - 1, b - 1, left).is_some(), "not rounded toward its neighbour");
         assert_ne!(shade(&t, b - 1, b / 2, left), Some(8), "no outline toward its neighbour");

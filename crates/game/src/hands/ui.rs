@@ -1018,7 +1018,7 @@ pub(crate) fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<
             lines.push(format!("Axe: trees and walls, up to hardness {tier}"));
             lines.push(format!("{power} a hit, {speed} hits a second, reach {reach} blocks"));
         }
-        Use::Door => lines.push("Door: three blocks tall, on a floor; right-click to open or shut".into()),
+        Use::Door => lines.push("Door: five blocks tall, on a floor; right-click to open or shut".into()),
         Use::Hammer { reach } => {
             lines.push("Hammer: click a built block to shape it".into());
             lines.push(format!("half, the four slopes, whole again; reach {reach} blocks"));

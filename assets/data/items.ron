@@ -161,7 +161,7 @@
         (id: "workbench",      name: "Workbench",      stack: 10, color: (176, 124, 70), use: Station("workbench"),
             about: "Set it down; more can be made near it."),
         (id: "door", name: "Door", stack: 20, color: (120, 80, 44), use: Door,
-            about: "Set it in a gap on a floor, three blocks tall; right-click it to open or shut it."),
+            about: "Set it in a gap on a floor, five blocks tall; right-click it to open or shut it."),
         // Furniture (crafting.ron: stations with no recipes of their own).
         (id: "table", name: "Table", stack: 20, color: (140, 96, 52), use: Station("table")),
         (id: "chair", name: "Chair", stack: 20, color: (140, 96, 52), use: Station("chair")),

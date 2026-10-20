@@ -856,6 +856,8 @@ impl TerrainGen {
             sw: open(-1, -1),
             se: open(1, -1),
             other: [other(0, 1), other(0, -1), other(-1, 0), other(1, 0)],
+            below: 0,
+            above: 0,
         }
     }
 

@@ -875,6 +875,10 @@ impl World {
         let at = |dx: i32, dy: i32| self.block_solid(block.offset(dx, dy), back);
         let open = |dx: i32, dy: i32| at(dx, dy).is_none();
         let other = |dx: i32, dy: i32| at(dx, dy).is_some_and(|m| m != material && m != MaterialId::AIR);
+        // (A door's blocks of its own straight below and above: only a
+        // door asks.)
+        let door = matches!(self.materials.tile(material).map(|t| &t.art), Some(crate::look::Art::Door));
+        let run = |dir: i32| if door { (1..=8).take_while(|&k| at(0, dir * k) == Some(material)).count() as u8 } else { 0 };
         crate::look::Around {
             n: open(0, 1),
             s: open(0, -1),
@@ -885,6 +889,8 @@ impl World {
             sw: open(-1, -1),
             se: open(1, -1),
             other: [other(0, 1), other(0, -1), other(-1, 0), other(1, 0)],
+            below: run(-1),
+            above: run(1),
         }
     }
 

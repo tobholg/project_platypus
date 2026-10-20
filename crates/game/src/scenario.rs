@@ -10698,41 +10698,47 @@ fn build_script(
     let fl = platypus_worldgen::arena::FLOOR;
     let g = fl.div_euclid(b);
     let x0 = 1000 / b;
-    let (l, r) = (x0, x0 + 18);
+    // Sized to the player (drawn ~33 cells tall): a ground floor of seven
+    // blocks, an upper of six, a door of five.
+    let (l, r) = (x0, x0 + 24);
+    let (up, ceil) = (g + 8, g + 15);
+    let bare = std::env::var("PLATYPUS_BARE").is_ok();
     // Then the furniture, once the blocks are in (`PLATYPUS_BARE=1`: none).
     if *done == 1 && t > 1.0 {
         *done = 2;
-        if std::env::var("PLATYPUS_BARE").is_ok() {
+        if bare {
             return;
         }
         let at = |bx: i32, by: i32| Vec2::new((bx * b) as f32, (by * b) as f32);
+        let size = |id: &str| crafting.station(id).map_or((8, 8), |k| crafting.stations[k].size());
         let mut put = |id: &str, feet: Vec2| {
             if let Some(kind) = crafting.station(id) {
                 crafting.spawn(&mut commands, kind, feet);
             }
         };
-        let floor1 = g + 1;
-        let floor2 = g + 6;
-        put("table", at(l + 6, floor1));
-        put("chair", at(l + 4, floor1) + Vec2::new(4.0, 0.0));
-        put("chair", at(l + 9, floor1) + Vec2::new(4.0, 0.0));
-        put("hearth", at(r - 3, floor1));
-        put("barrel", at(l + 2, floor1) + Vec2::new(2.0, 0.0));
-        put("crate", at(l + 13, floor1));
-        put("painting", at(l + 10, floor1 + 2) + Vec2::new(0.0, 2.0));
-        put("bookcase", at(l + 2, floor2) + Vec2::new(2.0, 0.0));
-        put("bed", at(r - 4, floor2));
-        put("potted_plant", at(l + 7, floor2));
-        put("banner_red", at(l + 9, floor2 + 1) + Vec2::new(4.0, 2.0));
-        put("banner_green", at(l + 11, floor2 + 1) + Vec2::new(4.0, 2.0));
-        put("wall_shelf", at(r - 9, floor2 + 2));
-        // Hung from the ceilings (their feet a chain's length under it).
-        let chandelier = crafting.station("chandelier").map_or(18, |k| crafting.stations[k].size().1);
-        let lantern = crafting.station("hanging_lantern").map_or(16, |k| crafting.stations[k].size().1);
-        put("chandelier", at(l + 9, g + 10) - Vec2::new(0.0, chandelier as f32));
-        put("hanging_lantern", at(l + 4, g + 5) - Vec2::new(0.0, lantern as f32));
-        put("hanging_lantern", at(r - 6, g + 5) - Vec2::new(0.0, lantern as f32));
-        put("hanging_lantern", at(l + 9, g + 15) - Vec2::new(0.0, lantern as f32));
+        let (f1, f2) = (g + 1, up + 1);
+        let half = Vec2::new(b as f32 / 2.0, 0.0);
+        put("potted_plant", at(l + 2, f1));
+        put("barrel", at(l + 4, f1));
+        put("wall_shelf", at(l + 3, f1 + 3) + half);
+        put("table", at(l + 11, f1));
+        put("chair", at(l + 8, f1));
+        put("chair", at(l + 14, f1) + half);
+        put("crate", at(l + 16, f1));
+        put("hearth", at(r - 4, f1));
+        put("painting", at(l + 11, f1 + 4));
+        put("bookcase", at(l + 2, f2) + half);
+        // (Banners hung from just under the ceiling.)
+        let banner = size("banner_red").1 as f32;
+        let hang = |bx: f32| Vec2::new(bx * b as f32, (ceil * b) as f32 - 2.0 - banner);
+        put("banner_red", hang((l as f32) + 9.6));
+        put("banner_green", hang((l as f32) + 16.4));
+        put("bed", at(r - 6, f2));
+        // Hung from the ceilings (their feet their height under it).
+        let (ch, la) = (size("chandelier").1 as f32, size("hanging_lantern").1 as f32);
+        put("chandelier", at(l + 13, ceil) - Vec2::new(0.0, ch));
+        put("hanging_lantern", at(l + 5, up) - Vec2::new(0.0, la));
+        put("hanging_lantern", at(r - 8, up) - Vec2::new(0.0, la));
         return;
     }
     if *done != 0 || t < 0.4 {
@@ -10752,29 +10758,25 @@ fn build_script(
     for x in l - 1..=r + 1 {
         fg.push((x, g, cobble));
     }
-    // Ground floor: walls of stone brick, 4 blocks of room; a door's gap
-    // on the left.
-    for y in g + 1..g + 5 {
-        if y > g + 3 {
+    // Ground floor: stone-brick walls, a stone wall behind; a door of five
+    // on the left (`PLATYPUS_BARE=1`: a gap), brick over it.
+    let door_top = g + 5;
+    for y in g + 1..up {
+        if y > door_top {
             fg.push((l, y, brick));
+        } else if !bare {
+            fg.push((l, y, id("door")));
         }
         fg.push((r, y, brick));
         for x in l + 1..r {
             bg.push((x, y, stone_wall));
         }
     }
-    // A door in the doorway (`PLATYPUS_BARE=1`: a gap).
-    if std::env::var("PLATYPUS_BARE").is_err() {
-        let door = id("door");
-        for y in g + 1..g + 4 {
-            fg.push((l, y, door));
-        }
-    }
     for x in l - 1..=r + 1 {
-        fg.push((x, g + 5, planks));
+        fg.push((x, up, planks));
     }
     // Upstairs: timber posts, plaster behind (behind the posts too).
-    for y in g + 6..g + 10 {
+    for y in up + 1..ceil {
         fg.push((l - 1, y, timber));
         fg.push((r + 1, y, timber));
         for x in l - 1..=r + 1 {
@@ -10782,36 +10784,37 @@ fn build_script(
         }
     }
     for x in l - 1..=r + 1 {
-        fg.push((x, g + 10, planks));
+        fg.push((x, ceil, planks));
     }
-    // A roof of tiles, stepped, two thick, a plank wall behind.
-    let (mut lo, mut hi, mut y) = (l - 3, r + 3, g + 11);
+    // A roof of tiles, two thick, a plank wall behind.
+    let (mut lo, mut hi, mut y) = (l - 3, r + 3, ceil + 1);
     while lo <= hi {
         for x in lo..=hi {
-            let edge = x - lo < 2 || hi - x < 2 || y == g + 11;
-            if edge {
+            if x - lo < 2 || hi - x < 2 || y == ceil + 1 {
                 fg.push((x, y, roof));
             }
-            // (A wall behind the roof too: a player's would have one.)
             bg.push((x, y, wood_wall));
         }
         lo += 1;
         hi -= 1;
         y += 1;
     }
-    // Windows in the walls (`PLATYPUS_PLAIN=1`: none): leaded glass
-    // downstairs, stained glass upstairs, a rose in the gable (on its own
-    // four-block grid).
+    // Windows (`PLATYPUS_PLAIN=1`: none): leaded downstairs, stained
+    // upstairs (three blocks square), a rose in the gable (four, on its
+    // own grid).
     if std::env::var("PLATYPUS_PLAIN").is_err() {
         let (leaded, stained, rose) = (id("leaded_glass"), id("stained_glass"), id("rose_glass"));
-        let rose_x = (l + 9).div_euclid(4) * 4;
-        let rose_y = (g + 13).div_euclid(4) * 4;
+        let rose_x = (l + 12).div_euclid(4) * 4 - 2;
+        let rose_y = (ceil + 3).div_euclid(4) * 4;
+        let rose_x = rose_x.div_euclid(4) * 4;
         for e in bg.iter_mut() {
             let (x, y) = (e.0, e.1);
-            if (l + 4..l + 6).contains(&x) && (g + 2..g + 4).contains(&y) || (r - 6..r - 4).contains(&x) && (g + 2..g + 4).contains(&y) {
+            let downstairs = (g + 3..g + 6).contains(&y) && ((l + 5..l + 8).contains(&x) || (r - 8..r - 5).contains(&x));
+            let upstairs = (up + 2..up + 5).contains(&y) && ((l + 5..l + 8).contains(&x) || (l + 18..l + 21).contains(&x));
+            if downstairs {
                 e.2 = leaded;
             }
-            if ((l + 3..l + 5).contains(&x) || (r - 5..r - 3).contains(&x)) && (g + 7..g + 9).contains(&y) {
+            if upstairs {
                 e.2 = stained;
             }
             if (rose_x..rose_x + 4).contains(&x) && (rose_y..rose_y + 4).contains(&y) {
@@ -10826,23 +10829,22 @@ fn build_script(
         sim.queue(platypus_sim::WorldEdit::PlaceBlock { block: CellPos::new(x, y), material: m, back: false, most: u32::MAX });
     }
     // The roof hammered into slopes (`PLATYPUS_STEPPED=1`: left stepped):
-    // each row's outer block a ramp (◢ on the left, ◣ on the right), its
-    // inner one hung underneath (◤, ◥). (A hammer's blows: half, ◢, ◣, ◥,
-    // ◤.)
+    // each row's outer block a ramp (◢ on the left, ◣ on the right; the
+    // wall behind it too), its inner one hung underneath (◤, ◥). (A
+    // hammer's blows: half, ◢, ◣, ◥, ◤.)
     if std::env::var("PLATYPUS_STEPPED").is_err() {
-        let (mut lo, mut hi, mut y) = (l - 3, r + 3, g + 11);
+        let (mut lo, mut hi, mut y) = (l - 3, r + 3, ceil + 1);
         let mut hammer = |x: i32, y: i32, blows: usize, back: bool| {
             for _ in 0..blows {
                 sim.queue(platypus_sim::WorldEdit::ShapeBlock { block: CellPos::new(x, y), back });
             }
         };
         while hi - lo >= 1 {
-            // (The wall behind the ramp hammered the same.)
             for back in [false, true] {
                 hammer(lo, y, 2, back);
                 hammer(hi, y, 3, back);
             }
-            if y > g + 11 && hi - lo > 3 {
+            if y > ceil + 1 && hi - lo > 3 {
                 hammer(lo + 1, y, 5, false);
                 hammer(hi - 1, y, 4, false);
             }
@@ -10852,15 +10854,16 @@ fn build_script(
         }
     }
     if let Ok(mut k) = player.single_mut() {
-        k.body.pos = Vec2::new(((l - 6) * b) as f32, fl as f32 + k.body.half.y);
+        k.body.pos = Vec2::new(((l - 8) * b) as f32, fl as f32 + k.body.half.y);
         k.prev_pos = k.body.pos;
     }
-    // A lamp a floor (and one in the roof): rooms are dark without light.
-    // (`PLATYPUS_NOLAMPS=1`: none, to see the windows' light alone.)
-    let lamps = if std::env::var("PLATYPUS_NOLAMPS").is_ok() || std::env::var("PLATYPUS_BARE").is_err() { vec![] } else { vec![(l + 6, g + 4), (l + 12, g + 9), (l + 9, g + 13)] };
-    for (bx, by) in lamps {
-        let at = Vec2::new(((bx * b) + b / 2) as f32, (by * b) as f32);
-        commands.spawn((Transform::from_translation(at.extend(0.0)), GlobalTransform::default(), crate::light::LightSource { color: [1.0, 0.78, 0.5], flicker: 0.1 }));
+    // Lamps only in a bare house (`PLATYPUS_NOLAMPS=1`: none): furnished,
+    // its lanterns and fire light it.
+    if bare && std::env::var("PLATYPUS_NOLAMPS").is_err() {
+        for (bx, by) in [(l + 6, g + 6), (l + 13, up + 5)] {
+            let at = Vec2::new(((bx * b) + b / 2) as f32, (by * b) as f32);
+            commands.spawn((Transform::from_translation(at.extend(0.0)), GlobalTransform::default(), crate::light::LightSource { color: [1.0, 0.78, 0.5], flicker: 0.1 }));
+        }
     }
     info!("build: a house queued from block {l} to {r}");
 }
