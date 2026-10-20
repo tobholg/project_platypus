@@ -9,7 +9,8 @@
 // of crypts. (custom/templar.rs)
 (
     name: "Fallen Templar",
-    size: (18, 78),
+    // (Three times your 23: a crypt room's 72 cells under its ceiling.)
+    size: (18, 68),
     health: 620,
     heft: 10,
     poise: 150,

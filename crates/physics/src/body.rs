@@ -273,6 +273,9 @@ fn move_y(grid: &impl Grid, body: &mut Body, dy: f32, c: &mut Contacts) {
     }
 }
 
+/// How far round a wedged body `depenetrate` looks, either way.
+const AROUND: i32 = 12;
+
 /// If the body overlaps solids, move it to the nearest free spot:
 /// up first (buried by sand), then sideways, then down; and failing those
 /// (wedged in a corner: up and sideways both into rock), anywhere about,
@@ -292,7 +295,9 @@ pub fn depenetrate(grid: &impl Grid, body: &mut Body) -> bool {
             return true;
         }
     }
-    let r = reach / 2;
+    // (Not far: a corner's lip is a few cells; a body hopelessly stuck,
+    // too big for where it is, mustn't cost a whole room's search a tick.)
+    let r = (reach / 2).min(AROUND);
     let mut around: Vec<IVec2> = (-r..=r).flat_map(|dy| (-r..=r).map(move |dx| IVec2::new(dx, dy))).filter(|d| d.x != 0 && d.y != 0).collect();
     // (Nearest first; of the same, up before down.)
     around.sort_by_key(|d| (d.x * d.x + d.y * d.y, -d.y));
