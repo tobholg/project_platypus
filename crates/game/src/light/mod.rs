@@ -504,12 +504,7 @@ pub fn sky_at(time: f32, moonlight: f32) -> (Rgb, Rgb) {
 /// left, overhead at noon, setting on the right; shadows fell the wrong way
 /// for it), never lower than ~12° so it still reaches in.
 pub fn sun_dir(time: f32) -> [f32; 2] {
-    // The sun's half of the day is 06:00–18:00, the moon's the other half.
-    let phase = ((time - 0.25).rem_euclid(0.5)) / 0.5; // 0 rising … 1 setting
-    let a = phase * std::f32::consts::PI;
-    let (x, y) = (a.cos(), a.sin().max(0.2));
-    let n = (x * x + y * y).sqrt();
-    [x / n, -y / n]
+    platypus_backdrop::terrain::sun_dir(time)
 }
 
 /// The sky's light as directions: the sun (or moon) carrying all of it, and
