@@ -48,6 +48,9 @@
         (id: "iron_pickaxe",   name: "Iron pickaxe",   color: (176, 178, 190), use: Mine(back: false, power: 35, tier: 100, speed: 4.5, reach: 6.5, area: 9.0)),
         (id: "gold_pickaxe",   name: "Gold pickaxe",   color: (236, 196, 72), use: Mine(back: false, power: 50, tier: 115, speed: 5.5, reach: 7.0, area: 10.5)),
         (id: "mithril_pickaxe", name: "Mithril pickaxe", color: (110, 220, 228), use: Mine(back: false, power: 75, tier: 150, speed: 7.0, reach: 7.5, area: 13.5)),
+        // A builder's hammer: shapes built blocks (half, slopes) for roofs
+        // and arches.
+        (id: "hammer",         name: "Hammer",         color: (150, 140, 130), use: Hammer(reach: 6.0)),
         (id: "copper_axe",     name: "Copper axe",     color: (190, 110, 45), use: Mine(back: true, power: 30, tier: 60, speed: 5.0, reach: 6.0)),
         // Lights: a torch is planted (from the hotbar) or held in the off
         // hand (the off-hand slot: worn, as gear is); the rest only held.
@@ -207,7 +210,7 @@
             wear: ["rocket_boots", "chain_hook", "mining_helmet", "chainmail", "iron_gauntlets", "iron_greaves", "iron_shield", "travelers_cape", "ember_amulet", "ring_of_vigour"]),
         (name: "dev", loadout: true, about: "Everything worth trying (a flashlight in the off hand, a mining helmet in the pack)",
             carry: [
-                ("copper_pickaxe", 1), ("copper_axe", 1), ("torch", 12), ("bomb", 5), ("block:platform", 40),
+                ("copper_pickaxe", 1), ("copper_axe", 1), ("hammer", 1), ("torch", 12), ("bomb", 5), ("block:platform", 40),
                 ("radiant_wand", 1), ("fire_wand", 1), ("acid_wand", 1), ("fire_staff", 1), ("storm_staff", 1),
                 ("glowstick", 6), ("small_health_potion", 5), ("gravity_wand", 1), ("force_wand", 1), ("gravity_staff", 1), ("force_staff", 1), ("frost_wand", 1),
                 ("shortsword", 1), ("longsword", 1), ("bow", 1), ("arrow", 60),

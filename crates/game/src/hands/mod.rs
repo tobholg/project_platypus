@@ -784,6 +784,13 @@ fn use_hands(
             crafting.spawn(&mut commands, kind, feet);
             inv.take(slot, 1);
         }
+        Use::Hammer { reach } if clicked => {
+            let Some((block, back)) = hammer_at(&sim.world, from, cursor, reach) else { return };
+            sim.world.apply_edit(&WorldEdit::ShapeBlock { block, back });
+            let at = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32);
+            commands.entity(me).insert(crate::creatures::body::animation::Aiming { at, left: AIM_HOLD });
+            sounds.write(crate::sound::PlaySound::at("place", at).pitch(1.5));
+        }
         Use::Torch if clicked => {
             let Some(block) = place_spot(&sim.world, from, cursor, &[], platypus_sim::MaterialId::AIR) else { return };
             let Some(art) = torch_art.as_deref() else { return };
@@ -793,6 +800,26 @@ fn use_hands(
             inv.take(slot, 1);
         }
         _ => {}
+    }
+}
+
+/// What a hammer would shape: the block under the cursor, within `reach`
+/// blocks, of a building material (`tile`): the one in front, else the
+/// wall behind.
+fn hammer_at(world: &World, from: Vec2, cursor: Vec2, reach: f32) -> Option<(CellPos, bool)> {
+    let block = CellPos::new((cursor.x / BLOCK as f32).floor() as i32, (cursor.y / BLOCK as f32).floor() as i32);
+    let centre = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32);
+    if centre.distance(from) > reach * BLOCK as f32 {
+        return None;
+    }
+    let mats = world.materials();
+    let built = |back: bool| block_cells(block).filter(|&p| (if back { world.get_bg(p) } else { world.get(p) }).is_some_and(|c| !c.is_air() && mats.tile(c.material).is_some())).count() as i32 * 8 >= BLOCK * BLOCK * 3;
+    if built(false) {
+        Some((block, false))
+    } else if built(true) {
+        Some((block, true))
+    } else {
+        None
     }
 }
 
@@ -1061,6 +1088,7 @@ fn outline(
             (place_spot(world, from, cursor, &bodies, *m), Color::srgba(0.4, 0.9, 1.0, 0.9))
         }
         Use::Torch => (place_spot(world, from, cursor, &[], platypus_sim::MaterialId::AIR), Color::srgba(0.4, 0.9, 1.0, 0.9)),
+        Use::Hammer { reach } => (hammer_at(world, from, cursor, *reach).map(|(b, _)| b), Color::srgba(1.0, 0.85, 0.3, 0.9)),
         _ => (None, Color::NONE),
     };
     if let Some(b) = block {

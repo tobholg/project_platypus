@@ -1018,6 +1018,10 @@ pub(crate) fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<
             lines.push(format!("Axe: trees and walls, up to hardness {tier}"));
             lines.push(format!("{power} a hit, {speed} hits a second, reach {reach} blocks"));
         }
+        Use::Hammer { reach } => {
+            lines.push("Hammer: click a built block to shape it".into());
+            lines.push(format!("half, the four slopes, whole again; reach {reach} blocks"));
+        }
         Use::Focus { tier, element, spells } => {
             let what = if *tier >= 2 { "Staff" } else { "Wand" };
             let of = element.map_or(String::new(), |e| format!(" of {}", format!("{e:?}").to_lowercase()));

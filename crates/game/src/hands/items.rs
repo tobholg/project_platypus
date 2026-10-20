@@ -34,6 +34,14 @@ pub enum Use {
     Throw(Throwable),
     /// Plant one on a block face within reach: it lights the place up.
     Torch,
+    /// A hammer: a click makes the block of a building material under the
+    /// cursor (within `reach` blocks) its next shape: half, the ramps,
+    /// whole again (`platypus_sim::look::Shape`). The block in front, else
+    /// the wall behind.
+    Hammer {
+        #[serde(default = "hammer_reach")]
+        reach: f32,
+    },
     /// Place a chest (the `chest` material's cells; the game keeps what's in
     /// it).
     Chest,
@@ -189,6 +197,10 @@ pub struct Aura {
     pub sparks: Option<crate::magic::runes::Emitter>,
     #[serde(default = "aura_casting")]
     pub casting: f32,
+}
+
+fn hammer_reach() -> f32 {
+    6.0
 }
 
 fn potion_sickness() -> f32 {
@@ -370,7 +382,7 @@ impl Items {
             return c;
         }
         match &d.use_ {
-            Use::Mine { .. } | Use::Vessel { .. } => Category::Tools,
+            Use::Mine { .. } | Use::Vessel { .. } | Use::Hammer { .. } => Category::Tools,
             Use::Melee(_) | Use::Bow(_) | Use::Throw(Throwable::Bomb) => Category::Weapons,
             Use::Focus { .. } => Category::Magic,
             Use::Potion { .. } => Category::Potions,

@@ -90,6 +90,102 @@ impl Around {
     pub const SHUT: Around = Around { n: false, s: false, w: false, e: false, nw: false, ne: false, sw: false, se: false, other: [false; 4] };
 }
 
+/// A block's shape (a hammer's: Terraria's): whole, its bottom half, or
+/// one of four ramps (a triangle, cut on the diagonal). Kept in the cells
+/// themselves (which are there): read back by `shape_of`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Shape {
+    #[default]
+    Full,
+    Half,
+    /// A floor's ramp: rising to the right (◢: open above-left), to the
+    /// left (◣: open above-right).
+    RiseRight,
+    RiseLeft,
+    /// A ceiling's ramp: hanging on the right (◥: open below-left), on the
+    /// left (◤: open below-right).
+    HangRight,
+    HangLeft,
+}
+
+impl Shape {
+    /// The next a hammer makes it.
+    pub fn next(self) -> Shape {
+        match self {
+            Shape::Full => Shape::Half,
+            Shape::Half => Shape::RiseRight,
+            Shape::RiseRight => Shape::RiseLeft,
+            Shape::RiseLeft => Shape::HangRight,
+            Shape::HangRight => Shape::HangLeft,
+            Shape::HangLeft => Shape::Full,
+        }
+    }
+
+    /// Whether a block's cell (`cx`, `cy` in it, y up) is part of it.
+    pub fn holds(self, cx: i32, cy: i32) -> bool {
+        let b = BLOCK - 1;
+        match self {
+            Shape::Full => true,
+            Shape::Half => cy < BLOCK / 2,
+            Shape::RiseRight => cx >= cy,
+            Shape::RiseLeft => cx + cy <= b,
+            Shape::HangRight => cx + cy >= b,
+            Shape::HangLeft => cy >= cx,
+        }
+    }
+
+    /// On its slanted face (a ramp's diagonal, a half block's top).
+    fn face(self, cx: i32, cy: i32) -> bool {
+        let b = BLOCK - 1;
+        match self {
+            Shape::Full => false,
+            Shape::Half => cy == BLOCK / 2 - 1,
+            Shape::RiseRight => cx == cy,
+            Shape::RiseLeft => cx + cy == b,
+            Shape::HangRight => cx + cy == b,
+            Shape::HangLeft => cy == cx,
+        }
+    }
+
+    /// Just inside its face (lit on a floor's, shaded on a ceiling's).
+    fn under_face(self, cx: i32, cy: i32) -> Option<f32> {
+        let b = BLOCK - 1;
+        match self {
+            Shape::Half if cy == BLOCK / 2 - 2 => Some(LIFT),
+            Shape::RiseRight if cx == cy + 1 => Some(LIFT),
+            Shape::RiseLeft if cx + cy == b - 1 => Some(LIFT),
+            Shape::HangRight if cx + cy == b + 1 => Some(-SINK),
+            Shape::HangLeft if cy == cx + 1 => Some(-SINK),
+            _ => None,
+        }
+    }
+}
+
+/// A block's shape from which of its cells are there (`filled(cx, cy)`, y
+/// up): a ramp or a half if what it'd leave out is all gone and nearly all
+/// it'd keep is there; else whole (a rounded corner or a chip doesn't make
+/// it a ramp).
+pub fn shape_of(filled: impl Fn(i32, i32) -> bool) -> Shape {
+    for shape in [Shape::RiseRight, Shape::RiseLeft, Shape::HangRight, Shape::HangLeft, Shape::Half] {
+        let (mut out, mut kept, mut room) = (0, 0, 0);
+        for cy in 0..BLOCK {
+            for cx in 0..BLOCK {
+                let there = filled(cx, cy);
+                if shape.holds(cx, cy) {
+                    room += 1;
+                    kept += there as i32;
+                } else {
+                    out += there as i32;
+                }
+            }
+        }
+        if out == 0 && kept * 10 >= room * 8 {
+            return shape;
+        }
+    }
+    Shape::Full
+}
+
 /// Tones along a tile material's `colors` (0 darkest).
 const OUTLINE: f32 = 0.0;
 const GAP: f32 = 0.14;
@@ -104,8 +200,24 @@ fn roll(parts: &[i64]) -> f32 {
 /// A cell's shade (0..255) as drawn, or `None`: cut off (a rounded corner).
 /// `x`, `y` are world cells (y up); `block` the block's own.
 pub fn shade(tile: &Tile, x: i32, y: i32, a: Around) -> Option<u8> {
+    shade_shaped(tile, x, y, a, Shape::Full)
+}
+
+/// `shade`, for a block of a shape (a ramp, a half): what it leaves out
+/// isn't drawn; its slanted face is its edge.
+pub fn shade_shaped(tile: &Tile, x: i32, y: i32, a: Around, shape: Shape) -> Option<u8> {
     let b = BLOCK;
     let (cx, cy) = (x.rem_euclid(b), y.rem_euclid(b));
+    if !shape.holds(cx, cy) {
+        return None;
+    }
+    // (A ramp's corners on its cut side aren't there to round; a half's top
+    // is its face.)
+    let a = match shape {
+        Shape::Full => a,
+        Shape::Half => Around { n: true, nw: true, ne: true, ..a },
+        _ => a,
+    };
     // (From the top, as art is read.)
     let top = b - 1 - cy;
     let (fx, fy) = (cx as f32 + 0.5, top as f32 + 0.5);
@@ -113,7 +225,7 @@ pub fn shade(tile: &Tile, x: i32, y: i32, a: Around) -> Option<u8> {
     let mut edge = false;
     // Rounded open corners: outside the arc, nothing; on it, the edge.
     let r = tile.round;
-    if r > 0.0 {
+    if r > 0.0 && matches!(shape, Shape::Full | Shape::Half) {
         let bf = b as f32;
         for (open, kx, ky) in [(n && w, r, r), (n && e, bf - r, r), (s && w, r, bf - r), (s && e, bf - r, bf - r)] {
             if !open {
@@ -132,7 +244,9 @@ pub fn shade(tile: &Tile, x: i32, y: i32, a: Around) -> Option<u8> {
             }
         }
     }
-    if (n && top == 0) || (s && top == b - 1) || (w && cx == 0) || (e && cx == b - 1) {
+    // (A half's top edge is its face, half way down.)
+    let n_edge = if shape == Shape::Half { false } else { n && top == 0 };
+    if n_edge || (s && top == b - 1) || (w && cx == 0) || (e && cx == b - 1) || shape.face(cx, cy) {
         edge = true;
     }
     // An inside corner (two solid sides round an open diagonal): a dark
@@ -144,8 +258,11 @@ pub fn shade(tile: &Tile, x: i32, y: i32, a: Around) -> Option<u8> {
         let mut t = art(tile, x, y, a);
         // A bevel inside the outline: lit on top and a little on the left,
         // shaded under and on the right.
-        if n && top == 1 {
+        if n && top == 1 && shape == Shape::Full {
             t += LIFT;
+        }
+        if let Some(d) = shape.under_face(cx, cy) {
+            t += d;
         }
         if w && cx == 1 {
             t += LIFT * 0.4;
@@ -357,6 +474,29 @@ mod tests {
             }
         }
         assert_ne!(shade(&t, b / 2, b - 1, shut), Some(8), "no outline shut in");
+    }
+
+    /// A hammered ramp: what it leaves out isn't drawn, its slant is the
+    /// edge, and it's read back from its cells.
+    #[test]
+    fn a_ramp_is_drawn_on_its_diagonal_and_read_back_from_its_cells() {
+        let t = bricks();
+        let b = BLOCK;
+        let alone = Around { n: true, s: false, w: true, e: true, nw: true, ne: true, sw: false, se: false, other: [false; 4] };
+        // ◢: open above-left.
+        assert_eq!(shade_shaped(&t, 0, b - 1, alone, Shape::RiseRight), None, "above-left's left out");
+        assert_eq!(shade_shaped(&t, 3, 3, alone, Shape::RiseRight), Some(8), "the diagonal's the edge");
+        assert!(shade_shaped(&t, b - 1, 0, alone, Shape::RiseRight).is_some(), "below-right's there");
+        assert_eq!(shape_of(|cx, cy| Shape::RiseRight.holds(cx, cy)), Shape::RiseRight);
+        assert_eq!(shape_of(|cx, cy| Shape::Half.holds(cx, cy)), Shape::Half);
+        // Whole but a rounded corner: still whole.
+        assert_eq!(shape_of(|cx, cy| !(cx == 0 && cy == b - 1)), Shape::Full);
+        // Round the hammer: six shapes, back to whole.
+        let mut s = Shape::Full;
+        for _ in 0..6 {
+            s = s.next();
+        }
+        assert_eq!(s, Shape::Full);
     }
 
     /// Two of its own side by side: no edge between them.

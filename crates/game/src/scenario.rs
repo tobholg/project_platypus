@@ -10761,6 +10761,32 @@ fn build_script(
     for (x, y, m) in fg {
         sim.queue(platypus_sim::WorldEdit::PlaceBlock { block: CellPos::new(x, y), material: m, back: false, most: u32::MAX });
     }
+    // The roof hammered into slopes (`PLATYPUS_STEPPED=1`: left stepped):
+    // each row's outer block a ramp (◢ on the left, ◣ on the right), its
+    // inner one hung underneath (◤, ◥). (A hammer's blows: half, ◢, ◣, ◥,
+    // ◤.)
+    if std::env::var("PLATYPUS_STEPPED").is_err() {
+        let (mut lo, mut hi, mut y) = (l - 3, r + 3, g + 11);
+        let mut hammer = |x: i32, y: i32, blows: usize, back: bool| {
+            for _ in 0..blows {
+                sim.queue(platypus_sim::WorldEdit::ShapeBlock { block: CellPos::new(x, y), back });
+            }
+        };
+        while hi - lo >= 1 {
+            // (The wall behind the ramp hammered the same.)
+            for back in [false, true] {
+                hammer(lo, y, 2, back);
+                hammer(hi, y, 3, back);
+            }
+            if y > g + 11 && hi - lo > 3 {
+                hammer(lo + 1, y, 5, false);
+                hammer(hi - 1, y, 4, false);
+            }
+            lo += 1;
+            hi -= 1;
+            y += 1;
+        }
+    }
     if let Ok(mut k) = player.single_mut() {
         k.body.pos = Vec2::new(((l - 6) * b) as f32, fl as f32 + k.body.half.y);
         k.prev_pos = k.body.pos;

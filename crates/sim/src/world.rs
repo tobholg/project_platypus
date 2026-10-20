@@ -569,6 +569,7 @@ impl World {
                 self.felling = None;
             }
             WorldEdit::PlaceBlock { block, material, back, most } => self.place_block(block, material, back, most, &mut report),
+            WorldEdit::ShapeBlock { block, back } => self.shape_block(block, back),
             WorldEdit::Stamp { corner, w, h, material } => {
                 let mats = self.materials.clone();
                 for dy in 0..h {
@@ -843,8 +844,8 @@ impl World {
         }
     }
 
-    /// Whether a block holds something solid (half its cells or more), and
-    /// what most of it is.
+    /// Whether a block holds something solid (three eighths of its cells or
+    /// more), and what most of it is.
     fn block_solid(&self, block: CellPos, back: bool) -> Option<MaterialId> {
         let mats = &self.materials;
         let mut counts: Vec<(MaterialId, u32)> = Vec::new();
@@ -863,7 +864,9 @@ impl World {
                 }
             }
         }
-        (solid * 2 >= BLOCK * BLOCK).then(|| counts.iter().max_by_key(|e| e.1).map(|e| e.0).unwrap_or(MaterialId::AIR))
+        // (Three eighths: a hammered half block with its corners rounded
+        // still counts.)
+        (solid * 8 >= BLOCK * BLOCK * 3).then(|| counts.iter().max_by_key(|e| e.1).map(|e| e.0).unwrap_or(MaterialId::AIR))
     }
 
     /// What's round a block of `material` (`look::Around`).
@@ -884,21 +887,60 @@ impl World {
         }
     }
 
+    /// A block's shape, from which of its cells are of `material` (`look`).
+    fn shape_in(&self, block: CellPos, back: bool, material: MaterialId) -> crate::look::Shape {
+        let (x0, y0) = (block.x * BLOCK, block.y * BLOCK);
+        crate::look::shape_of(|cx, cy| {
+            let p = CellPos::new(x0 + cx, y0 + cy);
+            (if back { self.get_bg(p) } else { self.get(p) }).is_some_and(|c| c.material == material)
+        })
+    }
+
+    /// A hammer's blow: the block its next shape (`look::Shape`).
+    fn shape_block(&mut self, block: CellPos, back: bool) {
+        let mats = self.materials.clone();
+        let Some(material) = self.block_solid(block, back).filter(|&m| m != MaterialId::AIR) else { return };
+        if mats.tile(material).is_none() {
+            return;
+        }
+        let next = self.shape_in(block, back, material).next();
+        let mut rng = self.rng_for(0x5AA3, block);
+        let (x0, y0) = (block.x * BLOCK, block.y * BLOCK);
+        for cy in 0..BLOCK {
+            for cx in 0..BLOCK {
+                let p = CellPos::new(x0 + cx, y0 + cy);
+                let Some(c) = (if back { self.get_bg(p) } else { self.get(p) }) else { continue };
+                let room = if back { c.is_air() } else { Self::room(&mats, c) };
+                if next.holds(cx, cy) {
+                    if room {
+                        let c = mats.spawn(material, &mut rng);
+                        if back { self.set_bg(p, c) } else { self.set(p, c) };
+                    }
+                } else if c.material == material {
+                    if back { self.set_bg(p, Cell::AIR) } else { self.set(p, Cell::AIR) };
+                }
+            }
+        }
+        self.stamp_block(block, back);
+        self.stamp_round(block, back);
+    }
+
     /// Draw a block of a building material as what's round it says
     /// (`look`): shade its cells, cut its open corners, fill back corners
-    /// that were cut and aren't now. Its cells of the material removed (+)
-    /// or added (−).
+    /// that were cut and aren't now (inside its shape). Its cells of the
+    /// material removed (+) or added (−).
     pub fn stamp_block(&mut self, block: CellPos, back: bool) -> i32 {
         let mats = self.materials.clone();
         let Some(material) = self.block_solid(block, back).filter(|&m| m != MaterialId::AIR) else { return 0 };
         let Some(tile) = mats.tile(material).cloned() else { return 0 };
         let around = self.around_block(block, back, material);
+        let shape = self.shape_in(block, back, material);
         let mut rng = self.rng_for(0x57A3, block);
         let corner = |v: i32| (v as f32) < tile.round || (v as f32) >= BLOCK as f32 - tile.round;
         let mut cut = 0;
         for p in block_cells(block) {
             let Some(c) = (if back { self.get_bg(p) } else { self.get(p) }) else { continue };
-            match crate::look::shade(&tile, p.x, p.y, around) {
+            match crate::look::shade_shaped(&tile, p.x, p.y, around, shape) {
                 Some(shade) if c.material == material => {
                     let c = Cell { shade, ..c };
                     if back { self.set_bg(p, c) } else { self.set(p, c) };
@@ -908,7 +950,7 @@ impl World {
                     if back { self.set_bg(p, c) } else { self.set(p, c) };
                     cut -= 1;
                 }
-                None if c.material == material => {
+                None if c.material == material && shape.holds(p.x.rem_euclid(BLOCK), p.y.rem_euclid(BLOCK)) => {
                     if back { self.set_bg(p, Cell::AIR) } else { self.set(p, Cell::AIR) };
                     cut += 1;
                 }

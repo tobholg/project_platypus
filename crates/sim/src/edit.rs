@@ -34,6 +34,10 @@ pub enum WorldEdit {
     /// row up: what's left of a stack fills what it can, and the next fills
     /// the rest). `EditReport::placed` says how many.
     PlaceBlock { block: CellPos, material: MaterialId, back: bool, most: u32 },
+    /// A hammer's blow: a block of a building material made its next shape
+    /// (whole, half, the four ramps: `look::Shape`), what it leaves out
+    /// taken away, what it takes in filled.
+    ShapeBlock { block: CellPos, back: bool },
     /// Fill the empty cells (as `PlaceBlock`) of a `w` × `h` box with a material, shaded by its pattern
     /// anchored at the box's corner (furniture: a chest's picture sits on it
     /// wherever it stands). `EditReport::placed` says how many cells.

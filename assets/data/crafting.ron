@@ -144,6 +144,7 @@
         (makes: "block:platform", count: 4, needs: [("block:planks", 1)], at: "workbench"),
         (makes: "block:wood_wall", count: 4, needs: [("block:planks", 1)], at: "workbench"),
         // Building blocks (the blocks arc): cut stone, beams, walls.
+        (makes: "hammer", needs: [("block:planks", 4), ("block:stone", 3)], at: "workbench"),
         (makes: "block:cobblestone", needs: [("block:stone", 1)], at: "workbench"),
         (makes: "block:stone_wall", count: 4, needs: [("block:stone", 1)], at: "workbench"),
         (makes: "block:timber", needs: [("block:wood", 1)], at: "workbench"),
