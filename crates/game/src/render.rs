@@ -81,6 +81,22 @@ const MAX_SPARKLES: usize = 160;
 struct ChunkGfx {
     front: Layer,
     back: Layer,
+    /// What's solid in front, a bit a cell (a row a word): the background's
+    /// shading (`occlusion`) is only redone when it changes, not every time
+    /// blood or a spark dirties the front.
+    solid: Vec<u64>,
+}
+
+/// A chunk's solid front cells, a bit a cell.
+fn solid_mask(front: &[Cell], mats: &MaterialTable) -> Vec<u64> {
+    (0..N)
+        .map(|y| {
+            (0..N).fold(0u64, |m, x| {
+                let c = front[y * N + x];
+                m | (((!c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder)) as u64) << x)
+            })
+        })
+        .collect()
 }
 
 #[derive(Resource, Default)]
@@ -208,7 +224,9 @@ pub(crate) fn cell_rgba(mats: &MaterialTable, c: Cell, ambient: i32, dim: f32, l
 /// rock further back.
 fn bg_dim(mats: &MaterialTable, c: Cell) -> f32 {
     let ph = mats.phys(c.material);
-    if ph.kind == Kind::Plant || ph.flammability > 0 || mats.tile(c.material).is_some() { 0.8 } else { 0.55 }
+    // (A wall made to stand behind: brighter than a structure's own stone
+    // shown behind its rooms, which keeps the dark of rock.)
+    if ph.kind == Kind::Plant || ph.flammability > 0 || (mats.def(c.material).wall && mats.tile(c.material).is_some()) { 0.8 } else { 0.55 }
 }
 
 /// A wall shaded by what's in front of it (ambient occlusion): darker
@@ -453,18 +471,23 @@ fn sync_chunks(
         if fresh {
             let front = new_layer(&mut commands, &mut images, chunk.pos, Z_WORLD);
             let back = new_layer(&mut commands, &mut images, chunk.pos, Z_BACKGROUND);
-            gfx.0.insert(chunk.pos, ChunkGfx { front, back });
+            gfx.0.insert(chunk.pos, ChunkGfx { front, back, solid: Vec::new() });
         }
         let g = gfx.0.get_mut(&chunk.pos).expect("inserted above");
         // (Each layer redrawn only when its own cells changed.)
         let dirty = chunk.take_render_dirty() || fresh;
         let bg_dirty = chunk.take_bg_render_dirty() || fresh;
         let o = chunk.pos.origin();
+        // (The background's shaded by the front: redrawn when what's solid
+        // in front changes.)
+        let mut reshade = false;
         if dirty {
             rebuild(&mut g.front, chunk.cells(), mats, o, &climate, false, None, None);
+            let solid = solid_mask(chunk.cells(), mats);
+            reshade = solid != g.solid;
+            g.solid = solid;
         }
-        // (The background's shaded by the front: redrawn when either changes.)
-        if bg_dirty || dirty {
+        if bg_dirty || reshade {
             let ground: Option<Vec<i32>> = (0..N as i32).map(|lx| sim.generator.surface_hint(o.x + lx)).collect();
             rebuild(&mut g.back, chunk.background(), mats, o, &climate, true, ground.as_deref(), Some(chunk.cells()));
         }

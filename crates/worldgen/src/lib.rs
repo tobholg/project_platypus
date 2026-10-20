@@ -344,6 +344,9 @@ pub struct TerrainGen {
     patterns: Vec<Option<Vec<u8>>>,
     /// By material id: laid in nuggets (ore), how.
     nuggets: Vec<Option<platypus_sim::Nuggets>>,
+    /// By material id: a building material, drawn by what's round each
+    /// block (`platypus_sim::look`): structures are drawn as built blocks are.
+    tiles: Vec<Option<platypus_sim::look::Tile>>,
     /// By material id: solid (static or powder), a plant.
     solid: Vec<bool>,
     /// By material id: a powder (it falls if what holds it is cut away).
@@ -434,6 +437,7 @@ impl TerrainGen {
             solid: mats.iter().map(|(id, _)| matches!(mats.phys(id).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder)).collect(),
             powder: mats.iter().map(|(id, _)| mats.phys(id).kind == platypus_sim::Kind::Powder).collect(),
             plant: mats.iter().map(|(id, _)| mats.phys(id).kind == platypus_sim::Kind::Plant).collect(),
+            tiles: mats.iter().map(|(id, _)| mats.tile(id).cloned()).collect(),
             patterns: mats
                 .iter()
                 .map(|(id, _)| mats.pattern_shade(id, 0, 0).map(|_| (0..CHUNK * CHUNK).map(|i| mats.pattern_shade(id, i % CHUNK, i / CHUNK).unwrap_or(136)).collect()))
@@ -813,6 +817,81 @@ impl TerrainGen {
     /// The background layer: walls underground (what you see in caves), trees
     /// above ground. Trees come with a shade (bark lit from one side, crowns
     /// lighter on top).
+    /// A structure's material as itself: a weak or an illusory wall is its
+    /// wall (no seam between them gives it away).
+    fn canon(&self, m: MaterialId) -> MaterialId {
+        let i = &self.ids;
+        if m == i.cracked_stone || m == i.false_wall {
+            i.crypt_stone
+        } else if m == i.cracked_ashlar || m == i.false_ashlar {
+            i.ashlar
+        } else {
+            m
+        }
+    }
+
+    /// What's round a structure's block of `m` (`look::Around`): its eight
+    /// neighbours, by what's at their middles (structure or not).
+    fn around_block(&self, (bx, by): (i32, i32), m: MaterialId, back: bool, trees: &[&flora::Tree]) -> platypus_sim::look::Around {
+        let at = |dx: i32, dy: i32| -> Option<MaterialId> {
+            let (x, y) = ((bx + dx) * BLOCK + BLOCK / 2, (by + dy) * BLOCK + BLOCK / 2);
+            if back {
+                let (b, _) = self.background_at(x, y, trees);
+                (b != self.ids.air).then_some(b)
+            } else {
+                let n = self.material_at(x, y);
+                (self.solid[n.0 as usize] || self.plant[n.0 as usize] && self.tiles[n.0 as usize].is_some()).then_some(n)
+            }
+        };
+        let open = |dx: i32, dy: i32| at(dx, dy).is_none();
+        let me = self.canon(m);
+        let other = |dx: i32, dy: i32| at(dx, dy).is_some_and(|n| self.canon(n) != me);
+        platypus_sim::look::Around {
+            n: open(0, 1),
+            s: open(0, -1),
+            w: open(-1, 0),
+            e: open(1, 0),
+            nw: open(-1, 1),
+            ne: open(1, 1),
+            sw: open(-1, -1),
+            se: open(1, -1),
+            other: [other(0, 1), other(0, -1), other(-1, 0), other(1, 0)],
+        }
+    }
+
+    /// A structure's cell drawn as a built block would be (`look`), then aged
+    /// by what it is: a crypt's edges chipped and its stone grimed, a
+    /// castle's a little; a village kept. `None`: nothing there (rounded off,
+    /// or chipped away).
+    fn structure_cell(&self, mut c: Cell, x: i32, y: i32, kind: StructureKind, back: bool, a: platypus_sim::look::Around) -> Option<Cell> {
+        let Some(tile) = &self.tiles[c.material.0 as usize] else { return Some(c) };
+        let shade = if back {
+            // (A wall behind: square, only darkened where it's open.)
+            let wall = platypus_sim::look::Tile { round: 0.0, outline: false, ..tile.clone() };
+            platypus_sim::look::shade(&wall, x, y, a)?
+        } else {
+            platypus_sim::look::shade(tile, x, y, a)?
+        };
+        c.shade = shade;
+        let (chip, grime) = match kind {
+            StructureKind::Crypt => (0.22, 0.25),
+            StructureKind::Castle => (0.1, 0.12),
+            _ => (0.0, 0.0),
+        };
+        let roll = |salt: u64| (hash(&[self.plan.seed, salt, x as u64, y as u64]) % 10_000) as f64 / 10_000.0;
+        let (cx, cy) = (x.rem_euclid(BLOCK), y.rem_euclid(BLOCK));
+        let edge = (a.n && cy == BLOCK - 1) || (a.s && cy == 0) || (a.w && cx == 0) || (a.e && cx == BLOCK - 1);
+        if !back && edge && roll(0xC41) < chip {
+            return None;
+        }
+        // Grime in blotches (three cells across), darker low down a room.
+        let blotch = (hash(&[self.plan.seed, 0xC42, x.div_euclid(3) as u64, y.div_euclid(3) as u64]) % 10_000) as f64 / 10_000.0;
+        if blotch < grime {
+            c.shade = c.shade.saturating_sub(16).max(8);
+        }
+        Some(c)
+    }
+
     fn background_at(&self, x: i32, y: i32, trees: &[&flora::Tree]) -> (MaterialId, Option<u8>) {
         let i = &self.ids;
         // (Behind a chest, whatever would be there.)
@@ -1866,6 +1945,8 @@ impl ChunkGenerator for TerrainGen {
             };
             Cell { heat: self.heat[m.0 as usize], ..Cell::new(m, shade) }
         };
+        // (Structures' blocks drawn by what's round them: once a block.)
+        let mut looks: std::collections::HashMap<(i32, i32, bool), platypus_sim::look::Around> = std::collections::HashMap::new();
         for ly in 0..CHUNK {
             for lx in 0..CHUNK {
                 let (x, y) = (origin.x + lx, origin.y + ly);
@@ -1873,11 +1954,27 @@ impl ChunkGenerator for TerrainGen {
                 if m == self.ids.air && self.grass_at(x, y) {
                     m = self.ids.tall_grass;
                 }
-                cells.push(make(m, &mut rng, lx, ly));
+                let structure = self.plan.structures.glyph_at(x, y).map(|(_, kind)| kind);
+                let mut front = make(m, &mut rng, lx, ly);
+                if let Some(kind) = structure
+                    && self.tiles[m.0 as usize].is_some()
+                {
+                    let block = (x.div_euclid(BLOCK), y.div_euclid(BLOCK));
+                    let a = *looks.entry((block.0, block.1, false)).or_insert_with(|| self.around_block(block, m, false, &trees));
+                    front = self.structure_cell(front, x, y, kind, false, a).unwrap_or(Cell::AIR);
+                }
+                cells.push(front);
                 let (b, shade) = self.background_at(x, y, &trees);
                 let mut back = make(b, &mut rng, lx, ly);
                 if let Some(shade) = shade {
                     back.shade = shade;
+                }
+                if let Some(kind) = structure
+                    && self.tiles[b.0 as usize].is_some()
+                {
+                    let block = (x.div_euclid(BLOCK), y.div_euclid(BLOCK));
+                    let a = *looks.entry((block.0, block.1, true)).or_insert_with(|| self.around_block(block, b, true, &trees));
+                    back = self.structure_cell(back, x, y, kind, true, a).unwrap_or(Cell::AIR);
                 }
                 bg.push(back);
             }
