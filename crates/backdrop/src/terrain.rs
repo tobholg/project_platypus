@@ -163,18 +163,24 @@ impl Shape {
     /// none): domes on a jittered grid, each its own size, lifted on its
     /// trunk.
     fn canopy(&self, x: f32, z: f32) -> f32 {
-        let (crowns, floor) = self.crowns_at(x, z);
+        let (crowns, floor, _) = self.crowns_at(x, z);
         crowns.max(floor)
     }
 
-    /// The crowns' height at (x, z), and the canopy's floor under them.
+    /// The crowns' height at (x, z), the wood's floor under them (its
+    /// undergrowth: bushes, in clumps), and whether a trunk stands there.
     /// Each crown a dome and a few bunches of leaves on its top (a bumpy
     /// outline, light and shade within it).
-    fn crowns_at(&self, x: f32, z: f32) -> (f32, f32) {
+    fn crowns_at(&self, x: f32, z: f32) -> (f32, f32, bool) {
         let r = self.crowns;
         if r <= 0.0 {
-            return (0.0, 0.0);
+            return (0.0, 0.0, false);
         }
+        let mut trunk = false;
+        // (Its edge a slope, rising over a few trees' width: seen from the
+        // front, bushes row on row, not a wall.)
+        let edge = smoothstep(-r * 2.0, r * 0.6, z);
+        let floor = r * 0.9 * self.trees * edge;
         let cell = r * 1.15;
         let (cx, cz) = ((x / cell).floor() as i64, (z / cell).floor() as i64);
         let mut best = 0.0f32;
@@ -187,10 +193,23 @@ impl Shape {
                 }
                 let px = (gx as f32 + 0.15 + 0.7 * hash(gx, gz, s ^ 1)) * cell;
                 let pz = (gz as f32 + 0.15 + 0.7 * hash(gx, gz, s ^ 2)) * cell;
+                // (No tree before the wood's edge.)
+                if pz < 0.0 {
+                    continue;
+                }
                 let ri = r * (0.6 + 0.8 * hash(gx, gz, s ^ 3));
                 let d2 = (x - px).powi(2) + (z - pz).powi(2);
+                // (Its trunk, under its middle, thin; some lean a little.)
+                let lean = (hash(gx, gz, s ^ 4) - 0.5) * 0.12;
+                // (A few show: most are hidden in the undergrowth.)
+                if hash(gx, gz, s ^ 5) < 0.25 && (x - px - lean * (z - pz)).abs() < 0.45 + ri * 0.05 && (z - pz).abs() < ri * 0.5 {
+                    trunk = true;
+                }
+                // (Rising out of the canopy's floor, not lifted on a trunk:
+                // under a lifted dome a heightfield stands a wall, seen from
+                // the front a curtain.)
                 if d2 < ri * ri {
-                    best = best.max((ri * ri - d2).sqrt() * 1.2 + ri * 0.8);
+                    best = best.max((ri * ri - d2).sqrt() * 1.3 + floor);
                 }
                 // Its bunches of leaves, round its top.
                 for b in 0..4u64 {
@@ -199,13 +218,41 @@ impl Shape {
                     let rb = ri * (0.38 + 0.2 * hash(gx, gz, s ^ (20 + b)));
                     let db = (x - bx).powi(2) + (z - bz).powi(2);
                     if db < rb * rb {
-                        best = best.max((rb * rb - db).sqrt() * 1.2 + ri * 1.25);
+                        best = best.max((rb * rb - db).sqrt() * 1.2 + floor + ri * 0.55);
                     }
                 }
             }
         }
-        // (Under the crowns, a canopy's floor: no gaps through the wood.)
-        (best, r * 0.9 * self.trees)
+        // (Under the crowns, a canopy's floor: no gaps through the wood;
+        // bushes in clumps on it, the undergrowth.)
+        (best, floor + self.undergrowth(x, z) * edge, trunk)
+    }
+
+    /// The wood's undergrowth over its floor at (x, z): bushes, small
+    /// domes, in clumps (thin in places).
+    fn undergrowth(&self, x: f32, z: f32) -> f32 {
+        let r = self.crowns * 0.42;
+        let cell = r * 1.2;
+        let (cx, cz) = ((x / cell).floor() as i64, (z / cell).floor() as i64);
+        let s = self.seed ^ 0xb054;
+        let mut best = 0.0f32;
+        for i in -1..=1 {
+            for j in -1..=1 {
+                let (gx, gz) = (cx + i, cz + j);
+                // (Thick in clumps, thin between.)
+                let px = (gx as f32 + 0.1 + 0.8 * hash(gx, gz, s ^ 1)) * cell;
+                let pz = (gz as f32 + 0.1 + 0.8 * hash(gx, gz, s ^ 2)) * cell;
+                if hash(gx, gz, s) > 0.35 + 0.55 * noise2(px / 30.0, pz / 20.0, s ^ 5) {
+                    continue;
+                }
+                let ri = r * (0.55 + 0.7 * hash(gx, gz, s ^ 3));
+                let d2 = (x - px).powi(2) + (z - pz).powi(2);
+                if d2 < ri * ri {
+                    best = best.max((ri * ri - d2).sqrt());
+                }
+            }
+        }
+        best
     }
 
     /// What the land is at (x, z), its height `t` there.
@@ -228,9 +275,11 @@ impl Shape {
         let row = t + z * self.tilt;
         let clump = noise2(x / 18.0, row / 5.0, self.seed ^ 0xc1) * 0.82 + noise2(x / 5.0, row / 2.0, self.seed ^ 0xc2) * 0.18;
         let wooded = self.trees > 0.0 && steep < 0.55 && clump > 1.0 - self.trees * (1.1 - up * 0.6);
-        // (A crown's leaves; under them, the wood's dark floor: its ground.)
-        let (crowns, floor) = self.crowns_at(x, z);
+        // (A crown's leaves; under them, the wood's dark floor: its ground,
+        // its undergrowth, a trunk here and there.)
+        let (crowns, floor, trunk) = self.crowns_at(x, z);
         let crown = self.crowns > 0.0 && crowns > floor + 0.3;
+        let under = self.crowns > 0.0 && !crown;
         let mat = if snowy {
             SNOW
         } else if crown || wooded || (up < 0.12 && z < self.deep * 0.35) {
@@ -243,9 +292,12 @@ impl Shape {
         let crest = t - around > 0.011 * self.amp;
         // (Strokes along the slope's height, not into the band: they
         // cluster across a face, not in columns.)
-        let stroke = self.rough > 0.5 && !snowy && steep > 0.3 && noise2(x / 2.4, t / 3.2, self.seed ^ 0xb2) > 0.74 && noise2(x / 30.0, t / 24.0, self.seed ^ 0xb3) > 0.45;
+        let stroke = (under && trunk) || (self.rough > 0.5 && !snowy && steep > 0.3 && noise2(x / 2.4, t / 3.2, self.seed ^ 0xb2) > 0.74 && noise2(x / 30.0, t / 24.0, self.seed ^ 0xb3) > 0.45);
+        // (Under the crowns, dappled: deep shade here, a little light there,
+        // by `up`, which shades it.)
+        let up = if under { 0.15 + 0.6 * noise2(x / 7.0, row / 3.5, self.seed ^ 0xd4) } else { up };
         // (Never both a crest and a stroke: that's a decoration's mark.)
-        Texel { n, mat, crest, stroke: stroke && !crest, up }
+        Texel { n, mat, crest: crest && !under, stroke: stroke && !(crest && !under), up }
     }
 }
 
@@ -264,7 +316,9 @@ pub fn strip(shape: &Shape, x0: i64, w: usize, h: usize, foot: f32, detail: f32)
         let xf = (x0 + xi as i64) as f32 / detail + 0.5 / detail;
         // Rows from `top` down are drawn.
         let mut top = h;
-        let mut z = 0.0;
+        // (A wood starts a little in front of its first trees: their fronts,
+        // the undergrowth and trunks under them are drawn, not filled.)
+        let mut z = -shape.crowns * 2.0;
         while z <= shape.deep && top > 0 {
             // (Under its water line, a lake: flat, its surface.)
             let land = shape.height(xf, z);
@@ -284,12 +338,34 @@ pub fn strip(shape: &Shape, x0: i64, w: usize, h: usize, foot: f32, detail: f32)
                     // smooth hills as their ground; a range as its scrub.)
                     let body = if wet {
                         texel
+                    } else if shape.crowns > 0.0 {
+                        // (A wood's lowest rows: undergrowth, dappled by
+                        // where it shows, row by row: no streaks.)
+                        let row = y as f32 / detail;
+                        let k = noise2(xf / 6.0, row / 3.0, shape.seed ^ 0xd5);
+                        Texel { n: normalize([(k - 0.5) * 0.8, 0.45, -0.85]), mat: ROCK, crest: false, stroke: false, up: 0.1 + 0.5 * k }
                     } else if shape.rough < 0.5 {
                         Texel { mat: ROCK, ..BODY }
                     } else {
                         BODY
                     };
-                    let edge = if below { body } else if texel.crest || y == py { Texel { crest: true, stroke: false, ..texel } } else { texel };
+                    let run = (top.min(h) - py).max(1) as f32;
+                    let edge = if below {
+                        body
+                    } else if texel.crest || y == py {
+                        Texel { crest: true, stroke: false, ..texel }
+                    } else if shape.crowns > 0.0 && run > 2.0 && texel.mat != WATER && decor_of(&texel).is_none() {
+                        // (A crown's underside: a heightfield can't overhang,
+                        // so under a crown's front stands a wall. Shaded as
+                        // the crown curving away under itself: turning down,
+                        // darker toward its foot, dappled row by row.)
+                        let f = (y - py) as f32 / run;
+                        let k = noise2(xf / 5.0, y as f32 / detail / 2.5, shape.seed ^ 0xd6);
+                        let n = normalize([texel.n[0] * (1.0 - f) + (k - 0.5) * 0.5, 0.55 - f * 1.1, -0.75]);
+                        Texel { n, up: (texel.up * (1.0 - 0.7 * f) + 0.15 * k).clamp(0.0, 1.0), crest: false, ..texel }
+                    } else {
+                        texel
+                    };
                     out[(y * w + xi) * 4..][..4].copy_from_slice(&encode(&edge));
                 }
                 texel.crest = false;

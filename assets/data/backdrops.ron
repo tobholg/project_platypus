@@ -100,7 +100,7 @@
              ground: (150, 162, 196), growth: (112, 124, 166), snow: (214, 220, 232), snow_line: 0.14, water: 0, trees: 0, haze: 0.5, mist: 0.6),
             (every: 90, size: (0.012, 0.03), slope: (1.5, 2.5), rough: 0, base: 0.5, crowns: 14,
              ground: (52, 132, 118), growth: (92, 164, 74), snow: (204, 209, 219), snow_line: 0, water: 0, trees: 1, haze: 0.06, mist: 0.1),
-            (every: 100, size: (0.05, 0.11), slope: (1.6, 2.6), rough: 0, base: 0.5, decor: 1,
+            (every: 100, size: (0.085, 0.12), slope: (1.6, 2.6), rough: 0, base: 0.5, decor: 1,
              ground: (148, 206, 78), growth: (110, 168, 68), snow: (204, 209, 219), snow_line: 0, water: 0, trees: 0.45, haze: 0, mist: 0),
         ]),
     ],
