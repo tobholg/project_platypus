@@ -2142,6 +2142,43 @@ mod tests {
         assert!(wall_share > share * 1.3, "ore shows on cave walls: {:.1}% there vs {:.1}% overall", wall_share * 100.0, share * 100.0);
     }
 
+    /// How much of the rock each ore is, by band, and iron's first 600
+    /// cells (where its window starts): numbers to tune `minerals::rules`
+    /// by (`cargo test -p platypus_worldgen ore_densities -- --ignored
+    /// --nocapture`).
+    #[test]
+    #[ignore]
+    fn ore_densities() {
+        use std::collections::BTreeMap;
+        let m = mats();
+        let g = TerrainGen::new(5, Preset::Large, &m);
+        let names = ["coal", "copper_ore", "iron_ore", "silver_ore", "gold_ore", "mithril_ore"];
+        let ids: Vec<MaterialId> = names.iter().map(|n| m.expect_id(n)).collect();
+        let iron_top = minerals::rules(&g.plan, &m).0[2].window.1;
+        let (mut rock, mut found, mut top_rock, mut top_iron) = (BTreeMap::new(), BTreeMap::new(), 0u32, 0u32);
+        for x in (0..g.plan.width).step_by(23) {
+            for y in (g.plan.band_span(Band::Deep).0..g.plan.band_span(Band::Underground).1).step_by(7) {
+                let here = g.material_at(x, y);
+                if here == MaterialId::AIR || !matches!(m.phys(here).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder) {
+                    continue;
+                }
+                let band = g.plan.band_at(y).name();
+                *rock.entry(band).or_insert(0u32) += 1;
+                if let Some(i) = ids.iter().position(|&id| id == here) {
+                    *found.entry((band, names[i])).or_insert(0u32) += 1;
+                }
+                if (iron_top - 600..=iron_top).contains(&y) {
+                    top_rock += 1;
+                    top_iron += u32::from(here == ids[2]);
+                }
+            }
+        }
+        for ((band, name), n) in &found {
+            eprintln!("{band:>12} {name:>12} {:.2}%", *n as f32 * 100.0 / rock[band] as f32);
+        }
+        eprintln!("iron in its first 600 cells: {:.2}%", top_iron as f32 * 100.0 / top_rock.max(1) as f32);
+    }
+
     /// Crypts stand on level ground with no tree in their ruin; chunks report
     /// each chest and guard exactly once.
     #[test]

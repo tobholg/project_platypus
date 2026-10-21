@@ -293,14 +293,14 @@ pub(super) fn ladder_script(
             match bot.step {
                 // Room: a tunnel the body fits, each way.
                 // A room, as a player makes one: whole blocks mined out in
-                // precise mode (flat faces), five high and eleven across
+                // precise mode (flat faces), five high and thirteen across
                 // from the row its feet are in, the nearest first; a block
                 // it can't get in 3 s is passed over.
                 0 | 1 => {
                     let bs = platypus_sim::BLOCK;
                     if bot.room.is_empty() && bot.step == 0 {
                         let (fb, pb) = ((feet.y / bs as f32 + 0.25).floor() as i32, (p.x / bs as f32).floor() as i32);
-                        bot.room = (fb..fb + 5).flat_map(|by| (pb - 5..=pb + 5).map(move |bx| CellPos::new(bx, by))).collect();
+                        bot.room = (fb..fb + 5).flat_map(|by| (pb - 6..=pb + 6).map(move |bx| CellPos::new(bx, by))).collect();
                         bot.step = 1;
                         bot.block_at = t;
                     }
@@ -406,7 +406,7 @@ pub(super) fn ladder_script(
                     let fb = (feet.y / bs as f32 + 0.25).floor() as i32 - 1;
                     let pb = (p.x / bs as f32).floor() as i32;
                     let holed = |bx: i32| (0..bs).any(|dx| !world.get(CellPos::new(bx * bs + dx, fb * bs + bs - 1)).is_some_and(|c| matches!(mats.phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder)));
-                    let row: Vec<i32> = (pb - 5..=pb + 5).filter(|&bx| holed(bx)).collect();
+                    let row: Vec<i32> = (pb - 6..=pb + 6).filter(|&bx| holed(bx)).collect();
                     let block = ["block:stone", "block:dirt", "block:cobblestone"].into_iter().find(|n| count(&inv, &items, n) > 0);
                     match (row.first(), block) {
                         (Some(&bx), Some(b)) if since < 4.0 => {
@@ -566,7 +566,8 @@ fn spot(world: &World, crafting: &Crafting, kind: usize, p: Vec2, set: &[(Vec2, 
             if feet.distance(p) > 46.0 || set.iter().any(|(sc, sh)| (sc.x - c.x).abs() < sh.x + half.x && (sc.y - c.y).abs() < sh.y + half.y) {
                 continue;
             }
-            let d = (dx as f32).abs();
+            // (Packed from the left: what's set down after has room.)
+            let d = c.x - half.x;
             if best.is_none_or(|(_, b)| d < b) {
                 best = Some((aim, d));
             }
