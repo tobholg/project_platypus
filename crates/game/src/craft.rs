@@ -28,6 +28,7 @@ use crate::creatures::Kinematics;
 use crate::creatures::player::LocalPlayer;
 use crate::data::{Watched, data_path, load_ron};
 use crate::hands::items::{Inventory, Items, Stack};
+use crate::hands::placing::{Level, Tried, Why};
 use crate::progress::{Progress, Toast};
 use crate::props::Thrown;
 
@@ -159,35 +160,46 @@ impl Crafting {
         }
     }
 
-    /// Where a station would go for the cursor (its feet), if it can: on
-    /// the ground under it, hung from the ceiling over it (empty below), or
-    /// on a wall behind it (a wall all the way behind, nothing in front).
+    /// Where a station would go for the cursor (its feet), if it can.
     pub fn place_spot(&self, world: &platypus_sim::World, cursor: Vec2, kind: usize) -> Option<Vec2> {
+        self.try_place(world, cursor, kind).spot()
+    }
+
+    /// Where a station would go for the cursor, or why it can't: on the
+    /// ground under it (`placing::try_floor`), hung from the ceiling over
+    /// it (empty below), or on a wall behind it (a wall all the way behind,
+    /// nothing in front).
+    pub fn try_place(&self, world: &platypus_sim::World, cursor: Vec2, kind: usize) -> Tried {
         let def = &self.stations[kind];
         let (w, h) = def.size();
         let mats = world.materials();
         let room = |c: platypus_sim::Cell| c.is_air() || matches!(mats.phys(c.material).kind, platypus_sim::Kind::Plant | platypus_sim::Kind::Gas | platypus_sim::Kind::Fire);
         let solid = |p: platypus_sim::CellPos| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder));
         let x0 = cursor.x.floor() as i32 - w / 2;
+        let in_way = |feet: i32| -> Vec<platypus_sim::CellPos> {
+            (feet..feet + h).flat_map(|y| (x0..x0 + w).map(move |x| platypus_sim::CellPos::new(x, y))).filter(|&p| !world.get(p).is_some_and(room)).collect()
+        };
+        let tried = |floor: i32, at: Result<Level, Why>, cells: Vec<platypus_sim::CellPos>| Tried { x0, floor, size: (w, h), at, cells };
         match def.mount {
-            Mount::Floor => crate::hands::chests::place_spot_sized(world, cursor, (w, h)),
+            Mount::Floor => crate::hands::placing::try_floor(world, cursor, (w, h)),
             Mount::Hang => {
                 // The ceiling over the cursor's column: the first solid going up.
                 let cx = cursor.x.floor() as i32;
-                let ceiling = (0..48).map(|d| cursor.y.floor() as i32 + d).find(|&y| solid(platypus_sim::CellPos::new(cx, y)))?;
+                let Some(ceiling) = (0..48).map(|d| cursor.y.floor() as i32 + d).find(|&y| solid(platypus_sim::CellPos::new(cx, y))) else {
+                    return tried(cursor.y.floor() as i32 - h / 2, Err(Why::Ceiling), Vec::new());
+                };
                 let feet = ceiling - h;
-                let empty = (feet..ceiling).all(|y| (x0..x0 + w).all(|x| world.get(platypus_sim::CellPos::new(x, y)).is_some_and(room)));
-                empty.then_some(Vec2::new((x0 + w / 2) as f32, feet as f32))
+                let cells = in_way(feet);
+                if cells.is_empty() { tried(feet, Ok(Level(None)), cells) } else { tried(feet, Err(Why::Room), cells) }
             }
             Mount::Wall => {
                 let feet = cursor.y.floor() as i32 - h / 2;
-                let ok = (feet..feet + h).all(|y| {
-                    (x0..x0 + w).all(|x| {
-                        let p = platypus_sim::CellPos::new(x, y);
-                        world.get(p).is_some_and(room) && world.get_bg(p).is_some_and(|c| !c.is_air())
-                    })
-                });
-                ok.then_some(Vec2::new((x0 + w / 2) as f32, feet as f32))
+                let cells = in_way(feet);
+                if !cells.is_empty() {
+                    return tried(feet, Err(Why::Room), cells);
+                }
+                let bare: Vec<platypus_sim::CellPos> = (feet..feet + h).flat_map(|y| (x0..x0 + w).map(move |x| platypus_sim::CellPos::new(x, y))).filter(|&p| !world.get_bg(p).is_some_and(|c| !c.is_air())).collect();
+                if bare.is_empty() { tried(feet, Ok(Level(None)), bare) } else { tried(feet, Err(Why::Wall), bare) }
             }
         }
     }

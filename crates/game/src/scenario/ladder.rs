@@ -86,6 +86,7 @@ pub(super) struct Bot {
     anchor: Vec2,
     moved_at: f32,
     shelf: bool,
+    failed: Vec<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -307,7 +308,8 @@ pub(super) fn ladder_script(
                 2 => {
                     if since > 0.4 {
                         bot.step_at = t;
-                        let todo = STATIONS.iter().find(|n| count(&inv, &items, n) > 0);
+                        // (What wouldn't go down this camp is passed over.)
+                        let todo = STATIONS.iter().find(|n| count(&inv, &items, n) > 0 && !bot.failed.contains(&n.to_string()));
                         match todo.and_then(|n| crafting.station(n).map(|kind| (*n, kind))) {
                             Some((name, kind)) => {
                                 let set: Vec<(Vec2, Vec2)> = stations.iter().map(|(_, sk)| (sk.body.pos, sk.body.half)).collect();
@@ -321,7 +323,7 @@ pub(super) fn ladder_script(
                                         bot.idle += 1.0;
                                         if bot.idle > 4.0 {
                                             info!("ladder: the {name} wouldn't go down at {:?}", at.round());
-                                            bot.step = 3;
+                                            bot.failed.push(name.to_string());
                                             bot.idle = 0.0;
                                         }
                                     }
@@ -334,7 +336,7 @@ pub(super) fn ladder_script(
                                     }
                                     None => {
                                         info!("ladder: nowhere for the {name} even with a shelf, at {:?}", p.round());
-                                        bot.step = 3;
+                                        bot.failed.push(name.to_string());
                                         bot.idle = 0.0;
                                     }
                                 }
@@ -474,6 +476,7 @@ pub(super) fn ladder_script(
 
 fn go(bot: &mut Bot, phase: Phase, t: f32) {
     bot.phase = phase;
+    bot.failed.clear();
     bot.since = t;
     bot.step = 0;
     bot.step_at = t;

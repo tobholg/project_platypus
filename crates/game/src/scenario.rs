@@ -302,6 +302,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, foci_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, sleep_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, placing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
@@ -10708,6 +10709,83 @@ fn phase_script(
         let far = spiders.iter().next().map_or(-1.0, |(_, sk, _)| sk.body.pos.distance(me));
         let web = sim.materials().id("cobweb").map_or(0, |m| (me.x as i32 - 60..me.x as i32 + 60).flat_map(|x| (fl as i32 - 2..fl as i32 + 50).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
         info!("phase: t {t:.0} the player has lost {:.0}; it's {far:.0} off; cobweb by them {web}", state.1);
+    }
+}
+
+/// `placing` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a workbench set
+/// down through real input on a lump of dirt (levelled, the dirt dug into
+/// the pack) and tried on a lump of stone (refused: mine it flat); logs
+/// each, shots of the outline (`PLATYPUS_SHOTS`).
+fn placing_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(&mut Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    items: Option<Res<crate::hands::items::Items>>,
+    stations: Query<&Kinematics, (With<crate::craft::Station>, Without<LocalPlayer>)>,
+    mut hand: ResMut<crate::hands::Hand>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut toasts: MessageReader<crate::progress::Toast>,
+    mut step: Local<u8>,
+) {
+    if s.name != "placing" {
+        toasts.clear();
+        return;
+    }
+    menu.open = false;
+    mouse.release(MouseButton::Left);
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR;
+    let (dirt_at, stone_at) = (Vec2::new(1040.0, fl as f32 + 4.0), Vec2::new(1100.0, fl as f32 + 4.0));
+    for m in toasts.read() {
+        info!("placing: told \"{}\"", m.0);
+    }
+    let Some(items) = items else { return };
+    let Ok((mut k, mut inv)) = player.single_mut() else { return };
+    let dirt = items.id("block:dirt").map_or(0, |d| inv.count(d) / items.unit(d));
+    match *step {
+        0 if t > 0.5 => {
+            let mats = sim.materials().clone();
+            let mut rng = platypus_sim::rng::Rng::seeded(&[7]);
+            for (name, x0, w, h) in [("dirt", 1036, 10, 5), ("stone", 1097, 6, 3)] {
+                let id = mats.expect_id(name);
+                for x in x0..x0 + w {
+                    for y in fl..fl + h {
+                        sim.world.set(CellPos::new(x, y), mats.spawn(id, &mut rng));
+                    }
+                }
+            }
+            k.body.pos = Vec2::new(1070.0, fl as f32 + k.body.half.y + 8.0);
+            k.prev_pos = k.body.pos;
+            if let Some(w) = items.id("workbench") {
+                inv.slots[8] = Some(crate::hands::items::Stack::new(w, 2));
+                (hand.bar, hand.slot) = (0, 8);
+            }
+            *step = 1;
+        }
+        1 if t > 1.2 => {
+            cursor.0 = Some(dirt_at);
+            if t > 1.8 {
+                info!("placing: on the dirt lump, {} dirt in the pack before", dirt);
+                mouse.press(MouseButton::Left);
+                *step = 2;
+            }
+        }
+        2 if t > 2.4 => {
+            info!("placing: after: {} stations down, {} dirt in the pack", stations.iter().count(), dirt);
+            cursor.0 = Some(stone_at);
+            *step = 3;
+        }
+        3 if t > 3.0 => {
+            mouse.press(MouseButton::Left);
+            *step = 4;
+        }
+        4 if t > 3.6 => {
+            info!("placing: on the stone lump: {} stations down", stations.iter().count());
+            *step = 5;
+        }
+        _ => {}
     }
 }
 

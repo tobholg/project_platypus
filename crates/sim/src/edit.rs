@@ -49,6 +49,9 @@ pub enum WorldEdit {
     /// Take every cell of one material out of a rectangle (inclusive):
     /// what's left of a broken chest, door or other furniture.
     Remove { min: CellPos, max: CellPos, material: MaterialId },
+    /// Take the soft ground (`MaterialTable::soft`) out of a rectangle
+    /// (inclusive): what a station or a chest set down levels away.
+    Level { min: CellPos, max: CellPos },
     /// Destroy what `power` can break (falling off towards the edge), shatter
     /// a rim into rubble (`crumbles_into`), ignite flammables, fill the crater
     /// with fire and smoke.

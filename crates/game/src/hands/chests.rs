@@ -513,34 +513,10 @@ fn batter(
     }
 }
 
-/// Where a chest would go for a cursor: on the highest ground under it
-/// (searched a little way down; natural ground isn't flat, so three
-/// quarters of its columns resting on something will do), with room for it.
-/// Returns its feet.
+/// Where a chest would go for a cursor, if it can (its feet): as any floor
+/// piece (`placing::try_floor`).
 pub fn place_spot(world: &World, cursor: Vec2) -> Option<Vec2> {
-    place_spot_sized(world, cursor, CHEST_SIZE)
-}
-
-/// How far under the highest ground under a chest or a station other
-/// ground under it may lie and still hold it up (half a block).
-const ROUGH: i32 = 4;
-
-/// As `place_spot`, for furniture of any size (a crafting station).
-pub fn place_spot_sized(world: &World, cursor: Vec2, (w, h): (i32, i32)) -> Option<Vec2> {
-    let mats = world.materials();
-    let solid = |p: CellPos| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder));
-    let x0 = cursor.x.floor() as i32 - w / 2;
-    let y = cursor.y.floor() as i32 + 6;
-    // Each column's ground: the first solid cell going down.
-    let tops: Vec<Option<i32>> = (0..w).map(|dx| (0..30).map(|d| y - d).find(|&yy| solid(CellPos::new(x0 + dx, yy)))).collect();
-    let floor = tops.iter().flatten().max()? + 1;
-    // (Ground a little rough, as a pickaxe leaves it, will do: what's
-    // under three quarters of it no more than `ROUGH` below the highest.)
-    let resting = tops.iter().filter(|t| t.is_some_and(|t| t >= floor - 1 - ROUGH)).count();
-    // (Tall grass and smoke don't count: a chest goes over them.)
-    let room = |c: platypus_sim::Cell| c.is_air() || matches!(mats.phys(c.material).kind, platypus_sim::Kind::Plant | platypus_sim::Kind::Gas | platypus_sim::Kind::Fire);
-    let empty = (0..h).all(|dy| (0..w).all(|dx| world.get(CellPos::new(x0 + dx, floor + dy)).is_some_and(room)));
-    (resting * 4 >= w as usize * 3 && empty).then_some(Vec2::new((x0 + w / 2) as f32, floor as f32))
+    super::placing::try_floor(world, cursor, CHEST_SIZE).spot()
 }
 
 #[cfg(test)]

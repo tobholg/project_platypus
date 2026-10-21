@@ -85,6 +85,9 @@ pub enum Loot {
     Wood,
 }
 
+/// The hardest ground that's soft (`MaterialTable::soft`): dirt's.
+pub const SOFT: u8 = 20;
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct MaterialDef {
     pub name: String,
@@ -751,6 +754,15 @@ impl MaterialTable {
         }
 
         Ok(MaterialTable { fire: fire.unwrap_or(MaterialId::AIR), defs, phys, reactions, palette, by_name })
+    }
+
+    /// Soft ground: natural (not built, not part of a thing), no harder
+    /// than `SOFT`: dirt, grass, sand, gravel, snow, ash. Setting a station
+    /// or a chest down levels it (`WorldEdit::Level`); rock it won't.
+    pub fn soft(&self, id: MaterialId) -> bool {
+        let p = self.phys(id);
+        let d = &self.defs[id.0 as usize];
+        matches!(p.kind, Kind::Static | Kind::Powder) && p.hardness <= SOFT && d.tile.is_none() && !p.object && !p.living
     }
 
     /// How a building material draws itself, block by block (`tile`).

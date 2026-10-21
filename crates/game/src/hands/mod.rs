@@ -13,6 +13,7 @@ pub(crate) mod crafting;
 pub mod filter;
 pub mod icons;
 pub mod items;
+pub mod placing;
 pub mod target;
 pub(crate) mod ui;
 
@@ -529,6 +530,7 @@ fn use_hands(
     (crafting, mut stations): (Res<crate::craft::Crafting>, Query<StationHit, (Without<LocalPlayer>, Without<chests::Chest>)>),
     book: Res<crate::magic::Spellbook>,
     (mut casts, mut swings, mut draws, mut sounds, mut drinks, mut dug): (MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::combat::MeleeRequest>, MessageWriter<crate::archery::DrawBow>, MessageWriter<crate::sound::PlaySound>, MessageWriter<crate::potion::Drink>, MessageWriter<crate::gold::Dug>),
+    mut toasts: MessageWriter<crate::progress::Toast>,
 ) {
     let clicked = std::mem::take(&mut input.clicked);
     hand.cooldown = (hand.cooldown - DT).max(0.0);
@@ -768,19 +770,15 @@ fn use_hands(
             drinks.write(crate::potion::Drink { who: me, slot });
         }
         Use::Chest if clicked => {
-            let Some(feet) = chests::place_spot(&sim.world, cursor) else { return };
-            if feet.distance(from) > 6.0 * BLOCK as f32 {
-                return;
-            }
+            let tried = placing::try_floor(&sim.world, cursor, platypus_worldgen::CHEST_SIZE).within(from, PLACE_REACH);
+            let Some(feet) = set_down(&mut commands, &mut sim, &items, &tried, &mut toasts) else { return };
             chests.spawn_placed(&mut commands, feet);
             inv.take(slot, 1);
         }
         Use::Station(ref id) if clicked => {
             let Some(kind) = crafting.station(id) else { return warn!("crafting.ron: no station `{id}`") };
-            let Some(feet) = crafting.place_spot(&sim.world, cursor, kind) else { return };
-            if feet.distance(from) > 6.0 * BLOCK as f32 {
-                return;
-            }
+            let tried = crafting.try_place(&sim.world, cursor, kind).within(from, PLACE_REACH);
+            let Some(feet) = set_down(&mut commands, &mut sim, &items, &tried, &mut toasts) else { return };
             // (Facing you: the pictures face right.)
             crafting.spawn(&mut commands, kind, feet, from.x < feet.x);
             inv.take(slot, 1);
@@ -959,6 +957,31 @@ pub fn beds(
     toasts.write(crate::progress::Toast("You'll wake here".into()));
     sounds.write(crate::sound::PlaySound::at("place", feet).pitch(0.5));
     info!("bed: checkpoint ({:.0}, {:.0})", feet.x, feet.y);
+}
+
+/// How far from the hands a chest or a station can be set down.
+const PLACE_REACH: f32 = 6.0 * BLOCK as f32;
+
+/// A piece set down where it was tried, if it can be: its soft ground
+/// levelled (what's dug out dropped, to be picked up), its feet returned;
+/// if not, the player told why.
+fn set_down(commands: &mut Commands, sim: &mut SimWorld, items: &Items, tried: &placing::Tried, toasts: &mut MessageWriter<crate::progress::Toast>) -> Option<Vec2> {
+    let feet = match tried.at {
+        Ok(_) => tried.feet(),
+        Err(why) => {
+            toasts.write(crate::progress::Toast(why.say().into()));
+            return None;
+        }
+    };
+    if let Some(edit) = tried.level() {
+        let report = sim.world.apply_edit(&edit);
+        for &(material, n) in &report.removed {
+            if let Some(item) = items.block(material) {
+                spawn_drop(commands, items, feet + Vec2::Y * 4.0, Stack::new(item, n));
+            }
+        }
+    }
+    Some(feet)
 }
 
 /// What a hammer would shape: the block under the cursor, within `reach`
@@ -1225,20 +1248,12 @@ fn outline(
     let (block, color) = match &items.def(stack.item).use_ {
         Use::Station(id) => {
             if let Some(kind) = crafting.station(id) {
-                let (w, h) = crafting.stations[kind].size();
-                if let Some(feet) = crafting.place_spot(world, cursor, kind) {
-                    let size = Vec2::new(w as f32, h as f32);
-                    gizmos.rect_2d(bevy::math::Isometry2d::from_translation(feet + Vec2::new(0.0, size.y / 2.0)), size, Color::srgba(0.4, 0.9, 1.0, 0.9));
-                }
+                placing::outline(&mut gizmos, world, &crafting.try_place(world, cursor, kind).within(from, PLACE_REACH));
             }
             (None, Color::NONE)
         }
         Use::Chest => {
-            if let Some(feet) = chests::place_spot(world, cursor) {
-                let (w, h) = platypus_worldgen::CHEST_SIZE;
-                let size = Vec2::new(w as f32, h as f32);
-                gizmos.rect_2d(bevy::math::Isometry2d::from_translation(feet + Vec2::new(0.0, size.y / 2.0)), size, Color::srgba(0.4, 0.9, 1.0, 0.9));
-            }
+            placing::outline(&mut gizmos, world, &placing::try_floor(world, cursor, platypus_worldgen::CHEST_SIZE).within(from, PLACE_REACH));
             (None, Color::NONE)
         }
         Use::Block(m) => {

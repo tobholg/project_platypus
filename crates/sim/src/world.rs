@@ -596,6 +596,17 @@ impl World {
                     }
                 }
             }
+            WorldEdit::Level { min, max } => {
+                for y in min.y..=max.y {
+                    for x in min.x..=max.x {
+                        let p = CellPos::new(x, y);
+                        if let Some(c) = self.get(p).filter(|c| self.materials.soft(c.material)) {
+                            self.set(p, Cell::AIR);
+                            report.add_removed(c.material);
+                        }
+                    }
+                }
+            }
             WorldEdit::Lightning { x, from_y } => self.lightning(x, from_y),
             WorldEdit::Zap { from, to } => {
                 self.zap(from, to);
