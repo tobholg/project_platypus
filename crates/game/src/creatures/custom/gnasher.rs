@@ -6,11 +6,13 @@
 //!
 //! - **Snap**: near you, its jaw drops (the tell, short) and it darts in
 //!   and bites.
-//! - **Lunge**: further off, it draws back, its jaws gaping wide, teeth
-//!   chattering, turning after you, slowly, then holding still (the tell,
-//!   long: get out of the line, or behind something); then it shoots along
-//!   that line and snaps shut on what's in it. After, it drifts a while,
-//!   spent: open to you.
+//! - **Drift**: it floats round you on a slow, wandering orbit (Terraria's
+//!   demon eyes), never still.
+//! - **Lunge**: from there, every couple of seconds, it draws back, its
+//!   jaws gaping wide, teeth chattering, turning after you, then holding
+//!   still (the tell: get out of the line, or behind something); then it
+//!   shoots along that line like an arrow, past where you were, and snaps
+//!   shut on what's in it. After, it drifts a moment, spent: open to you.
 //!
 //! - **Lure** (an abyssal gnasher's, `lure`): its lure flares and pulses,
 //!   and what sees it is drawn in toward its jaws while it lasts (break the
@@ -22,7 +24,7 @@
 use bevy::prelude::*;
 use serde::Deserialize;
 
-use super::watcher::{FLOAT_BESIDE, clear, float_height, float_seed, ground};
+use super::watcher::{clear, float_height, float_seed, ground};
 use super::{CustomCreature, CustomSet, frame_anchor};
 use crate::camera::MainCamera;
 use crate::canvas::{Canvas, CanvasSprites};
@@ -146,20 +148,24 @@ const SNAP_EVERY: f32 = 1.8;
 /// long before it goes (then still); shooting this fast, at most this long;
 /// its bite (damage, knock, stun); spent this long after; then it waits.
 const LUNGE_RANGE: (f32, f32) = (35.0, 230.0);
-const DRAW: f32 = 0.95;
+const DRAW: f32 = 0.65;
 const DRAW_BACK: f32 = 35.0;
 const FOLLOW: f32 = 2.2;
-const LOCK: f32 = 0.3;
-const LUNGE: (f32, f32) = (470.0, 0.5);
+const LOCK: f32 = 0.25;
+const LUNGE: (f32, f32) = (440.0, 0.75);
 const LUNGE_BITE: (f32, f32, f32) = (24.0, 480.0, 0.35);
-const SPENT: f32 = 0.85;
-const LUNGE_EVERY: f32 = 3.5;
+const SPENT: f32 = 0.6;
+const LUNGE_EVERY: f32 = 2.2;
 /// A lunge after the first: its tell this long (it's already gaping).
 const REDRAW: f32 = 0.4;
 const LURE_I: usize = 2;
 /// The lure: drawing in this long; then it waits this long.
 const LURE: f32 = 1.8;
 const LURE_EVERY: f32 = 7.0;
+
+/// Hovering, the orbit it drifts round them on: how fast it goes round
+/// (rad/s), how far off (cells), and how much that swells and shrinks.
+const ORBIT: (f32, f32, f32) = (0.7, 105.0, 25.0);
 
 /// Where it goes for: their chest (so its body, hung under its maw, clears
 /// the ground on the way).
@@ -358,7 +364,7 @@ fn think(
         let over = ground(&sim, Vec2::new(pos.x, feet + 2.0), 120).map(|g| feet - g);
         // (Mostly up out of reach, now and then down beside you: Terraria's
         // eyes. It lunges down from up there.)
-        let (float, down) = float_height(o.clock, float_seed(e));
+        let (float, _) = float_height(o.clock, float_seed(e));
         let height = float + (o.clock * 1.1).sin() * BOB;
         c.0.move_y = over.map_or(-0.5, |h| ((height - h) * 0.08).clamp(-1.0, 1.0));
         c.0.jump = false;
@@ -368,10 +374,16 @@ fn think(
             Doing::Hover => {
                 if let Some(tp) = tp {
                     c.0.aim = tp;
-                    if down {
-                        let to = tp.x + FLOAT_BESIDE * (pos.x - tp.x).signum() - pos.x;
-                        c.0.move_x = (to * 0.05).clamp(-1.0, 1.0);
-                    }
+                    // Drifting round them (Terraria's eyes): a slow,
+                    // wandering orbit over and about them, never still,
+                    // lunging from wherever it's got to.
+                    let seed = float_seed(e);
+                    let turn = o.clock * ORBIT.0 + seed * std::f32::consts::TAU + (o.clock * 0.31 + seed * 5.0).sin() * 1.2;
+                    let r = ORBIT.1 + ORBIT.2 * (o.clock * 0.53 + seed * 3.0).sin();
+                    let goal = tp + Vec2::new(turn.cos() * r, (0.25 + 0.6 * turn.sin().abs()) * r);
+                    let to = goal - pos;
+                    c.0.move_x = (to.x * 0.045).clamp(-1.0, 1.0);
+                    c.0.move_y = (to.y * 0.045 + (o.clock * 1.1).sin() * 0.15).clamp(-1.0, 1.0);
                 }
             }
             Doing::Lure(_) => {
