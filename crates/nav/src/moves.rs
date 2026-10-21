@@ -99,7 +99,7 @@ pub fn cost<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, m: &Move) 
     if tunnel {
         // (Somewhere it could have dug: all of it diggable.)
         v.dig_secs(p, from, from + IVec2::new(0, 1 << 20))?;
-    } else if !(v.stand(from).is_some() || (p.climb && v.hold(from))) {
+    } else if !(v.stand(from).is_some() || v.holds(p, from)) {
         return None;
     }
     if v.fits(to) {
@@ -136,7 +136,7 @@ pub fn check<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, m: &Move)
             out.iter().any(|(i, _)| *i as usize == k)
         }
         Kind::Climb => {
-            let ok = |v: &mut View<W>, n: NodePos| v.hold(n) || v.stand(n).is_some();
+            let ok = |v: &mut View<W>, n: NodePos| v.holds(p, n) || v.stand(n).is_some();
             // (Round a corner it goes by the open side: one is enough.)
             let round = m.d.x == 0 || m.d.y == 0 || v.fits(from + IVec2::new(m.d.x, 0)) || v.fits(from + IVec2::new(0, m.d.y));
             ok(v, from) && ok(v, to) && round
@@ -161,7 +161,7 @@ pub fn check<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, m: &Move)
 /// climber catches hold of what it passes (from ground or a hold).
 pub fn jumps<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, out: &mut Vec<(u16, f32)>) {
     let floor = v.stand(from);
-    let holds = p.climb && v.hold(from);
+    let holds = v.holds(p, from);
     if floor.is_none() && !holds {
         return;
     }
@@ -212,7 +212,7 @@ pub fn jumps<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, out: &mut
                     let n = IVec2::new(x.div_euclid(NODE), y.div_euclid(NODE));
                     let d = n - from;
                     if let Some(k) = a.catches.get(&IVec2::new(d.x * flip, d.y))
-                        && v.hold(n)
+                        && v.holds(p, n)
                         && v.stand(n).is_none()
                     {
                         push(out, Some(k));

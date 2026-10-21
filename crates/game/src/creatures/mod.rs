@@ -67,6 +67,7 @@ impl Plugin for CreaturesPlugin {
             .add_systems(Update, (body::rise::assemble, body::rise::tint_waking))
             .add_systems(PreUpdate, dormancy)
             .add_systems(Update, body::tumble::spin.before(body::animation::animate))
+            .add_systems(Update, body::animation::hug.before(body::animation::animate))
             .add_systems(FixedUpdate, voices.in_set(TickSet::Bodies))
             .add_systems(FixedUpdate, spurts.after(brain::BrainSet).before(move_creatures))
             // A slime holds its goo round it.

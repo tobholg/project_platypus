@@ -9,6 +9,8 @@
 //! - **Scavenging**: with no one to hunt, rats go to the nearest body and
 //!   gnaw it, together; a body gnawed through is gone, what it had on it
 //!   left lying where it was.
+//! - **Skittish**: idle, never still for long: a dart one way or the
+//!   other, a freeze, a twitch, now and then up the nearest wall.
 //! - Squeaks now and then.
 
 use bevy::prelude::*;
@@ -38,6 +40,13 @@ pub struct Rat {
     seed: f32,
     #[serde(skip)]
     started: bool,
+    /// Idle: what it's doing (move x, move y) till when (its own clock).
+    #[serde(skip)]
+    fidget: (f32, f32),
+    #[serde(skip)]
+    fidget_left: f32,
+    #[serde(skip)]
+    fidgets: u32,
 }
 
 /// How long a body's been gnawed (rat-seconds, summed over the rats at it).
@@ -106,8 +115,12 @@ fn think(
         let mut nibbling = false;
         let afraid = near < COURAGE && dist < SCATTER;
         if near < COURAGE && !afraid && dist < LURK {
-            // Hanging back, watching them, not coming on.
-            c.0.move_x = 0.0;
+            // Hanging back, watching them, not coming on: twitchy where it
+            // is (a fidget, never toward them).
+            fidget(&mut o);
+            let away = quarry.map_or(1.0, |q| if pos.x < q.x { -1.0 } else { 1.0 });
+            c.0.move_x = if o.fidget.0 * away < 0.0 { 0.0 } else { o.fidget.0 * 0.6 };
+            c.0.move_y = 0.0;
             c.0.jump = false;
             c.0.aim = quarry.unwrap_or(pos);
             o.doing = "lurk";
@@ -116,6 +129,7 @@ fn think(
             // them: it climbs).
             let q = quarry.expect("near enough to scatter from");
             c.0.move_x = if pos.x < q.x { -1.0 } else { 1.0 };
+            c.0.move_y = 1.0;
             c.0.aim = Vec2::ZERO;
             if !o.afraid {
                 sounds.write(crate::sound::PlaySound::at("rat_squeak", pos).volume(1.0).pitch(1.3));
@@ -147,6 +161,11 @@ fn think(
                 }
             }
         } else {
+            // Skittish: a dart, a freeze, a twitch, up a wall now and then.
+            fidget(&mut o);
+            c.0.move_x = o.fidget.0;
+            c.0.move_y = o.fidget.1;
+            c.0.jump = false;
             o.doing = "idle";
         }
         o.afraid = afraid;
@@ -158,6 +177,29 @@ fn think(
             anim.force = None;
         }
     }
+}
+
+/// Its fidgeting on its own (idle, lurking): as it last chose, till that
+/// runs out; then a freeze, a dart one way or the other, a twitch, or a
+/// run up whatever wall it comes to.
+fn fidget(o: &mut Rat) {
+    o.fidget_left -= DT;
+    if o.fidget_left > 0.0 {
+        return;
+    }
+    o.fidgets += 1;
+    let (n, seed) = (o.fidgets, o.seed);
+    let roll = |salt: u32| (((n.wrapping_mul(2_654_435_761) ^ salt) as f32 * 0.618_034 + seed * 7.31).sin() * 43_758.547).fract().abs();
+    let (r, side) = (roll(1), if roll(2) < 0.5 { -1.0 } else { 1.0 });
+    (o.fidget, o.fidget_left) = if r < 0.35 {
+        ((0.0, 0.0), 0.2 + 0.7 * roll(3))
+    } else if r < 0.8 {
+        ((side, 0.0), 0.15 + 0.35 * roll(4))
+    } else if r < 0.9 {
+        ((side * 0.4, 0.0), 0.08 + 0.1 * roll(5))
+    } else {
+        ((side, 1.0), 0.6 + 0.6 * roll(6))
+    };
 }
 
 /// A body gnawed through: gone, what it had on it left lying there, a

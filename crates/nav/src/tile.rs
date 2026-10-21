@@ -40,7 +40,8 @@ pub fn node_feet(n: NodePos) -> Vec2 {
 /// One tile, for one size of body: per node (row-major, 16 × 16), the
 /// floor's height in it (cells up from its bottom; -1: nothing to stand
 /// on), and bits per row: fits (the body free with its feet at the node's
-/// bottom), wet (its middle in liquid), hold (a climber can hold on there).
+/// bottom), wet (its middle in liquid), hold (a climber can hold on there),
+/// wall (a wall climber can: a wall beside it, or the ground).
 #[derive(Clone)]
 pub struct Tile {
     /// Each of its cells' clearance: open cells upward, up to the body's
@@ -50,6 +51,7 @@ pub struct Tile {
     fits: [u16; TILE as usize],
     wet: [u16; TILE as usize],
     hold: [u16; TILE as usize],
+    wall: [u16; TILE as usize],
 }
 
 impl Tile {
@@ -95,7 +97,7 @@ impl Tile {
                 open[(y * TILE_CELLS + x) as usize] = up[at(x0 + x, y0 + y)];
             }
         }
-        let mut t = Tile { open, floor: [-1; (TILE * TILE) as usize], fits: [0; TILE as usize], wet: [0; TILE as usize], hold: [0; TILE as usize] };
+        let mut t = Tile { open, floor: [-1; (TILE * TILE) as usize], fits: [0; TILE as usize], wet: [0; TILE as usize], hold: [0; TILE as usize], wall: [0; TILE as usize] };
         for ny in 0..TILE {
             for nx in 0..TILE {
                 let xc = x0 + nx * NODE + NODE / 2;
@@ -123,6 +125,9 @@ impl Tile {
                 let roof = (0..NODE).any(|d| (xc - half..xc + half).any(|x| solid[at(x, yb + h + d)]));
                 if walled || roof || stood_on(xc, yb) || world.backed(xc, yb + h / 2) {
                     t.hold[ny as usize] |= bit;
+                }
+                if walled || stood_on(xc, yb) {
+                    t.wall[ny as usize] |= bit;
                 }
             }
         }
@@ -307,6 +312,13 @@ impl<W: NavWorld> View<'_, W> {
         self.with(n, |t, l| Tile::bit(&t.hold, l))
     }
 
+    /// Whether a body that moves as `p` holds on at a node: a climber
+    /// anywhere it can (`hold`), a wall climber only by a wall or the
+    /// ground (`wall`).
+    pub fn holds(&mut self, p: &crate::Profile, n: NodePos) -> bool {
+        p.climb && if p.walls { self.with(n, |t, l| Tile::bit(&t.wall, l)) } else { self.hold(n) }
+    }
+
     /// A solid cell's hardness and whether acid can't eat it (a digger's
     /// cost), from the world itself.
     pub fn world_cell(&self, x: i32, y: i32) -> Option<(u8, bool)> {
@@ -403,7 +415,7 @@ impl<W: NavWorld> View<'_, W> {
         }
         // (What it can be doing here rules most moves out at once: none
         // but digging from inside the ground, no jump from the air.)
-        let (stands, holds, fits) = (self.stand(n).is_some(), p.climb && self.hold(n), self.fits(n));
+        let (stands, holds, fits) = (self.stand(n).is_some(), self.holds(p, n), self.fits(n));
         let may = |m: &crate::moves::Move| match m.kind {
             Kind::Walk | Kind::Drop => stands,
             // (Jumps all at once, below.)

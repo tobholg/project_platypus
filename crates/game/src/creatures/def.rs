@@ -244,6 +244,10 @@ pub struct CreatureDef {
     /// to, most near the smaller (a slime: some much bigger).
     #[serde(default)]
     pub sizes: Option<(f32, f32)>,
+    /// Its body lies along the ground under it, tilted with a slope (a
+    /// rat: `body::animation::hug`), not level over it.
+    #[serde(default)]
+    pub hug: bool,
     /// Its body is goo, cells of the world held round it (a slime:
     /// `body/goo.rs`).
     #[serde(default)]

@@ -171,6 +171,9 @@ pub struct MovementStats {
     /// A climber (a spider): touching a wall or a ceiling it holds on and
     /// goes along it where it steers, at run speed; a jump lets go.
     pub cling: bool,
+    /// A wall climber (a rat): up and down the rock beside it and over its
+    /// top, at run speed, but not along a ceiling or over the wall behind.
+    pub climb_walls: bool,
     /// A swimmer (a fish): under water it goes where it steers (move_x,
     /// move_y) × this, at `swim_accel`, weightless; 0: it swims as bodies do.
     pub swim_speed: f32,
@@ -240,6 +243,7 @@ impl Default for MovementStats {
             fly_speed: 0.0,
             fly_accel: 900.0,
             cling: false,
+            climb_walls: false,
             swim_speed: 0.0,
             swim_accel: 600.0,
             swim_gravity: 0.1,
@@ -477,7 +481,7 @@ impl Locomotion {
         self.crouching = intent.crouch && grounded && self.state != MoveState::Dash;
         // (A climber on a wall, or the wall behind, jumps off it as off the
         // ground: a leap. Off a ceiling, a jump only lets go.)
-        let on_wall = s.cling && self.cling.is_some_and(|d| d.y == 0.0);
+        let on_wall = (s.cling || s.climb_walls) && self.cling.is_some_and(|d| d.y == 0.0);
         let wall_held = self.cling.map_or(0.0, |d| d.x);
         self.leap = (self.leap - dt).max(0.0);
         self.coyote = if grounded || on_wall { s.coyote_time } else { (self.coyote - dt).max(0.0) };
@@ -568,15 +572,16 @@ impl Locomotion {
         // it stays touching) and goes along it; a jump lets go (a leap).
         self.cling = None;
         let held = self.held.take();
-        if s.cling && !jump_pressed && self.leap <= 0.0 && self.contacts.submerged < 0.5 {
+        if (s.cling || s.climb_walls) && !jump_pressed && self.leap <= 0.0 && self.contacts.submerged < 0.5 {
             let c = self.contacts;
             let wall = if c.wall_left { -1.0 } else if c.wall_right { 1.0 } else { 0.0 };
             let (mx, my) = (intent.move_x.clamp(-1.0, 1.0), intent.move_y.clamp(-1.0, 1.0));
             // (On the ground, touching a ceiling too (a tunnel its own
             // height), it walks on unless it wants up.)
-            let on_ceiling = c.ceiling && !(wall != 0.0 && my < 0.0) && (!grounded || my > 0.0);
+            let on_ceiling = s.cling && c.ceiling && !(wall != 0.0 && my < 0.0) && (!grounded || my > 0.0);
             // (On the ground, walking into a wall, it only climbs if it wants up.)
-            let on_wall = wall != 0.0 && (!grounded || my > 0.0);
+            // (A wall climber steered away from its wall lets go of it.)
+            let on_wall = wall != 0.0 && (!grounded || my > 0.0) && !(!s.cling && mx * wall < 0.0);
             if on_ceiling {
                 body.vel = Vec2::new(mx * s.run_speed, CLING_PRESS);
                 self.cling = Some(Vec2::Y);
@@ -587,7 +592,7 @@ impl Locomotion {
                 self.cling = Some(Vec2::new(wall, 0.0));
                 self.held = Some((Vec2::new(wall, 0.0), body.vel));
                 self.wrap = None;
-            } else if self.backed && (!grounded || my > 0.0) {
+            } else if s.cling && self.backed && (!grounded || my > 0.0) {
                 // On the wall behind: every way it steers (its feet point
                 // into the picture: no side).
                 body.vel = Vec2::new(mx, my).clamp_length_max(1.0) * s.run_speed;
@@ -1459,6 +1464,31 @@ mod tests {
             tick(&g, &s, &mut l, &mut b, Intent::default());
         }
         assert!(b.pos.y < 5.0, "let go and fell: {:?}", b.pos);
+    }
+
+    /// A wall climber (a rat) goes up a wall, but not along the ceiling:
+    /// at the top it lets go and drops.
+    #[test]
+    fn a_wall_climber_goes_up_walls_not_along_ceilings() {
+        let mut rows = vec!["#                    #"; 30];
+        rows.insert(0, "######################");
+        rows.push("######################");
+        let g = Ascii::new(&rows);
+        let s = MovementStats { climb_walls: true, run_speed: 40.0, ..Default::default() };
+        let (_, mut l, _) = player();
+        let mut b = Body::new(Vec2::new(10.0, 3.0), Vec2::new(4.0, 3.0));
+        for _ in 0..120 {
+            tick(&g, &s, &mut l, &mut b, Intent { move_x: 1.0, move_y: 1.0, ..Default::default() });
+        }
+        assert!(b.pos.y > 25.0, "climbed the wall: {:?}", b.pos);
+        assert_eq!(l.clinging(), Some(Vec2::X), "on the wall, not the ceiling");
+        // Steered away, along where a ceiling is: it lets go and drops
+        // (and climbs the far wall it comes to), never on the ceiling.
+        for _ in 0..60 {
+            tick(&g, &s, &mut l, &mut b, Intent { move_x: -1.0, move_y: 1.0, ..Default::default() });
+            assert_ne!(l.clinging(), Some(Vec2::Y), "on the ceiling at {:?}", b.pos);
+        }
+        assert!(b.pos.y < 25.0 && b.pos.x < 10.0, "let go and dropped across: {:?}", b.pos);
     }
 
     /// A climber on a wall jumps off it as off the ground (the way finder

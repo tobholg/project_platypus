@@ -161,7 +161,7 @@ impl Plugin for AnimationPlugin {
     }
 }
 
-type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>, Option<&'a mut Soles>, Option<&'a super::tumble::Tumble>, Option<&'a super::parts::Severed>);
+type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>, Option<&'a mut Soles>, Option<&'a super::tumble::Tumble>, Option<&'a super::parts::Severed>, Option<&'a Hug>);
 type BodySprites = (With<CreatureSprite>, Without<ArmSprite>, Without<CreatureEyes>);
 type EyeSprites = (With<CreatureEyes>, Without<CreatureSprite>, Without<ArmSprite>);
 type Arms<'a> = (&'a mut Sprite, &'a mut Transform, &'a mut Visibility);
@@ -178,7 +178,7 @@ pub fn animate(
     mut arms: Query<Arms, With<ArmSprite>>,
     mut eyes: Query<(&mut Sprite, &mut Transform), EyeSprites>,
 ) {
-    for (k, mut anim, children, mut aiming, hand, soles, tumble, severed) in &mut creatures {
+    for (k, mut anim, children, mut aiming, hand, soles, tumble, severed, hug) in &mut creatures {
         let anim = &mut *anim;
         let def = anim.def.clone();
         let dt = time.delta_secs();
@@ -320,7 +320,8 @@ pub fn animate(
             let v = k.body.vel;
             let crawl = if v.length() > 7.5 { v.y.atan2(v.x.abs()) * facing } else { 0.0 };
             // (Knocked about: spinning, `tumble`.)
-            let turn = k.loco.clinging().map_or(0.0, |d| if d == Vec2::ZERO { crawl } else { d.y.atan2(d.x) + std::f32::consts::FRAC_PI_2 }) + tumble.map_or(0.0, |t| t.angle);
+            // (One that hugs the ground: tilted with its slope.)
+            let turn = k.loco.clinging().map_or(hug.map_or(0.0, |h| h.0), |d| if d == Vec2::ZERO { crawl } else { d.y.atan2(d.x) + std::f32::consts::FRAC_PI_2 }) + tumble.map_or(0.0, |t| t.angle);
             let rot = Quat::from_rotation_z(turn);
             sprite.flip_x = (facing < 0.0) != (turn.abs() > 3.0);
             tf.translation = rot * body_at;
@@ -354,6 +355,39 @@ pub fn animate(
 
 /// Where a creature's sprite is drawn, from its centre (the frame's feet
 /// pixel under the middle of its box).
+/// How far a ground-hugging body (`CreatureDef::hug`) is tilted with the
+/// slope under it (radians, eased toward it).
+#[derive(Component, Default)]
+pub struct Hug(pub f32);
+
+/// The most a body tilts with a slope, and how fast it eases to it.
+const HUG_MOST: f32 = 0.9;
+const HUG_EASE: f32 = 14.0;
+
+/// One that hugs the ground lies along it: the slope between the ground
+/// under its back and its front, standing on it; level in the air (on a
+/// wall it's turned to the wall: `animate`).
+pub fn hug(mut commands: Commands, time: Res<Time>, sim: Res<crate::world::SimWorld>, mut q: Query<(Entity, &Animator, &Kinematics, Option<&mut Hug>)>) {
+    let dt = time.delta_secs();
+    for (e, anim, k, h) in &mut q {
+        if !anim.def.hug {
+            continue;
+        }
+        let Some(mut h) = h else {
+            commands.entity(e).insert(Hug::default());
+            continue;
+        };
+        let feet = k.body.pos.y - k.body.half.y;
+        let ground = |x: f32| (-10..8).rev().map(|d| feet + d as f32).find(|&y| sim.world.is_solid(platypus_sim::CellPos::from_world(x, y)));
+        let reach = k.body.half.x * 0.8;
+        let want = match (k.loco.grounded(), ground(k.body.pos.x - reach), ground(k.body.pos.x + reach)) {
+            (true, Some(a), Some(b)) => ((b - a) / (2.0 * reach)).atan().clamp(-HUG_MOST, HUG_MOST),
+            _ => 0.0,
+        };
+        h.0 += (want - h.0) * (HUG_EASE * dt).min(1.0);
+    }
+}
+
 pub fn body_at(def: &CreatureDef, k: &Kinematics) -> Vec2 {
     let (fw, fh) = (def.sprite.frame.0 as f32, def.sprite.frame.1 as f32);
     let (ax, ay) = def.sprite.feet;

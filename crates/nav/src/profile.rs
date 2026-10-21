@@ -89,8 +89,10 @@ pub struct Profile {
     pub step: i32,
     pub drop: i32,
     pub gravity: f32,
-    /// Holds on to walls, ceilings and walls behind (a spider).
+    /// Holds on to walls, ceilings and walls behind (a spider), or (with
+    /// `walls`) only to walls (a rat).
     pub climb: bool,
+    pub walls: bool,
     /// Flies (cells/s; 0: doesn't).
     pub fly: f32,
     /// Swims (cells/s in liquid; 0: as bodies do, slowly).
@@ -121,14 +123,16 @@ impl Profile {
     /// drop on purpose (cells).
     pub fn new(size: (f32, f32), stats: &MovementStats, drop: f32) -> Profile {
         let size = (size.0.ceil().max(1.0) as u16, size.1.ceil().max(1.0) as u16);
-        let walks = stats.fly_speed <= 0.0 && stats.swim_speed <= 0.0 || stats.cling;
+        let climbs = stats.cling || stats.climb_walls;
+        let walks = stats.fly_speed <= 0.0 && stats.swim_speed <= 0.0 || climbs;
         let mut p = Profile {
             size,
             run: stats.run_speed.max(1.0),
             step: stats.step_height,
             drop: drop as i32,
             gravity: stats.gravity * stats.fall_gravity.max(1.0),
-            climb: stats.cling,
+            climb: climbs,
+            walls: climbs && !stats.cling,
             fly: stats.fly_speed,
             swim: stats.swim_speed,
             jumps: Vec::new(),
@@ -138,7 +142,7 @@ impl Profile {
             dig: None,
         };
         if walks && stats.jump_height > 0.0 {
-            (p.jumps, p.arcs) = jumps(size, stats, drop, stats.cling);
+            (p.jumps, p.arcs) = jumps(size, stats, drop, climbs);
         }
         p.moves = crate::moves::all(&p);
         p.index_arcs();
@@ -176,7 +180,7 @@ impl Profile {
         {
             use std::hash::{Hash, Hasher};
             let mut h = std::hash::DefaultHasher::new();
-            (p.size, p.step, p.drop, p.climb, p.fly > 0.0, p.swim > 0.0).hash(&mut h);
+            (p.size, p.step, p.drop, p.climb, p.walls, p.fly > 0.0, p.swim > 0.0).hash(&mut h);
             for j in &p.jumps {
                 (j.to, &j.arc).hash(&mut h);
             }

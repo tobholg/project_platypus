@@ -9959,12 +9959,15 @@ fn keepsake_script(
 /// left, they scatter); `alone`: two (they scatter from you); `body`: a
 /// zombie killed at 1100, four rats at 1250, the player far off at 700
 /// (they go to the body and gnaw it till it's gone, what it had left
-/// lying). Logs, a second at a time, what the rats are doing, the bodies
+/// lying); `idle`: three far from the player (skittish, on their own).
+/// On the ground whatever the arena (`PLATYPUS_ARENA=slopes`, `cave`).
+/// Logs, a second at a time, what the rats are doing, the bodies
 /// and what's lying about, and what the player's lost.
 #[allow(clippy::type_complexity)]
 fn rats_script(
     mut commands: Commands,
     s: Res<Scenario>,
+    sim: Res<SimWorld>,
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Option<&crate::creatures::custom::rat::Rat>), Without<LocalPlayer>>,
     bodies: Query<(), With<crate::hands::corpses::Corpse>>,
@@ -9987,16 +9990,20 @@ fn rats_script(
                 commands.entity(e).despawn();
             }
         }
-        let x = if mode == "body" { 700.0 } else { 950.0 };
-        k.body.pos = Vec2::new(x, fl + k.body.half.y);
+        // (On the ground there, whatever the arena: flat, slopes, a cave.)
+        let ground = |x: f32| find_ground(&sim.world, x as i32, fl as i32 + 300, 600).map_or(fl, |y| y as f32);
+        let x = match mode.as_str() { "body" => 700.0, "idle" => 900.0, _ => 950.0 };
+        k.body.pos = Vec2::new(x, ground(x) + k.body.half.y);
         k.prev_pos = k.body.pos;
         let (n, at) = match mode.as_str() {
             "alone" => (2, 1100.0),
             "body" => (4, 1250.0),
+            "idle" => (3, 1180.0),
             _ => (5, 1100.0),
         };
         for i in 0..n {
-            crate::creatures::def::spawn_creature(&mut commands, "rat", Vec2::new(at + i as f32 * 12.0, fl), |_| {});
+            let rx = at + i as f32 * 40.0;
+            crate::creatures::def::spawn_creature(&mut commands, "rat", Vec2::new(rx, ground(rx) + 2.0), |_| {});
         }
         if mode == "body" {
             crate::creatures::def::spawn_creature(&mut commands, "zombie", Vec2::new(1100.0, fl), |_| {});

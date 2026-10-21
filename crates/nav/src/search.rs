@@ -50,7 +50,7 @@ impl PartialOrd for Open {
 /// anywhere it fits (flyers), or holding on (climbers), or in liquid.
 pub fn can_be<W: NavWorld>(v: &mut View<W>, p: &Profile, n: NodePos) -> bool {
     // (A digger: anywhere it could dig itself into, too.)
-    v.stand(n).is_some() || (p.fly > 0.0 && v.fits(n)) || (p.climb && v.hold(n)) || v.wet(n) || (p.dig.is_some() && !v.fits(n))
+    v.stand(n).is_some() || (p.fly > 0.0 && v.fits(n)) || v.holds(p, n) || v.wet(n) || (p.dig.is_some() && !v.fits(n))
 }
 
 /// The node to start from: where it is, or the nearest it can be (a body
@@ -59,7 +59,7 @@ pub fn settle<W: NavWorld>(v: &mut View<W>, p: &Profile, at: NodePos) -> Option<
     let near = [IVec2::ZERO, IVec2::new(0, -1), IVec2::new(0, 1), IVec2::new(1, 0), IVec2::new(-1, 0), IVec2::new(0, -2), IVec2::new(1, -1), IVec2::new(-1, -1), IVec2::new(0, -3)];
     // (Somewhere it fits first: a digger's feet just over a node's line
     // are not in a tunnel.)
-    let open = |v: &mut View<W>, n: NodePos| v.stand(n).is_some() || (p.fly > 0.0 && v.fits(n)) || (p.climb && v.hold(n)) || v.wet(n);
+    let open = |v: &mut View<W>, n: NodePos| v.stand(n).is_some() || (p.fly > 0.0 && v.fits(n)) || v.holds(p, n) || v.wet(n);
     near.iter().map(|d| at + *d).find(|n| open(v, *n)).or_else(|| near.iter().map(|d| at + *d).find(|n| can_be(v, p, *n)))
 }
 
@@ -405,6 +405,25 @@ mod tests {
         assert!(!find(&mut nav.view(&tunnel, tall.size), &tall, feet(20, 4), feet(180, 4), 0, 20000).whole);
         let small = Profile::new((9.0, 8.0), &MovementStats::default(), 40.0);
         assert!(find(&mut nav.view(&tunnel, small.size), &small, feet(20, 4), feet(180, 4), 0, 20000).whole);
+    }
+
+    #[test]
+    fn wall_climbers_climb_walls_but_not_along_ceilings() {
+        let rat = Profile::new((24.0, 12.0), &MovementStats { climb_walls: true, jump_height: 22.0, ..MovementStats::default() }, 40.0);
+        let spider = Profile::new((24.0, 12.0), &MovementStats { cling: true, jump_height: 22.0, ..MovementStats::default() }, 40.0);
+        // Up a wall 120 high to a shelf: both.
+        let shelf = room(200, 200, |x, y| (x >= 120 && y < 124).then_some(b'#'));
+        let mut nav = Nav::default();
+        assert!(find(&mut nav.view(&shelf, rat.size), &rat, feet(40, 4), feet(170, 124), 1, 20000).whole);
+        // Onto a slab hung from the ceiling on a pillar, out of a jump's
+        // reach from the floor: only by the ceiling (up the room's wall,
+        // along the ceiling, down the pillar): the spider, not the rat.
+        // (Far from the room's walls: no leap across from them.)
+        let hung = room(400, 160, |x, y| (((160..240).contains(&x) && (70..80).contains(&y)) || ((195..205).contains(&x) && y >= 80)).then_some(b'#'));
+        let mut nav = Nav::default();
+        assert!(find(&mut nav.view(&hung, spider.size), &spider, feet(30, 4), feet(180, 80), 0, 80000).whole, "the spider onto the slab by the ceiling");
+        let mut nav = Nav::default();
+        assert!(!find(&mut nav.view(&hung, rat.size), &rat, feet(30, 4), feet(180, 80), 0, 80000).whole, "the rat can't get onto it");
     }
 
     #[test]

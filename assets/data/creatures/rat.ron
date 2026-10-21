@@ -1,5 +1,7 @@
 // A cave rat, big as a dog (a skeever): the caves' scavengers. They come
-// in packs, on the ground (no climbing walls and roofs: a spider's), and
+// in packs, scurrying (a dart, a freeze, a twitch, never still for long),
+// lying along the slopes they run on, up and down walls (not roofs: a
+// spider's), and
 // gather at bodies to gnaw them (a body gnawed through is gone,
 // what it had left lying). Brave in numbers: three or more near together
 // and they come at you, pounce and bite; fewer, and they scatter from you,
@@ -17,10 +19,13 @@
     art: "rat",
     // A red glint of an eye in the dark.
     eyes: (230, 40, 40),
+    // (It lies along the ground under it, tilted with its slopes.)
+    hug: true,
     movement: (
-        run_speed: 112,
-        ground_accel: 1400,
-        jump_height: 22,
+        run_speed: 150,
+        ground_accel: 1800,
+        jump_height: 26,
+        climb_walls: true,
         air_jumps: 0,
         step_height: 3,
         dash_speed: 0,
@@ -28,7 +33,7 @@
     touch: (damage: 6, knock: 140, every: 0.7),
     brain: (
         kind: "hunter",
-        params: (aggro: 200, close: Crawl(pounce_range: 40, pounce_every: 1.3), wander: (speed: 0.5), senses: (dark: 1.0, smell: 120, hearing: 1.2), tactics: (call: 160, flank: true)),
+        params: (aggro: 200, close: Crawl(pounce_range: 40, pounce_every: 1.3, dart: Some((0.5, 0.12))), wander: (speed: 0.5), senses: (dark: 1.0, smell: 120, hearing: 1.2), tactics: (call: 160, flank: true)),
     ),
     custom: (name: "rat", params: ()),
 )
