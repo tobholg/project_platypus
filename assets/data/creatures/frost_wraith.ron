@@ -7,6 +7,9 @@
 // it. (custom/wraith.rs)
 (
     name: "Frost wraith",
+    // A ghost: the air round it chills hard (water freezes), flames gutter,
+    // lamps fail (haunt.rs).
+    haunt: Some((reach: 280, chill: (64, -55))),
     size: (14, 26),
     health: 180,
     team: Enemy,

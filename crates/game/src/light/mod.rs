@@ -763,7 +763,7 @@ fn compute_light(
     flashes: Res<Flashes>,
     zoom: Res<Zoom>,
     time: Res<Time>,
-    (cursor, off_light, fixed, mut glints, mut cones, gloom, mut lit, mut water_mask): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>, ResMut<Cones>, Res<Gloom>, ResMut<Lit>, ResMut<WaterMask>),
+    (cursor, off_light, fixed, mut glints, mut cones, gloom, mut lit, mut water_mask, haunts): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>, ResMut<Cones>, Res<Gloom>, ResMut<Lit>, ResMut<WaterMask>, Res<crate::creatures::haunt::Haunts>),
     mut overlay: ResMut<Overlay>,
     mut pending: ResMut<Pending>,
     mut metrics: ResMut<LightMetrics>,
@@ -871,7 +871,9 @@ fn compute_light(
         let drawn = k.prev_pos.lerp(k.body.pos, fixed.overstep_fraction());
         let at = drawn + Vec2::new(0.0, k.body.half.y * 0.4);
         let c = |(r, g, b): (u8, u8, u8), s: f32| [r as f32 / 255.0 * s, g as f32 / 255.0 * s, b as f32 / 255.0 * s];
-        g.seed_point([at.x, at.y], c(settings.lantern.color, settings.lantern.strength));
+        // (Near a ghost its glow gutters and its lamps fail: `haunt.rs`.)
+        let (flame, lamps) = (haunts.flame(at, now, 1), haunts.electric(at, now, 2));
+        g.seed_point([at.x, at.y], c(settings.lantern.color, settings.lantern.strength * flame));
         cones.0.clear();
         let beam = match toggles.carry {
             Carry::SmallBeam => Some(settings.flashlight_small),
@@ -882,7 +884,7 @@ fn compute_light(
         // the lamp itself (what's right by you shows, whichever way).
         let mut lamp = |g: &mut grid::LightGrid, from: Vec2, dir: Vec2, f: BeamCfg| {
             let sp = settings.spill;
-            let col = c(f.color, f.strength);
+            let col = c(f.color, f.strength * lamps);
             g.seed_beam([from.x, from.y], [dir.x, dir.y], f.angle.to_radians() / 2.0, f.range, col);
             g.seed_beam([from.x, from.y], [dir.x, dir.y], sp.angle.to_radians() / 2.0, sp.range, col.map(|v| v * sp.share));
             g.seed_point([from.x, from.y], col.map(|v| v * sp.glow));
@@ -923,8 +925,10 @@ fn compute_light(
             g.seed_emit([p.x, p.y], src.color);
             continue;
         }
-        // Fire: brighter and dimmer, and redder as it dims.
-        let f = 1.0 - src.flicker * (1.0 - fire_flicker(time.elapsed_secs(), i as u64 + 7));
+        // Fire: brighter and dimmer, and redder as it dims (and near a
+        // ghost guttering, shrunk: what flickers is a flame).
+        let gutter = if src.flicker > 0.05 { haunts.flame(Vec2::new(p.x, p.y), now, i as u64 + 11) } else { 1.0 };
+        let f = (1.0 - src.flicker * (1.0 - fire_flicker(time.elapsed_secs(), i as u64 + 7))) * gutter;
         g.seed_point([p.x, p.y], [src.color[0] * f, src.color[1] * f.powf(1.5), src.color[2] * f * f]);
     }
     for f in &flashes.0 {

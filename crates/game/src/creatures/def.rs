@@ -248,6 +248,9 @@ pub struct CreatureDef {
     /// rat: `body::animation::hug`), not level over it.
     #[serde(default)]
     pub hug: bool,
+    /// A ghost: the cold and the failing lights round it (`haunt.rs`).
+    #[serde(default)]
+    pub haunt: Option<super::haunt::HauntDef>,
     /// Its body is goo, cells of the world held round it (a slime:
     /// `body/goo.rs`).
     #[serde(default)]

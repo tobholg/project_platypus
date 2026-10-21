@@ -20,6 +20,7 @@ pub mod brain;
 pub mod custom;
 pub mod def;
 pub mod factions;
+pub mod haunt;
 pub mod moves;
 pub mod nature;
 pub mod player;
@@ -48,6 +49,7 @@ impl Plugin for CreaturesPlugin {
             .insert_resource(body::elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
             .init_resource::<StableIds>()
+            .init_resource::<haunt::Haunts>()
             .add_systems(FixedUpdate, displace_liquid.after(move_creatures).in_set(TickSet::Bodies))
             // What a grab holds stays in its grip.
             .add_systems(FixedUpdate, moves::pin.after(move_creatures).before(deaths).in_set(TickSet::Bodies))
@@ -68,6 +70,7 @@ impl Plugin for CreaturesPlugin {
             .add_systems(PreUpdate, dormancy)
             .add_systems(Update, body::tumble::spin.before(body::animation::animate))
             .add_systems(Update, body::animation::hug.before(body::animation::animate))
+            .add_systems(Update, haunt::haunt.before(crate::camera::follow))
             .add_systems(FixedUpdate, voices.in_set(TickSet::Bodies))
             .add_systems(FixedUpdate, spurts.after(brain::BrainSet).before(move_creatures))
             // A slime holds its goo round it.

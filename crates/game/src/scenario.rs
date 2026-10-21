@@ -304,6 +304,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, sleep_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, placing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, chase_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, haunt_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
@@ -10717,6 +10718,77 @@ fn phase_script(
         let far = spiders.iter().next().map_or(-1.0, |(_, sk, _)| sk.body.pos.distance(me));
         let web = sim.materials().id("cobweb").map_or(0, |m| (me.x as i32 - 60..me.x as i32 + 60).flat_map(|x| (fl as i32 - 2..fl as i32 + 50).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
         info!("phase: t {t:.0} the player has lost {:.0}; it's {far:.0} off; cobweb by them {web}", state.1);
+    }
+}
+
+/// `haunt` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`, try
+/// `PLATYPUS_HOUR=23`): the player with a flashlight and a mining helmet's
+/// lamp (aimed right), a torch planted and a candelabra stood by it, a pool
+/// of water dug at 1060; a `PLATYPUS_FOE` (chain_wraith) put 260 off to the
+/// right. Every 0.5 s: how haunted the player's spot is, its lamps' and a
+/// flame's share of their light, the pool's water and ice.
+fn haunt_script(
+    s: Res<Scenario>,
+    mut commands: Commands,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    settings: Res<crate::light::LightSettings>,
+    torch_art: Option<Res<crate::light::TorchArt>>,
+    crafting: Res<crate::craft::Crafting>,
+    haunts: Res<crate::creatures::haunt::Haunts>,
+    mut cursor: ResMut<CursorOverride>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    mut st: Local<(u8, f32)>,
+) {
+    if s.name != "haunt" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR;
+    let Ok(pk) = player.single() else { return };
+    toggles.carry = crate::light::Carry::BigBeam;
+    toggles.headlamp = true;
+    cursor.0 = Some(pk.body.pos + Vec2::new(200.0, -10.0));
+    let (step, next) = &mut *st;
+    let pool = (1040..1080, fl - 12..fl);
+    if *step == 0 && t > 0.5 {
+        *step = 1;
+        let mats = sim.materials().clone();
+        let water = mats.expect_id("water");
+        let mut rng = platypus_sim::rng::Rng::seeded(&[3]);
+        for x in pool.0.clone() {
+            for y in pool.1.clone() {
+                sim.world.set(CellPos::new(x, y), mats.spawn(water, &mut rng));
+            }
+        }
+        if let Some(art) = torch_art {
+            crate::light::plant_torch(&mut commands, Vec2::new(pk.body.pos.x + 30.0, fl as f32), &settings, &art);
+        }
+        if let Some(kind) = crafting.station("candelabra") {
+            crafting.spawn(&mut commands, kind, Vec2::new(pk.body.pos.x - 30.0, fl as f32), false);
+        }
+        let foe = std::env::var("PLATYPUS_FOE").unwrap_or_else(|_| "chain_wraith".into());
+        crate::creatures::def::spawn_creature(&mut commands, &foe, Vec2::new(pk.body.pos.x + 260.0, fl as f32 + 40.0), |_| {});
+        return;
+    }
+    if *step == 1 && t >= *next {
+        *next = t + 0.5;
+        let mats = sim.materials();
+        let (water, ice) = (mats.expect_id("water"), mats.expect_id("ice"));
+        let (mut w, mut i) = (0, 0);
+        for x in pool.0.clone() {
+            for y in pool.1.clone() {
+                match sim.world.get(CellPos::new(x, y)).map(|c| c.material) {
+                    Some(m) if m == water => w += 1,
+                    Some(m) if m == ice => i += 1,
+                    _ => {}
+                }
+            }
+        }
+        let p = pk.body.pos;
+        info!("haunt: t {t:.1} haunted {:.2}, lamps {:.2}, a flame {:.2}; the pool: {w} water, {i} ice; ghosts at {:?}", haunts.at(p), haunts.electric(p, t, 2), haunts.flame(p, t, 1), haunts.at.iter().map(|(g, _)| g.round()).collect::<Vec<_>>());
     }
 }
 

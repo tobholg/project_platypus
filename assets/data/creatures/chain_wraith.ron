@@ -8,6 +8,8 @@
 // can't be hurt. At dawn it fades. (custom/wraith.rs)
 (
     name: "Chain wraith",
+    // A ghost: the air round it chills, flames gutter, lamps fail (haunt.rs).
+    haunt: Some((reach: 260, chill: (48, -30))),
     size: (14, 26),
     health: 140,
     team: Enemy,
