@@ -10,19 +10,18 @@
     // What it may have on it when it dies (loot.ron), besides what it wears.
     loot: "slime",
     size: (21, 15),
-    health: 90,
+    health: 35,
     team: Enemy,
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "ooze",
     // (Its goo is its blood: hurt, it flings goo off; dead, it spills.)
     blood: "",
     art: "green_slime",
-    // Each its own size: most about this big, some much bigger.
-    sizes: Some((1.0, 2.5)),
-    goo: Some((material: "green_goo", cells: 650,
-        // Near you, its face toward you shivers, then a fan of goo spikes
-        // stabs out at you, pulsing in a wave, jittering.
-        spikes: Some((range: 36, tell: 0.55, secs: 2.2, every: 3.5, count: 7, cone: 38, reach: 28, pulse: 0.36, damage: 12)))),
+    // Each its own size: most about this big, some bigger.
+    sizes: Some((1.0, 1.6)),
+    // (No spikes: the first thing a new player meets; the blue one has
+    // them.)
+    goo: Some((material: "green_goo", cells: 650, spikes: None)),
     // Left alone a few seconds, it heals: its spilled goo drawn back in
     // (then new grown).
     regen: (per_sec: 6, pause: 3),

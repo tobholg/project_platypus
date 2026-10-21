@@ -106,6 +106,7 @@ pub(super) fn ladder_script(
     mut asks: MessageWriter<CraftRequest>,
     mut virt: ResMut<Time<Virtual>>,
     them: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    checkpoint: Res<crate::respawn::Checkpoint>,
     mut bot: Local<Bot>,
 ) {
     if s.name != "ladder" {
@@ -255,7 +256,7 @@ pub(super) fn ladder_script(
                     go(&mut bot, Phase::Ore, t);
                 }
             }
-            if t - bot.camp_end > 20.0 && wants_camp(&inv, &items, &made) {
+            if t - bot.camp_end > 20.0 && wants_camp(&inv, &items, &made, checkpoint.0.is_some()) {
                 go(&mut bot, Phase::Camp, t);
             }
         }
@@ -283,7 +284,7 @@ pub(super) fn ladder_script(
                     hold = true;
                 }
             }
-            if t - bot.camp_end > 20.0 && wants_camp(&inv, &items, &made) {
+            if t - bot.camp_end > 20.0 && wants_camp(&inv, &items, &made, checkpoint.0.is_some()) {
                 go(&mut bot, Phase::Camp, t);
             }
         }
@@ -464,12 +465,13 @@ pub(super) fn ladder_script(
                     bot.step_at = t;
                     return;
                 }
-                // Take it all back up (the pickaxe), unless it's done.
+                // Take it all back up (the pickaxe), unless it's done (a bed
+                // slept in stays: it wakes there).
                 _ => {
-                    if made("bed") > 0 && made("chair") > 0 {
+                    if checkpoint.0.is_some() && made("iron_pickaxe") > 0 {
                         info!("ladder: the ladder climbed: {}", summary(&bot, &inv, &items, depth, t));
                         go(&mut bot, Phase::Done, t);
-                    } else if let Some((_, sk)) = stations.iter().filter(|(_, sk)| sk.body.pos.distance(p) < 64.0).min_by(|a, b| a.1.body.pos.distance(p).total_cmp(&b.1.body.pos.distance(p))) {
+                    } else if let Some((_, sk)) = stations.iter().filter(|(st, sk)| sk.body.pos.distance(p) < 64.0 && !(crafting.stations[st.kind].bed && checkpoint.0.is_some())).min_by(|a, b| a.1.body.pos.distance(p).total_cmp(&b.1.body.pos.distance(p))) {
                         if let Some(i) = best_pick(&mut inv, &items) {
                             select(&mut hand, i);
                         }
@@ -537,7 +539,7 @@ fn go(bot: &mut Bot, phase: Phase, t: f32) {
 
 /// Whether, with the stations it carries, it could make a new rung now
 /// (smelting what ore it has).
-fn wants_camp(inv: &Inventory, items: &Items, made: &dyn Fn(&str) -> u32) -> bool {
+fn wants_camp(inv: &Inventory, items: &Items, made: &dyn Fn(&str) -> u32, slept: bool) -> bool {
     let n = |name: &str| count(inv, items, name);
     let iron = n("iron_bar") + n("block:iron_ore") / 3;
     let copper = n("copper_bar") + n("block:copper_ore") / 3;
@@ -547,6 +549,7 @@ fn wants_camp(inv: &Inventory, items: &Items, made: &dyn Fn(&str) -> u32) -> boo
         || (made("furnace") > 0 && made("mason_bench") == 0 && copper >= 2 && n("block:stone") >= 20)
         || (made("furnace") > 0 && made("sawmill") == 0 && copper >= 2)
         || (made("sawmill") > 0 && made("bed") == 0)
+        || (n("bed") > 0 && !slept)
 }
 
 /// Where to aim to set a station down: flat ground in reach with room

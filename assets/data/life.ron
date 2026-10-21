@@ -35,7 +35,7 @@
     // Slimes live on the surface, by day: the day's trouble in grass and
     // woods (a few at a time), a blue one now and then. (Underground only
     // the odd ones: the glutton deep down, acid slimes in the toxic caves.)
-    (kind: "slime", place: Surface, when: Day, biomes: ["plains", "forest", "jungle", "swamp"], most: 3, rate: 0.1),
+    (kind: "slime", place: Surface, when: Day, biomes: ["plains", "forest", "jungle", "swamp"], most: 2, rate: 0.1),
     (kind: "blue_slime", place: Surface, when: Day, biomes: ["plains", "forest", "tundra"], most: 1, rate: 0.04),
     // The dead come up out of the ground: on the surface by night, a few
     // at a time; under it any time.
