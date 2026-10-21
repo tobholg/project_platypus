@@ -78,6 +78,11 @@ pub struct SaveSlot {
     writing: Option<std::thread::JoinHandle<()>>,
     /// Not saving for now (the title's up: `title.rs`).
     pub hold: bool,
+    /// What each loaded chunk was last saved as: a save encodes again only
+    /// what's changed since (`Chunk::take_save_dirty`); encoding them all
+    /// every time was a frame's stall that grew with the world explored.
+    /// (Filled on the save's thread, read on the next save's: shared.)
+    encoded: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<ChunkPos, std::sync::Arc<[u8]>>>>,
 }
 
 impl Plugin for SavePlugin {
@@ -88,7 +93,7 @@ impl Plugin for SavePlugin {
         let fresh = std::env::var("PLATYPUS_FRESH").is_ok_and(|v| !v.is_empty());
         let load = !fresh && dir.join("world.ron").exists();
         info!("save: {} ({})", dir.display(), if load { "loading it" } else { "a new one" });
-        app.insert_resource(SaveSlot { dir, kind: self.kind.clone(), seed: self.seed, mode: self.mode, next: AUTOSAVE, load, writing: None, hold: false })
+        app.insert_resource(SaveSlot { dir, kind: self.kind.clone(), seed: self.seed, mode: self.mode, next: AUTOSAVE, load, writing: None, hold: false, encoded: Default::default() })
             .add_systems(PostStartup, load_world)
             .add_systems(Update, (keys, apply_player.after(crate::hands::give_start)))
             .add_systems(Update, settle_hp.after(crate::gear::apply))
@@ -396,7 +401,30 @@ fn save(
         mode: slot.mode.name().into(),
         difficulty: difficulty.name().into(),
     };
-    let mut chunks: Vec<(ChunkPos, std::sync::Arc<[u8]>)> = world.chunks().filter(|c| c.is_modified()).map(|c| (c.pos, store::encode(c).into())).collect();
+    // (Each changed chunk copied, to be packed again on the save's thread;
+    // the rest as last saved. What's no longer loaded is in the store.)
+    // The last save's writing finishes first: it fills what this reads.
+    if let Some(last) = slot.writing.take() {
+        let _ = last.join();
+    }
+    let mut chunks: Vec<(ChunkPos, std::sync::Arc<[u8]>)> = Vec::new();
+    let mut fresh: Vec<(ChunkPos, Vec<u8>)> = Vec::new();
+    let chunks_from = std::time::Instant::now();
+    {
+        let mut cache = slot.encoded.lock().unwrap();
+        let mut seen = std::collections::HashSet::new();
+        for c in world.chunks().filter(|c| c.is_modified()) {
+            seen.insert(c.pos);
+            let changed = c.take_save_dirty();
+            match cache.get(&c.pos) {
+                Some(b) if !changed => chunks.push((c.pos, b.clone())),
+                _ => fresh.push((c.pos, store::raw(c))),
+            }
+        }
+        cache.retain(|p, _| seen.contains(p));
+    }
+    let encoded = fresh.len();
+    let chunks_ms = chunks_from.elapsed().as_secs_f32() * 1e3;
     chunks.extend(sim.store.iter().map(|(p, b)| (p, b.clone())));
     let me = PlayerFile {
         pos: (k.body.pos.x, k.body.pos.y),
@@ -434,20 +462,28 @@ fn save(
         }
     }
     // The files written on a thread of their own: the frame pays only for
-    // gathering what's saved (writing it all froze the game a tenth of a
-    // second or more every minute). The last save's writing finishes
-    // first; leaving, it's written before the game goes.
-    if let Some(last) = slot.writing.take() {
-        let _ = last.join();
-    }
+    // gathering what's saved, and copying what changed (writing it all froze
+    // the game a tenth of a second or more every minute; packing every chunk
+    // on the frame, a stall growing with the world explored). Leaving,
+    // it's written before the game goes.
     let gathered = started.elapsed().as_secs_f32() * 1e3;
+    let cache = slot.encoded.clone();
     let write = move || {
+        let mut chunks = chunks;
+        {
+            let mut cache = cache.lock().unwrap();
+            for (pos, raw) in fresh {
+                let b: std::sync::Arc<[u8]> = store::pack(&raw).into();
+                cache.insert(pos, b.clone());
+                chunks.push((pos, b));
+            }
+        }
         let result = write_ron(&dir.join("world.ron"), &file)
             .and_then(|_| write_chunks(&dir.join("chunks.bin"), &chunks))
             .and_then(|_| write_ron(&dir.join("player.ron"), &me))
             .and_then(|_| write_ron(&dir.join("things.ron"), &things));
         match result {
-            Ok(()) => info!("save: saved {} chunks, {} chests, {} creatures in {:.1} ms ({gathered:.1} ms in the frame)", chunks.len(), things.chests.len(), things.creatures.len(), started.elapsed().as_secs_f32() * 1e3),
+            Ok(()) => info!("save: saved {} chunks ({encoded} changed, copied in {chunks_ms:.1} ms), {} chests, {} creatures in {:.1} ms ({gathered:.1} ms in the frame)", chunks.len(), things.chests.len(), things.creatures.len(), started.elapsed().as_secs_f32() * 1e3),
             Err(e) => error!("save: {e}"),
         }
     };

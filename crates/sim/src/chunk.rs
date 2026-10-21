@@ -70,6 +70,9 @@ pub struct Chunk {
     pub(crate) bg_render_dirty: AtomicBool,
     /// Differs from what worldgen would produce; must be persisted.
     pub(crate) modified: AtomicBool,
+    /// Changed since a save last encoded it (a save keeps what it encoded
+    /// of each chunk and encodes again only what changed: `take_save_dirty`).
+    pub(crate) save_dirty: AtomicBool,
     /// Cells (either layer) changed since navigation last looked (its
     /// tiles are made again: `platypus_nav`).
     pub(crate) nav_dirty: AtomicBool,
@@ -92,6 +95,7 @@ impl Chunk {
             render_dirty: AtomicBool::new(true),
             bg_render_dirty: AtomicBool::new(true),
             modified: AtomicBool::new(false),
+            save_dirty: AtomicBool::new(true),
             nav_dirty: AtomicBool::new(true),
         }
     }
@@ -126,6 +130,7 @@ impl Chunk {
         self.next_dirty.include(Rect { min_x: x - 1, min_y: y - 1, max_x: x + 1, max_y: y + 1 }.clamp_to_chunk());
         *self.bg_render_dirty.get_mut() = true;
         *self.modified.get_mut() = true;
+        *self.save_dirty.get_mut() = true;
         *self.nav_dirty.get_mut() = true;
     }
 
@@ -138,6 +143,7 @@ impl Chunk {
         self.next_dirty.include(Rect { min_x: x - 1, min_y: y - 1, max_x: x + 1, max_y: y + 1 }.clamp_to_chunk());
         *self.render_dirty.get_mut() = true;
         *self.modified.get_mut() = true;
+        *self.save_dirty.get_mut() = true;
         *self.nav_dirty.get_mut() = true;
     }
 
@@ -180,5 +186,12 @@ impl Chunk {
 
     pub fn mark_modified(&self) {
         self.modified.store(true, Relaxed);
+        self.save_dirty.store(true, Relaxed);
+    }
+
+    /// Returns true once after cells changed since the last time (a save
+    /// encoding it again).
+    pub fn take_save_dirty(&self) -> bool {
+        self.save_dirty.swap(false, Relaxed)
     }
 }

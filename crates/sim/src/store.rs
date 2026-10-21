@@ -10,10 +10,21 @@ use crate::coords::{CHUNK_AREA, ChunkPos};
 
 /// Playfield cells, then background cells, lz4-compressed.
 pub fn encode(chunk: &Chunk) -> Vec<u8> {
+    pack(&raw(chunk))
+}
+
+/// A chunk's cells, both layers, as they are (quick: a copy), to `pack`
+/// later, elsewhere (a save's thread).
+pub fn raw(chunk: &Chunk) -> Vec<u8> {
     let mut raw = Vec::with_capacity(2 * CHUNK_AREA * size_of::<Cell>());
     raw.extend_from_slice(bytemuck::cast_slice(chunk.cells()));
     raw.extend_from_slice(bytemuck::cast_slice(chunk.background()));
-    lz4_flex::compress_prepend_size(&raw)
+    raw
+}
+
+/// `raw` cells compressed: what `encode` gives.
+pub fn pack(raw: &[u8]) -> Vec<u8> {
+    lz4_flex::compress_prepend_size(raw)
 }
 
 pub fn decode(pos: ChunkPos, bytes: &[u8]) -> Result<Chunk, String> {

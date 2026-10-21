@@ -31,6 +31,7 @@ pub(crate) struct ChunkRaw {
     render_dirty: *const AtomicBool,
     bg_render_dirty: *const AtomicBool,
     modified: *const AtomicBool,
+    save_dirty: *const AtomicBool,
     nav_dirty: *const AtomicBool,
 }
 
@@ -49,6 +50,7 @@ impl ChunkRaw {
             render_dirty: &chunk.render_dirty,
             bg_render_dirty: &chunk.bg_render_dirty,
             modified: &chunk.modified,
+            save_dirty: &chunk.save_dirty,
             nav_dirty: &chunk.nav_dirty,
         }
     }
@@ -255,11 +257,13 @@ impl<'a> Hood<'a> {
                 if self.touched & (1 << s) != 0 {
                     (*c.render_dirty).store(true, Relaxed);
                     (*c.modified).store(true, Relaxed);
+                    (*c.save_dirty).store(true, Relaxed);
                     (*c.nav_dirty).store(true, Relaxed);
                 }
                 if self.touched_bg & (1 << s) != 0 {
                     (*c.bg_render_dirty).store(true, Relaxed);
                     (*c.modified).store(true, Relaxed);
+                    (*c.save_dirty).store(true, Relaxed);
                     (*c.nav_dirty).store(true, Relaxed);
                 }
             }
