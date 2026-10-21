@@ -18,7 +18,8 @@
     blood: "",
     corpse: false,
     loot: "frost_wraith",
-    art: "frost_wraith",
+    // (The gaunt design; the round one, kept: "frost_wraith".)
+    art: "frost_wraith_gaunt",
     light: (color: (170, 220, 255), strength: 0.6),
     movement: (run_speed: 70, jump_height: 0, air_jumps: 0, step_height: 0, dash_speed: 0, fly_speed: 70),
     touchless: true,

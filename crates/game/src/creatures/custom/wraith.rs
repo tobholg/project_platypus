@@ -12,7 +12,8 @@ use bevy::prelude::*;
 use platypus_sim::{CellPos, Kind};
 use serde::Deserialize;
 
-use super::{CustomCreature, CustomSet};
+use super::{CustomCreature, CustomSet, frame_anchor};
+use crate::creatures::body::animation::Animator;
 use crate::camera::MainCamera;
 use crate::canvas::{Canvas, CanvasSprite, CanvasSprites};
 use crate::creatures::{Controls, Died, Harm, Health, Kinematics, Phasing, Team};
@@ -183,6 +184,16 @@ fn on_spawn(add: On<Add, Wraith>, mut commands: Commands) {
     commands.entity(add.entity).insert(Phasing);
 }
 
+/// Where its wrists are (front, back), as its picture has them
+/// (`wrist_f`, `wrist_b` anchors: the gaunt design), else as the round
+/// design's were, by what it's doing (`wrists`).
+fn hands_at(anim: &Animator, k: &Kinematics, doing: Doing) -> [Vec2; 2] {
+    match (frame_anchor(anim, k, "wrist_f", ""), frame_anchor(anim, k, "wrist_b", "")) {
+        (Some(f), Some(b)) => [f, b],
+        _ => wrists(k.body.pos, if k.loco.facing < 0.0 { -1.0 } else { 1.0 }, doing),
+    }
+}
+
 /// Where its wrists are (front, back), by what it's doing.
 fn wrists(pos: Vec2, facing: f32, doing: Doing) -> [Vec2; 2] {
     let (front, back) = match doing {
@@ -285,7 +296,9 @@ fn think(
     let night = !(0.22..0.8).contains(&day.time);
     for (e, mut w, mut anim, health, moves) in &mut wraiths {
         let Ok((_, k, ..)) = bodies.get(e) else { continue };
-        let (pos, half, facing) = (k.body.pos, k.body.half, k.loco.facing);
+        // (Its own, kept: what it holds is moved below.)
+        let me = k.clone();
+        let (pos, half, facing) = (me.body.pos, me.body.half, me.loco.facing);
         let deep = *w.deep.get_or_insert_with(|| sim.generator.surface_hint(pos.x as i32).is_some_and(|s| s - pos.y as i32 > DEEP));
         let in_rock = solid_at(&sim, pos);
         // Whom it hunts: the nearest of the living near.
@@ -319,7 +332,10 @@ fn think(
         };
         if let Some(blazing) = breath {
             let f = if facing < 0.0 { -1.0 } else { 1.0 };
-            let palms = if blazing { [Vec2::new(13.0 * f, 8.5), Vec2::new(13.0 * f, 5.5)] } else { [Vec2::new(-11.5 * f, 18.5), Vec2::new(11.5 * f, 18.5)] };
+            // (Its palms as its picture has them, the gaunt design's; else
+            // where the round design's were.)
+            let drawn = frame_anchor(&anim, &me, "palm_f", "").zip(frame_anchor(&anim, &me, "palm_b", "")).map(|(a, b)| [a - pos, b - pos]);
+            let palms = drawn.unwrap_or(if blazing { [Vec2::new(13.0 * f, 8.5), Vec2::new(13.0 * f, 5.5)] } else { [Vec2::new(-11.5 * f, 18.5), Vec2::new(11.5 * f, 18.5)] });
             let way = if blazing { Vec2::X * f } else { Vec2::Y };
             for (i, p) in palms.into_iter().enumerate() {
                 // (Every other tick or so, each.)
@@ -405,7 +421,7 @@ fn think(
             }
             Doing::Pull(t, who) => {
                 anim.play("lash");
-                let wrist = wrists(pos, face, doing)[0];
+                let wrist = hands_at(&anim, &me, doing)[0];
                 let free = bodies.get(who).ok().is_none_or(|(_, _, _, c, _)| c.is_some_and(|c| c.0.dash)) || struck_at.contains(&who);
                 match bodies.get_mut(who) {
                     Ok((_, mut tk, ..)) if !free && t < PULL.1 => {
@@ -521,7 +537,7 @@ fn think(
             }
         }
         // Its chains: hanging, spun, lashed, held, whirled.
-        let [front, back] = wrists(pos, face, next);
+        let [front, back] = hands_at(&anim, &me, next);
         match next {
             Doing::Spin(t) => {
                 let a = t * (7.0 + 16.0 * t / SPIN) + std::f32::consts::FRAC_PI_2;

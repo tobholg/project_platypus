@@ -17,7 +17,8 @@
     profile: {slash: 0.5, pierce: 0.5, blunt: 0.5, frost: 0.0},
     blood: "",
     corpse: false,
-    art: "chain_wraith",
+    // (The gaunt design; the round one, kept: "chain_wraith".)
+    art: "chain_wraith_gaunt",
     light: (color: (90, 140, 200), strength: 0.5),
     movement: (run_speed: 70, jump_height: 0, air_jumps: 0, step_height: 0, dash_speed: 0, fly_speed: 70),
     touchless: true,
