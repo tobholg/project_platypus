@@ -303,6 +303,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ice_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, sleep_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, placing_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, chase_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
@@ -10709,6 +10710,54 @@ fn phase_script(
         let far = spiders.iter().next().map_or(-1.0, |(_, sk, _)| sk.body.pos.distance(me));
         let web = sim.materials().id("cobweb").map_or(0, |m| (me.x as i32 - 60..me.x as i32 + 60).flat_map(|x| (fl as i32 - 2..fl as i32 + 50).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
         info!("phase: t {t:.0} the player has lost {:.0}; it's {far:.0} off; cobweb by them {web}", state.1);
+    }
+}
+
+/// `chase` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a `PLATYPUS_FOE`
+/// (zombie) put `PLATYPUS_OFF` (220) cells to the player's right; the player
+/// stands (`PLATYPUS_FLEE=1`: runs left, holding A, from 1.5 s). Every
+/// 0.25 s: how far off it is, how fast it goes, the player's health; then
+/// when it first got within 30, what it cost, how close it came.
+fn chase_script(
+    s: Res<Scenario>,
+    mut commands: Commands,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    player: Query<(&Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut st: Local<(u8, f32, Option<f32>, f32, f32)>,
+) {
+    if s.name != "chase" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let foe = std::env::var("PLATYPUS_FOE").unwrap_or_else(|_| "zombie".into());
+    let Ok((pk, hp)) = player.single() else { return };
+    let flee = std::env::var("PLATYPUS_FLEE").is_ok();
+    if flee && t > 1.5 { keys.press(KeyCode::KeyA) } else { keys.release(KeyCode::KeyA) }
+    let (step, next, caught, closest, start_hp) = &mut *st;
+    if *step == 0 && t > 0.5 {
+        let off: f32 = std::env::var("PLATYPUS_OFF").ok().and_then(|v| v.parse().ok()).unwrap_or(220.0);
+        crate::creatures::def::spawn_creature(&mut commands, &foe, Vec2::new(pk.body.pos.x + off, platypus_worldgen::arena::FLOOR as f32), |_| {});
+        *step = 1;
+        *closest = f32::MAX;
+        *start_hp = hp.hp;
+        return;
+    }
+    let Some((_, fk)) = them.iter().find(|(c, _)| c.kind == foe) else { return };
+    let d = fk.body.pos.distance(pk.body.pos);
+    *closest = closest.min(d);
+    if caught.is_none() && d < 30.0 {
+        *caught = Some(t);
+    }
+    if t >= *next {
+        *next = t + std::env::var("PLATYPUS_EVERY").ok().and_then(|v| v.parse().ok()).unwrap_or(0.25);
+        info!("chase: t {t:.2} {foe} {d:.0} off, going {:.0} (the player {:.0}), hp {:.0}", fk.body.vel.x.abs(), pk.body.vel.x.abs(), hp.hp);
+    }
+    if *step == 1 && t > s.duration - 0.5 {
+        *step = 2;
+        info!("chase: END {foe}: within 30 at {}, closest {closest:.0}, the player lost {:.0}", caught.map_or("never".into(), |c| format!("{c:.1} s")), *start_hp - hp.hp);
     }
 }
 

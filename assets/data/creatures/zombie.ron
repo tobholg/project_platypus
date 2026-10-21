@@ -23,16 +23,17 @@
     headless: Dies,
     // The dead burn in the sun (its body too, lying there).
     sunburns: true,
-    // Hunting you, now and then it breaks into a run at you: a snarl, then
-    // suddenly fast for a couple of seconds.
-    spurt: Some((speed: 2.6, secs: 2.0, every: (5.0, 10.0), range: (40.0, 160.0))),
+    // Near you (160 cells), it breaks into a sprint at you, faster than
+    // you run: a snarl, then suddenly fast, again and again, and it lunges
+    // when it's on you. Further off it jogs, and can be outpaced.
+    spurt: Some((speed: 2.6, secs: 1.8, every: (0.15, 0.4), range: (12.0, 160.0))),
     blood: "rot",
     eyes: (200, 204, 192),
     // A low groan now and then.
     voice: Some(("groan", (3.0, 9.0))),
     fall_damage: (safe_height: 120, per_cell: 0.5),
     movement: (
-        run_speed: 36,
+        run_speed: 65,
         jump_height: 28,
         air_jumps: 0,
         step_height: 5,
@@ -65,6 +66,6 @@
     pace: 0.3,
     brain: (
         kind: "hunter",
-        params: (aggro: 260, close: Walk(keep: 12, jump_to_reach: 22), attack: Swing(reach: 20, every: 1.5, combo: 1), wander: (speed: 0.25, every: 4.0), senses: (dark: 1.0, hearing: 1.4, smell: 160, memory: 10, behind: 0.6)),
+        params: (aggro: 260, close: Walk(keep: 12, jump_to_reach: 22), attack: Swing(reach: 20, every: 0.9, combo: 1), wander: (speed: 0.25, every: 4.0), senses: (dark: 1.0, hearing: 1.4, smell: 160, memory: 10, behind: 0.6)),
     ),
 )

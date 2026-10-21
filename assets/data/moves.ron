@@ -62,14 +62,14 @@
         // (dash through it then and it misses), it lunges and catches you,
         // and bites, and bites; mash jump, dash, and the keys to shake it
         // off (it reels), or strike it senseless.
-        (id: "zombie_grab", every: 4.0, when: (range: (0, 30), footing: true), phases: [
-            (name: "windup", secs: 0.5, clip: Some("tell"), acts: [Sound("snarl")]),
-            (name: "grab", secs: 0.28, clip: Some("lunge"), acts: [Lunge(speed: 220, up: 35), Grab((at: 9, reach: 9, from: 0.1))]),
+        (id: "zombie_grab", every: 2.5, when: (range: (0, 24), footing: true), phases: [
+            (name: "windup", secs: 0.18, clip: Some("tell"), acts: [Sound("snarl")]),
+            (name: "grab", secs: 0.28, clip: Some("lunge"), acts: [Lunge(speed: 280, up: 35), Grab((at: 9, reach: 9, from: 0.1))]),
             (name: "bite", secs: 0.8, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 14, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
             (name: "bite", secs: 0.8, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 14, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
             (name: "bite", secs: 0.8, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 14, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
             (name: "shove", secs: 0.0, clip: Some("lunge"), acts: [Throw(speed: 140, up: 80, stun: 0.3)]),
-            (name: "recover", secs: 0.7, clip: Some("lunge")),
+            (name: "recover", secs: 0.35, clip: Some("lunge")),
         ]),
         // A mimic's bite: it rattles a moment, springs, and snaps its lid
         // on you.
@@ -206,14 +206,14 @@
         // A cave centipede's bite: its head drawn up and back a moment, then
         // thrown at you, the venom claws closing (venom on you); it stops on
         // you.
-        (id: "centipede_bite", every: 1.4, when: (range: (0, 26), footing: true), phases: [
-            (name: "windup", secs: 0.22, pose: Some((lift: 2, back: 6))),
+        (id: "centipede_bite", every: 0.25, when: (range: (0, 34), footing: true), phases: [
+            (name: "windup", secs: 0.14, pose: Some((lift: 2, back: 6))),
             (name: "strike", secs: 0.1, ease: Snap, pose: Some((lift: 0, back: -6)), acts: [
-                Lunge(speed: 260, up: 20),
-                Strike((at: 10, reach: 7, damage: 9, harm: pierce, knock: 220, up: 0.2, stun: 0.2, from: 0.0, coat: Some("venom"))),
+                Lunge(speed: 320, up: 20),
+                Strike((at: 5, reach: 11, damage: 11, harm: pierce, knock: 220, up: 0.2, stun: 0.2, from: 0.0, coat: Some("venom"))),
                 Sound("snap"),
             ]),
-            (name: "recover", secs: 0.3, ease: Smooth, pose: Some(()), acts: [Lunge(speed: 0, up: 0)]),
+            (name: "recover", secs: 0.2, ease: Smooth, pose: Some(()), acts: [Lunge(speed: 0, up: 0)]),
         ]),
         // A venom centipede's bite: the cave centipede's, harder, its venom
         // thicker (it stays in you longer: two coats).

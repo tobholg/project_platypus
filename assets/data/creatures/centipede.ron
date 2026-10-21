@@ -25,7 +25,7 @@
     // (Its eye: the faintest glow.)
     light: (color: (244, 208, 110), strength: 0.02),
     movement: (
-        run_speed: 240,
+        run_speed: 290,
         ground_accel: 3200,
         ground_decel: 4000,
         air_accel: 500,
@@ -41,6 +41,6 @@
     moves: ["centipede_bite"],
     brain: (
         kind: "hunter",
-        params: (aggro: 260, close: Crawl(pounce_range: 0, pounce_every: 2.5, keep: 16, dart: Some((0.6, 0.12))), wander: (speed: 0.5), senses: (dark: 1.0, smell: 130), tactics: (ambush: true)),
+        params: (aggro: 260, close: Crawl(pounce_range: 0, pounce_every: 1.2, keep: 16, dart: Some((0.6, 0.12))), wander: (speed: 0.5), senses: (dark: 1.0, smell: 130), tactics: (ambush: true)),
     ),
 )
