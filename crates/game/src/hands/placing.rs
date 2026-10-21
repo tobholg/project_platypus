@@ -101,13 +101,19 @@ impl Tried {
     }
 }
 
+/// Whether a cell leaves room for a piece: nothing solid (tall grass,
+/// smoke, flames, water or blood it stands in, a slime's goo bodies pass
+/// through).
+pub fn room(mats: &platypus_sim::MaterialTable, c: platypus_sim::Cell) -> bool {
+    c.is_air() || c.flags & platypus_sim::cell::flags::HELD != 0 || matches!(mats.phys(c.material).kind, Kind::Plant | Kind::Gas | Kind::Fire | Kind::Liquid)
+}
+
 /// Where a floor piece `w` × `h` would go for the cursor (see the module).
 pub fn try_floor(world: &World, cursor: Vec2, (w, h): (i32, i32)) -> Tried {
     let mats = world.materials();
     let solid = |p: CellPos| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder));
     let soft = |p: CellPos| world.get(p).is_some_and(|c| mats.soft(c.material));
-    // (Tall grass and smoke don't count: it goes over them.)
-    let room = |p: CellPos| world.get(p).is_some_and(|c| c.is_air() || matches!(mats.phys(c.material).kind, Kind::Plant | Kind::Gas | Kind::Fire));
+    let room = |p: CellPos| world.get(p).is_some_and(|c| room(mats, c));
     let x0 = cursor.x.floor() as i32 - w / 2;
     let y = cursor.y.floor() as i32 + 6;
     // Each column's ground: the first solid cell going down.
@@ -257,6 +263,13 @@ mod tests {
         assert_eq!(t.floor, 20, "six high: levelled to the rock");
         let t = try_floor(&world(&[("dirt", 28..36, 20..32)]), Vec2::new(32.0, 34.0), SIZE);
         assert_eq!(t.at.err(), Some(Why::Mound), "twelve high, aimed over it: {t:?}");
+    }
+
+    #[test]
+    fn it_stands_in_a_puddle() {
+        let t = try_floor(&world(&[("water", 20..44, 20..23)]), CURSOR, SIZE);
+        assert!(matches!(t.at, Ok(Level(None))), "{t:?}");
+        assert_eq!(t.floor, 20);
     }
 
     #[test]

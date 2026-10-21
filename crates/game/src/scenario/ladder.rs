@@ -8,7 +8,7 @@
 //! mason's bench, a sawmill, a bed it sleeps in. It logs each rung as it's
 //! reached (the time, how deep), and every 15 s where it is, what it has,
 //! what hurt it: a playtest of the ladder's pacing (`ladder:` lines).
-//! `PLATYPUS_LADDER_WOOD=n`: the wood it fells first (30 blocks);
+//! `PLATYPUS_LADDER_WOOD=n`: the wood it fells first (50 blocks);
 //! `PLATYPUS_LADDER_SPEED=2`: the game twice as fast.
 
 use std::collections::BTreeSet;
@@ -87,6 +87,8 @@ pub(super) struct Bot {
     moved_at: f32,
     shelf: bool,
     failed: Vec<String>,
+    room: Vec<CellPos>,
+    block_at: f32,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -172,7 +174,7 @@ pub(super) fn ladder_script(
             go(&mut bot, Phase::Wood, t);
         }
         Phase::Wood => {
-            let want = std::env::var("PLATYPUS_LADDER_WOOD").ok().and_then(|v| v.parse().ok()).unwrap_or(30);
+            let want = std::env::var("PLATYPUS_LADDER_WOOD").ok().and_then(|v| v.parse().ok()).unwrap_or(50);
             if count(&inv, &items, "block:wood") >= want || t - bot.since > 240.0 {
                 info!("ladder: felled {} blocks of wood in {:.0}s", count(&inv, &items, "block:wood"), t - bot.since);
                 // Planks enough for a workbench, and the workbench (no station needed).
@@ -289,18 +291,47 @@ pub(super) fn ladder_script(
             let since = t - bot.step_at;
             match bot.step {
                 // Room: a tunnel the body fits, each way.
+                // A room, as a player makes one: whole blocks mined out in
+                // precise mode (flat faces), five high and eleven across
+                // from the row its feet are in, the nearest first; a block
+                // it can't get in 3 s is passed over.
                 0 | 1 => {
-                    if let Some(i) = best_pick(&mut inv, &items) {
-                        select(&mut hand, i);
+                    let bs = platypus_sim::BLOCK;
+                    if bot.room.is_empty() && bot.step == 0 {
+                        let (fb, pb) = ((feet.y / bs as f32 + 0.25).floor() as i32, (p.x / bs as f32).floor() as i32);
+                        bot.room = (fb..fb + 5).flat_map(|by| (pb - 5..=pb + 5).map(move |bx| CellPos::new(bx, by))).collect();
+                        bot.step = 1;
+                        bot.block_at = t;
                     }
-                    let side = if bot.step == 0 { -1.0 } else { 1.0 };
-                    let up = if since > 1.2 { 22.0 } else { 0.0 };
-                    aim = Some(p + Vec2::new(side * 40.0, 4.0 + up));
-                    hold = true;
-                    if since > 2.4 {
-                        bot.step += 1;
-                        bot.step_at = t;
-                        bot.shelf = false;
+                    let hand_at = p + Vec2::Y * 4.0;
+                    let solid_in = |b: CellPos| platypus_sim::block_cells(b).any(|c| world.get(c).is_some_and(|c| matches!(mats.phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder)));
+                    let before = bot.room.len();
+                    bot.room.retain(|&b| solid_in(b));
+                    if bot.room.len() != before {
+                        bot.block_at = t;
+                    }
+                    let centre = |b: CellPos| Vec2::new((b.x as f32 + 0.5) * bs as f32, (b.y as f32 + 0.5) * bs as f32);
+                    bot.room.sort_by(|a, b| centre(*a).distance(hand_at).total_cmp(&centre(*b).distance(hand_at)));
+                    if !bot.room.is_empty() && t - bot.block_at > 3.0 {
+                        bot.room.remove(0);
+                        bot.block_at = t;
+                    }
+                    match bot.room.first() {
+                        Some(&b) => {
+                            if let Some(i) = best_pick(&mut inv, &items) {
+                                select(&mut hand, i);
+                            }
+                            hand.smart = false;
+                            aim = Some(centre(b));
+                            hold = true;
+                        }
+                        None => {
+                            hand.smart = true;
+                            info!("ladder: a room mined out at {:?} in {:.0}s", p.round(), t - bot.step_at);
+                            bot.step = 2;
+                            bot.step_at = t;
+                            bot.shelf = false;
+                        }
                     }
                 }
                 // Set down what it carries, one every 0.4 s: where there's
@@ -309,7 +340,15 @@ pub(super) fn ladder_script(
                     if since > 0.4 {
                         bot.step_at = t;
                         // (What wouldn't go down this camp is passed over.)
-                        let todo = STATIONS.iter().find(|n| count(&inv, &items, n) > 0 && !bot.failed.contains(&n.to_string()));
+                        // (Only what the next things it wants are made at: they
+                        // don't all fit in reach; and its bed, to sleep in.)
+                        let needed: Vec<&str> = WANTS
+                            .iter()
+                            .filter(|(w, n)| made(w) < *n)
+                            .filter_map(|(w, _)| crafting.recipe(w).and_then(|r| crafting.recipes[r].at.as_deref()))
+                            .chain(["bed"])
+                            .collect();
+                        let todo = STATIONS.iter().find(|n| needed.contains(n) && count(&inv, &items, n) > 0 && !bot.failed.contains(&n.to_string()));
                         match todo.and_then(|n| crafting.station(n).map(|kind| (*n, kind))) {
                             Some((name, kind)) => {
                                 let set: Vec<(Vec2, Vec2)> = stations.iter().map(|(_, sk)| (sk.body.pos, sk.body.half)).collect();
@@ -328,14 +367,22 @@ pub(super) fn ladder_script(
                                         }
                                     }
                                     None if !bot.shelf => {
-                                        info!("ladder: no flat ground for the {name} at {:?}: a shelf of blocks", p.round());
+                                        info!("ladder: no flat ground for the {name} at {:?}: a floor of blocks", p.round());
                                         bot.shelf = true;
                                         bot.step = 6;
                                         bot.step_at = t;
                                         bot.idle = 0.0;
                                     }
                                     None => {
-                                        info!("ladder: nowhere for the {name} even with a shelf, at {:?}", p.round());
+                                        let mut why: std::collections::BTreeMap<String, u32> = Default::default();
+                                        for dy in (-16..=16).step_by(4) {
+                                            for dx in (-44..=44).step_by(4) {
+                                                let tr = crafting.try_place(world, p + Vec2::new(dx as f32, dy as f32), kind);
+                                                let k = match tr.at { Ok(_) if tr.feet().distance(p) > 46.0 => "far".to_string(), Ok(_) => "ok (overlaps)".into(), Err(w) => format!("{w:?}") };
+                                                *why.entry(k).or_default() += 1;
+                                            }
+                                        }
+                                        info!("ladder: nowhere for the {name} even on a floor of blocks, at {:?}: {why:?}", p.round());
                                         bot.failed.push(name.to_string());
                                         bot.idle = 0.0;
                                     }
@@ -350,18 +397,21 @@ pub(super) fn ladder_script(
                 }
                 // A shelf: blocks along the row its feet are in, either side
                 // of it (their tops flat), one every 0.15 s; then back to 2.
+                // A floor laid: blocks into the row under its feet wherever
+                // that row's top isn't whole (their tops flat), one every
+                // 0.15 s; then back to 2.
                 6 => {
-                    let fb = (feet.y / platypus_sim::BLOCK as f32 + 0.25).floor() as i32;
-                    let pb = (p.x / platypus_sim::BLOCK as f32).floor() as i32;
-                    let row: Vec<i32> = [-2, 2, -3, 3, -4, 4, -5, 5, -6, 6].into_iter().map(|d| pb + d).collect();
-                    let i = (since / 0.15) as usize;
+                    let bs = platypus_sim::BLOCK;
+                    let fb = (feet.y / bs as f32 + 0.25).floor() as i32 - 1;
+                    let pb = (p.x / bs as f32).floor() as i32;
+                    let holed = |bx: i32| (0..bs).any(|dx| !world.get(CellPos::new(bx * bs + dx, fb * bs + bs - 1)).is_some_and(|c| matches!(mats.phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder)));
+                    let row: Vec<i32> = (pb - 5..=pb + 5).filter(|&bx| holed(bx)).collect();
                     let block = ["block:stone", "block:dirt", "block:cobblestone"].into_iter().find(|n| count(&inv, &items, n) > 0);
-                    match (row.get(i), block) {
-                        (Some(&bx), Some(b)) => {
+                    match (row.first(), block) {
+                        (Some(&bx), Some(b)) if since < 4.0 => {
                             if let Some(slot) = slot_for(&mut inv, &items, b) {
                                 select(&mut hand, slot);
-                                let bs = platypus_sim::BLOCK as f32;
-                                aim = Some(Vec2::new((bx as f32 + 0.5) * bs, (fb as f32 + 0.5) * bs));
+                                aim = Some(Vec2::new((bx as f32 + 0.5) * bs as f32, (fb as f32 + 0.5) * bs as f32));
                                 hold = true;
                             }
                         }
@@ -477,6 +527,7 @@ pub(super) fn ladder_script(
 fn go(bot: &mut Bot, phase: Phase, t: f32) {
     bot.phase = phase;
     bot.failed.clear();
+    bot.room.clear();
     bot.since = t;
     bot.step = 0;
     bot.step_at = t;

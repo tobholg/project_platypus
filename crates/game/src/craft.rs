@@ -173,7 +173,7 @@ impl Crafting {
         let def = &self.stations[kind];
         let (w, h) = def.size();
         let mats = world.materials();
-        let room = |c: platypus_sim::Cell| c.is_air() || matches!(mats.phys(c.material).kind, platypus_sim::Kind::Plant | platypus_sim::Kind::Gas | platypus_sim::Kind::Fire);
+        let room = |c: platypus_sim::Cell| crate::hands::placing::room(mats, c);
         let solid = |p: platypus_sim::CellPos| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder));
         let x0 = cursor.x.floor() as i32 - w / 2;
         let in_way = |feet: i32| -> Vec<platypus_sim::CellPos> {
