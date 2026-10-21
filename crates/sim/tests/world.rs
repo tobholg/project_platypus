@@ -2736,3 +2736,41 @@ fn a_door_opens_and_shuts() {
     let n = (2 * BLOCK..5 * BLOCK).flat_map(|y| (4 * BLOCK..5 * BLOCK).map(move |x| (x, y))).filter(|&(x, y)| w.get(CellPos::new(x, y)).unwrap().material == door).count();
     assert_eq!(n as i32, 3 * BLOCK * BLOCK, "whole");
 }
+
+/// Blood dries away from the top of a puddle while the sweep passes; what a
+/// living thing holds (a slime's goo, HELD) stays; water stays.
+#[test]
+fn blood_dries_from_the_top_and_held_goo_stays() {
+    let mut w = boxed_world(2, 2, 3);
+    let m = w.materials().clone();
+    let (blood, goo, water) = (m.expect_id("blood"), m.expect_id("green_goo"), m.expect_id("water"));
+    for x in 10..20 {
+        for y in 1..4 {
+            w.set(CellPos::new(x, y), Cell::new(blood, 0));
+        }
+    }
+    for x in 30..40 {
+        let mut c = Cell::new(goo, 0);
+        c.flags |= platypus_sim::cell::flags::HELD;
+        c.life = 10;
+        w.set(CellPos::new(x, 1), c);
+        w.set(CellPos::new(x + 20, 1), Cell::new(water, 0));
+    }
+    let before = count(&w, blood);
+    for _ in 0..4000 {
+        w.step();
+        w.sweep_specks(CellPos::new(64, 64), (64, 64));
+        // (A slime holds its goo again every tick: so it stays held.)
+        for x in 30..40 {
+            if let Some(mut c) = w.get(CellPos::new(x, 1)).filter(|c| c.material == goo) {
+                c.flags |= platypus_sim::cell::flags::HELD;
+                c.life = 10;
+                w.set(CellPos::new(x, 1), c);
+            }
+        }
+    }
+    let left = count(&w, blood);
+    assert!(left < before / 2, "blood {before} -> {left}");
+    assert_eq!(count(&w, goo), 10, "held goo stays");
+    assert_eq!(count(&w, water), 10, "water stays");
+}

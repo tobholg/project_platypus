@@ -305,6 +305,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, placing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, chase_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, haunt_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, groundbuild_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
@@ -10718,6 +10719,144 @@ fn phase_script(
         let far = spiders.iter().next().map_or(-1.0, |(_, sk, _)| sk.body.pos.distance(me));
         let web = sim.materials().id("cobweb").map_or(0, |m| (me.x as i32 - 60..me.x as i32 + 60).flat_map(|x| (fl as i32 - 2..fl as i32 + 50).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m)).count());
         info!("phase: t {t:.0} the player has lost {:.0}; it's {far:.0} off; cobweb by them {web}", state.1);
+    }
+}
+
+/// `groundbuild` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): uneven dirt
+/// laid over the floor (a few cells up and down, column by column, as
+/// natural ground is), a puddle of water and one of blood; then bricks
+/// set down through real input: a row along the ground, aimed at it as a
+/// player would, then into each puddle, then a second row on the first;
+/// then a block of dirt mined beside them (what's loose falls). Logs each
+/// brick's block, whether its bottom touches what's under it, what's dug
+/// out, the brick cells before and after the mining, and what's left of
+/// the puddles.
+fn groundbuild_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut player: Query<(&mut Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut hand: ResMut<crate::hands::Hand>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    them: Query<(Entity, &crate::creatures::Creature), Without<LocalPlayer>>,
+    mut commands: Commands,
+    mut st: Local<(u8, f32, usize, usize)>,
+) {
+    if s.name != "groundbuild" {
+        return;
+    }
+    menu.open = false;
+    mouse.release(MouseButton::Left);
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR;
+    let b = platypus_sim::BLOCK;
+    let Some(items) = items else { return };
+    let Ok((mut k, mut inv)) = player.single_mut() else { return };
+    let (step, next, i, before) = &mut *st;
+    let top = |w: &platypus_sim::World, x: i32| (fl - 10..fl + 40).rev().find(|&y| w.get(CellPos::new(x, y)).is_some_and(|c| !c.is_air() && w.materials().phys(c.material).kind == platypus_sim::Kind::Static)).unwrap_or(fl - 1) + 1;
+    // The row's blocks, along x 1040.., and the puddles' at 1136 and 1176.
+    let row: Vec<i32> = (0..6).map(|n| 1040 / b + n).collect();
+    let puddles = [(1136, "water"), (1176, "blood")];
+    match *step {
+        0 if t > 0.5 => {
+            // (The arena's dummies out of the way: bodies a block won't go into.)
+            for (e, c) in &them {
+                if c.kind == "dummy" || c.kind == "sandbag" {
+                    commands.entity(e).despawn();
+                }
+            }
+            let mats = sim.materials().clone();
+            let mut rng = platypus_sim::rng::Rng::seeded(&[5]);
+            let (dirt, grass) = (mats.expect_id("dirt"), mats.expect_id("grass"));
+            for x in 1000..1240 {
+                let h = (3.0 + 2.5 * (x as f32 * 0.21).sin() + 1.5 * (x as f32 * 0.57).sin()).round() as i32;
+                for y in fl..fl + h {
+                    sim.world.set(CellPos::new(x, y), mats.spawn(if y == fl + h - 1 { grass } else { dirt }, &mut rng));
+                }
+            }
+            for (px, what) in puddles {
+                let id = mats.expect_id(what);
+                for x in px..px + 16 {
+                    for y in fl..fl + 10 {
+                        sim.world.set(CellPos::new(x, y), platypus_sim::Cell::AIR);
+                    }
+                    for y in fl..fl + 5 {
+                        sim.world.set(CellPos::new(x, y), mats.spawn(id, &mut rng));
+                    }
+                }
+                for y in fl..fl + 10 {
+                    sim.world.set(CellPos::new(px - 1, y), mats.spawn(dirt, &mut rng));
+                    sim.world.set(CellPos::new(px + 16, y), mats.spawn(dirt, &mut rng));
+                }
+            }
+            k.body.pos = Vec2::new(1010.0, (fl + 12) as f32 + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            if let Some(brick) = items.id("block:brick") {
+                inv.slots[8] = Some(crate::hands::items::Stack::new(brick, 40 * crate::hands::items::BLOCK_CELLS));
+                (hand.bar, hand.slot) = (0, 8);
+            }
+            hand.smart = false;
+            *step = 1;
+            *next = t + 0.5;
+        }
+        // Each brick: aimed at the ground's top over the block's middle (a
+        // player points at the ground), clicked.
+        1 if t >= *next => {
+            let aims: Vec<Vec2> = row.iter().map(|&bx| { let x = bx * b + b / 2; Vec2::new(x as f32, top(&sim.world, x) as f32 - 1.0) })
+                .chain(puddles.iter().map(|&(px, _)| Vec2::new((px + 8) as f32, (fl + 3) as f32)))
+                .chain(row.iter().map(|&bx| { let x = bx * b + b / 2; Vec2::new(x as f32, top(&sim.world, x) as f32 + 2.0) }))
+                .collect();
+            match aims.get(*i) {
+                Some(&aim) => {
+                    // (Stood within reach of it; the button held a moment,
+                    // as a click is.)
+                    if cursor.0 != Some(aim) {
+                        k.body.pos.x = aim.x - 24.0;
+                        k.prev_pos = k.body.pos;
+                        cursor.0 = Some(aim);
+                        *next = t + 0.12;
+                    } else {
+                        *i += 1;
+                        *next = t + 0.25;
+                    }
+                    mouse.press(MouseButton::Left);
+                }
+                None => {
+                    let brick = sim.materials().expect_id("block:brick".trim_start_matches("block:"));
+                    *before = (980..1260).flat_map(|x| (fl - 4..fl + 60).map(move |y| CellPos::new(x, y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == brick)).count();
+                    // Each block of the first row: does its bottom touch?
+                    for &bx in &row {
+                        let (x0, x1) = (bx * b, bx * b + b);
+                        let rows: Vec<i32> = (fl - 2..fl + 30).filter(|&y| (x0..x1).any(|x| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == brick))).collect();
+                        let low = rows.first().copied().unwrap_or(0);
+                        let touching = (x0..x1).any(|x| sim.world.get(CellPos::new(x, low)).is_some_and(|c| c.material == brick) && sim.world.get(CellPos::new(x, low - 1)).is_some_and(|c| !c.is_air() && sim.world.materials().phys(c.material).kind == platypus_sim::Kind::Static));
+                        info!("groundbuild: block column {bx}: brick rows {:?}, its bottom touching what's under it: {touching}", rows.first().zip(rows.last()));
+                    }
+                    *step = 2;
+                    *next = t + 0.5;
+                }
+            }
+        }
+        // Mine a block of dirt beside the row (loosening what's loose).
+        2 if t >= *next => {
+            let bx = row[0] - 2;
+            let at = CellPos::new(bx, (top(&sim.world, bx * b + 4) - 2).div_euclid(b));
+            sim.world.apply_edit(&WorldEdit::MineBlock { block: at, power: 255, max_hardness: 255, back: false });
+            *step = 3;
+            *next = t + 2.5;
+        }
+        3 if t >= *next => {
+            let mats = sim.materials();
+            let brick = mats.expect_id("brick");
+            let after = (980..1260).flat_map(|x| (fl - 4..fl + 60).map(move |y| CellPos::new(x, y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == brick)).count();
+            let left: Vec<String> = puddles.iter().map(|&(px, what)| { let id = mats.expect_id(what); format!("{what} {}", (px - 4..px + 20).flat_map(|x| (fl..fl + 40).map(move |y| CellPos::new(x, y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == id)).count()) }).collect();
+            let dirt = items.id("block:dirt").map_or(0, |d| inv.count(d));
+            info!("groundbuild: bricks placed {} cells, after mining beside them {after}; the puddles: {}; dirt in the pack {dirt} cells", *before, left.join(", "));
+            *step = 4;
+        }
+        _ => {}
     }
 }
 

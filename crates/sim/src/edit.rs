@@ -32,7 +32,9 @@ pub enum WorldEdit {
     /// what building pushes aside) with a material (its pattern, if it has
     /// one, gives the shades), at most `most` cells of it (from the bottom
     /// row up: what's left of a stack fills what it can, and the next fills
-    /// the rest). `EditReport::placed` says how many.
+    /// the rest). In the playfield, soft ground in it is dug out first
+    /// (`EditReport::removed`) and liquid pushed up out of it.
+    /// `EditReport::placed` says how many.
     PlaceBlock { block: CellPos, material: MaterialId, back: bool, most: u32 },
     /// A hammer's blow: a block of a building material made its next shape
     /// (whole, half, the four ramps: `look::Shape`), what it leaves out

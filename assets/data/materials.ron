@@ -11,6 +11,9 @@
 // burn_time:    how long it burns in place, in steps of 4 ticks (default 45 = 3 s)
 // burns_into:   what's left after burning out (+ burns_into_chance /256; default nothing)
 // lifetime:     (min, max) decay steps for gases and fire; one step = `decay_every` ticks
+// evaporates:   dries away where open to the air (blood, spilt goo): the chance
+//               (/256) a surface cell goes each time the sweep round the player
+//               passes (every couple of seconds); what a living thing holds stays
 // crumbles_into: what a solid shatters into when blasted but not destroyed
 //
 // Temperature (°C). Cells store heat relative to the local ambient (colder up
@@ -341,37 +344,37 @@
         // doesn't boil away the lake under it.
         (name: "oil",      kind: Liquid, density: 800,  dispersion: 6, flammability: 90, ignites_at: 220, burn_time: 25, conductivity: 6, coats: "oily", viscosity: 40, colors: [(56, 38, 24), (72, 52, 30)]),
         // Boils and freezes like water (a little below 0: what's dissolved in it).
-        (name: "blood",    kind: Liquid, density: 1060, charges: true, dispersion: 5, above: (100, "blood_steam"), below: (-2, "frozen_blood"), coats: "bloody", latent: 300, latent_below: 60, capacity: 2.0, viscosity: 70, colors: [(136, 10, 16), (164, 18, 24)]),
+        (name: "blood",    kind: Liquid, evaporates: 8, density: 1060, charges: true, dispersion: 5, above: (100, "blood_steam"), below: (-2, "frozen_blood"), coats: "bloody", latent: 300, latent_below: 60, capacity: 2.0, viscosity: 70, colors: [(136, 10, 16), (164, 18, 24)]),
         // What the walking dead bleed: old blood gone dark and thick.
-        (name: "rot",      kind: Liquid, density: 1080, dispersion: 3, above: (100, "blood_steam"), coats: "bloody", latent: 300, latent_below: 60, capacity: 2.0, viscosity: 150, colors: [(84, 14, 16), (102, 20, 20), (66, 18, 18)]),
+        (name: "rot",      kind: Liquid, evaporates: 6, density: 1080, dispersion: 3, above: (100, "blood_steam"), coats: "bloody", latent: 300, latent_below: 60, capacity: 2.0, viscosity: 150, colors: [(84, 14, 16), (102, 20, 20), (66, 18, 18)]),
         // A blue slime's body: springy goo that won't burn.
-        (name: "blue_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, above: (110, "steam"), coats: "slimy", glow: (8, 16, 34), opacity: 25, colors: [(84, 150, 226), (68, 128, 208), (104, 170, 240), (76, 140, 218)]),
+        (name: "blue_goo", kind: Liquid, evaporates: 6, density: 1150, dispersion: 1, viscosity: 230, above: (110, "steam"), coats: "slimy", glow: (8, 16, 34), opacity: 25, colors: [(84, 150, 226), (68, 128, 208), (104, 170, 240), (76, 140, 218)]),
         // An acid slime's body: goo that eats what it's against (slowly,
         // used up doing it) and burns what's in it.
-        (name: "acid_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 200, corrosive: 8, charges: true,
+        (name: "acid_goo", kind: Liquid, evaporates: 6, density: 1150, dispersion: 1, viscosity: 200, corrosive: 8, charges: true,
             eats: (hardness: 70, bites: 14, chance: 40, spent_into: "smoke"), above: (110, "acid_fumes"), coats: "acid", glow: (50, 150, 20), opacity: 30, colors: [(160, 214, 52), (138, 196, 40), (178, 226, 72)]),
         // The glutton's body: pale, shifting goo that takes on what it's
         // struck with: fire (hot goo that sets things alight), frost (goo
         // cold enough to chill), lightning (goo that carries it).
-        (name: "prism_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, coats: "slimy", glow: (30, 26, 40), opacity: 25, colors: [(214, 196, 236), (196, 214, 236), (236, 210, 214), (206, 232, 214)]),
-        (name: "ember_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, hot: true, heat: 420, heat_source: true, above: (900, "smoke"), coats: "slimy", glow: (255, 120, 30), opacity: 25, colors: [(255, 150, 60), (240, 110, 40), (255, 190, 90)]),
-        (name: "frost_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 240, heat: -60, heat_source: true, coats: "slimy", glow: (60, 110, 160), opacity: 25, colors: [(190, 228, 255), (160, 210, 250), (214, 240, 255)]),
-        (name: "spark_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, charges: true, coats: "slimy", glow: (120, 200, 255), opacity: 25, colors: [(150, 220, 255), (210, 244, 255), (120, 200, 250)]),
+        (name: "prism_goo", kind: Liquid, evaporates: 6, density: 1150, dispersion: 1, viscosity: 230, coats: "slimy", glow: (30, 26, 40), opacity: 25, colors: [(214, 196, 236), (196, 214, 236), (236, 210, 214), (206, 232, 214)]),
+        (name: "ember_goo", kind: Liquid, evaporates: 6, density: 1150, dispersion: 1, viscosity: 230, hot: true, heat: 420, heat_source: true, above: (900, "smoke"), coats: "slimy", glow: (255, 120, 30), opacity: 25, colors: [(255, 150, 60), (240, 110, 40), (255, 190, 90)]),
+        (name: "frost_goo", kind: Liquid, evaporates: 6, density: 1150, dispersion: 1, viscosity: 240, heat: -60, heat_source: true, coats: "slimy", glow: (60, 110, 160), opacity: 25, colors: [(190, 228, 255), (160, 210, 250), (214, 240, 255)]),
+        (name: "spark_goo", kind: Liquid, evaporates: 6, density: 1150, dispersion: 1, viscosity: 230, charges: true, coats: "slimy", glow: (120, 200, 255), opacity: 25, colors: [(150, 220, 255), (210, 244, 255), (120, 200, 250)]),
         // The glutton's goo, by what it's drunk (body/goo/glutton.rs): light
         // (blinding, it lights the cave), the void (ink that drinks light),
         // venom (it poisons what it coats).
-        (name: "radiant_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, coats: "slimy", glow: (255, 240, 200), opacity: 20, colors: [(255, 250, 225), (255, 238, 190), (250, 252, 255)]),
-        (name: "void_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, coats: "slimy", glow: (40, 10, 70), opacity: 70, colors: [(30, 12, 46), (44, 20, 70), (20, 6, 34)]),
-        (name: "venom_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 230, coats: "venom", glow: (60, 30, 70), opacity: 30, colors: [(150, 90, 170), (120, 160, 60), (136, 104, 150)]),
+        (name: "radiant_goo", kind: Liquid, evaporates: 6, density: 1150, dispersion: 1, viscosity: 230, coats: "slimy", glow: (255, 240, 200), opacity: 20, colors: [(255, 250, 225), (255, 238, 190), (250, 252, 255)]),
+        (name: "void_goo", kind: Liquid, evaporates: 6, density: 1150, dispersion: 1, viscosity: 230, coats: "slimy", glow: (40, 10, 70), opacity: 70, colors: [(30, 12, 46), (44, 20, 70), (20, 6, 34)]),
+        (name: "venom_goo", kind: Liquid, evaporates: 6, density: 1150, dispersion: 1, viscosity: 230, coats: "venom", glow: (60, 30, 70), opacity: 30, colors: [(150, 90, 170), (120, 160, 60), (136, 104, 150)]),
         // What spiders bleed, and slimes are full of (a slime glows a little).
         (name: "ichor",    kind: Liquid, density: 1040, dispersion: 5, viscosity: 110, above: (100, "steam"), colors: [(156, 172, 64), (128, 146, 46)]),
         // A phase spider's blood: a violet ichor that glows, breathing.
         (name: "phase_ichor", kind: Liquid, density: 1040, dispersion: 5, viscosity: 120, above: (100, "steam"), glow: (60, 30, 120), pulse: 110, opacity: 20, colors: [(150, 100, 230), (120, 80, 200), (170, 130, 250)]),
-        (name: "slime",    kind: Liquid, density: 1100, dispersion: 2, viscosity: 220, above: (100, "steam"), glow: (6, 22, 8), opacity: 20, colors: [(96, 196, 96), (76, 170, 80), (110, 210, 110)]),
+        (name: "slime",    kind: Liquid, evaporates: 6, density: 1100, dispersion: 2, viscosity: 220, above: (100, "steam"), glow: (6, 22, 8), opacity: 20, colors: [(96, 196, 96), (76, 170, 80), (110, 210, 110)]),
         // A green slime's body: thick, clinging goo that clogs what it's on
         // and catches fire; held, it's a slime (creatures/body/goo.rs), let
         // go it runs and pools (collect it: torches).
-        (name: "green_goo", kind: Liquid, density: 1150, dispersion: 1, viscosity: 250, flammability: 45, ignites_at: 240, burn_time: 60, burns_into: "smoke", burns_into_chance: 120, above: (110, "steam"), coats: "slimy", glow: (8, 30, 10), opacity: 25, colors: [(104, 204, 92), (84, 178, 78), (122, 220, 104), (94, 190, 86)]),
+        (name: "green_goo", kind: Liquid, evaporates: 6, density: 1150, dispersion: 1, viscosity: 250, flammability: 45, ignites_at: 240, burn_time: 60, burns_into: "smoke", burns_into_chance: 120, above: (110, "steam"), coats: "slimy", glow: (8, 30, 10), opacity: 25, colors: [(104, 204, 92), (84, 178, 78), (122, 220, 104), (94, 190, 86)]),
         (name: "lava",     kind: Liquid, density: 2500, dispersion: 3, hot: true, heat: 1200, heat_source: true, below: (950, "basalt"), conductivity: 60, glow: (255, 105, 30), viscosity: 200, colors: [(255, 96, 16), (255, 150, 40), (230, 60, 10)]),
         // Rock melted (stone, brick, glass under a heat gun or a furnace's
         // worth of fire): lava to look at and to touch, but nothing feeds it,

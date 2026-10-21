@@ -118,6 +118,12 @@ pub struct MaterialDef {
     /// What a cell becomes when its life runs out (default: air).
     #[serde(default)]
     pub decays_into: Option<String>,
+    /// Dries away where it's open to the air (blood, a slime's spilt goo):
+    /// the chance (/256) a surface cell goes each time the sweep round the
+    /// player passes (`World::sweep_specks`, every couple of seconds), so
+    /// a puddle shrinks from the top. What a living thing holds stays.
+    #[serde(default)]
+    pub evaporates: u8,
     /// Chance /256 that `decays_into` is left rather than nothing. Steam that
     /// always condensed would drip back onto hot rock and cycle forever.
     #[serde(default = "always")]
@@ -432,6 +438,8 @@ pub struct MatPhys {
     pub decay_every: u8,
     pub decays_into: MaterialId,
     pub decays_into_chance: u8,
+    /// (`MaterialDef::evaporates`.)
+    pub evaporates: u8,
     /// Left behind after burning out (`AIR` = nothing).
     pub burns_into: MaterialId,
     pub burns_into_chance: u8,
@@ -669,6 +677,7 @@ impl MaterialTable {
                 decay_every: d.decay_every.max(1),
                 decays_into,
                 decays_into_chance: d.decays_into_chance,
+                evaporates: d.evaporates,
                 burns_into,
                 burns_into_chance: d.burns_into_chance,
                 burn_time: d.burn_time.unwrap_or(45),

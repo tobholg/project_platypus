@@ -329,18 +329,27 @@ pub fn too_hard(world: &World, block: CellPos, tier: u8) -> Option<platypus_sim:
 /// creature in the way.
 fn free(world: &World, block: CellPos, bodies: &[Body], material: platypus_sim::MaterialId) -> bool {
     let mats = world.materials();
-    let mut room = false;
+    let (mut room, mut hard) = (0, 0);
     for p in block_cells(block) {
         let Some(c) = world.get(p) else { return false };
+        // (Inside a living slime: no.)
+        if c.flags & platypus_sim::cell::flags::HELD != 0 {
+            return false;
+        }
         match mats.phys(c.material).kind {
-            Kind::Static | Kind::Powder if c.material != material => return false,
-            Kind::Static | Kind::Powder => {}
-            _ => room |= c.is_air() || matches!(mats.phys(c.material).kind, Kind::Plant | Kind::Gas | Kind::Fire),
+            Kind::Static | Kind::Powder if c.material == material => {}
+            // (Soft ground in the way is dug out for it: `PlaceBlock`.)
+            Kind::Static | Kind::Powder if mats.soft(c.material) => {}
+            Kind::Static | Kind::Powder => hard += 1,
+            // (Air, tall grass, smoke, flames; liquid it pushes aside.)
+            _ => room += 1,
         }
     }
     let (lo, hi) = (Vec2::new((block.x * BLOCK) as f32, (block.y * BLOCK) as f32), Vec2::new(((block.x + 1) * BLOCK) as f32, ((block.y + 1) * BLOCK) as f32));
     let blocked = bodies.iter().any(|b| b.pos.x + b.half.x > lo.x && b.pos.x - b.half.x < hi.x && b.pos.y + b.half.y > lo.y && b.pos.y - b.half.y < hi.y);
-    room && !blocked
+    // Some room in it (a whole block of ground is for a pickaxe), and no
+    // more than a little rock (it stays; the block fills round it).
+    room > 0 && hard * 4 <= BLOCK * BLOCK && !blocked
 }
 
 /// Where a block of this material would go (a wall: behind; air: a torch's
@@ -367,13 +376,18 @@ fn supported_back(world: &World, block: CellPos) -> bool {
     [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| any(CellPos::new(block.x + dx, block.y + dy)))
 }
 
-/// Is there something for a block to rest on: a solid next to it, or a wall
-/// behind it.
+/// Is there something for a block to rest on, touching it: a solid against
+/// one of its sides (not across a gap: a block left hanging over uneven
+/// ground fell as soon as anything near it moved), rock it fills round, or
+/// a wall behind it.
 fn supported(world: &World, block: CellPos) -> bool {
     let mats = world.materials();
-    let solid = |b: CellPos| block_cells(b).any(|p| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder)));
+    let solid = |p: CellPos| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder) && c.flags & platypus_sim::cell::flags::HELD == 0);
     let wall = block_cells(block).any(|p| world.get_bg(p).is_some_and(|c| !c.is_air()));
-    wall || [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(dx, dy)| solid(CellPos::new(block.x + dx, block.y + dy)))
+    let rock = block_cells(block).any(|p| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder) && !mats.soft(c.material)));
+    let (x0, y0, b) = (block.x * BLOCK, block.y * BLOCK, BLOCK);
+    let touching = (0..b).any(|i| solid(CellPos::new(x0 + i, y0 - 1)) || solid(CellPos::new(x0 + i, y0 + b)) || solid(CellPos::new(x0 - 1, y0 + i)) || solid(CellPos::new(x0 + b, y0 + i)));
+    wall || rock || touching
 }
 
 /// A bomb in flight looks as one in hand does: its item's picture.
@@ -711,8 +725,15 @@ fn use_hands(
             let wall = sim.world.materials().def(material).wall;
             let Some(block) = place_spot(&sim.world, from, cursor, &bodies, material) else { return };
             let report = sim.world.apply_edit(&WorldEdit::PlaceBlock { block, material, back: wall, most: stack.count });
+            let centre = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32);
             if report.placed > 0 {
-                sounds.write(crate::sound::PlaySound::at("place", Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32)));
+                sounds.write(crate::sound::PlaySound::at("place", centre));
+            }
+            // (The soft ground it dug out to sit in: as if dug.)
+            for &(dug, n) in &report.removed {
+                if let Some(item) = items.block(dug) {
+                    spawn_drop(&mut commands, &items, centre, Stack::new(item, n));
+                }
             }
             inv.take(slot, report.placed);
             hand.cooldown = 1.0 / PLACE_RATE;
@@ -1281,6 +1302,66 @@ fn outline(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A chunk of air, stone up to row 15, and what `paint` puts over it.
+    fn ground(paint: &[(&str, std::ops::Range<i32>, std::ops::Range<i32>)]) -> World {
+        use std::sync::Arc;
+        let mats = Arc::new(platypus_sim::MaterialTable::from_ron(include_str!("../../../../assets/data/materials.ron")).unwrap());
+        let mut w = World::new(1, mats.clone());
+        w.insert_chunk(platypus_sim::Chunk::filled(platypus_sim::ChunkPos::new(0, 0), platypus_sim::Cell::AIR));
+        let mut rng = platypus_sim::rng::Rng::seeded(&[1]);
+        let mut put = |name: &str, xs: std::ops::Range<i32>, ys: std::ops::Range<i32>| {
+            let id = mats.expect_id(name);
+            for x in xs {
+                for y in ys.clone() {
+                    w.set(CellPos::new(x, y), mats.spawn(id, &mut rng));
+                }
+            }
+        };
+        put("stone", 0..64, 0..16);
+        for (m, xs, ys) in paint {
+            put(m, xs.clone(), ys.clone());
+        }
+        w
+    }
+
+    /// Bricks on uneven ground: into the dirt's block, flush (the dirt dug
+    /// out, given back), not hanging over it with a gap under.
+    #[test]
+    fn a_block_goes_down_into_uneven_ground_not_over_a_gap() {
+        // Dirt 3 high on the stone over block column 2 (x 16..24), block row 2.
+        let mut w = ground(&[("dirt", 16..24, 16..19), ("dirt", 20..24, 19..20)]);
+        let brick = w.materials().expect_id("brick");
+        let (into, over) = (CellPos::new(2, 2), CellPos::new(2, 3));
+        assert!(free(&w, into, &[], brick) && supported(&w, into), "into the dirt's block");
+        assert!(free(&w, over, &[], brick) && !supported(&w, over), "not over it, hanging");
+        let report = w.apply_edit(&WorldEdit::PlaceBlock { block: into, material: brick, back: false, most: u32::MAX });
+        assert!(report.removed.iter().any(|(m, n)| *m == w.materials().expect_id("dirt") && *n == 28), "the dirt dug out: {:?}", report.removed);
+        let bottom = (16..24).filter(|&x| w.get(CellPos::new(x, 16)).is_some_and(|c| c.material == brick)).count();
+        assert!(bottom >= 6, "sitting on the stone: {bottom} of its bottom row brick");
+        // A whole block of ground is for a pickaxe.
+        let solid = ground(&[("dirt", 24..32, 16..24)]);
+        assert!(!free(&solid, CellPos::new(3, 2), &[], brick));
+        // A little rock in it stays, the block round it; a lot, no.
+        let rocky = ground(&[("stone", 32..40, 16..18)]);
+        assert!(free(&rocky, CellPos::new(4, 2), &[], brick));
+        let rockier = ground(&[("stone", 32..40, 16..21)]);
+        assert!(!free(&rockier, CellPos::new(4, 2), &[], brick));
+    }
+
+    /// Into a puddle: the water's pushed up out of the block.
+    #[test]
+    fn a_block_pushes_water_aside() {
+        let mut w = ground(&[("water", 16..24, 16..22)]);
+        let (brick, water) = (w.materials().expect_id("brick"), w.materials().expect_id("water"));
+        let block = CellPos::new(2, 2);
+        assert!(free(&w, block, &[], brick) && supported(&w, block));
+        w.apply_edit(&WorldEdit::PlaceBlock { block, material: brick, back: false, most: u32::MAX });
+        let inside = platypus_sim::block_cells(block).filter(|&p| w.get(p).is_some_and(|c| c.material == water)).count();
+        let above = (16..24).flat_map(|x| (24..40).map(move |y| CellPos::new(x, y))).filter(|&p| w.get(p).is_some_and(|c| c.material == water)).count();
+        assert_eq!(inside, 0);
+        assert_eq!(above, 48, "every cell of it above");
+    }
 
     /// Where a throw from the origin comes back down to its own height.
     fn lands(v: Vec2) -> f32 {

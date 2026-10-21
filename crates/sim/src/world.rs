@@ -826,6 +826,10 @@ impl World {
 
     /// Room to build into: air, or what building just pushes aside (tall
     /// grass, smoke, flames).
+    /// How far over a block placed in liquid its liquid looks for room
+    /// (`place_block`).
+    const DISPLACE_REACH: i32 = 3 * BLOCK;
+
     fn room(mats: &MaterialTable, c: Cell) -> bool {
         c.is_air() || matches!(mats.phys(c.material).kind, Kind::Plant | Kind::Gas | Kind::Fire)
     }
@@ -833,6 +837,29 @@ impl World {
     fn place_block(&mut self, block: CellPos, material: MaterialId, back: bool, most: u32, report: &mut EditReport) {
         let mats = self.materials.clone();
         let mut rng = self.rng_for(0x9A1C, block);
+        // In the playfield, building pushes aside what's loose in its way:
+        // soft ground (dirt, sand, snow: `soft`) is dug out (reported, for
+        // whoever built), liquid (water, blood, spilt goo: nothing a living
+        // thing holds) is pushed up out of the block to the first open cell
+        // over it, or lost if there's none near.
+        if !back {
+            let top = (block.y + 1) * BLOCK;
+            for p in block_cells(block) {
+                let Some(c) = self.get(p) else { continue };
+                if c.is_air() || c.flags & flags::HELD != 0 {
+                    continue;
+                }
+                if mats.soft(c.material) {
+                    self.set(p, Cell::AIR);
+                    report.add_removed(c.material);
+                } else if mats.phys(c.material).kind == Kind::Liquid {
+                    self.set(p, Cell::AIR);
+                    if let Some(up) = (top..top + Self::DISPLACE_REACH).map(|y| CellPos::new(p.x, y)).find(|&q| self.get(q).is_some_and(|a| a.is_air())) {
+                        self.set(up, c);
+                    }
+                }
+            }
+        }
         for p in block_cells(block) {
             if report.placed >= most {
                 break;
@@ -2466,6 +2493,21 @@ impl World {
             let (tx, ty) = ((i % tw as u64) as i32, (i / tw as u64) as i32);
             let x0 = (center.x - half.0).div_euclid(t) * t + tx * t;
             let y0 = (center.y - half.1).div_euclid(t) * t + ty * t;
+            // What dries away (blood, spilt goo): a cell of it open to the
+            // air above, now and then; what something living holds stays.
+            let tick = self.tick;
+            let dry: Vec<CellPos> = (0..t)
+                .flat_map(|dy| (0..t).map(move |dx| CellPos::new(x0 + dx, y0 + dy)))
+                .filter(|&p| {
+                    self.get(p).is_some_and(|c| {
+                        let e = mats.phys(c.material).evaporates;
+                        e > 0 && c.flags & flags::HELD == 0 && self.get(p.offset(0, 1)).is_some_and(|a| a.is_air()) && (crate::rng::hash(&[tick, p.x as u64, p.y as u64]) % 256) < e as u64
+                    })
+                })
+                .collect();
+            for p in dry {
+                self.set(p, Cell::AIR);
+            }
             // (Charred wood, carrying nothing, hangs till it burns away; a
             // fire out, a lone char would hang for ever: it drops now.)
             let chars: Vec<CellPos> = (0..t)
