@@ -10933,7 +10933,8 @@ fn haunt_script(
 
 /// `chase` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a `PLATYPUS_FOE`
 /// (zombie) put `PLATYPUS_OFF` (220) cells to the player's right; the player
-/// stands (`PLATYPUS_FLEE=1`: runs left, holding A, from 1.5 s). Every
+/// stands (`PLATYPUS_FLEE=1`: runs left, holding A, from 1.5 s;
+/// `PLATYPUS_SWING=1`: swings its shortsword at it as it comes near). Every
 /// 0.25 s: how far off it is, how fast it goes, the player's health; then
 /// when it first got within 30, what it cost, how close it came.
 fn chase_script(
@@ -10941,8 +10942,9 @@ fn chase_script(
     mut commands: Commands,
     mut menu: ResMut<crate::devmenu::DevMenu>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
-    player: Query<(&Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
-    them: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut player: Query<(&Kinematics, &crate::creatures::Health, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    them: Query<(&crate::creatures::Creature, &Kinematics, Option<&crate::creatures::Health>), Without<LocalPlayer>>,
+    (items, mut hand, mut cursor, mut mouse): (Option<Res<crate::hands::items::Items>>, ResMut<crate::hands::Hand>, ResMut<CursorOverride>, ResMut<ButtonInput<MouseButton>>),
     mut st: Local<(u8, f32, Option<f32>, f32, f32)>,
 ) {
     if s.name != "chase" {
@@ -10951,7 +10953,8 @@ fn chase_script(
     menu.open = false;
     let t = s.elapsed;
     let foe = std::env::var("PLATYPUS_FOE").unwrap_or_else(|_| "zombie".into());
-    let Ok((pk, hp)) = player.single() else { return };
+    let Ok((pk, hp, mut inv)) = player.single_mut() else { return };
+    mouse.release(MouseButton::Left);
     let flee = std::env::var("PLATYPUS_FLEE").is_ok();
     if flee && t > 1.5 { keys.press(KeyCode::KeyA) } else { keys.release(KeyCode::KeyA) }
     let (step, next, caught, closest, start_hp) = &mut *st;
@@ -10963,15 +10966,27 @@ fn chase_script(
         *start_hp = hp.hp;
         return;
     }
-    let Some((_, fk)) = them.iter().find(|(c, _)| c.kind == foe) else { return };
+    let Some((_, fk, fh)) = them.iter().find(|(c, ..)| c.kind == foe) else { return };
     let d = fk.body.pos.distance(pk.body.pos);
+    // (`PLATYPUS_SWING=1`: the shortsword swung at it as it comes near.)
+    if std::env::var("PLATYPUS_SWING").is_ok()
+        && let Some(items) = &items
+        && let Some(sw) = items.id("shortsword")
+    {
+        inv.slots[9] = Some(crate::hands::items::Stack::new(sw, 1));
+        (hand.bar, hand.slot) = (0, 9);
+        cursor.0 = Some(fk.body.pos);
+        if d < 34.0 {
+            mouse.press(MouseButton::Left);
+        }
+    }
     *closest = closest.min(d);
     if caught.is_none() && d < 30.0 {
         *caught = Some(t);
     }
     if t >= *next {
         *next = t + std::env::var("PLATYPUS_EVERY").ok().and_then(|v| v.parse().ok()).unwrap_or(0.25);
-        info!("chase: t {t:.2} {foe} {d:.0} off, going {:.0} (the player {:.0}), hp {:.0}", fk.body.vel.x.abs(), pk.body.vel.x.abs(), hp.hp);
+        info!("chase: t {t:.2} {foe} {d:.0} off, going {:.0} (the player {:.0}), hp {:.0}; its hp {:.0}", fk.body.vel.x.abs(), pk.body.vel.x.abs(), hp.hp, fh.map_or(0.0, |h| h.hp));
     }
     if *step == 1 && t > s.duration - 0.5 {
         *step = 2;

@@ -6,6 +6,8 @@
     loot: "vampire_bat",
     size: (9, 6),
     health: 16,
+    // (Light as a leaf: a blow swats it away, a dive parried.)
+    heft: 0.35,
     team: Enemy,
     faction: "bats",
     // Its kind (kinds.ron): how it takes each kind of hurt.

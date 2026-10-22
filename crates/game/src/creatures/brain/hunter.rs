@@ -547,6 +547,12 @@ fn hunt(
             // up), then a dash along the line it had at the tell's end, on
             // past where it was, and back up round.
             (Close::Swoop { hover, dive_time, dive_every }, Some((t, ..))) => {
+                // (Knocked out of a dive (a parry): the dive's over, the next
+                // a while off.)
+                if k.loco.state == platypus_physics::MoveState::Stunned && tick < m.dive_until {
+                    m.dive_until = tick;
+                    m.next = m.next.max(tick + ticks(dive_every * 0.8));
+                }
                 let tell = ((pos - t).normalize_or_zero() + Vec2::Y * 0.6).normalize_or_zero() * 0.35;
                 let steer = if tick < m.dive_until {
                     if tick < m.windup_until {

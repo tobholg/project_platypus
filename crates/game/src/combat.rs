@@ -1431,7 +1431,12 @@ fn swing(
                             None => (c - tk.body.pos).abs().cmple(tk.body.half).all(),
                         }
                 });
-                let Some(&at) = touched else { continue };
+                // (Up against you, inside where the blade starts (a rat at
+                // your feet): the swing's near part takes it, the side it
+                // sweeps.)
+                let hugging = ((tk.body.pos - k.body.pos).abs() - (tk.body.half + k.body.half)).max_element() < 2.0 && (tk.body.pos - hand_at).normalize_or_zero().dot(dir(a)) > 0.2;
+                let touched = touched.copied().or_else(|| hugging.then_some(tk.body.pos));
+                let Some(at) = touched else { continue };
                 s.hit.push(e);
                 let away = (tk.body.pos - k.body.pos).normalize_or(Vec2::X * facing);
                 let roll = (platypus_sim::rng::hash(&[sim.world.tick(), crate::creatures::stable(&ids, me), crate::creatures::stable(&ids, e)]) % 10_000) as f32 / 10_000.0;

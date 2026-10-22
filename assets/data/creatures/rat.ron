@@ -9,7 +9,9 @@
     name: "Rat",
     size: (24, 12),
     health: 16,
-    heft: 0.7,
+    // (Chunky: a blow shoves it back a step and staggers it, a pounce
+    // parried, but it's no leaf.)
+    heft: 1.4,
     team: Enemy,
     faction: "rats",
     kind: "beast",
