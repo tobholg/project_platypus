@@ -2155,6 +2155,39 @@ mod tests {
         }
     }
 
+    /// Perched pockets: in every world some, each liquid in the middle,
+    /// held up by a few cells of rock over open cave (its drips fall there).
+    #[test]
+    fn perched_pockets_sit_over_caves_on_thin_roofs() {
+        let m = mats();
+        for seed in [2u64, 7] {
+            let g = TerrainGen::new(seed, Preset::Large, &m);
+            let pockets = &g.plan.caves.pockets;
+            assert!(pockets.len() >= 20, "seed {seed}: {} pockets", pockets.len());
+            let sx = g.spawn_point().x as f32;
+            let near = pockets.iter().filter(|p| (p.x - sx).abs() < 2_000.0).count();
+            eprintln!("seed {seed}: {} pockets ({} oil), {near} within 2000 of the spawn", pockets.len(), pockets.iter().filter(|p| p.kind == caves::Pool::Oil).count());
+            let mut by: Vec<_> = pockets.iter().collect();
+            by.retain(|p| (p.x - sx).abs() < 3_000.0);
+            let depth = |p: &caves::Pocket| g.plan.surface_at(p.x as i32) as f32 - p.y;
+            by.sort_by(|a, b| depth(a).total_cmp(&depth(b)));
+            for p in by.iter().take(4) {
+                let x = p.x as i32;
+                let floor = ((p.y - p.ry) as i32 - 120..(p.y - p.ry) as i32).rev().skip_while(|&y| g.material_hint(x, y) != Some(g.ids.air)).find(|&y| g.material_hint(x, y) != Some(g.ids.air));
+                eprintln!("  {:?} at {x},{} ({}x{}, {} down), floor under it {floor:?}", p.kind, p.y as i32, p.rx as i32, p.ry as i32, depth(p) as i32);
+            }
+            let liquid = [g.ids.water, g.ids.ice, g.ids.oil];
+            for p in pockets.iter().take(40) {
+                let (x, y) = (p.x as i32, p.y as i32);
+                let got = g.material_hint(x, y).unwrap();
+                assert!(liquid.contains(&got), "seed {seed}: pocket at {x},{y} isn't liquid: {} (surface {}, band {:?}, chasm {}, at {:?})", m.def(got).name, g.plan.surface_at(x), g.plan.band_at(y), g.plan.chasm_at(x, y), g.plan.caves.at(x, y));
+                let bottom = (p.y - p.ry) as i32 + 1;
+                let roof = (1..12).find(|d| g.material_hint(x, bottom - d) == Some(g.ids.air)).expect("open cave under the pocket");
+                assert!((3..=7).contains(&roof), "seed {seed}: pocket at {x},{y} on a roof {roof} thick");
+            }
+        }
+    }
+
     /// Trees (the front layer's, to fell) near the spawn, seed by seed
     /// (`cargo test -p platypus_worldgen trees_at_spawn -- --ignored
     /// --nocapture`).

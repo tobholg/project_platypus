@@ -305,6 +305,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, placing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, chase_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, haunt_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, drips_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, groundbuild_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
@@ -10928,6 +10929,91 @@ fn haunt_script(
         }
         let p = pk.body.pos;
         info!("haunt: t {t:.1} haunted {:.2}, lamps {:.2}, a flame {:.2}; the pool: {w} water, {i} ice; ghosts at {:?}", haunts.at(p), haunts.electric(p, t, 2), haunts.flame(p, t, 1), haunts.at.iter().map(|(g, _)| g.round()).collect::<Vec<_>>());
+    }
+}
+
+/// `drips` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a stone ceiling
+/// over the player (40 up, 14 thick, 1000..1240) with a lens of water
+/// (`PLATYPUS_LIQUID`: oil) sealed in it over 1080..1160, four cells of
+/// stone under it. Every second to 8 s: the drops falling (water
+/// particles) under the lens and anywhere else; at 8 s the roof under the
+/// lens is mined out, and every second after: the lens's liquid left, what
+/// came down onto the floor, the player's health. In a generated world
+/// (`PLATYPUS_SPAWN_X`/`_Y` under a perched pocket): lamps on, aimed up,
+/// and every second the drops falling within 300.
+fn drips_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    mut cursor: ResMut<CursorOverride>,
+    player: Query<(&Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
+    mut st: Local<(u8, f32, u32, u32)>,
+) {
+    if s.name != "drips" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR;
+    let Ok((pk, hp)) = player.single() else { return };
+    if std::env::var("PLATYPUS_WORLD").is_err() {
+        toggles.carry = crate::light::Carry::BigBeam;
+        toggles.headlamp = true;
+        cursor.0 = Some(pk.body.pos + Vec2::new(40.0, 80.0));
+        let (_, next, seen, _) = &mut *st;
+        let mats = sim.materials();
+        *seen += sim.world.particles().iter().filter(|p| p.landing == platypus_sim::particles::Landing::Vanish && mats.phys(p.cell.material).kind == platypus_sim::Kind::Liquid && Vec2::from(p.pos).distance(pk.body.pos) < 300.0 && p.life >= 239).count() as u32;
+        if t >= *next {
+            *next = t + 1.0;
+            info!("drips: t {t:.1} drops so far within 300: {seen}; the player at {:.0}", pk.body.pos);
+        }
+        return;
+    }
+    let liquid = std::env::var("PLATYPUS_LIQUID").unwrap_or_else(|_| "water".into());
+    let (ceil, lens) = (fl + 40, (1080..1160, fl + 44..fl + 52));
+    let (step, next, under, elsewhere) = &mut *st;
+    let mats = sim.materials().clone();
+    let wet = mats.expect_id(&liquid);
+    if *step == 0 && t > 0.5 {
+        *step = 1;
+        *next = t + 1.0;
+        let stone = mats.expect_id("stone");
+        let mut rng = platypus_sim::rng::Rng::seeded(&[5]);
+        for x in 1000..1240 {
+            for y in ceil..ceil + 14 {
+                let m = if lens.0.contains(&x) && lens.1.contains(&y) { wet } else { stone };
+                sim.world.set(CellPos::new(x, y), mats.spawn(m, &mut rng));
+            }
+        }
+        info!("drips: a ceiling at {ceil}, {liquid} in it over {:?}; the player at {:.0}", lens.0, pk.body.pos.x);
+        return;
+    }
+    if *step == 0 {
+        return;
+    }
+    // (Drops in the air under the ceiling, a frame at a time.)
+    for p in sim.world.particles() {
+        if p.cell.material == wet && p.pos[1] < ceil as f32 && p.pos[1] > fl as f32 {
+            if lens.0.contains(&(p.pos[0] as i32)) { *under += 1 } else { *elsewhere += 1 }
+        }
+    }
+    let count = |sim: &SimWorld, xs: std::ops::Range<i32>, ys: std::ops::Range<i32>| xs.flat_map(|x| ys.clone().map(move |y| CellPos::new(x, y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == wet)).count();
+    if *step == 1 && t >= *next {
+        *next = t + 1.0;
+        info!("drips: t {t:.1} drop-frames under the lens {under}, elsewhere {elsewhere}");
+        if t >= 8.0 {
+            *step = 2;
+            for x in lens.0.clone() {
+                for y in ceil..lens.1.start {
+                    sim.world.set(CellPos::new(x, y), platypus_sim::Cell::AIR);
+                }
+            }
+            info!("drips: t {t:.1} the roof under the lens mined out");
+        }
+    } else if *step == 2 && t >= *next {
+        *next = t + 1.0;
+        info!("drips: t {t:.1} {liquid} left in the lens {}, on the floor {}; the player's health {:.0}", count(&sim, lens.0.clone(), lens.1.clone()), count(&sim, 900..1340, fl..ceil), hp.hp);
     }
 }
 

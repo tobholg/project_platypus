@@ -69,6 +69,14 @@ fn draw(
                 tall = (1.0 + p.vel[1].abs()).min(6.0) as i32;
             }
             Landing::Snow => rgba = [244, 246, 250, 230],
+            // A drip (water, oil off a ceiling): a glint of a streak as it
+            // falls, so it's seen in the dark.
+            Landing::Vanish if !hot && mats.phys(p.cell.material).kind == platypus_sim::Kind::Liquid => {
+                tall = (1.0 + p.vel[1].abs()).min(4.0) as i32;
+                for ch in &mut rgba[..3] {
+                    *ch = (*ch as u16 + 60).min(255) as u8;
+                }
+            }
             _ => {}
         }
         let (x, y) = (p.pos[0].floor() as i32, p.pos[1].floor() as i32);

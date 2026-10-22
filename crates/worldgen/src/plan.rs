@@ -622,7 +622,7 @@ impl WorldPlan {
             })
             .collect();
 
-        let caves = Caves::plan(
+        let mut caves = Caves::plan(
             seed,
             &caves::Ground {
                 width,
@@ -643,6 +643,11 @@ impl WorldPlan {
         }
         list.extend(sunken(&surface, &water, &biomes, sh));
         let structures = Structures::new(list);
+        // (Perched pockets sealed from the chasms and the structures too.)
+        caves.keep_pockets(|p| {
+            let (sx, sy) = (p.rx as i32 + 6, p.ry as i32 + 6);
+            !structures.near_column(p.x as i32, sx + 30) && !(-sy..=sy).step_by(3).any(|dy| (-sx..=sx).step_by(3).any(|dx| chasms.iter().any(|c| c.open(p.x as i32 + dx, p.y as i32 + dy))))
+        });
 
         let forest = {
             let at = |x: i32| surface[x.clamp(0, width - 1) as usize];

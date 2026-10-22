@@ -16,6 +16,11 @@
 //!   player jumps from ledge to ledge.
 //! - Mouths: tunnels down from the surface into the nearest chamber.
 //!
+//! - Perched pockets: here and there a lens of water or oil sealed in the
+//!   rock a few cells over a tunnel's ceiling or a chamber's (dig up into
+//!   one and it comes down on you; its drips, falling from the ceiling
+//!   under it, give it away: `game::hazards`).
+//!
 //! Noise only roughens the walls. A chunk asks only the shapes binned to it.
 //!
 //! Underground biomes (regions in the caverns and the deep; the rest keeps
@@ -196,6 +201,25 @@ struct Layer {
     width: (f32, f32),
 }
 
+/// A lens of liquid sealed in the rock over a cave's ceiling (an ellipse).
+#[derive(Clone, Debug)]
+pub struct Pocket {
+    pub x: f32,
+    pub y: f32,
+    pub rx: f32,
+    pub ry: f32,
+    pub kind: Pool,
+}
+
+/// Perched pockets: the share of tunnel stretches (and of chambers) in the
+/// underground with one over them; their size (half width, half height);
+/// how much rock holds them up (cells); and the rock all round them besides
+/// (cells: nothing else opens into them).
+const POCKET_CHANCE: f32 = 0.12;
+const POCKET_SIZE: ((f32, f32), (f32, f32)) = ((9.0, 21.0), (5.0, 10.0));
+const POCKET_ROOF: (f32, f32) = (3.0, 5.0);
+const POCKET_SEALED: f32 = 3.0;
+
 /// Per chunk: the chambers and (tunnel, segment)s touching it.
 type Bins = HashMap<(i32, i32), (Vec<u32>, Vec<(u32, u32)>)>;
 
@@ -203,7 +227,10 @@ pub struct Caves {
     pub areas: Vec<Area>,
     pub chambers: Vec<Chamber>,
     pub tunnels: Vec<Tunnel>,
+    pub pockets: Vec<Pocket>,
     bins: Bins,
+    /// Per chunk: the pockets touching it.
+    pocket_bins: HashMap<(i32, i32), Vec<u32>>,
     rim: Perlin,
 }
 
@@ -668,9 +695,96 @@ impl Caves {
                 }
             }
         }
-        let mut caves = Caves { areas, chambers, tunnels, bins, rim: Perlin::new((seed as u32) ^ 0xC0FE) };
+        let mut caves = Caves { areas, chambers, tunnels, pockets: Vec::new(), bins, pocket_bins: HashMap::new(), rim: Perlin::new((seed as u32) ^ 0xC0FE) };
         caves.settle();
+        caves.perch(seed, g);
         caves
+    }
+
+    /// Perched pockets (`Pocket`): over some of the underground's tunnel
+    /// stretches (the gentle ones) and chambers, a lens of water (oil now
+    /// and then) a few cells up in the rock, where the rock all round it is
+    /// sound (no other cave near it). By rolls of their own: the rest of
+    /// the plan comes out as it did.
+    fn perch(&mut self, seed: u64, g: &Ground) {
+        let surface = |x: i32| g.surface[x.clamp(0, g.width - 1) as usize];
+        let roll = |a: u64, b: u64, salt: u64| (platypus_sim::rng::hash(&[seed, 0x9E7C, a, b, salt]) % 10_000) as f32 / 10_000.0;
+        let between = |r: f32, (lo, hi): (f32, f32)| lo + r * (hi - lo);
+        // Where over: the middle of each gentle stretch, each chamber.
+        let mut spots: Vec<(f32, f32, u64, u64)> = Vec::new();
+        for (t, tun) in self.tunnels.iter().enumerate() {
+            if tun.crevice() {
+                continue;
+            }
+            for (s, w) in tun.points.windows(2).enumerate() {
+                let (a, b) = (w[0], w[1]);
+                if (b.1 - a.1).abs() > 0.5 * (b.0 - a.0).abs() {
+                    continue;
+                }
+                spots.push(((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0, t as u64, s as u64));
+            }
+        }
+        for (i, c) in self.chambers.iter().enumerate() {
+            spots.push((c.x, c.y, u64::MAX, i as u64));
+        }
+        let mut pockets: Vec<Pocket> = Vec::new();
+        for (x, y, a, b) in spots {
+            if y < g.caverns_top as f32 || roll(a, b, 0) >= POCKET_CHANCE {
+                continue;
+            }
+            let (xi, mut ceiling) = (x as i32, y as i32);
+            if self.at(xi, ceiling) != Some(Open::Air) {
+                continue;
+            }
+            while ceiling < y as i32 + 200 && self.at(xi, ceiling) == Some(Open::Air) {
+                ceiling += 1;
+            }
+            let (rx, ry) = (between(roll(a, b, 1), POCKET_SIZE.0), between(roll(a, b, 2), POCKET_SIZE.1));
+            let bottom = ceiling as f32 + between(roll(a, b, 3), POCKET_ROOF);
+            let p = Pocket { x, y: bottom + ry, rx, ry, kind: if roll(a, b, 4) < 0.3 { Pool::Oil } else { Pool::Water } };
+            // Well under the ground, clear of the others, and sealed: rock
+            // all round it (another cave's, a ledge's, a crystal's cells
+            // all count as open).
+            let (sx, sy) = (p.rx + POCKET_SEALED, p.ry + POCKET_SEALED);
+            if ((p.x - sx) as i32..=(p.x + sx) as i32).step_by(6).any(|x| surface(x) as f32 - (p.y + p.ry) < 60.0) {
+                continue;
+            }
+            if pockets.iter().any(|o| (o.x - p.x).abs() < o.rx + p.rx + 9.0 && (o.y - p.y).abs() < o.ry + p.ry + 9.0) {
+                continue;
+            }
+            let sealed = ((p.y - sy) as i32..=(p.y + sy) as i32).all(|cy| {
+                ((p.x - sx) as i32..=(p.x + sx) as i32).all(|cx| {
+                    let (dx, dy) = ((cx as f32 - p.x) / sx, (cy as f32 - p.y) / sy);
+                    dx * dx + dy * dy > 1.0 || self.at(cx, cy).is_none()
+                })
+            });
+            if sealed {
+                pockets.push(p);
+            }
+        }
+        self.pockets = pockets;
+        self.keep_pockets(|_| true);
+    }
+
+    /// Keep only the perched pockets `keep` says to (what the caves don't
+    /// know of, the plan does: chasms, structures).
+    pub fn keep_pockets(&mut self, keep: impl Fn(&Pocket) -> bool) {
+        self.pockets.retain(|p| keep(p));
+        self.pocket_bins.clear();
+        for (i, p) in self.pockets.iter().enumerate() {
+            let (x0, y0, x1, y1) = (((p.x - p.rx) as i32 - 1).div_euclid(CHUNK), ((p.y - p.ry) as i32 - 1).div_euclid(CHUNK), ((p.x + p.rx) as i32 + 1).div_euclid(CHUNK), ((p.y + p.ry) as i32 + 1).div_euclid(CHUNK));
+            for cy in y0..=y1 {
+                for cx in x0..=x1 {
+                    self.pocket_bins.entry((cx, cy)).or_default().push(i as u32);
+                }
+            }
+        }
+    }
+
+    /// The perched pocket at a cell, if one's there.
+    fn pocket_at(&self, x: i32, y: i32) -> Option<Pool> {
+        let near = self.pocket_bins.get(&(x.div_euclid(CHUNK), y.div_euclid(CHUNK)))?;
+        near.iter().map(|&i| &self.pockets[i as usize]).find(|p| ((x as f32 + 0.5 - p.x) / p.rx).powi(2) + ((y as f32 + 0.5 - p.y) / p.ry).powi(2) < 1.0).map(|p| p.kind)
     }
 
     /// Put what grows in a chamber against its real (ragged) walls: shelves
@@ -802,7 +916,9 @@ impl Caves {
     /// What the caves put at a cell, if they reach it.
     pub fn at(&self, x: i32, y: i32) -> Option<Open> {
         let (cx, cy) = (x.div_euclid(CHUNK), y.div_euclid(CHUNK));
-        let (chambers, segments) = self.bins.get(&(cx, cy))?;
+        let Some((chambers, segments)) = self.bins.get(&(cx, cy)) else {
+            return self.pocket_at(x, y).map(Open::Pool);
+        };
         let p = (x as f32, y as f32);
         let mut lining = false;
         for &i in chambers {
@@ -871,6 +987,9 @@ impl Caves {
                 }
                 return Some(Open::Air);
             }
+        }
+        if let Some(kind) = self.pocket_at(x, y) {
+            return Some(Open::Pool(kind));
         }
         lining.then_some(Open::Lining)
     }
