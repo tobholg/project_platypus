@@ -2,10 +2,8 @@
 //! their hunt are data (on the ground, a crawler's pounce, a bite on touch,
 //! a pack's call and flank); what's theirs:
 //!
-//! - **Brave in numbers**: with fewer than three of them near together, a
-//!   rat won't come at you: near, it scatters from you (squealing); further
-//!   off, it hangs back and watches, waiting for more. Cut a pack down and
-//!   the rest run. (Trapped against you, it still bites: its touch.)
+//! - **Always at you**: one alone comes at you as a pack does (its hunt:
+//!   the brain's crawl, a pounce, its bite).
 //! - **Scavenging**: with no one to hunt, rats go to the nearest body and
 //!   gnaw it, together; a body gnawed through is gone, what it had on it
 //!   left lying where it was.
@@ -30,9 +28,6 @@ pub struct Rat {
     squeak: f32,
     #[serde(skip)]
     chew: f32,
-    /// Whether it was afraid last tick (it squeals as it turns tail).
-    #[serde(skip)]
-    afraid: bool,
     /// What it's doing, in a word (a scenario's log).
     #[serde(skip)]
     doing: &'static str,
@@ -62,7 +57,7 @@ impl CustomCreature for Rat {
 }
 
 impl Rat {
-    /// What it's doing, in a word: `hunt`, `scatter`, `lurk`, `gnaw`,
+    /// What it's doing, in a word: `hunt`, `gnaw`,
     /// `scavenge` (going to a body), `idle`.
     pub fn doing(&self) -> &'static str {
         if self.doing.is_empty() { "idle" } else { self.doing }
@@ -70,13 +65,6 @@ impl Rat {
 }
 
 const DT: f32 = (1.0 / crate::world::TICK_HZ) as f32;
-/// Brave with this many near together (it among them), within this.
-const COURAGE: usize = 3;
-const TOGETHER: f32 = 100.0;
-/// Afraid, it runs from what's this near, and hangs back (watching, not
-/// coming on) from what's this near.
-const SCATTER: f32 = 110.0;
-const LURK: f32 = 180.0;
 /// With no one this near, it goes to a body this near; at it within this,
 /// it gnaws.
 const QUIET: f32 = 140.0;
@@ -96,7 +84,6 @@ fn think(
     mut bodies: Query<(Entity, &Kinematics, Option<&mut Gnawed>), (With<Corpse>, Without<Rat>)>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
 ) {
-    let rats: Vec<Vec2> = q.iter().map(|(_, _, k, ..)| k.body.pos).collect();
     for (e, mut o, k, mut c, mut anim) in &mut q {
         let pos = k.body.pos;
         if !o.started {
@@ -109,33 +96,10 @@ fn think(
             o.squeak = SQUEAK.0 + (SQUEAK.1 - SQUEAK.0) * (o.seed * 7.7 + o.squeak.abs()).fract();
             sounds.write(crate::sound::PlaySound::at("rat_squeak", pos).volume(0.6).pitch(0.9 + o.seed * 0.3));
         }
-        let near = rats.iter().filter(|&&r| r.distance(pos) < TOGETHER).count();
         let quarry = hunted.iter().filter(|(_, t)| t.hunted()).map(|(hk, _)| hk.body.pos).min_by(|a, b| a.distance(pos).total_cmp(&b.distance(pos)));
         let dist = quarry.map_or(f32::MAX, |q| q.distance(pos));
         let mut nibbling = false;
-        let afraid = near < COURAGE && dist < SCATTER;
-        if near < COURAGE && !afraid && dist < LURK {
-            // Hanging back, watching them, not coming on: twitchy where it
-            // is (a fidget, never toward them).
-            fidget(&mut o);
-            let away = quarry.map_or(1.0, |q| if pos.x < q.x { -1.0 } else { 1.0 });
-            c.0.move_x = if o.fidget.0 * away < 0.0 { 0.0 } else { o.fidget.0 * 0.6 };
-            c.0.move_y = 0.0;
-            c.0.jump = false;
-            c.0.aim = quarry.unwrap_or(pos);
-            o.doing = "lurk";
-        } else if afraid {
-            // Away from them, as fast as it goes (up walls as it comes to
-            // them: it climbs).
-            let q = quarry.expect("near enough to scatter from");
-            c.0.move_x = if pos.x < q.x { -1.0 } else { 1.0 };
-            c.0.move_y = 1.0;
-            c.0.aim = Vec2::ZERO;
-            if !o.afraid {
-                sounds.write(crate::sound::PlaySound::at("rat_squeak", pos).volume(1.0).pitch(1.3));
-            }
-            o.doing = "scatter";
-        } else if dist < QUIET {
+        if dist < QUIET {
             o.doing = "hunt";
         } else if let Some((body, bk, gnawed)) = bodies.iter_mut().filter(|(_, bk, _)| bk.body.pos.distance(pos) < SMELL).min_by(|a, b| a.1.body.pos.distance(pos).total_cmp(&b.1.body.pos.distance(pos))) {
             let dx = bk.body.pos.x - pos.x;
@@ -168,7 +132,6 @@ fn think(
             c.0.jump = false;
             o.doing = "idle";
         }
-        o.afraid = afraid;
         if nibbling {
             if anim.force.as_deref() != Some("nibble") {
                 anim.play("nibble");
@@ -179,7 +142,7 @@ fn think(
     }
 }
 
-/// Its fidgeting on its own (idle, lurking): as it last chose, till that
+/// Its fidgeting on its own (idle): as it last chose, till that
 /// runs out; then a freeze, a dart one way or the other, a twitch, or a
 /// run up whatever wall it comes to.
 fn fidget(o: &mut Rat) {

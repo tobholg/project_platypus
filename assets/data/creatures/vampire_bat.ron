@@ -1,4 +1,5 @@
-// A vampire bat: flits high in caves; dives at you, bites, flies back up.
+// A vampire bat: hovers round you, bobbing and jinking; draws back (the
+// tell), dashes at you along a line, bites, and swings back up round.
 (
     name: "Vampire bat",
     // What it may have on it when it dies (loot.ron), besides what it wears.
@@ -18,15 +19,15 @@
     light: (color: (255, 30, 20), strength: 0.04),
     movement: (
         run_speed: 30,
-        fly_speed: 173,
+        fly_speed: 230,
         fly_accel: 1350,
         air_jumps: 0,
         step_height: 0,
         dash_speed: 0,
     ),
-    touch: (damage: 6, knock: 120, stun: 0.1, every: 0.8),
+    touch: (damage: 10, knock: 140, stun: 0.12, every: 0.8),
     brain: (
         kind: "hunter",
-        params: (aggro: 240, close: Swoop(hover: (27, 68), dive_time: 1.2, dive_every: 2.2), senses: (dark: 1.0, hearing: 1.5), tactics: (shun_light: 90)),
+        params: (aggro: 240, close: Swoop(hover: (27, 68), dive_time: 0.55, dive_every: 1.4), senses: (dark: 1.0, hearing: 1.5), tactics: (shun_light: 90)),
     ),
 )

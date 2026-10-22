@@ -9957,8 +9957,8 @@ fn keepsake_script(
 
 /// `rats` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): rats at 1100; the
 /// player (who can't die) at 950. `PLATYPUS_RATS=`: (none) a pack of five
-/// (brave: they come at you), and from 7 s one struck dead a second (two
-/// left, they scatter); `alone`: two (they scatter from you); `body`: a
+/// (they come at you), and from 7 s one struck dead a second; `alone`:
+/// two (they come at you too); `body`: a
 /// zombie killed at 1100, four rats at 1250, the player far off at 700
 /// (they go to the body and gnaw it till it's gone, what it had left
 /// lying); `idle`: three far from the player (skittish, on their own).

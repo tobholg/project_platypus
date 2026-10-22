@@ -53,6 +53,8 @@ const TICKS: f32 = crate::world::TICK_HZ as f32;
 /// A swooper further than this from what it's after flies at it (nearer,
 /// it flits in its band and dives).
 const SWOOP_NEAR: f32 = 160.0;
+/// A swooper's tell before it dives: drawn back this long (s).
+const SWOOP_TELL: f32 = 0.28;
 
 /// The settings (its file's `brain.params`).
 #[derive(Component, Deserialize, Clone, Debug)]
@@ -162,9 +164,12 @@ pub struct HunterMind {
     /// Where it's wandering, until when.
     wander: Vec2,
     wander_until: u64,
-    /// When it may act next (pounce, hop, attack, shot), a dive's end.
+    /// When it may act next (pounce, hop, attack, shot), a dive's end, its
+    /// tell's end, the line it dives along (set as the tell ends).
     next: u64,
     dive_until: u64,
+    windup_until: u64,
+    aim: Vec2,
     /// A swing under way: moves still to ask for, whether one's on.
     swings_left: u8,
     attacking: bool,
@@ -537,15 +542,29 @@ fn hunt(
                 move_y = s.move_y;
                 s.move_x
             }
+            // Near: Hollow Knight's flyers. Hovering round it, bobbing,
+            // jinking side to side; now and then a tell (it draws back and
+            // up), then a dash along the line it had at the tell's end, on
+            // past where it was, and back up round.
             (Close::Swoop { hover, dive_time, dive_every }, Some((t, ..))) => {
+                let tell = ((pos - t).normalize_or_zero() + Vec2::Y * 0.6).normalize_or_zero() * 0.35;
                 let steer = if tick < m.dive_until {
-                    (t - pos).normalize_or_zero()
+                    if tick < m.windup_until {
+                        tell
+                    } else {
+                        if m.aim == Vec2::ZERO {
+                            m.aim = (t - pos).normalize_or(Vec2::NEG_Y);
+                        }
+                        m.aim
+                    }
                 } else if tick >= m.next {
-                    m.dive_until = tick + ticks(*dive_time);
+                    m.windup_until = tick + ticks(SWOOP_TELL);
+                    m.dive_until = m.windup_until + ticks(*dive_time);
                     m.next = m.dive_until + ticks(dive_every * (0.7 + 0.6 * unit(&sim, id, 7)));
-                    (t - pos).normalize_or_zero()
+                    m.aim = Vec2::ZERO;
+                    tell
                 } else {
-                    flit(&sim, id, tick, &mut m, pos, *hover, home, h.leash)
+                    orbit(&sim, id, tick, &mut m, pos, t, *hover)
                 };
                 move_y = if steer.y == 0.0 { 0.15 } else { steer.y };
                 steer.x
@@ -813,9 +832,11 @@ fn hunt(
                 if matches!(h.close, Close::Swoop { .. }) {
                     move_y = 0.6;
                 }
-            } else if shy {
+            } else if shy && !(matches!(h.close, Close::Swoop { .. }) && tick < m.dive_until) {
                 // (Out of the light, further than it reaches, and waiting
-                // there, rearing; a hiss now and then.)
+                // there, rearing; a hiss now and then. A swooper's dive
+                // comes in through the light all the same: the light keeps
+                // it circling further off, not off you.)
                 move_x = if t.distance(pos) < h.tactics.shun_light * SHUN_BACK { away } else { 0.0 };
                 steer = None;
                 if tick >= m.hiss_at {
@@ -941,6 +962,24 @@ fn range(d: Vec2, near: f32, far: f32) -> f32 {
 /// Flitting about in its band over the ground (and back toward its place,
 /// strayed past half its leash).
 #[allow(clippy::too_many_arguments)]
+/// A swooper near what it hunts: round it on an orbit of its own (which
+/// way round, how fast: its own), bobbing, out about the middle of its
+/// hover band, and jinking: a kick sideways every so often. Steered at a
+/// little over half its speed (its dives go at all of it).
+fn orbit(sim: &SimWorld, id: u64, tick: u64, m: &mut HunterMind, pos: Vec2, t: Vec2, hover: (f32, f32)) -> Vec2 {
+    let fixed = |salt: u64| (platypus_sim::rng::hash(&[id, salt]) % 10_000) as f32 / 10_000.0;
+    let secs = tick as f32 / TICKS;
+    let side = if fixed(21) < 0.5 { -1.0 } else { 1.0 };
+    let a = secs * (1.3 + 0.7 * fixed(22)) * side + fixed(23) * std::f32::consts::TAU;
+    let r = (hover.0 + hover.1) * 0.5 * (0.85 + 0.3 * (secs * 0.7 + fixed(24) * 6.0).sin());
+    if tick >= m.wander_until {
+        m.wander = Vec2::from_angle(unit(sim, id, 8) * std::f32::consts::TAU) * 22.0;
+        m.wander_until = tick + ticks(0.3 + 0.35 * unit(sim, id, 9));
+    }
+    let goal = t + Vec2::new(a.cos() * r, (0.55 + 0.35 * a.sin().abs()) * r + (secs * 4.5 + fixed(25) * 6.0).sin() * 4.0) + m.wander;
+    ((goal - pos) * 0.06).clamp_length_max(0.6)
+}
+
 fn flit(sim: &SimWorld, id: u64, tick: u64, m: &mut HunterMind, pos: Vec2, hover: (f32, f32), home: Option<Vec2>, leash: f32) -> Vec2 {
     if tick >= m.wander_until {
         m.wander = Vec2::from_angle(unit(sim, id, 8) * std::f32::consts::TAU);

@@ -3,9 +3,8 @@
 // lying along the slopes they run on, up and down walls (not roofs: a
 // spider's), and
 // gather at bodies to gnaw them (a body gnawed through is gone,
-// what it had left lying). Brave in numbers: three or more near together
-// and they come at you, pounce and bite; fewer, and they scatter from you,
-// unless you corner one. (custom/rat.rs)
+// what it had left lying). Near you, one alone or a pack, they come at
+// you, pounce and bite. (custom/rat.rs)
 (
     name: "Rat",
     size: (24, 12),

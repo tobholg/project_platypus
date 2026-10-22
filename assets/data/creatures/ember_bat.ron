@@ -19,15 +19,15 @@
     light: (color: (255, 140, 40), strength: 0.22),
     movement: (
         run_speed: 30,
-        fly_speed: 173,
+        fly_speed: 230,
         fly_accel: 1350,
         air_jumps: 0,
         step_height: 0,
         dash_speed: 0,
     ),
-    touch: (damage: 8, harm: fire, knock: 120, stun: 0.1, every: 0.8, ignites: true),
+    touch: (damage: 9, harm: fire, knock: 120, stun: 0.1, every: 0.8, ignites: true),
     brain: (
         kind: "hunter",
-        params: (aggro: 240, close: Swoop(hover: (27, 68), dive_time: 1.2, dive_every: 2.2), senses: (dark: 1.0, hearing: 1.5), tactics: (shun_light: 90)),
+        params: (aggro: 240, close: Swoop(hover: (27, 68), dive_time: 0.55, dive_every: 1.6), senses: (dark: 1.0, hearing: 1.5), tactics: (shun_light: 90)),
     ),
 )

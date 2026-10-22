@@ -9,7 +9,7 @@
 //!   the rest: the colony pours off the roof in a ripple.
 //! - **Swarming**: awake, it circles what it's after with the rest, each its
 //!   own way round, keeping off the others; now and then one (no more than
-//!   two at once) holds, screeches, its eyes flaring (the tell), and dives
+//!   three at once) holds, screeches, its eyes flaring (the tell), and dives
 //!   straight at you, bites once, and pulls away up.
 //! - **A flash** (a blast, a flare, a radiant spell) knocks it senseless: it
 //!   drops.
@@ -123,11 +123,11 @@ const APART: f32 = 9.0;
 /// Its dives: every so often (s, from..to), no more than this many of a
 /// swarm at once; its tell this long; diving this fast, this long at most;
 /// its bite (damage, knock); pulling away this long.
-const DIVE_EVERY: (f32, f32) = (2.2, 4.8);
-const DIVING: usize = 2;
+const DIVE_EVERY: (f32, f32) = (1.3, 3.0);
+const DIVING: usize = 3;
 const TELL: f32 = 0.35;
-const DIVE: (f32, f32) = (270.0, 0.5);
-const BITE: (f32, f32) = (5.0, 140.0);
+const DIVE: (f32, f32) = (330.0, 0.5);
+const BITE: (f32, f32) = (8.0, 160.0);
 const PULL: f32 = 0.45;
 /// A flash this near and this bright knocks it senseless this long.
 const FLASH: (f32, f32, f32) = (80.0, 1.0, 1.4);

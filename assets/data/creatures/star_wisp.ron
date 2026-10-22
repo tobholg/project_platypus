@@ -24,6 +24,6 @@
     brain: (
         kind: "hunter",
         // (It keeps its crater: `leash`.)
-        params: (aggro: 135, close: Swoop(hover: (21, 45), dive_time: 1.0, dive_every: 2.6), leash: 120),
+        params: (aggro: 135, close: Swoop(hover: (21, 45), dive_time: 0.6, dive_every: 2.2), leash: 120),
     ),
 )
