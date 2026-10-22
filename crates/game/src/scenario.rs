@@ -11137,20 +11137,23 @@ fn cavein_script(
 /// cup of stone over the player (a roof 56 up over 1000..1240, coal seams
 /// in it, walls down to 30 up), firedamp filling it from 26 up; the player
 /// under its middle carries a safety lamp, then at 4 s a torch (`PLATYPUS_CARRY`: what
-/// instead: lantern, flashlight), and jumps at 4.5 s. Every half second:
+/// instead: lantern, flashlight), and jumps at 4.5 s; a TNT barrel just
+/// outside the cup, at 1262 (`PLATYPUS_NOBARREL=1`: none). Every half second:
 /// the firedamp left, burning coal, the lamp's reading, the player's health.
 /// In a generated world (`PLATYPUS_TP=x,y` in a chamber with firedamp):
 /// the safety lamp, then at 3.5 s a torch, lifted at 4 s to just under the
-/// gas.
+/// gas and held there half a second.
 fn firedamp_script(
     s: Res<Scenario>,
+    mut commands: Commands,
     mut sim: ResMut<SimWorld>,
+    barrels: Query<&Kinematics, (With<crate::creatures::custom::explosive::Explosive>, Without<LocalPlayer>)>,
     mut menu: ResMut<crate::devmenu::DevMenu>,
     mut toggles: ResMut<crate::light::LightToggles>,
     damp: Res<crate::hazards::Firedamp>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut player: Query<(&mut Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
-    mut st: Local<(u8, f32)>,
+    mut st: Local<(u8, f32, Vec2)>,
 ) {
     if s.name != "firedamp" {
         return;
@@ -11159,7 +11162,7 @@ fn firedamp_script(
     let t = s.elapsed;
     let fl = platypus_worldgen::arena::FLOOR;
     let Ok((mut pk, hp)) = player.single_mut() else { return };
-    let (step, next) = &mut *st;
+    let (step, next, held) = &mut *st;
     let mats = sim.materials().clone();
     let (gas, coal) = (mats.expect_id("firedamp"), mats.expect_id("coal_seam"));
     if std::env::var("PLATYPUS_WORLD").is_err() {
@@ -11188,7 +11191,13 @@ fn firedamp_script(
                 pk.body.pos.y += up as f32 - 10.0;
                 pk.body.vel = Vec2::ZERO;
             }
+            *held = pk.body.pos;
             info!("firedamp: t {t:.1} a torch, lifted to {:.0}", pk.body.pos);
+        }
+        // (Held there half a second, as if on a ledge.)
+        if *step == 2 && t < 4.5 {
+            pk.body.pos = *held;
+            pk.body.vel = Vec2::ZERO;
         }
         if t >= *next {
             *next = t + 0.5;
@@ -11216,6 +11225,9 @@ fn firedamp_script(
         }
         toggles.carry = crate::light::Carry::SafetyLamp;
         pk.body.pos.x = 1120.0;
+        if std::env::var("PLATYPUS_NOBARREL").is_err() {
+            crate::creatures::def::spawn_creature(&mut commands, "tnt_barrel", Vec2::new(1262.0, fl as f32), |_| {});
+        }
         info!("firedamp: a cup of firedamp over 1000..1240 from {} to {roof}; the player at {:.0} with a safety lamp", fl + 26, pk.body.pos.x);
         return;
     }
@@ -11236,7 +11248,7 @@ fn firedamp_script(
         *next = t + 0.5;
         let count = |m: platypus_sim::MaterialId| (990..1250).flat_map(|x| (fl..roof + 10).map(move |y| CellPos::new(x, y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == m)).count();
         let burning = (990..1250).flat_map(|x| (fl..roof + 10).map(move |y| CellPos::new(x, y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == coal && c.flags & platypus_sim::cell::flags::BURNING != 0)).count();
-        info!("firedamp: t {t:.1} firedamp {} cells, coal {} ({burning} burning); the lamp reads {:.2}; the player's health {:.0} at {:.0}", count(gas), count(coal), damp.near, hp.hp, pk.body.pos);
+        info!("firedamp: t {t:.1} firedamp {} cells, coal {} ({burning} burning); the lamp reads {:.2}; the player's health {:.0} at {:.0}; TNT barrels {}", count(gas), count(coal), damp.near, hp.hp, pk.body.pos, barrels.iter().count());
     }
 }
 

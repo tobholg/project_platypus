@@ -15,6 +15,12 @@
 //!   held or planted, a lantern, a candle) sets it off, the blast running
 //!   through all of it and lighting the coal. Flashlights are safe; a
 //!   safety lamp is safe, and its flame burns blue near it (`Firedamp`).
+//! - **Whoomphs**: gas going up (firedamp, methane, swamp gas: the cells
+//!   the sim reports flashing into flame) is felt as a blast by what's in
+//!   and round the fireball, as big as the gas that went: a wisp's a pop, a
+//!   chamber's worth throws you and near kills you, sets barrels of TNT off,
+//!   sets alight whoever's in it. It digs nothing: the rock only feels the
+//!   gas's own (few, small) blasts.
 
 use std::collections::{HashMap, HashSet};
 
@@ -32,7 +38,10 @@ pub struct HazardsPlugin;
 
 impl Plugin for HazardsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CaveIns>().init_resource::<Firedamp>().add_systems(FixedUpdate, (drips, trickles, cave_ins, firedamp).after(TickSet::Bodies).before(TickSet::Cells));
+        app.init_resource::<CaveIns>()
+            .init_resource::<Firedamp>()
+            .add_systems(FixedUpdate, (drips, trickles, cave_ins, firedamp).after(TickSet::Bodies).before(TickSet::Cells))
+            .add_systems(FixedUpdate, whoomph.after(TickSet::Cells));
     }
 }
 
@@ -409,4 +418,114 @@ fn firedamp(
     }
     let now = (sum / SNIFF_FULL).min(1.0);
     damp.near += (now - damp.near) * 0.5;
+}
+
+/// A whoomph: gas flashing, gathered in `BIN`-cell squares, one fireball
+/// while it goes on (flashes within `JOINS` bins of it join it), over when
+/// none has for `OVER` ticks.
+const BIN: i32 = 8;
+const JOINS: i32 = 2;
+const OVER: u64 = 30;
+/// What it does at the fireball's edge: this much harm and more the more
+/// gas went (by the square root of the cells: about its breadth), this much
+/// at most; felt this far out past it, and further the more; how hard it
+/// throws (per harm); in it or this near it, you catch fire.
+const WHOOMPH_HARM: (f32, f32) = (8.0, 0.6);
+const WHOOMPH_WORST: f32 = 60.0;
+const WHOOMPH_REACH: (f32, f32) = (6.0, 0.35);
+const WHOOMPH_THROW: f32 = 7.0;
+const WHOOMPH_SCORCH: f32 = 3.0;
+
+#[derive(Default)]
+struct Fireball {
+    bins: HashSet<(i32, i32)>,
+    cells: u32,
+    sum: Vec2,
+    last: u64,
+    /// What each body's been dealt by it so far (it's owed what the whole
+    /// of it does, not each tick's again).
+    dealt: HashMap<Entity, f32>,
+    boomed: bool,
+}
+
+/// Gas flashing: each fireball felt by what's near it, as big as it's got.
+#[allow(clippy::type_complexity)]
+fn whoomph(
+    mut commands: Commands,
+    sim: Res<SimWorld>,
+    metrics: Res<crate::world::SimMetrics>,
+    mut trauma: ResMut<crate::fx::Trauma>,
+    mut fireballs: Local<Vec<Fireball>>,
+    mut bodies: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health, Has<LocalPlayer>, Option<&crate::combat::Sturdy>, Has<crate::creatures::body::elements::Burning>), Without<crate::creatures::Dormant>>,
+    mut sounds: MessageWriter<PlaySound>,
+) {
+    let tick = sim.world.tick();
+    fireballs.retain(|f| tick < f.last + OVER);
+    if metrics.last.flashed.is_empty() {
+        return;
+    }
+    // Each flash to the fireball it's by (or a new one).
+    let mut grown = HashSet::new();
+    for p in &metrics.last.flashed {
+        let bin = (p.x.div_euclid(BIN), p.y.div_euclid(BIN));
+        let near = |f: &Fireball| (-JOINS..=JOINS).any(|dy| (-JOINS..=JOINS).any(|dx| f.bins.contains(&(bin.0 + dx, bin.1 + dy))));
+        let i = match fireballs.iter().position(near) {
+            Some(i) => i,
+            None => {
+                fireballs.push(Fireball::default());
+                fireballs.len() - 1
+            }
+        };
+        let f = &mut fireballs[i];
+        f.bins.insert(bin);
+        f.cells += 1;
+        f.sum += Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5);
+        f.last = tick;
+        grown.insert(i);
+    }
+    for i in grown {
+        let f = &mut fireballs[i];
+        let size = (f.cells as f32).sqrt();
+        let harm = (WHOOMPH_HARM.0 + WHOOMPH_HARM.1 * size).min(WHOOMPH_WORST);
+        let reach = WHOOMPH_REACH.0 + WHOOMPH_REACH.1 * size;
+        let middle = f.sum / f.cells as f32;
+        if !f.boomed {
+            f.boomed = true;
+            sounds.write(PlaySound::at("boom", middle).pitch(0.55).volume(0.7));
+        }
+        for (e, mut k, mut health, is_player, sturdy, burning) in &mut bodies {
+            // How far it is from the fireball (its nearest square's edge).
+            let at = k.body.pos;
+            let near = f
+                .bins
+                .iter()
+                .map(|&(bx, by)| {
+                    let c = Vec2::new((bx * BIN) as f32 + BIN as f32 / 2.0, (by * BIN) as f32 + BIN as f32 / 2.0);
+                    let d = (at - c).abs() - Vec2::splat(BIN as f32 / 2.0) - k.body.half;
+                    d.max(Vec2::ZERO).length()
+                })
+                .fold(f32::MAX, f32::min);
+            if near > reach {
+                continue;
+            }
+            let owed = harm * (1.0 - near / reach);
+            let was = f.dealt.get(&e).copied().unwrap_or(0.0);
+            if owed <= was {
+                continue;
+            }
+            f.dealt.insert(e, owed);
+            health.harm(owed - was, crate::creatures::nature::Harm::Fire);
+            let dir = ((at - middle).normalize_or(Vec2::Y) + Vec2::new(0.0, 0.5)).normalize();
+            let knock = dir * (owed - was) * WHOOMPH_THROW;
+            let knock = if is_player { knock } else { (knock * crate::combat::KNOCK_TAKEN / sturdy.map_or(1.0, |s| s.heft).max(1.0)).clamp_length_max(crate::combat::KNOCK_MOST * 1.5) };
+            let k = &mut *k;
+            k.loco.knock(&mut k.body, knock, 0.35);
+            if near < WHOOMPH_SCORCH && !burning {
+                commands.entity(e).insert(crate::creatures::body::elements::Burning::new(0.35));
+            }
+            if is_player {
+                trauma.0 = (trauma.0 + 0.1 + owed / 80.0).min(1.0);
+            }
+        }
+    }
 }

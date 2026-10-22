@@ -63,6 +63,8 @@ pub struct World {
     /// Every explosion applied since the last step, whatever set it off
     /// (bombs, edits, chains, lightning): reported in `StepStats::detonated`.
     blasts: Vec<(CellPos, i32, u8)>,
+    /// Gas set alight by edits since the last tick (`StepStats::flashed`).
+    flashes: Vec<CellPos>,
     /// Wand lightning since the last step: `StepStats::zaps`.
     zaps: Vec<Zap>,
     /// Tiles where the simulation destroyed solids, awaiting a fragment check.
@@ -129,6 +131,7 @@ impl World {
             climate: Climate::default(),
             pending_explosions: Vec::new(),
             blasts: Vec::new(),
+            flashes: Vec::new(),
             zaps: Vec::new(),
             pending_fragment_tiles: Vec::new(),
             afloat: Vec::new(),
@@ -1214,6 +1217,9 @@ impl World {
         }
         let Some(mut c) = self.get(p) else { return };
         if matches!(ph.kind, Kind::Gas | Kind::Fire) {
+            if ph.kind == Kind::Gas {
+                self.flashes.push(p);
+            }
             let flame = self.materials.spawn(self.materials.fire(), rng);
             self.set(p, flame);
         } else if c.flags & flags::BURNING == 0 {
@@ -1802,6 +1808,9 @@ impl World {
         let mut stats = step_chunks(&mut self.chunks, &self.materials, self.seed, self.tick, self.climate, wind);
         let cells = lap();
         stats.detonated = detonated;
+        let mut flashed = std::mem::take(&mut self.flashes);
+        flashed.append(&mut stats.flashed);
+        stats.flashed = flashed;
         self.pending_explosions.extend(stats.explosions.iter().copied());
         self.check_broken(&stats.broken, Layer::Front);
         self.check_broken(&stats.broken_bg, Layer::Back);

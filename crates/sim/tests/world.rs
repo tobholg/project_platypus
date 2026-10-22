@@ -907,6 +907,25 @@ fn a_methane_pocket_goes_up_in_a_chain_of_explosions() {
     assert!(reported >= 3, "detonations are reported ({reported})");
 }
 
+/// Gas going up is reported cell by cell as it flashes (the game's
+/// whoomph, what bodies feel of it): all of a pocket, from the edit that
+/// lit it and the burning that spread.
+#[test]
+fn gas_flashing_into_flame_is_reported() {
+    let mut w = boxed_world(3, 2, 26);
+    fill(&mut w, "stone", 1, 191, 1, 127);
+    let m = w.materials().clone();
+    fill(&mut w, "firedamp", 30, 160, 50, 70);
+    let gas = count(&w, m.expect_id("firedamp"));
+    w.apply_edit(&WorldEdit::Ignite { center: CellPos::new(31, 60), radius: 2 });
+    let mut flashed = 0;
+    for _ in 0..600 {
+        flashed += w.step().flashed.len();
+    }
+    assert!(count(&w, m.expect_id("firedamp")) < 50, "it burned through");
+    assert!(flashed * 10 > gas * 7, "{flashed} of {gas} cells reported flashing");
+}
+
 /// Every non-loose solid cell must be held up (edge-connected to the floor
 /// row or a wall through what bears weight: solids, and the powder, liquid
 /// and rubble a fallen log may lie on); returns the ones that aren't.

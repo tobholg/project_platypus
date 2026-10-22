@@ -236,6 +236,9 @@ pub(crate) fn ignite(h: &mut Hood, x: i32, y: i32, p: &MatPhys) {
     }
     let Some(mut c) = h.get(x, y) else { return };
     if matches!(p.kind, Kind::Gas | Kind::Fire) {
+        if p.kind == Kind::Gas {
+            h.flashes.push(h.origin.offset(x, y));
+        }
         let flame = spawn(h, h.mats.fire());
         h.set(x, y, flame);
         return;

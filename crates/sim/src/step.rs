@@ -81,6 +81,8 @@ pub(crate) struct Hood<'a> {
     pub climate: Climate,
     /// Explosions requested by igniting cells; the world applies them next tick.
     pub explosions: Vec<(CellPos, ExplosionDef)>,
+    /// Gas cells that caught fire (flashed into flame) this tick.
+    pub flashes: Vec<CellPos>,
     /// Where solid cells were destroyed (burned, melted, dissolved); the world
     /// checks those spots for pieces left hanging.
     pub broken: Vec<CellPos>,
@@ -268,7 +270,7 @@ impl<'a> Hood<'a> {
                 }
             }
         }
-        JobOutput { explosions: self.explosions, broken: self.broken, broken_bg: self.broken_bg, particles: self.particles, vapour: self.vapour }
+        JobOutput { explosions: self.explosions, flashes: self.flashes, broken: self.broken, broken_bg: self.broken_bg, particles: self.particles, vapour: self.vapour }
     }
 }
 
@@ -280,6 +282,9 @@ pub struct StepStats {
     pub visited_cells: usize,
     /// Explosions requested this tick (burning explosive materials).
     pub explosions: Vec<(CellPos, ExplosionDef)>,
+    /// Gas cells that caught fire since the last tick, here and by edits
+    /// (firedamp, methane going up: for what bodies feel of the whoomph).
+    pub flashed: Vec<CellPos>,
     /// Solid cells destroyed by the simulation this tick.
     pub broken: Vec<CellPos>,
     /// Particles the simulation emitted this tick (the world takes them).
@@ -335,6 +340,7 @@ pub struct Strike {
 #[derive(Default)]
 struct JobOutput {
     explosions: Vec<(CellPos, ExplosionDef)>,
+    flashes: Vec<CellPos>,
     broken: Vec<CellPos>,
     broken_bg: Vec<CellPos>,
     particles: Vec<Particle>,
@@ -382,6 +388,7 @@ pub(crate) fn step_chunks(
             origin: pos.origin(),
             climate,
             explosions: Vec::new(),
+            flashes: Vec::new(),
             broken: Vec::new(),
             particles: Vec::new(),
             broken_bg: Vec::new(),
@@ -409,6 +416,7 @@ pub(crate) fn step_chunks(
     for pass in outputs {
         for out in pass.into_iter().filter_map(|o| o.into_inner().unwrap()) {
             stats.explosions.extend(out.explosions);
+            stats.flashed.extend(out.flashes);
             stats.broken.extend(out.broken);
             stats.particles.extend(out.particles);
             stats.broken_bg.extend(out.broken_bg);
