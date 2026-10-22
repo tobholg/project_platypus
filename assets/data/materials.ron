@@ -324,6 +324,11 @@
         // Under desert sand: sand pressed into rock.
         (name: "sandstone", kind: Static, density: 2200, hardness: 35, crumbles_into: "sand", colors: [(178, 142, 90), (192, 156, 100), (166, 132, 84), (184, 150, 96)]),
         (name: "gravel",   kind: Powder, density: 1900, hardness: 15, above: (1400, "magma"), colors: [(96, 94, 90), (130, 126, 120), (80, 78, 76)]),
+        // A cave's loose roof (caves.rs): packed sand and gravel, holding till
+        // something disturbs it, then crumbling into its sand or gravel and
+        // coming down (`cave_ins`); dug, it's sand or gravel.
+        (name: "loose_sand", kind: Static, density: 1600, hardness: 6, crumbles_into: "sand", item: "block:sand", colors: [(178, 148, 92), (196, 166, 106), (166, 136, 84)]),
+        (name: "loose_gravel", kind: Static, density: 1900, hardness: 12, crumbles_into: "gravel", item: "block:gravel", colors: [(88, 86, 82), (116, 112, 106), (74, 72, 70)]),
         (name: "soil",     kind: Powder, density: 1400, hardness: 8,  colors: [(92, 60, 34), (112, 74, 42)]),
         // Bat droppings, heaped under a roost: you see the heaps before you
         // look up.
@@ -336,6 +341,10 @@
         // ash. Future smelting fuel.
         (name: "charcoal", kind: Powder, density: 450,  hardness: 12, flammability: 1, spread: 0, ignites_at: 700, conductivity: 20, burn_time: 250, burns_into: "ash", burns_into_chance: 200, chars_at: 1.0, colors: [(26, 24, 24), (38, 35, 34), (50, 46, 44), (20, 19, 19)]),
         (name: "coal", loot: Ore,     kind: Powder, density: 1300, hardness: 10, flammability: 30, ignites_at: 350, burn_time: 200, burns_into: "ash", burns_into_chance: 90, colors: [(24, 24, 26), (40, 40, 44)]),
+        // A coal seam in a cave's rock (round its firedamp: caves.rs): coal
+        // that stays put, burns long and slow once lit (a seam fire), and is
+        // coal when dug.
+        (name: "coal_seam", loot: Ore, kind: Static, density: 1400, hardness: 22, flammability: 30, ignites_at: 350, burn_time: 255, burns_into: "ash", burns_into_chance: 90, item: "block:coal", colors: [(22, 22, 26), (38, 38, 44), (30, 30, 34)]),
 
         // ---- liquids ------------------------------------------------------
         (name: "water",    kind: Liquid, density: 1000, charges: true, dispersion: 9, above: (100, "steam"), below: (0, "ice"), coats: "wet", opacity: 6, optics: (ior: 1.33, reflect: 0.02, tint: (150, 205, 245)), latent: 300, latent_below: 60, capacity: 2.0, colors: [(38, 92, 196), (48, 110, 214)]),
@@ -416,6 +425,10 @@
         // lingers, eating at what breathes it.
         (name: "blight_fog", kind: Gas, heavy: true, density: 3, dispersion: 4, lifetime: (200, 255), decay_every: 12, corrosive: 9, glow: (60, 18, 90), opacity: 18, colors: [(130, 60, 160), (104, 44, 136), (150, 84, 180)]),
         (name: "methane",  kind: Gas, density: 1, dispersion: 2, flammability: 255, ignites_at: 500, explodes: (radius: 15, power: 70, chance: 40), colors: [(120, 150, 110), (134, 164, 120)]),
+        // Firedamp: a coal seam's gas, gathered under a cave's roof (caves.rs):
+        // a faint haze; an open flame sets it off (a flash and a modest blast,
+        // not methane's), and the seam round it burns on.
+        (name: "firedamp", kind: Gas, density: 1, dispersion: 2, flammability: 255, ignites_at: 320, explodes: (radius: 6, power: 30, chance: 25), opacity: 5, colors: [(190, 196, 140), (176, 186, 128)]),
         // A toxic cloud's (the acid staff): heavy, so it sinks and pools in
         // pits and down shafts; eats at what breathes it; flammable, and a
         // spark flashes it through with pops.

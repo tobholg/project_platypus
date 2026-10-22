@@ -20,6 +20,9 @@
 //!   rock a few cells over a tunnel's ceiling or a chamber's (dig up into
 //!   one and it comes down on you; its drips, falling from the ceiling
 //!   under it, give it away: `game::hazards`).
+//! - Loose roofs: some underground chambers' ceilings are loose sand or
+//!   gravel, a few cells of it, ore glinting in it; disturb it (dig it, a
+//!   blast, a quake) and it comes down (it trickles first: `game::hazards`).
 //!
 //! Noise only roughens the walls. A chunk asks only the shapes binned to it.
 //!
@@ -174,7 +177,26 @@ pub struct Chamber {
     pub shelves: Vec<Shelf>,
     /// One of the start valley's caverns (something's: `lairs`).
     pub start: bool,
+    /// Its ceiling loose, if it is (`Loose`).
+    pub roof: Option<Loose>,
 }
+
+/// What a loose ceiling is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Loose {
+    Sand,
+    Gravel,
+}
+
+/// Loose roofs: the share of the underground's chambers with one; how thick
+/// (cells, out from the ceiling); how far down the chamber's sides it comes
+/// (from the top, in its half heights); one block of ore (`NUGGET` cells
+/// square) in this many in it.
+const ROOF_CHANCE: f32 = 0.2;
+const ROOF: f32 = 7.0;
+const ROOF_DOWN: f32 = 0.55;
+const NUGGET: i32 = 3;
+const NUGGET_ONE_IN: u64 = 9;
 
 #[derive(Clone, Debug)]
 pub struct Tunnel {
@@ -259,10 +281,15 @@ pub enum Open {
     /// just over its level): acid-proof crust, so the acid can't eat its
     /// way out and drain away.
     Lining,
+    /// A loose ceiling's sand or gravel; `ore`: a nugget of ore in it.
+    Loose { what: Loose, ore: bool },
 }
 
 /// How thick an acid pool's lining is (cells).
 const LINING: f32 = 4.5;
+/// How far past a chamber's edge anything of it may be (cells: a lining, a
+/// loose roof).
+const EDGE: f32 = if LINING > ROOF { LINING } else { ROOF };
 
 fn unit(rng: &mut Rng) -> f32 {
     rng.next_u32() as f32 / u32::MAX as f32
@@ -373,7 +400,7 @@ impl Caves {
                 }
                 let (kx, ky) = key(x, y);
                 grid.entry((kx, ky)).or_default().push(chambers.len());
-                chambers.push(Chamber { x, y, rx, ry, pool: None, zone: None, spikes: Vec::new(), mushrooms: Vec::new(), shelves: Vec::new(), start: true });
+                chambers.push(Chamber { x, y, rx, ry, pool: None, zone: None, spikes: Vec::new(), mushrooms: Vec::new(), shelves: Vec::new(), start: true, roof: None });
                 break;
             }
         }
@@ -423,7 +450,7 @@ impl Caves {
                 p => p,
             };
             grid.entry((kx, ky)).or_default().push(chambers.len());
-            chambers.push(Chamber { x, y, rx, ry, pool, zone, spikes: Vec::new(), mushrooms: Vec::new(), shelves: Vec::new(), start: false });
+            chambers.push(Chamber { x, y, rx, ry, pool, zone, spikes: Vec::new(), mushrooms: Vec::new(), shelves: Vec::new(), start: false, roof: None });
         }
 
         // Links: each chamber to its nearest few; a spanning tree of them
@@ -672,6 +699,15 @@ impl Caves {
             }
         }
 
+        // Loose roofs, in the underground (by rolls of their own: the rest
+        // of the plan comes out as it did).
+        for (i, c) in chambers.iter_mut().enumerate() {
+            let roll = |salt: u64| (platypus_sim::rng::hash(&[seed, salt, i as u64]) % 10_000) as f32 / 10_000.0;
+            if c.y >= g.caverns_top as f32 && roll(0x2005) < ROOF_CHANCE {
+                c.roof = Some(if roll(0x2006) < 0.5 { Loose::Sand } else { Loose::Gravel });
+            }
+        }
+
         // Bins: every chunk a shape's box touches.
         let mut bins: Bins = HashMap::new();
         let chunks = |x0: f32, y0: f32, x1: f32, y1: f32| {
@@ -679,9 +715,9 @@ impl Caves {
             (cy0..=cy1).flat_map(move |cy| (cx0..=cx1).map(move |cx| (cx, cy)))
         };
         for (i, c) in chambers.iter().enumerate() {
-            // (The rim can reach 30% past the ellipse; an acid pool's lining
-            // a little further.)
-            let (ex, ey) = (c.rx * 1.35 + LINING + 1.5, c.ry * 1.35 + LINING + 1.5);
+            // (The rim can reach 30% past the ellipse; an acid pool's lining,
+            // a loose roof a little further.)
+            let (ex, ey) = (c.rx * 1.35 + EDGE + 1.5, c.ry * 1.35 + EDGE + 1.5);
             for k in chunks(c.x - ex, c.y - ey, c.x + ex, c.y + ey) {
                 bins.entry(k).or_default().0.push(i as u32);
             }
@@ -921,11 +957,12 @@ impl Caves {
         };
         let p = (x as f32, y as f32);
         let mut lining = false;
+        let mut loose = None;
         for &i in chambers {
             let c = &self.chambers[i as usize];
             let (dx, dy) = ((p.0 - c.x) / c.rx, (p.1 - c.y) / c.ry);
             let r = (dx * dx + dy * dy).sqrt();
-            if r > 1.35 + LINING / c.rx.min(c.ry) {
+            if r > 1.35 + EDGE / c.rx.min(c.ry) {
                 continue;
             }
             let rim = self.rim_at(i as usize, dx, dy);
@@ -938,6 +975,17 @@ impl Caves {
                 && r < rim + LINING / c.rx.min(c.ry)
             {
                 lining = true;
+            }
+            // (Over its upper part, out from its edge: its loose roof,
+            // unless something else opens it.)
+            if !inside
+                && let Some(what) = c.roof
+                && dy > 1.0 - 2.0 * ROOF_DOWN
+                && (r - rim) * c.ry < ROOF
+            {
+                let block = |v: i32| v.div_euclid(NUGGET) as u64;
+                let ore = platypus_sim::rng::hash(&[0x9066, block(x), block(y)]).is_multiple_of(NUGGET_ONE_IN) && (r - rim) * c.ry < ROOF * 0.5;
+                loose = Some(Open::Loose { what, ore });
             }
             if let Some(s) = c.spikes.iter().find(|s| in_triangle(p, s.base[0], s.base[1], s.tip)) {
                 let root = ((s.base[0].0 + s.base[1].0) / 2.0, (s.base[0].1 + s.base[1].1) / 2.0);
@@ -991,7 +1039,7 @@ impl Caves {
         if let Some(kind) = self.pocket_at(x, y) {
             return Some(Open::Pool(kind));
         }
-        lining.then_some(Open::Lining)
+        loose.or(lining.then_some(Open::Lining))
     }
 
     /// A chamber's ragged edge in the direction (dx, dy) from its middle (in

@@ -254,6 +254,11 @@ struct Ids {
     snow: MaterialId,
     sand: MaterialId,
     gravel: MaterialId,
+    loose_sand: MaterialId,
+    loose_gravel: MaterialId,
+    copper_ore: MaterialId,
+    iron_ore: MaterialId,
+    amethyst: MaterialId,
     water: MaterialId,
     lava: MaterialId,
     oil: MaterialId,
@@ -377,6 +382,11 @@ impl TerrainGen {
             snow: mats.expect_id("snow"),
             sand: mats.expect_id("sand"),
             gravel: mats.expect_id("gravel"),
+            loose_sand: mats.expect_id("loose_sand"),
+            loose_gravel: mats.expect_id("loose_gravel"),
+            copper_ore: mats.expect_id("copper_ore"),
+            iron_ore: mats.expect_id("iron_ore"),
+            amethyst: mats.expect_id("amethyst"),
             water: mats.expect_id("water"),
             lava: mats.expect_id("lava"),
             oil: mats.expect_id("oil"),
@@ -1723,6 +1733,13 @@ impl TerrainGen {
                 caves::Open::Pool(caves::Pool::Lava) => return Some(i.lava),
                 caves::Open::Pool(caves::Pool::Acid) => return Some(i.acid),
                 caves::Open::Lining => return Some(i.toxic_crust),
+                // (A nugget: copper mostly, iron now and then, an amethyst.)
+                caves::Open::Loose { ore: true, .. } => {
+                    let roll = platypus_sim::rng::hash(&[0x9067, (x / 3) as u64, (y / 3) as u64]) % 100;
+                    return Some(if roll < 75 { i.copper_ore } else if roll < 90 { i.iron_ore } else { i.amethyst });
+                }
+                caves::Open::Loose { what: caves::Loose::Sand, .. } => return Some(i.loose_sand),
+                caves::Open::Loose { what: caves::Loose::Gravel, .. } => return Some(i.loose_gravel),
                 caves::Open::Grown { what, root, inside } => {
                     if self.rooted(root) {
                         return match what {
@@ -2185,6 +2202,33 @@ mod tests {
                 let roof = (1..12).find(|d| g.material_hint(x, bottom - d) == Some(g.ids.air)).expect("open cave under the pocket");
                 assert!((3..=7).contains(&roof), "seed {seed}: pocket at {x},{y} on a roof {roof} thick");
             }
+        }
+    }
+
+    /// Loose roofs: some of the underground's chambers have one, loose sand
+    /// or gravel over their open middle (ore glinting in some).
+    #[test]
+    fn loose_roofs_hang_over_some_chambers() {
+        let m = mats();
+        let g = TerrainGen::new(2, Preset::Large, &m);
+        let caves = &g.plan.caves;
+        let roofed: Vec<_> = caves.chambers.iter().filter(|c| c.roof.is_some()).collect();
+        let under = caves.chambers.iter().filter(|c| c.y >= g.plan.band_span(Band::Caverns).1 as f32).count();
+        assert!(roofed.len() * 10 > under && roofed.len() * 3 < under, "{} roofed of {under}", roofed.len());
+        let (sand, gravel) = (g.ids.loose_sand, g.ids.loose_gravel);
+        let sx = g.spawn_point().x as f32;
+        let mut near: Vec<_> = roofed.iter().filter(|c| (c.x - sx).abs() < 3_000.0 && !c.start).collect();
+        near.sort_by(|a, b| a.y.total_cmp(&b.y).reverse());
+        let mut loose_over = 0;
+        for c in &roofed {
+            let x = c.x as i32;
+            let Some(top) = (c.y as i32..c.y as i32 + 200).find(|&y| g.material_hint(x, y) != Some(g.ids.air)) else { continue };
+            loose_over += u32::from(matches!(g.material_hint(x, top), Some(m) if m == sand || m == gravel));
+        }
+        // (Not all: often a tunnel leaves up through the middle.)
+        assert!(loose_over as usize * 3 > roofed.len(), "loose over the middle of {loose_over} of {}", roofed.len());
+        for c in near.iter().take(3) {
+            eprintln!("  {:?} roof over a chamber at {},{} ({}x{}, {} down)", c.roof.unwrap(), c.x as i32, c.y as i32, c.rx as i32, c.ry as i32, g.plan.surface_at(c.x as i32) - c.y as i32);
         }
     }
 

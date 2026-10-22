@@ -306,6 +306,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, chase_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, haunt_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, drips_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, cavein_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, groundbuild_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
@@ -11014,6 +11015,120 @@ fn drips_script(
     } else if *step == 2 && t >= *next {
         *next = t + 1.0;
         info!("drips: t {t:.1} {liquid} left in the lens {}, on the floor {}; the player's health {:.0}", count(&sim, lens.0.clone(), lens.1.clone()), count(&sim, 900..1340, fl..ceil), hp.hp);
+    }
+}
+
+/// `cavein` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a stone ceiling
+/// 60 up over 1000..1240, its underside 8 cells of loose sand
+/// (`PLATYPUS_LOOSE`: loose_gravel) with a copper
+/// nugget in it; the player at 960 (`PLATYPUS_UNDER=1`: under the middle).
+/// Every second: grains seen falling, cave-ins under way, sand on the floor,
+/// the player's health; at 5 s four cells of the loose roof dug out at
+/// 1120 (`PLATYPUS_BLAST=1`: a shake instead, as a bomb's). In a generated
+/// world (`PLATYPUS_SPAWN_X`/`_Y`, or `PLATYPUS_TP=x,y`, under a loose
+/// roof): lamps on, the loose
+/// roof nearest the player dug into at 5 s.
+fn cavein_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    roofs: Res<crate::hazards::CaveIns>,
+    mut trauma: ResMut<crate::fx::Trauma>,
+    (mut toggles, mut cursor): (ResMut<crate::light::LightToggles>, ResMut<CursorOverride>),
+    mut player: Query<(&mut Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
+    mut st: Local<(u8, f32, u32)>,
+) {
+    if s.name != "cavein" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR;
+    let Ok((mut pk, hp)) = player.single_mut() else { return };
+    if std::env::var("PLATYPUS_WORLD").is_err() {
+        // A generated world: lamps on, and at 5 s the loose roof nearest
+        // the player dug into.
+        toggles.carry = crate::light::Carry::BigBeam;
+        toggles.headlamp = true;
+        cursor.0 = Some(pk.body.pos + Vec2::new(30.0, 90.0));
+        let (step, next, placed) = &mut *st;
+        // (`PLATYPUS_TP=x,y`: put there first, where the spawn's search
+        // won't go: a lair's cavern.)
+        if *placed == 0
+            && let Ok(tp) = std::env::var("PLATYPUS_TP")
+            && let Some((x, y)) = tp.split_once(',')
+            && let (Ok(x), Ok(y)) = (x.parse::<f32>(), y.parse::<f32>())
+        {
+            pk.body.pos = Vec2::new(x, y);
+            pk.body.vel = Vec2::ZERO;
+            *placed = 1;
+        }
+        if t >= *next {
+            *next = t + 1.0;
+            info!("cavein: t {t:.1} cave-ins under way {}; the player's health {:.0} at {:.0}", roofs.under_way.len(), hp.hp, pk.body.pos);
+        }
+        if *step == 0 && t >= 5.0 {
+            *step = 1;
+            let mats = sim.materials().clone();
+            let loose = [mats.expect_id("loose_sand"), mats.expect_id("loose_gravel")];
+            let p = CellPos::from_world(pk.body.pos.x, pk.body.pos.y);
+            let roof = (-100..=100).flat_map(|dx| (-40..=160).map(move |dy| p.offset(dx, dy))).filter(|&q| sim.world.get(q).is_some_and(|c| loose.contains(&c.material))).min_by_key(|q| (q.x - p.x).pow(2) + (q.y - p.y).pow(2));
+            if let Some(r) = roof {
+                for dx in 0..2 {
+                    for dy in 0..2 {
+                        sim.world.set(r.offset(dx, dy), platypus_sim::Cell::AIR);
+                    }
+                }
+            }
+            info!("cavein: t {t:.1} the loose roof over the player dug at {roof:?}");
+        }
+        return;
+    }
+    let loose = std::env::var("PLATYPUS_LOOSE").unwrap_or_else(|_| "loose_sand".into());
+    let ceil = fl + 60;
+    let (step, next, grains) = &mut *st;
+    let mats = sim.materials().clone();
+    let (lid, rubble) = (mats.expect_id(&loose), mats.phys(mats.expect_id(&loose)).crumbles_into);
+    if *step == 0 && t > 0.5 {
+        *step = 1;
+        *next = t + 1.0;
+        let (stone, copper) = (mats.expect_id("stone"), mats.expect_id("copper_ore"));
+        let mut rng = platypus_sim::rng::Rng::seeded(&[6]);
+        for x in 1000..1240 {
+            for y in ceil - 8..ceil + 14 {
+                let m = if y >= ceil { stone } else if (1150..1153).contains(&x) && (ceil - 4..ceil - 1).contains(&y) { copper } else { lid };
+                sim.world.set(CellPos::new(x, y), mats.spawn(m, &mut rng));
+            }
+        }
+        if std::env::var("PLATYPUS_UNDER").is_ok() {
+            pk.body.pos.x = 1110.0;
+        }
+        info!("cavein: a {loose} roof at {}..{ceil} over 1000..1240; the player at {:.0}", ceil - 8, pk.body.pos.x);
+        return;
+    }
+    if *step == 0 {
+        return;
+    }
+    *grains += sim.world.particles().iter().filter(|p| p.cell.material == rubble && p.landing == platypus_sim::particles::Landing::Vanish && p.life == 149).count() as u32;
+    let count = |sim: &SimWorld, m: platypus_sim::MaterialId| (980..1260).flat_map(|x| (fl - 2..ceil).map(move |y| CellPos::new(x, y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == m)).count();
+    if t >= *next {
+        *next = t + 1.0;
+        let copper = mats.expect_id("copper_ore");
+        info!("cavein: t {t:.1} grains so far {grains}; cave-ins under way {}; {loose} left {}, rubble below the roof {}, copper down {}; the player's health {:.0}", roofs.under_way.len(), count(&sim, lid), count(&sim, rubble), (980..1260).flat_map(|x| (fl - 2..ceil - 10).map(move |y| CellPos::new(x, y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == copper)).count(), hp.hp);
+        if *step == 1 && t >= 5.0 {
+            *step = 2;
+            if std::env::var("PLATYPUS_BLAST").is_ok() {
+                trauma.0 = 0.6;
+                info!("cavein: t {t:.1} shaken");
+            } else {
+                for x in 1120..1122 {
+                    for y in ceil - 8..ceil - 6 {
+                        sim.world.set(CellPos::new(x, y), platypus_sim::Cell::AIR);
+                    }
+                }
+                info!("cavein: t {t:.1} four cells of the roof dug out");
+            }
+        }
     }
 }
 
