@@ -171,6 +171,9 @@ const SPAWN_CLEAR: f64 = 8_000.0;
 /// each wood's width beyond it.
 const START_PLAIN: f64 = 3_000.0;
 const START_WOOD: f64 = 4_000.0;
+/// How far either side of the spawn trees are sure to grow (cells): a
+/// new player's first logs.
+const SPAWN_TREES: i32 = 450;
 /// The village (structures.rs): not in the world for now.
 pub(crate) const VILLAGE: bool = false;
 const LAKE_BOWLS: f64 = 3.0;
@@ -645,15 +648,20 @@ impl WorldPlan {
             let at = |x: i32| surface[x.clamp(0, width - 1) as usize];
             let lush = blur(&biomes.iter().map(|&b| b.lushness()).collect::<Vec<_>>(), blend);
             let i = |x: i32| x.clamp(0, width - 1) as usize;
+            // A wood round the spawn, whatever the land: a new player's first
+            // logs (with none in reach, there was no first workbench).
+            let home = |x: i32| (x - mid).abs() < SPAWN_TREES;
             Forest::plan(
                 seed,
                 width,
                 at,
-                // Denser toward a deep forest's heart.
-                |x| lush[i(x)] + heart[i(x)] as f64 * 0.6,
+                // Denser toward a deep forest's heart, and round the spawn.
+                // (Round the spawn, woods for sure: dense whatever the noise.)
+                |x| if home(x) { 2.0 } else { lush[i(x)] + heart[i(x)] as f64 * 0.6 },
                 |x| {
                     let b = biomes[i(x)];
-                    hash(&[seed, 0x72EE, x as u64]) % 256 < b.trees()
+                    let chance = if home(x) { b.trees().max(200) } else { b.trees() };
+                    hash(&[seed, 0x72EE, x as u64]) % 256 < chance
                         // (From where the chasm is at the surface: it wanders.)
                         && chasms.iter().all(|c| (x as f64 - c.at(at(x)).0).abs() > c.width * 1.5 + 120.0)
                         && !structures.near_column(x, 60)

@@ -2142,6 +2142,40 @@ mod tests {
         assert!(wall_share > share * 1.3, "ore shows on cave walls: {:.1}% there vs {:.1}% overall", wall_share * 100.0, share * 100.0);
     }
 
+    /// A new player has trees to fell near the spawn on any seed (seeds
+    /// that had none: 2, 7, 42).
+    #[test]
+    fn every_spawn_has_trees_in_reach() {
+        let m = mats();
+        for seed in [2u64, 7, 42] {
+            let g = TerrainGen::new(seed, Preset::Large, &m);
+            let x = g.spawn_point().x;
+            let n = g.plan.forest.near(x - 300, x + 300).len();
+            assert!(n >= 4, "seed {seed}: {n} trees within 300 of the spawn");
+        }
+    }
+
+    /// Trees (the front layer's, to fell) near the spawn, seed by seed
+    /// (`cargo test -p platypus_worldgen trees_at_spawn -- --ignored
+    /// --nocapture`).
+    #[test]
+    #[ignore]
+    fn trees_at_spawn() {
+        let m = mats();
+        let mut counts = Vec::new();
+        let only: Option<u64> = std::env::var("PLATYPUS_TREESEED").ok().and_then(|v| v.parse().ok());
+        for seed in (1..=24u64).filter(|s| only.is_none_or(|o| o == *s)) {
+            let g = TerrainGen::new(seed, Preset::Large, &m);
+            let x = g.spawn_point().x;
+            let n = |r: i32| g.plan.forest.near(x - r, x + r).len();
+            counts.push((seed, n(300), n(600)));
+        }
+        for (seed, a, b) in &counts {
+            eprintln!("seed {seed:>3}: {a:>2} trees within 300 of the spawn, {b:>2} within 600");
+        }
+        eprintln!("none within 300: {} of {}", counts.iter().filter(|c| c.1 == 0).count(), counts.len());
+    }
+
     /// How much of the rock each ore is, by band, and iron's first 600
     /// cells (where its window starts): numbers to tune `minerals::rules`
     /// by (`cargo test -p platypus_worldgen ore_densities -- --ignored
