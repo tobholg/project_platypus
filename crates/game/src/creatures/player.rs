@@ -41,7 +41,7 @@ pub(crate) struct HeldKeys {
     hook_tapped: bool,
 }
 
-pub(crate) fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, taken: Res<crate::dev::KeyboardTaken>, mut held: ResMut<HeldKeys>) {
+pub(crate) fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, taken: Res<crate::dev::KeyboardTaken>, open: Res<crate::hands::InventoryOpen>, mut held: ResMut<HeldKeys>) {
     if taken.0 {
         // (The art editor has the keyboard: stand still, keep looking.)
         held.intent = Intent { aim: held.intent.aim, ..default() };
@@ -52,14 +52,17 @@ pub(crate) fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWor
     held.intent.move_x = right - left;
     // Ctrl held: crouched, creeping (quiet: under what a hunter hears as
     // feet on the run, and lower to be seen over cover).
-    held.intent.crouch = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
+    // (With the inventory open, Shift and Ctrl are for clicking stacks:
+    // no dash, no crouch.)
+    let modifiers = !open.0;
+    held.intent.crouch = modifiers && keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
     held.intent.jump = keys.pressed(KeyCode::Space);
-    held.intent.dash = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+    held.intent.dash = modifiers && keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     held.intent.hook = keys.pressed(KeyCode::KeyE);
     held.intent.down = keys.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
     held.intent.move_y = keys.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]) as i32 as f32 - held.intent.down as i32 as f32;
     held.jump_tapped |= keys.just_pressed(KeyCode::Space);
-    held.dash_tapped |= keys.any_just_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+    held.dash_tapped |= modifiers && keys.any_just_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     held.hook_tapped |= keys.just_pressed(KeyCode::KeyE);
     if let Some(c) = cursor.0 {
         held.intent.aim = c;
