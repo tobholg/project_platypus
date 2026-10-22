@@ -726,6 +726,8 @@
 
         // ---- at the furnace: smelting ----
         (makes: "copper_bar", needs: [("block:copper_ore", 3)], at: "furnace"),
+        // A safety lamp: copper, a glass chimney, a flame behind gauze.
+        (makes: "safety_lamp", needs: [("copper_bar", 3), ("block:glass", 1), ("torch", 1)], at: "furnace"),
         (makes: "iron_bar", needs: [("block:iron_ore", 3)], at: "furnace"),
         (makes: "silver_bar", needs: [("block:silver_ore", 4)], at: "furnace"),
         (makes: "gold_bar", needs: [("block:gold_ore", 4)], at: "furnace"),

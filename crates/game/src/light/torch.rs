@@ -62,6 +62,9 @@ impl Flame {
 #[derive(Component)]
 pub struct HeldTorch;
 
+/// A safety lamp's flame in firedamp.
+const SAFETY_BLUE: (u8, u8, u8) = (110, 160, 255);
+
 /// The held torch's fire (a child at its head, wherever it points).
 #[derive(Component)]
 pub struct HeldFlame;
@@ -183,6 +186,7 @@ pub fn hold(
     player: Query<(Entity, &crate::creatures::Kinematics, Option<&HandPos>), With<LocalPlayer>>,
     mut held: Query<(Entity, &mut Transform, &mut Sprite), HeldOnly>,
     mut flames: Query<(&mut Transform, &mut LightSource), (With<HeldFlame>, Without<HeldTorch>)>,
+    firedamp: Option<Res<crate::hazards::Firedamp>>,
 ) {
     off.lens = None;
     let (Some(art), Ok((me, k, hand))) = (art, player.single()) else { return };
@@ -196,12 +200,12 @@ pub fn hold(
         let turned = match carry {
             Carry::Torch => &art.torch,
             Carry::SmallBeam | Carry::BigBeam => &art.flashlight,
-            Carry::Lantern => &art.lantern,
+            Carry::Lantern | Carry::SafetyLamp => &art.lantern,
             Carry::Nothing => return,
         };
         let (image, layout) = turned.atlas();
         let mut e = commands.spawn((Name::new("Held light"), HeldTorch, Sprite::from_atlas_image(image, TextureAtlas { layout, index: 0 }), Transform::default(), ChildOf(me)));
-        if carry == Carry::Lantern {
+        if matches!(carry, Carry::Lantern | Carry::SafetyLamp) {
             e.with_child((Name::new("Held lantern's light"), HeldFlame, LightSource { color: rgb(settings.lamp.color, settings.lamp.strength), flicker: 0.0 }, super::Haze(settings.lamp.haze), Transform::default(), Visibility::default()));
         }
         if carry == Carry::Torch {
@@ -227,7 +231,7 @@ pub fn hold(
     let (angle, tip) = match carry {
         Carry::Torch => (aim - 90.0, art.flame),
         // (A lantern hangs: upright, whichever way you look.)
-        Carry::Lantern => (0.0, art.glow),
+        Carry::Lantern | Carry::SafetyLamp => (0.0, art.glow),
         _ => (aim, art.lens),
     };
     if let Some(atlas) = sprite.texture_atlas.as_mut() {
@@ -237,11 +241,15 @@ pub fn hold(
     tf.translation = hand_at + Vec3::new(0.0, 0.0, 0.02);
     let r = Vec2::from_angle(angle.to_radians()).rotate(tip);
     let tip_at = Vec2::new(r.x * facing, r.y);
-    if matches!(carry, Carry::Torch | Carry::Lantern) {
+    if matches!(carry, Carry::Torch | Carry::Lantern | Carry::SafetyLamp) {
         let lamp = if carry == Carry::Torch { settings.torch } else { settings.lamp };
+        // (A safety lamp near firedamp: its flame burns blue, and taller.)
+        let near = if carry == Carry::SafetyLamp { firedamp.map_or(0.0, |f| f.near) } else { 0.0 };
         for (mut ftf, mut light) in &mut flames {
             ftf.translation = tip_at.extend(0.0);
-            light.color = rgb(lamp.color, lamp.strength);
+            let warm = rgb(lamp.color, lamp.strength * (1.0 + 0.6 * near));
+            let blue = rgb(SAFETY_BLUE, lamp.strength * (1.0 + 0.6 * near));
+            light.color = std::array::from_fn(|i| warm[i] + (blue[i] - warm[i]) * near);
         }
     } else {
         off.lens = Some(hand_at.truncate() + tip_at);

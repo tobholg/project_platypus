@@ -259,6 +259,8 @@ struct Ids {
     copper_ore: MaterialId,
     iron_ore: MaterialId,
     amethyst: MaterialId,
+    firedamp: MaterialId,
+    coal_seam: MaterialId,
     water: MaterialId,
     lava: MaterialId,
     oil: MaterialId,
@@ -387,6 +389,8 @@ impl TerrainGen {
             copper_ore: mats.expect_id("copper_ore"),
             iron_ore: mats.expect_id("iron_ore"),
             amethyst: mats.expect_id("amethyst"),
+            firedamp: mats.expect_id("firedamp"),
+            coal_seam: mats.expect_id("coal_seam"),
             water: mats.expect_id("water"),
             lava: mats.expect_id("lava"),
             oil: mats.expect_id("oil"),
@@ -1740,6 +1744,8 @@ impl TerrainGen {
                 }
                 caves::Open::Loose { what: caves::Loose::Sand, .. } => return Some(i.loose_sand),
                 caves::Open::Loose { what: caves::Loose::Gravel, .. } => return Some(i.loose_gravel),
+                caves::Open::Gas => return Some(i.firedamp),
+                caves::Open::Seam => return Some(i.coal_seam),
                 caves::Open::Grown { what, root, inside } => {
                     if self.rooted(root) {
                         return match what {
@@ -1764,7 +1770,7 @@ impl TerrainGen {
         let plan = &*self.plan;
         let depth = plan.surface_at(x) - y;
         depth > 0
-            && !matches!(plan.caves.at(x, y), Some(caves::Open::Air | caves::Open::Pool(_)))
+            && !matches!(plan.caves.at(x, y), Some(caves::Open::Air | caves::Open::Pool(_) | caves::Open::Gas))
             && self.cavern(x, y, depth, plan.band_at(y)).is_none()
     }
 
@@ -2229,6 +2235,39 @@ mod tests {
         assert!(loose_over as usize * 3 > roofed.len(), "loose over the middle of {loose_over} of {}", roofed.len());
         for c in near.iter().take(3) {
             eprintln!("  {:?} roof over a chamber at {},{} ({}x{}, {} down)", c.roof.unwrap(), c.x as i32, c.y as i32, c.rx as i32, c.ry as i32, g.plan.surface_at(c.x as i32) - c.y as i32);
+        }
+    }
+
+    /// Firedamp: some of the underground's chambers hold it under their
+    /// ceilings (none with a loose roof, none of the start's), coal seams in
+    /// the rock round them.
+    #[test]
+    fn firedamp_gathers_under_some_ceilings_with_coal_round_it() {
+        let m = mats();
+        let g = TerrainGen::new(2, Preset::Large, &m);
+        let caves = &g.plan.caves;
+        let gassy: Vec<_> = caves.chambers.iter().filter(|c| c.gas.is_some()).collect();
+        let under = caves.chambers.iter().filter(|c| c.y >= g.plan.band_span(Band::Caverns).1 as f32).count();
+        assert!(gassy.len() * 20 > under && gassy.len() * 5 < under, "{} with firedamp of {under}", gassy.len());
+        assert!(gassy.iter().all(|c| c.roof.is_none() && !c.start));
+        let (mut gas, mut coal) = (0, 0);
+        for c in &gassy {
+            let level = c.gas.unwrap();
+            let x = c.x as i32;
+            for y in level as i32..(c.y + c.ry * 1.4) as i32 + 8 {
+                match g.material_hint(x, y) {
+                    Some(h) if h == g.ids.firedamp => gas += 1,
+                    Some(h) if h == g.ids.coal_seam => coal += 1,
+                    _ => {}
+                }
+            }
+        }
+        assert!(gas > gassy.len() * 8 && coal > gassy.len(), "firedamp {gas} cells, coal {coal} over the middles of {}", gassy.len());
+        let sx = g.spawn_point().x as f32;
+        let mut near: Vec<_> = gassy.iter().filter(|c| (c.x - sx).abs() < 3_000.0).collect();
+        near.sort_by(|a, b| a.y.total_cmp(&b.y).reverse());
+        for c in near.iter().take(3) {
+            eprintln!("  firedamp from {} in a chamber at {},{} ({}x{}, {} down)", c.gas.unwrap() as i32, c.x as i32, c.y as i32, c.rx as i32, c.ry as i32, g.plan.surface_at(c.x as i32) - c.y as i32);
         }
     }
 

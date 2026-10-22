@@ -194,6 +194,9 @@ pub enum Carry {
     BigBeam,
     Torch,
     Lantern,
+    /// A miner's safety lamp: a lantern whose flame won't light firedamp,
+    /// and burns blue near it (`hazards::Firedamp`).
+    SafetyLamp,
 }
 
 /// A light an item gives, worn (items.ron `light`).
@@ -207,6 +210,8 @@ pub enum LightKind {
     Flashlight,
     /// In the off hand: a steady glow all round.
     Lantern,
+    /// In the off hand: a safety lamp (`Carry::SafetyLamp`).
+    SafetyLamp,
     /// On the head (a mining helmet): a narrow beam where you look.
     Headlamp,
 }
@@ -223,6 +228,7 @@ impl LightKind {
             LightKind::Pocket => Carry::SmallBeam,
             LightKind::Flashlight => Carry::BigBeam,
             LightKind::Lantern => Carry::Lantern,
+            LightKind::SafetyLamp => Carry::SafetyLamp,
             LightKind::Headlamp => Carry::Nothing,
         }
     }

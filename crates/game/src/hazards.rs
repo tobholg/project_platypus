@@ -10,6 +10,11 @@
 //!   glinting in it) trickles grains on whoever's under it. Disturb it (dig
 //!   into it, blast near it, a quake) and it rumbles, and a moment later
 //!   all of it that's joined comes down (`CaveIns`).
+//! - **Firedamp**: gas gathered under some chambers' ceilings (coal seams
+//!   in the walls round them, a faint haze). A naked flame in it (a torch,
+//!   held or planted, a lantern, a candle) sets it off, the blast running
+//!   through all of it and lighting the coal. Flashlights are safe; a
+//!   safety lamp is safe, and its flame burns blue near it (`Firedamp`).
 
 use std::collections::{HashMap, HashSet};
 
@@ -27,7 +32,7 @@ pub struct HazardsPlugin;
 
 impl Plugin for HazardsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CaveIns>().add_systems(FixedUpdate, (drips, trickles, cave_ins).after(TickSet::Bodies).before(TickSet::Cells));
+        app.init_resource::<CaveIns>().init_resource::<Firedamp>().add_systems(FixedUpdate, (drips, trickles, cave_ins, firedamp).after(TickSet::Bodies).before(TickSet::Cells));
     }
 }
 
@@ -331,4 +336,77 @@ fn cave_ins(
             roofs.claimed.remove(&p);
         }
     }
+}
+
+/// Firedamp near the player, for the safety lamp: 0 none in reach, 1 thick
+/// round it.
+#[derive(Resource, Default)]
+pub struct Firedamp {
+    pub near: f32,
+}
+
+/// A naked flame lights firedamp this near it (cells).
+const FLAME_REACH: i32 = 8;
+/// The safety lamp: firedamp sniffed for this far round the player
+/// (cells), every this many cells, every this many ticks; this many cells'
+/// worth right by it is as thick as it reads.
+const SNIFF_REACH: i32 = 64;
+const SNIFF_STEP: i32 = 4;
+const SNIFF_EVERY: u64 = 10;
+const SNIFF_FULL: f32 = 14.0;
+
+/// Naked flames in firedamp set it off; and how much of it's near the
+/// player.
+fn firedamp(
+    mut sim: ResMut<SimWorld>,
+    mut damp: ResMut<Firedamp>,
+    toggles: Res<crate::light::LightToggles>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    flames: Query<(&GlobalTransform, &crate::light::LightSource, Has<crate::light::torch::HeldFlame>)>,
+    mut quiet: Local<u64>,
+) {
+    let Some(gas) = sim.materials().id("firedamp") else { return };
+    let tick = sim.world.tick();
+    let is_gas = |sim: &SimWorld, p: CellPos| sim.world.get(p).is_some_and(|c| c.material == gas);
+    // (A light that flickers is a flame; the one in hand is one unless it's
+    // a safety lamp's, or a flashlight's.)
+    let mut lit = Vec::new();
+    for (tf, light, held) in &flames {
+        let naked = if held { matches!(toggles.carry, crate::light::Carry::Torch | crate::light::Carry::Lantern) } else { light.flicker > 0.05 };
+        if !naked {
+            continue;
+        }
+        let at = tf.translation();
+        let c = CellPos::from_world(at.x, at.y);
+        if let Some(p) = (-FLAME_REACH..=FLAME_REACH).flat_map(|dy| (-FLAME_REACH..=FLAME_REACH).map(move |dx| c.offset(dx, dy))).find(|&p| is_gas(&sim, p)) {
+            lit.push(p);
+        }
+    }
+    // (Once lit, it's the sim's to burn: a flame tries again only after a
+    // while.)
+    if let Some(p) = lit.first()
+        && tick >= *quiet
+    {
+        *quiet = tick + 30;
+        info!("hazards: firedamp lit at ({}, {}) by a naked flame", p.x, p.y);
+        for &p in &lit {
+            sim.queue(platypus_sim::WorldEdit::Ignite { center: p, radius: 2 });
+        }
+    }
+    // Sniffed: each cell of it in reach counts the more the nearer.
+    if !tick.is_multiple_of(SNIFF_EVERY) {
+        return;
+    }
+    let Ok(k) = player.single() else { return };
+    let c = CellPos::from_world(k.body.pos.x, k.body.pos.y);
+    let mut sum = 0.0;
+    for dy in (-SNIFF_REACH..=SNIFF_REACH).step_by(SNIFF_STEP as usize) {
+        for dx in (-SNIFF_REACH..=SNIFF_REACH).step_by(SNIFF_STEP as usize) {
+            if is_gas(&sim, c.offset(dx, dy)) {
+                sum += (1.0 - ((dx * dx + dy * dy) as f32).sqrt() / SNIFF_REACH as f32).max(0.0);
+            }
+        }
+    }
+    let now = (sum / SNIFF_FULL).min(1.0);
+    damp.near += (now - damp.near) * 0.5;
 }

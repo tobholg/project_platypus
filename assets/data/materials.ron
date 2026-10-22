@@ -428,7 +428,7 @@
         // Firedamp: a coal seam's gas, gathered under a cave's roof (caves.rs):
         // a faint haze; an open flame sets it off (a flash and a modest blast,
         // not methane's), and the seam round it burns on.
-        (name: "firedamp", kind: Gas, density: 1, dispersion: 2, flammability: 255, ignites_at: 320, explodes: (radius: 6, power: 30, chance: 25), opacity: 5, colors: [(190, 196, 140), (176, 186, 128)]),
+        (name: "firedamp", kind: Gas, density: 1, dispersion: 2, flammability: 255, ignites_at: 320, explodes: (radius: 4, power: 18, chance: 10), opacity: 5, colors: [(190, 196, 140), (176, 186, 128)]),
         // A toxic cloud's (the acid staff): heavy, so it sinks and pools in
         // pits and down shafts; eats at what breathes it; flammable, and a
         // spark flashes it through with pops.

@@ -307,6 +307,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, haunt_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, drips_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, cavein_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, firedamp_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, groundbuild_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
@@ -11129,6 +11130,113 @@ fn cavein_script(
                 info!("cavein: t {t:.1} four cells of the roof dug out");
             }
         }
+    }
+}
+
+/// `firedamp` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): an upturned
+/// cup of stone over the player (a roof 56 up over 1000..1240, coal seams
+/// in it, walls down to 30 up), firedamp filling it from 26 up; the player
+/// under its middle carries a safety lamp, then at 4 s a torch (`PLATYPUS_CARRY`: what
+/// instead: lantern, flashlight), and jumps at 4.5 s. Every half second:
+/// the firedamp left, burning coal, the lamp's reading, the player's health.
+/// In a generated world (`PLATYPUS_TP=x,y` in a chamber with firedamp):
+/// the safety lamp, then at 3.5 s a torch, lifted at 4 s to just under the
+/// gas.
+fn firedamp_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    damp: Res<crate::hazards::Firedamp>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(&mut Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
+    mut st: Local<(u8, f32)>,
+) {
+    if s.name != "firedamp" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR;
+    let Ok((mut pk, hp)) = player.single_mut() else { return };
+    let (step, next) = &mut *st;
+    let mats = sim.materials().clone();
+    let (gas, coal) = (mats.expect_id("firedamp"), mats.expect_id("coal_seam"));
+    if std::env::var("PLATYPUS_WORLD").is_err() {
+        // A generated world (`PLATYPUS_TP=x,y` in a chamber with firedamp):
+        // the safety lamp, then a torch, lifted to just under the gas (as if
+        // climbing to it).
+        let near = |sim: &SimWorld, c: CellPos, m: platypus_sim::MaterialId, r: i32| (-r..=r).step_by(2).flat_map(|dx| (-r..=r).step_by(2).map(move |dy| c.offset(dx, dy))).filter(|&p| sim.world.get(p).is_some_and(|cell| cell.material == m)).count();
+        if *step == 0 {
+            *step = 1;
+            toggles.carry = crate::light::Carry::SafetyLamp;
+            if let Ok(tp) = std::env::var("PLATYPUS_TP")
+                && let Some((x, y)) = tp.split_once(',')
+                && let (Ok(x), Ok(y)) = (x.parse::<f32>(), y.parse::<f32>())
+            {
+                pk.body.pos = Vec2::new(x, y);
+                pk.body.vel = Vec2::ZERO;
+            }
+        }
+        let c = CellPos::from_world(pk.body.pos.x, pk.body.pos.y);
+        if *step == 1 && t >= 3.5 {
+            toggles.carry = crate::light::Carry::Torch;
+        }
+        if *step == 1 && t >= 4.0 {
+            *step = 2;
+            if let Some(up) = (0..160).find(|&d| sim.world.get(c.offset(0, d)).is_some_and(|cell| cell.material == gas)) {
+                pk.body.pos.y += up as f32 - 10.0;
+                pk.body.vel = Vec2::ZERO;
+            }
+            info!("firedamp: t {t:.1} a torch, lifted to {:.0}", pk.body.pos);
+        }
+        if t >= *next {
+            *next = t + 0.5;
+            info!("firedamp: t {t:.1} firedamp within 60: {}, coal {}; the lamp reads {:.2}; the player's health {:.0} at {:.0}", near(&sim, c, gas, 60), near(&sim, c, coal, 60), damp.near, hp.hp, pk.body.pos);
+        }
+        return;
+    }
+    let roof = fl + 56;
+    if *step == 0 && t > 0.5 {
+        *step = 1;
+        let stone = mats.expect_id("stone");
+        let mut rng = platypus_sim::rng::Rng::seeded(&[8]);
+        for x in 992..1248 {
+            for y in fl + 26..roof + 10 {
+                let wall = !(1000..1240).contains(&x);
+                let m = if y >= roof || wall && y >= fl + 30 {
+                    if y < roof + 6 && (y - roof).rem_euclid(3) == 0 { coal } else { stone }
+                } else if wall {
+                    continue;
+                } else {
+                    gas
+                };
+                sim.world.set(CellPos::new(x, y), mats.spawn(m, &mut rng));
+            }
+        }
+        toggles.carry = crate::light::Carry::SafetyLamp;
+        pk.body.pos.x = 1120.0;
+        info!("firedamp: a cup of firedamp over 1000..1240 from {} to {roof}; the player at {:.0} with a safety lamp", fl + 26, pk.body.pos.x);
+        return;
+    }
+    if *step == 0 {
+        return;
+    }
+    if *step == 1 && t >= 4.0 {
+        *step = 2;
+        toggles.carry = match std::env::var("PLATYPUS_CARRY").as_deref() {
+            Ok("lantern") => crate::light::Carry::Lantern,
+            Ok("flashlight") => crate::light::Carry::BigBeam,
+            _ => crate::light::Carry::Torch,
+        };
+        info!("firedamp: t {t:.1} now carrying {:?}", toggles.carry);
+    }
+    if (4.5..4.7).contains(&t) { keys.press(KeyCode::Space) } else { keys.release(KeyCode::Space) }
+    if t >= *next {
+        *next = t + 0.5;
+        let count = |m: platypus_sim::MaterialId| (990..1250).flat_map(|x| (fl..roof + 10).map(move |y| CellPos::new(x, y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == m)).count();
+        let burning = (990..1250).flat_map(|x| (fl..roof + 10).map(move |y| CellPos::new(x, y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == coal && c.flags & platypus_sim::cell::flags::BURNING != 0)).count();
+        info!("firedamp: t {t:.1} firedamp {} cells, coal {} ({burning} burning); the lamp reads {:.2}; the player's health {:.0} at {:.0}", count(gas), count(coal), damp.near, hp.hp, pk.body.pos);
     }
 }
 

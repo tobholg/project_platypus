@@ -23,6 +23,10 @@
 //! - Loose roofs: some underground chambers' ceilings are loose sand or
 //!   gravel, a few cells of it, ore glinting in it; disturb it (dig it, a
 //!   blast, a quake) and it comes down (it trickles first: `game::hazards`).
+//! - Firedamp: some underground chambers hold a layer of firedamp gas under
+//!   their ceilings, coal seams striped through the rock round them. A naked
+//!   flame sets it off (`game::hazards`); a safety lamp's flame turns blue
+//!   near it.
 //!
 //! Noise only roughens the walls. A chunk asks only the shapes binned to it.
 //!
@@ -179,6 +183,8 @@ pub struct Chamber {
     pub start: bool,
     /// Its ceiling loose, if it is (`Loose`).
     pub roof: Option<Loose>,
+    /// Firedamp from this height up, if any (coal seams round it).
+    pub gas: Option<f32>,
 }
 
 /// What a loose ceiling is.
@@ -197,6 +203,13 @@ const ROOF: f32 = 7.0;
 const ROOF_DOWN: f32 = 0.55;
 const NUGGET: i32 = 3;
 const NUGGET_ONE_IN: u64 = 9;
+
+/// Firedamp: the share of the underground's chambers (with no loose roof)
+/// with a layer of it, how deep (down from the top, in its half heights);
+/// how far its coal seams reach into the rock round it (cells).
+const GAS_CHANCE: f32 = 0.12;
+const GAS_DEEP: (f32, f32) = (0.7, 1.1);
+const SEAM: f32 = 6.0;
 
 #[derive(Clone, Debug)]
 pub struct Tunnel {
@@ -283,6 +296,10 @@ pub enum Open {
     Lining,
     /// A loose ceiling's sand or gravel; `ore`: a nugget of ore in it.
     Loose { what: Loose, ore: bool },
+    /// Firedamp, gathered under a chamber's ceiling.
+    Gas,
+    /// A coal seam in the rock round firedamp.
+    Seam,
 }
 
 /// How thick an acid pool's lining is (cells).
@@ -400,7 +417,7 @@ impl Caves {
                 }
                 let (kx, ky) = key(x, y);
                 grid.entry((kx, ky)).or_default().push(chambers.len());
-                chambers.push(Chamber { x, y, rx, ry, pool: None, zone: None, spikes: Vec::new(), mushrooms: Vec::new(), shelves: Vec::new(), start: true, roof: None });
+                chambers.push(Chamber { x, y, rx, ry, pool: None, zone: None, spikes: Vec::new(), mushrooms: Vec::new(), shelves: Vec::new(), start: true, roof: None, gas: None });
                 break;
             }
         }
@@ -450,7 +467,7 @@ impl Caves {
                 p => p,
             };
             grid.entry((kx, ky)).or_default().push(chambers.len());
-            chambers.push(Chamber { x, y, rx, ry, pool, zone, spikes: Vec::new(), mushrooms: Vec::new(), shelves: Vec::new(), start: false, roof: None });
+            chambers.push(Chamber { x, y, rx, ry, pool, zone, spikes: Vec::new(), mushrooms: Vec::new(), shelves: Vec::new(), start: false, roof: None, gas: None });
         }
 
         // Links: each chamber to its nearest few; a spanning tree of them
@@ -705,6 +722,9 @@ impl Caves {
             let roll = |salt: u64| (platypus_sim::rng::hash(&[seed, salt, i as u64]) % 10_000) as f32 / 10_000.0;
             if c.y >= g.caverns_top as f32 && roll(0x2005) < ROOF_CHANCE {
                 c.roof = Some(if roll(0x2006) < 0.5 { Loose::Sand } else { Loose::Gravel });
+            } else if c.y >= g.caverns_top as f32 && !c.start && roll(0x2007) < GAS_CHANCE {
+                let deep = GAS_DEEP.0 + roll(0x2008) * (GAS_DEEP.1 - GAS_DEEP.0);
+                c.gas = Some(c.y + c.ry * (1.0 - deep));
             }
         }
 
@@ -958,6 +978,7 @@ impl Caves {
         let p = (x as f32, y as f32);
         let mut lining = false;
         let mut loose = None;
+        let mut seam = false;
         for &i in chambers {
             let c = &self.chambers[i as usize];
             let (dx, dy) = ((p.0 - c.x) / c.rx, (p.1 - c.y) / c.ry);
@@ -987,6 +1008,14 @@ impl Caves {
                 let ore = platypus_sim::rng::hash(&[0x9066, block(x), block(y)]).is_multiple_of(NUGGET_ONE_IN) && (r - rim) * c.ry < ROOF * 0.5;
                 loose = Some(Open::Loose { what, ore });
             }
+            // (In the rock round firedamp: coal seams, in bands.)
+            if !inside
+                && c.gas.is_some()
+                && (r - rim) * c.rx.min(c.ry) < SEAM
+                && self.rim.get([p.0 as f64 / 40.0, p.1 as f64 / 6.0, 31.0 + i as f64 * 0.7]) > 0.05
+            {
+                seam = true;
+            }
             if let Some(s) = c.spikes.iter().find(|s| in_triangle(p, s.base[0], s.base[1], s.tip)) {
                 let root = ((s.base[0].0 + s.base[1].0) / 2.0, (s.base[0].1 + s.base[1].1) / 2.0);
                 return Some(Open::Grown { what: Growth::Crystal, root: (root.0 as i32, root.1 as i32), inside });
@@ -1003,8 +1032,9 @@ impl Caves {
             }) {
                 return Some(Open::Grown { what: Growth::Shelf, root: ((s.x - s.dir * 3.0) as i32, s.y as i32 - 1), inside: true });
             }
-            return Some(match c.pool {
-                Some((kind, level)) if p.1 < level => Open::Pool(kind),
+            return Some(match (c.pool, c.gas) {
+                (Some((kind, level)), _) if p.1 < level => Open::Pool(kind),
+                (_, Some(level)) if p.1 >= level => Open::Gas,
                 _ => Open::Air,
             });
         }
@@ -1039,7 +1069,7 @@ impl Caves {
         if let Some(kind) = self.pocket_at(x, y) {
             return Some(Open::Pool(kind));
         }
-        loose.or(lining.then_some(Open::Lining))
+        loose.or(seam.then_some(Open::Seam)).or(lining.then_some(Open::Lining))
     }
 
     /// A chamber's ragged edge in the direction (dx, dy) from its middle (in
