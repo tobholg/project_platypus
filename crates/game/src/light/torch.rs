@@ -62,8 +62,12 @@ impl Flame {
 #[derive(Component)]
 pub struct HeldTorch;
 
-/// A torch held in the off hand: upright, leaning this far ahead (degrees).
-const TORCH_LEAN: f32 = -12.0;
+/// A torch held in the off hand (behind the body): leaning this far ahead
+/// of upright (degrees), its head out in front of you.
+const TORCH_LEAN: f32 = -55.0;
+/// And held this far ahead of the back hand and up (cells): out past the
+/// chest, as an arm reaching it forward would.
+const TORCH_REACH: (f32, f32) = (5.0, 1.0);
 
 /// A safety lamp's flame in firedamp.
 const SAFETY_BLUE: (u8, u8, u8) = (110, 160, 255);
@@ -263,7 +267,12 @@ pub fn hold(
         atlas.index = crate::combat::Turned::index(angle);
     }
     sprite.flip_x = facing < 0.0;
-    tf.translation = hand_at + Vec3::new(0.0, 0.0, 0.02);
+    // (A torch, a flashlight: in the back hand behind the body, sticking
+    // out ahead of it; a lantern hangs in front, so it shows.)
+    let z = if matches!(carry, Carry::Lantern | Carry::SafetyLamp) { 0.02 } else { -0.02 };
+    let reach = if carry == Carry::Torch { Vec3::new(TORCH_REACH.0 * facing, TORCH_REACH.1, 0.0) } else { Vec3::ZERO };
+    let hand_at = hand_at + reach;
+    tf.translation = hand_at + Vec3::new(0.0, 0.0, z);
     let r = Vec2::from_angle(angle.to_radians()).rotate(tip);
     let tip_at = Vec2::new(r.x * facing, r.y);
     if matches!(carry, Carry::Torch | Carry::Lantern | Carry::SafetyLamp) {
