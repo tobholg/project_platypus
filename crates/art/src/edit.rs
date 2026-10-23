@@ -360,7 +360,8 @@ pub fn keyed<'a>(path: &[Seg<'a>]) -> Vec<Seg<'a>> {
 mod tests {
     use super::*;
 
-    const PLAYER: &str = include_str!("../../../assets/art/player.ron");
+    // (The old player: a big, settled rig to try edits on.)
+    const PLAYER: &str = include_str!("../../../assets/art/player_classic.ron");
 
     #[test]
     fn finds_what_it_is_asked_for() {

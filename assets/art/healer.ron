@@ -1,7 +1,7 @@
-// The village's healer (creatures/healer.ron): the player's rig, auburn
+// The village's healer (creatures/healer.ron): the old player's rig, auburn
 // hair, a white robe with a green sash.
 (
-    base: "player",
+    base: "player_classic",
     palette: {
         'j': (184, 98, 60),     // hair, lit
         'L': (244, 243, 234),   // robe, lit

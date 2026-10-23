@@ -68,15 +68,15 @@ pub struct HeldTorch;
 /// A torch held in the off hand (behind the body): leaning this far ahead
 /// of upright (degrees), its head out in front of you.
 const TORCH_LEAN: f32 = -55.0;
-/// A lantern carried out in front (cells from the back hand: ahead, and
-/// down to hang from it), swinging back as you go: degrees a cell a second
-/// of speed, at most so many.
-const LANTERN_REACH: (f32, f32) = (8.0, 5.0);
+/// A lantern carried out in front (cells from the back hand, which hangs at
+/// the front of the body: ahead, and down to hang from it), swinging back
+/// as you go: degrees a cell a second of speed, at most so many.
+const LANTERN_REACH: (f32, f32) = (3.0, 5.0);
 const LANTERN_SWAY: f32 = 0.08;
 const LANTERN_SWAY_MOST: f32 = 18.0;
-/// And held this far ahead of the back hand and up (cells): out past the
-/// chest, as an arm reaching it forward would.
-const TORCH_REACH: (f32, f32) = (5.0, 1.0);
+/// And held this far ahead of the back hand and up (cells): just out past
+/// the chest.
+const TORCH_REACH: (f32, f32) = (1.0, 1.0);
 
 /// A safety lamp's flame in firedamp.
 const SAFETY_BLUE: (u8, u8, u8) = (110, 160, 255);
