@@ -12,6 +12,9 @@
 //! - a **lantern** smashes where it lands, its oil out and alight: a
 //!   firebomb. (A safety lamp's sturdier: it lands, and stays lit.)
 //!
+//! T throws what's in the off hand the same way (held: its arc; let go,
+//! one of them thrown).
+//!
 //! Right-click one that's down, within reach, to take it back. They're
 //! saved with the world.
 
@@ -99,7 +102,7 @@ impl Plugin for LightsPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<LightOut>()
             .init_resource::<PendingLights>()
-            .add_systems(Update, (out, pick_up, put_back))
+            .add_systems(Update, (toss, out, pick_up, put_back).chain())
             .add_systems(FixedUpdate, fly.after(crate::world::TickSet::Bodies).before(crate::world::TickSet::Cells));
     }
 }
@@ -163,6 +166,44 @@ pub fn place(commands: &mut Commands, settings: &LightSettings, art: &crate::lig
             root
         }
     }
+}
+
+/// T: what's in the off hand readied (held: its arc), and thrown on letting
+/// go: one of it, the rest kept there.
+#[allow(clippy::too_many_arguments)]
+fn toss(
+    keys: Res<ButtonInput<KeyCode>>,
+    cursor: Res<crate::camera::CursorWorld>,
+    items: Option<Res<Items>>,
+    tools: Res<crate::tools::ToolsConfig>,
+    (taken, open, dying): (Res<crate::dev::KeyboardTaken>, Res<super::InventoryOpen>, Res<crate::death::Dying>),
+    mut hand: ResMut<super::Hand>,
+    mut commands: Commands,
+    mut player: Query<(Entity, &Kinematics, &mut crate::gear::Equipment), With<crate::creatures::player::LocalPlayer>>,
+    mut outs: MessageWriter<LightOut>,
+) {
+    let (Some(items), Ok((me, k, mut eq))) = (items, player.single_mut()) else { return };
+    let off = eq.worn[crate::gear::OFF_HAND];
+    let light = off.and_then(|s| throwable(items.def(s.item).light).map(|kind| (s, kind)));
+    if taken.0 || open.0 || dying.0.is_some() || light.is_none() {
+        hand.tossing = false;
+        return;
+    }
+    if keys.pressed(KeyCode::KeyT) {
+        hand.tossing = true;
+        let from = super::hand_at(k);
+        commands.entity(me).insert(crate::creatures::body::animation::Aiming { at: from + Vec2::new(k.loco.facing * 20.0, 24.0), left: 0.15 });
+        return;
+    }
+    if !std::mem::take(&mut hand.tossing) {
+        return;
+    }
+    let (Some((stack, kind)), Some(at)) = (light, cursor.0) else { return };
+    let from = super::hand_at(k);
+    let vel = super::lob(from, at, tools.bomb.throw_speed) + k.body.vel * 0.5;
+    commands.entity(me).insert(crate::creatures::body::animation::Aiming { at, left: 0.3 });
+    outs.write(LightOut { by: me, item: stack.item, kind, how: Out::Throw { from, vel } });
+    eq.worn[crate::gear::OFF_HAND] = (stack.count > 1).then(|| Stack { count: stack.count - 1, ..stack });
 }
 
 /// What the hands put out: put down, or thrown.

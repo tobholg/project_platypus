@@ -62,6 +62,9 @@ impl Flame {
 #[derive(Component)]
 pub struct HeldTorch;
 
+/// A torch held in the off hand: upright, leaning this far ahead (degrees).
+const TORCH_LEAN: f32 = -12.0;
+
 /// A safety lamp's flame in firedamp.
 const SAFETY_BLUE: (u8, u8, u8) = (110, 160, 255);
 
@@ -250,7 +253,8 @@ pub fn hold(
     let aim = d.y.atan2(d.x.abs()).to_degrees().clamp(-90.0, 90.0);
     // (The torch is drawn upright: turned a quarter less.)
     let (angle, tip) = match carry {
-        Carry::Torch => (aim - 90.0, art.flame),
+        // (A torch is held up, leaning a little ahead, wherever you look.)
+        Carry::Torch => (TORCH_LEAN, art.flame),
         // (A lantern hangs: upright, whichever way you look.)
         Carry::Lantern | Carry::SafetyLamp => (0.0, art.glow),
         _ => (aim, art.lens),

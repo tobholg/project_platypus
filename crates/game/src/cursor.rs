@@ -122,7 +122,7 @@ struct Label;
 #[derive(Component)]
 struct Eye;
 #[derive(Component)]
-struct ArcDot(usize);
+pub(crate) struct ArcDot(usize);
 
 pub struct CursorPlugin;
 
@@ -437,15 +437,19 @@ fn throw_arc(
         if let Some(toss) = rope.and_then(|r| crate::gear::hook::toss_path(r, eq, items, k, at, &sim.world)) {
             return Some(toss);
         }
-        let held = inv.slots.get(hand.active()).copied().flatten()?;
-        // (A bomb, a glow stick; or a light, `hands::lights`.)
-        let def = items.def(held.item);
-        if !matches!(def.use_, Use::Throw(_)) && crate::hands::lights::throwable(def.light).is_none() {
-            return None;
-        }
-        // (Only readied: the left button held.)
-        if !hand.readying {
-            return None;
+        // (T held: the off hand's light readied to throw.)
+        let tossed = hand.tossing && eq.worn[crate::gear::OFF_HAND].is_some_and(|s| crate::hands::lights::throwable(items.def(s.item).light).is_some());
+        if !tossed {
+            let held = inv.slots.get(hand.active()).copied().flatten()?;
+            // (A bomb, a glow stick; or a light, `hands::lights`.)
+            let def = items.def(held.item);
+            if !matches!(def.use_, Use::Throw(_)) && crate::hands::lights::throwable(def.light).is_none() {
+                return None;
+            }
+            // (Only readied: the left button held.)
+            if !hand.readying {
+                return None;
+            }
         }
         // (As the hands throw it: `use_hands`.)
         let from = crate::hands::hand_at(k);

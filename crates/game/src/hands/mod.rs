@@ -92,12 +92,15 @@ pub struct Hand {
     /// How long the left button's been held on a light (`lights`: a tap
     /// puts it down, held it's thrown).
     held: f32,
+    /// T held: what's in the off hand (a torch, a light) readied to throw,
+    /// its arc shown (`lights::toss`).
+    pub tossing: bool,
 }
 
 impl Default for Hand {
     fn default() -> Self {
         // (A pickaxe bites round by default; the smart cursor's off till Alt.)
-        Hand { slot: 0, bar: 0, smart: false, area: true, cooldown: 0.0, thrown: 0, readying: false, called_off: false, held: 0.0 }
+        Hand { slot: 0, bar: 0, smart: false, area: true, cooldown: 0.0, thrown: 0, readying: false, called_off: false, held: 0.0, tossing: false }
     }
 }
 

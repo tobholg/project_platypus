@@ -11409,7 +11409,7 @@ fn lightthrow_script(
     sim: Res<SimWorld>,
     items: Option<Res<crate::hands::items::Items>>,
     (mut hand, mut cursor, mut mouse): (ResMut<crate::hands::Hand>, ResMut<CursorOverride>, ResMut<ButtonInput<MouseButton>>),
-    mut player: Query<(&Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    (mut player, mut keys, dots): (Query<(&Kinematics, &mut crate::hands::items::Inventory, &mut crate::gear::Equipment), With<LocalPlayer>>, ResMut<ButtonInput<KeyCode>>, Query<&Visibility, With<crate::cursor::ArcDot>>),
     placed: Query<(&crate::hands::lights::PlacedLight, Has<crate::hands::lights::BeamLight>, Option<&Children>)>,
     thrown: Query<&Name>,
     barrels: Query<&Kinematics, (With<crate::creatures::custom::explosive::Explosive>, Without<LocalPlayer>)>,
@@ -11421,11 +11421,28 @@ fn lightthrow_script(
     menu.open = false;
     let t = s.elapsed;
     let Some(items) = items else { return };
-    let Ok((pk, mut inv)) = player.single_mut() else { return };
+    let Ok((pk, mut inv, mut eq)) = player.single_mut() else { return };
     let (step, next) = &mut *st;
     let fl = platypus_worldgen::arena::FLOOR as f32;
     let x = pk.body.pos.x;
     let id = |n: &str| items.id(n).expect(n);
+    // (`PLATYPUS_TOSS=1`: three torches in the off hand; T held 1..1.5 s
+    // at a point 100 out, let go.)
+    if std::env::var("PLATYPUS_TOSS").is_ok() {
+        if *step == 0 && t > 0.5 {
+            *step = 9;
+            eq.worn[crate::gear::OFF_HAND] = Some(crate::hands::items::Stack::new(id("torch"), 3));
+        }
+        cursor.0 = Some(Vec2::new(x + 100.0, fl + 4.0));
+        if (1.0..1.5).contains(&t) { keys.press(KeyCode::KeyT) } else { keys.release(KeyCode::KeyT) }
+        if t >= *next && *step == 9 {
+            *next = t + 0.25;
+            let flying = thrown.iter().filter(|n| n.as_str() == "Thrown light").count();
+            let arc = dots.iter().filter(|v| **v != Visibility::Hidden).count();
+            info!("lightthrow: t {t:.2} off hand {:?}; arc dots shown {arc}; in flight {flying}; down {}", eq.worn[crate::gear::OFF_HAND].map(|s| s.count), placed.iter().count());
+        }
+        return;
+    }
     if *step == 0 && t > 0.5 {
         *step = 1;
         inv.slots[0] = Some(crate::hands::items::Stack::new(id("torch"), 5));
