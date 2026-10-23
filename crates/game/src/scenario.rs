@@ -310,6 +310,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, firedamp_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, death_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, rest_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, wallhook_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, aimswing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, gauntlet_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, switch_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -11624,6 +11625,51 @@ fn aimswing_script(
     {
         *next = t + 0.03;
         info!("aimswing: t {t:.2} aim {:.0} blade {:.0}", sw.aim, sw.angle);
+    }
+}
+
+/// `wallhook` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a stone wall
+/// 30 to the player's right, 200 tall; the hook thrown up into it at 0.6 s
+/// (pulled up to it, hanging against it), Space at 2 s (`PLATYPUS_AWAY=1`:
+/// holding A, away from the wall, as it jumps). Every 0.1 s from 1.8 s:
+/// where the player is, how fast it goes.
+fn wallhook_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut cursor: ResMut<CursorOverride>,
+    player: Query<(&Kinematics, Option<&crate::gear::hook::Rope>), With<LocalPlayer>>,
+    mut st: Local<(u8, f32, f32)>,
+) {
+    if s.name != "wallhook" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR;
+    let Ok((pk, rope)) = player.single() else { return };
+    let (step, next, wall_x) = &mut *st;
+    if *step == 0 && t > 0.3 {
+        *step = 1;
+        *wall_x = pk.body.pos.x + 30.0;
+        let mats = sim.materials().clone();
+        let stone = mats.expect_id("stone");
+        let mut rng = platypus_sim::rng::Rng::seeded(&[4]);
+        for x in *wall_x as i32..*wall_x as i32 + 20 {
+            for y in fl..fl + 200 {
+                sim.world.set(CellPos::new(x, y), mats.spawn(stone, &mut rng));
+            }
+        }
+    }
+    cursor.0 = Some(Vec2::new(*wall_x + 1.0, fl as f32 + 110.0));
+    if (0.6..0.65).contains(&t) { keys.press(KeyCode::KeyE) } else { keys.release(KeyCode::KeyE) }
+    let away = std::env::var("PLATYPUS_AWAY").is_ok();
+    if (2.0..2.05).contains(&t) { keys.press(KeyCode::Space) } else { keys.release(KeyCode::Space) }
+    if away && (1.95..2.3).contains(&t) { keys.press(KeyCode::KeyA) } else { keys.release(KeyCode::KeyA) }
+    if t >= 1.8 && t >= *next && t < 2.8 {
+        *next = t + 0.1;
+        info!("wallhook: t {t:.1} at {:.0} ({:.0} from the wall), going {:.0}; roped {}", pk.body.pos, *wall_x - pk.body.pos.x, pk.body.vel, rope.is_some_and(|r| r.roped()));
     }
 }
 

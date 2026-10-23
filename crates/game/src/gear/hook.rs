@@ -557,13 +557,19 @@ pub fn rope(
                 let Ok((_, mut k, ..)) = things.get_mut(e) else { continue };
                 let k = &mut *k;
                 // Jump: let go, with a real jump (held, its full height) on
-                // top of the swing; against a wall, a wall jump, away from it.
+                // top of the swing. Against a wall, pressing away from it: a
+                // wall jump, away; else straight up it (to hook on higher),
+                // not thrown off it.
                 if k.loco.jump_pressed(&intent) {
                     k.loco.jump_off(&stats, &intent, &mut k.body, LEAP_ON_TOP);
                     let wall = if contacts.wall_left { -1.0 } else if contacts.wall_right { 1.0 } else { 0.0 };
                     if wall != 0.0 {
-                        k.body.vel.x = -wall * KICK;
-                        k.loco.facing = -wall;
+                        if intent.move_x * wall < 0.0 {
+                            k.body.vel.x = -wall * KICK;
+                            k.loco.facing = -wall;
+                        } else {
+                            k.body.vel.x = 0.0;
+                        }
                     }
                     rope.line = Line::Back { tip: point };
                     continue;
