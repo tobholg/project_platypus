@@ -217,6 +217,9 @@ fn five() -> f32 {
 #[derive(Component, Clone, Debug)]
 pub struct Regenerates {
     pub per_sec: f32,
+    /// What its kind heals (its file's; `per_sec` may be held below it: the
+    /// player's off Pilgrim, `craft::rest`).
+    pub base: f32,
     pub stopped_by: u16,
     pub pause: f32,
     pub waiting: f32,
@@ -226,7 +229,7 @@ pub struct Regenerates {
 impl Regenerates {
     pub fn new(def: &RegenDef) -> Self {
         let stopped_by = if def.rests { u16::MAX } else { def.stopped_by.iter().fold(0, |m, h| m | h.bit()) };
-        Regenerates { per_sec: def.per_sec, stopped_by, pause: def.pause, waiting: 0.0, undying: def.undying }
+        Regenerates { per_sec: def.per_sec, base: def.per_sec, stopped_by, pause: def.pause, waiting: 0.0, undying: def.undying }
     }
 }
 

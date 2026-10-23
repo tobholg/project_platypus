@@ -67,7 +67,7 @@
         (id: "glowstick",      name: "Glow stick",     stack: 30, color: (90, 255, 150), use: Throw(Glowstick)),
         // Potions: click to drink (or H, the first healing one carried).
         // Healing comes back 10 a second: over = heal / 10.
-        (id: "small_health_potion", name: "Small health potion", stack: 30, color: (230, 60, 80), use: Potion(heal: 40, over: 4, sickness: 30),
+        (id: "small_health_potion", name: "Small health potion", stack: 30, color: (230, 60, 80), use: Potion(heal: 40, over: 4, sickness: 20),
             about: "A small red flask."),
         // Foci (magic::spells): each holds its spells (a wand one, a staff
         // two: left and right button), of its tier or less (a wand 1, a staff
@@ -174,6 +174,8 @@
         (id: "crate", name: "Crate", stack: 20, color: (140, 96, 52), use: Station("crate")),
         (id: "potted_plant", name: "Potted plant", stack: 20, color: (80, 168, 70), use: Station("potted_plant")),
         (id: "candelabra", name: "Candelabra", stack: 20, color: (180, 180, 190), use: Station("candelabra")),
+        (id: "campfire", name: "Campfire", stack: 20, color: (220, 120, 50), use: Station("campfire"),
+            about: "Set it down and rest by it: out of danger, it slowly mends your wounds."),
         (id: "hearth", name: "Hearth", stack: 20, color: (140, 138, 146), use: Station("hearth")),
         (id: "hanging_lantern", name: "Hanging lantern", stack: 20, color: (255, 210, 110), use: Station("hanging_lantern")),
         (id: "chandelier", name: "Chandelier", stack: 20, color: (255, 210, 110), use: Station("chandelier")),

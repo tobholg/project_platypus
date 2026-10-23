@@ -309,6 +309,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, cavein_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, firedamp_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, death_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, rest_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, switch_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, lightthrow_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, groundbuild_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -11458,6 +11459,42 @@ fn lightthrow_script(
         let burning = ((x - 40.0) as i32..(x + 200.0) as i32).flat_map(|cx| (fl as i32..fl as i32 + 30).map(move |cy| CellPos::new(cx, cy))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == fire || c.flags & platypus_sim::cell::flags::BURNING != 0)).count();
         let torches = inv.slots.iter().flatten().filter(|s| s.item == id("torch")).map(|s| s.count).sum::<u32>();
         info!("lightthrow: t {t:.1} down: {down:?}; in flight {flying}; TNT barrels {}; burning cells {burning}; torches in the pack {torches}", barrels.iter().count());
+    }
+}
+
+/// `rest` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`; `PLATYPUS_DIFFICULTY`
+/// to try another): the player left at half health at 0.5 s; a campfire
+/// set down beside it at 6 s. Every second: its health, how fast it heals.
+fn rest_script(
+    s: Res<Scenario>,
+    mut commands: Commands,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    crafting: Res<crate::craft::Crafting>,
+    mut player: Query<(Entity, &Kinematics, &mut crate::creatures::Health, &crate::creatures::nature::Regenerates), With<LocalPlayer>>,
+    mut st: Local<(u8, f32)>,
+) {
+    if s.name != "rest" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((me, pk, mut hp, regen)) = player.single_mut() else { return };
+    let (step, next) = &mut *st;
+    if *step == 0 && t > 0.5 {
+        *step = 1;
+        commands.entity(me).remove::<crate::combat::Invulnerable>();
+        hp.hp = 50.0;
+    }
+    if *step == 1 && t > 6.0 {
+        *step = 2;
+        if let Some(kind) = crafting.station("campfire") {
+            crafting.spawn(&mut commands, kind, Vec2::new(pk.body.pos.x + 24.0, platypus_worldgen::arena::FLOOR as f32), false);
+        }
+        info!("rest: t {t:.1} a campfire set down beside it");
+    }
+    if t >= *next {
+        *next = t + 1.0;
+        info!("rest: t {t:.1} health {:.1}, healing {:.2} a second", hp.hp, regen.per_sec);
     }
 }
 

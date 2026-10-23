@@ -57,6 +57,34 @@ pub struct StationDef {
     /// A bed: right-click it (or Q) and you wake there after dying.
     #[serde(default)]
     pub bed: bool,
+    /// Rest by it (within `REST_REACH`, out of danger) and you heal this
+    /// much a second (a campfire's): off Pilgrim, the only healing over time.
+    #[serde(default)]
+    pub rest: f32,
+    /// Fire rises from here (cells from its middle, facing right): a
+    /// campfire's.
+    #[serde(default)]
+    pub flame: Option<(f32, f32)>,
+}
+
+/// How near a campfire you rest by it (cells).
+pub const REST_REACH: f32 = 60.0;
+
+/// The player heals over time (its `regen`) only playing Pilgrim; else only
+/// resting by a campfire (`StationDef::rest`), slowly. Either way only out
+/// of danger (`Regenerates::pause` after any hurt).
+fn rest(
+    difficulty: Res<crate::difficulty::Difficulty>,
+    crafting: Res<Crafting>,
+    stations: Query<(&Station, &Kinematics)>,
+    mut player: Query<(&Kinematics, &mut crate::creatures::nature::Regenerates), With<crate::creatures::player::LocalPlayer>>,
+) {
+    let Ok((k, mut r)) = player.single_mut() else { return };
+    r.per_sec = if *difficulty == crate::difficulty::Difficulty::Pilgrim {
+        r.base
+    } else {
+        stations.iter().filter(|(_, sk)| sk.body.pos.distance(k.body.pos) < REST_REACH).filter_map(|(s, _)| crafting.stations.get(s.kind)).map(|d| d.rest).fold(0.0, f32::max)
+    };
 }
 
 /// Where a station or a piece of furniture goes (`StationDef::mount`).
@@ -157,6 +185,9 @@ impl Crafting {
         }
         if let Some(c) = def.light {
             e.insert(crate::light::LightSource { color: c, flicker: def.flicker });
+        }
+        if let Some((x, y)) = def.flame {
+            e.insert(crate::light::torch::Flame::at(Vec2::new(if flip { -x } else { x }, y)));
         }
     }
 
@@ -276,7 +307,8 @@ impl Plugin for CraftPlugin {
         app.insert_resource(Crafting { reach: file.reach, stations: file.stations, recipes: file.recipes, art: Vec::new(), watch: Watched::new(path) })
             .add_systems(Startup, make_art)
             .add_message::<CraftRequest>()
-            .add_systems(Update, (reload, craft));
+            .add_systems(Update, (reload, craft))
+            .add_systems(FixedUpdate, rest.in_set(crate::world::TickSet::Bodies));
     }
 }
 

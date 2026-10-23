@@ -435,6 +435,23 @@
                 "...oIIIIIIIIIo...",
                 "....ooooooooo....",
             ]),
+        // A campfire: a ring of stones, logs crossed, a fire. Rest by it (out
+        // of danger) and it slowly mends you (`rest`, health a second): off
+        // Pilgrim, the only healing but potions and sleep.
+        (id: "campfire", name: "Campfire", light: (1.2, 0.6, 0.22), flicker: 0.8, rest: 0.4, flame: Some((0, 5)),
+            palette: {'S': (120, 118, 124), 's': (86, 84, 92), 'd': (110, 72, 40), 'D': (78, 50, 28), 'r': (220, 80, 30), 'R': (250, 140, 40), 'y': (255, 200, 80), 'Y': (255, 240, 180)},
+            art: [
+                "........y...y.......",
+                ".......yRy.yRy......",
+                "......yRYRyRYRy.....",
+                "......rRYYRYYRr.....",
+                ".....rRRYYYYRRr.....",
+                "...ddDrRRYYRRrDdd...",
+                "..dDDDdrRRRRrdDDDd..",
+                ".SsdDDDDddddDDDDdsS.",
+                "SsSsSsssssssssssSsSs",
+                ".SSsSSsSSsSsSSsSSsS.",
+            ]),
         (id: "hearth", name: "Hearth", light: (1.1, 0.55, 0.2), flicker: 0.6,
             palette: {'o': (30, 20, 12), 'H': (206, 156, 96), 'L': (176, 124, 70), 'd': (104, 68, 38), 'D': (70, 44, 24), 's': (110, 108, 114), 'S': (140, 138, 146), 'm': (60, 58, 64), 'k': (20, 14, 12), 'W': (230, 224, 206), 'y': (255, 210, 110), 'Y': (255, 245, 200), 'r': (240, 110, 40)},
             art: [
@@ -708,6 +725,7 @@
         (makes: "wall_shelf", needs: [("block:planks", 4), ("block:glass", 1)], at: "sawmill"),
         (makes: "banner_red", needs: [("block:planks", 2), ("block:ruby", 1)], at: "sawmill"),
         (makes: "banner_green", needs: [("block:planks", 2), ("block:emerald", 1)], at: "sawmill"),
+        (makes: "campfire", needs: [("block:wood", 6), ("block:stone", 8), ("torch", 1)]),
         (makes: "hearth", needs: [("block:stone", 20), ("block:brick", 6), ("torch", 2)], at: "mason_bench"),
         (makes: "candelabra", needs: [("iron_bar", 2), ("torch", 3)], at: "anvil"),
         (makes: "hanging_lantern", needs: [("iron_bar", 1), ("block:glass", 1), ("torch", 1)], at: "anvil"),
