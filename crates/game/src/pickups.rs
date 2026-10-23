@@ -59,6 +59,8 @@ pub enum PickedUp {
     Gold(u32),
     /// Something it walked up to didn't fit.
     Full,
+    /// Gold lost (left where it died): a red count down.
+    Lost(u32),
     /// A word of its own over the head ("Pick up: Valuables"): one at a
     /// time, the next replacing it.
     Note(String),
@@ -86,13 +88,14 @@ enum What {
     Gold,
     Full,
     Note,
+    Lost,
 }
 
 impl What {
     fn is(&self, other: &What) -> bool {
         match (self, other) {
             (What::Item(a), What::Item(b)) => a.same(b),
-            (What::Gold, What::Gold) | (What::Full, What::Full) | (What::Note, What::Note) => true,
+            (What::Gold, What::Gold) | (What::Full, What::Full) | (What::Note, What::Note) | (What::Lost, What::Lost) => true,
             _ => false,
         }
     }
@@ -154,6 +157,7 @@ fn words(what: &What, units: u32, items: &Items, rules: Option<&GearRules>) -> (
         What::Note => (String::new(), Color::srgb(0.85, 0.92, 1.0)),
         What::Gold => (format!("{units} gold"), readable(GOLD)),
         What::Full => ("Inventory full".into(), readable(FULL)),
+        What::Lost => (format!("-{units} gold"), readable(FULL)),
         What::Item(s) => {
             let def = items.def(s.item);
             let rarity = rules.and_then(|r| r.rarity(items, s));
@@ -209,6 +213,7 @@ fn take_in(
             PickedUp::Item { stack, new } => (What::Item(*stack), stack.count, *new),
             PickedUp::Gold(n) => (What::Gold, *n, false),
             PickedUp::Full => (What::Full, 0, false),
+            PickedUp::Lost(n) => (What::Lost, *n, false),
             PickedUp::Note(s) => {
                 note = Some(s.clone());
                 (What::Note, 0, false)
@@ -249,7 +254,7 @@ fn take_in(
         let (w, c) = say(&what, units);
         let image = match what {
             What::Item(s) => icons.as_ref().and_then(|i| i.get(s.item).cloned()),
-            What::Gold => Some(gold.get_or_insert_with(|| gold_icon(&mut images)).clone()),
+            What::Gold | What::Lost => Some(gold.get_or_insert_with(|| gold_icon(&mut images)).clone()),
             What::Full | What::Note => None,
         };
         let swatch = match what {

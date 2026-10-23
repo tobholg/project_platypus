@@ -68,6 +68,10 @@ impl Plugin for CorpsesPlugin {
 /// roll), what it carried, and a roll of its loot table.
 fn belongings(died: &Died, items: &Items, chests: &Chests, world: &platypus_sim::World, luck: f32) -> Inventory {
     let mut inv = Inventory::new(SLOTS);
+    // (The player's own body: what it wore and carried it still has.)
+    if died.empty {
+        return inv;
+    }
     for s in &died.worn {
         inv.add(items, *s);
     }
@@ -91,6 +95,7 @@ fn label(d: &Died) -> String {
     match d.rising.as_ref().map(|r| r.remains) {
         Some(Remains::Rubble) => format!("{} (bones)", d.def.name),
         Some(Remains::Body) => format!("{} (stirring)", d.def.name),
+        None if d.empty => "Your remains".into(),
         None if d.charred => format!("{} (burnt)", d.def.name),
         None => format!("{} (dead)", d.def.name),
     }

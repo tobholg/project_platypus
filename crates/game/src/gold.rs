@@ -124,7 +124,12 @@ fn take(
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut picked: MessageWriter<crate::pickups::PickedUp>,
     mut ding: Local<f32>,
+    dying: Res<crate::death::Dying>,
 ) {
+    // (Dead: its gold lies where it fell, for it to come back for.)
+    if dying.0.is_some() {
+        return;
+    }
     let Some(gold) = sim.world.materials().id("gold") else { return };
     *ding -= 1.0 / crate::world::TICK_HZ as f32;
     for (k, mut purse, filter) in &mut players {

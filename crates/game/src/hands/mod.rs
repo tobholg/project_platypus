@@ -1154,8 +1154,13 @@ fn collect(
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut picked: MessageWriter<crate::pickups::PickedUp>,
     mut streak: Local<Streak>,
+    dying: Res<crate::death::Dying>,
 ) {
     let Some(items) = items else { return };
+    // (Dead, it takes nothing up.)
+    if dying.0.is_some() {
+        return;
+    }
     streak.since += DT;
     streak.full += DT;
     for (e, mut d, mut k) in &mut drops {

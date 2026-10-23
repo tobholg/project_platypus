@@ -290,7 +290,7 @@ impl Health {
         }
         let got = self.hurt(amount, kind);
         if self.records && got > 0.0 {
-            self.recent.push(crate::death::Hurt { cause: cause(), dealt: got, age: 0.0 });
+            self.recent.push(crate::death::Hurt { cause: cause(), kind, dealt: got, age: 0.0 });
         }
         got
     }
@@ -781,7 +781,8 @@ fn blasted(mut commands: Commands, mut blasts: MessageReader<crate::fx::Explosio
             }
             let f = 1.0 - dist / reach;
             let dealt = health.harm_by(b.power * 0.65 * f, Harm::Blunt, || named.blamed(&who, b.at, reach));
-            let gibs = !is_player && (health.hp <= 0.0 || dealt >= health.max * GIB_SHARE);
+            // (The player's blown apart only by what kills it.)
+            let gibs = health.hp <= 0.0 || !is_player && dealt >= health.max * GIB_SHARE;
             let dir = (d.normalize_or(Vec2::Y) + Vec2::new(0.0, 0.6)).normalize();
             let k = &mut *k;
             let knock = dir * b.power * 4.5 * (0.4 + 0.6 * f);
@@ -828,6 +829,9 @@ pub struct Died {
     pub risen: u32,
     /// Burnt away (a body that got up, set alight): it lies charred.
     pub charred: bool,
+    /// The player's own body: dressed as it was, holding nothing (what it
+    /// carried it still has, waking).
+    pub empty: bool,
     /// Its limbs as they were (a walker's legs, arms, segments, tail: its
     /// `Parts`, weak spots left out): its ragdoll's pieces (`ragdoll`).
     pub limbs: Vec<body::parts::Part>,
@@ -850,6 +854,10 @@ pub struct Gibbed(pub Vec2);
 /// A blast that does this much of a creature's health, or kills it, blows
 /// it apart if it dies.
 const GIB_SHARE: f32 = 0.35;
+/// The player killed by a blade's blow this far past dead loses its head;
+/// by a blow this heavy (a blade's, a point's, a club's), an arm.
+const HEAD_OFF_PAST: f32 = 6.0;
+const ARM_OFF_BLOW: f32 = 30.0;
 
 /// What a body took in a tick, of one kind (`Health::took`, from every
 /// source: blows, spells, burning, falls): what was meant, what got through
@@ -895,7 +903,7 @@ type Mortal<'a> = (
 pub(crate) fn deaths(
     mut commands: Commands,
     mut sim: ResMut<SimWorld>,
-    (mut deaths, dying, mut player_died): (ResMut<PlayerDeaths>, Res<crate::death::Dying>, MessageWriter<crate::death::PlayerDied>),
+    (mut deaths, dying, mut player_died, mut cuts): (ResMut<PlayerDeaths>, Res<crate::death::Dying>, MessageWriter<crate::death::PlayerDied>, MessageWriter<body::wounds::Cut>),
     mut died: MessageWriter<Died>,
     sprites: Query<(&Sprite, &Transform, Has<body::legs::LegBody>), Or<(With<body::animation::CreatureSprite>, With<body::legs::LegBody>)>>,
     mut q: Query<Mortal>,
@@ -916,7 +924,7 @@ pub(crate) fn deaths(
             h.hp = h.max;
             continue;
         }
-        if let (Some(anim), true, false) = (anim, creature.is_some(), is_player) {
+        if let (Some(anim), true) = (anim, creature.is_some() || is_player) {
             // (A walker's body as its legs carried it, where they carried it,
             // level: its own sprite's hidden, somewhere else. Its tail and
             // legs are pinned on where they were.)
@@ -929,12 +937,36 @@ pub(crate) fn deaths(
                 (s, tf.translation)
             });
             let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
-            let kind = creature.map_or_else(String::new, |c| c.kind.clone());
+            let kind = if is_player { String::new() } else { creature.map_or_else(String::new, |c| c.kind.clone()) };
             let spin = tumbles.get(entity).copied().unwrap_or_default();
             // (Its limbs, but what's been cut off already lies apart.)
             let cut = severed.get(entity).ok();
             let limbs = parts.get(entity).map(|p| p.limbs().into_iter().filter(|l| l.limb.is_none_or(|x| !cut.is_some_and(|c| c.has(x)))).collect()).unwrap_or_default();
-            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin, rising: None, risen: 0, charred: false, limbs, severed: cut.map(|c| c.0.clone()).unwrap_or_default(), lineage: lineage_of(lineages.get(entity).ok()), marks: wounds.get(entity).map(|m| m.list.clone()).unwrap_or_default(), gib: gibbed.get(entity).ok().map(|g| g.0) });
+            let mut lost = cut.map(|c| c.0.clone()).unwrap_or_default();
+            let gib = gibbed.get(entity).ok().map(|g| g.0);
+            // The player dies as it was killed: burnt, charred; a blade's
+            // blow well past dead, its head off; a heavy one, an arm.
+            let mut charred = false;
+            if is_player
+                && gib.is_none()
+                && let Some(last) = h.recent.iter().rev().find(|r| r.dealt > 0.0)
+            {
+                let over = -h.hp;
+                let off = match last.kind {
+                    Harm::Fire => {
+                        charred = true;
+                        None
+                    }
+                    Harm::Slash if over >= HEAD_OFF_PAST => Some(body::parts::Limb::Head),
+                    Harm::Slash | Harm::Pierce | Harm::Blunt if last.dealt >= ARM_OFF_BLOW => Some(body::parts::Limb::Arm(1)),
+                    _ => None,
+                };
+                if let Some(limb) = off {
+                    lost.push(limb);
+                    cuts.write(body::wounds::Cut { target: entity, limb, dir: Vec2::new(-k.loco.facing, 0.6) });
+                }
+            }
+            died.write(Died { kind, def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin, rising: None, risen: 0, charred, empty: is_player, limbs, severed: lost, lineage: lineage_of(lineages.get(entity).ok()), marks: wounds.get(entity).map(|m| m.list.clone()).unwrap_or_default(), gib });
         }
         if let Some(&body::hurt::Bleeds(blood, much)) = bleeds {
             // A burst of real blood cells: they fly, land, run and pool.

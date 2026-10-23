@@ -241,7 +241,7 @@ pub fn collapse(mut commands: Commands, mut sim: ResMut<SimWorld>, mut died: Mes
         let sprite = children.and_then(|ch| ch.iter().find_map(|c| sprites.get(c).ok())).map(|(s, tf)| (s.clone(), tf.translation));
         let worn = eq.map(|eq| eq.worn.iter().flatten().chain(eq.held.iter()).copied().collect()).unwrap_or_default();
         let limbs = parts.map(|p| p.limbs().into_iter().filter(|l| l.limb.is_none_or(|x| !severed.is_some_and(|c| c.has(x)))).collect()).unwrap_or_default();
-        died.write(Died { kind: creature.kind.clone(), def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin: spin.copied().unwrap_or_default(), rising: Some(rises.0.clone()), risen: risen.map_or(0, |r| r.0), charred: false, limbs, severed: severed.map(|s| s.0.clone()).unwrap_or_default(), lineage: crate::creatures::lineage_of(Some((lineage, stable))), marks: marks.map(|m| m.list.clone()).unwrap_or_default(), gib: gib.map(|g| g.0) });
+        died.write(Died { kind: creature.kind.clone(), def: anim.def.clone(), body: k.body, facing: k.loco.facing, sprite, worn, spin: spin.copied().unwrap_or_default(), rising: Some(rises.0.clone()), risen: risen.map_or(0, |r| r.0), charred: false, empty: false, limbs, severed: severed.map(|s| s.0.clone()).unwrap_or_default(), lineage: crate::creatures::lineage_of(Some((lineage, stable))), marks: marks.map(|m| m.list.clone()).unwrap_or_default(), gib: gib.map(|g| g.0) });
         if let Some(&super::hurt::Bleeds(dust, _)) = bleeds {
             sim.world.splash([k.body.pos.x, k.body.pos.y], dust, 14, 2.4);
         }
@@ -303,7 +303,7 @@ pub fn shatter(
         h.hp = 1.0;
         let worn: Vec<Stack> = chests.contents(corpse.key, &sim.world, &items).slots.iter().flatten().copied().collect();
         chests.forget(corpse.key);
-        died.write(Died { kind: pile.kind.clone(), def: pile.def.clone(), body: k.body, facing: pile.facing, sprite: pile.sprite.clone(), worn, spin: default(), rising: None, risen: pile.risen, charred: burnt, limbs: Vec::new(), severed: pile.lost.clone(), lineage: pile.lineage, marks: Vec::new(), gib: None });
+        died.write(Died { kind: pile.kind.clone(), def: pile.def.clone(), body: k.body, facing: pile.facing, sprite: pile.sprite.clone(), worn, spin: default(), rising: None, risen: pile.risen, charred: burnt, empty: false, limbs: Vec::new(), severed: pile.lost.clone(), lineage: pile.lineage, marks: Vec::new(), gib: None });
         // (Bones burst apart; a body bursts in what it bleeds.)
         let bones = pile.rise.remains == Remains::Rubble;
         if bones {

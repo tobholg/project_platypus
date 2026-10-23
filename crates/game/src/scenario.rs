@@ -11294,6 +11294,7 @@ fn death_script(
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut player: Query<(Entity, &Kinematics, &mut crate::creatures::Health, Option<&mut crate::gold::Gold>, Option<&crate::gear::hook::Rope>), With<LocalPlayer>>,
     mut cursor: ResMut<CursorOverride>,
+    (vis, bodies, pieces): (Query<&Visibility>, Query<&crate::hands::corpses::Corpse>, Query<&crate::creatures::body::wounds::CutPiece>),
     mut st: Local<(u8, f32, Option<f32>)>,
 ) {
     if s.name != "death" {
@@ -11352,6 +11353,7 @@ fn death_script(
     if t >= *next {
         *next = t + 0.5;
         match dying.0.as_ref() {
+            Some(_) if std::env::var("PLATYPUS_DEATHDBG").is_ok() => info!("death: dbg t {t:.1} player visibility {:?}; bodies {}; pieces cut off {}", vis.get(me).ok(), bodies.iter().count(), pieces.iter().count()),
             Some(d) => info!("death: t {t:.1} the screen's up: {} ({}) for {:.0}, {:.0} too many; grudge {}; moments {:?}; life {:.1} s, kills {}, gold left {}; \"{}\"; {:.1} s in", d.cause.title, d.cause.how, d.blow, d.over, d.grudge, d.moments, d.life, d.kills, d.gold, d.epitaph, d.since),
             None => info!("death: t {t:.1} alive, health {:.0} at {:.0}; the rope {:?}", hp.hp, pk.body.pos, rope.and_then(|r| r.tether()).map(|(p, l)| (p.round(), l.round()))),
         }

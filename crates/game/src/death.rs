@@ -149,10 +149,12 @@ fn age_hurts(time: Res<Time>, mut player: Query<&mut crate::creatures::Health, W
     }
 }
 
-/// One hurt remembered: what, how much got through, how long ago (s).
+/// One hurt remembered: what, of what kind, how much got through, how long
+/// ago (s).
 #[derive(Clone, Debug)]
 pub struct Hurt {
     pub cause: Cause,
+    pub kind: Harm,
     pub dealt: f32,
     pub age: f32,
 }
@@ -185,6 +187,13 @@ pub struct Dying(pub Option<Death>);
 /// (so mashing jump as you die doesn't skip it).
 pub const COUNTDOWN: f32 = 10.0;
 const SPACE_AFTER: f32 = 0.35;
+/// The death itself first, before any screen (s, real time): the body
+/// falls, flies apart, burns, a moment of it slowed (`SLOWED` s at
+/// `SLOW`); then the screen fades in over `FADE_IN`.
+pub const BEAT: f32 = 1.5;
+const SLOWED: f32 = 0.6;
+const SLOW: f32 = 0.3;
+pub const FADE_IN: f32 = 0.5;
 
 /// A death, as the screen shows it.
 #[derive(Clone, Debug)]
@@ -209,10 +218,8 @@ pub struct Death {
     pub crafted: u32,
     pub gold: u32,
     pub epitaph: &'static str,
-    /// The footer: deaths, the longest life, the day.
-    pub deaths: u32,
-    pub longest: f32,
-    pub day: u32,
+    /// Time slowed for the death's moment (to be put back).
+    pub slowed: bool,
 }
 
 pub struct DeathPlugin;
@@ -227,7 +234,8 @@ impl Plugin for DeathPlugin {
             .init_resource::<NamedBlasts>()
             .add_message::<PlayerDied>()
             .add_systems(FixedUpdate, (age_hurts, forget_blasts, live, died).chain().after(crate::world::TickSet::Bodies))
-            .add_systems(Update, (wake, screen::show).chain().in_set(DeathSet));
+            .add_systems(Update, (wake, screen::show).chain().in_set(DeathSet))
+            .add_systems(PostUpdate, keep_hidden.before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate));
     }
 }
 
@@ -250,7 +258,7 @@ fn died(
     mut events: MessageReader<PlayerDied>,
     mut dying: ResMut<Dying>,
     creatures: Res<crate::creatures::def::Creatures>,
-    daylight: Res<crate::light::Daylight>,
+    mut picked: MessageWriter<crate::pickups::PickedUp>,
     mut queue: ResMut<crate::gold::GoldQueue>,
     mut player: Query<(Entity, &mut crate::progress::Progress, &mut crate::creatures::Health, Option<&mut crate::gold::Gold>), With<crate::creatures::player::LocalPlayer>>,
 ) {
@@ -291,6 +299,7 @@ fn died(
     });
     if gold > 0 {
         queue.burst.push((ev.at, gold));
+        picked.write(crate::pickups::PickedUp::Lost(gold));
     }
     commands.entity(e).insert((crate::creatures::brain::villager::Hiding, Visibility::Hidden));
     info!("death: {} ({}) for {blow:.0}, {:.0} past; this life {life:.0} s, {kills} kills, deepest {}; {gold} gold left at ({:.0}, {:.0})", cause.title, cause.how, ev.over, p.life_deepest, ev.at.x, ev.at.y);
@@ -310,9 +319,7 @@ fn died(
         most,
         crafted,
         gold,
-        deaths: p.deaths,
-        longest: p.longest_life,
-        day: daylight.days.floor() as u32 + 1,
+        slowed: false,
     });
 }
 
@@ -321,7 +328,8 @@ fn died(
 #[allow(clippy::type_complexity)]
 fn wake(
     mut commands: Commands,
-    time: Res<Time>,
+    time: Res<Time<Real>>,
+    mut virt: ResMut<Time<Virtual>>,
     keys: Res<ButtonInput<KeyCode>>,
     sim: Res<crate::world::SimWorld>,
     checkpoint: Res<crate::respawn::Checkpoint>,
@@ -331,9 +339,19 @@ fn wake(
 ) {
     let Some(d) = dying.0.as_mut() else { return };
     d.since += time.delta_secs();
-    let now = keys.just_pressed(KeyCode::Space) && d.since >= SPACE_AFTER;
-    if d.since < COUNTDOWN && !now {
+    // (The moment of it slowed, then on as it was.)
+    if d.since < SLOWED && !d.slowed && virt.relative_speed() > SLOW {
+        d.slowed = true;
+        virt.set_relative_speed(SLOW);
+    } else if d.since >= SLOWED && std::mem::take(&mut d.slowed) {
+        virt.set_relative_speed(1.0);
+    }
+    let now = keys.just_pressed(KeyCode::Space) && d.since >= BEAT + SPACE_AFTER;
+    if d.since < BEAT + COUNTDOWN && !now {
         return;
+    }
+    if std::mem::take(&mut d.slowed) {
+        virt.set_relative_speed(1.0);
     }
     let died_at = d.at;
     dying.0 = None;
@@ -349,8 +367,26 @@ fn wake(
     p.life_deepest = i32::MIN;
     p.life_kills = p.kills.clone();
     p.life_crafted = p.crafted.values().sum();
-    commands.entity(e).remove::<(crate::creatures::brain::villager::Hiding, crate::creatures::body::elements::Burning, crate::creatures::body::elements::Coated, crate::creatures::body::elements::Chilled)>().insert(Visibility::Inherited);
+    // (Whole again: what the death took off it, the bleeding, put right.)
+    commands
+        .entity(e)
+        .remove::<(crate::creatures::brain::villager::Hiding, crate::creatures::body::elements::Burning, crate::creatures::body::elements::Coated, crate::creatures::body::elements::Chilled)>()
+        .remove::<(crate::creatures::body::parts::Severed, crate::creatures::body::wounds::Bleeding, crate::creatures::Gibbed)>()
+        .insert(Visibility::Inherited);
     respawned.write(crate::respawn::Respawned { died_at });
+}
+
+/// Dead, the player's out of sight (its body lies there instead), whatever
+/// else would show it (a blow's blink).
+fn keep_hidden(dying: Res<Dying>, mut player: Query<&mut Visibility, With<crate::creatures::player::LocalPlayer>>) {
+    if dying.0.is_none() {
+        return;
+    }
+    for mut v in &mut player {
+        if *v != Visibility::Hidden {
+            *v = Visibility::Hidden;
+        }
+    }
 }
 
 /// A line for the stone, by what did it (one of a few, by the count).
@@ -373,11 +409,13 @@ fn epitaph(cause: &Cause, deaths: u32) -> &'static str {
     lines[deaths as usize % lines.len()]
 }
 
-/// The screen itself.
+/// The screen itself: a vignette over the edges (the middle left clear:
+/// the body, whatever's at it), what killed you high in the middle, how
+/// this life went low under it, the countdown at the bottom.
 mod screen {
     use bevy::prelude::*;
 
-    use super::{COUNTDOWN, Dying};
+    use super::{BEAT, COUNTDOWN, Dying, FADE_IN};
 
     #[derive(Component)]
     pub struct DeathScreen;
@@ -385,15 +423,20 @@ mod screen {
     #[derive(Component)]
     pub struct Countdown;
 
-    const RED: Color = Color::srgb(0.82, 0.14, 0.1);
-    const TEXT: Color = Color::srgb(0.92, 0.9, 0.86);
-    const DIM: Color = Color::srgb(0.6, 0.57, 0.54);
-    const FAINT: Color = Color::srgb(0.42, 0.4, 0.38);
-    const BAR: Color = Color::srgb(0.7, 0.18, 0.12);
-    const CARD: Color = Color::srgba(0.04, 0.02, 0.02, 0.82);
+    #[derive(Component)]
+    pub struct Vignette;
+
+    /// The vignette's picture (made once).
+    #[derive(Resource)]
+    pub struct VignetteImage(Handle<Image>);
+
+    const RED: Color = Color::srgb(0.85, 0.16, 0.12);
+    const TEXT: Color = Color::srgb(0.93, 0.91, 0.87);
+    const DIM: Color = Color::srgb(0.66, 0.63, 0.6);
+    const BAR: Color = Color::srgb(0.72, 0.2, 0.14);
 
     fn text(p: &mut ChildSpawnerCommands, s: impl Into<String>, size: f32, color: Color) {
-        p.spawn((Text::new(s), TextFont { font_size: FontSize::Px(size), ..default() }, TextColor(color)));
+        p.spawn((Text::new(s), TextFont { font_size: FontSize::Px(size), ..default() }, TextColor(color), TextShadow { offset: Vec2::new(1.5, 1.5), color: Color::srgba(0.0, 0.0, 0.0, 0.9) }));
     }
 
     fn clock(secs: f32) -> String {
@@ -401,80 +444,112 @@ mod screen {
         if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) }
     }
 
-    fn heading(p: &mut ChildSpawnerCommands, s: &str) {
-        p.spawn(Node { margin: UiRect::top(px(14)), ..default() }).with_children(|h| text(h, s, 13.0, FAINT));
+    /// Dark red at the edges, clear in the middle (eased).
+    fn vignette(images: &mut Assets<Image>) -> Handle<Image> {
+        let (w, h) = (192u32, 108u32);
+        let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                let (dx, dy) = ((x as f32 + 0.5) / w as f32 * 2.0 - 1.0, (y as f32 + 0.5) / h as f32 * 2.0 - 1.0);
+                let r = (dx * dx + dy * dy).sqrt() / std::f32::consts::SQRT_2;
+                // (Strong: what a UI blends in is lighter than it reads.)
+                let k = ((r - 0.25) / 0.8).clamp(0.0, 1.0);
+                let a = k * k * (3.0 - 2.0 * k) * 0.82 + 0.12;
+                rgba.extend_from_slice(&[18, 2, 2, (a.min(1.0) * 255.0) as u8]);
+            }
+        }
+        let image = Image::new(
+            bevy::render::render_resource::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+            bevy::render::render_resource::TextureDimension::D2,
+            rgba,
+            bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+            bevy::asset::RenderAssetUsages::MAIN_WORLD | bevy::asset::RenderAssetUsages::RENDER_WORLD,
+        );
+        images.add(image)
     }
 
-    /// Put up (once a death's there), the countdown kept, taken down on waking.
-    pub fn show(mut commands: Commands, dying: Res<Dying>, bestiary: Res<crate::bestiary::panel::Bestiary>, up: Query<Entity, With<DeathScreen>>, mut count: Query<&mut Text, With<Countdown>>, mut veil: Query<&mut BackgroundColor, With<DeathScreen>>) {
+    /// Put up once the death's moment is over, fading in; the countdown
+    /// kept; taken down on waking.
+    #[allow(clippy::too_many_arguments)]
+    pub fn show(
+        mut commands: Commands,
+        dying: Res<Dying>,
+        bestiary: Res<crate::bestiary::panel::Bestiary>,
+        mut images: ResMut<Assets<Image>>,
+        made: Option<Res<VignetteImage>>,
+        up: Query<Entity, With<DeathScreen>>,
+        mut count: Query<&mut Text, With<Countdown>>,
+        mut veil: Query<&mut ImageNode, With<Vignette>>,
+    ) {
         let Some(d) = dying.0.as_ref() else {
             for e in &up {
                 commands.entity(e).despawn();
             }
             return;
         };
+        if d.since < BEAT {
+            return;
+        }
         if !up.is_empty() {
+            let left = (BEAT + COUNTDOWN - d.since).ceil().max(1.0) as u32;
             for mut t in &mut count {
-                t.0 = format!("Resurrecting in {}", (COUNTDOWN - d.since).ceil().max(1.0) as u32);
+                t.0 = format!("Resurrecting in {left}   (Space)");
             }
-            // (Darkening as it comes up.)
-            for mut bg in &mut veil {
-                bg.0 = Color::srgba(0.03, 0.0, 0.0, 0.9 * (d.since / 0.6).min(1.0));
+            let k = ((d.since - BEAT) / FADE_IN).clamp(0.0, 1.0);
+            for mut v in &mut veil {
+                v.color = Color::srgba(1.0, 1.0, 1.0, k);
             }
             return;
         }
+        let image = match made {
+            Some(m) => m.0.clone(),
+            None => {
+                let h = vignette(&mut images);
+                commands.insert_resource(VignetteImage(h.clone()));
+                h
+            }
+        };
+        let full = || Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() };
         commands
-            .spawn((DeathScreen, GlobalZIndex(60), Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() }, BackgroundColor(Color::NONE)))
+            .spawn((DeathScreen, GlobalZIndex(60), full()))
             .with_children(|root| {
-                root.spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(4), padding: UiRect::axes(px(48), px(28)), ..default() }, BackgroundColor(CARD))).with_children(|col| {
-                    text(col, "YOU DIED", 64.0, RED);
-                    // What did it.
-                    col.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), margin: UiRect::vertical(px(10)), ..default() }).with_children(|row| {
+                root.spawn((Vignette, ImageNode { color: Color::srgba(1.0, 1.0, 1.0, 0.0), ..ImageNode::new(image) }, full()));
+                // High in the middle: the death, and what did it.
+                root.spawn(Node { position_type: PositionType::Absolute, top: percent(9), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(6), ..default() }).with_children(|top| {
+                    text(top, "YOU DIED", 60.0, RED);
+                    top.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), ..default() }).with_children(|row| {
                         if let Some((img, size)) = d.cause.creature.as_deref().and_then(|k| bestiary.picture(k)) {
-                            let scale = (84.0 / size.x.max(size.y) as f32).min(4.0);
-                            row.spawn((Node { width: px(96), height: px(96), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() }, BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.05)))).with_children(|f| {
-                                f.spawn((ImageNode::new(img.clone()), Node { width: px(size.x as f32 * scale), height: px(size.y as f32 * scale), ..default() }));
-                            });
+                            let scale = (40.0 / size.x.max(size.y) as f32).min(3.0);
+                            row.spawn((ImageNode::new(img.clone()), Node { width: px(size.x as f32 * scale), height: px(size.y as f32 * scale), ..default() }));
                         }
-                        row.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(3), ..default() }).with_children(|c| {
-                            text(c, d.cause.title.clone(), 30.0, TEXT);
-                            let over = if d.over >= 0.5 { format!(" ({:.0} too many)", d.over) } else { String::new() };
-                            text(c, format!("{}, {:.0} damage{over}", d.cause.how, d.blow), 17.0, DIM);
-                            let grudge = match d.grudge {
-                                1 => "The first time it's had you".to_string(),
-                                n => format!("It has killed you {n} times"),
-                            };
-                            text(c, grudge, 15.0, FAINT);
-                        });
+                        text(row, format!("{}, {}", d.cause.title, d.cause.how), 24.0, TEXT);
                     });
-                    // This life.
-                    heading(col, "THIS LIFE");
-                    let record = if d.record { "  - new record!" } else { "" };
-                    let deepest = if d.deepest > 0 { format!("{} below", d.deepest) } else { "the surface".into() };
-                    let most = d.most.as_ref().map_or(String::new(), |(name, n)| format!(" (most: {name} x{n})"));
-                    text(col, format!("Survived {}{record}", clock(d.life)), 18.0, TEXT);
-                    text(col, format!("Deepest {deepest}   |   Kills {}{most}   |   Crafted {}", d.kills, d.crafted), 15.0, DIM);
-                    if d.gold > 0 {
-                        text(col, format!("{} gold left where you fell (marked on the map)", d.gold), 15.0, Color::srgb(0.95, 0.78, 0.3));
-                    }
-                    // The last moments.
+                    let grudge = if d.grudge > 1 { format!("It has had you {} times", d.grudge) } else { "The first time it's had you".into() };
+                    text(top, grudge, 15.0, DIM);
+                });
+                // Low under it: how this life went, the last moments, a line
+                // for the stone, the countdown.
+                root.spawn(Node { position_type: PositionType::Absolute, bottom: percent(8), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(8), ..default() }).with_children(|low| {
+                    let record = if d.record { "  (a new record)" } else { "" };
+                    let deep = if d.deepest > 0 { format!("{} deep", d.deepest) } else { "on the surface".into() };
+                    let most = d.most.as_ref().map_or(String::new(), |(name, n)| format!(", {n} {name}"));
+                    text(low, format!("{} survived{record}   |   {deep}   |   {} kills{most}   |   {} crafted", clock(d.life), d.kills, d.crafted), 17.0, TEXT);
                     if !d.moments.is_empty() {
-                        heading(col, "LAST MOMENTS");
                         let most = d.moments[0].1.max(1.0);
-                        for (what, much) in d.moments.iter().take(4) {
-                            col.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(10), ..default() }).with_children(|r| {
-                                r.spawn(Node { width: px(150), justify_content: JustifyContent::End, ..default() }).with_children(|l| text(l, what.clone(), 15.0, DIM));
-                                r.spawn((Node { width: px(220.0 * much / most), height: px(10), ..default() }, BackgroundColor(BAR)));
-                                r.spawn(Node { width: px(40), ..default() }).with_children(|l| text(l, format!("{much:.0}"), 15.0, DIM));
-                            });
-                        }
+                        low.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(18), ..default() }).with_children(|r| {
+                            for (what, much) in d.moments.iter().take(3) {
+                                r.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), ..default() }).with_children(|m| {
+                                    text(m, what.clone(), 14.0, DIM);
+                                    m.spawn((Node { width: px(70.0 * much / most), height: px(6), ..default() }, BackgroundColor(BAR)));
+                                    text(m, format!("{much:.0}"), 14.0, DIM);
+                                });
+                            }
+                        });
                     }
-                    col.spawn(Node { margin: UiRect::top(px(16)), ..default() }).with_children(|e| text(e, format!("\"{}\"", d.epitaph), 17.0, DIM));
-                    col.spawn(Node { margin: UiRect::top(px(18)), ..default() }).with_children(|e| {
-                        e.spawn((Countdown, Text::new(""), TextFont { font_size: FontSize::Px(24.0), ..default() }, TextColor(TEXT)));
+                    text(low, format!("\"{}\"", d.epitaph), 16.0, DIM);
+                    low.spawn(Node { margin: UiRect::top(px(10)), ..default() }).with_children(|c| {
+                        c.spawn((Countdown, Text::new(""), TextFont { font_size: FontSize::Px(22.0), ..default() }, TextColor(TEXT), TextShadow { offset: Vec2::new(1.5, 1.5), color: Color::srgba(0.0, 0.0, 0.0, 0.9) }));
                     });
-                    text(col, "[Space] wake now", 15.0, DIM);
-                    col.spawn(Node { margin: UiRect::top(px(16)), ..default() }).with_children(|e| text(e, format!("Deaths: {}   |   Longest life: {}   |   Day {}", d.deaths, clock(d.longest), d.day), 13.0, FAINT));
                 });
             });
     }
@@ -499,7 +574,7 @@ mod tests {
 
     #[test]
     fn the_last_moments_add_up_by_what_most_first() {
-        let hurt = |t: &str, d: f32| Hurt { cause: Cause::new(t, "x"), dealt: d, age: 0.0 };
+        let hurt = |t: &str, d: f32| Hurt { cause: Cause::new(t, "x"), kind: Harm::Blunt, dealt: d, age: 0.0 };
         let m = last_moments(&[hurt("Rat", 3.0), hurt("Fire", 5.0), hurt("Rat", 4.0), hurt("Heal", -2.0)]);
         assert_eq!(m, vec![("Rat".to_string(), 7.0), ("Fire".to_string(), 5.0)]);
     }
