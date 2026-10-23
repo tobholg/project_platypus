@@ -871,7 +871,7 @@ fn through_to_open(h: &mut Hood, x: i32, y: i32, dir: i32, m: MaterialId) -> Opt
 /// the job can see: a column deeper than a chunk reads past its edge
 /// otherwise): the pressure here.
 fn depth_above(h: &Hood, x: i32, y: i32, m: MaterialId, cap: i32) -> i32 {
-    (1..=cap.min(Hood::sight(y, 1))).take_while(|&k| h.get(x, y + k).is_some_and(|t| t.material == m)).count() as i32
+    (1..=cap.min(h.sight_up(y))).take_while(|&k| h.get(x, y + k).is_some_and(|t| t.material == m)).count() as i32
 }
 
 /// How far along the surface a liquid looks for lower ground.
@@ -902,7 +902,7 @@ fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
         // further (up to `SEEK`) it heads that way. Either is purposeful and
         // costs no budget: water that knows where lower ground is doesn't
         // slosh, so it levels fast.
-        for i in 1..=SEEK.max(reach).min(Hood::sight(x, dir)) {
+        for i in 1..=SEEK.max(reach).min(h.sight(x, dir)) {
             // Sideways only into air (or plants, which get washed away).
             // Layering (oil over water) happens by sinking; sideways swaps at
             // an interface would never end.

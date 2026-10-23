@@ -5,7 +5,9 @@
 //! only cells within `MAX_REACH` (half a chunk) of its chunk, and same-parity
 //! chunks are two chunks apart, so no two jobs of a pass ever touch the same
 //! cell. That is the invariant everything unsafe in this file relies on; debug
-//! builds assert it on every access.
+//! builds assert it on every access. (A look, reads only, may go further,
+//! to the edge of the 3×3 chunks, where no job of the pass holds the chunk
+//! two over: none can be writing there. `Hood::sight`.)
 
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
 
@@ -97,6 +99,10 @@ pub(crate) struct Hood<'a> {
     /// The last run of liquid scanned for pressure along a row, each way
     /// (`rules::through_to_open`): the cells after it in the row share it.
     pub pressure: [Option<RowScan>; 2],
+    /// Whether a job of this pass holds the chunk two over (left, right,
+    /// down, up): if so it may be writing up to its reach, so a look stops
+    /// at this job's.
+    busy: [bool; 4],
 }
 
 /// A row scanned through one liquid: past `from` its cells are `m` up to
@@ -114,36 +120,71 @@ pub(crate) struct RowScan {
 const LOCAL_MASK: i32 = CHUNK - 1;
 
 impl<'a> Hood<'a> {
+    /// Where a cell it writes (or reads within reach) is.
     #[inline(always)]
     fn slot(lx: i32, ly: i32) -> (usize, usize) {
         debug_assert!(
             (-MAX_REACH..CHUNK + MAX_REACH).contains(&lx) && (-MAX_REACH..CHUNK + MAX_REACH).contains(&ly),
             "cell access ({lx},{ly}) is outside the job's reach; same-pass jobs could collide"
         );
+        Self::place(lx, ly)
+    }
+
+    /// Where a cell it reads is: within reach, or past it in a row or a
+    /// column where no job of this pass can be writing (`sight`).
+    #[inline(always)]
+    fn read_slot(&self, lx: i32, ly: i32) -> (usize, usize) {
+        debug_assert!(
+            {
+                let near = |l: i32| (-MAX_REACH..CHUNK + MAX_REACH).contains(&l);
+                let far = |l: i32, lo: bool, hi: bool| (if lo { -MAX_REACH } else { -CHUNK }..if hi { CHUNK + MAX_REACH } else { 2 * CHUNK }).contains(&l);
+                (near(ly) && far(lx, self.busy[0], self.busy[1])) || (near(lx) && far(ly, self.busy[2], self.busy[3]))
+            },
+            "cell read ({lx},{ly}) is past what the job may see; a same-pass job could be writing it"
+        );
+        Self::place(lx, ly)
+    }
+
+    #[inline(always)]
+    fn place(lx: i32, ly: i32) -> (usize, usize) {
         let sx = ((lx + CHUNK) >> CHUNK_BITS) as usize;
         let sy = ((ly + CHUNK) >> CHUNK_BITS) as usize;
         let i = ((ly & LOCAL_MASK) << CHUNK_BITS | (lx & LOCAL_MASK)) as usize;
         (sy * 3 + sx, i)
     }
 
-    /// How many cells from `lx` in `dir` (-1, 1) a job may write (and
-    /// read): its reach.
+    /// How many cells from `lx` in `dir` (-1, 1) a job may write and read:
+    /// its reach. (A look to decide is held to it too: past it, a job of
+    /// the same pass may be writing the cell.)
     #[inline(always)]
     pub fn room(lx: i32, dir: i32) -> i32 {
         if dir < 0 { lx + MAX_REACH } else { CHUNK + MAX_REACH - 1 - lx }
     }
 
-    /// How far a look (reads only, to decide) may go: to the edge of the
-    /// chunks the job holds. (Past it, `slot` is out of bounds.)
+    /// How far a look (reads only, to decide) may go from `lx` along its row
+    /// in `dir` (-1, 1): to the edge of the chunks the job holds, unless a
+    /// job of this pass holds the chunk two over that way; then its reach.
     #[inline(always)]
-    pub fn sight(lx: i32, dir: i32) -> i32 {
-        if dir < 0 { lx + CHUNK } else { 2 * CHUNK - 1 - lx }
+    pub fn sight(&self, lx: i32, dir: i32) -> i32 {
+        if self.busy[(dir > 0) as usize] {
+            Self::room(lx, dir)
+        } else if dir < 0 {
+            lx + CHUNK
+        } else {
+            2 * CHUNK - 1 - lx
+        }
+    }
+
+    /// The same, up a column from `ly`.
+    #[inline(always)]
+    pub fn sight_up(&self, ly: i32) -> i32 {
+        if self.busy[3] { Self::room(ly, 1) } else { 2 * CHUNK - 1 - ly }
     }
 
     /// `None` = chunk not loaded; callers treat it as solid.
     #[inline(always)]
     pub fn get(&self, lx: i32, ly: i32) -> Option<Cell> {
-        let (s, i) = Self::slot(lx, ly);
+        let (s, i) = self.read_slot(lx, ly);
         // SAFETY: see module docs.
         self.chunks[s].map(|c| unsafe { *c.cells.add(i) })
     }
@@ -162,7 +203,7 @@ impl<'a> Hood<'a> {
     /// Background cell; `None` = chunk not loaded.
     #[inline(always)]
     pub fn get_bg(&self, lx: i32, ly: i32) -> Option<Cell> {
-        let (s, i) = Self::slot(lx, ly);
+        let (s, i) = self.read_slot(lx, ly);
         // SAFETY: see module docs (the background follows the same reach rule).
         self.chunks[s].map(|c| unsafe { *c.bg.add(i) })
     }
@@ -359,6 +400,7 @@ pub(crate) fn step_chunks(
     let mut raws: FxHashMap<ChunkPos, ChunkRaw> = FxHashMap::default();
     raws.reserve(chunks.len());
     let mut passes: [Vec<(ChunkPos, Rect)>; 4] = Default::default();
+    let mut in_pass: [rustc_hash::FxHashSet<ChunkPos>; 4] = Default::default();
     let mut stats = StepStats::default();
 
     for (pos, chunk) in chunks.iter_mut() {
@@ -367,6 +409,7 @@ pub(crate) fn step_chunks(
             stats.active_chunks += 1;
             stats.visited_cells += rect.area();
             passes[pos.parity()].push((*pos, rect));
+            in_pass[pos.parity()].insert(*pos);
         }
         raws.insert(*pos, ChunkRaw::of(chunk));
     }
@@ -395,6 +438,7 @@ pub(crate) fn step_chunks(
             vapour: Vec::new(),
             wind,
             pressure: [None; 2],
+            busy: [(-2, 0), (2, 0), (0, -2), (0, 2)].map(|(dx, dy)| in_pass[pos.parity()].contains(&pos.offset(dx, dy))),
         };
         update_rect(&mut hood, rect);
         hood.finish()
