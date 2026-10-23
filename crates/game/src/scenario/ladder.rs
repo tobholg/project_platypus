@@ -608,6 +608,8 @@ fn best_pick(inv: &mut Inventory, items: &Items) -> Option<usize> {
 fn select(hand: &mut Hand, slot: usize) {
     hand.bar = 0;
     hand.slot = slot;
+    // (The bot mines a block at a time, as it was tuned to.)
+    hand.area = false;
 }
 
 fn ids(mats: &platypus_sim::MaterialTable, names: &[&str]) -> Vec<MaterialId> {

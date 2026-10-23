@@ -207,6 +207,18 @@ pub struct Rope {
     aiming: bool,
 }
 
+/// Dying, or waking somewhere else, the player lets go: the hook's gone,
+/// the rope with it (it held on where it died, stretched off the screen).
+pub fn let_go(mut died: MessageReader<crate::death::PlayerDied>, mut woke: MessageReader<crate::respawn::Respawned>, mut ropes: Query<&mut Rope, With<crate::creatures::player::LocalPlayer>>) {
+    let moved = died.read().count() + woke.read().count() > 0;
+    if !moved {
+        return;
+    }
+    for mut rope in &mut ropes {
+        *rope = Rope::default();
+    }
+}
+
 impl Rope {
     /// On the rope: the point it swings round, and how much rope there is
     /// from there.

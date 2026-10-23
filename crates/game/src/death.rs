@@ -219,13 +219,17 @@ pub struct Death {
 
 pub struct DeathPlugin;
 
+/// Waking (and the screen): what follows a wake goes after this.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct DeathSet;
+
 impl Plugin for DeathPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Dying>()
             .init_resource::<NamedBlasts>()
             .add_message::<PlayerDied>()
             .add_systems(FixedUpdate, (age_hurts, forget_blasts, live, died).chain().after(crate::world::TickSet::Bodies))
-            .add_systems(Update, (wake, screen::show).chain());
+            .add_systems(Update, (wake, screen::show).chain().in_set(DeathSet));
     }
 }
 

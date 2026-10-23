@@ -5582,12 +5582,16 @@ fn pickarea_script(
     mut cursor: ResMut<CursorOverride>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
-    hand: Res<crate::hands::Hand>,
+    mut hand: ResMut<crate::hands::Hand>,
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
     mut state: Local<(u8, usize, usize, f32)>,
 ) {
     if s.name != "pickarea" {
         return;
+    }
+    // (From a block at a time, so C turns the round bite on.)
+    if state.0 == 0 {
+        hand.area = false;
     }
     let Ok(mut k) = player.single_mut() else { return };
     let t = s.elapsed;
@@ -11258,14 +11262,16 @@ fn firedamp_script(
 /// at 1.5 s with a `PLATYPUS_FOE` (rat) beside it: it dies. Every half
 /// second: whether the death screen's up, what it says killed it, the
 /// countdown, where the player is; `PLATYPUS_SPACE` (s after dying, 2):
-/// Space pressed, to wake at once; `PLATYPUS_AGAIN=1`: then a second death.
+/// Space pressed, to wake at once; `PLATYPUS_AGAIN=1`: then a second death;
+/// `PLATYPUS_HOOK=1`: hooked into the floor as it dies.
 fn death_script(
     s: Res<Scenario>,
     mut commands: Commands,
     mut menu: ResMut<crate::devmenu::DevMenu>,
     dying: Res<crate::death::Dying>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
-    mut player: Query<(Entity, &Kinematics, &mut crate::creatures::Health, Option<&mut crate::gold::Gold>), With<LocalPlayer>>,
+    mut player: Query<(Entity, &Kinematics, &mut crate::creatures::Health, Option<&mut crate::gold::Gold>, Option<&crate::gear::hook::Rope>), With<LocalPlayer>>,
+    mut cursor: ResMut<CursorOverride>,
     mut st: Local<(u8, f32, Option<f32>)>,
 ) {
     if s.name != "death" {
@@ -11273,9 +11279,15 @@ fn death_script(
     }
     menu.open = false;
     let t = s.elapsed;
-    let Ok((me, pk, mut hp, gold)) = player.single_mut() else { return };
+    let Ok((me, pk, mut hp, gold, rope)) = player.single_mut() else { return };
     let (step, next, died) = &mut *st;
     keys.release(KeyCode::Space);
+    // (`PLATYPUS_HOOK=1`: the hook thrown into the floor off to the right at
+    // 1.2 s, held as it dies.)
+    if std::env::var("PLATYPUS_HOOK").is_ok() {
+        cursor.0 = Some(pk.body.pos + Vec2::new(70.0, -14.0));
+        if (1.2..1.3).contains(&t) { keys.press(KeyCode::KeyE) } else { keys.release(KeyCode::KeyE) }
+    }
     if *step == 0 && t > 1.0 {
         *step = 1;
         if let Some(mut g) = gold {
@@ -11319,7 +11331,7 @@ fn death_script(
         *next = t + 0.5;
         match dying.0.as_ref() {
             Some(d) => info!("death: t {t:.1} the screen's up: {} ({}) for {:.0}, {:.0} too many; grudge {}; moments {:?}; life {:.1} s, kills {}, gold left {}; \"{}\"; {:.1} s in", d.cause.title, d.cause.how, d.blow, d.over, d.grudge, d.moments, d.life, d.kills, d.gold, d.epitaph, d.since),
-            None => info!("death: t {t:.1} alive, health {:.0} at {:.0}", hp.hp, pk.body.pos),
+            None => info!("death: t {t:.1} alive, health {:.0} at {:.0}; the rope {:?}", hp.hp, pk.body.pos, rope.and_then(|r| r.tether()).map(|(p, l)| (p.round(), l.round()))),
         }
     }
 }

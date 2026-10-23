@@ -92,7 +92,8 @@ pub struct Hand {
 
 impl Default for Hand {
     fn default() -> Self {
-        Hand { slot: 0, bar: 0, smart: true, area: false, cooldown: 0.0, thrown: 0, readying: false, called_off: false }
+        // (A pickaxe bites round by default; the smart cursor's off till Alt.)
+        Hand { slot: 0, bar: 0, smart: false, area: true, cooldown: 0.0, thrown: 0, readying: false, called_off: false }
     }
 }
 
