@@ -234,7 +234,7 @@ impl Plugin for DeathPlugin {
             .init_resource::<NamedBlasts>()
             .add_message::<PlayerDied>()
             .add_systems(FixedUpdate, (age_hurts, forget_blasts, live, died).chain().after(crate::world::TickSet::Bodies))
-            .add_systems(Update, (wake, screen::show).chain().in_set(DeathSet))
+            .add_systems(Update, (wake, screen::show, rise).chain().in_set(DeathSet))
             .add_systems(PostUpdate, keep_hidden.before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate));
     }
 }
@@ -302,6 +302,15 @@ fn died(
         picked.write(crate::pickups::PickedUp::Lost(gold));
     }
     commands.entity(e).insert((crate::creatures::brain::villager::Hiding, Visibility::Hidden));
+    // Its spirit, out of the body once it's still (rising through the
+    // countdown).
+    commands.spawn((
+        Name::new("Spirit"),
+        Spirit { from: ev.at, t: -SPIRIT_AFTER },
+        crate::light::LightSource { color: [0.0; 3], flicker: 0.0 },
+        Sprite::from_color(Color::srgba(0.75, 0.9, 1.0, 0.0), Vec2::new(3.0, 5.0)),
+        Transform::from_translation(ev.at.extend(14.0)),
+    ));
     info!("death: {} ({}) for {blow:.0}, {:.0} past; this life {life:.0} s, {kills} kills, deepest {}; {gold} gold left at ({:.0}, {:.0})", cause.title, cause.how, ev.over, p.life_deepest, ev.at.x, ev.at.y);
     dying.0 = Some(Death {
         at: ev.at,
@@ -334,7 +343,7 @@ fn wake(
     sim: Res<crate::world::SimWorld>,
     checkpoint: Res<crate::respawn::Checkpoint>,
     mut dying: ResMut<Dying>,
-    mut respawned: MessageWriter<crate::respawn::Respawned>,
+    (mut respawned, mut flares): (MessageWriter<crate::respawn::Respawned>, MessageWriter<crate::fx::Flare>),
     mut player: Query<(Entity, &mut crate::creatures::Kinematics, &mut crate::creatures::Health, &mut crate::progress::Progress), With<crate::creatures::player::LocalPlayer>>,
 ) {
     let Some(d) = dying.0.as_mut() else { return };
@@ -374,6 +383,41 @@ fn wake(
         .remove::<(crate::creatures::body::parts::Severed, crate::creatures::body::wounds::Bleeding, crate::creatures::Gibbed)>()
         .insert(Visibility::Inherited);
     respawned.write(crate::respawn::Respawned { died_at });
+    // Back: a soft flash where it wakes.
+    flares.write(crate::fx::Flare { at: k.body.pos, color: [1.1, 1.3, 1.6], life: 0.6 });
+}
+
+/// The spirit leaving the body: how long it's been rising (s; below 0, not
+/// yet), from where.
+#[derive(Component)]
+pub struct Spirit {
+    from: Vec2,
+    t: f32,
+}
+
+/// The spirit comes out this long after death (s), rises this fast (cells a
+/// second), swaying, its glow this bright.
+const SPIRIT_AFTER: f32 = 0.9;
+const SPIRIT_RISE: f32 = 9.0;
+const SPIRIT_GLOW: [f32; 3] = [0.35, 0.5, 0.7];
+
+/// The spirit rising, faint and swaying, fading in, then out as the count
+/// runs down; gone on waking.
+fn rise(mut commands: Commands, time: Res<Time<Real>>, dying: Res<Dying>, mut spirits: Query<(Entity, &mut Spirit, &mut Transform, &mut Sprite, &mut crate::light::LightSource)>) {
+    for (e, mut sp, mut tf, mut sprite, mut light) in &mut spirits {
+        if dying.0.is_none() {
+            commands.entity(e).despawn();
+            continue;
+        }
+        sp.t += time.delta_secs();
+        let t = sp.t.max(0.0);
+        let left = BEAT + COUNTDOWN - SPIRIT_AFTER - sp.t;
+        let a = (t / 1.0).min(1.0) * (left / 2.0).clamp(0.0, 1.0) * if sp.t < 0.0 { 0.0 } else { 1.0 };
+        let at = sp.from + Vec2::new((t * 1.7).sin() * 4.0, t * SPIRIT_RISE + 6.0);
+        tf.translation = at.extend(14.0);
+        sprite.color = Color::srgba(0.75, 0.9, 1.0, 0.7 * a);
+        light.color = SPIRIT_GLOW.map(|c| c * a);
+    }
 }
 
 /// Dead, the player's out of sight (its body lies there instead), whatever
