@@ -438,7 +438,7 @@
         // A campfire: a ring of stones, logs crossed, a fire. Rest by it (out
         // of danger) and it slowly mends you (`rest`, health a second): off
         // Pilgrim, the only healing but potions and sleep.
-        (id: "campfire", name: "Campfire", light: (1.2, 0.6, 0.22), flicker: 0.8, rest: 0.4, flame: Some((0, 5)),
+        (id: "campfire", name: "Campfire", light: (1.2, 0.6, 0.22), flicker: 0.8, rest: 0.6, flame: Some((0, 5)),
             palette: {'S': (120, 118, 124), 's': (86, 84, 92), 'd': (110, 72, 40), 'D': (78, 50, 28), 'r': (220, 80, 30), 'R': (250, 140, 40), 'y': (255, 200, 80), 'Y': (255, 240, 180)},
             art: [
                 "........y...y.......",
