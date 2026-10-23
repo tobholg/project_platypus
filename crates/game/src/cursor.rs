@@ -438,7 +438,11 @@ fn throw_arc(
             return Some(toss);
         }
         let held = inv.slots.get(hand.active()).copied().flatten()?;
-        let Use::Throw(_) = items.def(held.item).use_ else { return None };
+        // (A bomb, a glow stick; or a light, `hands::lights`.)
+        let def = items.def(held.item);
+        if !matches!(def.use_, Use::Throw(_)) && crate::hands::lights::throwable(def.light).is_none() {
+            return None;
+        }
         // (Only readied: the left button held.)
         if !hand.readying {
             return None;

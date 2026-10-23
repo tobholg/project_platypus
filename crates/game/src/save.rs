@@ -274,6 +274,10 @@ struct ThingsFile {
     stashes: Vec<SavedStash>,
     drops: Vec<((f32, f32), SavedStack)>,
     creatures: Vec<SavedCreature>,
+    /// Lights put down (torches planted, flashlights, lanterns: by item id),
+    /// where, which way a beam goes (`hands::lights`).
+    #[serde(default)]
+    lights: Vec<(String, (f32, f32), (f32, f32))>,
 }
 
 fn write_ron<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
@@ -359,7 +363,7 @@ fn save(
     items: Option<Res<Items>>,
     chests: Res<Chests>,
     spawned: Res<Spawned>,
-    (hand, held): (Res<Hand>, Res<crate::hands::ui::Held>),
+    (hand, held, lights_down): (Res<Hand>, Res<crate::hands::ui::Held>, Query<&crate::hands::lights::PlacedLight>),
     player: Query<SavedPlayer, With<LocalPlayer>>,
     boxes: Query<(&Chest, &Kinematics)>,
     drops: Query<(&Dropped, &Kinematics)>,
@@ -454,6 +458,7 @@ fn save(
             .map(|(key, origin, contents)| SavedStash { key, origin: (origin.x, origin.y), contents: contents.map(|i| slots_out(&items, &i.slots)) })
             .collect(),
         drops: drops.iter().map(|(d, k)| ((k.body.pos.x, k.body.pos.y), stack_out(&items, &d.stack))).collect(),
+        lights: lights_down.iter().map(|l| (items.def(l.item).id.clone(), (l.at.x, l.at.y), (l.dir.x, l.dir.y))).collect(),
         creatures: creatures.iter().map(|(c, k, h, keeps)| SavedCreature { kind: c.kind.clone(), feet: (k.body.pos.x, k.body.pos.y - k.body.half.y), hp: h.hp, keeps: keeps.map(|k| k.0) }).collect(),
     };
     for (b, k) in &bodies {
@@ -582,6 +587,7 @@ fn load_world(
             None => warn!("save: no station `{id}` any more"),
         }
     }
+    commands.insert_resource(crate::hands::lights::PendingLights(things.lights.iter().filter_map(|(id, (x, y), (dx, dy))| Some((items.id(id)?, Vec2::new(*x, *y), Vec2::new(*dx, *dy)))).collect()));
     for ((x, y), s) in &things.drops {
         if let Some(stack) = stack_in(&items, s) {
             spawn_drop(&mut commands, &items, Vec2::new(*x, *y), stack);

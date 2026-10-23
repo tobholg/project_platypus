@@ -310,6 +310,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, firedamp_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, death_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, switch_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, lightthrow_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, groundbuild_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
@@ -11389,6 +11390,74 @@ fn switch_script(
         *next = t + 0.05;
         let (on, warm, flare) = switched.hand.electric();
         info!("switch: t {t:.2} the hand {} ({:.2} of it; electric {on:.2}, filament {warm:.1}, flare {flare:.2}); the head {:.2}", if switched.hand.on { "on" } else { "off" }, switched.hand_level(toggles.carry), switched.head.electric().0);
+    }
+}
+
+/// `lightthrow` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`, try
+/// `PLATYPUS_HOUR=23`): torches, a flashlight and a lantern in the hotbar,
+/// a TNT barrel 150 to the right. A torch tapped down 40 ahead (1 s); a
+/// torch held and thrown at the barrel (2 s); the flashlight thrown 80 out
+/// (4.5 s); the lantern thrown 60 out (6.5 s); the planted torch
+/// right-clicked back (9 s). Every half second: what's down, what's in
+/// flight, the barrel, fire about, the torches in the pack.
+fn lightthrow_script(
+    s: Res<Scenario>,
+    mut commands: Commands,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    sim: Res<SimWorld>,
+    items: Option<Res<crate::hands::items::Items>>,
+    (mut hand, mut cursor, mut mouse): (ResMut<crate::hands::Hand>, ResMut<CursorOverride>, ResMut<ButtonInput<MouseButton>>),
+    mut player: Query<(&Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    placed: Query<(&crate::hands::lights::PlacedLight, Has<crate::hands::lights::BeamLight>, Option<&Children>)>,
+    thrown: Query<&Name>,
+    barrels: Query<&Kinematics, (With<crate::creatures::custom::explosive::Explosive>, Without<LocalPlayer>)>,
+    mut st: Local<(u8, f32)>,
+) {
+    if s.name != "lightthrow" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Some(items) = items else { return };
+    let Ok((pk, mut inv)) = player.single_mut() else { return };
+    let (step, next) = &mut *st;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let x = pk.body.pos.x;
+    let id = |n: &str| items.id(n).expect(n);
+    if *step == 0 && t > 0.5 {
+        *step = 1;
+        inv.slots[0] = Some(crate::hands::items::Stack::new(id("torch"), 5));
+        inv.slots[1] = Some(crate::hands::items::Stack::new(id("flashlight"), 1));
+        inv.slots[2] = Some(crate::hands::items::Stack::new(id("lantern"), 1));
+        crate::creatures::def::spawn_creature(&mut commands, "tnt_barrel", Vec2::new(x + 150.0, fl), |_| {});
+    }
+    // (Which slot, where the cursor is, and the left button held from..to.)
+    let (slot, aim, press) = match t {
+        _ if t < 2.0 => (0, Vec2::new(x + 40.0, fl + 2.0), (1.0, 1.05)),
+        _ if t < 4.5 => (0, Vec2::new(x + 150.0, fl + 12.0), (2.0, 2.5)),
+        _ if t < 6.5 => (1, Vec2::new(x + 80.0, fl + 4.0), (4.5, 5.0)),
+        _ => (2, Vec2::new(x + 60.0, fl + 2.0), (6.5, 7.0)),
+    };
+    (hand.bar, hand.slot) = (0, slot);
+    cursor.0 = Some(aim);
+    if t >= press.0 && t < press.1 { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    // The planted torch taken back.
+    if (9.0..9.05).contains(&t) {
+        cursor.0 = Some(Vec2::new(x + 40.0, fl + 4.0));
+        if !mouse.pressed(MouseButton::Right) {
+            mouse.press(MouseButton::Right);
+        }
+    } else {
+        mouse.release(MouseButton::Right);
+    }
+    if t >= *next && *step > 0 {
+        *next = t + 0.5;
+        let down: Vec<String> = placed.iter().map(|(p, beam, _)| format!("{} at {:.0}{}", items.def(p.item).id, p.at.x - x, if beam { " (beam)" } else { "" })).collect();
+        let flying = thrown.iter().filter(|n| n.as_str() == "Thrown light").count();
+        let fire = sim.materials().fire();
+        let burning = ((x - 40.0) as i32..(x + 200.0) as i32).flat_map(|cx| (fl as i32..fl as i32 + 30).map(move |cy| CellPos::new(cx, cy))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == fire || c.flags & platypus_sim::cell::flags::BURNING != 0)).count();
+        let torches = inv.slots.iter().flatten().filter(|s| s.item == id("torch")).map(|s| s.count).sum::<u32>();
+        info!("lightthrow: t {t:.1} down: {down:?}; in flight {flying}; TNT barrels {}; burning cells {burning}; torches in the pack {torches}", barrels.iter().count());
     }
 }
 

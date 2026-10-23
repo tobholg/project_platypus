@@ -771,7 +771,7 @@ fn compute_light(
     flashes: Res<Flashes>,
     zoom: Res<Zoom>,
     time: Res<Time>,
-    (cursor, off_light, fixed, mut glints, mut cones, gloom, mut lit, mut water_mask, haunts, switched): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>, ResMut<Cones>, Res<Gloom>, ResMut<Lit>, ResMut<WaterMask>, Res<crate::creatures::haunt::Haunts>, Res<switch::Switch>),
+    (cursor, off_light, fixed, mut glints, mut cones, gloom, mut lit, mut water_mask, haunts, switched, beams): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>, ResMut<Cones>, Res<Gloom>, ResMut<Lit>, ResMut<WaterMask>, Res<crate::creatures::haunt::Haunts>, Res<switch::Switch>, Query<(&GlobalTransform, &crate::hands::lights::BeamLight)>),
     mut overlay: ResMut<Overlay>,
     mut pending: ResMut<Pending>,
     mut metrics: ResMut<LightMetrics>,
@@ -921,6 +921,16 @@ fn compute_light(
             let dir = (aim - from).normalize_or(Vec2::X);
             lamp(&mut g, from, dir, settings.headlamp, switched.head.electric());
         }
+    }
+    // Flashlights put down or thrown: their beams (and a glow at the lens).
+    for (tf, b) in &beams {
+        let at = tf.translation();
+        let f = if b.big { settings.flashlight } else { settings.flashlight_small };
+        let sp = settings.spill;
+        let col = [f.color.0 as f32 / 255.0 * f.strength, f.color.1 as f32 / 255.0 * f.strength, f.color.2 as f32 / 255.0 * f.strength];
+        g.seed_beam([at.x, at.y], [b.dir.x, b.dir.y], f.angle.to_radians() / 2.0, f.range, col);
+        g.seed_beam([at.x, at.y], [b.dir.x, b.dir.y], sp.angle.to_radians() / 2.0, sp.range, col.map(|v| v * sp.share));
+        g.seed_point([at.x, at.y], col.map(|v| v * sp.glow));
     }
     // Embers, sparks, burning debris.
     let fire = mats.fire();

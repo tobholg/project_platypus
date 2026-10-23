@@ -13,6 +13,7 @@ pub(crate) mod crafting;
 pub mod filter;
 pub mod icons;
 pub mod items;
+pub mod lights;
 pub mod placing;
 pub mod target;
 pub(crate) mod ui;
@@ -88,12 +89,15 @@ pub struct Hand {
     /// A readied throw called off (the right button): nothing till the left
     /// is let go.
     called_off: bool,
+    /// How long the left button's been held on a light (`lights`: a tap
+    /// puts it down, held it's thrown).
+    held: f32,
 }
 
 impl Default for Hand {
     fn default() -> Self {
         // (A pickaxe bites round by default; the smart cursor's off till Alt.)
-        Hand { slot: 0, bar: 0, smart: false, area: true, cooldown: 0.0, thrown: 0, readying: false, called_off: false }
+        Hand { slot: 0, bar: 0, smart: false, area: true, cooldown: 0.0, thrown: 0, readying: false, called_off: false, held: 0.0 }
     }
 }
 
@@ -134,6 +138,7 @@ impl Plugin for HandsPlugin {
         let mut file: ItemsFile = load_ron(&data_path("items.ron")).unwrap_or_else(|e| panic!("{e}"));
         // (Armour and trinkets: gear.ron.)
         file.items.extend(crate::gear::load().items);
+        app.add_plugins(lights::LightsPlugin);
         app.insert_resource(PendingItems(Some(file)))
             .init_resource::<DevTools>()
             .init_resource::<Hand>()
@@ -546,7 +551,7 @@ fn use_hands(
     mut found: Query<(Entity, &mut chests::Chest, &Kinematics), Without<LocalPlayer>>,
     (crafting, mut stations): (Res<crate::craft::Crafting>, Query<StationHit, (Without<LocalPlayer>, Without<chests::Chest>)>),
     book: Res<crate::magic::Spellbook>,
-    (mut casts, mut swings, mut draws, mut sounds, mut drinks, mut dug): (MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::combat::MeleeRequest>, MessageWriter<crate::archery::DrawBow>, MessageWriter<crate::sound::PlaySound>, MessageWriter<crate::potion::Drink>, MessageWriter<crate::gold::Dug>),
+    (mut casts, mut swings, mut draws, mut sounds, mut drinks, mut dug, mut outs): (MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::combat::MeleeRequest>, MessageWriter<crate::archery::DrawBow>, MessageWriter<crate::sound::PlaySound>, MessageWriter<crate::potion::Drink>, MessageWriter<crate::gold::Dug>, MessageWriter<lights::LightOut>),
     mut toasts: MessageWriter<crate::progress::Toast>,
 ) {
     let clicked = std::mem::take(&mut input.clicked);
@@ -561,6 +566,42 @@ fn use_hands(
         hand.readying = false;
         return;
     };
+    // A light (a torch, a flashlight, a lantern): a tap puts it down, held
+    // its arc shows, let go it's thrown (`lights`).
+    if let Some(kind) = lights::throwable(items.def(stack.item).light) {
+        if input.primary {
+            hand.held += DT;
+            if input.secondary && hand.readying {
+                hand.readying = false;
+                hand.called_off = true;
+            }
+            if hand.held >= lights::HOLD_TO_THROW && !hand.called_off {
+                hand.readying = true;
+                let overhead = from + Vec2::new(k.loco.facing * 20.0, 24.0);
+                commands.entity(me).insert(crate::creatures::body::animation::Aiming { at: overhead, left: 0.15 });
+            }
+            return;
+        }
+        let held = std::mem::take(&mut hand.held);
+        if hand.readying {
+            hand.readying = false;
+            commands.entity(me).insert(crate::creatures::body::animation::Aiming { at: cursor, left: AIM_HOLD });
+            let vel = lob(from, cursor, tools.bomb.throw_speed) + k.body.vel * 0.5;
+            outs.write(lights::LightOut { by: me, item: stack.item, kind, how: lights::Out::Throw { from, vel } });
+            inv.take(slot, 1);
+        } else if held > 0.0 && !hand.called_off
+            && let Some(block) = place_spot(&sim.world, from, cursor, &[], platypus_sim::MaterialId::AIR)
+        {
+            let at = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, block.y as f32 * BLOCK as f32);
+            commands.entity(me).insert(crate::creatures::body::animation::Aiming { at, left: AIM_HOLD });
+            let dir = Vec2::new(k.loco.facing, 0.08).normalize();
+            outs.write(lights::LightOut { by: me, item: stack.item, kind, how: lights::Out::Place { at, dir } });
+            inv.take(slot, 1);
+        }
+        hand.called_off = false;
+        return;
+    }
+    hand.held = 0.0;
     // (Something else in hand: no throw readied.)
     if !matches!(items.def(stack.item).use_, Use::Throw(_)) {
         hand.readying = false;

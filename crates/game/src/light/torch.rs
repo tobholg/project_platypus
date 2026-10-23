@@ -134,9 +134,10 @@ pub fn load_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
 }
 
 /// A torch stuck in the ground, its foot at `at`.
-pub fn plant_torch(commands: &mut Commands, at: Vec2, settings: &LightSettings, art: &TorchArt) {
+pub fn plant_torch(commands: &mut Commands, at: Vec2, settings: &LightSettings, art: &TorchArt) -> Entity {
     let centre = Vec2::new(0.0, art.size.y / 2.0 - 1.0);
-    commands.spawn((
+    commands
+        .spawn((
         Name::new("Torch"),
         PlantedTorch,
         LightSource { color: rgb(settings.torch.color, settings.torch.strength), flicker: 1.0 },
@@ -145,7 +146,26 @@ pub fn plant_torch(commands: &mut Commands, at: Vec2, settings: &LightSettings, 
         Transform::from_translation(at.extend(9.0)),
         Visibility::default(),
         children![(Sprite::from_image(art.image.clone()), Transform::from_translation(centre.extend(0.0)))],
-    ));
+    ))
+        .id()
+}
+
+impl OffHandArt {
+    /// What's held in the off hand (a torch, a flashlight, a lantern) as
+    /// its own sprite, turned to `angle` (degrees: 0 right, 90 up), and
+    /// where on it its light comes from (from its grip, turned with it).
+    pub fn look(&self, carry: Carry, angle: f32) -> Option<(Sprite, Vec2)> {
+        let (turned, tip, angle) = match carry {
+            Carry::Torch => (&self.torch, self.flame, angle - 90.0),
+            Carry::SmallBeam | Carry::BigBeam => (&self.flashlight, self.lens, angle),
+            Carry::Lantern | Carry::SafetyLamp => (&self.lantern, self.glow, 0.0),
+            Carry::Nothing => return None,
+        };
+        let (image, layout) = turned.atlas();
+        let index = crate::combat::Turned::index(angle);
+        let tip = Vec2::from_angle(crate::combat::Turned::angle_of(index).to_radians()).rotate(tip);
+        Some((Sprite::from_atlas_image(image, TextureAtlas { layout, index }), tip))
+    }
 }
 
 /// Fire rising from whatever burns.
