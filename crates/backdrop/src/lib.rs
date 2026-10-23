@@ -34,11 +34,12 @@ pub(crate) fn smooth(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// Value noise in 0..1.
+/// Value noise in 0..1. (Far out, an `x` past `i64` saturates: its next
+/// cell wraps round, as a release build does.)
 pub fn noise1(x: f32, seed: u64) -> f32 {
     let i = x.floor();
     let f = smooth(x - i);
-    let (a, b) = (hash(i as i64, 0, seed), hash(i as i64 + 1, 0, seed));
+    let (a, b) = (hash(i as i64, 0, seed), hash((i as i64).wrapping_add(1), 0, seed));
     a + (b - a) * f
 }
 
