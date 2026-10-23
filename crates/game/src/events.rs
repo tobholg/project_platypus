@@ -506,6 +506,7 @@ fn stars(
     time: Res<Time>,
     mut sim: ResMut<SimWorld>,
     mut sparks: ResMut<crate::vfx::Sparks>,
+    mut named: ResMut<crate::death::NamedBlasts>,
     mut q: Query<(Entity, &mut Streak, &mut Transform)>,
 ) {
     let e = trail();
@@ -527,6 +528,7 @@ fn stars(
         // Where it really lands: the ground under it as it is now.
         let x = s.to.x as i32;
         let ground = find_ground(&sim.world, x, s.to.y as i32 + 180, 600).unwrap_or(s.to.y as i32);
+        named.name(Vec2::new(x as f32, ground as f32), crate::death::Cause::new("A falling star", "crushed"));
         sim.queue(WorldEdit::Explode { center: CellPos::new(x, ground), radius: CRATER, power: CRATER_POWER });
         fill_crater(&mut sim, x, ground);
         guard(&mut commands, x, ground);

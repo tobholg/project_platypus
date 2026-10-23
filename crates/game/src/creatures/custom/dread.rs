@@ -479,7 +479,7 @@ fn think(
                         if near <= QUAKE.0 {
                             let away = Vec2::new((tk.body.pos.x - to.x).signum(), 0.9).normalize();
                             let f = 1.0 - near / QUAKE.0 * 0.5;
-                            hits.write(crate::combat::Hit { target: te, damage: QUAKE.1 * f, harm: Harm::Blunt, knock: away * QUAKE.2, stun: 0.4, at: to, dir: away, weight: 2.6, crit: false });
+                            hits.write(crate::combat::Hit { by: Some(e), target: te, damage: QUAKE.1 * f, harm: Harm::Blunt, knock: away * QUAKE.2, stun: 0.4, at: to, dir: away, weight: 2.6, crit: false });
                         }
                     }
                     sim.queue(platypus_sim::WorldEdit::Explode { center: CellPos::from_world(to.x, to.y - BALL), radius: CRATER.0, power: CRATER.1 });
@@ -545,7 +545,7 @@ fn think(
                     if t.hunted() && !d.struck.contains(&te) && ((tk.body.pos - at).abs() - tk.body.half).max_element() <= BALL {
                         d.struck.push(te);
                         let dir = Vec2::new(facing, 0.35).normalize();
-                        hits.write(crate::combat::Hit { target: te, damage: SWEEP_HIT.0, harm: Harm::Blunt, knock: dir * SWEEP_HIT.1, stun: 0.35, at, dir, weight: 2.0, crit: false });
+                        hits.write(crate::combat::Hit { by: Some(e), target: te, damage: SWEEP_HIT.0, harm: Harm::Blunt, knock: dir * SWEEP_HIT.1, stun: 0.35, at, dir, weight: 2.0, crit: false });
                         sounds.write(crate::sound::PlaySound::at("clank", at).pitch(0.55).volume(1.0));
                     }
                 }
@@ -721,7 +721,7 @@ fn think(
                 for (te, tk, t) in &hunted {
                     if t.hunted() && ((tk.body.pos - d.ball).abs() - tk.body.half).max_element() <= BALL {
                         let dir = (tk.body.pos - d.ball).normalize_or(Vec2::Y);
-                        hits.write(crate::combat::Hit { target: te, damage: FAST.1, harm: Harm::Blunt, knock: dir * 240.0, stun: 0.2, at: d.ball, dir, weight: 1.3, crit: false });
+                        hits.write(crate::combat::Hit { by: Some(e), target: te, damage: FAST.1, harm: Harm::Blunt, knock: dir * 240.0, stun: 0.2, at: d.ball, dir, weight: 1.3, crit: false });
                     }
                 }
             }

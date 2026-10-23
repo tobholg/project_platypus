@@ -236,7 +236,7 @@ pub fn glut(
                         let d = pos - bk.body.pos;
                         if d.length() <= IMPLODE.0 {
                             let dir = d.normalize_or(Vec2::Y);
-                            hits.write(crate::combat::Hit { target: b, damage: IMPLODE.2, harm: Harm::Void, knock: dir * IMPLODE.1, stun: 0.3, at: bk.body.pos, dir, weight: 1.5, crit: false });
+                            hits.write(crate::combat::Hit { by: None, target: b, damage: IMPLODE.2, harm: Harm::Void, knock: dir * IMPLODE.1, stun: 0.3, at: bk.body.pos, dir, weight: 1.5, crit: false });
                         }
                     }
                     health.hp -= health.max * IMPLODE.3;
@@ -402,7 +402,7 @@ fn burn_near(pos: Vec2, goo: (Vec2, Vec2), (reach, damage): (f32, f32), bodies: 
         }
         let f = 1.0 - near / reach * 0.5;
         let dir = Vec2::new((bk.body.pos.x - pos.x).signum(), 1.2).normalize();
-        hits.write(crate::combat::Hit { target: e, damage: damage * f, harm: Harm::Fire, knock: dir * 300.0, stun: 0.2, at: bk.body.pos, dir, weight: 1.5, crit: false });
+        hits.write(crate::combat::Hit { by: None, target: e, damage: damage * f, harm: Harm::Fire, knock: dir * 300.0, stun: 0.2, at: bk.body.pos, dir, weight: 1.5, crit: false });
     }
 }
 

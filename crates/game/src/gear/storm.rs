@@ -136,7 +136,7 @@ fn volleys(
                 && !struck.contains(&f)
             {
                 let dir = (p - from).normalize_or(Vec2::NEG_Y);
-                hits.write(crate::combat::Hit { target: f, damage: b.def.damage, harm: Harm::Storm, knock: dir * 120.0, stun: b.def.stun, at: end, dir, weight: 0.4, crit: false });
+                hits.write(crate::combat::Hit { by: None, target: f, damage: b.def.damage, harm: Harm::Storm, knock: dir * 120.0, stun: b.def.stun, at: end, dir, weight: 0.4, crit: false });
                 struck.push(f);
             }
             charged.extend(zap.charged.iter().copied());
@@ -153,7 +153,7 @@ fn volleys(
                 }
                 let (lo, hi) = ((k.body.pos - k.body.half).floor().as_ivec2(), (k.body.pos + k.body.half).floor().as_ivec2());
                 if (lo.y..=hi.y).any(|y| (lo.x..=hi.x).any(|x| cells.contains(&CellPos::new(x, y)))) {
-                    hits.write(crate::combat::Hit { target: f, damage: b.def.damage * SHOCK, harm: Harm::Storm, knock: Vec2::ZERO, stun: b.def.stun, at: k.body.pos, dir: Vec2::Y, weight: 0.2, crit: false });
+                    hits.write(crate::combat::Hit { by: None, target: f, damage: b.def.damage * SHOCK, harm: Harm::Storm, knock: Vec2::ZERO, stun: b.def.stun, at: k.body.pos, dir: Vec2::Y, weight: 0.2, crit: false });
                 }
             }
         }

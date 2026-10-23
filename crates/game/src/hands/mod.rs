@@ -220,10 +220,12 @@ fn sample_input(
     cursor: Res<CursorWorld>,
     open: Res<InventoryOpen>,
     ui: Res<crate::dev::PointerOverUi>,
+    dying: Res<crate::death::Dying>,
     mut input: ResMut<HandInput>,
 ) {
-    // With the inventory open (or the pointer on a panel) the mouse is for the UI.
-    let free = !open.0 && !ui.0;
+    // With the inventory open (or the pointer on a panel) the mouse is for
+    // the UI; dead, for nothing.
+    let free = !open.0 && !ui.0 && dying.0.is_none();
     input.primary = free && mouse.pressed(MouseButton::Left);
     input.secondary = free && mouse.pressed(MouseButton::Right);
     input.clicked |= free && mouse.just_pressed(MouseButton::Left);

@@ -432,8 +432,8 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
         // own kind of hurt (acid burns, venom poisons); in the fluid, the
         // fluid's own corrosion counts (not both).
         let corrosion = e.corrosion.max(coat.damage_as(rules, Harm::Acid));
-        health.harm(e.heat * (1.0 - heat_resist) * DT, Harm::Fire);
-        health.harm(corrosion * DT, Harm::Acid);
+        health.harm_by(e.heat * (1.0 - heat_resist) * DT, Harm::Fire, || crate::death::Cause::new("Searing heat", "burned"));
+        health.harm_by(corrosion * DT, Harm::Acid, || crate::death::Cause::new("Acid", "dissolved"));
         if !nature.cant(Cant::Poison) {
             health.harm(coat.damage_as(rules, Harm::Poison) * DT, Harm::Poison);
         }
@@ -520,7 +520,7 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
             Some(mut b) if fire > 0.005 => {
                 b.share = fire;
                 b.power = power;
-                health.harm(FIRE_DAMAGE * fire * power * DT, Harm::Fire);
+                health.harm_by(FIRE_DAMAGE * fire * power * DT, Harm::Fire, || crate::death::Cause::new("Flames", "burned alive"));
                 b.spread -= DT;
                 if b.spread <= 0.0 {
                     b.spread = SPREAD_EVERY;
@@ -574,7 +574,7 @@ fn shock(charged: &[CellPos], damage: f32, q: &mut Query<Shockable>) {
         let (lo, hi) = (k.body.pos - k.body.half, k.body.pos + k.body.half);
         let touches = (lo.y.floor() as i32 - 1..=hi.y.ceil() as i32).any(|y| (lo.x.floor() as i32 - 1..=hi.x.ceil() as i32).any(|x| charged.contains(&CellPos::new(x, y))));
         if touches {
-            health.harm(damage, Harm::Storm);
+            health.harm_by(damage, Harm::Storm, || crate::death::Cause::new("Charged water", "electrocuted"));
             let k = &mut *k;
             let vel = k.body.vel * 0.3;
             k.loco.knock(&mut k.body, vel, SHOCK_STUN);
@@ -599,7 +599,7 @@ pub fn struck(
             if d > LIGHTNING_REACH {
                 continue;
             }
-            health.harm(LIGHTNING_DAMAGE * (1.0 - d / LIGHTNING_REACH), Harm::Storm);
+            health.harm_by(LIGHTNING_DAMAGE * (1.0 - d / LIGHTNING_REACH), Harm::Storm, || crate::death::Cause::new("Lightning", "struck"));
             catch_fire(&mut commands, entity, &health.nature, coated, &coatings, 1.0);
         }
     }
@@ -618,7 +618,7 @@ pub fn zapped(mut commands: Commands, mut zaps: MessageReader<crate::fx::Zapped>
             if d > ZAP_REACH {
                 continue;
             }
-            health.harm(ZAP_DAMAGE * (1.0 - d / ZAP_REACH), Harm::Storm);
+            health.harm_by(ZAP_DAMAGE * (1.0 - d / ZAP_REACH), Harm::Storm, || crate::death::Cause::new("A wand's lightning", "shocked"));
             catch_fire(&mut commands, entity, &health.nature, coated, &coatings, 0.6);
         }
     }

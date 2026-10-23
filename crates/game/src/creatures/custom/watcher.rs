@@ -408,7 +408,7 @@ fn think(
                             let s = ((tk.body.pos - a).dot(ab) / ab.length_squared().max(1e-6)).clamp(0.0, 1.0);
                             let near = a + ab * s;
                             if ((tk.body.pos - near).abs() - tk.body.half).max(Vec2::ZERO).length() <= 2.5 {
-                                hits.write(crate::combat::Hit { target: who, damage: o.beam_hit, harm: Harm::Fire, knock: o.aim * 60.0, stun: 0.05, at: near, dir: o.aim, weight: 0.4, crit: false });
+                                hits.write(crate::combat::Hit { by: Some(e), target: who, damage: o.beam_hit, harm: Harm::Fire, knock: o.aim * 60.0, stun: 0.05, at: near, dir: o.aim, weight: 0.4, crit: false });
                             }
                         }
                     }

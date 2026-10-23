@@ -117,7 +117,7 @@ pub fn exhaust(
             if down < -k.body.half.y || down > JET + k.body.half.y || d.x.abs() > k.body.half.x + 6.0 + down.max(0.0) * SPREAD {
                 continue;
             }
-            h.harm(SCORCH, Harm::Fire);
+            h.harm_by(SCORCH, Harm::Fire, || crate::death::Cause::new("Rocket boots", "scorched"));
             if rng.chance(CATCH) {
                 catch_fire(&mut commands, e, &h.nature, coated, &coatings, 0.3);
             }

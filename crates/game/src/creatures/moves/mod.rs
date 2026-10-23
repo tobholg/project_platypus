@@ -737,7 +737,7 @@ pub fn run(
 
                         if ((pk.pos - head).abs() - pk.half).max_element() <= s.reach {
                             d.struck = true;
-                            hits.write(Hit { target: d.target, damage: s.damage, harm: s.harm, knock: (dir + Vec2::Y * s.up).normalize() * s.knock, stun: s.stun, at: head, dir, weight: s.damage / 12.0, crit: false });
+                            hits.write(Hit { by: Some(e), target: d.target, damage: s.damage, harm: s.harm, knock: (dir + Vec2::Y * s.up).normalize() * s.knock, stun: s.stun, at: head, dir, weight: s.damage / 12.0, crit: false });
                             if let Some(coat) = &s.coat
                                 && coatings.by_name.contains_key(coat)
                             {
@@ -780,7 +780,7 @@ pub fn run(
                     for pk in prey.iter().filter(|p| p.e != e) {
                         if ((pk.pos - feet).abs() - pk.half).max_element() <= s.radius {
                             let away = Vec2::new((pk.pos.x - pos.x).signum(), 0.6).normalize();
-                            hits.write(Hit { target: pk.e, damage: s.damage, harm: s.harm, knock: away * s.knock, stun: s.stun, at: feet, dir: away, weight: s.damage / 12.0, crit: false });
+                            hits.write(Hit { by: Some(e), target: pk.e, damage: s.damage, harm: s.harm, knock: away * s.knock, stun: s.stun, at: feet, dir: away, weight: s.damage / 12.0, crit: false });
                         }
                     }
                 }

@@ -450,7 +450,7 @@ fn think(
                 if let Some((at, part)) = touching(&pts, parts, tk.body.pos, tk.body.half) {
                     o.struck.push((te, now + once));
                     let (damage, knock) = blow(at, part);
-                    hits.write(crate::combat::Hit { target: te, damage, harm: if part == Part::Haft { Harm::Blunt } else { Harm::Slash }, knock, stun: 0.35, at, dir: knock.normalize_or(Vec2::X), weight: 2.2, crit: false });
+                    hits.write(crate::combat::Hit { by: Some(e), target: te, damage, harm: if part == Part::Haft { Harm::Blunt } else { Harm::Slash }, knock, stun: 0.35, at, dir: knock.normalize_or(Vec2::X), weight: 2.2, crit: false });
                     any = true;
                 }
             }
@@ -574,7 +574,7 @@ fn think(
                             let gy = ((tp.y - th.y) - ground.y).max(0.0);
                             if gx <= 2.0 && gy <= QUAKE.0 {
                                 let knock = Vec2::new(facing * 120.0, QUAKE.2);
-                                hits.write(crate::combat::Hit { target: te, damage: QUAKE.1, harm: Harm::Blunt, knock, stun: 0.4, at: ground, dir: Vec2::Y, weight: 2.0, crit: false });
+                                hits.write(crate::combat::Hit { by: Some(e), target: te, damage: QUAKE.1, harm: Harm::Blunt, knock, stun: 0.4, at: ground, dir: Vec2::Y, weight: 2.0, crit: false });
                             }
                         }
                         trauma.0 = (trauma.0 + 0.6).min(1.0);
@@ -622,7 +622,7 @@ fn think(
                         let to = (pos + Vec2::X * facing * 42.0 - at).normalize_or(-Vec2::X * facing);
                         let want = Vec2::new(to.x * YANK.0, YANK.1);
                         recoils.write(crate::combat::Recoil { who, add: want - vel, pogo: None, dive: None });
-                        hits.write(crate::combat::Hit { target: who, damage: 8.0, harm: Harm::Pierce, knock: Vec2::ZERO, stun: 0.3, at, dir: to, weight: 1.0, crit: false });
+                        hits.write(crate::combat::Hit { by: Some(e), target: who, damage: 8.0, harm: Harm::Pierce, knock: Vec2::ZERO, stun: 0.3, at, dir: to, weight: 1.0, crit: false });
                         sounds.write(crate::sound::PlaySound::at("clink", at).pitch(0.7).volume(1.0));
                         sounds.write(crate::sound::PlaySound::at("clank", at).pitch(0.5).volume(0.9));
                         trauma.0 = (trauma.0 + 0.35).min(1.0);
@@ -731,7 +731,7 @@ fn think(
                     if tt.hunted() && !o.struck.iter().any(|(s, _)| *s == te) && (tk.body.pos.x - pos.x) * facing > 0.0 && (tk.body.pos - pos).abs().cmplt(Vec2::new(SHOVE_NEAR.0 + 4.0, SHOVE_NEAR.1)).all() {
                         o.struck.push((te, now + 1.0));
                         let knock = Vec2::new(facing * SHOVE_HIT.1, SHOVE_HIT.2);
-                        hits.write(crate::combat::Hit { target: te, damage: SHOVE_HIT.0, harm: Harm::Blunt, knock, stun: 0.3, at: tk.body.pos, dir: knock.normalize(), weight: 2.0, crit: false });
+                        hits.write(crate::combat::Hit { by: Some(e), target: te, damage: SHOVE_HIT.0, harm: Harm::Blunt, knock, stun: 0.3, at: tk.body.pos, dir: knock.normalize(), weight: 2.0, crit: false });
                     }
                 }
                 next = if t + DT >= SHOVE + 0.15 {

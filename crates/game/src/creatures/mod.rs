@@ -198,7 +198,7 @@ impl Team {
     }
 }
 
-#[derive(Component, Clone, Copy, Debug)]
+#[derive(Component, Clone, Debug)]
 pub struct Health {
     pub hp: f32,
     pub max: f32,
@@ -212,6 +212,10 @@ pub struct Health {
     /// What it's taken since the last tick's `tally`, by kind (`Harm as
     /// usize`): what was meant, and what got through (below 0: drunk in).
     pub took: [(f32, f32); 11],
+    /// It keeps what hurt it lately (`recent`, for the death screen: the
+    /// player's).
+    pub records: bool,
+    pub recent: Vec<crate::death::Hurt>,
 }
 
 pub use nature::{Harm, Nature};
@@ -258,16 +262,29 @@ impl Ward {
 
 impl Health {
     pub fn new(max: f32) -> Health {
-        Health { hp: max, max, ward: Ward::default(), nature: Nature::default(), felt: 0, took: [(0.0, 0.0); 11] }
+        Health { hp: max, max, ward: Ward::default(), nature: Nature::default(), felt: 0, took: [(0.0, 0.0); 11], records: false, recent: Vec::new() }
     }
 
     /// Hurt it: `amount` of a kind, less what its gear stops, times how its
     /// kind takes it. Returns what got through; below 0, it drank it in
     /// (its nature heals it: up to its maximum).
     pub fn harm(&mut self, amount: f32, kind: Harm) -> f32 {
+        self.harm_by(amount, kind, || crate::death::Cause::of(kind))
+    }
+
+    /// `harm`, saying what did it (kept if it keeps what hurt it).
+    pub fn harm_by(&mut self, amount: f32, kind: Harm, cause: impl FnOnce() -> crate::death::Cause) -> f32 {
         if amount <= 0.0 {
             return 0.0;
         }
+        let got = self.hurt(amount, kind);
+        if self.records && got > 0.0 {
+            self.recent.push(crate::death::Hurt { cause: cause(), dealt: got, age: 0.0 });
+        }
+        got
+    }
+
+    fn hurt(&mut self, amount: f32, kind: Harm) -> f32 {
         self.felt |= kind.bit();
         let m = self.nature.of(kind);
         let got = if m < 0.0 {
@@ -668,7 +685,7 @@ fn fall_damage(mut landed: MessageReader<Landed>, mut q: Query<(&FallDamage, &mu
         if let Ok((f, mut h)) = q.get_mut(l.entity) {
             let fell = (l.drop - f.safe_height).max(0.0) * f.per_cell;
             let slammed = (l.slam - f.slam_speed).max(0.0) * f.per_speed;
-            h.harm(fell.max(slammed), Harm::Fall);
+            h.harm_by(fell.max(slammed), Harm::Fall, || if slammed > fell { crate::death::Cause::new("A wall", "slammed into it") } else { crate::death::Cause::new("A fall", "fell") });
         }
     }
 }
@@ -729,7 +746,7 @@ fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<Pelted, (Without<body::rise::P
     for (i, (mut k, mut h, dig, _)) in q.iter_mut().enumerate() {
         // (A digger shrugs off the dirt it's digging.)
         if hurt[i] > 0.0 && dig.is_none_or(|d| d.face.is_empty()) {
-            h.harm(hurt[i], Harm::Blunt);
+            h.harm_by(hurt[i], Harm::Blunt, || crate::death::Cause::new("Flying rubble", "pelted"));
             k.body.vel += shove[i];
         }
     }
@@ -742,7 +759,7 @@ fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<Pelted, (Without<body::rise::P
 /// What a blast throws: its body, health, spin, and whether it's the player.
 type Blasted<'a> = (Entity, &'a mut Kinematics, &'a mut Health, Option<&'a mut body::tumble::Tumble>, Has<player::LocalPlayer>, Option<&'a crate::combat::Sturdy>);
 
-fn blasted(mut commands: Commands, mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<Blasted>) {
+fn blasted(mut commands: Commands, mut blasts: MessageReader<crate::fx::Explosion>, mut q: Query<Blasted>, (named, who): (Res<crate::death::NamedBlasts>, crate::death::Who)) {
     for b in blasts.read() {
         let reach = b.radius * 1.6;
         for (e, mut k, mut health, tumble, is_player, sturdy) in &mut q {
@@ -752,7 +769,7 @@ fn blasted(mut commands: Commands, mut blasts: MessageReader<crate::fx::Explosio
                 continue;
             }
             let f = 1.0 - dist / reach;
-            let dealt = health.harm(b.power * 0.65 * f, Harm::Blunt);
+            let dealt = health.harm_by(b.power * 0.65 * f, Harm::Blunt, || named.blamed(&who, b.at, reach));
             let gibs = !is_player && (health.hp <= 0.0 || dealt >= health.max * GIB_SHARE);
             let dir = (d.normalize_or(Vec2::Y) + Vec2::new(0.0, 0.6)).normalize();
             let k = &mut *k;
@@ -867,7 +884,7 @@ type Mortal<'a> = (
 pub(crate) fn deaths(
     mut commands: Commands,
     mut sim: ResMut<SimWorld>,
-    (mut deaths, checkpoint, mut respawned): (ResMut<PlayerDeaths>, Res<crate::respawn::Checkpoint>, MessageWriter<crate::respawn::Respawned>),
+    (mut deaths, dying, mut player_died): (ResMut<PlayerDeaths>, Res<crate::death::Dying>, MessageWriter<crate::death::PlayerDied>),
     mut died: MessageWriter<Died>,
     sprites: Query<(&Sprite, &Transform, Has<body::legs::LegBody>), Or<(With<body::animation::CreatureSprite>, With<body::legs::LegBody>)>>,
     mut q: Query<Mortal>,
@@ -879,8 +896,13 @@ pub(crate) fn deaths(
     gibbed: Query<&Gibbed>,
     gases: Query<&body::hurt::DeathGas>,
 ) {
-    for (entity, mut h, mut k, is_player, bleeds, anim, creature, eq, children) in &mut q {
+    for (entity, mut h, k, is_player, bleeds, anim, creature, eq, children) in &mut q {
         if h.hp > 0.0 {
+            continue;
+        }
+        // (Dead already, on the death screen: out of it till it wakes.)
+        if is_player && dying.0.is_some() {
+            h.hp = h.max;
             continue;
         }
         if let (Some(anim), true, false) = (anim, creature.is_some(), is_player) {
@@ -914,15 +936,13 @@ pub(crate) fn deaths(
         if is_player {
             deaths.0 += 1;
             commands.entity(entity).remove::<(body::elements::Burning, body::elements::Coated, body::elements::Chilled)>();
+            let over = -h.hp;
             h.hp = h.max;
-            // (Back at the checkpoint, `respawn.rs`; a scenario or a
-            // replay, where it stands, so the run goes on as written.)
+            // (The death screen, then back at the checkpoint: `death.rs`; a
+            // scenario or a replay, where it stands, so the run goes on as
+            // written.)
             if !crate::respawn::heals_in_place() {
-                let died_at = k.body.pos;
-                k.body.pos = crate::respawn::respawn_at(&sim, &checkpoint, k.body.half);
-                k.body.vel = Vec2::ZERO;
-                k.prev_pos = k.body.pos;
-                respawned.write(crate::respawn::Respawned { died_at });
+                player_died.write(crate::death::PlayerDied { at: k.body.pos, over });
             }
         } else {
             commands.entity(entity).despawn();

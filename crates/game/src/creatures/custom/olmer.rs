@@ -285,7 +285,7 @@ fn think(
                             let side = if tp.x == o.bar.x { facing } else { (tp.x - o.bar.x).signum() };
                             let f = 1.0 - near / QUAKE.0 * 0.5;
                             let knock = Vec2::new(side * QUAKE.2, QUAKE.3);
-                            hits.write(crate::combat::Hit { target: te, damage: QUAKE.1 * f, harm: Harm::Blunt, knock, stun: 0.4, at: o.bar, dir: knock.normalize(), weight: 2.6, crit: false });
+                            hits.write(crate::combat::Hit { by: Some(e), target: te, damage: QUAKE.1 * f, harm: Harm::Blunt, knock, stun: 0.4, at: o.bar, dir: knock.normalize(), weight: 2.6, crit: false });
                         }
                     }
                     trauma.0 = (trauma.0 + 0.8).min(1.0);
@@ -356,7 +356,7 @@ fn think(
                         // Thrown the way the bar's going there, and up.
                         let spin = (p - o.bar).perp() * -facing;
                         let dir = (spin.normalize_or(Vec2::X * facing) + Vec2::Y * 0.6).normalize();
-                        hits.write(crate::combat::Hit { target: te, damage: TWIRL_HIT.0, harm: Harm::Blunt, knock: dir * TWIRL_HIT.1, stun: 0.3, at: p, dir, weight: 2.0, crit: false });
+                        hits.write(crate::combat::Hit { by: Some(e), target: te, damage: TWIRL_HIT.0, harm: Harm::Blunt, knock: dir * TWIRL_HIT.1, stun: 0.3, at: p, dir, weight: 2.0, crit: false });
                         sounds.write(crate::sound::PlaySound::at("clank", p).pitch(0.5).volume(1.0));
                     }
                     // A plate through the ground: sparks off it.

@@ -536,7 +536,7 @@ pub fn spike(
                         && let Some(&(tip, dir)) = goo.tips.iter().find(|(p, _)| p.cmpge(lo).all() && p.cmple(hi).all())
                     {
                         goo.stung = t;
-                        hits.write(crate::combat::Hit { target: tt, damage: sd.damage, harm: crate::creatures::Harm::Pierce, knock: dir * 160.0 + Vec2::Y * 40.0, stun: 0.15, at: tip, dir, weight: sd.damage / 12.0, crit: false });
+                        hits.write(crate::combat::Hit { by: None, target: tt, damage: sd.damage, harm: crate::creatures::Harm::Pierce, knock: dir * 160.0 + Vec2::Y * 40.0, stun: 0.15, at: tip, dir, weight: sd.damage / 12.0, crit: false });
                         sounds.write(crate::sound::PlaySound::at("hit", tip).pitch(1.3).volume(0.7));
                     }
                 }
@@ -693,7 +693,7 @@ pub fn digest(
         // Held helpless, digested.
         k.loco.knock(&mut k.body, Vec2::ZERO, 2.0 * dt);
         k.body.pos = sk.body.pos + sw.offset;
-        h.harm(DIGEST * dt, crate::creatures::Harm::Acid);
+        h.harm_by(DIGEST * dt, crate::creatures::Harm::Acid, || crate::death::Cause::new("A slime", "digested"));
         if h.hp <= 0.0 {
             // (A small creature digested: the slime's the bigger for it.)
             let full = anim.def.health.max(1.0);

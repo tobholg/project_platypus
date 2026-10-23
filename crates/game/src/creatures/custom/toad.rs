@@ -283,7 +283,7 @@ fn think(
                 } else if t >= REEL.2 && theirs.is_some_and(|tp| tp.distance(mouth) < CHOMP_NEAR) {
                     // Reeled in: chomped, spat out.
                     let knock = Vec2::new(facing * CHOMP.1, CHOMP.2);
-                    hits.write(crate::combat::Hit { target: who, damage: CHOMP.0, harm: Harm::Pierce, knock, stun: 0.4, at: mouth, dir: knock.normalize(), weight: 1.6, crit: false });
+                    hits.write(crate::combat::Hit { by: Some(e), target: who, damage: CHOMP.0, harm: Harm::Pierce, knock, stun: 0.4, at: mouth, dir: knock.normalize(), weight: 1.6, crit: false });
                     sounds.write(crate::sound::PlaySound::at("kick", mouth).pitch(0.5).volume(1.0));
                     sparks.emit(&gore(), 16, mouth, Vec2::new(facing, 0.3), Vec2::ZERO);
                     Doing::Chomp(0.0)

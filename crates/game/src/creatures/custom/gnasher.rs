@@ -207,7 +207,7 @@ fn think(
         let mut bite = |o_aim: Vec2, (damage, knock, stun): (f32, f32, f32)| -> bool {
             let damage = damage * hard;
             let Some((who, tk, _)) = target.filter(|(_, tk, _)| on(maw, tk)) else { return false };
-            hits.write(crate::combat::Hit { target: who, damage, harm: Harm::Pierce, knock: (o_aim + Vec2::Y * 0.3).normalize_or_zero() * knock, stun, at: maw.lerp(tk.body.pos, 0.5), dir: o_aim, weight: 0.8, crit: false });
+            hits.write(crate::combat::Hit { by: Some(e), target: who, damage, harm: Harm::Pierce, knock: (o_aim + Vec2::Y * 0.3).normalize_or_zero() * knock, stun, at: maw.lerp(tk.body.pos, 0.5), dir: o_aim, weight: 0.8, crit: false });
             sounds.write(crate::sound::PlaySound::at("chomp", maw).volume(1.0));
             true
         };

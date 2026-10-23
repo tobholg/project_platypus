@@ -431,7 +431,7 @@ fn think(
                     // Every so often a little taken, and mended in it.
                     let beat = ((t - CLAW) / DRAIN.1) as u32 != ((t - CLAW + DT) / DRAIN.1) as u32;
                     if beat {
-                        hits.write(crate::combat::Hit { target: who, damage: DRAIN.2, harm: Harm::Void, knock: Vec2::ZERO, stun: 0.0, at: tp, dir: (palm - tp).normalize_or(Vec2::Y), weight: 0.2, crit: false });
+                        hits.write(crate::combat::Hit { by: Some(e), target: who, damage: DRAIN.2, harm: Harm::Void, knock: Vec2::ZERO, stun: 0.0, at: tp, dir: (palm - tp).normalize_or(Vec2::Y), weight: 0.2, crit: false });
                         health.hp = (health.hp + DRAIN.2).min(health.max);
                         flares.write(crate::fx::Flare { at: tp, color: [1.2, 0.2, 0.2], life: 0.2 });
                         flares.write(crate::fx::Flare { at: palm, color: [0.4, 1.4, 0.5], life: 0.2 });
@@ -553,7 +553,7 @@ fn think(
             let cut = blades.0.iter().filter(|b| b.who != e).any(|b| b.cells.iter().any(|cell| cell.distance(s.pos) <= 4.0 || cell.distance(from) <= 4.0));
             if let Some((who, tk, _)) = struck {
                 let dir = s.vel.normalize_or(Vec2::X);
-                hits.write(crate::combat::Hit { target: who, damage: SKULL_HIT, harm: Harm::Void, knock: dir * 160.0, stun: 0.15, at: s.pos, dir, weight: 0.8, crit: false });
+                hits.write(crate::combat::Hit { by: Some(e), target: who, damage: SKULL_HIT, harm: Harm::Void, knock: dir * 160.0, stun: 0.15, at: s.pos, dir, weight: 0.8, crit: false });
                 let _ = tk;
                 gone.push(i);
             } else if cut || solid(&sim, s.pos) || s.age > SKULL_LIFE {
@@ -584,7 +584,7 @@ fn think(
                     if (feet.x - at.x).abs() <= RING + tk.body.half.x && (feet.y - at.y).abs() <= 8.0 {
                         let out = (tk.body.pos.x - at.x).signum();
                         let knock = Vec2::new(out * GRASP_HIT.2, GRASP_HIT.1);
-                        hits.write(crate::combat::Hit { target: who, damage: GRASP_HIT.0, harm: Harm::Pierce, knock, stun: 0.25, at: feet, dir: knock.normalize(), weight: 1.0, crit: false });
+                        hits.write(crate::combat::Hit { by: Some(e), target: who, damage: GRASP_HIT.0, harm: Harm::Pierce, knock, stun: 0.25, at: feet, dir: knock.normalize(), weight: 1.0, crit: false });
                     }
                 }
             }

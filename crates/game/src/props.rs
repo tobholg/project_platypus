@@ -134,6 +134,7 @@ pub fn fly(sim: Res<SimWorld>, mut q: Query<(&mut Kinematics, &Thrown)>) {
 fn explode_bombs(
     mut commands: Commands,
     mut sim: ResMut<SimWorld>,
+    mut named: ResMut<crate::death::NamedBlasts>,
     mut bombs: Query<(Entity, &mut Bomb, &Kinematics)>,
 ) {
     let mut blasts = Vec::new();
@@ -147,6 +148,7 @@ fn explode_bombs(
     for (at, cfg) in blasts {
         // (The sim reports it with the rest, `StepStats::detonated`, and
         // creatures feel it from there: `creatures::blasted`.)
+        named.name(at, crate::death::Cause::new("A bomb", "blown up"));
         sim.world.apply_edit(&WorldEdit::Explode { center: CellPos::from_world(at.x, at.y), radius: cfg.radius, power: cfg.power });
         let reach = cfg.radius as f32 * 1.6;
         // Off by default, so a string of bombs digs a shaft instead of

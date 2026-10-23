@@ -1,7 +1,7 @@
-//! Dying: the screen goes dark, "You died", and you wake at your checkpoint
-//! (where the world began, until something sets another: a bed, the story)
-//! with your health back, and everything you carry (softcore, for now:
-//! half your gold is left where you fell, to go back for); in play and in
+//! Waking after dying (the death screen first: `death.rs`) at your
+//! checkpoint (where the world began, until something sets another: a bed,
+//! the story) with your health back, and everything you carry (softcore,
+//! for now: half your gold is left where you fell, to go back for); in play and in
 //! dev mode alike (dev mode has god
 //! mode while the dev menu's open: `devmenu.rs`). A scenario or a replay
 //! gets its health back where it stands, so it runs on as written
@@ -25,19 +25,16 @@ pub struct Respawned {
     pub died_at: Vec2,
 }
 
-/// The dark and the words, while they last (seconds left).
+/// The dark, while it lasts (seconds left).
 #[derive(Resource, Default)]
 struct Dark(f32);
 
 #[derive(Component)]
 struct Veil;
 
-#[derive(Component)]
-struct Words;
-
-/// How long the screen stays dark after dying, and how long it takes to clear.
-const DARK: f32 = 2.6;
-const CLEAR: f32 = 1.2;
+/// How long the screen stays dark on waking, and how long it takes to clear.
+const DARK: f32 = 0.15;
+const CLEAR: f32 = 0.6;
 
 impl Plugin for RespawnPlugin {
     fn build(&self, app: &mut App) {
@@ -45,7 +42,7 @@ impl Plugin for RespawnPlugin {
             .init_resource::<Dark>()
             .add_message::<Respawned>()
             .add_systems(Startup, spawn_veil)
-            .add_systems(Update, (veil, drop_gold));
+            .add_systems(Update, veil);
     }
 }
 
@@ -68,22 +65,6 @@ pub fn respawn_at(sim: &SimWorld, checkpoint: &Checkpoint, half: Vec2) -> Vec2 {
     Vec2::new(s.x as f32 + 0.5, ground as f32 + half.y)
 }
 
-/// Half your gold, left where you fell (gold is a material: it bursts out
-/// and lies there as specks, to be walked over and taken back).
-fn drop_gold(mut died: MessageReader<Respawned>, mut gold: Query<&mut crate::gold::Gold, With<crate::creatures::player::LocalPlayer>>, mut queue: ResMut<crate::gold::GoldQueue>, mut toasts: MessageWriter<crate::progress::Toast>) {
-    for r in died.read() {
-        let Ok(mut g) = gold.single_mut() else { continue };
-        let half = g.0 / 2;
-        if half == 0 {
-            continue;
-        }
-        g.0 -= half;
-        queue.burst.push((r.died_at, half));
-        toasts.write(crate::progress::Toast(format!("{half} gold left where you fell")));
-        info!("respawn: {half} gold left at ({:.0}, {:.0})", r.died_at.x, r.died_at.y);
-    }
-}
-
 fn spawn_veil(mut commands: Commands) {
     commands
         .spawn((
@@ -92,13 +73,10 @@ fn spawn_veil(mut commands: Commands) {
             GlobalZIndex(50),
             Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() },
             BackgroundColor(Color::NONE),
-        ))
-        .with_children(|p| {
-            p.spawn((Words, Text::new("You died"), TextFont { font_size: FontSize::Px(54.0), ..default() }, TextColor(Color::NONE)));
-        });
+        ));
 }
 
-fn veil(time: Res<Time<Real>>, mut died: MessageReader<Respawned>, mut dark: ResMut<Dark>, mut veil: Query<(&mut Visibility, &mut BackgroundColor), With<Veil>>, mut words: Query<&mut TextColor, With<Words>>) {
+fn veil(time: Res<Time<Real>>, mut died: MessageReader<Respawned>, mut dark: ResMut<Dark>, mut veil: Query<(&mut Visibility, &mut BackgroundColor), With<Veil>>) {
     if died.read().count() > 0 {
         dark.0 = DARK + CLEAR;
     }
@@ -111,8 +89,5 @@ fn veil(time: Res<Time<Real>>, mut died: MessageReader<Respawned>, mut dark: Res
     for (mut v, mut bg) in &mut veil {
         *v = if dark.0 > 0.0 { Visibility::Visible } else { Visibility::Hidden };
         bg.0 = Color::srgba(0.02, 0.0, 0.0, 0.85 * a);
-    }
-    for mut c in &mut words {
-        c.0 = Color::srgba(0.75, 0.1, 0.08, a);
     }
 }

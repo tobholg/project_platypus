@@ -312,7 +312,7 @@ fn cave_ins(
                     .map(|p| if sim.world.get(*p).map(|c| c.material) == gravel { 1.5 } else { 1.0 })
                     .sum();
                 if over > 0.0 {
-                    h.harm((over * CAVE_IN_HURTS).min(CAVE_IN_WORST), crate::creatures::nature::Harm::Blunt);
+                    h.harm_by((over * CAVE_IN_HURTS).min(CAVE_IN_WORST), crate::creatures::nature::Harm::Blunt, || crate::death::Cause::new("A cave-in", "buried"));
                 }
             }
             sounds.write(PlaySound::at("break", cave.at).pitch(0.5).volume(0.9));
@@ -514,7 +514,7 @@ fn whoomph(
                 continue;
             }
             f.dealt.insert(e, owed);
-            health.harm(owed - was, crate::creatures::nature::Harm::Fire);
+            health.harm_by(owed - was, crate::creatures::nature::Harm::Fire, || crate::death::Cause::new("A gas explosion", "caught in the blast"));
             let dir = ((at - middle).normalize_or(Vec2::Y) + Vec2::new(0.0, 0.5)).normalize();
             let knock = dir * (owed - was) * WHOOMPH_THROW;
             let knock = if is_player { knock } else { (knock * crate::combat::KNOCK_TAKEN / sturdy.map_or(1.0, |s| s.heft).max(1.0)).clamp_length_max(crate::combat::KNOCK_MOST * 1.5) };

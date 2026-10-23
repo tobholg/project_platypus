@@ -51,6 +51,17 @@ pub struct Progress {
     pub unlocked: BTreeSet<String>,
     /// What it has seen each kind of creature do (`observe`), by kind.
     pub observed: BTreeMap<String, crate::observe::Seen>,
+    /// Its deaths (`death.rs`), the longest a life's lasted (s), and what
+    /// has killed it how often (by what it was called).
+    pub deaths: u32,
+    pub longest_life: f32,
+    pub grudges: BTreeMap<String, u32>,
+    /// This life: how long so far (s), the deepest it's been, and where its
+    /// kills and its crafting stood when it began.
+    pub life: f32,
+    pub life_deepest: i32,
+    pub life_kills: BTreeMap<String, u32>,
+    pub life_crafted: u32,
 }
 
 /// When a milestone is reached.
@@ -173,6 +184,9 @@ fn track(
     let depth = sim.generator.reference_depth(pos.y as i32).map_or(raw, |d| d as i32);
     if depth > p.deepest {
         p.bypass_change_detection().deepest = depth;
+    }
+    if depth > p.life_deepest {
+        p.bypass_change_detection().life_deepest = depth;
     }
     let Some(items) = items else { return };
     let held = inv.map(|i| i.slots.as_slice()).unwrap_or(&[]).iter().chain(eq.worn.iter()).flatten();

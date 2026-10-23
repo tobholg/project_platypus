@@ -49,8 +49,8 @@ impl super::CustomCreature for Explosive {
 
 /// Broken: it goes off now; alight: when its fuse runs down. (Before
 /// `deaths`, which then takes it away: it leaves no body.)
-pub fn detonate(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Explosive, &Kinematics, &mut Health, Has<Burning>)>) {
-    for (mut x, k, mut health, burning) in &mut q {
+pub fn detonate(mut sim: ResMut<SimWorld>, mut named: ResMut<crate::death::NamedBlasts>, mut q: Query<(&mut Explosive, &Kinematics, &mut Health, Has<Burning>, Option<&crate::creatures::Creature>, Option<&crate::creatures::body::animation::Animator>)>) {
+    for (mut x, k, mut health, burning, creature, anim) in &mut q {
         if burning && x.lit.is_none() && health.hp > 0.0 {
             x.lit = Some(x.fuse);
         }
@@ -66,6 +66,9 @@ pub fn detonate(mut sim: ResMut<SimWorld>, mut q: Query<(&mut Explosive, &Kinema
             continue;
         }
         let at = k.body.pos;
+        if let (Some(c), Some(a)) = (creature, anim) {
+            named.name(at, crate::death::Cause { title: a.def.name.clone(), how: "blown up".into(), creature: Some(c.kind.clone()) });
+        }
         sim.world.apply_edit(&WorldEdit::Explode { center: CellPos::from_world(at.x, at.y), radius: x.radius, power: x.power });
         x.power = 0;
         health.hp = 0.0;

@@ -308,6 +308,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, drips_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, cavein_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, firedamp_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, death_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, groundbuild_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
@@ -3312,7 +3313,7 @@ fn spiderdeath_script(
             for (e, c, sk, _) in &spiders {
                 if c.kind == "spider" {
                     let dir = Vec2::new(1.0, 0.3).normalize();
-                    hits.write(crate::combat::Hit { target: e, damage: 24.0, harm: crate::creatures::Harm::Slash, knock: dir * 375.0, stun: 0.3, at: sk.body.pos, dir, weight: 2.0, crit: false });
+                    hits.write(crate::combat::Hit { by: None, target: e, damage: 24.0, harm: crate::creatures::Harm::Slash, knock: dir * 375.0, stun: 0.3, at: sk.body.pos, dir, weight: 2.0, crit: false });
                 }
             }
             *state += 1;
@@ -4714,7 +4715,7 @@ fn troll_script(
     };
     if t >= *next_hit {
         *next_hit += 0.25;
-        hits.write(crate::combat::Hit { target: e, damage: 24.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: k.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        hits.write(crate::combat::Hit { by: None, target: e, damage: 24.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: k.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
     }
     if *step == 1 && t > 11.0 {
         // (Out of the pool of its own blood first, and wiped dry: soaked
@@ -4790,7 +4791,7 @@ fn reactions_script(
     if *step == 1 && t >= *next {
         // Each kind in turn; then slashes.
         let harm = KINDS.get(*n).copied().unwrap_or(Harm::Slash);
-        hits.write(crate::combat::Hit { target: e, damage: 3.0, harm, knock: Vec2::ZERO, stun: 0.0, at: pk.body.pos + Vec2::new(90.0, 0.0), dir: Vec2::X, weight: 1.0, crit: false });
+        hits.write(crate::combat::Hit { by: None, target: e, damage: 3.0, harm, knock: Vec2::ZERO, stun: 0.0, at: pk.body.pos + Vec2::new(90.0, 0.0), dir: Vec2::X, weight: 1.0, crit: false });
         *n += 1;
         *next = t + 0.5;
     }
@@ -4807,7 +4808,7 @@ fn reactions_script(
     // The player stung twice, then the skeleton clubbed till it's dead.
     if *step == 2 && t >= *next {
         let (target, harm, at) = if *n < 2 { (me, Harm::Pierce, pk.body.pos) } else { (e, Harm::Blunt, pk.body.pos + Vec2::new(90.0, 0.0)) };
-        hits.write(crate::combat::Hit { target, damage: 5.0, harm, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::X, weight: 1.0, crit: false });
+        hits.write(crate::combat::Hit { by: None, target, damage: 5.0, harm, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::X, weight: 1.0, crit: false });
         *n += 1;
         *next = t + 0.5;
     }
@@ -4874,7 +4875,7 @@ fn grab_script(
                         && let Some((te, ..)) = foes.iter().find(|f| f.1.kind == "troll")
                     {
                         // Struck hard enough to stagger it: it lets go.
-                        hits.write(crate::combat::Hit { target: te, damage: 90.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.5, at: pk.body.pos, dir: Vec2::X, weight: 2.0, crit: false });
+                        hits.write(crate::combat::Hit { by: None, target: te, damage: 90.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.5, at: pk.body.pos, dir: Vec2::X, weight: 2.0, crit: false });
                         info!("grab: t {t:.2} the troll struck hard");
                     }
                 } else {
@@ -5312,7 +5313,7 @@ fn legs_script(
     if *step == 1 && std::env::var("PLATYPUS_PRICK").is_ok() && (4.0..4.02).contains(&t)
         && let Some((target, _, _)) = healths.iter().find(|(_, c, _)| c.kind == *kind)
     {
-        hits.write(crate::combat::Hit { target, damage: 3.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: fk.body.pos, dir: Vec2::X, weight: 0.2, crit: false });
+        hits.write(crate::combat::Hit { by: None, target, damage: 3.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: fk.body.pos, dir: Vec2::X, weight: 0.2, crit: false });
     }
     // Backing off: walking away from it (not into the walls).
     let away = if pk.body.pos.x < fk.body.pos.x { KeyCode::KeyA } else { KeyCode::KeyD };
@@ -8170,7 +8171,7 @@ fn dread_script(
         if !tugged.is_empty() && (t * 10.0) as i32 % 3 == 0 { keys.press(KeyCode::ShiftLeft) } else { keys.release(KeyCode::ShiftLeft) }
     }
     if mode == "kill" && t > 2.0 && t > state.1 {
-        hits.write(crate::combat::Hit { target: e, damage: 60.0, harm: crate::creatures::Harm::Radiant, knock: Vec2::ZERO, stun: 0.0, at: dk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        hits.write(crate::combat::Hit { by: None, target: e, damage: 60.0, harm: crate::creatures::Harm::Radiant, knock: Vec2::ZERO, stun: 0.0, at: dk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
         state.1 = t + 0.4;
     }
     let _ = dh;
@@ -8585,7 +8586,7 @@ fn shield_script(
     }
     let sta = stamina.map_or(0.0, |s| s.cur);
     let (raised, broken) = guard.map_or((false, 0.0), |g| (g.raised, g.broken));
-    let blow = |side: f32| crate::combat::Hit { target: me, damage: 20.0, harm: crate::creatures::Harm::Slash, knock: Vec2::new(-side * 200.0, 60.0), stun: 0.2, at: k.body.pos + Vec2::new(side * 5.0, 2.0), dir: Vec2::new(-side, 0.0), weight: 1.0, crit: false };
+    let blow = |side: f32| crate::combat::Hit { by: None, target: me, damage: 20.0, harm: crate::creatures::Harm::Slash, knock: Vec2::new(-side * 200.0, 60.0), stun: 0.2, at: k.body.pos + Vec2::new(side * 5.0, 2.0), dir: Vec2::new(-side, 0.0), weight: 1.0, crit: false };
     if t >= st.1 {
         match st.0 {
             1 => {
@@ -9372,7 +9373,7 @@ fn toad_script(
         if (t * 6.0) as i32 % 2 == 0 { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
     }
     if mode == "kill" && t > 2.0 && t > state.1 {
-        hits.write(crate::combat::Hit { target: e, damage: 25.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        hits.write(crate::combat::Hit { by: None, target: e, damage: 25.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
         state.1 = t + 0.5;
     }
 }
@@ -9436,7 +9437,7 @@ fn necro_script(
     if mode == "body" && state.0 == 1 && t > 1.0 {
         for (e, c, ok, _) in &them {
             if c.kind == "orc" {
-                hits.write(crate::combat::Hit { target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: ok.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+                hits.write(crate::combat::Hit { by: None, target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: ok.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
             }
         }
         state.0 = 2;
@@ -9476,12 +9477,12 @@ fn necro_script(
     if mode == "pack" && (7.0..7.1).contains(&t) {
         for (ze, c, zk, _) in &them {
             if c.kind == "zombie" {
-                hits.write(crate::combat::Hit { target: ze, damage: 999.0, harm: crate::creatures::Harm::Fire, knock: Vec2::ZERO, stun: 0.0, at: zk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+                hits.write(crate::combat::Hit { by: None, target: ze, damage: 999.0, harm: crate::creatures::Harm::Fire, knock: Vec2::ZERO, stun: 0.0, at: zk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
             }
         }
     }
     if mode == "kill" && t > 9.0 && t > state.1 {
-        hits.write(crate::combat::Hit { target: e, damage: 40.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: nk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        hits.write(crate::combat::Hit { by: None, target: e, damage: 40.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: nk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
         state.1 = t + 0.3;
     }
 }
@@ -9678,13 +9679,13 @@ fn watcher_script(
                 flares.write(crate::fx::Flare { at: wk.body.pos + Vec2::new(-20.0, 0.0), color: [2.0, 2.0, 1.8], life: 0.3 });
             }
             "radiant" => {
-                hits.write(crate::combat::Hit { target: e, damage: 6.0, harm: crate::creatures::Harm::Radiant, knock: Vec2::ZERO, stun: 0.0, at: wk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+                hits.write(crate::combat::Hit { by: None, target: e, damage: 6.0, harm: crate::creatures::Harm::Radiant, knock: Vec2::ZERO, stun: 0.0, at: wk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
             }
             _ => {}
         }
     }
     if mode == "kill" && t > 8.0 && t > state.1 {
-        hits.write(crate::combat::Hit { target: e, damage: 30.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: wk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        hits.write(crate::combat::Hit { by: None, target: e, damage: 30.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: wk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
         state.1 = t + 0.3;
     }
 }
@@ -9764,7 +9765,7 @@ fn gnasher_script(
         k.body.pos.x += 1.6 * (gk.body.pos.x - k.body.pos.x).signum();
     }
     if mode == "kill" && t > 8.0 && t > state.1 {
-        hits.write(crate::combat::Hit { target: e, damage: 30.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: gk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        hits.write(crate::combat::Hit { by: None, target: e, damage: 30.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: gk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
         state.1 = t + 0.3;
     }
 }
@@ -10023,7 +10024,7 @@ fn rats_script(
     // `body`: the zombie struck dead.
     if mode == "body" && state.0 == 1 && t > 1.0 {
         if let Some((e, _, zk, _)) = them.iter().find(|x| x.1.kind == "zombie") {
-            hits.write(crate::combat::Hit { target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: zk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+            hits.write(crate::combat::Hit { by: None, target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: zk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
             info!("rats: t {t:.1} the zombie struck dead");
             state.0 = 2;
         }
@@ -10033,7 +10034,7 @@ fn rats_script(
         let rats: Vec<_> = them.iter().filter(|x| x.1.kind == "rat").collect();
         if rats.len() > 2 {
             let (e, _, rk, _) = rats[0];
-            hits.write(crate::combat::Hit { target: e, damage: 99.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: rk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+            hits.write(crate::combat::Hit { by: None, target: e, damage: 99.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: rk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
             state.3 = t + 1.0;
             info!("rats: t {t:.1} a rat struck dead ({} left)", rats.len() - 1);
         }
@@ -11252,6 +11253,77 @@ fn firedamp_script(
     }
 }
 
+/// `death` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_RESPAWN=1`):
+/// the player with 40 gold, scorched at 1 s (8, by fire), left at 6 health
+/// at 1.5 s with a `PLATYPUS_FOE` (rat) beside it: it dies. Every half
+/// second: whether the death screen's up, what it says killed it, the
+/// countdown, where the player is; `PLATYPUS_SPACE` (s after dying, 2):
+/// Space pressed, to wake at once; `PLATYPUS_AGAIN=1`: then a second death.
+fn death_script(
+    s: Res<Scenario>,
+    mut commands: Commands,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    dying: Res<crate::death::Dying>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(Entity, &Kinematics, &mut crate::creatures::Health, Option<&mut crate::gold::Gold>), With<LocalPlayer>>,
+    mut st: Local<(u8, f32, Option<f32>)>,
+) {
+    if s.name != "death" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((me, pk, mut hp, gold)) = player.single_mut() else { return };
+    let (step, next, died) = &mut *st;
+    keys.release(KeyCode::Space);
+    if *step == 0 && t > 1.0 {
+        *step = 1;
+        if let Some(mut g) = gold {
+            g.0 = 40;
+        }
+        hp.harm_by(8.0, crate::creatures::Harm::Fire, || crate::death::Cause::new("Flames", "burned alive"));
+    }
+    if *step == 1 && t > 1.5 {
+        *step = 2;
+        hp.hp = 6.0;
+        let foe = std::env::var("PLATYPUS_FOE").unwrap_or_else(|_| "rat".into());
+        crate::creatures::def::spawn_creature(&mut commands, &foe, Vec2::new(pk.body.pos.x + 20.0, platypus_worldgen::arena::FLOOR as f32), |_| {});
+    }
+    if died.is_none() && dying.0.is_some() {
+        *died = Some(t);
+    }
+    // (`PLATYPUS_AGAIN=1`: woken, left at 4 health 3 s on, with the rat
+    // still about: a second death, to see the grudge and the new life.)
+    if std::env::var("PLATYPUS_AGAIN").is_ok()
+        && *step == 2
+        && let Some(at) = *died
+        && dying.0.is_none()
+        && t > at + 3.0
+    {
+        *step = 3;
+        *died = None;
+        // (Out of its grace after a bite, or the grace gives it back.)
+        commands.entity(me).remove::<crate::combat::Invulnerable>();
+        hp.hp = 4.0;
+        info!("death: t {t:.1} left at 4 health again");
+    }
+    let space: f32 = std::env::var("PLATYPUS_SPACE").ok().and_then(|v| v.parse().ok()).unwrap_or(2.0);
+    if let Some(at) = *died
+        && dying.0.is_some()
+        && t >= at + space
+        && t < at + space + 0.05
+    {
+        keys.press(KeyCode::Space);
+    }
+    if t >= *next {
+        *next = t + 0.5;
+        match dying.0.as_ref() {
+            Some(d) => info!("death: t {t:.1} the screen's up: {} ({}) for {:.0}, {:.0} too many; grudge {}; moments {:?}; life {:.1} s, kills {}, gold left {}; \"{}\"; {:.1} s in", d.cause.title, d.cause.how, d.blow, d.over, d.grudge, d.moments, d.life, d.kills, d.gold, d.epitaph, d.since),
+            None => info!("death: t {t:.1} alive, health {:.0} at {:.0}", hp.hp, pk.body.pos),
+        }
+    }
+}
+
 /// `chase` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a `PLATYPUS_FOE`
 /// (zombie) put `PLATYPUS_OFF` (220) cells to the player's right; the player
 /// stands (`PLATYPUS_FLEE=1`: runs left, holding A, from 1.5 s;
@@ -11803,7 +11875,7 @@ fn wraith_script(
         if doing == "pull" { keys.press(KeyCode::ShiftLeft) } else { keys.release(KeyCode::ShiftLeft) }
     }
     if mode == "kill" && t > 3.0 && t > state.1 {
-        hits.write(crate::combat::Hit { target: e, damage: 40.0, harm: crate::creatures::Harm::Radiant, knock: Vec2::ZERO, stun: 0.0, at: wk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        hits.write(crate::combat::Hit { by: None, target: e, damage: 40.0, harm: crate::creatures::Harm::Radiant, knock: Vec2::ZERO, stun: 0.0, at: wk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
         state.1 = t + 0.5;
     }
     if (t * 2.0).fract() < 0.02 && t > 1.0 {
@@ -11881,7 +11953,7 @@ fn mimic_script(
         }
         2 if mode == "kill" && t > state.1 + 0.5 => {
             if let Some((e, _, mk, _, _)) = mimic {
-                hits.write(crate::combat::Hit { target: e, damage: 40.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: mk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+                hits.write(crate::combat::Hit { by: None, target: e, damage: 40.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: mk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
                 state.1 = t;
             } else {
                 info!("mimic: t {t:.1} dead; chests in the world: {}", chest_q.iter().count());
@@ -14220,12 +14292,12 @@ fn marks_script(
                 let up = (h % 100) as f32 / 100.0;
                 let side = ((h / 100) % 100) as f32 / 100.0 - 0.5;
                 let at = Vec2::new(tk.body.pos.x + side * tk.body.half.x * 1.6, tk.body.pos.y - tk.body.half.y * 0.2 + up * tk.body.half.y * 1.5);
-                hits.write(crate::combat::Hit { target: e, damage: 6.0, harm, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::new(1.0, -0.2), weight: 0.5, crit: false });
+                hits.write(crate::combat::Hit { by: None, target: e, damage: 6.0, harm, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::new(1.0, -0.2), weight: 0.5, crit: false });
             }
             if s.elapsed > 6.0 {
                 for (e, c, tk, _) in &them {
                     if c.kind == "orc" {
-                        hits.write(crate::combat::Hit { target: e, damage: 999.0, harm: Harm::Slash, knock: Vec2::new(40.0, 20.0), stun: 0.3, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+                        hits.write(crate::combat::Hit { by: None, target: e, damage: 999.0, harm: Harm::Slash, knock: Vec2::new(40.0, 20.0), stun: 0.3, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
                     }
                 }
                 state.0 = 2;
@@ -14276,7 +14348,7 @@ fn knock_script(
         1 | 3 if s.elapsed > if state.0 == 1 { 2.0 } else { 4.0 } => {
             if let Some((e, _, tk)) = it {
                 let push = Vec2::new(1.0, 0.45).normalize() * 375.0;
-                hits.write(crate::combat::Hit { target: e, damage: 24.0, harm: crate::creatures::Harm::Slash, knock: push, stun: 0.3, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+                hits.write(crate::combat::Hit { by: None, target: e, damage: 24.0, harm: crate::creatures::Harm::Slash, knock: push, stun: 0.3, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
                 state.1 = tk.body.pos;
                 state.2 = 0.0;
                 state.3 = 0.0;
@@ -14346,7 +14418,7 @@ fn skull_script(
         1 if s.elapsed > 2.0 => {
             if let Some((e, _, tk, ..)) = skeleton {
                 let at = Vec2::new(tk.body.pos.x, tk.body.pos.y - tk.body.half.y + 34.0);
-                hits.write(crate::combat::Hit { target: e, damage: 42.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::new(1.0, 0.3), weight: 1.0, crit: false });
+                hits.write(crate::combat::Hit { by: None, target: e, damage: 42.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::new(1.0, 0.3), weight: 1.0, crit: false });
                 info!("skull: t {:.1} its head off", s.elapsed);
             }
             state.0 = 2;
@@ -14362,11 +14434,11 @@ fn skull_script(
             if case == "crush" {
                 for (e, limp, _) in &skulls {
                     let at = limp.pieces[0].pos;
-                    hits.write(crate::combat::Hit { target: e, damage: 30.0, harm: crate::creatures::Harm::Blunt, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::NEG_Y, weight: 1.0, crit: false });
+                    hits.write(crate::combat::Hit { by: None, target: e, damage: 30.0, harm: crate::creatures::Harm::Blunt, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::NEG_Y, weight: 1.0, crit: false });
                     info!("skull: t {:.1} a hammer on its skull", s.elapsed);
                 }
             } else if let Some((e, _, tk, ..)) = skeleton {
-                hits.write(crate::combat::Hit { target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+                hits.write(crate::combat::Hit { by: None, target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
                 info!("skull: t {:.1} a sword kills it", s.elapsed);
             }
             state.0 = 4;
@@ -14467,7 +14539,7 @@ fn sever_script(
                 _ => (leg.unwrap_or(Vec2::new(tk.body.pos.x, feet + 9.0)), "a leg"),
             };
             let damage = 42.0;
-            hits.write(crate::combat::Hit { target: e, damage, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::new(f, 0.3), weight: 1.0, crit: false });
+            hits.write(crate::combat::Hit { by: None, target: e, damage, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::new(f, 0.3), weight: 1.0, crit: false });
             info!("sever: t {:.1} a blade through {what}", s.elapsed);
             state.1 = s.elapsed + 1.5;
             if s.elapsed > 4.5 {
@@ -14481,7 +14553,7 @@ fn sever_script(
             if let Some(p) = next {
                 let at = (p.a + p.b) / 2.0;
                 let harm = if spider { crate::creatures::Harm::Pierce } else { crate::creatures::Harm::Slash };
-                hits.write(crate::combat::Hit { target: e, damage: if spider { 40.0 } else { 60.0 }, harm, knock: Vec2::ZERO, stun: 0.0, at, dir: (at - tk.body.pos).normalize_or(Vec2::X), weight: 1.0, crit: false });
+                hits.write(crate::combat::Hit { by: None, target: e, damage: if spider { 40.0 } else { 60.0 }, harm, knock: Vec2::ZERO, stun: 0.0, at, dir: (at - tk.body.pos).normalize_or(Vec2::X), weight: 1.0, crit: false });
                 info!("sever: t {:.1} a blow through its leg {:?}", s.elapsed, p.limb);
             }
             state.1 = s.elapsed + if spider { 0.5 } else { 3.0 };
@@ -14647,7 +14719,7 @@ fn slime_script(
         return;
     };
     let strike = |hits: &mut MessageWriter<crate::combat::Hit>, harm: crate::creatures::Harm, damage: f32| {
-        hits.write(crate::combat::Hit { target: e, damage, harm, knock: Vec2::new(40.0, 30.0), stun: 0.2, at: sk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+        hits.write(crate::combat::Hit { by: None, target: e, damage, harm, knock: Vec2::new(40.0, 30.0), stun: 0.2, at: sk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
     };
     match mode.as_str() {
         "burn" if state.0 == 1 && t > 3.0 => {
@@ -14903,7 +14975,7 @@ fn zombie_script(
     let zombie = them.iter().find(|t| t.1.kind.starts_with("zombie"));
     let up = them.iter().filter(|t| t.1.kind.starts_with("zombie")).count();
     let kill = |hits: &mut MessageWriter<crate::combat::Hit>, e: Entity, at: Vec2| {
-        hits.write(crate::combat::Hit { target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::X, weight: 1.0, crit: false });
+        hits.write(crate::combat::Hit { by: None, target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at, dir: Vec2::X, weight: 1.0, crit: false });
     };
     let t = s.elapsed;
     for b in began.read() {
@@ -14981,7 +15053,7 @@ fn zombie_script(
                     }
                     "fire" => {
                         if let Some((e, p)) = piles.iter().next() {
-                            hits.write(crate::combat::Hit { target: e, damage: 4.0, harm: crate::creatures::Harm::Fire, knock: Vec2::ZERO, stun: 0.0, at: p.body.pos, dir: Vec2::X, weight: 0.2, crit: false });
+                            hits.write(crate::combat::Hit { by: None, target: e, damage: 4.0, harm: crate::creatures::Harm::Fire, knock: Vec2::ZERO, stun: 0.0, at: p.body.pos, dir: Vec2::X, weight: 0.2, crit: false });
                             info!("zombie: t {t:.1} a spark of fire on its body");
                         }
                     }
@@ -15098,7 +15170,7 @@ fn limp_script(
         2 if s.elapsed > 1.5 && std::env::var("PLATYPUS_KINDS").is_ok() => {
             for (e, c, tk) in &them {
                 if c.kind != "dummy" {
-                    hits.write(crate::combat::Hit { target: e, damage: 9999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::new(30.0, 0.0), stun: 0.5, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+                    hits.write(crate::combat::Hit { by: None, target: e, damage: 9999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::new(30.0, 0.0), stun: 0.5, at: tk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
                 }
             }
             k.body.pos = Vec2::new(975.0, fl + 24.0 + k.body.half.y);
@@ -15111,7 +15183,7 @@ fn limp_script(
             // (Highest first: the falling skeleton, the orc on the ledge, the orc below.)
             let blows = [(crate::creatures::Harm::Blunt, Vec2::new(0.0, 0.0)), (crate::creatures::Harm::Slash, Vec2::new(-10.0, 0.0)), (crate::creatures::Harm::Blunt, Vec2::new(260.0, 120.0))];
             for ((e, at), (harm, knock)) in all.into_iter().zip(blows) {
-                hits.write(crate::combat::Hit { target: e, damage: 999.0, harm, knock, stun: 0.5, at, dir: knock.normalize_or(Vec2::X), weight: 1.0, crit: false });
+                hits.write(crate::combat::Hit { by: None, target: e, damage: 999.0, harm, knock, stun: 0.5, at, dir: knock.normalize_or(Vec2::X), weight: 1.0, crit: false });
             }
             *state = 3;
         }
@@ -15168,7 +15240,7 @@ fn rise_script(
     let pile = piles.iter().next().map(|p| (p.0, p.2.key));
     let mut strike = |at: Option<(Entity, Vec2)>, harm: crate::creatures::Harm, damage: f32| {
         if let Some((e, pos)) = at {
-            hits.write(crate::combat::Hit { target: e, damage, harm, knock: Vec2::new(60.0, 40.0), stun: 0.3, at: pos, dir: Vec2::X, weight: 1.0, crit: false });
+            hits.write(crate::combat::Hit { by: None, target: e, damage, harm, knock: Vec2::new(60.0, 40.0), stun: 0.3, at: pos, dir: Vec2::X, weight: 1.0, crit: false });
         }
     };
     let pile_at = pile.map(|(e, _)| (e, k.body.pos));

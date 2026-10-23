@@ -451,7 +451,7 @@ fn think(
                     now = true;
                     if let Ok((_, tk, ..)) = bodies.get(who) {
                         let away = Vec2::new((tk.body.pos.x - pos.x).signum(), 0.5).normalize();
-                        hits.write(crate::combat::Hit { target: who, damage: w.rake, harm: Harm::Frost, knock: away * 240.0, stun: 0.25, at: tk.body.pos, dir: away, weight: 1.2, crit: false });
+                        hits.write(crate::combat::Hit { by: Some(e), target: who, damage: w.rake, harm: Harm::Frost, knock: away * 240.0, stun: 0.25, at: tk.body.pos, dir: away, weight: 1.2, crit: false });
                         if let Ok(h) = natures.get(who) {
                             crate::creatures::body::elements::chill(&mut commands, who, &h.nature, None, w.cold, w.cold_secs);
                         }
@@ -483,7 +483,7 @@ fn think(
                 {
                     now = true;
                     let away = Vec2::new((tp.x - pos.x).signum(), 0.6).normalize();
-                    hits.write(crate::combat::Hit { target: who, damage: SWEEP_HIT, harm: Harm::Blunt, knock: away * 260.0, stun: 0.2, at: tp, dir: away, weight: 1.0, crit: false });
+                    hits.write(crate::combat::Hit { by: Some(e), target: who, damage: SWEEP_HIT, harm: Harm::Blunt, knock: away * 260.0, stun: 0.2, at: tp, dir: away, weight: 1.0, crit: false });
                     sounds.write(crate::sound::PlaySound::at("clank", tp).pitch(0.7).volume(1.0));
                 }
                 next = if t + DT >= SWEEP.0 {

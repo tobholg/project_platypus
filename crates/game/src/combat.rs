@@ -599,6 +599,9 @@ pub struct Hits;
 /// (`apply_hits`) does what hits do, whatever struck.
 #[derive(Message, Clone, Copy, Debug)]
 pub struct Hit {
+    /// Who struck it, if anyone's known (for what killed the player: none,
+    /// the nearest foe to where it landed).
+    pub by: Option<Entity>,
     pub target: Entity,
     pub damage: f32,
     /// What kind of hurt it is (a blade's slash, a point's pierce, a blow).
@@ -773,7 +776,7 @@ fn touch(
             if let Some(i) = inv.as_mut().filter(|i| i.dodge) {
                 i.left = 0.0;
             }
-            hits.write(Hit { target: e, damage: t.damage, harm: t.harm, knock: push, stun: t.stun, at: k.body.pos + d * 0.5, dir: d.normalize_or(Vec2::X), weight: t.damage / 12.0, crit: false });
+            hits.write(Hit { by: Some(me), target: e, damage: t.damage, harm: t.harm, knock: push, stun: t.stun, at: k.body.pos + d * 0.5, dir: d.normalize_or(Vec2::X), weight: t.damage / 12.0, crit: false });
             if let Some(LastingName(name)) = t.coat.filter(|n| coatings.by_name.contains_key(n.0)) {
                 crate::creatures::body::elements::stain(&mut commands, e, name, 0.5, &coatings);
             }
@@ -1442,7 +1445,7 @@ fn swing(
                 let roll = (platypus_sim::rng::hash(&[sim.world.tick(), crate::creatures::stable(&ids, me), crate::creatures::stable(&ids, e)]) % 10_000) as f32 / 10_000.0;
                 let (damage, knock, crit) = stats.strike(def.damage * mv.damage, def.knock * mv.knock, roll);
                 let push = (Vec2::new(away.x, 0.0).normalize_or(Vec2::X * facing) + Vec2::new(0.0, 0.45 + mv.launch)).normalize() * knock;
-                hits.write(Hit { target: e, damage, harm: mv.harm.unwrap_or(def.harm), knock: push, stun: def.stun, at, dir: dir(a), weight: damage / 12.0, crit });
+                hits.write(Hit { by: Some(me), target: e, damage, harm: mv.harm.unwrap_or(def.harm), knock: push, stun: def.stun, at, dir: dir(a), weight: damage / 12.0, crit });
                 if let Some(name) = &coat {
                     crate::creatures::body::elements::stain(&mut commands, e, name, 1.0, &coatings);
                 }
@@ -1558,7 +1561,7 @@ fn slam(
         let away = (tk.body.pos.x - feet.x).signum();
         let (damage, knock, crit) = stats.strike(def.damage * mv.damage * 0.5, def.knock * mv.knock * 0.5, 0.5);
         let push = Vec2::new(away, 0.8).normalize() * knock;
-        hits.write(Hit { target: e, damage, harm: mv.harm.unwrap_or(def.harm), knock: push, stun: def.stun, at: tk.body.pos, dir: Vec2::new(away, 0.0), weight: damage / 12.0, crit });
+        hits.write(Hit { by: Some(me), target: e, damage, harm: mv.harm.unwrap_or(def.harm), knock: push, stun: def.stun, at: tk.body.pos, dir: Vec2::new(away, 0.0), weight: damage / 12.0, crit });
     }
 }
 
@@ -1593,7 +1596,7 @@ fn apply_hits(
     mut felt: MessageWriter<Felt>,
     parts: Query<&crate::creatures::body::parts::Parts>,
     mut tumbles: Query<&mut crate::creatures::body::tumble::Tumble>,
-    (bodies, mut masks): (Query<&Animator>, ResMut<crate::creatures::body::wounds::LayerMasks>),
+    (bodies, mut masks, who): (Query<&Animator>, ResMut<crate::creatures::body::wounds::LayerMasks>, crate::death::Who),
     (mut guards, items): (Query<(&mut crate::gear::shield::Guard, &mut Stamina, &crate::gear::Equipment)>, Option<Res<crate::hands::items::Items>>),
 ) {
     let Some(weapons) = weapons else { return };
@@ -1654,7 +1657,7 @@ fn apply_hits(
             sounds.write(crate::sound::PlaySound::at(if broke { "parry" } else { "clang" }, at));
             sparks.emit(&weapons.file.hit, weapons.file.hit.count as usize, at, -h.dir, Vec2::ZERO);
         }
-        let dealt = health.harm(damage, h.harm);
+        let dealt = health.harm_by(damage, h.harm, || crate::death::blamed(&who, h.by, h.at, h.harm));
         let reaction = crate::creatures::body::hurt::reaction(damage, dealt);
         felt.write(Felt { target: h.target, meant: damage, dealt, share: dealt / health.max.max(1.0), harm: h.harm, at: h.at, dir: h.dir, weight: h.weight, crit: h.crit });
         // (A creature takes a share of a blow's push, and no more than so

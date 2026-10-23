@@ -41,8 +41,9 @@ pub(crate) struct HeldKeys {
     hook_tapped: bool,
 }
 
-pub(crate) fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, taken: Res<crate::dev::KeyboardTaken>, open: Res<crate::hands::InventoryOpen>, mut held: ResMut<HeldKeys>) {
-    if taken.0 {
+pub(crate) fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, taken: Res<crate::dev::KeyboardTaken>, open: Res<crate::hands::InventoryOpen>, dying: Res<crate::death::Dying>, mut held: ResMut<HeldKeys>) {
+    // (Dead, on the death screen: nothing moves it.)
+    if taken.0 || dying.0.is_some() {
         // (The art editor has the keyboard: stand still, keep looking.)
         held.intent = Intent { aim: held.intent.aim, ..default() };
         return;

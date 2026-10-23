@@ -271,7 +271,7 @@ fn think(
             Doing::Dive(t, bit) => {
                 let mut bit = bit;
                 if !bit && let Some((who, _, _)) = target.filter(|(_, tk, _)| ((pos - tk.body.pos).abs() - tk.body.half - k.body.half).max_element() <= 1.5) {
-                    hits.write(crate::combat::Hit { target: who, damage: BITE.0, harm: Harm::Pierce, knock: o.aim * BITE.1, stun: 0.08, at: pos, dir: o.aim, weight: 0.3, crit: false });
+                    hits.write(crate::combat::Hit { by: Some(e), target: who, damage: BITE.0, harm: Harm::Pierce, knock: o.aim * BITE.1, stun: 0.08, at: pos, dir: o.aim, weight: 0.3, crit: false });
                     sounds.write(crate::sound::PlaySound::at("snap", pos).pitch(1.7).volume(0.45));
                     bit = true;
                 }

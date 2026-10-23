@@ -119,6 +119,13 @@ pub(crate) fn capture(mode: Res<crate::mode::Mode>, mut b: ResMut<Bestiary>, mut
     keys.reset_all();
 }
 
+impl Bestiary {
+    /// A creature's picture (by its kind), and its size (pixels).
+    pub fn picture(&self, id: &str) -> Option<&(Handle<Image>, UVec2)> {
+        self.pictures.get(id)
+    }
+}
+
 /// The catalogue read again when the creatures or moves change (and the
 /// pictures with it).
 fn refresh(mut b: ResMut<Bestiary>, creatures: Res<Creatures>, book: Res<MoveBook>, mut images: ResMut<Assets<Image>>) {
