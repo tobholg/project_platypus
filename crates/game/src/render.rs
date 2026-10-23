@@ -199,7 +199,7 @@ pub(crate) fn cell_rgba(mats: &MaterialTable, c: Cell, ambient: i32, dim: f32, l
     }
     if c.flags & flags::BURNING != 0 {
         // Flicker: a per-cell mix toward flame colours that changes as it burns down.
-        let n = ((lx as u32 * 73856093) ^ (ly as u32 * 19349663) ^ (c.life as u32 * 83492791)) % 100;
+        let n = ((lx as u32).wrapping_mul(73856093) ^ (ly as u32).wrapping_mul(19349663) ^ (c.life as u32).wrapping_mul(83492791)) % 100;
         let flame = if n < 45 { [255.0, 120.0, 20.0] } else if n < 80 { [255.0, 190.0, 60.0] } else { [200.0, 50.0, 10.0] };
         if mats.is_charred(c) {
             // Charred: black with glowing embers, so you can see where a
