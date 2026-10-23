@@ -14,7 +14,8 @@
 //!   in the walls round them, a faint haze). A naked flame in it (a torch,
 //!   held or planted, a lantern, a candle) sets it off, the blast running
 //!   through all of it and lighting the coal. Flashlights are safe; a
-//!   safety lamp is safe, and its flame burns blue near it (`Firedamp`).
+//!   safety lamp is safe, and its flame burns blue near it (`Firedamp`). A
+//!   torch or a lantern switched off (L) is out: carry it through dark.
 //! - **Whoomphs**: gas going up (firedamp, methane, swamp gas: the cells
 //!   the sim reports flashing into flame) is felt as a blast by what's in
 //!   and round the fireball, as big as the gas that went: a wisp's a pop, a
@@ -369,7 +370,7 @@ const SNIFF_FULL: f32 = 14.0;
 fn firedamp(
     mut sim: ResMut<SimWorld>,
     mut damp: ResMut<Firedamp>,
-    toggles: Res<crate::light::LightToggles>,
+    (toggles, switched): (Res<crate::light::LightToggles>, Res<crate::light::switch::Switch>),
     player: Query<&Kinematics, With<LocalPlayer>>,
     flames: Query<(&GlobalTransform, &crate::light::LightSource, Has<crate::light::torch::HeldFlame>)>,
     mut quiet: Local<u64>,
@@ -381,7 +382,8 @@ fn firedamp(
     // a safety lamp's, or a flashlight's.)
     let mut lit = Vec::new();
     for (tf, light, held) in &flames {
-        let naked = if held { matches!(toggles.carry, crate::light::Carry::Torch | crate::light::Carry::Lantern) } else { light.flicker > 0.05 };
+        // (Switched off, L: out, and an out flame lights nothing.)
+        let naked = if held { matches!(toggles.carry, crate::light::Carry::Torch | crate::light::Carry::Lantern) && switched.hand_level(toggles.carry) > 0.05 } else { light.flicker > 0.05 };
         if !naked {
             continue;
         }

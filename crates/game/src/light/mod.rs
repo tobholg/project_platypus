@@ -13,6 +13,7 @@
 //! hours, F9 lighting on/off. `PLATYPUS_HOUR=19` starts at that hour.
 
 pub mod grid;
+pub mod switch;
 pub mod torch;
 
 pub use torch::{TorchArt, plant_torch};
@@ -379,7 +380,8 @@ impl Plugin for LightPlugin {
             // PLATYPUS_NOLIGHT=1 starts with lighting off (F9 toggles).
             .insert_resource(LightToggles { enabled: std::env::var("PLATYPUS_NOLIGHT").is_err(), carry: Carry::Nothing, headlamp: false })
             .init_resource::<Cones>()
-            .add_systems(Update, (from_gear, shine))
+            .init_resource::<switch::Switch>()
+            .add_systems(Update, (from_gear, shine, switch::switch.before(torch::hold)))
             .init_resource::<Gloom>()
             .insert_resource(Daylight { skipped: skip, ..default() })
             .init_resource::<Flashes>()
@@ -769,7 +771,7 @@ fn compute_light(
     flashes: Res<Flashes>,
     zoom: Res<Zoom>,
     time: Res<Time>,
-    (cursor, off_light, fixed, mut glints, mut cones, gloom, mut lit, mut water_mask, haunts): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>, ResMut<Cones>, Res<Gloom>, ResMut<Lit>, ResMut<WaterMask>, Res<crate::creatures::haunt::Haunts>),
+    (cursor, off_light, fixed, mut glints, mut cones, gloom, mut lit, mut water_mask, haunts, switched): (Res<CursorWorld>, Res<torch::OffLight>, Res<Time<Fixed>>, ResMut<Glints>, ResMut<Cones>, Res<Gloom>, ResMut<Lit>, ResMut<WaterMask>, Res<crate::creatures::haunt::Haunts>, Res<switch::Switch>),
     mut overlay: ResMut<Overlay>,
     mut pending: ResMut<Pending>,
     mut metrics: ResMut<LightMetrics>,
@@ -888,9 +890,18 @@ fn compute_light(
         };
         // A beam: its hot spot, the dim wide spill about it, and a glow at
         // the lamp itself (what's right by you shows, whichever way).
-        let mut lamp = |g: &mut grid::LightGrid, from: Vec2, dir: Vec2, f: BeamCfg| {
+        // (Switched (L): how much of it's on, how much a cooling filament,
+        // a flare off the lens switching on: `switch.rs`.)
+        let mut lamp = |g: &mut grid::LightGrid, from: Vec2, dir: Vec2, f: BeamCfg, (on, warm, flare): (f32, f32, f32)| {
+            if flare > 0.0 {
+                g.seed_point([from.x, from.y], c((255, 250, 235), 1.3 * flare));
+            }
+            if on < 0.003 {
+                return;
+            }
             let sp = settings.spill;
-            let col = c(f.color, f.strength * lamps);
+            let (cold, hot) = (c(f.color, f.strength * lamps * on), c(switch::FILAMENT, f.strength * lamps * on));
+            let col: [f32; 3] = std::array::from_fn(|i| cold[i] + (hot[i] - cold[i]) * warm);
             g.seed_beam([from.x, from.y], [dir.x, dir.y], f.angle.to_radians() / 2.0, f.range, col);
             g.seed_beam([from.x, from.y], [dir.x, dir.y], sp.angle.to_radians() / 2.0, sp.range, col.map(|v| v * sp.share));
             g.seed_point([from.x, from.y], col.map(|v| v * sp.glow));
@@ -900,7 +911,7 @@ fn compute_light(
             // (From the flashlight's lens, in the off hand.)
             let from = off_light.lens.map_or(at, |l| drawn + l);
             let dir = (aim - from).normalize_or(Vec2::X);
-            lamp(&mut g, from, dir, f);
+            lamp(&mut g, from, dir, f, switched.hand.electric());
         }
         // A mining helmet's lamp, from the brow.
         if let (true, Some(aim)) = (toggles.headlamp, cursor.0) {
@@ -908,7 +919,7 @@ fn compute_light(
             // with none.)
             let from = drawn + hand.and_then(|h| h.brow).map_or(Vec2::new(k.loco.facing * k.body.half.x * 0.6, k.body.half.y * 0.8), |b| b.truncate());
             let dir = (aim - from).normalize_or(Vec2::X);
-            lamp(&mut g, from, dir, settings.headlamp);
+            lamp(&mut g, from, dir, settings.headlamp, switched.head.electric());
         }
     }
     // Embers, sparks, burning debris.

@@ -185,8 +185,9 @@ pub fn hold(
     mut was: Local<Option<Carry>>,
     player: Query<(Entity, &crate::creatures::Kinematics, Option<&HandPos>), With<LocalPlayer>>,
     mut held: Query<(Entity, &mut Transform, &mut Sprite), HeldOnly>,
-    mut flames: Query<(&mut Transform, &mut LightSource), (With<HeldFlame>, Without<HeldTorch>)>,
+    mut flames: Query<(&mut Transform, &mut LightSource, Option<&mut Flame>), (With<HeldFlame>, Without<HeldTorch>)>,
     firedamp: Option<Res<crate::hazards::Firedamp>>,
+    (switched, mut sparks, mut flipped): (Res<super::switch::Switch>, ResMut<Sparks>, Local<u32>),
 ) {
     off.lens = None;
     let (Some(art), Ok((me, k, hand))) = (art, player.single()) else { return };
@@ -245,11 +246,26 @@ pub fn hold(
         let lamp = if carry == Carry::Torch { settings.torch } else { settings.lamp };
         // (A safety lamp near firedamp: its flame burns blue, and taller.)
         let near = if carry == Carry::SafetyLamp { firedamp.map_or(0.0, |f| f.near) } else { 0.0 };
-        for (mut ftf, mut light) in &mut flames {
+        // (Switched off, L: a torch snuffed, a lantern's wick down;
+        // `switch.rs`.)
+        let on = switched.hand_level(carry);
+        for (mut ftf, mut light, flame) in &mut flames {
             ftf.translation = tip_at.extend(0.0);
-            let warm = rgb(lamp.color, lamp.strength * (1.0 + 0.6 * near));
-            let blue = rgb(SAFETY_BLUE, lamp.strength * (1.0 + 0.6 * near));
+            let warm = rgb(lamp.color, lamp.strength * (1.0 + 0.6 * near) * on);
+            let blue = rgb(SAFETY_BLUE, lamp.strength * (1.0 + 0.6 * near) * on);
             light.color = std::array::from_fn(|i| warm[i] + (blue[i] - warm[i]) * near);
+            if let Some(mut f) = flame {
+                f.share = Some(on);
+            }
+        }
+        // A torch snuffed puffs smoke; lit again, a spark.
+        if *flipped != switched.hand.flips() {
+            *flipped = switched.hand.flips();
+            if carry == Carry::Torch {
+                let at = k.body.pos + hand_at.truncate() + tip_at;
+                let (look, n) = if switched.hand.on { (&settings.fire.embers, 8) } else { (&settings.fire.smoke, 16) };
+                sparks.emit(look, n, at, Vec2::Y, Vec2::ZERO);
+            }
         }
     } else {
         off.lens = Some(hand_at.truncate() + tip_at);

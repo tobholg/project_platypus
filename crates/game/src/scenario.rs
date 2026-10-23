@@ -309,6 +309,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, cavein_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, firedamp_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, death_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, switch_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, groundbuild_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
@@ -11143,7 +11144,10 @@ fn cavein_script(
 /// in it, walls down to 30 up), firedamp filling it from 26 up; the player
 /// under its middle carries a safety lamp, then at 4 s a torch (`PLATYPUS_CARRY`: what
 /// instead: lantern, flashlight), and jumps at 4.5 s; a TNT barrel just
-/// outside the cup, at 1262 (`PLATYPUS_NOBARREL=1`: none). Every half second:
+/// outside the cup, at 1262 (`PLATYPUS_NOBARREL=1`: none); `PLATYPUS_DARK=1`:
+/// the light switched off (L) before the torch comes out, on again at 6 s,
+/// a jump at 6.5 s.
+/// Every half second:
 /// the firedamp left, burning coal, the lamp's reading, the player's health.
 /// In a generated world (`PLATYPUS_TP=x,y` in a chamber with firedamp):
 /// the safety lamp, then at 3.5 s a torch, lifted at 4 s to just under the
@@ -11156,6 +11160,7 @@ fn firedamp_script(
     mut menu: ResMut<crate::devmenu::DevMenu>,
     mut toggles: ResMut<crate::light::LightToggles>,
     damp: Res<crate::hazards::Firedamp>,
+    switched: Res<crate::light::switch::Switch>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut player: Query<(&mut Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
     mut st: Local<(u8, f32, Vec2)>,
@@ -11248,12 +11253,25 @@ fn firedamp_script(
         };
         info!("firedamp: t {t:.1} now carrying {:?}", toggles.carry);
     }
-    if (4.5..4.7).contains(&t) { keys.press(KeyCode::Space) } else { keys.release(KeyCode::Space) }
+    let jump = (4.5..4.7).contains(&t) || std::env::var("PLATYPUS_DARK").is_ok() && (6.5..6.7).contains(&t);
+    if jump { keys.press(KeyCode::Space) } else { keys.release(KeyCode::Space) }
+    // (`PLATYPUS_DARK=1`: its light switched off, L, at 3.5 s, so the torch
+    // comes out dark; switched on again, L, at 6 s, in the gas.)
+    if std::env::var("PLATYPUS_DARK").is_ok() {
+        if (3.5..3.53).contains(&t) || (6.0..6.03).contains(&t) {
+            if !keys.pressed(KeyCode::KeyL) {
+                keys.press(KeyCode::KeyL);
+                info!("firedamp: t {t:.2} L pressed (the hand was {})", if switched.hand.on { "on" } else { "off" });
+            }
+        } else {
+            keys.release(KeyCode::KeyL);
+        }
+    }
     if t >= *next {
         *next = t + 0.5;
         let count = |m: platypus_sim::MaterialId| (990..1250).flat_map(|x| (fl..roof + 10).map(move |y| CellPos::new(x, y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == m)).count();
         let burning = (990..1250).flat_map(|x| (fl..roof + 10).map(move |y| CellPos::new(x, y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == coal && c.flags & platypus_sim::cell::flags::BURNING != 0)).count();
-        info!("firedamp: t {t:.1} firedamp {} cells, coal {} ({burning} burning); the lamp reads {:.2}; the player's health {:.0} at {:.0}; TNT barrels {}", count(gas), count(coal), damp.near, hp.hp, pk.body.pos, barrels.iter().count());
+        info!("firedamp: t {t:.1} firedamp {} cells, coal {} ({burning} burning); the lamp reads {:.2}; the player's health {:.0} at {:.0}; TNT barrels {}; the hand's light {} ({:.2})", count(gas), count(coal), damp.near, hp.hp, pk.body.pos, barrels.iter().count(), if switched.hand.on { "on" } else { "off" }, switched.hand_level(toggles.carry));
     }
 }
 
@@ -11333,6 +11351,44 @@ fn death_script(
             Some(d) => info!("death: t {t:.1} the screen's up: {} ({}) for {:.0}, {:.0} too many; grudge {}; moments {:?}; life {:.1} s, kills {}, gold left {}; \"{}\"; {:.1} s in", d.cause.title, d.cause.how, d.blow, d.over, d.grudge, d.moments, d.life, d.kills, d.gold, d.epitaph, d.since),
             None => info!("death: t {t:.1} alive, health {:.0} at {:.0}; the rope {:?}", hp.hp, pk.body.pos, rope.and_then(|r| r.tether()).map(|(p, l)| (p.round(), l.round()))),
         }
+    }
+}
+
+/// `switch` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_HOUR=23`):
+/// a flashlight in hand (`PLATYPUS_CARRY`: torch, lantern) and a helmet's
+/// lamp, aimed right; L at 1 s (off) and at 2.5 s (on). Every 0.05 s from
+/// each: how much of the hand's and the head's light is on, the filament's
+/// share, the flare.
+fn switch_script(
+    s: Res<Scenario>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    switched: Res<crate::light::switch::Switch>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut cursor: ResMut<CursorOverride>,
+    player: Query<&Kinematics, With<LocalPlayer>>,
+    mut next: Local<f32>,
+) {
+    if s.name != "switch" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok(pk) = player.single() else { return };
+    toggles.carry = match std::env::var("PLATYPUS_CARRY").as_deref() {
+        Ok("torch") => crate::light::Carry::Torch,
+        Ok("lantern") => crate::light::Carry::Lantern,
+        _ => crate::light::Carry::BigBeam,
+    };
+    toggles.headlamp = true;
+    cursor.0 = Some(pk.body.pos + Vec2::new(160.0, 10.0));
+    let flip = (1.0..1.03).contains(&t) || (2.5..2.53).contains(&t);
+    if flip && !keys.pressed(KeyCode::KeyL) { keys.press(KeyCode::KeyL) } else if !flip { keys.release(KeyCode::KeyL) }
+    let near = (1.0..1.8).contains(&t) || (2.5..3.1).contains(&t);
+    if near && t >= *next {
+        *next = t + 0.05;
+        let (on, warm, flare) = switched.hand.electric();
+        info!("switch: t {t:.2} the hand {} ({:.2} of it; electric {on:.2}, filament {warm:.1}, flare {flare:.2}); the head {:.2}", if switched.hand.on { "on" } else { "off" }, switched.hand_level(toggles.carry), switched.head.electric().0);
     }
 }
 

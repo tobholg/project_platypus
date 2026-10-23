@@ -218,7 +218,7 @@ pub fn perceive(
     mut hunters: Query<Perceiver, Without<crate::creatures::Dormant>>,
     quarry: Query<(Entity, &Kinematics, &Team, &Health, Option<&crate::creatures::factions::Faction>), Without<super::villager::Hiding>>,
     lights: Query<(&GlobalTransform, &crate::light::LightSource)>,
-    toggles: Res<crate::light::LightToggles>,
+    (toggles, switched): (Res<crate::light::LightToggles>, Res<crate::light::switch::Switch>),
     me: Query<Entity, With<crate::creatures::player::LocalPlayer>>,
     mut felt: MessageReader<crate::combat::Felt>,
     mut blasts: MessageReader<crate::fx::Explosion>,
@@ -258,7 +258,7 @@ pub fn perceive(
     // How lit each is (the same for every eye on it): a flashlight in
     // the player's hand as bright as a torch (it's a lamp, at you; a torch
     // in the hand is a light source of its own).
-    let lamp = matches!(toggles.carry, crate::light::Carry::SmallBeam | crate::light::Carry::BigBeam);
+    let lamp = matches!(toggles.carry, crate::light::Carry::SmallBeam | crate::light::Carry::BigBeam) && switched.hand.electric().0 > 0.3;
     let light: Vec<f32> = hunted.iter().map(|(q, at, ..)| if lamp && me.contains(*q) { 1.0 } else { lit(&sim, &day, &lights, *at) }).collect();
     let mut mine = Exposure::default();
     for (&(q, at, _, vel, grounded, ours, _), &light) in hunted.iter().zip(&light) {
