@@ -845,7 +845,7 @@ pub struct Swing {
     mv: usize,
     t: f32,
     /// Where it's aimed, degrees from level (facing right), and the facing.
-    aim: f32,
+    pub aim: f32,
     facing: f32,
     /// The blade's angle from where it was held when the swing began.
     start: f32,
@@ -865,6 +865,9 @@ pub struct Swing {
     /// creature, a hostile spell, a hazard: lava, fire, acid, web) bounces
     /// the swinger up, once a strike (a plunge: again after `rebound`).
     down: bool,
+    /// An up strike (aimed steeply up: `UP_AIM`): the move swung round
+    /// straight up, held up over the head.
+    up: bool,
     bounced: bool,
     rebound: f32,
     /// A plunge: how long it's been diving, and whether it slammed (or
@@ -1058,6 +1061,7 @@ fn start_swings(
         let down = !k.loco.grounded() && !roped && (held_down || d.normalize_or_zero().y < -DOWN_AIM);
         let facing = if d.x.abs() > 0.5 { d.x.signum() } else { k.loco.facing };
         let aim = if down { -90.0 } else { d.y.atan2(d.x.abs()).to_degrees() };
+        let (aim, up) = upward(aim, down);
         if down && !ask.fresh {
             continue;
         }
@@ -1096,6 +1100,7 @@ fn start_swings(
             lunged: false,
             whooshed: false,
             down,
+            up,
             bounced: false,
             rebound: 0.0,
             dived: 0.0,
@@ -1106,6 +1111,45 @@ fn start_swings(
             live: false,
         });
     }
+}
+
+/// Aimed this steeply up (degrees), a swing's an up strike: swung round
+/// straight up, its blade raised this far (cells) to clear the head, its
+/// arc this much of the move's.
+const UP_AIM: f32 = 60.0;
+const UP_RAISE: f32 = 7.0;
+const UP_FOCUS: f32 = 0.65;
+/// A swing's arc drawn in round its middle to this share (where you point
+/// matters), and kept off the head and the legs: never further round than
+/// these (degrees from level).
+const ARC_FOCUS: f32 = 0.8;
+const HEAD_LIMIT: f32 = 115.0;
+const LEG_LIMIT: f32 = -115.0;
+/// A blow's knock lifted this much (a share of it, besides the move's
+/// launch); a lunge aimed up lifts this share of it; an up strike in the
+/// air lifts you to this speed (cells/s).
+const KNOCK_LIFT: f32 = 0.3;
+const LUNGE_LIFT: f32 = 0.5;
+const UP_LIFT: f32 = 140.0;
+
+/// An aim, steeply up: an up strike, straight up.
+fn upward(aim: f32, down: bool) -> (f32, bool) {
+    if !down && aim > UP_AIM { (90.0, true) } else { (aim, false) }
+}
+
+/// A move's blade angle from the aim, as swung: its arc drawn in round its
+/// middle, and (aimed freely) kept off the head and the legs. A down-strike
+/// and a dash attack are as their moves say.
+fn shaped(mv: &MoveDef, rel: f32, aim: f32, up: bool, as_written: bool) -> f32 {
+    if as_written || mv.from == mv.to {
+        return rel;
+    }
+    let mid = (mv.from + mv.to) / 2.0;
+    let rel = mid + (rel - mid) * if up { UP_FOCUS } else { ARC_FOCUS };
+    if up {
+        return rel;
+    }
+    (aim + rel).clamp(LEG_LIMIT, HEAD_LIMIT) - aim
 }
 
 /// A dash is a dodge: it costs stamina and nothing hurts you for a moment.
@@ -1277,7 +1321,7 @@ fn swing(
                 }
                 s.mv = next;
                 s.down = down;
-                s.aim = if down { -90.0 } else { aim };
+                (s.aim, s.up) = upward(if down { -90.0 } else { aim }, down);
                 s.facing = facing;
                 s.t = 0.0;
                 s.start = s.angle - s.aim;
@@ -1310,7 +1354,9 @@ fn swing(
         let (rel, thrust) = mv.pose(s.t, s.start);
         // (A plunge holds its thrust all the way down.)
         let thrust = if plunge && s.t >= mv.windup { mv.thrust } else { thrust };
-        let angle = s.aim + rel;
+        // (An up strike's blade raised clear over the head.)
+        let thrust = thrust + if s.up { UP_RAISE } else { 0.0 };
+        let angle = s.aim + shaped(&mv, rel, s.aim, s.up, s.down || s.dash);
         s.angle = angle;
         s.thrust = thrust;
         let facing = s.facing;
@@ -1339,7 +1385,15 @@ fn swing(
         if !s.lunged && (k.loco.grounded() || s.dash) && (mv.lunge > 0.0 || mv.hop > 0.0) {
             s.lunged = true;
             let up = (mv.hop - k.body.vel.y).max(0.0) * (mv.hop > 0.0) as u8 as f32;
-            recoil.write(Recoil { who: me, add: Vec2::new(dir(s.aim).x.signum() * mv.lunge, up), pogo: None, dive: None });
+            // (Forward as much as it's aimed level; aimed up, a little lift.)
+            let a = s.aim.to_radians();
+            let (forward, lift) = (mv.lunge * a.cos().max(0.3), mv.lunge * a.sin().max(0.0) * LUNGE_LIFT);
+            recoil.write(Recoil { who: me, add: Vec2::new(dir(s.aim).x.signum() * forward, up + lift), pogo: None, dive: None });
+        }
+        // An up strike in the air lifts you a little (once a swing).
+        if !s.lunged && s.up && !k.loco.grounded() {
+            s.lunged = true;
+            recoil.write(Recoil { who: me, add: Vec2::new(0.0, (UP_LIFT - k.body.vel.y).max(0.0)), pogo: None, dive: None });
         }
         // (A dash attack's blade out: the dash slips blows no more, and it's
         // over: the move's hop and lunge take it on.)
@@ -1444,7 +1498,11 @@ fn swing(
                 let away = (tk.body.pos - k.body.pos).normalize_or(Vec2::X * facing);
                 let roll = (platypus_sim::rng::hash(&[sim.world.tick(), crate::creatures::stable(&ids, me), crate::creatures::stable(&ids, e)]) % 10_000) as f32 / 10_000.0;
                 let (damage, knock, crit) = stats.strike(def.damage * mv.damage, def.knock * mv.knock, roll);
-                let push = (Vec2::new(away.x, 0.0).normalize_or(Vec2::X * facing) + Vec2::new(0.0, 0.45 + mv.launch)).normalize() * knock;
+                // (Thrown the way the blow went: aimed up, launched; aimed
+                // down, slammed down; level, back along the ground.)
+                let along = dir(s.aim);
+                let along = if along.x * away.x < 0.0 { Vec2::new(-along.x, along.y) } else { along };
+                let push = (along + Vec2::new(0.0, KNOCK_LIFT + mv.launch)).normalize() * knock;
                 hits.write(Hit { by: Some(me), target: e, damage, harm: mv.harm.unwrap_or(def.harm), knock: push, stun: def.stun, at, dir: dir(a), weight: damage / 12.0, crit });
                 if let Some(name) = &coat {
                     crate::creatures::body::elements::stain(&mut commands, e, name, 1.0, &coatings);

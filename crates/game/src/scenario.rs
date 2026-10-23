@@ -310,6 +310,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, firedamp_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, death_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, rest_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, aimswing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, gauntlet_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, switch_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, lightthrow_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -11585,6 +11586,43 @@ fn gauntlet_script(
         hits.push(*last - hp.hp);
     }
     *last = hp.hp;
+}
+
+/// `aimswing` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a
+/// `PLATYPUS_WEAPON` (shortsword) swung once each with the cursor level, 45
+/// up, 80 up and 40 down, a second apart from 1 s (pictures with
+/// `PLATYPUS_SHOTS`); logs each swing's aim and blade angle.
+fn aimswing_script(
+    s: Res<Scenario>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    items: Option<Res<crate::hands::items::Items>>,
+    (mut hand, mut cursor, mut mouse): (ResMut<crate::hands::Hand>, ResMut<CursorOverride>, ResMut<ButtonInput<MouseButton>>),
+    mut player: Query<(&Kinematics, &mut crate::hands::items::Inventory, Option<&crate::combat::Swing>), With<LocalPlayer>>,
+    mut next: Local<f32>,
+) {
+    if s.name != "aimswing" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let (Some(items), Ok((pk, mut inv, swing))) = (items, player.single_mut()) else { return };
+    let w = std::env::var("PLATYPUS_WEAPON").unwrap_or_else(|_| "shortsword".into());
+    if let Some(id) = items.id(&w) {
+        inv.slots[9] = Some(crate::hands::items::Stack::new(id, 1));
+        (hand.bar, hand.slot) = (0, 9);
+    }
+    let angles = [0.0f32, 45.0, 80.0, -40.0];
+    let i = ((t - 1.0).max(0.0)) as usize;
+    let a = angles.get(i).copied().unwrap_or(0.0).to_radians();
+    cursor.0 = Some(pk.body.pos + Vec2::new(a.cos(), a.sin()) * 60.0);
+    let local = (t - 1.0).fract();
+    if t > 1.0 && i < angles.len() && local < 0.05 { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    if let Some(sw) = swing
+        && t >= *next
+    {
+        *next = t + 0.03;
+        info!("aimswing: t {t:.2} aim {:.0} blade {:.0}", sw.aim, sw.angle);
+    }
 }
 
 /// `chase` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a `PLATYPUS_FOE`
