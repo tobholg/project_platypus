@@ -3,7 +3,7 @@
 //! that's had you), how this life went (how long, how deep, what you
 //! killed and made, the gold left where you fell), the last moments (what
 //! hurt you, by how much), a line for the stone, and a countdown to waking
-//! (5 s; Space, pressed again, wakes you now). The world goes on behind it,
+//! (10 s; Space, pressed again, wakes you now). The world goes on behind it,
 //! the camera where you fell; you're out of it till you wake (hidden, let
 //! be, no hands). A scenario or a replay heals where it stands instead
 //! (`respawn::heals_in_place`).
@@ -183,7 +183,7 @@ pub struct Dying(pub Option<Death>);
 
 /// How long till you wake (s); how long after dying a Space press counts
 /// (so mashing jump as you die doesn't skip it).
-pub const COUNTDOWN: f32 = 5.0;
+pub const COUNTDOWN: f32 = 10.0;
 const SPACE_AFTER: f32 = 0.35;
 
 /// A death, as the screen shows it.
@@ -213,8 +213,6 @@ pub struct Death {
     pub deaths: u32,
     pub longest: f32,
     pub day: u32,
-    /// Where it'll wake ("in your bed", "where you began").
-    pub wakes: &'static str,
 }
 
 pub struct DeathPlugin;
@@ -253,7 +251,6 @@ fn died(
     mut dying: ResMut<Dying>,
     creatures: Res<crate::creatures::def::Creatures>,
     daylight: Res<crate::light::Daylight>,
-    checkpoint: Res<crate::respawn::Checkpoint>,
     mut queue: ResMut<crate::gold::GoldQueue>,
     mut player: Query<(Entity, &mut crate::progress::Progress, &mut crate::creatures::Health, Option<&mut crate::gold::Gold>), With<crate::creatures::player::LocalPlayer>>,
 ) {
@@ -316,7 +313,6 @@ fn died(
         deaths: p.deaths,
         longest: p.longest_life,
         day: daylight.days.floor() as u32 + 1,
-        wakes: if checkpoint.0.is_some() { "in your bed" } else { "where you began" },
     });
 }
 
@@ -419,7 +415,7 @@ mod screen {
         };
         if !up.is_empty() {
             for mut t in &mut count {
-                t.0 = format!("Waking {} in {}", d.wakes, (COUNTDOWN - d.since).ceil().max(1.0) as u32);
+                t.0 = format!("Resurrecting in {}", (COUNTDOWN - d.since).ceil().max(1.0) as u32);
             }
             // (Darkening as it comes up.)
             for mut bg in &mut veil {

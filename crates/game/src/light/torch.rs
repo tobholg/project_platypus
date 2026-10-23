@@ -65,6 +65,12 @@ pub struct HeldTorch;
 /// A torch held in the off hand (behind the body): leaning this far ahead
 /// of upright (degrees), its head out in front of you.
 const TORCH_LEAN: f32 = -55.0;
+/// A lantern carried out in front (cells from the back hand: ahead, and
+/// down to hang from it), swinging back as you go: degrees a cell a second
+/// of speed, at most so many.
+const LANTERN_REACH: (f32, f32) = (8.0, 5.0);
+const LANTERN_SWAY: f32 = 0.08;
+const LANTERN_SWAY_MOST: f32 = 18.0;
 /// And held this far ahead of the back hand and up (cells): out past the
 /// chest, as an arm reaching it forward would.
 const TORCH_REACH: (f32, f32) = (5.0, 1.0);
@@ -214,7 +220,7 @@ pub fn hold(
     mut held: Query<(Entity, &mut Transform, &mut Sprite), HeldOnly>,
     mut flames: Query<(&mut Transform, &mut LightSource, Option<&mut Flame>), (With<HeldFlame>, Without<HeldTorch>)>,
     firedamp: Option<Res<crate::hazards::Firedamp>>,
-    (switched, mut sparks, mut flipped): (Res<super::switch::Switch>, ResMut<Sparks>, Local<u32>),
+    (switched, mut sparks, mut flipped, time, mut sway): (Res<super::switch::Switch>, ResMut<Sparks>, Local<u32>, Res<Time>, Local<f32>),
 ) {
     off.lens = None;
     let (Some(art), Ok((me, k, hand))) = (art, player.single()) else { return };
@@ -259,8 +265,12 @@ pub fn hold(
     let (angle, tip) = match carry {
         // (A torch is held up, leaning a little ahead, wherever you look.)
         Carry::Torch => (TORCH_LEAN, art.flame),
-        // (A lantern hangs: upright, whichever way you look.)
-        Carry::Lantern | Carry::SafetyLamp => (0.0, art.glow),
+        // (A lantern hangs from the hand, swinging back as you go.)
+        Carry::Lantern | Carry::SafetyLamp => {
+            let target = (k.body.vel.x * facing * LANTERN_SWAY).clamp(-LANTERN_SWAY_MOST, LANTERN_SWAY_MOST);
+            *sway += (target - *sway) * (1.0 - (-time.delta_secs() / 0.25).exp());
+            (*sway, art.glow)
+        }
         _ => (aim, art.lens),
     };
     if let Some(atlas) = sprite.texture_atlas.as_mut() {
@@ -268,9 +278,13 @@ pub fn hold(
     }
     sprite.flip_x = facing < 0.0;
     // (A torch, a flashlight: in the back hand behind the body, sticking
-    // out ahead of it; a lantern hangs in front, so it shows.)
+    // out ahead of it; a lantern carried out in front of you.)
     let z = if matches!(carry, Carry::Lantern | Carry::SafetyLamp) { 0.02 } else { -0.02 };
-    let reach = if carry == Carry::Torch { Vec3::new(TORCH_REACH.0 * facing, TORCH_REACH.1, 0.0) } else { Vec3::ZERO };
+    let reach = match carry {
+        Carry::Torch => Vec3::new(TORCH_REACH.0 * facing, TORCH_REACH.1, 0.0),
+        Carry::Lantern | Carry::SafetyLamp => Vec3::new(LANTERN_REACH.0 * facing, LANTERN_REACH.1, 0.0),
+        _ => Vec3::ZERO,
+    };
     let hand_at = hand_at + reach;
     tf.translation = hand_at + Vec3::new(0.0, 0.0, z);
     let r = Vec2::from_angle(angle.to_radians()).rotate(tip);
