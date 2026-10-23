@@ -430,7 +430,12 @@ fn hunt(
                 }
                 jump = reaching && grounded && out.is_none();
                 if let Attack::Swing { reach, every, combo } = h.attack {
-                    let near = d.x.abs() < reach && d.y.abs() < reach;
+                    // (Coming at you, it swings as it comes: begun far
+                    // enough out that the blow lands as it gets there, not
+                    // after it's stopped there.)
+                    let went = (k.body.pos.x - k.prev_pos.x) * TICKS;
+                    let closing = (k.body.vel.x * d.x.signum()).max(went * d.x.signum()).max(0.0);
+                    let near = d.x.abs() < reach + (closing * SWING_LEAD).min(SWING_LEAD_MOST) && d.y.abs() < reach;
                     if m.attacking && !swinging && m.swings_left == 0 {
                         m.attacking = false;
                         m.next = tick + ticks(every * (0.7 + 0.6 * unit(&sim, id, 0xA77)));
@@ -461,7 +466,9 @@ fn hunt(
                 }
                 let far = flanks.then_some(m.side);
                 match (steer, far, hold) {
-                    _ if swinging => 0.0,
+                    // (Swinging, it comes on in to where it keeps, then
+                    // stands its ground.)
+                    _ if swinging => if d.x.abs() > *keep && d.y.abs() < *jump_to_reach { d.x.signum() * SWING_CLOSING } else { 0.0 },
                     (Some(s), ..) => s.move_x,
                     (None, Some(f), _) => {
                         let gx = t.x + f * hold.unwrap_or(keep + FLANK_PAST) - pos.x;
@@ -917,6 +924,12 @@ const HOP_HOLD: f32 = 0.5;
 /// A flanker's place: this far past `keep` on your far side (cells); it
 /// goes over you when it's within `VAULT` across on the wrong side.
 const FLANK_PAST: f32 = 6.0;
+/// A swing begun coming at you: this long ahead (s: about a wind-up) at
+/// the speed it's coming, so many cells further out at most; and how fast
+/// it comes on in while it swings (a share of its run).
+const SWING_LEAD: f32 = 0.3;
+const SWING_LEAD_MOST: f32 = 30.0;
+const SWING_CLOSING: f32 = 0.6;
 const VAULT: f32 = 45.0;
 /// A hunter jumps up at you from no further across than this past `keep`.
 const JUMP_ACROSS: f32 = 12.0;

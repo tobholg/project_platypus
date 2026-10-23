@@ -36,6 +36,10 @@ pub mod web;
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// After any move, this long before the next (a breath between).
 const BREATH: f32 = 0.4;
+/// A close move begun coming at its target: led by the time before it
+/// reaches, this long at most (s), so many cells further out at most.
+const MOVE_LEAD_MOST: f32 = 0.4;
+const MOVE_LEAD_CELLS: f32 = 30.0;
 
 pub struct MovesPlugin;
 
@@ -487,11 +491,21 @@ pub fn start(
         let Some((pe, pk, _)) = hunting.or_else(|| prey.iter().filter(|(p, _, t)| *p != e && t.hunted()).min_by(|x, y| x.1.body.pos.distance(pos).total_cmp(&y.1.body.pos.distance(pos)))) else { continue };
         let to = pk.body.pos - pos;
         let dist = to.length();
+        // (How fast it's coming, as it went last tick: a walker on legs
+        // moves by them, not by its body's speed.)
+        let went = (k.body.pos - k.prev_pos) * TICK_HZ as f32;
+        let closing = k.body.vel.max(went).dot(to.normalize_or_zero()).max(0.0);
         let start = (0..moves.ids.len()).find(|&i| {
             let Some(m) = book.get(&moves.ids[i]) else { return false };
+            // (A close one begun coming at it: as far further out as it
+            // comes in the time before it reaches, so it lands as it gets
+            // there, not after it's stopped there.)
+            let reaches = |a: &Act| matches!(a, Act::Lunge { .. } | Act::Strike(_) | Act::Grab(_) | Act::Slam(_));
+            let before: f32 = m.phases.iter().take_while(|p| !p.acts.iter().any(reaches)).map(|p| p.secs).sum();
+            let lead = if m.when.range.0 <= 0.0 { (closing * before.min(MOVE_LEAD_MOST)).min(MOVE_LEAD_CELLS) } else { 0.0 };
             // (Not one that fires from a turret that's venting.)
             let venting = legs.is_some_and(|l| m.phases.iter().flat_map(|p| &p.acts).any(|a| matches!(a, Act::Cast { from: Some(name), .. } if l.venting(name))));
-            now >= moves.ready[i] && !venting && (m.when.range.0..m.when.range.1).contains(&dist) && (!m.when.footing || holds) && (!m.when.line || clear(&sim, pos, pk.body.pos))
+            now >= moves.ready[i] && !venting && (m.when.range.0..m.when.range.1 + lead).contains(&dist) && (!m.when.footing || holds) && (!m.when.line || clear(&sim, pos, pk.body.pos))
         });
         if let Some(which) = start {
             // (`phase` past the end: the first phase's start is still to come.)
