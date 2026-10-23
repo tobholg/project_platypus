@@ -16,8 +16,10 @@ use crate::magic::runes::Emitter;
 
 pub struct VfxPlugin;
 
-/// Above creatures and spells, below the light's flashes.
+/// Above creatures and spells, below the light's flashes; or (`behind`)
+/// over the furniture, behind the creatures (a campfire's fire).
 const Z_SPARKS: f32 = 13.0;
+const Z_SPARKS_BEHIND: f32 = 6.0;
 /// Most sparks alive (the oldest go first).
 const MAX_SPARKS: usize = 8_000;
 /// Sparks per mesh (see `particles::PER_MESH`).
@@ -37,6 +39,7 @@ struct Spark {
     size: f32,
     jitter: f32,
     glow: bool,
+    behind: bool,
 }
 
 /// Sparks alive.
@@ -68,6 +71,16 @@ impl Sparks {
     /// `n` sparks of an emitter at `at`, heading `dir` (± its spread),
     /// moving with `carry` besides (a trail keeps some of its spell's speed).
     pub fn emit(&mut self, e: &Emitter, n: usize, at: Vec2, dir: Vec2, carry: Vec2) {
+        self.emit_on(e, n, at, dir, carry, false);
+    }
+
+    /// `emit`, drawn behind the creatures (a campfire's fire: you walk in
+    /// front of it).
+    pub fn emit_behind(&mut self, e: &Emitter, n: usize, at: Vec2, dir: Vec2, carry: Vec2) {
+        self.emit_on(e, n, at, dir, carry, true);
+    }
+
+    fn emit_on(&mut self, e: &Emitter, n: usize, at: Vec2, dir: Vec2, carry: Vec2, behind: bool) {
         let colors: Vec<[f32; 3]> = e.colors.iter().map(|&(r, g, b)| [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]).collect();
         if colors.is_empty() {
             return;
@@ -89,6 +102,7 @@ impl Sparks {
                 size: e.size,
                 jitter: e.jitter,
                 glow: e.glow,
+                behind,
             });
         }
         if self.live.len() > MAX_SPARKS {
@@ -115,6 +129,7 @@ pub struct Halo(pub Handle<Image>);
 #[derive(Resource, Default)]
 struct SparkMeshes {
     meshes: Vec<Handle<Mesh>>,
+    behind: Vec<Handle<Mesh>>,
     material: Option<Handle<ColorMaterial>>,
 }
 
@@ -190,27 +205,31 @@ fn draw_sparks(mut commands: Commands, mut sparks: ResMut<Sparks>, mut set: ResM
     // A glowing spark is two quads (its halo, then it); this frame's own
     // squares go first.
     let mut quads: Vec<([f32; 2], f32, [f32; 4])> = std::mem::take(&mut sparks.now);
+    let mut behind: Vec<([f32; 2], f32, [f32; 4])> = Vec::new();
     quads.reserve(sparks.live.len() * 2);
     for s in &sparks.live {
         let c = color_of(s);
+        let to = if s.behind { &mut behind } else { &mut quads };
         if s.glow {
-            quads.push(([s.pos.x, s.pos.y], s.size * HALO, [c[0], c[1], c[2], c[3] * HALO_ALPHA]));
+            to.push(([s.pos.x, s.pos.y], s.size * HALO, [c[0], c[1], c[2], c[3] * HALO_ALPHA]));
         }
-        quads.push(([s.pos.x, s.pos.y], s.size, c));
+        to.push(([s.pos.x, s.pos.y], s.size, c));
     }
-    let batches = quads.len().div_ceil(PER_MESH).max(1);
     let set = &mut *set;
     let material = set.material.get_or_insert_with(|| materials.add(ColorMaterial { alpha_mode: AlphaMode2d::Blend, ..default() })).clone();
-    while set.meshes.len() < batches {
-        let handle = meshes.add(empty_mesh());
-        commands.spawn((Name::new("Sparks"), Mesh2d(handle.clone()), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, Z_SPARKS), NoFrustumCulling));
-        set.meshes.push(handle);
-    }
-    for (b, handle) in set.meshes.iter().enumerate() {
-        let Some(mut mesh) = meshes.get_mut(handle) else { continue };
-        let lo = (b * PER_MESH).min(quads.len());
-        let hi = ((b + 1) * PER_MESH).min(quads.len());
-        fill(&mut mesh, &quads[lo..hi]);
+    for (list, quads, z) in [(&mut set.meshes, &quads, Z_SPARKS), (&mut set.behind, &behind, Z_SPARKS_BEHIND)] {
+        let batches = quads.len().div_ceil(PER_MESH).max(1);
+        while list.len() < batches {
+            let handle = meshes.add(empty_mesh());
+            commands.spawn((Name::new("Sparks"), Mesh2d(handle.clone()), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z), NoFrustumCulling));
+            list.push(handle);
+        }
+        for (b, handle) in list.iter().enumerate() {
+            let Some(mut mesh) = meshes.get_mut(handle) else { continue };
+            let lo = (b * PER_MESH).min(quads.len());
+            let hi = ((b + 1) * PER_MESH).min(quads.len());
+            fill(&mut mesh, &quads[lo..hi]);
+        }
     }
 }
 

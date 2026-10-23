@@ -44,17 +44,20 @@ pub struct Flame {
     owed: [f32; 3],
     /// A smaller fire than a torch's (a candle's): this share of its motes.
     pub share: Option<f32>,
+    /// Its motes drawn behind the creatures (a campfire's: you walk in front
+    /// of it).
+    pub behind: bool,
 }
 
 impl Flame {
     /// Fire rising from `at` (from the entity, cells).
     pub fn at(at: Vec2) -> Self {
-        Flame { at, owed: [0.0; 3], share: None }
+        Flame { at, owed: [0.0; 3], share: None, behind: false }
     }
 
     /// A smaller fire at `at`: `share` of a torch's motes.
     pub fn small(at: Vec2, share: f32) -> Self {
-        Flame { at, owed: [0.0; 3], share: Some(share) }
+        Flame { at, owed: [0.0; 3], share: Some(share), behind: false }
     }
 }
 
@@ -193,7 +196,11 @@ pub fn burn(time: Res<Time>, settings: Res<LightSettings>, mut sparks: ResMut<Sp
             let n = f.owed[i].floor();
             f.owed[i] -= n;
             if n > 0.0 {
-                sparks.emit(e, n as usize, at, Vec2::Y, Vec2::ZERO);
+                if f.behind {
+                    sparks.emit_behind(e, n as usize, at, Vec2::Y, Vec2::ZERO);
+                } else {
+                    sparks.emit(e, n as usize, at, Vec2::Y, Vec2::ZERO);
+                }
             }
         }
     }

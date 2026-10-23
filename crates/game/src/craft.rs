@@ -65,6 +65,9 @@ pub struct StationDef {
     /// campfire's.
     #[serde(default)]
     pub flame: Option<(f32, f32)>,
+    /// How big that fire is (a torch's 1).
+    #[serde(default)]
+    pub flame_share: Option<f32>,
 }
 
 /// How near a campfire you rest by it (cells).
@@ -187,7 +190,11 @@ impl Crafting {
             e.insert(crate::light::LightSource { color: c, flicker: def.flicker });
         }
         if let Some((x, y)) = def.flame {
-            e.insert(crate::light::torch::Flame::at(Vec2::new(if flip { -x } else { x }, y)));
+            // (Behind whoever stands at it: you walk in front of a fire.)
+            let mut fire = crate::light::torch::Flame::at(Vec2::new(if flip { -x } else { x }, y));
+            fire.behind = true;
+            fire.share = def.flame_share;
+            e.insert(fire);
         }
     }
 

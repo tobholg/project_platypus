@@ -11510,7 +11510,9 @@ fn rest_script(
     if *step == 1 && t > 6.0 {
         *step = 2;
         if let Some(kind) = crafting.station("campfire") {
-            crafting.spawn(&mut commands, kind, Vec2::new(pk.body.pos.x + 24.0, platypus_worldgen::arena::FLOOR as f32), false);
+            // (`PLATYPUS_FIREAT`: this far to its right instead, 0: under it.)
+            let off: f32 = std::env::var("PLATYPUS_FIREAT").ok().and_then(|v| v.parse().ok()).unwrap_or(24.0);
+            crafting.spawn(&mut commands, kind, Vec2::new(pk.body.pos.x + off, platypus_worldgen::arena::FLOOR as f32), false);
         }
         info!("rest: t {t:.1} a campfire set down beside it");
     }
