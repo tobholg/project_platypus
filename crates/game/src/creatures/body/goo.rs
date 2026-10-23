@@ -693,7 +693,7 @@ pub fn digest(
         // Held helpless, digested.
         k.loco.knock(&mut k.body, Vec2::ZERO, 2.0 * dt);
         k.body.pos = sk.body.pos + sw.offset;
-        h.harm_by(DIGEST * dt, crate::creatures::Harm::Acid, || crate::death::Cause::new("A slime", "digested"));
+        h.linger(DIGEST * dt, crate::creatures::Harm::Acid, || crate::death::Cause::new("A slime", "digested"));
         if h.hp <= 0.0 {
             // (A small creature digested: the slime's the bigger for it.)
             let full = anim.def.health.max(1.0);

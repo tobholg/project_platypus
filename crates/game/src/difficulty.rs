@@ -1,9 +1,10 @@
 //! How hard the world hits you: three ways to play, each save its own.
 //!
-//! - **Pilgrim**: you take about a third of the hurt (to explore and build
-//!   at your own pace).
-//! - **Wayfarer** (the default): a little over half.
-//! - **Hardened**: all of it (as the game was first tuned).
+//! - **Pilgrim**: gentler (to explore and build at your own pace); and only
+//!   here do you heal by yourself (`craft::rest`).
+//! - **Wayfarer** (the default): you start weak and afraid: a skeleton's
+//!   five blows kill you unarmoured, eight in leather, about twelve in iron.
+//! - **Hardened**: every blow lands hard.
 //!
 //! Only what the player takes changes (`Ward::taken`); creatures hit as
 //! hard and are as tough. `PLATYPUS_DIFFICULTY` picks; else the save's;
@@ -44,18 +45,30 @@ impl Difficulty {
 
     pub fn about(self) -> &'static str {
         match self {
-            Difficulty::Pilgrim => "Gentle: the world hurts you a third as much",
+            Difficulty::Pilgrim => "Gentler blows, and you heal by yourself",
             Difficulty::Wayfarer => "The way it's meant to be played",
-            Difficulty::Hardened => "Every blow lands in full",
+            Difficulty::Hardened => "Every blow lands hard",
         }
     }
 
-    /// The share of what hits the player that it takes.
-    pub fn taken(self) -> f32 {
+    /// How much of what goes on hurting the player it takes (burning, acid
+    /// on it, poison, heat): as it always was; blows are `taken`'s.
+    pub fn lingering(self) -> f32 {
         match self {
             Difficulty::Pilgrim => 0.35,
             Difficulty::Wayfarer => 0.6,
             Difficulty::Hardened => 1.0,
+        }
+    }
+
+    /// How much of what hits the player it takes (times what the creature
+    /// files say: tuned so a skeleton's blows kill an unarmoured Wayfarer in
+    /// five, measured with the `gauntlet` scenario).
+    pub fn taken(self) -> f32 {
+        match self {
+            Difficulty::Pilgrim => 1.5,
+            Difficulty::Wayfarer => 2.7,
+            Difficulty::Hardened => 3.6,
         }
     }
 
@@ -75,10 +88,11 @@ impl Plugin for DifficultyPlugin {
 /// The player takes its share of what hits it (its gear's ward is made
 /// again when what it wears changes: this goes on top, every frame).
 fn soften(difficulty: Res<Difficulty>, mut player: Query<&mut Health, With<LocalPlayer>>) {
-    let taken = difficulty.taken();
+    let (taken, lingers) = (difficulty.taken(), difficulty.lingering() / difficulty.taken());
     for mut h in &mut player {
-        if h.ward.taken != taken {
+        if h.ward.taken != taken || h.ward.lingers != lingers {
             h.ward.taken = taken;
+            h.ward.lingers = lingers;
         }
     }
 }

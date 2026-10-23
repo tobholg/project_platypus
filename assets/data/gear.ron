@@ -23,8 +23,8 @@
 //       the look's own `palette`; with `clip`, only where the part is.
 //     Its icon is what it changes on the player, standing.
 //
-// Armour stops armor / (armor + 50) of physical hurt (a full iron set, 45:
-// nearly half). Resistances stop their share of their element (at most 90%).
+// Armour stops armor / (armor + 35) of physical hurt (a full leather set,
+// 22: two fifths; iron, 45: over half). Resistances stop their share of their element (at most 90%).
 (
     // What each weight costs (or gives), per piece worn.
     weights: {

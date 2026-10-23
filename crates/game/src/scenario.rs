@@ -310,6 +310,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, firedamp_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, death_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, rest_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, gauntlet_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, switch_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, lightthrow_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, groundbuild_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -11496,6 +11497,77 @@ fn rest_script(
         *next = t + 1.0;
         info!("rest: t {t:.1} health {:.1}, healing {:.2} a second", hp.hp, regen.per_sec);
     }
+}
+
+/// `gauntlet` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`; a difficulty
+/// with `PLATYPUS_DIFFICULTY`): the player in `PLATYPUS_GEAR` (none,
+/// leather, iron), standing; a `PLATYPUS_FOE` (skeleton; `PLATYPUS_COUNT`
+/// of them) put 90 to its left, facing it. Each hit it takes (what got
+/// through), and when it first dies: after how many, how long.
+fn gauntlet_script(
+    s: Res<Scenario>,
+    mut commands: Commands,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    items: Option<Res<crate::hands::items::Items>>,
+    deaths: Res<crate::creatures::PlayerDeaths>,
+    mut player: Query<(&Kinematics, &crate::creatures::Health, &mut crate::gear::Equipment), With<LocalPlayer>>,
+    mut st: Local<(u8, f32, Vec<f32>, u32, bool)>,
+) {
+    if s.name != "gauntlet" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Some(items) = items else { return };
+    let Ok((pk, hp, mut eq)) = player.single_mut() else { return };
+    let (step, last, hits, died_before, done) = &mut *st;
+    let foe = std::env::var("PLATYPUS_FOE").unwrap_or_else(|_| "skeleton".into());
+    if *step == 0 && t > 0.3 {
+        *step = 1;
+        let set: &[&str] = match std::env::var("PLATYPUS_GEAR").as_deref() {
+            Ok("leather") => &["leather_cap", "leather_jerkin", "leather_gloves", "leather_trousers", "leather_boots"],
+            Ok("iron") => &["iron_helm", "chainmail", "iron_gauntlets", "iron_greaves", "iron_boots"],
+            _ => &[],
+        };
+        for name in set {
+            let stack = crate::hands::items::Stack::new(items.id(name).expect(name), 1);
+            if let Some(i) = (0..eq.worn.len()).find(|&i| eq.worn[i].is_none() && crate::gear::Equipment::fits(&items, i, &stack)) {
+                eq.worn[i] = Some(stack);
+            }
+        }
+        *last = hp.hp;
+        *died_before = deaths.0;
+        return;
+    }
+    if *step == 1 && t > 0.6 {
+        *step = 2;
+        let n: usize = std::env::var("PLATYPUS_COUNT").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
+        for i in 0..n {
+            // (On the player from the start: told where it is, not left to
+            // find it out.)
+            let at = pk.body.pos;
+            crate::creatures::def::spawn_creature(&mut commands, &foe, Vec2::new(pk.body.pos.x - 90.0 - 20.0 * i as f32, platypus_worldgen::arena::FLOOR as f32), move |e| {
+                e.insert(crate::creatures::brain::senses::Alert::hunting(at));
+            });
+        }
+        *last = hp.hp;
+    }
+    if *step < 2 || *done {
+        return;
+    }
+    if std::env::var("PLATYPUS_GAUNTLETLOG").is_ok() && (t * 2.0).fract() < 0.02 {
+        info!("gauntlet: dbg t {t:.1} hp {:.0} deaths {} (before {}) hits {}", hp.hp, deaths.0, died_before, hits.len());
+    }
+    if deaths.0 > *died_before {
+        *done = true;
+        hits.push(*last);
+        info!("gauntlet: {foe} x{}, gear {}: dead after {} hits in {:.1} s: {:?}", std::env::var("PLATYPUS_COUNT").unwrap_or_else(|_| "1".into()), std::env::var("PLATYPUS_GEAR").unwrap_or_else(|_| "none".into()), hits.len(), t - 0.6, hits.iter().map(|h| h.round()).collect::<Vec<_>>());
+        return;
+    }
+    if hp.hp < *last - 0.5 {
+        hits.push(*last - hp.hp);
+    }
+    *last = hp.hp;
 }
 
 /// `chase` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a `PLATYPUS_FOE`

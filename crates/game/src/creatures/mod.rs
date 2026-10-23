@@ -232,17 +232,21 @@ pub struct Ward {
     pub acid: f32,
     pub fall: f32,
     pub taken: f32,
+    /// Of hurt that goes on (burning, acid on it, poison, heat: `linger`),
+    /// this share on top of `taken` (the player's off Hardened: blows land
+    /// harder than what lingers, `difficulty.rs`).
+    pub lingers: f32,
 }
 
 impl Default for Ward {
     fn default() -> Self {
-        Ward { armor: 0.0, fire: 0.0, frost: 0.0, storm: 0.0, acid: 0.0, fall: 0.0, taken: 1.0 }
+        Ward { armor: 0.0, fire: 0.0, frost: 0.0, storm: 0.0, acid: 0.0, fall: 0.0, taken: 1.0, lingers: 1.0 }
     }
 }
 
 /// Armour stops `armor / (armor + ARMOR_HALF)` of a physical hurt: half at
 /// this much, never all.
-pub const ARMOR_HALF: f32 = 50.0;
+pub const ARMOR_HALF: f32 = 35.0;
 
 impl Ward {
     /// The share of a kind of hurt that gets through.
@@ -270,6 +274,13 @@ impl Health {
     /// (its nature heals it: up to its maximum).
     pub fn harm(&mut self, amount: f32, kind: Harm) -> f32 {
         self.harm_by(amount, kind, || crate::death::Cause::of(kind))
+    }
+
+    /// Hurt that goes on (a tick's worth: burning, acid on it, poison,
+    /// heat): `harm_by`, times its ward's `lingers`.
+    pub fn linger(&mut self, amount: f32, kind: Harm, cause: impl FnOnce() -> crate::death::Cause) -> f32 {
+        let amount = amount * self.ward.lingers;
+        self.harm_by(amount, kind, cause)
     }
 
     /// `harm`, saying what did it (kept if it keeps what hurt it).

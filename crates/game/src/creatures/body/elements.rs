@@ -432,10 +432,10 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
         // own kind of hurt (acid burns, venom poisons); in the fluid, the
         // fluid's own corrosion counts (not both).
         let corrosion = e.corrosion.max(coat.damage_as(rules, Harm::Acid));
-        health.harm_by(e.heat * (1.0 - heat_resist) * DT, Harm::Fire, || crate::death::Cause::new("Searing heat", "burned"));
-        health.harm_by(corrosion * DT, Harm::Acid, || crate::death::Cause::new("Acid", "dissolved"));
+        health.linger(e.heat * (1.0 - heat_resist) * DT, Harm::Fire, || crate::death::Cause::new("Searing heat", "burned"));
+        health.linger(corrosion * DT, Harm::Acid, || crate::death::Cause::new("Acid", "dissolved"));
         if !nature.cant(Cant::Poison) {
-            health.harm(coat.damage_as(rules, Harm::Poison) * DT, Harm::Poison);
+            health.linger(coat.damage_as(rules, Harm::Poison) * DT, Harm::Poison, || crate::death::Cause::new("Poison", "poisoned"));
         }
 
         // Cold: slowed while touching it and a moment after, as its kind
@@ -520,7 +520,7 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
             Some(mut b) if fire > 0.005 => {
                 b.share = fire;
                 b.power = power;
-                health.harm_by(FIRE_DAMAGE * fire * power * DT, Harm::Fire, || crate::death::Cause::new("Flames", "burned alive"));
+                health.linger(FIRE_DAMAGE * fire * power * DT, Harm::Fire, || crate::death::Cause::new("Flames", "burned alive"));
                 b.spread -= DT;
                 if b.spread <= 0.0 {
                     b.spread = SPREAD_EVERY;
