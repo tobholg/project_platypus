@@ -355,7 +355,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script, sprint_script, phase_script, build_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, ratbend_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script, sprint_script, phase_script, build_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -9979,6 +9979,7 @@ fn keepsake_script(
 /// On the ground whatever the arena (`PLATYPUS_ARENA=slopes`, `cave`).
 /// Logs, a second at a time, what the rats are doing, the bodies
 /// and what's lying about, and what the player's lost.
+/// `PLATYPUS_RAT`: the kind (`rat_lithe`: the one that bends).
 #[allow(clippy::type_complexity)]
 fn rats_script(
     mut commands: Commands,
@@ -9998,6 +9999,7 @@ fn rats_script(
     let t = s.elapsed;
     let fl = platypus_worldgen::arena::FLOOR as f32;
     let mode = std::env::var("PLATYPUS_RATS").unwrap_or_default();
+    let kind = std::env::var("PLATYPUS_RAT").unwrap_or_else(|_| "rat".into());
     state.1 += h.max - h.hp;
     h.hp = h.max;
     if state.0 == 0 && t > 0.5 {
@@ -10019,7 +10021,7 @@ fn rats_script(
         };
         for i in 0..n {
             let rx = at + i as f32 * 40.0;
-            crate::creatures::def::spawn_creature(&mut commands, "rat", Vec2::new(rx, ground(rx) + 2.0), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(rx, ground(rx) + 2.0), |_| {});
         }
         if mode == "body" {
             crate::creatures::def::spawn_creature(&mut commands, "zombie", Vec2::new(1100.0, fl), |_| {});
@@ -10041,7 +10043,7 @@ fn rats_script(
     }
     // (none): from 7 s, a rat struck dead a second, down to two.
     if mode.is_empty() && t > 7.0 && t > state.3 {
-        let rats: Vec<_> = them.iter().filter(|x| x.1.kind == "rat").collect();
+        let rats: Vec<_> = them.iter().filter(|x| x.1.kind == kind).collect();
         if rats.len() > 2 {
             let (e, _, rk, _) = rats[0];
             hits.write(crate::combat::Hit { by: None, target: e, damage: 99.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: rk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
@@ -10054,7 +10056,7 @@ fn rats_script(
         let mut tally: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
         let mut far = 0.0f32;
         for (_, c, rk, o) in &them {
-            if c.kind == "rat" {
+            if c.kind == kind {
                 *tally.entry(o.map_or("?", |o| o.doing())).or_default() += 1;
                 far = far.max((rk.body.pos.x - k.body.pos.x).abs());
             }
@@ -15867,5 +15869,50 @@ fn ores_script(
             state.0 = 6;
         }
         _ => {}
+    }
+}
+
+/// `ratbend` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=stairs`, try
+/// `PLATYPUS_NOLIGHT=1 PLATYPUS_ZOOM=3`): the player (who can't die) on the
+/// high ledge at the right, a rat (`PLATYPUS_RAT`: `rat`, `rat_lithe`) on
+/// the floor before it: it runs at the ledge, up its face, over its lip.
+/// Every half second: where the rat is, how fast, on what.
+fn ratbend_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut state: Local<(bool, f32)>,
+) {
+    if s.name != "ratbend" {
+        return;
+    }
+    menu.open = false;
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let t = s.elapsed;
+    let kind = std::env::var("PLATYPUS_RAT").unwrap_or_else(|_| "rat".into());
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let ground = |x: f32| find_ground(&sim.world, x as i32, fl as i32 + 300, 600).map_or(fl, |y| y as f32);
+    if !state.0 && t > 0.5 {
+        for (e, c, _) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        k.body.pos = Vec2::new(1700.0, ground(1700.0) + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(1540.0, ground(1540.0) + 2.0), |_| {});
+        info!("ratbend: a {kind} at 1540, the player on the ledge at 1700");
+        state.0 = true;
+        return;
+    }
+    if state.0 && t >= state.1 {
+        state.1 = t + 0.5;
+        for (_, c, rk) in them.iter().filter(|x| x.1.kind == kind) {
+            info!("ratbend: t {t:.1} the {} at ({:.0}, {:.0}), going ({:.0}, {:.0}), {:?}{}", c.kind, rk.body.pos.x, rk.body.pos.y, rk.body.vel.x, rk.body.vel.y, rk.loco.state, rk.loco.clinging().map_or(String::new(), |d| format!(", holding on {d}")));
+        }
     }
 }

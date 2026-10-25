@@ -219,6 +219,9 @@ pub struct CreatureDef {
     /// Procedural legs and a body seen from above (spiders: `legs.rs`).
     #[serde(default)]
     pub legs: Option<super::body::legs::LegsDef>,
+    /// A body that bends, drawn along its spine (a rat's: `spine.rs`).
+    #[serde(default)]
+    pub spine: Option<super::body::spine::SpineDef>,
     /// It gives off light (a firefly): its colour, how bright, and a pulse
     /// (seconds a swell; 0: steady).
     #[serde(default)]
