@@ -37,7 +37,7 @@
         spikes: Some((range: 36, tell: 0.55, secs: 2.2, every: 3.5, count: 7, cone: 38, reach: 28, pulse: 0.36, damage: 12)))),
     // Left alone a few seconds, it heals: its spilled goo drawn back in
     // (then new grown).
-    regen: (per_sec: 6, pause: 3),
+    regen: (per_sec: 6, pause: 3, rests: true),
     // It takes on what it's struck with (body/goo.rs, Glutton).
     glutton: true,
     movement: (

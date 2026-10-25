@@ -420,10 +420,20 @@ fn lay_out_shivering(sim: &SimWorld, at: Vec2, n: usize, (across, down, up): (u3
         let i = dy as usize * side + dx as usize;
         !std::mem::replace(&mut seen[i], true)
     };
+    // (Laid out nearest first, by straight-line distance (each way's cost a
+    // cell): round in the open. Round what's in the way, by the way there
+    // instead: the steps' costs add up past the straight line.)
+    let round = |q: CellPos| {
+        // (From its true middle, not its cell's: no lone cell pokes out at
+        // the top, bottom and sides.)
+        let (dx, dy) = (q.x as f32 + 0.5 - at.x, q.y as f32 + 0.5 - at.y);
+        let up_down = if dy < 0.0 { down } else { up };
+        ((dx * across as f32).powi(2) + (dy * up_down as f32).powi(2)).sqrt() as u32
+    };
     let mut heap = BinaryHeap::with_capacity(n * 2);
-    heap.push(Reverse((0u32, start.x, start.y)));
+    heap.push(Reverse((0u32, 0u32, start.x, start.y)));
     mark(start);
-    while let Some(Reverse((cost, x, y))) = heap.pop() {
+    while let Some(Reverse((_, cost, x, y))) = heap.pop() {
         let p = CellPos::new(x, y);
         if !through(p) {
             continue;
@@ -443,7 +453,8 @@ fn lay_out_shivering(sim: &SimWorld, at: Vec2, n: usize, (across, down, up): (u3
                     let toward = Vec2::new((q.x - start.x) as f32, (q.y - start.y) as f32).normalize_or_zero().dot(dir);
                     if toward > 0.3 { (platypus_sim::rng::hash(&[q.x as u64, q.y as u64, tick]) % (SHIVER + 1)) as u32 } else { 0 }
                 });
-                heap.push(Reverse((cost + c + grain, q.x, q.y)));
+                let way = cost + c + grain;
+                heap.push(Reverse((way.max(round(q) + grain), way, q.x, q.y)));
             }
         }
     }

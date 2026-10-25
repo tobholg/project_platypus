@@ -22,13 +22,13 @@
     art: "acid_slime_core",
     // Each its own size: most about this big, some much bigger.
     sizes: Some((1.0, 2.5)),
-    goo: Some((material: "acid_goo", cells: 650,
+    goo: Some((material: "acid_goo", cells: 400,
         // Near you, its face toward you shivers, then a fan of goo spikes
         // stabs out at you, pulsing in a wave, jittering.
         spikes: Some((range: 36, tell: 0.55, secs: 2.2, every: 3.5, count: 7, cone: 38, reach: 28, pulse: 0.36, damage: 12)))),
     // Left alone a few seconds, it heals: its spilled goo drawn back in
     // (then new grown).
-    regen: (per_sec: 6, pause: 3),
+    regen: (per_sec: 6, pause: 3, rests: true),
     movement: (
         run_speed: 83,
         air_accel: 600,

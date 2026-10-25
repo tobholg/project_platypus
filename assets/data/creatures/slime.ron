@@ -18,13 +18,13 @@
     blood: "",
     art: "green_slime",
     // Each its own size: most about this big, some bigger.
-    sizes: Some((1.0, 1.6)),
+    sizes: Some((1.0, 1.35)),
     // (No spikes: the first thing a new player meets; the blue one has
     // them.)
-    goo: Some((material: "green_goo", cells: 650, spikes: None)),
+    goo: Some((material: "green_goo", cells: 400, spikes: None)),
     // Left alone a few seconds, it heals: its spilled goo drawn back in
     // (then new grown).
-    regen: (per_sec: 6, pause: 3),
+    regen: (per_sec: 6, pause: 3, rests: true),
     movement: (
         run_speed: 83,
         air_accel: 600,

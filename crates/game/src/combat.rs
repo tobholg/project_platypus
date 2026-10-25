@@ -1233,7 +1233,15 @@ pub fn guard(mut commands: Commands, mut q: Query<(Entity, &mut Invulnerable, &m
 }
 
 type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>, Option<&'a Invulnerable>, Option<&'a crate::gear::hook::Rope>);
-type Target<'a> = (Entity, &'a Kinematics, Option<&'a Team>, Option<&'a Animator>, Has<Invulnerable>, Option<&'a crate::creatures::body::parts::Parts>);
+type Target<'a> = (
+    Entity,
+    &'a Kinematics,
+    Option<&'a Team>,
+    Option<&'a Animator>,
+    Has<Invulnerable>,
+    Option<&'a crate::creatures::body::parts::Parts>,
+    Option<&'a crate::creatures::body::goo::Goo>,
+);
 
 /// Swings move on a tick; while they sweep, they hit.
 #[allow(clippy::too_many_arguments)]
@@ -1462,7 +1470,7 @@ fn swing(
                 }
             }
             let (lo, hi) = cells.iter().fold((Vec2::MAX, Vec2::MIN), |(lo, hi), c| (lo.min(*c), hi.max(*c)));
-            for (e, tk, tteam, anim, safe, parts) in &targets {
+            for (e, tk, tteam, anim, safe, parts, goo) in &targets {
                 if e == me || safe || s.hit.contains(&e) {
                     continue;
                 }
@@ -1480,17 +1488,28 @@ fn swing(
                 if let Some(p) = parts.filter(|p| !p.list.is_empty()) {
                     (bmin, bmax) = (bmin.min(p.lo - 1.0), bmax.max(p.hi + 1.0));
                 }
-                // (And round its picture: a head drawn above its box.)
+                // (And round its picture: a head drawn above its box; and
+                // round a slime's goo.)
                 if let Some(a) = anim {
                     let (lo, hi) = crate::creatures::body::animation::picture_bounds(a, tk);
                     (bmin, bmax) = (bmin.min(lo), bmax.max(hi));
                 }
+                let goo_extent = goo.and_then(|g| g.extent());
+                if let Some((lo, hi)) = goo_extent {
+                    (bmin, bmax) = (bmin.min(lo), bmax.max(hi));
+                }
+                // (A slime's held goo is its body: a blade through it strikes it.)
+                let in_goo = |c: Vec2| {
+                    goo_extent.is_some_and(|(lo, hi)| c.cmpge(lo).all() && c.cmple(hi + 1.0).all())
+                        && sim.world.get(CellPos::from_world(c.x, c.y)).is_some_and(|cell| cell.flags & platypus_sim::cell::flags::HELD != 0)
+                };
                 if hi.x < bmin.x || lo.x > bmax.x || hi.y < bmin.y || lo.y > bmax.y {
                     continue;
                 }
                 let touched = cells.iter().find(|&&c| {
                     (s.down && (c - tk.body.pos).abs().cmple(tk.body.half + Vec2::splat(DOWN_GRACE)).all())
                         || parts.is_some_and(|p| p.touch(c, 0.0).is_some())
+                        || in_goo(c)
                         || match anim.and_then(|a| a.def.rig.as_ref().map(|r| (a, r))) {
                             Some((a, rig)) => {
                                 let (px, py) = pixel_at(&a.def, tk, c);
@@ -1627,7 +1646,7 @@ fn slam(
         sparks.emit(dust, dust.count as usize, feet + Vec2::X * side * 3.0, Vec2::new(side, 0.4), Vec2::ZERO);
     }
     trauma.0 = (trauma.0 + 0.25).min(1.0);
-    for (e, tk, tteam, _, safe, _) in targets {
+    for (e, tk, tteam, _, safe, _, _) in targets {
         // (Along the ground: its nearest side within `slam`, its feet near
         // where the plunge came down.)
         let near = (tk.body.pos.x - feet.x).abs() - tk.body.half.x <= mv.slam;

@@ -395,7 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -15982,6 +15982,65 @@ fn bladesplash_script(
 /// the player there, then the player away for `PLATYPUS_DAYS` (default 1)
 /// while the world clock runs, then back: how much of the water is left.
 /// (`PLATYPUS_DAYS=0.25`: a quarter of a day, part of it.)
+/// `slimeswing` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a green
+/// slime (`PLATYPUS_SLIME_KIND`) hops at the player, who swings a
+/// `PLATYPUS_WEAPON` (shortsword) at it as fast as it can once it's near:
+/// logs each blow that lands and what's left of it, and how many it took.
+fn slimeswing_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    items: Option<Res<crate::hands::items::Items>>,
+    (mut hand, mut cursor, mut mouse): (ResMut<crate::hands::Hand>, ResMut<CursorOverride>, ResMut<ButtonInput<MouseButton>>),
+    mut hits: MessageReader<crate::combat::Hit>,
+    mut player: Query<(&Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Option<&crate::creatures::body::goo::Goo>), Without<LocalPlayer>>,
+    mut state: Local<(u8, usize, f32)>,
+) {
+    if s.name != "slimeswing" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let (Some(items), Ok((pk, mut inv))) = (items, player.single_mut()) else { return };
+    let kind = std::env::var("PLATYPUS_SLIME_KIND").unwrap_or_else(|_| "slime".into());
+    let (step, landed, last_hp) = &mut *state;
+    if *step == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        let w = std::env::var("PLATYPUS_WEAPON").unwrap_or_else(|_| "shortsword".into());
+        if let Some(id) = items.id(&w) {
+            inv.slots[9] = Some(crate::hands::items::Stack::new(id, 1));
+            (hand.bar, hand.slot) = (0, 9);
+        }
+        crate::creatures::def::spawn_creature(&mut commands, &kind, pk.body.pos + Vec2::new(70.0, 10.0), |_| {});
+        *step = 1;
+        return;
+    }
+    let Some((e, _, sk, sh, goo)) = them.iter().find(|(_, c, ..)| c.kind == kind) else {
+        if *step == 1 && t > 2.0 {
+            info!("slimeswing: dead after {} blows, at {t:.1} s", *landed);
+            *step = 2;
+        }
+        mouse.release(MouseButton::Left);
+        return;
+    };
+    for h in hits.read().filter(|h| h.target == e) {
+        *landed += 1;
+        info!("slimeswing: t {t:.2} blow {} for {:.1} at {:.0},{:.0} (its middle {:.0},{:.0})", *landed, h.damage, h.at.x, h.at.y, sk.body.pos.x, sk.body.pos.y);
+    }
+    if (sh.hp - *last_hp).abs() > 0.5 {
+        info!("slimeswing: t {t:.2} hp {:.1} of {:.0}, goo {}", sh.hp, sh.max, goo.map_or(0, |g| g.held()));
+        *last_hp = sh.hp;
+    }
+    cursor.0 = Some(sk.body.pos);
+    let near = (sk.body.pos.x - pk.body.pos.x).abs() < 34.0;
+    if near && (t * 10.0) as u32 % 4 == 0 { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+}
+
 /// `herbs`: the player taken to the nearest healroot under the start (the
 /// generator's, as the seed made it), to see it in its cave.
 fn herbs_script(s: Res<Scenario>, sim: Res<SimWorld>, mut menu: ResMut<crate::devmenu::DevMenu>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut done: Local<bool>) {
