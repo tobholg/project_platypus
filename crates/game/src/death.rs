@@ -557,7 +557,15 @@ mod screen {
         commands
             .spawn((DeathScreen, GlobalZIndex(60), full()))
             .with_children(|root| {
-                root.spawn((Vignette, ImageNode { color: Color::srgba(1.0, 1.0, 1.0, 0.0), ..ImageNode::new(image) }, full()));
+                // (Stretched to the window, pinned to its four edges: an
+                // image keeps its own proportions otherwise, and a window
+                // taller than 16:9 left bars at the top and bottom, as the
+                // hurt edges did: screen_fx.rs.)
+                root.spawn((
+                    Vignette,
+                    ImageNode::new(image).with_color(Color::srgba(1.0, 1.0, 1.0, 0.0)).with_mode(bevy::ui::widget::NodeImageMode::Stretch),
+                    Node { position_type: PositionType::Absolute, left: px(0), right: px(0), top: px(0), bottom: px(0), ..default() },
+                ));
                 // High in the middle: the death, and what did it.
                 root.spawn(Node { position_type: PositionType::Absolute, top: percent(9), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(6), ..default() }).with_children(|top| {
                     text(top, "YOU DIED", 60.0, RED);
