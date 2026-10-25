@@ -84,7 +84,8 @@
     // worst of them, and their stronger kin.
     // The Burrows.
     (kind: "bat", place: Cave, depth: (0, 150), most: 3, rate: 0.35),
-    (kind: "rat", place: Cave, depth: (40, 150000), bands: ["surface", "underground"], group: (2, 4), most: 6, rate: 0.1),
+    // (The rat that bends, on trial in play: `rat` is the old one.)
+    (kind: "rat_lithe", place: Cave, depth: (40, 150000), bands: ["surface", "underground"], group: (2, 4), most: 6, rate: 0.1),
     (kind: "zombie", place: Cave, depth: (80, 150000), bands: ["surface", "underground", "caverns"], most: 2, rate: 0.08, emerges: true),
     (kind: "centipede", place: Cave, depth: (150, 150000), bands: ["surface", "underground", "caverns"], most: 1, rate: 0.05),
     (kind: "cave_bat", place: Cave, depth: (250, 150000), bands: ["underground", "caverns"], group: (3, 5), most: 6, rate: 0.06),

@@ -44,7 +44,7 @@
      lining: "cobweb", density: 0.0, litter: "guano", litter_density: 0.7, keepers: [("cave_bat", 9)]),
     // A rat nest: a pack's home in the upper caves.
     (name: "rat nest", depth: (40, 150000), bands: ["surface", "underground"], zones: ["none", "fungal"], chance: 0.07, min_size: 14,
-     lining: "cobweb", density: 0.02, keepers: [("rat", 5)]),
+     lining: "cobweb", density: 0.02, keepers: [("rat_lithe", 5)]),
     (name: "slime pit", depth: (90, 150000), zones: ["toxic"], chance: 0.3,
      lining: "slime", density: 0.25, keepers: [("acid_slime", 3)]),
     (name: "centipede hole", depth: (120, 150000), bands: ["surface", "underground", "caverns"], zones: ["none", "fungal"], chance: 0.06,
