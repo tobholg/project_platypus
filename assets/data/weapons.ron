@@ -47,6 +47,8 @@
     hit: (count: 12, life: (0.08, 0.22), colors: [(255, 255, 240), (255, 230, 150), (200, 120, 60)], speed: 180, spread: 0.9, drag: 5),
     trail: (count: 1, life: (0.03, 0.08), colors: [(255, 255, 255), (220, 232, 255), (170, 190, 235)], speed: 5, drag: 8),
     clang: (count: 7, life: (0.06, 0.18), colors: [(255, 255, 255), (255, 220, 120)], speed: 210, spread: 1.2, drag: 5, gravity: 300, glow: true),
+    // Spray off a liquid a blade goes into (mixed with the liquid's colour).
+    spray: (count: 26, life: (0.35, 0.75), colors: [(250, 252, 255), (220, 236, 255), (190, 214, 245)], speed: 220, spread: 0.9, drag: 1.0, gravity: 420, size: 1.6),
     weapons: [
         (
             id: "shortsword", art: "shortsword",

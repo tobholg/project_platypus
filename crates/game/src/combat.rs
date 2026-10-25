@@ -78,6 +78,10 @@ struct WeaponsFile {
     hit: Emitter,
     clang: Emitter,
     trail: Emitter,
+    /// Spray off a liquid a blade goes into (its colours mixed with the
+    /// liquid's).
+    #[serde(default)]
+    spray: Option<Emitter>,
     weapons: Vec<WeaponDef>,
     #[serde(default)]
     bows: Vec<BowDef>,
@@ -858,6 +862,8 @@ pub struct Swing {
     /// whether it's a down-strike.
     queued: Option<(f32, f32, bool)>,
     clanged: bool,
+    /// Into a liquid already (its first going in bursts up).
+    splashed: bool,
     lunged: bool,
     /// Its whoosh heard (as the blade starts to move).
     whooshed: bool,
@@ -895,9 +901,13 @@ impl Swing {
 /// way it swept.
 const BLADE_FLING: f32 = 1.2;
 /// A blade through a liquid throws up to this many of its cells a tick, at
-/// up to this speed (cells/tick: ~10 cells high).
-const SPLASH_CELLS: usize = 10;
+/// up to this speed (cells/tick: ~10 cells high); where it first goes in, a
+/// burst: this many, this much faster, spread this much wider (radians).
+const SPLASH_CELLS: usize = 14;
 const SPLASH_SPEED: f32 = 2.7;
+const SPLASH_BURST: usize = 80;
+const SPLASH_BURST_SPEED: f32 = 1.8;
+const SPLASH_BURST_SPREAD: f32 = 0.95;
 
 /// Aimed at least this far below level (the sine), a swing in the air is a
 /// down-strike (S held: always).
@@ -1097,6 +1107,7 @@ fn start_swings(
             hit: Vec::new(),
             queued: None,
             clanged: false,
+            splashed: false,
             lunged: false,
             whooshed: false,
             down,
@@ -1443,7 +1454,7 @@ fn swing(
                         mown.get_or_insert(c);
                     }
                 } else if ph.kind == Kind::Liquid {
-                    wet.get_or_insert(c);
+                    wet.get_or_insert((c, sim.world.materials().color(cell)));
                 } else if ph.kind == Kind::Static && ph.hardness >= 20 && c.y > feet + 1.5 && !s.clanged {
                     s.clanged = true;
                     sparks.emit(&weapons.file.clang, weapons.file.clang.count as usize, c, -dir(a), Vec2::ZERO);
@@ -1538,12 +1549,25 @@ fn swing(
             sounds.write(crate::sound::PlaySound::at("grass_cut", c));
         }
         // Through a liquid (water, lava, a slime's goo): a splash of it,
-        // up and the way the blade swept, harder for a heavier blade.
-        if let Some(c) = wet {
+        // up and the way the blade swept, harder for a heavier blade; where
+        // it first goes in, a burst.
+        if let Some((c, tint)) = wet {
             let up = Vec2::new(sweep.x, sweep.y.abs() * 0.4 + 0.9).normalize();
             let speed = SPLASH_SPEED * (1.0 + def.damage / 40.0).min(1.6);
-            if sim.world.slosh([c.x, c.y], [up.x, up.y], SPLASH_CELLS, speed, 0.6) > 0 {
-                sounds.write(crate::sound::PlaySound::at("splash", c));
+            let first = !std::mem::replace(&mut s.splashed, true);
+            let (most, speed, spread) = if first { (SPLASH_BURST, speed * SPLASH_BURST_SPEED, SPLASH_BURST_SPREAD) } else { (SPLASH_CELLS, speed, 0.6) };
+            if sim.world.slosh([c.x, c.y], [up.x, up.y], most, speed, spread) > 0 {
+                sounds.write(crate::sound::PlaySound::at("splash", c).volume(if first { 1.0 } else { 0.6 }));
+                // (And spray: droplets, pale, the liquid's colour in them.)
+                if let Some(spray) = &weapons.file.spray {
+                    let mix = |(r, g, b): (u8, u8, u8)| {
+                        let m = |a: u8, t: u8| ((a as f32 + t as f32) / 2.0) as u8;
+                        (m(r, tint[0]), m(g, tint[1]), m(b, tint[2]))
+                    };
+                    let tinted = Emitter { colors: spray.colors.iter().copied().map(mix).collect(), ..spray.clone() };
+                    let n = if first { spray.count * 2.0 } else { spray.count * 0.4 };
+                    sparks.emit(&tinted, n as usize, c, up, Vec2::ZERO);
+                }
             }
         }
     }

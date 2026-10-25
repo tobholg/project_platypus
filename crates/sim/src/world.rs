@@ -352,7 +352,7 @@ impl World {
             // (The column's top: liquid with none above it, near the blow.)
             let top = (-SLOSH_REACH..=SLOSH_REACH).rev().map(|dy| center.offset(dx, dy)).find(|&p| liquid(self, p) && !liquid(self, p.offset(0, 1)));
             if let Some(top) = top {
-                surface.extend([top, top.offset(0, -1), top.offset(0, -2)].into_iter().filter(|&p| liquid(self, p)));
+                surface.extend((0..SLOSH_DEEP).map(|d| top.offset(0, -d)).filter(|&p| liquid(self, p)));
             }
         }
         surface.sort_by_key(|p| (p.x - center.x).abs() + (p.y - center.y).abs());
@@ -2644,8 +2644,10 @@ const ZAP_HEAT: i16 = 600;
 const ZAP_BLAST: u8 = 14;
 /// How far up a splash from inside a liquid looks for its surface.
 const SPLASH_SURFACE: i32 = 96;
-/// A blow into a liquid reaches this many cells round it (`slosh`).
-const SLOSH_REACH: i32 = 3;
+/// A blow into a liquid reaches this many cells round it (`slosh`), and
+/// throws up its top this many cells deep.
+const SLOSH_REACH: i32 = 5;
+const SLOSH_DEEP: i32 = 4;
 /// A zap doesn't flare air this close to the wand.
 const ZAP_CLEAR: usize = 12;
 /// Most cells one zap charges (a big lake conducts only this far).

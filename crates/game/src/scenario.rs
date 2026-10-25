@@ -355,7 +355,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, ratbend_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script, sprint_script, phase_script, build_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, ratbend_script, bladesplash_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script, sprint_script, phase_script, build_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -15921,5 +15921,47 @@ fn ratbend_script(
         for (_, c, rk) in them.iter().filter(|x| x.1.kind == kind) {
             info!("ratbend: t {t:.1} the {} at ({:.0}, {:.0}), going ({:.0}, {:.0}), {:?}{}", c.kind, rk.body.pos.x, rk.body.pos.y, rk.body.vel.x, rk.body.vel.y, rk.loco.state, rk.loco.clinging().map_or(String::new(), |d| format!(", holding on {d}")));
         }
+    }
+}
+
+/// `bladesplash` (`PLATYPUS_WORLD=arena`, the sandbox): the player at the
+/// water pool's right edge with a longsword (`PLATYPUS_WEAPON`), swinging
+/// down into the water at 1, 2 and 3 s. Every 0.1 s: how much water's
+/// flying.
+fn bladesplash_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    items: Option<Res<crate::hands::items::Items>>,
+    (mut hand, mut cursor, mut mouse): (ResMut<crate::hands::Hand>, ResMut<CursorOverride>, ResMut<ButtonInput<MouseButton>>),
+    mut player: Query<(&mut Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    mut state: Local<(bool, f32, usize)>,
+) {
+    if s.name != "bladesplash" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let (Some(items), Ok((mut k, mut inv))) = (items, player.single_mut()) else { return };
+    if !state.0 {
+        let fl = platypus_worldgen::arena::FLOOR as f32;
+        k.body.pos = Vec2::new(637.0, fl + k.body.half.y + 1.0);
+        k.prev_pos = k.body.pos;
+        let w = std::env::var("PLATYPUS_WEAPON").unwrap_or_else(|_| "longsword".into());
+        if let Some(id) = items.id(&w) {
+            inv.slots[9] = Some(crate::hands::items::Stack::new(id, 1));
+            (hand.bar, hand.slot) = (0, 9);
+        }
+        state.0 = true;
+    }
+    cursor.0 = Some(k.body.pos + Vec2::new(-45.0, -22.0));
+    let swing = [1.0f32, 2.0, 3.0].iter().any(|&at| (at..at + 0.05).contains(&t));
+    if swing { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+    let water = sim.materials().id("water");
+    let flying = sim.world.particles().iter().filter(|p| Some(p.cell.material) == water).count();
+    state.2 = state.2.max(flying);
+    if t >= state.1 {
+        state.1 = t + 0.1;
+        info!("bladesplash: t {t:.1} water flying {flying} (most {})", state.2);
     }
 }
