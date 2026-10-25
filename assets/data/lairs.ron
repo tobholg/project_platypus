@@ -15,13 +15,12 @@
 //   litter: what lies heaped on its floor (a roost's guano), litter_density
 //     how much of it (0..1)
 [
-    // The start valley's caverns.
+    // The start valley's caverns. (No spiders among them: they're met in
+    // the deeper caves' nests.)
     (name: "orc den", depth: (0, 400), chance: 1.0, start: Dark, chest: true,
      lining: "cobweb", density: 0.0, keepers: [("orc", 1), ("orc_archer", 1)]),
     (name: "bone crypt", depth: (0, 400), chance: 1.0, start: Any, chest: true,
      lining: "cobweb", density: 0.15, keepers: [("skeleton", 2)]),
-    (name: "spider lair", depth: (0, 400), chance: 1.0, start: Dark, chest: true,
-     lining: "cobweb", density: 0.5, keepers: [("spider", 1), ("egg_sac", 2), ("cocoon", 2)]),
     (name: "zombie burrow", depth: (0, 400), chance: 1.0, start: Dark, chest: true,
      lining: "cobweb", density: 0.05, keepers: [("zombie", 2)]),
     // A colony asleep on its roof (wake it and it pours out): guano heaped

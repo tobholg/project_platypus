@@ -5876,19 +5876,19 @@ fn spider_script(
     // the ground where the player is, the spider 140 cells on, facing it.)
     if state.0 == 0 && t > 0.5 {
         // (`PLATYPUS_SPIDER_LAIR=1`, a generated world: the player put on
-        // the floor of the nearest spider lair's cave, `PLATYPUS_SPIDER_DX`
+        // the floor of the nearest spider nest's cave, `PLATYPUS_SPIDER_DX`
         // cells off its middle, its own spider there: a fight as the world
         // has it.)
         if std::env::var("PLATYPUS_SPIDER_LAIR").is_ok() {
             let home = sim.generator.spawn_point();
-            let lair = sim.generator.landmarks().into_iter().filter(|(_, n)| n == "spider lair").min_by_key(|(p, _)| (p.x - home.x).abs());
+            let lair = sim.generator.landmarks().into_iter().filter(|(_, n)| n == "spider nest").min_by_key(|(p, _)| (p.x - home.x).abs());
             if let Some((p, _)) = lair {
                 let dx: i32 = std::env::var("PLATYPUS_SPIDER_DX").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
                 let x = p.x + dx;
                 let floor = (0..300).map(|d| p.y - d).find(|&y| sim.world.is_solid(CellPos::new(x, y)) && !sim.world.is_solid(CellPos::new(x, y + 1)));
                 k.body.pos = Vec2::new(x as f32, floor.unwrap_or(p.y) as f32 + 1.0 + k.body.half.y);
                 k.prev_pos = k.body.pos;
-                info!("spider: the player put by the spider lair at ({}, {})", p.x, p.y);
+                info!("spider: the player put by the spider nest at ({}, {})", p.x, p.y);
             }
             state.0 = 1;
             return;
