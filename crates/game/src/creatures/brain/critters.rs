@@ -267,6 +267,10 @@ pub struct Haunt {
     /// side by side (still no more than `most` near).
     #[serde(default)]
     pub group: Option<(usize, usize)>,
+    /// Packs by depth, in place of `group`: from this deep (cells), one up
+    /// to this many (`pack_size`: from four up, the smaller more often).
+    #[serde(default)]
+    pub packs: Vec<(f32, usize)>,
     /// Never within this many cells of where the world starts (the big
     /// ones stay out of a new player's first days).
     #[serde(default)]
@@ -371,6 +375,24 @@ fn rate_scale() -> f32 {
 /// looked for this far either side.
 const WATER_PER: i32 = 60;
 const WATER_SPAN: i32 = 1200;
+
+/// A pack's size at a depth (`Haunt::packs`): one up to the most for
+/// that deep, by `roll` (0..1); from four up the smaller more often (each
+/// size's weight `2 × most + 1 − size`: of five, 25 % one, 15 % five), so a
+/// deep pack is often a few, now and then the most.
+pub fn pack_size(packs: &[(f32, usize)], depth: f32, roll: f32) -> usize {
+    let most = packs.iter().filter(|(d, _)| depth >= *d).map(|&(_, m)| m).last().unwrap_or(1).max(1);
+    let weight = |n: usize| if most >= 4 { (2 * most + 1 - n) as f32 } else { 1.0 };
+    let total: f32 = (1..=most).map(weight).sum();
+    let mut left = roll.clamp(0.0, 0.999_999) * total;
+    for n in 1..=most {
+        left -= weight(n);
+        if left < 0.0 {
+            return n;
+        }
+    }
+    most
+}
 
 /// A group's members this far apart (cells).
 const PACK_GAP: f32 = 24.0;
@@ -541,7 +563,8 @@ fn ambient(
         }
         // (A pack: several side by side, each on the ground there, no more
         // than its room for more.)
-        let count = h.group.map_or(1, |(lo, hi)| lo + (unit(&mut rng) * (hi.saturating_sub(lo) + 1) as f32) as usize).clamp(1, (h.most - near).max(1));
+        let roll = unit(&mut rng);
+        let count = if h.packs.is_empty() { h.group.map_or(1, |(lo, hi)| lo + (roll * (hi.saturating_sub(lo) + 1) as f32) as usize) } else { pack_size(&h.packs, depth, roll) }.clamp(1, (h.most - near).max(1));
         // (Together, a pack: the first its leader.)
         let pack = (count > 1).then(|| ((rng.next_u32() as u64) << 32) | sim.world.tick() & 0xFFFF_FFFF);
         for n in 0..count {
@@ -565,5 +588,25 @@ fn ambient(
                 }
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Packs grow with depth: two at most near the top, five deep down, a
+    /// deep one still often only a few, never more than five.
+    #[test]
+    fn packs_grow_with_depth_and_still_vary() {
+        let packs = [(0.0, 2), (300.0, 3), (800.0, 4), (1600.0, 5)];
+        let sizes = |depth: f32| (0..1000).map(|i| pack_size(&packs, depth, i as f32 / 1000.0)).collect::<Vec<_>>();
+        let shallow = sizes(100.0);
+        assert!(shallow.iter().all(|&n| (1..=2).contains(&n)) && shallow.contains(&1) && shallow.contains(&2), "1-2 near the top");
+        let deep = sizes(3000.0);
+        let share = |n: usize| deep.iter().filter(|&&m| m == n).count() as f32 / deep.len() as f32;
+        assert!(deep.iter().all(|&n| (1..=5).contains(&n)), "never past five");
+        assert!(share(1) > share(5) && share(5) > 0.1 && share(1) < 0.3, "deep: one {:.2}, five {:.2}", share(1), share(5));
+        assert_eq!(pack_size(&[], 500.0, 0.5), 1, "no packs: one");
     }
 }

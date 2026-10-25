@@ -29,7 +29,7 @@
     (name: "bat roost", depth: (0, 400), chance: 1.0, start: Light, chest: true,
      lining: "cobweb", density: 0.05, litter: "guano", litter_density: 0.6, keepers: [("cave_bat", 4)]),
     (name: "treasure grotto", depth: (0, 400), chance: 1.0, start: Light, chest: true,
-     lining: "cobweb", density: 0.05, keepers: [("bat", 2)]),
+     lining: "cobweb", density: 0.05, keepers: [("cave_bat", 2)]),
     (name: "spider nest", depth: (180, 150000), bands: ["caverns"], zones: ["none", "fungal"], chance: 0.1,
      lining: "cobweb", density: 0.55, keepers: [("spider", 1), ("egg_sac", 2), ("spiderling", 1), ("cocoon", 3)]),
     // A phase nest: the deep's spider nest, its eggs glowing.

@@ -2428,7 +2428,7 @@ fn crossing_script(
     }
 }
 
-/// Fireflies, fish and bats put where they live, and checked on.
+/// Fireflies and fish put where they live, and checked on.
 fn life_script(
     s: Res<Scenario>,
     mut commands: Commands,
@@ -2454,15 +2454,12 @@ fn life_script(
         for i in 0..4 {
             crate::creatures::def::spawn_creature(&mut commands, "fish", Vec2::new(495.0 + i as f32 * 33.0, floor - 30.0 - (i % 2) as f32 * 18.0), |_| {});
         }
-        for i in 0..4 {
-            crate::creatures::def::spawn_creature(&mut commands, "bat", Vec2::new(750.0 + i as f32 * 21.0, floor + 60.0 + i as f32 * 12.0), |_| {});
-        }
         *state = 1;
     }
     if *state == 1 && s.elapsed > 5.5 {
         let world = &sim.world;
         let wet = |p: Vec2| world.get(CellPos::from_world(p.x, p.y)).is_some_and(|c| world.materials().phys(c.material).kind == platypus_sim::Kind::Liquid);
-        for kind in ["firefly", "fish", "bat"] {
+        for kind in ["firefly", "fish"] {
             let all: Vec<&Kinematics> = critters.iter().filter(|(c, _)| c.kind == kind).map(|(_, k)| k).collect();
             let fine = all
                 .iter()
@@ -9781,7 +9778,8 @@ fn gnasher_script(
 }
 
 /// `bats` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a stone roof over
-/// the floor from 850 to 1350, 76 up; seven cave bats put under it at
+/// the floor from 850 to 1350, 76 up; seven cave bats (`PLATYPUS_BAT_COUNT`)
+/// put under it at
 /// 1080..1200 (they fly up and roost); the player (who can't die) at 800,
 /// out of their hearing. `PLATYPUS_BATS=`: (none) at 6 s the player walks
 /// in under them (someone near wakes one; its screech the rest);
@@ -9825,7 +9823,8 @@ fn bats_script(
         let x = if mode == "mine" { 1030.0 } else { 800.0 };
         k.body.pos = Vec2::new(x, fl + k.body.half.y);
         k.prev_pos = k.body.pos;
-        for n in 0..7 {
+        let many: u32 = std::env::var("PLATYPUS_BAT_COUNT").ok().and_then(|v| v.parse().ok()).unwrap_or(7);
+        for n in 0..many {
             crate::creatures::def::spawn_creature(&mut commands, "cave_bat", Vec2::new(1080.0 + n as f32 * 20.0, fl + 45.0), |_| {});
         }
         info!("bats: seven cave bats under the roof ({mode})");

@@ -16,6 +16,8 @@
 //   biomes: only over those surface biomes (plains, forest, desert, tundra,
 //     jungle, swamp, deep forest, mountains, ocean); none: anywhere
 //   group: (min, max): come as a pack, side by side
+//   packs: [(depth, most), ..]: in place of group, packs by depth: from that
+//     deep (cells), one up to that many (from four up, smaller more often)
 //   away: never within that many cells of the world's start (the big ones)
 //   within: only within that many cells of the start (with away, a ring)
 //
@@ -83,12 +85,14 @@
     // Caverns: spiders and what was too much up above. The Deep: the
     // worst of them, and their stronger kin.
     // The Burrows.
-    (kind: "bat", place: Cave, depth: (0, 150), most: 3, rate: 0.35),
     // (The rat that bends, on trial in play: `rat` is the old one.)
-    (kind: "rat_lithe", place: Cave, depth: (40, 150000), bands: ["surface", "underground"], group: (2, 4), most: 6, rate: 0.1),
+    (kind: "rat_lithe", place: Cave, depth: (40, 150000), bands: ["surface", "underground"], packs: [(0, 2), (300, 3), (800, 4), (1600, 5)], most: 6, rate: 0.1),
     (kind: "zombie", place: Cave, depth: (80, 150000), bands: ["surface", "underground", "caverns"], most: 2, rate: 0.08, emerges: true),
     (kind: "centipede", place: Cave, depth: (150, 150000), bands: ["surface", "underground", "caverns"], most: 1, rate: 0.05),
-    (kind: "cave_bat", place: Cave, depth: (250, 150000), bands: ["underground", "caverns"], group: (3, 5), most: 6, rate: 0.06),
+    // Cave bats from just under the ground down (the flitting critter bat
+    // that was here is gone): a pair at most near the top, packs of up to
+    // five deep down (`packs`: by depth, the smaller more often).
+    (kind: "cave_bat", place: Cave, depth: (20, 150000), bands: ["surface", "underground", "caverns"], packs: [(0, 2), (300, 3), (800, 4), (1600, 5)], most: 6, rate: 0.12),
     (kind: "skeleton", place: Cave, depth: (500, 150000), bands: ["underground", "caverns"], most: 2, rate: 0.2),
     (kind: "acid_slime", place: Cave, zone: "toxic", most: 4, rate: 0.6),
     // The Caverns.
