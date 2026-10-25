@@ -15875,12 +15875,13 @@ fn ores_script(
 /// `ratbend` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=stairs`, try
 /// `PLATYPUS_NOLIGHT=1 PLATYPUS_ZOOM=3`): the player (who can't die) on the
 /// high ledge at the right, a rat (`PLATYPUS_RAT`: `rat`, `rat_lithe`) on
-/// the floor before it: it runs at the ledge, up its face, over its lip.
+/// the floor before it, rubble strewn between (lumps of stone, big and
+/// small): it runs over the rubble at the ledge, up its face, over its lip.
 /// Every half second: where the rat is, how fast, on what.
 fn ratbend_script(
     mut commands: Commands,
     s: Res<Scenario>,
-    sim: Res<SimWorld>,
+    mut sim: ResMut<SimWorld>,
     mut menu: ResMut<crate::devmenu::DevMenu>,
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
@@ -15904,8 +15905,14 @@ fn ratbend_script(
         }
         k.body.pos = Vec2::new(1700.0, ground(1700.0) + k.body.half.y);
         k.prev_pos = k.body.pos;
-        crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(1540.0, ground(1540.0) + 2.0), |_| {});
-        info!("ratbend: a {kind} at 1540, the player on the ledge at 1700");
+        let stone = sim.world.materials().expect_id("stone");
+        let rubble: Vec<(i32, i32, i32)> = [(1452, 6), (1466, 3), (1478, 8), (1497, 4), (1506, 5), (1521, 7), (1538, 3), (1552, 6), (1569, 4), (1584, 7), (1600, 3)].iter().map(|&(x, r)| (x, ground(x as f32) as i32, r)).collect();
+        let start = Vec2::new(1400.0, ground(1400.0) + 2.0);
+        for (x, y, r) in rubble {
+            sim.queue(WorldEdit::Paint { center: CellPos::new(x, y - r / 3), radius: r, material: stone, overwrite: false });
+        }
+        crate::creatures::def::spawn_creature(&mut commands, &kind, start, |_| {});
+        info!("ratbend: a {kind} at 1400, rubble 1450..1600, the player on the ledge at 1700");
         state.0 = true;
         return;
     }

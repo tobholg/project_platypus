@@ -46,7 +46,7 @@ pub struct SpineDef {
 }
 
 fn bend() -> f32 {
-    20.0
+    12.0
 }
 
 /// A tail: a chain off the body.
@@ -135,6 +135,10 @@ impl SpineDef {
 /// How near rock a point of its body holds on (cells): further from any,
 /// it falls.
 const HOLD: i32 = 7;
+/// How far above and below its joints a body looks for what it stands on
+/// (cells, past its ride), and how fast it settles onto it.
+const REACH: i32 = 4;
+const SETTLE: f32 = 22.0;
 /// The most a tail's link bends against the one before it (degrees).
 const TAIL_BEND: f32 = 28.0;
 
@@ -156,6 +160,9 @@ pub struct Spine {
     slices: Vec<Entity>,
     /// Each link's outline and its fill.
     links: Vec<(Entity, Entity)>,
+    /// Where one slice meets the next (its neck first), set down on what
+    /// it stands on.
+    joints: Vec<Vec2>,
     tail: Vec<Vec2>,
     tail_was: Vec<Vec2>,
     /// Mirrored (facing left) last frame; where its neck was.
@@ -177,7 +184,7 @@ fn grow(mut commands: Commands, mut pieces: ResMut<Pieces>, mut images: ResMut<A
                 (line, fill)
             })
             .collect();
-        commands.entity(e).insert(Spine { cut, way: VecDeque::new(), head, slices, links, tail: Vec::new(), tail_was: Vec::new(), mirrored: false, neck: None });
+        commands.entity(e).insert(Spine { cut, way: VecDeque::new(), head, slices, links, joints: Vec::new(), tail: Vec::new(), tail_was: Vec::new(), mirrored: false, neck: None });
     }
 }
 
@@ -236,8 +243,11 @@ fn follow(
         if spine.way.is_empty() || spine.neck.is_none_or(|n| n.distance(neck) > 40.0) {
             spine.way = (1..=(long as i32 + 4)).map(|k| neck - forward * k as f32).collect();
         } else if spine.mirrored != (m < 0.0) {
+            // (Its body, where it's settled, and its tail with it: else they'd
+            // swing across through its head to the other side.)
             let (mid, across) = (o + tf.translation.truncate(), (rot * Vec3::X).truncate());
-            for p in spine.way.iter_mut() {
+            let sp = &mut *spine;
+            for p in sp.way.iter_mut().chain(sp.joints.iter_mut()).chain(sp.tail.iter_mut()).chain(sp.tail_was.iter_mut()) {
                 *p -= across * 2.0 * (*p - mid).dot(across);
             }
         }
@@ -285,20 +295,46 @@ fn follow(
             let held = [Vec2::NEG_Y, Vec2::Y, Vec2::X, Vec2::NEG_X, Vec2::new(0.7, -0.7), Vec2::new(-0.7, -0.7)].iter().any(|dir| (1..=HOLD).any(|c| solid(p + *dir * c as f32)));
             spine.way[i] = if held || aloft { p } else { p - Vec2::Y * (220.0 * dt).min(2.0) };
         }
-        // Its slices: each turned to the way where it is (no more than
+        // Its joints (where one slice meets the next) along the way its head
+        // went; on what it stands on (the ground, a wall it holds), each set
+        // down on what's under its belly there, as high off it as its neck
+        // rides: its body lies over the bumps and down in the dips, along
+        // the slope where it is, not the line its head drew. (Eased there:
+        // it settles, it doesn't jitter.)
+        let n = sd.slices;
+        let width = (sd.head - sd.from) / n as f32;
+        let w = width * sc;
+        let ride = (anim.def.sprite.feet.1 - sd.row) * sc;
+        let mut want: Vec<Vec2> = (0..=n).map(|j| along(neck, &spine.way, j as f32 * w)).collect();
+        if !aloft {
+            for (j, p) in want.iter_mut().enumerate().skip(1) {
+                let d = j as f32 * w;
+                let t = (along(neck, &spine.way, (d - 1.5).max(0.0)) - along(neck, &spine.way, d + 1.5)).normalize_or(forward);
+                let up = t.perp() * m;
+                if let Some(c) = (-REACH..=(ride as i32 + REACH)).find(|c| solid(*p - up * *c as f32)) {
+                    *p = *p - up * c as f32 + up * (ride + 1.0);
+                }
+            }
+        }
+        if spine.joints.len() != n + 1 || spine.joints[1].distance(want[1]) > 30.0 {
+            spine.joints = want.clone();
+        }
+        let settle = (dt * SETTLE).min(1.0);
+        for (j, p) in want.iter().enumerate() {
+            spine.joints[j] = if j == 0 { *p } else { spine.joints[j].lerp(*p, settle) };
+        }
+        // Its slices: each turned from one joint to the next (no more than
         // `bend` against the one ahead), its front where the last one's
         // back is.
-        let width = (sd.head - sd.from) / sd.slices as f32;
         let most = sd.bend.to_radians();
         let mut joint = neck;
         let mut ahead = forward;
         let mut last = (neck, forward, sd.head);
-        for s in 0..sd.slices {
+        for s in 0..n {
             let (a, b) = sd.columns(s);
             let mid = (a + b) / 2.0;
-            let d = (sd.head - mid) * sc;
-            let half = width * sc * 0.5;
-            let want = (along(neck, &spine.way, d - half) - along(neck, &spine.way, d + half)).normalize_or(ahead);
+            let half = w * 0.5;
+            let want = (spine.joints[s] - spine.joints[s + 1]).normalize_or(ahead);
             let most = if s == 0 { most * 0.5 } else { most };
             let turn = ahead.angle_to(want).clamp(-most, most);
             let dir = turned(ahead, turn);
