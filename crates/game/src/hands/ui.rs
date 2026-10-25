@@ -971,7 +971,15 @@ fn tooltip(
     let rarity = rules.rarity(&items, &stack).map_or(Color::WHITE, |r| Color::srgb_u8(r.color.0, r.color.1, r.color.2));
     color.0 = rarity;
     **border = BorderColor::all(rarity.with_alpha(0.8));
-    node.left = px(at.x + 18.0);
+    // (Beside the cursor; left of it on the right of the screen, where the
+    // gear worn is, so it doesn't run off the edge.)
+    if at.x > window.width() * 0.6 {
+        node.left = Val::Auto;
+        node.right = px(window.width() - at.x + 18.0);
+    } else {
+        node.left = px(at.x + 18.0);
+        node.right = Val::Auto;
+    }
     // (Above the cursor near the bottom, where the hotbars are.)
     node.top = px(if at.y > window.height() * 0.5 { at.y - 110.0 } else { at.y + 18.0 });
     **vis = Visibility::Visible;
