@@ -1,0 +1,32 @@
+// Hearts (hearts.rs): what a kill leaves now and then, a little life to
+// take. Only what hunts (team Enemy) drops them, and only near the player.
+//
+// chance:  a kind's own odds (else `tough`'s, by its health: so many a point
+//          of it, at least, at most)
+// above:   over half the player's health, the odds times (1 − health) × this
+//          (none at full health)
+// below:   under half, times at + more × t^power, t going 0 at half to 1 at
+//          `brink` health (and beyond): the nearer death, the steeper
+// most:    never more than this for one kill (never certain)
+// gold:    the share of hearts that are gold: at half health, at the brink;
+//          `gold_tough`: from this much health, at least this share
+// heal:    a red heart heals this, a gold one this
+// life:    seconds it lies before it fades (the last 3 blinking)
+// reach:   it drifts to the player from this far (cells): at full health,
+//          at the brink; `speed` how fast (cells/s, likewise)
+// near:    a kill this far from the player drops nothing
+(
+    chance: { "rat": 0.06, "rat_lithe": 0.06, "plague_rat": 0.08, "cave_bat": 0.06, "skeleton": 0.2, "zombie": 0.2 },
+    tough: (0.0028, 0.04, 0.4),
+    above: 2.5,
+    below: (1.25, 4.75, 1.3),
+    brink: 0.05,
+    most: 0.7,
+    gold: (0.1, 0.4),
+    gold_tough: (300.0, 0.6),
+    heal: (20.0, 40.0),
+    life: 25.0,
+    reach: (26.0, 70.0),
+    speed: (140.0, 260.0),
+    near: 420.0,
+)

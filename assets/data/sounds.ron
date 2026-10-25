@@ -153,6 +153,9 @@
         "kick_miss": (make: Whoosh(from: 400, to: 900, length: 0.12, q: 1.2), variants: 2, pitch: 0.06, volume: 0.25),
         // Gold taken (a bright two-note ting).
         "gold": (make: Chime(pitch: 1900, notes: [0, 7], length: 0.2), variants: 3, pitch: 0.04, volume: 0.28, every: 0.035),
+        // A heart taken (hearts.rs): a soft rising chime; a gold one brighter.
+        "heart": (make: Chime(pitch: 1100, notes: [0, 4, 7], length: 0.32), variants: 2, pitch: 0.03, volume: 0.32),
+        "heart_gold": (make: Chime(pitch: 1320, notes: [0, 7, 12], length: 0.5), variants: 2, pitch: 0.03, volume: 0.4),
 
         // ---- the world ----
         "boom": (make: Boom(length: 1.6, sub: 1.0), variants: 3, pitch: 0.05, reverb: 0.25, room: 2.5, volume: 1.0),

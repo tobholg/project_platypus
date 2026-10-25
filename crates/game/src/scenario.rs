@@ -355,7 +355,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, ratbend_script, bladesplash_script, dryout_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script, sprint_script, phase_script, build_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script, sprint_script, phase_script, build_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -395,6 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -16045,5 +16046,92 @@ fn dryout_script(
             state.0 = 6;
         }
         _ => {}
+    }
+}
+
+/// `hearts` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the player held at
+/// `PLATYPUS_HP` of its health (default 0.15; nothing lowers it, hearts
+/// raise it), `PLATYPUS_KILLS` (default 30) rats put in a row beside it
+/// (from x `PLATYPUS_RATS_AT`, default 990: the player's at 950) at 1.5 s
+/// and struck dead one every `PLATYPUS_KILL_EVERY` s (default 0.25) from
+/// 2 s. Logs each kill's hearts (red,
+/// gold), what the player took, its health; at the end, the tally.
+fn hearts_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    hearts: Query<(Entity, &crate::hearts::Heart)>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut state: Local<(u8, f32, usize, f32, usize, usize, f32)>,
+    mut seen: Local<std::collections::HashSet<Entity>>,
+) {
+    if s.name != "hearts" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((me, mut k, mut h)) = player.single_mut() else { return };
+    let share: f32 = std::env::var("PLATYPUS_HP").ok().and_then(|v| v.parse().ok()).unwrap_or(0.15);
+    let kills: usize = std::env::var("PLATYPUS_KILLS").ok().and_then(|v| v.parse().ok()).unwrap_or(30);
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let (step, next, killed, floor, red, gold, healed) = &mut *state;
+    if *step == 0 && t > 0.5 {
+        for (e, c, _) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        k.body.pos = Vec2::new(950.0, fl + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        *step = 1;
+        return;
+    }
+    if *step == 1 && t > 1.5 {
+        let from: f32 = std::env::var("PLATYPUS_RATS_AT").ok().and_then(|v| v.parse().ok()).unwrap_or(990.0);
+        for i in 0..kills {
+            crate::creatures::def::spawn_creature(&mut commands, "rat", Vec2::new(from + i as f32 * 9.0, fl + 2.0), |_| {});
+        }
+        // (Its grace off first: it gives back what's lost.)
+        commands.entity(me).remove::<crate::combat::Invulnerable>();
+        *floor = h.max * share;
+        h.hp = *floor;
+        *step = 2;
+        *next = 2.0;
+        info!("hearts: the player held at {:.0} of {:.0}; {kills} rats beside it", h.hp, h.max);
+    }
+    if *step < 2 {
+        return;
+    }
+    // (Nothing lowers it: only hearts raise it.)
+    if h.hp < *floor {
+        h.hp = *floor;
+    }
+    if h.hp > *floor + 0.01 {
+        info!("hearts: t {t:.2} health up {:.1} -> {:.1}", *floor, h.hp);
+        *healed += h.hp - *floor;
+        *floor = h.hp;
+    }
+    let _ = &sim;
+    let every: f32 = std::env::var("PLATYPUS_KILL_EVERY").ok().and_then(|v| v.parse().ok()).unwrap_or(0.25);
+    if t >= *next && *killed < kills {
+        *next = t + every;
+        if let Some((e, _, rk)) = them.iter().filter(|x| x.1.kind == "rat").min_by(|a, b| a.2.body.pos.x.total_cmp(&b.2.body.pos.x)) {
+            hits.write(crate::combat::Hit { by: None, target: e, damage: 999.0, harm: crate::creatures::Harm::Slash, knock: Vec2::ZERO, stun: 0.0, at: rk.body.pos, dir: Vec2::X, weight: 1.0, crit: false });
+            *killed += 1;
+        }
+    }
+    // (Each heart once: counted the frame it's first seen.)
+    for (e, heart) in &hearts {
+        if seen.insert(e) {
+            if heart.gold { *gold += 1 } else { *red += 1 }
+            info!("hearts: t {t:.2} a {} heart (kill {killed}; {:.0} health)", if heart.gold { "gold" } else { "red" }, h.hp, killed = *killed);
+        }
+    }
+    if *killed == kills && t > *next + 3.0 && *step == 2 {
+        *step = 3;
+        info!("hearts: {kills} kills held at {:.0} % health: {} red, {} gold hearts; healed {:.0} in all (the player now {:.0} of {:.0})", share * 100.0, *red, *gold, *healed, h.hp, h.max);
     }
 }
