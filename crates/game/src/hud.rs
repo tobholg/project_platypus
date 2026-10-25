@@ -238,10 +238,13 @@ fn blank() -> Image {
     )
 }
 
-fn update_life(deaths: Res<PlayerDeaths>, player: Query<&Health, With<LocalPlayer>>, mut text: Query<&mut Text, With<LifeText>>) {
+/// (Dead, till it wakes: none. Its health is kept full meanwhile, out of
+/// the way of what still hits it: `creatures::die`.)
+fn update_life(deaths: Res<PlayerDeaths>, dying: Res<crate::death::Dying>, player: Query<&Health, With<LocalPlayer>>, mut text: Query<&mut Text, With<LifeText>>) {
     let Ok(h) = player.single() else { return };
     let died = if deaths.0 > 0 { format!("    died {}x", deaths.0) } else { String::new() };
-    let want = format!("Life {:.0}/{:.0}{died}", h.hp.max(0.0).ceil(), h.max);
+    let hp = if dying.0.is_some() { 0.0 } else { h.hp.max(0.0).ceil() };
+    let want = format!("Life {hp:.0}/{:.0}{died}", h.max);
     for mut t in &mut text {
         if t.0 != want {
             t.0.clone_from(&want);
@@ -255,11 +258,13 @@ type Vitals<'a> = (&'a Health, Option<&'a crate::magic::Mana>, Option<&'a crate:
 /// way; as many as the most there is (a heart for every 20).
 fn update_pips(
     pips: Res<PipImages>,
+    dying: Res<crate::death::Dying>,
     player: Query<Vitals, With<LocalPlayer>>,
     mut icons: Query<(&Pip, &mut ImageNode, &mut Node)>,
 ) {
     let Ok((h, mana, stamina)) = player.single() else { return };
-    let vitals = [Some((h.hp.max(0.0), h.max)), mana.map(|m| (m.cur, m.max)), stamina.map(|s| (s.cur, s.max))];
+    let hp = if dying.0.is_some() { 0.0 } else { h.hp.max(0.0) };
+    let vitals = [Some((hp, h.max)), mana.map(|m| (m.cur, m.max)), stamina.map(|s| (s.cur, s.max))];
     for (&Pip(k, i), mut image, mut node) in &mut icons {
         // (Out of the layout, not just hidden: the rows stay against the edge.)
         let count = vitals[k].map_or(0, |(_, max)| (max / PER).ceil() as usize);
