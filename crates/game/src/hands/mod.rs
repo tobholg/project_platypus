@@ -1220,6 +1220,46 @@ fn picked(items: &Items, mats: &platypus_sim::MaterialTable, material: platypus_
     Some(Stack::new(items.id(item)?, cells.div_ceil((*per).max(1))))
 }
 
+/// A plant that's picked (healroot) cut through with a blade: the whole of
+/// it (every cell of it joined to the one cut, near), taken out of the
+/// world and dropped as its item where it stood. How many cells it took.
+pub(crate) fn harvest(commands: &mut Commands, sim: &mut SimWorld, items: &Items, at: CellPos) -> u32 {
+    let Some(material) = sim.world.get(at).map(|c| c.material) else { return 0 };
+    if sim.world.materials().def(material).picks.is_none() {
+        return 0;
+    }
+    let mut todo = vec![at];
+    let mut seen = std::collections::HashSet::from([at]);
+    let mut taken = Vec::new();
+    while let Some(p) = todo.pop() {
+        if taken.len() >= HARVEST_MOST || sim.world.get(p).is_none_or(|c| c.material != material) {
+            continue;
+        }
+        taken.push(p);
+        for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
+            let q = p.offset(dx, dy);
+            if (q.x - at.x).abs() <= HARVEST_REACH && (q.y - at.y).abs() <= HARVEST_REACH && seen.insert(q) {
+                todo.push(q);
+            }
+        }
+    }
+    for &p in &taken {
+        sim.world.set(p, platypus_sim::Cell::AIR);
+    }
+    let n = taken.len() as u32;
+    let (sx, sy) = taken.iter().fold((0, 0), |(x, y), p| (x + p.x, y + p.y));
+    let middle = Vec2::new(sx as f32 / n.max(1) as f32 + 0.5, sy as f32 / n.max(1) as f32 + 0.5);
+    if let Some(stack) = picked(items, sim.world.materials(), material, n) {
+        spawn_drop(commands, items, middle, stack);
+    }
+    n
+}
+
+/// A harvest takes at most this many cells, this far from where it was
+/// cut (a sprig, not the whole cave's).
+const HARVEST_MOST: usize = 200;
+const HARVEST_REACH: i32 = 16;
+
 /// What a mining tool would take, lit (`mark`).
 #[derive(Component)]
 struct Marked;

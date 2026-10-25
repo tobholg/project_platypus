@@ -1494,8 +1494,13 @@ fn swing(
                     stop.hit(STOP * 0.6);
                 }
                 if ph.kind == Kind::Plant && ph.hardness <= 2 {
-                    // (Sliced: the stalk above the blade flies off.)
-                    if sim.world.cut_plant(p, [sweep.x * BLADE_FLING, sweep.y * BLADE_FLING], 2) > 0 {
+                    // (A herb the player cuts is picked, all of it; anything
+                    // else sliced: the stalk above the blade flies off.)
+                    let picked = match (team == Some(&Team::Player), items.as_deref()) {
+                        (true, Some(items)) => crate::hands::harvest(&mut commands, &mut sim, items, p),
+                        _ => 0,
+                    };
+                    if picked > 0 || sim.world.cut_plant(p, [sweep.x * BLADE_FLING, sweep.y * BLADE_FLING], 2) > 0 {
                         mown.get_or_insert(c);
                     }
                 } else if ph.kind == Kind::Liquid {

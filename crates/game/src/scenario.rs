@@ -395,7 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -15982,6 +15982,65 @@ fn bladesplash_script(
 /// the player there, then the player away for `PLATYPUS_DAYS` (default 1)
 /// while the world clock runs, then back: how much of the water is left.
 /// (`PLATYPUS_DAYS=0.25`: a quarter of a day, part of it.)
+/// `herbcut` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a sprig of
+/// healroot on the floor in front of the player, who swings its sword at
+/// it (1.5 s): logs what's left of it and the healroot it carries after.
+fn herbcut_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    items: Option<Res<crate::hands::items::Items>>,
+    (mut hand, mut cursor, mut mouse): (ResMut<crate::hands::Hand>, ResMut<CursorOverride>, ResMut<ButtonInput<MouseButton>>),
+    mut player: Query<(&mut Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    mut step: Local<u8>,
+) {
+    if s.name != "herbcut" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let (Some(items), Ok((mut k, mut inv))) = (items, player.single_mut()) else { return };
+    let Some(herb) = sim.materials().id("healroot") else { return };
+    let fl = platypus_worldgen::arena::FLOOR;
+    let x0 = 960;
+    let count = |sim: &SimWorld| (x0 - 4..x0 + 5).flat_map(|x| (fl..fl + 14).map(move |y| (x, y))).filter(|&(x, y)| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == herb)).count();
+    let carried = |inv: &crate::hands::items::Inventory| inv.slots.iter().flatten().filter(|st| items.def(st.item).id == "healroot").map(|st| st.count).sum::<u32>();
+    match *step {
+        0 if t > 0.5 => {
+            k.body.pos = Vec2::new(x0 as f32 - 14.0, fl as f32 + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            if let Some(id) = items.id("copper_shortsword") {
+                inv.slots[9] = Some(crate::hands::items::Stack::new(id, 1));
+                (hand.bar, hand.slot) = (0, 9);
+            }
+            // (Room for it: the kit fills the pack.)
+            let n = inv.slots.len();
+            inv.slots[n - 1] = None;
+            for (dx, tall) in [(-2, 4), (-1, 7), (0, 9), (1, 7), (2, 4)] {
+                for dy in 0..tall {
+                    sim.world.set(CellPos::new(x0 + dx, fl + dy), platypus_sim::Cell::new(herb, if dy == tall - 1 { 238 } else { 90 }));
+                }
+            }
+            info!("herbcut: a sprig of {} cells; healroot carried {}", count(&sim), carried(&inv));
+            *step = 1;
+        }
+        1 if t > 1.5 => {
+            cursor.0 = Some(Vec2::new(x0 as f32, fl as f32 + 5.0));
+            mouse.press(MouseButton::Left);
+            *step = 2;
+        }
+        2 if t > 1.6 => {
+            mouse.release(MouseButton::Left);
+            *step = 3;
+        }
+        3 if t > 3.5 => {
+            info!("herbcut: after the swing: {} cells left; healroot carried {}", count(&sim), carried(&inv));
+            *step = 4;
+        }
+        _ => {}
+    }
+}
+
 /// `wardrobe` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the player in
 /// each metal's armour in turn, its longsword in hand (copper, iron,
 /// silver, gold, mithril; 1.5 s each from 1 s): logs its armour and health.
