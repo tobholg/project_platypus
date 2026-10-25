@@ -298,8 +298,14 @@ fn land(p: &Particle, hit: CellPos, world: &mut impl ParticleWorld) {
         Landing::Vanish => {}
         Landing::Rain => {
             world.douse(hit);
-            if keep(RAIN_KEEP) {
-                settle(p, here, world);
+            // (One that would stand as water: on earth, grass, sand, it may
+            // soak in instead; what stands is marked as rain.)
+            let soaks = world.get(hit).map_or(0, |c| world.mats().phys(c.material).soaks);
+            let soaked = (crate::rng::hash(&[p.pos[0].to_bits() as u64, p.pos[1].to_bits() as u64, 0x50A4]) % 256) < soaks as u64;
+            if keep(RAIN_KEEP) && !soaked {
+                let mut drop = *p;
+                drop.cell.marks |= crate::cell::marks::RAIN;
+                settle(&drop, here, world);
             }
         }
         Landing::Snow => {

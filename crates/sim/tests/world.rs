@@ -2793,3 +2793,38 @@ fn blood_dries_from_the_top_and_held_goo_stays() {
     assert_eq!(count(&w, goo), 10, "held goo stays");
     assert_eq!(count(&w, water), 10, "water stays");
 }
+
+/// Rain on earth soaks in: on a floor half soil, half stone, the same
+/// light rain leaves far less water standing on the soil (`soaks`), and
+/// what stands is marked as rain. (A downpour still pools: once water
+/// covers the earth, drops land on water; that dries where no one is.)
+#[test]
+fn rain_soaks_into_earth_and_stands_on_stone() {
+    let mut w = boxed_world(2, 1, 9);
+    let m = w.materials().clone();
+    let (soil, water) = (m.expect_id("soil"), m.expect_id("water"));
+    let stone = m.expect_id("stone");
+    for x in 1..CHUNK {
+        w.set(CellPos::new(x, 1), Cell::new(soil, 0));
+    }
+    // (A wall between the halves: what stands on the stone doesn't run
+    // onto the soil.)
+    for y in 1..30 {
+        w.set(CellPos::new(CHUNK, y), Cell::new(stone, 0));
+    }
+    let drop = Cell::new(water, 0);
+    for i in 0..15_000u32 {
+        let x = 2.0 + (i % 6000) as f32 * (2.0 * CHUNK as f32 - 4.0) / 6000.0;
+        let y = 20.0 + (i / 6000) as f32 * 3.0;
+        w.emit(Particle::new([x, y], [0.0, -1.0], drop, 400, Landing::Rain));
+    }
+    for _ in 0..600 {
+        w.step();
+    }
+    let side = |from: i32, to: i32| (from..to).flat_map(|x| (1..CHUNK).map(move |y| CellPos::new(x, y))).filter(|&p| w.get(p).is_some_and(|c| c.material == water)).count();
+    let (on_soil, on_stone) = (side(1, CHUNK), side(CHUNK + 1, 2 * CHUNK - 1));
+    assert!(on_stone > 40, "rain stood on the stone: {on_stone}");
+    assert!((on_soil as f32) < on_stone as f32 * 0.5, "far less stood on the soil: {on_soil} against {on_stone}");
+    let marked = w.chunks().flat_map(|c| c.cells()).filter(|c| c.material == water).all(|c| c.marks & platypus_sim::cell::marks::RAIN != 0);
+    assert!(marked && count(&w, water) > 0, "what stands is marked as rain");
+}

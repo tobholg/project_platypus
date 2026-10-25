@@ -2502,14 +2502,16 @@ impl World {
             let (tx, ty) = ((i % tw as u64) as i32, (i / tw as u64) as i32);
             let x0 = (center.x - half.0).div_euclid(t) * t + tx * t;
             let y0 = (center.y - half.1).div_euclid(t) * t + ty * t;
-            // What dries away (blood, spilt goo): a cell of it open to the
-            // air above, now and then; what something living holds stays.
+            // What dries away (blood, spilt goo; rain water where it's hot):
+            // a cell of it open to the air above, now and then; what
+            // something living holds stays.
             let tick = self.tick;
             let dry: Vec<CellPos> = (0..t)
                 .flat_map(|dy| (0..t).map(move |dx| CellPos::new(x0 + dx, y0 + dy)))
                 .filter(|&p| {
                     self.get(p).is_some_and(|c| {
-                        let e = mats.phys(c.material).evaporates;
+                        let hot_rain = c.marks & crate::cell::marks::RAIN != 0 && self.climate.ambient(p.x, p.y) >= HOT_DRY;
+                        let e = if hot_rain { RAIN_DRIES } else { mats.phys(c.material).evaporates };
                         e > 0 && c.flags & flags::HELD == 0 && self.get(p.offset(0, 1)).is_some_and(|a| a.is_air()) && (crate::rng::hash(&[tick, p.x as u64, p.y as u64]) % 256) < e as u64
                     })
                 })
@@ -2644,6 +2646,10 @@ const ZAP_HEAT: i16 = 600;
 const ZAP_BLAST: u8 = 14;
 /// How far up a splash from inside a liquid looks for its surface.
 const SPLASH_SURFACE: i32 = 96;
+/// Rain water dries in view where it's this hot (°C), the chance (/256) a
+/// cell of it open to the air goes each time the sweep passes.
+const HOT_DRY: i32 = 30;
+const RAIN_DRIES: u8 = 10;
 /// A blow into a liquid reaches this many cells round it (`slosh`), and
 /// throws up its top this many cells deep.
 const SLOSH_REACH: i32 = 5;

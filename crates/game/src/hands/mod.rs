@@ -756,7 +756,9 @@ fn use_hands(
                 let k = n.min(VESSEL_POUR);
                 let mut rng = platypus_sim::rng::Rng::seeded(&[sim.world.tick(), n as u64, 0x7057]);
                 for _ in 0..k {
-                    let cell = mats.spawn(m, &mut rng);
+                    // (Poured on purpose: it stays, not dried away as rain.)
+                    let mut cell = mats.spawn(m, &mut rng);
+                    cell.marks |= platypus_sim::cell::marks::KEPT;
                     let jiggle = (rng.next_u32() as f32 / u32::MAX as f32 - 0.5) * 0.06;
                     let v = aim * (1.0 + jiggle);
                     sim.world.emit(platypus_sim::Particle::new([start.x, start.y], [v.x, v.y], cell, 200, platypus_sim::Landing::Settle));

@@ -14,6 +14,9 @@
 // evaporates:   dries away where open to the air (blood, spilt goo): the chance
 //               (/256) a surface cell goes each time the sweep round the player
 //               passes (every couple of seconds); what a living thing holds stays
+// soaks:        rain landing on it soaks in (earth, grass, sand): the chance
+//               (/256) a drop that would stand as water doesn't; and water
+//               lying on it soaks away sooner where no one is (healing)
 // crumbles_into: what a solid shatters into when blasted but not destroyed
 //
 // Temperature (°C). Cells store heat relative to the local ambient (colder up
@@ -67,8 +70,8 @@
         // ---- solids -------------------------------------------------------
         (name: "bedrock",  kind: Static, density: 9999, hardness: 255, colors: [(28, 26, 32), (44, 40, 50)]),
         (name: "stone",    kind: Static, density: 2600, hardness: 60,  crumbles_into: "gravel", above: (1400, "magma"), colors: [(92, 92, 100), (122, 120, 128), (104, 104, 112)]),
-        (name: "dirt",     kind: Static, density: 1500, hardness: 20,  crumbles_into: "soil", colors: [(96, 62, 36), (118, 78, 44), (104, 68, 40)]),
-        (name: "grass",    kind: Static, living: true, density: 1400, hardness: 10,  flammability: 2, ignites_at: 250, burn_time: 10, burns_into: "soil", crumbles_into: "soil", chars_at: 1.0, colors: [(58, 140, 44), (82, 170, 56)]),
+        (name: "dirt",     kind: Static, soaks: 150, density: 1500, hardness: 20,  crumbles_into: "soil", colors: [(96, 62, 36), (118, 78, 44), (104, 68, 40)]),
+        (name: "grass",    kind: Static, soaks: 190, living: true, density: 1400, hardness: 10,  flammability: 2, ignites_at: 250, burn_time: 10, burns_into: "soil", crumbles_into: "soil", chars_at: 1.0, colors: [(58, 140, 44), (82, 170, 56)]),
         (name: "snow",     kind: Static, density: 400,  hardness: 5,   heat: -10, above: (1, "water"), conductivity: 15, coats: "wet", latent: 40, colors: [(226, 232, 240), (246, 248, 252)]),
         // Hard to get going: a small fire on a trunk often fizzles (fizzles:
         // a lone flame goes out), a crown or a blaze takes it (SPEC §3.8).
@@ -220,7 +223,7 @@
             colors: [(10, 30, 22), (16, 44, 30), (24, 60, 38), (34, 76, 46)]),
         // Age: a crypt's damp floors grow moss; corners gather cobwebs, which
         // hang from the ceiling and go up in a flash.
-        (name: "moss",       kind: Plant, living: true, still: true, density: 150, hardness: 1, flammability: 6, ignites_at: 280, burn_time: 20, chars_at: 1.0, opacity: 20,
+        (name: "moss",       kind: Plant, soaks: 170, living: true, still: true, density: 150, hardness: 1, flammability: 6, ignites_at: 280, burn_time: 20, chars_at: 1.0, opacity: 20,
             colors: [(34, 62, 30), (52, 88, 40), (70, 110, 50), (92, 128, 62)]),
         (name: "cobweb",     kind: Plant, still: true, hangs: true, sticky: true, density: 20, hardness: 1, flammability: 90, ignites_at: 200, burn_time: 6, opacity: 12,
             colors: [(150, 150, 150), (190, 190, 194), (220, 220, 226)]),
@@ -320,20 +323,20 @@
             colors: [(22, 20, 26), (52, 50, 58), (90, 88, 98), (128, 24, 34), (214, 64, 72), (30, 58, 150), (86, 136, 226), (30, 112, 52), (96, 196, 104), (176, 126, 20), (246, 204, 84), (96, 40, 146), (170, 108, 222), (24, 120, 130), (96, 206, 206), (232, 228, 214)], tile: (art: Rose(span: 4, hues: 6), round: 0)),
         (name: "plaster", kind: Static, wall: true, density: 1700, hardness: 30, crumbles_into: "sand",
             colors: [(26, 16, 10), (46, 30, 18), (70, 46, 26), (150, 132, 102), (196, 180, 144), (226, 214, 184)], tile: (art: Framed(panel: 3), round: 0, outline: false)),
-        (name: "sand",     kind: Powder, density: 1600, hardness: 5,  above: (1100, "glass"), colors: [(206, 176, 110), (226, 198, 132), (196, 164, 100)]),
+        (name: "sand",     kind: Powder, soaks: 220, density: 1600, hardness: 5,  above: (1100, "glass"), colors: [(206, 176, 110), (226, 198, 132), (196, 164, 100)]),
         // Under desert sand: sand pressed into rock.
         (name: "sandstone", kind: Static, density: 2200, hardness: 35, crumbles_into: "sand", colors: [(178, 142, 90), (192, 156, 100), (166, 132, 84), (184, 150, 96)]),
-        (name: "gravel",   kind: Powder, density: 1900, hardness: 15, above: (1400, "magma"), colors: [(96, 94, 90), (130, 126, 120), (80, 78, 76)]),
+        (name: "gravel",   kind: Powder, soaks: 110, density: 1900, hardness: 15, above: (1400, "magma"), colors: [(96, 94, 90), (130, 126, 120), (80, 78, 76)]),
         // A cave's loose roof (caves.rs): packed sand and gravel, holding till
         // something disturbs it, then crumbling into its sand or gravel and
         // coming down (`cave_ins`); dug, it's sand or gravel.
         (name: "loose_sand", kind: Static, density: 1600, hardness: 6, crumbles_into: "sand", item: "block:sand", colors: [(178, 148, 92), (196, 166, 106), (166, 136, 84)]),
         (name: "loose_gravel", kind: Static, density: 1900, hardness: 12, crumbles_into: "gravel", item: "block:gravel", colors: [(88, 86, 82), (116, 112, 106), (74, 72, 70)]),
-        (name: "soil",     kind: Powder, density: 1400, hardness: 8,  colors: [(92, 60, 34), (112, 74, 42)]),
+        (name: "soil",     kind: Powder, soaks: 190, density: 1400, hardness: 8,  colors: [(92, 60, 34), (112, 74, 42)]),
         // Bat droppings, heaped under a roost: you see the heaps before you
         // look up.
         (name: "guano",    kind: Powder, density: 900, hardness: 3, colors: [(150, 136, 108), (176, 162, 132), (124, 110, 86), (196, 186, 160)]),
-        (name: "ash",      kind: Powder, density: 300,  hardness: 1,  colors: [(70, 68, 66), (98, 96, 94)]),
+        (name: "ash",      kind: Powder, soaks: 200, density: 300,  hardness: 1,  colors: [(70, 68, 66), (98, 96, 94)]),
         // What burnt wood leaves (and charred wood that was put out). Flames
         // don't spread onto it (spread 0) and heat lights it only above 700 °C,
         // hotter than burning wood, so it survives the fire that made it.

@@ -22,6 +22,14 @@
 //!   when each was lost; `land`: since when each chunk has been healing);
 //!   the cells change where no one is looking: out of view, or on load
 //!   (catching up however long it was away). What was built stays.
+//! - **Drying** (with regrowth): what liquid lies where the seed put none
+//!   (rain, spills, a flood) dries from the top down where no one is
+//!   looking, or on load catching up: a puddle in about a day, a flood
+//!   twenty deep in two or three, sooner on earth (it soaks in) than on
+//!   stone (`TerrainGen`'s healing, `LandRecord::dried`). What was poured
+//!   on purpose stays (`marks::KEPT`), and so do the seed's lakes and seas.
+//!   In view, rain soaks into bare earth as it lands (`soaks`), and rain
+//!   water dries where it's hot.
 //! - **Wildfires** (hourly): lightning in dry forest where no one is. The
 //!   trees it takes are lost (they regrow as any), the land under it is
 //!   scorched (`Healing::scorched`: grass burnt, ash lying, healing as any
@@ -178,11 +186,14 @@ pub struct Keeper {
     pub seen: f64,
 }
 
-/// A chunk's land healing: since when, and how many cells were left then.
+/// A chunk's land healing: since when, and how many cells were left then;
+/// when the liquid lying in it last dried (where no one was looking).
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct LandRecord {
     pub since: f64,
     pub unhealed: u32,
+    #[serde(default)]
+    pub dried: f64,
 }
 
 /// What of the clock is saved (the rest follows from the world).
@@ -472,7 +483,11 @@ fn regrow(mut sim: ResMut<SimWorld>, mut clock: ResMut<WorldClock>, loaded: Res<
                 let since = clock.land.get(&(p.x, p.y)).map(|r| r.since).or_else(|| put_away.get(&(p.x, p.y)).copied()).unwrap_or(clock.now);
                 let tree = |x: i32| clock.tree(x);
                 let scorched = clock.scorched(p.x * CHUNK, (p.x + 1) * CHUNK);
-                generator.heal(chunk, &Healing { days: (clock.now - since) as f32, tree: &tree, judge, cooled, scorched }).map(|h| (p, looking, since, h))
+                // (Its liquid dries where no one's looking: since it last
+                // did, or since it was put away.)
+                let dried = clock.land.get(&(p.x, p.y)).map(|r| r.dried).filter(|&d| d > 0.0).or_else(|| put_away.get(&(p.x, p.y)).copied()).unwrap_or(clock.now);
+                let dry = if looking { 0.0 } else { (clock.now - dried).max(0.0) as f32 };
+                generator.heal(chunk, &Healing { days: (clock.now - since) as f32, tree: &tree, judge, cooled, scorched, dry }).map(|h| (p, looking, since, h))
             })
             .collect()
     };
@@ -491,16 +506,25 @@ fn regrow(mut sim: ResMut<SimWorld>, mut clock: ResMut<WorldClock>, loaded: Res<
             let time = clock.trees.get(&x).map_or(1, |r| r.time + 1);
             clock.trees.insert(x, TreeRecord { lost: at, time });
         }
+        // (Dried where no one was looking.)
+        if !looking {
+            for c in &h.dried {
+                sim.world.set(*c, platypus_sim::Cell::AIR);
+            }
+        }
         let key = (p.x, p.y);
-        if h.unhealed == 0 {
+        if h.unhealed == 0 && h.stray == 0 {
             clock.land.remove(&key);
         } else {
-            let r = clock.land.entry(key).or_insert(LandRecord { since, unhealed: h.unhealed });
+            let r = clock.land.entry(key).or_insert(LandRecord { since, unhealed: h.unhealed, dried: at });
             // (Hurt again: healing starts over for what's new.)
             if h.unhealed > r.unhealed {
                 r.since = at;
             }
             r.unhealed = h.unhealed;
+            if !looking {
+                r.dried = at;
+            }
         }
     }
 }

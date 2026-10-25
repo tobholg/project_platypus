@@ -124,6 +124,12 @@ pub struct MaterialDef {
     /// a puddle shrinks from the top. What a living thing holds stays.
     #[serde(default)]
     pub evaporates: u8,
+    /// Rain landing on it soaks in (earth, grass, sand): the chance (/256)
+    /// a drop that would have stood as water is gone into it. Water lying
+    /// on it also soaks away sooner where no one is (`TerrainGen`'s
+    /// healing).
+    #[serde(default)]
+    pub soaks: u8,
     /// Chance /256 that `decays_into` is left rather than nothing. Steam that
     /// always condensed would drip back onto hot rock and cycle forever.
     #[serde(default = "always")]
@@ -440,6 +446,8 @@ pub struct MatPhys {
     pub decays_into_chance: u8,
     /// (`MaterialDef::evaporates`.)
     pub evaporates: u8,
+    /// (`MaterialDef::soaks`.)
+    pub soaks: u8,
     /// Left behind after burning out (`AIR` = nothing).
     pub burns_into: MaterialId,
     pub burns_into_chance: u8,
@@ -678,6 +686,7 @@ impl MaterialTable {
                 decays_into,
                 decays_into_chance: d.decays_into_chance,
                 evaporates: d.evaporates,
+                soaks: d.soaks,
                 burns_into,
                 burns_into_chance: d.burns_into_chance,
                 burn_time: d.burn_time.unwrap_or(45),

@@ -18,10 +18,19 @@ pub struct Cell {
     /// Solids and powders: mining damage taken so far (breaks at `hardness`).
     pub life: u8,
     pub flags: u8,
-    /// Reserved for ballistic motion; unused by the phase-1 rules.
-    pub vx: i8,
+    /// Where it came from, as far as it matters (`marks`): a liquid placed
+    /// on purpose stays; one that fell as rain dries in a hot sun.
+    pub marks: u8,
     /// Accumulated fall speed (see `rules::MAX_FALL`).
     pub vy: i8,
+}
+
+pub mod marks {
+    /// Put there on purpose (poured from a vessel): kept, never dried away
+    /// as rain and spills are (`TerrainGen`'s healing).
+    pub const KEPT: u8 = 1 << 0;
+    /// Fell as rain: dries in view where it's hot (`World::sweep_specks`).
+    pub const RAIN: u8 = 1 << 1;
 }
 
 pub mod flags {
@@ -60,11 +69,11 @@ pub mod flags {
 }
 
 impl Cell {
-    pub const AIR: Cell = Cell { material: MaterialId::AIR, heat: 0, clock: 0, shade: 0, life: 0, flags: 0, vx: 0, vy: 0 };
+    pub const AIR: Cell = Cell { material: MaterialId::AIR, heat: 0, clock: 0, shade: 0, life: 0, flags: 0, marks: 0, vy: 0 };
 
     #[inline]
     pub const fn new(material: MaterialId, shade: u8) -> Self {
-        Cell { material, heat: 0, clock: 0, shade, life: 0, flags: 0, vx: 0, vy: 0 }
+        Cell { material, heat: 0, clock: 0, shade, life: 0, flags: 0, marks: 0, vy: 0 }
     }
 
     #[inline]

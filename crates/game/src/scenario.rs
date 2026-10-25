@@ -355,7 +355,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, toad_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, necro_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, strikes_script.after(InputSystems).before(crate::camera::track_cursor))
-            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, ratbend_script, bladesplash_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script, sprint_script, phase_script, build_script))
+            .add_systems(Update, (watcher_script, gnasher_script, bats_script, headshot_script, keepsake_script, rats_script, ratbend_script, bladesplash_script, dryout_script, worldmap_script, ropehook_script, loadouts_script, jumps_script, stormboots_script, layers_script, crimson_script, lineup_script, sprint_script, phase_script, build_script))
             .add_systems(PreUpdate, templar_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, backwall_script)
             .add_systems(Update, (overhang_script, shots_script, parts_script, safari_script, reach_script))
@@ -15963,5 +15963,77 @@ fn bladesplash_script(
     if t >= state.1 {
         state.1 = t + 0.1;
         info!("bladesplash: t {t:.1} water flying {flying} (most {})", state.2);
+    }
+}
+
+/// `dryout` (a generated world, `small` is quickest): a flood dumped on the
+/// land by the start (water where the seed put none), an hour passing with
+/// the player there, then the player away for `PLATYPUS_DAYS` (default 1)
+/// while the world clock runs, then back: how much of the water is left.
+/// (`PLATYPUS_DAYS=0.25`: a quarter of a day, part of it.)
+fn dryout_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut day: ResMut<crate::light::Daylight>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut state: Local<(u8, Vec2, usize)>,
+) {
+    if s.name != "dryout" {
+        return;
+    }
+    let days: f32 = std::env::var("PLATYPUS_DAYS").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0);
+    let t = s.elapsed;
+    let Ok(mut k) = player.single_mut() else { return };
+    let water = sim.materials().id("water");
+    let tally = |sim: &SimWorld, at: Vec2| {
+        let mut n = 0;
+        for y in (at.y as i32 - 120)..(at.y as i32 + 200) {
+            for x in (at.x as i32 - 300)..(at.x as i32 + 300) {
+                n += sim.world.get(CellPos::new(x, y)).is_some_and(|c| Some(c.material) == water) as usize;
+            }
+        }
+        n
+    };
+    let put = |k: &mut Kinematics, at: Vec2| {
+        k.body.pos = at;
+        k.body.vel = Vec2::ZERO;
+        k.prev_pos = at;
+    };
+    match state.0 {
+        0 if t > 1.0 => {
+            let p = k.body.pos;
+            state.1 = p;
+            let Some(w) = water else { return };
+            state.2 = tally(&sim, p);
+            for dx in [-160, -80, 80, 160] {
+                sim.queue(WorldEdit::Paint { center: CellPos::from_world(p.x + dx as f32, p.y + 30.0), radius: 22, material: w, overwrite: false });
+            }
+            info!("dryout: before: {} cells of water about the start; a flood dumped", state.2);
+            state.0 = 1;
+        }
+        // (Settled, and an hour on with the player there: the clock has
+        // seen it.)
+        1 if t > 12.0 => {
+            info!("dryout: flooded: {} cells of water", tally(&sim, state.1));
+            day.skipped += 1.0;
+            state.0 = 2;
+        }
+        2 if t > 14.0 => {
+            put(&mut k, state.1 + Vec2::new(6_000.0, 600.0));
+            state.0 = 3;
+        }
+        3 if t > 16.0 => {
+            day.skipped += 24.0 * days;
+            state.0 = 4;
+        }
+        4 if t > 18.0 => {
+            put(&mut k, state.1 + Vec2::new(0.0, 30.0));
+            state.0 = 5;
+        }
+        5 if t > 22.0 => {
+            info!("dryout: {days} days later: {} cells of water (the seed's own: {})", tally(&sim, state.1), state.2);
+            state.0 = 6;
+        }
+        _ => {}
     }
 }

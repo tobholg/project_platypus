@@ -181,7 +181,18 @@ pub struct Healing<'a> {
     /// Days since a wildfire swept over it (the world clock's, where no one
     /// was): its grass burnt to soil and ash lying, healing as any burn.
     pub scorched: Option<f32>,
+    /// Days of drying due (since it last dried, where no one was looking):
+    /// what liquid lies where the seed put none (rain, spills, a flood),
+    /// unless put there on purpose (`marks::KEPT`), goes from the top down,
+    /// sooner on earth (`DRY_ON_EARTH`) than on stone (`DRY_ON_STONE`).
+    pub dry: f32,
 }
+
+/// Liquid where the seed put none dries this many cells a day down each
+/// column: lying on earth (it soaks in too), on stone or anything else.
+/// (A puddle's gone in a day; a flood twenty deep in two or three.)
+pub const DRY_ON_EARTH: f32 = 14.0;
+pub const DRY_ON_STONE: f32 = 7.0;
 
 /// What healing a chunk does and finds.
 #[derive(Default, Debug)]
@@ -197,6 +208,10 @@ pub struct Healed {
     pub hurt_trees: Vec<i32>,
     /// Land still to heal here (cells): 0, and it's whole.
     pub unhealed: u32,
+    /// Liquid that dried away (cells to clear, where no one is looking).
+    pub dried: Vec<CellPos>,
+    /// Liquid left lying where the seed put none (cells): it dries on.
+    pub stray: u32,
 }
 
 /// Regrowth: a tree reappears (a sapling) once it's this far grown.
@@ -359,6 +374,9 @@ pub struct TerrainGen {
     /// By material id: a powder (it falls if what holds it is cut away).
     powder: Vec<bool>,
     plant: Vec<bool>,
+    /// By material id: a liquid; earth that water soaks into (`soaks`).
+    liquid: Vec<bool>,
+    soaks: Vec<bool>,
     /// Lairs (`with_lairs`), and which each chamber is, if any.
     lairs: Vec<lairs::Lair>,
     lair_of: Vec<Option<u16>>,
@@ -451,6 +469,8 @@ impl TerrainGen {
             solid: mats.iter().map(|(id, _)| matches!(mats.phys(id).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder)).collect(),
             powder: mats.iter().map(|(id, _)| mats.phys(id).kind == platypus_sim::Kind::Powder).collect(),
             plant: mats.iter().map(|(id, _)| mats.phys(id).kind == platypus_sim::Kind::Plant).collect(),
+            liquid: mats.iter().map(|(id, _)| mats.phys(id).kind == platypus_sim::Kind::Liquid).collect(),
+            soaks: mats.iter().map(|(id, _)| mats.phys(id).soaks > 0).collect(),
             tiles: mats.iter().map(|(id, _)| mats.tile(id).cloned()).collect(),
             patterns: mats
                 .iter()
@@ -613,6 +633,48 @@ impl TerrainGen {
         (front, self.background_at(x, y, &self.trees_near(x, x)).0)
     }
 
+    /// Drying (`Healing::dry`): down each column, the liquid lying where the
+    /// seed put none (and not put there on purpose, nor held by something
+    /// living) from each surface open to the air, the top so many cells of
+    /// it gone (a share of a cell by chance), how many by what it lies on.
+    fn dry(&self, chunk: &Chunk, pristine: &Chunk, how: &Healing, out: &mut Healed) {
+        let o = chunk.pos.origin();
+        let at = |c: &Chunk, lx: i32, ly: i32| c.get(lx as usize, ly as usize);
+        let stray = |lx: i32, ly: i32| {
+            let c = at(chunk, lx, ly);
+            self.liquid[c.material.0 as usize] && c.marks & platypus_sim::cell::marks::KEPT == 0 && c.flags & platypus_sim::cell::flags::HELD == 0 && !self.liquid[at(pristine, lx, ly).material.0 as usize]
+        };
+        for lx in 0..CHUNK {
+            let mut ly = CHUNK - 1;
+            while ly >= 0 {
+                let open = ly == CHUNK - 1 || at(chunk, lx, ly + 1).is_air();
+                if !(open && stray(lx, ly)) {
+                    ly -= 1;
+                    continue;
+                }
+                let top = ly;
+                while ly >= 0 && stray(lx, ly) {
+                    ly -= 1;
+                }
+                let deep = top - ly;
+                // (What it lies on: through grass and the like, the ground.)
+                let mut under = ly;
+                while under >= 0 && self.plant[at(chunk, lx, under).material.0 as usize] {
+                    under -= 1;
+                }
+                let earth = under >= 0 && self.soaks[at(chunk, lx, under).material.0 as usize];
+                let rate = if earth { DRY_ON_EARTH } else { DRY_ON_STONE };
+                let due = how.dry * rate;
+                let frac = (hash(&[self.plan.seed, 0xD7, (o.x + lx) as u64, (o.y + top) as u64, (how.dry * 1e4) as u64]) & 0xFFFF) as f32 / 65_536.0;
+                let gone = ((due + frac).floor() as i32).clamp(0, deep);
+                for k in 0..gone {
+                    out.dried.push(CellPos::new(o.x + lx, o.y + top - k));
+                }
+                out.stray += (deep - gone) as u32;
+            }
+        }
+    }
+
     /// Trees (ground and sky islands) overlapping `x0..=x1`.
     fn trees_near(&self, x0: i32, x1: i32) -> Vec<&flora::Tree> {
         let mut t = self.plan.forest.near(x0, x1);
@@ -692,6 +754,7 @@ impl TerrainGen {
                 }
             }
         }
+        self.dry(chunk, &pristine, how, &mut out);
         // The trees over it, as they stand now.
         let trees = self.trees_near(o.x, o.x + CHUNK - 1);
         if trees.is_empty() {
@@ -2680,6 +2743,61 @@ mod tests {
         assert!(p.island_forest.len() >= p.islands.len(), "trees on them ({})", p.island_forest.len());
     }
 
+    /// Drying: water stood on the ground where the seed put none goes from
+    /// the top down, more of it the longer it's been, sooner on earth than
+    /// on stone; water poured on purpose stays, and so does the seed's own.
+    #[test]
+    fn stray_water_dries_from_the_top_and_poured_water_stays() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Medium, &m);
+        let s = g.spawn_point();
+        let none = |_: i32| None;
+        let water = m.expect_id("water");
+        let stone = m.expect_id("stone");
+        // Three columns of water 12 deep on the ground: on a slab of soil
+        // laid under it, on one of stone, and poured (kept). (A chunk by the
+        // start with its ground low enough in it.)
+        let top = |c: &Chunk, lx: i32| (0..CHUNK).rev().find(|&ly| !c.get(lx as usize, ly as usize).is_air());
+        let pos = (-3..3)
+            .map(|k| CellPos::new(s.x, s.y + k * CHUNK).chunk())
+            .find(|&p| {
+                let c = g.generate(p);
+                [10, 30, 50].iter().all(|&lx| top(&c, lx).is_some_and(|y| (2..CHUNK - 16).contains(&y)))
+            })
+            .expect("a chunk with ground low in it by the start");
+        let mut c = g.generate(pos);
+        let ground = |c: &Chunk, lx: i32| top(c, lx).expect("ground in the chunk");
+        let soil = m.expect_id("soil");
+        let mut put = |c: &mut Chunk, lx: i32, slab: MaterialId, kept: bool| -> i32 {
+            let mut y = ground(c, lx) + 1;
+            c.set(lx as usize, y as usize, Cell::new(slab, 0));
+            y += 1;
+            for k in 0..12 {
+                let mut w = Cell::new(water, 0);
+                if kept {
+                    w.marks |= platypus_sim::cell::marks::KEPT;
+                }
+                c.set(lx as usize, (y + k) as usize, w);
+            }
+            y + 11
+        };
+        let water_top = put(&mut c, 10, soil, false);
+        put(&mut c, 30, stone, false);
+        put(&mut c, 50, soil, true);
+        let left = |h: &Healed, lx: i32| 12 - h.dried.iter().filter(|p| p.x - pos.origin().x == lx).count() as i32;
+        let h = g.heal(&c, &Healing { days: 0.0, tree: &none, judge: false, cooled: false, scorched: None, dry: 0.0 }).unwrap();
+        assert!(h.dried.is_empty() && h.stray == 24, "none dried yet, 24 stray: {} dried, {} stray", h.dried.len(), h.stray);
+        let h = g.heal(&c, &Healing { days: 0.0, tree: &none, judge: false, cooled: false, scorched: None, dry: 0.5 }).unwrap();
+        let (earth, slab, kept) = (left(&h, 10), left(&h, 30), left(&h, 50));
+        assert!(earth < slab && slab < 12 && kept == 12, "half a day: on earth {earth} left, on stone {slab}, poured {kept}");
+        // (From the top: what dried is the column's top cells.)
+        let mut ys: Vec<i32> = h.dried.iter().filter(|p| p.x - pos.origin().x == 10).map(|p| p.y - pos.origin().y).collect();
+        ys.sort_unstable();
+        assert!(ys.last() == Some(&water_top) && ys.windows(2).all(|w| w[1] == w[0] + 1), "dried from the top: {ys:?} (its top {water_top})");
+        let h = g.heal(&c, &Healing { days: 0.0, tree: &none, judge: false, cooled: false, scorched: None, dry: 3.0 }).unwrap();
+        assert!(left(&h, 10) == 0 && left(&h, 30) == 0 && left(&h, 50) == 12, "three days: all of it but the poured");
+    }
+
     /// Healing (the world clock's regrowth): a chunk as the seed made it has
     /// nothing to heal; burnt, its tree is found hurt and nothing grows
     /// back at once; days later (the tree regrowing, grown), it heals whole
@@ -2693,7 +2811,7 @@ mod tests {
         let pos = CellPos::new(t.x, t.base + 18).chunk();
         let none = |_: i32| None;
         let pristine = g.generate(pos);
-        let h = g.heal(&pristine, &Healing { days: 0.0, tree: &none, judge: true, cooled: true, scorched: None }).unwrap();
+        let h = g.heal(&pristine, &Healing { days: 0.0, tree: &none, judge: true, cooled: true, scorched: None, dry: 0.0 }).unwrap();
         assert!(h.edits.is_empty() && h.sudden.is_empty() && h.hurt_trees.is_empty() && h.unhealed == 0, "as made, nothing to heal: {h:?}");
 
         // Burnt: the trees to charcoal, the grass to soil.
@@ -2715,14 +2833,14 @@ mod tests {
         // (Enough to call it a tree: the world near the start moves when
         // structures change size.)
         assert!(burnt > 150, "the chunk had trees ({burnt} cells)");
-        let h = g.heal(&c, &Healing { days: 0.0, tree: &none, judge: true, cooled: false, scorched: None }).unwrap();
+        let h = g.heal(&c, &Healing { days: 0.0, tree: &none, judge: true, cooled: false, scorched: None, dry: 0.0 }).unwrap();
         assert!(h.hurt_trees.contains(&t.x), "the burnt tree is found: {:?}", h.hurt_trees);
         assert!(h.edits.is_empty() && h.unhealed > 0, "nothing grows back at once");
 
         // Five days on, the tree regrown (a new one): whole, then at rest.
         let regrown = |x: i32| h.hurt_trees.contains(&x).then_some((1.0, 1));
         for pass in 0..3 {
-            let h = g.heal(&c, &Healing { days: 5.0, tree: &regrown, judge: false, cooled: false, scorched: None }).unwrap();
+            let h = g.heal(&c, &Healing { days: 5.0, tree: &regrown, judge: false, cooled: false, scorched: None, dry: 0.0 }).unwrap();
             if h.edits.is_empty() {
                 assert_eq!(h.unhealed, 0);
                 let back = (0..CHUNK as usize).flat_map(|y| (0..CHUNK as usize).map(move |x| (x, y))).filter(|&(x, y)| trees.contains(&c.get_bg(x, y).material)).count();
@@ -2760,7 +2878,7 @@ mod tests {
         };
         assert!(count(&pristine, grass) > 20, "grass at the start");
         let mut c = g.generate(pos);
-        let fresh = Healing { days: 0.0, tree: &none, judge: false, cooled: false, scorched: Some(0.05) };
+        let fresh = Healing { days: 0.0, tree: &none, judge: false, cooled: false, scorched: Some(0.05), dry: 0.0 };
         let h = g.heal(&c, &fresh).unwrap();
         assert!(h.unhealed > 0);
         apply(&mut c, h);
