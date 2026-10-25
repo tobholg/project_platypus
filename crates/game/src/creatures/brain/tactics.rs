@@ -15,7 +15,9 @@
 //! - `flank`: in a pack, half go round you to your far side.
 //! - `skirmish`: it keeps `back` off you on its side, and comes in for a
 //!   move (a bite) and out again, waiting `wait` s (±40 %) between; of a
-//!   pack, only `together` at a time come in.
+//!   pack, only `together` at a time come in (`shared`: of all its kind
+//!   going for the same one, whatever pack they came in: rats, two at a
+//!   time, the rest circling).
 //!
 //! A pack (`Pack`): what spawned together as a group (`life.ron`'s
 //! `group`). With no one about, the rest follow the leader (its first);
@@ -44,11 +46,12 @@ pub struct SkirmishDef {
     pub back: f32,
     pub wait: f32,
     pub together: u32,
+    pub shared: bool,
 }
 
 impl Default for SkirmishDef {
     fn default() -> Self {
-        SkirmishDef { back: 50.0, wait: 1.5, together: 1 }
+        SkirmishDef { back: 50.0, wait: 1.5, together: 1, shared: false }
     }
 }
 

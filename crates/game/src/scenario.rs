@@ -9974,10 +9974,13 @@ fn keepsake_script(
 /// two (they come at you too); `body`: a
 /// zombie killed at 1100, four rats at 1250, the player far off at 700
 /// (they go to the body and gnaw it till it's gone, what it had left
-/// lying); `idle`: three far from the player (skittish, on their own).
+/// lying); `idle`: three far from the player (skittish, on their own);
+/// `swarm`: five right by the player (two at it at a time, the rest
+/// circling).
 /// On the ground whatever the arena (`PLATYPUS_ARENA=slopes`, `cave`).
-/// Logs, a second at a time, what the rats are doing, the bodies
-/// and what's lying about, and what the player's lost.
+/// Logs, a second at a time, what the rats are doing, how many are at the
+/// player at once, the bodies and what's lying about, and what the player's
+/// lost.
 /// `PLATYPUS_RAT`: the kind (`rat_lithe`: the one that bends).
 #[allow(clippy::type_complexity)]
 fn rats_script(
@@ -9990,6 +9993,7 @@ fn rats_script(
     drops: Query<(), With<crate::hands::Dropped>>,
     mut hits: MessageWriter<crate::combat::Hit>,
     mut state: Local<(u8, f32, u32, f32)>,
+    mut biting: Local<(usize, usize)>,
 ) {
     if s.name != "rats" {
         return;
@@ -10014,6 +10018,7 @@ fn rats_script(
         k.prev_pos = k.body.pos;
         let (n, at) = match mode.as_str() {
             "alone" => (2, 1100.0),
+            "swarm" => (5, 990.0),
             "body" => (4, 1250.0),
             "idle" => (3, 1180.0),
             _ => (5, 1100.0),
@@ -10050,8 +10055,14 @@ fn rats_script(
             info!("rats: t {t:.1} a rat struck dead ({} left)", rats.len() - 1);
         }
     }
+    // (How many at it at once: within a bite of it, now and the most yet.)
+    let at_it = them.iter().filter(|(_, c, rk, _)| c.kind == kind && rk.body.pos.distance(k.body.pos) < 18.0).count();
+    biting.1 = biting.1.max(at_it);
+    biting.0 = biting.0.max(at_it);
     if t as u32 != state.2 {
         state.2 = t as u32;
+        info!("rats: t {t:.0} at the player at once: {} this second (most yet {})", biting.0, biting.1);
+        biting.0 = 0;
         let mut tally: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
         let mut far = 0.0f32;
         for (_, c, rk, o) in &them {

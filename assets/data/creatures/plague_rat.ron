@@ -29,7 +29,7 @@
     touch: (damage: 7, knock: 140, every: 0.7, coat: "venom"),
     brain: (
         kind: "hunter",
-        params: (aggro: 200, close: Crawl(pounce_range: 40, pounce_every: 1.3), wander: (speed: 0.5), senses: (dark: 1.0, smell: 120, hearing: 1.2), tactics: (call: 160, flank: true)),
+        params: (aggro: 200, close: Crawl(pounce_range: 40, pounce_every: 1.3), wander: (speed: 0.5), senses: (dark: 1.0, smell: 120, hearing: 1.2), tactics: (call: 160, flank: true, skirmish: (back: 34, wait: 0.8, together: 2, shared: true))),
     ),
     custom: (name: "rat", params: ()),
 )

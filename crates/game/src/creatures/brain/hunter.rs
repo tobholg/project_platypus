@@ -257,7 +257,8 @@ fn hunt(
     (mut ways, creatures, tempo): (ResMut<super::way::Ways>, Res<crate::creatures::def::Creatures>, Res<crate::tempo::Tempo>),
     packs: Query<(&super::tactics::Pack, &Kinematics)>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
-    // Skirmishers coming in, per pack: last tick's count, this tick's.
+    // Skirmishers coming in, per pack (or per kind and quarry: `shared`):
+    // last tick's count, this tick's.
     mut charging: Local<(std::collections::HashMap<u64, u32>, std::collections::HashMap<u64, u32>)>,
 ) {
     let tick = sim.world.tick();
@@ -381,16 +382,22 @@ fn hunt(
                     m.wait_until = tick + ticks(sk.wait * (0.6 + 0.8 * unit(&sim, id, 0x5C1)));
                 }
                 m.was_busy = busy;
-                // (Those in last tick, or gone in already this one.)
-                let room = pack.is_none_or(|p| charging_then.get(&p.id).copied().unwrap_or(0).max(charging_now.get(&p.id).copied().unwrap_or(0)) < sk.together);
+                // (Those in last tick, or gone in already this one: of its
+                // pack, or, shared, of its kind after the same one.)
+                let crowd = if sk.shared {
+                    alert.and_then(|a| a.target).map(|t| platypus_sim::rng::hash(&[kind.kind.bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64)), t.to_bits()]))
+                } else {
+                    pack.map(|p| p.id)
+                };
+                let room = crowd.is_none_or(|c| charging_then.get(&c).copied().unwrap_or(0).max(charging_now.get(&c).copied().unwrap_or(0)) < sk.together);
                 if !m.charging && tick >= m.wait_until && room {
                     m.charging = true;
                     m.charge_since = tick;
                 }
                 if m.charging
-                    && let Some(p) = pack
+                    && let Some(c) = crowd
                 {
-                    *charging_now.entry(p.id).or_default() += 1;
+                    *charging_now.entry(c).or_default() += 1;
                 }
                 (!m.charging).then_some(sk.back)
             }

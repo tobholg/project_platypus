@@ -3,7 +3,8 @@
 //! - **Pilgrim**: gentler (to explore and build at your own pace); and only
 //!   here do you heal by yourself (`craft::rest`).
 //! - **Wayfarer** (the default): you start weak and afraid: a skeleton's
-//!   five blows kill you unarmoured, eight in leather, about twelve in iron.
+//!   five or six blows kill you unarmoured, nine in leather, about thirteen
+//!   in iron.
 //! - **Hardened**: every blow lands hard.
 //!
 //! Only what the player takes changes (`Ward::taken`); creatures hit as
@@ -63,11 +64,12 @@ impl Difficulty {
 
     /// How much of what hits the player it takes (times what the creature
     /// files say: tuned so a skeleton's blows kill an unarmoured Wayfarer in
-    /// five, measured with the `gauntlet` scenario).
+    /// five or six, measured with the `gauntlet` scenario; 2.7 was five, a
+    /// little too hard).
     pub fn taken(self) -> f32 {
         match self {
             Difficulty::Pilgrim => 1.5,
-            Difficulty::Wayfarer => 2.7,
+            Difficulty::Wayfarer => 2.4,
             Difficulty::Hardened => 3.6,
         }
     }
