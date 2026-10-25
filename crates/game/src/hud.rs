@@ -16,7 +16,7 @@ use crate::creatures::{Health, PlayerDeaths};
 
 pub struct HudPlugin;
 
-const SLOTS: usize = 8;
+const SLOTS: usize = 10;
 /// Status icon size, and a status's width with its label under it
 /// (pixels; even, so the icon sits on whole pixels).
 const ICON: u32 = 34;
@@ -283,7 +283,15 @@ fn update_pips(
     }
 }
 
-type PlayerStatuses<'a> = (Option<&'a Burning>, Option<&'a Chilled>, Option<&'a Coated>, &'a crate::creatures::Kinematics, Option<&'a crate::creatures::MoveStats>, Option<&'a crate::potion::PotionSickness>);
+type PlayerStatuses<'a> = (
+    Option<&'a Burning>,
+    Option<&'a Chilled>,
+    Option<&'a Coated>,
+    &'a crate::creatures::Kinematics,
+    Option<&'a crate::creatures::MoveStats>,
+    Option<&'a crate::potion::PotionSickness>,
+    Option<&'a crate::potion::Lasting>,
+);
 
 fn update_statuses(
     coatings: Res<Coatings>,
@@ -294,7 +302,7 @@ fn update_statuses(
     mut labels: Query<(&StatusLabel, &mut Text)>,
     mut fuel: Local<(f32, bool)>,
 ) {
-    let Ok((burning, chilled, coated, k, stats, sick)) = player.single() else { return };
+    let Ok((burning, chilled, coated, k, stats, sick, lasting)) = player.single() else { return };
     // (label, colour, share left)
     let mut shown: Vec<(String, [u8; 3], f32)> = Vec::new();
     if let Some(b) = burning {
@@ -313,6 +321,15 @@ fn update_statuses(
     }
     if let Some(s) = sick {
         shown.push(("Potion sick".into(), [220, 120, 160], s.left / s.total));
+    }
+    // What potions drunk are doing, each with what's left of it.
+    for &(effect, left, total) in lasting.map_or(&[][..], |l| &l.effects[..]) {
+        let (label, color) = match effect {
+            crate::potion::Effect::FireWard { .. } => ("Fire ward", [255, 150, 50]),
+            crate::potion::Effect::Regen { .. } => ("Regenerating", [240, 110, 170]),
+            crate::potion::Effect::Cure { .. } => ("Antidote", [130, 220, 100]),
+        };
+        shown.push((label.into(), color, left / total.max(0.01)));
     }
     // Rocket boots worn: their charge, always, rightmost.
     if let Some(time) = stats.map(|s| s.0.rocket_time).filter(|&t| t > 0.0) {
@@ -335,6 +352,8 @@ fn update_statuses(
         };
         shown.push((label.into(), [255, 176, 70], left / time));
     }
+    // (No more than there are slots for: the rest wait.)
+    shown.truncate(SLOTS);
     // (Out of the layout when unused, not just hidden: the row stays
     // against the right edge, as the hearts do.)
     for (slot, mut node) in &mut slots {

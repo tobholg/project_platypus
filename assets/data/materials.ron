@@ -57,6 +57,8 @@
 // brittle:      a body of it breaks when it hits hard (a boulder): pieces, and rubble
 // flung:        a blast throws it whole instead of destroying it (gold)
 // counted:      the game tallies it, never a block item (gold: gold.rs)
+// picks:        (item, cells): dug, it's picked: one item for each so many
+//               cells of it (a herb), not a block
 // charges:      carries electricity: lightning into it charges all of it that's
 //               connected (water, acid, blood, metal ores)
 // colors:       gradient; each cell gets a fixed point on it
@@ -439,6 +441,12 @@
         // What a dread knight's void bolts leave: dark, faintly glowing smoke.
         (name: "void_smoke", kind: Gas, density: 2, dispersion: 2, lifetime: (60, 150), decay_every: 2, glow: (40, 14, 70), opacity: 10, colors: [(34, 18, 52), (52, 28, 80), (22, 10, 36)]),
         (name: "smoke",    kind: Gas, density: 2, dispersion: 3, lifetime: (40, 120), decay_every: 2, opacity: 6, colors: [(56, 54, 54), (84, 80, 80)]),
+
+        // A cave herb (healroot): a sprig on cave floors, its berries red and
+        // faintly glowing; dug, it's picked (one for every 24 cells: two or
+        // three a sprig), and it grows back in a day or so (worldgen: herbs).
+        (name: "healroot", kind: Plant, living: true, density: 120, hardness: 1, flammability: 6, ignites_at: 300, burn_time: 8, chars_at: 1.0, opacity: 15, glow: (12, 3, 4), pulse: 80, picks: ("healroot", 24),
+            colors: [(36, 78, 38), (60, 122, 52), (96, 158, 70), (200, 36, 60), (244, 92, 112)]),
 
         // ---- fire ---------------------------------------------------------
         (name: "fire",     kind: Fire, hot: true, heat: 800, heat_source: true, lifetime: (12, 40), decays_into: "smoke", glow: (255, 170, 70), colors: [(255, 220, 90), (255, 140, 30), (230, 70, 20)]),

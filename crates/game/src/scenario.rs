@@ -395,7 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -15982,6 +15982,135 @@ fn bladesplash_script(
 /// the player there, then the player away for `PLATYPUS_DAYS` (default 1)
 /// while the world clock runs, then back: how much of the water is left.
 /// (`PLATYPUS_DAYS=0.25`: a quarter of a day, part of it.)
+/// `herbs`: the player taken to the nearest healroot under the start (the
+/// generator's, as the seed made it), to see it in its cave.
+fn herbs_script(s: Res<Scenario>, sim: Res<SimWorld>, mut menu: ResMut<crate::devmenu::DevMenu>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut done: Local<bool>) {
+    if s.name != "herbs" || *done || s.elapsed < 1.0 {
+        return;
+    }
+    menu.open = false;
+    let Ok(mut k) = player.single_mut() else { return };
+    let Some(herb) = sim.materials().id("healroot") else { return };
+    let start = sim.generator.spawn_point().chunk();
+    let mut best: Option<CellPos> = None;
+    for r in 0..12 {
+        for cx in -r..=r {
+            for cy in [-r, r] {
+                let pos = platypus_sim::ChunkPos::new(start.x + cx, start.y + cy);
+                let c = sim.generator.generate(pos);
+                for y in 0..platypus_sim::CHUNK {
+                    for x in 0..platypus_sim::CHUNK {
+                        if best.is_none() && c.get(x as usize, y as usize).material == herb {
+                            best = Some(CellPos::new(pos.origin().x + x, pos.origin().y + y));
+                        }
+                    }
+                }
+            }
+        }
+        if best.is_some() {
+            break;
+        }
+    }
+    *done = true;
+    let Some(at) = best else {
+        warn!("herbs: none near the start");
+        return;
+    };
+    info!("herbs: healroot at {at:?}");
+    k.body.pos = Vec2::new(at.x as f32 + 30.0, at.y as f32 + k.body.half.y + 2.0);
+    k.prev_pos = k.body.pos;
+    k.body.vel = Vec2::ZERO;
+}
+
+/// `brew`: each potion drunk on the flat arena, and what it does logged:
+/// the health potion (60 back in a second), regeneration (slow, on top of
+/// potion sickness), the antidote (venom washed off, poison not felt), and
+/// the fire ward (heat off a hot floor, before and after: half).
+fn brew_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    items: Option<Res<crate::hands::items::Items>>,
+    coatings: Res<crate::creatures::body::elements::Coatings>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut drink: MessageWriter<crate::potion::Drink>,
+    mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health, &mut crate::hands::items::Inventory, Option<&crate::creatures::body::elements::Coated>), With<LocalPlayer>>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "brew" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let (Some(items), Ok((me, mut k, mut h, mut inv, coated))) = (items, player.single_mut()) else { return };
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let feet = CellPos::from_world(950.0, fl + 1.0);
+    let mut quaff = |inv: &crate::hands::items::Inventory, id: &str| {
+        let slot = inv.slots.iter().position(|s| s.is_some_and(|s| items.def(s.item).id == id));
+        match slot {
+            Some(slot) => drink.write(crate::potion::Drink { who: me, slot }),
+            None => panic!("brew: no {id} carried"),
+        };
+    };
+    // (The floor searing hot from 10 s.)
+    if t > 10.0
+        && let Some(stone) = sim.materials().id("stone")
+    {
+        for x in feet.x - 8..=feet.x + 8 {
+            for y in feet.y - 3..feet.y {
+                sim.world.set(CellPos::new(x, y), platypus_sim::Cell { heat: 260, ..platypus_sim::Cell::new(stone, 128) });
+            }
+        }
+    }
+    let (step, mark) = &mut *state;
+    let due = [1.0, 1.5, 2.7, 3.0, 7.0, 7.0, 7.5, 9.5, 10.2, 12.2, 12.4, 14.4, 15.0];
+    let Some(&at) = due.get(*step as usize) else { return };
+    if t < at {
+        return;
+    }
+    let coats = coated.map(|c| c.coats.clone());
+    match *step {
+        0 => {
+            commands.entity(me).remove::<crate::combat::Invulnerable>();
+            k.body.pos = Vec2::new(950.0, fl + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            // (Into the last slots, whatever was there: the kit fills the pack.)
+            let n = inv.slots.len();
+            for (i, id) in ["small_health_potion", "regeneration_potion", "antidote", "fire_ward_potion"].into_iter().enumerate() {
+                let item = items.id(id).unwrap_or_else(|| panic!("brew: no item {id}"));
+                inv.slots[n - 1 - i] = Some(crate::hands::items::Stack::new(item, 2));
+            }
+            h.hp = 20.0;
+        }
+        1 => {
+            *mark = h.hp;
+            quaff(&inv, "small_health_potion");
+        }
+        2 => info!("brew: health potion: {:.0} -> {:.0} in 1.2 s", *mark, h.hp),
+        3 => {
+            *mark = h.hp;
+            quaff(&inv, "regeneration_potion");
+        }
+        4 => info!("brew: regeneration: {:.1} -> {:.1} in 4 s", *mark, h.hp),
+        5 => crate::creatures::body::elements::stain(&mut commands, me, "venom", 1.0, &coatings),
+        6 => {
+            info!("brew: venomed: {coats:?}, hp {:.1}", h.hp);
+            *mark = h.hp;
+            quaff(&inv, "antidote");
+        }
+        7 => info!("brew: antidote: {coats:?}, hp {:.1} -> {:.1} in 2 s (regen +3 of it)", *mark, h.hp),
+        8 => *mark = h.hp,
+        9 => info!("brew: heat unwarded: {:.1} -> {:.1} in 2 s (regen +3)", *mark, h.hp),
+        10 => {
+            quaff(&inv, "fire_ward_potion");
+            *mark = h.hp;
+        }
+        11 => info!("brew: heat warded: {:.1} -> {:.1} in 2 s (regen +3)", *mark, h.hp),
+        _ => info!("brew: done; ward {:?}", (h.ward.drunk_fire, h.ward.antidote)),
+    }
+    *step += 1;
+}
+
 type SignsSubject<'a> = (
     Entity,
     &'a mut Kinematics,

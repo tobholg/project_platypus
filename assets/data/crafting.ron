@@ -776,8 +776,11 @@
         (makes: "block:stained_glass", count: 4, needs: [("block:glass", 2), ("block:amethyst", 1)], at: "furnace"),
         (makes: "block:rose_glass", count: 4, needs: [("block:glass", 2), ("block:ruby", 1)], at: "furnace"),
         (makes: "glowstick", count: 3, needs: [("block:glass", 1), ("block:emerald", 1)], at: "furnace"),
-        // (A placeholder: an alchemy table, herbs, later.)
-        (makes: "small_health_potion", count: 2, needs: [("block:glass", 1), ("block:mushroom_stem", 1)], at: "workbench"),
+        // Potions: healroot (a cave herb) brewed in glass.
+        (makes: "small_health_potion", needs: [("block:glass", 1), ("healroot", 2)], at: "workbench"),
+        (makes: "fire_ward_potion", needs: [("block:glass", 1), ("healroot", 1), ("block:obsidian", 1)], at: "workbench"),
+        (makes: "regeneration_potion", needs: [("block:glass", 1), ("healroot", 3), ("block:mushroom_stem", 1)], at: "workbench"),
+        (makes: "antidote", needs: [("block:glass", 1), ("healroot", 1), ("block:toxic_crust", 1)], at: "workbench"),
 
         // ---- at the anvil: tools, arms, armour, hooks ----
         (makes: "copper_pickaxe", needs: [("copper_bar", 6), ("block:planks", 2)], at: "anvil"),

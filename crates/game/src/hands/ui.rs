@@ -1073,10 +1073,15 @@ pub(crate) fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<
                 None => lines.push("Empty".into()),
             }
         }
-        Use::Potion { heal, over, sickness } => {
-            let when = if *over > 0.0 { format!(" over {over:.0} s") } else { String::new() };
-            lines.push(format!("Heals {heal:.0}{when}; click (or H) to drink"));
-            lines.push(format!("Potion sickness {sickness:.0} s after"));
+        Use::Potion { heal, over, sickness, effect } => {
+            if *heal > 0.0 {
+                let when = if *over > 0.0 { format!(" over {over:.0} s") } else { String::new() };
+                lines.push(format!("Heals {heal:.0}{when}; click (or H) to drink"));
+                lines.push(format!("Potion sickness {sickness:.0} s after"));
+            }
+            if let Some(e) = effect {
+                lines.push(format!("{}; click to drink", e.about()));
+            }
         }
         Use::Chest => lines.push("Click to place it on the ground; right-click it to open".into()),
         Use::Block(_) => {

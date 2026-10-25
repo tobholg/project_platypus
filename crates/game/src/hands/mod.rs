@@ -672,6 +672,8 @@ fn use_hands(
                         }
                     } else if sim.world.materials().def(material).counted {
                         dug.write(crate::gold::Dug(n));
+                    } else if let Some(stack) = picked(&items, sim.world.materials(), material, n) {
+                        spawn_drop(&mut commands, &items, at, stack);
                     }
                 }
                 return;
@@ -706,6 +708,8 @@ fn use_hands(
                     }
                 } else if sim.world.materials().def(material).counted {
                     dug.write(crate::gold::Dug(n));
+                } else if let Some(stack) = picked(&items, sim.world.materials(), material, n) {
+                    spawn_drop(&mut commands, &items, centre, stack);
                 }
             }
         }
@@ -1209,6 +1213,13 @@ fn collect(
     }
 }
 
+/// A plant picked (a herb, `MaterialDef::picks`): its item, one for each
+/// so many cells of it dug (a part of one counting whole).
+fn picked(items: &Items, mats: &platypus_sim::MaterialTable, material: platypus_sim::MaterialId, cells: u32) -> Option<Stack> {
+    let (item, per) = mats.def(material).picks.as_ref()?;
+    Some(Stack::new(items.id(item)?, cells.div_ceil((*per).max(1))))
+}
+
 /// What a mining tool would take, lit (`mark`).
 #[derive(Component)]
 struct Marked;
@@ -1377,6 +1388,22 @@ mod tests {
             put(m, xs.clone(), ys.clone());
         }
         w
+    }
+
+    /// Healroot dug with a pick: picked, one for every 24 cells of it (a
+    /// part of one counting), no block of it.
+    #[test]
+    fn digging_a_herb_picks_it() {
+        let mut w = ground(&[("healroot", 9..12, 16..19)]);
+        let items = items::test_items();
+        let herb = w.materials().expect_id("healroot");
+        assert!(items.block(herb).is_none(), "no block of a herb");
+        let report = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(1, 2), power: 25, max_hardness: 70, back: false });
+        let dug = report.removed.iter().find(|(m, _)| *m == herb).map_or(0, |&(_, n)| n);
+        assert_eq!(dug, 9, "the tuft dug: {:?}", report.removed);
+        let got = picked(&items, w.materials(), herb, dug).expect("picked");
+        assert_eq!((items.def(got.item).id.as_str(), got.count), ("healroot", 1));
+        assert_eq!(picked(&items, w.materials(), herb, 63).map(|s| s.count), Some(3), "a whole sprig: three");
     }
 
     /// Bricks on uneven ground: into the dirt's block, flush (the dirt dug

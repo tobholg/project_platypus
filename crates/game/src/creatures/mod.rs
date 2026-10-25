@@ -236,11 +236,15 @@ pub struct Ward {
     /// this share on top of `taken` (the player's off Hardened: blows land
     /// harder than what lingers, `difficulty.rs`).
     pub lingers: f32,
+    /// While a potion lasts (`potion.rs`): this much more fire stopped
+    /// (heat too); poison not felt at all.
+    pub drunk_fire: f32,
+    pub antidote: bool,
 }
 
 impl Default for Ward {
     fn default() -> Self {
-        Ward { armor: 0.0, fire: 0.0, frost: 0.0, storm: 0.0, acid: 0.0, fall: 0.0, taken: 1.0, lingers: 1.0 }
+        Ward { armor: 0.0, fire: 0.0, frost: 0.0, storm: 0.0, acid: 0.0, fall: 0.0, taken: 1.0, lingers: 1.0, drunk_fire: 0.0, antidote: false }
     }
 }
 
@@ -251,9 +255,12 @@ pub const ARMOR_HALF: f32 = 35.0;
 impl Ward {
     /// The share of a kind of hurt that gets through.
     pub fn through(&self, kind: Harm) -> f32 {
+        if kind == Harm::Poison && self.antidote {
+            return 0.0;
+        }
         let stopped = match kind {
             Harm::Slash | Harm::Pierce | Harm::Blunt => self.armor.max(0.0) / (self.armor.max(0.0) + ARMOR_HALF),
-            Harm::Fire => self.fire,
+            Harm::Fire => self.fire + self.drunk_fire,
             Harm::Frost => self.frost,
             Harm::Storm => self.storm,
             Harm::Acid => self.acid,

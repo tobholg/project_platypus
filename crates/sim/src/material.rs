@@ -294,6 +294,10 @@ pub struct MaterialDef {
     /// than a `block:` one. The game's business.
     #[serde(default)]
     pub item: Option<String>,
+    /// Dug, it's picked: this item, one for each so many cells of it (a
+    /// herb's sprig), rather than a block. The game's business.
+    #[serde(default)]
+    pub picks: Option<(String, u32)>,
     /// How deep its glow glimmers: small patches swell from nearly dark to
     /// full and back, each on its own quick cycle (gems, crystals).
     /// Rendering only.

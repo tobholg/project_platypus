@@ -324,6 +324,8 @@ pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures:
             fall: total.share(Stat::FallResist, 0.9),
             taken: health.ward.taken,
             lingers: health.ward.lingers,
+            drunk_fire: health.ward.drunk_fire,
+            antidote: health.ward.antidote,
         };
         let mut m = def.movement.clone();
         m.run_speed *= total.mult(Stat::MoveSpeed) * pace.map_or(1.0, |p| p.0);

@@ -32,9 +32,11 @@
 //   Melee(weapon): a weapon (weapons.ron): the left button swings it at the
 //     cursor; hold it to swing through the combo. Its icon is its sprite.
 //   Chest: place one (furniture, 18 × 15 cells, on the ground); right-click a chest to open it
-//   Potion(heal, over, sickness): drink it (click, or H: the first healing
-//     one carried): heal health back over `over` s (0: at once), then
-//     `sickness` s when no healing potion works
+//   Potion(heal, over, sickness, effect): drink it (click, or H: the first
+//     healing one carried): heal health back over `over` s (0: at once), then
+//     `sickness` s when no healing potion works; and its effect (potion.rs),
+//     if any: FireWard(fire: share less, secs), Regen(rate: health a
+//     second, secs), Cure(secs: venom washed off, poison not felt)
 //   Station(id): place a crafting station (crafting.ron); a pickaxe knocks it back
 // gear: (slot: Held, stats: {..}): counts toward its holder's stats while
 //   in the hand, and can be found rarer (gear.ron has the rest of the gear);
@@ -66,9 +68,18 @@
         (id: "bomb",           name: "Bomb",           stack: 30, color: (40, 40, 46), use: Throw(Bomb)),
         (id: "glowstick",      name: "Glow stick",     stack: 30, color: (90, 255, 150), use: Throw(Glowstick)),
         // Potions: click to drink (or H, the first healing one carried).
-        // Healing comes back 10 a second: over = heal / 10.
-        (id: "small_health_potion", name: "Small health potion", stack: 30, color: (230, 60, 80), use: Potion(heal: 40, over: 4, sickness: 20),
-            about: "A small red flask."),
+        // (The health potion keeps its old id, so saves keep theirs.)
+        (id: "small_health_potion", name: "Health potion", stack: 30, color: (230, 60, 80), use: Potion(heal: 60, over: 1, sickness: 20),
+            about: "Healroot brewed red: it mends you at once."),
+        (id: "fire_ward_potion", name: "Fire ward potion", stack: 30, color: (255, 140, 40), use: Potion(sickness: 0, effect: FireWard(fire: 0.5, secs: 180)),
+            about: "Brewed with obsidian: it takes the bite out of flames and heat."),
+        (id: "regeneration_potion", name: "Regeneration potion", stack: 30, color: (240, 110, 170), use: Potion(sickness: 0, effect: Regen(rate: 1.5, secs: 60)),
+            about: "Slow, but no potion sickness stops it."),
+        (id: "antidote", name: "Antidote", stack: 30, color: (130, 220, 100), use: Potion(sickness: 0, effect: Cure(secs: 30)),
+            about: "Washes a sting's venom out, and keeps it out a while."),
+        // A cave herb, picked (materials.ron `healroot`): it grows back.
+        (id: "healroot", name: "Healroot", stack: 99, color: (220, 50, 70),
+            about: "A cave herb with red berries. It grows back where it's picked. Brewed into potions."),
         // Foci (magic::spells): each holds its spells (a wand one, a staff
         // two: left and right button), of its tier or less (a wand 1, a staff
         // 2); its element is the one it favours (its stats: that element's

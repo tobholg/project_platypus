@@ -69,15 +69,19 @@ pub enum Use {
     /// A bow (`weapons.ron`): hold the left button to draw, let go to loose
     /// an arrow at the cursor (it takes one of your arrows).
     Bow(String),
-    /// A potion (`potion.rs`): click it (or H, the first one carried) to
-    /// drink it: `heal` health back over `over` seconds (0: at once), then
-    /// `sickness` seconds when no healing potion works.
+    /// A potion (`potion.rs`): click it (or H, the first healing one
+    /// carried) to drink it: `heal` health back over `over` seconds (0: at
+    /// once), then `sickness` seconds when no healing potion works; and its
+    /// `effect`, if it has one.
     Potion {
+        #[serde(default)]
         heal: f32,
         #[serde(default)]
         over: f32,
         #[serde(default = "potion_sickness")]
         sickness: f32,
+        #[serde(default)]
+        effect: Option<crate::potion::Effect>,
     },
     /// A vessel for liquids (a ladle, a bucket, a flask): the right button
     /// fills it (scooping the liquid at the cursor, or, at a furnace, melting

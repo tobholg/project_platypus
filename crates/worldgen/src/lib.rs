@@ -229,7 +229,36 @@ pub const SNAG_UNTIL: f32 = 0.3;
 const GRASS_MOST: i32 = 40;
 const GRASS_CLUMP: i32 = 9;
 const GRASS_TALL: f64 = 0.08;
-const TRAP_GRID: i32 = 60;
+/// Healroot (`TerrainGen::herbs`): a sprig on one in this many cells of
+/// bare cave floor, this deep under the surface or more; picked, it's back over this many days (some by the first, all by the
+/// second).
+const HERB_ONE_IN: u64 = 90;
+const HERB_DEPTH: i32 = 40;
+/// A sprig's column reaches down this far to the ground where the floor
+/// dips under it.
+const HERB_DIP: i32 = 3;
+/// ... and keeps this far (cells across, up or down) from what stands on
+/// the floor (a chest, a cart).
+const HERB_CLEAR: (i32, i32) = (24, 24);
+const HERB_REGROWS: (f32, f32) = (0.6, 1.3);
+/// A healroot sprig, top row first: columns of leaves (l, L darker) round
+/// its stem (s), berries (r, R darker) on top; every column unbroken down
+/// to the ground (a plant stands on what's under it).
+const HERB: [&str; 13] = [
+    "...r...", //
+    "...R...",
+    "..rsr..",
+    "..RsR..",
+    ".rLsLr.",
+    ".LlsLL.",
+    ".lLslL.",
+    ".LlsLl.",
+    "lLlsLlL",
+    "LlLslLl",
+    "lLlsLlL",
+    "LlLsLlL",
+    "lLlslLl",
+];const TRAP_GRID: i32 = 60;
 const TRAP_CHANCE: u32 = 60;
 const TRAP_R: i32 = 6;
 const TRAP_UNDER: i32 = 29;
@@ -323,6 +352,7 @@ struct Ids {
     crystal: MaterialId,
     toxic_crust: MaterialId,
     platform: MaterialId,
+    healroot: MaterialId,
 }
 
 impl Ids {
@@ -453,6 +483,7 @@ impl TerrainGen {
             mushroom_glow: mats.expect_id("mushroom_glow"),
             fungus_shelf: mats.expect_id("fungus_shelf"),
             glow_vine: mats.expect_id("glow_vine"),
+            healroot: mats.expect_id("healroot"),
             crystal: mats.expect_id("crystal"),
             toxic_crust: mats.expect_id("toxic_crust"),
             platform: mats.expect_id("platform"),
@@ -739,6 +770,10 @@ impl TerrainGen {
                     Some((0xA11, (0.1, 1.0), p))
                 } else if p.material == i.tall_grass && c.is_air() && ly > 0 && [i.grass, i.tall_grass].contains(&chunk.get(lx as usize, ly as usize - 1).material) {
                     Some((0xA12, (0.6, 1.6), p))
+                } else if p.material == i.healroot && c.is_air() && ly > 0 && (pristine.get(lx as usize, ly as usize - 1).is_air() || !chunk.get(lx as usize, ly as usize - 1).is_air()) {
+                    // (A picked herb grows back in about a day, from the
+                    // ground up: each cell once what held it is back.)
+                    Some((0xA14, HERB_REGROWS, p))
                 } else if (c.material == i.ash || c.material == i.charcoal) && (p.is_air() || p.material == i.tall_grass || p.material == i.grass || p.material == i.moss) {
                     let to = if p.material == i.grass || p.material == i.moss { Cell::new(i.soil, p.shade) } else { Cell::AIR };
                     Some((0xA13, (0.3, 2.0), to))
@@ -1332,6 +1367,71 @@ impl TerrainGen {
             for &(x, y) in &piece {
                 if inside(x, y) {
                     cells[(y * CHUNK + x) as usize] = fill;
+                }
+            }
+        }
+    }
+
+    /// Healroot: now and then a sprig on a cave floor (on bare ground, deep
+    /// enough to be dark): `HERB`'s columns of leaves, tallest in the
+    /// middle, red berries on top (sometimes shorter), each column standing
+    /// on the ground (a plant needs what's under it: down to it where the
+    /// floor dips), wherever it fits. Picked, it grows back (`heal_chunk`).
+    fn herbs(&self, pos: ChunkPos, cells: &mut [Cell], spawns: &[(CellPos, Spawn)]) {
+        let i = &self.ids;
+        let o = pos.origin();
+        let tall = HERB.len() as i32;
+        let half = HERB[0].len() as i32 / 2;
+        let at = |cells: &[Cell], lx: i32, ly: i32| cells[(ly * CHUNK + lx) as usize];
+        let ground = |c: Cell| !c.is_air() && self.solid[c.material.0 as usize] && !self.plant[c.material.0 as usize];
+        let built = self.plan.structures.pieces_in(pos.x, pos.y).next().is_some();
+        for lx in half..CHUNK - half {
+            let x = o.x + lx;
+            let surface = self.surface_at(x);
+            for ly in HERB_DIP + 1..CHUNK - tall {
+                let y = o.y + ly;
+                let h = hash(&[self.plan.seed, 0x4E5B, x as u64, y as u64]);
+                if surface - y < HERB_DEPTH || !h.is_multiple_of(HERB_ONE_IN) || !at(cells, lx, ly).is_air() || !ground(at(cells, lx, ly - 1)) {
+                    continue;
+                }
+                if built && self.plan.structures.glyph_at(x, y).is_some() {
+                    continue;
+                }
+                // (Not where something stands: a chest, a camp's cart.)
+                if spawns.iter().any(|(feet, _)| (feet.x - x).abs() < HERB_CLEAR.0 && (y - feet.y) > -HERB_CLEAR.1 && (y - feet.y) < HERB_CLEAR.1) {
+                    continue;
+                }
+                // (A short one leaves out a few rows of leaves.)
+                let short = (h >> 20) & 1 == 1;
+                let rows: Vec<&[u8]> = HERB.iter().enumerate().filter(|&(r, _)| !(short && (5..8).contains(&r))).map(|(_, row)| row.as_bytes()).collect();
+                // Each column: how far down to the ground under it (none
+                // within reach: no sprig), and all of it in the open.
+                let mut dips = [0i32; 8];
+                let fits = (0..=2 * half).all(|c| {
+                    let cx = lx - half + c;
+                    let Some(dip) = (0..=HERB_DIP).find(|&d| ground(at(cells, cx, ly - 1 - d))) else { return false };
+                    dips[c as usize] = dip;
+                    let height = rows.iter().filter(|row| row[c as usize] != b'.').count() as i32;
+                    (-dip..height).all(|k| at(cells, cx, ly + k).is_air())
+                });
+                if !fits {
+                    continue;
+                }
+                for c in 0..=2 * half {
+                    let cx = lx - half + c;
+                    // (Bottom up: the leaves under it where the floor dips, then its rows.)
+                    let column: Vec<u8> = rows.iter().rev().map(|row| row[c as usize]).filter(|&ch| ch != b'.').collect();
+                    for k in -dips[c as usize]..column.len() as i32 {
+                        let ch = if k < 0 { if k % 2 == 0 { b'L' } else { b'l' } } else { column[k as usize] };
+                        let shade = match ch {
+                            b's' => 22,
+                            b'L' => 58,
+                            b'l' => 118,
+                            b'R' => 198,
+                            _ => 238,
+                        };
+                        cells[((ly + k) * CHUNK + cx) as usize] = Cell::new(i.healroot, shade);
+                    }
                 }
             }
         }
@@ -2077,6 +2177,9 @@ impl ChunkGenerator for TerrainGen {
         if self.plan.structures.pieces_in(pos.x, pos.y).next().is_none() {
             spawns.extend(self.mine_camp(pos, &cells, &mut rng));
         }
+        // (After the chests and camps have found their floors: a herb keeps
+        // clear of them.)
+        self.herbs(pos, &mut cells, &spawns);
         (Chunk::with_background(pos, cells, bg), spawns)
     }
 }
@@ -2768,7 +2871,7 @@ mod tests {
         let mut c = g.generate(pos);
         let ground = |c: &Chunk, lx: i32| top(c, lx).expect("ground in the chunk");
         let soil = m.expect_id("soil");
-        let mut put = |c: &mut Chunk, lx: i32, slab: MaterialId, kept: bool| -> i32 {
+        let put = |c: &mut Chunk, lx: i32, slab: MaterialId, kept: bool| -> i32 {
             let mut y = ground(c, lx) + 1;
             c.set(lx as usize, y as usize, Cell::new(slab, 0));
             y += 1;
@@ -2796,6 +2899,56 @@ mod tests {
         assert!(ys.last() == Some(&water_top) && ys.windows(2).all(|w| w[1] == w[0] + 1), "dried from the top: {ys:?} (its top {water_top})");
         let h = g.heal(&c, &Healing { days: 0.0, tree: &none, judge: false, cooled: false, scorched: None, dry: 3.0 }).unwrap();
         assert!(left(&h, 10) == 0 && left(&h, 30) == 0 && left(&h, 50) == 12, "three days: all of it but the poured");
+    }
+
+    /// Healroot grows on cave floors, deep down, now and then; picked, a
+    /// little of it is back by half a day, all of it in two (from the
+    /// ground up, a row a pass).
+    #[test]
+    fn healroot_grows_in_caves_and_back_where_picked() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Medium, &m);
+        let s = g.spawn_point();
+        let none = |_: i32| None;
+        let herb = m.expect_id("healroot");
+        let herbs = |c: &Chunk| (0..CHUNK).flat_map(|y| (0..CHUNK).map(move |x| (x, y))).filter(|&(x, y)| c.get(x as usize, y as usize).material == herb).count();
+        let mut found = 0;
+        let mut pos = None;
+        for cx in -6..6 {
+            for cy in 1..10 {
+                let p = ChunkPos::new(s.chunk().x + cx, s.chunk().y - cy);
+                let n = herbs(&g.generate(p));
+                found += n;
+                if n >= 6 && pos.is_none() {
+                    pos = Some(p);
+                }
+            }
+        }
+        let pos = pos.unwrap_or_else(|| panic!("a chunk with healroot under the start ({found} cells in all)"));
+        assert!(found < 2000, "now and then, not everywhere: {found} cells in 108 chunks");
+        let mut c = g.generate(pos);
+        let had = herbs(&c);
+        // Every sprig on it picked.
+        for y in 0..CHUNK as usize {
+            for x in 0..CHUNK as usize {
+                if c.get(x, y).material == herb {
+                    c.set(x, y, Cell::AIR);
+                }
+            }
+        }
+        let heal = |c: &Chunk, days: f32| g.heal(c, &Healing { days, tree: &none, judge: false, cooled: false, scorched: None, dry: 0.0 }).unwrap();
+        let back = |h: &Healed| h.edits.iter().filter(|(_, _, cell)| cell.material == herb).count();
+        assert_eq!(back(&heal(&c, 0.0)), 0, "nothing back at once");
+        let early = back(&heal(&c, 0.5));
+        let mut late = c;
+        for _ in 0..HERB.len() {
+            for (p, _, cell) in heal(&late, 2.0).edits {
+                let (lx, ly) = (p.x - pos.origin().x, p.y - pos.origin().y);
+                late.set(lx as usize, ly as usize, cell);
+            }
+        }
+        assert!(early < had / 2, "half a day: a little back ({early} of {had})");
+        assert_eq!(herbs(&late), had, "two days: all of it back");
     }
 
     /// Healing (the world clock's regrowth): a chunk as the seed made it has
