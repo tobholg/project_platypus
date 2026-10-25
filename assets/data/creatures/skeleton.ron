@@ -1,10 +1,10 @@
 // A skeleton: the dead of crypts and deep caves, with a rusty sword; bones,
 // so it crumbles to dust. The humanoid rig (assets/art/skeleton.ron).
 // Killed, its bones lie in a heap that pulls itself back together and
-// stands again (`rises`). Only blunt blows break its bones (`breaks`): a
-// blade never kills it for good. Its skull holds it together (`anchor`):
-// knocked off, it's found again as it gets up (or gone to, headless, if it's
-// far); smashed with something blunt, it never gets up again. Take its
+// stands again (`rises`), glowing as it wakes. Any blow chips the heap,
+// blunt ones far more (`breaks`): broken, it's done. Its skull holds it
+// together (`anchor`): knocked off, it's found again as it gets up (or gone
+// to, headless, if it's far); smashed, it never gets up again. Take its
 // sword from the heap and it gets up without one.
 // Bones: no flesh to burn, nothing in them a fall can burst.
 (
@@ -14,7 +14,7 @@
     // The armour it died in, rusted on.
     wears: [("iron_helm", 0.3), ("chainmail", 0.25), ("iron_greaves", 0.2), ("cloth_hood", 0.15)],
     size: (9, 24),
-    health: 70,
+    health: 45,
     team: Enemy,
     faction: "undead",
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -22,7 +22,9 @@
     // (Bones don't burn: the undead's weakness to fire is dead flesh's.)
     profile: {fire: 0.75},
     cant: [burn],
-    rises: Some((after: 5.0, health: 0.5, breaks: [blunt], anchor: true, remains: Rubble, glow: (90, 255, 190))),
+    // A heap for 10 s, its last 4 glowing (its skull too, if it's lying
+    // loose): break either and it's done.
+    rises: Some((after: 10.0, waking: 4.0, health: 0.5, breaks: [blunt], anchor: true, remains: Rubble, glow: (90, 255, 190))),
     // (Its head off, it fights on blind: it hears.)
     headless: Blind,
     blood: "ash",

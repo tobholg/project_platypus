@@ -72,7 +72,7 @@ impl Plugin for CreaturesPlugin {
             .add_systems(Update, body::animation::hug.before(body::animation::animate))
             .add_systems(Update, haunt::haunt.before(crate::camera::follow))
             .add_systems(FixedUpdate, voices.in_set(TickSet::Bodies))
-            .add_systems(FixedUpdate, spurts.after(brain::BrainSet).before(move_creatures))
+            .add_systems(FixedUpdate, (spurts, bearings).chain().after(brain::BrainSet).before(move_creatures))
             // A slime holds its goo round it.
             .add_systems(FixedUpdate, body::goo::hold.after(move_creatures).before(deaths).in_set(TickSet::Bodies))
             .add_systems(FixedUpdate, (body::goo::spike, body::goo::glut_strike).chain().after(brain::BrainSet).before(move_creatures))
@@ -352,10 +352,34 @@ pub struct Spurt {
     left: f32,
     times: f32,
     next: f32,
+    /// Which way it's charging (−1, 1).
+    dir: f32,
 }
 
+/// Charging, it lost its quarry behind it (jumped over): it skids on its
+/// way a moment (`SKID`), then stands getting its bearings (`BEARINGS`),
+/// looking this way and that, before it hunts again. Stunned through all
+/// of it (no steering, no blows).
+#[derive(Component)]
+pub struct Bearings {
+    t: f32,
+    dir: f32,
+    speed: f32,
+}
+
+/// A charge lost: its quarry this far behind it (cells).
+const LOST_BEHIND: f32 = 3.0;
+/// The skid (seconds), from at least this share of its charging speed;
+/// then its bearings (seconds), its head turned this many times.
+const SKID: f32 = 0.45;
+const SKID_LEAST: f32 = 0.8;
+const BEARINGS: f32 = 1.3;
+const LOOKS: f32 = 3.0;
+
 /// Hunting, one that spurts breaks into a run at its quarry now and then:
-/// a snarl, suddenly fast for a couple of seconds, then as it was.
+/// a snarl, suddenly fast for a couple of seconds, then as it was. Its
+/// quarry got behind it mid-charge (jumped over), it's lost a moment:
+/// `Bearings`.
 #[allow(clippy::type_complexity)]
 fn spurts(
     mut commands: Commands,
@@ -373,20 +397,30 @@ fn spurts(
         let wait = |at: f32| at + def.every.0 + (def.every.1 - def.every.0) * roll((at * 10.0) as u64);
         let Some(mut s) = spurt else {
             // (Its first any time: no safe first seconds.)
-            commands.entity(e).insert(Spurt { left: 0.0, times: 1.0, next: now + def.every.1 * roll(7) });
+            commands.entity(e).insert(Spurt { left: 0.0, times: 1.0, next: now + def.every.1 * roll(7), dir: 1.0 });
             continue;
         };
+        // (At what it's hunting.)
+        let quarry = alert.filter(|a| a.engaged()).and_then(|a| a.target).and_then(|t| bodies.get(t).ok());
         if s.left > 0.0 {
             s.left -= dt;
+            // Its quarry gone over its head, behind it: the charge carries
+            // it on, then it stands, lost a moment (`bearings`).
+            let lost = quarry.is_some_and(|qk| (qk.body.pos.x - k.body.pos.x) * s.dir < -LOST_BEHIND);
+            if lost {
+                let speed = k.body.vel.x.abs().max(moves.0.run_speed * SKID_LEAST);
+                commands.entity(e).insert(Bearings { t: 0.0, dir: s.dir, speed });
+                sounds.write(crate::sound::PlaySound::at("groan", k.body.pos).pitch(0.85));
+                s.left = 0.0;
+            }
             if s.left <= 0.0 {
                 moves.0.run_speed /= s.times;
                 s.times = 1.0;
-                s.next = wait(now);
+                s.next = wait(now) + if lost { SKID + BEARINGS } else { 0.0 };
             }
             continue;
         }
-        // (At what it's hunting, near enough, not on top of it.)
-        let quarry = alert.filter(|a| a.engaged()).and_then(|a| a.target).and_then(|t| bodies.get(t).ok());
+        // (Near enough, not on top of it.)
         let Some(qk) = quarry else { continue };
         let d = qk.body.pos.distance(k.body.pos);
         if now < s.next || !(def.range.0..def.range.1).contains(&d) || !k.loco.grounded() {
@@ -394,10 +428,67 @@ fn spurts(
         }
         s.left = def.secs;
         s.times = def.speed;
+        s.dir = (qk.body.pos.x - k.body.pos.x).signum();
         moves.0.run_speed *= def.speed;
         sounds.write(crate::sound::PlaySound::at("snarl", k.body.pos));
     }
 }
+
+/// A lost charge (`Bearings`): skidding on its way, easing off, dust from
+/// its feet, leaning into it; then standing, looking one way, the other,
+/// and back, before it hunts again.
+fn bearings(
+    mut commands: Commands,
+    mut sparks: ResMut<crate::vfx::Sparks>,
+    mut q: Query<(Entity, &mut Bearings, &mut Kinematics, &mut body::animation::Animator)>,
+) {
+    let dt = (1.0 / crate::world::TICK_HZ) as f32;
+    for (e, mut b, mut k, mut anim) in &mut q {
+        b.t += dt;
+        let k = &mut *k;
+        // (Stunned all through: it doesn't steer, or strike.)
+        let vel = k.body.vel;
+        k.loco.knock(&mut k.body, vel, dt * 2.0);
+        if b.t < SKID {
+            let ease = 1.0 - b.t / SKID;
+            k.body.vel.x = b.dir * b.speed * ease * ease;
+            k.loco.facing = b.dir;
+            if anim.def.animations.contains_key("lunge") && anim.force.as_deref() != Some("lunge") {
+                anim.play("lunge");
+            }
+            if k.loco.grounded() && (b.t * 30.0) as u32 % 2 == 0 {
+                let feet = k.body.pos - Vec2::new(0.0, k.body.half.y - 0.5);
+                sparks.emit(&SKID_DUST, 1, feet, Vec2::new(-b.dir, 0.4), Vec2::ZERO);
+            }
+            continue;
+        }
+        // Getting its bearings: still, its head turning.
+        k.body.vel.x = 0.0;
+        if anim.force.as_deref() != Some("idle") {
+            anim.play("idle");
+        }
+        let look = ((b.t - SKID) / BEARINGS * LOOKS) as i32;
+        k.loco.facing = if look % 2 == 0 { -b.dir } else { b.dir };
+        if b.t >= SKID + BEARINGS {
+            anim.force = None;
+            commands.entity(e).remove::<Bearings>();
+        }
+    }
+}
+
+/// Dust off a skidding foot.
+static SKID_DUST: std::sync::LazyLock<crate::magic::runes::Emitter> = std::sync::LazyLock::new(|| crate::magic::runes::Emitter {
+    count: 1.0,
+    life: (0.25, 0.5),
+    colors: vec![(150, 140, 125), (110, 104, 96)],
+    speed: 30.0,
+    spread: 0.6,
+    gravity: 40.0,
+    drag: 3.0,
+    size: 1.0,
+    jitter: 0.0,
+    glow: false,
+});
 
 /// When it next makes its sound (`CreatureDef::voice`).
 #[derive(Component)]

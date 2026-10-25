@@ -42,6 +42,8 @@
     // The dead come up out of the ground: on the surface by night, a few
     // at a time; under it any time.
     (kind: "zombie", place: Surface, when: Night, most: 5, rate: 0.1, group: (1, 3), emerges: true),
+    // Now and then a crimson head among them (a quarter as often).
+    (kind: "zombie_crimson", place: Surface, when: Night, most: 2, rate: 0.025, group: (1, 1), emerges: true),
     // The dark wood (a deep forest, the start valley's beside it): the dead
     // come up out of its floor by day too (its canopy shades them), and
     // spiders keep it.

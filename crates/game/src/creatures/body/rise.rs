@@ -9,7 +9,8 @@
 //! Broken, it dies as anything dies: a body with its loot, its gold, the
 //! kill counted.
 //!
-//! Left alone `after` seconds, it gets up: the last `GLOW` of them a cold
+//! Left alone `after` seconds, it gets up (if its luck holds: `chance`):
+//! the last `waking` of them a cold
 //! light grows in the bones (a real light: a heap waking shows across a
 //! dark cave), wisps rise and the ash about it is drawn in; then it stands
 //! as a new creature of its kind, at `health` of its health, wearing and
@@ -35,13 +36,14 @@ use crate::world::{SimWorld, TICK_HZ};
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 /// A heap's health, of the creature's.
 const PILE_SHARE: f32 = 0.4;
-/// A heap of bones' share: a sword breaks it in about three blows.
-const BONES_SHARE: f32 = 0.3;
+/// A heap of bones' share: a sword breaks a skeleton's in a blow or two.
+const BONES_SHARE: f32 = 0.25;
 /// How much worse a heap's weaknesses are than the creature's; a body's
 /// (that gets up whole) much less: it burns away instead.
 const PILE_WEAK: f32 = 1.6;
 const BODY_WEAK: f32 = 0.1;
-/// The light grows this long before it stands (seconds).
+/// The light grows this long before it stands (seconds), unless its kind
+/// says (`RiseDef::waking`).
 const GLOW: f32 = 1.5;
 /// The bones fly together this long: each in `FLIGHT` of it, the feet's
 /// first, the skull's last.
@@ -108,6 +110,22 @@ pub struct RiseDef {
     /// crimson head, faster and worse).
     #[serde(default)]
     pub last: Option<String>,
+    /// The odds it gets up, each time it might (a zombie: half): otherwise
+    /// it's dead for good.
+    #[serde(default = "always")]
+    pub chance: f32,
+    /// The last this many seconds of `after` it glows as it wakes (its
+    /// skull too, lying loose): the warning to break it.
+    #[serde(default = "waking")]
+    pub waking: f32,
+}
+
+fn always() -> f32 {
+    1.0
+}
+
+fn waking() -> f32 {
+    GLOW
 }
 
 /// What one that rises leaves as it falls (`RiseDef::remains`).
@@ -233,7 +251,13 @@ pub fn collapse(mut commands: Commands, mut sim: ResMut<SimWorld>, mut died: Mes
         // apart; or got up as often as it does. It dies as anything does.)
         let beheaded = anim.def.headless == super::wounds::Headless::Dies && severed.is_some_and(|s| s.has(super::parts::Limb::Head));
         let blown = rises.0.remains == Remains::Body && gib.is_some();
-        if beheaded || blown || rises.0.times.is_some_and(|t| risen.map_or(0, |r| r.0) >= t) {
+        // (Or its luck's out: `chance`, rolled from who it is and how often
+        // it's got up.)
+        let lucky = {
+            let n = crate::creatures::lineage_of(Some((lineage, stable)));
+            (platypus_sim::rng::hash(&[n, risen.map_or(0, |r| r.0) as u64, 0x215E]) % 10_000) as f32 / 10_000.0 < rises.0.chance
+        };
+        if beheaded || blown || !lucky || rises.0.times.is_some_and(|t| risen.map_or(0, |r| r.0) >= t) {
             continue;
         }
         // (Kept from deaths: it's gone now.)
@@ -425,14 +449,16 @@ pub fn stand(
     mut sparks: ResMut<crate::vfx::Sparks>,
     mut q: Query<Waking>,
     bones: Query<(Entity, &Bone, &super::ragdoll::Limp, Has<Skull>), Without<Pile>>,
+    mut skulls: Query<(Entity, &Bone, &Kinematics, Option<&mut crate::light::LightSource>), (With<Skull>, Without<Pile>)>,
     creatures: Res<crate::creatures::def::Creatures>,
 ) {
     let Some(items) = items else { return };
     for (e, mut pile, k, corpse, light, limp) in &mut q {
         pile.left -= DT;
         let pos = k.body.pos;
-        if pile.left < GLOW {
-            let glow = (1.0 - pile.left.max(0.0) / GLOW).powf(1.5);
+        let waking = pile.rise.waking.max(0.1);
+        if pile.left < waking {
+            let glow = (1.0 - pile.left.max(0.0) / waking).powf(1.5);
             let color = pile.rise.light().map(|c| c * LIGHT_MOST * glow);
             match light {
                 Some(mut l) => l.color = color,
@@ -440,9 +466,26 @@ pub fn stand(
                     commands.entity(e).insert(crate::light::LightSource { color, flicker: 0.0 });
                 }
             }
-            if sim.world.tick().is_multiple_of(3) {
+            let wisps = sim.world.tick().is_multiple_of(3);
+            if wisps {
                 let at = pos + Vec2::new((sim.world.tick() % 7) as f32 - 3.0, 0.0);
                 sparks.emit(&wisp(pile.rise.light()), 1, at, Vec2::Y, Vec2::ZERO);
+            }
+            // (Its skull lying loose wakes with it: break that and it
+            // never stands.)
+            for (s, bone, sk, skull_light) in &mut skulls {
+                if bone.lineage != pile.lineage {
+                    continue;
+                }
+                match skull_light {
+                    Some(mut l) => l.color = color.map(|c| c * 0.6),
+                    None => {
+                        commands.entity(s).insert(crate::light::LightSource { color: color.map(|c| c * 0.6), flicker: 0.0 });
+                    }
+                }
+                if wisps {
+                    sparks.emit(&wisp(pile.rise.light()), 1, sk.body.pos, Vec2::Y, Vec2::ZERO);
+                }
             }
             let blood = sim.world.materials().id(&pile.def.blood);
             draw_in(&mut sim, &mut sparks, pos, blood, pile.rise.light());
@@ -458,6 +501,12 @@ pub fn stand(
             pile.stuck += RETRY;
             continue;
         };
+        // (Its skull's waking light out: it's up.)
+        for (s, bone, ..) in &skulls {
+            if bone.lineage == pile.lineage {
+                commands.entity(s).remove::<crate::light::LightSource>();
+            }
+        }
         // Its loose bones near enough fly back with the rest (its skull
         // last: its pixels go to the top); what's out of reach it gets up
         // without (headless, it goes to its skull).

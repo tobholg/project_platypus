@@ -4,22 +4,24 @@
 // Dead flesh: cut, it bleeds dark rot; its limbs come off. Legless, it
 // drags itself on; armless, it bites (`armless`); its head off, it's dead
 // for good (`headless: Dies`). Killed otherwise, its body lies a while,
-// then gets up again, whatever it lost still lost: twice, the second time
-// a crimson head (zombie_crimson). Burn the body and it never does.
+// then may get up again, whatever it lost still lost: half the time, and
+// of those killed again half get up as a crimson head (zombie_crimson).
+// Burn the body and it never does.
 (
     name: "Zombie",
     loot: "zombie",
     // What it had on when it died: now and then a hood or a helmet.
     wears: [("cloth_hood", 0.15), ("iron_helm", 0.08)],
     size: (9, 20),
-    health: 130,
+    health: 75,
     team: Enemy,
     faction: "undead",
     kind: "rotting",
-    // Killed, its body lies a while and gets up again, twice: the second
-    // time as a crimson head (`last`). Only fire destroys the body (burn
-    // it: a torch to it, oil and a spark, fire); its head off, it's done.
-    rises: Some((after: 7.0, health: 0.6, breaks: [fire], remains: Body, times: Some(2), last: Some("zombie_crimson"), glow: (170, 120, 110))),
+    // Killed, its body lies a while and, half the time, gets up again; if
+    // it's killed again, half of those get up a last time as a crimson
+    // head (`last`). Only fire destroys the body (burn it: a torch to it,
+    // oil and a spark, fire); its head off, it's done.
+    rises: Some((after: 7.0, health: 0.6, chance: 0.5, breaks: [fire], remains: Body, times: Some(2), last: Some("zombie_crimson"), glow: (170, 120, 110))),
     headless: Dies,
     // The dead burn in the sun (its body too, lying there).
     sunburns: true,

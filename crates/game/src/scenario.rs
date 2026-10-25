@@ -395,7 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -15982,6 +15982,48 @@ fn bladesplash_script(
 /// the player there, then the player away for `PLATYPUS_DAYS` (default 1)
 /// while the world clock runs, then back: how much of the water is left.
 /// (`PLATYPUS_DAYS=0.25`: a quarter of a day, part of it.)
+/// `zombiejump` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a zombie
+/// charges the player (who can't die), who jumps clean over it as it comes:
+/// it skids on, gets its bearings, then comes back. Logs it each 0.2 s.
+fn zombiejump_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, Has<crate::creatures::Bearings>), Without<LocalPlayer>>,
+    mut state: Local<(u8, f32, u8)>,
+) {
+    if s.name != "zombiejump" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok(mut pk) = player.single_mut() else { return };
+    let (step, next, jumps) = &mut *state;
+    if *step == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        crate::creatures::def::spawn_creature(&mut commands, "zombie", pk.body.pos + Vec2::new(150.0, 4.0), |_| {});
+        *step = 1;
+        return;
+    }
+    let Some((_, _, zk, lost)) = them.iter().find(|(_, c, ..)| c.kind == "zombie") else { return };
+    let gap = zk.body.pos.x - pk.body.pos.x;
+    // (Over it as it charges in: a jump high and long, the way it came from.)
+    if *jumps < 2 && zk.body.vel.x.abs() > 110.0 && gap.abs() < 26.0 && pk.loco.grounded() && zk.body.vel.x * gap < 0.0 {
+        pk.body.vel = Vec2::new(gap.signum() * 150.0, 330.0);
+        *jumps += 1;
+        info!("zombiejump: t {t:.2} the player jumps over it ({gap:.0} off, it at {:.0} cells/s)", zk.body.vel.x);
+    }
+    if t >= *next {
+        *next = t + 0.2;
+        info!("zombiejump: t {t:.1} zombie {:.0} (the player {gap:+.0}) speed {:+.0} facing {:+.0}{}", zk.body.pos.x, zk.body.vel.x, zk.loco.facing, if lost { " GETTING ITS BEARINGS" } else { "" });
+    }
+}
+
 /// `herbcut` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a sprig of
 /// healroot on the floor in front of the player, who swings its sword at
 /// it (1.5 s): logs what's left of it and the healroot it carries after.
