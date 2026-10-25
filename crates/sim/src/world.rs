@@ -1865,8 +1865,9 @@ impl World {
         let share = if wanted > room { room / wanted } else { 1.0 };
         let mut bolts = Vec::new();
         for p in &out {
-            // Thunderstorms throw lightning now and then.
-            if p.amount > weather::STORM_RAIN && rng.next_u32().is_multiple_of(LIGHTNING_ONE_IN) {
+            // Severe storms throw lightning now and then (rain, however
+            // hard, short of that: none).
+            if p.severe && rng.next_u32().is_multiple_of(LIGHTNING_ONE_IN) {
                 bolts.push((p.x + (rng.next_u8() % weather::TEXEL as u8) as i32, p.y));
             }
         }
@@ -2633,8 +2634,8 @@ const VAPOUR_MOISTURE: f32 = 0.05;
 /// Raindrops or flakes per unit of moisture rained out (a heavy column rains
 /// out ~0.1 per weather step).
 const DROPS_PER_MOISTURE: f32 = 37.5;
-/// A thunderstorm column throws lightning once per this many weather steps
-/// (a storm over a screen: a strike every ~10 s).
+/// A severe storm's column throws lightning once per this many weather
+/// steps (one over a screen: a strike every ~10 s).
 const LIGHTNING_ONE_IN: u32 = 12_000;
 /// Heat a strike leaves in the wood along its path (°C; the most a
 /// background cell holds), and half that through the crown around it.

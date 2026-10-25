@@ -549,6 +549,8 @@ fn sky_lights(time: f32, light: Rgb) -> [([f32; 2], Rgb); 3] {
 pub struct Gloom {
     pub cover: f32,
     pub rain: f32,
+    /// A severe storm's (`weather::SEVERE`), darker still.
+    pub severe: f32,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -572,7 +574,8 @@ pub(crate) fn update_daylight(
     let (mut light, mut color) = sky_at(day.time, settings.moonlight * (0.3 + 0.7 * lit));
     // Weather overhead: as it clouds over and rains, the light comes in
     // dimmer, flatter and cooler, the sky a heavy blue-grey, darker in a
-    // downpour; easing in and out over seconds, as a front comes over.
+    // downpour, darkest in a severe storm (`SEVERE`: the one with
+    // lightning); easing in and out over seconds, as a front comes over.
     if let Some(w) = sim.world.weather() {
         let (tf, loader) = *cam;
         let x = tf.translation.x as i32;
@@ -581,17 +584,19 @@ pub(crate) fn update_daylight(
         let n = 9;
         let rain = (0..n).map(|i| w.rain_at(x - hw + i * hw * 2 / (n - 1))).sum::<f32>() / n as f32;
         let rain = (rain / platypus_sim::weather::STORM_RAIN).clamp(0.0, 1.0);
+        let severe = (0..n).map(|i| w.severe_at(x - hw + i * hw * 2 / (n - 1))).sum::<f32>() / n as f32;
         let k = (time.delta_secs() / GLOOM_EASE).min(1.0);
         gloom.cover += (cover - gloom.cover) * k;
         gloom.rain += (rain - gloom.rain) * k;
-        let (cover, rain) = (gloom.cover, gloom.rain);
+        gloom.severe += (severe - gloom.severe) * k;
+        let (cover, rain, severe) = (gloom.cover, gloom.rain, gloom.severe);
         let grey = (light[0] + light[1] + light[2]) / 3.0;
         // (An overcast sky is a pale, bright grey, a downpour's a slate
         // one; the land under it flatter, cooler and a little dim.)
         let cool = [grey * 0.84, grey * 0.88, grey * 0.97];
-        let dim = 1.0 - 0.1 * cover - 0.16 * rain;
+        let dim = 1.0 - 0.1 * cover - 0.16 * rain - 0.2 * severe;
         light = lerp3(light, cool, (cover * 0.7).min(1.0)).map(|v| v * dim);
-        let heavy = lerp3([0.7, 0.73, 0.78], [0.47, 0.51, 0.57], rain).map(|c| c * (0.45 + 0.55 * grey.min(1.0)));
+        let heavy = lerp3(lerp3([0.7, 0.73, 0.78], [0.47, 0.51, 0.57], rain), [0.3, 0.33, 0.39], severe).map(|c| c * (0.45 + 0.55 * grey.min(1.0)));
         color = lerp3(color, heavy, (cover * 0.9).min(1.0));
     }
     // Lightning lights the whole sky.

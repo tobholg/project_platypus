@@ -28,8 +28,15 @@ const BIAS_FADE: f32 = 0.9997;
 /// Share of the gap to the target closed per step: fronts build and clear
 /// over about a minute.
 const RELAX: f32 = 0.006;
-/// Rain out of a column per step above which it's a thunderstorm.
+/// Rain out of a column per step above which it's a storm (hard rain,
+/// slanting).
 pub const STORM_RAIN: f32 = 0.06;
+/// A storm this severe (`Shape::severe`: a storm where the slow `fury`
+/// field runs between `FURY`'s two, or forced) is a severe one: the
+/// heaviest rain, the sky at its darkest, and only it throws lightning.
+/// Rain short of it, however hard, has none. (About a tenth of the rain.)
+pub const SEVERE: f32 = 0.8;
+const FURY: (f32, f32) = (0.56, 0.7);
 /// Moisture drained per step from a texel above `RAIN_AT`, per unit over.
 const RAIN_OUT: f32 = 0.03;
 
@@ -75,6 +82,8 @@ pub struct Precipitation {
     pub y: i32,
     /// Moisture rained out of this column this step.
     pub amount: f32,
+    /// Out of a severe storm (`SEVERE`): it throws lightning.
+    pub severe: bool,
 }
 
 impl Weather {
@@ -173,6 +182,16 @@ impl Weather {
     }
 
     /// How hard it is raining out of the column over world x (0 = dry).
+    /// How severe the storm over world x is (0: none or not severe, rising
+    /// to 1 past `SEVERE`), while it rains there.
+    pub fn severe_at(&self, x: i32) -> f32 {
+        let c = self.col(x);
+        if self.rain[c] <= STORM_RAIN {
+            return 0.0;
+        }
+        ((self.shapes[c].severe - (SEVERE - 0.2)) / 0.2).clamp(0.0, 1.0)
+    }
+
     pub fn rain_at(&self, x: i32) -> f32 {
         self.rain[self.col(x)]
     }
@@ -282,7 +301,8 @@ impl Weather {
             self.rain[c] = rained;
             if rained > 0.0 {
                 let r = base.unwrap_or(0) as i32;
-                out.push(Precipitation { x: c as i32 * TEXEL, y: self.y0 + r * TEXEL, amount: rained });
+                let severe = shape.severe >= SEVERE && rained > STORM_RAIN;
+                out.push(Precipitation { x: c as i32 * TEXEL, y: self.y0 + r * TEXEL, amount: rained, severe });
             }
         }
         out
@@ -336,9 +356,13 @@ impl Weather {
         // more humid it is.
         let heaped = smoothstep(0.55 - 0.35 * humid, 0.85 - 0.25 * humid, heap).max(bias);
         let thickness = rows * (humid * (0.25 + 0.65 * heaped) * heaped).min(0.7);
-        // Storms: the wettest parts of big fronts rain hard (and throw lightning).
+        // Storms: the wettest parts of big fronts rain hard. Now and then
+        // one's severe (heavier still, the sky darkest, lightning): where a
+        // slow field of its own runs high. (Forced: severe.)
         let storm = (smoothstep(0.62, 0.8, broad) * humid).max(bias);
-        Shape { base, thickness, peak: 0.45 + 0.75 * humid + 0.9 * storm }
+        let fury = noise2(self.seed, 0xC111, x / 3_000.0, t / 120_000.0);
+        let severe = (storm * smoothstep(FURY.0, FURY.1, fury)).max(bias);
+        Shape { base, thickness, peak: 0.45 + 0.75 * humid + 0.9 * storm + 0.5 * severe, severe }
     }
 }
 
@@ -349,6 +373,8 @@ struct Shape {
     thickness: f32,
     /// Moisture at its heart; above `RAIN_AT` it rains.
     peak: f32,
+    /// How severe a storm it is (0..1: `SEVERE` and over, a severe one).
+    severe: f32,
 }
 
 impl Shape {
