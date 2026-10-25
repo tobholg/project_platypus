@@ -16191,8 +16191,9 @@ fn herbs_script(s: Res<Scenario>, sim: Res<SimWorld>, mut menu: ResMut<crate::de
 
 /// `brew`: each potion drunk on the flat arena, and what it does logged:
 /// the health potion (60 back in a second), regeneration (slow, on top of
-/// potion sickness), the antidote (venom washed off, poison not felt), and
-/// the fire ward (heat off a hot floor, before and after: half).
+/// potion sickness), the antidote (venom washed off, poison not felt), the
+/// fire ward (heat off a hot floor, before and after: half), and a raw
+/// healroot eaten while still potion sick.
 fn brew_script(
     mut commands: Commands,
     s: Res<Scenario>,
@@ -16230,7 +16231,7 @@ fn brew_script(
         }
     }
     let (step, mark) = &mut *state;
-    let due = [1.0, 1.5, 2.7, 3.0, 7.0, 7.0, 7.5, 9.5, 10.2, 12.2, 12.4, 14.4, 15.0];
+    let due = [1.0, 1.5, 2.7, 3.0, 7.0, 7.0, 7.5, 9.5, 10.2, 12.2, 12.4, 14.4, 15.0, 15.2, 17.4, 17.5];
     let Some(&at) = due.get(*step as usize) else { return };
     if t < at {
         return;
@@ -16243,7 +16244,7 @@ fn brew_script(
             k.prev_pos = k.body.pos;
             // (Into the last slots, whatever was there: the kit fills the pack.)
             let n = inv.slots.len();
-            for (i, id) in ["small_health_potion", "regeneration_potion", "antidote", "fire_ward_potion"].into_iter().enumerate() {
+            for (i, id) in ["small_health_potion", "regeneration_potion", "antidote", "fire_ward_potion", "healroot"].into_iter().enumerate() {
                 let item = items.id(id).unwrap_or_else(|| panic!("brew: no item {id}"));
                 inv.slots[n - 1 - i] = Some(crate::hands::items::Stack::new(item, 2));
             }
@@ -16273,7 +16274,15 @@ fn brew_script(
             *mark = h.hp;
         }
         11 => info!("brew: heat warded: {:.1} -> {:.1} in 2 s (regen +3)", *mark, h.hp),
-        _ => info!("brew: done; ward {:?}", (h.ward.drunk_fire, h.ward.antidote)),
+        12 => info!("brew: ward {:?}", (h.ward.drunk_fire, h.ward.antidote)),
+        13 => {
+            // (Still potion sick from the health potion: eaten all the same.)
+            h.hp = 50.0;
+            *mark = h.hp;
+            quaff(&inv, "healroot");
+        }
+        14 => info!("brew: healroot eaten while potion sick: {:.1} -> {:.1} in 2.2 s (regen +3.3)", *mark, h.hp),
+        _ => info!("brew: done"),
     }
     *step += 1;
 }

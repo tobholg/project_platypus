@@ -7,6 +7,10 @@
 //! glow green (`screen_fx.rs`: full at first, shrinking as it runs out);
 //! the flask pops open with a fizz.
 //!
+//! Something eaten (a raw herb, `eaten`) mends a little the same way:
+//! potion sickness doesn't stop it, it brings none, and eating another
+//! while it mends starts it over (never cutting short a potion's).
+//!
 //! A potion can do something else instead (or as well), its `effect`, for a
 //! while (a status, top right; sickness doesn't stop them, drinking another
 //! starts it over): a fire ward (fire and heat hurt less), regeneration
@@ -93,33 +97,39 @@ fn quick_heal(keys: Res<ButtonInput<KeyCode>>, dev: Res<crate::hands::DevTools>,
         return;
     }
     let (Some(items), Ok((me, inv))) = (items, player.single()) else { return };
-    let first = inv.slots.iter().position(|s| s.is_some_and(|s| matches!(items.def(s.item).use_, Use::Potion { heal, .. } if heal > 0.0)));
+    // (A healing potion; none, something to eat.)
+    let heals = |eats: bool| inv.slots.iter().position(|s| s.is_some_and(|s| matches!(items.def(s.item).use_, Use::Potion { heal, eaten, .. } if heal > 0.0 && eaten == eats)));
+    let first = heals(false).or_else(|| heals(true));
     if let Some(slot) = first {
         out.write(Drink { who: me, slot });
     }
 }
 
-type Drinker<'a> = (&'a mut Inventory, &'a Health, Option<&'a PotionSickness>, &'a crate::creatures::Kinematics, Option<&'a mut Lasting>);
+type Drinker<'a> = (&'a mut Inventory, &'a Health, Option<&'a PotionSickness>, &'a crate::creatures::Kinematics, Option<&'a mut Lasting>, Option<&'a Mending>);
 
 /// A potion drunk: one gone from its slot, the mending begun, sickness
 /// after.
 fn drink(mut commands: Commands, mut asks: MessageReader<Drink>, items: Option<Res<Items>>, mut drinkers: Query<Drinker>, mut sounds: MessageWriter<crate::sound::PlaySound>) {
     let Some(items) = items else { return };
     for ask in asks.read() {
-        let Ok((mut inv, health, sick, k, lasting)) = drinkers.get_mut(ask.who) else { continue };
+        let Ok((mut inv, health, sick, k, lasting, mending)) = drinkers.get_mut(ask.who) else { continue };
         let Some(stack) = inv.slots.get(ask.slot).copied().flatten() else { continue };
-        let Use::Potion { heal, over, sickness, effect } = items.def(stack.item).use_ else { continue };
+        let Use::Potion { heal, over, sickness, effect, eaten } = items.def(stack.item).use_ else { continue };
         let heals = heal > 0.0;
-        // (Dead, or a healing one while sick or with nothing to mend: not
-        // drunk.)
-        if health.hp <= 0.0 || heals && (sick.is_some() || health.hp >= health.max) {
+        // (Dead, a healing one with nothing to mend, a drunk one while sick,
+        // an eaten one while more is mending: not taken.)
+        let blocked = if eaten { mending.is_some_and(|m| m.left > heal) } else { sick.is_some() };
+        if health.hp <= 0.0 || heals && (blocked || health.hp >= health.max) {
             sounds.write(crate::sound::PlaySound::here("potion_no"));
             continue;
         }
         inv.take(ask.slot, 1);
         if heals {
             let over = over.max(DT);
-            commands.entity(ask.who).insert((Mending { rate: heal / over, left: heal, total: heal }, PotionSickness { left: sickness, total: sickness.max(0.01) }));
+            commands.entity(ask.who).insert(Mending { rate: heal / over, left: heal, total: heal });
+            if !eaten && sickness > 0.0 {
+                commands.entity(ask.who).insert(PotionSickness { left: sickness, total: sickness });
+            }
         }
         // (Its effect starts, or starts over.)
         if let Some(e) = effect {
@@ -137,7 +147,7 @@ fn drink(mut commands: Commands, mut asks: MessageReader<Drink>, items: Option<R
                 }
             }
         }
-        sounds.write(crate::sound::PlaySound::at("drink", k.body.pos));
+        sounds.write(crate::sound::PlaySound::at(if eaten { "eat" } else { "drink" }, k.body.pos));
     }
 }
 

@@ -134,6 +134,8 @@
         // A cave spider kept off by the light, rearing: a dry hiss.
         "spider_hiss": (make: Fizz(pop: 0.0, hiss: 1.0, length: 0.55, bubbles: 0), variants: 3, pitch: 0.15, reverb: 0.25, volume: 0.6),
         "drink": (make: Fizz(pop: 0.8, hiss: 0.55, length: 0.65, bubbles: 70), variants: 3, pitch: 0.06, reverb: 0.15, volume: 0.6),
+        // A raw herb eaten: a couple of soft crunches.
+        "eat": (make: Burst(cutoff: 1200, length: 0.12, q: 0.9, body: 60, grit: 0.7), variants: 3, pitch: 0.12, volume: 0.4),
         "potion_no": (make: Blip(pitch: 420, to: 300, length: 0.08), volume: 0.3, every: 0.3),
         "pickup": (make: Blip(pitch: 700, to: 1400, length: 0.07), variants: 2, pitch: 0.05, volume: 0.25, every: 0.05),
         // A trap sprung: the rope snaps.

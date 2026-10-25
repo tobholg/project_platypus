@@ -36,7 +36,9 @@
 //     healing one carried): heal health back over `over` s (0: at once), then
 //     `sickness` s when no healing potion works; and its effect (potion.rs),
 //     if any: FireWard(fire: share less, secs), Regen(rate: health a
-//     second, secs), Cure(secs: venom washed off, poison not felt)
+//     second, secs), Cure(secs: venom washed off, poison not felt); with
+//     `eaten: true` it's food (a raw herb): sickness neither stops it nor
+//     follows, and H eats it only with no healing potion carried
 //   Station(id): place a crafting station (crafting.ron); a pickaxe knocks it back
 // gear: (slot: Held, stats: {..}): counts toward its holder's stats while
 //   in the hand, and can be found rarer (gear.ron has the rest of the gear);
@@ -79,8 +81,8 @@
         (id: "antidote", name: "Antidote", stack: 30, color: (130, 220, 100), use: Potion(sickness: 0, effect: Cure(secs: 30)),
             about: "Washes a sting's venom out, and keeps it out a while."),
         // A cave herb, picked (materials.ron `healroot`): it grows back.
-        (id: "healroot", name: "Healroot", stack: 99, color: (220, 50, 70),
-            about: "A cave herb with red berries. It grows back where it's picked. Brewed into potions."),
+        (id: "healroot", name: "Healroot", stack: 99, color: (220, 50, 70), category: Materials, use: Potion(heal: 6, over: 2, sickness: 0, eaten: true),
+            about: "A cave herb with red berries. It grows back where it's picked. Eaten raw it mends a little; brewed, far more."),
         // Foci (magic::spells): each holds its spells (a wand one, a staff
         // two: left and right button), of its tier or less (a wand 1, a staff
         // 2); its element is the one it favours (its stats: that element's

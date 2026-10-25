@@ -1073,7 +1073,11 @@ pub(crate) fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<
                 None => lines.push("Empty".into()),
             }
         }
-        Use::Potion { heal, over, sickness, effect } => {
+        Use::Potion { heal, over, eaten: true, .. } => {
+            lines.push(format!("Heals {heal:.0} over {over:.0} s; click (or H, with no potion) to eat it"));
+            lines.push("No potion sickness".into());
+        }
+        Use::Potion { heal, over, sickness, effect, .. } => {
             if *heal > 0.0 {
                 let when = if *over > 0.0 { format!(" over {over:.0} s") } else { String::new() };
                 lines.push(format!("Heals {heal:.0}{when}; click (or H) to drink"));

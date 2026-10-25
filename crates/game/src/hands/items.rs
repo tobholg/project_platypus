@@ -82,6 +82,10 @@ pub enum Use {
         sickness: f32,
         #[serde(default)]
         effect: Option<crate::potion::Effect>,
+        /// Eaten, not drunk (a raw herb): potion sickness doesn't stop it,
+        /// it brings none, and it won't cut short a bigger mending.
+        #[serde(default)]
+        eaten: bool,
     },
     /// A vessel for liquids (a ladle, a bucket, a flask): the right button
     /// fills it (scooping the liquid at the cursor, or, at a furnace, melting
