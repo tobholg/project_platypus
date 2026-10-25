@@ -188,11 +188,13 @@ pub struct Dying(pub Option<Death>);
 pub const COUNTDOWN: f32 = 10.0;
 const SPACE_AFTER: f32 = 0.35;
 /// The death itself first, before any screen (s, real time): the body
-/// falls, flies apart, burns, a moment of it slowed (`SLOWED` s at
-/// `SLOW`); then the screen fades in over `FADE_IN`.
-pub const BEAT: f32 = 1.5;
-const SLOWED: f32 = 0.6;
-const SLOW: f32 = 0.3;
+/// falls, flies apart, burns, slowed (`SLOWED` s at `SLOW`, then easing
+/// back to full speed over `EASE`); then the screen fades in over
+/// `FADE_IN`.
+pub const BEAT: f32 = 2.6;
+const SLOWED: f32 = 1.6;
+const SLOW: f32 = 0.15;
+const EASE: f32 = 0.7;
 pub const FADE_IN: f32 = 0.5;
 
 /// A death, as the screen shows it.
@@ -348,12 +350,14 @@ fn wake(
 ) {
     let Some(d) = dying.0.as_mut() else { return };
     d.since += time.delta_secs();
-    // (The moment of it slowed, then on as it was.)
-    if d.since < SLOWED && !d.slowed && virt.relative_speed() > SLOW {
+    // (The moment of it slowed, easing back, then on as it was.)
+    if !d.slowed && d.since < SLOWED && virt.relative_speed() > SLOW {
         d.slowed = true;
-        virt.set_relative_speed(SLOW);
-    } else if d.since >= SLOWED && std::mem::take(&mut d.slowed) {
-        virt.set_relative_speed(1.0);
+    }
+    if d.slowed {
+        let k = ((d.since - SLOWED) / EASE).clamp(0.0, 1.0);
+        virt.set_relative_speed(SLOW + (1.0 - SLOW) * k * k * (3.0 - 2.0 * k));
+        d.slowed = k < 1.0;
     }
     let now = keys.just_pressed(KeyCode::Space) && d.since >= BEAT + SPACE_AFTER;
     if d.since < BEAT + COUNTDOWN && !now {
