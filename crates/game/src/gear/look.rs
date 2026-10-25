@@ -98,6 +98,7 @@ fn dressed(base: &CreatureDef, kind: &str, skins: &[&Skin], name: &str, lost: &[
 }
 
 type Dressing<'a> = (
+    Entity,
     &'a Creature,
     Ref<'a, Equipment>,
     &'a mut Animator,
@@ -106,17 +107,25 @@ type Dressing<'a> = (
     Option<&'a crate::creatures::body::hurt::Bleeds>,
 );
 
-/// Whoever's outfit changed (or whose kind was reloaded) is drawn in it
-/// (without what it's lost).
-pub fn dress(items: Option<Res<Items>>, creatures: Res<Creatures>, sim: Res<crate::world::SimWorld>, mut wardrobe: ResMut<Wardrobe>, mut q: Query<Dressing>) {
+/// Whoever's outfit changed (or whose kind was reloaded, or who was made
+/// whole again: the player, waking) is drawn in it (without what it's lost).
+pub fn dress(
+    items: Option<Res<Items>>,
+    creatures: Res<Creatures>,
+    sim: Res<crate::world::SimWorld>,
+    mut wardrobe: ResMut<Wardrobe>,
+    mut whole: RemovedComponents<crate::creatures::body::parts::Severed>,
+    mut q: Query<Dressing>,
+) {
     use crate::creatures::body::marks;
     let Some(items) = items else { return };
     let all = creatures.is_changed();
     if all {
         wardrobe.0.clear();
     }
-    for (c, eq, mut anim, severed, wounds, bleeds) in &mut q {
-        if !(all || eq.is_changed() || severed.as_ref().is_some_and(|s| s.is_changed()) || wounds.as_ref().is_some_and(|m| m.is_changed())) {
+    let whole: Vec<Entity> = whole.read().collect();
+    for (e, c, eq, mut anim, severed, wounds, bleeds) in &mut q {
+        if !(all || whole.contains(&e) || eq.is_changed() || severed.as_ref().is_some_and(|s| s.is_changed()) || wounds.as_ref().is_some_and(|m| m.is_changed())) {
             continue;
         }
         // (Only what's drawn in its art's layers: a humanoid's arms, head.)
