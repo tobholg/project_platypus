@@ -236,7 +236,7 @@ impl Plugin for DeathPlugin {
             .init_resource::<NamedBlasts>()
             .add_message::<PlayerDied>()
             .add_systems(FixedUpdate, (age_hurts, forget_blasts, live, died).chain().after(crate::world::TickSet::Bodies))
-            .add_systems(Update, (wake, screen::show, rise).chain().in_set(DeathSet))
+            .add_systems(Update, (wake, screen::show, screen::reveal, rise).chain().in_set(DeathSet))
             .add_systems(PostUpdate, keep_hidden.before(bevy::camera::visibility::VisibilitySystems::VisibilityPropagate));
     }
 }
@@ -459,11 +459,69 @@ fn epitaph(cause: &Cause, deaths: u32) -> &'static str {
 
 /// The screen itself: a vignette over the edges (the middle left clear:
 /// the body, whatever's at it), what killed you high in the middle, how
-/// this life went low under it, the countdown at the bottom.
+/// this life went low under it, the countdown at the bottom. "YOU DIED"
+/// comes at once, the moment you die (shrinking in to its size, fading
+/// up); the rest when the moment's over, each line rising into place and
+/// fading up a beat after the one before (`Reveal`).
 mod screen {
     use bevy::prelude::*;
 
     use super::{BEAT, COUNTDOWN, Dying, FADE_IN};
+
+    /// Coming in: from `at` (s into dying) over `secs`, risen `rise` px from
+    /// below and grown `grow` times its size, eased into place as it fades
+    /// up (its text, its shadow, its picture; a `Filled` one's colour).
+    #[derive(Component, Clone, Copy)]
+    pub struct Reveal {
+        at: f32,
+        secs: f32,
+        rise: f32,
+        grow: f32,
+    }
+
+    /// "YOU DIED": over this long, from this many times its size.
+    const TITLE_IN: f32 = 0.45;
+    const TITLE_GROW: f32 = 1.3;
+    /// The rest: each line over this long, from this far below, this long
+    /// after the one before.
+    const LINE_IN: f32 = 0.45;
+    const LINE_RISE: f32 = 14.0;
+    const LINE_GAP: f32 = 0.07;
+
+    /// Its colour fades up too (a bar: every node has a colour, most of them
+    /// none).
+    #[derive(Component)]
+    pub struct Filled;
+
+    fn line(at: f32) -> Reveal {
+        Reveal { at, secs: LINE_IN, rise: LINE_RISE, grow: 1.0 }
+    }
+
+    /// Everything coming in, as far in as it is.
+    #[allow(clippy::type_complexity)]
+    pub fn reveal(dying: Res<Dying>, mut q: Query<(&Reveal, &mut UiTransform, Option<&mut TextColor>, Option<&mut TextShadow>, Option<&mut BackgroundColor>, Option<&mut ImageNode>, Has<Filled>)>) {
+        let Some(d) = dying.0.as_ref() else { return };
+        for (r, mut tf, text, shadow, bg, image, filled) in &mut q {
+            let k = ((d.since - r.at) / r.secs).clamp(0.0, 1.0);
+            // (Fast, then settling: in place before it's done fading.)
+            let e = 1.0 - (1.0 - k).powi(3);
+            let a = (k * 1.6).min(1.0);
+            tf.translation = Val2::px(0.0, r.rise * (1.0 - e));
+            tf.scale = Vec2::splat(1.0 + (r.grow - 1.0) * (1.0 - e));
+            if let Some(mut c) = text {
+                c.0.set_alpha(a);
+            }
+            if let Some(mut c) = shadow {
+                c.color.set_alpha(0.9 * a);
+            }
+            if let Some(mut c) = bg.filter(|_| filled) {
+                c.0.set_alpha(a);
+            }
+            if let Some(mut c) = image {
+                c.color.set_alpha(a);
+            }
+        }
+    }
 
     #[derive(Component)]
     pub struct DeathScreen;
@@ -483,8 +541,9 @@ mod screen {
     const DIM: Color = Color::srgb(0.66, 0.63, 0.6);
     const BAR: Color = Color::srgb(0.72, 0.2, 0.14);
 
-    fn text(p: &mut ChildSpawnerCommands, s: impl Into<String>, size: f32, color: Color) {
-        p.spawn((Text::new(s), TextFont { font_size: FontSize::Px(size), ..default() }, TextColor(color), TextShadow { offset: Vec2::new(1.5, 1.5), color: Color::srgba(0.0, 0.0, 0.0, 0.9) }));
+    /// A line of text, coming in as `reveal` says (unseen till then).
+    fn text(p: &mut ChildSpawnerCommands, s: impl Into<String>, size: f32, color: Color, reveal: Reveal) {
+        p.spawn((Text::new(s), TextFont { font_size: FontSize::Px(size), ..default() }, TextColor(color.with_alpha(0.0)), TextShadow { offset: Vec2::new(1.5, 1.5), color: Color::srgba(0.0, 0.0, 0.0, 0.0) }, reveal, UiTransform::default()));
     }
 
     fn clock(secs: f32) -> String {
@@ -516,8 +575,9 @@ mod screen {
         images.add(image)
     }
 
-    /// Put up once the death's moment is over, fading in; the countdown
-    /// kept; taken down on waking.
+    /// Put up the moment you die (its lines coming in as `Reveal` says, the
+    /// vignette fading in once the moment's over); the countdown kept;
+    /// taken down on waking.
     #[allow(clippy::too_many_arguments)]
     pub fn show(
         mut commands: Commands,
@@ -535,9 +595,6 @@ mod screen {
             }
             return;
         };
-        if d.since < BEAT {
-            return;
-        }
         if !up.is_empty() {
             let left = (BEAT + COUNTDOWN - d.since).ceil().max(1.0) as u32;
             for mut t in &mut count {
@@ -572,16 +629,16 @@ mod screen {
                 ));
                 // High in the middle: the death, and what did it.
                 root.spawn(Node { position_type: PositionType::Absolute, top: percent(9), width: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(6), ..default() }).with_children(|top| {
-                    text(top, "YOU DIED", 60.0, RED);
+                    text(top, "YOU DIED", 60.0, RED, Reveal { at: 0.0, secs: TITLE_IN, rise: 0.0, grow: TITLE_GROW });
                     top.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), ..default() }).with_children(|row| {
                         if let Some((img, size)) = d.cause.creature.as_deref().and_then(|k| bestiary.picture(k)) {
                             let scale = (40.0 / size.x.max(size.y) as f32).min(3.0);
-                            row.spawn((ImageNode::new(img.clone()), Node { width: px(size.x as f32 * scale), height: px(size.y as f32 * scale), ..default() }));
+                            row.spawn((ImageNode::new(img.clone()).with_color(Color::WHITE.with_alpha(0.0)), Node { width: px(size.x as f32 * scale), height: px(size.y as f32 * scale), ..default() }, line(BEAT), UiTransform::default()));
                         }
-                        text(row, format!("{}, {}", d.cause.title, d.cause.how), 24.0, TEXT);
+                        text(row, format!("{}, {}", d.cause.title, d.cause.how), 24.0, TEXT, line(BEAT));
                     });
                     let grudge = if d.grudge > 1 { format!("It has had you {} times", d.grudge) } else { "The first time it's had you".into() };
-                    text(top, grudge, 15.0, DIM);
+                    text(top, grudge, 15.0, DIM, line(BEAT + LINE_GAP));
                 });
                 // Low under it: how this life went, the last moments, a line
                 // for the stone, the countdown.
@@ -589,22 +646,23 @@ mod screen {
                     let record = if d.record { "  (a new record)" } else { "" };
                     let deep = if d.deepest > 0 { format!("{} deep", d.deepest) } else { "on the surface".into() };
                     let most = d.most.as_ref().map_or(String::new(), |(name, n)| format!(", {n} {name}"));
-                    text(low, format!("{} survived{record}   |   {deep}   |   {} kills{most}   |   {} crafted", clock(d.life), d.kills, d.crafted), 17.0, TEXT);
+                    text(low, format!("{} survived{record}   |   {deep}   |   {} kills{most}   |   {} crafted", clock(d.life), d.kills, d.crafted), 17.0, TEXT, line(BEAT + LINE_GAP * 2.0));
                     if !d.moments.is_empty() {
                         let most = d.moments[0].1.max(1.0);
                         low.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(18), ..default() }).with_children(|r| {
                             for (what, much) in d.moments.iter().take(3) {
                                 r.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), ..default() }).with_children(|m| {
-                                    text(m, what.clone(), 14.0, DIM);
-                                    m.spawn((Node { width: px(70.0 * much / most), height: px(6), ..default() }, BackgroundColor(BAR)));
-                                    text(m, format!("{much:.0}"), 14.0, DIM);
+                                    let at = line(BEAT + LINE_GAP * 3.0);
+                                    text(m, what.clone(), 14.0, DIM, at);
+                                    m.spawn((Node { width: px(70.0 * much / most), height: px(6), ..default() }, BackgroundColor(BAR.with_alpha(0.0)), Filled, at, UiTransform::default()));
+                                    text(m, format!("{much:.0}"), 14.0, DIM, at);
                                 });
                             }
                         });
                     }
-                    text(low, format!("\"{}\"", d.epitaph), 16.0, DIM);
+                    text(low, format!("\"{}\"", d.epitaph), 16.0, DIM, line(BEAT + LINE_GAP * 4.0));
                     low.spawn(Node { margin: UiRect::top(px(10)), ..default() }).with_children(|c| {
-                        c.spawn((Countdown, Text::new(""), TextFont { font_size: FontSize::Px(22.0), ..default() }, TextColor(TEXT), TextShadow { offset: Vec2::new(1.5, 1.5), color: Color::srgba(0.0, 0.0, 0.0, 0.9) }));
+                        c.spawn((Countdown, Text::new(""), TextFont { font_size: FontSize::Px(22.0), ..default() }, TextColor(TEXT.with_alpha(0.0)), TextShadow { offset: Vec2::new(1.5, 1.5), color: Color::srgba(0.0, 0.0, 0.0, 0.0) }, line(BEAT + LINE_GAP * 5.0), UiTransform::default()));
                     });
                 });
             });
