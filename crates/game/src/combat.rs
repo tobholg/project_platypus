@@ -84,11 +84,25 @@ struct WeaponsFile {
     spray: Option<Emitter>,
     weapons: Vec<WeaponDef>,
     #[serde(default)]
+    tiers: Vec<TierDef>,
+    #[serde(default)]
     bows: Vec<BowDef>,
     #[serde(default)]
     arrow: Option<ArrowDef>,
     #[serde(default)]
     held: BTreeMap<String, HeldDef>,
+}
+
+impl WeaponsFile {
+    /// Every weapon: as written, then each tier made from the one it's like.
+    fn all(&self) -> Result<Vec<WeaponDef>, String> {
+        let mut all = self.weapons.clone();
+        for t in &self.tiers {
+            let base = self.weapons.iter().find(|w| w.id == t.like).ok_or(format!("tier `{}`: no weapon `{}` it's like", t.id, t.like))?;
+            all.push(WeaponDef { id: t.id.clone(), art: t.art.clone(), damage: t.damage, crit: t.crit.unwrap_or(base.crit), ..base.clone() });
+        }
+        Ok(all)
+    }
 }
 
 /// How an item of an icon shape is held (`held` in weapons.ron): `rest`
@@ -123,6 +137,9 @@ pub struct SwingDef {
 pub struct BowDef {
     pub id: String,
     pub art: String,
+    /// Crit chance (percent), and this much more drawn all the way.
+    #[serde(default)]
+    pub crit: (f32, f32),
     pub draw: f32,
     pub speed: (f32, f32),
     pub damage: (f32, f32),
@@ -165,6 +182,22 @@ pub struct WeaponDef {
     /// out. None: a dash strikes as anything does.
     #[serde(default)]
     pub dash: Option<MoveDef>,
+    /// Its chance of a critical hit (percent), on top of what its wielder
+    /// wears: the player's only (an enemy's blows never crit).
+    #[serde(default)]
+    pub crit: f32,
+}
+
+/// A weapon of another's make (`tiers` in weapons.ron): `like`'s moves and
+/// all, its own id, picture, damage and crit.
+#[derive(Clone, Debug, Deserialize)]
+struct TierDef {
+    id: String,
+    like: String,
+    art: String,
+    damage: f32,
+    #[serde(default)]
+    crit: Option<f32>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -200,6 +233,10 @@ pub struct MoveDef {
     /// slash, a leaping smash).
     #[serde(default)]
     pub hop: f32,
+    /// This much more crit chance (percent) than its weapon's: a thrust
+    /// finds the gaps.
+    #[serde(default)]
+    pub crit: f32,
     /// What it hits is thrown up this much more (a rising slash pops the
     /// light up into the air).
     #[serde(default)]
@@ -394,7 +431,7 @@ pub(crate) fn turned_frames(art: &str, only: Option<[u8; 3]>, images: &mut Asset
 /// bow as it's drawn.
 pub fn icon(id: &str) -> Option<Pixels> {
     let file: WeaponsFile = load_ron(&data_path("weapons.ron")).ok()?;
-    if let Some(def) = file.weapons.iter().find(|w| w.id == id) {
+    if let Some(def) = file.all().ok()?.iter().find(|w| w.id == id) {
         return turn_art(&def.art, None).ok().map(|f| f[Turned::index(45.0)].clone());
     }
     let bow = file.bows.iter().find(|b| b.id == id)?;
@@ -489,8 +526,8 @@ impl Weapons {
 
     fn build(file: &WeaponsFile, images: &mut Assets<Image>, layouts: &mut Assets<TextureAtlasLayout>) -> Result<Built, String> {
         let mut turned = Vec::new();
-        let mut blades = file.weapons.clone();
-        for w in &file.weapons {
+        let mut blades = file.all()?;
+        for w in blades.clone().iter() {
             turned.push(Turned::build(turn_art(&w.art, None).map_err(|e| format!("weapon `{}`: {e}", w.id))?, images, layouts));
         }
         // Every item whose icon's shape is held: drawn from the sprite of
@@ -505,7 +542,7 @@ impl Weapons {
             let frames = turn_compiled(&art, &look.shape, None)?;
             match &h.swing {
                 Some(sw) => {
-                    blades.push(WeaponDef { id: id.clone(), art: look.shape.clone(), damage: sw.damage, harm: sw.harm, knock: sw.knock, stun: sw.stun, rest: h.rest, moves: sw.moves.clone(), down: None, dash: None });
+                    blades.push(WeaponDef { id: id.clone(), art: look.shape.clone(), damage: sw.damage, harm: sw.harm, knock: sw.knock, stun: sw.stun, rest: h.rest, moves: sw.moves.clone(), down: None, dash: None, crit: 0.0 });
                     turned.push(Turned::build(frames, images, layouts));
                 }
                 None => {
@@ -1527,7 +1564,9 @@ fn swing(
                 s.hit.push(e);
                 let away = (tk.body.pos - k.body.pos).normalize_or(Vec2::X * facing);
                 let roll = (platypus_sim::rng::hash(&[sim.world.tick(), crate::creatures::stable(&ids, me), crate::creatures::stable(&ids, e)]) % 10_000) as f32 / 10_000.0;
-                let (damage, knock, crit) = stats.strike(def.damage * mv.damage, def.knock * mv.knock, roll);
+                // (The player's blade's own crit chance: an enemy's never crits.)
+                let keen = if team == Some(&Team::Player) { def.crit + mv.crit } else { 0.0 };
+                let (damage, knock, crit) = stats.strike(def.damage * mv.damage, def.knock * mv.knock, roll, keen);
                 // (Thrown the way the blow went: aimed up, launched; aimed
                 // down, slammed down; level, back along the ground.)
                 let along = dir(s.aim);
@@ -1660,7 +1699,7 @@ fn slam(
             continue;
         }
         let away = (tk.body.pos.x - feet.x).signum();
-        let (damage, knock, crit) = stats.strike(def.damage * mv.damage * 0.5, def.knock * mv.knock * 0.5, 0.5);
+        let (damage, knock, crit) = stats.strike(def.damage * mv.damage * 0.5, def.knock * mv.knock * 0.5, 0.5, 0.0);
         let push = Vec2::new(away, 0.8).normalize() * knock;
         hits.write(Hit { by: Some(me), target: e, damage, harm: mv.harm.unwrap_or(def.harm), knock: push, stun: def.stun, at: tk.body.pos, dir: Vec2::new(away, 0.0), weight: damage / 12.0, crit });
     }

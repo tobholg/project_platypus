@@ -13,7 +13,8 @@
 //!
 //! The damage floats up off it as a number, coloured by what did it (hits
 //! close together add up on one number for a moment, so a flame stream
-//! doesn't spray digits).
+//! doesn't spray digits); a critical hit's its own, bigger, gold, with a
+//! "!" (and a sharper sound).
 //! Anything that lowers `hp` shows, whatever did it: spells, blasts, fire,
 //! falls (what isn't a hit flashes and bleeds by how much it took).
 
@@ -103,8 +104,9 @@ const MERGE: f32 = 0.35;
 /// How long a number floats, and how fast (cells/s).
 const NUMBER_LIFE: f32 = 0.9;
 const NUMBER_RISE: f32 = 27.0;
-/// Height of the digits, in cells.
+/// Height of the digits, in cells (a critical hit's this many times).
 const NUMBER_SIZE: f32 = 10.5;
+const CRIT_SIZE: f32 = 1.45;
 
 /// What `Health` was last tick, how long it still flashes (or glows, or
 /// pulses, and in what colour), the number it's showing (to add the next hit to), what
@@ -117,6 +119,8 @@ pub struct Hurt {
     pub glow_color: (u8, u8, u8),
     pub pulse: f32,
     pub pulse_color: (u8, u8, u8),
+    /// A critical hit landed since its number was last shown.
+    crit: bool,
     number: Option<Entity>,
     shown: f32,
     dry: f32,
@@ -131,12 +135,13 @@ pub struct Faltering;
 pub struct DamageNumber {
     amount: f32,
     age: f32,
+    crit: bool,
 }
 
 /// New bodies with health are watched.
 pub fn watch(mut commands: Commands, new: Query<(Entity, &Health), Without<Hurt>>) {
     for (e, h) in &new {
-        commands.entity(e).insert(Hurt { last: h.hp, flash: 0.0, glow: 0.0, glow_color: (255, 255, 255), pulse: 0.0, pulse_color: (255, 255, 255), number: None, shown: 0.0, dry: 0.0, drip: 0.0 });
+        commands.entity(e).insert(Hurt { last: h.hp, flash: 0.0, glow: 0.0, glow_color: (255, 255, 255), pulse: 0.0, pulse_color: (255, 255, 255), crit: false, number: None, shown: 0.0, dry: 0.0, drip: 0.0 });
     }
 }
 
@@ -178,12 +183,15 @@ pub fn notice(
             }
         }
         // (Numbers only with the option on: `display.rs`.)
+        let crit = std::mem::take(&mut h.crit);
         if !display.damage_numbers {
             continue;
         }
-        if let Some(e) = h.number
+        if !crit
+            && let Some(e) = h.number
             && let Ok((mut n, mut text)) = numbers.get_mut(e)
             && n.age < MERGE
+            && !n.crit
         {
             n.amount += lost;
             text.0 = digits(n.amount);
@@ -192,6 +200,7 @@ pub fn notice(
         // (Blows red on the player, pale on the rest; anything else its
         // own colour.)
         let color = match kind {
+            _ if crit => Color::srgb(1.0, 0.82, 0.2),
             Some(k) if !physical(k) => {
                 let (r, g, b) = color_of(k);
                 Color::srgb_u8(r, g, b)
@@ -205,9 +214,9 @@ pub fn notice(
         let e = commands
             .spawn((
                 Name::new("Damage"),
-                DamageNumber { amount: lost, age: 0.0 },
-                Text2d::new(digits(lost)),
-                TextFont { font_size: FontSize::Px(NUMBER_SIZE), ..default() },
+                DamageNumber { amount: lost, age: 0.0, crit },
+                Text2d::new(if crit { format!("{}!", digits(lost)) } else { digits(lost) }),
+                TextFont { font_size: FontSize::Px(if crit { NUMBER_SIZE * CRIT_SIZE } else { NUMBER_SIZE }), ..default() },
                 TextColor(color),
                 Transform::from_translation(at.extend(20.0)),
             ))
@@ -235,10 +244,22 @@ fn spray(sim: &mut SimWorld, at: Vec2, dir: Vec2, blood: platypus_sim::MaterialI
 }
 
 /// Each hit as it landed, shown on what it struck (`reaction`).
-pub fn react(mut felt: MessageReader<Felt>, mut sim: ResMut<SimWorld>, mut sparks: ResMut<Sparks>, mut reacted: MessageWriter<Reacted>, mut q: Query<(&Kinematics, &mut Hurt, Option<&Bleeds>)>) {
+pub fn react(
+    mut felt: MessageReader<Felt>,
+    mut sim: ResMut<SimWorld>,
+    mut sparks: ResMut<Sparks>,
+    mut reacted: MessageWriter<Reacted>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+    mut q: Query<(&Kinematics, &mut Hurt, Option<&Bleeds>)>,
+) {
     for f in felt.read() {
         let Ok((k, mut h, bleeds)) = q.get_mut(f.target) else { continue };
         let reaction = reaction(f.meant, f.dealt);
+        // (A critical hit that hurt: its own number, and a sharper ring.)
+        if f.crit && reaction == Reaction::Hurt {
+            h.crit = true;
+            sounds.write(crate::sound::PlaySound::at("crit", f.at));
+        }
         match reaction {
             Reaction::Hurt => {
                 h.flash = h.flash.max((FLASH + f.share * FLASH_PER_SHARE).min(FLASH_MOST));

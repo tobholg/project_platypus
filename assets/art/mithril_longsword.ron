@@ -1,0 +1,13 @@
+// A mithril longsword: the longsword's drawing in mithril, pale and blue-green.
+(
+    base: "longsword",
+    palette: {
+        'L': (206, 255, 255),   // the lit edge
+        'M': (116, 222, 230),
+        'D': (58, 150, 172),   // the shaded edge
+        'f': (106, 204, 211),   // fuller
+        't': (176, 242, 248),   // the point
+        'y': (70, 90, 170),   // crossguard
+        'b': (90, 110, 190),   // pommel
+    },
+)

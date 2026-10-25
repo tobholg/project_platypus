@@ -24,7 +24,7 @@
                 "Pour it hot and let it set. The shape is yours to make.",
                 "That anvil's older than the village.",
             ],
-            sells: [("iron_pickaxe", 60), ("gold_pickaxe", 180), ("shortsword", 70), ("longsword", 160), ("iron_helm", 90), ("chainmail", 150), ("ladle", 40), ("bucket", 30), ("block:firebrick", 3)],
+            sells: [("iron_pickaxe", 60), ("gold_pickaxe", 180), ("iron_shortsword", 70), ("longsword", 160), ("iron_helm", 90), ("chainmail", 150), ("ladle", 40), ("bucket", 30), ("block:firebrick", 3)],
         ),
     ),
 )

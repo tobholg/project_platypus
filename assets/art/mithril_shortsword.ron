@@ -1,0 +1,12 @@
+// A mithril shortsword: the shortsword's drawing in mithril, pale and blue-green.
+(
+    base: "shortsword",
+    palette: {
+        'L': (206, 255, 255),   // the lit edge
+        'M': (116, 222, 230),
+        'D': (58, 150, 172),   // the shaded edge
+        't': (176, 242, 248),   // the point
+        'y': (70, 90, 170),   // crossguard
+        'b': (90, 110, 190),   // pommel
+    },
+)

@@ -395,7 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -15982,6 +15982,55 @@ fn bladesplash_script(
 /// the player there, then the player away for `PLATYPUS_DAYS` (default 1)
 /// while the world clock runs, then back: how much of the water is left.
 /// (`PLATYPUS_DAYS=0.25`: a quarter of a day, part of it.)
+/// `wardrobe` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the player in
+/// each metal's armour in turn, its longsword in hand (copper, iron,
+/// silver, gold, mithril; 1.5 s each from 1 s): logs its armour and health.
+fn wardrobe_script(
+    s: Res<Scenario>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut hand: ResMut<crate::hands::Hand>,
+    mut player: Query<(&crate::creatures::Health, &mut crate::gear::Equipment, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    mut shown: Local<Option<usize>>,
+) {
+    if s.name != "wardrobe" {
+        return;
+    }
+    menu.open = false;
+    let (Some(items), Ok((h, mut eq, mut inv))) = (items, player.single_mut()) else { return };
+    let metals = ["copper", "iron", "silver", "gold", "mithril"];
+    let i = ((s.elapsed - 1.0) / 1.5).floor();
+    if i < 0.0 || i as usize >= metals.len() {
+        return;
+    }
+    let i = i as usize;
+    if *shown == Some(i) {
+        if (s.elapsed - 1.0 - i as f32 * 1.5) > 1.0 {
+            info!("wardrobe: {}: armour {:.0}, health {:.0}", metals[i], h.ward.armor, h.max);
+            *shown = Some(i + 100);
+        }
+        return;
+    }
+    if shown.is_some_and(|k| k == i + 100) {
+        return;
+    }
+    let m = metals[i];
+    let mail = if m == "iron" { "chainmail".to_string() } else { format!("{m}_mail") };
+    let long = if m == "iron" { "longsword".to_string() } else { format!("{m}_longsword") };
+    for w in eq.worn.iter_mut() {
+        *w = None;
+    }
+    for name in [format!("{m}_helm"), mail, format!("{m}_gauntlets"), format!("{m}_greaves"), format!("{m}_boots")] {
+        let stack = crate::hands::items::Stack::new(items.id(&name).unwrap_or_else(|| panic!("no {name}")), 1);
+        if let Some(k) = (0..eq.worn.len()).find(|&k| eq.worn[k].is_none() && crate::gear::Equipment::fits(&items, k, &stack)) {
+            eq.worn[k] = Some(stack);
+        }
+    }
+    inv.slots[9] = Some(crate::hands::items::Stack::new(items.id(&long).expect("longsword"), 1));
+    (hand.bar, hand.slot) = (0, 9);
+    *shown = Some(i);
+}
+
 /// `slimeswing` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a green
 /// slime (`PLATYPUS_SLIME_KIND`) hops at the player, who swings a
 /// `PLATYPUS_WEAPON` (shortsword) at it as fast as it can once it's near:

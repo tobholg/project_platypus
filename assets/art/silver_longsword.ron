@@ -1,0 +1,13 @@
+// A silver longsword: the longsword's drawing in silver.
+(
+    base: "longsword",
+    palette: {
+        'L': (252, 253, 255),   // the lit edge
+        'M': (218, 224, 236),
+        'D': (160, 170, 190),   // the shaded edge
+        'f': (200, 206, 217),   // fuller
+        't': (240, 244, 252),   // the point
+        'y': (120, 140, 196),   // crossguard
+        'b': (150, 166, 214),   // pommel
+    },
+)

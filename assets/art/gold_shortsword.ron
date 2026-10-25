@@ -1,0 +1,12 @@
+// A gold shortsword: the shortsword's drawing in gold.
+(
+    base: "shortsword",
+    palette: {
+        'L': (255, 240, 160),   // the lit edge
+        'M': (238, 198, 76),
+        'D': (178, 136, 40),   // the shaded edge
+        't': (255, 226, 126),   // the point
+        'y': (186, 56, 56),   // crossguard
+        'b': (200, 70, 64),   // pommel
+    },
+)

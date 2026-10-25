@@ -1,0 +1,12 @@
+// A rusty copper shortsword: the shortsword's drawing in pitted copper, its edge gone green-brown with age.
+(
+    base: "shortsword",
+    palette: {
+        'L': (178, 120, 82),   // the lit edge
+        'M': (140, 94, 64),
+        'D': (94, 72, 56),   // the shaded edge
+        't': (158, 108, 74),   // the point
+        'y': (112, 86, 58),   // crossguard
+        'b': (120, 92, 60),   // pommel
+    },
+)

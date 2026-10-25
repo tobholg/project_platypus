@@ -1,0 +1,13 @@
+// A copper longsword: the longsword's drawing in bright copper.
+(
+    base: "longsword",
+    palette: {
+        'L': (244, 176, 118),   // the lit edge
+        'M': (206, 128, 60),
+        'D': (150, 84, 38),   // the shaded edge
+        'f': (189, 117, 55),   // fuller
+        't': (232, 160, 100),   // the point
+        'y': (170, 100, 42),   // crossguard
+        'b': (186, 112, 48),   // pommel
+    },
+)

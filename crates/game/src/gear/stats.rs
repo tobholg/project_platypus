@@ -115,9 +115,10 @@ impl Stats {
     }
 
     /// A blow's (or arrow's) damage and knockback with these stats, and
-    /// whether it crit (`roll`: 0..1, from the caller's seed).
-    pub fn strike(&self, damage: f32, knock: f32, roll: f32) -> (f32, f32, bool) {
-        let crit = roll < self.share(Stat::Crit, 1.0);
+    /// whether it crit (`roll`: 0..1, from the caller's seed; `keen`: the
+    /// weapon's own crit chance, percent, on top of the stats').
+    pub fn strike(&self, damage: f32, knock: f32, roll: f32, keen: f32) -> (f32, f32, bool) {
+        let crit = roll < (self.share(Stat::Crit, 1.0) + keen / 100.0).min(1.0);
         let times = if crit { 1.5 + self.get(Stat::CritDamage) / 100.0 } else { 1.0 };
         (damage * self.mult(Stat::Damage) * times, knock * self.mult(Stat::Knockback), crit)
     }
@@ -135,6 +136,18 @@ pub fn line(s: Stat, v: f32) -> String {
 mod tests {
     use super::*;
 
+    /// A weapon's own crit chance (`keen`, percent) adds to what's worn.
+    #[test]
+    fn a_weapons_crit_chance_adds_to_the_stats() {
+        let mut s = Stats::default();
+        assert!(!s.strike(10.0, 100.0, 0.07, 0.0).2, "nothing worn, no keen blade: no crit");
+        assert!(s.strike(10.0, 100.0, 0.07, 8.0).2, "a shortsword's 8 %: a roll of 0.07 crits");
+        assert!(!s.strike(10.0, 100.0, 0.09, 8.0).2, "... 0.09 doesn't");
+        s.add(Stat::Crit, 5.0);
+        assert!(s.strike(10.0, 100.0, 0.12, 8.0).2, "with 5 % worn, 0.12 does");
+        assert_eq!(s.strike(10.0, 100.0, 0.0, 8.0).0, 15.0, "a crit: half again");
+    }
+
     #[test]
     fn stats_add_up_and_read_as_multipliers() {
         let mut s = Stats::default();
@@ -143,10 +156,10 @@ mod tests {
         assert_eq!(s.get(Stat::Damage), 25.0);
         assert!((s.mult(Stat::Damage) - 1.25).abs() < 1e-6);
         assert_eq!(s.nonzero().count(), 1);
-        let (d, k, crit) = s.strike(10.0, 100.0, 0.5);
+        let (d, k, crit) = s.strike(10.0, 100.0, 0.5, 0.0);
         assert!((d - 12.5).abs() < 1e-4 && (k - 100.0).abs() < 1e-4 && !crit);
         s.add(Stat::Crit, 60.0);
-        assert!(s.strike(10.0, 100.0, 0.5).2, "a roll under the crit chance crits");
+        assert!(s.strike(10.0, 100.0, 0.5, 0.0).2, "a roll under the crit chance crits");
         assert_eq!(line(Stat::Armor, 12.0), "+12 armour");
         assert_eq!(line(Stat::SpellPower, 15.0), "+15% spell power");
     }

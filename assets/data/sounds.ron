@@ -154,6 +154,8 @@
         // Gold taken (a bright two-note ting).
         "gold": (make: Chime(pitch: 1900, notes: [0, 7], length: 0.2), variants: 3, pitch: 0.04, volume: 0.28, every: 0.035),
         // A heart taken (hearts.rs): a soft rising chime; a gold one brighter.
+        // A critical hit (hurt.rs): a bright, sharp ring over the blow.
+        "crit": (make: Clang(pitch: 2400, ring: 0.18, length: 0.22, grit: 0.25, muffle: 9000), variants: 3, pitch: 0.06, volume: 0.45),
         "heart": (make: Chime(pitch: 1100, notes: [0, 4, 7], length: 0.32), variants: 2, pitch: 0.03, volume: 0.32),
         "heart_gold": (make: Chime(pitch: 1320, notes: [0, 7, 12], length: 0.5), variants: 2, pitch: 0.03, volume: 0.4),
 

@@ -7,6 +7,9 @@
 // harm: its kind of hurt (DESIGN §14.2): slash (the default), pierce, blunt;
 //   a move may say its own (a thrust pierces).
 // rest: how it's held when not swinging (degrees from level; + up).
+// crit: its chance of a critical hit (percent; the player's only), on top
+//   of what's worn; a move may add its own (`crit`: a thrust's +5). A bow's
+//   is (chance, more when drawn all the way).
 // moves: the combo, in order (pressing again during one queues the next;
 //   a pause of `combo_gap` s starts over). Each:
 //   from, to: the swing, in degrees from where it's aimed (+ up, facing
@@ -51,19 +54,20 @@
     spray: (count: 26, life: (0.35, 0.75), colors: [(250, 252, 255), (220, 236, 255), (190, 214, 245)], speed: 220, spread: 0.9, drag: 1.0, gravity: 420, size: 1.6),
     weapons: [
         (
-            id: "shortsword", art: "shortsword",
-            damage: 12, knock: 225, stun: 0.18, rest: -35,
+            // The starting blade: rusty copper (the metals' are its tiers).
+            id: "shortsword", art: "rusty_copper_shortsword",
+            damage: 12, knock: 225, stun: 0.18, rest: -35, crit: 8,
             moves: [
                 (name: "slash", from: 105, to: -75, windup: 0.05, active: 0.09, recovery: 0.09, stamina: 8, lunge: 75),
                 (name: "backslash", from: -75, to: 100, windup: 0.04, active: 0.09, recovery: 0.1, stamina: 8, lunge: 60),
-                (name: "thrust", harm: pierce, from: 0, to: 0, thrust: 8, windup: 0.07, active: 0.08, recovery: 0.13, stamina: 11, lunge: 195, damage: 1.4, knock: 1.3),
+                (name: "thrust", harm: pierce, from: 0, to: 0, thrust: 8, windup: 0.07, active: 0.08, recovery: 0.13, stamina: 11, lunge: 195, damage: 1.4, knock: 1.3, crit: 5),
             ],
             down: (name: "down slash", from: 55, to: -55, thrust: 6, windup: 0.02, active: 0.14, recovery: 0.08, stamina: 8),
             dash: (name: "rising slash", from: -95, to: 115, windup: 0.04, active: 0.12, recovery: 0.22, stamina: 14, lunge: 110, hop: 230, damage: 1.35, knock: 1.2, launch: 0.9),
         ),
         (
             id: "longsword", art: "longsword",
-            damage: 24, knock: 375, stun: 0.3, rest: -30,
+            damage: 24, knock: 375, stun: 0.3, rest: -30, crit: 4,
             moves: [
                 (name: "cleave", from: 125, to: -95, windup: 0.13, active: 0.15, recovery: 0.18, stamina: 16, lunge: 60),
                 (name: "sweep", from: -95, to: 115, windup: 0.09, active: 0.15, recovery: 0.2, stamina: 16, lunge: 45),
@@ -94,7 +98,7 @@
         // A dagger: quick stabs, little reach.
         (
             id: "fang", art: "fang", harm: pierce,
-            damage: 8, knock: 105, stun: 0.12, rest: -30,
+            damage: 8, knock: 105, stun: 0.12, rest: -30, crit: 12,
             moves: [
                 (name: "stab", from: 10, to: -10, thrust: 6, windup: 0.03, active: 0.06, recovery: 0.06, stamina: 5, lunge: 105),
                 (name: "slash", from: 80, to: -60, windup: 0.03, active: 0.07, recovery: 0.06, stamina: 5, lunge: 60),
@@ -150,8 +154,23 @@
     ],    // Bows (archery.rs): hold to draw (fully in `draw` s), let go to loose;
     // the arrow's speed (cells/s), damage and knockback go from the first
     // to the second by how far it was drawn. (It shows only while drawn.)
+    // The metals' blades: each a shortsword's or a longsword's moves (and
+    // crit), its own picture and damage. (`longsword` itself, as written,
+    // is the armoured skeleton's; the player's iron one is a tier.)
+    tiers: [
+        (id: "copper_shortsword", like: "shortsword", art: "copper_shortsword", damage: 15),
+        (id: "iron_shortsword", like: "shortsword", art: "shortsword", damage: 19),
+        (id: "silver_shortsword", like: "shortsword", art: "silver_shortsword", damage: 23),
+        (id: "gold_shortsword", like: "shortsword", art: "gold_shortsword", damage: 27),
+        (id: "mithril_shortsword", like: "shortsword", art: "mithril_shortsword", damage: 33),
+        (id: "copper_longsword", like: "longsword", art: "copper_longsword", damage: 20),
+        (id: "iron_longsword", like: "longsword", art: "longsword", damage: 26),
+        (id: "silver_longsword", like: "longsword", art: "silver_longsword", damage: 31),
+        (id: "gold_longsword", like: "longsword", art: "gold_longsword", damage: 37),
+        (id: "mithril_longsword", like: "longsword", art: "mithril_longsword", damage: 45),
+    ],
     bows: [
-        (id: "bow", art: "bow", draw: 0.65, speed: (300, 820), damage: (5, 20), knock: (60, 255), stun: 0.15, stamina: 6),
+        (id: "bow", art: "bow", crit: (5, 10), draw: 0.65, speed: (300, 820), damage: (5, 20), knock: (60, 255), stun: 0.15, stamina: 6),
     ],
     // Arrows fly and fall (`gravity` cells/s²), stick where they strike
     // stone or earth for `stuck` s, come back to you within `pickup`

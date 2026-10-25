@@ -1,0 +1,12 @@
+// A silver shortsword: the shortsword's drawing in silver.
+(
+    base: "shortsword",
+    palette: {
+        'L': (252, 253, 255),   // the lit edge
+        'M': (218, 224, 236),
+        'D': (160, 170, 190),   // the shaded edge
+        't': (240, 244, 252),   // the point
+        'y': (120, 140, 196),   // crossguard
+        'b': (150, 166, 214),   // pommel
+    },
+)

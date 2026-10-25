@@ -1,0 +1,12 @@
+// A copper shortsword: the shortsword's drawing in bright copper.
+(
+    base: "shortsword",
+    palette: {
+        'L': (244, 176, 118),   // the lit edge
+        'M': (206, 128, 60),
+        'D': (150, 84, 38),   // the shaded edge
+        't': (232, 160, 100),   // the point
+        'y': (170, 100, 42),   // crossguard
+        'b': (186, 112, 48),   // pommel
+    },
+)

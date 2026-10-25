@@ -13,7 +13,7 @@
 //     Hardness: dirt 20, wood 25, sandstone 35, copper ore 50, stone 60,
 //     amethyst 60, iron ore 65, brick 70, silver ore 75, slate 80, emerald 80,
 //     gold ore 85, basalt 95, ruby 100, mithril ore 110, obsidian 120.
-//     Pickaxe tiers climb with them: copper 70, iron 100, gold 115, mithril 150.
+//     Pickaxe tiers climb with them: copper 70, iron 100, silver 105, gold 115, mithril 150.
 //   Throw(Bomb | Glowstick) · Torch: plant one on a block face
 //   Focus(tier, element, spells): a wand (tier 1, one spell) or staff (tier
 //     2, two: left and right button) casting its spells (spells.ron) at the
@@ -48,6 +48,7 @@
         // their area bites (C) wider each time.
         (id: "copper_pickaxe", name: "Copper pickaxe", color: (205, 127, 50), use: Mine(back: false, power: 25, tier: 70, speed: 3.5, reach: 6.0, area: 7.0)),
         (id: "iron_pickaxe",   name: "Iron pickaxe",   color: (176, 178, 190), use: Mine(back: false, power: 35, tier: 100, speed: 4.5, reach: 6.5, area: 9.0)),
+        (id: "silver_pickaxe", name: "Silver pickaxe", color: (222, 228, 240), use: Mine(back: false, power: 42, tier: 105, speed: 5.0, reach: 6.8, area: 9.8)),
         (id: "gold_pickaxe",   name: "Gold pickaxe",   color: (236, 196, 72), use: Mine(back: false, power: 50, tier: 115, speed: 5.5, reach: 7.0, area: 10.5)),
         (id: "mithril_pickaxe", name: "Mithril pickaxe", color: (110, 220, 228), use: Mine(back: false, power: 75, tier: 150, speed: 7.0, reach: 7.5, area: 13.5)),
         // A builder's hammer: shapes built blocks (half, slopes) for roofs
@@ -147,10 +148,31 @@
         (id: "void_staff",     name: "Void staff",     color: (150, 110, 240), use: Focus(tier: 2, element: Void, spells: ["portal", "stasis"]),
             gear: (slot: Held, stats: { VoidPower: 50, SpellPower: 10, Mana: 20 }),
             aura: (light: (160, 120, 255), strength: 0.6, sparks: (count: 10, life: (0.3, 0.9), colors: [(230, 210, 255), (140, 90, 240), (40, 20, 90)], speed: 9, drag: 2, glow: true))),
-        (id: "shortsword",     name: "Shortsword",     color: (200, 206, 216), use: Melee("shortsword"), gear: (slot: Held),
-            about: "Quick: slash, backslash, thrust. Strike down in the air to bounce off what you hit."),
-        (id: "longsword",      name: "Longsword",      color: (180, 188, 204), use: Melee("longsword"), gear: (slot: Held),
-            about: "Slow and heavy: cleave, sweep, drive. Strike down in the air to bounce off what you hit."),
+        // Swords: a shortsword and a longsword of each metal (weapons.ron
+        // `tiers`), each better than the last. (The starting one keeps the
+        // id `shortsword`, the iron longsword `longsword`: saves keep theirs.)
+        (id: "shortsword",     name: "Rusty copper shortsword", color: (150, 100, 68), use: Melee("shortsword"), gear: (slot: Held),
+            about: "Pitted and dull, but it's a blade. Quick: slash, backslash, thrust (a thrust finds the gaps: more crits). Strike down in the air to bounce off what you hit."),
+        (id: "copper_shortsword", name: "Copper shortsword", color: (205, 127, 50), use: Melee("copper_shortsword"), gear: (slot: Held),
+            about: "Quick: slash, backslash, thrust (a thrust finds the gaps: more crits). Strike down in the air to bounce off what you hit."),
+        (id: "copper_longsword", name: "Copper longsword", color: (205, 127, 50), use: Melee("copper_longsword"), gear: (slot: Held),
+            about: "Slow and heavy, with a long reach: cleave, sweep, drive. Strike down in the air to bounce off what you hit."),
+        (id: "iron_shortsword", name: "Iron shortsword", color: (200, 206, 216), use: Melee("iron_shortsword"), gear: (slot: Held),
+            about: "Quick: slash, backslash, thrust (a thrust finds the gaps: more crits). Strike down in the air to bounce off what you hit."),
+        (id: "longsword", name: "Iron longsword", color: (200, 206, 216), use: Melee("iron_longsword"), gear: (slot: Held),
+            about: "Slow and heavy, with a long reach: cleave, sweep, drive. Strike down in the air to bounce off what you hit."),
+        (id: "silver_shortsword", name: "Silver shortsword", color: (222, 228, 240), use: Melee("silver_shortsword"), gear: (slot: Held),
+            about: "Quick: slash, backslash, thrust (a thrust finds the gaps: more crits). Strike down in the air to bounce off what you hit."),
+        (id: "silver_longsword", name: "Silver longsword", color: (222, 228, 240), use: Melee("silver_longsword"), gear: (slot: Held),
+            about: "Slow and heavy, with a long reach: cleave, sweep, drive. Strike down in the air to bounce off what you hit."),
+        (id: "gold_shortsword", name: "Gold shortsword", color: (238, 198, 76), use: Melee("gold_shortsword"), gear: (slot: Held),
+            about: "Quick: slash, backslash, thrust (a thrust finds the gaps: more crits). Strike down in the air to bounce off what you hit."),
+        (id: "gold_longsword", name: "Gold longsword", color: (238, 198, 76), use: Melee("gold_longsword"), gear: (slot: Held),
+            about: "Slow and heavy, with a long reach: cleave, sweep, drive. Strike down in the air to bounce off what you hit."),
+        (id: "mithril_shortsword", name: "Mithril shortsword", color: (116, 222, 230), use: Melee("mithril_shortsword"), gear: (slot: Held),
+            about: "Quick: slash, backslash, thrust (a thrust finds the gaps: more crits). Strike down in the air to bounce off what you hit."),
+        (id: "mithril_longsword", name: "Mithril longsword", color: (116, 222, 230), use: Melee("mithril_longsword"), gear: (slot: Held),
+            about: "Slow and heavy, with a long reach: cleave, sweep, drive. Strike down in the air to bounce off what you hit."),
         // What enemies fight with (found on their bodies).
         (id: "cleaver",        name: "Cleaver",        color: (170, 170, 176), use: Melee("cleaver"), gear: (slot: Held),
             about: "An orc's: heavy hacks with a windup to read."),
@@ -226,7 +248,7 @@
     // dev mode: `mode.rs`), and more for the dev menu to hand out. Carried
     // first-come into the hotbar (ten slots), then the pack; worn on the body.
     kits: [
-        (name: "play", about: "A new game: a copper pick and axe, a short sword, a few torches, a rope hook",
+        (name: "play", about: "A new game: a copper pick and axe, a rusty copper shortsword, a few torches, a rope hook",
             carry: [("copper_pickaxe", 1), ("copper_axe", 1), ("shortsword", 1), ("torch", 8), ("small_health_potion", 2)],
             wear: ["rope_hook"]),
         // Loadouts (dev): in place of all you have, a stage of the game as
