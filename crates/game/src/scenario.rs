@@ -395,7 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -15982,6 +15982,109 @@ fn bladesplash_script(
 /// the player there, then the player away for `PLATYPUS_DAYS` (default 1)
 /// while the world clock runs, then back: how much of the water is left.
 /// (`PLATYPUS_DAYS=0.25`: a quarter of a day, part of it.)
+type SignsSubject<'a> = (
+    Entity,
+    &'a mut Kinematics,
+    &'a mut crate::creatures::Health,
+    Option<&'a crate::creatures::body::elements::Burning>,
+    Option<&'a crate::creatures::body::elements::Coated>,
+    Option<&'a crate::creatures::body::signs::Signs>,
+);
+
+/// `signs`: what hurts the player, shown on it (`creatures::body::signs`),
+/// each a few seconds in turn on the flat arena: venom, acid, oil (lava
+/// near: its warning), searing heat (the floor under it hot), wet in
+/// the heat (steam), a wet landing (spray), wet under a storm (sparks). Its
+/// health is kept up.
+fn signs_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    coatings: Res<crate::creatures::body::elements::Coatings>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    time: Res<Time>,
+    mut player: Query<SignsSubject, With<LocalPlayer>>,
+    mut step: Local<u8>,
+) {
+    if s.name != "signs" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((me, mut k, mut h, burning, coated, signs)) = player.single_mut() else { return };
+    if h.hp < h.max * 0.6 {
+        h.hp = h.max * 0.6;
+    }
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let at = Vec2::new(950.0, fl + k.body.half.y);
+    let feet = CellPos::from_world(at.x, fl + 1.0);
+    let paint = |sim: &mut SimWorld, name: &str, dx: i32, dy: i32, r: i32| {
+        let material = if name == "air" { Some(platypus_sim::MaterialId::AIR) } else { sim.materials().id(name) };
+        if let Some(material) = material {
+            sim.queue(WorldEdit::Paint { center: CellPos::new(feet.x + dx, feet.y + dy), radius: r, material, overwrite: true });
+        }
+    };
+    let coat = |commands: &mut Commands, name: &str| {
+        commands.entity(me).remove::<crate::creatures::body::elements::Coated>();
+        if !name.is_empty() {
+            crate::creatures::body::elements::stain(commands, me, name, 1.0, &coatings);
+        }
+    };
+    // (Each second: how it is.)
+    if (t * 2.0).floor() != ((t - time.delta_secs()) * 2.0).floor() {
+        let storm = sim.world.weather().map(|w| (w.rain_at(feet.x), w.severe_at(feet.x)));
+        info!("signs: t {t:.1} hp {:.0} burning {:?} coats {:?} heat {:.2} storm {storm:?}", h.hp, burning.map(|b| b.share), coated.map(|c| c.coats.clone()), signs.map_or(0.0, |s| s.heat()));
+    }
+    // (From 9 s to 14.5 s the floor under it is searing hot: a hot plate.)
+    if (9.0..14.5).contains(&t)
+        && let Some(stone) = sim.materials().id("stone")
+    {
+        for x in feet.x - 8..=feet.x + 8 {
+            for y in feet.y - 3..feet.y {
+                sim.world.set(CellPos::new(x, y), platypus_sim::Cell { heat: 260, ..platypus_sim::Cell::new(stone, 128) });
+            }
+        }
+    }
+    let next = [1.0, 1.5, 4.0, 6.5, 9.0, 12.0, 14.5, 16.5, 20.0];
+    let Some(&due) = next.get(*step as usize) else { return };
+    if t < due {
+        return;
+    }
+    info!("signs: step {} at {t:.1}", *step);
+    match *step {
+        0 => {
+            commands.entity(me).remove::<crate::combat::Invulnerable>();
+            k.body.pos = at;
+            k.prev_pos = at;
+            // (A pit in the floor off to the side.)
+            paint(&mut sim, "air", 11, -4, 4);
+        }
+        1 => coat(&mut commands, "venom"),
+        2 => coat(&mut commands, "acid"),
+        3 => {
+            coat(&mut commands, "oily");
+            paint(&mut sim, "lava", 11, -5, 2);
+        }
+        4 => {
+            coat(&mut commands, "");
+            paint(&mut sim, "air", 11, -4, 4);
+        }
+        5 => coat(&mut commands, "wet"),
+        6 => {
+            coat(&mut commands, "wet");
+            k.body.pos = at + Vec2::Y * 30.0;
+            k.prev_pos = k.body.pos;
+            k.body.vel = Vec2::new(0.0, -80.0);
+        }
+        7 => {
+            coat(&mut commands, "wet");
+            sim.queue(WorldEdit::Weather { x: at.x as i32, radius: 600, storm: true });
+        }
+        _ => info!("signs: done"),
+    }
+    *step += 1;
+}
+
 fn dryout_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,

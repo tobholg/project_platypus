@@ -7,8 +7,13 @@
 //! stops). Hurt badly, a creature shows it: under half its health it drips
 //! (its blood, or dust), under a quarter it falters (slower).
 //!
-//! The damage floats up off it as a number (hits close together add up on
-//! one number for a moment, so a flame stream doesn't spray digits).
+//! What goes on hurting it (heat, venom, acid: anything but blows and
+//! falls) pulses that hurt's colour instead of flashing red, for as long as
+//! it goes on.
+//!
+//! The damage floats up off it as a number, coloured by what did it (hits
+//! close together add up on one number for a moment, so a flame stream
+//! doesn't spray digits).
 //! Anything that lowers `hp` shows, whatever did it: spells, blasts, fire,
 //! falls (what isn't a hit flashes and bleeds by how much it took).
 
@@ -89,6 +94,10 @@ const FALTERING: f32 = 0.25;
 pub const FALTER_SPEED: f32 = 0.75;
 /// Losing at least this in a tick flashes.
 const FLASH_AT: f32 = 2.0;
+/// Seconds a pulse beats on after the last of what hurt it.
+pub(crate) const PULSE: f32 = 0.6;
+/// ... fading over its last this many.
+pub(crate) const PULSE_FADE: f32 = 0.3;
 /// Hits within this long of a number add to it.
 const MERGE: f32 = 0.35;
 /// How long a number floats, and how fast (cells/s).
@@ -97,8 +106,8 @@ const NUMBER_RISE: f32 = 27.0;
 /// Height of the digits, in cells.
 const NUMBER_SIZE: f32 = 10.5;
 
-/// What `Health` was last tick, how long it still flashes (or glows, and
-/// in what colour), the number it's showing (to add the next hit to), what
+/// What `Health` was last tick, how long it still flashes (or glows, or
+/// pulses, and in what colour), the number it's showing (to add the next hit to), what
 /// of its loss hits have already shown, and its dripping.
 #[derive(Component)]
 pub struct Hurt {
@@ -106,6 +115,8 @@ pub struct Hurt {
     pub flash: f32,
     pub glow: f32,
     pub glow_color: (u8, u8, u8),
+    pub pulse: f32,
+    pub pulse_color: (u8, u8, u8),
     number: Option<Entity>,
     shown: f32,
     dry: f32,
@@ -125,7 +136,7 @@ pub struct DamageNumber {
 /// New bodies with health are watched.
 pub fn watch(mut commands: Commands, new: Query<(Entity, &Health), Without<Hurt>>) {
     for (e, h) in &new {
-        commands.entity(e).insert(Hurt { last: h.hp, flash: 0.0, glow: 0.0, glow_color: (255, 255, 255), number: None, shown: 0.0, dry: 0.0, drip: 0.0 });
+        commands.entity(e).insert(Hurt { last: h.hp, flash: 0.0, glow: 0.0, glow_color: (255, 255, 255), pulse: 0.0, pulse_color: (255, 255, 255), number: None, shown: 0.0, dry: 0.0, drip: 0.0 });
     }
 }
 
@@ -150,8 +161,16 @@ pub fn notice(
         if lost < 0.01 {
             continue;
         }
-        // A real loss flashes and bleeds; burning's trickle only counts up.
-        if unshown >= FLASH_AT {
+        // What took most of it (`took`: `tally` clears it after this).
+        let kind = most(&health.took);
+        let lingers = kind.is_some_and(|k| !physical(k));
+        // What goes on hurting pulses its colour while it does...
+        if lingers && unshown > 0.0 {
+            h.pulse = PULSE;
+            h.pulse_color = kind.map_or((255, 255, 255), color_of);
+        }
+        // ... a real loss otherwise flashes and bleeds.
+        if unshown >= FLASH_AT && !lingers {
             let share = unshown / health.max.max(1.0);
             h.flash = h.flash.max((FLASH + share * FLASH_PER_SHARE).min(FLASH_MOST));
             if let Some(&Bleeds(blood, much)) = bleeds {
@@ -170,7 +189,16 @@ pub fn notice(
             text.0 = digits(n.amount);
             continue;
         }
-        let color = if player { Color::srgb(1.0, 0.35, 0.3) } else { Color::srgb(1.0, 0.92, 0.7) };
+        // (Blows red on the player, pale on the rest; anything else its
+        // own colour.)
+        let color = match kind {
+            Some(k) if !physical(k) => {
+                let (r, g, b) = color_of(k);
+                Color::srgb_u8(r, g, b)
+            }
+            _ if player => Color::srgb(1.0, 0.35, 0.3),
+            _ => Color::srgb(1.0, 0.92, 0.7),
+        };
         // (Side by side, a little, so hits in a row don't print over each other.)
         *shown = shown.wrapping_add(1);
         let at = k.body.pos + Vec2::new((*shown % 5) as f32 * 3.0 - 6.0, k.body.half.y + 6.0);
@@ -235,6 +263,16 @@ pub fn react(mut felt: MessageReader<Felt>, mut sim: ResMut<SimWorld>, mut spark
     }
 }
 
+/// Of what it took this tick (`Health::took`), the kind that did most.
+fn most(took: &[(f32, f32); 11]) -> Option<Harm> {
+    Harm::ALL.into_iter().zip(took).filter(|(_, t)| t.1 > 0.0).max_by(|a, b| a.1.1.total_cmp(&b.1.1)).map(|(k, _)| k)
+}
+
+/// A blow or a fall (flashes red), not what goes on (pulses its colour).
+fn physical(kind: Harm) -> bool {
+    matches!(kind, Harm::Slash | Harm::Pierce | Harm::Blunt | Harm::Fall)
+}
+
 /// A kind of hurt's colour (an absorbed hit glows it).
 pub(crate) fn color_of(harm: Harm) -> (u8, u8, u8) {
     match harm {
@@ -246,7 +284,7 @@ pub(crate) fn color_of(harm: Harm) -> (u8, u8, u8) {
         Harm::Frost => (170, 220, 255),
         Harm::Storm => (200, 220, 255),
         Harm::Acid => (150, 240, 80),
-        Harm::Poison => (160, 210, 80),
+        Harm::Poison => (180, 110, 225),
         Harm::Radiant => (255, 244, 200),
         Harm::Void => (180, 130, 255),
     }

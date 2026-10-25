@@ -181,7 +181,6 @@ impl Weather {
         (0..self.rows).find(|&r| self.moisture[r * self.cols + c] > CLOUD_AT).map(|r| self.y0 + r as i32 * TEXEL)
     }
 
-    /// How hard it is raining out of the column over world x (0 = dry).
     /// How severe the storm over world x is (0: none or not severe, rising
     /// to 1 past `SEVERE`), while it rains there.
     pub fn severe_at(&self, x: i32) -> f32 {
@@ -192,6 +191,7 @@ impl Weather {
         ((self.shapes[c].severe - (SEVERE - 0.2)) / 0.2).clamp(0.0, 1.0)
     }
 
+    /// How hard it is raining out of the column over world x (0 = dry).
     pub fn rain_at(&self, x: i32) -> f32 {
         self.rain[self.col(x)]
     }

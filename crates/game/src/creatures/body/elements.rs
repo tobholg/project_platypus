@@ -103,6 +103,56 @@ pub struct Coating {
     /// How much of its speed it takes, all of it on (a slime's goo clogs).
     #[serde(default)]
     pub slow: f32,
+    /// How it shows on a body.
+    #[serde(default)]
+    pub look: Look,
+}
+
+/// How a coating shows on a body, all of it on (less the less of it):
+/// its tint, a sheen, a faint light, what drips or rises off it, a sound
+/// now and then (`signs`: the player's).
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Look {
+    /// Its tint (else its `color`), and how far towards it.
+    #[serde(default)]
+    pub tint: Option<(u8, u8, u8)>,
+    #[serde(default = "tint_much")]
+    pub much: f32,
+    /// The tint throbbing this deep (venom's sickly pulse).
+    #[serde(default)]
+    pub throb: f32,
+    /// A glint over it now and then, this bright (oil's gloss).
+    #[serde(default)]
+    pub sheen: f32,
+    /// A faint light of its colour, this strong.
+    #[serde(default)]
+    pub glow: f32,
+    /// What comes off it.
+    #[serde(default)]
+    pub shed: Vec<Shed>,
+    /// A sound, every so many seconds, with this much of it on at least.
+    #[serde(default)]
+    pub sound: Option<(String, f32, f32)>,
+}
+
+fn tint_much() -> f32 {
+    0.4
+}
+
+/// Sparks off a coated body: so many a second, from anywhere on it (or its
+/// lower half), sent this way.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Shed {
+    pub rate: f32,
+    #[serde(default)]
+    pub low: bool,
+    #[serde(default = "upward")]
+    pub dir: (f32, f32),
+    pub sparks: crate::magic::runes::Emitter,
+}
+
+fn upward() -> (f32, f32) {
+    (0.0, 1.0)
 }
 
 fn soak() -> f32 {
@@ -560,6 +610,13 @@ const SHOCK_DAMAGE: f32 = 25.0;
 /// The sky's lightning into water shocks harder.
 const SKY_SHOCK_DAMAGE: f32 = 40.0;
 const SHOCK_STUN: f32 = 0.6;
+/// Wet all over, lightning and storm magic hurt this much more (a share).
+const WET_SHOCK: f32 = 0.75;
+
+/// Lightning through it, as wet as it is.
+fn conducts(coated: Option<&Coated>, coatings: &Coatings) -> f32 {
+    1.0 + WET_SHOCK * coated.map_or(0.0, |c| c.wet(&coatings.by_name).min(1.0))
+}
 
 type Shockable<'a> = (Entity, &'a mut Health, &'a mut Kinematics, Option<&'a Coated>);
 
@@ -582,8 +639,8 @@ fn shock(charged: &[CellPos], damage: f32, q: &mut Query<Shockable>) {
     }
 }
 
-/// Lightning hurts whoever stands near where it strikes, and sets them
-/// alight (unless coated in something that won't burn, or fireproof);
+/// Lightning hurts whoever stands near where it strikes (the wetter, the
+/// more: `conducts`), and sets them alight (unless coated in something that won't burn, or fireproof);
 /// struck into water, it shocks everyone in it.
 pub fn struck(
     mut commands: Commands,
@@ -599,14 +656,15 @@ pub fn struck(
             if d > LIGHTNING_REACH {
                 continue;
             }
-            health.harm_by(LIGHTNING_DAMAGE * (1.0 - d / LIGHTNING_REACH), Harm::Storm, || crate::death::Cause::new("Lightning", "struck"));
+            let damage = LIGHTNING_DAMAGE * (1.0 - d / LIGHTNING_REACH) * conducts(coated, &coatings);
+            health.harm_by(damage, Harm::Storm, || crate::death::Cause::new("Lightning", "struck"));
             catch_fire(&mut commands, entity, &health.nature, coated, &coatings, 1.0);
         }
     }
 }
 
 /// Wand lightning (`fx::Zapped`): the sky's, smaller. It hurts what it ends
-/// at and sets it alight; and whatever touches what it charged (the whole
+/// at (the wetter, the more) and sets it alight; and whatever touches what it charged (the whole
 /// pool it struck) is shocked: hurt and stunned, whoever cast it too.
 pub fn zapped(mut commands: Commands, mut zaps: MessageReader<crate::fx::Zapped>, coatings: Res<Coatings>, mut q: Query<Shockable>) {
     for crate::fx::Zapped(z) in zaps.read() {
@@ -618,7 +676,8 @@ pub fn zapped(mut commands: Commands, mut zaps: MessageReader<crate::fx::Zapped>
             if d > ZAP_REACH {
                 continue;
             }
-            health.harm_by(ZAP_DAMAGE * (1.0 - d / ZAP_REACH), Harm::Storm, || crate::death::Cause::new("A wand's lightning", "shocked"));
+            let damage = ZAP_DAMAGE * (1.0 - d / ZAP_REACH) * conducts(coated, &coatings);
+            health.harm_by(damage, Harm::Storm, || crate::death::Cause::new("A wand's lightning", "shocked"));
             catch_fire(&mut commands, entity, &health.nature, coated, &coatings, 0.6);
         }
     }
@@ -652,8 +711,10 @@ pub fn catch_fire(commands: &mut Commands, entity: Entity, nature: &Nature, coat
 
 type Statuses<'a> = (&'a Children, Option<&'a Burning>, Option<&'a Coated>, Option<&'a Chilled>, Option<&'a mut crate::creatures::body::hurt::Hurt>);
 
-/// Just hit: a red flash. Otherwise burning creatures flicker orange;
-/// chilled ones go icy; coated ones take a little of their coating's colour.
+/// Just hit: a red flash. Otherwise burning creatures flicker orange; what
+/// goes on hurting (heat, venom, acid) pulses its own colour; chilled ones
+/// go icy; coated ones take on their coating's look (`Look`: a tint,
+/// throbbing, glinting).
 pub fn tint(
     time: Res<Time>,
     coatings: Res<Coatings>,
@@ -663,10 +724,13 @@ pub fn tint(
     let t = time.elapsed_secs();
     for (children, burning, coated, chilled, hurt) in &mut creatures {
         let dt = time.delta_secs();
-        let (flash, glow) = hurt.map_or((false, None), |mut h| {
+        let (flash, glow, pulse) = hurt.map_or((false, None, None), |mut h| {
             h.flash = (h.flash - dt).max(0.0);
             h.glow = (h.glow - dt).max(0.0);
-            (h.flash > 0.0, (h.glow > 0.0).then_some((h.glow_color, h.glow / crate::creatures::body::hurt::GLOW)))
+            h.pulse = (h.pulse - dt).max(0.0);
+            let glow = (h.glow > 0.0).then_some((h.glow_color, h.glow / crate::creatures::body::hurt::GLOW));
+            let pulse = (h.pulse > 0.0).then_some((h.pulse_color, (h.pulse / crate::creatures::body::hurt::PULSE_FADE).min(1.0)));
+            (h.flash > 0.0, glow, pulse)
         });
         let color = if flash {
             Color::srgb(1.0, 0.3, 0.28)
@@ -678,12 +742,21 @@ pub fn tint(
             // burns.)
             let f = 0.5 + 0.5 * (t * 23.0).sin() * (t * 7.3).sin();
             Color::WHITE.mix(&Color::srgb(1.0, 0.45 + 0.3 * f, 0.2 + 0.2 * f), (0.3 + 0.7 * b.share).min(1.0))
+        } else if let Some(((r, g, b), f)) = pulse {
+            // (Still being hurt by it: its colour, beating.)
+            let beat = 0.5 + 0.5 * (t * 9.0).sin();
+            Color::WHITE.mix(&Color::srgb_u8(r, g, b), f * (0.35 + 0.4 * beat))
         } else if let Some(c) = chilled {
             let k = 0.25 + 0.45 * c.cold;
             Color::srgb(1.0 - 0.6 * k, 1.0 - 0.25 * k, 1.0)
         } else if let Some((c, share)) = coated.and_then(|c| c.most()).and_then(|(n, a)| Some((coatings.by_name.get(n)?, *a))) {
-            let (r, g, b) = c.color;
-            Color::WHITE.mix(&Color::srgb_u8(r, g, b), 0.4 * share)
+            let look = &c.look;
+            let (r, g, b) = look.tint.unwrap_or(c.color);
+            let throb = 1.0 + look.throb * (t * 3.1).sin();
+            let base = Color::WHITE.mix(&Color::srgb_u8(r, g, b), (look.much * share * throb).clamp(0.0, 1.0));
+            // (A glint now and then, sliding by.)
+            let glint = (t * 1.3).sin().max(0.0).powi(12);
+            base.mix(&Color::WHITE, look.sheen * share * glint)
         } else {
             Color::WHITE
         };

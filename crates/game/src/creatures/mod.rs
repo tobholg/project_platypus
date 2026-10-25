@@ -54,7 +54,7 @@ impl Plugin for CreaturesPlugin {
             // What a grab holds stays in its grip.
             .add_systems(FixedUpdate, moves::pin.after(move_creatures).before(deaths).in_set(TickSet::Bodies))
             .add_systems(FixedUpdate, moves::struggle.before(moves::pin).after(move_creatures).in_set(TickSet::Bodies))
-            .add_systems(Update, (body::elements::tint, body::elements::blaze, body::elements::reload_coatings, body::hurt::watch, body::hurt::float))
+            .add_systems(Update, (body::elements::tint, body::elements::blaze, body::elements::reload_coatings, body::hurt::watch, body::hurt::float, body::signs::watch, body::signs::show))
             // Hits as they landed, shown (`hurt`); the badly hurt drip and falter.
             .add_systems(FixedUpdate, (body::hurt::react, body::hurt::wounded).chain().after(crate::combat::Hits))
             // Blows on limbs wear them down and cut them off (`wounds`).

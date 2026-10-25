@@ -3,7 +3,8 @@
 //! health is low (a little quicker and stronger the lower; calm), and a lush green glow while a
 //! potion heals you: full as it's drunk, then dissolving in place as the
 //! healing runs out (its soft inner reach fading first, the rim at the
-//! screen's edge last), continuously. Each glow is two overlays over the
+//! screen's edge last), continuously; an orange glow while heat sears or
+//! burns you (`signs`). Each glow is two overlays over the
 //! whole view: a soft band and a thin rim, their colour at the edges only,
 //! fading to nothing towards the middle.
 
@@ -33,6 +34,7 @@ enum Kind {
     RedRim,
     Green,
     GreenRim,
+    Heat,
 }
 
 /// How strong each is now (0..1), and where they're heading.
@@ -48,6 +50,8 @@ struct Glows {
     beat: f32,
     /// How strong the low-health pulse is, eased (no step as health moves).
     low: f32,
+    /// Heat on you, eased.
+    heat: f32,
 }
 
 /// Low health: below this share of it the edges pulse.
@@ -88,8 +92,8 @@ fn vignette(band: f32) -> Image {
 
 fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let (soft, rim) = (images.add(vignette(BAND)), images.add(vignette(RIM)));
-    for kind in [Kind::Red, Kind::RedRim, Kind::Green, Kind::GreenRim] {
-        let image = if matches!(kind, Kind::Red | Kind::Green) { soft.clone() } else { rim.clone() };
+    for kind in [Kind::Heat, Kind::Red, Kind::RedRim, Kind::Green, Kind::GreenRim] {
+        let image = if matches!(kind, Kind::Red | Kind::Green | Kind::Heat) { soft.clone() } else { rim.clone() };
         commands.spawn((
             Edge(kind),
             // (Stretched to the node: by default an image keeps its own
@@ -105,9 +109,11 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     }
 }
 
-fn show(time: Res<Time<Real>>, mut glows: ResMut<Glows>, player: Query<(&Health, Option<&crate::potion::Mending>), With<LocalPlayer>>, mut edges: Query<(&Edge, &mut ImageNode)>) {
+type You<'a> = (&'a Health, Option<&'a crate::potion::Mending>, Option<&'a crate::creatures::body::signs::Signs>);
+
+fn show(time: Res<Time<Real>>, mut glows: ResMut<Glows>, player: Query<You, With<LocalPlayer>>, mut edges: Query<(&Edge, &mut ImageNode)>) {
     let dt = time.delta_secs().min(0.1);
-    let Ok((h, mending)) = player.single() else { return };
+    let Ok((h, mending, signs)) = player.single() else { return };
     // Hurt: a flash by how much of your health went (a scratch faint, a
     // big blow strong).
     if let Some(was) = glows.last_hp
@@ -141,12 +147,19 @@ fn show(time: Res<Time<Real>>, mut glows: ResMut<Glows>, player: Query<(&Health,
     // fades quickest, the rim at the edge lingers, both smoothly to nothing.
     let k = glows.heal_shown.clamp(0.0, 1.0);
     let (green, green_rim) = (0.32 * k * k, 0.5 * (1.0 - (1.0 - k).powi(3)));
+    // Heat: in quick, out over a moment, shimmering a little.
+    let want = if h.hp > 0.0 { signs.map_or(0.0, |s| s.heat()) } else { 0.0 };
+    let k = if want > glows.heat { 1.0 - (-dt / 0.15).exp() } else { 1.0 - (-dt / 0.5).exp() };
+    glows.heat += (want - glows.heat) * k;
+    let t = time.elapsed_secs();
+    let heat = glows.heat * (0.85 + 0.15 * (t * 5.3).sin() * (t * 2.1).sin());
     for (edge, mut img) in &mut edges {
         img.color = match edge.0 {
             Kind::Red => Color::srgba(0.85, 0.05, 0.04, red * 0.7),
             Kind::RedRim => Color::srgba(0.9, 0.08, 0.06, red * 0.55),
             Kind::Green => Color::srgba(0.25, 0.95, 0.35, green),
             Kind::GreenRim => Color::srgba(0.35, 1.0, 0.45, green_rim),
+            Kind::Heat => Color::srgba(1.0, 0.42, 0.08, heat * 0.4),
         };
     }
 }
