@@ -170,7 +170,7 @@
         (id: "mithril_longsword", like: "longsword", art: "mithril_longsword", damage: 45),
     ],
     bows: [
-        (id: "bow", art: "bow", crit: (5, 10), draw: 0.65, speed: (300, 820), damage: (5, 20), knock: (60, 255), stun: 0.15, stamina: 6),
+        (id: "bow", art: "bow", crit: (5, 20), draw: 0.65, speed: (300, 820), damage: (6, 55), knock: (60, 255), stun: 0.15, stamina: 6),
     ],
     // Arrows fly and fall (`gravity` cells/s²), stick where they strike
     // stone or earth for `stuck` s, come back to you within `pickup`

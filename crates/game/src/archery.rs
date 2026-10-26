@@ -164,15 +164,24 @@ fn nock(
     mut archers: Query<Bowman>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     ids: Query<&crate::creatures::Stable>,
+    mut sparks: ResMut<crate::vfx::Sparks>,
 ) {
     let Some(weapons) = weapons else { return };
     for ask in asks.read() {
-        let Ok((_, wielding, _, _, _, nocked, _, _, stats)) = archers.get_mut(ask.archer) else { continue };
+        let Ok((_, wielding, k, hand, _, nocked, _, inv, stats)) = archers.get_mut(ask.archer) else { continue };
         let Some(bow) = wielding.0.as_deref().and_then(|id| weapons.bow_index(id)) else { continue };
         let speed = stats.map_or(1.0, |s| s.mult(crate::gear::Stat::AttackSpeed));
         match nocked {
             Some(mut n) => {
+                let was = n.drawn(&weapons);
                 n.t += DT * speed;
+                // Fully drawn: a ping and a glint at the hand (the player's
+                // bow: a shot loosed now flies fastest and crits more).
+                if inv.is_some() && was < 1.0 && n.drawn(&weapons) >= 1.0 {
+                    let at = hand.and_then(|h| h.at).unwrap_or(k.body.pos);
+                    sounds.write(crate::sound::PlaySound::at("bow_ready", at).volume(0.5));
+                    sparks.emit(&READY, READY.count as usize, at, Vec2::Y, Vec2::ZERO);
+                }
                 n.at = ask.at;
                 n.asked = true;
             }
@@ -467,3 +476,17 @@ fn show(weapons: Option<Res<Weapons>>, mut arrows: Query<(&Arrow, &mut Sprite)>)
         }
     }
 }
+
+/// A bow fully drawn: a glint at the hand.
+static READY: std::sync::LazyLock<crate::magic::runes::Emitter> = std::sync::LazyLock::new(|| crate::magic::runes::Emitter {
+    count: 6.0,
+    life: (0.12, 0.25),
+    colors: vec![(255, 250, 220), (255, 225, 150)],
+    speed: 40.0,
+    spread: 3.14,
+    gravity: 0.0,
+    drag: 4.0,
+    size: 1.0,
+    jitter: 0.0,
+    glow: true,
+});

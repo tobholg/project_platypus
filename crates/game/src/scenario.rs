@@ -319,6 +319,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
+            .add_systems(PreUpdate, bowshot_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script, record_script, course_script, dig_script, legs_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, spider_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3898,6 +3899,101 @@ fn kick_script(
             *state += 1;
         }
         _ => {}
+    }
+}
+
+/// `bowshot` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_MODE=dev`):
+/// the bow in hand, a zombie held 70 to the right; the player fires full
+/// draws (the left button held 0.8 s, let go 0.3 s): four at its torso, then
+/// at its head (a fresh zombie). Logs its health after each.
+fn bowshot_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut hand: ResMut<crate::hands::Hand>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut cursor: ResMut<CursorOverride>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    player: Query<(&Kinematics, &crate::hands::items::Inventory), With<LocalPlayer>>,
+    mut them: Query<(Entity, &crate::creatures::Creature, &mut Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
+    mut state: Local<(u8, f32, Option<Vec2>, u8, u8)>,
+    mut felt: MessageReader<crate::combat::Felt>,
+) {
+    if s.name != "bowshot" {
+        return;
+    }
+    for f in felt.read() {
+        if let Ok((_, c, zk, _)) = them.get(f.target)
+            && c.kind == "zombie"
+        {
+            info!("bowshot: struck {:.0} (meant {:.0}) at {:+.1},{:+.1} from its middle", f.dealt, f.meant, f.at.x - zk.body.pos.x, f.at.y - zk.body.pos.y);
+        }
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((k, inv)) = player.single() else { return };
+    let (step, next, spot, shots, logged) = &mut *state;
+    let spot = *spot.get_or_insert(k.body.pos + Vec2::new(70.0, 0.0));
+    // The bow in hand.
+    if let Some(i) = items.as_ref().and_then(|items| inv.slots.iter().position(|st| st.is_some_and(|st| items.def(st.item).id == "bow"))) {
+        (hand.bar, hand.slot) = (i / crate::hands::items::HOTBAR, i % crate::hands::items::HOTBAR);
+    }
+    if *step == 0 && t > 0.5 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        crate::creatures::def::spawn_creature(&mut commands, "zombie", spot, |_| {});
+        *step = 1;
+        *next = 1.5;
+        return;
+    }
+    // Held where it stands.
+    let mut target = None;
+    for (_, c, mut zk, h) in &mut them {
+        if c.kind != "zombie" || h.hp <= 0.0 {
+            continue;
+        }
+        let zk = &mut *zk;
+        zk.body.pos.x = spot.x;
+        zk.body.vel.x = 0.0;
+        let fall = zk.body.vel.y;
+        zk.loco.knock(&mut zk.body, Vec2::new(0.0, fall), 0.1);
+        let head = *shots >= 4;
+        let up = std::env::var("PLATYPUS_HEAD_UP").ok().and_then(|v| v.parse().ok()).unwrap_or(-2.0);
+        target = Some(zk.body.pos + if head { Vec2::new(0.0, zk.body.half.y + up) } else { Vec2::new(0.0, 2.0) });
+    }
+    let Some(at) = target else {
+        // (Dead: a fresh one, for the headshots.)
+        if *step == 1 && t > *next {
+            crate::creatures::def::spawn_creature(&mut commands, "zombie", spot, |_| {});
+            *next = t + 1.0;
+        }
+        mouse.release(MouseButton::Left);
+        return;
+    };
+    cursor.0 = Some(at);
+    if t < *next {
+        return;
+    }
+    let phase = (t - *next) % 1.1;
+    if phase < 0.8 {
+        mouse.press(MouseButton::Left);
+    } else {
+        if mouse.pressed(MouseButton::Left) {
+            *shots += 1;
+        }
+        mouse.release(MouseButton::Left);
+    }
+    if *shots >= 9 {
+        *step = 2;
+    }
+    let hp: Vec<String> = them.iter().filter(|(_, c, ..)| c.kind == "zombie").map(|(_, _, _, h)| format!("{:.0}", h.hp)).collect();
+    // (Half a second after each, what it did.)
+    if *logged < *shots && phase > 0.4 {
+        *logged = *shots;
+        info!("bowshot: t {t:.1} shot {} at the {}: zombie hp [{}]", shots, if *shots > 4 { "head" } else { "torso" }, hp.join(", "));
     }
 }
 
