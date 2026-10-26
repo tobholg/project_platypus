@@ -41,7 +41,7 @@
         (id: "toxic_cloud", name: "Toxic cloud", runes: ["toxic_cloud"], delay: 1.0, recharge: 1.0, element: Acid,
             about: "A heavy cloud of miasma: it sinks into pits, eats at what breathes it, and burns if lit."),
         (id: "fire_wall", name: "Fire brush", runes: ["fire_wall"], delay: 0.0, recharge: 0.0, tier: 2, element: Fire,
-            about: "Hold: paint flame along what you aim at, a floor, a wall, a ledge: it burns five seconds, and what walks through catches, and what burns there catches too. In the open air, embers drift down."),
+            about: "Hold: paint flame up off the ground (and along what you aim at): a wall of fire, burning five seconds. What walks through catches, and what burns there catches too. In the open air, embers drift down."),
         (id: "call_lightning", name: "Call lightning", runes: ["call_lightning"], delay: 1.2, recharge: 1.2, tier: 2, element: Storm,
             about: "Lightning from the sky where you aim, out of a storm gathered over it (rain comes with it). Only under open sky."),
         (id: "meteor", name: "Meteor", runes: ["trail_fire", "meteor", "impact", "ignite", "molten"], delay: 2.0, recharge: 2.0, tier: 2, element: Fire,

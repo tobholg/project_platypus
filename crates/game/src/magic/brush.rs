@@ -46,8 +46,8 @@ pub struct Painted(HashMap<CellPos, u8>);
 pub struct Kept(HashMap<CellPos, (platypus_sim::MaterialId, f32)>);
 
 /// A kept cell gone (a flame died) comes back with this chance a tick
-/// (/256): a flickering line, not a solid bar.
-const REKINDLE: u8 = 70;
+/// (/256): a sheet of flame, flickering.
+const REKINDLE: u8 = 130;
 /// Embers: how long they live (ticks), how they fall.
 const EMBER_LIFE: u16 = 40;
 const EMBER_FALL: f32 = 0.12;
@@ -188,7 +188,7 @@ pub fn paint(
     let tick = world.tick();
     // (Forget what's melted or been dug, now and then.)
     if tick.is_multiple_of(TIDY_EVERY) {
-        painted.0.retain(|p, _| world.get(*p).is_some_and(|c| c.material == solid));
+        painted.0.retain(|p, _| kept.0.contains_key(p) || world.get(*p).is_some_and(|c| c.material == solid));
     }
     // To the cursor, or as near as the way's open: through what it's
     // painted itself (or it grows back along its own stroke toward the
@@ -224,12 +224,14 @@ pub fn paint(
     };
     // Held up by what's round it: real ground (0), or a painted cell that
     // is (one further out).
-    let held = |w: &World, painted: &Painted, p: CellPos| -> Option<u8> {
+    // (A kept cell holds what's painted on it all its time, flickering out
+    // or not: a wall of flame stands on the flames under it.)
+    let held = |w: &World, painted: &Painted, kept: &Kept, p: CellPos| -> Option<u8> {
         let mut best: Option<u8> = None;
         for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
             let q = p.offset(dx, dy);
             let here = match painted.0.get(&q) {
-                Some(&s) if w.get(q).is_some_and(|c| c.material == solid) => Some(s.saturating_add(1)),
+                Some(&s) if w.get(q).is_some_and(|c| c.material == solid) || kept.0.contains_key(&q) => Some(s.saturating_add(1)),
                 Some(_) => None,
                 None => w.get(q).filter(|c| !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder)).map(|_| 0),
             };
@@ -286,7 +288,7 @@ pub fn paint(
                 if !open(world, p) {
                     continue;
                 }
-                match held(world, painted, p) {
+                match held(world, painted, kept, p) {
                     Some(h) if h <= brush.reach => {
                         if *mana < brush.per_cell {
                             return set;
