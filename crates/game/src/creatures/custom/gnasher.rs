@@ -19,6 +19,9 @@
 //!   line, or run against it); near enough, it snaps.
 //! - An abyssal gnasher lunges again before it tires (`lunges`).
 //!
+//! - An angler lurker's (`aquatic`): all of it in the water (the flooded
+//!   caverns'): it never leaves it, turning back at its surface and edges.
+//!
 //! Its hurt is all teeth: pierce.
 
 use bevy::prelude::*;
@@ -45,6 +48,8 @@ pub struct Gnasher {
     pub bite: f32,
     /// Its lure's light as it flares.
     pub glow: (u8, u8, u8),
+    /// It lives in the water and never leaves it (an angler lurker).
+    pub aquatic: bool,
     #[serde(skip)]
     doing: Doing,
     /// Lunges left before it's spent.
@@ -76,6 +81,7 @@ impl Default for Gnasher {
             lure_range: (50.0, 200.0),
             bite: 1.0,
             glow: (130, 255, 228),
+            aquatic: false,
             doing: Doing::Hover,
             left: 0,
             scale: 1.0,
@@ -110,7 +116,10 @@ impl CustomCreature for Gnasher {
     const NAME: &'static str = "gnasher";
 
     fn build(app: &mut App) {
-        app.init_resource::<GnasherCanvas>().add_systems(FixedUpdate, think.in_set(CustomSet::Think)).add_systems(Update, draw);
+        app.init_resource::<GnasherCanvas>()
+            .add_systems(FixedUpdate, think.in_set(CustomSet::Think))
+            .add_systems(FixedUpdate, keep_wet.after(crate::creatures::move_creatures))
+            .add_systems(Update, draw);
     }
 }
 
@@ -172,6 +181,24 @@ const ORBIT: (f32, f32, f32) = (0.7, 105.0, 25.0);
 const CHEST: f32 = 6.0;
 
 /// Whether its maw's on them (their body, a little round).
+/// One that lives in the water (`aquatic`): moved out of it, it's back
+/// where it was, turned round (down, if that was dry too).
+fn keep_wet(sim: Res<SimWorld>, mut q: Query<(&Gnasher, &mut Kinematics)>) {
+    let wet = |p: Vec2| sim.world.get(platypus_sim::CellPos::from_world(p.x, p.y)).is_some_and(|c| !c.is_air() && sim.world.materials().phys(c.material).kind == platypus_sim::Kind::Liquid);
+    for (o, mut k) in &mut q {
+        if !o.aquatic || wet(k.body.pos) {
+            continue;
+        }
+        let k = &mut *k;
+        if wet(k.prev_pos) {
+            k.body.pos = k.prev_pos;
+            k.body.vel = -k.body.vel * 0.4;
+        } else {
+            k.body.vel.y = k.body.vel.y.min(-60.0);
+        }
+    }
+}
+
 fn on(maw: Vec2, k: &Kinematics) -> bool {
     ((maw - k.body.pos).abs() - k.body.half).max(Vec2::ZERO).length() <= 5.0
 }

@@ -1,0 +1,19 @@
+// An angler lurker: the gnasher's drawing, from the flooded caverns' dark:
+// murky green-black, pale gums, its lure a cold bioluminescent green-white
+// on its stalk.
+(
+    base: "gnasher",
+    palette: {
+        'b': (22, 32, 28),
+        'B': (10, 16, 14),
+        'h': (40, 58, 50),
+        'F': (58, 80, 70),
+        'g': (126, 154, 134),
+        'm': (60, 42, 32),
+        'M': (24, 14, 10),
+        'e': (196, 230, 210),
+        's': (44, 62, 54),
+        'L': (180, 255, 226),
+        'x': (90, 122, 104),
+    },
+)

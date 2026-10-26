@@ -16646,6 +16646,8 @@ fn dive_script(
     mut player: Query<(Entity, &mut Kinematics, &crate::creatures::Health, &mut crate::gear::Equipment, Option<&crate::breath::Breath>), With<LocalPlayer>>,
     torches: Query<Has<crate::light::torch::Snuffed>, With<crate::light::PlantedTorch>>,
     mut state: Local<(u8, f32)>,
+    others: Query<(&crate::creatures::Creature, &Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
+    mut put: Local<bool>,
 ) {
     if s.name != "dive" {
         return;
@@ -16654,7 +16656,8 @@ fn dive_script(
     let t = s.elapsed;
     let (Some(items), Ok((me, mut k, h, mut eq, breath))) = (items, player.single_mut()) else { return };
     let fl = platypus_worldgen::arena::FLOOR;
-    let (x0, x1, deep) = (920, 1000, 70);
+    // (`PLATYPUS_DIVE_WIDE=1`: a pool five times as wide.)
+    let (x0, x1, deep) = if std::env::var("PLATYPUS_DIVE_WIDE").is_ok() { (760, 1160, 70) } else { (920, 1000, 70) };
     let (step, next) = &mut *state;
     match *step {
         0 if t > 0.3 => {
@@ -16697,9 +16700,23 @@ fn dive_script(
         }
         _ => {}
     }
+    // (`PLATYPUS_DIVE_WITH=kind`: one of those in the pool too, 1.5 s.)
+    if !*put && t > 1.5
+        && let Ok(kind) = std::env::var("PLATYPUS_DIVE_WITH")
+    {
+        *put = true;
+        crate::creatures::def::spawn_creature(&mut commands, &kind, Vec2::new(((x0 + x1) / 2 + 20) as f32, (fl - deep / 2) as f32), |_| {});
+    }
     if *step >= 2 && t >= *next {
         *next = t + 0.5;
         let snuffed = torches.iter().filter(|&s| s).count();
+        if let Ok(kind) = std::env::var("PLATYPUS_DIVE_WITH") {
+            for (c, ok, oh) in &others {
+                if c.kind == kind {
+                    info!("dive: the {kind} at depth {:.0}, {:+.0} across ({:.0} hp)", fl as f32 - ok.body.pos.y, ok.body.pos.x - k.body.pos.x, oh.hp);
+                }
+            }
+        }
         info!(
             "dive: t {t:.1} depth {:.0} sinking {:+.0} torch {} breath {:?} health {:.0}; torches out {snuffed}",
             fl as f32 - (k.body.pos.y - k.body.half.y),

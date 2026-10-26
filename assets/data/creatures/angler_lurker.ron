@@ -1,0 +1,34 @@
+// An angler lurker: a deep-water mouth in the flooded caverns' dark (the
+// gnasher's kin, custom/gnasher.rs, `aquatic`: it never leaves the water).
+// You see a soft light in the black water and swim toward it: it's a lure,
+// and the jaws are behind it. Near, its lure flares and draws you in; it
+// snaps, it lunges. Its hurt is all teeth.
+(
+    name: "Angler lurker",
+    size: (32, 30),
+    scale: 1.2,
+    health: 140,
+    heft: 2.2,
+    poise: 25,
+    team: Enemy,
+    touchless: true,
+    kind: "beast",
+    blood: "blood",
+    art: "angler_lurker",
+    eyes: (150, 200, 180),
+    light: (color: (110, 235, 195), strength: 0.28),
+    movement: (
+        run_speed: 70,
+        ground_accel: 600,
+        ground_decel: 800,
+        air_accel: 320,
+        jump_height: 20,
+        air_jumps: 0,
+        step_height: 6,
+        dash_speed: 0,
+        fly_speed: 90,
+        fly_accel: 300,
+    ),
+    brain: (kind: "hunter", params: (aggro: 300, close: Range(near: 60, far: 140))),
+    custom: (name: "gnasher", params: (lunges: 1, lure: 80, lure_range: (40, 190), bite: 0.8, glow: (170, 255, 220), aquatic: true)),
+)
