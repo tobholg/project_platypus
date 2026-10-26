@@ -83,9 +83,11 @@ impl Arrow {
         self.team
     }
 
-    /// Turned back the way it came (a repulsor), `by`'s now; its speed.
+    /// Turned back the way it came (a repulsor), `by`'s now (and able to
+    /// hit who shot it); its speed.
     pub fn turn_back(&mut self, by: Entity) -> Vec2 {
         self.vel = -self.vel;
+        self.back = true;
         self.shooter = by;
         self.team = Some(Team::Player);
         self.age = 0.0;
@@ -145,6 +147,8 @@ pub struct Arrow {
     angle: f32,
     /// The share of time it flies at (a slow field's: `magic::field`).
     pub slow: f32,
+    /// Turned back by a repulsor: it can hit who shot it.
+    back: bool,
 }
 
 type Bowman<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Nocked>, Option<&'a mut Stamina>, Option<&'a mut Inventory>, Option<&'a crate::gear::Stats>);
@@ -219,7 +223,7 @@ pub(crate) fn spawn_arrow(commands: &mut Commands, weapons: &Weapons, at: Vec2, 
     let angle = vel.y.atan2(vel.x).to_degrees();
     commands.spawn((
         Name::new("Arrow"),
-        Arrow { vel, shooter, team, damage, crit, knock, stun, burning: 0.0, age: 0.0, stuck: None, angle, slow: 1.0 },
+        Arrow { vel, shooter, team, damage, crit, knock, stun, burning: 0.0, age: 0.0, stuck: None, angle, slow: 1.0, back: false },
         turned.sprite(angle),
         Transform::from_translation(at.extend(12.0)),
     ));
@@ -299,11 +303,13 @@ fn fly(
             }
             for (te, tk, tteam, anim, safe, parts) in &targets {
                 // (One fallen out of a body strikes nothing on its way down.)
-                if te == a.shooter || safe || a.damage <= 0.0 {
+                // (Not who shot it, unless it came back at them.)
+                if (te == a.shooter && !a.back) || safe || a.damage <= 0.0 {
                     continue;
                 }
                 // (Not its own side, unless their factions are at war.)
-                if let (Some(x), Some(y)) = (a.team, tteam)
+                if te != a.shooter
+                    && let (Some(x), Some(y)) = (a.team, tteam)
                     && x.allied(*y)
                     && !crate::creatures::factions::hostile(factions.get(a.shooter).ok(), factions.get(te).ok())
                 {
@@ -411,7 +417,7 @@ fn lodged(
             if let Some(whole) = weapons.arrow.as_ref() {
                 commands.entity(e).insert(whole.sprite(angle));
             }
-            commands.entity(e).remove::<Lodged>().insert(Arrow { vel: Vec2::ZERO, shooter: l.shooter, team: l.team, damage: 0.0, crit: false, knock: 0.0, stun: 0.0, burning: 0.0, age: FLIGHT - 3.0, stuck: None, angle, slow: 1.0 });
+            commands.entity(e).remove::<Lodged>().insert(Arrow { vel: Vec2::ZERO, shooter: l.shooter, team: l.team, damage: 0.0, crit: false, knock: 0.0, stun: 0.0, burning: 0.0, age: FLIGHT - 3.0, stuck: None, angle, slow: 1.0, back: false });
             continue;
         };
         if player {

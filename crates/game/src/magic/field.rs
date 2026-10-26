@@ -391,6 +391,7 @@ pub fn repel(
         let by = fields.fields[i].by;
         s.pos = s.prev;
         s.vel = -s.vel;
+        s.back = true;
         if !ours(teams.get(s.caster).ok()) {
             s.caster = by;
         }

@@ -16057,7 +16057,7 @@ fn firewall_script(
 /// zombie's spark bolt cast at the player through it (4 s); `blast`: the
 /// same three, a repulsor opened right on the zombie (3 s); `launch`: one
 /// opened at the player's feet (1 s); `bounce`: the player's own spark bolt
-/// shot into one (2 s). `slow`: a slow
+/// shot into one (2 s), an arrow before it (1.5 s). `slow`: a slow
 /// field over the floor; a zombie charges through it, sand is dropped into
 /// it from above, a bolt cast through it. `lift`: a pit 24 deep dug there,
 /// sand in its bottom half, water over it, a rat in it; three updrafts cast
@@ -16076,6 +16076,7 @@ fn fields_script(
     arrows: Query<(&crate::archery::Arrow, &Transform)>,
     mut state: Local<(u8, f32, f32)>,
     mut fired: Local<std::collections::HashSet<u32>>,
+    weapons: Option<Res<crate::combat::Weapons>>,
 ) {
     if s.name != "fields" {
         return;
@@ -16146,6 +16147,12 @@ fn fields_script(
                 && let Some(bolt) = book.spells.iter().position(|d| d.id == "spark_bolt")
             {
                 casts.write(crate::magic::CastRequest { caster: me, spell: bolt, from, toward: Vec2::new(x + 100.0, fl + 16.0), alt: false });
+            }
+            // (And an arrow of its own, 1.5 s.)
+            if t >= 1.5 && fired.insert(15_000)
+                && let Some(w) = weapons.as_deref()
+            {
+                crate::archery::spawn_arrow(&mut commands, w, from + Vec2::new(4.0, 0.0), Vec2::new(420.0, 0.0), me, Some(crate::creatures::Team::Player), (12.0, false), 0.0, 0.0);
             }
         }
         // (`launch`: a repulsor opened at the player's feet, 1 s.)

@@ -58,8 +58,8 @@ const DT: f32 = (1.0 / TICK_HZ) as f32;
 const GRAVITY: f32 = 1350.0;
 /// An orb falls at this share even without a `Gravity` rune.
 const ORB_FALL: f32 = 0.3;
-/// A spell can hit its own caster once it has flown this long (a bouncing
-/// fireball can come back).
+/// A spell can hit its own caster once it has flown this long (not as it
+/// leaves the hand); one turned back (off a wall, a repulsor) at once.
 const SELF_SAFE: f32 = 0.3;
 /// Lightning looks for creatures within this angle of the aim (radians)...
 const LIGHTNING_CONE: f32 = 0.6;
@@ -259,6 +259,8 @@ pub struct Spell {
     held: bool,
     /// The share of time it flies at (a slow field's: `field::mark`).
     slow: f32,
+    /// Turned back (off a wall, a repulsor): it can hit its caster at once.
+    pub(super) back: bool,
 }
 
 impl Spell {
@@ -688,6 +690,7 @@ fn spawn_spell(commands: &mut Commands, f: &Fire, speed: f32, life: f32, bounces
             skips: if matches!(c.carrier, Carrier::Orb { .. }) { ORB_SKIPS } else { 0 },
             held: false,
             slow: 1.0,
+            back: false,
         },
         LightSource { color: color.map(|x| x * glow), flicker: 0.15 },
         Sprite::from_color(core, size),
@@ -976,6 +979,7 @@ fn fly(
                     let n = if n == Vec2::ZERO { -step.normalize_or_zero() } else { n.normalize() };
                     if s.bounces > 0 {
                         s.bounces -= 1;
+                        s.back = true;
                         if let Some((material, cells, burning)) = s.cast.shed() {
                             shed.push((s.pos, material.to_string(), cells, burning));
                         }
@@ -1029,7 +1033,7 @@ fn fly(
                 for e in &s.cast.trails {
                     sparks.trail(e, 1.0, s.pos, -s.vel, s.vel * 0.15);
                 }
-                let (caster, age) = (s.caster, s.age);
+                let (caster, age) = (s.caster, if s.back { SELF_SAFE + 1.0 } else { s.age });
                 // (Its body, one of its parts (a leg, a segment), or its
                 // picture (a head drawn above its box: a bolt through a
                 // zombie's head flew by it). Its caster's side it passes
