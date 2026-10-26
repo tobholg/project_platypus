@@ -395,7 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -15992,6 +15992,55 @@ fn bladesplash_script(
 /// the player there, then the player away for `PLATYPUS_DAYS` (default 1)
 /// while the world clock runs, then back: how much of the water is left.
 /// (`PLATYPUS_DAYS=0.25`: a quarter of a day, part of it.)
+/// `paint` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the player holds a
+/// brush spell (`PLATYPUS_BRUSH`, ice_wall) and draws: a column up off the
+/// floor 30 to its right (1-3 s), a bridge out from its top (3-5 s), then a
+/// stroke in the open air high over the floor (5.5-6.5 s). Logs the cells
+/// of what it set, of the loose, and its mana, each second.
+fn paint_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    book: Res<crate::magic::Spellbook>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut casts: MessageWriter<crate::magic::CastRequest>,
+    player: Query<(Entity, &Kinematics, Option<&crate::magic::Mana>), With<LocalPlayer>>,
+    mut next: Local<f32>,
+) {
+    if s.name != "paint" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((me, k, mana)) = player.single() else { return };
+    let id = std::env::var("PLATYPUS_BRUSH").unwrap_or_else(|_| "ice_wall".into());
+    let Some(spell) = book.spells.iter().position(|d| d.id == id) else { return };
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let x = k.body.pos.x + 30.0;
+    let lerp = |a: Vec2, b: Vec2, f: f32| a + (b - a) * f.clamp(0.0, 1.0);
+    let at = if (1.0..3.0).contains(&t) {
+        Some(lerp(Vec2::new(x, fl + 1.0), Vec2::new(x, fl + 30.0), (t - 1.0) / 2.0))
+    } else if (3.0..5.0).contains(&t) {
+        Some(lerp(Vec2::new(x, fl + 30.0), Vec2::new(x + 40.0, fl + 30.0), (t - 3.0) / 2.0))
+    } else if (5.5..6.5).contains(&t) {
+        Some(lerp(Vec2::new(x - 20.0, fl + 70.0), Vec2::new(x + 20.0, fl + 70.0), t - 5.5))
+    } else {
+        None
+    };
+    if let Some(toward) = at {
+        let from = k.body.pos + Vec2::new(0.0, 6.0);
+        casts.write(crate::magic::CastRequest { caster: me, spell, from, toward, alt: false });
+    }
+    if t >= *next {
+        *next = t + 1.0;
+        let mats = sim.world.materials();
+        let count = |name: &str| {
+            let Some(m) = mats.id(name) else { return 0 };
+            (k.body.pos.x as i32 - 40..k.body.pos.x as i32 + 120).flat_map(|xx| (fl as i32..fl as i32 + 90).map(move |yy| (xx, yy))).filter(|&(xx, yy)| sim.world.get(CellPos::new(xx, yy)).is_some_and(|c| c.material == m)).count()
+        };
+        info!("paint: t {t:.0} ice {} snow {} mana {:.0}", count("ice"), count("snow"), mana.map_or(0.0, |m| m.cur));
+    }
+}
+
 /// `dive` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a pool 70 deep dug
 /// in the floor, full of water, a torch stuck in its bottom; the player, a
 /// torch in its off hand, dropped in (1 s): it sinks, its torch goes out,

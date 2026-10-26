@@ -73,6 +73,24 @@ pub enum Carrier {
     /// by what's in the way): the open cells in a disc of `radius` filled.
     /// Its payloads go off at its heart.
     Cloud { material: String, radius: i32, range: f32 },
+    /// A brush, held (`brush.rs`): it paints where the cursor goes (out to
+    /// `range`, never through what's in the way), `radius` round: `solid`
+    /// where it's held up (touching ground, or what it painted that is, at
+    /// most `reach` cells out), else `loose`, falling; `per_cell` mana a
+    /// cell (loose, half). `set`: off a cell as it sets; `stream`: motes
+    /// running from the hand to the cursor.
+    Brush {
+        solid: String,
+        loose: String,
+        radius: f32,
+        range: f32,
+        reach: u8,
+        per_cell: f32,
+        #[serde(default)]
+        set: Option<Emitter>,
+        #[serde(default)]
+        stream: Option<Emitter>,
+    },
     /// Called down from above onto where it's aimed (out to `range`): its
     /// payloads ride something falling from `height` cells up at `speed`
     /// (a meteor: it lands on the first thing below); or, with

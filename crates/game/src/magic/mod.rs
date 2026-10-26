@@ -21,6 +21,7 @@
 //! A `Trigger` cast fires what's after it from where it lands.
 
 pub mod beam;
+mod brush;
 pub mod conjure;
 pub mod runes;
 pub mod spells;
@@ -286,6 +287,8 @@ impl Plugin for MagicPlugin {
             .add_message::<CastRequest>()
             .add_message::<Landed>()
             .init_resource::<Drinkers>()
+            .init_resource::<brush::Strokes>()
+            .init_resource::<brush::Painted>()
             .add_plugins(bevy::core_pipeline::fullscreen_material::FullscreenMaterialPlugin::<warp::Warp>::default())
             .init_resource::<beam::Beams>()
             .init_resource::<beam::BeamCanvas>()
@@ -471,6 +474,7 @@ fn fire(
     mut bodies: Query<Hittable>,
     drinkers: Res<Drinkers>,
     (parts, teams): (Query<&crate::creatures::body::parts::Parts>, Query<&crate::creatures::Team>),
+    (mut strokes, mut painted, mut mana, mut sounds): (ResMut<brush::Strokes>, ResMut<brush::Painted>, Query<&mut Mana>, MessageWriter<crate::sound::PlaySound>),
 ) {
     let halo = halo.map(|h| h.0.clone());
     let mut booms = Vec::new();
@@ -528,6 +532,21 @@ fn fire(
                     if *hold > 0.0 {
                         commands.spawn((Name::new("Conjured wall"), conjure::Held { min, max, material: material.clone(), left: *hold }));
                     }
+                }
+            }
+            Carrier::Brush { solid, loose, radius, range, reach, per_cell, set, stream } => {
+                let boxes: Vec<(Vec2, Vec2)> = bodies.iter().map(|(_, k, ..)| (k.body.pos, k.body.half)).collect();
+                let b = brush::Brush { solid, loose, radius: *radius, range: *range, reach: *reach, per_cell: *per_cell, look: set.as_ref(), stream: stream.as_ref() };
+                // (What it paints with: the caster's mana, a cell at a time.)
+                let mut left = mana.get(f.caster).map_or(f32::MAX, |m| m.cur);
+                let before = left;
+                let laid = brush::paint(&mut sim.world, &mut strokes, &mut painted, &mut sparks, f.caster, f.from, f.dir, f.reach, &b, &mut left, &boxes);
+                if let Ok(mut m) = mana.get_mut(f.caster) {
+                    m.cur = (m.cur - (before - left)).max(0.0);
+                }
+                // (Setting, it tinkles: now and then, not every tick.)
+                if laid && sim.world.tick().is_multiple_of(brush::SOUND_TICKS) {
+                    sounds.write(crate::sound::PlaySound::at("frost_set", f.from + f.dir * f.reach.min(*range)).volume(0.5));
                 }
             }
             Carrier::Cloud { material, radius, range } => {

@@ -20,6 +20,11 @@
 //         | Wall(material, width, height, range, hold): a wall of the material raised
 //           on the ground below where it's aimed (open cells only, not where a
 //           body is if it's solid); `hold` s: kept filled that long (fire)
+//         | Brush(solid, loose, radius, range, reach, per_cell, set, stream): held,
+//           it paints where it's aimed: `solid` where it's held up (ground, or
+//           what it painted, at most `reach` out), else `loose`, falling;
+//           `per_cell` mana a cell; `set`/`stream`: sparks as cells set, and
+//           along it (magic/brush.rs)
 //         | Cloud(material, radius, range): a disc of a gas conjured where it's aimed
 //         | Call(range, height, speed, sky, lightning): down from above onto where it's
 //           aimed: its payloads ride something falling from `height` up at `speed`
@@ -96,8 +101,12 @@
         (id: "ray", name: "Ray", mana: 0.25, color: (255, 255, 255), kind: Carrier(Beam(range: 225, width: 3))),
         (id: "cutting_ray", name: "Cutting ray", mana: 0.35, color: (255, 250, 230), kind: Carrier(Beam(range: 165, width: 5))),
         // Walls and clouds.
-        (id: "ice_wall", name: "Ice wall", mana: 22, color: (190, 230, 255), kind: Carrier(Wall(material: "ice", width: 12, height: 72, range: 210)),
-            look: (burst: (count: 40, life: (0.4, 1.0), colors: [(255, 255, 255), (200, 235, 255), (130, 190, 240)], speed: 75, spread: 1.4, gravity: 45, drag: 2, glow: true))),
+        // Painted (magic/brush.rs): ice where it's held up (ground, or ice it
+        // painted that is, 30 out at most), snow falling where it isn't.
+        (id: "ice_wall", name: "Ice brush", mana: 0, color: (190, 230, 255), kind: Carrier(Brush(solid: "ice", loose: "snow", radius: 2.3, range: 210, reach: 30, per_cell: 0.5,
+            set: Some((count: 4, life: (0.25, 0.6), colors: [(255, 255, 255), (210, 240, 255), (150, 205, 245)], speed: 30, spread: 3.14, gravity: 20, drag: 3, glow: true)),
+            stream: Some((count: 1, life: (0.15, 0.35), colors: [(240, 250, 255), (170, 215, 250)], speed: 40, spread: 0.3, drag: 2, glow: true)))),
+            look: (burst: (count: 0, life: (0.1, 0.2), colors: [(255, 255, 255)]))),
         (id: "fire_wall", name: "Fire wall", mana: 26, color: (255, 130, 40), kind: Carrier(Wall(material: "fire", width: 6, height: 45, range: 210, hold: 5)),
             look: (burst: (count: 40, life: (0.3, 0.8), colors: [(255, 250, 210), (255, 180, 60), (220, 70, 20)], speed: 105, spread: 1.4, gravity: -90, drag: 2, glow: true))),
         // An elder watcher's: a cloud of blight where it lands, lingering.
