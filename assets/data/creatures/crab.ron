@@ -8,6 +8,8 @@
     // Its box takes in its legs.
     size: (28, 24),
     health: 80,
+    // (Its shell turns arrows.)
+    profile: {pierce: 0.5},
     team: Enemy,
     kind: "beast",
     blood: "ichor",

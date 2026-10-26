@@ -3906,6 +3906,7 @@ fn kick_script(
 /// the bow in hand, a zombie held 70 to the right; the player fires full
 /// draws (the left button held 0.8 s, let go 0.3 s): four at its torso, then
 /// at its head (a fresh zombie). Logs its health after each.
+/// `PLATYPUS_BOW_TARGET`: another creature in its place.
 fn bowshot_script(
     mut commands: Commands,
     s: Res<Scenario>,
@@ -3924,7 +3925,7 @@ fn bowshot_script(
     }
     for f in felt.read() {
         if let Ok((_, c, zk, _)) = them.get(f.target)
-            && c.kind == "zombie"
+            && c.kind != "dummy"
         {
             info!("bowshot: struck {:.0} (meant {:.0}) at {:+.1},{:+.1} from its middle", f.dealt, f.meant, f.at.x - zk.body.pos.x, f.at.y - zk.body.pos.y);
         }
@@ -3944,7 +3945,7 @@ fn bowshot_script(
                 commands.entity(e).despawn();
             }
         }
-        crate::creatures::def::spawn_creature(&mut commands, "zombie", spot, |_| {});
+        crate::creatures::def::spawn_creature(&mut commands, &std::env::var("PLATYPUS_BOW_TARGET").unwrap_or_else(|_| "zombie".into()), spot, |_| {});
         *step = 1;
         *next = 1.5;
         return;
@@ -3952,7 +3953,7 @@ fn bowshot_script(
     // Held where it stands.
     let mut target = None;
     for (_, c, mut zk, h) in &mut them {
-        if c.kind != "zombie" || h.hp <= 0.0 {
+        if c.kind == "dummy" || c.kind == "sandbag" || h.hp <= 0.0 {
             continue;
         }
         let zk = &mut *zk;
@@ -3962,12 +3963,12 @@ fn bowshot_script(
         zk.loco.knock(&mut zk.body, Vec2::new(0.0, fall), 0.1);
         let head = *shots >= 4;
         let up = std::env::var("PLATYPUS_HEAD_UP").ok().and_then(|v| v.parse().ok()).unwrap_or(-2.0);
-        target = Some(zk.body.pos + if head { Vec2::new(0.0, zk.body.half.y + up) } else { Vec2::new(0.0, 2.0) });
+        target = Some(zk.body.pos + if head { Vec2::new(0.0, zk.body.half.y + up) } else { Vec2::new(0.0, 6.0) });
     }
     let Some(at) = target else {
         // (Dead: a fresh one, for the headshots.)
         if *step == 1 && t > *next {
-            crate::creatures::def::spawn_creature(&mut commands, "zombie", spot, |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, &std::env::var("PLATYPUS_BOW_TARGET").unwrap_or_else(|_| "zombie".into()), spot, |_| {});
             *next = t + 1.0;
         }
         mouse.release(MouseButton::Left);
@@ -3989,7 +3990,7 @@ fn bowshot_script(
     if *shots >= 9 {
         *step = 2;
     }
-    let hp: Vec<String> = them.iter().filter(|(_, c, ..)| c.kind == "zombie").map(|(_, _, _, h)| format!("{:.0}", h.hp)).collect();
+    let hp: Vec<String> = them.iter().filter(|(_, c, ..)| c.kind != "dummy" && c.kind != "sandbag").map(|(_, _, _, h)| format!("{:.0}", h.hp)).collect();
     // (Half a second after each, what it did.)
     if *logged < *shots && phase > 0.4 {
         *logged = *shots;

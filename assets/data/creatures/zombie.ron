@@ -69,8 +69,9 @@
     // does, sooner: `zones`), and it barely gives ground.
     poise: 40,
     heft: 4,
-    // Its head's the place to hit (half again); its body soaks it up.
-    zones: (head: 1.5, body: 0.6, arms: 0.8),
+    // Its head's the place to hit (twice over); its body takes a blow as
+    // it comes.
+    zones: (head: 2.0, body: 1.0, arms: 0.8),
     // Each its own pace: a pack closes in unevenly.
     pace: 0.3,
     brain: (

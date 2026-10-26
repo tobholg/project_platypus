@@ -1808,6 +1808,12 @@ fn apply_hits(
             sparks.emit(&weapons.file.hit, weapons.file.hit.count as usize, at, -h.dir, Vec2::ZERO);
         }
         let dealt = health.harm_by(damage, h.harm, || crate::death::blamed(&who, h.by, h.at, h.harm));
+        // (Most of a blow stopped (bone, a shell, iron, a spirit): it
+        // glances off, with a tink, so it's plain this is the wrong tool.)
+        if !player && damage > 1.0 && dealt < damage * GLANCE && matches!(h.harm, crate::creatures::Harm::Slash | crate::creatures::Harm::Pierce | crate::creatures::Harm::Blunt) {
+            sparks.emit(&GLANCED, GLANCED.count as usize, h.at, -h.dir, Vec2::ZERO);
+            sounds.write(crate::sound::PlaySound::at("glance", h.at).volume(0.6));
+        }
         let reaction = crate::creatures::body::hurt::reaction(damage, dealt);
         felt.write(Felt { target: h.target, meant: damage, dealt, share: dealt / health.max.max(1.0), harm: h.harm, at: h.at, dir: h.dir, weight: h.weight, crit: h.crit });
         // (A creature takes a share of a blow's push, and no more than so
@@ -2052,3 +2058,20 @@ fn draw(
         }
     }
 }
+
+/// A blow that gets less than this share of itself through glances off.
+const GLANCE: f32 = 0.4;
+
+/// A blow glancing off: pale sparks skittering back.
+static GLANCED: std::sync::LazyLock<crate::magic::runes::Emitter> = std::sync::LazyLock::new(|| crate::magic::runes::Emitter {
+    count: 7.0,
+    life: (0.08, 0.2),
+    colors: vec![(255, 255, 240), (220, 220, 210), (180, 180, 170)],
+    speed: 90.0,
+    spread: 0.9,
+    gravity: 200.0,
+    drag: 3.0,
+    size: 1.0,
+    jitter: 0.0,
+    glow: true,
+});

@@ -12,6 +12,9 @@
     name: "Necromancer",
     size: (12, 50),
     health: 140,
+    // (A robed caster behind its dead: shoot it first. Arrows go in as
+    // into anyone, not glancing off bone as the skeletons'.)
+    profile: {pierce: 1.0},
     heft: 2,
     poise: 25,
     team: Enemy,

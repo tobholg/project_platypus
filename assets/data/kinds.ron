@@ -15,7 +15,7 @@
     "beast": (label: "beast", profile: {fire: 1.5}),
     // Bugs and spiders: venom barely touches them; fire and cold do (cold
     // slows them).
-    "insect": (label: "insect", profile: {poison: 0.3, fire: 1.5, frost: 1.5}),
+    "insect": (label: "insect", profile: {poison: 0.3, fire: 1.5, frost: 1.5, pierce: 0.75}),
     // Bones and dead flesh: points pass through, blows break them; light
     // and fire undo them; the void feeds them.
     "undead": (label: "the undead", profile: {pierce: 0.5, slash: 0.75, blunt: 1.5, fire: 1.25, radiant: 2.0, void: -0.5, poison: 0.0}, cant: [poison]),

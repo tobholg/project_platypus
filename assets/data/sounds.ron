@@ -86,6 +86,7 @@
         "clang": (make: Clang(pitch: 750, ring: 0.05, length: 0.16, grit: 1.0, muffle: 3500), variants: 5, pitch: 0.08, volume: 0.55),
         "bounce": (make: Clang(pitch: 1100, ring: 0.06, length: 0.15, grit: 0.4, muffle: 5000), variants: 3, pitch: 0.05, volume: 0.45),
         "slam": (make: Boom(length: 0.7, sub: 1.2), variants: 2, volume: 0.8),
+        "glance": (make: Clang(pitch: 2900, ring: 0.12, length: 0.12, grit: 0.3), variants: 3, pitch: 0.12, volume: 0.45),
         "bow_ready": (make: Blip(pitch: 1500, to: 2100, length: 0.06), variants: 1, volume: 0.3),
         "bow": (make: Whoosh(from: 1800, to: 700, length: 0.12, q: 2.5), variants: 3, pitch: 0.08, volume: 0.4),
 
