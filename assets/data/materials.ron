@@ -431,9 +431,9 @@
         (name: "blight_fog", kind: Gas, heavy: true, density: 3, dispersion: 4, lifetime: (200, 255), decay_every: 12, corrosive: 9, glow: (60, 18, 90), opacity: 18, colors: [(130, 60, 160), (104, 44, 136), (150, 84, 180)]),
         (name: "methane",  kind: Gas, density: 1, dispersion: 2, flammability: 255, ignites_at: 500, explodes: (radius: 15, power: 70, chance: 40), colors: [(120, 150, 110), (134, 164, 120)]),
         // Firedamp: a coal seam's gas, gathered under a cave's roof (caves.rs):
-        // a faint haze; an open flame sets it off (a flash and a modest blast,
+        // a faint haze, glowing dimly in the dark; an open flame sets it off (a flash and a modest blast,
         // not methane's), and the seam round it burns on.
-        (name: "firedamp", kind: Gas, density: 1, dispersion: 2, flammability: 255, ignites_at: 320, explodes: (radius: 4, power: 18, chance: 10), opacity: 5, colors: [(190, 196, 140), (176, 186, 128)]),
+        (name: "firedamp", kind: Gas, density: 1, dispersion: 2, flammability: 255, ignites_at: 320, explodes: (radius: 4, power: 18, chance: 10), opacity: 5, glow: (5, 7, 2), pulse: 140, colors: [(190, 196, 140), (176, 186, 128)]),
         // A toxic cloud's (the acid staff): heavy, so it sinks and pools in
         // pits and down shafts; eats at what breathes it; flammable, and a
         // spark flashes it through with pops.

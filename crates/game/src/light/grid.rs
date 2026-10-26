@@ -994,10 +994,17 @@ fn transpose(v: &[f32], w: usize, h: usize) -> Vec<f32> {
     out
 }
 
-/// Incandescence as light: dull red from ~480 °C to yellow-white.
+/// Incandescence as light: a faint red from hot enough to burn a touch
+/// (`HARMFUL_CONTACT`: a warm floor is seen in the dark), dull red from
+/// ~480 °C to yellow-white.
 fn heat_glow(celsius: i32) -> Rgb {
-    if celsius <= 480 {
+    let warm = platypus_sim::hazard::HARMFUL_CONTACT;
+    if celsius <= warm {
         return [0.0; 3];
+    }
+    if celsius <= 480 {
+        let f = (celsius - warm) as f32 / (480 - warm) as f32;
+        return [0.09 + 0.16 * f, 0.012 + 0.038 * f, 0.005 + 0.015 * f];
     }
     let k = ((celsius - 480) as f32 / 1000.0).clamp(0.0, 1.0);
     [0.25 + 0.75 * k, 0.05 + 0.55 * k * k, 0.02 + 0.3 * k * k * k]

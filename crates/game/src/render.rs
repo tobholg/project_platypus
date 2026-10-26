@@ -194,7 +194,8 @@ pub(crate) fn cell_rgba(mats: &MaterialTable, c: Cell, ambient: i32, dim: f32, l
             *ch = (*ch as f32 * dim) as u8;
         }
     }
-    if c.heat > 300 {
+    // (Hot enough to burn a touch: it glows, faintly at first.)
+    if ambient + c.heat as i32 > platypus_sim::hazard::HARMFUL_CONTACT {
         glow(&mut rgba, ambient + c.heat as i32);
     }
     if c.flags & flags::BURNING != 0 {
@@ -300,18 +301,31 @@ const SHADOW_REACH: f32 = 9.0;
 fn glow(rgba: &mut [u8; 4], celsius: i32) {
     const START: f32 = 450.0;
     let t = celsius as f32;
+    // (From hot enough to burn a touch (`HARMFUL_CONTACT`) to where it's red
+    // hot: a dull red creeping in, so nothing that hurts looks cold.)
+    let warm = platypus_sim::hazard::HARMFUL_CONTACT as f32;
     if t <= START {
+        let mix = WARM_FIRST + (WARM_MIX - WARM_FIRST) * ((t - warm) / (START - warm)).clamp(0.0, 1.0);
+        for (ch, h) in rgba.iter_mut().zip(WARM) {
+            *ch = (*ch as f32 + (h - *ch as f32) * mix) as u8;
+        }
         return;
     }
     let k = ((t - START) / 1100.0).clamp(0.0, 1.0);
     let ramp = |a: [f32; 3], b: [f32; 3], f: f32| [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
     let (red, orange, white) = ([150.0, 24.0, 12.0], [255.0, 118.0, 24.0], [255.0, 236.0, 170.0]);
     let hot = if k < 0.5 { ramp(red, orange, k * 2.0) } else { ramp(orange, white, (k - 0.5) * 2.0) };
-    let mix = (0.35 + 0.65 * k) * ((t - START) / 150.0).min(1.0);
+    let mix = (WARM_MIX + (0.35 - WARM_MIX) * ((t - START) / 150.0).min(1.0)).max(WARM_MIX) + 0.65 * k;
     for (ch, h) in rgba.iter_mut().zip(hot) {
         *ch = (*ch as f32 + (h - *ch as f32) * mix) as u8;
     }
 }
+
+/// What a cell warm enough to burn a touch takes on (a dull red): this much
+/// of it from the first, this much by the time it's red hot.
+const WARM: [f32; 3] = [140.0, 26.0, 14.0];
+const WARM_FIRST: f32 = 0.16;
+const WARM_MIX: f32 = 0.32;
 
 /// Byte offset of a chunk cell in its texture (texture row 0 = top).
 #[inline]
