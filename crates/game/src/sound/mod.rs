@@ -101,6 +101,8 @@ impl PlaySound {
 
 /// Fainter than this far from the camera (cells), an effect isn't played.
 const HEAR: f32 = 630.0;
+/// A sound made in a slow field plays at this share of its pitch.
+const SLOWED_PITCH: f32 = 0.45;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Volumes {
@@ -337,6 +339,7 @@ fn play(
     mut last: Local<HashMap<String, f32>>,
     mut rng: Local<Option<synth::Rng>>,
     mut unknown: Local<std::collections::HashSet<String>>,
+    fields: Option<Res<crate::magic::field::Fields>>,
 ) {
     let rng = rng.get_or_insert_with(|| synth::Rng::new(7));
     let now = time.elapsed_secs();
@@ -363,7 +366,9 @@ fn play(
             info!("sound: {name}{}", ask.at.map_or(String::new(), |a| format!(" at ({:.0}, {:.0})", a.x, a.y)));
         }
         let take = takes[(rng.unit() * takes.len() as f32) as usize % takes.len()].clone();
-        let speed = (ask.pitch * (1.0 + def.pitch * (rng.unit() * 2.0 - 1.0))).max(0.05) as f64;
+        // (Made in a slow field: drawn out, deep.)
+        let slowed = fields.as_ref().zip(ask.at).is_some_and(|(f, at)| f.slow_at(at));
+        let speed = (ask.pitch * if slowed { SLOWED_PITCH } else { 1.0 } * (1.0 + def.pitch * (rng.unit() * 2.0 - 1.0))).max(0.05) as f64;
         let mut e = commands.spawn((SfxPool, SamplePlayer::new(take).with_volume(Volume::Linear(def.volume * ask.volume)), PlaybackSettings { speed, ..default() }));
         if let Some(at) = ask.at {
             e.insert(Transform::from_translation(at.extend(0.0)));

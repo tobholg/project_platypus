@@ -664,7 +664,7 @@ pub fn free_spot(world: &platypus_sim::World, center: Vec2, half: Vec2, reach: i
 const DT: f32 = (1.0 / TICK_HZ) as f32;
 
 /// One movement code path for every creature.
-type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, (Option<&'a body::elements::Chilled>, Option<&'a body::elements::Coated>, Has<body::goo::Goo>, Has<Phasing>, Option<&'a mut Tugged>), Option<&'a mut FallTrack>, Has<WebWalker>, Option<&'a crate::gear::hook::Rope>, Has<player::LocalPlayer>, Option<&'a mut StepEase>, Has<body::hurt::Faltering>);
+type Movers<'a> = (Entity, &'a mut Kinematics, &'a MoveStats, &'a Controls, (Option<&'a body::elements::Chilled>, Option<&'a body::elements::Coated>, Has<body::goo::Goo>, Has<Phasing>, Option<&'a mut Tugged>, Option<&'a crate::magic::field::Slowed>), Option<&'a mut FallTrack>, Has<WebWalker>, Option<&'a crate::gear::hook::Rope>, Has<player::LocalPlayer>, Option<&'a mut StepEase>, Has<body::hurt::Faltering>);
 
 pub(crate) fn move_creatures(
     sim: Res<SimWorld>,
@@ -677,16 +677,18 @@ pub(crate) fn move_creatures(
     coatings: Res<body::elements::Coatings>,
 ) {
     let grid = WorldGrid(&sim.world);
-    for (entity, mut k, stats, controls, (chilled, coated, gooey, phasing, tug), track, web_walker, rope, player, ease, faltering) in &mut q {
+    for (entity, mut k, stats, controls, (chilled, coated, gooey, phasing, tug, slowed), track, web_walker, rope, player, ease, faltering) in &mut q {
         // Frozen until the ground under it is loaded.
         if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
             continue;
         }
         let k = &mut *k;
         k.prev_pos = k.body.pos;
+        // (In a slow field, its time runs slow: `magic::field`.)
+        let dt = DT * crate::magic::field::share(slowed);
         // (Through everything, as it's steered.)
         if phasing {
-            k.body.pos += k.body.vel * DT;
+            k.body.pos += k.body.vel * dt;
             continue;
         }
         let slowed;
@@ -712,9 +714,9 @@ pub(crate) fn move_creatures(
         // (A climber can hold on to the wall behind it; a spider to its
         // web, anywhere in it.)
         k.loco.backed = stats.cling && (backed(&sim.world, k.body.pos) || (web_walker && stuck_in(&sim.world, &k.body)));
-        let ev = k.loco.steer(stats, &controls.0, &mut k.body, DT);
+        let ev = k.loco.steer(stats, &controls.0, &mut k.body, dt);
         if let Some((at, len)) = tether {
-            platypus_physics::tether(&mut k.body, at, len, DT);
+            platypus_physics::tether(&mut k.body, at, len, dt);
         }
         if ev.dashed {
             dashed.write(crate::combat::Dashed(entity));
@@ -732,11 +734,11 @@ pub(crate) fn move_creatures(
         let before = k.body.vel;
         // (Tugged: drawn that way too, this tick only; how it steers isn't.)
         let drift = tug.map_or(Vec2::ZERO, |mut t| {
-            t.left -= DT;
+            t.left -= dt;
             if t.left > 0.0 { (t.to - k.body.pos).normalize_or_zero() * t.speed } else { Vec2::ZERO }
         });
         k.body.vel += drift;
-        let contacts = move_and_collide(&grid, &mut k.body, DT);
+        let contacts = move_and_collide(&grid, &mut k.body, dt);
         // (What a wall stopped is stopped; the rest goes back as it steers.)
         let v = k.body.vel;
         k.body.vel = Vec2::new(if v.x == 0.0 { 0.0 } else { v.x - drift.x }, if v.y == 0.0 { 0.0 } else { v.y - drift.y });

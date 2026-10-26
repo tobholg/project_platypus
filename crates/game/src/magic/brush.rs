@@ -139,7 +139,7 @@ fn chill(world: &mut World, at: CellPos, r: i32) {
 }
 
 /// Smooth value noise (0..1) over the world, lumps `size` cells across.
-fn lumps(x: f32, y: f32, size: f32, salt: u64) -> f32 {
+pub(super) fn lumps(x: f32, y: f32, size: f32, salt: u64) -> f32 {
     let (fx, fy) = (x / size, y / size);
     let (x0, y0) = (fx.floor(), fy.floor());
     let (tx, ty) = (fx - x0, fy - y0);

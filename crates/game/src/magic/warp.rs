@@ -6,6 +6,10 @@
 //! sharp wavefronts racing out along it (a push, stretching the picture
 //! outward) or in (a pull, squeezing it), brightest at the fronts, fading at
 //! the cone's edges. One at a time (the strongest); strength 0 is off.
+//!
+//! The same pass bends the light through painted fields (`fields`, see
+//! `FieldWarp`). (One pass for both: Bevy keeps one fullscreen pipeline a
+//! camera, so a second material would draw with the first's.)
 
 use bevy::core_pipeline::fullscreen_material::FullscreenMaterial;
 use bevy::core_pipeline::{Core2d, Core2dSystems};
@@ -36,6 +40,8 @@ pub struct Warp {
     /// Which way the cone points, on screen (x right, y down), in units of
     /// the screen's height.
     pub dir: Vec2,
+    /// Painted fields in view (`field::show`).
+    pub fields: FieldWarp,
 }
 
 impl FullscreenMaterial for Warp {
@@ -50,4 +56,26 @@ impl FullscreenMaterial for Warp {
     fn schedule_configs(system: ScheduleConfigs<BoxedSystem>) -> ScheduleConfigs<BoxedSystem> {
         system.in_set(Core2dSystems::PostProcess)
     }
+}
+
+/// Painted fields (`field.rs`) in view, bending the light each its own
+/// way (`assets/shaders/warp.wgsl`, after the well's bend): a repulsor
+/// magnifies like glass, rippling where it's struck; a slow field wavers,
+/// smeared and greyed to violet; an updraft streams upward. No borders:
+/// each fades out toward its edge.
+#[derive(Clone, Copy, ShaderType, Debug, Default)]
+pub struct FieldWarp {
+    pub time: f32,
+    /// Screen width over height.
+    pub aspect: f32,
+    /// Cells a screen's height (patterns are in cells).
+    pub scale: f32,
+    /// How many of `shapes` are fields (0: none in view).
+    pub count: f32,
+    /// Two a field: (middle or foot in screen UV, its size in screen
+    /// heights, its kind: 1 repulsor, 2 slow, 3 updraft), (a column's top
+    /// in screen UV, its strength, a seed, -).
+    pub shapes: [Vec4; 16],
+    /// Blows on repulsors: screen UV, age (s), how hard (0..1).
+    pub ripples: [Vec4; 8],
 }

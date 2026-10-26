@@ -102,6 +102,23 @@ pub enum Carrier {
         #[serde(default)]
         sound: Option<String>,
     },
+    /// A field opened where it's aimed (out to `range`, up to the rock in
+    /// the way unless `through`), `lasts` s (magic/field.rs): a repulsor or
+    /// a slow field (a bubble `radius` round) or an updraft (a column
+    /// `radius` either side, up to the rock above); a caster keeps `most`
+    /// of a kind.
+    Field {
+        kind: super::field::FieldKind,
+        radius: f32,
+        range: f32,
+        lasts: f32,
+        #[serde(default = "two")]
+        most: usize,
+        #[serde(default)]
+        through: bool,
+        #[serde(default)]
+        sound: Option<String>,
+    },
     /// Called down from above onto where it's aimed (out to `range`): its
     /// payloads ride something falling from `height` cells up at `speed`
     /// (a meteor: it lands on the first thing below); or, with
@@ -241,6 +258,10 @@ pub struct Emitter {
 
 fn all_round() -> f32 {
     std::f32::consts::PI
+}
+
+fn two() -> usize {
+    2
 }
 
 fn one_cell() -> f32 {

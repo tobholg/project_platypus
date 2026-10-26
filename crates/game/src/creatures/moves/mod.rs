@@ -448,7 +448,7 @@ pub(crate) fn clear(sim: &SimWorld, a: Vec2, b: Vec2) -> bool {
     })
 }
 
-type Mover<'a> = (Entity, &'a mut Moves, &'a mut Kinematics, &'a mut Controls, Option<&'a mut Rear>, Option<&'a mut Animator>);
+type Mover<'a> = (Entity, &'a mut Moves, &'a mut Kinematics, &'a mut Controls, Option<&'a mut Rear>, Option<&'a mut Animator>, Option<&'a crate::magic::field::Slowed>);
 type Prey<'a> = (Entity, &'a Kinematics, &'a Team);
 
 /// What a move goes for: where it is, how it's moving, its half size.
@@ -538,7 +538,7 @@ pub fn run(
     // anything with a side, a foe as much as you.)
     let prey: Vec<Quarry> = q.p1().iter().map(|(e, k, _)| Quarry { e, pos: k.body.pos, vel: k.body.vel, half: k.body.half, safe: dodging.contains(e) }).collect();
     let mut movers = q.p0();
-    for (e, mut moves, mut k, mut c, rear, mut anim) in &mut movers {
+    for (e, mut moves, mut k, mut c, rear, mut anim, slowed) in &mut movers {
         let Some(mut rear) = rear else {
             commands.entity(e).insert(Rear::default());
             continue;
@@ -801,7 +801,8 @@ pub fn run(
                 _ => {}
             }
         }
-        d.t += DT;
+        // (In a slow field, slowly.)
+        d.t += DT * crate::magic::field::share(slowed);
     }
 }
 

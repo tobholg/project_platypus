@@ -1269,7 +1269,7 @@ pub fn guard(mut commands: Commands, mut q: Query<(Entity, &mut Invulnerable, &m
     }
 }
 
-type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>, Option<&'a Invulnerable>, Option<&'a crate::gear::hook::Rope>);
+type Swinger<'a> = (Entity, &'a mut Swing, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Stamina>, Option<&'a crate::gear::Stats>, Option<&'a crate::gear::Equipment>, Option<&'a Invulnerable>, (Option<&'a crate::gear::hook::Rope>, Option<&'a crate::magic::field::Slowed>));
 type Target<'a> = (
     Entity,
     &'a Kinematics,
@@ -1302,7 +1302,7 @@ fn swing(
     blades.0.clear();
     let Some(weapons) = weapons else { return };
     let none = crate::gear::Stats::default();
-    for (me, mut s, k, hand, team, mut stamina, stats, eq, inv, rope) in &mut swingers {
+    for (me, mut s, k, hand, team, mut stamina, stats, eq, inv, (rope, slowed)) in &mut swingers {
         // (Grappled mid-swing: a down-strike doesn't bounce, a plunge stops.)
         let roped = rope.is_some_and(|r| r.roped());
         if roped && s.down {
@@ -1327,7 +1327,7 @@ fn swing(
             mv.recovery = mv.recovery.min(DOWN_BACK);
             mv.thrust += DOWN_REACH;
         }
-        s.t += DT * stats.mult(crate::gear::Stat::AttackSpeed);
+        s.t += DT * stats.mult(crate::gear::Stat::AttackSpeed) * crate::magic::field::share(slowed);
         s.rebound -= DT;
         let grounded = k.loco.grounded();
         // A plunge: live until it lands (then it slams), diving on the way.

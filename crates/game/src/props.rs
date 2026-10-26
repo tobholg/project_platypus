@@ -96,13 +96,14 @@ fn age_glowsticks(mut commands: Commands, mut q: Query<(Entity, &mut Glowstick, 
 }
 
 /// Ballistic flight with bounces.
-pub fn fly(sim: Res<SimWorld>, mut q: Query<(&mut Kinematics, &Thrown)>) {
+pub fn fly(sim: Res<SimWorld>, mut q: Query<(&mut Kinematics, &Thrown, Option<&crate::magic::field::Slowed>)>) {
     let grid = WorldGrid(&sim.world);
-    for (mut k, thrown) in &mut q {
+    for (mut k, thrown, slowed) in &mut q {
         // At rest on the ground: nothing to do until something pushes it or
         // what it lies on goes (a battlefield of bodies costs next to
         // nothing).
-        if platypus_physics::resting(&grid, &k.body) {
+        // (Lifted by an updraft, it isn't resting.)
+        if k.body.vel.y <= 0.0 && platypus_physics::resting(&grid, &k.body) {
             if k.prev_pos != k.body.pos {
                 k.prev_pos = k.body.pos;
             }
@@ -110,9 +111,10 @@ pub fn fly(sim: Res<SimWorld>, mut q: Query<(&mut Kinematics, &Thrown)>) {
         }
         let k = &mut *k;
         k.prev_pos = k.body.pos;
-        k.body.vel.y -= GRAVITY * DT;
+        let dt = DT * crate::magic::field::share(slowed);
+        k.body.vel.y -= GRAVITY * dt;
         let before = k.body.vel;
-        let c = move_and_collide(&grid, &mut k.body, DT);
+        let c = move_and_collide(&grid, &mut k.body, dt);
         let e = thrown.bounce;
         if c.ground || c.ceiling {
             k.body.vel.y = if before.y.abs() > 60.0 { -before.y * e } else { 0.0 };

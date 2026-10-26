@@ -395,7 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script, fields_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -16047,6 +16047,157 @@ fn firewall_script(
             .map(|(_, c, ck, ch)| format!("{} {:+.0} ({:.0} hp)", c.kind, ck.body.pos.x - wall, ch.hp))
             .collect();
         info!("firewall: t {t:.1} {}", line.join(", "));
+    }
+}
+
+/// `fields` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the player
+/// (kept alive) casts a field 30 to its right (`PLATYPUS_FIELD`), again as
+/// it runs out: `repulse` (default): a bubble of force over the floor; a zombie, a
+/// rat and a skeleton archer put 70 beyond it, hunting the player, and a
+/// zombie's spark bolt cast at the player through it (4 s). `slow`: a slow
+/// field over the floor; a zombie charges through it, sand is dropped into
+/// it from above, a bolt cast through it. `lift`: a pit 24 deep dug there,
+/// sand in its bottom half, water over it, a rat in it; three updrafts cast
+/// up from its floor; at 7 s the player is put in it to
+/// ride it. Logs each half second.
+fn fields_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    book: Res<crate::magic::Spellbook>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut casts: MessageWriter<crate::magic::CastRequest>,
+    mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health, Option<&mut crate::magic::Mana>), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
+    spells: Query<&crate::magic::Spell>,
+    arrows: Query<(&crate::archery::Arrow, &Transform)>,
+    mut state: Local<(u8, f32, f32)>,
+    mut fired: Local<std::collections::HashSet<u32>>,
+) {
+    if s.name != "fields" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let kind = std::env::var("PLATYPUS_FIELD").unwrap_or_else(|_| "repulse".into());
+    let Ok((me, mut k, mut h, mana)) = player.single_mut() else { return };
+    if h.hp < h.max {
+        info!("fields: t {t:.2} the player was hurt {:.0} ({:?})", h.max - h.hp, h.recent.last().map(|r| r.cause.clone()));
+    }
+    h.hp = h.max;
+    if let Some(mut m) = mana {
+        m.cur = m.max;
+    }
+    let id = match kind.as_str() {
+        "slow" => "slow_field",
+        "lift" => "updraft",
+        _ => "repulsor",
+    };
+    let Some(spell) = book.spells.iter().position(|d| d.id == id) else { return };
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let (step, next, home) = &mut *state;
+    if *step == 0 {
+        *home = k.body.pos.x;
+    }
+    let x = *home + 30.0;
+    // (The updrafts cast from over the pit, straight down into it.)
+    let from = if kind == "lift" { Vec2::new(x, fl + 30.0) } else { k.body.pos + Vec2::new(0.0, 6.0) };
+    // Cast once at the start, and again as it runs out.
+    let mut cast = |toward: Vec2, at: f32| {
+        if t >= at && fired.insert((at * 10.0) as u32) {
+            casts.write(crate::magic::CastRequest { caster: me, spell, from, toward, alt: false });
+        }
+    };
+    match kind.as_str() {
+        "slow" => {
+            cast(Vec2::new(x, fl + 14.0), 0.5);
+            cast(Vec2::new(x, fl + 14.0), 8.0);
+        }
+        "lift" => {
+            if *step == 0 && t > 0.3 {
+                let (sand, water) = (sim.materials().id("sand"), sim.materials().id("water"));
+                if let (Some(sand), Some(water)) = (sand, water) {
+                    for xx in x as i32 - 15..x as i32 + 15 {
+                        for yy in fl as i32 - 24..fl as i32 {
+                            let m = if yy < fl as i32 - 12 { sand } else { water };
+                            sim.world.set(CellPos::new(xx, yy), platypus_sim::Cell::new(m, 128));
+                        }
+                    }
+                }
+            }
+            cast(Vec2::new(x, fl - 22.0), 0.6);
+            cast(Vec2::new(x - 9.0, fl - 22.0), 1.0);
+            cast(Vec2::new(x + 9.0, fl - 22.0), 1.4);
+            if (7.0..7.1).contains(&t) {
+                k.body.pos = Vec2::new(x, fl + 10.0);
+                k.body.vel = Vec2::ZERO;
+            }
+        }
+        _ => {
+            cast(Vec2::new(x, fl + 16.0), 0.5);
+            cast(Vec2::new(x, fl + 16.0), 7.5);
+        }
+    }
+    if *step == 0 && t > 2.2 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        let kinds: &[&str] = match kind.as_str() {
+            "slow" => &["zombie"],
+            "lift" => &["rat"],
+            _ => &["zombie", "rat_lithe", "skeleton_archer"],
+        };
+        for (i, kind_) in kinds.iter().enumerate() {
+            let at = if kind == "lift" { Vec2::new(x, fl - 8.0) } else { Vec2::new(x + 70.0 + i as f32 * 14.0, fl + 14.0) };
+            crate::creatures::def::spawn_creature(&mut commands, kind_, at, |_| {});
+        }
+        *step = 1;
+    }
+    // A bolt cast at the player by the zombie, through the field.
+    if *step == 1 && t > 4.0 && kind != "lift" {
+        *step = 2;
+        if let (Some(bolt), Some((z, _, zk, _))) = (book.spells.iter().position(|d| d.id == "spark_bolt"), them.iter().find(|(_, c, ..)| c.kind == "zombie")) {
+            casts.write(crate::magic::CastRequest { caster: z, spell: bolt, from: zk.body.pos, toward: k.body.pos, alt: false });
+        }
+    }
+    // Sand dropped into the slow field from above.
+    if kind == "slow" && (3.0..3.05).contains(&t)
+        && let Some(sand) = sim.materials().id("sand")
+    {
+        for xx in x as i32 - 4..x as i32 + 4 {
+            for yy in fl as i32 + 60..fl as i32 + 66 {
+                sim.world.set(CellPos::new(xx, yy), platypus_sim::Cell::new(sand, 128));
+            }
+        }
+    }
+    if t >= *next {
+        *next = t + 0.5;
+        let line: Vec<String> = them
+            .iter()
+            .filter(|(_, c, ..)| c.kind != "dummy" && c.kind != "sandbag")
+            .map(|(_, c, ck, ch)| format!("{} {:+.0},{:+.0} v{:.0} ({:.0} hp)", c.kind, ck.body.pos.x - x, ck.body.pos.y - fl, ck.body.vel.length(), ch.hp))
+            .collect();
+        let bolts: Vec<String> = spells.iter().map(|b| format!("{:+.0}{}", b.at().x - x, if b.caster() == me { " mine" } else { "" })).collect();
+        let shafts: Vec<String> = arrows.iter().filter(|(a, _)| a.flying()).map(|(a, tf)| format!("{:+.0}{}", tf.translation.x - x, if a.shooter() == me { " mine" } else { "" })).collect();
+        let mats = sim.world.materials();
+        let count = |name: &str, lo: i32, hi: i32| {
+            let Some(m) = mats.id(name) else { return 0 };
+            (x as i32 - 15..x as i32 + 15).flat_map(|xx| (lo..hi).map(move |yy| (xx, yy))).filter(|&(xx, yy)| sim.world.get(CellPos::new(xx, yy)).is_some_and(|c| c.material == m)).count()
+        };
+        let sand_low = mats.id("sand").and_then(|m| (fl as i32..fl as i32 + 70).find(|&yy| (x as i32 - 6..x as i32 + 6).any(|xx| sim.world.get(CellPos::new(xx, yy)).is_some_and(|c| c.material == m)))).map_or(-1, |yy| yy - fl as i32);
+        info!(
+            "fields: t {t:.1} [{}] bolts [{}] arrows [{}] pit sand {} water {} | sand above floor from {} | me {:+.0},{:+.0}",
+            line.join(", "),
+            bolts.join(" "),
+            shafts.join(" "),
+            count("sand", fl as i32 - 24, fl as i32),
+            count("water", fl as i32 - 24, fl as i32),
+            sand_low,
+            k.body.pos.x - x,
+            k.body.pos.y - fl
+        );
     }
 }
 

@@ -27,6 +27,7 @@ pub mod runes;
 pub mod spells;
 pub mod void;
 pub mod warp;
+pub mod field;
 pub mod well;
 
 use std::collections::HashMap;
@@ -256,6 +257,8 @@ pub struct Spell {
     skips: u8,
     /// Held in stasis this tick (`void::stasis`): it waits.
     held: bool,
+    /// The share of time it flies at (a slow field's: `field::mark`).
+    slow: f32,
 }
 
 impl Spell {
@@ -290,11 +293,12 @@ impl Plugin for MagicPlugin {
             .init_resource::<brush::Strokes>()
             .init_resource::<brush::Painted>()
             .init_resource::<brush::Kept>()
+            .init_resource::<field::Fields>()
             .add_plugins(bevy::core_pipeline::fullscreen_material::FullscreenMaterialPlugin::<warp::Warp>::default())
             .init_resource::<beam::Beams>()
             .init_resource::<beam::BeamCanvas>()
             .init_resource::<beam::BeamLights>()
-            .add_systems(Update, (reload_runes, give_mana, place_spells, well::give_warp, well::show))
+            .add_systems(Update, (reload_runes, give_mana, place_spells, well::give_warp, well::show, field::show.after(well::show)))
             .add_systems(PostUpdate, beam::draw.before(bevy::transform::TransformSystems::Propagate))
             .init_resource::<void::Acts>()
             .init_resource::<void::Pairs>()
@@ -304,10 +308,16 @@ impl Plugin for MagicPlugin {
             // and a blade swung this tick meets what's on its way in first:
             // `combat::swing` cuts a spit out of the air a plunge closes on.
             // Unordered, the plunge sometimes moved onto it and was struck.)
-            .add_systems(FixedUpdate, (recharge, request, fire, void::stasis, fly.before(crate::creatures::move_creatures), void::act, well::channel, conjure::hold, brush::keep, brush::flare).chain().in_set(TickSet::Bodies).before(crate::creatures::body::hurt::notice))
+            .add_systems(FixedUpdate, (recharge, request, fire, void::stasis, field::age, field::mark, fly.before(crate::creatures::move_creatures), void::act, well::channel, conjure::hold, brush::keep, brush::flare).chain().in_set(TickSet::Bodies).before(crate::creatures::body::hurt::notice))
             // (What hunts stops at a painted wall of fire: after brains have
             // their say, before bodies move.)
             .add_systems(FixedUpdate, brush::wary.after(crate::creatures::brain::BrainSet).before(crate::creatures::move_creatures))
+            // (A repulsor throws back what moved into it; what's loose in an
+            // updraft rises, and what's in a slow field waits, before the
+            // cells step; what flew there, after.)
+            .add_systems(FixedUpdate, field::repel.in_set(TickSet::Bodies).after(crate::creatures::move_creatures).before(crate::creatures::body::hurt::notice))
+            .add_systems(FixedUpdate, field::cells.in_set(TickSet::Cells).before(crate::world::step_cells))
+            .add_systems(FixedUpdate, field::motes.in_set(TickSet::Cells).after(crate::world::step_cells))
             .add_systems(
                 FixedUpdate,
                 (void::pin, void::through, void::age).chain().in_set(TickSet::Bodies).after(void::act).after(crate::creatures::move_creatures).after(crate::props::fly),
@@ -478,7 +488,7 @@ fn fire(
     mut bodies: Query<Hittable>,
     drinkers: Res<Drinkers>,
     (parts, teams): (Query<&crate::creatures::body::parts::Parts>, Query<&crate::creatures::Team>),
-    (mut strokes, mut painted, mut kept, mut mana, mut sounds): (ResMut<brush::Strokes>, ResMut<brush::Painted>, ResMut<brush::Kept>, Query<&mut Mana>, MessageWriter<crate::sound::PlaySound>),
+    (mut strokes, mut painted, mut kept, mut mana, mut sounds, mut fields): (ResMut<brush::Strokes>, ResMut<brush::Painted>, ResMut<brush::Kept>, Query<&mut Mana>, MessageWriter<crate::sound::PlaySound>, ResMut<field::Fields>),
 ) {
     let halo = halo.map(|h| h.0.clone());
     let mut booms = Vec::new();
@@ -553,6 +563,13 @@ fn fire(
                     && let Some(name) = sound
                 {
                     sounds.write(crate::sound::PlaySound::at(name.clone(), f.from + f.dir * f.reach.min(*range)).volume(0.5));
+                }
+            }
+            Carrier::Field { kind, radius, range, lasts, most, through, sound } => {
+                let c = field::Cast { kind: *kind, radius: *radius, range: *range, lasts: *lasts, most: *most, through: *through };
+                let at = field::open(&sim.world, &mut fields, &mut sparks, f.caster, f.from, f.dir, f.reach, &c);
+                if let Some(name) = sound {
+                    sounds.write(crate::sound::PlaySound::at(name.clone(), at));
                 }
             }
             Carrier::Cloud { material, radius, range } => {
@@ -670,6 +687,7 @@ fn spawn_spell(commands: &mut Commands, f: &Fire, speed: f32, life: f32, bounces
             wet: false,
             skips: if matches!(c.carrier, Carrier::Orb { .. }) { ORB_SKIPS } else { 0 },
             held: false,
+            slow: 1.0,
         },
         LightSource { color: color.map(|x| x * glow), flicker: 0.15 },
         Sprite::from_color(core, size),
@@ -913,7 +931,8 @@ fn fly(
             if s.held {
                 continue;
             }
-            s.age += DT;
+            let dt = DT * s.slow;
+            s.age += dt;
             // A homing one turns toward what it's after: the nearest body
             // ahead of it not on its caster's side (a missile salvo onto
             // the player).
@@ -932,17 +951,17 @@ fn fly(
                     let d = (want - now + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
                     // (Turning harder the longer it flies: up and wide off
                     // the launch, then biting in, not circling.)
-                    let most = rate.to_radians() * (0.4 + 1.2 * s.age).min(2.5) * DT;
+                    let most = rate.to_radians() * (0.4 + 1.2 * s.age).min(2.5) * dt;
                     s.vel = Vec2::from_angle(now + d.clamp(-most, most)) * s.vel.length();
                 }
             }
             // (A breath's shards slow as they go, and billow.)
             let drag = s.cast.drag();
             if drag > 0.0 {
-                s.vel *= (1.0 - drag * DT).max(0.0);
+                s.vel *= (1.0 - drag * dt).max(0.0);
             }
-            s.vel.y -= GRAVITY * s.fall * DT;
-            let travel = s.vel * DT;
+            s.vel.y -= GRAVITY * s.fall * dt;
+            let travel = s.vel * dt;
             let steps = travel.length().ceil().max(1.0) as i32;
             let step = travel / steps as f32;
             let mut end: Option<(Option<Entity>, Vec2)> = None;
@@ -1033,7 +1052,7 @@ fn fly(
             }
             // In a liquid: burning out fast, fizzling when slow.
             if s.wet {
-                s.age += DT * WET_AGE;
+                s.age += dt * WET_AGE;
                 if end.is_none() && s.vel.length() < FIZZLE {
                     end = Some((None, Vec2::ZERO));
                 }

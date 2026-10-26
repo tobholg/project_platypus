@@ -161,7 +161,7 @@ impl Plugin for AnimationPlugin {
     }
 }
 
-type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>, Option<&'a mut Soles>, Option<&'a super::tumble::Tumble>, Option<&'a super::parts::Severed>, Option<&'a Hug>);
+type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>, Option<&'a mut Soles>, Option<&'a super::tumble::Tumble>, Option<&'a super::parts::Severed>, Option<&'a Hug>, Option<&'a crate::magic::field::Slowed>);
 type BodySprites = (With<CreatureSprite>, Without<ArmSprite>, Without<CreatureEyes>);
 type EyeSprites = (With<CreatureEyes>, Without<CreatureSprite>, Without<ArmSprite>);
 type Arms<'a> = (&'a mut Sprite, &'a mut Transform, &'a mut Visibility);
@@ -178,10 +178,10 @@ pub fn animate(
     mut arms: Query<Arms, With<ArmSprite>>,
     mut eyes: Query<(&mut Sprite, &mut Transform), EyeSprites>,
 ) {
-    for (k, mut anim, children, mut aiming, hand, soles, tumble, severed, hug) in &mut creatures {
+    for (k, mut anim, children, mut aiming, hand, soles, tumble, severed, hug, slowed) in &mut creatures {
         let anim = &mut *anim;
         let def = anim.def.clone();
-        let dt = time.delta_secs();
+        let dt = time.delta_secs() * crate::magic::field::share(slowed);
         let want = wanted(k, anim, dt);
         let name = match &anim.force {
             Some(f) if def.animations.contains_key(f) => f.clone(),

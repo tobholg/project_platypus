@@ -69,6 +69,28 @@ impl Arrow {
     pub fn burning(&self) -> bool {
         self.burning > 0.0
     }
+
+    /// In the air (not stuck in anything).
+    pub fn flying(&self) -> bool {
+        self.stuck.is_none()
+    }
+
+    pub fn shooter(&self) -> Entity {
+        self.shooter
+    }
+
+    pub fn team(&self) -> Option<Team> {
+        self.team
+    }
+
+    /// Turned back the way it came (a repulsor), `by`'s now; its speed.
+    pub fn turn_back(&mut self, by: Entity) -> Vec2 {
+        self.vel = -self.vel;
+        self.shooter = by;
+        self.team = Some(Team::Player);
+        self.age = 0.0;
+        self.vel
+    }
 }
 
 impl Nocked {
@@ -121,6 +143,8 @@ pub struct Arrow {
     stuck: Option<f32>,
     /// Which way it points (stuck, it keeps it).
     angle: f32,
+    /// The share of time it flies at (a slow field's: `magic::field`).
+    pub slow: f32,
 }
 
 type Bowman<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Nocked>, Option<&'a mut Stamina>, Option<&'a mut Inventory>, Option<&'a crate::gear::Stats>);
@@ -195,7 +219,7 @@ pub(crate) fn spawn_arrow(commands: &mut Commands, weapons: &Weapons, at: Vec2, 
     let angle = vel.y.atan2(vel.x).to_degrees();
     commands.spawn((
         Name::new("Arrow"),
-        Arrow { vel, shooter, team, damage, crit, knock, stun, burning: 0.0, age: 0.0, stuck: None, angle },
+        Arrow { vel, shooter, team, damage, crit, knock, stun, burning: 0.0, age: 0.0, stuck: None, angle, slow: 1.0 },
         turned.sprite(angle),
         Transform::from_translation(at.extend(12.0)),
     ));
@@ -235,13 +259,14 @@ fn fly(
             }
             continue;
         }
-        a.age += DT;
+        let dt = DT * a.slow;
+        a.age += dt;
         if a.age > FLIGHT {
             commands.entity(e).despawn();
             continue;
         }
-        a.vel.y -= def.gravity * DT;
-        let step = a.vel * DT;
+        a.vel.y -= def.gravity * dt;
+        let step = a.vel * dt;
         let n = step.length().ceil().max(1.0) as usize;
         let mut pos = tf.translation.truncate();
         let dir = a.vel.normalize_or(Vec2::X);
@@ -386,7 +411,7 @@ fn lodged(
             if let Some(whole) = weapons.arrow.as_ref() {
                 commands.entity(e).insert(whole.sprite(angle));
             }
-            commands.entity(e).remove::<Lodged>().insert(Arrow { vel: Vec2::ZERO, shooter: l.shooter, team: l.team, damage: 0.0, crit: false, knock: 0.0, stun: 0.0, burning: 0.0, age: FLIGHT - 3.0, stuck: None, angle });
+            commands.entity(e).remove::<Lodged>().insert(Arrow { vel: Vec2::ZERO, shooter: l.shooter, team: l.team, damage: 0.0, crit: false, knock: 0.0, stun: 0.0, burning: 0.0, age: FLIGHT - 3.0, stuck: None, angle, slow: 1.0 });
             continue;
         };
         if player {

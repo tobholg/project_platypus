@@ -170,6 +170,10 @@
         "groan": (make: Groan(pitch: 68, length: 1.4, sag: 0.35, rasp: 0.55), variants: 4, volume: 0.6),
         "snarl": (make: Groan(pitch: 120, length: 0.45, sag: 0.5, rasp: 0.9), variants: 3, volume: 0.75),
         // Something catching fire: a soft rush of flame.
+        "thoom": (make: Boom(length: 0.55, sub: 1.5), variants: 3, pitch: 0.08, reverb: 0.2, volume: 0.75),
+        "field_set": (make: Whoosh(from: 260, to: 700, length: 0.35, q: 3.5), variants: 2, pitch: 0.08, volume: 0.3),
+        "slow_set": (make: Whoosh(from: 700, to: 140, length: 0.6, q: 4.5), variants: 2, pitch: 0.06, reverb: 0.3, volume: 0.3),
+        "updraft": (make: Whoosh(from: 160, to: 1300, length: 0.55, q: 1.2), variants: 2, pitch: 0.08, volume: 0.32),
         "ignite": (make: Whoosh(from: 180, to: 900, length: 0.5, q: 0.7), variants: 2, volume: 0.6),
         // A strider's laser, and its gun venting steam when it overheats.
         "laser": (make: Zap(pitch: 760, length: 0.16), variants: 3, volume: 0.45),

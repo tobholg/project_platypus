@@ -104,7 +104,7 @@ impl Plugin for WorldPlugin {
     }
 }
 
-fn step_cells(
+pub(crate) fn step_cells(
     mut sim: ResMut<SimWorld>,
     mut metrics: ResMut<SimMetrics>,
     mut fx: MessageWriter<Explosion>,
