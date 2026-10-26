@@ -3905,7 +3905,8 @@ fn kick_script(
 /// `damp` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_MODE=dev`):
 /// firedamp all round the player (in the dev kit's rocket boots), what's in
 /// its hand `PLATYPUS_HOLD` (an item id; bow by default); it jumps now and
-/// then (never firing the boots). `hazards` logs what lights it.
+/// then (never firing the boots; `PLATYPUS_ROCKET`: firing them). `hazards`
+/// logs what lights it.
 fn damp_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
@@ -3940,8 +3941,12 @@ fn damp_script(
             }
         }
     }
-    // A jump now and then, held through (one press: never the boots).
-    if t > 1.5 && (t % 2.0) < 0.6 { keys.press(KeyCode::Space) } else { keys.release(KeyCode::Space) }
+    // A jump now and then, held through (one press: never the boots); with
+    // `PLATYPUS_ROCKET`, pressed again in the air and held: the boots fire.
+    let phase = t % 2.0;
+    let rocket = std::env::var("PLATYPUS_ROCKET").is_ok();
+    let down = t > 1.5 && (phase < 0.25 || (rocket && (0.35..1.2).contains(&phase)));
+    if down { keys.press(KeyCode::Space) } else { keys.release(KeyCode::Space) }
 }
 
 /// `bowshot` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_MODE=dev`):
