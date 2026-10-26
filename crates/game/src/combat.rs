@@ -1297,6 +1297,7 @@ fn swing(
     (mut stop, mut trauma, mut sounds, ids): (ResMut<HitStop>, ResMut<crate::fx::Trauma>, MessageWriter<crate::sound::PlaySound>, Query<&crate::creatures::Stable>),
     factions: Query<&crate::creatures::factions::Faction>,
     mut blades: ResMut<LiveBlades>,
+    mut lifted: Local<std::collections::HashSet<Entity>>,
 ) {
     blades.0.clear();
     let Some(weapons) = weapons else { return };
@@ -1446,8 +1447,12 @@ fn swing(
             let (forward, lift) = (mv.lunge * a.cos().max(0.3), mv.lunge * a.sin().max(0.0) * LUNGE_LIFT);
             recoil.write(Recoil { who: me, add: Vec2::new(dir(s.aim).x.signum() * forward, up + lift), pogo: None, dive: None });
         }
-        // An up strike in the air lifts you a little (once a swing).
-        if !s.lunged && s.up && !k.loco.grounded() {
+        // An up strike in the air lifts you a little: once till you land
+        // (strike after strike would hold you up).
+        if k.loco.grounded() {
+            lifted.remove(&me);
+        }
+        if !s.lunged && s.up && !k.loco.grounded() && lifted.insert(me) {
             s.lunged = true;
             recoil.write(Recoil { who: me, add: Vec2::new(0.0, (UP_LIFT - k.body.vel.y).max(0.0)), pogo: None, dive: None });
         }

@@ -395,7 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -15992,6 +15992,66 @@ fn bladesplash_script(
 /// the player there, then the player away for `PLATYPUS_DAYS` (default 1)
 /// while the world clock runs, then back: how much of the water is left.
 /// (`PLATYPUS_DAYS=0.25`: a quarter of a day, part of it.)
+/// `airswing` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the player jumps
+/// (1 s) and swings its sword in the air as fast as it can, aimed
+/// `PLATYPUS_AIRSWING` degrees (0, level; `none`: no swings): logs its height
+/// and how fast it's rising or falling every 0.05 s till it lands, and the
+/// time in the air.
+fn airswing_script(
+    s: Res<Scenario>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    items: Option<Res<crate::hands::items::Items>>,
+    (mut hand, mut cursor, mut mouse): (ResMut<crate::hands::Hand>, ResMut<CursorOverride>, ResMut<ButtonInput<MouseButton>>),
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(&Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    mut state: Local<(u8, f32, f32, f32)>,
+) {
+    if s.name != "airswing" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let (Some(items), Ok((k, mut inv))) = (items, player.single_mut()) else { return };
+    let aim = std::env::var("PLATYPUS_AIRSWING").unwrap_or_else(|_| "0".into());
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let (step, next, took_off, top) = &mut *state;
+    match *step {
+        0 if t > 0.5 => {
+            if let Some(id) = items.id("copper_shortsword") {
+                inv.slots[9] = Some(crate::hands::items::Stack::new(id, 1));
+                (hand.bar, hand.slot) = (0, 9);
+            }
+            *step = 1;
+        }
+        1 if t > 1.0 => {
+            keys.press(KeyCode::Space);
+            *took_off = t;
+            *step = 2;
+        }
+        2 => {
+            if t > *took_off + 0.25 {
+                keys.release(KeyCode::Space);
+            }
+            *top = top.max(k.body.pos.y - k.body.half.y - fl);
+            if let Ok(deg) = aim.parse::<f32>() {
+                let a = deg.to_radians();
+                cursor.0 = Some(k.body.pos + Vec2::new(a.cos() * 40.0, a.sin() * 40.0));
+                if ((t - *took_off) * 20.0) as u32 % 2 == 0 { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+            }
+            if t >= *next {
+                *next = t + 0.05;
+                info!("airswing: t {:.2} height {:.1} rising {:+.0}", t - *took_off, k.body.pos.y - k.body.half.y - fl, k.body.vel.y);
+            }
+            if t > *took_off + 0.3 && k.loco.grounded() {
+                mouse.release(MouseButton::Left);
+                info!("airswing: landed after {:.2} s in the air, {:.1} high at most (aim {aim})", t - *took_off, *top);
+                *step = 3;
+            }
+        }
+        _ => {}
+    }
+}
+
 /// `batcount` (a generated world; `PLATYPUS_SEED`): the player (kept alive)
 /// put on the floor of the start valley's bat roost, there 40 s: logs every
 /// 2 s how many cave bats are round it (and of them lairs' keepers).
