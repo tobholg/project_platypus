@@ -12,6 +12,11 @@
 //!
 //! Off, a flame's out: it lights nothing, firedamp included (`hazards`),
 //! and what hunts by light doesn't see you by it (`senses`).
+//!
+//! A flame carried into liquid (a torch, a lantern, the safety lamp) goes
+//! out with a hiss and a puff of steam, and lights again by itself a moment
+//! after it's out of it (or at once, with L); what's electric shines on
+//! (`quench`).
 
 use bevy::prelude::*;
 
@@ -38,12 +43,15 @@ impl Default for Lit {
 pub struct Switch {
     pub hand: Lit,
     pub head: Lit,
+    /// The off hand's flame was put out by liquid: how long it's been out
+    /// of it since (`quench`).
+    doused: Option<f32>,
 }
 
 impl Default for Switch {
     fn default() -> Self {
         // (Rolled apart: switched on together, each stutters its own way.)
-        Switch { hand: Lit::default(), head: Lit { salt: 7_919, ..Lit::default() } }
+        Switch { hand: Lit::default(), head: Lit { salt: 7_919, ..Lit::default() }, doused: None }
     }
 }
 
@@ -57,6 +65,8 @@ const AFTERGLOW: f32 = 0.22;
 const TORCH_LIGHTS: f32 = 0.25;
 const LANTERN_UP: f32 = 0.45;
 const LANTERN_DOWN: f32 = 0.35;
+/// Out of the liquid that put it out this long, a flame lights again.
+const RELIGHT: f32 = 1.0;
 
 /// A filament's glow, as it cools: its colour (warm, dim).
 pub const FILAMENT: (u8, u8, u8) = (255, 140, 60);
@@ -160,6 +170,71 @@ pub fn switch(
     };
     sounds.write(PlaySound::at(name, at).pitch(pitch).volume(volume));
 }
+
+/// A liquid there to put a flame out (not lava's: it lights it).
+pub fn drowns_flame(sim: &crate::world::SimWorld, at: Vec2) -> bool {
+    sim.world.get(platypus_sim::CellPos::from_world(at.x, at.y)).is_some_and(|c| {
+        let ph = sim.world.materials().phys(c.material);
+        !c.is_air() && ph.kind == platypus_sim::Kind::Liquid && !sim.world.materials().def(c.material).hot
+    })
+}
+
+/// The off hand's flame in liquid: out, hissing, steam off it; out of it a
+/// moment (`RELIGHT`), alight again.
+#[allow(clippy::too_many_arguments)]
+pub fn quench(
+    time: Res<Time>,
+    sim: Res<crate::world::SimWorld>,
+    toggles: Res<LightToggles>,
+    mut switch: ResMut<Switch>,
+    player: Query<&crate::creatures::Kinematics, With<crate::creatures::player::LocalPlayer>>,
+    flames: Query<&GlobalTransform, With<super::torch::HeldFlame>>,
+    mut sparks: ResMut<crate::vfx::Sparks>,
+    mut sounds: MessageWriter<PlaySound>,
+) {
+    let flame = matches!(toggles.carry, Carry::Torch | Carry::Lantern | Carry::SafetyLamp);
+    let Ok(k) = player.single() else { return };
+    if !flame {
+        switch.doused = None;
+        return;
+    }
+    // (Where its flame is: the held flame's, else about the hand.)
+    let at = flames.iter().next().map_or(k.body.pos + Vec2::new(k.loco.facing * 5.0, 2.0), |tf| tf.translation().truncate());
+    let under = drowns_flame(&sim, at);
+    if under && switch.hand.on {
+        switch.hand.flip(false);
+        switch.doused = Some(0.0);
+        sounds.write(PlaySound::at("sizzle", at).volume(0.8));
+        sparks.emit(&STEAM, STEAM.count as usize, at, Vec2::Y, Vec2::ZERO);
+        return;
+    }
+    // (Lit again with L, out of it: nothing more to wait for.)
+    if switch.hand.on {
+        switch.doused = None;
+        return;
+    }
+    let Some(dry) = switch.doused.as_mut() else { return };
+    *dry = if under { 0.0 } else { *dry + time.delta_secs() };
+    if *dry >= RELIGHT {
+        switch.hand.flip(true);
+        switch.doused = None;
+        sounds.write(PlaySound::at("ignite", at).volume(0.5));
+    }
+}
+
+/// A flame put out: a puff of steam off it.
+pub static STEAM: std::sync::LazyLock<crate::magic::runes::Emitter> = std::sync::LazyLock::new(|| crate::magic::runes::Emitter {
+    count: 10.0,
+    life: (0.4, 0.9),
+    colors: vec![(236, 238, 242), (180, 184, 192)],
+    speed: 18.0,
+    spread: 0.8,
+    gravity: -40.0,
+    drag: 2.0,
+    size: 1.0,
+    jitter: 3.0,
+    glow: false,
+});
 
 #[cfg(test)]
 mod tests {

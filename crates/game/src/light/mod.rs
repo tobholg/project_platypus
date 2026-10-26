@@ -381,7 +381,7 @@ impl Plugin for LightPlugin {
             .insert_resource(LightToggles { enabled: std::env::var("PLATYPUS_NOLIGHT").is_err(), carry: Carry::Nothing, headlamp: false })
             .init_resource::<Cones>()
             .init_resource::<switch::Switch>()
-            .add_systems(Update, (from_gear, shine, switch::switch.before(torch::hold)))
+            .add_systems(Update, (from_gear, shine, (switch::switch, switch::quench).chain().before(torch::hold), torch::snuff))
             .init_resource::<Gloom>()
             .insert_resource(Daylight { skipped: skip, ..default() })
             .init_resource::<Flashes>()

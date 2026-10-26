@@ -246,9 +246,9 @@ impl Default for MovementStats {
             climb_walls: false,
             swim_speed: 0.0,
             swim_accel: 600.0,
-            swim_gravity: 0.1,
+            swim_gravity: 0.25,
             swim_drag: 0.0005,
-            swim_max_fall: 38.0,
+            swim_max_fall: 95.0,
             swim_stroke: 225.0,
             swim_stroke_every: 0.35,
             rocket_time: 0.0,
@@ -1573,9 +1573,12 @@ mod tests {
         let (s, _, _) = player();
         let swim = |intent: Intent| {
             let (_, mut l, mut b) = player();
-            b.pos = if intent.move_y < 0.0 { Vec2::new(50.0, 80.0) } else { Vec2::new(50.0, 45.0) };
-            // Settle in the water first.
-            for _ in 0..30 {
+            // (Diving: from near the top, room under it to dive after it's
+            // sunk a while settling.)
+            b.pos = if intent.move_y < 0.0 { Vec2::new(50.0, 87.0) } else { Vec2::new(50.0, 45.0) };
+            // Settle in the water first (a moment: it sinks fast, and a dive
+            // wants room under it).
+            for _ in 0..10 {
                 tick(&g, &s, &mut l, &mut b, Intent::default());
             }
             let start = b.pos;

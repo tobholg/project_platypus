@@ -84,6 +84,10 @@ pub struct LightGrid {
     pub water: Vec<f32>,
 }
 
+/// Clear water carries light this much further than its opacity says:
+/// 0.5, twice as far (what's let through, a texel, square-rooted).
+const WATER_CLEAR: f32 = 0.5;
+
 /// Daylight through a window, for its glass's colour (glass is drawn
 /// darker than the light it lets through).
 const WINDOW_GAIN: f32 = 1.7;
@@ -571,6 +575,7 @@ impl LightGrid {
                     max_into(&mut self.caustic[i], r.v.map(|c| c * k));
                 }
                 let keep = pass[(op.clamp(0.0, 1.0) * 255.0) as usize];
+                let keep = if self.water[i] > 0.0 { keep.powf(1.0 - WATER_CLEAR * self.water[i].clamp(0.0, 1.0)) } else { keep };
                 r.v = r.v.map(|c| c * keep);
                 if self.optical && self.ior[i] > 1.0 {
                     let tint = self.tint[i];
@@ -602,7 +607,22 @@ impl LightGrid {
                 (f, f.powf(std::f32::consts::SQRT_2))
             })
             .collect();
-        let (through, through_d): (Vec<f32>, Vec<f32>) = self.opacity.iter().map(|&o| lut[(o.clamp(0.0, 1.0) * 255.0) as usize]).unzip();
+        // (Clear water carries light twice as far: what it lets through
+        // goes as the square root, as much as the texel is water.)
+        let (through, through_d): (Vec<f32>, Vec<f32>) = self
+            .opacity
+            .iter()
+            .zip(&self.water)
+            .map(|(&o, &w)| {
+                let (f, fd) = lut[(o.clamp(0.0, 1.0) * 255.0) as usize];
+                if w > 0.0 {
+                    let f = f.powf(1.0 - WATER_CLEAR * w.clamp(0.0, 1.0));
+                    (f, f.powf(std::f32::consts::SQRT_2))
+                } else {
+                    (f, fd)
+                }
+            })
+            .unzip();
         // Or straight off it, if it glows (a burning log lights the room).
         let (w, h) = (self.w, self.h);
         let chan = |v: &[Rgb], ch: usize, k: f32| -> Vec<f32> { v.iter().map(|e| e[ch] * k).collect() };

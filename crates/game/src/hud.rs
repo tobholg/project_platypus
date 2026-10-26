@@ -291,6 +291,7 @@ type PlayerStatuses<'a> = (
     Option<&'a crate::creatures::MoveStats>,
     Option<&'a crate::potion::PotionSickness>,
     Option<&'a crate::potion::Lasting>,
+    Option<&'a crate::breath::Breath>,
 );
 
 fn update_statuses(
@@ -302,9 +303,14 @@ fn update_statuses(
     mut labels: Query<(&StatusLabel, &mut Text)>,
     mut fuel: Local<(f32, bool)>,
 ) {
-    let Ok((burning, chilled, coated, k, stats, sick, lasting)) = player.single() else { return };
+    let Ok((burning, chilled, coated, k, stats, sick, lasting, breath)) = player.single() else { return };
     // (label, colour, share left)
     let mut shown: Vec<(String, [u8; 3], f32)> = Vec::new();
+    // Breath held, first: while its head's under, or till it's all back.
+    if let Some(b) = breath.filter(|b| b.under || b.share() < 1.0) {
+        let low = b.share() < 0.25;
+        shown.push((if b.left <= 0.0 { "Drowning".into() } else { "Breath".into() }, if low { [120, 170, 255] } else { [170, 220, 255] }, b.share()));
+    }
     if let Some(b) = burning {
         shown.push((format!("Burning {:.0}%", b.share * 100.0), [255, 130, 30], b.share));
     }

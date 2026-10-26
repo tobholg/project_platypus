@@ -297,6 +297,10 @@ type Wearer<'a> = (
     Option<&'a crate::creatures::body::goo::Mass>,
 );
 
+/// Each piece of heavy armour worn, this much faster sinking in water (a
+/// full set: 30 %).
+const HEAVY_SINKS: f32 = 0.06;
+
 /// What a creature wears changed (or its kind did, or it just got mana):
 /// add its stats up again and put them where they go.
 pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures: Res<Creatures>, mut q: Query<Wearer>) {
@@ -328,6 +332,9 @@ pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures:
             antidote: health.ward.antidote,
         };
         let mut m = def.movement.clone();
+        // (Heavy armour sinks: each piece of it this much faster in water.)
+        let heavy = eq.pieces(&items).filter(|s| items.def(s.item).gear.as_ref().is_some_and(|g| g.weight == Some(Weight::Heavy))).count();
+        m.swim_max_fall *= 1.0 + HEAVY_SINKS * heavy as f32;
         m.run_speed *= total.mult(Stat::MoveSpeed) * pace.map_or(1.0, |p| p.0);
         m.jump_height *= total.mult(Stat::JumpHeight);
         m.air_jumps = (m.air_jumps as f32 + total.get(Stat::AirJumps)).round().clamp(0.0, 9.0) as u8;

@@ -395,7 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -15992,6 +15992,79 @@ fn bladesplash_script(
 /// the player there, then the player away for `PLATYPUS_DAYS` (default 1)
 /// while the world clock runs, then back: how much of the water is left.
 /// (`PLATYPUS_DAYS=0.25`: a quarter of a day, part of it.)
+/// `dive` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a pool 70 deep dug
+/// in the floor, full of water, a torch stuck in its bottom; the player, a
+/// torch in its off hand, dropped in (1 s): it sinks, its torch goes out,
+/// its breath runs down and it drowns a while; pulled out (26 s), its torch
+/// lights again and its breath comes back. Logs it each half second.
+fn dive_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    items: Option<Res<crate::hands::items::Items>>,
+    settings: Res<crate::light::LightSettings>,
+    art: Option<Res<crate::light::TorchArt>>,
+    switch: Res<crate::light::switch::Switch>,
+    mut player: Query<(Entity, &mut Kinematics, &crate::creatures::Health, &mut crate::gear::Equipment, Option<&crate::breath::Breath>), With<LocalPlayer>>,
+    torches: Query<Has<crate::light::torch::Snuffed>, With<crate::light::PlantedTorch>>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "dive" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let (Some(items), Ok((me, mut k, h, mut eq, breath))) = (items, player.single_mut()) else { return };
+    let fl = platypus_worldgen::arena::FLOOR;
+    let (x0, x1, deep) = (920, 1000, 70);
+    let (step, next) = &mut *state;
+    match *step {
+        0 if t > 0.3 => {
+            commands.entity(me).remove::<crate::combat::Invulnerable>();
+            let Some(water) = sim.materials().id("water") else { return };
+            for x in x0..x1 {
+                for y in fl - deep..fl {
+                    sim.world.set(CellPos::new(x, y), platypus_sim::Cell::new(water, 128));
+                }
+            }
+            if let Some(art) = art.as_deref() {
+                crate::light::plant_torch(&mut commands, Vec2::new((x0 + 10) as f32, (fl - deep) as f32), &settings, art);
+            }
+            let torch = crate::hands::items::Stack::new(items.id("torch").expect("torch"), 1);
+            if let Some(i) = (0..eq.worn.len()).find(|&i| crate::gear::Equipment::fits(&items, i, &torch)) {
+                eq.worn[i] = Some(torch);
+            }
+            *step = 1;
+        }
+        1 if t > 1.0 => {
+            k.body.pos = Vec2::new(960.0, fl as f32 + 4.0 + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            *step = 2;
+        }
+        2 if t > 26.0 => {
+            k.body.pos = Vec2::new(880.0, fl as f32 + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            k.body.vel = Vec2::ZERO;
+            info!("dive: pulled out at {t:.1}");
+            *step = 3;
+        }
+        _ => {}
+    }
+    if *step >= 2 && t >= *next {
+        *next = t + 0.5;
+        let snuffed = torches.iter().filter(|&s| s).count();
+        info!(
+            "dive: t {t:.1} depth {:.0} sinking {:+.0} torch {} breath {:?} health {:.0}; torches out {snuffed}",
+            fl as f32 - (k.body.pos.y - k.body.half.y),
+            k.body.vel.y,
+            if switch.hand.on { "lit" } else { "out" },
+            breath.map(|b| (b.left * 10.0).round() / 10.0),
+            h.hp
+        );
+    }
+}
+
 /// `airswing` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the player jumps
 /// (1 s) and swings its sword in the air as fast as it can, aimed
 /// `PLATYPUS_AIRSWING` degrees (0, level; `none`: no swings): logs its height

@@ -325,3 +325,46 @@ pub fn hold(
         off.lens = Some(hand_at.truncate() + tip_at);
     }
 }
+
+/// A torch put out (liquid over its flame): dark, there to be taken back up
+/// and set down again.
+#[derive(Component)]
+pub struct Snuffed;
+
+type Planted<'a> = (Entity, &'a GlobalTransform, &'a Flame);
+
+/// Torches stuck in the ground, and lamps set down, with liquid over their
+/// flames: out, hissing (`switch::drowns_flame`).
+pub fn snuff(
+    mut commands: Commands,
+    sim: Res<crate::world::SimWorld>,
+    torches: Query<Planted, (With<PlantedTorch>, Without<Snuffed>)>,
+    lamps: Query<(&GlobalTransform, &Children), With<crate::hands::lights::PlacedLight>>,
+    glows: Query<Entity, (With<LightSource>, Without<crate::hands::lights::BeamLight>, Without<PlantedTorch>)>,
+    mut sparks: ResMut<crate::vfx::Sparks>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+) {
+    let mut hiss = |at: Vec2, sparks: &mut crate::vfx::Sparks| {
+        sounds.write(crate::sound::PlaySound::at("sizzle", at).volume(0.6));
+        sparks.emit(&super::switch::STEAM, super::switch::STEAM.count as usize, at, Vec2::Y, Vec2::ZERO);
+    };
+    for (e, tf, flame) in &torches {
+        let at = tf.translation().truncate() + flame.at;
+        if super::switch::drowns_flame(&sim, at) {
+            commands.entity(e).remove::<(LightSource, Flame, super::Haze)>().insert(Snuffed);
+            hiss(at, &mut sparks);
+        }
+    }
+    for (tf, children) in &lamps {
+        let at = tf.translation().truncate();
+        if !super::switch::drowns_flame(&sim, at) {
+            continue;
+        }
+        for child in children.iter() {
+            if glows.get(child).is_ok() {
+                commands.entity(child).remove::<(LightSource, super::Haze)>();
+                hiss(at, &mut sparks);
+            }
+        }
+    }
+}
