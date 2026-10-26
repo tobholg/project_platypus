@@ -14,6 +14,8 @@
     size: (21, 15),
     health: 90,
     team: Enemy,
+    // (Mindless: walks into a painted wall of fire.)
+    heedless: true,
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "ooze",
     profile: {acid: -0.5},

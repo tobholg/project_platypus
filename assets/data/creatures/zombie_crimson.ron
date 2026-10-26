@@ -13,6 +13,8 @@
     size: (9, 20),
     health: 160,
     team: Enemy,
+    // (Mindless: walks into a painted wall of fire.)
+    heedless: true,
     faction: "undead",
     kind: "rotting",
     headless: Dies,

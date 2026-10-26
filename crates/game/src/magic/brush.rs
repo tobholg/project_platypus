@@ -25,6 +25,12 @@
 //! to the cursor. A brush's cells may be kept a while (`lasts`: flames
 //! that die come back till then, `keep`); its loose form, if it's a flame,
 //! is embers, falling and dying (catching what burns where they land).
+//!
+//! A painted wall of fire is a wall: what walks into it (but the player)
+//! is flared at (`flare`: a burst of flame, a hit, again each second it's
+//! in it, and thrown back out as light as it is), and what hunts stops at
+//! its edge (`wary`) unless it's mindless (`heedless`: zombies, rats,
+//! slimes charge through).
 
 use bevy::prelude::*;
 use platypus_sim::{Cell, CellPos, Kind, World};
@@ -340,3 +346,110 @@ pub fn paint(
     }
     set
 }
+
+/// A painted flame's flare: its hit (fire), how often while a creature's in
+/// it (s), how hard it throws it back out (cells/s, over the root of its
+/// heft) and up.
+const FLARE_HIT: f32 = 15.0;
+const FLARE_EVERY: f32 = 1.0;
+const FLARE_THROW: (f32, f32) = (190.0, 110.0);
+/// What hunts stops this far short of a painted flame (cells past its box).
+const WARY_AHEAD: i32 = 6;
+
+/// A painted flame here (kept, burning).
+fn painted_fire(world: &World, kept: &Kept, p: CellPos) -> bool {
+    kept.0.get(&p).is_some_and(|&(m, _)| world.materials().phys(m).kind == Kind::Fire)
+}
+
+type Flared<'a> = (Entity, &'a mut crate::creatures::Kinematics, &'a mut crate::creatures::Health, &'a crate::creatures::body::animation::Animator, Option<&'a crate::creatures::body::elements::Coated>);
+
+/// What walks into a painted wall of fire (but the player): a flare.
+#[allow(clippy::too_many_arguments)]
+pub fn flare(
+    mut commands: Commands,
+    time: Res<Time>,
+    sim: Res<crate::world::SimWorld>,
+    kept: Res<Kept>,
+    coatings: Res<crate::creatures::body::elements::Coatings>,
+    mut q: Query<Flared, Without<crate::creatures::player::LocalPlayer>>,
+    mut sparks: ResMut<crate::vfx::Sparks>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+    mut since: Local<HashMap<Entity, f32>>,
+) {
+    let dt = time.delta_secs();
+    for t in since.values_mut() {
+        *t += dt;
+    }
+    since.retain(|_, t| *t < FLARE_EVERY * 2.0);
+    if kept.0.is_empty() {
+        return;
+    }
+    let world = &sim.world;
+    for (e, mut k, mut h, anim, coated) in &mut q {
+        if h.hp <= 0.0 || since.get(&e).is_some_and(|t| *t < FLARE_EVERY) {
+            continue;
+        }
+        let (lo, hi) = k.body.cells_at(k.body.pos);
+        // (Where it touches the flames: their middle, to be thrown from.)
+        let (mut sum, mut n) = (Vec2::ZERO, 0);
+        for y in lo.y..=hi.y {
+            for x in lo.x..=hi.x {
+                if painted_fire(world, &kept, CellPos::new(x, y)) {
+                    sum += Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+                    n += 1;
+                }
+            }
+        }
+        if n == 0 {
+            continue;
+        }
+        since.insert(e, 0.0);
+        let at = sum / n as f32;
+        h.harm_by(FLARE_HIT, crate::creatures::Harm::Fire, || crate::death::Cause::new("A wall of fire", "burned"));
+        crate::creatures::body::elements::catch_fire(&mut commands, e, &h.nature, coated, &coatings, 0.6);
+        // Thrown back out the way it came in, as light as it is.
+        let away = (k.body.pos.x - at.x).signum();
+        let away = if away == 0.0 { -k.body.vel.x.signum() } else { away };
+        let heft = anim.def.heft.max(0.5).sqrt();
+        let k = &mut *k;
+        k.loco.knock(&mut k.body, Vec2::new(away * FLARE_THROW.0 / heft, FLARE_THROW.1 / heft), 0.25);
+        sparks.emit(&FLARE, FLARE.count as usize, at, Vec2::Y, Vec2::ZERO);
+        sounds.write(crate::sound::PlaySound::at("ignite", at).volume(0.9).pitch(0.8));
+    }
+}
+
+/// What hunts stops at the edge of a painted wall of fire rather than walk
+/// in (unless it's mindless: `heedless`); out of one, it may go any way.
+pub fn wary(sim: Res<crate::world::SimWorld>, kept: Res<Kept>, mut q: Query<(&crate::creatures::Kinematics, &mut crate::creatures::Controls, &crate::creatures::body::animation::Animator), Without<crate::creatures::player::LocalPlayer>>) {
+    if kept.0.is_empty() {
+        return;
+    }
+    let world = &sim.world;
+    for (k, mut c, anim) in &mut q {
+        let dir = c.0.move_x.signum();
+        if anim.def.heedless || dir == 0.0 {
+            continue;
+        }
+        let (lo, hi) = k.body.cells_at(k.body.pos);
+        let front = if dir > 0.0 { hi.x } else { lo.x };
+        let ahead = (1..=WARY_AHEAD).any(|d| (lo.y..=hi.y).step_by(2).any(|y| painted_fire(world, &kept, CellPos::new(front + d * dir as i32, y))));
+        if ahead {
+            c.0.move_x = 0.0;
+            c.0.jump = false;
+        }
+    }
+}
+
+/// A flare off a painted flame as something walks in.
+static FLARE: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter {
+    count: 26.0,
+    life: (0.25, 0.6),
+    colors: vec![(255, 245, 200), (255, 170, 60), (220, 70, 20)],
+    speed: 90.0,
+    spread: 1.6,
+    gravity: -120.0,
+    drag: 3.0,
+    size: 1.0,
+    jitter: 0.0,
+    glow: true,
+});

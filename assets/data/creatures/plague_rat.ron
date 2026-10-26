@@ -8,6 +8,8 @@
     health: 22,
     heft: 0.7,
     team: Enemy,
+    // (Mindless: walks into a painted wall of fire.)
+    heedless: true,
     faction: "rats",
     kind: "beast",
     blood: "blood",

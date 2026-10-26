@@ -304,7 +304,10 @@ impl Plugin for MagicPlugin {
             // and a blade swung this tick meets what's on its way in first:
             // `combat::swing` cuts a spit out of the air a plunge closes on.
             // Unordered, the plunge sometimes moved onto it and was struck.)
-            .add_systems(FixedUpdate, (recharge, request, fire, void::stasis, fly.before(crate::creatures::move_creatures), void::act, well::channel, conjure::hold, brush::keep).chain().in_set(TickSet::Bodies).before(crate::creatures::body::hurt::notice))
+            .add_systems(FixedUpdate, (recharge, request, fire, void::stasis, fly.before(crate::creatures::move_creatures), void::act, well::channel, conjure::hold, brush::keep, brush::flare).chain().in_set(TickSet::Bodies).before(crate::creatures::body::hurt::notice))
+            // (What hunts stops at a painted wall of fire: after brains have
+            // their say, before bodies move.)
+            .add_systems(FixedUpdate, brush::wary.after(crate::creatures::brain::BrainSet).before(crate::creatures::move_creatures))
             .add_systems(
                 FixedUpdate,
                 (void::pin, void::through, void::age).chain().in_set(TickSet::Bodies).after(void::act).after(crate::creatures::move_creatures).after(crate::props::fly),

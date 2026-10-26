@@ -395,7 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -15992,6 +15992,64 @@ fn bladesplash_script(
 /// the player there, then the player away for `PLATYPUS_DAYS` (default 1)
 /// while the world clock runs, then back: how much of the water is left.
 /// (`PLATYPUS_DAYS=0.25`: a quarter of a day, part of it.)
+/// `firewall` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`, best with
+/// `PLATYPUS_HOUR=23`): the player (kept alive) paints a wall of fire 40
+/// high, 30 to its right (0.5-2 s); then a skeleton, a zombie and a rat are
+/// put 70 beyond it, hunting the player, the wall kept painted while they
+/// come. Logs each half second which side of the wall each is on, and its
+/// health.
+fn firewall_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    book: Res<crate::magic::Spellbook>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut casts: MessageWriter<crate::magic::CastRequest>,
+    mut player: Query<(Entity, &Kinematics, &mut crate::creatures::Health, Option<&mut crate::magic::Mana>), With<LocalPlayer>>,
+    them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "firewall" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((me, k, mut h, mana)) = player.single_mut() else { return };
+    h.hp = h.max;
+    if let Some(mut m) = mana {
+        m.cur = m.max;
+    }
+    let Some(spell) = book.spells.iter().position(|d| d.id == "fire_wall") else { return };
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let wall = k.body.pos.x + 30.0;
+    let (step, next) = &mut *state;
+    // The wall painted (and painted again every few seconds, to keep it).
+    let phase = (t - 0.5) % 4.0;
+    if t > 0.5 && phase < 1.5 {
+        let toward = Vec2::new(wall, fl + 1.0 + 40.0 * (phase / 1.5));
+        casts.write(crate::magic::CastRequest { caster: me, spell, from: k.body.pos + Vec2::new(0.0, 6.0), toward, alt: false });
+    }
+    if *step == 0 && t > 2.2 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        for (i, kind) in ["skeleton", "zombie", "rat_lithe"].iter().enumerate() {
+            crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(wall + 70.0 + i as f32 * 12.0, fl + 14.0), |_| {});
+        }
+        *step = 1;
+    }
+    if *step >= 1 && t >= *next {
+        *next = t + 0.5;
+        let line: Vec<String> = them
+            .iter()
+            .filter(|(_, c, ..)| ["skeleton", "zombie", "rat_lithe"].contains(&c.kind.as_str()))
+            .map(|(_, c, ck, ch)| format!("{} {:+.0} ({:.0} hp)", c.kind, ck.body.pos.x - wall, ch.hp))
+            .collect();
+        info!("firewall: t {t:.1} {}", line.join(", "));
+    }
+}
+
 /// `paint` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the player holds a
 /// brush spell (`PLATYPUS_BRUSH`, ice_wall) and draws: a column up off the
 /// floor 30 to its right (1-3 s), a bridge out from its top (3-5 s), then a

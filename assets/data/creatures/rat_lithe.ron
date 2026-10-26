@@ -19,6 +19,8 @@
     // parried, but it's no leaf.)
     heft: 1.4,
     team: Enemy,
+    // (Mindless: walks into a painted wall of fire.)
+    heedless: true,
     faction: "rats",
     kind: "beast",
     blood: "blood",

@@ -188,6 +188,10 @@ pub struct CreatureDef {
     /// Knockback it takes is divided by this (a troll's 4).
     #[serde(default = "one_f")]
     pub heft: f32,
+    /// Mindless: it walks into a painted wall of fire (`brush::wary`) where
+    /// others stop at its edge (a zombie, a rat, a slime).
+    #[serde(default)]
+    pub heedless: bool,
     /// Each one its own pace: its run speed this much (a share) faster or
     /// slower, at random (a pack of zombies closes in unevenly).
     #[serde(default)]
