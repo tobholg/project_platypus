@@ -16374,7 +16374,8 @@ fn wardrobe_script(
 
 /// `slimeswing` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a green
 /// slime (`PLATYPUS_SLIME_KIND`) hops at the player, who swings a
-/// `PLATYPUS_WEAPON` (shortsword) at it as fast as it can once it's near:
+/// `PLATYPUS_WEAPON` (shortsword) at it as fast as it can once it's near
+/// (aimed `PLATYPUS_AIM_UP` cells above its middle):
 /// logs each blow that lands and what's left of it, and how many it took.
 fn slimeswing_script(
     mut commands: Commands,
@@ -16383,7 +16384,7 @@ fn slimeswing_script(
     items: Option<Res<crate::hands::items::Items>>,
     (mut hand, mut cursor, mut mouse): (ResMut<crate::hands::Hand>, ResMut<CursorOverride>, ResMut<ButtonInput<MouseButton>>),
     mut hits: MessageReader<crate::combat::Hit>,
-    mut player: Query<(&Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
     them: Query<(Entity, &crate::creatures::Creature, &Kinematics, &crate::creatures::Health, Option<&crate::creatures::body::goo::Goo>), Without<LocalPlayer>>,
     mut state: Local<(u8, usize, f32)>,
 ) {
@@ -16392,7 +16393,7 @@ fn slimeswing_script(
     }
     menu.open = false;
     let t = s.elapsed;
-    let (Some(items), Ok((pk, mut inv))) = (items, player.single_mut()) else { return };
+    let (Some(items), Ok((mut pk, mut inv))) = (items, player.single_mut()) else { return };
     let kind = std::env::var("PLATYPUS_SLIME_KIND").unwrap_or_else(|_| "slime".into());
     let (step, landed, last_hp) = &mut *state;
     if *step == 0 && t > 0.5 {
@@ -16426,8 +16427,16 @@ fn slimeswing_script(
         info!("slimeswing: t {t:.2} hp {:.1} of {:.0}, goo {}", sh.hp, sh.max, goo.map_or(0, |g| g.held()));
         *last_hp = sh.hp;
     }
-    cursor.0 = Some(sk.body.pos);
+    // (`PLATYPUS_AIM_UP`: aimed this far above its middle: a zombie's head.)
+    let up: f32 = std::env::var("PLATYPUS_AIM_UP").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0);
+    cursor.0 = Some(sk.body.pos + Vec2::Y * up);
     let near = (sk.body.pos.x - pk.body.pos.x).abs() < 34.0;
+    // (One that won't come (a mimic, a chest till you're on it): the player
+    // goes to it.)
+    if !near && t > 3.0 && *landed == 0 {
+        pk.body.pos.x = sk.body.pos.x - 24.0;
+        pk.prev_pos = pk.body.pos;
+    }
     if near && (t * 10.0) as u32 % 4 == 0 { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
 }
 

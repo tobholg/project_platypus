@@ -95,8 +95,10 @@ pub struct Bleeding {
     clock: f32,
 }
 
-/// How much a limb takes before it comes off.
-fn limb_max(limb: Limb, health: f32, legs: Option<&super::legs::LegsDef>) -> f32 {
+/// How much a limb takes before it comes off (a head, its kind's `neck`
+/// if it says).
+fn limb_max(limb: Limb, health: f32, def: &crate::creatures::def::CreatureDef) -> f32 {
+    let legs = def.legs.as_ref();
     let share = match limb {
         Limb::Leg(_) => {
             let n = legs.map_or(2, |l| if l.view == super::legs::View::Side { l.each.len() } else { l.count }).max(1);
@@ -104,7 +106,7 @@ fn limb_max(limb: Limb, health: f32, legs: Option<&super::legs::LegsDef>) -> f32
         }
         Limb::Arm(_) => ARM_SHARE,
         Limb::Chain(_) => CHAIN_SHARE,
-        Limb::Head => HEAD_SHARE,
+        Limb::Head => def.neck.unwrap_or(HEAD_SHARE),
     };
     health * share
 }
@@ -151,7 +153,7 @@ pub fn wound(mut commands: Commands, mut felt: MessageReader<crate::combat::Felt
         if severed.is_some_and(|s| s.has(limb)) {
             continue;
         }
-        let max = limb_max(limb, health.max, anim.def.legs.as_ref());
+        let max = limb_max(limb, health.max, &anim.def);
         let took = match wounds {
             Some(mut w) => match w.0.iter_mut().find(|(l, _)| *l == limb) {
                 Some((_, t)) => {

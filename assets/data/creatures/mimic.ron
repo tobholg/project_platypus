@@ -7,7 +7,7 @@
 (
     name: "Mimic",
     size: (18, 15),
-    health: 170,
+    health: 110,
     team: Enemy,
     // Wood, and what's in it.
     kind: "beast",

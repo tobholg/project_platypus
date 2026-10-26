@@ -23,6 +23,9 @@
     // oil and a spark, fire); its head off, it's done.
     rises: Some((after: 7.0, health: 0.6, chance: 0.5, breaks: [fire], remains: Body, times: Some(2), last: Some("zombie_crimson"), glow: (170, 120, 110))),
     headless: Dies,
+    // (Its head comes off after 55 % of its health in blows to it: two head
+    // hits of a starting sword, one of an iron longsword's.)
+    neck: 0.55,
     // The dead burn in the sun (its body too, lying there).
     sunburns: true,
     // Near you (160 cells), it breaks into a sprint at you, faster than

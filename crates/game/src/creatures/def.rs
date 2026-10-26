@@ -119,6 +119,11 @@ pub struct CreatureDef {
     /// Its head cut off (`wounds`): it dies, or fights on blind (bones).
     #[serde(default)]
     pub headless: super::body::wounds::Headless,
+    /// Its head comes off past this share of its health in blows to it
+    /// (`wounds`; none: the usual 0.3): a tough neck on a light body (a
+    /// zombie's, whose head off kills it).
+    #[serde(default)]
+    pub neck: Option<f32>,
     /// Its kind and its changes, put together (at load).
     #[serde(skip)]
     pub nature: crate::creatures::nature::Nature,
