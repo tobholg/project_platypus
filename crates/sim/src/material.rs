@@ -240,6 +240,10 @@ pub struct MaterialDef {
     /// below (cobwebs, roots).
     #[serde(default)]
     pub hangs: bool,
+    /// A plant that lives under water (kelp): liquids neither crush it nor
+    /// flow into it as if it were open.
+    #[serde(default)]
+    pub aquatic: bool,
     /// One-way for creatures: solid underfoot, open from below and the
     /// sides, and open underfoot to one that wants to drop.
     #[serde(default)]
@@ -468,6 +472,8 @@ pub struct MatPhys {
     pub fizzles: u16,
     /// See `MaterialDef::hangs`.
     pub hangs: bool,
+    /// See `MaterialDef::aquatic`.
+    pub aquatic: bool,
     /// See `MaterialDef::grows`.
     pub grows: bool,
     /// See `MaterialDef::living`.
@@ -703,6 +709,7 @@ impl MaterialTable {
                 spread: d.spread.unwrap_or(d.flammability as u16 * 16),
                 fizzles: d.fizzles,
                 hangs: d.hangs,
+                aquatic: d.aquatic,
                 grows: d.grows,
                 living: d.living,
                 flung: d.flung,

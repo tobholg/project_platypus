@@ -4,7 +4,9 @@
 //! faster as it runs low, and the screen's edges darken blue (`screen_fx`).
 //! Out of breath, it drowns: a share of its health a second, whatever it
 //! wears. Its head out, it's back in a couple of seconds (a gasp, if it
-//! was low). Wading, swimming at the top: none of that.
+//! was low). Wading, swimming at the top: none of that. A bladder pod
+//! (a cluster of them on the rock under water) bursts as you swim into it,
+//! a gulp of air: a third of a full breath back.
 
 use bevy::prelude::*;
 use platypus_sim::{CellPos, Kind};
@@ -52,11 +54,13 @@ const HEAD_DOWN: f32 = 3.0;
 const BUBBLES: (f32, f32) = (1.5, 9.0);
 /// Surfacing with less than this share left, it gasps.
 const GASP_BELOW: f32 = 0.5;
+/// A bladder pod's gulp: this share of a full breath.
+const POD_AIR: f32 = 0.34;
 
 fn breathe(
     mut commands: Commands,
     time: Res<Time>,
-    sim: Res<SimWorld>,
+    mut sim: ResMut<SimWorld>,
     difficulty: Res<Difficulty>,
     dying: Res<crate::death::Dying>,
     mut player: Query<(Entity, &Kinematics, &mut Health, Option<&mut Breath>, Option<&crate::gear::Stats>), With<LocalPlayer>>,
@@ -84,6 +88,31 @@ fn breathe(
     if !under {
         b.left = (b.left + dt * most / REFILL).min(most);
         return;
+    }
+    // A bladder pod touched: it bursts, a gulp of air.
+    if let Some(pod) = sim.materials().id("bladder_pod") {
+        let (lo, hi) = k.body.cells_at(k.body.pos);
+        let touched: Vec<CellPos> = (lo.y..=hi.y).flat_map(|y| (lo.x..=hi.x).map(move |x| CellPos::new(x, y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == pod)).collect();
+        if !touched.is_empty() {
+            let water = sim.materials().id("water");
+            for p in &touched {
+                // (The whole cluster with it.)
+                for dy in -1..=1 {
+                    for dx in -1..=1 {
+                        let q = p.offset(dx, dy);
+                        if sim.world.get(q).is_some_and(|c| c.material == pod)
+                            && let Some(w) = water
+                        {
+                            sim.world.set(q, platypus_sim::Cell::new(w, 128));
+                        }
+                    }
+                }
+            }
+            let at = Vec2::new(touched[0].x as f32 + 0.5, touched[0].y as f32 + 0.5);
+            b.left = (b.left + most * POD_AIR).min(most);
+            sparks.emit(&BUBBLE, 14, at, Vec2::Y, Vec2::ZERO);
+            sounds.write(crate::sound::PlaySound::at("pod_pop", at));
+        }
     }
     b.left = (b.left - dt).max(0.0);
     // Bubbles off its mouth, faster the less is left.

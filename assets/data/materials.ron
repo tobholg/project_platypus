@@ -196,6 +196,14 @@
         // Glowing vines hanging from the ceilings; brighter toward the tip.
         (name: "glow_vine",   kind: Plant, hangs: true, density: 150, hardness: 1, flammability: 8, ignites_at: 360, burn_time: 20, opacity: 25, glow: (6, 34, 36), pulse: 120,
             colors: [(20, 60, 60), (30, 100, 96), (60, 170, 160), (150, 250, 230)]),
+        // Under water (the flooded caverns, the great halls' lakes): glowkelp
+        // standing up off the bed in strands, darker at the root, its tips
+        // glowing; bladder pods, clusters of air-filled bladders on the
+        // rock (swim into one: it bursts, a gulp of air: `game::breath`).
+        (name: "glowkelp",    kind: Plant, aquatic: true, density: 200, hardness: 1, flammability: 10, ignites_at: 300, burn_time: 10, opacity: 20, glow: (4, 30, 18), pulse: 100,
+            colors: [(18, 58, 42), (26, 90, 62), (40, 140, 92), (90, 210, 150), (170, 255, 200)]),
+        (name: "bladder_pod", kind: Plant, aquatic: true, still: true, density: 100, hardness: 1, flammability: 0, opacity: 15, glow: (3, 10, 12), pulse: 60,
+            colors: [(120, 170, 180), (170, 220, 228), (220, 246, 250)]),
         // Glowworms (the great lake halls): their roofs studded with them,
         // faint blue-green points like a sky of stars over the lake; their
         // silk threads hang down, beaded with light, brightest at the drop.

@@ -2872,3 +2872,19 @@ fn a_deep_tank_drains_from_its_surface() {
     assert_eq!(count(&w, water), before, "every drop's somewhere");
     assert!((40..80).all(|x| top(&w, x) <= 84), "the tank's empty");
 }
+
+/// Kelp under water stays: water neither crushes it nor flows into it, and
+/// the pool round it settles and sleeps.
+#[test]
+fn kelp_stands_in_still_water() {
+    let mut w = boxed_world(1, 1, 73);
+    let kelp = w.materials().expect_id("glowkelp");
+    fill(&mut w, "stone", 1, 63, 1, 6);
+    fill(&mut w, "water", 1, 63, 6, 40);
+    for x in (6..60).step_by(6) {
+        fill(&mut w, "glowkelp", x, x + 1, 6, 6 + (x % 20) + 6);
+    }
+    let before = count(&w, kelp);
+    run_until_asleep(&mut w, 3_000);
+    assert_eq!(count(&w, kelp), before, "the kelp's all there");
+}

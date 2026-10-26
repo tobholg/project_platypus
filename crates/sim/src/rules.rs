@@ -123,8 +123,9 @@ fn passable(h: &Hood, mover: &MatPhys, target: Option<Cell>) -> bool {
         Some(t) if t.flags & flags::HELD != 0 => false,
         Some(t) => {
             let tp = h.mats.phys(t.material);
-            // Plants are crushed by whatever falls or flows into them.
-            tp.kind == Kind::Plant || matches!(tp.kind, Kind::Liquid | Kind::Gas | Kind::Fire) && tp.density < mover.density
+            // Plants are crushed by whatever falls or flows into them (but
+            // water plants by water).
+            tp.kind == Kind::Plant && !(tp.aquatic && mover.kind == Kind::Liquid) || matches!(tp.kind, Kind::Liquid | Kind::Gas | Kind::Fire) && tp.density < mover.density
         }
     }
 }
@@ -861,7 +862,7 @@ const PRESSURE_REACH: i32 = 72;
 /// it): a pool kept awake costs a look along each row, not one per cell.
 fn through_to_open(h: &mut Hood, x: i32, y: i32, dir: i32, m: MaterialId) -> Option<i32> {
     let slot = (dir > 0) as usize;
-    let open = |h: &Hood, t: Cell| t.is_air() || h.mats.phys(t.material).kind == Kind::Plant;
+    let open = |h: &Hood, t: Cell| t.is_air() || (h.mats.phys(t.material).kind == Kind::Plant && !h.mats.phys(t.material).aquatic);
     // The row's run of this liquid, if this cell is in it (or just behind
     // its start: the run's start is still this liquid, it's the cell that
     // looked), else a new one from here.
@@ -915,7 +916,7 @@ fn can_slide(h: &Hood, x: i32, y: i32, p: &MatPhys) -> bool {
 }
 
 fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
-    let open_side = |dx: i32| h.get(x + dx, y).is_some_and(|t| t.is_air() || h.mats.phys(t.material).kind == Kind::Plant);
+    let open_side = |dx: i32| h.get(x + dx, y).is_some_and(|t| t.is_air() || (h.mats.phys(t.material).kind == Kind::Plant && !h.mats.phys(t.material).aquatic));
     if p.viscosity > 0 && (open_side(-1) || open_side(1)) && flags::rest(c.flags) < p.rest_limit && h.rng.chance(p.viscosity) {
         // Thick: not this tick, but it isn't at rest either.
         h.wake(x, y);
@@ -937,7 +938,7 @@ fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
             // Sideways only into air (or plants, which get washed away).
             // Layering (oil over water) happens by sinking; sideways swaps at
             // an interface would never end.
-            if !h.get(x + dir * i, y).is_some_and(|t| t.is_air() || h.mats.phys(t.material).kind == Kind::Plant) {
+            if !h.get(x + dir * i, y).is_some_and(|t| t.is_air() || (h.mats.phys(t.material).kind == Kind::Plant && !h.mats.phys(t.material).aquatic)) {
                 break;
             }
             if i <= reach {

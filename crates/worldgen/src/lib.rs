@@ -226,6 +226,12 @@ pub const SNAG_UNTIL: f32 = 0.3;
 /// Tall grass: never this tall or taller (a lush meadow's tall stand comes
 /// near it); clumps this many columns across, and this share of them stands
 /// far above the rest.
+/// A flooded bed: one cell of it in so many stands a strand of glowkelp
+/// this tall (cells, from, to); one in so many (of the rest) a cluster of
+/// bladder pods.
+const KELP_ONE_IN: u64 = 9;
+const KELP_TALL: (i32, i32) = (6, 30);
+const POD_ONE_IN: u64 = 60;
 /// A great hall's roof: one cell of it open to the hall in so many holds a
 /// glowworm; one in so many hangs a thread of silk.
 const GLOWWORM_ONE_IN: u64 = 3;
@@ -364,6 +370,8 @@ struct Ids {
     glow_vine: MaterialId,
     glowworm: MaterialId,
     glowworm_silk: MaterialId,
+    glowkelp: MaterialId,
+    bladder_pod: MaterialId,
     crystal: MaterialId,
     toxic_crust: MaterialId,
     platform: MaterialId,
@@ -500,6 +508,8 @@ impl TerrainGen {
             glow_vine: mats.expect_id("glow_vine"),
             glowworm: mats.expect_id("glowworm"),
             glowworm_silk: mats.expect_id("glowworm_silk"),
+            glowkelp: mats.expect_id("glowkelp"),
+            bladder_pod: mats.expect_id("bladder_pod"),
             healroot: mats.expect_id("healroot"),
             crystal: mats.expect_id("crystal"),
             toxic_crust: mats.expect_id("toxic_crust"),
@@ -1494,6 +1504,49 @@ impl TerrainGen {
         }
     }
 
+    /// The flooded caverns' beds (and the great halls' lakes'): glowkelp
+    /// standing up off the rock in strands, darker at the root, glowing at
+    /// the tip, as high as the water lets it; now and then a cluster of
+    /// bladder pods on a flat of the rock.
+    fn lakebed(&self, pos: ChunkPos, cells: &mut [Cell]) {
+        let i = &self.ids;
+        let o = pos.origin();
+        let plan = &*self.plan;
+        if plan.band_at(o.y + CHUNK / 2) != Band::Caverns || o.y > plan.water_table(o.x) {
+            return;
+        }
+        let before: Vec<MaterialId> = cells.iter().map(|c| c.material).collect();
+        let at = |lx: i32, ly: i32| if (0..CHUNK).contains(&lx) && (0..CHUNK).contains(&ly) { before[(ly * CHUNK + lx) as usize] } else { self.material_at(o.x + lx, o.y + ly) };
+        let rock = |m: MaterialId| m == i.stone || m == i.slate || m == i.basalt || m == i.obsidian || m == i.dirt;
+        let seed = plan.seed;
+        for lx in 0..CHUNK {
+            for ly in 0..CHUNK {
+                if at(lx, ly) != i.water || !rock(at(lx, ly - 1)) {
+                    continue;
+                }
+                let (x, y) = (o.x + lx, o.y + ly);
+                let h = hash(&[seed, 0x4E19, x as u64, y as u64]);
+                if h.is_multiple_of(KELP_ONE_IN) {
+                    // A strand, up through the water only (stopping short of
+                    // its top), shaded root to tip.
+                    let tall = KELP_TALL.0 + (h >> 8) as i32 % (KELP_TALL.1 - KELP_TALL.0);
+                    let room = (0..tall + 3).take_while(|&k| at(lx, ly + k) == i.water).count() as i32 - 3;
+                    let tall = tall.min(room);
+                    for k in 0..tall.max(0) {
+                        if ly + k < CHUNK {
+                            cells[((ly + k) * CHUNK + lx) as usize] = Cell::new(i.glowkelp, (k * 255 / tall.max(1)).min(255) as u8);
+                        }
+                    }
+                } else if (h >> 20).is_multiple_of(POD_ONE_IN) && lx + 1 < CHUNK && ly + 1 < CHUNK && rock(at(lx + 1, ly - 1)) && at(lx + 1, ly) == i.water && at(lx, ly + 1) == i.water && at(lx + 1, ly + 1) == i.water {
+                    // A cluster of pods: two by two, on a flat of the rock.
+                    for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                        cells[((ly + dy) * CHUNK + lx + dx) as usize] = Cell::new(i.bladder_pod, ((h >> (dx * 4 + dy * 8)) & 0xFF) as u8);
+                    }
+                }
+            }
+        }
+    }
+
     /// The underground biomes dress the rock where it meets open space:
     /// fungal soil and glowing sprouts in the fungal hollows, crystal studs
     /// in the crystal caves, a glowing crust in the toxic grottos.
@@ -2255,6 +2308,7 @@ impl ChunkGenerator for TerrainGen {
         }
         self.dress(pos, &mut cells, &mut rng);
         self.glowworms(pos, &mut cells);
+        self.lakebed(pos, &mut cells);
         self.dress_lairs(pos, &mut cells);
         self.boulder_traps(pos, &mut cells);
         self.sweep_specks(pos, &mut cells);
