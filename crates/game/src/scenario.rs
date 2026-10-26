@@ -319,7 +319,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, (bowshot_script, damp_script).after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (bowshot_script, damp_script, lakes_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script, record_script, course_script, dig_script, legs_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, spider_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3900,6 +3900,129 @@ fn kick_script(
         }
         _ => {}
     }
+}
+
+/// `lakes` (a generated world or a save: `PLATYPUS_SAVE`): finds the
+/// biggest bodies of water under the ground near the player (the world as
+/// generated: chunks `PLATYPUS_LAKE_REACH` either way, 60 by default, the
+/// richest in water, near ones merged), then stands the player (kept
+/// alive) just over each in turn, `PLATYPUS_LAKE_SECS` (8) each, logging
+/// the frame rate there and the sim's tick. (With `--features spikes` and
+/// `PLATYPUS_PROFILE`, where the time went.)
+fn lakes_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    metrics: Res<crate::world::SimMetrics>,
+    time: Res<Time<Real>>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    mut state: Local<(Vec<(CellPos, usize)>, usize, f32, u32, f32)>,
+    mut sample: Local<f32>,
+) {
+    if s.name != "lakes" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    let (lakes, at, since, frames, ticks) = &mut *state;
+    let secs: f32 = std::env::var("PLATYPUS_LAKE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(8.0);
+    if lakes.is_empty() && t > 1.0 {
+        let reach: i32 = std::env::var("PLATYPUS_LAKE_REACH").ok().and_then(|v| v.parse().ok()).unwrap_or(60);
+        let water = sim.materials().id("water");
+        let me = CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk();
+        let (lo, hi) = sim.generator.bounds();
+        let surface = sim.generator.spawn_point().y;
+        let mut wet: Vec<(platypus_sim::ChunkPos, usize)> = Vec::new();
+        for cy in (me.y - reach).max(lo.y)..=(me.y + reach).min(hi.y) {
+            // (Under the ground only.)
+            if cy * platypus_sim::CHUNK as i32 > surface - 200 {
+                continue;
+            }
+            for cx in (me.x - reach).max(lo.x)..=(me.x + reach).min(hi.x) {
+                let pos = platypus_sim::ChunkPos::new(cx, cy);
+                let chunk = sim.generator.generate(pos);
+                let n = chunk.cells().iter().filter(|c| Some(c.material) == water).count();
+                if n > 400 {
+                    wet.push((pos, n));
+                }
+            }
+        }
+        // The richest, near ones (within 6 chunks) counted as one lake.
+        wet.sort_by_key(|w| std::cmp::Reverse(w.1));
+        let mut found: Vec<(platypus_sim::ChunkPos, usize)> = Vec::new();
+        for (pos, n) in &wet {
+            if let Some(f) = found.iter_mut().find(|f| (f.0.x - pos.x).abs() <= 6 && (f.0.y - pos.y).abs() <= 6) {
+                f.1 += n;
+            } else {
+                found.push((*pos, *n));
+            }
+        }
+        found.sort_by_key(|f| std::cmp::Reverse(f.1));
+        found.truncate(std::env::var("PLATYPUS_LAKES").ok().and_then(|v| v.parse().ok()).unwrap_or(4));
+        info!("lakes: {} wet chunks; the biggest: {:?}", wet.len(), found.iter().map(|(p, n)| (p.x * platypus_sim::CHUNK as i32, p.y * platypus_sim::CHUNK as i32, n)).collect::<Vec<_>>());
+        *lakes = found.into_iter().map(|(p, n)| (CellPos::new(p.x * platypus_sim::CHUNK as i32 + 32, p.y * platypus_sim::CHUNK as i32 + 32), n)).collect();
+        *at = usize::MAX;
+        *since = t;
+        return;
+    }
+    if lakes.is_empty() {
+        return;
+    }
+    if *at >= lakes.len() && *at != usize::MAX {
+        return;
+    }
+    *frames += 1;
+    *ticks += metrics.tick_time.as_secs_f32() * 1000.0;
+    // Each second: how busy the cells are (chunks awake, cells visited, the
+    // step's phases, ms).
+    if t >= *sample {
+        *sample = t + 1.0;
+        let m = &metrics.last;
+        let phases: Vec<String> = platypus_sim::PHASES.iter().zip(m.phases).map(|(n, d)| format!("{n} {:.1}", d.as_secs_f32() * 1000.0)).collect();
+        info!("lakes: t {t:.0} tick {:.2} ms: {} chunks awake, {} cells visited; {}", metrics.tick_time.as_secs_f32() * 1000.0, m.active_chunks, m.visited_cells, phases.join(", "));
+        // Round the lake's middle: its water, how much of it is off the
+        // ambient heat, how much still sloshing (not at rest).
+        if let Some(&(c, _)) = lakes.get(*at) {
+            let mats = sim.materials();
+            let (mut water, mut warm, mut restless, mut lowest) = (0, 0, 0, i32::MAX);
+            for dy in (-200..200).step_by(2) {
+                for dx in (-400..400).step_by(2) {
+                    let p = c.offset(dx, dy);
+                    if let Some(cell) = sim.world.get(p).filter(|cell| !cell.is_air() && mats.phys(cell.material).kind == platypus_sim::Kind::Liquid) {
+                        water += 1;
+                        warm += (cell.heat != 0) as usize;
+                        restless += (platypus_sim::cell::flags::rest(cell.flags) < platypus_sim::cell::flags::REST_LIMIT) as usize;
+                        lowest = lowest.min(p.y);
+                    }
+                }
+            }
+            info!("lakes:   its liquid (1 in 4 sampled): {water}, off ambient {warm}, not at rest {restless}");
+        }
+    }
+    let next = if *at == usize::MAX { 0 } else { *at + 1 };
+    if *at == usize::MAX || t - *since >= secs {
+        if *at != usize::MAX {
+            let span = t - *since;
+            info!("lakes: #{} at ({}, {}) water {}: {:.0} fps, sim tick {:.2} ms, frame {:.1} ms, {} chunks loaded, {} particles", *at, lakes[*at].0.x, lakes[*at].0.y, lakes[*at].1, *frames as f32 / span, *ticks / *frames as f32, span * 1000.0 / *frames as f32, sim.world.loaded_count(), sim.world.particles().len());
+        }
+        if next >= lakes.len() {
+            *at = next;
+            return;
+        }
+        *at = next;
+        *since = t;
+        *frames = 0;
+        *ticks = 0.0;
+        // Just over it: up its column from its middle to open air over water.
+        let c = lakes[next].0;
+        let spot = (0..400).map(|d| c.offset(0, d)).find(|p| sim.world.get(*p).is_none_or(|cell| cell.is_air())).unwrap_or(c);
+        k.body.pos = Vec2::new(spot.x as f32 + 0.5, spot.y as f32 + 12.0);
+        k.body.vel = Vec2::ZERO;
+        info!("lakes: to #{next} at ({}, {})", spot.x, spot.y);
+    }
+    let _ = time;
 }
 
 /// `damp` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_MODE=dev`):
