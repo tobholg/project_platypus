@@ -44,7 +44,7 @@ impl Plugin for SoundPlugin {
             .add_message::<PlaySound>()
             .add_systems(Startup, buses)
             .add_systems(PostStartup, listen)
-            .add_systems(Update, (reload, render, finish, volumes, play).chain())
+            .add_systems(Update, (reload, render, finish, volumes, muffle, play).chain())
             .add_plugins((ambience::AmbiencePlugin, hooks::HooksPlugin));
     }
 }
@@ -59,6 +59,10 @@ struct MusicBus;
 /// The cave's reverb: effects are sent to it, as much as you're underground.
 #[derive(NodeLabel, PartialEq, Eq, Debug, Hash, Clone)]
 pub struct CaveVerb;
+/// Under water: the world's sounds (effects, their echo, ambience) come
+/// through a low-pass filter, closing as your head goes under (`muffle`).
+#[derive(NodeLabel, PartialEq, Eq, Debug, Hash, Clone)]
+struct Muffle;
 
 #[derive(PoolLabel, PartialEq, Eq, Debug, Hash, Clone)]
 pub struct SfxPool;
@@ -212,13 +216,39 @@ impl Default for Muted {
 
 fn buses(mut commands: Commands) {
     // The cave: a big, darkish room; silent until you're underground.
-    commands.spawn((VolumeNode { volume: Volume::SILENT, ..default() }, CaveVerb)).chain_node(FreeverbNode { room_size: 0.88, damping: 0.55, width: 0.9, ..default() });
-    commands.spawn((VolumeNode::default(), SfxBus)).connect(MainBus).connect(CaveVerb);
-    commands.spawn((VolumeNode::default(), AmbienceBus));
+    commands.spawn((SvfNode::<2>::from_lowpass_x2(MUFFLE.0, 0.7), Muffle)).connect(MainBus);
+    commands.spawn((VolumeNode { volume: Volume::SILENT, ..default() }, CaveVerb)).chain_node(FreeverbNode { room_size: 0.88, damping: 0.55, width: 0.9, ..default() }).connect(Muffle);
+    commands.spawn((VolumeNode::default(), SfxBus)).connect(Muffle).connect(CaveVerb);
+    commands.spawn((VolumeNode::default(), AmbienceBus)).connect(Muffle);
     commands.spawn((VolumeNode::default(), MusicBus));
     commands.spawn((SamplerPool(SfxPool), PoolSize(16..=64), sample_effects![SpatialBasicNode::default()])).connect(SfxBus);
     commands.spawn((SamplerPool(AmbiencePool), PoolSize(8..=16), sample_effects![VolumeNode::default(), SpatialBasicNode::default()])).connect(AmbienceBus);
     commands.spawn((SamplerPool(MusicPool), PoolSize(4..=8), sample_effects![VolumeNode::default()])).connect(MusicBus);
+}
+
+/// The muffle's cutoff (Hz): in the air (open: nothing taken), with your
+/// head under water; how fast it closes and opens (a share of the way a
+/// second).
+const MUFFLE: (f32, f32) = (20_000.0, 420.0);
+const MUFFLE_EASE: f32 = 9.0;
+
+/// Your head under water: the world's sounds close down to a dull thud and
+/// rumble, opening again as you come up.
+fn muffle(time: Res<Time<Real>>, player: Query<&crate::breath::Breath, With<crate::creatures::player::LocalPlayer>>, mut node: Query<&mut SvfNode, With<Muffle>>, mut at: Local<Option<f32>>) {
+    let Ok(mut filter) = node.single_mut() else { return };
+    let under = player.single().is_ok_and(|b| b.under);
+    let want = if under { MUFFLE.1 } else { MUFFLE.0 };
+    // (Eased in octaves: a sweep, not a step.)
+    let now = at.get_or_insert(MUFFLE.0);
+    let k = (MUFFLE_EASE * time.delta_secs()).min(1.0);
+    *now = (now.ln() + (want.ln() - now.ln()) * k).exp();
+    if (filter.cutoff_hz - *now).abs() > 1.0 {
+        // (Settled shut or open: said, once.)
+        if (filter.cutoff_hz - want).abs() > 50.0 && (*now - want).abs() <= 50.0 {
+            debug!("sound: muffle {} ({:.0} Hz)", if under { "shut" } else { "open" }, *now);
+        }
+        filter.cutoff_hz = *now;
+    }
 }
 
 /// The camera hears.
