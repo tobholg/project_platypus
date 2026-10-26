@@ -17,6 +17,8 @@
     team: Enemy,
     faction: "undead",
     kind: "undead",
+    // (Floating, its rags damp with the grave: slower to catch.)
+    catches: 0.6,
     blood: "ash",
     art: "necromancer",
     eyes: (150, 255, 160),

@@ -11,6 +11,9 @@
     poise: 80,
     team: Enemy,
     kind: "humanoid",
+    // (His own fire's: it barely bites him, and he won't catch.)
+    profile: {fire: 0.2},
+    catches: 0.0,
     blood: "blood",
     art: "jan_willy",
     movement: (

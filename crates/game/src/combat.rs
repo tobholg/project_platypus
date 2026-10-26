@@ -822,7 +822,7 @@ fn touch(
                 crate::creatures::body::elements::stain(&mut commands, e, name, 0.5, &coatings);
             }
             if t.ignites {
-                crate::creatures::body::elements::catch_fire(&mut commands, e, &th.nature, tcoat, &coatings, 0.35);
+                crate::creatures::body::elements::catch_fire(&mut commands, e, &th, tcoat, &coatings, 0.35);
             }
             t.rest = t.every;
             break;

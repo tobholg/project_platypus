@@ -16,7 +16,9 @@
     faction: "spiders",
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "insect",
-    profile: {acid: -0.25},
+    profile: {acid: -0.25, fire: 0.8},
+    // (Half out of the world: fire bites it less, slower to catch: `catches`.)
+    catches: 0.7,
     // It bleeds a glowing ichor; acid doesn't hurt it.
     blood: "phase_ichor",
     // A lot of it: 40% more than most.

@@ -4731,7 +4731,7 @@ fn troll_script(
             }
             ew.remove::<crate::creatures::body::elements::Coated>();
         });
-        crate::creatures::body::elements::catch_fire(&mut commands, e, &h.nature, None, &coatings, 1.0);
+        crate::creatures::body::elements::catch_fire(&mut commands, e, &h, None, &coatings, 1.0);
         info!("troll: set alight at t {t:.1} (health {:.0})", h.hp);
         *step = 2;
     }

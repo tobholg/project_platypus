@@ -188,6 +188,10 @@ pub struct CreatureDef {
     /// Knockback it takes is divided by this (a troll's 4).
     #[serde(default = "one_f")]
     pub heft: f32,
+    /// How readily it catches fire (`Nature::kindle`): 1 as anything, 0.5
+    /// half as readily and it burns out sooner, 0 never.
+    #[serde(default = "one_f")]
+    pub catches: f32,
     /// Mindless: it walks into a painted wall of fire (`brush::wary`) where
     /// others stop at its edge (a zombie, a rat, a slime).
     #[serde(default)]
@@ -417,6 +421,7 @@ impl Creatures {
         });
         let with_nature = |mut def: CreatureDef| -> Result<CreatureDef, String> {
             def.nature = crate::creatures::nature::Nature::of_kind(&kinds, def.kind.as_deref(), &def.profile, &def.cant).map_err(|e| format!("{}: {e}", def.name))?;
+            def.nature.kindle = def.catches;
             Ok(def)
         };
         let Ok(entries) = std::fs::read_dir(dir) else {

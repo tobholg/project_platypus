@@ -119,7 +119,7 @@ pub fn exhaust(
             }
             h.harm_by(SCORCH, Harm::Fire, || crate::death::Cause::new("Rocket boots", "scorched"));
             if rng.chance(CATCH) {
-                catch_fire(&mut commands, e, &h.nature, coated, &coatings, 0.3);
+                catch_fire(&mut commands, e, &h, coated, &coatings, 0.3);
             }
         }
     }

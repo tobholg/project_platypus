@@ -15,6 +15,9 @@
     team: Enemy,
     touchless: true,
     kind: "beast",
+    // (Old and deep: fire bites it less, and it's slow to catch.)
+    profile: {fire: 0.6},
+    catches: 0.5,
     blood: "blood",
     art: "elder_watcher",
     light: (color: (200, 60, 120), strength: 0.12),

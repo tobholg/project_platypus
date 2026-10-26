@@ -89,11 +89,14 @@ pub enum Cant {
 pub struct Nature {
     by: [f32; 11],
     cant: u8,
+    /// How readily it catches fire (1 as anything; 0.5 half as readily,
+    /// and it burns out sooner; 0 never: `catches` in its file).
+    pub kindle: f32,
 }
 
 impl Default for Nature {
     fn default() -> Self {
-        Nature { by: [1.0; 11], cant: 0 }
+        Nature { by: [1.0; 11], cant: 0, kindle: 1.0 }
     }
 }
 
@@ -135,7 +138,7 @@ impl Nature {
     /// Hurt by these kinds only (each its multiplier `of`), nothing else
     /// (a heap of bones, a loose skull: `rise`).
     pub fn only(kinds: &[Harm], of: impl Fn(Harm) -> f32) -> Self {
-        let mut n = Nature { by: [0.0; 11], cant: 0 };
+        let mut n = Nature { by: [0.0; 11], cant: 0, kindle: 1.0 };
         for &k in kinds {
             n.by[k as usize] = of(k);
         }

@@ -276,6 +276,15 @@ impl Health {
         Health { hp: max, max, ward: Ward::default(), nature: Nature::default(), felt: 0, took: [(0.0, 0.0); 11], records: false, recent: Vec::new() }
     }
 
+    /// How readily it catches fire: its kind's (`Nature::kindle`), less as
+    /// its gear and potions keep fire off (the player's fire resistance).
+    pub fn kindles(&self) -> f32 {
+        if self.nature.cant(nature::Cant::Burn) {
+            return 0.0;
+        }
+        self.nature.kindle.max(0.0) * (1.0 - (self.ward.fire + self.ward.drunk_fire).clamp(0.0, 0.9))
+    }
+
     /// Hurt it: `amount` of a kind, less what its gear stops, times how its
     /// kind takes it. Returns what got through; below 0, it drank it in
     /// (its nature heals it: up to its maximum).

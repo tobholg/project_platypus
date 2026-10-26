@@ -517,7 +517,7 @@ fn fire(
                     h.harm(STREAM_DAMAGE, cast.harm);
                     k.body.vel += f.dir * 9.0;
                     if rng.chance(STREAM_CATCH) {
-                        catch_fire(&mut commands, e, &h.nature, coated, &coatings, 0.35);
+                        catch_fire(&mut commands, e, &h, coated, &coatings, 0.35);
                     }
                 }
             }
@@ -862,7 +862,7 @@ fn land(commands: &mut Commands, world: &mut World, coatings: &Coatings, bodies:
                 world.apply_edit(&WorldEdit::Ignite { center, radius });
                 for (e, k, h, coated) in bodies.iter() {
                     if k.body.pos.distance(at) < radius as f32 + k.body.half.max_element() {
-                        catch_fire(commands, e, &h.nature, coated, coatings, 0.8);
+                        catch_fire(commands, e, &h, coated, coatings, 0.8);
                     }
                 }
             }

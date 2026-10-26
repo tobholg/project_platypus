@@ -406,7 +406,7 @@ pub fn flare(
         since.insert(e, 0.0);
         let at = sum / n as f32;
         h.harm_by(FLARE_HIT, crate::creatures::Harm::Fire, || crate::death::Cause::new("A wall of fire", "burned"));
-        crate::creatures::body::elements::catch_fire(&mut commands, e, &h.nature, coated, &coatings, 0.6);
+        crate::creatures::body::elements::catch_fire(&mut commands, e, &h, coated, &coatings, 0.6);
         // Thrown back out the way it came in, as light as it is.
         let away = (k.body.pos.x - at.x).signum();
         let away = if away == 0.0 { -k.body.vel.x.signum() } else { away };

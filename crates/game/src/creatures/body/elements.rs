@@ -43,7 +43,9 @@ const BURN_FAST: f32 = 0.25;
 #[cfg(test)]
 pub const BURN_SECS: f32 = 6.1;
 /// Damage a second all of it on fire (less the less of it; oil's `burn` more).
-const FIRE_DAMAGE: f32 = 12.0;
+const FIRE_DAMAGE: f32 = 4.0;
+/// ... and this share of its health a second besides, all of it alight.
+const FIRE_SHARE: f32 = 0.04;
 /// Its fire rises towards this × the share of it touching flames...
 const FIRE_SOAK: f32 = 5.0;
 /// ... this fast (a share a second).
@@ -516,12 +518,14 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
         let was = burning.as_ref().map_or(0.0, |b| b.share);
         let power = coat.burn(rules);
         let mut fire = was;
-        if nature.cant(Cant::Burn) || cold > 0.5 || coat.doused(rules) {
+        let kindles = health.kindles();
+        if kindles <= 0.0 || cold > 0.5 || coat.doused(rules) {
             fire = 0.0;
         } else {
             let oily = coat.oily(rules);
             let heat_lit = coat.catches(rules) && e.heat > 0.0;
-            let lit = (e.flames * FIRE_SOAK).min(1.0).max(if heat_lit { oily } else { 0.0 });
+            // (As much catches as touches flames, as readily as it catches.)
+            let lit = (e.flames * FIRE_SOAK * kindles).min(1.0).max(if heat_lit { oily * kindles } else { 0.0 });
             let mut fed = false;
             if lit > fire {
                 fire = (fire + FIRE_RATE * DT).min(lit);
@@ -532,7 +536,8 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
                 fed = true;
             }
             if !fed {
-                fire -= (BURN_SLOW + BURN_FAST * (1.0 - fire)) * DT / power.max(0.1);
+                // (What catches less readily burns out sooner.)
+                fire -= (BURN_SLOW + BURN_FAST * (1.0 - fire)) * DT / power.max(0.1) / kindles.clamp(0.25, 1.0);
             }
             // (Falling fast, the air beats it down, fed or not.)
             fire -= (-k.body.vel.y - FALL_DOUSE).max(0.0) * FALL_DOUSE_RATE * DT;
@@ -570,7 +575,10 @@ pub fn expose(mut commands: Commands, mut sim: ResMut<SimWorld>, coatings: Res<C
             Some(mut b) if fire > 0.005 => {
                 b.share = fire;
                 b.power = power;
-                health.linger(FIRE_DAMAGE * fire * power * DT, Harm::Fire, || crate::death::Cause::new("Flames", "burned alive"));
+                // (A little, and a share of all it has: a troll feels it as a
+                // rat does; its kind's resistance is what spares it.)
+                let burn = FIRE_DAMAGE + FIRE_SHARE * health.max;
+                health.linger(burn * fire * power * DT, Harm::Fire, || crate::death::Cause::new("Flames", "burned alive"));
                 b.spread -= DT;
                 if b.spread <= 0.0 {
                     b.spread = SPREAD_EVERY;
@@ -658,7 +666,7 @@ pub fn struck(
             }
             let damage = LIGHTNING_DAMAGE * (1.0 - d / LIGHTNING_REACH) * conducts(coated, &coatings);
             health.harm_by(damage, Harm::Storm, || crate::death::Cause::new("Lightning", "struck"));
-            catch_fire(&mut commands, entity, &health.nature, coated, &coatings, 1.0);
+            catch_fire(&mut commands, entity, &health, coated, &coatings, 1.0);
         }
     }
 }
@@ -678,7 +686,7 @@ pub fn zapped(mut commands: Commands, mut zaps: MessageReader<crate::fx::Zapped>
             }
             let damage = ZAP_DAMAGE * (1.0 - d / ZAP_REACH) * conducts(coated, &coatings);
             health.harm_by(damage, Harm::Storm, || crate::death::Cause::new("A wand's lightning", "shocked"));
-            catch_fire(&mut commands, entity, &health.nature, coated, &coatings, 0.6);
+            catch_fire(&mut commands, entity, &health, coated, &coatings, 0.6);
         }
     }
 }
@@ -696,9 +704,12 @@ pub fn chill(commands: &mut Commands, entity: Entity, nature: &Nature, now: Opti
 }
 
 /// Set `share` more of a creature alight (lightning all of it, a spark
-/// some), unless it's wet enough or its kind won't burn.
-pub fn catch_fire(commands: &mut Commands, entity: Entity, nature: &Nature, coated: Option<&Coated>, coatings: &Coatings, share: f32) {
-    if coated.is_some_and(|c| c.doused(&coatings.by_name)) || nature.cant(Cant::Burn) {
+/// some), as readily as it catches (`Health::kindles`), unless it's wet
+/// enough or its kind won't burn.
+pub fn catch_fire(commands: &mut Commands, entity: Entity, health: &crate::creatures::Health, coated: Option<&Coated>, coatings: &Coatings, share: f32) {
+    // (As readily as it catches: a troll half as much, a skeleton never.)
+    let share = share * health.kindles();
+    if coated.is_some_and(|c| c.doused(&coatings.by_name)) || share <= 0.0 {
         return;
     }
     commands.entity(entity).queue_silenced(move |mut e: EntityWorldMut| match e.get_mut::<Burning>() {

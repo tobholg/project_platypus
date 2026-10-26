@@ -17,6 +17,9 @@
     team: Enemy,
     faction: "undead",
     kind: "undead",
+    // (Its armour: fire bites it far less, and it rarely catches.)
+    profile: {fire: 0.4},
+    catches: 0.3,
     blood: "",
     art: "fallen_templar",
     eyes: (190, 230, 255),

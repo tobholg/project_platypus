@@ -13,6 +13,9 @@
     health: 560,
     team: Enemy,
     kind: "undead",
+    // (Its armour and rags: fire bites it far less, and it rarely catches.)
+    profile: {fire: 0.4},
+    catches: 0.3,
     blood: "",
     art: "dread_knight",
     heft: 10,

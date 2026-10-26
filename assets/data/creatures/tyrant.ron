@@ -10,6 +10,9 @@
     team: Enemy,
     faction: "tyrants",
     kind: "beast",
+    // (A ridge tyrant's hide: fire bites it far less than a small beast, and it's slow to catch.)
+    profile: {fire: 0.4},
+    catches: 0.4,
     art: "tyrant_body",
     // Two great legs from the side (legs.rs), three bones each as the
     // raptor's: a massive thigh forward to the knee, a shank back to the
