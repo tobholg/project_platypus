@@ -289,6 +289,7 @@ impl Plugin for MagicPlugin {
             .init_resource::<Drinkers>()
             .init_resource::<brush::Strokes>()
             .init_resource::<brush::Painted>()
+            .init_resource::<brush::Kept>()
             .add_plugins(bevy::core_pipeline::fullscreen_material::FullscreenMaterialPlugin::<warp::Warp>::default())
             .init_resource::<beam::Beams>()
             .init_resource::<beam::BeamCanvas>()
@@ -303,7 +304,7 @@ impl Plugin for MagicPlugin {
             // and a blade swung this tick meets what's on its way in first:
             // `combat::swing` cuts a spit out of the air a plunge closes on.
             // Unordered, the plunge sometimes moved onto it and was struck.)
-            .add_systems(FixedUpdate, (recharge, request, fire, void::stasis, fly.before(crate::creatures::move_creatures), void::act, well::channel, conjure::hold).chain().in_set(TickSet::Bodies).before(crate::creatures::body::hurt::notice))
+            .add_systems(FixedUpdate, (recharge, request, fire, void::stasis, fly.before(crate::creatures::move_creatures), void::act, well::channel, conjure::hold, brush::keep).chain().in_set(TickSet::Bodies).before(crate::creatures::body::hurt::notice))
             .add_systems(
                 FixedUpdate,
                 (void::pin, void::through, void::age).chain().in_set(TickSet::Bodies).after(void::act).after(crate::creatures::move_creatures).after(crate::props::fly),
@@ -474,7 +475,7 @@ fn fire(
     mut bodies: Query<Hittable>,
     drinkers: Res<Drinkers>,
     (parts, teams): (Query<&crate::creatures::body::parts::Parts>, Query<&crate::creatures::Team>),
-    (mut strokes, mut painted, mut mana, mut sounds): (ResMut<brush::Strokes>, ResMut<brush::Painted>, Query<&mut Mana>, MessageWriter<crate::sound::PlaySound>),
+    (mut strokes, mut painted, mut kept, mut mana, mut sounds): (ResMut<brush::Strokes>, ResMut<brush::Painted>, ResMut<brush::Kept>, Query<&mut Mana>, MessageWriter<crate::sound::PlaySound>),
 ) {
     let halo = halo.map(|h| h.0.clone());
     let mut booms = Vec::new();
@@ -534,19 +535,21 @@ fn fire(
                     }
                 }
             }
-            Carrier::Brush { solid, loose, radius, range, reach, per_cell, set, stream, through } => {
+            Carrier::Brush { solid, loose, radius, range, reach, per_cell, set, stream, through, lasts, sound } => {
                 let boxes: Vec<(Vec2, Vec2)> = bodies.iter().map(|(_, k, ..)| (k.body.pos, k.body.half)).collect();
-                let b = brush::Brush { solid, loose, radius: *radius, range: *range, reach: *reach, per_cell: *per_cell, look: set.as_ref(), stream: stream.as_ref(), through: *through };
+                let b = brush::Brush { solid, loose, radius: *radius, range: *range, reach: *reach, per_cell: *per_cell, look: set.as_ref(), stream: stream.as_ref(), through: *through, lasts: *lasts };
                 // (What it paints with: the caster's mana, a cell at a time.)
                 let mut left = mana.get(f.caster).map_or(f32::MAX, |m| m.cur);
                 let before = left;
-                let laid = brush::paint(&mut sim.world, &mut strokes, &mut painted, &mut sparks, f.caster, f.from, f.dir, f.reach, &b, &mut left, &boxes);
+                let laid = brush::paint(&mut sim.world, &mut strokes, &mut painted, &mut kept, &mut sparks, f.caster, f.from, f.dir, f.reach, &b, &mut left, &boxes);
                 if let Ok(mut m) = mana.get_mut(f.caster) {
                     m.cur = (m.cur - (before - left)).max(0.0);
                 }
                 // (Setting, it tinkles: now and then, not every tick.)
-                if laid && sim.world.tick().is_multiple_of(brush::SOUND_TICKS) {
-                    sounds.write(crate::sound::PlaySound::at("frost_set", f.from + f.dir * f.reach.min(*range)).volume(0.5));
+                if laid && sim.world.tick().is_multiple_of(brush::SOUND_TICKS)
+                    && let Some(name) = sound
+                {
+                    sounds.write(crate::sound::PlaySound::at(name.clone(), f.from + f.dir * f.reach.min(*range)).volume(0.5));
                 }
             }
             Carrier::Cloud { material, radius, range } => {

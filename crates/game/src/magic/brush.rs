@@ -21,7 +21,10 @@
 //! come out ragged; under an overhang, ice now and then grows an icicle.
 //!
 //! As a cell sets, its element shows it (`Brush::look`: frost glitters and
-//! tinkles), the stream's motes running down it to the cursor.
+//! tinkles, flames lick up and whoosh), the stream's motes running down it
+//! to the cursor. A brush's cells may be kept a while (`lasts`: flames
+//! that die come back till then, `keep`); its loose form, if it's a flame,
+//! is embers, falling and dying (catching what burns where they land).
 
 use bevy::prelude::*;
 use platypus_sim::{Cell, CellPos, Kind, World};
@@ -37,6 +40,39 @@ pub struct Strokes(HashMap<Entity, (Vec2, u64)>);
 /// ground it's held (0: touching it).
 #[derive(Resource, Default)]
 pub struct Painted(HashMap<CellPos, u8>);
+
+/// Painted cells kept (`Brush::lasts`): what's kept there, how long more.
+#[derive(Resource, Default)]
+pub struct Kept(HashMap<CellPos, (platypus_sim::MaterialId, f32)>);
+
+/// A kept cell gone (a flame died) comes back with this chance a tick
+/// (/256): a flickering line, not a solid bar.
+const REKINDLE: u8 = 70;
+/// Embers: how long they live (ticks), how they fall.
+const EMBER_LIFE: u16 = 40;
+const EMBER_FALL: f32 = 0.12;
+
+/// Kept cells: what's died comes back now and then, till their time's up.
+pub fn keep(time: Res<Time>, mut sim: ResMut<crate::world::SimWorld>, mut kept: ResMut<Kept>) {
+    if kept.0.is_empty() {
+        return;
+    }
+    let dt = time.delta_secs();
+    let world = &mut sim.world;
+    let mats = world.materials().clone();
+    let mut rng = platypus_sim::rng::Rng::seeded(&[world.tick(), 0xCEE9]);
+    kept.0.retain(|&p, (m, left)| {
+        *left -= dt;
+        if *left <= 0.0 {
+            return false;
+        }
+        let gone = world.get(p).is_some_and(|c| c.is_air() || (c.material != *m && matches!(mats.phys(c.material).kind, Kind::Gas)));
+        if gone && rng.chance(REKINDLE) {
+            world.set(p, mats.spawn(*m, &mut rng));
+        }
+        true
+    });
+}
 
 /// Steps along a stroke (cells): a cell at a time, so a quick drag paints a
 /// line, not dots.
@@ -123,6 +159,8 @@ pub struct Brush<'a> {
     pub stream: Option<&'a Emitter>,
     /// Paints where the cursor is, whatever's between.
     pub through: bool,
+    /// What it sets is kept this long (s; 0: left to the world).
+    pub lasts: f32,
 }
 
 /// One tick of a brush held: `caster` painting from `from` toward its aim
@@ -133,6 +171,7 @@ pub fn paint(
     world: &mut World,
     strokes: &mut Strokes,
     painted: &mut Painted,
+    kept: &mut Kept,
     sparks: &mut crate::vfx::Sparks,
     caster: Entity,
     from: Vec2,
@@ -144,6 +183,8 @@ pub fn paint(
 ) -> bool {
     let mats = world.materials().clone();
     let (Some(solid), Some(loose)) = (mats.id(brush.solid), mats.id(brush.loose)) else { return false };
+    // (Ice: set deeply cold, chilling round it, growing icicles.)
+    let icy = mats.phys(solid).above_at <= 5 && mats.phys(solid).kind == Kind::Static;
     let tick = world.tick();
     // (Forget what's melted or been dug, now and then.)
     if tick.is_multiple_of(TIDY_EVERY) {
@@ -252,12 +293,17 @@ pub fn paint(
                         }
                         *mana -= brush.per_cell;
                         let mut c: Cell = mats.spawn(solid, &mut rng);
-                        c.heat = COLD;
+                        if icy {
+                            c.heat = COLD;
+                        }
                         world.set(p, c);
                         painted.0.insert(p, h);
+                        if brush.lasts > 0.0 {
+                            kept.0.insert(p, (solid, brush.lasts));
+                        }
                         set = true;
                         // (Open under it: now and then an icicle.)
-                        if brush.solid == "ice" && platypus_sim::rng::hash(&[p.x as u64, p.y as u64, 0x1C1C]).is_multiple_of(ICICLE_ONE_IN) {
+                        if icy && platypus_sim::rng::hash(&[p.x as u64, p.y as u64, 0x1C1C]).is_multiple_of(ICICLE_ONE_IN) {
                             let long = 1 + (platypus_sim::rng::hash(&[p.x as u64, p.y as u64, 0x1C1D]) % ICICLE_MOST as u64) as i32;
                             for k in 1..=long {
                                 let q = p.offset(0, -k);
@@ -283,13 +329,20 @@ pub fn paint(
         }
         // (Round it, chilled, down to `CHILL_TO`: the ground under it
         // frosts, water near it freezes.)
-        if brush.solid == "ice" && s % 2 == 0 {
+        if icy && s % 2 == 0 {
             chill(world, CellPos::new(cx, cy), ri + CHILL_PAST);
         }
         // In the open: its loose form, a flake or two falling from here.
         if loose_here && *mana >= brush.per_cell * 0.5 {
             *mana -= brush.per_cell * 0.5;
-            world.spill_heated([at.x, at.y], [0.0, -1.0], loose, if brush.solid == "ice" { COLD } else { 0 }, 1, 0.15, 1.2);
+            if mats.phys(loose).kind == Kind::Fire {
+                // (A flame's loose form: embers, drifting down, dying.)
+                let ember = mats.spawn(loose, &mut rng);
+                let drift = [(rng.next_u32() as f32 / u32::MAX as f32 - 0.5) * 0.3, -0.05];
+                world.emit(platypus_sim::Particle { gravity: EMBER_FALL, ..platypus_sim::Particle::new([at.x, at.y], drift, ember, EMBER_LIFE, platypus_sim::Landing::Settle) });
+            } else {
+                world.spill_heated([at.x, at.y], [0.0, -1.0], loose, if icy { COLD } else { 0 }, 1, 0.15, 1.2);
+            }
         }
     }
     set

@@ -95,6 +95,13 @@ pub enum Carrier {
         /// stronger brush's).
         #[serde(default)]
         through: bool,
+        /// What it sets is kept so long (s): what dies (flames) comes back
+        /// till then. 0: left to the world (ice melts as it does).
+        #[serde(default)]
+        lasts: f32,
+        /// What it sounds as cells set (now and then).
+        #[serde(default)]
+        sound: Option<String>,
     },
     /// Called down from above onto where it's aimed (out to `range`): its
     /// payloads ride something falling from `height` cells up at `speed`

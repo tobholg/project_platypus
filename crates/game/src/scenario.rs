@@ -15998,7 +15998,8 @@ fn bladesplash_script(
 /// stroke in the open air high over the floor (5.5-6.5 s). Logs the cells
 /// of what it set, of the loose, and its mana, each second (then every ten,
 /// to see it melt). `PLATYPUS_PAINT=pool`: water under where it draws;
-/// `wall`: a stone wall between it and where it draws.
+/// `wall`: a stone wall between it and where it draws; `face`: a plank wall
+/// beside where the column's drawn (it runs up its face).
 fn paint_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
@@ -16031,6 +16032,18 @@ fn paint_script(
             for xx in x as i32 - 14..x as i32 - 9 {
                 for yy in fl as i32..fl as i32 + 70 {
                     sim.world.set(CellPos::new(xx, yy), platypus_sim::Cell::new(stone, 128));
+                }
+            }
+        }
+    }
+    // (`PLATYPUS_PAINT=face`: a wall of planks 40 high just right of where
+    // the column's drawn: the column runs up its face.)
+    if std::env::var("PLATYPUS_PAINT").is_ok_and(|v| v == "face") && !*dug && t > 0.4 {
+        *dug = true;
+        if let Some(planks) = sim.materials().id("planks") {
+            for xx in x as i32 + 3..x as i32 + 9 {
+                for yy in fl as i32..fl as i32 + 40 {
+                    sim.world.set(CellPos::new(xx, yy), platypus_sim::Cell::new(planks, 128));
                 }
             }
         }
@@ -16069,7 +16082,7 @@ fn paint_script(
         };
         // (The ground round the column's foot: how cold it is.)
         let cold = (x as i32 - 12..x as i32 + 12).flat_map(|xx| (fl as i32 - 4..fl as i32).map(move |yy| CellPos::new(xx, yy))).filter_map(|p| sim.world.temperature(p)).min().unwrap_or(0);
-        info!("paint: t {t:.0} ice {} snow {} mana {:.0}; the floor at its foot down to {cold} °C", count("ice"), count("snow"), mana.map_or(0.0, |m| m.cur));
+        info!("paint: t {t:.0} ice {} snow {} fire {} planks {} mana {:.0}; the floor at its foot down to {cold} °C", count("ice"), count("snow"), count("fire"), count("planks"), mana.map_or(0.0, |m| m.cur));
     }
 }
 
