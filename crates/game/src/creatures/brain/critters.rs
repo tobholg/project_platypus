@@ -253,7 +253,9 @@ pub struct Haunt {
     /// any.
     #[serde(default)]
     pub bands: Vec<String>,
-    /// At most this many of it round the player.
+    /// At most this many of it round the player (with `packs`, no more
+    /// than the biggest pack at the player's depth either), its lairs'
+    /// keepers counted.
     pub most: usize,
     /// A chance a second to spawn one when there are fewer.
     #[serde(default = "half")]
@@ -376,12 +378,17 @@ fn rate_scale() -> f32 {
 const WATER_PER: i32 = 60;
 const WATER_SPAN: i32 = 1200;
 
+/// The biggest pack at a depth (`Haunt::packs`).
+pub fn pack_most(packs: &[(f32, usize)], depth: f32) -> usize {
+    packs.iter().filter(|(d, _)| depth >= *d).map(|&(_, m)| m).last().unwrap_or(1).max(1)
+}
+
 /// A pack's size at a depth (`Haunt::packs`): one up to the most for
 /// that deep, by `roll` (0..1); from four up the smaller more often (each
 /// size's weight `2 × most + 1 − size`: of five, 25 % one, 15 % five), so a
 /// deep pack is often a few, now and then the most.
 pub fn pack_size(packs: &[(f32, usize)], depth: f32, roll: f32) -> usize {
-    let most = packs.iter().filter(|(d, _)| depth >= *d).map(|&(_, m)| m).last().unwrap_or(1).max(1);
+    let most = pack_most(packs, depth);
     let weight = |n: usize| if most >= 4 { (2 * most + 1 - n) as f32 } else { 1.0 };
     let total: f32 = (1..=most).map(weight).sum();
     let mut left = roll.clamp(0.0, 0.999_999) * total;
@@ -413,6 +420,7 @@ fn ambient(
     day: Res<crate::light::Daylight>,
     player: Query<&Kinematics, With<crate::creatures::player::LocalPlayer>>,
     critters: Query<(Entity, &Creature, &Kinematics), Passing>,
+    keepers: Query<(&Creature, &Kinematics), With<crate::clock::Keeps>>,
     mut clock: Local<f32>,
     mut seed: Local<u64>,
     show: Res<crate::show::ShowMode>,
@@ -452,9 +460,14 @@ fn ambient(
         if !h.when.now(day.time) {
             continue;
         }
-        let near = critters.iter().filter(|(_, c, k)| c.kind == h.kind && k.body.pos.distance(p) < NEAR).count();
+        // (Its lairs' keepers count: none brought to a roost already full.)
+        let near = critters.iter().map(|(_, c, k)| (c, k)).chain(keepers.iter()).filter(|(c, k)| c.kind == h.kind && k.body.pos.distance(p) < NEAR).count();
+        // (No more round the player than its biggest pack where it is: two
+        // bats near the top, five deep down.)
+        let here = sim.generator.surface_hint(p.x as i32).map_or(0.0, |s| s as f32 - p.y);
+        let most = if h.packs.is_empty() { h.most } else { h.most.min(pack_most(&h.packs, here)) };
         let below = if h.place == Place::Cave { CAVE_RATE } else { 1.0 };
-        if near >= h.most || unit(&mut rng) > h.rate * 0.5 * below * rate_scale() * if show { crate::show::SHOW_RATE } else { 1.0 } {
+        if near >= most || unit(&mut rng) > h.rate * 0.5 * below * rate_scale() * if show { crate::show::SHOW_RATE } else { 1.0 } {
             continue;
         }
         // (Not near the start, for the big ones.)
@@ -564,7 +577,7 @@ fn ambient(
         // (A pack: several side by side, each on the ground there, no more
         // than its room for more.)
         let roll = unit(&mut rng);
-        let count = if h.packs.is_empty() { h.group.map_or(1, |(lo, hi)| lo + (roll * (hi.saturating_sub(lo) + 1) as f32) as usize) } else { pack_size(&h.packs, depth, roll) }.clamp(1, (h.most - near).max(1));
+        let count = if h.packs.is_empty() { h.group.map_or(1, |(lo, hi)| lo + (roll * (hi.saturating_sub(lo) + 1) as f32) as usize) } else { pack_size(&h.packs, depth, roll) }.clamp(1, most.saturating_sub(near).max(1));
         // (Together, a pack: the first its leader.)
         let pack = (count > 1).then(|| ((rng.next_u32() as u64) << 32) | sim.world.tick() & 0xFFFF_FFFF);
         for n in 0..count {

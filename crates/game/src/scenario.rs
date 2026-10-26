@@ -395,7 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -15992,6 +15992,53 @@ fn bladesplash_script(
 /// the player there, then the player away for `PLATYPUS_DAYS` (default 1)
 /// while the world clock runs, then back: how much of the water is left.
 /// (`PLATYPUS_DAYS=0.25`: a quarter of a day, part of it.)
+/// `batcount` (a generated world; `PLATYPUS_SEED`): the player (kept alive)
+/// put on the floor of the start valley's bat roost, there 40 s: logs every
+/// 2 s how many cave bats are round it (and of them lairs' keepers).
+fn batcount_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    bats: Query<(&crate::creatures::Creature, &Kinematics, Has<crate::clock::Keeps>), Without<LocalPlayer>>,
+    homes: Query<(&crate::creatures::Creature, &crate::clock::Keeps)>,
+    mut state: Local<(bool, f32, usize)>,
+) {
+    if s.name != "batcount" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((mut k, mut h)) = player.single_mut() else { return };
+    h.hp = h.max;
+    if !state.0 && t > 1.0 {
+        let home = sim.generator.spawn_point();
+        let Some((p, _)) = sim.generator.landmarks().into_iter().filter(|(_, n)| n == "bat roost").min_by_key(|(p, _)| (p.x - home.x).abs()) else {
+            warn!("batcount: no bat roost");
+            state.0 = true;
+            return;
+        };
+        let floor = (0..200).map(|d| p.y - d).find(|&y| sim.world.is_solid(CellPos::new(p.x, y)) && !sim.world.is_solid(CellPos::new(p.x, y + 1)));
+        k.body.pos = Vec2::new(p.x as f32, floor.unwrap_or(p.y) as f32 + 1.0 + k.body.half.y);
+        k.prev_pos = k.body.pos;
+        info!("batcount: put in the bat roost at ({}, {})", p.x, p.y);
+        state.0 = true;
+        return;
+    }
+    if state.0 && t >= state.1 {
+        state.1 = t + 2.0;
+        let near: Vec<bool> = bats.iter().filter(|(c, bk, _)| c.kind == "cave_bat" && bk.body.pos.distance(k.body.pos) < 400.0).map(|(.., keeper)| keeper).collect();
+        let most = near.len();
+        state.2 = state.2.max(most);
+        info!("batcount: t {t:.0} {} bats near ({} lairs'); the most so far {}", most, near.iter().filter(|&&x| x).count(), state.2);
+        if t < 4.0 {
+            let mut at: Vec<(i32, i32)> = homes.iter().filter(|(c, _)| c.kind == "cave_bat").map(|(_, k)| k.0).collect();
+            at.sort();
+            info!("batcount: the bats' lairs: {at:?}");
+        }
+    }
+}
+
 /// `crushcheck` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): what falling
 /// things do to the player: a boulder dropped on it from 40 cells (1 s),
 /// then a log up on two posts over it, its middle chopped out so each half

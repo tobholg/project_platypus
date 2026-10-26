@@ -34,10 +34,12 @@
     // A phase nest: the deep's spider nest, its eggs glowing.
     (name: "phase nest", depth: (180, 150000), bands: ["deep"], zones: ["none", "fungal", "crystal"], chance: 0.1,
      lining: "cobweb", density: 0.5, keepers: [("phase_spider", 1), ("phase_egg_sac", 3), ("phase_spiderling", 2), ("cocoon", 2)]),
-    // Bat colonies: the upper caves' commonest lair; eight or so asleep on
-    // the roof, guano heaped under them.
-    // (Smaller in the Burrows, full size below.)
-    (name: "bat colony", depth: (250, 150000), bands: ["underground"], zones: ["none", "fungal", "crystal"], chance: 0.1, min_size: 16,
+    // Bat colonies: the upper caves' commonest lair, asleep on the roof,
+    // guano heaped under them: a couple near the top (the Burrows), five
+    // from 800 down, nine or so in the caverns and below.
+    (name: "small bat colony", depth: (250, 800), bands: ["underground"], zones: ["none", "fungal", "crystal"], chance: 0.1, min_size: 16,
+     lining: "cobweb", density: 0.0, litter: "guano", litter_density: 0.5, keepers: [("cave_bat", 2)]),
+    (name: "bat colony", depth: (800, 150000), bands: ["underground"], zones: ["none", "fungal", "crystal"], chance: 0.1, min_size: 16,
      lining: "cobweb", density: 0.0, litter: "guano", litter_density: 0.6, keepers: [("cave_bat", 5)]),
     (name: "great bat colony", depth: (250, 150000), bands: ["caverns", "deep"], zones: ["none", "fungal", "crystal"], chance: 0.14, min_size: 16,
      lining: "cobweb", density: 0.0, litter: "guano", litter_density: 0.7, keepers: [("cave_bat", 9)]),

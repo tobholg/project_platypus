@@ -12,12 +12,14 @@
 //   bands: only in those depth bands (surface, underground, caverns, deep,
 //     underworld: each as deep as it is in this world's size)
 //   (Enemies too: what lives down there turns up as you go.)
-//   most: at most this many near the player; rate: a chance a second to add one
+//   most: at most this many near the player (its lairs' keepers counted);
+//     rate: a chance a second to add one
 //   biomes: only over those surface biomes (plains, forest, desert, tundra,
 //     jungle, swamp, deep forest, mountains, ocean); none: anywhere
 //   group: (min, max): come as a pack, side by side
 //   packs: [(depth, most), ..]: in place of group, packs by depth: from that
-//     deep (cells), one up to that many (from four up, smaller more often)
+//     deep (cells), one up to that many (from four up, smaller more often);
+//     and no more near the player than its biggest pack where it is
 //   away: never within that many cells of the world's start (the big ones)
 //   within: only within that many cells of the start (with away, a ring)
 //
