@@ -226,6 +226,15 @@ pub const SNAG_UNTIL: f32 = 0.3;
 /// Tall grass: never this tall or taller (a lush meadow's tall stand comes
 /// near it); clumps this many columns across, and this share of them stands
 /// far above the rest.
+/// The rock between the caverns and the deep: no cave crosses within this
+/// far of the caverns' floor (cells), and their huge chambers close over
+/// this share of the caverns' height more above it (and open over as much
+/// under it).
+const SEAL: i32 = 12;
+const SEAL_FADE: f64 = 0.08;
+/// Flooded caves keep this much rock (cells) between them and a chasm.
+const CHASM_LINING: i32 = 8;
+
 const GRASS_MOST: i32 = 40;
 const GRASS_CLUMP: i32 = 9;
 const GRASS_TALL: f64 = 0.08;
@@ -1889,6 +1898,22 @@ impl TerrainGen {
     fn cavity(&self, x: i32, y: i32, depth: i32, band: Band) -> Option<MaterialId> {
         let i = &self.ids;
         let plan = &*self.plan;
+        // Every flooded basin has a floor: a slab of rock along the caverns'
+        // floor that no cave crosses (the deep under it is dry; water over
+        // air would pour down it, and keep the whole lake moving), and rock
+        // between flooded caves and a chasm's walls.
+        let floor = plan.band_span(Band::Caverns).0;
+        if (y - floor).abs() <= SEAL {
+            // (An acid pool's acid-proof lining stays itself, and its acid
+            // there is lining too: acid on bare rock would eat through.)
+            return match plan.caves.at(x, y) {
+                Some(caves::Open::Lining | caves::Open::Pool(caves::Pool::Acid)) => Some(i.toxic_crust),
+                _ => None,
+            };
+        }
+        if band == Band::Caverns && y < plan.water_table(x) && (-CHASM_LINING..=CHASM_LINING).step_by(4).any(|dx| plan.chasm_at(x + dx, y)) {
+            return None;
+        }
         if let Some(open) = plan.caves.at(x, y) {
             // One water table for every cave in the caverns: where the
             // tunnels meet the flooded chambers, the water's already level.
@@ -1957,9 +1982,19 @@ impl TerrainGen {
         // within that of it. Hanging from the real ceiling, they never
         // float, and floors stay clear. (Fading in over the band's top 450
         // cells.)
-        let entry = ((plan.band_span(Band::Caverns).1 - y) as f64 / 450.0).clamp(0.0, 1.0);
-        let fade = if band == Band::Caverns { entry } else { 1.0 };
-        let base = |y: f64| self.caverns.get([xf / 1.6, y]) * fade;
+        // (And closing toward the caverns' floor, opening again under it:
+        // the slab of rock between them stays whole, so the flooded
+        // chambers above have bottoms.)
+        let (floor, top) = plan.band_span(Band::Caverns);
+        let span = SEAL_FADE * (top - floor) as f64;
+        let fade = |y: f64| {
+            if band == Band::Caverns {
+                ((top as f64 - y) / 450.0).min((y - (floor + SEAL) as f64) / span).clamp(0.0, 1.0)
+            } else {
+                (((floor - SEAL) as f64 - y) / span).clamp(0.0, 1.0)
+            }
+        };
+        let base = |y: f64| self.caverns.get([xf / 1.6, y]) * fade(y);
         if base(yf) <= 0.22 {
             return None;
         }
@@ -2341,6 +2376,37 @@ mod tests {
             let x = g.spawn_point().x;
             let n = g.plan.forest.near(x - 300, x + 300).len();
             assert!(n >= 4, "seed {seed}: {n} trees within 300 of the spawn");
+        }
+    }
+
+    /// The flooded caverns hold their water: nowhere does it sit on air or
+    /// beside it (under the caverns' floor the deep is dry; a chasm runs
+    /// through dry), so nothing pours on load and the lakes lie still.
+    #[test]
+    fn flooded_caverns_have_bottoms_and_walls() {
+        let m = mats();
+        for seed in [1u64, 2] {
+            let g = TerrainGen::new(seed, Preset::Large, &m);
+            let floor = g.plan.band_span(Band::Caverns).0;
+            let width = g.plan.width;
+            let (water, air) = (g.ids.water, g.ids.air);
+            let mut leaks = Vec::new();
+            for k in 0..16 {
+                let x0 = width * k / 16 + 300;
+                let table = g.plan.water_table(x0);
+                for x in x0..x0 + 160 {
+                    for y in floor - 30..table {
+                        if g.sample(x, y).0 != water {
+                            continue;
+                        }
+                        let open = |dx: i32, dy: i32| g.sample(x + dx, y + dy).0 == air;
+                        if open(0, -1) || open(-1, 0) || open(1, 0) {
+                            leaks.push((x, y));
+                        }
+                    }
+                }
+            }
+            assert!(leaks.is_empty(), "seed {seed}: {} cells of water on or beside air, e.g. {:?} (the caverns' floor at {floor})", leaks.len(), &leaks[..leaks.len().min(6)]);
         }
     }
 
@@ -3150,9 +3216,11 @@ mod tests {
         let (lo, hi) = (a.0.min(a.1).min(b.0).min(b.1), a.0.max(a.1).max(b.0).max(b.1));
         let mut props: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
         let mut chunks = 0;
-        // Camps: (with an explosive beside the cart, with a lantern).
+        // Camps: (with an explosive beside the cart, with a lantern). (All
+        // its columns: camps are rare in a small world, and the slab sealing
+        // the caverns' floor took one from the half that used to be looked at.)
         let (mut camps, mut armed, mut lit) = (0, 0, 0);
-        for cx in (0..g.plan.width / CHUNK).step_by(2) {
+        for cx in (0..g.plan.width / CHUNK).step_by(1) {
             for cy in (lo / CHUNK..hi / CHUNK).step_by(1) {
                 chunks += 1;
                 let spawns = g.generate_with_spawns(ChunkPos::new(cx, cy)).1;
@@ -3169,7 +3237,7 @@ mod tests {
                 }
             }
         }
-        eprintln!("{chunks} chunks (half the underground's): {props:?}; {camps} camps, {armed} with explosives beside, {lit} lit");
+        eprintln!("{chunks} chunks (all the underground's): {props:?}; {camps} camps, {armed} with explosives beside, {lit} lit");
         // (Wider than a chunk at this scale: what's beside the cart stands
         // in the next chunk if it must.)
         // (Before the rescale: 5 of 12 armed, 8 lit; caves aren't flat.)

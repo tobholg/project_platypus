@@ -3904,7 +3904,8 @@ fn kick_script(
 
 /// `lakes` (a generated world or a save: `PLATYPUS_SAVE`): finds the
 /// biggest bodies of water under the ground near the player (the world as
-/// generated: chunks `PLATYPUS_LAKE_REACH` either way, 60 by default, the
+/// generated: chunks `PLATYPUS_LAKE_REACH` either way, 60 by default, round
+/// the player or `PLATYPUS_LAKE_AT=x,y`; the
 /// richest in water, near ones merged), then stands the player (kept
 /// alive) just over each in turn, `PLATYPUS_LAKE_SECS` (8) each, logging
 /// the frame rate there and the sim's tick. (With `--features spikes` and
@@ -3931,7 +3932,12 @@ fn lakes_script(
     if lakes.is_empty() && t > 1.0 {
         let reach: i32 = std::env::var("PLATYPUS_LAKE_REACH").ok().and_then(|v| v.parse().ok()).unwrap_or(60);
         let water = sim.materials().id("water");
-        let me = CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk();
+        // (`PLATYPUS_LAKE_AT=x,y`: round there instead of the player.)
+        let around = std::env::var("PLATYPUS_LAKE_AT").ok().and_then(|v| {
+            let (x, y) = v.split_once(',')?;
+            Some(Vec2::new(x.trim().parse().ok()?, y.trim().parse().ok()?))
+        });
+        let me = around.map_or_else(|| CellPos::from_world(k.body.pos.x, k.body.pos.y), |a| CellPos::from_world(a.x, a.y)).chunk();
         let (lo, hi) = sim.generator.bounds();
         let surface = sim.generator.spawn_point().y;
         let mut wet: Vec<(platypus_sim::ChunkPos, usize)> = Vec::new();
