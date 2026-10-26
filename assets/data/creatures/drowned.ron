@@ -1,0 +1,72 @@
+// The drowned: the dead the flooded caverns kept, walking their beds under
+// the water (zombie.ron's body and ways, waterlogged: assets/art/drowned.ron).
+// Its grab holds you down there, where your breath runs out. Killed, it may
+// get up once more; fire, or its head off, ends it. (Spawns in open water
+// under the ground: life.ron, `Flooded`.)
+(
+    name: "Drowned",
+    loot: "zombie",
+    // What it had on when it went in: now and then a hood.
+    wears: [("cloth_hood", 0.1)],
+    size: (9, 20),
+    health: 110,
+    team: Enemy,
+    // (Mindless: walks into a painted wall of fire.)
+    heedless: true,
+    faction: "undead",
+    kind: "rotting",
+    // Killed, its body lies on the bed a while and, now and then, gets up
+    // once more; fire, or its head off, ends it.
+    rises: Some((after: 9.0, health: 0.5, chance: 0.4, breaks: [fire], remains: Body, times: Some(1), glow: (110, 200, 190))),
+    headless: Dies,
+    // (Its neck takes 55 % of its health in blows before its head can come
+    // off, and even then a blow to it takes it off only one time in four:
+    // never a sure thing.)
+    neck: 0.55,
+    behead: 0.25,
+    // Near you, it surges at you through the water, then slows: the
+    // water holds it back as it does you.
+    spurt: Some((speed: 2.0, secs: 1.4, every: (0.6, 1.4), range: (12.0, 120.0))),
+    blood: "rot",
+    eyes: (170, 240, 230),
+    // A low groan now and then.
+    voice: Some(("groan", (3.0, 9.0))),
+    fall_damage: (safe_height: 120, per_cell: 0.5),
+    movement: (
+        run_speed: 65,
+        jump_height: 28,
+        air_jumps: 0,
+        step_height: 5,
+        dash_speed: 0,
+    ),
+    art: "drowned",
+    // Its legs: two legs in dark trousers from its hips, 14 cells up (a
+    // man's height, not the skeleton's), a shambling step (slow, short, the
+    // feet barely lifting).
+    legs: (view: Side, rig: true, reach: 14.5, upper: 0.5, step: 0.24, lift: 1.5, stride: 6,
+           color: (58, 56, 62), joint: (70, 68, 74), outline: (24, 18, 20), width: [3.2, 2.8, 2.2], toes: 3,
+           body: "zombie",
+           each: [
+               (hip: (2, 4), gait: 0, knee: Forward),
+               (hip: (-1, 4), gait: 1, knee: Forward, far: true),
+           ]),
+    // Close in, it grabs and bites (dash through its reach, or shake it
+    // off).
+    moves: ["zombie_grab"],
+    unarmed: "rotten_claws",
+    armless: "zombie_bite",
+    stamina: 60,
+    // Hard to stop: most blows don't stagger it (a blow to its head
+    // does, sooner: `zones`), and it barely gives ground.
+    poise: 40,
+    heft: 4,
+    // Its head's the place to hit (twice over); its body takes a blow as
+    // it comes.
+    zones: (head: 2.0, body: 1.0, arms: 0.8),
+    // Each its own pace: a pack closes in unevenly.
+    pace: 0.3,
+    brain: (
+        kind: "hunter",
+        params: (aggro: 260, close: Walk(keep: 12, jump_to_reach: 22), attack: Swing(reach: 20, every: 0.9, combo: 1), wander: (speed: 0.25, every: 4.0), senses: (dark: 1.0, hearing: 1.4, smell: 160, memory: 10, behind: 0.6)),
+    ),
+)

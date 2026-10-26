@@ -4020,7 +4020,8 @@ fn lakes_script(
                     }
                 }
             }
-            info!("lakes:   its liquid (1 in 4 sampled): {water}, off ambient {warm}, not at rest {restless}");
+            let here = sim.world.get(c).map(|cell| mats.def(cell.material).name.clone());
+            info!("lakes:   its liquid (1 in 4 sampled): {water}, off ambient {warm}, not at rest {restless}; at its middle {here:?}; the player at ({:.0}, {:.0})", k.body.pos.x, k.body.pos.y);
         }
     }
     let next = if *at == usize::MAX { 0 } else { *at + 1 };

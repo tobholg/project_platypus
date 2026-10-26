@@ -117,7 +117,9 @@ pub fn place(plan: &WorldPlan, caves: &Caves, defs: &[LairDef]) -> Vec<Option<u1
                 *t += 1;
                 return Some(k as u16);
             }
-            if c.pool.is_some() {
+            // (Not in a pool's chamber, nor one the caverns' water floods to
+            // its middle: no nest or roost under water.)
+            if c.pool.is_some() || (plan.band_at(c.y as i32) == crate::plan::Band::Caverns && (c.y as i32) < plan.water_table(c.x as i32)) {
                 return None;
             }
             let depth = plan.surface_at(c.x as i32) as f32 - c.y;

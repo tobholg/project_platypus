@@ -2485,6 +2485,25 @@ mod tests {
         }
     }
 
+    /// No lair under water: none takes a chamber the caverns flood to its
+    /// middle (spiders, bats: they'd drown there).
+    #[test]
+    fn no_lair_is_under_water() {
+        let m = mats();
+        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/data/lairs.ron")).expect("lairs.ron");
+        let g = TerrainGen::new(1, Preset::Large, &m).with_lairs(&lairs::parse(&text).expect("lairs parse"), &m);
+        let mut lairs = 0;
+        for (i, k) in g.lair_of.iter().enumerate() {
+            if k.is_none() {
+                continue;
+            }
+            lairs += 1;
+            let c = &g.plan.caves.chambers[i];
+            assert!(g.sample(c.x as i32, c.y as i32).0 != g.ids.water, "a lair in a flooded chamber at ({}, {})", c.x, c.y);
+        }
+        assert!(lairs > 10, "{lairs} lairs");
+    }
+
     /// The great halls: a few in every large world, each a lake under a
     /// vault of air (the water table cutting it a third of the way up), its
     /// roof studded with glowworms.
@@ -3853,3 +3872,4 @@ mod tests {
         assert!(floating * 20 <= heaped, "guano on something, not in the air: {floating} of {heaped}");
     }
 }
+

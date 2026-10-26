@@ -294,6 +294,9 @@ pub enum Place {
     Shore,
     Water,
     Cave,
+    /// In open water under the ground (the flooded caverns, the great
+    /// halls' lakes), on its bed.
+    Flooded,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
@@ -466,7 +469,7 @@ fn ambient(
         // bats near the top, five deep down.)
         let here = sim.generator.surface_hint(p.x as i32).map_or(0.0, |s| s as f32 - p.y);
         let most = if h.packs.is_empty() { h.most } else { h.most.min(pack_most(&h.packs, here)) };
-        let below = if h.place == Place::Cave { CAVE_RATE } else { 1.0 };
+        let below = if matches!(h.place, Place::Cave | Place::Flooded) { CAVE_RATE } else { 1.0 };
         if near >= most || unit(&mut rng) > h.rate * 0.5 * below * rate_scale() * if show { crate::show::SHOW_RATE } else { 1.0 } {
             continue;
         }
@@ -522,6 +525,20 @@ fn ambient(
                 let there = critters.iter().filter(|(_, c, k)| c.kind == h.kind && (lo as f32..=hi as f32).contains(&k.body.pos.x) && k.body.pos.y < level as f32 + 5.0).count();
                 (there < room).then(|| Vec2::new(x as f32 + 0.5, y as f32 - 1.0))
             }),
+            // In open water under the ground, on its bed: water all round
+            // it, the bed under it.
+            Place::Flooded => (0..TRIES).find_map(|_| {
+                let (x, y) = ((p.x + (unit(&mut rng) - 0.5) * 1200.0) as i32, (p.y + (unit(&mut rng) - 0.5) * 780.0) as i32);
+                if sim.generator.surface_hint(x).is_some_and(|s| y > s - 200) {
+                    return None;
+                }
+                let wet = |dx: i32, dy: i32| kind_at(x + dx, y + dy).is_some_and(|(_, ph)| ph.kind == Kind::Liquid && !ph.hot && ph.corrosive == 0);
+                if !(wet(0, 0) && wet(-6, 0) && wet(6, 0) && wet(0, 8) && wet(0, -6)) {
+                    return None;
+                }
+                let bed = (y - 120..y).rev().find(|&fy| kind_at(x, fy).is_some_and(|(air, ph)| !air && matches!(ph.kind, Kind::Static | Kind::Powder)))?;
+                Some(Vec2::new(x as f32 + 0.5, bed as f32 + 1.0))
+            }),
             // In the air of a cave: open round it, a roof above, well under
             // the surface.
             Place::Cave => (0..TRIES).find_map(|_| {
@@ -565,7 +582,7 @@ fn ambient(
         if !h.bands.is_empty() && !sim.generator.band_hint(at.y as i32).is_some_and(|b| h.bands.iter().any(|w| w == b)) {
             continue;
         }
-        if h.place == Place::Cave && at.distance(p) < if h.emerges { EMERGE_NEAR.0 } else { OUT_OF_SIGHT * 0.7 } {
+        if matches!(h.place, Place::Cave | Place::Flooded) && at.distance(p) < if h.emerges { EMERGE_NEAR.0 } else { OUT_OF_SIGHT * 0.7 } {
             continue;
         }
         if !show && !h.biomes.is_empty() && !sim.generator.biome_hint(at.x as i32).is_some_and(|b| h.biomes.iter().any(|w| w == b)) {

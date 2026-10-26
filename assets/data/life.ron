@@ -3,7 +3,8 @@
 //     seed's lakes or oceans, at its level), Water (in one of them, in cool
 //     liquid with room round it, one of a kind per 60 columns of it: never
 //     a puddle, a pond the rain filled or water underground), Cave (in the
-//     open air of a cave, a roof above, under the surface)
+//     open air of a cave, a roof above, under the surface), Flooded (in
+//     open water under the ground, on its bed)
 //   when: Any (default), Day or Night; out of its hours it leaves once out
 //     of sight
 //   above: (low, high): put that high above the spot (fliers in the air)
@@ -101,6 +102,8 @@
     (kind: "acid_slime", place: Cave, zone: "toxic", most: 4, rate: 0.6),
     // The Caverns.
     (kind: "spider", place: Cave, bands: ["caverns"], most: 1, rate: 0.06),
+    // The drowned walk the beds of the flooded caverns.
+    (kind: "drowned", place: Flooded, bands: ["caverns"], most: 3, rate: 0.1),
     (kind: "glutton", place: Cave, bands: ["caverns", "deep"], most: 1, rate: 0.04),
     (kind: "vampire_bat", place: Cave, bands: ["caverns", "deep"], most: 2, rate: 0.12),
     (kind: "watcher", place: Cave, bands: ["caverns", "deep"], most: 1, rate: 0.012),
