@@ -172,7 +172,7 @@ const FADE: f32 = 1.0;
 /// (cells).
 const LIFT_UP: f32 = 125.0;
 const LIFT_GRIP: f32 = 0.16;
-const LIFT_MOST: i32 = 160;
+const LIFT_MOST: i32 = 240;
 /// What's loose in an updraft rises this many cells a tick; out of its top
 /// it's thrown aside this fast (cells a tick: across, up).
 const RISE: usize = 2;
