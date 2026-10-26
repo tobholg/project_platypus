@@ -2828,3 +2828,47 @@ fn rain_soaks_into_earth_and_stands_on_stone() {
     let marked = w.chunks().flat_map(|c| c.cells()).filter(|c| c.material == water).all(|c| c.marks & platypus_sim::cell::marks::RAIN != 0);
     assert!(marked && count(&w, water) > 0, "what stands is marked as rain");
 }
+
+/// A deep tank of water with a hole in its floor drains into the cave under
+/// it: all of it gets there, its surface sinks level as it goes (the gap a
+/// cell leaves at the bottom is filled from the top, not climbing up through
+/// the body), and nothing's left hanging over air.
+#[test]
+fn a_deep_tank_drains_from_its_surface() {
+    let mut w = boxed_world(2, 4, 72);
+    let water = w.materials().expect_id("water");
+    // Rock to y 84, a cave in it, a tank on it with a two-cell hole down.
+    fill(&mut w, "stone", 1, 127, 1, 84);
+    for x in 10..118 {
+        for y in 10..60 {
+            w.set(CellPos::new(x, y), Cell::AIR);
+        }
+    }
+    fill(&mut w, "stone", 36, 40, 84, 210);
+    fill(&mut w, "stone", 80, 84, 84, 210);
+    fill(&mut w, "water", 40, 80, 84, 200);
+    let before = count(&w, water);
+    for x in 59..61 {
+        for y in 60..84 {
+            w.set(CellPos::new(x, y), Cell::AIR);
+        }
+    }
+    // Part way: the surface level across the tank (a few cells of ripple).
+    for _ in 0..400 {
+        w.step();
+    }
+    let top = |w: &World, x: i32| (84..210).rev().find(|&y| w.get(CellPos::new(x, y)).is_some_and(|c| c.material == water)).unwrap_or(83);
+    let tops: Vec<i32> = (40..80).map(|x| top(&w, x)).collect();
+    let (lo, hi) = (*tops.iter().min().unwrap(), *tops.iter().max().unwrap());
+    assert!(hi < 199, "it's draining (surface at {hi})");
+    assert!(hi - lo <= 4, "its surface sinks level: {lo}..{hi}");
+    // No gap hangs in the body: under its surface, every cell of it is water.
+    for x in 41..79 {
+        for y in 85..top(&w, x) {
+            assert!(w.get(CellPos::new(x, y)).is_some_and(|c| c.material == water), "a gap in the body at ({x}, {y}) under its surface {}", top(&w, x));
+        }
+    }
+    run_until_asleep(&mut w, 20_000);
+    assert_eq!(count(&w, water), before, "every drop's somewhere");
+    assert!((40..80).all(|x| top(&w, x) <= 84), "the tank's empty");
+}

@@ -793,8 +793,35 @@ fn fall(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
     }
     c.vy = (c.vy + 1).min(MAX_FALL);
     c.flags = flags::with_rest(c.flags, 0);
+    let m = c.material;
     swap_to(h, x, y, x, ty, c);
+    if p.kind == Kind::Liquid {
+        fill_from_top(h, x, y, m);
+    }
     true
+}
+
+/// A still column of liquid over the gap its bottom cell left at (x, y)
+/// (down a drain, out sideways, under pressure): the gap's filled from the
+/// column's top at once, as if it had sunk a cell, so a draining lake's
+/// body sleeps; only its bottom and its surface move. (Its cells are alike.
+/// A column deeper than a job may write closes from as high as it can,
+/// and that gap the next tick from higher still. A falling stream isn't
+/// still, and fills as ever.)
+fn fill_from_top(h: &mut Hood, x: i32, y: i32, m: MaterialId) {
+    if !h.get(x, y).is_some_and(|c| c.is_air()) {
+        return;
+    }
+    let still = |t: Option<Cell>| t.is_some_and(|t| t.material == m && t.vy == 0);
+    let k = (1..=Hood::room(y, 1)).take_while(|&k| still(h.get(x, y + k))).count() as i32;
+    if k < 2 {
+        return;
+    }
+    let Some(mut top) = h.get(x, y + k) else { return };
+    top.clock = h.clock;
+    top.flags = flags::with_rest(top.flags, 0);
+    h.set(x, y, top);
+    h.set(x, y + k, Cell::AIR);
 }
 
 fn slide(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
@@ -808,7 +835,11 @@ fn slide(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
         if passable(h, p, h.get(x + dx, y - 1)) {
             c.vy /= 2;
             c.flags = flags::with_rest(c.flags, 0);
+            let m = c.material;
             swap_to(h, x, y, x + dx, y - 1, c);
+            if p.kind == Kind::Liquid {
+                fill_from_top(h, x, y, m);
+            }
             return true;
         }
     }
@@ -927,7 +958,9 @@ fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
             && d <= (p.dispersion as i32 + depth_above(h, x, y, c.material, PRESSURE_REACH)) * (256 - p.viscosity as i32) / 256
         {
             c.vy = 0;
+            let m = c.material;
             swap_to(h, x, y, x + dir * d, y, c);
+            fill_from_top(h, x, y, m);
             // (The row isn't what it was.)
             h.pressure = [None; 2];
             return true;

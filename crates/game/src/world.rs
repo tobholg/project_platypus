@@ -99,9 +99,20 @@ impl Plugin for WorldPlugin {
             .init_resource::<Generating>()
             .configure_sets(FixedUpdate, (TickSet::Intent, TickSet::Bodies, TickSet::Cells).chain())
             .add_systems(FixedUpdate, (sweep_specks, step_cells).chain().in_set(TickSet::Cells))
+            .add_systems(Startup, cap_catch_up)
             .add_systems(PreUpdate, stream_chunks)
             .add_systems(Update, hot_reload_materials);
     }
+}
+
+/// A slow frame is made up with at most this many ticks: past that the
+/// world runs a little slow for a moment instead (each catching-up tick
+/// making the next frame slower still, the frame rate would fall through
+/// the floor).
+const CATCH_UP_TICKS: f64 = 2.0;
+
+fn cap_catch_up(mut virt: ResMut<Time<bevy::time::Virtual>>) {
+    virt.set_max_delta(Duration::from_secs_f64(CATCH_UP_TICKS / TICK_HZ));
 }
 
 pub(crate) fn step_cells(
