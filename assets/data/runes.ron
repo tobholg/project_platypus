@@ -103,20 +103,20 @@
         // Walls and clouds.
         // Painted (magic/brush.rs): ice where it's held up (ground, or ice it
         // painted that is, 30 out at most), snow falling where it isn't.
-        (id: "ice_wall", name: "Ice brush", mana: 0, color: (190, 230, 255), kind: Carrier(Brush(solid: "ice", loose: "snow", radius: 3.4, range: 280, reach: 30, per_cell: 0.3, sound: Some("frost_set"),
+        (id: "ice_wall", name: "Ice brush", mana: 0, color: (190, 230, 255), kind: Carrier(Brush(solid: "ice", loose: "snow", radius: 3.4, range: 280, reach: 30, per_cell: 0.15, sound: Some("frost_set"),
             set: Some((count: 4, life: (0.25, 0.6), colors: [(255, 255, 255), (210, 240, 255), (150, 205, 245)], speed: 30, spread: 3.14, gravity: 20, drag: 3, glow: true)),
             stream: Some((count: 1, life: (0.15, 0.35), colors: [(240, 250, 255), (170, 215, 250)], speed: 40, spread: 0.3, drag: 2, glow: true)))),
             look: (burst: (count: 0, life: (0.1, 0.2), colors: [(255, 255, 255)]))),
         // The rimebreath staff's: no line of sight wanted (it paints where
         // the cursor is), bigger, further, held up further out.
-        (id: "glacier_brush", name: "Glacier brush", mana: 0, color: (150, 210, 255), kind: Carrier(Brush(solid: "ice", loose: "snow", radius: 4.4, range: 320, reach: 45, per_cell: 0.3, through: true, sound: Some("frost_set"),
+        (id: "glacier_brush", name: "Glacier brush", mana: 0, color: (150, 210, 255), kind: Carrier(Brush(solid: "ice", loose: "snow", radius: 4.4, range: 320, reach: 45, per_cell: 0.15, through: true, sound: Some("frost_set"),
             set: Some((count: 6, life: (0.3, 0.8), colors: [(255, 255, 255), (190, 230, 255), (110, 175, 240)], speed: 38, spread: 3.14, gravity: 18, drag: 3, glow: true)),
             stream: Some((count: 1, life: (0.2, 0.45), colors: [(225, 245, 255), (130, 190, 250)], speed: 46, spread: 0.35, drag: 2, glow: true)))),
             look: (burst: (count: 0, life: (0.1, 0.2), colors: [(255, 255, 255)]))),
         // Painted (magic/brush.rs): flame where it's held up (ground, or the
         // flames it painted, 30 out at most: a wall of fire off the ground),
         // kept burning five seconds; embers in the open air.
-        (id: "fire_wall", name: "Fire brush", mana: 0, color: (255, 130, 40), kind: Carrier(Brush(solid: "fire", loose: "fire", radius: 2.8, range: 260, reach: 30, per_cell: 0.3, lasts: 5.0, sound: Some("ignite"),
+        (id: "fire_wall", name: "Fire brush", mana: 0, color: (255, 130, 40), kind: Carrier(Brush(solid: "fire", loose: "fire", radius: 2.8, range: 260, reach: 30, per_cell: 0.15, lasts: 5.0, sound: Some("ignite"),
             set: Some((count: 3, life: (0.25, 0.6), colors: [(255, 245, 200), (255, 170, 60), (220, 70, 20)], speed: 30, spread: 0.7, gravity: -110, drag: 2, glow: true)),
             stream: Some((count: 1, life: (0.12, 0.3), colors: [(255, 230, 150), (255, 130, 40)], speed: 40, spread: 0.35, gravity: -30, drag: 2, glow: true)))),
             look: (burst: (count: 0, life: (0.1, 0.2), colors: [(255, 255, 255)]))),

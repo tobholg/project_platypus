@@ -4,8 +4,9 @@
 //! `through`, paints wherever the cursor is), and the stroke since
 //! the last tick is painted, `radius` round: each open cell it covers sets
 //! solid (`solid`: ice) if it's held up (touching real ground, or a cell
-//! this brush painted that's held up, no more than `reach` cells out from
-//! the ground: walls, ledges, bridges, arches), and is otherwise its loose
+//! this brush painted that's held up: straight up off it costs nothing, a
+//! wall as tall as the mana lasts; out to the side, no more than `reach`
+//! cells: ledges, bridges, arches), and is otherwise its loose
 //! form (`loose`: snow), falling. Each cell set costs `per_cell` mana (a
 //! loose one half); out of mana, it stops. Never in a body.
 //!
@@ -230,8 +231,11 @@ pub fn paint(
         let mut best: Option<u8> = None;
         for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
             let q = p.offset(dx, dy);
+            // (Straight up off what's held: a column stands on it, costing
+            // no reach; out to the side is what's limited: overhangs.)
+            let step = if (dx, dy) == (0, -1) { 0 } else { 1 };
             let here = match painted.0.get(&q) {
-                Some(&s) if w.get(q).is_some_and(|c| c.material == solid) || kept.0.contains_key(&q) => Some(s.saturating_add(1)),
+                Some(&s) if w.get(q).is_some_and(|c| c.material == solid) || kept.0.contains_key(&q) => Some(s.saturating_add(step)),
                 Some(_) => None,
                 None => w.get(q).filter(|c| !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder)).map(|_| 0),
             };

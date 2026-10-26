@@ -15999,7 +15999,8 @@ fn bladesplash_script(
 /// of what it set, of the loose, and its mana, each second (then every ten,
 /// to see it melt). `PLATYPUS_PAINT=pool`: water under where it draws;
 /// `wall`: a stone wall between it and where it draws; `face`: a plank wall
-/// beside where the column's drawn (it runs up its face).
+/// beside where the column's drawn (it runs up its face); `tall`: the
+/// column 100 high.
 fn paint_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
@@ -16059,10 +16060,12 @@ fn paint_script(
         }
     }
     let foot = if pool { fl - 6.0 } else { fl + 1.0 };
+    // (`PLATYPUS_PAINT=tall`: the column 100 high, over the same two seconds.)
+    let top = if std::env::var("PLATYPUS_PAINT").is_ok_and(|v| v == "tall") { fl + 100.0 } else { fl + 30.0 };
     let at = if (1.0..3.0).contains(&t) {
-        Some(lerp(Vec2::new(x, foot), Vec2::new(x, fl + 30.0), (t - 1.0) / 2.0))
+        Some(lerp(Vec2::new(x, foot), Vec2::new(x, top), (t - 1.0) / 2.0))
     } else if (3.0..5.0).contains(&t) {
-        Some(lerp(Vec2::new(x, fl + 30.0), Vec2::new(x + 40.0, fl + 30.0), (t - 3.0) / 2.0))
+        Some(lerp(Vec2::new(x, top), Vec2::new(x + 40.0, top), (t - 3.0) / 2.0))
     } else if (5.5..6.5).contains(&t) {
         Some(lerp(Vec2::new(x - 20.0, fl + 70.0), Vec2::new(x + 20.0, fl + 70.0), t - 5.5))
     } else {
@@ -16078,11 +16081,16 @@ fn paint_script(
         let mats = sim.world.materials();
         let count = |name: &str| {
             let Some(m) = mats.id(name) else { return 0 };
-            (k.body.pos.x as i32 - 40..k.body.pos.x as i32 + 120).flat_map(|xx| (fl as i32..fl as i32 + 90).map(move |yy| (xx, yy))).filter(|&(xx, yy)| sim.world.get(CellPos::new(xx, yy)).is_some_and(|c| c.material == m)).count()
+            (k.body.pos.x as i32 - 40..k.body.pos.x as i32 + 120).flat_map(|xx| (fl as i32..fl as i32 + 140).map(move |yy| (xx, yy))).filter(|&(xx, yy)| sim.world.get(CellPos::new(xx, yy)).is_some_and(|c| c.material == m)).count()
         };
         // (The ground round the column's foot: how cold it is.)
         let cold = (x as i32 - 12..x as i32 + 12).flat_map(|xx| (fl as i32 - 4..fl as i32).map(move |yy| CellPos::new(xx, yy))).filter_map(|p| sim.world.temperature(p)).min().unwrap_or(0);
-        info!("paint: t {t:.0} ice {} snow {} fire {} planks {} mana {:.0}; the floor at its foot down to {cold} °C", count("ice"), count("snow"), count("fire"), count("planks"), mana.map_or(0.0, |m| m.cur));
+        // (How high what it painted reaches over the floor, by the column.)
+        let high = |name: &str| {
+            let Some(m) = mats.id(name) else { return 0 };
+            (fl as i32..fl as i32 + 140).rev().find(|&yy| (x as i32 - 6..x as i32 + 6).any(|xx| sim.world.get(CellPos::new(xx, yy)).is_some_and(|c| c.material == m))).map_or(0, |yy| yy - fl as i32)
+        };
+        info!("paint: t {t:.0} ice {} snow {} fire {} planks {} mana {:.0}; up to {} high; the floor at its foot down to {cold} °C", count("ice"), count("snow"), count("fire"), count("planks"), mana.map_or(0.0, |m| m.cur), high("ice").max(high("fire")));
     }
 }
 
