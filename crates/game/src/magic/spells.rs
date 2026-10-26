@@ -177,7 +177,7 @@ mod tests {
         // found one rolls as many of its element.
         for i in 0..items.len() {
             let def = items.def(crate::hands::items::ItemId(i as u16));
-            let Use::Focus { tier, element, spells } = &def.use_ else { continue };
+            let Use::Focus { tier, element, spells, .. } = &def.use_ else { continue };
             let want = if *tier >= 2 { 2 } else { 1 };
             let written = focus_spells(&file.spells, *tier, *element, spells, &Default::default());
             assert_eq!(written.len(), want, "{} holds {} spells", def.id, written.len());

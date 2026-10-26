@@ -1031,12 +1031,12 @@ pub(crate) fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<
             lines.push("Hammer: click a built block to shape it".into());
             lines.push(format!("half, the four slopes, whole again; reach {reach} blocks"));
         }
-        Use::Focus { tier, element, spells } => {
+        Use::Focus { tier, element, spells, fixed } => {
             let what = if *tier >= 2 { "Staff" } else { "Wand" };
             let of = element.map_or(String::new(), |e| format!(" of {}", format!("{e:?}").to_lowercase()));
             lines.push(format!("{what}{of}: hold a button to cast at the cursor"));
             if let Some(book) = book {
-                for (k, i) in crate::magic::spells::focus_spells(&book.spells, *tier, *element, spells, &s.roll).into_iter().enumerate() {
+                for (k, i) in crate::magic::spells::focus_spells(&book.spells, *tier, *element, spells, &(if *fixed { Default::default() } else { s.roll })).into_iter().enumerate() {
                     lines.push(spell_line(book, i, if k == 0 { "LMB" } else { "RMB" }));
                     if let Some(about) = &book.spells[i].about {
                         lines.push(format!("  {about}"));

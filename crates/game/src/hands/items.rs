@@ -55,13 +55,16 @@ pub enum Use {
     /// left button casting the first toward the cursor, the right button
     /// the second (a staff's; a wand's one spell again, "alt": force
     /// pulls). One found in the world rolls its spells instead: a wand one,
-    /// a staff two, of its element (any, if it has none) up to its `tier`.
+    /// a staff two, of its element (any, if it has none) up to its `tier`;
+    /// unless it's `fixed` (a wand of one spell: it always holds that).
     Focus {
         tier: u8,
         #[serde(default)]
         element: Option<crate::magic::Element>,
         #[serde(default)]
         spells: Vec<String>,
+        #[serde(default)]
+        fixed: bool,
     },
     /// A weapon held in the hand (`weapons.ron`): the left button swings it
     /// at the cursor, holding it keeps swinging through the combo.

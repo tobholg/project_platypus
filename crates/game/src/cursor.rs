@@ -305,9 +305,9 @@ fn point(
                     fill = Some((n.drawn(w), Color::WHITE));
                 }
             }
-            Some((s, Use::Focus { tier, element, ref spells })) => {
+            Some((s, Use::Focus { tier, element, ref spells, fixed })) => {
                 shape = Shape::Cross;
-                let held = crate::magic::spells::focus_spells(&book.spells, tier, element, spells, &s.roll);
+                let held = crate::magic::spells::focus_spells(&book.spells, tier, element, spells, &(if fixed { Default::default() } else { s.roll }));
                 if let Some(&spell) = held.first() {
                     let ready = wands.ready(me, spell);
                     let short = mana.is_some_and(|m| m.cur < book.describe(&book.spells[spell].runes).1);

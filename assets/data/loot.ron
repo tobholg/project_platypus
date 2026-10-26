@@ -36,6 +36,7 @@
             (item: "blaze_staff", weight: 1, count: (1, 1)),
             (item: "acid_staff", weight: 1, count: (1, 1)),
             (item: "void_wand", weight: 1, count: (1, 1)),
+            (item: "slow_wand", weight: 1, count: (1, 1)),
             (item: "leather_cap", weight: 4, count: (1, 1)),
             (item: "leather_boots", weight: 4, count: (1, 1)),
             (item: "ring_of_vigour", weight: 2, count: (1, 1)),
@@ -94,6 +95,8 @@
             (item: "frost_wand", weight: 2, count: (1, 1)),
             (item: "gravity_wand", weight: 2, count: (1, 1)),
             (item: "force_wand", weight: 2, count: (1, 1)),
+            (item: "repulsor_wand", weight: 1, count: (1, 1)),
+            (item: "updraft_wand", weight: 1, count: (1, 1)),
             (item: "arcane_staff", weight: 1, count: (1, 1)),
         ]),
         (name: "deep", deeper_than: 10500, rolls: (4, 6), gold: (60, 140), entries: [

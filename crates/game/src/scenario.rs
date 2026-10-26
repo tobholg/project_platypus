@@ -16054,7 +16054,8 @@ fn firewall_script(
 /// (kept alive) casts a field 30 to its right (`PLATYPUS_FIELD`), again as
 /// it runs out: `repulse` (default): a bubble of force over the floor; a zombie, a
 /// rat and a skeleton archer put 70 beyond it, hunting the player, and a
-/// zombie's spark bolt cast at the player through it (4 s). `slow`: a slow
+/// zombie's spark bolt cast at the player through it (4 s); `blast`: the
+/// same three, a repulsor opened right on the zombie (3 s). `slow`: a slow
 /// field over the floor; a zombie charges through it, sand is dropped into
 /// it from above, a bolt cast through it. `lift`: a pit 24 deep dug there,
 /// sand in its bottom half, water over it, a rat in it; three updrafts cast
@@ -16132,6 +16133,12 @@ fn fields_script(
             if (7.0..7.1).contains(&t) {
                 k.body.pos = Vec2::new(x, fl + 10.0);
                 k.body.vel = Vec2::ZERO;
+            }
+        }
+        // (`blast`: no wall; a repulsor opened right on the zombie, 3 s.)
+        "blast" => {
+            if let Some((_, _, zk, _)) = them.iter().find(|(_, c, ..)| c.kind == "zombie") {
+                cast(zk.body.pos, 3.0);
             }
         }
         _ => {

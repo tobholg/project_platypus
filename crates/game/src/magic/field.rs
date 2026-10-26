@@ -188,6 +188,13 @@ const KICK: f32 = 150.0;
 const KICK_UP: f32 = 70.0;
 const REELING: f32 = 0.35;
 const AGAIN: f32 = 0.2;
+/// Caught inside one (it opened on it): blasted out, this much faster
+/// (cells/s, over the fourth root of its heft: a heavy thing flies too;
+/// from a share at the rim to all of it in the middle), and up (a share of
+/// that: it flies), reeling this long (s).
+const BLAST: f32 = 700.0;
+const BLASTED: f32 = 0.7;
+const BLAST_UP: f32 = 0.55;
 /// Each blow takes this long off a repulsor (s): a shot, something
 /// thrown out of it.
 const WEAR: (f32, f32) = (0.4, 0.15);
@@ -314,6 +321,7 @@ type Walker<'a> = (Entity, &'a mut Kinematics, &'a crate::creatures::body::anima
 pub fn repel(
     mut fields: ResMut<Fields>,
     mut walkers: Query<Walker, Without<LocalPlayer>>,
+    casters: Query<&Kinematics, With<LocalPlayer>>,
     mut spells: Query<&mut super::Spell>,
     mut arrows: Query<(&mut crate::archery::Arrow, &mut Transform)>,
     teams: Query<&Team>,
@@ -337,24 +345,31 @@ pub fn repel(
         }
         let Some(i) = fields.touching(k.body.pos, k.body.half, FieldKind::Repulse) else { continue };
         let k = &mut *k;
-        // (Stepped in this tick: back where it was.)
-        if !fields.fields[i].touches(k.prev_pos, k.body.half) {
+        // (Stepped in this tick: back where it was. Already in it: it was
+        // caught as it opened, and is blasted out.)
+        let caught = fields.fields[i].touches(k.prev_pos, k.body.half);
+        if !caught {
             k.body.pos = k.prev_pos;
         }
         if since.get(&e).is_some_and(|t| *t < AGAIN) {
             continue;
         }
         since.insert(e, 0.0);
-        // Out, away from the bubble's middle: what it came in with turned
+        // Out, away from the bubble's middle (and its caster: one caught in
+        // the middle goes away from them): what it came in with turned
         // back, and a kick.
         let f = fields.fields[i];
-        let away = (k.body.pos - f.at).normalize_or(-k.body.vel.normalize_or(Vec2::NEG_Y));
+        let from_caster = casters.get(f.by).map_or(Vec2::ZERO, |c| (k.body.pos - c.body.pos).normalize_or_zero());
+        let away = (k.body.pos - f.at + from_caster * f.size() * 0.3).normalize_or(-k.body.vel.normalize_or(Vec2::NEG_Y));
         let at = f.at + away * f.size();
         let v = k.body.vel;
         let back = if v.dot(away) < 0.0 { v - 2.0 * v.dot(away) * away } else { v };
         let heft = anim.def.heft.max(0.5).sqrt();
-        k.loco.knock(&mut k.body, back + (away * KICK + Vec2::Y * KICK_UP) / heft, REELING);
-        let hard = (v.length() + KICK) / 300.0;
+        let deep = (1.0 - k.body.pos.distance(f.at) / f.radius.max(1.0)).clamp(0.0, 1.0);
+        let blast = if caught { BLAST * (0.4 + 0.6 * deep) } else { 0.0 };
+        let flung = (away + Vec2::Y * BLAST_UP) * blast / heft.sqrt();
+        k.loco.knock(&mut k.body, back + (away * KICK + Vec2::Y * KICK_UP) / heft + flung, if caught { BLASTED } else { REELING });
+        let hard = (v.length() + KICK + blast) / 300.0;
         fields.struck(i, at, hard, WEAR.1);
         sparks.emit(&RIPPLE, RIPPLE.count as usize, at, away, Vec2::ZERO);
         sounds.write(crate::sound::PlaySound::at("thoom", at).volume(0.5 + 0.5 * hard.min(1.0)).pitch((1.0 / heft).clamp(0.6, 1.3)));

@@ -824,8 +824,8 @@ fn use_hands(
         // its second (or the first again, "alt"). The spell keeps its own
         // time (`magic::request`). The arm points at the cursor while
         // casting, and the spell leaves from its hand.
-        Use::Focus { tier, element, ref spells } if input.primary || input.secondary => {
-            let held = crate::magic::spells::focus_spells(&book.spells, tier, element, spells, &stack.roll);
+        Use::Focus { tier, element, ref spells, fixed } if input.primary || input.secondary => {
+            let held = crate::magic::spells::focus_spells(&book.spells, tier, element, spells, &(if fixed { Default::default() } else { stack.roll }));
             let pick = if input.primary { held.first() } else { held.get(1).or(held.first()) };
             let Some(&spell) = pick else { return };
             commands.entity(me).insert(crate::creatures::body::animation::Aiming { at: cursor, left: AIM_HOLD });
