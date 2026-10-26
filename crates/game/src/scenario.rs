@@ -395,7 +395,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -9787,6 +9787,7 @@ fn gnasher_script(
 /// `mine`: the player stands at 1030 (near, not near enough) and at 5 s a
 /// pick strikes stone there; `still`: nothing (they should sleep on);
 /// `flash`: as (none), and at 12 s a flash among the swarm (they drop).
+/// `PLATYPUS_BAT_ROOF`: the roof this high (80; 40 is a tunnel).
 /// Logs, a second at a time, what the bats are doing and what the player's
 /// lost.
 fn bats_script(
@@ -9814,8 +9815,9 @@ fn bats_script(
             }
         }
         let stone = sim.materials().expect_id("stone");
+        let roof: i32 = std::env::var("PLATYPUS_BAT_ROOF").ok().and_then(|v| v.parse().ok()).unwrap_or(80);
         for x in (850..=1350).step_by(5) {
-            sim.queue(platypus_sim::WorldEdit::Paint { center: CellPos::new(x, fl as i32 + 80), radius: 6, material: stone, overwrite: true });
+            sim.queue(platypus_sim::WorldEdit::Paint { center: CellPos::new(x, fl as i32 + roof), radius: 6, material: stone, overwrite: true });
         }
         state.0 = 1;
         return;
@@ -9825,8 +9827,9 @@ fn bats_script(
         k.body.pos = Vec2::new(x, fl + k.body.half.y);
         k.prev_pos = k.body.pos;
         let many: u32 = std::env::var("PLATYPUS_BAT_COUNT").ok().and_then(|v| v.parse().ok()).unwrap_or(7);
+        let roof: f32 = std::env::var("PLATYPUS_BAT_ROOF").ok().and_then(|v| v.parse().ok()).unwrap_or(80.0);
         for n in 0..many {
-            crate::creatures::def::spawn_creature(&mut commands, "cave_bat", Vec2::new(1080.0 + n as f32 * 20.0, fl + 45.0), |_| {});
+            crate::creatures::def::spawn_creature(&mut commands, "cave_bat", Vec2::new(1080.0 + n as f32 * 20.0, fl + (roof - 35.0).clamp(12.0, 45.0)), |_| {});
         }
         info!("bats: seven cave bats under the roof ({mode})");
         state.0 = 2;
@@ -9858,7 +9861,14 @@ fn bats_script(
         }
         let list: Vec<String> = tally.iter().map(|(k, n)| format!("{k} {n}")).collect();
         let high = bats.iter().map(|x| x.2.body.pos.y - fl).fold(0.0f32, f32::max);
-        info!("bats: t {t:.0} {} (highest {high:.0} up); the player at {:.0}, lost {:.0}", list.join(", "), k.body.pos.x, state.1);
+        // (Any in the rock, or pressed against it while swarming.)
+        let grid = crate::creatures::WorldGrid(&sim.world);
+        let inside = bats.iter().filter(|x| {
+            let (lo, hi) = x.2.body.cells_at(x.2.body.pos);
+            platypus_physics::body::overlaps_solid(&grid, lo, hi)
+        }).count();
+        let pressed = bats.iter().filter(|x| { let c = &x.2.loco.contacts; c.wall_left || c.wall_right || (c.ceiling && x.3.is_some_and(|o| !matches!(o.doing(), "roost" | "settle" | "stir"))) }).count();
+        info!("bats: t {t:.0} {} (highest {high:.0} up); in rock {inside}, against it {pressed}; the player at {:.0}, lost {:.0}", list.join(", "), k.body.pos.x, state.1);
     }
 }
 
@@ -15982,6 +15992,129 @@ fn bladesplash_script(
 /// the player there, then the player away for `PLATYPUS_DAYS` (default 1)
 /// while the world clock runs, then back: how much of the water is left.
 /// (`PLATYPUS_DAYS=0.25`: a quarter of a day, part of it.)
+/// `crushcheck` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): what falling
+/// things do to the player: a boulder dropped on it from 40 cells (1 s),
+/// then a log up on two posts over it, its middle chopped out so each half
+/// swings down onto it (4.5 s); then the same log onto a zombie (8.5 s).
+/// Logs health after each.
+fn crushcheck_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
+    them: Query<(&crate::creatures::Creature, &crate::creatures::Health), Without<LocalPlayer>>,
+    mut step: Local<(u8, f32)>,
+) {
+    if s.name != "crushcheck" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((me, mut k, mut h)) = player.single_mut() else { return };
+    let fl = platypus_worldgen::arena::FLOOR;
+    let x = 950;
+    let (Some(boulder), Some(wood), Some(stone)) = (sim.materials().id("boulder"), sim.materials().id("wood"), sim.materials().id("stone")) else { return };
+    let (st, mark) = &mut *step;
+    match *st {
+        0 if t > 0.5 => {
+            commands.entity(me).remove::<crate::combat::Invulnerable>();
+            k.body.pos = Vec2::new(x as f32, fl as f32 + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            *st = 1;
+        }
+        1 if t > 1.0 => {
+            *mark = h.hp;
+            for dx in -6..=6i32 {
+                for dy in -6..=6i32 {
+                    if dx * dx + dy * dy <= 36 {
+                        sim.world.set(CellPos::new(x + dx, fl + 40 + dy), platypus_sim::Cell::new(boulder, 120));
+                    }
+                }
+            }
+            sim.world.lift(CellPos::new(x, fl + 40));
+            *st = 2;
+        }
+        2 if t > 4.0 => {
+            info!("crushcheck: a boulder from 40 cells: health {:.0} -> {:.0}", *mark, h.hp);
+            h.hp = h.max;
+            k.body.pos = Vec2::new(x as f32, fl as f32 + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            // (Clear what the boulder left.)
+            for xx in x - 30..x + 30 {
+                for yy in fl..fl + 50 {
+                    sim.world.set(CellPos::new(xx, yy), platypus_sim::Cell::AIR);
+                }
+            }
+            *st = 3;
+        }
+        3 if t > 4.5 => {
+            *mark = h.hp;
+            // A log (70 × 7) up on two posts 18 high at its ends, the
+            // player under its middle; its middle chopped out: each half
+            // swings down about its post onto it.
+            for px in [x - 34, x + 33] {
+                for yy in fl..fl + 18 {
+                    for xx in px - 1..px + 2 {
+                        sim.world.set(CellPos::new(xx, yy), platypus_sim::Cell::new(stone, 120));
+                    }
+                }
+            }
+            for xx in x - 36..x + 36 {
+                for yy in fl + 18..fl + 25 {
+                    if (xx - x).abs() > 2 {
+                        sim.world.set(CellPos::new(xx, yy), platypus_sim::Cell::new(wood, 120));
+                    }
+                }
+            }
+            sim.world.lift(CellPos::new(x - 20, fl + 21));
+            sim.world.lift(CellPos::new(x + 20, fl + 21));
+            *st = 4;
+        }
+        4 if t > 8.0 => {
+            info!("crushcheck: a log's two halves swinging down onto it: health {:.0} -> {:.0}", *mark, h.hp);
+            // (Then the same over a zombie, the player well away.)
+            k.body.pos = Vec2::new(x as f32 - 120.0, fl as f32 + k.body.half.y);
+            k.prev_pos = k.body.pos;
+            for xx in x - 40..x + 40 {
+                for yy in fl..fl + 50 {
+                    sim.world.set(CellPos::new(xx, yy), platypus_sim::Cell::AIR);
+                }
+            }
+            crate::creatures::def::spawn_creature(&mut commands, "zombie", Vec2::new(x as f32, fl as f32 + 11.0), |_| {});
+            *st = 5;
+        }
+        5 if t > 8.5 => {
+            for px in [x - 34, x + 33] {
+                for yy in fl..fl + 18 {
+                    for xx in px - 1..px + 2 {
+                        sim.world.set(CellPos::new(xx, yy), platypus_sim::Cell::new(stone, 120));
+                    }
+                }
+            }
+            for xx in x - 36..x + 36 {
+                for yy in fl + 18..fl + 25 {
+                    if (xx - x).abs() > 2 {
+                        sim.world.set(CellPos::new(xx, yy), platypus_sim::Cell::new(wood, 120));
+                    }
+                }
+            }
+            sim.world.lift(CellPos::new(x - 20, fl + 21));
+            sim.world.lift(CellPos::new(x + 20, fl + 21));
+            *st = 6;
+        }
+        6 if t > 12.0 => {
+            for (c, ch) in &them {
+                if c.kind == "zombie" {
+                    info!("crushcheck: the same log onto a zombie: health {:.0} of {:.0}", ch.hp, ch.max);
+                }
+            }
+            *st = 7;
+        }
+        _ => {}
+    }
+}
+
 /// `zombiejump` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): a zombie
 /// charges the player (who can't die), who jumps clean over it as it comes:
 /// it skids on, gets its bearings, then comes back. Logs it each 0.2 s.

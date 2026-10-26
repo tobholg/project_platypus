@@ -22,6 +22,10 @@ const DIM: f32 = 0.85;
 /// Fastest point (cells/tick) that still does no harm.
 const HARMLESS_SPEED: f32 = 1.8;
 const DAMAGE_PER_SPEED: f32 = 9.33;
+/// A log cut free (not a felled tree) hurts the player only falling at least
+/// this fast (cells/tick): a real drop, not the shifting and short falls of
+/// one being chopped up.
+const LOG_HARMLESS: f32 = 3.0;
 const MAX_DAMAGE: f32 = 80.0;
 
 struct Drawn {
@@ -107,19 +111,33 @@ fn blank(side: u32) -> Image {
 }
 
 /// A falling trunk hits creatures in its way: damage by how fast that part of
-/// it moves, knocked along with it. Once per body per creature.
+/// it moves (a felled tree's), or how fast it goes (anything loose: a
+/// boulder, a cut log), knocked along with it. Once per body per creature.
+/// A log the player's chopping up doesn't batter it as it shifts and drops
+/// (`LOG_HARMLESS`); dropped on anything else, it hurts as ever.
 fn crush(
     sim: Res<SimWorld>,
     mut hit: Local<HashSet<(u32, Entity)>>,
-    mut creatures: Query<(Entity, &mut Kinematics, &mut Health)>,
+    mut creatures: Query<(Entity, &mut Kinematics, &mut Health, Has<crate::creatures::player::LocalPlayer>)>,
 ) {
     let world = &sim.world;
     let mats = world.materials();
     let bodies = world.bodies();
     hit.retain(|(id, _)| bodies.iter().any(|b| b.id == *id));
-    for body in bodies.iter().filter(|b| b.top_speed() > HARMLESS_SPEED) {
+    for body in bodies.iter().filter(|b| if b.felled() { b.top_speed() } else { Vec2::from(b.vel).length() } > HARMLESS_SPEED) {
         let (lo, hi) = body.bounds();
-        for (entity, mut k, mut health) in &mut creatures {
+        // (Mostly wood: a log.)
+        let woody = {
+            let (mut wood, mut n) = (0u32, 0u32);
+            for (_, c) in body.world_cells() {
+                if mats.phys(c.material).kind != Kind::Plant {
+                    n += 1;
+                    wood += u32::from(mats.def(c.material).loot == platypus_sim::Loot::Wood);
+                }
+            }
+            wood * 2 > n
+        };
+        for (entity, mut k, mut health, player) in &mut creatures {
             let (pos, half) = (k.body.pos, k.body.half);
             if pos.x + half.x < lo.x as f32 || pos.x - half.x > hi.x as f32 + 1.5 || pos.y + half.y < lo.y as f32 || pos.y - half.y > hi.y as f32 + 1.5 {
                 continue;
@@ -132,9 +150,15 @@ fn crush(
                 body.sample([p.x, p.y]).is_some_and(|c| mats.phys(c.material).kind != Kind::Plant)
             });
             let Some(at) = struck else { continue };
-            let v = Vec2::from(body.velocity_at([at.x, at.y]));
+            // (A felled tree hits as fast as the part of it that strikes:
+            // its crown swinging down. Anything loose (a boulder, a log cut
+            // free, a dropped thing) as fast as it goes itself: a log
+            // tipping over as it's chopped up barely moves, however its
+            // end swings.)
+            let v = Vec2::from(if body.felled() { body.velocity_at([at.x, at.y]) } else { body.vel });
             let speed = v.length();
-            if speed < HARMLESS_SPEED {
+            let harmless = if player && woody && !body.felled() { LOG_HARMLESS } else { HARMLESS_SPEED };
+            if speed < harmless {
                 continue;
             }
             hit.insert((body.id, entity));

@@ -9,8 +9,10 @@
 //!   the rest: the colony pours off the roof in a ripple.
 //! - **Swarming**: awake, it circles what it's after with the rest, each its
 //!   own way round, keeping off the others; now and then one (no more than
-//!   three at once) holds, screeches, its eyes flaring (the tell), and dives
-//!   straight at you, bites once, and pulls away up.
+//!   three at once) holds, screeches, spreads its wings, its eyes flaring,
+//!   backs off a little shivering (the tell), and dives straight at you,
+//!   bites once, and pulls away up. It circles in the open: in a tunnel,
+//!   no further out than the rock; pressed against it, it turns round.
 //! - **A flash** (a blast, a flare, a radiant spell) knocks it senseless: it
 //!   drops.
 //! - With no one to hunt a while, it flies up to a roof and sleeps again.
@@ -21,7 +23,7 @@
 use bevy::prelude::*;
 use serde::Deserialize;
 
-use super::watcher::clear;
+use super::watcher::{clear, trace};
 use super::{CustomCreature, CustomSet};
 use crate::creatures::body::animation::Animator;
 use crate::creatures::{Controls, Harm, Kinematics, Team};
@@ -50,6 +52,9 @@ pub struct CaveBat {
     seed: f32,
     #[serde(skip)]
     started: bool,
+    /// How long it's been pressed against rock, swarming.
+    #[serde(skip)]
+    pressed: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -125,8 +130,15 @@ const APART: f32 = 9.0;
 /// its bite (damage, knock); pulling away this long.
 const DIVE_EVERY: (f32, f32) = (1.3, 3.0);
 const DIVING: usize = 3;
-const TELL: f32 = 0.35;
-const DIVE: (f32, f32) = (330.0, 0.5);
+const TELL: f32 = 0.65;
+const DIVE: (f32, f32) = (250.0, 0.65);
+/// Its tell: backing off this fast (cells/s), shivering this hard.
+const BACK_OFF: f32 = 28.0;
+const SHIVER: f32 = 40.0;
+/// Circling, it keeps this far off rock (cells); pressed against rock this
+/// long, it turns the other way round.
+const OFF_ROCK: f32 = 7.0;
+const PRESSED: f32 = 0.5;
 const BITE: (f32, f32) = (8.0, 160.0);
 const PULL: f32 = 0.45;
 /// A flash this near and this bright knocks it senseless this long.
@@ -217,6 +229,15 @@ fn think(
         }
         o.clock += DT;
         o.wait -= DT;
+        // (Somehow in the rock: out to where it fits.)
+        let (lo, hi) = k.body.cells_at(pos);
+        if platypus_physics::body::overlaps_solid(&crate::creatures::WorldGrid(&sim.world), lo, hi)
+            && let Some(free) = crate::creatures::free_spot(&sim.world, pos, k.body.half, 16)
+        {
+            k.body.pos = free;
+            k.prev_pos = free;
+        }
+        let pos = k.body.pos;
         let target = hunted.iter().filter(|(_, tk, t)| t.hunted() && tk.body.pos.distance(pos) < HUNT).min_by(|a, b| a.1.body.pos.distance(pos).total_cmp(&b.1.body.pos.distance(pos)));
         let tp = target.map(|(_, tk, _)| tk.body.pos);
         if o.awake() {
@@ -292,7 +313,7 @@ fn think(
         // Its picture: hanging asleep, eyes open stirring, wings beating.
         let clip = match next {
             Doing::Roost => "hang",
-            Doing::Stir(_) => "stir",
+            Doing::Stir(_) | Doing::Tell(_) => "stir",
             Doing::Dive(..) => "dive",
             _ => "fly",
         };
@@ -319,9 +340,21 @@ fn think(
                 // off the others, jittering (a bat never flies straight).
                 let mut steer = Vec2::new((o.clock * 0.9 + o.seed * 5.0).sin(), (o.clock * 0.6).cos() * 0.5);
                 if let Some(tp) = tp {
+                    // (Pressed against rock a while: the other way round.)
+                    let c = &k.loco.contacts;
+                    o.pressed = if c.wall_left || c.wall_right || c.ceiling || c.ground { o.pressed + DT } else { 0.0 };
+                    if o.pressed > PRESSED {
+                        o.orbit.1 = -o.orbit.1;
+                        o.pressed = 0.0;
+                    }
                     o.orbit.0 += o.orbit.1 * between(o.seed, ROUND) * DT;
                     let (a, r) = (o.orbit.0, o.orbit.2);
                     let want = tp + Vec2::new(a.cos() * r, OVER + a.sin() * r * 0.45);
+                    // (Round them in the open: where that's in the rock (a
+                    // tunnel), as far out as the open goes, short of it.)
+                    let (dir, far) = ((want - tp).normalize_or(Vec2::Y), want.distance(tp));
+                    let rock = trace(&sim, tp, dir, far).distance(tp);
+                    let want = if rock < far { tp + dir * (rock - OFF_ROCK).max(0.0) } else { want };
                     steer = (want - pos) / 20.0;
                 }
                 for &(other, at) in &flock {
@@ -331,17 +364,21 @@ fn think(
                     }
                 }
                 steer += Vec2::new((o.clock * 7.0 + o.seed * 31.0).sin(), (o.clock * 5.3 + o.seed * 17.0).cos()) * 0.35;
-                // Pulling away: up and back the way it came.
+                // Pulling away: up and back the way it came (along the roof,
+                // where there is one).
                 if matches!(next, Doing::Pull(_)) {
-                    steer = Vec2::new(-o.aim.x.signum() * 0.6, 1.0);
+                    let up = if k.loco.contacts.ceiling { -0.2 } else { 1.0 };
+                    steer = Vec2::new(-o.aim.x.signum() * if up < 0.0 { 1.0 } else { 0.6 }, up);
                 }
                 let s = steer.clamp_length_max(1.0);
                 c.0.move_x = s.x;
                 c.0.move_y = s.y;
             }
             Doing::Tell(t) => {
-                // Holding, its eyes flaring, facing its dive.
-                k.body.vel *= 0.85;
+                // Holding, its wings spread and its eyes flaring, facing its
+                // dive: backing off a little, shivering, then it comes.
+                let across = Vec2::new(-o.aim.y, o.aim.x);
+                k.body.vel = -o.aim * BACK_OFF + across * (o.clock * 60.0).sin() * SHIVER;
                 c.0.move_x = 0.0;
                 c.0.move_y = 0.05;
                 c.0.aim = pos + o.aim * 20.0;

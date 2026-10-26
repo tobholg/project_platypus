@@ -334,6 +334,13 @@ impl Body {
         self.still = 0;
     }
 
+    /// It broke off a standing thing and pivots on its stump (a felled
+    /// tree, a severed branch), rather than coming away loose (a log cut
+    /// free, a boulder, an object knocked loose).
+    pub fn felled(&self) -> bool {
+        self.hinge.is_some()
+    }
+
     pub fn mass(&self) -> f32 {
         1.0 / self.inv_mass.max(1e-6)
     }

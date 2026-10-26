@@ -211,7 +211,7 @@ pub(super) fn clear(sim: &SimWorld, a: Vec2, b: Vec2) -> bool {
 }
 
 /// Where a line from `from` along `dir` first meets rock, within `reach`.
-fn trace(sim: &SimWorld, from: Vec2, dir: Vec2, reach: f32) -> Vec2 {
+pub(super) fn trace(sim: &SimWorld, from: Vec2, dir: Vec2, reach: f32) -> Vec2 {
     let mut d = 0.0;
     while d < reach {
         let p = from + dir * d;
