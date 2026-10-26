@@ -319,7 +319,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, chaos_script)
             .add_systems(Update, (camp_script, spiderdeath_script, camplook_script, reset_script, forestfire_script, regrow_script, wildfire_script, refill_script, gold_script, goldheap_script, kick_script, boulder_script))
-            .add_systems(PreUpdate, bowshot_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, (bowshot_script, damp_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (logmagic_script, cast_script, trap_script, village_script, shop_script, climb_script, star_script, raid_script, quake_script, pedlar_script, troll_script, reactions_script, grab_script, bestiary_script, reload_script, layouts_script, record_script, course_script, dig_script, legs_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (rocket_script, rocketswim_script, soak_script, pickarea_script).after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, spider_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -3900,6 +3900,48 @@ fn kick_script(
         }
         _ => {}
     }
+}
+
+/// `damp` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_MODE=dev`):
+/// firedamp all round the player (in the dev kit's rocket boots), what's in
+/// its hand `PLATYPUS_HOLD` (an item id; bow by default); it jumps now and
+/// then (never firing the boots). `hazards` logs what lights it.
+fn damp_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut hand: ResMut<crate::hands::Hand>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    player: Query<(&Kinematics, &crate::hands::items::Inventory), With<LocalPlayer>>,
+    mut done: Local<bool>,
+) {
+    if s.name != "damp" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((k, inv)) = player.single() else { return };
+    let hold = std::env::var("PLATYPUS_HOLD").unwrap_or_else(|_| "bow".into());
+    if let Some(i) = items.as_ref().and_then(|items| inv.slots.iter().position(|st| st.is_some_and(|st| items.def(st.item).id == hold))) {
+        (hand.bar, hand.slot) = (i / crate::hands::items::HOTBAR, i % crate::hands::items::HOTBAR);
+    }
+    if !*done && t > 1.0 {
+        *done = true;
+        if let Some(gas) = sim.materials().id("firedamp") {
+            let c = CellPos::from_world(k.body.pos.x, k.body.pos.y);
+            for dy in -12..40 {
+                for dx in -40..40 {
+                    let p = c.offset(dx, dy);
+                    if sim.world.get(p).is_some_and(|cell| cell.is_air()) {
+                        sim.world.set(p, platypus_sim::Cell::new(gas, 128));
+                    }
+                }
+            }
+        }
+    }
+    // A jump now and then, held through (one press: never the boots).
+    if t > 1.5 && (t % 2.0) < 0.6 { keys.press(KeyCode::Space) } else { keys.release(KeyCode::Space) }
 }
 
 /// `bowshot` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_MODE=dev`):

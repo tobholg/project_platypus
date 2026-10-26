@@ -372,16 +372,22 @@ fn firedamp(
     mut damp: ResMut<Firedamp>,
     (toggles, switched): (Res<crate::light::LightToggles>, Res<crate::light::switch::Switch>),
     player: Query<&Kinematics, With<LocalPlayer>>,
-    flames: Query<(&GlobalTransform, &crate::light::LightSource, Has<crate::light::torch::HeldFlame>)>,
+    flames: Query<(Entity, &GlobalTransform, &crate::light::LightSource, Has<crate::light::torch::HeldFlame>, Option<&crate::combat::AuraGlow>)>,
+    names: Query<&Name>,
     mut quiet: Local<u64>,
 ) {
     let Some(gas) = sim.materials().id("firedamp") else { return };
     let tick = sim.world.tick();
     let is_gas = |sim: &SimWorld, p: CellPos| sim.world.get(p).is_some_and(|c| c.material == gas);
     // (A light that flickers is a flame; the one in hand is one unless it's
-    // a safety lamp's, or a flashlight's.)
+    // a safety lamp's, or a flashlight's; a held focus's glow only if it's a
+    // fire one's.)
     let mut lit = Vec::new();
-    for (tf, light, held) in &flames {
+    let mut by = None;
+    for (e, tf, light, held, aura) in &flames {
+        if aura.is_some_and(|a| !a.flame) {
+            continue;
+        }
         // (Switched off, L: out, and an out flame lights nothing.)
         let naked = if held { matches!(toggles.carry, crate::light::Carry::Torch | crate::light::Carry::Lantern) && switched.hand_level(toggles.carry) > 0.05 } else { light.flicker > 0.05 };
         if !naked {
@@ -391,6 +397,7 @@ fn firedamp(
         let c = CellPos::from_world(at.x, at.y);
         if let Some(p) = (-FLAME_REACH..=FLAME_REACH).flat_map(|dy| (-FLAME_REACH..=FLAME_REACH).map(move |dx| c.offset(dx, dy))).find(|&p| is_gas(&sim, p)) {
             lit.push(p);
+            by.get_or_insert((e, names.get(e).map_or(String::new(), |n| n.to_string()), light.flicker, held));
         }
     }
     // (Once lit, it's the sim's to burn: a flame tries again only after a
@@ -399,7 +406,7 @@ fn firedamp(
         && tick >= *quiet
     {
         *quiet = tick + 30;
-        info!("hazards: firedamp lit at ({}, {}) by a naked flame", p.x, p.y);
+        info!("hazards: firedamp lit at ({}, {}) by a naked flame {:?}", p.x, p.y, by);
         for &p in &lit {
             sim.queue(platypus_sim::WorldEdit::Ignite { center: p, radius: 2 });
         }

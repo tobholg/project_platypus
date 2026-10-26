@@ -1894,11 +1894,15 @@ fn apply_hits(
 #[derive(Component)]
 struct WeaponSprite;
 
-/// The light at the tip of something held with an aura (its child).
+/// The light at the tip of something held with an aura (its child): a
+/// fire focus's is a flame (it lights firedamp: `hazards`); any other's is
+/// magic's glow, and doesn't.
 #[derive(Component)]
-struct AuraGlow;
+pub(crate) struct AuraGlow {
+    pub flame: bool,
+}
 
-type Glowing<'a> = (&'a mut Transform, &'a mut crate::light::LightSource);
+type Glowing<'a> = (&'a mut Transform, &'a mut crate::light::LightSource, &'a mut AuraGlow);
 
 /// What's in the hand: a blade or a bow (by index).
 #[derive(Clone, Copy)]
@@ -1928,7 +1932,9 @@ fn draw(
     for (e, wielding, k, hand, swing, nocked, aiming, children) in &holders {
         // What it holds glows at its tip (an aura: a wand's), placed below.
         let glow = children.and_then(|c| c.iter().find(|c| glows.contains(*c)));
-        let aura = wielding.0.as_deref().and_then(|id| items.as_ref()?.id(id)).and_then(|i| items.as_ref()?.def(i).aura.clone());
+        let held = wielding.0.as_deref().and_then(|id| items.as_ref()?.id(id)).and_then(|i| Some(items.as_ref()?.def(i)));
+        let aura = held.and_then(|d| d.aura.clone());
+        let fiery = held.is_some_and(|d| matches!(d.use_, crate::hands::items::Use::Focus { element: Some(crate::magic::Element::Fire), .. }));
         let mut tip_at: Option<Vec3> = None;
         let sprite = children.and_then(|c| c.iter().find(|c| sprites.contains(*c)));
         let id = wielding.0.as_deref();
@@ -2013,13 +2019,14 @@ fn draw(
             (Some(a), Some(at), g) => {
                 let color = crate::light::rgb(a.light, a.strength);
                 match g.and_then(|g| glows.get_mut(g).ok()) {
-                    Some((mut gtf, mut light)) => {
+                    Some((mut gtf, mut light, mut g)) => {
                         gtf.translation = at;
                         light.color = color;
+                        g.flame = fiery;
                     }
                     None => {
                         commands.entity(e).queue_silenced(move |mut ew: EntityWorldMut| {
-                            ew.with_child((AuraGlow, crate::light::LightSource { color, flicker: 0.2 }, Transform::from_translation(at)));
+                            ew.with_child((AuraGlow { flame: fiery }, crate::light::LightSource { color, flicker: 0.2 }, Transform::from_translation(at)));
                         });
                     }
                 }
