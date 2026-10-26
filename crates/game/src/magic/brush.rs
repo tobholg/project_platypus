@@ -1,6 +1,7 @@
 //! Brushes (`Carrier::Brush`): a spell held like a beam that paints. Each
 //! tick it's held, a stream runs from the hand to the cursor (stopped by
-//! what's in the way: it doesn't paint through rock), and the stroke since
+//! what's in the way: it doesn't paint through rock; a stronger brush,
+//! `through`, paints wherever the cursor is), and the stroke since
 //! the last tick is painted, `radius` round: each open cell it covers sets
 //! solid (`solid`: ice) if it's held up (touching real ground, or a cell
 //! this brush painted that's held up, no more than `reach` cells out from
@@ -120,6 +121,8 @@ pub struct Brush<'a> {
     /// Off a cell as it sets; along the stream.
     pub look: Option<&'a Emitter>,
     pub stream: Option<&'a Emitter>,
+    /// Paints where the cursor is, whatever's between.
+    pub through: bool,
 }
 
 /// One tick of a brush held: `caster` painting from `from` toward its aim
@@ -151,7 +154,8 @@ pub fn paint(
     // hand), not through rock.
     let reach = aim.min(brush.range);
     let mut tip = from + dir * reach;
-    let steps = (reach * 2.0) as i32;
+    // (A stronger brush: wherever the cursor is, rock between or not.)
+    let steps = if brush.through { 0 } else { (reach * 2.0) as i32 };
     for i in 1..=steps {
         let p = from + dir * (i as f32 * 0.5);
         let c = CellPos::from_world(p.x, p.y);

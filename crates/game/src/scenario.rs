@@ -15997,7 +15997,8 @@ fn bladesplash_script(
 /// floor 30 to its right (1-3 s), a bridge out from its top (3-5 s), then a
 /// stroke in the open air high over the floor (5.5-6.5 s). Logs the cells
 /// of what it set, of the loose, and its mana, each second (then every ten,
-/// to see it melt). `PLATYPUS_PAINT=pool`: water under where it draws.
+/// to see it melt). `PLATYPUS_PAINT=pool`: water under where it draws;
+/// `wall`: a stone wall between it and where it draws.
 fn paint_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
@@ -16022,6 +16023,18 @@ fn paint_script(
     // (`PLATYPUS_PAINT=pool`: a pool 12 deep and 60 wide dug where it
     // draws, full of water; the column's foot on the water.)
     let pool = std::env::var("PLATYPUS_PAINT").is_ok_and(|v| v == "pool");
+    // (`PLATYPUS_PAINT=wall`: a stone wall 70 high between it and where it
+    // draws: only a brush that needs no line of sight gets there.)
+    if std::env::var("PLATYPUS_PAINT").is_ok_and(|v| v == "wall") && !*dug && t > 0.4 {
+        *dug = true;
+        if let Some(stone) = sim.materials().id("stone") {
+            for xx in x as i32 - 14..x as i32 - 9 {
+                for yy in fl as i32..fl as i32 + 70 {
+                    sim.world.set(CellPos::new(xx, yy), platypus_sim::Cell::new(stone, 128));
+                }
+            }
+        }
+    }
     if pool && !*dug && t > 0.4 {
         *dug = true;
         if let Some(water) = sim.materials().id("water") {

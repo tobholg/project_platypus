@@ -36,6 +36,8 @@
             about: "A bigger well: lifts a crowd, tears out harder rock."),
         (id: "ice_wall", name: "Ice brush", runes: ["ice_wall"], delay: 0.0, recharge: 0.0, element: Frost,
             about: "Hold: paint ice where you aim. It sets against rock (and against ice you've painted, out to thirty from the ground): draw walls, ledges, bridges. In the open air it falls as snow. It melts, slowly; fire thaws it."),
+        (id: "glacier_brush", name: "Glacier brush", runes: ["glacier_brush"], delay: 0.0, recharge: 0.0, tier: 2, element: Frost,
+            about: "Hold: paint ice wherever you aim, rock between or not: round corners, into caves you can't see. Bigger and further than the ice brush; bridges hold out to forty-five."),
         (id: "toxic_cloud", name: "Toxic cloud", runes: ["toxic_cloud"], delay: 1.0, recharge: 1.0, element: Acid,
             about: "A heavy cloud of miasma: it sinks into pits, eats at what breathes it, and burns if lit."),
         (id: "fire_wall", name: "Fire wall", runes: ["fire_wall"], delay: 1.2, recharge: 1.2, tier: 2, element: Fire,

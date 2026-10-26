@@ -78,7 +78,8 @@ pub enum Carrier {
     /// where it's held up (touching ground, or what it painted that is, at
     /// most `reach` cells out), else `loose`, falling; `per_cell` mana a
     /// cell (loose, half). `set`: off a cell as it sets; `stream`: motes
-    /// running from the hand to the cursor.
+    /// running from the hand to the cursor. `through`: no line of sight
+    /// needed.
     Brush {
         solid: String,
         loose: String,
@@ -90,6 +91,10 @@ pub enum Carrier {
         set: Option<Emitter>,
         #[serde(default)]
         stream: Option<Emitter>,
+        /// It paints wherever the cursor is, rock between or not (a
+        /// stronger brush's).
+        #[serde(default)]
+        through: bool,
     },
     /// Called down from above onto where it's aimed (out to `range`): its
     /// payloads ride something falling from `height` cells up at `speed`

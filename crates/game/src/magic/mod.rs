@@ -534,9 +534,9 @@ fn fire(
                     }
                 }
             }
-            Carrier::Brush { solid, loose, radius, range, reach, per_cell, set, stream } => {
+            Carrier::Brush { solid, loose, radius, range, reach, per_cell, set, stream, through } => {
                 let boxes: Vec<(Vec2, Vec2)> = bodies.iter().map(|(_, k, ..)| (k.body.pos, k.body.half)).collect();
-                let b = brush::Brush { solid, loose, radius: *radius, range: *range, reach: *reach, per_cell: *per_cell, look: set.as_ref(), stream: stream.as_ref() };
+                let b = brush::Brush { solid, loose, radius: *radius, range: *range, reach: *reach, per_cell: *per_cell, look: set.as_ref(), stream: stream.as_ref(), through: *through };
                 // (What it paints with: the caster's mana, a cell at a time.)
                 let mut left = mana.get(f.caster).map_or(f32::MAX, |m| m.cur);
                 let before = left;

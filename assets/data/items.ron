@@ -135,7 +135,7 @@
             aura: (light: (140, 200, 255), sparks: (count: 10, life: (0.5, 1.0), colors: [(240, 250, 255), (170, 215, 255)], speed: 9, gravity: 30, drag: 3, glow: true))),
         // A frost wraith's breath, caught in a staff (one in a few of them
         // leave one): hold for a cone of ice, fierce up close.
-        (id: "rimebreath_staff", name: "Rimebreath staff", color: (200, 235, 255), use: Focus(tier: 2, element: Frost, spells: ["frost_breath", "ice_wall"]),
+        (id: "rimebreath_staff", name: "Rimebreath staff", color: (200, 235, 255), use: Focus(tier: 2, element: Frost, spells: ["frost_breath", "glacier_brush"]),
             gear: (slot: Held, stats: { FrostPower: 35, SpellPower: 10, Mana: 30 }),
             aura: (light: (160, 215, 255), sparks: (count: 14, life: (0.5, 1.2), colors: [(255, 255, 255), (200, 235, 255), (150, 200, 245)], speed: 12, gravity: -10, drag: 3, glow: true))),
         (id: "blaze_staff",    name: "Blaze staff",    color: (255, 110, 40), use: Focus(tier: 2, element: Fire, spells: ["fire_ray", "fire_wall"]),
