@@ -138,7 +138,8 @@ pub(crate) fn rig_limb(anim: &super::animation::Animator, k: &Kinematics, at: Ve
 
 type Struck<'a> = (&'a Health, &'a Kinematics, Option<&'a Parts>, Option<&'a Severed>, Option<&'a mut Wounds>, &'a super::animation::Animator);
 
-/// Blows that land on a limb wear it down; past its share, it's cut off.
+/// Blows that land on a limb wear it down; past its share, it's cut off
+/// (a head with `behead`, only now and then: a roll each blow).
 /// (A limb of its parts, `Parts`: a leg, an arm, a tail; or of its drawn
 /// layers: a humanoid's head and arms.)
 /// (Not the player's: your limbs don't come off, and your head off wasn't
@@ -170,7 +171,12 @@ pub fn wound(mut commands: Commands, mut felt: MessageReader<crate::combat::Felt
                 f.dealt
             }
         };
-        if took >= max {
+        // (Its head maybe not, even then: `behead`, a roll each blow.)
+        let comes_off = match (limb, anim.def.behead) {
+            (Limb::Head, Some(chance)) => (platypus_sim::rng::hash(&[f.target.to_bits(), took.to_bits() as u64, 0xBE4D]) % 10_000) as f32 / 10_000.0 < chance,
+            _ => true,
+        };
+        if took >= max && comes_off {
             cuts.write(Cut { target: f.target, limb, dir: f.dir });
         }
     }

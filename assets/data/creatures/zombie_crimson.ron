@@ -16,6 +16,9 @@
     faction: "undead",
     kind: "rotting",
     headless: Dies,
+    // (As a zombie's: its head never sure to come off.)
+    neck: 0.45,
+    behead: 0.25,
     sunburns: true,
     // Hunting you, now and then it breaks into a run at you: a snarl, then
     // suddenly fast for a couple of seconds.
@@ -49,8 +52,8 @@
     // Harder to stop than a zombie.
     poise: 55,
     heft: 4,
-    // Its head's the place to hit; its body soaks it up.
-    zones: (head: 2.0, body: 0.6, arms: 0.8),
+    // Its head's the place to hit (half again); its body soaks it up.
+    zones: (head: 1.5, body: 0.6, arms: 0.8),
     // Each its own pace.
     pace: 0.15,
     brain: (

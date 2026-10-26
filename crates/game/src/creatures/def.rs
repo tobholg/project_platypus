@@ -124,6 +124,10 @@ pub struct CreatureDef {
     /// zombie's, whose head off kills it).
     #[serde(default)]
     pub neck: Option<f32>,
+    /// Past that, the chance each blow to its head takes it off (none: the
+    /// first does): a zombie's head is never sure to come off.
+    #[serde(default)]
+    pub behead: Option<f32>,
     /// Its kind and its changes, put together (at load).
     #[serde(skip)]
     pub nature: crate::creatures::nature::Nature,
