@@ -1,5 +1,6 @@
 //! Breath: the player's head under liquid, it holds its breath (a status,
-//! top right, running down: 18 s, Hardened 12); bubbles stream off it,
+//! top right, running down: 18 s, Hardened 12; a diving helmet's `Breath`
+//! stat makes it last longer); bubbles stream off it,
 //! faster as it runs low, and the screen's edges darken blue (`screen_fx`).
 //! Out of breath, it drowns: a share of its health a second, whatever it
 //! wears. Its head out, it's back in a couple of seconds (a gasp, if it
@@ -58,19 +59,21 @@ fn breathe(
     sim: Res<SimWorld>,
     difficulty: Res<Difficulty>,
     dying: Res<crate::death::Dying>,
-    mut player: Query<(Entity, &Kinematics, &mut Health, Option<&mut Breath>), With<LocalPlayer>>,
+    mut player: Query<(Entity, &Kinematics, &mut Health, Option<&mut Breath>, Option<&crate::gear::Stats>), With<LocalPlayer>>,
     mut sparks: ResMut<crate::vfx::Sparks>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut owed: Local<f32>,
 ) {
-    let Ok((me, k, mut h, breath)) = player.single_mut() else { return };
-    let most = if *difficulty == Difficulty::Hardened { HELD_HARD } else { HELD };
+    let Ok((me, k, mut h, breath, stats)) = player.single_mut() else { return };
+    let most = if *difficulty == Difficulty::Hardened { HELD_HARD } else { HELD } * stats.map_or(1.0, |s| s.mult(crate::gear::Stat::Breath));
     let Some(mut b) = breath else {
         commands.entity(me).insert(Breath { left: most, most, under: false });
         return;
     };
     let dt = time.delta_secs().min(0.05);
     b.most = most;
+    // (A helmet taken off: no more held than it can be.)
+    b.left = b.left.min(most);
     let head = k.body.pos + Vec2::new(0.0, k.body.half.y - HEAD_DOWN);
     let under = dying.0.is_none()
         && sim.world.get(CellPos::from_world(head.x, head.y)).is_some_and(|c| !c.is_air() && sim.world.materials().phys(c.material).kind == Kind::Liquid);

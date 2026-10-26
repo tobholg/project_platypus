@@ -16671,6 +16671,15 @@ fn dive_script(
             if let Some(i) = (0..eq.worn.len()).find(|&i| crate::gear::Equipment::fits(&items, i, &torch)) {
                 eq.worn[i] = Some(torch);
             }
+            // (`PLATYPUS_HELMET=1`: in a diving helmet.)
+            if std::env::var("PLATYPUS_HELMET").is_ok()
+                && let Some(id) = items.id("diving_helmet")
+            {
+                let helmet = crate::hands::items::Stack::new(id, 1);
+                if let Some(i) = (0..eq.worn.len()).find(|&i| crate::gear::Equipment::fits(&items, i, &helmet)) {
+                    eq.worn[i] = Some(helmet);
+                }
+            }
             *step = 1;
         }
         1 if t > 1.0 => {

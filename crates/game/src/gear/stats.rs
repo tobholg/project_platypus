@@ -78,6 +78,8 @@ stats! {
     AirJumps: "air jumps", false;
     /// Better finds: rarer gear from what it loots.
     Luck: "luck", false;
+    /// Breath held under water (a diving helmet's).
+    Breath: "breath", true;
 }
 
 /// What gear adds up to, on a creature (none worn: all zero).
