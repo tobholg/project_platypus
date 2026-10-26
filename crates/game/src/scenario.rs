@@ -16110,8 +16110,9 @@ fn fields_script(
     };
     match kind.as_str() {
         "slow" => {
-            cast(Vec2::new(x, fl + 14.0), 0.5);
-            cast(Vec2::new(x, fl + 14.0), 8.0);
+            // (Its middle well off, so the player stands outside it.)
+            cast(Vec2::new(x + 40.0, fl + 14.0), 0.5);
+            cast(Vec2::new(x + 40.0, fl + 14.0), 8.0);
         }
         "lift" => {
             if *step == 0 && t > 0.3 {

@@ -128,11 +128,11 @@
         // back what's shot through it; in a slow field (a bubble) everything
         // runs at an eighth; an updraft (a column) rises from there to the
         // rock above, lifting what's in it.
-        (id: "repulsor", name: "Repulsor", mana: 22, color: (140, 200, 255), kind: Carrier(Field(kind: Repulse, radius: 32, range: 260, lasts: 8.0, sound: Some("field_set"))),
+        (id: "repulsor", name: "Repulsor", mana: 22, color: (140, 200, 255), kind: Carrier(Field(kind: Repulse, radius: 48, range: 420, lasts: 8.0, sound: Some("field_set"))),
             look: (burst: (count: 0, life: (0.1, 0.2), colors: [(255, 255, 255)]))),
-        (id: "slow_field", name: "Slow field", mana: 26, color: (170, 120, 255), kind: Carrier(Field(kind: Slow, radius: 40, range: 260, lasts: 8.0, sound: Some("slow_set"))),
+        (id: "slow_field", name: "Slow field", mana: 26, color: (170, 120, 255), kind: Carrier(Field(kind: Slow, radius: 64, range: 420, lasts: 8.0, sound: Some("slow_set"))),
             look: (burst: (count: 0, life: (0.1, 0.2), colors: [(255, 255, 255)]))),
-        (id: "updraft", name: "Updraft", mana: 18, color: (130, 235, 210), kind: Carrier(Field(kind: Lift, radius: 7, range: 280, lasts: 8.0, most: 3, sound: Some("updraft"))),
+        (id: "updraft", name: "Updraft", mana: 18, color: (130, 235, 210), kind: Carrier(Field(kind: Lift, radius: 11, range: 450, lasts: 8.0, most: 3, sound: Some("updraft"))),
             look: (burst: (count: 0, life: (0.1, 0.2), colors: [(255, 255, 255)]))),
         // An elder watcher's: a cloud of blight where it lands, lingering.
         (id: "blight_cloud", name: "Blight cloud", mana: 10, color: (150, 60, 200), kind: Carrier(Cloud(material: "blight_fog", radius: 13, range: 300)),

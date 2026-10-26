@@ -128,6 +128,7 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     // it (slow), part its colours, and the ripples' brightness.
     var bend = vec2<f32>(0.0);
     var haze = 0.0;
+    var tint = 0.0;
     var split = 0.0;
     var glass = 0.0;
     var light = vec3<f32>(0.0);
@@ -155,25 +156,31 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
             if (a.w < 1.5) {
                 // Repulsor: a lens, drawing from nearer its middle, slow
                 // waves of force pulsing out through it.
-                let pulse = 1.0 + 0.6 * sin(r * 14.0 - t * 4.0 + b.z * 6.28);
-                let lens = 0.5 * s * body * pulse;
+                let pulse = 1.0 + 0.25 * sin(r * 9.0 - t * 4.0 + b.z * 6.28);
+                let lens = 0.28 * s * body * pulse;
                 var pull = -d * lens;
                 let shimmer = vec2<f32>(sin(w.x * 0.21 + t * 1.7) * sin(w.y * 0.17 - t * 1.3), cos(w.x * 0.15 - t * 1.1) * sin(w.y * 0.23 + t * 1.5)) * 0.007 * s * body;
                 pull = pull + shimmer;
                 pull.x = pull.x / fw.aspect;
                 bend += pull;
-                split += 0.008 * s * r * body * 2.0;
+                split += 0.0025 * s * r * body;
                 glass = max(glass, s * body);
                 // (A faint glow, brightest in the middle, nothing at its
                 // edge, breathing with the waves.)
                 light += vec3<f32>(0.45, 0.7, 1.0) * s * body * (0.09 + 0.05 * sin(r * 14.0 - t * 4.0 + b.z * 6.28));
             } else {
-                // Slow: haze, wavering, strongest in the middle.
-                let fall = s * smoothstep(1.0, 0.45, r);
-                var waver = vec2<f32>(sin(w.y * 0.19 + t * 1.1) + 0.5 * sin(w.y * 0.47 - t * 0.6), cos(w.x * 0.17 - t * 0.9) + 0.4 * sin(w.x * 0.41 + t * 0.5)) * 0.006 * fall;
+                // Slow: a band of haze near its outside, fading both ways
+                // (no line), slow ripples rolling out through it; the
+                // middle clear, only faintly greyed, so what crawls there
+                // shows.
+                let band = s * smoothstep(0.35, 0.78, r) * smoothstep(1.0, 0.86, r);
+                var waver = vec2<f32>(sin(w.y * 0.19 + t * 1.1) + 0.5 * sin(w.y * 0.47 - t * 0.6), cos(w.x * 0.17 - t * 0.9) + 0.4 * sin(w.x * 0.41 + t * 0.5)) * 0.008 * band;
+                var roll = d / max(length(d), 1e-4) * sin(r * 34.0 - t * 1.6 + b.z * 6.28) * 0.006 * band;
+                waver = waver + roll;
                 waver.x = waver.x / fw.aspect;
                 bend += waver;
-                haze = max(haze, fall);
+                haze = max(haze, band);
+                tint = max(tint, max(band * 0.75, s * 0.28 * smoothstep(1.0, 0.6, r)));
             }
         } else {
             // Updraft: a column from its foot (`a.y`) up to its top (`b.x`).
@@ -213,12 +220,12 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
             split += wave * 0.006;
         }
     }
-    if (bend.x == 0.0 && bend.y == 0.0 && haze <= 0.0 && light.b <= 0.0) {
+    if (bend.x == 0.0 && bend.y == 0.0 && haze <= 0.0 && tint <= 0.0 && light.b <= 0.0) {
         return well(in.uv);
     }
     let uv = in.uv + bend;
     var c: vec3<f32>;
-    if (haze > 0.0) {
+    if (haze > 0.02) {
         // Smeared along a slowly turning way.
         let a = t * 0.35;
         let dir = vec2<f32>(cos(a), sin(a)) * 0.0035 * haze;
@@ -227,12 +234,15 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
             c += sample(uv + dir * f32(k)).rgb;
         }
         c = c / 5.0;
-        let l = dot(c, vec3<f32>(0.3, 0.59, 0.11));
-        c = mix(c, vec3<f32>(l) * vec3<f32>(0.84, 0.7, 1.15), 0.72 * haze) + vec3<f32>(0.3, 0.16, 0.55) * 0.1 * haze;
     } else if (split > 0.0) {
         c = vec3<f32>(sample(uv + vec2<f32>(split, 0.0)).r, sample(uv).g, sample(uv - vec2<f32>(split, 0.0)).b);
     } else {
         c = sample(uv).rgb;
+    }
+    // (Greyed toward violet, as time thickens.)
+    if (tint > 0.0) {
+        let l = dot(c, vec3<f32>(0.3, 0.59, 0.11));
+        c = mix(c, vec3<f32>(l) * vec3<f32>(0.84, 0.7, 1.15), tint) + vec3<f32>(0.3, 0.16, 0.55) * 0.12 * tint;
     }
     c = c + vec3<f32>(0.55, 0.78, 1.0) * ring * 0.35 + light;
     return vec4<f32>(c, sample(in.uv).a);
