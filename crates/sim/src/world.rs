@@ -372,10 +372,18 @@ impl World {
 
     /// As `spray`, but harmless on the way (`Landing::Spill`): earth dug up.
     pub fn spill(&mut self, at: [f32; 2], dir: [f32; 2], material: MaterialId, count: usize, speed: f32, spread: f32) {
+        self.spill_heated(at, dir, material, 0, count, speed, spread);
+    }
+
+    /// `spill`, each cell `heat` (°C) hotter or colder than it comes
+    /// (snow painted out of a frost brush: deeply cold).
+    #[allow(clippy::too_many_arguments)]
+    pub fn spill_heated(&mut self, at: [f32; 2], dir: [f32; 2], material: MaterialId, heat: i16, count: usize, speed: f32, spread: f32) {
         let mut rng = self.rng_for(0x5B1A, CellPos::from_world(at[0], at[1]));
         let base = dir[1].atan2(dir[0]);
         for _ in 0..count {
-            let cell = self.materials.spawn(material, &mut rng);
+            let mut cell = self.materials.spawn(material, &mut rng);
+            cell.heat = cell.heat.saturating_add(heat);
             let a = base + (rng.next_u32() as f32 / u32::MAX as f32 * 2.0 - 1.0) * spread;
             let s = speed * (0.4 + 0.6 * rng.next_u32() as f32 / u32::MAX as f32);
             self.particles.push(Particle::new(at, [a.cos() * s, a.sin() * s + 0.3], cell, 180, Landing::Spill));

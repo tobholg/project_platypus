@@ -15996,15 +15996,17 @@ fn bladesplash_script(
 /// brush spell (`PLATYPUS_BRUSH`, ice_wall) and draws: a column up off the
 /// floor 30 to its right (1-3 s), a bridge out from its top (3-5 s), then a
 /// stroke in the open air high over the floor (5.5-6.5 s). Logs the cells
-/// of what it set, of the loose, and its mana, each second.
+/// of what it set, of the loose, and its mana, each second (then every ten,
+/// to see it melt). `PLATYPUS_PAINT=pool`: water under where it draws.
 fn paint_script(
     s: Res<Scenario>,
-    sim: Res<SimWorld>,
+    mut sim: ResMut<SimWorld>,
     book: Res<crate::magic::Spellbook>,
     mut menu: ResMut<crate::devmenu::DevMenu>,
     mut casts: MessageWriter<crate::magic::CastRequest>,
     player: Query<(Entity, &Kinematics, Option<&crate::magic::Mana>), With<LocalPlayer>>,
     mut next: Local<f32>,
+    mut dug: Local<bool>,
 ) {
     if s.name != "paint" {
         return;
@@ -16017,8 +16019,22 @@ fn paint_script(
     let fl = platypus_worldgen::arena::FLOOR as f32;
     let x = k.body.pos.x + 30.0;
     let lerp = |a: Vec2, b: Vec2, f: f32| a + (b - a) * f.clamp(0.0, 1.0);
+    // (`PLATYPUS_PAINT=pool`: a pool 12 deep and 60 wide dug where it
+    // draws, full of water; the column's foot on the water.)
+    let pool = std::env::var("PLATYPUS_PAINT").is_ok_and(|v| v == "pool");
+    if pool && !*dug && t > 0.4 {
+        *dug = true;
+        if let Some(water) = sim.materials().id("water") {
+            for xx in x as i32 - 20..x as i32 + 40 {
+                for yy in fl as i32 - 12..fl as i32 {
+                    sim.world.set(CellPos::new(xx, yy), platypus_sim::Cell::new(water, 128));
+                }
+            }
+        }
+    }
+    let foot = if pool { fl - 6.0 } else { fl + 1.0 };
     let at = if (1.0..3.0).contains(&t) {
-        Some(lerp(Vec2::new(x, fl + 1.0), Vec2::new(x, fl + 30.0), (t - 1.0) / 2.0))
+        Some(lerp(Vec2::new(x, foot), Vec2::new(x, fl + 30.0), (t - 1.0) / 2.0))
     } else if (3.0..5.0).contains(&t) {
         Some(lerp(Vec2::new(x, fl + 30.0), Vec2::new(x + 40.0, fl + 30.0), (t - 3.0) / 2.0))
     } else if (5.5..6.5).contains(&t) {
@@ -16031,13 +16047,16 @@ fn paint_script(
         casts.write(crate::magic::CastRequest { caster: me, spell, from, toward, alt: false });
     }
     if t >= *next {
-        *next = t + 1.0;
+        // (Each second while it paints, then every ten: how long it lasts.)
+        *next = if t < 10.0 { t + 1.0 } else { t + 10.0 };
         let mats = sim.world.materials();
         let count = |name: &str| {
             let Some(m) = mats.id(name) else { return 0 };
             (k.body.pos.x as i32 - 40..k.body.pos.x as i32 + 120).flat_map(|xx| (fl as i32..fl as i32 + 90).map(move |yy| (xx, yy))).filter(|&(xx, yy)| sim.world.get(CellPos::new(xx, yy)).is_some_and(|c| c.material == m)).count()
         };
-        info!("paint: t {t:.0} ice {} snow {} mana {:.0}", count("ice"), count("snow"), mana.map_or(0.0, |m| m.cur));
+        // (The ground round the column's foot: how cold it is.)
+        let cold = (x as i32 - 12..x as i32 + 12).flat_map(|xx| (fl as i32 - 4..fl as i32).map(move |yy| CellPos::new(xx, yy))).filter_map(|p| sim.world.temperature(p)).min().unwrap_or(0);
+        info!("paint: t {t:.0} ice {} snow {} mana {:.0}; the floor at its foot down to {cold} °C", count("ice"), count("snow"), mana.map_or(0.0, |m| m.cur));
     }
 }
 

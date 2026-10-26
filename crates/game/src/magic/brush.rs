@@ -8,6 +8,12 @@
 //! form (`loose`: snow), falling. Each cell set costs `per_cell` mana (a
 //! loose one half); out of mana, it stops. Never in a body.
 //!
+//! What it passes over freezes: a liquid that freezes (water) turns to ice
+//! (`solid`) and holds what's painted on it (a pool frozen over, a wall
+//! built off it); painted ice is set deeply cold (`COLD`), so it lasts in a
+//! warm place; and everything round the stroke is chilled (`CHILL`): the
+//! ground under it frosts over (`render`'s rime), water near it freezes.
+//!
 //! It isn't a ruler: the brush wobbles side to side along a stroke
 //! (`WOBBLE`), swells and thins as it goes (`LUMPS`: smooth noise over
 //! the world), and its rim sets only some of its cells each pass, so edges
@@ -57,6 +63,38 @@ const RIM_SETS: f32 = 0.45;
 /// so many), this long at most (cells).
 const ICICLE_ONE_IN: u64 = 14;
 const ICICLE_MOST: i32 = 4;
+/// Painted ice is set this much colder than round it (°C), so it lasts.
+const COLD: i16 = -70;
+/// Round each step of a stroke, this much heat taken (°C, less to the rim),
+/// this far past the brush (cells), down to this cold at most (°C): what's
+/// under it frosts, and no colder.
+const CHILL: i32 = 6;
+const CHILL_PAST: i32 = 4;
+const CHILL_TO: i32 = -20;
+
+/// What's round `at`, `r` cells, chilled (`CHILL`, less to the rim), never
+/// below `CHILL_TO`; what freezes, freezing as the world has it.
+fn chill(world: &mut World, at: CellPos, r: i32) {
+    let mats = world.materials().clone();
+    for dy in -r..=r {
+        for dx in -r..=r {
+            let d2 = dx * dx + dy * dy;
+            if d2 > r * r {
+                continue;
+            }
+            let p = at.offset(dx, dy);
+            let (Some(c), Some(t)) = (world.get(p), world.temperature(p)) else { continue };
+            if c.is_air() || !matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder | Kind::Liquid) || t <= CHILL_TO {
+                continue;
+            }
+            let k = 1.0 - (d2 as f32).sqrt() / r as f32;
+            let take = ((CHILL as f32 * (0.3 + 0.7 * k)) as i32).max(1).min(t - CHILL_TO);
+            let mut cold = c;
+            cold.heat = cold.heat.saturating_sub(take as i16);
+            world.set(p, cold);
+        }
+    }
+}
 
 /// Smooth value noise (0..1) over the world, lumps `size` cells across.
 fn lumps(x: f32, y: f32, size: f32, salt: u64) -> f32 {
@@ -183,7 +221,24 @@ pub fn paint(
                 if d > reach * RIM && !rng.chance((RIM_SETS * 255.0) as u8) {
                     continue;
                 }
-                if !open(world, p) || in_body(p) {
+                if in_body(p) {
+                    continue;
+                }
+                // (A liquid that freezes: frozen, ground to build on.)
+                if let Some(c) = world.get(p).filter(|c| !c.is_air() && mats.phys(c.material).kind == Kind::Liquid && mats.phys(c.material).below_into == solid) {
+                    let _ = c;
+                    if *mana < brush.per_cell {
+                        return set;
+                    }
+                    *mana -= brush.per_cell;
+                    let mut ice: Cell = mats.spawn(solid, &mut rng);
+                    ice.heat = COLD;
+                    world.set(p, ice);
+                    painted.0.insert(p, 0);
+                    set = true;
+                    continue;
+                }
+                if !open(world, p) {
                     continue;
                 }
                 match held(world, painted, p) {
@@ -193,7 +248,7 @@ pub fn paint(
                         }
                         *mana -= brush.per_cell;
                         let mut c: Cell = mats.spawn(solid, &mut rng);
-                        c.heat = 0;
+                        c.heat = COLD;
                         world.set(p, c);
                         painted.0.insert(p, h);
                         set = true;
@@ -207,7 +262,7 @@ pub fn paint(
                                 }
                                 *mana -= brush.per_cell;
                                 let mut ic: Cell = mats.spawn(solid, &mut rng);
-                                ic.heat = 0;
+                                ic.heat = COLD;
                                 world.set(q, ic);
                                 painted.0.insert(q, h.saturating_add(k as u8));
                             }
@@ -222,10 +277,15 @@ pub fn paint(
                 }
             }
         }
+        // (Round it, chilled, down to `CHILL_TO`: the ground under it
+        // frosts, water near it freezes.)
+        if brush.solid == "ice" && s % 2 == 0 {
+            chill(world, CellPos::new(cx, cy), ri + CHILL_PAST);
+        }
         // In the open: its loose form, a flake or two falling from here.
         if loose_here && *mana >= brush.per_cell * 0.5 {
             *mana -= brush.per_cell * 0.5;
-            world.spill([at.x, at.y], [0.0, -1.0], loose, 1, 0.15, 1.2);
+            world.spill_heated([at.x, at.y], [0.0, -1.0], loose, if brush.solid == "ice" { COLD } else { 0 }, 1, 0.15, 1.2);
         }
     }
     set

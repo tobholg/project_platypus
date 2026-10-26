@@ -194,6 +194,15 @@ pub(crate) fn cell_rgba(mats: &MaterialTable, c: Cell, ambient: i32, dim: f32, l
             *ch = (*ch as f32 * dim) as u8;
         }
     }
+    // (Well below freezing, solid ground's rimed with frost: paler, bluer,
+    // the colder the more.)
+    // (Not what's ice already: it melts near freezing, and it's icy as it is.)
+    if matches!(ph.kind, Kind::Static | Kind::Powder) && ph.above_at > RIME_ICY && ambient + (c.heat as i32) < RIME_AT {
+        let k = (((RIME_AT - ambient - c.heat as i32) as f32) / RIME_FULL).clamp(0.0, 1.0) * RIME_MOST;
+        for (ch, h) in rgba.iter_mut().zip(RIME) {
+            *ch = (*ch as f32 + (h - *ch as f32) * k) as u8;
+        }
+    }
     // (Hot enough to burn a touch: it glows, faintly at first.)
     if ambient + c.heat as i32 > platypus_sim::hazard::HARMFUL_CONTACT {
         glow(&mut rgba, ambient + c.heat as i32);
@@ -320,6 +329,15 @@ fn glow(rgba: &mut [u8; 4], celsius: i32) {
         *ch = (*ch as f32 + (h - *ch as f32) * mix) as u8;
     }
 }
+
+/// Frost on cold ground: from this cold (°C), all of it (`RIME_MOST` of the
+/// way to `RIME`'s pale blue-white) this much colder still.
+const RIME_AT: i32 = -2;
+const RIME_FULL: f32 = 20.0;
+const RIME_MOST: f32 = 0.65;
+/// What melts at or below this (°C) is ice-like: no rime on it.
+const RIME_ICY: i16 = 5;
+const RIME: [f32; 3] = [222.0, 236.0, 250.0];
 
 /// What a cell warm enough to burn a touch takes on (a dull red): this much
 /// of it from the first, this much by the time it's red hot.
