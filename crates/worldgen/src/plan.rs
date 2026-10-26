@@ -634,6 +634,8 @@ impl WorldPlan {
                 spawn_x: mid,
                 start: start.span(),
                 scale,
+                water_tables: &water_tables,
+                table_span: WATER_TABLE_SPAN,
             },
         );
         let mut list = crypts(seed, &surface, &water, &biomes, &chasms, (width, ocean_w, mid), scale, band_floors);

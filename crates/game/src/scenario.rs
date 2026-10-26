@@ -3929,6 +3929,18 @@ fn lakes_script(
     h.hp = h.max;
     let (lakes, at, since, frames, ticks) = &mut *state;
     let secs: f32 = std::env::var("PLATYPUS_LAKE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(8.0);
+    // (`PLATYPUS_LAKE_HALLS=1`: the world's great halls, nearest first,
+    // in place of a search.)
+    if lakes.is_empty() && t > 1.0 && std::env::var("PLATYPUS_LAKE_HALLS").is_ok() {
+        let mut halls: Vec<(CellPos, usize)> = sim.generator.landmarks().into_iter().filter(|(_, n)| n == "great hall").map(|(p, _)| (p, 0)).collect();
+        halls.sort_by_key(|(p, _)| (p.x as f32 - k.body.pos.x).abs() as i64);
+        halls.truncate(std::env::var("PLATYPUS_LAKES").ok().and_then(|v| v.parse().ok()).unwrap_or(4));
+        info!("lakes: great halls {:?}", halls.iter().map(|(p, _)| (p.x, p.y)).collect::<Vec<_>>());
+        *lakes = halls;
+        *at = usize::MAX;
+        *since = t;
+        return;
+    }
     if lakes.is_empty() && t > 1.0 {
         let reach: i32 = std::env::var("PLATYPUS_LAKE_REACH").ok().and_then(|v| v.parse().ok()).unwrap_or(60);
         let water = sim.materials().id("water");
@@ -3979,6 +3991,10 @@ fn lakes_script(
     if *at >= lakes.len() && *at != usize::MAX {
         return;
     }
+    if let (Some(up), Some(&(c, _))) = (std::env::var("PLATYPUS_LAKE_UP").ok().and_then(|v| v.parse::<f32>().ok()), lakes.get(*at)) {
+        k.body.pos = Vec2::new(c.x as f32 + 0.5, c.y as f32 + 12.0 + up);
+        k.body.vel = Vec2::ZERO;
+    }
     *frames += 1;
     *ticks += metrics.tick_time.as_secs_f32() * 1000.0;
     // Each second: how busy the cells are (chunks awake, cells visited, the
@@ -4024,7 +4040,10 @@ fn lakes_script(
         // Just over it: up its column from its middle to open air over water.
         let c = lakes[next].0;
         let spot = (0..400).map(|d| c.offset(0, d)).find(|p| sim.world.get(*p).is_none_or(|cell| cell.is_air())).unwrap_or(c);
-        k.body.pos = Vec2::new(spot.x as f32 + 0.5, spot.y as f32 + 12.0);
+        // (`PLATYPUS_LAKE_UP=n`: that much higher, held there: to look at a
+        // hall's roof.)
+        let up: f32 = std::env::var("PLATYPUS_LAKE_UP").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0);
+        k.body.pos = Vec2::new(spot.x as f32 + 0.5, spot.y as f32 + 12.0 + up);
         k.body.vel = Vec2::ZERO;
         info!("lakes: to #{next} at ({}, {})", spot.x, spot.y);
     }

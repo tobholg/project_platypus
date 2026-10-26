@@ -226,6 +226,10 @@ pub const SNAG_UNTIL: f32 = 0.3;
 /// Tall grass: never this tall or taller (a lush meadow's tall stand comes
 /// near it); clumps this many columns across, and this share of them stands
 /// far above the rest.
+/// A great hall's roof: one cell of it open to the hall in so many holds a
+/// glowworm; one in so many hangs a thread of silk.
+const GLOWWORM_ONE_IN: u64 = 3;
+const SILK_ONE_IN: u64 = 9;
 /// The rock between the caverns and the deep: no cave crosses within this
 /// far of the caverns' floor (cells), and their huge chambers close over
 /// this share of the caverns' height more above it (and open over as much
@@ -358,6 +362,8 @@ struct Ids {
     mushroom_glow: MaterialId,
     fungus_shelf: MaterialId,
     glow_vine: MaterialId,
+    glowworm: MaterialId,
+    glowworm_silk: MaterialId,
     crystal: MaterialId,
     toxic_crust: MaterialId,
     platform: MaterialId,
@@ -492,6 +498,8 @@ impl TerrainGen {
             mushroom_glow: mats.expect_id("mushroom_glow"),
             fungus_shelf: mats.expect_id("fungus_shelf"),
             glow_vine: mats.expect_id("glow_vine"),
+            glowworm: mats.expect_id("glowworm"),
+            glowworm_silk: mats.expect_id("glowworm_silk"),
             healroot: mats.expect_id("healroot"),
             crystal: mats.expect_id("crystal"),
             toxic_crust: mats.expect_id("toxic_crust"),
@@ -1446,6 +1454,46 @@ impl TerrainGen {
         }
     }
 
+    /// A great hall's roof (its upper half), studded with glowworms: faint
+    /// blue-green points like a sky of stars over the lake, now and then a
+    /// thread of their silk hanging, beaded with light, brightest at its
+    /// drop. (Rock open to the hall under it; the vault's air only.)
+    fn glowworms(&self, pos: ChunkPos, cells: &mut [Cell]) {
+        let i = &self.ids;
+        let o = pos.origin();
+        let (mx, my) = ((o.x + CHUNK / 2) as f32, (o.y + CHUNK / 2) as f32);
+        let Some(hall) = self.plan.caves.halls.iter().find(|h| (mx - h.x).abs() < h.rx * 1.3 + CHUNK as f32 && my > h.y - CHUNK as f32 && my < h.y + h.ry * 1.3 + CHUNK as f32) else { return };
+        // (Read from the chunk as it was, written as it's dressed.)
+        let before: Vec<MaterialId> = cells.iter().map(|c| c.material).collect();
+        let at = |lx: i32, ly: i32| if (0..CHUNK).contains(&lx) && (0..CHUNK).contains(&ly) { before[(ly * CHUNK + lx) as usize] } else { self.material_at(o.x + lx, o.y + ly) };
+        let rock = |m: MaterialId| m == i.stone || m == i.slate || m == i.basalt || m == i.obsidian;
+        let seed = self.plan.seed;
+        for lx in 0..CHUNK {
+            let x = o.x + lx;
+            for ly in 0..CHUNK {
+                let y = o.y + ly;
+                if (y as f32) < hall.y + hall.ry * 0.15 || at(lx, ly) != i.air || !rock(at(lx, ly + 1)) {
+                    continue;
+                }
+                // (The roof over this open cell: a worm in it now and then,
+                // and now and then its silk hanging from it.)
+                let h = hash(&[seed, 0x610E, x as u64, y as u64]);
+                if ly + 1 < CHUNK && h.is_multiple_of(GLOWWORM_ONE_IN) {
+                    cells[((ly + 1) * CHUNK + lx) as usize] = Cell::new(i.glowworm, 128 + (h >> 8) as u8 % 128);
+                }
+                if (h >> 16).is_multiple_of(SILK_ONE_IN) {
+                    let long = 2 + (h >> 24) as i32 % 7;
+                    for k in 0..long {
+                        if ly - k < 0 || at(lx, ly - k) != i.air {
+                            break;
+                        }
+                        cells[((ly - k) * CHUNK + lx) as usize] = Cell::new(i.glowworm_silk, if k + 1 == long { 255 } else { 40 + (k * 30) as u8 });
+                    }
+                }
+            }
+        }
+    }
+
     /// The underground biomes dress the rock where it meets open space:
     /// fungal soil and glowing sprouts in the fungal hollows, crystal studs
     /// in the crystal caves, a glowing crust in the toxic grottos.
@@ -2065,7 +2113,10 @@ impl ChunkGenerator for TerrainGen {
             let (x0, y0, x1, y1) = rooms.iter().fold((i32::MAX, i32::MAX, i32::MIN, i32::MIN), |(x0, y0, x1, y1), p| (x0.min(p.x), y0.min(p.y), x1.max(p.x + p.w * BLOCK), y1.max(p.y + p.h * BLOCK)));
             (CellPos::new((x0 + x1) / 2, (y0 + y1) / 2), s.kind.name().to_string())
         });
-        lairs.chain(built).collect()
+        // (The great halls: the middle of their vaults, between the lake
+        // and the roof.)
+        let halls = self.plan.caves.halls.iter().map(|h| (CellPos::new(h.x as i32, (self.plan.water_table(h.x as i32) + (h.y + h.ry) as i32) / 2), "great hall".to_string()));
+        lairs.chain(built).chain(halls).collect()
     }
 
     fn zone_at(&self, x: i32, y: i32) -> Option<&'static str> {
@@ -2203,6 +2254,7 @@ impl ChunkGenerator for TerrainGen {
             }
         }
         self.dress(pos, &mut cells, &mut rng);
+        self.glowworms(pos, &mut cells);
         self.dress_lairs(pos, &mut cells);
         self.boulder_traps(pos, &mut cells);
         self.sweep_specks(pos, &mut cells);
@@ -2376,6 +2428,43 @@ mod tests {
             let x = g.spawn_point().x;
             let n = g.plan.forest.near(x - 300, x + 300).len();
             assert!(n >= 4, "seed {seed}: {n} trees within 300 of the spawn");
+        }
+    }
+
+    /// The great halls: a few in every large world, each a lake under a
+    /// vault of air (the water table cutting it a third of the way up), its
+    /// roof studded with glowworms.
+    #[test]
+    fn great_halls_hold_a_lake_under_a_vault_of_glowworms() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let halls = &g.plan.caves.halls;
+        assert!(halls.len() >= 4, "{} halls", halls.len());
+        for h in halls {
+            let table = g.plan.water_table(h.x as i32);
+            let (bed, roof) = (h.y - h.ry, h.y + h.ry);
+            let share = (table as f32 - bed) / (roof - bed);
+            assert!((0.2..0.4).contains(&share), "the lake fills {share:.2} of the hall at x {}", h.x);
+            // Across its middle: water under the table, air over it (the
+            // pillars aside), glowworms in its roof.
+            let (mut wet, mut dry, mut worms) = (0, 0, 0);
+            for x in ((h.x - h.rx * 0.5) as i32..(h.x + h.rx * 0.5) as i32).step_by(7) {
+                match g.sample(x, table - 15).0 {
+                    w if w == g.ids.water => wet += 1,
+                    _ => {}
+                }
+                if g.sample(x, table + 40).0 == g.ids.air {
+                    dry += 1;
+                }
+            }
+            // (Up from the lake to the roof, here and there: its chunk.)
+            for x in ((h.x - h.rx * 0.5) as i32..(h.x + h.rx * 0.5) as i32).step_by(97) {
+                let Some(top) = (table + 40..roof as i32 + 120).find(|&y| g.sample(x, y).0 != g.ids.air) else { continue };
+                let chunk = g.generate(ChunkPos::new(x.div_euclid(CHUNK), top.div_euclid(CHUNK)));
+                worms += chunk.cells().iter().filter(|c| c.material == g.ids.glowworm).count();
+            }
+            assert!(wet > 10 && dry > 10, "hall at x {}: {wet} wet, {dry} dry across its middle", h.x);
+            assert!(worms > 5, "hall at x {}: {worms} glowworms in its roof", h.x);
         }
     }
 

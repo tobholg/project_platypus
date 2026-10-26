@@ -196,6 +196,13 @@
         // Glowing vines hanging from the ceilings; brighter toward the tip.
         (name: "glow_vine",   kind: Plant, hangs: true, density: 150, hardness: 1, flammability: 8, ignites_at: 360, burn_time: 20, opacity: 25, glow: (6, 34, 36), pulse: 120,
             colors: [(20, 60, 60), (30, 100, 96), (60, 170, 160), (150, 250, 230)]),
+        // Glowworms (the great lake halls): their roofs studded with them,
+        // faint blue-green points like a sky of stars over the lake; their
+        // silk threads hang down, beaded with light, brightest at the drop.
+        (name: "glowworm",      kind: Static, density: 1800, hardness: 18, crumbles_into: "gravel", glow: (8, 44, 52), pulse: 70,
+            colors: [(70, 90, 92), (90, 200, 196), (120, 240, 226), (170, 255, 244)]),
+        (name: "glowworm_silk", kind: Plant, hangs: true, density: 20, hardness: 1, flammability: 40, ignites_at: 250, burn_time: 6, opacity: 6, glow: (4, 24, 28), pulse: 140,
+            colors: [(40, 60, 62), (70, 150, 146), (110, 220, 210), (180, 255, 246)]),
         // Crystal caves: crystals grow into the chambers and stud the walls.
         (name: "crystal", loot: Gem,     kind: Static, density: 2650, hardness: 70, crumbles_into: "gravel", glow: (18, 30, 42), opacity: 10, optics: (ior: 1.55, disperse: 0.45, reflect: 0.05, tint: (230, 238, 255)), shimmer: 255,
             colors: [(140, 200, 240), (180, 230, 255), (225, 245, 255), (205, 185, 250)]),
