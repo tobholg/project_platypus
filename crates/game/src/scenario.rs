@@ -16000,7 +16000,7 @@ fn bladesplash_script(
 /// to see it melt). `PLATYPUS_PAINT=pool`: water under where it draws;
 /// `wall`: a stone wall between it and where it draws; `face`: a plank wall
 /// beside where the column's drawn (it runs up its face); `tall`: the
-/// column 100 high.
+/// column 100 high; `long`: the bridge 120 long.
 fn paint_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
@@ -16062,10 +16062,13 @@ fn paint_script(
     let foot = if pool { fl - 6.0 } else { fl + 1.0 };
     // (`PLATYPUS_PAINT=tall`: the column 100 high, over the same two seconds.)
     let top = if std::env::var("PLATYPUS_PAINT").is_ok_and(|v| v == "tall") { fl + 100.0 } else { fl + 30.0 };
+    // (`PLATYPUS_PAINT=long`: the bridge 120 long, past where the old limit
+    // of 30 out would have turned it to snow.)
+    let span = if std::env::var("PLATYPUS_PAINT").is_ok_and(|v| v == "long") { 120.0 } else { 40.0 };
     let at = if (1.0..3.0).contains(&t) {
         Some(lerp(Vec2::new(x, foot), Vec2::new(x, top), (t - 1.0) / 2.0))
     } else if (3.0..5.0).contains(&t) {
-        Some(lerp(Vec2::new(x, top), Vec2::new(x + 40.0, top), (t - 3.0) / 2.0))
+        Some(lerp(Vec2::new(x, top), Vec2::new(x + span, top), (t - 3.0) / 2.0))
     } else if (5.5..6.5).contains(&t) {
         Some(lerp(Vec2::new(x - 20.0, fl + 70.0), Vec2::new(x + 20.0, fl + 70.0), t - 5.5))
     } else {

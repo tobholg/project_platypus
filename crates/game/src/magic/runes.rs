@@ -75,8 +75,8 @@ pub enum Carrier {
     Cloud { material: String, radius: i32, range: f32 },
     /// A brush, held (`brush.rs`): it paints where the cursor goes (out to
     /// `range`, never through what's in the way), `radius` round: `solid`
-    /// where it's held up (touching ground, or what it painted that is, at
-    /// most `reach` cells out), else `loose`, falling; `per_cell` mana a
+    /// where it's held up (touching ground, or what it painted that is, as
+    /// far as the mana lasts), else `loose`, falling; `per_cell` mana a
     /// cell (loose, half). `set`: off a cell as it sets; `stream`: motes
     /// running from the hand to the cursor. `through`: no line of sight
     /// needed.
@@ -85,7 +85,6 @@ pub enum Carrier {
         loose: String,
         radius: f32,
         range: f32,
-        reach: u8,
         per_cell: f32,
         #[serde(default)]
         set: Option<Emitter>,

@@ -4,9 +4,8 @@
 //! `through`, paints wherever the cursor is), and the stroke since
 //! the last tick is painted, `radius` round: each open cell it covers sets
 //! solid (`solid`: ice) if it's held up (touching real ground, or a cell
-//! this brush painted that's held up: straight up off it costs nothing, a
-//! wall as tall as the mana lasts; out to the side, no more than `reach`
-//! cells: ledges, bridges, arches), and is otherwise its loose
+//! this brush painted that's held up: walls, ledges, bridges, arches, as
+//! tall and as far as the mana lasts), and is otherwise its loose
 //! form (`loose`: snow), falling. Each cell set costs `per_cell` mana (a
 //! loose one half); out of mana, it stops. Never in a body.
 //!
@@ -37,10 +36,9 @@ use crate::magic::runes::Emitter;
 #[derive(Resource, Default)]
 pub struct Strokes(HashMap<Entity, (Vec2, u64)>);
 
-/// The cells brushes have set solid, each how many cells out from real
-/// ground it's held (0: touching it).
+/// The cells brushes have set solid (what holds up more painted on it).
 #[derive(Resource, Default)]
-pub struct Painted(HashMap<CellPos, u8>);
+pub struct Painted(std::collections::HashSet<CellPos>);
 
 /// Painted cells kept (`Brush::lasts`): what's kept there, how long more.
 #[derive(Resource, Default)]
@@ -153,7 +151,6 @@ pub struct Brush<'a> {
     pub loose: &'a str,
     pub radius: f32,
     pub range: f32,
-    pub reach: u8,
     pub per_cell: f32,
     /// Off a cell as it sets; along the stream.
     pub look: Option<&'a Emitter>,
@@ -189,7 +186,7 @@ pub fn paint(
     let tick = world.tick();
     // (Forget what's melted or been dug, now and then.)
     if tick.is_multiple_of(TIDY_EVERY) {
-        painted.0.retain(|p, _| kept.0.contains_key(p) || world.get(*p).is_some_and(|c| c.material == solid));
+        painted.0.retain(|p| kept.0.contains_key(p) || world.get(*p).is_some_and(|c| c.material == solid));
     }
     // To the cursor, or as near as the way's open: through what it's
     // painted itself (or it grows back along its own stroke toward the
@@ -201,7 +198,7 @@ pub fn paint(
     for i in 1..=steps {
         let p = from + dir * (i as f32 * 0.5);
         let c = CellPos::from_world(p.x, p.y);
-        let clear = world.get(c).is_some_and(|cell| cell.is_air() || matches!(mats.phys(cell.material).kind, Kind::Gas | Kind::Fire | Kind::Plant) || (cell.material == solid && painted.0.contains_key(&c)));
+        let clear = world.get(c).is_some_and(|cell| cell.is_air() || matches!(mats.phys(cell.material).kind, Kind::Gas | Kind::Fire | Kind::Plant) || (cell.material == solid && painted.0.contains(&c)));
         if !clear {
             // (Short of what stopped it: painting against a wall lays on it.)
             tip = p - dir * 0.6;
@@ -223,27 +220,18 @@ pub fn paint(
         let c = Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5);
         boxes.iter().any(|(pos, half)| ((c - *pos).abs() - *half).max_element() < 0.5)
     };
-    // Held up by what's round it: real ground (0), or a painted cell that
-    // is (one further out).
-    // (A kept cell holds what's painted on it all its time, flickering out
-    // or not: a wall of flame stands on the flames under it.)
-    let held = |w: &World, painted: &Painted, kept: &Kept, p: CellPos| -> Option<u8> {
-        let mut best: Option<u8> = None;
-        for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
+    // Held up by what's round it: real ground, or a painted cell (a kept
+    // one all its time, flickering out or not: a wall of flame stands on the
+    // flames under it).
+    let held = |w: &World, painted: &Painted, kept: &Kept, p: CellPos| -> bool {
+        [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)].into_iter().any(|(dx, dy)| {
             let q = p.offset(dx, dy);
-            // (Straight up off what's held: a column stands on it, costing
-            // no reach; out to the side is what's limited: overhangs.)
-            let step = if (dx, dy) == (0, -1) { 0 } else { 1 };
-            let here = match painted.0.get(&q) {
-                Some(&s) if w.get(q).is_some_and(|c| c.material == solid) || kept.0.contains_key(&q) => Some(s.saturating_add(step)),
-                Some(_) => None,
-                None => w.get(q).filter(|c| !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder)).map(|_| 0),
-            };
-            if let Some(h) = here {
-                best = Some(best.map_or(h, |b: u8| b.min(h)));
+            if painted.0.contains(&q) {
+                w.get(q).is_some_and(|c| c.material == solid) || kept.0.contains_key(&q)
+            } else {
+                w.get(q).is_some_and(|c| !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder))
             }
-        }
-        best
+        })
     };
     let mut rng = platypus_sim::rng::Rng::seeded(&[tick, caster.to_bits(), 0xB2A5]);
     let steps = (last.distance(tip) / STEP).ceil().max(1.0) as usize;
@@ -285,51 +273,50 @@ pub fn paint(
                     let mut ice: Cell = mats.spawn(solid, &mut rng);
                     ice.heat = COLD;
                     world.set(p, ice);
-                    painted.0.insert(p, 0);
+                    painted.0.insert(p);
                     set = true;
                     continue;
                 }
                 if !open(world, p) {
                     continue;
                 }
-                match held(world, painted, kept, p) {
-                    Some(h) if h <= brush.reach => {
-                        if *mana < brush.per_cell {
-                            return set;
-                        }
-                        *mana -= brush.per_cell;
-                        let mut c: Cell = mats.spawn(solid, &mut rng);
-                        if icy {
-                            c.heat = COLD;
-                        }
-                        world.set(p, c);
-                        painted.0.insert(p, h);
-                        if brush.lasts > 0.0 {
-                            kept.0.insert(p, (solid, brush.lasts));
-                        }
-                        set = true;
-                        // (Open under it: now and then an icicle.)
-                        if icy && platypus_sim::rng::hash(&[p.x as u64, p.y as u64, 0x1C1C]).is_multiple_of(ICICLE_ONE_IN) {
-                            let long = 1 + (platypus_sim::rng::hash(&[p.x as u64, p.y as u64, 0x1C1D]) % ICICLE_MOST as u64) as i32;
-                            for k in 1..=long {
-                                let q = p.offset(0, -k);
-                                if !open(world, q) || in_body(q) || *mana < brush.per_cell {
-                                    break;
-                                }
-                                *mana -= brush.per_cell;
-                                let mut ic: Cell = mats.spawn(solid, &mut rng);
-                                ic.heat = COLD;
-                                world.set(q, ic);
-                                painted.0.insert(q, h.saturating_add(k as u8));
+                if held(world, painted, kept, p) {
+                    if *mana < brush.per_cell {
+                        return set;
+                    }
+                    *mana -= brush.per_cell;
+                    let mut c: Cell = mats.spawn(solid, &mut rng);
+                    if icy {
+                        c.heat = COLD;
+                    }
+                    world.set(p, c);
+                    painted.0.insert(p);
+                    if brush.lasts > 0.0 {
+                        kept.0.insert(p, (solid, brush.lasts));
+                    }
+                    set = true;
+                    // (Open under it: now and then an icicle.)
+                    if icy && platypus_sim::rng::hash(&[p.x as u64, p.y as u64, 0x1C1C]).is_multiple_of(ICICLE_ONE_IN) {
+                        let long = 1 + (platypus_sim::rng::hash(&[p.x as u64, p.y as u64, 0x1C1D]) % ICICLE_MOST as u64) as i32;
+                        for k in 1..=long {
+                            let q = p.offset(0, -k);
+                            if !open(world, q) || in_body(q) || *mana < brush.per_cell {
+                                break;
                             }
-                        }
-                        if let Some(e) = brush.look
-                            && platypus_sim::rng::hash(&[p.x as u64, p.y as u64, tick]).is_multiple_of(GLITTER_ONE_IN)
-                        {
-                            sparks.emit(e, e.count as usize, Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5), Vec2::Y, Vec2::ZERO);
+                            *mana -= brush.per_cell;
+                            let mut ic: Cell = mats.spawn(solid, &mut rng);
+                            ic.heat = COLD;
+                            world.set(q, ic);
+                            painted.0.insert(q);
                         }
                     }
-                    _ => loose_here = true,
+                    if let Some(e) = brush.look
+                        && platypus_sim::rng::hash(&[p.x as u64, p.y as u64, tick]).is_multiple_of(GLITTER_ONE_IN)
+                    {
+                        sparks.emit(e, e.count as usize, Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5), Vec2::Y, Vec2::ZERO);
+                    }
+                } else {
+                    loose_here = true;
                 }
             }
         }
