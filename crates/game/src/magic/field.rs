@@ -8,9 +8,9 @@
 //! warp pass (`warp::FieldWarp`, `assets/shaders/warp.wgsl`):
 //!
 //! - A repulsor (Force) is a bubble that throws out what walks into it
-//!   (but the player and the player's side), as hard as it came and
-//!   harder; an enemy's arrow or spell turns back the way it came, yours
-//!   now. Each blow ripples it (thoom) and wears it down (`WEAR`). Like
+//!   (anything: you too; open one under you and you're launched), as hard
+//!   as it came and harder; an arrow or spell shot into it turns back the
+//!   way it came (yours too: lob them over it), an enemy's yours now. Each blow ripples it (thoom) and wears it down (`WEAR`). Like
 //!   glass, it magnifies what's behind it.
 //! - A slow field (Void): inside it, everything runs at an eighth of its
 //!   speed (`SLOW`), you too: bodies, blows and swings, spells and arrows,
@@ -141,13 +141,14 @@ impl Fields {
         self.fields.iter().position(|f| f.kind == kind && f.touches(pos, half))
     }
 
-    /// The first repulsor along a path (a shot's this tick: a fast one
-    /// would skip over its edge), which, and where.
+    /// The first repulsor a path goes into (a shot's this tick: a fast one
+    /// would skip over its edge), which, and where. (Out of one it's in, it
+    /// goes freely: it pushes out.)
     fn first_repulse(&self, from: Vec2, to: Vec2) -> Option<(usize, Vec2)> {
         let steps = from.distance(to).ceil().max(1.0) as usize;
         (0..=steps).find_map(|i| {
             let p = from.lerp(to, i as f32 / steps as f32);
-            self.fields.iter().position(|f| f.kind == FieldKind::Repulse && f.contains(p)).map(|i| (i, p))
+            self.fields.iter().position(|f| f.kind == FieldKind::Repulse && !f.contains(from) && f.contains(p)).map(|i| (i, p))
         })
     }
 
@@ -172,7 +173,7 @@ const FADE: f32 = 1.0;
 /// (cells).
 const LIFT_UP: f32 = 125.0;
 const LIFT_GRIP: f32 = 0.16;
-const LIFT_MOST: i32 = 240;
+const LIFT_MOST: i32 = 360;
 /// What's loose in an updraft rises this many cells a tick; out of its top
 /// it's thrown aside this fast (cells a tick: across, up).
 const RISE: usize = 2;
@@ -195,6 +196,8 @@ const AGAIN: f32 = 0.2;
 const BLAST: f32 = 700.0;
 const BLASTED: f32 = 0.7;
 const BLAST_UP: f32 = 0.55;
+/// The player thrown by one can't steer this long (s).
+const PLAYER_REELING: f32 = 0.15;
 /// Each blow takes this long off a repulsor (s): a shot, something
 /// thrown out of it.
 const WEAR: (f32, f32) = (0.4, 0.15);
@@ -313,15 +316,15 @@ pub fn mark(mut commands: Commands, fields: Res<Fields>, mut bodies: Query<Body>
     }
 }
 
-type Walker<'a> = (Entity, &'a mut Kinematics, &'a crate::creatures::body::animation::Animator, Option<&'a Team>);
+type Walker<'a> = (Entity, &'a mut Kinematics, &'a crate::creatures::body::animation::Animator, Has<LocalPlayer>);
 
-/// After bodies move: what walked into a repulsor is thrown back out, and
-/// what was shot at you through one turns back, yours.
+/// After bodies move: what walked into a repulsor is thrown back out
+/// (whoever it is), and what was shot into one turns back (an enemy's,
+/// the field's caster's now).
 #[allow(clippy::too_many_arguments)]
 pub fn repel(
     mut fields: ResMut<Fields>,
-    mut walkers: Query<Walker, Without<LocalPlayer>>,
-    casters: Query<&Kinematics, With<LocalPlayer>>,
+    mut walkers: Query<Walker>,
     mut spells: Query<&mut super::Spell>,
     mut arrows: Query<(&mut crate::archery::Arrow, &mut Transform)>,
     teams: Query<&Team>,
@@ -339,10 +342,9 @@ pub fn repel(
         return;
     }
     let ours = |t: Option<&Team>| t.is_some_and(|t| t.allied(Team::Player));
-    for (e, mut k, anim, team) in &mut walkers {
-        if ours(team) {
-            continue;
-        }
+    // (Where the casters stand: what's caught goes away from them.)
+    let at: HashMap<Entity, Vec2> = fields.fields.iter().filter_map(|f| walkers.get(f.by).ok().map(|w| (f.by, w.1.body.pos))).collect();
+    for (e, mut k, anim, player) in &mut walkers {
         let Some(i) = fields.touching(k.body.pos, k.body.half, FieldKind::Repulse) else { continue };
         let k = &mut *k;
         // (Stepped in this tick: back where it was. Already in it: it was
@@ -359,7 +361,7 @@ pub fn repel(
         // the middle goes away from them): what it came in with turned
         // back, and a kick.
         let f = fields.fields[i];
-        let from_caster = casters.get(f.by).map_or(Vec2::ZERO, |c| (k.body.pos - c.body.pos).normalize_or_zero());
+        let from_caster = at.get(&f.by).map_or(Vec2::ZERO, |c| (k.body.pos - *c).normalize_or_zero());
         let away = (k.body.pos - f.at + from_caster * f.size() * 0.3).normalize_or(-k.body.vel.normalize_or(Vec2::NEG_Y));
         let at = f.at + away * f.size();
         let v = k.body.vel;
@@ -367,23 +369,31 @@ pub fn repel(
         let heft = anim.def.heft.max(0.5).sqrt();
         let deep = (1.0 - k.body.pos.distance(f.at) / f.radius.max(1.0)).clamp(0.0, 1.0);
         let blast = if caught { BLAST * (0.4 + 0.6 * deep) } else { 0.0 };
-        let flung = (away + Vec2::Y * BLAST_UP) * blast / heft.sqrt();
-        k.loco.knock(&mut k.body, back + (away * KICK + Vec2::Y * KICK_UP) / heft + flung, if caught { BLASTED } else { REELING });
+        // (Lifted as it goes, the more the more sideways it's thrown: one
+        // thrown straight up goes no higher for it.)
+        let flung = (away + Vec2::Y * BLAST_UP * (1.0 - away.y.max(0.0))).normalize_or_zero() * blast / heft.sqrt();
+        // (You get your hands back sooner.)
+        let reel = match (player, caught) {
+            (true, _) => PLAYER_REELING,
+            (false, true) => BLASTED,
+            (false, false) => REELING,
+        };
+        k.loco.knock(&mut k.body, back + (away * KICK + Vec2::Y * KICK_UP) / heft + flung, reel);
         let hard = (v.length() + KICK + blast) / 300.0;
         fields.struck(i, at, hard, WEAR.1);
         sparks.emit(&RIPPLE, RIPPLE.count as usize, at, away, Vec2::ZERO);
         sounds.write(crate::sound::PlaySound::at("thoom", at).volume(0.5 + 0.5 * hard.min(1.0)).pitch((1.0 / heft).clamp(0.6, 1.3)));
     }
-    // An enemy's spell: back the way it came, its caster now the field's.
+    // A spell: back the way it came; an enemy's, the field's caster's now
+    // (one of their side's stays theirs).
     for mut s in &mut spells {
         let Some((i, at)) = fields.first_repulse(s.prev, s.pos) else { continue };
         let by = fields.fields[i].by;
-        if s.caster == by || ours(teams.get(s.caster).ok()) {
-            continue;
-        }
         s.pos = s.prev;
         s.vel = -s.vel;
-        s.caster = by;
+        if !ours(teams.get(s.caster).ok()) {
+            s.caster = by;
+        }
         fields.struck(i, at, 0.6, WEAR.0);
         sparks.emit(&RIPPLE, RIPPLE.count as usize / 2, at, s.vel.normalize_or(Vec2::Y), Vec2::ZERO);
         sounds.write(crate::sound::PlaySound::at("thoom", at).volume(0.6).pitch(1.3));
@@ -394,10 +404,7 @@ pub fn repel(
         }
         let now = tf.translation.truncate();
         let Some((i, at)) = fields.first_repulse(now - a.vel * DT * a.slow, now) else { continue };
-        let by = fields.fields[i].by;
-        if a.shooter() == by || ours(a.team().as_ref()) {
-            continue;
-        }
+        let by = if ours(a.team().as_ref()) { a.shooter() } else { fields.fields[i].by };
         let back = a.turn_back(by);
         // (Back out of the bubble, where it met it.)
         tf.translation = (at + back.normalize_or_zero() * 2.0).extend(tf.translation.z);
