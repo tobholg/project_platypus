@@ -1430,6 +1430,25 @@ mod tests {
         w
     }
 
+    /// Every kit fits: nothing it carries left over, everything it wears
+    /// worn (the dev kit's first ten in the hotbar).
+    #[test]
+    fn every_kit_fits() {
+        let items = items::test_items();
+        for kit in &items.kits {
+            let (mut inv, mut eq) = (Inventory::new(PACK), crate::gear::Equipment::default());
+            let over = put_on(&items, kit, &mut inv, &mut eq, false);
+            assert!(over.is_empty(), "{}: no room for {:?}", kit.name, over.iter().map(|s| items.def(s.item).name.clone()).collect::<Vec<_>>());
+            let worn = eq.worn.iter().flatten().count();
+            assert_eq!(worn, kit.wear.len(), "{}: {worn} of {} worn", kit.name, kit.wear.len());
+        }
+        let dev = items.kit("dev");
+        let (mut inv, mut eq) = (Inventory::new(PACK), crate::gear::Equipment::default());
+        put_on(&items, dev, &mut inv, &mut eq, false);
+        assert_eq!(inv.slots[0].as_ref().map(|s| s.item), items.id("mithril_pickaxe"));
+        assert_eq!(inv.slots[1].as_ref().map(|s| s.item), items.id("mithril_longsword"));
+    }
+
     /// Healroot dug with a pick: picked, one for every 24 cells of it (a
     /// part of one counting), no block of it.
     #[test]
